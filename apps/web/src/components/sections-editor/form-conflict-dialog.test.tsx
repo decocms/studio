@@ -95,11 +95,6 @@ function Harness({
       onChoose={(pointer, choice) =>
         setChoices((now) => ({ ...now, [pointer]: choice }))
       }
-      onChooseAll={(choice) =>
-        setChoices(
-          Object.fromEntries(only.map((field) => [field.pointer, choice])),
-        )
-      }
       onApply={() => onApply(choices)}
     />
   );
@@ -166,18 +161,18 @@ describe("one field: two cards", () => {
     expect(marks(view.getByTestId("conflict-theirs"))).toEqual(["Winter "]);
   });
 
-  test("one button, named for the card chosen", () => {
+  test("one button, OK, saves the card chosen", () => {
     const onApply = mock((_: ConflictChoices) => {});
     const view = render(<Harness onApply={onApply} only={headline} />);
     expect(
       view.getAllByRole("button").map((button) => button.textContent),
-    ).toEqual(["Keep yours"]);
-    fireEvent.click(view.getByRole("button", { name: "Keep yours" }));
+    ).toEqual(["OK"]);
+    fireEvent.click(view.getByRole("button", { name: "OK" }));
     expect(onApply).toHaveBeenLastCalledWith({ "/headline": "mine" });
     fireEvent.click(view.getByRole("radio", { name: "Someone else" }));
     expect(view.getByRole("radio", { name: "Someone else" })).toBeChecked();
     expect(view.getByRole("radio", { name: "You" })).not.toBeChecked();
-    fireEvent.click(view.getByRole("button", { name: "Use theirs" }));
+    fireEvent.click(view.getByRole("button", { name: "OK" }));
     expect(onApply).toHaveBeenLastCalledWith({ "/headline": "theirs" });
   });
 
@@ -192,7 +187,7 @@ describe("one field: two cards", () => {
     expect(theirs).toHaveAttribute("tabindex", "0");
     fireEvent.keyDown(theirs, { key: "ArrowUp" });
     expect(mine).toBeChecked();
-    expect(view.getByRole("button", { name: "Keep yours" })).toBeVisible();
+    expect(view.getByRole("button", { name: "OK" })).toBeVisible();
   });
 
   test("your card shows your initials", async () => {
@@ -326,19 +321,38 @@ describe("several fields: one field per step", () => {
     expect(view.getByRole("radio", { name: "You" })).toBeChecked();
   });
 
-  test("yours by default; the last step's button names the outcome and saves", () => {
+  test("Back and Next on every step, OK on the last", () => {
+    const view = render(<Harness onApply={() => {}} />);
+    const actions = () =>
+      view
+        .getAllByRole("button")
+        .filter(
+          (button) =>
+            button.getAttribute("role") !== "radio" &&
+            !button.closest('[aria-label="Fields to choose"]'),
+        )
+        .map((button) => button.textContent);
+    expect(actions()).toEqual(["Back", "Next"]);
+    fireEvent.click(view.getByRole("button", { name: "Next" }));
+    expect(actions()).toEqual(["Back", "Next"]);
+    fireEvent.click(view.getByRole("button", { name: "Next" }));
+    expect(step(view)).toBe("3 of 3");
+    expect(actions()).toEqual(["Back", "OK"]);
+  });
+
+  test("yours by default; OK on the last step saves the picks", () => {
     const onApply = mock((_: ConflictChoices) => {});
     const view = render(<Harness onApply={onApply} />);
     fireEvent.click(view.getByRole("button", { name: "Slides" }));
     expect(view.queryByRole("button", { name: "Next" })).toBeNull();
-    fireEvent.click(view.getByRole("button", { name: "Keep yours" }));
+    fireEvent.click(view.getByRole("button", { name: "OK" }));
     expect(onApply).toHaveBeenLastCalledWith({
       "/headline": "mine",
       "/banner": "mine",
       "/slides": "mine",
     });
     fireEvent.click(view.getByRole("radio", { name: "Someone else" }));
-    fireEvent.click(view.getByRole("button", { name: "Keep a mix" }));
+    fireEvent.click(view.getByRole("button", { name: "OK" }));
     expect(onApply).toHaveBeenLastCalledWith({
       "/headline": "mine",
       "/banner": "mine",
@@ -352,7 +366,7 @@ describe("several fields: one field per step", () => {
     const view = render(<Harness onApply={onApply} />);
     fireEvent.click(view.getByRole("button", { name: "Next" }));
     fireEvent.click(view.getByRole("button", { name: "Next" }), { detail: 1 });
-    fireEvent.click(view.getByRole("button", { name: "Keep yours" }), {
+    fireEvent.click(view.getByRole("button", { name: "OK" }), {
       detail: 2,
     });
     expect(onApply).not.toHaveBeenCalled();
@@ -370,26 +384,6 @@ describe("several fields: one field per step", () => {
     expect(
       view.queryByText("Pick the one to keep. You can go back before saving."),
     ).toBeNull();
-  });
-
-  test("Use theirs for all picks theirs everywhere and shows the summary, unsaved", () => {
-    const onApply = mock((_: ConflictChoices) => {});
-    const view = render(<Harness onApply={onApply} />);
-    fireEvent.click(view.getByRole("button", { name: "Use theirs for all" }));
-    expect(step(view)).toBe("3 of 3");
-    expect(view.getByTestId("form-conflict-summary")).toHaveTextContent(
-      "Headline: theirs · Banner: theirs · Slides: theirs",
-    );
-    for (const dot of dots(view).slice(0, 2)) {
-      expect(dot).toHaveAttribute("data-answered");
-    }
-    expect(onApply).not.toHaveBeenCalled();
-    fireEvent.click(view.getByRole("button", { name: "Use theirs" }));
-    expect(onApply).toHaveBeenLastCalledWith({
-      "/headline": "theirs",
-      "/banner": "theirs",
-      "/slides": "theirs",
-    });
   });
 
   test("a field whose version changed while open gets a ring until visited", () => {
@@ -434,9 +428,6 @@ describe("several fields: one field per step", () => {
     expect(view.queryByRole("group", { name: "Fields to choose" })).toBeNull();
     expect(view.queryByRole("button", { name: "Back" })).toBeNull();
     expect(view.queryByRole("button", { name: "Next" })).toBeNull();
-    expect(
-      view.queryByRole("button", { name: "Use theirs for all" }),
-    ).toBeNull();
   });
 });
 
@@ -503,9 +494,9 @@ describe("who made the other change (hosted v8)", () => {
         timeStyle: "short",
       }),
     );
-    // The button keeps "Use theirs": "Usar a de Ana" doesn't read well in pt-br.
+    // The button is OK whoever the card names.
     fireEvent.click(theirs);
-    expect(view.getByRole("button", { name: "Use theirs" })).toBeVisible();
+    expect(view.getByRole("button", { name: "OK" })).toBeVisible();
   });
 
   test("one field: the viewer's own change from another tab or window", () => {
@@ -536,6 +527,19 @@ describe("who made the other change (hosted v8)", () => {
     ).toHaveAccessibleDescription("saved 5 minutes ago Winter sale on shoes");
   });
 
+  /** Their card on every step, Next between them, ending on the last step. */
+  const pickTheirsOnEveryStep = (
+    view: ReturnType<typeof render>,
+    name: string,
+  ) => {
+    for (;;) {
+      fireEvent.click(view.getByRole("radio", { name }));
+      const next = view.queryByRole("button", { name: "Next" });
+      if (!next) return;
+      fireEvent.click(next);
+    }
+  };
+
   test("several fields: each step names the member, the summary says whose", () => {
     const view = render(<Harness onApply={() => {}} author={ana()} />);
     expect(view.getByRole("heading")).toHaveTextContent(
@@ -544,15 +548,14 @@ describe("who made the other change (hosted v8)", () => {
     expect(
       view.getByRole("radio", { name: "Ana Souza" }),
     ).toHaveAccessibleDescription("saved 3 minutes ago Winter sale on shoes");
-    fireEvent.click(view.getByRole("radio", { name: "Ana Souza" }));
-    fireEvent.click(view.getByRole("button", { name: "Use theirs for all" }));
+    pickTheirsOnEveryStep(view, "Ana Souza");
     expect(view.getByRole("heading")).toHaveTextContent(
       "Ana also changed the slides",
     );
     expect(view.getByTestId("form-conflict-summary")).toHaveTextContent(
       "Headline: Ana's · Banner: Ana's · Slides: Ana's",
     );
-    expect(view.getByRole("button", { name: "Use theirs" })).toBeVisible();
+    expect(view.getByRole("button", { name: "OK" })).toBeVisible();
   });
 
   test("several fields: the viewer's own change", () => {
@@ -565,7 +568,7 @@ describe("who made the other change (hosted v8)", () => {
     expect(view.getByRole("heading")).toHaveTextContent(
       "You also changed the headline in another tab or window",
     );
-    fireEvent.click(view.getByRole("button", { name: "Use theirs for all" }));
+    pickTheirsOnEveryStep(view, "You, in another tab or window");
     expect(view.getByTestId("form-conflict-summary")).toHaveTextContent(
       "Headline: theirs · Banner: theirs · Slides: theirs",
     );

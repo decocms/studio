@@ -1415,12 +1415,12 @@ test.describe("v8 editor: every content change refreshes the editor and the prev
       });
       await expect(theirCard).toHaveAccessibleDescription(/^saved .+ Theirs$/);
 
-      // Yours is chosen: one click saves the user's version.
+      // Yours is chosen: one click on OK saves the user's version.
       await expect(
         field.getByRole("radio", { name: "You", exact: true }),
       ).toBeChecked();
       await expect(theirCard).not.toBeChecked();
-      await dialog.getByRole("button", { name: "Keep yours" }).click();
+      await dialog.getByRole("button", { name: "OK", exact: true }).click();
       await expect(dialog).toBeHidden();
       const drafts = `sites/${project.owner}/drafts/`;
       await expect

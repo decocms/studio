@@ -296,6 +296,7 @@ export const sectionsEditor = {
   "sectionsEditor.formConflict.stepChangedAgain": "{label}, changed again",
   "sectionsEditor.formConflict.back": "Back",
   "sectionsEditor.formConflict.next": "Next",
+  "sectionsEditor.formConflict.ok": "OK",
   "sectionsEditor.formConflict.changedAgain":
     "Their version changed again while this was open. It's shown below.",
   "sectionsEditor.formConflict.changedAgainSteps":
@@ -306,12 +307,6 @@ export const sectionsEditor = {
     "Your version · not saved yet",
   "sectionsEditor.formConflict.theirVersionSaved":
     "Their version · already saved",
-  "sectionsEditor.formConflict.keepYours": "Keep yours",
-  "sectionsEditor.formConflict.useTheirs": "Use theirs",
-  "sectionsEditor.formConflict.keepAllYours": "Keep yours",
-  "sectionsEditor.formConflict.useAllTheirs": "Use theirs",
-  "sectionsEditor.formConflict.keepMix": "Keep a mix",
-  "sectionsEditor.formConflict.useTheirsForAll": "Use theirs for all",
   "sectionsEditor.formConflict.titleOneNamed":
     "{name} changed the {field} while you were editing",
   "sectionsEditor.formConflict.titleOneYou":

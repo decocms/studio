@@ -55,7 +55,6 @@ import {
   type ConflictChoices,
   type ConflictFreshness,
   carryConflictChoices,
-  chooseAll,
   conflictFields,
   defaultConflictChoices,
   type FormConflictPlan,
@@ -4340,9 +4339,6 @@ export function SectionsEditor({
                 ...waitingChoice.choices,
                 [pointer]: choice,
               })
-            }
-            onChooseAll={(choice) =>
-              setConflictChoices(chooseAll(waitingChoice.plan, choice))
             }
             onApply={applyFormConflict}
           />

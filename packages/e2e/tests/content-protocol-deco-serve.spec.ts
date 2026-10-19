@@ -741,9 +741,9 @@ test.describe("site editor over deco serve", () => {
       await expect(dialog).toBeVisible();
       expect((await heroOf(stub)).title).toBe("Changed on disk");
 
-      // Yours is chosen: one click saves the user's version.
+      // Yours is chosen: one click on OK saves the user's version.
       await expect(field.getByRole("radio", { name: "You" })).toBeChecked();
-      await dialog.getByRole("button", { name: "Keep yours" }).click();
+      await dialog.getByRole("button", { name: "OK", exact: true }).click();
       await expect(dialog).toBeHidden();
       await expect
         .poll(async () => (await heroOf(stub)).title, { timeout: 15_000 })

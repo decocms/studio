@@ -40,11 +40,12 @@ import type { ConflictAuthor } from "./conflict-author";
  * the whole card being the choice. Two or more fields: the same cards, one
  * field per step, with a dot per field to revisit one (Back and the ←/→ keys
  * too), and on the last step a summary of the picks. Every field starts on
- * "yours", so one click keeps the user's version, and the button that saves
- * names what it does. On hosted v8 drafts their card names the member, with
- * their avatar and when they saved (conflict-author.ts), and so do the titles;
- * elsewhere "Someone else". It must be answered: an alert dialog with no close
- * button, Escape or click outside; nothing of the form's is saved until then.
+ * "yours", so one click keeps the user's version: OK saves the picks (Next
+ * on every step but the last). On hosted v8 drafts their card names the
+ * member, with their avatar and when they saved (conflict-author.ts), and so
+ * do the titles; elsewhere "Someone else". It must be answered: an alert
+ * dialog with no close button, Escape or click outside; nothing of the form's
+ * is saved until then.
  */
 interface FormConflictChoicesProps {
   fields: ConflictField[];
@@ -58,7 +59,6 @@ interface FormConflictChoicesProps {
   /** Who made their change, and when; null while unknown. */
   author?: ConflictAuthor | null;
   onChoose: (pointer: string, choice: ConflictChoice) => void;
-  onChooseAll: (choice: ConflictChoice) => void;
   onApply: () => void;
   /**
    * The title and description as the dialog shows them (the alert dialog's
@@ -215,8 +215,8 @@ export function fieldInSentence(label: string): string {
 
 /**
  * The dialog's header, body and actions: the two cards for one field; for
- * several, the same cards one field per step, with Back / Next, the dots and
- * "Use theirs for all", the last step saving.
+ * several, the same cards one field per step, with Back / Next and the dots,
+ * OK on the last step saving.
  */
 export function FormConflictChoices(props: FormConflictChoicesProps) {
   const t = useT();
@@ -286,12 +286,6 @@ export function FormConflictChoices(props: FormConflictChoicesProps) {
     choices,
     props.author ?? null,
   );
-  const outcome = applyLabel(t, fields, choices);
-  const useTheirsForAll = () => {
-    props.onChooseAll("theirs");
-    setAnswered(new Set(fields.map((item) => item.pointer)));
-    go(fields.length - 1);
-  };
   // The second click of a double click on Next would land on the button that
   // saves, in the same place on the last step: only a click of its own saves.
   const apply = (event: MouseEvent) => {
@@ -391,18 +385,17 @@ export function FormConflictChoices(props: FormConflictChoicesProps) {
           >
             {t("sectionsEditor.formConflict.back")}
           </Button>
-          <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-            <Button type="button" variant="ghost" onClick={useTheirsForAll}>
-              {t("sectionsEditor.formConflict.useTheirsForAll")}
-            </Button>
-            <Button
-              type="button"
-              data-testid="form-conflict-primary"
-              onClick={last ? apply : () => go(at + 1)}
-            >
-              {last ? outcome : t("sectionsEditor.formConflict.next")}
-            </Button>
-          </div>
+          <Button
+            type="button"
+            data-testid="form-conflict-primary"
+            onClick={last ? apply : () => go(at + 1)}
+          >
+            {t(
+              last
+                ? "sectionsEditor.formConflict.ok"
+                : "sectionsEditor.formConflict.next",
+            )}
+          </Button>
         </AlertDialogFooter>
       ) : (
         <AlertDialogFooter className="items-center gap-2">
@@ -411,37 +404,12 @@ export function FormConflictChoices(props: FormConflictChoicesProps) {
             data-testid="form-conflict-primary"
             onClick={apply}
           >
-            {outcome}
+            {t("sectionsEditor.formConflict.ok")}
           </Button>
         </AlertDialogFooter>
       )}
     </>
   );
-}
-
-/** What saving does: "Keep yours", "Use theirs" or, field by field, "Keep a mix". */
-function applyLabel(
-  t: TFunction,
-  fields: readonly ConflictField[],
-  choices: ConflictChoices,
-): string {
-  const picked = fields.map((field) => choices[field.pointer] ?? "mine");
-  const one = fields.length === 1;
-  if (picked.every((choice) => choice === "mine")) {
-    return t(
-      one
-        ? "sectionsEditor.formConflict.keepYours"
-        : "sectionsEditor.formConflict.keepAllYours",
-    );
-  }
-  if (picked.every((choice) => choice === "theirs")) {
-    return t(
-      one
-        ? "sectionsEditor.formConflict.useTheirs"
-        : "sectionsEditor.formConflict.useAllTheirs",
-    );
-  }
-  return t("sectionsEditor.formConflict.keepMix");
 }
 
 /** Both sides' values, with the words that differ marked when both are text. */
