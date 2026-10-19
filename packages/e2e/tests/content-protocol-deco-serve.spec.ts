@@ -632,7 +632,7 @@ test.describe("site editor over deco serve", () => {
       // The outdated save is refused; the form's edit lands on top of the
       // stored block, and the other writer's change survives.
       await expect(
-        page.getByText("This block was updated while you were editing"),
+        page.getByText("Someone else also edited this block"),
       ).toBeVisible({ timeout: 30_000 });
       await expect
         .poll(async () => (await heroOf(stub)).title, { timeout: 15_000 })
