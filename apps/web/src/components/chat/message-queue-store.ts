@@ -26,12 +26,22 @@ const stores = new Map<string, Store<QueueItemDTO[]>>();
  */
 const MAX_TRACKED_THREADS = 200;
 
+/**
+ * Guards `refreshMessageQueue` against out-of-order responses: callers fire
+ * it from several independent events without awaiting each other, so two
+ * requests for the same thread can race. Each call claims the next sequence
+ * number for its thread; a response only applies if its call is still the
+ * latest one issued for that thread.
+ */
+const latestRequestSeq = new Map<string, number>();
+
 function touchThread(threadId: string): void {
   if (stores.size < MAX_TRACKED_THREADS || stores.has(threadId)) return;
   const oldest = stores.keys().next().value;
   if (oldest === undefined) return;
   stores.delete(oldest);
   dirtyThreads.delete(oldest);
+  latestRequestSeq.delete(oldest);
   for (const key of pendingBodies.keys()) {
     if (key.startsWith(`${oldest}:`)) pendingBodies.delete(key);
   }
@@ -117,15 +127,6 @@ export function takePendingBody(
 export function dropPendingBody(threadId: string, messageId: string): void {
   pendingBodies.delete(`${threadId}:${messageId}`);
 }
-
-/**
- * Guards `refreshMessageQueue` against out-of-order responses: callers fire
- * it from several independent events without awaiting each other, so two
- * requests for the same thread can race. Each call claims the next sequence
- * number for its thread; a response only applies if its call is still the
- * latest one issued for that thread.
- */
-const latestRequestSeq = new Map<string, number>();
 
 /**
  * Fetch the server's gate queue for a thread and replace the local store.
