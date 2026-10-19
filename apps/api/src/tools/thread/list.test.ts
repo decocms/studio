@@ -16,4 +16,11 @@ describe("COLLECTION_THREADS_LIST input schema", () => {
     });
     expect(result.success).toBe(false);
   });
+
+  it("rejects an oversized trigger_id string", () => {
+    const result = COLLECTION_THREADS_LIST.inputSchema.safeParse({
+      where: { trigger_ids: ["a".repeat(129)] },
+    });
+    expect(result.success).toBe(false);
+  });
 });
