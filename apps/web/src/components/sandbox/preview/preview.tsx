@@ -150,6 +150,12 @@ import {
 } from "./editing-mode";
 import { isContentEditingEnabled } from "@/layouts/main-panel-tabs/content-editing-gate";
 import { type PreviewDeviceSize, withDeviceHint } from "./device-hint";
+import {
+  frameNavigationLoaded,
+  HELD_NAVIGATION_RELEASE_MS,
+  type HeldFrameNavigation,
+  nextFrameNavigation,
+} from "./frame-navigation";
 
 /** Delay before navigating to a newly created page, giving the dev server time to route it. */
 const DEV_SERVER_SETTLE_MS = 500;
@@ -949,6 +955,25 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- ref read in reload handler
   iframeSrcRef.current = iframeSrc;
 
+  // Fast Preview: one navigation at a time (frame-navigation.ts). A pointer
+  // that arrives while the frame still loads the last one waits for its load,
+  // then the latest goes in; cancelling a load wastes its render and makes a
+  // site with page-to-page view transitions log "Transition was skipped".
+  const holdFrameNavigation =
+    display.mode === "production" && !!draftPreviewUrl && !localPreviewUrl;
+  const [frameNavigation, setFrameNavigation] = useState<HeldFrameNavigation>({
+    src: iframeSrc ?? undefined,
+    loading: false,
+  });
+  const nextNavigation = nextFrameNavigation(
+    frameNavigation,
+    iframeSrc ?? undefined,
+    holdFrameNavigation,
+  );
+  if (nextNavigation !== frameNavigation) setFrameNavigation(nextNavigation);
+  const frameSrc = nextNavigation.src;
+  const frameLoading = nextNavigation.loading;
+
   // Self-heal a stuck iframe: when the dev server is/was unreachable the frame
   // lands on the browser's connection-refused page and fires no load/error
   // event, so nothing reloads it once the server is back. This watchdog retries
@@ -967,17 +992,30 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // frame. The version makes the URL distinct, and the ref guard makes the
   // first paint (React already set `src`) and unrelated re-renders no-ops.
   const lastDraftUrlRef = useRef<string | null>(null);
+  // It navigates to the src the frame was given (`frameSrc`, held while a
+  // load is on its way), and releases a held navigation whose load never
+  // fires, so the next pointer still reaches the frame.
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- imperative cross-origin iframe navigation on draft change; .reload() throws cross-origin
   useEffect(() => {
-    if (!draftPreviewUrl || !iframeSrc) return;
-    if (lastDraftUrlRef.current === draftPreviewUrl) return;
+    const release = frameLoading
+      ? setTimeout(
+          () => setFrameNavigation(frameNavigationLoaded),
+          HELD_NAVIGATION_RELEASE_MS,
+        )
+      : null;
+    const clear = () => {
+      if (release) clearTimeout(release);
+    };
+    if (!draftPreviewUrl || !frameSrc) return clear;
+    if (lastDraftUrlRef.current === draftPreviewUrl) return clear;
     lastDraftUrlRef.current = draftPreviewUrl;
     const iframe = previewIframeRef.current;
-    if (iframe && iframe.getAttribute("src") !== iframeSrc) {
+    if (iframe && iframe.getAttribute("src") !== frameSrc) {
       beginNavigation();
-      iframe.src = iframeSrc;
+      iframe.src = frameSrc;
     }
-  }, [draftPreviewUrl, iframeSrc]);
+    return clear;
+  }, [draftPreviewUrl, frameSrc, frameLoading]);
 
   // Post the current page's merged decofile to the frame for an in-place render.
   const renderPreviewInPlace = () => {
@@ -1987,11 +2025,13 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                           // server is up). Path navigation is driven by `iframeSrc`.
                           key={display.iframeBase}
                           ref={previewIframeRef}
-                          src={iframeSrc}
+                          src={frameSrc}
                           className="w-full h-full border-0"
                           title={t("sandbox.preview.devServerPreviewTitle")}
                           onError={iframeRecovery.handleError}
                           onLoad={() => {
+                            // A held Fast Preview pointer may go in now.
+                            setFrameNavigation(frameNavigationLoaded);
                             // A load reached the frame — cancel the recovery watchdog
                             // and reset its backoff before anything else.
                             iframeRecovery.handleLoad();
