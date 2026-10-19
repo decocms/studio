@@ -1399,7 +1399,7 @@ test.describe("v8 editor: every content change refreshes the editor and the prev
       expect(applied.error).toBeUndefined();
 
       await title.fill("Mine");
-      const dialog = page.getByRole("dialog", {
+      const dialog = page.getByRole("alertdialog", {
         name: "Someone else changed this while you were editing",
       });
       await expect(dialog).toBeVisible({ timeout: 30_000 });
@@ -1411,8 +1411,13 @@ test.describe("v8 editor: every content change refreshes the editor and the prev
         { timeout: 15_000 },
       );
 
-      await field.getByRole("radio", { name: "Keep mine" }).click();
-      await dialog.getByRole("button", { name: "Apply" }).click();
+      // Every field starts on yours: one click saves the user's version.
+      await expect(
+        field.getByRole("radio", { name: "Keep yours" }),
+      ).toBeChecked();
+      await dialog
+        .getByRole("button", { name: "Save selected versions" })
+        .click();
       await expect(dialog).toBeHidden();
       const drafts = `sites/${project.owner}/drafts/`;
       await expect

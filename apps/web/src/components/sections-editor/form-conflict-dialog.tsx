@@ -1,13 +1,13 @@
 import { Avatar } from "@decocms/ui/components/avatar.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@decocms/ui/components/dialog.tsx";
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@decocms/ui/components/alert-dialog.tsx";
 import {
   RadioGroup,
   RadioGroupItem,
@@ -29,8 +29,10 @@ import {
 
 /**
  * Asks the user, value by value, whose version to keep when they and someone
- * else changed the same fields of a section (form-conflict.ts). Nothing of
- * theirs is saved until they apply; closing it is "decide later".
+ * else changed the same fields of a section (form-conflict.ts). Every field
+ * starts on "yours", so one click keeps the user's version. It must be
+ * answered: an alert dialog with no close button, Escape or click outside;
+ * nothing of the form's is saved until the user saves their choice.
  */
 interface FormConflictChoicesProps {
   fields: ConflictField[];
@@ -42,7 +44,6 @@ interface FormConflictChoicesProps {
   onChoose: (pointer: string, choice: ConflictChoice) => void;
   onChooseAll: (choice: ConflictChoice) => void;
   onApply: () => void;
-  onDecideLater: () => void;
 }
 
 export function FormConflictDialog({
@@ -51,25 +52,31 @@ export function FormConflictDialog({
 }: FormConflictChoicesProps & { open: boolean }) {
   const t = useT();
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        if (!next) props.onDecideLater();
-      }}
-    >
-      <DialogContent
+    // Controlled with no onOpenChange: only saving a choice closes it.
+    <AlertDialog open={open}>
+      <AlertDialogContent
         className="sm:max-w-2xl max-h-[85vh] grid-rows-[auto_auto_minmax(0,1fr)_auto]"
         data-testid="form-conflict-dialog"
+        onEscapeKeyDown={(event) => event.preventDefault()}
+        // An alert dialog focuses its Cancel button, and this one has none:
+        // focus the dialog itself, so what the user was typing stops at it
+        // (not the form behind, and not a button a space would press).
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          (event.currentTarget as HTMLElement | null)?.focus();
+        }}
       >
-        <DialogHeader>
-          <DialogTitle>{t("sectionsEditor.formConflict.title")}</DialogTitle>
-          <DialogDescription>
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            {t("sectionsEditor.formConflict.title")}
+          </AlertDialogTitle>
+          <AlertDialogDescription>
             {t("sectionsEditor.formConflict.description")}
-          </DialogDescription>
-        </DialogHeader>
+          </AlertDialogDescription>
+        </AlertDialogHeader>
         <FormConflictChoices {...props} />
-      </DialogContent>
-    </Dialog>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 
@@ -82,10 +89,8 @@ export function FormConflictChoices({
   onChoose,
   onChooseAll,
   onApply,
-  onDecideLater,
 }: FormConflictChoicesProps) {
   const t = useT();
-  const ready = fields.every((field) => choices[field.pointer] !== undefined);
   return (
     <>
       {author && <ConflictAuthorLine author={author} />}
@@ -106,7 +111,7 @@ export function FormConflictChoices({
             size="sm"
             onClick={() => onChooseAll("mine")}
           >
-            {t("sectionsEditor.formConflict.keepAllMine")}
+            {t("sectionsEditor.formConflict.keepYours")}
           </Button>
           <Button
             type="button"
@@ -114,7 +119,7 @@ export function FormConflictChoices({
             size="sm"
             onClick={() => onChooseAll("theirs")}
           >
-            {t("sectionsEditor.formConflict.useAllTheirs")}
+            {t("sectionsEditor.formConflict.useTheirs")}
           </Button>
         </div>
       </div>
@@ -130,19 +135,11 @@ export function FormConflictChoices({
           ))}
         </ul>
       </div>
-      <DialogFooter className="items-center">
-        {!ready && (
-          <p className="mr-auto text-xs text-muted-foreground">
-            {t("sectionsEditor.formConflict.chooseEach")}
-          </p>
-        )}
-        <Button type="button" variant="outline" onClick={onDecideLater}>
-          {t("sectionsEditor.formConflict.decideLater")}
-        </Button>
-        <Button type="button" disabled={!ready} onClick={onApply}>
+      <AlertDialogFooter className="items-center">
+        <Button type="button" onClick={onApply}>
           {t("sectionsEditor.formConflict.apply")}
         </Button>
-      </DialogFooter>
+      </AlertDialogFooter>
     </>
   );
 }
@@ -239,7 +236,7 @@ function ConflictFieldRow({
                   value={side}
                   aria-label={t(
                     side === "mine"
-                      ? "sectionsEditor.formConflict.keepMine"
+                      ? "sectionsEditor.formConflict.keepYours"
                       : "sectionsEditor.formConflict.useTheirs",
                   )}
                 />
@@ -352,26 +349,4 @@ function Preview({ preview }: { preview: ValuePreview }) {
         </dl>
       );
   }
-}
-
-/**
- * The calm reminder while a choice waits: the user's changes to a section
- * are not saved until they choose.
- */
-export function FormConflictNotice({ onReview }: { onReview: () => void }) {
-  const t = useT();
-  return (
-    <div
-      role="status"
-      data-testid="form-conflict-notice"
-      className="mx-3 my-2 flex shrink-0 flex-wrap items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-sm"
-    >
-      <span className="min-w-0 flex-1">
-        {t("sectionsEditor.formConflict.notice")}
-      </span>
-      <Button type="button" size="sm" variant="outline" onClick={onReview}>
-        {t("sectionsEditor.formConflict.review")}
-      </Button>
-    </div>
-  );
 }

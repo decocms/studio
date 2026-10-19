@@ -56,12 +56,12 @@ import {
   carryConflictChoices,
   chooseAll,
   conflictFields,
-  everyConflictChosen,
+  defaultConflictChoices,
   type FormConflictPlan,
   planFormConflict,
   resolveFormConflict,
 } from "./form-conflict";
-import { FormConflictDialog, FormConflictNotice } from "./form-conflict-dialog";
+import { FormConflictDialog } from "./form-conflict-dialog";
 import {
   conflictAuthorDraft,
   useConflictAuthor,
@@ -590,7 +590,8 @@ export function SectionsEditor({
   // A request to re-seed the open form from the stored section (see reloadStaleForm).
   const [formReloadRequest, setFormReloadRequest] = useState(0);
   const [formReloadHandled, setFormReloadHandled] = useState(0);
-  // See formConflictsRef; the dialog shows the first, one at a time.
+  // See formConflictsRef; the dialog shows the first, one at a time, and
+  // stays open until the user saves a choice.
   const [formConflicts, setFormConflictsState] = useState<
     PendingFormConflict[]
   >([]);
@@ -603,7 +604,6 @@ export function SectionsEditor({
       ? versionTag(canonicalBlockJson(formConflicts[0].plan.theirs))
       : null,
   );
-  const [conflictDialogOpen, setConflictDialogOpen] = useState(false);
 
   // Declared above the early returns below: a hook after a conditional return
   // is skipped on the loading render, so the next render calls one more hook
@@ -1245,7 +1245,6 @@ export function SectionsEditor({
           },
         ];
     setFormConflicts(next);
-    setConflictDialogOpen(true);
   };
 
   /**
@@ -1269,7 +1268,6 @@ export function SectionsEditor({
     if (plan.pointers.length === 0) {
       const rest = list.filter((item) => item !== waiting);
       setFormConflicts(rest);
-      if (rest.length === 0) setConflictDialogOpen(false);
       return false;
     }
     setFormConflicts(
@@ -1332,11 +1330,6 @@ export function SectionsEditor({
     return formConflictsRef.current[0] ?? null;
   };
 
-  /** "Choose versions": ask again, with what the form holds now. */
-  const reviewFormConflict = () => {
-    if (latestWaitingChoice()) setConflictDialogOpen(true);
-  };
-
   /**
    * The user chose: save their pick, value by value, over their version (the
    * stored section the dialog showed). The save expects that version; one
@@ -1348,14 +1341,18 @@ export function SectionsEditor({
     const conflict = latestWaitingChoice();
     // Nothing left to choose (the user typed back what is stored): that save
     // went ahead on its own.
-    if (!conflict || conflict.formBase !== shown?.formBase) return;
-    // What they typed just before clashes on a value they haven't chosen
-    // for yet: the dialog now shows it.
-    if (!everyConflictChosen(conflict.plan, conflict.choices)) return;
+    if (!conflict || !shown || conflict.formBase !== shown.formBase) return;
+    // What they typed just before the dialog opened clashes on another
+    // value: the dialog now shows it, on "yours", for them to save.
+    if (
+      conflict.plan.pointers.some(
+        (pointer) => !shown.plan.pointers.includes(pointer),
+      )
+    ) {
+      return;
+    }
     const resolved = resolveFormConflict(conflict.plan, conflict.choices);
-    const rest = formConflictsRef.current.slice(1);
-    setFormConflicts(rest);
-    setConflictDialogOpen(rest.length > 0);
+    setFormConflicts(formConflictsRef.current.slice(1));
     const { formBase, target } = conflict;
     formBase.base = conflict.plan.theirs;
     formBase.version = undefined;
@@ -1502,7 +1499,7 @@ export function SectionsEditor({
           formBase,
           target,
           sectionIndex,
-          choices: {},
+          choices: defaultConflictChoices(plan),
           changedAgain: false,
           blockKey: parsed.isSavedBlock
             ? savedBlockKey(rawSection, parsed)
@@ -4313,12 +4310,9 @@ export function SectionsEditor({
           )}
         </div>
 
-        {formConflicts.length > 0 && !conflictDialogOpen && (
-          <FormConflictNotice onReview={reviewFormConflict} />
-        )}
         {waitingChoice && (
           <FormConflictDialog
-            open={conflictDialogOpen}
+            open
             fields={conflictFields(
               waitingChoice.plan,
               waitingChoice.target.schema,
@@ -4336,7 +4330,6 @@ export function SectionsEditor({
               setConflictChoices(chooseAll(waitingChoice.plan, choice))
             }
             onApply={applyFormConflict}
-            onDecideLater={() => setConflictDialogOpen(false)}
           />
         )}
 

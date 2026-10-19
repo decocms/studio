@@ -714,7 +714,7 @@ test.describe("site editor over deco serve", () => {
       await stub.writeFile(`${HERO}.json`, heroFile(theirs));
       await title.fill("Hello from Studio");
 
-      const dialog = page.getByRole("dialog", {
+      const dialog = page.getByRole("alertdialog", {
         name: "Someone else changed this while you were editing",
       });
       await expect(dialog).toBeVisible({ timeout: 30_000 });
@@ -730,8 +730,20 @@ test.describe("site editor over deco serve", () => {
       // Nothing written over theirs while the user decides.
       expect((await heroOf(stub)).title).toBe("Changed on disk");
 
-      await field.getByRole("radio", { name: "Keep mine" }).click();
-      await dialog.getByRole("button", { name: "Apply" }).click();
+      // It must be answered: Escape and a click outside leave it open.
+      await page.keyboard.press("Escape");
+      await expect(dialog).toBeVisible();
+      await page.mouse.click(8, 8);
+      await expect(dialog).toBeVisible();
+      expect((await heroOf(stub)).title).toBe("Changed on disk");
+
+      // Every field starts on yours: one click saves the user's version.
+      await expect(
+        field.getByRole("radio", { name: "Keep yours" }),
+      ).toBeChecked();
+      await dialog
+        .getByRole("button", { name: "Save selected versions" })
+        .click();
       await expect(dialog).toBeHidden();
       await expect
         .poll(async () => (await heroOf(stub)).title, { timeout: 15_000 })

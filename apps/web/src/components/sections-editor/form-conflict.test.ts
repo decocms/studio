@@ -3,8 +3,8 @@ import {
   carryConflictChoices,
   chooseAll,
   conflictFields,
+  defaultConflictChoices,
   diffWords,
-  everyConflictChosen,
   planFormConflict,
   previewValue,
   resolveFormConflict,
@@ -141,10 +141,11 @@ describe("resolveFormConflict", () => {
     expect("subtitle" in resolved).toBe(false);
   });
 
-  it("is ready only once every value has a choice", () => {
-    expect(everyConflictChosen(plan, {})).toBe(false);
-    expect(everyConflictChosen(plan, { "/headline": "mine" })).toBe(false);
-    expect(everyConflictChosen(plan, chooseAll(plan, "theirs"))).toBe(true);
+  it("starts on yours for every value, so saving it as shown keeps the user's", () => {
+    const choices = defaultConflictChoices(plan);
+    expect(Object.keys(choices)).toEqual(plan.pointers);
+    expect(Object.values(choices).every((c) => c === "mine")).toBe(true);
+    expect(resolveFormConflict(plan, choices)).toEqual(plan.mine);
   });
 });
 
@@ -154,9 +155,9 @@ describe("carryConflictChoices", () => {
     mine: { ...ancestor, headline: "Mine", subtitle: "My subtitle" },
     theirs: { ...ancestor, headline: "Theirs", subtitle: "Their subtitle" },
   });
-  const choices = { "/headline": "mine", "/subtitle": "theirs" } as const;
+  const choices = { "/headline": "theirs", "/subtitle": "theirs" } as const;
 
-  it("keeps a choice while both versions of that value are the same", () => {
+  it("keeps a choice while both versions of that value are the same, else starts on yours", () => {
     const again = planFormConflict({
       ...first,
       theirs: {
@@ -166,7 +167,8 @@ describe("carryConflictChoices", () => {
       },
     });
     expect(carryConflictChoices(first, choices, again)).toEqual({
-      "/headline": "mine",
+      "/headline": "theirs",
+      "/subtitle": "mine",
     });
   });
 
@@ -175,6 +177,7 @@ describe("carryConflictChoices", () => {
       ...first,
       theirs: { ...first.theirs, headline: "Mine" },
     });
+    expect(again.pointers).toEqual(["/subtitle"]);
     expect(carryConflictChoices(first, choices, again)).toEqual({
       "/subtitle": "theirs",
     });
