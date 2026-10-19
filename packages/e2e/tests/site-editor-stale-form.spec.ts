@@ -481,6 +481,12 @@ test.describe("Site Editor stale section form", () => {
       await expect(field.getByTestId("conflict-theirs")).toHaveText(
         "Published headline",
       );
+      // Fast Preview (v7) says nothing about who made the other change.
+      await expect(
+        field.getByRole("radio", { name: "Someone else" }),
+      ).toHaveAccessibleDescription(
+        "Their version · already saved Published headline",
+      );
       expect(await storedBlock(page.request, url, "SharedHero")).toEqual(
         published,
       );
