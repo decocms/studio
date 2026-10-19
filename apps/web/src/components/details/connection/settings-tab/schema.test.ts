@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { connectionFormSchema } from "./schema";
+import { configurationScopesFor, connectionFormSchema } from "./schema";
 
 const base = {
   title: "My connection",
@@ -29,4 +29,24 @@ test("does not require a URL shape for non-HTTP ui_types", () => {
     stdio_command: "node server.js",
   });
   expect(result.success).toBe(true);
+});
+
+test("adds a declared scope once its binding is set", () => {
+  const declared = ["VTEX::credential:configuration:read"];
+  expect(configurationScopesFor([], declared, {})).toEqual([]);
+  expect(
+    configurationScopesFor([], declared, {
+      VTEX: { __type: "vtex", value: "conn_1" },
+    }),
+  ).toEqual(declared);
+});
+
+test("keeps saved scopes and does not duplicate them", () => {
+  expect(
+    configurationScopesFor(
+      ["A::read", "B::write"],
+      ["B::write", "C.nested::read"],
+      { A: 1, B: 2, C: { nested: true } },
+    ),
+  ).toEqual(["A::read", "B::write", "C.nested::read"]);
 });
