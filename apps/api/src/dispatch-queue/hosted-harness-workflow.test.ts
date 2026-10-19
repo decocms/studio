@@ -497,6 +497,27 @@ describe("hostedChildWorkflowId", () => {
   });
 });
 
+// Stop frees the thread: a cancelled child cannot publish the terminal its
+// gate waits for, so the gate is cancelled too, found through the child's
+// parent (a board run's gate id has no `thread-run:` prefix to find it by).
+// Same source-text technique as above: the real call needs a launched DBOS.
+describe("cancelHostedHarness", () => {
+  test("cancels the gate that started the child", () => {
+    const src = readFileSync(
+      join(import.meta.dir, "hosted-harness-workflow.ts"),
+      "utf8",
+    );
+    const marker = "export async function cancelHostedHarness(";
+    const idx = src.indexOf(marker);
+    expect(idx).toBeGreaterThan(-1);
+    const body = src.slice(idx);
+    expect(body).toContain(
+      "DBOS.getWorkflowStatus(\n    hostedChildWorkflowId(runId, fenceToken),",
+    );
+    expect(body).toContain("DBOS.cancelWorkflow(child.parentWorkflowID)");
+  });
+});
+
 // T3 regression: `startHostedHarness` must NOT await the child's result — the
 // gate no longer blocks on the hosted agent loop before proceeding to its
 // consume step (that coupling is what this task removes). Exercising the

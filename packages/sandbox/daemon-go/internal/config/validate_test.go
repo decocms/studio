@@ -37,3 +37,16 @@ func TestValidateApplicationRejectsEscapingPmPath(t *testing.T) {
 		t.Fatal("validateApplication accepted a packageManager.path that escapes the repo root")
 	}
 }
+
+func TestValidateGitRejectsDuplicateSecondaryRepoNames(t *testing.T) {
+	git := &GitConfig{
+		Repository: &GitRepository{CloneUrl: Str("https://example.com/primary.git")},
+		Repositories: []GitRepository{
+			{CloneUrl: Str("https://example.com/a.git"), RepoName: Str("shared")},
+			{CloneUrl: Str("https://example.com/b.git"), RepoName: Str("shared")},
+		},
+	}
+	if reason := validateGit(git); reason == "" {
+		t.Fatal("validateGit accepted two secondary repositories sharing a repoName")
+	}
+}

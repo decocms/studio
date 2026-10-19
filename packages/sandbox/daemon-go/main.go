@@ -663,6 +663,9 @@ func (d *daemon) registerSandboxRoutes(mux *http.ServeMux, pre string, h sandbox
 	mux.HandleFunc("DELETE "+pre+"/runs/{runId}", func(w http.ResponseWriter, r *http.Request) {
 		d.dispatchReg.HandleCancel(w, r, d.getToken)
 	})
+	mux.HandleFunc("POST "+pre+"/runs/{runId}/messages", func(w http.ResponseWriter, r *http.Request) {
+		d.dispatchReg.HandleLiveMessage(w, r, d.getToken)
+	})
 
 	mux.HandleFunc("GET "+pre+"/config", d.authed(h.configRead))
 	mux.HandleFunc("PUT "+pre+"/config", d.authed(h.configUpdate))

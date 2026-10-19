@@ -57,8 +57,9 @@ func ValidateHarnessInput(input json.RawMessage) string {
 // the corresponding preparation step is skipped.
 func runInfoOf(raw json.RawMessage) RunInfo {
 	var in struct {
-		ThreadId string `json:"threadId"`
-		Mcp      struct {
+		ThreadId     string `json:"threadId"`
+		LiveMessages bool   `json:"liveMessages"`
+		Mcp          struct {
 			URL       string            `json:"url"`
 			Headers   map[string]string `json:"headers"`
 			ExpiresAt float64           `json:"expiresAt"`
@@ -69,6 +70,7 @@ func runInfoOf(raw json.RawMessage) RunInfo {
 	}
 	return RunInfo{
 		ThreadId:     in.ThreadId,
+		LiveMessages: in.LiveMessages,
 		McpURL:       in.Mcp.URL,
 		McpHeaders:   in.Mcp.Headers,
 		McpExpiresAt: int64(in.Mcp.ExpiresAt),

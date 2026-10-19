@@ -133,6 +133,7 @@ import {
   takePendingBody,
 } from "./message-queue-store";
 import { textFromParts } from "./queue-items";
+import { withLiveRunId } from "./live-messages";
 import { useMessageQueueActions } from "./use-message-queue";
 import { formatDeckTabId } from "@/layouts/main-panel-tabs/tab-id";
 import { useEffectiveSimpleMode } from "../../hooks/use-user-model-preferences";
@@ -1295,7 +1296,15 @@ export function ActiveTaskProvider({
         let queuedOk = true;
         try {
           stashPendingBody(capturedTaskId, message);
-          await conn.enqueue(message, requestOptions);
+          const delivery = await conn.enqueue(message, requestOptions);
+          if (delivery.kind === "live") {
+            // Delivered into the running claude-code turn: no queue entry. It
+            // shows in the body, and moves to where the agent read it once the
+            // run says so (`data-live-message`).
+            dropPendingBody(capturedTaskId, message.id);
+            conn.applyLocalMessage(withLiveRunId(message, delivery.liveRunId));
+            return true;
+          }
           enqueueMessage(capturedTaskId, {
             workflowId: `thread-run:${capturedTaskId}:${message.id}`,
             messageId: message.id,

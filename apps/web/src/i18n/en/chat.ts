@@ -240,6 +240,11 @@ export const chat = {
   "chat.input.modelCannotReadAttachments":
     "This model can't read attachments — switch to one with vision or file support",
   "chat.input.planMode": "Plan mode",
+  "chat.input.liveMessageHint":
+    "The agent is working. A text message goes straight to it and is read after its current step.",
+  "chat.liveMessage.pending":
+    "Sent to the running agent · read after its current step",
+  "chat.liveMessage.readByAgent": "Read by the agent while it worked",
   "chat.input.codingAgentUnavailable":
     "This coding-agent chat can't be continued here.",
   "chat.input.fastPreviewUnavailable":

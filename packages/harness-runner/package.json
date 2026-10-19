@@ -1,6 +1,6 @@
 {
   "name": "@decocms/harness-runner",
-  "version": "0.11.2",
+  "version": "0.12.0",
   "private": true,
   "type": "module",
   "description": "In-sandbox harness runner: drives Claude Code and Codex for Studio",
@@ -12,6 +12,7 @@
     "claude-code.ts",
     "codex.ts",
     "codex-to-ui-chunks.ts",
+    "live-messages.ts",
     "session-id.ts",
     "to-ui-chunks.ts"
   ],
