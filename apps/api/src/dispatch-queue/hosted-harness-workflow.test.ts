@@ -417,22 +417,48 @@ describe("heartbeatWhileQueued", () => {
     return streamBuffer;
   };
 
+  function manualClock() {
+    const pending: Array<() => void> = [];
+    return {
+      sleepFn: (_ms: number, { signal }: { signal: AbortSignal }) =>
+        new Promise<void>((resolve, reject) => {
+          pending.push(resolve);
+          signal.addEventListener(
+            "abort",
+            () => {
+              const index = pending.indexOf(resolve);
+              if (index !== -1) pending.splice(index, 1);
+              reject(signal.reason);
+            },
+            { once: true },
+          );
+        }),
+      async elapse() {
+        pending.shift()?.();
+        // Drain emission and re-arming before advancing another silence window.
+        await sleep(0);
+      },
+      pendingWindows: () => pending.length,
+    };
+  }
+
   test("publishes waiting-capacity on every beat while the child is ENQUEUED", async () => {
     const streamBuffer = withStreamBuffer();
+    const clock = manualClock();
     const stop = heartbeatWhileQueued(input, {
       isQueued: async () => true,
-      intervalMs: 1,
+      sleepFn: clock.sleepFn,
     });
     try {
-      await sleep(20);
+      await clock.elapse();
       expect(streamBuffer.publishRawChunk).toHaveBeenCalledWith(
         input.runId,
         buildRunStatusChunk("waiting-capacity"),
       );
-      expect(
-        (streamBuffer.publishRawChunk as ReturnType<typeof mock>).mock.calls
-          .length,
-      ).toBeGreaterThan(1);
+      expect(streamBuffer.publishRawChunk).toHaveBeenCalledTimes(1);
+      await clock.elapse();
+      expect(streamBuffer.publishRawChunk).toHaveBeenCalledTimes(2);
+      expect(clock.pendingWindows()).toBe(1);
     } finally {
       stop();
     }
@@ -440,22 +466,20 @@ describe("heartbeatWhileQueued", () => {
 
   test("stops itself once the child is dequeued — the run's own chunks take over", async () => {
     const streamBuffer = withStreamBuffer();
+    const clock = manualClock();
     let queued = true;
     const stop = heartbeatWhileQueued(input, {
       isQueued: async () => queued,
-      intervalMs: 1,
+      sleepFn: clock.sleepFn,
     });
     try {
-      await sleep(10);
+      await clock.elapse();
+      expect(streamBuffer.publishRawChunk).toHaveBeenCalledTimes(1);
       queued = false;
-      await sleep(10);
-      const after = (streamBuffer.publishRawChunk as ReturnType<typeof mock>)
-        .mock.calls.length;
-      await sleep(20);
-      expect(
-        (streamBuffer.publishRawChunk as ReturnType<typeof mock>).mock.calls
-          .length,
-      ).toBe(after);
+      await clock.elapse();
+      expect(clock.pendingWindows()).toBe(0);
+      await clock.elapse();
+      expect(streamBuffer.publishRawChunk).toHaveBeenCalledTimes(1);
     } finally {
       stop();
     }
