@@ -107,8 +107,11 @@ export const SUBMODULE_HOST_RE = /^[a-zA-Z0-9.-]+(?::[0-9]+)?$/;
  * Kept named `submoduleCredentials` on the wire — that is the daemon's field.
  */
 export const SubmoduleCredentialSchema = z.object({
+  // Lowercased: the daemon matches a clone URL's host by exact string compare.
   host: z
     .string()
+    .trim()
+    .toLowerCase()
     .min(1)
     .max(MAX_SETTINGS_STRING_LENGTH)
     .regex(SUBMODULE_HOST_RE)
