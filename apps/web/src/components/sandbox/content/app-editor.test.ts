@@ -6,6 +6,7 @@ import type {
 import {
   applySchemaExcludeFields,
   hasEditableAppEditorSchema,
+  isTanstackMeta,
 } from "./app-editor-schema";
 
 describe("applySchemaExcludeFields", () => {
@@ -67,5 +68,27 @@ describe("hasEditableAppEditorSchema", () => {
     expect(hasEditableAppEditorSchema("site/apps/site.ts", meta, ["seo"])).toBe(
       true,
     );
+  });
+});
+
+describe("isTanstackMeta", () => {
+  const meta = (extra: Record<string, unknown> = {}): LiveMeta => ({
+    manifest: { blocks: {} },
+    schema: {},
+    ...extra,
+  });
+
+  test("deco-runtime meta is not TanStack", () => {
+    expect(isTanstackMeta(meta())).toBe(false);
+    expect(isTanstackMeta(meta({ framework: "fresh" }))).toBe(false);
+  });
+
+  test("@decocms/start v6 meta is TanStack", () => {
+    expect(isTanstackMeta(meta({ framework: "tanstack-start" }))).toBe(true);
+  });
+
+  test("v8 schema is TanStack; another blocksMajor is not", () => {
+    expect(isTanstackMeta(meta({ blocksMajor: 8 }))).toBe(true);
+    expect(isTanstackMeta(meta({ blocksMajor: "8" }))).toBe(false);
   });
 });
