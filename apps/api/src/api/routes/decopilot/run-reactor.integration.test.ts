@@ -105,6 +105,7 @@ async function setInProgress(id: string) {
     status: "in_progress",
     run_config: { resume: true },
     run_started_at: new Date().toISOString(),
+    run_owner_pod: "pod-owner",
   });
 }
 
