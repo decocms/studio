@@ -143,10 +143,8 @@ export function TriggerCard({
         automation_id: automationId,
       });
       setRotatedSecret({ url: result.url, token: result.token });
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Failed to rotate token";
-      toast.error(message);
+    } catch {
+      toast.error(t("automations.triggerCard.failedToRotateToken"));
     }
   };
 

@@ -170,6 +170,7 @@ export const automations = {
   "automations.triggerCard.editSchedule": "Edit schedule",
   "automations.triggerCard.every": "Every",
   "automations.triggerCard.failedToRemoveStarter": "Failed to remove starter",
+  "automations.triggerCard.failedToRotateToken": "Failed to rotate token",
   "automations.triggerCard.failedToUpdateStarter": "Failed to update starter",
   "automations.triggerCard.invalid": "invalid",
   "automations.triggerCard.newWebhookToken": "New webhook token",

@@ -180,6 +180,7 @@ export const automations = {
   "automations.triggerCard.every": "A cada",
   "automations.triggerCard.failedToRemoveStarter":
     "Falha ao remover disparador",
+  "automations.triggerCard.failedToRotateToken": "Falha ao girar token",
   "automations.triggerCard.failedToUpdateStarter":
     "Falha ao atualizar disparador",
   "automations.triggerCard.invalid": "inválido",
