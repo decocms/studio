@@ -1,5 +1,6 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import type { StudioProvider, ProviderAdapter, ModelInfo } from "../types";
+import { isPrivateUrl } from "../../mcp-clients/url-security";
 import {
   fetchWithTransientRetry,
   parseJsonResponse,
@@ -29,6 +30,11 @@ function parseCredential(raw: string): { baseUrl: string; apiKey: string } {
   // so it must end with /v1 for standard OpenAI-compatible servers.
   let url = parsed.baseUrl.replace(/\/+$/, "");
   if (!url.endsWith("/v1")) url += "/v1";
+  if (isPrivateUrl(url)) {
+    throw new Error(
+      "Invalid OpenAI-compatible credential: baseUrl targets a private network",
+    );
+  }
   return { baseUrl: url, apiKey: parsed.apiKey ?? "" };
 }
 

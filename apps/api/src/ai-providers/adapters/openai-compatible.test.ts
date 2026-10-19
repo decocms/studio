@@ -69,6 +69,17 @@ describe("openaiCompatibleAdapter.listModels", () => {
     expect(models?.[0]?.modelId).toBe("llama-3");
   });
 
+  test("refuses a baseUrl targeting a private network", () => {
+    const credential = JSON.stringify({
+      baseUrl: "http://169.254.169.254/latest",
+      apiKey: "secret-key",
+    });
+
+    expect(() => openaiCompatibleAdapter.create(credential)).toThrow(
+      "baseUrl targets a private network",
+    );
+  });
+
   test("degrades a malformed 2xx body instead of throwing a raw SyntaxError", async () => {
     globalThis.fetch = (async (): Promise<Response> => {
       return new Response("not json", {
