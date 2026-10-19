@@ -15,4 +15,11 @@ describe("TASK_BOARD_DISMISSED_RESTORE input schema", () => {
     });
     expect(result.success).toBe(false);
   });
+
+  test("rejects an oversized externalKey string", () => {
+    const result = TASK_BOARD_DISMISSED_RESTORE.inputSchema.safeParse({
+      externalKeys: ["a".repeat(201)],
+    });
+    expect(result.success).toBe(false);
+  });
 });
