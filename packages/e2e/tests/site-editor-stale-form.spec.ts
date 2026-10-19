@@ -706,6 +706,61 @@ test.describe("Site Editor stale section form", () => {
     }
   });
 
+  test("the open dialog shows a newer version of theirs in place, with no click", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const previewSite = await startPreviewSite();
+    try {
+      const { headline, url } = await openEditor(
+        page,
+        orgSlug,
+        previewSite.url,
+        { __resolveType: "SharedHero" },
+      );
+      const published = { ...hero, headline: "Published headline" };
+      await writeElsewhere(page.request, url, "SharedHero", published);
+
+      await headline.fill("Draft headline");
+      const dialog = conflictDialog(page);
+      await expect(dialog).toBeVisible({ timeout: 20_000 });
+      const field = dialog.getByRole("radiogroup", { name: "Headline" });
+      await expect(field.getByTestId("conflict-theirs")).toHaveText(
+        "Published headline",
+      );
+
+      // A third editor saves while the user decides: the dialog reads the
+      // stored block again while it is open and shows the newer version.
+      const third = { ...hero, headline: "Third headline" };
+      await writeElsewhere(page.request, url, "SharedHero", third);
+      await expect(
+        dialog.getByText("Their version changed again while this was open."),
+      ).toBeVisible({ timeout: 15_000 });
+      await expect(field.getByTestId("conflict-theirs")).toHaveText(
+        "Third headline",
+      );
+      await expect(field.getByTestId("conflict-mine")).toHaveText(
+        "Draft headline",
+      );
+      await expect(
+        field.getByRole("radio", { name: "Keep yours" }),
+      ).toBeChecked();
+      expect(await storedBlock(page.request, url, "SharedHero")).toEqual(third);
+
+      await dialog
+        .getByRole("button", { name: "Save selected versions" })
+        .click();
+      await expect(dialog).toBeHidden();
+      await expect
+        .poll(() => storedBlock(page.request, url, "SharedHero"), {
+          timeout: 20_000,
+        })
+        .toEqual({ ...third, headline: "Draft headline" });
+    } finally {
+      await previewSite.close();
+    }
+  });
+
   test("a form follows its section when one is inserted above it", async ({
     authedPage: { page, orgSlug },
   }) => {
