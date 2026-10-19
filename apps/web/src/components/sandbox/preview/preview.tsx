@@ -75,6 +75,7 @@ import {
   extractGlobalSections,
   extractPages,
   findPageForPath,
+  previewPageForBlock,
   type GlobalSectionEntry,
 } from "@/components/sections-editor/page-list";
 import {
@@ -1536,6 +1537,17 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   usePreviewNavigateHandler(previewStorageKey, navigatePreviewToAgentPath);
 
   const navigatePreviewToGlobalSection = (section: GlobalSectionEntry) => {
+    // A Blocks v8 site has no isolated-section route (`/live/previews` is
+    // v7's): show a page that has the block, the home page first. A block no
+    // page uses has nothing to preview.
+    if (isProtocolProject(contentBackend)) {
+      const page = decofile
+        ? previewPageForBlock(decofile, section.key, meta)
+        : null;
+      if (page) navigatePreviewToPage(page);
+      else toast.info(t("sandbox.preview.blockOnNoPage"));
+      return;
+    }
     if (!sectionPreviewBase || !meta) {
       toast.error(t("sandbox.preview.previewMetadataNotReady"));
       return;

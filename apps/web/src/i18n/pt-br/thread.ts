@@ -231,6 +231,10 @@ export const thread = {
   "thread.publishCompare.openDraft": "Abrir em nova aba",
   "thread.publishCompare.globalHint":
     "Esta alteração pode aparecer em qualquer página. Mostrando a página inicial — digite outro endereço para comparar.",
+  "thread.publishCompare.blockHint":
+    "Este bloco pode aparecer em várias páginas. Mostrando: {path} — digite outro endereço para comparar.",
+  "thread.publishCompare.notOnAnyPage":
+    "Este bloco não é usado em nenhuma página, então não há o que visualizar. Aqui estão as alterações.",
   "thread.publishCompare.dynamicHint":
     "O endereço desta página é um padrão ({template}). Digite um endereço real para comparar.",
   "thread.publishCompare.enterPath":

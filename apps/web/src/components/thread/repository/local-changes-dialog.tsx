@@ -356,6 +356,7 @@ function LocalChangesContent({
               previewServerUrl={null}
               draft={null}
               lastPage={null}
+              v8={{ blocks: state.blocks }}
             />
           </div>
         ) : (

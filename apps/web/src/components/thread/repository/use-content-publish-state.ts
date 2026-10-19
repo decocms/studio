@@ -31,6 +31,8 @@ export interface ContentPublishState {
   sidesPending: boolean;
   /** The sides failed: the cards stay, without their insides. */
   sidesFailed: boolean;
+  /** The editor's current blocks, when it has read them (no request of its own). */
+  blocks: Record<string, unknown> | null;
   /** Re-reads the list (after a discard that found the content moved). */
   refresh: () => Promise<unknown>;
 }
@@ -78,6 +80,7 @@ export function useContentPublishState(args: {
     })),
     sidesPending: summary.count > 0 && sides.isPending,
     sidesFailed: sides.isError,
+    blocks: lookup ?? null,
     refresh: () => list.refetch(),
   };
 }

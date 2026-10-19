@@ -419,6 +419,9 @@ interface PublishSource {
   };
   /** A v8 sandbox's Publish also carries work these changes don't list. */
   otherWork: boolean;
+  /** A Blocks v8 site, with its current blocks: the compare never uses v7's
+   *  isolated-section route there. Absent on v7. */
+  v8?: { blocks: Record<string, unknown> | null };
 }
 
 type CmsPublishContentProps = PublishDialogProps & {
@@ -529,6 +532,7 @@ function contentListSource(
     cardsPending: false,
     refresh: state.refresh,
     protocol: { backend, entries: state.entries },
+    v8: { blocks: state.blocks },
   };
 }
 
@@ -972,6 +976,7 @@ function CmsPublishView({
               previewServerUrl={previewServerUrl}
               draft={compareDraft}
               lastPage={lastPreviewPage}
+              v8={source.v8}
             />
           </div>
         ))}

@@ -1000,6 +1000,8 @@ export const sandbox = {
   "sandbox.preview.pageAlreadyExists":
     'Uma página com o caminho "{path}" já existe.',
   "sandbox.preview.pageCreated": 'Página "{name}" criada',
+  "sandbox.preview.blockOnNoPage":
+    "Este bloco não é usado em nenhuma página, então não há o que visualizar.",
   "sandbox.preview.previewMetadataNotReady":
     "Metadados de visualização não estão prontos ainda",
   "sandbox.preview.refresh": "Atualizar",

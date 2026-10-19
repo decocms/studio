@@ -196,6 +196,79 @@ export function extractPages(
   return pages;
 }
 
+/** Whether `value` holds `{ "__resolveType": <one of keys> }` at any depth. */
+function referencesAny(
+  value: unknown,
+  keys: ReadonlySet<string>,
+  depth = 0,
+): boolean {
+  if (depth > 64 || !value || typeof value !== "object") return false;
+  if (Array.isArray(value)) {
+    return value.some((item) => referencesAny(item, keys, depth + 1));
+  }
+  const obj = value as Record<string, unknown>;
+  if (typeof obj.__resolveType === "string" && keys.has(obj.__resolveType)) {
+    return true;
+  }
+  return Object.values(obj).some((item) =>
+    referencesAny(item, keys, depth + 1),
+  );
+}
+
+/**
+ * The pages whose content shows the saved block `blockKey`: those that
+ * reference it (`{ "__resolveType": blockKey }` at any depth, inside a lazy
+ * wrapper too) or reference another saved block that does. In decofile order.
+ * Reads only the content already in hand: no request, no site code.
+ */
+export function pagesShowingBlock(
+  decofile: Record<string, unknown>,
+  blockKey: string,
+  meta?: LiveMeta | null,
+): PageEntry[] {
+  const pages = extractPages(decofile, meta);
+  const pageKeys = new Set(pages.map((page) => page.key));
+  const shown = new Set([blockKey]);
+  // Saved blocks that show it, through any chain of references.
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const [key, value] of Object.entries(decofile)) {
+      if (shown.has(key) || pageKeys.has(key)) continue;
+      if (referencesAny(value, shown)) {
+        shown.add(key);
+        grew = true;
+      }
+    }
+  }
+  return pages.filter(
+    (page) => page.key !== blockKey && referencesAny(decofile[page.key], shown),
+  );
+}
+
+/**
+ * The page to preview a saved block on (a Blocks v8 site has no
+ * isolated-section route): of the pages that show it
+ * ({@link pagesShowingBlock}), the home page first, then static pages by
+ * path, then dynamic ones by path. `null` when no page shows it.
+ */
+export function previewPageForBlock(
+  decofile: Record<string, unknown>,
+  blockKey: string,
+  meta?: LiveMeta | null,
+): PageEntry | null {
+  const rank = (page: PageEntry) =>
+    normalizePagePath(page.path) === "/"
+      ? 0
+      : /:[A-Za-z0-9_-]|\*/.test(page.path)
+        ? 2
+        : 1;
+  const [first] = pagesShowingBlock(decofile, blockKey, meta).sort(
+    (a, b) =>
+      rank(a) - rank(b) || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0),
+  );
+  return first ?? null;
+}
+
 export function globalSectionLabel(
   blockId: string,
   block: Record<string, unknown>,

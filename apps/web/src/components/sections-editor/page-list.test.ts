@@ -6,6 +6,8 @@ import {
   findPageForPath,
   findSiteAppEntry,
   hasEditableDecoContent,
+  pagesShowingBlock,
+  previewPageForBlock,
   resolveDeepLinkPage,
   type PageEntry,
 } from "./page-list";
@@ -396,5 +398,94 @@ describe("page-list", () => {
       expect(resolveDeepLinkPage(pages, { path: "/nao-existe" })).toBeNull();
       expect(resolveDeepLinkPage(pages, {})).toBeNull();
     });
+  });
+});
+
+describe("pagesShowingBlock", () => {
+  const PAGE = "website/pages/Page.tsx";
+  const decofile: Record<string, unknown> = {
+    Header: { __resolveType: "site/sections/Header/Header.tsx" },
+    Layout: {
+      __resolveType: "site/sections/Layout.tsx",
+      header: { __resolveType: "Header" },
+    },
+    Unused: { __resolveType: "site/sections/Promo.tsx" },
+    "pages-home": {
+      __resolveType: PAGE,
+      path: "/",
+      sections: [{ __resolveType: "Header" }],
+    },
+    "pages-lazy": {
+      __resolveType: PAGE,
+      path: "/lazy",
+      sections: [
+        {
+          __resolveType: "website/sections/Rendering/Lazy.tsx",
+          section: { __resolveType: "Header" },
+        },
+      ],
+    },
+    "pages-layout": {
+      __resolveType: PAGE,
+      path: "/layout",
+      sections: [{ __resolveType: "Layout" }],
+    },
+    "pages-none": {
+      __resolveType: PAGE,
+      path: "/none",
+      sections: [{ __resolveType: "site/sections/Hero.tsx" }],
+    },
+  };
+
+  it("finds direct, lazy and indirect references, in content order", () => {
+    expect(pagesShowingBlock(decofile, "Header").map((p) => p.path)).toEqual([
+      "/",
+      "/lazy",
+      "/layout",
+    ]);
+  });
+
+  it("is empty for a block no page shows", () => {
+    expect(pagesShowingBlock(decofile, "Unused")).toEqual([]);
+    expect(pagesShowingBlock(decofile, "Missing")).toEqual([]);
+  });
+
+  it("terminates on reference cycles", () => {
+    const cyclic = {
+      ...decofile,
+      A: { __resolveType: "x.tsx", inner: { __resolveType: "B" } },
+      B: { __resolveType: "x.tsx", inner: { __resolveType: "A" } },
+    };
+    expect(pagesShowingBlock(cyclic, "A")).toEqual([]);
+  });
+});
+
+describe("previewPageForBlock", () => {
+  const PAGE = "website/pages/Page.tsx";
+  const page = (path: string, refs: string[]) => ({
+    __resolveType: PAGE,
+    path,
+    sections: refs.map((ref) => ({ __resolveType: ref })),
+  });
+  const decofile: Record<string, unknown> = {
+    Header: { __resolveType: "site/sections/Header.tsx" },
+    Footer: { __resolveType: "site/sections/Footer.tsx" },
+    Popup: { __resolveType: "site/sections/Popup.tsx" },
+    "pages-plp": page("/*", ["Header", "Footer"]),
+    "pages-z": page("/z", ["Header", "Footer"]),
+    "pages-a": page("/a", ["Header", "Footer"]),
+    "pages-home": page("/", ["Header"]),
+  };
+
+  it("the home page first", () => {
+    expect(previewPageForBlock(decofile, "Header")?.path).toBe("/");
+  });
+
+  it("then static pages by path, before patterns", () => {
+    expect(previewPageForBlock(decofile, "Footer")?.path).toBe("/a");
+  });
+
+  it("null for a block no page uses", () => {
+    expect(previewPageForBlock(decofile, "Popup")).toBeNull();
   });
 });

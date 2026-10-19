@@ -24,6 +24,7 @@ import type {
   BlocksListResult,
   DescribeResult,
 } from "@decocms/blocks/protocol";
+import { createServer } from "node:http";
 import { runConformance } from "@decocms/blocks/protocol/conformance";
 import { isV8Schema } from "@decocms/shared/blocks-major";
 import { publicKeyPemFromDer } from "@decocms/shared/secret-ciphertext";
@@ -1352,6 +1353,129 @@ test.describe("v8 editor: every content change refreshes the editor and the prev
       expect(left.some((o) => o.text.includes("Discard me"))).toBe(false);
     } finally {
       await preview.close();
+    }
+  });
+
+  test("a saved section's change compares on a page that shows it, never on v7's /live/previews", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    // A v8 site: its pages answer, and v7's isolated-section route is a 404.
+    const site = createServer((request, response) => {
+      const path = new URL(request.url ?? "/", "http://site").pathname;
+      const found = !path.startsWith("/live/previews");
+      response.writeHead(found ? 200 : 404, {
+        "Content-Type": "text/html; charset=utf-8",
+      });
+      response.end(
+        `<!doctype html><html><body><h1>${found ? `Site page ${path}` : "Not Found"}</h1></body></html>`,
+      );
+    });
+    await new Promise<void>((resolve) => site.listen(0, "127.0.0.1", resolve));
+    const address = site.address();
+    if (!address || typeof address === "string") throw new Error("no port");
+    const siteUrl = `http://127.0.0.1:${address.port}`;
+    try {
+      const header = { __resolveType: "site/sections/Hero.tsx", title: "Top" };
+      const { url, project } = await openEditor(
+        page.request,
+        orgSlug,
+        siteUrl,
+        {
+          ".deco/schema.gen.json": JSON.stringify({
+            ...v7Meta,
+            blocksMajor: 8,
+          }),
+          ".deco/blocks/Header.json": JSON.stringify(header),
+          // A saved section no page uses.
+          ".deco/blocks/Popup.json": JSON.stringify(header),
+          ".deco/blocks/home.json": JSON.stringify({
+            __resolveType: "website/pages/Page.tsx",
+            name: "Home",
+            path: "/",
+            sections: [{ __resolveType: "Header" }],
+          }),
+        },
+      );
+      await page.goto(url);
+      await expect(page.getByTestId("content-version-badge")).toHaveText("v8", {
+        timeout: 60_000,
+      });
+      // The saved Header changes in the draft, as a save from its form does.
+      const applied = await rpc<BlocksApplyResult>(
+        page.request,
+        rpcPath(project, "main"),
+        "blocks.apply",
+        {
+          set: {
+            Header: { ...header, title: "Top, changed" },
+            Popup: { ...header, title: "Popup, changed" },
+          },
+        },
+      );
+      expect(applied.result?.revision).toBeTruthy();
+
+      await page.getByRole("button", { name: "Review & Publish" }).click();
+      const dialog = page.getByRole("dialog");
+      await expect(dialog.locator('[data-publish-state="ready"]')).toBeVisible({
+        timeout: 60_000,
+      });
+      await expect(
+        dialog.getByText(
+          /This block can appear on several pages\. Showing: \//,
+        ),
+      ).toBeVisible({ timeout: 30_000 });
+      for (const side of ["Before", "After"]) {
+        const frame = dialog.locator(`iframe[title="${side}"]`);
+        await expect(frame).toHaveAttribute(
+          "src",
+          /^http:\/\/127\.0\.0\.1:\d+\/\?/,
+          {
+            timeout: 30_000,
+          },
+        );
+        const src = (await frame.getAttribute("src"))!;
+        expect(new URL(src).pathname).toBe("/");
+        await expect(
+          page.frameLocator(`iframe[title="${side}"]`).getByRole("heading"),
+        ).toHaveText("Site page /", { timeout: 30_000 });
+      }
+      // The published side is the live page; the other carries the draft.
+      const before = await dialog
+        .locator('iframe[title="Before"]')
+        .getAttribute("src");
+      const after = await dialog
+        .locator('iframe[title="After"]')
+        .getAttribute("src");
+      expect(new URL(before!).searchParams.get("__draft")).toBe("off");
+      expect(new URL(after!).searchParams.get("__draft")).not.toBe("off");
+
+      // A block no page uses has nothing to preview: the code only, saying why.
+      await dialog.getByText("Popup", { exact: true }).click();
+      await expect(
+        dialog.getByText(
+          "This block isn't used on any page, so there's nothing to preview. Here are the changes.",
+        ),
+      ).toBeVisible({ timeout: 30_000 });
+      await expect(dialog.getByRole("tab", { name: "Code" })).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
+      await expect(
+        dialog.getByRole("tab", { name: "Side by side" }),
+      ).toHaveCount(0);
+      // (The Header's pane stays mounted, hidden: only the shown one counts.)
+      await expect(
+        dialog.getByLabel("Page address").filter({ visible: true }),
+      ).toHaveCount(0);
+      await expect(
+        dialog.locator("iframe").filter({ visible: true }),
+      ).toHaveCount(0);
+      await expect(dialog.getByText("Popup, changed").first()).toBeVisible({
+        timeout: 30_000,
+      });
+    } finally {
+      site.closeAllConnections();
+      await new Promise<void>((resolve) => site.close(() => resolve()));
     }
   });
 

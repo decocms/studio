@@ -977,6 +977,8 @@ export const sandbox = {
   "sandbox.preview.pageAlreadyExists":
     'A page with path "{path}" already exists.',
   "sandbox.preview.pageCreated": 'Page "{name}" created',
+  "sandbox.preview.blockOnNoPage":
+    "This block isn't used on any page, so there's nothing to preview.",
   "sandbox.preview.previewMetadataNotReady": "Preview metadata not ready yet",
   "sandbox.preview.refresh": "Refresh",
   "sandbox.preview.searchPagesAndComponents": "Search pages and components...",
