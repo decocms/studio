@@ -134,27 +134,31 @@ func validateWorkspace(raw json.RawMessage) string {
 	if raw == nil {
 		return "workspace: required"
 	}
-	var ws struct {
-		Cwd *string `json:"cwd"`
-	}
 	var probe map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &probe); err != nil || probe == nil {
 		return "workspace: expected object"
 	}
-	if _, ok := probe["cwd"]; !ok {
+	cwdRaw, ok := probe["cwd"]
+	if !ok {
 		return "workspace.cwd: required"
 	}
-	if err := json.Unmarshal(raw, &ws); err != nil {
-		return "workspace: invalid"
+	var cwd *string
+	if err := json.Unmarshal(cwdRaw, &cwd); err != nil {
+		return "workspace.cwd: expected string or null"
 	}
-	if ws.Cwd == nil {
+	if cwd == nil {
 		return ""
 	}
-	if *ws.Cwd != "/repo" {
+	if *cwd != "/repo" {
 		return "workspace.cwd: must be \"/repo\" or null"
 	}
-	if _, ok := probe["branch"]; !ok {
+	branchRaw, ok := probe["branch"]
+	if !ok {
 		return "workspace.branch: required"
+	}
+	var branch *string
+	if err := json.Unmarshal(branchRaw, &branch); err != nil {
+		return "workspace.branch: expected string or null"
 	}
 	return ""
 }

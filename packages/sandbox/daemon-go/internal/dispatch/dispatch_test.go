@@ -189,6 +189,12 @@ func TestValidateHarnessInputAcceptsRepolessRepoCwd(t *testing.T) {
 	if reason := ValidateHarnessInput(frame(`{"cwd": "/repo"}`)); reason == "" {
 		t.Fatal("missing branch must be rejected")
 	}
+	if reason := ValidateHarnessInput(frame(`{"cwd": "/repo", "branch": 1}`)); reason == "" {
+		t.Fatal("a non-string branch must be rejected")
+	}
+	if reason := ValidateHarnessInput(frame(`{"cwd": 1}`)); reason == "" {
+		t.Fatal("a non-string, non-null cwd must be rejected")
+	}
 }
 
 func TestRebaseWorkspaceCwd(t *testing.T) {
