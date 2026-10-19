@@ -1,4 +1,5 @@
 export const sandbox = {
+  "sandbox.appEditor.backToApps": "Back to apps",
   "sandbox.appEditor.createdSection": 'Created section "{name}"',
   "sandbox.appEditor.editingBreadcrumb": "Editing breadcrumb",
   "sandbox.appEditor.failedAddSection": "Could not add section",
@@ -9,6 +10,9 @@ export const sandbox = {
   "sandbox.appEditor.loadingSchema": "Loading app schema…",
   "sandbox.appEditor.noEditableSchema":
     "No editable schema found for this app.",
+  "sandbox.appEditor.previewFailed":
+    "Could not update the preview. Showing the last render.",
+  "sandbox.appEditor.previewFrameTitle": "{name} preview",
   "sandbox.availableSectionEditor.editingBreadcrumb": "Editing breadcrumb",
   "sandbox.availableSectionEditor.localEditsHint":
     "{typeLabel} — edits stay local until you save this as a global section.",

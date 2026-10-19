@@ -43,6 +43,35 @@ export function globalSectionPreviewUrl(
   return url;
 }
 
+/**
+ * Preview page of an installed app block. The runtime resolves the block's
+ * saved props and renders the app module's `preview` export, or a
+ * "preview not available" page when the app has none.
+ */
+export function buildAppPreviewUrl(
+  previewBaseUrl: string,
+  blockKey: string,
+): string {
+  const origin = new URL(previewBaseUrl).origin;
+  return new URL(`/live/previews/${encodeURIComponent(blockKey)}`, origin).href;
+}
+
+/**
+ * {@link buildAppPreviewUrl} rendered from an unsaved decofile: the runtime
+ * resolves the block against the inline `__decofile`, so the preview follows
+ * the form before autosave lands. Same body shape as {@link buildPageRenderRequest}.
+ */
+export function buildAppRenderRequest(input: {
+  previewBaseUrl: string;
+  blockKey: string;
+  decofile: Record<string, unknown>;
+}): { src: string; body: string } {
+  return {
+    src: buildAppPreviewUrl(input.previewBaseUrl, input.blockKey),
+    body: JSON.stringify({ __props: {}, __decofile: input.decofile }),
+  };
+}
+
 /** Query param carrying the Fast Preview draft pointer. */
 const DRAFT_PARAM = "__draft";
 

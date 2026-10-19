@@ -1112,7 +1112,9 @@ function ContentBrowserReady({
         activeCollection !== "post-schedule" &&
         activeCollection !== "posts" &&
         activeCollection !== "loaders" &&
-        activeCollection !== "actions" && (
+        activeCollection !== "actions" &&
+        // An open app takes the list's space; its back button returns here.
+        selection?.collection !== "apps" && (
           <ItemList
             activeCollection={activeCollection}
             pages={pages}
@@ -1354,6 +1356,8 @@ function ContentBrowserReady({
                   decofile={decofile}
                   meta={meta}
                   previewBaseUrl={previewUrl}
+                  showAppPreview
+                  onBack={() => setSelection(null)}
                   schemaPending={isAppSchemaLoading(
                     typeof (decofile[selection.key] as Record<string, unknown>)
                       ?.__resolveType === "string"

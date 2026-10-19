@@ -1,12 +1,17 @@
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
-import { ChevronRight } from "@untitledui/icons";
+import { ChevronLeft, ChevronRight } from "@untitledui/icons";
 import { type ReactNode, useRef, useState } from "react";
 import { toast } from "sonner";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { ScrollArea } from "@decocms/ui/components/scroll-area.tsx";
 import { AddSectionModal } from "@/components/sections-editor/add-section-modal";
 import { useSectionPreviewBase } from "@/components/sections-editor/use-section-preview-base";
+import {
+  buildAppPreviewUrl,
+  withDraftPointer,
+} from "@/components/sections-editor/section-preview-url";
+import { useDraftPointer } from "@/components/sections-editor/use-fast-preview-draft-url";
 import { appLabel } from "@/components/sections-editor/page-list";
 import {
   isResolvableManifestApp,
@@ -20,6 +25,7 @@ import {
   useSaveBlock,
 } from "@/components/sections-editor/use-save-block";
 import { resolveAppEditorSchema } from "./app-editor-schema";
+import { useLiveAppPreview } from "./use-live-app-preview";
 import { buildSectionBlockFromCatalogEntry } from "./section-create";
 import { SchemaForm } from "@/components/sections-editor/schema-form";
 import {
@@ -45,6 +51,8 @@ export function AppEditor({
   notice,
   saveGuard,
   persistDefaults,
+  showAppPreview = false,
+  onBack,
 }: {
   orgSlug: string;
   virtualMcpId: string;
@@ -64,6 +72,10 @@ export function AppEditor({
   saveGuard?: SaveGuard;
   /** `false`: the form's `@default`s are saved with the first change, not when it opens. */
   persistDefaults?: boolean;
+  /** Show the app module's `preview` export beside the form, re-rendered as it changes. */
+  showAppPreview?: boolean;
+  /** Shows a back button that returns to the app list. */
+  onBack?: () => void;
 }) {
   const threadId = useOptionalChatTask()?.taskId ?? null;
   const t = useT();
@@ -73,6 +85,19 @@ export function AppEditor({
     virtualMcpId,
     branch,
     sandboxUrl: previewBaseUrl,
+  });
+  // Under Fast Preview the base is production, which only sees branch edits through the draft pointer.
+  const draftPointer = useDraftPointer({ orgSlug, virtualMcpId, branch });
+  const appPreviewUrl =
+    showAppPreview && sectionPreviewBase
+      ? withDraftPointer(
+          buildAppPreviewUrl(sectionPreviewBase, blockKey),
+          draftPointer,
+        )
+      : null;
+  const livePreview = useLiveAppPreview({
+    previewBaseUrl: appPreviewUrl ? sectionPreviewBase : null,
+    blockKey,
   });
   const resolveType =
     typeof block?.__resolveType === "string" ? block.__resolveType : "";
@@ -127,10 +152,9 @@ export function AppEditor({
   const handleChange = (next: unknown) => {
     const nextRecord = next as Record<string, unknown>;
     setFormValue(nextRecord);
-    save(blockKey, {
-      ...nextRecord,
-      __resolveType: resolveType,
-    });
+    const data = { ...nextRecord, __resolveType: resolveType };
+    save(blockKey, data);
+    livePreview.render({ ...decofile, [blockKey]: data });
   };
 
   const handleBreadcrumbChange = (next: Crumb[]) => {
@@ -185,7 +209,23 @@ export function AppEditor({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex h-12 shrink-0 items-center justify-between border-b px-6">
+      <div
+        className={cn(
+          "flex h-12 shrink-0 items-center gap-3 border-b pr-6",
+          onBack ? "pl-3" : "pl-6",
+        )}
+      >
+        {onBack && (
+          <button
+            type="button"
+            onClick={onBack}
+            title={t("sandbox.appEditor.backToApps")}
+            aria-label={t("sandbox.appEditor.backToApps")}
+            className="inline-flex size-6 shrink-0 items-center justify-center rounded-[var(--studio-control-radius,var(--radius-md))] text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+          >
+            <ChevronLeft className="size-4" />
+          </button>
+        )}
         {headerCrumbs.length > 0 ? (
           <nav
             aria-label={t("sandbox.appEditor.editingBreadcrumb")}
@@ -229,49 +269,76 @@ export function AppEditor({
             })}
           </nav>
         ) : (
-          <span className="text-sm font-medium">{title}</span>
+          <span className="min-w-0 flex-1 truncate text-sm font-medium">
+            {title}
+          </span>
         )}
         <SaveStatus isPending={isPending} isError={false} />
       </div>
-      <ScrollArea className="min-h-0 min-w-0 flex-1 [&_[data-slot=scroll-area-viewport]>div]:!block">
-        <div className="px-6 py-6">
-          <div className="mx-auto max-w-xl">
-            {notice}
-            {hasEditableFields ? (
-              <SchemaForm
-                key={`${blockKey}:${formResetKey}`}
-                schema={schema!}
-                value={effectiveValue}
-                onChange={handleChange}
-                persistDefaults={persistDefaults}
-                basePath=""
-                breadcrumbPath={breadcrumbs}
-                onBreadcrumbChange={handleBreadcrumbChange}
-                decofile={decofile}
-                meta={meta}
-                onSaveReferencedBlock={saveReferencedBlock}
-                previewBaseUrl={sectionPreviewBase}
-                onAddSectionItem={handleAddSectionItem}
-                onRequestAddSection={handleRequestAddSection}
-                sandbox={{ orgSlug, virtualMcpId, branch, threadId }}
-              />
-            ) : schemaPending ? (
-              <div className="flex flex-col items-center gap-2 py-6 text-center text-xs text-muted-foreground">
-                <Spinner className="size-4" />
-                {t("sandbox.appEditor.loadingSchema")}
-              </div>
-            ) : (
-              <div className="py-6 text-center text-xs text-muted-foreground">
-                {t(
-                  isResolvableManifestApp(meta, resolveType)
-                    ? "sandbox.appEditor.noEditableSchema"
-                    : "sandbox.appEditor.schemaAwaitsBuild",
-                )}
+      <div className="flex min-h-0 flex-1">
+        <ScrollArea
+          className={cn(
+            "min-h-0 min-w-0 [&_[data-slot=scroll-area-viewport]>div]:!block",
+            appPreviewUrl ? "w-[28rem] shrink-0 border-r" : "flex-1",
+          )}
+        >
+          <div className="px-6 py-6">
+            <div className="mx-auto max-w-xl">
+              {notice}
+              {hasEditableFields ? (
+                <SchemaForm
+                  key={`${blockKey}:${formResetKey}`}
+                  schema={schema!}
+                  value={effectiveValue}
+                  onChange={handleChange}
+                  persistDefaults={persistDefaults}
+                  basePath=""
+                  breadcrumbPath={breadcrumbs}
+                  onBreadcrumbChange={handleBreadcrumbChange}
+                  decofile={decofile}
+                  meta={meta}
+                  onSaveReferencedBlock={saveReferencedBlock}
+                  previewBaseUrl={sectionPreviewBase}
+                  onAddSectionItem={handleAddSectionItem}
+                  onRequestAddSection={handleRequestAddSection}
+                  sandbox={{ orgSlug, virtualMcpId, branch, threadId }}
+                />
+              ) : schemaPending ? (
+                <div className="flex flex-col items-center gap-2 py-6 text-center text-xs text-muted-foreground">
+                  <Spinner className="size-4" />
+                  {t("sandbox.appEditor.loadingSchema")}
+                </div>
+              ) : (
+                <div className="py-6 text-center text-xs text-muted-foreground">
+                  {t(
+                    isResolvableManifestApp(meta, resolveType)
+                      ? "sandbox.appEditor.noEditableSchema"
+                      : "sandbox.appEditor.schemaAwaitsBuild",
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </ScrollArea>
+        {appPreviewUrl && (
+          <div className="relative min-w-0 flex-1">
+            <iframe
+              ref={livePreview.frameRef}
+              src={appPreviewUrl}
+              onLoad={livePreview.onFrameLoad}
+              // oxlint-disable-next-line react/iframe-missing-sandbox -- cross-origin src (never srcDoc): allow-same-origin keeps the preview's origin, so its fonts load
+              sandbox="allow-scripts allow-same-origin allow-popups"
+              title={t("sandbox.appEditor.previewFrameTitle", { name: title })}
+              className="size-full border-0 bg-white"
+            />
+            {livePreview.failed && (
+              <div className="absolute inset-x-0 bottom-0 bg-destructive px-4 py-2 text-xs text-destructive-foreground">
+                {t("sandbox.appEditor.previewFailed")}
               </div>
             )}
           </div>
-        </div>
-      </ScrollArea>
+        )}
+      </div>
 
       {sectionPreviewBase && (
         <AddSectionModal

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import {
+  buildAppPreviewUrl,
+  buildAppRenderRequest,
   buildFastPreviewDraftUrl,
   buildPageRenderRequest,
   DRAFT_OFF,
@@ -275,5 +277,39 @@ describe("buildPageRenderRequest", () => {
       pathTemplate: "/",
     });
     expect(req).toBeNull();
+  });
+});
+
+describe("buildAppPreviewUrl", () => {
+  it("previews the saved app block by key on the base origin", () => {
+    const url = new URL(
+      buildAppPreviewUrl(`${SANDBOX}/some/page?x=1`, "deco-vtex app"),
+    );
+    expect(url.origin).toBe(SANDBOX);
+    expect(url.pathname).toBe("/live/previews/deco-vtex%20app");
+    expect(url.search).toBe("");
+  });
+
+  it("encodes slashes so a resolve-type-like key stays one path segment", () => {
+    const url = new URL(buildAppPreviewUrl(PROD, "site/apps/vtex.ts"));
+    expect(url.pathname).toBe("/live/previews/site%2Fapps%2Fvtex.ts");
+  });
+});
+
+describe("buildAppRenderRequest", () => {
+  it("posts the unsaved decofile to the app block's preview route", () => {
+    const decofile = {
+      "deco-vtex": { __resolveType: "site/apps/vtex.ts", account: "draft" },
+    };
+    const req = buildAppRenderRequest({
+      previewBaseUrl: `${SANDBOX}/any`,
+      blockKey: "deco-vtex",
+      decofile,
+    });
+    expect(req.src).toBe(`${SANDBOX}/live/previews/deco-vtex`);
+    expect(JSON.parse(req.body)).toEqual({
+      __props: {},
+      __decofile: decofile,
+    });
   });
 });
