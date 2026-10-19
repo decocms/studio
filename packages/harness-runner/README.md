@@ -17,9 +17,11 @@ produced. stderr is the pod's log. The daemon adds the run's terminal `done`
 frame itself — this process only emits what the harness produced.
 
 The wire is defined by `daemon-go/internal/dispatch/runner.go`; the frame shape
-is `harnessRunResultSchema` in `packages/sandbox/dispatch/schemas.ts`. One
-harness is implemented, `claude-code`, driven by the Claude Agent SDK; any other
-`harnessId` gets an `unknown_harness` error frame and a non-zero exit.
+is `harnessRunResultSchema` in `packages/sandbox/dispatch/schemas.ts`.
+
+Two harnesses are implemented: `claude-code`, driven by the Claude Agent SDK,
+and `codex`, driven by `codex app-server`. Other identifiers get an
+`unknown_harness` error frame and a non-zero exit.
 
 ## Responsibilities
 
@@ -54,12 +56,29 @@ by Studio and reaching this process as its spawn environment:
 | `ANTHROPIC_BASE_URL` + `ANTHROPIC_AUTH_TOKEN` | OpenRouter's Anthropic-compatible endpoint |
 | `CLAUDE_CODE_MODEL` | Optional model pin; unset uses Claude Code's default |
 | `CLAUDE_CODE_PATH` | Optional explicit path to the `claude` executable |
+| `CODEX_MODEL` | Codex model selected for the run |
+| `CODEX_PATH` | Path to the pinned Codex CLI installed in the image |
+| `CODEX_HOME` | Local Codex transcript and per-thread session pointer directory |
+| `STUDIO_CODEX_AUTH_JSON` | ChatGPT login cache, encrypted at rest by the API and supplied to the runner |
+| `CODEX_API_KEY` + `OPENAI_BASE_URL` | Responses API provider credentials, cleared for subscription runs |
 | `CLAUDE_CONFIG_DIR` | Claude Code's config dir; also where the per-thread session id is remembered |
+
+The default-off `chat_harness_codex` organization flag selects Codex for new
+sandbox chats. Existing chats keep their pinned runtime. Link a ChatGPT login
+in Settings → AI Providers using the cache from `codex login`, or configure a
+Responses API provider. The API encrypts the cache per user and accepts token
+refreshes only while the original credential is still current. The runner
+stores auth and MCP configuration in a private temporary directory; only the
+`sessions/` transcript tree and the session pointer reach org-fs. A run with
+per-tool built-in restrictions fails before starting Codex, since Codex does
+not implement Claude's tool subtraction policy.
 
 ## Architecture
 
 - `main.ts` — the wire: stdin envelope in, NDJSON frames out.
 - `claude-code.ts` — SDK options policy, the per-turn loop, session persistence.
+- `codex.ts` — app-server requests, isolated runtime configuration, subscription refresh sync, and session resumption.
+- `codex-to-ui-chunks.ts` — Codex notifications translated to existing text, reasoning, tool, question, and plan parts.
 - `to-ui-chunks.ts` — SDK messages → AI SDK `UIMessageChunk`s, with Claude
   Code's tools renamed to the canonical part names the chat UI renders
   (`Bash` → `bash`, `AskUserQuestion` → `user_ask`, `mcp__studio__<name>` →

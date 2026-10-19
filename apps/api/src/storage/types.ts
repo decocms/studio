@@ -2509,6 +2509,12 @@ export interface Database {
 
   // OAuth PKCE state table (short-lived, server-side verifier storage)
   oauth_pkce_states: OAuthPkceStateTable;
+  codex_subscriptions: {
+    user_id: string;
+    encrypted_auth: string;
+    auth_hash: string;
+    created_at: Date;
+  };
   claude_subscriptions: ClaudeSubscriptionTable;
   github_copilot_subscriptions: ClaudeSubscriptionTable;
   org_shared_plans: OrgSharedPlanTable;

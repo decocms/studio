@@ -7,7 +7,7 @@
  * `claude-code` runs in the hosted sandbox, not on the user's machine, so it is
  * viewable — and streamable — here, on the same per-thread tail as Decopilot.
  */
-const HOSTED_HARNESS_IDS = new Set(["decopilot", "claude-code"]);
+const HOSTED_HARNESS_IDS = new Set(["decopilot", "claude-code", "codex"]);
 
 /**
  * Hosted chat runs a fixed set of harnesses. Coding-agent ids can still appear

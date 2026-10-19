@@ -484,7 +484,7 @@ export type ClaimedDispatchRunInput = DispatchRunRuntimeInput & {
  * both are named explicitly — an unknown or future harness must never fall
  * through to whichever loop happens to be first.
  */
-const HOSTED_HARNESS_IDS = ["decopilot", "claude-code"] as const;
+const HOSTED_HARNESS_IDS = ["decopilot", "claude-code", "codex"] as const;
 
 export type HostedHarnessId = (typeof HOSTED_HARNESS_IDS)[number];
 
@@ -1487,7 +1487,12 @@ async function prepareRun(
     // own — outranks the org's thinking-slot key for a sandbox-hosted run.
     // Absent, expired or undecryptable falls back to the org credential.
     const userPlanCredential = sandboxHosted
-      ? await resolvePlanCredential(ctx, input.organizationId, input.userId)
+      ? await resolvePlanCredential(
+          ctx,
+          input.organizationId,
+          input.userId,
+          harnessId,
+        )
       : null;
 
     const dispatchHarnessChunks =

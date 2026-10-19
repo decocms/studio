@@ -528,6 +528,8 @@ export const KEYS = {
   aiProviderKeys: (orgId: string) => ["ai-provider-keys", orgId] as const,
   // The caller's own linked Claude subscription (per user, but the tool call is
   // org-scoped, so the key is too).
+  codexSubscription: (orgId: string, userId: string) =>
+    ["codex-subscription", orgId, userId] as const,
   claudeSubscription: (orgId: string) =>
     ["claude-subscription", orgId] as const,
   githubCopilot: (orgId: string) => ["github-copilot", orgId] as const,

@@ -826,6 +826,7 @@ export function ActiveTaskProvider({
   const t = useT();
   const voiceEnabled = useOrgFlag("voice_mode");
   const sandboxOnlyChats = useSandboxOnlyChats();
+  const codexChats = useOrgFlag("chat_harness_codex");
   const { virtualMcpId, activeTask, currentBranch } = useChatTask();
   const hostedRuntimeBlocked = shouldBlockHostedRuntime(activeTask?.harness_id);
   const hostedRuntimeBlockedMessage = t("chat.input.codingAgentUnavailable");
@@ -1260,7 +1261,11 @@ export function ActiveTaskProvider({
     if (!activeTask?.harness_id) {
       manager.patchThread({
         id: capturedTaskId,
-        harness_id: sandboxOnlyChats ? "claude-code" : "decopilot",
+        harness_id: sandboxOnlyChats
+          ? codexChats
+            ? "codex"
+            : "claude-code"
+          : "decopilot",
         updated_at: new Date().toISOString(),
       });
     }
@@ -1565,7 +1570,8 @@ export function ActiveTaskProvider({
       // Claude Code cannot take an injected tool result; the server resolves the part.
       if (
         action.kind === "toolOutput" &&
-        activeTask?.harness_id === "claude-code"
+        (activeTask?.harness_id === "claude-code" ||
+          activeTask?.harness_id === "codex")
       ) {
         const { response } = (action.output ?? {}) as { response?: unknown };
         await conn.submit(

@@ -1,3 +1,4 @@
+import { CodexSubscriptionStorage } from "../storage/codex-subscriptions";
 /**
  * Context Factory
  *
@@ -1543,6 +1544,7 @@ export async function createStudioContextFactory(
     notifications: new NotificationStorage(config.db),
     orgFsEntries: new OrgFsEntryStorage(config.db),
     oauthPkceStates: new OAuthPkceStateStorage(config.db),
+    codexSubscriptions: new CodexSubscriptionStorage(config.db, vault),
     claudeSubscriptions: new ClaudeSubscriptionStorage(config.db, vault),
     githubCopilotSubscriptions: new ClaudeSubscriptionStorage(
       config.db,

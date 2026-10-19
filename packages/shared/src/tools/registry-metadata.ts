@@ -191,6 +191,10 @@ const ALL_TOOL_NAMES = [
   "AI_PLAN_INVOICE_UPGRADE",
 
   // Claude subscription (per-user OAuth credential for the claude-code harness)
+  "CODEX_SUBSCRIPTION_CONNECT",
+  "CODEX_SUBSCRIPTION_STATUS",
+  "CODEX_SUBSCRIPTION_DISCONNECT",
+  "CODEX_SUBSCRIPTION_SYNC",
   "CLAUDE_SUBSCRIPTION_CONNECT",
   "CLAUDE_SUBSCRIPTION_STATUS",
   "CLAUDE_SUBSCRIPTION_DISCONNECT",
@@ -997,6 +1001,26 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "AI Providers",
   },
   {
+    name: "CODEX_SUBSCRIPTION_CONNECT",
+    description: "Link your ChatGPT subscription for Codex",
+    category: "AI Providers",
+  },
+  {
+    name: "CODEX_SUBSCRIPTION_STATUS",
+    description: "Whether your ChatGPT subscription is linked for Codex",
+    category: "AI Providers",
+  },
+  {
+    name: "CODEX_SUBSCRIPTION_DISCONNECT",
+    description: "Unlink your ChatGPT subscription for Codex",
+    category: "AI Providers",
+  },
+  {
+    name: "CODEX_SUBSCRIPTION_SYNC",
+    description: "Save credentials refreshed by your Codex runtime",
+    category: "AI Providers",
+  },
+  {
     name: "CLAUDE_SUBSCRIPTION_CONNECT",
     description: "Link your own Claude subscription with a setup token",
     category: "AI Providers",
@@ -1732,6 +1756,11 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
     description: "Tools all org members can access by default",
     section: "Basic Usage",
     tools: [
+      // Personal credentials never grant access to another member's plan.
+      "CODEX_SUBSCRIPTION_CONNECT",
+      "CODEX_SUBSCRIPTION_STATUS",
+      "CODEX_SUBSCRIPTION_DISCONNECT",
+      "CODEX_SUBSCRIPTION_SYNC",
       // View connections
       "COLLECTION_CONNECTIONS_LIST",
       "COLLECTION_CONNECTIONS_GET",

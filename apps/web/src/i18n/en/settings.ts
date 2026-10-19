@@ -618,6 +618,26 @@ export const settings = {
   "settings.connectedProvidersSection.emptyState":
     "Bring your own keys to use specific models alongside Deco's gateway.",
   "settings.connectedProvidersSection.sectionTitle": "Connected providers",
+  "settings.agentTools.chatHarnessCodexTitle":
+    "Use Codex for new sandbox chats",
+  "settings.agentTools.chatHarnessCodexDescription":
+    "Runs new sandbox chats with Codex. Link your ChatGPT subscription in AI Providers or connect a Responses API provider. Existing chats keep their runtime.",
+  "settings.codexSubscription.setupHeading": "Connect Codex",
+  "settings.codexSubscription.setupDescription":
+    "Link your ChatGPT subscription in Settings → AI Providers, or connect a provider with an OpenAI Responses API endpoint.",
+  "settings.codexSubscription.active":
+    "Your Codex runs use your ChatGPT subscription. Credentials refresh automatically.",
+  "settings.codexSubscription.connect": "Link",
+  "settings.codexSubscription.connected": "ChatGPT subscription linked",
+  "settings.codexSubscription.description":
+    "Use your ChatGPT subscription for Codex sandbox chats. Credentials belong to you and are stored encrypted.",
+  "settings.codexSubscription.disconnect": "Disconnect",
+  "settings.codexSubscription.disconnected": "ChatGPT subscription unlinked",
+  "settings.codexSubscription.howTo":
+    "Run this command locally, sign in with ChatGPT, then paste the contents of ~/.codex/auth.json:",
+  "settings.codexSubscription.title": "Your ChatGPT subscription for Codex",
+  "settings.codexSubscription.tokenPlaceholder":
+    "Paste the contents of auth.json",
   "settings.claudeSubscription.active":
     "Your Claude plan is running these coding tasks.",
   "settings.claudeSubscription.connect": "Link",

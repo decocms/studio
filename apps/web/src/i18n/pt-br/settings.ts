@@ -634,6 +634,26 @@ export const settings = {
   "settings.connectedProvidersSection.emptyState":
     "Traga suas pr\u00f3prias chaves para usar modelos espec\u00edficos junto com o gateway da Deco.",
   "settings.connectedProvidersSection.sectionTitle": "Provedores conectados",
+  "settings.agentTools.chatHarnessCodexTitle":
+    "Usar Codex em novos chats no sandbox",
+  "settings.agentTools.chatHarnessCodexDescription":
+    "Executa novos chats no sandbox com Codex. Vincule sua assinatura do ChatGPT em Provedores de IA ou conecte um provedor da API Responses. Os chats existentes mantêm seu runtime.",
+  "settings.codexSubscription.setupHeading": "Conecte o Codex",
+  "settings.codexSubscription.setupDescription":
+    "Vincule sua assinatura do ChatGPT em Configurações → Provedores de IA ou conecte um provedor com um endpoint da API Responses da OpenAI.",
+  "settings.codexSubscription.active":
+    "Suas execuções do Codex usam sua assinatura do ChatGPT. As credenciais são renovadas automaticamente.",
+  "settings.codexSubscription.connect": "Vincular",
+  "settings.codexSubscription.connected": "Assinatura do ChatGPT vinculada",
+  "settings.codexSubscription.description":
+    "Use sua assinatura do ChatGPT nos chats com Codex no sandbox. As credenciais pertencem a você e ficam criptografadas.",
+  "settings.codexSubscription.disconnect": "Desconectar",
+  "settings.codexSubscription.disconnected":
+    "Assinatura do ChatGPT desconectada",
+  "settings.codexSubscription.howTo":
+    "Execute este comando na sua máquina, entre com o ChatGPT e cole o conteúdo de ~/.codex/auth.json:",
+  "settings.codexSubscription.title": "Sua assinatura do ChatGPT para Codex",
+  "settings.codexSubscription.tokenPlaceholder": "Cole o conteúdo de auth.json",
   "settings.claudeSubscription.active":
     "Seu plano Claude est\u00e1 executando estas tarefas de c\u00f3digo.",
   "settings.claudeSubscription.connect": "Vincular",

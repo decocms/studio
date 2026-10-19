@@ -4,7 +4,11 @@
  */
 
 /** Which setup a fresh thread needs before it can run, or null for none. */
-export type RuntimeSetupNeed = "provider" | "claude-code-provider" | null;
+export type RuntimeSetupNeed =
+  | "provider"
+  | "claude-code-provider"
+  | "codex-provider"
+  | null;
 
 export function resolveNeedsRuntimeSetup({
   isThreadLocked,

@@ -1,3 +1,4 @@
+import { codexEnvFromCredential } from "./codex-env";
 /**
  * Dispatches harnesses that run inside the hosted sandbox instead of in the
  * Studio process.
@@ -237,7 +238,7 @@ export function isUnreachableStatus(status: number): boolean {
 export function harnessRunsInSandbox(
   harnessId: string | null | undefined,
 ): boolean {
-  return harnessId === SANDBOX_HOSTED_HARNESS;
+  return harnessId === SANDBOX_HOSTED_HARNESS || harnessId === "codex";
 }
 
 export class SandboxDispatchClient {
@@ -399,7 +400,10 @@ export class SandboxDispatchClient {
       runKeyPermissions({
         toolNames: selfToolGrantsFor({
           ...authority,
-          toolNames: resolveThreadToolNames(thread),
+          toolNames: [
+            ...resolveThreadToolNames(thread),
+            ...(this.harnessId === "codex" ? ["CODEX_SUBSCRIPTION_SYNC"] : []),
+          ],
           runScoped: resolveRunScopedToolNames(thread),
         }),
         grants,
@@ -557,16 +561,29 @@ export class SandboxDispatchClient {
     // is a booted sandbox that dies on an opaque model error minutes later.
     const runMetadata = this.ctx.metadata?.runMetadata;
     // Task-board runs carry a run class and keep their per-class model.
-    const modelEnv = runMetadata?.[RUN_CLASS_METADATA_KEY]
-      ? claudeCodeEnvFromCredential(
-          this.credential,
-          modelClassFromMetadata(runMetadata[MODEL_CLASS_METADATA_KEY]),
-        )
-      : claudeCodeEnvFromCredential(
-          this.credential,
-          "chat",
-          input.models.thinking.id,
-        );
+    const modelEnv =
+      this.harnessId === "codex"
+        ? codexEnvFromCredential(this.credential, input.models.thinking.id)
+        : runMetadata?.[RUN_CLASS_METADATA_KEY]
+          ? claudeCodeEnvFromCredential(
+              this.credential,
+              modelClassFromMetadata(runMetadata[MODEL_CLASS_METADATA_KEY]),
+            )
+          : claudeCodeEnvFromCredential(
+              this.credential,
+              "chat",
+              input.models.thinking.id,
+            );
+    if (this.harnessId !== "codex") {
+      Object.assign(modelEnv, {
+        STUDIO_CODEX_AUTH_JSON: null,
+        CODEX_API_KEY: null,
+        OPENAI_API_KEY: null,
+        OPENAI_BASE_URL: null,
+        CODEX_ACCESS_TOKEN: null,
+        CODEX_MODEL: null,
+      });
+    }
     const organization = this.ctx.organization;
     if (!organization) {
       throw new Error(
@@ -665,7 +682,7 @@ export class SandboxDispatchClient {
               markTurn(runId, "cold-start");
               return publishRunStatusStage({
                 streamBuffer,
-                harnessId: SANDBOX_HOSTED_HARNESS,
+                harnessId,
                 taskId: runId,
                 stage: "starting-sandbox",
               });
@@ -707,7 +724,7 @@ export class SandboxDispatchClient {
             signal: input.signal,
           }),
           // A continuation's `start` is dropped downstream, so don't re-stamp it.
-          resume ? null : modelEnv.CLAUDE_CODE_MODEL,
+          resume ? null : (modelEnv.CODEX_MODEL ?? modelEnv.CLAUDE_CODE_MODEL),
           credentialProviderId,
         );
       })();

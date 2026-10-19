@@ -124,6 +124,7 @@ export interface StudioToolIO {
             cheap_reviewer_model?: boolean | undefined;
             coding_agent_org_mcps?: boolean | undefined;
             coding_agents_claude_code?: boolean | undefined;
+            chat_harness_codex?: boolean | undefined;
             chat_harness_sandbox_only?: boolean | undefined;
             sandbox_repo_snapshots?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
@@ -206,6 +207,7 @@ export interface StudioToolIO {
             cheap_reviewer_model?: boolean | undefined;
             coding_agent_org_mcps?: boolean | undefined;
             coding_agents_claude_code?: boolean | undefined;
+            chat_harness_codex?: boolean | undefined;
             chat_harness_sandbox_only?: boolean | undefined;
             sandbox_repo_snapshots?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
@@ -284,6 +286,7 @@ export interface StudioToolIO {
             cheap_reviewer_model?: boolean | undefined;
             coding_agent_org_mcps?: boolean | undefined;
             coding_agents_claude_code?: boolean | undefined;
+            chat_harness_codex?: boolean | undefined;
             chat_harness_sandbox_only?: boolean | undefined;
             sandbox_repo_snapshots?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
@@ -7285,6 +7288,34 @@ export interface StudioToolIO {
   AI_PLAN_INVOICE_UPGRADE: {
     input: { planId: "starter" | "business" };
     output: { planId: string };
+  };
+  CODEX_SUBSCRIPTION_CONNECT: {
+    input: { authJson: string };
+    output: {
+      connected: boolean;
+      linkedAt: string | null;
+      expiresAt: string | null;
+    };
+  };
+  CODEX_SUBSCRIPTION_STATUS: {
+    input: { [x: string]: never };
+    output: {
+      connected: boolean;
+      linkedAt: string | null;
+      expiresAt: string | null;
+    };
+  };
+  CODEX_SUBSCRIPTION_DISCONNECT: {
+    input: { [x: string]: never };
+    output: {
+      connected: boolean;
+      linkedAt: string | null;
+      expiresAt: string | null;
+    };
+  };
+  CODEX_SUBSCRIPTION_SYNC: {
+    input: { authJson: string; previousHash: string };
+    output: { updated: boolean; authHash: string | null };
   };
   CLAUDE_SUBSCRIPTION_CONNECT: {
     input: { token: string };

@@ -1,3 +1,4 @@
+import { CODEX_SUBSCRIPTION_PROVIDER_ID } from "@decocms/shared/harness/codex-models";
 /**
  * Model credentials for the sandbox-hosted claude-code harness.
  *
@@ -42,6 +43,7 @@ export const GITHUB_COPILOT_PROVIDER_ID = "github-copilot";
 /** The user's own plans, which outrank and bypass the org's model keys. */
 export function isUserPlanCredential(credentialId: string): boolean {
   return (
+    credentialId === CODEX_SUBSCRIPTION_PROVIDER_ID ||
     credentialId === CLAUDE_SUBSCRIPTION_PROVIDER_ID ||
     credentialId === GITHUB_COPILOT_PROVIDER_ID
   );

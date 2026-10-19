@@ -129,6 +129,7 @@ describe("Connection Tools", () => {
         notifications: null as never,
         orgFsEntries: null as never,
         oauthPkceStates: null as never,
+        codexSubscriptions: null as never,
         claudeSubscriptions: null as never,
         githubCopilotSubscriptions: null as never,
         orgSharedPlans: null as never,

@@ -13,6 +13,7 @@
  * environment and dies with it.
  */
 
+import { runCodex } from "./codex";
 import { runClaudeCode, type HarnessRunResult } from "./claude-code";
 
 /** One frame, one line. */
@@ -39,7 +40,7 @@ if (process.env.HARNESS_RUNNER_PERSISTENT === "1") {
     } catch {
       fail("bad_input", "a turn line is not JSON");
     }
-    if (turn.harnessId !== "claude-code") {
+    if (turn.harnessId !== "claude-code" && turn.harnessId !== "codex") {
       fail(
         "unknown_harness",
         `harness-runner does not implement ${JSON.stringify(turn.harnessId)}`,
@@ -49,7 +50,8 @@ if (process.env.HARNESS_RUNNER_PERSISTENT === "1") {
     process.env.HARNESS_BEFORE_RUN_MS =
       typeof turn.beforeRunMs === "string" ? turn.beforeRunMs : "";
     let failed = false;
-    await runClaudeCode(
+    const run = turn.harnessId === "codex" ? runCodex : runClaudeCode;
+    await run(
       turn.input as Parameters<typeof runClaudeCode>[0],
       (frame) => {
         if (frame.error) failed = true;
@@ -76,6 +78,9 @@ if (typeof body.input !== "object" || body.input === null) {
 // The daemon validated the envelope (internal/dispatch/validate.go) before
 // exec'ing this, so the shape is trusted from here.
 switch (body.harnessId) {
+  case "codex":
+    await runCodex(body.input as Parameters<typeof runCodex>[0], emit);
+    process.exit(0);
   case "claude-code":
     await runClaudeCode(
       body.input as Parameters<typeof runClaudeCode>[0],

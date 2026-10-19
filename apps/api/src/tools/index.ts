@@ -27,6 +27,7 @@ import * as AutomationTools from "./automations";
 import * as UserTools from "./user";
 import * as ProjectSidebarTools from "./project-sidebar";
 import * as AiProvidersTools from "./ai-providers";
+import * as CodexSubscriptionTools from "./codex-subscription";
 import * as ClaudeSubscriptionTools from "./claude-subscription";
 import * as GithubCopilotTools from "./github-copilot";
 import * as SecretsTools from "./secrets";
@@ -258,6 +259,10 @@ export const CORE_TOOLS = [
   AiProvidersTools.AI_PLAN_LIST,
   AiProvidersTools.AI_PLAN_SET,
   AiProvidersTools.AI_PLAN_INVOICE_UPGRADE,
+  CodexSubscriptionTools.CODEX_SUBSCRIPTION_CONNECT,
+  CodexSubscriptionTools.CODEX_SUBSCRIPTION_STATUS,
+  CodexSubscriptionTools.CODEX_SUBSCRIPTION_DISCONNECT,
+  CodexSubscriptionTools.CODEX_SUBSCRIPTION_SYNC,
   // Claude subscription (per-user OAuth credential for the claude-code harness)
   ClaudeSubscriptionTools.CLAUDE_SUBSCRIPTION_CONNECT,
   ClaudeSubscriptionTools.CLAUDE_SUBSCRIPTION_STATUS,

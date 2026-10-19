@@ -407,6 +407,12 @@ export function ChatRuntimeSettings() {
           titleKey="settings.agentTools.chatHarnessSandboxOnlyTitle"
           descriptionKey="settings.agentTools.chatHarnessSandboxOnlyDescription"
         />
+        <FlagToggle
+          flag="chat_harness_codex"
+          icon={<Terminal size={16} />}
+          titleKey="settings.agentTools.chatHarnessCodexTitle"
+          descriptionKey="settings.agentTools.chatHarnessCodexDescription"
+        />
       </SettingsCard>
     </SettingsSection>
   );

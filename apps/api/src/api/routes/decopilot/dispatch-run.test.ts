@@ -243,16 +243,11 @@ describe("assertHostedDispatchHarness", () => {
     // claude-code was rejected here until it became sandbox-hosted; the
     // per-org gate for it is `prepareRun`'s flag check, not this one.
     expect(() => assertHostedDispatchHarness("claude-code")).not.toThrow();
+    expect(() => assertHostedDispatchHarness("codex")).not.toThrow();
   });
 
   test("rejects desktop-only, unknown and missing harnesses", () => {
-    for (const harnessId of [
-      null,
-      undefined,
-      "codex",
-      "opencode",
-      "future",
-    ] as const) {
+    for (const harnessId of [null, undefined, "opencode", "future"] as const) {
       expect(() => assertHostedDispatchHarness(harnessId)).toThrow(
         /hosted dispatch requires/,
       );

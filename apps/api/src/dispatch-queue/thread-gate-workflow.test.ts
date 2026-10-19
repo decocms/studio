@@ -73,7 +73,7 @@ describe("claimRunFenceForDispatch", () => {
 
 describe("assertHarnessRunsInCluster", () => {
   it("throws for every desktop-only or unknown harness", () => {
-    for (const harnessId of ["codex", "opencode", "future"]) {
+    for (const harnessId of ["opencode", "future"]) {
       expect(() => assertHarnessRunsInCluster(harnessId)).toThrow(
         /hosted dispatch requires/,
       );
@@ -88,6 +88,7 @@ describe("assertHarnessRunsInCluster", () => {
     // Was rejected here before the sandbox harness landed. The per-org gate
     // for it lives in `prepareRun`, not in this structural guard.
     expect(() => assertHarnessRunsInCluster("claude-code")).not.toThrow();
+    expect(() => assertHarnessRunsInCluster("codex")).not.toThrow();
   });
 
   it("rejects a missing harness instead of defaulting it", () => {

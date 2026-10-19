@@ -203,7 +203,7 @@ func transcriptPresent(localProjects, sessionId string) bool {
 		if err != nil {
 			return nil
 		}
-		if !d.IsDir() && d.Name() == want {
+		if !d.IsDir() && (d.Name() == want || strings.HasSuffix(d.Name(), "-"+want)) {
 			found = true
 			return filepath.SkipAll
 		}
@@ -222,6 +222,20 @@ func ClaudeConfigDir() string {
 		return filepath.Join(home, ".claude")
 	}
 	return ""
+}
+
+// Only transcript directories are copied. auth.json and config.toml must stay local.
+func harnessSessionPaths(harness string) (string, string) {
+	if harness == "codex" {
+		if dir := os.Getenv("CODEX_HOME"); dir != "" {
+			return dir, "sessions"
+		}
+		if home := os.Getenv("HOME"); home != "" {
+			return filepath.Join(home, ".codex"), "sessions"
+		}
+		return "", "sessions"
+	}
+	return ClaudeConfigDir(), projectsSubdir
 }
 
 // sessionStore is the durable directory for threadId, and whether org-fs can
@@ -256,7 +270,7 @@ func (l *Links) restoreSession(harness, threadId string) {
 	if !ok {
 		return
 	}
-	local := ClaudeConfigDir()
+	local, transcriptDir := harnessSessionPaths(harness)
 	if local == "" {
 		return
 	}
@@ -282,13 +296,13 @@ func (l *Links) restoreSession(harness, threadId string) {
 	// Transcript first: the id is the claim that a transcript exists, so writing
 	// it before the copy succeeds would point the harness at nothing and fail the
 	// run it was meant to help.
-	src := filepath.Join(store, projectsSubdir)
+	src := filepath.Join(store, transcriptDir)
 	if _, err := os.Stat(src); err != nil {
 		slog.Warn("claude session restore: id saved with no transcript; starting fresh",
 			"thread", threadId, "session", id)
 		return
 	}
-	localProjects := filepath.Join(local, projectsSubdir)
+	localProjects := filepath.Join(local, transcriptDir)
 	if err := copyMissing(src, localProjects, sessionBudget()); err != nil {
 		slog.Warn("claude session restore: transcript copy failed",
 			"thread", threadId, "err", err)
@@ -333,7 +347,7 @@ func (l *Links) saveSession(harness, threadId string) {
 	if !ok {
 		return
 	}
-	local := ClaudeConfigDir()
+	local, transcriptDir := harnessSessionPaths(harness)
 	if local == "" {
 		return
 	}
@@ -349,7 +363,7 @@ func (l *Links) saveSession(harness, threadId string) {
 		return
 	}
 
-	src := filepath.Join(local, projectsSubdir)
+	src := filepath.Join(local, transcriptDir)
 	if _, err := os.Stat(src); err != nil {
 		// A run that produced no transcript. Leave the stored session alone —
 		// deleting it would take the earlier turns with it.
@@ -399,7 +413,7 @@ func (l *Links) saveSession(harness, threadId string) {
 			"thread", threadId, "err", err)
 		return
 	}
-	live := filepath.Join(store, projectsSubdir)
+	live := filepath.Join(store, transcriptDir)
 	if err := os.RemoveAll(live); err != nil {
 		slog.Warn("claude session save: could not clear the previous transcript",
 			"thread", threadId, "err", err)

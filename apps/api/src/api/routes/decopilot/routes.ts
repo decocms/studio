@@ -1,3 +1,10 @@
+import { codexSubscriptionChatModel } from "@/harnesses/codex-env";
+import {
+  CODEX_SUBSCRIPTION_PROVIDER_ID,
+  codexModelId,
+  isCodexModel,
+  supportsCodex,
+} from "@decocms/shared/harness/codex-models";
 /**
  * Decopilot Routes
  *
@@ -76,6 +83,8 @@ import { type QueuePartRow, foldQueueHydration } from "./queue-text";
 import { claudeSubscriptionChatModel } from "@/harnesses/claude-code-env";
 import {
   ClaudeCodeProviderRequiredError,
+  sandboxChatHarness,
+  hasCodexCredential,
   hasClaudeCodeCredential,
   userPlanCredentialId,
   sandboxOnlyChatsEnabled,
@@ -222,11 +231,17 @@ function toModelInfo(resolved: Awaited<ReturnType<typeof resolveTier>>) {
 async function resolvePerRequestModels(
   ctx: StudioContext,
   tier: SimpleModeTier | undefined,
+  harnessId?: string,
 ): Promise<ModelsConfig> {
   const [chat, image, webSearch, deepResearch] = await Promise.all([
     // The only opt-in site for per-user chat-tier overrides: this is the
     // interactive chat request, dispatched as the caller themselves.
-    resolveTier(ctx, tier ?? "smart", { applyUserPrefs: true }),
+    resolveTier(ctx, tier ?? "smart", {
+      applyUserPrefs: true,
+      ...(harnessId === "codex"
+        ? { acceptProvider: supportsCodex, acceptModel: isCodexModel }
+        : {}),
+    }),
     tryResolveTier(ctx, "image"),
     tryResolveTier(ctx, "web_search"),
     tryResolveTier(ctx, "deep_research"),
@@ -360,7 +375,7 @@ async function resolveDefaultHarness(
   agentId: string,
   sandboxOnlyChats: boolean,
 ): Promise<HostedHarnessId> {
-  if (sandboxOnlyChats) return "claude-code";
+  if (sandboxOnlyChats) return sandboxChatHarness(ctx, organizationId);
   // Without a hosted sandbox, claude-code only fails later, at dispatch.
   if (!agentSandboxEnabled()) return "decopilot";
   try {
@@ -421,7 +436,11 @@ export function assertHostedHarness(
   if (harnessId == null) {
     return;
   }
-  if (harnessId === "decopilot" || harnessId === "claude-code") {
+  if (
+    harnessId === "decopilot" ||
+    harnessId === "claude-code" ||
+    harnessId === "codex"
+  ) {
     return;
   }
   throw new HTTPException(409, {
@@ -448,7 +467,11 @@ export function assertPersistedHostedRuntime(
   harnessId: string | null | undefined,
 ): asserts harnessId is HostedHarnessId {
   assertHostedHarness(harnessId);
-  if (harnessId !== "decopilot" && harnessId !== "claude-code") {
+  if (
+    harnessId !== "decopilot" &&
+    harnessId !== "claude-code" &&
+    harnessId !== "codex"
+  ) {
     throw new HTTPException(409, {
       message: "This chat has not started a hosted run",
     });
@@ -557,19 +580,57 @@ async function validate(
   }
 
   assertHostedHarness(effectiveHarnessId);
+  // The existing sandbox-only migration moves legacy Decopilot threads to
+  // Claude Code. Resolve their credentials for that destination before repinning.
+  const legacySandboxMigration =
+    sandboxOnlyChats && lockedThread?.harness_id === "decopilot";
+  const chatHarness =
+    (legacySandboxMigration ? "claude-code" : lockedThread?.harness_id) ??
+    (await resolveDefaultHarness(
+      ctx,
+      organization.id,
+      agent.id,
+      sandboxOnlyChats,
+    ));
 
-  const resolvedModels = await resolvePerRequestModels(ctx, tier).catch(
-    async (err): Promise<ModelsConfig> => {
-      // A sandbox chat on the user's own Claude or Copilot plan needs no org
-      // model.
-      if (!(err instanceof TierUnavailableError) || !sandboxOnlyChats) {
-        throw err;
-      }
-      const planId = await userPlanCredentialId(ctx, organization.id, userId);
-      if (!planId) throw err;
-      return claudeSubscriptionChatModel(planId);
-    },
-  );
+  assertHostedDispatchHarness(chatHarness);
+  let resolvedModels = await resolvePerRequestModels(
+    ctx,
+    tier,
+    chatHarness,
+  ).catch(async (err): Promise<ModelsConfig> => {
+    // A sandbox chat on the user's own Claude or Copilot plan needs no org
+    // model.
+    if (
+      !(err instanceof TierUnavailableError) ||
+      (chatHarness !== "claude-code" && chatHarness !== "codex")
+    ) {
+      throw err;
+    }
+    const planId = await userPlanCredentialId(
+      ctx,
+      organization.id,
+      userId,
+      chatHarness,
+    );
+    if (!planId) throw err;
+    return chatHarness === "codex"
+      ? codexSubscriptionChatModel()
+      : claudeSubscriptionChatModel(planId);
+  });
+  if (
+    chatHarness === "codex" &&
+    (await userPlanCredentialId(ctx, organization.id, userId, "codex"))
+  ) {
+    const selected = codexModelId(resolvedModels.thinking.id);
+    resolvedModels = {
+      ...resolvedModels,
+      credentialId: CODEX_SUBSCRIPTION_PROVIDER_ID,
+      thinking: selected
+        ? { id: selected, title: selected, provider: "openai" }
+        : codexSubscriptionChatModel().thinking,
+    };
+  }
 
   const allowedModels = await fetchModelPermissions(
     ctx.db,
@@ -611,7 +672,7 @@ async function validate(
     taskId: taskIdInput,
     windowSize: memoryConfig?.windowSize ?? DEFAULT_WINDOW_SIZE,
     branch: effectiveBranch ?? null,
-    harnessId: sandboxOnlyChats ? "claude-code" : "decopilot",
+    harnessId: chatHarness,
   };
 }
 
@@ -728,7 +789,16 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       startTurnClock(taskId);
       // Checked before any write, so a refused send leaves nothing behind.
       if (
-        sandboxOnlyChats &&
+        input.harnessId === "codex" &&
+        !(await hasCodexCredential(ctx, organizationId, input.userId))
+      ) {
+        throw new HTTPException(400, {
+          message:
+            "Codex needs a linked ChatGPT subscription or a Responses API provider. Connect one in Settings → AI Providers.",
+        });
+      }
+      if (
+        input.harnessId === "claude-code" &&
         !(await hasClaudeCodeCredential(ctx, organizationId, input.userId))
       ) {
         throw new ClaudeCodeProviderRequiredError();
@@ -766,14 +836,9 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       // A non-null harness is the runtime lock. An unlocked thread is claimed
       // by the hosted dispatcher.
       if (pinnedHarness === null) {
-        // First message: the agent decides the runtime. `input.harnessId` is
-        // `validate()`'s fixed "decopilot", so it cannot carry this.
-        pinnedHarness = await resolveDefaultHarness(
-          ctx,
-          input.organizationId,
-          input.agent.id,
-          sandboxOnlyChats,
-        );
+        // Pin the runtime resolved during validation, so a flag change while
+        // this request runs cannot separate its model and runtime selections.
+        pinnedHarness = input.harnessId;
         assertHostedHarness(pinnedHarness);
 
         // Stream-of-record v2 is the ONLY write path (Phase C cutover). Pin
@@ -834,7 +899,8 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         });
       }
       const answer =
-        pinnedHarness === "claude-code" && requestMessage.role === "user"
+        (pinnedHarness === "claude-code" || pinnedHarness === "codex") &&
+        requestMessage.role === "user"
           ? toolOutputAnswer(requestMessage.metadata)
           : null;
       if (answer) {

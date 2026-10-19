@@ -217,6 +217,7 @@ describe("harnessSessionKey", () => {
 describe("harnessRunsInSandbox", () => {
   test("claude-code is sandbox-hosted", () => {
     expect(harnessRunsInSandbox("claude-code")).toBe(true);
+    expect(harnessRunsInSandbox("codex")).toBe(true);
   });
 
   test("decopilot is not — it runs in-process", () => {

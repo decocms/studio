@@ -1,3 +1,4 @@
+import { isCodexModel } from "@decocms/shared/harness/codex-models";
 import { useState, type ReactNode } from "react";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
@@ -334,8 +335,8 @@ export function TierTrigger() {
   const { data: userModelPrefs = { tiers: {} }, error: userModelPrefsError } =
     useUserModelPreferencesQuery();
   const updateUserModelPreferences = useUpdateUserModelPreferences();
-  const claudeCodeThread =
-    useOptionalChatTask()?.lockedHarness === "claude-code";
+  const harness = useOptionalChatTask()?.lockedHarness;
+  const claudeCodeThread = harness === "claude-code";
   // TWO gates, because this component is both a control and a disclosure.
   //
   // Whether the picker EXISTS is access: below Ultra there is no picker at all,
@@ -386,7 +387,12 @@ export function TierTrigger() {
                     userSlot={userSlot}
                     autoSlot={autoDefaults.chat[tierOption]}
                     filterModels={
-                      claudeCodeThread ? isClaudeCodeChatModel : undefined
+                      harness === "codex"
+                        ? (model) =>
+                            isCodexModel(model.providerId, model.modelId)
+                        : claudeCodeThread
+                          ? isClaudeCodeChatModel
+                          : undefined
                     }
                     onClose={closeOverride}
                     onPick={(slot) =>
