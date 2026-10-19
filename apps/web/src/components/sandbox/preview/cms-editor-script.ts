@@ -316,18 +316,39 @@ export const CMS_EDITOR_SCRIPT = `(function() {
   var TRANSITION_TAG =
     "<style id=\\"deco-disable-transitions\\">* { transition: none !important; }</style></head>";
 
-  // A quick second save skips the running transition: its ready and
-  // updateCallbackDone promises then reject with "Transition was skipped".
-  // Only finished says when the swap is over, so the other two are settled
+  // A skipped view transition rejects its promises with "AbortError:
+  // Transition was skipped"; nobody else waits on them, so they are settled
   // here rather than left as uncaught errors in the page's console.
+  var settleTransition = function(vt) {
+    if (!vt) return;
+    var ignore = function() {};
+    if (vt.ready) vt.ready.catch(ignore);
+    if (vt.updateCallbackDone) vt.updateCallbackDone.catch(ignore);
+    if (vt.finished) vt.finished.catch(ignore);
+  };
+
+  // A site that opts into cross-document view transitions
+  // (@view-transition { navigation: auto }) gets one on every reload a save
+  // makes. When the next save navigates the frame before that transition
+  // starts, the browser skips it and rejects the outgoing page's ready
+  // promise, which only a pageswap listener can reach. Kept after deactivate:
+  // settling changes nothing else, and the frame may still navigate.
+  if (!window.__cmsEditorPageSwap) {
+    window.__cmsEditorPageSwap = true;
+    window.addEventListener("pageswap", function(e) {
+      settleTransition(e.viewTransition);
+    });
+  }
+
+  // A quick second save skips the running transition. Only finished says
+  // when the swap is over, so the chain waits on it; the rest is settled.
   var runSwapTransition = function(swap) {
     if (typeof document.startViewTransition !== "function") {
       swap();
       return Promise.resolve();
     }
     var vt = document.startViewTransition(swap);
-    vt.ready.catch(function() {});
-    vt.updateCallbackDone.catch(function() {});
+    settleTransition(vt);
     return vt.finished;
   };
   var renderInPlace = function(src, body) {
