@@ -18,6 +18,7 @@ import {
   FormConflictChoices,
   initials,
 } from "./form-conflict-dialog";
+import type { ConflictAuthor } from "./conflict-author";
 import {
   type ConflictChoices,
   type ConflictField,
@@ -71,12 +72,14 @@ function Harness({
   changedAgain = false,
   viewer = null,
   fresh = noFresh,
+  author = null,
 }: {
   onApply: (choices: ConflictChoices) => void;
   only?: ConflictField[];
   changedAgain?: boolean;
   viewer?: ConflictViewer | null;
   fresh?: ConflictFreshness;
+  author?: ConflictAuthor | null;
 }) {
   const [choices, setChoices] = useState<ConflictChoices>(() =>
     Object.fromEntries(only.map((field) => [field.pointer, "mine"])),
@@ -87,6 +90,7 @@ function Harness({
       choices={choices}
       changedAgain={changedAgain}
       fresh={fresh}
+      author={author}
       viewer={viewer}
       onChoose={(pointer, choice) =>
         setChoices((now) => ({ ...now, [pointer]: choice }))
@@ -96,8 +100,14 @@ function Harness({
   );
 }
 
-function Heading({ only }: { only: ConflictField[] }) {
-  const heading = conflictHeading(useT(), only);
+function Heading({
+  only,
+  author = null,
+}: {
+  only: ConflictField[];
+  author?: ConflictAuthor | null;
+}) {
+  const heading = conflictHeading(useT(), only, 0, {}, author);
   return (
     <>
       <h2>{heading.title}</h2>
@@ -450,5 +460,125 @@ describe("FormConflictChoices", () => {
     expect(
       resolveFormConflict(plan, { "/headline": "mine", "/subtitle": "theirs" }),
     ).toEqual({ headline: "mine", subtitle: "theirs" });
+  });
+});
+
+describe("who made the other change (hosted v8)", () => {
+  const minutesAgo = (n: number) =>
+    new Date(Date.now() - n * 60_000).toISOString();
+  const ana = (at = minutesAgo(3)): ConflictAuthor => ({
+    name: "Ana Souza",
+    avatarUrl: "https://img/ana.png",
+    at,
+    you: false,
+  });
+
+  test("one field: the title and their card name the member", () => {
+    const at = minutesAgo(3);
+    const heading = render(<Heading only={headline} author={ana(at)} />);
+    expect(heading.getByRole("heading")).toHaveTextContent(
+      "Ana changed the headline while you were editing",
+    );
+    heading.unmount();
+    const view = render(
+      <Harness onApply={() => {}} only={headline} author={ana(at)} />,
+    );
+    const theirs = view.getByRole("radio", { name: "Ana Souza" });
+    expect(theirs).toHaveAccessibleDescription(
+      "saved 3 minutes ago Winter sale on shoes",
+    );
+    expect(within(theirs).getByText("saved 3 minutes ago")).toHaveAttribute(
+      "title",
+      new Date(at).toLocaleString("en", {
+        dateStyle: "medium",
+        timeStyle: "short",
+      }),
+    );
+    // The button is OK whoever the card names.
+    fireEvent.click(theirs);
+    expect(view.getByRole("button", { name: "OK" })).toBeVisible();
+  });
+
+  test("one field: the viewer's own change from another tab or window", () => {
+    const author = { name: "Ana", at: minutesAgo(2), you: true };
+    const heading = render(<Heading only={headline} author={author} />);
+    expect(heading.getByRole("heading")).toHaveTextContent(
+      "You changed the headline in another tab or window",
+    );
+    heading.unmount();
+    const view = render(
+      <Harness onApply={() => {}} only={headline} author={author} />,
+    );
+    expect(
+      view.getByRole("radio", { name: "You, in another tab or window" }),
+    ).toHaveAccessibleDescription("saved 2 minutes ago Winter sale on shoes");
+  });
+
+  test("one field, only the time known: someone else, saved when", () => {
+    const view = render(
+      <Harness
+        onApply={() => {}}
+        only={headline}
+        author={{ at: minutesAgo(5), you: false }}
+      />,
+    );
+    expect(
+      view.getByRole("radio", { name: "Someone else" }),
+    ).toHaveAccessibleDescription("saved 5 minutes ago Winter sale on shoes");
+  });
+
+  /** Their card on every step, Next between them, ending on the last step. */
+  const pickTheirsOnEveryStep = (
+    view: ReturnType<typeof render>,
+    name: string,
+  ) => {
+    for (;;) {
+      fireEvent.click(view.getByRole("radio", { name }));
+      const next = view.queryByRole("button", { name: "Next" });
+      if (!next) return;
+      fireEvent.click(next);
+    }
+  };
+
+  test("several fields: each step names the member, the summary says whose", () => {
+    const view = render(<Harness onApply={() => {}} author={ana()} />);
+    expect(view.getByRole("heading")).toHaveTextContent(
+      "Ana also changed the headline",
+    );
+    expect(
+      view.getByRole("radio", { name: "Ana Souza" }),
+    ).toHaveAccessibleDescription("saved 3 minutes ago Winter sale on shoes");
+    pickTheirsOnEveryStep(view, "Ana Souza");
+    expect(view.getByRole("heading")).toHaveTextContent(
+      "Ana also changed the slides",
+    );
+    expect(view.getByTestId("form-conflict-summary")).toHaveTextContent(
+      "Headline: Ana's · Banner: Ana's · Slides: Ana's",
+    );
+    expect(view.getByRole("button", { name: "OK" })).toBeVisible();
+  });
+
+  test("several fields: the viewer's own change", () => {
+    const view = render(
+      <Harness
+        onApply={() => {}}
+        author={{ name: "Ana", at: minutesAgo(2), you: true }}
+      />,
+    );
+    expect(view.getByRole("heading")).toHaveTextContent(
+      "You also changed the headline in another tab or window",
+    );
+    pickTheirsOnEveryStep(view, "You, in another tab or window");
+    expect(view.getByTestId("form-conflict-summary")).toHaveTextContent(
+      "Headline: theirs · Banner: theirs · Slides: theirs",
+    );
+  });
+
+  test("several fields while who is unknown: someone else", () => {
+    const view = render(<Harness onApply={() => {}} />);
+    expect(view.getByRole("heading")).toHaveTextContent(
+      "Someone else also changed the headline",
+    );
+    expect(view.queryByText(/unknown/i)).toBeNull();
   });
 });

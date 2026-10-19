@@ -14,6 +14,12 @@
 import { useQuery } from "@tanstack/react-query";
 import type { QueryClient } from "@tanstack/react-query";
 import { KEYS } from "@/lib/query-keys";
+import {
+  isMainSchemaChangedResponse,
+  MainSchemaChangedError,
+  mainSchemaHeaders,
+  resetMainSchemaAnswer,
+} from "@/hooks/main-schema-changed";
 
 export interface DecofileScopeParams {
   orgSlug: string;
@@ -127,8 +133,8 @@ export function getDecofileDraft(
  * Whether the branch head moved past `version`: the same read as
  * {@link fetchDecofile}, conditional on the head commit (`If-None-Match`), so
  * an unchanged branch answers 304 with no body and no new draft grant (a new
- * grant is a new preview pointer, which reloads the frame). Failures answer
- * false: the caller asks again on its next tick.
+ * grant is a new preview pointer, which reloads the frame). v7 (Fast Preview)
+ * only. Failures answer false: the caller asks again on its next tick.
  */
 export async function decofileHeadMoved(
   params: DecofileScopeParams,
@@ -136,9 +142,11 @@ export async function decofileHeadMoved(
 ): Promise<boolean> {
   const res = await fetch(decofileApiUrl(params), {
     cache: "no-store",
-    headers: { "if-none-match": `"${version}"` },
+    headers: { ...mainSchemaHeaders("v7"), "if-none-match": `"${version}"` },
   }).catch(() => null);
-  return res?.status === 200;
+  // 409: main turned v8, or the site isn't this project's; the full read
+  // (fetchDecofile) is what tells the editor.
+  return res?.status === 200 || res?.status === 409;
 }
 
 /**
@@ -167,7 +175,16 @@ export async function fetchDecofile(
   queryClient: QueryClient,
   params: DecofileScopeParams,
 ): Promise<Record<string, unknown>> {
-  const res = await fetch(decofileApiUrl(params), { cache: "no-store" });
+  // Only the v7 (legacy) editor reads this shape: a main that turned v8
+  // since answers `main_schema_changed`, and the editor decides again.
+  const res = await fetch(decofileApiUrl(params), {
+    cache: "no-store",
+    headers: mainSchemaHeaders("v7"),
+  });
+  if (await isMainSchemaChangedResponse(res)) {
+    resetMainSchemaAnswer(queryClient, params.orgSlug, params.virtualMcpId);
+    throw new MainSchemaChangedError();
+  }
   if (!res.ok) {
     const err = new Error(`Failed to fetch decofile: ${res.status}`);
     (err as { status?: number }).status = res.status;

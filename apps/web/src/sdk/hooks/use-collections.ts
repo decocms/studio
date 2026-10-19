@@ -274,7 +274,8 @@ export function useCollectionItem<T extends CollectionEntity>(
   scopeKey: string,
   collectionName: string,
   itemId: string | undefined,
-  client: Client,
+  /** null reads as no item, without a request. */
+  client: Client | null,
 ) {
   const { data } = useSuspenseQuery(
     collectionItemQueryOptions<T>(scopeKey, collectionName, itemId, client),
@@ -504,13 +505,22 @@ export function invalidateCollectionQueries(
  * @param scopeKey - The scope key (connectionId for connection-scoped, virtualMcpId for virtual-mcp-scoped, etc.)
  * @param collectionName - The name of the collection (e.g., "CONNECTIONS", "AGENT")
  * @param client - The MCP client used to call collection tools
+ * @param options.silent - No success/failure toasts: the caller owns the
+ *   feedback (a background write the user didn't ask for says nothing).
  * @returns Object with create, update, and delete mutation hooks
  */
 export function useCollectionActions<T extends CollectionEntity>(
   scopeKey: string,
   collectionName: string,
   client: Client,
+  options: { silent?: boolean } = {},
 ) {
+  const notify = options.silent
+    ? { success: () => {}, error: () => {} }
+    : {
+        success: (message: string) => toast.success(message),
+        error: (message: string) => toast.error(message),
+      };
   const queryClient = useQueryClient();
   const upperName = collectionName.toUpperCase();
   const createToolName = `COLLECTION_${upperName}_CREATE`;
@@ -541,11 +551,11 @@ export function useCollectionActions<T extends CollectionEntity>(
     },
     onSuccess: () => {
       invalidateCollection();
-      toast.success(getToastMessage("itemCreatedSuccessfully"));
+      notify.success(getToastMessage("itemCreatedSuccessfully"));
     },
     onError: (error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
-      toast.error(getToastMessage("createItemFailed", { error: message }));
+      notify.error(getToastMessage("createItemFailed", { error: message }));
     },
   });
 
@@ -561,11 +571,11 @@ export function useCollectionActions<T extends CollectionEntity>(
     },
     onSuccess: () => {
       invalidateCollection();
-      toast.success(getToastMessage("itemUpdatedSuccessfully"));
+      notify.success(getToastMessage("itemUpdatedSuccessfully"));
     },
     onError: (error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
-      toast.error(getToastMessage("updateItemFailed", { error: message }));
+      notify.error(getToastMessage("updateItemFailed", { error: message }));
     },
   });
 
@@ -581,11 +591,11 @@ export function useCollectionActions<T extends CollectionEntity>(
     },
     onSuccess: () => {
       invalidateCollection();
-      toast.success(getToastMessage("itemDeletedSuccessfully"));
+      notify.success(getToastMessage("itemDeletedSuccessfully"));
     },
     onError: (error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
-      toast.error(getToastMessage("deleteItemFailed", { error: message }));
+      notify.error(getToastMessage("deleteItemFailed", { error: message }));
     },
   });
 

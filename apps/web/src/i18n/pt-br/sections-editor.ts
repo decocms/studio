@@ -152,6 +152,8 @@ export const sectionsEditor = {
   "sectionsEditor.pageJsonDialog.titleShort": "JSON",
   "sectionsEditor.pageSections.blockNameAlreadyExists":
     "Já existe um bloco com este nome.",
+  "sectionsEditor.pageSections.blockNameIsBlockType":
+    "Um tipo de bloco já usa este nome. Escolha outro.",
   "sectionsEditor.pageSections.blockNameInvalidChars":
     "Use letras, números, espaços, hífens ou sublinhados. Deve começar com uma letra.",
   "sectionsEditor.pageSections.blockNameNoSlashes":
@@ -201,8 +203,16 @@ export const sectionsEditor = {
   "sectionsEditor.secretField.encryptButton": "Criptografar",
   "sectionsEditor.secretField.encryptFailedMessage":
     "Não foi possível criptografar este segredo com a chave do site, então ele não foi salvo. Verifique se o site está no ar e tente novamente.",
+  "sectionsEditor.fileField.tooLarge":
+    "Este arquivo é maior do que o servidor local aceita ({max}).",
+  "sectionsEditor.secretField.backendUnavailableMessage":
+    "Os segredos podem ser editados quando o servidor de conteúdo do site responder.",
   "sectionsEditor.secretField.encryptingMessage":
     "Criptografando com a chave do site…",
+  "sectionsEditor.secretField.legacySecretUnavailableMessage":
+    "Este segredo foi salvo por um site Deco mais antigo e não pode ser editado aqui. Ele é recriptografado quando o site migra.",
+  "sectionsEditor.secretField.noPublicKeyMessage":
+    "Adicione a chave pública do site, .deco/secrets.pub, para editar campos secretos. Os valores são criptografados no seu navegador com ela.",
   "sectionsEditor.secretField.pendingMessage":
     "Ainda não salvo. Pressione Enter para criptografar e salvar.",
   "sectionsEditor.secretField.plaintextStoredMessage":
@@ -308,6 +318,17 @@ export const sectionsEditor = {
   "sectionsEditor.formConflict.yourVersionNotSaved":
     "Sua versão · ainda não salva",
   "sectionsEditor.formConflict.theirVersionSaved": "Versão deles · já salva",
+  "sectionsEditor.formConflict.titleOneNamed":
+    "{name} mudou o campo “{label}” enquanto você editava",
+  "sectionsEditor.formConflict.titleOneYou":
+    "Você mudou o campo “{label}” em outra aba ou janela",
+  "sectionsEditor.formConflict.titleStepNamed":
+    "{name} também mudou o campo “{label}”",
+  "sectionsEditor.formConflict.titleStepYou":
+    "Você também mudou o campo “{label}” em outra aba ou janela",
+  "sectionsEditor.formConflict.summaryTheirsNamed": "a deles",
+  "sectionsEditor.formConflict.youElsewhere": "Você, em outra aba ou janela",
+  "sectionsEditor.formConflict.savedAt": "salva {when}",
   "sectionsEditor.formConflict.empty": "Vazio",
   "sectionsEditor.formConflict.yes": "Sim",
   "sectionsEditor.formConflict.no": "Não",

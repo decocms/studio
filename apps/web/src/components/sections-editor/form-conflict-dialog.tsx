@@ -17,7 +17,9 @@ import {
   useId,
   useState,
 } from "react";
+import { usePreferences } from "@/hooks/use-preferences.ts";
 import { authClient } from "@/lib/auth-client";
+import { formatRelativeTime } from "@/lib/format-time.ts";
 import { isTypingTarget } from "@/lib/keyboard-shortcuts.ts";
 import { type TFunction, useT } from "@/i18n/use-t.ts";
 import {
@@ -30,6 +32,7 @@ import {
   previewValue,
   type ValuePreview,
 } from "./form-conflict";
+import type { ConflictAuthor } from "./conflict-author";
 
 /**
  * Asks the user whose version to keep when they and someone else changed the
@@ -38,8 +41,11 @@ import {
  * field per step, with a dot per field to revisit one (Back and the ←/→ keys
  * too), and on the last step a summary of the picks. Every field starts on
  * "yours", so one click keeps the user's version: OK saves the picks (Next
- * on every step but the last). It must be answered: an alert dialog with no close
- * button, Escape or click outside; nothing of the form's is saved until then.
+ * on every step but the last). On hosted v8 drafts their card names the
+ * member, with their avatar and when they saved (conflict-author.ts), and so
+ * do the titles; elsewhere "Someone else". It must be answered: an alert
+ * dialog with no close button, Escape or click outside; nothing of the form's
+ * is saved until then.
  */
 interface FormConflictChoicesProps {
   fields: ConflictField[];
@@ -50,6 +56,8 @@ interface FormConflictChoicesProps {
   fresh?: ConflictFreshness;
   /** The signed-in user, for the avatar on their card. */
   viewer?: ConflictViewer | null;
+  /** Who made their change, and when; null while unknown. */
+  author?: ConflictAuthor | null;
   onChoose: (pointer: string, choice: ConflictChoice) => void;
   onApply: () => void;
   /**
@@ -111,47 +119,67 @@ const plainHeading = (title: string, description: ReactNode) => (
 );
 
 /**
- * One field: "Someone else changed the title while you were editing". A step
- * of several: "Someone else also changed the title", and on the last one a
- * summary of the picks instead of the hint.
+ * One field: "Ana changed the title while you were editing". A step of
+ * several: "Ana also changed the title", and on the last one a summary of the
+ * picks instead of the hint. "Someone else" while who is unknown, "You … in
+ * another tab or window" for the viewer's own change.
  */
 export function conflictHeading(
   t: TFunction,
   fields: readonly ConflictField[],
   step = 0,
   choices: ConflictChoices = {},
+  author: ConflictAuthor | null = null,
 ): { title: string; description: ReactNode } {
   const field = fields[Math.min(step, fields.length - 1)];
+  const name = author?.you ? undefined : author?.name?.split(/\s+/)[0];
   const vars = {
     field: field ? fieldInSentence(field.label) : "",
     label: field?.label ?? "",
+    name: name ?? "",
   };
+  type Key = Parameters<TFunction>[0];
+  const pick = (one: Key, named: Key, you: Key) =>
+    t(author?.you ? you : name ? named : one, vars);
   if (fields.length <= 1) {
     return {
-      title: t("sectionsEditor.formConflict.titleOne", vars),
+      title: pick(
+        "sectionsEditor.formConflict.titleOne",
+        "sectionsEditor.formConflict.titleOneNamed",
+        "sectionsEditor.formConflict.titleOneYou",
+      ),
       description: t("sectionsEditor.formConflict.descriptionOne"),
     };
   }
   return {
-    title: t("sectionsEditor.formConflict.titleStep", vars),
+    title: pick(
+      "sectionsEditor.formConflict.titleStep",
+      "sectionsEditor.formConflict.titleStepNamed",
+      "sectionsEditor.formConflict.titleStepYou",
+    ),
     description:
       step >= fields.length - 1 ? (
-        <ConflictSummary t={t} fields={fields} choices={choices} />
+        <ConflictSummary t={t} fields={fields} choices={choices} name={name} />
       ) : (
         t("sectionsEditor.formConflict.descriptionStep")
       ),
   };
 }
 
-/** "Title: yours · Button text: theirs", one entry per field. */
+/**
+ * "Title: yours · Button text: theirs", one entry per field ("Ana's" when
+ * the member is known; pt-br keeps "a deles").
+ */
 function ConflictSummary({
   t,
   fields,
   choices,
+  name,
 }: {
   t: TFunction;
   fields: readonly ConflictField[];
   choices: ConflictChoices;
+  name?: string;
 }) {
   return (
     <span data-testid="form-conflict-summary">
@@ -163,7 +191,10 @@ function ConflictSummary({
             {t(
               (choices[field.pointer] ?? "mine") === "mine"
                 ? "sectionsEditor.formConflict.summaryYours"
-                : "sectionsEditor.formConflict.summaryTheirs",
+                : name
+                  ? "sectionsEditor.formConflict.summaryTheirsNamed"
+                  : "sectionsEditor.formConflict.summaryTheirs",
+              { name: name ?? "" },
             )}
           </span>
         </Fragment>
@@ -248,7 +279,13 @@ export function FormConflictChoices(props: FormConflictChoicesProps) {
   };
 
   if (!field) return null;
-  const { title, description } = conflictHeading(t, fields, at, choices);
+  const { title, description } = conflictHeading(
+    t,
+    fields,
+    at,
+    choices,
+    props.author ?? null,
+  );
   // The second click of a double click on Next would land on the button that
   // saves, in the same place on the last step: only a click of its own saves.
   const apply = (event: MouseEvent) => {
@@ -423,6 +460,7 @@ function ConflictCards({
   field,
   choices,
   viewer,
+  author = null,
   onChoose,
   arrows,
 }: FormConflictChoicesProps & {
@@ -430,8 +468,32 @@ function ConflictCards({
   arrows: "all" | "vertical";
 }) {
   const t = useT();
+  const [{ language }] = usePreferences();
   const value = sides(field);
   const choice = choices[field.pointer] ?? "mine";
+  const viewerAvatar = (
+    <Avatar
+      url={viewer?.image ?? undefined}
+      fallback={initials(viewer?.name) || t("sectionsEditor.formConflict.you")}
+      shape="circle"
+      size="sm"
+      className="text-xs"
+    />
+  );
+  const theirAvatar = author?.you ? (
+    viewerAvatar
+  ) : author?.name ? (
+    <Avatar
+      url={author.avatarUrl}
+      fallback={initials(author.name)}
+      shape="circle"
+      size="sm"
+      className="text-xs"
+    />
+  ) : (
+    <Avatar url="icon://user" fallback="" muted shape="circle" size="sm" />
+  );
+  const savedAt = author ? new Date(author.at) : null;
   return (
     <div
       role="radiogroup"
@@ -443,17 +505,7 @@ function ConflictCards({
         side="mine"
         checked={choice === "mine"}
         onChoose={() => onChoose(field.pointer, "mine")}
-        avatar={
-          <Avatar
-            url={viewer?.image ?? undefined}
-            fallback={
-              initials(viewer?.name) || t("sectionsEditor.formConflict.you")
-            }
-            shape="circle"
-            size="sm"
-            className="text-xs"
-          />
-        }
+        avatar={viewerAvatar}
         who={t("sectionsEditor.formConflict.you")}
         meta={t("sectionsEditor.formConflict.yourVersionNotSaved")}
       >
@@ -463,23 +515,29 @@ function ConflictCards({
         side="theirs"
         checked={choice === "theirs"}
         onChoose={() => onChoose(field.pointer, "theirs")}
-        avatar={
-          <Avatar
-            url="icon://user"
-            fallback=""
-            muted
-            shape="circle"
-            size="sm"
-          />
+        avatar={theirAvatar}
+        who={
+          author?.you
+            ? t("sectionsEditor.formConflict.youElsewhere")
+            : author?.name || t("sectionsEditor.formConflict.someoneElse")
         }
-        who={t("sectionsEditor.formConflict.someoneElse")}
-        meta={t("sectionsEditor.formConflict.theirVersionSaved")}
+        meta={
+          savedAt
+            ? t("sectionsEditor.formConflict.savedAt", {
+                when: formatRelativeTime(savedAt, language),
+              })
+            : t("sectionsEditor.formConflict.theirVersionSaved")
+        }
+        metaTitle={savedAt ? exactTime(savedAt, language) : undefined}
       >
         {value("theirs")}
       </ConflictCard>
     </div>
   );
 }
+
+const exactTime = (date: Date, language: string) =>
+  date.toLocaleString(language, { dateStyle: "medium", timeStyle: "short" });
 
 /** "Ana Souza" -> "AS". */
 export function initials(name: string | null | undefined): string {
@@ -499,6 +557,7 @@ function ConflictCard({
   avatar,
   who,
   meta,
+  metaTitle,
   children,
 }: {
   side: ConflictChoice;
@@ -507,6 +566,8 @@ function ConflictCard({
   avatar: ReactNode;
   who: string;
   meta: string;
+  /** The exact time, on hover. */
+  metaTitle?: string;
   children: ReactNode;
 }) {
   const id = useId();
@@ -536,7 +597,9 @@ function ConflictCard({
           >
             {who}
           </span>
-          <span id={`${id}-meta`}>{meta}</span>
+          <span id={`${id}-meta`} title={metaTitle}>
+            {meta}
+          </span>
         </span>
         <span
           id={`${id}-value`}

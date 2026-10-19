@@ -92,3 +92,86 @@ describe("expandRecursiveSchema", () => {
     expect(expandRecursiveSchema(cut, undefined)).toBe(cut);
   });
 });
+
+describe("a self-referencing menu, six levels deep (A9: main's behaviour)", () => {
+  /**
+   * A Header menu, `MenuItem.children: MenuItem[]`, as commerce
+   * `SiteNavigationElementLeaf.children`. resolveSchema() cuts the re-entered
+   * `$ref`; the form expands it one level at a time as it is opened. There is
+   * no depth cap: every level renders and edits the same fields.
+   */
+  const meta: LiveMeta = {
+    manifest: {
+      blocks: {
+        sections: {
+          "site/sections/Header.tsx": { $ref: "#/definitions/Header" },
+        },
+      },
+    },
+    schema: {
+      definitions: {
+        Header: {
+          type: "object",
+          properties: {
+            menu: { type: "array", items: { $ref: "#/definitions/MenuItem" } },
+          },
+        },
+        MenuItem: {
+          type: "object",
+          title: "{{{label}}}",
+          properties: {
+            label: { type: "string", title: "Label" },
+            href: { type: "string" },
+            children: {
+              type: "array",
+              items: { $ref: "#/definitions/MenuItem" },
+            },
+          },
+        },
+      },
+    },
+  };
+
+  /** What the form does on the way down: renderField, then ArrayField. */
+  const openField = (schema: SchemaProperty | undefined) =>
+    expandRecursiveSchema(schema, meta);
+  const openItem = (array: SchemaProperty | undefined) =>
+    expandRecursiveSchema(openField(array)?.items, meta);
+
+  const DEPTH = 6;
+
+  it("renders label, href and children at every level", () => {
+    const root = cachedResolveSchema("site/sections/Header.tsx", meta);
+    let item = openItem(root?.properties?.menu);
+    for (let level = 1; level <= DEPTH; level++) {
+      expect(item?.properties?.label?.type).toBe("string");
+      expect(item?.properties?.label?.title).toBe("Label");
+      expect(item?.properties?.href?.type).toBe("string");
+      expect(item?.properties?.children?.type).toBe("array");
+      item = openItem(item?.properties?.children);
+    }
+    expect(item?.properties?.label?.type).toBe("string");
+  });
+
+  it("edits a level-six item's fields like a top-level one", () => {
+    const leaf = { label: "Leaf", href: "/leaf", children: [] };
+    let value: Record<string, unknown> = leaf;
+    for (let level = DEPTH - 1; level >= 1; level--) {
+      value = { label: `L${level}`, href: `/l${level}`, children: [value] };
+    }
+
+    const root = cachedResolveSchema("site/sections/Header.tsx", meta);
+    let item = openItem(root?.properties?.menu);
+    let node: Record<string, unknown> = value;
+    for (let level = 1; level < DEPTH; level++) {
+      item = openItem(item?.properties?.children);
+      node = (node.children as Record<string, unknown>[])[0]!;
+    }
+    expect(node).toBe(leaf);
+    // Every stored key of the deepest item has a field to edit it in.
+    for (const key of Object.keys(node)) {
+      expect(item?.properties?.[key]).toBeDefined();
+    }
+    expect(item?.titleBy).toBe("{{{label}}}");
+  });
+});
