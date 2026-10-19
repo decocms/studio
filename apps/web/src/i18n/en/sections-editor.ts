@@ -271,17 +271,30 @@ export const sectionsEditor = {
     "This block changed while you were editing and could not be saved. The latest version is loaded.",
   "sectionsEditor.sectionsEditor.blockFieldsChangedElsewhere":
     "Not saved: {fields} changed while you were editing. The latest version is loaded.",
-  "sectionsEditor.formConflict.title":
-    "Someone else changed this while you were editing",
-  "sectionsEditor.formConflict.description":
-    "You both changed the fields below. Yours is selected in each one; switch any field to theirs if you prefer. Their version stays saved until you save your choice.",
+  "sectionsEditor.formConflict.titleOne":
+    "Someone else changed the {field} while you were editing",
+  "sectionsEditor.formConflict.titleMany":
+    "Someone else changed {count} fields while you were editing",
+  "sectionsEditor.formConflict.descriptionOne":
+    "Pick the one to keep. The other is discarded.",
+  "sectionsEditor.formConflict.descriptionMany":
+    "Choose which version to keep for each field.",
   "sectionsEditor.formConflict.changedAgain":
-    "Their version changed again while this was open. The fields below show it.",
-  "sectionsEditor.formConflict.yourVersion": "Your version",
-  "sectionsEditor.formConflict.theirVersion": "Their version",
+    "Their version changed again while this was open. It's shown below.",
+  "sectionsEditor.formConflict.you": "You",
+  "sectionsEditor.formConflict.someoneElse": "Someone else",
+  "sectionsEditor.formConflict.yourVersionNotSaved":
+    "Your version · not saved yet",
+  "sectionsEditor.formConflict.theirVersionSaved":
+    "Their version · already saved",
+  "sectionsEditor.formConflict.yours": "Yours",
+  "sectionsEditor.formConflict.theirs": "Theirs",
   "sectionsEditor.formConflict.keepYours": "Keep yours",
   "sectionsEditor.formConflict.useTheirs": "Use theirs",
-  "sectionsEditor.formConflict.apply": "Save selected versions",
+  "sectionsEditor.formConflict.keepAllYours": "Keep yours",
+  "sectionsEditor.formConflict.useAllTheirs": "Use theirs",
+  "sectionsEditor.formConflict.keepMix": "Keep a mix",
+  "sectionsEditor.formConflict.useTheirsForAll": "Use theirs for all",
   "sectionsEditor.formConflict.empty": "Empty",
   "sectionsEditor.formConflict.yes": "Yes",
   "sectionsEditor.formConflict.no": "No",
