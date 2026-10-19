@@ -298,6 +298,23 @@ async function resolvePerRequestModels(
  * See spec:
  * docs/superpowers/specs/2026-06-03-lock-thread-harness-and-branch-design.md
  */
+/**
+ * Mirrors prepareRun's "not_thread_owner" check, but before anything is
+ * persisted or broadcast. Exported so the guard can be unit-tested without
+ * standing up the rest of `validate()`.
+ */
+export function assertThreadOwnedByCaller(
+  thread: Pick<Thread, "created_by"> | null,
+  userId: string,
+): void {
+  if (thread && thread.created_by !== userId) {
+    throw new HTTPException(403, {
+      message:
+        "You are not allowed to write to this thread because you are not the owner",
+    });
+  }
+}
+
 export function applyThreadLock(args: {
   taskIdInput: string | undefined;
   thread: Pick<Thread, "harness_id" | "branch"> | null;
@@ -560,6 +577,7 @@ async function validate(
   const lockedThread = taskIdInput
     ? await ctx.storage.threads.get(taskIdInput)
     : null;
+  assertThreadOwnedByCaller(lockedThread, userId);
   const { harnessId: effectiveHarnessId, branch: effectiveBranch } =
     applyThreadLock({
       taskIdInput,

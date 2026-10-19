@@ -14,6 +14,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   applyThreadLock,
+  assertThreadOwnedByCaller,
   defaultHarnessForAgent,
   assertHostedHarness,
   assertPersistedHostedRuntime,
@@ -377,6 +378,24 @@ describe("applyThreadLock", () => {
     expect(result.locked).toBe(false);
     expect(result.harnessId).toBe("decopilot");
     expect(result.branch).toBe("feature-x");
+  });
+});
+
+describe("assertThreadOwnedByCaller", () => {
+  test("no thread row (first message ever): never throws", () => {
+    expect(() => assertThreadOwnedByCaller(null, "user-owner")).not.toThrow();
+  });
+
+  test("caller is the thread's creator: never throws", () => {
+    expect(() =>
+      assertThreadOwnedByCaller({ created_by: "user-owner" }, "user-owner"),
+    ).not.toThrow();
+  });
+
+  test("caller is a different org member: throws 403", () => {
+    expect(() =>
+      assertThreadOwnedByCaller({ created_by: "user-owner" }, "user-other"),
+    ).toThrow(/not the owner/);
   });
 });
 
