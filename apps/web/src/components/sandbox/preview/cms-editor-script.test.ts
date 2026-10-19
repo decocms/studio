@@ -220,16 +220,18 @@ describe("CMS_EDITOR_SCRIPT", () => {
 // ready promise with "AbortError: Transition was skipped".
 describe("runSwapTransition", () => {
   const buildRunner = (document: unknown) => {
-    const start = CMS_EDITOR_SCRIPT.indexOf(
-      "var runSwapTransition = function(",
-    );
+    const start = CMS_EDITOR_SCRIPT.indexOf("var settleTransition = function(");
     const end = CMS_EDITOR_SCRIPT.indexOf("var renderInPlace", start);
     expect(start).toBeGreaterThanOrEqual(0);
     expect(end).toBeGreaterThan(start);
     const src = CMS_EDITOR_SCRIPT.slice(start, end);
-    return new Function("document", `${src}; return runSwapTransition;`)(
-      document,
-    ) as (swap: () => void) => Promise<unknown>;
+    return new Function(
+      "document",
+      "window",
+      `${src}; return runSwapTransition;`,
+    )(document, { addEventListener: () => {} }) as (
+      swap: () => void,
+    ) => Promise<unknown>;
   };
 
   it("leaves no rejection unhandled when the transition is skipped", async () => {
@@ -266,5 +268,56 @@ describe("runSwapTransition", () => {
     let swapped = 0;
     await buildRunner({})(() => swapped++);
     expect(swapped).toBe(1);
+  });
+});
+
+// A site with `@view-transition { navigation: auto }` gets a cross-document
+// transition on every reload a save makes; the next save's navigation skips
+// it, and the page being left rejects its ready promise (QA-8027 step 8).
+describe("outgoing page transitions", () => {
+  const buildPageSwap = (window: { addEventListener: unknown }) => {
+    const start = CMS_EDITOR_SCRIPT.indexOf("var settleTransition = function(");
+    const end = CMS_EDITOR_SCRIPT.indexOf("var runSwapTransition", start);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    new Function("window", CMS_EDITOR_SCRIPT.slice(start, end))(window);
+  };
+  const skipped = () => {
+    const error = new Error("Transition was skipped");
+    error.name = "AbortError";
+    return error;
+  };
+
+  it("settles a skipped pageswap transition, once per page", async () => {
+    const listeners: { type: string; fn: (e: unknown) => void }[] = [];
+    const win = {
+      addEventListener: (type: string, fn: (e: unknown) => void) =>
+        listeners.push({ type, fn }),
+    };
+    buildPageSwap(win);
+    // Injected again (mode switch, page navigation): still one listener.
+    buildPageSwap(win);
+    expect(listeners.map((l) => l.type)).toEqual(["pageswap"]);
+
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandled.push(reason);
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      for (let i = 0; i < 5; i++) {
+        listeners[0]!.fn({
+          viewTransition: {
+            ready: Promise.reject(skipped()),
+            updateCallbackDone: Promise.resolve(),
+            finished: Promise.resolve(),
+          },
+        });
+      }
+      // A navigation without a transition (the site didn't opt in).
+      listeners[0]!.fn({ viewTransition: null });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
   });
 });
