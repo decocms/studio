@@ -298,6 +298,7 @@ export const sectionsEditor = {
   "sectionsEditor.formConflict.stepChangedAgain": "{label}, mudou de novo",
   "sectionsEditor.formConflict.back": "Voltar",
   "sectionsEditor.formConflict.next": "Próximo",
+  "sectionsEditor.formConflict.ok": "OK",
   "sectionsEditor.formConflict.changedAgain":
     "A versão deles mudou de novo enquanto isto estava aberto e já aparece abaixo.",
   "sectionsEditor.formConflict.changedAgainSteps":
@@ -307,12 +308,6 @@ export const sectionsEditor = {
   "sectionsEditor.formConflict.yourVersionNotSaved":
     "Sua versão · ainda não salva",
   "sectionsEditor.formConflict.theirVersionSaved": "Versão deles · já salva",
-  "sectionsEditor.formConflict.keepYours": "Manter a sua",
-  "sectionsEditor.formConflict.useTheirs": "Usar a deles",
-  "sectionsEditor.formConflict.keepAllYours": "Manter as suas",
-  "sectionsEditor.formConflict.useAllTheirs": "Usar as deles",
-  "sectionsEditor.formConflict.keepMix": "Manter a combinação",
-  "sectionsEditor.formConflict.useTheirsForAll": "Usar a deles em todos",
   "sectionsEditor.formConflict.empty": "Vazio",
   "sectionsEditor.formConflict.yes": "Sim",
   "sectionsEditor.formConflict.no": "Não",
