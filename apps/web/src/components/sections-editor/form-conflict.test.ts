@@ -5,6 +5,7 @@ import {
   conflictFields,
   defaultConflictChoices,
   diffWords,
+  markTheirsChanged,
   planFormConflict,
   previewValue,
   refreshWaitingChoice,
@@ -357,6 +358,7 @@ describe("refreshWaitingChoice", () => {
   it("shows their newer version in place, keeping the picks that still apply", () => {
     const newer = { ...plan.theirs, subtitle: "Their newer subtitle" };
     const refreshed = refreshWaitingChoice(waiting, newer, notOwn);
+    expect(refreshed?.fresh).toEqual({ "/subtitle": 1 });
     expect(refreshed?.plan.theirs).toEqual(newer);
     expect(refreshed?.plan.mine).toEqual(plan.mine);
     expect(refreshed?.plan.pointers).toEqual(["/headline", "/subtitle"]);
@@ -389,5 +391,49 @@ describe("refreshWaitingChoice", () => {
       subtitle: "My subtitle",
     };
     expect(refreshWaitingChoice(waiting, agrees, notOwn)).toBeNull();
+  });
+});
+
+// A ring on the dot of each step whose "their" version changed while open.
+describe("markTheirsChanged", () => {
+  const plan = planFormConflict({
+    ancestor,
+    mine: { ...ancestor, headline: "Mine", subtitle: "My subtitle" },
+    theirs: { ...ancestor, headline: "Theirs", subtitle: "Their subtitle" },
+  });
+
+  it("counts a change for each value whose their version moved", () => {
+    const next = planFormConflict({
+      ...plan,
+      theirs: { ...plan.theirs, headline: "Theirs again" },
+    });
+    const once = markTheirsChanged(plan, next);
+    expect(once).toEqual({ "/headline": 1 });
+    const again = planFormConflict({
+      ...plan,
+      theirs: { ...plan.theirs, headline: "Theirs, third", subtitle: "New" },
+    });
+    expect(markTheirsChanged(next, again, once)).toEqual({
+      "/headline": 2,
+      "/subtitle": 1,
+    });
+  });
+
+  it("leaves the counts alone when their version didn't move", () => {
+    const fresh = { "/headline": 1 };
+    const mineMoved = planFormConflict({
+      ...plan,
+      mine: { ...plan.mine, headline: "Mine again" },
+    });
+    expect(markTheirsChanged(plan, mineMoved, fresh)).toBe(fresh);
+  });
+
+  it("counts a value newly in conflict", () => {
+    const one = planFormConflict({
+      ancestor,
+      mine: { ...ancestor, headline: "Mine", subtitle: "My subtitle" },
+      theirs: { ...ancestor, headline: "Theirs" },
+    });
+    expect(markTheirsChanged(one, plan)).toEqual({ "/subtitle": 1 });
   });
 });

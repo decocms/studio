@@ -32,10 +32,11 @@ const MERGED = "Someone else also edited this block";
 /** The dialog that asks whose version to keep for values both changed. */
 // An alert dialog: it must be answered (no close button, Escape or click
 // outside). Named for the field ("Someone else changed the headline while
-// you were editing"), or the count of fields.
+// you were editing"); with several, for the field on screen ("Someone else
+// also changed the subtitle"), one field per step.
 const conflictDialog = (page: Page) =>
   page.getByRole("alertdialog", {
-    name: /^Someone else changed .+ while you were editing$/,
+    name: /^Someone else (changed the .+ while you were editing|also changed the .+)$/,
   });
 
 const hero = {
@@ -622,30 +623,56 @@ test.describe("Site Editor stale section form", () => {
       await subtitle.fill("Draft subtitle");
       const dialog = conflictDialog(page);
       await expect(dialog).toBeVisible({ timeout: 20_000 });
-      // Two fields: a Yours / Theirs switch per field.
+      // Two fields: one per step, the same two cards, yours chosen.
       await expect(dialog).toHaveAccessibleName(
-        "Someone else changed 2 fields while you were editing",
+        "Someone else also changed the headline",
       );
-      await expect(dialog.getByRole("radiogroup")).toHaveCount(2);
-      // Headline stays on yours (the default); Subtitle switches to theirs,
-      // and shows their value.
-      const subtitleChoice = dialog
-        .getByRole("listitem")
-        .filter({ has: page.getByRole("radiogroup", { name: "Subtitle" }) });
+      const steps = dialog.getByRole("group", { name: "Fields to choose" });
+      await expect(steps.getByRole("button")).toHaveCount(2);
       await expect(
-        dialog
-          .getByRole("radiogroup", { name: "Headline" })
-          .getByRole("radio", { name: "Yours" }),
+        steps.getByRole("button", { name: "Headline" }),
+      ).toHaveAttribute("aria-current", "step");
+      await expect(dialog.getByText("1 of 2")).toBeVisible();
+      const field = (name: string) =>
+        dialog.getByRole("radiogroup", { name, exact: true });
+      await expect(
+        field("Headline").getByRole("radio", { name: "You" }),
       ).toBeChecked();
-      await expect(subtitleChoice.getByTestId("conflict-mine")).toHaveText(
+      await expect(field("Headline").getByTestId("conflict-theirs")).toHaveText(
+        "Published headline",
+      );
+      await dialog.getByRole("button", { name: "Next" }).click();
+
+      // The last step: Subtitle, and a summary of the picks. Subtitle
+      // switches to theirs.
+      await expect(dialog).toHaveAccessibleName(
+        "Someone else also changed the subtitle",
+      );
+      await expect(dialog.getByText("2 of 2")).toBeVisible();
+      await expect(field("Subtitle").getByTestId("conflict-mine")).toHaveText(
         "Draft subtitle",
       );
-      await dialog
-        .getByRole("radiogroup", { name: "Subtitle" })
-        .getByRole("radio", { name: "Theirs" })
-        .click();
-      await expect(subtitleChoice.getByTestId("conflict-theirs")).toHaveText(
+      await expect(field("Subtitle").getByTestId("conflict-theirs")).toHaveText(
         "Published subtitle",
+      );
+      await field("Subtitle")
+        .getByRole("radio", { name: "Someone else" })
+        .click();
+      await expect(dialog.getByTestId("form-conflict-summary")).toHaveText(
+        "Headline: yours · Subtitle: theirs",
+      );
+
+      // Back, and → again: the picks stay; nothing is saved meanwhile.
+      await dialog.getByRole("button", { name: "Back" }).click();
+      await expect(
+        field("Headline").getByRole("radio", { name: "You" }),
+      ).toBeChecked();
+      await page.keyboard.press("ArrowRight");
+      await expect(
+        field("Subtitle").getByRole("radio", { name: "Someone else" }),
+      ).toBeChecked();
+      expect(await storedBlock(page.request, url, "SharedHero")).toEqual(
+        published,
       );
       await dialog.getByRole("button", { name: "Keep a mix" }).click();
       await expect(dialog).toBeHidden();
@@ -658,6 +685,60 @@ test.describe("Site Editor stale section form", () => {
         .toEqual(chosen);
       await expect(headline).toHaveValue("Draft headline");
       await expect(subtitle).toHaveValue("Published subtitle");
+    } finally {
+      await previewSite.close();
+    }
+  });
+
+  test("Use theirs for all picks theirs for every field and asks once to save", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const previewSite = await startPreviewSite();
+    try {
+      const { blocks, headline, url } = await openEditor(
+        page,
+        orgSlug,
+        previewSite.url,
+        { __resolveType: "SharedHero" },
+      );
+      const published = {
+        ...hero,
+        headline: "Published headline",
+        subtitle: "Published subtitle",
+      };
+      await writeElsewhere(page.request, url, "SharedHero", published);
+
+      const subtitle = blocks.getByRole("textbox", {
+        name: "Subtitle",
+        exact: true,
+      });
+      await headline.fill("Draft headline");
+      await subtitle.fill("Draft subtitle");
+      const dialog = conflictDialog(page);
+      await expect(dialog).toBeVisible({ timeout: 20_000 });
+      await expect(dialog.getByText("1 of 2")).toBeVisible();
+
+      // From the first step: every field on theirs, the last step's summary
+      // shown, nothing saved until the one click that names it.
+      await dialog.getByRole("button", { name: "Use theirs for all" }).click();
+      await expect(dialog.getByText("2 of 2")).toBeVisible();
+      await expect(dialog.getByTestId("form-conflict-summary")).toHaveText(
+        "Headline: theirs · Subtitle: theirs",
+      );
+      expect(await storedBlock(page.request, url, "SharedHero")).toEqual(
+        published,
+      );
+      await dialog
+        .getByRole("button", { name: "Use theirs", exact: true })
+        .click();
+      await expect(dialog).toBeHidden();
+
+      await expect(headline).toHaveValue("Published headline");
+      await expect(subtitle).toHaveValue("Published subtitle");
+      expect(await storedBlock(page.request, url, "SharedHero")).toEqual(
+        published,
+      );
     } finally {
       await previewSite.close();
     }

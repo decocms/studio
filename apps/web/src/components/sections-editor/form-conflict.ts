@@ -158,19 +158,59 @@ export function carryConflictChoices(
 }
 
 /**
+ * How many times each value's "their" version changed while the dialog was
+ * open: a step whose count went up since the user last looked at it gets a
+ * ring on its dot (form-conflict-dialog.tsx).
+ */
+export type ConflictFreshness = Readonly<Record<string, number>>;
+
+/**
+ * `fresh` with one more change counted for each value of `next` whose "their"
+ * version is not the one `previous` showed (a value newly in conflict too).
+ */
+export function markTheirsChanged(
+  previous: FormConflictPlan,
+  next: FormConflictPlan,
+  fresh: ConflictFreshness = {},
+): ConflictFreshness {
+  const changed = next.pointers.filter(
+    (pointer) =>
+      !previous.pointers.includes(pointer) ||
+      canonicalBlockJson(valueAtPointer(previous.theirs, pointer)) !==
+        canonicalBlockJson(valueAtPointer(next.theirs, pointer)),
+  );
+  if (changed.length === 0) return fresh;
+  return {
+    ...fresh,
+    ...Object.fromEntries(
+      changed.map((pointer) => [pointer, (fresh[pointer] ?? 0) + 1]),
+    ),
+  };
+}
+
+/**
  * A waiting choice against the section as stored now (`nowStored`, null when
  * it can't be found where the form saves): their version becomes the newer
  * copy, the picks whose two versions didn't change are kept, and the dialog
- * says it changed again. Null when there is nothing to refresh: the same
+ * says it changed again, counting the values whose "their" version moved
+ * (`fresh`). Null when there is nothing to refresh: the same
  * copy, a different kind of section, a version the form itself saved
  * (`isOwn`), or no clash left (the choice then stays as asked: applying it
  * merges onto the newer copy whichever version was picked).
  */
 export function refreshWaitingChoice(
-  waiting: { plan: FormConflictPlan; choices: ConflictChoices },
+  waiting: {
+    plan: FormConflictPlan;
+    choices: ConflictChoices;
+    fresh?: ConflictFreshness;
+  },
   nowStored: Record<string, unknown> | null,
   isOwn: (stored: Record<string, unknown>) => boolean,
-): { plan: FormConflictPlan; choices: ConflictChoices } | null {
+): {
+  plan: FormConflictPlan;
+  choices: ConflictChoices;
+  fresh: ConflictFreshness;
+} | null {
   if (
     !nowStored ||
     sectionTypeChanged(waiting.plan.ancestor, nowStored) ||
@@ -184,6 +224,7 @@ export function refreshWaitingChoice(
   return {
     plan,
     choices: carryConflictChoices(waiting.plan, waiting.choices, plan),
+    fresh: markTheirsChanged(waiting.plan, plan, waiting.fresh),
   };
 }
 

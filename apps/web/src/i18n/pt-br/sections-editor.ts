@@ -285,21 +285,28 @@ export const sectionsEditor = {
     "Não foi possível salvar: {fields} mudou enquanto você editava. A versão mais recente foi carregada.",
   "sectionsEditor.formConflict.titleOne":
     "Outra pessoa mudou o campo “{label}” enquanto você editava",
-  "sectionsEditor.formConflict.titleMany":
-    "Outra pessoa mudou {count} campos enquanto você editava",
   "sectionsEditor.formConflict.descriptionOne":
     "Escolha qual versão manter. A outra é descartada.",
-  "sectionsEditor.formConflict.descriptionMany":
-    "Escolha qual versão manter em cada campo.",
+  "sectionsEditor.formConflict.titleStep":
+    "Outra pessoa também mudou o campo “{label}”",
+  "sectionsEditor.formConflict.descriptionStep":
+    "Escolha qual versão manter. Dá para voltar antes de salvar.",
+  "sectionsEditor.formConflict.summaryYours": "a sua",
+  "sectionsEditor.formConflict.summaryTheirs": "a deles",
+  "sectionsEditor.formConflict.steps": "Campos para escolher",
+  "sectionsEditor.formConflict.stepCount": "{step} de {count}",
+  "sectionsEditor.formConflict.stepChangedAgain": "{label}, mudou de novo",
+  "sectionsEditor.formConflict.back": "Voltar",
+  "sectionsEditor.formConflict.next": "Próximo",
   "sectionsEditor.formConflict.changedAgain":
     "A versão deles mudou de novo enquanto isto estava aberto e já aparece abaixo.",
+  "sectionsEditor.formConflict.changedAgainSteps":
+    "A versão deles mudou de novo enquanto isto estava aberto. Cada etapa já mostra a mais nova.",
   "sectionsEditor.formConflict.you": "Você",
   "sectionsEditor.formConflict.someoneElse": "Outra pessoa",
   "sectionsEditor.formConflict.yourVersionNotSaved":
     "Sua versão · ainda não salva",
   "sectionsEditor.formConflict.theirVersionSaved": "Versão deles · já salva",
-  "sectionsEditor.formConflict.yours": "Sua",
-  "sectionsEditor.formConflict.theirs": "Deles",
   "sectionsEditor.formConflict.keepYours": "Manter a sua",
   "sectionsEditor.formConflict.useTheirs": "Usar a deles",
   "sectionsEditor.formConflict.keepAllYours": "Manter as suas",

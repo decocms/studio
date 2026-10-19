@@ -273,22 +273,29 @@ export const sectionsEditor = {
     "Not saved: {fields} changed while you were editing. The latest version is loaded.",
   "sectionsEditor.formConflict.titleOne":
     "Someone else changed the {field} while you were editing",
-  "sectionsEditor.formConflict.titleMany":
-    "Someone else changed {count} fields while you were editing",
   "sectionsEditor.formConflict.descriptionOne":
     "Pick the one to keep. The other is discarded.",
-  "sectionsEditor.formConflict.descriptionMany":
-    "Choose which version to keep for each field.",
+  "sectionsEditor.formConflict.titleStep":
+    "Someone else also changed the {field}",
+  "sectionsEditor.formConflict.descriptionStep":
+    "Pick the one to keep. You can go back before saving.",
+  "sectionsEditor.formConflict.summaryYours": "yours",
+  "sectionsEditor.formConflict.summaryTheirs": "theirs",
+  "sectionsEditor.formConflict.steps": "Fields to choose",
+  "sectionsEditor.formConflict.stepCount": "{step} of {count}",
+  "sectionsEditor.formConflict.stepChangedAgain": "{label}, changed again",
+  "sectionsEditor.formConflict.back": "Back",
+  "sectionsEditor.formConflict.next": "Next",
   "sectionsEditor.formConflict.changedAgain":
     "Their version changed again while this was open. It's shown below.",
+  "sectionsEditor.formConflict.changedAgainSteps":
+    "Their version changed again while this was open. Each step now shows the newer one.",
   "sectionsEditor.formConflict.you": "You",
   "sectionsEditor.formConflict.someoneElse": "Someone else",
   "sectionsEditor.formConflict.yourVersionNotSaved":
     "Your version · not saved yet",
   "sectionsEditor.formConflict.theirVersionSaved":
     "Their version · already saved",
-  "sectionsEditor.formConflict.yours": "Yours",
-  "sectionsEditor.formConflict.theirs": "Theirs",
   "sectionsEditor.formConflict.keepYours": "Keep yours",
   "sectionsEditor.formConflict.useTheirs": "Use theirs",
   "sectionsEditor.formConflict.keepAllYours": "Keep yours",
