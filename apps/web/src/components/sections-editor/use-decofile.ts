@@ -5,7 +5,16 @@ import { exponentialBackoffWithJitter } from "@decocms/shared/std";
 import { KEYS } from "@/lib/query-keys";
 import { decoRepoPath } from "./deco-repo-path";
 import { parseDecofileBody } from "./decofile-body";
-import { fetchDecofile } from "./decofile-api";
+import {
+  decofileHeadMoved,
+  decofileWriteMutationKey,
+  fetchDecofile,
+  getDecofileDraft,
+} from "./decofile-api";
+import {
+  CONFLICT_DIALOG_POLL_MS,
+  useConflictDialogPoll,
+} from "./conflict-dialog-poll";
 import { buildDecofileFetchUrl } from "./preview-fetch-url";
 import { readCommittedJson } from "./read-committed-file";
 import { decofileErrorStatus } from "./decofile-read-status";
@@ -68,7 +77,15 @@ export function useDecofileCacheKey(
 
 export function useDecofile(
   params: UseDecofileParams | null,
-  options?: { fetchEnabled?: boolean },
+  options?: {
+    fetchEnabled?: boolean;
+    /**
+     * Read again every few seconds while true: a same-field conflict dialog
+     * is open, and "their version" must follow the stored copy
+     * (conflict-dialog-poll.ts). One poll however many observers ask.
+     */
+    pollWhile?: boolean;
+  },
 ) {
   /**
    * Local mode reads `/.decofile` straight from the pasted tunnel (a live dev
@@ -111,8 +128,47 @@ export function useDecofile(
   const fastPreviewActive =
     useSessionRuntime(params?.virtualMcpId).runtime === "cms";
   const queryClient = useQueryClient();
+  const queryKey = KEYS.decofile(key);
+  useConflictDialogPoll(!!options?.pollWhile && !!params, {
+    // A write's own re-read is on its way; a read running or just landed
+    // already answers this tick.
+    skip: () => {
+      if (!params) return true;
+      if (
+        queryClient.isMutating({
+          mutationKey: decofileWriteMutationKey(
+            params.orgSlug,
+            params.virtualMcpId,
+            params.branch,
+          ),
+        }) > 0
+      ) {
+        return true;
+      }
+      const state = queryClient.getQueryState(queryKey);
+      return (
+        state?.fetchStatus === "fetching" ||
+        Date.now() - (state?.dataUpdatedAt ?? 0) < CONFLICT_DIALOG_POLL_MS / 2
+      );
+    },
+    read: async () => {
+      if (!params) return;
+      // Fast Preview (v7): ask whether the branch head moved before reading
+      // it whole, so an unchanged branch costs no body and keeps the
+      // preview's draft pointer (each full read signs a new grant). The
+      // content protocol's own read is already conditional.
+      if (!protocol && fastPreviewActive && !localOverride) {
+        const version = getDecofileDraft(queryClient, params)?.version;
+        if (version && !(await decofileHeadMoved(params, version))) return;
+      }
+      await queryClient.refetchQueries(
+        { queryKey, exact: true },
+        { cancelRefetch: false },
+      );
+    },
+  });
   return useQuery({
-    queryKey: KEYS.decofile(key),
+    queryKey,
     queryFn: async () => {
       if (protocol) {
         const content = await pollProtocolContent(

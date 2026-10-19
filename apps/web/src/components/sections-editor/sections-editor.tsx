@@ -59,6 +59,7 @@ import {
   defaultConflictChoices,
   type FormConflictPlan,
   planFormConflict,
+  refreshWaitingChoice,
   resolveFormConflict,
 } from "./form-conflict";
 import { FormConflictDialog } from "./form-conflict-dialog";
@@ -315,8 +316,17 @@ export function SectionsEditor({
   const previewFetchParams = previewReady
     ? { orgSlug, virtualMcpId, branch, threadId, previewUrl }
     : null;
-  const { data: decofile, isLoading: decofileLoading } =
-    useDecofile(previewFetchParams);
+  // See formConflictsRef; the dialog shows the first, one at a time, and
+  // stays open until the user saves a choice.
+  const [formConflicts, setFormConflictsState] = useState<
+    PendingFormConflict[]
+  >([]);
+  // While it is open, the stored blocks are read again every few seconds, so
+  // "their version" refreshes in place (the re-plan below, on render).
+  const { data: decofile, isLoading: decofileLoading } = useDecofile(
+    previewFetchParams,
+    { pollWhile: formConflicts.length > 0 },
+  );
   const { data: meta, isLoading: metaLoading } =
     useLiveMeta(previewFetchParams);
   // Classic keeps the breadcrumb shape it has always had; the merged
@@ -590,11 +600,6 @@ export function SectionsEditor({
   // A request to re-seed the open form from the stored section (see reloadStaleForm).
   const [formReloadRequest, setFormReloadRequest] = useState(0);
   const [formReloadHandled, setFormReloadHandled] = useState(0);
-  // See formConflictsRef; the dialog shows the first, one at a time, and
-  // stays open until the user saves a choice.
-  const [formConflicts, setFormConflictsState] = useState<
-    PendingFormConflict[]
-  >([]);
   // Who made the change the dialog shows (hosted v8 drafts only): read
   // again when theirs changes.
   const conflictAuthor = useConflictAuthor(
@@ -1000,8 +1005,9 @@ export function SectionsEditor({
   }
 
   // Their version changed again while the user's choice waits (the editor
-  // read a newer copy): the dialog shows that one, keeping the choices that
-  // still apply. Nothing is written until they apply.
+  // read a newer copy, polled while the dialog is open): the dialog shows
+  // that one, keeping the choices that still apply. Nothing is written until
+  // they apply.
   const waitingChoice = formConflicts[0];
   if (waitingChoice) {
     const { formBase: waitingBase, target: waitingTarget } = waitingChoice;
@@ -1016,34 +1022,19 @@ export function SectionsEditor({
             decofile,
           )
         : null;
-    if (
-      nowStored &&
-      !sectionTypeChanged(waitingChoice.plan.ancestor, nowStored) &&
-      formSourceMovedOn(waitingChoice.plan.theirs, nowStored) &&
-      !isOwnVersion(waitingBase, nowStored)
-    ) {
-      const plan = planFormConflict({
-        ...waitingChoice.plan,
-        theirs: nowStored,
-      });
-      // With no clash left, the choice stays as asked: applying it merges
-      // onto the newer copy whichever version was picked.
-      if (plan.pointers.length > 0) {
-        const updated: PendingFormConflict = {
-          ...waitingChoice,
-          plan,
-          choices: carryConflictChoices(
-            waitingChoice.plan,
-            waitingChoice.choices,
-            plan,
-          ),
-          changedAgain: true,
-        };
-        const next = [updated, ...formConflicts.slice(1)];
-        // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- mirrors the state set below for the save timers
-        formConflictsRef.current = next;
-        setFormConflictsState(next);
-      }
+    const refreshed = refreshWaitingChoice(waitingChoice, nowStored, (stored) =>
+      isOwnVersion(waitingBase, stored),
+    );
+    if (refreshed) {
+      const updated: PendingFormConflict = {
+        ...waitingChoice,
+        ...refreshed,
+        changedAgain: true,
+      };
+      const next = [updated, ...formConflicts.slice(1)];
+      // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- mirrors the state set below for the save timers
+      formConflictsRef.current = next;
+      setFormConflictsState(next);
     }
   }
 
