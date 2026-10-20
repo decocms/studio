@@ -17,7 +17,7 @@
     "@better-auth/sso": "1.6.11",
     "@daveyplate/better-auth-ui": "^3.2.7",
     "@decocms/bindings": "workspace:*",
-    "@decocms/blocks": "8.5.0",
+    "@decocms/blocks": "8.5.1",
     "@decocms/mcp-utils": "workspace:*",
     "@decocms/sandbox": "workspace:*",
     "@decocms/shared": "workspace:*",
