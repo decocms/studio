@@ -77,19 +77,30 @@ async function writeFile(
 }
 
 /**
- * Run the package manager (`install`) or restart the dev script (`start`).
- * Pod-addressed — `setup/:step` acts on whatever is running at this ref and
+ * Ask the pod to install the dependency just written to `package.json`.
+ *
+ * `force=1` is required, not an optimisation: the daemon skips the step when
+ * its install fingerprint still matches, and that fingerprint is the package
+ * manager, the runtime and the branch HEAD — none of which an uncommitted
+ * `package.json` moves. Without it the step returns "enqueued" and installs
+ * nothing.
+ *
+ * Returns once the step is QUEUED, not once it is done: the orchestrator runs
+ * it on its own goroutine. Nothing here waits, because nothing has to — a real
+ * install stops the dev server, and the `install -> start` cascade brings it
+ * back on the tree as it is then.
+ *
+ * Pod-addressed: `setup/:step` acts on whatever is running at this ref and
  * takes no thread.
  */
-async function runSetupStep(
-  ref: SandboxRef,
-  step: "install" | "start",
-): Promise<void> {
+async function requestDependencyInstall(ref: SandboxRef): Promise<void> {
   const res = await fetch(
-    buildSandboxUrl({ ...ref, threadId: null }, `setup/${step}`),
+    buildSandboxUrl({ ...ref, threadId: null }, "setup/install", {
+      force: "1",
+    }),
     { method: "POST" },
   );
-  if (!res.ok) await throwResponseError(res, `Dependency ${step}`);
+  if (!res.ok) await throwResponseError(res, "Dependency install");
 }
 
 /**
@@ -170,25 +181,25 @@ export function useInstallApp({
       return runContentChange(content, {
         kind: "edit",
         write: async () => {
-          const manifest = patches.files.filter(
+          // package.json first: the install reads it, and every later write
+          // imports what it fetches. A failure before the install leaves an
+          // unused dependency, never a module with nothing behind it.
+          const manifest = patches.files.find(
             (file) => file.path === "package.json",
           );
-          const code = patches.files.filter(
-            (file) => file.path !== "package.json",
-          );
-          // The module and the registry entry import the package, so it has to
-          // be in node_modules before they exist. In this order a failure
-          // leaves at most an unused dependency, never a site that won't build.
-          for (const file of manifest) await writeFile(ref, packagePath, file);
+          if (manifest) await writeFile(ref, packagePath, manifest);
           // Deno needs none of this: the `apps/` import-map alias covers it.
-          if (patches.dependency) await runSetupStep(ref, "install");
-          for (const file of code) await writeFile(ref, packagePath, file);
+          if (patches.dependency) await requestDependencyInstall(ref);
+          for (const file of patches.files) {
+            if (file.path !== "package.json") {
+              await writeFile(ref, packagePath, file);
+            }
+          }
           // Block last: never leave a resolveType with no module behind it.
           await writeFile(ref, packagePath, {
             path: decoBlockFilePath(patches.block.key),
             content: `${JSON.stringify(patches.block.value, null, 2)}\n`,
           });
-          if (patches.dependency) await runSetupStep(ref, "start");
           // The working tree moved by more than one block: the header's change
           // count reads git status, as it does after every other write.
           await queryClient.invalidateQueries({

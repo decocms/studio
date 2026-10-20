@@ -952,10 +952,14 @@ export const createSandboxRoutes = () => {
         }
       }
     }
+    // `?force=1` reaches the daemon as the step's body. On install it drops
+    // the cached install fingerprint, which is keyed on the branch HEAD and so
+    // cannot see a dependency added to the working tree without a commit.
     return proxyDaemon(c, `/_sandbox/setup/${step}`, {
       signal: c.req.raw.signal,
       map404to410: true,
       runner: podRunner,
+      jsonBody: JSON.stringify({ force: c.req.query("force") === "1" }),
     });
   });
 
