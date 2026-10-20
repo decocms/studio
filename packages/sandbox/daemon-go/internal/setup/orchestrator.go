@@ -3,6 +3,7 @@ package setup
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1000,7 +1001,10 @@ func (o *Orchestrator) checkoutBranch(branch string) error {
 }
 
 func (o *Orchestrator) fillApplicationDefaults() {
-	diskCfg, _, _ := config.ReadDiskConfig(o.deps.RepoDir)
+	diskCfg, _, err := config.ReadDiskConfig(o.deps.RepoDir)
+	if err != nil {
+		slog.Error("ignoring malformed .decocms/daemon.json", "error", err)
+	}
 
 	o.deps.Store.ApplyInternal(func(current *config.TenantConfig) *config.Patch {
 		var cur *config.Application
