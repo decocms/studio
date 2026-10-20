@@ -63,12 +63,20 @@ function createFileDoc(attrs: FileAttrs): JSONContent {
 // React Node View Component
 // ============================================================================
 
+/** A `mimeType` attr of a file chip parsed from pasted/stored HTML that never
+ *  carried a `data-mime-type` attribute resolves to `null` (see `addAttributes`
+ *  below), not the empty string `FileAttrs` otherwise promises — guard against
+ *  that here instead of crashing the editor on `.startsWith`. */
+export function isImageMimeType(mimeType: string | null | undefined): boolean {
+  return (mimeType ?? "").startsWith("image/");
+}
+
 function FileNodeView(props: NodeViewProps) {
   const { node, selected, view } = props;
   const { name, mimeType, data } = node.attrs as FileAttrs;
 
   const isSelected = selected && view.editable;
-  const isImage = mimeType.startsWith("image/");
+  const isImage = isImageMimeType(mimeType);
 
   return (
     <NodeViewWrapper
