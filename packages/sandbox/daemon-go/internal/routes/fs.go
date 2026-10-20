@@ -43,20 +43,21 @@ func (d FsDeps) notifyWrite(path string) {
 	}
 }
 
-// isSymlink reports whether resolvedPath itself is a symlink.
-func isSymlink(resolvedPath string) bool {
-	info, err := os.Lstat(resolvedPath)
-	return err == nil && info.Mode()&os.ModeSymlink != 0
-}
-
 // escapesViaSymlink reports whether any path component between appRoot and
-// resolvedPath — including resolvedPath itself — is a symlink. SafePath only
-// confines the path lexically, so a symlink planted inside the repo (e.g. by a
-// cloned branch) and targeting outside AppRoot would otherwise let a write,
-// edit, mkdir, rename or delete follow it straight through the containment
-// check: not just when the final path segment is the symlink, but also when
-// an intermediate directory is, since the OS resolves those transparently.
+// resolvedPath — including resolvedPath itself — is a symlink whose target
+// resolves outside appRoot. SafePath only confines the path lexically, so a
+// symlink planted inside the repo (e.g. by a cloned branch) and targeting
+// outside AppRoot would otherwise let a write, edit, mkdir, rename or delete
+// follow it straight through the containment check: not just when the final
+// path segment is the symlink, but also when an intermediate directory is,
+// since the OS resolves those transparently. A symlink whose target stays
+// inside appRoot (e.g. a package manager's workspace link in node_modules)
+// is left alone — it isn't an escape.
 func escapesViaSymlink(appRoot, resolvedPath string) bool {
+	realRoot, err := filepath.EvalSymlinks(appRoot)
+	if err != nil {
+		realRoot = filepath.Clean(appRoot)
+	}
 	rel, err := filepath.Rel(appRoot, resolvedPath)
 	if err != nil || rel == "." {
 		return false
@@ -64,9 +65,21 @@ func escapesViaSymlink(appRoot, resolvedPath string) bool {
 	cur := appRoot
 	for _, seg := range strings.Split(rel, string(filepath.Separator)) {
 		cur = filepath.Join(cur, seg)
-		if isSymlink(cur) {
+		target, err := os.Readlink(cur)
+		if err != nil {
+			continue // not a symlink, or doesn't exist yet
+		}
+		if !filepath.IsAbs(target) {
+			target = filepath.Join(filepath.Dir(cur), target)
+		}
+		real, err := filepath.EvalSymlinks(target)
+		if err != nil {
+			real = filepath.Clean(target)
+		}
+		if real != realRoot && !strings.HasPrefix(real, realRoot+string(filepath.Separator)) {
 			return true
 		}
+		cur = real
 	}
 	return false
 }
