@@ -1,4 +1,5 @@
 import * as migration254codexsubscriptions from "./254-codex-subscriptions";
+import * as migration255ordermonitor from "./255-order-monitor";
 import * as migration228orgvoiceconfig from "./228-org-voice-config";
 import * as migration221removeprivateregistry from "./221-remove-private-registry";
 import * as migration222orggitcredentials from "./222-org-git-credentials";
@@ -548,6 +549,7 @@ const migrations: Record<string, Migration> = {
   "252-automation-linked-chat-trigger": migration252automationlinkedchattrigger,
   "253-automation-pr-builtin-triggers": migration253automationprbuiltintriggers,
   "254-codex-subscriptions": migration254codexsubscriptions,
+  "255-order-monitor": migration255ordermonitor,
 };
 
 export default migrations;

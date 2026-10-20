@@ -20,6 +20,7 @@ function tone(action: InboxTaskUpdate["action"]): string {
       return "font-medium text-foreground";
     case "merge_failed":
     case "review_changes_requested":
+    case "order_incident":
       return "font-medium text-destructive";
     case "review_approved":
       return "font-medium text-success";
@@ -52,6 +53,8 @@ function summarize(
       return t("sidebar.inbox.actionReviewChangesRequested");
     case "merge_failed":
       return t("sidebar.inbox.actionMergeFailed");
+    case "order_incident":
+      return t("sidebar.inbox.actionOrderIncident");
     default: {
       const _exhaustive: never = update.action;
       return String(_exhaustive);

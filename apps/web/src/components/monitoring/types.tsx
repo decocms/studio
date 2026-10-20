@@ -111,7 +111,16 @@ export interface MonitoringLogsResponse
  * Designed as URL-safe serializable state; values are validated on deserialization.
  */
 export interface MonitoringSearchParams {
-  tab?: "overview" | "audit" | "dashboards" | "threads" | "automations";
+  tab?:
+    | "overview"
+    | "audit"
+    | "dashboards"
+    | "threads"
+    | "automations"
+    | "stores";
+  /** Stores tab: the selected store's connection id and the instant to review. */
+  store?: string;
+  at?: string;
   from?: string;
   to?: string;
   connectionId?: string[];

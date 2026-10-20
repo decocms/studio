@@ -26,8 +26,10 @@ import {
 } from "@/sandbox/lifecycle";
 import { getSettings } from "@/settings";
 
-/** Minutes 1, 11, 21…: off the other 10-minute sweeps' ticks. */
-const CREDENTIAL_PUSH_CRONTAB = "1-59/10 * * * *";
+/** Minutes 1, 11, 21…: off the other 10-minute sweeps' ticks. Listed, not `1-59/10`:
+ *  DBOS's parser keeps only the values divisible by the step, which ran
+ *  this at :10, :20… on top of the other 10-minute sweeps. */
+const CREDENTIAL_PUSH_CRONTAB = "1,11,21,31,41,51 * * * *";
 
 interface PushOutcome {
   sandboxes: number;

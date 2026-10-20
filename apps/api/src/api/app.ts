@@ -27,6 +27,10 @@ import {
   setTaskBoardArchiveSweepRuntime,
 } from "@/tools/task-board/dbos-archive-sweep";
 import {
+  registerOrderMonitorWorkflow,
+  setOrderMonitorRuntime,
+} from "@/monitoring/dbos-order-monitor";
+import {
   registerSubscriptionSweepWorkflow,
   setSubscriptionSweepRuntime,
 } from "@/billing/dbos-subscription-sweep";
@@ -1652,6 +1656,9 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Hourly auto-archive of settled Done cards, one org leg per candidate org.
   setTaskBoardArchiveSweepRuntime({ db: database.db });
 
+  // Every 5 minutes: each ingest-installed store's order flow vs its baseline.
+  setOrderMonitorRuntime({ db: database.db });
+
   // Hourly: the paid tiers whose `subscription.deleted` never arrived.
   setSubscriptionSweepRuntime({ db: database.db });
 
@@ -1956,6 +1963,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   registerPublicSetsSyncWorkflow();
   registerOrgRepoSyncWorkflow();
   registerTaskBoardArchiveSweepWorkflow();
+  registerOrderMonitorWorkflow();
   registerSubscriptionSweepWorkflow();
   registerJiraTriggerSweepWorkflow();
   registerBoardTransitionWorkflows();

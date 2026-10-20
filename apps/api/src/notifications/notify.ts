@@ -17,6 +17,7 @@ import { sseHub } from "@/event-bus/sse-hub";
 import { enqueueUserDigest } from "./dbos-digest";
 import type { Database } from "@/storage/types";
 import { NotificationDataSchema } from "./schema";
+import type { OrderIncidentNotice } from "@decocms/shared/order-monitor";
 
 export interface NotifyParams {
   db: Kysely<Database>;
@@ -34,6 +35,8 @@ export interface NotifyParams {
    * of every subscription-driven event. Still excludes the actor.
    */
   recipients?: (string | null | undefined)[];
+  /** `order_incident` only: what the inbox and the email render. */
+  incident?: OrderIncidentNotice;
 }
 
 /** The task's org and title, which `recordActivity` doesn't carry. */
@@ -106,6 +109,7 @@ export async function notify(params: NotifyParams): Promise<void> {
         taskKeySeq: subject.key_seq ?? null,
         actorName: actor.name,
         actorImage: actor.image,
+        incident: params.incident,
       });
 
       await tx

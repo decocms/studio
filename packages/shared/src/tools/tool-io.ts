@@ -332,7 +332,8 @@ export interface StudioToolIO {
           | "review_requested"
           | "review_approved"
           | "review_changes_requested"
-          | "merge_failed";
+          | "merge_failed"
+          | "order_incident";
         taskTitle: string;
         taskKeySeq: number | null;
         actorName: string | null;
@@ -2862,6 +2863,14 @@ export interface StudioToolIO {
   INFRA_BILLING_PORTAL: {
     input: { siteSlugs: string[] };
     output: { url: string };
+  };
+  CUSTOMER_LAKE_QUERY: {
+    input: { sql: string };
+    output: {
+      rows: Record<string, unknown>[];
+      rowCount: number;
+      truncated: boolean;
+    };
   };
   COLLECTION_CONNECTIONS_CREATE: {
     input: {

@@ -770,6 +770,20 @@ export const KEYS = {
     ["monitor", base, "cdn-data", view, range] as const,
   siteMonitorData: (base: string, view: string, range: string) =>
     ["monitor", base, "site-data", view, range] as const,
+  // Order monitor: every key starts with this prefix, so one invalidation
+  // (the `order-monitor.store.evaluated` SSE event) refreshes them all.
+  orderMonitor: (org: string) => ["order-monitor", org] as const,
+  orderMonitorStores: (org: string) =>
+    ["order-monitor", org, "stores"] as const,
+  orderMonitorDay: (org: string, connectionId: string, at: string) =>
+    ["order-monitor", org, "day", connectionId, at] as const,
+  orderMonitorPushes: (
+    org: string,
+    connectionId: string,
+    at: string,
+    virtualMcpId: string,
+  ) =>
+    ["order-monitor", org, "pushes", connectionId, at, virtualMcpId] as const,
 
   // Storefront "." shortcut: resolve a site name → project editor.
   editorResolve: (site: string) => ["editor-resolve", site] as const,

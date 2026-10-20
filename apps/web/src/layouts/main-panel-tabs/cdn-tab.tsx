@@ -50,6 +50,9 @@ import { SiteTelemetryMonitor } from "./monitor-v8-tab";
 import { monitorKind } from "./monitor-v8";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t.ts";
+import { usePublicConfig } from "@/hooks/use-public-config";
+import { useOrderMonitorStores } from "@/hooks/use-order-monitor";
+import { OrderMonitorDayView } from "@/components/order-monitor/order-monitor-day";
 
 // Date presets, in display order. The CDN warehouse is DATE-granular (facts are
 // keyed by a `date` column, no timestamp), so sub-day presets (60m/24h/48h/72h)
@@ -1753,6 +1756,51 @@ function AudienceSection({
   );
 }
 
+/** Orders sub-tab: the store this agent sells through, picked when it has several. */
+function OrdersSection({
+  orgSlug,
+  virtualMcpId,
+  stores,
+}: {
+  orgSlug: string;
+  virtualMcpId: string;
+  stores: { connectionId: string; title: string }[];
+}) {
+  const t = useT();
+  const [picked, setPicked] = useState<string | null>(null);
+  const [at, setAt] = useState<string | undefined>(undefined);
+  const current = stores.find((s) => s.connectionId === picked) ?? stores[0];
+  if (!current) return null;
+  return (
+    <div className="flex flex-col gap-3">
+      {stores.length > 1 && (
+        <select
+          aria-label={t("orderMonitor.pickStore")}
+          value={current.connectionId}
+          onChange={(e) => {
+            setPicked(e.target.value);
+            setAt(undefined);
+          }}
+          className="self-start rounded-lg border border-border bg-card px-2.5 py-1 text-xs"
+        >
+          {stores.map((s) => (
+            <option key={s.connectionId} value={s.connectionId}>
+              {s.title}
+            </option>
+          ))}
+        </select>
+      )}
+      <OrderMonitorDayView
+        orgSlug={orgSlug}
+        connectionId={current.connectionId}
+        at={at}
+        onAtChange={setAt}
+        virtualMcpId={virtualMcpId}
+      />
+    </div>
+  );
+}
+
 /**
  * Monitor: the telemetry Monitor for a Blocks v8 site (`monitor-v8-tab.tsx`),
  * today's CDN Monitor for every other one. Nothing shows until main's schema
@@ -1797,9 +1845,17 @@ export function CdnTab({ virtualMcpId }: { virtualMcpId: string }) {
 function CdnMonitor({ virtualMcpId }: { virtualMcpId: string }) {
   const t = useT();
   const { org } = useProjectContext();
+  const config = usePublicConfig();
   const entity = useVirtualMCP(virtualMcpId);
   const siteSlug = resolveAnalyticsSiteSlug(entity);
   const enabled = Boolean(siteSlug);
+  const storesQuery = useOrderMonitorStores(
+    org.slug,
+    config.orderMonitorEnabled === true,
+  );
+  const agentStores = (storesQuery.data ?? []).filter((s) =>
+    s.agentIds.includes(virtualMcpId),
+  );
   const base = siteSlug
     ? `/api/${org.slug}/monitor/${encodeURIComponent(siteSlug)}`
     : "";
@@ -1811,13 +1867,36 @@ function CdnMonitor({ virtualMcpId }: { virtualMcpId: string }) {
   });
   const rangeExtra =
     sel.range === "custom" ? `&since=${sel.since}&until=${sel.until}` : "";
-  const [section, setSection] = useState<"performance" | "audience">(
-    "performance",
-  );
+  const [chosenSection, setSection] = useState<
+    "performance" | "audience" | "orders" | null
+  >(null);
   const hostsQuery = useOdHosts(base, Boolean(siteSlug));
   const hosts = hostsQuery.data ?? [];
 
-  if (!siteSlug) {
+  // A store without a site still gets its Orders sub-tab.
+  const sections = [
+    ...(siteSlug
+      ? [
+          {
+            id: "performance" as const,
+            label: t("mainPanelTabs.cdnTab.performance"),
+          },
+          {
+            id: "audience" as const,
+            label: t("mainPanelTabs.cdnTab.audience"),
+          },
+        ]
+      : []),
+    ...(agentStores.length > 0
+      ? [{ id: "orders" as const, label: t("orderMonitor.ordersTab") }]
+      : []),
+  ];
+  const section =
+    sections.find((sec) => sec.id === chosenSection)?.id ?? sections[0]?.id;
+
+  if (!section) {
+    // Without a site, the Orders sub-tab may still be on its way.
+    if (storesQuery.isLoading) return <Skeleton className="m-4 h-40" />;
     return (
       <EmptyState
         icon={<Globe01 className="size-5" />}
@@ -1826,14 +1905,6 @@ function CdnMonitor({ virtualMcpId }: { virtualMcpId: string }) {
       />
     );
   }
-
-  const sections = [
-    {
-      id: "performance" as const,
-      label: t("mainPanelTabs.cdnTab.performance"),
-    },
-    { id: "audience" as const, label: t("mainPanelTabs.cdnTab.audience") },
-  ];
 
   return (
     <div className="flex h-full flex-col gap-4 overflow-auto p-4">
@@ -1870,10 +1941,16 @@ function CdnMonitor({ virtualMcpId }: { virtualMcpId: string }) {
             </button>
           ))}
         </div>
-        <RangePicker value={sel} onChange={setSel} />
+        {section !== "orders" && <RangePicker value={sel} onChange={setSel} />}
       </div>
 
-      {section === "performance" ? (
+      {section === "orders" ? (
+        <OrdersSection
+          orgSlug={org.slug}
+          virtualMcpId={virtualMcpId}
+          stores={agentStores}
+        />
+      ) : section === "performance" ? (
         <PerformanceSection
           base={base}
           range={sel.range}
