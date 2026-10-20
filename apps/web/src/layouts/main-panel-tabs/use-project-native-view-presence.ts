@@ -67,7 +67,12 @@ export function useProjectNativeViewPresence(
       hosting: hostingEnabled && ownsSite && controlPlaneViews.hosting,
       e2e: hostingEnabled && ownsSite && controlPlaneViews.e2e,
       analytics: hostingEnabled && ownsSite && controlPlaneViews.analytics,
-      cdn: monitorEnabled && ownsAnalyticsSite && controlPlaneViews.monitor,
+      // A v8 site's Monitor reads the telemetry of its own site (the one its
+      // token names); a v7 site's reads the analytics site.
+      cdn:
+        monitorEnabled &&
+        (hostedCms ? ownsSite : ownsAnalyticsSite) &&
+        controlPlaneViews.monitor,
       experiments: controlPlaneViews.experiments,
     },
     assetsPending: !!siteSlug && fileConfigs.isPending,

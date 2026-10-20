@@ -51,6 +51,7 @@ import {
   isAnalyticsConfigured,
 } from "../../deco-legacy/clickhouse-analytics";
 import { toOneDollarHostname } from "../../deco-legacy/onedollarstats";
+import { querySiteView, resolveSiteWindow, SITE_VIEWS } from "./monitor-site";
 
 type Variables = { studioContext: StudioContext };
 
@@ -851,7 +852,9 @@ async function requireOwnedSite(
 
 /**
  * Org-scoped monitor routes mounted at `/api/:org/monitor`. Direct-ClickHouse
- * reads, tenancy via `org_sites`, no control-plane and no Supabase.
+ * reads, tenancy via `org_sites`, no control-plane and no Supabase. `cdn`,
+ * `audience`, `hosts` and `onedollar` serve v7 sites; `site` serves Blocks v8
+ * sites from their OpenTelemetry (`monitor-site.ts`).
  */
 export const createMonitorRoutes = () => {
   const app = new Hono<{ Variables: Variables }>();
@@ -923,6 +926,57 @@ export const createMonitorRoutes = () => {
     } catch (err) {
       console.error(
         `[monitor] cdn ${view} query failed for site="${slug}":`,
+        err,
+      );
+      return c.json({ error: "Failed to query monitor warehouse" }, 502);
+    }
+  });
+
+  // GET /api/:org/monitor/:site/site/data?view=&range=1h|24h|7d — the Blocks
+  // v8 Monitor: the site's own OpenTelemetry (monitor-site.ts). Same guard as
+  // the CDN views; every query is scoped to the slug the guard just checked.
+  app.get("/:site/site/data", async (c) => {
+    const guard = await requireOwnedSite(c);
+    if (guard instanceof Response) return guard;
+
+    if (!isAnalyticsConfigured()) {
+      return c.json({ available: false, error: "Monitor is not configured" });
+    }
+
+    const view = c.req.query("view") ?? "summary";
+    if (!SITE_VIEWS.has(view)) {
+      return c.json({ error: `unknown or unavailable view: ${view}` }, 400);
+    }
+    const range = c.req.query("range") ?? "24h";
+    const now = Date.now();
+    const window = resolveSiteWindow(range, now);
+    if (!window) {
+      return c.json({ error: `unknown range: ${range}` }, 400);
+    }
+
+    const { slug } = guard;
+    try {
+      const answer = await querySiteView(
+        analyticsQuery,
+        view,
+        slug,
+        window,
+        now,
+      );
+      return c.json({
+        available: true,
+        view,
+        range,
+        window: {
+          startMs: window.startMs,
+          endMs: window.endMs,
+          stepS: window.stepS,
+        },
+        ...answer,
+      });
+    } catch (err) {
+      console.error(
+        `[monitor] site ${view} query failed for site="${slug}":`,
         err,
       );
       return c.json({ error: "Failed to query monitor warehouse" }, 502);

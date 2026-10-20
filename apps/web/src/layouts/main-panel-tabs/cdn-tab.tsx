@@ -41,7 +41,13 @@ import {
 } from "@decocms/ui/components/popover.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
-import { resolveAnalyticsSiteSlug } from "@decocms/shared/site-slug";
+import {
+  resolveAgentSiteSlug,
+  resolveAnalyticsSiteSlug,
+} from "@decocms/shared/site-slug";
+import { useMainSchemaV8 } from "@/hooks/use-main-schema-v8";
+import { MonitorV8 } from "./monitor-v8-tab";
+import { monitorKind } from "./monitor-v8";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t.ts";
 
@@ -1747,7 +1753,48 @@ function AudienceSection({
   );
 }
 
+/**
+ * Monitor: the telemetry Monitor for a Blocks v8 site (`monitor-v8-tab.tsx`),
+ * today's CDN Monitor for every other one. Nothing shows until main's schema
+ * is known, so a v8 site never flashes the CDN view first.
+ */
 export function CdnTab({ virtualMcpId }: { virtualMcpId: string }) {
+  const t = useT();
+  const { org } = useProjectContext();
+  const entity = useVirtualMCP(virtualMcpId);
+  const kind = monitorKind(useMainSchemaV8(virtualMcpId));
+  if (kind === "loading") {
+    return (
+      <div className="flex flex-col gap-4 p-4">
+        <Skeleton className="h-6 w-32" />
+        <Skeleton className="h-72 w-full rounded-xl" />
+      </div>
+    );
+  }
+  if (kind === "v7") return <CdnMonitor virtualMcpId={virtualMcpId} />;
+  // A v8 site reports under the site its token was issued for: the
+  // project's own site, never the analytics override a v7 migration uses.
+  const site = resolveAgentSiteSlug(entity);
+  if (!site) {
+    return (
+      <EmptyState
+        icon={<Globe01 className="size-5" />}
+        title={t("mainPanelTabs.cdnTab.noSiteTitle")}
+        description={t("mainPanelTabs.monitorV8.noSiteBody")}
+      />
+    );
+  }
+  return (
+    <MonitorV8
+      key={site}
+      base={`/api/${org.slug}/monitor/${encodeURIComponent(site)}`}
+      site={site}
+    />
+  );
+}
+
+/** Today's CDN + audience Monitor (v7 sites). */
+function CdnMonitor({ virtualMcpId }: { virtualMcpId: string }) {
   const t = useT();
   const { org } = useProjectContext();
   const entity = useVirtualMCP(virtualMcpId);

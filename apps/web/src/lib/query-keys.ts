@@ -768,6 +768,8 @@ export const KEYS = {
   // so each panel caches independently and refetches on range change.
   cdnData: (base: string, view: string, range: string) =>
     ["monitor", base, "cdn-data", view, range] as const,
+  siteMonitorData: (base: string, view: string, range: string) =>
+    ["monitor", base, "site-data", view, range] as const,
 
   // Storefront "." shortcut: resolve a site name → project editor.
   editorResolve: (site: string) => ["editor-resolve", site] as const,
