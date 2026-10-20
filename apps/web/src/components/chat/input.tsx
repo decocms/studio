@@ -112,7 +112,7 @@ function ChatInputDisabledState({
  *
  * Must be called inside a TiptapProvider so `useCurrentEditor()` resolves.
  */
-function useWindowFileDrop(
+export function useWindowFileDrop(
   selectedModel: AiProviderModel | null | undefined,
   onUnsupportedFile?: (info: UnsupportedFileInfo) => void,
   disabled?: boolean,
@@ -144,9 +144,12 @@ function useWindowFileDrop(
       }
     };
     const onDrop = (e: DragEvent) => {
-      e.preventDefault();
       dragCounterRef.current = 0;
       setIsDraggingOver(false);
+
+      // Already handled by the ProseMirror file-drop plugin (tiptap/file/uploader.tsx).
+      if (e.defaultPrevented) return;
+      e.preventDefault();
 
       if (
         disabled ||
