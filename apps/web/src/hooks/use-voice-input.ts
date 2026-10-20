@@ -36,6 +36,8 @@ export function useVoiceInput(): UseVoiceInputReturn {
   const finalTranscriptRef = useRef("");
   // Capture interim at stop time since state may be stale in the closure
   const interimTranscriptRef = useRef("");
+  // Blocks a second click from opening another mic stream mid-permission-prompt.
+  const isStartingRef = useRef(false);
 
   const isSupported =
     typeof window !== "undefined" &&
@@ -87,11 +89,15 @@ export function useVoiceInput(): UseVoiceInputReturn {
   };
 
   const startRecording = async (): Promise<VoiceInputStatus> => {
+    if (isStartingRef.current || isRecordingRef.current) return status;
+    isStartingRef.current = true;
+
     const SpeechRecognitionCtor =
       (window as unknown as Record<string, unknown>).SpeechRecognition ||
       (window as unknown as Record<string, unknown>).webkitSpeechRecognition;
 
     if (!SpeechRecognitionCtor) {
+      isStartingRef.current = false;
       setStatus("unsupported");
       return "unsupported";
     }
@@ -101,9 +107,11 @@ export function useVoiceInput(): UseVoiceInputReturn {
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch {
+      isStartingRef.current = false;
       setStatus("permission-denied");
       return "permission-denied";
     }
+    isStartingRef.current = false;
 
     setTranscript("");
     setInterimTranscript("");
