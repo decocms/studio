@@ -53,7 +53,11 @@ import {
 } from "./model-permissions";
 import { StreamRequestSchema } from "./schemas";
 import type { ChatMessage, ModelsConfig } from "./types";
-import type { DispatchRunInput, HostedHarnessId } from "./dispatch-run";
+import {
+  assertVirtualMcpOwnedByOrg,
+  type DispatchRunInput,
+  type HostedHarnessId,
+} from "./dispatch-run";
 import {
   assertHostedDispatchHarness,
   buildDurableDispatchInput,
@@ -423,6 +427,7 @@ async function resolveDefaultHarness(
       return "decopilot";
     }
     const agent = await ctx.storage.virtualMcps.findById(agentId);
+    assertVirtualMcpOwnedByOrg(agent, organizationId);
     return defaultHarnessForAgent({
       flagEnabled: true,
       agentMetadata: agent?.metadata,
