@@ -3,6 +3,7 @@ import {
   createEmptyPageBlock,
   generatePageBlockKey,
 } from "./page-block-template";
+import type { LiveMeta } from "./resolve-schema";
 import { useSaveBlock } from "./use-save-block";
 
 interface UseCreatePageParams {
@@ -27,6 +28,7 @@ export function useCreatePage(params: UseCreatePageParams | null) {
       name,
       path,
       template,
+      meta,
     }: {
       name: string;
       path: string;
@@ -35,6 +37,8 @@ export function useCreatePage(params: UseCreatePageParams | null) {
        * and only name/path are overridden; otherwise an empty page is built.
        */
       template?: Record<string, unknown> | null;
+      /** The site's schema: an empty page takes its page and SEO types from it. */
+      meta?: LiveMeta | null;
     }): Promise<CreatePageResult> => {
       if (!params?.virtualMcpId || !params.branch) {
         throw new Error("Sandbox not ready");
@@ -42,7 +46,7 @@ export function useCreatePage(params: UseCreatePageParams | null) {
       const blockKey = generatePageBlockKey(name);
       const data = template
         ? { ...template, name, path }
-        : createEmptyPageBlock(name, path);
+        : createEmptyPageBlock(name, path, meta);
       await saveBlock.mutateAsync({ blockKey, data });
       return { key: blockKey, name, path };
     },

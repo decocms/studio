@@ -1615,6 +1615,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
         name,
         path: trimmedPath,
         template,
+        meta,
       });
       setCreatePageDialogOpen(false);
       toast.success(t("sandbox.preview.pageCreated", { name }));

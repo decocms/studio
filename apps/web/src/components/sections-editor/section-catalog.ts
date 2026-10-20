@@ -38,8 +38,18 @@ const EXCLUDED_SECTION_RESOLVE_TYPES = new Set([
   "site/sections/Theme/Theme.tsx",
 ]);
 
-function shouldSkipSectionResolveType(resolveType: string): boolean {
+/**
+ * Next-major Blocks names block types with short keys (`theme`, `hero`), not
+ * file paths, so the v7 path above never matches there: a short key named
+ * `theme` (any case) is the site's theme too.
+ */
+function isExcludedSectionResolveType(resolveType: string): boolean {
   if (EXCLUDED_SECTION_RESOLVE_TYPES.has(resolveType)) return true;
+  return !resolveType.includes("/") && resolveType.toLowerCase() === "theme";
+}
+
+function shouldSkipSectionResolveType(resolveType: string): boolean {
+  if (isExcludedSectionResolveType(resolveType)) return true;
   if (isLazyResolveType(resolveType)) return true;
   if (resolveType.toLowerCase().includes("preview")) return true;
   return false;
@@ -57,6 +67,31 @@ export function findLivePageResolveType(meta: LiveMeta): string {
   // Next-major sites: the built-in `page` (or the site's override of it).
   if (Object.hasOwn(blocks.pages ?? {}, "page")) return "page";
   return DEFAULT_LIVE_PAGE_RESOLVE_TYPE;
+}
+
+/**
+ * Whether the site declares the next-major built-in `page` (or its own
+ * override of it). Its schema then also lists the v7 page names as aliases,
+ * which {@link findLivePageResolveType} may pick, so callers that WRITE a page
+ * type use {@link findNewPageResolveType} instead.
+ */
+export function declaresBuiltInPage(meta: LiveMeta | undefined): boolean {
+  return Object.hasOwn(meta?.manifest?.blocks?.pages ?? {}, "page");
+}
+
+/** Whether a page type is one of the v7 (Fresh/Deno) page file names. */
+export function isLegacyPageResolveType(resolveType: string): boolean {
+  return PAGE_BLOCK_RESOLVE_TYPES.has(resolveType);
+}
+
+/**
+ * The page type a NEW page is saved with: the one the site declares — `page`
+ * on next-major sites, the v7 file name otherwise (and without a manifest).
+ */
+export function findNewPageResolveType(meta: LiveMeta | undefined): string {
+  if (!meta) return DEFAULT_LIVE_PAGE_RESOLVE_TYPE;
+  if (declaresBuiltInPage(meta)) return "page";
+  return findLivePageResolveType(meta);
 }
 
 /** Collects block-ref variants from a resolved schema subtree (e.g. page `seo` or `sections`). */

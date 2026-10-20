@@ -736,7 +736,7 @@ function ContentBrowserReady({
           if (!template) throw new Error("Selected template no longer exists.");
           data = { ...template, name: values.name, path: values.path };
         } else {
-          data = buildEmptyPage(values.name, values.path);
+          data = buildEmptyPage(values.name, values.path, meta);
         }
         const key = generateUniquePageBlockKey(decofile, values.name);
         await saveBlock.mutateAsync({ blockKey: key, data });

@@ -1,4 +1,5 @@
 import type { LiveMeta } from "./resolve-schema";
+import { declaresBuiltInPage } from "./section-catalog";
 import { unwrapSeoConfig, wrapSeoPersistValue } from "./seo-lazy-render";
 import {
   isSeoSectionResolveType,
@@ -12,7 +13,19 @@ import {
 const PAGE_RESOLVE_TYPES = new Set([
   "website/pages/Page.tsx",
   "$live/pages/LivePage.tsx",
+  // Next-major's built-in page.
+  "page",
 ]);
+
+/**
+ * Whether a block type is a page: a known page name or, on a next-major site,
+ * any type its manifest lists under `pages` (a site's own routable types).
+ */
+function isPageResolveType(resolveType: string, meta?: LiveMeta): boolean {
+  if (PAGE_RESOLVE_TYPES.has(resolveType)) return true;
+  if (!declaresBuiltInPage(meta)) return false;
+  return Object.hasOwn(meta?.manifest?.blocks?.pages ?? {}, resolveType);
+}
 
 /** Default deco SEO section type when manifest schemas are unavailable. */
 export const DEFAULT_SEO_RESOLVE_TYPE = "website/sections/Seo/SeoV2.tsx";
@@ -49,10 +62,10 @@ function isPlainObject(val: unknown): val is Record<string, unknown> {
   return typeof val === "object" && val !== null && !Array.isArray(val);
 }
 
-function looksLikeSeo(obj: Record<string, unknown>): boolean {
+function looksLikeSeo(obj: Record<string, unknown>, meta?: LiveMeta): boolean {
   if (
     typeof obj.__resolveType === "string" &&
-    isSeoSectionResolveType(obj.__resolveType)
+    isSeoSectionResolveType(obj.__resolveType, meta)
   ) {
     return true;
   }
@@ -78,11 +91,11 @@ export function findSiteSeoEntry(
     if (!isPlainObject(val)) continue;
     const obj = val;
     const rt = obj.__resolveType;
-    if (typeof rt === "string" && PAGE_RESOLVE_TYPES.has(rt)) continue;
+    if (typeof rt === "string" && isPageResolveType(rt, meta)) continue;
     const seo = obj.seo;
     if (isPlainObject(seo)) {
       const seoObj = seo;
-      if (looksLikeSeo(seoObj)) {
+      if (looksLikeSeo(seoObj, meta)) {
         return {
           blockKey: key,
           kind: "nested",
@@ -105,7 +118,7 @@ export function findSiteSeoEntry(
     const obj = val;
     if (
       typeof obj.__resolveType === "string" &&
-      isSeoSectionResolveType(obj.__resolveType)
+      isSeoSectionResolveType(obj.__resolveType, meta)
     ) {
       return {
         blockKey: key,

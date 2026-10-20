@@ -19,6 +19,24 @@ describe("formatMatcher", () => {
     ).toBe("Default");
   });
 
+  test("labels next-major's short matcher names", () => {
+    expect(formatMatcher({ __resolveType: "always" })).toBe("Default");
+    expect(formatMatcher({ __resolveType: "never" })).toBe("Hidden");
+    expect(
+      formatMatcher({ __resolveType: "device", mobile: true, desktop: true }),
+    ).toBe("Mobile & Desktop");
+    expect(formatMatcher({ __resolveType: "device" })).toBe("Device");
+    expect(formatMatcher({ __resolveType: "date" })).toBe("Date");
+    expect(
+      formatMatcher({
+        __resolveType: "date",
+        start: "2026-01-01T00:00:00",
+        end: "2026-01-31T23:59:00",
+      }),
+    ).not.toBe("Date");
+    expect(formatMatcher({ __resolveType: "campaign" })).toBe("Campaign");
+  });
+
   test("returns 'Hidden' for never matcher", () => {
     expect(formatMatcher({ __resolveType: "website/matchers/never.ts" })).toBe(
       "Hidden",

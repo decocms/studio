@@ -124,18 +124,23 @@ export function formatMatcher(
   if (depth > MAX_FORMAT_DEPTH) return "...";
   const rt = (rule.__resolveType as string) ?? "";
 
+  // Next-major names the built-in matchers with short keys (`always`, `never`,
+  // `date`); `device` is the usual name of a site's own device matcher.
   const alwaysTypes = [
     "website/matchers/always.ts",
     "$live/matchers/MatchAlways.ts",
+    "always",
   ];
   if (alwaysTypes.includes(rt) || rt === "") return "Default";
 
   switch (rt) {
     case "website/matchers/never.ts":
+    case "never":
       return "Hidden";
 
     case "website/matchers/device.ts":
-    case "$live/matchers/MatchDevice.ts": {
+    case "$live/matchers/MatchDevice.ts":
+    case "device": {
       const {
         mobile,
         tablet,
@@ -158,6 +163,7 @@ export function formatMatcher(
 
     case "website/matchers/date.ts":
     case "$live/matchers/MatchDate.ts":
+    case "date":
       return formatDateRange(rule) ?? labelFromResolveType(rt);
 
     case "website/matchers/random.ts":
