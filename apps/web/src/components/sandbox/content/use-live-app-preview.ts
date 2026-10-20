@@ -78,6 +78,7 @@ export function useLiveAppPreview(input: {
       const type = e.data?.type;
       if (type === "app-preview::ready") {
         // A reload (e.g. after a save) shows the saved block; reapply the latest edit.
+        setFailedKey(null);
         const req = latestRef.current;
         if (req?.blockKey === blockKey) postRender(win, origin, req);
       } else if (type === "app-preview::render-end") {

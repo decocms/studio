@@ -66,8 +66,12 @@ export function buildAppRenderRequest(input: {
   blockKey: string;
   decofile: Record<string, unknown>;
 }): { src: string; body: string } {
+  const url = new URL(buildAppPreviewUrl(input.previewBaseUrl, input.blockKey));
+  // The bridge's innerHTML swap runs no scripts, so deferred sections must render inline.
+  url.searchParams.set("__decoFBT", "0");
+  url.searchParams.set("__d", "");
   return {
-    src: buildAppPreviewUrl(input.previewBaseUrl, input.blockKey),
+    src: url.toString(),
     body: JSON.stringify({ __props: {}, __decofile: input.decofile }),
   };
 }

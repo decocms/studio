@@ -306,7 +306,13 @@ describe("buildAppRenderRequest", () => {
       blockKey: "deco-vtex",
       decofile,
     });
-    expect(req.src).toBe(`${SANDBOX}/live/previews/deco-vtex`);
+    const src = new URL(req.src);
+    expect(`${src.origin}${src.pathname}`).toBe(
+      `${SANDBOX}/live/previews/deco-vtex`,
+    );
+    // The bridge does not run scripts, so deferred sections must render inline.
+    expect(src.searchParams.get("__decoFBT")).toBe("0");
+    expect(src.searchParams.get("__d")).toBe("");
     expect(JSON.parse(req.body)).toEqual({
       __props: {},
       __decofile: decofile,

@@ -24,7 +24,7 @@ import {
   useDebouncedSaveBlock,
   useSaveBlock,
 } from "@/components/sections-editor/use-save-block";
-import { isTanstackMeta, resolveAppEditorSchema } from "./app-editor-schema";
+import { resolveAppEditorSchema } from "./app-editor-schema";
 import { useLiveAppPreview } from "./use-live-app-preview";
 import { buildSectionBlockFromCatalogEntry } from "./section-create";
 import { SchemaForm } from "@/components/sections-editor/schema-form";
@@ -89,7 +89,7 @@ export function AppEditor({
   // Under Fast Preview the base is production, which only sees branch edits through the draft pointer.
   const draftPointer = useDraftPointer({ orgSlug, virtualMcpId, branch });
   const appPreviewUrl =
-    showAppPreview && sectionPreviewBase && !isTanstackMeta(meta)
+    showAppPreview && sectionPreviewBase
       ? withDraftPointer(
           buildAppPreviewUrl(sectionPreviewBase, blockKey),
           draftPointer,
@@ -113,7 +113,7 @@ export function AppEditor({
   );
   const saveBlock = useSaveBlock({ orgSlug, virtualMcpId, branch });
   // Not debounced: the saved block's form reads its value from the decofile cache, which a delay leaves stale.
-  const saveReferencedBlock = createReferencedBlockSaver((refKey, data) =>
+  const saveReferencedBlock = createReferencedBlockSaver((refKey, data) => {
     saveBlock.mutate(
       { blockKey: refKey, data },
       {
@@ -124,8 +124,14 @@ export function AppEditor({
             }),
           ),
       },
-    ),
-  );
+    );
+    // Without Fast Preview the frame never reloads, so only a render shows a nested block's edit.
+    livePreview.render({
+      ...decofile,
+      [blockKey]: { ...effectiveValue, __resolveType: resolveType },
+      [refKey]: data,
+    });
+  });
 
   const [prevBlockKey, setPrevBlockKey] = useState(blockKey);
   const [formValue, setFormValue] = useState<Record<string, unknown> | null>(
