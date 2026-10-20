@@ -286,6 +286,23 @@ export interface MCPConnectionTable {
   updated_at: ColumnType<Date, Date | string, Date | string>;
 }
 
+/** One order-monitor rule's last verdict for one store (an ingest connection);
+ *  see monitoring/dbos-order-monitor.ts. `since` is when `status` began. */
+export interface OrderMonitorStateTable {
+  organization_id: string;
+  connection_id: string;
+  rule: string;
+  status: string;
+  since: ColumnType<Date, Date, Date>;
+  evaluated_at: ColumnType<Date, Date, Date>;
+  verdict: JsonObject<Record<string, unknown>>;
+  task_board_item_id: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
+}
+
 /**
  * A repository checked out into a thread's run, beyond the agent's own.
  *
@@ -2518,6 +2535,7 @@ export interface Database {
   claude_subscriptions: ClaudeSubscriptionTable;
   github_copilot_subscriptions: ClaudeSubscriptionTable;
   org_shared_plans: OrgSharedPlanTable;
+  order_monitor_state: OrderMonitorStateTable;
 
   // Automations tables
   automations: AutomationTable;

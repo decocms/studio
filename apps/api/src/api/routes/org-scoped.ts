@@ -18,6 +18,7 @@ import { createAutomationWebhookRoutes } from "./automation-webhooks";
 import { createDecoSitesOrgRoutes } from "./deco-sites";
 import { createHostingRoutes } from "./hosting";
 import { createMonitorRoutes } from "./monitor";
+import { createOrderMonitorRoutes } from "./order-monitor";
 import { createDevAssetsRoutes } from "./dev-assets";
 import { createCredentialVaultRoutes } from "./credential-vault";
 import { createDownstreamTokenRoutes } from "./downstream-token";
@@ -129,6 +130,7 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
   app.route("/deco-sites", createDecoSitesOrgRoutes()); // /api/:org/deco-sites
   app.route("/hosting", createHostingRoutes()); // /api/:org/hosting/:site/...
   app.route("/monitor", createMonitorRoutes()); // /api/:org/monitor/:site/cdn/data — native CDN analytics, direct ClickHouse
+  app.route("/order-monitor", createOrderMonitorRoutes()); // /api/:org/order-monitor/stores[/:connectionId/{day,pushes}] — store order flow, customer lake
   app.route("/sso", createSsoRoutes()); // /api/:org/sso/* (renamed from /api/org-sso)
   app.route(
     "/",

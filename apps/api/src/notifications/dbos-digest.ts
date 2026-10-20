@@ -116,6 +116,7 @@ function toPendingRows(
       taskTitle: data.taskTitle,
       taskKeySeq: data.taskKeySeq,
       actorName: data.actorName,
+      incident: data.incident,
     };
   });
 }

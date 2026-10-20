@@ -322,6 +322,10 @@ export interface Settings {
   customerLakeAdminUsername: string;
   customerLakeAdminPassword: string | undefined;
   customerLakeTenantSecret: string | undefined;
+  /** The order-ingest worker's `/mcp` URL. Connections with this URL are the
+   *  stores the order monitor watches; unset = the monitor does nothing. See
+   *  monitoring/dbos-order-monitor.ts. */
+  orderMonitorIngestUrl: string | undefined;
   /** OneDollarStats backend key — the legacy platform's pageview source
    *  (pageviews do not live in the warehouse). Unset = pageviews render "—". */
   oneDollarStatsApiKey: string | undefined;

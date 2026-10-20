@@ -98,10 +98,12 @@ async function ensureTenantUser(username: string, password: string) {
   ensuredUsers.add(username);
 }
 
-/** Run one read-only statement as the organization's own lake user. */
+/** Run one read-only statement as the organization's own lake user.
+ *  `queryParams` bind `{name:Type}` placeholders in `sql`. */
 export async function queryCustomerLake(
   organizationId: string,
   sql: string,
+  queryParams?: Record<string, unknown>,
 ): Promise<Record<string, unknown>[]> {
   const { username, password } = tenantCredentials(
     organizationId,
@@ -112,6 +114,7 @@ export async function queryCustomerLake(
   try {
     const result = await client.query({
       query: normalizeQuery(sql),
+      query_params: queryParams,
       format: "JSONEachRow",
     });
     return await result.json<Record<string, unknown>>();

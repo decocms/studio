@@ -1342,8 +1342,18 @@ const monitoringRoute = createRoute({
   validateSearch: z.lazy(() =>
     z.object({
       tab: z
-        .enum(["overview", "audit", "dashboards", "threads", "automations"])
+        .enum([
+          "overview",
+          "audit",
+          "dashboards",
+          "threads",
+          "automations",
+          "stores",
+        ])
         .default("threads"),
+      /** Stores tab: the store (ingest connection id) and instant to review. */
+      store: z.string().optional(),
+      at: z.string().optional(),
       from: z.string().default("now-24h"),
       to: z.string().default("now"),
       connectionId: z.array(z.string()).optional().default([]),
