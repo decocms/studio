@@ -2272,13 +2272,11 @@ export function toggleCapabilityInTools(
   currentTools: string[],
   enable: boolean,
 ): string[] {
-  if (enable) {
-    const toolSet = new Set(currentTools);
-    for (const tool of cap.tools) toolSet.add(tool);
-    return Array.from(toolSet);
-  }
   const toolSet = new Set(currentTools);
-  for (const tool of cap.tools) toolSet.delete(tool);
+  for (const tool of cap.tools) {
+    if (enable) toolSet.add(tool);
+    else toolSet.delete(tool);
+  }
   return Array.from(toolSet);
 }
 
