@@ -16,6 +16,13 @@ var branchRe = regexp.MustCompile(`^[A-Za-z0-9._/-]+$`)
 // must open on an alphanumeric. That rules out `.`, `..` and `.git`, so the
 // name can neither climb out of the secondary root nor land on a git dir.
 var repoNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+
+// orgIdRe bounds OrgId the same way repoNameRe bounds a secondary checkout
+// name: it becomes a directory component of the shared golden-cache path
+// (setup.RemoteGoldenArchivePath), so a value containing `/` or `..` would
+// walk that path outside the `golden/` prefix the store is scoped to.
+var orgIdRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+
 var envKeyRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 const envValueMax = 32 * 1024
@@ -49,6 +56,9 @@ func Validate(c *TenantConfig) string {
 		if reason := validateOperator(c.Operator); reason != "" {
 			return reason
 		}
+	}
+	if c.OrgId != "" && !orgIdRe.MatchString(c.OrgId) {
+		return fmt.Sprintf("orgId invalid: %s", c.OrgId)
 	}
 	return ""
 }
