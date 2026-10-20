@@ -187,31 +187,37 @@ describe("claudeCodeEnvFromCredential", () => {
     expect(CLAUDE_CODE_MAX_OUTPUT_TOKENS).toBeLessThan(64_000);
   });
 
-  test("the reviewer class runs a cheaper model on every provider", () => {
+  test("the reviewer class runs Sonnet 5.5 on every provider", () => {
     expect(
       claudeCodeEnvFromCredential(
         { providerId: "anthropic", apiKey: "sk-a" },
         "reviewer",
       ).CLAUDE_CODE_MODEL,
-    ).toBe("claude-sonnet-5");
+    ).toBe("claude-sonnet-5-5");
     expect(
       claudeCodeEnvFromCredential(
         { providerId: "openrouter", apiKey: "or-1" },
         "reviewer",
       ).CLAUDE_CODE_MODEL,
-    ).toBe("anthropic/claude-sonnet-5");
+    ).toBe("anthropic/claude-sonnet-5.5");
     expect(
       claudeCodeEnvFromCredential(
         { providerId: "deco", apiKey: "deco-1" },
         "reviewer",
       ).CLAUDE_CODE_MODEL,
-    ).toBe("anthropic/claude-sonnet-5");
+    ).toBe("anthropic/claude-sonnet-5.5");
     expect(
       claudeCodeEnvFromCredential(
         { providerId: CLAUDE_SUBSCRIPTION_PROVIDER_ID, apiKey: "sk-ant-oat-1" },
         "reviewer",
       ).CLAUDE_CODE_MODEL,
-    ).toBe("claude-sonnet-5");
+    ).toBe("claude-sonnet-5-5");
+    expect(
+      claudeCodeEnvFromCredential(
+        { providerId: GITHUB_COPILOT_PROVIDER_ID, apiKey: "copilot-token" },
+        "reviewer",
+      ).CLAUDE_CODE_MODEL,
+    ).toBe("claude-sonnet-5.5");
   });
 
   test("the class changes only the model and the turn cap — credentials are untouched", () => {
@@ -295,14 +301,17 @@ describe("claudeCodeEnvFromCredential", () => {
   });
 
   test("reviewer and conflict runs keep their class model whatever was chosen", () => {
-    for (const modelClass of ["reviewer", "conflict"] as const) {
+    for (const [modelClass, expectedModel] of [
+      ["reviewer", "claude-sonnet-5-5"],
+      ["conflict", "claude-sonnet-5"],
+    ] as const) {
       expect(
         claudeCodeEnvFromCredential(
           { providerId: "anthropic", apiKey: "sk-a" },
           modelClass,
           "claude-opus-5-5",
         ).CLAUDE_CODE_MODEL,
-      ).toBe("claude-sonnet-5");
+      ).toBe(expectedModel);
     }
   });
 

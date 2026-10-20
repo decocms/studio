@@ -116,13 +116,13 @@ const CLAUDE_CODE_MODEL: Record<
   anthropic: {
     default: "claude-opus-5-5",
     chat: "claude-sonnet-5-5",
-    reviewer: "claude-sonnet-5",
+    reviewer: "claude-sonnet-5-5",
     conflict: "claude-sonnet-5",
   },
   openrouter: {
     default: "anthropic/claude-opus-5.5",
     chat: "anthropic/claude-sonnet-5.5",
-    reviewer: "anthropic/claude-sonnet-5",
+    reviewer: "anthropic/claude-sonnet-5.5",
     conflict: "anthropic/claude-sonnet-5",
   },
   // Sonnet even for the builder: Copilot plans gate Opus per account (off on a
@@ -130,7 +130,7 @@ const CLAUDE_CODE_MODEL: Record<
   copilot: {
     default: "claude-sonnet-5.5",
     chat: "claude-sonnet-5.5",
-    reviewer: "claude-sonnet-5",
+    reviewer: "claude-sonnet-5.5",
     conflict: "claude-sonnet-5",
   },
 };
