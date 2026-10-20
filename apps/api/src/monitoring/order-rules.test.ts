@@ -1,5 +1,10 @@
 import { describe, expect, it } from "bun:test";
-import { dstBuckets, doneBuckets, localDayStart } from "./order-lake";
+import {
+  dstBuckets,
+  doneBuckets,
+  localBucketStart,
+  localDayStart,
+} from "./order-lake";
 import {
   buildDayView,
   BUCKETS_PER_DAY,
@@ -172,6 +177,21 @@ describe("DST", () => {
         "America/New_York",
       ).toISOString(),
     ).toBe("2026-11-01T04:00:00.000Z");
+  });
+
+  it("agrees with localDayStart on bucket 0 across a switch", () => {
+    expect(
+      localBucketStart(
+        new Date("2026-03-08T12:00:00Z"),
+        "America/New_York",
+        0,
+      ).toISOString(),
+    ).toBe(
+      localDayStart(
+        new Date("2026-03-08T12:00:00Z"),
+        "America/New_York",
+      ).toISOString(),
+    );
   });
 });
 

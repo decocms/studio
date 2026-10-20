@@ -117,11 +117,13 @@ export function localBucketStart(
   bucket: number,
 ): Date {
   const intoMinute = at.getTime() % 60_000;
-  return new Date(
+  const guess =
     at.getTime() -
-      (localMinutes(at, timezone) - bucket * 15) * 60_000 -
-      intoMinute,
-  );
+    (localMinutes(at, timezone) - bucket * 15) * 60_000 -
+    intoMinute;
+  // A DST switch between the bucket and `at` shifts the zone's offset.
+  const shift = utcOffset(at, timezone) - utcOffset(new Date(guess), timezone);
+  return new Date(guess + shift * 60_000);
 }
 
 /** Buckets of `at`'s local day before it that a DST switch skipped or repeated. */
