@@ -146,8 +146,14 @@ function tzOffsetMs(instant: Date, tz: string): number {
 /** The last second of a local day in `tz`, as an ISO instant. */
 function endOfLocalDay(date: string, tz: string): string {
   const guess = Date.parse(`${date}T23:59:59Z`);
-  return new Date(guess - tzOffsetMs(new Date(guess), tz)).toISOString();
+  // Second pass: the offset at the guess differs when a DST change falls between it and the answer.
+  const first = guess - tzOffsetMs(new Date(guess), tz);
+  return new Date(guess - tzOffsetMs(new Date(first), tz)).toISOString();
 }
+
+/** `YYYY-MM-DD` of `instant` in `tz` (en-CA formats that way). */
+const localDate = (instant: Date, tz: string) =>
+  instant.toLocaleDateString("en-CA", { timeZone: tz });
 
 const sum = (values: (number | null)[]) =>
   values.reduce<number>((s, v) => s + (v ?? 0), 0);
@@ -656,6 +662,7 @@ export function OrderMonitorDayView({
 
   const soFar = sum(day.orders.today);
   const verdicts = day.verdicts;
+  const today = localDate(new Date(), day.timezone);
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -665,11 +672,14 @@ export function OrderMonitorDayView({
             type="date"
             aria-label={t("orderMonitor.pickDay")}
             value={day.date}
-            max={new Date().toISOString().slice(0, 10)}
+            max={today}
             onChange={(e) => {
               const date = e.target.value;
               if (!date) return;
-              onAtChange(endOfLocalDay(date, day.timezone));
+              // Today is "now", so it stays live instead of freezing at 23:59:59.
+              onAtChange(
+                date >= today ? undefined : endOfLocalDay(date, day.timezone),
+              );
             }}
             className="rounded-md border border-border bg-card px-2 py-1 text-xs"
           />
@@ -687,7 +697,9 @@ export function OrderMonitorDayView({
       {at && (
         <p className="text-xs text-muted-foreground">
           {t("orderMonitor.reviewingAt", {
-            at: new Date(at).toLocaleString(),
+            at: new Date(at).toLocaleString(undefined, {
+              timeZone: day.timezone,
+            }),
             timezone: day.timezone,
           })}
         </p>
