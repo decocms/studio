@@ -2220,12 +2220,14 @@ export const USER_ROLE_TOOLS: ReadonlySet<string> = new Set(
 
 /**
  * Group gated capabilities by their UI section (e.g., "Organization", "Automations").
- * Used to render the role editor's capability picker.
+ * Used to render the role editor's capability picker. (memoized)
  */
 export function getCapabilitySections(): Array<{
   section: string;
   capabilities: PermissionCapability[];
 }> {
+  if (cachedCapabilitySections) return cachedCapabilitySections;
+
   const map = new Map<string, PermissionCapability[]>();
   for (const cap of PERMISSION_CAPABILITIES) {
     if (cap.id === BASIC_USAGE_CAPABILITY_ID) continue;
@@ -2233,10 +2235,13 @@ export function getCapabilitySections(): Array<{
     arr.push(cap);
     map.set(cap.section, arr);
   }
-  return Array.from(map.entries()).map(([section, capabilities]) => ({
-    section,
-    capabilities,
-  }));
+  cachedCapabilitySections = Array.from(map.entries()).map(
+    ([section, capabilities]) => ({
+      section,
+      capabilities,
+    }),
+  );
+  return cachedCapabilitySections;
 }
 
 /**
@@ -2273,14 +2278,17 @@ export function toggleCapabilityInTools(
 /**
  * Map of gated capability id → granted, for the privileged built-in roles
  * (owner / admin) which bypass every permission check. The hidden basic-usage
- * capability is never part of the map — it's always-on and not UI-gated.
+ * capability is never part of the map — it's always-on and not UI-gated. (memoized)
  */
 export function allCapabilitiesGranted(): Record<string, boolean> {
+  if (cachedAllCapabilitiesGranted) return cachedAllCapabilitiesGranted;
+
   const out: Record<string, boolean> = {};
   for (const cap of PERMISSION_CAPABILITIES) {
     if (cap.id === BASIC_USAGE_CAPABILITY_ID) continue;
     out[cap.id] = true;
   }
+  cachedAllCapabilitiesGranted = out;
   return out;
 }
 
@@ -2329,14 +2337,20 @@ export function resolveCapabilities(
   return out;
 }
 
-// ============================================================================
-// Exports
-// ============================================================================
+// Memoized results — static data never changes after first compute
+let cachedToolsByCategory: Record<ToolCategory, ToolMetadata[]> | null = null;
+let cachedCapabilitySections: Array<{
+  section: string;
+  capabilities: PermissionCapability[];
+}> | null = null;
+let cachedAllCapabilitiesGranted: Record<string, boolean> | null = null;
 
 /**
  * Get tools grouped by category
  */
 export function getToolsByCategory(): Record<ToolCategory, ToolMetadata[]> {
+  if (cachedToolsByCategory) return cachedToolsByCategory;
+
   const grouped: Record<ToolCategory, ToolMetadata[]> = {
     Organizations: [],
     Connections: [],
@@ -2367,5 +2381,6 @@ export function getToolsByCategory(): Record<ToolCategory, ToolMetadata[]> {
     grouped[tool.category].push(tool);
   }
 
+  cachedToolsByCategory = grouped;
   return grouped;
 }
