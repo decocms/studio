@@ -159,6 +159,7 @@ import {
 import {
   buildPageForcedVariants,
   buildSectionForcedVariants,
+  combineForcedVariants,
 } from "./variant-draft-pointer";
 import { PageJsonDialog } from "./page-json-dialog";
 import { createReferencedBlockSaver } from "./save-referenced-block";
@@ -863,7 +864,9 @@ export function SectionsEditor({
     const sectionParams = protocolProject
       ? buildSectionForcedVariants(section)
       : buildSectionVariantOverrideParams({ ...section, decofile, meta });
-    const params = [...pageParams, ...sectionParams];
+    const params = protocolProject
+      ? combineForcedVariants(pageParams, sectionParams)
+      : [...pageParams, ...sectionParams];
     onVariantPreviewOverride(params.length > 0 ? params : null);
   };
 

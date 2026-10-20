@@ -56,6 +56,20 @@ export function buildSectionForcedVariants(args: {
   return [forcedVariant(args.pageKey, path, args.selectedVariantIndex)];
 }
 
+/**
+ * The forced variants for a section variant inside a page variant, in the
+ * order the site applies them. `forceVariants` applies each address in turn,
+ * and forcing the page's `sections` keeps only the active page variant, so
+ * `sections.variants.<i>…` would no longer exist afterwards: the section's
+ * address (the deeper one) goes first, while the page variants are all there.
+ */
+export function combineForcedVariants(
+  pageForced: string[],
+  sectionForced: string[],
+): string[] {
+  return [...sectionForced, ...pageForced];
+}
+
 /** encodeURIComponent, plus the characters it leaves that a pointer's path doesn't allow. */
 function encode(value: string): string {
   return encodeURIComponent(value).replace(
