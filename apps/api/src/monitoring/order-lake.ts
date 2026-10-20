@@ -67,6 +67,19 @@ const FIRST_EVENT_SQL = `
   FROM customer_lake.order_events
   WHERE connection_id = {conn:String} AND changed_at < ${AT}`;
 
+// Chart only. Three days back covers D-1's local day across a 25-hour DST day.
+const CHANNELS_SQL = `
+  SELECT sales_channel AS channel, ${daysAgo("created_at")} AS days_ago,
+    ${bucket("created_at")} AS bucket, count() AS placed
+  FROM customer_lake.orders FINAL
+  WHERE connection_id = {conn:String} AND created_at < ${AT}
+    AND created_at >= ${AT} - INTERVAL 3 DAY AND days_ago IN (0, 1)
+  GROUP BY channel, days_ago, bucket`;
+
+const CHANNEL_NAMES_SQL = `
+  SELECT channel_id, name FROM customer_lake.sales_channels FINAL
+  WHERE connection_id = {conn:String}`;
+
 const TIMEZONE_SQL = `
   SELECT timezone FROM customer_lake.connections FINAL
   WHERE connection_id = {conn:String} LIMIT 1`;
@@ -178,25 +191,27 @@ export async function loadStoreTimezone(
  * The store's day at `at`, or null when the lake has no timezone for it (the
  * ingest worker's zone map needs an entry). Nothing at or after `at` is read,
  * so a replayed tick gets the same answer. `approximate` adds the chart's
- * stand-in for cancellations before the install; the rules never read it.
+ * stand-in for cancellations before the install, and `channels` its split by
+ * sales channel; the rules read neither.
  */
 export async function loadStoreDay(
   organizationId: string,
   connectionId: string,
   at: Date,
-  opts: { approximate?: boolean } = {},
+  opts: { approximate?: boolean; channels?: boolean } = {},
 ): Promise<StoreDay | null> {
   const timezone = await loadStoreTimezone(organizationId, connectionId);
   if (!timezone) return null;
 
   const params = { conn: connectionId, tz: timezone, at: toLakeTime(at) };
-  const [orders, events, [first], approx] = await Promise.all([
+  const [orders, events, [first], approx, channels] = await Promise.all([
     queryCustomerLake(organizationId, ORDERS_SQL, params),
     queryCustomerLake(organizationId, EVENTS_SQL, params),
     queryCustomerLake(organizationId, FIRST_EVENT_SQL, params),
     opts.approximate
       ? queryCustomerLake(organizationId, APPROX_CANCELS_SQL, params)
       : null,
+    opts.channels ? loadChannels(organizationId, params) : undefined,
   ]);
 
   const days = emptyDays();
@@ -239,5 +254,45 @@ export async function loadStoreDay(
         ? null
         : Number(first.days_ago),
     approximate,
+    channels,
   };
+}
+
+async function loadChannels(
+  organizationId: string,
+  params: Record<string, string>,
+): Promise<NonNullable<StoreDay["channels"]>> {
+  const [rows, names] = await Promise.all([
+    queryCustomerLake(organizationId, CHANNELS_SQL, params),
+    // Names are a label, not data: without them the UI shows the channel id.
+    queryCustomerLake(organizationId, CHANNEL_NAMES_SQL, params).catch(
+      (err) => {
+        console.warn("[order-monitor] channel names read failed", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return [];
+      },
+    ),
+  ]);
+  const nameOf = new Map(
+    names.map((n) => [String(n.channel_id), String(n.name)]),
+  );
+  const byId = new Map<string, { today: number[]; d1: number[] }>();
+  const zeros = () => new Array<number>(BUCKETS_PER_DAY).fill(0);
+  for (const row of rows) {
+    const id = String(row.channel);
+    const b = Number(row.bucket);
+    if (b < 0 || b >= BUCKETS_PER_DAY) continue;
+    let c = byId.get(id);
+    if (!c) {
+      c = { today: zeros(), d1: zeros() };
+      byId.set(id, c);
+    }
+    (Number(row.days_ago) === 0 ? c.today : c.d1)[b] = Number(row.placed);
+  }
+  return [...byId].map(([id, c]) => ({
+    id,
+    name: nameOf.get(id) || null,
+    ...c,
+  }));
 }

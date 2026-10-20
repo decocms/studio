@@ -132,6 +132,7 @@ export const createOrderMonitorRoutes = () => {
     try {
       const day = await loadStoreDay(g.organizationId, connectionId, at, {
         approximate: true,
+        channels: true,
       });
       if (!day) {
         return c.json(

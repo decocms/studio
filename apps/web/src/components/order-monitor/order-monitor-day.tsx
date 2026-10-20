@@ -1,7 +1,8 @@
 /**
  * One store's day as the order monitor judged it: the headline, the Orders
  * chart (today vs D-1 / W-1 / Y-1, expected with its projection, the alert
- * band) and the Cancellations chart, with pushes to main marked on both.
+ * band), the Cancellations chart, with pushes to main marked on both, and the
+ * orders split by sales channel.
  * Shared by the agent Monitor tab and the org Monitoring page's Stores tab.
  */
 
@@ -32,6 +33,7 @@ import {
 import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   ORDER_MONITOR_RULES,
+  type OrderMonitorChannel,
   type OrderMonitorDay,
   type OrderMonitorPushes,
   type OrderMonitorRule,
@@ -575,6 +577,89 @@ function CancellationsChart({
   );
 }
 
+// ponytail: five chart colors; a sixth channel reuses the first.
+const channelColor = (i: number) => `var(--chart-${(i % 5) + 1})`;
+
+function channelLabel(c: OrderMonitorChannel, t: TFunction): string {
+  return c.name ?? t("orderMonitor.channelFallback", { id: c.id || "—" });
+}
+
+/** Today's orders per sales channel, each with its count so far vs D-1 at the same time. */
+function ChannelsChart({ day }: { day: OrderMonitorDay }) {
+  const t = useT();
+  const { channels } = day;
+  const data = HOURS.map((h) => ({
+    x: h,
+    ...Object.fromEntries(channels.map((c, i) => [`c${i}`, c.today[h]])),
+  }));
+  return (
+    <>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+        {channels.map((c, i) => (
+          <div
+            key={c.id}
+            className="flex flex-col gap-1 rounded-lg border border-border p-3"
+          >
+            <span className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+              <span
+                className="h-0.5 w-3 shrink-0 rounded-full"
+                style={{ backgroundColor: channelColor(i) }}
+              />
+              <span className="truncate">{channelLabel(c, t)}</span>
+              {c.name && <span className="text-muted-foreground">#{c.id}</span>}
+            </span>
+            <span className="text-sm tabular-nums text-foreground">
+              {c.soFar.toLocaleString()}{" "}
+              <span className="text-xs text-muted-foreground">
+                {t("orderMonitor.vsD1SameTime", {
+                  pct: percentVs(c.soFar, c.d1SoFar),
+                })}
+              </span>
+            </span>
+          </div>
+        ))}
+      </div>
+      <ChartContainer
+        config={Object.fromEntries(
+          channels.map((c, i) => [
+            `c${i}`,
+            { label: channelLabel(c, t), color: channelColor(i) },
+          ]),
+        )}
+        className="h-56 w-full"
+      >
+        <ComposedChart
+          data={data}
+          margin={{ top: 8, right: RIGHT_MARGIN, bottom: 0, left: 0 }}
+        >
+          <CartesianGrid vertical={false} />
+          {xAxis}
+          {yAxis}
+          <ChartTooltip
+            content={
+              <ChartTooltipContent
+                labelFormatter={(_, payload) => {
+                  const h = datumHour(payload);
+                  return h === null ? null : hourLabel(h);
+                }}
+              />
+            }
+          />
+          {channels.map((c, i) => (
+            <Line
+              key={c.id}
+              dataKey={`c${i}`}
+              stroke={channelColor(i)}
+              strokeWidth={2}
+              dot={false}
+            />
+          ))}
+        </ComposedChart>
+      </ChartContainer>
+    </>
+  );
+}
+
 function Legend() {
   const t = useT();
   const items = [
@@ -716,6 +801,11 @@ export function OrderMonitorDayView({
         <OrdersChart day={day} pushes={pushes} />
         <PushStrips pushes={pushes} />
       </Section>
+      {day.channels.length > 1 && (
+        <Section title={t("orderMonitor.channelsTitle")}>
+          <ChannelsChart day={day} />
+        </Section>
+      )}
       <Section title={t("orderMonitor.cancellationsTitle")}>
         <CancellationsChart day={day} pushes={pushes} />
         <PushStrips pushes={pushes} />
