@@ -43,7 +43,6 @@ export const sandbox = {
   "sandbox.blogBrand.dosHint":
     "Instructions every generated post must follow. Write instructions, not adjectives.",
   "sandbox.blogBrand.dosNamePlaceholder": "What this rule is about",
-  "sandbox.blogBrand.addKeyword": "Add keyword",
   "sandbox.blogBrand.addPolicy": "Add policy",
   "sandbox.blogBrand.addSpecialDate": "Add date",
   "sandbox.blogBrand.addVocabulary": "Add word",
@@ -364,7 +363,6 @@ export const sandbox = {
   "sandbox.campaigns.untitled": "Untitled campaign",
   "sandbox.campaigns.viewBoard": "Board",
   "sandbox.campaigns.viewList": "List",
-  "sandbox.blogContext.removeEntry": "Remove",
   "sandbox.blogContext.subtitle":
     "The brand context your blog is written from — voice, formats and the campaigns it writes for.",
   "sandbox.blogContext.tabAutomations": "Automations",
@@ -747,7 +745,6 @@ export const sandbox = {
   "sandbox.linkPicker.noProducts": "No matching products",
   "sandbox.mediaBlocks.divider": "Divider",
   "sandbox.mediaBlocks.fullWidth": "Full width",
-  "sandbox.mediaBlocks.image": "Image",
   "sandbox.mediaBlocks.highPriority": "Priority",
   "sandbox.mediaBlocks.highPriorityHint":
     "Loads eagerly with high fetch priority. Use for images above the fold.",
@@ -980,7 +977,6 @@ export const sandbox = {
   "sandbox.preview.blockOnNoPage":
     "This block isn't used on any page, so there's nothing to preview.",
   "sandbox.preview.previewMetadataNotReady": "Preview metadata not ready yet",
-  "sandbox.preview.refresh": "Refresh",
   "sandbox.preview.searchPagesAndComponents": "Search pages and components...",
   "sandbox.preview.startingPreview": "Starting your preview",
   "sandbox.preview.startingPreviewHint":

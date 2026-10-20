@@ -46,7 +46,6 @@ export const sandbox = {
   "sandbox.blogBrand.dosHint":
     "Instruções que todo post gerado deve seguir. Escreva instruções, não adjetivos.",
   "sandbox.blogBrand.dosNamePlaceholder": "Sobre o que é esta regra",
-  "sandbox.blogBrand.addKeyword": "Adicionar palavra-chave",
   "sandbox.blogBrand.addPolicy": "Adicionar política",
   "sandbox.blogBrand.addSpecialDate": "Adicionar data",
   "sandbox.blogBrand.addVocabulary": "Adicionar palavra",
@@ -368,7 +367,6 @@ export const sandbox = {
   "sandbox.campaigns.untitled": "Campanha sem título",
   "sandbox.campaigns.viewBoard": "Quadro",
   "sandbox.campaigns.viewList": "Lista",
-  "sandbox.blogContext.removeEntry": "Remover",
   "sandbox.blogContext.subtitle":
     "O contexto de marca do qual seu blog é escrito — voz, formatos e as campanhas para as quais ele escreve.",
   "sandbox.blogContext.tabAutomations": "Automações",
@@ -759,7 +757,6 @@ export const sandbox = {
   "sandbox.linkPicker.noProducts": "Nenhum produto encontrado",
   "sandbox.mediaBlocks.divider": "Divisor",
   "sandbox.mediaBlocks.fullWidth": "Largura total",
-  "sandbox.mediaBlocks.image": "Imagem",
   "sandbox.mediaBlocks.highPriority": "Prioridade",
   "sandbox.mediaBlocks.highPriorityHint":
     "Carrega de imediato e com prioridade alta. Use em imagens acima da dobra.",
@@ -1004,7 +1001,6 @@ export const sandbox = {
     "Este bloco não é usado em nenhuma página, então não há o que visualizar.",
   "sandbox.preview.previewMetadataNotReady":
     "Metadados de visualização não estão prontos ainda",
-  "sandbox.preview.refresh": "Atualizar",
   "sandbox.preview.searchPagesAndComponents":
     "Procurar páginas e componentes...",
   "sandbox.preview.startingPreview": "Iniciando seu preview",
