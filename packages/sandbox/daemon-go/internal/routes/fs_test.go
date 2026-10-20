@@ -268,6 +268,34 @@ func TestEditRefusesSymlinkEscape(t *testing.T) {
 	}
 }
 
+// A symlinked DIRECTORY inside the repo must not let /unlink reach a path
+// outside AppRoot by resolving through it: SafePath only clamps the lexical
+// path, and os.Stat/os.Remove follow a symlinked intermediate directory
+// transparently, unlike a symlinked leaf (which they operate on directly).
+func TestUnlinkRefusesSymlinkedParentEscape(t *testing.T) {
+	outsideDir := t.TempDir()
+	outsideFile := filepath.Join(outsideDir, "secret.txt")
+	if err := os.WriteFile(outsideFile, []byte("original"), 0o644); err != nil {
+		t.Fatalf("seed outside file: %v", err)
+	}
+	deps := seedBlocks(t)
+	link := filepath.Join(deps.RepoDir, "linkdir")
+	if err := os.Symlink(outsideDir, link); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+	body, _ := json.Marshal(map[string]any{"path": "linkdir/secret.txt"})
+	req := httptest.NewRequest(http.MethodPost, "/unlink", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	Unlink(deps)(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body = %s", rec.Code, rec.Body.String())
+	}
+	if _, err := os.Stat(outsideFile); err != nil {
+		t.Fatalf("outside file was deleted through a symlinked directory: %v", err)
+	}
+}
+
 // Unlink already marks a deleted path touched so a pre-baseline-arm delete
 // isn't folded into the dirty baseline as boot dirt (see
 // BranchStatusMonitor.MarkUserTouched). A rename deletes `from` the same way,

@@ -43,13 +43,41 @@ func (d FsDeps) notifyWrite(path string) {
 	}
 }
 
-// isSymlink reports whether resolvedPath itself is a symlink. SafePath only
-// confines the path lexically, so a symlink planted inside the repo (e.g. by a
-// cloned branch) and targeting outside AppRoot would otherwise let /write and
-// /edit follow it straight through the containment check.
+// isSymlink reports whether resolvedPath itself is a symlink.
 func isSymlink(resolvedPath string) bool {
 	info, err := os.Lstat(resolvedPath)
 	return err == nil && info.Mode()&os.ModeSymlink != 0
+}
+
+// escapesViaSymlink reports whether any path component between appRoot and
+// resolvedPath — including resolvedPath itself — is a symlink. SafePath only
+// confines the path lexically, so a symlink planted inside the repo (e.g. by a
+// cloned branch) and targeting outside AppRoot would otherwise let a write,
+// edit, mkdir, rename or delete follow it straight through the containment
+// check: not just when the final path segment is the symlink, but also when
+// an intermediate directory is, since the OS resolves those transparently.
+func escapesViaSymlink(appRoot, resolvedPath string) bool {
+	rel, err := filepath.Rel(appRoot, resolvedPath)
+	if err != nil || rel == "." {
+		return false
+	}
+	cur := appRoot
+	for _, seg := range strings.Split(rel, string(filepath.Separator)) {
+		cur = filepath.Join(cur, seg)
+		if isSymlink(cur) {
+			return true
+		}
+	}
+	return false
+}
+
+// escapesViaSymlinkParent is escapesViaSymlink over resolvedPath's parent
+// directories only, excluding resolvedPath itself: an operation that only
+// removes or renames a symlink entry (not what it points to) is safe, since
+// neither os.Remove, os.RemoveAll, nor os.Rename follow a symlink they are
+// handed directly — the escape is solely an intermediate directory.
+func escapesViaSymlinkParent(appRoot, resolvedPath string) bool {
+	return escapesViaSymlink(appRoot, filepath.Dir(resolvedPath))
 }
 
 // decodeBody caps the request body at maxRequestBodyBytes: without a limit, a
@@ -242,7 +270,7 @@ func Write(deps FsDeps) http.HandlerFunc {
 			httpx.Error(w, 400, deps.escapesRoot())
 			return
 		}
-		if isSymlink(filePath) {
+		if escapesViaSymlink(deps.AppRoot, filePath) {
 			httpx.Error(w, 400, "Refusing to write through a symlink")
 			return
 		}
@@ -302,6 +330,10 @@ func Unlink(deps FsDeps) http.HandlerFunc {
 			httpx.Error(w, 400, deps.escapesRoot())
 			return
 		}
+		if escapesViaSymlinkParent(deps.AppRoot, filePath) {
+			httpx.Error(w, 400, "Refusing to unlink through a symlink")
+			return
+		}
 		existed := true
 		stat, err := os.Stat(filePath)
 		if err != nil {
@@ -358,6 +390,10 @@ func Mkdir(deps FsDeps) http.HandlerFunc {
 			httpx.Error(w, 400, deps.escapesRoot())
 			return
 		}
+		if escapesViaSymlinkParent(deps.AppRoot, dirPath) {
+			httpx.Error(w, 400, "Refusing to mkdir through a symlink")
+			return
+		}
 		if err := os.MkdirAll(dirPath, 0o755); err != nil {
 			httpx.Error(w, 500, err.Error())
 			return
@@ -395,6 +431,10 @@ func Rename(deps FsDeps) http.HandlerFunc {
 		toPath, okTo := paths.SafePath(deps.AppRoot, deps.RepoDir, body.To)
 		if !okFrom || !okTo {
 			httpx.Error(w, 400, deps.escapesRoot())
+			return
+		}
+		if escapesViaSymlinkParent(deps.AppRoot, fromPath) || escapesViaSymlinkParent(deps.AppRoot, toPath) {
+			httpx.Error(w, 400, "Refusing to rename through a symlink")
 			return
 		}
 		if _, err := os.Stat(fromPath); err != nil {
@@ -443,7 +483,7 @@ func Edit(deps FsDeps) http.HandlerFunc {
 			httpx.Error(w, 400, deps.escapesRoot())
 			return
 		}
-		if isSymlink(filePath) {
+		if escapesViaSymlink(deps.AppRoot, filePath) {
 			httpx.Error(w, 400, "Refusing to edit through a symlink")
 			return
 		}
