@@ -330,7 +330,28 @@ export class GitlabChangeRequestClient implements ChangeRequestClient {
   }
 
   private map(mr: RawMergeRequest): ChangeRequest {
-    const iid = mr.iid ?? 0;
+    if (!mr.iid || mr.iid <= 0) {
+      throw new GitProviderError({
+        provider: "gitlab",
+        status: 422,
+        message: `Invalid merge request: missing or invalid iid`,
+      });
+    }
+    if (!mr.source_branch) {
+      throw new GitProviderError({
+        provider: "gitlab",
+        status: 422,
+        message: `Invalid merge request ${mr.iid}: missing source branch`,
+      });
+    }
+    if (!mr.target_branch) {
+      throw new GitProviderError({
+        provider: "gitlab",
+        status: 422,
+        message: `Invalid merge request ${mr.iid}: missing target branch`,
+      });
+    }
+    const iid = mr.iid;
     const sameProject =
       mr.source_project_id == null ||
       mr.project_id == null ||
@@ -344,8 +365,8 @@ export class GitlabChangeRequestClient implements ChangeRequestClient {
       draft: mr.draft === true || mr.work_in_progress === true,
       mergedAt: mr.merged_at ?? null,
       updatedAt: mr.updated_at ?? null,
-      base: mr.target_branch ?? "main",
-      head: mr.source_branch ?? "",
+      base: mr.target_branch,
+      head: mr.source_branch,
       headSha: mr.sha ?? "",
       // A fork's path is not on the payload; null already means "not local".
       headRepoPath: sameProject ? this.repo.path : null,
