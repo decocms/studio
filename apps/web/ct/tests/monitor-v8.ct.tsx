@@ -123,7 +123,7 @@ test("explains missing request metrics and points to what already works", async 
   await expect(c.getByText("Request metrics are on their way")).toBeVisible();
   await expect(
     c.getByText(
-      "Request metrics appear once the site runs @decocms/tanstack 8.5 or later. Sites built on Next.js don't send them yet. Upstream calls and errors are already shown.",
+      'Request data starts with @decocms/blocks 8.5. Upgrade the site to it; on Next.js, also add an instrumentation.ts file with: export { register } from "@decocms/nextjs/instrumentation". Upstream calls and errors are already shown.',
     ),
   ).toBeVisible();
   await c.getByRole("button", { name: "See upstream calls" }).click();

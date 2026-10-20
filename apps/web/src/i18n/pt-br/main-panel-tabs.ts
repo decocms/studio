@@ -596,7 +596,7 @@ export const mainPanelTabs = {
   "mainPanelTabs.monitorV8.empty.serverMetricMissing.title":
     "As métricas de requisições estão a caminho",
   "mainPanelTabs.monitorV8.empty.serverMetricMissing.body":
-    "As métricas de requisições aparecem quando o site estiver no @decocms/tanstack 8.5 ou mais recente. Sites feitos em Next.js ainda não as enviam. As chamadas a integrações e os erros já aparecem.",
+    'Os dados de requisições começam no @decocms/blocks 8.5. Atualize o site para essa versão; em Next.js, adicione também um arquivo instrumentation.ts com: export { register } from "@decocms/nextjs/instrumentation". As chamadas a integrações e os erros já aparecem.',
   "mainPanelTabs.monitorV8.empty.seeUpstreams": "Ver chamadas a integrações",
   "mainPanelTabs.monitorV8.empty.noTelemetry.title":
     "Aguardando os primeiros dados deste site",

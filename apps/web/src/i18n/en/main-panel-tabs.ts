@@ -574,7 +574,7 @@ export const mainPanelTabs = {
   "mainPanelTabs.monitorV8.empty.serverMetricMissing.title":
     "Request metrics are on their way",
   "mainPanelTabs.monitorV8.empty.serverMetricMissing.body":
-    "Request metrics appear once the site runs @decocms/tanstack 8.5 or later. Sites built on Next.js don't send them yet. Upstream calls and errors are already shown.",
+    'Request data starts with @decocms/blocks 8.5. Upgrade the site to it; on Next.js, also add an instrumentation.ts file with: export { register } from "@decocms/nextjs/instrumentation". Upstream calls and errors are already shown.',
   "mainPanelTabs.monitorV8.empty.seeUpstreams": "See upstream calls",
   "mainPanelTabs.monitorV8.empty.noTelemetry.title":
     "Waiting for this site's first data",
