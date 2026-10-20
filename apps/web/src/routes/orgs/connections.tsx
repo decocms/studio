@@ -98,7 +98,11 @@ import {
   getRegistryItemAppName,
 } from "@/utils/extract-connection-data";
 import { authenticateAndPersistOAuth } from "@/lib/authenticate-and-persist-oauth";
-import { KEYS, invalidateVirtualMcpQueries } from "@/lib/query-keys";
+import {
+  KEYS,
+  invalidateConnectionsCollection,
+  invalidateVirtualMcpQueries,
+} from "@/lib/query-keys";
 import {
   buildCustomStdioParameters,
   buildNpxParameters,
@@ -375,16 +379,7 @@ function ConnectionResults({
   const studio = useStudioTools();
 
   const invalidateConnections = () => {
-    queryClient.invalidateQueries({
-      predicate: (query) => {
-        const key = query.queryKey;
-        return (
-          key[1] === org.id &&
-          key[3] === "collection" &&
-          key[4] === "CONNECTIONS"
-        );
-      },
-    });
+    invalidateConnectionsCollection(queryClient, org.id);
   };
 
   // Bulk action handlers

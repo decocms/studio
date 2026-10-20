@@ -3,7 +3,7 @@ import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { CreateConnectionDialog } from "@/components/connections/create-connection-dialog.tsx";
 import type { RegistryItem } from "@/components/store/types";
 import { authenticateAndPersistOAuth } from "@/lib/authenticate-and-persist-oauth";
-import { KEYS } from "@/lib/query-keys";
+import { KEYS, invalidateConnectionsCollection } from "@/lib/query-keys";
 import { authClient } from "@/lib/auth-client";
 import { extractConnectionData } from "@/utils/extract-connection-data";
 import { useT } from "@/i18n/use-t.ts";
@@ -116,16 +116,7 @@ export function AddConnectionDialog({
   // Silent refresh of the connections collection after a successful OAuth
   // flow (no toast — just keeps cached connection/tool data fresh).
   const invalidateConnections = () => {
-    queryClient.invalidateQueries({
-      predicate: (query) => {
-        const key = query.queryKey;
-        return (
-          key[1] === org.id &&
-          key[3] === "collection" &&
-          key[4] === "CONNECTIONS"
-        );
-      },
-    });
+    invalidateConnectionsCollection(queryClient, org.id);
   };
 
   // Shared post-OAuth-success bookkeeping for the three attach flows below:

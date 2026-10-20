@@ -8,6 +8,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { clearHtmlResourceCacheForConnection } from "@/lib/html-resource-persist";
 import { useStudioTools } from "@/lib/studio-tools";
+import { invalidateConnectionsCollection } from "@/lib/query-keys";
 
 export type DeleteConnectionState =
   | { mode: "idle" }
@@ -32,16 +33,7 @@ export function useDeleteConnection({
   });
 
   const invalidateConnections = () => {
-    queryClient.invalidateQueries({
-      predicate: (query) => {
-        const key = query.queryKey;
-        return (
-          key[1] === org.id &&
-          key[3] === "collection" &&
-          key[4] === "CONNECTIONS"
-        );
-      },
-    });
+    invalidateConnectionsCollection(queryClient, org.id);
   };
 
   const evictUiResourceCache = (connectionId: string) => {

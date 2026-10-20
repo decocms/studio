@@ -865,6 +865,23 @@ export const KEYS = {
     ["sandbox-sprite", sandboxKey] as const,
 } as const;
 
+/** Invalidates every CONNECTIONS collection cache entry for an org
+ *  (collectionItem/collectionList/collectionListInfinite, all keyed
+ *  [client, orgId, scopeKey, "collection", "CONNECTIONS", ...]). */
+export function invalidateConnectionsCollection(
+  queryClient: import("@tanstack/react-query").QueryClient,
+  orgId: string,
+) {
+  queryClient.invalidateQueries({
+    predicate: (query) => {
+      const key = query.queryKey;
+      return (
+        key[1] === orgId && key[3] === "collection" && key[4] === "CONNECTIONS"
+      );
+    },
+  });
+}
+
 export function invalidateVirtualMcpQueries(
   queryClient: import("@tanstack/react-query").QueryClient,
   orgId?: string,
