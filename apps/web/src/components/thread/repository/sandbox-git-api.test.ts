@@ -722,13 +722,10 @@ describe("fetchPublishDiff", () => {
     base: GitDiffResult["diffs"];
     working: GitDiffResult["diffs"];
   }) {
-    const requests: { body: string; fastPreview: boolean }[] = [];
+    const requests: { body: string }[] = [];
     globalThis.fetch = ((_url: string, init: RequestInit) => {
       const body = String(init.body);
-      requests.push({
-        body,
-        fastPreview: new Headers(init.headers).has("x-deco-fast-preview"),
-      });
+      requests.push({ body });
       const isBase = body !== "{}";
       return Promise.resolve(
         Response.json({
@@ -740,7 +737,7 @@ describe("fetchPublishDiff", () => {
     return requests;
   }
 
-  test("Fast Preview reads base…head alone, routed to the provider", async () => {
+  test("Fast Preview reads base…head alone", async () => {
     const requests = serveDiffs({
       base: { "a.json": { from: "1", to: "2" } },
       working: {},
@@ -753,9 +750,7 @@ describe("fetchPublishDiff", () => {
       { fastPreview: true },
     );
 
-    expect(requests).toEqual([
-      { body: JSON.stringify({ base: "main" }), fastPreview: true },
-    ]);
+    expect(requests).toEqual([{ body: JSON.stringify({ base: "main" }) }]);
     expect(Object.keys(diff.diffs)).toEqual(["a.json"]);
   });
 
@@ -775,7 +770,6 @@ describe("fetchPublishDiff", () => {
     );
 
     expect(requests).toHaveLength(2);
-    expect(requests.some((r) => r.fastPreview)).toBe(false);
     expect(diff.diffs["committed.ts"]).toEqual({ from: "a", to: "b" });
     expect(diff.diffs["both.ts"]?.to).toBe("uncommitted");
     expect(diff.mergeBaseSha).toBe("abc");

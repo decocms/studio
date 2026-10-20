@@ -89,8 +89,6 @@ import {
 import { OrgFilePreviewMount } from "./org-file-preview";
 import { OrgFileOpenProvider } from "@/components/chat/org-file-open-context";
 import { BlocksPreviewWorkspaceProvider } from "@/components/sandbox/blocks/blocks-preview-workspace-context";
-import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
-import { useAgentRuntimeAdapter } from "@/lib/desktop/agent-runtime-slot";
 import { shouldBlockHostedRuntime } from "@/components/chat/hosted-runtime-guard";
 
 // ---------------------------------------------------------------------------
@@ -99,22 +97,6 @@ import { shouldBlockHostedRuntime } from "@/components/chat/hosted-runtime-guard
 
 function ActiveTaskBoundary({ children }: { children?: React.ReactNode }) {
   const t = useT();
-  const isDesktopApp = useIsDesktopApp();
-  const runtimeAdapter = useAgentRuntimeAdapter();
-  /**
-   * The native terminal panel renders a session, and there is no session until
-   * a thread exists. Until then both runtimes show the structured composer,
-   * whose first send mints the thread the terminal then attaches to.
-   */
-  const hasThread = useRouteThreadId() !== null;
-  const defaultContent =
-    isDesktopApp && hasThread ? (
-      runtimeAdapter ? (
-        <runtimeAdapter.SidePanel />
-      ) : null
-    ) : (
-      <ChatSidePanel />
-    );
   return (
     <ErrorBoundary
       fallback={
@@ -126,7 +108,7 @@ function ActiveTaskBoundary({ children }: { children?: React.ReactNode }) {
         </div>
       }
     >
-      <MainPanelBoundary>{children ?? defaultContent}</MainPanelBoundary>
+      <MainPanelBoundary>{children ?? <ChatSidePanel />}</MainPanelBoundary>
     </ErrorBoundary>
   );
 }
@@ -138,35 +120,13 @@ function ActiveTaskRuntimeProvider({
   threadId: string | null;
   children: ReactNode;
 }) {
-  const t = useT();
-  const isDesktopApp = useIsDesktopApp();
-  const runtimeAdapter = useAgentRuntimeAdapter();
-
   /**
-   * No thread means no runtime to own: nothing to stream, nothing to attach a
-   * terminal to. The threadless provider installs the same stream shape the
-   * panel consumes and mints the thread on the first send.
+   * No thread means no runtime to own: nothing to stream. The threadless
+   * provider installs the same stream shape the panel consumes and mints the
+   * thread on the first send.
    */
   if (threadId === null) {
     return <Chat.ThreadlessProvider>{children}</Chat.ThreadlessProvider>;
-  }
-
-  if (isDesktopApp) {
-    if (!runtimeAdapter) {
-      return (
-        <div
-          role="alert"
-          className="flex flex-1 items-center justify-center p-8 text-sm text-destructive"
-        >
-          {t("agentShellLayout.agentShellLayout.nativeRuntimeUnavailable")}
-        </div>
-      );
-    }
-    return (
-      <runtimeAdapter.ActiveTaskProvider taskId={threadId}>
-        {children}
-      </runtimeAdapter.ActiveTaskProvider>
-    );
   }
 
   return (
@@ -213,16 +173,9 @@ function VmEventsBridge({
 }) {
   const t = useT();
   const { currentBranch, activeTask, setCurrentTaskBranch } = useChatTask();
-  const isDesktopApp = useIsDesktopApp();
-  const expectedSandboxProviderKind = isDesktopApp
-    ? "local-api"
-    : "agent-sandbox";
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id;
-  const executionEnabled = !shouldBlockHostedRuntime({
-    isDesktopApp,
-    harnessId: activeTask?.harness_id,
-  });
+  const executionEnabled = !shouldBlockHostedRuntime(activeTask?.harness_id);
 
   // Overlay the thread's own sandbox record for the current branch. A thread has
   // ONE sandbox, recorded under its creator and resolved server-side for every
@@ -327,7 +280,7 @@ function VmEventsBridge({
     userId && currentBranch
       ? parseBranchMap(effectiveSandboxMap?.[userId]?.[currentBranch])
       : {};
-  const vmEntry = branchMap[expectedSandboxProviderKind] ?? null;
+  const vmEntry = branchMap["agent-sandbox"] ?? null;
   const previewUrl = vmEntry?.previewUrl ?? null;
   // A CMS session has no daemon to stream from, whatever the map holds. The
   // presence/pending term stays: it answers a different question (is there a
@@ -338,7 +291,7 @@ function VmEventsBridge({
     sessionRuntime !== "cms" &&
     (!!vmEntry || isStartPending);
 
-  // Native coding-agent threads are intentionally unavailable on hosted web.
+  // Coding-agent threads the hosted dispatcher cannot run are unavailable here.
   // Do not mount their workspace at all: every main-panel surface assumes it
   // may mutate a sandbox (Git publish/rebase, filesystem writes, process
   // control, setup, suggestion generation). A disabled composer or lifecycle

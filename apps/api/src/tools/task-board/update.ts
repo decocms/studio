@@ -16,6 +16,7 @@ import {
 import { inReviewPhase, LANE_RANK, laneRank } from "./lanes";
 import { assertValidAssignee } from "./validate-assignee";
 import { assertValidTagIds } from "./validate-tags";
+import { cardCheckout, resolveCardProject } from "./validate-project";
 import { reactToSuperAgentDelegation } from "@/automations/fire-implementer";
 import { recordTaskActivities } from "./activity";
 import { assertPlannableSprint, sprintChangeEntry } from "./sprints";
@@ -65,6 +66,7 @@ const UPDATABLE_FIELDS = [
   "type",
   "assigneeId",
   "repo",
+  "virtualMcpId",
   "dueDate",
   "sortOrder",
   "previewRoutes",
@@ -191,6 +193,14 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     type: TaskBoardItemTypeSchema.optional(),
     assigneeId: z.string().nullable().optional(),
     repo: z.string().max(MAX_TASK_REPO_LENGTH).nullable().optional(),
+    virtualMcpId: z
+      .string()
+      .nullable()
+      .optional()
+      .describe(
+        "Move the card to this project (`vir_…` id), or null to clear it. " +
+          "When `repo` is omitted the card takes the new project's repository.",
+      ),
     dueDate: z.string().datetime().nullable().optional(),
     /** New drag-to-reorder position within its lane (ascending). */
     sortOrder: z.number().optional(),
@@ -295,6 +305,16 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     if (input.sprintId && input.sprintId !== previous?.sprintId) {
       await assertPlannableSprint(ctx, organizationId, input.sprintId);
     }
+    // Same rule for the project: the dialog resends it on every autosave.
+    const project =
+      input.virtualMcpId && input.virtualMcpId !== previous?.virtualMcpId
+        ? await resolveCardProject(ctx, organizationId, input.virtualMcpId)
+        : undefined;
+    const checkout = cardCheckout({
+      project,
+      repo: input.repo,
+      previousRepo: previous?.repo,
+    });
 
     // Read only when the move could close a review, which is the one case
     // the guard below cares who is asking.
@@ -382,7 +402,8 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
               ? getUserId(ctx)!
               : null
             : undefined,
-          repo: input.repo,
+          ...checkout,
+          virtualMcpId: input.virtualMcpId,
           dueDate: input.dueDate,
           sortOrder: input.sortOrder,
           previewRoutes: normalizePreviewRoutes(input.previewRoutes),

@@ -39,9 +39,6 @@ export const chat = {
   "chat.agentCreate.creating": "Creating project",
   "chat.agentCreate.seeAgent": "See project",
   "chat.agentCreate.seeAgentLabel": "See project: {name}",
-  "chat.agentIcons.claudeCode": "Claude Code",
-  "chat.agentIcons.codex": "Codex",
-  "chat.agentIcons.opencode": "OpenCode",
   "chat.agentList.agentsNoun": "projects",
   "chat.agentList.couldntLoad": "Couldn't load projects",
   "chat.agentList.listAgents": "List projects",
@@ -243,8 +240,11 @@ export const chat = {
   "chat.input.modelCannotReadAttachments":
     "This model can't read attachments — switch to one with vision or file support",
   "chat.input.planMode": "Plan mode",
-  "chat.input.codingAgentRequiresDesktop":
-    "Continue this coding-agent chat in the Studio desktop app.",
+  "chat.liveMessage.pending":
+    "Sent to the running agent · read after its current step",
+  "chat.liveMessage.readByAgent": "Read by the agent while it worked",
+  "chat.input.codingAgentUnavailable":
+    "This coding-agent chat can't be continued here.",
   "chat.input.fastPreviewUnavailable":
     "Chat isn't available on Fast Preview projects. Use the CMS to edit content.",
   "chat.fastPreview.chatNeedsSession":
@@ -288,52 +288,6 @@ export const chat = {
     "Failed to load prompt. Please try again.",
   "chat.nextActionChip.mcpClientNotAvailable": "MCP client not available",
   "chat.nextActionChip.next": "Next:",
-  "chat.nativeAgentEmptyState.agentListLabel": "Coding agents",
-  "chat.nativeAgentEmptyState.detected": "detected",
-  "chat.nativeAgentEmptyState.detecting": "detecting",
-  "chat.nativeAgentEmptyState.heading": "Choose a coding agent",
-  "chat.nativeAgentEmptyState.keyboardHint": "↑↓ select · ↵ launch",
-  "chat.nativeAgentEmptyState.notDetected":
-    "{label} was not detected on this computer",
-  "chat.nativeAgentEmptyState.tryAnyway": "try anyway",
-  "chat.nativeTerminal.chooseAgentFirst":
-    "Choose Claude Code, Codex, or OpenCode before sending a message.",
-  "chat.nativeTerminal.agentLabel": "coding agent",
-  "chat.nativeTerminal.chatClosedBeforePrompt":
-    "The chat closed before your message was sent. Reopen it and try again.",
-  "chat.nativeTerminal.connectionFailed":
-    "We couldn't connect to the coding agent. Reopen the chat and try again.",
-  "chat.nativeTerminal.emptyPrompt": "Write a message before sending.",
-  "chat.nativeTerminal.exitedBeforeReady":
-    "The coding agent stopped before it was ready. Reopen the chat and try again.",
-  "chat.nativeTerminal.promptFailed":
-    "We couldn't send your message. Try again.",
-  "chat.nativeTerminal.promptDeliveryUnknown":
-    "We lost contact after your message was sent. It may already be running, so check the coding agent before sending it again.",
-  "chat.nativeTerminal.promptTooLarge":
-    "This message is too large to send. Shorten it and try again.",
-  "chat.nativeTerminal.attachmentsUnsupported":
-    "File and image attachments aren't available in coding-agent chats yet.",
-  "chat.nativeTerminal.readOnly":
-    "Only the chat owner can open or control its terminal.",
-  "chat.nativeTerminal.readOnlyTitle": "Read-only chat",
-  "chat.nativeTerminal.reconnectingAgent": "Reconnecting to {agent}…",
-  "chat.nativeTerminal.pulseConnected": "connected",
-  "chat.nativeTerminal.pulseInitializing": "initializing",
-  "chat.nativeTerminal.pulseReconnecting": "reconnecting",
-  "chat.nativeTerminal.startingAgent": "Starting {agent}…",
-  "chat.nativeTerminal.structuredActionUnsupported":
-    "This action isn't available in coding-agent chats yet.",
-  "chat.nativeTerminal.terminalLabel": "Coding agent terminal",
-  "chat.nativeTerminal.unsupportedHarness":
-    "This chat was created with an agent that the desktop app doesn't support. Open it in Studio on the web, or update Studio and try again.",
-  "chat.nativeTerminal.unsupportedHarnessTitle":
-    "This chat can't be opened in the desktop app",
-  "chat.nativeTerminal.unexpectedExit":
-    "The coding agent stopped unexpectedly. Reopen the chat and try again.",
-  "chat.nativeTerminal.waitingForAgentOutput": "Waiting for {agent} output…",
-  "chat.nativeTerminal.waitingForTerminalDraw":
-    "waiting for the terminal to draw",
   "chat.noAiProviderEmptyState.headingDefault":
     "Your projects are almost ready",
   "chat.noAiProviderEmptyState.headingWithOrg": "{org} is ready for projects",

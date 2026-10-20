@@ -56,7 +56,7 @@ const MORE_ACTIONS = "More actions";
 const SUBMIT_FOR_REVIEW = "Submit for review";
 
 /** UI copy — the popover's own chrome (thread.publishPopover). */
-const VERSION_NOTE = "Version note";
+const RELEASE_NOTE = "Release note";
 const REVIEW_NOTE = "Note for reviewers";
 /** Publish mode counts the changes into its CTA; review mode never does. */
 const PUBLISH_CTA = /^Publish( \d+ changes?)?$/;
@@ -165,7 +165,7 @@ test.describe("fast preview publish surface", () => {
     await primary.click();
 
     await expect(publish).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText(VERSION_NOTE, { exact: true })).toBeVisible();
+    await expect(page.getByText(RELEASE_NOTE, { exact: true })).toBeVisible();
 
     await page.waitForTimeout(STAYS_OPEN_MS);
     await expect(publish, "publish popover dismissed itself").toBeVisible();

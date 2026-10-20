@@ -4,6 +4,8 @@ import { BranchPicker } from "../../thread/repository/branch-picker";
 
 interface Props {
   virtualMcpId: string;
+  /** A Blocks v8 site: Localhost instead of main's Local tunnel. */
+  isV8?: boolean;
   userLabel: string | null | undefined;
   value: string | null | undefined;
   onChange: (branch: string) => void;
@@ -31,6 +33,7 @@ export function BranchPill({
   placement,
   value,
   virtualMcpId,
+  isV8,
   userLabel,
   baseBranch,
   onChange,
@@ -47,6 +50,7 @@ export function BranchPill({
   return (
     <BranchPicker
       virtualMcpId={virtualMcpId}
+      isV8={isV8}
       userLabel={userLabel}
       value={value}
       baseBranch={baseBranch}

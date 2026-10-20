@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { canAssignRole, hasAdminRole } from "./roles.ts";
+import { canAssignRole, hasAdminRole, rolesOf } from "./roles.ts";
 
 describe("canAssignRole", () => {
   it("owner can assign any role", () => {
@@ -88,5 +88,19 @@ describe("hasAdminRole", () => {
     expect(hasAdminRole("admin,billing-manager")).toBe(true);
     expect(hasAdminRole("billing-manager,owner")).toBe(true);
     expect(hasAdminRole("billing-manager,user")).toBe(false);
+  });
+});
+
+describe("rolesOf", () => {
+  it("splits Better Auth's comma-joined multi-role value", () => {
+    expect(rolesOf("admin, billing-manager")).toEqual([
+      "admin",
+      "billing-manager",
+    ]);
+  });
+
+  it("is empty for a member with no role", () => {
+    expect(rolesOf(undefined)).toEqual([]);
+    expect(rolesOf("")).toEqual([]);
   });
 });

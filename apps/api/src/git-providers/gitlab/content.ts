@@ -497,6 +497,21 @@ export class GitlabContentClient implements RepoContentClient {
     return res.text();
   }
 
+  async readCommit(
+    sha: string,
+  ): Promise<{ message: string; date: string } | null> {
+    const json = await this.json<{
+      message?: string;
+      committed_date?: string;
+      created_at?: string;
+    }>(`${this.projectBase}/repository/commits/${encodeRef(sha)}`);
+    if (typeof json?.message !== "string") return null;
+    return {
+      message: json.message,
+      date: json.committed_date ?? json.created_at ?? "",
+    };
+  }
+
   async readFileAtRef(ref: string, path: string): Promise<string | null> {
     const res = await this.call(
       `${this.projectBase}/repository/files/${encodeFilePath(path)}/raw?ref=${encodeURIComponent(ref)}`,

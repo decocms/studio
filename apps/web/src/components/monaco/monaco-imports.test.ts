@@ -4,11 +4,9 @@ import { join } from "node:path";
 
 /**
  * `@monaco-editor/react` loads the engine from a CDN unless told otherwise,
- * and whichever component mounts first latches that choice for the page. The
- * packaged desktop app cannot load a CDN script at all (`script-src 'self'`),
- * so a component importing the library directly renders a permanent spinner
- * there while every other signal stays green — which is exactly how this
- * shipped. `components/monaco/` owns the configuration; everyone else imports
+ * and whichever component mounts first latches that choice for the page, so a
+ * component importing the library directly would pull a different engine from
+ * a CDN. `components/monaco/` owns the configuration; everyone else imports
  * `Editor`/`DiffEditor` from `components/monaco/editor.ts`.
  */
 const SANCTIONED_DIR = join(import.meta.dir);

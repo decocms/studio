@@ -1,7 +1,7 @@
 /**
  * Settings type definition for Studio.
  *
- * Constructed once by the startup pipeline, frozen, and available
+ * Resolved once from environment variables, frozen, and available
  * via getSettings() for the lifetime of the process.
  */
 
@@ -86,11 +86,11 @@ export interface Settings {
   // NATS connectivity
   natsUrls: string[];
   /**
-   * Optional NATS credentials file for the Studio process. Managed local NATS
-   * accepts the loopback connection without credentials; externally configured
-   * NATS deployments may set `NATS_CREDS`.
+   * Optional NATS credentials file for the Studio process (`NATS_CREDS`).
    */
   natsCredsPath: string | undefined;
+  natsUser: string | undefined;
+  natsPassword: string | undefined;
 
   // Config files
   configPath: string;
@@ -241,9 +241,7 @@ export interface Settings {
   duckdbMemoryLimit: string | undefined;
   duckdbThreads: number | undefined;
 
-  // Runtime flags (set by CLI)
-  isCli: boolean;
-  noTui: boolean;
+  // Runtime
   podName: string;
   /** Which DBOS run queues this pod dequeues (pod dispatch-role split). */
   dispatchRole: DispatchRole;
@@ -316,6 +314,18 @@ export interface Settings {
   clickhouseAnalyticsUrl: string | undefined;
   clickhouseAnalyticsUsername: string;
   clickhouseAnalyticsPassword: string | undefined;
+  /** Customer data lake: ClickHouse `customer_lake` on the stats-lake cluster.
+   *  Each org reads it as its own read-only user, created on first use through
+   *  the admin account; see customer-lake/client.ts. Unset url, admin password
+   *  or tenant secret = CUSTOMER_LAKE_QUERY reports the lake as unavailable. */
+  customerLakeUrl: string | undefined;
+  customerLakeAdminUsername: string;
+  customerLakeAdminPassword: string | undefined;
+  customerLakeTenantSecret: string | undefined;
+  /** The order-ingest worker's `/mcp` URL. Connections with this URL are the
+   *  stores the order monitor watches; unset = the monitor does nothing. See
+   *  monitoring/dbos-order-monitor.ts. */
+  orderMonitorIngestUrl: string | undefined;
   /** OneDollarStats backend key — the legacy platform's pageview source
    *  (pageviews do not live in the warehouse). Unset = pageviews render "—". */
   oneDollarStatsApiKey: string | undefined;
@@ -341,45 +351,24 @@ export interface Settings {
   awsS3TenantRoleArn: string | undefined;
   awsS3TenantProvisionerAccessKeyId: string | undefined;
   awsS3TenantProvisionerSecretAccessKey: string | undefined;
-}
 
-export interface CliFlags {
-  port: string;
-  home: string;
-  baseUrl?: string;
-  localMode: boolean;
-  skipMigrations: boolean;
-  noTui?: boolean;
-  vitePort?: string;
-  nodeEnv?: "production" | "development" | "test";
-}
-
-export interface ServiceInputs {
-  home: string;
-  externalDatabaseUrl: string | null;
-  externalNatsUrl: string | null;
+  // Hosted Deco CMS (Blocks v8). The R2 bucket behind delivery.decocms.com,
+  // written through its S3 API; the endpoint derives from the account id.
+  deliveryR2AccountId: string | undefined;
+  deliveryR2AccessKeyId: string | undefined;
+  deliveryR2SecretAccessKey: string | undefined;
+  deliveryR2Bucket: string | undefined;
+  /** test-only: overrides `https://<account>.r2.cloudflarestorage.com`. */
+  deliveryR2Endpoint: string | undefined;
+  /** test-only: overrides `https://delivery.decocms.com` in draft pointers. */
+  deliveryPublicOrigin: string | undefined;
+  /** Ed25519 private key (base64 PKCS8) that signs site tokens. */
+  siteTokenSigningKey: string | undefined;
   /**
-   * When true, skip auto-provisioning MinIO (e.g. an external S3 store is
-   * already configured via S3_* env). Defaults to provisioning MinIO.
+   * The Cloudflare zone serving the delivery bucket and a token with Zone →
+   * Cache Purge on it: latest.json is purged after every write. Unset = the
+   * purge is skipped with a warning (local/dev/tests).
    */
-  skipMinio?: boolean;
-}
-
-export interface ServiceOutputs {
-  databaseUrl: string;
-  natsUrls: string[];
-  /**
-   * S3 object-storage config for the managed/external store, if any. Null when
-   * object storage is not configured (no managed MinIO, no external S3 env).
-   * Threaded into the frozen Settings so the in-process serve path resolves the
-   * real S3Service; also mirrored into process.env for spawned child servers.
-   */
-  s3: {
-    endpoint: string;
-    bucket: string;
-    accessKeyId: string;
-    secretAccessKey: string;
-    /** true for managed MinIO; reflects operator's S3_FORCE_PATH_STYLE for external S3. */
-    forcePathStyle: boolean;
-  } | null;
+  cfDeliveryZoneId: string | undefined;
+  cfPurgeApiToken: string | undefined;
 }

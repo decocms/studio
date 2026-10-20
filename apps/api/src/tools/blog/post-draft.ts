@@ -7,11 +7,8 @@ import {
 import { defineTool } from "../../core/define-tool";
 import { requireAuth } from "../../core/studio-context";
 import { requireBlogAi } from "./feature-flag";
-import {
-  groundSiteReport,
-  renderGrounding,
-  VirtualMcpIdSchema,
-} from "./site-tools";
+import { GroundingInputSchema, resolveGrounding } from "./grounding-input";
+import { renderGrounding, VirtualMcpIdSchema } from "./site-tools";
 import { resolveTier } from "../../core/resolve-tier";
 import { ReducedContextSchema } from "./schema";
 import {
@@ -53,7 +50,6 @@ const MAX_DRAFTS = 3;
 /** Images in the body of one post, over and above its cover. */
 const MAX_BODY_IMAGES = 2;
 
-const GROUNDING_TIMEOUT_MS = 120_000;
 const GROUNDING_MAX_STEPS = 12;
 
 /**
@@ -413,12 +409,25 @@ export const BLOG_POST_DRAFT = defineTool({
         "The organization's bucket, where a generated image is uploaded so a reader can load it. Omit and no image is made.",
       ),
     virtualMcpId: VirtualMcpIdSchema,
+    grounding: GroundingInputSchema,
   }),
 
   outputSchema: z.object({
     posts: z.array(
       PostSchema.omit({ cover: true, sections: true }).extend({
-        cover: z.object({ url: z.string(), alt: z.string() }),
+        cover: z.object({
+          url: z
+            .string()
+            .describe(
+              "Empty unless a `fileConfigId` was given. BLOG_POST_ILLUSTRATE is the call that fills it, and the one that can condition the image on the product's own photographs.",
+            ),
+          alt: z.string(),
+          prompt: z
+            .string()
+            .describe(
+              "What the cover should show, unframed. BLOG_POST_ILLUSTRATE adds the attribution and the no-lettering rule, so passing it through there twice would say both twice.",
+            ),
+        }),
         sections: z.array(
           z.object({
             /** The block's name; the caller maps it to a resolveType. */
@@ -478,16 +487,20 @@ export const BLOG_POST_DRAFT = defineTool({
     const model = provider.aiSdk.languageModel(tier.modelId);
 
     // One pass for every draft: the store answers the same for all of them.
-    const report = await groundSiteReport(ctx, organizationId, {
-      virtualMcpId: input.virtualMcpId,
-      language: brand.language,
-      label: "BLOG_POST_DRAFT",
-      maxSteps: GROUNDING_MAX_STEPS,
-      timeoutMs: GROUNDING_TIMEOUT_MS,
-      task: `Writing ${input.count} blog post(s) for ${brand.companyName}, for the campaign "${campaign.name}": ${campaign.trigger.note}`,
-      wanted:
-        "Anything these posts would otherwise have to assume: the products they will mention, their real names and current prices, what is in stock, any promotion running now, and what readers of this subject actually search for. Exact figures matter — they are going into copy a customer will hold the brand to.",
-    });
+    const report = await resolveGrounding(
+      ctx,
+      organizationId,
+      input.grounding,
+      {
+        virtualMcpId: input.virtualMcpId,
+        language: brand.language,
+        label: "BLOG_POST_DRAFT",
+        maxSteps: GROUNDING_MAX_STEPS,
+        task: `Writing ${input.count} blog post(s) for ${brand.companyName}, for the campaign "${campaign.name}": ${campaign.trigger.note}`,
+        wanted:
+          "Anything these posts would otherwise have to assume: the products they will mention, their real names and current prices, what is in stock, any promotion running now, and what readers of this subject actually search for. Exact figures matter — they are going into copy a customer will hold the brand to.",
+      },
+    );
 
     console.info(
       `[BLOG_POST_DRAFT] ${input.blocks.length} block(s) offered`,
@@ -600,7 +613,11 @@ export const BLOG_POST_DRAFT = defineTool({
           title: draft.title,
           excerpt: draft.excerpt,
           seo: draft.seo,
-          cover: { url: cover, alt: draft.cover.alt },
+          cover: {
+            url: cover,
+            alt: draft.cover.alt,
+            prompt: draft.cover.prompt,
+          },
           categorySlugs: draft.categorySlugs.filter((slug) =>
             input.categories.some((c) => c.slug === slug),
           ),
@@ -623,7 +640,9 @@ export const BLOG_POST_DRAFT = defineTool({
         grounded: report.outcome === "ok" && report.grounding.trim().length > 0,
         droppedSections,
         failedDrafts: input.count - posts.length,
-        images: painter.outcome(),
+        // Only when drawing was asked for: without a bucket this call was
+        // never going to draw, and BLOG_POST_ILLUSTRATE is reporting instead.
+        images: input.fileConfigId ? painter.outcome() : "ok",
         covered: posts.filter((post) => post.cover.url).length,
       }),
     };

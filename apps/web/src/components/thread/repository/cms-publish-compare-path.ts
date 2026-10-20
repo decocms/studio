@@ -2,6 +2,7 @@ import {
   extractPathParams,
   fillPathTemplate,
 } from "@/components/sections-editor/page-path-utils.ts";
+import { previewPageForBlock } from "@/components/sections-editor/page-list.tsx";
 import { isSectionResolveType } from "@/components/sections-editor/section-array-field.ts";
 import { DEFAULT_LIVE_PAGE_RESOLVE_TYPE } from "@/components/sections-editor/section-catalog.ts";
 import {
@@ -38,7 +39,12 @@ export function isComparePathEditable(
   return !change.pagePath || extractPathParams(change.pagePath).length > 0;
 }
 
-/** URL rendering just the global section, on a blank page. */
+/**
+ * URL rendering just the global section, on a blank page — the v7 runtime's
+ * `/live/previews` route. A Blocks v8 site has no such route (it answers 404):
+ * there a saved section compares on a page that shows it
+ * ({@link blockComparePath}), never through this.
+ */
 export function compareSectionUrl(
   previewServerUrl: string,
   blockKey: string,
@@ -52,6 +58,46 @@ export function compareSectionUrl(
   } catch {
     return null;
   }
+}
+
+/**
+ * The page a saved block's change compares on, on a Blocks v8 site (which
+ * has no isolated-section route): {@link previewPageForBlock}, the home page
+ * first; a dynamic one filled with the values last typed for it in the
+ * preview, else left as its pattern to fill in. `null` when no page shows
+ * the block: there is nothing to preview, only the code. `undefined` while
+ * the site's blocks aren't known yet.
+ */
+export function blockComparePath(
+  blockKey: string,
+  blocks: Record<string, unknown> | null | undefined,
+  lastPage: LastPreviewPage | null,
+): string | null | undefined {
+  if (!blocks) return undefined;
+  const page = previewPageForBlock(blocks, blockKey);
+  if (!page) return null;
+  if (extractPathParams(page.path).length === 0) return page.path;
+  if (lastPage?.path !== page.path) return page.path;
+  const filled = fillPathTemplate(page.path, lastPage.params);
+  return extractPathParams(filled).length === 0 ? filled : page.path;
+}
+
+/**
+ * The site URL a change compares on. A saved section renders on its own
+ * (v7's `/live/previews`), except on a Blocks v8 site, where it — like every
+ * other change — renders on the page `path` (see {@link blockComparePath}).
+ */
+export function compareUrl(input: {
+  previewServerUrl: string;
+  /** {@link isolatedSectionKey} of the change. */
+  sectionKey: string | null;
+  path: string;
+  /** A Blocks v8 site (the content protocol). */
+  v8: boolean;
+}): URL | null {
+  return input.sectionKey && !input.v8
+    ? compareSectionUrl(input.previewServerUrl, input.sectionKey)
+    : comparePageUrl(input.previewServerUrl, input.path);
 }
 
 /**

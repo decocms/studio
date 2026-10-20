@@ -694,6 +694,12 @@ describe("daemon e2e: auth on mutating routes", () => {
     { name: "setup/install", path: "/_sandbox/setup/install", body: "" },
     { name: "setup/start", path: "/_sandbox/setup/start", body: "" },
     { name: "tasks/kill-all", path: "/_sandbox/tasks/kill-all", body: "" },
+    { name: "mcp-login", path: "/_sandbox/mcp-login", body: toBody({}) },
+    {
+      name: "mcp-login/finish",
+      path: "/_sandbox/mcp-login/finish",
+      body: toBody({}),
+    },
     {
       name: "dispatch",
       path: "/_sandbox/dispatch",

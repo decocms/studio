@@ -1,9 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import {
-  connectionGrantsFor,
-  rolesOf,
-  selfToolGrantsFor,
-} from "./org-mcp-grants";
+import { connectionGrantsFor, selfToolGrantsFor } from "./org-mcp-grants";
 
 describe("connectionGrantsFor", () => {
   const ids = ["conn_a", "conn_b"];
@@ -69,17 +65,42 @@ describe("connectionGrantsFor", () => {
   });
 });
 
-describe("rolesOf", () => {
-  it("splits Better Auth's comma-joined multi-role value", () => {
-    expect(rolesOf("admin, billing-manager")).toEqual([
-      "admin",
-      "billing-manager",
-    ]);
+describe("connectionGrantsFor with scopes and denials", () => {
+  const ids = ["conn_a", "conn_b"];
+
+  it("gives every connection the connections scope covers, less its denials", () => {
+    expect(
+      connectionGrantsFor({
+        role: "team",
+        roleStatements: [
+          { connections: ["*", "!conn_b"], conn_a: ["!DELETE"] },
+        ],
+        connectionIds: ids,
+      }),
+    ).toEqual({ conn_a: ["*", "!DELETE"] });
   });
 
-  it("is empty for a member with no role", () => {
-    expect(rolesOf(undefined)).toEqual([]);
-    expect(rolesOf("")).toEqual([]);
+  it("carries a per-tool denial into the key", () => {
+    expect(
+      connectionGrantsFor({
+        role: "team",
+        roleStatements: [{ conn_a: ["*", "!DELETE"] }],
+        connectionIds: ids,
+      }),
+    ).toEqual({ conn_a: ["*", "!DELETE"] });
+  });
+
+  it("lets another role grant what one role denies", () => {
+    expect(
+      connectionGrantsFor({
+        role: "team,ops",
+        roleStatements: [
+          { connections: ["*", "!conn_b"] },
+          { conn_b: ["READ"] },
+        ],
+        connectionIds: ids,
+      }),
+    ).toEqual({ conn_a: ["*"], conn_b: ["READ"] });
   });
 });
 

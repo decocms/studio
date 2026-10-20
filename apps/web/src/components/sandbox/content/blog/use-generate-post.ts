@@ -25,8 +25,34 @@ import {
   setPostStatus,
 } from "./blog-data";
 import { str } from "./blocks/primitives";
+import { MAX_OFFERED_PHOTOS } from "@decocms/shared/blog-campaign";
 
 type Gap = StudioToolOutput<"BLOG_POST_DRAFT">["gaps"][number];
+
+/**
+ * The campaign's photographs, breadth first, capped at what the tool accepts.
+ *
+ * Flattening product by product overruns the cap on any well-stocked campaign
+ * and spends the whole allowance on its first few items. Taking one from each
+ * before a second from any means the references describe the range the post is
+ * actually about.
+ */
+function referencePhotos(
+  products: readonly { images?: readonly string[] }[],
+): string[] {
+  const picked: string[] = [];
+  for (let round = 0; picked.length < MAX_OFFERED_PHOTOS; round += 1) {
+    const before = picked.length;
+    for (const product of products) {
+      const url = product.images?.[round];
+      if (!url) continue;
+      picked.push(url);
+      if (picked.length >= MAX_OFFERED_PHOTOS) return picked;
+    }
+    if (picked.length === before) break;
+  }
+  return picked;
+}
 
 /**
  * A gap code, worded.
@@ -163,6 +189,42 @@ export function useGeneratePost({
       }
     };
 
+    /**
+     * The covers, drawn once the words exist, keyed by the draft's position.
+     *
+     * The campaign's product photographs go in as references, which is what
+     * makes a cover worth having: without them the model draws a plausible
+     * product the brand does not sell. Every image URL the campaign carries is
+     * offered; the tool takes the first few that answer.
+     *
+     * Empty map on any failure. A post without a cover is a post someone
+     * finishes in the editor, and it is already saved by then.
+     */
+    const illustrate = async (
+      posts: { cover: { prompt: string; alt: string } }[],
+      brief: PostBriefing,
+    ): Promise<Map<string, string>> => {
+      if (!brief.fileConfigId || posts.length === 0) return new Map();
+      try {
+        const drawn = await studio.call("BLOG_POST_ILLUSTRATE", {
+          requests: posts.map((post, i) => ({
+            id: String(i),
+            prompt: post.cover.prompt,
+            alt: post.cover.alt,
+          })),
+          // One photograph per product before a second from any of them, so a
+          // campaign is represented by its range rather than by its first item.
+          productImages: referencePhotos(brief.campaign.intent.products),
+          companyName: brand.companyName ?? "",
+          fileConfigId: brief.fileConfigId,
+        });
+        return new Map(drawn.images.map((image) => [image.id, image.url]));
+      } catch (err) {
+        console.warn("[generatePost] illustrating failed", err);
+        return new Map();
+      }
+    };
+
     /** Cards land first so the board shows the work, not a frozen dialog. */
     let created = 0;
     try {
@@ -185,8 +247,32 @@ export function useGeneratePost({
     /** How many keys hold a real draft, so a later failure cannot erase them. */
     let written = 0;
     try {
+      /**
+       * Reading the store is its own request, and the slow one. Folded into
+       * the drafting call the pair ran past the edge proxy, which answers 524
+       * and hangs up while the server keeps spending.
+       *
+       * Enrichment: a pass that fails leaves `grounding` undefined and the
+       * draft is written from the campaign alone, which is thinner rather
+       * than absent.
+       */
+      const grounding = await studio
+        .call("BLOG_SITE_GROUND", {
+          virtualMcpId,
+          purpose: "post",
+          focus: `${briefing.campaign.name}: ${briefing.campaign.trigger.note}`,
+          language: brand.language,
+        })
+        .catch((err) => {
+          console.warn("[generatePost] grounding failed", err);
+          return undefined;
+        });
+
       const result = await studio.call("BLOG_POST_DRAFT", {
         virtualMcpId,
+        grounding: grounding
+          ? { report: grounding.report, outcome: grounding.outcome }
+          : undefined,
         brand: {
           companyName: brand.companyName,
           description: brand.description,
@@ -218,8 +304,18 @@ export function useGeneratePost({
         authors: authors.map(({ name, email }) => ({ name, email })),
         extraInstructions: briefing.extraInstructions?.trim() || undefined,
         count: briefing.count,
-        fileConfigId: briefing.fileConfigId,
       });
+
+      /**
+       * Covers are drawn after the words exist, by their own call.
+       *
+       * One image is allowed ninety seconds, so three drafts spent longer on
+       * pictures than the whole request was given. Splitting them also buys
+       * the thing that makes a cover worth having: the campaign's product
+       * photographs go in as references, so the image shows what the brand
+       * actually sells instead of a plausible invention.
+       */
+      const covers = await illustrate(result.posts, briefing);
 
       const resolveTypes = sectionResolveTypes(meta, { hideDefaults });
       const takenSlugs = listPostsWithMeta(decofile).map((post) => post.slug);
@@ -227,7 +323,10 @@ export function useGeneratePost({
         const key = keys[i];
         if (!key) break;
         const payload = buildGeneratedPostPayload({
-          draft,
+          draft: {
+            ...draft,
+            cover: { ...draft.cover, url: covers.get(String(i)) ?? "" },
+          },
           resolveTypes,
           productShapes,
           categories,

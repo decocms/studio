@@ -14,7 +14,6 @@ import { z } from "zod";
 import * as ApiKeyTools from "./apiKeys";
 import * as ReportsTools from "./reports";
 import * as ConnectionTools from "./connection";
-import * as DatabaseTools from "./database";
 import * as VirtualMCPTools from "./virtual";
 import * as MonitoringTools from "./monitoring";
 import * as OrganizationTools from "./organization";
@@ -27,10 +26,13 @@ import * as AutomationTools from "./automations";
 import * as UserTools from "./user";
 import * as ProjectSidebarTools from "./project-sidebar";
 import * as AiProvidersTools from "./ai-providers";
+import * as CodexSubscriptionTools from "./codex-subscription";
 import * as ClaudeSubscriptionTools from "./claude-subscription";
+import * as GithubCopilotTools from "./github-copilot";
 import * as SecretsTools from "./secrets";
 import * as FileConfigTools from "./file-configs";
 import * as InfraBillingTools from "./infra-billing";
+import * as CustomerLakeTools from "./customer-lake";
 import { ORG_FS_PUBLIC_SETS_SYNC } from "./org-fs/sync-public-sets";
 import * as OrgRepoSyncTools from "./org-repo-sync";
 import * as JiraTools from "./jira";
@@ -101,6 +103,7 @@ export const CORE_TOOLS = [
   ChatTools.WEB_SEARCH,
   ChatTools.DEEP_RESEARCH,
   ChatTools.SUGGEST_TASK,
+  ChatTools.PREVIEW_NAVIGATE,
   ChatTools.UPDATE_INTERESTS,
   TaskBoardTools.TASK_BOARD_ADMIN_ORG_LIST,
   TaskBoardTools.TASK_BOARD_DELIVERY,
@@ -113,10 +116,14 @@ export const CORE_TOOLS = [
   TaskBoardTools.TASK_BOARD_QUALITY,
   TaskBoardTools.TASK_BOARD_ERRORS,
   TaskBoardTools.TASK_BOARD_TENANTS,
+  BlogTools.BLOG_SITE_GROUND,
+  BlogTools.BLOG_SITE_CATALOGUE,
   BlogTools.BLOG_BRAND_EXTRACT,
+  BlogTools.BLOG_BRAND_ENRICH,
   BlogTools.BLOG_CONTEXT_EXTRACT,
   BlogTools.BLOG_FORMAT_SUGGEST,
   BlogTools.BLOG_POST_DRAFT,
+  BlogTools.BLOG_POST_ILLUSTRATE,
   BlogTools.BLOG_LINK_SUGGEST,
   BlogTools.BLOG_CAMPAIGN_SUGGEST,
   OrganizationTools.ORGANIZATION_DOMAIN_LIST,
@@ -140,6 +147,7 @@ export const CORE_TOOLS = [
   InfraBillingTools.INFRA_BILLING_SITES_LIST,
   InfraBillingTools.INFRA_BILLING_GET,
   InfraBillingTools.INFRA_BILLING_PORTAL,
+  CustomerLakeTools.CUSTOMER_LAKE_QUERY,
 
   // Connection collection tools
   ConnectionTools.COLLECTION_CONNECTIONS_CREATE,
@@ -162,9 +170,6 @@ export const CORE_TOOLS = [
   VirtualMCPTools.COLLECTION_VIRTUAL_MCP_GET,
   VirtualMCPTools.COLLECTION_VIRTUAL_MCP_UPDATE,
   VirtualMCPTools.COLLECTION_VIRTUAL_MCP_DELETE,
-
-  // Database tools
-  DatabaseTools.DATABASES_RUN_SQL,
 
   // Monitoring tools
   MonitoringTools.MONITORING_HEATMAP,
@@ -252,10 +257,19 @@ export const CORE_TOOLS = [
   AiProvidersTools.AI_PLAN_LIST,
   AiProvidersTools.AI_PLAN_SET,
   AiProvidersTools.AI_PLAN_INVOICE_UPGRADE,
+  CodexSubscriptionTools.CODEX_SUBSCRIPTION_CONNECT,
+  CodexSubscriptionTools.CODEX_SUBSCRIPTION_STATUS,
+  CodexSubscriptionTools.CODEX_SUBSCRIPTION_DISCONNECT,
+  CodexSubscriptionTools.CODEX_SUBSCRIPTION_SYNC,
   // Claude subscription (per-user OAuth credential for the claude-code harness)
   ClaudeSubscriptionTools.CLAUDE_SUBSCRIPTION_CONNECT,
   ClaudeSubscriptionTools.CLAUDE_SUBSCRIPTION_STATUS,
   ClaudeSubscriptionTools.CLAUDE_SUBSCRIPTION_DISCONNECT,
+  // GitHub Copilot (per-user token for the claude-code harness)
+  GithubCopilotTools.GITHUB_COPILOT_CONNECT,
+  GithubCopilotTools.GITHUB_COPILOT_STATUS,
+  GithubCopilotTools.GITHUB_COPILOT_DISCONNECT,
+  GithubCopilotTools.GITHUB_COPILOT_SHARE,
   // Secrets tools
   SecretsTools.SECRET_CREATE,
   SecretsTools.SECRET_LIST,
@@ -335,8 +349,6 @@ export const CORE_TOOLS = [
   ChangeRequestTools.CHANGE_REQUEST_OPEN,
   ChangeRequestTools.CHANGE_REQUEST_MERGE,
 
-  // Link tools
-
   // Search tools
   SearchTools.GLOBAL_SEARCH,
 ] as const satisfies { name: ToolName }[];
@@ -406,6 +418,8 @@ export function resolveToolByName(name: string): RegistrableTool | undefined {
 export const toolSubsetMCP = (
   name: string,
   toolNames: readonly string[],
+  /** Tools Claude Code keeps in every prompt; the rest wait for tool search. */
+  alwaysLoad: ReadonlySet<string> = new Set(),
 ): McpServer => {
   const server = new McpServer(
     { name, version: "1.0.0" },
@@ -421,7 +435,16 @@ export const toolSubsetMCP = (
       continue;
     }
     const { config, handler } = getToolRegistration(tool);
-    server.registerTool(tool.name, config, handler);
+    server.registerTool(
+      tool.name,
+      alwaysLoad.has(tool.name)
+        ? {
+            ...config,
+            _meta: { ...config._meta, "anthropic/alwaysLoad": true },
+          }
+        : config,
+      handler,
+    );
   }
   return server;
 };

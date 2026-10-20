@@ -107,8 +107,11 @@ export const SUBMODULE_HOST_RE = /^[a-zA-Z0-9.-]+(?::[0-9]+)?$/;
  * Kept named `submoduleCredentials` on the wire — that is the daemon's field.
  */
 export const SubmoduleCredentialSchema = z.object({
+  // Lowercased: the daemon matches a clone URL's host by exact string compare.
   host: z
     .string()
+    .trim()
+    .toLowerCase()
     .min(1)
     .max(MAX_SETTINGS_STRING_LENGTH)
     .regex(SUBMODULE_HOST_RE)
@@ -223,11 +226,23 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "Run chats on a Code Agent (an agent imported from a GitHub repo) with the claude-code harness inside its sandbox, instead of hosted Decopilot. Off by default: it changes the runtime of every such chat, and claude-code flushes whole turns rather than streaming tokens.",
     ),
+  chat_harness_codex: z
+    .boolean()
+    .optional()
+    .describe(
+      "Use Codex for new sandbox chats. Off by default; requires hosted sandboxes and a ChatGPT subscription or Responses API provider. Existing chats keep their pinned runtime.",
+    ),
   chat_harness_sandbox_only: z
     .boolean()
     .optional()
     .describe(
       "Run every chat with the claude-code harness in its own sandbox instead of hosted Decopilot. On by default (see DEFAULT_ON_FLAGS); a deployment without hosted sandboxes keeps Decopilot regardless.",
+    ),
+  sandbox_repo_snapshots: z
+    .boolean()
+    .optional()
+    .describe(
+      "Keep a Freestyle snapshot of each project repo at its default branch's head, with its dependencies installed and its dev server running, so a new sandbox for that repo starts already serving. Off by default: each push to a default branch costs a snapshot build the next time a sandbox starts.",
     ),
   auto_assign_report_tasks_to_super_agent: z
     .boolean()

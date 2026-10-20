@@ -7,11 +7,13 @@
  * check list, a note that is really an activity entry, and per-note
  * resolution.
  */
-import { describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
+import type { TokenOptions } from "../types";
 import {
   checksFromPipelineStatus,
   conflictFromMergeRequest,
   countUnresolved,
+  GitlabChangeRequestClient,
   isConflictRefusal,
   mapJob,
   mapJobStatus,
@@ -319,5 +321,40 @@ describe("isConflictRefusal", () => {
   it("is false for a refusal that says nothing about the branch", () => {
     expect(isConflictRefusal(405, "Method Not Allowed")).toBe(false);
     expect(isConflictRefusal(401, "Unauthorized")).toBe(false);
+  });
+});
+
+describe("GitlabChangeRequestClient's 401 handling", () => {
+  const originalFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("refreshes a stale token once and retries the call", async () => {
+    const tokensRequested: (TokenOptions | undefined)[] = [];
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      if (calls === 1) return new Response("", { status: 401 });
+      return new Response(JSON.stringify({ iid: 7, title: "hi" }), {
+        status: 200,
+      });
+    }) as unknown as typeof fetch;
+
+    const client = new GitlabChangeRequestClient({
+      repo: { provider: "gitlab", host: "gitlab.com", path: "acme/site" },
+      tokenSource: {
+        kind: "oauth",
+        get: async (opts) => {
+          tokensRequested.push(opts);
+          return { token: "t", kind: "oauth", expiresAt: null };
+        },
+      },
+    });
+
+    const mr = await client.read(7);
+    expect(mr?.number).toBe(7);
+    expect(calls).toBe(2);
+    expect(tokensRequested).toEqual([undefined, { forceRefresh: true }]);
   });
 });

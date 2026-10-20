@@ -378,6 +378,7 @@ export async function judgeClaims(
   organizationId: string,
   input: JudgeInput,
   label: string,
+  abortSignal?: AbortSignal,
 ): Promise<Verdict[] | null> {
   if (input.claims.length === 0) return [];
   try {
@@ -387,6 +388,7 @@ export async function judgeClaims(
       organizationId,
     );
     const { object } = await retryGenerateObject({
+      abortSignal,
       model: provider.aiSdk.languageModel(tier.modelId),
       schema: JudgementSchema,
       system: SYSTEM,

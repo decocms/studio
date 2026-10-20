@@ -71,6 +71,8 @@ export const projects = {
   "projects.apps.siteEditorCaption": "Páginas, seções e conteúdo",
   "projects.apps.assets": "Assets",
   "projects.apps.assetsCaption": "Imagens e arquivos que o site usa",
+  "projects.apps.releases": "Releases",
+  "projects.apps.releasesCaption": "O que está no ar e releases anteriores",
   "projects.apps.hosting": "Hosting",
   "projects.apps.hostingCaption": "Deploys, domínios e ambientes",
   "projects.apps.e2e": "Testes ponta a ponta",

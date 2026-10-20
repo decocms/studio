@@ -34,8 +34,8 @@ import {
 } from "@/lib/legacy-workspace-search";
 
 const rootRoute = createRootRoute({
-  /** No `<Providers>` here: each entry (`index.web.tsx`, `index.native.tsx`)
-   *  wraps `<RouterProvider>` in it instead, so router-level code can reach the
+  /** No `<Providers>` here: the entry (`index.web.tsx`) wraps
+   *  `<RouterProvider>` in it instead, so router-level code can reach the
    *  providers too. Wrapping in both places would mount them twice.
    *
    *  No `Suspense` of its own either: the app's ONE splash boundary is in
@@ -308,6 +308,45 @@ const chooseEditorRoute = createRoute({
       path: z.string().optional(),
       pathTemplate: z.string().optional(),
     }),
+  ),
+});
+
+// The site editor over `deco serve`, which prints
+// `/site-editor#endpoint=…&token=…`. No org, no project, no sign-in needed.
+// Its tabs carry the project Site Editor's `staticData` (plus `local`): the
+// same app. Always in the New Layout, whatever the preference says.
+// It wins over `/$org`, so an organization whose slug is `site-editor` would
+// lose its URL. PRE-DEPLOY CHECK (every environment, before this route first
+// ships): `SELECT id FROM organization WHERE slug = 'site-editor'` must return
+// no rows; rename that organization first if it does.
+const siteEditorRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/site-editor",
+  staticData: { pageTitle: "sidebar.projectNav.siteEditor" },
+  component: lazyRouteComponent(() => import("./routes/site-editor.tsx")),
+});
+
+const siteEditorPreviewRoute = createRoute({
+  getParentRoute: () => siteEditorRoute,
+  path: "/",
+  staticData: {
+    mainView: "site-editor",
+    siteEditorView: "preview",
+    local: true,
+  },
+  component: lazyRouteComponent(
+    () => import("./routes/site-editor.tsx"),
+    "SiteEditorPreview",
+  ),
+});
+
+const siteEditorContentRoute = createRoute({
+  getParentRoute: () => siteEditorRoute,
+  path: "/content",
+  staticData: { mainView: "content", siteEditorView: "content", local: true },
+  component: lazyRouteComponent(
+    () => import("./routes/site-editor.tsx"),
+    "SiteEditorContent",
   ),
 });
 
@@ -774,6 +813,21 @@ const agentAssetsRoute = createRoute({
   },
   component: lazyRouteComponent(
     () => import("./routes/workspace/agent-assets.tsx"),
+  ),
+});
+
+const agentReleasesRoute = createRoute({
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
+  getParentRoute: () => agentWorkspaceRoute,
+  path: "/releases",
+  staticData: {
+    pageTitle: "common.mainPanelTabs.releases",
+    defaultMain: "releases",
+    mainView: "releases",
+  },
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/agent-releases.tsx"),
   ),
 });
 
@@ -1288,8 +1342,18 @@ const monitoringRoute = createRoute({
   validateSearch: z.lazy(() =>
     z.object({
       tab: z
-        .enum(["overview", "audit", "dashboards", "threads", "automations"])
+        .enum([
+          "overview",
+          "audit",
+          "dashboards",
+          "threads",
+          "automations",
+          "stores",
+        ])
         .default("threads"),
+      /** Stores tab: the store (ingest connection id) and instant to review. */
+      store: z.string().optional(),
+      at: z.string().optional(),
       from: z.string().default("now-24h"),
       to: z.string().default("now"),
       connectionId: z.array(z.string()).optional().default([]),
@@ -1582,6 +1646,7 @@ const agentWorkspaceWithChildren = agentWorkspaceRoute.addChildren([
   agentSettingsRoute,
   agentLibraryRoute,
   agentAssetsRoute,
+  agentReleasesRoute,
   agentHostingRoute,
   agentE2eRoute,
   agentAnalyticsRoute,
@@ -1636,6 +1701,7 @@ const routeTree = rootRoute.addChildren([
   reportsOnboardingRoute,
   legacyCommerceOnboardingRoute,
   chooseEditorRoute,
+  siteEditorRoute.addChildren([siteEditorPreviewRoute, siteEditorContentRoute]),
   reportRoute,
   loginRoute,
   cliAuthSuccessRoute,

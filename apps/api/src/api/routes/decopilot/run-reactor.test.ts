@@ -194,10 +194,10 @@ describe("run reactor", () => {
     expect(updates[0]!.failure_reason).toBe("Run cancelled before it finished");
   });
 
-  // `ghost` keeps its bare write: it force-fails a row whose run never existed
-  // on this pod, and stamping a reason there would overwrite the real one a
-  // concurrent terminal writer just set.
-  test("RUN_FAILED reason 'ghost' still records no reason", async () => {
+  // `ghost` is only issued by a person's Stop, for a run no pod holds in
+  // memory (a sandbox run's child workflow). It writes after its own
+  // `in_progress` guard, so no other terminal writer's reason is there.
+  test("RUN_FAILED reason 'ghost' records the run as cancelled", async () => {
     const updates: Record<string, unknown>[] = [];
     const deps: RunReactorDeps = {
       storage: {
@@ -234,8 +234,8 @@ describe("run reactor", () => {
       deps,
     );
 
-    expect(updates[0]!.failure_reason).toBeUndefined();
-    expect(updates[0]!.failure_kind).toBeUndefined();
+    expect(updates[0]!.failure_kind).toBe("cancelled");
+    expect(updates[0]!.failure_reason).toBe("Run cancelled before it finished");
   });
 
   // A late `RUN_FAILED` for a run the projector already settled must be a

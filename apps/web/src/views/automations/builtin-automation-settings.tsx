@@ -70,7 +70,13 @@ export function BuiltinAutomationSettings({
             ? t("automations.builtin.implementerDescription")
             : automation.system_key === "reviewer"
               ? t("automations.builtin.reviewerDescription")
-              : t("automations.builtin.description")}
+              : automation.system_key === "linked_chats"
+                ? t("automations.builtin.linkedChatsDescription")
+                : automation.system_key === "pr_merged"
+                  ? t("automations.builtin.prMergedDescription")
+                  : automation.system_key === "chat_pr"
+                    ? t("automations.builtin.chatPrDescription")
+                    : t("automations.builtin.description")}
         </p>
       </div>
     </div>

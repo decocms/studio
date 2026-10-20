@@ -121,6 +121,51 @@ func TestSessionSurvivesThePod(t *testing.T) {
 	}
 }
 
+func TestCodexSessionSurvivesWithoutCredentials(t *testing.T) {
+	l, local := sessionFixture(t)
+	t.Setenv("CODEX_HOME", local)
+	id := "session_example"
+	rel := filepath.Join("sessions", "2026", "01", "01", "rollout-2026-01-01T00-00-00-"+id+".jsonl")
+	transcript := filepath.Join(local, rel)
+	if err := os.MkdirAll(filepath.Dir(transcript), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(transcript, []byte(`{"type":"session_meta","payload":{"id":"session_example"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(local, localSessionDir), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(local, localSessionDir, "thread_example"), []byte(id), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"auth.json", "config.toml"} {
+		if err := os.WriteFile(filepath.Join(local, name), []byte("secret_example"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	l.SaveSession("codex", "thread_example")
+	next := t.TempDir()
+	t.Setenv("CODEX_HOME", next)
+	l.RestoreSession("codex", "thread_example")
+	got, err := os.ReadFile(filepath.Join(next, localSessionDir, "thread_example"))
+	if err != nil || string(got) != id {
+		t.Fatalf("session pointer: %q, %v", got, err)
+	}
+	got, err = os.ReadFile(filepath.Join(next, rel))
+	if err != nil || len(got) == 0 {
+		t.Fatalf("transcript missing: %v", err)
+	}
+	store, _ := l.sessionStore("codex", "thread_example")
+	for _, root := range []string{store, next} {
+		for _, name := range []string{"auth.json", "config.toml"} {
+			if _, err := os.Stat(filepath.Join(root, name)); !os.IsNotExist(err) {
+				t.Fatalf("credential file persisted at %s", filepath.Join(root, name))
+			}
+		}
+	}
+}
+
 // A live pod's session is newer than anything stored. Restoring over it would
 // rewind the conversation by a turn.
 func TestRestoreDoesNotClobberALiveSession(t *testing.T) {

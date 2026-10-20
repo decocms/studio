@@ -18,7 +18,7 @@ import {
   getReportsAgentId,
   getDevConnectionId,
   useConnections,
-  useMCPClientOptional,
+  useMCPClientNonBlocking,
   useMCPToolsListQuery,
   useProjectContext,
   useVirtualMCP,
@@ -26,9 +26,9 @@ import {
 import { getUIResourceUri } from "@decocms/shared/mcp-apps/types";
 import { toTitleCase } from "@/components/chat/message/parts/tool-call-part/utils";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
+import { useMainSchemaV8 } from "@/hooks/use-main-schema-v8";
 import { useChatTask } from "@/components/chat/index";
 import { useSandboxEvents } from "@/components/sandbox/hooks/use-sandbox-events";
-import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
 import type { ThreadExpandedTool } from "@decocms/shared/entities";
 import { FileTypeIcon } from "@/components/file-type-icon";
 import {
@@ -56,7 +56,6 @@ import {
 } from "./source-system-tabs";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { resolveCmsMode } from "@decocms/shared/sdk/types";
-import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
 import { useReportsOnly } from "@/hooks/use-organization-settings";
 import { useProjectScope } from "@/hooks/use-project-scope";
 import { useT } from "@/i18n/use-t.ts";
@@ -109,7 +108,6 @@ export function useMainPanelTabs(ctx: {
   const metadata = useTaskMetadata(ctx.taskId);
   const { org } = useProjectContext();
   const { currentBranch, activeTask } = useChatTask();
-  const isDesktopApp = useIsDesktopApp();
 
   const entityLayout = entity?.metadata.ui?.layout ?? null;
   const layoutTabs: AgentTabDef[] = entityLayout?.tabs ?? [];
@@ -127,6 +125,8 @@ export function useMainPanelTabs(ctx: {
     entity,
   );
   const nativeViews = useProjectNativeViewPresence(mainViewContext.project);
+  // Read main's schema as soon as a project opens: the editor waits on it.
+  useMainSchemaV8(mainViewContext.project?.id);
   const mainViewPresence = projectMainViewPresence(
     mainViewContext.resolvedScopeId,
     agentHasClonableSource(mainViewContext.project?.metadata),
@@ -138,7 +138,6 @@ export function useMainPanelTabs(ctx: {
    *  below; needs SandboxEventsProvider, which the desktop tab bar sits inside
    *  via VmEventsBridge. */
   const vmEvents = useSandboxEvents();
-  const { vmEntry, previewUrl } = useSandboxLifecycle();
   // What Preview / Code can actually show for THIS thread — see preview-source:
   // a sandbox task run dispatched with no repo (bare `thread:<id>` sandbox key)
   // never checks out the agent's repo, so it gets no Preview / Code tab instead
@@ -160,29 +159,21 @@ export function useMainPanelTabs(ctx: {
     ctx.virtualMcpId,
   );
 
-  // A local-api sandbox serves its dev server on a loopback previewUrl
-  // (`http://<handle>.localhost`), which the cloud proxy cannot reach — so the
-  // `dev_<id>` route resolves to a connection the pod can't fetch. The browser
-  // IS co-located with the daemon, so point the dev MCP client straight at the
-  // previewUrl (CORS on the deco dev server is `*`). For agent-sandbox the
-  // previewUrl is public, so leave mcpUrl undefined and keep the cloud route.
-  const devMcpUrl =
-    isDesktopApp && vmEntry && previewUrl
-      ? `${previewUrl.replace(/\/+$/, "")}/api/mcp`
-      : undefined;
-
   // Auto-detect the dev MCP app's views straight from its sandbox dev server:
   // every tool that declares a `ui://` resource is a view, rendered against the
   // ephemeral dev connection (`dev_<id>`). No pairing / curated pinnedViews
   // needed — the dev server describes itself. Only queried once the dev server
   // is up (its `/api/mcp` serves tools); when present, these override the live
   // agent's own pinned views below.
-  const devClient = useMCPClientOptional({
-    connectionId: devConnId ?? undefined,
-    orgId: org.id,
-    orgSlug: org.slug,
-    mcpUrl: devMcpUrl,
-  });
+  // Non-blocking: the dev views are optional, and this hook runs in the tab bar.
+  const devClient = useMCPClientNonBlocking(
+    {
+      connectionId: devConnId,
+      orgId: org.id,
+      orgSlug: org.slug,
+    },
+    { enabled: !!devConnId && devServerReady },
+  );
   const { data: devToolsResult } = useMCPToolsListQuery({
     client: devClient as NonNullable<typeof devClient>,
     enabled: !!devClient && devServerReady,
@@ -224,6 +215,7 @@ export function useMainPanelTabs(ctx: {
   const nativeViewPending = {
     assets: nativeViews.assetsPending,
     siteAccess: nativeViews.siteAccessPending,
+    releases: nativeViews.releasesPending,
   };
 
   const { activeTab: rawActiveTab, mainOpen } = resolveActiveTabAndOpen({

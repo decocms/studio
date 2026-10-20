@@ -47,8 +47,11 @@ RUN apt-get update \
   && node --version \
   && npm --version \
   && rm -rf /var/lib/apt/lists/* \
+  # Not `-y`: that runs the installer's shell setup, which executes deno, and
+  # the arm64 build's QEMU dies on it ("Illegal instruction"). The symlink
+  # below puts deno on PATH.
   && curl -fsSL https://deno.land/install.sh \
-       | DENO_INSTALL=/opt/deno sh -s -- -y "${DENO_VERSION}" \
+       | DENO_INSTALL=/opt/deno sh -s -- --no-modify-path "${DENO_VERSION}" \
   && ln -s /opt/deno/bin/deno /usr/local/bin/deno \
   # Node 26 no longer ships Corepack in its dist.
   && (command -v corepack >/dev/null 2>&1 \
@@ -243,22 +246,28 @@ ENV GLAB_CHECK_UPDATE=0 \
 # optionalDependencies, so npm resolves the right arch on each leg of the
 # multi-arch build. It is deliberately NOT a dependency of the harness-runner
 # workspace — that would put 270MB into every developer's `bun install`.
+ARG CODEX_CLI_VERSION=0.163.0
 ARG CLAUDE_CODE_CLI_VERSION=2.1.280
 COPY --chown=sandbox:sandbox dist/harness-runner.tgz /opt/sandbox-daemon/harness-runner.tgz
 RUN npm install -g /opt/sandbox-daemon/harness-runner.tgz \
   && npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_CLI_VERSION}" \
+  && npm install -g "@openai/codex@${CODEX_CLI_VERSION}" \
+  && codex --version \
   && claude --version
 
 # Claude Code discovers skills as `<config-dir>/skills/<name>/SKILL.md`, so the
 # image's shared skills are symlinked in rather than copied. CLAUDE_CONFIG_DIR
 # keeps the whole config dir relocatable: pointing it at a persisted mount is
 # what lets a thread's session survive pod replacement, with no code change.
-ENV CLAUDE_CONFIG_DIR=/home/sandbox/.claude \
+ENV CODEX_HOME=/home/sandbox/.codex \
+    CODEX_PATH=/usr/local/bin/codex \
+    CLAUDE_CONFIG_DIR=/home/sandbox/.claude \
     CLAUDE_CODE_PATH=/usr/local/bin/claude \
     HARNESS_RUNNER_CMD=decocms-harness-runner
-RUN mkdir -p /home/sandbox/.claude \
+RUN mkdir -p /home/sandbox/.claude /home/sandbox/.codex /home/sandbox/.agents \
   && ln -s /mnt/skills/public /home/sandbox/.claude/skills \
-  && chown -R sandbox:sandbox /home/sandbox/.claude
+  && ln -s /home/sandbox/.claude/skills /home/sandbox/.agents/skills \
+  && chown -R sandbox:sandbox /home/sandbox/.claude /home/sandbox/.codex /home/sandbox/.agents
 
 ENV IS_SANDBOX=1
 USER sandbox

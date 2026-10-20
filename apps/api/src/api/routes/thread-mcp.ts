@@ -18,6 +18,7 @@ import { z } from "zod";
 import type { StudioContext } from "../../core/studio-context";
 import { managementContextStore, toolSubsetMCP } from "../../tools";
 import {
+  resolveRunScopedToolNames,
   resolveThreadToolNames,
   taskRunContextStore,
 } from "../../tools/task-board/task-run-context";
@@ -60,7 +61,13 @@ export const createThreadMcpRoutes = () => {
     const threadId = c.req.param("threadId");
     // From the thread, not an argument the caller could forge with the same key.
     const thread = await ctx.storage.threads.get(threadId);
-    const server = toolSubsetMCP("mcp-thread", resolveThreadToolNames(thread));
+    // The run's own tools (the board) load up front; the catalog waits for
+    // the model's tool search, so a chat does not pay ~95k tokens per request.
+    const server = toolSubsetMCP(
+      "mcp-thread",
+      resolveThreadToolNames(thread),
+      resolveRunScopedToolNames(thread),
+    );
     const acceptsJson =
       c.req.raw.headers.get("Accept")?.includes("application/json") ?? false;
     const transport = new WebStandardStreamableHTTPServerTransport({

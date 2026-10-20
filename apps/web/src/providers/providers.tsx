@@ -20,6 +20,7 @@ import {
   restoreHtmlResourceCache,
 } from "@/lib/html-resource-persist";
 import { Toaster, toast } from "sonner";
+import { SandboxSignInDialog } from "@/components/connections/sandbox-sign-in-dialog";
 import { useT } from "@/i18n/use-t";
 
 /**
@@ -125,6 +126,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
               <PostHogIdentitySync>
                 <SdkTranslationInitializer>
                   <BootGate>{children}</BootGate>
+                  <SandboxSignInDialog />
                 </SdkTranslationInitializer>
               </PostHogIdentitySync>
             </BetterAuthUIProvider>

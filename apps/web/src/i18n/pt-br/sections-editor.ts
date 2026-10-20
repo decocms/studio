@@ -22,6 +22,8 @@ export const sectionsEditor = {
   "sectionsEditor.arrayField.delete": "Excluir",
   "sectionsEditor.arrayField.duplicate": "Duplicar",
   "sectionsEditor.arrayField.hideItem": "Ocultar item",
+  "sectionsEditor.arrayField.layoutDrill": "Abrir um item por vez",
+  "sectionsEditor.arrayField.layoutInline": "Editar os itens na lista",
   "sectionsEditor.arrayField.openActionsFor": "Abrir ações para {label}",
   "sectionsEditor.arrayField.sectionPickerNotAvailable":
     "O seletor de seção não está disponível neste editor.",
@@ -150,6 +152,8 @@ export const sectionsEditor = {
   "sectionsEditor.pageJsonDialog.titleShort": "JSON",
   "sectionsEditor.pageSections.blockNameAlreadyExists":
     "Já existe um bloco com este nome.",
+  "sectionsEditor.pageSections.blockNameIsBlockType":
+    "Um tipo de bloco já usa este nome. Escolha outro.",
   "sectionsEditor.pageSections.blockNameInvalidChars":
     "Use letras, números, espaços, hífens ou sublinhados. Deve começar com uma letra.",
   "sectionsEditor.pageSections.blockNameNoSlashes":
@@ -199,8 +203,16 @@ export const sectionsEditor = {
   "sectionsEditor.secretField.encryptButton": "Criptografar",
   "sectionsEditor.secretField.encryptFailedMessage":
     "Não foi possível criptografar este segredo com a chave do site, então ele não foi salvo. Verifique se o site está no ar e tente novamente.",
+  "sectionsEditor.fileField.tooLarge":
+    "Este arquivo é maior do que o servidor local aceita ({max}).",
+  "sectionsEditor.secretField.backendUnavailableMessage":
+    "Os segredos podem ser editados quando o servidor de conteúdo do site responder.",
   "sectionsEditor.secretField.encryptingMessage":
     "Criptografando com a chave do site…",
+  "sectionsEditor.secretField.legacySecretUnavailableMessage":
+    "Este segredo foi salvo por um site Deco mais antigo e não pode ser editado aqui. Ele é recriptografado quando o site migra.",
+  "sectionsEditor.secretField.noPublicKeyMessage":
+    "Adicione a chave pública do site, .deco/secrets.pub, para editar campos secretos. Os valores são criptografados no seu navegador com ela.",
   "sectionsEditor.secretField.pendingMessage":
     "Ainda não salvo. Pressione Enter para criptografar e salvar.",
   "sectionsEditor.secretField.plaintextStoredMessage":
@@ -281,12 +293,51 @@ export const sectionsEditor = {
     "Este bloco mudou enquanto você editava e não foi possível salvar. A versão mais recente foi carregada.",
   "sectionsEditor.sectionsEditor.blockFieldsChangedElsewhere":
     "Não foi possível salvar: {fields} mudou enquanto você editava. A versão mais recente foi carregada.",
-  "sectionsEditor.sectionsEditor.formFieldsKeptFromStored":
-    "Mudou enquanto você editava: {fields}. Mantivemos a versão mais recente desses campos e salvamos o resto das suas alterações.",
+  "sectionsEditor.formConflict.titleOne":
+    "Outra pessoa mudou o campo “{label}” enquanto você editava",
+  "sectionsEditor.formConflict.descriptionOne":
+    "Escolha qual versão manter. A outra é descartada.",
+  "sectionsEditor.formConflict.titleStep":
+    "Outra pessoa também mudou o campo “{label}”",
+  "sectionsEditor.formConflict.descriptionStep":
+    "Escolha qual versão manter. Dá para voltar antes de salvar.",
+  "sectionsEditor.formConflict.summaryYours": "a sua",
+  "sectionsEditor.formConflict.summaryTheirs": "a deles",
+  "sectionsEditor.formConflict.steps": "Campos para escolher",
+  "sectionsEditor.formConflict.stepCount": "{step} de {count}",
+  "sectionsEditor.formConflict.stepChangedAgain": "{label}, mudou de novo",
+  "sectionsEditor.formConflict.back": "Voltar",
+  "sectionsEditor.formConflict.next": "Próximo",
+  "sectionsEditor.formConflict.ok": "OK",
+  "sectionsEditor.formConflict.changedAgain":
+    "A versão deles mudou de novo enquanto isto estava aberto e já aparece abaixo.",
+  "sectionsEditor.formConflict.changedAgainSteps":
+    "A versão deles mudou de novo enquanto isto estava aberto. Cada etapa já mostra a mais nova.",
+  "sectionsEditor.formConflict.you": "Você",
+  "sectionsEditor.formConflict.someoneElse": "Outra pessoa",
+  "sectionsEditor.formConflict.yourVersionNotSaved":
+    "Sua versão · ainda não salva",
+  "sectionsEditor.formConflict.theirVersionSaved": "Versão deles · já salva",
+  "sectionsEditor.formConflict.titleOneNamed":
+    "{name} mudou o campo “{label}” enquanto você editava",
+  "sectionsEditor.formConflict.titleOneYou":
+    "Você mudou o campo “{label}” em outra aba ou janela",
+  "sectionsEditor.formConflict.titleStepNamed":
+    "{name} também mudou o campo “{label}”",
+  "sectionsEditor.formConflict.titleStepYou":
+    "Você também mudou o campo “{label}” em outra aba ou janela",
+  "sectionsEditor.formConflict.summaryTheirsNamed": "a de {name}",
+  "sectionsEditor.formConflict.youElsewhere": "Você, em outra aba ou janela",
+  "sectionsEditor.formConflict.savedAt": "salva {when}",
+  "sectionsEditor.formConflict.empty": "Vazio",
+  "sectionsEditor.formConflict.yes": "Sim",
+  "sectionsEditor.formConflict.no": "Não",
+  "sectionsEditor.formConflict.oneItem": "1 item",
+  "sectionsEditor.formConflict.items": "{count} itens",
   "sectionsEditor.sectionsEditor.sectionReplacedElsewhere":
     "Esta seção foi substituída enquanto você editava. O formulário agora mostra a seção atual, e sua última alteração não foi salva.",
   "sectionsEditor.sectionsEditor.blockMergedWithOthers":
-    "Este bloco foi atualizado enquanto você editava. Suas alterações foram aplicadas sobre a versão mais recente.",
+    "Outra pessoa também editou este bloco. As duas alterações foram mantidas.",
   "sectionsEditor.sectionsEditor.saveFailed": "Falha ao salvar: {error}",
   "sectionsEditor.sectionsEditor.savedGlobalBlock":
     'Bloco global salvo "{blockId}"',

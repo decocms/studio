@@ -268,15 +268,61 @@ export function BlogContext({
     if (evidence.blocks.length === 0) return;
     setIsExtracting(true);
     setPhase(PHASE_READING);
-    const timers = [
-      setTimeout(() => setPhase("sandbox.blogBrand.phaseResearching"), 15_000),
-    ];
     try {
-      const brandResult = await studio.call("BLOG_BRAND_EXTRACT", {
+      /**
+       * One pass over the store serves both halves. Folded into either call it
+       * shared that request's window; run here it is its own, and the second
+       * half does not pay for it again.
+       */
+      const grounding = await studio
+        .call("BLOG_SITE_GROUND", {
+          virtualMcpId,
+          purpose: "brand",
+          language: str(brand.language) || undefined,
+        })
+        .catch((err) => {
+          console.warn("[blogBrand] grounding failed", err);
+          return undefined;
+        });
+      const carried = grounding
+        ? { report: grounding.report, outcome: grounding.outcome }
+        : undefined;
+
+      const extraction = await studio.call("BLOG_BRAND_EXTRACT", {
         virtualMcpId,
         blocks: evidence.blocks,
         seo: evidence.seo,
+        grounding: carried,
       });
+
+      /**
+       * Research and the confidence gate are their own call, so the label is
+       * the phase rather than a guess at one — it used to be a timer that
+       * said "researching" fifteen seconds in whether or not it was.
+       *
+       * Enrichment, so a failure keeps the extraction the person paid for: a
+       * profile that was never judged is the raw reading, which is exactly
+       * what this call started from.
+       */
+      setPhase("sandbox.blogBrand.phaseResearching");
+      const brandResult = await studio
+        .call("BLOG_BRAND_ENRICH", {
+          profile: extraction,
+          blocks: evidence.blocks,
+          seo: evidence.seo,
+          grounding: carried,
+        })
+        .catch((err) => {
+          console.warn("[blog] enriching the brand failed", err);
+          return {
+            ...extraction,
+            specialDates: [],
+            researchSources: [],
+            searched: false,
+            discarded: 0,
+            judged: false,
+          };
+        });
       // What the writing pass needs even when the gate blanked it — it is told
       // to write in `language`, so a missing one sets the whole pass adrift.
       const scalarFallback = {
@@ -299,8 +345,6 @@ export function BlogContext({
       });
       setBrand(nextBrand);
 
-      // The search belongs to the brand pass; don't relabel the next one.
-      for (const timer of timers) clearTimeout(timer);
       setPhase("sandbox.blogBrand.phaseInferring");
       const contextResult = await studio.call("BLOG_CONTEXT_EXTRACT", {
         // Only the form obeys the gate; the prompt chain falls back to what is
@@ -353,7 +397,6 @@ export function BlogContext({
           : t("sandbox.blogBrand.extractFailed"),
       );
     } finally {
-      for (const timer of timers) clearTimeout(timer);
       setIsExtracting(false);
     }
   };
@@ -392,7 +435,24 @@ export function BlogContext({
       6_000,
     );
     try {
+      const formatGrounding = await studio
+        .call("BLOG_SITE_GROUND", {
+          virtualMcpId,
+          purpose: "format",
+          language: str(brand.language) || undefined,
+        })
+        .catch((err) => {
+          console.warn("[blogFormats] grounding failed", err);
+          return undefined;
+        });
+
       const result = await studio.call("BLOG_FORMAT_SUGGEST", {
+        grounding: formatGrounding
+          ? {
+              report: formatGrounding.report,
+              outcome: formatGrounding.outcome,
+            }
+          : undefined,
         virtualMcpId,
         brand: contextForTools({ ...brand, ...context }),
         // One entry per component name: the model cites `@Name`, so a site's

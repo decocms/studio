@@ -480,4 +480,38 @@ describe("TaskBoardAnalyticsStorage.operation (real Postgres)", () => {
     const errors = await analytics.errors(project());
     expect(stat(errors, "Failed runs")?.value).toBe(1);
   });
+
+  /** Two projects over one repository: the tool narrows with `repo: null`
+   *  (`ownRepo`), so only a stamp or a run says whose a card is. */
+  it("counts a card on a shared repository only for the project it is stamped for", async () => {
+    const SIBLING = "vir_board_analytics_sibling";
+    await sql`
+      INSERT INTO connections (id, organization_id, created_by, title, connection_type, connection_url)
+      VALUES (${PROJECT}, ${ORG}, ${USER}, 'project', 'VIRTUAL', 'virtual://project'),
+             (${SIBLING}, ${ORG}, ${USER}, 'sibling', 'VIRTUAL', 'virtual://sibling')
+    `.execute(database.db);
+    const shared = (id: string) => ({
+      ...range(),
+      orgIds: [ORG],
+      project: { id, repo: null },
+    });
+    const ran = async (query: AnalyticsQuery) =>
+      tableRows(
+        await analytics.operationTasks(query, parseDrill("ran") ?? []),
+        "Tasks",
+      ).map((r) => r["Task ID"]);
+
+    expect(await ran(shared(PROJECT))).not.toContain(sentBack);
+    await sql`
+      UPDATE task_board_items SET virtual_mcp_id = ${PROJECT} WHERE id = ${sentBack}
+    `.execute(database.db);
+    try {
+      expect(await ran(shared(PROJECT))).toContain(sentBack);
+      expect(await ran(shared(SIBLING))).not.toContain(sentBack);
+    } finally {
+      await sql`
+        UPDATE task_board_items SET virtual_mcp_id = null WHERE id = ${sentBack}
+      `.execute(database.db);
+    }
+  });
 });

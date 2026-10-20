@@ -4,6 +4,7 @@ import {
   findCatalogItem,
   listCatalog,
   parseCatalog,
+  withBuiltInItems,
 } from "./catalog";
 
 const items = parseCatalog([
@@ -146,5 +147,18 @@ describe("Deco JSON catalog", () => {
         { value: "Search", count: 1 },
       ],
     });
+  });
+
+  test("adds Studio's built-in items unless the registry already lists them", () => {
+    const withFigma = withBuiltInItems(items);
+    expect(withFigma.map((item) => item.id)).toEqual([
+      "deco/zeta",
+      "deco/alpha",
+      "figma/mcp",
+    ]);
+    expect(withFigma[2]?.server.remotes?.[0]?.url).toBe(
+      "https://mcp.figma.com/mcp",
+    );
+    expect(withBuiltInItems(withFigma)).toHaveLength(3);
   });
 });

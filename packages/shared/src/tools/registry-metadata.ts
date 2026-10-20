@@ -60,10 +60,14 @@ const ALL_TOOL_NAMES = [
   "ORGANIZATION_SETTINGS_UPDATE",
   "ORGANIZATION_BLOCKS_EDITOR_SET",
   "ORGANIZATION_HAS_SITE",
+  "BLOG_SITE_GROUND",
+  "BLOG_SITE_CATALOGUE",
   "BLOG_BRAND_EXTRACT",
+  "BLOG_BRAND_ENRICH",
   "BLOG_CONTEXT_EXTRACT",
   "BLOG_FORMAT_SUGGEST",
   "BLOG_POST_DRAFT",
+  "BLOG_POST_ILLUSTRATE",
   "BLOG_LINK_SUGGEST",
   "BLOG_CAMPAIGN_SUGGEST",
   "ORGANIZATION_DOMAIN_LIST",
@@ -86,6 +90,8 @@ const ALL_TOOL_NAMES = [
   "INFRA_BILLING_SITES_LIST",
   "INFRA_BILLING_GET",
   "INFRA_BILLING_PORTAL",
+  // Customer data lake
+  "CUSTOMER_LAKE_QUERY",
   // Connection tools
   "COLLECTION_CONNECTIONS_CREATE",
   "COLLECTION_CONNECTIONS_LIST",
@@ -106,8 +112,6 @@ const ALL_TOOL_NAMES = [
   "COLLECTION_VIRTUAL_MCP_GET",
   "COLLECTION_VIRTUAL_MCP_UPDATE",
   "COLLECTION_VIRTUAL_MCP_DELETE",
-  // Database tools
-  "DATABASES_RUN_SQL",
   // Monitoring tools
   "MONITORING_HEATMAP",
   "MONITORING_LOG_GET",
@@ -187,9 +191,19 @@ const ALL_TOOL_NAMES = [
   "AI_PLAN_INVOICE_UPGRADE",
 
   // Claude subscription (per-user OAuth credential for the claude-code harness)
+  "CODEX_SUBSCRIPTION_CONNECT",
+  "CODEX_SUBSCRIPTION_STATUS",
+  "CODEX_SUBSCRIPTION_DISCONNECT",
+  "CODEX_SUBSCRIPTION_SYNC",
   "CLAUDE_SUBSCRIPTION_CONNECT",
   "CLAUDE_SUBSCRIPTION_STATUS",
   "CLAUDE_SUBSCRIPTION_DISCONNECT",
+
+  // GitHub Copilot (per-user token for the claude-code harness)
+  "GITHUB_COPILOT_CONNECT",
+  "GITHUB_COPILOT_STATUS",
+  "GITHUB_COPILOT_DISCONNECT",
+  "GITHUB_COPILOT_SHARE",
 
   // Secrets vault tools
   "SECRET_CREATE",
@@ -328,6 +342,7 @@ const ALL_TOOL_NAMES = [
   "web_search",
   "deep_research",
   "suggest_task",
+  "preview_navigate",
   "update_interests",
   "NOTIFICATION_LIST",
   "NOTIFICATION_MARK_READ",
@@ -402,9 +417,27 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Organizations",
   },
   {
+    name: "BLOG_SITE_GROUND",
+    description:
+      "Read the site's connected systems once, for the generators that follow",
+    category: "Blog",
+  },
+  {
+    name: "BLOG_SITE_CATALOGUE",
+    description:
+      "Turn a grounding pass's raw output into the store's catalogue",
+    category: "Blog",
+  },
+  {
     name: "BLOG_BRAND_EXTRACT",
     description:
       "Infer a brand's identity (name, audience, values, competitors) from a site",
+    category: "Blog",
+  },
+  {
+    name: "BLOG_BRAND_ENRICH",
+    description:
+      "Research a brand on the web and drop the claims its evidence does not support",
     category: "Blog",
   },
   {
@@ -427,6 +460,12 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "BLOG_POST_DRAFT",
     description: "Write a blog post from a theme and a format",
+    category: "Blog",
+  },
+  {
+    name: "BLOG_POST_ILLUSTRATE",
+    description:
+      "Draw a drafted post's images, conditioned on the product's own photographs",
     category: "Blog",
   },
   {
@@ -535,6 +574,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Organizations",
   },
   {
+    name: "CUSTOMER_LAKE_QUERY",
+    description: "Run read-only SQL over the organization's data lake",
+    category: "Monitoring",
+  },
+  {
     name: "ORGANIZATION_HAS_SITE",
     description:
       "Whether this organization owns at least one legacy deco.cx site",
@@ -606,12 +650,6 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     name: "REPORTS_SET_REPOSITORY",
     description: "Set the Deco Score repository",
     category: "Connections",
-  },
-  {
-    name: "DATABASES_RUN_SQL",
-    description: "Run SQL queries",
-    category: "Connections",
-    dangerous: true,
   },
   // Virtual MCP tools
   {
@@ -962,6 +1000,26 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "AI Providers",
   },
   {
+    name: "CODEX_SUBSCRIPTION_CONNECT",
+    description: "Link your ChatGPT subscription for Codex",
+    category: "AI Providers",
+  },
+  {
+    name: "CODEX_SUBSCRIPTION_STATUS",
+    description: "Whether your ChatGPT subscription is linked for Codex",
+    category: "AI Providers",
+  },
+  {
+    name: "CODEX_SUBSCRIPTION_DISCONNECT",
+    description: "Unlink your ChatGPT subscription for Codex",
+    category: "AI Providers",
+  },
+  {
+    name: "CODEX_SUBSCRIPTION_SYNC",
+    description: "Save credentials refreshed by your Codex runtime",
+    category: "AI Providers",
+  },
+  {
     name: "CLAUDE_SUBSCRIPTION_CONNECT",
     description: "Link your own Claude subscription with a setup token",
     category: "AI Providers",
@@ -974,6 +1032,26 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "CLAUDE_SUBSCRIPTION_DISCONNECT",
     description: "Unlink your Claude subscription",
+    category: "AI Providers",
+  },
+  {
+    name: "GITHUB_COPILOT_CONNECT",
+    description: "Link your own GitHub Copilot plan with a GitHub token",
+    category: "AI Providers",
+  },
+  {
+    name: "GITHUB_COPILOT_STATUS",
+    description: "Whether your GitHub Copilot plan is linked, and since when",
+    category: "AI Providers",
+  },
+  {
+    name: "GITHUB_COPILOT_DISCONNECT",
+    description: "Unlink your GitHub Copilot plan",
+    category: "AI Providers",
+  },
+  {
+    name: "GITHUB_COPILOT_SHARE",
+    description: "Share your GitHub Copilot plan with the organization",
     category: "AI Providers",
   },
   {
@@ -1634,6 +1712,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Chat",
   },
   {
+    name: "preview_navigate",
+    description: "Navigate the user's live preview to a page",
+    category: "Chat",
+  },
+  {
     name: "update_interests",
     description: "Record the user's durable goals for the current agent",
     category: "Chat",
@@ -1672,6 +1755,11 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
     description: "Tools all org members can access by default",
     section: "Basic Usage",
     tools: [
+      // Personal credentials never grant access to another member's plan.
+      "CODEX_SUBSCRIPTION_CONNECT",
+      "CODEX_SUBSCRIPTION_STATUS",
+      "CODEX_SUBSCRIPTION_DISCONNECT",
+      "CODEX_SUBSCRIPTION_SYNC",
       // View connections
       "COLLECTION_CONNECTIONS_LIST",
       "COLLECTION_CONNECTIONS_GET",
@@ -1814,6 +1902,7 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "web_search",
       "deep_research",
       "suggest_task",
+      "preview_navigate",
       "update_interests",
     ],
   },
@@ -1988,6 +2077,10 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "CLAUDE_SUBSCRIPTION_CONNECT",
       "CLAUDE_SUBSCRIPTION_STATUS",
       "CLAUDE_SUBSCRIPTION_DISCONNECT",
+      "GITHUB_COPILOT_CONNECT",
+      "GITHUB_COPILOT_STATUS",
+      "GITHUB_COPILOT_DISCONNECT",
+      "GITHUB_COPILOT_SHARE",
     ],
   },
   // Organization (tags moved here from Developer)
@@ -2064,12 +2157,12 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
     dangerous: true,
   },
   {
-    id: "connections:sql",
-    label: "Run SQL queries",
-    description: "Execute raw SQL against connected databases",
+    id: "lake:read",
+    label: "Query the data lake",
+    description:
+      "Run read-only SQL over the organization's own data lake (orders from connected stores)",
     section: "Developer",
-    tools: ["DATABASES_RUN_SQL"],
-    dangerous: true,
+    tools: ["CUSTOMER_LAKE_QUERY"],
   },
 ];
 

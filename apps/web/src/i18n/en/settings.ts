@@ -618,6 +618,26 @@ export const settings = {
   "settings.connectedProvidersSection.emptyState":
     "Bring your own keys to use specific models alongside Deco's gateway.",
   "settings.connectedProvidersSection.sectionTitle": "Connected providers",
+  "settings.agentTools.chatHarnessCodexTitle":
+    "Use Codex for new sandbox chats",
+  "settings.agentTools.chatHarnessCodexDescription":
+    "Runs new sandbox chats with Codex. Link your ChatGPT subscription in AI Providers or connect a Responses API provider. Existing chats keep their runtime.",
+  "settings.codexSubscription.setupHeading": "Connect Codex",
+  "settings.codexSubscription.setupDescription":
+    "Link your ChatGPT subscription in Settings → AI Providers, or connect a provider with an OpenAI Responses API endpoint.",
+  "settings.codexSubscription.active":
+    "Your Codex runs use your ChatGPT subscription. Credentials refresh automatically.",
+  "settings.codexSubscription.connect": "Link",
+  "settings.codexSubscription.connected": "ChatGPT subscription linked",
+  "settings.codexSubscription.description":
+    "Use your ChatGPT subscription for Codex sandbox chats. Credentials belong to you and are stored encrypted.",
+  "settings.codexSubscription.disconnect": "Disconnect",
+  "settings.codexSubscription.disconnected": "ChatGPT subscription unlinked",
+  "settings.codexSubscription.howTo":
+    "Run this command locally, sign in with ChatGPT, then paste the contents of ~/.codex/auth.json:",
+  "settings.codexSubscription.title": "Your ChatGPT subscription for Codex",
+  "settings.codexSubscription.tokenPlaceholder":
+    "Paste the contents of auth.json",
   "settings.claudeSubscription.active":
     "Your Claude plan is running these coding tasks.",
   "settings.claudeSubscription.connect": "Link",
@@ -632,6 +652,23 @@ export const settings = {
     "Generate a token on your own machine with",
   "settings.claudeSubscription.title": "Your Claude subscription",
   "settings.claudeSubscription.tokenPlaceholder": "Paste your token",
+  "settings.githubCopilot.active":
+    "Your GitHub Copilot plan is running these coding tasks.",
+  "settings.githubCopilot.connect": "Link",
+  "settings.githubCopilot.connected": "GitHub Copilot linked",
+  "settings.githubCopilot.description":
+    "Run coding tasks on Claude through your own GitHub Copilot plan instead of the organization's AI credit.",
+  "settings.githubCopilot.disconnect": "Disconnect",
+  "settings.githubCopilot.disconnected": "GitHub Copilot unlinked",
+  "settings.githubCopilot.howTo":
+    "Create a fine-grained GitHub token with the Copilot Requests permission",
+  "settings.githubCopilot.sharedBy":
+    "Every run in this organization uses {name}'s shared GitHub Copilot plan.",
+  "settings.githubCopilot.shareTitle": "Share with the organization",
+  "settings.githubCopilot.shareDescription":
+    "Every chat and task in this organization runs on your Copilot plan, ahead of members' own plans and the organization's AI providers.",
+  "settings.githubCopilot.title": "Your GitHub Copilot plan",
+  "settings.githubCopilot.tokenPlaceholder": "Paste your github_pat_… token",
   "settings.decoCreditsHero.add": "Add",
   "settings.decoCreditsHero.addCredits": "Add credits",
   "settings.decoCreditsHero.amountPlaceholder": "50",
@@ -881,11 +918,14 @@ export const settings = {
   "settings.orgRoleDetail.addMembersToRole": "Add Members to Role",
   "settings.orgRoleDetail.addWithCount": "Add ({count})",
   "settings.orgRoleDetail.added": "Added",
+  "settings.orgRoleDetail.allConnections": "All connections",
+  "settings.orgRoleDetail.allConnectionsDescription":
+    "Every tool on every connection, including ones added later. Uncheck a connection to leave it out.",
   "settings.orgRoleDetail.allModels": "All models",
   "settings.orgRoleDetail.allOrgPermissions": "All organization permissions",
   "settings.orgRoleDetail.allProjects": "All projects",
   "settings.orgRoleDetail.allProjectsDescription":
-    "This role can access every project. Turn off to restrict it to specific projects.",
+    "This role can access every project, including ones created later. Uncheck a project to hide it from this role, or turn off to pick specific projects.",
   "settings.orgRoleDetail.builtinRolePermissionsCannotBeChanged":
     "Built-in role permissions cannot be changed",
   "settings.orgRoleDetail.cancel": "Cancel",

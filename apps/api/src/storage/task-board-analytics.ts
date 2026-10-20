@@ -161,7 +161,8 @@ export interface AnalyticsQuery {
 
 export interface AnalyticsProject {
   id: string;
-  /** The project's `owner/name`, lowercased; null for a repo-less project. */
+  /** The project's `owner/name`, lowercased; null for a repo-less project or
+   *  one whose repository another project also pins. */
   repo: string | null;
 }
 
@@ -170,16 +171,20 @@ export const orgIn = (orgIds: string[] | null, col: string) =>
   orgIds === null ? sql`true` : sql`${sql.raw(col)} = any(${orgIds}::text[])`;
 
 /**
- * The project-scoped board's attribution (`tasksForProject` over a one-project
- * index, in `apps/web/src/lib/project-index.ts`), as SQL: a run the project
- * started, its id stamped in `repo`, or its repository named in `repo`.
+ * The project-scoped board's attribution (`tasksForProject` in
+ * `apps/web/src/lib/project-index.ts`), as SQL: a card stamped for the project,
+ * or an unstamped one that a run of the project started, that carries its id
+ * in `repo`, or that names its repository in `repo`.
  */
 const projectIn = (p: AnalyticsProject) => sql`(
-  exists (select 1 from task_board_item_threads pl
-          join threads pt on pt.id = pl.thread_id
-          where pl.task_board_item_id = i.id and pt.virtual_mcp_id = ${p.id})
-  or trim(coalesce(i.repo, '')) = ${p.id}
-  or (${p.repo}::text is not null and lower(trim(coalesce(i.repo, ''))) = ${p.repo}::text)
+  i.virtual_mcp_id = ${p.id}
+  or (i.virtual_mcp_id is null and (
+    exists (select 1 from task_board_item_threads pl
+            join threads pt on pt.id = pl.thread_id
+            where pl.task_board_item_id = i.id and pt.virtual_mcp_id = ${p.id})
+    or trim(coalesce(i.repo, '')) = ${p.id}
+    or (${p.repo}::text is not null and lower(trim(coalesce(i.repo, ''))) = ${p.repo}::text)
+  ))
 )`;
 
 /** Every query's card filter; each one aliases `task_board_items` as `i`. */

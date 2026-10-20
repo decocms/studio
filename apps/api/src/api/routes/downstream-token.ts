@@ -5,6 +5,7 @@
  * Called from frontend after OAuth authentication to persist tokens.
  */
 
+import { signsInFromSandbox } from "@decocms/shared/sdk";
 import { Hono } from "hono";
 import type { StudioContext } from "../../core/studio-context";
 import { canRefresh } from "../../oauth/token-refresh";
@@ -208,18 +209,21 @@ export const createDownstreamTokenRoutes = () => {
 
     const tokenStorage = new DownstreamTokenStorage(ctx.db, ctx.vault);
     const token = await tokenStorage.get(connectionId);
+    const sandboxSignIn = signsInFromSandbox(connection.connection_url);
 
     if (!token) {
       return c.json({
         hasToken: false,
         isExpired: true,
         canRefresh: false,
+        sandboxSignIn,
       });
     }
 
     const isExpired = tokenStorage.isExpired(token);
 
     return c.json({
+      sandboxSignIn,
       hasToken: true,
       isExpired,
       canRefresh: canRefresh(token),

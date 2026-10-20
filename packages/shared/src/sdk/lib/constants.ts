@@ -195,6 +195,23 @@ const decopilotPrefix = createWellKnownAgentPrefix("decopilot_");
 export const isDecopilot = decopilotPrefix.is;
 export const getDecopilotId = decopilotPrefix.get;
 
+/**
+ * MCP servers that accept only Claude Code's OAuth client. The user signs in
+ * through Claude Code in a short-lived sandbox, and sandboxed runs call the
+ * server directly with the stored token instead of through Studio's proxy.
+ * A host list; detect a rejected client registration once more servers need it.
+ */
+const SANDBOX_SIGN_IN_HOSTS = new Set(["mcp.figma.com"]);
+
+export function signsInFromSandbox(url: string | null | undefined): boolean {
+  if (!url) return false;
+  try {
+    return SANDBOX_SIGN_IN_HOSTS.has(new URL(url).hostname);
+  } catch {
+    return false;
+  }
+}
+
 // ---- Dev connection (ephemeral sandbox dev-server) ----
 // Synthetic, never-persisted connection id pointing at an agent's running
 // sandbox dev server: `dev_<virtualMcpId>`. Resolved per-acting-user at request
@@ -382,6 +399,26 @@ export function isRetiredStudioPackAgent(
   if (!id) return false;
   return retiredStudioPackAgentPrefixes.some(
     (prefix) => prefix.is(id) !== null,
+  );
+}
+
+/**
+ * Whether a virtual MCP is a project a person works in, rather than plumbing:
+ * Decopilot is the org-wide default, Studio Pack agents are code-owned
+ * scaffolding, and a dev agent (`metadata.liveAgentId`) is reached through its
+ * live counterpart. The web's project switcher and the task board's
+ * attribution both count projects with this.
+ */
+export function isScopableProject(project: {
+  id: string;
+  metadata?: { liveAgentId?: unknown } | null;
+}): boolean {
+  const liveAgentId = project.metadata?.liveAgentId;
+  return (
+    !(typeof liveAgentId === "string" && liveAgentId) &&
+    !isDecopilot(project.id) &&
+    !isStudioPackAgent(project.id) &&
+    !isRetiredStudioPackAgent(project.id)
   );
 }
 

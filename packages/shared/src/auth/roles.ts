@@ -35,6 +35,19 @@ export function hasAdminRole(role: string | undefined): boolean {
 }
 
 /**
+ * The individual roles in a `member.role` value. Better Auth stores multiple
+ * roles comma-joined (`"admin,billing-manager"`), and a caller that treats that
+ * string as one role name finds no statement for it and silently grants
+ * nothing.
+ */
+export function rolesOf(role: string | null | undefined): string[] {
+  return (role ?? "")
+    .split(",")
+    .map((one) => one.trim())
+    .filter(Boolean);
+}
+
+/**
  * Validate that the caller's role is allowed to assign the target role(s).
  * Owners can assign any role. Admins can assign "user" or "admin" but NOT
  * "owner" — preventing vertical privilege escalation.

@@ -210,6 +210,8 @@ import {
   entryForFilter,
   entryForTask,
   filterAfterCreate,
+  stampFor,
+  type AttributableTask,
   NO_PROJECT_FILTER,
   stampableEntries,
   type ProjectIndex,
@@ -982,13 +984,18 @@ function TaskBoardBody({
   const { items: orgItems, isLoading: itemsLoading } = useTaskBoardItems();
   /** A project's home IS this board — see `board-scope.ts` for why scope is a
    *  narrowing of the input rather than a value in the `?repo=` filter. */
-  const { scopeId: routeScopeId, project: routeProject } = useProjectScope();
+  const {
+    scopeId: routeScopeId,
+    project: routeProject,
+    projects: orgProjects,
+  } = useProjectScope();
   const scopeId = scopeProject?.id ?? routeScopeId;
   const scopedProject = scopeProject ?? routeProject;
   const { items, isLoading } = scopedBoardItems({
     items: orgItems,
     scopeId,
     project: scopedProject,
+    projects: orgProjects,
     isLoading: itemsLoading,
   });
   const { data: orgTags = [] } = useTags();
@@ -1108,6 +1115,9 @@ function TaskBoardBody({
   const filters = {
     ...urlFilters,
     sprint: resolveSprintFilter(urlFilters.sprint, sprints),
+    // The scope already is the project; a `?repo=` carried into it would
+    // narrow by a control this board does not show.
+    project: scopeId ? null : urlFilters.project,
   };
   /** The sprint a new card is planned into: the one the board is showing,
    *  unless that one is closed and takes no new cards. */
@@ -1137,12 +1147,16 @@ function TaskBoardBody({
   /** The projects a card can be stamped for — the same reachability-gated
    *  subset the task dialog's Project picker offers, reused by the bulk bar. */
   const projectEntries = stampableEntries(projectIndex);
-  /** The repo a new card inherits: the active Project filter's, so a card made
-   *  while the board is narrowed to a project belongs to it. Null for a
-   *  repo-less project (the card links to it through its thread instead). */
-  const activeProjectRepo = filters.project
-    ? (entryForFilter(filters.project, projectIndex)?.repo ?? null)
-    : null;
+  /** What a new card inherits: the board's own project, else the active
+   *  Project filter's, so a card made while narrowed to a project belongs to
+   *  it. */
+  const activeProjectStamp = scopedProject
+    ? { repo: projectRepo(scopedProject), virtualMcpId: scopedProject.id }
+    : stampFor(
+        filters.project
+          ? (entryForFilter(filters.project, projectIndex) ?? null)
+          : null,
+      );
   const [preferences] = usePreferences();
   const [selection, setSelection] = useState<Set<string>>(new Set());
   const toggleSelect = (id: string) =>
@@ -1346,8 +1360,8 @@ function TaskBoardBody({
    * can still swallow a new card — that predates this and is not a promise
    * made here.
    */
-  const widenProjectFilterFor = (repo: string | null) => {
-    const next = filterAfterCreate({ repo }, filters.project, projectIndex);
+  const widenProjectFilterFor = (card: AttributableTask) => {
+    const next = filterAfterCreate(card, filters.project, projectIndex);
     if (next !== filters.project) {
       setFilters({ ...filters, project: next });
     }
@@ -1504,6 +1518,7 @@ function TaskBoardBody({
                         tags={orgTags}
                         sprints={sprints}
                         index={projectIndex}
+                        scoped={scopeId !== null}
                         onChange={handleFiltersChange}
                       />
                       {layout === "list" && (
@@ -1599,7 +1614,7 @@ function TaskBoardBody({
           onCompose={(input) =>
             actions.create.mutate({
               ...input,
-              repo: scopedProject ? projectRepo(scopedProject) : undefined,
+              ...(scopedProject ? activeProjectStamp : {}),
             })
           }
           onOpen={openTask}
@@ -1758,6 +1773,7 @@ function TaskBoardBody({
               status: openItem.status,
               priority: openItem.priority,
               repo: openItem.repo,
+              virtualMcpId: openItem.virtualMcpId,
               dueDate: openItem.dueDate,
               tagIds: openItem.tags.map((tag) => tag.id),
               sprintId:
@@ -1767,7 +1783,7 @@ function TaskBoardBody({
                     sprint.state !== "closed",
                 )?.id ?? null,
             });
-            widenProjectFilterFor(openItem.repo ?? null);
+            widenProjectFilterFor(openItem);
             toast.success(t("taskBoard.taskDialog.cloneSuccess"));
             closeTask();
           }}
@@ -1810,7 +1826,7 @@ function TaskBoardBody({
         open={dialogOpen}
         onClose={closeCreate}
         defaultStatus={createStatus ?? undefined}
-        defaultRepo={activeProjectRepo}
+        defaultProject={activeProjectStamp}
         defaultSprintId={activeSprintId}
         isSaving={actions.create.isPending}
         onSubmit={(input) => {
@@ -1819,7 +1835,7 @@ function TaskBoardBody({
             return;
           }
           actions.create.mutate(input);
-          widenProjectFilterFor(input.repo ?? null);
+          widenProjectFilterFor(input);
           closeCreate();
         }}
       />
@@ -1849,8 +1865,9 @@ function TaskBoardBody({
           count={selectedIds.size}
           members={members}
           projectEntries={projectEntries}
-          onSetRepo={(repo) => {
-            for (const id of selectedIds) actions.update.mutate({ id, repo });
+          onSetProject={(stamp) => {
+            for (const id of selectedIds)
+              actions.update.mutate({ id, ...stamp });
             clearSelection();
           }}
           onMoveTo={(status) => {
@@ -1959,7 +1976,7 @@ function SelectionBar({
   count,
   members,
   projectEntries,
-  onSetRepo,
+  onSetProject,
   onMoveTo,
   onSetSprint,
   onSetPriority,
@@ -1975,8 +1992,8 @@ function SelectionBar({
   members: Member[];
   /** The projects a card can be stamped for — same set as the task dialog. */
   projectEntries: ProjectIndexEntry[];
-  /** Bulk-assign the project (persisted as the underlying repo), or clear it. */
-  onSetRepo: (repo: string | null) => void;
+  /** Bulk-assign the project with its repository, or clear both. */
+  onSetProject: (stamp: ReturnType<typeof stampFor>) => void;
   onMoveTo: (status: TaskBoardItemStatus) => void;
   /** Bulk-plan into a sprint, or null for the backlog. */
   onSetSprint: (sprintId: string | null) => void;
@@ -2087,14 +2104,16 @@ function SelectionBar({
                   {t("taskBoard.taskBoard.assignProjectButton")}
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent className="w-64">
-                  <DropdownMenuItem onClick={() => onSetRepo(null)}>
+                  <DropdownMenuItem
+                    onClick={() => onSetProject(stampFor(null))}
+                  >
                     {t("taskBoard.taskDialog.noProject")}
                   </DropdownMenuItem>
                   {projectEntries.map((entry) => (
                     <DropdownMenuItem
                       key={entry.id}
                       className="gap-2"
-                      onClick={() => onSetRepo(entry.repo)}
+                      onClick={() => onSetProject(stampFor(entry))}
                     >
                       <ProjectEntryRow entry={entry} />
                     </DropdownMenuItem>
@@ -3912,7 +3931,7 @@ function listGroupHeading(
           label: t("taskBoard.taskFilters.projectNone"),
         };
       }
-      const entry = index.byId.get(key);
+      const entry = entryForFilter(key, index);
       return {
         glyph: <ProjectEntryIcon entry={entry} />,
         label: entry?.title ?? key,

@@ -286,6 +286,29 @@ export interface MCPConnectionTable {
   updated_at: ColumnType<Date, Date | string, Date | string>;
 }
 
+/** One order-monitor rule's last verdict for one store (an ingest connection);
+ *  see monitoring/dbos-order-monitor.ts. `since` is when `status` began. */
+export interface OrderMonitorStateTable {
+  organization_id: string;
+  connection_id: string;
+  rule: string;
+  status: string;
+  since: ColumnType<Date, Date, Date>;
+  evaluated_at: ColumnType<Date, Date, Date>;
+  verdict: JsonObject<Record<string, unknown>>;
+  /** The status the last tick replaced. */
+  prev_status: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
+  task_board_item_id: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
+}
+
 /**
  * A repository checked out into a thread's run, beyond the agent's own.
  *
@@ -514,7 +537,8 @@ export interface OAuthPkceStateTable {
   created_at: ColumnType<Date, Date | string, never>;
 }
 
-/** A user's linked Claude subscription token (migration 162). */
+/** A user's linked Claude subscription token (migration 162), and the same
+ *  shape for a linked GitHub Copilot token (migration 250). */
 export interface ClaudeSubscriptionTable {
   user_id: string;
   encrypted_access_token: string;
@@ -765,6 +789,14 @@ export interface BetterAuthOrganizationTable {
   logo: string | null;
   metadata: string | null;
   createdAt: ColumnType<Date, string, string>;
+}
+
+/** A member's linked plan shared with their org (migration 251). */
+export interface OrgSharedPlanTable {
+  organization_id: string;
+  provider_id: string;
+  user_id: string;
+  created_at: ColumnType<Date, Date | string, never>;
 }
 
 /**
@@ -1497,6 +1529,9 @@ export type AutomationTriggerType =
   | "webhook"
   | "board_column_transition"
   | "board_pr_ready"
+  | "linked_chat_run"
+  | "board_pr_merged"
+  | "chat_pr_opened"
   | "jira_transition";
 
 /**
@@ -1783,6 +1818,12 @@ export interface TaskBoardItemTable {
   repo: string | null;
   /** First-class repository (migration 204); null until backfilled/linked. */
   repository_id: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
+  /** The project the card belongs to (`connections.id`, migration 249). */
+  virtual_mcp_id: ColumnType<
     string | null,
     string | null | undefined,
     string | null
@@ -2104,6 +2145,10 @@ export interface TaskBoardItem {
    * cannot. Null for a card that names only a name, or none at all.
    */
   repositoryId: string | null;
+  /** The project this card belongs to. Attribution only: a run still checks
+   *  out `repo`/`repositoryId`. Null leaves the card attributed by its
+   *  repository and runs, as before migration 249. */
+  virtualMcpId: string | null;
   /** The sprint this card is planned into; null = backlog. */
   sprintId: string | null;
   dueDate: string | null;
@@ -2487,7 +2532,16 @@ export interface Database {
 
   // OAuth PKCE state table (short-lived, server-side verifier storage)
   oauth_pkce_states: OAuthPkceStateTable;
+  codex_subscriptions: {
+    user_id: string;
+    encrypted_auth: string;
+    auth_hash: string;
+    created_at: Date;
+  };
   claude_subscriptions: ClaudeSubscriptionTable;
+  github_copilot_subscriptions: ClaudeSubscriptionTable;
+  org_shared_plans: OrgSharedPlanTable;
+  order_monitor_state: OrderMonitorStateTable;
 
   // Automations tables
   automations: AutomationTable;

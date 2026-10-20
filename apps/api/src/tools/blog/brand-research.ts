@@ -92,6 +92,7 @@ export async function researchBrand(
   ctx: Parameters<typeof resolveTier>[0],
   organizationId: string,
   brand: ResearchBrandInput,
+  abortSignal?: AbortSignal,
 ): Promise<BrandResearch> {
   if (!brand.companyName.trim()) return EMPTY;
   const searchTier = await tryResolveTier(ctx, "web_search");
@@ -103,6 +104,7 @@ export async function researchBrand(
       organizationId,
     );
     const { text, sources } = await generateText({
+      abortSignal,
       model: searchProvider.aiSdk.languageModel(searchTier.modelId),
       prompt: [
         `Research the brand ${brand.companyName}.`,
@@ -128,6 +130,7 @@ export async function researchBrand(
       organizationId,
     );
     const { object } = await retryGenerateObject({
+      abortSignal,
       model: smartProvider.aiSdk.languageModel(smartTier.modelId),
       schema: BrandResearchObjectSchema,
       system: SYSTEM,

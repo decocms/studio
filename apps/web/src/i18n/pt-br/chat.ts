@@ -43,9 +43,6 @@ export const chat = {
   "chat.agentCreate.creating": "Criando projeto",
   "chat.agentCreate.seeAgent": "Ver projeto",
   "chat.agentCreate.seeAgentLabel": "Ver projeto: {name}",
-  "chat.agentIcons.claudeCode": "Claude Code",
-  "chat.agentIcons.codex": "Codex",
-  "chat.agentIcons.opencode": "OpenCode",
   "chat.agentList.agentsNoun": "projetos",
   "chat.agentList.couldntLoad": "Não foi possível carregar projetos",
   "chat.agentList.listAgents": "Listar projetos",
@@ -252,8 +249,11 @@ export const chat = {
   "chat.input.modelCannotReadAttachments":
     "Este modelo não consegue ler anexos — mude para um com suporte a visão ou arquivos",
   "chat.input.planMode": "Modo de planejamento",
-  "chat.input.codingAgentRequiresDesktop":
-    "Continue este chat do agente de código no aplicativo Studio para desktop.",
+  "chat.liveMessage.pending":
+    "Enviada ao agente em execução · lida depois do passo atual",
+  "chat.liveMessage.readByAgent": "Lida pelo agente enquanto trabalhava",
+  "chat.input.codingAgentUnavailable":
+    "Este chat do agente de código não pode ser continuado aqui.",
   "chat.input.fastPreviewUnavailable":
     "O chat não está disponível em projetos Fast Preview. Use o CMS para editar o conteúdo.",
   "chat.fastPreview.chatNeedsSession":
@@ -299,51 +299,6 @@ export const chat = {
     "Falha ao carregar prompt. Tente novamente.",
   "chat.nextActionChip.mcpClientNotAvailable": "Cliente MCP não disponível",
   "chat.nextActionChip.next": "Próximo:",
-  "chat.nativeAgentEmptyState.agentListLabel": "Agentes de codificação",
-  "chat.nativeAgentEmptyState.detected": "detectado",
-  "chat.nativeAgentEmptyState.detecting": "detectando",
-  "chat.nativeAgentEmptyState.heading": "Escolha um agente de codificação",
-  "chat.nativeAgentEmptyState.keyboardHint": "↑↓ selecionar · ↵ iniciar",
-  "chat.nativeAgentEmptyState.notDetected":
-    "{label} não foi detectado neste computador",
-  "chat.nativeAgentEmptyState.tryAnyway": "tentar mesmo assim",
-  "chat.nativeTerminal.chooseAgentFirst":
-    "Escolha Claude Code, Codex ou OpenCode antes de enviar uma mensagem.",
-  "chat.nativeTerminal.agentLabel": "agente de codificação",
-  "chat.nativeTerminal.chatClosedBeforePrompt":
-    "O chat foi fechado antes do envio da mensagem. Reabra-o e tente novamente.",
-  "chat.nativeTerminal.connectionFailed":
-    "Não foi possível conectar ao agente de codificação. Reabra o chat e tente novamente.",
-  "chat.nativeTerminal.emptyPrompt": "Escreva uma mensagem antes de enviar.",
-  "chat.nativeTerminal.exitedBeforeReady":
-    "O agente de codificação parou antes de ficar pronto. Reabra o chat e tente novamente.",
-  "chat.nativeTerminal.promptFailed": "Não foi possível enviar a mensagem.",
-  "chat.nativeTerminal.promptDeliveryUnknown":
-    "Perdemos a conexão depois que sua mensagem foi enviada. Ela pode já estar em execução; confira o agente de codificação antes de enviar novamente.",
-  "chat.nativeTerminal.promptTooLarge":
-    "Esta mensagem é grande demais para enviar. Encurte-a e tente novamente.",
-  "chat.nativeTerminal.attachmentsUnsupported":
-    "Anexos de arquivos e imagens ainda não estão disponíveis em chats com agentes de codificação.",
-  "chat.nativeTerminal.readOnly":
-    "Somente o proprietário do chat pode abrir ou controlar o terminal.",
-  "chat.nativeTerminal.readOnlyTitle": "Chat somente leitura",
-  "chat.nativeTerminal.reconnectingAgent": "Reconectando ao {agent}…",
-  "chat.nativeTerminal.pulseConnected": "conectado",
-  "chat.nativeTerminal.pulseInitializing": "inicializando",
-  "chat.nativeTerminal.pulseReconnecting": "reconectando",
-  "chat.nativeTerminal.startingAgent": "Iniciando {agent}…",
-  "chat.nativeTerminal.structuredActionUnsupported":
-    "Esta ação ainda não está disponível em chats com agentes de codificação.",
-  "chat.nativeTerminal.terminalLabel": "Terminal do agente de codificação",
-  "chat.nativeTerminal.unsupportedHarness":
-    "Este chat foi criado com um agente que o aplicativo para desktop não suporta. Abra-o no Studio pela web ou atualize o Studio e tente novamente.",
-  "chat.nativeTerminal.unsupportedHarnessTitle":
-    "Este chat não pode ser aberto no aplicativo para desktop",
-  "chat.nativeTerminal.unexpectedExit":
-    "O agente de codificação parou inesperadamente. Reabra o chat e tente novamente.",
-  "chat.nativeTerminal.waitingForAgentOutput": "Aguardando saída do {agent}…",
-  "chat.nativeTerminal.waitingForTerminalDraw":
-    "aguardando a exibição do terminal",
   "chat.noAiProviderEmptyState.headingDefault":
     "Seus projetos estão quase prontos",
   "chat.noAiProviderEmptyState.headingWithOrg":

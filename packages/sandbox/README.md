@@ -168,8 +168,8 @@ bun run lint
 
 Production deployments enable AgentSandbox with
 `STUDIO_AGENT_SANDBOX_ENABLED=true`. Hosted provisioning is disabled when the
-flag is absent or false. Native Studio uses `local-api` as its persisted
-runtime ownership marker and handles lifecycle locally.
+flag is absent or false. `local-api` records left by the discontinued desktop
+app remain readable but have no provider.
 
 Hosted routes run `AgentSandboxProvider` in-process by default. With
 `STUDIO_SANDBOX_CONTROL_PLANE_URL` and `STUDIO_SANDBOX_CONTROL_PLANE_TOKEN`
@@ -190,6 +190,13 @@ host already called `warm()` (the control plane does when it starts);
 `STUDIO_SANDBOX_FREESTYLE_IMAGE` overrides the default image, which is the
 release of this package's version. Org-fs runs there too, with the sidecar
 as a second container in the VM; see [`orgfs/README.md`](orgfs/README.md).
+
+Codex plan and read-only modes need nested Linux user namespaces for
+bubblewrap. Set `STUDIO_SANDBOX_FREESTYLE_USER_NAMESPACES=true` to allow them.
+This defaults off and starts the sandbox container with Docker's seccomp and
+AppArmor profiles unconfined; the per-user Freestyle VM remains its isolation
+boundary. The org-fs sidecar is unchanged. The setting gets a separate base
+snapshot, and existing VMs must be replaced to change their container policy.
 
 `SandboxProviderRouter` sits in front of both. `SANDBOX_START`'s `provider`
 input picks where a new sandbox runs, when that provider is configured and

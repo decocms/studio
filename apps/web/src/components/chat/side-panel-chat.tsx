@@ -1,6 +1,7 @@
+import { supportsCodex } from "@decocms/shared/harness/codex-models";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useProjectContext } from "@/sdk";
-import { useState } from "react";
+import { use, useState } from "react";
 import { ErrorBoundary } from "../error-boundary";
 import { MainPanelBoundary } from "@/layouts/main-panel-boundary";
 import { useT } from "@/i18n/use-t.ts";
@@ -22,6 +23,7 @@ import { ChatVoiceBindings, VoiceModePanel, useVoiceMode } from "./voice";
 // ---------- Panel content ----------
 
 function ChatSidePanelContent() {
+  use(useChatStream().ready);
   return (
     <ChatVoiceBindings>
       <ChatSidePanelBody />
@@ -38,8 +40,7 @@ function ChatSidePanelBody() {
   const deco = useDecoCredits();
   const t = useT();
 
-  // The structured chat side panel is web-only. Native uses the terminal
-  // runtime adapter instead, so cloud provider setup is the only gate here.
+  // Cloud provider setup is the only gate here.
   const needsRuntimeSetup = useNeedsRuntimeSetup();
   const { runtime } = useSessionRuntime(taskCtx?.virtualMcpId);
   // A CMS session never talks to a model, so neither an unconfigured AI
@@ -54,7 +55,13 @@ function ChatSidePanelBody() {
       <Chat className="animate-in fade-in-0 duration-200">
         <Chat.Main className="flex flex-col items-center">
           <Chat.EmptyState>
-            {needsRuntimeSetup === "claude-code-provider" ? (
+            {needsRuntimeSetup === "codex-provider" ? (
+              <Chat.NoAiProviderEmptyState
+                title={t("settings.codexSubscription.setupHeading")}
+                description={t("settings.codexSubscription.setupDescription")}
+                providerFilter={supportsCodex}
+              />
+            ) : needsRuntimeSetup === "claude-code-provider" ? (
               <Chat.NoAiProviderEmptyState
                 title={t("chat.noAiProviderEmptyState.supportedHeading")}
                 description={t("chat.noAiProviderEmptyState.supportedSubtitle")}

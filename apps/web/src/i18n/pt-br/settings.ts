@@ -634,6 +634,26 @@ export const settings = {
   "settings.connectedProvidersSection.emptyState":
     "Traga suas pr\u00f3prias chaves para usar modelos espec\u00edficos junto com o gateway da Deco.",
   "settings.connectedProvidersSection.sectionTitle": "Provedores conectados",
+  "settings.agentTools.chatHarnessCodexTitle":
+    "Usar Codex em novos chats no sandbox",
+  "settings.agentTools.chatHarnessCodexDescription":
+    "Executa novos chats no sandbox com Codex. Vincule sua assinatura do ChatGPT em Provedores de IA ou conecte um provedor da API Responses. Os chats existentes mantêm seu runtime.",
+  "settings.codexSubscription.setupHeading": "Conecte o Codex",
+  "settings.codexSubscription.setupDescription":
+    "Vincule sua assinatura do ChatGPT em Configurações → Provedores de IA ou conecte um provedor com um endpoint da API Responses da OpenAI.",
+  "settings.codexSubscription.active":
+    "Suas execuções do Codex usam sua assinatura do ChatGPT. As credenciais são renovadas automaticamente.",
+  "settings.codexSubscription.connect": "Vincular",
+  "settings.codexSubscription.connected": "Assinatura do ChatGPT vinculada",
+  "settings.codexSubscription.description":
+    "Use sua assinatura do ChatGPT nos chats com Codex no sandbox. As credenciais pertencem a você e ficam criptografadas.",
+  "settings.codexSubscription.disconnect": "Desconectar",
+  "settings.codexSubscription.disconnected":
+    "Assinatura do ChatGPT desconectada",
+  "settings.codexSubscription.howTo":
+    "Execute este comando na sua máquina, entre com o ChatGPT e cole o conteúdo de ~/.codex/auth.json:",
+  "settings.codexSubscription.title": "Sua assinatura do ChatGPT para Codex",
+  "settings.codexSubscription.tokenPlaceholder": "Cole o conteúdo de auth.json",
   "settings.claudeSubscription.active":
     "Seu plano Claude est\u00e1 executando estas tarefas de c\u00f3digo.",
   "settings.claudeSubscription.connect": "Vincular",
@@ -648,6 +668,24 @@ export const settings = {
     "Gere um token na sua pr\u00f3pria m\u00e1quina com",
   "settings.claudeSubscription.title": "Sua assinatura Claude",
   "settings.claudeSubscription.tokenPlaceholder": "Cole seu token",
+  "settings.githubCopilot.active":
+    "Seu plano GitHub Copilot est\u00e1 executando estas tarefas de c\u00f3digo.",
+  "settings.githubCopilot.connect": "Vincular",
+  "settings.githubCopilot.connected": "GitHub Copilot conectado",
+  "settings.githubCopilot.description":
+    "Execute tarefas de c\u00f3digo no Claude pelo seu pr\u00f3prio plano GitHub Copilot, em vez do cr\u00e9dito de IA da organiza\u00e7\u00e3o.",
+  "settings.githubCopilot.disconnect": "Desconectar",
+  "settings.githubCopilot.disconnected": "GitHub Copilot desconectado",
+  "settings.githubCopilot.howTo":
+    "Crie um token fine-grained do GitHub com a permiss\u00e3o Copilot Requests",
+  "settings.githubCopilot.sharedBy":
+    "Toda execu\u00e7\u00e3o nesta organiza\u00e7\u00e3o usa o plano GitHub Copilot compartilhado por {name}.",
+  "settings.githubCopilot.shareTitle":
+    "Compartilhar com a organiza\u00e7\u00e3o",
+  "settings.githubCopilot.shareDescription":
+    "Todo chat e tarefa nesta organiza\u00e7\u00e3o roda no seu plano Copilot, antes dos planos dos membros e dos provedores de IA da organiza\u00e7\u00e3o.",
+  "settings.githubCopilot.title": "Seu plano GitHub Copilot",
+  "settings.githubCopilot.tokenPlaceholder": "Cole seu token github_pat_\u2026",
   "settings.decoCreditsHero.add": "Adicionar",
   "settings.decoCreditsHero.addCredits": "Adicionar cr\u00e9ditos",
   "settings.decoCreditsHero.amountPlaceholder": "50",
@@ -910,12 +948,15 @@ export const settings = {
   "settings.orgRoleDetail.addMembersToRole": "Adicionar Membros ao Papel",
   "settings.orgRoleDetail.addWithCount": "Adicionar ({count})",
   "settings.orgRoleDetail.added": "Adicionado",
+  "settings.orgRoleDetail.allConnections": "Todas as conex\u00f5es",
+  "settings.orgRoleDetail.allConnectionsDescription":
+    "Todas as ferramentas de todas as conex\u00f5es, inclusive as adicionadas depois. Desmarque uma conex\u00e3o para deix\u00e1-la de fora.",
   "settings.orgRoleDetail.allModels": "Todos os modelos",
   "settings.orgRoleDetail.allOrgPermissions":
     "Todas as permiss\u00f5es da organiza\u00e7\u00e3o",
   "settings.orgRoleDetail.allProjects": "Todos os projetos",
   "settings.orgRoleDetail.allProjectsDescription":
-    "Este papel pode acessar todos os projetos. Desative para restringi-lo a projetos espec\u00edficos.",
+    "Este papel pode acessar todos os projetos, inclusive os criados depois. Desmarque um projeto para escond\u00ea-lo deste papel, ou desative para escolher projetos espec\u00edficos.",
   "settings.orgRoleDetail.builtinRolePermissionsCannotBeChanged":
     "Permiss\u00f5es de papel integrado n\u00e3o podem ser alteradas",
   "settings.orgRoleDetail.cancel": "Cancelar",

@@ -682,7 +682,11 @@ function ConnectionInspectorViewContent() {
 
   // Resolve appSlug → matching connections (server-side slug filter, excludes VIRTUAL by default)
   const siblings = useConnections({ slug: appSlug });
-  const connection = siblings[0] ?? null;
+  // Pinned: siblings sort by updated_at, so a toggle or save would swap clients.
+  const [pinnedId, setPinnedId] = useState<string | null>(null);
+  const connection =
+    siblings.find((s) => s.id === pinnedId) ?? siblings[0] ?? null;
+  if (connection && connection.id !== pinnedId) setPinnedId(connection.id);
   const connectionId = connection?.id ?? "";
 
   // Get MCP client for this connection (suspense-based)

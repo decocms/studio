@@ -16,14 +16,8 @@ import type {
 } from "../../core/studio-context";
 import { monitorLlmCall } from "@/monitoring/emit-llm-call";
 import { recordLlmCallMetrics } from "@/monitoring/record-llm-call-metrics";
-import type { VirtualMCPEntity } from "@/tools/virtual/schema";
-import type { ConnectionEntity } from "@/tools/connection/schema";
-import { createVirtualClientFrom } from "@/mcp-clients/virtual-mcp";
-import { resolveDevConnection } from "@/api/routes/dev-connection";
-import { readSandboxMap } from "@/tools/sandbox/sandbox-map";
 import type { SideChannelWriter } from "@/harnesses/lib/side-channel-writer";
 import { assembleDecopilotTools } from "./tools";
-import { buildClusterMcpToolHooks } from "@/api/routes/decopilot/cluster-mcp-tool-hooks";
 import { createHtmlArtifactBuffer } from "./built-in-tools/vm-tools/html-artifact-buffer";
 import { createHtmlArtifactWatcher } from "@/harnesses/html-artifact-watcher";
 import { createToolOutputMap } from "@/harnesses/lib/decopilot/built-in-tools/read-tool-output";
@@ -128,52 +122,12 @@ export function buildClusterEnvironmentTools(args: {
       const runContext = requireDecopilotRunContext(streamInput);
       const toolOutputMap = createToolOutputMap();
       const pendingImages: PendingImage[] = [];
-      const { resolveArgs, onToolCalled, onPrOpened } =
-        buildClusterMcpToolHooks(ctx, streamInput.threadId);
 
       const assembled = await assembleDecopilotTools(streamInput, ctx, {
         writer: sideChannel.writer,
         toolOutputMap,
         pendingImages,
         threadId: streamInput.threadId,
-        // Hosted MCP tool-call hooks: storage-ref resolution + PostHog
-        // analytics. The portable assembly forwards these as-is.
-        resolveArgs,
-        onToolCalled,
-        onPrOpened,
-        // Cluster `mcpForAgent` hook: opens the in-process passthrough
-        // client over the run's resolved Virtual MCP. superUser/listTimeout
-        // come from the caller (assembleDecopilotTools). The daemon/desktop
-        // factory supplies an HTTP-backed impl at the agent's mcp.url.
-        mcpForAgent: async (_agentId, opts) => {
-          // Cluster-side: `virtualMcp` is the real `VirtualMCPEntity`;
-          // the transport type widens the field to a loose bag so the
-          // daemon can ship without the cluster's storage types.
-          const vm = runContext.virtualMcp as VirtualMCPEntity;
-          // Surface the dev sandbox's tools when the user has a running sandbox
-          // for this agent. Cheap local pre-filter ("does the user have a
-          // sandbox entry?"), no repo/pairing flag — agents without a sandbox
-          // skip the resolver. resolveDevConnection then confirms the dev server
-          // actually speaks MCP (probe).
-          let devConnection: ConnectionEntity | null = null;
-          if (
-            vm.id &&
-            streamInput.user.id &&
-            readSandboxMap(vm.metadata)[streamInput.user.id]
-          ) {
-            devConnection = await resolveDevConnection(
-              ctx,
-              vm.id,
-              streamInput.user.id,
-              runContext.branch ?? undefined,
-            ).catch(() => null);
-          }
-          return createVirtualClientFrom(vm, ctx, opts?.superUser ?? false, {
-            listTimeoutMs: opts?.listTimeoutMs,
-            includeSkillsCatalog: true,
-            additionalConnections: devConnection ? [devConnection] : [],
-          });
-        },
         provider: modelRuntime.thinking.provider,
         imageProvider:
           modelRuntime.image?.provider ?? modelRuntime.thinking.provider,

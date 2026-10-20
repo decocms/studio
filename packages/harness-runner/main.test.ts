@@ -47,4 +47,25 @@ describe("harness-runner wire", () => {
     const result = await run("{}");
     expect(result.error).toMatchObject({ code: "bad_input" });
   });
+
+  test("a live message with no turn running is answered, and refused", async () => {
+    // A kept runner between turns: the daemon must hear `accepted: false` so
+    // Studio queues the message instead of counting it delivered.
+    const proc = Bun.spawn(["bun", `${import.meta.dir}/main.ts`], {
+      stdin: new TextEncoder().encode(
+        `${JSON.stringify({ liveMessage: { id: "m1", text: "hello" } })}\n`,
+      ),
+      stdout: "pipe",
+      stderr: "inherit",
+      env: { ...process.env, HARNESS_RUNNER_PERSISTENT: "1" },
+    });
+    const [stdout, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      proc.exited,
+    ]);
+    expect(exitCode).toBe(0);
+    expect(JSON.parse(stdout.trim())).toEqual({
+      liveMessageAck: { id: "m1", accepted: false },
+    });
+  });
 });

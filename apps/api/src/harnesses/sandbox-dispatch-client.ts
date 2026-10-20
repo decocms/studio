@@ -1,3 +1,4 @@
+import { codexEnvFromCredential } from "./codex-env";
 /**
  * Dispatches harnesses that run inside the hosted sandbox instead of in the
  * Studio process.
@@ -57,6 +58,7 @@ import { orgFsSandboxPath } from "@/file-storage/mount/provisioning";
 import { mergeRunEnv, resolveOrgRunEnv } from "@/harnesses/org-run-env";
 import { RUN_CLASS_METADATA_KEY } from "@/dispatch-queue/run-priority";
 import { withModelMetadata } from "@/harnesses/with-model-metadata";
+import { daemonRunId } from "@/harnesses/live-messages";
 import type { StudioContext } from "../core/studio-context";
 import {
   mintMcpEndpoint,
@@ -64,15 +66,16 @@ import {
   runKeyPermissions,
 } from "@/mcp-clients/virtual-mcp/mint-endpoint";
 import { orgFlagEnabled } from "@decocms/shared/organization/schema";
-import { WellKnownOrgMCPId } from "@decocms/shared/sdk";
+import { signsInFromSandbox, WellKnownOrgMCPId } from "@decocms/shared/sdk";
+import { getValidDownstreamAccessToken } from "@/oauth/token-refresh";
+import { DownstreamTokenStorage } from "@/storage/downstream-token";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types/virtual-mcp";
 import type { ConnectionEntity } from "@/tools/connection/schema";
-import { hasAdminRole } from "@decocms/shared/auth/roles";
+import { hasAdminRole, rolesOf } from "@decocms/shared/auth/roles";
 import { fetchRolePermissions } from "@/core/context-factory";
 import type { Permission } from "@/storage/types";
 import {
   connectionGrantsFor,
-  rolesOf,
   selfToolGrantsFor,
 } from "@/harnesses/org-mcp-grants";
 import {
@@ -236,7 +239,7 @@ export function isUnreachableStatus(status: number): boolean {
 export function harnessRunsInSandbox(
   harnessId: string | null | undefined,
 ): boolean {
-  return harnessId === SANDBOX_HOSTED_HARNESS;
+  return harnessId === SANDBOX_HOSTED_HARNESS || harnessId === "codex";
 }
 
 export class SandboxDispatchClient {
@@ -398,7 +401,10 @@ export class SandboxDispatchClient {
       runKeyPermissions({
         toolNames: selfToolGrantsFor({
           ...authority,
-          toolNames: resolveThreadToolNames(thread),
+          toolNames: [
+            ...resolveThreadToolNames(thread),
+            ...(this.harnessId === "codex" ? ["CODEX_SUBSCRIPTION_SYNC"] : []),
+          ],
           runScoped: resolveRunScopedToolNames(thread),
         }),
         grants,
@@ -409,16 +415,25 @@ export class SandboxDispatchClient {
         (aggregation) => aggregation.connection_id,
       ),
     );
-    const mounted = connections.filter((connection) =>
-      ownIds.has(connection.id),
+    // A sandbox sign-in server can't be reached through the proxy, so it is
+    // always mounted.
+    const mounted = connections.filter(
+      (connection) =>
+        ownIds.has(connection.id) ||
+        signsInFromSandbox(connection.connection_url),
     );
     if (mounted.length === 0 || !organization.slug) return { mcp };
-    const orgMcps = orgMcpServers({
+    const servers = orgMcpServers({
       publicUrl: getPublicUrl(),
       organizationSlug: organization.slug,
       headers: mcp.headers,
       connections: mounted,
     });
+    const orgMcps = (
+      await Promise.all(
+        servers.map((server, i) => this.directMount(server, mounted[i]!)),
+      )
+    ).filter((server) => server !== null);
     console.log(
       `[${SANDBOX_HOSTED_HARNESS}] org mcps: ${
         orgMcps.map((server) => server.name).join(" ") || "none"
@@ -430,6 +445,36 @@ export class SandboxDispatchClient {
       }`,
     );
     return { mcp, orgMcps };
+  }
+
+  /**
+   * A sandbox sign-in server is called straight from the sandbox with the
+   * connection's token, refreshed here; Claude Code skips its own OAuth when
+   * the config carries an Authorization header. Without a usable token it is
+   * left out, and the connection shows as needing sign-in.
+   */
+  private async directMount(
+    server: { name: string; url: string; headers: Record<string, string> },
+    connection: ConnectionEntity,
+  ) {
+    const url = connection.connection_url;
+    if (!url || !signsInFromSandbox(url)) return server;
+    const token = await getValidDownstreamAccessToken({
+      connectionId: connection.id,
+      connectionUrl: url,
+      tokenStorage: new DownstreamTokenStorage(this.ctx.db, this.ctx.vault),
+    }).catch(() => null);
+    if (!token?.accessToken) {
+      console.warn(
+        `[${SANDBOX_HOSTED_HARNESS}] ${server.name}: no usable token (${token?.state ?? "lookup failed"}), not mounted`,
+      );
+      return null;
+    }
+    return {
+      name: server.name,
+      url,
+      headers: { Authorization: `Bearer ${token.accessToken}` },
+    };
   }
 
   /**
@@ -492,7 +537,6 @@ export class SandboxDispatchClient {
         (aggregation) => aggregation.connection_id,
       ),
     );
-    if (!orgWide && ownIds.size === 0) return [];
     // `list` excludes VIRTUAL connections (agents, not MCP servers) by default.
     const { items } = await this.ctx.storage.connections.list(organization.id);
     return selectRunConnections({
@@ -518,16 +562,29 @@ export class SandboxDispatchClient {
     // is a booted sandbox that dies on an opaque model error minutes later.
     const runMetadata = this.ctx.metadata?.runMetadata;
     // Task-board runs carry a run class and keep their per-class model.
-    const modelEnv = runMetadata?.[RUN_CLASS_METADATA_KEY]
-      ? claudeCodeEnvFromCredential(
-          this.credential,
-          modelClassFromMetadata(runMetadata[MODEL_CLASS_METADATA_KEY]),
-        )
-      : claudeCodeEnvFromCredential(
-          this.credential,
-          "chat",
-          input.models.thinking.id,
-        );
+    const modelEnv =
+      this.harnessId === "codex"
+        ? codexEnvFromCredential(this.credential, input.models.thinking.id)
+        : runMetadata?.[RUN_CLASS_METADATA_KEY]
+          ? claudeCodeEnvFromCredential(
+              this.credential,
+              modelClassFromMetadata(runMetadata[MODEL_CLASS_METADATA_KEY]),
+            )
+          : claudeCodeEnvFromCredential(
+              this.credential,
+              "chat",
+              input.models.thinking.id,
+            );
+    if (this.harnessId !== "codex") {
+      Object.assign(modelEnv, {
+        STUDIO_CODEX_AUTH_JSON: null,
+        CODEX_API_KEY: null,
+        OPENAI_API_KEY: null,
+        OPENAI_BASE_URL: null,
+        CODEX_ACCESS_TOKEN: null,
+        CODEX_MODEL: null,
+      });
+    }
     const organization = this.ctx.organization;
     if (!organization) {
       throw new Error(
@@ -576,6 +633,8 @@ export class SandboxDispatchClient {
       // Hosted Decopilot mounts no working directory; this harness edits the
       // checkout the daemon prepared.
       workspace: await this.resolveWorkspace(input.threadId, agent),
+      // The run takes messages while it works (see `live-messages.ts`).
+      liveMessages: true,
     };
     markTurn(input.threadId, "mcp-and-workspace-resolved");
 
@@ -583,7 +642,7 @@ export class SandboxDispatchClient {
     // recovery) keeps the fence, so it reattaches or takes over (the daemon's
     // `Registry.claim`), while the next turn never reattaches to a stopped one or
     // hits the tombstone `DELETE /_sandbox/runs/:runId` leaves behind.
-    const runId = `${input.threadId}:${this.fenceToken}`;
+    const runId = daemonRunId(input.threadId, this.fenceToken);
     const { ctx, harnessId, virtualMcpId, branch, interactive, streamBuffer } =
       this;
     const credentialProviderId = this.credential.providerId;
@@ -604,6 +663,7 @@ export class SandboxDispatchClient {
     let warmPoolAdopted = false;
     const dispatchOnce = (
       resume: { reason: string } | null,
+      revalidate: boolean,
     ): AsyncIterable<UIMessageChunk> =>
       (async function* () {
         const sandbox = await ensureSandbox(
@@ -612,6 +672,8 @@ export class SandboxDispatchClient {
             branch,
             // Headless loop, no preview — unless someone is watching it.
             purpose: interactive ? "interactive" : "harness-run",
+            // A continuation lost this sandbox; its claim surviving proves nothing.
+            revalidate,
             // The longest silence in the run: pod boot, clone, and
             // (interactive) install. The chat has no per-thread stream here, so
             // this rides the org `/watch`. Only on a cold start — an
@@ -624,7 +686,7 @@ export class SandboxDispatchClient {
               markTurn(runId, "cold-start");
               return publishRunStatusStage({
                 streamBuffer,
-                harnessId: SANDBOX_HOSTED_HARNESS,
+                harnessId,
                 taskId: runId,
                 stage: "starting-sandbox",
               });
@@ -636,7 +698,10 @@ export class SandboxDispatchClient {
         lastHandle = sandbox.sandboxHandle;
         // The daemon deep-merges its config, so re-running on an already-claimed
         // sandbox just rotates the credential.
-        await pushEnvIfChanged(provider, sandbox, runEnv);
+        // A rebound daemon may have booted without the env the cache says it has.
+        if (revalidate)
+          await pushSandboxEnv(provider, sandbox.sandboxHandle, runEnv);
+        else await pushEnvIfChanged(provider, sandbox, runEnv);
         markTurn(runId, "env-pushed");
         // Assembled HERE, not at enqueue: the prompt is written before a pod
         // exists, and which kind this run gets is decided by the claim above.
@@ -663,7 +728,7 @@ export class SandboxDispatchClient {
             signal: input.signal,
           }),
           // A continuation's `start` is dropped downstream, so don't re-stamp it.
-          resume ? null : modelEnv.CLAUDE_CODE_MODEL,
+          resume ? null : (modelEnv.CODEX_MODEL ?? modelEnv.CLAUDE_CODE_MODEL),
           credentialProviderId,
         );
       })();
@@ -740,6 +805,7 @@ export async function* dispatchWithContinuation(args: {
   aborted: () => boolean;
   dispatchOnce: (
     resume: { reason: string } | null,
+    revalidate: boolean,
   ) => AsyncIterable<UIMessageChunk>;
   /**
    * Ask the infrastructure why the sandbox went away, once it has. Answers the
@@ -768,7 +834,10 @@ export async function* dispatchWithContinuation(args: {
   for (let attempt = 1; ; attempt++) {
     let progressed = false;
     try {
-      for await (const chunk of args.dispatchOnce(resume)) {
+      for await (const chunk of args.dispatchOnce(
+        resume,
+        attempt > 1 || args.resume !== null,
+      )) {
         progressed = true;
         if ((chunk as { type?: string }).type === "start") {
           if (forwardedStart) continue;
@@ -805,7 +874,11 @@ export async function* dispatchWithContinuation(args: {
         reason: err.message,
         termination: infra,
       });
-      resume = { reason: resumeReason(err.message, infra) };
+      // A stale binding can fail before the harness starts. Preserve its saved
+      // conversation instead of treating an unstarted turn as interrupted.
+      if (forwardedStart) {
+        resume = { reason: resumeReason(err.message, infra) };
+      }
     }
   }
 }
@@ -1022,7 +1095,8 @@ export async function pushSandboxEnv(
   if (!res.ok) {
     const summary = `failed to push model env to the sandbox (${res.status} ${res.statusText})`;
     // 404/410/5xx is the pod, not the envelope — retriable, same split as dispatchToDaemon.
-    if (isUnreachableStatus(res.status)) {
+    // A 401 is a daemon that rebooted and lost its claim; the retry's ensure reclaims it.
+    if (isUnreachableStatus(res.status) || res.status === 401) {
       throw new SandboxUnreachableError(summary);
     }
     throw new Error(summary);
@@ -1164,10 +1238,11 @@ async function* dispatchToDaemon(args: {
     const detail = await res.text().catch(() => res.statusText);
     const summary = `sandbox dispatch failed (${res.status}): ${detail.slice(0, 512)}`;
     // 404/410/5xx is the pod, not the envelope — retriable on a fresh sandbox.
-    // Anything else the daemon would reject the same way forever (bad input,
-    // unauthorized, tombstoned run), so it surfaces as the run's failure rather
-    // than an empty successful run.
-    if (isUnreachableStatus(res.status)) {
+    // So is a 401: a daemon recreated or rebooted under a live claim lost our
+    // token, and the continuation's ensure rebinds it. Anything else the daemon
+    // would reject the same way forever (bad input, tombstoned run), so it
+    // surfaces as the run's failure rather than an empty successful run.
+    if (isUnreachableStatus(res.status) || res.status === 401) {
       throw new SandboxUnreachableError(summary);
     }
     throw new Error(summary);
@@ -1433,7 +1508,11 @@ export async function* ndjsonLines(
  * branch is the whole behaviour, so it is what the unit test pins.
  */
 export function selectRunConnections<
-  T extends { id: string; status?: string | null },
+  T extends {
+    id: string;
+    status?: string | null;
+    connection_url?: string | null;
+  },
 >(args: {
   organizationId: string;
   /** The org opted into every connection (`coding_agent_org_mcps`). */
@@ -1452,7 +1531,11 @@ export function selectRunConnections<
 }): T[] {
   return args.connections.filter(
     (connection) =>
-      (args.orgWide || args.ownIds.has(connection.id)) &&
+      // A sandbox sign-in server is the only way a run reaches it, so it is
+      // not left to the agent or the org-wide opt-in.
+      (args.orgWide ||
+        args.ownIds.has(connection.id) ||
+        signsInFromSandbox(connection.connection_url)) &&
       !args.excludedIds?.has(connection.id) &&
       // A connection Studio already knows is erroring only costs the session
       // a failed connect at startup.

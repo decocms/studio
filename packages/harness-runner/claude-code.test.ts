@@ -328,7 +328,6 @@ describe("buildOptions", () => {
         type: "http",
         url: "https://studio.example/mcp/virtual-mcp/agent_1",
         headers: { Authorization: "Bearer k", "x-org-id": "org_1" },
-        alwaysLoad: true,
       },
     });
   });
@@ -371,15 +370,14 @@ describe("mcpServersFor", () => {
         type: "http",
         url: studio.url,
         headers: studio.headers,
-        alwaysLoad: true,
       },
     });
   });
 
-  test("org connections stay deferred; only Studio's own is always loaded", () => {
-    // The whole reason an org can hand a run thirty connections: their tools
-    // sit behind tool search instead of the turn-1 prompt. Studio's own cannot
-    // — the board tools are how the run reports what it did.
+  test("no server is always loaded, Studio's included", () => {
+    // A server-wide `alwaysLoad` sends every tool's schema on every request —
+    // Studio's chat surface is the whole catalog. Studio marks the board tools
+    // always-loaded per tool instead (`_meta["anthropic/alwaysLoad"]`).
     const servers = mcpServersFor(
       input({
         mcp: studio,
@@ -389,7 +387,7 @@ describe("mcpServersFor", () => {
       }),
     );
     expect(servers.linear).not.toHaveProperty("alwaysLoad");
-    expect(servers.studio).toHaveProperty("alwaysLoad", true);
+    expect(servers.studio).not.toHaveProperty("alwaysLoad");
   });
 
   test("Studio's surface survives an org connection named `studio`", () => {
@@ -405,7 +403,6 @@ describe("mcpServersFor", () => {
       type: "http",
       url: studio.url,
       headers: studio.headers,
-      alwaysLoad: true,
     });
   });
 

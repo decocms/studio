@@ -24,6 +24,7 @@ const nativePresence = (
   present: Array<keyof ProjectNativeViewPresence>,
 ): ProjectNativeViewPresence => ({
   assets: present.includes("assets"),
+  releases: present.includes("releases"),
   hosting: present.includes("hosting"),
   e2e: present.includes("e2e"),
   analytics: present.includes("analytics"),
@@ -291,6 +292,21 @@ describe("project sidebar views", () => {
         siteAccess: false,
       }),
     ).toBe(false);
+  });
+
+  test("keeps a Releases deep link while main's schema is being read", () => {
+    const none = projectSidebarViewPresence(true, nativePresence([]));
+    const settled = { assets: false, siteAccess: false };
+
+    expect(
+      projectSidebarViewUnavailable("releases", none, {
+        ...settled,
+        releases: true,
+      }),
+    ).toBe(false);
+    expect(projectSidebarViewUnavailable("releases", none, settled)).toBe(true);
+    const v8 = projectSidebarViewPresence(true, nativePresence(["releases"]));
+    expect(projectSidebarViewUnavailable("releases", v8, settled)).toBe(false);
   });
 
   test("rejects source-backed views immediately when source is absent", () => {

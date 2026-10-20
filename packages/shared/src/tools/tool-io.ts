@@ -124,7 +124,9 @@ export interface StudioToolIO {
             cheap_reviewer_model?: boolean | undefined;
             coding_agent_org_mcps?: boolean | undefined;
             coding_agents_claude_code?: boolean | undefined;
+            chat_harness_codex?: boolean | undefined;
             chat_harness_sandbox_only?: boolean | undefined;
+            sandbox_repo_snapshots?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
             hosting_enabled?: boolean | undefined;
             deco_analytics_enabled?: boolean | undefined;
@@ -205,7 +207,9 @@ export interface StudioToolIO {
             cheap_reviewer_model?: boolean | undefined;
             coding_agent_org_mcps?: boolean | undefined;
             coding_agents_claude_code?: boolean | undefined;
+            chat_harness_codex?: boolean | undefined;
             chat_harness_sandbox_only?: boolean | undefined;
+            sandbox_repo_snapshots?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
             hosting_enabled?: boolean | undefined;
             deco_analytics_enabled?: boolean | undefined;
@@ -282,7 +286,9 @@ export interface StudioToolIO {
             cheap_reviewer_model?: boolean | undefined;
             coding_agent_org_mcps?: boolean | undefined;
             coding_agents_claude_code?: boolean | undefined;
+            chat_harness_codex?: boolean | undefined;
             chat_harness_sandbox_only?: boolean | undefined;
+            sandbox_repo_snapshots?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
             hosting_enabled?: boolean | undefined;
             deco_analytics_enabled?: boolean | undefined;
@@ -326,7 +332,8 @@ export interface StudioToolIO {
           | "review_requested"
           | "review_approved"
           | "review_changes_requested"
-          | "merge_failed";
+          | "merge_failed"
+          | "order_incident";
         taskTitle: string;
         taskKeySeq: number | null;
         actorName: string | null;
@@ -369,6 +376,7 @@ export interface StudioToolIO {
       type?: "bug" | "feature" | "chore" | "spike" | "security" | undefined;
       assigneeId?: string | null | undefined;
       repo?: string | null | undefined;
+      virtualMcpId?: string | null | undefined;
       dueDate?: string | null | undefined;
       tagIds?: string[] | undefined;
       sprintId?: string | null | undefined;
@@ -398,6 +406,7 @@ export interface StudioToolIO {
         assignedBy: string | null;
         repo: string | null;
         repositoryId: string | null;
+        virtualMcpId: string | null;
         sprintId: string | null;
         dueDate: string | null;
         sortOrder: number;
@@ -475,6 +484,7 @@ export interface StudioToolIO {
         assignedBy: string | null;
         repo: string | null;
         repositoryId: string | null;
+        virtualMcpId: string | null;
         sprintId: string | null;
         dueDate: string | null;
         sortOrder: number;
@@ -547,6 +557,7 @@ export interface StudioToolIO {
       type?: "bug" | "feature" | "chore" | "spike" | "security" | undefined;
       assigneeId?: string | null | undefined;
       repo?: string | null | undefined;
+      virtualMcpId?: string | null | undefined;
       dueDate?: string | null | undefined;
       sortOrder?: number | undefined;
       previewRoutes?: string[] | undefined;
@@ -578,6 +589,7 @@ export interface StudioToolIO {
         assignedBy: string | null;
         repo: string | null;
         repositoryId: string | null;
+        virtualMcpId: string | null;
         sprintId: string | null;
         dueDate: string | null;
         sortOrder: number;
@@ -981,6 +993,7 @@ export interface StudioToolIO {
     input: { title: string; summary: string };
     output: { shown: true };
   };
+  preview_navigate: { input: { path: string }; output: { shown: true } };
   update_interests: {
     input: { interests: { title: string; summary: string }[] };
     output: { ok: true; count: number };
@@ -2153,11 +2166,123 @@ export interface StudioToolIO {
       )[];
     };
   };
+  BLOG_SITE_GROUND: {
+    input: {
+      purpose: "format" | "link" | "context" | "brand" | "campaign" | "post";
+      virtualMcpId?: string | undefined;
+      focus?: string | undefined;
+      language?: string | undefined;
+    };
+    output: {
+      report: string;
+      outcome: "ok" | "failed" | "no-site" | "no-tools" | "timeout";
+      toolNames: string[];
+      evidence: string;
+      evidenceUri: string | null;
+      evidenceChars: number;
+    };
+  };
+  BLOG_SITE_CATALOGUE: {
+    input: {
+      grounding?:
+        | {
+            report: string;
+            outcome?:
+              | "ok"
+              | "failed"
+              | "no-site"
+              | "no-tools"
+              | "timeout"
+              | undefined;
+            evidence?: string | undefined;
+            evidenceUri?: string | null | undefined;
+          }
+        | undefined;
+      storeUrl?: string | undefined;
+    };
+    output: {
+      products: {
+        id: string;
+        name: string;
+        category: string;
+        price: string;
+        slug: string;
+        url: string;
+        images: string[];
+        description: string;
+      }[];
+      targets: {
+        kind: "category" | "collection";
+        id: string;
+        name: string;
+        slug: string;
+        url: string;
+      }[];
+      read: boolean;
+    };
+  };
   BLOG_BRAND_EXTRACT: {
     input: {
       blocks: { key: string; content: string }[];
       seo?: { key: string; content: string }[] | undefined;
       virtualMcpId?: string | undefined;
+      grounding?:
+        | {
+            report: string;
+            outcome?:
+              | "ok"
+              | "failed"
+              | "no-site"
+              | "no-tools"
+              | "timeout"
+              | undefined;
+            evidence?: string | undefined;
+            evidenceUri?: string | null | undefined;
+          }
+        | undefined;
+    };
+    output: {
+      values: { name: string; value: string }[];
+      description: string;
+      language: string;
+      storeUrl: string;
+      companyName: string;
+      targetAudience: string;
+      competitors: { name: string; value: string }[];
+      keywords: string[];
+      commercialPolicies: { name: string; value: string }[];
+      sources: string[];
+    };
+  };
+  BLOG_BRAND_ENRICH: {
+    input: {
+      profile: {
+        values: { name: string; value: string }[];
+        description: string;
+        language: string;
+        storeUrl: string;
+        companyName: string;
+        targetAudience: string;
+        competitors: { name: string; value: string }[];
+        keywords: string[];
+        commercialPolicies: { name: string; value: string }[];
+      };
+      blocks: { key: string; content: string }[];
+      seo?: { key: string; content: string }[] | undefined;
+      grounding?:
+        | {
+            report: string;
+            outcome?:
+              | "ok"
+              | "failed"
+              | "no-site"
+              | "no-tools"
+              | "timeout"
+              | undefined;
+            evidence?: string | undefined;
+            evidenceUri?: string | null | undefined;
+          }
+        | undefined;
     };
     output: {
       companyName: string;
@@ -2170,7 +2295,6 @@ export interface StudioToolIO {
       keywords: string[];
       commercialPolicies: { name: string; value: string }[];
       specialDates: { name: string; value: string }[];
-      sources: string[];
       researchSources: string[];
       searched: boolean;
       discarded: number;
@@ -2233,6 +2357,20 @@ export interface StudioToolIO {
       guidance?: string | undefined;
       count?: number | undefined;
       virtualMcpId?: string | undefined;
+      grounding?:
+        | {
+            report: string;
+            outcome?:
+              | "ok"
+              | "failed"
+              | "no-site"
+              | "no-tools"
+              | "timeout"
+              | undefined;
+            evidence?: string | undefined;
+            evidenceUri?: string | null | undefined;
+          }
+        | undefined;
     };
     output: { formats: { name: string; value: string }[] };
   };
@@ -2240,9 +2378,9 @@ export interface StudioToolIO {
     input: {
       brand: {
         description?: string | undefined;
-        companyName?: string | undefined;
         language?: string | undefined;
         storeUrl?: string | undefined;
+        companyName?: string | undefined;
         targetAudience?: string | undefined;
         tone?: string | undefined;
         dos?: { name: string; value: string }[] | undefined;
@@ -2307,6 +2445,20 @@ export interface StudioToolIO {
       count?: number | undefined;
       fileConfigId?: string | undefined;
       virtualMcpId?: string | undefined;
+      grounding?:
+        | {
+            report: string;
+            outcome?:
+              | "ok"
+              | "failed"
+              | "no-site"
+              | "no-tools"
+              | "timeout"
+              | undefined;
+            evidence?: string | undefined;
+            evidenceUri?: string | null | undefined;
+          }
+        | undefined;
     };
     output: {
       posts: {
@@ -2315,7 +2467,7 @@ export interface StudioToolIO {
         excerpt: string;
         categorySlugs: string[];
         authorEmails: string[];
-        cover: { url: string; alt: string };
+        cover: { url: string; alt: string; prompt: string };
         sections: {
           type: string;
           props: Record<string, unknown>;
@@ -2334,12 +2486,39 @@ export interface StudioToolIO {
       }[];
     };
   };
+  BLOG_POST_ILLUSTRATE: {
+    input: {
+      requests: { id: string; prompt: string; alt?: string | undefined }[];
+      productImages?: string[] | undefined;
+      companyName?: string | undefined;
+      fileConfigId?: string | undefined;
+    };
+    output: {
+      images: { id: string; url: string }[];
+      outcome: "ok" | "failed" | "no-bucket" | "no-model";
+      referenced: number;
+    };
+  };
   BLOG_LINK_SUGGEST: {
     input: {
       body: string;
       posts: { title: string; slug: string }[];
       count?: number | undefined;
       virtualMcpId?: string | undefined;
+      grounding?:
+        | {
+            report: string;
+            outcome?:
+              | "ok"
+              | "failed"
+              | "no-site"
+              | "no-tools"
+              | "timeout"
+              | undefined;
+            evidence?: string | undefined;
+            evidenceUri?: string | null | undefined;
+          }
+        | undefined;
     };
     output: { suggestions: { quote: string; slug: string }[] };
   };
@@ -2367,6 +2546,41 @@ export interface StudioToolIO {
       existingNames?: string[] | undefined;
       count?: number | undefined;
       virtualMcpId?: string | undefined;
+      grounding?:
+        | {
+            report: string;
+            outcome?:
+              | "ok"
+              | "failed"
+              | "no-site"
+              | "no-tools"
+              | "timeout"
+              | undefined;
+            evidence?: string | undefined;
+            evidenceUri?: string | null | undefined;
+          }
+        | undefined;
+      catalogue?:
+        | {
+            products: {
+              id: string;
+              name: string;
+              category: string;
+              price: string;
+              slug: string;
+              url: string;
+              images: string[];
+              description: string;
+            }[];
+            targets: {
+              kind: "category" | "collection";
+              id: string;
+              name: string;
+              slug: string;
+              url: string;
+            }[];
+          }
+        | undefined;
     };
     output: {
       campaigns: {
@@ -2649,6 +2863,14 @@ export interface StudioToolIO {
   INFRA_BILLING_PORTAL: {
     input: { siteSlugs: string[] };
     output: { url: string };
+  };
+  CUSTOMER_LAKE_QUERY: {
+    input: { sql: string };
+    output: {
+      rows: Record<string, unknown>[];
+      rowCount: number;
+      truncated: boolean;
+    };
   };
   COLLECTION_CONNECTIONS_CREATE: {
     input: {
@@ -3455,6 +3677,7 @@ export interface StudioToolIO {
                             | "board"
                             | "site-editor"
                             | "assets"
+                            | "releases"
                             | "hosting"
                             | "e2e"
                             | "analytics"
@@ -3514,6 +3737,7 @@ export interface StudioToolIO {
                 | "board"
                 | "site-editor"
                 | "assets"
+                | "releases"
                 | "hosting"
                 | "e2e"
                 | "analytics"
@@ -3723,6 +3947,7 @@ export interface StudioToolIO {
                                 | "board"
                                 | "site-editor"
                                 | "assets"
+                                | "releases"
                                 | "hosting"
                                 | "e2e"
                                 | "analytics"
@@ -3782,6 +4007,7 @@ export interface StudioToolIO {
                     | "board"
                     | "site-editor"
                     | "assets"
+                    | "releases"
                     | "hosting"
                     | "e2e"
                     | "analytics"
@@ -3914,6 +4140,7 @@ export interface StudioToolIO {
                             | "board"
                             | "site-editor"
                             | "assets"
+                            | "releases"
                             | "hosting"
                             | "e2e"
                             | "analytics"
@@ -3973,6 +4200,7 @@ export interface StudioToolIO {
                 | "board"
                 | "site-editor"
                 | "assets"
+                | "releases"
                 | "hosting"
                 | "e2e"
                 | "analytics"
@@ -4143,6 +4371,7 @@ export interface StudioToolIO {
                             | "board"
                             | "site-editor"
                             | "assets"
+                            | "releases"
                             | "hosting"
                             | "e2e"
                             | "analytics"
@@ -4202,6 +4431,7 @@ export interface StudioToolIO {
                 | "board"
                 | "site-editor"
                 | "assets"
+                | "releases"
                 | "hosting"
                 | "e2e"
                 | "analytics"
@@ -4363,6 +4593,7 @@ export interface StudioToolIO {
                             | "board"
                             | "site-editor"
                             | "assets"
+                            | "releases"
                             | "hosting"
                             | "e2e"
                             | "analytics"
@@ -4422,6 +4653,7 @@ export interface StudioToolIO {
                 | "board"
                 | "site-editor"
                 | "assets"
+                | "releases"
                 | "hosting"
                 | "e2e"
                 | "analytics"
@@ -4584,6 +4816,7 @@ export interface StudioToolIO {
                                 | "board"
                                 | "site-editor"
                                 | "assets"
+                                | "releases"
                                 | "hosting"
                                 | "e2e"
                                 | "analytics"
@@ -4643,6 +4876,7 @@ export interface StudioToolIO {
                     | "board"
                     | "site-editor"
                     | "assets"
+                    | "releases"
                     | "hosting"
                     | "e2e"
                     | "analytics"
@@ -4783,6 +5017,7 @@ export interface StudioToolIO {
                             | "board"
                             | "site-editor"
                             | "assets"
+                            | "releases"
                             | "hosting"
                             | "e2e"
                             | "analytics"
@@ -4842,6 +5077,7 @@ export interface StudioToolIO {
                 | "board"
                 | "site-editor"
                 | "assets"
+                | "releases"
                 | "hosting"
                 | "e2e"
                 | "analytics"
@@ -5001,6 +5237,7 @@ export interface StudioToolIO {
                             | "board"
                             | "site-editor"
                             | "assets"
+                            | "releases"
                             | "hosting"
                             | "e2e"
                             | "analytics"
@@ -5060,6 +5297,7 @@ export interface StudioToolIO {
                 | "board"
                 | "site-editor"
                 | "assets"
+                | "releases"
                 | "hosting"
                 | "e2e"
                 | "analytics"
@@ -5163,15 +5401,6 @@ export interface StudioToolIO {
         url_slug?: string | null | undefined;
         updated_by?: string | undefined;
       };
-    };
-  };
-  DATABASES_RUN_SQL: {
-    input: { sql: string; params?: unknown[] | undefined };
-    output: {
-      result: {
-        results?: unknown[] | undefined;
-        success?: boolean | undefined;
-      }[];
     };
   };
   MONITORING_HEATMAP: {
@@ -6400,6 +6629,9 @@ export interface StudioToolIO {
             | "webhook"
             | "board_column_transition"
             | "board_pr_ready"
+            | "linked_chat_run"
+            | "board_pr_merged"
+            | "chat_pr_opened"
             | "jira_transition";
           cron_expression: string | null;
           connection_id: string | null;
@@ -6433,7 +6665,10 @@ export interface StudioToolIO {
         virtual_mcp_id: string;
         system_key: string | null;
         board_triggers: {
-          type: "board_column_transition" | "board_pr_ready";
+          type:
+            | "board_column_transition"
+            | "board_pr_ready"
+            | "board_pr_merged";
           column_key: string;
         }[];
       }[];
@@ -6478,6 +6713,9 @@ export interface StudioToolIO {
         | "webhook"
         | "board_column_transition"
         | "board_pr_ready"
+        | "linked_chat_run"
+        | "board_pr_merged"
+        | "chat_pr_opened"
         | "jira_transition";
       cron_expression?: string | undefined;
       connection_id?: string | undefined;
@@ -6512,6 +6750,9 @@ export interface StudioToolIO {
         | "webhook"
         | "board_column_transition"
         | "board_pr_ready"
+        | "linked_chat_run"
+        | "board_pr_merged"
+        | "chat_pr_opened"
         | "jira_transition";
       created_at: string;
       webhook?: { url: string; token: string } | null | undefined;
@@ -6632,6 +6873,7 @@ export interface StudioToolIO {
                             | "board"
                             | "site-editor"
                             | "assets"
+                            | "releases"
                             | "hosting"
                             | "e2e"
                             | "analytics"
@@ -6691,6 +6933,7 @@ export interface StudioToolIO {
                 | "board"
                 | "site-editor"
                 | "assets"
+                | "releases"
                 | "hosting"
                 | "e2e"
                 | "analytics"
@@ -7064,6 +7307,34 @@ export interface StudioToolIO {
     input: { planId: "starter" | "business" };
     output: { planId: string };
   };
+  CODEX_SUBSCRIPTION_CONNECT: {
+    input: { authJson: string };
+    output: {
+      connected: boolean;
+      linkedAt: string | null;
+      expiresAt: string | null;
+    };
+  };
+  CODEX_SUBSCRIPTION_STATUS: {
+    input: { [x: string]: never };
+    output: {
+      connected: boolean;
+      linkedAt: string | null;
+      expiresAt: string | null;
+    };
+  };
+  CODEX_SUBSCRIPTION_DISCONNECT: {
+    input: { [x: string]: never };
+    output: {
+      connected: boolean;
+      linkedAt: string | null;
+      expiresAt: string | null;
+    };
+  };
+  CODEX_SUBSCRIPTION_SYNC: {
+    input: { authJson: string; previousHash: string };
+    output: { updated: boolean; authHash: string | null };
+  };
   CLAUDE_SUBSCRIPTION_CONNECT: {
     input: { token: string };
     output: {
@@ -7086,6 +7357,50 @@ export interface StudioToolIO {
       connected: boolean;
       linkedAt: string | null;
       expiresAt: string | null;
+    };
+  };
+  GITHUB_COPILOT_CONNECT: {
+    input: { token: string };
+    output: {
+      connected: boolean;
+      linkedAt: string | null;
+      orgShare: {
+        sharedBy: { id: string; name: string | null };
+        sharedByMe: boolean;
+      } | null;
+    };
+  };
+  GITHUB_COPILOT_STATUS: {
+    input: { [x: string]: never };
+    output: {
+      connected: boolean;
+      linkedAt: string | null;
+      orgShare: {
+        sharedBy: { id: string; name: string | null };
+        sharedByMe: boolean;
+      } | null;
+    };
+  };
+  GITHUB_COPILOT_DISCONNECT: {
+    input: { [x: string]: never };
+    output: {
+      connected: boolean;
+      linkedAt: string | null;
+      orgShare: {
+        sharedBy: { id: string; name: string | null };
+        sharedByMe: boolean;
+      } | null;
+    };
+  };
+  GITHUB_COPILOT_SHARE: {
+    input: { shared: boolean };
+    output: {
+      connected: boolean;
+      linkedAt: string | null;
+      orgShare: {
+        sharedBy: { id: string; name: string | null };
+        sharedByMe: boolean;
+      } | null;
     };
   };
   SECRET_CREATE: {

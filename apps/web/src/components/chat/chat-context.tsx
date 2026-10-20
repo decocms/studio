@@ -16,7 +16,6 @@
 
 import {
   createContext,
-  use,
   useContext,
   useEffect,
   useRef,
@@ -45,13 +44,6 @@ import {
   type ThreadObserver,
 } from "./store/thread-connection";
 import { deriveTerminalThreadStatus } from "./store/thread-status";
-import {
-  AGENT_OPTION_HARNESSES,
-  resolveNativeAgentOption,
-  type LocalAgentOption,
-  type NativeHarnessId,
-} from "./pills/agent-options";
-import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
 import { resolveSubmitSettings } from "./resolve-submit-settings";
 import { shouldBlockHostedRuntime } from "./hosted-runtime-guard";
 import {
@@ -83,11 +75,34 @@ import { useDecopilotEvents } from "../../hooks/use-decopilot-events";
 import { useTaskReadState } from "../../hooks/use-task-read-state";
 import { authClient } from "../../lib/auth-client";
 import { track } from "../../lib/posthog-client";
+import { lastPreviewPageKey } from "../sandbox/preview/last-preview-page";
+import {
+  PreviewNavigateInputSchema,
+  requestPreviewNavigate,
+} from "../sandbox/preview/preview-navigate-request";
 
 // Module-level set so a given chat fires `chat_opened` at most once per page
 // session per thread_id. Prevents duplicates from re-renders while still
 // re-firing when the user switches tasks.
 const openedChats = new Set<string>();
+
+/** Cap on distinct threads tracked for the chat_opened dedup, so a long-lived
+ *  tab that visits many threads over a session doesn't grow this set without
+ *  bound. Evicting the oldest-tracked thread risks one duplicate analytics
+ *  event for it much later — an acceptable trade-off for bounded memory. */
+const MAX_OPENED_CHATS = 500;
+
+/** Returns true the first time a given taskId is seen (or re-seen after
+ *  eviction) in this page session — the caller should fire `chat_opened`. */
+export function markChatOpened(taskId: string): boolean {
+  if (openedChats.has(taskId)) return false;
+  if (openedChats.size >= MAX_OPENED_CHATS) {
+    const oldest = openedChats.values().next().value;
+    if (oldest !== undefined) openedChats.delete(oldest);
+  }
+  openedChats.add(taskId);
+  return true;
+}
 
 /** Threads with a sendMessage currently in flight — a synchronous latch so a
  * rapid double-Enter can't double-submit/double-queue the same draft (the
@@ -136,6 +151,7 @@ import {
   takePendingBody,
 } from "./message-queue-store";
 import { textFromParts } from "./queue-items";
+import { withLiveRunId } from "./live-messages";
 import { useMessageQueueActions } from "./use-message-queue";
 import { formatDeckTabId } from "@/layouts/main-panel-tabs/tab-id";
 import { useEffectiveSimpleMode } from "../../hooks/use-user-model-preferences";
@@ -158,6 +174,11 @@ export interface ChatStreamContextValue {
     transcript?: VoiceTranscript,
   ) => Promise<boolean>;
   voiceContext?: string;
+  /** Settles once the thread's first page of messages has loaded or failed.
+   *  Whatever renders the conversation suspends on it with `use()`; the
+   *  provider does not, because it wraps the whole chat layout and its
+   *  suspension would blank both panels on every thread switch. */
+  ready: Promise<void>;
   messages: ChatMessage[];
   status: "ready" | "submitted" | "streaming" | "error";
   sendMessage: (
@@ -263,14 +284,6 @@ export interface ChatPrefsContextValue {
   /** The currently selected tier in Simple Model Mode */
   simpleModeTier: SimpleTier;
   setSimpleModeTier: (tier: SimpleTier) => void;
-  /**
-   * Effective native terminal-agent option. Persisted per org so a choice
-   * survives reloads.
-   */
-  pendingAgentOption: LocalAgentOption | null;
-  setPendingAgentOption: (option: LocalAgentOption | null) => void;
-  /** Derived from `pendingAgentOption`. Read-only. */
-  pendingHarnessId: NativeHarnessId | null;
 }
 
 /** `sendMessage` takes either shape; both providers normalize it through here. */
@@ -312,17 +325,15 @@ const ChatPrefsCtx = createContext<ChatPrefsContextValue | null>(null);
 const TaskInternalsCtx = createContext<TaskProviderInternals | null>(null);
 
 /**
- * Installs a stream-compatible value without constructing ThreadConnection.
- * Native uses this bridge for shared preview/file actions while its actual
- * transport is an interactive terminal session.
+ * Installs a task value without a thread store. The account-less
+ * `/site-editor` uses it: the editor surfaces read their project and branch
+ * from here, and there is no chat to open threads in.
  */
-export function ChatStreamValueProvider({
+export function ChatTaskValueProvider({
   value,
   children,
-}: PropsWithChildren<{ value: ChatStreamContextValue }>) {
-  return (
-    <ChatStreamCtx.Provider value={value}>{children}</ChatStreamCtx.Provider>
-  );
+}: PropsWithChildren<{ value: ChatTaskContextValue }>) {
+  return <ChatTaskCtx.Provider value={value}>{children}</ChatTaskCtx.Provider>;
 }
 
 /**
@@ -557,34 +568,6 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
     });
   };
 
-  // Pending agent — native's pre-launch coding-agent choice. Persisted to
-  // localStorage so the native choice survives reloads.
-  //
-  // Scoped per `locator` (like the image-model and tier prefs) so a native
-  // choice made in one org doesn't leak into another. A fresh org starts with
-  // no pick and waits for an explicit coding-agent selection.
-  const [pendingAgentOption, setPendingAgentOption] =
-    useLocalStorage<LocalAgentOption | null>(
-      LOCALSTORAGE_KEYS.chatLastAgentOption(locator),
-      (existing) =>
-        existing && existing in AGENT_OPTION_HARNESSES ? existing : null,
-    );
-
-  // Read the active native thread's lock when this provider is mounted inside
-  // ChatTaskCtx. Standalone composers have no task context and use the stored
-  // local choice.
-  const taskCtxForLock = useOptionalChatTask();
-  const effectiveAgentOption = resolveNativeAgentOption({
-    pendingOption: pendingAgentOption,
-    lockedHarness: taskCtxForLock?.isThreadLocked
-      ? taskCtxForLock.lockedHarness
-      : null,
-  });
-
-  const pendingHarnessId = effectiveAgentOption
-    ? AGENT_OPTION_HARNESSES[effectiveAgentOption]
-    : null;
-
   // Tiptap doc (transient UI state)
   const [tiptapDoc, setTiptapDoc] = useState<Metadata["tiptapDoc"]>(undefined);
   const tiptapDocRef = useRef<Metadata["tiptapDoc"]>(tiptapDoc);
@@ -628,9 +611,6 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
     resetInteraction: () => {},
     simpleModeTier: activeTier,
     setSimpleModeTier: (tier: SimpleTier) => setStoredTier(tier),
-    pendingAgentOption: effectiveAgentOption,
-    setPendingAgentOption,
-    pendingHarnessId,
   };
 
   return (
@@ -818,6 +798,9 @@ export function ChatContextProvider({
 /** Frozen identity so a threadless render never hands consumers a new array. */
 const NO_MESSAGES: ChatMessage[] = [];
 
+/** `ready` for a stream with nothing to load. */
+const STREAM_READY: Promise<void> = Promise.resolve();
+
 /**
  * Chat context for a route with no thread — every destination (`/$org/home`,
  * `/$org/tasks`, …) until one is opened.
@@ -832,6 +815,7 @@ export function ThreadlessChatProvider({ children }: PropsWithChildren) {
   const { createTaskWithMessage } = useChatTask();
 
   const value: ChatStreamContextValue = {
+    ready: STREAM_READY,
     messages: NO_MESSAGES,
     status: "ready",
     sendMessage: async (params) => {
@@ -858,7 +842,7 @@ export function ThreadlessChatProvider({ children }: PropsWithChildren) {
   };
 
   return (
-    <ChatStreamValueProvider value={value}>{children}</ChatStreamValueProvider>
+    <ChatStreamCtx.Provider value={value}>{children}</ChatStreamCtx.Provider>
   );
 }
 
@@ -871,17 +855,12 @@ export function ActiveTaskProvider({
   children,
 }: PropsWithChildren<{ taskId: string }>) {
   const t = useT();
-  const isDesktopApp = useIsDesktopApp();
   const voiceEnabled = useOrgFlag("voice_mode");
   const sandboxOnlyChats = useSandboxOnlyChats();
+  const codexChats = useOrgFlag("chat_harness_codex");
   const { virtualMcpId, activeTask, currentBranch } = useChatTask();
-  const hostedRuntimeBlocked = shouldBlockHostedRuntime({
-    isDesktopApp,
-    harnessId: activeTask?.harness_id,
-  });
-  const hostedRuntimeBlockedMessage = t(
-    "chat.input.codingAgentRequiresDesktop",
-  );
+  const hostedRuntimeBlocked = shouldBlockHostedRuntime(activeTask?.harness_id);
+  const hostedRuntimeBlockedMessage = t("chat.input.codingAgentUnavailable");
 
   /**
    * Fire chat_opened once per (page session × taskId). Runs during render, but
@@ -890,8 +869,7 @@ export function ActiveTaskProvider({
    * chat_started (thread creation). A route that names no thread never reaches
    * this provider, so the id here is always one a person actually opened.
    */
-  if (!openedChats.has(taskId)) {
-    openedChats.add(taskId);
+  if (markChatOpened(taskId)) {
     track("chat_opened", { thread_id: taskId });
   }
   const {
@@ -935,12 +913,6 @@ export function ActiveTaskProvider({
     orgSlug: org.slug,
   });
   const conn = getOrOpenStream(org.slug, taskId, { client });
-  /** Suspend until the initial-page MCP fetch settles. The `MainPanelBoundary`
-   *  in side-panel-chat.tsx catches this and shows the app's one panel loader
-   *  instead of an empty message list. `conn.ready` resolves on success, error
-   *  and null-client paths so the chat unsuspends in every terminal case;
-   *  error states are surfaced via `status` and rendered inline. */
-  use(conn.ready);
   const messages = useStore(conn.messages) as ChatMessage[];
   const connStatus = useStore(conn.status);
   const finishReason = useStore(conn.finishReason);
@@ -960,6 +932,8 @@ export function ActiveTaskProvider({
     openPanel,
     orgId: org.id,
     orgSlug: org.slug,
+    virtualMcpId,
+    currentBranch,
   });
   // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   cbRef.current = {
@@ -972,6 +946,8 @@ export function ActiveTaskProvider({
     openPanel,
     orgId: org.id,
     orgSlug: org.slug,
+    virtualMcpId,
+    currentBranch,
   };
 
   // Race-free body reconcile for queued turns. When a message is sent behind a
@@ -1173,7 +1149,20 @@ export function ActiveTaskProvider({
         setChatError(error);
         console.error("[chat] Error", error);
       },
-      onToolCall: (event) => cbRef.current.onToolCall(event as never),
+      onToolCall: (event) => {
+        const cb = cbRef.current;
+        const navigate =
+          event.toolCall.toolName === "preview_navigate" &&
+          PreviewNavigateInputSchema.safeParse(event.toolCall.input);
+        if (navigate && navigate.success && cb.currentBranch) {
+          requestPreviewNavigate(
+            lastPreviewPageKey(cb.orgSlug, cb.virtualMcpId, cb.currentBranch),
+            navigate.data.path,
+          );
+          cb.openPanel("site-editor");
+        }
+        cb.onToolCall(event as never);
+      },
     };
     conn.observer = observer;
 
@@ -1243,7 +1232,7 @@ export function ActiveTaskProvider({
     const capturedVirtualMcpId = virtualMcpId;
 
     // Coding-agent harnesses have no hosted AI SDK/headless dispatch contract.
-    // A native row can still reach this shared provider, so fail closed before
+    // A persisted row can still reach this shared provider, so fail closed before
     // enqueue or submit and release any caller-owned latch without touching
     // the wire.
     if (hostedRuntimeBlocked) {
@@ -1302,7 +1291,11 @@ export function ActiveTaskProvider({
     if (!activeTask?.harness_id) {
       manager.patchThread({
         id: capturedTaskId,
-        harness_id: sandboxOnlyChats ? "claude-code" : "decopilot",
+        harness_id: sandboxOnlyChats
+          ? codexChats
+            ? "codex"
+            : "claude-code"
+          : "decopilot",
         updated_at: new Date().toISOString(),
       });
     }
@@ -1332,7 +1325,15 @@ export function ActiveTaskProvider({
         let queuedOk = true;
         try {
           stashPendingBody(capturedTaskId, message);
-          await conn.enqueue(message, requestOptions);
+          const delivery = await conn.enqueue(message, requestOptions);
+          if (delivery.kind === "live") {
+            // Delivered into the running sandbox turn: no queue entry. It
+            // shows in the body, and moves to where the agent read it once the
+            // run says so (`data-live-message`).
+            dropPendingBody(capturedTaskId, message.id);
+            conn.applyLocalMessage(withLiveRunId(message, delivery.liveRunId));
+            return true;
+          }
           enqueueMessage(capturedTaskId, {
             workflowId: `thread-run:${capturedTaskId}:${message.id}`,
             messageId: message.id,
@@ -1531,6 +1532,8 @@ export function ActiveTaskProvider({
   // oxlint-disable-next-line ban-use-effect/ban-use-effect, react-hooks/exhaustive-deps -- storage status, not function identity, gates duplicate sends
   useEffect(() => {
     if (!shouldAutosend) return;
+    // Before the first page lands an existing thread still looks empty.
+    if (connStatus.kind === "loading") return;
     if (messages.length > 0) return;
     if (hostedRuntimeBlocked) return;
 
@@ -1543,6 +1546,7 @@ export function ActiveTaskProvider({
     // oxlint-disable-next-line eslint-plugin-react-hooks/exhaustive-deps -- storage status, not function identity, gates duplicate sends
   }, [
     shouldAutosend,
+    connStatus.kind,
     messages.length,
     hostedRuntimeBlocked,
     locator,
@@ -1553,6 +1557,7 @@ export function ActiveTaskProvider({
   // oxlint-enable react/set-state-in-effect
 
   const streamValue: ChatStreamContextValue = {
+    ready: conn.ready,
     voiceContext: voiceEnabled
       ? [
           contextPrompt,
@@ -1603,7 +1608,8 @@ export function ActiveTaskProvider({
       // Claude Code cannot take an injected tool result; the server resolves the part.
       if (
         action.kind === "toolOutput" &&
-        activeTask?.harness_id === "claude-code"
+        (activeTask?.harness_id === "claude-code" ||
+          activeTask?.harness_id === "codex")
       ) {
         const { response } = (action.output ?? {}) as { response?: unknown };
         await conn.submit(

@@ -66,10 +66,7 @@ image:
   # Costs one registry round trip per pod start. On a spot pool that recycles
   # nodes daily, that is the cheap side of the trade.
   pullPolicy: Always
-  # --skip-migrations is REQUIRED and enforced by validatePreview: the PreSync
-  # Job is the single migration writer. Applies to the worker containers too,
-  # which share this value.
-  command: ["bun", "run", "deco", "--no-tui", "--no-local-mode", "--skip-migrations"]
+  # Inherit the direct server command; schema changes run in migration jobs.
 
 nginx:
   # repository/tag injected per PR (studio-nginx-preview).

@@ -10,10 +10,14 @@ import { defineTool } from "../../core/define-tool";
 import { requireAuth } from "../../core/studio-context";
 import { requireBlogAi } from "./feature-flag";
 import {
+  CatalogueInputSchema,
+  GroundingInputSchema,
+  resolveGrounding,
+} from "./grounding-input";
+import {
   type Catalogue,
   extractCatalogue,
   type GroundingOutcome,
-  groundSiteReport,
   renderGrounding,
   VirtualMcpIdSchema,
 } from "./site-tools";
@@ -44,12 +48,11 @@ const MAX_CATALOGUE_IN_PROMPT = 80;
 /**
  * Reading analytics *and* a catalogue is deeper than reading one site.
  *
- * Generous because the pass no longer loses its work when it runs long: it
- * stops gathering with time to spare and writes up what came back. The cost of
- * a bigger number is someone waiting, not someone getting nothing.
+ * No timeout alongside it any more: the pass this budget belonged to is
+ * `BLOG_SITE_GROUND`'s, and the fallback that still runs here shares a request
+ * with the generation, so its budget is that one's to set.
  */
 const GROUNDING_MAX_STEPS = 14;
-const GROUNDING_TIMEOUT_MS = 120_000;
 
 /**
  * What the model writes here is clamped, never rejected.
@@ -549,6 +552,8 @@ export const BLOG_CAMPAIGN_SUGGEST = defineTool({
       .default(3)
       .describe("The most candidates to return. Fewer is a valid answer."),
     virtualMcpId: VirtualMcpIdSchema,
+    grounding: GroundingInputSchema,
+    catalogue: CatalogueInputSchema,
   }),
   outputSchema: z.object({
     campaigns: z.array(
@@ -591,31 +596,52 @@ export const BLOG_CAMPAIGN_SUGGEST = defineTool({
     await requireBlogAi(ctx, organizationId);
 
     const brandName = input.brand.companyName ?? "this brand";
-    const report = await groundSiteReport(ctx, organizationId, {
-      virtualMcpId: input.virtualMcpId,
-      language: input.brand.language,
-      label: "BLOG_CAMPAIGN_SUGGEST",
-      maxSteps: GROUNDING_MAX_STEPS,
-      timeoutMs: GROUNDING_TIMEOUT_MS,
-      task: `Proposing blog campaigns for ${brandName}, starting from: ${input.seed.prompt}`,
-      wanted: [
-        "What is selling and what has stalled. For EACH product, report its name, id, main category, price, and its image URLs verbatim, plus its slug or `linkText` — a catalogue API returns that instead of an address. Several products, not one example: a shelf is the useful answer.",
-        "Which categories or collections these products sit in, with their ids and their slugs or paths.",
-        "What readers arrive searching for, which pages they land on, and which queries bring traffic the brand does not rank for.",
-        "Any promotion, season or launch already in flight.",
-        `Anything bearing on these terms: ${input.seed.keywords.join(", ") || "(none given)"}.`,
-      ].join("\n"),
-    });
-
-    const grounding = report.grounding;
-    const catalogue = await extractCatalogue(
+    const report = await resolveGrounding(
       ctx,
       organizationId,
-      report.evidence,
-      input.brand.storeUrl,
-      "BLOG_CAMPAIGN_SUGGEST",
+      input.grounding,
+      {
+        virtualMcpId: input.virtualMcpId,
+        language: input.brand.language,
+        label: "BLOG_CAMPAIGN_SUGGEST",
+        maxSteps: GROUNDING_MAX_STEPS,
+        task: `Proposing blog campaigns for ${brandName}, starting from: ${input.seed.prompt}`,
+        wanted: [
+          "What is selling and what has stalled. For EACH product, report its name, id, main category, price, and its image URLs verbatim, plus its slug or `linkText` — a catalogue API returns that instead of an address. Several products, not one example: a shelf is the useful answer.",
+          "Which categories or collections these products sit in, with their ids and their slugs or paths.",
+          "What readers arrive searching for, which pages they land on, and which queries bring traffic the brand does not rank for.",
+          "Any promotion, season or launch already in flight.",
+          `Anything bearing on these terms: ${input.seed.keywords.join(", ") || "(none given)"}.`,
+        ].join("\n"),
+      },
     );
-    const evidence = evidenceFrom(catalogue, report.evidence);
+
+    const grounding = report.grounding;
+    /**
+     * A catalogue the caller already read beats one this call has to extract:
+     * the extraction is several passes over several hundred kilobytes, and
+     * sharing a request with the generation after it is what made this tool
+     * stop answering in time. BLOG_SITE_CATALOGUE is that request.
+     */
+    const catalogue =
+      input.catalogue ??
+      (await extractCatalogue(
+        ctx,
+        organizationId,
+        report.evidence,
+        input.brand.storeUrl,
+        "BLOG_CAMPAIGN_SUGGEST",
+      ));
+    /**
+     * A grounding passed by reference carries no raw output — that went to
+     * BLOG_SITE_CATALOGUE, which is where the ids and names come from. The
+     * report is what remains, and it is evidence: without it `groundedOnly`
+     * finds nothing to match and strips every product the pass just found.
+     */
+    const evidence = evidenceFrom(
+      catalogue,
+      report.evidence || report.grounding,
+    );
     const catalogued = catalogue.products.length + catalogue.targets.length;
     const today = new Date().toISOString().slice(0, 10);
 

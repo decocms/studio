@@ -1,7 +1,6 @@
 import type { ComponentType } from "react";
 import {
   CheckCircle,
-  CpuChip01,
   FilterLines,
   Inbox01,
   LayersThree01,
@@ -10,8 +9,6 @@ import {
   Users03,
   Zap,
 } from "@untitledui/icons";
-
-import { isDesktopAppEnvironment } from "@/hooks/use-is-desktop-app";
 
 export interface ReleaseBullet {
   icon: ComponentType<{ size?: number; className?: string }>;
@@ -25,10 +22,9 @@ export interface Release {
   title: string;
   eyebrow?: string;
   bullets: ReleaseBullet[];
-  /** `href` navigates; `action` is one of: download-app | start-tour. */
+  /** `href` navigates; `action: "start-tour"` starts the layout tour. */
   cta?:
     | { label: string; href: string }
-    | { label: string; action: "download-app" }
     | { label: string; action: "start-tour" };
   learnMoreHref?: string;
 }
@@ -37,7 +33,7 @@ export interface Release {
  * Release feed, newest first. Add new entries at the top.
  * The latest entry is the floating-card candidate; older entries live only in the inbox.
  */
-const ALL_RELEASES: Release[] = [
+export const RELEASES: Release[] = [
   {
     id: "new-layout",
     date: "2026-09-22",
@@ -85,62 +81,6 @@ const ALL_RELEASES: Release[] = [
       },
     ],
     cta: { label: "Take the tour", action: "start-tour" },
-  },
-  {
-    id: "native-app-linux-beta",
-    date: "2026-08-20",
-    eyebrow: "Now Available",
-    title: "Studio for Linux is now in beta",
-    bullets: [
-      {
-        icon: Monitor01,
-        title: "Native Linux desktop app",
-        body: "Studio now ships as an AppImage for 64-bit x86 Linux, bringing the local desktop workflow to Linux.",
-      },
-      {
-        icon: CheckCircle,
-        title: "Verified, no-root install",
-        body: "The installer verifies the download, installs Studio to ~/.local/bin, and adds it to your application launcher without sudo.",
-      },
-      {
-        icon: Zap,
-        title: "Beta today, broader support next",
-        body: "We're validating more distributions and desktop environments. Arm builds are not available yet, and your feedback will shape general availability.",
-      },
-    ],
-    cta: { label: "Install Studio", action: "download-app" },
-    learnMoreHref:
-      "https://github.com/decocms/studio/releases/tag/native-v4.242.0",
-  },
-  {
-    id: "native-app-macos",
-    date: "2026-07-30",
-    eyebrow: "Now Available",
-    title: "New beta studio app",
-    bullets: [
-      {
-        icon: Zap,
-        title: "Faster CMS previews",
-        body: "Every draft gets its own git worktree on your machine, so previews render instantly as you edit.",
-      },
-      {
-        icon: Stars02,
-        title: "Native Claude Code & Codex support",
-        body: "State-of-the-art coding agents, running natively against your local files.",
-      },
-      {
-        icon: CpuChip01,
-        title: "Boosted performance",
-        body: "Entirely rewritten in Rust with a smaller memory footprint than the Bun-based runtime — fast even on modest machines.",
-      },
-      {
-        icon: Monitor01,
-        title: "Apple Silicon only — Windows coming soon",
-        body: "Today's builds target macOS on Apple Silicon; Windows is next.",
-      },
-    ],
-    cta: { label: "Install on Mac", action: "download-app" },
-    learnMoreHref: "https://github.com/decocms/studio/releases",
   },
   {
     id: "codex-gpt-5-6-defaults",
@@ -344,20 +284,3 @@ const ALL_RELEASES: Release[] = [
     ],
   },
 ];
-
-/** An install prompt inside the installed app is noise, so the Tauri build drops
- *  the releases whose CTA is the DOWNLOAD action — and only those. Every other
- *  action works the same in the desktop app as in the browser, and a blanket
- *  "has an action" filter would silently vanish the whole release (card, inbox
- *  entry and all) the moment a new action variant is added. Filtered at the
- *  source, so every consumer (floating card, inbox counts) agrees. */
-export const RELEASES: Release[] = isDesktopAppEnvironment()
-  ? ALL_RELEASES.filter(
-      (release) =>
-        !(
-          release.cta &&
-          "action" in release.cta &&
-          release.cta.action === "download-app"
-        ),
-    )
-  : ALL_RELEASES;

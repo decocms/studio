@@ -6,6 +6,8 @@ import {
   findPageForPath,
   findSiteAppEntry,
   hasEditableDecoContent,
+  pagesShowingBlock,
+  previewPageForBlock,
   resolveDeepLinkPage,
   type PageEntry,
 } from "./page-list";
@@ -27,6 +29,26 @@ describe("page-list", () => {
     expect(extractPages(decofile)).toEqual([
       { key: "pages-home-abc123456789", name: "Home", path: "/" },
     ]);
+  });
+
+  it("extractPages follows the manifest's pages group", () => {
+    const meta = {
+      manifest: { blocks: { pages: { page: {}, post: {} }, sections: {} } },
+      schema: {},
+    } as LiveMeta;
+    const decofile = {
+      home: { __resolveType: "page", path: "/", sections: [] },
+      "hello-world": { __resolveType: "post", path: "/blog/hello" },
+      hero: { __resolveType: "hero", path: "/not-a-page" },
+      legacy: { __resolveType: "website/pages/Page.tsx", path: "/old" },
+    };
+    expect(extractPages(decofile, meta).map((p) => p.key)).toEqual([
+      "home",
+      "hello-world",
+      "legacy",
+    ]);
+    // Without a schema only the legacy page types are pages.
+    expect(extractPages(decofile).map((p) => p.key)).toEqual(["legacy"]);
   });
 
   it("findPageForPath prefers an explicit block key when paths collide", () => {
@@ -353,9 +375,117 @@ describe("page-list", () => {
       );
     });
 
+    it("opens the page that serves the path ahead of a catch-all template", () => {
+      // A storefront that doesn't know its page sends the "/*" fallback.
+      const withNotFound: PageEntry[] = [
+        ...pages,
+        { key: "pages-NotFound-mno345", name: "Not Found", path: "/*" },
+      ];
+      expect(
+        resolveDeepLinkPage(withNotFound, { path: "/", pathTemplate: "/*" })
+          ?.key,
+      ).toBe("pages-Home-abc123456789");
+      // A path no page serves still lands on the template's page.
+      expect(
+        resolveDeepLinkPage(withNotFound, {
+          path: "/nao-existe",
+          pathTemplate: "/*",
+        })?.key,
+      ).toBe("pages-NotFound-mno345");
+    });
+
     it("returns null when nothing fits", () => {
       expect(resolveDeepLinkPage(pages, { path: "/nao-existe" })).toBeNull();
       expect(resolveDeepLinkPage(pages, {})).toBeNull();
     });
+  });
+});
+
+describe("pagesShowingBlock", () => {
+  const PAGE = "website/pages/Page.tsx";
+  const decofile: Record<string, unknown> = {
+    Header: { __resolveType: "site/sections/Header/Header.tsx" },
+    Layout: {
+      __resolveType: "site/sections/Layout.tsx",
+      header: { __resolveType: "Header" },
+    },
+    Unused: { __resolveType: "site/sections/Promo.tsx" },
+    "pages-home": {
+      __resolveType: PAGE,
+      path: "/",
+      sections: [{ __resolveType: "Header" }],
+    },
+    "pages-lazy": {
+      __resolveType: PAGE,
+      path: "/lazy",
+      sections: [
+        {
+          __resolveType: "website/sections/Rendering/Lazy.tsx",
+          section: { __resolveType: "Header" },
+        },
+      ],
+    },
+    "pages-layout": {
+      __resolveType: PAGE,
+      path: "/layout",
+      sections: [{ __resolveType: "Layout" }],
+    },
+    "pages-none": {
+      __resolveType: PAGE,
+      path: "/none",
+      sections: [{ __resolveType: "site/sections/Hero.tsx" }],
+    },
+  };
+
+  it("finds direct, lazy and indirect references, in content order", () => {
+    expect(pagesShowingBlock(decofile, "Header").map((p) => p.path)).toEqual([
+      "/",
+      "/lazy",
+      "/layout",
+    ]);
+  });
+
+  it("is empty for a block no page shows", () => {
+    expect(pagesShowingBlock(decofile, "Unused")).toEqual([]);
+    expect(pagesShowingBlock(decofile, "Missing")).toEqual([]);
+  });
+
+  it("terminates on reference cycles", () => {
+    const cyclic = {
+      ...decofile,
+      A: { __resolveType: "x.tsx", inner: { __resolveType: "B" } },
+      B: { __resolveType: "x.tsx", inner: { __resolveType: "A" } },
+    };
+    expect(pagesShowingBlock(cyclic, "A")).toEqual([]);
+  });
+});
+
+describe("previewPageForBlock", () => {
+  const PAGE = "website/pages/Page.tsx";
+  const page = (path: string, refs: string[]) => ({
+    __resolveType: PAGE,
+    path,
+    sections: refs.map((ref) => ({ __resolveType: ref })),
+  });
+  const decofile: Record<string, unknown> = {
+    Header: { __resolveType: "site/sections/Header.tsx" },
+    Footer: { __resolveType: "site/sections/Footer.tsx" },
+    Popup: { __resolveType: "site/sections/Popup.tsx" },
+    "pages-plp": page("/*", ["Header", "Footer"]),
+    "pages-z": page("/z", ["Header", "Footer"]),
+    "pages-a": page("/a", ["Header", "Footer"]),
+    "pages-home": page("/", ["Header"]),
+  };
+
+  it("the home page first", () => {
+    expect(previewPageForBlock(decofile, "Header")?.path).toBe("/");
+  });
+
+  it("then static pages by path, before patterns", () => {
+    expect(previewPageForBlock(decofile, "Footer")?.path).toBe("/a");
+  });
+
+  it("null for a block no page uses", () => {
+    expect(previewPageForBlock(decofile, "Popup")).toBeNull();
   });
 });

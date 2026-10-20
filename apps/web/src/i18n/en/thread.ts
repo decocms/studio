@@ -20,6 +20,8 @@ export const thread = {
   "thread.branchPicker.localLabel": "Local",
   "thread.branchPicker.localHint":
     "Point preview and the CMS at your own dev server. Paste a public tunnel URL (e.g. ngrok, cloudflared) reachable from this browser.",
+  "thread.branchPicker.localhost.label": "Localhost",
+  "thread.branchPicker.localhost.connected": "Connected",
   "thread.branchPicker.localUrlLabel": "Local tunnel URL",
   "thread.branchPicker.localUrlPlaceholder": "https://your-tunnel.example.com",
   "thread.branchPicker.localTurnOff": "Turn off",
@@ -29,7 +31,7 @@ export const thread = {
     "Version limit reached ({max}). Delete a version to create a new one.",
   "thread.branchPicker.rename": "Rename",
   "thread.branchPicker.save": "Save",
-  "thread.branchPicker.saveError": "Couldn't save the version. Try again.",
+  "thread.branchPicker.saveError": "Couldn't update your draft. Try again.",
   "thread.branchPicker.selectVersion": "Select a version",
   "thread.branchPicker.newChatHint":
     "This chat's branch is fixed. Picking or creating a branch opens a new chat on it.",
@@ -144,16 +146,16 @@ export const thread = {
   "thread.mergeRefused.notFound": "It no longer exists.",
   "thread.mergeRefused.error": "Failed to merge.",
   "thread.publishDialog.openingComparison": "Opening the comparison…",
-  "thread.publishDialog.publishedTo": "Published to {baseBranch}",
   "thread.publishDialog.submittedForReview":
     "Submitted pull request #{prNumber} for review",
   "thread.publishDialog.viewOnProvider": "View on provider",
-  "thread.publishDialog.viewPr": "View PR",
   "thread.publishPopover.blocksGroup": "Blocks",
-  "thread.publishPopover.branchMoved":
-    "This branch changed since these changes were shown. Close and reopen to review what will be published.",
   "thread.publishPopover.detailsUnavailable":
     "Details for these changes could not be loaded.",
+  "thread.publishPopover.alsoOtherWork":
+    "Publishing also includes other work from this session, such as code changes.",
+  "thread.publishPopover.onlyOtherWork":
+    "No content changes. Publishing puts this session's other work live, such as code changes.",
   "thread.publishPopover.loadFailed": "Couldn't load your changes",
   "thread.publishPopover.retry": "Try again",
   "thread.publishPopover.showingFirst":
@@ -163,7 +165,6 @@ export const thread = {
   "thread.publishPopover.chipRemoved": "Removed",
   "thread.publishPopover.emptyHint": "Your latest changes are already live.",
   "thread.publishPopover.everythingLive": "Everything is published",
-  "thread.publishPopover.failedDiscard": "Failed to discard changes",
   "thread.publishPopover.globalSection": "Global section",
   "thread.publishPopover.lastPublished": "Last published {when}",
   "thread.publishPopover.lastPublishedBy": "Last published {when} by {name}",
@@ -187,7 +188,6 @@ export const thread = {
   "thread.publishPopover.publishOneInProduction":
     "Publish 1 change in production",
   "thread.publishPopover.publishOne": "Publish 1 change",
-  "thread.publishPopover.publishedTo": "Published to {host}",
   "thread.publishPopover.publishing": "Publishing…",
   "thread.publishPopover.requestApproval": "Request approval",
   "thread.publishPopover.discarded": "Discarded {name}",
@@ -206,7 +206,7 @@ export const thread = {
   "thread.publishPopover.submitForReview": "Submit for review",
   "thread.publishPopover.submitOneForReview": "Submit 1 change for review",
   "thread.publishPopover.submitting": "Submitting…",
-  "thread.publishPopover.versionNote": "Version note",
+  "thread.publishPopover.versionNote": "Release note",
   "thread.publishPopover.updatesPullRequest": "Updates pull request #{number}",
   "thread.publishPopover.versionNotePlaceholder": "Describe this update…",
   "thread.publishCompare.sideBySide": "Side by side",
@@ -219,6 +219,10 @@ export const thread = {
   "thread.publishCompare.openDraft": "Open in new tab",
   "thread.publishCompare.globalHint":
     "This change can appear on any page. Showing the home page — type another address to compare it.",
+  "thread.publishCompare.blockHint":
+    "This block can appear on several pages. Showing: {path} — type another address to compare it.",
+  "thread.publishCompare.notOnAnyPage":
+    "This block isn't used on any page, so there's nothing to preview. Here are the changes.",
   "thread.publishCompare.dynamicHint":
     "This page's address is a pattern ({template}). Type a real address to compare it.",
   "thread.publishCompare.enterPath": "Type a page address to compare.",
@@ -230,6 +234,7 @@ export const thread = {
   "thread.publishCompare.removedTitle": "Page removed",
   "thread.publishCompare.removedDescription":
     "This page will no longer be on the site.",
+  "thread.publishCompare.sideUnreadable": "This version can't be shown here.",
   "thread.analytics.title": "Chats & automations",
   "thread.analytics.notAdmin":
     "Chat analytics is only available in an admin organization.",

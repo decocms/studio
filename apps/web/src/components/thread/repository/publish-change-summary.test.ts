@@ -5,7 +5,10 @@ import {
   humanizeFieldName,
   publishChangeDigest,
   resolveVersionNote,
+  maskSecrets,
+  SECRET_MASK,
   sectionDisplayName,
+  summarizeContentChanges,
   summarizePublishChanges,
   summarizePublishManifest,
 } from "./publish-change-summary";
@@ -562,5 +565,163 @@ describe("resolveVersionNote", () => {
 
   it("keeps a deliberately cleared field empty — never refills it", () => {
     expect(resolveVersionNote("", "Updated Home")).toBe("");
+  });
+});
+
+describe("summarizeContentChanges (a v8 source's changes.list)", () => {
+  const page = (overrides: Record<string, unknown> = {}) =>
+    JSON.parse(pageJson(overrides)) as Record<string, unknown>;
+  const header = { __resolveType: "site/sections/Header.tsx", logo: "a.png" };
+  const changes = {
+    [HOME_KEY]: { kind: "set", version: "v1", baseVersion: "b1" },
+    "pages-promo-1": { kind: "set", version: "v2", baseVersion: null },
+    Header: { kind: "set", version: "v3", baseVersion: "b3" },
+    "pages-old-2": { kind: "delete", version: null, baseVersion: "b4" },
+  } as const;
+
+  it("lists every change by entry name, with the version its discard is guarded by", () => {
+    const summary = summarizeContentChanges({
+      changes,
+      lookup: {
+        [HOME_KEY]: page(),
+        "pages-promo-1": page({ name: "Promo", path: "/promo" }),
+        Header: header,
+      },
+    });
+    expect(summary.count).toBe(4);
+    expect(summary.pages.map((p) => [p.name, p.status, p.entry])).toEqual([
+      ["Home", "edited", { name: HOME_KEY, version: "v1" }],
+      ["old-2", "removed", { name: "pages-old-2", version: null }],
+      ["Promo", "new", { name: "pages-promo-1", version: "v2" }],
+    ]);
+    expect(summary.blocks.map((b) => [b.blockKey, b.status])).toEqual([
+      ["Header", "edited"],
+    ]);
+    // No file paths: the entry is the card's identity.
+    expect(summary.pages.map(changeId)).toEqual([
+      HOME_KEY,
+      "pages-old-2",
+      "pages-promo-1",
+    ]);
+    expect(summary.pages.every((p) => p.filepaths.length === 0)).toBe(true);
+  });
+
+  it("both sides add what changed inside; they never move a card", () => {
+    const lookup = { [HOME_KEY]: page({ name: "Home" }), Header: header };
+    const before = summarizeContentChanges({ changes, lookup });
+    const sides = {
+      entries: {
+        [HOME_KEY]: {
+          kind: "set" as const,
+          before: page(),
+          after: page({
+            sections: [
+              {
+                __resolveType: "site/sections/Hero.tsx",
+                title: "Winter Sale",
+                backgroundImage: { src: "/images/summer.webp" },
+              },
+              { __resolveType: "site/sections/Footer.tsx", links: ["a", "b"] },
+            ],
+          }),
+          version: "v1",
+          baseVersion: "b1",
+        },
+        Header: {
+          kind: "set" as const,
+          before: header,
+          after: { ...header, logo: "b.png" },
+          version: "v3",
+          baseVersion: "b3",
+        },
+      },
+      diagnostics: [],
+    };
+    const after = summarizeContentChanges({ changes, lookup, sides });
+    expect(after.pages.map(changeId)).toEqual(before.pages.map(changeId));
+    const home = after.pages.find((p) => p.blockKey === HOME_KEY)!;
+    expect(home.sections.map((s) => s.name)).toEqual(["Hero"]);
+    expect(after.blocks[0]!.sections[0]!.fields).toMatchObject([
+      { label: "Logo", from: "a.png", to: "b.png" },
+    ]);
+  });
+
+  it("compares secrets but never shows them", () => {
+    const secret = (ciphertext: string) => ({
+      __resolveType: "secret",
+      ciphertext,
+    });
+    const settings = (key: unknown) => ({
+      __resolveType: "site/apps/site.ts",
+      apiKey: key,
+    });
+    const summary = summarizeContentChanges({
+      changes: { Settings: { kind: "set", version: "v", baseVersion: "b" } },
+      sides: {
+        entries: {
+          Settings: {
+            kind: "set",
+            before: settings(secret("v1.old")),
+            after: settings(secret("v1.new")),
+            version: "v",
+            baseVersion: "b",
+          },
+        },
+        diagnostics: [],
+      },
+    });
+    const card = summary.blocks[0]!;
+    expect(card.sections[0]!.fields).toEqual([
+      {
+        label: "Api key",
+        path: ["apiKey"],
+        from: secret(SECRET_MASK),
+        to: secret(SECRET_MASK),
+      },
+    ]);
+    expect(JSON.stringify(card)).not.toContain("v1.old");
+    expect(JSON.stringify(card)).not.toContain("v1.new");
+  });
+
+  it("says which side can't be shown", () => {
+    const summary = summarizeContentChanges({
+      changes: { Broken: { kind: "set", version: "v", baseVersion: "b" } },
+      sides: {
+        entries: {
+          Broken: {
+            kind: "set",
+            before: null,
+            after: { v: 2 },
+            version: "v",
+            baseVersion: "b",
+          },
+        },
+        diagnostics: [
+          {
+            file: "Broken.json",
+            kind: "invalid-json",
+            message: "bad",
+            side: "before",
+          },
+        ],
+      },
+    });
+    expect(summary.blocks[0]!.unreadable).toEqual(["before"]);
+  });
+});
+
+describe("maskSecrets", () => {
+  it("masks v8 secret blocks and v7 secret loaders, anywhere in a value", () => {
+    expect(
+      maskSecrets({
+        a: [{ __resolveType: "secret", ciphertext: "v1.x" }],
+        b: { __resolveType: "website/loaders/secret.ts", encrypted: "0a1b" },
+        c: "plain",
+      }),
+    ).toEqual({
+      a: [{ __resolveType: "secret", ciphertext: SECRET_MASK }],
+      b: { __resolveType: "website/loaders/secret.ts", encrypted: SECRET_MASK },
+      c: "plain",
+    });
   });
 });

@@ -13,8 +13,7 @@
 
 services:
   postgres:
-    image: postgres:15-alpine
-    container_name: studio-postgres
+    image: postgres:16-alpine
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-studio}
@@ -23,7 +22,7 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-studio} -d ${POSTGRES_DB:-studio}"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U ${POSTGRES_USER:-studio} -d ${POSTGRES_DB:-studio}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -31,16 +30,21 @@ services:
 
   # NATS with JetStream — internal event-bus wake-ups and run streaming.
   nats:
-    image: nats:2.14.2
-    container_name: studio-nats
+    image: nats:2.14.2-alpine
     restart: unless-stopped
-    command: ["-js"]
+    command: ["-js", "-sd", "/data", "-m", "8222"]
+    volumes:
+      - nats-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://localhost:8222/healthz || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
     networks: [studio-network]
 
   # MinIO — S3-compatible object storage for assets/buckets/org-fs.
   minio:
     image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
-    container_name: studio-minio
     restart: unless-stopped
     command: ["server", "/data", "--console-address", ":9001"]
     environment:
@@ -49,7 +53,7 @@ services:
     volumes:
       - minio-data:/data
     ports:
-      - "${MINIO_CONSOLE_PORT:-9001}:9001"   # web console (optional)
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001"   # web console (optional)
     networks: [studio-network]
 
   # One-shot: wait for MinIO, then create the bucket Studio expects.
@@ -58,62 +62,80 @@ services:
     depends_on:
       minio:
         condition: service_started
-    entrypoint: >
-      /bin/sh -c "
-      until mc alias set local http://minio:9000 ${S3_ACCESS_KEY_ID:-minioadmin} ${S3_SECRET_ACCESS_KEY:-minioadmin}; do sleep 1; done;
-      mc mb -p local/${S3_BUCKET:-studio};
-      echo 'bucket ready'; exit 0;
-      "
+    environment:
+      S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
+      S3_BUCKET: ${S3_BUCKET:-studio}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-minioadmin}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-minioadmin}
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        attempts=0
+        until mc alias set local "$$S3_ENDPOINT" "$$S3_ACCESS_KEY_ID" "$$S3_SECRET_ACCESS_KEY"; do
+          attempts=$$((attempts + 1))
+          [ "$$attempts" -lt 30 ] || exit 1
+          sleep 1
+        done
+        mc mb --ignore-existing "local/$$S3_BUCKET"
+    networks: [studio-network]
+
+  migrate:
+    image: ${IMAGE_REPOSITORY:-ghcr.io/decocms/studio/studio}:${IMAGE_TAG:-latest}
+    working_dir: /app/apps/api
+    command: ["sh", "-ec", "bun run node_modules/decocms/dist/server/migrate.js && bun run node_modules/decocms/dist/server/migrate-dbos.js"]
+    environment: &studio-environment
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: "3000"
+      HOST: 0.0.0.0
+      DATA_DIR: /app/data
+      BASE_URL: ${BASE_URL:-http://localhost:3000}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-local-dev-better-auth-secret-change-me}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-local-dev-encryption-key-change-me}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-studio}:${POSTGRES_PASSWORD:-studio}@postgres:5432/${POSTGRES_DB:-studio}}
+      NATS_URL: ${NATS_URL:-nats://nats:4222}
+      NATS_USER: ${NATS_USER:-}
+      NATS_PASSWORD: ${NATS_PASSWORD:-}
+      S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
+      S3_BUCKET: ${S3_BUCKET:-studio}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-minioadmin}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-minioadmin}
+      S3_FORCE_PATH_STYLE: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks: [studio-network]
 
   studio:
     image: ${IMAGE_REPOSITORY:-ghcr.io/decocms/studio/studio}:${IMAGE_TAG:-latest}
-    container_name: decocms
+    command: ["bun", "run", "node_modules/decocms/dist/server/server.js"]
     restart: unless-stopped
+    init: true
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       nats:
-        condition: service_started
+        condition: service_healthy
       minio-init:
         condition: service_completed_successfully
     ports:
-      - "${PORT:-3000}:3000"
-    environment:
-      - NODE_ENV=${NODE_ENV:-production}
-      - PORT=3000
-      - HOST=0.0.0.0
-      - BETTER_AUTH_URL=${BETTER_AUTH_URL:-http://localhost:3000}
-      - BASE_URL=${BASE_URL:-http://localhost:3000}
-      # Auth signing secret. Set a strong value for anything shared.
-      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:-local-dev-better-auth-secret-change-me}
-      # Credential-vault key — must stay stable across restarts.
-      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-local-dev-encryption-key-change-me}
-      # External services (Studio provisions nothing itself in this mode).
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-studio}:${POSTGRES_PASSWORD:-studio}@postgres:5432/${POSTGRES_DB:-studio}
-      - NATS_URL=nats://nats:4222
-      - S3_ENDPOINT=http://minio:9000
-      - S3_BUCKET=${S3_BUCKET:-studio}
-      - S3_ACCESS_KEY_ID=${S3_ACCESS_KEY_ID:-minioadmin}
-      - S3_SECRET_ACCESS_KEY=${S3_SECRET_ACCESS_KEY:-minioadmin}
-      - S3_FORCE_PATH_STYLE=true
-      # Auth providers (optional, set to enable)
-      # - AUTH_GOOGLE_CLIENT_ID=${AUTH_GOOGLE_CLIENT_ID}
-      # - AUTH_GOOGLE_CLIENT_SECRET=${AUTH_GOOGLE_CLIENT_SECRET}
-      # - AUTH_GITHUB_CLIENT_ID=${AUTH_GITHUB_CLIENT_ID}
-      # - AUTH_GITHUB_CLIENT_SECRET=${AUTH_GITHUB_CLIENT_SECRET}
+      - "127.0.0.1:${PORT:-3000}:3000"
+    environment: *studio-environment
+    healthcheck:
+      test: ["CMD", "bun", "-e", "const r = await fetch('http://localhost:3000/health'); process.exit(r.ok ? 0 : 1)"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
     volumes:
       - studio-data:/app/data
     networks: [studio-network]
 
 volumes:
   studio-data:
-    driver: local
   postgres-data:
-    driver: local
+  nats-data:
   minio-data:
-    driver: local
 
 networks:
   studio-network:
-    driver: bridge

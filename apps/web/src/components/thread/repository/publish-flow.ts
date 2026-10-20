@@ -186,10 +186,7 @@ async function runStep<T>(
 async function assertHeadUnchanged(target: PublishTarget): Promise<void> {
   const { expectedHeadSha, expectedDiffSignature } = target;
   if (!expectedHeadSha && !expectedDiffSignature) return;
-  const status = await fetchGitStatus(
-    sandboxRef(target),
-    sandboxCall(target),
-  ).catch(() => null);
+  const status = await fetchGitStatus(sandboxRef(target)).catch(() => null);
   if (!status) return;
   if (expectedHeadSha && status.headSha && status.headSha !== expectedHeadSha) {
     throw new PublishHeadMovedError();
@@ -207,7 +204,7 @@ async function assertHeadUnchanged(target: PublishTarget): Promise<void> {
 }
 
 function pushChanges(target: PublishTarget, message: string): Promise<void> {
-  return publishGitChanges(sandboxRef(target), message, sandboxCall(target));
+  return publishGitChanges(sandboxRef(target), message);
 }
 
 function openPullRequest(
@@ -225,8 +222,8 @@ function openPullRequest(
 
 /**
  * push → sync → open (or update) the pull request → squash-merge. Every failure
- * arrives as a {@link PublishStepError}; hand it to {@link reportPublishFailure}
- * for the presentation both surfaces share.
+ * arrives as a {@link PublishStepError}; read it with
+ * {@link describePublishFailure}.
  */
 export async function runPublishFlow(
   target: PublishTarget,
@@ -238,7 +235,7 @@ export async function runPublishFlow(
     pushChanges(target, parts.message),
   );
   await runStep("sync", t("thread.publishDialog.failedRebase"), () =>
-    rebaseGitBranch(sandboxRef(target), target.baseBranch, sandboxCall(target)),
+    rebaseGitBranch(sandboxRef(target), target.baseBranch),
   );
   const pr = await runStep(
     "open-pr",
@@ -298,7 +295,7 @@ export function describePublishFailure(
 ): PublishFailure {
   if (error instanceof PublishHeadMovedError) {
     return {
-      message: t("thread.publishPopover.branchMoved"),
+      message: t("siteEditor.publish.changedMeanwhile"),
       pullRequest: null,
       headMoved: true,
     };
@@ -320,31 +317,6 @@ export function describePublishFailure(
         : t("thread.publishDialog.failedPublish"),
     pullRequest: null,
     headMoved: false,
-  };
-}
-
-/**
- * {@link describePublishFailure} plus the toast both surfaces raise for it.
- * `pullRequestOpened` refreshes PR state; `headMoved` re-reads the change list.
- */
-export function reportPublishFailure(
-  error: unknown,
-  t: TFunction,
-): { message: string; pullRequestOpened: boolean; headMoved: boolean } {
-  const failure = describePublishFailure(error, t);
-  const pr = failure.pullRequest;
-  if (pr) {
-    toast.error(failure.message, {
-      action: {
-        label: t("thread.publishDialog.viewPr"),
-        onClick: () => window.open(pr.htmlUrl, "_blank", "noopener,noreferrer"),
-      },
-    });
-  }
-  return {
-    message: failure.message,
-    pullRequestOpened: pr !== null,
-    headMoved: failure.headMoved,
   };
 }
 

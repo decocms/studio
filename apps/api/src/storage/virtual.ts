@@ -934,7 +934,9 @@ export function createRequestCachedVirtualMcps(
         prop === "create" ||
         prop === "update" ||
         prop === "delete" ||
-        prop === "removeConnectionReferences"
+        prop === "removeConnectionReferences" ||
+        prop === "patchMetadata" ||
+        prop === "clearAnalyticsSiteSlugReferences"
       ) {
         return (...args: unknown[]) => {
           cache.clear();

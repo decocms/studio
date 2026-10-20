@@ -10,30 +10,25 @@
     "knip": "^6.29.0",
     "oxlint": "1.83.0",
     "react": "^19.2.6",
-    "typescript": "^7.0.2",
-    "worktree-devservers": "0.3.1"
+    "typescript": "^7.0.2"
   },
   "engines": {
     "node": ">=24.0.0"
   },
   "private": true,
   "scripts": {
-    "dev": "bun run --env-file=.env scripts/dev.ts",
+    "dev": "docker compose up --build --watch",
     "dev:servers": "concurrently -k -n api,web \"bun run --cwd=apps/api dev:server\" \"bun run --cwd=apps/web dev\"",
     "dev:api": "bun run --cwd=apps/api dev",
     "dev:web": "bun run --cwd=apps/web dev",
-    "dev:worktree": "bun run scripts/dev-worktree.ts",
-    "dev:conductor": "WORKTREE_SLUG=$CONDUCTOR_WORKSPACE_NAME bun run dev:worktree",
-    "dev:native": "bun run --cwd=apps/native dev",
     "fmt": "biome format --write",
     "verify": "bun run fmt && bun run lint && bun run knip && bun run test",
     "lint": "oxlint",
     "check": "bun run check:readmes && bun run --workspaces check",
     "check:ci": "bun run check",
     "check:readmes": "bun run scripts/check-workspace-readmes.ts",
-    "check:web-bundle": "bun run scripts/check-web-bundle-desktop-free.ts",
     "fmt:check": "biome format",
-    "test": "bun test --parallel --path-ignore-patterns='{**/*.{integration,e2e}.test.*,**/*{.spec,_spec,_test}.*,**/*.test.{js,jsx,mjs,cjs,mts,cts},**/dist/**}' ./apps/api/src ./apps/api/migrations ./apps/native/scripts ./apps/web/src ./packages ./plugins ./scripts",
+    "test": "bun test --parallel --path-ignore-patterns='{**/*.{integration,e2e}.test.*,**/*{.spec,_spec,_test}.*,**/*.test.{js,jsx,mjs,cjs,mts,cts},**/dist/**}' ./apps/api/src ./apps/api/migrations ./apps/web/src ./packages ./plugins ./scripts",
     "build:runtime": "bun run --filter=@decocms/runtime build",
     "build:api": "bun run --cwd=apps/api build:server",
     "build:web": "bun run --cwd=apps/web build",
@@ -41,10 +36,7 @@
     "ui": "npx shadcn@latest add -c ./packages/ui",
     "clean": "rm -f deno.lock package-lock.json bun.lock && rm -rf node_modules apps/*/node_modules packages/*/node_modules",
     "exorcise": "bun run clean && bun install --force",
-    "knip": "knip",
-    "services:up": "bun run --env-file apps/api/.env apps/api/src/cli.ts services up",
-    "services:down": "bun run --env-file apps/api/.env apps/api/src/cli.ts services down",
-    "services:status": "bun run --env-file apps/api/.env apps/api/src/cli.ts services status"
+    "knip": "knip"
   },
   "type": "module",
   "workspaces": [

@@ -9,7 +9,8 @@
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { Code01, Globe01 } from "@untitledui/icons";
 import type { ComponentType } from "react";
-import { useVirtualMCPs } from "@/sdk";
+import { useQueryClient } from "@tanstack/react-query";
+import { prefetchVirtualMCP, useProjectContext, useVirtualMCPs } from "@/sdk";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { useChatNavigation } from "@/components/chat/hooks/use-chat-navigation";
 import { useThreadActions } from "@/components/chat/store/hooks";
@@ -25,6 +26,8 @@ export function DevAgentControl({
   const allAgents = useVirtualMCPs();
   const { navigateToTask } = useChatNavigation();
   const { create } = useThreadActions();
+  const queryClient = useQueryClient();
+  const { org } = useProjectContext();
 
   const partner = findDevPartner(virtualMcp, allAgents);
   if (!partner) return null;
@@ -35,12 +38,13 @@ export function DevAgentControl({
    *  `?main`/`?chat`, so a same-id tab stays selected across the flip. */
   const goToAgent = async (agentId: string) => {
     const taskId = crypto.randomUUID();
-    try {
-      await create({ id: taskId, virtual_mcp_id: agentId });
-    } catch {
-      // The action already toasted; navigate anyway so the route loader's
+    await Promise.all([
+      // The action already toasts; navigate anyway so the route loader's
       // ensure-fallback retries the thread create.
-    }
+      create({ id: taskId, virtual_mcp_id: agentId }).catch(() => {}),
+      // Warm the counterpart so the flip doesn't blank both panels on arrival.
+      prefetchVirtualMCP(queryClient, org, agentId).catch(() => {}),
+    ]);
     navigateToTask(taskId, { virtualMcpId: agentId });
   };
 

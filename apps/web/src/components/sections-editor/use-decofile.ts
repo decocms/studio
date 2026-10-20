@@ -5,11 +5,25 @@ import { exponentialBackoffWithJitter } from "@decocms/shared/std";
 import { KEYS } from "@/lib/query-keys";
 import { decoRepoPath } from "./deco-repo-path";
 import { parseDecofileBody } from "./decofile-body";
-import { fetchDecofile } from "./decofile-api";
+import {
+  decofileHeadMoved,
+  decofileWriteMutationKey,
+  fetchDecofile,
+  getDecofileDraft,
+} from "./decofile-api";
+import {
+  CONFLICT_DIALOG_POLL_MS,
+  useConflictDialogPoll,
+} from "./conflict-dialog-poll";
 import { buildDecofileFetchUrl } from "./preview-fetch-url";
 import { readCommittedJson } from "./read-committed-file";
 import { decofileErrorStatus } from "./decofile-read-status";
 import { usePackagePath } from "./use-package-path";
+import { useContentBackend } from "./use-content-backend";
+import {
+  pollProtocolContent,
+  protocolUnavailableError,
+} from "./content-protocol-api";
 
 interface UseDecofileParams {
   orgSlug: string;
@@ -27,21 +41,51 @@ interface UseDecofileParams {
  * looks. Same string ⇒ shared cache; a Local edit never bleeds into the real
  * branch's decofile and vice-versa.
  */
-export function decofileCacheKey(input: {
+function decofileCacheKey(input: {
   orgSlug: string;
   virtualMcpId: string;
   branch: string;
   localPreviewUrl?: string | null;
+  /** A content-protocol backend's suffix (a `deco serve` endpoint), if any. */
+  protocolSuffix?: string | null;
 }): string {
   const base = `${input.orgSlug}/${input.virtualMcpId}/${input.branch}`;
+  if (input.protocolSuffix) return `${base}${input.protocolSuffix}`;
   return input.localPreviewUrl
     ? `${base}:local:${input.localPreviewUrl}`
     : base;
 }
 
+/**
+ * The decofile cache key for a project, given its content backend. Pass
+ * `tunnel: false` for writers that never target the Local tunnel's entry.
+ */
+export function useDecofileCacheKey(
+  params: { orgSlug: string; virtualMcpId: string; branch: string } | null,
+  options?: { tunnel?: boolean },
+): string {
+  const { url: localPreviewUrl } = useLocalPreviewUrl(params?.virtualMcpId);
+  const backend = useContentBackend(params?.virtualMcpId, params?.branch);
+  if (!params) return "";
+  return backend.kind === "protocol"
+    ? decofileCacheKey({ ...params, protocolSuffix: backend.cacheKeySuffix })
+    : decofileCacheKey({
+        ...params,
+        localPreviewUrl: options?.tunnel === false ? null : localPreviewUrl,
+      });
+}
+
 export function useDecofile(
   params: UseDecofileParams | null,
-  options?: { fetchEnabled?: boolean },
+  options?: {
+    fetchEnabled?: boolean;
+    /**
+     * Read again every few seconds while true: a same-field conflict dialog
+     * is open, and "their version" must follow the stored copy
+     * (conflict-dialog-poll.ts). One poll however many observers ask.
+     */
+    pollWhile?: boolean;
+  },
 ) {
   /**
    * Local mode reads `/.decofile` straight from the pasted tunnel (a live dev
@@ -49,9 +93,14 @@ export function useDecofile(
    * localhost origin, so `buildDecofileFetchUrl`'s proxy path can't reach it —
    * the Local branch below fetches it directly instead.
    */
-  const { url: localPreviewUrl } = useLocalPreviewUrl(params?.virtualMcpId);
+  // A saved Local tunnel waits for main's answer (v7 uses it, v8 never).
+  const { url: localPreviewUrl, undecided: tunnelUndecided } =
+    useLocalPreviewUrl(params?.virtualMcpId);
   const localOverride = !!localPreviewUrl;
-  const key = params ? decofileCacheKey({ ...params, localPreviewUrl }) : "";
+  // Next-major Blocks sites: the content protocol, polled (see content-backend).
+  const backend = useContentBackend(params?.virtualMcpId, params?.branch);
+  const protocol = backend.kind === "protocol" ? backend : null;
+  const key = useDecofileCacheKey(params);
   // `fetchEnabled` means the dev server is up, so the live `/.decofile` route is
   // worth hitting. When it's down we read `.deco/blocks.gen.json` straight from
   // the working tree — and if that artifact is absent (it's commonly gitignored)
@@ -79,9 +128,60 @@ export function useDecofile(
   const fastPreviewActive =
     useSessionRuntime(params?.virtualMcpId).runtime === "cms";
   const queryClient = useQueryClient();
+  const queryKey = KEYS.decofile(key);
+  useConflictDialogPoll(!!options?.pollWhile && !!params, {
+    // A write's own re-read is on its way; a read running or just landed
+    // already answers this tick.
+    skip: () => {
+      if (!params) return true;
+      if (
+        queryClient.isMutating({
+          mutationKey: decofileWriteMutationKey(
+            params.orgSlug,
+            params.virtualMcpId,
+            params.branch,
+          ),
+        }) > 0
+      ) {
+        return true;
+      }
+      const state = queryClient.getQueryState(queryKey);
+      return (
+        state?.fetchStatus === "fetching" ||
+        Date.now() - (state?.dataUpdatedAt ?? 0) < CONFLICT_DIALOG_POLL_MS / 2
+      );
+    },
+    read: async () => {
+      if (!params) return;
+      // Fast Preview (v7): ask whether the branch head moved before reading
+      // it whole, so an unchanged branch costs no body and keeps the
+      // preview's draft pointer (each full read signs a new grant). The
+      // content protocol's own read is already conditional.
+      if (!protocol && fastPreviewActive && !localOverride) {
+        const version = getDecofileDraft(queryClient, params)?.version;
+        if (version && !(await decofileHeadMoved(params, version))) return;
+      }
+      await queryClient.refetchQueries(
+        { queryKey, exact: true },
+        { cancelRefetch: false },
+      );
+    },
+  });
   return useQuery({
-    queryKey: KEYS.decofile(key),
+    queryKey,
     queryFn: async () => {
+      if (protocol) {
+        const content = await pollProtocolContent(
+          queryClient,
+          protocol,
+          params!,
+          key,
+        );
+        return content.blocks;
+      }
+      if (backend.kind === "unavailable") {
+        throw protocolUnavailableError("decofile");
+      }
       if (localOverride) {
         const res = await fetch(
           new URL("/.decofile", localPreviewUrl).toString(),
@@ -142,8 +242,11 @@ export function useDecofile(
       });
       throw err;
     },
-    enabled: !!params,
-    staleTime: 30_000,
+    enabled: !!params && backend.kind !== "pending" && !tunnelUndecided,
+    staleTime: protocol ? 0 : 30_000,
+    refetchInterval: protocol?.describe.pollIntervalMs,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: protocol ? "always" : undefined,
     // 502 = preview unreachable / nothing available yet. Retrying just hammers
     // a known-down endpoint; sandbox-events-context re-invalidates this query
     // on first daemon contact (and again when the dev server reports
@@ -158,7 +261,9 @@ export function useDecofile(
     // 404 = no decofile route on this repo (not a deco site) — as terminal as
     // 502 for retry purposes.
     retry: (failureCount, error) => {
-      if (fastPreviewActive || localOverride) return failureCount < 3;
+      if (protocol || fastPreviewActive || localOverride) {
+        return failureCount < 3;
+      }
       const status = (error as { status?: number }).status;
       return status !== 502 && status !== 404 && failureCount < 2;
     },

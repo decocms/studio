@@ -2,9 +2,9 @@ import type { agentShellLayout as agentShellLayoutEn } from "../en/agent-shell-l
 
 export const agentShellLayout = {
   "agentShellLayout.agentShellLayout.runtimeUnavailableOnWeb":
-    "Este chat não está disponível na web",
+    "Não é possível continuar este chat",
   "agentShellLayout.agentShellLayout.runtimeUnavailableOnWebDescription":
-    "Chats com agentes de código são executados localmente no Studio Desktop. Abra este chat lá para continuar.",
+    "O ambiente de execução original deste chat não é mais suportado. Inicie um novo chat para continuar trabalhando.",
   "agentShellLayout.agentShellLayout.agentNotFound": "Projeto não encontrado",
   "agentShellLayout.agentShellLayout.agentNotFoundDescription":
     'O projeto "{virtualMcpId}" não existe nesta organização.',
@@ -13,13 +13,5 @@ export const agentShellLayout = {
   "agentShellLayout.agentShellLayout.creatingTask": "Criando tarefa…",
   "agentShellLayout.agentShellLayout.goToOrgHome":
     "Ir para a página inicial da organização",
-  "agentShellLayout.agentShellLayout.nativeRuntimeUnavailable":
-    "O terminal nativo não está disponível. Reinicie o Studio e tente novamente.",
-  "agentShellLayout.agentShellLayout.somethingWentWrong":
-    "Algo deu errado. Tente atualizar.",
   "agentShellLayout.agentShellLayout.taskUnavailable": "Tarefa indisponível",
-  "agentShellLayout.toggleButtons.hideChat": "Ocultar chat",
-  "agentShellLayout.toggleButtons.showChat": "Mostrar chat",
-  "agentShellLayout.toggleButtons.hidePanel": "Ocultar painel",
-  "agentShellLayout.toggleButtons.showPanel": "Mostrar painel",
 } satisfies Record<keyof typeof agentShellLayoutEn, string>;

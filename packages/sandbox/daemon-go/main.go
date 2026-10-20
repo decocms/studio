@@ -133,6 +133,7 @@ type sandboxHandlers struct {
 	tasksList, tasksGet, tasksDelete      http.HandlerFunc
 	tasksKill, tasksKillAll, tasksStream  http.HandlerFunc
 	toolsSync, exec                       http.HandlerFunc
+	mcpLogin                              *routes.McpLogin
 	fs, git, setup                        map[string]http.HandlerFunc
 }
 
@@ -662,6 +663,9 @@ func (d *daemon) registerSandboxRoutes(mux *http.ServeMux, pre string, h sandbox
 	mux.HandleFunc("DELETE "+pre+"/runs/{runId}", func(w http.ResponseWriter, r *http.Request) {
 		d.dispatchReg.HandleCancel(w, r, d.getToken)
 	})
+	mux.HandleFunc("POST "+pre+"/runs/{runId}/messages", func(w http.ResponseWriter, r *http.Request) {
+		d.dispatchReg.HandleLiveMessage(w, r, d.getToken)
+	})
 
 	mux.HandleFunc("GET "+pre+"/config", d.authed(h.configRead))
 	mux.HandleFunc("PUT "+pre+"/config", d.authed(h.configUpdate))
@@ -677,6 +681,8 @@ func (d *daemon) registerSandboxRoutes(mux *http.ServeMux, pre string, h sandbox
 	mux.HandleFunc("POST "+pre+"/tasks/{id}/kill", d.authed(h.tasksKill))
 
 	mux.HandleFunc("POST "+pre+"/tools/sync", d.authed(h.toolsSync))
+	mux.HandleFunc("POST "+pre+"/mcp-login", d.authed(h.mcpLogin.Start))
+	mux.HandleFunc("POST "+pre+"/mcp-login/finish", d.authed(h.mcpLogin.Finish))
 	for _, step := range []string{"clone", "install", "start"} {
 		mux.HandleFunc("POST "+pre+"/setup/"+step, d.authed(h.setup[step]))
 	}
@@ -1391,14 +1397,21 @@ func main() {
 			SetStatus:   d.setStatus,
 		}),
 		toolsSync: routes.ToolsSync(routes.ToolsDeps{AppRoot: appRoot, RepoDir: repoDir}),
+		mcpLogin:  routes.NewMcpLogin(),
 	}
 
 	d.mux = http.NewServeMux()
 	d.registerSandboxRoutes(d.mux, sandboxPrefix, h)
 
-	if diskCfg, ok := config.ReadDiskConfig(repoDir); ok {
-		d.store.Hydrate(diskCfg)
-		d.orchestrator.Handle(config.Transition{Kind: config.KindBootstrap, Config: diskCfg})
+	if diskCfg, found, err := config.ReadDiskConfig(repoDir); err != nil {
+		slog.Error("ignoring malformed .decocms/daemon.json", "error", err)
+	} else if found {
+		if reason := config.Validate(diskCfg); reason != "" {
+			slog.Error("ignoring invalid .decocms/daemon.json", "reason", reason)
+		} else {
+			d.store.Hydrate(diskCfg)
+			d.orchestrator.Handle(config.Transition{Kind: config.KindBootstrap, Config: diskCfg})
+		}
 	}
 	if d.store.Read() == nil {
 		slog.Info("daemon ready, unclaimed — waiting for workload config", "boot_id", bootId)

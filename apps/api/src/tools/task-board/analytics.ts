@@ -12,6 +12,8 @@
  */
 
 import { isProjectAllowed } from "@decocms/shared/auth/project-scope";
+import { isScopableProject } from "@decocms/shared/sdk";
+import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { resolveCallerProjectScope } from "@/core/project-scope";
@@ -304,15 +306,36 @@ async function narrowToProject(
     project?.organization_id === orgId &&
     (orgId !== ctx.organization?.id ||
       isProjectAllowed(await resolveCallerProjectScope(ctx), projectId));
-  if (!project || !allowed) throw new Error(`Project not found: ${projectId}`);
-  const repo = project.metadata?.repository;
+  if (!project || !allowed || !orgId) {
+    throw new Error(`Project not found: ${projectId}`);
+  }
   return {
     ...query,
     project: {
       id: project.id,
-      repo: repo ? `${repo.owner}/${repo.name}`.toLowerCase() : null,
+      repo: await ownRepo(ctx, orgId, project),
     },
   };
+}
+
+/** The project's `owner/name`, lowercased — or null when another project in
+ *  the org pins the same repository, since then the repository alone does not
+ *  say whose a card is (`entryForTask` in `apps/web/src/lib/project-index.ts`). */
+export async function ownRepo(
+  ctx: StudioContext,
+  orgId: string,
+  project: VirtualMCPEntity,
+): Promise<string | null> {
+  const repoOf = (p: VirtualMCPEntity) => {
+    const repo = p.metadata?.repository;
+    return repo ? `${repo.owner}/${repo.name}`.toLowerCase() : null;
+  };
+  const repo = repoOf(project);
+  if (!repo) return null;
+  const siblings = (await ctx.storage.virtualMcps.list(orgId)).filter(
+    (p) => p.id !== project.id && isScopableProject(p) && repoOf(p) === repo,
+  );
+  return siblings.length > 0 ? null : repo;
 }
 
 /** One line for the model; the page still gets the full structuredContent. */

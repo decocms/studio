@@ -29,15 +29,16 @@ import { withDeviceHint } from "@/components/sandbox/preview/device-hint.ts";
 import { GitDiffList } from "./git-diff-list.tsx";
 import { PublishGhost } from "./cms-publish-frame.tsx";
 import {
+  blockComparePath,
   canRenderCompare,
   compareDraftUrl,
-  comparePageUrl,
-  compareSectionUrl,
+  compareUrl,
   initialComparePath,
   isComparePathEditable,
   isolatedSectionKey,
   type CompareDraft,
 } from "./cms-publish-compare-path.ts";
+import { blockFileName } from "@decocms/blocks/protocol";
 import type { PublishChange } from "./publish-change-summary.ts";
 import type { GitDiffResult } from "./sandbox-git-api.ts";
 
@@ -65,6 +66,40 @@ interface PublishCompareProps {
   /** Where the changes render; null until Fast Preview stashes a grant. */
   draft: CompareDraft | null;
   lastPage: LastPreviewPage | null;
+  /**
+   * Set on a Blocks v8 site, with its current blocks once the editor has
+   * them: a saved section compares on a page that shows it, since v8 has no
+   * isolated-section route. Absent on v7.
+   */
+  v8?: { blocks: Record<string, unknown> | null };
+}
+
+/**
+ * A v8 change's Code tab: its two sides (`changes.get`, secrets masked) as
+ * JSON, under the entry's file name. Empty until the sides are loaded; a
+ * side that exists but can't be read says so instead.
+ */
+function entryDiff(change: PublishChange, unreadable: string): GitDiffResult {
+  const side = (
+    json: Record<string, unknown> | null,
+    which: "before" | "after",
+  ) =>
+    change.unreadable?.includes(which)
+      ? unreadable
+      : json
+        ? `${JSON.stringify(json, null, 2)}\n`
+        : null;
+  const from = change.status === "new" ? null : side(change.fromJson, "before");
+  const to = change.status === "removed" ? null : side(change.toJson, "after");
+  if (from === null && to === null) return { diffs: {} };
+  // A new entry's `toJson` stands in from the current blocks before its
+  // sides load: only a loaded edit or removal has a `from`.
+  if (change.status === "edited" && (from === null || to === null)) {
+    return { diffs: {} };
+  }
+  return {
+    diffs: { [blockFileName(change.entry!.name)]: { from, to } },
+  };
 }
 
 export function PublishCompare({
@@ -74,48 +109,71 @@ export function PublishCompare({
   previewServerUrl,
   draft,
   lastPage,
+  v8,
 }: PublishCompareProps) {
   const t = useT();
-  const canRender = canRenderCompare(change.kind, previewServerUrl, draft);
+  const savedSection = isolatedSectionKey(change);
+  /** Renders on its own (v7); on v8 it shows on a page, like any change. */
+  const sectionKey = v8 ? null : savedSection;
+  /** A v8 saved section: compared on a page that shows it. */
+  const v8Section = v8 ? savedSection : null;
+  /** That page; null when no page shows the block, undefined until known. */
+  const v8SectionPath = v8Section
+    ? blockComparePath(v8Section, v8?.blocks, lastPage)
+    : undefined;
+  /** A v8 saved section no page shows: nothing to preview, only the code. */
+  const onNoPage = v8Section !== null && v8SectionPath === null;
+  const canRender =
+    canRenderCompare(change.kind, previewServerUrl, draft) &&
+    (v8Section === null || typeof v8SectionPath === "string");
   /** What the reviewer picked; until then both follow the change, whose path
    *  and kind can still arrive after the pane mounts. */
   const [pickedView, setView] = useState<CompareView | null>(null);
   const view: CompareView = !canRender ? "code" : (pickedView ?? "split");
   const [device, setDevice] = useState<CompareDevice>("desktop");
   const [typedPath, setPath] = useState<string | null>(null);
-  const path = typedPath ?? initialComparePath(change, lastPage);
-
-  const sectionKey = isolatedSectionKey(change);
+  const path =
+    typedPath ??
+    (v8Section ? (v8SectionPath ?? "") : initialComparePath(change, lastPage));
   const pathEditable = isComparePathEditable(change);
 
   const url = !previewServerUrl
     ? null
-    : sectionKey
-      ? compareSectionUrl(previewServerUrl, sectionKey)
-      : comparePageUrl(previewServerUrl, path);
+    : compareUrl({
+        previewServerUrl,
+        sectionKey: savedSection,
+        path,
+        v8: !!v8,
+      });
   const beforeUrl = url ? withDraftPointer(url.toString(), DRAFT_OFF) : null;
   const afterUrl = url ? compareDraftUrl(url, draft) : null;
 
-  const rawDiff: GitDiffResult = {
-    diffs: Object.fromEntries(
-      change.filepaths.flatMap((p) => {
-        const entry = diff?.diffs[p];
-        return entry ? [[p, entry] as const] : [];
-      }),
-    ),
-  };
+  const rawDiff: GitDiffResult = change.entry
+    ? entryDiff(change, t("thread.publishCompare.sideUnreadable"))
+    : {
+        diffs: Object.fromEntries(
+          change.filepaths.flatMap((p) => {
+            const entry = diff?.diffs[p];
+            return entry ? [[p, entry] as const] : [];
+          }),
+        ),
+      };
   const hasBody = Object.keys(rawDiff.diffs).length > 0;
 
-  const pathHint =
-    sectionKey !== null
-      ? null
-      : change.kind !== "page"
-        ? t("thread.publishCompare.globalHint")
-        : change.pagePath && extractPathParams(change.pagePath).length > 0
-          ? t("thread.publishCompare.dynamicHint", {
-              template: change.pagePath,
-            })
-          : null;
+  const pathHint = (() => {
+    if (sectionKey !== null) return null;
+    if (v8Section !== null) {
+      const shown = path.trim();
+      if (!shown) return null;
+      return extractPathParams(shown).length > 0
+        ? t("thread.publishCompare.dynamicHint", { template: shown })
+        : t("thread.publishCompare.blockHint", { path: shown });
+    }
+    if (change.kind !== "page") return t("thread.publishCompare.globalHint");
+    return change.pagePath && extractPathParams(change.pagePath).length > 0
+      ? t("thread.publishCompare.dynamicHint", { template: change.pagePath })
+      : null;
+  })();
 
   // A new or removed code file says nothing about whether the page existed.
   const beforePane =
@@ -233,6 +291,11 @@ export function PublishCompare({
         </p>
       ) : null}
 
+      {onNoPage ? (
+        <p className="border-b bg-background px-4 py-1.5 text-[11px] text-muted-foreground">
+          {t("thread.publishCompare.notOnAnyPage")}
+        </p>
+      ) : null}
       {view === "code" ? (
         <div className="min-h-0 flex-1 overflow-y-auto bg-background [scrollbar-width:thin]">
           {hasBody ? (

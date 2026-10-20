@@ -10,18 +10,17 @@
  *    entries and (b) per-tool annotations used for plan-mode gating.
  *  - VM file-tool binding context (`vmContext`) keyed on whether the
  *    agent is GitHub-linked or ephemeral.
- *
- * Today this code lives inline inside `stream-core.ts` (~lines 530–660);
- * the helper here is unused until Task 12 wires it through the harness
- * factory. Behavior is intended to be byte-for-byte the same as the
- * inline version, modulo the CLI-agent branch (claude-code / codex)
- * which is removed because the decopilot harness never runs against
- * those providers — they have their own harnesses.
  */
 
 import type { ToolSet, UIMessageStreamWriter } from "ai";
 import type { RepositoryBinding } from "@decocms/shared/sdk";
 import type { StudioContext } from "@/core/studio-context";
+import type { VirtualMCPEntity } from "@/tools/virtual/schema";
+import type { ConnectionEntity } from "@/tools/connection/schema";
+import { createVirtualClientFrom } from "@/mcp-clients/virtual-mcp";
+import { resolveDevConnection } from "@/api/routes/dev-connection";
+import { readSandboxMap } from "@/tools/sandbox/sandbox-map";
+import { buildClusterMcpToolHooks } from "@/api/routes/decopilot/cluster-mcp-tool-hooks";
 import {
   getThreadRepository,
   getThreadPinnedRef,
@@ -39,11 +38,7 @@ import type { HtmlArtifactBuffer } from "@/harnesses/lib/decopilot/built-in-tool
 import type { ConnectionsBlockTool } from "@/harnesses/lib/decopilot/connections-block";
 import { agentSandboxEnabled } from "@/settings";
 import { sandboxOnlyChatsEnabled } from "@/harnesses/sandbox-only-chats";
-import {
-  toolsFromMCP,
-  type PrOpenedEvent,
-  type ToolCallAnalytics,
-} from "@/harnesses/lib/decopilot/mcp-tools";
+import { toolsFromMCP } from "@/harnesses/lib/decopilot/mcp-tools";
 import { MCP_LIST_TIMEOUT_MS } from "@/core/constants";
 import { MCP_TOOL_CALL_TIMEOUT_MS } from "@/harnesses/lib/decopilot/harness-constants";
 import { requireDecopilotRunContext } from "@/harnesses/lib/decopilot/run-context";
@@ -132,31 +127,8 @@ export interface AssembleDecopilotToolsExtras {
     totalTokens: number;
   }) => void;
   /** Cluster-injected: makes slow built-ins (generate_image) run as durable
-   *  background jobs instead of holding the turn open. Omitted on desktop. */
+   *  background jobs instead of holding the turn open. */
   backgroundDispatcher?: BackgroundDispatcher | null;
-  /**
-   * Portable MCP-client seam. Generalizes the cluster's in-process
-   * `createVirtualClientFrom(virtualMcp, ctx, superUser,
-   * { listTimeoutMs })` so the daemon/desktop can swap in an HTTP `Client` at
-   * the agent's `mcp.url`. The cluster impl
-   * (supplied by `index.ts`) loads the Virtual MCP by id and returns a live
-   * `PassthroughClient`; the caller owns closing it via `result.close()`.
-   */
-  mcpForAgent: (
-    agentId: string,
-    opts?: { superUser?: boolean; listTimeoutMs?: number },
-  ) => Promise<PassthroughClient>;
-  /** Cluster-injected hook: resolve storage-ref args before each MCP tool
-   *  call. Omitted on desktop (no ctx) → args pass through unchanged. */
-  resolveArgs?: (
-    input: Record<string, unknown>,
-  ) => Promise<Record<string, unknown>>;
-  /** Cluster-injected hook: emit per-tool-call analytics (posthog). Omitted
-   *  on desktop → no analytics. */
-  onToolCalled?: (event: ToolCallAnalytics) => void;
-  /** Cluster-injected hook: a PR was opened via the GitHub MCP — link it to
-   *  the run's task. Omitted on desktop. */
-  onPrOpened?: (event: PrOpenedEvent) => void;
 }
 
 /**
@@ -238,6 +210,21 @@ export async function assembleDecopilotTools(
       ? new Set(input.toolAllowlist)
       : null;
 
+  const virtualMcp = runContext.virtualMcp as VirtualMCPEntity;
+  // Include the running sandbox's dev tools only after confirming it speaks MCP.
+  let devConnection: ConnectionEntity | null = null;
+  if (
+    virtualMcp.id &&
+    input.user.id &&
+    readSandboxMap(virtualMcp.metadata)[input.user.id]
+  ) {
+    devConnection = await resolveDevConnection(
+      ctx,
+      virtualMcp.id,
+      input.user.id,
+      runContext.branch ?? undefined,
+    ).catch(() => null);
+  }
   // superUser=true: the user is already authenticated as an org member,
   // the virtual MCP enforces which connections are in scope, and the
   // per-tool AuthTransport check would block every non-public connection
@@ -249,10 +236,16 @@ export async function assembleDecopilotTools(
   // start dropping working connections out of a chat's toolset. The shared
   // budget keeps the intent (no connection may stall run start) at a value a
   // healthy connection actually meets.
-  const passthroughClient = await extras.mcpForAgent(input.agent.id, {
-    superUser: true,
-    listTimeoutMs: MCP_LIST_TIMEOUT_MS,
-  });
+  const passthroughClient = await createVirtualClientFrom(
+    virtualMcp,
+    ctx,
+    true,
+    {
+      listTimeoutMs: MCP_LIST_TIMEOUT_MS,
+      includeSkillsCatalog: true,
+      additionalConnections: devConnection ? [devConnection] : [],
+    },
+  );
 
   // Once the passthrough client is open, every subsequent failure in
   // tool assembly (toolsFromMCP, getBuiltInTools, listTools, …) MUST
@@ -275,9 +268,7 @@ export async function assembleDecopilotTools(
       {
         isPlanMode,
         timeoutMs: MCP_TOOL_CALL_TIMEOUT_MS,
-        resolveArgs: extras.resolveArgs,
-        onToolCalled: extras.onToolCalled,
-        onPrOpened: extras.onPrOpened,
+        ...buildClusterMcpToolHooks(ctx, extras.threadId),
       },
     );
     // Restrict to the allowlist (if any) so enable_tool enumeration, the

@@ -20,7 +20,8 @@ import {
   resetTestPgDatabase,
   seedCommonTestPgFixtures,
 } from "../database/test-db-pg";
-import { ensureBuiltinAutomations } from "./builtin";
+import { createAutomationsStorage } from "../storage/automations";
+import { builtinOwningStarter, ensureBuiltinAutomations } from "./builtin";
 
 describe("built-in automations (real Postgres)", () => {
   let database: StudioDatabase;
@@ -151,5 +152,102 @@ describe("built-in automations (real Postgres)", () => {
         from_kind: null,
       },
     ]);
+  });
+
+  it("seeds Move cards from linked chats on, with the linked-chat starter", async () => {
+    await member("org_1", "user_1", "2026-01-01T00:00:00Z");
+
+    await ensureBuiltinAutomations(database.db);
+    await ensureBuiltinAutomations(database.db);
+
+    const rows = (
+      await sql<{
+        name: string;
+        active: boolean;
+        type: string;
+        column_key: string | null;
+      }>`
+        select a.name, a.active, t.type, t.column_key
+          from automations a
+          join automation_triggers t on t.automation_id = a.id
+         where a.system_key = 'linked_chats'
+      `.execute(database.db)
+    ).rows;
+    expect(rows).toEqual([
+      {
+        name: "Move cards from linked chats",
+        active: true,
+        type: "linked_chat_run",
+        column_key: null,
+      },
+    ]);
+  });
+
+  it("seeds the pull-request built-ins on, each with its own starter", async () => {
+    await member("org_1", "user_1", "2026-01-01T00:00:00Z");
+
+    await ensureBuiltinAutomations(database.db);
+    await ensureBuiltinAutomations(database.db);
+
+    const rows = (
+      await sql<{
+        system_key: string;
+        active: boolean;
+        type: string;
+        column_key: string | null;
+      }>`
+        select a.system_key, a.active, t.type, t.column_key
+          from automations a
+          join automation_triggers t on t.automation_id = a.id
+         where a.system_key in ('pr_merged', 'chat_pr')
+         order by a.system_key
+      `.execute(database.db)
+    ).rows;
+    expect(rows).toEqual([
+      {
+        system_key: "chat_pr",
+        active: true,
+        type: "chat_pr_opened",
+        column_key: null,
+      },
+      {
+        system_key: "pr_merged",
+        active: true,
+        type: "board_pr_merged",
+        column_key: "in_review",
+      },
+    ]);
+  });
+
+  it("reads a built-in's switch, and null for an org not seeded with it", async () => {
+    const automations = createAutomationsStorage(database.db);
+    await member("org_1", "user_1", "2026-01-01T00:00:00Z");
+
+    expect(await automations.builtinActive("org_1", "linked_chats")).toBeNull();
+
+    await ensureBuiltinAutomations(database.db);
+    expect(await automations.builtinActive("org_1", "linked_chats")).toBe(true);
+
+    await sql`update automations set active = false where system_key = 'linked_chats'`.execute(
+      database.db,
+    );
+    expect(await automations.builtinActive("org_1", "linked_chats")).toBe(
+      false,
+    );
+    expect(await automations.builtinActive("org_1", "implementer")).toBe(true);
+  });
+
+  it("keeps the built-ins' starters off people's automations", () => {
+    expect(builtinOwningStarter("board_pr_ready")).toBe("Reviewer");
+    expect(builtinOwningStarter("linked_chat_run")).toBe(
+      "Move cards from linked chats",
+    );
+    expect(builtinOwningStarter("board_pr_merged")).toBe(
+      "Ship merged pull requests",
+    );
+    expect(builtinOwningStarter("chat_pr_opened")).toBe(
+      "Track chat pull requests",
+    );
+    expect(builtinOwningStarter("board_column_transition")).toBeUndefined();
   });
 });

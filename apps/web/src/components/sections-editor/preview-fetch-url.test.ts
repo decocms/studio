@@ -14,7 +14,7 @@ const sandbox = {
 };
 
 describe("buildDecofileFetchUrl", () => {
-  test("uses the browser-reachable preview URL for localhost desktop previews", () => {
+  test("uses the browser-reachable preview URL for localhost previews", () => {
     expect(
       buildDecofileFetchUrl({
         ...sandbox,

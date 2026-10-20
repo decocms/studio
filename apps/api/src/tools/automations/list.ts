@@ -38,7 +38,11 @@ export const AUTOMATION_LIST = defineTool({
         /** Its board starters: each one's column and type. */
         board_triggers: z.array(
           z.object({
-            type: z.enum(["board_column_transition", "board_pr_ready"]),
+            type: z.enum([
+              "board_column_transition",
+              "board_pr_ready",
+              "board_pr_merged",
+            ]),
             column_key: z.string(),
           }),
         ),

@@ -54,9 +54,13 @@ export function parseExpression(expression: string): ParsedExpression | null {
 }
 
 /**
- * Convert a parsed expression to a Date object
+ * Convert a parsed expression to a Date object. Relative expressions resolve
+ * against `now`, so a caller that pins it gets the same dates on every render.
  */
-export function expressionToDate(expression: string): TimeExpressionResult {
+export function expressionToDate(
+  expression: string,
+  now: Date = new Date(),
+): TimeExpressionResult {
   const trimmed = expression.trim();
 
   // Try to parse as ISO date first
@@ -74,7 +78,6 @@ export function expressionToDate(expression: string): TimeExpressionResult {
     };
   }
 
-  const now = new Date();
   const result = new Date(now);
 
   if (parsed.offset === 0 || !parsed.unit) {

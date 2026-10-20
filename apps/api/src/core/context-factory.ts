@@ -1,3 +1,4 @@
+import { CodexSubscriptionStorage } from "../storage/codex-subscriptions";
 /**
  * Context Factory
  *
@@ -241,6 +242,8 @@ export interface AuthContext {
   /** Org `role`/`permissions` were resolved for — they must not decide a
    *  check against a different one. */
   organizationId?: string;
+  /** Reads custom role statements so browser sessions evaluate them here. */
+  db?: Kysely<Database>;
 }
 
 /**
@@ -261,6 +264,7 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
     apiKeyId,
     organizationId: authOrganizationId,
     authMethod,
+    db,
   } = ctx;
 
   // An API key is authorized SOLELY by its own stored allowlist — the owner's
@@ -336,6 +340,28 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
       );
       if (builtinDecision !== "fallback") {
         return builtinDecision === "grant";
+      }
+
+      // Custom roles: Better Auth matches actions literally, so it would read
+      // `["*", "!TOOL"]` as a grant of TOOL. Evaluate the stored statements
+      // with our own rules instead (see checkRolePermission).
+      if (db && options?.role && options.organizationId) {
+        try {
+          const statements = await fetchRoleStatements(
+            db,
+            options.organizationId,
+            options.role,
+          );
+          return statements.some((statement) =>
+            checkRolePermission(statement, requestedPermission),
+          );
+        } catch (err) {
+          console.error(
+            "[Auth] Role permission lookup failed:",
+            err instanceof Error ? err.message : String(err),
+          );
+          return false;
+        }
       }
 
       // Slow path: delegate to Better Auth's hasPermission API.
@@ -520,8 +546,16 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
 
 import { createMCPProxy } from "@/api/routes/mcp-proxy-factory";
 import { ConnectionEntity } from "@/tools/connection/schema";
-import { BUILTIN_ROLES, hasAdminRole } from "@decocms/shared/auth/roles";
-import { checkApiKeyPermission } from "../auth/api-key-permissions";
+import {
+  BUILTIN_ROLES,
+  type BuiltinRole,
+  hasAdminRole,
+  rolesOf,
+} from "@decocms/shared/auth/roles";
+import {
+  checkApiKeyPermission,
+  checkRolePermission,
+} from "../auth/api-key-permissions";
 import {
   getCachedBuiltinRoleStatements,
   resolveBuiltinRolePermission,
@@ -553,6 +587,7 @@ import { OrgFsEntryStorage } from "@/storage/org-fs";
 import { OrgFs } from "@/file-storage/org-fs";
 import { OAuthPkceStateStorage } from "@/storage/oauth-pkce-states";
 import { ClaudeSubscriptionStorage } from "@/storage/claude-subscriptions";
+import { OrgSharedPlanStorage } from "@/storage/org-shared-plans";
 import { AIProviderFactory } from "@/ai-providers/factory";
 import type { ModelListCache } from "@/ai-providers/model-list-cache";
 import type { ProviderKeyCache } from "@/storage/provider-key-cache";
@@ -573,7 +608,7 @@ export async function fetchRolePermissions(
   role: string,
 ): Promise<Permission | undefined> {
   // Built-in roles have no custom-role permission row to fetch.
-  if (BUILTIN_ROLES.includes(role as (typeof BUILTIN_ROLES)[number])) {
+  if (BUILTIN_ROLES.includes(role as BuiltinRole)) {
     return undefined;
   }
 
@@ -596,6 +631,26 @@ export async function fetchRolePermissions(
     console.error(`[Auth] Failed to parse permissions for role: ${role}`);
     return undefined;
   }
+}
+
+/**
+ * The statements behind a member's role — each entry of Better Auth's
+ * comma-joined multi-role string, OR-ed by the caller. Built-in roles come
+ * from code; a custom role with no stored row contributes an empty statement,
+ * which grants nothing.
+ */
+async function fetchRoleStatements(
+  db: Kysely<Database>,
+  organizationId: string,
+  role: string,
+): Promise<Permission[]> {
+  const builtin = getCachedBuiltinRoleStatements();
+  return Promise.all(
+    rolesOf(role).map(async (one) => {
+      if (BUILTIN_ROLES.includes(one as BuiltinRole)) return builtin[one] ?? {};
+      return (await fetchRolePermissions(db, organizationId, one)) ?? {};
+    }),
+  );
 }
 
 /**
@@ -1489,7 +1544,14 @@ export async function createStudioContextFactory(
     notifications: new NotificationStorage(config.db),
     orgFsEntries: new OrgFsEntryStorage(config.db),
     oauthPkceStates: new OAuthPkceStateStorage(config.db),
+    codexSubscriptions: new CodexSubscriptionStorage(config.db, vault),
     claudeSubscriptions: new ClaudeSubscriptionStorage(config.db, vault),
+    githubCopilotSubscriptions: new ClaudeSubscriptionStorage(
+      config.db,
+      vault,
+      "github_copilot_subscriptions",
+    ),
+    orgSharedPlans: new OrgSharedPlanStorage(config.db),
     automations: createAutomationsStorage(config.db),
     triggerCallbackTokens: new KyselyTriggerCallbackTokenStorage(config.db),
     orgSsoConfig: new OrgSsoConfigStorage(config.db, vault),
@@ -1551,6 +1613,7 @@ export async function createStudioContextFactory(
     // Create bound auth client (encapsulates HTTP headers and auth context)
     const boundAuth = createBoundAuthClient({
       auth: config.auth,
+      db: config.db,
       authMethod: authResult.method,
       headers: req?.headers ?? new Headers(),
       role: authResult.role,

@@ -96,7 +96,7 @@ export function RoutePageHeader({
   /** An app takes the sidebar's place, so its own thread toggle — normally in
    *  the sidebar header — goes with it. Without this, an app with the chat
    *  closed has no way back into it. */
-  const chatToggle = takeover && chatLayout && (
+  const chatToggle = takeover && chatLayout && !chatLayout.threadless && (
     <Tooltip>
       <TooltipTrigger asChild>
         <ToolbarIconButton

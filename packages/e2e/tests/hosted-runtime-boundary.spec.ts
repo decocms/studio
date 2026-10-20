@@ -11,7 +11,7 @@ const EXPLICIT_HARNESS_IDS = [
   "future",
 ];
 
-const PERSISTED_NON_HOSTED_HARNESS_IDS = ["codex", "opencode", "future"];
+const PERSISTED_NON_HOSTED_HARNESS_IDS = ["opencode", "future"];
 
 test.describe("hosted runtime boundary", () => {
   test.describe.configure({ mode: "serial" });
@@ -158,7 +158,7 @@ test.describe("hosted runtime boundary", () => {
         expect(response.status()).toBe(409);
         expect(await response.json()).toEqual({
           error:
-            "This coding-agent chat can only run in the Studio desktop app",
+            "This coding-agent chat ran in the discontinued Studio desktop app and can't continue here",
         });
 
         const row = await db.query(
@@ -460,7 +460,7 @@ test.describe("hosted runtime boundary", () => {
       transactionOpen = true;
       const nativePin = await locker.query(
         `UPDATE threads
-            SET harness_id = 'codex'
+            SET harness_id = 'opencode'
           WHERE id = $1 AND created_by = $2`,
         [thread.item.id, user.userId],
       );
@@ -514,7 +514,8 @@ test.describe("hosted runtime boundary", () => {
       const response = await responsePromise;
       expect(response.status()).toBe(409);
       expect(await response.json()).toEqual({
-        error: "This coding-agent chat can only run in the Studio desktop app",
+        error:
+          "This coding-agent chat ran in the discontinued Studio desktop app and can't continue here",
       });
 
       const row = await db.query(
@@ -528,7 +529,7 @@ test.describe("hosted runtime boundary", () => {
       );
       expect(row.rows).toEqual([
         {
-          harness_id: "codex",
+          harness_id: "opencode",
           part_count: 0,
         },
       ]);
@@ -588,7 +589,7 @@ test.describe("hosted runtime boundary", () => {
 
       const pinned = await db.query<{ organization_id: string }>(
         `UPDATE threads
-            SET harness_id = 'codex',
+            SET harness_id = 'opencode',
                 status = 'in_progress',
                 cancel_requested_at = NULL
           WHERE id = $1 AND created_by = $2
@@ -710,7 +711,7 @@ test.describe("hosted runtime boundary", () => {
       );
       const update = await db.query(
         `UPDATE threads
-            SET harness_id = 'codex'
+            SET harness_id = 'opencode'
           WHERE id = $1 AND created_by = $2`,
         [thread.item.id, user.userId],
       );
@@ -744,7 +745,7 @@ test.describe("hosted runtime boundary", () => {
 
       await expect(
         page.getByRole("heading", {
-          name: "This chat isn't available on the web",
+          name: "This chat can no longer be continued",
         }),
       ).toBeVisible({ timeout: 30_000 });
       await expect(page.getByTestId("chat-panel")).toHaveCount(0);

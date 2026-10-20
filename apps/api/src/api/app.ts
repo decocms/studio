@@ -27,6 +27,10 @@ import {
   setTaskBoardArchiveSweepRuntime,
 } from "@/tools/task-board/dbos-archive-sweep";
 import {
+  registerOrderMonitorWorkflow,
+  setOrderMonitorRuntime,
+} from "@/monitoring/dbos-order-monitor";
+import {
   registerSubscriptionSweepWorkflow,
   setSubscriptionSweepRuntime,
 } from "@/billing/dbos-subscription-sweep";
@@ -76,7 +80,6 @@ import {
 } from "../observability";
 import { posthog } from "../posthog";
 import authRoutes from "./routes/auth";
-import desktopAuthRoutes from "./routes/desktop-auth";
 import { ME_API_PREFIX, createMeRoutes } from "./routes/me";
 import { createUserFsRoutes } from "./routes/user-fs";
 import { USER_FS_API_PREFIX } from "@/file-storage/user-fs";
@@ -334,24 +337,10 @@ export function isSsoExemptPath(path: string): boolean {
  * cookie-authenticated cross-site request against this API and read the
  * response — a permissive-CORS-with-credentials hole. Only reflect
  * localhost/127.0.0.1 (the Vite dev server, on a different port than the
- * API), the native desktop app's local control origin (see below), and the
- * deployment's own origin, falling back to the request's own origin when
+ * API) and the deployment's own origin, falling back to the request's own origin when
  * `baseUrl` isn't configured (same fallback already used for redirect_uri
  * validation above).
  */
-/**
- * The native desktop app terminates local TLS on its own real domain
- * (`local.studio.decocms.com`, any port — see apps/native's
- * `control_origin.rs`/`local_tls.rs`) rather than `localhost`, because a
- * secure context needs a real domain and per-sandbox cookie isolation needs
- * one the browser groups as a single site. Exact hostname match only — a
- * subdomain or suffix (`evil.local.studio.decocms.com`,
- * `local.studio.decocms.com.evil.example`) must NOT pass.
- */
-function isNativeDesktopControlOrigin(hostname: string): boolean {
-  return hostname === "local.studio.decocms.com";
-}
-
 /**
  * Secret voice session grants (`voice/grant.ts`) are HMAC-signed and verified
  * with. Every OTHER secret-derived signer in this codebase (`auth/jwt.ts`,
@@ -391,17 +380,6 @@ export function resolveCorsOrigin(
   if (originHost === "localhost" || originHost === "127.0.0.1") {
     return origin;
   }
-  // A connection's OAuth `authorization_servers` / `token_endpoint` /
-  // `registration_endpoint` legitimately point straight at this deployment
-  // (oauth-proxy.ts deliberately doesn't proxy those — see
-  // `apps/native/crates/local-api/src/routes/upstream.rs`'s
-  // `rewrite_origin_urls`), so the desktop webview calls them cross-origin —
-  // without this, every discovery/register/token fetch in that flow fails
-  // with no ACAO header ("Load failed" client-side).
-  if (isNativeDesktopControlOrigin(originHost)) {
-    return origin;
-  }
-
   const allowedOrigin = baseUrl ?? requestOrigin;
   try {
     if (new URL(allowedOrigin).origin === origin) {
@@ -417,12 +395,8 @@ export function resolveCorsOrigin(
  * Decide whether `redirectUrl` may receive the `/authorize` proxy's
  * redirect — this is the OAuth-hijacking guard: an attacker who could name
  * an arbitrary `redirect_uri` could have the authorization code delivered to
- * their own origin instead of ours. Allows this deployment's own origin,
- * bare `localhost` (any port, for local web dev), and the native desktop
- * app's local control origin (its `/_auth/mcp-callback` — see
- * `apps/native/src/lib/desktop/mcp-oauth-adapter.ts` — lives there, not on
- * this deployment, since consent happens in the user's REAL browser as a top-
- * level navigation, which no cross-origin fetch or cookie ever touches).
+ * their own origin instead of ours. Allows this deployment's own origin and
+ * bare `localhost` (any port, for local web dev).
  */
 export function isAllowedOAuthRedirectUri(
   redirectUrl: URL,
@@ -430,8 +404,7 @@ export function isAllowedOAuthRedirectUri(
 ): boolean {
   return (
     redirectUrl.origin === new URL(allowedOrigin).origin ||
-    redirectUrl.hostname === "localhost" ||
-    isNativeDesktopControlOrigin(redirectUrl.hostname)
+    redirectUrl.hostname === "localhost"
   );
 }
 
@@ -1091,8 +1064,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   } else {
     // Production/dev mode: connect to NATS (required)
     natsProvider = createNatsConnectionProvider();
-    // External NATS deployments may require a credentials file. Managed local
-    // NATS accepts the loopback connection without one.
+    // Credentials files and username/password authentication are mutually exclusive.
     const credsPath = getSettings().natsCredsPath;
     let creds: string | undefined;
     if (credsPath) {
@@ -1105,7 +1077,11 @@ export async function createApp(options: CreateAppOptions = {}) {
         );
       }
     }
-    natsProvider.init(getSettings().natsUrls, creds ? { creds } : undefined);
+    natsProvider.init(getSettings().natsUrls, {
+      creds,
+      user: getSettings().natsUser,
+      password: getSettings().natsPassword,
+    });
 
     // Cross-pod MCP list cache is gated by the same flag as the read cache.
     // When disabled, leave mcpListCache null so getMcpListCache() callers fetch live.
@@ -1345,7 +1321,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     c.header("Content-Security-Policy", "frame-ancestors 'none'");
   });
 
-  if (!getSettings().noTui) {
+  if (getSettings().nodeEnv === "development") {
     app.use("*", devLogger());
   }
 
@@ -1548,10 +1524,6 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   // Auth routes (API key management via web UI)
   app.route("/api/auth/custom", authRoutes);
-  // Native desktop authentication: a bearer-only identity probe plus the
-  // bearer-to-session bridge used by system-browser login. Mounted before the
-  // `/api/auth/*` Better Auth catchall so these explicit routes win.
-  app.route("/api/auth/desktop", desktopAuthRoutes);
 
   // Fence off the raw Better Auth admin plugin (/api/auth/admin/*) from
   // external callers — see fenceRawAdminSurface's doc in routes/admin.ts for
@@ -1682,6 +1654,9 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   // Hourly auto-archive of settled Done cards, one org leg per candidate org.
   setTaskBoardArchiveSweepRuntime({ db: database.db });
+
+  // Every 5 minutes: each ingest-installed store's order flow vs its baseline.
+  setOrderMonitorRuntime({ db: database.db });
 
   // Hourly: the paid tiers whose `subscription.deleted` never arrived.
   setSubscriptionSweepRuntime({ db: database.db });
@@ -1987,6 +1962,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   registerPublicSetsSyncWorkflow();
   registerOrgRepoSyncWorkflow();
   registerTaskBoardArchiveSweepWorkflow();
+  registerOrderMonitorWorkflow();
   registerSubscriptionSweepWorkflow();
   registerJiraTriggerSweepWorkflow();
   registerBoardTransitionWorkflows();

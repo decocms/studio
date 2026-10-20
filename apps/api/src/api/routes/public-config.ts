@@ -11,6 +11,7 @@ import { getConfig, getThemeConfig } from "@/core/config";
 import { isLocalMode } from "@/auth/local-mode";
 import { getInternalUrl } from "@/core/server-constants";
 import { agentSandboxEnabled, getSettings } from "@/settings";
+import { isCustomerLakeConfigured } from "@/customer-lake/client";
 import { buildAuthConfig } from "@/api/routes/auth";
 import pkg from "../../../package.json" with { type: "json" };
 
@@ -62,6 +63,10 @@ app.get("/", (c) => {
       !!getSettings().clickhouseAnalyticsUrl &&
       !!getSettings().clickhouseAnalyticsPassword,
     monitorGa: getSettings().monitorGa,
+    // Orders views: the order monitor runs only with the ingest worker's URL
+    // and the customer lake configured.
+    orderMonitorEnabled:
+      !!getSettings().orderMonitorIngestUrl && isCustomerLakeConfigured(),
     plansEnabled: getSettings().plansEnabled,
     auth: buildAuthConfig(),
     posthog: buildPosthogConfig(),

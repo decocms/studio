@@ -284,7 +284,7 @@ export async function enqueueSuperAgentForTask(
       // Names the candidates so the run doesn't spend its first step asking what exists.
       ...("choices" in choice ? { repoChoices: choice.choices } : {}),
     });
-    await enqueueAgentRunForTask(ctx, task, {
+    const dispatched = await enqueueAgentRunForTask(ctx, task, {
       title,
       rulesColumn,
       ...(runMetadata ? { metadata: runMetadata } : {}),
@@ -303,6 +303,18 @@ export async function enqueueSuperAgentForTask(
           }
         : {}),
     });
+    // The Super Agent working a card, not an automation on another column.
+    if (dispatched.isNew && rulesColumn === LANES.progress) {
+      captureOrgEvent({
+        event: "task_run_started",
+        organizationId: task.organizationId,
+        properties: {
+          task_id: task.id,
+          reports_task: isReportsTask(task),
+          from: task.status,
+        },
+      });
+    }
   } catch (err) {
     // Nothing was dispatched — no thread exists to ever trigger the
     // thread-finish refund pass (run-reactions.ts). Without this, a failure

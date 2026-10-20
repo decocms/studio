@@ -42,6 +42,7 @@ export const SANDBOX_PLACEMENT_REASONS = [
   "capacity",
   "fallback",
   "image",
+  // No longer chosen, but a control plane on an older controller still sends it.
   "warm-pool",
   "freestyle-unavailable",
 ] as const;
@@ -200,6 +201,12 @@ export interface EnsureOptions {
    * config names none, and then installs.
    */
   cloneOnly?: boolean;
+  /**
+   * Start from a snapshot of `repo` with its dependencies installed and its
+   * dev server running, rebuilt whenever its default branch moves. Freestyle only; ignored
+   * elsewhere and without `repo`.
+   */
+  repoSnapshot?: boolean;
   /** Frozen for the sandbox's lifetime — changing requires recreate. */
   env?: Record<string, string>;
   /**

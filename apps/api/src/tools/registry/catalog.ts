@@ -27,6 +27,42 @@ const CatalogSchema = z
   });
 type CatalogItem = z.infer<typeof RegistryItemSchema>;
 
+/**
+ * Store items Studio ships itself. Figma accepts only Claude Code's OAuth
+ * client, so it signs in through a sandbox (see `signsInFromSandbox`).
+ */
+const BUILT_IN_ITEMS: CatalogItem[] = [
+  {
+    id: "figma/mcp",
+    name: "figma",
+    title: "Official Figma MCP",
+    description:
+      "Figma's own remote MCP server: read designs, components and variables, and take screenshots of frames.",
+    server: {
+      name: "figma",
+      title: "Official Figma MCP",
+      description:
+        "Figma's own remote MCP server: read designs, components and variables, and take screenshots of frames.",
+      icons: [{ src: "https://static.figma.com/app/icon/1/icon-192.png" }],
+      remotes: [{ type: "http", url: "https://mcp.figma.com/mcp" }],
+      websiteUrl: "https://www.figma.com",
+    },
+    _meta: {
+      "mcp.studio": {
+        verified: true,
+        friendly_name: "Official Figma MCP",
+        has_remote: true,
+        has_oauth: true,
+      },
+    },
+  },
+];
+
+export function withBuiltInItems(items: CatalogItem[]): CatalogItem[] {
+  const ids = new Set(items.map((item) => item.id));
+  return [...items, ...BUILT_IN_ITEMS.filter((item) => !ids.has(item.id))];
+}
+
 export function parseCatalog(data: unknown): CatalogItem[] {
   return CatalogSchema.parse(data).map((item) => ({
     ...item,
@@ -80,7 +116,9 @@ async function refreshCatalog(): Promise<CatalogItem[]> {
       bytes.set(chunk, offset);
       offset += chunk.byteLength;
     }
-    const items = parseCatalog(JSON.parse(new TextDecoder().decode(bytes)));
+    const items = withBuiltInItems(
+      parseCatalog(JSON.parse(new TextDecoder().decode(bytes))),
+    );
     cached = {
       items,
       fetchedAt: Date.now(),

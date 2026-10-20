@@ -23,7 +23,7 @@ function httpUrl(value: string): string {
   }
 }
 
-const ACCEPTED_IMAGE_TYPES = new Set([
+export const ACCEPTED_IMAGE_TYPES = new Set([
   "image/png",
   "image/jpeg",
   "image/gif",
@@ -42,14 +42,20 @@ export function useImageUpload({
   siteSlug,
   onUploaded,
   onNeedsPicker,
+  serveUpload,
 }: {
   siteSlug?: string | null;
   onUploaded: (publicUrl: string) => void;
   /** No deterministic bucket — the caller opens the picker to choose one. */
   onNeedsPicker: () => void;
+  /**
+   * A connected `deco serve` (v8 only): uploads go into the repository
+   * instead, so Studio's file storage is left out.
+   */
+  serveUpload?: ((file: File) => Promise<string>) | null;
 }) {
   const t = useT();
-  const configsQuery = useFileConfigsQuery();
+  const configsQuery = useFileConfigsQuery({ enabled: !serveUpload });
   const upload = useFilePickerUpload();
   const [isDragging, setIsDragging] = useState(false);
   const lockedConfig = matchSiteSlugConfig(
@@ -64,6 +70,19 @@ export function useImageUpload({
     );
     if (list.length === 0) {
       toast.error(t("sectionsEditor.imageField.onlyImageFilesAccepted"));
+      return;
+    }
+
+    if (serveUpload) {
+      try {
+        onUploaded(await serveUpload(list[0]!));
+      } catch (err) {
+        toast.error(
+          err instanceof Error
+            ? err.message
+            : t("sectionsEditor.imageField.uploadFailed"),
+        );
+      }
       return;
     }
 

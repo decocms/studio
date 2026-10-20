@@ -1,5 +1,5 @@
 import { AgentAvatar } from "@/components/agent-icon";
-import { useVirtualMCP } from "@/sdk";
+import { useVirtualMCPNonBlocking } from "@/sdk";
 import { Zap } from "@untitledui/icons";
 import { useT } from "@/i18n/use-t.ts";
 
@@ -43,7 +43,7 @@ function McpAvatarInner({
   virtualMcpId: string;
   size: "xs" | "sm" | "md";
 }) {
-  const entity = useVirtualMCP(virtualMcpId);
+  const entity = useVirtualMCPNonBlocking(virtualMcpId);
   if (!entity) return <AgentAvatar icon={null} name="?" size={size} />;
   return (
     <AgentAvatar icon={entity.icon ?? null} name={entity.title} size={size} />

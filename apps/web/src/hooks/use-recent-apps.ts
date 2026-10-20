@@ -16,6 +16,8 @@ import { formatPinnedViewTabId } from "@/layouts/main-panel-tabs/tab-id";
 import {
   appOpenKey,
   dropRecentApp,
+  openAppOf,
+  type OpenApp,
   pushAppOpen,
   pushRecentApp,
   type RecentApp,
@@ -66,35 +68,16 @@ export function useRecentApps(orgSlug: string): {
   };
 }
 
-interface OpenApp {
-  app: string;
-  projectId: string;
-  connection?: { id: string; toolName: string };
-}
-
 /** The app the current route IS, a connection's app included, or null for a
- *  route with no launchable app. */
+ *  route with no launchable app. See `openAppOf`. */
 export function useOpenApp(): OpenApp | null {
   return useRouterState({
-    select: (state): OpenApp | null => {
-      const match = state.matches.findLast((it) => it.staticData.mainView);
-      const view = match?.staticData.mainView;
-      const params = match?.params as
-        | { agentId?: string; connectionId?: string; toolName?: string }
-        | undefined;
-      const projectId = params?.agentId;
-      if (!view || !projectId) return null;
-      if (view === "app" && params.connectionId && params.toolName) {
-        return {
-          app: formatPinnedViewTabId(params.connectionId, params.toolName),
-          projectId,
-          connection: { id: params.connectionId, toolName: params.toolName },
-        };
-      }
-      /** Content and Code are tabs of the Site Editor, not apps of their own. */
-      const app = match.staticData.siteEditorView ? "site-editor" : view;
-      return app in PROJECT_APPS ? { app, projectId } : null;
-    },
+    select: (state) =>
+      openAppOf(
+        state.matches,
+        (app) => app in PROJECT_APPS,
+        formatPinnedViewTabId,
+      ),
     /** Stable across unrelated route state, so the effect fires once per app
      *  rather than once per navigation. */
     structuralSharing: true,
@@ -108,9 +91,12 @@ export function useRememberOpenApp(orgSlug: string): void {
   const open = useOpenApp();
   const opens = useAppOpens(orgSlug);
   /** By id, not the project scope: the scope drops projects its picker does
-   *  not offer, and an app opened in one of those never reached the rail. */
+   *  not offer, and an app opened in one of those never reached the rail.
+   *  No project, no entry: the account-less `/site-editor` is never
+   *  recorded. */
   const project = useVirtualMCPNonBlocking(open?.projectId);
-  const title = open && project?.id === open.projectId ? project.title : null;
+  const title =
+    open?.projectId && project?.id === open.projectId ? project.title : null;
   const pinned =
     open?.connection && project
       ? pinnedViewsOf(project).find(
@@ -128,8 +114,9 @@ export function useRememberOpenApp(orgSlug: string): void {
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- the event is the navigation itself; a deep link has no click to record on
   useEffect(() => {
-    if (open) opens.remember(appOpenKey(open.projectId, open.app));
-    if (!open || !title) return;
+    if (!open?.projectId) return;
+    opens.remember(appOpenKey(open.projectId, open.app));
+    if (!title) return;
     remember({
       app: open.app,
       projectId: open.projectId,

@@ -155,7 +155,7 @@ export function invalidateOrgFeaturesCache(organizationId: string): void {
 const inFlightPlanState = new Map<string, Promise<OrgPlanState | null>>();
 
 async function getOrgPlanState(
-  ctx: StudioContext,
+  userId: string | undefined,
   organizationId: string,
 ): Promise<OrgPlanState | null> {
   // The whole feature is dormant unless switched on. Deco prod HAS a gateway,
@@ -170,7 +170,7 @@ async function getOrgPlanState(
   const existing = inFlightPlanState.get(organizationId);
   if (existing) return existing;
 
-  const pending = fetchOrgPlanState(ctx, organizationId, hit).finally(() => {
+  const pending = fetchOrgPlanState(userId, organizationId, hit).finally(() => {
     inFlightPlanState.delete(organizationId);
   });
   inFlightPlanState.set(organizationId, pending);
@@ -178,14 +178,13 @@ async function getOrgPlanState(
 }
 
 async function fetchOrgPlanState(
-  ctx: StudioContext,
+  userId: string | undefined,
   organizationId: string,
   hit: { value: OrgPlanState; at: number } | undefined,
 ): Promise<OrgPlanState | null> {
   const adapter = getProviders().deco;
   if (!adapter?.getEntitlements) return null;
 
-  const userId = ctx.auth.user?.id ?? ctx.auth.apiKey?.userId;
   // No user to mint a JWT for is a read that cannot be made, which is the same
   // position the catch block is in — so it gets the same ceiling. Without it
   // this path served the stale entry for ever: `at` is never advanced here, so
@@ -286,8 +285,26 @@ export async function orgHasFeature(
   organizationId: string,
   feature: PlanFeature,
 ): Promise<boolean> {
-  const state = await getOrgPlanState(ctx, organizationId);
+  const state = await getOrgPlanState(requestUserId(ctx), organizationId);
   return isFeatureAllowed(state?.features ?? null, feature);
+}
+
+/**
+ * `orgHasFeature` for a caller with no request user, such as a scheduled
+ * sweep: the plan is read as `userId`, which the caller takes from the org's
+ * own data (the install's `created_by`). Same fail-open as `orgHasFeature`.
+ */
+export async function orgHasFeatureAsUser(
+  userId: string,
+  organizationId: string,
+  feature: PlanFeature,
+): Promise<boolean> {
+  const state = await getOrgPlanState(userId, organizationId);
+  return isFeatureAllowed(state?.features ?? null, feature);
+}
+
+function requestUserId(ctx: StudioContext): string | undefined {
+  return ctx.auth.user?.id ?? ctx.auth.apiKey?.userId;
 }
 
 /**
@@ -363,7 +380,7 @@ export async function assertAiBudget(
   organizationId: string,
   what: string,
 ): Promise<void> {
-  const state = await getOrgPlanState(ctx, organizationId);
+  const state = await getOrgPlanState(requestUserId(ctx), organizationId);
   if (!isUsageBlocked(state?.usageState ?? null, state?.creditsUsd ?? null)) {
     return;
   }
@@ -391,7 +408,7 @@ export async function orgPinnedModel(
   organizationId: string,
   tier: string,
 ): Promise<string | null> {
-  const state = await getOrgPlanState(ctx, organizationId);
+  const state = await getOrgPlanState(requestUserId(ctx), organizationId);
   if (!state) return null;
   if (isFeatureAllowed(state.features, "model_choice")) return null;
   return state.modelPins?.[tier] ?? null;

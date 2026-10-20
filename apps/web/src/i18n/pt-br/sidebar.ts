@@ -2,15 +2,6 @@ import type { sidebar as sidebarEn } from "../en/sidebar.ts";
 
 export const sidebar = {
   "sidebar.projects.addProject": "Adicionar projeto",
-  "sidebar.archiveWorktreeDialog.cancel": "Cancelar",
-  "sidebar.archiveWorktreeDialog.confirm": "Continuar",
-  "sidebar.archiveWorktreeDialog.reclaimFailed":
-    "Chat arquivado, mas não foi possível apagar os arquivos de {branch}.",
-  "sidebar.archiveWorktreeDialog.stopsAndDeletesAfter":
-    "e apagar seus arquivos deste computador.",
-  "sidebar.archiveWorktreeDialog.stopsAndDeletesBefore":
-    "Isso vai parar tudo o que está rodando em",
-  "sidebar.archiveWorktreeDialog.title": "Arquivar este chat?",
   "sidebar.agentsSection.codeAgents": "Projetos de Código",
   "sidebar.header.closeSidebar": "Fechar barra lateral",
   "sidebar.header.toggleSidebar": "Abrir ou fechar barra lateral",
@@ -117,4 +108,5 @@ export const sidebar = {
   "sidebar.inbox.actionReviewApproved": "Revisão aprovada",
   "sidebar.inbox.actionReviewChangesRequested": "Alterações solicitadas",
   "sidebar.inbox.actionMergeFailed": "Não foi possível mesclar",
+  "sidebar.inbox.actionOrderIncident": "Incidente de pedidos",
 } satisfies Record<keyof typeof sidebarEn, string>;

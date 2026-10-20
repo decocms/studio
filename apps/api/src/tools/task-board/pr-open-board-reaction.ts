@@ -2,7 +2,7 @@
  * Ad-hoc code agent opened a PR — put it on the board for review.
  *
  * A task-dispatched run (Super Agent) already has a linked card, and
- * `advanceTaskBoardForRun` + `capturePrForRun` move/link it. A plain chat with
+ * `capturePrForRun` links the PR to it. A plain chat with
  * a GitHub-imported agent has no card, so nothing happens. This reaction fills
  * that gap: one focused LLM call decides whether the work is already tracked,
  * then the action runs in code (create/update the card, link the PR + thread, claim it for the Super Agent so reviewers pick it up).
@@ -14,6 +14,7 @@
  */
 
 import { generateObject } from "ai";
+import { builtinActive, CHAT_PR_SYSTEM_KEY } from "@/automations/builtin";
 import { atOrBefore } from "./lanes";
 import { z } from "zod";
 import { LANES, SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
@@ -223,8 +224,9 @@ export async function applyBoardDecision(
 }
 
 /**
- * Entry point wired into the PR-open MCP hook. No-op for a run that already has
- * a linked card (the Super Agent path) or when there's no org/user/thread/PR.
+ * Entry point wired into the PR-open MCP hook: the built-in "Track chat pull
+ * requests". No-op while it is off, for a run that already has a linked card
+ * (the Super Agent path), or when there's no org/user/thread/PR.
  * Fire-and-forget; failures are logged, never thrown.
  */
 export async function reactToPrOpenedForBoard(
@@ -245,6 +247,7 @@ export async function reactToPrOpenedForBoard(
 
     const pr = findChangeRequestIn(source);
     if (!pr) return;
+    if (!(await builtinActive(ctx, orgId, CHAT_PR_SYSTEM_KEY))) return;
 
     const cards = await ctx.storage.taskBoard.list(orgId);
     const openCards = cards

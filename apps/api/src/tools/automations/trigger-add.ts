@@ -16,6 +16,7 @@
  *   two on a status may not claim the same origin.
  */
 
+import { builtinOwningStarter } from "../../automations/builtin";
 import { computeNextRunAt } from "../../automations/fire";
 import { syncTriggerCreated } from "../../automations/dbos-sync";
 import { Cron } from "croner";
@@ -119,10 +120,9 @@ export const AUTOMATION_TRIGGER_ADD = defineTool({
       throw new Error("A built-in automation's starters can't be changed.");
     }
 
-    if (input.type === "board_pr_ready") {
-      throw new Error(
-        "The pull-request-ready starter belongs to the built-in Reviewer for now.",
-      );
+    const owner = builtinOwningStarter(input.type);
+    if (owner) {
+      throw new Error(`This starter belongs to the built-in ${owner} for now.`);
     }
 
     if (input.type === "cron") {
@@ -298,7 +298,17 @@ export const AUTOMATION_TRIGGER_ADD = defineTool({
     // waiting for the boot-time reconciler. Event triggers don't have
     // schedules (they fire on AutomationEventDispatcher.dispatchForEvents).
     // Webhook triggers also have no schedule — they fire on HTTP POST.
-    await syncTriggerCreated(trigger, automation);
+    try {
+      await syncTriggerCreated(trigger, automation);
+    } catch (err) {
+      // Roll back: don't leave a scheduleless cron trigger behind a thrown error.
+      await ctx.storage.automations.removeTrigger(
+        trigger.id,
+        trigger.automation_id,
+      );
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new Error(`Failed to schedule trigger: ${msg}`);
+    }
 
     return {
       id: trigger.id,

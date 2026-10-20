@@ -3,8 +3,7 @@
 Org-fs exposes an organization's Studio files as ordinary paths under
 `/app/org/` inside a hosted sandbox pod, so every harness (including CLIs that
 only read real files) can read and write them. This page covers the hosted
-(Kubernetes) path. The desktop app mounts org-fs itself; see
-[`apps/native/docs/org-fs-plan.md`](../../../apps/native/docs/org-fs-plan.md).
+(Kubernetes) path.
 
 ## Overview
 

@@ -1,11 +1,11 @@
 /**
- * Resolve raw inputs (CLI flags + env vars) into a validated config.
+ * Resolve environment variables into validated application settings.
  *
  * Pure function — no side effects, no process.env mutations.
  */
 
 import { homedir } from "os";
-import type { CliFlags, DispatchRole, Settings } from "./types";
+import type { DispatchRole, Settings } from "./types";
 
 const DISPATCH_ROLES = new Set<DispatchRole>(["all", "worker", "api"]);
 
@@ -53,19 +53,6 @@ export function resolveShutdownDrainMs(
   // described above.
   const value = Number(envOverride);
   return Number.isFinite(value) && value >= 0 ? value : fallback;
-}
-
-/**
- * Startup log line for `ENCRYPTION_KEY` — reports whether it's set and how
- * long it is (useful for spotting misconfiguration) WITHOUT leaking the
- * actual secret into stdout/log aggregators.
- */
-export function describeEncryptionKeyForLog(ek: string): string {
-  if (!ek) {
-    return "[settings] ENCRYPTION_KEY is not set (using deterministic fallback, 32 chars) — set ENCRYPTION_KEY for production";
-  }
-  const masked = ek.length <= 8 ? "***" : `${ek.slice(0, 4)}..${ek.slice(-4)}`;
-  return `[settings] ENCRYPTION_KEY is set (${masked}, ${ek.length} chars)`;
 }
 
 function toBool(value: string | undefined): boolean {
@@ -155,33 +142,11 @@ function toBoolWithDefault(
 }
 
 /**
- * Determine if a URL points to a non-local host (i.e., an external service).
- * Returns the URL string if external, null if local or not set.
- */
-export function externalUrlOrNull(url: string | undefined): string | null {
-  if (!url) return null;
-  try {
-    const parsed = new URL(url);
-    // `URL#hostname` keeps the brackets for a bracketed IPv6 host (e.g.
-    // "[::1]"), so strip them before comparing against the bare loopback form.
-    const host = parsed.hostname.replace(/^\[|\]$/g, "");
-    if (host === "localhost" || host === "127.0.0.1" || host === "::1") {
-      return null;
-    }
-    return url;
-  } catch {
-    return null;
-  }
-}
-
-/**
  * Whether S3 access should force path-style addressing. Unset/empty defaults
  * to path-style (needed by custom S3-compatible stores like MinIO/Ceph); real
- * AWS S3 (virtual-hosted-style) must set S3_FORCE_PATH_STYLE=false. Shared
- * with `ensure-services.ts`'s external-S3 branch so the in-process
- * `buildSettings` path and the bundled-prod `initSettingsFromEnv` path agree.
+ * AWS S3 (virtual-hosted-style) must set S3_FORCE_PATH_STYLE=false.
  */
-export function resolveS3ForcePathStyle(raw: string | undefined): boolean {
+function resolveS3ForcePathStyle(raw: string | undefined): boolean {
   return raw === undefined || raw === "" || raw === "true" || raw === "1";
 }
 
@@ -198,45 +163,24 @@ function resolveAliasedEnv(
   return value || legacyValue;
 }
 
-export interface ResolvedConfig {
-  settings: Omit<Settings, "databaseUrl" | "natsUrls">;
-  externalDatabaseUrl: string | null;
-  externalNatsUrl: string | null;
-  skipMigrations: boolean;
-}
-
 export function resolveConfig(
-  flags: CliFlags,
   envVars: Record<string, string | undefined>,
-): ResolvedConfig {
+): Settings {
   const dataDir =
-    flags.home ||
-    envVars.DATA_DIR ||
-    envVars.DECOCMS_HOME ||
-    `${homedir()}/deco`;
-
-  const localMode = flags.localMode;
-  const nodeEnv: Settings["nodeEnv"] =
-    flags.nodeEnv || resolveNodeEnv(envVars.NODE_ENV);
-
-  const natsRaw = envVars.NATS_URL || "nats://localhost:4222";
+    envVars.DATA_DIR || envVars.DECOCMS_HOME || `${homedir()}/deco`;
+  const nodeEnv = resolveNodeEnv(envVars.NODE_ENV);
 
   const voiceProvider =
     envVars.VOICE_CONVERSATION_PROVIDER?.trim() || "elevenlabs";
 
-  const settings: Omit<Settings, "databaseUrl" | "natsUrls"> = {
+  const settings: Settings = {
     // Core
     nodeEnv,
     // Capped at 65535: TCP ports don't exist above that, and an out-of-range
     // value would otherwise pass validation here and only fail confusingly
     // once the HTTP server tries to bind it.
-    port: toPositiveIntegerOrDefault(
-      "PORT",
-      flags.port || envVars.PORT,
-      3000,
-      65535,
-    ),
-    baseUrl: flags.baseUrl || envVars.BASE_URL,
+    port: toPositiveIntegerOrDefault("PORT", envVars.PORT, 3000, 65535),
+    baseUrl: envVars.BASE_URL,
     publicUrl: resolveAliasedEnv(
       envVars.STUDIO_PUBLIC_URL,
       envVars.MESH_PUBLIC_URL,
@@ -255,7 +199,10 @@ export function resolveConfig(
     elevenlabsConversationModel:
       envVars.ELEVENLABS_CONVERSATION_MODEL?.trim() || "gemini-2.5-flash",
 
-    // Database (url resolved after services start)
+    // Database
+    databaseUrl:
+      envVars.DATABASE_URL ||
+      "postgresql://postgres:postgres@localhost:5432/postgres",
     databasePgSsl: toBool(envVars.DATABASE_PG_SSL),
     databasePoolMax: toPositiveIntegerOrDefault(
       "DATABASE_POOL_MAX",
@@ -275,7 +222,7 @@ export function resolveConfig(
       envVars.STUDIO_JWT_SECRET,
       envVars.MESH_JWT_SECRET,
     ),
-    localMode,
+    localMode: toBool(envVars.DECOCMS_LOCAL_MODE),
     disableRateLimit: toBool(envVars.DISABLE_RATE_LIMIT),
     jiraAllowLocalSiteUrl: toBool(envVars.JIRA_ALLOW_LOCAL_SITE_URL),
     jiraSettleSeconds: toPositiveIntegerOrDefault(
@@ -305,7 +252,13 @@ export function resolveConfig(
     otelServiceName: envVars.OTEL_SERVICE_NAME || "studio",
 
     // NATS connectivity
+    natsUrls: (envVars.NATS_URL || "nats://localhost:4222")
+      .split(",")
+      .map((url) => url.trim())
+      .filter(Boolean),
     natsCredsPath: envVars.NATS_CREDS,
+    natsUser: envVars.NATS_USER || undefined,
+    natsPassword: envVars.NATS_PASSWORD || undefined,
 
     // Config files
     configPath: envVars.CONFIG_PATH || "./config.json",
@@ -409,8 +362,6 @@ export function resolveConfig(
     ),
 
     // Runtime flags
-    isCli: true,
-    noTui: flags.noTui === true,
     // `||` (not `??`): an env var explicitly set to "" (a deployment template
     // rendering an unset POD_NAME as empty rather than omitting the key) must
     // fall through to a random id instead of every pod sharing "" as its
@@ -450,6 +401,12 @@ export function resolveConfig(
     clickhouseAnalyticsUsername:
       envVars.CLICKHOUSE_ANALYTICS_USERNAME || "admin_monitor",
     clickhouseAnalyticsPassword: envVars.CLICKHOUSE_ANALYTICS_PASSWORD,
+    customerLakeUrl: envVars.CUSTOMER_LAKE_URL,
+    customerLakeAdminUsername:
+      envVars.CUSTOMER_LAKE_ADMIN_USERNAME || "customer_lake_user_admin",
+    customerLakeAdminPassword: envVars.CUSTOMER_LAKE_ADMIN_PASSWORD,
+    customerLakeTenantSecret: envVars.CUSTOMER_LAKE_TENANT_SECRET,
+    orderMonitorIngestUrl: envVars.ORDER_MONITOR_INGEST_URL,
     oneDollarStatsApiKey: envVars.ONEDOLLAR_BACKEND_API_KEY,
     // New name first, legacy Reports envs as fallback — one
     // setting, so prod migrates secrets whenever convenient without a
@@ -471,13 +428,33 @@ export function resolveConfig(
     // two can't drift). Set S3_TENANT_ENDPOINT only for a non-AWS S3 store.
     s3TenantEndpoint: envVars.S3_TENANT_ENDPOINT,
     s3TenantPublicUrlBase:
-      envVars.S3_TENANT_PUBLIC_URL_BASE || "https://decoims.com",
+      envVars.S3_TENANT_PUBLIC_URL_BASE || "https://assets.decocms.com",
     awsS3TenantRoleArn: envVars.AWS_S3_TENANT_ROLE_ARN,
     awsS3TenantProvisionerAccessKeyId:
       envVars.AWS_S3_TENANT_PROVISIONER_ACCESS_KEY_ID,
     awsS3TenantProvisionerSecretAccessKey:
       envVars.AWS_S3_TENANT_PROVISIONER_SECRET_ACCESS_KEY,
+
+    // Hosted Deco CMS (Blocks v8): the delivery bucket and site tokens.
+    // Unset = the hosted features answer "not configured".
+    deliveryR2AccountId: envVars.DELIVERY_R2_ACCOUNT_ID,
+    deliveryR2AccessKeyId: envVars.DELIVERY_R2_ACCESS_KEY_ID,
+    deliveryR2SecretAccessKey: envVars.DELIVERY_R2_SECRET_ACCESS_KEY,
+    deliveryR2Bucket: envVars.DELIVERY_R2_BUCKET,
+    // test-only: a local S3 store and the origin that serves it.
+    deliveryR2Endpoint: envVars.DELIVERY_R2_ENDPOINT,
+    deliveryPublicOrigin: envVars.DELIVERY_PUBLIC_ORIGIN,
+    siteTokenSigningKey: envVars.DECO_SITE_TOKEN_SIGNING_KEY,
+    cfDeliveryZoneId: envVars.CF_DELIVERY_ZONE_ID,
+    cfPurgeApiToken: envVars.CF_PURGE_API_TOKEN,
   };
+
+  if (Boolean(settings.natsUser) !== Boolean(settings.natsPassword)) {
+    throw new Error("NATS_USER and NATS_PASSWORD must be set together");
+  }
+  if (settings.natsCredsPath && settings.natsUser) {
+    throw new Error("Use either NATS_CREDS or NATS_USER/NATS_PASSWORD");
+  }
 
   // A feature gate is only as trustworthy as this secret. `mintGatewayJwt`
   // falls back to BETTER_AUTH_SECRET, which has no reason to equal the
@@ -570,10 +547,5 @@ export function resolveConfig(
     );
   }
 
-  return {
-    settings,
-    externalDatabaseUrl: externalUrlOrNull(envVars.DATABASE_URL),
-    externalNatsUrl: externalUrlOrNull(natsRaw),
-    skipMigrations: flags.skipMigrations,
-  };
+  return settings;
 }

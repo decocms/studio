@@ -22,8 +22,7 @@
  * (pre-stream) and `chat_message_aborted` (user cancel) posthog events are
  * the only ones still emitted from here, since neither has a projector
  * equivalent. The actual streamText loop + tool assembly + system-prompt
- * construction is delegated to the hosted Decopilot harness. Native coding
- * agents never enter this module; the Tauri app owns their PTY lifecycle.
+ * construction is delegated to the hosted Decopilot harness.
  * Decopilot chunks are published to JetStream via `ingestRun` (see
  * `buildAgentSandboxUiStream`) — the only consume-side stream layer for the
  * hosted live path.
@@ -45,9 +44,10 @@ import { NoResultError } from "kysely";
 import { posthog } from "@/posthog";
 import type { UIMessage, UIMessageChunk } from "ai";
 import {
-  CLAUDE_SUBSCRIPTION_PROVIDER_ID,
+  isUserPlanCredential,
   TASK_RUN_INSTRUCTIONS_KEY,
 } from "@/harnesses/claude-code-env";
+import { resolvePlanCredential } from "@/harnesses/plan-credential";
 import {
   harnessRunsInSandbox,
   isRunSuperseded,
@@ -80,6 +80,7 @@ import { createProviderFromSecret } from "@/harnesses/lib/decopilot/provider-fro
 import { stringifyError } from "@/harnesses/lib/stream-error";
 import { DEFAULT_WINDOW_SIZE, generateMessageId } from "./constants";
 import { synthesizedErrorMessageId } from "./message-ids";
+import { buildUnansweredPrefix } from "./history-prefix";
 import { loadDecopilotContext } from "@/harnesses/decopilot/context-loader";
 import { PartEmitter } from "./part-emitter";
 import { foldedToUIMessage } from "./projector-seed";
@@ -483,7 +484,7 @@ export type ClaimedDispatchRunInput = DispatchRunRuntimeInput & {
  * both are named explicitly — an unknown or future harness must never fall
  * through to whichever loop happens to be first.
  */
-const HOSTED_HARNESS_IDS = ["decopilot", "claude-code"] as const;
+const HOSTED_HARNESS_IDS = ["decopilot", "claude-code", "codex"] as const;
 
 export type HostedHarnessId = (typeof HOSTED_HARNESS_IDS)[number];
 
@@ -839,6 +840,20 @@ export function resolveAgentInstructions(
 }
 
 /**
+ * `virtualMcps.findById`'s `organizationId` param only resolves well-known
+ * synthetic ids (decopilot) — for a normal row it does NOT filter by org, so
+ * existence alone doesn't prove the agent is this org's. Exported so the
+ * cross-org guard is unit-tested without a DB.
+ */
+export function assertVirtualMcpOwnedByOrg<
+  T extends { organization_id: string },
+>(virtualMcp: T | null, organizationId: string): asserts virtualMcp is T {
+  if (!virtualMcp || virtualMcp.organization_id !== organizationId) {
+    throw new PermanentRunError("agent_not_found", "Agent not found");
+  }
+}
+
+/**
  * Setup phase shared by both dispatch variants. Claims the run, loads
  * conversation history, assembles the wire harness input, and constructs a
  * LAZY `uiStream` whose first pull dispatches through the harness registry
@@ -952,10 +967,10 @@ async function prepareRun(
       input.organizationId,
       ctx.metadata?.runMetadata,
     );
-    // The subscription is the user's, not an org key: `claudeSubscriptionToken`
-    // below carries it to the sandbox.
+    // A user's own plan is not an org key: `userPlanCredential` below carries
+    // it to the sandbox.
     const resolveSlot = (slot?: ModelSelection) =>
-      slot && slot.credentialId !== CLAUDE_SUBSCRIPTION_PROVIDER_ID
+      slot && !isUserPlanCredential(slot.credentialId)
         ? resolveSecretModelSource(
             ctx,
             input.organizationId,
@@ -1081,9 +1096,7 @@ async function prepareRun(
         })
       : null;
 
-    if (!virtualMcp) {
-      throw new PermanentRunError("agent_not_found", "Agent not found");
-    }
+    assertVirtualMcpOwnedByOrg(virtualMcp, input.organizationId);
     const effectiveVirtualMcp = resolveEffectiveStudioPackVirtualMcp(
       virtualMcp,
       input.agent.id,
@@ -1309,9 +1322,14 @@ async function prepareRun(
     const resolvedUserMessage = materializedRequestMessage
       ? (await resolveStorageRefs([materializedRequestMessage], ctx))[0]
       : undefined;
+    // Read at dispatch, not at POST: a message queued behind a running turn
+    // must not count that turn's message as unanswered.
     const historyPrefix =
       sandboxHosted && isDurableDispatchRunInput(input)
-        ? input.historyPrefix
+        ? (input.historyPrefix ??
+          (durableHistory
+            ? buildUnansweredPrefix(durableHistory, input.messageId)
+            : null))
         : undefined;
     const wireUserMessage =
       resolvedUserMessage && sandboxHosted
@@ -1405,6 +1423,14 @@ async function prepareRun(
       userContext,
     };
 
+    // Agent repo = Code Agent chat, previewed live; a task run's repo is on the thread.
+    const previewWatched = Boolean(
+      (
+        effectiveVirtualMcp.metadata as {
+          repository?: RepositoryBinding | null;
+        } | null
+      )?.repository?.url,
+    );
     const wireHarnessInput: WireHarnessInput = {
       threadId: mem.thread.id,
       userMessage:
@@ -1438,6 +1464,7 @@ async function prepareRun(
                 agentId: input.agent.id,
                 userEmail: ctx.auth.user?.email,
                 userContext,
+                previewWatched,
               }),
             ]
               .filter(Boolean)
@@ -1468,20 +1495,16 @@ async function prepareRun(
         stage: PREPARE_RUN_STATUS_STAGES[2],
       });
     }
-    // The dispatching user's own Claude subscription, when they linked one and
-    // it has not expired. It outranks the org's thinking-slot key for a
-    // sandbox-hosted run: they asked for their plan to pay. Expired or absent
-    // falls back to the org credential rather than failing the run — and so
-    // does a vault decrypt failure (e.g. a rotated encryption key), which
-    // `findLiveToken` would otherwise throw and take the whole dispatch down
-    // with it.
-    const claudeSubscriptionToken = sandboxHosted
-      ? await ctx.storage.claudeSubscriptions
-          .findLiveToken(input.userId)
-          .catch((err) => {
-            console.warn("[dispatch] claude subscription lookup failed", err);
-            return null;
-          })
+    // A Claude or Copilot plan — shared with the org, or the dispatcher's
+    // own — outranks the org's thinking-slot key for a sandbox-hosted run.
+    // Absent, expired or undecryptable falls back to the org credential.
+    const userPlanCredential = sandboxHosted
+      ? await resolvePlanCredential(
+          ctx,
+          input.organizationId,
+          input.userId,
+          harnessId,
+        )
       : null;
 
     const dispatchHarnessChunks =
@@ -1514,15 +1537,7 @@ async function prepareRun(
               // Where its `starting-sandbox` stage goes — the same stream the
               // rest of the run's status chunks ride.
               streamBuffer,
-              // A repo on the AGENT means a Code Agent chat, with a person
-              // watching its preview; a task run's repo is on the thread.
-              interactive: Boolean(
-                (
-                  effectiveVirtualMcp.metadata as {
-                    repository?: RepositoryBinding | null;
-                  } | null
-                )?.repository?.url,
-              ),
+              interactive: previewWatched,
               // Tell the harness it is picking up an interrupted turn: its own
               // context is gone, but the work is in the checkout and in git.
               ...(resumeFromSeq > 0
@@ -1547,12 +1562,9 @@ async function prepareRun(
               }),
               // The already-resolved thinking-slot credential becomes the
               // sandbox's model env — resolved once, here, not again inside.
-              credential: claudeSubscriptionToken
-                ? {
-                    providerId: CLAUDE_SUBSCRIPTION_PROVIDER_ID,
-                    apiKey: claudeSubscriptionToken,
-                  }
-                : thinkingSource
+              credential:
+                userPlanCredential ??
+                (thinkingSource
                   ? {
                       providerId: thinkingSource.providerId,
                       apiKey: thinkingSource.apiKey,
@@ -1560,7 +1572,7 @@ async function prepareRun(
                         ? { baseUrl: thinkingSource.baseUrl }
                         : {}),
                     }
-                  : null,
+                  : null),
             }).dispatch(harnessInput)
           : streamDecopilot(ctx, harnessInput);
         if (!sandboxHosted) {

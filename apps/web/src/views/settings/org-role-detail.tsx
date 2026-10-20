@@ -9,10 +9,17 @@ import {
   isCapabilityEnabled,
   toggleCapabilityInTools,
 } from "@decocms/shared/tools/registry-metadata";
+import { CONNECTION_SCOPE_KEY } from "@decocms/shared/auth/connection-scope";
+import {
+  denyEntry,
+  listFromFilter,
+  PERMISSION_WILDCARD,
+  permissionListFilter,
+} from "@decocms/shared/auth/permission-list";
 import {
   getProjectScope,
   PROJECT_SCOPE_KEY,
-  PROJECT_SCOPE_WILDCARD,
+  projectScopeFilter,
 } from "@decocms/shared/auth/project-scope";
 import { DEFAULT_LOGO, PROVIDER_LOGOS } from "@/utils/ai-providers-logos";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
@@ -53,7 +60,7 @@ import {
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Suspense, useDeferredValue, useState } from "react";
+import { type ReactNode, Suspense, useDeferredValue, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -109,6 +116,11 @@ const roleFormSchema = z.object({
   modelSet: z.record(z.string(), z.array(z.string())),
   allowAllProjects: z.boolean(),
   projectSet: z.array(z.string()),
+  /** Projects hidden from a role that otherwise sees all of them. */
+  projectExceptions: z.array(z.string()),
+  allowAllConnections: z.boolean(),
+  /** Connections left out of an all-connections grant. */
+  connectionExceptions: z.array(z.string()),
   memberIds: z.array(z.string()),
 });
 
@@ -735,8 +747,10 @@ function ModelsPermissionsTab({
 interface ProjectsPermissionsTabProps {
   allowAllProjects: boolean;
   projectSet: string[];
+  projectExceptions: string[];
   onAllowAllChange: (allowAll: boolean) => void;
   onProjectSetChange: (projectSet: string[]) => void;
+  onProjectExceptionsChange: (projectExceptions: string[]) => void;
   readOnly?: boolean;
   searchQuery: string;
 }
@@ -744,8 +758,10 @@ interface ProjectsPermissionsTabProps {
 function ProjectsPermissionsTab({
   allowAllProjects,
   projectSet,
+  projectExceptions,
   onAllowAllChange,
   onProjectSetChange,
+  onProjectExceptionsChange,
   readOnly = false,
   searchQuery,
 }: ProjectsPermissionsTabProps) {
@@ -760,19 +776,22 @@ function ProjectsPermissionsTab({
     : projects;
 
   const toggleProject = (projectId: string) => {
-    if (allowAllProjects) {
-      // Toggling while "all" is set switches to a specific list.
-      onAllowAllChange(false);
-      onProjectSetChange(
-        projects.map((p) => p.id).filter((id) => id !== projectId),
-      );
-      return;
-    }
-    if (projectSet.includes(projectId)) {
-      onProjectSetChange(projectSet.filter((id) => id !== projectId));
-    } else {
-      onProjectSetChange([...projectSet, projectId]);
-    }
+    // Under "all", an unchecked project is an exception, so projects created
+    // later stay visible to the role.
+    const [list, onChange] = allowAllProjects
+      ? [projectExceptions, onProjectExceptionsChange]
+      : [projectSet, onProjectSetChange];
+    onChange(
+      list.includes(projectId)
+        ? list.filter((id) => id !== projectId)
+        : [...list, projectId],
+    );
+  };
+
+  const setAllowAll = (allowAll: boolean) => {
+    onAllowAllChange(allowAll);
+    onProjectSetChange([]);
+    onProjectExceptionsChange([]);
   };
 
   return (
@@ -784,9 +803,7 @@ function ProjectsPermissionsTab({
         )}
         onClick={() => {
           if (readOnly) return;
-          const newValue = !allowAllProjects;
-          onAllowAllChange(newValue);
-          if (newValue) onProjectSetChange([]);
+          setAllowAll(!allowAllProjects);
         }}
       >
         <div className="flex flex-col gap-0.5">
@@ -820,13 +837,7 @@ function ProjectsPermissionsTab({
               </Tooltip>
             </TooltipProvider>
           ) : (
-            <Switch
-              checked={allowAllProjects}
-              onCheckedChange={(checked) => {
-                onAllowAllChange(checked);
-                if (checked) onProjectSetChange([]);
-              }}
-            />
+            <Switch checked={allowAllProjects} onCheckedChange={setAllowAll} />
           )}
         </div>
       </div>
@@ -842,7 +853,9 @@ function ProjectsPermissionsTab({
       ) : (
         <div className="flex flex-col gap-1">
           {filteredProjects.map((project) => {
-            const checked = allowAllProjects || projectSet.includes(project.id);
+            const checked = allowAllProjects
+              ? !projectExceptions.includes(project.id)
+              : projectSet.includes(project.id);
             return (
               <label
                 key={project.id}
@@ -867,6 +880,110 @@ function ProjectsPermissionsTab({
             );
           })}
         </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
+// Connections Permissions Tab
+// ============================================================================
+
+interface ConnectionsPermissionsTabProps {
+  allowAllConnections: boolean;
+  connectionExceptions: string[];
+  onAllowAllChange: (allowAll: boolean) => void;
+  onConnectionExceptionsChange: (connectionExceptions: string[]) => void;
+  readOnly?: boolean;
+  searchQuery: string;
+  /** The per-connection tool picker, shown when not granting everything. */
+  children: ReactNode;
+}
+
+function ConnectionsPermissionsTab({
+  allowAllConnections,
+  connectionExceptions,
+  onAllowAllChange,
+  onConnectionExceptionsChange,
+  readOnly = false,
+  searchQuery,
+  children,
+}: ConnectionsPermissionsTabProps) {
+  const t = useT();
+  const deferredSearchQuery = useDeferredValue(searchQuery);
+  const connections = useConnections();
+
+  const q = deferredSearchQuery.trim().toLowerCase();
+  const filteredConnections = q
+    ? connections.filter((c) => c.title.toLowerCase().includes(q))
+    : connections;
+
+  const toggleConnection = (connectionId: string) => {
+    onConnectionExceptionsChange(
+      connectionExceptions.includes(connectionId)
+        ? connectionExceptions.filter((id) => id !== connectionId)
+        : [...connectionExceptions, connectionId],
+    );
+  };
+
+  return (
+    <div className="flex flex-col h-full">
+      <div
+        className={cn(
+          "flex items-center justify-between px-4 py-3 border-b border-border",
+          !readOnly && "hover:bg-muted/50 cursor-pointer",
+        )}
+        onClick={() => {
+          if (readOnly) return;
+          onAllowAllChange(!allowAllConnections);
+        }}
+      >
+        <div className="flex flex-col gap-0.5">
+          <span className="text-sm font-medium">
+            {t("settings.orgRoleDetail.allConnections")}
+          </span>
+          <span className="text-xs text-muted-foreground">
+            {t("settings.orgRoleDetail.allConnectionsDescription")}
+          </span>
+        </div>
+        <div onClick={(e) => e.stopPropagation()}>
+          {makeToggle(t, allowAllConnections, readOnly, () =>
+            onAllowAllChange(!allowAllConnections),
+          )}
+        </div>
+      </div>
+
+      {allowAllConnections ? (
+        <div className="flex-1 min-h-0 overflow-auto p-4 flex flex-col gap-1">
+          {filteredConnections.map((connection) => (
+            <label
+              key={connection.id}
+              className={cn(
+                "flex items-center gap-3 px-3 py-2 rounded-lg border border-transparent",
+                readOnly
+                  ? "cursor-default"
+                  : "hover:bg-muted/50 cursor-pointer",
+              )}
+            >
+              <Checkbox
+                checked={!connectionExceptions.includes(connection.id)}
+                disabled={readOnly}
+                onCheckedChange={() => {
+                  if (readOnly) return;
+                  toggleConnection(connection.id);
+                }}
+              />
+              <IntegrationIcon
+                icon={connection.icon}
+                name={connection.title}
+                size="sm"
+              />
+              <span className="text-sm truncate">{connection.title}</span>
+            </label>
+          ))}
+        </div>
+      ) : (
+        <div className="flex-1 min-h-0">{children}</div>
       )}
     </div>
   );
@@ -1226,6 +1343,9 @@ function loadBuiltinRoleIntoForm(
     modelSet: {},
     allowAllProjects: true,
     projectSet: [],
+    projectExceptions: [],
+    allowAllConnections: isOwnerOrAdmin,
+    connectionExceptions: [],
     memberIds: members.filter((m) => m.role === role).map((m) => m.id),
   };
 }
@@ -1244,7 +1364,12 @@ function convertRoleToFormData(
 
   const toolSet: Record<string, string[]> = {};
   for (const [key, tools] of Object.entries(permission)) {
-    if (key === "self" || key === "models" || key === PROJECT_SCOPE_KEY)
+    if (
+      key === "self" ||
+      key === "models" ||
+      key === PROJECT_SCOPE_KEY ||
+      key === CONNECTION_SCOPE_KEY
+    )
       continue;
     if (key === "*") {
       for (const conn of connections) {
@@ -1277,12 +1402,10 @@ function convertRoleToFormData(
     }
   }
 
-  const projectScope = getProjectScope(permission);
-  const allowAllProjects =
-    projectScope === null || projectScope.includes(PROJECT_SCOPE_WILDCARD);
-  const projectSet = allowAllProjects
-    ? []
-    : projectScope.filter((id) => id !== PROJECT_SCOPE_WILDCARD);
+  const projectFilter = projectScopeFilter(getProjectScope(permission));
+  const connectionFilter = permissionListFilter(
+    permission[CONNECTION_SCOPE_KEY] ?? [],
+  );
 
   return {
     role: { id: role.id, slug: role.role, label: role.label },
@@ -1291,8 +1414,13 @@ function convertRoleToFormData(
     toolSet,
     allowAllModels: hasAllModels,
     modelSet,
-    allowAllProjects,
-    projectSet,
+    allowAllProjects: projectFilter.kind !== "only",
+    projectSet: projectFilter.kind === "only" ? projectFilter.names : [],
+    projectExceptions:
+      projectFilter.kind === "except" ? projectFilter.names : [],
+    allowAllConnections: connectionFilter.kind !== "only",
+    connectionExceptions:
+      connectionFilter.kind === "except" ? connectionFilter.names : [],
     memberIds: members.filter((m) => m.role === role.role).map((m) => m.id),
   };
 }
@@ -1330,9 +1458,20 @@ function buildPermission(
     }
     if (modelEntries.length > 0) permission["models"] = modelEntries;
   }
-  // Omit key = all projects; present = scoped to these ids (project-scope.ts).
+  // Omit key = all projects; present = scoped (project-scope.ts).
   if (!data.allowAllProjects) {
     permission[PROJECT_SCOPE_KEY] = data.projectSet;
+  } else if (data.projectExceptions.length > 0) {
+    permission[PROJECT_SCOPE_KEY] = listFromFilter({
+      kind: "except",
+      names: data.projectExceptions,
+    });
+  }
+  if (data.allowAllConnections) {
+    permission[CONNECTION_SCOPE_KEY] = [
+      PERMISSION_WILDCARD,
+      ...data.connectionExceptions.map(denyEntry),
+    ];
   }
   return permission;
 }
@@ -1362,6 +1501,9 @@ function getInitialFormValues(
     modelSet: {},
     allowAllProjects: true,
     projectSet: [],
+    projectExceptions: [],
+    allowAllConnections: false,
+    connectionExceptions: [],
     memberIds: [],
   };
 }
@@ -1791,13 +1933,43 @@ function RoleDetailPageInner({
             )}
           >
             {activeTab === "mcp" && !isOwnerBuiltin && (
-              <ToolSetSelector
-                toolSet={form.watch("toolSet")}
-                onToolSetChange={(newToolSet) =>
-                  form.setValue("toolSet", newToolSet, { shouldDirty: true })
+              <Suspense
+                fallback={
+                  <div className="flex items-center justify-center h-full">
+                    <Spinner className="size-6 text-muted-foreground" />
+                  </div>
                 }
-                searchQuery={searchQuery}
-              />
+              >
+                <ConnectionsPermissionsTab
+                  allowAllConnections={form.watch("allowAllConnections")}
+                  connectionExceptions={form.watch("connectionExceptions")}
+                  onAllowAllChange={(v) => {
+                    form.setValue("allowAllConnections", v, {
+                      shouldDirty: true,
+                    });
+                    form.setValue("connectionExceptions", [], {
+                      shouldDirty: true,
+                    });
+                  }}
+                  onConnectionExceptionsChange={(v) =>
+                    form.setValue("connectionExceptions", v, {
+                      shouldDirty: true,
+                    })
+                  }
+                  readOnly={target.kind === "builtin"}
+                  searchQuery={searchQuery}
+                >
+                  <ToolSetSelector
+                    toolSet={form.watch("toolSet")}
+                    onToolSetChange={(newToolSet) =>
+                      form.setValue("toolSet", newToolSet, {
+                        shouldDirty: true,
+                      })
+                    }
+                    searchQuery={searchQuery}
+                  />
+                </ConnectionsPermissionsTab>
+              </Suspense>
             )}
             {activeTab === "org" && (
               <OrgPermissionsTab
@@ -1835,11 +2007,15 @@ function RoleDetailPageInner({
               <ProjectsPermissionsTab
                 allowAllProjects={form.watch("allowAllProjects")}
                 projectSet={form.watch("projectSet")}
+                projectExceptions={form.watch("projectExceptions")}
                 onAllowAllChange={(v) =>
                   form.setValue("allowAllProjects", v, { shouldDirty: true })
                 }
                 onProjectSetChange={(v) =>
                   form.setValue("projectSet", v, { shouldDirty: true })
+                }
+                onProjectExceptionsChange={(v) =>
+                  form.setValue("projectExceptions", v, { shouldDirty: true })
                 }
                 readOnly={isOwnerBuiltin}
                 searchQuery={searchQuery}

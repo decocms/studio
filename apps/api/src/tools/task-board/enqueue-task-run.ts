@@ -41,10 +41,9 @@ export function withBoardPrompt(
  * task panels show the new run without a manual refresh.
  *
  * The other emit sites all ride a LANE change, and a re-run has none left:
- * `TASK_BOARD_ITEM_RERUN` moves the card to In Progress itself, so when the new
- * run starts `advanceTaskBoardForRun` finds it already there and returns
- * without emitting — leaving every client on the pre-enqueue item, whose only
- * run is the superseded one. This is also the emit that wins the race the other
+ * `TASK_BOARD_ITEM_RERUN` moves the card to In Progress itself before the run is
+ * queued, and nothing moves it when the run starts — leaving every client on
+ * the pre-enqueue item, whose only run is the superseded one. This is also the emit that wins the race the other
  * way: the rerun tool's own broadcast is written before this link exists, so an
  * SSE push arriving after the mutation's refetch would otherwise overwrite the
  * fresh list with a thread-less snapshot.

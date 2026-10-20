@@ -11,10 +11,6 @@ import {
   defaultAuthFormActions,
   type AuthFormActions,
 } from "@/components/auth-form-actions";
-import { useDesktopAuthFormDefaults } from "@/desktop/use-desktop-auth-form-defaults";
-import { needsBrowserOnlyFallback } from "@/desktop/auth-actions";
-import { BrowserOnlyColumn } from "@/desktop/browser-only-column";
-import { StatusColumn } from "@/desktop/status-column";
 import { useAuthConfig } from "@/providers/auth-config-provider";
 import { useT } from "@/i18n/use-t.ts";
 
@@ -40,9 +36,7 @@ export interface AuthEntryProps {
   onAuthEvent?: (event: AuthFlowEvent) => void;
   /** Override the default post-auth navigation for embedded surfaces that
    *  want to unlock already-mounted content in place (e.g. refetching a
-   *  query) instead of navigating away. Ignored on desktop, where the
-   *  Keychain-bridge `onAuthenticated` always takes precedence — see
-   *  `resolvedActions` below. */
+   *  query) instead of navigating away. */
   onAuthenticated?: AuthFormActions["onAuthenticated"];
 }
 
@@ -204,8 +198,7 @@ function RunSSO({
     }
   });
   // Reads the latest `ssoSignIn` reference without needing it in the effect's
-  // deps array (same reasoning as `emitAuthEvent` above) — desktop's caller
-  // recomputes its action object every render.
+  // deps array (same reasoning as `emitAuthEvent` above).
   const runSsoSignIn = useEffectEvent(ssoSignIn);
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect
@@ -262,46 +255,10 @@ export function AuthEntry({
     socialProviders,
     localMode,
   } = useAuthConfig();
-  const desktopDefaults = useDesktopAuthFormDefaults();
   const redirectAfterLogin = redirectUrl || callbackUrl;
-  // Actions are resolved per platform HERE, beneath every sign-in surface
-  // (the web/shell `/login` route, the desktop gate, embedded surfaces):
-  // web defaults, with the desktop browser-hop/Keychain-bridge overrides
-  // layered on top in the desktop build. No call site wires this itself —
-  // that's what makes the "forgot the desktop override, social buttons
-  // silently dead-end in Tauri" bug class unrepresentable. The one exception
-  // is `onAuthenticated`: an embedded surface may know how to unlock its own
-  // already-mounted content (e.g. refetch a query) instead of navigating —
-  // applied between the web default and the platform override, so desktop's
-  // Keychain bridge still always wins.
+  // An embedded surface may know how to unlock its own already-mounted
+  // content (e.g. refetch a query) instead of navigating.
   const callerOverrides = onAuthenticated ? { onAuthenticated } : undefined;
-  const platformOverrides = desktopDefaults?.actions;
-  const resolvedActions: AuthFormActions = {
-    ...defaultAuthFormActions,
-    ...callerOverrides,
-    ...platformOverrides,
-  };
-
-  // The system-browser hop / Keychain bridge is a full takeover: nothing in
-  // the shared form is usable while either is in flight. Placed above every
-  // branch: these states can only be in flight after one of the desktop
-  // actions actually ran.
-  if (desktopDefaults?.isPending) {
-    return (
-      <StatusColumn
-        label={t("common.authEntry.finishSignInInBrowser")}
-        error={desktopDefaults.loginError}
-      />
-    );
-  }
-  if (desktopDefaults?.isCompletingSession) {
-    return (
-      <StatusColumn
-        label={t("common.authEntry.finishingSignIn")}
-        error={desktopDefaults.completeSessionError}
-      />
-    );
-  }
 
   if (localMode && allowAutoLogin) {
     return (
@@ -314,31 +271,8 @@ export function AuthEntry({
       <RunSSO
         callbackURL={redirectAfterLogin}
         providerId={sso.providerId}
-        ssoSignIn={resolvedActions.ssoSignIn}
+        ssoSignIn={defaultAuthFormActions.ssoSignIn}
         onAuthEvent={onAuthEvent}
-      />
-    );
-  }
-
-  // Desktop only: a magic-link-ONLY deployment has no in-app UI to fall
-  // back to at all (magic links open in the system browser and can't hand a
-  // session back to the webview), so skip the shared form and show a single
-  // browser-hop affordance instead — see `needsBrowserOnlyFallback`.
-  if (
-    desktopDefaults &&
-    needsBrowserOnlyFallback({
-      emailAndPassword,
-      emailOtp,
-      socialProviders,
-      magicLink,
-      sso,
-    })
-  ) {
-    return (
-      <BrowserOnlyColumn
-        onContinue={desktopDefaults.login}
-        isPending={desktopDefaults.isPending}
-        error={desktopDefaults.loginError}
       />
     );
   }
@@ -349,15 +283,7 @@ export function AuthEntry({
     emailOtp.enabled ||
     socialProviders.enabled
   ) {
-    // A settled browser-hop/bridge failure: `auth_login` errors land in the
-    // desktop defaults' hook state, not in any of `UnifiedAuthForm`'s
-    // mutations, so its own banner never sees them — surface here, same
-    // visual treatment. (Null on web.)
-    const desktopError =
-      desktopDefaults?.loginError ??
-      desktopDefaults?.completeSessionError ??
-      null;
-    const form = (
+    return (
       <UnifiedAuthForm
         redirectUrl={redirectUrl}
         callbackUrl={callbackUrl}
@@ -369,17 +295,8 @@ export function AuthEntry({
         allowedSocialProviders={allowedSocialProviders}
         allowPassword={allowPassword}
         onAuthEvent={onAuthEvent}
-        actions={{ ...callerOverrides, ...platformOverrides }}
+        actions={callerOverrides}
       />
-    );
-    if (!desktopError) return form;
-    return (
-      <div className="grid gap-4">
-        <div className="rounded-xl bg-destructive/10 p-3 text-sm text-destructive text-center">
-          {desktopError}
-        </div>
-        {form}
-      </div>
     );
   }
 

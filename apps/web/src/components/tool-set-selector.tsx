@@ -14,6 +14,7 @@ import {
   useMCPClient,
   useProjectContext,
 } from "@/sdk";
+import { collectionItemQueryOptions } from "@/sdk/hooks/use-collections";
 import { useSuspenseInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useDeferredValue, useRef, useState } from "react";
 import { CollectionSearch } from "@/components/collections/collection-search.tsx";
@@ -287,34 +288,20 @@ export function ToolSetSelector({
     ? (sortedConnections.find((c) => c.id === selectedConnectionId) ?? null)
     : null;
 
-  // Fetch tools for the selected connection via GET (list query omits tools)
+  // Fetch tools for the selected connection via GET (list query omits tools).
+  // Same cache entry as `useConnection`, so both read the `{ item }` shape.
   const { data: selectedConnectionData, isFetching: isToolsFetching } =
     useQuery({
-      queryKey: KEYS.collectionItem(
-        client,
+      ...collectionItemQueryOptions<ConnectionEntity>(
         org.id,
-        "",
         "CONNECTIONS",
-        selectedConnectionId ?? "",
+        selectedConnectionId ?? undefined,
+        client,
       ),
-      queryFn: async () => {
-        if (!selectedConnectionId) return null;
-        const result = await client.callTool({
-          name: "COLLECTION_CONNECTIONS_GET",
-          arguments: { id: selectedConnectionId },
-        });
-        const parsed = result.structuredContent as {
-          item: {
-            tools?: Array<{ name: string; description?: string }> | null;
-          } | null;
-        };
-        return parsed?.item ?? null;
-      },
       enabled: !!selectedConnectionId,
-      staleTime: 30_000,
     });
 
-  const connectionTools = selectedConnectionData?.tools ?? [];
+  const connectionTools = selectedConnectionData?.item?.tools ?? [];
 
   // Check if specific tool is enabled
   const isToolSelected = (connectionId: string, toolName: string): boolean => {

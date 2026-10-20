@@ -6,7 +6,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
-import { useVirtualMCP } from "@/sdk";
+import { useVirtualMCPNonBlocking } from "@/sdk";
 import { useT } from "@/i18n/use-t.ts";
 import { AgentAvatar } from "@/components/agent-icon";
 import { getStatusConfig } from "@/lib/task-status";
@@ -48,7 +48,7 @@ export function TaskRow({
   const config = getStatusConfig(task.status);
   const StatusIcon = config.icon;
   const isToolCallRun = task.metadata?.kind === "tool_call_run";
-  const virtualMcp = useVirtualMCP(
+  const virtualMcp = useVirtualMCPNonBlocking(
     isToolCallRun ? undefined : task.virtual_mcp_id,
   );
   const repository = getActiveRepository(virtualMcp);

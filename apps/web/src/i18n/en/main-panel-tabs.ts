@@ -20,8 +20,6 @@ export const mainPanelTabs = {
   "mainPanelTabs.codeTab.noSandboxToBrowse": "No sandbox to browse",
   "mainPanelTabs.codeTab.noSandboxToBrowseDescription":
     "Start a coding session on this project to browse its files.",
-  "mainPanelTabs.codeTab.openInCursor": "Open in Cursor",
-  "mainPanelTabs.codeTab.openInVscode": "Open in VSCode",
   "mainPanelTabs.contentTab.connectGithubDescription":
     "Connect a GitHub repository to edit this site's content.",
   "mainPanelTabs.contentTab.noContentToEdit": "No content to edit",
@@ -518,6 +516,84 @@ export const mainPanelTabs = {
   "mainPanelTabs.cdnTab.cacheStatusSubtitle": "Distribution of cache responses",
   "mainPanelTabs.cdnTab.statusCodesSubtitle":
     "HTTP response status distribution",
+  "mainPanelTabs.monitorV8.title": "Monitor",
+  "mainPanelTabs.monitorV8.noSiteBody":
+    "This project isn't linked to a site yet, so there's nothing to monitor.",
+  "mainPanelTabs.monitorV8.section.site": "Site",
+  "mainPanelTabs.monitorV8.section.upstreams": "Upstreams",
+  "mainPanelTabs.monitorV8.section.errors": "Errors",
+  "mainPanelTabs.monitorV8.range.label": "Time range",
+  "mainPanelTabs.monitorV8.range.1h": "Last hour",
+  "mainPanelTabs.monitorV8.range.24h": "24 hours",
+  "mainPanelTabs.monitorV8.range.7d": "7 days",
+  "mainPanelTabs.monitorV8.tile.requests": "Requests",
+  "mainPanelTabs.monitorV8.tile.perSecond": "{value} per second",
+  "mainPanelTabs.monitorV8.tile.perMinute": "{value} per minute",
+  "mainPanelTabs.monitorV8.tile.errors": "Errors (5xx)",
+  "mainPanelTabs.monitorV8.tile.errorsCount": "{count} requests",
+  "mainPanelTabs.monitorV8.tile.p95": "p95 response",
+  "mainPanelTabs.monitorV8.tile.p50": "p50 {value}",
+  "mainPanelTabs.monitorV8.tile.cacheHits": "Edge cache hits",
+  "mainPanelTabs.monitorV8.tile.cacheHitsHint": "Pages served from cache",
+  "mainPanelTabs.monitorV8.delta.title": "Compared with the period before",
+  "mainPanelTabs.monitorV8.chart.requests": "Requests by status",
+  "mainPanelTabs.monitorV8.chart.step.1h": "Per minute",
+  "mainPanelTabs.monitorV8.chart.step.24h": "Per 15 minutes",
+  "mainPanelTabs.monitorV8.chart.step.7d": "Per 2 hours",
+  "mainPanelTabs.monitorV8.chart.p95": "p95 response time",
+  "mainPanelTabs.monitorV8.chart.p95Subtitle":
+    "95% of requests answered faster than this",
+  "mainPanelTabs.monitorV8.chart.release": "Release {id}",
+  "mainPanelTabs.monitorV8.chart.releaseLegend": "New release",
+  "mainPanelTabs.monitorV8.routes.title": "Slowest pages",
+  "mainPanelTabs.monitorV8.routes.subtitle": "The busiest pages, slowest first",
+  "mainPanelTabs.monitorV8.routes.route": "Page",
+  "mainPanelTabs.monitorV8.routes.p95": "p95",
+  "mainPanelTabs.monitorV8.routes.requests": "Requests",
+  "mainPanelTabs.monitorV8.routes.errors": "5xx",
+  "mainPanelTabs.monitorV8.routes.unmatched": "Other routes",
+  "mainPanelTabs.monitorV8.routes.redirect": "Redirects",
+  "mainPanelTabs.monitorV8.upstreams.title": "Upstream calls",
+  "mainPanelTabs.monitorV8.upstreams.subtitle":
+    "Calls the site makes to commerce platforms and other services",
+  "mainPanelTabs.monitorV8.upstreams.call": "Provider · operation",
+  "mainPanelTabs.monitorV8.upstreams.calls": "Calls",
+  "mainPanelTabs.monitorV8.upstreams.p95": "p95",
+  "mainPanelTabs.monitorV8.upstreams.errors": "Errors",
+  "mainPanelTabs.monitorV8.upstreams.cached": "From cache",
+  "mainPanelTabs.monitorV8.errors.title": "Errors",
+  "mainPanelTabs.monitorV8.errors.subtitle":
+    "Grouped by message. Errors are sampled, so counts show the pattern rather than every occurrence.",
+  "mainPanelTabs.monitorV8.errors.times": "{count}×",
+  "mainPanelTabs.monitorV8.errors.on": "on {route}",
+  "mainPanelTabs.monitorV8.errors.lastSeen": "Last seen {when}",
+  "mainPanelTabs.monitorV8.errors.since.now": "just now",
+  "mainPanelTabs.monitorV8.errors.since.min": "{count} min ago",
+  "mainPanelTabs.monitorV8.errors.since.h": "{count} h ago",
+  "mainPanelTabs.monitorV8.errors.since.d": "{count} d ago",
+  "mainPanelTabs.monitorV8.empty.serverMetricMissing.title":
+    "Request metrics are on their way",
+  "mainPanelTabs.monitorV8.empty.serverMetricMissing.body":
+    'Request data starts with @decocms/blocks 8.5. Upgrade the site to it; on Next.js, also add an instrumentation.ts file with: export { register } from "@decocms/nextjs/instrumentation". Upstream calls and errors are already shown.',
+  "mainPanelTabs.monitorV8.empty.seeUpstreams": "See upstream calls",
+  "mainPanelTabs.monitorV8.empty.noTelemetry.title":
+    "Waiting for this site's first data",
+  "mainPanelTabs.monitorV8.empty.noTelemetry.body":
+    "Monitor fills in a few minutes after the published site gets its first visits.",
+  "mainPanelTabs.monitorV8.empty.noRequests.title": "No requests in this range",
+  "mainPanelTabs.monitorV8.empty.noRequests.body":
+    "Pick a longer range to see earlier traffic.",
+  "mainPanelTabs.monitorV8.empty.upstreams.title":
+    "No upstream calls in this range",
+  "mainPanelTabs.monitorV8.empty.upstreams.body":
+    "Calls to commerce platforms and other services show up here as the site makes them.",
+  "mainPanelTabs.monitorV8.empty.errors.title": "No errors in this range",
+  "mainPanelTabs.monitorV8.empty.errors.body":
+    "Nothing went wrong that Monitor caught. Errors are sampled, so a rare one may not show.",
+  "mainPanelTabs.monitorV8.loadError.title": "Monitor couldn't load right now",
+  "mainPanelTabs.monitorV8.loadError.body":
+    "This usually clears up on its own. Try again in a moment.",
+  "mainPanelTabs.monitorV8.loadError.retry": "Try again",
   "mainPanelTabs.mobileMainPanelTabSelect.chat": "Chat",
   "mainPanelTabs.mobileMainPanelTabSelect.library": "Library",
   "mainPanelTabs.mobileMainPanelTabSelect.mainView": "Main view",
@@ -528,4 +604,15 @@ export const mainPanelTabs = {
   "mainPanelTabs.previewTab.connectGithubDescription":
     "Connect a GitHub repository to build and preview your site here.",
   "mainPanelTabs.previewTab.noSourceToPreview": "No source to preview",
+  "mainPanelTabs.previewTab.localhostNoPreview.title":
+    "Start your app to see the preview",
+  "mainPanelTabs.previewTab.localhostNoPreview.body":
+    "deco serve didn't find your app. Start it, then restart deco serve with `--preview` and its address, such as `--preview localhost:3000`. Meanwhile, you can edit your content in the Content tab.",
+  "mainPanelTabs.previewTab.localhostNoPreview.step.title":
+    "Restart deco serve with your app's address",
+  "mainPanelTabs.previewTab.localAppWaiting.title": "Waiting for your app",
+  "mainPanelTabs.previewTab.localAppWaiting.body":
+    "Your app at `{host}` isn't answering yet. If it isn't running, start it on your computer. Meanwhile, you can edit your content in the Content tab.",
+  "mainPanelTabs.previewTab.localAppWaiting.hint":
+    "The preview loads on its own as soon as your app answers.",
 } as const;

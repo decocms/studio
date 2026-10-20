@@ -25,12 +25,19 @@ export function modeInstruction(mode: ChatMode): string | null {
   );
 }
 
+const PREVIEW_INSTRUCTION =
+  "The user watches your dev server in a live preview beside this chat. After you build or " +
+  "change a page, call `preview_navigate` from the `studio` MCP server with its path so they " +
+  "see it.";
+
 export function sandboxRunPrompt(args: {
   mode: ChatMode;
   threadId: string;
   agentId: string;
   userEmail: string | undefined;
   userContext: HarnessUserContext;
+  /** The user is watching this chat's dev-server preview. */
+  previewWatched?: boolean;
 }): string {
   const otherAgents = (args.userContext.agents ?? []).filter(
     (agent) => agent.id !== args.agentId && agent.status === "active",
@@ -43,6 +50,7 @@ export function sandboxRunPrompt(args: {
     }),
     agentsCatalog(otherAgents),
     modeInstruction(args.mode),
+    args.previewWatched ? PREVIEW_INSTRUCTION : null,
   ]
     .filter(Boolean)
     .join("\n\n");

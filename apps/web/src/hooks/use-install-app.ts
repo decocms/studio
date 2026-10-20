@@ -14,7 +14,7 @@ import {
   decofileWriteScope,
   throwResponseError,
 } from "@/components/sections-editor/decofile-api";
-import { decofileCacheKey } from "@/components/sections-editor/use-decofile";
+import { useDecofileCacheKey } from "@/components/sections-editor/use-decofile";
 import { usePackagePath } from "@/components/sections-editor/use-package-path";
 import { readCommittedText } from "@/components/sections-editor/read-committed-file";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
@@ -114,12 +114,7 @@ export function useInstallApp({
   const fastPreviewActive = useSessionRuntime(virtualMcpId).runtime === "cms";
   /** Local mode renders a pasted tunnel and persists nothing — see `useSaveBlock`. */
   const { url: localPreviewUrl } = useLocalPreviewUrl(virtualMcpId);
-  const cacheKey = decofileCacheKey({
-    orgSlug,
-    virtualMcpId,
-    branch,
-    localPreviewUrl,
-  });
+  const cacheKey = useDecofileCacheKey({ orgSlug, virtualMcpId, branch });
 
   return useMutation({
     mutationKey: decofileWriteMutationKey(orgSlug, virtualMcpId, branch),

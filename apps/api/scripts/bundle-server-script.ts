@@ -24,11 +24,6 @@ const CLI_ENTRY_POINT = join(SCRIPT_DIR, "../src/cli.ts");
 const ALWAYS_INCLUDE = [
   "@jitl/quickjs-wasmfile-release-sync",
   "@dbos-inc/dbos-sdk",
-  "embedded-postgres",
-  "ink",
-  "react",
-  "react-dom",
-  "@inkjs/ui",
   // OTel v2 packages use conditional `exports` maps and lazy `require()`s
   // (e.g. sdk-metrics → resources) that @vercel/nft can't follow statically.
   // When nft silently drops one, `bun build --target bun` still externalizes
@@ -91,27 +86,7 @@ const ALWAYS_INCLUDE = [
   "better-auth",
   "@better-auth/sso",
 ];
-const ALWAYS_EXCLUDE = [
-  "kysely-codegen",
-  "@duckdb/node-bindings",
-  "react-devtools-core",
-];
-
-// Package-name prefixes whose packages nft DOES trace but we must NOT copy into
-// dist/server/node_modules. Unlike ALWAYS_EXCLUDE (which only adds `--external`
-// to the bun build), this filters the prune/copy step.
-//
-// @embedded-postgres/<platform> ships a ~144MB platform-specific Postgres
-// binary. `embedded-postgres` (a runtime dependency, kept external) resolves
-// the matching one with a dynamic `import("@embedded-postgres/<platform>")` at
-// runtime, and that package is installed per-platform via embedded-postgres'
-// own optionalDependencies when a consumer runs `bun add decocms`. nft, run on
-// the BUILD HOST, traces only the host's binary — so bundling it is both dead
-// weight on every other platform AND wrong-platform for the published package
-// (CI builds linux-x64; a Mac/arm consumer's runtime never loads it, and the
-// Docker `bun add` already installs the correct linux-<arch> binary per image).
-// Skipping the copy lets the consumer's install supply the right binary.
-const EXCLUDE_COPY_PREFIXES = ["@embedded-postgres/"];
+const ALWAYS_EXCLUDE = ["kysely-codegen", "@duckdb/node-bindings"];
 
 // Parse command line arguments
 function parseArgs() {
@@ -406,15 +381,6 @@ async function pruneNodeModules(): Promise<Set<string>> {
       packageName !== "@decocms/better-auth"
     ) {
       console.log(`📦 Bundling inline (workspace): ${packageName}`);
-      continue;
-    }
-
-    // Platform-specific binaries resolved from the consumer's install at
-    // runtime (see EXCLUDE_COPY_PREFIXES). Don't ship the build host's copy.
-    if (EXCLUDE_COPY_PREFIXES.some((p) => packageName.startsWith(p))) {
-      console.log(
-        `⏭️  Skipping copy (resolved from consumer install): ${packageName}`,
-      );
       continue;
     }
 

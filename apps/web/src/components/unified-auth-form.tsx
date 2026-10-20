@@ -79,11 +79,9 @@ interface UnifiedAuthFormProps {
   onAuthEvent?: (event: AuthFlowEvent) => void;
   /**
    * Overrides for the underlying network/post-auth actions. `AuthEntry`
-   * passes the platform-resolved overrides here (desktop browser-hop/
-   * Keychain-bridge actions in the desktop build, `undefined` on web).
-   * Omitted -> `defaultAuthFormActions`, i.e. the exact `authClient` calls +
-   * `window.location.href` navigate this form always used. See
-   * `apps/web/src/components/auth-form-actions.ts`.
+   * passes a caller's `onAuthenticated` here. Omitted ->
+   * `defaultAuthFormActions`, i.e. the `authClient` calls + `window.location.href`
+   * navigate. See `apps/web/src/components/auth-form-actions.ts`.
    */
   actions?: Partial<AuthFormActions>;
 }

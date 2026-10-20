@@ -40,13 +40,15 @@ complete product from one artifact.
 
 ## Usage
 
-Install dependencies and start the complete local environment from the
-repository root:
+Start the complete development environment from the repository root:
 
 ```bash
-bun install
-bun run dev
+docker compose up --build --watch
 ```
+
+Compose runs dependencies and migrations before the API, syncs source changes,
+and keeps installed dependencies and generated artifacts inside Linux. See
+[CONTRIBUTING.md](../../CONTRIBUTING.md) for setup and lifecycle commands.
 
 The API listens on port `3000` by default, while the web app listens on port
 `4000`.
@@ -58,19 +60,14 @@ are already available:
 bun run --cwd=apps/api dev
 ```
 
-`dev` applies migrations before starting the hot-reloading server. Skip that
-migration step when another process already manages the schema:
+The host development command starts only the hot-reloading API. It does not
+start dependency services or run migrations; configure them explicitly.
+`dev:server` is the same direct server entry point.
 
-```bash
-bun run --cwd=apps/api dev:server
-```
-
-Released users start Studio through the npm package:
-
-```bash
-bunx decocms --help
-bunx decocms
-```
+Run released Studio with [Docker Compose](../../selfhost/examples/docker-compose/README.md)
+or the [Helm chart](../../deploy/helm/studio/README.md). The npm CLI remains
+available for application scaffolding and connection tooling; it no longer
+provisions a local runtime.
 
 Build both apps into the combined production distribution, then run it:
 
@@ -149,29 +146,13 @@ bun run --cwd=apps/api better-auth:migrate
 
 ### Querying local Postgres
 
-The embedded development database uses a dynamic port. While `bun run dev`
-is running, find its port in the `-p` argument:
+Query the Compose database without publishing its port:
 
 ```bash
-ps -Ao args | rg '[p]ostgres -D'
+docker compose exec postgres psql -U studio -d studio
 ```
 
-Run queries from `apps/api` so Bun resolves the `pg` dependency. Replace
-`<PORT>` with the discovered port:
-
-```bash
-cat << 'EOF' | bun run --cwd apps/api -
-import pg from "pg";
-const client = new pg.Client("postgresql://postgres:postgres@localhost:<PORT>/postgres");
-await client.connect();
-try {
-  const { rows } = await client.query("SELECT current_database()");
-  console.log(rows);
-} finally {
-  await client.end();
-}
-EOF
-```
+Use the same Compose project name and overrides as the development stack.
 
 Follow the [repository verification instructions](../../AGENTS.md#working-locally).
 
@@ -195,19 +176,20 @@ Follow the [repository verification instructions](../../AGENTS.md#working-locall
 
 ## Configuration
 
-`dev:server` loads `apps/api/.env` because the workspace command runs with
-`apps/api` as its current directory. The CLI startup path also resolves local
-services and persists state under `DATA_DIR`.
+Host `dev:server` loads `apps/api/.env` because the workspace command runs with
+`apps/api` as its current directory. Compose supplies container environment
+variables explicitly. Services use configured endpoints; the CLI does not
+start PostgreSQL, NATS, or object storage.
 
 Core settings include:
 
 | Setting | Purpose | Default |
 | --- | --- | --- |
 | `PORT` | API listener port | `3000` |
-| `DATA_DIR` | Local services and runtime data | `~/deco` |
+| `DATA_DIR` | Runtime files and local telemetry | `~/deco` |
 | `BASE_URL` | Public origin used in generated URLs | `http://localhost:<PORT>` |
-| `DATABASE_URL` | External PostgreSQL connection | Managed locally when the CLI starts services |
-| `NATS_URL` | External NATS connection, optionally comma-separated | Managed locally when the CLI starts services |
+| `DATABASE_URL` | PostgreSQL connection | `postgresql://postgres:postgres@localhost:5432/postgres`; Compose supplies its service URL |
+| `NATS_URL` | NATS connection, optionally comma-separated | `nats://localhost:4222`; Compose supplies its service URL |
 | `BETTER_AUTH_SECRET` | Stable Better Auth signing secret | Set explicitly in production |
 | `ENCRYPTION_KEY` | Stable credential-vault key | Set explicitly in production |
 | `CONFIG_PATH` | Theme, logo, and monitoring JSON configuration | `./config.json` |

@@ -1000,7 +1000,7 @@ func (o *Orchestrator) checkoutBranch(branch string) error {
 }
 
 func (o *Orchestrator) fillApplicationDefaults() {
-	diskCfg, _ := config.ReadDiskConfig(o.deps.RepoDir)
+	diskCfg, _, _ := config.ReadDiskConfig(o.deps.RepoDir)
 
 	o.deps.Store.ApplyInternal(func(current *config.TenantConfig) *config.Patch {
 		var cur *config.Application

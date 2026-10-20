@@ -17,9 +17,12 @@ import {
   verticalListSortingStrategy,
   arrayMove,
 } from "@dnd-kit/sortable";
-import { Plus } from "@untitledui/icons";
+import { List, Plus, Rows01 } from "@untitledui/icons";
 import { toast } from "sonner";
+import { ViewModeToggle } from "@decocms/ui/components/view-mode-toggle.tsx";
+import { useLocalStorage } from "@/hooks/use-local-storage";
 import { useNewBlocksEditor } from "@/hooks/use-new-blocks-editor";
+import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import { useT } from "@/i18n/use-t.ts";
 import { AddListRow } from "../editor-list-row";
 import { SORTABLE_DROP_ANIMATION } from "@/lib/dnd-drop-animation.ts";
@@ -37,6 +40,7 @@ import {
 } from "../array-item-hidden";
 import { isEmbeddedUnionResolveType } from "../block-type-utils";
 import {
+  type Crumb,
   buildArrayDrillDownBreadcrumb,
   resolveArrayItemSelection,
   withItemCrumbLabel,
@@ -123,6 +127,12 @@ function itemEditorSchema(
   return itemSchema;
 }
 
+/**
+ * `drill` opens one item at a time in place of the list; `inline` expands
+ * items under their rows so the list stays on screen between edits.
+ */
+type ArrayFieldLayout = "drill" | "inline";
+
 function arrayFieldKeyFromPath(path: string): string {
   const segments = path.split(".").filter((segment) => !/^\d+$/.test(segment));
   return segments[segments.length - 1] ?? path;
@@ -171,6 +181,14 @@ export function ArrayField({
   // Only plain object arrays (banners, links, …) get the hide toggle. Section
   // pickers have their own hide flow, and primitive arrays can't be wrapped.
   const canHideItems = !usesSectionPicker && itemSchema?.type === "object";
+  // Section lists keep drilling in: each section is a whole form of its own.
+  const canEditInline = !usesSectionPicker;
+  const [layoutPreference, setLayoutPreference] =
+    useLocalStorage<ArrayFieldLayout>(
+      LOCALSTORAGE_KEYS.arrayFieldLayout(),
+      "drill",
+    );
+  const inline = canEditInline && layoutPreference === "inline";
   // Index of the item the user has explicitly opened. The breadcrumb crumb
   // carries the item's index (see `Crumb`), so selection survives a remount on
   // its own; this preferred index is only a churn-window fallback that pins the
@@ -209,6 +227,9 @@ export function ArrayField({
     createArrayEntries(items.length),
   );
   const [activeEntryId, setActiveEntryId] = useState<string | null>(null);
+  const [expandedEntryIds, setExpandedEntryIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   const [prevListKey, setPrevListKey] = useState(path);
   const [prevItemCount, setPrevItemCount] = useState(items.length);
   const suppressClickRef = useRef(false);
@@ -230,6 +251,7 @@ export function ArrayField({
     setPrevListKey(path);
     setPrevItemCount(items.length);
     setEntries(createArrayEntries(items.length));
+    setExpandedEntryIds(new Set());
     setOpenIndex(null);
   } else if (prevItemCount !== items.length) {
     setPrevItemCount(items.length);
@@ -254,6 +276,16 @@ export function ArrayField({
         drillDownOpts,
       ),
     );
+  };
+
+  const toggleEntryExpanded = (entryId: string) => {
+    if (suppressClickRef.current) return;
+    setExpandedEntryIds((current) => {
+      const next = new Set(current);
+      if (next.has(entryId)) next.delete(entryId);
+      else next.add(entryId);
+      return next;
+    });
   };
 
   const appendItem = (item: unknown) => {
@@ -297,6 +329,15 @@ export function ArrayField({
                   : "";
     const next = [...items, defaultVal];
     onChange(next);
+    if (inline) {
+      const grown = resizeArrayEntries(entries, next.length);
+      const added = grown[grown.length - 1];
+      setEntries(grown);
+      if (added) {
+        setExpandedEntryIds((current) => new Set(current).add(added.id));
+      }
+      return;
+    }
     const nextIndex = next.length - 1;
     setOpenIndex(nextIndex);
     const labelText = itemLabel(defaultVal, nextIndex);
@@ -437,8 +478,17 @@ export function ArrayField({
       ? getArrayItemImageSrc(arrayItemDisplayValue(activeItem), itemSchema)
       : undefined;
 
-  if (selectedIndex !== null && selectedIndex < items.length) {
-    const item = arrayItemDisplayValue(items[selectedIndex]);
+  /**
+   * The editor for one item. `innerPath` is the trail below the item's own
+   * crumb, and `itemPrefix` the trail through it, which nested fields prepend
+   * their breadcrumb changes onto.
+   */
+  const renderItemEditor = (
+    index: number,
+    innerPath: Crumb[],
+    itemPrefix: () => Crumb[],
+  ) => {
+    const item = arrayItemDisplayValue(items[index]);
     const editorSchema = itemEditorSchema(
       item,
       itemSchema,
@@ -446,6 +496,61 @@ export function ArrayField({
       containerResolveType,
       arrayFieldKey,
     );
+    return (
+      <div className="min-w-0">
+        {editorSchema?.type === "object" && editorSchema.properties ? (
+          <SchemaForm
+            schema={editorSchema}
+            value={item}
+            onChange={(val) => updateItem(index, val)}
+            basePath={`${path}.${index}`}
+            breadcrumbPath={innerPath}
+            onBreadcrumbChange={(nextPath) => {
+              onBreadcrumbChange?.([...itemPrefix(), ...nextPath]);
+            }}
+            meta={meta}
+            decofile={decofile}
+            onSaveReferencedBlock={onSaveReferencedBlock}
+            previewBaseUrl={previewBaseUrl}
+            onAddSectionItem={onAddSectionItem}
+            onRequestAddSection={onRequestAddSection}
+            sandbox={sandbox}
+          />
+        ) : editorSchema ? (
+          // Reset the marker: an item's `required` is a null-hole guard, not a fill-me requirement (see RequiredFieldProvider).
+          <RequiredFieldProvider required={false} invalid={false}>
+            {renderField({
+              schema: editorSchema,
+              value: item,
+              onChange: (val) => updateItem(index, val),
+              path: `${path}.${index}`,
+              // An array item is never optional; clearing would leave a null hole.
+              required: true,
+              // A mustache `title` is an item-label template, not a display label — use the resolved item label.
+              label:
+                editorSchema.title && !editorSchema.title.includes("{{")
+                  ? editorSchema.title
+                  : itemLabel(item, index),
+              breadcrumbPath: innerPath,
+              onBreadcrumbChange: (nextPath) => {
+                onBreadcrumbChange?.([...itemPrefix(), ...nextPath]);
+              },
+              meta,
+              decofile,
+              onSaveReferencedBlock,
+              previewBaseUrl,
+              onAddSectionItem,
+              onRequestAddSection,
+              sandbox,
+            })}
+          </RequiredFieldProvider>
+        ) : null}
+      </div>
+    );
+  };
+
+  if (selectedIndex !== null && selectedIndex < items.length) {
+    const item = arrayItemDisplayValue(items[selectedIndex]);
     /**
      * Trail prefix through the open item's own crumb — the base that nested
      * fields prepend their breadcrumb changes onto.
@@ -482,56 +587,10 @@ export function ArrayField({
       return prefix;
     };
 
-    return (
-      <div className="min-w-0">
-        {editorSchema?.type === "object" && editorSchema.properties ? (
-          <SchemaForm
-            schema={editorSchema}
-            value={item}
-            onChange={(val) => updateItem(selectedIndex, val)}
-            basePath={`${path}.${selectedIndex}`}
-            breadcrumbPath={selection?.innerPath ?? []}
-            onBreadcrumbChange={(nextPath) => {
-              onBreadcrumbChange?.([...arrayItemPrefix(), ...nextPath]);
-            }}
-            meta={meta}
-            decofile={decofile}
-            onSaveReferencedBlock={onSaveReferencedBlock}
-            previewBaseUrl={previewBaseUrl}
-            onAddSectionItem={onAddSectionItem}
-            onRequestAddSection={onRequestAddSection}
-            sandbox={sandbox}
-          />
-        ) : editorSchema ? (
-          // Reset the marker: an item's `required` is a null-hole guard, not a fill-me requirement (see RequiredFieldProvider).
-          <RequiredFieldProvider required={false} invalid={false}>
-            {renderField({
-              schema: editorSchema,
-              value: item,
-              onChange: (val) => updateItem(selectedIndex, val),
-              path: `${path}.${selectedIndex}`,
-              // An array item is never optional; clearing would leave a null hole.
-              required: true,
-              // A mustache `title` is an item-label template, not a display label — use the resolved item label.
-              label:
-                editorSchema.title && !editorSchema.title.includes("{{")
-                  ? editorSchema.title
-                  : itemLabel(item, selectedIndex),
-              breadcrumbPath: selection?.innerPath ?? [],
-              onBreadcrumbChange: (nextPath) => {
-                onBreadcrumbChange?.([...arrayItemPrefix(), ...nextPath]);
-              },
-              meta,
-              decofile,
-              onSaveReferencedBlock,
-              previewBaseUrl,
-              onAddSectionItem,
-              onRequestAddSection,
-              sandbox,
-            })}
-          </RequiredFieldProvider>
-        ) : null}
-      </div>
+    return renderItemEditor(
+      selectedIndex,
+      selection?.innerPath ?? [],
+      arrayItemPrefix,
     );
   }
 
@@ -553,6 +612,25 @@ export function ArrayField({
           <span className="rounded-md bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
             {items.length}
           </span>
+        )}
+        {canEditInline && items.length > 0 && (
+          <ViewModeToggle<ArrayFieldLayout>
+            className="ml-auto shrink-0"
+            value={layoutPreference}
+            onValueChange={setLayoutPreference}
+            options={[
+              {
+                value: "drill",
+                icon: <List />,
+                tooltip: t("sectionsEditor.arrayField.layoutDrill"),
+              },
+              {
+                value: "inline",
+                icon: <Rows01 />,
+                tooltip: t("sectionsEditor.arrayField.layoutInline"),
+              },
+            ]}
+          />
         )}
       </div>
 
@@ -620,10 +698,29 @@ export function ArrayField({
                               ? () => toggleItemHidden(entry.index)
                               : undefined
                           }
-                          onOpen={() => openItem(entry.index)}
+                          expanded={
+                            inline ? expandedEntryIds.has(entry.id) : undefined
+                          }
+                          onOpen={() =>
+                            inline
+                              ? toggleEntryExpanded(entry.id)
+                              : openItem(entry.index)
+                          }
                           onDuplicate={() => duplicateItem(entry.index)}
                           onRemove={() => removeItem(entry.index)}
-                        />
+                        >
+                          {inline &&
+                            expandedEntryIds.has(entry.id) &&
+                            renderItemEditor(entry.index, [], () =>
+                              buildArrayDrillDownBreadcrumb(
+                                breadcrumbPath,
+                                label,
+                                itemLabel(item, entry.index),
+                                entry.index,
+                                drillDownOpts,
+                              ),
+                            )}
+                        </SortableArrayRow>
                       );
                     });
                   })()}

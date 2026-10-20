@@ -13,7 +13,7 @@ import { Suspense } from "react";
 import { useWatch, type useForm } from "react-hook-form";
 import { useT } from "@/i18n/use-t.ts";
 import { McpConfigurationForm } from "./mcp-configuration-form";
-import type { ConnectionFormData } from "./schema";
+import { configurationScopesFor, type ConnectionFormData } from "./schema";
 
 interface SettingsTabProps {
   connection: ConnectionEntity;
@@ -153,7 +153,7 @@ function McpConfigurationContent({
   form: ReturnType<typeof useForm<ConnectionFormData>>;
 }) {
   const t = useT();
-  const { stateSchema } = useMcpConfiguration(connection.id);
+  const { stateSchema, scopes } = useMcpConfiguration(connection.id);
 
   // useWatch is more reliable for triggering re-renders than form.watch()
   const formState = useWatch({
@@ -163,6 +163,15 @@ function McpConfigurationContent({
 
   const handleFormStateChange = (state: Record<string, unknown>) => {
     form.setValue("configuration_state", state, { shouldDirty: true });
+    form.setValue(
+      "configuration_scopes",
+      configurationScopesFor(
+        connection.configuration_scopes ?? [],
+        scopes,
+        state,
+      ),
+      { shouldDirty: true },
+    );
   };
 
   const hasProperties =

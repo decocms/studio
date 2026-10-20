@@ -23,8 +23,6 @@ export const mainPanelTabs = {
   "mainPanelTabs.codeTab.noSandboxToBrowse": "Nenhuma sandbox para navegar",
   "mainPanelTabs.codeTab.noSandboxToBrowseDescription":
     "Inicie uma sessão de código neste projeto para navegar pelos arquivos.",
-  "mainPanelTabs.codeTab.openInCursor": "Abrir no Cursor",
-  "mainPanelTabs.codeTab.openInVscode": "Abrir no VSCode",
   "mainPanelTabs.contentTab.connectGithubDescription":
     "Conecte um repositório do GitHub para editar o conteúdo deste site.",
   "mainPanelTabs.contentTab.noContentToEdit": "Nenhum conteúdo para editar",
@@ -539,6 +537,86 @@ export const mainPanelTabs = {
   "mainPanelTabs.cdnTab.cacheStatusSubtitle":
     "Distribuição das respostas de cache",
   "mainPanelTabs.cdnTab.statusCodesSubtitle": "Distribuição dos status HTTP",
+  "mainPanelTabs.monitorV8.title": "Monitor",
+  "mainPanelTabs.monitorV8.noSiteBody":
+    "Este projeto ainda não está ligado a um site, então não há nada para monitorar.",
+  "mainPanelTabs.monitorV8.section.site": "Site",
+  "mainPanelTabs.monitorV8.section.upstreams": "Integrações",
+  "mainPanelTabs.monitorV8.section.errors": "Erros",
+  "mainPanelTabs.monitorV8.range.label": "Período",
+  "mainPanelTabs.monitorV8.range.1h": "Última hora",
+  "mainPanelTabs.monitorV8.range.24h": "24 horas",
+  "mainPanelTabs.monitorV8.range.7d": "7 dias",
+  "mainPanelTabs.monitorV8.tile.requests": "Requisições",
+  "mainPanelTabs.monitorV8.tile.perSecond": "{value} por segundo",
+  "mainPanelTabs.monitorV8.tile.perMinute": "{value} por minuto",
+  "mainPanelTabs.monitorV8.tile.errors": "Erros (5xx)",
+  "mainPanelTabs.monitorV8.tile.errorsCount": "{count} requisições",
+  "mainPanelTabs.monitorV8.tile.p95": "Resposta p95",
+  "mainPanelTabs.monitorV8.tile.p50": "p50 {value}",
+  "mainPanelTabs.monitorV8.tile.cacheHits": "Acertos no cache da borda",
+  "mainPanelTabs.monitorV8.tile.cacheHitsHint": "Páginas servidas do cache",
+  "mainPanelTabs.monitorV8.delta.title": "Comparado com o período anterior",
+  "mainPanelTabs.monitorV8.chart.requests": "Requisições por status",
+  "mainPanelTabs.monitorV8.chart.step.1h": "Por minuto",
+  "mainPanelTabs.monitorV8.chart.step.24h": "A cada 15 minutos",
+  "mainPanelTabs.monitorV8.chart.step.7d": "A cada 2 horas",
+  "mainPanelTabs.monitorV8.chart.p95": "Tempo de resposta p95",
+  "mainPanelTabs.monitorV8.chart.p95Subtitle":
+    "95% das requisições responderam mais rápido que isto",
+  "mainPanelTabs.monitorV8.chart.release": "Versão {id}",
+  "mainPanelTabs.monitorV8.chart.releaseLegend": "Nova versão",
+  "mainPanelTabs.monitorV8.routes.title": "Páginas mais lentas",
+  "mainPanelTabs.monitorV8.routes.subtitle":
+    "As páginas mais acessadas, das mais lentas para as mais rápidas",
+  "mainPanelTabs.monitorV8.routes.route": "Página",
+  "mainPanelTabs.monitorV8.routes.p95": "p95",
+  "mainPanelTabs.monitorV8.routes.requests": "Requisições",
+  "mainPanelTabs.monitorV8.routes.errors": "5xx",
+  "mainPanelTabs.monitorV8.routes.unmatched": "Outras rotas",
+  "mainPanelTabs.monitorV8.routes.redirect": "Redirecionamentos",
+  "mainPanelTabs.monitorV8.upstreams.title": "Chamadas a integrações",
+  "mainPanelTabs.monitorV8.upstreams.subtitle":
+    "Chamadas que o site faz a plataformas de e-commerce e outros serviços",
+  "mainPanelTabs.monitorV8.upstreams.call": "Integração · operação",
+  "mainPanelTabs.monitorV8.upstreams.calls": "Chamadas",
+  "mainPanelTabs.monitorV8.upstreams.p95": "p95",
+  "mainPanelTabs.monitorV8.upstreams.errors": "Erros",
+  "mainPanelTabs.monitorV8.upstreams.cached": "Do cache",
+  "mainPanelTabs.monitorV8.errors.title": "Erros",
+  "mainPanelTabs.monitorV8.errors.subtitle":
+    "Agrupados por mensagem. Os erros são amostrados, então as contagens mostram o padrão, não cada ocorrência.",
+  "mainPanelTabs.monitorV8.errors.times": "{count}×",
+  "mainPanelTabs.monitorV8.errors.on": "em {route}",
+  "mainPanelTabs.monitorV8.errors.lastSeen": "Visto por último {when}",
+  "mainPanelTabs.monitorV8.errors.since.now": "agora há pouco",
+  "mainPanelTabs.monitorV8.errors.since.min": "há {count} min",
+  "mainPanelTabs.monitorV8.errors.since.h": "há {count} h",
+  "mainPanelTabs.monitorV8.errors.since.d": "há {count} d",
+  "mainPanelTabs.monitorV8.empty.serverMetricMissing.title":
+    "As métricas de requisições estão a caminho",
+  "mainPanelTabs.monitorV8.empty.serverMetricMissing.body":
+    'Os dados de requisições começam no @decocms/blocks 8.5. Atualize o site para essa versão; em Next.js, adicione também um arquivo instrumentation.ts com: export { register } from "@decocms/nextjs/instrumentation". As chamadas a integrações e os erros já aparecem.',
+  "mainPanelTabs.monitorV8.empty.seeUpstreams": "Ver chamadas a integrações",
+  "mainPanelTabs.monitorV8.empty.noTelemetry.title":
+    "Aguardando os primeiros dados deste site",
+  "mainPanelTabs.monitorV8.empty.noTelemetry.body":
+    "O Monitor se preenche alguns minutos depois que o site publicado recebe as primeiras visitas.",
+  "mainPanelTabs.monitorV8.empty.noRequests.title":
+    "Nenhuma requisição neste período",
+  "mainPanelTabs.monitorV8.empty.noRequests.body":
+    "Escolha um período maior para ver o tráfego anterior.",
+  "mainPanelTabs.monitorV8.empty.upstreams.title":
+    "Nenhuma chamada a integrações neste período",
+  "mainPanelTabs.monitorV8.empty.upstreams.body":
+    "As chamadas a plataformas de e-commerce e outros serviços aparecem aqui conforme o site as faz.",
+  "mainPanelTabs.monitorV8.empty.errors.title": "Nenhum erro neste período",
+  "mainPanelTabs.monitorV8.empty.errors.body":
+    "Nada deu errado que o Monitor tenha visto. Os erros são amostrados, então um erro raro pode não aparecer.",
+  "mainPanelTabs.monitorV8.loadError.title": "O Monitor não carregou agora",
+  "mainPanelTabs.monitorV8.loadError.body":
+    "Isso costuma se resolver sozinho. Tente de novo em instantes.",
+  "mainPanelTabs.monitorV8.loadError.retry": "Tentar de novo",
   "mainPanelTabs.mobileMainPanelTabSelect.chat": "Chat",
   "mainPanelTabs.mobileMainPanelTabSelect.library": "Biblioteca",
   "mainPanelTabs.mobileMainPanelTabSelect.mainView": "Visualização principal",
@@ -549,4 +627,15 @@ export const mainPanelTabs = {
   "mainPanelTabs.previewTab.connectGithubDescription":
     "Conecte um repositório do GitHub para construir e visualizar seu site aqui.",
   "mainPanelTabs.previewTab.noSourceToPreview": "Nenhuma fonte para visualizar",
+  "mainPanelTabs.previewTab.localhostNoPreview.title":
+    "Inicie seu app para ver o preview",
+  "mainPanelTabs.previewTab.localhostNoPreview.body":
+    "O deco serve não encontrou seu app. Inicie-o e reinicie o deco serve com `--preview` e o endereço dele, como `--preview localhost:3000`. Enquanto isso, você já pode editar o conteúdo.",
+  "mainPanelTabs.previewTab.localhostNoPreview.step.title":
+    "Reinicie o deco serve com o endereço do seu app",
+  "mainPanelTabs.previewTab.localAppWaiting.title": "Esperando seu app",
+  "mainPanelTabs.previewTab.localAppWaiting.body":
+    "Seu app em `{host}` ainda não está respondendo. Se ele não estiver rodando, inicie-o no seu computador. Enquanto isso, você pode editar seu conteúdo na aba Conteúdo.",
+  "mainPanelTabs.previewTab.localAppWaiting.hint":
+    "O preview carrega sozinho assim que seu app responder.",
 } satisfies Record<keyof typeof mainPanelTabsEn, string>;

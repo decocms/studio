@@ -96,4 +96,16 @@ describe("sandboxRunPrompt", () => {
       sandboxRunPrompt({ ...base, userEmail: undefined, userContext: {} }),
     ).toBe("");
   });
+
+  test("points at preview_navigate only when a preview is watched", () => {
+    const watched = sandboxRunPrompt({
+      ...base,
+      userContext: {},
+      previewWatched: true,
+    });
+    expect(watched).toContain("`preview_navigate`");
+    expect(sandboxRunPrompt({ ...base, userContext: {} })).not.toContain(
+      "preview_navigate",
+    );
+  });
 });

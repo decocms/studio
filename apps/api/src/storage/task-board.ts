@@ -9,7 +9,13 @@ import { readRepositoryMetadata } from "./repository-metadata";
 import { sql, type Kysely } from "kysely";
 import { type RepoRef, splitOwnerName } from "@decocms/shared/git-providers";
 // Shared with the quota gate, which charges the same class of task.
+import {
+  IMPLEMENTER_SYSTEM_KEY,
+  LINKED_CHATS_SYSTEM_KEY,
+} from "../automations/builtin";
 import { isReportsTask } from "../billing/task-quota";
+import { isBoardRunThread } from "../tools/task-board/task-run-context";
+import { createAutomationsStorage } from "./automations";
 import type {
   Database,
   TaskBoardActivity,
@@ -410,6 +416,8 @@ export class TaskBoardStorage {
     repo?: string | null;
     /** The first-class repository the card was written against, when known. */
     repositoryId?: string | null;
+    /** The project the card belongs to; the caller checks it is this org's. */
+    virtualMcpId?: string | null;
     /** The sprint the card is planned into; absent = backlog. */
     sprintId?: string | null;
     dueDate?: string | null;
@@ -448,6 +456,7 @@ export class TaskBoardStorage {
           assigned_by: params.assignedBy ?? null,
           repo: params.repo ?? null,
           repository_id: params.repositoryId ?? null,
+          virtual_mcp_id: params.virtualMcpId ?? null,
           sprint_id: params.sprintId ?? null,
           due_date: params.dueDate ?? null,
           external_key: params.externalKey ?? null,
@@ -499,6 +508,7 @@ export class TaskBoardStorage {
       assignedBy?: string | null;
       repo?: string | null;
       repositoryId?: string | null;
+      virtualMcpId?: string | null;
       sprintId?: string | null;
       dueDate?: string | null;
       externalUrl?: string | null;
@@ -526,6 +536,9 @@ export class TaskBoardStorage {
         ...(data.repo !== undefined ? { repo: data.repo } : {}),
         ...(data.repositoryId !== undefined
           ? { repository_id: data.repositoryId }
+          : {}),
+        ...(data.virtualMcpId !== undefined
+          ? { virtual_mcp_id: data.virtualMcpId }
           : {}),
         ...(data.sprintId !== undefined ? { sprint_id: data.sprintId } : {}),
         ...(data.dueDate !== undefined ? { due_date: data.dueDate } : {}),
@@ -1892,11 +1905,83 @@ export class TaskBoardStorage {
    *    is ever dispatched (that needs a PR), so the only thing left is a
    *    person reading it.
    */
+  /** The thread is a run of an automation other than the built-in
+   *  Implementer (a trigger it no longer finds counts as another's). */
+  private async isOtherAutomationRun(
+    threadId: string,
+    organizationId: string,
+  ): Promise<boolean> {
+    const row = await this.db
+      .selectFrom("threads as t")
+      .leftJoin("automation_triggers as tr", "tr.id", "t.trigger_id")
+      .leftJoin("automations as a", "a.id", "tr.automation_id")
+      .select(["t.trigger_id as triggerId", "a.system_key as systemKey"])
+      .where("t.id", "=", threadId)
+      .where("t.organization_id", "=", organizationId)
+      .executeTakeFirst();
+    if (!row?.triggerId) return false;
+    return row.systemKey !== IMPLEMENTER_SYSTEM_KEY;
+  }
+
+  /**
+   * The thread is a run of the built-in Implementer: its trigger is the
+   * Implementer's, or it is a trigger-less board run from before every card
+   * run was an Implementer fire (#7933) and not a reviewer's.
+   */
+  async isImplementerRun(
+    threadId: string,
+    organizationId: string,
+  ): Promise<boolean> {
+    const row = await this.db
+      .selectFrom("threads as t")
+      .leftJoin("automation_triggers as tr", "tr.id", "t.trigger_id")
+      .leftJoin("automations as a", "a.id", "tr.automation_id")
+      .select([
+        "t.title",
+        "t.metadata",
+        "t.trigger_id as triggerId",
+        "a.system_key as systemKey",
+      ])
+      .where("t.id", "=", threadId)
+      .where("t.organization_id", "=", organizationId)
+      .executeTakeFirst();
+    if (!row) return false;
+    if (row.triggerId) return row.systemKey === IMPLEMENTER_SYSTEM_KEY;
+    return (
+      isBoardRunThread(row) &&
+      !REVIEWER_KINDS.some((kind) => isReviewerThreadTitle(row.title, kind))
+    );
+  }
+
+  /**
+   * Whether a run on `threadId` may move the cards it is linked to. The
+   * Implementer's always may; any other thread only while the built-in "Move
+   * cards from linked chats" is on, and an org not seeded with it yet keeps
+   * the behavior it had before it existed.
+   */
+  async runMovesLinkedCards(
+    threadId: string,
+    organizationId: string,
+  ): Promise<boolean> {
+    if (await this.isImplementerRun(threadId, organizationId)) return true;
+    const on = await createAutomationsStorage(this.db).builtinActive(
+      organizationId,
+      LINKED_CHATS_SYSTEM_KEY,
+    );
+    return on ?? true;
+  }
+
   async advanceLinkedTasksToReviewOnThreadFinish(
     threadId: string,
     organizationId: string,
   ): Promise<TaskBoardItem[]> {
     const moved: TaskBoardItem[] = [];
+    // Handing a finished card on is the Implementer's step. Another
+    // automation's run works the card where it is.
+    if (await this.isOtherAutomationRun(threadId, organizationId)) return moved;
+    if (!(await this.runMovesLinkedCards(threadId, organizationId))) {
+      return moved;
+    }
     for (const taskId of await this.linkedTaskIds(threadId, organizationId)) {
       const item = await this.getById(taskId, organizationId);
       if (!item) continue;
@@ -2136,6 +2221,7 @@ export class TaskBoardStorage {
     ) {
       return [];
     }
+    if (!(await this.runMovesLinkedCards(threadId, organizationId))) return [];
     const moved: TaskBoardItem[] = [];
     for (const taskId of await this.linkedTaskIds(threadId, organizationId)) {
       const item = await this.getById(taskId, organizationId);
@@ -2964,6 +3050,7 @@ export class TaskBoardStorage {
     assigned_by: string | null;
     repo: string | null;
     repository_id?: string | null;
+    virtual_mcp_id?: string | null;
     sprint_id?: string | null;
     due_date: string | Date | null;
     external_url?: string | null;
@@ -2990,6 +3077,7 @@ export class TaskBoardStorage {
       assignedBy: row.assigned_by,
       repo: row.repo,
       repositoryId: row.repository_id ?? null,
+      virtualMcpId: row.virtual_mcp_id ?? null,
       sprintId: row.sprint_id ?? null,
       dueDate:
         row.due_date instanceof Date

@@ -92,6 +92,7 @@ export const ensureOptionsSchema: z.ZodType<Omit<EnsureOptions, "image">> =
       })
       .optional(),
     cloneOnly: z.boolean().optional(),
+    repoSnapshot: z.boolean().optional(),
     env: z.record(z.string(), z.string()).optional(),
     tenant: tenantSchema.optional(),
     orgFsConfigJson: z.string().max(ORG_FS_CONFIG_MAX).optional(),

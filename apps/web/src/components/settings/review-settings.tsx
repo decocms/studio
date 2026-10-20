@@ -32,7 +32,6 @@ import {
   useSetNewBlocksEditor,
   useSetOrgFlag,
 } from "@/hooks/use-organization-settings";
-import { useNewBlocksEditor } from "@/hooks/use-new-blocks-editor";
 import { track } from "@/lib/posthog-client";
 import { useConnections, useProjectContext, WellKnownOrgMCPId } from "@/sdk";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
@@ -216,11 +215,11 @@ function OrgMcpExclusionList() {
     : mountable;
 
   const draftSet = new Set(draft);
-  // Only the ids that still exist: a connection deleted since this was saved
-  // would otherwise sit in the list forever and count as a pending change.
+  // Prune both sides to ids that still exist, or a deleted connection reads as a pending change forever.
+  const stillMountable = (id: string) => mountable.some((c) => c.id === id);
   const dirty =
-    idsKey(draft.filter((id) => mountable.some((c) => c.id === id))) !==
-    savedKey;
+    idsKey(draft.filter(stillMountable)) !==
+    idsKey(saved.filter(stillMountable));
   const allVisibleOn =
     visible.length > 0 && visible.every((c) => !draftSet.has(c.id));
 
@@ -407,6 +406,12 @@ export function ChatRuntimeSettings() {
           titleKey="settings.agentTools.chatHarnessSandboxOnlyTitle"
           descriptionKey="settings.agentTools.chatHarnessSandboxOnlyDescription"
         />
+        <FlagToggle
+          flag="chat_harness_codex"
+          icon={<Terminal size={16} />}
+          titleKey="settings.agentTools.chatHarnessCodexTitle"
+          descriptionKey="settings.agentTools.chatHarnessCodexDescription"
+        />
       </SettingsCard>
     </SettingsSection>
   );
@@ -463,7 +468,8 @@ export function BlogSettings() {
  */
 export function BlocksEditorSettings() {
   const t = useT();
-  const enabled = useNewBlocksEditor();
+  // The org's own choice, not one site's editor (v8 sites always get it).
+  const enabled = useOrgFlag("new_blocks_editor");
   const setEnabled = useSetNewBlocksEditor();
   return (
     <SettingsSection title={t("sidebar.projectNav.siteEditor")}>

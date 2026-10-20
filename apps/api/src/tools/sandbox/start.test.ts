@@ -154,7 +154,7 @@ mock.module("@/oauth/refresh-access-token", () => ({
   refreshAccessToken: mockRefreshAccessToken,
 }));
 
-const { SANDBOX_START } = await import("./start");
+const { SANDBOX_START, ensureSandbox } = await import("./start");
 
 const originalFetch = globalThis.fetch;
 
@@ -641,6 +641,33 @@ describe("SANDBOX_START", () => {
 
     expect(result.sandboxHandle).toBe(CACHED_ENTRY.sandboxHandle);
     expect(result.isNewVm).toBe(false);
+  });
+
+  it("ensureSandbox trusts a live recorded sandbox, unless asked to revalidate", async () => {
+    const recorded = { ...CACHED_ENTRY, createdAt: 1_000 };
+    mockEnsure.mockImplementation(async () => ({
+      handle: recorded.sandboxHandle,
+      workdir: "/app",
+      previewUrl: recorded.previewUrl,
+      warmPoolAdopted: false,
+      provider: "kubernetes",
+    }));
+    const virtualMcp = makeVirtualMcp(ORG_ID, {
+      ...BASE_METADATA,
+      sandboxMap: { [USER_ID]: { [BRANCH]: { "agent-sandbox": recorded } } },
+    });
+    const ctx = makeCtx({ virtualMcp });
+
+    await ensureSandbox({ virtualMcpId: VMCP_ID, branch: BRANCH }, ctx);
+    expect(mockEnsure).not.toHaveBeenCalled();
+
+    // A turn that just lost this sandbox: its claim surviving proves nothing.
+    const entry = await ensureSandbox(
+      { virtualMcpId: VMCP_ID, branch: BRANCH, revalidate: true },
+      ctx,
+    );
+    expect(mockEnsure).toHaveBeenCalledTimes(1);
+    expect(entry.createdAt).toBe(1_000);
   });
 
   it("generates a <creator-slug>-<timestamp> branch when input.branch is omitted and threads it into the ref", async () => {

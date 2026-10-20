@@ -12,7 +12,9 @@ import { PlanUsageCard } from "./plan-usage-card";
 import { PlanCatalog } from "./plan-catalog";
 import { DecoNudgeCard } from "./deco-nudge-card";
 import { ConnectedProvidersSection } from "./connected-providers-section";
+import { CodexSubscriptionCard } from "./codex-subscription-card";
 import { ClaudeSubscriptionCard } from "./claude-subscription-card";
+import { GithubCopilotCard } from "./github-copilot-card";
 import { ConnectProviderDialog } from "./connect-provider-dialog";
 import { ProviderGrid, type ProviderSelection } from "./provider-grid";
 import { getProviderInventoryState } from "./provider-inventory";
@@ -73,6 +75,10 @@ function OrgAiProvidersContent() {
           onSelect={setPendingProvider}
           onShowAll={() => setConnectOpen(true)}
         />
+        {/* A user's own plan runs chats with no org provider at all. */}
+        <ClaudeSubscriptionCard />
+        <CodexSubscriptionCard />
+        <GithubCopilotCard />
         <ConnectProviderDialog
           open={pendingProvider !== null || connectOpen}
           onOpenChange={(o) => {
@@ -104,6 +110,8 @@ function OrgAiProvidersContent() {
       ) : null}
       {hasDeco ? null : <DecoNudgeCard />}
       <ClaudeSubscriptionCard />
+      <CodexSubscriptionCard />
+      <GithubCopilotCard />
       <ConnectedProvidersSection onConnectClick={() => setConnectOpen(true)} />
       <ConnectProviderDialog open={connectOpen} onOpenChange={setConnectOpen} />
     </>

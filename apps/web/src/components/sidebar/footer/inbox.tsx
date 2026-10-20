@@ -160,7 +160,7 @@ function InboxPopover({
         align="end"
         sideOffset={12}
         collisionPadding={16}
-        className="flex max-h-[min(650px,calc(100dvh-4rem))] w-[min(400px,calc(100vw-2rem))] flex-col p-0"
+        className="flex max-h-[min(650px,calc(100dvh-4rem))] w-[min(460px,calc(100vw-2rem))] flex-col p-0"
       >
         {open && <InboxPanel onClose={() => onOpenChange(false)} />}
       </PopoverContent>

@@ -49,3 +49,14 @@ export type CampaignTargetKind = (typeof CAMPAIGN_TARGET_KINDS)[number];
 
 /** How many images a campaign keeps per product; the post picks one. */
 export const MAX_CAMPAIGN_PRODUCT_IMAGES = 3;
+
+/**
+ * Product photographs one illustration request may be offered.
+ *
+ * Shared for the same reason the sets above are: the client gathers them and
+ * `BLOG_POST_ILLUSTRATE` validates the array, and a client that flattens a
+ * campaign product by product overruns any cap it cannot see — five products
+ * with three photographs each is fifteen, and the rejected request means no
+ * cover at all on exactly the well-stocked campaigns that most deserve one.
+ */
+export const MAX_OFFERED_PHOTOS = 12;

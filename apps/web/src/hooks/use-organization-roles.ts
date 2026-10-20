@@ -5,6 +5,9 @@
  * dynamic access control feature. Combines built-in roles with custom roles.
  */
 
+import { CONNECTION_SCOPE_KEY } from "@decocms/shared/auth/connection-scope";
+import { permissionListFilter } from "@decocms/shared/auth/permission-list";
+import { PROJECT_SCOPE_KEY } from "@decocms/shared/auth/project-scope";
 import { useOrgAuthClient } from "@/hooks/use-org-auth-client";
 import { KEYS } from "@/lib/query-keys";
 import { useProjectContext } from "@/sdk";
@@ -97,6 +100,17 @@ function parsePermission(
         allowsAllModels = true;
       } else {
         modelCount = tools.length;
+      }
+      continue;
+    }
+
+    if (resource === PROJECT_SCOPE_KEY) continue;
+
+    // The connections scope covers whole connections ("*" = all of them)
+    if (resource === CONNECTION_SCOPE_KEY) {
+      if (permissionListFilter(tools).kind !== "only") {
+        allowsAllConnections = true;
+        allowsAllTools = true;
       }
       continue;
     }

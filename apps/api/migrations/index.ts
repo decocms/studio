@@ -1,3 +1,5 @@
+import * as migration254codexsubscriptions from "./254-codex-subscriptions";
+import * as migration255ordermonitor from "./255-order-monitor";
 import * as migration228orgvoiceconfig from "./228-org-voice-config";
 import * as migration221removeprivateregistry from "./221-remove-private-registry";
 import * as migration222orggitcredentials from "./222-org-git-credentials";
@@ -25,6 +27,11 @@ import * as migration245automationsystemkey from "./245-automation-system-key";
 import * as migration246automationprreadytrigger from "./246-automation-pr-ready-trigger";
 import * as migration247automationjiratransition from "./247-automation-jira-transition";
 import * as migration248dropretiredruletables from "./248-drop-retired-rule-tables";
+import * as migration249taskboarditemproject from "./249-task-board-item-project";
+import * as migration250githubcopilotsubscriptions from "./250-github-copilot-subscriptions";
+import * as migration251orgsharedplans from "./251-org-shared-plans";
+import * as migration252automationlinkedchattrigger from "./252-automation-linked-chat-trigger";
+import * as migration253automationprbuiltintriggers from "./253-automation-pr-builtin-triggers";
 import * as migration223droporgmainagentid from "./223-drop-org-main-agent-id";
 import * as migration214connectionssanitizedididx from "./214-connections-sanitized-id-idx";
 import * as migration215commercediscoveryrepository from "./215-commerce-discovery-repository";
@@ -536,6 +543,13 @@ const migrations: Record<string, Migration> = {
   "246-automation-pr-ready-trigger": migration246automationprreadytrigger,
   "247-automation-jira-transition": migration247automationjiratransition,
   "248-drop-retired-rule-tables": migration248dropretiredruletables,
+  "249-task-board-item-project": migration249taskboarditemproject,
+  "250-github-copilot-subscriptions": migration250githubcopilotsubscriptions,
+  "251-org-shared-plans": migration251orgsharedplans,
+  "252-automation-linked-chat-trigger": migration252automationlinkedchattrigger,
+  "253-automation-pr-builtin-triggers": migration253automationprbuiltintriggers,
+  "254-codex-subscriptions": migration254codexsubscriptions,
+  "255-order-monitor": migration255ordermonitor,
 };
 
 export default migrations;

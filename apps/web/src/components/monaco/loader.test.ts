@@ -4,7 +4,7 @@ import { MONACO_VS_PATH } from "@/lib/monaco-vs-path";
 import { configureMonacoLoader } from "./loader";
 
 describe("MONACO_VS_PATH", () => {
-  test("is same-origin — an absolute URL is what the desktop CSP refuses", () => {
+  test("is same-origin, never a CDN URL", () => {
     expect(MONACO_VS_PATH.startsWith("/")).toBe(true);
     expect(MONACO_VS_PATH).not.toMatch(/^[a-z]+:|^\/\//);
   });

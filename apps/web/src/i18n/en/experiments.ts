@@ -51,7 +51,7 @@ export const experiments = {
     "Comparing production (control) with pull request #{number}'s preview (treatment).",
   "experiments.implementation.merged":
     "Pull request #{number} is merged — the change is on the site itself.",
-  "experiments.implementation.openChat": "Open chat",
+  "experiments.implementation.viewImplementation": "Follow implementation",
   "experiments.implementation.viewPr": "View pull request",
   "experiments.preview.openPage": "Open page",
   "experiments.confirm.title": 'Create "{key}" and start implementing?',

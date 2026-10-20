@@ -19,7 +19,7 @@ import {
   DropdownMenuTrigger,
 } from "@decocms/ui/components/dropdown-menu.tsx";
 import { Clock, DotsVertical, Trash01, Zap } from "@untitledui/icons";
-import { useVirtualMCP } from "@/sdk";
+import { useVirtualMCPNonBlocking } from "@/sdk";
 import { AgentAvatar } from "@/components/agent-icon";
 import { useT } from "@/i18n/use-t.ts";
 import {
@@ -39,7 +39,7 @@ export function AutomationListRow({
   const t = useT();
   const { remove } = useAutomationActions();
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const agent = useVirtualMCP(
+  const agent = useVirtualMCPNonBlocking(
     showAgent ? automation.virtual_mcp_id : undefined,
   );
 

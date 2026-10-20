@@ -13,7 +13,6 @@ import { retry } from "@decocms/shared/std";
 import { ConfigRequestError } from "../daemon-client";
 import type { AgentSandboxProvider, SandboxProvider } from "./agent-sandbox";
 import type { ClaimPhase } from "./agent-sandbox/lifecycle-types";
-import { claimTenantKey } from "./agent-sandbox/tenant-pools";
 import { computeHandle } from "./shared";
 import { tagSandboxProvider } from "./shared/provider-tag";
 import type {
@@ -164,9 +163,6 @@ export class SandboxProviderRouter implements SandboxProvider {
       return { kind: "kubernetes", reason: "freestyle-unavailable" };
     }
     if (opts.provider) return { kind: opts.provider, reason: "requested" };
-    if (this.hasWarmPool(opts, image)) {
-      return { kind: "kubernetes", reason: "warm-pool" };
-    }
     if (handleShare(handle) < this.freestyleShare) {
       return { kind: "freestyle", reason: "split" };
     }
@@ -174,14 +170,6 @@ export class SandboxProviderRouter implements SandboxProvider {
     return roomy
       ? { kind: "kubernetes", reason: "split" }
       : { kind: "freestyle", reason: "capacity" };
-  }
-
-  /** The org has pods already cloned and running for this image. */
-  private hasWarmPool(opts: EnsureOptions, image: string): boolean {
-    const tenant = claimTenantKey(opts);
-    if (!tenant) return false;
-    const pools = this.providers.kubernetes?.listTenantPools?.() ?? [];
-    return pools.some((p) => p.tenant === tenant && p.image === image);
   }
 
   async ensure(id: SandboxId, opts: EnsureOptions = {}): Promise<Sandbox> {

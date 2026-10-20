@@ -19,8 +19,10 @@ import type { Database } from "../storage/types";
 import { getPublicSets } from "./public-sets";
 import { syncPublicSetSafe } from "./skill-set-sync";
 
-/** Every 10 minutes, off the :00 boundary to avoid colliding with hourly tasks. */
-const PUBLIC_SETS_SYNC_CRONTAB = "4-59/10 * * * *";
+/** Every 10 minutes, off the :00 boundary to avoid colliding with hourly tasks. Listed, not `4-59/10`:
+ *  DBOS's parser keeps only the values divisible by the step, which ran
+ *  this at :10, :20… on top of the other 10-minute sweeps. */
+const PUBLIC_SETS_SYNC_CRONTAB = "4,14,24,34,44,54 * * * *";
 
 export interface PublicSetsSyncRuntime {
   db: Kysely<Database>;

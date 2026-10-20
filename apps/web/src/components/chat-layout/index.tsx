@@ -35,6 +35,9 @@ interface ChatLayoutProps extends ChatLayoutState, ChatLayoutActions {
   contentKey: string;
   contentNavigation?: ReactNode;
   contentActions?: ReactNode;
+  /** No chat behind this layout (the account-less `/site-editor`): the thread
+   *  stays closed and nothing offers to open it. */
+  threadless?: boolean;
 }
 
 interface ChatLayoutContextValue extends Omit<ChatLayoutProps, "children"> {
@@ -52,7 +55,7 @@ export function useChatLayout(): ChatLayoutState & ChatLayoutActions {
 /** Null outside a ChatLayout (e.g. the settings route), rather than throwing —
  *  for callers that render in both. */
 export function useOptionalChatLayout():
-  | (ChatLayoutState & ChatLayoutActions)
+  | (ChatLayoutState & ChatLayoutActions & { threadless?: boolean })
   | null {
   return use(ChatLayoutContext);
 }
@@ -107,25 +110,27 @@ function ChatLayoutRoot({ children, ...layout }: ChatLayoutProps) {
 
   return (
     <ChatLayoutContext value={value}>
-      <SidebarThreadButtonPortal
-        open={isMobile ? value.mobileSurface === "chat" : threadOpen}
-        onToggle={() => {
-          if (isMobile) {
-            void navigate({
-              to: ".",
-              search: (prev) => ({
-                ...prev,
-                ...mobileSurfaceSearch(
-                  value.mobileSurface === "chat" ? "main" : "chat",
-                ),
-              }),
-              replace: true,
-            });
-          } else {
-            layout.toggleThread();
-          }
-        }}
-      />
+      {!layout.threadless && (
+        <SidebarThreadButtonPortal
+          open={isMobile ? value.mobileSurface === "chat" : threadOpen}
+          onToggle={() => {
+            if (isMobile) {
+              void navigate({
+                to: ".",
+                search: (prev) => ({
+                  ...prev,
+                  ...mobileSurfaceSearch(
+                    value.mobileSurface === "chat" ? "main" : "chat",
+                  ),
+                }),
+                replace: true,
+              });
+            } else {
+              layout.toggleThread();
+            }
+          }}
+        />
+      )}
       {isMobile ? (
         <div
           data-slot="chat-layout"

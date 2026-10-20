@@ -8,6 +8,7 @@ import {
   unwrapVariantSectionValue,
 } from "./section-variants";
 import { unwrapSection } from "./unwrap-section";
+import type { SaveGuard } from "./use-save-block";
 
 /**
  * The value an open section form starts from, in the same shape the form
@@ -47,6 +48,39 @@ export interface FormBase {
   emitted: unknown;
   /** How many sections the page had when the form started. */
   sectionCount: number;
+  /**
+   * Content protocol (v8): the version of the saved block `base` was stored
+   * as, for the save's `ifMatch`. Unset until a save needs it (then read from
+   * the version of the copy `base` was checked against), and moved to each
+   * landed save's version. Other backends compare `base` itself.
+   */
+  version?: string | null;
+  /**
+   * Every version of the section this form started from or saved, as
+   * canonical JSON. A read can answer with one of them after a newer save
+   * landed (the provider lags right after a commit); that is the form's own
+   * past, not someone else's change.
+   */
+  own: string[];
+}
+
+const OWN_VERSIONS_KEPT = 50;
+
+/** Record a version this form saved (or started from). */
+export function rememberOwnVersion(
+  tracked: FormBase,
+  value: Record<string, unknown>,
+): void {
+  tracked.own.push(canonicalBlockJson(value));
+  if (tracked.own.length > OWN_VERSIONS_KEPT) tracked.own.shift();
+}
+
+/** True when `stored` is a version this form itself started from or saved. */
+export function isOwnVersion(
+  tracked: FormBase,
+  stored: Record<string, unknown>,
+): boolean {
+  return tracked.own.includes(canonicalBlockJson(stored));
 }
 
 /**
@@ -77,7 +111,14 @@ export function trackFormChange(
     return tracked;
   }
   return shown
-    ? { sectionIndex, variantIndex, base: shown, emitted: next, sectionCount }
+    ? {
+        sectionIndex,
+        variantIndex,
+        base: shown,
+        emitted: next,
+        sectionCount,
+        own: [canonicalBlockJson(shown)],
+      }
     : null;
 }
 
@@ -127,4 +168,81 @@ export function findSectionMovedTo(
       : [],
   );
   return matches.length === 1 ? (matches[0] as number) : "unknown";
+}
+
+/**
+ * The content protocol's guard for a section form save (v8; the other
+ * backends send the form's `base` instead): `blocks.apply` writes only while
+ * the block is still at the version the form's copy was checked against, and
+ * a refusal comes back as a `BlockConflictError`, as a legacy 409 does.
+ *
+ * A saved block (`formBase` given) takes the form's version: read from the
+ * cache (`versionOf`) when unset or when the form's edits were just rebased
+ * on the stored copy, and moved to each landed save's version. A page
+ * (`formBase: null`), rebuilt from the cache, takes its cached version. Both
+ * are read when the save runs, after the branch's earlier saves landed, so a
+ * save queued behind the form's own previous one expects that one's version.
+ * An unknown version sends no guard.
+ */
+export function formSaveGuard({
+  formBase,
+  rebased,
+  versionOf,
+}: {
+  formBase: FormBase | null;
+  rebased: boolean;
+  versionOf: (blockKey: string) => string | null | undefined;
+}): SaveGuard {
+  let guarded: string | null = null;
+  return {
+    ifMatch: (blockKey) => {
+      guarded = blockKey;
+      if (formBase && (formBase.version === undefined || rebased)) {
+        formBase.version = versionOf(blockKey);
+      }
+      const version = formBase ? formBase.version : versionOf(blockKey);
+      return version === undefined ? undefined : { [blockKey]: version };
+    },
+    onApplied: (versions) => {
+      if (formBase && guarded !== null && Object.hasOwn(versions, guarded)) {
+        formBase.version = versions[guarded];
+      }
+    },
+    reloadOnConflict: true,
+  };
+}
+
+/**
+ * True when the open form shows, at once, the value a save merged onto the
+ * stored section: there is a merge, the form is still on that section (its
+ * record now is the one the save was built from) and has not moved past the
+ * value saved. The merge kept every value the user changed (values both
+ * changed wait for their choice instead, see form-conflict.ts), so nothing
+ * under their cursor changes.
+ */
+export function showMergeInForm({
+  merged,
+  tracked,
+  current,
+  saved,
+}: {
+  merged: boolean;
+  /** The form's record when the save was built. */
+  tracked: FormBase | null;
+  /** The form's record now. */
+  current: FormBase | null;
+  /** The value the save was built from. */
+  saved: unknown;
+}): boolean {
+  return (
+    !!merged && !!tracked && current === tracked && tracked.emitted === saved
+  );
+}
+
+/** True while focus is inside `container` (an input of the open form). */
+export function focusInside(
+  container: Element | null | undefined,
+  active: Element | null | undefined,
+): boolean {
+  return !!container && !!active && container.contains(active);
 }

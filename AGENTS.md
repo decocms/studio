@@ -11,7 +11,6 @@ from the repository root:
 | --- | --- |
 | API tools, routes, storage, or realtime delivery | [apps/api/AGENTS.md](apps/api/AGENTS.md) |
 | Web UI, localization, or experiments | [apps/web/AGENTS.md](apps/web/AGENTS.md) |
-| Native app, signing, or credential storage | [apps/native/AGENTS.md](apps/native/AGENTS.md) |
 | Shared contracts, organization flags, or async utilities | [packages/shared/AGENTS.md](packages/shared/AGENTS.md) |
 | Sandbox provisioning, dispatch, caching, or daemon | [packages/sandbox/AGENTS.md](packages/sandbox/AGENTS.md) |
 | Lint rules, lint configuration, or oxlint version | [plugins/AGENTS.md](plugins/AGENTS.md) |
@@ -20,9 +19,12 @@ from the repository root:
 
 ## Working locally
 
-Use `bun run dev` for the API and web app. Workspace READMEs own setup and
-build instructions. [CONTRIBUTING.md](CONTRIBUTING.md) covers initial setup,
-Git hooks, and the contribution workflow.
+Use `docker compose up --build --watch` (`bun run dev`) for API + web development.
+Compose owns PostgreSQL, NATS, object storage, and startup migrations; source
+syncs into containers while dependencies stay in the image. Do not add managed
+service downloads or process supervision to the CLI. Frontend-only and local
+Kubernetes workflows remain available. [CONTRIBUTING.md](CONTRIBUTING.md) owns
+setup, worktree isolation, and lifecycle commands; workspace READMEs own builds.
 
 Before pushing, run `bun run verify` and include any formatting changes in
 the commit. CI runs the broader checks. Run focused integration or E2E tests

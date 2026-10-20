@@ -20,6 +20,7 @@ function tone(action: InboxTaskUpdate["action"]): string {
       return "font-medium text-foreground";
     case "merge_failed":
     case "review_changes_requested":
+    case "order_incident":
       return "font-medium text-destructive";
     case "review_approved":
       return "font-medium text-success";
@@ -52,6 +53,8 @@ function summarize(
       return t("sidebar.inbox.actionReviewChangesRequested");
     case "merge_failed":
       return t("sidebar.inbox.actionMergeFailed");
+    case "order_incident":
+      return t("sidebar.inbox.actionOrderIncident");
     default: {
       const _exhaustive: never = update.action;
       return String(_exhaustive);
@@ -94,7 +97,7 @@ export function InboxTaskItem({
       <div className="min-w-0 flex-1">
         {/* Title and age share a line so the row has a right column to scan. */}
         <div className="flex items-baseline gap-2">
-          <p className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+          <p className="min-w-0 flex-1 line-clamp-2 break-words text-sm font-medium text-foreground">
             {update.taskTitle}
           </p>
           <span className="shrink-0 text-xs text-muted-foreground/70">

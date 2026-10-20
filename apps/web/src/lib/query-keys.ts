@@ -528,8 +528,11 @@ export const KEYS = {
   aiProviderKeys: (orgId: string) => ["ai-provider-keys", orgId] as const,
   // The caller's own linked Claude subscription (per user, but the tool call is
   // org-scoped, so the key is too).
+  codexSubscription: (orgId: string, userId: string) =>
+    ["codex-subscription", orgId, userId] as const,
   claudeSubscription: (orgId: string) =>
     ["claude-subscription", orgId] as const,
+  githubCopilot: (orgId: string) => ["github-copilot", orgId] as const,
   aiProviderKeyPreview: (keyId: string) =>
     ["ai-provider-key-preview", keyId] as const,
 
@@ -764,6 +767,22 @@ export const KEYS = {
   // so each panel caches independently and refetches on range change.
   cdnData: (base: string, view: string, range: string) =>
     ["monitor", base, "cdn-data", view, range] as const,
+  siteMonitorData: (base: string, view: string, range: string) =>
+    ["monitor", base, "site-data", view, range] as const,
+  // Order monitor: every key starts with this prefix, so one invalidation
+  // (the `order-monitor.store.evaluated` SSE event) refreshes them all.
+  orderMonitor: (org: string) => ["order-monitor", org] as const,
+  orderMonitorStores: (org: string) =>
+    ["order-monitor", org, "stores"] as const,
+  orderMonitorDay: (org: string, connectionId: string, at: string) =>
+    ["order-monitor", org, "day", connectionId, at] as const,
+  orderMonitorPushes: (
+    org: string,
+    connectionId: string,
+    at: string,
+    virtualMcpId: string,
+  ) =>
+    ["order-monitor", org, "pushes", connectionId, at, virtualMcpId] as const,
 
   // Storefront "." shortcut: resolve a site name → project editor.
   editorResolve: (site: string) => ["editor-resolve", site] as const,
@@ -779,29 +798,60 @@ export const KEYS = {
   // Variadic so an invalidation call can pass just the org/vmid/branch prefix
   // and still partial-match the full org/vmid/branch/previewUrl query key.
   liveMeta: (...parts: string[]) => ["live-meta", ...parts] as const,
-  sandboxInvoke: (sandboxKey: string, loaderKey: string) =>
-    ["sandbox-invoke", sandboxKey, loaderKey] as const,
-  // `threadId` is part of the key because it is part of the URL: two sessions
-  // on one branch get different answers from `/config`, and with staleTime
-  // Infinity a shared entry would hand one session the other's repoDir.
-  sandboxRepoDir: (
+  // Which content backend (legacy / content protocol) a project's editor uses.
+  contentBackend: (...parts: string[]) =>
+    ["content-backend", ...parts] as const,
+  // Whether Localhost's app (the preview `deco serve` names) answers.
+  localAppReachable: (url: string) => ["local-app-reachable", url] as const,
+  // Last content-protocol blocks revision and schema version a project saw.
+  contentRevision: (cacheKey: string) =>
+    ["content-revision", cacheKey] as const,
+  // Per block, the content-protocol version of the copy the editor holds.
+  contentVersions: (cacheKey: string) =>
+    ["content-versions", cacheKey] as const,
+  // A protocol project's changes against its base (`changes.list`); the
+  // prefix of its sides too, so one invalidation refreshes both.
+  contentChanges: (cacheKey: string) => ["content-changes", cacheKey] as const,
+  // Who made the other change a conflict dialog shows (hosted v8 drafts),
+  // per version of theirs.
+  conflictAuthor: (draftKey: string, blockKey: string, theirs: string) =>
+    ["conflict-author", draftKey, blockKey, theirs] as const,
+  // Both sides of the listed changes (`changes.get`), per changes revision.
+  contentChangeSides: (cacheKey: string, revision: string) =>
+    ["content-changes", cacheKey, "sides", revision] as const,
+  // A hosted v8 project's draft pointer ({ draft, version }), from the
+  // session decofile read (GitHub backend).
+  protocolDraftRead: (orgSlug: string, virtualMcpId: string, branch: string) =>
+    ["protocol-draft-read", orgSlug, virtualMcpId, branch] as const,
+  // Main's schema answer (`isV8Schema` on main, from the server), once per
+  // project per session: what the editor waits for.
+  mainSchemaV8: (orgSlug: string, virtualMcpId: string) =>
+    ["main-schema-v8", orgSlug, virtualMcpId] as const,
+  // Hosted Deco CMS (v8): a project's releases and site tokens.
+  hostedReleases: (orgSlug: string, virtualMcpId: string) =>
+    ["hosted-releases", orgSlug, virtualMcpId] as const,
+  /** Under `hostedReleases`: a publish or reapply refreshes it too. */
+  hostedReapplyCheck: (
     orgSlug: string,
     virtualMcpId: string,
-    branch: string,
-    threadId: string | null,
-  ) => ["sandbox-repo-dir", orgSlug, virtualMcpId, branch, threadId] as const,
+    sha: string | null,
+    latest: string | null,
+  ) =>
+    [
+      "hosted-releases",
+      orgSlug,
+      virtualMcpId,
+      "reapply-check",
+      sha,
+      latest,
+    ] as const,
+  hostedSiteTokens: (orgSlug: string, virtualMcpId: string) =>
+    ["hosted-site-tokens", orgSlug, virtualMcpId] as const,
+  sandboxInvoke: (sandboxKey: string, loaderKey: string) =>
+    ["sandbox-invoke", sandboxKey, loaderKey] as const,
   // icon-select previews: the site's /sprites.svg, fetched via the preview proxy
   sandboxSprite: (sandboxKey: string) =>
     ["sandbox-sprite", sandboxKey] as const,
-
-  // Native-only coding-agent availability; process-wide, not org-scoped.
-  localAgentCapabilities: () => ["local-agent-capabilities"] as const,
-
-  // Desktop app (Tauri) only — the Keychain auth-status gate read by
-  // `apps/web/src/desktop/use-desktop-auth.ts`. Lives here because
-  // `plugins/enforce-query-key-constants.ts` requires every query key to be a
-  // constant in this registry; it never appears in the web build's cache.
-  desktopAuthStatus: () => ["desktop", "auth-status"] as const,
 } as const;
 
 export function invalidateVirtualMcpQueries(

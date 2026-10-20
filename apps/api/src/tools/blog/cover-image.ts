@@ -16,6 +16,7 @@
  */
 
 import { generateImage } from "ai";
+import type { ProductPhoto } from "./product-photo";
 import {
   buildS3Client,
   FileConfigForbiddenError,
@@ -29,24 +30,65 @@ import {
 import { resolveTier } from "../../core/resolve-tier";
 import type { StudioContext } from "../../core/studio-context";
 
+/** The prompt shape `generateImage` takes; the package does not export it. */
+type ImagePrompt = Parameters<typeof generateImage>[0]["prompt"];
+
 /** A cover is a wide hero; the body images follow whatever the block renders. */
 const COVER_ASPECT = "16:9" as const;
 
-/** One image, start to finish, before the post waiting on it gives up. */
-const IMAGE_TIMEOUT_MS = 90_000;
+/**
+ * One image, start to finish, before the post waiting on it gives up.
+ *
+ * Both attempts share it. The fallback that drops the product photographs is
+ * for a model that refuses image input, which it does immediately — so giving
+ * the retry a fresh ninety seconds would only ever help the case this cannot
+ * help anyway, while doubling the worst case past what the request has.
+ */
+const IMAGE_TIMEOUT_MS = 60_000;
 
 /** Why an image is missing, in the same code-plus-count shape the gaps use. */
 export type ImageOutcome = "ok" | "no-bucket" | "no-model" | "failed";
 
 export interface Painter {
-  /** The address a reader can load, or "" when this one could not be made. */
-  paint(prompt: string, alt: string): Promise<string>;
+  /**
+   * The address a reader can load, or "" when this one could not be made.
+   *
+   * `references` are the product's own photographs. Given them, the model is
+   * conditioned on the thing the post is actually about rather than inventing
+   * one — a cover showing a backpack the brand does not sell is worse than no
+   * cover. A model that will not take image input falls back to the brief.
+   */
+  paint(
+    prompt: string,
+    alt: string,
+    references?: readonly ProductPhoto[],
+  ): Promise<string>;
   outcome(): ImageOutcome;
 }
 
 /** A painter that makes nothing, for the runs that were never going to. */
 function barren(outcome: ImageOutcome): Painter {
   return { paint: async () => "", outcome: () => outcome };
+}
+
+/**
+ * The prompt, with the product's own photographs when there are any.
+ *
+ * Not every image model accepts image input, and the SDK surfaces that as a
+ * failure of the whole call rather than a degraded one. So a reference set is
+ * tried once and dropped on failure: a cover drawn from the brief alone is the
+ * behaviour this had before photographs existed, and it is a long way better
+ * than no cover.
+ */
+function promptWith(
+  prompt: string,
+  references: readonly ProductPhoto[],
+): ImagePrompt {
+  if (references.length === 0) return prompt;
+  return {
+    text: prompt,
+    images: references.map((photo) => photo.bytes),
+  };
 }
 
 /**
@@ -97,14 +139,21 @@ export async function painterFor(
   let outcome: ImageOutcome = "ok";
   return {
     outcome: () => outcome,
-    paint: async (prompt, alt) => {
-      try {
-        const result = await generateImage({
+    paint: async (prompt, alt, references = []) => {
+      const deadline = AbortSignal.timeout(IMAGE_TIMEOUT_MS);
+      const draw = (withReferences: readonly ProductPhoto[]) =>
+        generateImage({
           model: imageModel,
-          prompt,
+          prompt: promptWith(prompt, withReferences),
           n: 1,
           aspectRatio: COVER_ASPECT,
-          abortSignal: AbortSignal.timeout(IMAGE_TIMEOUT_MS),
+          abortSignal: deadline,
+        });
+      try {
+        const result = await draw(references).catch(async (err) => {
+          if (references.length === 0 || deadline.aborted) throw err;
+          console.warn(`[${label}] retrying without the product photos`, err);
+          return draw([]);
         });
         // Thinking image models emit draft frames; the last is the render.
         const image = result.images.at(-1);

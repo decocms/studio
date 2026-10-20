@@ -6,6 +6,8 @@
  * This resolves that allowlist for the caller so read/list tools can hide, and
  * mutation tools can reject, projects outside it.
  *
+ * A member with several roles sees the projects any of them admits.
+ *
  * Returns `null` (unrestricted — sees every project) for:
  *   - owner/admin (they bypass all permission checks anyway),
  *   - built-in roles (owner/admin/user have no organizationRole row),
@@ -13,8 +15,13 @@
  *   - any role whose stored permission omits the `projects` key.
  */
 
-import { getProjectScope } from "@decocms/shared/auth/project-scope";
-import { hasAdminRole } from "@decocms/shared/auth/roles";
+import {
+  getProjectScope,
+  projectScopeFilter,
+  unionProjectScopes,
+} from "@decocms/shared/auth/project-scope";
+import { isScopableProject } from "@decocms/shared/sdk";
+import { hasAdminRole, rolesOf } from "@decocms/shared/auth/roles";
 import { fetchRolePermissions } from "./context-factory";
 import type { StudioContext } from "./studio-context";
 
@@ -47,6 +54,62 @@ export async function resolveCallerProjectScope(
   }
 
   // Built-in roles have no organizationRole row → undefined → unrestricted.
-  const permission = await fetchRolePermissions(ctx.db, organizationId, role);
-  return getProjectScope(permission);
+  const scopes = await Promise.all(
+    rolesOf(role).map(async (one) =>
+      getProjectScope(await fetchRolePermissions(ctx.db, organizationId, one)),
+    ),
+  );
+  return unionProjectScopes(scopes);
+}
+
+const NO_HIDDEN_PROJECTS: ReadonlySet<string> = new Set();
+
+/**
+ * The org's projects the caller may not see. Lists filter on this rather than
+ * on the scope itself, so things filed under an agent that is not a project
+ * (or under nothing) stay visible to a role scoped to a few projects.
+ */
+export async function resolveHiddenProjectIds(
+  ctx: StudioContext,
+): Promise<ReadonlySet<string>> {
+  const filter = projectScopeFilter(await resolveCallerProjectScope(ctx));
+  if (filter.kind === "all") return NO_HIDDEN_PROJECTS;
+  if (filter.kind === "except") return new Set(filter.names);
+
+  const organizationId = ctx.organization?.id;
+  if (!organizationId) return NO_HIDDEN_PROJECTS;
+  const allowed = new Set(filter.names);
+  const projects = await ctx.storage.virtualMcps.list(organizationId);
+  return new Set(
+    projects
+      .filter((project) => isScopableProject(project))
+      .map((project) => project.id)
+      .filter((id) => !allowed.has(id)),
+  );
+}
+
+/** The fields the board attributes a card to a project by. */
+interface ProjectAttributedCard {
+  virtualMcpId: string | null;
+  repo: string | null;
+  threads: readonly { virtualMcpId: string | null }[];
+}
+
+/**
+ * Whether a card is visible when `hidden` projects are not. The board
+ * attributes a card to a project by its stamp, a linked thread, or a project
+ * id older clients wrote into `repo`, so any of them naming a hidden project
+ * hides the card.
+ */
+export function isCardInVisibleProject(
+  hidden: ReadonlySet<string>,
+  card: ProjectAttributedCard,
+): boolean {
+  if (hidden.size === 0) return true;
+  const named = [
+    card.virtualMcpId,
+    card.repo?.trim(),
+    ...card.threads.map((thread) => thread.virtualMcpId),
+  ];
+  return !named.some((id) => id && hidden.has(id));
 }

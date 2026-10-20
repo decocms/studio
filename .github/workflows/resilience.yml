@@ -28,14 +28,14 @@ jobs:
         uses: ./.github/actions/setup-bun
 
       - name: Start infrastructure
-        # `up --build --wait` pulls base images (postgres, nats, toxiproxy) from
+        # `up --build` pulls base images (postgres, nats, toxiproxy) from
         # Docker Hub, which intermittently times out ("registry-1.docker.io:
         # context deadline exceeded") and fails the whole job before any test
         # runs. Retry the startup a few times, tearing down between attempts so
         # each retry starts clean.
         run: |
           for attempt in 1 2 3; do
-            if docker compose -f tests/resilience/docker-compose.yml up -d --build --wait; then
+            if docker compose -f tests/resilience/docker-compose.yml up -d --build; then
               echo "Infrastructure started (attempt $attempt)"
               exit 0
             fi

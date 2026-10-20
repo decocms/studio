@@ -36,11 +36,17 @@ const item = (over: Partial<TaskBoardItem> = {}): TaskBoardItem =>
     ...over,
   }) as TaskBoardItem;
 
-function fakeCtx(over: { humanRejectedDone?: boolean } = {}) {
+function fakeCtx(
+  over: { humanRejectedDone?: boolean; builtinActive?: boolean | null } = {},
+) {
   const updates: { status: string }[] = [];
   const activity: Record<string, unknown>[] = [];
   const ctx = {
     storage: {
+      automations: {
+        builtinActive: async () =>
+          over.builtinActive === undefined ? true : over.builtinActive,
+      },
       taskBoard: {
         hasHumanRejectedDone: async () => over.humanRejectedDone ?? false,
         update: async (
@@ -139,5 +145,17 @@ describe("shipIfMerged", () => {
     const { ctx, updates } = fakeCtx({ humanRejectedDone: true });
     expect(await shipIfMerged(ctx, item(), [merged])).toBe(false);
     expect(updates).toEqual([]);
+  });
+
+  it("leaves the card where it is while the built-in is off", async () => {
+    const { ctx, updates } = fakeCtx({ builtinActive: false });
+    expect(await shipIfMerged(ctx, item(), [merged])).toBe(false);
+    expect(updates).toEqual([]);
+  });
+
+  it("ships for an org not seeded with the built-in yet", async () => {
+    const { ctx, updates } = fakeCtx({ builtinActive: null });
+    expect(await shipIfMerged(ctx, item(), [merged])).toBe(true);
+    expect(updates).toEqual([{ status: "post_deploy_validation" }]);
   });
 });

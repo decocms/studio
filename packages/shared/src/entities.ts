@@ -165,6 +165,9 @@ export interface TaskBoardItem {
    *  preferred over `repo` for binding a run's checkout. Mirrors
    *  `taskBoardItemSchema` in `apps/api/src/tools/task-board/schema.ts`. */
   repositoryId: string | null;
+  /** The project this card belongs to; null leaves it attributed by its
+   *  repository and runs. Mirrors `taskBoardItemSchema`. */
+  virtualMcpId: string | null;
   /** The sprint this card is planned into; null = backlog. */
   sprintId: string | null;
   dueDate: string | null;

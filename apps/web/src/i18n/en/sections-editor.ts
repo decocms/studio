@@ -20,6 +20,8 @@ export const sectionsEditor = {
   "sectionsEditor.arrayField.delete": "Delete",
   "sectionsEditor.arrayField.duplicate": "Duplicate",
   "sectionsEditor.arrayField.hideItem": "Hide item",
+  "sectionsEditor.arrayField.layoutDrill": "Open one item at a time",
+  "sectionsEditor.arrayField.layoutInline": "Edit items in the list",
   "sectionsEditor.arrayField.openActionsFor": "Open actions for {label}",
   "sectionsEditor.arrayField.sectionPickerNotAvailable":
     "Section picker is not available in this editor.",
@@ -146,6 +148,8 @@ export const sectionsEditor = {
   "sectionsEditor.pageJsonDialog.titleShort": "JSON",
   "sectionsEditor.pageSections.blockNameAlreadyExists":
     "A block with this name already exists.",
+  "sectionsEditor.pageSections.blockNameIsBlockType":
+    "A block type already uses this name. Choose another one.",
   "sectionsEditor.pageSections.blockNameInvalidChars":
     "Use letters, numbers, spaces, hyphens, or underscores. Must start with a letter.",
   "sectionsEditor.pageSections.blockNameNoSlashes":
@@ -193,8 +197,16 @@ export const sectionsEditor = {
   "sectionsEditor.secretField.encryptButton": "Encrypt",
   "sectionsEditor.secretField.encryptFailedMessage":
     "Couldn't encrypt this secret with the site's key, so it was not saved. Check that the site is online and try again.",
+  "sectionsEditor.fileField.tooLarge":
+    "This file is larger than the local server accepts ({max}).",
+  "sectionsEditor.secretField.backendUnavailableMessage":
+    "Secrets can be edited once the site's content server answers.",
   "sectionsEditor.secretField.encryptingMessage":
     "Encrypting with the site's key…",
+  "sectionsEditor.secretField.legacySecretUnavailableMessage":
+    "This secret was saved by an older Deco site and can't be edited here. It's re-encrypted when the site migrates.",
+  "sectionsEditor.secretField.noPublicKeyMessage":
+    "Add the site's public key, .deco/secrets.pub, to edit secret fields. Values are encrypted in your browser with it.",
   "sectionsEditor.secretField.pendingMessage":
     "Not saved yet. Press Enter to encrypt and save.",
   "sectionsEditor.secretField.plaintextStoredMessage":
@@ -269,12 +281,52 @@ export const sectionsEditor = {
     "This block changed while you were editing and could not be saved. The latest version is loaded.",
   "sectionsEditor.sectionsEditor.blockFieldsChangedElsewhere":
     "Not saved: {fields} changed while you were editing. The latest version is loaded.",
-  "sectionsEditor.sectionsEditor.formFieldsKeptFromStored":
-    "Changed while you were editing: {fields}. The latest version of those fields was kept, and the rest of your changes were saved.",
+  "sectionsEditor.formConflict.titleOne":
+    "Someone else changed the {field} while you were editing",
+  "sectionsEditor.formConflict.descriptionOne":
+    "Pick the one to keep. The other is discarded.",
+  "sectionsEditor.formConflict.titleStep":
+    "Someone else also changed the {field}",
+  "sectionsEditor.formConflict.descriptionStep":
+    "Pick the one to keep. You can go back before saving.",
+  "sectionsEditor.formConflict.summaryYours": "yours",
+  "sectionsEditor.formConflict.summaryTheirs": "theirs",
+  "sectionsEditor.formConflict.steps": "Fields to choose",
+  "sectionsEditor.formConflict.stepCount": "{step} of {count}",
+  "sectionsEditor.formConflict.stepChangedAgain": "{label}, changed again",
+  "sectionsEditor.formConflict.back": "Back",
+  "sectionsEditor.formConflict.next": "Next",
+  "sectionsEditor.formConflict.ok": "OK",
+  "sectionsEditor.formConflict.changedAgain":
+    "Their version changed again while this was open. It's shown below.",
+  "sectionsEditor.formConflict.changedAgainSteps":
+    "Their version changed again while this was open. Each step now shows the newer one.",
+  "sectionsEditor.formConflict.you": "You",
+  "sectionsEditor.formConflict.someoneElse": "Someone else",
+  "sectionsEditor.formConflict.yourVersionNotSaved":
+    "Your version · not saved yet",
+  "sectionsEditor.formConflict.theirVersionSaved":
+    "Their version · already saved",
+  "sectionsEditor.formConflict.titleOneNamed":
+    "{name} changed the {field} while you were editing",
+  "sectionsEditor.formConflict.titleOneYou":
+    "You changed the {field} in another tab or window",
+  "sectionsEditor.formConflict.titleStepNamed":
+    "{name} also changed the {field}",
+  "sectionsEditor.formConflict.titleStepYou":
+    "You also changed the {field} in another tab or window",
+  "sectionsEditor.formConflict.summaryTheirsNamed": "{name}'s",
+  "sectionsEditor.formConflict.youElsewhere": "You, in another tab or window",
+  "sectionsEditor.formConflict.savedAt": "saved {when}",
+  "sectionsEditor.formConflict.empty": "Empty",
+  "sectionsEditor.formConflict.yes": "Yes",
+  "sectionsEditor.formConflict.no": "No",
+  "sectionsEditor.formConflict.oneItem": "1 item",
+  "sectionsEditor.formConflict.items": "{count} items",
   "sectionsEditor.sectionsEditor.sectionReplacedElsewhere":
     "This section was replaced while you were editing. The form now shows the current section, and your last change was not saved.",
   "sectionsEditor.sectionsEditor.blockMergedWithOthers":
-    "This block was updated while you were editing. Your changes were applied on top of the latest version.",
+    "Someone else also edited this block. Both changes were kept.",
   "sectionsEditor.sectionsEditor.saveFailed": "Save failed: {error}",
   "sectionsEditor.sectionsEditor.savedGlobalBlock":
     'Saved global block "{blockId}"',

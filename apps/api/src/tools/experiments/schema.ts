@@ -1,11 +1,16 @@
 import { z } from "zod";
 
 const experimentVariantSchema = z.object({
-  id: z.string().min(1).describe("Arm id, e.g. `control` or `variant-b`."),
+  id: z
+    .string()
+    .min(1)
+    .max(120)
+    .describe("Arm id, e.g. `control` or `variant-b`."),
   weight: z.number().int().min(0).max(100),
   role: z.enum(["control", "treatment"]).nullable().optional(),
   description: z
     .string()
+    .max(500)
     .nullable()
     .optional()
     .describe("One sentence: what this arm specifically shows or does."),
@@ -40,6 +45,7 @@ export const experimentSchema = z.object({
 export const variantsInputSchema = z
   .array(experimentVariantSchema)
   .min(1)
+  .max(20)
   .superRefine((vs, ctx) => {
     const sum = vs.reduce((a, v) => a + v.weight, 0);
     if (sum !== 100) {

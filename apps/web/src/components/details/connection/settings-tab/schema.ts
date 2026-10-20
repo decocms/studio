@@ -83,3 +83,28 @@ export const connectionFormSchema = z
 
 export type ConnectionFormData = z.infer<typeof connectionFormSchema>;
 export type EnvVar = z.infer<typeof envVarSchema>;
+
+/**
+ * Scopes to save with a configuration: the ones already saved, plus the ones
+ * the MCP declares in MCP_CONFIGURATION whose state key is now set. Without
+ * the declared ones a binding picked in the form never becomes a credential
+ * grant. A declared scope whose key is unset stays out, because the server
+ * rejects a scope that references a missing key.
+ */
+export function configurationScopesFor(
+  saved: string[],
+  declared: string[],
+  state: Record<string, unknown>,
+): string[] {
+  const isSet = (scope: string) => {
+    if (scope === "*") return true;
+    const key = scope.split("::")[0] ?? "";
+    let value: unknown = state;
+    for (const part of key.split(".")) {
+      if (value === null || typeof value !== "object") return false;
+      value = (value as Record<string, unknown>)[part];
+    }
+    return value !== undefined && value !== null;
+  };
+  return [...new Set([...saved, ...declared.filter(isSet)])];
+}

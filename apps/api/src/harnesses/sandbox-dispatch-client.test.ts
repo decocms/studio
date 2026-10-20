@@ -75,6 +75,24 @@ describe("selectRunConnections", () => {
     { id: WellKnownOrgMCPId.SELF(organizationId), status: "active" },
   ];
 
+  test("mounts a sandbox sign-in connection without the agent or the org-wide flag, unless excluded", () => {
+    const figma = {
+      id: "conn_figma",
+      status: "active",
+      connection_url: "https://mcp.figma.com/mcp",
+    };
+    const select = (excludedIds?: Set<string>) =>
+      selectRunConnections({
+        organizationId,
+        orgWide: false,
+        ownIds: new Set<string>(),
+        excludedIds,
+        connections: [...connections, figma],
+      }).map((c) => c.id);
+    expect(select()).toEqual(["conn_figma"]);
+    expect(select(new Set(["conn_figma"]))).toEqual([]);
+  });
+
   test("mounts the agent's own connections without the org-wide flag", () => {
     expect(
       selectRunConnections({
@@ -199,6 +217,7 @@ describe("harnessSessionKey", () => {
 describe("harnessRunsInSandbox", () => {
   test("claude-code is sandbox-hosted", () => {
     expect(harnessRunsInSandbox("claude-code")).toBe(true);
+    expect(harnessRunsInSandbox("codex")).toBe(true);
   });
 
   test("decopilot is not — it runs in-process", () => {
@@ -399,8 +418,8 @@ describe("pushSandboxEnv", () => {
     expect(thrown).toBeInstanceOf(Error);
   });
 
-  test("a 404/410/5xx status from the daemon is retriable, not a hard failure", async () => {
-    for (const status of [404, 410, 503]) {
+  test("a 401/404/410/5xx status from the daemon is retriable, not a hard failure", async () => {
+    for (const status of [401, 404, 410, 503]) {
       const provider = fakeProvider(
         async () => new Response("gone", { status }),
       );
@@ -579,22 +598,29 @@ describe("dispatchWithContinuation", () => {
     // Dropping this `start` too left the run with parts and no message: the
     // projector never opened one, so the turn rendered empty.
     let attempt = 0;
+    const resumes: Array<{ reason: string } | null> = [];
+    const revalidations: boolean[] = [];
     const chunks = await collect(
       dispatchWithContinuation({
         runId: "run_1",
         resume: null,
         aborted: () => false,
-        dispatchOnce: () =>
-          ++attempt === 1
+        dispatchOnce: (resume, revalidate) => {
+          resumes.push(resume);
+          revalidations.push(revalidate);
+          return ++attempt === 1
             ? dispatch([], new SandboxUnreachableError("pod never answered"))()
             : dispatch([
                 chunk("start", { messageId: "msg_b" }),
                 chunk("finish"),
-              ])(),
+              ])();
+        },
       }),
     );
     expect(chunks.map((c) => c.type)).toEqual(["start", "finish"]);
     expect((chunks[0] as { messageId?: string }).messageId).toBe("msg_b");
+    expect(resumes).toEqual([null, null]);
+    expect(revalidations).toEqual([false, true]);
   });
 
   test("a caller-supplied resume drops the harness's first `start` too", async () => {
@@ -885,7 +911,10 @@ describe("a lost sandbox's cause reaches the agent and the thread", () => {
         dispatchOnce: (resume) => {
           resumes.push(resume);
           return ++attempt === 1
-            ? dispatch([], new SandboxUnreachableError("stream broke"))()
+            ? dispatch(
+                [chunk("start")],
+                new SandboxUnreachableError("stream broke"),
+              )()
             : dispatch([chunk("start"), chunk("finish")])();
         },
       }),

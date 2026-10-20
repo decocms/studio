@@ -6,7 +6,7 @@ import { ArrowRight, Stars02 } from "@untitledui/icons";
 import {
   getPrompt,
   isStudioPackAgent,
-  useMCPClient,
+  useMCPClientNonBlocking,
   useProjectContext,
 } from "@/sdk";
 import type { Prompt } from "@modelcontextprotocol/sdk/types.js";
@@ -28,11 +28,14 @@ export function NextActionChip() {
   const { org } = useProjectContext();
   const virtualMcpId = task?.virtualMcpId;
   const { prompts } = useHomeNextActions(org.slug);
-  const client = useMCPClient({
-    connectionId: virtualMcpId ?? null,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const client = useMCPClientNonBlocking(
+    {
+      connectionId: virtualMcpId ?? null,
+      orgId: org.id,
+      orgSlug: org.slug,
+    },
+    { enabled: !!virtualMcpId && isStudioPackAgent(virtualMcpId) },
+  );
   const [dialogPrompt, setDialogPrompt] = useState<Prompt | null>(null);
 
   if (!virtualMcpId || isStreaming) return null;

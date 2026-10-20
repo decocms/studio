@@ -9,11 +9,7 @@ import { withOrgOverride } from "./with-org-override";
 /** A member of `org_admin_hq` somewhere, but the org the tool is standing in
  *  right now (`org_caller`) is not itself an admin org. */
 function adminOrgElsewhereSettings(): Settings {
-  const { settings } = resolveConfig(
-    { port: "", home: "", localMode: false, skipMigrations: false },
-    { STUDIO_ADMIN_ORG_IDS: "org_admin_hq" },
-  );
-  return { ...settings, databaseUrl: "", natsUrls: [] } as Settings;
+  return resolveConfig({ STUDIO_ADMIN_ORG_IDS: "org_admin_hq" });
 }
 
 const previousSettings = (() => {

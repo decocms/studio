@@ -26,6 +26,9 @@ declare module "@tanstack/react-router" {
     mainView?: string;
     /** The nested Site Editor surface owned by the matched leaf route. */
     siteEditorView?: "preview" | "content" | "code";
+    /** Served by a tool on this machine, outside any org and project
+     *  (`/site-editor`): the app is open, but there is no project to own it. */
+    local?: boolean;
   }
 }
 

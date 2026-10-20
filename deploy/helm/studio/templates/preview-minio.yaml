@@ -7,13 +7,6 @@ credential distributed to every preview namespace, a bucket (or prefix) to
 create and destroy per PR, and a sweeper for whatever outlives its PR. A pod per
 namespace has none of those — deleting the namespace deletes the storage.
 
-NOT the application's own auto-provisioned MinIO. Studio downloads a MinIO
-binary at boot when no S3_* is configured, which is a `deco dev` convenience and
-wrong here three times over: it re-downloads on every pod start (this pool is
-spot, with 1m consolidation), it puts dl.min.io in the boot path of every
-preview, and it assumes ONE process — the preview pod runs two API containers
-that would race for the same port and data directory.
-
 emptyDir, not a PVC: nothing here is worth persisting, and PVC finalizers are
 the most common cause of a namespace that never finishes deleting.
 */ -}}

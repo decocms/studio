@@ -50,7 +50,7 @@ import {
 } from "@untitledui/icons";
 import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
 
-import { Suspense, useState } from "react";
+import { startTransition, Suspense, useState } from "react";
 import { toast } from "sonner";
 import { DetailPanel } from "./detail-panel";
 import {
@@ -848,7 +848,10 @@ export function ToolDetailsView({
         toolName={toolName}
         connectionId={connectionId}
         siblings={siblings}
-        onSelectInstance={setSelectedConnectionId}
+        // A transition keeps the current instance on screen while the next loads.
+        onSelectInstance={(id) =>
+          startTransition(() => setSelectedConnectionId(id))
+        }
         onBack={onBack}
       />
     </Suspense>

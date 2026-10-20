@@ -54,7 +54,7 @@ import {
 } from "@decocms/ui/components/time-range-picker.tsx";
 import { expressionToDate } from "@decocms/ui/lib/time-expressions.ts";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { Suspense, useRef, useState } from "react";
+import { Suspense, useDeferredValue, useRef, useState } from "react";
 import { Plus, Trash01, Code01, Grid01 } from "@untitledui/icons";
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import {
@@ -74,6 +74,9 @@ import { AuditTabContent, MonitoringLogsTable } from "./audit.tsx";
 import { ThreadsTabContent } from "./threads.tsx";
 import { ThreadsFiltersPopover } from "./threads-filters-popover.tsx";
 import { AutomationsTabContent } from "./automations.tsx";
+import { OrderMonitorStoresTab } from "@/components/order-monitor/order-monitor-stores";
+import { FeatureGate } from "@/components/paywall/feature-gate";
+import { usePublicConfig } from "@/hooks/use-public-config";
 import { getOrgMembers } from "./utils.ts";
 import { track } from "@/lib/posthog-client";
 
@@ -84,16 +87,25 @@ import { track } from "@/lib/posthog-client";
  */
 const EMPTY_ARRAY: never[] = [];
 
-type MonitoringTab = "threads" | "overview" | "audit" | "automations";
+type MonitoringTab =
+  | "threads"
+  | "overview"
+  | "audit"
+  | "automations"
+  | "stores";
 
 /** Chats come first: they are what the monitor is opened for. */
 function useMonitoringTabs(): { id: MonitoringTab; label: string }[] {
   const t = useT();
+  const config = usePublicConfig();
   return [
     { id: "threads", label: t("orgs.monitoring.chats") },
     { id: "overview", label: t("orgs.monitoring.overview") },
     { id: "audit", label: t("orgs.monitoring.audit") },
     { id: "automations", label: t("orgs.monitoring.automations") },
+    ...(config.orderMonitorEnabled === true
+      ? [{ id: "stores" as const, label: t("orderMonitor.storesTab") }]
+      : []),
   ];
 }
 
@@ -634,6 +646,8 @@ interface MonitoringDashboardContentProps {
   from: string;
   to: string;
   propertyFilters: PropertyFilter[];
+  store: string | undefined;
+  at: string | undefined;
   onUpdateFilters: (updates: Partial<MonitoringSearchParams>) => void;
   onTimeRangeChange: (range: TimeRangeValue) => void;
   onStreamingToggle: () => void;
@@ -655,6 +669,8 @@ function MonitoringDashboardContent({
   from,
   to,
   propertyFilters,
+  store,
+  at,
   onUpdateFilters,
   onTimeRangeChange,
   onStreamingToggle,
@@ -666,8 +682,10 @@ function MonitoringDashboardContent({
   const { data: membersData } = useMembers();
 
   const [connectionSearch, setConnectionSearch] = useState("");
+  // Deferred: a new term keeps the old options up instead of suspending the page.
+  const deferredConnectionSearch = useDeferredValue(connectionSearch);
   const searchFilteredConnections = useConnections({
-    searchTerm: connectionSearch || undefined,
+    searchTerm: deferredConnectionSearch || undefined,
   });
   const connectionOptions = (searchFilteredConnections ?? []).map((conn) => {
     const icon = conn.icon;
@@ -782,7 +800,12 @@ function MonitoringDashboardContent({
                 if (next) onTabChange(next.id);
               }}
             />
-            <div className="flex items-center gap-2">
+            <div
+              className={cn(
+                "flex items-center gap-2",
+                tab === "stores" && "hidden",
+              )}
+            >
               {(tab === "overview" || tab === "audit") && (
                 <>
                   <Button
@@ -952,7 +975,20 @@ function MonitoringDashboardContent({
         </div>
       </Page.Container>
 
-      {tab === "automations" ? (
+      {tab === "stores" ? (
+        <div className="flex-1 flex flex-col overflow-auto min-w-0">
+          <FeatureGate feature="monitoring">
+            <OrderMonitorStoresTab
+              orgSlug={org.slug}
+              store={store}
+              at={at}
+              onSelect={(selection) =>
+                onUpdateFilters({ store: selection.store, at: selection.at })
+              }
+            />
+          </FeatureGate>
+        </div>
+      ) : tab === "automations" ? (
         <AutomationsTabContent dateRange={dateRange} />
       ) : tab === "threads" ? (
         <ThreadsTabContent
@@ -969,22 +1005,30 @@ function MonitoringDashboardContent({
           filterSource={threadFilterSource}
         />
       ) : tab === "audit" ? (
-        <AuditTabContent
-          client={client}
-          locator={locator}
-          baseParams={baseParams}
-          pageSize={pageSize}
-          isStreaming={isStreaming}
-          streamingRefetchInterval={streamingRefetchInterval}
-          connectionIds={connectionIds}
-          virtualMcpIds={virtualMcpIds}
-          tool={tool}
-          status={status}
-          searchQuery={searchQuery}
-          allConnections={allConnections}
-          allVirtualMcps={allVirtualMcps}
-          membersData={membersData}
-        />
+        <Suspense
+          fallback={
+            <div className="flex-1 flex flex-col overflow-auto md:overflow-hidden">
+              <MonitoringLogsTable.Skeleton />
+            </div>
+          }
+        >
+          <AuditTabContent
+            client={client}
+            locator={locator}
+            baseParams={baseParams}
+            pageSize={pageSize}
+            isStreaming={isStreaming}
+            streamingRefetchInterval={streamingRefetchInterval}
+            connectionIds={connectionIds}
+            virtualMcpIds={virtualMcpIds}
+            tool={tool}
+            status={status}
+            searchQuery={searchQuery}
+            allConnections={allConnections}
+            allVirtualMcps={allVirtualMcps}
+            membersData={membersData}
+          />
+        </Suspense>
       ) : (
         <div className="flex-1 flex flex-col overflow-auto min-w-0">
           <OverviewTabContent
@@ -1037,6 +1081,8 @@ export default function MonitoringDashboard() {
     streaming = true,
     propertyFilters: propertyFiltersStr = "",
     hideSystem = false,
+    store,
+    at,
   } = search;
 
   const propertyFilters = deserializePropertyFilters(propertyFiltersStr);
@@ -1052,19 +1098,19 @@ export default function MonitoringDashboard() {
     });
   };
 
+  // Pinned per picked range, so a re-render can't change the logs query key.
+  const [anchorAt, setAnchorAt] = useState(() => Date.now());
   const handleTimeRangeChange = (range: TimeRangeValue) => {
+    setAnchorAt(Date.now());
     updateFilters({ from: range.from, to: range.to });
   };
 
-  const fromResult = expressionToDate(from);
-  const toResult = expressionToDate(to);
-  // Frozen at mount: a default window that slid with every render would
-  // change the query key and refetch forever.
-  const [mountedAt] = useState(() => Date.now());
+  const now = new Date(anchorAt);
+  const fromResult = expressionToDate(from, now);
+  const toResult = expressionToDate(to, now);
 
-  const startDate =
-    fromResult.date || new Date(mountedAt - 24 * 60 * 60 * 1000);
-  const originalEndDate = toResult.date || new Date();
+  const startDate = fromResult.date || new Date(anchorAt - 24 * 60 * 60 * 1000);
+  const originalEndDate = toResult.date || now;
 
   const displayDateRange = { startDate, endDate: originalEndDate };
 
@@ -1154,6 +1200,8 @@ export default function MonitoringDashboard() {
               from={from}
               to={to}
               propertyFilters={propertyFilters}
+              store={store}
+              at={at}
               onUpdateFilters={updateFilters}
               onTimeRangeChange={(range) => {
                 track("monitoring_time_range_changed", {

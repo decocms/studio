@@ -13,11 +13,14 @@
  * because a repository is how a project is identified on a task, not a second
  * thing to choose.
  *
+ * A card may also carry `virtualMcpId`, the project it was stamped for. When
+ * the index knows that project it outranks every inference below — it is the
+ * only way to tell apart projects that share one repository. `repo` keeps its
+ * shape and its writers, so every server consumer of it
+ * (`shouldAdvanceToReview`, the reviewer's connection pin, stall recovery,
+ * GLOBAL_SEARCH) keeps working untouched.
+ *
  * WHAT IS NOT HERE, deliberately:
- *  - No new persisted field. `task_board_items.repo` stays the only per-card
- *    link, with the same shape and the same writers it has today, so every
- *    server consumer of it (`shouldAdvanceToReview`, the reviewer's connection
- *    pin, stall recovery, GLOBAL_SEARCH) keeps working untouched.
  *  - No write to `?virtualmcpid=` from a board control. Coupling the exact
  *    board filter to the inclusive ambient scope is what #6801 removed, and
  *    re-creating it from the other end would hide every repo-less card the
@@ -33,6 +36,8 @@ import { projectRepo, resolveRepositoryAttachment } from "./repository-binding";
 /** The repo field can also contain a project id written by existing clients. */
 export interface AttributableTask {
   repo?: string | null;
+  /** The project the card was stamped for, which outranks every inference. */
+  virtualMcpId?: string | null;
   threads?: readonly { virtualMcpId?: string | null }[];
 }
 
@@ -65,8 +70,10 @@ export function normalizeRepo(label: string | null | undefined): string {
  * projects over one monorepo, which the data model has allowed since migration
  * 158 dropped its one-parent trigger).
  *
- * `kind: "project"` — keyed by the `vir_…` id, for a project with no repository.
- * Cards reach it through a linked thread or a project id stored in `repo`.
+ * `kind: "project"` — keyed by the `vir_…` id: a project with no repository,
+ * or one of several sharing a repository (an option, see
+ * {@link ProjectIndex.options}). Cards reach it through a stamp, a linked
+ * thread, or a project id stored in `repo`.
  */
 export interface ProjectIndexEntry {
   /** The value the board's `?repo=` param carries for this bucket. */
@@ -83,6 +90,15 @@ export interface ProjectIndexEntry {
 export interface ProjectIndex {
   /** Projects first (by title), then unclaimed repositories (by label). */
   entries: ProjectIndexEntry[];
+  /**
+   * What a picker offers: {@link entries} with every shared repository split
+   * into one entry per project, keyed by project id. A card can be stamped for
+   * one of those projects, so each is a choice of its own. The shared bucket
+   * stays in {@link entries} for `?repo=owner/name` links.
+   */
+  options: ProjectIndexEntry[];
+  /** Option id → option, for the ids {@link byId} does not hold. */
+  byOption: Map<string, ProjectIndexEntry>;
   byId: Map<string, ProjectIndexEntry>;
   /** Normalized `owner/name` → entry. */
   byRepo: Map<string, ProjectIndexEntry>;
@@ -187,60 +203,81 @@ export function buildProjectIndex(
     ...[...claimed, ...repoless].sort(byTitle),
     ...unclaimed.sort(byTitle),
   ];
+  const perProject = [...claimed, ...repoless].flatMap((entry) =>
+    entry.projects.length > 1
+      ? entry.projects.map(
+          (project): ProjectIndexEntry => ({
+            id: project.id,
+            kind: "project",
+            repo: entry.repo,
+            title: project.title,
+            projects: [project],
+          }),
+        )
+      : [entry],
+  );
+  const options = [...perProject.sort(byTitle), ...unclaimed];
 
   return {
     entries,
+    options,
     byId: new Map(entries.map((entry) => [entry.id, entry] as const)),
+    byOption: new Map(options.map((entry) => [entry.id, entry] as const)),
     byRepo,
     byProject,
   };
 }
 
+/** The project a card was stamped for, when the index knows it. An unknown
+ *  stamp (a project past the listed page, or the first frame before the list
+ *  lands) falls back to inference rather than hiding the card. */
+function stampedProject(
+  task: AttributableTask,
+  index: ProjectIndex,
+): VirtualMCPEntity | undefined {
+  const id = task.virtualMcpId?.trim();
+  if (!id) return undefined;
+  return index.byProject.get(id)?.projects.find((p) => p.id === id);
+}
+
 /**
  * Which bucket a card belongs to, or null when nothing says.
  *
- * Threads take precedence. Then resolve `repo` as an exact project id before
- * trying a case-insensitive repository name.
+ * A stamped project decides. Then threads, then `repo` read as an exact
+ * project id, then `repo` as a case-insensitive repository name. A hint that
+ * names one of several projects sharing a repository resolves to that
+ * project's own option.
+ *
+ * A repository several projects share names none of them: the card belongs to
+ * no project until it is stamped, so it shows on the org board under "No
+ * project" rather than on every sibling's board.
  */
 export function entryForTask(
   task: AttributableTask,
   index: ProjectIndex,
 ): ProjectIndexEntry | null {
-  for (const thread of task.threads ?? []) {
-    const found = thread.virtualMcpId
-      ? index.byProject.get(thread.virtualMcpId)
-      : undefined;
-    if (found) return found;
+  const named = [
+    stampedProject(task, index)?.id,
+    ...(task.threads ?? []).map((thread) => thread.virtualMcpId),
+    task.repo?.trim(),
+  ];
+  for (const id of named) {
+    if (!id) continue;
+    const entry = index.byProject.get(id);
+    if (!entry) continue;
+    return entry.projects.length > 1 ? (index.byOption.get(id) ?? null) : entry;
   }
-  const project = index.byProject.get((task.repo ?? "").trim());
-  if (project) return project;
   const repo = normalizeRepo(task.repo);
-  return (repo ? index.byRepo.get(repo) : undefined) ?? null;
+  const entry = repo ? index.byRepo.get(repo) : undefined;
+  return entry && entry.projects.length <= 1 ? entry : null;
 }
 
-/**
- * Every project a card can honestly be listed under.
- *
- * A shared bucket with a thread hint resolves to the one project that ran it.
- * A shared bucket without one resolves to BOTH: showing a card twice is honest,
- * showing it once under a project that may not own it is not.
- */
+/** The projects a card is listed under: at most one, see {@link entryForTask}. */
 export function projectsForTask(
   task: AttributableTask,
   index: ProjectIndex,
 ): VirtualMCPEntity[] {
-  const entry = entryForTask(task, index);
-  if (!entry) return [];
-  if (entry.projects.length <= 1) return entry.projects;
-  for (const thread of task.threads ?? []) {
-    const named = thread.virtualMcpId
-      ? entry.projects.find((p) => p.id === thread.virtualMcpId)
-      : undefined;
-    if (named) return [named];
-  }
-  const stamped = entry.projects.find((p) => p.id === task.repo?.trim());
-  if (stamped) return [stamped];
-  return entry.projects;
+  return entryForTask(task, index)?.projects ?? [];
 }
 
 /**
@@ -255,8 +292,10 @@ export function projectsForTask(
  * inside it, and conflating the two is what made them indistinguishable.
  *
  * Attribution is `projectsForTask`, so a repo-less project is still reached
- * through its runs and a card on a repository two projects share counts for
- * both — the same answer the sidebar and the home already give.
+ * through its runs, and an unstamped card on a repository two projects share
+ * belongs to neither — the same answer the sidebar and the home give. The
+ * index must hold the org's projects, not just this one, or a shared
+ * repository reads as this project's alone.
  */
 export function tasksForProject<T extends AttributableTask>(
   tasks: readonly T[],
@@ -300,6 +339,7 @@ export function entryForFilter(
   return (
     index.byId.get(filterId) ??
     index.byRepo.get(normalizeRepo(filterId)) ??
+    index.byOption.get(filterId) ??
     index.byProject.get(filterId)
   );
 }
@@ -307,12 +347,14 @@ export function entryForFilter(
 /**
  * Whether a card survives the board's project filter.
  *
- * The four branches, and why each is what it is:
+ * The branches, and why each is what it is:
  *  - No filter: everything.
- *  - {@link NO_PROJECT_FILTER}: the cards no bucket claims. Once the project
- *    list has loaded this is a strict subset of the `repo == null` test it
- *    replaces; on the first frame `byProject` is still empty, so a
- *    thread-attributed card appears here and then leaves.
+ *  - {@link NO_PROJECT_FILTER}: the cards no bucket claims, which includes an
+ *    unstamped card on a repository several projects share. On the first
+ *    frame `byProject` is still empty, so a thread-attributed card appears
+ *    here and then leaves.
+ *  - A stamped card the index knows, or a project's own option: membership is
+ *    the project `projectsForTask` names, never the repository string.
  *  - A resolved bucket: the card's literal `repo` matches it (the exact test
  *    this replaces) OR the card RESOLVES into it. Since `entryForTask` reads
  *    threads before `repo`, that second clause also admits a card stamped for
@@ -338,6 +380,11 @@ export function taskMatchesProjectFilter(
   if (!entry) {
     if (!filterId.includes("/")) return true;
     return normalizeRepo(task.repo) === normalizeRepo(filterId);
+  }
+  if (entry.kind === "project" || stampedProject(task, index)) {
+    return projectsForTask(task, index).some((p) =>
+      entry.projects.some((q) => q.id === p.id),
+    );
   }
   if (entry.repo && normalizeRepo(task.repo) === normalizeRepo(entry.repo)) {
     return true;
@@ -384,14 +431,18 @@ export function filterAfterCreate(
 }
 
 /**
- * The buckets a card can be STAMPED with.
+ * The options a card can be STAMPED with.
  *
- * A bucket needs a repository, because `task_board_items.repo` is the only
- * per-card link there is — and it must not be one whose connection was torn
- * down. `projectRepo` deliberately still answers for a `detached` project so
- * its existing cards stay visible, but no PR can ever be opened there, and the
- * server refuses to advance a card with `repo != null && !hasPr`. Stamping one
- * parks a card In Progress forever.
+ * Every project, each as its own option — including each of several that
+ * share a repository, and a project with no repository, which a card reaches
+ * through `virtualMcpId` alone. A repository no project claims is offered
+ * too, stamping `repo` only.
+ *
+ * A project whose repository connection was torn down is left out:
+ * `projectRepo` still answers for a `detached` project so its existing cards
+ * stay visible, but no PR can ever be opened there, and the server refuses to
+ * advance a card with `repo != null && !hasPr`. Stamping one parks a card In
+ * Progress forever.
  *
  * The test is the project's own attachment, NOT the org's connection list. A
  * list-based gate empties this picker whenever the org reaches its repositories
@@ -399,13 +450,24 @@ export function filterAfterCreate(
  * a worse failure than the one it prevents, because it is the common case.
  */
 export function stampableEntries(index: ProjectIndex): ProjectIndexEntry[] {
-  return index.entries.filter(
-    (entry) =>
-      entry.repo !== null &&
-      (entry.projects.length === 0 ||
-        entry.projects.some(
-          (project) =>
-            resolveRepositoryAttachment(project).status !== "detached",
-        )),
+  return index.options.filter((entry) =>
+    entry.projects.every(
+      (project) =>
+        entry.repo === null ||
+        resolveRepositoryAttachment(project).status !== "detached",
+    ),
   );
+}
+
+/** What picking an option writes on a card: its repository, and its project
+ *  when it is one. */
+export function stampFor(entry: ProjectIndexEntry | null): {
+  repo: string | null;
+  virtualMcpId: string | null;
+} {
+  return {
+    repo: entry?.repo ?? null,
+    virtualMcpId:
+      entry?.projects.length === 1 ? (entry.projects[0]?.id ?? null) : null,
+  };
 }

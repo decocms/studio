@@ -81,9 +81,6 @@ const PHASES = [
   "sandbox.campaignGen.phaseReviewing",
 ] as const satisfies ReadonlyArray<TranslationKey>;
 
-/** Reading the store dominates the wait, so the first phase holds longest. */
-const PHASE_MS = [25_000, 25_000];
-
 /**
  * A gap code, worded.
  *
@@ -173,20 +170,57 @@ export function GenerateCampaignsDialog({
   async function run() {
     setStep("running");
     setPhase(0);
-    const timers = PHASE_MS.map((_, i) =>
-      setTimeout(
-        () => setPhase(i + 1),
-        PHASE_MS.slice(0, i + 1).reduce((a, b) => a + b, 0),
-      ),
-    );
     try {
+      /**
+       * Three requests where there was one, because the three phases together
+       * ran past the edge proxy — which answers 524 and hangs up while the
+       * server keeps spending the organization's credits.
+       *
+       * The phase label is now the call boundary rather than a timer that
+       * guessed at twenty-five seconds a step. Both reads are enrichment: a
+       * campaign proposed without them says what it could not check, which is
+       * the behaviour for a brand with no connections at all.
+       */
+      const grounding = await call("BLOG_SITE_GROUND", {
+        virtualMcpId,
+        purpose: "campaign",
+        focus: prompt,
+        language: brand.language,
+      }).catch((err) => {
+        console.warn("[campaignGen] grounding failed", err);
+        return undefined;
+      });
+
+      const catalogue = grounding
+        ? await call("BLOG_SITE_CATALOGUE", {
+            grounding: {
+              report: grounding.report,
+              outcome: grounding.outcome,
+              evidence: grounding.evidence || undefined,
+              evidenceUri: grounding.evidenceUri,
+            },
+            storeUrl: brand.storeUrl,
+          }).catch((err) => {
+            console.warn("[campaignGen] reading the catalogue failed", err);
+            return undefined;
+          })
+        : undefined;
+
+      setPhase(1);
       const output = await call("BLOG_CAMPAIGN_SUGGEST", {
         seed: { keywords, prompt },
         brand,
         existingNames,
         count,
         virtualMcpId,
+        grounding: grounding
+          ? { report: grounding.report, outcome: grounding.outcome }
+          : undefined,
+        catalogue: catalogue?.read
+          ? { products: catalogue.products, targets: catalogue.targets }
+          : undefined,
       });
+      setPhase(2);
       setResult(output);
       setChosen(new Set(output.campaigns.map((_, i) => i)));
       setStep("pick");
@@ -195,8 +229,6 @@ export function GenerateCampaignsDialog({
         err instanceof Error ? err.message : t("sandbox.campaignGen.failed"),
       );
       setStep("seed");
-    } finally {
-      for (const timer of timers) clearTimeout(timer);
     }
   }
 

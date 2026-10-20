@@ -230,6 +230,53 @@ function hasUnpublishedWork(
   return branch.aheadOfBase > 0;
 }
 
+/**
+ * A hosted v8 draft's state for the header, from its changes against main
+ * (`changes.list`, content-changes.ts), never git's status: the count of
+ * listed changes, and a branch state in the shape the state machine reads
+ * (the draft is never behind, never dirty, and "ahead" by its changes).
+ * Unknown until the list is read.
+ */
+export function hostedHeaderState(
+  changes:
+    | {
+        revision: string;
+        base: { resolvedRef: string | null };
+        changes: Record<string, unknown>;
+      }
+    | undefined,
+  branch: string,
+): { branchMeta: BranchMeta; publishableChangeCount: number | null } {
+  if (!changes)
+    return { branchMeta: { kind: "unknown" }, publishableChangeCount: null };
+  const count = Object.keys(changes.changes).length;
+  return {
+    branchMeta: {
+      kind: "ready",
+      branch,
+      base: changes.base.resolvedRef ?? "main",
+      workingTreeDirty: false,
+      unpushed: 0,
+      aheadOfBase: count,
+      behindBase: 0,
+      headSha: changes.revision,
+    },
+    publishableChangeCount: count,
+  };
+}
+
+/**
+ * The header button of a hosted v8 draft. A draft is not a branch: no pull
+ * request to submit for review or open on the provider, and nothing to "Get
+ * latest" (its status always reports `behindBase: 0`). So it never has
+ * secondary actions, and the header renders it without the chevron half.
+ */
+export function hostedCmsHeaderButton(
+  button: CmsHeaderButton,
+): CmsHeaderButton {
+  return { ...button, menu: [] };
+}
+
 /** Picks the Fast Preview header button; first match wins, so order is behavior. */
 export function selectCmsHeaderButton(
   input: SelectCmsHeaderButtonInput,

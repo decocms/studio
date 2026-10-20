@@ -159,7 +159,9 @@ function AutomationTabInner({ id }: { id: string }) {
               />
             )
           ) : (
-            <RunsTab automationId={id} triggerIds={triggerIds} />
+            <Suspense fallback={<PanelLoading />}>
+              <RunsTab automationId={id} triggerIds={triggerIds} />
+            </Suspense>
           )}
         </Page.Container>
       </Page.Content>

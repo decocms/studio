@@ -24,23 +24,9 @@ export interface CreateMcpClientOptions {
   studioUrl?: string;
   /** @deprecated Use `studioUrl` instead. */
   meshUrl?: string;
-  /**
-   * Absolute MCP endpoint URL override. When set, the client connects directly
-   * to this URL instead of the org-scoped `/api/:org/mcp/:connectionId` route.
-   * Used to reach a co-located sandbox dev server straight from the browser
-   * (loopback `http://<handle>.localhost/api/mcp`), bypassing the cloud proxy —
-   * which cannot reach a desktop sandbox's loopback. Never the self/REST client.
-   */
-  mcpUrl?: string;
 }
 
 export type UseMcpClientOptions = CreateMcpClientOptions;
-
-export interface UseMcpClientOptionalOptions
-  extends Omit<CreateMcpClientOptions, "connectionId"> {
-  /** Connection ID - string for connection MCP, null for default/self, undefined to skip (returns null) */
-  connectionId: string | null | undefined;
-}
 
 /**
  * Build the MCP URL from connectionId and optional Studio URL.
@@ -81,21 +67,19 @@ export async function createMCPClient({
   token,
   studioUrl,
   meshUrl,
-  mcpUrl,
 }: CreateMcpClientOptions): Promise<Client> {
   const studioServerUrl = resolveStudioUrl({ studioUrl, meshUrl });
   const queryKey = KEYS.mcpClient(
     orgId,
     connectionId ?? "self",
     token ?? "",
-    mcpUrl ?? studioServerUrl ?? "",
+    studioServerUrl ?? "",
   );
 
   // Self/management connection → REST-backed client. The browser no longer
   // speaks MCP to the Studio server for builtin tools; they're called over plain
   // REST (`/api/:org/tools/:name`). The MCP SDK stays for outbound connections.
-  // A direct `mcpUrl` override is never the self client (it targets a dev server).
-  if (!mcpUrl && (!connectionId || connectionId === SELF_MCP_ALIAS_ID)) {
+  if (!connectionId || connectionId === SELF_MCP_ALIAS_ID) {
     return createRestSelfClient({
       orgSlug,
       token,
@@ -104,7 +88,7 @@ export async function createMCPClient({
     });
   }
 
-  const url = mcpUrl ?? buildMcpUrl(connectionId, orgSlug, studioServerUrl);
+  const url = buildMcpUrl(connectionId, orgSlug, studioServerUrl);
 
   const client = new Client(DEFAULT_CLIENT_INFO, {
     capabilities: {
@@ -148,14 +132,14 @@ export async function createMCPClient({
  * cache entry — the key cannot drift between them.
  */
 export function mcpClientQueryOptions(options: UseMcpClientOptions) {
-  const { connectionId, token, studioUrl, meshUrl, mcpUrl, orgId } = options;
+  const { connectionId, token, studioUrl, meshUrl, orgId } = options;
   const studioServerUrl = resolveStudioUrl({ studioUrl, meshUrl });
   return {
     queryKey: KEYS.mcpClient(
       orgId,
       connectionId ?? "self",
       token ?? "",
-      mcpUrl ?? studioServerUrl ?? "",
+      studioServerUrl ?? "",
     ),
     queryFn: () => createMCPClient(options),
     staleTime: Infinity, // Keep client alive while query is active
@@ -182,64 +166,12 @@ export function useMCPClient(options: UseMcpClientOptions): Client {
  *
  *  Shares `mcpClientQueryOptions`' exact cache entry with `useMCPClient` and the
  *  shell's pre-warm, so this is a hit wherever the shell has mounted. For
- *  callers that must not put a connect round-trip in front of paint. */
+ *  callers that must not put a connect round-trip in front of paint.
+ *  `enabled: false` skips the connect for a client the caller doesn't need yet. */
 export function useMCPClientNonBlocking(
   options: UseMcpClientOptions,
+  { enabled = true }: { enabled?: boolean } = {},
 ): Client | null {
-  const { data } = useQuery(mcpClientQueryOptions(options));
+  const { data } = useQuery({ ...mcpClientQueryOptions(options), enabled });
   return data ?? null;
-}
-
-/**
- * Optional MCP client - returns null when connectionId is undefined (skip creating client).
- * Use when the connection may not be selected yet (e.g. model picker with no connections).
- *
- * - connectionId: string → connection-specific MCP
- * - connectionId: null → default/self MCP
- * - connectionId: undefined → skip (returns null, no MCP call)
- *
- * @param options - Configuration for the MCP client
- * @returns The MCP client instance, or null when connectionId is undefined
- */
-export function useMCPClientOptional({
-  connectionId,
-  orgId,
-  orgSlug,
-  token,
-  studioUrl,
-  meshUrl,
-  mcpUrl,
-}: UseMcpClientOptionalOptions): Client | null {
-  const studioServerUrl = resolveStudioUrl({ studioUrl, meshUrl });
-  const queryKey =
-    connectionId !== undefined
-      ? KEYS.mcpClient(
-          orgId,
-          connectionId ?? "self",
-          token ?? "",
-          mcpUrl ?? studioServerUrl ?? "",
-        )
-      : (["mcp", "client", "skip", orgId] as const);
-
-  const { data: client } = useSuspenseQuery({
-    queryKey,
-    queryFn: async () => {
-      if (connectionId === undefined) {
-        return null;
-      }
-      return createMCPClient({
-        connectionId: connectionId as string | null,
-        orgId,
-        orgSlug,
-        token,
-        studioUrl: studioServerUrl,
-        mcpUrl,
-      });
-    },
-    staleTime: Infinity,
-    // Match the non-optional variant — see useMCPClient for the rationale.
-    gcTime: 60_000,
-  });
-
-  return client ?? null;
 }

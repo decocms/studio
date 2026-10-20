@@ -151,16 +151,17 @@ describe("tasksNeedingMeByProject", () => {
     const M1 = mono("p_m1", "storefront");
     const M2 = mono("p_m2", "checkout");
 
-    /** REGRESSION. The `Map<repo, project>` this replaced nudged exactly one
-     *  of the two, chosen by iteration order — a silence for the other. */
-    it("nudges both when nothing says which owes the answer", () => {
+    /** The `Map<repo, project>` this replaced nudged one of the two, chosen by
+     *  iteration order. A card on the shared repository belongs to neither
+     *  until it is stamped, so it nudges neither. */
+    it("nudges neither when nothing says which owes the answer", () => {
       const out = tasksNeedingMeByProject(
         buildProjectIndex([M1, M2]),
         [task("shared", { assigneeId: ME, repo: "acme/mono" })],
         ME,
       );
-      expect(out.get("p_m1")?.map((t) => t.id)).toEqual(["shared"]);
-      expect(out.get("p_m2")?.map((t) => t.id)).toEqual(["shared"]);
+      expect(out.has("p_m1")).toBe(false);
+      expect(out.has("p_m2")).toBe(false);
     });
 
     it("nudges only the project a run identified", () => {

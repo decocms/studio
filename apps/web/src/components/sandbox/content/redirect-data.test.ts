@@ -6,6 +6,7 @@ import {
   extractRedirects,
   generateRedirectBlockKey,
   getRedirectPayload,
+  redirectStatus,
 } from "./redirect-data";
 
 test("REDIRECT_STATUS locks the HTTP status contract", () => {
@@ -117,6 +118,70 @@ describe("buildRedirectBlock / getRedirectPayload round-trip", () => {
       (block.redirect as Record<string, unknown>).discardQueryParameters,
     ).toBe(true);
     expect(getRedirectPayload(block).discardQueryParameters).toBe(true);
+  });
+});
+
+describe("flat redirects (next-major `redirect`)", () => {
+  const flat = {
+    __resolveType: "redirect",
+    from: "/summer",
+    to: "/sale",
+    permanent: false,
+    status: 308,
+    discardQueryParameters: true,
+  };
+
+  test("are listed next to nested ones", () => {
+    const decofile = {
+      "redirects-flat": flat,
+      "redirects-nested": redirectBlock({ from: "/a", to: "/b" }),
+    };
+    const byKey = Object.fromEntries(
+      extractRedirects(decofile).map((r) => [r.key, r]),
+    );
+    expect(byKey["redirects-flat"]).toEqual({
+      key: "redirects-flat",
+      from: "/summer",
+      to: "/sale",
+      type: "temporary",
+      discardQueryParameters: true,
+      flat: true,
+      status: 308,
+    });
+    expect(byKey["redirects-nested"]?.flat).toBeUndefined();
+  });
+
+  test("write back in the shape they were read", () => {
+    expect(buildRedirectBlock(getRedirectPayload(flat))).toEqual(flat);
+    const minimal = {
+      __resolveType: "redirect",
+      from: "/x",
+      to: "/y",
+      permanent: true,
+    };
+    expect(buildRedirectBlock(getRedirectPayload(minimal))).toEqual(minimal);
+  });
+
+  test("keep the fields the editor doesn't know", () => {
+    const block = { ...flat, name: "Summer sale", status: 308 };
+    const edited = buildRedirectBlock(
+      { ...getRedirectPayload(block), status: undefined },
+      block,
+    );
+    expect(edited.name).toBe("Summer sale");
+    expect(edited).not.toHaveProperty("status");
+  });
+
+  test("answer with the status that wins", () => {
+    const read = (block: Record<string, unknown>) =>
+      redirectStatus(getRedirectPayload(block));
+    expect(read(flat)).toBe(308);
+    expect(read({ ...flat, status: undefined })).toBe(302);
+    expect(read({ ...flat, status: 418, permanent: true })).toBe(301);
+    expect(read(redirectBlock({ from: "/a", to: "/b" }))).toBe(307);
+    expect(
+      read(redirectBlock({ from: "/a", to: "/b", type: "permanent" })),
+    ).toBe(301);
   });
 });
 

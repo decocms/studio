@@ -155,6 +155,9 @@ func mergeApplication(current, patch *Application) *Application {
 }
 
 func mergePm(current, patch *PackageManagerConfig) *PackageManagerConfig {
+	if patch == nil {
+		return current
+	}
 	if current == nil {
 		return patch
 	}

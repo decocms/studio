@@ -39,6 +39,7 @@ import {
   entryForFilter,
   entryForTask,
   projectForTask,
+  taskMatchesProjectFilter,
   type ProjectIndex,
   type ProjectIndexEntry,
 } from "@/lib/project-index";
@@ -105,20 +106,18 @@ export function buildFeed(
   tasks: TaskBoardItem[],
   bucketId: string | null,
 ): FeedEntry[] {
-  /** Resolved ONCE, the way `ProjectFilter` resolves it for the header — a
-   *  bucket's id is not stable for the lifetime of a link (a repo-less
-   *  project re-keyed to `owner/name` once a repository landed). Comparing
-   *  a task's CURRENT bucket id against the stale id straight from state
-   *  found nothing after a rekey, even though the header still named the
-   *  bucket correctly via this same lookup. */
-  const filterEntry = bucketId ? entryForFilter(bucketId, index) : undefined;
   const entries: FeedEntry[] = [];
   for (const task of tasks) {
     /** Deleted work is not activity; every other lane belongs here. */
     if (task.status === "archived") continue;
-    const bucket = entryForTask(task, index);
+    // A card no sibling owns yet still is activity, named for its repository.
+    const bucket =
+      entryForTask(task, index) ??
+      (task.repo ? entryForFilter(task.repo, index) : undefined);
     if (!bucket) continue;
-    if (bucketId && bucket !== filterEntry) continue;
+    /** The board's own test, which resolves an id re-keyed since the link was
+     *  made and reads a stamped card as its project. */
+    if (bucketId && !taskMatchesProjectFilter(task, bucketId, index)) continue;
     entries.push({ task, bucket, project: projectForTask(task, index) });
   }
 
@@ -130,8 +129,8 @@ export function buildFeed(
 }
 
 /** The filter, in the section header the way GitHub puts it above the stack.
- *  Its options are the index's buckets, so two projects over one monorepo offer
- *  one row rather than two that select the same cards. */
+ *  Its options are the board's: one row per project, even where projects share
+ *  a repository, since a card can be stamped for either. */
 function ProjectFilter({
   index,
   value,
@@ -163,18 +162,9 @@ function ProjectFilter({
           <DropdownMenuRadioItem value="">
             {t("home.projectFeed.filterAll")}
           </DropdownMenuRadioItem>
-          {index.entries.map((entry) => (
+          {index.options.map((entry) => (
             <DropdownMenuRadioItem key={entry.id} value={entry.id}>
-              <span className="flex min-w-0 flex-col">
-                <span className="truncate">{entry.title}</span>
-                {/* A monorepo's row names its projects, so neither sibling
-                    becomes unnameable by sharing a repository. */}
-                {entry.projects.length > 1 && (
-                  <span className="truncate text-xs text-muted-foreground">
-                    {entry.projects.map((p) => p.title).join(", ")}
-                  </span>
-                )}
-              </span>
+              <span className="truncate">{entry.title}</span>
             </DropdownMenuRadioItem>
           ))}
         </DropdownMenuRadioGroup>

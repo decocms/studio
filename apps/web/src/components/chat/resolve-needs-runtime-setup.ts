@@ -4,7 +4,11 @@
  */
 
 /** Which setup a fresh thread needs before it can run, or null for none. */
-export type RuntimeSetupNeed = "provider" | "claude-code-provider" | null;
+export type RuntimeSetupNeed =
+  | "provider"
+  | "claude-code-provider"
+  | "codex-provider"
+  | null;
 
 export function resolveNeedsRuntimeSetup({
   isThreadLocked,
@@ -16,7 +20,7 @@ export function resolveNeedsRuntimeSetup({
   hasCloudProviderKeys: boolean;
   /** The org's `chat_harness_sandbox_only` flag. */
   sandboxOnlyChats: boolean;
-  /** A claude-code-capable org key or the user's own Claude subscription. */
+  /** A claude-code-capable org key or the user's own Claude or Copilot plan. */
   canRunClaudeCode: boolean;
 }): RuntimeSetupNeed {
   // A locked thread has already run — it has history and a runtime pinned for

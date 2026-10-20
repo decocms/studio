@@ -1,3 +1,4 @@
+import { supportsCodex } from "@decocms/shared/harness/codex-models";
 /**
  * The `chat_harness_sandbox_only` rollout: every chat runs claude-code in its
  * own sandbox instead of hosted Decopilot. See
@@ -5,6 +6,7 @@
  */
 
 import type { StudioContext } from "@/core/studio-context";
+import { resolvePlanCredential } from "@/harnesses/plan-credential";
 import { agentSandboxEnabled } from "@/settings";
 import { getAgentSandboxProvider } from "@/sandbox/lifecycle";
 import { ensureSandbox } from "@/tools/sandbox/start";
@@ -40,7 +42,7 @@ export class ClaudeCodeProviderRequiredError extends Error {
   readonly code = "claude_code_provider_required";
   constructor() {
     super(
-      "Chats need an Anthropic, OpenRouter or deco AI Gateway provider, or your own linked Claude subscription. Connect one in Settings → AI Providers.",
+      "Chats need an Anthropic, OpenRouter or deco AI Gateway provider, or your own linked Claude or GitHub Copilot plan. Connect one in Settings → AI Providers.",
     );
     this.name = "ClaudeCodeProviderRequiredError";
   }
@@ -48,8 +50,8 @@ export class ClaudeCodeProviderRequiredError extends Error {
 
 /**
  * Whether a claude-code run has any credential to start on: an org key of a
- * provider it supports, or the user's own unexpired Claude subscription (which
- * outranks the org key at dispatch).
+ * provider it supports, or a Claude or Copilot plan — shared with the org or
+ * the user's own — which outranks the org key at dispatch.
  */
 export async function hasClaudeCodeCredential(
   ctx: StudioContext,
@@ -58,47 +60,37 @@ export async function hasClaudeCodeCredential(
 ): Promise<boolean> {
   const keys = await ctx.storage.aiProviderKeys.list({ organizationId });
   if (keys.some((key) => supportsClaudeCode(key.providerId))) return true;
-  return hasLiveClaudeSubscription(ctx, userId);
+  return (await userPlanCredentialId(ctx, organizationId, userId)) !== null;
 }
 
-/** Whether the user linked a Claude subscription that has not expired. */
-export async function hasLiveClaudeSubscription(
+/** The plan a run would bill, in dispatch's order, or null. */
+export async function userPlanCredentialId(
   ctx: StudioContext,
+  organizationId: string,
   userId: string,
-): Promise<boolean> {
-  const subscription = await ctx.storage.claudeSubscriptions.find(userId);
+  harnessId: string = "claude-code",
+): Promise<string | null> {
   return (
-    subscription !== null &&
-    (subscription.expiresAt === null ||
-      new Date(subscription.expiresAt).getTime() > Date.now())
+    (await resolvePlanCredential(ctx, organizationId, userId, harnessId))
+      ?.providerId ?? null
   );
 }
 
 /**
- * How long a prewarmed sandbox waits for its chat's first message before it is
- * deleted. ponytail: in-process timer; a Studio restart inside this window
- * leaves the VM to the provider's own idle pause and auto-delete.
- */
-const PREWARM_UNUSED_MS = 3 * 60_000;
-
-/**
- * Each user's latest prewarm still waiting for its first message: opening a
- * newer chat releases the older one's sandbox, so N chats opened without
- * sending hold one VM, not N. ponytail: per process, like the timer.
- */
-const pendingPrewarms = new Map<string, () => Promise<void>>();
-
-/**
  * Start a new chat's sandbox while its first message is being typed, so that
  * message dispatches onto a running sandbox. Resolves the agent and branch the
- * way dispatch does: any other handle would be a second, unused VM. Deleted
- * if the chat never sends; a first message pins `harness_id`, from any pod.
+ * way dispatch does: any other handle would be a second, unused VM.
+ *
+ * Never deleted here: the handle is shared with the agent's other chats on
+ * the branch and with the site editor, so an unsent chat says nothing about
+ * whether it is in use. An unused one idles out through the provider.
  */
 export async function prewarmThreadSandbox(
   ctx: StudioContext,
-  userId: string,
   thread: { id: string; virtual_mcp_id: string; branch: string | null },
 ): Promise<void> {
+  const organizationId = ctx.organization?.id;
+  if (!organizationId) return;
   const virtualMcp = await ctx.storage.virtualMcps.findById(
     thread.virtual_mcp_id,
   );
@@ -126,31 +118,36 @@ export async function prewarmThreadSandbox(
     .proxyDaemonRequest(sandboxHandle, "/_sandbox/prepare", {
       method: "POST",
       headers: new Headers({ "content-type": "application/json" }),
-      body: JSON.stringify({ harness: "claude-code", threadId: thread.id }),
+      body: JSON.stringify({
+        harness: await sandboxChatHarness(ctx, organizationId),
+        threadId: thread.id,
+      }),
     })
     .then((res) => {
       if (!res.ok)
         console.warn("[sandbox-prewarm] prepare refused", res.status);
     })
     .catch((err) => console.warn("[sandbox-prewarm] prepare failed", err));
-  let released = false;
-  const release = async () => {
-    if (released) return;
-    released = true;
-    if (pendingPrewarms.get(userId) === release) pendingPrewarms.delete(userId);
-    try {
-      const current = await ctx.storage.threads.get(thread.id);
-      if (current?.harness_id) return;
-      await provider.delete(sandboxHandle);
-      console.log("[sandbox-prewarm] deleted unused sandbox", {
-        threadId: thread.id,
-        handle: sandboxHandle,
-      });
-    } catch (err) {
-      console.warn("[sandbox-prewarm] unused sandbox cleanup failed", err);
-    }
-  };
-  void pendingPrewarms.get(userId)?.();
-  pendingPrewarms.set(userId, release);
-  setTimeout(release, PREWARM_UNUSED_MS).unref?.();
+}
+
+/** The default for new sandbox chats; existing thread pins remain authoritative. */
+export async function sandboxChatHarness(
+  ctx: StudioContext,
+  organizationId: string,
+): Promise<"claude-code" | "codex"> {
+  const settings = await ctx.storage.organizationSettings.get(organizationId);
+  return orgFlagEnabled(settings?.flags, "chat_harness_codex")
+    ? "codex"
+    : "claude-code";
+}
+
+export async function hasCodexCredential(
+  ctx: StudioContext,
+  organizationId: string,
+  userId: string,
+): Promise<boolean> {
+  if (await userPlanCredentialId(ctx, organizationId, userId, "codex"))
+    return true;
+  const keys = await ctx.storage.aiProviderKeys.list({ organizationId });
+  return keys.some((key) => supportsCodex(key.providerId));
 }

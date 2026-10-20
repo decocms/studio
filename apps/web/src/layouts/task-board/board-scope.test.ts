@@ -20,10 +20,14 @@ function project(id: string, repo?: string): VirtualMCPEntity {
 }
 
 /** A card, as `AttributableTask` reads one, plus an id to assert on. */
-function task(id: string, link: { repo?: string; virtualMcpId?: string } = {}) {
+function task(
+  id: string,
+  link: { repo?: string; virtualMcpId?: string; stamp?: string } = {},
+) {
   return {
     id,
     repo: link.repo ?? null,
+    virtualMcpId: link.stamp ?? null,
     threads: [{ virtualMcpId: link.virtualMcpId ?? null }],
   };
 }
@@ -43,6 +47,7 @@ describe("scopedBoardItems", () => {
       items: ITEMS,
       scopeId: null,
       project: null,
+      projects: [],
       isLoading: false,
     });
     expect(items.map((i) => i.id)).toEqual(["a1", "b1", "bare1"]);
@@ -54,6 +59,7 @@ describe("scopedBoardItems", () => {
       items: ITEMS,
       scopeId: "vir_a",
       project: ALPHA,
+      projects: [ALPHA, BARE],
       isLoading: false,
     });
     expect(items.map((i) => i.id)).toEqual(["a1"]);
@@ -66,9 +72,40 @@ describe("scopedBoardItems", () => {
       items: ITEMS,
       scopeId: "vir_bare",
       project: BARE,
+      projects: [ALPHA, BARE],
       isLoading: false,
     });
     expect(items.map((i) => i.id)).toEqual(["bare1"]);
+  });
+
+  /** Two projects on one repository: each board holds only its own cards;
+   *  the unstamped one waits on the org board. */
+  test("a repository shared with a sibling shows only this project's cards", () => {
+    const { items } = scopedBoardItems({
+      items: [
+        task("mine", { repo: "acme/alpha", stamp: "vir_a" }),
+        task("sibling", { repo: "acme/alpha", stamp: "vir_a2" }),
+        task("shared", { repo: "acme/alpha" }),
+      ],
+      scopeId: "vir_a",
+      project: ALPHA,
+      projects: [ALPHA, project("vir_a2", "acme/alpha")],
+      isLoading: false,
+    });
+    expect(items.map((i) => i.id)).toEqual(["mine"]);
+  });
+
+  /** Without the siblings a shared repository reads as this project's alone. */
+  test("a scope whose org project list has not landed is loading", () => {
+    const { items, isLoading } = scopedBoardItems({
+      items: ITEMS,
+      scopeId: "vir_a",
+      project: ALPHA,
+      projects: [],
+      isLoading: false,
+    });
+    expect(items).toEqual([]);
+    expect(isLoading).toBe(true);
   });
 
   /** The load-bearing one: narrowing only once the project resolves paints
@@ -78,6 +115,7 @@ describe("scopedBoardItems", () => {
       items: ITEMS,
       scopeId: "vir_a",
       project: null,
+      projects: [],
       isLoading: false,
     });
     expect(items).toEqual([]);
@@ -89,6 +127,7 @@ describe("scopedBoardItems", () => {
       items: [task("b1", { repo: "acme/bravo" })],
       scopeId: "vir_a",
       project: ALPHA,
+      projects: [ALPHA, BARE],
       isLoading: false,
     });
     expect(items).toEqual([]);
@@ -97,8 +136,8 @@ describe("scopedBoardItems", () => {
 
   test("the board's own loading survives every branch", () => {
     for (const scope of [
-      { scopeId: null, project: null },
-      { scopeId: "vir_a", project: ALPHA },
+      { scopeId: null, project: null, projects: [] },
+      { scopeId: "vir_a", project: ALPHA, projects: [ALPHA] },
     ]) {
       expect(
         scopedBoardItems({ items: ITEMS, ...scope, isLoading: true }).isLoading,

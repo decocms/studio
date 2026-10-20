@@ -46,7 +46,7 @@ Freestyle runs `ghcr.io/decocms/studio/studio-sandbox-go:<packages/sandbox versi
 ```bash
 O=$(mktemp -d); mkdir $O/runner
 (cd packages/sandbox/daemon-go && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o $O/daemon-go .)
-cp packages/harness-runner/{main,claude-code,to-ui-chunks}.ts packages/harness-runner/package.json $O/runner/
+cp packages/harness-runner/{main,claude-code,live-messages,to-ui-chunks}.ts packages/harness-runner/package.json $O/runner/
 cat > $O/Dockerfile <<'EOF'
 FROM ghcr.io/decocms/studio/studio-sandbox-go:<version>
 COPY --chown=sandbox:sandbox daemon-go /opt/sandbox-daemon/daemon-go

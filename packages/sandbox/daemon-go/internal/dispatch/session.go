@@ -221,6 +221,7 @@ func (p *sessionPool) runSession(
 	info RunInfo,
 	studioKey string,
 	emit func([]byte) bool,
+	live *liveMessages,
 ) (int, error) {
 	payload, err := json.Marshal(map[string]any{
 		"harnessId": harnessId, "input": input, "beforeRunMs": beforeRunMs,
@@ -252,6 +253,12 @@ func (p *sessionPool) runSession(
 		lr.kill()
 		return 0, fmt.Errorf("harness runner stopped reading: %w", err)
 	}
+	// Closed before this returns, which is before the next turn's envelope can
+	// go down the same stdin.
+	if live != nil {
+		live.open(lr.stdin)
+		defer live.close()
+	}
 
 	emitted := 0
 	forwarding := true
@@ -270,6 +277,12 @@ func (p *sessionPool) runSession(
 					return 0, fmt.Errorf("harness runner failed: %w", lr.waitErr)
 				}
 				return 0, fmt.Errorf("harness runner produced no result")
+			}
+			if id, accepted, ok := liveMessageAck(line); ok {
+				if live != nil {
+					live.ack(id, accepted)
+				}
+				continue
 			}
 			if isTurnEnd(line) {
 				p.put(info.ThreadId, lr)

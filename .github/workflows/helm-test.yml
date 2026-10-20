@@ -384,13 +384,16 @@ jobs:
           print(f"schema is re-applied on boot by {migrators[0]}, awaited by {waiters}")
           BOOT
 
-          # Every studio container (api-0, api-1, worker) must skip migrations:
-          # the PreSync Job is the single writer. Three, not two.
-          # `|| true` — grep exits 1 on zero matches, which under `set -e` would
-          # abort before the explanatory message below.
-          count=$(grep -c -- '--skip-migrations' /tmp/preview.yaml || true)
-          [ "$count" -eq 3 ] \
-            || fail "expected 3 containers with --skip-migrations, found ${count}"
+          # Both API containers and the worker boot the direct runtime entrypoint.
+          python3 - <<'RUNTIME'
+          import yaml
+          commands = [c.get("command", [])
+                      for d in yaml.safe_load_all(open("/tmp/preview.yaml"))
+                      if d and d.get("kind") == "Deployment"
+                      for c in d["spec"]["template"]["spec"]["containers"]
+                      if c["name"].endswith(("-api-0", "-api-1", "-worker"))]
+          assert commands == [["bun", "run", "node_modules/decocms/dist/server/server.js"]] * 3, commands
+          RUNTIME
 
           # The preview tag is mutable — same tag, different bits, whenever the
           # base moves — so a cached image must never win.
@@ -646,6 +649,6 @@ jobs:
             --set serviceAccount.create=true
 
           # image.command is a list, which --set cannot express cleanly.
-          printf 'image:\n  command: ["bun","run","deco"]\n' > /tmp/no-skip.yaml
-          expect_fail "missing --skip-migrations" "requires --skip-migrations" \
-            --set preview.host=h.example.com -f /tmp/no-skip.yaml
+          printf 'image:\n  command: ["bun","run","deco"]\n' > /tmp/legacy-runtime.yaml
+          expect_fail "legacy runtime command" "requires the direct server entrypoint" \
+            --set preview.host=h.example.com -f /tmp/legacy-runtime.yaml

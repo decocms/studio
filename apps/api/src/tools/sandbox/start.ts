@@ -10,6 +10,7 @@
  */
 
 import { markTurn } from "@/harnesses/turn-latency";
+import { orgFlagEnabled } from "@decocms/shared/organization/schema";
 import { sameRepositoryBinding } from "@decocms/shared/repository-binding";
 import { z } from "zod";
 import type { SandboxRecord } from "@decocms/shared/sdk";
@@ -72,7 +73,6 @@ import {
   getThreadAdditionalRepositories,
   getThreadHeadRef,
   resolveSandboxUserId,
-  getThreadSandboxMap,
   removeThreadSandboxMapEntry,
   setThreadSandboxMapEntry,
   syntheticBranchToGitRef,
@@ -83,6 +83,7 @@ import { getSettings } from "../../settings";
 import { getPublicUrl } from "../../core/server-constants";
 import { mintOrgFsConfigJson } from "../../file-storage/mount/provisioning";
 import { setSandboxMapEntry } from "./sandbox-map";
+import { lookupRecordedSandbox } from "./recorded-sandbox";
 import {
   cloneInfoForRepository,
   findRepositoryForBinding,
@@ -270,50 +271,34 @@ export async function ensureSandbox(
      * bound there, so a caller keeps whatever it already assumed.
      */
     onBound?: (info: { warmPoolAdopted: boolean }) => void;
+    /**
+     * Skip the resume fast path, for a caller that just lost this sandbox
+     * mid-turn. A claim or VM that still exists says nothing about the daemon
+     * behind it: a pod recreated under its claim, or a rebooted VM, comes back
+     * on the shared bootstrap token and rejects ours. `provider.ensure` rebinds
+     * it.
+     */
+    revalidate?: boolean;
   },
   ctx: StudioContext,
 ): Promise<SandboxRecord> {
-  // Inline auth + lookup; the standard `requireVmEntry` runs
-  // `ctx.access.check()`, which expects resource scoping that the
-  // streaming turn doesn't carry. Storage writes below still go through
-  // the per-port authorization hooks.
-  requireAuth(ctx);
-  const organization = requireOrganization(ctx);
-  const userId = getUserId(ctx);
-  if (!userId) throw new Error("User ID required");
-
-  const virtualMcp = await ctx.storage.virtualMcps.findById(input.virtualMcpId);
-  if (!virtualMcp || virtualMcp.organization_id !== organization.id) {
-    throw new Error("Virtual MCP not found");
-  }
-  const metadata = (virtualMcp.metadata ?? {}) as Record<string, unknown>;
-  // See resolveSandboxUserId: one sandbox per thread, keyed by its creator.
-  const sandboxUserId = await resolveSandboxUserId(ctx, input.branch, userId);
-  // Thread-scoped sandboxes are recorded on the thread (the agent write is a
-  // no-op for them), so the resume fast path has to look there too.
-  const recordThreadId =
-    threadIdFromBranch(input.branch) ?? ctx.metadata?.threadId;
-  const agentEntry = resolveVm(
-    readSandboxMap(metadata),
+  // Storage writes below still go through the per-port authorization hooks.
+  const {
+    organization,
+    userId,
+    metadata,
     sandboxUserId,
-    input.branch,
-  );
-  const existing: SandboxRecord | null =
-    agentEntry ??
-    (recordThreadId
-      ? resolveVm(
-          await getThreadSandboxMap(ctx, recordThreadId),
-          sandboxUserId,
-          input.branch,
-        )
-      : null);
+    recordThreadId,
+    agentEntry,
+    existing,
+  } = await lookupRecordedSandbox(input, ctx);
 
   const runner = await getAgentSandboxProvider(ctx);
 
   // A recorded entry is trusted only if a pod actually answers at it. Nothing
   // but SANDBOX_DELETE removes a cell, so an evicted pod leaves one behind
   // forever; probing it is what makes that self-healing rather than sticky.
-  if (existing) {
+  if (existing && !input.revalidate) {
     // A probe that ERRORS is not evidence the pod is gone — treat it as alive,
     // the same way the events handler does. Reaping on a throttled control-plane
     // call would tear down a healthy sandbox and re-clone it from scratch.
@@ -374,7 +359,7 @@ export async function ensureSandbox(
       ctx,
       provisioningThreadId,
     ),
-    existing: null,
+    existing: input.revalidate ? existing : null,
     runner,
     ...(input.purpose ? { purpose: input.purpose } : {}),
   });
@@ -816,6 +801,9 @@ async function provisionSandbox(params: StartParams): Promise<{
           // omitted workload still installed (404 packages, competing with the run
           // that only wanted the checkout).
           cloneOnly,
+          ...(orgFlagEnabled(orgSettings?.flags, "sandbox_repo_snapshots")
+            ? { repoSnapshot: true }
+            : {}),
           ...(purpose ? { purpose } : {}),
           ...(provider ? { provider } : {}),
           ...(sandboxImage !== "default" ? { sandboxImage } : {}),

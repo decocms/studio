@@ -618,6 +618,11 @@ image:
   tag: "latest"       # Overrides Chart.AppVersion if defined
 ```
 
+The application runs the packaged `server.js` entry point directly. PostgreSQL,
+NATS, and object storage must already be configured; the CLI does not start
+backends. Use the separate migration Job for schema setup; its configured
+Helm/Argo hooks determine deployment ordering.
+
 ### Replicas and Strategy
 
 ```yaml

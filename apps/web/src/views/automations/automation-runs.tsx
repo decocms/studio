@@ -34,7 +34,7 @@ import {
 import { EmptyState } from "@/components/empty-state.tsx";
 import { useIdSelection } from "@/hooks/use-id-selection.ts";
 import { useInfiniteScroll } from "@/hooks/use-infinite-scroll.ts";
-import { useMembers } from "@/hooks/use-members";
+import { useMembersQuery } from "@/hooks/use-members";
 import { KEYS } from "@/lib/query-keys";
 import { getStatusConfig } from "@/lib/task-status";
 import { useAutomationRunStats } from "@/hooks/use-automations";
@@ -213,7 +213,7 @@ export function AutomationRunsView({
   const studio = useStudioTools();
   const allConnections = useConnections();
   const allVirtualMcps = useVirtualMCPs();
-  const { data: membersData } = useMembers();
+  const { data: membersData } = useMembersQuery();
 
   const hasTriggers = triggerIds.length > 0;
 

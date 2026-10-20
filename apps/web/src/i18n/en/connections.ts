@@ -45,4 +45,13 @@ export const connections = {
     "Working Directory",
   "connections.createConnectionDialog.workingDirectoryPlaceholder":
     "/path/to/project (optional)",
+  "connections.sandboxSignIn.callbackLabel": "Redirect address",
+  "connections.sandboxSignIn.description":
+    "This server accepts sign-ins only from Claude Code, so Studio signs in through Claude Code in a temporary sandbox.",
+  "connections.sandboxSignIn.finish": "Finish",
+  "connections.sandboxSignIn.openSignIn": "Open sign-in page",
+  "connections.sandboxSignIn.pasteHint":
+    "After you approve access, your browser shows a page that can't be reached. Copy that page's full address and paste it here.",
+  "connections.sandboxSignIn.starting": "Starting a sandbox…",
+  "connections.sandboxSignIn.title": "Sign in",
 } as const;

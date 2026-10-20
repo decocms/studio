@@ -85,7 +85,6 @@ import { useVoiceInput } from "@/hooks/use-voice-input.ts";
 import { VoiceWaveform } from "./voice-input";
 import { VoiceModeToggle } from "./voice";
 import { resolveComposerAction } from "./composer-action";
-import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
 import { shouldBlockHostedRuntime } from "./hosted-runtime-guard";
 
 // ============================================================================
@@ -113,7 +112,7 @@ function ChatInputDisabledState({
  *
  * Must be called inside a TiptapProvider so `useCurrentEditor()` resolves.
  */
-function useWindowFileDrop(
+export function useWindowFileDrop(
   selectedModel: AiProviderModel | null | undefined,
   onUnsupportedFile?: (info: UnsupportedFileInfo) => void,
   disabled?: boolean,
@@ -145,9 +144,12 @@ function useWindowFileDrop(
       }
     };
     const onDrop = (e: DragEvent) => {
-      e.preventDefault();
       dragCounterRef.current = 0;
       setIsDraggingOver(false);
+
+      // Already handled by the ProseMirror file-drop plugin (tiptap/file/uploader.tsx).
+      if (e.defaultPrevented) return;
+      e.preventDefault();
 
       if (
         disabled ||
@@ -492,11 +494,7 @@ export function ChatInput({
   ).find((m) => m.userId === ownerId);
   const ownerName =
     owner?.user?.name ?? owner?.user?.email?.split("@")[0] ?? null;
-  const isDesktopApp = useIsDesktopApp();
-  const hostedRuntimeBlocked = shouldBlockHostedRuntime({
-    isDesktopApp,
-    harnessId: task?.harness_id,
-  });
+  const hostedRuntimeBlocked = shouldBlockHostedRuntime(task?.harness_id);
 
   // tiptapDoc lives here (not in context) so keystrokes don't re-render
   // the entire context tree. The ref on context lets IceBreakers read it.
@@ -544,7 +542,10 @@ export function ChatInput({
     .find((m) => m.role === "assistant")?.metadata;
   const contextWindow =
     lastAssistantMetadata?.modelLimits?.contextWindow ??
-    selectedModel?.limits?.contextWindow;
+    (!lastAssistantMetadata?.models?.thinking ||
+    lastAssistantMetadata.models.thinking.id === selectedModel?.modelId
+      ? selectedModel?.limits?.contextWindow
+      : undefined);
 
   const tiptapRef = useRef<TiptapInputHandle | null>(null);
   // True while the @/ suggestion dropdown is open — read by TiptapProvider's
@@ -695,7 +696,7 @@ export function ChatInput({
   if (hostedRuntimeBlocked) {
     return (
       <ChatInputDisabledState
-        message={t("chat.input.codingAgentRequiresDesktop")}
+        message={t("chat.input.codingAgentUnavailable")}
       />
     );
   }
