@@ -144,7 +144,7 @@ export function usePanelActions() {
   const setTaskId = (
     id: string,
     virtualMcpId?: string,
-    opts?: { autosend?: boolean; panel?: string },
+    opts?: { autosend?: boolean; panel?: string; newThread?: boolean },
   ) => {
     const isSameThread = !!currentTaskId && currentTaskId === id;
     // Remember the layout of the thread we're leaving so returning to it
@@ -163,7 +163,12 @@ export function usePanelActions() {
 
     const target = resolveTaskSwitchSearch({
       /** The source agent is the one the ROUTE names, never a search param a previous navigation left behind — a stale one misreports the agent we're switching AWAY from, and the carry-forward view rides on that comparison. */
-      prev: { virtualmcpid: routeAgentId, tabId: activeTabId },
+      prev: {
+        virtualmcpid: routeAgentId,
+        tabId: activeTabId,
+        mainpanel: search.mainpanel,
+        sidepanel: search.sidepanel,
+      },
       virtualMcpId,
       decopilotId,
       savedLayout,
@@ -215,7 +220,7 @@ export function usePanelActions() {
       // Toast already fired by useCollectionActions; navigate anyway so the
       // route loader's ensure-fallback can retry.
     }
-    setTaskId(newId, targetVmcp, opts);
+    setTaskId(newId, targetVmcp, { ...opts, newThread: true });
   };
 
   return {
