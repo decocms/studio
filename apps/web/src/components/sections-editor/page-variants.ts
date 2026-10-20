@@ -10,6 +10,13 @@ import {
   PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE,
   SECTION_MULTIVARIATE_RESOLVE_TYPE,
 } from "./section-types";
+import {
+  readVariantValue,
+  storeVariantValue,
+  V8_MULTIVARIATE_RESOLVE_TYPE,
+  valueMultivariateResolveType,
+  withVariantValue,
+} from "./variant-shape";
 
 export interface PageVariant {
   label: string;
@@ -22,17 +29,27 @@ export function isPageMultivariateSectionArrayField(
 ): boolean {
   return (
     schema.anyOfRefs?.some((ref) => {
-      if (ref.resolveType !== PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE) return false;
+      if (
+        ref.resolveType !== PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE &&
+        ref.resolveType !== V8_MULTIVARIATE_RESOLVE_TYPE
+      ) {
+        return false;
+      }
       const valueField =
         ref.schema?.properties?.variants?.items?.properties?.value;
-      return valueField?.type === "array";
+      // Under `multivariate` the value is a `lazy` block around the list.
+      const listField = valueField?.lazy
+        ? valueField.properties?.value
+        : valueField;
+      return listField?.type === "array";
     }) ?? false
   );
 }
 
 /**
  * True when a value is a section-level multivariate flag wrapper —
- * `{ __resolveType: "website/flags/multivariate/section.ts", variants: [...] }`.
+ * `{ __resolveType: "website/flags/multivariate/section.ts", variants: [...] }`,
+ * or v8's `multivariate` around single values (not a page's section lists).
  *
  * This is the shape a saved/global block takes when it wraps a single section
  * in variants (each `{ value: Section, rule: Matcher }`). It must render with
@@ -44,18 +61,32 @@ export function isSectionMultivariateWrapperValue(value: unknown): value is {
 } {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const obj = value as Record<string, unknown>;
+  if (!Array.isArray(obj.variants)) return false;
+  if (obj.__resolveType === SECTION_MULTIVARIATE_RESOLVE_TYPE) return true;
   return (
-    obj.__resolveType === SECTION_MULTIVARIATE_RESOLVE_TYPE &&
-    Array.isArray(obj.variants)
+    obj.__resolveType === V8_MULTIVARIATE_RESOLVE_TYPE &&
+    !holdsSectionLists(obj.variants)
   );
 }
 
-/** Site `global` and page `sections` can be a plain array or page multivariate wrapper. */
+/** Whether a variants list holds lists (a page's sections), not single values. */
+function holdsSectionLists(variants: unknown[]): boolean {
+  return variants.some((variant) => Array.isArray(readVariantValue(variant)));
+}
+
+/**
+ * Site `global` and page `sections` can be a plain array or page multivariate
+ * wrapper: v7's `website/flags/multivariate.ts`, or v8's `multivariate` whose
+ * variants hold section lists.
+ */
 export function isMultivariateArrayWrapper(value: unknown): boolean {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const obj = value as Record<string, unknown>;
+  if (obj.__resolveType === PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE) return true;
   return (
-    (value as Record<string, unknown>).__resolveType ===
-    PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE
+    obj.__resolveType === V8_MULTIVARIATE_RESOLVE_TYPE &&
+    Array.isArray(obj.variants) &&
+    holdsSectionLists(obj.variants)
   );
 }
 
@@ -65,7 +96,7 @@ export function unwrapMultivariateArrayValue(value: unknown): unknown[] | null {
     | Array<{ value?: unknown }>
     | undefined;
   if (!Array.isArray(variants)) return null;
-  const first = variants[0]?.value;
+  const first = readVariantValue(variants[0]);
   return Array.isArray(first) ? first : null;
 }
 
@@ -80,9 +111,12 @@ export function wrapMultivariateArrayValue(
     ...((obj.variants as Array<Record<string, unknown>>) ?? []),
   ];
   if (variants.length === 0) {
-    variants.push({ rule: defaultVariantRule(meta), value: nextArray });
+    variants.push({
+      rule: defaultVariantRule(meta),
+      value: storeVariantValue(obj.__resolveType, nextArray),
+    });
   } else {
-    variants[0] = { ...variants[0], value: nextArray };
+    variants[0] = withVariantValue(obj.__resolveType, variants[0]!, nextArray);
   }
   return { ...obj, variants };
 }
@@ -112,10 +146,8 @@ export function getPageVariantSectionsAt(
   if (sections && typeof sections === "object") {
     const variants = (sections as Record<string, unknown>).variants;
     if (Array.isArray(variants)) {
-      const entry = variants[variantIndex] as
-        | Record<string, unknown>
-        | undefined;
-      return Array.isArray(entry?.value) ? (entry.value as RawSection[]) : [];
+      const value = readVariantValue(variants[variantIndex]);
+      return Array.isArray(value) ? (value as RawSection[]) : [];
     }
   }
   return [];
@@ -152,9 +184,10 @@ export function parsePageVariants(
           seen[baseLabel] = (seen[baseLabel] ?? 0) + 1;
           label = `${baseLabel} ${seen[baseLabel]}`;
         }
+        const value = readVariantValue(v);
         return {
           label: label || `Variant ${i + 1}`,
-          sections: Array.isArray(v.value) ? (v.value as RawSection[]) : [],
+          sections: Array.isArray(value) ? (value as RawSection[]) : [],
           rule: v.rule,
         };
       });
@@ -166,20 +199,37 @@ export function parsePageVariants(
 function createPageVariantEntry(
   value: RawSection[],
   meta: LiveMeta | null | undefined,
+  resolveType: string,
 ): Record<string, unknown> {
   return {
     rule: defaultVariantRule(meta),
-    value,
+    value: storeVariantValue(resolveType, value),
   };
+}
+
+/**
+ * The type a page's variants block is saved with: a new one takes the
+ * site's (`multivariate` on v8), an existing `multivariate` keeps its name,
+ * and any other is saved as the v7 page flag, as before.
+ */
+function pageMultivariateTypeFor(
+  existing: Record<string, unknown> | undefined,
+  meta?: LiveMeta | null,
+): string {
+  if (!existing) return valueMultivariateResolveType(meta);
+  return existing.__resolveType === V8_MULTIVARIATE_RESOLVE_TYPE
+    ? V8_MULTIVARIATE_RESOLVE_TYPE
+    : PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE;
 }
 
 function createMultivariatePageSections(
   variants: Array<Record<string, unknown>>,
   existing?: Record<string, unknown>,
+  meta?: LiveMeta | null,
 ): Record<string, unknown> {
   return {
     ...existing,
-    __resolveType: PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE,
+    __resolveType: pageMultivariateTypeFor(existing, meta),
     variants,
   };
 }
@@ -194,11 +244,16 @@ export function appendPageVariantSections(
   meta?: LiveMeta | null,
 ): Record<string, unknown> | null {
   const seed = structuredClone(seedSections);
+  const newType = pageMultivariateTypeFor(undefined, meta);
   if (Array.isArray(current)) {
-    return createMultivariatePageSections([
-      createPageVariantEntry(current, meta),
-      createPageVariantEntry(seed, meta),
-    ]);
+    return createMultivariatePageSections(
+      [
+        createPageVariantEntry(current, meta, newType),
+        createPageVariantEntry(seed, meta, newType),
+      ],
+      undefined,
+      meta,
+    );
   }
   if (current && typeof current === "object") {
     const obj = current as Record<string, unknown>;
@@ -206,17 +261,21 @@ export function appendPageVariantSections(
       return createMultivariatePageSections(
         [
           ...(obj.variants as Array<Record<string, unknown>>),
-          createPageVariantEntry(seed, meta),
+          createPageVariantEntry(seed, meta, pageMultivariateTypeFor(obj)),
         ],
         obj,
       );
     }
     return null;
   }
-  return createMultivariatePageSections([
-    createPageVariantEntry([], meta),
-    createPageVariantEntry(seed, meta),
-  ]);
+  return createMultivariatePageSections(
+    [
+      createPageVariantEntry([], meta, newType),
+      createPageVariantEntry(seed, meta, newType),
+    ],
+    undefined,
+    meta,
+  );
 }
 
 export function getLastVariantIndex(
@@ -267,8 +326,9 @@ export function buildPageSectionsFromVariants(
     if (!isDefaultVariantRule(rule)) {
       return createMultivariatePageSections(variants, obj);
     }
-    if (Array.isArray(only?.value)) {
-      return only.value as unknown[];
+    const value = readVariantValue(only);
+    if (Array.isArray(value)) {
+      return value as unknown[];
     }
   }
   return createMultivariatePageSections(variants, obj);

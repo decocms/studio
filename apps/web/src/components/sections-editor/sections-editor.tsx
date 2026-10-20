@@ -170,6 +170,8 @@ import {
   VARIANT_TAB_ACTIVE_CLASS,
 } from "./sections-editor-panels";
 import { VariantRuleEditor } from "./variant-rule-editor";
+import { withVariantValue } from "./variant-shape";
+import { isLazyWrapper } from "./lazy-value";
 import { HeaderSlotProvider, HeaderSlotTarget } from "./header-slot";
 
 /** One toast for a section form's save outcome, however many saves it took. */
@@ -780,6 +782,14 @@ export function SectionsEditor({
     multivariate: pageIsMultivariate,
     index: safeVariantIndex,
     variants: pageVariants.map((v) => ({ rule: v.rule })),
+    lazyValues:
+      pageIsMultivariate &&
+      isLazyWrapper(
+        (
+          (pageData?.sections as Record<string, unknown> | undefined)
+            ?.variants as Array<{ value?: unknown }> | undefined
+        )?.[safeVariantIndex]?.value,
+      ),
   });
 
   // Force the preview to render a specific *page* variant. Pass the target
@@ -1674,7 +1684,11 @@ export function SectionsEditor({
           ? [...(mvObj.variants as Array<Record<string, unknown>>)]
           : [];
         if (variants[0]) {
-          variants[0] = { ...variants[0], value: value };
+          variants[0] = withVariantValue(
+            mvObj.__resolveType,
+            variants[0],
+            value,
+          );
         }
         mvObj.variants = variants;
         if (isLazy) {
@@ -1707,10 +1721,11 @@ export function SectionsEditor({
             []),
         ];
         if (variants[latestVariantIndex]) {
-          variants[latestVariantIndex] = {
-            ...variants[latestVariantIndex],
-            value: updatedSections,
-          };
+          variants[latestVariantIndex] = withVariantValue(
+            currentSections?.__resolveType,
+            variants[latestVariantIndex],
+            updatedSections,
+          );
         }
         fullPageData.sections = { ...currentSections, variants };
       } else {

@@ -1,14 +1,7 @@
 import type { LiveMeta } from "../resolve-schema";
 import { defaultVariantRule } from "../section-types";
 import { isDefaultVariantRule } from "../section-variants";
-import { unwrapLazy, wrapLazy } from "../lazy-value";
-
-/**
- * Next-major Blocks' built-in `multivariate` keeps each variant's value in a
- * `lazy` block, so only the chosen one resolves. The legacy names
- * (`website/flags/multivariate*.ts`) store plain values.
- */
-const LAZY_VALUES_MULTIVARIATE = "multivariate";
+import { readVariantValue, storeVariantValue } from "../variant-shape";
 
 export interface MultivariateVariant {
   rule: Record<string, unknown>;
@@ -35,10 +28,8 @@ export function wrapAsMultivariate(
   resolveType: string,
   meta?: LiveMeta | null,
 ): MultivariateWrapper {
-  const stored = () =>
-    resolveType === LAZY_VALUES_MULTIVARIATE
-      ? wrapLazy(structuredClone(value))
-      : structuredClone(value);
+  // Under `multivariate` each value sits in a `lazy` block (variant-shape.ts).
+  const stored = () => storeVariantValue(resolveType, structuredClone(value));
   return {
     __resolveType: resolveType,
     variants: [
@@ -57,9 +48,7 @@ export function flattenMultivariate(wrapper: MultivariateWrapper): unknown {
     isDefaultVariantRule(v.rule as Record<string, unknown> | undefined),
   );
   const picked = always ?? variants[variants.length - 1];
-  return wrapper.__resolveType === LAZY_VALUES_MULTIVARIATE
-    ? unwrapLazy(picked?.value)
-    : picked?.value;
+  return readVariantValue(picked);
 }
 
 /** Add a variant cloned from last. */

@@ -3,10 +3,9 @@ import { isLazyResolveType } from "./section-lazy";
 import {
   labelFromResolveType,
   isNeverMatcherResolveType,
-  PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE,
-  SECTION_MULTIVARIATE_RESOLVE_TYPE,
   type RawSection,
 } from "./section-types";
+import { isMultivariateResolveType, readVariantValue } from "./variant-shape";
 
 export interface ParsedSection {
   index: number;
@@ -68,10 +67,7 @@ export function parseSections(
       : undefined;
     const mvRt = isLazy ? (innerSection?.__resolveType ?? "") : rt;
 
-    if (
-      mvRt === PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE ||
-      mvRt === SECTION_MULTIVARIATE_RESOLVE_TYPE
-    ) {
+    if (isMultivariateResolveType(mvRt)) {
       const mvObj = (isLazy ? innerSection : s) as RawSection;
       const rawVariants = Array.isArray(mvObj?.variants) ? mvObj.variants : [];
 
@@ -79,7 +75,7 @@ export function parseSections(
         rawVariants.length === 1 &&
         isNeverMatcherResolveType(rawVariants[0]?.rule?.__resolveType)
       ) {
-        const innerValue = (rawVariants[0]?.value ?? {}) as Record<
+        const innerValue = (readVariantValue(rawVariants[0]) ?? {}) as Record<
           string,
           unknown
         >;
@@ -95,15 +91,14 @@ export function parseSections(
         }
 
         // Hidden variant section: keep the "Variants of X" label from the wrapped multivariate block.
-        if (
-          innerRt === PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE ||
-          innerRt === SECTION_MULTIVARIATE_RESOLVE_TYPE
-        ) {
+        if (isMultivariateResolveType(innerRt)) {
           const innerVariants = Array.isArray(mvInner.variants)
             ? (mvInner.variants as Array<Record<string, unknown>>)
             : [];
           const firstValueRt = (
-            innerVariants[0]?.value as Record<string, unknown> | undefined
+            readVariantValue(innerVariants[0]) as
+              | Record<string, unknown>
+              | undefined
           )?.__resolveType as string | undefined;
           const sectionLabel = firstValueRt
             ? labelFromResolveType(firstValueRt)
@@ -143,7 +138,7 @@ export function parseSections(
       }
 
       const firstValueRt = (
-        rawVariants[0]?.value as Record<string, unknown> | undefined
+        readVariantValue(rawVariants[0]) as Record<string, unknown> | undefined
       )?.__resolveType as string | undefined;
       const sectionLabel = firstValueRt
         ? labelFromResolveType(firstValueRt)

@@ -1,5 +1,9 @@
 import { isLazyResolveType } from "@/components/sections-editor/section-lazy";
 import { isNeverMatcherResolveType } from "@/components/sections-editor/section-types";
+import {
+  readVariantValue,
+  V8_MULTIVARIATE_RESOLVE_TYPE,
+} from "@/components/sections-editor/variant-shape";
 
 /**
  * Candidate top-level `data-manifest-key`s a page section can render as, used
@@ -38,7 +42,10 @@ export function resolveSectionCandidates(
   // gated by a `never` matcher (the hidden-section shape) the flag renders
   // nothing → null. A partially-never multivariate keeps all variants' keys:
   // a never variant can still render under a matcher override.
-  if (rt.includes("flags/multivariate")) {
+  if (
+    rt.includes("flags/multivariate") ||
+    rt === V8_MULTIVARIATE_RESOLVE_TYPE
+  ) {
     const variants = Array.isArray(obj.variants) ? obj.variants : [];
     const allNever =
       variants.length === 0 ||
@@ -49,7 +56,7 @@ export function resolveSectionCandidates(
     if (allNever) return null;
     const keys: string[] = [];
     for (const v of variants) {
-      const value = (v as { value?: unknown })?.value;
+      const value = readVariantValue(v);
       if (value && typeof value === "object") {
         for (const k of resolveSectionCandidates(
           value as { __resolveType?: unknown },

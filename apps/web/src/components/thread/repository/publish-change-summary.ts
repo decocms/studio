@@ -16,6 +16,7 @@ import {
   isSecretBlock as isLegacySecretBlock,
 } from "@decocms/shared/decofile";
 import { SECRET_BLOCK_TYPE } from "@decocms/shared/secret-ciphertext";
+import { isLazyWrapper } from "@/components/sections-editor/lazy-value";
 import type { ContentChangeSides } from "@/components/sections-editor/content-changes";
 import {
   globalSectionLabel,
@@ -170,17 +171,23 @@ function sectionsWithPaths(block: Record<string, unknown>): SectionWithPath[] {
     const variants = (sections as Record<string, unknown>).variants;
     if (Array.isArray(variants)) {
       return variants.flatMap((variant, vi) => {
-        const value =
+        const stored =
           variant && typeof variant === "object" && !Array.isArray(variant)
             ? (variant as Record<string, unknown>).value
             : null;
+        // v8's `multivariate` keeps the list in a `lazy` block, one `value` deeper.
+        const lazy = isLazyWrapper(stored);
+        const value = lazy ? stored.value : stored;
         if (!Array.isArray(value)) return [];
+        const listPath: (string | number)[] = lazy
+          ? ["sections", "variants", vi, "value", "value"]
+          : ["sections", "variants", vi, "value"];
         return value.flatMap((section, i) =>
           section && typeof section === "object" && !Array.isArray(section)
             ? [
                 {
                   section: section as Record<string, unknown>,
-                  basePath: ["sections", "variants", vi, "value", i],
+                  basePath: [...listPath, i],
                 },
               ]
             : [],

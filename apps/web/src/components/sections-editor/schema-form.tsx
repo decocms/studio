@@ -600,9 +600,10 @@ function SchemaFormBody({
     return null;
   }
 
-  // A section-level multivariate flag (`website/flags/multivariate/section.ts`)
-  // opened directly — e.g. a saved/global block that wraps a section in
-  // variants. Its schema is `{ variants: Variant<Section>[] }`, so the generic
+  // A section-level multivariate flag (`website/flags/multivariate/section.ts`,
+  // or v8's `multivariate` around one value, each in a `lazy` block that
+  // renderField unwraps) opened directly — e.g. a saved/global block that
+  // wraps a section in variants. Its schema is `{ variants: Variant<Section>[] }`, so the generic
   // object form would render `variants` as a plain "Item 1 / Item 2" array.
   // Render the variant editor (rule matcher + per-variant section form) instead.
   if (isSectionMultivariateWrapperValue(value) && properties.variants) {

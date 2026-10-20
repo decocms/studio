@@ -244,6 +244,44 @@ describe("summarizePublishChanges", () => {
     ]);
   });
 
+  it("walks v8 multivariate section paths, one lazy value deeper", () => {
+    const variant = (title: string) => ({
+      __resolveType: "website/pages/Page.tsx",
+      name: "Home",
+      path: "/",
+      sections: {
+        __resolveType: "multivariate",
+        variants: [
+          {
+            rule: { __resolveType: "always" },
+            value: {
+              __resolveType: "lazy",
+              value: [{ __resolveType: "hero", title }],
+            },
+          },
+        ],
+      },
+    });
+    const summary = summarizePublishChanges(
+      diffOf({
+        [HOME_PATH]: {
+          from: JSON.stringify(variant("Before")),
+          to: JSON.stringify(variant("After")),
+        },
+      }),
+    );
+    const field = summary.pages[0]!.sections[0]!.fields[0]!;
+    expect(field.path).toEqual([
+      "sections",
+      "variants",
+      0,
+      "value",
+      "value",
+      0,
+      "title",
+    ]);
+  });
+
   it("reports page-level settings changes as their own pseudo-section", () => {
     const summary = summarizePublishChanges(
       diffOf({

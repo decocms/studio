@@ -9,6 +9,12 @@ import {
   type RawSection,
 } from "./section-types";
 import type { LiveMeta } from "./resolve-schema";
+import {
+  readVariantValue,
+  sectionMultivariateResolveType,
+  storeVariantValue,
+  V8_MULTIVARIATE_RESOLVE_TYPE,
+} from "./variant-shape";
 
 export type { RawSection };
 
@@ -35,7 +41,7 @@ function readHiddenNeverVariantValue(raw: RawSection): RawSection | null {
   const first = variants?.[0];
   const rule = first?.rule as Record<string, unknown> | undefined;
   if (!isNeverMatcherResolveType(rule?.__resolveType)) return null;
-  return (first?.value as RawSection | undefined) ?? null;
+  return (readVariantValue(first) as RawSection | undefined) ?? null;
 }
 
 /**
@@ -50,10 +56,14 @@ export function hideSection(
   meta?: LiveMeta | null,
 ): RawSection {
   const core = unwrapLazySection(raw);
+  const resolveType = sectionMultivariateResolveType(meta);
   return {
-    __resolveType: SECTION_MULTIVARIATE_RESOLVE_TYPE,
+    __resolveType: resolveType,
     variants: [
-      { value: core, rule: { __resolveType: neverMatcherResolveType(meta) } },
+      {
+        value: storeVariantValue(resolveType, core),
+        rule: { __resolveType: neverMatcherResolveType(meta) },
+      },
     ],
   } as RawSection;
 }
@@ -173,7 +183,7 @@ export function flattenMultivariateSection(
   if (variants.length === 0) return null;
 
   const keepIndex = pickVariantToKeepIndex(mvObj);
-  const keptValue = variants[keepIndex]?.value as
+  const keptValue = readVariantValue(variants[keepIndex]) as
     | Record<string, unknown>
     | undefined;
   if (!keptValue) return null;
@@ -213,7 +223,7 @@ export function parseSectionFlagVariants(
       label:
         formatMatcher(variant.rule as Record<string, unknown> | undefined) ||
         `Variant ${index + 1}`,
-      value: (variant.value ?? {}) as Record<string, unknown>,
+      value: (readVariantValue(variant) ?? {}) as Record<string, unknown>,
       rule: variant.rule as Record<string, unknown> | undefined,
     }),
   );
@@ -297,10 +307,17 @@ export function updateMultivariateSectionVariantValue(
   const currentVariant = variants[variantIndex];
   if (!currentVariant) return mvObj;
 
-  const originalValue = (currentVariant.value ?? {}) as Record<string, unknown>;
+  const originalValue = (readVariantValue(currentVariant) ?? {}) as Record<
+    string,
+    unknown
+  >;
   variants[variantIndex] = {
     ...currentVariant,
-    value: writeVariantSectionValue(originalValue, nextValue),
+    value: storeVariantValue(
+      mvObj.__resolveType,
+      writeVariantSectionValue(originalValue, nextValue),
+      currentVariant.value,
+    ),
   };
 
   return { ...mvObj, variants };
@@ -378,20 +395,37 @@ export function deleteMultivariateSectionVariant(
 function createSectionVariantEntry(
   value: Record<string, unknown>,
   meta: LiveMeta | null | undefined,
+  resolveType: string,
 ): Record<string, unknown> {
   return {
     rule: defaultVariantRule(meta),
-    value: structuredClone(value),
+    value: storeVariantValue(resolveType, structuredClone(value)),
   };
+}
+
+/**
+ * The type a section's variants block is saved with: a new one takes the
+ * site's (`multivariate` on v8), an existing `multivariate` keeps its name,
+ * and any v7 name is saved as the v7 section flag, as before.
+ */
+function sectionMultivariateTypeFor(
+  existing: Record<string, unknown> | undefined,
+  meta: LiveMeta | null | undefined,
+): string {
+  if (!existing) return sectionMultivariateResolveType(meta);
+  return existing.__resolveType === V8_MULTIVARIATE_RESOLVE_TYPE
+    ? V8_MULTIVARIATE_RESOLVE_TYPE
+    : SECTION_MULTIVARIATE_RESOLVE_TYPE;
 }
 
 function createMultivariateSectionObject(
   variants: Array<Record<string, unknown>>,
+  resolveType: string,
   existing?: Record<string, unknown>,
 ): Record<string, unknown> {
   return {
     ...existing,
-    __resolveType: SECTION_MULTIVARIATE_RESOLVE_TYPE,
+    __resolveType: resolveType,
     variants,
   };
 }
@@ -414,7 +448,7 @@ function extractSectionVariantSeed(
   if (parsed.isMultivariate) {
     const mvObj = getMultivariateSectionObject(raw, parsed);
     const variants = (mvObj?.variants as Array<Record<string, unknown>>) ?? [];
-    const last = variants[variants.length - 1]?.value as
+    const last = readVariantValue(variants[variants.length - 1]) as
       | Record<string, unknown>
       | undefined;
     return last ? structuredClone(last) : null;
@@ -443,10 +477,14 @@ function wrapSectionAsMultivariate(
   const seed = seedValue ?? extractSectionVariantSeed(raw, parsed);
   if (!seed) return null;
 
-  const mvObj = createMultivariateSectionObject([
-    createSectionVariantEntry(seed, meta),
-    createSectionVariantEntry(seed, meta),
-  ]);
+  const resolveType = sectionMultivariateTypeFor(undefined, meta);
+  const mvObj = createMultivariateSectionObject(
+    [
+      createSectionVariantEntry(seed, meta, resolveType),
+      createSectionVariantEntry(seed, meta, resolveType),
+    ],
+    resolveType,
+  );
 
   if (parsed.isLazy) {
     return {
@@ -477,13 +515,15 @@ export function appendSectionVariant(
     const variants = (mvObj.variants as Array<Record<string, unknown>>) ?? [];
     const seed =
       seedValue ??
-      (variants[variants.length - 1]?.value as
+      (readVariantValue(variants[variants.length - 1]) as
         | Record<string, unknown>
         | undefined);
     if (!seed) return null;
 
+    const resolveType = sectionMultivariateTypeFor(mvObj, meta);
     const updatedMvObj = createMultivariateSectionObject(
-      [...variants, createSectionVariantEntry(seed, meta)],
+      [...variants, createSectionVariantEntry(seed, meta, resolveType)],
+      resolveType,
       mvObj,
     );
     return {

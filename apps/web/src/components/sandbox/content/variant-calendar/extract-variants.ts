@@ -12,11 +12,21 @@
  * nested inside `website/matchers/multi.ts` and legacy `$live` aliases.
  * Variants without any date matcher are skipped — those run on every page
  * load and have no place on a time axis.
+ *
+ * Blocks v8 sites name the container `multivariate` and keep each variant's
+ * value in a `lazy` block; both shapes are read.
  */
+
+import {
+  readVariantValue,
+  V8_MULTIVARIATE_RESOLVE_TYPE,
+} from "@/components/sections-editor/variant-shape";
 
 const DATE_MATCHER_TYPES = new Set([
   "website/matchers/date.ts",
   "$live/matchers/MatchDate.ts",
+  // Blocks v8's built-in, with the same `start`/`end`.
+  "date",
 ]);
 
 const MULTI_MATCHER_TYPES = new Set([
@@ -143,7 +153,12 @@ function isVariantContainer(node: unknown): node is {
   if (!node || typeof node !== "object") return false;
   const rt = (node as { __resolveType?: unknown }).__resolveType;
   if (typeof rt !== "string") return false;
-  if (!MULTIVARIATE_FLAG_PATTERN.test(rt)) return false;
+  if (
+    !MULTIVARIATE_FLAG_PATTERN.test(rt) &&
+    rt !== V8_MULTIVARIATE_RESOLVE_TYPE
+  ) {
+    return false;
+  }
   const variants = (node as { variants?: unknown }).variants;
   return Array.isArray(variants);
 }
@@ -222,16 +237,19 @@ function walkAndCollect(
     const flagResolveType = (node as { __resolveType: string }).__resolveType;
     // Page-level flags have no meaningful inner path — the label then falls
     // back to the page name (`blockLabel`) instead of the field name.
-    const innerPath = PAGE_LEVEL_FLAG_PATTERN.test(flagResolveType)
-      ? ""
-      : formatInnerPath(innerSegments);
+    // v8's `multivariate` is page-level when its variants hold section lists.
+    const pageLevel =
+      PAGE_LEVEL_FLAG_PATTERN.test(flagResolveType) ||
+      (flagResolveType === V8_MULTIVARIATE_RESOLVE_TYPE &&
+        variants.some((v) => Array.isArray(readVariantValue(v))));
+    const innerPath = pageLevel ? "" : formatInnerPath(innerSegments);
     variants.forEach((variant, variantIndex) => {
       if (!variant || typeof variant !== "object") return;
       const v = variant as Record<string, unknown>;
       const ranges: DateRange[] = [];
       collectDateRanges(v.rule, ranges);
       if (ranges.length === 0) return;
-      const valueLabel = readValueLabel(v.value);
+      const valueLabel = readValueLabel(readVariantValue(v));
       const label = valueLabel ?? (innerPath || blockLabel);
       for (const range of ranges) {
         out.push({
@@ -254,7 +272,7 @@ function walkAndCollect(
       const v = variants[i];
       if (v && typeof v === "object") {
         walkAndCollect(
-          (v as { value?: unknown }).value,
+          readVariantValue(v),
           blockKey,
           blockLabel,
           [...innerSegments, "variants", i, "value"],

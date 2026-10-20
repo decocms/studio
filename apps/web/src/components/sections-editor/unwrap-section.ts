@@ -1,18 +1,8 @@
 import { isSavedBlockResolveType } from "./block-type-utils";
 import { isLazyResolveType } from "./section-lazy";
 import type { ParsedSection } from "./parse-sections";
-import {
-  PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE,
-  SECTION_MULTIVARIATE_RESOLVE_TYPE,
-  type RawSection,
-} from "./section-types";
-
-function isMultivariateResolveType(rt: string): boolean {
-  return (
-    rt === SECTION_MULTIVARIATE_RESOLVE_TYPE ||
-    rt === PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE
-  );
-}
+import type { RawSection } from "./section-types";
+import { isMultivariateResolveType, readVariantValue } from "./variant-shape";
 
 function resolveSavedBlockData(
   blockKey: string,
@@ -32,9 +22,9 @@ function unwrapResolvedValue(
   if (!rt) return null;
 
   if (isMultivariateResolveType(rt)) {
-    const firstVariant = (
-      value.variants as Array<{ value?: Record<string, unknown> }> | undefined
-    )?.[0]?.value;
+    const firstVariant = readVariantValue(
+      (value.variants as unknown[] | undefined)?.[0],
+    ) as Record<string, unknown> | undefined;
     if (!firstVariant) return null;
     return unwrapSectionValue(firstVariant, decofile);
   }
@@ -106,7 +96,7 @@ export function savedBlockKey(
   if (parsed.isHidden) {
     const wrapperIsLazy = isLazyResolveType(raw.__resolveType);
     const mvObj = wrapperIsLazy ? (raw.section as RawSection | undefined) : raw;
-    const innerValue = mvObj?.variants?.[0]?.value as
+    const innerValue = readVariantValue(mvObj?.variants?.[0]) as
       | Record<string, unknown>
       | undefined;
     if (!innerValue) return null;
@@ -152,8 +142,9 @@ export function unwrapSection(
     const isLazy = isLazyResolveType(raw.__resolveType);
     const mvObj = isLazy ? (raw.section as RawSection | undefined) : raw;
     const innerValue =
-      (mvObj?.variants?.[0]?.value as Record<string, unknown>) ??
-      (raw as Record<string, unknown>);
+      (readVariantValue(mvObj?.variants?.[0]) as
+        | Record<string, unknown>
+        | undefined) ?? (raw as Record<string, unknown>);
     const innerRt = (innerValue.__resolveType as string) ?? "";
     const effectiveInnerRt = isLazyResolveType(innerRt)
       ? (((innerValue.section as Record<string, unknown> | undefined)

@@ -50,7 +50,7 @@ export function buildSectionForcedVariants(args: {
     return [];
   }
   const base = args.page.multivariate
-    ? `sections.variants.${args.page.index}.value`
+    ? `sections.variants.${args.page.index}.value${args.page.lazyValues ? ".value" : ""}`
     : "sections";
   const path = `${base}.${args.sectionIndex}${args.sectionLazy ? ".section" : ""}`;
   return [forcedVariant(args.pageKey, path, args.selectedVariantIndex)];

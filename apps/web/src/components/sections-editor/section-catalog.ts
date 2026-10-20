@@ -14,6 +14,10 @@ import {
   labelFromResolveType,
   SECTION_MULTIVARIATE_RESOLVE_TYPE,
 } from "./section-types";
+import {
+  readVariantValue,
+  V8_MULTIVARIATE_RESOLVE_TYPE,
+} from "./variant-shape";
 
 export interface SectionCatalogEntry {
   resolveType: string;
@@ -186,16 +190,16 @@ export function underlyingSectionResolveType(
 ): string {
   const rt = block.__resolveType;
   if (typeof rt !== "string") return "";
-  if (rt !== SECTION_MULTIVARIATE_RESOLVE_TYPE) return rt;
+  if (!isSectionMultivariateBlockType(rt)) return rt;
 
   const variants = block.variants;
   if (!Array.isArray(variants)) return rt;
 
   for (const variant of variants) {
-    const value = (variant as Record<string, unknown>)?.value as
+    const value = readVariantValue(variant) as
       | Record<string, unknown>
       | undefined;
-    if (!value) continue;
+    if (!value || typeof value !== "object") continue;
 
     // Lazy-wrapped section values nest the real section under `.section`.
     let variantRt = value.__resolveType;
@@ -212,6 +216,14 @@ export function underlyingSectionResolveType(
   }
 
   return rt;
+}
+
+/** The v7 section flag, or v8's `multivariate` (which wraps any value). */
+function isSectionMultivariateBlockType(rt: string): boolean {
+  return (
+    rt === SECTION_MULTIVARIATE_RESOLVE_TYPE ||
+    rt === V8_MULTIVARIATE_RESOLVE_TYPE
+  );
 }
 
 /**
@@ -246,7 +258,7 @@ export function listSavedSectionBlocks(
 
     const isSectionBlock =
       isManifestSectionResolveType(meta, rt) ||
-      (rt === SECTION_MULTIVARIATE_RESOLVE_TYPE &&
+      (isSectionMultivariateBlockType(rt) &&
         multivariateWrapsManifestSection(meta, obj));
     if (!isSectionBlock) continue;
 

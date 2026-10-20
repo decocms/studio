@@ -12,6 +12,7 @@ import {
   type LiveMeta,
   type SchemaProperty,
 } from "./resolve-schema";
+import { V8_MULTIVARIATE_RESOLVE_TYPE } from "./variant-shape";
 
 export type BlockRefOption = {
   resolveType: string;
@@ -36,7 +37,10 @@ export function moduleResolveTypeFromBlockData(
 }
 
 function isMultivariateFlagResolveType(resolveType: string): boolean {
-  return resolveType.includes("flags/multivariate");
+  return (
+    resolveType.includes("flags/multivariate") ||
+    resolveType === V8_MULTIVARIATE_RESOLVE_TYPE
+  );
 }
 
 function titleFromResolveType(resolveType: string): string {

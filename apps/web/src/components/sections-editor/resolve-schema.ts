@@ -732,9 +732,11 @@ function buildSchema(
               | RawSchema
               | undefined
           )?.enum;
+          // v7's page flag, or v8's `multivariate` (its `page` lists both).
           return (
             Array.isArray(rtEnum) &&
-            rtEnum[0] === PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE
+            (rtEnum[0] === PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE ||
+              rtEnum[0] === "multivariate")
           );
         });
         const buildLoaderBlockRef = (

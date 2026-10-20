@@ -2,8 +2,12 @@ import type { LiveMeta } from "./resolve-schema";
 import {
   isNeverMatcherResolveType,
   neverMatcherResolveType,
-  PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE,
 } from "./section-types";
+import {
+  readVariantValue,
+  storeVariantValue,
+  valueMultivariateResolveType,
+} from "./variant-shape";
 
 /**
  * Hiding an array item mirrors how a page section is hidden: wrap the item value
@@ -12,7 +16,9 @@ import {
  *
  * Unlike sections we use the value-generic `website/flags/multivariate.ts`
  * (`PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE`) instead of the section-specific flag,
- * since array items are plain values (banners, links, …), not sections.
+ * since array items are plain values (banners, links, …), not sections. A
+ * Blocks v8 site gets its built-in `multivariate`, with the value in a `lazy`
+ * block (see variant-shape.ts).
  */
 interface HiddenItemWrap {
   __resolveType: string;
@@ -38,10 +44,14 @@ export function hideArrayItem(
   value: unknown,
   meta?: LiveMeta | null,
 ): HiddenItemWrap {
+  const resolveType = valueMultivariateResolveType(meta);
   return {
-    __resolveType: PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE,
+    __resolveType: resolveType,
     variants: [
-      { value, rule: { __resolveType: neverMatcherResolveType(meta) } },
+      {
+        value: storeVariantValue(resolveType, value),
+        rule: { __resolveType: neverMatcherResolveType(meta) },
+      },
     ],
   };
 }
@@ -49,7 +59,7 @@ export function hideArrayItem(
 /** Unwrap a hidden item back to the underlying value it was hiding. */
 export function showArrayItem(item: unknown): unknown {
   if (!isArrayItemHidden(item)) return item;
-  return asWrap(item)?.variants?.[0]?.value;
+  return readVariantValue(asWrap(item)?.variants?.[0]);
 }
 
 /**
