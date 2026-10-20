@@ -21,6 +21,7 @@ import {
 } from "./matcher-rules";
 import { globalSectionLabel } from "./page-list";
 import { formatMatcher } from "./format-matcher";
+import { readNamedRuleValues } from "./named-rules";
 
 /**
  * A default of `[]` is a NEW array on every render, so anything derived from
@@ -63,7 +64,7 @@ export function extractMatcherGlobals(
     return {
       blockKey: block.blockKey,
       title: globalSectionLabel(block.blockKey, raw),
-      description: formatMatcher(inlined),
+      description: formatMatcher(inlined, readNamedRuleValues(decofile)),
       iconName: resolveMatcherIconName(block.matcherResolveType),
     };
   });

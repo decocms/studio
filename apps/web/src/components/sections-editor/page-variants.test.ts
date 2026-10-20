@@ -397,6 +397,101 @@ describe("countSavedMatcherBlockReferences", () => {
     expect(countSavedMatcherBlockReferences(decofile, "")).toBe(0);
   });
 
+  it("counts an object reachable from two positions once", () => {
+    const shared = { rule: ref(), value: [] };
+    const decofile = {
+      MobilePromo: savedMatcher,
+      home: page({
+        __resolveType: PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE,
+        variants: [shared],
+      }),
+      about: page({
+        __resolveType: PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE,
+        variants: [shared],
+      }),
+    };
+
+    expect(countSavedMatcherBlockReferences(decofile, "MobilePromo")).toBe(1);
+  });
+
+  it("counts a v7 site's saved random matcher across pages, sections and multi", () => {
+    const meta = {
+      manifest: {
+        blocks: {
+          matchers: {
+            "website/matchers/random.ts": { $ref: "#/definitions/random" },
+            "website/matchers/multi.ts": { $ref: "#/definitions/multi" },
+          },
+          pages: { "website/pages/Page.tsx": { $ref: "#/definitions/page" } },
+        },
+      },
+      schema: {},
+    };
+    const decofile = {
+      "Hero Test": {
+        __resolveType: "website/matchers/random.ts",
+        traffic: 0.5,
+        name: "Hero Test",
+      },
+      home: page({
+        __resolveType: PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE,
+        variants: [
+          { rule: { __resolveType: "Hero Test" }, value: [] },
+          { rule: { __resolveType: "website/matchers/always.ts" }, value: [] },
+        ],
+      }),
+      about: page([
+        {
+          __resolveType: SECTION_MULTIVARIATE_RESOLVE_TYPE,
+          variants: [
+            {
+              rule: {
+                __resolveType: "website/matchers/multi.ts",
+                op: "or",
+                matchers: [{ __resolveType: "Hero Test" }],
+              },
+              value: { __resolveType: "site/sections/Hero.tsx" },
+            },
+          ],
+        },
+      ]),
+    };
+
+    expect(countSavedMatcherBlockReferences(decofile, "Hero Test", meta)).toBe(
+      2,
+    );
+  });
+
+  it("counts a reference inside a v8 section variant within a page variant's lazy list", () => {
+    const decofile = {
+      MobilePromo: savedMatcher,
+      home: page({
+        __resolveType: "multivariate",
+        variants: [
+          {
+            rule: { __resolveType: "always" },
+            value: {
+              __resolveType: "lazy",
+              value: [
+                {
+                  __resolveType: "multivariate",
+                  variants: [
+                    {
+                      rule: ref(),
+                      value: { __resolveType: "lazy", value: { title: "a" } },
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        ],
+      }),
+    };
+
+    expect(countSavedMatcherBlockReferences(decofile, "MobilePromo")).toBe(1);
+  });
+
   it("returns 0 for a genuinely orphaned block so cleanup can delete it", () => {
     const decofile = {
       MobilePromo: savedMatcher,

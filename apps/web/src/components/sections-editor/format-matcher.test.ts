@@ -381,11 +381,114 @@ describe("formatMatcher", () => {
     });
   });
 
-  describe("depth guard", () => {
-    test("returns '...' when depth exceeds limit", () => {
+  describe("A/B tests and campaigns", () => {
+    const year = new Date().getFullYear();
+    const local = (month: number, day: number, hour = 0, minute = 0) =>
+      new Date(year, month, day, hour, minute).toISOString();
+    const named = {
+      experiments: { "hero-headline": 50, off: 0 },
+      schedules: {
+        "Black Friday": { start: local(10, 27), end: local(11, 2) },
+        Launch: { start: local(2, 1) },
+        Clearance: { end: local(0, 31, 23, 59) },
+        Forever: {},
+      },
+    };
+
+    test("names an A/B test with its share", () => {
       expect(
-        formatMatcher({ __resolveType: "website/matchers/device.ts" }, 6),
-      ).toBe("...");
+        formatMatcher(
+          { __resolveType: "experiment", name: "hero-headline" },
+          named,
+        ),
+      ).toBe("A/B test: hero-headline (50%)");
+      expect(
+        formatMatcher({ __resolveType: "experiment", name: "off" }, named),
+      ).toBe("A/B test: off (0%)");
+    });
+
+    test("names an A/B test the content doesn't have, or with no values at hand", () => {
+      expect(
+        formatMatcher({ __resolveType: "experiment", name: "gone" }, named),
+      ).toBe("A/B test: gone");
+      expect(
+        formatMatcher({ __resolveType: "experiment", name: "hero-headline" }),
+      ).toBe("A/B test: hero-headline");
+      expect(formatMatcher({ __resolveType: "experiment" })).toBe("A/B test");
+    });
+
+    test("names a campaign with its dates; the end is exclusive", () => {
+      expect(
+        formatMatcher(
+          { __resolveType: "schedule", name: "Black Friday" },
+          named,
+        ),
+      ).toBe("Campaign: Black Friday (Nov 27 – Dec 1)");
+      expect(
+        formatMatcher({ __resolveType: "schedule", name: "Launch" }, named),
+      ).toBe("Campaign: Launch (from Mar 1)");
+      expect(
+        formatMatcher({ __resolveType: "schedule", name: "Clearance" }, named),
+      ).toBe("Campaign: Clearance (until Jan 31)");
+    });
+
+    test("names a campaign with no dates, or unknown, by its name", () => {
+      expect(
+        formatMatcher({ __resolveType: "schedule", name: "Forever" }, named),
+      ).toBe("Campaign: Forever");
+      expect(
+        formatMatcher({ __resolveType: "schedule", name: "Black Friday" }),
+      ).toBe("Campaign: Black Friday");
+      expect(formatMatcher({ __resolveType: "schedule", name: " " })).toBe(
+        "Campaign",
+      );
+    });
+
+    test("shows the year and times outside the current year or whole days", () => {
+      const label = formatMatcher(
+        { __resolveType: "schedule", name: "Old" },
+        {
+          experiments: {},
+          schedules: {
+            Old: {
+              start: new Date(2020, 10, 27, 10, 30).toISOString(),
+              end: new Date(2020, 11, 1, 18, 0).toISOString(),
+            },
+          },
+        },
+      );
+      expect(label).toStartWith("Campaign: Old (");
+      expect(label).toContain("2020");
+      expect(label).toContain(" – ");
+    });
+
+    test("labels named rules inside a multi with their values", () => {
+      expect(
+        formatMatcher(
+          {
+            __resolveType: "website/matchers/multi.ts",
+            op: "AND",
+            matchers: [
+              { __resolveType: "schedule", name: "Launch" },
+              { __resolveType: "experiment", name: "hero-headline" },
+            ],
+          },
+          named,
+        ),
+      ).toBe("Campaign: Launch (from Mar 1) AND A/B test: hero-headline (50%)");
+    });
+  });
+
+  describe("depth guard", () => {
+    test("returns '...' for a rule nested past the limit", () => {
+      let rule: Record<string, unknown> = {
+        __resolveType: "website/matchers/device.ts",
+        mobile: true,
+      };
+      for (let i = 0; i < 6; i++) {
+        rule = { __resolveType: "website/matchers/multi.ts", matchers: [rule] };
+      }
+      expect(formatMatcher(rule)).toBe("...");
     });
 
     test("deeply nested multi matchers stop at depth limit", () => {

@@ -52,6 +52,22 @@ export const sectionsEditor = {
   "sectionsEditor.formatMatcher.dateRange": "From {start} to {end}",
   "sectionsEditor.formatMatcher.fromDate": "Starts on {date}",
   "sectionsEditor.formatMatcher.untilDate": "Ends on {date}",
+  "sectionsEditor.formatMatcher.experiment": "A/B test",
+  "sectionsEditor.formatMatcher.experimentNamed": "A/B test: {name}",
+  "sectionsEditor.formatMatcher.experimentShare": "A/B test: {name} ({share}%)",
+  "sectionsEditor.formatMatcher.schedule": "Campaign",
+  "sectionsEditor.formatMatcher.scheduleNamed": "Campaign: {name}",
+  "sectionsEditor.formatMatcher.scheduleWindow": "Campaign: {name} ({window})",
+  "sectionsEditor.formatMatcher.windowRange": "{start} – {end}",
+  "sectionsEditor.formatMatcher.windowFrom": "from {date}",
+  "sectionsEditor.formatMatcher.windowUntil": "until {date}",
+  "sectionsEditor.namedRules.changedMeanwhile":
+    "This changed while you were editing",
+  "sectionsEditor.namedRules.changedMeanwhileHint":
+    "We loaded the latest version. Check it and make your change again.",
+  "sectionsEditor.namedRules.unavailable": "Can't save this right now",
+  "sectionsEditor.namedRules.unavailableHint":
+    "The site's content isn't reachable at the moment. Nothing was changed; try again in a moment.",
   "sectionsEditor.field.missingRequired": "Missing a required field",
   "sectionsEditor.field.missingRequiredTooltip":
     "Required field not filled in.",

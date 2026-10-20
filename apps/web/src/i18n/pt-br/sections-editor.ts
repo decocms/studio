@@ -55,6 +55,23 @@ export const sectionsEditor = {
   "sectionsEditor.formatMatcher.dateRange": "De {start} até {end}",
   "sectionsEditor.formatMatcher.fromDate": "A partir de {date}",
   "sectionsEditor.formatMatcher.untilDate": "Termina em {date}",
+  "sectionsEditor.formatMatcher.experiment": "Teste A/B",
+  "sectionsEditor.formatMatcher.experimentNamed": "Teste A/B: {name}",
+  "sectionsEditor.formatMatcher.experimentShare":
+    "Teste A/B: {name} ({share}%)",
+  "sectionsEditor.formatMatcher.schedule": "Campanha",
+  "sectionsEditor.formatMatcher.scheduleNamed": "Campanha: {name}",
+  "sectionsEditor.formatMatcher.scheduleWindow": "Campanha: {name} ({window})",
+  "sectionsEditor.formatMatcher.windowRange": "{start} – {end}",
+  "sectionsEditor.formatMatcher.windowFrom": "a partir de {date}",
+  "sectionsEditor.formatMatcher.windowUntil": "até {date}",
+  "sectionsEditor.namedRules.changedMeanwhile":
+    "Isto mudou enquanto você editava",
+  "sectionsEditor.namedRules.changedMeanwhileHint":
+    "Carregamos a versão mais recente. Confira e faça sua alteração de novo.",
+  "sectionsEditor.namedRules.unavailable": "Não foi possível salvar agora",
+  "sectionsEditor.namedRules.unavailableHint":
+    "O conteúdo do site não está acessível no momento. Nada foi alterado; tente de novo em instantes.",
   "sectionsEditor.field.missingRequired": "Falta um campo obrigatório",
   "sectionsEditor.field.missingRequiredTooltip":
     "Campo obrigatório não preenchido.",

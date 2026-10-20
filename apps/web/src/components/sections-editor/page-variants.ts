@@ -1,8 +1,6 @@
 import type { LiveMeta, SchemaProperty } from "./resolve-schema";
-import {
-  isSavedMatcherBlockReference,
-  resolveVariantRuleLabel,
-} from "./matcher-rules";
+import { resolveVariantRuleLabel } from "./matcher-rules";
+import { findSavedMatcherReferences } from "./rule-references";
 import { isDefaultVariantRule } from "./section-variants";
 import type { RawSection } from "./section-types";
 import {
@@ -345,61 +343,16 @@ export function buildPageSectionsFromVariants(
 }
 
 /**
- * Visit every object reachable from the decofile, skipping the subtree stored
- * under `skipKey`. The walk is iterative so a deep block cannot overflow the
- * stack, and it memoizes object identity so malformed or cyclic user data
- * terminates. A consequence of the memo: an object reachable from two
- * positions is visited once.
- */
-function forEachDecofileObject(
-  decofile: Record<string, unknown>,
-  skipKey: string | null,
-  visit: (node: Record<string, unknown>) => void,
-): void {
-  const stack: unknown[] = [];
-  for (const [key, value] of Object.entries(decofile)) {
-    if (key === skipKey) continue;
-    stack.push(value);
-  }
-  const seen = new Set<object>();
-  while (stack.length > 0) {
-    const node = stack.pop();
-    if (!node || typeof node !== "object") continue;
-    if (seen.has(node)) continue;
-    seen.add(node);
-    if (Array.isArray(node)) {
-      for (const item of node) stack.push(item);
-      continue;
-    }
-    visit(node as Record<string, unknown>);
-    for (const value of Object.values(node)) stack.push(value);
-  }
-}
-
-/**
  * How many places still reference the saved matcher block `blockKey`. The
  * caller deletes the block when this is 0, so a missed reference deletes live
- * user data — hence the walk is shape-blind: every object in the decofile is
- * inspected, not just page variant rules. A reference reaches a matcher from a
- * page variant's `rule`, from inside a `website/matchers/multi.ts` `matchers`
- * array at any depth, from a section- or field-level
- * `<scope>/flags/multivariate/<kind>.ts` container nested anywhere, or from any
- * non-page block (a saved global section wrapper, another saved matcher).
- *
- * Over-counting merely keeps an unused block around; under-counting destroys
- * data, so unknown shapes count as references. The block's own body is skipped:
- * a self-reference in malformed data would otherwise pin the orphan forever.
+ * user data: the search (`findSavedMatcherReferences`) inspects every object
+ * in the decofile, not just page variant rules. Over-counting merely keeps an
+ * unused block around; under-counting destroys data.
  */
 export function countSavedMatcherBlockReferences(
   decofile: Record<string, unknown>,
   blockKey: string,
   meta?: LiveMeta | null,
 ): number {
-  if (!blockKey) return 0;
-  let count = 0;
-  forEachDecofileObject(decofile, blockKey, (node) => {
-    if (node.__resolveType !== blockKey) return;
-    if (isSavedMatcherBlockReference(node, decofile, meta)) count++;
-  });
-  return count;
+  return findSavedMatcherReferences(decofile, blockKey, meta).length;
 }

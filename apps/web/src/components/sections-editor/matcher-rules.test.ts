@@ -12,6 +12,7 @@ import {
   seedMatcherRule,
   unwrapMatcherRule,
 } from "./matcher-rules";
+import { formatMatcher } from "./format-matcher";
 import type { LiveMeta } from "./resolve-schema";
 
 describe("matcher-rules", () => {
@@ -141,6 +142,16 @@ describe("matcher-rules", () => {
         () => "Fallback",
       ),
     ).toBe("Mobile Promo");
+  });
+
+  it("labels an A/B test rule with its share from the content's Experiments", () => {
+    expect(
+      resolveVariantRuleLabel(
+        { __resolveType: "experiment", name: "hero" },
+        { Experiments: { __resolveType: "experiments", hero: 20 } },
+        formatMatcher,
+      ),
+    ).toBe("A/B test: hero (20%)");
   });
 
   it("builds matcher block payloads and references", () => {

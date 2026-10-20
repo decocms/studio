@@ -3,6 +3,7 @@ import {
   isManifestMatcherResolveType,
   isSavedBlockResolveType,
 } from "./block-type-utils";
+import { type NamedRuleValues, readNamedRuleValues } from "./named-rules";
 import { globalSectionLabel } from "./page-list";
 import { isPageResolveType } from "./page-types";
 import { resolveSchema, type LiveMeta } from "./resolve-schema";
@@ -148,7 +149,10 @@ export function resolveEffectiveMatcherRule(
 export function resolveVariantRuleLabel(
   rule: Record<string, unknown> | undefined,
   decofile: Record<string, unknown>,
-  formatMatcher: (rule?: Record<string, unknown>) => string,
+  formatMatcher: (
+    rule?: Record<string, unknown>,
+    named?: NamedRuleValues,
+  ) => string,
   meta?: LiveMeta | null,
 ): string {
   if (!rule) return "Default";
@@ -157,7 +161,7 @@ export function resolveVariantRuleLabel(
     const block = decofile[blockKey] as Record<string, unknown>;
     return globalSectionLabel(blockKey, block);
   }
-  return formatMatcher(rule);
+  return formatMatcher(rule, readNamedRuleValues(decofile));
 }
 
 export function buildMatcherBlockData(
