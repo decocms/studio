@@ -91,7 +91,8 @@ interface PullRequestsPayload {
   repository: {
     pullRequests: {
       pageInfo: { hasNextPage: boolean; endCursor: string | null };
-      nodes: GithubPullRequestNode[] | null;
+      /** GitHub's own schema nulls an element the viewer can't resolve. */
+      nodes: Array<GithubPullRequestNode | null> | null;
     };
   } | null;
 }
@@ -106,7 +107,8 @@ interface CommitsPayload {
 interface CommitHistoryTarget {
   history?: {
     pageInfo: { hasNextPage: boolean; endCursor: string | null };
-    nodes: GithubCommitNode[] | null;
+    /** GitHub's own schema nulls an element the viewer can't resolve. */
+    nodes: Array<GithubCommitNode | null> | null;
   } | null;
 }
 
@@ -249,6 +251,17 @@ export function mapPullRequest(
   };
 }
 
+/**
+ * `mapPullRequest` over a connection's raw `nodes`, dropping the null entries
+ * GitHub's own schema allows for an element the viewer can't resolve — a
+ * `.map` would otherwise crash the whole page on one unresolvable node. Pure.
+ */
+export function mapPullRequestNodes(
+  nodes: Array<GithubPullRequestNode | null> | null | undefined,
+): ChangeRequestHistoryItem[] {
+  return (nodes ?? []).flatMap((node) => (node ? [mapPullRequest(node)] : []));
+}
+
 /** GitHub's commit node → the neutral commit. Pure. */
 export function mapCommit(node: GithubCommitNode): RepoCommit {
   return {
@@ -262,6 +275,14 @@ export function mapCommit(node: GithubCommitNode): RepoCommit {
       login: node.author?.user?.login ?? null,
     },
   };
+}
+
+/** `mapCommit` over a connection's raw `nodes`, dropping null entries — see
+ * {@link mapPullRequestNodes} for why. Pure. */
+export function mapCommitNodes(
+  nodes: Array<GithubCommitNode | null> | null | undefined,
+): RepoCommit[] {
+  return (nodes ?? []).flatMap((node) => (node ? [mapCommit(node)] : []));
 }
 
 /**
@@ -503,7 +524,7 @@ export class GithubInsightsClient implements RepoInsightsClient {
     const page = payload.repository?.pullRequests;
     if (!page) return { items: [], nextCursor: null };
     const { items, reachedWindowEnd } = withinUpdatedWindow(
-      (page.nodes ?? []).map(mapPullRequest),
+      mapPullRequestNodes(page.nodes),
       params.updatedAfter,
     );
     return {
@@ -537,7 +558,7 @@ export class GithubInsightsClient implements RepoInsightsClient {
     const history = target?.history;
     if (!history) return { items: [], nextCursor: null };
     return {
-      items: (history.nodes ?? []).map(mapCommit),
+      items: mapCommitNodes(history.nodes),
       nextCursor: history.pageInfo.hasNextPage
         ? history.pageInfo.endCursor
         : null,
