@@ -1,4 +1,8 @@
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import {
+  MAX_PROPERTIES_COUNT,
+  MAX_PROPERTY_STRING_LENGTH,
+} from "@/core/context-factory";
 
 export function extractCallToolErrorMessage(
   result: CallToolResult,
@@ -29,6 +33,10 @@ export function extractCallToolErrorMessage(
 /**
  * Extract custom properties from tool call arguments (_meta.properties).
  * Only string values are accepted to match the properties schema.
+ *
+ * Capped the same as the header path (parsePropertiesHeader): this is a
+ * caller-controlled tool argument that lands verbatim in the monitoring
+ * log's `properties` column on every call.
  */
 export function extractMetaProperties(
   args: Record<string, unknown> | undefined,
@@ -49,7 +57,12 @@ export function extractMetaProperties(
 
   const result: Record<string, string> = {};
   for (const [key, value] of Object.entries(properties)) {
-    if (typeof value === "string") {
+    if (Object.keys(result).length >= MAX_PROPERTIES_COUNT) break;
+    if (
+      typeof value === "string" &&
+      key.length <= MAX_PROPERTY_STRING_LENGTH &&
+      value.length <= MAX_PROPERTY_STRING_LENGTH
+    ) {
       result[key] = value;
     }
   }
