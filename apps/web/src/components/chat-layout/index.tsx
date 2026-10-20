@@ -34,7 +34,6 @@ interface ChatLayoutProps extends ChatLayoutState, ChatLayoutActions {
   /** Route identity resets a failed content body when navigation changes. */
   contentKey: string;
   contentNavigation?: ReactNode;
-  contentActions?: ReactNode;
   /** No chat behind this layout (the account-less `/site-editor`): the thread
    *  stays closed and nothing offers to open it. */
   threadless?: boolean;
@@ -277,12 +276,7 @@ function ChatLayoutContent({
       <Page.Breadcrumbs.Provider>
         <RoutePageHeader
           navigation={layout.contentNavigation}
-          actions={
-            <>
-              {layout.contentActions}
-              {actions}
-            </>
-          }
+          actions={actions}
         />
         <Panel.Content>
           <div className="min-h-0 flex-1 overflow-hidden">

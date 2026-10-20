@@ -54,7 +54,6 @@ import { Panel } from "@/components/panel";
 import { ChatLayout } from "@/components/chat-layout";
 import { ThreadsMenu } from "@/components/chat/threads-menu";
 import { NewChatCrumb } from "@/components/header/shell-breadcrumb";
-import { DevAgentControl } from "@/components/dev-agent/dev-agent-control";
 import { MainPanelTabsBar } from "@/layouts/main-panel-tabs/main-panel-tabs-bar";
 import { useActivePanelTabId } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { resolveThreadSessionIdentity } from "./session-identity";
@@ -410,7 +409,6 @@ function ThreadSessionContent({
 }) {
   const { virtualMcpId, taskId } = useChatTask();
 
-  const entity = useVirtualMCP(virtualMcpId);
   const contentKey = useActivePanelTabId() ?? "overview";
   /** Takeover apps default the chat panel closed, in local state so
    *  `?sidepanel` cannot reopen it on arrival. Keyed on the view, so opening
@@ -437,7 +435,6 @@ function ThreadSessionContent({
         contentNavigation={
           <MainPanelTabsBar virtualMcpId={virtualMcpId} taskId={taskId} />
         }
-        contentActions={entity && <DevAgentControl virtualMcp={entity} />}
       >
         <ChatLayout.Thread topbar={<ThreadTopbar />}>
           <ActiveTaskBoundary />

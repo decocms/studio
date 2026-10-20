@@ -3652,7 +3652,6 @@ export interface StudioToolIO {
           [x: string]: unknown;
           instructions: string | null;
           subAgents?: string[] | null | undefined;
-          liveAgentId?: string | null | undefined;
           ui?:
             | {
                 banner?: string | null | undefined;
@@ -3916,7 +3915,6 @@ export interface StudioToolIO {
               [x: string]: unknown;
               instructions?: string | null | undefined;
               subAgents?: string[] | null | undefined;
-              liveAgentId?: string | null | undefined;
               ui?:
                 | {
                     banner?: string | null | undefined;
@@ -4115,7 +4113,6 @@ export interface StudioToolIO {
           [x: string]: unknown;
           instructions: string | null;
           subAgents?: string[] | null | undefined;
-          liveAgentId?: string | null | undefined;
           ui?:
             | {
                 banner?: string | null | undefined;
@@ -4346,7 +4343,6 @@ export interface StudioToolIO {
           [x: string]: unknown;
           instructions: string | null;
           subAgents?: string[] | null | undefined;
-          liveAgentId?: string | null | undefined;
           ui?:
             | {
                 banner?: string | null | undefined;
@@ -4568,7 +4564,6 @@ export interface StudioToolIO {
           [x: string]: unknown;
           instructions: string | null;
           subAgents?: string[] | null | undefined;
-          liveAgentId?: string | null | undefined;
           ui?:
             | {
                 banner?: string | null | undefined;
@@ -4785,7 +4780,6 @@ export interface StudioToolIO {
               [x: string]: unknown;
               instructions?: string | null | undefined;
               subAgents?: string[] | null | undefined;
-              liveAgentId?: string | null | undefined;
               ui?:
                 | {
                     banner?: string | null | undefined;
@@ -4992,7 +4986,6 @@ export interface StudioToolIO {
           [x: string]: unknown;
           instructions: string | null;
           subAgents?: string[] | null | undefined;
-          liveAgentId?: string | null | undefined;
           ui?:
             | {
                 banner?: string | null | undefined;
@@ -5212,7 +5205,6 @@ export interface StudioToolIO {
           [x: string]: unknown;
           instructions: string | null;
           subAgents?: string[] | null | undefined;
-          liveAgentId?: string | null | undefined;
           ui?:
             | {
                 banner?: string | null | undefined;
@@ -6848,7 +6840,6 @@ export interface StudioToolIO {
           [x: string]: unknown;
           instructions: string | null;
           subAgents?: string[] | null | undefined;
-          liveAgentId?: string | null | undefined;
           ui?:
             | {
                 banner?: string | null | undefined;

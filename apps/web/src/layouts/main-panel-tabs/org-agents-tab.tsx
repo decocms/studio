@@ -5,7 +5,7 @@ import type { TranslationKey } from "@/i18n/use-t.ts";
  *  A centered hero (connect, greeting, one search), then the roster beside the
  *  org's recent activity, then what to do next. The roster deliberately shows
  *  only what a person made — `scopableProjects` drops the Super Agent, the
- *  Studio Pack managers and dev agents, so a fresh org lands on the empty state
+ *  Studio Pack managers, so a fresh org lands on the empty state
  *  rather than on scaffolding it did not create. It renders as an item list
  *  (`AgentListGroup`), not the Settings › Agents card grid: this page exists to
  *  get you somewhere, that one to manage what you have. */

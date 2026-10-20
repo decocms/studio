@@ -23,7 +23,6 @@ import { imageUpload } from "./image-upload.ts";
 import { home } from "./home.ts";
 import { header } from "./header.ts";
 import { filePicker } from "./file-picker.ts";
-import { devAgent } from "./dev-agent.ts";
 import { details } from "./details.ts";
 import { deck } from "./deck.ts";
 import { discover } from "./discover.ts";
@@ -77,7 +76,6 @@ export const ptBR = {
   ...home,
   ...header,
   ...filePicker,
-  ...devAgent,
   ...details,
   ...deck,
   ...discover,

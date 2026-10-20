@@ -91,7 +91,6 @@ import {
   agentHasClonableSource,
   agentHasConnectedRepository,
 } from "@/lib/agent-capabilities";
-import { DevAgentSetup } from "@/components/dev-agent/dev-agent-setup.tsx";
 import { EnvVarsField } from "@/components/sandbox/runtime-card/env-vars-field";
 import { omitSandboxMap } from "@/lib/omit-sandbox-map";
 import { RepoRow } from "@/components/sandbox/runtime-card/repo-row";
@@ -1127,9 +1126,6 @@ function VirtualMcpDetailViewWithData({
                   </Suspense>
                 </ErrorBoundary>
               )}
-
-              {/* Development agent section (link a dev counterpart) */}
-              {section === "site" && <DevAgentSetup virtualMcp={virtualMcp} />}
 
               {/* CMS — content editing, then how changes reach the live
                 site. Publishing is code-agent only. */}

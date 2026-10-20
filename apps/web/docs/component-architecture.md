@@ -214,9 +214,7 @@ export default function SiteEditorRoute() {
 The drawer stays outside the body's error boundary. `aside` is a second surface
 beside the content on desktop, such as the Library's file preview; the route
 composes it, and with the conversation open the Library shows the file in the
-content itself so the page never holds three panels. The Develop/Live project
-switch is supplied by the session route to the common topbar because it changes
-project identity on every destination, including project Settings.
+content itself so the page never holds three panels.
 
 `useChatLayout()` exposes layout visibility and toggles. Read agent and thread
 data from their domain providers and SDK hooks; the layout context does not own

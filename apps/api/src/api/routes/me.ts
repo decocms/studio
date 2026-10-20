@@ -13,15 +13,9 @@ export const ME_API_PREFIX = "/api/_me";
 
 type MeEnv = { Variables: { studioContext: StudioContext } };
 
-/** Rows the picker must never offer. Each test is per-row, so the predicate
- *  survives a search that spans organizations — unlike the web client's dev
- *  filter, which infers "is a dev agent" by scanning one org's whole list and
- *  therefore cannot run over a cross-org result set. */
+/** Exclude platform-owned agents from the project picker. */
 function isPlumbing(match: CrossOrgProjectMatch): boolean {
-  if (isDecopilot(match.id) !== null) return true;
-  if (isStudioPackAgent(match.id)) return true;
-  const liveAgentId = match.metadata?.liveAgentId;
-  return typeof liveAgentId === "string" && liveAgentId.length > 0;
+  return isDecopilot(match.id) !== null || isStudioPackAgent(match.id);
 }
 
 /**

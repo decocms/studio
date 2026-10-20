@@ -808,13 +808,6 @@ const VirtualMcpMetadataFields = {
     .describe(
       "Allowlist of Virtual MCP (agent) or concrete MCP connection IDs this agent may delegate to via subtask. Concrete connections create ephemeral subagents. null/absent = all active org targets; empty array = itself only.",
     ),
-  liveAgentId: z
-    .string()
-    .nullable()
-    .optional()
-    .describe(
-      "ID of the live agent this (dev) agent develops. Set only on dev agents; powers the Develop/Live toggle. A dev agent is hidden from the sidebar (reached via the toggle on its live counterpart).",
-    ),
   ui: VirtualMcpUISchema.nullable()
     .optional()
     .describe("UI customization settings"),
