@@ -66,6 +66,9 @@ test("shows the site's requests, latency, cache and slowest pages", async ({
   // Slowest first.
   const routes = c.locator("table tbody tr td:first-child");
   await expect(routes.first()).toHaveText("/products/:slug");
+  // The catch-all label reads as words, not the metric's "unmatched".
+  await expect(routes.getByText("Other routes")).toBeVisible();
+  await expect(routes.getByText("unmatched")).toHaveCount(0);
   await expect(c.getByText("Release 4b59af4")).toBeVisible();
 });
 
@@ -120,7 +123,7 @@ test("explains missing request metrics and points to what already works", async 
   await expect(c.getByText("Request metrics are on their way")).toBeVisible();
   await expect(
     c.getByText(
-      "Request metrics appear once the site runs @decocms/tanstack 8.5 or later. Upstream calls and errors are already shown.",
+      "Request metrics appear once the site runs @decocms/tanstack 8.5 or later. Sites built on Next.js don't send them yet. Upstream calls and errors are already shown.",
     ),
   ).toBeVisible();
   await c.getByRole("button", { name: "See upstream calls" }).click();

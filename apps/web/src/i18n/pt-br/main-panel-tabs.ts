@@ -573,6 +573,8 @@ export const mainPanelTabs = {
   "mainPanelTabs.monitorV8.routes.p95": "p95",
   "mainPanelTabs.monitorV8.routes.requests": "Requisições",
   "mainPanelTabs.monitorV8.routes.errors": "5xx",
+  "mainPanelTabs.monitorV8.routes.unmatched": "Outras rotas",
+  "mainPanelTabs.monitorV8.routes.redirect": "Redirecionamentos",
   "mainPanelTabs.monitorV8.upstreams.title": "Chamadas a integrações",
   "mainPanelTabs.monitorV8.upstreams.subtitle":
     "Chamadas que o site faz a plataformas de e-commerce e outros serviços",
@@ -594,7 +596,7 @@ export const mainPanelTabs = {
   "mainPanelTabs.monitorV8.empty.serverMetricMissing.title":
     "As métricas de requisições estão a caminho",
   "mainPanelTabs.monitorV8.empty.serverMetricMissing.body":
-    "As métricas de requisições aparecem quando o site estiver no @decocms/tanstack 8.5 ou mais recente. As chamadas a integrações e os erros já aparecem.",
+    "As métricas de requisições aparecem quando o site estiver no @decocms/tanstack 8.5 ou mais recente. Sites feitos em Next.js ainda não as enviam. As chamadas a integrações e os erros já aparecem.",
   "mainPanelTabs.monitorV8.empty.seeUpstreams": "Ver chamadas a integrações",
   "mainPanelTabs.monitorV8.empty.noTelemetry.title":
     "Aguardando os primeiros dados deste site",

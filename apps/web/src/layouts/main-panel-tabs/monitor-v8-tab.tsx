@@ -524,9 +524,15 @@ function RoutesTable({ routes }: { routes: RouteRow[] }) {
       rows={slowest.map((r) => ({
         key: r.route,
         cells: [
-          <span key="r" className="font-mono text-xs" title={r.route}>
-            {r.route}
-          </span>,
+          r.route === "unmatched" || r.route === "redirect" ? (
+            <span key="r" className="text-xs text-muted-foreground">
+              {t(`mainPanelTabs.monitorV8.routes.${r.route}`)}
+            </span>
+          ) : (
+            <span key="r" className="font-mono text-xs" title={r.route}>
+              {r.route}
+            </span>
+          ),
           formatMs(r.p95Ms),
           formatCount(r.requests),
           <span

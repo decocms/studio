@@ -150,7 +150,8 @@ export function siteViewQuery(
         TimeUnix >= fromUnixTimestamp64Milli({start:Int64}) AS current,
         ${HISTOGRAM_COLUMNS},
         sumIf(Count, Attributes['status_class'] = '5xx') AS errors,
-        sumIf(Count, Attributes['cache'] = 'HIT') AS hits
+        sumIf(Count, Attributes['cache'] = 'HIT') AS hits,
+        sumIf(Count, Attributes['cache'] IN ('HIT', 'MISS')) AS cacheable
       FROM ${HIST_TABLE}
       WHERE ${SITE_SCOPE}
         AND MetricName = {metric:String}
@@ -384,7 +385,11 @@ export interface SitePeriod {
   errorRate: number | null;
   p50Ms: number | null;
   p95Ms: number | null;
-  /** Share of requests served from the edge cache (`cache=HIT`). */
+  /**
+   * Share of the pages the edge cache could serve that it did serve
+   * (`HIT` over `HIT` + `MISS`). Drafts, server functions, non-GET and
+   * private requests never go through the cache, so they don't count.
+   */
   cacheHitRate: number | null;
 }
 
@@ -399,6 +404,7 @@ type SummaryRow = HistogramRow & {
   current: Num | boolean;
   errors: Num;
   hits: Num;
+  cacheable: Num;
 };
 
 export function toSummary(rows: SummaryRow[], w: SiteWindow): SiteSummary {
@@ -407,6 +413,7 @@ export function toSummary(rows: SummaryRow[], w: SiteWindow): SiteSummary {
     const requests = mine.reduce((s, r) => s + n(r.count), 0);
     const errors5xx = mine.reduce((s, r) => s + n(r.errors), 0);
     const hits = mine.reduce((s, r) => s + n(r.hits), 0);
+    const cacheable = mine.reduce((s, r) => s + n(r.cacheable), 0);
     const hs = mine.map(hist);
     return {
       requests,
@@ -414,7 +421,7 @@ export function toSummary(rows: SummaryRow[], w: SiteWindow): SiteSummary {
       errorRate: ratio(errors5xx, requests),
       p50Ms: toMs(quantile(hs, 0.5)),
       p95Ms: toMs(quantile(hs, 0.95)),
-      cacheHitRate: ratio(hits, requests),
+      cacheHitRate: ratio(hits, cacheable),
     };
   };
   const current = period(true);

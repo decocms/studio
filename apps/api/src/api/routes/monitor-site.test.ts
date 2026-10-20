@@ -173,6 +173,8 @@ describe("transforms", () => {
           max: 0.2,
           errors: "4",
           hits: "70",
+          // Drafts, server functions and POSTs never reach the cache.
+          cacheable: "80",
         },
         {
           current: 0,
@@ -182,6 +184,7 @@ describe("transforms", () => {
           max: 0.2,
           errors: "0",
           hits: "10",
+          cacheable: "40",
         },
       ],
       w,
@@ -193,10 +196,11 @@ describe("transforms", () => {
       p50Ms: Math.round((0.075 + 0.025 * (50 / 80)) * 1000),
       // 0.1 + 0.15 × 15/20 = 0.2125 s.
       p95Ms: 212,
-      cacheHitRate: 0.7,
+      // HIT over HIT + MISS: 70 / 80.
+      cacheHitRate: 0.875,
     });
     expect(s.previous.requests).toBe(50);
-    expect(s.previous.cacheHitRate).toBe(0.2);
+    expect(s.previous.cacheHitRate).toBe(0.25);
     expect(s.perSecond).toBeCloseTo(100 / 3600, 9);
   });
 
