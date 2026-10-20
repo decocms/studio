@@ -62,7 +62,7 @@
     "@better-auth/sso": "1.4.1",
     "@decocms/better-auth": "1.5.17",
     "@decocms/bindings": "workspace:*",
-    "@decocms/blocks": "8.4.0",
+    "@decocms/blocks": "8.5.0",
     "@decocms/mcp-utils": "workspace:*",
     "@decocms/runtime": "workspace:*",
     "@decocms/sandbox": "workspace:*",

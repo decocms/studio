@@ -19,7 +19,7 @@
     },
     "apps/api": {
       "name": "decocms",
-      "version": "4.490.1",
+      "version": "4.503.1",
       "bin": {
         "deco": "./dist/server/cli.js",
       },
@@ -48,7 +48,7 @@
         "@better-auth/sso": "1.4.1",
         "@decocms/better-auth": "1.5.17",
         "@decocms/bindings": "workspace:*",
-        "@decocms/blocks": "8.4.0",
+        "@decocms/blocks": "8.5.0",
         "@decocms/mcp-utils": "workspace:*",
         "@decocms/runtime": "workspace:*",
         "@decocms/sandbox": "workspace:*",
@@ -95,7 +95,7 @@
         "@better-auth/sso": "1.6.11",
         "@daveyplate/better-auth-ui": "^3.2.7",
         "@decocms/bindings": "workspace:*",
-        "@decocms/blocks": "8.4.0",
+        "@decocms/blocks": "8.5.0",
         "@decocms/mcp-utils": "workspace:*",
         "@decocms/sandbox": "workspace:*",
         "@decocms/shared": "workspace:*",
@@ -209,9 +209,9 @@
     },
     "packages/e2e": {
       "name": "@decocms/e2e",
-      "version": "1.116.1",
+      "version": "1.120.1",
       "dependencies": {
-        "@decocms/blocks": "8.4.0",
+        "@decocms/blocks": "8.5.0",
         "@decocms/shared": "workspace:*",
         "@modelcontextprotocol/sdk": "1.29.0",
         "@playwright/test": "^1.58.2",
@@ -226,7 +226,7 @@
     },
     "packages/harness-runner": {
       "name": "@decocms/harness-runner",
-      "version": "0.11.2",
+      "version": "0.13.0",
       "bin": {
         "decocms-harness-runner": "./main.ts",
       },
@@ -279,7 +279,7 @@
     },
     "packages/sandbox": {
       "name": "@decocms/sandbox",
-      "version": "1.89.5",
+      "version": "1.93.1",
       "dependencies": {
         "@decocms/shared": "workspace:*",
         "@kubernetes/client-node": "^1.4.0",
@@ -296,7 +296,7 @@
     },
     "packages/sandbox-controller": {
       "name": "@decocms/sandbox-controller",
-      "version": "0.8.6",
+      "version": "0.12.1",
       "dependencies": {
         "@kubernetes/client-node": "^1.4.0",
       },
@@ -313,7 +313,7 @@
     },
     "packages/shared": {
       "name": "@decocms/shared",
-      "version": "0.161.0",
+      "version": "0.172.0",
       "dependencies": {
         "@modelcontextprotocol/ext-apps": "^1.7.1",
         "@modelcontextprotocol/sdk": "1.29.0",
@@ -343,7 +343,7 @@
     },
     "packages/ui": {
       "name": "@decocms/ui",
-      "version": "1.23.1",
+      "version": "1.24.0",
       "dependencies": {
         "@radix-ui/react-accordion": "^1.2.3",
         "@radix-ui/react-alert-dialog": "^1.1.6",
@@ -684,7 +684,7 @@
 
     "@decocms/bindings": ["@decocms/bindings@workspace:packages/bindings"],
 
-    "@decocms/blocks": ["@decocms/blocks@8.4.0", "", { "dependencies": { "ajv": "^8.20.0", "zod": "^4.4.3" }, "peerDependencies": { "react": "^19.0.0", "typescript": "^5.0.0", "vite": ">=6.0.0" }, "optionalPeers": ["vite"], "bin": { "deco": "bin/deco.js" } }, "sha512-O20MUeGldSefiv1xdebsqsWRsP2pC4cLtzJCZnRKfVd1CthEHT0ZOX2TU/fYC/8LtzT3n2z8/0uQTWj44i6LZQ=="],
+    "@decocms/blocks": ["@decocms/blocks@8.5.0", "", { "dependencies": { "ajv": "^8.20.0", "zod": "^4.4.3" }, "peerDependencies": { "react": "^19.0.0", "typescript": "^5.0.0", "vite": ">=6.0.0" }, "optionalPeers": ["vite"], "bin": { "deco": "bin/deco.js" } }, "sha512-30BEnTCPkPWWjgQTOPmev2Bdyg+9p3yF49mKD1Llu7TQP2dNal5+uq3gFwmodMSxMfAr5jk1usq8br/UaTxTUA=="],
 
     "@decocms/e2e": ["@decocms/e2e@workspace:packages/e2e"],
 
