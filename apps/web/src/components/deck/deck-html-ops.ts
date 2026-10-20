@@ -35,10 +35,18 @@ const URL_ATTRS = new Set([
   "formaction",
 ]);
 
+const UNSAFE_URL_PROTOCOLS = new Set(["javascript:", "vbscript:", "data:"]);
+
+// Resolved via URL(), which strips embedded tabs/newlines before exposing the scheme.
 function isSafeUrlAttrValue(value: string): boolean {
-  const trimmed = value.trim();
-  if (/^data:image\//i.test(trimmed)) return true;
-  return !/^(javascript|vbscript|data):/i.test(trimmed);
+  let protocol: string;
+  try {
+    protocol = new URL(value, "https://deco.cx").protocol;
+  } catch {
+    return true;
+  }
+  if (protocol === "data:") return /^data:image\//i.test(value.trim());
+  return !UNSAFE_URL_PROTOCOLS.has(protocol);
 }
 
 function isSafeAttr(name: string, value: string): boolean {

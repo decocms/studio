@@ -143,6 +143,17 @@ describe("applyDeckOp", () => {
     ).toThrow(DeckOpError);
   });
 
+  test("tab-obfuscated javascript: URI attribute rejected", () => {
+    expect(() =>
+      applyDeckOp(DECK, {
+        kind: "set-attr",
+        at: 0,
+        name: "href",
+        value: "jav\tascript:alert(1)",
+      }),
+    ).toThrow(DeckOpError);
+  });
+
   test("replace strips script tags", () => {
     const out = applyDeckOp(DECK, {
       kind: "replace",
@@ -169,6 +180,16 @@ describe("applyDeckOp", () => {
       html: '<section class="a"><a href="javascript:alert(1)">click</a></section>',
     });
     expect(out).not.toContain("javascript:");
+    expect(out).toContain("<a>click</a>");
+  });
+
+  test("replace strips a tab-obfuscated javascript: href", () => {
+    const out = applyDeckOp(DECK, {
+      kind: "replace",
+      at: 0,
+      html: '<section class="a"><a href="jav&#9;ascript:alert(1)">click</a></section>',
+    });
+    expect(out).not.toContain("ascript:");
     expect(out).toContain("<a>click</a>");
   });
 
