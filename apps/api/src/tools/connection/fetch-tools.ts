@@ -148,9 +148,16 @@ function mapListedTools(
 
 /**
  * Try to fetch configuration scopes from the MCP_CONFIGURATION tool.
- * Returns null if the tool is not implemented or the call fails.
+ * Returns null if the tool is not implemented, the call fails, or the
+ * response doesn't actually hold an array of scope strings — a downstream
+ * MCP server is untrusted input, and every scope here later hits
+ * `scope.split("::")` in parseScope, so a non-string element would otherwise
+ * crash connection create/update with an unhandled TypeError instead of
+ * failing closed.
  */
-async function fetchScopesFromMCP(client: Client): Promise<string[] | null> {
+export async function fetchScopesFromMCP(
+  client: Client,
+): Promise<string[] | null> {
   try {
     const configResult = await withTimeout(
       client.callTool({ name: "MCP_CONFIGURATION", arguments: {} }),
@@ -163,7 +170,11 @@ async function fetchScopesFromMCP(client: Client): Promise<string[] | null> {
       );
       if (textContent && "text" in textContent) {
         const config = JSON.parse(String(textContent.text));
-        if (Array.isArray(config.scopes) && config.scopes.length > 0) {
+        if (
+          Array.isArray(config.scopes) &&
+          config.scopes.length > 0 &&
+          config.scopes.every((scope: unknown) => typeof scope === "string")
+        ) {
           return config.scopes as string[];
         }
       }
