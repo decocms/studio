@@ -98,6 +98,13 @@ function matchingBrace(text: string, open: number): number {
   throw new SiteAppInstallError("package.json: unbalanced braces");
 }
 
+/** Index of the first character at or after `from` that JSON does not skip. */
+function skipSpace(text: string, from: number): number {
+  let i = from;
+  while (i < text.length && " \t\r\n".includes(text[i]!)) i++;
+  return i;
+}
+
 /**
  * Index of the `{` opening the manifest's OWN `dependencies`. Found by depth
  * rather than by the first match: `pnpm`, `overrides` and `resolutions` all
@@ -105,7 +112,6 @@ function matchingBrace(text: string, open: number): number {
  * dependency the package manager never installs.
  */
 function topLevelDependenciesOpen(text: string): number {
-  const keyObject = /\s*:\s*\{/y;
   let depth = 0;
   let quote = false;
   let start = -1;
@@ -117,8 +123,10 @@ function topLevelDependenciesOpen(text: string): number {
         quote = false;
         if (depth !== 1 || text.slice(start + 1, i) !== "dependencies")
           continue;
-        keyObject.lastIndex = i + 1;
-        if (keyObject.exec(text)) return keyObject.lastIndex - 1;
+        const colon = skipSpace(text, i + 1);
+        if (text[colon] !== ":") continue;
+        const open = skipSpace(text, colon + 1);
+        if (text[open] === "{") return open;
       }
       continue;
     }

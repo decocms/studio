@@ -325,7 +325,7 @@ const APP_REGISTRY = [
     for (const range of ["catalog:", "workspace:*", "link:../blocks"]) {
       expect(() =>
         makeInstallAppPatches(tanstackInput({ decocmsVersion: range })),
-      ).toThrow(new RegExp(`pinned at "${range.replace("*", "\\*")}"`));
+      ).toThrow(`pinned at "${range}"`);
     }
   });
 
