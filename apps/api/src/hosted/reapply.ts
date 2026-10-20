@@ -231,6 +231,7 @@ export async function reapplyVersion(
     head,
     files,
     reapplyMessage(original, targetSha, options.coAuthor),
+    options.coAuthor,
   );
   return {
     result: "merged",

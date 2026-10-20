@@ -21,6 +21,7 @@
  * shared with the provider and change-request clients.
  */
 
+import type { GitAuthor } from "@decocms/sandbox/shared";
 import type { RepoRef } from "@decocms/shared/git-providers";
 import { retry, RetryError } from "@decocms/shared/std";
 import {
@@ -548,8 +549,9 @@ export class GitlabContentClient implements RepoContentClient {
     expectedHead: string | null;
     rewriteFrom?: string;
     changes: FileChange[];
+    author?: GitAuthor | null;
   }): Promise<{ sha: string }> {
-    const { branch, message, expectedHead, rewriteFrom } = params;
+    const { branch, message, expectedHead, rewriteFrom, author } = params;
     const head = await this.getBranch(branch);
     if (expectedHead !== null && head?.sha !== expectedHead) {
       throw new RepoWriteConflict(
@@ -564,12 +566,19 @@ export class GitlabContentClient implements RepoContentClient {
         expectedHead,
         rewriteFrom,
         changes,
+        author,
       });
     }
     /** Pin the metadata reads to the sha the guard just approved, not to the
      * branch name, so a push landing mid-fanout cannot feed us its ids. */
     const base = head?.sha ?? branch;
-    const sha = await this.commitOnto({ branch, base, message, changes });
+    const sha = await this.commitOnto({
+      branch,
+      base,
+      message,
+      changes,
+      author,
+    });
     if (sha === null) {
       if (head === null) {
         throw new GitProviderError({
@@ -608,8 +617,10 @@ export class GitlabContentClient implements RepoContentClient {
     expectedHead: string | null;
     rewriteFrom: string;
     changes: readonly ResolvedChange[];
+    author?: GitAuthor | null;
   }): Promise<{ sha: string }> {
-    const { branch, message, expectedHead, rewriteFrom, changes } = params;
+    const { branch, message, expectedHead, rewriteFrom, changes, author } =
+      params;
 
     await this.assertHeadIs(branch, expectedHead);
     const forced = await this.commitOnto({
@@ -617,6 +628,7 @@ export class GitlabContentClient implements RepoContentClient {
       base: rewriteFrom,
       message,
       changes,
+      author,
       startSha: rewriteFrom,
       force: true,
     }).catch((cause: unknown) => {
@@ -640,6 +652,7 @@ export class GitlabContentClient implements RepoContentClient {
           base: rewriteFrom,
           message,
           changes,
+          author,
         })) ?? rewriteFrom;
       /** Re-read as late as possible: the guard has to hold when the target is
        * replaced, not when this call started. */
@@ -688,11 +701,12 @@ export class GitlabContentClient implements RepoContentClient {
     base: string;
     message: string;
     changes: readonly ResolvedChange[];
+    author?: GitAuthor | null;
     /** Rewrites `branch` onto this sha instead of appending to its head. */
     startSha?: string;
     force?: boolean;
   }): Promise<string | null> {
-    const { branch, base, message, changes, startSha, force } = params;
+    const { branch, base, message, changes, author, startSha, force } = params;
     const paths = [...new Set(changes.map((change) => change.path))];
     const lastCommitIds = new Map(
       await pooledMap(
@@ -718,6 +732,10 @@ export class GitlabContentClient implements RepoContentClient {
             branch,
             commit_message: message,
             actions,
+            // GitLab has no committer field: only the author half is ours.
+            ...(author
+              ? { author_name: author.name, author_email: author.email }
+              : {}),
             ...(startSha ? { start_sha: startSha } : {}),
             ...(force ? { force: true } : {}),
           },

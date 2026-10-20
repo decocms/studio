@@ -237,9 +237,14 @@ describe("reapplyVersion", () => {
     git.pushDirect({ ".deco/blocks/Home.json": serializeBlock({ t: 2 }) });
     await release();
     await reapplyVersion(repo, original, { coAuthor: ANA });
+    // Ana authors it, so the trailer naming her again is dropped.
     expect(git.history[0]?.message).toBe(
-      `Reapply: Black Friday banner\n\nReapplied-From: ${original}\nCo-authored-by: Ana <ana@acme.com>`,
+      `Reapply: Black Friday banner\n\nReapplied-From: ${original}`,
     );
+    expect(git.history[0]?.author).toEqual({
+      name: "Ana",
+      email: "ana@acme.com",
+    });
     const page = await listReleases(
       repo,
       fakeInsights(git.history).client,

@@ -67,3 +67,33 @@ export function appendCoAuthorToPullRequestBody(
   if (!trimmed) return trimmed || undefined;
   return appendCoAuthorTrailer(trimmed, operator);
 }
+
+/** A git author line's two halves. Git has no author without an email. */
+export interface GitAuthor {
+  readonly name: string;
+  readonly email: string;
+}
+
+/**
+ * How a commit is attributed to the operator — the TypeScript twin of the
+ * daemon's `gitx.CommitAttribution`, so a commit written through a provider
+ * API attributes exactly like one the daemon runs `git commit` for.
+ *
+ *  - name AND email → they are the git author, and the now-redundant
+ *    `Co-authored-by:` trailer is dropped. Only the author changes; the
+ *    committer stays the caller's own identity.
+ *  - otherwise → no valid author can be formed, so the trailer carries it.
+ */
+export function commitAttribution(
+  message: string,
+  operator: CoAuthorIdentity | null | undefined,
+): { message: string; author: GitAuthor | null } {
+  const normalized = normalizeCoAuthorIdentity(operator);
+  if (normalized?.userEmail) {
+    return {
+      message: stripCoAuthorTrailers(message),
+      author: { name: normalized.userName, email: normalized.userEmail },
+    };
+  }
+  return { message: appendCoAuthorTrailer(message, operator), author: null };
+}

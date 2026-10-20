@@ -1,4 +1,7 @@
-import type { CoAuthorIdentity } from "@decocms/sandbox/shared";
+import {
+  commitAttribution,
+  type CoAuthorIdentity,
+} from "@decocms/sandbox/shared";
 import {
   blockKeyToFileStem,
   decoBlockFingerprint,
@@ -62,7 +65,10 @@ export interface CommitDeps {
   client: RepoContentClient;
   branch: string;
   packagePath: string | null;
-  /** Acting user, appended as a `Co-authored-by:` trailer when present. */
+  /**
+   * Acting user. Becomes the commit's git author when they have a usable
+   * name + email, and a `Co-authored-by:` trailer when they do not.
+   */
   coAuthor?: CoAuthorIdentity | null;
 }
 
@@ -296,14 +302,16 @@ async function commitBatch(batch: Batch): Promise<BatchOutcome> {
     });
     if (gen) writes.push(gen);
 
+    // The editor authors the commit; the account behind the token commits it.
+    const attribution = commitAttribution(
+      decofileCommitMessage([...set.keys()], [...del]),
+      batch.deps.coAuthor,
+    );
     try {
       const { sha } = await client.commitFiles({
         branch,
-        message: decofileCommitMessage(
-          [...set.keys()],
-          [...del],
-          batch.deps.coAuthor,
-        ),
+        message: attribution.message,
+        author: attribution.author,
         expectedHead: headSha,
         changes: writes,
       });

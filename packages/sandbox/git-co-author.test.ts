@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import {
   appendCoAuthorTrailer,
+  commitAttribution,
   normalizeCoAuthorIdentity,
   stripCoAuthorTrailers,
 } from "./git-co-author";
@@ -85,5 +86,66 @@ describe("stripCoAuthorTrailers", () => {
         "feat: x\n\nCo-authored-by: A <a@example.com>\nCo-authored-by: B",
       ),
     ).toBe("feat: x");
+  });
+});
+
+describe("commitAttribution", () => {
+  it("makes a complete operator the author and drops the trailer", () => {
+    expect(
+      commitAttribution("feat: update hero", {
+        userName: "Jane Doe",
+        userEmail: "jane@example.com",
+      }),
+    ).toEqual({
+      message: "feat: update hero",
+      author: { name: "Jane Doe", email: "jane@example.com" },
+    });
+  });
+
+  it("strips a trailer the message already carried for that operator", () => {
+    expect(
+      commitAttribution(
+        "feat: x\n\nCo-authored-by: Jane Doe <jane@example.com>",
+        { userName: "Jane Doe", userEmail: "jane@example.com" },
+      ),
+    ).toEqual({
+      message: "feat: x",
+      author: { name: "Jane Doe", email: "jane@example.com" },
+    });
+  });
+
+  it("falls back to the trailer without a usable email", () => {
+    expect(commitAttribution("fix: typo", { userName: "Jane Doe" })).toEqual({
+      message: "fix: typo\n\nCo-authored-by: Jane Doe",
+      author: null,
+    });
+    expect(
+      commitAttribution("fix: typo", {
+        userName: "Jane Doe",
+        userEmail: "not-an-email",
+      }),
+    ).toEqual({
+      message: "fix: typo\n\nCo-authored-by: Jane Doe",
+      author: null,
+    });
+  });
+
+  it("leaves the message alone and authors nothing without an operator", () => {
+    expect(commitAttribution("chore: x", null)).toEqual({
+      message: "chore: x",
+      author: null,
+    });
+  });
+
+  it("drops a client-supplied trailer the operator did not write", () => {
+    expect(
+      commitAttribution(
+        "feat: x\n\nCo-authored-by: Attacker <evil@example.com>",
+        { userName: "Jane Doe", userEmail: "jane@example.com" },
+      ),
+    ).toEqual({
+      message: "feat: x",
+      author: { name: "Jane Doe", email: "jane@example.com" },
+    });
   });
 });

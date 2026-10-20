@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, it } from "bun:test";
+import type { GitAuthor } from "@decocms/sandbox/shared";
 import type { RepoRef } from "@decocms/shared/git-providers";
 import type {
   BranchPage,
@@ -46,6 +47,7 @@ function fakeClient(opts: FakeOpts) {
   let maxInFlight = 0;
   let commitAttempts = 0;
   let committed: FileChange[] = [];
+  let lastCommit: { message: string; author?: GitAuthor | null } | null = null;
 
   const treeEntries = (): TreeEntry[] => [
     ...opts.stems.map(
@@ -89,12 +91,21 @@ function fakeClient(opts: FakeOpts) {
       return JSON.stringify({ __resolveType: stem });
     },
     readFileAtRef: async () => null,
-    commitFiles: async ({ changes }: { changes: FileChange[] }) => {
+    commitFiles: async ({
+      changes,
+      message,
+      author,
+    }: {
+      changes: FileChange[];
+      message: string;
+      author?: GitAuthor | null;
+    }) => {
       commitAttempts++;
       if (commitAttempts <= (opts.conflicts ?? 0)) {
         throw new RepoWriteConflict("head moved");
       }
       committed = changes;
+      lastCommit = { message, author };
       return { sha: `commit${commitAttempts}` };
     },
     createBranch: async () => {},
@@ -115,8 +126,47 @@ function fakeClient(opts: FakeOpts) {
     get committed() {
       return committed;
     },
+    get lastCommit() {
+      return lastCommit;
+    },
   };
 }
+
+describe("enqueueDecofilePatch attribution", () => {
+  const deps = (f: ReturnType<typeof fakeClient>, coAuthor?: unknown) => ({
+    client: f.client,
+    branch: "feature",
+    packagePath: null,
+    coAuthor: coAuthor as never,
+  });
+
+  it("makes the editor the commit author, with no trailer repeating them", async () => {
+    const f = fakeClient({ stems: ["Header"], tracksGen: false });
+    await enqueueDecofilePatch(
+      `q-author-${Date.now()}`,
+      deps(f, { userName: "Ana", userEmail: "ana@acme.com" }),
+      { set: { Header: { __resolveType: "Header" } } },
+    );
+    expect(f.lastCommit?.author).toEqual({
+      name: "Ana",
+      email: "ana@acme.com",
+    });
+    expect(f.lastCommit?.message).toBe("chore(decofile): update Header");
+  });
+
+  it("falls back to the trailer when the editor has no usable email", async () => {
+    const f = fakeClient({ stems: ["Header"], tracksGen: false });
+    await enqueueDecofilePatch(
+      `q-trailer-${Date.now()}`,
+      deps(f, { userName: "Ana" }),
+      { set: { Header: { __resolveType: "Header" } } },
+    );
+    expect(f.lastCommit?.author).toBeNull();
+    expect(f.lastCommit?.message).toBe(
+      "chore(decofile): update Header\n\nCo-authored-by: Ana",
+    );
+  });
+});
 
 describe("resolveBlockContents", () => {
   it("passes through in-hand content without a fetch", async () => {
