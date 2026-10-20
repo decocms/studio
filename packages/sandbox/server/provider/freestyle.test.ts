@@ -359,6 +359,20 @@ describe("resume reclaims a daemon that lost its claim", () => {
     expect(calls[1]!.body.auth).toEqual({ rotateToken: TOKEN });
     provider.close();
   });
+
+  test("retries a reclaim while the edge answers 502", async () => {
+    const { client, execs } = existingVm();
+    const calls = daemon([
+      () => new Response("the mapped VM refused the request", { status: 502 }),
+      () => Response.json({}),
+    ]);
+    const provider = new FreestyleSandboxProvider({ apiKey: "k", client });
+    await provider.ensure(ID);
+    expect(calls).toHaveLength(2);
+    expect(calls[1]!.body.auth).toEqual({ rotateToken: TOKEN });
+    expect(execs).toEqual([]);
+    provider.close();
+  });
 });
 
 describe("repo snapshots", () => {

@@ -660,7 +660,17 @@ export class FreestyleSandboxProvider implements SandboxProvider {
     const sentinel = this.sentinelToken(snapshotSlug);
     const payload = this.configPayload(opts) ?? {};
     try {
-      await postConfig(url, sentinel, payload, { rotateToken: token });
+      // A 502 here is the edge not routing yet, same as the org-fs relay, not a refusal.
+      await retry(
+        () => postConfig(url, sentinel, payload, { rotateToken: token }),
+        {
+          maxAttempts: 8,
+          minTimeout: 250,
+          maxTimeout: 4_000,
+          isRetriable: (err) =>
+            err instanceof ConfigRequestError && err.status === 502,
+        },
+      );
       console.log(`[${LOG_LABEL}] reclaimed ${url} after a reboot`);
       return;
     } catch (err) {
