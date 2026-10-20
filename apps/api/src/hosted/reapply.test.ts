@@ -257,6 +257,19 @@ describe("reapplyVersion", () => {
     });
   });
 
+  it("falls back to the trailer when the reapplier has no usable email", async () => {
+    const { git, repo, release } = setup();
+    git.pushDirect({ ".deco/blocks/Home.json": serializeBlock({ t: 1 }) });
+    const original = await release();
+    git.pushDirect({ ".deco/blocks/Home.json": serializeBlock({ t: 2 }) });
+    await release();
+    await reapplyVersion(repo, original, { coAuthor: { userName: "Ana" } });
+    expect(git.history[0]?.author).toBeNull();
+    // The trailer is its own block; `reappliedFrom` reads the line anywhere.
+    expect(git.history[0]?.message).toEndWith("\n\nCo-authored-by: Ana");
+    expect(reappliedFrom(git.history[0]?.message)).toBe(original);
+  });
+
   it("lets a later edit sit on the restored content", async () => {
     const { git, repo, release } = setup();
     const first = await release();
@@ -305,13 +318,10 @@ describe("reapply message", () => {
     ).toBe("Reapply: release from 2026-10-01 09:30 UTC");
   });
 
-  it("ends with the Reapplied-From trailer, co-author in the same block", () => {
+  it("ends with the Reapplied-From trailer", () => {
     const sha = "a".repeat(40);
     expect(reapplyMessage({ message: "Hi", date }, sha)).toBe(
       `Reapply: Hi\n\nReapplied-From: ${sha}`,
-    );
-    expect(reapplyMessage({ message: "Hi", date }, sha, ANA)).toBe(
-      `Reapply: Hi\n\nReapplied-From: ${sha}\nCo-authored-by: Ana <ana@acme.com>`,
     );
     expect(reappliedFrom(reapplyMessage({ message: "Hi", date }, sha))).toBe(
       sha,

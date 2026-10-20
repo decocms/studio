@@ -23,10 +23,7 @@
  * to link the new version to the one it reapplied.
  */
 
-import {
-  appendCoAuthorTrailer,
-  type CoAuthorIdentity,
-} from "@decocms/sandbox/shared";
+import type { CoAuthorIdentity } from "@decocms/sandbox/shared";
 import {
   type FileChange,
   requireBranchHead,
@@ -84,18 +81,16 @@ export function reapplyTitle(original: {
   return when ? `${PREFIX}release from ${when}` : `${PREFIX}earlier release`;
 }
 
-/** The full commit message: title, then the trailers (one block). */
+/**
+ * The full commit message: title, then the `Reapplied-From:` trailer.
+ * Attribution is not its business — `commitBlocksToMain` resolves the author
+ * (and the fallback trailer) for every commit it writes.
+ */
 export function reapplyMessage(
   original: { message: string; date: string },
   sha: string,
-  coAuthor?: CoAuthorIdentity | null,
 ): string {
-  const title = reapplyTitle(original);
-  const trailer = `${REAPPLIED_FROM}: ${sha}`;
-  const withCoAuthor = appendCoAuthorTrailer(title, coAuthor);
-  return withCoAuthor === title
-    ? `${title}\n\n${trailer}`
-    : `${title}\n\n${trailer}\n${withCoAuthor.slice(title.length).trimStart()}`;
+  return `${reapplyTitle(original)}\n\n${REAPPLIED_FROM}: ${sha}`;
 }
 
 /** The sha a commit message says it reapplied, or null. */
@@ -230,7 +225,7 @@ export async function reapplyVersion(
     repo,
     head,
     files,
-    reapplyMessage(original, targetSha, options.coAuthor),
+    reapplyMessage(original, targetSha),
     options.coAuthor,
   );
   return {

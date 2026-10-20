@@ -4,7 +4,8 @@ export interface CoAuthorIdentity {
 }
 
 const INVALID_CO_AUTHOR_CHARS = /[\r\n<>]/;
-const EMAIL_RE = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
+// Dot excluded from both classes: an ambiguous split backtracks polynomially.
+const EMAIL_RE = /^[^\s@<>]+@[^\s@<>.]+(?:\.[^\s@<>.]+)+$/;
 
 export function normalizeCoAuthorIdentity(
   input:

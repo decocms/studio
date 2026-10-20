@@ -77,6 +77,23 @@ describe("normalizeCoAuthorIdentity", () => {
       }),
     ).toEqual({ userName: "Jane" });
   });
+
+  it("keeps real addresses and rejects malformed dot runs", () => {
+    for (const userEmail of [
+      "jane@example.com",
+      "jane@mail.example.co.uk",
+      "1+jane@users.noreply.github.com",
+    ]) {
+      expect(
+        normalizeCoAuthorIdentity({ userName: "Jane", userEmail }),
+      ).toEqual({ userName: "Jane", userEmail });
+    }
+    for (const userEmail of ["jane@example..com", "jane@example.com.", "a@b"]) {
+      expect(
+        normalizeCoAuthorIdentity({ userName: "Jane", userEmail }),
+      ).toEqual({ userName: "Jane" });
+    }
+  });
 });
 
 describe("stripCoAuthorTrailers", () => {

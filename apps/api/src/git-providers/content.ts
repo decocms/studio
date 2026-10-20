@@ -188,7 +188,8 @@ export interface RepoContentClient {
    * taken as late as possible (neither provider offers a compare-and-swap on
    * a non-fast-forward ref move), and on GitLab the move is unavoidably a
    * delete-and-recreate; see that implementation for the residual window.
-   * `author` is who it is attributed to; the bot identity commits it.
+   * `author` is who it is attributed to; the shared bot identity commits it,
+   * not the token's own, which would cost a `/user` call per commit.
    */
   commitFiles(params: {
     branch: string;

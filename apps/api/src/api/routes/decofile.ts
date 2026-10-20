@@ -752,7 +752,12 @@ export function createDecofileRoutes(
         } catch (err) {
           if (repoErrorStatus(err) !== 409) throw err;
           // Sync branch-wins first; the branch then sits on base and this FFs.
-          await repoGitRebase(client, scope.branch, baseBranch);
+          await repoGitRebase(
+            client,
+            scope.branch,
+            baseBranch,
+            coAuthorFromStudioContext(c.var.studioContext),
+          );
           sha = await client.mergeBranches(baseBranch, scope.branch, message);
         }
         return sha

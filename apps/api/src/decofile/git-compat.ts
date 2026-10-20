@@ -14,6 +14,12 @@
  */
 
 import {
+  appendCoAuthorTrailer,
+  commitAttribution,
+  type CoAuthorIdentity,
+  type GitAuthor,
+} from "@decocms/sandbox/shared";
+import {
   GitProviderError,
   RepoWriteConflict,
   repoErrorStatus,
@@ -238,6 +244,7 @@ export async function repoGitRebase(
   client: RepoContentClient,
   branch: string,
   base: string,
+  operator?: CoAuthorIdentity | null,
 ): Promise<void> {
   for (let attempt = 1; ; attempt++) {
     // Read first: the write's own guard re-reads it, catching a later autosave.
@@ -309,14 +316,17 @@ export async function repoGitRebase(
         await client.forceBranchHead(branch, baseHead);
         return;
       }
+      const attribution = squashAttribution(
+        branch,
+        base,
+        branchWon,
+        compared.commitMessages,
+        operator,
+      );
       await client.commitFiles({
         branch,
-        message: squashMessage(
-          branch,
-          base,
-          branchWon,
-          compared.commitMessages,
-        ),
+        message: attribution.message,
+        author: attribution.author,
         expectedHead,
         rewriteFrom: baseHead,
         changes,
@@ -522,6 +532,7 @@ export async function repoGitDiscard(
   client: RepoContentClient,
   branch: string,
   filepaths: string[],
+  operator?: CoAuthorIdentity | null,
 ): Promise<void> {
   if (filepaths.length === 0) return;
   const base = await client.getDefaultBranch();
@@ -542,10 +553,15 @@ export async function repoGitDiscard(
     );
     if (plan.length === 0) return;
 
+    const discard = commitAttribution(
+      `chore(decofile): discard changes to ${plan.length} file(s)`,
+      operator,
+    );
     try {
       await client.commitFiles({
         branch,
-        message: `chore(decofile): discard changes to ${plan.length} file(s)`,
+        message: discard.message,
+        author: discard.author,
         expectedHead: branchHead,
         changes: plan,
       });
@@ -581,21 +597,35 @@ async function restoreAbandonedSync(
 }
 
 /**
- * Collapsing N commits into one would drop the `Co-authored-by:` trailers the
- * coalescer stamps per editor, and those trailers are how the provider
- * attributes the work. Re-emit the distinct ones on the squash.
+ * The squash commit's message and author. Collapsing N commits into one would
+ * drop their attribution, so whoever triggered the sync authors it (git's
+ * convention for a squash) and the editors it collapses stay co-authors:
+ * `Co-authored-by:` trailers left by those with no usable e-mail are re-emitted.
  */
-function squashMessage(
+export function squashAttribution(
   branch: string,
   base: string,
   branchWon: boolean,
   collapsed: string[],
-): string {
+  operator?: CoAuthorIdentity | null,
+): { message: string; author: GitAuthor | null } {
   const subject = branchWon
     ? `chore(decofile): sync ${branch} with ${base} (branch content wins)`
     : `chore(decofile): sync ${branch} with ${base}`;
-  const trailers = collectCoAuthorTrailers(collapsed);
-  return trailers.length > 0 ? `${subject}\n\n${trailers.join("\n")}` : subject;
+  // Only the author half: the message is built here, since `commitAttribution`
+  // strips every trailer and these carry the OTHER editors.
+  const { author } = commitAttribution(subject, operator);
+  // On an empty message this is the bare line, or "" with no usable operator.
+  const own = appendCoAuthorTrailer("", operator);
+  const trailers = collectCoAuthorTrailers(collapsed).filter(
+    (line) => line.toLowerCase() !== own.toLowerCase(),
+  );
+  if (own && !author) trailers.unshift(own);
+  return {
+    message:
+      trailers.length > 0 ? `${subject}\n\n${trailers.join("\n")}` : subject,
+    author,
+  };
 }
 
 function collectCoAuthorTrailers(messages: string[]): string[] {
