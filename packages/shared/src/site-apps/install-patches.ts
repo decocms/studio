@@ -1,4 +1,5 @@
 import { siteAppResolveType } from "./block";
+import { declaredDependencyRange, isProtocolVersionRange } from "./technology";
 import type { SiteAppRegistryEntry, SiteTechnology } from "./types";
 
 /**
@@ -25,6 +26,14 @@ export interface SiteAppFilePatch {
 export interface InstallAppPatches {
   files: SiteAppFilePatch[];
   block: { key: string; value: Record<string, unknown> };
+  /**
+   * The npm package the written module imports, which has to be in
+   * `node_modules` before that module exists. Set whether or not
+   * `package.json` needed patching: an install that failed after the manifest
+   * landed must still install on the retry. Null on Deno, where the import
+   * map covers every app.
+   */
+  dependency: string | null;
 }
 
 export interface MakeInstallAppPatchesInput {
@@ -90,6 +99,39 @@ function matchingBrace(text: string, open: number): number {
 }
 
 /**
+ * Index of the `{` opening the manifest's OWN `dependencies`. Found by depth
+ * rather than by the first match: `pnpm`, `overrides` and `resolutions` all
+ * nest a block under the same key, and writing into one of those adds a
+ * dependency the package manager never installs.
+ */
+function topLevelDependenciesOpen(text: string): number {
+  const keyObject = /\s*:\s*\{/y;
+  let depth = 0;
+  let quote = false;
+  let start = -1;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]!;
+    if (quote) {
+      if (ch === "\\") i++;
+      else if (ch === '"') {
+        quote = false;
+        if (depth !== 1 || text.slice(start + 1, i) !== "dependencies")
+          continue;
+        keyObject.lastIndex = i + 1;
+        if (keyObject.exec(text)) return keyObject.lastIndex - 1;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      quote = true;
+      start = i;
+    } else if (ch === "{" || ch === "[") depth++;
+    else if (ch === "}" || ch === "]") depth--;
+  }
+  return -1;
+}
+
+/**
  * Add `name: range` to `dependencies`, in alphabetical position, touching
  * nothing else in the file. A whole-file reparse would normalize formatting
  * the site owns and turn a one-line install into a review-sized diff.
@@ -99,13 +141,12 @@ function addDependency(
   name: string,
   range: string,
 ): string {
-  const keyMatch = /"dependencies"\s*:\s*\{/.exec(packageJson);
-  if (!keyMatch) {
+  const open = topLevelDependenciesOpen(packageJson);
+  if (open === -1) {
     throw new SiteAppInstallError(
       'package.json has no "dependencies" — add it before installing an app',
     );
   }
-  const open = keyMatch.index + keyMatch[0].length - 1;
   const close = matchingBrace(packageJson, open);
   const body = packageJson.slice(open + 1, close);
 
@@ -131,6 +172,14 @@ function addDependency(
 }
 
 // ---- src/setup.ts -----------------------------------------------------------
+
+/**
+ * Where an import declaration ENDS — at its specifier. `import "./x";` and
+ * `... } from "pkg";` both end this way, including a clause wrapped over
+ * several lines; anchoring on the `import` LINE instead lands an insertion
+ * inside such a clause and the file stops parsing.
+ */
+const IMPORT_END = /(?:^import\s*|\bfrom\s*)(["'])[^"'\n]*\1[ \t]*;?/gm;
 
 /** A locally declared `const APP_REGISTRY ... = [` to insert an entry into. */
 const APP_REGISTRY_ARRAY = /const\s+APP_REGISTRY\b[^=]*=\s*\[/;
@@ -164,8 +213,8 @@ function addRegistryEntry(
 ): string {
   const alias = moduleAlias(entry.app);
   const imports =
-    `import { ${pkg.registryExport} } from "${pkg.name}/registry";\n` +
-    `import * as ${alias} from "${pkg.name}/mod";\n`;
+    `\nimport { ${pkg.registryExport} } from "${pkg.name}/registry";` +
+    `\nimport * as ${alias} from "${pkg.name}/mod";`;
   const line = `  { ...${pkg.registryExport}, module: async () => ${alias} as never },`;
 
   const arrayMatch = APP_REGISTRY_ARRAY.exec(setupTs);
@@ -174,14 +223,14 @@ function addRegistryEntry(
       "src/setup.ts has no `const APP_REGISTRY = [...]` to register the app in — wire it by hand, then reinstall",
     );
   }
-  const lastImport = [...setupTs.matchAll(/^import\b.*$/gm)]
+  const lastImport = [...setupTs.matchAll(IMPORT_END)]
     .filter((m) => m.index < arrayMatch.index)
     .pop();
   if (!lastImport) {
     throw new SiteAppInstallError("src/setup.ts has no imports to extend");
   }
 
-  const importsAt = lastImport.index + lastImport[0].length + 1;
+  const importsAt = lastImport.index + lastImport[0].length;
   // Prepended: autoconfigApps ignores order, so `[` needs no bracket matching.
   const openAt = arrayMatch.index + arrayMatch[0].length;
   const tail = setupTs.slice(openAt);
@@ -211,7 +260,7 @@ export function makeInstallAppPatches(
   };
 
   if (technology === "deno") {
-    return { files: [denoAppFile(entry)], block };
+    return { files: [denoAppFile(entry)], block, dependency: null };
   }
 
   const pkg = entry.npm;
@@ -234,9 +283,14 @@ export function makeInstallAppPatches(
       "This repository declares no @decocms/* dependency, so it is not a TanStack deco site",
     );
   }
+  if (isProtocolVersionRange(version)) {
+    throw new SiteAppInstallError(
+      `@decocms/* is pinned at "${version}", which resolves only for a package this workspace already declares — add ${pkg.name} there, then reinstall`,
+    );
+  }
 
   const files = [tanstackAppFile(entry, pkg.name)];
-  if (!new RegExp(`"${pkg.name}"\\s*:`).test(packageJson)) {
+  if (declaredDependencyRange(packageJson, pkg.name) === null) {
     files.push({
       path: "package.json",
       content: addDependency(packageJson, pkg.name, version),
@@ -253,5 +307,5 @@ export function makeInstallAppPatches(
       content: addRegistryEntry(setupTs, entry, pkg),
     });
   }
-  return { files, block };
+  return { files, block, dependency: pkg.name };
 }

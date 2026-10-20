@@ -1,7 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import {
+  declaredDependencyRange,
   decocmsVersionRange,
   detectSiteTechnology,
+  isProtocolVersionRange,
   siteTechnologyFromFramework,
   siteTechnologyFromPackageManager,
 } from "./technology";
@@ -76,6 +78,63 @@ describe("decocmsVersionRange", () => {
   it("is null for unparseable or @decocms-free manifests", () => {
     expect(decocmsVersionRange("not json")).toBeNull();
     expect(decocmsVersionRange('{"dependencies":{"react":"^19"}}')).toBeNull();
+  });
+
+  it("prefers a concrete range over one only this workspace resolves", () => {
+    expect(
+      decocmsVersionRange(
+        '{"dependencies":{"@decocms/blocks":"workspace:*","@decocms/tanstack":"^7.77.1"}}',
+      ),
+    ).toBe("^7.77.1");
+  });
+
+  it("still returns a protocol range when it is the only one, so the caller can name it", () => {
+    expect(
+      decocmsVersionRange('{"dependencies":{"@decocms/blocks":"catalog:"}}'),
+    ).toBe("catalog:");
+  });
+});
+
+describe("isProtocolVersionRange", () => {
+  it("knows the ranges a new dependency cannot copy", () => {
+    for (const range of [
+      "workspace:*",
+      "catalog:",
+      "link:../blocks",
+      "file:../blocks",
+      "npm:@decocms/blocks@7",
+    ]) {
+      expect(isProtocolVersionRange(range)).toBe(true);
+    }
+    for (const range of ["^7.77.1", "7.77.1", "~7.77", "*", "latest"]) {
+      expect(isProtocolVersionRange(range)).toBe(false);
+    }
+  });
+});
+
+describe("declaredDependencyRange", () => {
+  it("reads dependencies and devDependencies", () => {
+    const pkg =
+      '{"dependencies":{"react":"^19"},"devDependencies":{"typescript":"^5.9"}}';
+    expect(declaredDependencyRange(pkg, "react")).toBe("^19");
+    expect(declaredDependencyRange(pkg, "typescript")).toBe("^5.9");
+    expect(declaredDependencyRange(pkg, "vite")).toBeNull();
+  });
+
+  it("does not count a mention under overrides or resolutions", () => {
+    // Either pins a version for the tree without depending on the package.
+    expect(
+      declaredDependencyRange(
+        '{"dependencies":{},"overrides":{"@decocms/apps-blog":"1.0.0"}}',
+        "@decocms/apps-blog",
+      ),
+    ).toBeNull();
+    expect(
+      declaredDependencyRange(
+        '{"resolutions":{"@decocms/apps-blog":"1.0.0"}}',
+        "@decocms/apps-blog",
+      ),
+    ).toBeNull();
   });
 });
 

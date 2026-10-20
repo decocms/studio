@@ -132,6 +132,62 @@ describe("makeInstallAppPatches — tanstack", () => {
 `);
   });
 
+  it("writes to the manifest's own dependencies, not a nested one", () => {
+    const content = fileAt(
+      makeInstallAppPatches(
+        tanstackInput({
+          packageJson: `{
+  "pnpm": {
+    "dependencies": {
+      "a": "1"
+    }
+  },
+  "dependencies": {
+    "@decocms/blocks": "^7.77.1"
+  }
+}
+`,
+        }),
+      ),
+      "package.json",
+    )!.content;
+
+    expect(content).toBe(`{
+  "pnpm": {
+    "dependencies": {
+      "a": "1"
+    }
+  },
+  "dependencies": {
+    "@decocms/apps-blog": "^7.77.1",
+    "@decocms/blocks": "^7.77.1"
+  }
+}
+`);
+  });
+
+  it("adds a dependency that only an overrides block mentions", () => {
+    const patches = makeInstallAppPatches(
+      tanstackInput({
+        packageJson: `{
+  "dependencies": {
+    "@decocms/blocks": "^7.77.1"
+  },
+  "overrides": {
+    "@decocms/apps-blog": "1.0.0"
+  }
+}
+`,
+      }),
+    );
+
+    // An override pins a version for the tree; it depends on nothing.
+    expect(fileAt(patches, "package.json")!.content).toContain(
+      '"@decocms/apps-blog": "^7.77.1"',
+    );
+    expect(patches.dependency).toBe("@decocms/apps-blog");
+  });
+
   it("adds both imports and the registry entry to setup.ts", () => {
     const content = fileAt(
       makeInstallAppPatches(tanstackInput()),
@@ -182,6 +238,62 @@ const APP_REGISTRY = [
 `);
   });
 
+  it("inserts after an import clause wrapped over several lines", () => {
+    const content = fileAt(
+      makeInstallAppPatches(
+        tanstackInput({
+          setupTs: `import {
+  autoconfigApps,
+  type AppRegistry,
+} from "@decocms/blocks-admin/apps";
+
+const APP_REGISTRY: AppRegistry = [];
+`,
+        }),
+      ),
+      "src/setup.ts",
+    )!.content;
+
+    expect(content).toBe(`import {
+  autoconfigApps,
+  type AppRegistry,
+} from "@decocms/blocks-admin/apps";
+import { BLOG_REGISTRY_ENTRY } from "@decocms/apps-blog/registry";
+import * as blogMod from "@decocms/apps-blog/mod";
+
+const APP_REGISTRY: AppRegistry = [
+  { ...BLOG_REGISTRY_ENTRY, module: async () => blogMod as never },
+];
+`);
+  });
+
+  it("inserts after a side-effect import, which has no clause", () => {
+    const content = fileAt(
+      makeInstallAppPatches(
+        tanstackInput({
+          setupTs: `import { autoconfigApps } from "@decocms/blocks-admin/apps";
+import "./cache-config";
+
+const APP_REGISTRY = [];
+`,
+        }),
+      ),
+      "src/setup.ts",
+    )!.content;
+
+    expect(
+      content,
+    ).toBe(`import { autoconfigApps } from "@decocms/blocks-admin/apps";
+import "./cache-config";
+import { BLOG_REGISTRY_ENTRY } from "@decocms/apps-blog/registry";
+import * as blogMod from "@decocms/apps-blog/mod";
+
+const APP_REGISTRY = [
+  { ...BLOG_REGISTRY_ENTRY, module: async () => blogMod as never },
+];
+`);
+  });
+
   it("is idempotent — a second install of the same app patches nothing but the block", () => {
     const first = makeInstallAppPatches(tanstackInput());
     const second = makeInstallAppPatches(
@@ -195,6 +307,64 @@ const APP_REGISTRY = [
       "src/apps/deco/blog.ts",
     ]);
     expect(second.block).toEqual(first.block);
+  });
+
+  it("reports the dependency even when package.json already declares it", () => {
+    const patches = makeInstallAppPatches(tanstackInput());
+    const retry = makeInstallAppPatches(
+      tanstackInput({ packageJson: fileAt(patches, "package.json")!.content }),
+    );
+
+    // The first attempt may have died after the manifest landed and before
+    // node_modules had the package; the retry still has to install it.
+    expect(fileAt(retry, "package.json")).toBeUndefined();
+    expect(retry.dependency).toBe("@decocms/apps-blog");
+  });
+
+  it("refuses a @decocms range only its own workspace resolves", () => {
+    for (const range of ["catalog:", "workspace:*", "link:../blocks"]) {
+      expect(() =>
+        makeInstallAppPatches(tanstackInput({ decocmsVersion: range })),
+      ).toThrow(new RegExp(`pinned at "${range.replace("*", "\\*")}"`));
+    }
+  });
+
+  // The patch is a textual splice into a file the site owns, and the layouts
+  // below all occur in real templates. Parsing the result is the only check
+  // that catches a splice landing mid-statement.
+  it.each([
+    [
+      "a clause wrapped over several lines",
+      `import {\n  autoconfigApps,\n  type AppRegistry,\n} from "@decocms/blocks-admin/apps";\n\nconst APP_REGISTRY: AppRegistry = [];\n`,
+    ],
+    [
+      "a side-effect import last",
+      `import { autoconfigApps } from "@decocms/blocks-admin/apps";\nimport "./cache-config";\n\nconst APP_REGISTRY = [];\n`,
+    ],
+    [
+      "no semicolons",
+      `import { autoconfigApps } from "@decocms/blocks-admin/apps"\n\nconst APP_REGISTRY = []\n`,
+    ],
+    [
+      "single-quoted specifiers",
+      `import { autoconfigApps } from '@decocms/blocks-admin/apps';\n\nconst APP_REGISTRY = [];\n`,
+    ],
+    [
+      "no trailing newline",
+      `import { autoconfigApps } from "@decocms/blocks-admin/apps";\nconst APP_REGISTRY = [];`,
+    ],
+  ])("writes a setup.ts that parses, given %s", (_layout, setupTs) => {
+    const content = fileAt(
+      makeInstallAppPatches(tanstackInput({ setupTs })),
+      "src/setup.ts",
+    )!.content;
+
+    const transpiler = new Bun.Transpiler({ loader: "ts" });
+    expect(() => transpiler.transformSync(content)).not.toThrow();
+    expect(transpiler.scanImports(content).map((i) => i.path)).toContain(
+      "@decocms/apps-blog/registry",
+    );
+    expect(content).toContain("...BLOG_REGISTRY_ENTRY, module:");
   });
 
   it("refuses the legacy wiring, naming the real blocker", () => {

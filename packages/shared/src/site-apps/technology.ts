@@ -104,18 +104,57 @@ function dependencyRanges(
   return out;
 }
 
-/** The range to copy, or null when the site declares no `@decocms/*` package. */
+/**
+ * A range only the package that declares it can resolve: a monorepo sibling,
+ * a catalog entry, a path. Copying one onto a brand-new dependency pins it to
+ * something the project has no entry for, and the install fails.
+ */
+const PROTOCOL_RANGE =
+  /^(?:workspace|catalog|link|file|portal|npm|git|github):/;
+
+export function isProtocolVersionRange(range: string): boolean {
+  return PROTOCOL_RANGE.test(range);
+}
+
+/**
+ * The range to copy, or null when the site declares no `@decocms/*` package.
+ * A concrete range wins over a protocol one wherever both are declared; a
+ * protocol range is still returned when it is all there is, so the caller can
+ * name it in its refusal rather than reporting the site as not a deco site.
+ */
 export function decocmsVersionRange(packageJson: string | null): string | null {
   const pkg = parseJson(packageJson);
   if (!pkg) return null;
   const deps = dependencyRanges(pkg);
-  for (const name of VERSION_SOURCES) {
-    if (deps[name]) return deps[name];
+  const names = [
+    ...VERSION_SOURCES,
+    ...Object.keys(deps)
+      .filter((name) => name.startsWith(DECOCMS_SCOPE))
+      .sort(),
+  ];
+  let protocolRange: string | null = null;
+  for (const name of names) {
+    const range = deps[name];
+    if (!range) continue;
+    if (!isProtocolVersionRange(range)) return range;
+    protocolRange ??= range;
   }
-  const anyDecocms = Object.keys(deps)
-    .filter((name) => name.startsWith(DECOCMS_SCOPE))
-    .sort();
-  return anyDecocms.length > 0 ? deps[anyDecocms[0]!]! : null;
+  return protocolRange;
+}
+
+/**
+ * The range `name` is declared at, or null when the site does not depend on
+ * it. Reads the manifest's own `dependencies`/`devDependencies` rather than
+ * the file's text: `overrides` and `resolutions` mention a package without
+ * depending on it, and treating them as a declaration skips both the
+ * dependency and the install that would have fetched it.
+ */
+export function declaredDependencyRange(
+  packageJson: string | null,
+  name: string,
+): string | null {
+  const pkg = parseJson(packageJson);
+  return pkg ? (dependencyRanges(pkg)[name] ?? null) : null;
 }
 
 /**
