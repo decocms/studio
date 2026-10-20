@@ -9,6 +9,7 @@ import {
   labelFromResolveType,
 } from "./section-types";
 import { safeImageUrl } from "@/lib/safe-image-url";
+import { readVariantValue } from "./variant-shape";
 
 function resolveResolvable(obj: Record<string, unknown>): unknown {
   if (Array.isArray(obj.variants)) {
@@ -19,9 +20,11 @@ function resolveResolvable(obj: Record<string, unknown>): unknown {
     const always = variants.find((v) =>
       isAlwaysMatcherResolveType(v.rule?.__resolveType),
     );
-    // Unwrap object-valued variants too (e.g. `{ desktop, mobile }`), not only strings.
-    const chosen = always ?? variants.find((v) => v.value != null);
-    if (chosen && chosen.value != null) return chosen.value;
+    // Unwrap object-valued variants too (e.g. `{ desktop, mobile }`), not only
+    // strings, and past the `lazy` block v8's `multivariate` keeps them in.
+    const chosen = always ?? variants.find((v) => readVariantValue(v) != null);
+    const value = readVariantValue(chosen);
+    if (value != null) return value;
   }
   if (typeof obj.src === "string") return obj.src;
   if (typeof obj.url === "string") return obj.url;

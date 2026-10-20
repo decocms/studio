@@ -20,13 +20,15 @@ import {
   buildPageSectionsFromVariants,
   getPageVariantSectionsAt,
   isMultivariateArrayWrapper,
+  isPageMultivariateSectionArrayField,
   isSectionMultivariateWrapperValue,
+  pageMultivariateSectionListSchema,
   parsePageVariants,
   unwrapMultivariateArrayValue,
   wrapMultivariateArrayValue,
 } from "./page-variants";
 import { parseSections } from "./parse-sections";
-import type { LiveMeta } from "./resolve-schema";
+import type { LiveMeta, SchemaProperty } from "./resolve-schema";
 import { underlyingSectionResolveType } from "./section-catalog";
 import type { RawSection } from "./section-types";
 import {
@@ -357,6 +359,46 @@ describe("readers take the v8 shape", () => {
       label: "Black Friday",
       flagResolveType: "multivariate",
     });
+  });
+});
+
+describe("a page-variants field's section list", () => {
+  const items: SchemaProperty = { type: "block-ref", anyOfRefs: [] };
+  const field = (resolveType: string, value: SchemaProperty) =>
+    ({
+      type: "block-ref",
+      anyOfRefs: [
+        {
+          resolveType,
+          title: resolveType,
+          schema: {
+            type: "object",
+            properties: {
+              variants: {
+                type: "array",
+                items: { type: "object", properties: { value } },
+              },
+            },
+          },
+        },
+      ],
+    }) as SchemaProperty;
+
+  test("under multivariate the list is inside the lazy block", () => {
+    const v8 = field("multivariate", {
+      type: "object",
+      lazy: true,
+      properties: { value: { type: "array", items } },
+    });
+    expect(isPageMultivariateSectionArrayField(v8)).toBe(true);
+    expect(pageMultivariateSectionListSchema(v8)?.items).toBe(items);
+  });
+
+  test("under the v7 page flag the list is the value itself", () => {
+    const v7 = field("website/flags/multivariate.ts", { type: "array", items });
+    expect(pageMultivariateSectionListSchema(v7)?.items).toBe(items);
+    const notAList = field("multivariate", { type: "string" });
+    expect(isPageMultivariateSectionArrayField(notAList)).toBe(false);
   });
 });
 

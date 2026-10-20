@@ -24,26 +24,36 @@ export interface PageVariant {
   rule?: Record<string, unknown>;
 }
 
+/**
+ * The section-list schema of a page-variants field: the list each variant's
+ * `value` holds, under v7's page flag or v8's `multivariate` (where the value
+ * is a `lazy` block around the list). `undefined` for any other field.
+ */
+export function pageMultivariateSectionListSchema(
+  schema: SchemaProperty,
+): SchemaProperty | undefined {
+  for (const ref of schema.anyOfRefs ?? []) {
+    if (
+      ref.resolveType !== PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE &&
+      ref.resolveType !== V8_MULTIVARIATE_RESOLVE_TYPE
+    ) {
+      continue;
+    }
+    const valueField =
+      ref.schema?.properties?.variants?.items?.properties?.value;
+    // Under `multivariate` the value is a `lazy` block around the list.
+    const listField = valueField?.lazy
+      ? valueField.properties?.value
+      : valueField;
+    if (listField?.type === "array") return listField;
+  }
+  return undefined;
+}
+
 export function isPageMultivariateSectionArrayField(
   schema: SchemaProperty,
 ): boolean {
-  return (
-    schema.anyOfRefs?.some((ref) => {
-      if (
-        ref.resolveType !== PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE &&
-        ref.resolveType !== V8_MULTIVARIATE_RESOLVE_TYPE
-      ) {
-        return false;
-      }
-      const valueField =
-        ref.schema?.properties?.variants?.items?.properties?.value;
-      // Under `multivariate` the value is a `lazy` block around the list.
-      const listField = valueField?.lazy
-        ? valueField.properties?.value
-        : valueField;
-      return listField?.type === "array";
-    }) ?? false
-  );
+  return pageMultivariateSectionListSchema(schema) !== undefined;
 }
 
 /**

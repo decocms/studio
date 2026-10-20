@@ -32,6 +32,7 @@ import {
   isMultivariateArrayWrapper,
   isPageMultivariateSectionArrayField,
   isSectionMultivariateWrapperValue,
+  pageMultivariateSectionListSchema,
   unwrapMultivariateArrayValue,
   wrapMultivariateArrayValue,
 } from "./page-variants";
@@ -95,16 +96,7 @@ function isMultivariateBlockRef(schema: SchemaProperty): boolean {
 function inferArrayItemsFromBlockRefSchema(
   schema: SchemaProperty,
 ): SchemaProperty | undefined {
-  if (!isPageMultivariateSectionArrayField(schema)) return undefined;
-  for (const ref of schema.anyOfRefs ?? []) {
-    const variants = ref.schema?.properties?.variants;
-    const variantItem = variants?.items;
-    const valueField = variantItem?.properties?.value;
-    if (valueField?.type === "array" && valueField.items) {
-      return valueField.items;
-    }
-  }
-  return undefined;
+  return pageMultivariateSectionListSchema(schema)?.items;
 }
 
 function arraySchemaForValue(schema: SchemaProperty): SchemaProperty | null {
