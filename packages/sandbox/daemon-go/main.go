@@ -1404,8 +1404,12 @@ func main() {
 	d.registerSandboxRoutes(d.mux, sandboxPrefix, h)
 
 	if diskCfg, ok := config.ReadDiskConfig(repoDir); ok {
-		d.store.Hydrate(diskCfg)
-		d.orchestrator.Handle(config.Transition{Kind: config.KindBootstrap, Config: diskCfg})
+		if reason := config.Validate(diskCfg); reason != "" {
+			slog.Error("ignoring invalid .decocms/daemon.json", "reason", reason)
+		} else {
+			d.store.Hydrate(diskCfg)
+			d.orchestrator.Handle(config.Transition{Kind: config.KindBootstrap, Config: diskCfg})
+		}
 	}
 	if d.store.Read() == nil {
 		slog.Info("daemon ready, unclaimed — waiting for workload config", "boot_id", bootId)
