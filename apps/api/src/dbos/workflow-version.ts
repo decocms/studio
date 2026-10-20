@@ -103,5 +103,9 @@
  * In-flight v12 instances strand by design; each was a retry loop around one
  * provider merge call, and every merge it did make is already recorded as a
  * comment on its issue.
+ *
+ * Version 14 adds `orderMonitorWorkflow`. Like 12, a new workflow needs the
+ * bump only because the source guard keys on the fileset; there are no v13
+ * instances of it to strand.
  */
-export const DBOS_WORKFLOW_VERSION = "13";
+export const DBOS_WORKFLOW_VERSION = "14";

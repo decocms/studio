@@ -108,4 +108,5 @@ export const sidebar = {
   "sidebar.inbox.actionReviewApproved": "Revisão aprovada",
   "sidebar.inbox.actionReviewChangesRequested": "Alterações solicitadas",
   "sidebar.inbox.actionMergeFailed": "Não foi possível mesclar",
+  "sidebar.inbox.actionOrderIncident": "Incidente de pedidos",
 } satisfies Record<keyof typeof sidebarEn, string>;

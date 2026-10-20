@@ -103,4 +103,5 @@ export const sidebar = {
   "sidebar.inbox.actionReviewApproved": "Review approved",
   "sidebar.inbox.actionReviewChangesRequested": "Changes requested",
   "sidebar.inbox.actionMergeFailed": "Couldn’t be merged",
+  "sidebar.inbox.actionOrderIncident": "Order incident",
 } as const;

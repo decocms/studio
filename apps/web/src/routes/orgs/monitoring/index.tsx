@@ -74,6 +74,9 @@ import { AuditTabContent, MonitoringLogsTable } from "./audit.tsx";
 import { ThreadsTabContent } from "./threads.tsx";
 import { ThreadsFiltersPopover } from "./threads-filters-popover.tsx";
 import { AutomationsTabContent } from "./automations.tsx";
+import { OrderMonitorStoresTab } from "@/components/order-monitor/order-monitor-stores";
+import { FeatureGate } from "@/components/paywall/feature-gate";
+import { usePublicConfig } from "@/hooks/use-public-config";
 import { getOrgMembers } from "./utils.ts";
 import { track } from "@/lib/posthog-client";
 
@@ -84,16 +87,25 @@ import { track } from "@/lib/posthog-client";
  */
 const EMPTY_ARRAY: never[] = [];
 
-type MonitoringTab = "threads" | "overview" | "audit" | "automations";
+type MonitoringTab =
+  | "threads"
+  | "overview"
+  | "audit"
+  | "automations"
+  | "stores";
 
 /** Chats come first: they are what the monitor is opened for. */
 function useMonitoringTabs(): { id: MonitoringTab; label: string }[] {
   const t = useT();
+  const config = usePublicConfig();
   return [
     { id: "threads", label: t("orgs.monitoring.chats") },
     { id: "overview", label: t("orgs.monitoring.overview") },
     { id: "audit", label: t("orgs.monitoring.audit") },
     { id: "automations", label: t("orgs.monitoring.automations") },
+    ...(config.orderMonitorEnabled === true
+      ? [{ id: "stores" as const, label: t("orderMonitor.storesTab") }]
+      : []),
   ];
 }
 
@@ -634,6 +646,8 @@ interface MonitoringDashboardContentProps {
   from: string;
   to: string;
   propertyFilters: PropertyFilter[];
+  store: string | undefined;
+  at: string | undefined;
   onUpdateFilters: (updates: Partial<MonitoringSearchParams>) => void;
   onTimeRangeChange: (range: TimeRangeValue) => void;
   onStreamingToggle: () => void;
@@ -655,6 +669,8 @@ function MonitoringDashboardContent({
   from,
   to,
   propertyFilters,
+  store,
+  at,
   onUpdateFilters,
   onTimeRangeChange,
   onStreamingToggle,
@@ -784,7 +800,12 @@ function MonitoringDashboardContent({
                 if (next) onTabChange(next.id);
               }}
             />
-            <div className="flex items-center gap-2">
+            <div
+              className={cn(
+                "flex items-center gap-2",
+                tab === "stores" && "hidden",
+              )}
+            >
               {(tab === "overview" || tab === "audit") && (
                 <>
                   <Button
@@ -954,7 +975,20 @@ function MonitoringDashboardContent({
         </div>
       </Page.Container>
 
-      {tab === "automations" ? (
+      {tab === "stores" ? (
+        <div className="flex-1 flex flex-col overflow-auto min-w-0">
+          <FeatureGate feature="monitoring">
+            <OrderMonitorStoresTab
+              orgSlug={org.slug}
+              store={store}
+              at={at}
+              onSelect={(selection) =>
+                onUpdateFilters({ store: selection.store, at: selection.at })
+              }
+            />
+          </FeatureGate>
+        </div>
+      ) : tab === "automations" ? (
         <AutomationsTabContent dateRange={dateRange} />
       ) : tab === "threads" ? (
         <ThreadsTabContent
@@ -1047,6 +1081,8 @@ export default function MonitoringDashboard() {
     streaming = true,
     propertyFilters: propertyFiltersStr = "",
     hideSystem = false,
+    store,
+    at,
   } = search;
 
   const propertyFilters = deserializePropertyFilters(propertyFiltersStr);
@@ -1164,6 +1200,8 @@ export default function MonitoringDashboard() {
               from={from}
               to={to}
               propertyFilters={propertyFilters}
+              store={store}
+              at={at}
               onUpdateFilters={updateFilters}
               onTimeRangeChange={(range) => {
                 track("monitoring_time_range_changed", {

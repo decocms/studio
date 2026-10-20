@@ -19,6 +19,8 @@ export const NOTIFICATION_TYPES = [
   "review_approved",
   "review_changes_requested",
   "merge_failed",
+  /** The order monitor opened, escalated or closed an incident card. */
+  "order_incident",
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];

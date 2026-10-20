@@ -12,6 +12,7 @@ import type { StudioContext } from "@/core/studio-context";
 import {
   assertHostedDispatchHarness,
   assertSinglePersistedRequestMessage,
+  assertVirtualMcpOwnedByOrg,
   buildAgentSandboxUiStream,
   buildDurableDispatchInput,
   resolveAgentInstructions,
@@ -447,6 +448,26 @@ describe("resolveAgentInstructions", () => {
   test("stays undefined when there is nothing to say", () => {
     expect(resolveAgentInstructions({}, null)).toBeUndefined();
     expect(resolveAgentInstructions({}, { instructions: 42 })).toBeUndefined();
+  });
+});
+
+describe("assertVirtualMcpOwnedByOrg", () => {
+  test("passes when the virtual MCP belongs to the dispatching org", () => {
+    expect(() =>
+      assertVirtualMcpOwnedByOrg({ organization_id: "org-a" }, "org-a"),
+    ).not.toThrow();
+  });
+
+  test("rejects a virtual MCP owned by another organization", () => {
+    expect(() =>
+      assertVirtualMcpOwnedByOrg({ organization_id: "org-b" }, "org-a"),
+    ).toThrow(PermanentRunError);
+  });
+
+  test("rejects a missing virtual MCP", () => {
+    expect(() => assertVirtualMcpOwnedByOrg(null, "org-a")).toThrow(
+      PermanentRunError,
+    );
   });
 });
 

@@ -406,6 +406,7 @@ export function resolveConfig(
       envVars.CUSTOMER_LAKE_ADMIN_USERNAME || "customer_lake_user_admin",
     customerLakeAdminPassword: envVars.CUSTOMER_LAKE_ADMIN_PASSWORD,
     customerLakeTenantSecret: envVars.CUSTOMER_LAKE_TENANT_SECRET,
+    orderMonitorIngestUrl: envVars.ORDER_MONITOR_INGEST_URL,
     oneDollarStatsApiKey: envVars.ONEDOLLAR_BACKEND_API_KEY,
     // New name first, legacy Reports envs as fallback — one
     // setting, so prod migrates secrets whenever convenient without a

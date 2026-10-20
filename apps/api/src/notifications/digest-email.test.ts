@@ -74,3 +74,34 @@ describe("email validation", () => {
     expect(isValidEmail("ab")).toBe(false);
   });
 });
+
+test("an order incident names the store, the numbers and links the chart", () => {
+  const { html } = buildDigestEmail(
+    [
+      row({
+        type: "order_incident",
+        actorName: null,
+        incident: {
+          connectionId: "conn_1",
+          store: "Store <A>",
+          rule: "orders_drop",
+          status: "alert",
+          observed: 6,
+          expected: 40.4,
+          since: "2026-10-19T17:15:00.000Z",
+          timezone: "America/Sao_Paulo",
+          at: "2026-10-19T17:15:00.000Z",
+        },
+      }),
+    ],
+    "https://x",
+  );
+  expect(html).toContain("Store &lt;A&gt;");
+  expect(html).toContain(
+    "Orders alert since 14:15: 6 in the last hour vs 40 expected",
+  );
+  expect(html).toContain(
+    "https://x/decocms/settings/monitor?tab=stores&amp;store=conn_1&amp;at=2026-10-19T17%3A15%3A00.000Z",
+  );
+  expect(html).toContain("https://x/decocms/t/DECO-07");
+});

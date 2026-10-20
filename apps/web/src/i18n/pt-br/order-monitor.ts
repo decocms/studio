@@ -1,0 +1,50 @@
+import type { orderMonitor as orderMonitorEn } from "../en/order-monitor.ts";
+
+export const orderMonitor = {
+  "orderMonitor.ordersTab": "Pedidos",
+  "orderMonitor.storesTab": "Lojas",
+  "orderMonitor.store": "Loja",
+  "orderMonitor.openTask": "Tarefa aberta",
+  "orderMonitor.allStores": "Todas as lojas",
+  "orderMonitor.pickStore": "Loja",
+  "orderMonitor.pickDay": "Dia",
+  "orderMonitor.backToNow": "Voltar para agora",
+  "orderMonitor.reviewingAt": "Revendo o dia em {at} ({timezone})",
+  "orderMonitor.projected": "Projeção de hoje",
+  "orderMonitor.ingestIncident": "Incidente de ingestão",
+  "orderMonitor.ordersTitle": "Pedidos ({count} até agora)",
+  "orderMonitor.cancellationsTitle": "Cancelamentos",
+  "orderMonitor.canceled": "Cancelados",
+  "orderMonitor.denied": "Pagamento negado",
+  "orderMonitor.approximate": "aproximado",
+  "orderMonitor.approximateNote":
+    "Dias tracejados são anteriores ao histórico de hooks da loja; contam cancelamentos pela última atualização do pedido, que pode vir depois.",
+  "orderMonitor.thresholdBand": "Atenção a alerta",
+  "orderMonitor.verdictWindow":
+    "{hour} · avaliado {from}–{to}: {observed} vs {expected} esperados",
+  "orderMonitor.observedVsExpected":
+    "{observed} vs {expected} esperados, {from}–{to}",
+  "orderMonitor.observedOfExpected": "{observed} de {expected} esperados",
+  "orderMonitor.since": "desde {ago}",
+  "orderMonitor.pushAt": "Push em {repo} às {time}",
+  "orderMonitor.series.today": "Hoje",
+  "orderMonitor.series.d1": "D-1",
+  "orderMonitor.series.w1": "S-1",
+  "orderMonitor.series.y1": "A-1",
+  "orderMonitor.series.expected": "Esperado",
+  "orderMonitor.series.projection": "Projeção",
+  "orderMonitor.rule.ordersDrop": "Pedidos",
+  "orderMonitor.rule.deniedSpike": "Pagamentos negados",
+  "orderMonitor.rule.cancelSpike": "Cancelamentos",
+  "orderMonitor.status.ok": "OK",
+  "orderMonitor.status.warning": "Atenção",
+  "orderMonitor.status.alert": "Alerta",
+  "orderMonitor.status.lowVolume": "Baixo volume",
+  "orderMonitor.dayErrorTitle": "Não foi possível carregar o dia desta loja",
+  "orderMonitor.dayErrorBody":
+    "O lake de pedidos ainda não tem dados desta loja.",
+  "orderMonitor.storesErrorTitle": "Não foi possível carregar as lojas",
+  "orderMonitor.noStoresTitle": "Nenhuma loja monitorada",
+  "orderMonitor.noStoresBody":
+    "Instale o app de ingestão de pedidos em uma conexão VTEX para acompanhar o fluxo de pedidos aqui.",
+} satisfies Record<keyof typeof orderMonitorEn, string>;
