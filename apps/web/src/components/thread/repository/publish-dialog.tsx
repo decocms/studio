@@ -545,7 +545,15 @@ function ContentPublish({
   cacheKey,
   ...props
 }: CmsPublishContentProps & { backend: ProtocolBackend; cacheKey: string }) {
-  const state = useContentPublishState({ backend, cacheKey });
+  const state = useContentPublishState({
+    backend,
+    cacheKey,
+    scope: {
+      orgSlug: props.orgSlug,
+      virtualMcpId: props.virtualMcpId,
+      branch: props.branch,
+    },
+  });
   return (
     <CmsPublishView
       {...props}
@@ -574,7 +582,15 @@ function SandboxContentPublish({
   ...props
 }: CmsPublishContentProps & { backend: ProtocolBackend; cacheKey: string }) {
   const threadId = useOptionalChatTask()?.taskId ?? null;
-  const state = useContentPublishState({ backend, cacheKey });
+  const state = useContentPublishState({
+    backend,
+    cacheKey,
+    scope: {
+      orgSlug: props.orgSlug,
+      virtualMcpId: props.virtualMcpId,
+      branch: props.branch,
+    },
+  });
   const git = useCmsPublishState({
     orgSlug: props.orgSlug,
     virtualMcpId: props.virtualMcpId,

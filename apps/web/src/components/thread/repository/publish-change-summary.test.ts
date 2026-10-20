@@ -14,6 +14,7 @@ import {
 } from "./publish-change-summary";
 import { changeId } from "./cms-publish-change-card";
 import type { GitChangedFile, GitDiffResult } from "./sandbox-git-api";
+import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 
 const HOME_KEY = "pages-home-c4bcbfb771e9";
 const HOME_PATH = `.deco/blocks/${encodeURIComponent(HOME_KEY)}.json`;
@@ -745,6 +746,64 @@ describe("summarizeContentChanges (a v8 source's changes.list)", () => {
       },
     });
     expect(summary.blocks[0]!.unreadable).toEqual(["before"]);
+  });
+
+  it("reads a v8 page (the built-in `page`, named by the schema) as a page, through its lazy page variants", () => {
+    const meta = {
+      manifest: { blocks: { pages: { page: {} } } },
+    } as unknown as LiveMeta;
+    const lazy = (value: unknown) => ({ __resolveType: "lazy", value });
+    const intro = { __resolveType: "intro-statement", text: "Three" };
+    const v8Home = (sections: unknown) => ({
+      __resolveType: "page",
+      name: "Home Page",
+      path: "/",
+      sections,
+    });
+    const pageVariants = (second: Record<string, unknown>) => ({
+      __resolveType: "multivariate",
+      variants: [
+        {
+          rule: { __resolveType: "always" },
+          value: lazy([{ __resolveType: "Header" }, intro]),
+        },
+        {
+          rule: { __resolveType: "always" },
+          value: lazy([{ __resolveType: "Header" }, second]),
+        },
+      ],
+    });
+    const before = v8Home(pageVariants(intro));
+    const after = v8Home(pageVariants({ ...intro, text: "Variant two" }));
+    const input: Parameters<typeof summarizeContentChanges>[0] = {
+      changes: {
+        "pages-home": { kind: "set", version: "v", baseVersion: "b" },
+      },
+      sides: {
+        entries: {
+          "pages-home": {
+            kind: "set",
+            before,
+            after,
+            version: "v",
+            baseVersion: "b",
+          },
+        },
+        diagnostics: [],
+      },
+      lookup: { "pages-home": after },
+    };
+
+    const summary = summarizeContentChanges({ ...input, meta });
+    expect(summary.blocks).toEqual([]);
+    const card = summary.pages[0]!;
+    expect([card.name, card.pagePath]).toEqual(["Home Page", "/"]);
+    const edited = card.sections.find((s) => s.status === "edited")!;
+    expect(edited.fields.map((f) => f.path)).toEqual([
+      ["sections", "variants", 1, "value", "value", 1, "text"],
+    ]);
+    // Without the schema `page` is no page type: one global section.
+    expect(summarizeContentChanges(input).pages).toEqual([]);
   });
 });
 

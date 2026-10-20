@@ -211,7 +211,11 @@ function LocalChangesContent({
   onClose: () => void;
 }) {
   const t = useT();
-  const state = useContentPublishState({ backend, cacheKey });
+  const state = useContentPublishState({
+    backend,
+    cacheKey,
+    scope: { orgSlug, virtualMcpId, branch },
+  });
   const discard = useContentDiscard({
     orgSlug,
     virtualMcpId,

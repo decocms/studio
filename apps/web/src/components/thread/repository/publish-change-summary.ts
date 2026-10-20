@@ -18,6 +18,7 @@ import {
 import { SECRET_BLOCK_TYPE } from "@decocms/shared/secret-ciphertext";
 import { isLazyWrapper } from "@/components/sections-editor/lazy-value";
 import type { ContentChangeSides } from "@/components/sections-editor/content-changes";
+import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 import {
   globalSectionLabel,
   isSiteAppBlock,
@@ -719,6 +720,12 @@ interface ContentChangesInput {
   sides?: ContentChangeSides | null;
   /** The current blocks (the editor's decofile), for names and kinds. */
   lookup?: Record<string, unknown> | null;
+  /**
+   * The site schema, when the editor has read it: its page types. A v8 page
+   * is the built-in `page`, which only the schema names as a page; without
+   * it the page reads as a global section with one changed field.
+   */
+  meta?: LiveMeta | null;
 }
 
 /**
@@ -731,7 +738,7 @@ interface ContentChangesInput {
 export function summarizeContentChanges(
   input: ContentChangesInput,
 ): PublishChangeSummary {
-  const { changes, sides, lookup } = input;
+  const { changes, sides, lookup, meta } = input;
   const pages: PublishChange[] = [];
   const blocks: PublishChange[] = [];
   /** The sides of `name` the server couldn't read (any spelling's file). */
@@ -771,11 +778,17 @@ export function summarizeContentChanges(
       toJson: maskSecrets(toJson ?? (status === "new" ? headShape : null)),
     };
 
-    const headPage = headShape ? pageEntryFromBlock(name, headShape) : null;
+    const headPage = headShape
+      ? pageEntryFromBlock(name, headShape, meta)
+      : null;
     const shapePage =
-      !headShape && nameShape ? pageEntryFromBlock(name, nameShape) : null;
+      !headShape && nameShape
+        ? pageEntryFromBlock(name, nameShape, meta)
+        : null;
     if (headPage ?? shapePage ?? (!nameShape && looksLikePageKey(name))) {
-      const namePage = nameShape ? pageEntryFromBlock(name, nameShape) : null;
+      const namePage = nameShape
+        ? pageEntryFromBlock(name, nameShape, meta)
+        : null;
       pages.push({
         ...common,
         kind: "page",
