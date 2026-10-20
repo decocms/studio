@@ -277,7 +277,9 @@ async function loadChannels(
     ),
   ]);
   const nameOf = new Map(
-    names.map((n) => [String(n.channel_id), String(n.name)]),
+    names
+      .filter((n) => n.name != null)
+      .map((n) => [String(n.channel_id), String(n.name)]),
   );
   const byId = new Map<string, { today: number[]; d1: number[] }>();
   const zeros = () => new Array<number>(BUCKETS_PER_DAY).fill(0);
