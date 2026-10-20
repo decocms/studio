@@ -11,7 +11,6 @@ export const orderMonitor = {
   "orderMonitor.backToNow": "Voltar para agora",
   "orderMonitor.reviewingAt": "Revendo o dia em {at} ({timezone})",
   "orderMonitor.projected": "Projeção de hoje",
-  "orderMonitor.notJudgedYet": "Sem avaliação antes da primeira hora completa",
   "orderMonitor.ingestIncident": "Incidente de ingestão",
   "orderMonitor.ordersTitle": "Pedidos ({count} até agora)",
   "orderMonitor.cancellationsTitle": "Cancelamentos",

@@ -80,7 +80,7 @@ describe("OrderMonitorStorage", () => {
   });
 
   test("lists only active installs of the ingest URL", async () => {
-    expect(await storage.listIngestInstalls(INGEST_URL, 10)).toEqual([
+    expect(await storage.listIngestInstalls(INGEST_URL)).toEqual([
       {
         organizationId: orgId,
         connectionId: "conn_om_store",
@@ -144,7 +144,9 @@ describe("OrderMonitorStorage", () => {
       "orders_drop",
       card.id,
     );
-    await storage.markIngestIncident(orgId, "conn_om_store", "orders_drop");
+    await storage.setVerdictFlags(orgId, "conn_om_store", "orders_drop", {
+      ingestIncident: true,
+    });
     let [drop] = (await storage.listStates(orgId, "conn_om_store")).filter(
       (s) => s.rule === "orders_drop",
     );

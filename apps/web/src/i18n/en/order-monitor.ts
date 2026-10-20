@@ -9,7 +9,6 @@ export const orderMonitor = {
   "orderMonitor.backToNow": "Back to now",
   "orderMonitor.reviewingAt": "Reviewing the day as of {at} ({timezone})",
   "orderMonitor.projected": "Projected today",
-  "orderMonitor.notJudgedYet": "Not judged before the first full hour",
   "orderMonitor.ingestIncident": "Ingest incident",
   "orderMonitor.ordersTitle": "Orders ({count} so far)",
   "orderMonitor.cancellationsTitle": "Cancellations",

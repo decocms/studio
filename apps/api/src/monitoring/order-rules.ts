@@ -1,11 +1,12 @@
 /**
  * Order-flow rules, pure. Each one compares the last 60 minutes of a store's
- * 15-minute buckets with a baseline: the mean of D-1 and W-1..W-4.
+ * 15-minute buckets with a baseline: the median of D-1 and W-1..W-4.
  *
- * `orders_drop` is the vtex-monitoring worker's old alerts.ts, unchanged,
- * calibrated on 28 days of one tenant: 0 false alerts, ~1 warning a week, a
- * full outage warns in ~45 min and alerts in ~60 min. The spike thresholds are
- * not calibrated yet.
+ * `orders_drop`'s thresholds are the vtex-monitoring worker's old alerts.ts,
+ * calibrated on 28 days of one tenant with a mean baseline and a whole-day
+ * level: 0 false alerts, ~1 warning a week, a full outage warns in ~45 min and
+ * alerts in ~60 min. The median and the weighted level only resist outliers
+ * better; the backtest re-checks them. The spike thresholds are not calibrated yet.
  */
 
 import type {
@@ -45,7 +46,8 @@ const MIN_SPIKE = 10; // fewer cancellations or denials than this in an hour is 
 
 /** Days back from the evaluated day. D-1 and W-1..W-4 are the baseline; Y-1 is shown, never judged. */
 const BASELINE_DAYS = [1, 7, 14, 21, 28] as const;
-export const DAYS_AGO = [0, ...BASELINE_DAYS, 364] as const;
+// The day before each judged day: a window in the first hour reaches back into it.
+export const DAYS_AGO = [0, 1, 2, 7, 8, 14, 15, 21, 22, 28, 29, 364] as const;
 export type DayAgo = (typeof DAYS_AGO)[number];
 
 /** Per 15-minute bucket of one local day. */
@@ -60,66 +62,103 @@ export interface StoreDay {
   /** Fully elapsed buckets of day 0 (ingest grace included). */
   done: number;
   days: Record<DayAgo, DaySeries>;
+  /** Buckets of day 0 a DST switch skipped or repeated; a window over them isn't judged. */
+  dstBuckets?: number[];
   /** Local day of the store's first `order_events` row, in days before day 0; null when there is none. */
   firstEventDaysAgo: number | null;
   /** Chart only: cancellations by `orders.updated_at`, for reference days before the first event. */
   approximate?: Partial<Record<DayAgo, Pick<DaySeries, "canceled" | "denied">>>;
 }
 
-/** `from`/`to` are bucket indexes, `to` exclusive. */
-export type Verdict = Omit<OrderMonitorVerdict, "timezone" | "ingestIncident">;
+/** `from`/`to` are bucket indexes of day 0, `to` exclusive; `from` is negative while the window reaches into the day before. */
+export type Verdict = Omit<
+  OrderMonitorVerdict,
+  "timezone" | "ingestIncident" | "crossCheckPending"
+>;
 
 const sum = (a: number[], from = 0, to = a.length) =>
   a.slice(Math.max(0, from), to).reduce((s, v) => s + v, 0);
 
-function baseline(refs: number[][]): number[] {
-  return refs[0]!.map(
-    (_, i) => refs.reduce((s, r) => s + r[i]!, 0) / refs.length,
-  );
+const median = (xs: number[]) => {
+  const s = [...xs].sort((a, b) => a - b);
+  const mid = Math.floor(s.length / 2);
+  return s.length % 2 ? s[mid]! : (s[mid - 1]! + s[mid]!) / 2;
+};
+
+/** The baseline over [from, to): the median of the reference days, so one promo or holiday among them doesn't move it. */
+const baseSum = (refs: number[][], from: number, to: number) =>
+  median(refs.map((r) => sum(r, from, to)));
+
+type Kind = keyof DaySeries;
+
+/** Day `d`'s buckets with the previous day's last hour in front: index i is bucket i - WINDOW. */
+const withEve = (
+  day: StoreDay,
+  d: 0 | (typeof BASELINE_DAYS)[number],
+  kind: Kind,
+) => [
+  ...day.days[(d + 1) as DayAgo][kind].slice(-WINDOW),
+  ...day.days[d][kind],
+];
+
+function series(day: StoreDay, kind: Kind) {
+  return {
+    today: withEve(day, 0, kind),
+    refs: BASELINE_DAYS.map((d) => withEve(day, d, kind)),
+  };
 }
 
-/** How today is running vs the baseline before `from`, so a strong or weak day isn't read as an incident. */
-function level(today: number[], base: number[], from: number): number {
-  const b = sum(base, 0, from);
-  return b >= MIN_LEVEL_BASE
-    ? Math.min(2, Math.max(0.5, sum(today, 0, from) / b))
-    : 1;
+/**
+ * How today is running vs the baseline before `from`: the median of the
+ * hourly ratios, weighted by the baseline's volume, so a launch or live-sale
+ * hour doesn't inflate what the hours after it are expected to bring.
+ */
+function level(today: number[], refs: number[][], from: number): number {
+  const hours: { base: number; today: number }[] = [];
+  for (let to = from; to > 0; to -= WINDOW) {
+    const a = Math.max(0, to - WINDOW);
+    hours.push({ base: baseSum(refs, a, to), today: sum(today, a, to) });
+  }
+  const total = hours.reduce((s, h) => s + h.base, 0);
+  if (total < MIN_LEVEL_BASE) return 1;
+  const ranked = hours
+    .filter((h) => h.base > 0)
+    .sort((x, y) => x.today / x.base - y.today / y.base);
+  let acc = 0;
+  for (const h of ranked) {
+    acc += h.base;
+    if (acc >= total / 2) return Math.min(2, Math.max(0.5, h.today / h.base));
+  }
+  return 1;
 }
 
-/** today/base: orders per bucket. done: fully elapsed buckets. Null before the first full window. */
-function evaluate(
+/**
+ * Orders over [from - WINDOW, to) vs the baseline's: cancellations and denials
+ * trail the orders they belong to by up to an hour, so a campaign hour raises
+ * what the next one may cancel. `fallback` when the baseline is too thin.
+ */
+function recentLevel(
   today: number[],
-  base: number[],
-  done: number,
-): Verdict | null {
-  if (done < WINDOW) return null;
-  const from = done - WINDOW;
-  const to = done;
-  const lv = level(today, base, from);
-  const expected = lv * sum(base, from, to);
-  const observed = sum(today, from, to);
-  const warnAt = WARN_BELOW * expected;
-  const alertAt = ALERT_BELOW * expected;
-  const status: Status =
-    expected < MIN_EXPECTED
-      ? "low-volume"
-      : observed < alertAt
-        ? "alert"
-        : observed < warnAt
-          ? "warning"
-          : "ok";
-  return { status, from, to, observed, expected, warnAt, alertAt, level: lv };
+  refs: number[][],
+  from: number,
+  to: number,
+  fallback: number,
+): number {
+  const base = baseSum(refs, from - WINDOW, to);
+  return base >= MIN_LEVEL_BASE
+    ? sum(today, from - WINDOW, to) / base
+    : fallback;
 }
 
 function spike(
   observed: number,
   expected: number,
   window: { from: number; to: number; level: number },
-  hasHistory: boolean,
+  judged: boolean,
 ): Verdict {
   const warnAt = Math.max(MIN_SPIKE, SPIKE_WARN_TIMES * expected);
   const alertAt = Math.max(MIN_SPIKE, SPIKE_ALERT_TIMES * expected);
-  const status: Status = !hasHistory
+  const status: Status = !judged
     ? "low-volume"
     : observed >= alertAt
       ? "alert"
@@ -138,36 +177,54 @@ function hasEventHistory(day: StoreDay): boolean {
   );
 }
 
-/** Every rule's verdict for one store, or null for all of them before the day's first full window. */
-export function evaluateStore(day: StoreDay): Record<Rule, Verdict> | null {
-  const today = day.days[0];
-  const refs = BASELINE_DAYS.map((d) => day.days[d]);
-  const basePlaced = baseline(refs.map((r) => r.placed));
-  const drop = evaluate(today.placed, basePlaced, day.done);
-  if (!drop) return null;
-  const { from, to, level: lv } = drop;
-  const window = { from, to, level: lv };
-
-  const hasHistory = hasEventHistory(day);
-  const baseCanceled = baseline(refs.map((r) => r.canceled));
-  const canceled = spike(
-    sum(today.canceled, from, to),
-    lv * sum(baseCanceled, from, to),
-    window,
-    hasHistory,
+/** Every rule's verdict for one store, over the hour that ended at `day.done`. */
+export function evaluateStore(day: StoreDay): Record<Rule, Verdict> {
+  const placed = series(day, "placed");
+  // Indexes into the series with the eve in front.
+  const to = day.done + WINDOW;
+  const from = to - WINDOW;
+  const lv = level(placed.today, placed.refs, from);
+  const window = { from: from - WINDOW, to: to - WINDOW, level: lv };
+  const dst = (day.dstBuckets ?? []).some(
+    (b) => b >= window.from && b < window.to,
   );
 
-  const refPlaced = sum(refs.flatMap((r) => r.placed));
-  const deniedShare =
-    refPlaced > 0 ? sum(refs.flatMap((r) => r.denied)) / refPlaced : 0;
-  const denied = spike(
-    sum(today.denied, from, to),
-    sum(today.placed, from, to) * deniedShare,
-    window,
-    hasHistory,
-  );
+  const expected = lv * baseSum(placed.refs, from, to);
+  const observed = sum(placed.today, from, to);
+  const warnAt = WARN_BELOW * expected;
+  const alertAt = ALERT_BELOW * expected;
+  const drop: Verdict = {
+    status:
+      dst || expected < MIN_EXPECTED
+        ? "low-volume"
+        : observed < alertAt
+          ? "alert"
+          : observed < warnAt
+            ? "warning"
+            : "ok",
+    ...window,
+    observed,
+    expected,
+    warnAt,
+    alertAt,
+  };
 
-  return { orders_drop: drop, denied_spike: denied, cancel_spike: canceled };
+  const recent = recentLevel(placed.today, placed.refs, from, to, lv);
+  const judged = !dst && hasEventHistory(day);
+  const rate = (kind: "canceled" | "denied") => {
+    const s = series(day, kind);
+    return spike(
+      sum(s.today, from, to),
+      recent * baseSum(s.refs, from, to),
+      window,
+      judged,
+    );
+  };
+  return {
+    orders_drop: drop,
+    denied_spike: rate("denied"),
+    cancel_spike: rate("canceled"),
+  };
 }
 
 const HOURS = Array.from({ length: 24 }, (_, h) => h);
@@ -175,22 +232,21 @@ const hourly = (a: number[], h: number) => sum(a, h * 4, h * 4 + 4);
 
 /**
  * The Monitor chart's view of one store day, per clock hour. Expected is the
- * baseline scaled by how today ran before `done`; past `done` it is the day's
+ * baseline scaled by the verdict's level; past `done` it is the day's
  * projection. Thresholds mirror the rules', per hour instead of per window.
  */
 export function buildDayView(day: StoreDay, at: Date): OrderMonitorDay {
   const today = day.days[0];
-  const refs = BASELINE_DAYS.map((d) => day.days[d]);
-  const basePlaced = baseline(refs.map((r) => r.placed));
-  const baseCanceled = baseline(refs.map((r) => r.canceled));
-  // The level the verdict used: the buckets before its window, so an outage
+  const placed = series(day, "placed");
+  const canceled = series(day, "canceled");
+  const verdicts = evaluateStore(day);
+  // The level the verdict used: the hours before its window, so an outage
   // hour doesn't pull the expected line down with it.
-  const lv = level(
-    today.placed,
-    basePlaced,
-    day.done >= WINDOW ? day.done - WINDOW : day.done,
-  );
+  const lv = verdicts.orders_drop.level;
   const hasHistory = hasEventHistory(day);
+  // Hour h in the series with the eve in front.
+  const span = (h: number) => [h * 4 + WINDOW, h * 4 + 4 + WINDOW] as const;
+  const baseHour = (refs: number[][], h: number) => baseSum(refs, ...span(h));
 
   const soFar = (a: number[], h: number) =>
     h * 4 < day.done ? sum(a, h * 4, Math.min(h * 4 + 4, day.done)) : null;
@@ -201,23 +257,31 @@ export function buildDayView(day: StoreDay, at: Date): OrderMonitorDay {
   const cancels = (d: DayAgo, kind: "canceled" | "denied") =>
     (preInstall(d) ? day.approximate?.[d]?.[kind] : undefined) ??
     day.days[d][kind];
-  const series = (pick: (d: DayAgo) => number[]): OrderMonitorSeries => ({
+  const hourSeries = (pick: (d: DayAgo) => number[]): OrderMonitorSeries => ({
     today: HOURS.map((h) => soFar(pick(0), h)),
     d1: HOURS.map((h) => hourly(pick(1), h)),
     w1: HOURS.map((h) => hourly(pick(7), h)),
     y1: HOURS.map((h) => hourly(pick(364), h)),
   });
 
-  const expected = HOURS.map((h) => lv * hourly(basePlaced, h));
+  const expected = HOURS.map((h) => lv * baseHour(placed.refs, h));
   const judged = (e: number, share: number) =>
     e < MIN_EXPECTED ? null : share * e;
+  // Elapsed hours scale by the orders around them, as the rule does.
+  const cancelLevel = HOURS.map((h) =>
+    h * 4 + 4 <= day.done
+      ? recentLevel(placed.today, placed.refs, ...span(h), lv)
+      : lv,
+  );
   const cancelBand = (times: number) =>
     HOURS.map((h) =>
       hasHistory
-        ? Math.max(MIN_SPIKE, times * lv * hourly(baseCanceled, h))
+        ? Math.max(
+            MIN_SPIKE,
+            times * cancelLevel[h]! * baseHour(canceled.refs, h),
+          )
         : null,
     );
-  const verdicts = evaluateStore(day);
   const withZone = (v: Verdict): OrderMonitorVerdict => ({
     ...v,
     timezone: day.timezone,
@@ -230,14 +294,14 @@ export function buildDayView(day: StoreDay, at: Date): OrderMonitorDay {
     date: at.toLocaleDateString("en-CA", { timeZone: day.timezone }),
     done: day.done,
     orders: {
-      ...series((d) => day.days[d].placed),
+      ...hourSeries((d) => day.days[d].placed),
       expected,
       warnAt: expected.map((e) => judged(e, WARN_BELOW)),
       alertAt: expected.map((e) => judged(e, ALERT_BELOW)),
     },
     cancellations: {
-      canceled: series((d) => cancels(d, "canceled")),
-      denied: series((d) => cancels(d, "denied")),
+      canceled: hourSeries((d) => cancels(d, "canceled")),
+      denied: hourSeries((d) => cancels(d, "denied")),
       approximate: {
         d1: preInstall(1) && !!day.approximate?.[1],
         w1: preInstall(7) && !!day.approximate?.[7],
@@ -249,12 +313,12 @@ export function buildDayView(day: StoreDay, at: Date): OrderMonitorDay {
     headline: {
       projected:
         sum(today.placed, 0, day.done) +
-        lv * sum(basePlaced, day.done, BUCKETS_PER_DAY),
+        lv * baseSum(placed.refs, day.done + WINDOW, BUCKETS_PER_DAY + WINDOW),
       d1: sum(day.days[1].placed),
       w1: sum(day.days[7].placed),
       y1: sum(day.days[364].placed),
     },
-    verdicts: verdicts && {
+    verdicts: {
       orders_drop: withZone(verdicts.orders_drop),
       denied_spike: withZone(verdicts.denied_spike),
       cancel_spike: withZone(verdicts.cancel_spike),

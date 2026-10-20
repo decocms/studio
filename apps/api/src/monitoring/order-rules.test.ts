@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { doneBuckets } from "./order-lake";
+import { dstBuckets, doneBuckets, localDayStart } from "./order-lake";
 import {
   buildDayView,
   BUCKETS_PER_DAY,
@@ -39,51 +39,97 @@ const withDip = (series: number[], from: number, to: number, n: number) =>
   series.map((v, i) => (i >= from && i < to ? n : v));
 
 describe("evaluateStore", () => {
-  it("is ok on a normal day and null before the first full window", () => {
-    const v = evaluateStore(store({}))!;
+  it("is ok on a normal day", () => {
+    const v = evaluateStore(store({}));
     expect(v.orders_drop.status).toBe("ok");
     expect(v.orders_drop.expected).toBe(40);
     expect(v.denied_spike.status).toBe("ok");
     expect(v.cancel_spike.status).toBe("ok");
-    expect(evaluateStore(store({}, {}, { done: 3 }))).toBeNull();
+  });
+
+  it("judges the first hour against the evening before", () => {
+    const s = store({});
+    // Yesterday's last hour went dark; the reference days' eves did not.
+    s.days[1].placed = withDip(flat(10), 92, 96, 0);
+    const v = evaluateStore({ ...s, done: 0 });
+    expect(v.orders_drop).toMatchObject({ status: "alert", from: -4, to: 0 });
+  });
+
+  it("doesn't let a launch hour inflate the hours after it", () => {
+    // A 10× hour at 09:00, then a lull at 60 % of normal.
+    const placed = withDip(withDip(flat(10), 36, 40, 100), 44, 48, 6);
+    const v = evaluateStore(store({ placed }));
+    expect(v.orders_drop.level).toBe(1);
+    expect(v.orders_drop.status).toBe("ok");
+  });
+
+  it("doesn't let one promo day among the references move the baseline", () => {
+    const s = store({ placed: withDip(flat(10), 44, 48, 2.5) });
+    s.days[7].placed = flat(200);
+    const v = evaluateStore(s);
+    expect(v.orders_drop.expected).toBe(40);
+    expect(v.orders_drop.status).toBe("warning");
+  });
+
+  it("doesn't judge a window a DST switch skipped or repeated", () => {
+    const v = evaluateStore(
+      store({ placed: withDip(flat(10), 44, 48, 0) }, {}, { dstBuckets: [45] }),
+    );
+    expect(v.orders_drop.status).toBe("low-volume");
+    expect(v.cancel_spike.status).toBe("low-volume");
   });
 
   it("warns, then alerts, as the last hour's orders fall away", () => {
     const warn = evaluateStore(
       store({ placed: withDip(flat(10), 44, 48, 2.5) }),
-    )!;
+    );
     expect(warn.orders_drop.status).toBe("warning");
     const outage = evaluateStore(
       store({ placed: withDip(flat(10), 44, 48, 0) }),
-    )!;
+    );
     expect(outage.orders_drop.status).toBe("alert");
   });
 
   it("does not judge a quiet hour", () => {
-    const v = evaluateStore(store({ placed: flat(1) }, { placed: flat(1) }))!;
+    const v = evaluateStore(store({ placed: flat(1) }, { placed: flat(1) }));
     expect(v.orders_drop.status).toBe("low-volume");
   });
 
-  it("flags a denial wave against the baseline's denied share", () => {
-    const v = evaluateStore(store({ denied: withDip(flat(0.2), 44, 48, 5) }))!;
-    // 40 placed × 2 % share = 0.8 expected; 20 observed.
+  it("flags a denial wave against the baseline's denials", () => {
+    const v = evaluateStore(store({ denied: withDip(flat(0.2), 44, 48, 5) }));
+    // 0.2 a bucket = 0.8 expected; 20 observed.
     expect(v.denied_spike.expected).toBeCloseTo(0.8);
     expect(v.denied_spike.status).toBe("alert");
     expect(v.orders_drop.status).toBe("ok");
   });
 
+  it("expects more cancellations after a campaign hour", () => {
+    // 4× the orders at 10:00, and 4× the cancellations an hour later.
+    const v = evaluateStore(
+      store(
+        {
+          placed: withDip(flat(10), 40, 44, 40),
+          canceled: withDip(flat(2), 44, 48, 8),
+        },
+        { canceled: flat(2) },
+      ),
+    );
+    expect(v.cancel_spike.expected).toBe(20);
+    expect(v.cancel_spike.status).toBe("ok");
+  });
+
   it("never calls fewer than MIN_SPIKE cancellations a spike", () => {
     const v = evaluateStore(
       store({ canceled: withDip(flat(0), 44, 48, 2) }, { canceled: flat(0) }),
-    )!;
+    );
     expect(v.cancel_spike.status).toBe("ok");
   });
 
   it("keeps spikes low-volume until the oldest baseline day has event history", () => {
     const wave = { canceled: withDip(flat(0.5), 44, 48, 10) };
-    expect(evaluateStore(store(wave))!.cancel_spike.status).toBe("alert");
+    expect(evaluateStore(store(wave)).cancel_spike.status).toBe("alert");
     for (const firstEventDaysAgo of [null, 28]) {
-      const v = evaluateStore(store(wave, {}, { firstEventDaysAgo }))!;
+      const v = evaluateStore(store(wave, {}, { firstEventDaysAgo }));
       expect(v.cancel_spike.status).toBe("low-volume");
       expect(v.denied_spike.status).toBe("low-volume");
     }
@@ -102,6 +148,30 @@ describe("doneBuckets", () => {
     expect(
       doneBuckets(new Date("2026-10-19T03:02:00Z"), "America/Sao_Paulo"),
     ).toBe(0);
+  });
+});
+
+describe("DST", () => {
+  it("finds the buckets a switch skipped or repeated today", () => {
+    // New York springs forward 02:00 → 03:00 and falls back 02:00 → 01:00.
+    expect(
+      dstBuckets(new Date("2026-03-08T12:00:00Z"), "America/New_York"),
+    ).toEqual([8, 9, 10, 11]);
+    expect(
+      dstBuckets(new Date("2026-11-01T15:00:00Z"), "America/New_York"),
+    ).toEqual([4, 5, 6, 7]);
+    expect(
+      dstBuckets(new Date("2026-10-19T15:00:00Z"), "America/Sao_Paulo"),
+    ).toEqual([]);
+  });
+
+  it("starts a 25-hour day at its local midnight", () => {
+    expect(
+      localDayStart(
+        new Date("2026-11-01T15:00:00Z"),
+        "America/New_York",
+      ).toISOString(),
+    ).toBe("2026-11-01T04:00:00.000Z");
   });
 });
 

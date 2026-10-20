@@ -109,7 +109,8 @@ export function OrderMonitorStatusBadge({
 
 /** `HH:MM` of a 15-minute bucket of the local day. */
 function bucketTime(bucket: number): string {
-  const minutes = bucket * 15;
+  // A window in the first hour starts the day before (negative bucket).
+  const minutes = ((bucket + 96) % 96) * 15;
   return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
 }
 
@@ -159,7 +160,7 @@ function percentVs(projected: number, reference: number): string {
 
 function Headline({ day }: { day: OrderMonitorDay }) {
   const t = useT();
-  const drop = day.verdicts?.orders_drop;
+  const drop = day.verdicts.orders_drop;
   const refs = [
     { label: t("orderMonitor.series.d1"), total: day.headline.d1 },
     { label: t("orderMonitor.series.w1"), total: day.headline.w1 },
@@ -187,17 +188,9 @@ function Headline({ day }: { day: OrderMonitorDay }) {
         </div>
       ))}
       <div className="flex items-center gap-2">
-        {drop ? (
-          <>
-            <OrderMonitorStatusBadge status={drop.status} />
-            {drop.ingestIncident && (
-              <Badge variant="muted">{t("orderMonitor.ingestIncident")}</Badge>
-            )}
-          </>
-        ) : (
-          <span className="text-xs text-muted-foreground">
-            {t("orderMonitor.notJudgedYet")}
-          </span>
+        <OrderMonitorStatusBadge status={drop.status} />
+        {drop.ingestIncident && (
+          <Badge variant="muted">{t("orderMonitor.ingestIncident")}</Badge>
         )}
       </div>
     </div>
@@ -314,7 +307,7 @@ function OrdersChart({
   const t = useT();
   const { orders } = day;
   const current = Math.floor(day.done / 4);
-  const drop = day.verdicts?.orders_drop;
+  const drop = day.verdicts.orders_drop;
   const data = HOURS.map((h) => {
     const warn = orders.warnAt[h];
     const alert = orders.alertAt[h];
@@ -366,7 +359,7 @@ function OrdersChart({
               labelFormatter={(_, payload) => {
                 const h = datumHour(payload);
                 if (h === null) return null;
-                if (drop && h === Math.floor(drop.from / 4)) {
+                if (h === Math.floor(drop.from / 4)) {
                   return t("orderMonitor.verdictWindow", {
                     hour: hourLabel(h),
                     from: bucketTime(drop.from),
@@ -712,34 +705,32 @@ export function OrderMonitorDayView({
         <CancellationsChart day={day} pushes={pushes} />
         <PushStrips pushes={pushes} />
       </Section>
-      {verdicts && (
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-          {ORDER_MONITOR_RULES.map((rule) => {
-            const verdict = verdicts[rule];
-            return (
-              <div
-                key={rule}
-                className="flex flex-col gap-1 rounded-lg border border-border p-3"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-medium text-foreground">
-                    {ruleLabel(rule, t)}
-                  </span>
-                  <OrderMonitorStatusBadge status={verdict.status} />
-                </div>
-                <span className="text-xs tabular-nums text-muted-foreground">
-                  {t("orderMonitor.observedVsExpected", {
-                    observed: verdict.observed,
-                    expected: Math.round(verdict.expected),
-                    from: bucketTime(verdict.from),
-                    to: bucketTime(verdict.to),
-                  })}
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+        {ORDER_MONITOR_RULES.map((rule) => {
+          const verdict = verdicts[rule];
+          return (
+            <div
+              key={rule}
+              className="flex flex-col gap-1 rounded-lg border border-border p-3"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-medium text-foreground">
+                  {ruleLabel(rule, t)}
                 </span>
+                <OrderMonitorStatusBadge status={verdict.status} />
               </div>
-            );
-          })}
-        </div>
-      )}
+              <span className="text-xs tabular-nums text-muted-foreground">
+                {t("orderMonitor.observedVsExpected", {
+                  observed: verdict.observed,
+                  expected: Math.round(verdict.expected),
+                  from: bucketTime(verdict.from),
+                  to: bucketTime(verdict.to),
+                })}
+              </span>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

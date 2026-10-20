@@ -1,8 +1,9 @@
 /**
  * One card per incident on the org's board: opened when a rule crosses into
- * warning/alert, commented and re-prioritized as it moves, closed to Done on
- * recovery. Every open, escalation and recovery is also an `order_incident`
- * notification to the org's admins, which the digest mails.
+ * warning/alert, commented and made urgent on an escalation to alert, closed
+ * to Done once ok has held RECOVERY_MS. Every open, escalation and recovery is
+ * also an `order_incident` notification to the org's admins, which the digest
+ * mails; flapping inside the incident and too-quiet hours are not.
  *
  * The card never starts an agent run: it is created unassigned, and the move to
  * Done is written without a `status_changed` entry, which is what a lane
@@ -24,29 +25,44 @@ import type { OrderMonitorStorage } from "@/storage/order-monitor";
 import type { Database } from "@/storage/types";
 import { emitTaskBoardUpdated } from "@/tools/task-board/run-reactions";
 import type { Kysely } from "kysely";
-import { localDayStart } from "./order-lake";
+import { localBucketStart } from "./order-lake";
 import { listPushes } from "./order-pushes";
-import type { Rule, Status } from "./order-rules";
+import { BUCKETS_PER_DAY, type Rule, type Status } from "./order-rules";
 
-export type IncidentAction = "open" | "update" | "close" | "none";
+export type IncidentAction = "open" | "update" | "pause" | "close" | "none";
 
 const isIncident = (s: string | undefined) => s === "warning" || s === "alert";
 
+/** How long a rule stays ok before its card closes, so a window flapping on the line keeps one card. */
+export const RECOVERY_MS = 30 * 60_000;
+/** How long an open waits for VTEX to answer before the card opens unconfirmed. */
+const CROSS_CHECK_GRACE_MS = 30 * 60_000;
+
 /**
- * What a status change does to the incident card. A card a person deleted
- * while the incident lasted is not reopened; the next crossing opens one.
+ * What a tick does to the incident card. A card a person deleted while the
+ * incident lasted is not reopened; the next crossing opens one.
  */
 export function incidentAction(
   prev: string | undefined,
   next: Status,
-  hasCard: boolean,
+  card: {
+    hasCard: boolean;
+    /** How long `next` has held. */
+    heldMs: number;
+    /** An open is waiting on the VTEX cross-check. */
+    retryOpen?: boolean;
+  },
 ): IncidentAction {
+  if (next === "ok") {
+    return card.hasCard && card.heldMs >= RECOVERY_MS ? "close" : "none";
+  }
+  if (isIncident(next) && !card.hasCard && card.retryOpen) return "open";
   if (prev === next) return "none";
   if (isIncident(next)) {
-    if (hasCard) return "update";
+    if (card.hasCard) return "update";
     return isIncident(prev) ? "none" : "open";
   }
-  return next === "ok" && hasCard ? "close" : "none";
+  return card.hasCard && isIncident(prev) ? "pause" : "none";
 }
 
 /** The store as the board and the UI name it. */
@@ -90,8 +106,10 @@ const RULE_NOUN: Record<Rule, string> = {
 
 const pad = (n: number) => String(n).padStart(2, "0");
 /** HH:MM of a 15-minute bucket of the local day. */
-export const bucketTime = (bucket: number) =>
-  `${pad(Math.floor((bucket * 15) / 60))}:${pad((bucket * 15) % 60)}`;
+export const bucketTime = (bucket: number) => {
+  const b = (bucket + BUCKETS_PER_DAY) % BUCKETS_PER_DAY;
+  return `${pad(Math.floor((b * 15) / 60))}:${pad((b * 15) % 60)}`;
+};
 const round = (n: number) => Math.round(n).toLocaleString("en-US");
 
 export function incidentTitle(
@@ -164,7 +182,8 @@ export interface IncidentInput {
   action: Exclude<IncidentAction, "none">;
   verdict: OrderMonitorVerdict;
   at: Date;
-  taskBoardItemId: string | null;
+  /** Since when the rule has held `verdict.status`. */
+  since: Date;
 }
 
 /** Card + notification for one incident transition. Returns the card now linked to the rule. */
@@ -174,16 +193,28 @@ export async function syncIncidentTask(
   storage: OrderMonitorStorage,
   input: IncidentInput,
 ): Promise<string | null> {
-  const { organizationId, connectionId, rule, verdict, at } = input;
+  const { organizationId, connectionId, rule, verdict, at, since } = input;
   const orgSlug = ctx.organization?.slug;
   if (!orgSlug) throw new Error("order incident needs the org's slug");
+  // Read now, not at evaluation: a replayed or overlapping step may have linked a card since.
+  const linked =
+    (await storage.listStates(organizationId, connectionId)).find(
+      (s) => s.rule === rule,
+    )?.task?.id ?? null;
+  if (input.action === "open" && linked) return linked;
   const store = await loadStoreInfo(ctx, storage, organizationId, connectionId);
-  if (!store) return input.taskBoardItemId;
+  if (!store) return linked;
 
-  const dayStart = localDayStart(at, verdict.timezone);
-  const windowStart = new Date(dayStart.getTime() + verdict.from * 15 * 60_000);
-  const windowEnd = new Date(dayStart.getTime() + verdict.to * 15 * 60_000);
+  const windowStart = localBucketStart(at, verdict.timezone, verdict.from);
+  const windowEnd = localBucketStart(at, verdict.timezone, verdict.to);
   const chartAt = windowStart.toISOString();
+  const localTime = (t: Date) =>
+    t.toLocaleTimeString("en-GB", {
+      timeZone: verdict.timezone,
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  let unconfirmed = false;
 
   // From the lake alone "the store sold nothing" and "our ingest stopped" look
   // the same. VTEX settles it before a customer is told their sales stopped.
@@ -213,15 +244,27 @@ export async function syncIncidentTask(
         vtex: vtexCount,
         since: windowStart.toISOString(),
       });
-      await storage.markIngestIncident(organizationId, connectionId, rule);
+      await storage.setVerdictFlags(organizationId, connectionId, rule, {
+        ingestIncident: true,
+        crossCheckPending: false,
+      });
       return null;
+    }
+    // VTEX didn't answer: ask again next tick rather than tell the customer
+    // something only our ingest may have, until the wait runs out.
+    if (vtexCount === null) {
+      if (at.getTime() - since.getTime() < CROSS_CHECK_GRACE_MS) {
+        await storage.setVerdictFlags(organizationId, connectionId, rule, {
+          crossCheckPending: true,
+        });
+        return null;
+      }
+      unconfirmed = true;
     }
   }
 
   const taskBoard = ctx.storage.taskBoard;
-  const card = input.taskBoardItemId
-    ? await taskBoard.getById(input.taskBoardItemId, organizationId)
-    : null;
+  const card = linked ? await taskBoard.getById(linked, organizationId) : null;
   const live =
     card && card.status !== LANES.done && card.status !== LANES.archive;
   const notice: OrderIncidentNotice = {
@@ -271,6 +314,11 @@ export async function syncIncidentTask(
     );
     const description = [
       `${numbers(rule, verdict)}`,
+      ...(unconfirmed
+        ? [
+            "VTEX couldn't be reached to confirm these numbers against the store's own order list.",
+          ]
+        : []),
       `[Open the Orders chart at the incident's start](${getBaseUrl()}${orderMonitorChartPath(orgSlug, connectionId, chartAt)})`,
       `**Pushes to main in the 2 hours before**\n${pushLines.length > 0 ? pushLines.join("\n") : "None."}`,
     ].join("\n\n");
@@ -295,6 +343,9 @@ export async function syncIncidentTask(
       rule,
       created.id,
     );
+    await storage.setVerdictFlags(organizationId, connectionId, rule, {
+      crossCheckPending: false,
+    });
     await notifyAdmins(created.id);
     emitTaskBoardUpdated(organizationId, created);
     return created.id;
@@ -302,29 +353,43 @@ export async function syncIncidentTask(
 
   if (!card || !live) {
     // A person closed or archived it; the incident goes on without a card.
-    if (input.taskBoardItemId) {
+    if (linked) {
       await storage.setIncidentTask(organizationId, connectionId, rule, null);
     }
     return null;
   }
 
+  // Too few orders to judge: noted on the card for whoever reads it, nobody is told.
+  if (input.action === "pause") {
+    await taskBoard.createComment({
+      taskBoardItemId: card.id,
+      organizationId,
+      authorId: SUPER_AGENT_ASSIGNEE_ID,
+      body: `Too few orders to judge since ${localTime(since)}. The card closes once the rule is back to normal for ${RECOVERY_MS / 60_000} minutes.`,
+    });
+    return card.id;
+  }
+
   const recovered = input.action === "close";
+  // Back into warning, or alert again on an urgent card, is the same incident: no news.
+  if (
+    !recovered &&
+    !(verdict.status === "alert" && card.priority !== "urgent")
+  ) {
+    return card.id;
+  }
   await taskBoard.createComment({
     taskBoardItemId: card.id,
     organizationId,
     authorId: SUPER_AGENT_ASSIGNEE_ID,
     body: recovered
-      ? `Recovered at ${at.toLocaleTimeString("en-GB", { timeZone: verdict.timezone, hour: "2-digit", minute: "2-digit" })}. ${numbers(rule, verdict)}`
-      : `Now **${verdict.status}**. ${numbers(rule, verdict)}`,
+      ? `Back to normal since ${localTime(since)}. ${numbers(rule, verdict)}`
+      : `Now **alert**. ${numbers(rule, verdict)}`,
   });
   const updated = await taskBoard.update(
     card.id,
     organizationId,
-    recovered
-      ? { status: LANES.done }
-      : verdict.status === "alert" || card.priority !== "urgent"
-        ? { priority: PRIORITY[verdict.status as "warning" | "alert"] }
-        : {},
+    recovered ? { status: LANES.done } : { priority: PRIORITY.alert },
     SUPER_AGENT_ASSIGNEE_ID,
   );
   if (recovered) {

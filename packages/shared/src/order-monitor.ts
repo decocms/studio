@@ -15,7 +15,7 @@ export const ORDER_MONITOR_RULES = [
 export type OrderMonitorRule = (typeof ORDER_MONITOR_RULES)[number];
 export type OrderMonitorStatus = "ok" | "warning" | "alert" | "low-volume";
 
-/** `warnAt`/`alertAt` are below expected for a drop, above it for a spike. Buckets are 15 minutes of the store's local day. */
+/** `warnAt`/`alertAt` are below expected for a drop, above it for a spike. Buckets are 15 minutes of the store's local day; `from` is negative while the window reaches into the day before. */
 export interface OrderMonitorVerdict {
   status: OrderMonitorStatus;
   from: number;
@@ -28,6 +28,8 @@ export interface OrderMonitorVerdict {
   timezone: string;
   /** The lake saw a drop VTEX did not: our ingest stopped, not the store's sales. */
   ingestIncident?: boolean;
+  /** The card waits on VTEX to confirm the drop; the sweep retries the open. */
+  crossCheckPending?: boolean;
 }
 
 export interface OrderMonitorRuleState {
@@ -86,8 +88,7 @@ export interface OrderMonitorDay {
     w1: number;
     y1: number;
   };
-  /** Null before the day's first full hour. */
-  verdicts: Record<OrderMonitorRule, OrderMonitorVerdict> | null;
+  verdicts: Record<OrderMonitorRule, OrderMonitorVerdict>;
 }
 
 export interface OrderMonitorPush {

@@ -1,28 +1,48 @@
 import { describe, expect, it } from "bun:test";
 import type { OrderMonitorVerdict } from "@decocms/shared/order-monitor";
-import { incidentAction, incidentTitle } from "./order-incidents";
+import {
+  bucketTime,
+  incidentAction,
+  incidentTitle,
+  RECOVERY_MS,
+} from "./order-incidents";
 import { toMarkers } from "./order-pushes";
 
 describe("incidentAction", () => {
+  const held = RECOVERY_MS;
   it.each([
-    // prev, next, hasCard, action
-    [undefined, "warning", false, "open"],
-    ["ok", "alert", false, "open"],
-    ["low-volume", "warning", false, "open"],
-    ["warning", "alert", true, "update"],
-    ["alert", "warning", true, "update"],
-    ["low-volume", "alert", true, "update"],
-    ["alert", "ok", true, "close"],
-    ["low-volume", "ok", true, "close"],
+    // prev, next, hasCard, heldMs, retryOpen, action
+    [undefined, "warning", false, 0, false, "open"],
+    ["ok", "alert", false, 0, false, "open"],
+    ["low-volume", "warning", false, 0, false, "open"],
+    ["warning", "alert", true, 0, false, "update"],
+    ["alert", "warning", true, 0, false, "update"],
+    ["low-volume", "alert", true, 0, false, "update"],
+    // Ok has to hold before the card closes, so a flapping window keeps it.
+    ["alert", "ok", true, 0, false, "none"],
+    ["ok", "warning", true, 0, false, "update"],
+    ["ok", "ok", true, held, false, "close"],
+    ["low-volume", "ok", true, held, false, "close"],
+    // Too few orders mid-incident: noted on the card, not closed.
+    ["alert", "low-volume", true, 0, false, "pause"],
+    ["low-volume", "low-volume", true, held, false, "none"],
     // A person deleted the card mid-incident: don't reopen it.
-    ["warning", "alert", false, "none"],
-    ["alert", "ok", false, "none"],
-    ["ok", "low-volume", false, "none"],
-    ["alert", "low-volume", true, "none"],
-    ["alert", "alert", true, "none"],
-  ] as const)("%s → %s (card: %s) = %s", (prev, next, hasCard, action) => {
-    expect(incidentAction(prev, next, hasCard)).toBe(action);
-  });
+    ["warning", "alert", false, 0, false, "none"],
+    ["alert", "ok", false, held, false, "none"],
+    ["ok", "low-volume", false, 0, false, "none"],
+    ["alert", "alert", true, 0, false, "none"],
+    // An open waiting on VTEX is retried until a card exists.
+    ["warning", "warning", false, 0, true, "open"],
+    ["warning", "alert", false, 0, true, "open"],
+    ["warning", "warning", true, 0, true, "none"],
+  ] as const)(
+    "%s → %s (card: %s, held: %s, retry: %s) = %s",
+    (prev, next, hasCard, heldMs, retryOpen, action) => {
+      expect(incidentAction(prev, next, { hasCard, heldMs, retryOpen })).toBe(
+        action,
+      );
+    },
+  );
 });
 
 describe("incidentTitle", () => {
@@ -84,4 +104,10 @@ describe("toMarkers", () => {
       "dev-b",
     ]);
   });
+});
+
+it("bucketTime reads a window that starts the day before", () => {
+  expect(bucketTime(-2)).toBe("23:30");
+  expect(bucketTime(0)).toBe("00:00");
+  expect(bucketTime(95)).toBe("23:45");
 });

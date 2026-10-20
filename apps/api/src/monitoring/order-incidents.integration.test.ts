@@ -16,6 +16,7 @@ import {
 import type { QueryEngine } from "@/monitoring/query-engine";
 import { OrderMonitorStorage } from "@/storage/order-monitor";
 import { buildOrgContext } from "@/tools/task-board/org-context";
+import { writeStates } from "./dbos-order-monitor";
 import { syncIncidentTask } from "./order-incidents";
 
 const ORG = "org_incident_test";
@@ -136,7 +137,7 @@ describe("syncIncidentTask", () => {
       action: "open",
       verdict: verdict({}),
       at,
-      taskBoardItemId: null,
+      since: at,
     });
     expect(id).toBeTruthy();
     const card = await ctx.storage.taskBoard.getById(id!, ORG);
@@ -156,37 +157,46 @@ describe("syncIncidentTask", () => {
     expect(n?.data).toMatchObject({ incident: { store: "Test Store" } });
   });
 
-  test("escalates the same card, then closes it to Done on recovery", async () => {
+  test("escalates the same card, stays quiet on a flap, then closes it to Done", async () => {
     const id = (await state())!.task!.id;
-    await syncIncidentTask(ctx, database.db, storage, {
-      organizationId: ORG,
-      connectionId: STORE,
-      rule: "orders_drop",
-      action: "update",
-      verdict: verdict({ status: "alert", observed: 2 }),
-      at,
-      taskBoardItemId: id,
-    });
+    const sync = (
+      action: "update" | "pause" | "close",
+      over: Partial<OrderMonitorVerdict>,
+      since: Date = at,
+    ) =>
+      syncIncidentTask(ctx, database.db, storage, {
+        organizationId: ORG,
+        connectionId: STORE,
+        rule: "orders_drop",
+        action,
+        verdict: verdict(over),
+        at,
+        since,
+      });
+
+    await sync("update", { status: "alert", observed: 2 });
     expect((await ctx.storage.taskBoard.getById(id, ORG))?.priority).toBe(
       "urgent",
     );
+    // Back to warning, then alert again: the same incident, nobody is told.
+    await sync("update", { status: "warning" });
+    await sync("update", { status: "alert", observed: 3 });
+    // Too few orders overnight: a note on the card, nobody is told.
+    await sync("pause", { status: "low-volume" });
 
-    const linked = await syncIncidentTask(ctx, database.db, storage, {
-      organizationId: ORG,
-      connectionId: STORE,
-      rule: "orders_drop",
-      action: "close",
-      verdict: verdict({ status: "ok", observed: 45 }),
-      at,
-      taskBoardItemId: id,
-    });
+    const linked = await sync(
+      "close",
+      { status: "ok", observed: 45 },
+      new Date("2026-10-19T17:35:00Z"),
+    );
     expect(linked).toBeNull();
     expect((await ctx.storage.taskBoard.getById(id, ORG))?.status).toBe("done");
     expect((await state())?.task).toBeNull();
     const comments = await ctx.storage.taskBoard.listComments(id, ORG);
     expect(comments.map((c) => c.body.split(".")[0])).toEqual([
       "Now **alert**",
-      "Recovered at 15:05",
+      "Too few orders to judge since 15:05",
+      "Back to normal since 14:35",
     ]);
     expect(await notifications()).toHaveLength(3);
     // No status_changed entry: a Done lane automation must not fire on it.
@@ -197,5 +207,47 @@ describe("syncIncidentTask", () => {
       .where("action", "=", "status_changed")
       .execute();
     expect(moves).toEqual([]);
+  });
+
+  test("a replayed open finds the card already linked", async () => {
+    const open = () =>
+      syncIncidentTask(ctx, database.db, storage, {
+        organizationId: ORG,
+        connectionId: STORE,
+        rule: "orders_drop",
+        action: "open",
+        verdict: verdict({}),
+        at,
+        since: at,
+      });
+    const id = await open();
+    expect(await open()).toBe(id);
+  });
+
+  test("an older tick that lost the race writes nothing over a newer one", async () => {
+    const store = {
+      organizationId: ORG,
+      connectionId: STORE,
+      createdBy: ADMIN,
+    };
+    const verdicts = (status: OrderMonitorVerdict["status"]) => ({
+      orders_drop: verdict({ status }),
+      denied_spike: verdict({ status: "ok" }),
+      cancel_spike: verdict({ status: "ok" }),
+    });
+    const later = new Date(at.getTime() + 5 * 60_000);
+    await writeStates(database.db, store, later, verdicts("warning"), "UTC");
+    await storage.setVerdictFlags(ORG, STORE, "orders_drop", {
+      crossCheckPending: true,
+    });
+    expect(
+      await writeStates(database.db, store, at, verdicts("ok"), "UTC"),
+    ).toBeNull();
+    expect((await state())?.status).toBe("warning");
+
+    // A newer tick still in the incident keeps the open waiting on VTEX.
+    const next = new Date(later.getTime() + 5 * 60_000);
+    await writeStates(database.db, store, next, verdicts("alert"), "UTC");
+    expect((await state())?.verdict.crossCheckPending).toBe(true);
   });
 });

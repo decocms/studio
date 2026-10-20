@@ -29,17 +29,13 @@ export interface StoredOrderMonitorState extends OrderMonitorStateRow {
 export class OrderMonitorStorage {
   constructor(private readonly db: Kysely<Database>) {}
 
-  async listIngestInstalls(
-    ingestUrl: string,
-    limit: number,
-  ): Promise<MonitoredStore[]> {
+  async listIngestInstalls(ingestUrl: string): Promise<MonitoredStore[]> {
     const rows = await this.db
       .selectFrom("connections")
       .select(["id", "organization_id", "created_by"])
       .where("connection_url", "=", ingestUrl)
       .where("status", "=", "active")
       .orderBy("id")
-      .limit(limit)
       .execute();
     return rows.map((r) => ({
       organizationId: r.organization_id,
@@ -202,16 +198,17 @@ export class OrderMonitorStorage {
       .map((m) => m.userId);
   }
 
-  /** Records on the rule's verdict that the lake's drop was ours, not the store's. */
-  async markIngestIncident(
+  /** Merges incident flags into the rule's verdict (`ingestIncident`, `crossCheckPending`). */
+  async setVerdictFlags(
     organizationId: string,
     connectionId: string,
     rule: string,
+    flags: Partial<Record<"ingestIncident" | "crossCheckPending", boolean>>,
   ): Promise<void> {
     await this.db
       .updateTable("order_monitor_state")
       .set({
-        verdict: sql<string>`jsonb_set(verdict, '{ingestIncident}', 'true')`,
+        verdict: sql<string>`verdict || ${JSON.stringify(flags)}::jsonb`,
       })
       .where("organization_id", "=", organizationId)
       .where("connection_id", "=", connectionId)

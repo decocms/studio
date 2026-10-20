@@ -27,7 +27,7 @@ const bucket = (col: string) =>
   `intDiv(toHour(${col}, {tz:String}) * 60 + toMinute(${col}, {tz:String}), 15)`;
 // Two ranges keep Y-1 to two days of scan instead of a year.
 const inRange = (col: string) => `${col} < ${AT}
-    AND (${col} >= ${AT} - INTERVAL 29 DAY
+    AND (${col} >= ${AT} - INTERVAL 30 DAY
          OR ${col} BETWEEN ${AT} - INTERVAL 365 DAY AND ${AT} - INTERVAL 363 DAY)
     AND days_ago IN (${DAYS_AGO.join(", ")})`;
 
@@ -89,13 +89,60 @@ export function localMinutes(at: Date, timezone: string): number {
   return part("hour") * 60 + part("minute");
 }
 
-/** The instant the local day containing `at` started. */
-// ponytail: assumes a 24h day; a DST switch shifts that day's bounds by an hour.
+/** The zone's UTC offset at `t`, in minutes. */
+function utcOffset(t: Date, timezone: string): number {
+  const name =
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      timeZoneName: "longOffset",
+    })
+      .formatToParts(t)
+      .find((p) => p.type === "timeZoneName")?.value ?? "GMT";
+  const m = /GMT([+-])(\d{2}):(\d{2})/.exec(name);
+  return m ? (m[1] === "-" ? -1 : 1) * (Number(m[2]) * 60 + Number(m[3])) : 0;
+}
+
+/** The instant the local day containing `at` started, DST switches included. */
 export function localDayStart(at: Date, timezone: string): Date {
   const intoMinute = at.getTime() % 60_000;
+  const guess = at.getTime() - localMinutes(at, timezone) * 60_000 - intoMinute;
+  const shift = utcOffset(at, timezone) - utcOffset(new Date(guess), timezone);
+  return new Date(guess + shift * 60_000);
+}
+
+/** The instant 15-minute `bucket` of `at`'s local day started (negative: the day before), counted back from `at`. */
+export function localBucketStart(
+  at: Date,
+  timezone: string,
+  bucket: number,
+): Date {
+  const intoMinute = at.getTime() % 60_000;
   return new Date(
-    at.getTime() - localMinutes(at, timezone) * 60_000 - intoMinute,
+    at.getTime() -
+      (localMinutes(at, timezone) - bucket * 15) * 60_000 -
+      intoMinute,
   );
+}
+
+/** Buckets of `at`'s local day before it that a DST switch skipped or repeated. */
+export function dstBuckets(at: Date, timezone: string): number[] {
+  const DAY = 24 * 60 * 60_000;
+  const since = at.getTime() - DAY - 2 * 60 * 60_000;
+  if (utcOffset(new Date(since), timezone) === utcOffset(at, timezone)) {
+    return [];
+  }
+  const day = (t: Date) =>
+    t.toLocaleDateString("en-CA", { timeZone: timezone });
+  const today = day(at);
+  const current = Math.floor(localMinutes(at, timezone) / 15);
+  const hits = new Array<number>(BUCKETS_PER_DAY).fill(0);
+  for (let t = since; t < at.getTime(); t += 15 * 60_000) {
+    const d = new Date(t);
+    if (day(d) !== today) continue;
+    const b = Math.floor(localMinutes(d, timezone) / 15);
+    hits[b] = (hits[b] ?? 0) + 1;
+  }
+  return hits.flatMap((n, b) => (b < current && n !== 1 ? [b] : []));
 }
 
 /** Buckets of the local day that ended at least INGEST_GRACE_MIN before `at`. */
@@ -186,6 +233,7 @@ export async function loadStoreDay(
     timezone,
     done: doneBuckets(at, timezone),
     days,
+    dstBuckets: dstBuckets(at, timezone),
     firstEventDaysAgo:
       first?.days_ago === null || first?.days_ago === undefined
         ? null
