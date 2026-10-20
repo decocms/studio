@@ -454,7 +454,9 @@ function MessagePart({
       if (fallback.type.startsWith("data-")) {
         return null;
       }
-      throw new Error(`Unknown part type: ${fallback.type}`);
+      // A server rollout can emit a part type this client build predates — skip it, not crash the panel.
+      console.warn(`[chat] unknown message part type: ${fallback.type}`);
+      return null;
     }
   }
 }

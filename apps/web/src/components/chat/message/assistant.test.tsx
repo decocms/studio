@@ -6,6 +6,7 @@ import "@testing-library/jest-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { MessageAssistant } from "./assistant";
+import type { ChatMessage } from "../types";
 
 // MessageAssistant resolves copy via useT(), which reads the language
 // preference through TanStack Query — renders need a QueryClientProvider.
@@ -33,5 +34,24 @@ describe("MessageAssistant", () => {
     expect(getByText("Deciding how to approach the request")).toHaveClass(
       "bg-muted/50",
     );
+  });
+
+  it("skips a part type this client build doesn't know instead of crashing", () => {
+    const message = {
+      id: "m1",
+      role: "assistant",
+      parts: [{ type: "text", text: "hello" }, { type: "future-part-kind" }],
+    } as unknown as ChatMessage;
+
+    const { getByText } = render(
+      <MessageAssistant
+        message={message}
+        status="ready"
+        isLast
+        turnStartedAt={null}
+      />,
+    );
+
+    expect(getByText("hello")).toBeInTheDocument();
   });
 });
