@@ -23,6 +23,38 @@ const ZOOM_MIN = 1;
 const ZOOM_MAX = 3;
 
 /**
+ * Downloaded images had no file extension — the `download` name came only from
+ * the prompt text (`alt`), which never carries one. Recover it from the image
+ * URL's own path (studio-storage keys are written as `<uuid>.<ext>`) so the
+ * saved file is actually openable.
+ */
+export function buildDownloadFilename(src: string, alt: string): string {
+  const base = alt.replace(/[^a-zA-Z0-9-_ ]/g, "") || "image";
+  const path = src.split(/[?#]/)[0] ?? "";
+  const match = /\.([a-zA-Z0-9]{1,5})$/.exec(path);
+  return match ? `${base}.${match[1]}` : base;
+}
+
+/**
+ * The `download` attribute is silently ignored by browsers for a
+ * cross-origin href, so clicking it just navigates the tab away to the
+ * image instead of saving it. Model-written markdown can embed an
+ * arbitrary external image URL, so that cross-origin case is real, not
+ * hypothetical.
+ */
+export function canForceDownload(
+  src: string,
+  currentOrigin: string = window.location.origin,
+): boolean {
+  if (src.startsWith("data:") || src.startsWith("blob:")) return true;
+  try {
+    return new URL(src, currentOrigin).origin === currentOrigin;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Clamp pan so the image edge never goes past the container edge.
  * maxPan = (scaledSize - containerSize) / 2  (in screen pixels).
  * When zoom=1, maxPan=0 so no panning is possible.
@@ -63,9 +95,13 @@ export function ImageLightbox({
   } | null>(null);
 
   const handleDownload = () => {
+    if (!canForceDownload(src)) {
+      window.open(src, "_blank", "noopener,noreferrer");
+      return;
+    }
     const a = document.createElement("a");
     a.href = src;
-    a.download = alt.replace(/[^a-zA-Z0-9-_ ]/g, "") || "image";
+    a.download = buildDownloadFilename(src, alt);
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

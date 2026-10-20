@@ -104,14 +104,13 @@ removed values key won't error — `helm template` after big `deploy/` changes).
 
 ## Developing Studio (not just running it)
 
-- **App logic (UI / tools / API)** — plain `bun run dev` (embedded Postgres, Vite
-  hot reload). Fastest loop; no cluster. See [`../CLAUDE.md`](../CLAUDE.md).
-- **Sandbox / preview / k8s behavior** — [`examples/dev-hybrid`](examples/dev-hybrid):
-  `bun run dev` on your host, but Postgres/NATS/MinIO **and the real
-  agent-sandbox operator** come from the k8s-local install (the app in-cluster is
-  scaled to 0). Studio drives the cluster's sandbox via your kubeconfig +
-  API-server port-forward, so code-exec/previews work — which the laptop-only
-  loop can't do.
+- **App logic (UI / tools / API)** — `docker compose up --build --watch` from the
+  repository root runs dependencies, migrations, and hot-reloading API/web
+  containers. See [contributor setup](../CONTRIBUTING.md).
+- **Sandbox / preview / k8s behavior** — [`examples/dev-hybrid`](examples/dev-hybrid)
+  runs Bun/Vite on your host against the local cluster's Postgres, NATS, MinIO,
+  and agent-sandbox operator. It scales the in-cluster app to zero and connects
+  through your kubeconfig and port-forwards.
 - **The artifact itself (chart/image)** — build a local image and
   `helm upgrade --set image.tag=…`; closest to prod, slowest loop.
 
@@ -180,7 +179,7 @@ selfhost/
 │   ├── docker-compose/                  # compose example (includes the deploy/ stack)
 │   │   ├── compose.yaml
 │   │   └── .env.example
-│   └── dev-hybrid/                      # `bun dev` on the host vs the cluster's backends + sandbox
+│   └── dev-hybrid/                      # host Bun/Vite against cluster backends + sandbox
 │       └── dev-hybrid.sh
 ├── production/                          # PRODUCTION references (external deps, hardened)
 │   └── values-sandbox-env-prod.yaml     #   prod-hardened sandbox-env

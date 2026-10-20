@@ -4,7 +4,7 @@ import {
   CreditCardSearch,
   DotsHorizontal,
   Edit01,
-  Flag01,
+  LayersThree01,
   Trash01,
 } from "@untitledui/icons";
 import {
@@ -38,7 +38,7 @@ export function ItemActions({
         <button
           type="button"
           aria-label={t("sandbox.itemActions.moreActions")}
-          className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-background hover:text-foreground cursor-pointer"
+          className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-background hover:text-foreground cursor-pointer"
           onClick={(e) => e.stopPropagation()}
         >
           <DotsHorizontal size={14} />
@@ -64,7 +64,7 @@ export function ItemActions({
               onClick={onAddVariant}
               className="cursor-pointer text-success focus:text-success"
             >
-              <Flag01 size={14} />
+              <LayersThree01 size={14} />
               {t("sandbox.itemActions.addVariant")}
             </DropdownMenuItem>
           </>

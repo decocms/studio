@@ -47,6 +47,7 @@ export const virtualMcp = {
   "virtualMcp.connectionItem.configureResources": "Configurar recursos",
   "virtualMcp.connectionItem.connectionDisabled": "Conexão desativada",
   "virtualMcp.connectionItem.connectionEnabled": "Conexão ativada",
+  "virtualMcp.connectionItem.connectionNotFound": "Conexão não encontrada",
   "virtualMcp.connectionItem.connectionSettings": "Configurações de conexão",
   "virtualMcp.connectionItem.disable": "Desativar",
   "virtualMcp.connectionItem.disableConnection": "Desativar conexão",
@@ -108,8 +109,6 @@ export const virtualMcp = {
   "virtualMcp.filesSection.selectSkill": "Selecionar skill",
   "virtualMcp.filesSection.uploadFile": "Enviar arquivo",
   "virtualMcp.layoutTabContent.noMainView": "Sem visão principal",
-  "virtualMcp.layoutTabContent.addConnectionMessage":
-    "Adicione uma conexão acima para configurar visualizações de apps.",
   "virtualMcp.layoutTabContent.automations": "Automações",
   "virtualMcp.layoutTabContent.chatAlwaysShown":
     "O Chat sempre aparece quando é a visualização padrão",
@@ -117,16 +116,31 @@ export const virtualMcp = {
   "virtualMcp.layoutTabContent.mainView": "Visualização principal",
   "virtualMcp.layoutTabContent.mainViewDescription":
     "O que os usuários veem quando abrem este projeto pela primeira vez.",
-  "virtualMcp.layoutTabContent.noInteractiveTools":
-    "Nenhum dos servidores conectados expõe ferramentas interativas.",
-  "virtualMcp.layoutTabContent.sidebarViews": "Visualizações da barra lateral",
-  "virtualMcp.layoutTabContent.sidebarViewsDescription":
-    "Escolha quais visualizações disponíveis aparecem na barra lateral deste projeto.",
   "virtualMcp.layoutTabContent.settings": "Configurações",
   "virtualMcp.layoutTabContent.showChat": "Mostrar chat",
   "virtualMcp.layoutTabContent.showChatDescription":
     "Exibir Chat no painel lateral junto com a visualização principal.",
   "virtualMcp.layoutTabContent.siteEditor": "Editor do site",
+  "virtualMcp.settings.title": "Configurações do projeto",
+  "virtualMcp.settings.navigation": "Seções das configurações do projeto",
+  "virtualMcp.settings.identity.icon": "Ícone do projeto",
+  "virtualMcp.settings.identity.iconDescription":
+    "Como seu projeto aparece na barra lateral e no Studio.",
+  "virtualMcp.settings.identity.name": "Nome do projeto",
+  "virtualMcp.settings.identity.description": "Descrição",
+  "virtualMcp.settings.general.title": "Geral",
+  "virtualMcp.settings.site.title": "CMS",
+  "virtualMcp.settings.site.classicTitle": "Site e sandbox",
+  "virtualMcp.settings.groups.advanced": "Avançado",
+  "virtualMcp.settings.connections.title": "Conexões",
+  "virtualMcp.settings.views.defaults": "Layout padrão",
+  "virtualMcp.settings.views.sidebar": "Visualizações",
+  "virtualMcp.settings.views.open": "Abrir",
+  "virtualMcp.settings.views.pin": "Fixar na barra lateral",
+  "virtualMcp.settings.views.unpin": "Remover da barra lateral",
+  "virtualMcp.settings.views.setMainView":
+    "Definir como visualização principal",
+  "virtualMcp.settings.views.rowActions": "Opções da visualização",
   "virtualMcp.subAgentsSection.addSubAgent": "Adicionar sub-projeto",
   "virtualMcp.subAgentsSection.anyAgent": "Qualquer projeto",
   "virtualMcp.subAgentsSection.canDelegateToAnyAgent":
@@ -142,6 +156,7 @@ export const virtualMcp = {
   "virtualMcp.subAgentsSection.title": "Sub-projetos",
   "virtualMcp.virtualMcp.addConnection": "Adicionar conexão",
   "virtualMcp.virtualMcp.agentDeleted": 'Excluído "{title}"',
+  "virtualMcp.virtualMcp.agentNameFallback": "Agente",
   "virtualMcp.virtualMcp.agentNamePlaceholder": "Nome do projeto",
   "virtualMcp.virtualMcp.authenticationFailed":
     "Falha na autenticação: {error}",
@@ -200,9 +215,6 @@ Defina passo a passo como o agente deve tratar as solicitações.
 3. Resumir o resultado e propor próximos passos.
 4. Pedir confirmação antes de fazer qualquer alteração.
 </workflows>`,
-  "virtualMcp.virtualMcp.draftsModeTitle": "Modo Rascunhos & Versões",
-  "virtualMcp.virtualMcp.draftsModeDescription":
-    "Troca a picker de branch/PR por rascunhos nomeados: switcher de versões, produção somente leitura e publicar para produção.",
   "virtualMcp.virtualMcp.publishing": "Publicação",
   "virtualMcp.virtualMcp.publishingDescription":
     "Controle quando as alterações deste projeto podem ser publicadas diretamente, sem revisão por pull request.",
@@ -216,31 +228,19 @@ Defina passo a passo como o agente deve tratar as solicitações.
   "virtualMcp.virtualMcp.publishPolicyOpenDescription":
     "Publica qualquer alteração diretamente, sem revisão.",
   "virtualMcp.virtualMcp.sandbox": "Sandbox",
-  "virtualMcp.virtualMcp.settings": "Configurações",
   "virtualMcp.virtualMcp.spaceNotFound": "Espaço não encontrado",
   "virtualMcp.virtualMcp.spaceNotFoundDescription":
     "Este espaço pode ter sido excluído ou você pode não ter acesso.",
   "virtualMcp.virtualMcp.subAgents": "Sub-projetos",
-  "virtualMcp.virtualMcp.testAgent": "Testar Projeto",
   "virtualMcp.virtualMcpShareModal.agentUrlCopied":
     "URL do projeto copiada para a área de transferência",
-  "virtualMcp.virtualMcpShareModal.callFromYourApp": "Chamar do seu aplicativo",
-  "virtualMcp.virtualMcpShareModal.callFromYourAppDescription":
-    "Crie uma chave de API de escopo para iniciar um chat, executar este projeto e transmitir resultados de um sistema externo (por exemplo, um webhook de chatbot).",
   "virtualMcp.virtualMcpShareModal.claudeCodeCommandCopied":
     "Comando do Claude Code copiado para a área de transferência",
   "virtualMcp.virtualMcpShareModal.commandCopied":
     "Comando copiado para a área de transferência",
   "virtualMcp.virtualMcpShareModal.connect": "Conectar",
-  "virtualMcp.virtualMcpShareModal.connectionDetails": "Detalhes da conexão",
-  "virtualMcp.virtualMcpShareModal.connectionDetailsCopied":
-    "Detalhes da conexão copiados para a área de transferência",
   "virtualMcp.virtualMcpShareModal.copied": "Copiado!",
   "virtualMcp.virtualMcpShareModal.copyUrl": "Copiar URL",
-  "virtualMcp.virtualMcpShareModal.createApiKey": "Criar chave de API",
-  "virtualMcp.virtualMcpShareModal.creating": "Criando…",
-  "virtualMcp.virtualMcpShareModal.failedCreateApiKey":
-    "Falha ao criar chave de API",
   "virtualMcp.virtualMcpShareModal.failedGenerateApiKey":
     "Falha ao gerar chave de API",
   "virtualMcp.virtualMcpShareModal.generateApiKey": "Gerar chave de API",
@@ -258,4 +258,18 @@ Defina passo a passo como o agente deve tratar as solicitações.
     "Variáveis de tempo de execução",
   "virtualMcp.virtualMcpShareModal.storeKeySecurely":
     "Armazene esta chave com segurança — ela não será exibida novamente.",
+  "virtualMcp.settings.general.description":
+    "Instruções, arquivos anexados e para quem este projeto pode delegar.",
+  "virtualMcp.settings.site.description":
+    "Como as edições chegam ao site e o repositório de onde ele roda.",
+  "virtualMcp.settings.backToSettings": "Configurações",
+  "virtualMcp.settings.connections.description":
+    "Os servidores MCP que este projeto reúne.",
+  "virtualMcp.settings.views.projectViews": "Visualizações",
+  "virtualMcp.settings.value.notLinked": "Sem repositório",
+  "virtualMcp.settings.value.connectionOne": "1 conexão",
+  "virtualMcp.settings.value.connectionMany": "{count} conexões",
+  "virtualMcp.settings.value.inSidebar": "{count} na barra lateral",
+  "virtualMcp.virtualMcp.settings": "Configurações",
+  "virtualMcp.virtualMcp.testAgent": "Testar Projeto",
 } satisfies Record<keyof typeof virtualMcpEn, string>;

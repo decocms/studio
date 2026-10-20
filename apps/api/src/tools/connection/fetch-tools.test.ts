@@ -21,6 +21,22 @@ describe("buildConnectionRequestHeaders", () => {
     });
   });
 
+  it("drops an unsafe custom header instead of forwarding a value fetch would throw on", () => {
+    const headers = buildConnectionRequestHeaders({
+      id: "conn-3",
+      title: "http",
+      connection_type: "HTTP",
+      connection_headers: {
+        headers: { "X-Custom": "value", "X-Evil": "line1\r\nline2" },
+      },
+    });
+
+    expect(headers).toEqual({
+      "Content-Type": "application/json",
+      "X-Custom": "value",
+    });
+  });
+
   it("ignores STDIO-shaped connection_headers instead of misreading them", () => {
     const headers = buildConnectionRequestHeaders({
       id: "conn-2",

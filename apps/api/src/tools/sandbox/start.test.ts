@@ -8,7 +8,7 @@ import type {
   SandboxId,
 } from "@decocms/sandbox/provider";
 import { composeSandboxRef } from "@decocms/sandbox/provider";
-import type { AgentSandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
+import type { SandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
 import { ConfigRequestError } from "@decocms/sandbox/daemon-client";
 import { isTransientRunFailure } from "../task-board/transient-failure";
 
@@ -20,6 +20,7 @@ const mockEnsure = mock(
     workdir: "/app",
     previewUrl: "https://stub.preview/",
     warmPoolAdopted: false,
+    provider: "kubernetes",
   }),
 );
 
@@ -30,7 +31,7 @@ async function* readyOnly() {
 }
 
 const mockRunner: Pick<
-  AgentSandboxProvider,
+  SandboxProvider,
   | "alive"
   | "delete"
   | "ensure"
@@ -60,16 +61,22 @@ mock.module("../../sandbox/lifecycle", () => ({
   __resetSharedLifecyclesForTesting: () => {},
 }));
 
-let mockSettings: Record<string, unknown> = { nodeEnv: "test" };
-mock.module("../../settings", () => ({
-  getSettings: () => mockSettings,
-  // Bun keeps module mocks alive across test files in one shard. Preserve the
-  // real module's complete runtime surface so later settings-backed tests can
-  // replace and restore their configuration normally.
-  setGlobalSettings: (settings: Record<string, unknown>) => {
-    mockSettings = settings;
-  },
-}));
+// The settings module is NOT mocked. It used to be, and the mock escaped the
+// file — Bun keeps module mocks alive for the whole shard, and a top-level
+// `afterAll` runs at the end of the process, not the end of the file, so there
+// is no way to put it back. Every later file then saw a getSettings() returning
+// only `{ nodeEnv: "test" }`, so anything reading a flag read `undefined`, and
+// `undefined` at the plan feature gate means "no answer", which OPENS the gate:
+// a test written for those gates would pass whether or not the gate worked.
+// Two unrelated files were already failing on it outright
+// ("http://localhost:undefined" cannot be parsed as a URL).
+//
+// All this file ever needed was `nodeEnv: "test"`, and `bun test` already sets
+// NODE_ENV=test, so the real module's own auto-init produces exactly that. It
+// installs nothing: touching the global settings from a test file is the same
+// cross-file coupling as mocking the module, one step milder — it made
+// settings/index.test.ts fail, because that file's subject is the auto-init
+// this one would have pre-empted.
 
 const { DownstreamTokenStorage: RealDownstreamTokenStorage } = await import(
   "../../storage/downstream-token"
@@ -147,7 +154,7 @@ mock.module("@/oauth/refresh-access-token", () => ({
   refreshAccessToken: mockRefreshAccessToken,
 }));
 
-const { SANDBOX_START } = await import("./start");
+const { SANDBOX_START, ensureSandbox } = await import("./start");
 
 const originalFetch = globalThis.fetch;
 
@@ -163,13 +170,13 @@ const EXPECTED_REF = composeSandboxRef({
 });
 
 type Metadata = {
-  githubRepo: { owner: string; name: string; connectionId: string };
+  repository: { owner: string; name: string; connectionId: string };
   runtime: { selected: string; port: string; path?: string | null };
   sandboxMap?: SandboxMap;
 };
 
 const BASE_METADATA: Metadata = {
-  githubRepo: {
+  repository: {
     owner: "acme",
     name: "app",
     connectionId: "conn_github_1",
@@ -210,6 +217,8 @@ function makeCtx(overrides: {
   /** Whether the `connections` row backing the linked repo still exists —
    *  false exercises buildCloneInfo's deleted-connection branch. */
   connectionRowExists?: boolean;
+  /** `organization_settings.submodule_credentials` — the org's git credentials. */
+  gitCredentials?: { host: string; secretId: string }[];
 }): StudioContext {
   const {
     orgId = ORG_ID,
@@ -219,6 +228,7 @@ function makeCtx(overrides: {
     thread = null,
     connections,
     connectionRowExists = true,
+    gitCredentials,
   } = overrides;
 
   const findById = mock(async (_id: string) => virtualMcp ?? null);
@@ -251,11 +261,23 @@ function makeCtx(overrides: {
         list: mock(async () => ({ items: [], totalCount: 0 })),
       },
       // A `thread:` branch resolves the thread's creator + bound repo. Default
-      // is no thread, so provisioning falls back to the VM's own githubRepo and
+      // is no thread, so provisioning falls back to the VM's own repository and
       // keys the sandbox by the caller.
       threads: {
         get: mock(async (_id: string) => thread),
         update: mock(async () => {}),
+      },
+      // No repository row: these tests cover the legacy `mcp-github` path.
+      repositories: {
+        get: mock(async () => null),
+        findByRef: mock(async () => null),
+      },
+      gitProviderAccounts: { getUnscoped: mock(async () => null) },
+      organizationSettings: {
+        get: mock(async () => ({ submodule_credentials: gitCredentials })),
+      },
+      secrets: {
+        resolveById: mock(async (id: string) => ({ value: `token-for-${id}` })),
       },
     } as never,
     timings: {
@@ -317,6 +339,7 @@ describe("SANDBOX_START", () => {
       workdir: "/app",
       previewUrl: "https://stub.preview/",
       warmPoolAdopted: false,
+      provider: "kubernetes",
     }));
     mockTokenGet.mockImplementation(async () => ({
       id: "dtok_1",
@@ -367,6 +390,37 @@ describe("SANDBOX_START", () => {
     });
   });
 
+  // Regression: these were read off `metadata.runtime.submoduleCredentials` of
+  // the virtual MCP being started. A task-board run starts its sandbox for
+  // Decopilot, which has no metadata, so an autonomous run booted with none
+  // and its private `git:` dependency 404'd. They live on the org now.
+  it("resolves git credentials off the org, not the agent's metadata", async () => {
+    const virtualMcp = makeVirtualMcp(ORG_ID, BASE_METADATA);
+    const ctx = makeCtx({
+      virtualMcp,
+      gitCredentials: [{ host: "github.com", secretId: "sec_1" }],
+    });
+
+    await SANDBOX_START.handler({ virtualMcpId: VMCP_ID, branch: BRANCH }, ctx);
+
+    const [, opts] = mockEnsure.mock.calls[0]! as [SandboxId, EnsureOptions];
+    expect(opts.repo?.submoduleCredentials).toEqual([
+      { host: "github.com", token: "token-for-sec_1" },
+    ]);
+  });
+
+  // Always sent, empty included: the daemon reads an absent field as "keep
+  // current", which would outlive a revoked PAT for the pod's lifetime.
+  it("sends an empty credential list when the org has none", async () => {
+    const virtualMcp = makeVirtualMcp(ORG_ID, BASE_METADATA);
+    const ctx = makeCtx({ virtualMcp });
+
+    await SANDBOX_START.handler({ virtualMcpId: VMCP_ID, branch: BRANCH }, ctx);
+
+    const [, opts] = mockEnsure.mock.calls[0]! as [SandboxId, EnsureOptions];
+    expect(opts.repo?.submoduleCredentials).toEqual([]);
+  });
+
   it("sends a real git branch for a synthetic thread branch, keeping the ref synthetic", async () => {
     const virtualMcp = makeVirtualMcp(ORG_ID, BASE_METADATA);
     const ctx = makeCtx({ virtualMcp });
@@ -391,6 +445,26 @@ describe("SANDBOX_START", () => {
         branch: synthetic,
       }),
     );
+  });
+
+  it("resolves the thread's bound repo from input.threadId, not just a thread:-prefixed branch", async () => {
+    // Only input.threadId names the thread here — the branch and ctx.metadata don't.
+    const virtualMcp = makeVirtualMcp(ORG_ID, BASE_METADATA);
+    const ctx = makeCtx({
+      virtualMcp,
+      thread: {
+        created_by: USER_ID,
+        metadata: { repository: { owner: "acme", name: "thread-repo" } },
+      },
+    });
+
+    await SANDBOX_START.handler(
+      { virtualMcpId: VMCP_ID, branch: BRANCH, threadId: "t1" },
+      ctx,
+    );
+
+    const [, opts] = mockEnsure.mock.calls[0]! as [SandboxId, EnsureOptions];
+    expect(opts.repo?.displayName).toBe("acme/thread-repo");
   });
 
   it("keys a thread-scoped sandbox by the thread's creator, not the caller", async () => {
@@ -432,6 +506,7 @@ describe("SANDBOX_START", () => {
       workdir: "/app",
       previewUrl: "https://stub.preview/",
       warmPoolAdopted: false,
+      provider: "kubernetes",
     }));
     const virtualMcp = makeVirtualMcp(ORG_ID, BASE_METADATA);
     const updateSpy = mock(async () => {});
@@ -472,6 +547,7 @@ describe("SANDBOX_START", () => {
       workdir: "/app",
       previewUrl: "https://stub.preview/",
       warmPoolAdopted: false,
+      provider: "kubernetes",
     }));
     const metadata: Metadata = {
       ...BASE_METADATA,
@@ -504,11 +580,12 @@ describe("SANDBOX_START", () => {
       workdir: "/app",
       previewUrl: "https://stub.preview/",
       warmPoolAdopted: false,
+      provider: "kubernetes",
     }));
     // detectRepoRuntime probe will run when packageManager is unset; stub
     // it so it returns null and leaves metadata.runtime unchanged.
     const metadata = {
-      githubRepo: BASE_METADATA.githubRepo,
+      repository: BASE_METADATA.repository,
     } as unknown as Metadata;
     const virtualMcp = makeVirtualMcp(ORG_ID, metadata);
     const updateSpy = mock(async () => {});
@@ -545,6 +622,7 @@ describe("SANDBOX_START", () => {
       workdir: "/app",
       previewUrl: CACHED_ENTRY.previewUrl,
       warmPoolAdopted: false,
+      provider: "kubernetes",
     }));
     const metadata: Metadata = {
       ...BASE_METADATA,
@@ -563,6 +641,33 @@ describe("SANDBOX_START", () => {
 
     expect(result.sandboxHandle).toBe(CACHED_ENTRY.sandboxHandle);
     expect(result.isNewVm).toBe(false);
+  });
+
+  it("ensureSandbox trusts a live recorded sandbox, unless asked to revalidate", async () => {
+    const recorded = { ...CACHED_ENTRY, createdAt: 1_000 };
+    mockEnsure.mockImplementation(async () => ({
+      handle: recorded.sandboxHandle,
+      workdir: "/app",
+      previewUrl: recorded.previewUrl,
+      warmPoolAdopted: false,
+      provider: "kubernetes",
+    }));
+    const virtualMcp = makeVirtualMcp(ORG_ID, {
+      ...BASE_METADATA,
+      sandboxMap: { [USER_ID]: { [BRANCH]: { "agent-sandbox": recorded } } },
+    });
+    const ctx = makeCtx({ virtualMcp });
+
+    await ensureSandbox({ virtualMcpId: VMCP_ID, branch: BRANCH }, ctx);
+    expect(mockEnsure).not.toHaveBeenCalled();
+
+    // A turn that just lost this sandbox: its claim surviving proves nothing.
+    const entry = await ensureSandbox(
+      { virtualMcpId: VMCP_ID, branch: BRANCH, revalidate: true },
+      ctx,
+    );
+    expect(mockEnsure).toHaveBeenCalledTimes(1);
+    expect(entry.createdAt).toBe(1_000);
   });
 
   it("generates a <creator-slug>-<timestamp> branch when input.branch is omitted and threads it into the ref", async () => {
@@ -673,7 +778,7 @@ describe("SANDBOX_START", () => {
     const updateSpy = mock(async () => {});
     const virtualMcp = makeVirtualMcp(ORG_ID, {
       ...BASE_METADATA,
-      githubRepo: { owner: "acme", name: "app", connectionId: "conn_gone" },
+      repository: { owner: "acme", name: "app", connectionId: "conn_gone" },
     });
     const ctx = makeCtx({
       virtualMcp,
@@ -695,18 +800,18 @@ describe("SANDBOX_START", () => {
     // The heal is persisted so publish/credential-sync read the live id too.
     const persisted = (updateSpy.mock.calls as unknown[][]).find(
       (call) =>
-        (call[2] as { metadata?: { githubRepo?: { connectionId?: string } } })
-          ?.metadata?.githubRepo?.connectionId === "conn_github_1",
+        (call[2] as { metadata?: { repository?: { connectionId?: string } } })
+          ?.metadata?.repository?.connectionId === "conn_github_1",
     );
     expect(persisted).toBeDefined();
     const meta = (
       persisted![2] as {
         metadata: {
-          githubRepo: { connectionId: string; installationId: number };
+          repository: { connectionId: string; installationId: number };
         };
       }
     ).metadata;
-    expect(meta.githubRepo.installationId).toBe(42);
+    expect(meta.repository.installationId).toBe(42);
   });
 
   it("keeps failing loudly when the dangling repo connection has no live replacement", async () => {
@@ -792,6 +897,7 @@ describe("SANDBOX_START", () => {
       workdir: "/app",
       previewUrl: agentSandboxEntry.previewUrl,
       warmPoolAdopted: false,
+      provider: "kubernetes",
     }));
     const metadata: Metadata = {
       ...BASE_METADATA,

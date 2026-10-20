@@ -48,6 +48,14 @@ func TestFakeHarnessEntrypoint(t *testing.T) {
 }
 
 func runFakeHarness(mode string) {
+	if mode == fakeRunnerLive {
+		runLiveFakeHarness()
+		return
+	}
+	if mode == fakeRunnerLivePersistent {
+		runLivePersistentFakeHarness()
+		return
+	}
 	if mode == fakeRunnerSlow {
 		time.Sleep(60 * time.Second)
 		return
@@ -58,7 +66,8 @@ func runFakeHarness(mode string) {
 	}
 	raw, _ := io.ReadAll(os.Stdin)
 	var body struct {
-		Input map[string]any `json:"input"`
+		HarnessId string         `json:"harnessId"`
+		Input     map[string]any `json:"input"`
 	}
 	json.Unmarshal(raw, &body)
 	if mode == fakeRunnerNoisy {
@@ -73,7 +82,8 @@ func runFakeHarness(mode string) {
 	}
 	result, _ := json.Marshal(map[string]any{
 		"chunks": []any{map[string]any{
-			"threadId": body.Input["threadId"],
+			"threadId":  body.Input["threadId"],
+			"harnessId": body.HarnessId,
 			// Echoed so a test can prove the run env crossed the wire. A real
 			// harness never emits it — this one carries no real credential.
 			"apiKey": os.Getenv("ANTHROPIC_API_KEY"),
@@ -103,12 +113,12 @@ func runFakeTimed(
 	t.Setenv(fakeRunnerEnv, mode)
 	var frames [][]byte
 	var at []time.Time
-	_, err := RunHarness(ctx, fakeHarnessArgv(),
+	_, err := RunHarness(ctx, fakeHarnessArgv(), "claude-code",
 		json.RawMessage(`{"threadId":"t-1"}`), env, func(frame []byte) bool {
 			frames = append(frames, append([]byte(nil), frame...))
 			at = append(at, time.Now())
 			return true
-		})
+		}, nil)
 	return frames, at, err
 }
 
@@ -134,8 +144,12 @@ func TestRunHarnessReturnsTheResult(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := chunksOf(t, out)[0]["threadId"]; got != "t-1" {
+	chunk := chunksOf(t, out)[0]
+	if got := chunk["threadId"]; got != "t-1" {
 		t.Errorf("the input never reached the harness: %v", got)
+	}
+	if got := chunk["harnessId"]; got != "claude-code" {
+		t.Errorf("the harness id never reached the runner: %v", got)
 	}
 }
 
@@ -190,11 +204,11 @@ func TestRunHarnessEmitsEachFrameAsItArrives(t *testing.T) {
 func TestRunHarnessStopsWhenTheClientIsGone(t *testing.T) {
 	t.Setenv(fakeRunnerEnv, fakeRunnerMulti)
 	seen := 0
-	frames, err := RunHarness(context.Background(), fakeHarnessArgv(),
+	frames, err := RunHarness(context.Background(), fakeHarnessArgv(), "claude-code",
 		json.RawMessage(`{"threadId":"t-1"}`), nil, func([]byte) bool {
 			seen++
 			return false
-		})
+		}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -227,9 +241,9 @@ func TestRunHarnessCancellationKillsTheChild(t *testing.T) {
 
 func TestRunHarnessRejectsAMissingBinary(t *testing.T) {
 	_, err := RunHarness(context.Background(),
-		[]string{"/nonexistent/harness-runner-" + strconv.Itoa(os.Getpid())},
+		[]string{"/nonexistent/harness-runner-" + strconv.Itoa(os.Getpid())}, "claude-code",
 		json.RawMessage(`{"threadId":"t-1"}`), nil,
-		func([]byte) bool { return true })
+		func([]byte) bool { return true }, nil)
 	if err == nil {
 		t.Fatal("spawning a missing harness binary reported success")
 	}

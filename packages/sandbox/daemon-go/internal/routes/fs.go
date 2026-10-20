@@ -43,6 +43,15 @@ func (d FsDeps) notifyWrite(path string) {
 	}
 }
 
+// isSymlink reports whether resolvedPath itself is a symlink. SafePath only
+// confines the path lexically, so a symlink planted inside the repo (e.g. by a
+// cloned branch) and targeting outside AppRoot would otherwise let /write and
+// /edit follow it straight through the containment check.
+func isSymlink(resolvedPath string) bool {
+	info, err := os.Lstat(resolvedPath)
+	return err == nil && info.Mode()&os.ModeSymlink != 0
+}
+
 // decodeBody caps the request body at maxRequestBodyBytes: without a limit, a
 // misbehaving or malicious caller could stream an unbounded body into memory
 // and crash the daemon, tearing down the sandbox pod on the next missed
@@ -54,6 +63,16 @@ func decodeBody(r *http.Request, out any) error {
 	}
 	if len(raw) > maxRequestBodyBytes {
 		return fmt.Errorf("Request body exceeded %d bytes", maxRequestBodyBytes)
+	}
+	// An empty body decodes as `{}`, leaving `out` at its zero value instead of
+	// a 400 "unexpected end of JSON input". Optional-body callers exist: the web
+	// client's `fetchGitDiff(ref)` posts no body at all when it wants the
+	// working-tree diff, and `GitDiff` already treats every field as optional.
+	// Routes with a REQUIRED field are unaffected: they validate after decoding
+	// (e.g. /git/rebase's empty `base`, /git/discard's empty `filepaths`) and
+	// keep returning their own 400.
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return nil
 	}
 	if err := json.Unmarshal(raw, out); err != nil {
 		return fmt.Errorf("Failed to parse body: %s", err.Error())
@@ -221,6 +240,10 @@ func Write(deps FsDeps) http.HandlerFunc {
 		filePath, ok := paths.SafePath(deps.AppRoot, deps.RepoDir, body.Path)
 		if !ok {
 			httpx.Error(w, 400, deps.escapesRoot())
+			return
+		}
+		if isSymlink(filePath) {
+			httpx.Error(w, 400, "Refusing to write through a symlink")
 			return
 		}
 		if jsonErr := decofile.InvalidBlockJSON(body.Path, *body.Content); jsonErr != "" {
@@ -393,6 +416,11 @@ func Rename(deps FsDeps) http.HandlerFunc {
 			httpx.Error(w, 500, err.Error())
 			return
 		}
+		// Both halves count as the user's work: Unlink already marks a deleted
+		// path touched so a pre-baseline-arm delete isn't swallowed as boot dirt
+		// (see BranchStatusMonitor.MarkUserTouched); a rename deletes `From` just
+		// as surely and was missing the same guard.
+		deps.notifyWrite(body.From)
 		deps.notifyWrite(body.To)
 		httpx.JSON(w, 200, map[string]any{"ok": true})
 	}
@@ -413,6 +441,10 @@ func Edit(deps FsDeps) http.HandlerFunc {
 		filePath, ok := paths.SafePath(deps.AppRoot, deps.RepoDir, body.Path)
 		if !ok {
 			httpx.Error(w, 400, deps.escapesRoot())
+			return
+		}
+		if isSymlink(filePath) {
+			httpx.Error(w, 400, "Refusing to edit through a symlink")
 			return
 		}
 		if body.OldString == "" {

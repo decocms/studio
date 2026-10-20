@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { useProjectContext } from "@/sdk";
 import { toast } from "sonner";
+import { useT } from "@/i18n/use-t.ts";
 import type { QueueItemDTO } from "./queue-items";
 import {
   enqueueMessage,
@@ -36,6 +37,7 @@ export interface MessageQueueActions {
 /** Mutators over the frontend message queue, bound to the active org. */
 export function useMessageQueueActions(): MessageQueueActions {
   const { org } = useProjectContext();
+  const t = useT();
   return {
     enqueue: enqueueMessage,
     refresh: (threadId) => refreshMessageQueue(org.slug, threadId),
@@ -51,8 +53,8 @@ export function useMessageQueueActions(): MessageQueueActions {
           throw new Error(`Cancel failed: ${res.status}`);
         }
         return true;
-      } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Failed to cancel");
+      } catch {
+        toast.error(t("chat.queueTray.cancelFailed"));
         return false;
       } finally {
         await refreshMessageQueue(org.slug, threadId);

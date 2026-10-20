@@ -57,7 +57,7 @@ import { toast } from "sonner";
 import { DeleteConnectionDialogs } from "@/components/delete-connection-dialogs";
 import { useDeleteConnection } from "@/hooks/use-delete-connection";
 import { useT } from "@/i18n/use-t";
-import { ViewLayout } from "../layout";
+import { DetailPanel } from "../detail-panel";
 import { ConnectionActivity } from "./connection-activity.tsx";
 import { ConnectionAgentsPanel } from "./connection-agents-panel.tsx";
 import { ConnectionCapabilities } from "./connection-capabilities.tsx";
@@ -165,11 +165,13 @@ function connectionToFormValues(
 /**
  * Convert form values back to connection entity update
  */
-function formValuesToConnectionUpdate(
+export function formValuesToConnectionUpdate(
   data: ConnectionFormData,
 ): Partial<ConnectionEntity> {
   let connectionType: "HTTP" | "SSE" | "Websocket" | "STDIO";
   let connectionUrl: string | null = null;
+  // null = untouched (omit, keep stored token); "" = explicitly cleared.
+  let connectionTokenTouched = false;
   let connectionToken: string | null = null;
   let connectionParameters:
     | StdioConnectionParameters
@@ -195,6 +197,8 @@ function formValuesToConnectionUpdate(
   } else {
     connectionType = data.ui_type;
     connectionUrl = data.connection_url || "";
+    connectionTokenTouched =
+      data.connection_token !== null && data.connection_token !== undefined;
     connectionToken = data.connection_token || null;
   }
 
@@ -204,7 +208,7 @@ function formValuesToConnectionUpdate(
     icon: data.icon ?? null,
     connection_type: connectionType,
     connection_url: connectionUrl,
-    ...(connectionToken && { connection_token: connectionToken }),
+    ...(connectionTokenTouched && { connection_token: connectionToken }),
     ...(connectionParameters && { connection_headers: connectionParameters }),
     configuration_state: data.configuration_state ?? null,
     configuration_scopes: data.configuration_scopes ?? null,
@@ -552,7 +556,7 @@ function ConnectionInspectorViewWithConnection({
       </Sheet>
 
       {/* Main page */}
-      <ViewLayout hideHeader>
+      <DetailPanel>
         <div className="flex flex-col h-full overflow-hidden">
           <ConnectionDetailHeader
             connection={connection}
@@ -620,7 +624,6 @@ function ConnectionInspectorViewWithConnection({
                         metadata: null,
                         tools: null,
                         bindings: null,
-                        status: "inactive",
                       });
                       const mcpProxyUrl = new URL(
                         `/api/${projectOrg.slug}/mcp/${newId}`,
@@ -639,6 +642,9 @@ function ConnectionInspectorViewWithConnection({
                       }
                       // New instance shares the same app slug — no navigation needed
                       // The page will re-render with the new sibling
+                    } catch (err) {
+                      console.error("Failed to add connection instance:", err);
+                      toast.error(t("details.connection.failedAddInstance"));
                     } finally {
                       setIsAddingInstance(false);
                     }
@@ -659,7 +665,7 @@ function ConnectionInspectorViewWithConnection({
             </div>
           </div>
         </div>
-      </ViewLayout>
+      </DetailPanel>
     </>
   );
 }
@@ -676,7 +682,11 @@ function ConnectionInspectorViewContent() {
 
   // Resolve appSlug → matching connections (server-side slug filter, excludes VIRTUAL by default)
   const siblings = useConnections({ slug: appSlug });
-  const connection = siblings[0] ?? null;
+  // Pinned: siblings sort by updated_at, so a toggle or save would swap clients.
+  const [pinnedId, setPinnedId] = useState<string | null>(null);
+  const connection =
+    siblings.find((s) => s.id === pinnedId) ?? siblings[0] ?? null;
+  if (connection && connection.id !== pinnedId) setPinnedId(connection.id);
   const connectionId = connection?.id ?? "";
 
   // Get MCP client for this connection (suspense-based)

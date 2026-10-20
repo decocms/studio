@@ -1,6 +1,7 @@
 import { describe, expect, it, test } from "bun:test";
 import {
   AgentKickstartPromptSchema,
+  RELEASES_MAX,
   SandboxMapSchema,
   VirtualMCPEntitySchema,
   VirtualMCPCreateDataSchema,
@@ -446,47 +447,6 @@ test("VirtualMCPUpdateDataSchema rejects a description over 500 chars", () => {
   expect(result.success).toBe(false);
 });
 
-test("VirtualMCPCreateDataSchema rejects more than 200 enabled_plugins", () => {
-  const result = VirtualMCPCreateDataSchema.safeParse({
-    title: "Agent",
-    connections: [],
-    metadata: {
-      enabled_plugins: Array.from({ length: 201 }, (_, i) => `plugin-${i}`),
-    },
-  });
-  expect(result.success).toBe(false);
-});
-
-test("VirtualMCPUpdateDataSchema rejects more than 200 enabled_plugins", () => {
-  const result = VirtualMCPUpdateDataSchema.safeParse({
-    metadata: {
-      enabled_plugins: Array.from({ length: 201 }, (_, i) => `plugin-${i}`),
-    },
-  });
-  expect(result.success).toBe(false);
-});
-
-test("VirtualMCPEntitySchema rejects more than 200 enabled_plugins on read", () => {
-  const result = VirtualMCPEntitySchema.safeParse({
-    id: "x",
-    title: "x",
-    description: null,
-    icon: null,
-    created_at: "t",
-    updated_at: "t",
-    created_by: "u",
-    organization_id: "o",
-    status: "active",
-    pinned: false,
-    metadata: {
-      instructions: null,
-      enabled_plugins: Array.from({ length: 201 }, (_, i) => `plugin-${i}`),
-    },
-    connections: [],
-  });
-  expect(result.success).toBe(false);
-});
-
 test("VirtualMCPEntitySchema rejects more than 200 subAgents", () => {
   const result = VirtualMCPEntitySchema.safeParse({
     id: "x",
@@ -508,7 +468,7 @@ test("VirtualMCPEntitySchema rejects more than 200 subAgents", () => {
   expect(result.success).toBe(false);
 });
 
-test("VirtualMCPEntitySchema rejects more than 50 releases", () => {
+test("VirtualMCPEntitySchema rejects more than RELEASES_MAX releases", () => {
   const result = VirtualMCPEntitySchema.safeParse({
     id: "x",
     title: "x",
@@ -522,7 +482,7 @@ test("VirtualMCPEntitySchema rejects more than 50 releases", () => {
     pinned: false,
     metadata: {
       instructions: null,
-      releases: Array.from({ length: 51 }, (_, i) => ({
+      releases: Array.from({ length: RELEASES_MAX + 1 }, (_, i) => ({
         branch: `release-${i}`,
         name: `Release ${i}`,
         color: "#000000",

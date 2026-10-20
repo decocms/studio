@@ -20,7 +20,7 @@
  * at import time so the recovery executor can replay it after a crash.
  */
 
-import { DBOS } from "@dbos-inc/dbos-sdk";
+import { DBOS, DBOSClient } from "@dbos-inc/dbos-sdk";
 import type {
   DispatchRunDeps,
   DispatchRunInput,
@@ -55,9 +55,8 @@ export const THREAD_GATE_PARTITION_CONCURRENCY = 1;
  * Guard: only harnesses hosted by the cluster may use this gate.
  *
  * `decopilot` runs in-process; `claude-code` runs inside the managed sandbox
- * (and is additionally gated per-org in `prepareRun`). Desktop-only coding
- * agents run in the Tauri app, which owns its Rust `local-api` and never
- * enqueues here. This stays a positive allowlist so an unknown or future
+ * (and is additionally gated per-org in `prepareRun`). This stays a positive
+ * allowlist so an unknown or future
  * harness cannot silently fall through to whichever loop runs first.
  */
 export function assertHarnessRunsInCluster(harnessId?: string | null): void {
@@ -100,6 +99,8 @@ export type StudioContextFactory = (
 ) => Promise<StudioContext | null>;
 
 export interface ThreadGateRuntime {
+  /** Used only by `enqueueFromStep` — see `enqueueThreadRun`. */
+  systemDatabaseUrl?: string;
   studioContextFactory: StudioContextFactory;
   deps: Pick<
     DispatchRunDeps,
@@ -462,6 +463,10 @@ export async function enqueueThreadRun(
   // must resolve and pass the thread's explicit hosted runtime before writing
   // their own request message.
   assertHarnessRunsInCluster(ctx.request.harnessId);
+  // A built-in tool called by an agent runs inside the agent loop's own DBOS
+  // step, and DBOS rejects `startWorkflow` from there. The queue entry is just
+  // a row, so an external client can write it where the in-process API cannot.
+  if (DBOS.isInStep()) return await enqueueFromStep(ctx, opts?.workflowID);
   const handle = await DBOS.startWorkflow(threadGateWorkflow, {
     queueName: THREAD_GATE_QUEUE,
     enqueueOptions: {
@@ -473,4 +478,33 @@ export async function enqueueThreadRun(
     workflowID: opts?.workflowID,
   })(ctx);
   return { workflowID: handle.workflowID };
+}
+
+async function enqueueFromStep(
+  ctx: ThreadGateContext,
+  workflowID?: string,
+): Promise<{ workflowID: string }> {
+  const systemDatabaseUrl = requireRuntime().systemDatabaseUrl;
+  if (!systemDatabaseUrl)
+    throw new Error("Thread gate queue is not configured");
+  const client = await DBOSClient.create({
+    systemDatabaseUrl,
+    systemDatabaseSchemaName: "dbos",
+    systemDatabasePoolSize: 1,
+  });
+  try {
+    const handle = await client.enqueue<typeof threadGateWorkflowFn>(
+      {
+        workflowName: "threadGateWorkflow",
+        queueName: THREAD_GATE_QUEUE,
+        queuePartitionKey: ctx.threadId,
+        priority: runPriority(ctx.request.runMetadata),
+        ...(workflowID ? { workflowID } : {}),
+      },
+      ctx,
+    );
+    return { workflowID: handle.workflowID };
+  } finally {
+    await client.destroy();
+  }
 }

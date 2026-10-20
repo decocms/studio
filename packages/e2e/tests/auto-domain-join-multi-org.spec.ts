@@ -11,7 +11,7 @@
  * The picker UI / domain-lookup flow can't be set up purely via UI —
  * claiming a domain in an org requires `emailVerified: true`, which
  * needs an OTP/magic-link verification flow we can't easily drive
- * headlessly. So this spec connects to the dev server's embedded
+ * headlessly. So this spec connects to the API's configured
  * Postgres (see e2e/fixtures/db.ts) and seeds the two pre-claiming orgs
  * directly. The user under test still signs up through the real UI,
  * and the picker + join action are exercised through the real DOM.
@@ -138,7 +138,7 @@ test.describe("Onboarding: multi-org auto-join picker", () => {
 
   test("renders a picker with both orgs and joins the one the user picks", async ({
     page,
-  }) => {
+  }, testInfo) => {
     const { userId } = await signUpCorporateUserOnTestDomain(page);
 
     // After undoing the auto-created org, hitting "/" runs the home
@@ -173,7 +173,7 @@ test.describe("Onboarding: multi-org auto-join picker", () => {
     expect(otherCheck.rows[0]!.count).toBe("0");
 
     await page.screenshot({
-      path: "screenshots/auto-domain-join-multi-org.png",
+      path: testInfo.outputPath("auto-domain-join-multi-org.png"),
       fullPage: true,
     });
   });

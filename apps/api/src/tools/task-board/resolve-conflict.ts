@@ -11,8 +11,8 @@
  * gates are the paywall and the shared dispatch fence.
  *
  * Reuses the exact machinery the automatic reaction does — the atomic
- * `claimConflictResolution` fence (In Review + Super Agent → In Progress) so a
- * click racing the poll can't double-dispatch, and `enqueueSuperAgentForTask`
+ * `claimConflictResolution` fence (Ready for Deployment + Super Agent → In Progress) so a
+ * click racing the poll can't double-dispatch, and the Implementer's run
  * with `{ pr, resolveConflict: true }` so the re-run checks out the SAME PR's
  * branch, merges the base, and pushes — rather than opening a second PR.
  *
@@ -20,7 +20,7 @@
  * poll's `reactToApprovedPrConflict` fired first, or a human reassigned the task
  * away from the Super Agent) — the winner already queued the run, so we stop.
  * On an enqueue failure the fence has already bounced the status to In Progress,
- * so we bounce it back to In Review (the button only shows there) and rethrow.
+ * so we bounce it back to Ready for Deployment (the button only shows there) and rethrow.
  * The `merge_conflict_resolution` activity is recorded AFTER the dispatch (a
  * throw must not spend a conflict-cap slot) with a null actor, matching the
  * automatic reaction's entry so the timeline reads it as the agent resolving.
@@ -41,15 +41,16 @@ import {
 } from "@/billing/task-quota";
 import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated } from "./run-reactions";
-import { enqueueSuperAgentForTask } from "./enqueue-super-agent";
+import { fireImplementer } from "@/automations/fire-implementer";
 import { fetchPrConflict } from "./prs-get";
 
 export const TASK_BOARD_RESOLVE_CONFLICT = defineTool({
   name: "TASK_BOARD_RESOLVE_CONFLICT",
   description:
     "Hand a task's pull request back to the Super Agent to resolve a merge " +
-    "conflict with its base branch. Use when a reviewed PR can't be shipped " +
-    "because it conflicts. Bounces the task to In Progress and queues a run " +
+    "conflict with its base branch. Use when a task in Ready for Deployment " +
+    "can't be shipped because its PR conflicts. Bounces the task to In " +
+    "Progress (it goes through review and QA again) and queues a run " +
     "that checks out the existing PR's branch, merges the base, resolves the " +
     "conflicts, and pushes to the same PR.",
   annotations: {
@@ -106,18 +107,6 @@ export const TASK_BOARD_RESOLVE_CONFLICT = defineTool({
     await ensureTaskExecutionAllowed(ctx, item, userInitiatedTaskQuotaConfig());
 
     // Atomic dispatch fence shared with the automatic reaction (see doc above).
-    // The fence moves the card between these two, and the failure path moves it
-    // back. A board missing either cannot express the round trip, so it never
-    // starts one — and narrowing here is what lets the revert below write a
-    // string instead of an "undefined means leave it alone" that would strand
-    // the card mid-fence.
-    if (LANES.review === null || LANES.progress === null) {
-      throw new Error(
-        "This board has no column meaning 'under review' or 'in progress', so " +
-          "there is nowhere to move the card while the conflict is resolved. " +
-          "Set those roles on the board's columns first.",
-      );
-    }
     const claimed = await ctx.storage.taskBoard.claimConflictResolution(
       id,
       organizationId,
@@ -132,7 +121,7 @@ export const TASK_BOARD_RESOLVE_CONFLICT = defineTool({
     emitTaskBoardUpdated(organizationId, claimed);
 
     try {
-      await enqueueSuperAgentForTask(ctx, claimed, {
+      await fireImplementer(ctx, claimed, {
         pr: { number: pr.number, url: pr.url },
         resolveConflict: true,
         runClass: "retry",
@@ -141,7 +130,7 @@ export const TASK_BOARD_RESOLVE_CONFLICT = defineTool({
     } catch (err) {
       // Dispatch failed after the fence bounced the status — bounce it back.
       await ctx.storage.taskBoard
-        .update(claimed.id, organizationId, { status: LANES.review }, "system")
+        .update(claimed.id, organizationId, { status: LANES.release }, "system")
         .then((reverted) => emitTaskBoardUpdated(organizationId, reverted))
         .catch((revertErr) =>
           console.error(

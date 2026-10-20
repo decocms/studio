@@ -1,18 +1,23 @@
 import type { automations as automationsEn } from "../en/automations.ts";
 
 export const automations = {
-  "automations.addStarterPopover.addStarter": "Adicionar Gatilho",
+  "automations.addStarterPopover.addStarter": "Adicionar acionador",
   "automations.addStarterPopover.customCron": "Personalizado (cron)",
   "automations.addStarterPopover.event": "Evento",
   "automations.addStarterPopover.every": "A cada...",
   "automations.addStarterPopover.everyUnit": "A cada {unit}",
-  "automations.addStarterPopover.failedAddStarter": "Erro ao adicionar gatilho",
+  "automations.addStarterPopover.failedAddStarter":
+    "Erro ao adicionar acionador",
   "automations.addStarterPopover.failedAddWebhookStarter":
-    "Erro ao adicionar gatilho webhook",
-  "automations.addStarterPopover.starterAdded": "Gatilho adicionado",
+    "Erro ao adicionar acionador webhook",
+  "automations.addStarterPopover.starterAdded": "Acionador adicionado",
   "automations.addStarterPopover.webhook": "Webhook",
+  "automations.addStarterPopover.cardEntersColumn":
+    "Quando um card entra numa coluna",
+  "automations.addStarterPopover.jiraIssueEntersStatus":
+    "Quando uma issue do Jira entra num status",
   "automations.addStarterPopover.webhookStarterAdded":
-    "Gatilho webhook adicionado",
+    "Acionador webhook adicionado",
   "automations.automationConfig.all": "Todos",
   "automations.automationConfig.allTools": "Todas as ferramentas",
   "automations.automationConfig.allToolsEnabled":
@@ -135,8 +140,8 @@ export const automations = {
     "Esta automação ainda não foi executada. Dispare-a ou aguarde um inicializador disparar.",
   "automations.automationRuns.noRunsTitle": "Nenhuma execução ainda",
   "automations.automationRuns.noStartersDescription":
-    "Adicione um inicializador (cron, evento ou webhook) para começar a coletar execuções.",
-  "automations.automationRuns.noStartersTitle": "Nenhum inicializador ainda",
+    "Adicione um acionador (cron, evento ou webhook) para começar a coletar execuções.",
+  "automations.automationRuns.noStartersTitle": "Nenhum acionador ainda",
   "automations.automationRuns.ok": "ok",
   "automations.automationRuns.runHeader": "Execução",
   "automations.automationRuns.running": "em execução",
@@ -171,9 +176,11 @@ export const automations = {
   "automations.triggerCard.cancel": "Cancelar",
   "automations.triggerCard.confirmRemoveStarter":
     "Tem certeza de que deseja remover este disparador?",
+  "automations.triggerCard.editSchedule": "Editar agendamento",
   "automations.triggerCard.every": "A cada",
   "automations.triggerCard.failedToRemoveStarter":
     "Falha ao remover disparador",
+  "automations.triggerCard.failedToRotateToken": "Falha ao girar token",
   "automations.triggerCard.failedToUpdateStarter":
     "Falha ao atualizar disparador",
   "automations.triggerCard.invalid": "inválido",
@@ -189,6 +196,68 @@ export const automations = {
     "Um novo token será gerado e o token atual deixará de funcionar. Quaisquer remetentes que usem o token antigo devem ser atualizados.",
   "automations.triggerCard.starterRemoved": "Disparador removido",
   "automations.triggerCard.webhookPostToFire": "Webhook · POST para disparar",
+  "automations.builtin.badge": "Nativa",
+  "automations.builtin.implementerDescription":
+    "Pega cada card sem dono que chega em In Progress e trabalha nele como o Super Agent. É também o que roda quando alguém clica em Run ou Re-run num card, delega um card ao agente, ou o board tenta uma run de novo. Desligar faz ele parar de pegar cards sozinho; o Run num card continua funcionando. A run segue as instruções e skills da coluna In Progress no board; mude lá.",
+  "automations.builtin.reviewerDescription":
+    "Revisa o pull request de um card quando ele fica pronto para review (aberto, checks terminados, preview no último commit) e registra um veredito: aprovar manda o card para QA, pedir mudanças passa o card para uma pessoa. Desligar aqui é o mesmo que desligar o Reviewer em Settings → Review. A revisão segue as instruções e skills da coluna In Review no board; mude lá.",
+  "automations.builtin.linkedChatsDescription":
+    "Deixa um chat linkado a um card, ou a run de outra automação nele, mover o card como a run do Implementer move: uma mensagem com o card em In Review volta ele para In Progress; quando a run termina, um card em In Progress segue para In Review (com pull request) ou QA; um pull request que ela abre inicia a review do card; uma run que falha é tentada de novo pelo Implementer ou manda o card de volta para o Backlog. Desligada, só a run do Implementer move card. Não roda agente.",
+  "automations.builtin.prMergedDescription":
+    "Move um card em review para Post-deploy Validation quando o pull request dele é mergeado, onde quer que o merge aconteça (botão de merge do GitHub, auto-merge da branch protection). Desligada, um pull request mergeado deixa o card onde está. Não roda agente.",
+  "automations.builtin.chatPrDescription":
+    "Quando um chat sem card abre um pull request por uma tool do provedor, coloca ele no board: escolhe o card aberto a que o trabalho pertence, ou cria um, linka o pull request e o chat, e passa o card ao Super Agent para o Reviewer pegar. Desligada, o pull request fica fora do board. Um chat já linkado a um card nunca é tocado.",
+  "automations.builtin.description":
+    "O Studio roda esta automação para o board. Ela segue as instruções e skills das colunas do board; mude lá.",
+  "automations.columnTransitionDialog.title":
+    "Quando um card entra numa coluna",
+  "automations.columnTransitionDialog.description":
+    "Roda esta automação em cada card que entra na coluna.",
+  "automations.columnTransitionDialog.column": "Coluna",
+  "automations.columnTransitionDialog.origin": "Vindo de",
+  "automations.columnTransitionDialog.fromAny": "Qualquer coluna",
+  "automations.columnTransitionDialog.fromEarlier": "Uma coluna anterior",
+  "automations.columnTransitionDialog.fromLater":
+    "Uma coluna posterior (devolvido)",
+  "automations.columnTransitionDialog.fromColumns": "Colunas específicas",
+  "automations.columnTransitionDialog.columnsPlaceholder": "Escolha as colunas",
+  "automations.columnTransitionDialog.help":
+    "Roda num card sem dono, ou que já é do agente, depois que ele fica 20 segundos na coluna; um card de uma pessoa fica de fora. A origem é a última coluna onde ele ficou, não uma pela qual só foi arrastado.",
+  "automations.columnTransitionDialog.cancel": "Cancelar",
+  "automations.columnTransitionDialog.add": "Adicionar gatilho",
+  "automations.jiraTransitionDialog.title":
+    "Quando uma issue do Jira entra num status",
+  "automations.jiraTransitionDialog.description":
+    "Roda esta automação em cada issue que entra no status, no board que a integração com o Jira acompanha.",
+  "automations.jiraTransitionDialog.status": "Status",
+  "automations.jiraTransitionDialog.noStatuses":
+    "Não foi possível ler os status do board do Jira. Confira a integração em Configurações.",
+  "automations.jiraTransitionDialog.origin": "Vindo de",
+  "automations.jiraTransitionDialog.fromAny": "Qualquer status",
+  "automations.jiraTransitionDialog.fromEarlier": "Um status anterior",
+  "automations.jiraTransitionDialog.fromLater":
+    "Um status posterior (devolvida)",
+  "automations.jiraTransitionDialog.fromStatuses": "Status específicos",
+  "automations.jiraTransitionDialog.statusesPlaceholder": "Escolha os status",
+  "automations.jiraTransitionDialog.help":
+    "Roda quando a issue fica no status por 20 segundos, na própria issue; nada é copiado para o quadro. Um status pode ter um gatilho por origem. De onde ela veio é o último status em que ficou parada, não um pelo qual foi arrastada.",
+  "automations.jiraTransitionDialog.cancel": "Cancelar",
+  "automations.jiraTransitionDialog.add": "Adicionar gatilho",
+  "automations.triggerCard.prReady":
+    "Quando o pull request de um card fica pronto para review",
+  "automations.triggerCard.linkedChatRun":
+    "Quando um chat linkado a um card roda",
+  "automations.triggerCard.prMerged":
+    "Quando o pull request de um card é mergeado",
+  "automations.triggerCard.chatPrOpened":
+    "Quando um chat sem card abre um pull request",
+  "automations.triggerCard.unownedOnly": "Só cards sem dono",
+  "automations.triggerCard.fromEarlier": "De uma coluna anterior",
+  "automations.triggerCard.fromLater": "De uma coluna posterior (devolvido)",
+  "automations.triggerCard.fromColumns": "De {columns}",
+  "automations.triggerCard.issueEntersJiraStatus":
+    "Quando uma issue do Jira entra em {status}",
+  "automations.triggerCard.cardEntersColumn": "Quando um card entra em {lane}",
   "automations.webhookSecretDialog.copied": "Copiado",
   "automations.webhookSecretDialog.copy": "Copiar",
   "automations.webhookSecretDialog.done": "Concluído",
@@ -197,4 +266,8 @@ export const automations = {
   "automations.webhookSecretDialog.tokenInUrl": "Token na URL",
   "automations.webhookSecretDialog.tokenLabel": "Token (exibido uma vez)",
   "automations.webhookSecretDialog.url": "URL",
+  "automations.setupRequired.title": "Configuração necessária",
+  "automations.setupRequired.description":
+    "Automações ainda não estão disponíveis. Por favor, conclua a configuração do MCP Studio primeiro.",
+  "automations.setupRequired.goToSetup": "Ir para configuração",
 } satisfies Record<keyof typeof automationsEn, string>;

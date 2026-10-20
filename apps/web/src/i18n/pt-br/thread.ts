@@ -12,18 +12,29 @@ export const thread = {
   "thread.branchPicker.advanced": "Avançado",
   "thread.branchPicker.advancedBack": "Voltar",
   "thread.branchPicker.cancel": "Cancelar",
-  "thread.branchPicker.defaultVersionName": "Rascunho",
+  "thread.branchPicker.defaultVersionName": "Draft",
   "thread.branchPicker.delete": "Descartar",
   "thread.branchPicker.deleteConfirm":
     'Descartar "{name}"? Isso não pode ser desfeito.',
-  "thread.branchPicker.deleteTitle": "Descartar rascunho?",
+  "thread.branchPicker.deleteTitle": "Descartar draft?",
   "thread.branchPicker.live": "Produção",
+  "thread.branchPicker.localTab": "Local",
+  "thread.branchPicker.localLabel": "Local",
+  "thread.branchPicker.localHint":
+    "Aponte o preview e o CMS para o seu próprio dev server. Cole uma URL de túnel público (ex.: ngrok, cloudflared) acessível a partir deste navegador.",
+  "thread.branchPicker.localhost.label": "Localhost",
+  "thread.branchPicker.localhost.connected": "Conectado",
+  "thread.branchPicker.localUrlLabel": "URL do túnel local",
+  "thread.branchPicker.localUrlPlaceholder": "https://seu-tunel.exemplo.com",
+  "thread.branchPicker.localTurnOff": "Desligar",
   "thread.branchPicker.moreActions": "Mais ações",
-  "thread.branchPicker.newVersion": "Novo Rascunho",
+  "thread.branchPicker.newVersion": "Novo Draft",
+  "thread.branchPicker.capReached":
+    "Limite de {max} versões atingido. Exclua uma versão para criar outra.",
   "thread.branchPicker.rename": "Renomear",
   "thread.branchPicker.save": "Salvar",
   "thread.branchPicker.saveError":
-    "Não foi possível salvar a versão. Tente novamente.",
+    "Não foi possível atualizar seu rascunho. Tente de novo.",
   "thread.branchPicker.selectVersion": "Selecione uma versão",
   "thread.branchPicker.newChatHint":
     "A branch deste chat é fixa. Escolher ou criar uma branch abre um chat novo nela.",
@@ -48,25 +59,6 @@ export const thread = {
   "thread.branchPicker.searchPullRequests": "Pesquisar pull requests…",
   "thread.branchPicker.selectBranch": "Selecione uma branch…",
   "thread.branchPicker.yourBranches": "Suas branches",
-  "thread.changesTab.couldntLoadPrChanges":
-    "Não foi possível carregar mudanças do PR.",
-  "thread.changesTab.loadingChanges": "Carregando mudanças…",
-  "thread.changesTab.noCommittedChanges":
-    "Nenhuma mudança confirmada neste pull request",
-  "thread.checksTab.couldntLoadCheckDetail":
-    "Não foi possível carregar o detalhe desta verificação.",
-  "thread.checksTab.couldntLoadCheckRuns":
-    "Não foi possível carregar as verificações.",
-  "thread.checksTab.failure": "Falha",
-  "thread.checksTab.inProgress": "Em progresso",
-  "thread.checksTab.loadingCheckDetail": "Carregando detalhe…",
-  "thread.checksTab.loadingChecks": "Carregando verificações…",
-  "thread.checksTab.noCheckDetail": "Esta verificação não tem detalhe.",
-  "thread.checksTab.noCheckRunsOnPrHeadCommit":
-    "Nenhuma verificação no commit principal do PR.",
-  "thread.checksTab.rerun": "Executar novamente",
-  "thread.checksTab.success": "Sucesso",
-  "thread.checksTab.viewRun": "Ver execução",
   "thread.cmsActions.checksFailing":
     "{failed} de {total} verificações não estão passando",
   "thread.cmsActions.checksRunning": "Verificando {done} de {total} concluídas",
@@ -77,27 +69,10 @@ export const thread = {
   "thread.cmsActions.publishing": "Publicando…",
   "thread.cmsActions.gettingLatest": "Obtendo atualizações…",
   "thread.cmsActions.retry": "Tentar novamente",
-  "thread.cmsActions.resolveOnGithub": "Resolver no GitHub",
+  "thread.cmsActions.resolveOnProvider": "Resolver no provedor",
   "thread.cmsActions.reviewAndPublish": "Revisar e publicar",
-  "thread.cmsActions.viewOnGithub": "Ver no GitHub",
+  "thread.cmsActions.viewOnProvider": "Ver no provedor",
   "thread.cmsActions.waitingForReview": "Aguardando revisão",
-  "thread.gitTab.by": "por @{author}",
-  "thread.gitTab.closed": "✗ Fechado",
-  "thread.gitTab.couldNotLoadPrState":
-    "Não foi possível carregar o status da PR. A conexão GitHub pode estar quebrada.",
-  "thread.gitTab.into": "em {base}",
-  "thread.gitTab.loadingPrState": "Carregando status da PR…",
-  "thread.gitTab.merged": "✓ Mesclado",
-  "thread.gitTab.noBranchSelected": "Nenhuma branch selecionada.",
-  "thread.gitTab.noPrYet":
-    'Esta branch não tem uma pull request aberta. Use "Revisar e publicar" no cabeçalho (ou "Enviar para revisão" no menu) para abrir uma; o agente rascunhará o título e resumo do estado atual da branch.',
-  "thread.gitTab.notLinkedToGithub":
-    "Este virtualmcp não está vinculado a um repositório GitHub.",
-  "thread.gitTab.openBranchOnGithub": "Abrir branch no GitHub",
-  "thread.gitTab.openPrAriaLabel": "Abrir PR #{number} no GitHub",
-  "thread.gitTab.pickBranchForPrStatus":
-    "Escolha uma branch no cabeçalho para ver o status da PR.",
-  "thread.gitTab.prNumber": "PR #{number}",
   "thread.headerActions.addressFeedback": "Tratar feedback",
   "thread.headerActions.branchInSyncTooltip": "Branch sincronizada com {base}",
   "thread.headerActions.chatIsRunning": "Chat está em execução",
@@ -129,10 +104,8 @@ export const thread = {
   "thread.headerActions.openNewPrTooltip":
     "Abrir um novo PR com os últimos commits",
   "thread.headerActions.prMergedTooltip": "PR #{prNumber} mesclado em {base}",
-  "thread.headerActions.publish": "Publicar",
   "thread.headerActions.publishAnyway": "Publicar mesmo assim",
   "thread.headerActions.publishedPr": "PR #{prNumber} publicado",
-  "thread.headerActions.publishToProduction": "Publicar em produção",
   "thread.headerActions.reconnectGithub": "Reconectar GitHub",
   "thread.headerActions.review": "Revisar",
   "thread.headerActions.saving": "Salvando…",
@@ -160,26 +133,8 @@ export const thread = {
     "Preparando seu ambiente — leva só um instante",
   "thread.publishDialog.allChangesDiscarded":
     "Todas as alterações foram descartadas",
-  "thread.publishDialog.branchLabel": "Branch:",
   "thread.publishDialog.cancel": "Cancelar",
-  "thread.publishDialog.change": "alteração",
-  "thread.publishDialog.changes": "alterações",
   "thread.publishDialog.changesFrom": "Alterações de {branch}",
-  "thread.publishDialog.changesTab": "Alterações",
-  "thread.publishDialog.commitMessage": "Mensagem de commit",
-  "thread.publishDialog.commitTitlePlaceholder": "Título do commit…",
-  "thread.publishDialog.description": "Descrição",
-  "thread.publishDialog.descriptionLabel": "Descrição",
-  "thread.publishDialog.descriptionPlaceholder": "Descrição (opcional)…",
-  "thread.publishDialog.discardAll": "Descartar tudo",
-  "thread.publishDialog.discardConfirmMessage":
-    "Descartar todas as alterações? Isso não pode ser desfeito.",
-  "thread.publishDialog.discardedChanges":
-    "Alterações descartadas para {filepath}",
-  "thread.publishDialog.failedDiscardChanges": "Falha ao descartar alterações",
-  "thread.publishDialog.failedLoad": "Falha ao carregar alterações.",
-  "thread.publishDialog.failedLoadAfterReprovision":
-    "Falha ao carregar alterações após reprovisionar a sandbox.",
   "thread.publishDialog.failedMergePullRequest":
     "Falha ao mesclar pull request",
   "thread.publishDialog.failedOpenPullRequest": "Falha ao abrir pull request",
@@ -187,39 +142,30 @@ export const thread = {
   "thread.publishDialog.failedPushChanges": "Falha ao enviar alterações",
   "thread.publishDialog.failedRebase": "Falha ao rebasar para a base",
   "thread.publishDialog.failedSubmitForReview": "Falha ao enviar para revisão",
-  "thread.publishDialog.generating": "Gerando…",
-  "thread.publishDialog.inThisPr": "neste PR",
-  "thread.publishDialog.loadingChanges": "Carregando alterações…",
   "thread.publishDialog.mergeFailed":
     "Alterações foram enviadas e PR #{prNumber} está aberto, mas a mesclagem falhou: {message}",
+  "thread.mergeRefused.conflict":
+    "Conflita com a branch base — faça rebase e tente de novo.",
+  "thread.mergeRefused.blocked":
+    "O repositório recusou o merge — falta uma revisão obrigatória ou uma regra de branch.",
+  "thread.mergeRefused.rateLimited":
+    "O provider está limitando as requisições — tente de novo em instantes.",
+  "thread.mergeRefused.notFound": "Não existe mais.",
+  "thread.mergeRefused.error": "Falha ao fazer merge.",
   "thread.publishDialog.openingComparison": "Abrindo a comparação…",
-  "thread.publishDialog.opensPullRequestInto":
-    "Abre um pull request para {baseBranch} para revisão.",
-  "thread.publishDialog.publishedTo": "Publicado em {baseBranch}",
-  "thread.publishDialog.publishNeedsReview":
-    "Esta alteração precisa de revisão antes de publicar.",
-  "thread.publishDialog.pullRequest": "Pull request",
-  "thread.publishDialog.regenerate": "Regenerar",
-  "thread.publishDialog.reviewingChanges": "Revisando alterações…",
-  "thread.publishDialog.squashMergesInto":
-    "{publishLabel} faz squash-merge para {baseBranch}.",
-  "thread.publishDialog.submitForReview": "Enviar para revisão",
-  "thread.publishDialog.submitForReviewButton": "Enviar para revisão",
   "thread.publishDialog.submittedForReview":
     "Pull request #{prNumber} enviado para revisão",
-  "thread.publishDialog.title": "Título",
-  "thread.publishDialog.toPublish": "para publicar",
-  "thread.publishDialog.viewOnGithub": "Ver no GitHub",
-  "thread.publishDialog.viewPr": "Ver PR",
-  "thread.publishDialog.visitPreview": "Abrir o Preview",
+  "thread.publishDialog.viewOnProvider": "Ver no provedor",
   "thread.publishPopover.blocksGroup": "Blocos",
-  "thread.publishPopover.branchMoved":
-    "Esta branch mudou depois que estas alterações foram exibidas. Feche e abra novamente para revisar o que será publicado.",
   "thread.publishPopover.detailsUnavailable":
     "Não foi possível carregar os detalhes destas alterações.",
+  "thread.publishPopover.alsoOtherWork":
+    "A publicação também inclui outros trabalhos desta sessão, como mudanças no código.",
+  "thread.publishPopover.onlyOtherWork":
+    "Nenhuma alteração de conteúdo. A publicação coloca no ar os outros trabalhos desta sessão, como mudanças no código.",
   "thread.publishPopover.loadFailed":
     "Não foi possível carregar suas alterações",
-  "thread.publishPopover.retry": "Tentar novamente",
+  "thread.publishPopover.retry": "Tentar de novo",
   "thread.publishPopover.showingFirst":
     "Mostrando as primeiras {shown} de {total} alterações",
   "thread.publishPopover.chipEdited": "Editado",
@@ -228,7 +174,6 @@ export const thread = {
   "thread.publishPopover.emptyHint":
     "Suas alterações mais recentes já estão no ar.",
   "thread.publishPopover.everythingLive": "Tudo publicado",
-  "thread.publishPopover.failedDiscard": "Falha ao descartar alterações",
   "thread.publishPopover.globalSection": "Seção global",
   "thread.publishPopover.lastPublished": "Última publicação {when}",
   "thread.publishPopover.lastPublishedBy":
@@ -254,14 +199,13 @@ export const thread = {
   "thread.publishPopover.publishOneInProduction":
     "Publicar 1 alteração em produção",
   "thread.publishPopover.publishOne": "Publicar 1 alteração",
-  "thread.publishPopover.publishedTo": "Publicado em {host}",
   "thread.publishPopover.publishing": "Publicando…",
   "thread.publishPopover.requestApproval": "Pedir aprovação",
   "thread.publishPopover.discarded": "{name} descartado",
   "thread.publishPopover.discard": "Descartar",
   "thread.publishPopover.discardAll": "Descartar tudo",
-  "thread.publishPopover.discardAllConfirm":
-    "Descartar todas as alterações? Isso não pode ser desfeito.",
+  "thread.publishPopover.discardAllConfirm": "Isso não pode ser desfeito.",
+  "thread.publishPopover.discardAllTitle": "Descartar todas as alterações?",
   "thread.publishPopover.reviewNote": "Nota para quem revisa",
   "thread.publishPopover.reviewNotePlaceholder": "O que mudou e por quê…",
   "thread.publishPopover.reviewing": "Revisando conteúdo…",
@@ -273,8 +217,68 @@ export const thread = {
   "thread.publishPopover.submitForReview": "Enviar para revisão",
   "thread.publishPopover.submitOneForReview": "Enviar 1 alteração para revisão",
   "thread.publishPopover.submitting": "Enviando…",
-  "thread.publishPopover.versionNote": "Nota da versão",
+  "thread.publishPopover.versionNote": "Nota da release",
   "thread.publishPopover.updatesPullRequest":
     "Atualiza o pull request #{number}",
   "thread.publishPopover.versionNotePlaceholder": "Descreva esta atualização…",
+  "thread.publishCompare.sideBySide": "Lado a lado",
+  "thread.publishCompare.before": "Antes",
+  "thread.publishCompare.after": "Depois",
+  "thread.publishCompare.code": "Código",
+  "thread.publishCompare.pathLabel": "Endereço da página",
+  "thread.publishCompare.desktop": "Desktop",
+  "thread.publishCompare.mobile": "Celular",
+  "thread.publishCompare.openDraft": "Abrir em nova aba",
+  "thread.publishCompare.globalHint":
+    "Esta alteração pode aparecer em qualquer página. Mostrando a página inicial — digite outro endereço para comparar.",
+  "thread.publishCompare.blockHint":
+    "Este bloco pode aparecer em várias páginas. Mostrando: {path} — digite outro endereço para comparar.",
+  "thread.publishCompare.notOnAnyPage":
+    "Este bloco não é usado em nenhuma página, então não há o que visualizar. Aqui estão as alterações.",
+  "thread.publishCompare.dynamicHint":
+    "O endereço desta página é um padrão ({template}). Digite um endereço real para comparar.",
+  "thread.publishCompare.enterPath":
+    "Digite o endereço de uma página para comparar.",
+  "thread.publishCompare.draftUnavailable":
+    "Ainda não é possível mostrar suas alterações. Use Visualizar para abri-las.",
+  "thread.publishCompare.newTitle": "Página nova",
+  "thread.publishCompare.newDescription":
+    "Esta página ainda não existe no site publicado.",
+  "thread.publishCompare.removedTitle": "Página removida",
+  "thread.publishCompare.removedDescription":
+    "Esta página deixará de existir no site.",
+  "thread.publishCompare.sideUnreadable":
+    "Esta versão não pode ser mostrada aqui.",
+  "thread.analytics.title": "Chats e automações",
+  "thread.analytics.notAdmin":
+    "A análise de chats só está disponível em uma organização administradora.",
+  "thread.analytics.tabLive": "Ao vivo",
+  "thread.analytics.tabUsage": "Uso",
+  "thread.analytics.tabErrors": "Erros",
+  "thread.analytics.statusRunning": "Em execução",
+  "thread.analytics.statusWaiting": "Aguardando",
+  "thread.analytics.statusFailed": "Falhou",
+  "thread.analytics.statusCompleted": "Concluído",
+  "thread.analytics.kindChat": "Chat",
+  "thread.analytics.kindAutomation": "Automação",
+  "thread.analytics.kindTask": "Execução de tarefa",
+  "thread.analytics.anyStatus": "Qualquer status",
+  "thread.analytics.anyKind": "Qualquer tipo",
+  "thread.analytics.liveHint": "Atualiza ao vivo",
+  "thread.analytics.countRunning": "Em execução agora",
+  "thread.analytics.countWaiting": "Aguardando uma pessoa",
+  "thread.analytics.countFailedHour": "Falhas na última hora",
+  "thread.analytics.empty": "Nenhum chat ainda.",
+  "thread.analytics.untitled": "Chat sem título",
+  "thread.analytics.colUpdated": "Atualizado",
+  "thread.analytics.colOrg": "Org",
+  "thread.analytics.colChat": "Chat",
+  "thread.analytics.colKind": "Tipo",
+  "thread.analytics.colStatus": "Status",
+  "thread.analytics.colUser": "Usuário",
+  "thread.analytics.colAgent": "Agente",
+  "thread.analytics.colCost": "Custo",
+  "thread.analytics.colTokens": "Tokens",
+  "thread.analytics.costFootnote":
+    "O custo é um piso: só turnos precificados pela OpenRouter informam USD. Confira a cobertura de custo antes de ler os totais.",
 } satisfies Record<keyof typeof threadEn, string>;

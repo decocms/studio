@@ -24,6 +24,21 @@ describe("importBodySchema", () => {
     expect(parsed.success).toBe(true);
   });
 
+  it("accepts the repository the finding was written against", () => {
+    const parsed = importBodySchema.safeParse({
+      items: [{ title: "t", repositoryId: "repo_1" }],
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it("rejects an empty repositoryId — absent and blank are not the same ask", () => {
+    expect(
+      importBodySchema.safeParse({
+        items: [{ title: "t", repositoryId: "" }],
+      }).success,
+    ).toBe(false);
+  });
+
   it("rejects an empty externalKey", () => {
     expect(
       importBodySchema.safeParse({

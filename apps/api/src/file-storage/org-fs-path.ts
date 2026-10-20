@@ -37,12 +37,6 @@ export function parentOf(path: string): string {
   return i === -1 ? "" : path.slice(0, i);
 }
 
-/** Last path segment ("" for root). */
-export function basenameOf(path: string): string {
-  const i = path.lastIndexOf("/");
-  return i === -1 ? path : path.slice(i + 1);
-}
-
 /**
  * Ancestor directories of a path, top-down, excluding the root ("") and the
  * path itself. `a/b/c.txt` → `["a", "a/b"]`.
@@ -63,6 +57,18 @@ export function ancestorsOf(path: string): string[] {
 /** Object-storage key (within the org prefix) for a volume path. */
 export function fsObjectKey(volume: string, path: string): string {
   return `${FS_KEY_NAMESPACE}/${volume}/${path}`;
+}
+
+/**
+ * The volume and path an object-storage key addresses in the org filesystem,
+ * or null for a key outside it. Normalizes like `buildS3Key`, so `x/../_fs/a`
+ * and `/_fs/a` count too; `volume` and `path` may be empty for `_fs` itself.
+ */
+export function parseOrgFsKey(
+  key: string,
+): { volume: string; path: string } | null {
+  const [first, volume = "", ...rest] = sanitizeKey(key).split("/");
+  return first === FS_KEY_NAMESPACE ? { volume, path: rest.join("/") } : null;
 }
 
 /** Storage-key prefix for an entire volume (trailing slash). */

@@ -12,7 +12,6 @@ import {
   closesOwnReview,
   delegatesToSuperAgent,
   diffTaskActivityEntries,
-  rejectsUngatedDeliveryLane,
   updatesAnyField,
 } from "./update";
 
@@ -22,22 +21,27 @@ function item(overrides: Partial<TaskBoardItem> = {}): TaskBoardItem {
     organizationId: "org_1",
     title: "Title",
     description: null,
-    status: "todo",
+    status: "triage",
     priority: "medium",
     type: "chore",
     assigneeId: null,
     assignedBy: null,
     repo: null,
+    repositoryId: null,
+    virtualMcpId: null,
+    sprintId: null,
     dueDate: null,
     sortOrder: 0,
     keySeq: 1,
     externalUrl: null,
+    previewRoutes: [],
     source: null,
     retryAttempts: 0,
     reviewCycleStartedAt: null,
     threads: [],
     tags: [],
     reviewVerdicts: [],
+    statusSince: null,
     createdBy: "user_1",
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedBy: "user_1",
@@ -53,21 +57,21 @@ describe("diffTaskActivityEntries", () => {
   });
 
   it("logs a single changed field", () => {
-    const previous = item({ status: "todo" });
+    const previous = item({ status: "triage" });
     const next = item({ status: "in_progress" });
     expect(diffTaskActivityEntries(previous, next)).toEqual([
       {
         action: "status_changed",
-        data: { from: "todo", to: "in_progress" },
+        data: { from: "triage", to: "in_progress" },
       },
     ]);
   });
 
   it("logs every field that changed in one update, in LOGGED_FIELDS order", () => {
-    const previous = item({ status: "todo", priority: "medium" });
+    const previous = item({ status: "triage", priority: "medium" });
     const next = item({ status: "in_progress", priority: "high" });
     expect(diffTaskActivityEntries(previous, next)).toEqual([
-      { action: "status_changed", data: { from: "todo", to: "in_progress" } },
+      { action: "status_changed", data: { from: "triage", to: "in_progress" } },
       { action: "priority_changed", data: { from: "medium", to: "high" } },
     ]);
   });
@@ -167,25 +171,25 @@ describe("delegatesToSuperAgent", () => {
     expect(
       delegatesToSuperAgent(
         SUPER_AGENT_ASSIGNEE_ID,
-        item({ assigneeId: null, status: "todo" }),
+        item({ assigneeId: null, status: "triage" }),
       ),
     ).toBe(true);
   });
 
-  it("re-delegates a card parked in To Do already assigned to the Super Agent", () => {
-    // A run that failed out of its retry budget returns the card to To Do
-    // WITHOUT clearing the assignee. Gating on "the assignee changed" made the
-    // Auto fix click a silent no-op and stranded the card in To Do.
+  it("re-delegates a card parked in Backlog already assigned to the Super Agent", () => {
+    // A run that failed out of its retry budget returns the card to Backlog
+    // WITHOUT clearing the assignee; gating on "the assignee changed" would
+    // make the Auto fix click a silent no-op.
     expect(
       delegatesToSuperAgent(
         SUPER_AGENT_ASSIGNEE_ID,
-        item({ assigneeId: SUPER_AGENT_ASSIGNEE_ID, status: "todo" }),
+        item({ assigneeId: SUPER_AGENT_ASSIGNEE_ID, status: "triage" }),
       ),
     ).toBe(true);
   });
 
-  it("does not re-delegate a Super Agent card outside To Do", () => {
-    for (const status of ["in_progress", "in_review", "done"] as const) {
+  it("does not re-delegate a Super Agent card outside Backlog", () => {
+    for (const status of ["in_progress", "in_review", "qa", "done"] as const) {
       expect(
         delegatesToSuperAgent(
           SUPER_AGENT_ASSIGNEE_ID,
@@ -196,7 +200,7 @@ describe("delegatesToSuperAgent", () => {
   });
 
   it("does not delegate for any other assignee, or when none was passed", () => {
-    const previous = item({ assigneeId: null, status: "todo" });
+    const previous = item({ assigneeId: null, status: "triage" });
     expect(delegatesToSuperAgent("user_2", previous)).toBe(false);
     expect(delegatesToSuperAgent(null, previous)).toBe(false);
     expect(delegatesToSuperAgent(undefined, previous)).toBe(false);
@@ -208,10 +212,8 @@ describe("delegatesToSuperAgent", () => {
 });
 
 describe("closesOwnReview", () => {
-  /** A card in the review phase, as the guard now reads it. `in_review` is the
-   *  lane a card takes AFTER its reviewer decided; while one is still working
-   *  the card reads In Progress with its cycle open (migration 190), and both
-   *  must be protected from the author's own run closing them out. */
+  /** A card in the review phase, as the guard reads it: In Review, or an In
+   *  Progress card whose cycle the previous release opened there. */
   const underReview = (
     status: TaskBoardItem["status"] = "in_review",
     reviewCycleStartedAt: string | null = null,
@@ -225,18 +227,18 @@ describe("closesOwnReview", () => {
     expect(closesOwnReview("archived", underReview(), true)).toBe(true);
   });
 
-  // Shipping yourself past review also drops the card out of the review sweep.
-  it("catches a run shipping a task under review into a delivery lane", () => {
-    expect(closesOwnReview("approved", underReview(), true)).toBe(true);
-    expect(closesOwnReview("merged", underReview(), true)).toBe(true);
-    expect(closesOwnReview("post_deploy_validation", underReview(), true)).toBe(
-      true,
-    );
+  // Moving yourself past review also drops the card out of the review sweep.
+  it("catches a run moving a task under review to any lane past review", () => {
+    for (const status of [
+      "qa",
+      "customer_approval",
+      "ready_for_deployment",
+      "post_deploy_validation",
+    ] as const) {
+      expect(closesOwnReview(status, underReview(), true)).toBe(true);
+    }
   });
 
-  // The lane alone used to answer this, and In Progress read as "not under
-  // review" — which is now exactly where a card sits while its reviewer works.
-  // The open cycle is what protects it.
   it("catches a run completing a task whose reviewer is still working", () => {
     expect(
       closesOwnReview(
@@ -264,32 +266,5 @@ describe("closesOwnReview", () => {
 
   it("has nothing to protect without a pre-update card", () => {
     expect(closesOwnReview("done", undefined, true)).toBe(false);
-  });
-});
-
-describe("rejectsUngatedDeliveryLane", () => {
-  it("refuses a direct write into a delivery lane when the flag is off", () => {
-    expect(rejectsUngatedDeliveryLane("approved", false)).toBe(true);
-    expect(rejectsUngatedDeliveryLane("merged", false)).toBe(true);
-    expect(rejectsUngatedDeliveryLane("post_deploy_validation", false)).toBe(
-      true,
-    );
-  });
-
-  it("allows it once the org runs the delivery lanes", () => {
-    expect(rejectsUngatedDeliveryLane("approved", true)).toBe(false);
-    expect(rejectsUngatedDeliveryLane("merged", true)).toBe(false);
-  });
-
-  it("leaves every other status alone regardless of the flag", () => {
-    for (const status of [
-      "todo",
-      "in_progress",
-      "in_review",
-      "done",
-    ] as const) {
-      expect(rejectsUngatedDeliveryLane(status, false)).toBe(false);
-    }
-    expect(rejectsUngatedDeliveryLane(undefined, false)).toBe(false);
   });
 });

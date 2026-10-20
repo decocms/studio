@@ -1,26 +1,22 @@
 /* eslint-disable ban-memoization/ban-memoization */
-import { marked } from "marked";
-import React, {
-  memo,
-  useCallback,
-  useContext,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { marked, type Token } from "marked";
+import React, { memo, useCallback, useContext, useMemo, useRef } from "react";
 import ReactMarkdown from "react-markdown";
-import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
+import { useCopy } from "@decocms/ui/hooks/use-copy.ts";
 import { markdownComponents as sharedMarkdownComponents } from "@decocms/ui/components/markdown.tsx";
 import { Check, Copy01 } from "@untitledui/icons";
 import { ImageLightbox } from "./image-lightbox.tsx";
+import { groupImageRuns } from "./markdown-image-runs.ts";
 import { resolveOrgFileBrowsePath } from "./org-file-ref.ts";
 import { OrgFileOpenContext } from "./org-file-open-context.tsx";
 import { useT } from "@/i18n/use-t.ts";
 import { mentionIdFromHref } from "@decocms/shared/mentions";
+import { AttachmentChip } from "@/components/markdown-editor/attachment-chip";
+import { isEditorFileUrl } from "@/components/markdown-editor/uploads";
 // @ts-ignore - correct
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism/index.js";
 
@@ -69,19 +65,6 @@ function LazyHighlighter({
       {content}
     </SyntaxHighlighter>
   );
-}
-
-// Custom hook for copy functionality - simplified version
-function useCopy() {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = useCallback(async (text: string) => {
-    await navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }, []);
-
-  return { handleCopy, copied };
 }
 
 function Table(props: React.HTMLAttributes<HTMLTableElement>) {
@@ -156,9 +139,8 @@ function MarkdownImage(props: React.ImgHTMLAttributes<HTMLImageElement>) {
   );
 }
 
-// Memoize the plugins arrays to prevent re-creating them on every render
+// No rehype-raw: it would render embedded raw HTML unsanitized (XSS).
 const remarkPluginsMemo = [remarkGfm];
-const rehypePluginsMemo = [rehypeRaw];
 
 // Extend shared markdown components with chat-specific overrides (table with CSV
 // copy, image lightbox, clickable org-file references).
@@ -279,6 +261,15 @@ function MarkdownAnchor({
       </span>
     );
   }
+  // An editor upload reads as the chip it was when attached, not a bare link.
+  if (href && isEditorFileUrl(href)) {
+    return (
+      <AttachmentChip
+        href={href}
+        name={typeof children === "string" ? children : ""}
+      />
+    );
+  }
   if (ctx && browsePath) {
     return (
       <button
@@ -354,7 +345,6 @@ const MemoizedMarkdownBlock = memo(
     return (
       <ReactMarkdown
         remarkPlugins={remarkPluginsMemo}
-        rehypePlugins={rehypePluginsMemo}
         components={animate ? animatedComponents : markdownComponents}
       >
         {content}
@@ -387,7 +377,7 @@ function CodeBlock({
           variant="ghost"
           onClick={() => handleCopy(content)}
           aria-label={t("chat.markdown.copyCode")}
-          className="text-muted-foreground hover:text-foreground rounded-lg h-8 w-8"
+          className="text-muted-foreground hover:text-foreground h-8 w-8"
         >
           {copied ? <Check size={14} /> : <Copy01 size={14} />}
         </Button>
@@ -405,16 +395,19 @@ interface MemoizedMarkdownProps {
   text: string;
   /** Fade newly streamed words in — set only for the in-progress message. */
   animate?: boolean;
+  /** Lay images that follow one another side by side, wrapping, instead of stacked. */
+  imageGallery?: boolean;
 }
 
 export const MemoizedMarkdown = ({
   id,
   text,
   animate,
+  imageGallery,
 }: MemoizedMarkdownProps) => {
   const blocks = useMemo(() => marked.lexer(text), [text]);
 
-  return blocks.map((block, index) => {
+  const renderBlock = (block: Token, index: number) => {
     if (block.type === "code") {
       return (
         <CodeBlock
@@ -432,7 +425,23 @@ export const MemoizedMarkdown = ({
         key={`${id}-block_${index}`}
       />
     );
-  });
+  };
+
+  if (!imageGallery) return blocks.map(renderBlock);
+
+  return groupImageRuns(blocks).map((run) =>
+    run.kind === "block" ? (
+      renderBlock(run.block, run.index)
+    ) : (
+      // `contents` lifts each image out of its paragraph, so all of them wrap as one row.
+      <div
+        key={`${id}-gallery_${run.index}`}
+        className="mb-2 flex flex-wrap items-start gap-2 last:mb-0 [&>p]:contents"
+      >
+        {run.images.map(renderBlock)}
+      </div>
+    ),
+  );
 };
 
 MemoizedMarkdown.displayName = "MemoizedMarkdown";

@@ -36,17 +36,22 @@ RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
 
 # `locales` + generated `en_US.UTF-8` is load-bearing: repos using
 # `embedded-postgres` refuse to init without it.
+# `openssh-client` ships the `ssh-keygen` that signs commits; git only
+# Recommends it, and this installs with --no-install-recommends.
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
-       bash ca-certificates curl git gnupg libatomic1 locales python3 \
-       python3-pip ripgrep unzip zstd \
+       bash ca-certificates curl git gnupg libatomic1 locales openssh-client \
+       python3 python3-pip ripgrep unzip zstd \
   && sed -i 's/^#\s*en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen \
   && locale-gen \
   && node --version \
   && npm --version \
   && rm -rf /var/lib/apt/lists/* \
+  # Not `-y`: that runs the installer's shell setup, which executes deno, and
+  # the arm64 build's QEMU dies on it ("Illegal instruction"). The symlink
+  # below puts deno on PATH.
   && curl -fsSL https://deno.land/install.sh \
-       | DENO_INSTALL=/opt/deno sh -s -- -y "${DENO_VERSION}" \
+       | DENO_INSTALL=/opt/deno sh -s -- --no-modify-path "${DENO_VERSION}" \
   && ln -s /opt/deno/bin/deno /usr/local/bin/deno \
   # Node 26 no longer ships Corepack in its dist.
   && (command -v corepack >/dev/null 2>&1 \
@@ -130,6 +135,44 @@ RUN apt-get update \
   && npm install -g "playwright-core@${PLAYWRIGHT_VERSION}" \
   && chromium --version
 
+# WebKit, for `qa-screenshot --engine=webkit`: Safari's engine, which Chromium
+# cannot stand in for (it re-aligns a smooth programmatic scroll to scroll-snap
+# points, WebKit does not). Playwright's own build, the revision this
+# playwright-core pins, since Debian ships no WebKit Playwright can drive.
+#
+# Headless WebKit runs the WPE MiniBrowser; the GTK one exists for headed runs,
+# which a pod with no display cannot do, so it is deleted (~120MB). The
+# packages are what the WPE bundle links against, read off its ELF NEEDED
+# entries on this Debian, plus what it loads at runtime: glib-networking for
+# TLS, GStreamer base/good/libav for <video> (libav is H.264, and Playwright
+# refuses to launch without it). Not gstreamer1.0-plugins-bad: Playwright's own
+# list asks for it, but H.264 and MSE play without it, and it costs ~100MB.
+#
+# The download runs under bun, not node: before 1.60, playwright-core hangs
+# extracting the archive on Node 24.16+ (microsoft/playwright#40724). Its host
+# check is skipped there because it would flag the GTK bundle deleted next; the
+# closing launch runs that check, so a missing library fails the build rather
+# than the first QA run.
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+       glib-networking gstreamer1.0-libav gstreamer1.0-plugins-base \
+       gstreamer1.0-plugins-good libatk-bridge2.0-0t64 libatk1.0-0t64 \
+       libavif16 libbrotli1 libdrm2 libepoxy0 libevent-2.1-7t64 libflite1 \
+       libfontconfig1 libfreetype6 libgbm1 libgcrypt20 libgles2 \
+       libglib2.0-0t64 libgpg-error0 libgstreamer-gl1.0-0 \
+       libgstreamer-plugins-bad1.0-0 libgstreamer-plugins-base1.0-0 \
+       libgstreamer1.0-0 libharfbuzz-icu0 libharfbuzz0b libicu76 \
+       libjpeg62-turbo libjxl0.11 liblcms2-2 libnghttp2-14 libopus0 \
+       libpng16-16t64 libpsl5t64 libsqlite3-0 libtasn1-6 libvpx9 \
+       libwayland-client0 libwayland-egl1 libwayland-server0 libwebp7 \
+       libwebpdemux2 libwebpmux3 libwoff1 libxkbcommon0 libxml2 libxslt1.1 \
+  && rm -rf /var/lib/apt/lists/* \
+  && PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=1 \
+       bun /usr/local/lib/node_modules/playwright-core/cli.js install webkit \
+  && rm -rf "${PLAYWRIGHT_BROWSERS_PATH}"/webkit-*/minibrowser-gtk \
+  && node -e 'require("/usr/local/lib/node_modules/playwright-core").webkit.launch().then((b) => { console.log("webkit", b.version()); return b.close(); })'
+
 # Install the typegen build produced from this exact source revision. Installing
 # from npm here would race the post-merge package release and could bake the
 # previous CLI, which does not discover the materialized endpoint file.
@@ -164,6 +207,31 @@ RUN arch="$(dpkg --print-architecture)" \
   && rm -rf "/tmp/gh_${GH_CLI_VERSION}_linux_${arch}" \
   && gh --version
 
+# `glab`, the GitLab counterpart: agents working on a GitLab-hosted repository
+# open merge requests with it, fed GITLAB_TOKEN, GITLAB_HOST and GLAB_IS_OAUTH2
+# per run by the daemon (same RunEnv, keyed off the clone URL's `oauth2`
+# userinfo). Release tarball, pinned, per-arch — same reasoning as `gh` above.
+# Keep it at 1.82.0 or later: older releases require an `oauth2_expiry_date`
+# the daemon's glab config does not carry, and fail every API call before
+# sending it.
+ARG GLAB_CLI_VERSION=1.119.0
+RUN arch="$(dpkg --print-architecture)" \
+  && curl -fsSL --retry 3 \
+       "https://gitlab.com/gitlab-org/cli/-/releases/v${GLAB_CLI_VERSION}/downloads/glab_${GLAB_CLI_VERSION}_linux_${arch}.tar.gz" \
+     | tar -xz -C /tmp \
+  && mv /tmp/bin/glab /usr/local/bin/glab \
+  && rm -rf /tmp/bin \
+  && glab --version
+# The daemon rewrites glab's config before every run, which resets the state
+# that limits the update check to once a day and the post-upgrade banner to
+# once per version. Left on, the first glab command of every run can end with
+# an update notice and the banner, pushing its own output (an MR link) out of
+# a `| tail`. Telemetry would report an agent's commands to the GitLab
+# instance as the user's own.
+ENV GLAB_CHECK_UPDATE=0 \
+    GLAB_SHOW_WHATS_NEW=0 \
+    GLAB_SEND_TELEMETRY=0
+
 # The claude-code harness: the Claude Agent SDK (a TS library) plus the `claude`
 # CLI it drives. The daemon execs the runner once per run — see
 # daemon-go/internal/dispatch/runner.go and packages/harness-runner/README.md.
@@ -178,22 +246,28 @@ RUN arch="$(dpkg --print-architecture)" \
 # optionalDependencies, so npm resolves the right arch on each leg of the
 # multi-arch build. It is deliberately NOT a dependency of the harness-runner
 # workspace — that would put 270MB into every developer's `bun install`.
-ARG CLAUDE_CODE_CLI_VERSION=2.1.220
+ARG CODEX_CLI_VERSION=0.163.0
+ARG CLAUDE_CODE_CLI_VERSION=2.1.280
 COPY --chown=sandbox:sandbox dist/harness-runner.tgz /opt/sandbox-daemon/harness-runner.tgz
 RUN npm install -g /opt/sandbox-daemon/harness-runner.tgz \
   && npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_CLI_VERSION}" \
+  && npm install -g "@openai/codex@${CODEX_CLI_VERSION}" \
+  && codex --version \
   && claude --version
 
 # Claude Code discovers skills as `<config-dir>/skills/<name>/SKILL.md`, so the
 # image's shared skills are symlinked in rather than copied. CLAUDE_CONFIG_DIR
 # keeps the whole config dir relocatable: pointing it at a persisted mount is
 # what lets a thread's session survive pod replacement, with no code change.
-ENV CLAUDE_CONFIG_DIR=/home/sandbox/.claude \
+ENV CODEX_HOME=/home/sandbox/.codex \
+    CODEX_PATH=/usr/local/bin/codex \
+    CLAUDE_CONFIG_DIR=/home/sandbox/.claude \
     CLAUDE_CODE_PATH=/usr/local/bin/claude \
     HARNESS_RUNNER_CMD=decocms-harness-runner
-RUN mkdir -p /home/sandbox/.claude \
+RUN mkdir -p /home/sandbox/.claude /home/sandbox/.codex /home/sandbox/.agents \
   && ln -s /mnt/skills/public /home/sandbox/.claude/skills \
-  && chown -R sandbox:sandbox /home/sandbox/.claude
+  && ln -s /home/sandbox/.claude/skills /home/sandbox/.agents/skills \
+  && chown -R sandbox:sandbox /home/sandbox/.claude /home/sandbox/.codex /home/sandbox/.agents
 
 ENV IS_SANDBOX=1
 USER sandbox

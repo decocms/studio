@@ -10,7 +10,6 @@ import {
   ENV_VAR_KEY_RE,
   type RuntimeEnvEntry,
   type SandboxRecord,
-  type SubmoduleCredential,
 } from "@decocms/shared/sdk";
 
 import {
@@ -30,7 +29,6 @@ export type RuntimeConfigMeta = {
     port?: string | null;
     path?: string | null;
     env?: RuntimeEnvEntry[] | null;
-    submoduleCredentials?: SubmoduleCredential[] | null;
   } | null;
 };
 
@@ -68,40 +66,6 @@ export function readValidatedRuntimeEnv(
     }
   }
   return out.length === 0 ? null : out;
-}
-
-/**
- * Defensive reader for `metadata.runtime.submoduleCredentials`. Same rationale
- * as `readValidatedRuntimeEnv`: the JSON metadata column is untrusted, so drop
- * any entry missing a string `host`/`secretId` rather than trusting the cast.
- */
-export function readValidatedSubmoduleCredentials(
-  metadata: Record<string, unknown> | null | undefined,
-): SubmoduleCredential[] | null {
-  if (!metadata) return null;
-  const runtime = (metadata as { runtime?: unknown }).runtime;
-  if (!runtime || typeof runtime !== "object") return null;
-  const creds = (runtime as { submoduleCredentials?: unknown })
-    .submoduleCredentials;
-  if (!Array.isArray(creds)) return null;
-  const out: SubmoduleCredential[] = [];
-  for (const item of creds) {
-    if (!item || typeof item !== "object") continue;
-    const c = item as Record<string, unknown>;
-    if (
-      typeof c.host === "string" &&
-      c.host.length > 0 &&
-      typeof c.secretId === "string" &&
-      c.secretId.length > 0
-    ) {
-      out.push({ host: c.host, secretId: c.secretId });
-    }
-  }
-  // An emptied list returns `[]`, not null: the daemon reads an absent field as
-  // "keep current", so collapsing "the user deleted their last row" into the
-  // same value as "never configured" makes a revoked PAT unrevokable for the
-  // pod's lifetime. Null stays reserved for "the key isn't there at all".
-  return out;
 }
 
 /**

@@ -17,6 +17,7 @@ import {
   requireOrganization,
 } from "../../core/studio-context";
 import { normalizeThreadForResponse } from "./helpers";
+import { deleteThreadSandboxes } from "../sandbox/delete";
 import { broadcastRunCancel } from "@/api/routes/decopilot/cancel-registry";
 import { cancelHostedHarness } from "@/dispatch-queue";
 import { cancelThreadGateHead } from "@/dispatch-queue/thread-gate-queue";
@@ -70,6 +71,8 @@ export const COLLECTION_THREADS_DELETE = defineTool({
     }
 
     await ctx.storage.threads.delete(input.id);
+    // Not awaited: Freestyle teardown can take a minute; a lost one idles out.
+    void deleteThreadSandboxes(ctx, thread);
 
     const userId = getUserId(ctx);
     if (userId) {

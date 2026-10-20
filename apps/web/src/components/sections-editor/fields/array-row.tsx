@@ -1,27 +1,26 @@
+import type { ReactNode } from "react";
+import { GripVertical } from "lucide-react";
+import { useNewBlocksEditor } from "@/hooks/use-new-blocks-editor";
+import { EditorRowActionsTrigger, EditorRowToggle } from "../editor-list-row";
 import {
+  ChevronDown,
+  ChevronRight,
   Copy01,
   DotsGrid,
-  DotsHorizontal,
   Eye,
   EyeOff,
   Trash01,
 } from "@untitledui/icons";
-import { Button } from "@decocms/ui/components/button.tsx";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuTrigger,
 } from "@decocms/ui/components/dropdown-menu.tsx";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@decocms/ui/components/tooltip.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useT } from "@/i18n/use-t.ts";
+import { MissingRequiredMarker } from "../missing-required-marker";
 
 // Width/margin snap instantly (no visible slide) while opacity does the
 // actual animating. On reveal the snap has no delay, so the button is
@@ -62,26 +61,42 @@ function actionButtonVisibilityClass(reserved: boolean, active: boolean) {
   );
 }
 
+/** A row with a thumbnail is as tall as the thumbnail. */
+export const ARRAY_ROW_THUMBNAIL_HEIGHT = "h-12";
+
+/** The drag handle both row shapes wear. */
+function RowGrip() {
+  const compact = useNewBlocksEditor();
+  const Icon = compact ? GripVertical : DotsGrid;
+  return <Icon className="size-3.5 shrink-0 text-muted-foreground/40" />;
+}
+
 export function ArrayRowContent({
   labelText,
   imageSrc,
+  missingRequired,
 }: {
   labelText: string;
   imageSrc?: string;
+  missingRequired?: boolean;
 }) {
   return (
     <>
-      <DotsGrid className="size-3.5 shrink-0 text-muted-foreground/40" />
+      <RowGrip />
       <div className="flex min-w-0 flex-1 items-center gap-2.5 text-sm">
         {imageSrc && (
           <img
             src={imageSrc}
             alt=""
             referrerPolicy="no-referrer"
-            className="h-12 max-w-[100px] shrink-0 rounded object-cover"
+            className={cn(
+              ARRAY_ROW_THUMBNAIL_HEIGHT,
+              "max-w-[100px] shrink-0 rounded-[var(--studio-control-radius,var(--radius))] object-cover",
+            )}
           />
         )}
         <span className="min-w-0 truncate">{labelText}</span>
+        {missingRequired && <MissingRequiredMarker className="self-start" />}
       </div>
     </>
   );
@@ -92,6 +107,9 @@ export function SortableArrayRow({
   labelText,
   imageSrc,
   hidden,
+  missingRequired,
+  expanded,
+  children,
   onToggleHidden,
   onOpen,
   onDuplicate,
@@ -101,6 +119,11 @@ export function SortableArrayRow({
   labelText: string;
   imageSrc?: string;
   hidden?: boolean;
+  missingRequired?: boolean;
+  /** Set when the row expands in place instead of drilling into the item. */
+  expanded?: boolean;
+  /** The item's editor, shown below the row while `expanded`. */
+  children?: ReactNode;
   onToggleHidden?: () => void;
   onOpen: () => void;
   onDuplicate: () => void;
@@ -120,119 +143,114 @@ export function SortableArrayRow({
     opacity: isDragging ? 0 : undefined,
   };
 
+  const Chevron = expanded ? ChevronDown : ChevronRight;
+
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      {...attributes}
-      {...listeners}
-      role="button"
-      tabIndex={0}
-      onClick={onOpen}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onOpen();
-        }
-      }}
-      className={cn(
-        "group flex min-w-0 items-center gap-2.5 rounded-lg px-2 py-2.5 hover:bg-accent hover:text-accent-foreground touch-none",
-        isDragging ? "cursor-grabbing" : "cursor-pointer",
-      )}
-      title={labelText}
-    >
-      <DotsGrid className="size-3.5 shrink-0 text-muted-foreground/40" />
-      {imageSrc && (
-        <img
-          src={imageSrc}
-          alt=""
-          referrerPolicy="no-referrer"
-          className="h-12 max-w-[100px] shrink-0 rounded object-cover"
-        />
-      )}
-      <span
+    <div ref={setNodeRef} style={style} className="min-w-0">
+      <div
+        {...attributes}
+        {...listeners}
+        role="button"
+        tabIndex={0}
+        onClick={onOpen}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onOpen();
+          }
+        }}
         className={cn(
-          "min-w-0 flex-1 truncate text-sm",
-          hidden && "line-through opacity-50",
+          "group relative flex min-w-0 items-center gap-2.5 rounded-[var(--studio-control-radius,var(--radius-lg))] px-2 py-2.5 hover:bg-accent hover:text-accent-foreground touch-none",
+          isDragging ? "cursor-grabbing" : "cursor-pointer",
         )}
+        title={labelText}
+        aria-expanded={expanded}
       >
-        {labelText}
-      </span>
-      {onToggleHidden && (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label={
-                hidden
-                  ? t("sectionsEditor.arrayField.showItem")
-                  : t("sectionsEditor.arrayField.hideItem")
-              }
-              className={cn(
-                actionButtonVisibilityClass(hidden === true, hidden === true),
-              )}
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggleHidden();
-              }}
-              onPointerDown={(e) => e.stopPropagation()}
-            >
-              {hidden ? <EyeOff size={14} /> : <Eye size={14} />}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">
-            {hidden
-              ? t("sectionsEditor.arrayField.showItem")
-              : t("sectionsEditor.arrayField.hideItem")}
-          </TooltipContent>
-        </Tooltip>
-      )}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label={t("sectionsEditor.arrayField.openActionsFor", {
+        <RowGrip />
+        {expanded !== undefined && (
+          <Chevron className="-ml-1 size-3.5 shrink-0 text-muted-foreground" />
+        )}
+        {imageSrc && (
+          <img
+            src={imageSrc}
+            alt=""
+            referrerPolicy="no-referrer"
+            className={cn(
+              ARRAY_ROW_THUMBNAIL_HEIGHT,
+              "max-w-[100px] shrink-0 rounded-[var(--studio-control-radius,var(--radius))] object-cover",
+            )}
+          />
+        )}
+        <span
+          className={cn(
+            "min-w-0 flex-1 truncate text-sm",
+            hidden && "line-through opacity-50",
+          )}
+        >
+          {labelText}
+        </span>
+        {missingRequired && (
+          <MissingRequiredMarker className="absolute -right-0.5 -top-0.5" />
+        )}
+        {onToggleHidden && (
+          <EditorRowToggle
+            label={
+              hidden
+                ? t("sectionsEditor.arrayField.showItem")
+                : t("sectionsEditor.arrayField.hideItem")
+            }
+            active={hidden === true}
+            onToggle={onToggleHidden}
+            classicClassName={actionButtonVisibilityClass(
+              hidden === true,
+              hidden === true,
+            )}
+          >
+            {hidden ? <EyeOff size={14} /> : <Eye size={14} />}
+          </EditorRowToggle>
+        )}
+        <DropdownMenu>
+          <EditorRowActionsTrigger
+            label={t("sectionsEditor.arrayField.openActionsFor", {
               label: labelText,
             })}
-            className={cn(
+            classicClassName={cn(
               actionButtonVisibilityClass(hidden === true, false),
               "data-[state=open]:ml-0 data-[state=open]:w-6 data-[state=open]:opacity-100 data-[state=open]:[transition:opacity_150ms_ease-out,width_0ms,margin-left_0ms]",
             )}
-            onClick={(e) => e.stopPropagation()}
-            onPointerDown={(e) => e.stopPropagation()}
-          >
-            <DotsHorizontal size={14} />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem
-            onClick={(e) => {
-              // Stop the click from bubbling up the React tree (portaled
-              // content still propagates to the row's onClick) and drilling
-              // into the item right after this action runs.
-              e.stopPropagation();
-              onDuplicate();
-            }}
-          >
-            <Copy01 size={14} />
-            {t("sectionsEditor.arrayField.duplicate")}
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            className="text-destructive focus:text-destructive"
-            onClick={(e) => {
-              e.stopPropagation();
-              onRemove();
-            }}
-          >
-            <Trash01 size={14} />
-            {t("sectionsEditor.arrayField.delete")}
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+          />
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem
+              onClick={(e) => {
+                // Stop the click from bubbling up the React tree (portaled
+                // content still propagates to the row's onClick) and drilling
+                // into the item right after this action runs.
+                e.stopPropagation();
+                onDuplicate();
+              }}
+            >
+              <Copy01 size={14} />
+              {t("sectionsEditor.arrayField.duplicate")}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              variant="destructive"
+              onClick={(e) => {
+                e.stopPropagation();
+                onRemove();
+              }}
+            >
+              <Trash01 size={14} />
+              {t("sectionsEditor.arrayField.delete")}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+      {expanded && children && (
+        // Outside the drag listeners so selecting text in a field never starts a drag.
+        <div className="mb-1.5 ml-[18px] mt-0.5 border-l border-border/60 py-1 pl-3 pr-1">
+          {children}
+        </div>
+      )}
     </div>
   );
 }

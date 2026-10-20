@@ -3,13 +3,22 @@
  * qa-screenshot — capture a page screenshot from inside the sandbox.
  *
  * The sandbox-hosted claude-code harness has no Decopilot `take_screenshot`
- * built-in, so this is its equivalent: headless Chromium via playwright-core,
- * both baked into the image. Unlike the hosted tool it can also reach the
- * sandbox's OWN dev server on localhost, which is the reason a browser lives
- * here at all.
+ * built-in, so this is its equivalent: headless Chromium or WebKit via
+ * playwright-core, all baked into the image. Unlike the hosted tool it can also
+ * reach the sandbox's OWN dev server on localhost, which is the reason a
+ * browser lives here at all.
  *
  * Usage:
- *   qa-screenshot <url> <outfile> [--mobile] [--full] [--selector=<css>] [--console]
+ *   qa-screenshot <url> <outfile> [--engine=chromium|webkit] [--mobile] [--full]
+ *                [--selector=<css>] [--console] [--flutter] [--label=<text>]
+ *
+ * `--engine=webkit` renders in Playwright's WebKit, the engine behind Safari.
+ * Some Safari-only bugs reproduce there and not in Chromium: WebKit does not
+ * re-align a smooth programmatic scroll to its `scroll-snap` points, so a
+ * carousel that steps with `scrollBy(clientWidth)` leaves a slide cut in half
+ * there and looks right in Chromium. It is the engine, not Safari on an iPhone
+ * or a Mac (different shell, GPU and memory limits): a pass here is evidence,
+ * not proof.
  *
  * Default framing is the top viewport. `--full` captures the whole scrollable
  * page (clipped at a height ceiling). `--selector=<css>` captures just that one
@@ -20,7 +29,18 @@
  * pick their layout from the UA server-side, so a narrowed desktop returns
  * desktop markup and a plausible but WRONG "mobile" shot. Playwright's
  * `userAgent` sets both the request header and `navigator.userAgent`, so
- * server- and client-side sniffing both see the phone.
+ * server- and client-side sniffing both see the phone. With
+ * `--engine=webkit` the phone is Playwright's own iPhone descriptor, whose
+ * shorter viewport leaves room for Safari's toolbars as a real one does.
+ *
+ * `--flutter` captures a Flutter web build. Flutter renders the entire app
+ * into ONE <canvas>: the DOM holds no text and no widgets, so a plain capture
+ * works but `--selector` matches nothing and the agent is blind-clicking
+ * pixels. This flag turns on Flutter's accessibility tree, which materializes
+ * a real `<flt-semantics>` element per widget, and prints each one's label,
+ * whether it is tappable, and its box. `--label=<text>` then frames one of
+ * them, and the printed box is where to aim a `mouse.click` to drive the app
+ * by name instead of by guessed pixel.
  *
  * `--console` also prints whatever the page logged and every uncaught error /
  * failed request, so one run answers both "how does it look" and "is it
@@ -31,13 +51,24 @@
  */
 const path = require("node:path");
 
-// playwright-core is installed globally in the image (API only — the browser is
-// Debian's `chromium` package, at QA_CHROMIUM). Resolve it from the global
-// module root rather than relative to this script.
+// playwright-core is installed globally in the image. Chromium is Debian's
+// `chromium` package, at QA_CHROMIUM; WebKit is Playwright's own build, found
+// through PLAYWRIGHT_BROWSERS_PATH. Resolve playwright-core from the global
+// module root rather than relative to this script — and lazily, so the pure
+// helpers below are requirable (and testable) off the image, where that global
+// module root does not exist.
 const GLOBAL_MODULES =
   process.env.QA_SCREENSHOT_MODULES || "/usr/local/lib/node_modules";
-const { chromium } = require(path.join(GLOBAL_MODULES, "playwright-core"));
+const playwright = () => require(path.join(GLOBAL_MODULES, "playwright-core"));
 const CHROMIUM_PATH = process.env.QA_CHROMIUM || "/usr/bin/chromium";
+
+const ENGINES = ["chromium", "webkit"];
+/** The descriptor `--mobile --engine=webkit` emulates: the same 390px width as
+ *  the Chromium phone below, so a pair of shots stays comparable. */
+const WEBKIT_PHONE = "iPhone 13";
+
+const USAGE =
+  "usage: qa-screenshot <url> <outfile> [--engine=chromium|webkit] [--mobile] [--full] [--selector=<css>] [--console] [--flutter] [--label=<text>]";
 
 const MOBILE_USER_AGENT =
   "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) " +
@@ -58,6 +89,18 @@ const MAX_IMAGE_HEIGHT = 7000;
 
 /** A page stuck in a logging loop would otherwise flood the agent's context. */
 const MAX_CONSOLE_LINES = 200;
+
+/**
+ * How long to wait for a Flutter web build to mount its semantics placeholder
+ * and then its tree. Generous because the cold path — wasm compile plus font
+ * bootstrap on a sandbox with no warm cache — is the slow one, and this only
+ * costs that long when the build genuinely never gets there.
+ */
+const FLUTTER_BOOT_TIMEOUT = 20000;
+
+/** Cap the PRINTED widget list; the full list is still what `--label` matches
+ *  against, and the count printed alongside says when it was cut. */
+const MAX_SEMANTICS_LISTED = 60;
 const DEVICES = {
   desktop: { viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 },
   mobile: {
@@ -68,6 +111,78 @@ const DEVICES = {
     userAgent: MOBILE_USER_AGENT,
   },
 };
+
+/**
+ * Read the command line into options, or into the usage error to print. Pure,
+ * so the flag handling is testable off the image.
+ */
+function parseArgs(argv) {
+  const opts = {};
+  const positional = [];
+  for (const a of argv) {
+    if (a.startsWith("--")) {
+      const [k, ...v] = a.slice(2).split("=");
+      opts[k] = v.length ? v.join("=") : true;
+    } else positional.push(a);
+  }
+  const [url, outfile] = positional;
+  if (!url || !outfile) return { error: USAGE };
+  const engine = opts.engine === undefined ? "chromium" : opts.engine;
+  if (!ENGINES.includes(engine)) {
+    return {
+      error: `--engine must be one of ${ENGINES.join(", ")}, got ${JSON.stringify(engine)}\n${USAGE}`,
+    };
+  }
+  // Flutter-only: frame one widget from the semantics tree by its text.
+  const label = typeof opts.label === "string" ? opts.label : null;
+  return {
+    url,
+    outfile,
+    engine,
+    mobile: opts.mobile === true,
+    fullPage: opts.full === true,
+    // Target a specific element (e.g. `--selector='[data-section=hero]'`) for
+    // a focused before/after of just the affected component instead of the
+    // whole page or the top viewport.
+    selector: typeof opts.selector === "string" ? opts.selector : null,
+    wantsConsole: opts.console === true,
+    label,
+    // `--label` needs the semantics tree, which only `--flutter` builds. Imply
+    // it rather than failing: without this the run reports "no semantics tree
+    // — is this a Flutter web build?" and points the agent at the build
+    // instead of at the missing flag.
+    flutter: opts.flutter === true || label !== null,
+    type: /\.jpe?g$/i.test(outfile) ? "jpeg" : "png",
+  };
+}
+
+/** The browser context to open: the shared desktop or phone framing, except a
+ *  phone in WebKit, which is Playwright's iPhone descriptor. */
+function contextOptions({ engine, mobile }, devices) {
+  if (!mobile) return DEVICES.desktop;
+  return engine === "webkit" ? devices[WEBKIT_PHONE] : DEVICES.mobile;
+}
+
+/**
+ * --no-sandbox: the container drops all capabilities, so Chromium's own setuid
+ * sandbox can't initialize; the pod is the isolation boundary here.
+ *
+ * CanvasKit needs WebGL, and a headless container has no GPU. Chromium's
+ * automatic software fallback is deprecated and already warns; opting in
+ * explicitly is what keeps a Flutter capture from going blank when that
+ * fallback is finally removed.
+ *
+ * WebKit takes neither flag: it runs Playwright's bundled build as is.
+ */
+function launchOptions({ engine, flutter }) {
+  if (engine === "webkit") return {};
+  return {
+    executablePath: CHROMIUM_PATH,
+    args: flutter
+      ? ["--no-sandbox", "--enable-unsafe-swiftshader"]
+      : ["--no-sandbox"],
+  };
+}
 
 /**
  * Scroll the whole page so lazy / IntersectionObserver-driven sections mount
@@ -98,39 +213,129 @@ async function settleLazyContent(page) {
   });
 }
 
+/**
+ * Turn on Flutter web's accessibility tree and read it back.
+ *
+ * Flutter paints into a canvas, so until semantics are enabled the DOM has
+ * nothing in it to select, assert on, or click by name. Flutter ships a hidden
+ * `flt-semantics-placeholder` button for exactly this — assistive tech clicking
+ * it is the signal to build the tree — and clicking it ourselves is the
+ * supported way in.
+ *
+ * What comes back is NOT what an aria-shaped guess expects, so this reads the
+ * DOM Flutter actually emits (verified against 3.41):
+ *   <flt-semantics id="flt-semantic-node-8" role="button" flt-tappable
+ *                  style="...; pointer-events: all; transform: matrix(...)">
+ * There is no `aria-label` — the label is textContent — and the `id` is a
+ * per-build counter, so neither an attribute selector nor an id is a stable
+ * handle. The label is. Hence `--label`, and hence reporting the box: a
+ * transparent overlay cannot be clicked through Playwright's actionability
+ * checks, so a caller aims `mouse.click` at the box instead.
+ *
+ * Leaves only: a parent's textContent is its children's concatenated, which is
+ * noise. Best-effort — a page that is not Flutter yields an empty list rather
+ * than an error, since the screenshot is still the point.
+ */
+async function readFlutterSemantics(page) {
+  // Wait for the placeholder rather than sleeping at it: a release web build
+  // boots CanvasKit/skwasm and its fonts after `load`, and on a cold sandbox
+  // that routinely outlasts any fixed pause — which would report "no semantics
+  // tree" on a perfectly good build.
+  // `attached`, not the default `visible` — the placeholder is deliberately
+  // hidden, so a visibility wait would never resolve on any build.
+  const placeholder = await page
+    .waitForSelector("flt-semantics-placeholder", {
+      state: "attached",
+      timeout: FLUTTER_BOOT_TIMEOUT,
+    })
+    .catch(() => null);
+  // No placeholder after all that is the answer: this is not a Flutter build.
+  // Returning here keeps `--flutter` on a plain page at one wait, not two.
+  if (!placeholder) return [];
+  await page
+    .evaluate(() => {
+      const el = document.querySelector("flt-semantics-placeholder");
+      if (el) el.click();
+    })
+    .catch(() => {});
+  // Then for the tree the click builds. Same reason; an empty list after this
+  // really is an empty list.
+  await page
+    .waitForFunction(
+      () => document.querySelectorAll("flt-semantics").length > 0,
+      undefined,
+      { timeout: FLUTTER_BOOT_TIMEOUT },
+    )
+    .catch(() => {});
+  return page
+    .evaluate(() =>
+      Array.from(document.querySelectorAll("flt-semantics"))
+        .filter((n) => !n.querySelector("flt-semantics"))
+        .map((n) => {
+          const r = n.getBoundingClientRect();
+          return {
+            label: (n.textContent || "").trim(),
+            tappable:
+              n.hasAttribute("flt-tappable") ||
+              n.getAttribute("role") === "button",
+            box: {
+              x: Math.round(r.x + window.scrollX),
+              y: Math.round(r.y + window.scrollY),
+              width: Math.round(r.width),
+              height: Math.round(r.height),
+            },
+          };
+        })
+        .filter((n) => n.label && n.box.width > 0 && n.box.height > 0),
+    )
+    .catch(() => []);
+}
+
+/** One widget as a line: what to pass to `--label`, and where to click it. */
+function describeNode(n) {
+  return (
+    `${n.tappable ? "[tap]" : "     "} ${JSON.stringify(n.label)} ` +
+    `@ ${n.box.x},${n.box.y} ${n.box.width}x${n.box.height}`
+  );
+}
+
+/** Exact label first, then unique case-insensitive substring. A label that
+ *  matches several widgets is an ambiguous ask, and picking one silently would
+ *  frame the wrong thing — so it reports the candidates instead. Duplicate
+ *  EXACT labels are the common case in a real app (a row of "Delete" buttons,
+ *  a tab bar, a repeated price), so they're ambiguous too. */
+function findSemanticsByLabel(nodes, label) {
+  const exact = nodes.filter((n) => n.label === label);
+  if (exact.length === 1) return { node: exact[0] };
+  if (exact.length > 1) return { ambiguous: exact };
+  const needle = label.toLowerCase();
+  const loose = nodes.filter((n) => n.label.toLowerCase().includes(needle));
+  if (loose.length === 1) return { node: loose[0] };
+  if (loose.length > 1) return { ambiguous: loose };
+  return {};
+}
+
 async function main() {
-  const args = process.argv.slice(2);
-  const opts = {};
-  const positional = [];
-  for (const a of args) {
-    if (a.startsWith("--")) {
-      const [k, ...v] = a.slice(2).split("=");
-      opts[k] = v.length ? v.join("=") : true;
-    } else positional.push(a);
-  }
-  const [url, outfile] = positional;
-  if (!url || !outfile) {
-    console.error(
-      "usage: qa-screenshot <url> <outfile> [--mobile] [--full] [--selector=<css>] [--console]",
-    );
+  const parsed = parseArgs(process.argv.slice(2));
+  if (parsed.error) {
+    console.error(parsed.error);
     process.exit(2);
   }
-  const mobile = opts.mobile === true;
-  const device = mobile ? DEVICES.mobile : DEVICES.desktop;
-  const fullPage = opts.full === true;
-  // Target a specific element (e.g. `--selector='[data-section=hero]'`) for a
-  // focused before/after of just the affected component instead of the whole
-  // page or the top viewport.
-  const selector = typeof opts.selector === "string" ? opts.selector : null;
-  const wantsConsole = opts.console === true;
-  const type = /\.jpe?g$/i.test(outfile) ? "jpeg" : "png";
-
-  // --no-sandbox: the container drops all capabilities, so Chromium's own
-  // setuid sandbox can't initialize; the pod is the isolation boundary here.
-  const browser = await chromium.launch({
-    executablePath: CHROMIUM_PATH,
-    args: ["--no-sandbox"],
-  });
+  const {
+    url,
+    outfile,
+    engine,
+    mobile,
+    fullPage,
+    selector,
+    wantsConsole,
+    label,
+    flutter,
+    type,
+  } = parsed;
+  const pw = playwright();
+  const device = contextOptions(parsed, pw.devices);
+  const browser = await pw[engine].launch(launchOptions(parsed));
   try {
     const context = await browser.newContext(device);
     const page = await context.newPage();
@@ -156,7 +361,15 @@ async function main() {
     // Give the page a beat to hydrate, then scroll through it so lazy /
     // below-the-fold sections actually mount instead of capturing as skeletons.
     await page.waitForTimeout(800);
-    await settleLazyContent(page);
+    // A canvas app has no lazy DOM sections to scroll into view and a
+    // scrollHeight that never exceeds the viewport, so the scroll pass is pure
+    // latency there. It needs the semantics tree instead.
+    let semantics = null;
+    if (flutter) {
+      semantics = await readFlutterSemantics(page);
+    } else {
+      await settleLazyContent(page);
+    }
 
     // A full-page capture taller than the ceiling is truncated rather than
     // emitted oversized — an unusable image is worse than a partial one.
@@ -168,7 +381,55 @@ async function main() {
     // 1280x800, and on a mobile context the width was wrong too). Resizing is
     // the only form that actually produces the requested pixels.
     let truncated = 0;
-    if (selector) {
+    if (label) {
+      // A semantics node is an INVISIBLE overlay — correct geometry, zero
+      // opacity, and often `pointer-events: none` — so Playwright's element
+      // screenshot refuses it: `scrollIntoViewIfNeeded` and
+      // `element.screenshot` both wait for a visibility that never arrives and
+      // time out. Clip the page to the measured box instead; the pixels wanted
+      // are the canvas underneath the overlay, which is exactly what a
+      // page-level clip captures.
+      const hit = findSemanticsByLabel(semantics ?? [], label);
+      if (hit.ambiguous) {
+        throw new Error(
+          `--label ${JSON.stringify(label)} matches ${hit.ambiguous.length} widgets:\n` +
+            hit.ambiguous.map((n) => `  ${describeNode(n)}`).join("\n") +
+            `\nPass one of those labels exactly; if they are identical, they can ` +
+            `only be told apart by position — aim mouse.click at the box you want.`,
+        );
+      }
+      if (!hit.node) {
+        // The list goes IN the error: the capture never happens, so the
+        // usual listing below it never prints, and "check the list" would
+        // point at nothing.
+        const available = (semantics ?? []).map((n) => n.label);
+        const listed = available.slice(0, MAX_SEMANTICS_LISTED);
+        throw new Error(
+          `--label ${JSON.stringify(label)} matched no widget. ` +
+            (available.length
+              ? `Available (${listed.length} of ${available.length}): ` +
+                listed.map((l) => JSON.stringify(l)).join(", ") +
+                (available.length > listed.length
+                  ? `, … ${available.length - listed.length} more.`
+                  : ".")
+              : `No semantics tree built — is this a Flutter web build?`),
+        );
+      }
+      // `fullPage: true` WITH the clip, not the clip alone: the box is in
+      // document coordinates, and Flutter builds semantics for widgets outside
+      // the viewport (a list's cacheExtent, anything below the fold). A bare
+      // clip is trimmed to the viewport — the same measured limitation the
+      // truncation branch below works around — so an off-screen widget would
+      // come back empty or partial. With `fullPage` the clip is trimmed to the
+      // document instead, which is where the box was measured.
+      await page.screenshot({
+        path: outfile,
+        type,
+        ...(type === "jpeg" ? { quality: 80 } : {}),
+        fullPage: true,
+        clip: hit.node.box,
+      });
+    } else if (selector) {
       // Just the targeted element: Playwright scrolls it into view and clips to
       // its bounding box, so `--full` and the height ceiling don't apply.
       const el = page.locator(selector).first();
@@ -201,17 +462,36 @@ async function main() {
     }
 
     const scale = `${device.viewport.width}x${device.viewport.height} @${device.deviceScaleFactor}x`;
-    const framed = selector
-      ? `element ${selector}`
-      : fullPage
+    const framed = label
+      ? `widget ${JSON.stringify(label)}`
+      : selector
+        ? `element ${selector}`
+        : fullPage
         ? "full page"
         : "viewport";
     console.log(
-      `saved ${outfile} (${mobile ? "mobile" : "desktop"} ${scale}, ${framed})` +
+      `saved ${outfile} (${engine} ${mobile ? "mobile" : "desktop"} ${scale}, ${framed})` +
         (truncated
           ? `\nNOTE: clipped — ${truncated}px of page height omitted to stay under the ${MAX_IMAGE_HEIGHT}px image limit.`
           : ""),
     );
+    if (semantics) {
+      // Empty is a real answer worth printing: it means the tree never built,
+      // so `--selector` will match nothing and the shot is all you get.
+      const shown = semantics.slice(0, MAX_SEMANTICS_LISTED);
+      console.log(
+        semantics.length
+          ? `\nflutter widgets (showing ${shown.length} of ${semantics.length}) — ` +
+              `frame one with --label=<text>, click one by aiming mouse.click at ` +
+              `its box centre:\n` +
+              shown.map((n) => `  ${describeNode(n)}`).join("\n") +
+              (semantics.length > shown.length
+                ? `\n  … ${semantics.length - shown.length} more not listed — ` +
+                  `--label still matches against all of them.`
+                : "")
+          : "\nflutter widgets: semantics tree did not build — is this a Flutter web build?",
+      );
+    }
     if (wantsConsole) {
       // "nothing" rather than silence: an empty section reads as a broken flag.
       console.log(
@@ -225,7 +505,18 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error(`qa-screenshot failed: ${err?.message ?? err}`);
-  process.exit(1);
-});
+// Only when run as a command — `require`ing this file gets the pure helpers
+// exported below without launching a browser.
+if (require.main === module) {
+  main().catch((err) => {
+    console.error(`qa-screenshot failed: ${err?.message ?? err}`);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  contextOptions,
+  findSemanticsByLabel,
+  launchOptions,
+  parseArgs,
+};

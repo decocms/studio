@@ -2,6 +2,7 @@
 
 import type * as React from "react";
 import { Command as CommandPrimitive } from "cmdk";
+import { cva, type VariantProps } from "class-variance-authority";
 
 import { cn } from "../lib/utils.ts";
 import {
@@ -43,10 +44,17 @@ function CommandDialog({
   className?: string;
   /** Overrides cmdk's default fuzzy scorer (e.g. a stricter substring match). */
   filter?: React.ComponentProps<typeof CommandPrimitive>["filter"];
-  /** `false` when the LIST is already the answer — a server-side search whose
-   *  rows cmdk cannot score, because the text that matched (a task key, a
-   *  message body) is not in the item's `value`. Without it cmdk scores those
-   *  rows 0 and unmounts them, and a found result renders as "No results". */
+  /** `false` when EVERY row is already the answer — a dialog that renders a
+   *  server-side search and nothing else, whose rows cmdk cannot score because
+   *  the text that matched (a task key, a message body) is not in the item's
+   *  `value`.
+   *
+   *  Not for a dialog that MIXES server rows with local ones (destinations,
+   *  actions, a project list). This switch is list-wide, so turning it off to
+   *  save the server rows also stops the local ones from filtering, and every
+   *  one of them stays on screen no matter what is typed. Leave it on there
+   *  and give each server row `keywords={[searchTerm]}` instead — see
+   *  `command-filter.test.ts` and `command-palette.tsx`. */
   shouldFilter?: React.ComponentProps<typeof CommandPrimitive>["shouldFilter"];
 }) {
   return (
@@ -71,24 +79,55 @@ function CommandDialog({
   );
 }
 
+/** `sm` is for the input of a Command used as a MENU rather than as a palette:
+ *  a shorter field, so a field picker does not read like ⌘K. */
+type CommandSize = "default" | "sm";
+
 function CommandInput({
   className,
+  size = "default",
+  variant = "underline",
+  action,
   ...props
-}: React.ComponentProps<typeof CommandPrimitive.Input>) {
+}: Omit<React.ComponentProps<typeof CommandPrimitive.Input>, "size"> & {
+  /** Shadows the HTML `size` attribute, which a search input has no use for. */
+  size?: CommandSize;
+  /**
+   * `underline` — the palette's search row, divided from its results by a rule.
+   * `boxed` — a standalone field that reads as an input, for a picker whose
+   * list is a separate block below it rather than the same surface.
+   */
+  variant?: "underline" | "boxed";
+  /** Trailing control on the search row, e.g. a way out to a fuller picker. */
+  action?: React.ReactNode;
+}) {
+  const height = size === "sm" ? "h-9" : "h-10";
+  const boxed = variant === "boxed";
   return (
     <div
       data-slot="command-input-wrapper"
-      className="flex h-10 items-center gap-2 border-b px-3"
+      data-variant={variant}
+      className={cn(
+        "flex items-center gap-2 px-3",
+        height,
+        boxed
+          ? "rounded-xl border border-input bg-transparent focus-within:border-ring"
+          : "border-b",
+      )}
     >
-      <SearchMd className="size-4 shrink-0 text-muted-foreground" />
+      {/* The boxed field carries its own frame, so the magnifier would be a
+          second thing saying "type here". */}
+      {!boxed && <SearchMd className="size-4 shrink-0 text-muted-foreground" />}
       <CommandPrimitive.Input
         data-slot="command-input"
         className={cn(
-          "placeholder:text-muted-foreground flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-hidden disabled:cursor-not-allowed disabled:opacity-50",
+          "placeholder:text-muted-foreground flex w-full rounded-md bg-transparent text-sm outline-hidden disabled:cursor-not-allowed disabled:opacity-50",
+          height,
           className,
         )}
         {...props}
       />
+      {action}
     </div>
   );
 }
@@ -150,17 +189,41 @@ function CommandSeparator({
   );
 }
 
+/** The menu-row recipe, exported so a row OUTSIDE a `Command` is the same row. */
+const commandItemVariants = cva(
+  // `min-h-8` is a stated control height, not one derived from font metrics, and
+  // a row whose content wraps still grows past it.
+  "[&_svg:not([class*='text-'])]:text-muted-foreground relative flex min-h-8 cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  {
+    variants: {
+      highlight: {
+        // cmdk owns the highlight inside a list, marking the row it has selected.
+        selected:
+          "data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground",
+        // A standalone row answers to the pointer instead, and must span its panel.
+        hover: "w-full hover:bg-accent hover:text-accent-foreground",
+      },
+      size: {
+        // A palette row, dense because the list is long.
+        default: "",
+        // A chooser row, where the list IS the page.
+        lg: "min-h-11 gap-3 rounded-lg px-2.5 py-2",
+      },
+    },
+    defaultVariants: { highlight: "selected", size: "default" },
+  },
+);
+
 function CommandItem({
   className,
+  size,
   ...props
-}: React.ComponentProps<typeof CommandPrimitive.Item>) {
+}: React.ComponentProps<typeof CommandPrimitive.Item> &
+  Pick<VariantProps<typeof commandItemVariants>, "size">) {
   return (
     <CommandPrimitive.Item
       data-slot="command-item"
-      className={cn(
-        "data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg:not([class*='text-'])]:text-muted-foreground relative flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
-        className,
-      )}
+      className={cn(commandItemVariants({ size }), className)}
       {...props}
     />
   );
@@ -184,6 +247,7 @@ function CommandShortcut({
 
 export {
   Command,
+  commandItemVariants,
   CommandDialog,
   CommandEmpty,
   CommandGroup,

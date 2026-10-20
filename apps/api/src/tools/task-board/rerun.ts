@@ -44,6 +44,7 @@ import {
   SUPER_AGENT_ASSIGNEE_ID,
 } from "@decocms/shared/task-board";
 import { TERMINAL_THREAD_STATUSES } from "@/storage/task-board";
+import type { TaskBoardItem } from "@/storage/types";
 import { inReviewPhase } from "./lanes";
 import { broadcastRunCancel } from "@/api/routes/decopilot/cancel-registry";
 import { cancelHostedHarness } from "@/dispatch-queue";
@@ -51,7 +52,7 @@ import { cancelThreadGateHead } from "@/dispatch-queue/thread-gate-queue";
 import { cancelThreadBackgroundJobs } from "@/harnesses/decopilot/background-tool-workflow";
 import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated } from "./run-reactions";
-import { enqueueSuperAgentForTask } from "./enqueue-super-agent";
+import { fireImplementer } from "@/automations/fire-implementer";
 import { allEnabledReviewersVerifiedApproved } from "./merge-pr";
 import { fetchPrConflict, pickActivePr } from "./prs-get";
 import { conflictResolutionCapReached } from "./conflict-reaction";
@@ -283,6 +284,43 @@ export async function refuseIfMergePending(
   );
 }
 
+/**
+ * Take over `item`: fail every run still holding it open, so the fresh run
+ * about to be queued is the only one working it.
+ *
+ * `failIfNotTerminal` rather than `markRunFailed` because a `requires_action`
+ * thread has to be closed out too — it is non-terminal to
+ * `shouldAdvanceToReview`, so leaving one behind means this task can never
+ * auto-advance again however many later runs succeed. Still a conditional
+ * UPDATE, so a thread that settles in the gap between the caller's read and
+ * this write keeps its real terminal state (and is then absent from the
+ * returned list).
+ *
+ * Shared with an automation's run on a Jira issue (`automations/jira-run.ts`),
+ * which is the same act on an issue's anchor item and has the same
+ * two-agents-one-task hazard `stopSupersededRun` documents.
+ *
+ * Returns the threads this call really took over.
+ */
+export async function supersedeLiveRuns(
+  ctx: StudioContext,
+  item: TaskBoardItem,
+): Promise<string[]> {
+  const supersededThreadIds: string[] = [];
+  for (const threadId of threadsToSupersede(item)) {
+    const marked = await ctx.storage.threads.failIfNotTerminal(
+      threadId,
+      SUPERSEDED_FAILURE_REASON,
+      "superseded",
+    );
+    if (!marked) continue;
+    supersededThreadIds.push(threadId);
+    // Skipped for a thread that settled on its own: it would stamp over a real terminal.
+    await stopSupersededRun(ctx, threadId, item.organizationId);
+  }
+  return supersededThreadIds;
+}
+
 export const TASK_BOARD_ITEM_RERUN = defineTool({
   name: "TASK_BOARD_ITEM_RERUN",
   description:
@@ -344,34 +382,14 @@ export const TASK_BOARD_ITEM_RERUN = defineTool({
     // Paywall before any write: a refused re-run must leave the card untouched.
     await ensureTaskExecutionAllowed(ctx, item, userInitiatedTaskQuotaConfig());
 
-    // Take over: fail every thread still holding the task open. `failIfNotTerminal`
-    // rather than `markRunFailed` because a `requires_action` thread has to be
-    // closed out too — it is non-terminal to `shouldAdvanceToReview`, so leaving
-    // one behind means this task can never auto-advance again however many later
-    // runs succeed. Still a conditional UPDATE, so a thread that settles in the
-    // gap between the read above and this write keeps its real terminal state
-    // (and is then absent from the returned list).
-    const supersededThreadIds: string[] = [];
-    for (const threadId of threadsToSupersede(item)) {
-      const marked = await ctx.storage.threads.failIfNotTerminal(
-        threadId,
-        SUPERSEDED_FAILURE_REASON,
-        "superseded",
-      );
-      if (!marked) continue;
-      supersededThreadIds.push(threadId);
-      // Only for a thread this call really took over: a run that settled on its
-      // own in the gap above is already finished, and cancelling it would stamp
-      // a cancel over a real terminal.
-      await stopSupersededRun(ctx, threadId, organizationId);
-    }
+    const supersededThreadIds = await supersedeLiveRuns(ctx, item);
 
     // Whatever a reviewer decided was about the pre-rerun work — same reasoning as `reopenLinkedTasksOnThreadRun`.
     await ctx.storage.taskBoard.closeReviewCycle(id, organizationId);
 
     // In Progress before dispatch, so the card reads as running the moment the
     // board refreshes rather than sitting in its old lane until the run's first
-    // chunk lands. `enqueueSuperAgentForTask` claims quota itself (idempotent
+    // chunk lands. the Implementer's run claims quota itself (idempotent
     // per task, and exempt from `maxRunsPerTask`) and throws
     // `TaskQuotaError` on an empty period bucket — which must surface, so NOT
     // best-effort: a swallowed failure here is exactly the silent no-op this
@@ -394,7 +412,7 @@ export const TASK_BOARD_ITEM_RERUN = defineTool({
     });
     emitTaskBoardUpdated(organizationId, updated);
 
-    await enqueueSuperAgentForTask(ctx, updated, { userInitiated: true });
+    await fireImplementer(ctx, updated, { userInitiated: true });
 
     return { status: updated.status, supersededThreadIds };
   },

@@ -2,15 +2,13 @@
  * The thread list's data + actions, independent of where it renders.
  *
  * The chat panel's threads menu (ThreadsMenu) consumes this: filters,
- * archive/reclaim flow and new-thread semantics live here once, and the surface
+ * archive flow and new-thread semantics live here once, and the surface
  * only owns its layout.
  */
 
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { toast } from "sonner";
 import { useLocalStorage } from "@/hooks/use-local-storage";
-import { useT } from "@/i18n/use-t.ts";
 import { getWellKnownDecopilotVirtualMCP, useProjectContext } from "@/sdk";
 import { authClient } from "@/lib/auth-client";
 import { useThreadActions, useThreads } from "@/components/chat/store/hooks";
@@ -25,20 +23,12 @@ import type { Task } from "@/components/chat/task/types";
 import { findReusableNewChat } from "@/lib/reusable-new-chat";
 import { hideAbandonedNewChats } from "@/lib/thread-list-visibility";
 import { useProjectDefaultRuntime } from "@/sdk/project-default-runtime";
+import { useSandboxOnlyChats } from "@/hooks/use-organization-settings";
 import { forgetThreadLayout } from "@/lib/thread-layout-memory";
-import { useStudioTools } from "@/lib/studio-tools";
-import { isDesktopAppEnvironment } from "@/hooks/use-is-desktop-app";
 import { GlobalSearchDialog } from "@/layouts/tasks-panel/global-search-dialog";
-import { ArchiveWorktreeDialog } from "./archive-worktree-dialog";
 import { findArchiveFallback } from "./archive-fallback";
 import { MyThreadsSection } from "./my-threads-section";
 import type { SidebarFilters, SidebarTypeFilter } from "./next-page-offset";
-import {
-  archiveConfirmSteps,
-  hasOpenSiblingOnBranch,
-  worktreeReclaimTarget,
-  type WorktreeReclaimTarget,
-} from "./worktree-reclaim";
 
 export type ThreadGroupBy = "flat" | "status";
 
@@ -62,11 +52,6 @@ export interface ThreadsPanel {
   archiveTask: (task: Task) => void;
   newThread: () => void;
   openSearch: () => void;
-  /**
-   * The pending worktree-reclaim confirm, or null. Render it in every layout
-   * branch so a collapse or viewport change can't silently dismiss it.
-   */
-  reclaimDialog: React.ReactNode;
   /** The global search dialog, mounted once `openSearch` has fired at least once. */
   searchDialog: React.ReactNode;
 }
@@ -95,12 +80,12 @@ export function useThreadsPanel({
 }: {
   onNavigate?: () => void;
 } = {}): ThreadsPanel {
-  const t = useT();
   const { data: session } = authClient.useSession();
   const currentUserId = session?.user?.id;
   const { org } = useProjectContext();
   const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
   const projectDefaultRuntime = useProjectDefaultRuntime();
+  const sandboxOnlyChats = useSandboxOnlyChats();
 
   const {
     threads: allThreads,
@@ -112,7 +97,6 @@ export function useThreadsPanel({
   const { hide, setScope } = useThreadActions();
 
   const navigate = useNavigate();
-  const studio = useStudioTools();
   const { setTaskId, createNewTask } = usePanelActions();
   const routeAgentId = useRouteAgentId();
   /** Route-aware: `$taskId` on the legacy route, `?thread=` on a destination. */
@@ -149,16 +133,6 @@ export function useThreadsPanel({
     setSearchEverOpened(true);
     setSearchOpen(true);
   };
-  /**
-   * Desktop only: the pending "archive the last chat on this branch and delete
-   * its worktree?" confirm. Non-null ⇒ the dialog is up and the archive has NOT
-   * happened yet.
-   */
-  const [reclaimPrompt, setReclaimPrompt] = useState<{
-    task: Task;
-    target: WorktreeReclaimTarget;
-  } | null>(null);
-
   /**
    * Drives the per-status / per-group server pagination (status mode), where
    * `member: "mine"` scopes the query to the current user.
@@ -215,20 +189,18 @@ export function useThreadsPanel({
   );
 
   /**
-   * The archive itself. Nothing here runs until the reclaim confirm (if any)
-   * has been answered — cancel must perform NONE of it.
-   *
-   * Resolves once the archive has actually landed on the server. Navigation
-   * stays optimistic; only the returned promise reflects the write, and it
-   * rejects (restoring the row) if the server refused — which is what the
-   * worktree-reclaim path must wait on before deleting anything.
+   * Archiving hides a thread org-wide, so it is owner-only. Navigation stays
+   * optimistic; the hide rejects (restoring the row) if the server refused.
    */
-  const archiveNow = (task: Task): Promise<void> => {
+  const archiveTask = (task: Task) => {
+    if (currentUserId && task.created_by && task.created_by !== currentUserId) {
+      return;
+    }
     const wasActive = task.id === activeTaskId;
-    const archived = hide(task.id);
+    void hide(task.id);
     // Forget the layout so it can't resurface if the id is ever reused.
     forgetThreadLayout(task.id);
-    if (!wasActive) return archived;
+    if (!wasActive) return;
     const next = findArchiveFallback(
       visibleScopedThreads,
       task.id,
@@ -240,71 +212,6 @@ export function useThreadsPanel({
     } else {
       navigate({ to: "/$org", params: { org: org.slug } });
     }
-    return archived;
-  };
-
-  const reclaimWorktree = async (target: WorktreeReclaimTarget) => {
-    try {
-      await studio.call("SANDBOX_DELETE", {
-        virtualMcpId: target.virtualMcpId,
-        branch: target.branch,
-        removeWorktree: true,
-      });
-    } catch {
-      // A failed reclaim is a recoverable disk leak, not a broken UI state.
-      toast.error(
-        t("sidebar.archiveWorktreeDialog.reclaimFailed", {
-          branch: target.branch,
-        }),
-      );
-    }
-  };
-
-  /**
-   * Archiving hides a thread org-wide, so it is owner-only. When the thread
-   * holds the last worktree on its branch, the destructive reclaim is confirmed
-   * first; otherwise the archive is fire-and-forget.
-   *
-   * `allThreads` is authoritative here, not a sample: on the desktop the thread
-   * list is answered in full by the local intercept (see `list()` in
-   * `intercept::thread_tools`) and kept live by SSE, which is what lets this
-   * stay a synchronous local decision with no query behind it.
-   */
-  const archiveTask = (task: Task) => {
-    if (currentUserId && task.created_by && task.created_by !== currentUserId) {
-      return;
-    }
-    const target = worktreeReclaimTarget(task, isDesktopAppEnvironment());
-    if (!target || hasOpenSiblingOnBranch(allThreads, target)) {
-      void archiveNow(task);
-      return;
-    }
-    setReclaimPrompt({ task, target });
-  };
-
-  /**
-   * Archive first, then reclaim — and only if the archive actually landed. A
-   * failed reclaim leaves an archived thread and a live worktree (recoverable);
-   * the reverse would leave a visible chat whose worktree is gone, so a rejected
-   * archive must abort the sequence before anything is deleted.
-   */
-  const handleReclaimOutcome = (outcome: "cancel" | "confirm") => {
-    const prompt = reclaimPrompt;
-    if (!prompt) return;
-    setReclaimPrompt(null);
-    void (async () => {
-      for (const step of archiveConfirmSteps(outcome)) {
-        if (step === "archive") {
-          try {
-            await archiveNow(prompt.task);
-          } catch {
-            return;
-          }
-        } else {
-          await reclaimWorktree(prompt.target);
-        }
-      }
-    })();
   };
 
   const selectTask = (task: Task) => {
@@ -327,8 +234,11 @@ export function useThreadsPanel({
       setTaskId(existing.id, existing.virtual_mcp_id);
       return;
     }
-    const currentBranch =
-      allThreads.find((thread) => thread.id === activeTaskId)?.branch ?? null;
+    // Sandbox-only chats get one sandbox each, so a new chat never inherits one.
+    const currentBranch = sandboxOnlyChats
+      ? null
+      : (allThreads.find((thread) => thread.id === activeTaskId)?.branch ??
+        null);
     createNewTask(currentAgentId, currentBranch);
   };
 
@@ -350,12 +260,6 @@ export function useThreadsPanel({
     archiveTask,
     newThread,
     openSearch,
-    reclaimDialog: reclaimPrompt ? (
-      <ArchiveWorktreeDialog
-        branch={reclaimPrompt.target.branch}
-        onOutcome={handleReclaimOutcome}
-      />
-    ) : null,
     searchDialog: searchEverOpened ? (
       <GlobalSearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
     ) : null,

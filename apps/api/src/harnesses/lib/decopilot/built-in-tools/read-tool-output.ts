@@ -110,6 +110,40 @@ export function createReadToolOutputTool(params: ReadToolOutputParams) {
     },
   });
 }
+/**
+ * Cap one tool result at `MAX_RESULT_TOKENS` before it reaches the model.
+ *
+ * Returns the replacement the model should see, or null when the output is
+ * small enough to pass through untouched. The full value is stashed under
+ * `toolCallId` so `read_tool_output` can grep it back.
+ *
+ * Every tool a run exposes needs this, not just the MCP ones. The Super Agent's
+ * built-ins had no cap at all, so a single `TASK_BOARD_ITEM_LIST` on a busy org
+ * put 1.4 MB — ~360k tokens, 88% of it linked-thread records and card
+ * descriptions — straight into the context window in one call.
+ */
+export function truncateForModel(
+  value: unknown,
+  toolCallId: string,
+  toolOutputMap: Map<string, string>,
+): { type: "text"; value: string } | null {
+  const tokens = estimateJsonTokens(value);
+  if (tokens <= MAX_RESULT_TOKENS) return null;
+  let raw: string;
+  try {
+    raw = JSON.stringify(value, null, 2);
+  } catch {
+    raw = String(value);
+  }
+  toolOutputMap.set(toolCallId, raw);
+  return {
+    type: "text",
+    value:
+      `Tool call ${toolCallId} output is too long to display (${tokens} tokens), ` +
+      `use the read_tool_output tool.\n\nPreview:\n${createOutputPreview(raw)}`,
+  };
+}
+
 /** Maximum tokens for the full result returned to the model */
 export const MAX_RESULT_TOKENS = 32_000;
 

@@ -26,7 +26,7 @@ function joinText(doc: unknown): string {
 
 describe("derivePartsFromTiptapDoc — skill mentions", () => {
   const meta = {
-    sandboxPath: "org/public/core/seo-audit",
+    sandboxPath: "/app/org/public/core/seo-audit",
     files: [
       { relPath: "SKILL.md", content: "# SEO Audit\nCheck titles." },
       { relPath: "references/style.md", content: "Use sentence case." },
@@ -62,7 +62,7 @@ describe("derivePartsFromTiptapDoc — skill mentions", () => {
         },
       }),
     );
-    expect(text).toContain("Other files in `org/public/core/seo-audit/`:");
+    expect(text).toContain("Other files in `/app/org/public/core/seo-audit/`:");
     expect(text).toContain("scripts/audit.py");
     expect(text).toContain("assets/logo.png");
   });
@@ -231,5 +231,51 @@ describe("derivePartsFromTiptapDoc — malformed mention metadata", () => {
       ],
     };
     expect(() => joinText(doc)).not.toThrow();
+  });
+});
+
+// A block boundary is the only newline a tiptap doc has — without putting one
+// back, a two-paragraph message reached the model as a single run-on line, and
+// a markdown heading fused to the line above it.
+describe("derivePartsFromTiptapDoc — block boundaries", () => {
+  const para = (text?: string) => ({
+    type: "paragraph",
+    ...(text === undefined ? {} : { content: [{ type: "text", text }] }),
+  });
+
+  test("each paragraph is its own line", () => {
+    expect(joinText({ type: "doc", content: [para("one"), para("two")] })).toBe(
+      "one\ntwo",
+    );
+  });
+
+  test("an empty paragraph is the blank line between two others", () => {
+    expect(
+      joinText({ type: "doc", content: [para("a"), para(), para("b")] }),
+    ).toBe("a\n\nb");
+  });
+
+  test("a single paragraph is untouched", () => {
+    expect(joinText({ type: "doc", content: [para("just one")] })).toBe(
+      "just one",
+    );
+  });
+
+  test("a hard break is a newline", () => {
+    expect(
+      joinText({
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              { type: "text", text: "a" },
+              { type: "hardBreak" },
+              { type: "text", text: "b" },
+            ],
+          },
+        ],
+      }),
+    ).toBe("a\nb");
   });
 });

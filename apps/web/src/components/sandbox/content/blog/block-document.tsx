@@ -14,17 +14,54 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
+import { Plus } from "@untitledui/icons";
 import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
-import type { PreviewProxyRef } from "@/components/sections-editor/preview-fetch-url";
-import { discoverBlogBlockTypes } from "./blog-data";
-import { InsertBlockDivider } from "./block-picker";
+import type { SandboxConfig } from "@/components/sections-editor/fields/field-props";
+import type { ReferencedBlockSaveFn } from "@/components/sections-editor/save-referenced-block";
+import { useT } from "@/i18n/use-t.ts";
+import { useHideDefaultBlogBlocks } from "@/hooks/use-hide-default-blog-blocks";
+import { type BlogBlockType, discoverBlogBlockTypes } from "./blog-data";
+import { BlockPicker } from "./block-picker";
 import { BlockRow } from "./blocks/block-row";
 import { type RawBlock } from "./blocks/block-registry";
-
-type BlockItem = { id: string; block: RawBlock };
+import {
+  reseedBlockItems,
+  seedBlockItems,
+  uid,
+  type BlockItem,
+} from "./block-items";
 
 export function asBlocks(value: unknown): RawBlock[] {
   return Array.isArray(value) ? (value as RawBlock[]) : [];
+}
+
+/**
+ * A slim insert affordance in the gap between two blocks: invisible until the
+ * gap is hovered, then a hairline with a centered ⊕ fades in. Inserts at this
+ * position, so the ⊕ lives between blocks, not attached to one.
+ */
+function InsertBetween({
+  blockTypes,
+  onInsert,
+}: {
+  blockTypes: BlogBlockType[];
+  onInsert: (resolveType: string) => void;
+}) {
+  const t = useT();
+  return (
+    <BlockPicker blockTypes={blockTypes} onInsert={onInsert} align="center">
+      <button
+        type="button"
+        aria-label={t("sandbox.blockPicker.insertBlockButton")}
+        className="group/ins relative flex h-2.5 w-full items-center justify-center opacity-0 transition-opacity hover:opacity-100 cursor-pointer"
+      >
+        <span className="absolute inset-x-10 top-1/2 h-px -translate-y-1/2 bg-primary/30" />
+        <span className="relative z-10 flex h-5 w-5 items-center justify-center rounded-lg border bg-background text-muted-foreground">
+          <Plus size={12} />
+        </span>
+      </button>
+    </BlockPicker>
+  );
 }
 
 /**
@@ -37,26 +74,40 @@ export function BlockDocument({
   value,
   onChange,
   meta,
+  decofile,
   sandboxRef,
-  emptyMessage = "No content yet. Use ⊕ to add your first block.",
+  previewBaseUrl,
+  onSaveReferencedBlock,
+  emptyMessage = "No content yet. Add your first block below.",
 }: {
   value: RawBlock[];
   onChange: (next: RawBlock[]) => void;
   meta: LiveMeta;
-  /** Running sandbox coords — enables the VTEX product picker in blocks. */
-  sandboxRef?: PreviewProxyRef | null;
+  /** The site's blocks — enables linking to another post from rich text. */
+  decofile?: Record<string, unknown>;
+  /**
+   * Running sandbox coords — enables the VTEX product picker in blocks, and
+   * the uploads, icon picker and `@options` loaders in the generic editor.
+   */
+  sandboxRef?: SandboxConfig | null;
+  /** Section previews in the generic editor's array fields. */
+  previewBaseUrl?: string | null;
+  /** Where the generic editor persists edits to a field pointing at a saved block. */
+  onSaveReferencedBlock?: ReferencedBlockSaveFn;
   emptyMessage?: string;
 }) {
-  const blockTypes = discoverBlogBlockTypes(meta);
+  const t = useT();
+  const hideDefaults = useHideDefaultBlogBlocks();
+  const blockTypes = discoverBlogBlockTypes(meta, { hideDefaults });
 
   const [blockItems, setBlockItems] = useState<BlockItem[]>(() =>
-    value.map((blk) => ({ id: uid(), block: blk })),
+    seedBlockItems(value),
   );
   // Re-seed when `value` changes for a reason other than our own onChange echo.
   const [lastEmitted, setLastEmitted] = useState(value);
   if (value !== lastEmitted) {
     setLastEmitted(value);
-    setBlockItems(value.map((blk) => ({ id: uid(), block: blk })));
+    setBlockItems(reseedBlockItems(blockItems, value));
   }
 
   const ids = blockItems.map((x) => x.id);
@@ -119,24 +170,18 @@ export function BlockDocument({
 
   return (
     <div className="mt-2">
-      {blocks.length === 0 && (
-        <p className="py-6 text-center text-sm text-muted-foreground">
-          {emptyMessage}
-        </p>
-      )}
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
         onDragEnd={handleDragEnd}
       >
         <SortableContext items={ids} strategy={verticalListSortingStrategy}>
-          <InsertBlockDivider
-            blockTypes={blockTypes}
-            onInsert={(rt) => insertAt(0, rt)}
-            alwaysShow={blocks.length === 0}
-          />
           {blockItems.map(({ id, block: blk }, index) => (
             <div key={id}>
+              <InsertBetween
+                blockTypes={blockTypes}
+                onInsert={(rt) => insertAt(index, rt)}
+              />
               <BlockRow
                 id={id}
                 block={blk}
@@ -144,20 +189,34 @@ export function BlockDocument({
                 onChange={(v) => updateAt(index, v)}
                 onDelete={() => removeAt(index)}
                 onDuplicate={() => duplicateAt(index)}
+                decofile={decofile}
                 sandboxRef={sandboxRef}
-              />
-              <InsertBlockDivider
-                blockTypes={blockTypes}
-                onInsert={(rt) => insertAt(index + 1, rt)}
+                previewBaseUrl={previewBaseUrl}
+                onSaveReferencedBlock={onSaveReferencedBlock}
               />
             </div>
           ))}
         </SortableContext>
       </DndContext>
+
+      {blocks.length === 0 && (
+        <p className="px-3 pb-1 pt-2 text-sm text-muted-foreground">
+          {emptyMessage}
+        </p>
+      )}
+
+      <BlockPicker
+        blockTypes={blockTypes}
+        onInsert={(rt) => insertAt(blockItems.length, rt)}
+      >
+        <button
+          type="button"
+          className="mt-1 flex w-full items-center gap-2 rounded-md py-2 pl-14 pr-2 text-sm text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground cursor-pointer"
+        >
+          <Plus size={16} />
+          {t("sandbox.blockDocument.addBlock")}
+        </button>
+      </BlockPicker>
     </div>
   );
-}
-
-function uid(): string {
-  return crypto.randomUUID();
 }

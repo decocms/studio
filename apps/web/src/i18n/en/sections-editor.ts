@@ -3,6 +3,9 @@ export const sectionsEditor = {
   "sectionsEditor.addSectionModal.searchPlaceholder": "Search sections...",
   "sectionsEditor.addSectionModal.title": "Add section",
   "sectionsEditor.anyOfField.configuration": "Configuration",
+  "sectionsEditor.anyOfField.noSectionsFound": "No sections found.",
+  "sectionsEditor.anyOfField.searchSections": "Search sections…",
+  "sectionsEditor.anyOfField.browseSections": "Browse all sections",
   "sectionsEditor.anyOfField.detach": "Detach",
   "sectionsEditor.anyOfField.global": "Global",
   "sectionsEditor.anyOfField.globalBlockSaved": 'Saved global block "{name}"',
@@ -17,6 +20,8 @@ export const sectionsEditor = {
   "sectionsEditor.arrayField.delete": "Delete",
   "sectionsEditor.arrayField.duplicate": "Duplicate",
   "sectionsEditor.arrayField.hideItem": "Hide item",
+  "sectionsEditor.arrayField.layoutDrill": "Open one item at a time",
+  "sectionsEditor.arrayField.layoutInline": "Edit items in the list",
   "sectionsEditor.arrayField.openActionsFor": "Open actions for {label}",
   "sectionsEditor.arrayField.sectionPickerNotAvailable":
     "Section picker is not available in this editor.",
@@ -42,6 +47,12 @@ export const sectionsEditor = {
   "sectionsEditor.dynamicOptionsField.useValue": 'Use "{value}"',
   "sectionsEditor.enumField.selectPlaceholder": "Select...",
   "sectionsEditor.enumField.clearOption": "None",
+  "sectionsEditor.formatMatcher.dateRange": "From {start} to {end}",
+  "sectionsEditor.formatMatcher.fromDate": "Starts on {date}",
+  "sectionsEditor.formatMatcher.untilDate": "Ends on {date}",
+  "sectionsEditor.field.missingRequired": "Missing a required field",
+  "sectionsEditor.field.missingRequiredTooltip":
+    "Required field not filled in.",
   "sectionsEditor.fileField.browseButton": "Browse",
   "sectionsEditor.fileField.dropFileHint": "Drop a file or click to browse",
   "sectionsEditor.fileField.dropToUpload": "Drop to upload",
@@ -62,6 +73,12 @@ export const sectionsEditor = {
   "sectionsEditor.imageField.dropImageOrClickToBrowse":
     "Drop an image or click to browse",
   "sectionsEditor.imageField.dropToUpload": "Drop to upload",
+  "sectionsEditor.imageField.desktopSlot": "Desktop image",
+  "sectionsEditor.imageField.dropMobileImage":
+    "Drop the mobile image or click to browse",
+  "sectionsEditor.imageField.mobileSlot": "Mobile image (below 768px)",
+  "sectionsEditor.imageField.mobileUrlLabel": "Mobile URL",
+  "sectionsEditor.imageField.urlLabel": "URL",
   "sectionsEditor.imageField.onlyImageFilesAccepted":
     "Only image files are accepted here.",
   "sectionsEditor.imageField.previewUnavailable": "Preview unavailable",
@@ -69,6 +86,8 @@ export const sectionsEditor = {
   "sectionsEditor.imageField.replaceImage": "Replace image",
   "sectionsEditor.imageField.supportedFormatsAndSize":
     "PNG, JPEG, WebP, GIF, SVG, AVIF — up to 100 MB",
+  "sectionsEditor.imageField.unsafeUrl":
+    "That address can't be used as an image source.",
   "sectionsEditor.imageField.uploadFailed": "Upload failed",
   "sectionsEditor.imageField.uploadedWithExtraFilesIgnored":
     "Uploaded {fileName}; extra files were ignored (single-select field).",
@@ -112,6 +131,7 @@ export const sectionsEditor = {
   "sectionsEditor.mediaTransformControls.mutedLabel": "Muted",
   "sectionsEditor.mediaTransformControls.qualityLabel": "Quality",
   "sectionsEditor.multivariateFieldWrapper.addVariant": "Add variant",
+  "sectionsEditor.multivariateFieldWrapper.variantsOf": "Variants of {label}",
   "sectionsEditor.multivariateFieldWrapper.ruleLabel": "Rule",
   "sectionsEditor.multivariateFieldWrapper.variantN": "Variant {n}",
   "sectionsEditor.pageJsonDialog.close": "Close",
@@ -126,6 +146,15 @@ export const sectionsEditor = {
   "sectionsEditor.pageJsonDialog.saving": "Saving…",
   "sectionsEditor.pageJsonDialog.title": "Page JSON",
   "sectionsEditor.pageJsonDialog.titleShort": "JSON",
+  "sectionsEditor.pageSections.blockNameAlreadyExists":
+    "A block with this name already exists.",
+  "sectionsEditor.pageSections.blockNameIsBlockType":
+    "A block type already uses this name. Choose another one.",
+  "sectionsEditor.pageSections.blockNameInvalidChars":
+    "Use letters, numbers, spaces, hyphens, or underscores. Must start with a letter.",
+  "sectionsEditor.pageSections.blockNameNoSlashes":
+    "Block name cannot contain slashes.",
+  "sectionsEditor.pageSections.blockNameRequired": "Block name is required.",
   "sectionsEditor.pageTemplateSelect.blankPageDefaultLabel": "Blank page",
   "sectionsEditor.pageTemplateSelect.blankPageLabel": "Blank page",
   "sectionsEditor.pageTemplateSelect.noPagesFoundMessage": "No pages found.",
@@ -137,6 +166,7 @@ export const sectionsEditor = {
   "sectionsEditor.pageVariantTabs.duplicateAction": "Duplicate",
   "sectionsEditor.pageVariantTabs.renameAction": "Rename",
   "sectionsEditor.pageVariantTabs.variantsLabel": "Variants",
+  "sectionsEditor.panelSections.seo": "SEO & metadata",
   "sectionsEditor.richTextColorControl.colorButtonLabel": "Text color",
   "sectionsEditor.richTextColorControl.customLabel": "Custom",
   "sectionsEditor.richTextColorControl.defaultLabel": "Default",
@@ -158,11 +188,29 @@ export const sectionsEditor = {
   "sectionsEditor.richTextLinkControl.applyLinkLabel": "Apply link",
   "sectionsEditor.richTextLinkControl.linkButtonLabel": "Link",
   "sectionsEditor.richTextLinkControl.newTabLabel": "New tab",
+  "sectionsEditor.richTextLinkControl.tabUrl": "URL",
   "sectionsEditor.richTextLinkControl.removeLinkLabel": "Remove link",
   "sectionsEditor.richTextLinkControl.sameTabLabel": "Same tab",
   "sectionsEditor.richTextLinkControl.urlInputAriaLabel": "Link URL",
   "sectionsEditor.richTextLinkControl.urlInputPlaceholder":
     "Paste or type a link…",
+  "sectionsEditor.secretField.encryptButton": "Encrypt",
+  "sectionsEditor.secretField.encryptFailedMessage":
+    "Couldn't encrypt this secret with the site's key, so it was not saved. Check that the site is online and try again.",
+  "sectionsEditor.fileField.tooLarge":
+    "This file is larger than the local server accepts ({max}).",
+  "sectionsEditor.secretField.backendUnavailableMessage":
+    "Secrets can be edited once the site's content server answers.",
+  "sectionsEditor.secretField.encryptingMessage":
+    "Encrypting with the site's key…",
+  "sectionsEditor.secretField.legacySecretUnavailableMessage":
+    "This secret was saved by an older Deco site and can't be edited here. It's re-encrypted when the site migrates.",
+  "sectionsEditor.secretField.noPublicKeyMessage":
+    "Add the site's public key, .deco/secrets.pub, to edit secret fields. Values are encrypted in your browser with it.",
+  "sectionsEditor.secretField.pendingMessage":
+    "Not saved yet. Press Enter to encrypt and save.",
+  "sectionsEditor.secretField.plaintextStoredMessage":
+    "The stored value is not encrypted and won't work. Enter the secret again to encrypt it.",
   "sectionsEditor.secretField.leaveBlankPlaceholder":
     "Leave blank to keep current value",
   "sectionsEditor.secretField.secretNamePlaceholder": "Secret name",
@@ -172,11 +220,12 @@ export const sectionsEditor = {
   "sectionsEditor.sectionList.addVariantMenuItem": "Add variant",
   "sectionsEditor.sectionList.deleteMenuItem": "Delete",
   "sectionsEditor.sectionList.detachMenuItem": "Detach",
-  "sectionsEditor.sectionList.disableAsyncRender": "Disable async render",
+  "sectionsEditor.sectionList.disableAsyncRender": "Disable async rendering",
   "sectionsEditor.sectionList.duplicateMenuItem": "Duplicate",
-  "sectionsEditor.sectionList.enableAsyncRender": "Enable async render",
+  "sectionsEditor.sectionList.enableAsyncRender": "Enable async rendering",
   "sectionsEditor.sectionList.hideSection": "Hide section",
   "sectionsEditor.sectionList.makeReusableMenuItem": "Make reusable",
+  "sectionsEditor.sectionList.asyncBadge": "Async rendering",
   "sectionsEditor.sectionList.noSections": "No sections in this page.",
   "sectionsEditor.sectionList.sectionActionsMenu": "Section actions",
   "sectionsEditor.sectionList.showSection": "Show section",
@@ -206,7 +255,6 @@ export const sectionsEditor = {
   "sectionsEditor.sectionsEditor.couldNotRemoveVariants":
     "Could not remove variants.",
   "sectionsEditor.sectionsEditor.editSeo": "Edit SEO",
-  "sectionsEditor.sectionsEditor.editingBreadcrumb": "Editing breadcrumb",
   "sectionsEditor.sectionsEditor.editingInVariant":
     "Editing in variant: {variant}",
   "sectionsEditor.sectionsEditor.failedToRenameVariant":
@@ -214,6 +262,9 @@ export const sectionsEditor = {
   "sectionsEditor.sectionsEditor.failedToSaveGlobalBlock":
     "Failed to save global block",
   "sectionsEditor.sectionsEditor.globalBlockNotFound": "Global block not found",
+  "sectionsEditor.sectionsEditor.manageVariants": "Manage variants…",
+  "sectionsEditor.sectionsEditor.globalSectionSubtitle":
+    "Shared across your site",
   "sectionsEditor.sectionsEditor.globalSectionBanner":
     "This is a global section. Changes apply everywhere this section is used across your site.",
   "sectionsEditor.sectionsEditor.globalSectionTooltip":
@@ -226,6 +277,56 @@ export const sectionsEditor = {
     "No editable fields for this variant.",
   "sectionsEditor.sectionsEditor.noPageFound":
     "No page found for {currentPath}",
+  "sectionsEditor.sectionsEditor.blockChangedElsewhere":
+    "This block changed while you were editing and could not be saved. The latest version is loaded.",
+  "sectionsEditor.sectionsEditor.blockFieldsChangedElsewhere":
+    "Not saved: {fields} changed while you were editing. The latest version is loaded.",
+  "sectionsEditor.formConflict.titleOne":
+    "Someone else changed the {field} while you were editing",
+  "sectionsEditor.formConflict.descriptionOne":
+    "Pick the one to keep. The other is discarded.",
+  "sectionsEditor.formConflict.titleStep":
+    "Someone else also changed the {field}",
+  "sectionsEditor.formConflict.descriptionStep":
+    "Pick the one to keep. You can go back before saving.",
+  "sectionsEditor.formConflict.summaryYours": "yours",
+  "sectionsEditor.formConflict.summaryTheirs": "theirs",
+  "sectionsEditor.formConflict.steps": "Fields to choose",
+  "sectionsEditor.formConflict.stepCount": "{step} of {count}",
+  "sectionsEditor.formConflict.stepChangedAgain": "{label}, changed again",
+  "sectionsEditor.formConflict.back": "Back",
+  "sectionsEditor.formConflict.next": "Next",
+  "sectionsEditor.formConflict.ok": "OK",
+  "sectionsEditor.formConflict.changedAgain":
+    "Their version changed again while this was open. It's shown below.",
+  "sectionsEditor.formConflict.changedAgainSteps":
+    "Their version changed again while this was open. Each step now shows the newer one.",
+  "sectionsEditor.formConflict.you": "You",
+  "sectionsEditor.formConflict.someoneElse": "Someone else",
+  "sectionsEditor.formConflict.yourVersionNotSaved":
+    "Your version · not saved yet",
+  "sectionsEditor.formConflict.theirVersionSaved":
+    "Their version · already saved",
+  "sectionsEditor.formConflict.titleOneNamed":
+    "{name} changed the {field} while you were editing",
+  "sectionsEditor.formConflict.titleOneYou":
+    "You changed the {field} in another tab or window",
+  "sectionsEditor.formConflict.titleStepNamed":
+    "{name} also changed the {field}",
+  "sectionsEditor.formConflict.titleStepYou":
+    "You also changed the {field} in another tab or window",
+  "sectionsEditor.formConflict.summaryTheirsNamed": "{name}'s",
+  "sectionsEditor.formConflict.youElsewhere": "You, in another tab or window",
+  "sectionsEditor.formConflict.savedAt": "saved {when}",
+  "sectionsEditor.formConflict.empty": "Empty",
+  "sectionsEditor.formConflict.yes": "Yes",
+  "sectionsEditor.formConflict.no": "No",
+  "sectionsEditor.formConflict.oneItem": "1 item",
+  "sectionsEditor.formConflict.items": "{count} items",
+  "sectionsEditor.sectionsEditor.sectionReplacedElsewhere":
+    "This section was replaced while you were editing. The form now shows the current section, and your last change was not saved.",
+  "sectionsEditor.sectionsEditor.blockMergedWithOthers":
+    "Someone else also edited this block. Both changes were kept.",
   "sectionsEditor.sectionsEditor.saveFailed": "Save failed: {error}",
   "sectionsEditor.sectionsEditor.savedGlobalBlock":
     'Saved global block "{blockId}"',
@@ -242,6 +343,7 @@ export const sectionsEditor = {
   "sectionsEditor.sectionsEditor.variantRule": "Variant rule",
   "sectionsEditor.sectionsEditor.viewJson": "View JSON",
   "sectionsEditor.sectionsEditorPanels.addVariant": "Add variant",
+  "sectionsEditor.sectionsEditorPanels.createVariants": "Create variants",
   "sectionsEditor.sectionsEditorPanels.backToRule": "Back to rule",
   "sectionsEditor.sectionsEditorPanels.changePathTitle":
     "Change this page's path?",
@@ -249,7 +351,9 @@ export const sectionsEditor = {
     'The page URL changes from "{from}" to "{to}". The old URL stops working and inbound links or SEO may break.',
   "sectionsEditor.sectionsEditorPanels.changePathCancel": "Cancel",
   "sectionsEditor.sectionsEditorPanels.changePathConfirm": "Change path",
+  "sectionsEditor.sectionsEditorPanels.pageNameLabel": "Page name",
   "sectionsEditor.sectionsEditorPanels.pageNamePlaceholder": "Page name",
+  "sectionsEditor.sectionsEditorPanels.pathLabel": "URL path",
   "sectionsEditor.sectionsEditorPanels.pathPlaceholder": "/path",
   "sectionsEditor.sectionsEditorPanels.variantRuleBreadcrumb":
     "Variant rule breadcrumb",

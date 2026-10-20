@@ -1,0 +1,742 @@
+import {
+  buildDuplicateDecisions,
+  acceptDecisionDuplicates,
+} from "./duplicate-decisions";
+import { decisionInputFits } from "@/core/evaluate-decisions";
+import { describe, expect, it } from "bun:test";
+import { z } from "zod";
+import type { TaskBoardItem } from "@/storage/types";
+import { TASK_BOARD_ITEM_CREATE } from "./create";
+import {
+  acceptBatchDuplicates,
+  acceptDuplicate,
+  buildBatchDuplicatePrompt,
+  buildDuplicatePrompt,
+  fitDraftDecision,
+  isOpenForDuplicateCheck,
+  MAX_DUPLICATE_CANDIDATES,
+  parseModelJson,
+  selectBatchCandidates,
+  selectDuplicateCandidates,
+  tokenize,
+} from "./duplicate-check";
+
+/**
+ * The pure halves of the duplicate check: which cards reach the model, and
+ * which of its answers are honored. The model call itself is exercised only
+ * through the tool, never here (no mocks — see TESTING.md).
+ */
+
+let seq = 0;
+function card(overrides: Partial<TaskBoardItem> = {}): TaskBoardItem {
+  seq += 1;
+  return {
+    id: `tbi_${seq}`,
+    organizationId: "org_1",
+    title: `Card ${seq}`,
+    description: null,
+    status: "triage",
+    priority: "none",
+    type: "chore",
+    assigneeId: null,
+    assignedBy: null,
+    repo: null,
+    repositoryId: null,
+    dueDate: null,
+    sortOrder: seq,
+    keySeq: seq,
+    externalUrl: null,
+    previewRoutes: [],
+    source: null,
+    retryAttempts: 0,
+    reviewCycleStartedAt: null,
+    threads: [],
+    tags: [],
+    reviewVerdicts: [],
+    statusSince: null,
+    createdBy: "user_1",
+    createdAt: new Date(2026, 0, 1, 0, 0, seq).toISOString(),
+    updatedBy: "user_1",
+    updatedAt: new Date(2026, 0, 1, 0, 0, seq).toISOString(),
+    ...overrides,
+  } as TaskBoardItem;
+}
+
+describe("tokenize", () => {
+  it("lowercases, strips accents and stop words, drops short tokens", () => {
+    expect(
+      [...tokenize("Não abre o Modal de Configurações no iPhone")].sort(),
+    ).toEqual(["abre", "configuracoes", "iphone", "modal"]);
+  });
+
+  it("ignores punctuation and keeps identifiers", () => {
+    expect([...tokenize("fix: `useOrgFlag()` returns stale value!")]).toEqual([
+      "fix",
+      "useorgflag",
+      "returns",
+      "stale",
+      "value",
+    ]);
+  });
+});
+
+describe("isOpenForDuplicateCheck", () => {
+  it("excludes done and archived cards, keeps every other lane", () => {
+    expect(isOpenForDuplicateCheck(card({ status: "done" }))).toBe(false);
+    expect(isOpenForDuplicateCheck(card({ status: "archived" }))).toBe(false);
+    for (const status of [
+      "triage",
+      "in_progress",
+      "in_review",
+      "qa",
+      "ready_for_deployment",
+      "post_deploy_validation",
+    ] as const) {
+      expect(isOpenForDuplicateCheck(card({ status }))).toBe(true);
+    }
+  });
+});
+
+describe("selectDuplicateCandidates", () => {
+  it("drops finished cards even when they match word for word", () => {
+    const done = card({ title: "Add dark mode toggle", status: "done" });
+    const open = card({ title: "Add dark mode toggle", status: "triage" });
+    const picked = selectDuplicateCandidates([done, open], {
+      title: "Add dark mode toggle",
+    });
+    expect(picked.map((c) => c.id)).toEqual([open.id]);
+  });
+
+  it("ranks by word overlap, best match first", () => {
+    const unrelated = card({ title: "Rotate the signing key" });
+    const close = card({ title: "Dark mode toggle in settings" });
+    const partial = card({ title: "Settings page redesign" });
+    const picked = selectDuplicateCandidates([unrelated, partial, close], {
+      title: "Add a dark mode toggle to settings",
+    });
+    expect(picked.map((c) => c.id)).toEqual([
+      close.id,
+      partial.id,
+      unrelated.id,
+    ]);
+  });
+
+  it("keeps every open card when under the cap, unrelated ones included", () => {
+    const cards = [card({ title: "alpha" }), card({ title: "omega" })];
+    expect(
+      selectDuplicateCandidates(cards, { title: "something else" }),
+    ).toHaveLength(2);
+  });
+
+  it("caps the list, keeping the best-matching and then the newest", () => {
+    const filler = Array.from({ length: MAX_DUPLICATE_CANDIDATES }, () =>
+      card({ title: "unrelated filler" }),
+    );
+    const newest = filler[filler.length - 1]!;
+    const oldest = filler[0]!;
+    const match = card({ title: "Checkout button is unclickable on Safari" });
+    const picked = selectDuplicateCandidates([...filler, match], {
+      title: "Checkout button unclickable on Safari",
+    });
+    expect(picked).toHaveLength(MAX_DUPLICATE_CANDIDATES);
+    expect(picked[0]!.id).toBe(match.id);
+    expect(picked.map((c) => c.id)).toContain(newest.id);
+    expect(picked.map((c) => c.id)).not.toContain(oldest.id);
+  });
+
+  it("excludes cards naming a different repo, keeps repo-less ones", () => {
+    const sameRepo = card({ title: "Fix login", repo: "acme/web" });
+    const otherRepo = card({ title: "Fix login", repo: "acme/api" });
+    const noRepo = card({ title: "Fix login" });
+    const picked = selectDuplicateCandidates([sameRepo, otherRepo, noRepo], {
+      title: "Fix login",
+      repo: "ACME/Web",
+    });
+    expect(picked.map((c) => c.id).sort()).toEqual(
+      [sameRepo.id, noRepo.id].sort(),
+    );
+  });
+
+  it("with no repo on the draft, every open card is a candidate", () => {
+    const a = card({ repo: "acme/web" });
+    const b = card({ repo: "acme/api" });
+    expect(
+      selectDuplicateCandidates([a, b], { title: "anything" }),
+    ).toHaveLength(2);
+  });
+});
+
+describe("acceptDuplicate", () => {
+  const offered = [card(), card()];
+
+  it("honors a high-confidence match on an offered card", () => {
+    expect(
+      acceptDuplicate(
+        { duplicateOf: offered[1]!.id, confidence: "high", reason: "same" },
+        offered,
+      ),
+    ).toBe(offered[1]!);
+  });
+
+  it("rejects medium and low confidence", () => {
+    for (const confidence of ["medium", "low"] as const) {
+      expect(
+        acceptDuplicate(
+          { duplicateOf: offered[0]!.id, confidence, reason: "maybe" },
+          offered,
+        ),
+      ).toBeNull();
+    }
+  });
+
+  it("rejects an id that was not offered, so the model cannot point elsewhere", () => {
+    expect(
+      acceptDuplicate(
+        { duplicateOf: "tbi_from_another_org", confidence: "high", reason: "" },
+        offered,
+      ),
+    ).toBeNull();
+  });
+
+  it("treats a null id and a null verdict as no duplicate", () => {
+    expect(
+      acceptDuplicate(
+        { duplicateOf: null, confidence: "high", reason: "none" },
+        offered,
+      ),
+    ).toBeNull();
+    expect(acceptDuplicate(null, offered)).toBeNull();
+  });
+});
+
+describe("buildDuplicatePrompt", () => {
+  it("lists every candidate by id with lane, repo and a one-line description", () => {
+    const c = card({
+      title: "Fix login",
+      status: "in_progress",
+      repo: "acme/web",
+      description: "Users on\nSafari  cannot\tlog in.",
+    });
+    const prompt = buildDuplicatePrompt(
+      { title: "Login broken", description: null, repo: "acme/web" },
+      [c],
+    );
+    expect(prompt).toContain(
+      `- [${c.id}] (in_progress, acme/web) Fix login — Users on Safari cannot log in.`,
+    );
+    expect(prompt).toContain("Title: Login broken");
+    expect(prompt).toContain("Description: (none)");
+  });
+
+  it("truncates long descriptions so one verbose card cannot flood the prompt", () => {
+    const c = card({ description: "x".repeat(2000) });
+    const prompt = buildDuplicatePrompt({ title: "t" }, [c]);
+    expect(prompt.length).toBeLessThan(600);
+    expect(prompt).toContain("…");
+  });
+});
+
+describe("TASK_BOARD_ITEM_CREATE onDuplicate", () => {
+  it("is optional and accepts only the two modes", () => {
+    expect(
+      TASK_BOARD_ITEM_CREATE.inputSchema.safeParse({ title: "t" }).success,
+    ).toBe(true);
+    expect(
+      TASK_BOARD_ITEM_CREATE.inputSchema.safeParse({
+        title: "t",
+        onDuplicate: "return_existing",
+      }).success,
+    ).toBe(true);
+    expect(
+      TASK_BOARD_ITEM_CREATE.inputSchema.safeParse({
+        title: "t",
+        onDuplicate: "reject",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("output always carries the dedup verdict", () => {
+    const shape = TASK_BOARD_ITEM_CREATE.outputSchema.shape;
+    expect(Object.keys(shape).sort()).toEqual(
+      ["deduplicated", "duplicateCheck", "duplicateReason", "item"].sort(),
+    );
+  });
+});
+
+describe("selectBatchCandidates", () => {
+  it("unions each draft's best matches, first appearance wins, no repeats", () => {
+    const login = card({ title: "Fix login on Safari" });
+    const dark = card({ title: "Dark mode toggle" });
+    const other = card({ title: "Rotate signing key" });
+    const picked = selectBatchCandidates(
+      [other, dark, login],
+      [
+        { index: 0, title: "Login broken on Safari" },
+        { index: 1, title: "Add dark mode toggle" },
+      ],
+      1,
+    );
+    expect(picked.map((c) => c.id)).toEqual([login.id, dark.id]);
+  });
+
+  it("caps the union so a large batch cannot flood the prompt", () => {
+    const cards = Array.from({ length: 30 }, (_, i) =>
+      card({ title: `topic${i} widget${i}` }),
+    );
+    const drafts = Array.from({ length: 30 }, (_, i) => ({
+      index: i,
+      title: `topic${i} widget${i}`,
+    }));
+    expect(selectBatchCandidates(cards, drafts, 10, 12)).toHaveLength(12);
+  });
+
+  it("is empty for an empty batch", () => {
+    expect(selectBatchCandidates([card()], [])).toEqual([]);
+  });
+});
+
+describe("acceptBatchDuplicates", () => {
+  const offered = [card(), card()];
+  const drafts = [
+    { index: 0, title: "a" },
+    { index: 1, title: "b" },
+  ];
+
+  it("maps each high-confidence match on an offered card to its draft", () => {
+    const out = acceptBatchDuplicates(
+      {
+        matches: [
+          {
+            draft: 0,
+            duplicateOf: offered[1]!.id,
+            confidence: "high",
+            reason: "same",
+          },
+          {
+            draft: 1,
+            duplicateOf: offered[0]!.id,
+            confidence: "medium",
+            reason: "close",
+          },
+        ],
+      },
+      drafts,
+      offered,
+    );
+    expect([...out.keys()]).toEqual([0]);
+    expect(out.get(0)).toEqual({ item: offered[1]!, reason: "same" });
+  });
+
+  it("ignores unknown draft indexes, unoffered ids, and a null verdict", () => {
+    expect(
+      acceptBatchDuplicates(
+        {
+          matches: [
+            {
+              draft: 7,
+              duplicateOf: offered[0]!.id,
+              confidence: "high",
+              reason: "",
+            },
+            {
+              draft: 0,
+              duplicateOf: "tbi_elsewhere",
+              confidence: "high",
+              reason: "",
+            },
+          ],
+        },
+        drafts,
+        offered,
+      ).size,
+    ).toBe(0);
+    expect(acceptBatchDuplicates(null, drafts, offered).size).toBe(0);
+  });
+
+  it("keeps the first accepted match for a draft", () => {
+    const out = acceptBatchDuplicates(
+      {
+        matches: [
+          {
+            draft: 0,
+            duplicateOf: offered[0]!.id,
+            confidence: "high",
+            reason: "first",
+          },
+          {
+            draft: 0,
+            duplicateOf: offered[1]!.id,
+            confidence: "high",
+            reason: "second",
+          },
+        ],
+      },
+      drafts,
+      offered,
+    );
+    expect(out.get(0)).toEqual({ item: offered[0]!, reason: "first" });
+  });
+
+  it("maps a confident repeat of an earlier offered draft, and nothing else", () => {
+    const repeat = (
+      draft: number,
+      sameAsDraft: number,
+      confidence: "high" | "medium" = "high",
+    ) =>
+      acceptBatchDuplicates(
+        {
+          matches: [
+            {
+              draft,
+              duplicateOf: null,
+              sameAsDraft,
+              confidence,
+              reason: "same",
+            },
+          ],
+        },
+        [...drafts, { index: 3, title: "d" }],
+        offered,
+      );
+    expect(repeat(1, 0).get(1)).toEqual({ draft: 0, reason: "same" });
+    // A later draft, the draft itself, one never offered, a guess.
+    expect(repeat(0, 1).size).toBe(0);
+    expect(repeat(1, 1).size).toBe(0);
+    expect(repeat(3, 2).size).toBe(0);
+    expect(repeat(1, 0, "medium").size).toBe(0);
+  });
+
+  it("prefers an offered card over an earlier draft", () => {
+    const out = acceptBatchDuplicates(
+      {
+        matches: [
+          {
+            draft: 1,
+            duplicateOf: offered[0]!.id,
+            sameAsDraft: 0,
+            confidence: "high",
+            reason: "same",
+          },
+        ],
+      },
+      drafts,
+      offered,
+    );
+    expect(out.get(1)).toEqual({ item: offered[0]!, reason: "same" });
+  });
+});
+
+describe("buildBatchDuplicatePrompt", () => {
+  it("lists drafts by index and cards by id", () => {
+    const c = card({ title: "Fix login", status: "triage" });
+    const prompt = buildBatchDuplicatePrompt(
+      [
+        {
+          index: 3,
+          title: "Login broken",
+          description: "on Safari",
+          repo: "acme/web",
+        },
+      ],
+      [c],
+    );
+    expect(prompt).toContain("- draft 3 (acme/web): Login broken — on Safari");
+    expect(prompt).toContain(`- [${c.id}] (triage) Fix login`);
+  });
+
+  it("says so when the board has no open cards", () => {
+    expect(buildBatchDuplicatePrompt([{ index: 0, title: "a" }], [])).toContain(
+      "Existing open cards:\n(none)",
+    );
+  });
+});
+
+describe("parseModelJson", () => {
+  const schema = z.object({
+    duplicateOf: z.string().nullable(),
+    n: z.number(),
+  });
+
+  it("reads bare, fenced, and prose-wrapped JSON", () => {
+    const want = { duplicateOf: "tbi_1", n: 1 };
+    expect(parseModelJson('{"duplicateOf":"tbi_1","n":1}', schema)).toEqual(
+      want,
+    );
+    expect(
+      parseModelJson('```json\n{"duplicateOf":"tbi_1","n":1}\n```', schema),
+    ).toEqual(want);
+    expect(
+      parseModelJson(
+        'Sure! Here is the verdict: {"duplicateOf":"tbi_1","n":1} Hope that helps.',
+        schema,
+      ),
+    ).toEqual(want);
+  });
+
+  it("skips a reasoning model's <think> block and any braces it narrates with", () => {
+    const want = { duplicateOf: null, n: 2 };
+    expect(
+      parseModelJson(
+        '<think>Card {A} vs draft... they differ: {"duplicateOf":"tbi_9","n":1}? no.</think>\n{"duplicateOf":null,"n":2}',
+        schema,
+      ),
+    ).toEqual(want);
+  });
+
+  it("prefers the last well-formed object, so narration before the answer does not win", () => {
+    expect(
+      parseModelJson(
+        'Comparing to {"duplicateOf":"tbi_1","n":1} earlier... Final: {"duplicateOf":null,"n":3}',
+        schema,
+      ),
+    ).toEqual({ duplicateOf: null, n: 3 });
+  });
+
+  it("returns null for no JSON, broken JSON, or the wrong shape", () => {
+    expect(parseModelJson("no duplicate found", schema)).toBeNull();
+    expect(parseModelJson('{"duplicateOf": "tbi_1", ', schema)).toBeNull();
+    expect(parseModelJson('{"duplicateOf": 5, "n": "x"}', schema)).toBeNull();
+  });
+});
+
+describe("decision model duplicate checks", () => {
+  const drafts = [
+    { index: 0, title: "Fix duplicate charges", repo: "acme/billing" },
+  ];
+  const cards = [
+    card({ id: "billing", repo: "acme/billing" }),
+    card({ id: "other", repo: "acme/other" }),
+  ];
+  const input = buildDuplicateDecisions(drafts, cards);
+  const accept = (choice: string, probability?: number) =>
+    acceptDecisionDuplicates(
+      {
+        draft_0: {
+          type: "choice",
+          choice,
+          ...(probability === undefined
+            ? {}
+            : { probabilities: { [choice]: probability } }),
+        },
+      },
+      input.questions,
+      drafts,
+      cards,
+    );
+
+  it("offers only same-repository or unscoped cards and an explicit no-match option", () => {
+    expect(Object.keys(input.questions.draft_0!.criteria)).toEqual([
+      "none",
+      "card_0",
+    ]);
+  });
+  it("accepts a high-probability offered card", () => {
+    expect(accept("card_0", 0.99)?.get(0)).toMatchObject({
+      item: { id: "billing" },
+    });
+  });
+  it("accepts a confident no-match without suppressing a task", () => {
+    expect(accept("none", 0.99)?.size).toBe(0);
+  });
+  it("falls back on uncertainty, absent distributions, and invalid probabilities", () => {
+    for (const probability of [undefined, 0.94, NaN, Infinity, 1.01, -1]) {
+      expect(accept("card_0", probability)).toBeNull();
+    }
+  });
+  it("rejects fabricated and cross-repository ids even at high confidence", () => {
+    expect(accept("invented", 1)).toBeNull();
+    expect(accept("card_1", 1)).toBeNull();
+  });
+  it("offers each draft the earlier drafts in its scope, never a later one", () => {
+    const { questions } = buildDuplicateDecisions(
+      [
+        { index: 0, title: "Fix duplicate charges", repo: "acme/billing" },
+        { index: 2, title: "Stop charging twice" },
+        { index: 3, title: "Refund double charges", repo: "acme/other" },
+      ],
+      [],
+    );
+    expect(Object.keys(questions.draft_0!.criteria)).toEqual(["none"]);
+    expect(Object.keys(questions.draft_2!.criteria)).toEqual([
+      "none",
+      "draft_0",
+    ]);
+    expect(Object.keys(questions.draft_3!.criteria)).toEqual([
+      "none",
+      "draft_2",
+    ]);
+  });
+  it("maps a confident repeat to the earlier draft and falls back on a later one", () => {
+    const batch = [
+      { index: 0, title: "Declare the sitemap in robots.txt" },
+      { index: 1, title: "Add a Sitemap line to robots.txt" },
+    ];
+    const { questions } = buildDuplicateDecisions(batch, []);
+    const decide = (first: string, second: string) =>
+      acceptDecisionDuplicates(
+        {
+          draft_0: {
+            type: "choice",
+            choice: first,
+            probabilities: { [first]: 0.99 },
+          },
+          draft_1: {
+            type: "choice",
+            choice: second,
+            probabilities: { [second]: 0.99 },
+          },
+        },
+        questions,
+        batch,
+        [],
+      );
+    expect(decide("none", "draft_0")?.get(1)).toMatchObject({ draft: 0 });
+    expect(decide("none", "draft_0")?.has(0)).toBe(false);
+    expect(decide("draft_1", "none")).toBeNull();
+  });
+  it("falls back for the entire batch if any draft lacks an answer", () => {
+    const batch = [...drafts, { index: 2, title: "Another finding" }];
+    const questions = buildDuplicateDecisions(batch, cards).questions;
+    expect(
+      acceptDecisionDuplicates(
+        {
+          draft_0: {
+            type: "choice",
+            choice: "card_0",
+            probabilities: { card_0: 1 },
+          },
+        },
+        questions,
+        batch,
+        cards,
+      ),
+    ).toBeNull();
+  });
+  it("asks only about the drafts given; the rest stand as earlier options", () => {
+    const batch = [
+      { index: 0, title: "Declare the sitemap in robots.txt" },
+      { index: 1, title: "Add a Sitemap line to robots.txt" },
+      { index: 2, title: "Publish the sitemap" },
+    ];
+    const input = buildDuplicateDecisions(batch, cards, [batch[2]!]);
+    expect(Object.keys(input.questions)).toEqual(["draft_2"]);
+    expect(Object.keys(input.questions.draft_2!.criteria)).toEqual([
+      "none",
+      "card_0",
+      "card_1",
+      "draft_0",
+      "draft_1",
+    ]);
+    expect(input.state.drafts).toHaveLength(3);
+    // Only the draft asked about needs an answer.
+    expect(
+      acceptDecisionDuplicates(
+        {
+          draft_2: {
+            type: "choice",
+            choice: "draft_1",
+            probabilities: { draft_1: 0.99 },
+          },
+        },
+        input.questions,
+        batch,
+        cards,
+      ),
+    ).toEqual(
+      new Map([
+        [
+          2,
+          {
+            draft: 1,
+            reason:
+              "The decision model identified an earlier item of this import as the same work.",
+          },
+        ],
+      ]),
+    );
+  });
+  it("a 20-finding import against a real board fits one draft at a time, never as one request", () => {
+    // Sizes from a production import: ~100-character titles, descriptions
+    // past the 240-character excerpt, and 20 open cards.
+    const text = (i: number) =>
+      `Adicionar nome acessível ao botão ${i} do componente do cabeçalho da loja, visível em todas as páginas do site`;
+    const long = "Problema: o componente não expõe nome acessível. ".repeat(8);
+    const batch = Array.from({ length: 20 }, (_, index) => ({
+      index,
+      title: text(index),
+      description: long,
+    }));
+    const board = Array.from({ length: 20 }, (_, i) =>
+      card({ title: text(100 + i), description: long }),
+    );
+    const fits = (input: unknown) => decisionInputFits(input, 32_000);
+    expect(fits(buildDuplicateDecisions(batch, board))).toBe(false);
+    for (const draft of batch) {
+      const fitted = fitDraftDecision(
+        draft,
+        batch.filter((d) => d.index < draft.index),
+        board,
+        fits,
+      );
+      expect(fitted?.cards).toHaveLength(20);
+      expect(fitted?.drafts.length).toBeLessThanOrEqual(11);
+      expect(fits(fitted?.input)).toBe(true);
+    }
+  });
+  it("drops the weakest cards until a draft fits, and gives up when none does", () => {
+    const draft = { index: 0, title: "Fix repeated invoice charges" };
+    const board = Array.from({ length: 50 }, (_, i) =>
+      card({
+        id: `big_${i}`,
+        title: `Card ${i}`,
+        description: "x".repeat(900),
+      }),
+    );
+    const small = (input: unknown) =>
+      new TextEncoder().encode(JSON.stringify(input)).byteLength <= 4_000;
+    const fitted = fitDraftDecision(draft, [], board, small);
+    expect(fitted?.cards.length).toBeGreaterThan(0);
+    expect(fitted?.cards.length).toBeLessThan(50);
+    // The kept cards are the head of the ranking, so card_0 is still the best.
+    expect(fitted?.cards[0]?.id).toBe("big_0");
+    expect(fitDraftDecision(draft, [], board, () => false)).toBeNull();
+  });
+  it("offers a draft the ten most alike drafts before it", () => {
+    const earlier = Array.from({ length: 15 }, (_, index) => ({
+      index,
+      title:
+        index === 3 ? "Declare the sitemap in robots.txt" : `Other ${index}`,
+    }));
+    const draft = { index: 15, title: "Add the sitemap to robots.txt" };
+    const fitted = fitDraftDecision(draft, earlier, [], () => true);
+    expect(fitted?.drafts).toHaveLength(11);
+    expect(fitted?.drafts[0]?.index).toBe(3);
+    expect(fitted?.drafts.at(-1)).toBe(draft);
+  });
+  it("fits a representative 50-card check but rejects an oversized batch without dropping candidates", () => {
+    const candidates = Array.from({ length: 50 }, (_, i) =>
+      card({
+        id: `task_${String(i).padStart(30, "0")}`,
+        title: "Fix repeated invoice charges",
+        description: "billing detail ".repeat(30),
+      }),
+    );
+    const single = buildDuplicateDecisions(drafts, candidates);
+    expect(decisionInputFits(single, 32_000)).toBe(true);
+    const batch = buildDuplicateDecisions(
+      Array.from({ length: 100 }, (_, index) => ({ ...drafts[0]!, index })),
+      candidates,
+    );
+    expect(decisionInputFits(batch, 32_000)).toBe(false);
+    expect(batch.state.cards).toHaveLength(50);
+  });
+  it("counts UTF-8 bytes and rejects missing or smaller context windows", () => {
+    expect(decisionInputFits({ state: "a".repeat(8_000) }, 32_000)).toBe(true);
+    expect(decisionInputFits({ state: "界".repeat(8_000) }, 32_000)).toBe(
+      false,
+    );
+    expect(decisionInputFits(input, 0)).toBe(false);
+    expect(decisionInputFits(input, NaN)).toBe(false);
+    expect(decisionInputFits(input, 100)).toBe(false);
+  });
+});

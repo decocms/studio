@@ -71,7 +71,21 @@ const ThreadMetadataSchema = z
     jira_issue_key: z
       .string()
       .optional()
-      .describe("The Jira issue a 'jira' run works on, e.g. EX-12."),
+      .describe(
+        "The Jira issue a 'jira' run works on, e.g. EX-12. Absent on a run started on several issues at once — see jira_issue_keys.",
+      ),
+    jira_issue_keys: z
+      .array(z.string())
+      .optional()
+      .describe(
+        "Every Jira issue a 'jira' run may act on. One entry for a run on one issue; several for a run a person started on a batch, whose Jira tools take an issueKey to say which.",
+      ),
+    jira_created_issue_keys: z
+      .array(z.string())
+      .optional()
+      .describe(
+        "The Jira issues a 'jira' run created itself, so a repeated create returns the one it made.",
+      ),
   })
   .catchall(z.unknown());
 
@@ -108,7 +122,9 @@ export const ThreadEntitySchema = z.object({
     .string()
     .nullable()
     .optional()
-    .describe("Git branch this thread is pinned to (GitHub-linked vms only)"),
+    .describe(
+      "Git branch this thread is pinned to (repository-linked projects only)",
+    ),
   harness_id: z
     .string()
     .nullable()
@@ -135,8 +151,17 @@ export type ThreadEntity = z.infer<typeof ThreadEntitySchema>;
 // Create/Update Schemas
 // ============================================================================
 
+/** Plenty for a `<prefix>_<nanoid>` id or a caller-supplied custom one. */
+export const MAX_THREAD_ID_LENGTH = 128;
+/** Above git's practical ref-name limit, well under the column's unbounded text type. */
+export const MAX_THREAD_BRANCH_LENGTH = 255;
+
 export const ThreadCreateDataSchema = z.object({
-  id: z.string().optional().describe("Optional custom ID for the thread"),
+  id: z
+    .string()
+    .max(MAX_THREAD_ID_LENGTH)
+    .optional()
+    .describe("Optional custom ID for the thread"),
   title: z.string().optional().describe("Thread title"),
   description: z.string().nullish().describe("Thread description"),
   virtual_mcp_id: z
@@ -145,9 +170,10 @@ export const ThreadCreateDataSchema = z.object({
   branch: z
     .string()
     .min(1)
+    .max(MAX_THREAD_BRANCH_LENGTH)
     .optional()
     .describe(
-      "Preferred branch. Used only when the vMCP has a githubRepo; ignored otherwise. When omitted, the server picks the most-recently-touched branch from the user's sandboxMap, falling back to a freshly generated name.",
+      "Preferred branch. Used only when the vMCP has a repository; ignored otherwise. When omitted, the server picks the most-recently-touched branch from the user's sandboxMap, falling back to a freshly generated name.",
     ),
   runtime: z
     .enum(THREAD_RUNTIMES)
@@ -183,6 +209,7 @@ export const ThreadUpdateDataSchema = z.object({
   branch: z
     .string()
     .min(1)
+    .max(MAX_THREAD_BRANCH_LENGTH)
     .nullish()
     .describe("New git branch for this thread"),
   virtual_mcp_id: z

@@ -25,6 +25,12 @@
       "quoteStyle": "double"
     }
   },
+  "overrides": [
+    {
+      "includes": [".oxlintrc.json"],
+      "json": { "parser": { "allowComments": true } }
+    }
+  ],
   "assist": {
     "enabled": false,
     "actions": {

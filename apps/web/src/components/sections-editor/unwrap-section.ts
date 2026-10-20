@@ -24,17 +24,12 @@ function resolveSavedBlockData(
   return { data: { ...blockData }, resolveType: rt };
 }
 
-function unwrapSectionValue(
+function unwrapResolvedValue(
+  rt: string,
   value: Record<string, unknown>,
   decofile: Record<string, unknown>,
 ): { data: Record<string, unknown>; resolveType: string } | null {
-  const rt = (value.__resolveType as string) ?? "";
   if (!rt) return null;
-
-  if (isLazyResolveType(rt)) {
-    const inner = (value.section as Record<string, unknown>) ?? {};
-    return unwrapLazyInner(inner, decofile);
-  }
 
   if (isMultivariateResolveType(rt)) {
     const firstVariant = (
@@ -50,25 +45,27 @@ function unwrapSectionValue(
   return resolveSavedBlockData(rt, decofile);
 }
 
+function unwrapSectionValue(
+  value: Record<string, unknown>,
+  decofile: Record<string, unknown>,
+): { data: Record<string, unknown>; resolveType: string } | null {
+  const rt = (value.__resolveType as string) ?? "";
+  if (!rt) return null;
+
+  if (isLazyResolveType(rt)) {
+    const inner = (value.section as Record<string, unknown>) ?? {};
+    return unwrapLazyInner(inner, decofile);
+  }
+
+  return unwrapResolvedValue(rt, value, decofile);
+}
+
 function unwrapLazyInner(
   inner: Record<string, unknown>,
   decofile: Record<string, unknown>,
 ): { data: Record<string, unknown>; resolveType: string } | null {
   const innerRt = (inner.__resolveType as string) ?? "";
-  if (!innerRt) return null;
-
-  if (isMultivariateResolveType(innerRt)) {
-    const firstVariant = (
-      inner.variants as Array<{ value?: Record<string, unknown> }> | undefined
-    )?.[0]?.value;
-    if (!firstVariant) return null;
-    return unwrapSectionValue(firstVariant, decofile);
-  }
-
-  if (!isSavedBlockResolveType(innerRt) || !Object.hasOwn(decofile, innerRt)) {
-    return { data: { ...inner }, resolveType: innerRt };
-  }
-  return resolveSavedBlockData(innerRt, decofile);
+  return unwrapResolvedValue(innerRt, inner, decofile);
 }
 
 /**

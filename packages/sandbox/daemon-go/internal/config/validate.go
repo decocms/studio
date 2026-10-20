@@ -81,6 +81,7 @@ func validateGit(git *GitConfig) string {
 			return fmt.Sprintf("git.repository.branch invalid: %s", b)
 		}
 	}
+	seenRepoNames := make(map[string]bool, len(git.Repositories))
 	for i, repo := range git.Repositories {
 		if repo.CloneUrl == nil || *repo.CloneUrl == "" {
 			return fmt.Sprintf("git.repositories[%d].cloneUrl is required", i)
@@ -89,6 +90,13 @@ func validateGit(git *GitConfig) string {
 		if repo.RepoName == nil || !repoNameRe.MatchString(*repo.RepoName) {
 			return fmt.Sprintf("git.repositories[%d].repoName invalid", i)
 		}
+		// Two entries sharing a name resolve to the same checkout directory
+		// (paths.SecondaryRepoDir), so cloneSecondaryRepos would race two `git
+		// clone`s into it concurrently.
+		if seenRepoNames[*repo.RepoName] {
+			return fmt.Sprintf("git.repositories[%d].repoName duplicates another entry: %s", i, *repo.RepoName)
+		}
+		seenRepoNames[*repo.RepoName] = true
 		if repo.Branch != nil {
 			b := *repo.Branch
 			if !IsSyntheticBranch(b) && (!branchRe.MatchString(b) || strings.HasPrefix(b, "-")) {

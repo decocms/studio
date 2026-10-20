@@ -142,6 +142,28 @@ func TestPreCommitHookStillRunsARepoOwnHook(t *testing.T) {
 	}
 }
 
+// dropNeverCommit used to match a deny entry by prefix even without a
+// trailing slash, so "static/tailwind.css" also swallowed an unrelated file
+// that merely starts with the same name.
+func TestPublishKeepsFilesThatOnlySharesAnArtifactPrefix(t *testing.T) {
+	repo := initRepoOnBranch(t, "feature/x")
+	if err := os.MkdirAll(filepath.Join(repo, "static"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	write(t, repo, "static/tailwind.css.map", "{}")
+
+	if err := Publish(PublishDeps{RepoDir: repo}, "autosave"); err != nil {
+		var blocked *PublishBlockedError
+		if errors.As(err, &blocked) {
+			t.Fatalf("feature branch refused as protected: %v", err)
+		}
+	}
+	changed := gitIn(t, repo, "show", "--name-only", "--format=", "HEAD")
+	if !strings.Contains(changed, "static/tailwind.css.map") {
+		t.Fatalf("publish dropped a file that only shares an artifact's name prefix:\n%s", changed)
+	}
+}
+
 func read(t *testing.T, repo, rel string) string {
 	t.Helper()
 	b, err := os.ReadFile(filepath.Join(repo, rel))

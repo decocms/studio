@@ -1,4 +1,4 @@
-import { AlertCircle } from "@untitledui/icons";
+import { AlertCircle, LayersThree01 } from "@untitledui/icons";
 import { Checkbox } from "@decocms/ui/components/checkbox.tsx";
 import {
   Tooltip,
@@ -23,6 +23,8 @@ export function ItemRow({
   selected,
   invalid,
   invalidReason,
+  warning,
+  warningReason,
   onToggleSelect,
   onClick,
   menu,
@@ -48,46 +50,44 @@ export function ItemRow({
   invalid?: boolean;
   /** Tooltip on the warning icon, e.g. "Missing: Slug, Excerpt". */
   invalidReason?: string;
+  /**
+   * A non-blocking problem — a duplicate name. Amber, and separate from
+   * `invalid`: a missing required field is an error, this is advice, and one
+   * colour for both would erase the difference the editors draw.
+   */
+  warning?: boolean;
+  /** Tooltip on the amber icon. */
+  warningReason?: string;
   onToggleSelect?: () => void;
   onClick: () => void;
   menu?: React.ReactNode;
 }) {
   const t = useT();
   const isGlobal = accent === "global";
-  const rowIcon =
-    variantCount && variantCount > 1 ? (
-      <span className="flex size-8 shrink-0 items-center justify-center">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Icon size={16} className="shrink-0 text-success" />
-          </TooltipTrigger>
-          <TooltipContent side="right">{variantCount} variants</TooltipContent>
-        </Tooltip>
-      </span>
-    ) : logoUrl ? (
-      <img
-        src={logoUrl}
-        alt=""
-        className="size-8 shrink-0 rounded-lg object-cover bg-muted"
-      />
-    ) : (
-      <span
+  const rowIcon = logoUrl ? (
+    <img
+      src={logoUrl}
+      alt=""
+      className="size-8 shrink-0 rounded-lg object-cover bg-muted"
+    />
+  ) : (
+    <span
+      className={cn(
+        "flex size-8 shrink-0 items-center justify-center rounded-lg",
+        isGlobal ? "bg-global-section/15" : "bg-muted",
+      )}
+    >
+      <Icon
+        size={16}
         className={cn(
-          "flex size-8 shrink-0 items-center justify-center rounded-lg",
-          isGlobal ? "bg-global-section/15" : "bg-muted",
+          "shrink-0",
+          !isGlobal &&
+            (active ? "text-accent-foreground" : "text-muted-foreground"),
         )}
-      >
-        <Icon
-          size={16}
-          className={cn(
-            "shrink-0",
-            !isGlobal &&
-              (active ? "text-accent-foreground" : "text-muted-foreground"),
-          )}
-          style={isGlobal ? { color: GLOBAL_SECTION_ICON_COLOR } : undefined}
-        />
-      </span>
-    );
+        style={isGlobal ? { color: GLOBAL_SECTION_ICON_COLOR } : undefined}
+      />
+    </span>
+  );
 
   return (
     <div
@@ -122,7 +122,7 @@ export function ItemRow({
       <button
         type="button"
         onClick={onClick}
-        className="flex min-w-0 flex-1 items-center gap-2.5 rounded-md px-2.5 py-2 text-left cursor-pointer"
+        className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2.5 py-2 text-left cursor-pointer"
       >
         {rowIcon}
         <span className="min-w-0 flex-1">
@@ -143,6 +143,38 @@ export function ItemRow({
             {subtitle}
           </span>
         </span>
+        {variantCount !== undefined && variantCount > 1 && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span
+                className={cn(
+                  "flex shrink-0 items-center gap-1 text-xs font-medium",
+                  active
+                    ? "text-accent-foreground/70"
+                    : "text-muted-foreground",
+                )}
+              >
+                <LayersThree01 size={14} />
+                {variantCount}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              {t("sandbox.itemRow.variantCount", { count: variantCount })}
+            </TooltipContent>
+          </Tooltip>
+        )}
+        {warning && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="flex shrink-0 items-center text-warning">
+                <AlertCircle size={14} />
+              </span>
+            </TooltipTrigger>
+            {warningReason && (
+              <TooltipContent side="bottom">{warningReason}</TooltipContent>
+            )}
+          </Tooltip>
+        )}
         {invalid && (
           <Tooltip>
             <TooltipTrigger asChild>

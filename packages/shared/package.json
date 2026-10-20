@@ -1,6 +1,6 @@
 {
   "name": "@decocms/shared",
-  "version": "0.84.1",
+  "version": "0.171.1",
   "description": "Private isomorphic code shared by Studio workspaces",
   "private": true,
   "type": "module",
@@ -17,12 +17,13 @@
     "./sdk/types/*": "./src/sdk/types/*.ts",
     "./sdk/lib/*": "./src/sdk/lib/*.ts",
     "./decofile": "./src/decofile/index.ts",
+    "./git-providers": "./src/git-providers/index.ts",
     "./*": "./src/*.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/ext-apps": "^1.7.1",
     "@modelcontextprotocol/sdk": "1.29.0",
-    "ai": "^6.0.208",
+    "ai": "^7.0.107",
     "nanoid": "^5.1.6",
     "zod": "4.3.6"
   },

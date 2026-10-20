@@ -1,3 +1,4 @@
+import type { CodexSubscriptionStorage } from "../storage/codex-subscriptions";
 /**
  * StudioContext - Core abstraction for all tools
  *
@@ -47,9 +48,6 @@ export type ListOrganizationsResult = Awaited<
 export type AddMemberResult = Awaited<ReturnType<BetterAuthApi["addMember"]>>;
 export type RemoveMemberResult = Awaited<
   ReturnType<BetterAuthApi["removeMember"]>
->;
-export type ListMembersResult = Awaited<
-  ReturnType<BetterAuthApi["listMembers"]>
 >;
 export type UpdateMemberRoleResult = Awaited<
   ReturnType<BetterAuthApi["updateMemberRole"]>
@@ -139,14 +137,6 @@ export interface BoundAuthClient {
       organizationId?: string;
     }): Promise<RemoveMemberResult>;
 
-    listMembers(options?: {
-      organizationId?: string;
-      limit?: number;
-      offset?: number;
-      filterField?: string;
-      filterValue?: string;
-    }): Promise<ListMembersResult>;
-
     updateMemberRole(data: {
       memberId: string;
       role: string | string[];
@@ -220,6 +210,19 @@ export interface StudioAuth {
     remaining?: number; // Remaining requests (rate limiting)
     expiresAt?: Date;
   };
+
+  /**
+   * Stored permission map resolved at authentication time (API key / MCP OAuth /
+   * Studio JWT). Undefined for browser sessions, which are authorized via Better
+   * Auth's hasPermission API and never fetch the raw map. Exposed so tools that
+   * need the raw grants (e.g. the project-scope allowlist) can reuse this instead
+   * of re-querying — but only when {@link permissionsOrganizationId} matches the
+   * org being served (a bearer credential can be bound to a different org).
+   */
+  permissions?: Permission;
+
+  /** Org the {@link permissions} map was resolved for (cross-org reuse guard). */
+  permissionsOrganizationId?: string;
 }
 
 // ============================================================================
@@ -281,23 +284,21 @@ import type { OrgScopedThreadStorage } from "@/storage/threads";
 import type { OrgScopedAsyncResearchJobStorage } from "@/storage/async-research-jobs";
 import type { ConnectionStorage } from "../storage/connection";
 import type { ConnectionCredentialVaultStorage } from "../storage/connection-credential-vault";
-import type {
-  MonitoringStorage,
-  VirtualMcpPluginConfigStoragePort,
-} from "../storage/ports";
+import type { MonitoringStorage } from "../storage/ports";
 import type { OrganizationSettingsStorage } from "../storage/organization-settings";
 import type { UserModelPreferencesStorage } from "../storage/user-model-preferences";
 import type { TagStorage } from "../storage/tags";
+import type { SprintStorage } from "../storage/sprints";
+import type { ProjectSidebarStorage } from "../storage/project-sidebar";
+import type { ExperimentStorage } from "../storage/experiments";
 import type { UserStorage } from "../storage/user";
 import type { VirtualMCPStorage } from "../storage/virtual";
 import type { AutomationsStorage } from "../storage/automations";
 import type { TriggerCallbackTokenStorage } from "../storage/trigger-callback-tokens";
 import type { OrgSsoConfigStorage } from "../storage/org-sso-config";
 import type { OrgSsoSessionStorage } from "../storage/org-sso-sessions";
-import type { BrandContextStorage } from "../storage/brand-context";
 import type { OrganizationDomainStorage } from "../storage/organization-domains";
 import type { OrganizationJoinRequestStorage } from "../storage/organization-join-requests";
-import type { RegistryStorage } from "../storage/registry";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { AIProviderKeyStorage } from "@/storage/ai-provider-keys";
@@ -306,9 +307,15 @@ import { SecretStorage } from "@/storage/secrets";
 import { OrgFileConfigStorage } from "@/storage/org-file-configs";
 import { OrgSiteStorage } from "@/storage/org-sites";
 import { OrgRepoSyncStorage } from "@/storage/org-repo-syncs";
+import type { GitProviderAccountStorage } from "@/storage/git-provider-accounts";
+import type { GitProviderAccountCredentialStorage } from "@/storage/git-provider-account-credentials";
+import type { RepositoryStorage } from "@/storage/repositories";
+import type { GithubConnectFlowStorage } from "@/storage/github-connect-flows";
+import type { GitProviderOAuthStateStorage } from "@/storage/git-provider-oauth-states";
 import { JiraIntegrationStorage } from "@/storage/jira-integrations";
-import { ColumnAutomationStorage } from "@/storage/task-board-column-automations";
 import { TaskBoardPromptStorage } from "@/storage/task-board-prompts";
+import type { TaskBoardAnalyticsStorage } from "@/storage/task-board-analytics";
+import type { ThreadAnalyticsStorage } from "@/storage/thread-analytics";
 import type { TaskBoardStorage } from "@/storage/task-board";
 import type { NotificationStorage } from "@/storage/notifications";
 import type { OrgFsEntryStorage } from "@/storage/org-fs";
@@ -317,6 +324,7 @@ import type { KVStorage } from "@/storage/kv";
 import type { InterestsStorage } from "@/storage/interests";
 import type { OAuthPkceStateStorage } from "@/storage/oauth-pkce-states";
 import type { ClaudeSubscriptionStorage } from "@/storage/claude-subscriptions";
+import type { OrgSharedPlanStorage } from "@/storage/org-shared-plans";
 import { AIProviderFactory } from "@/ai-providers/factory";
 import type { FireAutomationOutcome } from "../automations/dbos-workflow";
 import type { BoundObjectStorage } from "../object-storage/bound-object-storage";
@@ -346,27 +354,36 @@ export interface StudioStorage {
   threads: OrgScopedThreadStorage;
   asyncResearchJobs: OrgScopedAsyncResearchJobStorage;
   tags: TagStorage;
+  sprints: SprintStorage;
+  projectSidebar: ProjectSidebarStorage;
+  experiments: ExperimentStorage;
   aiProviderKeys: AIProviderKeyStorage;
   subsidizedGatewayKeys: SubsidizedGatewayKeyStorage;
   secrets: SecretStorage;
   orgFileConfigs: OrgFileConfigStorage;
   orgSites: OrgSiteStorage;
   orgRepoSyncs: OrgRepoSyncStorage;
+  gitProviderAccounts: GitProviderAccountStorage;
+  gitProviderAccountCredentials: GitProviderAccountCredentialStorage;
+  gitProviderOAuthStates: GitProviderOAuthStateStorage;
+  githubConnectFlows: GithubConnectFlowStorage;
+  repositories: RepositoryStorage;
   jiraIntegrations: JiraIntegrationStorage;
   taskBoard: TaskBoardStorage;
-  columnAutomations: ColumnAutomationStorage;
   taskBoardPrompts: TaskBoardPromptStorage;
+  taskBoardAnalytics: TaskBoardAnalyticsStorage;
+  threadAnalytics: ThreadAnalyticsStorage;
   notifications: NotificationStorage;
   orgFsEntries: OrgFsEntryStorage;
   oauthPkceStates: OAuthPkceStateStorage;
+  codexSubscriptions: CodexSubscriptionStorage;
   claudeSubscriptions: ClaudeSubscriptionStorage;
+  githubCopilotSubscriptions: ClaudeSubscriptionStorage;
+  orgSharedPlans: OrgSharedPlanStorage;
   automations: AutomationsStorage;
   triggerCallbackTokens: TriggerCallbackTokenStorage;
-  virtualMcpPluginConfigs: VirtualMcpPluginConfigStoragePort;
   orgSsoConfig: OrgSsoConfigStorage;
   orgSsoSessions: OrgSsoSessionStorage;
-  registry: RegistryStorage;
-  brandContext: BrandContextStorage;
   organizationDomains: OrganizationDomainStorage;
   organizationJoinRequests: OrganizationJoinRequestStorage;
   kv: KVStorage;
@@ -457,9 +474,6 @@ export interface StudioContext {
   // object storage or no org scope. See `.context/org-filesystem-proposal.md`.
   orgFs: OrgFs | null;
 
-  // External API keys (optional, from settings)
-  firecrawlApiKey?: string;
-
   // Automation runner — fires an automation manually (wired in app.ts)
   automationRunner?: (
     automationId: string,
@@ -471,13 +485,6 @@ export interface StudioContext {
 // ============================================================================
 // Utility Functions
 // ============================================================================
-
-/**
- * Check if context has organization scope
- */
-export function hasOrganization(ctx: StudioContext): boolean {
-  return ctx.organization !== undefined;
-}
 
 /**
  * Get organization ID or null

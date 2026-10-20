@@ -1,5 +1,5 @@
 import { useRef, useState, type RefObject } from "react";
-import { LayoutAlt01, SearchMd } from "@untitledui/icons";
+import { Cube01, Globe01, LayoutAlt01, SearchMd } from "@untitledui/icons";
 import {
   Dialog,
   DialogContent,
@@ -8,6 +8,7 @@ import {
 } from "@decocms/ui/components/dialog.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
+import { useNewBlocksEditor } from "@/hooks/use-new-blocks-editor";
 import { useT } from "@/i18n/use-t.ts";
 import {
   extractSectionCatalog,
@@ -16,6 +17,7 @@ import {
 } from "./section-catalog";
 import type { LiveMeta } from "./resolve-schema";
 import { buildSectionPreviewUrl } from "./section-preview-url";
+import { resolveSectionGalleryImage } from "./section-preview-image";
 import {
   onPreviewIframeSlotAvailable,
   releasePreviewIframeSlot,
@@ -123,6 +125,7 @@ function LazySectionPreview({
 }) {
   const { ref, iframeActive } = useLazyPreviewVisible(scrollRootRef, slotId);
   const [iframeLoaded, setIframeLoaded] = useState(false);
+  const PlaceholderIcon = useNewBlocksEditor() ? Cube01 : LayoutAlt01;
 
   return (
     <div
@@ -131,18 +134,22 @@ function LazySectionPreview({
     >
       {!iframeActive ? (
         <div className="flex h-full items-center justify-center">
-          <LayoutAlt01 className="h-8 w-8 text-muted-foreground/30" />
+          <PlaceholderIcon className="h-8 w-8 text-muted-foreground/30" />
         </div>
       ) : (
         <>
           {!iframeLoaded && (
             <div className="absolute inset-0 flex items-center justify-center bg-muted/40">
-              <LayoutAlt01 className="h-8 w-8 animate-pulse text-muted-foreground/40" />
+              <PlaceholderIcon className="h-8 w-8 animate-pulse text-muted-foreground/40" />
             </div>
           )}
+          {/* Cross-origin sandbox preview URL, so `allow-same-origin` keeps the
+              PREVIEW's origin rather than inheriting ours — not the escape the
+              rule warns about (that is `srcDoc` or a same-origin src). */}
           <iframe
             src={previewUrl}
             title={`Preview ${title}`}
+            // oxlint-disable-next-line react/iframe-missing-sandbox
             sandbox="allow-scripts allow-same-origin"
             referrerPolicy="no-referrer"
             className="pointer-events-none h-[200%] w-[200%] origin-top-left scale-50 border-0 bg-white"
@@ -155,36 +162,70 @@ function LazySectionPreview({
   );
 }
 
+/** A card thumbnail without a render: the schema's `@image`, or a placeholder. */
+function StaticSectionPreview({ image }: { image: string | undefined }) {
+  const PlaceholderIcon = useNewBlocksEditor() ? Cube01 : LayoutAlt01;
+  return (
+    <div className="relative flex aspect-[16/10] w-full items-center justify-center overflow-hidden bg-muted/40">
+      {image ? (
+        <img
+          src={image}
+          alt=""
+          referrerPolicy="no-referrer"
+          className="h-full w-full object-cover"
+        />
+      ) : (
+        <PlaceholderIcon className="h-8 w-8 text-muted-foreground/30" />
+      )}
+    </div>
+  );
+}
+
 function SectionGalleryCard({
   entry,
   previewUrl,
+  image,
   scrollRootRef,
   onSelect,
 }: {
   entry: ReturnType<typeof extractSectionCatalog>[number];
-  previewUrl: string;
+  /** `null` when nothing renders the section (the content protocol). */
+  previewUrl: string | null;
+  image: string | undefined;
   scrollRootRef: RefObject<HTMLElement | null>;
   onSelect: () => void;
 }) {
+  const compact = useNewBlocksEditor();
+  // A shared section says so with the globe, as it does everywhere else.
+  const CardIcon = !compact
+    ? LayoutAlt01
+    : entry.isSavedBlock
+      ? Globe01
+      : Cube01;
+
   return (
     <button
       type="button"
       onClick={onSelect}
       className={cn(
-        "group flex flex-col overflow-hidden rounded-lg border bg-card text-left transition-colors",
+        "group flex flex-col overflow-hidden rounded-[var(--studio-surface-radius,var(--radius-lg))] border bg-card text-left transition-colors card-shadow",
         "hover:border-primary/40 hover:bg-accent/30",
         entry.isSavedBlock &&
           "border-global-section/35 hover:bg-global-section/8",
       )}
     >
-      <LazySectionPreview
-        previewUrl={previewUrl}
-        title={entry.title}
-        scrollRootRef={scrollRootRef}
-        slotId={entry.resolveType}
-      />
+      {previewUrl ? (
+        <LazySectionPreview
+          previewUrl={previewUrl}
+          title={entry.title}
+          scrollRootRef={scrollRootRef}
+          slotId={entry.resolveType}
+        />
+      ) : (
+        <StaticSectionPreview image={image} />
+      )}
       <div className="flex items-center gap-2 border-t px-3 py-2.5">
-        <LayoutAlt01
+        <CardIcon
           className="h-4 w-4 shrink-0"
           style={
             entry.isSavedBlock
@@ -217,7 +258,8 @@ export function AddSectionModal({
   onOpenChange: (open: boolean) => void;
   meta: LiveMeta | null | undefined;
   decofile: Record<string, unknown> | null | undefined;
-  previewBaseUrl: string;
+  /** `null` when nothing renders sections (the content protocol). */
+  previewBaseUrl: string | null;
   onSelect: (entry: ReturnType<typeof extractSectionCatalog>[number]) => void;
 }) {
   const t = useT();
@@ -236,7 +278,7 @@ export function AddSectionModal({
   const siteTheme = decofile ? findSiteThemeBlock(decofile) : undefined;
 
   const previewUrls = new Map<string, string>();
-  if (open && livePageResolveType) {
+  if (open && livePageResolveType && previewBaseUrl) {
     for (const entry of sections) {
       previewUrls.set(
         entry.resolveType,
@@ -298,13 +340,20 @@ export function AddSectionModal({
                     entry={entry}
                     scrollRootRef={scrollRef}
                     previewUrl={
-                      previewUrls.get(entry.resolveType) ??
-                      buildSectionPreviewUrl(
-                        previewBaseUrl,
-                        livePageResolveType,
-                        entry.previewBlock,
-                        siteTheme,
-                      )
+                      previewBaseUrl
+                        ? (previewUrls.get(entry.resolveType) ??
+                          buildSectionPreviewUrl(
+                            previewBaseUrl,
+                            livePageResolveType,
+                            entry.previewBlock,
+                            siteTheme,
+                          ))
+                        : null
+                    }
+                    image={
+                      previewBaseUrl || !meta
+                        ? undefined
+                        : resolveSectionGalleryImage(entry.resolveType, meta)
                     }
                     onSelect={() => onSelect(entry)}
                   />

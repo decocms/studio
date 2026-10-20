@@ -1,4 +1,8 @@
-import { useConnection, useConnections, useProjectContext } from "@/sdk";
+import {
+  useConnectionNonBlocking,
+  useConnections,
+  useProjectContext,
+} from "@/sdk";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { resolveBindingType } from "@/hooks/use-binding";
 import { useInstallFromRegistry } from "@/hooks/use-install-from-registry";
@@ -168,7 +172,7 @@ function BindingSelector({
 
   // Ensure the currently selected connection always appears in the dropdown,
   // even if the app_name filter didn't match it
-  const selectedConnection = useConnection(
+  const selectedConnection = useConnectionNonBlocking(
     value && !filteredConnections.some((c) => c.id === value)
       ? value
       : undefined,
@@ -242,7 +246,7 @@ function BindingSelector({
               }}
               disabled={isInstalling}
               variant="ghost"
-              className="w-full justify-start gap-2 px-2 py-2 h-auto hover:bg-muted rounded-md text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full justify-start gap-2 px-2 py-2 h-auto hover:bg-muted text-sm disabled:opacity-50 disabled:cursor-not-allowed"
               type="button"
             >
               {isInstalling ? (

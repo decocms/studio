@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, spyOn } from "bun:test";
 import { COLLECTION_THREADS_CREATE } from "./create";
 import { buildThreadTestContext, type ThreadTestEnv } from "./test-helpers";
 import { posthog } from "../../posthog";
+import { SqlThreadStorage } from "../../storage/threads";
 
 describe("COLLECTION_THREADS_CREATE", () => {
   let env: ThreadTestEnv;
@@ -23,7 +24,7 @@ describe("COLLECTION_THREADS_CREATE", () => {
         status: "active",
         pinned: false,
         metadata: {
-          githubRepo: {
+          repository: {
             owner: "acme",
             name: "repo",
             url: "https://github.com/acme/repo",
@@ -69,7 +70,7 @@ describe("COLLECTION_THREADS_CREATE", () => {
         status: "active",
         pinned: false,
         metadata: {
-          githubRepo: {
+          repository: {
             owner: "acme",
             name: "repo",
             url: "https://github.com/acme/repo",
@@ -130,7 +131,7 @@ describe("COLLECTION_THREADS_CREATE", () => {
         status: "active",
         pinned: false,
         metadata: {
-          githubRepo: {
+          repository: {
             owner: "acme",
             name: "repo",
             url: "https://github.com/acme/repo",
@@ -177,7 +178,7 @@ describe("COLLECTION_THREADS_CREATE", () => {
         status: "active",
         pinned: false,
         metadata: {
-          githubRepo: {
+          repository: {
             owner: "acme",
             name: "repo",
             url: "https://github.com/acme/repo",
@@ -321,6 +322,28 @@ describe("COLLECTION_THREADS_CREATE", () => {
 
     expect(captureSpy).toHaveBeenCalledTimes(1);
     captureSpy.mockRestore();
+  });
+
+  it("rejects a custom id already claimed by another organization's thread", async () => {
+    const vmcp = await env.ctx.storage.virtualMcps.create(
+      env.orgId,
+      env.userId,
+      { title: "z", connections: [], status: "active", pinned: false },
+    );
+    const id = "thrd_test_cross_org_collision";
+    await new SqlThreadStorage(env.database.db).create({
+      id,
+      organization_id: "org_1",
+      title: "foreign thread",
+      created_by: env.userId,
+    });
+
+    await expect(
+      COLLECTION_THREADS_CREATE.handler(
+        { data: { id, virtual_mcp_id: vmcp.id, title: "mine" } },
+        env.ctx,
+      ),
+    ).rejects.toThrow(/already in use/i);
   });
 
   it("rejects a virtual_mcp_id belonging to a different organization", async () => {

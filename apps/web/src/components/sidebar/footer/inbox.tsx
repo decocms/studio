@@ -1,13 +1,20 @@
 /**
  * The inbox: a popover beside the settings gear listing updates on the tasks
- * you follow. Selecting one opens its card.
+ * you follow, and any organization waiting for you to join. Selecting an
+ * update opens its card.
+ *
+ * Invitations sit on top and outside the read model: they are the one thing
+ * here you ACT on rather than read, they do not age out, and an org you have
+ * not joined has no task to open. They moved here when the org picker was
+ * removed — this is the product's one "something is waiting for you" surface,
+ * and an invitation is exactly that.
  *
  * Opening the popover does NOT clear the dot — a glance isn't reading. Marking
  * read is its own action, so an update you saw but didn't act on survives.
  */
 
 import { type ReactNode, useState } from "react";
-import { Inbox01 } from "@untitledui/icons";
+import { Bell01 } from "@untitledui/icons";
 import {
   Popover,
   PopoverContent,
@@ -23,6 +30,9 @@ import { useProjectContext } from "@/sdk";
 import { taskKey } from "@decocms/shared/task-key";
 import { useT } from "@/i18n/use-t.ts";
 import { InboxTaskItem } from "./inbox-task-item";
+import { InvitationRow } from "@/components/header/org-switcher";
+import { usePendingInvitations } from "@/hooks/use-pending-invitations";
+import { useProjectFirstNav } from "@/hooks/use-preferences";
 
 /**
  * Loads the next page once it scrolls into view. An observer in a ref callback
@@ -49,6 +59,11 @@ function InboxPanel({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
   const { org } = useProjectContext();
   const { updates, markAllRead, markRead, hasMore, fetchMore } = useInboxFeed();
+  const projectFirstNav = useProjectFirstNav();
+  const pending = usePendingInvitations();
+  // Classic still surfaces invitations in `org-project-picker.tsx`.
+  const invitations = projectFirstNav ? pending.invitations : [];
+  const refetchInvitations = pending.refetch;
 
   return (
     <>
@@ -65,9 +80,20 @@ function InboxPanel({ onClose }: { onClose: () => void }) {
           </Button>
         )}
       </div>
-      {updates.length === 0 ? (
+      {invitations.length > 0 && (
+        <div className="shrink-0 border-border border-b p-2">
+          {invitations.map((invitation) => (
+            <InvitationRow
+              key={invitation.id}
+              invitation={invitation}
+              onChanged={refetchInvitations}
+            />
+          ))}
+        </div>
+      )}
+      {updates.length === 0 && invitations.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 py-10 text-center">
-          <Inbox01 size={24} className="text-muted-foreground/50" />
+          <Bell01 size={24} className="text-muted-foreground/50" />
           <p className="text-sm font-medium text-foreground">
             {t("sidebar.inbox.emptyTitle")}
           </p>
@@ -105,9 +131,12 @@ function InboxPanel({ onClose }: { onClose: () => void }) {
   );
 }
 
+/** Unread updates OR a pending invitation: the dot means "there is something
+ *  here", and an invitation is the only thing here that expires. */
 function InboxDot() {
   const { redDotCount } = useInboxFeed();
-  if (redDotCount === 0) return null;
+  const { invitations } = usePendingInvitations();
+  if (redDotCount === 0 && invitations.length === 0) return null;
   return (
     <span className="pointer-events-none absolute top-1 right-1 size-2 rounded-full bg-destructive" />
   );
@@ -116,23 +145,22 @@ function InboxDot() {
 function InboxPopover({
   open,
   onOpenChange,
-  side,
   children,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  side: "right" | "top";
   children: ReactNode;
 }) {
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
       {children}
       <PopoverContent
-        side={side}
+        // Beside the sidebar: `top` covered the nav the trigger sits in.
+        side="right"
         align="end"
         sideOffset={12}
         collisionPadding={16}
-        className="flex max-h-[min(650px,calc(100dvh-4rem))] w-[min(400px,calc(100vw-2rem))] flex-col p-0"
+        className="flex max-h-[min(650px,calc(100dvh-4rem))] w-[min(460px,calc(100vw-2rem))] flex-col p-0"
       >
         {open && <InboxPanel onClose={() => onOpenChange(false)} />}
       </PopoverContent>
@@ -145,14 +173,14 @@ export function InboxIconButton() {
   const t = useT();
   const [open, setOpen] = useState(false);
   return (
-    <InboxPopover open={open} onOpenChange={setOpen} side="top">
+    <InboxPopover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button
           type="button"
           aria-label={t("sidebar.inbox.title")}
-          className="relative flex size-7 shrink-0 items-center justify-center rounded-md text-sidebar-foreground/60 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
+          className="relative flex size-7 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/60 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
         >
-          <Inbox01 size={15} />
+          <Bell01 size={15} />
           <InboxDot />
         </button>
       </PopoverTrigger>
@@ -166,13 +194,13 @@ export function InboxFullButton() {
   const [open, setOpen] = useState(false);
   const collapsed = useSidebarCollapsed();
   return (
-    <InboxPopover open={open} onOpenChange={setOpen} side="right">
+    <InboxPopover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <SidebarMenuButton
           tooltip={collapsed ? t("sidebar.inbox.title") : undefined}
           className="relative"
         >
-          <Inbox01 />
+          <Bell01 />
           {/* Before the label: the collapsed rail hides `span:last-child`. */}
           <InboxDot />
           <span className="truncate">{t("sidebar.inbox.title")}</span>

@@ -1,7 +1,7 @@
 /**
  * Public skill sets: readonly org-fs volumes shared by EVERY organization,
  * each synced from a public GitHub repo (see skill-set-sync.ts) and mounted
- * into every sandbox at `org/public/<set>`.
+ * into every sandbox at `/app/org/public/<set>`.
  *
  * Mechanics: the shared content lives under a dedicated system organization
  * row (`org_fs_entry.organization_id` FKs `organization.id`, so the scope is
@@ -11,6 +11,8 @@
  * (the syncer writes server-side through `OrgFs` directly, never over HTTP).
  */
 
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { z } from "zod";
 import { getSettings } from "../settings";
 import { getObjectStorageS3Service } from "../object-storage/factory";
@@ -38,13 +40,16 @@ const sourcePathSchema = z.object({
 });
 
 const setSchema = z.object({
-  /** Set name — becomes volume `public-<set>` mounted at `org/public/<set>`. */
+  /** Set name — becomes volume `public-<set>` mounted at
+   *  `/app/org/public/<set>`. */
   set: z.string().regex(/^[a-z0-9][a-z0-9-]{0,40}$/),
   /** GitHub `owner/repo` (public). */
   repo: z.string().regex(/^[\w.-]+\/[\w.-]+$/),
   /** Branch, tag, or commit SHA. */
   ref: z.string().min(1),
   paths: z.array(sourcePathSchema).min(1),
+  /** A local checkout of `repo` to read instead of fetching `ref`. */
+  dir: z.string().optional(),
 });
 
 export type PublicSkillSetSource = z.infer<typeof setSchema>;
@@ -55,7 +60,7 @@ export type PublicSkillSetSource = z.infer<typeof setSchema>;
  * skills automatically. `core` is the canonical skill source: the
  * file-handling skills (pptx/docx/xlsx/pdf/file-reading) plus slides +
  * templating, synced from the studio repo and mounted read-only at
- * `org/public/core`. This is what replaces the image-baked
+ * `/app/org/public/core`. This is what replaces the image-baked
  * `/mnt/skills/public`.
  *
  * `ORGFS_PUBLIC_SETS` does NOT replace these — it overrides by set name
@@ -116,9 +121,22 @@ export function resolvePublicSets(
   return [...byName.values()];
 }
 
-/** The deployment's effective public sets (defaults + env override). */
+/** This checkout, when the API runs from source rather than a build. */
+const LOCAL_CHECKOUT = join(import.meta.dir, "../../../..");
+
+/** The deployment's effective public sets (defaults + env override). Outside
+ *  production, the built-in `core` reads this checkout, so a skill added on a
+ *  branch is there without merging it to `main`. */
 export function getPublicSets(): PublicSkillSetSource[] {
-  return resolvePublicSets(getSettings().orgFsPublicSetsJson);
+  const settings = getSettings();
+  const sets = resolvePublicSets(settings.orgFsPublicSetsJson);
+  if (settings.nodeEnv === "production") return sets;
+  return sets.map((s) =>
+    s === DEFAULT_PUBLIC_SETS[0] &&
+    existsSync(join(LOCAL_CHECKOUT, s.paths[0]!.from))
+      ? { ...s, dir: LOCAL_CHECKOUT }
+      : s,
+  );
 }
 
 /**

@@ -1,5 +1,6 @@
 import type { ToolDefinition, UsageStats } from "@/sdk";
 import type { ModelsConfig } from "@decocms/shared/harness/types";
+import { LIVE_MESSAGE_PART } from "../live-messages.ts";
 import type { ChatMessage } from "../types.ts";
 
 type MessagePart = ChatMessage["parts"][number];
@@ -156,11 +157,12 @@ export function useFilterParts(message: ChatMessage | null) {
       }
 
       // Skip invisible data-* parts (they're consumed above into the
-      // dataParts maps and the MessagePart switch returns null for them).
+      // dataParts maps and the MessagePart switch returns null for them). A
+      // live message is the exception: it shows where the model read it.
       // Including them in renderOrder would let them claim
       // `isLastVisiblePart` and steal the message-bottom usage stats from
       // the real last visible part.
-      if (p.type.startsWith("data-")) {
+      if (p.type.startsWith("data-") && p.type !== LIVE_MESSAGE_PART) {
         continue;
       }
 

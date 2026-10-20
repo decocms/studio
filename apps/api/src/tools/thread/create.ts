@@ -8,9 +8,10 @@
  * project's Fast Preview capability picks the default. Immutable afterwards —
  * see `update.ts`.
  *
- * Branch resolution (only meaningful when the vMCP has a githubRepo):
+ * Branch resolution (only meaningful when the vMCP has a repository):
  * honor `data.branch`, else the most-recently-touched `sandboxMap[userId]`
- * branch (warm sandbox), else `generateBranchName` (`<user-slug>-<timestamp>`).
+ * branch (warm sandbox; skipped under `chat_harness_sandbox_only`), else
+ * `generateBranchName` (`<user-slug>-<timestamp>`).
  * A `runtime: "sandbox"` coding session deliberately shares the caller's
  * branch — it continues the CMS draft; the two runtimes are told apart by the
  * thread's own stamp, never by the branch.
@@ -20,7 +21,7 @@
  * invisible here and step 3 mints a sibling branch; the frontend must never
  * auto-start without a branch (see `shouldAutoStart`).
  *
- * Threads created on a vMCP without a githubRepo always get `branch = null`.
+ * Threads created on a vMCP without a repository always get `branch = null`.
  *
  * Idempotent on `id` collisions (storage uses INSERT … ON CONFLICT DO NOTHING).
  */
@@ -36,7 +37,7 @@ import {
 import {
   normalizeThreadForResponse,
   requireOwnedVirtualMcp,
-  type GithubRepoMeta,
+  type RepositoryMetadata,
 } from "./helpers";
 import {
   ThreadCreateDataSchema,
@@ -52,6 +53,14 @@ import {
   generateBranchName,
 } from "@decocms/shared/branch-name";
 import { AGENT_SANDBOX_KIND } from "../sandbox/sandbox-map";
+import {
+  prewarmThreadSandbox,
+  sandboxOnlyChatsEnabled,
+} from "../../harnesses/sandbox-only-chats";
+import { getSettings } from "../../settings";
+import { metadataForThreadRuntime } from "../../hosted/blocks-major";
+import { contentClientForProjectRepo } from "../../git-providers";
+import { parseRepositoryBinding } from "../sandbox/sync-git-credentials";
 
 const CreateInputSchema = z.object({
   data: ThreadCreateDataSchema.describe(
@@ -124,16 +133,51 @@ export const COLLECTION_THREADS_CREATE = defineTool({
       organization.id,
     );
 
-    const metadata = vmcp.metadata as
-      | (GithubRepoMeta & SandboxMapMeta & VmcpRuntimeMetadata)
+    // A v8 site whose marker isn't written yet (repo seeded after create, an
+    // older project) must still get a `cms` stamp, and a stamp is for life:
+    // when the v8 check's answer decides the default (repo + preview server,
+    // unmarked, Fast Preview off), run it first, bounded. Any other create,
+    // an explicit runtime included, makes no extra reads.
+    const stored = (vmcp.metadata ?? null) as Record<string, unknown> | null;
+    const metadata = (
+      data.runtime
+        ? stored
+        : await metadataForThreadRuntime({
+            projects: ctx.storage.virtualMcps,
+            project: {
+              id: vmcp.id,
+              organizationId: organization.id,
+              metadata: stored,
+            },
+            by: userId,
+            client: async () => {
+              const binding = parseRepositoryBinding(
+                stored,
+                vmcp.connections?.map((c) => c.connection_id) ?? [],
+              );
+              return binding
+                ? contentClientForProjectRepo(ctx, organization.id, binding)
+                : null;
+            },
+          })
+    ) as
+      | (RepositoryMetadata & SandboxMapMeta & VmcpRuntimeMetadata)
       | null
       | undefined;
-    const githubRepo = metadata?.githubRepo;
+    const repository = metadata?.repository;
     let branch: string | null = null;
-    if (githubRepo) {
+    const sandboxOnlyChats = await sandboxOnlyChatsEnabled(
+      ctx,
+      organization.id,
+    );
+    if (repository) {
+      // Sandbox-only chats get one sandbox each, so none inherits a warm one.
+      const warmBranch = sandboxOnlyChats
+        ? undefined
+        : pickWarmBranchFromSandboxMap(metadata?.sandboxMap, userId);
       branch =
         data.branch ??
-        pickWarmBranchFromSandboxMap(metadata?.sandboxMap, userId) ??
+        warmBranch ??
         generateBranchName(branchUserLabel(ctx.auth.user));
     }
 
@@ -151,6 +195,15 @@ export const COLLECTION_THREADS_CREATE = defineTool({
     // Skip on a replayed/idempotent call (same id already existed) — the
     // conflict path returns the pre-existing row, and firing again would
     // double-count "chat_started" for a thread that was never actually created.
+    if (
+      result.isNew &&
+      sandboxOnlyChats &&
+      getSettings().sandboxPrewarmOnThreadCreateEnabled
+    ) {
+      void prewarmThreadSandbox(ctx, result).catch((err) =>
+        console.warn("[thread-create] sandbox prewarm failed", err),
+      );
+    }
     if (result.isNew) {
       posthog.capture({
         distinctId: userId,

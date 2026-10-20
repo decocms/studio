@@ -155,9 +155,13 @@ func TasksStream(deps TasksDeps) http.HandlerFunc {
 		}
 		defer unsubscribe()
 
+		// Cancel-bound: a background task (a dev server, say) has no
+		// TimeoutMs and can outlive the pod, so a plain Finished(id, nil)
+		// here would park this goroutine forever every time a client
+		// disconnects before the task does.
 		finished := make(chan proc.TaskResult, 1)
 		go func() {
-			result, ok := deps.TaskManager.Finished(id)
+			result, ok := deps.TaskManager.Finished(id, r.Context().Done())
 			if ok {
 				finished <- result
 			}

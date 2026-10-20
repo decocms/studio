@@ -7,7 +7,7 @@ import {
   type GitStatus,
   type PublishGate,
   type PublishPolicy,
-} from "../../thread/github/sandbox-git-api.ts";
+} from "../../thread/repository/sandbox-git-api.ts";
 import { useSmartReviewVerdict } from "./use-smart-review-verdict.ts";
 
 /**

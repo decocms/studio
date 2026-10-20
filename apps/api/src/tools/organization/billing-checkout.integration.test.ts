@@ -115,6 +115,19 @@ describe("ORGANIZATION_BILLING_CHECKOUT_START guards", () => {
     ).rejects.toThrow(/already has an active subscription/);
   });
 
+  it("refuses a tier change to a plan with no Stripe price — no unpriced upgrade", async () => {
+    // An active subscription now routes to the portal's update flow instead of
+    // throwing, but only to a price the operator actually mapped. Without this
+    // the session would be built around `undefined` and the org could land on
+    // a tier nothing charges for.
+    await expect(
+      ORGANIZATION_BILLING_CHECKOUT_START.handler(
+        { planId: "ultra" },
+        makeCtx(database, ORG_ACTIVE),
+      ),
+    ).rejects.toThrow(/no Stripe price configured/);
+  });
+
   it("rejects a BOUND subscription even when not active — no second paid subscription", async () => {
     // past_due = a live Stripe subscription still exists; a second checkout
     // would charge for one the webhook then refuses to bind.

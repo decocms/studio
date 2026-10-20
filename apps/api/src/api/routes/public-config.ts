@@ -51,7 +51,6 @@ app.get("/", (c) => {
     // Only expose internalUrl in local mode — production uses the public URL directly
     ...(isLocalMode() && { internalUrl: getInternalUrl() }),
     ...(getSettings().enableDecoImport && { enableDecoImport: true }),
-    brandExtractEnabled: !!getSettings().firecrawlApiKey,
     hostingEnabled:
       !!getSettings().controlplaneRestUrl &&
       !!getSettings().controlplaneServiceToken,
@@ -63,6 +62,7 @@ app.get("/", (c) => {
       !!getSettings().clickhouseAnalyticsUrl &&
       !!getSettings().clickhouseAnalyticsPassword,
     monitorGa: getSettings().monitorGa,
+    plansEnabled: getSettings().plansEnabled,
     auth: buildAuthConfig(),
     posthog: buildPosthogConfig(),
     googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY?.trim() || null,

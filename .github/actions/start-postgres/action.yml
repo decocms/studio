@@ -1,0 +1,30 @@
+name: Start Postgres
+description: >-
+  Start `postgres:16` as a detached container on localhost:5432 (user, password
+  and database all `postgres`) and wait until it accepts TCP connections.
+  A step instead of a `services:` container because the runner pulls service
+  images itself, with three quick retries against a single registry, so one
+  exhausted registry quota fails the job before any step runs.
+
+runs:
+  using: composite
+  steps:
+    - uses: ./.github/actions/pull-image
+      with:
+        image: library/postgres:16
+    - shell: bash
+      run: |
+        docker run -d --name postgres -p 5432:5432 \
+          -e POSTGRES_USER=postgres \
+          -e POSTGRES_PASSWORD=postgres \
+          -e POSTGRES_DB=postgres \
+          library/postgres:16
+        # Probe over TCP: during first-boot init the entrypoint runs a
+        # temporary server on the Unix socket only, which a socket probe
+        # would report as ready before the real server is up.
+        for _ in $(seq 1 60); do
+          docker exec postgres pg_isready -h 127.0.0.1 -U postgres && exit 0
+          sleep 1
+        done
+        docker logs postgres
+        exit 1

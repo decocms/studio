@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { findTaskByKeyOrId, taskRouteSegment } from "./task-route";
+import {
+  findTaskByKeyOrId,
+  parseTaskRouteSegment,
+  taskRouteSegment,
+  taskSharePath,
+} from "./task-route";
 
 const items = [
   { id: "board_abc", keySeq: 1 },
@@ -29,6 +34,24 @@ describe("taskRouteSegment", () => {
   });
 });
 
+describe("taskSharePath", () => {
+  test("keeps a project-owned task inside its canonical project route", () => {
+    expect(taskSharePath("acme", items[0]!, "vir_project")).toBe(
+      "/acme/projects/vir_project/tasks/ACME-01",
+    );
+  });
+
+  test("keeps an organization task on the organization board", () => {
+    expect(taskSharePath("acme", items[1]!)).toBe("/acme/tasks/ACME-12");
+  });
+
+  test("encodes every dynamic path segment", () => {
+    expect(
+      taskSharePath("acme store", { id: "task/one", keySeq: null }, "vir/a"),
+    ).toBe("/acme%20store/projects/vir%2Fa/tasks/task%2Fone");
+  });
+});
+
 describe("findTaskByKeyOrId", () => {
   test("resolves the full key, in any case or padding", () => {
     expect(findTaskByKeyOrId(items, "DECO-01")?.id).toBe("board_abc");
@@ -45,5 +68,50 @@ describe("findTaskByKeyOrId", () => {
     expect(findTaskByKeyOrId(items, "board_nope")).toBeUndefined();
     expect(findTaskByKeyOrId(items, "")).toBeUndefined();
     expect(findTaskByKeyOrId(items, undefined)).toBeUndefined();
+  });
+});
+
+describe("parseTaskRouteSegment", () => {
+  test("accepts a key in any case or padding, a bare number, or a raw id", () => {
+    for (const segment of [
+      "DECO-01",
+      "deco-1",
+      "12",
+      "board_V1StGXR8_Z5jdHi6B-myT",
+    ]) {
+      expect(parseTaskRouteSegment(segment)).toBe(segment);
+    }
+  });
+
+  test("accepts every segment taskRouteSegment writes", () => {
+    for (const item of items) {
+      const segment = taskRouteSegment("deco", item);
+      expect(parseTaskRouteSegment(segment)).toBe(segment);
+    }
+  });
+
+  test("trims surrounding whitespace", () => {
+    expect(parseTaskRouteSegment(" DECO-12 ")).toBe("DECO-12");
+  });
+
+  test("rejects anything that is not a card address", () => {
+    for (const term of [
+      "",
+      "   ",
+      "../x",
+      "DECO-12/../x",
+      "12abc",
+      "board_",
+      "board_a/b",
+      "vir_V1StGXR8_Z5jdHi6B-myT",
+    ]) {
+      expect(parseTaskRouteSegment(term)).toBeNull();
+    }
+  });
+
+  test("rejects a segment longer than any the board mints", () => {
+    expect(parseTaskRouteSegment("1".repeat(65))).toBeNull();
+    expect(parseTaskRouteSegment(`DECO-${"0".repeat(60)}12`)).toBeNull();
+    expect(parseTaskRouteSegment(`board_${"a".repeat(59)}`)).toBeNull();
   });
 });

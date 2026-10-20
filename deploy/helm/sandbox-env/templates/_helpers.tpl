@@ -42,7 +42,12 @@ Sandbox container image. The daemon implementation IS the image, so there is no
 runtime switch a pod could use to disagree with the template that created it.
 */}}
 {{- define "sandbox-env.sandboxImage" -}}
+{{- if .imageVariant -}}
+{{- $variant := index .Values.imageVariants .imageVariant -}}
+{{- printf "%s:%s" $variant.repository ($variant.tag | default .Values.image.tag | default .Chart.AppVersion) -}}
+{{- else -}}
 {{- printf "%s:%s" .Values.image.repository (.Values.image.tag | default .Chart.AppVersion) -}}
+{{- end -}}
 {{- end }}
 
 {{/*
@@ -491,4 +496,8 @@ that cannot mount, or one that silently mounts nothing:
 {{- fail "sandbox-env: depsCache.remote.volume.attributes is set but volume.driver is empty — the static path renders a PV, whose csi.driver must name the installed CSI driver (e.g. s3.csi.aws.com)." -}}
 {{- end }}
 {{- end }}
+{{- end }}
+
+{{- define "sandbox-env.signingKeySecretName" -}}
+{{- printf "studio-sandbox-signing-key-%s" (include "sandbox-env.envName" .) -}}
 {{- end }}

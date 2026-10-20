@@ -9,10 +9,17 @@
  * is opt-in (unset/false = inline, the default), but the tooltip layout is
  * the one under test here, so this always reports it enabled.
  *
- * Only the export actually imported by field-label.tsx is provided.
+ * `SecretField` encrypts through the site at `previewServerUrl`; specs
+ * intercept {@link CT_SITE_URL} with `page.route`.
+ *
+ * Only the export actually imported by the fields is provided.
  */
+export const CT_SITE_URL = "https://secret-site.test/";
+
 export function useVirtualMCP(): {
-  metadata: { fieldDescriptionTooltips: true };
+  metadata: { fieldDescriptionTooltips: true; previewServerUrl: string };
 } {
-  return { metadata: { fieldDescriptionTooltips: true } };
+  return {
+    metadata: { fieldDescriptionTooltips: true, previewServerUrl: CT_SITE_URL },
+  };
 }

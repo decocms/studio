@@ -17,7 +17,7 @@ import { streamSSE } from "hono/streaming";
 import { createMiddleware } from "hono/factory";
 import { composeSandboxRef } from "@decocms/sandbox/provider";
 import type {
-  AgentSandboxProvider,
+  SandboxProvider,
   ClaimPhase,
 } from "@decocms/sandbox/provider/agent-sandbox";
 import { computeClaimHandle } from "../../sandbox/claim-handle";
@@ -35,6 +35,7 @@ import {
 import { liveSandboxForBranch } from "../../tools/sandbox/live-sandbox-for-branch";
 import { stampRuntimeIfAbsent } from "../../tools/thread/stamp-runtime-if-absent";
 import { getAgentSandboxProvider } from "../../sandbox/lifecycle";
+import { assertAiBudget } from "../../core/plan-feature-gate";
 import {
   getUserId,
   requireAuth,
@@ -49,27 +50,32 @@ import {
   type GitDiffLike,
   type GitStatusLike,
   isGitStatusLike,
-  suggestCommitMessageWithLlm,
-} from "../../lib/suggest-commit-message";
+} from "../../lib/git-change-context";
 import { judgeRequiresReviewWithLlm } from "../../lib/judge-requires-review";
-import { gitDataClientForRepo } from "../../decofile/client-for-repo";
 import {
-  GitHubApiError,
-  GitHubRateLimitError,
-} from "../../decofile/github-git-data";
+  RepoWriteConflict,
+  contentClientForProjectRepo,
+  repoErrorStatus,
+  repoRateLimitRetryAfterMs,
+} from "@/git-providers";
+import { GitProviderError } from "../../git-providers/types";
 import {
-  githubGitDiff,
-  githubGitDiscard,
-  githubGitRebase,
-  githubGitStatus,
+  repoGitDiff,
+  repoGitDiscard,
+  repoGitRebase,
+  repoGitStatus,
 } from "../../decofile/git-compat";
 import {
   buildLoaderInvokeUrl,
+  isCatalogLoaderResolveType,
   parseLoaderInvokeRequest,
 } from "../../lib/loader-invoke";
+import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
+import { sandboxContentHandler } from "../../sandbox/content-storage";
+import { projectPackagePath } from "../../hosted/blocks-major";
 import {
   GitPushAuthError,
-  parseGithubRepoFromMetadata,
+  parseRepositoryBinding,
   refreshSandboxGitCredentials,
 } from "../../tools/sandbox/sync-git-credentials";
 
@@ -83,7 +89,7 @@ interface VmClaim {
   callerUserId: string;
   /** Null when no sandbox runner is configured on this studio instance — or
    *  when the session is sandbox-less (`runtime` below). */
-  runner: AgentSandboxProvider | null;
+  runner: SandboxProvider | null;
   virtualMcpId: string;
   branch: string;
   userId: string;
@@ -125,7 +131,16 @@ function assertSandboxBranchParam(branch: string): void {
   }
 }
 
-const SUGGEST_COMMIT_MAX_BODY_BYTES = 512 * 1024;
+const JUDGE_REVIEW_MAX_BODY_BYTES = 512 * 1024;
+/**
+ * The content protocol's own cap (`@decocms/blocks/protocol` limits): 8 MiB per
+ * request, plus slack so the protocol, not this route, answers a body right at
+ * the limit. No asset uploads go through a sandbox: project assets go to
+ * Studio's file storage (`/file-configs/:id/upload`).
+ */
+const CONTENT_RPC_MAX_BODY_BYTES = 8 * 1024 * 1024 + 64 * 1024;
+/** One daemon file call made for the content protocol. */
+const DAEMON_FILE_CALL_TIMEOUT_MS = 30_000;
 const PREVIEW_INVOKE_MAX_BODY_BYTES = 64 * 1024;
 
 /**
@@ -240,7 +255,7 @@ const resolveVmClaim = createMiddleware<VmEnv>(async (c, next) => {
     return next();
   }
 
-  let runner: AgentSandboxProvider | null;
+  let runner: SandboxProvider | null;
   try {
     runner = await getAgentSandboxProvider(ctx);
   } catch {
@@ -350,7 +365,7 @@ async function resolveClaimRuntime(
  */
 async function resolveBranchRunner(
   c: Context<VmEnv>,
-): Promise<AgentSandboxProvider | null> {
+): Promise<SandboxProvider | null> {
   const claim = c.get("vmClaim");
   if (claim.runner) return claim.runner;
   try {
@@ -361,7 +376,7 @@ async function resolveBranchRunner(
 }
 
 /** Guard for routes that need a non-null runner. Returns the runner or a 503. */
-function requireRunner(c: Context<VmEnv>): AgentSandboxProvider | Response {
+function requireRunner(c: Context<VmEnv>): SandboxProvider | Response {
   const { runner } = c.get("vmClaim");
   if (!runner) {
     return c.json({ error: "No sandbox runner configured" }, 503);
@@ -377,42 +392,44 @@ function requireRunner(c: Context<VmEnv>): AgentSandboxProvider | Response {
 async function fastPreviewGitClient(c: Context<VmEnv>) {
   const { virtualMcpMetadata, connectionIds } = c.get("vmClaim");
   const ctx = c.var.studioContext;
-  const githubRepo = parseGithubRepoFromMetadata(
-    virtualMcpMetadata,
-    connectionIds,
-  );
-  if (!githubRepo) {
-    throw new GitHubApiError(
-      404,
-      "AUTH",
-      "repo",
-      "Project has no GitHub repository",
-    );
+  const repository = parseRepositoryBinding(virtualMcpMetadata, connectionIds);
+  if (!repository) {
+    throw new GitProviderError({
+      provider: "github",
+      status: 404,
+      message: "Project has no repository",
+    });
   }
   const organization = requireOrganization(ctx);
-  return gitDataClientForRepo(ctx, organization.id, githubRepo);
+  return contentClientForProjectRepo(ctx, organization.id, repository);
 }
 
 function fastPreviewGitError(c: Context<VmEnv>, err: unknown): Response {
-  /** 429 with GitHub's own wait, so the client backs off instead of retrying. */
-  if (err instanceof GitHubRateLimitError) {
-    return c.json({ error: err.message }, 429, {
+  const message = err instanceof Error ? err.message : String(err);
+  /** 429 with the provider's own wait, so the client backs off instead of
+   *  retrying immediately. */
+  const retryAfterMs = repoRateLimitRetryAfterMs(err);
+  if (retryAfterMs !== undefined) {
+    return c.json({ error: message }, 429, {
       ...SANDBOX_PROXY_CACHE_HEADERS,
-      ...(err.retryAfterMs === null
+      ...(retryAfterMs === null
         ? {}
-        : { "Retry-After": String(Math.ceil(err.retryAfterMs / 1000)) }),
+        : { "Retry-After": String(Math.ceil(retryAfterMs / 1000)) }),
     });
   }
-  if (err instanceof GitHubApiError) {
+  if (err instanceof RepoWriteConflict) {
+    return c.json({ error: message }, 409, SANDBOX_PROXY_CACHE_HEADERS);
+  }
+  const providerStatus = repoErrorStatus(err);
+  if (providerStatus !== null) {
     const status =
-      err.status === 404
+      providerStatus === 404
         ? 404
-        : err.status === 409 || err.status === 422
+        : providerStatus === 409 || providerStatus === 422
           ? 409
           : 502;
-    return c.json({ error: err.message }, status, SANDBOX_PROXY_CACHE_HEADERS);
+    return c.json({ error: message }, status, SANDBOX_PROXY_CACHE_HEADERS);
   }
-  const message = err instanceof Error ? err.message : String(err);
   return c.json({ error: message }, 502, SANDBOX_PROXY_CACHE_HEADERS);
 }
 
@@ -453,7 +470,7 @@ async function proxyPreviewUpstream(
 async function fastPreviewGitStatus(c: Context<VmEnv>): Promise<Response> {
   try {
     const client = await fastPreviewGitClient(c);
-    const status = await githubGitStatus(client, c.get("vmClaim").branch);
+    const status = await repoGitStatus(client, c.get("vmClaim").branch);
     return c.json(status, 200, SANDBOX_PROXY_CACHE_HEADERS);
   } catch (err) {
     return fastPreviewGitError(c, err);
@@ -512,7 +529,7 @@ async function proxyDaemon(
     /** Null out the hosted daemon's container-internal `repoDir`. */
     redactRepoDir?: boolean;
     /** Pod-addressed route: act on this runner whatever the session's runtime is. */
-    runner?: AgentSandboxProvider;
+    runner?: SandboxProvider;
   },
 ) {
   // Sandbox-less Fast Preview: daemon-backed routes have no daemon, ever.
@@ -648,6 +665,42 @@ async function proxyDaemon(
 }
 
 /**
+ * `POST …/rpc`: the content protocol over the sandbox's working tree. Studio
+ * runs it (sandbox/content-storage.ts) over the daemon's file routes; the
+ * daemon itself only does files and git. A sandbox-less session has no working
+ * tree: 404, which the editor reads as "no sandbox".
+ */
+export function serveSandboxContent(c: Context<VmEnv>) {
+  const claim = c.get("vmClaim");
+  if (claim.runtime === "cms") {
+    return c.json(
+      { error: "sandbox not found: this session is sandbox-less" },
+      404,
+      SANDBOX_PROXY_CACHE_HEADERS,
+    );
+  }
+  const runner = requireRunner(c);
+  if (runner instanceof Response) return runner;
+  const handler = sandboxContentHandler({
+    key: claim.claimName,
+    packagePath: projectPackagePath(claim.virtualMcpMetadata),
+    daemon: (path, body) =>
+      runner.proxyDaemonRequest(claim.claimName, path, {
+        method: "POST",
+        headers: new Headers({ "content-type": "application/json" }),
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(DAEMON_FILE_CALL_TIMEOUT_MS),
+      }),
+    onError: (error) =>
+      console.error("content protocol (sandbox): internal error", {
+        virtualMcpId: claim.virtualMcpId,
+        error: error instanceof Error ? error.message : String(error),
+      }),
+  });
+  return handler(c.req.raw);
+}
+
+/**
  * Set `repoDir` to null in a daemon config JSON payload. Returns the input
  * unchanged if it isn't a JSON object with a `repoDir` key, so a non-JSON or
  * error body passes through untouched.
@@ -671,8 +724,8 @@ export function redactRepoDir(text: string): string {
 
 export async function fetchDaemonJson<T>(
   runner: {
-    proxyDaemonRequest: AgentSandboxProvider["proxyDaemonRequest"];
-    adoptLiveClaim: AgentSandboxProvider["adoptLiveClaim"];
+    proxyDaemonRequest: SandboxProvider["proxyDaemonRequest"];
+    adoptLiveClaim: SandboxProvider["adoptLiveClaim"];
   },
   claimName: string,
   daemonPath: string,
@@ -798,6 +851,25 @@ export const createSandboxRoutes = () => {
     if (!script) return c.json({ error: "missing script name" }, 400);
     return proxyDaemon(c, `/_sandbox/exec/${encodeURIComponent(script)}/kill`);
   });
+
+  // -- Content protocol (Blocks v8) -----------------------------------------
+  // The working tree's `.deco/blocks` over the content protocol, as a
+  // `deco serve` would serve it on a developer's machine; Studio runs the
+  // protocol over the daemon's file routes (see serveSandboxContent).
+  // Every method: the protocol answers a non-POST with 405 itself.
+  app.all(
+    "/:virtualMcpId/:branch/rpc",
+    bodyLimit({
+      maxSize: CONTENT_RPC_MAX_BODY_BYTES,
+      onError: (c) =>
+        c.json(
+          { error: "Payload too large" },
+          413,
+          SANDBOX_PROXY_CACHE_HEADERS,
+        ),
+    }),
+    serveSandboxContent,
+  );
 
   // -- Tenant config --------------------------------------------------------
   app.get("/:virtualMcpId/:branch/config", (c) =>
@@ -950,7 +1022,7 @@ export const createSandboxRoutes = () => {
           base?: string;
         };
         const client = await fastPreviewGitClient(c);
-        const diff = await githubGitDiff(client, claim.branch, body.base);
+        const diff = await repoGitDiff(client, claim.branch, body.base);
         return c.json(diff, 200, SANDBOX_PROXY_CACHE_HEADERS);
       } catch (err) {
         return fastPreviewGitError(c, err);
@@ -985,16 +1057,16 @@ export const createSandboxRoutes = () => {
     return withClaimGitLock(claimName, async () => {
       try {
         await patchSandboxOperator(ctx, runner, claimName);
-        const githubRepo = parseGithubRepoFromMetadata(
+        const repository = parseRepositoryBinding(
           virtualMcpMetadata,
           connectionIds,
         );
-        if (githubRepo) {
+        if (repository) {
           await refreshSandboxGitCredentials(
             ctx,
             runner,
             claimName,
-            githubRepo,
+            repository,
           );
         }
       } catch (err) {
@@ -1035,11 +1107,13 @@ export const createSandboxRoutes = () => {
         }
         try {
           const client = await fastPreviewGitClient(c);
-          await githubGitDiscard(client, claim.branch, filepaths);
+          await repoGitDiscard(client, claim.branch, filepaths);
           return c.json({ ok: true }, 200, SANDBOX_PROXY_CACHE_HEADERS);
         } catch (err) {
           const status =
-            err instanceof GitHubApiError && err.status === 409 ? 409 : 502;
+            repoErrorStatus(err) === 409 || err instanceof RepoWriteConflict
+              ? 409
+              : 502;
           const message = err instanceof Error ? err.message : String(err);
           return c.json(
             { error: message },
@@ -1066,7 +1140,7 @@ export const createSandboxRoutes = () => {
           };
           const client = await fastPreviewGitClient(c);
           const base = body.base ?? (await client.getDefaultBranch());
-          await githubGitRebase(client, claim.branch, base);
+          await repoGitRebase(client, claim.branch, base);
           return c.json({ ok: true }, 200, SANDBOX_PROXY_CACHE_HEADERS);
         } catch (err) {
           return fastPreviewGitError(c, err);
@@ -1093,10 +1167,15 @@ export const createSandboxRoutes = () => {
       });
     });
   });
+  // Smart-review judge: the client sends the full publish payload (status +
+  // combined diff) and the cheap "fast" model tier decides whether the changes
+  // need PR review. Backfills status/diff from the daemon when omitted. On any
+  // failure the lib returns a permissive verdict (requiresReview: false) so the
+  // AI's absence never blocks publish.
   app.post(
-    "/:virtualMcpId/:branch/git/suggest-commit",
+    "/:virtualMcpId/:branch/git/judge-review",
     bodyLimit({
-      maxSize: SUGGEST_COMMIT_MAX_BODY_BYTES,
+      maxSize: JUDGE_REVIEW_MAX_BODY_BYTES,
       onError: (c) =>
         c.json(
           { error: "Payload too large" },
@@ -1108,97 +1187,7 @@ export const createSandboxRoutes = () => {
       const claim = c.get("vmClaim");
       // runner === null ⇔ sandbox-less Fast Preview (the claim middleware
       // only admits a null runner for that mode).
-      let runner: AgentSandboxProvider | null = null;
-      if (claim.runtime !== "cms") {
-        const required = requireRunner(c);
-        if (required instanceof Response) return required;
-        runner = required;
-      }
-
-      const { claimName, userId, projectRef } = claim;
-      const ctx = c.var.studioContext;
-
-      try {
-        const body = (await c.req.json().catch(() => ({}))) as {
-          status?: GitStatusLike;
-          diff?: GitDiffLike;
-        };
-
-        const clientStatus = body.status;
-        const clientDiff = body.diff;
-        const hasClientDiff =
-          clientDiff != null &&
-          typeof clientDiff.diffs === "object" &&
-          clientDiff.diffs !== null;
-
-        const [status, diff] =
-          isGitStatusLike(clientStatus) && hasClientDiff
-            ? [clientStatus, clientDiff]
-            : runner
-              ? await Promise.all([
-                  fetchDaemonJson<GitStatusLike>(
-                    runner,
-                    claimName,
-                    "/_sandbox/git/status",
-                    "GET",
-                    { userId, projectRef },
-                  ),
-                  fetchDaemonJson<GitDiffLike>(
-                    runner,
-                    claimName,
-                    "/_sandbox/git/diff",
-                    "GET",
-                    { userId, projectRef },
-                  ),
-                ])
-              : // Sandbox-less backfill: same GitHub-backed shapes the /git
-                // routes serve (no daemon exists to ask).
-                await (async () => {
-                  const client = await fastPreviewGitClient(c);
-                  return Promise.all([
-                    githubGitStatus(client, claim.branch),
-                    githubGitDiff(client, claim.branch),
-                  ]);
-                })();
-        const suggestion = await suggestCommitMessageWithLlm(ctx, status, diff);
-        return c.json(suggestion, 200, SANDBOX_PROXY_CACHE_HEADERS);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        if (message === "SANDBOX_GONE") {
-          return c.json(
-            {
-              error:
-                "Sandbox handle is gone. The sandbox needs to be re-provisioned.",
-            },
-            410,
-            SANDBOX_PROXY_CACHE_HEADERS,
-          );
-        }
-        return c.json({ error: message }, 502, SANDBOX_PROXY_CACHE_HEADERS);
-      }
-    },
-  );
-
-  // Smart-review judge: the client sends the full publish payload (status +
-  // combined diff) and the cheap "fast" model tier decides whether the changes
-  // need PR review. Backfills status/diff from the daemon when omitted, mirrors
-  // the suggest-commit handler. On any failure the lib returns a permissive
-  // verdict (requiresReview: false) so the AI's absence never blocks publish.
-  app.post(
-    "/:virtualMcpId/:branch/git/judge-review",
-    bodyLimit({
-      maxSize: SUGGEST_COMMIT_MAX_BODY_BYTES,
-      onError: (c) =>
-        c.json(
-          { error: "Payload too large" },
-          413,
-          SANDBOX_PROXY_CACHE_HEADERS,
-        ),
-    }),
-    async (c) => {
-      const claim = c.get("vmClaim");
-      // runner === null ⇔ sandbox-less Fast Preview (see suggest-commit).
-      let runner: AgentSandboxProvider | null = null;
+      let runner: SandboxProvider | null = null;
       if (claim.runtime !== "cms") {
         const required = requireRunner(c);
         if (required instanceof Response) return required;
@@ -1242,13 +1231,27 @@ export const createSandboxRoutes = () => {
                     { userId, projectRef },
                   ),
                 ])
-              : await (async () => {
+              : // Sandbox-less backfill: same GitHub-backed shapes the /git
+                // routes serve (no daemon exists to ask).
+                await (async () => {
                   const client = await fastPreviewGitClient(c);
                   return Promise.all([
-                    githubGitStatus(client, claim.branch),
-                    githubGitDiff(client, claim.branch),
+                    repoGitStatus(client, claim.branch),
+                    repoGitDiff(client, claim.branch),
                   ]);
                 })();
+        // The only route under /sandbox that spends real money: one model call
+        // on the org's gateway credential, with a prompt the caller sizes (up
+        // to the body limit above). It is a plain BFF route, so `defineTool`'s
+        // `requiresAiBudget` never sees it and an org whose bar reads
+        // `exhausted` could loop it.
+        // Fails OPEN when the gateway has no answer, like every other gate.
+        await assertAiBudget(
+          ctx,
+          requireOrganization(ctx).id,
+          "judging whether a change needs review",
+        );
+
         const verdict = await judgeRequiresReviewWithLlm(
           ctx,
           status,
@@ -1352,6 +1355,67 @@ export const createSandboxRoutes = () => {
       const invoke = parseLoaderInvokeRequest(body as Record<string, unknown>);
       if (!invoke) {
         return c.json({ error: "Invalid or missing __resolveType" }, 400);
+      }
+
+      const invokeUrl = buildLoaderInvokeUrl(previewUrl, invoke.resolveType);
+      return proxyPreviewUpstream(c, invokeUrl, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(invoke.payload),
+        signal: AbortSignal.timeout(30_000),
+      });
+    },
+  );
+
+  /**
+   * Catalog invoke — like `preview-invoke`, but works WITHOUT a running sandbox.
+   * A CMS/no-sandbox session has no runner, so the origin is the site's own
+   * public deco runtime (`resolvePreviewServerUrl(metadata)`) instead of
+   * `runner.getPreviewUrl()`. Because that origin can be PRODUCTION (not the
+   * caller's private sandbox), the resolveType is held to the read-only VTEX
+   * catalog loaders — this is what lets the blog ProductShelf picker browse the
+   * real catalog in local mode.
+   */
+  app.post(
+    "/:virtualMcpId/:branch/catalog-invoke",
+    bodyLimit({
+      maxSize: PREVIEW_INVOKE_MAX_BODY_BYTES,
+      onError: (c) => c.json({ error: "Payload too large" }, 413),
+    }),
+    async (c) => {
+      const { runner, claimName, virtualMcpMetadata } = c.get("vmClaim");
+
+      let previewUrl: string | null;
+      try {
+        previewUrl = runner
+          ? await runner.getPreviewUrl(claimName)
+          : resolvePreviewServerUrl(virtualMcpMetadata);
+      } catch {
+        return c.json({ error: "Preview not available" }, 502);
+      }
+      if (!previewUrl) {
+        return c.json({ error: "Preview not available" }, 502);
+      }
+
+      let body: unknown;
+      try {
+        body = await c.req.json();
+      } catch {
+        return c.json({ error: "Invalid JSON body" }, 400);
+      }
+
+      if (!body || typeof body !== "object" || Array.isArray(body)) {
+        return c.json({ error: "Invalid JSON body" }, 400);
+      }
+
+      const invoke = parseLoaderInvokeRequest(body as Record<string, unknown>);
+      if (!invoke) {
+        return c.json({ error: "Invalid or missing __resolveType" }, 400);
+      }
+      if (!isCatalogLoaderResolveType(invoke.resolveType)) {
+        return c.json({ error: "resolveType not allowed" }, 403);
       }
 
       const invokeUrl = buildLoaderInvokeUrl(previewUrl, invoke.resolveType);

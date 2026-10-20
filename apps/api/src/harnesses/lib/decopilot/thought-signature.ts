@@ -24,12 +24,12 @@
 
 import { wrapLanguageModel, type LanguageModelMiddleware } from "ai";
 import type {
-  LanguageModelV3,
-  LanguageModelV3CallOptions,
-  LanguageModelV3Content,
-  LanguageModelV3StreamPart,
-  SharedV3ProviderMetadata,
-  SharedV3ProviderOptions,
+  LanguageModelV4,
+  LanguageModelV4CallOptions,
+  LanguageModelV4Content,
+  LanguageModelV4StreamPart,
+  SharedV4ProviderMetadata,
+  SharedV4ProviderOptions,
 } from "@ai-sdk/provider";
 
 /**
@@ -65,9 +65,9 @@ export function joinThoughtSignature(
 }
 
 function withGoogleSignature(
-  existing: SharedV3ProviderMetadata | undefined,
+  existing: SharedV4ProviderMetadata | undefined,
   signature: string,
-): SharedV3ProviderMetadata {
+): SharedV4ProviderMetadata {
   return {
     ...existing,
     google: { ...(existing?.google ?? {}), thoughtSignature: signature },
@@ -75,7 +75,7 @@ function withGoogleSignature(
 }
 
 function readThoughtSignature(
-  opts: SharedV3ProviderOptions | undefined,
+  opts: SharedV4ProviderOptions | undefined,
 ): string | null {
   const v = opts?.google?.thoughtSignature;
   return typeof v === "string" ? v : null;
@@ -83,7 +83,7 @@ function readThoughtSignature(
 
 /** Strip an embedded signature off a tool-call object (stream or content). */
 function stripToolCall<
-  T extends { toolCallId: string; providerMetadata?: SharedV3ProviderMetadata },
+  T extends { toolCallId: string; providerMetadata?: SharedV4ProviderMetadata },
 >(part: T): T {
   const { baseId, signature } = splitThoughtSignature(part.toolCallId);
   if (signature === null) return part;
@@ -95,8 +95,8 @@ function stripToolCall<
 }
 
 function stripStreamPart(
-  part: LanguageModelV3StreamPart,
-): LanguageModelV3StreamPart {
+  part: LanguageModelV4StreamPart,
+): LanguageModelV4StreamPart {
   switch (part.type) {
     // The id arrives bloated on the streaming input parts too; rewrite it so
     // the reader correlates them with the (rewritten) final tool-call.
@@ -119,8 +119,8 @@ function stripStreamPart(
  * unless some assistant tool-call carries a signature.
  */
 function reembedPrompt(
-  params: LanguageModelV3CallOptions,
-): LanguageModelV3CallOptions {
+  params: LanguageModelV4CallOptions,
+): LanguageModelV4CallOptions {
   const signatureByBaseId = new Map<string, string>();
   for (const message of params.prompt) {
     if (message.role !== "assistant") continue;
@@ -156,7 +156,7 @@ function reembedPrompt(
  */
 export function thoughtSignatureMiddleware(): LanguageModelMiddleware {
   return {
-    specificationVersion: "v3",
+    specificationVersion: "v4",
     transformParams: async ({ params }) => reembedPrompt(params),
     wrapStream: async ({ doStream }) => {
       const { stream, ...rest } = await doStream();
@@ -164,8 +164,8 @@ export function thoughtSignatureMiddleware(): LanguageModelMiddleware {
         ...rest,
         stream: stream.pipeThrough(
           new TransformStream<
-            LanguageModelV3StreamPart,
-            LanguageModelV3StreamPart
+            LanguageModelV4StreamPart,
+            LanguageModelV4StreamPart
           >({
             transform(part, controller) {
               controller.enqueue(stripStreamPart(part));
@@ -177,7 +177,7 @@ export function thoughtSignatureMiddleware(): LanguageModelMiddleware {
     wrapGenerate: async ({ doGenerate }) => {
       const result = await doGenerate();
       const content = result.content.map(
-        (part: LanguageModelV3Content): LanguageModelV3Content =>
+        (part: LanguageModelV4Content): LanguageModelV4Content =>
           part.type === "tool-call" ? stripToolCall(part) : part,
       );
       return { ...result, content };
@@ -187,7 +187,7 @@ export function thoughtSignatureMiddleware(): LanguageModelMiddleware {
 
 /** Wrap a model so embedded thought signatures are decoded in/out. */
 export function withThoughtSignatureCodec(
-  model: LanguageModelV3,
-): LanguageModelV3 {
+  model: LanguageModelV4,
+): LanguageModelV4 {
   return wrapLanguageModel({ model, middleware: thoughtSignatureMiddleware() });
 }

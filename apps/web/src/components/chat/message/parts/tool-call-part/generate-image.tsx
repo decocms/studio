@@ -6,7 +6,9 @@ import {
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
 import { Image01 } from "@untitledui/icons";
+import { z } from "zod";
 import type { ToolUIPart } from "ai";
+import { useModelDisclosure } from "@/hooks/use-entitlements";
 import { useOrg } from "@/sdk";
 import { useT } from "@/i18n/use-t.ts";
 import { ToolCallShell } from "./common.tsx";
@@ -22,6 +24,39 @@ function resolveImageSrc(uri: string, orgSlug: string): string {
   if (key !== null) return `/api/${orgSlug}/files/${key}`;
   // data: URIs or any other URL — use as-is
   return uri;
+}
+
+export function ImageGrid({ srcs, alt }: { srcs: string[]; alt: string }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {srcs.map((src) => (
+        <ImageLightbox key={src} src={src} alt={alt}>
+          <img
+            src={src}
+            alt={alt}
+            className="max-w-sm max-h-80 object-contain rounded-lg border border-border hover:border-foreground/20 transition-colors"
+          />
+        </ImageLightbox>
+      ))}
+    </div>
+  );
+}
+
+const screenshotOutput = z.object({
+  image_url: z.url({ protocol: /^https$/ }),
+});
+
+/** The image a screenshot tool (e.g. Figma's `get_screenshot`) returned, if any. */
+export function screenshotImageUrl(output: unknown): string | null {
+  if (typeof output !== "string") return null;
+  try {
+    const parsed = screenshotOutput.safeParse(
+      JSON.parse(output.split("\n", 1)[0] ?? ""),
+    );
+    return parsed.success ? parsed.data.image_url : null;
+  } catch {
+    return null;
+  }
 }
 
 interface GenerateImageResult {
@@ -111,7 +146,12 @@ export function GenerateImagePart({ part, latency }: GenerateImagePartProps) {
   const result = part.output as GenerateImageResult | undefined;
   const images = getGeneratedImages(result);
   const usage = extractUsage(result);
-  const modelLabel = result?.model;
+  // §6: below Ultra the model's NAME is not this org's to see, and a tool
+  // result carries it in its payload. Same rule and same fail-CLOSED gate as
+  // the cost figures in usage-stats / context-panel — the card keeps its
+  // prompt, token count and latency, and simply drops the model line.
+  const showModel = useModelDisclosure();
+  const modelLabel = showModel ? result?.model : undefined;
   const refImages = Array.isArray(input?.referenceImages)
     ? input.referenceImages.filter((r) => r.uri ?? r.url)
     : undefined;
@@ -181,7 +221,7 @@ export function GenerateImagePart({ part, latency }: GenerateImagePartProps) {
   return (
     <div className="flex flex-col gap-2">
       <ToolCallShell
-        icon={<Image01 size={14} className="text-pink-500" />}
+        icon={<Image01 size={14} className="text-special" />}
         title={t("chat.generateImage.generatedImage")}
         summary={modelLabel}
         state="idle"
@@ -209,26 +249,13 @@ export function GenerateImagePart({ part, latency }: GenerateImagePartProps) {
           )}
         </div>
       </ToolCallShell>
-      <div className="flex flex-wrap gap-2">
-        {images.map((img, i) => {
+      <ImageGrid
+        srcs={images.flatMap((img) => {
           const raw = img.uri ?? img.url;
-          if (!raw) return null;
-          const src = resolveImageSrc(raw, org.slug);
-          return (
-            <ImageLightbox
-              key={i}
-              src={src}
-              alt={input?.prompt ?? t("chat.generateImage.generatedImageAlt")}
-            >
-              <img
-                src={src}
-                alt={input?.prompt ?? t("chat.generateImage.generatedImageAlt")}
-                className="max-w-sm max-h-80 object-contain rounded-lg border border-border hover:border-foreground/20 transition-colors"
-              />
-            </ImageLightbox>
-          );
+          return raw ? [resolveImageSrc(raw, org.slug)] : [];
         })}
-      </div>
+        alt={input?.prompt ?? t("chat.generateImage.generatedImageAlt")}
+      />
     </div>
   );
 }

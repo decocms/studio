@@ -12,12 +12,25 @@
  * built-ins operate on the checkout, Studio's own tools arrive over MCP from the
  * endpoint minted for this run, and the org's MCP connections arrive as one
  * server each (`orgMcps`, when the org opted in). Permissions are bypassed —
- * the pod is the isolation boundary, and there is no UI to answer a prompt.
+ * the pod is the isolation boundary. The only prompts that still reach Studio
+ * are the user's own questions and plans (see `interactiveToolHook`).
  */
 
 import { query } from "@anthropic-ai/claude-agent-sdk";
-import type { Options } from "@anthropic-ai/claude-agent-sdk";
+import type {
+  CanUseTool,
+  HookCallbackMatcher,
+  Options,
+  SDKMessage,
+  SDKUserMessage,
+} from "@anthropic-ai/claude-agent-sdk";
 import type { HarnessStreamInputWire } from "@decocms/sandbox/dispatch/schemas";
+import {
+  liveMessageChunk,
+  LiveMessageTurn,
+  mergeTurnResults,
+  type LiveMessageInbox,
+} from "./live-messages";
 import {
   turnFinishChunks,
   turnStartChunks,
@@ -61,12 +74,81 @@ function turnBudgetInstruction(maxTurns: number): string {
 }
 
 /**
+ * The runner exits when the turn ends, so a tool that reports back LATER never
+ * reaches the model: a run that armed one and stopped to wait was recorded as
+ * completed with nothing done.
+ */
+const DEFERRED_RESULT_TOOLS = ["Monitor", "ScheduleWakeup"];
+
+const ORG_FS_INSTRUCTION =
+  "The organization filesystem is mounted at `/app/org/`; an `org/...` path " +
+  "in older messages or skills means `/app/org/...`.";
+
+const WAIT_IN_TURN_INSTRUCTION =
+  "This run ends when your turn ends. Nothing you start in the background can " +
+  "report back afterwards, so wait for every command you start, in the " +
+  "foreground, before you finish.";
+
+/**
  * One frame of a turn's output. `error` accompanies whatever the turn managed
  * to produce and only ever appears on the last frame.
  */
 export interface HarnessRunResult {
   chunks: unknown[];
   error?: { code: string; message: string } | null;
+  timings?: Record<string, number>;
+  /** Persistent mode: this turn ended cleanly and the runner awaits the next. */
+  turnEnd?: boolean;
+}
+
+/**
+ * An SDK session kept open between turns (HARNESS_RUNNER_PERSISTENT, set by the
+ * daemon's session pool): the CLI and its MCP connections stay up, so the next
+ * turn of the thread pays only the model. The daemon sends one process only
+ * turns whose session-shaping input matches, so reusing it needs no check here.
+ */
+interface LiveSession {
+  stream: ReturnType<typeof query>;
+  messages: AsyncIterator<SDKMessage>;
+  send: (message: SDKUserMessage) => void;
+  /** Re-pointed at each turn's translator. */
+  gate: { awaitUser: (toolCallId: string) => void };
+}
+
+const persistent = () => process.env.HARNESS_RUNNER_PERSISTENT === "1";
+let live: LiveSession | null = null;
+
+/** The streaming prompt a kept session reads its turns from. */
+function inputChannel(): {
+  iterable: AsyncIterable<SDKUserMessage>;
+  send: (message: SDKUserMessage) => void;
+} {
+  const queue: SDKUserMessage[] = [];
+  let wake: (() => void) | null = null;
+  return {
+    iterable: {
+      async *[Symbol.asyncIterator]() {
+        for (;;) {
+          const next = queue.shift();
+          if (next) yield next;
+          else await new Promise<void>((resolve) => (wake = resolve));
+        }
+      },
+    },
+    send(message) {
+      queue.push(message);
+      wake?.();
+      wake = null;
+    },
+  };
+}
+
+function userTurn(prompt: string): SDKUserMessage {
+  return {
+    type: "user",
+    message: { role: "user", content: prompt },
+    parent_tool_use_id: null,
+  } as SDKUserMessage;
 }
 
 /**
@@ -112,7 +194,7 @@ function resumeInstruction(
     "- `git status` and `git diff` — uncommitted work in this checkout",
     `- \`git log --oneline -20\` — commits on ${ref}, including any the previous`,
     "  attempt's sandbox pushed as it shut down",
-    `- \`gh pr list --head ${branch ?? "<branch>"}\` — whether a pull request already exists`,
+    "- Inspect `git remote get-url origin`, then use that provider's tools to check whether a pull or merge request already exists for the current branch",
     "",
     "Then CONTINUE that work — do not start the task over, and do not redo a " +
       "step that is already committed. If a pull request already exists for " +
@@ -189,7 +271,7 @@ function claudeConfigDir(): string {
 
 /**
  * Where a skill the agent authors has to land to outlive the pod: the user-scope
- * skills dir, which the daemon links onto the org's `org/home/skills` (see
+ * skills dir, which the daemon links onto the org's `/app/org/home/skills` (see
  * `ensureSkillsLinkLocked`). Writing there IS an org-fs write, so the skill is
  * shared org-wide; a skill written into the checkout only reaches whoever merges
  * the branch.
@@ -216,13 +298,80 @@ function skillsInstruction(): string {
   );
 }
 
+/**
+ * Tools that wait on the user. Studio renders them as `user_ask` and
+ * `propose_plan`; the answer comes back as the next turn's prompt, because a
+ * resumed session cannot take an injected tool result.
+ */
+const INTERACTIVE_TOOLS = new Set(["AskUserQuestion", "ExitPlanMode"]);
+/** Studio research tools a plan may use; they read the web, never the workspace. */
+const PLAN_MODE_RESEARCH_TOOLS = new Set(
+  ["web_search", "deep_research", "research_result"].map(
+    (name) => `mcp__${ENVS.STUDIO_MCP_SERVER_NAME}__${name}`,
+  ),
+);
+
+/**
+ * Parks an interactive call for the user and ends the turn, so it ends on the
+ * question instead of the model guessing past it. A hook, not `canUseTool`:
+ * `bypassPermissions` approves before the callback is ever asked. Exported for
+ * the unit test.
+ */
+export function interactiveToolHook(
+  onAwaitUser: (toolCallId: string) => void,
+): HookCallbackMatcher {
+  const deny = (reason: string) => ({
+    hookEventName: "PreToolUse" as const,
+    permissionDecision: "deny" as const,
+    permissionDecisionReason: reason,
+  });
+  return {
+    matcher: [...INTERACTIVE_TOOLS].join("|"),
+    hooks: [
+      async (hookInput) => {
+        if (hookInput.hook_event_name !== "PreToolUse") return {};
+        // A subagent's calls never reach the chat, so nobody would see the question.
+        if (hookInput.agent_id) {
+          return {
+            hookSpecificOutput: deny(
+              "Only the main agent can ask the user. Put the open question in your final report.",
+            ),
+          };
+        }
+        onAwaitUser(hookInput.tool_use_id);
+        return {
+          continue: false,
+          stopReason: "Waiting for the user.",
+          hookSpecificOutput: deny("Waiting for the user."),
+        };
+      },
+    ],
+  };
+}
+
+const allowAll: CanUseTool = async (_toolName, input) => ({
+  behavior: "allow",
+  updatedInput: input,
+});
+
+/** Plan mode auto-allows read-only tools; anything that asks would change something. */
+const planModeGate: CanUseTool = async (toolName, input) =>
+  PLAN_MODE_RESEARCH_TOOLS.has(toolName)
+    ? { behavior: "allow", updatedInput: input }
+    : {
+        behavior: "deny",
+        message:
+          "Plan mode: do not make changes. Present the plan with ExitPlanMode.",
+      };
+
 /** SDK options for one run. Exported for the unit test — it is the whole policy. */
 export function buildOptions(args: {
   input: HarnessStreamInputWire;
   sessionId: string;
   resume: boolean;
+  onAwaitUser?: (toolCallId: string) => void;
 }): Options {
-  const { input, sessionId, resume } = args;
+  const { input, sessionId, resume, onAwaitUser } = args;
   const cwd = input.workspace.cwd ?? undefined;
   const instructions = input.agent.instructions;
   const model = process.env[ENVS.MODEL_ENV];
@@ -230,6 +379,8 @@ export function buildOptions(args: {
   const instructionsWithSkills = [
     instructions,
     skillsInstruction(),
+    ORG_FS_INSTRUCTION,
+    WAIT_IN_TURN_INSTRUCTION,
     maxTurns === undefined ? undefined : turnBudgetInstruction(maxTurns),
   ]
     .filter(Boolean)
@@ -243,7 +394,13 @@ export function buildOptions(args: {
     ...(cwd ? { cwd } : {}),
     ...(executable ? { pathToClaudeCodeExecutable: executable } : {}),
     // The pod is the isolation boundary and no approval UI exists upstream.
-    permissionMode: "bypassPermissions",
+    permissionMode: input.mode === "plan" ? "plan" : "bypassPermissions",
+    // Also what offers AskUserQuestion: without a callback the CLI has nobody to
+    // ask, so it drops the tool. Under bypassPermissions it is never called.
+    canUseTool: input.mode === "plan" ? planModeGate : allowAll,
+    ...(onAwaitUser
+      ? { hooks: { PreToolUse: [interactiveToolHook(onAwaitUser)] } }
+      : {}),
     // Keep Claude Code's own prompt (it is what makes the built-in tools work)
     // and append the Studio agent's instructions rather than replacing it.
     systemPrompt: {
@@ -276,14 +433,22 @@ export function buildOptions(args: {
     // Per-dispatch tool subtraction (a reviewer run is read-only; the Super
     // Agent's is not). `disallowedTools` is enforced by the harness itself, so
     // it holds under `bypassPermissions`.
-    ...(input.agent.disallowedTools?.length
-      ? { disallowedTools: input.agent.disallowedTools }
-      : {}),
+    disallowedTools: [
+      ...new Set([
+        ...DEFERRED_RESULT_TOOLS,
+        ...(input.agent.disallowedTools ?? []),
+      ]),
+    ],
     // Resume keeps the thread's history in the SDK's own transcript instead of
     // replaying it as prompt text. `sessionId` seeds a new one at the same id
     // so the next turn can resume it.
     ...(resume ? { resume: sessionId } : { sessionId }),
     ...(Object.keys(mcpServers).length ? { mcpServers } : {}),
+    // The CLI echoes a live message back at the point the model read it,
+    // which is where the run shows it (see live-messages.ts).
+    ...(input.liveMessages
+      ? { extraArgs: { "replay-user-messages": null } }
+      : {}),
   };
 }
 
@@ -293,19 +458,14 @@ export function buildOptions(args: {
  * deduped there). The Studio entry wins a name clash — an org connection called
  * `studio` must not displace the surface the run reports its work through.
  *
- * The two differ in ONE option, and it is the whole reason an org can hand a
- * run thirty connections without drowning it: `alwaysLoad`.
- *
- * - Org connections are left at the default, which means their tools are
- *   DEFERRED behind Claude Code's tool search — the model sees them only after
- *   searching for one, so N connections cost the prompt nothing up front, and
- *   their servers connect in the background instead of blocking the session.
- * - Studio's own server is `alwaysLoad: true`. Its tools are how the run
- *   reports what it did (the board), so they have to be in the turn-1 prompt
- *   rather than behind a search the model may never run. It is also what makes
- *   the `brokenStudioMcp` preflight mean anything: `alwaysLoad` blocks startup
- *   until the server connects (capped at 5s), so `system/init` reports it as
- *   connected or failed instead of the `pending` a deferred server shows.
+ * No server is `alwaysLoad`: that flag sends EVERY tool's schema on every
+ * request, and Studio's chat surface is the whole catalog (~220 tools, ~95k
+ * tokens). Tools are DEFERRED behind Claude Code's tool search instead — the
+ * model sees their names and loads a schema when it needs one. The few tools a
+ * run reports its work through (the board) are marked always-loaded per tool,
+ * by Studio, with `_meta["anthropic/alwaysLoad"]` (see `thread-mcp.ts`), so
+ * they are in the turn-1 prompt rather than behind a search the model may
+ * never run.
  *
  * Deferral is Claude Code's own behavior, not something requested here, and it
  * only applies when tool search is on — which the CLI turns OFF by default on a
@@ -335,7 +495,6 @@ export function mcpServersFor(
       type: "http" as const,
       url: input.mcp.url,
       headers: input.mcp.headers,
-      alwaysLoad: true,
     };
   }
   return servers;
@@ -545,6 +704,8 @@ export function createOrphanEndGuard(): (chunks: unknown[]) => unknown[] {
  * Ordering is preserved exactly: a non-delta chunk flushes whatever is held
  * before it goes out, so `text-end` can never overtake its own text.
  *
+ * A block's first delta is never held: it is the time to first token.
+ *
  * ponytail: size-based, no timer. ~200 chars is well under a second at model
  * output rates, and a timer would need a flush race at every turn exit for no
  * visible gain. If a slow model ever feels chunky, add the timer here.
@@ -555,6 +716,7 @@ export function createDeltaCoalescer(flushChars = 200): {
   discard(): void;
 } {
   let held: { type: string; id: string; delta: string } | null = null;
+  const startedBlocks = new Set<string>();
 
   const asDelta = (
     chunk: unknown,
@@ -584,6 +746,14 @@ export function createDeltaCoalescer(flushChars = 200): {
         // Both type AND id: ids are minted distinctly today, but merging a
         // reasoning delta into a text part on an id collision would corrupt
         // the part rather than just misorder it.
+        const block = `${delta.type}:${delta.id}`;
+        if (!startedBlocks.has(block)) {
+          startedBlocks.add(block);
+          if (held) out.push(held);
+          held = null;
+          out.push(chunk);
+          continue;
+        }
         if (held && held.type === delta.type && held.id === delta.id) {
           held.delta += delta.delta;
         } else {
@@ -616,8 +786,77 @@ export function createDeltaCoalescer(flushChars = 200): {
  */
 export async function runClaudeCode(
   input: HarnessStreamInputWire,
-  emit: EmitFrame,
+  emitFrame: EmitFrame,
+  turnStartedAt = 0,
+  inbox?: LiveMessageInbox,
 ): Promise<void> {
+  // Messages sent while this turn runs. Only with streaming input: a string
+  // prompt has nowhere to put them.
+  const liveMessages =
+    input.liveMessages && inbox ? new LiveMessageTurn() : null;
+  if (liveMessages && inbox) {
+    inbox.open((message) => liveMessages.accept(message));
+  }
+  try {
+    await runTurn(input, emitFrame, turnStartedAt, liveMessages);
+  } finally {
+    inbox?.close();
+    const unread = liveMessages?.close() ?? [];
+    if (unread.length > 0) {
+      console.error(
+        `[claude-code] turn ended with ${unread.length} live message(s) the model never read`,
+      );
+    }
+  }
+}
+
+/** How long a run waits for the CLI turn a live message starts. */
+const LIVE_MESSAGE_TURN_WAIT_MS = 120_000;
+
+/** `iterator.next()`, or null when nothing arrives within `ms`. */
+async function nextWithin<T>(
+  iterator: AsyncIterator<T>,
+  ms: number,
+): Promise<IteratorResult<T> | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), ms);
+  });
+  try {
+    return await Promise.race([iterator.next(), timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function runTurn(
+  input: HarnessStreamInputWire,
+  emitFrame: EmitFrame,
+  turnStartedAt: number,
+  liveMessages: LiveMessageTurn | null,
+): Promise<void> {
+  // ms since the turn reached this process (its start, unless persistent),
+  // sent on the first frame to split Studio's TTFT.
+  const sinceTurn = () => Math.round(performance.now() - turnStartedAt);
+  const timings: Record<string, number> = { input: sinceTurn() };
+  // The daemon's workspace prep before it exec'd this process.
+  try {
+    const prep = JSON.parse(process.env.HARNESS_BEFORE_RUN_MS ?? "{}");
+    for (const [step, ms] of Object.entries(prep)) {
+      if (typeof ms === "number") timings[`daemon-${step}`] = ms;
+    }
+  } catch {}
+  const mark = (name: string) => {
+    timings[name] ??= sinceTurn();
+  };
+  let timed = false;
+  const emit: EmitFrame = (frame) => {
+    if (timed) return emitFrame(frame);
+    timed = true;
+    mark("emit");
+    console.error(`[claude-code] timings ${JSON.stringify(timings)}`);
+    emitFrame({ ...frame, timings });
+  };
   const file = sessionFile(input.threadId);
   const stored = (
     await Bun.file(file)
@@ -638,6 +877,8 @@ export async function runClaudeCode(
   // produces before the first assistant message waits here, never longer.
   const pending: unknown[] = [];
   let started = false;
+  // The turn was opened by `message_start`; its first `assistant` is not a new step.
+  let openedOnStream = false;
   const guard = createOrphanEndGuard();
   const startTurn = (id: string) => {
     if (started) return;
@@ -672,8 +913,15 @@ export async function runClaudeCode(
   };
   /** Emit whatever the coalescer is still holding. Every turn exit owes this. */
   const drain = () => send(coalescer.drain());
+  /**
+   * A live message is still queued in the CLI when the turn ends, so the CLI
+   * will run it next on its own: a kept session would hand that output to the
+   * next Studio turn.
+   */
+  let sessionHasQueuedWork = false;
 
   try {
+    if (live && (await reuseLiveSession(live))) return;
     let forkedForSession = false;
     let restartedWithoutResume = false;
     let providerRetries = 0;
@@ -791,18 +1039,62 @@ export async function runClaudeCode(
   }
 
   /**
+   * Run this turn on the session kept from the last one. False means it failed
+   * before doing anything, and a fresh session (resuming the saved transcript)
+   * should run it instead.
+   */
+  async function reuseLiveSession(session: LiveSession): Promise<boolean> {
+    live = null;
+    mark("reused");
+    session.gate.awaitUser = (toolCallId) => translator.awaitUser(toolCallId);
+    session.send(userTurn(promptForRun(input)));
+    liveMessages?.attach(session.send);
+    try {
+      await consumeStream(session.stream, session.messages);
+      if (sessionHasQueuedWork) await endSession(session.stream);
+      else live = session;
+      return true;
+    } catch (err) {
+      await endSession(session.stream);
+      if (!canRestartCleanly()) throw err;
+      console.error(
+        `[claude-code] kept session failed (${err instanceof Error ? err.message : String(err)}) — starting a fresh one`,
+      );
+      return false;
+    }
+  }
+
+  /**
    * One SDK session. Returns the broken-MCP description when the preflight
    * found Studio unreachable — the one outcome worth starting over for — and
    * `null` once the turn has been reported, however it ended.
    */
   async function attemptTurn(): Promise<string | null> {
+    mark("query");
+    const channel = persistent() || liveMessages ? inputChannel() : null;
+    const gate = {
+      awaitUser: (toolCallId: string) => translator.awaitUser(toolCallId),
+    };
     const stream = query({
-      prompt: promptForRun(input),
-      options: buildOptions({ input, sessionId, resume: resumeSession }),
+      prompt: channel ? channel.iterable : promptForRun(input),
+      options: buildOptions({
+        input,
+        sessionId,
+        resume: resumeSession,
+        onAwaitUser: (toolCallId) => gate.awaitUser(toolCallId),
+      }),
     });
+    channel?.send(userTurn(promptForRun(input)));
+    if (channel) liveMessages?.attach(channel.send);
+    const messages = stream[Symbol.asyncIterator]();
 
     try {
-      return await consumeStream(stream);
+      const broken = await consumeStream(stream, messages);
+      if (persistent() && channel && broken === null) {
+        if (sessionHasQueuedWork) await endSession(stream);
+        else live = { stream, messages, send: channel.send, gate };
+      }
+      return broken;
     } catch (err) {
       // Any throw here otherwise leaves the session locked for the next attempt.
       await endSession(stream);
@@ -812,9 +1104,61 @@ export async function runClaudeCode(
 
   async function consumeStream(
     stream: ReturnType<typeof query>,
+    messages: AsyncIterator<SDKMessage>,
   ): Promise<string | null> {
     const startedAt = Date.now();
-    for await (const message of stream) {
+    // Set once a CLI turn ended with a live message still unread: the CLI runs
+    // that message as its next turn, which belongs to this run too.
+    let awaitingQueuedTurn = false;
+    let result: SdkResultMessage | null = null;
+    // Not `for await`: leaving that loop at the turn's result would close a
+    // session that is kept for the next turn.
+    for (;;) {
+      const next = awaitingQueuedTurn
+        ? await nextWithin(messages, LIVE_MESSAGE_TURN_WAIT_MS)
+        : await messages.next();
+      if (next === null) {
+        // The CLI never started the turn the unread message should have. End
+        // the run on what it has rather than hold the thread forever.
+        console.error(
+          `[claude-code] no turn followed the live message(s) in ${LIVE_MESSAGE_TURN_WAIT_MS}ms`,
+        );
+        sessionHasQueuedWork = true;
+        await endSession(stream);
+        return finishTurn(result);
+      }
+      if (next.done) break;
+      const message = next.value;
+      if (
+        liveMessages &&
+        message.type === "user" &&
+        "isReplay" in message &&
+        message.isReplay
+      ) {
+        // The CLI's echo of a message it took from the input. Ours mark where
+        // the model read a live message; the rest are the prompt echoed back.
+        const id = liveMessages.markRead(message.uuid);
+        if (id) push([liveMessageChunk(id)]);
+        continue;
+      }
+      if (
+        awaitingQueuedTurn &&
+        (message.type === "stream_event" || message.type === "assistant") &&
+        message.parent_tool_use_id === null
+      ) {
+        // The first output of the CLI turn the unread messages started.
+        awaitingQueuedTurn = false;
+        for (const id of liveMessages?.readAll() ?? []) {
+          push([liveMessageChunk(id)]);
+        }
+      }
+      mark(`sdk-${message.type}`);
+      if (
+        message.type === "stream_event" &&
+        message.event.type === "content_block_delta"
+      ) {
+        mark("first-delta");
+      }
       // Every SDK message, with the seconds it took to arrive. Without this a
       // run stalled on the model, on a tool, or on MCP looks exactly like a run
       // that is working — both are silence in the pod log.
@@ -871,7 +1215,20 @@ export async function runClaudeCode(
       // arrived. Tool results (the `user` message that follows) belong to the
       // step whose call produced them, which is why the close happens here and
       // not when they arrive.
-      if (message.type === "assistant") {
+      // A subagent's messages belong to its `subtask` part, not to a step here.
+      // The first API message opens the turn on `message_start`, so its text
+      // streams out instead of waiting in `pending` for the whole first block.
+      if (
+        !started &&
+        message.type === "stream_event" &&
+        message.parent_tool_use_id === null &&
+        message.event.type === "message_start"
+      ) {
+        messageId ??= message.event.message.id;
+        startTurn(messageId);
+        openedOnStream = true;
+      }
+      if (message.type === "assistant" && message.parent_tool_use_id === null) {
         const id = message.message.id;
         if (!messageId && typeof id === "string" && id.length > 0) {
           messageId = id;
@@ -879,7 +1236,8 @@ export async function runClaudeCode(
         // Close whatever `stream_event` left open BEFORE the step boundary —
         // the SDK reducer drops its open parts on `finish-step`, so an end
         // emitted after it is an orphan that throws and kills the run.
-        if (started)
+        if (openedOnStream) openedOnStream = false;
+        else if (started)
           push([
             ...translator.closeOpenStreamBlocks(),
             { type: "finish-step" },
@@ -895,18 +1253,51 @@ export async function runClaudeCode(
       // which fails the whole run instead of just forgetting.
       await Bun.write(file, sessionId);
       startTurn(messageId ?? `msg_${message.uuid}`);
-      drain();
-      emit({
-        chunks: [
-          ...turnFinishChunks(
-            message as SdkResultMessage,
-            translator.contextTokens,
-          ),
-        ],
-      });
+      result = mergeTurnResults(result, message as SdkResultMessage);
+      // A message folded in without an echo still shows, at the turn's end.
+      for (const uuid of message.user_message_uuids ?? []) {
+        const id = liveMessages?.markRead(uuid) ?? null;
+        if (id) push([liveMessageChunk(id)]);
+      }
+      if (
+        liveMessages?.hasUnread() &&
+        !message.is_error &&
+        !translator.isAwaitingUser()
+      ) {
+        awaitingQueuedTurn = true;
+        continue;
+      }
+      // Decided: this run finishes. Close BEFORE emitting, so a message that
+      // arrives from here on is refused and queued as the next turn instead.
+      if (liveMessages && liveMessages.close().length > 0) {
+        sessionHasQueuedWork = true;
+      }
+      return finishTurn(result);
+    }
+    // The session ended while waiting for a live message's turn: report the
+    // turns it did finish.
+    if (result) return finishTurn(result);
+    fail("claude-code ended without a result");
+    return null;
+  }
+
+  function finishTurn(result: SdkResultMessage | null): null {
+    liveMessages?.close();
+    if (!result) {
+      fail("claude-code ended without a result");
       return null;
     }
-    fail("claude-code ended without a result");
+    drain();
+    emit({
+      chunks: [
+        ...turnFinishChunks(
+          result,
+          translator.contextTokens,
+          process.env[ENVS.MODEL_ENV],
+          translator.isAwaitingUser(),
+        ),
+      ],
+    });
     return null;
   }
 

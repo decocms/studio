@@ -2,7 +2,7 @@
  * Ad-hoc code agent opened a PR — put it on the board for review.
  *
  * A task-dispatched run (Super Agent) already has a linked card, and
- * `advanceTaskBoardForRun` + `capturePrForRun` move/link it. A plain chat with
+ * `capturePrForRun` links the PR to it. A plain chat with
  * a GitHub-imported agent has no card, so nothing happens. This reaction fills
  * that gap: one focused LLM call decides whether the work is already tracked,
  * then the action runs in code (create/update the card, link the PR + thread, claim it for the Super Agent so reviewers pick it up).
@@ -14,6 +14,7 @@
  */
 
 import { generateObject } from "ai";
+import { builtinActive, CHAT_PR_SYSTEM_KEY } from "@/automations/builtin";
 import { atOrBefore } from "./lanes";
 import { z } from "zod";
 import { LANES, SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
@@ -21,9 +22,13 @@ import type { StudioContext } from "@/core/studio-context";
 import { resolveTier } from "@/core/resolve-tier";
 import type { TaskBoardStorage } from "@/storage/task-board";
 import type { TaskBoardItem } from "@/storage/types";
-import { extractPrFromValue, type ExtractedPr } from "./pr-extract";
+import { changeRequestLabel } from "@decocms/shared/git-providers";
+import {
+  type ChangeRequestRef,
+  findChangeRequestIn,
+} from "./change-request-extract";
 import { invalidatePrCards } from "./prs-get";
-import { resolveRunTaskTargets, emitTaskBoardUpdated } from "./run-reactions";
+import { resolveRunLinkedTaskIds, emitTaskBoardUpdated } from "./run-reactions";
 
 // Cap on cards sent to the LLM prompt, so a large backlog doesn't inflate cost per PR-open.
 const MAX_OPEN_CARDS_FOR_DECISION = 50;
@@ -86,7 +91,7 @@ async function decideBoardActionForPr(
   orgId: string,
   openCards: TaskBoardItem[],
   threadTitle: string | null,
-  pr: ExtractedPr,
+  pr: ChangeRequestRef,
 ): Promise<BoardDecision | null> {
   try {
     const tier = await resolveTier(ctx, "fast");
@@ -97,7 +102,7 @@ async function decideBoardActionForPr(
       ? openCards.map((t) => `- [${t.id}] (${t.status}) ${t.title}`).join("\n")
       : "(none)";
     const prompt = `Work summary (chat title): ${threadTitle ?? "(untitled)"}
-Pull request: ${pr.url} (${pr.owner}/${pr.repo}#${pr.number})
+Change request: ${pr.url} (${pr.repo.path}#${pr.number})
 
 Existing open cards:
 ${cardList}`;
@@ -105,7 +110,7 @@ ${cardList}`;
     const { object } = await generateObject({
       model,
       schema: BoardDecisionSchema,
-      system: SYSTEM,
+      instructions: SYSTEM,
       prompt,
       temperature: 0,
     });
@@ -128,7 +133,7 @@ export async function applyBoardDecision(
     orgId: string;
     userId: string;
     threadId: string;
-    pr: ExtractedPr;
+    pr: ChangeRequestRef;
     decision: BoardDecision;
     /** The card set the decision was made against (this org's), for taskId validation. */
     openCards: TaskBoardItem[];
@@ -142,8 +147,7 @@ export async function applyBoardDecision(
       organizationId: orgId,
       url: pr.url,
       prNumber: pr.number,
-      repoOwner: pr.owner,
-      repoName: pr.repo,
+      repo: pr.repo,
       connectionId: null,
     });
 
@@ -159,9 +163,8 @@ export async function applyBoardDecision(
     const advanceTo = atOrBefore(target.status, LANES.progress)
       ? LANES.progress
       : null;
-    // In Progress, not In Review: a reviewer is about to work on this PR, and
-    // In Review is what the board says once it is a person's turn. The open
-    // cycle below is what puts it on the reviewer's work list. The move also
+    // In Progress first: the cycle below opens from there and moves the card
+    // to In Review, onto the reviewer's work list. The move also
     // claims an unowned card for the Super Agent (reviewer dispatch gates on
     // it) — never a human's. One fenced write, because `target` predates the
     // LLM call above: a card someone moved since must not be dragged back.
@@ -185,7 +188,9 @@ export async function applyBoardDecision(
     // Create (also the unknown-taskId fallback), owned by the Super Agent so reviewers pick it up.
     item = await storage.create({
       organizationId: orgId,
-      title: decision.title?.trim() || `PR #${pr.number}`,
+      title:
+        decision.title?.trim() ||
+        changeRequestLabel(pr.repo.provider, pr.number),
       status: LANES.progress,
       assigneeId: SUPER_AGENT_ASSIGNEE_ID,
       assignedBy: userId,
@@ -206,6 +211,8 @@ export async function applyBoardDecision(
       taskBoardItemId: item.id,
       organizationId: orgId,
       authorId: userId,
+      // The model wrote it, not the user: mark it as the run's.
+      threadId,
       body: decision.comment.trim(),
     });
   }
@@ -217,8 +224,9 @@ export async function applyBoardDecision(
 }
 
 /**
- * Entry point wired into the PR-open MCP hook. No-op for a run that already has
- * a linked card (the Super Agent path) or when there's no org/user/thread/PR.
+ * Entry point wired into the PR-open MCP hook: the built-in "Track chat pull
+ * requests". No-op while it is off, for a run that already has a linked card
+ * (the Super Agent path), or when there's no org/user/thread/PR.
  * Fire-and-forget; failures are logged, never thrown.
  */
 export async function reactToPrOpenedForBoard(
@@ -230,11 +238,16 @@ export async function reactToPrOpenedForBoard(
   const userId = ctx.auth?.user?.id;
   if (!orgId || !userId || !threadId) return;
   try {
-    const alreadyLinked = await resolveRunTaskTargets(ctx, orgId, threadId);
+    // The UNFILTERED links on purpose: a Jira run's anchor is not a card the
+    // board manages, but its work IS tracked (on the issue). Asking the
+    // filtered question here would read as "nothing tracks this" and open a
+    // visible card for every Jira run's pull request.
+    const alreadyLinked = await resolveRunLinkedTaskIds(ctx, orgId, threadId);
     if (alreadyLinked.length > 0) return;
 
-    const pr = extractPrFromValue(source);
+    const pr = findChangeRequestIn(source);
     if (!pr) return;
+    if (!(await builtinActive(ctx, orgId, CHAT_PR_SYSTEM_KEY))) return;
 
     const cards = await ctx.storage.taskBoard.list(orgId);
     const openCards = cards

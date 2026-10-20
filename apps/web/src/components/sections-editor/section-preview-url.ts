@@ -9,6 +9,21 @@ export function buildGlobalSectionPreviewUrl(
   livePageResolveType: string,
   blockKey: string,
 ): string {
+  const url = globalSectionPreviewUrl(
+    previewBaseUrl,
+    livePageResolveType,
+    blockKey,
+  );
+  url.searchParams.set("__cb", crypto.randomUUID());
+  return url.toString();
+}
+
+/** {@link buildGlobalSectionPreviewUrl} without the cache-buster, for callers that render it every pass. */
+export function globalSectionPreviewUrl(
+  previewBaseUrl: string,
+  livePageResolveType: string,
+  blockKey: string,
+): URL {
   const origin = new URL(previewBaseUrl).origin;
   const url = new URL(
     `/live/previews/${encodeURIComponent(livePageResolveType)}`,
@@ -25,8 +40,7 @@ export function buildGlobalSectionPreviewUrl(
       }),
     ),
   );
-  url.searchParams.set("__cb", crypto.randomUUID());
-  return url.toString();
+  return url;
 }
 
 /** Query param carrying the Fast Preview draft pointer. */
@@ -48,9 +62,8 @@ const DRAFT_PARAM = "__draft";
 export function buildDraftPointer(input: {
   /**
    * Studio API authority (host[:port]) serving /api — reported by the
-   * decofile API itself (DecofileDraft.apiHost). Not window.location.host:
-   * in the native app that is the session-gated tauri-local server, which
-   * the preview server cannot pull the draft from.
+   * decofile API itself (DecofileDraft.apiHost). Not window.location.host,
+   * which is not guaranteed to be reachable from the preview server.
    */
   apiHost: string;
   orgSlug: string;

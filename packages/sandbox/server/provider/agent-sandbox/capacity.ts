@@ -12,7 +12,7 @@
  * Reading an already-failing pod is a lagging signal by one admission: the first
  * over-subscribed claim still gets made and still `Pending`s. That claim is what
  * makes the probe true for everyone behind it, which is the point — one run pays
- * the 180s timeout instead of eight.
+ * the scheduling timeout instead of eight.
  *
  * Cached, because this sits on the run-admission path and a burst asks the same
  * question N times in the same second.

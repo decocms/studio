@@ -1,9 +1,15 @@
+import { join } from "node:path";
 import { describe, expect, it } from "bun:test";
+import { GitProviderError } from "../git-providers/types";
 import {
+  assertWithinByteCap,
+  isRetriableTarballError,
   isUpToDate,
   parseTar,
   planVolumeTree,
+  readLocalFiles,
   staleDirs,
+  TarballHttpError,
   tarballRequestFor,
 } from "./skill-set-sync";
 
@@ -160,6 +166,20 @@ describe("isUpToDate", () => {
   });
 });
 
+describe("assertWithinByteCap", () => {
+  it("allows a length at or under the cap", () => {
+    expect(() => assertWithinByteCap(100, 100, "x")).not.toThrow();
+    expect(() => assertWithinByteCap(99, 100, "x")).not.toThrow();
+  });
+
+  it("throws once the length exceeds the cap", () => {
+    // Regression: a chunked (no Content-Length) codeload response used to skip this check.
+    expect(() => assertWithinByteCap(101, 100, "x")).toThrow(
+      "tarball for x exceeds 100 bytes",
+    );
+  });
+});
+
 describe("tarballRequestFor", () => {
   it("uses anonymous codeload without a token", () => {
     const { url, headers } = tarballRequestFor("acme/widget", "main");
@@ -178,5 +198,70 @@ describe("tarballRequestFor", () => {
     expect(tarballRequestFor("acme/widget", "feat/x").url).toBe(
       "https://codeload.github.com/acme/widget/tar.gz/feat%2Fx",
     );
+  });
+});
+
+describe("TarballHttpError", () => {
+  it("captures the HTTP status for classification", () => {
+    const err = new TarballHttpError(404, "not found");
+    expect(err.status).toBe(404);
+    expect(err.message).toBe("not found");
+  });
+});
+
+describe("isRetriableTarballError", () => {
+  it("retries codeload 5xx and 429", () => {
+    expect(isRetriableTarballError(new TarballHttpError(503, "x"))).toBe(true);
+    expect(isRetriableTarballError(new TarballHttpError(429, "x"))).toBe(true);
+  });
+
+  it("does not retry a 4xx (bad ref, missing repo, expired token)", () => {
+    expect(isRetriableTarballError(new TarballHttpError(404, "x"))).toBe(false);
+    expect(isRetriableTarballError(new TarballHttpError(401, "x"))).toBe(false);
+  });
+
+  it("does not retry a size-cap refusal", () => {
+    expect(
+      isRetriableTarballError(new Error("tarball for x declares 999 bytes")),
+    ).toBe(false);
+    expect(
+      isRetriableTarballError(new Error("tarball for x exceeds 999 bytes")),
+    ).toBe(false);
+  });
+
+  it("retries an unclassified network error (reset, DNS, timeout)", () => {
+    expect(isRetriableTarballError(new TypeError("fetch failed"))).toBe(true);
+  });
+
+  it("retries a first-class repository's GitProviderError for 0/5xx/429", () => {
+    const mk = (status: number) =>
+      new GitProviderError({ provider: "github", status, message: "x" });
+    expect(isRetriableTarballError(mk(0))).toBe(true);
+    expect(isRetriableTarballError(mk(503))).toBe(true);
+    expect(isRetriableTarballError(mk(429))).toBe(true);
+  });
+
+  it("does not retry a first-class repository's 4xx GitProviderError", () => {
+    const mk = (status: number) =>
+      new GitProviderError({ provider: "gitlab", status, message: "x" });
+    expect(isRetriableTarballError(mk(404))).toBe(false);
+    expect(isRetriableTarballError(mk(401))).toBe(false);
+  });
+});
+
+describe("readLocalFiles", () => {
+  it("reads only the `from` subtrees of a checkout, keyed repo-relative", async () => {
+    const repo = join(import.meta.dir, "../../../..");
+    const files = await readLocalFiles(repo, [
+      { from: "packages/sandbox/image/skills" },
+    ]);
+    expect(
+      files.has("packages/sandbox/image/skills/qa-screenshot/SKILL.md"),
+    ).toBe(true);
+    expect(
+      [...files.keys()].every((k) =>
+        k.startsWith("packages/sandbox/image/skills/"),
+      ),
+    ).toBe(true);
   });
 });

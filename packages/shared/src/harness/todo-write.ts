@@ -8,7 +8,7 @@
  * loader (`keepLastTodoWrite` in `todo-write-context.ts`).
  */
 
-import { tool, zodSchema } from "ai";
+import { tool, zodSchema, type Tool } from "ai";
 import { z } from "zod";
 
 export const TodoItemSchema = z.object({
@@ -40,11 +40,12 @@ const description =
   "Flip a todo to `in_progress` before starting it and to `completed` the moment it finishes — do not batch completions. " +
   "Your prior tool-call inputs are your current state — read your last call to see where you are.";
 
-export const todoWriteTool = tool({
-  description,
-  inputSchema: zodSchema(TodoWriteInputSchema),
-  execute: async ({ todos }: TodoWriteInput) => ({
-    ok: true as const,
-    count: todos.length,
-  }),
-});
+export const todoWriteTool: Tool<TodoWriteInput, { ok: true; count: number }> =
+  tool({
+    description,
+    inputSchema: zodSchema(TodoWriteInputSchema),
+    execute: async ({ todos }: TodoWriteInput) => ({
+      ok: true as const,
+      count: todos.length,
+    }),
+  });

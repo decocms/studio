@@ -1,4 +1,4 @@
-/** ONE Settings row, two targets, always the sidebar's last element.
+/** Settings targets the current scope.
  *  Scoped to a project it opens THAT project's settings panel; unscoped, the
  *  org's settings tree. It is a sibling of the two nav lists rather than a
  *  member of either, because "last" is a property of the list's ORDER — owned
@@ -40,7 +40,8 @@ export function NavSettingsRow({ onNavigate }: { onNavigate?: () => void }) {
    *  sidebar, so this row is not rendered while it is open. */
   const isActive =
     leafPath.startsWith("/$org/settings") ||
-    (leafPath === DESTINATION_ROUTE.agents && activePanel === "settings");
+    (leafPath.startsWith(DESTINATION_ROUTE.projects) &&
+      activePanel === "settings");
 
   /** One label for both targets. Which settings it opens is already said by
    *  the sidebar it sits in — a project's sidebar names the project at the top

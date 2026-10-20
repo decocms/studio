@@ -60,6 +60,7 @@ export class InMemoryModelListCache implements ModelListCache {
 
   async invalidate(organizationId: string, providerId: string): Promise<void> {
     this.cache.delete(cacheKey(organizationId, providerId));
+    this.cache.delete(cacheKey(organizationId, `${providerId}:decisions`));
   }
 
   teardown(): void {

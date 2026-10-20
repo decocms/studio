@@ -58,6 +58,8 @@ interface DeploymentAdminOrg {
   memberCount: number;
   /** The org's live billing notice, or null — see `organization_notices`. */
   notice: AdminOrgNotice | null;
+  /** True when the org is soft-deleted (`metadata.archived`). */
+  archived: boolean;
 }
 
 interface FlagsResponse {
@@ -423,6 +425,10 @@ function FlagsDialog({ org }: { org: DeploymentAdminOrg }) {
 interface AdminOrgSite {
   slug: string;
   source: string;
+  /** The project this slug is the site of, when linked. */
+  projectId: string | null;
+  /** Set once a project has used the slug: it can never be removed or moved. */
+  linkedAt: string | null;
 }
 
 /** Thrown from the add mutation on 409, carrying the current owner for the warning. */
@@ -431,10 +437,155 @@ class SiteConflictError extends Error {
     readonly slug: string,
     readonly ownerName: string | null,
     readonly ownerSlug: string | null,
+    readonly reassignable: boolean,
   ) {
     super("owned_by_other_org");
     this.name = "SiteConflictError";
   }
+}
+
+interface AdminOrgProject {
+  id: string;
+  title: string;
+  siteSlug: string;
+  /** The keys the admin API allows editing; absent ones are null. */
+  metadata: { analyticsSiteSlug: string | null };
+}
+
+/** Radix Select can't hold an empty value, so this stands for "no override". */
+const OWN_SITE_VALUE = "__own_site__";
+
+/** Pick, per site project, which owned site its Monitor and experiment
+ *  results read (`metadata.analyticsSiteSlug`). */
+function ProjectAnalyticsSites({
+  org,
+  sites,
+}: {
+  org: DeploymentAdminOrg;
+  sites: AdminOrgSite[];
+}) {
+  const t = useT();
+  const queryClient = useQueryClient();
+  const { data, isLoading, isError } = useQuery({
+    queryKey: KEYS.deploymentAdminOrgProjects(org.id),
+    queryFn: () =>
+      adminFetch<{ projects: AdminOrgProject[] }>(
+        `/api/_admin/orgs/${org.id}/projects`,
+      ),
+  });
+  const projects = data?.projects ?? [];
+
+  const mutation = useMutation({
+    mutationFn: (vars: { project: AdminOrgProject; slug: string | null }) =>
+      adminFetch(
+        `/api/_admin/orgs/${org.id}/projects/${encodeURIComponent(vars.project.id)}/metadata`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ analyticsSiteSlug: vars.slug }),
+        },
+      ),
+    onSuccess: (_result, { project, slug }) => {
+      toast.success(
+        slug
+          ? t("admin.orgs.analyticsSiteSaved", { project: project.title, slug })
+          : t("admin.orgs.analyticsSiteCleared", { project: project.title }),
+      );
+      queryClient.invalidateQueries({
+        queryKey: KEYS.deploymentAdminOrgProjects(org.id),
+      });
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : t("admin.orgs.failedSaveAnalyticsSite"),
+      );
+    },
+  });
+
+  const ownedSlugs = new Set(sites.map((site) => site.slug));
+
+  return (
+    <div className="space-y-2 border-t border-border pt-3">
+      <p className="text-sm font-medium text-foreground">
+        {t("admin.orgs.projectAnalytics")}
+      </p>
+      <p className="text-sm text-muted-foreground">
+        {t("admin.orgs.projectAnalyticsDescription")}
+      </p>
+      {isError ? (
+        <p className="text-sm text-destructive">
+          {t("admin.orgs.failedLoadProjects")}
+        </p>
+      ) : isLoading ? (
+        <p className="text-sm text-muted-foreground">
+          {t("admin.orgs.loading")}
+        </p>
+      ) : projects.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          {t("admin.orgs.noProjects")}
+        </p>
+      ) : (
+        <div className="max-h-[30vh] space-y-2 overflow-y-auto pr-1">
+          {projects.map((project) => {
+            const current = project.metadata.analyticsSiteSlug;
+            const options = sites
+              .map((site) => site.slug)
+              .filter((slug) => slug !== project.siteSlug);
+            return (
+              <div
+                key={project.id}
+                className="flex items-center justify-between gap-3 rounded-md border border-border p-2"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-foreground">
+                    {project.title}
+                  </p>
+                  <code className="truncate text-xs text-muted-foreground">
+                    {project.siteSlug}
+                  </code>
+                </div>
+                <Select
+                  value={current ?? OWN_SITE_VALUE}
+                  disabled={mutation.isPending}
+                  onValueChange={(value) =>
+                    mutation.mutate({
+                      project,
+                      slug: value === OWN_SITE_VALUE ? null : value,
+                    })
+                  }
+                >
+                  <SelectTrigger className="w-52 font-mono">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={OWN_SITE_VALUE}>
+                      {t("admin.orgs.analyticsOwnSite", {
+                        slug: project.siteSlug,
+                      })}
+                    </SelectItem>
+                    {options.map((slug) => (
+                      <SelectItem key={slug} value={slug}>
+                        {slug}
+                      </SelectItem>
+                    ))}
+                    {current && !ownedSlugs.has(current) ? (
+                      <SelectItem value={current} disabled>
+                        {t("admin.orgs.analyticsSiteNotOwned", {
+                          slug: current,
+                        })}
+                      </SelectItem>
+                    ) : null}
+                  </SelectContent>
+                </Select>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function SitesDialog({ org }: { org: DeploymentAdminOrg }) {
@@ -446,6 +597,7 @@ function SitesDialog({ org }: { org: DeploymentAdminOrg }) {
     slug: string;
     ownerName: string | null;
     ownerSlug: string | null;
+    reassignable: boolean;
   } | null>(null);
   const queryClient = useQueryClient();
 
@@ -473,18 +625,23 @@ function SitesDialog({ org }: { org: DeploymentAdminOrg }) {
       });
       const body = (await res.json().catch(() => ({}))) as {
         error?: string;
+        message?: string;
         ownerOrganizationName?: string | null;
         ownerOrganizationSlug?: string | null;
+        reassignable?: boolean;
       };
       if (res.status === 409 && body.error === "owned_by_other_org") {
         throw new SiteConflictError(
           vars.slug,
           body.ownerOrganizationName ?? null,
           body.ownerOrganizationSlug ?? null,
+          body.reassignable !== false,
         );
       }
       if (!res.ok) {
-        throw new Error(body.error || `Request failed (HTTP ${res.status})`);
+        throw new Error(
+          body.message || body.error || `Request failed (HTTP ${res.status})`,
+        );
       }
       return body;
     },
@@ -505,6 +662,7 @@ function SitesDialog({ org }: { org: DeploymentAdminOrg }) {
           slug: error.slug,
           ownerName: error.ownerName,
           ownerSlug: error.ownerSlug,
+          reassignable: error.reassignable,
         });
         return;
       }
@@ -523,6 +681,10 @@ function SitesDialog({ org }: { org: DeploymentAdminOrg }) {
     onSuccess: (_result, slug) => {
       toast.success(t("admin.orgs.siteRemoved", { slug, org: org.name }));
       invalidate();
+      // Releasing a site also clears the project overrides that pointed at it.
+      queryClient.invalidateQueries({
+        queryKey: KEYS.deploymentAdminOrgProjects(org.id),
+      });
     },
     onError: (error) => {
       toast.error(
@@ -600,15 +762,27 @@ function SitesDialog({ org }: { org: DeploymentAdminOrg }) {
                       <Badge variant="outline" size="default">
                         {site.source}
                       </Badge>
+                      {site.linkedAt ? (
+                        <Badge variant="secondary" size="default">
+                          {t("admin.orgs.siteInUse")}
+                        </Badge>
+                      ) : null}
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={busy}
-                      onClick={() => removeMutation.mutate(site.slug)}
-                    >
-                      {t("admin.orgs.remove")}
-                    </Button>
+                    {site.linkedAt ? (
+                      // A used site id is permanent: tokens and URLs carry it.
+                      <span className="max-w-56 text-right text-xs text-muted-foreground">
+                        {t("admin.orgs.siteInUseHint")}
+                      </span>
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={busy}
+                        onClick={() => removeMutation.mutate(site.slug)}
+                      >
+                        {t("admin.orgs.remove")}
+                      </Button>
+                    )}
                   </div>
                 ))
               )}
@@ -644,13 +818,18 @@ function SitesDialog({ org }: { org: DeploymentAdminOrg }) {
               {conflict ? (
                 <div className="space-y-2 rounded-md border border-warning/50 bg-warning/10 p-3">
                   <p className="text-sm text-foreground">
-                    {t("admin.orgs.siteReassignWarning", {
-                      slug: conflict.slug,
-                      owner:
-                        conflict.ownerName ||
-                        conflict.ownerSlug ||
-                        t("admin.orgs.anotherOrg"),
-                    })}
+                    {t(
+                      conflict.reassignable
+                        ? "admin.orgs.siteReassignWarning"
+                        : "admin.orgs.siteNotReassignable",
+                      {
+                        slug: conflict.slug,
+                        owner:
+                          conflict.ownerName ||
+                          conflict.ownerSlug ||
+                          t("admin.orgs.anotherOrg"),
+                      },
+                    )}
                   </p>
                   <div className="flex gap-2">
                     <Button
@@ -661,25 +840,31 @@ function SitesDialog({ org }: { org: DeploymentAdminOrg }) {
                     >
                       {t("admin.orgs.cancel")}
                     </Button>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      disabled={addMutation.isPending}
-                      onClick={() =>
-                        addMutation.mutate({
-                          slug: conflict.slug,
-                          reassign: true,
-                        })
-                      }
-                    >
-                      {t("admin.orgs.reassignConfirm")}
-                    </Button>
+                    {conflict.reassignable ? (
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        disabled={addMutation.isPending}
+                        onClick={() =>
+                          addMutation.mutate({
+                            slug: conflict.slug,
+                            reassign: true,
+                          })
+                        }
+                      >
+                        {t("admin.orgs.reassignConfirm")}
+                      </Button>
+                    ) : null}
                   </div>
                 </div>
               ) : null}
             </div>
           </div>
         )}
+
+        {open && !isLoading && !isError ? (
+          <ProjectAnalyticsSites org={org} sites={sites} />
+        ) : null}
 
         <DialogFooter>
           <Button
@@ -1047,8 +1232,15 @@ export default function AdminOrgsPage() {
       header: t("admin.orgs.organization"),
       render: (org) => (
         <div className="min-w-0">
-          <div className="text-sm font-medium text-foreground truncate">
-            {org.name}
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-foreground truncate">
+              {org.name}
+            </span>
+            {org.archived ? (
+              <Badge variant="outline" className="shrink-0">
+                {t("admin.orgs.archived")}
+              </Badge>
+            ) : null}
           </div>
           <div className="text-sm text-muted-foreground truncate">
             {org.slug}
@@ -1112,7 +1304,7 @@ export default function AdminOrgsPage() {
   return (
     <Page>
       <Page.Content>
-        <Page.Body>
+        <Page.Container>
           <div className="flex flex-col gap-6">
             <SearchInput
               value={search}
@@ -1145,7 +1337,7 @@ export default function AdminOrgsPage() {
               }
             />
           </div>
-        </Page.Body>
+        </Page.Container>
       </Page.Content>
     </Page>
   );

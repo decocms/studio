@@ -476,7 +476,7 @@ function BrandPreviewContent({
                           setDeckCollapsed(false);
                         }}
                         className={cn(
-                          "rounded-md px-2.5 py-1",
+                          "rounded-lg px-2.5 py-1",
                           showDeck
                             ? "bg-background text-foreground shadow-sm"
                             : "text-muted-foreground hover:text-foreground",
@@ -492,7 +492,7 @@ function BrandPreviewContent({
                         setDeckCollapsed(false);
                       }}
                       className={cn(
-                        "rounded-md px-2.5 py-1",
+                        "rounded-lg px-2.5 py-1",
                         showDeck
                           ? "text-muted-foreground hover:text-foreground"
                           : "bg-background text-foreground shadow-sm",

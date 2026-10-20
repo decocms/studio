@@ -128,9 +128,9 @@ export function createRcloneMounter(
       // so `active` stays empty there and this Mounter is never invoked. Throw
       // defensively rather than hand back a fake success handle — a caller
       // that bypassed the manager gate must not get an indistinguishable-from-
-      // real MountHandle, since that would let downstream link logic
-      // (ensureOrgRepoLink / repointOutputLinkForRun) symlink into an unbacked
-      // directory and silently strand files (see entry.ts's link-gate doc).
+      // real MountHandle, since that would let the daemon's link logic
+      // (daemon-go/internal/orgfs/links.go) symlink into an unbacked
+      // directory and silently strand files.
       if (isWindows) {
         throw new Error("org-fs mounts are not supported on Windows");
       }

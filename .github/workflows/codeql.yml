@@ -30,8 +30,6 @@ jobs:
   # The repo's other languages are deliberately out of scope for now:
   #   - go     (packages/sandbox/daemon-go) — compiled, needs a build step
   #   - python (packages/sandbox/image/skills) — 8 script files
-  #   - rust   (apps/native) — src-tauri won't compile on Linux, so it would
-  #             need a macOS runner plus a full cargo build (see native.yml)
   analyze:
     name: Analyze (javascript-typescript)
     runs-on: ubuntu-latest

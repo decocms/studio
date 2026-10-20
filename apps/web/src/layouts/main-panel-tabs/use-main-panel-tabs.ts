@@ -15,30 +15,26 @@ import { useRouteDefaultMain } from "@/hooks/use-route-default-main";
 import { Globe01, Monitor01 } from "@untitledui/icons";
 import { createElement } from "react";
 import {
-  getCommerceDiscoveryAgentId,
+  getReportsAgentId,
   getDevConnectionId,
   useConnections,
-  useMCPClientOptional,
+  useMCPClientNonBlocking,
   useMCPToolsListQuery,
   useProjectContext,
   useVirtualMCP,
 } from "@/sdk";
 import { getUIResourceUri } from "@decocms/shared/mcp-apps/types";
 import { toTitleCase } from "@/components/chat/message/parts/tool-call-part/utils";
-import {
-  agentHasClonableSource,
-  agentHasConnectedGithub,
-} from "@/lib/agent-capabilities";
+import { agentHasClonableSource } from "@/lib/agent-capabilities";
+import { useMainSchemaV8 } from "@/hooks/use-main-schema-v8";
 import { useChatTask } from "@/components/chat/index";
-import { getActiveGithubRepo } from "@/lib/github-repo.ts";
-import { usePrByBranch } from "@/components/thread/github/use-pr-data.ts";
 import { useSandboxEvents } from "@/components/sandbox/hooks/use-sandbox-events";
-import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
 import type { ThreadExpandedTool } from "@decocms/shared/entities";
 import { FileTypeIcon } from "@/components/file-type-icon";
 import {
   formatPinnedViewTabId,
   parseAutomationTabId,
+  formatAgentViewTabId,
   parseCodeTabId,
   parseDeckTabId,
   parseFileTabId,
@@ -60,7 +56,6 @@ import {
 } from "./source-system-tabs";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { resolveCmsMode } from "@decocms/shared/sdk/types";
-import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
 import { useReportsOnly } from "@/hooks/use-organization-settings";
 import { useProjectScope } from "@/hooks/use-project-scope";
 import { useT } from "@/i18n/use-t.ts";
@@ -113,18 +108,6 @@ export function useMainPanelTabs(ctx: {
   const metadata = useTaskMetadata(ctx.taskId);
   const { org } = useProjectContext();
   const { currentBranch, activeTask } = useChatTask();
-  const isDesktopApp = useIsDesktopApp();
-
-  const githubRepo = getActiveGithubRepo(entity);
-  const prQuery = usePrByBranch({
-    orgId: org.id,
-    orgSlug: org.slug,
-    connectionId: githubRepo?.connectionId ?? "",
-    owner: githubRepo?.owner ?? "",
-    repo: githubRepo?.name ?? "",
-    branch: githubRepo ? currentBranch : null,
-  });
-  const hasOpenPr = prQuery.data?.state === "open";
 
   const entityLayout = entity?.metadata.ui?.layout ?? null;
   const layoutTabs: AgentTabDef[] = entityLayout?.tabs ?? [];
@@ -134,7 +117,6 @@ export function useMainPanelTabs(ctx: {
   // app below — no pairing / live-partner config involved.
   const devConnId = entity?.id ? getDevConnectionId(entity.id) : null;
   const expandedTools: ThreadExpandedTool[] = metadata?.expanded_tools ?? [];
-  const hasActiveGithubRepo = agentHasConnectedGithub(entity);
   const reportsOnly = useReportsOnly();
   const { scopeId, project: scopedProject } = useProjectScope();
   const mainViewContext = resolveProjectMainViewContext(
@@ -143,6 +125,8 @@ export function useMainPanelTabs(ctx: {
     entity,
   );
   const nativeViews = useProjectNativeViewPresence(mainViewContext.project);
+  // Read main's schema as soon as a project opens: the editor waits on it.
+  useMainSchemaV8(mainViewContext.project?.id);
   const mainViewPresence = projectMainViewPresence(
     mainViewContext.resolvedScopeId,
     agentHasClonableSource(mainViewContext.project?.metadata),
@@ -154,7 +138,6 @@ export function useMainPanelTabs(ctx: {
    *  below; needs SandboxEventsProvider, which the desktop tab bar sits inside
    *  via VmEventsBridge. */
   const vmEvents = useSandboxEvents();
-  const { vmEntry, previewUrl } = useSandboxLifecycle();
   // What Preview / Code can actually show for THIS thread — see preview-source:
   // a sandbox task run dispatched with no repo (bare `thread:<id>` sandbox key)
   // never checks out the agent's repo, so it gets no Preview / Code tab instead
@@ -176,29 +159,21 @@ export function useMainPanelTabs(ctx: {
     ctx.virtualMcpId,
   );
 
-  // A local-api sandbox serves its dev server on a loopback previewUrl
-  // (`http://<handle>.localhost`), which the cloud proxy cannot reach — so the
-  // `dev_<id>` route resolves to a connection the pod can't fetch. The browser
-  // IS co-located with the daemon, so point the dev MCP client straight at the
-  // previewUrl (CORS on the deco dev server is `*`). For agent-sandbox the
-  // previewUrl is public, so leave mcpUrl undefined and keep the cloud route.
-  const devMcpUrl =
-    isDesktopApp && vmEntry && previewUrl
-      ? `${previewUrl.replace(/\/+$/, "")}/api/mcp`
-      : undefined;
-
   // Auto-detect the dev MCP app's views straight from its sandbox dev server:
   // every tool that declares a `ui://` resource is a view, rendered against the
   // ephemeral dev connection (`dev_<id>`). No pairing / curated pinnedViews
   // needed — the dev server describes itself. Only queried once the dev server
   // is up (its `/api/mcp` serves tools); when present, these override the live
   // agent's own pinned views below.
-  const devClient = useMCPClientOptional({
-    connectionId: devConnId ?? undefined,
-    orgId: org.id,
-    orgSlug: org.slug,
-    mcpUrl: devMcpUrl,
-  });
+  // Non-blocking: the dev views are optional, and this hook runs in the tab bar.
+  const devClient = useMCPClientNonBlocking(
+    {
+      connectionId: devConnId,
+      orgId: org.id,
+      orgSlug: org.slug,
+    },
+    { enabled: !!devConnId && devServerReady },
+  );
   const { data: devToolsResult } = useMCPToolsListQuery({
     client: devClient as NonNullable<typeof devClient>,
     enabled: !!devClient && devServerReady,
@@ -240,25 +215,22 @@ export function useMainPanelTabs(ctx: {
   const nativeViewPending = {
     assets: nativeViews.assetsPending,
     siteAccess: nativeViews.siteAccessPending,
+    releases: nativeViews.releasesPending,
   };
 
-  const { activeTab: rawActiveTab, mainOpen: rawMainOpen } =
-    resolveActiveTabAndOpen({
-      panelTabId,
-      mainPanelParam: search.mainpanel,
-      routeDefaultMain,
-      metadata:
-        effectiveDefaultMainView || entityLayout
-          ? {
-              defaultMainView: effectiveDefaultMainView,
-              tabs: layoutTabs.map((t) => ({ id: t.id })),
-            }
-          : null,
-    });
+  const { activeTab: rawActiveTab, mainOpen } = resolveActiveTabAndOpen({
+    panelTabId,
+    mainPanelParam: search.mainpanel,
+    routeDefaultMain,
+    metadata:
+      effectiveDefaultMainView || entityLayout
+        ? {
+            defaultMainView: effectiveDefaultMainView,
+            tabs: layoutTabs.map((t) => ({ id: t.id })),
+          }
+        : null,
+  });
 
-  const gitTabVisible =
-    hasActiveGithubRepo &&
-    (hasOpenPr || (prQuery.isPending && rawActiveTab === "git"));
   const layoutForDefault =
     effectiveDefaultMainView || entityLayout
       ? {
@@ -324,17 +296,11 @@ export function useMainPanelTabs(ctx: {
   const activeTab =
     !panelTabId && !routeDefaultMain && defaultTabHidden
       ? visibleDefaultTabId
-      : rawActiveTab === "git" && !gitTabVisible && !prQuery.isPending
+      : rawActiveTab === "content" && !showContent
         ? visibleDefaultTabId
-        : rawActiveTab === "content" && !showContent
+        : codeTabHidden || projectViewHidden
           ? visibleDefaultTabId
-          : codeTabHidden || projectViewHidden
-            ? visibleDefaultTabId
-            : rawActiveTab;
-  const mainOpen =
-    rawActiveTab === "git" && !gitTabVisible && !prQuery.isPending
-      ? false
-      : rawMainOpen;
+          : rawActiveTab;
 
   const automationTabParsed = parseAutomationTabId(activeTab);
 
@@ -344,15 +310,6 @@ export function useMainPanelTabs(ctx: {
       : id === "content"
         ? t("common.mainPanelTabs.content")
         : t("common.mainPanelTabs.code");
-  // Review changes is contextual to the open PR, so it remains in the panel
-  // header. The five durable native views are navigated from the sidebar.
-  const contextualSystemTabs: Array<{ id: string; title: string }> = [];
-  if (gitTabVisible) {
-    contextualSystemTabs.push({
-      id: "git",
-      title: t("common.mainPanelTabs.reviewChanges"),
-    });
-  }
   // Merge pinned views + per-task expanded tools into a single list keyed
   // by the pinned-view tab id. Pinned views win on dedupe so the
   // virtual-MCP–configured label/icon survives even if the same tool was
@@ -474,26 +431,16 @@ export function useMainPanelTabs(ctx: {
       }))
     : [];
 
-  /** The bar carries controls local to the active surface, contextual system
-   *  views, agent-declared tabs, and ephemeral per-thread views. Native and
+  /** The bar carries controls local to the active surface, agent-declared
+   *  tabs, and ephemeral per-thread views. Native and
    *  pinned-app project navigation belongs to the sidebar. */
   const allTabs: Tab[] = [
     ...surfaceTabs,
-    ...contextualSystemTabs.map((t) => ({
-      id: t.id,
-      title: t.title,
-      kind: "system" as const,
-      icon: resolveTabIcon({
-        tabId: t.id,
-        kind: "system",
-        connections,
-      }),
-    })),
     ...fileTabs,
     ...deckTabs,
     ...libraryFileTabs,
     ...layoutTabs.map((t) => ({
-      id: t.id,
+      id: formatAgentViewTabId(t.id),
       title: t.title,
       kind: "agent" as const,
       icon: resolveTabIcon({
@@ -518,7 +465,7 @@ export function useMainPanelTabs(ctx: {
   ];
 
   /** One button per id, first occurrence wins. Agent-declared ids are not
-   *  guaranteed unique and may collide with contextual or ephemeral tabs. */
+   *  guaranteed unique and may collide with surface or ephemeral tabs. */
   const seenTabIds = new Set<string>();
   const tabs: Tab[] = allTabs.filter((tab) => {
     if (seenTabIds.has(tab.id)) return false;
@@ -526,8 +473,7 @@ export function useMainPanelTabs(ctx: {
     return true;
   });
 
-  const onReportAgent =
-    ctx.virtualMcpId === getCommerceDiscoveryAgentId(org.id);
+  const onReportAgent = ctx.virtualMcpId === getReportsAgentId(org.id);
 
   const setActiveTab = (id: string) => {
     // On a reports-only org sitting on any shell other than the Report Agent
@@ -537,7 +483,7 @@ export function useMainPanelTabs(ctx: {
     // itself this falls through to the normal tab-toggle below.
     if (shouldDeepLinkSourceTab({ reportsOnly, onReportAgent, tabId: id })) {
       openPanel(id, {
-        virtualmcpid: getCommerceDiscoveryAgentId(org.id),
+        virtualmcpid: getReportsAgentId(org.id),
         /** Another agent's conversation does not follow the view over. */
         search: (prev) => ({ ...prev, thread: undefined }),
       });

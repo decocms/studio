@@ -1,6 +1,8 @@
 import { Edit02, Plus, Trash01 } from "@untitledui/icons";
 import { cn } from "@decocms/ui/lib/utils.ts";
 
+export { ToolbarButton } from "@/components/sections-editor/toolbar-button";
+
 /**
  * Borderless auto-growing text input shared by the block editors. Grows
  * with content via `field-sizing:content`, with a JS fallback on input.
@@ -15,6 +17,7 @@ export function InlineText({
   onBlur,
   onKeyDown,
   spellCheck = true,
+  readOnly,
   inputRef,
 }: {
   value: string;
@@ -25,6 +28,8 @@ export function InlineText({
   onBlur?: (e: React.FocusEvent<HTMLTextAreaElement>) => void;
   onKeyDown?: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
   spellCheck?: boolean;
+  /** Visible and focusable, but not editable — a write is in flight. */
+  readOnly?: boolean;
   inputRef?: (el: HTMLTextAreaElement | null) => void;
 }) {
   return (
@@ -42,6 +47,7 @@ export function InlineText({
       onKeyDown={onKeyDown}
       placeholder={placeholder}
       spellCheck={spellCheck}
+      readOnly={readOnly}
       rows={1}
       className={cn(
         "w-full resize-none border-0 bg-transparent p-0 outline-none [field-sizing:content] placeholder:text-muted-foreground/50 focus:ring-0",
@@ -92,7 +98,7 @@ export function AddButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="flex items-center gap-1.5 rounded-md border border-dashed px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground disabled:opacity-40 disabled:hover:border-dashed disabled:hover:text-muted-foreground cursor-pointer"
+      className="flex items-center gap-1.5 rounded-lg border border-dashed px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground disabled:opacity-40 disabled:hover:border-dashed disabled:hover:text-muted-foreground cursor-pointer"
     >
       <Plus size={13} />
       {label}
@@ -113,7 +119,7 @@ export function RemoveButton({
       type="button"
       aria-label={label}
       onClick={onClick}
-      className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground/60 opacity-0 transition-opacity hover:text-destructive group-hover/item:opacity-100 cursor-pointer"
+      className="flex h-6 w-6 shrink-0 items-center justify-center text-muted-foreground/60 opacity-0 transition-opacity hover:text-destructive group-hover/item:opacity-100 cursor-pointer rounded-lg"
     >
       <Trash01 size={13} />
     </button>
@@ -129,36 +135,6 @@ export function FloatingToolbar({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function ToolbarButton({
-  active,
-  label,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  label: string;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      aria-pressed={active}
-      onMouseDown={(e) => e.preventDefault()}
-      onClick={onClick}
-      className={cn(
-        "flex h-7 min-w-7 items-center justify-center rounded px-1.5 text-sm transition-colors cursor-pointer",
-        active
-          ? "bg-accent text-accent-foreground"
-          : "text-muted-foreground hover:bg-muted hover:text-foreground",
-      )}
-    >
-      {children}
-    </button>
-  );
-}
-
 /** Parse a JSON-encoded array field, tolerating malformed/empty input. */
 export function parseJsonArray<T>(value: unknown): T[] {
   if (Array.isArray(value)) return value as T[];
@@ -169,4 +145,73 @@ export function parseJsonArray<T>(value: unknown): T[] {
   } catch {
     return [];
   }
+}
+
+/** Single-choice chips. An empty value is a real choice, so it gets a chip too. */
+export function PickList({
+  options,
+  value,
+  emptyLabel,
+  onChange,
+}: {
+  options: string[];
+  value: string;
+  emptyLabel?: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {emptyLabel && (
+        <Chip active={!value} onClick={() => onChange("")}>
+          {emptyLabel}
+        </Chip>
+      )}
+      {options.filter(Boolean).map((option) => (
+        <Chip
+          key={option}
+          active={option === value}
+          onClick={() => onChange(option)}
+        >
+          {option}
+        </Chip>
+      ))}
+    </div>
+  );
+}
+
+function Chip({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      className={cn(
+        "cursor-pointer rounded-md border px-2.5 py-1 text-xs font-medium transition-colors",
+        active
+          ? "border-primary bg-primary text-primary-foreground"
+          : "bg-card hover:bg-muted",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+/**
+ * Some decofiles store a JSON-collection field already parsed (an array or
+ * object) instead of the JSON-encoded string the block editors expect. Pass
+ * it through unchanged when it's already a string; otherwise re-encode it so
+ * downstream parsing (e.g. `parseJsonArray`) never silently sees an empty
+ * value and drops the stored data.
+ */
+export function jsonField(value: unknown, fallback: unknown = []): string {
+  return typeof value === "string" ? value : JSON.stringify(value ?? fallback);
 }

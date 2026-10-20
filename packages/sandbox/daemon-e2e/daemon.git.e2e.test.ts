@@ -21,6 +21,7 @@ import {
   type BareRepo,
   bootstrapRepo,
   type Daemon,
+  generateSigningKeyPair,
   HOOK_TIMEOUT_MS,
   jsonAuthHeaders,
   postConfig,
@@ -665,4 +666,86 @@ describe("daemon e2e: exec", () => {
       );
     });
   });
+});
+
+// --- git: commit signing -----------------------------------------------------
+
+// Asserted on the pushed object's bytes: the forge reads the origin, not our
+// config. The key is synthetic and generated per test — never a real one.
+describe("daemon e2e: git (commit signing)", () => {
+  let d: Daemon | null = null;
+  let repo: BareRepo;
+  let publicKey: string;
+  let keyFile: string;
+
+  beforeEach(() => {
+    repo = setupBareRepo();
+    const pair = generateSigningKeyPair();
+    publicKey = pair.publicKey;
+    keyFile = join(repo.root, "signing-key");
+    writeFileSync(keyFile, pair.privateKey, { mode: 0o600 });
+  });
+
+  afterEach(async () => {
+    await stopDaemon(d);
+    d = null;
+    repo.cleanup();
+  }, HOOK_TIMEOUT_MS);
+
+  /** Boots a daemon holding the key for `signingEmail`, committing as `userEmail`. */
+  async function publishAs(userEmail: string, signingEmail: string) {
+    d = await startDaemon({
+      GIT_SIGNING_KEY_FILE: keyFile,
+      GIT_SIGNING_KEY_EMAIL: signingEmail,
+    });
+    const res = await postConfig(d, {
+      git: {
+        repository: { cloneUrl: repo.url, branch: "sandbox-work" },
+        identity: { userName: "Test User", userEmail },
+      },
+    });
+    expect(res.status).toBe(200);
+    await waitForOrchestratorIdle(d, SETUP_TIMEOUT_MS);
+
+    await writeRepoFile(d, "signed.txt", "ship it\n");
+    const publish = await fetch(url(d, "/_sandbox/git/publish"), {
+      method: "POST",
+      headers: jsonAuthHeaders(),
+      body: toBody({ message: "publish" }),
+    });
+    expect(publish.status).toBe(200);
+    expect(((await publish.json()) as { pushed: boolean }).pushed).toBe(true);
+    return execSync(
+      `git --git-dir=${join(repo.root, "origin.git")} cat-file commit sandbox-work`,
+      { encoding: "utf8" },
+    );
+  }
+
+  it(
+    "signs the bot's commits with a signature the origin can verify",
+    async () => {
+      const raw = await publishAs("bot@example.com", "bot@example.com");
+      expect(raw).toContain("BEGIN SSH SIGNATURE");
+
+      const allowed = join(repo.root, "allowed_signers");
+      writeFileSync(allowed, `bot@example.com ${publicKey}\n`);
+      const verified = execSync(
+        `git --git-dir=${join(repo.root, "origin.git")} -c gpg.format=ssh ` +
+          `-c gpg.ssh.allowedSignersFile=${allowed} ` +
+          `log -1 --format=%G? sandbox-work`,
+        { encoding: "utf8" },
+      ).trim();
+      expect(verified).toBe("G");
+    },
+    SETUP_TIMEOUT_MS,
+  );
+
+  it(
+    "leaves another committer's commits unsigned",
+    async () => {
+      const raw = await publishAs("human@example.com", "bot@example.com");
+      expect(raw).not.toContain("BEGIN SSH SIGNATURE");
+    },
+    SETUP_TIMEOUT_MS,
+  );
 });

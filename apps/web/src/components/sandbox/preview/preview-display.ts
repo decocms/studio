@@ -40,6 +40,11 @@ export interface PreviewDisplay {
   showBlockingOverlay: boolean;
   /** Non-blocking "server waking — showing published site" pill. */
   showWakingPill: boolean;
+  /**
+   * The editor is still deciding v7 or v8 (see `deciding`): a neutral
+   * loader owns the canvas, nothing else.
+   */
+  showDecidingLoader?: boolean;
 }
 
 export interface PreviewDisplayInput {
@@ -70,6 +75,29 @@ export interface PreviewDisplayInput {
    * withheld and the boot console owns the canvas.
    */
   codingSession?: boolean;
+  /**
+   * "Local" mode: a tunnel URL the user pasted, pointing at their own live dev
+   * server. When set it wins over every other source — the tunnel is already
+   * up, so we paint it as a sandbox-style iframe immediately, ignoring the
+   * managed sandbox lifecycle, Fast Preview, and the boot gating below.
+   */
+  localPreviewUrl?: string | null;
+  /**
+   * The session's draft lives on the hosted Deco CMS (a Blocks v8 site edited
+   * through Studio's GitHub backend; see `hostedDraftSession`). Nothing boots
+   * there, and no draft exists until the first edit, so a Fast Preview that
+   * isn't `fastPreviewReady` simply has no changes to show: the published site
+   * IS the preview, with no "waking" pill.
+   */
+  hostedDraft?: boolean;
+  /**
+   * Not known yet whether this is a v7 or a v8 site (GitHub mode while
+   * main's answer loads or is retried, or a saved Local tunnel waiting for
+   * it). Neither generation's surface may show first and switch: no
+   * published site with a "waking" pill, no tunnel, no boot card. Only a
+   * neutral loader, until the answer lands.
+   */
+  deciding?: boolean;
 }
 
 const NONE: PreviewDisplay = {
@@ -90,9 +118,25 @@ export function resolvePreviewDisplay(
     fastPreviewActive = false,
     fastPreviewReady = false,
     codingSession = false,
+    hostedDraft = false,
   } = input;
   /** Withheld for a coding session — see `codingSession`. */
   const previewServerUrl = codingSession ? null : input.previewServerUrl;
+
+  // Undecided v7 or v8: neither surface yet (see `deciding`).
+  if (input.deciding) {
+    return { ...NONE, showDecidingLoader: true };
+  }
+
+  // Local mode wins outright: the tunnel is already serving, render it now.
+  if (input.localPreviewUrl) {
+    return {
+      mode: "sandbox",
+      iframeBase: input.localPreviewUrl,
+      showBlockingOverlay: false,
+      showWakingPill: false,
+    };
+  }
 
   // Suspended / errored render their own dedicated card — hand the canvas over
   // so we don't paint a toolbar or load the production iframe behind/around it.
@@ -107,6 +151,17 @@ export function resolvePreviewDisplay(
   // over it, so every production-mode base is a page we can actually navigate to
   // (and the URL-bar label doesn't jump between origins mid-boot).
   if (fastPreviewActive && fastPreviewReady && previewServerUrl) {
+    return {
+      mode: "production",
+      iframeBase: previewServerUrl,
+      showBlockingOverlay: false,
+      showWakingPill: false,
+    };
+  }
+
+  // A hosted v8 draft with no edits yet: the published site is exactly what
+  // the draft would render, and nothing is starting — no pill.
+  if (fastPreviewActive && hostedDraft && previewServerUrl) {
     return {
       mode: "production",
       iframeBase: previewServerUrl,

@@ -20,6 +20,8 @@
  * bare key this tool used to assume) misses the pod the agent loop is in.
  */
 
+import { sameRepositoryBinding } from "@decocms/shared/repository-binding";
+import type { RepositoryBinding } from "@decocms/shared/sdk";
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import {
@@ -28,22 +30,33 @@ import {
   requireOrganization,
   type StudioContext,
 } from "@/core/studio-context";
-import { selectLoadableRepos } from "@/harnesses/decopilot/built-in-tools/load-repo";
+import {
+  cloneInfoForRepository,
+  findRepositoryForBinding,
+  repositoryUsesStudioCredentials,
+} from "@/git-providers";
+import {
+  listOrgRepoChoices,
+  type RepoChoice,
+} from "@/git-providers/repo-choices";
 import { pickGitBranch } from "@/sandbox/head-ref";
 import { getAgentSandboxProvider } from "@/sandbox/lifecycle";
 import {
   buildCloneInfo,
   ensureGithubCloneToken,
 } from "@/shared/github-clone-info";
-import { resolveVm } from "@/tools/sandbox/sandbox-map";
+import { resolveSubmoduleCredentials } from "@/tools/sandbox/resolve-submodule-creds";
+import { readSandboxMap, resolveVm } from "@/tools/sandbox/sandbox-map";
 import {
+  flatSandboxRef,
   getThreadSandboxMap,
+  getCodingAgentProjectMetadata,
   resolveSandboxBranchForThread,
   resolveSandboxUserId,
   syntheticBranchToGitRef,
 } from "@/tools/sandbox/thread-repo";
 import { retry, sleep } from "@decocms/shared/std";
-import type { AgentSandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
+import type { SandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
 import {
   secondaryRepoDirNames,
   secondaryRepoDirName,
@@ -86,14 +99,26 @@ async function waitForSandboxRecord(
   threadId: string,
   sandboxUserId: string,
   branch: string,
+  projectId?: string | null,
 ): Promise<ReturnType<typeof resolveVm>> {
   return retry(
     async () => {
-      const record = resolveVm(
+      const threadRecord = resolveVm(
         await getThreadSandboxMap(ctx, threadId),
         sandboxUserId,
         branch,
       );
+      const record =
+        threadRecord ??
+        (projectId
+          ? resolveVm(
+              readSandboxMap(
+                await getCodingAgentProjectMetadata(ctx, projectId),
+              ),
+              sandboxUserId,
+              branch,
+            )
+          : null);
       if (!record) throw new Error("sandbox record not written yet");
       return record;
     },
@@ -130,7 +155,7 @@ const CLONE_MAX_CONSECUTIVE_FAILURES = 5;
  *
  * Nothing else bounds `TASK_ADD_REPO`: the model can call it once per repo the
  * org has imported, and each call clones into the pod and appends to the
- * thread's `githubRepos` list forever (`appendThreadGithubRepo` never
+ * thread's `additionalRepositories` list forever (`appendThreadRepository` never
  * shrinks it). An org with a large connected-repo catalog would otherwise let
  * one run pile up an unbounded number of pod checkouts and an unbounded
  * `git.repositories` config payload pushed to the daemon on every add.
@@ -144,20 +169,18 @@ export const MAX_SECONDARY_REPOS = 20;
  * fills the cap.
  */
 export function secondaryRepoCapExceeded(
-  existing: { owner: string; name: string }[],
-  candidate: { owner: string; name: string },
+  existing: Pick<RepositoryBinding, "url" | "repositoryId">[],
+  candidate: Pick<RepositoryBinding, "url" | "repositoryId">,
   cap = MAX_SECONDARY_REPOS,
 ): boolean {
-  const key = (r: { owner: string; name: string }) =>
-    `${r.owner}/${r.name}`.toLowerCase();
-  const candidateKey = key(candidate);
-  if (existing.some((r) => key(r) === candidateKey)) return false;
+  if (existing.some((repo) => sameRepositoryBinding(repo, candidate)))
+    return false;
   return existing.length >= cap;
 }
 
 /** One bash command in the run's pod. Throws on a non-2xx from the daemon. */
 async function podBash(
-  provider: AgentSandboxProvider,
+  provider: SandboxProvider,
   handle: string,
   threadId: string,
   command: string,
@@ -178,6 +201,32 @@ async function podBash(
   }
   const body = (await res.json()) as { stdout?: string; exitCode?: number };
   return { stdout: body.stdout ?? "", exitCode: body.exitCode ?? 0 };
+}
+
+/** The clone probe for `dir`; read it with `parseRepoProbe`. */
+function repoProbe(dir: string): string {
+  return `cd ${dir} 2>/dev/null || exit 1; if [ -n "$(git ls-files 2>/dev/null | head -1)" ]; then echo __CLONED__; fi; ls -A 2>/dev/null`;
+}
+
+/**
+ * Whether the checkout at `dir` is complete: cloned, and with the same listing
+ * across two probes, since one non-empty probe can still be mid-clone.
+ */
+async function checkoutSettled(
+  provider: SandboxProvider,
+  handle: string,
+  threadId: string,
+  dir: string,
+): Promise<boolean> {
+  const probe = () =>
+    podBash(provider, handle, threadId, repoProbe(dir))
+      .then((res) => parseRepoProbe(res.stdout))
+      .catch(() => null);
+  const first = await probe();
+  if (!first?.cloned) return false;
+  await sleep(CLONE_POLL_MS);
+  const second = await probe();
+  return !!second?.cloned && second.listing === first.listing;
 }
 
 /**
@@ -215,30 +264,85 @@ export function parseRepoProbe(stdout: string): {
 }
 
 /**
- * Point `gh` at the credential the clone just stored on `origin`.
+ * Point the provider CLI at the credential the clone just stored on `origin`.
  *
- * The harness process was spawned before the repo existed, and the daemon builds
- * `GH_TOKEN` from the clone URL at spawn time (`RunEnv`) — so this run's `gh`
- * has no token and no way to be handed one through its environment.
- * `hosts.yml` is the other place `gh` looks. The token is read out of `origin`
- * inside the pod, so it never crosses the wire a second time and never lands in
- * a command line.
+ * The harness process was spawned before the repo existed, and the daemon
+ * derives the CLI environment from the clone URL at spawn time (`RunEnv`) — so
+ * this run's `gh`/`glab` has no token and no way to be handed one through its
+ * environment. Their config files are the other place each looks. The token and
+ * host are read out of `origin` inside the pod, so neither crosses the wire a
+ * second time nor lands in a command line.
+ *
+ * Run in the checkout being added, NOT the daemon's default cwd: that is the
+ * primary, so a GitLab secondary added to a GitHub sandbox would otherwise
+ * configure `gh` from the primary's remote and leave `glab` unauthenticated.
+ * The two providers keep separate config files, so a mixed-provider sandbox
+ * ends up with both authenticated; a second host of the SAME provider replaces
+ * the first, which is why one account per host is the supported shape.
+ *
+ * The userinfo username tells the providers apart, exactly as the daemon does:
+ * `x-access-token` is GitHub, `oauth2` is GitLab, `x-token-auth` is Bitbucket —
+ * which has no CLI to configure, so it falls through; the daemon exports the
+ * primary checkout's token as `BITBUCKET_TOKEN` for `curl` instead. `glab` needs `is_oauth2` so
+ * it sends a bearer token (the only form GitLab accepts for an OAuth token, and
+ * one it also accepts for an access token), and refuses a config that is not
+ * 0600.
  */
-const GH_AUTH_COMMAND = [
-  'token=$(git remote get-url origin | sed -n "s|.*x-access-token:\\([^@]*\\)@.*|\\1|p")',
-  '[ -n "$token" ] || exit 0',
-  'mkdir -p "${HOME:-/root}/.config/gh"',
-  "umask 077",
-  'printf "github.com:\\n  oauth_token: %s\\n  git_protocol: https\\n" "$token" > "${HOME:-/root}/.config/gh/hosts.yml"',
-].join("\n");
+export function cliAuthCommand(repoDir: string | null): string {
+  return [
+    ...(repoDir ? [`cd ${JSON.stringify(repoDir)} || exit 0`] : []),
+    ...CLI_AUTH_LINES,
+  ].join("\n");
+}
 
-/** The org's importable repos, newest lookup each call (an import can land
- *  while a run is in flight). */
-async function listOrgRepos(ctx: StudioContext, orgId: string) {
-  const { items } = await ctx.storage.connections.list(orgId, {
-    slug: "mcp-github",
+const CLI_AUTH_LINES = [
+  "origin=$(git remote get-url origin)",
+  'token=$(printf %s "$origin" | sed -n "s|.*://[^:]*:\\([^@]*\\)@.*|\\1|p")',
+  '[ -n "$token" ] || exit 0',
+  'user=$(printf %s "$origin" | sed -n "s|.*://\\([^:]*\\):.*|\\1|p")',
+  'host=$(printf %s "$origin" | sed -n "s|.*@\\([^/]*\\)/.*|\\1|p")',
+  '[ -n "$host" ] || exit 0',
+  "umask 077",
+  'if [ "$user" = "oauth2" ]; then',
+  '  mkdir -p "${HOME:-/root}/.config/glab-cli"',
+  '  printf "hosts:\\n  %s:\\n    token: %s\\n    api_host: %s\\n    api_protocol: https\\n    is_oauth2: true\\n" "$host" "$token" "$host" > "${HOME:-/root}/.config/glab-cli/config.yml"',
+  '  chmod 600 "${HOME:-/root}/.config/glab-cli/config.yml"',
+  'elif [ "$user" = "x-access-token" ]; then',
+  '  mkdir -p "${HOME:-/root}/.config/gh"',
+  '  printf "%s:\\n  oauth_token: %s\\n  git_protocol: https\\n" "$host" "$token" > "${HOME:-/root}/.config/gh/hosts.yml"',
+  "fi",
+];
+
+/** A fresh credentialed clone URL for a choice, from whichever model backs it. */
+async function cloneInfoForChoice(
+  ctx: StudioContext,
+  organizationId: string,
+  choice: RepoChoice,
+): Promise<{ cloneUrl: string; gitUserName: string; gitUserEmail: string }> {
+  if (choice.repository) {
+    return cloneInfoForRepository(ctx, choice.repository, {
+      bufferMs: CLONE_TOKEN_MIN_TTL_MS,
+    });
+  }
+  await ensureGithubCloneToken({
+    ctx,
+    connectionId: choice.connectionId!,
+    organizationId,
+    forceRefresh: true,
+    onLegacyMintError: (error) =>
+      console.error("[TASK_ADD_REPO] legacy repo-scoped mint failed", {
+        connectionId: choice.connectionId,
+        error: (error as Error).message,
+      }),
   });
-  return selectLoadableRepos(items);
+  return buildCloneInfo(
+    choice.connectionId!,
+    choice.owner,
+    choice.name,
+    ctx.db,
+    ctx.vault,
+    { bufferMs: CLONE_TOKEN_MIN_TTL_MS },
+  );
 }
 
 /**
@@ -250,27 +354,125 @@ async function listOrgRepos(ctx: StudioContext, orgId: string) {
  * gone is dropped rather than sent with a dead URL, so one revoked connection
  * costs its own checkout and not the others.
  */
+/**
+ * The organization's per-host git credentials, resolved to tokens.
+ *
+ * Every checkout this tool configures needs them, primary included: the pod
+ * installs them from `git.repository.submoduleCredentials`, so a `repository`
+ * patch that omits the key leaves a pod whose only credential is the clone
+ * token — which is exactly the token that cannot reach a private dependency.
+ */
+async function orgGitCredentials(
+  ctx: StudioContext,
+  organizationId: string,
+  userId: string,
+): Promise<{ host: string; token: string }[]> {
+  const settings = await ctx.storage.organizationSettings.get(organizationId);
+  return resolveSubmoduleCredentials({
+    ctx,
+    orgId: organizationId,
+    userId,
+    entries: settings?.submodule_credentials,
+  });
+}
+
+/**
+ * The `/_sandbox/config` body for a checkout this tool just bound.
+ *
+ * Pure, and exported, because the credentials on it have now been forgotten
+ * twice: the pod installs them from `git.repository.submoduleCredentials`, and
+ * a patch that omits the key leaves the daemon's "absent means keep current"
+ * to decide — which on a sandbox that booted with no repository means keeping
+ * nothing, so its only credential is the clone token, the one token that by
+ * definition cannot reach a private dependency in another repository.
+ *
+ * `submoduleCredentials` therefore rides BOTH shapes, empty included: the
+ * primary's own key, and every secondary's (`secondaryRepoConfigs` already put
+ * the same list on each).
+ */
+export function gitConfigPatch(args: {
+  primary?: { cloneUrl: string; branch: string; repoName: string };
+  secondaries?: { cloneUrl: string; repoName: string }[];
+  submoduleCredentials: { host: string; token: string }[];
+  gitUserName: string;
+  gitUserEmail: string;
+}): {
+  git: {
+    repository?: {
+      cloneUrl: string;
+      branch: string;
+      repoName: string;
+      submoduleCredentials: { host: string; token: string }[];
+    };
+    repositories?: { cloneUrl: string; repoName: string }[];
+    identity: { userName: string; userEmail: string };
+  };
+} {
+  return {
+    git: {
+      // The full list every time, not just the new entry: the daemon's merge
+      // replaces this key, and a recreated pod has to be able to read one
+      // config and know every checkout it owes.
+      ...(args.primary
+        ? {
+            repository: {
+              ...args.primary,
+              submoduleCredentials: args.submoduleCredentials,
+            },
+          }
+        : { repositories: args.secondaries ?? [] }),
+      identity: { userName: args.gitUserName, userEmail: args.gitUserEmail },
+    },
+  };
+}
+
 async function secondaryRepoConfigs(
   ctx: StudioContext,
-  repos: { owner: string; name: string; connectionId?: string }[],
+  organizationId: string,
+  repos: {
+    url: string;
+    owner: string;
+    name: string;
+    connectionId?: string;
+    repositoryId?: string;
+  }[],
+  submoduleCredentials: { host: string; token: string }[],
 ): Promise<
-  { cloneUrl: string; repoName: string; submoduleCredentials: never[] }[]
+  {
+    cloneUrl: string;
+    repoName: string;
+    submoduleCredentials: { host: string; token: string }[];
+  }[]
 > {
   const dirNames = secondaryRepoDirNames(repos);
   // Independent per-repo credential mints — run concurrently, not in series.
   const settled = await Promise.all(
     repos.map(async (repo, i) => {
-      if (!repo.connectionId) return null;
+      const repository = await findRepositoryForBinding(
+        ctx.storage,
+        organizationId,
+        repo,
+      );
+      const studioRepository =
+        repository &&
+        (await repositoryUsesStudioCredentials(ctx.storage, repository))
+          ? repository
+          : null;
+      if (!studioRepository && !repo.connectionId) return null;
       try {
-        const { cloneUrl } = await buildCloneInfo(
-          repo.connectionId,
-          repo.owner,
-          repo.name,
-          ctx.db,
-          ctx.vault,
-          { bufferMs: CLONE_TOKEN_MIN_TTL_MS },
-        );
-        return { cloneUrl, repoName: dirNames[i]!, submoduleCredentials: [] };
+        const { cloneUrl } = studioRepository
+          ? await cloneInfoForRepository(ctx, studioRepository, {
+              bufferMs: CLONE_TOKEN_MIN_TTL_MS,
+            })
+          : await buildCloneInfo(
+              repo.connectionId!,
+              repo.owner,
+              repo.name,
+              ctx.db,
+              ctx.vault,
+              { bufferMs: CLONE_TOKEN_MIN_TTL_MS },
+            );
+        return { cloneUrl, repoName: dirNames[i]!, submoduleCredentials };
       } catch (err) {
         console.warn(
           `[TASK_ADD_REPO] skipping secondary ${repo.owner}/${repo.name}:`,
@@ -287,11 +489,13 @@ export const TASK_ADD_REPO = defineTool({
   name: "TASK_ADD_REPO",
   description:
     "Clone one of this organization's repositories into your working directory. " +
-    "Your working directory is EMPTY until you call this — do not look for " +
-    "files, and do not run git, before it returns. Call it once, with the " +
+    "If your workspace already names a repository, use that checkout directly. " +
+    "For a workspace without a repository, call this once with the " +
     "repository the task is about; it waits for the checkout and returns the " +
     "repository root listing, so you can start reading files immediately after. " +
-    "`git` and `gh` are authenticated once it returns. Call TASK_ADD_REPO with " +
+    "`git` and the repository's CLI (`gh` for GitHub, `glab` for GitLab; Bitbucket has " +
+    "no CLI — its token is the password in `git remote get-url origin`, for `curl` " +
+    "against api.bitbucket.org) are authenticated once it returns. Call TASK_ADD_REPO with " +
     "no arguments to list the repositories available.",
   annotations: {
     title: "Add Repository",
@@ -301,18 +505,19 @@ export const TASK_ADD_REPO = defineTool({
     openWorldHint: true,
   },
   inputSchema: z.object({
-    connectionId: z
+    id: z
       .string()
       .optional()
       .describe(
-        "connectionId of the repository to clone. Omit to list the available repositories.",
+        "id of the repository to clone, as returned by the listing. Omit to list the available repositories.",
       ),
+    connectionId: z.string().optional().describe("Deprecated alias for `id`."),
   }),
   outputSchema: z.object({
     success: z.boolean(),
     /** Set when no repo was cloned — either a listing request or a bad id. */
     repositories: z
-      .array(z.object({ connectionId: z.string(), repo: z.string() }))
+      .array(z.object({ id: z.string(), repo: z.string() }))
       .optional(),
     repo: z.string().optional(),
     cloned: z.boolean().optional(),
@@ -328,28 +533,27 @@ export const TASK_ADD_REPO = defineTool({
     if (!userId) throw new Error("User ID required");
     const { threadId } = requireTaskRunContext();
 
-    const repos = await listOrgRepos(ctx, organization.id);
-    const repo = input.connectionId
-      ? repos.find((r) => r.connectionId === input.connectionId)
-      : undefined;
+    const repos = await listOrgRepoChoices(ctx, organization.id);
+    const wanted = input.id ?? input.connectionId;
+    const repo = wanted ? repos.find((r) => r.id === wanted) : undefined;
     if (!repo) {
-      const repositories = repos.map((r) => ({
-        connectionId: r.connectionId,
-        repo: `${r.owner}/${r.repo}`,
-      }));
+      const repositories = repos.map((r) => ({ id: r.id, repo: r.label }));
       return {
         success: false,
         repositories,
-        message: input.connectionId
-          ? `No imported repository for connectionId "${input.connectionId}". Pick one of the repositories listed.`
+        message: wanted
+          ? `No repository for id "${wanted}". Pick one of the repositories listed.`
           : repositories.length === 0
-            ? "This organization has no repositories imported, so none can be cloned."
-            : "Pick a repository and call TASK_ADD_REPO again with its connectionId.",
+            ? "This organization has no repositories linked, so none can be cloned."
+            : "Pick a repository and call TASK_ADD_REPO again with its id.",
       };
     }
 
     const thread = await ctx.storage.threads.get(threadId);
     if (!thread) throw new Error(`Thread not found: ${threadId}`);
+    const project = thread.metadata?.repository
+      ? null
+      : await getCodingAgentProjectMetadata(ctx, thread.virtual_mcp_id);
 
     /**
      * The sandbox key, from the one derivation every sandbox consumer shares —
@@ -372,14 +576,15 @@ export const TASK_ADD_REPO = defineTool({
       // in this column does not match the bare key, so it falls through to the
       // same derivation as before.
       runBranch: thread.branch,
+      agentRepo: project?.repository,
     });
     const sandboxUserId = await resolveSandboxUserId(ctx, branch, userId);
-    const provider = await getAgentSandboxProvider(ctx);
     const record = await waitForSandboxRecord(
       ctx,
       threadId,
       sandboxUserId,
       branch,
+      project?.repository ? thread.virtual_mcp_id : null,
     );
     if (!record) {
       throw new Error(
@@ -388,25 +593,46 @@ export const TASK_ADD_REPO = defineTool({
       );
     }
 
-    const existingPrimary = (
-      thread.metadata as { githubRepo?: { owner?: string } } | null
-    )?.githubRepo?.owner;
+    const repository =
+      (
+        thread.metadata as {
+          repository?: RepositoryBinding;
+        } | null
+      )?.repository ?? project?.repository;
     const existingSecondaries =
       (
         thread.metadata as {
-          githubRepos?: { owner: string; name: string }[];
+          additionalRepositories?: RepositoryBinding[];
         } | null
-      )?.githubRepos ?? [];
+      )?.additionalRepositories ?? [];
+
+    const candidate = { url: repo.webUrl, repositoryId: repo.repository?.id };
+    const isPrimaryRepo =
+      repository && sameRepositoryBinding(repository, candidate);
+
+    const provider = await getAgentSandboxProvider(ctx);
+    // The binding is written before the clone is delivered, so a call that
+    // failed after it leaves a primary that is bound but not checked out.
+    // Only a real checkout ends here; anything else is delivered again.
     if (
-      existingPrimary &&
-      secondaryRepoCapExceeded(existingSecondaries, {
-        owner: repo.owner,
-        name: repo.repo,
-      })
+      isPrimaryRepo &&
+      (await checkoutSettled(provider, record.sandboxHandle, threadId, "."))
     ) {
       return {
         success: false,
-        repo: `${repo.owner}/${repo.repo}`,
+        repo: `${repo.owner}/${repo.name}`,
+        cloned: false,
+        message: `${repo.label} is already checked out at your working directory.`,
+      };
+    }
+    if (
+      repository &&
+      !isPrimaryRepo &&
+      secondaryRepoCapExceeded(existingSecondaries, candidate)
+    ) {
+      return {
+        success: false,
+        repo: `${repo.owner}/${repo.name}`,
         cloned: false,
         message:
           `This run already has ${MAX_SECONDARY_REPOS} additional repositories checked out, ` +
@@ -417,48 +643,37 @@ export const TASK_ADD_REPO = defineTool({
     // Fresh credential BEFORE anything is written: a clone URL is only useful
     // with a live token behind it, and this is the failure worth reporting
     // as "could not add the repo" rather than half-binding one.
-    await ensureGithubCloneToken({
+    const { cloneUrl, gitUserName, gitUserEmail } = await cloneInfoForChoice(
       ctx,
-      connectionId: repo.connectionId,
-      organizationId: organization.id,
-      forceRefresh: true,
-      onLegacyMintError: (error) =>
-        console.error("[TASK_ADD_REPO] legacy repo-scoped mint failed", {
-          connectionId: repo.connectionId,
-          error: (error as Error).message,
-        }),
-    });
-    const { cloneUrl, gitUserName, gitUserEmail } = await buildCloneInfo(
-      repo.connectionId,
-      repo.owner,
-      repo.repo,
-      ctx.db,
-      ctx.vault,
-      { bufferMs: CLONE_TOKEN_MIN_TTL_MS },
+      organization.id,
+      repo,
     );
 
     const bound = {
-      url: `https://github.com/${repo.owner}/${repo.repo}`,
+      url: repo.webUrl,
       owner: repo.owner,
-      name: repo.repo,
-      installationId: repo.installationId,
-      connectionId: repo.connectionId,
+      name: repo.name,
+      ...(repo.installationId !== undefined
+        ? { installationId: repo.installationId }
+        : {}),
+      ...(repo.connectionId ? { connectionId: repo.connectionId } : {}),
+      ...(repo.repository ? { repositoryId: repo.repository.id } : {}),
     };
     // Bind the repo to the thread. This is what every later consumer reads —
     // the shutdown git sync, a re-provision's credential refresh, the board's
     // PR extraction — so it has to be persisted, not just handed to the daemon.
     //
-    // The FIRST repo is the primary: `githubRepo` is what drives the sandbox's
+    // The FIRST repo is the primary: `repository` is what drives the sandbox's
     // package-manager probe, dev server and preview, and a second call must not
     // move that out from under a running dev server. Later ones accumulate in
-    // `githubRepos` and land as secondary checkouts.
-    const isPrimary = !existingPrimary;
+    // `additionalRepositories` and land as secondary checkouts.
+    const isPrimary = !repository || !!isPrimaryRepo;
     const secondaries = isPrimary
       ? []
-      : await ctx.storage.threads.appendThreadGithubRepo(threadId, bound);
-    if (isPrimary) {
+      : await ctx.storage.threads.appendThreadRepository(threadId, bound);
+    if (!repository) {
       await ctx.storage.threads.update(threadId, {
-        metadata: { ...(thread.metadata ?? {}), githubRepo: bound },
+        metadata: { ...(thread.metadata ?? {}), repository: bound },
         updated_by: userId,
       });
     }
@@ -474,10 +689,18 @@ export const TASK_ADD_REPO = defineTool({
      */
     const gitRef = pickGitBranch({
       branch,
-      derivedRef: syntheticBranchToGitRef(branch),
+      derivedRef: syntheticBranchToGitRef(branch, {
+        flat: flatSandboxRef(repo.provider),
+      }),
       recordedHeadRef: null,
       sticky: false,
     });
+    // Resolved once: reused for both the top-level key and each secondary's copy.
+    const submoduleCredentials = await orgGitCredentials(
+      ctx,
+      organization.id,
+      userId,
+    );
     const configRes = await provider.proxyDaemonRequest(
       record.sandboxHandle,
       "/_sandbox/config",
@@ -485,23 +708,29 @@ export const TASK_ADD_REPO = defineTool({
         method: "PUT",
         headers: new Headers({ "content-type": "application/json" }),
         // ⚠️ SECURITY: `cloneUrl` embeds a GitHub token. Never log this body.
-        body: JSON.stringify({
-          git: {
-            // The full list every time, not just the new entry: the daemon's
-            // merge replaces this key, and a recreated pod has to be able to
-            // read one config and know every checkout it owes.
+        body: JSON.stringify(
+          gitConfigPatch({
             ...(isPrimary
               ? {
-                  repository: {
+                  primary: {
                     cloneUrl,
                     branch: gitRef,
-                    repoName: `${repo.owner}/${repo.repo}`,
+                    repoName: `${repo.owner}/${repo.name}`,
                   },
                 }
-              : { repositories: await secondaryRepoConfigs(ctx, secondaries) }),
-            identity: { userName: gitUserName, userEmail: gitUserEmail },
-          },
-        }),
+              : {
+                  secondaries: await secondaryRepoConfigs(
+                    ctx,
+                    organization.id,
+                    secondaries,
+                    submoduleCredentials,
+                  ),
+                }),
+            submoduleCredentials,
+            gitUserName,
+            gitUserEmail,
+          }),
+        ),
       },
     );
     if (!configRes.ok) {
@@ -529,10 +758,7 @@ export const TASK_ADD_REPO = defineTool({
     // it, so the directory survives a pod restart.
     const secondaryDirName = isPrimary
       ? null
-      : secondaryRepoDirName(secondaries, {
-          owner: repo.owner,
-          name: repo.repo,
-        });
+      : secondaryRepoDirName(secondaries, bound);
     const checkoutDir =
       isPrimary || !secondaryDirName
         ? "."
@@ -557,7 +783,7 @@ export const TASK_ADD_REPO = defineTool({
         // stages `.deco` and mounts `org` into it before the clone starts), so
         // neither HEAD nor the listing can tell a checkout from scaffolding. A
         // non-empty index can only come from one. See `parseRepoProbe`.
-        `cd ${checkoutDir} 2>/dev/null || exit 1; if [ -n "$(git ls-files 2>/dev/null | head -1)" ]; then echo __CLONED__; fi; ls -A 2>/dev/null`,
+        repoProbe(checkoutDir),
       ).catch(() => null);
       if (!probe) {
         if (++failures >= CLONE_MAX_CONSECUTIVE_FAILURES) break;
@@ -580,22 +806,22 @@ export const TASK_ADD_REPO = defineTool({
         provider,
         record.sandboxHandle,
         threadId,
-        GH_AUTH_COMMAND,
+        cliAuthCommand(isPrimary ? null : `../repos/${secondaryDirName}`),
       ).catch((err) =>
-        console.warn("[TASK_ADD_REPO] gh auth setup failed", err),
+        console.warn("[TASK_ADD_REPO] CLI auth setup failed", err),
       );
     }
 
     return {
       success: cloned,
-      repo: `${repo.owner}/${repo.repo}`,
+      repo: `${repo.owner}/${repo.name}`,
       cloned,
       files: listing,
       message: cloned
         ? isPrimary
-          ? `${repo.owner}/${repo.repo} is checked out at your working directory on branch ${gitRef}. \`git\` and \`gh\` are authenticated. Start working.`
-          : `${repo.owner}/${repo.repo} is checked out at ../repos/${secondaryDirName}, beside your working directory, on its default branch. \`git\` and \`gh\` are authenticated there too. Your first checkout is untouched — commit and open a pull request in each repository you change.`
-        : `The clone of ${repo.owner}/${repo.repo} did not finish within ${Math.round(
+          ? `${repo.label} is checked out at your working directory on branch ${gitRef}. \`git\` and its CLI are authenticated. Start working.`
+          : `${repo.label} is checked out at ../repos/${secondaryDirName}, beside your working directory, on its default branch. \`git\` and its CLI are authenticated there too. Your first checkout is untouched — commit and open a change request in each repository you change.`
+        : `The clone of ${repo.owner}/${repo.name} did not finish within ${Math.round(
             CLONE_TIMEOUT_MS / 1000,
           )}s. It may still be in progress — check your working directory before calling this again.`,
     };

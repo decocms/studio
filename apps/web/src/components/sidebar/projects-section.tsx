@@ -1,3 +1,4 @@
+import type { ProjectIndex } from "@/lib/project-index";
 /**
  * The sidebar's project list, with what each one needs FROM YOU nested under
  * it.
@@ -15,12 +16,18 @@
  */
 
 import { LAYOUT_TOUR_ANCHORS } from "@/components/layout-tour/anchors";
+import { Suspense, useState } from "react";
+import { Plus } from "@untitledui/icons";
+import { RepositoryImportPicker } from "@/components/repository-import-picker";
+import { useCapability } from "@/hooks/use-capability";
 import { useQuery } from "@tanstack/react-query";
-import { cn } from "@decocms/ui/lib/utils.ts";
 import { SidebarMenu } from "@decocms/ui/components/sidebar.tsx";
 import { ProjectIcon } from "@/components/project-icon";
 import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
-import { useNavigateToAgent } from "@/hooks/use-navigate-to-agent";
+import {
+  useAgentLink,
+  useNavigateToAgent,
+} from "@/hooks/use-navigate-to-agent";
 import { useProjectScope, useScopeId } from "@/hooks/use-project-scope";
 import { taskBoardItemsQueryOptions } from "@/hooks/use-task-board-items";
 import { landingTabIdFor } from "@/layouts/main-panel-tabs/tab-id";
@@ -36,11 +43,7 @@ import { track } from "@/lib/posthog-client";
 import { useProjectContext } from "@/sdk";
 import { useT } from "@/i18n/use-t.ts";
 import { Link } from "@tanstack/react-router";
-import {
-  buildProjectIndex,
-  projectsForTask,
-  type ProjectIndex,
-} from "@/lib/project-index";
+import { buildProjectIndex, projectsForTask } from "@/lib/project-index";
 import { SidebarNavRow } from "./nav-row";
 
 /** Nested rows one project shows before the board takes over. */
@@ -173,11 +176,15 @@ export function SidebarProjectsSection({
 }) {
   const t = useT();
   const collapsed = useSidebarCollapsed();
+
+  const [importOpen, setImportOpen] = useState(false);
+  const { granted: canManageProjects } = useCapability("agents:manage");
   const { org, locator } = useProjectContext();
   const studio = useStudioTools();
   const { projects } = useProjectScope();
   const scopeId = useScopeId();
   const navigateToAgent = useNavigateToAgent();
+  const agentLink = useAgentLink();
   const { data: session } = authClient.useSession();
 
   /** Non-blocking, and it shares the board's key — the same request the Tasks
@@ -192,7 +199,7 @@ export function SidebarProjectsSection({
    *  that says where you could be instead. The picker and the way back out are
    *  the controls for leaving; this section is the org's map.
    *  Collapsed keeps the rows at icon width; only the heading and the nested task rows drop, having no icon to be. */
-  if (scopeId || projects.length === 0) return null;
+  if (scopeId || (projects.length === 0 && !canManageProjects)) return null;
 
   const byProject = tasksNeedingMeByProject(
     buildProjectIndex(projects),
@@ -202,13 +209,11 @@ export function SidebarProjectsSection({
 
   return (
     <div
-      className={cn("flex flex-col gap-1", collapsed && "pt-3")}
+      className="flex flex-col gap-2"
       data-tour={LAYOUT_TOUR_ANCHORS.projects}
     >
-      {/* The heading carries the gap that separates the org's map from the
-          destinations above it; collapsed, the container carries it instead. */}
       {!collapsed && (
-        <p className="px-2 pt-5 pb-0.5 text-xs font-medium text-muted-foreground/60">
+        <p className="px-2 text-xs font-medium text-muted-foreground">
           {t("sidebar.projects.heading")}
         </p>
       )}
@@ -221,14 +226,15 @@ export function SidebarProjectsSection({
               icon={<ProjectIcon icon={project.icon} name={project.title} />}
               label={project.title}
               isActive={project.id === scopeId}
-              /** A button, not a link: these resolve a SESSION, so the
-               *  destination id is not knowable at render time — the same
-               *  reason `ProjectNav`'s rows are buttons. */
+              /** A real anchor so middle-click and "open in new tab" work. No
+               *  runtime is requested, so the project's shell resolves the
+               *  session and the URL is knowable at render time. */
+              link={agentLink(
+                project.id,
+                landingTabIdFor(project.metadata?.ui?.layout),
+              )}
               onSelect={() => {
                 track("sidebar_project_clicked");
-                navigateToAgent(project.id, {
-                  panel: landingTabIdFor(project.metadata?.ui?.layout),
-                });
                 onNavigate?.();
               }}
             >
@@ -248,7 +254,26 @@ export function SidebarProjectsSection({
             </SidebarNavRow>
           );
         })}
+        {canManageProjects && (
+          <SidebarNavRow
+            icon={<Plus size={16} />}
+            label={t("sidebar.projects.addProject")}
+            onSelect={() => setImportOpen(true)}
+          />
+        )}
       </SidebarMenu>
+      {importOpen && (
+        <Suspense fallback={null}>
+          <RepositoryImportPicker
+            open
+            onOpenChange={setImportOpen}
+            onImportComplete={({ virtualMcpId }) => {
+              if (virtualMcpId) navigateToAgent(virtualMcpId);
+              onNavigate?.();
+            }}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }

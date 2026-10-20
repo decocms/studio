@@ -1,15 +1,13 @@
 /**
  * Mints a real MCP OAuth 2.1 + PKCE access token against the live Studio API —
- * the exact primitive both `apps/api/src/cli/commands/auth/login.ts` and
- * `apps/native/crates/upstream/src/login.rs` produce for a signed-in user.
+ * the exact primitive `apps/api/src/cli/commands/auth/login.ts` produces for
+ * a signed-in user.
  *
  * Drives the real wire dance: dynamic client registration
  * (`POST /api/auth/mcp/register`) → authorize
  * (`GET /api/auth/mcp/authorize`, presenting the request context's already-
  * established Better Auth session cookie — e.g. from `signUpViaApi` —
- * instead of opening a browser, mirroring
- * `crates/upstream/src/bridge.rs::complete_via_cookie_jar`'s non-interactive
- * approach) → token exchange (`POST /api/auth/mcp/token`). `request` must
+ * instead of opening a browser) → token exchange (`POST /api/auth/mcp/token`). `request` must
  * already carry a session cookie.
  *
  * Inlined here (not imported from `apps/api/src/cli/lib/pkce.ts` or

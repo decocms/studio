@@ -1,9 +1,8 @@
 /**
  * Automation Event Dispatcher
  *
- * Consumes events processed by the EventBusWorker and fires matching
- * automations. Called in a fire-and-forget fashion so it never blocks
- * the event bus hot path.
+ * Matches incoming trigger callback events to automations and enqueues their
+ * workflows. Dispatch returns before the workflows finish.
  */
 
 import type { AutomationsStorage } from "@/storage/automations";
@@ -92,8 +91,8 @@ export class AutomationEventDispatcher {
   ) {}
 
   /**
-   * Called by EventBusWorker after processing events.
-   * Fire-and-forget — does not block the caller.
+   * Called by the trigger-callback route after validating the incoming event.
+   * Starts matching and enqueueing without waiting for them to finish.
    *
    * `id` is the CloudEvents identifier; when present it's combined with the
    * matched triggerId to form a DBOS workflow ID, giving exactly-once fire

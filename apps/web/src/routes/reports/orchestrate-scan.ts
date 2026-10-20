@@ -1,46 +1,23 @@
-// The scan lifecycle as a pure async function (no React): trigger the scan,
-// then poll the authenticated read (and the durable run's status when we have an id)
-// until the deck is ready or the run terminates. Ported from ScanGate's effect
-// in the decocms landing — here it's started from a mount callback ref and
-// cancelled via AbortSignal.
+/**
+ * The scan lifecycle as a pure async function (no React): trigger the scan,
+ * then poll the report read (and the durable run's status when we have an id)
+ * until the report is ready or the run terminates. Started from a mount
+ * callback ref and cancelled via AbortSignal.
+ */
 
 import { sleep } from "@decocms/shared/std";
-import type { TemplateDeck } from "@decocms/shared/reports/deck-types";
-import type { SlideDrop } from "@decocms/shared/reports/to-deck";
-import {
-  getReport,
-  getScanStatus,
-  isReportsUnauthorized,
-  runReportScan,
-} from "./api";
-import { captureReport } from "./track";
+import type { OnePager } from "@decocms/shared/reports/public-report";
+import { getReport, getScanStatus, runReportScan } from "./api";
+import { captureReport, REPORT_SURFACE } from "./track";
 
 const POLL_MS = 4000;
 const MAX_POLLS = 180;
 
-export type ScanPhase =
-  | "scanning"
-  | "pending"
-  | "blocked"
-  | "empty"
-  | "unauthorized"
-  | "error";
+export type ScanPhase = "scanning" | "pending" | "blocked" | "empty" | "error";
 
 export interface ScanEvents {
   onPhase: (phase: ScanPhase) => void;
-  onDeck: (deck: TemplateDeck) => void;
-}
-
-/** Emit one `report_slide_dropped` per slide the shared contract rejected. */
-export function reportDrops(domain: string, drops?: SlideDrop[]): void {
-  for (const d of drops ?? [])
-    captureReport("report_slide_dropped", {
-      domain,
-      section_type: d.section_type,
-      position: d.position,
-      reason: d.reason,
-      surface: "deck_v2",
-    });
+  onReport: (report: OnePager) => void;
 }
 
 // localStorage mark: this browser already has a scan in flight for the domain,
@@ -74,12 +51,11 @@ export async function orchestrateScan(
   distinctId: string | undefined,
   signal: AbortSignal,
   events: ScanEvents,
-  // Viewer locale — rendered into the deck reads so the finished deck matches
-  // the language the rest of the UI is in.
+  // Viewer locale, so the finished report matches the rest of the UI.
   lang?: string,
 ): Promise<void> {
   try {
-    captureReport("report_scan_triggered", { domain, surface: "deck_v2" });
+    captureReport("report_scan_triggered", { domain, surface: REPORT_SURFACE });
     const trig = await runReportScan({ domain, distinctId });
     if (signal.aborted) return;
     if (trig.state === "blocked") {
@@ -88,7 +64,7 @@ export async function orchestrateScan(
         domain,
         phase: "blocked",
         reason: "blocked",
-        surface: "deck_v2",
+        surface: REPORT_SURFACE,
       });
       return events.onPhase("blocked");
     }
@@ -97,30 +73,32 @@ export async function orchestrateScan(
       events.onPhase("pending");
       captureReport("report_pending_screen_shown", {
         domain,
-        surface: "deck_v2",
+        surface: REPORT_SURFACE,
       });
       writePending(domain);
     }
 
     for (let i = 0; i < MAX_POLLS && !signal.aborted; i++) {
-      const next = await getReport(domain, undefined, lang);
+      const next = await getReport(domain, lang);
       if (signal.aborted) return;
-      if (next.status === "ready" && next.deck) {
+      if (next.status === "ready") {
         clearPending(domain);
-        reportDrops(domain, next.drops);
-        captureReport("report_scan_completed", { domain, surface: "deck_v2" });
-        return events.onDeck(next.deck);
+        captureReport("report_scan_completed", {
+          domain,
+          surface: REPORT_SURFACE,
+        });
+        return events.onReport(next.report);
       }
       if (id) {
         const st = await getScanStatus(id);
         if (signal.aborted) return;
         if (st.done) {
-          // Run finished but deck assembly can lag behind it — show the
+          // The run finished but publication can lag behind it — show the
           // "still assembling" note and keep polling instead of giving up.
           id = null;
           captureReport("report_run_done_deck_pending", {
             domain,
-            surface: "deck_v2",
+            surface: REPORT_SURFACE,
           });
           events.onPhase("empty");
         }
@@ -133,21 +111,20 @@ export async function orchestrateScan(
         domain,
         phase: "empty",
         reason: "poll_timeout",
-        surface: "deck_v2",
+        surface: REPORT_SURFACE,
       });
       events.onPhase("empty");
     }
-  } catch (error) {
+  } catch {
     if (!signal.aborted) {
       clearPending(domain);
-      const unauthorized = isReportsUnauthorized(error);
       captureReport("report_scan_failed", {
         domain,
-        phase: unauthorized ? "unauthorized" : "error",
-        reason: unauthorized ? "unauthorized" : "exception",
-        surface: "deck_v2",
+        phase: "error",
+        reason: "exception",
+        surface: REPORT_SURFACE,
       });
-      events.onPhase(unauthorized ? "unauthorized" : "error");
+      events.onPhase("error");
     }
   }
 }

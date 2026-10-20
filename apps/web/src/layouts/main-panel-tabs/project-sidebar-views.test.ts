@@ -24,10 +24,12 @@ const nativePresence = (
   present: Array<keyof ProjectNativeViewPresence>,
 ): ProjectNativeViewPresence => ({
   assets: present.includes("assets"),
+  releases: present.includes("releases"),
   hosting: present.includes("hosting"),
   e2e: present.includes("e2e"),
   analytics: present.includes("analytics"),
   cdn: present.includes("cdn"),
+  experiments: present.includes("experiments"),
 });
 
 describe("project sidebar views", () => {
@@ -67,6 +69,28 @@ describe("project sidebar views", () => {
     ]);
   });
 
+  test("gates experiments on a CMS source, not the flag alone", () => {
+    // Flag on (native.experiments) but no clonable source → no experiments row.
+    expect(
+      availableProjectSidebarViews(
+        projectSidebarViewPresence(false, nativePresence(["experiments"])),
+      ),
+    ).toEqual(["automations"]);
+    // With a clonable source, the flag surfaces it.
+    expect(
+      availableProjectSidebarViews(
+        projectSidebarViewPresence(true, nativePresence(["experiments"])),
+      ),
+    ).toEqual([
+      "overview",
+      "reports",
+      "board",
+      "site-editor",
+      "automations",
+      "experiments",
+    ]);
+  });
+
   test("keeps only automations when a project has no source or native views", () => {
     expect(
       availableProjectSidebarViews(
@@ -93,7 +117,7 @@ describe("project sidebar views", () => {
     const shell = { id: "decopilot", metadata: {} };
     const project = {
       id: "vir_project",
-      metadata: { githubRepo: { url: "https://github.com/deco/site" } },
+      metadata: { repository: { url: "https://github.com/deco/site" } },
     };
 
     const context = resolveProjectMainViewContext(project.id, project, shell);
@@ -268,6 +292,21 @@ describe("project sidebar views", () => {
         siteAccess: false,
       }),
     ).toBe(false);
+  });
+
+  test("keeps a Releases deep link while main's schema is being read", () => {
+    const none = projectSidebarViewPresence(true, nativePresence([]));
+    const settled = { assets: false, siteAccess: false };
+
+    expect(
+      projectSidebarViewUnavailable("releases", none, {
+        ...settled,
+        releases: true,
+      }),
+    ).toBe(false);
+    expect(projectSidebarViewUnavailable("releases", none, settled)).toBe(true);
+    const v8 = projectSidebarViewPresence(true, nativePresence(["releases"]));
+    expect(projectSidebarViewUnavailable("releases", v8, settled)).toBe(false);
   });
 
   test("rejects source-backed views immediately when source is absent", () => {

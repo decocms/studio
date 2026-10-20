@@ -12,7 +12,7 @@ describe("buildDirectDaemonEventsUrl", () => {
     ).toBe("https://abc.preview.example.com/_sandbox/events");
   });
 
-  test("preserves local desktop preview origin", () => {
+  test("preserves a localhost preview origin", () => {
     expect(buildDirectDaemonEventsUrl("http://h1.localhost:4000")).toBe(
       "http://h1.localhost:4000/_sandbox/events",
     );

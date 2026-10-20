@@ -1,5 +1,10 @@
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
-import type { ModelCapability } from "@decocms/shared/sdk";
+import {
+  fetchWithTransientRetry,
+  parseJsonResponse,
+  throwResponseError,
+} from "./fetch-transient-retry";
+import { deriveModalityCapabilities } from "./model-capabilities";
 import type {
   StudioProvider,
   ModelInfo,
@@ -9,6 +14,65 @@ import type {
 } from "../types";
 const OPENROUTER_ICON_URL =
   "https://assets.decocache.com/decocms/284f1ad9-3fd8-494c-be88-16671069f3b9/openrouter.svg";
+
+function fetchModelsWithRetry(
+  headers: Record<string, string>,
+  decisions = false,
+): Promise<Response> {
+  return fetchWithTransientRetry(
+    "OpenRouter listModels",
+    decisions
+      ? "https://openrouter.ai/api/v1/models?output_modalities=decisions"
+      : "https://openrouter.ai/api/v1/models",
+    { headers, signal: AbortSignal.timeout(decisions ? 5_000 : 30_000) },
+  );
+}
+
+/**
+ * OpenRouter's catalog occasionally lists a model missing the nested
+ * metadata mapV1Model relies on — skip it instead of crashing the whole
+ * listModels call over one bad entry.
+ */
+function isMappableModel(m: OpenRouterAPIModel): boolean {
+  return (
+    typeof m.id === "string" &&
+    !!m.architecture &&
+    Array.isArray(m.architecture.input_modalities) &&
+    Array.isArray(m.architecture.output_modalities) &&
+    !!m.top_provider &&
+    !!m.pricing
+  );
+}
+
+function mapV1Model(m: OpenRouterAPIModel): ModelInfo {
+  const contextWindow = m.context_length ?? 0;
+  const reportedMaxOut = m.top_provider.max_completion_tokens || null;
+  const maxOutputTokens =
+    reportedMaxOut && (contextWindow === 0 || reportedMaxOut < contextWindow)
+      ? reportedMaxOut
+      : null;
+  return {
+    providerId: "openrouter",
+    modelId: m.id,
+    title: m.name,
+    description: m.description ?? null,
+    logo: null,
+    capabilities: deriveModalityCapabilities(
+      m.architecture.input_modalities,
+      m.architecture.output_modalities,
+      m.supported_parameters,
+      m.supported_parameters?.includes("reasoning") ? ["reasoning"] : [],
+    ),
+    limits: {
+      contextWindow,
+      maxOutputTokens,
+    },
+    costs: {
+      input: Number(m.pricing.prompt) || 0,
+      output: Number(m.pricing.completion) || 0,
+    },
+  };
+}
 
 export const openrouterAdapter: ProviderAdapter = {
   info: {
@@ -45,9 +109,17 @@ export const openrouterAdapter: ProviderAdapter = {
       signal: AbortSignal.timeout(30_000),
     });
     if (!res.ok) {
-      throw new Error(`OpenRouter OAuth exchange failed: ${res.status}`);
+      await throwResponseError("OpenRouter OAuth exchange", res);
     }
-    const data = await res.json();
+    const data = await parseJsonResponse<{ key?: string; user_id?: string }>(
+      "OpenRouter OAuth exchange",
+      res,
+    );
+    if (typeof data.key !== "string" || !data.key) {
+      throw new Error(
+        "OpenRouter OAuth exchange returned a malformed response (missing key)",
+      );
+    }
     return { apiKey: data.key, userId: data.user_id };
   },
 
@@ -61,60 +133,32 @@ export const openrouterAdapter: ProviderAdapter = {
     return {
       info: this.info,
       aiSdk,
+      decisions: {
+        model: (modelId) => aiSdk.evaluationModel(modelId),
+        async listModels() {
+          const res = await fetchModelsWithRetry(headers, true);
+          if (!res.ok)
+            await throwResponseError("OpenRouter decision models", res);
+          const { data } = await parseJsonResponse<{
+            data: OpenRouterAPIModel[];
+          }>("OpenRouter decision models", res);
+          return data
+            .filter(isMappableModel)
+            .filter((model) =>
+              model.architecture.output_modalities.includes("decisions"),
+            )
+            .map(mapV1Model);
+        },
+      },
 
       async listModels(): Promise<ModelInfo[]> {
-        const mapV1Model = (m: OpenRouterAPIModel): ModelInfo => {
-          const contextWindow = m.context_length ?? 0;
-          const reportedMaxOut = m.top_provider.max_completion_tokens || null;
-          const maxOutputTokens =
-            reportedMaxOut &&
-            (contextWindow === 0 || reportedMaxOut < contextWindow)
-              ? reportedMaxOut
-              : null;
-          return {
-            providerId: "openrouter",
-            modelId: m.id,
-            title: m.name,
-            description: m.description ?? null,
-            logo: null,
-            capabilities: [
-              ...new Set([
-                // OpenRouter uses "image" in input_modalities to mean vision (can see images).
-                // Map it to "vision" so we distinguish from "image" (image generation output).
-                ...m.architecture.input_modalities.map((mod) =>
-                  mod === "image" ? "vision" : mod,
-                ),
-                ...m.architecture.output_modalities,
-                ...(m.supported_parameters?.includes("tools")
-                  ? (["tools"] as const)
-                  : []),
-                ...(m.supported_parameters?.includes("reasoning")
-                  ? (["reasoning"] as const)
-                  : []),
-              ]),
-            ] as ModelCapability[],
-            limits: {
-              contextWindow,
-              maxOutputTokens,
-            },
-            costs: {
-              input: m.pricing.prompt ?? 0,
-              output: m.pricing.completion ?? 0,
-            },
-          };
-        };
-
         // v1 is the authoritative source — has supported_parameters, canonical slugs, etc.
-        const res = await fetch("https://openrouter.ai/api/v1/models", {
-          headers,
-          signal: AbortSignal.timeout(30_000),
-        });
-        if (!res.ok)
-          throw new Error(`OpenRouter listModels failed: ${res.status}`);
-        const { data }: { data: OpenRouterAPIModel[] } = await res.json();
-        const models = data.map(mapV1Model);
-
-        return models;
+        const res = await fetchModelsWithRetry(headers);
+        if (!res.ok) await throwResponseError("OpenRouter listModels", res);
+        const { data } = await parseJsonResponse<{
+          data: OpenRouterAPIModel[];
+        }>("OpenRouter listModels", res);
+        return data.filter(isMappableModel).map(mapV1Model);
       },
     };
   },

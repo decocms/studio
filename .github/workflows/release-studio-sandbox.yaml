@@ -11,11 +11,23 @@ on:
       - "packages/harness-runner/**"
   workflow_dispatch:
 
+# One release at a time, in push order. A merge and the bot's version bump
+# push back to back, and each run ends by bumping deco-apps-cd: run in
+# parallel, whichever finishes last wins, so an older version can overwrite a
+# newer one. A newer push replaces a queued older one, which is the version
+# that should win anyway.
+concurrency:
+  group: release-studio-sandbox
+  cancel-in-progress: false
+
 env:
   REGISTRY: ghcr.io
   # One image, one daemon (Go). The `studio-sandbox` name is frozen at its last
   # TS-daemon tag (1.35.2) — kept pullable for rollback, never pushed again.
   IMAGE_NAME: ${{ github.repository }}/studio-sandbox-go
+  # The Android variant, built FROM the image above and published under the
+  # same version. See packages/sandbox/image-android.
+  ANDROID_IMAGE_NAME: ${{ github.repository }}/studio-sandbox-android
 
 jobs:
   build-push:
@@ -31,6 +43,7 @@ jobs:
       # "true" when the tag was already in GHCR (build skipped) — the bump job
       # uses this to skip docs/test-only pushes that reuse the existing tag.
       image-exists: ${{ steps.tag-check.outputs.exists }}
+      android-image-exists: ${{ steps.tag-check.outputs.android-exists }}
 
     steps:
       - name: Checkout code
@@ -64,6 +77,16 @@ jobs:
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
+          # Checked on its own: an Android build that failed after the base was
+          # pushed must be retryable, not skipped because the base tag exists.
+          ANDROID_STATUS=$(curl -sS -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            "https://${{ env.REGISTRY }}/v2/${{ env.ANDROID_IMAGE_NAME }}/manifests/${{ steps.version.outputs.version }}")
+          if [ "${ANDROID_STATUS}" = "200" ]; then
+            echo "android-exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "android-exists=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Setup Bun and install dependencies
         if: steps.tag-check.outputs.exists != 'true'
@@ -87,6 +110,13 @@ jobs:
             type=raw,value=latest,enable=${{ github.event_name == 'workflow_dispatch' }}
             type=sha,format=short
 
+      - name: Set up ARM64 emulation
+        if: steps.tag-check.outputs.exists != 'true'
+        uses: docker/setup-qemu-action@v4
+        with:
+          platforms: arm64
+          reset: true
+
       - name: Set up Docker Buildx
         if: steps.tag-check.outputs.exists != 'true'
         uses: docker/setup-buildx-action@v3
@@ -105,8 +135,8 @@ jobs:
           cache-to: type=gha,mode=max
           # Multi-arch to match every sibling image (Studio API, orgfs-sidecar,
           # sandbox-netinit, s3-sync). Without arm64 the sandbox can't run
-          # natively on Apple Silicon / arm64 nodes. buildx emulates arm64 via
-          # the runner's preinstalled binfmt, same as orgfs-sidecar.
+          # natively on Apple Silicon / arm64 nodes. Buildx uses the ARM64
+          # emulator registered above.
           platforms: linux/amd64,linux/arm64
 
       - name: Install cosign
@@ -133,6 +163,98 @@ jobs:
           push-to-registry: true
 
   # ---------------------------------------------------------------------------
+  # The Android variant. Derived from the image just built, so it can never
+  # disagree with the daemon it runs, and published under the SAME version —
+  # the chart defaults `imageVariants.android.tag` to `image.tag`, so one bump
+  # moves both. amd64 only: the Linux emulator exists for x86_64 alone.
+  # ---------------------------------------------------------------------------
+  build-push-android:
+    name: Build & Push studio-sandbox-android image
+    needs: [build-push]
+    if: needs.build-push.result == 'success' && needs.build-push.outputs.android-image-exists != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # The base image alone is ~6GB and the SDK adds about as much again;
+      # the runner's preinstalled toolchains are what stand between that and
+      # a full disk.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          docker system prune -af >/dev/null
+          df -h /
+
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.ANDROID_IMAGE_NAME }}
+          tags: |
+            type=raw,value=${{ needs.build-push.outputs.version }}
+            type=raw,value=latest,enable=${{ github.event_name == 'workflow_dispatch' }}
+            type=sha,format=short
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push Docker image
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: ./packages/sandbox/image-android
+          file: ./packages/sandbox/image-android/Dockerfile
+          push: true
+          build-args: |
+            BASE_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+            BASE_TAG=${{ needs.build-push.outputs.version }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+
+      - name: Smoke-test a Flutter + Firebase app on the emulator
+        uses: ./.github/actions/sandbox-android-smoke
+        with:
+          image: ${{ env.REGISTRY }}/${{ env.ANDROID_IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign image with cosign
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -euo pipefail
+          for tag in $(echo "${TAGS}" | tr ',' '\n'); do
+            cosign sign --yes "${tag}@${DIGEST}"
+          done
+
+      - name: Generate SLSA build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.ANDROID_IMAGE_NAME }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+  # ---------------------------------------------------------------------------
   # GitOps: tell deco-apps-cd to bump the sandbox image tag. We fire the generic
   # `image-bump` repository_dispatch (receiver: deco-apps-cd's bump-image.yml,
   # which surgically rewrites the `tag:` under the matching `repository:` line
@@ -143,7 +265,10 @@ jobs:
   # ---------------------------------------------------------------------------
   bump-deco-apps-cd:
     name: Trigger deco-apps-cd bump
-    needs: [build-push]
+    # Waits on the variant as well: the chart defaults the variant's tag to
+    # image.tag, so bumping before it is published would point the android
+    # SandboxTemplates at a tag that does not exist yet.
+    needs: [build-push, build-push-android]
     # Only when a NEW image was actually pushed (skip docs/test-only changes to
     # packages/sandbox that reuse the existing tag).
     if: needs.build-push.result == 'success' && needs.build-push.outputs.image-exists != 'true'

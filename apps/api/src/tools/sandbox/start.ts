@@ -9,16 +9,21 @@
  * callers that have a branch must pass it or they get a second sandbox.
  */
 
+import { markTurn } from "@/harnesses/turn-latency";
+import { orgFlagEnabled } from "@decocms/shared/organization/schema";
+import { sameRepositoryBinding } from "@decocms/shared/repository-binding";
 import { z } from "zod";
 import type { SandboxRecord } from "@decocms/shared/sdk";
 import {
   composeSandboxRef,
+  type SandboxProviderKind,
   type SandboxPurpose,
   type Workload,
 } from "@decocms/sandbox/provider";
-import type { AgentSandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
+import type { SandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
 import { ConfigRequestError } from "@decocms/sandbox/daemon-client";
 import type { EnsureRepo } from "@decocms/sandbox/provider";
+import type { SandboxImage } from "@decocms/shared/git-providers";
 import { secondaryRepoDirNames } from "@decocms/shared/secondary-repo-dirs";
 import { sleep } from "@decocms/shared/std";
 import { defineTool } from "../../core/define-tool";
@@ -30,7 +35,6 @@ import {
 } from "../../core/studio-context";
 import {
   readValidatedRuntimeEnv,
-  readValidatedSubmoduleCredentials,
   resolveRuntimeConfig,
   type RuntimeConfigMeta,
 } from "./helpers";
@@ -60,13 +64,16 @@ import {
 } from "@decocms/shared/branch-name";
 import { PACKAGE_MANAGER_CONFIG } from "@decocms/shared/runtime-defaults";
 import { getAgentSandboxProvider } from "../../sandbox/lifecycle";
+import { timeProvision } from "../../sandbox/provision-metrics";
 import { stampRuntimeIfAbsent } from "../thread/stamp-runtime-if-absent";
 import { parseThreadRuntime } from "@decocms/shared/thread/session-runtime";
 import {
-  getThreadGithubRepo,
-  getThreadGithubRepos,
+  flatSandboxRef,
+  getThreadRepository,
+  getThreadAdditionalRepositories,
   getThreadHeadRef,
   resolveSandboxUserId,
+  removeThreadSandboxMapEntry,
   setThreadSandboxMapEntry,
   syntheticBranchToGitRef,
   threadIdFromBranch,
@@ -76,21 +83,31 @@ import { getSettings } from "../../settings";
 import { getPublicUrl } from "../../core/server-constants";
 import { mintOrgFsConfigJson } from "../../file-storage/mount/provisioning";
 import { setSandboxMapEntry } from "./sandbox-map";
+import { lookupRecordedSandbox } from "./recorded-sandbox";
+import {
+  cloneInfoForRepository,
+  findRepositoryForBinding,
+  repositoryUsesStudioCredentials,
+} from "@/git-providers";
+import type { RepoCloneInfo } from "../../git-providers/credentials";
+import { GitProviderError } from "../../git-providers/types";
+import { credentialExpiresAt } from "@/sandbox/credential-push";
+import type { RepositoryRecord } from "../../storage/repositories";
+import {
+  encodeSandboxStartError,
+  SANDBOX_START_ERROR_CODES,
+} from "@decocms/shared/sandbox-start-errors";
 import type { VirtualMCPUpdateData } from "../virtual/schema";
 
-type GithubRepo = {
-  owner: string;
-  name: string;
-  connectionId?: string;
-};
+import type { RepositoryBinding } from "@decocms/shared/sdk";
 
-type GithubRepoMeta = {
-  githubRepo?: GithubRepo | null;
+type RepositoryMetadata = {
+  repository?: RepositoryBinding | null;
 };
 
 export const SANDBOX_START = defineTool({
   name: "SANDBOX_START",
-  description: "Start a sandbox with the connected GitHub repo and dev server.",
+  description: "Start a sandbox with the connected repository and dev server.",
   annotations: {
     title: "Start VM Preview",
     readOnlyHint: false,
@@ -113,6 +130,12 @@ export const SANDBOX_START = defineTool({
       .optional()
       .describe(
         "The session asking for a sandbox. A thread stamped `cms` is refused — that session reads and writes over the decofile API and a pod would be invisible to it. Optional: an unstamped (legacy) thread is always allowed, and so is a caller with no thread.",
+      ),
+    provider: z
+      .enum(["kubernetes", "freestyle"])
+      .optional()
+      .describe(
+        "Where to run a NEW sandbox, when that provider is configured and can run it; otherwise the other one is used. An existing sandbox stays where it is. Omitted: Kubernetes while it has room, else Freestyle.",
       ),
   }),
   outputSchema: z.object({
@@ -180,18 +203,10 @@ export const SANDBOX_START = defineTool({
       resolvedBranch,
     );
 
-    // Thread-scoped repo (bound by `load_repo`) wins over the agent's repo — the
-    // same rule as `ensureSandbox`. Without this the frontend's auto-start
-    // provisions a repo-LESS sandbox for the synthetic Decopilot agent (whose
-    // metadata has no repo), so nothing clones and the dev server stays idle.
-    // Derive the thread id from the branch since this path has no
-    // `ctx.metadata.threadId`.
-    const threadRepo = await getThreadGithubRepo(
-      ctx,
-      threadIdFromBranch(resolvedBranch) ?? ctx.metadata?.threadId,
-    );
-    const githubRepo =
-      threadRepo ?? (metadata as GithubRepoMeta).githubRepo ?? null;
+    // Thread-scoped repo wins over the agent's repo — reuse askingThreadId (not a re-derivation that drops input.threadId).
+    const threadRepo = await getThreadRepository(ctx, askingThreadId);
+    const repository =
+      threadRepo ?? (metadata as RepositoryMetadata).repository ?? null;
 
     const { entry, isNewVm } = await provisionSandbox({
       ctx,
@@ -201,13 +216,11 @@ export const SANDBOX_START = defineTool({
       virtualMcpId: input.virtualMcpId,
       branch: resolvedBranch,
       metadata,
-      githubRepo,
-      threadRepos: await getThreadGithubRepos(
-        ctx,
-        threadIdFromBranch(resolvedBranch) ?? ctx.metadata?.threadId,
-      ),
+      repository,
+      threadRepos: await getThreadAdditionalRepositories(ctx, askingThreadId),
       existing,
       runner,
+      ...(input.provider ? { provider: input.provider } : {}),
     });
     // A pod means a coding session. This is the web's path — `ensureSandbox`'s
     // own drain never runs here — so record it where the id is known.
@@ -258,51 +271,57 @@ export async function ensureSandbox(
      * bound there, so a caller keeps whatever it already assumed.
      */
     onBound?: (info: { warmPoolAdopted: boolean }) => void;
+    /**
+     * Skip the resume fast path, for a caller that just lost this sandbox
+     * mid-turn. A claim or VM that still exists says nothing about the daemon
+     * behind it: a pod recreated under its claim, or a rebooted VM, comes back
+     * on the shared bootstrap token and rejects ours. `provider.ensure` rebinds
+     * it.
+     */
+    revalidate?: boolean;
   },
   ctx: StudioContext,
 ): Promise<SandboxRecord> {
-  // Inline auth + lookup; the standard `requireVmEntry` runs
-  // `ctx.access.check()`, which expects resource scoping that the
-  // streaming turn doesn't carry. Storage writes below still go through
-  // the per-port authorization hooks.
-  requireAuth(ctx);
-  const organization = requireOrganization(ctx);
-  const userId = getUserId(ctx);
-  if (!userId) throw new Error("User ID required");
-
-  const virtualMcp = await ctx.storage.virtualMcps.findById(input.virtualMcpId);
-  if (!virtualMcp || virtualMcp.organization_id !== organization.id) {
-    throw new Error("Virtual MCP not found");
-  }
-  const metadata = (virtualMcp.metadata ?? {}) as Record<string, unknown>;
-  // See resolveSandboxUserId: one sandbox per thread, keyed by its creator.
-  const sandboxUserId = await resolveSandboxUserId(ctx, input.branch, userId);
-  const existing: SandboxRecord | null = resolveVm(
-    readSandboxMap(metadata),
+  // Storage writes below still go through the per-port authorization hooks.
+  const {
+    organization,
+    userId,
+    metadata,
     sandboxUserId,
-    input.branch,
-  );
+    recordThreadId,
+    agentEntry,
+    existing,
+  } = await lookupRecordedSandbox(input, ctx);
 
   const runner = await getAgentSandboxProvider(ctx);
 
   // A recorded entry is trusted only if a pod actually answers at it. Nothing
   // but SANDBOX_DELETE removes a cell, so an evicted pod leaves one behind
   // forever; probing it is what makes that self-healing rather than sticky.
-  if (existing) {
+  if (existing && !input.revalidate) {
     // A probe that ERRORS is not evidence the pod is gone — treat it as alive,
     // the same way the events handler does. Reaping on a throttled control-plane
     // call would tear down a healthy sandbox and re-clone it from scratch.
     const alive = await runner.alive(existing.sandboxHandle).catch(() => true);
     if (alive) return existing;
-    await removeSandboxMapEntry(
-      ctx.storage.virtualMcps,
-      input.virtualMcpId,
-      userId,
-      sandboxUserId,
-      input.branch,
-    ).catch((err) => {
-      console.warn("[ensureSandbox] failed to reap stale entry", err);
-    });
+    if (agentEntry) {
+      await removeSandboxMapEntry(
+        ctx.storage.virtualMcps,
+        input.virtualMcpId,
+        userId,
+        sandboxUserId,
+        input.branch,
+      ).catch((err) => {
+        console.warn("[ensureSandbox] failed to reap stale entry", err);
+      });
+    } else if (recordThreadId) {
+      await removeThreadSandboxMapEntry(
+        ctx,
+        recordThreadId,
+        sandboxUserId,
+        input.branch,
+      );
+    }
   }
 
   // Thread-scoped repo wins over the agent's own repo: `load_repo` binds a repo
@@ -317,11 +336,16 @@ export async function ensureSandbox(
   if (provisioningThreadId) {
     void stampRuntimeIfAbsent(ctx, provisioningThreadId, "sandbox");
   }
-  const threadRepo = await getThreadGithubRepo(ctx, provisioningThreadId);
-  const githubRepo =
-    threadRepo ?? (metadata as GithubRepoMeta).githubRepo ?? null;
+  const threadRepo = await getThreadRepository(ctx, provisioningThreadId);
+  const repository =
+    threadRepo ?? (metadata as RepositoryMetadata).repository ?? null;
   // Past the resume fast path: this call is a real boot, so tell the caller.
-  await input.onColdStart?.().catch(() => {});
+  await input.onColdStart?.().catch((err) => {
+    console.warn(
+      "[ensureSandbox] onColdStart callback failed",
+      err instanceof Error ? err.message : String(err),
+    );
+  });
   const { entry, warmPoolAdopted } = await provisionSandbox({
     ctx,
     userId,
@@ -330,9 +354,12 @@ export async function ensureSandbox(
     virtualMcpId: input.virtualMcpId,
     branch: input.branch,
     metadata,
-    githubRepo,
-    threadRepos: await getThreadGithubRepos(ctx, provisioningThreadId),
-    existing: null,
+    repository,
+    threadRepos: await getThreadAdditionalRepositories(
+      ctx,
+      provisioningThreadId,
+    ),
+    existing: input.revalidate ? existing : null,
     runner,
     ...(input.purpose ? { purpose: input.purpose } : {}),
   });
@@ -353,14 +380,38 @@ type StartParams = {
   virtualMcpId: string;
   branch: string;
   metadata: Record<string, unknown>;
-  githubRepo: GithubRepo | null;
+  repository: RepositoryBinding | null;
   /** The thread's secondary checkouts, accumulated by `TASK_ADD_REPO`. */
-  threadRepos?: GithubRepo[];
+  threadRepos?: RepositoryBinding[];
   existing: SandboxRecord | null;
-  runner: AgentSandboxProvider;
+  runner: SandboxProvider;
   /** See `ensureSandbox`'s `purpose`. `harness-run` implies checkout-only. */
   purpose?: SandboxPurpose;
+  /** See SANDBOX_START's `provider`. */
+  provider?: SandboxProviderKind;
 };
+
+/**
+ * The `repository` row to clone through Studio-owned credentials, or null to
+ * fall back to the legacy connection path — either because it's a bare
+ * credentialless legacy binding (no account, no connection at all) or because
+ * its account is actually servable by Studio.
+ */
+async function resolveStudioRepository(
+  ctx: StudioContext,
+  repository: RepositoryRecord | null,
+  rawConnectionId: string | undefined,
+): Promise<RepositoryRecord | null> {
+  if (!repository) return null;
+  const credentialless =
+    repository.accountId === null &&
+    !rawConnectionId &&
+    !repository.legacyConnectionId;
+  if (credentialless) return repository;
+  return (await repositoryUsesStudioCredentials(ctx.storage, repository))
+    ? repository
+    : null;
+}
 
 /**
  * `EnsureRepo` entries for a thread's secondary checkouts.
@@ -370,40 +421,65 @@ type StartParams = {
  * with a log rather than sent with a dead clone URL: one revoked connection
  * should cost its own checkout, never the pod.
  */
-async function buildExtraRepoOpts(args: {
+export async function buildExtraRepoOpts(args: {
   ctx: StudioContext;
   orgId: string;
-  repos: GithubRepo[];
-  primary: GithubRepo | null;
+  repos: RepositoryBinding[];
+  primary: RepositoryBinding | null;
   gitUserName: string;
   gitUserEmail: string;
+  submoduleCredentials: { host: string; token: string }[];
 }): Promise<EnsureRepo[]> {
-  const primaryKey = args.primary
-    ? `${args.primary.owner}/${args.primary.name}`.toLowerCase()
-    : null;
   const secondaries = args.repos.filter(
-    (r) => `${r.owner}/${r.name}`.toLowerCase() !== primaryKey,
+    (repo) => !args.primary || !sameRepositoryBinding(repo, args.primary),
   );
   const dirNames = secondaryRepoDirNames(secondaries);
   const out: EnsureRepo[] = [];
   for (const [i, repo] of secondaries.entries()) {
-    if (!repo.connectionId) continue;
     try {
-      const { cloneUrl } = await buildCloneInfo(
-        repo.connectionId,
-        repo.owner,
-        repo.name,
-        args.ctx.db,
-        args.ctx.vault,
+      /**
+       * A secondary may come from either model, and the two can mix in one
+       * sandbox: the daemon clones each checkout from its own credentialed
+       * URL, so a GitHub primary alongside a GitLab secondary is just two
+       * independent clones.
+       */
+      const repositoryRecord = await findRepositoryForBinding(
+        args.ctx.storage,
+        args.orgId,
+        repo,
       );
+      const studioRepository = await resolveStudioRepository(
+        args.ctx,
+        repositoryRecord,
+        repo.connectionId,
+      );
+      const connectionId =
+        repo.connectionId ?? repositoryRecord?.legacyConnectionId;
+      if (!studioRepository && !connectionId) continue;
+      const { cloneUrl, expiresAt } = studioRepository
+        ? await cloneInfoForRepository(args.ctx, studioRepository, {
+            forceRefresh: true,
+          })
+        : await buildCloneInfo(
+            connectionId!,
+            repo.owner,
+            repo.name,
+            args.ctx.db,
+            args.ctx.vault,
+          );
       out.push({
         cloneUrl,
-        connectionId: repo.connectionId,
+        credentialExpiresAt: credentialExpiresAt(expiresAt),
+        ...(studioRepository
+          ? { repositoryId: studioRepository.id }
+          : { connectionId: connectionId! }),
         userName: args.gitUserName,
         userEmail: args.gitUserEmail,
-        displayName: `${repo.owner}/${repo.name}`,
+        displayName: studioRepository
+          ? studioRepository.path
+          : `${repo.owner}/${repo.name}`,
         directoryName: dirNames[i]!,
-        submoduleCredentials: [],
+        submoduleCredentials: args.submoduleCredentials,
       });
     } catch (err) {
       console.warn(
@@ -432,28 +508,45 @@ async function provisionSandbox(params: StartParams): Promise<{
     existing,
     runner,
     purpose,
+    provider,
   } = params;
+  const turnId = threadIdFromBranch(branch) ?? ctx.metadata?.threadId;
+  const mark = (stage: string) =>
+    turnId && markTurn(turnId, `provision:${stage}`);
   // One agent loop needs the checkout, not the install + dev server.
   const cloneOnly = purpose === "harness-run";
+  // Set from the primary repository below, once it is resolved.
+  let sandboxImage: SandboxImage = "default";
 
   // A recorded connectionId can dangle — deleting a connection (force-delete,
   // or another agent's delete tearing down its repo-scoped child) removes
-  // aggregation rows but never rewrites `metadata.githubRepo` on other agents
+  // aggregation rows but never rewrites `metadata.repository` on other agents
   // that recorded it — and the clone path below fails loudly on a connectionId
   // with no connection behind it. Re-point at a live connection covering the
   // same repo when one exists.
-  const githubRepo = params.githubRepo
+  const repository = params.repository
     ? await healDanglingRepoConnection({
         ctx,
         orgId,
         virtualMcpId,
         userId,
-        githubRepo: params.githubRepo,
+        repository: params.repository,
       })
     : null;
 
   let { runtime, packageManager, port, packageManagerPath } =
     resolveRuntimeConfig(metadata);
+
+  // Submodules and private package deps live in repos a per-repo clone token
+  // can't reach. Read off the ORG, not this agent: a task-board run's sandbox
+  // belongs to Decopilot, which has no metadata to hold them (migration 222).
+  const orgSettings = await ctx.storage.organizationSettings.get(orgId);
+  const submoduleCredentials = await resolveSubmoduleCredentials({
+    ctx,
+    orgId,
+    userId,
+    entries: orgSettings?.submodule_credentials,
+  });
 
   // Skip clone + lockfile probe entirely when no repo is connected — the
   // sandbox boots blank.
@@ -461,22 +554,45 @@ async function provisionSandbox(params: StartParams): Promise<{
     | {
         cloneUrl: string;
         connectionId?: string;
+        repositoryId?: string;
         userName: string;
         userEmail: string;
         branch: string;
         displayName: string;
         submoduleCredentials?: { host: string; token: string }[];
+        credentialExpiresAt?: number;
       }
     | undefined;
 
-  if (githubRepo) {
+  if (repository) {
+    // Studio-owned credentials mint through the repository's provider account.
+    const repositoryRecord = await findRepositoryForBinding(
+      ctx.storage,
+      orgId,
+      repository,
+    );
+    // The PRIMARY repo decides the image: one pod, one toolchain. A secondary
+    // checkout that wanted another image does not get one, and saying so here
+    // beats a sandbox that silently disagrees with one of its repos.
+    sandboxImage = repositoryRecord?.sandboxImage ?? "default";
+    const studioRepository = await resolveStudioRepository(
+      ctx,
+      repositoryRecord,
+      repository.connectionId,
+    );
+
+    const connectionId =
+      repository.connectionId ??
+      repositoryRecord?.legacyConnectionId ??
+      undefined;
+
     // Legacy repo-scoped children may mint through their source connection here.
     // buildCloneInfo and detectRepoRuntime refresh OAuth-shaped tokens before
     // using them, including refreshable repo-scoped GitHub children.
-    if (githubRepo.connectionId) {
+    if (!studioRepository && connectionId) {
       await ensureGithubCloneToken({
         ctx,
-        connectionId: githubRepo.connectionId,
+        connectionId,
         organizationId: orgId,
         forceRefresh: true,
         onLegacyMintError: (error) => {
@@ -486,7 +602,7 @@ async function provisionSandbox(params: StartParams): Promise<{
           console.error(
             "[provisionSandbox] repo-scoped legacy token mint failed",
             {
-              connectionId: githubRepo.connectionId,
+              connectionId,
               error: (error as Error).message,
             },
           );
@@ -498,15 +614,17 @@ async function provisionSandbox(params: StartParams): Promise<{
     // daemon's clone behavior is identical — only the URL and identity
     // change. Push-back fails in the anonymous case; that's the documented
     // trade-off of linking a repo without a GitHub connection.
-    const { cloneUrl, gitUserName, gitUserEmail } = githubRepo.connectionId
-      ? await buildCloneInfo(
-          githubRepo.connectionId,
-          githubRepo.owner,
-          githubRepo.name,
-          ctx.db,
-          ctx.vault,
-        )
-      : buildAnonymousCloneInfo(githubRepo.owner, githubRepo.name);
+    const { cloneUrl, gitUserName, gitUserEmail, expiresAt } = studioRepository
+      ? await studioCloneInfo(ctx, studioRepository)
+      : connectionId
+        ? await buildCloneInfo(
+            connectionId,
+            repository.owner,
+            repository.name,
+            ctx.db,
+            ctx.vault,
+          )
+        : buildAnonymousCloneInfo(repository.owner, repository.name);
 
     // Lockfile probe only when metadata has no PM. Used to be client-side in
     // the repo picker, but that introduced a race — SANDBOX_START fired from the
@@ -515,16 +633,17 @@ async function provisionSandbox(params: StartParams): Promise<{
     // Running it here piggybacks on the same request so the baked workload
     // always matches the detected PM; the result is persisted so subsequent
     // starts skip the probe.
-    if (!packageManager) {
-      const detected = githubRepo.connectionId
+    // Studio-credentialed repos skip the probe: the daemon reads the lockfile.
+    if (!packageManager && !studioRepository) {
+      const detected = connectionId
         ? await detectRepoRuntime(
-            githubRepo.connectionId,
-            githubRepo.owner,
-            githubRepo.name,
+            connectionId,
+            repository.owner,
+            repository.name,
             ctx.db,
             ctx.vault,
           )
-        : await detectRepoRuntimeAnonymous(githubRepo.owner, githubRepo.name);
+        : await detectRepoRuntimeAnonymous(repository.owner, repository.name);
       if (detected) {
         packageManager = detected.packageManager;
         runtime = PACKAGE_MANAGER_CONFIG[detected.packageManager].runtime;
@@ -552,33 +671,30 @@ async function provisionSandbox(params: StartParams): Promise<{
     const stickyHeadRef = getSettings().sandboxStickyHeadRefEnabled;
     const gitBranch = pickGitBranch({
       branch,
-      derivedRef: syntheticBranchToGitRef(branch),
+      derivedRef: syntheticBranchToGitRef(branch, {
+        flat: flatSandboxRef(repositoryRecord?.provider),
+      }),
       recordedHeadRef: stickyHeadRef
         ? await getThreadHeadRef(ctx, threadIdFromBranch(branch))
         : null,
       sticky: stickyHeadRef,
     });
 
-    // Private submodules live in repos the per-repo clone token can't reach;
-    // resolve the user's per-host PATs here so they ride the initial daemon
-    // config (the clone + `git submodule update` run during provisioning).
-    const submoduleCredentials = await resolveSubmoduleCredentials({
-      ctx,
-      orgId,
-      userId,
-      entries: readValidatedSubmoduleCredentials(metadata),
-    });
-
     repoOpts = {
       cloneUrl,
+      credentialExpiresAt: credentialExpiresAt(expiresAt),
       // Persisted so the runner can re-mint on recovery; absent for anonymous.
-      ...(githubRepo.connectionId
-        ? { connectionId: githubRepo.connectionId }
-        : {}),
+      ...(studioRepository
+        ? { repositoryId: studioRepository.id }
+        : connectionId
+          ? { connectionId }
+          : {}),
       userName: gitUserName,
       userEmail: gitUserEmail,
       branch: gitBranch,
-      displayName: `${githubRepo.owner}/${githubRepo.name}`,
+      displayName: studioRepository
+        ? studioRepository.path
+        : `${repository.owner}/${repository.name}`,
       // Always set, empty included — see buildConfigPayload: an absent field
       // means "keep current" to the daemon, which would make a revoked PAT
       // outlive its deletion.
@@ -594,9 +710,10 @@ async function provisionSandbox(params: StartParams): Promise<{
     ctx,
     orgId,
     repos: threadRepos ?? [],
-    primary: githubRepo,
+    primary: repository,
     gitUserName: repoOpts?.userName ?? "",
     gitUserEmail: repoOpts?.userEmail ?? "",
+    submoduleCredentials,
   });
 
   // Missing workload = clone-only; the runner picks its default. `devPort` is
@@ -625,8 +742,8 @@ async function provisionSandbox(params: StartParams): Promise<{
   // DISABLE_ORGFS_MOUNTS is a debug escape hatch (opt-out, default off): it
   // skips provisioning the mount so a sandbox boots without org-fs, for
   // low-level mount debugging. NOT a supported "org-fs-off" product mode —
-  // the prompt/tools still assume org-fs, so the agent's `org/` paths just
-  // won't exist while it's set.
+  // the prompt/tools still assume org-fs, so the agent's `/app/org/` paths
+  // just won't exist while it's set.
   const wantsOrgFs = !getSettings().orgFsMountsDisabled;
   // ctx.organization is unset on the decopilot vm-tools dispatch path (the
   // org travels as the `orgId` param there) — resolve the slug from the row
@@ -652,48 +769,68 @@ async function provisionSandbox(params: StartParams): Promise<{
   }
 
   // Ask before claiming: a sandbox the cluster cannot place sits `Pending`
-  // (`FailedScheduling: Insufficient memory`) until the 180s readiness timeout
-  // fails the run. On a node with room for 4, an 8-card auto-fix produced 4
+  // (`FailedScheduling: Insufficient memory`) until the readiness wait's
+  // scheduling timeout fails the run. On a node with room for 4, an 8-card auto-fix produced 4
   // failures that way, and each retry re-entered the same full node. Waiting
   // here turns over-admission into a queue. Bounded well under the readiness
   // timeout this call already tolerates, so it adds no new liveness risk; past
   // the bound the error is phrased for the task-board retry to recognize as
   // infrastructure.
-  await waitForSchedulableCapacity(runner);
-
-  const sandbox = await ensureOrRephrase(
-    runner,
-    { userId: sandboxUserId, projectRef },
+  // Timed with the ensure: the wait is part of what a Kubernetes sandbox costs.
+  const sandbox = await timeProvision(
     {
-      // Annotation only — the handle comes from `projectRef`, which already
-      // carries this branch, so runner and proxy agree without being told.
-      branch,
-      repo: repoOpts,
-      extraRepos,
-      workload,
-      // Explicit, not implied by the absent `workload`: the daemon autodetects a
-      // package manager from the lockfile when the config names none, so an
-      // omitted workload still installed (404 packages, competing with the run
-      // that only wanted the checkout).
-      cloneOnly,
-      ...(purpose ? { purpose } : {}),
-      tenant: {
-        orgId,
-        // The sandbox's owner, so the pod's `user_id` label/metric matches the
-        // claim handle it answers on.
-        userId: sandboxUserId,
-        ...(ctx.organization?.slug ? { orgSlug: ctx.organization.slug } : {}),
-        ...(ctx.organization?.name ? { orgName: ctx.organization.name } : {}),
-        ...(ctx.auth.user?.email ? { userEmail: ctx.auth.user.email } : {}),
-        ...(ctx.auth.user?.name ? { userName: ctx.auth.user.name } : {}),
-      },
-      ...(orgFsConfigJson ? { orgFsConfigJson } : {}),
+      start: existing ? "resume" : "fresh",
+      purpose: purpose ?? "interactive",
+    },
+    async () => {
+      mark("prep");
+      await waitForSchedulableCapacity(runner);
+      mark("capacity");
+      return ensureOrRephrase(
+        runner,
+        { userId: sandboxUserId, projectRef },
+        {
+          // Annotation only — the handle comes from `projectRef`, which already
+          // carries this branch, so runner and proxy agree without being told.
+          branch,
+          repo: repoOpts,
+          extraRepos,
+          workload,
+          // Explicit, not implied by the absent `workload`: the daemon autodetects a
+          // package manager from the lockfile when the config names none, so an
+          // omitted workload still installed (404 packages, competing with the run
+          // that only wanted the checkout).
+          cloneOnly,
+          ...(orgFlagEnabled(orgSettings?.flags, "sandbox_repo_snapshots")
+            ? { repoSnapshot: true }
+            : {}),
+          ...(purpose ? { purpose } : {}),
+          ...(provider ? { provider } : {}),
+          ...(sandboxImage !== "default" ? { sandboxImage } : {}),
+          tenant: {
+            orgId,
+            // The sandbox's owner, so the pod's `user_id` label/metric matches the
+            // claim handle it answers on.
+            userId: sandboxUserId,
+            ...(ctx.organization?.slug
+              ? { orgSlug: ctx.organization.slug }
+              : {}),
+            ...(ctx.organization?.name
+              ? { orgName: ctx.organization.name }
+              : {}),
+            ...(ctx.auth.user?.email ? { userEmail: ctx.auth.user.email } : {}),
+            ...(ctx.auth.user?.name ? { userName: ctx.auth.user.name } : {}),
+          },
+          ...(orgFsConfigJson ? { orgFsConfigJson } : {}),
+        },
+      );
     },
   );
 
   // Resolve declared env (literals + secret refs) and push to the daemon
   // *before* it can start install/dev. Daemon deep-merges, so resuming an
   // already-claimed sandbox stays idempotent.
+  mark("provider-ensure");
   const envEntries = readValidatedRuntimeEnv(metadata);
   await resolveAndPushEnv({
     ctx,
@@ -703,6 +840,7 @@ async function provisionSandbox(params: StartParams): Promise<{
     userId,
     entries: envEntries,
   });
+  mark("env");
 
   // Preserve `createdAt` across resumes so the booting overlay's elapsed
   // timer doesn't reset on re-run.
@@ -744,6 +882,7 @@ async function provisionSandbox(params: StartParams): Promise<{
     await setThreadSandboxMapEntry(ctx, threadId, sandboxUserId, branch, entry);
   }
 
+  mark("map-writes");
   // Different handle = new sandbox (stale entry / orphan recovery / state miss).
   const isNewVm = !existing || existing.sandboxHandle !== sandbox.handle;
   return { entry, isNewVm, warmPoolAdopted: sandbox.warmPoolAdopted };
@@ -751,7 +890,7 @@ async function provisionSandbox(params: StartParams): Promise<{
 
 /**
  * Falls back to a live connection covering the same repo when the recorded
- * `githubRepo.connectionId` no longer resolves (see the call site for how it
+ * `repository.connectionId` no longer resolves (see the call site for how it
  * dangles). Org-shared connections win — findReusableRepoConnection. The heal
  * is persisted back onto the agent's metadata (best-effort) so every other
  * consumer of the recorded id — git publish, credential sync, the companion
@@ -766,32 +905,32 @@ async function healDanglingRepoConnection(params: {
   orgId: string;
   virtualMcpId: string;
   userId: string;
-  githubRepo: GithubRepo;
-}): Promise<GithubRepo> {
-  const { ctx, orgId, virtualMcpId, userId, githubRepo } = params;
-  if (!githubRepo.connectionId) return githubRepo;
+  repository: RepositoryBinding;
+}): Promise<RepositoryBinding> {
+  const { ctx, orgId, virtualMcpId, userId, repository } = params;
+  if (!repository.connectionId) return repository;
   const recorded = await ctx.storage.connections.findById(
-    githubRepo.connectionId,
+    repository.connectionId,
     orgId,
   );
-  if (recorded) return githubRepo;
+  if (recorded) return repository;
 
   const { items } = await ctx.storage.connections.list(orgId);
   const replacement = findReusableRepoConnection(
     items,
-    githubRepo.owner,
-    githubRepo.name,
+    repository.owner,
+    repository.name,
   );
   if (!replacement) {
     console.warn(
       "[provisionSandbox] recorded repo connection no longer exists and no live connection covers the repo",
-      { virtualMcpId, connectionId: githubRepo.connectionId },
+      { virtualMcpId, connectionId: repository.connectionId },
     );
-    return githubRepo;
+    return repository;
   }
   console.warn("[provisionSandbox] healed dangling repo connection", {
     virtualMcpId,
-    staleConnectionId: githubRepo.connectionId,
+    staleConnectionId: repository.connectionId,
     connectionId: replacement.id,
   });
 
@@ -800,13 +939,13 @@ async function healDanglingRepoConnection(params: {
   try {
     const virtualMcp = await ctx.storage.virtualMcps.findById(virtualMcpId);
     const meta = (virtualMcp?.metadata ?? {}) as Record<string, unknown>;
-    const current = (meta as GithubRepoMeta).githubRepo;
-    if (current?.connectionId === githubRepo.connectionId) {
+    const current = (meta as RepositoryMetadata).repository;
+    if (current?.connectionId === repository.connectionId) {
       const scope = getRepoScope(replacement);
       await ctx.storage.virtualMcps.update(virtualMcpId, userId, {
         metadata: {
           ...meta,
-          githubRepo: {
+          repository: {
             ...current,
             connectionId: replacement.id,
             ...(scope ? { installationId: scope.installationId } : {}),
@@ -824,7 +963,7 @@ async function healDanglingRepoConnection(params: {
     );
   }
 
-  return { ...githubRepo, connectionId: replacement.id };
+  return { ...repository, connectionId: replacement.id };
 }
 
 /**
@@ -851,12 +990,9 @@ async function persistDetectedRuntime(
   });
 }
 
-/** How long `ensureSandbox` waits for the cluster to have room. Deliberately
- *  under `waitForSandboxReady`'s own 180s: this call's callers already tolerate
- *  that much, so staying inside it means the wait can't trip a liveness window
- *  that the readiness wait wouldn't have tripped anyway. A cluster still full
- *  after this needs nodes, not patience — the run fails and the task-board
- *  retry re-dispatches it with backoff. */
+/** How long `ensureSandbox` waits for the cluster to have room. A cluster
+ *  still full after this needs nodes, not patience — the run fails and the
+ *  task-board retry re-dispatches it with backoff. */
 const CAPACITY_WAIT_MS = 150_000;
 /** Re-ask this often. The provider caches its answer (3s), so this is the poll
  *  rate that matters. */
@@ -887,9 +1023,9 @@ const CAPACITY_POLL_MS = 5_000;
  * original for anything that wants it.
  */
 async function ensureOrRephrase(
-  runner: AgentSandboxProvider,
-  ...args: Parameters<AgentSandboxProvider["ensure"]>
-): Promise<Awaited<ReturnType<AgentSandboxProvider["ensure"]>>> {
+  runner: SandboxProvider,
+  ...args: Parameters<SandboxProvider["ensure"]>
+): Promise<Awaited<ReturnType<SandboxProvider["ensure"]>>> {
   try {
     return await runner.ensure(...args);
   } catch (err) {
@@ -902,7 +1038,7 @@ async function ensureOrRephrase(
 }
 
 async function waitForSchedulableCapacity(
-  runner: AgentSandboxProvider,
+  runner: SandboxProvider,
 ): Promise<void> {
   const deadline = Date.now() + CAPACITY_WAIT_MS;
   let logged = false;
@@ -922,5 +1058,30 @@ async function waitForSchedulableCapacity(
       );
     }
     await sleep(CAPACITY_POLL_MS);
+  }
+}
+
+/**
+ * Clone credentials from a first-class repository, surfaced with the same
+ * typed error codes the legacy path emits so the client's reconnect / relink
+ * affordances keep working.
+ */
+async function studioCloneInfo(
+  ctx: StudioContext,
+  repository: RepositoryRecord,
+): Promise<RepoCloneInfo> {
+  try {
+    return await cloneInfoForRepository(ctx, repository, {
+      forceRefresh: true,
+    });
+  } catch (error) {
+    if (error instanceof GitProviderError) {
+      const code =
+        error.status === 404
+          ? SANDBOX_START_ERROR_CODES.githubConnectionMissing
+          : SANDBOX_START_ERROR_CODES.githubNotAuthenticated;
+      throw new Error(encodeSandboxStartError(code, error.message));
+    }
+    throw error;
   }
 }

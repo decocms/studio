@@ -1,5 +1,21 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import type { StudioProvider, ProviderAdapter, ModelInfo } from "../types";
+import {
+  fetchWithTransientRetry,
+  parseJsonResponse,
+  throwResponseError,
+} from "./fetch-transient-retry";
+
+function fetchModelsWithRetry(
+  baseUrl: string,
+  headers: Record<string, string>,
+): Promise<Response> {
+  return fetchWithTransientRetry(
+    "OpenAI-compatible listModels",
+    `${baseUrl}/models`,
+    { headers, signal: AbortSignal.timeout(15_000) },
+  );
+}
 
 function parseCredential(raw: string): { baseUrl: string; apiKey: string } {
   const parsed = JSON.parse(raw);
@@ -55,25 +71,29 @@ export const openaiCompatibleAdapter: ProviderAdapter = {
         const headers: Record<string, string> = {};
         if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
 
-        const res = await fetch(`${baseUrl}/models`, {
-          headers,
-          signal: AbortSignal.timeout(15_000),
-        });
+        const res = await fetchModelsWithRetry(baseUrl, headers);
         if (!res.ok) {
-          throw new Error(`OpenAI-compatible listModels failed: ${res.status}`);
+          await throwResponseError("OpenAI-compatible listModels", res);
         }
-        const body: { data: Array<{ id: string; owned_by?: string }> } =
-          await res.json();
-        return body.data.map((m) => ({
-          providerId: "openai-compatible",
-          modelId: m.id,
-          title: m.id,
-          description: m.owned_by ? `Owned by ${m.owned_by}` : null,
-          logo: null,
-          capabilities: [],
-          limits: null,
-          costs: null,
-        }));
+        const body = await parseJsonResponse<{
+          data: Array<{ id: string; owned_by?: string }>;
+        }>("OpenAI-compatible listModels", res);
+        // Skip a catalog entry missing its id instead of crashing the whole call.
+        return body.data
+          .filter(
+            (m): m is { id: string; owned_by?: string } =>
+              typeof m.id === "string" && m.id.length > 0,
+          )
+          .map((m) => ({
+            providerId: "openai-compatible",
+            modelId: m.id,
+            title: m.id,
+            description: m.owned_by ? `Owned by ${m.owned_by}` : null,
+            logo: null,
+            capabilities: [],
+            limits: null,
+            costs: null,
+          }));
       },
     };
   },

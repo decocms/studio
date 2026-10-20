@@ -1,9 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import {
-  readValidatedRuntimeEnv,
-  readValidatedSubmoduleCredentials,
-  resolveRuntimeConfig,
-} from "./helpers";
+import { readValidatedRuntimeEnv, resolveRuntimeConfig } from "./helpers";
 type VmMetadata = Record<string, unknown>;
 
 describe("resolveRuntimeConfig", () => {
@@ -142,57 +138,5 @@ describe("readValidatedRuntimeEnv", () => {
         runtime: { env: [{ key: "bad key", kind: "literal", value: "x" }] },
       }),
     ).toBeNull();
-  });
-});
-
-describe("readValidatedSubmoduleCredentials", () => {
-  it("returns null when metadata / runtime / array is absent", () => {
-    expect(readValidatedSubmoduleCredentials(null)).toBeNull();
-    expect(readValidatedSubmoduleCredentials({})).toBeNull();
-    expect(readValidatedSubmoduleCredentials({ runtime: {} })).toBeNull();
-    expect(
-      readValidatedSubmoduleCredentials({
-        runtime: { submoduleCredentials: "nope" },
-      }),
-    ).toBeNull();
-  });
-
-  it("keeps only entries with a non-empty host and secretId", () => {
-    const result = readValidatedSubmoduleCredentials({
-      runtime: {
-        submoduleCredentials: [
-          { host: "github.com", secretId: "sec_1" },
-          { host: "", secretId: "sec_2" }, // no host
-          { host: "gitlab.com", secretId: "" }, // no secretId
-          { host: "bitbucket.org" }, // missing secretId
-          "garbage",
-          null,
-          { host: "gitea.example.com", secretId: "sec_3" },
-        ],
-      },
-    });
-    expect(result).toEqual([
-      { host: "github.com", secretId: "sec_1" },
-      { host: "gitea.example.com", secretId: "sec_3" },
-    ]);
-  });
-
-  // Inverted deliberately: "the user emptied the list" must not collapse into
-  // the same value as "never configured". The daemon reads an absent field as
-  // "keep current", so returning null here left a revoked PAT live in the pod.
-  it("returns an empty array when the list is present but empty", () => {
-    expect(
-      readValidatedSubmoduleCredentials({
-        runtime: { submoduleCredentials: [] },
-      }),
-    ).toEqual([]);
-  });
-
-  it("returns an empty array when every entry is invalid", () => {
-    expect(
-      readValidatedSubmoduleCredentials({
-        runtime: { submoduleCredentials: [{ host: "", secretId: "" }] },
-      }),
-    ).toEqual([]);
   });
 });

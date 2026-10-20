@@ -24,6 +24,7 @@ const pr = (o: Partial<TaskBoardItemPr>): TaskBoardItemPr => ({
   repoOwner: "x",
   repoName: "y",
   createdAt: "",
+  updatedAt: null,
   title: null,
   body: null,
   state: "open",

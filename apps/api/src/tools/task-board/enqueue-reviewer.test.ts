@@ -10,8 +10,6 @@ import {
   authorRunLive,
   MAX_REVIEWER_ATTEMPTS,
   reviewerAttemptsExhausted,
-  pinnedRepoConnectionId,
-  priorCycleReviewAt,
   reviewerHandledThisCycle,
   spentAttemptsThisCycle,
   stalePreviewHandoffDue,
@@ -20,6 +18,7 @@ import {
   verdictNudgedThreads,
   awaitingVerdictNudge,
 } from "./enqueue-reviewer";
+import { pinnedRepoId, priorCycleReviewAt } from "./reviewer-run";
 
 /** Cycle start (the task last entered In Review) at 10:00. */
 const CYCLE_START = new Date("2026-01-01T10:00:00Z").getTime();
@@ -465,35 +464,35 @@ describe("reviewerAttemptsExhausted", () => {
   });
 });
 
-describe("pinnedRepoConnectionId", () => {
+describe("pinnedRepoId", () => {
   const choice = {
     choices: [
-      { connectionId: "conn_a", repo: "decocms/studio" },
-      { connectionId: "conn_b", repo: "decocms/context" },
+      { id: "conn_a", repo: "decocms/studio" },
+      { id: "repo_context", repo: "decocms/context" },
     ],
   };
 
   it("pins the id for the repo the card names", () => {
-    expect(pinnedRepoConnectionId("decocms/studio", choice)).toBe("conn_a");
+    expect(pinnedRepoId("decocms/studio", choice)).toBe("conn_a");
   });
 
   it("leaves the run to discover when the card names no repo", () => {
-    expect(pinnedRepoConnectionId(null, choice)).toBeNull();
+    expect(pinnedRepoId(null, choice)).toBeNull();
   });
 
   it("leaves the run to discover when the name matches nothing loadable", () => {
-    expect(pinnedRepoConnectionId("decocms/gone", choice)).toBeNull();
+    expect(pinnedRepoId("decocms/gone", choice)).toBeNull();
   });
 
   it("has nothing to pin when the sole repo is already cloned", () => {
     const sole = { repo: { owner: "decocms", name: "studio" } };
     expect(
-      pinnedRepoConnectionId(
+      pinnedRepoId(
         "decocms/studio",
-        sole as unknown as Parameters<typeof pinnedRepoConnectionId>[1],
+        sole as unknown as Parameters<typeof pinnedRepoId>[1],
       ),
     ).toBeNull();
-    expect(pinnedRepoConnectionId("decocms/studio", null)).toBeNull();
+    expect(pinnedRepoId("decocms/studio", null)).toBeNull();
   });
 });
 

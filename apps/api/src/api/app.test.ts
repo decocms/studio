@@ -3,6 +3,7 @@ import {
   isAllowedOAuthRedirectUri,
   isSsoExemptPath,
   resolveCorsOrigin,
+  resolveVoiceSigningSecret,
 } from "./app";
 
 describe("isSsoExemptPath", () => {
@@ -58,24 +59,6 @@ describe("resolveCorsOrigin", () => {
     expect(resolveCorsOrigin("http://evil-127.0.0.1.com", ctx)).toBeNull();
   });
 
-  test("reflects the native desktop app's local control origin regardless of port", () => {
-    expect(
-      resolveCorsOrigin("https://local.studio.decocms.com:4420", ctx),
-    ).toBe("https://local.studio.decocms.com:4420");
-    expect(
-      resolveCorsOrigin("https://local.studio.decocms.com:43120", ctx),
-    ).toBe("https://local.studio.decocms.com:43120");
-  });
-
-  test("rejects a hostname that merely contains the desktop control origin", () => {
-    expect(
-      resolveCorsOrigin("https://local.studio.decocms.com.evil.example", ctx),
-    ).toBeNull();
-    expect(
-      resolveCorsOrigin("https://evil.local.studio.decocms.com", ctx),
-    ).toBeNull();
-  });
-
   test("reflects the configured baseUrl's origin", () => {
     expect(resolveCorsOrigin("https://studio.example.com", ctx)).toBe(
       "https://studio.example.com",
@@ -122,36 +105,6 @@ describe("isAllowedOAuthRedirectUri", () => {
     ).toBe(true);
   });
 
-  test("allows the native desktop app's local control origin regardless of port", () => {
-    expect(
-      isAllowedOAuthRedirectUri(
-        new URL("https://local.studio.decocms.com:4420/_auth/mcp-callback"),
-        allowedOrigin,
-      ),
-    ).toBe(true);
-    expect(
-      isAllowedOAuthRedirectUri(
-        new URL("https://local.studio.decocms.com:43120/_auth/mcp-callback"),
-        allowedOrigin,
-      ),
-    ).toBe(true);
-  });
-
-  test("rejects a hostname that merely contains the desktop control origin", () => {
-    expect(
-      isAllowedOAuthRedirectUri(
-        new URL("https://local.studio.decocms.com.evil.example/callback"),
-        allowedOrigin,
-      ),
-    ).toBe(false);
-    expect(
-      isAllowedOAuthRedirectUri(
-        new URL("https://evil.local.studio.decocms.com/callback"),
-        allowedOrigin,
-      ),
-    ).toBe(false);
-  });
-
   test("rejects an arbitrary cross-site redirect_uri", () => {
     expect(
       isAllowedOAuthRedirectUri(
@@ -159,5 +112,39 @@ describe("isAllowedOAuthRedirectUri", () => {
         allowedOrigin,
       ),
     ).toBe(false);
+  });
+});
+
+describe("resolveVoiceSigningSecret", () => {
+  test("prefers STUDIO_JWT_SECRET when set", () => {
+    expect(
+      resolveVoiceSigningSecret({
+        studioJwtSecret: "jwt-secret",
+        betterAuthSecret: "auth-secret",
+      }),
+    ).toBe("jwt-secret");
+  });
+
+  test("falls back to BETTER_AUTH_SECRET when unset", () => {
+    expect(
+      resolveVoiceSigningSecret({
+        studioJwtSecret: undefined,
+        betterAuthSecret: "auth-secret",
+      }),
+    ).toBe("auth-secret");
+  });
+
+  test("generates a non-empty random secret rather than returning '' when neither is set", () => {
+    const secret = resolveVoiceSigningSecret({
+      studioJwtSecret: undefined,
+      betterAuthSecret: "",
+    });
+    expect(secret.length).toBeGreaterThan(0);
+    // Two independent calls must not collide on a hardcoded fallback.
+    const other = resolveVoiceSigningSecret({
+      studioJwtSecret: undefined,
+      betterAuthSecret: "",
+    });
+    expect(secret).not.toBe(other);
   });
 });

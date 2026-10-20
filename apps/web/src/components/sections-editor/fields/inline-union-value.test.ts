@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   inferInlineUnionIndex,
+  mergeInlineUnionUpdate,
   preservedOtherBranchFields,
 } from "./inline-union-value";
 
@@ -68,6 +69,27 @@ describe("inferInlineUnionIndex – const discriminator (cache directives)", () 
   });
 });
 
+describe("inferInlineUnionIndex – array branch (PromoBarTitle[] | object | …)", () => {
+  const promoComponent = [
+    { propertyKeys: [], isArray: true },
+    { propertyKeys: ["svg"] },
+    { propertyKeys: ["ctaText"] },
+  ];
+
+  test("an array value selects the array branch", () => {
+    expect(inferInlineUnionIndex([{ title: "x" }], promoComponent)).toBe(0);
+    expect(inferInlineUnionIndex([], promoComponent)).toBe(0);
+  });
+
+  test("an object value still selects the matching object branch", () => {
+    expect(inferInlineUnionIndex({ ctaText: "Buy" }, promoComponent)).toBe(2);
+  });
+
+  test("an array value with no array branch falls back to the first branch", () => {
+    expect(inferInlineUnionIndex([1, 2], locationMap)).toBe(0);
+  });
+});
+
 describe("preservedOtherBranchFields – legacy combined entries", () => {
   test("keeps the hidden branch's fields when editing the visible one", () => {
     // Legacy entry combining a Location constraint (regionCode) with a Map one.
@@ -90,6 +112,28 @@ describe("preservedOtherBranchFields – legacy combined entries", () => {
 
   test("handles non-object values", () => {
     expect(preservedOtherBranchFields(null, ["coordinates"])).toEqual({});
+  });
+});
+
+describe("mergeInlineUnionUpdate – branch edit merges", () => {
+  test("keeps the hidden branch's preserved fields alongside the new form data", () => {
+    expect(
+      mergeInlineUnionUpdate(
+        { coordinates: "-23,-46,2000" },
+        { city: "Sao Paulo" },
+        undefined,
+      ),
+    ).toEqual({ coordinates: "-23,-46,2000", city: "Sao Paulo" });
+  });
+
+  test("re-asserts the active branch's discriminators over the form data", () => {
+    expect(
+      mergeInlineUnionUpdate(
+        {},
+        { name: "stale", value: 5 },
+        { name: "max-age" },
+      ),
+    ).toEqual({ name: "max-age", value: 5 });
   });
 });
 

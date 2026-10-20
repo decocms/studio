@@ -271,7 +271,7 @@ export function ConnectionCardHeaderActions({
 }
 
 // ---------------------------------------------------------------------------
-// Floating bulk action bar (centered, same pattern as private-registry)
+// Floating bulk action bar
 // ---------------------------------------------------------------------------
 
 export function BulkActionBar({
@@ -396,8 +396,13 @@ export function AddToAgentDialog({
   const t = useT();
   const [selected, setSelected] = useState<string | null>(null);
 
+  const handleOpenChange = (next: boolean) => {
+    if (!next) setSelected(null);
+    onOpenChange(next);
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-[400px]">
         <DialogHeader>
           <DialogTitle>
@@ -419,7 +424,7 @@ export function AddToAgentDialog({
                 type="button"
                 onClick={() => setSelected(agent.id)}
                 className={cn(
-                  "flex items-center gap-3 w-full rounded-md px-3 py-2 text-left transition-colors",
+                  "flex items-center gap-3 w-full rounded-lg px-3 py-2 text-left transition-colors",
                   selected === agent.id
                     ? "bg-primary/10 ring-1 ring-primary"
                     : "hover:bg-muted/50",
@@ -444,7 +449,7 @@ export function AddToAgentDialog({
           )}
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button variant="outline" onClick={() => handleOpenChange(false)}>
             {t("orgs.connectionSelectionUi.cancel")}
           </Button>
           <Button
@@ -452,8 +457,7 @@ export function AddToAgentDialog({
             onClick={() => {
               if (selected) {
                 onConfirm(selected);
-                onOpenChange(false);
-                setSelected(null);
+                handleOpenChange(false);
               }
             }}
           >

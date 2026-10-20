@@ -23,8 +23,6 @@ export const mainPanelTabs = {
   "mainPanelTabs.codeTab.noSandboxToBrowse": "Nenhuma sandbox para navegar",
   "mainPanelTabs.codeTab.noSandboxToBrowseDescription":
     "Inicie uma sessão de código neste projeto para navegar pelos arquivos.",
-  "mainPanelTabs.codeTab.openInCursor": "Abrir no Cursor",
-  "mainPanelTabs.codeTab.openInVscode": "Abrir no VSCode",
   "mainPanelTabs.contentTab.connectGithubDescription":
     "Conecte um repositório do GitHub para editar o conteúdo deste site.",
   "mainPanelTabs.contentTab.noContentToEdit": "Nenhum conteúdo para editar",
@@ -34,14 +32,11 @@ export const mainPanelTabs = {
     "Este arquivo não está mais disponível.",
   "mainPanelTabs.fileTab.openInNewTab": "Abrir em nova aba",
   "mainPanelTabs.hostingTab.title": "Hospedagem",
-  "mainPanelTabs.hostingTab.subtitle": "Infraestrutura de {site}",
   "mainPanelTabs.hostingTab.deployments": "Implantações",
   "mainPanelTabs.hostingTab.env": "Variáveis de ambiente",
   "mainPanelTabs.hostingTab.redirects": "Redirecionamentos",
   "mainPanelTabs.hostingTab.noDeployments": "Nenhuma implantação ainda.",
   "mainPanelTabs.hostingTab.noEnv": "Nenhuma variável de ambiente definida.",
-  "mainPanelTabs.hostingTab.codeVarsHint":
-    "Do wrangler.jsonc (somente leitura) — edite no código. Uma variável acima com o mesmo nome as sobrescreve no deploy.",
   "mainPanelTabs.hostingTab.noRedirects":
     "Nenhum redirecionamento configurado.",
   "mainPanelTabs.hostingTab.noSiteTitle": "Nenhum site vinculado",
@@ -64,10 +59,7 @@ export const mainPanelTabs = {
   "mainPanelTabs.hostingTab.live": "No ar",
   "mainPanelTabs.hostingTab.permanent": "301 permanente",
   "mainPanelTabs.hostingTab.temporary": "307 temporário",
-  "mainPanelTabs.hostingTab.dnsSetup": "Configuração DNS",
   "mainPanelTabs.hostingTab.dnsSetupTitle": "DNS no registrador",
-  "mainPanelTabs.hostingTab.dnsSetupDescription":
-    "Para ativar este redirecionamento, adicione estes registros no seu provedor de DNS para {host}.",
   "mainPanelTabs.hostingTab.dnsRedirectIntent":
     "Isto faz {from} redirecionar para o destino assim que o DNS de {from} apontar para a Deco. Adicione os registros abaixo no seu registrador.",
   "mainPanelTabs.hostingTab.dnsActiveHint":
@@ -81,6 +73,8 @@ export const mainPanelTabs = {
   "mainPanelTabs.hostingTab.dnsAwaiting": "Aguardando DNS",
   "mainPanelTabs.hostingTab.dnsCopy": "Copiar valor",
   "mainPanelTabs.hostingTab.dnsCopied": "Copiado",
+  "mainPanelTabs.hostingTab.dnsCopyError":
+    "Não foi possível copiar para a área de transferência",
   "mainPanelTabs.hostingTab.notConnectedTitle":
     "Hospedagem ainda não conectada",
   "mainPanelTabs.hostingTab.notConnectedDescription":
@@ -103,6 +97,8 @@ export const mainPanelTabs = {
   "mainPanelTabs.hostingTab.envValuePlaceholder": "valor",
   "mainPanelTabs.hostingTab.editValue": "Editar valor",
   "mainPanelTabs.hostingTab.deleteVariable": "Excluir variável",
+  "mainPanelTabs.hostingTab.showValue": "Mostrar valor",
+  "mainPanelTabs.hostingTab.hideValue": "Ocultar valor",
   "mainPanelTabs.hostingTab.confirmDeleteVariableTitle": "Excluir variável?",
   "mainPanelTabs.hostingTab.confirmDeleteVariableDescription":
     "Excluir {name}? Isso atualiza o ambiente do site.",
@@ -158,7 +154,6 @@ export const mainPanelTabs = {
   "mainPanelTabs.hostingTab.colAction": "Ação",
   "mainPanelTabs.hostingTab.colDate": "Data",
   "mainPanelTabs.hostingTab.production": "Produção",
-  "mainPanelTabs.hostingTab.showBuildMessage": "Mostrar mensagem do build",
   "mainPanelTabs.hostingTab.deployHistory": "Histórico de implantações",
   "mainPanelTabs.hostingTab.noDeployHistory":
     "Nenhum histórico de implantação ainda.",
@@ -209,6 +204,11 @@ export const mainPanelTabs = {
   "mainPanelTabs.hostingTab.toastDomainDeleted": "Domínio removido",
   "mainPanelTabs.hostingTab.domainHostPlaceholder": "www.suamarca.com",
   "mainPanelTabs.hostingTab.errorDomainHostRequired": "Informe um host",
+  "mainPanelTabs.hostingTab.showMoreHistory": "Mostrar mais {count}",
+  "mainPanelTabs.hostingTab.codeVarsToggle":
+    "{count} variáveis declaradas no código",
+  "mainPanelTabs.hostingTab.showDetails": "Mostrar detalhes",
+  "mainPanelTabs.hostingTab.hideDetails": "Ocultar detalhes",
   "mainPanelTabs.e2eTab.title": "E2E",
   "mainPanelTabs.e2eTab.subtitle": "Verificações ponta a ponta de {site}",
   "mainPanelTabs.e2eTab.helpTitle": "Como funcionam os testes E2E",
@@ -541,10 +541,21 @@ export const mainPanelTabs = {
   "mainPanelTabs.mobileMainPanelTabSelect.library": "Biblioteca",
   "mainPanelTabs.mobileMainPanelTabSelect.mainView": "Visualização principal",
   "mainPanelTabs.mobileMainPanelTabSelect.switchTo": "Ir para {name}",
-  "mainPanelTabs.mobileMainPanelTabSelect.tasks": "Tarefas",
+  "mainPanelTabs.mobileMainPanelTabSelect.tasks": "Board",
   "mainPanelTabs.mobileMainPanelTabSelect.view": "Visualizar",
   "mainPanelTabs.previewTab.connectGithub": "Conectar GitHub",
   "mainPanelTabs.previewTab.connectGithubDescription":
     "Conecte um repositório do GitHub para construir e visualizar seu site aqui.",
   "mainPanelTabs.previewTab.noSourceToPreview": "Nenhuma fonte para visualizar",
+  "mainPanelTabs.previewTab.localhostNoPreview.title":
+    "Inicie seu app para ver o preview",
+  "mainPanelTabs.previewTab.localhostNoPreview.body":
+    "O deco serve não encontrou seu app. Inicie-o e reinicie o deco serve com `--preview` e o endereço dele, como `--preview localhost:3000`. Enquanto isso, você já pode editar o conteúdo.",
+  "mainPanelTabs.previewTab.localhostNoPreview.step.title":
+    "Reinicie o deco serve com o endereço do seu app",
+  "mainPanelTabs.previewTab.localAppWaiting.title": "Esperando seu app",
+  "mainPanelTabs.previewTab.localAppWaiting.body":
+    "Seu app em `{host}` ainda não está respondendo. Se ele não estiver rodando, inicie-o no seu computador. Enquanto isso, você pode editar seu conteúdo na aba Conteúdo.",
+  "mainPanelTabs.previewTab.localAppWaiting.hint":
+    "O preview carrega sozinho assim que seu app responder.",
 } satisfies Record<keyof typeof mainPanelTabsEn, string>;

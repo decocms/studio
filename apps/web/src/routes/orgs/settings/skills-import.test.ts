@@ -117,10 +117,11 @@ describe("optimisticEntry", () => {
       id: "home/skills/seo-audit",
       name: "SEO Audit",
       description: "Audits a page.",
+      disableModelInvocation: false,
       source: "home",
       volume: "home",
       path: "skills/seo-audit",
-      sandboxPath: "org/home/skills/seo-audit",
+      sandboxPath: "/app/org/home/skills/seo-audit",
     });
   });
 

@@ -43,7 +43,7 @@ export class DownstreamTokenStorage {
 
     if (!row) return null;
 
-    return this.decryptToken(row);
+    return decryptDownstreamTokenRow(this.vault, row);
   }
 
   async upsert(data: DownstreamTokenData): Promise<DownstreamToken> {
@@ -137,29 +137,44 @@ export class DownstreamTokenStorage {
 
     return expiryTime - bufferMs < Date.now();
   }
+}
 
-  /**
-   * Decrypt sensitive fields from a database row
-   */
-  private async decryptToken(row: {
-    id: string;
-    connectionId: string;
-    accessToken: string;
-    refreshToken: string | null;
-    scope: string | null;
-    expiresAt: Date | string | null;
-    createdAt: Date | string;
-    updatedAt: Date | string;
-    clientId: string | null;
-    clientSecret: string | null;
-    tokenEndpoint: string | null;
-  }): Promise<DownstreamToken> {
-    const accessToken = await this.vault.decrypt(row.accessToken);
+/**
+ * Row shape as read back from `downstream_tokens`, before decryption.
+ */
+export interface RawDownstreamTokenRow {
+  id: string;
+  connectionId: string;
+  accessToken: string;
+  refreshToken: string | null;
+  scope: string | null;
+  expiresAt: Date | string | null;
+  createdAt: Date | string;
+  updatedAt: Date | string;
+  clientId: string | null;
+  clientSecret: string | null;
+  tokenEndpoint: string | null;
+}
+
+/**
+ * Decrypt sensitive fields from a database row. Corrupted ciphertext (a
+ * tampered value, or a row encrypted under a vault key that has since been
+ * rotated) makes AES-GCM's tag check throw — that must not crash the caller.
+ * Callers already treat a missing row as "no cached token, go refresh/reconnect";
+ * an undecryptable row degrades to the same outcome instead of a 500.
+ * Exported standalone (no `this.db`) so it's unit-testable without Postgres.
+ */
+export async function decryptDownstreamTokenRow(
+  vault: CredentialVault,
+  row: RawDownstreamTokenRow,
+): Promise<DownstreamToken | null> {
+  try {
+    const accessToken = await vault.decrypt(row.accessToken);
     const refreshToken = row.refreshToken
-      ? await this.vault.decrypt(row.refreshToken)
+      ? await vault.decrypt(row.refreshToken)
       : null;
     const clientSecret = row.clientSecret
-      ? await this.vault.decrypt(row.clientSecret)
+      ? await vault.decrypt(row.clientSecret)
       : null;
 
     return {
@@ -175,5 +190,11 @@ export class DownstreamTokenStorage {
       clientSecret,
       tokenEndpoint: row.tokenEndpoint,
     };
+  } catch (error) {
+    console.warn("[DownstreamToken] failed to decrypt token row", {
+      connectionId: row.connectionId,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return null;
   }
 }

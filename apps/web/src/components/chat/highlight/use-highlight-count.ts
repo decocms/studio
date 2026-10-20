@@ -16,12 +16,20 @@ import type { Todo } from "@decocms/shared/harness/todo-write";
 import { deriveCurrentTodos } from "./derive-current-todos";
 import { extractPendingApprovals } from "./extract-pending-approvals";
 import { extractPendingPlans } from "./extract-pending-plans";
+import { isSuggestTaskPending } from "./is-suggest-task-pending";
 import { isCreditError } from "../is-credit-error";
+import { planRefusalKind, type PlanRefusalKind } from "../chat-post-error";
 import { subscriptionErrorKind } from "@/components/task-board/is-subscription-error";
 import { useChatStream } from "../context";
+import { useFeature } from "@/hooks/use-entitlements";
 
 export interface HighlightFlags {
   isCreditExhausted: boolean;
+  /** Non-null when the turn was refused by the org's PLAN — a spent AI
+   *  allowance, or a plan without chat. Its own card (with a "See plans" CTA)
+   *  rather than the raw-message error card: the user is being asked to buy
+   *  something, not shown a fault. */
+  planRefusal: PlanRefusalKind | null;
   /** Non-null when the run errored on the org's auto-task quota — e.g. a
    *  reviewer thread bouncing the task back to the Super Agent hit the
    *  org/task's execution limit. Renders inline, not as a sales paywall (this
@@ -34,6 +42,8 @@ export interface HighlightFlags {
   hasApprovals: boolean;
   hasPlans: boolean;
   isWaitingForUserInput: boolean;
+  /** An unanswered `suggest_task` offer is pending on the last message. */
+  hasTaskSuggestion: boolean;
   // Exposed so `TodosHighlight` doesn't re-run the same backward scan over
   // `messages` that this hook already did to compute `hasTodos`.
   todos: Todo[];
@@ -49,6 +59,7 @@ export interface DeriveHighlightFlagsInput {
 
 const EMPTY_FLAGS: HighlightFlags = {
   isCreditExhausted: false,
+  planRefusal: null,
   subscriptionErrorKind: null,
   hasTodos: false,
   showError: false,
@@ -56,6 +67,7 @@ const EMPTY_FLAGS: HighlightFlags = {
   hasApprovals: false,
   hasPlans: false,
   isWaitingForUserInput: false,
+  hasTaskSuggestion: false,
   todos: [],
 };
 
@@ -81,6 +93,7 @@ export function deriveHighlightFlags(
     toolCallId?: string;
     toolName?: string;
     input?: unknown;
+    output?: unknown;
   };
   const looseParts = assistantParts as LoosePart[];
   const userAskParts = looseParts.filter(
@@ -89,6 +102,8 @@ export function deriveHighlightFlags(
   const isWaitingForUserInput = !!userAskParts.filter(
     (p) => p.state !== "output-available",
   ).length;
+
+  const hasTaskSuggestion = looseParts.some(isSuggestTaskPending);
 
   const pendingPlans = extractPendingPlans(
     assistantParts as Parameters<typeof extractPendingPlans>[0],
@@ -101,7 +116,9 @@ export function deriveHighlightFlags(
   // copy, no CTA — see SubscriptionLimitHighlight), not the generic raw-message
   // error card.
   const subKind = !isStreaming ? subscriptionErrorKind(error) : null;
-  const showError = !isStreaming && !!error && !subKind;
+  // Same rule, same reason, for a plan refusal: it has its own card below.
+  const planRefusal = !isStreaming ? planRefusalKind(error) : null;
+  const showError = !isStreaming && !!error && !subKind && !planRefusal;
   const hasApprovals =
     pendingApprovals.length > 0 || (isStreaming && isWaitingForApprovals);
   const hasPlans = pendingPlans.length > 0;
@@ -112,7 +129,7 @@ export function deriveHighlightFlags(
   // duplicate warning.
   const isToolCallsWaitingOnClient =
     finishReason === "tool-calls" &&
-    (isWaitingForUserInput || hasApprovals || hasPlans);
+    (isWaitingForUserInput || hasApprovals || hasPlans || hasTaskSuggestion);
   const showWarning =
     !isStreaming &&
     !!finishReason &&
@@ -122,6 +139,7 @@ export function deriveHighlightFlags(
 
   return {
     isCreditExhausted: false,
+    planRefusal,
     subscriptionErrorKind: subKind,
     hasTodos: todos.length > 0,
     showError,
@@ -129,6 +147,7 @@ export function deriveHighlightFlags(
     hasApprovals,
     hasPlans,
     isWaitingForUserInput,
+    hasTaskSuggestion,
     todos,
   };
 }
@@ -160,14 +179,19 @@ export function useHighlightFlags(): HighlightFlags {
  */
 export function useHighlightCount(): number {
   const flags = useHighlightFlags();
-  if (flags.isCreditExhausted) return 0;
+  const canBuyCredits = useFeature("credits");
+  // The modal reserves nothing — but a plan that cannot top up gets the plan
+  // card in the stack instead (see ChatHighlight), and that one takes a slot.
+  if (flags.isCreditExhausted) return canBuyCredits ? 0 : 1;
   return (
     Number(flags.hasTodos) +
     Number(flags.showError) +
     Number(!!flags.subscriptionErrorKind) +
+    Number(!!flags.planRefusal) +
     Number(flags.showWarning) +
     Number(flags.hasApprovals) +
     Number(flags.hasPlans) +
-    Number(flags.isWaitingForUserInput)
+    Number(flags.isWaitingForUserInput) +
+    Number(flags.hasTaskSuggestion)
   );
 }

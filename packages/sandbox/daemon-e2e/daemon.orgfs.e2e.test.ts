@@ -2,9 +2,9 @@
  * Daemon conformance suite — org-fs links.
  *
  * A privileged sidecar mounts the org volumes at `<appRoot>/org/<volume>` and
- * reports them in a status file; the daemon links them (`<repoDir>/org → ../org`,
- * `org/output` and `org/upload` repointed per run). The sidecar is faked here —
- * a status file plus real mount-point dirs — because what matters is the gate:
+ * reports them in a status file; the daemon repoints `org/output` and
+ * `org/upload` per run, and links nothing into the repo. The sidecar is faked
+ * here — a status file plus real mount-point dirs — because what matters is the gate:
  * the daemon must link only what the status file reports live, since a
  * mount-point dir exists even when the mount failed.
  */
@@ -17,6 +17,7 @@ import {
   readFileSync,
   readlinkSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -147,7 +148,7 @@ describe("hosted daemon e2e: orgfs-config", () => {
 
 describe("daemon e2e: org-fs links", () => {
   it(
-    "links the repo and points output/upload at the calling thread",
+    "points output/upload at the calling thread, outside the repo",
     async () => {
       d = await startWithSidecar();
       fakeSidecarMounts(d, [".outputs", ".uploads"]);
@@ -168,15 +169,9 @@ describe("daemon e2e: org-fs links", () => {
         true,
       );
 
-      // Reachable from the harness cwd, and never committed to a user branch.
-      expect(readlinkSync(join(d.appDir, "repo", "org"))).toBe(
-        join("..", "org"),
-      );
-      const exclude = readFileSync(
-        join(d.appDir, "repo", ".git", "info", "exclude"),
-        "utf8",
-      );
-      expect(exclude.split("\n")).toContain("/org");
+      // A marker file, not a link: dev-server watchers would crawl a link, and
+      // a legacy relative `org/...` write must fail rather than land in git.
+      expect(lstatSync(join(d.appDir, "repo", "org")).isFile()).toBe(true);
 
       // A second thread in the same sandbox repoints the shared link.
       expect((await toolCall(d, "thread-def")).status).toBe(200);
@@ -221,13 +216,30 @@ describe("daemon e2e: org-fs links", () => {
   );
 
   it(
-    "never shadows a repo that tracks its own org/ directory",
+    "replaces the repo link an older daemon left with the marker",
     async () => {
       d = await startWithSidecar();
       fakeSidecarMounts(d, [".outputs"]);
       expect((await bootstrapRepo(d, repo!.url)).status).toBe(200);
       await waitForOrchestratorIdle(d);
-      // A real directory where the link would go — user content wins.
+      const repoOrg = join(d.appDir, "repo", "org");
+      symlinkSync(join("..", "org"), repoOrg);
+
+      expect((await toolCall(d, "thread-abc")).status).toBe(200);
+
+      expect(lstatSync(repoOrg).isFile()).toBe(true);
+    },
+    SETUP_TIMEOUT_MS,
+  );
+
+  it(
+    "never touches a repo that tracks its own org/ directory",
+    async () => {
+      d = await startWithSidecar();
+      fakeSidecarMounts(d, [".outputs"]);
+      expect((await bootstrapRepo(d, repo!.url)).status).toBe(200);
+      await waitForOrchestratorIdle(d);
+      // A real directory where the old link went — user content wins.
       const repoOrg = join(d.appDir, "repo", "org");
       mkdirSync(repoOrg, { recursive: true });
       writeFileSync(join(repoOrg, "mine.txt"), "user content\n");

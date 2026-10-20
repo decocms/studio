@@ -9,13 +9,6 @@ export interface JiraIssueLink {
   jiraIssueKey: string;
 }
 
-/** A rule on a Jira status: row existence is the switch, `prompt` null is the
- *  agent's own instruction. */
-export interface JiraColumnAutomation {
-  jiraStatus: string;
-  prompt: string | null;
-}
-
 /**
  * Per-org Jira Cloud integration configs (see migration 171). One row per
  * org; the API token is vault-encrypted at rest and decrypted on read — the
@@ -222,65 +215,6 @@ export class JiraIntegrationStorage {
       .onConflict((oc) => oc.doNothing())
       .executeTakeFirst();
     return (result.numInsertedOrUpdatedRows ?? 0n) > 0n;
-  }
-
-  async listAutomations(
-    organizationId: string,
-  ): Promise<JiraColumnAutomation[]> {
-    const rows = await this.db
-      .selectFrom("org_jira_column_automations")
-      .select(["jira_status", "prompt"])
-      .where("organization_id", "=", organizationId)
-      .orderBy("jira_status", "asc")
-      .execute();
-    return rows.map((r) => ({ jiraStatus: r.jira_status, prompt: r.prompt }));
-  }
-
-  async getAutomation(
-    organizationId: string,
-    jiraStatus: string,
-  ): Promise<JiraColumnAutomation | null> {
-    const row = await this.db
-      .selectFrom("org_jira_column_automations")
-      .select(["jira_status", "prompt"])
-      .where("organization_id", "=", organizationId)
-      .where("jira_status", "=", jiraStatus)
-      .executeTakeFirst();
-    return row ? { jiraStatus: row.jira_status, prompt: row.prompt } : null;
-  }
-
-  async upsertAutomation(
-    organizationId: string,
-    jiraStatus: string,
-    prompt: string | null,
-  ): Promise<JiraColumnAutomation> {
-    await this.db
-      .insertInto("org_jira_column_automations")
-      .values({
-        organization_id: organizationId,
-        jira_status: jiraStatus,
-        prompt,
-      })
-      .onConflict((oc) =>
-        oc
-          .columns(["organization_id", "jira_status"])
-          .doUpdateSet({ prompt, updated_at: new Date() }),
-      )
-      .execute();
-    return { jiraStatus, prompt };
-  }
-
-  /** Deleting IS the off switch. Returns whether there was a rule. */
-  async removeAutomation(
-    organizationId: string,
-    jiraStatus: string,
-  ): Promise<boolean> {
-    const result = await this.db
-      .deleteFrom("org_jira_column_automations")
-      .where("organization_id", "=", organizationId)
-      .where("jira_status", "=", jiraStatus)
-      .executeTakeFirst();
-    return (result.numDeletedRows ?? 0n) > 0n;
   }
 }
 

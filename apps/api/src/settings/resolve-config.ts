@@ -1,11 +1,11 @@
 /**
- * Resolve raw inputs (CLI flags + env vars) into a validated config.
+ * Resolve environment variables into validated application settings.
  *
  * Pure function — no side effects, no process.env mutations.
  */
 
 import { homedir } from "os";
-import type { CliFlags, DispatchRole, Settings } from "./types";
+import type { DispatchRole, Settings } from "./types";
 
 const DISPATCH_ROLES = new Set<DispatchRole>(["all", "worker", "api"]);
 
@@ -55,19 +55,6 @@ export function resolveShutdownDrainMs(
   return Number.isFinite(value) && value >= 0 ? value : fallback;
 }
 
-/**
- * Startup log line for `ENCRYPTION_KEY` — reports whether it's set and how
- * long it is (useful for spotting misconfiguration) WITHOUT leaking the
- * actual secret into stdout/log aggregators.
- */
-export function describeEncryptionKeyForLog(ek: string): string {
-  if (!ek) {
-    return "[settings] ENCRYPTION_KEY is not set (using deterministic fallback, 32 chars) — set ENCRYPTION_KEY for production";
-  }
-  const masked = ek.length <= 8 ? "***" : `${ek.slice(0, 4)}..${ek.slice(-4)}`;
-  return `[settings] ENCRYPTION_KEY is set (${masked}, ${ek.length} chars)`;
-}
-
 function toBool(value: string | undefined): boolean {
   return value === "true" || value === "1";
 }
@@ -100,6 +87,33 @@ function toPositiveIntegerOrDefault(
 
 /** Like `toPositiveIntegerOrDefault`, but 0 is a valid value (e.g. a fee a
  *  self-hosted deployment wants to disable outright). */
+/**
+ * `price_abc=pro,price_def=ultra` → `{price_abc: 'pro', price_def: 'ultra'}`.
+ *
+ * Malformed entries are dropped with a warning rather than throwing: this map
+ * decides what a payment BUYS, and a deployment must not fail to boot over one
+ * bad pair — but it must also not silently grant the wrong tier, so anything
+ * unparseable is left out and an unmapped price grants nothing.
+ */
+function parsePlanPriceIds(value: string | undefined): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const pair of (value ?? "").split(",")) {
+    const trimmed = pair.trim();
+    if (!trimmed) continue;
+    const eq = trimmed.indexOf("=");
+    const priceId = eq > 0 ? trimmed.slice(0, eq).trim() : "";
+    const planId = eq > 0 ? trimmed.slice(eq + 1).trim() : "";
+    if (!priceId || !planId) {
+      console.warn(
+        `STRIPE_PLAN_PRICE_IDS: ignoring unparseable entry "${trimmed}" — expected price_xxx=planId`,
+      );
+      continue;
+    }
+    map[priceId] = planId;
+  }
+  return map;
+}
+
 function toNonNegativeIntegerOrDefault(
   name: string,
   value: string | undefined,
@@ -128,33 +142,11 @@ function toBoolWithDefault(
 }
 
 /**
- * Determine if a URL points to a non-local host (i.e., an external service).
- * Returns the URL string if external, null if local or not set.
- */
-export function externalUrlOrNull(url: string | undefined): string | null {
-  if (!url) return null;
-  try {
-    const parsed = new URL(url);
-    // `URL#hostname` keeps the brackets for a bracketed IPv6 host (e.g.
-    // "[::1]"), so strip them before comparing against the bare loopback form.
-    const host = parsed.hostname.replace(/^\[|\]$/g, "");
-    if (host === "localhost" || host === "127.0.0.1" || host === "::1") {
-      return null;
-    }
-    return url;
-  } catch {
-    return null;
-  }
-}
-
-/**
  * Whether S3 access should force path-style addressing. Unset/empty defaults
  * to path-style (needed by custom S3-compatible stores like MinIO/Ceph); real
- * AWS S3 (virtual-hosted-style) must set S3_FORCE_PATH_STYLE=false. Shared
- * with `ensure-services.ts`'s external-S3 branch so the in-process
- * `buildSettings` path and the bundled-prod `initSettingsFromEnv` path agree.
+ * AWS S3 (virtual-hosted-style) must set S3_FORCE_PATH_STYLE=false.
  */
-export function resolveS3ForcePathStyle(raw: string | undefined): boolean {
+function resolveS3ForcePathStyle(raw: string | undefined): boolean {
   return raw === undefined || raw === "" || raw === "true" || raw === "1";
 }
 
@@ -171,49 +163,46 @@ function resolveAliasedEnv(
   return value || legacyValue;
 }
 
-export interface ResolvedConfig {
-  settings: Omit<Settings, "databaseUrl" | "natsUrls">;
-  externalDatabaseUrl: string | null;
-  externalNatsUrl: string | null;
-  skipMigrations: boolean;
-}
-
 export function resolveConfig(
-  flags: CliFlags,
   envVars: Record<string, string | undefined>,
-): ResolvedConfig {
+): Settings {
   const dataDir =
-    flags.home ||
-    envVars.DATA_DIR ||
-    envVars.DECOCMS_HOME ||
-    `${homedir()}/deco`;
+    envVars.DATA_DIR || envVars.DECOCMS_HOME || `${homedir()}/deco`;
+  const nodeEnv = resolveNodeEnv(envVars.NODE_ENV);
 
-  const localMode = flags.localMode;
-  const nodeEnv: Settings["nodeEnv"] =
-    flags.nodeEnv || resolveNodeEnv(envVars.NODE_ENV);
+  const voiceProvider =
+    envVars.VOICE_CONVERSATION_PROVIDER?.trim() || "elevenlabs";
 
-  const natsRaw = envVars.NATS_URL || "nats://localhost:4222";
-
-  const settings: Omit<Settings, "databaseUrl" | "natsUrls"> = {
+  const settings: Settings = {
     // Core
     nodeEnv,
     // Capped at 65535: TCP ports don't exist above that, and an out-of-range
     // value would otherwise pass validation here and only fail confusingly
     // once the HTTP server tries to bind it.
-    port: toPositiveIntegerOrDefault(
-      "PORT",
-      flags.port || envVars.PORT,
-      3000,
-      65535,
-    ),
-    baseUrl: flags.baseUrl || envVars.BASE_URL,
+    port: toPositiveIntegerOrDefault("PORT", envVars.PORT, 3000, 65535),
+    baseUrl: envVars.BASE_URL,
     publicUrl: resolveAliasedEnv(
       envVars.STUDIO_PUBLIC_URL,
       envVars.MESH_PUBLIC_URL,
     ),
     dataDir,
+    voiceConversationProvider:
+      voiceProvider === "elevenlabs" || voiceProvider === "openai"
+        ? voiceProvider
+        : null,
+    openaiLiveApiKey: envVars.OPENAI_LIVE_API_KEY,
+    openaiLiveModel: envVars.OPENAI_LIVE_MODEL?.trim() || "gpt-live-1",
+    openaiLiveVoice: envVars.OPENAI_LIVE_VOICE?.trim() || "marin",
+    elevenlabsApiKey: envVars.ELEVENLABS_API_KEY,
+    elevenlabsVoiceId: envVars.ELEVENLABS_VOICE_ID || "JBFqnCBsd6RMkjVDRZzb",
+    elevenlabsVoiceModel: envVars.ELEVENLABS_VOICE_MODEL || "eleven_v4_turbo",
+    elevenlabsConversationModel:
+      envVars.ELEVENLABS_CONVERSATION_MODEL?.trim() || "gemini-2.5-flash",
 
-    // Database (url resolved after services start)
+    // Database
+    databaseUrl:
+      envVars.DATABASE_URL ||
+      "postgresql://postgres:postgres@localhost:5432/postgres",
     databasePgSsl: toBool(envVars.DATABASE_PG_SSL),
     databasePoolMax: toPositiveIntegerOrDefault(
       "DATABASE_POOL_MAX",
@@ -233,14 +222,25 @@ export function resolveConfig(
       envVars.STUDIO_JWT_SECRET,
       envVars.MESH_JWT_SECRET,
     ),
-    localMode,
+    localMode: toBool(envVars.DECOCMS_LOCAL_MODE),
     disableRateLimit: toBool(envVars.DISABLE_RATE_LIMIT),
     jiraAllowLocalSiteUrl: toBool(envVars.JIRA_ALLOW_LOCAL_SITE_URL),
+    jiraSettleSeconds: toPositiveIntegerOrDefault(
+      "JIRA_SETTLE_SECONDS",
+      envVars.JIRA_SETTLE_SECONDS,
+      20,
+      3600,
+    ),
     studioProvisionSecretKey: envVars.STUDIO_PROVISION_SECRET_KEY,
     deploymentAdminEmails: (envVars.DEPLOYMENT_ADMIN_EMAILS ?? "")
       .split(",")
       .map((s) => s.trim().toLowerCase())
       .filter(Boolean),
+    taskBoardAdminOrgIds: (envVars.STUDIO_ADMIN_ORG_IDS ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
+    deploymentAdminToken: envVars.DEPLOYMENT_ADMIN_TOKEN || undefined,
 
     // Observability
     clickhouseUrl: envVars.CLICKHOUSE_URL,
@@ -251,8 +251,14 @@ export function resolveConfig(
     monitoringOtlpEndpoint: envVars.MONITORING_OTLP_ENDPOINT,
     otelServiceName: envVars.OTEL_SERVICE_NAME || "studio",
 
-    // Event Bus & Networking
+    // NATS connectivity
+    natsUrls: (envVars.NATS_URL || "nats://localhost:4222")
+      .split(",")
+      .map((url) => url.trim())
+      .filter(Boolean),
     natsCredsPath: envVars.NATS_CREDS,
+    natsUser: envVars.NATS_USER || undefined,
+    natsPassword: envVars.NATS_PASSWORD || undefined,
 
     // Config files
     configPath: envVars.CONFIG_PATH || "./config.json",
@@ -264,6 +270,8 @@ export function resolveConfig(
     stripeWebhookSecret: envVars.STRIPE_WEBHOOK_SECRET,
     stripeSecretKey: envVars.STRIPE_SECRET_KEY,
     stripeOrgPriceId: envVars.STRIPE_ORG_PRICE_ID,
+    stripePlanPriceIds: parsePlanPriceIds(envVars.STRIPE_PLAN_PRICE_IDS),
+    stripePortalConfigurationId: envVars.STRIPE_PORTAL_CONFIGURATION_ID,
     stripeTopupProductId: envVars.STRIPE_TOPUP_PRODUCT_ID,
     // Capped at 100: above that is a fat-fingered misconfig ("150" for "15")
     // that would silently more-than-double every top-up charge. 0 is valid —
@@ -295,6 +303,7 @@ export function resolveConfig(
     enableDecoImport: toBool(envVars.ENABLE_DECO_IMPORT),
     hostingControlPlaneGa: toBool(envVars.HOSTING_CONTROL_PLANE_GA),
     monitorGa: toBool(envVars.MONITOR_GA),
+    plansEnabled: toBool(envVars.STUDIO_PLANS_ENABLED),
     // MCP caching is on by default in production, off in development. Set
     // MCP_CACHE_ENABLED=false to disable in prod, =true to enable in dev.
     mcpCacheEnabled: toBoolWithDefault(
@@ -316,6 +325,12 @@ export function resolveConfig(
     taskBoardReviewSweeperEnabled: toBoolWithDefault(
       envVars.TASK_BOARD_REVIEW_SWEEPER_ENABLED,
       true,
+    ),
+    boardTransitionSettleSeconds: toPositiveIntegerOrDefault(
+      "BOARD_TRANSITION_SETTLE_SECONDS",
+      envVars.BOARD_TRANSITION_SETTLE_SECONDS,
+      20,
+      3600,
     ),
     sandboxMaxConcurrentHostedRuns: toPositiveIntegerOrDefault(
       "SANDBOX_MAX_CONCURRENT_HOSTED_RUNS",
@@ -347,8 +362,6 @@ export function resolveConfig(
     ),
 
     // Runtime flags
-    isCli: true,
-    noTui: flags.noTui === true,
     // `||` (not `??`): an env var explicitly set to "" (a deployment template
     // rendering an unset POD_NAME as empty rather than omitting the key) must
     // fall through to a random id instead of every pod sharing "" as its
@@ -367,6 +380,10 @@ export function resolveConfig(
       true,
     ),
     sandboxReleaseOnRunEndEnabled: toBool(envVars.SANDBOX_RELEASE_ON_RUN_END),
+    sandboxPrewarmOnThreadCreateEnabled: toBool(
+      envVars.SANDBOX_PREWARM_ON_THREAD_CREATE,
+    ),
+    sandboxPersistentHarnessEnabled: toBool(envVars.SANDBOX_PERSISTENT_HARNESS),
     sandboxReleaseGraceMs: toPositiveIntegerOrDefault(
       "SANDBOX_RELEASE_GRACE_MS",
       envVars.SANDBOX_RELEASE_GRACE_MS,
@@ -376,7 +393,6 @@ export function resolveConfig(
     // External service credentials
     decoSupabaseUrl: envVars.DECO_SUPABASE_URL,
     decoSupabaseServiceKey: envVars.DECO_SUPABASE_SERVICE_KEY,
-    firecrawlApiKey: envVars.FIRECRAWL_API_KEY,
     controlplaneRestUrl: envVars.CONTROLPLANE_REST_URL,
     controlplaneServiceToken: envVars.CONTROLPLANE_SERVICE_TOKEN,
     analyticsDataUrl: envVars.ANALYTICS_URL,
@@ -385,8 +401,13 @@ export function resolveConfig(
     clickhouseAnalyticsUsername:
       envVars.CLICKHOUSE_ANALYTICS_USERNAME || "admin_monitor",
     clickhouseAnalyticsPassword: envVars.CLICKHOUSE_ANALYTICS_PASSWORD,
+    customerLakeUrl: envVars.CUSTOMER_LAKE_URL,
+    customerLakeAdminUsername:
+      envVars.CUSTOMER_LAKE_ADMIN_USERNAME || "customer_lake_user_admin",
+    customerLakeAdminPassword: envVars.CUSTOMER_LAKE_ADMIN_PASSWORD,
+    customerLakeTenantSecret: envVars.CUSTOMER_LAKE_TENANT_SECRET,
     oneDollarStatsApiKey: envVars.ONEDOLLAR_BACKEND_API_KEY,
-    // New name first, legacy Commerce Discovery envs as fallback — one
+    // New name first, legacy Reports envs as fallback — one
     // setting, so prod migrates secrets whenever convenient without a
     // coordinated deploy. Drop the fallback once the CD envs are renamed.
     reportsInternalApiUrl: resolveAliasedEnv(
@@ -406,18 +427,124 @@ export function resolveConfig(
     // two can't drift). Set S3_TENANT_ENDPOINT only for a non-AWS S3 store.
     s3TenantEndpoint: envVars.S3_TENANT_ENDPOINT,
     s3TenantPublicUrlBase:
-      envVars.S3_TENANT_PUBLIC_URL_BASE || "https://decoims.com",
+      envVars.S3_TENANT_PUBLIC_URL_BASE || "https://assets.decocms.com",
     awsS3TenantRoleArn: envVars.AWS_S3_TENANT_ROLE_ARN,
     awsS3TenantProvisionerAccessKeyId:
       envVars.AWS_S3_TENANT_PROVISIONER_ACCESS_KEY_ID,
     awsS3TenantProvisionerSecretAccessKey:
       envVars.AWS_S3_TENANT_PROVISIONER_SECRET_ACCESS_KEY,
+
+    // Hosted Deco CMS (Blocks v8): the delivery bucket and site tokens.
+    // Unset = the hosted features answer "not configured".
+    deliveryR2AccountId: envVars.DELIVERY_R2_ACCOUNT_ID,
+    deliveryR2AccessKeyId: envVars.DELIVERY_R2_ACCESS_KEY_ID,
+    deliveryR2SecretAccessKey: envVars.DELIVERY_R2_SECRET_ACCESS_KEY,
+    deliveryR2Bucket: envVars.DELIVERY_R2_BUCKET,
+    // test-only: a local S3 store and the origin that serves it.
+    deliveryR2Endpoint: envVars.DELIVERY_R2_ENDPOINT,
+    deliveryPublicOrigin: envVars.DELIVERY_PUBLIC_ORIGIN,
+    siteTokenSigningKey: envVars.DECO_SITE_TOKEN_SIGNING_KEY,
+    cfDeliveryZoneId: envVars.CF_DELIVERY_ZONE_ID,
+    cfPurgeApiToken: envVars.CF_PURGE_API_TOKEN,
   };
 
-  return {
-    settings,
-    externalDatabaseUrl: externalUrlOrNull(envVars.DATABASE_URL),
-    externalNatsUrl: externalUrlOrNull(natsRaw),
-    skipMigrations: flags.skipMigrations,
-  };
+  if (Boolean(settings.natsUser) !== Boolean(settings.natsPassword)) {
+    throw new Error("NATS_USER and NATS_PASSWORD must be set together");
+  }
+  if (settings.natsCredsPath && settings.natsUser) {
+    throw new Error("Use either NATS_CREDS or NATS_USER/NATS_PASSWORD");
+  }
+
+  // A feature gate is only as trustworthy as this secret. `mintGatewayJwt`
+  // falls back to BETTER_AUTH_SECRET, which has no reason to equal the
+  // gateway's MESH_JWT_SECRET — and when it doesn't, every /entitlements call
+  // 401s, the gate reads that as "no answer" and OPENS, so the paid product is
+  // free for everyone with nothing in the request path saying so. It is the
+  // single most likely misconfiguration of this feature. Refuse to boot: a
+  // misconfigured gate must not start, and must certainly not start open.
+  if (settings.plansEnabled && !settings.studioJwtSecret) {
+    throw new Error(
+      "STUDIO_PLANS_ENABLED requires an explicit gateway JWT secret. Set " +
+        "STUDIO_JWT_SECRET (or its legacy alias MESH_JWT_SECRET) to the same " +
+        "value as the gateway's MESH_JWT_SECRET. Refusing to fall back to " +
+        "BETTER_AUTH_SECRET: that mismatch 401s every entitlements call, which " +
+        "every feature gate reads as 'no answer' and fails OPEN.",
+    );
+  }
+
+  // The provision key has the IDENTICAL consequence and had no check. Without
+  // it the gateway cannot recognise mesh's server, so `/entitlements` falls
+  // back to a per-user membership callback over a gateway-OAuth token most
+  // users have never minted — that answers 401, the gate reads "no answer",
+  // and every unlinked user owns every gated feature. Same failure, same
+  // refusal.
+  if (settings.plansEnabled && !settings.studioProvisionSecretKey) {
+    throw new Error(
+      "STUDIO_PLANS_ENABLED requires STUDIO_PROVISION_SECRET_KEY, set to the " +
+        "same value as the gateway's STUDIO_PROVISION_KEY. Without it the " +
+        "gateway cannot identify this server, falls back to a per-user " +
+        "membership callback that 401s for any user who never completed the " +
+        "gateway OAuth flow, and every feature gate then fails OPEN.",
+    );
+  }
+
+  // Third door to the same room. `plansEnabled` and `aiGatewayEnabled` are
+  // independent booleans and only the first had a guard, so plans-on +
+  // gateway-off opened every gate on both halves: `planStateFor` returns null
+  // before any network call, `isFeatureAllowed` reads a null features map as
+  // true, and on the client the `deco` adapter is never registered so
+  // `AI_PLAN_ENTITLEMENTS` throws and `useFeature` returns true for
+  // everything. The chart ships `DECO_AI_GATEWAY_ENABLED: "false"` as an
+  // active default, so flipping only the plans flag — which is what the chart
+  // documents — reaches it.
+  if (settings.plansEnabled && !settings.aiGatewayEnabled) {
+    throw new Error(
+      "STUDIO_PLANS_ENABLED requires DECO_AI_GATEWAY_ENABLED=true. Plans are " +
+        "read from the gateway; with it disabled there is no adapter to ask, " +
+        "so every feature gate fails OPEN on both server and client and the " +
+        "paid product is free fleet-wide.",
+    );
+  }
+
+  // Selling without being able to deliver. The Stripe webhook is the ONLY way
+  // a paid tier is granted, and it places the tier through the gateway's admin
+  // API — so a price map with no admin token takes money for an entitlement
+  // that cannot land. `setGatewayOrgPlan` now throws rather than returning
+  // quietly, which makes Stripe the retry queue; this stops the deployment
+  // from getting that far.
+  if (
+    settings.plansEnabled &&
+    Object.keys(settings.stripePlanPriceIds).length > 0 &&
+    !settings.aiGatewayAdminToken
+  ) {
+    throw new Error(
+      "STRIPE_PLAN_PRICE_IDS is set but DECO_AI_GATEWAY_ADMIN_TOKEN is not. " +
+        "The Stripe webhook places the paid tier through the gateway's admin " +
+        "API, so without the token a customer is charged and the entitlement " +
+        "is never granted — and AI_PLAN_SET cannot repair it, it accepts only " +
+        "'free'.",
+    );
+  }
+
+  // Selling a ladder nobody can climb. Warn, not throw: a FIRST subscribe works
+  // without this, so refusing to boot would take down a deployment whose
+  // checkout is fine. Only the existing subscriber changing tier is broken, and
+  // Stripe refuses that one loudly at the point of use rather than charging for
+  // it — so this is a "you will get support tickets" warning, not a data risk.
+  if (
+    settings.plansEnabled &&
+    Object.keys(settings.stripePlanPriceIds).length > 1 &&
+    !settings.stripePortalConfigurationId
+  ) {
+    console.warn(
+      "STRIPE_PLAN_PRICE_IDS maps more than one plan but " +
+        "STRIPE_PORTAL_CONFIGURATION_ID is unset. An org that already has a " +
+        "subscription cannot change tier: the account's default portal " +
+        "configuration lists only the legacy plans, not the tiers, so Stripe " +
+        "refuses the update flow. " +
+        "First-time checkout is unaffected.",
+    );
+  }
+
+  return settings;
 }

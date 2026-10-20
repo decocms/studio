@@ -1,35 +1,40 @@
 /**
- * "An issue entered a Jira status that has a rule — run the agent on it."
+ * "An issue entered a Jira status that a `jira_transition` trigger watches —
+ * fire its automation on the issue."
  *
- * The one act behind both the webhook and the safety-net poll. Studio keeps no
- * copy of the issue: the run is anchored on a hidden board item (so quota,
- * pull requests and review keep working), the issue's content goes straight
- * into the run's opening message, and the agent updates the issue itself with
- * the Jira tools its run is served.
+ * The one act behind both the webhook and the safety-net poll. This half only
+ * decides that a move counts and which trigger it answers; the automation
+ * fire workflow runs it on the issue (`automations/jira-run.ts`).
+ *
+ * A trigger reacts to where an issue RESTS, not to each drop (`settle.ts`): a
+ * card dragged through a column, or into the wrong one and straight back,
+ * fires nothing there and does not supersede the run it was waiting on.
  *
  * Idempotency is per TRANSITION, not per issue: `jira_trigger_claims` holds
- * one row per changelog entry, so a redelivered webhook or the poll finding the
- * same entry dispatches nothing, while the issue entering the column again
- * later is a new run. The claim is taken right before dispatch, after the
- * anchor item exists, so a lost claim never leaves an item with no run.
+ * one row per changelog entry, so a redelivered webhook or the poll finding
+ * the same entry fires nothing, while the issue entering the column again
+ * later is a new fire.
  */
 
-import { LANES, SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
+import { enqueueAutomationFire } from "@/automations/dbos-sync";
 import type { StudioContext } from "@/core/studio-context";
-import type { OrgJiraIntegration, TaskBoardItem } from "@/storage/types";
-import { enqueueSuperAgentForTask } from "@/tools/task-board/enqueue-super-agent";
-import { JiraClient, type JiraChangelogHistory } from "./client";
+import type { OrgJiraIntegration } from "@/storage/types";
+import { JiraClient } from "./client";
 import {
-  type IssueForPrompt,
-  issueUrl,
-  loadIssueForPrompt,
-  renderIssueForPrompt,
-} from "./issue-prompt";
+  directionOf,
+  needsDirection,
+  pickRule,
+  ruleFromColumns,
+} from "./rule-from";
+import { type Settled, settle, settleWindowMs } from "./settle";
 
+/** A status change the webhook reported. Only its identity: what the change
+ *  amounts to is read back from the issue's history once it has settled. */
 export interface IssueTransition {
   issueId: string;
   issueKey: string;
-  /** The status NAME the issue landed in — what a rule is keyed by. */
+  /** The status NAME the issue landed in, for logs; a rule reacts to where
+   *  the issue rests, which a later drop may change. */
   toStatus: string;
   /** Jira's id for this changelog entry: the transition's identity. */
   changelogId: string;
@@ -72,162 +77,85 @@ export function parseWebhookTransition(
   };
 }
 
-/**
- * Every status change on an issue since `since`, oldest first — what the poll
- * reads off a search expanded with the changelog. The same shape the webhook
- * yields, so both feed one fence.
- */
-export function transitionsFromChangelog(
-  issue: { id: string; key: string },
-  histories: readonly JiraChangelogHistory[],
-  since: Date,
-): IssueTransition[] {
-  const out: IssueTransition[] = [];
-  for (const history of histories) {
-    if (new Date(history.created).getTime() < since.getTime()) continue;
-    const status = history.items.find((item) => item.field === "status");
-    if (!status || typeof status.toString !== "string") continue;
-    out.push({
-      issueId: issue.id,
-      issueKey: issue.key,
-      toStatus: status.toString,
-      changelogId: history.id,
-    });
-  }
-  return out.sort((a, b) => Number(a.changelogId) - Number(b.changelogId));
-}
-
-export type TriggerOutcome = "started" | "no_rule" | "duplicate" | "disabled";
-
-/** What the run is told first when the rule has no prompt of its own. */
-const DEFAULT_JIRA_INSTRUCTION =
-  "A Jira issue was moved into a column you are responsible for. Work the issue.";
-
-/** Appended to every Jira-triggered run: the board tools are absent on
- *  purpose, and the issue is the thing to keep up to date. */
-const JIRA_RUN_FOOTER = [
-  "This run was started by a Jira issue, not a board card. Keep the ISSUE up to date, not a Studio card:",
-  "- `JIRA_ISSUE_GET` re-reads the issue (description, comments, attachments).",
-  "- `JIRA_COMMENT_ADD` posts a comment on it (markdown). Leave one when you finish, with what you did and any pull request link.",
-  "- `JIRA_ISSUE_TRANSITION` moves it to another status when your work warrants it.",
-  "- `JIRA_ATTACHMENT_DOWNLOAD` fetches an attachment into the sandbox by its id.",
-].join("\n");
-
-function jiraRunTitle(issue: { key: string; summary: string }): string {
-  return `Jira ${issue.key}: ${issue.summary}`;
-}
+export type TriggerOutcome =
+  | "fired"
+  | "no_rule"
+  | "duplicate"
+  | "disabled"
+  /** Not settled yet, or a later move decides instead — see `settle.ts`. */
+  | Exclude<Settled["kind"], "moved">;
 
 /**
- * Dispatch a run for `transition` if the org has a rule for its status and
- * nothing dispatched this transition already.
+ * Fire the automation for where an issue came to rest, if a trigger on that
+ * status answers where it came from and nothing fired for this move already.
+ *
+ * `changelogId` is the move the webhook reported, and the caller has waited
+ * the settle window since; the poll omits it and passes `now`, asking about the
+ * issue's latest move. Either way the claim is on the move that settled, so
+ * the two never both fire it.
  */
-export async function triggerRunForTransition(
+export async function triggerRunForSettledMove(
   ctx: StudioContext,
   integration: OrgJiraIntegration,
-  transition: IssueTransition,
+  target: { issueId: string; changelogId?: string; now?: number },
 ): Promise<TriggerOutcome> {
   if (!integration.enabled) return "disabled";
   const orgId = integration.organizationId;
-  const rule = await ctx.storage.jiraIntegrations.getAutomation(
-    orgId,
-    transition.toStatus,
-  );
-  if (!rule) return "no_rule";
-
   const client = new JiraClient(
     integration.siteUrl,
     integration.email,
     integration.apiToken,
   );
-  const issue = await loadIssueForPrompt(
-    client,
-    integration.siteUrl,
-    transition.issueId,
-  );
-  const item = await ensureAnchorItem(ctx, integration, transition, issue);
+  const settled = settle(await client.listStatusChanges(target.issueId), {
+    changeId: target.changelogId,
+    now: target.now,
+    windowMs: settleWindowMs(),
+  });
+  if (!settled) return "no_rule";
+  if (settled.kind !== "moved") return settled.kind;
+  const { change, from } = settled;
+  const triggers = (
+    await ctx.storage.automations.listJiraTransitionTriggers(orgId, {
+      jiraStatus: change.to,
+      activeOnly: true,
+    })
+  ).map((trigger) => ({ ...trigger, from: ruleFromColumns(trigger) }));
+  const direction =
+    needsDirection(triggers) && integration.boardId
+      ? directionOf(
+          await client.getBoardColumnStatusIds(integration.boardId),
+          from.id,
+          change.toId,
+        )
+      : null;
+  const trigger = pickRule(triggers, from.name, direction);
+  if (!trigger) return "no_rule";
 
+  // Shared with the release before triggers, which claimed here too.
   const claimed = await ctx.storage.jiraIntegrations.claimTrigger(
     orgId,
-    transition.issueId,
-    transition.changelogId,
+    target.issueId,
+    change.id,
   );
   if (!claimed) return "duplicate";
-
-  const delegated = await ctx.storage.taskBoard.update(
-    item.id,
-    orgId,
+  await enqueueAutomationFire(
     {
-      assigneeId: SUPER_AGENT_ASSIGNEE_ID,
-      assignedBy: integration.createdBy,
-    },
-    integration.createdBy,
-  );
-  try {
-    await enqueueSuperAgentForTask(ctx, delegated, {
-      instruction: rule.prompt ?? DEFAULT_JIRA_INSTRUCTION,
-      source: {
+      automationId: trigger.automation_id,
+      organizationId: orgId,
+      triggerId: trigger.id,
+      target: {
         kind: "jira",
-        issueKey: issue.key,
-        title: jiraRunTitle(issue),
-        body: `${renderIssueForPrompt(issue)}\n\n${JIRA_RUN_FOOTER}`,
+        issues: [target.issueId],
+        move: {
+          toStatus: change.to,
+          fromStatus: from.name,
+          movedBy: change.by,
+          movedAt: new Date(change.at).toISOString(),
+        },
+        eventKey: change.id,
       },
-    });
-  } catch (err) {
-    // Nothing dispatched: leave the anchor unowned rather than assigned to an
-    // agent that will never run. The claim stands — the transition is spent,
-    // and the caller's log is the record of why.
-    await ctx.storage.taskBoard
-      .unassignSuperAgent(item.id, orgId, integration.createdBy)
-      .catch(() => {});
-    throw err;
-  }
-  return "started";
-}
-
-/**
- * The board item a Jira issue's runs hang off. One per issue, created the
- * first time a rule fires for it and reused after; hidden from the board by
- * `source`, titled by the issue so the monitoring history reads.
- */
-async function ensureAnchorItem(
-  ctx: StudioContext,
-  integration: OrgJiraIntegration,
-  transition: IssueTransition,
-  issue: IssueForPrompt,
-): Promise<TaskBoardItem> {
-  const orgId = integration.organizationId;
-  const title = `${issue.key}: ${issue.summary}`;
-  const linked = await ctx.storage.jiraIntegrations.getLinkByIssueId(
-    orgId,
-    transition.issueId,
+    },
+    { idempotencyKey: `jira:${trigger.id}:${change.id}` },
   );
-  if (linked) {
-    const existing = await ctx.storage.taskBoard.getById(linked.itemId, orgId);
-    if (existing) {
-      return existing.title === title
-        ? existing
-        : ctx.storage.taskBoard.update(
-            existing.id,
-            orgId,
-            { title },
-            integration.createdBy,
-          );
-    }
-  }
-  const created = await ctx.storage.taskBoard.create({
-    organizationId: orgId,
-    title,
-    status: LANES.progress,
-    source: "jira",
-    externalKey: issue.key,
-    externalUrl: issueUrl(integration.siteUrl, issue.key),
-    by: integration.createdBy,
-  });
-  await ctx.storage.jiraIntegrations.createLink({
-    itemId: created.id,
-    organizationId: orgId,
-    jiraIssueId: transition.issueId,
-    jiraIssueKey: issue.key,
-  });
-  return created;
+  return "fired";
 }

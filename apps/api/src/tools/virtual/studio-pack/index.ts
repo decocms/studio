@@ -1,19 +1,17 @@
-import { WellKnownOrgMCPId } from "@decocms/shared/sdk";
+import {
+  RETIRED_STUDIO_PACK_AGENT_ID_PREFIXES,
+  WellKnownOrgMCPId,
+} from "@decocms/shared/sdk";
 import type { VirtualMCPStorage } from "@/storage/virtual";
-import type { StudioContext } from "@/core/studio-context";
 import type { VirtualMCPEntity } from "../schema";
-import { agentManagerAgent } from "./agent-manager";
 import { apiKeyManagerAgent } from "./api-key-manager";
 import { automationManagerAgent } from "./automation-manager";
-import { brandManagerAgent } from "./brand-manager";
 import { connectionManagerAgent } from "./connection-manager";
 import { storeManagerAgent } from "./store-manager";
 import { usageManagerAgent } from "./usage-manager";
 import type {
   ChecklistContext,
   ResolvedChecklistItem,
-  ResolvedRuntime,
-  RuntimeResolveContext,
   StudioPackChecklistItem,
   StudioPackConnectionKey,
 } from "./types";
@@ -22,9 +20,6 @@ export type {
   ChecklistContext,
   ChecklistItemAction,
   ResolvedChecklistItem,
-  ResolvedRuntime,
-  ResolveRuntime,
-  RuntimeResolveContext,
   StudioPackChecklistItem,
 } from "./types";
 
@@ -34,11 +29,9 @@ export type {
  * the org's agents page. Deleting a virtual MCP also deletes its threads —
  * intentional here: these are system-managed board-management chats.
  */
-const RETIRED_AGENT_ID_PREFIXES = ["studio-task-manager_"];
+const RETIRED_AGENT_ID_PREFIXES = RETIRED_STUDIO_PACK_AGENT_ID_PREFIXES;
 
 export const STUDIO_PACK_AGENTS = [
-  brandManagerAgent,
-  agentManagerAgent,
   automationManagerAgent,
   connectionManagerAgent,
   apiKeyManagerAgent,
@@ -56,51 +49,27 @@ export function findStudioPackAgentByMcpId(
   );
 }
 
-async function resolveStudioPackRuntime(
-  agent: StudioPackAgent,
-  rt: RuntimeResolveContext,
-): Promise<ResolvedRuntime> {
-  if ("resolveRuntime" in agent) {
-    return agent.resolveRuntime(rt);
-  }
-  return {
-    instructions: agent.instructions,
-    selectedTools: agent.selectedTools,
-  };
-}
-
 /**
  * Apply the code-owned runtime configuration for a Studio Pack agent.
  * Persisted rows can lag behind the current definition until the startup
  * override runs, so every execution path resolves through this helper.
  */
-export async function resolveEffectiveStudioPackVirtualMcp({
-  virtualMcp,
-  agentId = virtualMcp.id,
-  organizationId,
-  ctx,
-}: {
-  virtualMcp: VirtualMCPEntity;
-  agentId?: string;
-  organizationId: string;
-  ctx: StudioContext;
-}): Promise<VirtualMCPEntity> {
+export function resolveEffectiveStudioPackVirtualMcp(
+  virtualMcp: VirtualMCPEntity,
+  agentId: string = virtualMcp.id,
+): VirtualMCPEntity {
   const studioPackAgent = findStudioPackAgentByMcpId(agentId);
   if (!studioPackAgent) return virtualMcp;
 
-  const resolved = await resolveStudioPackRuntime(studioPackAgent, {
-    orgId: organizationId,
-    ctx,
-  });
-  const selectedTools = resolved.selectedTools
-    ? [...resolved.selectedTools]
+  const selectedTools = studioPackAgent.selectedTools
+    ? [...studioPackAgent.selectedTools]
     : null;
 
   return {
     ...virtualMcp,
     metadata: {
       ...((virtualMcp.metadata as Record<string, unknown>) ?? {}),
-      instructions: resolved.instructions,
+      instructions: studioPackAgent.instructions,
     },
     connections: virtualMcp.connections.map((connection) => ({
       ...connection,
@@ -132,8 +101,6 @@ export async function installStudioPack(
 ): Promise<void> {
   const connectionForKey: Record<StudioPackConnectionKey, string> = {
     self: WellKnownOrgMCPId.SELF(orgId),
-    registry: WellKnownOrgMCPId.REGISTRY(orgId),
-    "community-registry": WellKnownOrgMCPId.COMMUNITY_REGISTRY(orgId),
   };
 
   await Promise.all(

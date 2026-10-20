@@ -7,7 +7,7 @@
  * carry the path in their input. Those names are matched against the
  * thread-outputs listing (shared `useThreadOutputs` query) to get
  * key/size/downloadUrl. Files produced invisibly (e.g. `bash` cp into
- * org/output) can't be attributed to a turn and surface only in
+ * /app/org/output) can't be attributed to a turn and surface only in
  * ThreadFilesPanel.
  *
  * Caveat: the match is by filename, so a file re-written in a later turn
@@ -26,8 +26,8 @@ function basename(p: string): string {
   return p.split("/").pop() ?? p;
 }
 
-/** Matches sandbox paths under the org-output mount: `output/x`,
- *  `org/output/x`, `/app/org/output/x`. */
+/** Matches sandbox paths under the org-output mount: `/app/org/output/x`,
+ *  plus `org/output/x` and `output/x` from older threads. */
 const OUTPUT_PATH_RE = /(^|\/)output\//;
 
 function collectProducedFilenames(message: MessageLike): Set<string> {

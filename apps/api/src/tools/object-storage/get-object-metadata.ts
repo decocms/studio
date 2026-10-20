@@ -1,5 +1,12 @@
+import { ForbiddenError } from "../../core/access-control";
 import { defineTool } from "../../core/define-tool";
-import { requireAuth, requireOrganization } from "../../core/studio-context";
+import {
+  getUserId,
+  requireAuth,
+  requireOrganization,
+} from "../../core/studio-context";
+import { canReadPersonal } from "../../file-storage/personal-home";
+import { parseOrgFsKey } from "../../file-storage/org-fs-path";
 import {
   GetObjectMetadataInputSchema,
   GetObjectMetadataOutputSchema,
@@ -23,6 +30,16 @@ export const GET_OBJECT_METADATA = defineTool({
     requireAuth(ctx);
     requireOrganization(ctx);
     await ctx.access.check();
+
+    // Enforce the same personal-folder ACL the `/api/:org/fs` routes apply.
+    const fsTarget = parseOrgFsKey(input.key);
+    if (fsTarget) {
+      const userId = getUserId(ctx);
+      if (!userId || !canReadPersonal(fsTarget.volume, fsTarget.path, userId)) {
+        throw new ForbiddenError("This file belongs to another member");
+      }
+    }
+
     const storage = requireObjectStorage(ctx);
 
     const result = await storage.head(input.key);
@@ -36,6 +53,7 @@ export const GET_OBJECT_METADATA = defineTool({
           ? result.lastModified
           : new Date().toISOString()),
       etag: result.etag ?? "",
+      metadata: result.metadata,
     };
   },
 });

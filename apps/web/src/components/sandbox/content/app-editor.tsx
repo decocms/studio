@@ -1,7 +1,7 @@
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { ChevronRight } from "@untitledui/icons";
-import { useRef, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import { toast } from "sonner";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { ScrollArea } from "@decocms/ui/components/scroll-area.tsx";
@@ -12,6 +12,7 @@ import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 import type { SectionCatalogEntry } from "@/components/sections-editor/section-catalog";
 import { createReferencedBlockSaver } from "@/components/sections-editor/save-referenced-block";
 import {
+  type SaveGuard,
   useDebouncedSaveBlock,
   useSaveBlock,
 } from "@/components/sections-editor/use-save-block";
@@ -38,6 +39,9 @@ export function AppEditor({
   excludeFields,
   schemaPending = false,
   previewBaseUrl = null,
+  notice,
+  saveGuard,
+  persistDefaults,
 }: {
   orgSlug: string;
   virtualMcpId: string;
@@ -51,6 +55,12 @@ export function AppEditor({
   excludeFields?: readonly string[];
   schemaPending?: boolean;
   previewBaseUrl?: string | null;
+  /** Shown above the form (e.g. that the block is not saved yet). */
+  notice?: ReactNode;
+  /** A version guard for this block's autosaves (e.g. create-only on the first save). */
+  saveGuard?: SaveGuard;
+  /** `false`: the form's `@default`s are saved with the first change, not when it opens. */
+  persistDefaults?: boolean;
 }) {
   const threadId = useOptionalChatTask()?.taskId ?? null;
   const t = useT();
@@ -58,6 +68,7 @@ export function AppEditor({
   // back to the Fast Preview production deployment while the sandbox boots.
   const sectionPreviewBase = useSectionPreviewBase({
     virtualMcpId,
+    branch,
     sandboxUrl: previewBaseUrl,
   });
   const resolveType =
@@ -68,14 +79,24 @@ export function AppEditor({
   const title =
     titleOverride ?? (block ? appLabel(blockKey, block, meta) : blockKey);
 
-  const { save, flush, isPending } = useDebouncedSaveBlock({
-    orgSlug,
-    virtualMcpId,
-    branch,
-  });
+  const { save, flush, isPending } = useDebouncedSaveBlock(
+    { orgSlug, virtualMcpId, branch },
+    { guard: saveGuard },
+  );
   const saveBlock = useSaveBlock({ orgSlug, virtualMcpId, branch });
+  // Not debounced: the saved block's form reads its value from the decofile cache, which a delay leaves stale.
   const saveReferencedBlock = createReferencedBlockSaver((refKey, data) =>
-    save(refKey, data),
+    saveBlock.mutate(
+      { blockKey: refKey, data },
+      {
+        onError: (err) =>
+          toast.error(
+            t("sectionsEditor.sectionsEditor.saveFailed", {
+              error: err.message,
+            }),
+          ),
+      },
+    ),
   );
 
   const [prevBlockKey, setPrevBlockKey] = useState(blockKey);
@@ -192,7 +213,7 @@ export function AppEditor({
                     }}
                     title={crumbText}
                     className={cn(
-                      "min-w-0 truncate rounded-md px-1 py-0.5 text-left transition-colors",
+                      "min-w-0 truncate rounded-lg px-1 py-0.5 text-left transition-colors",
                       isLast
                         ? "font-medium text-foreground"
                         : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
@@ -212,12 +233,14 @@ export function AppEditor({
       <ScrollArea className="min-h-0 min-w-0 flex-1 [&_[data-slot=scroll-area-viewport]>div]:!block">
         <div className="px-6 py-6">
           <div className="mx-auto max-w-xl">
+            {notice}
             {hasEditableFields ? (
               <SchemaForm
                 key={`${blockKey}:${formResetKey}`}
                 schema={schema!}
                 value={effectiveValue}
                 onChange={handleChange}
+                persistDefaults={persistDefaults}
                 basePath=""
                 breadcrumbPath={breadcrumbs}
                 onBreadcrumbChange={handleBreadcrumbChange}

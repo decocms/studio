@@ -1,7 +1,22 @@
 /**
- * @viktormarinho: This plugin is not working on the current
- * experimental js plugin support of oxlint. It will probably
- * be fixed soon, though. Disabled for now.
+ * Lint plugin enforcing the Tailwind v4 design system tokens.
+ *
+ * The palette lives in `packages/ui/src/styles/global.css` as `--color-*`
+ * custom properties, so a color belongs to the theme by name (`bg-success`,
+ * `text-muted-foreground`) and follows light/dark with it. A raw Tailwind
+ * palette class (`text-emerald-600`) pins one hue in one mode and is invisible
+ * to every later theme change -- which is why review keeps catching these by
+ * hand.
+ *
+ * Detection is deliberately narrow: inside a `className`, a class whose final
+ * segment is a Tailwind numeric scale step (50-900) under a color-bearing
+ * category. The design system defines no numeric-scale tokens of its own
+ * (`--color-chart-1` ends in `1`, not a scale step), so this never fires on a
+ * theme class.
+ *
+ * A report must pass `node`, never a byte offset -- oxlint's
+ * `context.report()` requires `node` or `loc` and throws otherwise. That throw
+ * is what left this plugin unregistered and silently dead until 2026-09.
  */
 const BANNED_CLASS_NAMES_CONTAIN_VALUES = [
   "50",
@@ -45,12 +60,12 @@ function isValidDesignSystemToken(className) {
   return !BANNED_CLASS_NAMES_CONTAIN_VALUES.includes(value);
 }
 
-function handleLiteral({ context, value, range }) {
+function handleLiteral({ context, value, node }) {
   const classes = value.split(" ");
   for (const className of classes) {
     if (!isValidDesignSystemToken(className)) {
       context.report({
-        range,
+        node,
         message: `Class "${className}" does not use design system tokens. Please use tokens from the design system.`,
       });
     }
@@ -73,7 +88,7 @@ const ensureTailwindDesignSystemTokens = {
                 handleLiteral({
                   context,
                   value: String(node.value.value),
-                  range: node.value.range,
+                  node: node.value,
                 });
               }
 
@@ -85,7 +100,7 @@ const ensureTailwindDesignSystemTokens = {
                       handleLiteral({
                         context,
                         value: String(arg.value),
-                        range: arg.range,
+                        node: arg,
                       });
                     }
                   }

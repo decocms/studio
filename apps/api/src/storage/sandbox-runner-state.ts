@@ -202,7 +202,7 @@ export class KyselySandboxProviderStateStore implements RunnerStateStore {
   }
 }
 
-/** Generous enough to cover agent-sandbox waitForSandboxReady (180s) + buffer; short enough that a stuck holder isn't invisible. */
+/** How long a second ensure waits behind one that is provisioning before failing; short enough that a stuck holder isn't invisible. */
 const LOCK_WAIT_MS = 90_000;
 
 /** pg SQLSTATE 57014 = query_canceled — what `statement_timeout` raises. */

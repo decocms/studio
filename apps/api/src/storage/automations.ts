@@ -10,9 +10,16 @@
  * DB-side acquire/release.
  */
 
-import { type Kysely } from "kysely";
+import { type Kysely, sql } from "kysely";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
-import type { Database, Automation, AutomationTrigger } from "./types";
+import type {
+  Automation,
+  AutomationTrigger,
+  AutomationTriggerType,
+  BoardTransitionFromKind,
+  Database,
+} from "./types";
+import type { HostedHarnessId } from "@/api/routes/decopilot/dispatch-run";
 
 // ============================================================================
 // Input Types
@@ -43,13 +50,16 @@ export interface UpdateAutomationInput {
 
 export interface CreateTriggerInput {
   automation_id: string;
-  type: "cron" | "event" | "webhook";
+  type: AutomationTriggerType;
   cron_expression?: string | null;
   connection_id?: string | null;
   event_type?: string | null;
   params?: string | null;
   next_run_at?: string | null;
   api_key_id?: string | null;
+  column_key?: string | null;
+  from_kind?: BoardTransitionFromKind | null;
+  from_statuses?: string[];
 }
 
 // ============================================================================
@@ -62,6 +72,13 @@ export interface AutomationWithTriggerCount extends Automation {
 
 export interface AutomationWithTriggerInfo extends AutomationWithTriggerCount {
   nearest_next_run_at: string | null;
+  /** Its board starters: the column each one is about, and its type. */
+  board_triggers: BoardTrigger[];
+}
+
+export interface BoardTrigger {
+  type: "board_column_transition" | "board_pr_ready" | "board_pr_merged";
+  column_key: string;
 }
 
 export interface AutomationsStorage {
@@ -98,6 +115,26 @@ export interface AutomationsStorage {
     connectionId: string,
   ): Promise<Pick<Automation, "id" | "name">[]>;
   // Includes inactive automations: reconciler pauses (not deletes) their schedules.
+  findActiveBoardColumnTriggers(): Promise<
+    (AutomationTrigger & { automation: Automation })[]
+  >;
+  hasActiveBoardColumnTrigger(
+    taskBoardItemId: string,
+    columnKey: string,
+  ): Promise<boolean>;
+  listJiraTransitionTriggers(
+    organizationId: string,
+    opts?: { jiraStatus?: string; activeOnly?: boolean },
+  ): Promise<(AutomationTrigger & { automation: Automation })[]>;
+  claimTriggerFire(triggerId: string, eventKey: string): Promise<boolean>;
+  findBuiltinTrigger(
+    organizationId: string,
+    systemKey: string,
+  ): Promise<{ automationId: string; triggerId: string } | null>;
+  builtinActive(
+    organizationId: string,
+    systemKey: string,
+  ): Promise<boolean | null>;
   findAllCronTriggers(): Promise<
     (AutomationTrigger & { automation: Automation })[]
   >;
@@ -105,6 +142,7 @@ export interface AutomationsStorage {
   createAutomationRunThread(
     automation: Automation,
     triggerId: string | null,
+    harnessId: HostedHarnessId,
   ): Promise<string>;
   markRunFailed(taskId: string, reason?: string, kind?: string): Promise<void>;
   markRunCompleted(taskId: string): Promise<void>;
@@ -159,6 +197,7 @@ function automationFromDbRow(row: {
   temperature: number;
   max_agent_steps: number | null;
   virtual_mcp_id: string;
+  system_key: string | null;
   created_at: Date | string;
   updated_at: Date | string;
 }): Automation {
@@ -174,6 +213,7 @@ function automationFromDbRow(row: {
     temperature: row.temperature,
     max_agent_steps: row.max_agent_steps ?? null,
     virtual_mcp_id: row.virtual_mcp_id,
+    system_key: row.system_key ?? null,
     created_at: toIsoString(row.created_at),
     updated_at: toIsoString(row.updated_at),
   };
@@ -190,12 +230,15 @@ function triggerFromDbRow(row: {
   last_run_at: Date | string | null;
   next_run_at?: Date | string | null;
   api_key_id?: string | null;
+  column_key?: string | null;
+  from_kind?: string | null;
+  from_statuses?: string[] | null;
   created_at: Date | string;
 }): AutomationTrigger {
   return {
     id: row.id,
     automation_id: row.automation_id,
-    type: row.type as "cron" | "event" | "webhook",
+    type: row.type as AutomationTriggerType,
     cron_expression: row.cron_expression,
     connection_id: row.connection_id,
     event_type: row.event_type,
@@ -203,6 +246,9 @@ function triggerFromDbRow(row: {
     last_run_at: row.last_run_at ? toIsoString(row.last_run_at) : null,
     next_run_at: row.next_run_at ? toIsoString(row.next_run_at) : null,
     api_key_id: row.api_key_id ?? null,
+    column_key: row.column_key ?? null,
+    from_kind: (row.from_kind as BoardTransitionFromKind | null) ?? null,
+    from_statuses: row.from_statuses ?? [],
     created_at: toIsoString(row.created_at),
   };
 }
@@ -223,6 +269,7 @@ const TRIGGER_JOIN_AUTOMATION_COLUMNS = [
   "a.temperature as a_temperature",
   "a.max_agent_steps as a_max_agent_steps",
   "a.virtual_mcp_id as a_virtual_mcp_id",
+  "a.system_key as a_system_key",
   "a.created_at as a_created_at",
   "a.updated_at as a_updated_at",
 ] as const;
@@ -239,6 +286,7 @@ function automationFromAliasedRow(row: {
   a_temperature: number;
   a_max_agent_steps: number | null;
   a_virtual_mcp_id: string;
+  a_system_key: string | null;
   a_created_at: Date | string;
   a_updated_at: Date | string;
 }): Automation {
@@ -254,10 +302,15 @@ function automationFromAliasedRow(row: {
     temperature: row.a_temperature,
     max_agent_steps: row.a_max_agent_steps,
     virtual_mcp_id: row.a_virtual_mcp_id,
+    system_key: row.a_system_key,
     created_at: row.a_created_at,
     updated_at: row.a_updated_at,
   });
 }
+
+/** `automation_trigger_fires` rows are otherwise never deleted — a trigger
+ *  fired repeatedly over months would accumulate one row per event forever. */
+const TRIGGER_FIRE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
 // ============================================================================
 // KyselyAutomationsStorage Implementation
@@ -339,11 +392,18 @@ class KyselyAutomationsStorage implements AutomationsStorage {
         "a.temperature",
         "a.max_agent_steps",
         "a.virtual_mcp_id",
+        "a.system_key",
         "a.created_at",
         "a.updated_at",
       ])
       .select((eb) => eb.fn.count("t.id").as("trigger_count"))
       .select((eb) => eb.fn.min("t.next_run_at").as("nearest_next_run_at"))
+      .select(
+        sql<BoardTrigger[]>`coalesce(
+          jsonb_agg(jsonb_build_object('type', t.type, 'column_key', t.column_key))
+            filter (where t.type in ('board_column_transition', 'board_pr_ready', 'board_pr_merged')),
+          '[]'::jsonb)`.as("board_triggers"),
+      )
       .where("a.organization_id", "=", organizationId);
 
     if (virtualMcpId) {
@@ -363,6 +423,7 @@ class KyselyAutomationsStorage implements AutomationsStorage {
         "a.temperature",
         "a.max_agent_steps",
         "a.virtual_mcp_id",
+        "a.system_key",
         "a.created_at",
         "a.updated_at",
       ])
@@ -372,6 +433,7 @@ class KyselyAutomationsStorage implements AutomationsStorage {
     return rows.map((row) => ({
       ...automationFromDbRow(row),
       trigger_count: Number(row.trigger_count),
+      board_triggers: row.board_triggers,
       nearest_next_run_at: row.nearest_next_run_at
         ? toIsoString(row.nearest_next_run_at as unknown as string)
         : null,
@@ -439,6 +501,9 @@ class KyselyAutomationsStorage implements AutomationsStorage {
       last_run_at: null,
       next_run_at: input.next_run_at ?? null,
       api_key_id: input.api_key_id ?? null,
+      column_key: input.column_key ?? null,
+      from_kind: input.from_kind ?? null,
+      from_statuses: input.from_statuses ?? [],
       created_at: now,
     };
 
@@ -567,6 +632,170 @@ class KyselyAutomationsStorage implements AutomationsStorage {
     return rows;
   }
 
+  /**
+   * Active `board_column_transition` triggers, with their automations, across
+   * every org — the board transition triggers' work list. An org with none is
+   * absent, which is what keeps the sweep cheap where nobody uses them.
+   */
+  async findActiveBoardColumnTriggers(): Promise<
+    (AutomationTrigger & { automation: Automation })[]
+  > {
+    const rows = await this.db
+      .selectFrom("automation_triggers as t")
+      .innerJoin("automations as a", "a.id", "t.automation_id")
+      .select([
+        "t.id",
+        "t.automation_id",
+        "t.type",
+        "t.cron_expression",
+        "t.connection_id",
+        "t.event_type",
+        "t.params",
+        "t.last_run_at",
+        "t.api_key_id",
+        "t.column_key",
+        "t.from_kind",
+        "t.from_statuses",
+        "t.created_at",
+        ...TRIGGER_JOIN_AUTOMATION_COLUMNS,
+      ])
+      .where("t.type", "=", "board_column_transition")
+      .where("a.active", "=", true)
+      .execute();
+
+    return rows.map((row) => ({
+      ...triggerFromDbRow(row),
+      automation: automationFromAliasedRow(row),
+    }));
+  }
+
+  /**
+   * Whether an active `board_column_transition` trigger in the card's org
+   * watches `columnKey`. What a lane move checks before it starts a settle
+   * wait, so a board nobody automates never enqueues anything.
+   */
+  async hasActiveBoardColumnTrigger(
+    taskBoardItemId: string,
+    columnKey: string,
+  ): Promise<boolean> {
+    const row = await this.db
+      .selectFrom("task_board_items as i")
+      .innerJoin("automations as a", "a.organization_id", "i.organization_id")
+      .innerJoin("automation_triggers as t", "t.automation_id", "a.id")
+      .select("t.id")
+      .where("i.id", "=", taskBoardItemId)
+      .where("a.active", "=", true)
+      .where("t.type", "=", "board_column_transition")
+      .where("t.column_key", "=", columnKey)
+      .limit(1)
+      .executeTakeFirst();
+    return row !== undefined;
+  }
+
+  /** A built-in's automation and its trigger in one org; null when the org
+   *  was not seeded with it. */
+  async findBuiltinTrigger(
+    organizationId: string,
+    systemKey: string,
+  ): Promise<{ automationId: string; triggerId: string } | null> {
+    const row = await this.db
+      .selectFrom("automations as a")
+      .innerJoin("automation_triggers as t", "t.automation_id", "a.id")
+      .select(["a.id as automationId", "t.id as triggerId"])
+      .where("a.organization_id", "=", organizationId)
+      .where("a.system_key", "=", systemKey)
+      .limit(1)
+      .executeTakeFirst();
+    return row ?? null;
+  }
+
+  /**
+   * The org's `jira_transition` triggers with their automations, oldest
+   * first; on one status when `jiraStatus` is given (`column_key` holds it).
+   */
+  async listJiraTransitionTriggers(
+    organizationId: string,
+    opts?: { jiraStatus?: string; activeOnly?: boolean },
+  ): Promise<(AutomationTrigger & { automation: Automation })[]> {
+    let query = this.db
+      .selectFrom("automation_triggers as t")
+      .innerJoin("automations as a", "a.id", "t.automation_id")
+      .select([
+        "t.id",
+        "t.automation_id",
+        "t.type",
+        "t.cron_expression",
+        "t.connection_id",
+        "t.event_type",
+        "t.params",
+        "t.last_run_at",
+        "t.api_key_id",
+        "t.column_key",
+        "t.from_kind",
+        "t.from_statuses",
+        "t.created_at",
+        ...TRIGGER_JOIN_AUTOMATION_COLUMNS,
+      ])
+      .where("t.type", "=", "jira_transition")
+      .where("a.organization_id", "=", organizationId);
+    if (opts?.jiraStatus !== undefined) {
+      query = query.where("t.column_key", "=", opts.jiraStatus);
+    }
+    if (opts?.activeOnly) query = query.where("a.active", "=", true);
+    const rows = await query
+      .orderBy("t.created_at", "asc")
+      .orderBy("t.id", "asc")
+      .execute();
+    return rows.map((row) => ({
+      ...triggerFromDbRow(row),
+      automation: automationFromAliasedRow(row),
+    }));
+  }
+
+  /** Whether a built-in is on in one org; null when the org was not seeded
+   *  with it. */
+  async builtinActive(
+    organizationId: string,
+    systemKey: string,
+  ): Promise<boolean | null> {
+    const row = await this.db
+      .selectFrom("automations")
+      .select("active")
+      .where("organization_id", "=", organizationId)
+      .where("system_key", "=", systemKey)
+      .executeTakeFirst();
+    return row?.active ?? null;
+  }
+
+  /**
+   * Claim a trigger's fire for one event. True only for the first caller:
+   * replicas sweeping the same move, or one sweep seeing it twice, all race
+   * here and one wins.
+   */
+  async claimTriggerFire(
+    triggerId: string,
+    eventKey: string,
+  ): Promise<boolean> {
+    // Prune-on-write: the only deletion path for this table.
+    await this.db
+      .deleteFrom("automation_trigger_fires")
+      .where("trigger_id", "=", triggerId)
+      .where(
+        "created_at",
+        "<",
+        new Date(Date.now() - TRIGGER_FIRE_RETENTION_MS),
+      )
+      .execute();
+
+    const row = await this.db
+      .insertInto("automation_trigger_fires")
+      .values({ trigger_id: triggerId, event_key: eventKey })
+      .onConflict((oc) => oc.columns(["trigger_id", "event_key"]).doNothing())
+      .returning("trigger_id")
+      .executeTakeFirst();
+    return row !== undefined;
+  }
+
   async findAllCronTriggers(): Promise<
     (AutomationTrigger & { automation: Automation })[]
   > {
@@ -609,6 +838,7 @@ class KyselyAutomationsStorage implements AutomationsStorage {
   async createAutomationRunThread(
     automation: Automation,
     triggerId: string | null,
+    harnessId: HostedHarnessId,
   ): Promise<string> {
     const taskId = generatePrefixedId("thrd");
     const now = new Date().toISOString();
@@ -622,7 +852,7 @@ class KyselyAutomationsStorage implements AutomationsStorage {
         status: "in_progress",
         trigger_id: triggerId,
         virtual_mcp_id: automation.virtual_mcp_id,
-        harness_id: "decopilot",
+        harness_id: harnessId,
         // A headless agent run needs a pod, so it is a sandbox session whatever the project defaults to.
         metadata: JSON.stringify({ runtime: "sandbox" }),
         hidden: false,

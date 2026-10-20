@@ -61,10 +61,9 @@ const VALID_INPUT = {
   threadId: "thrd_e2e",
   userMessage: { role: "user" },
   harness: {},
-  // `cwd: "/repo"` is the only accepted path, and it obliges the repo it names.
+  // Only the working directory and branch are consumed by the runner.
   workspace: {
     cwd: "/repo",
-    repo: { owner: "o", name: "n", connectedGithub: false },
     branch: null,
   },
   models: { thinking: { id: "m", title: "M", credentialId: "c" } },
@@ -155,22 +154,20 @@ describe("daemon e2e: dispatch", () => {
     });
   });
 
-  it("accepts the legacy harnessId envelope during a rolling upgrade", async () => {
+  it("POST /dispatch with a non-string harnessId → 400 bad_harness_id", async () => {
     const res = await fetch(url(d, "/_sandbox/dispatch"), {
       method: "POST",
       headers: jsonAuthHeaders(),
       body: toBody({
-        harnessId: "claude-code",
-        runId: "run-legacy-envelope",
+        harnessId: 123,
+        runId: "run-bad-harness",
         input: VALID_INPUT,
       }),
     });
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({
-      chunks: [],
-      done: true,
-      error: { code: "unknown_harness", message: expect.any(String) },
-    });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toBe(
+      "bad_harness_id",
+    );
   });
 
   it("DELETE /runs/:id with bearer → 204 (idempotent for unknown runs)", async () => {
@@ -222,11 +219,12 @@ describe("daemon e2e: dispatch runs a harness", () => {
   }, HOOK_TIMEOUT_MS);
 
   /** Dispatch one run, asking the stub for `mode`. */
-  const dispatch = (mode: string, runId: string) =>
+  const dispatch = (mode: string, runId: string, harnessId?: string) =>
     fetch(url(d, "/_sandbox/dispatch"), {
       method: "POST",
       headers: jsonAuthHeaders(),
       body: toBody({
+        ...(harnessId ? { harnessId } : {}),
         runId,
         input: { ...VALID_INPUT, harness: { stubMode: mode } },
       }),
@@ -236,13 +234,14 @@ describe("daemon e2e: dispatch runs a harness", () => {
   async function result(
     mode: string,
     runId: string,
+    harnessId?: string,
   ): Promise<{
     chunks: unknown[];
     error: DispatchFrame["error"];
     done: boolean;
     at: number[];
   }> {
-    const res = await dispatch(mode, runId);
+    const res = await dispatch(mode, runId, harnessId);
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("application/json");
     const chunks: unknown[] = [];
@@ -273,11 +272,25 @@ describe("daemon e2e: dispatch runs a harness", () => {
         (body.chunks[0] as { delta: string }).delta,
       ) as Record<string, unknown>;
       expect(echoed.threadId).toBe("thrd_e2e");
+      // An envelope from a Studio that predates `harnessId` runs claude-code.
+      expect(echoed.harnessId).toBe("claude-code");
       // `/repo` is rebased onto the pod's app root before the harness sees it.
       expect(echoed.cwd).toMatch(/\/repo$/);
       expect(echoed.cwd).not.toBe("/repo");
       // The model credential reaches the harness as its spawn env.
       expect(echoed.hasExpectedApiKey).toBe(true);
+    },
+    HOOK_TIMEOUT_MS,
+  );
+
+  it(
+    "hands the envelope's harnessId to the runner",
+    async () => {
+      const body = await result("ok", "run-codex", "codex");
+      const echoed = JSON.parse(
+        (body.chunks[0] as { delta: string }).delta,
+      ) as Record<string, unknown>;
+      expect(echoed.harnessId).toBe("codex");
     },
     HOOK_TIMEOUT_MS,
   );
@@ -479,6 +492,106 @@ describe("daemon e2e: dispatch runs a harness", () => {
       const terminal = (await firstEnded).at(-1);
       expect(terminal?.done).toBe(true);
       expect(terminal?.error?.code).toBe("cancelled");
+    },
+    HOOK_TIMEOUT_MS,
+  );
+
+  /** POST one live message into `runId`. */
+  const sendLive = (runId: string, id: string, text: string, auth = true) =>
+    fetch(url(d, `/_sandbox/runs/${runId}/messages`), {
+      method: "POST",
+      headers: auth
+        ? jsonAuthHeaders()
+        : { "Content-Type": "application/json" },
+      body: toBody({ id, text }),
+    });
+
+  it(
+    "delivers a live message into the running turn, once per id",
+    async () => {
+      const runId = "run-live";
+      const res = await fetch(url(d, "/_sandbox/dispatch"), {
+        method: "POST",
+        headers: jsonAuthHeaders(),
+        body: toBody({
+          runId,
+          input: {
+            ...VALID_INPUT,
+            harness: { stubMode: "live" },
+            liveMessages: true,
+          },
+        }),
+      });
+      expect(res.status).toBe(200);
+      const frames = readFrames(res)[Symbol.asyncIterator]();
+      // The harness is up and reading once its first frame is out.
+      expect((await frames.next()).value?.frame.chunks).toEqual([
+        { type: "started" },
+      ]);
+
+      expect(
+        (await sendLive(runId, "m1", "check the tests", false)).status,
+      ).toBe(401);
+      const delivered = await sendLive(runId, "m1", "check the tests");
+      expect(delivered.status).toBe(200);
+      expect(await delivered.json()).toEqual({ delivered: true });
+      // A retried POST is answered from the run's memory, not sent again.
+      const retried = await sendLive(runId, "m1", "check the tests");
+      expect(retried.status).toBe(200);
+      expect(await retried.json()).toEqual({
+        delivered: true,
+        duplicate: true,
+      });
+      // The harness refuses once its turn is finishing; Studio queues those.
+      const refused = await sendLive(runId, "m2", "finish");
+      expect(refused.status).toBe(409);
+      expect(((await refused.json()) as { error: string }).error).toBe(
+        "turn_finishing",
+      );
+
+      const rest: DispatchFrame[] = [];
+      for (
+        let next = await frames.next();
+        !next.done;
+        next = await frames.next()
+      ) {
+        rest.push(next.value.frame);
+      }
+      expect(rest.flatMap((frame) => frame.chunks)).toEqual([
+        { type: "live", id: "m1" },
+      ]);
+      expect(rest.at(-1)?.done).toBe(true);
+      expect(rest.at(-1)?.error ?? null).toBeNull();
+
+      // The run is over, so there is nothing left to deliver into.
+      const late = await sendLive(runId, "m3", "too late");
+      expect(late.status).toBe(409);
+      expect(((await late.json()) as { error: string }).error).toBe(
+        "no_live_run",
+      );
+    },
+    HOOK_TIMEOUT_MS,
+  );
+
+  it(
+    "refuses a live message for a run dispatched without them",
+    async () => {
+      const res = await dispatch("hang", "run-not-live");
+      expect(res.status).toBe(200);
+      const ended = (async () => {
+        for await (const _ of readFrames(res));
+      })();
+      await new Promise((r) => setTimeout(r, 500));
+      const refused = await sendLive("run-not-live", "m1", "hello");
+      expect(refused.status).toBe(409);
+      expect(((await refused.json()) as { error: string }).error).toBe(
+        "live_messages_off",
+      );
+      await fetch(url(d, "/_sandbox/runs/run-not-live"), {
+        method: "DELETE",
+        headers: authHeaders(),
+      });
+      await ended;
     },
     HOOK_TIMEOUT_MS,
   );

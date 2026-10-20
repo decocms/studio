@@ -442,7 +442,7 @@ export function GenericToolCallPart({
           <button
             type="button"
             onClick={handleOpenInPanel}
-            className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground rounded-md [@media(hover:hover)]:hover:bg-accent/50 [@media(hover:hover)]:hover:text-foreground transition-colors"
+            className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground rounded-lg [@media(hover:hover)]:hover:bg-accent/50 [@media(hover:hover)]:hover:text-foreground transition-colors"
           >
             <Expand06 className="size-3.5" />
             {t("chat.generic.openInPanel")}

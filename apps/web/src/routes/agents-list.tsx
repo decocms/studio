@@ -31,7 +31,7 @@ import {
 } from "@decocms/ui/components/dropdown-menu.tsx";
 import { FolderClosed, Plus } from "@untitledui/icons";
 import { toast } from "sonner";
-import { GitHubRepoPicker } from "@/components/github-repo-picker.tsx";
+import { RepositoryImportPicker } from "@/components/repository-import-picker.tsx";
 import { track } from "@/lib/posthog-client";
 import { useT } from "@/i18n/use-t.ts";
 import { useDebouncedValue } from "@/hooks/use-debounced-value.ts";
@@ -75,12 +75,51 @@ export default function AgentsListPage() {
     }
   };
 
+  const createAction = canManageAgents && (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button size="sm">
+          <Plus size={14} />
+          {t("routes.agentsList.createAgent")}
+        </Button>
+      </DropdownMenuTrigger>
+      <CreateAgentDropdownContent
+        onCreateFromScratch={() => {
+          track("agent_create_clicked", {
+            source: "agents_list",
+            method: "scratch",
+          });
+          createVirtualMCP();
+        }}
+        onImportGitHub={() => {
+          track("agent_create_clicked", {
+            source: "agents_list",
+            method: "github",
+          });
+          setGithubPickerOpen(true);
+        }}
+        onImportDeco={() => {
+          track("agent_create_clicked", {
+            source: "agents_list",
+            method: "deco",
+          });
+          setImportDecoOpen(true);
+        }}
+        isCreating={isCreating}
+        align="end"
+        showDecoImport={showDecoImport}
+      />
+    </DropdownMenu>
+  );
+
   return (
     <Page>
       <Page.Content>
-        <Page.Body>
+        <Page.Container>
           <div className="flex flex-col gap-6">
-            <Page.Title>{t("routes.agentsList.title")}</Page.Title>
+            <Page.Title actions={createAction}>
+              {t("routes.agentsList.title")}
+            </Page.Title>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <SearchInput
                 value={search}
@@ -94,48 +133,13 @@ export default function AgentsListPage() {
                   }
                 }}
               />
-              {canManageAgents && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button size="sm">
-                      <Plus size={14} />
-                      {t("routes.agentsList.createAgent")}
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <CreateAgentDropdownContent
-                    onCreateFromScratch={() => {
-                      track("agent_create_clicked", {
-                        source: "agents_list",
-                        method: "scratch",
-                      });
-                      createVirtualMCP();
-                    }}
-                    onImportGitHub={() => {
-                      track("agent_create_clicked", {
-                        source: "agents_list",
-                        method: "github",
-                      });
-                      setGithubPickerOpen(true);
-                    }}
-                    onImportDeco={() => {
-                      track("agent_create_clicked", {
-                        source: "agents_list",
-                        method: "deco",
-                      });
-                      setImportDecoOpen(true);
-                    }}
-                    isCreating={isCreating}
-                    align="end"
-                    showDecoImport={showDecoImport}
-                  />
-                </DropdownMenu>
-              )}
             </div>
           </div>
 
           {filteredAgents.length === 0 && (
             <div className="flex items-center justify-center py-20">
               <EmptyState
+                actions={false}
                 image={
                   <FolderClosed size={48} className="text-muted-foreground" />
                 }
@@ -150,46 +154,6 @@ export default function AgentsListPage() {
                     : canManageAgents
                       ? t("routes.agentsList.createAgentToGetStarted")
                       : t("routes.agentsList.askAdminToCreate")
-                }
-                actions={
-                  !search &&
-                  canManageAgents && (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button size="sm">
-                          <Plus size={14} />
-                          {t("routes.agentsList.createAgent")}
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <CreateAgentDropdownContent
-                        onCreateFromScratch={() => {
-                          track("agent_create_clicked", {
-                            source: "agents_list_empty",
-                            method: "scratch",
-                          });
-                          createVirtualMCP();
-                        }}
-                        onImportGitHub={() => {
-                          track("agent_create_clicked", {
-                            source: "agents_list_empty",
-                            method: "github",
-                          });
-                          setGithubPickerOpen(true);
-                        }}
-                        onImportDeco={() => {
-                          track("agent_create_clicked", {
-                            source: "agents_list_empty",
-                            method: "deco",
-                          });
-                          setImportDecoOpen(true);
-                        }}
-                        isCreating={isCreating}
-                        align="center"
-                        showBetaBadge
-                        showDecoImport={showDecoImport}
-                      />
-                    </DropdownMenu>
-                  )
                 }
               />
             </div>
@@ -220,10 +184,10 @@ export default function AgentsListPage() {
               </div>
             </div>
           )}
-        </Page.Body>
+        </Page.Container>
       </Page.Content>
 
-      <GitHubRepoPicker
+      <RepositoryImportPicker
         open={githubPickerOpen}
         onOpenChange={setGithubPickerOpen}
       />

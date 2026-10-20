@@ -1,11 +1,11 @@
 import { DotsVertical, Settings02, Trash01 } from "@untitledui/icons";
 import { formatDistanceToNow } from "date-fns";
-import { ptBR as ptBRLocale } from "date-fns/locale/pt-BR";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { AgentAvatar } from "@/components/agent-icon";
+import { useDateFnsLocale } from "@/hooks/use-date-fns-locale.ts";
 import { useNavigateToAgent } from "@/hooks/use-navigate-to-agent";
+import { useProjectFirstNav } from "@/hooks/use-preferences";
 import { landingTabIdFor } from "@/layouts/main-panel-tabs/tab-id";
-import { usePreferences } from "@/hooks/use-preferences.ts";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Card } from "@decocms/ui/components/card.tsx";
 import {
@@ -28,21 +28,17 @@ export function ProjectCard({
   onDeleteClick,
 }: ProjectCardProps) {
   const navigateToAgent = useNavigateToAgent();
+  const projectFirstNav = useProjectFirstNav();
   const t = useT();
-  const [preferences] = usePreferences();
-  const locale = preferences.language === "pt-BR" ? ptBRLocale : undefined;
+  const locale = useDateFnsLocale();
   // The main agent is org-wide config written via ORGANIZATION_SETTINGS_UPDATE,
   // which the backend gates on `org:manage` — not `agents:manage`. Match it so
   // the action isn't shown to users whose click would fail server-side.
 
-  /**
-   * Where this card lands: the agent's OWN chosen main view, the same
-   * `defaultMainView` the workspace resolves — so a Site Editor agent opens on
-   * the Site Editor rather than a generic default. An agent that names no view
-   * (or names Chat) still lands with no panel at all, exactly as before, so the
-   * card cannot force a panel open on an agent configured chat-first.
-   */
-  const landingPanel = landingTabIdFor(project.metadata?.ui?.layout);
+  // `panel` must stay absent for project-first nav's own routing to apply.
+  const landingPanel = projectFirstNav
+    ? undefined
+    : landingTabIdFor(project.metadata?.ui?.layout);
 
   return (
     <Card className="relative transition-colors group overflow-hidden flex flex-col h-full hover:bg-muted/50">

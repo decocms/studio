@@ -22,6 +22,11 @@ export const AI_PROVIDER_TOPUP_URL = defineTool({
   name: "AI_PROVIDER_TOPUP_URL",
   description:
     "Get a checkout URL to top up credits for a provider that supports it (e.g. Deco AI Gateway)",
+  // Every plan carries `credits` today, Free included — what a top-up buys is
+  // the wallet, never a bigger allowance. Still gated here as well as in the
+  // UI: a checkout URL is the thing that takes money, hiding a button is not a
+  // control, and a plan can have `credits` revoked per org.
+  requiresFeature: "credits",
   inputSchema: z.object({
     providerId: z.enum(HOSTED_PROVIDER_IDS),
     amountCents: z

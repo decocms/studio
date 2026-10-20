@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 /** The ONE sidebar shell — header, back row, body, footer — and the only place
  *  those four are spaced. Three sidebars used to hand-roll this arrangement
  *  (desktop org, mobile org, settings), each with its own padding, gaps and
@@ -5,7 +6,6 @@
  *  shell it was dropped into. A caller now chooses only WHAT goes in a slot;
  *  never how far apart the slots sit. */
 
-import type { ReactNode } from "react";
 import { Sidebar, SidebarContent } from "@decocms/ui/components/sidebar.tsx";
 import { LAYOUT_TOUR_ANCHORS } from "@/components/layout-tour/anchors";
 
@@ -16,8 +16,11 @@ interface SidebarShellProps {
    *  org/project mark and the collapse toggle without the body rebuilding a
    *  second copy of them. */
   header?: ReactNode;
-  /** The "← Back to X" row. Between the header and the body, and OUTSIDE the
-   *  scroll container, so the way out is never scrolled away from. */
+  /** The "← Back to X" row, above the body and STICKY, so the way out is never
+   *  scrolled away from. Sticky rather than a sibling above the scroller
+   *  because this row only exists on some routes: a slot that is 48px in
+   *  settings and 0px on the org root moved the whole nav list when you
+   *  navigated between them. Inside, the scroll box never changes. */
   back?: ReactNode;
   /** The nav itself. The shell owns the scrolling, so a body is a plain list. */
   body: ReactNode;
@@ -31,8 +34,8 @@ interface SidebarShellProps {
   sheet?: boolean;
 }
 
-/** The gutter a panel card puts above its own 48px `PanelHeader`
- *  (`WorkspacePanelGroup`'s `pt-1` plus `PanelCard`'s `p-0.5`). The sidebar has
+/** The gutter a panel card puts above its own 48px `Page.Header`
+ *  (`ChatLayout`'s `pt-1` plus its card wrapper's `p-0.5`). The sidebar has
  *  no card, so it repeats the inset here to start its header on the same line.
  *  Invisible: the gutter it exposes is `bg-sidebar`, same as the sidebar. */
 const SIDEBAR_TOP_INSET = "pt-1.5";
@@ -47,18 +50,23 @@ export function SidebarShell({
   const content = (
     <>
       {header && (
-        <>
-          <div className="flex h-12 shrink-0 flex-row items-center gap-2 px-2 group-data-[state=collapsed]/sidebar:h-auto group-data-[state=collapsed]/sidebar:flex-col group-data-[state=collapsed]/sidebar:py-2">
-            {header}
-          </div>
-          {/* `mt-1.5` mirrors the shell's top inset, so the header sits in an
-              even band instead of crowding the rule. On the strip itself it
-              would eat the 48px box and pull the mark off the panel header. */}
-          <div className="mt-1.5 h-px shrink-0 bg-sidebar-border" />
-        </>
+        <div
+          data-slot="sidebar-picker-header"
+          className="flex h-12 shrink-0 flex-row items-center gap-1 px-2 group-data-[state=collapsed]/sidebar:h-auto group-data-[state=collapsed]/sidebar:flex-col group-data-[state=collapsed]/sidebar:gap-2 group-data-[state=collapsed]/sidebar:py-2"
+        >
+          {header}
+        </div>
       )}
-      {back && <div className="shrink-0 px-2">{back}</div>}
-      <SidebarContent className="gap-0 overflow-y-auto px-2 pt-2 pb-2 group-data-[state=collapsed]/sidebar:[scrollbar-width:none] group-data-[state=collapsed]/sidebar:[&::-webkit-scrollbar]:hidden">
+      {header && (
+        <div className="hidden mt-1.5 h-px shrink-0 bg-sidebar-border" />
+      )}
+
+      <SidebarContent className="gap-0 overflow-y-auto px-2 pt-3 pb-2 group-data-[state=collapsed]/sidebar:[scrollbar-width:none] group-data-[state=collapsed]/sidebar:[&::-webkit-scrollbar]:hidden">
+        {back && (
+          <div className="sticky top-0 z-10 hidden shrink-0 bg-sidebar pb-2 not-empty:block">
+            {back}
+          </div>
+        )}
         {body}
       </SidebarContent>
       {footer}

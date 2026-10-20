@@ -1,6 +1,8 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect } from "react";
+import { useNewBlocksEditor } from "@/hooks/use-new-blocks-editor";
 import { useT } from "@/i18n/use-t.ts";
 import { resolveSchema } from "./resolve-schema";
+import { applySchemaDefaults } from "./schema-defaults";
 import type { LiveMeta, SchemaProperty } from "./resolve-schema";
 import type { FieldProps } from "./fields/field-props";
 import { StringField } from "./fields/string-field";
@@ -17,7 +19,15 @@ import { InlineUnionField } from "./fields/inline-union-field";
 import { LocationField } from "./fields/location-field";
 import { MapField } from "./fields/map-field";
 import { MultivariateFieldWrapper } from "./fields/multivariate-field-wrapper";
-import { isSecretBlock, SecretField } from "./fields/secret-field";
+import { expandRecursiveSchema } from "./fields/resolved-schema-cache";
+import { isSecretBlock } from "@decocms/shared/decofile";
+import { isSecretField } from "./fields/secret-field";
+import { SecretFieldForBackend } from "./fields/protocol-secret-field";
+import { isLazyFieldSchema, unwrapLazy, wrapLazy } from "./lazy-value";
+import {
+  isEmptyFieldValue,
+  RequiredFieldProvider,
+} from "./fields/required-field-context";
 import {
   isMultivariateArrayWrapper,
   isPageMultivariateSectionArrayField,
@@ -41,6 +51,18 @@ import {
   blockRefArrayItemSchemaFromRefs,
   inferBlockRefArrayItemSchema,
 } from "./block-ref-array-inference";
+import {
+  ObjectFieldExpansionProvider,
+  useHasObjectFieldExpansion,
+} from "./object-field-expansion";
+import type { VariantMatcherOps } from "./variant-matcher-rename";
+
+/**
+ * A default of `[]` is a NEW array on every render, so anything derived from
+ * it re-renders even when nothing changed. `never[]` is assignable to any
+ * `T[]`, so one frozen constant serves every optional list prop in this file.
+ */
+const EMPTY_ARRAY: never[] = [];
 
 /** Skip internal deco properties that shouldn't be user-editable. */
 const HIDDEN_PROPS = new Set(["__resolveType", "@type"]);
@@ -93,11 +115,8 @@ function arraySchemaForValue(schema: SchemaProperty): SchemaProperty | null {
   return { ...schema, type: "array", items: inferredItems };
 }
 
-function defaultForType(
-  type: string | undefined,
-  defaultVal: unknown,
-): unknown {
-  if (defaultVal !== undefined) return defaultVal;
+// Ignores `@default`: the root form saves missing defaults first (see `RootSchemaForm`).
+function emptyValueForType(type: string | undefined): unknown {
   switch (type) {
     case "string":
       return "";
@@ -153,8 +172,27 @@ function renderResolvedBlockRefValue(props: FieldProps): ReactNode | null {
   );
 }
 
-export function renderField(props: FieldProps) {
+export function renderField(fieldProps: FieldProps) {
+  const props = {
+    ...fieldProps,
+    schema: expandRecursiveSchema(fieldProps.schema, fieldProps.meta),
+  };
   const { schema, value } = props;
+
+  // `Lazy<T>`: edit the `T`; the stored value is the `lazy` block around it.
+  if (isLazyFieldSchema(schema)) {
+    const inner = schema.properties.value;
+    return renderField({
+      ...props,
+      schema: {
+        ...inner,
+        title: schema.title ?? inner.title,
+        description: schema.description ?? inner.description,
+      },
+      value: unwrapLazy(value),
+      onChange: (next) => props.onChange(wrapLazy(next)),
+    });
+  }
 
   if (isMultivariateArrayWrapper(value)) {
     const multivariateArray = unwrapMultivariateArrayValue(value);
@@ -221,6 +259,17 @@ export function renderField(props: FieldProps) {
     }
   }
 
+  // Array field whose stored value is a loader or saved-block reference.
+  if (
+    schema.loaderRef &&
+    value !== null &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    typeof (value as Record<string, unknown>).__resolveType === "string"
+  ) {
+    return renderField({ ...props, schema: schema.loaderRef });
+  }
+
   // Block-ref field (loader/section selector with anyOfRefs)
   if (
     schema.type === "block-ref" ||
@@ -251,12 +300,18 @@ export function renderField(props: FieldProps) {
           ? variantValueSchema
           : (schema.plainSchema ??
             variantValueSchema?.plainSchema ?? { type: "string" });
+      // The prop's own @description lives on the outer union, not the widget branch.
+      const innerFieldSchema: SchemaProperty = {
+        ...innerSchema,
+        description: innerSchema.description ?? schema.description,
+      };
       const innerRenderer = (fieldProps: FieldProps) =>
-        renderField({ ...fieldProps, schema: innerSchema });
+        renderField({ ...fieldProps, schema: innerFieldSchema });
       return (
         <MultivariateFieldWrapper
           key={props.path}
           {...props}
+          asDestination
           multivariateResolveType={ref.resolveType}
           renderInnerField={innerRenderer}
         />
@@ -314,13 +369,9 @@ export function renderField(props: FieldProps) {
     return <AnyOfField key={props.path} {...props} />;
   }
 
-  // Deco API secrets are stored as loader blocks, not plain strings.
-  if (
-    isSecretBlock(value) ||
-    schema.format === "password" ||
-    (value == null && schema.format === "password")
-  ) {
-    return <SecretField key={props.path} {...props} />;
+  // Deco secrets (loader blocks and their `@format secret` value) must never hit a plain text input.
+  if (isSecretField(schema, value)) {
+    return <SecretFieldForBackend key={props.path} {...props} />;
   }
 
   // Resolved block-ref value whose schema lost its picker branch — see renderResolvedBlockRefValue. Skip when a format/enum widget owns the field.
@@ -329,32 +380,40 @@ export function renderField(props: FieldProps) {
     if (blockRefForm) return blockRefForm;
   }
 
-  // If value is null/undefined, try to produce a typed default from schema
+  // Typed empty value for a missing or mis-seeded (non-object) value.
   const effectiveValue =
-    value === null || value === undefined
-      ? defaultForType(schema.type, schema.default)
+    value === null ||
+    value === undefined ||
+    (schema.type === "object" &&
+      (typeof value !== "object" || Array.isArray(value)))
+      ? emptyValueForType(schema.type)
       : value;
 
-  if (effectiveValue === null || effectiveValue === undefined) {
-    if (isSecretBlock(value)) {
-      return <SecretField key={props.path} {...props} />;
-    }
-    return null;
-  }
+  if (effectiveValue === null || effectiveValue === undefined) return null;
 
   if (isSecretBlock(effectiveValue)) {
-    return <SecretField key={props.path} {...props} value={effectiveValue} />;
+    return (
+      <SecretFieldForBackend
+        key={props.path}
+        {...props}
+        value={effectiveValue}
+      />
+    );
   }
 
   const effectiveProps = { ...props, value: effectiveValue };
 
-  // Determine render type
+  // Determine render type. A boolean/number schema wins over a mis-seeded stored value's typeof.
   const renderType: string =
-    value === null || value === undefined
-      ? (schema.type ?? typeof effectiveValue)
-      : Array.isArray(effectiveValue)
-        ? "array"
-        : typeof effectiveValue;
+    schema.type === "boolean" ||
+    schema.type === "number" ||
+    schema.type === "integer"
+      ? schema.type
+      : value === null || value === undefined
+        ? (schema.type ?? typeof effectiveValue)
+        : Array.isArray(effectiveValue)
+          ? "array"
+          : typeof effectiveValue;
 
   if (renderType === "array" || Array.isArray(effectiveValue)) {
     return <ArrayField key={props.path} {...effectiveProps} />;
@@ -366,17 +425,8 @@ export function renderField(props: FieldProps) {
     case "number":
     case "integer":
       return <NumberField key={props.path} {...effectiveProps} />;
-    case "string": {
-      // Format-based widgets
-      const fmt = schema.format;
-      if (fmt === "color-input" || fmt === "color") {
-        return <StringField key={props.path} {...effectiveProps} />;
-      }
-      if (fmt === "textarea" || fmt === "rich-text" || fmt === "html") {
-        return <StringField key={props.path} {...effectiveProps} />;
-      }
+    case "string":
       return <StringField key={props.path} {...effectiveProps} />;
-    }
     case "object":
       if (
         effectiveValue !== null &&
@@ -420,24 +470,17 @@ function renderMultivariateInnerField(
   );
 }
 
-export function SchemaForm({
-  schema,
-  value,
-  onChange,
-  basePath,
-  breadcrumbPath = [],
-  onBreadcrumbChange,
-  meta,
-  decofile,
-  onSaveReferencedBlock,
-  previewBaseUrl,
-  onAddSectionItem,
-  onRequestAddSection,
-  sandbox,
-}: {
+interface SchemaFormProps {
   schema: SchemaProperty;
   value: unknown;
   onChange: (value: unknown) => void;
+  /**
+   * Outermost form only: whether missing `@default`s are written back through
+   * `onChange` as soon as the form opens (the default). With `false` they are
+   * shown, and saved with the first real change, so opening a block that
+   * isn't saved yet never creates it.
+   */
+  persistDefaults?: boolean;
   basePath: string;
   breadcrumbPath?: Crumb[];
   onBreadcrumbChange?: (path: Crumb[]) => void;
@@ -451,8 +494,83 @@ export function SchemaForm({
   onAddSectionItem?: FieldProps["onAddSectionItem"];
   onRequestAddSection?: FieldProps["onRequestAddSection"];
   sandbox?: FieldProps["sandbox"];
-}) {
+  /**
+   * Naming a variant's matcher as a global block. Supplied only on the
+   * top-level (global-block) surface, where a section-multivariate flag is
+   * opened directly and the form value is the whole block.
+   */
+  onVariantMatcherOp?: VariantMatcherOps;
+}
+
+/**
+ * Render a schema-driven form. The outermost instance provides the
+ * `ObjectField` expansion store so manually-expanded groups survive breadcrumb
+ * drill-in/out (which unmounts sibling fields); nested instances reuse it. See
+ * `object-field-expansion.tsx`. It also writes missing `@default`s back through
+ * `onChange`, so the form only shows values that are saved.
+ */
+export function SchemaForm(props: SchemaFormProps) {
+  const hasExpansionProvider = useHasObjectFieldExpansion();
+  if (hasExpansionProvider) return <SchemaFormBody {...props} />;
+  return <RootSchemaForm {...props} />;
+}
+
+/**
+ * The value the outermost form shows: `value` with its missing `@default`s
+ * filled in. With `persist` (the default) they are also written back through
+ * `onChange` when the form opens, as the old admin's form did; without it they
+ * reach `onChange` only with the first real change.
+ */
+export function useSeededFormValue(
+  schema: SchemaProperty,
+  value: unknown,
+  onChange: (value: unknown) => void,
+  meta: LiveMeta | undefined,
+  persist = true,
+): unknown {
+  const seeded = applySchemaDefaults(schema, value, meta);
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- persists missing @defaults to the stored block when the form opens, as the old admin's form did
+  useEffect(() => {
+    if (persist && seeded !== value) onChange(seeded);
+  }, [persist, seeded, value, onChange]);
+  return seeded;
+}
+
+function RootSchemaForm(props: SchemaFormProps) {
+  const { schema, value, onChange, meta, persistDefaults } = props;
+  const seeded = useSeededFormValue(
+    schema,
+    value,
+    onChange,
+    meta,
+    persistDefaults,
+  );
+  return (
+    <ObjectFieldExpansionProvider>
+      <SchemaFormBody {...props} value={seeded} />
+    </ObjectFieldExpansionProvider>
+  );
+}
+
+function SchemaFormBody({
+  schema,
+  value,
+  onChange,
+  basePath,
+  breadcrumbPath = EMPTY_ARRAY,
+  onBreadcrumbChange,
+  meta,
+  decofile,
+  onSaveReferencedBlock,
+  previewBaseUrl,
+  onAddSectionItem,
+  onRequestAddSection,
+  sandbox,
+  onVariantMatcherOp,
+}: SchemaFormProps) {
   const t = useT();
+  // Which blocks editor renders this form, for browser tests to tell apart.
+  const editor = useNewBlocksEditor() ? "new" : "classic";
   const properties = schema.properties;
   // The resolved root can itself be a single union field — a discriminated
   // block config whose props are a plain `A | B | C` union (e.g. the VTEX
@@ -504,6 +622,7 @@ export function SchemaForm({
         onAddSectionItem={onAddSectionItem}
         onRequestAddSection={onRequestAddSection}
         sandbox={sandbox}
+        onVariantMatcherOp={onVariantMatcherOp}
         multivariateResolveType={value.__resolveType}
         renderInnerField={(fieldProps) =>
           renderMultivariateInnerField(fieldProps, variantValueSchema)
@@ -604,7 +723,7 @@ export function SchemaForm({
       ? (next: Crumb[]) => onBreadcrumbChange([...consumedPrefix, ...next])
       : onBreadcrumbChange;
   return (
-    <div className="min-w-0 space-y-6">
+    <div className="min-w-0 space-y-6" data-blocks-editor={editor}>
       {visibleKeys.map((key) => {
         const propSchema = properties[key];
         if (!propSchema) return null;
@@ -647,13 +766,14 @@ export function SchemaForm({
                   fieldOnBreadcrumbChange(prependCrumbIfAbsent(label, next))
             : fieldOnBreadcrumbChange;
 
-        return renderField({
+        const isRequired = requiredKeys.has(key);
+        const field = renderField({
           schema: propSchema,
           value: objValue[key],
           onChange: (val) => updateField(key, val),
           path: fieldPath,
           label,
-          required: requiredKeys.has(key),
+          required: isRequired,
           breadcrumbPath: fieldBreadcrumbPath,
           onBreadcrumbChange: fieldOnBreadcrumbChangeForKey,
           hasSiblingDrillDownFields,
@@ -670,6 +790,17 @@ export function SchemaForm({
           onRequestAddSection,
           sandbox,
         });
+        if (field === null) return null;
+        // Only real object properties get the marker (see RequiredFieldProvider).
+        return (
+          <RequiredFieldProvider
+            key={fieldPath}
+            required={isRequired}
+            invalid={isRequired && isEmptyFieldValue(objValue[key])}
+          >
+            {field}
+          </RequiredFieldProvider>
+        );
       })}
     </div>
   );

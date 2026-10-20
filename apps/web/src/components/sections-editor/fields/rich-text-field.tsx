@@ -29,24 +29,11 @@ import type { FieldProps } from "./field-props";
 import { FieldLabel } from "./field-label";
 import { RichTextColorControl } from "../rich-text-color-control";
 import { RichTextLinkControl, ToolbarButton } from "../rich-text-link-control";
+import { EDITOR_LINK_CLASS } from "../editor-classes";
+import { toInlineHtml } from "../inline-html";
 
 /** Heading levels the editor supports, in dropdown order. */
 const HEADING_LEVELS = [1, 2, 3, 4, 5, 6] as const;
-
-/**
- * Serialize the editor's HTML without a block wrapper, for `rich-text-inline`
- * fields whose value gets injected where a `<p>`/`<div>` can't legally nest
- * (inside another `<p>`, a phrasing-only context, etc.). ProseMirror always
- * keeps a top-level block internally, so we unwrap it on output: a single
- * block returns its inline contents; multiple blocks join with `<br>`. This
- * round-trips — TipTap re-wraps the inline HTML in a paragraph on load.
- */
-function toInlineHtml(html: string): string {
-  const body = new DOMParser().parseFromString(html, "text/html").body;
-  const blocks = Array.from(body.children);
-  if (blocks.length === 0) return body.innerHTML;
-  return blocks.map((block) => block.innerHTML).join("<br>");
-}
 
 /** Font-size stepper bounds (px). Default is the prose base when unset. */
 const FONT_SIZE_MIN = 8;
@@ -110,6 +97,7 @@ export function RichTextField({
         class: cn(
           "prose prose-sm dark:prose-invert max-w-none focus:outline-none",
           "min-h-[80px] px-3 py-2",
+          EDITOR_LINK_CLASS,
         ),
       },
     },
@@ -179,7 +167,7 @@ export function RichTextField({
         description={schema.description}
         virtualMcpId={sandbox?.virtualMcpId}
       />
-      <div className="overflow-hidden rounded-md border border-input">
+      <div className="overflow-hidden rounded-[var(--studio-surface-radius,var(--radius-md))] border card-shadow border-input">
         <div className="flex flex-wrap items-center gap-0.5 border-b border-border/60 bg-muted/30 px-1.5 py-1">
           <ToolbarButton
             active={marks.bold}

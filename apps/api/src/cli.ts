@@ -2,34 +2,19 @@
 /**
  * Deco CMS CLI Entry Point
  *
- * Routes subcommands and renders the Ink UI for server mode.
+ * Client commands for existing Studio instances and MCP app scaffolding.
  *
- * Usage:
- *   bunx decocms                    # Start server (Ink UI)
- *   bunx decocms dev                # Start dev server (Ink UI + Vite)
- *   bunx decocms init <directory>   # Scaffold from decocms/mcp-app
- *   bunx decocms completion         # Shell completion setup
- *   bunx decocms services <up|down|status>  # Service management
+ * Run Studio with Docker Compose or Kubernetes; this CLI does not manage servers.
  */
 
 import { parseArgs } from "util";
 import { homedir } from "os";
 import { join } from "path";
-import { resolveTui } from "./cli/resolve-tui";
 import { parsePositiveIntFlag } from "./cli/parse-positive-int-flag";
 
 const { values, positionals } = parseArgs({
   args: process.argv.slice(2),
   options: {
-    port: {
-      type: "string",
-      short: "p",
-      default: process.env.PORT || "3000",
-    },
-    "vite-port": {
-      type: "string",
-      default: process.env.VITE_PORT || "4000",
-    },
     home: {
       type: "string",
     },
@@ -46,18 +31,6 @@ const { values, positionals } = parseArgs({
       short: "v",
       default: false,
     },
-    "skip-migrations": {
-      type: "boolean",
-      default: false,
-    },
-    "no-tui": {
-      type: "boolean",
-      default: false,
-    },
-    "no-local-mode": {
-      type: "boolean",
-      default: false,
-    },
     target: { type: "string" },
     "dry-run": {
       type: "boolean",
@@ -66,48 +39,47 @@ const { values, positionals } = parseArgs({
     batch: { type: "string" },
     limit: { type: "string" },
     org: { type: "string" },
+    method: { type: "string", short: "X" },
+    data: { type: "string", short: "d" },
+    header: { type: "string", short: "H", multiple: true },
+    json: { type: "boolean", default: false },
   },
   allowPositionals: true,
 });
 
-// Fail fast with a usage error naming the flag, instead of a bad --port/--vite-port crashing net.Server.listen() with a confusing RangeError.
-try {
-  parsePositiveIntFlag("port", values.port, 65535);
-  parsePositiveIntFlag("vite-port", values["vite-port"], 65535);
-} catch (err) {
-  console.error((err as Error).message);
-  process.exit(1);
-}
-
 // ── Help ───────────────────────────────────────────────────────────────
-if (values.help) {
+if (values.help || process.argv.length === 2) {
   console.log(`
 Deco CMS — Open-source control plane for your AI agents
 
 Usage:
-  deco [options]                     Start server with Ink UI
-  deco dev [options]                 Start dev server (Vite + hot reload)
-  deco services <up|down|status>     Manage services (Postgres, NATS)
   deco init <directory>              Scaffold a new MCP app
-  deco auth <login|whoami|logout>    Manage CLI authentication
+  deco auth <login|whoami|token|logout>  Manage CLI authentication
+  deco api <path>                    Authenticated request to the studio
+  deco tools <list|describe|call>    List, inspect, and call builtin tools
+  deco orgs                          List the organizations you belong to
   deco backfill-assets               Hoist legacy inline media out of threads + connections + org logos
   deco completion [shell]            Install shell completions
 
-Server Options:
-  -p, --port <port>     Port to listen on (default: 3000, or PORT env var)
-  --home <path>         Data directory (default: ~/deco/, or DATA_DIR env var)
-  --no-local-mode       Disable auto-login (use cloud/SSO auth)
-  --skip-migrations     Skip database migrations on startup
-  --no-tui              Disable Ink UI, plain stdout (CI mode)
+Options:
+  --home <path>         CLI session directory (default: ~/deco/)
   -h, --help            Show this help message
   -v, --version         Show version
 
-Dev Options:
-  --vite-port <port>            Vite dev server port (default: 4000)
-  --base-url <url>              Base URL for the server
+Run Studio with Docker Compose or Kubernetes. See the repository setup guide.
 
-Auth Options:
+Auth Options (auth, api, tools, orgs):
   --target <url>        Decocms target (default: https://studio.decocms.com)
+
+API Options:
+  -X, --method <m>      HTTP method (default: POST with --data, else GET)
+  -d, --data <body>     Request body: literal, @<file>, or @- for stdin
+  -H, --header <h>      Extra header "Name: value" (repeatable)
+
+Tools Options:
+  --org <slug>          Organization slug (first path segment of the studio URL)
+  -d, --data <json>     Tool arguments: literal JSON, @<file>, or @- for stdin
+  --json                Print full objects from tools list and orgs
 
 Backfill Options (backfill-assets):
   --target <t>          all | threads | connections | organizations (default: all)
@@ -117,21 +89,14 @@ Backfill Options (backfill-assets):
   --limit <n>           Cap total rows scanned per target (default: all)
   --base-url <url>      Public origin for stored URLs (default: BASE_URL env)
 
-Environment Variables:
-  PORT                  Port to listen on (default: 3000)
-  DATA_DIR              Data directory (default: ~/deco/)
-  DATABASE_URL          Database connection URL
-  NODE_ENV              Set to 'production' for production mode
-  BETTER_AUTH_SECRET    Secret for authentication (auto-generated if not set)
-  ENCRYPTION_KEY        Key for encrypting secrets (auto-generated if not set)
-
 Examples:
-  deco                            Start with defaults (~/deco/)
-  deco -p 8080                    Start on port 8080
-  deco dev                        Start dev server
   deco init my-app                Scaffold a new MCP app
   deco auth login                 Log in to studio.decocms.com
   deco auth whoami                Show current session
+  deco orgs
+  deco tools list --org my-org thread
+  deco tools call ORGANIZATION_LIST --org my-org
+  deco api "/api/my-org/fs/<volume>/list?path=/"
 
 Documentation:
   https://decocms.com/studio
@@ -177,24 +142,6 @@ if (command === "init") {
 if (command === "completion") {
   const { completionCommand } = await import("./cli/commands/completion");
   await completionCommand(positionals[1]);
-  process.exit(0);
-}
-
-// ── Services command (plain output, no TUI) ────────────────────────────
-if (command === "services") {
-  const subcommand = positionals[1];
-  if (!subcommand) {
-    console.error("Usage: deco services <up|down|status>");
-    process.exit(1);
-  }
-
-  const decoHome = resolveDataDir();
-
-  const { servicesCommand } = await import("./cli/commands/services");
-  await servicesCommand({
-    subcommand,
-    home: decoHome,
-  });
   process.exit(0);
 }
 
@@ -256,119 +203,66 @@ if (command === "auth") {
   }
   if (sub === "whoami") {
     const { whoamiCommand } = await import("./cli/commands/auth/whoami");
-    const code = await whoamiCommand({ dataDir });
+    const code = await whoamiCommand({ dataDir, target: values.target });
+    process.exit(code);
+  }
+  if (sub === "token") {
+    const { tokenCommand } = await import("./cli/commands/auth/token");
+    const code = await tokenCommand({ dataDir, target: values.target });
     process.exit(code);
   }
   if (sub === "logout") {
     const { logoutCommand } = await import("./cli/commands/auth/logout");
-    const code = await logoutCommand({ dataDir });
+    const code = await logoutCommand({ dataDir, target: values.target });
     process.exit(code);
   }
-  console.error(`Usage: decocms auth <login|whoami|logout>`);
+  console.error(`Usage: decocms auth <login|whoami|token|logout>`);
   process.exit(1);
 }
 
-// ── Dev command (Ink TUI + dev servers) ─────────────────────────────────
-if (command === "dev") {
-  const decoHome =
-    values.home ||
-    process.env.DATA_DIR ||
-    process.env.DECOCMS_HOME ||
-    join(process.cwd(), ".deco");
-
-  const noTui = !resolveTui({
-    noTui: values["no-tui"] === true,
-    isTty: process.stdout.isTTY,
+// ── API command ────────────────────────────────────────────────────────
+if (command === "api") {
+  const { apiCommand } = await import("./cli/commands/api");
+  const code = await apiCommand({
+    dataDir: resolveDataDir(),
+    target: values.target,
+    path: positionals[1],
+    method: values.method,
+    data: values.data,
+    headers: values.header,
   });
-
-  const devOptions = {
-    port: values.port!,
-    vitePort: values["vite-port"]!,
-    home: decoHome,
-    baseUrl: values["base-url"],
-    skipMigrations: values["skip-migrations"] === true,
-    noTui,
-    localMode: values["no-local-mode"] !== true,
-  };
-
-  if (noTui) {
-    const { printBanner } = await import("./cli/banner-art");
-    printBanner(await getVersion());
-
-    const { startDevServer } = await import("./cli/commands/dev");
-    const result = await startDevServer(devOptions);
-    const code = await result.process.exited;
-    process.exit(code);
-  } else {
-    const { render } = await import("ink");
-    const { createElement } = await import("react");
-    const { App } = await import("./cli/app");
-    const { startDevServer } = await import("./cli/commands/dev");
-    const { setDevMode } = await import("./cli/cli-store");
-
-    const displayHome = decoHome.replace(homedir(), "~");
-    setDevMode();
-    render(createElement(App, { home: displayHome }), {
-      patchConsole: false,
-    });
-
-    const result = await startDevServer(devOptions);
-    const code = await result.process.exited;
-    process.exit(code);
-  }
+  process.exit(code);
 }
 
-if (
-  command &&
-  ![
-    "init",
-    "completion",
-    "dev",
-    "services",
-    "auth",
-    "backfill-assets",
-  ].includes(command)
-) {
-  console.error(`Unknown command: ${command}`);
-  process.exit(1);
-}
-
-// ── Server mode (default) ──────────────────────────────────────────────
-const decoHome = resolveDataDir();
-
-const serveOptions = {
-  port: values.port!,
-  home: decoHome,
-  skipMigrations: values["skip-migrations"] === true,
-  localMode: values["no-local-mode"] !== true,
-};
-
-const noTui = !resolveTui({
-  noTui: values["no-tui"] === true,
-  isTty: process.stdout.isTTY,
-});
-
-if (noTui) {
-  // Plain stdout mode — no Ink, just console.log (CI-friendly)
-  const { printBanner } = await import("./cli/banner-art");
-  printBanner(await getVersion());
-
-  const { startServer } = await import("./cli/commands/serve");
-  await startServer({ ...serveOptions, noTui: true });
-} else {
-  // Ink UI mode
-  const { render } = await import("ink");
-  const { createElement } = await import("react");
-  const { App } = await import("./cli/app");
-  const { startServer, interceptConsoleForTui } = await import(
-    "./cli/commands/serve"
-  );
-
-  const displayHome = decoHome.replace(homedir(), "~");
-  interceptConsoleForTui();
-  render(createElement(App, { home: displayHome }), {
-    patchConsole: false,
+// ── Orgs command ───────────────────────────────────────────────────────
+if (command === "orgs") {
+  const { orgsCommand } = await import("./cli/commands/orgs");
+  const code = await orgsCommand({
+    dataDir: resolveDataDir(),
+    target: values.target,
+    json: values.json === true,
   });
-
-  await startServer(serveOptions);
+  process.exit(code);
 }
+
+// ── Tools command ──────────────────────────────────────────────────────
+if (command === "tools") {
+  const { toolsCommand } = await import("./cli/commands/tools");
+  const code = await toolsCommand({
+    dataDir: resolveDataDir(),
+    target: values.target,
+    subcommand: positionals[1],
+    arg: positionals[2],
+    org: values.org,
+    data: values.data,
+    json: values.json === true,
+  });
+  process.exit(code);
+}
+
+console.error(
+  command === "dev" || command === "services" || command === "serve"
+    ? "Run Studio with Docker Compose or Kubernetes. Use --help for client commands."
+    : `Unknown command: ${command}. Use --help for available commands.`,
+);
+process.exit(1);

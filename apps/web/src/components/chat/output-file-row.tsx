@@ -32,7 +32,7 @@ export function OutputFileRow({ file }: { file: ThreadOutput }) {
       <a
         href={file.downloadUrl}
         download={file.filename}
-        className="hidden shrink-0 text-muted-foreground hover:text-foreground group-hover:block"
+        className="hidden shrink-0 text-muted-foreground hover:text-foreground group-hover:block group-focus-within:block"
         title={t("chat.outputFileRow.download")}
         aria-label={t("chat.outputFileRow.downloadFile", {
           filename: file.filename,

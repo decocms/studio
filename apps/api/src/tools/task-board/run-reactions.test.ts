@@ -16,8 +16,7 @@ type LinkPrCall = {
   organizationId: string;
   url: string;
   prNumber: number;
-  repoOwner: string;
-  repoName: string;
+  repo: { provider: string; host: string; path: string };
   connectionId?: string | null;
 };
 
@@ -26,6 +25,9 @@ function makeCtx(opts: {
   orgId?: string;
   metadataItemId?: string;
   linked?: string[];
+  /** Ids the board manages. Omitted means "all of them" — the ordinary card
+   *  case. Set it to exclude an anchor the board does not manage (Jira's). */
+  boardManaged?: string[];
 }) {
   const linkPrCalls: LinkPrCall[] = [];
   const ctx = {
@@ -39,12 +41,22 @@ function makeCtx(opts: {
           linkPrCalls.push(p);
         },
         linkedTaskIds: async () => opts.linked ?? [],
+        boardManagedIds: async (ids: readonly string[]) =>
+          opts.boardManaged
+            ? ids.filter((id) => opts.boardManaged?.includes(id))
+            : [...ids],
       },
     },
   } as never;
   return { ctx, linkPrCalls };
 }
 
+/**
+ * The PR link is what a later reviewer reads. On a Jira run's anchor it pointed
+ * at a hidden card, and a reviewer picked up a PR from a PRIOR run of the same
+ * issue, requested changes because that one was closed, and unassigned the
+ * agent. The Jira run puts its PR on the ISSUE instead.
+ */
 const MCP_RESULT = {
   structuredContent: { id: 1, url: "https://github.com/acme/site/pull/42" },
 };
@@ -66,8 +78,7 @@ describe("capturePrForRun", () => {
         organizationId: "org-1",
         url: "https://github.com/acme/site/pull/42",
         prNumber: 42,
-        repoOwner: "acme",
-        repoName: "site",
+        repo: { provider: "github", host: "github.com", path: "acme/site" },
         connectionId: "conn-9",
       },
     ]);
@@ -117,6 +128,27 @@ describe("capturePrForRun", () => {
     await capturePrForRun(ctx, MCP_RESULT, null, "thr-x");
     expect(linkPrCalls).toEqual([]);
   });
+  // The disconnect: an anchor the board does not manage gets no PR link, so no
+  // later reviewer can read one off it.
+  it("links nothing for a run whose only task is not board-managed", async () => {
+    const { ctx, linkPrCalls } = makeCtx({
+      orgId: "org-1",
+      linked: ["anchor-jira"],
+      boardManaged: [],
+    });
+    await capturePrForRun(ctx, MCP_RESULT, null, "thr-1");
+    expect(linkPrCalls).toHaveLength(0);
+  });
+
+  it("still links for an ordinary card alongside one that is not managed", async () => {
+    const { ctx, linkPrCalls } = makeCtx({
+      orgId: "org-1",
+      linked: ["anchor-jira", "card-1"],
+      boardManaged: ["card-1"],
+    });
+    await capturePrForRun(ctx, MCP_RESULT, null, "thr-1");
+    expect(linkPrCalls.map((c) => c.taskBoardItemId)).toEqual(["card-1"]);
+  });
 });
 
 describe("resolveAdvanceTargets", () => {
@@ -145,9 +177,11 @@ describe("resolveAdvanceTargets", () => {
 });
 
 describe("isPrCreateMcpTool", () => {
-  it("matches the GitHub MCP PR-create tools", () => {
+  it("matches each provider's create tool", () => {
     expect(isPrCreateMcpTool("create_pull_request")).toBe(true);
     expect(isPrCreateMcpTool("createPullRequest")).toBe(true);
+    expect(isPrCreateMcpTool("create_merge_request")).toBe(true);
+    expect(isPrCreateMcpTool("createMergeRequest")).toBe(true);
   });
 
   it("matches a gateway-prefixed tool name", () => {
@@ -160,18 +194,23 @@ describe("isPrCreateMcpTool", () => {
   it("ignores other tools", () => {
     expect(isPrCreateMcpTool("list_pull_requests")).toBe(false);
     expect(isPrCreateMcpTool("pull_request_read")).toBe(false);
+    expect(isPrCreateMcpTool("list_merge_requests")).toBe(false);
     expect(isPrCreateMcpTool("bash")).toBe(false);
   });
 });
 
 describe("isPrCreateBashCommand", () => {
-  it("matches `gh pr create` with flags and extra whitespace", () => {
+  it("matches either CLI's create, with flags and extra whitespace", () => {
     expect(isPrCreateBashCommand("gh pr create")).toBe(true);
     expect(isPrCreateBashCommand("gh pr create --fill --base main")).toBe(true);
     expect(isPrCreateBashCommand("cd repo && gh  pr  create")).toBe(true);
+    expect(isPrCreateBashCommand("glab mr create")).toBe(true);
+    expect(
+      isPrCreateBashCommand("cd repo && glab mr create --fill --yes"),
+    ).toBe(true);
   });
 
-  it("matches a curl REST POST to the GitHub pulls endpoint", () => {
+  it("matches a curl REST POST to either provider's endpoint", () => {
     // The real prod case: agent fell back to curl when the MCP tool 404'd.
     const cmd =
       'cd /app/repo && curl -s -X POST -H "Authorization: token $TOKEN" ' +
@@ -182,16 +221,38 @@ describe("isPrCreateBashCommand", () => {
         "curl --request POST https://api.github.com/repos/o/r/pulls -d '{}'",
       ),
     ).toBe(true);
+    expect(
+      isPrCreateBashCommand(
+        "curl -X POST https://gitlab.com/api/v4/projects/group%2Fstore/merge_requests -d '{}'",
+      ),
+    ).toBe(true);
+    // Bitbucket has no CLI, so the REST POST is the only bash shape there.
+    expect(
+      isPrCreateBashCommand(
+        "curl -X POST -H \"Authorization: Bearer $BITBUCKET_TOKEN\" https://api.bitbucket.org/2.0/repositories/acme/site/pullrequests -d '{}'",
+      ),
+    ).toBe(true);
+    expect(
+      isPrCreateBashCommand(
+        "curl https://api.bitbucket.org/2.0/repositories/acme/site/pullrequests",
+      ),
+    ).toBe(false);
   });
 
   it("does not match unrelated gh / git / curl commands", () => {
     expect(isPrCreateBashCommand("gh pr list")).toBe(false);
     expect(isPrCreateBashCommand("gh pr view 12")).toBe(false);
+    expect(isPrCreateBashCommand("glab mr list")).toBe(false);
     expect(isPrCreateBashCommand("git push origin feature")).toBe(false);
     expect(isPrCreateBashCommand("echo create pull request")).toBe(false);
-    // GET to /pulls (listing) must not count — only a POST opens a PR.
+    // A GET to the listing endpoint must not count — only a POST opens one.
     expect(
       isPrCreateBashCommand("curl https://api.github.com/repos/o/r/pulls"),
+    ).toBe(false);
+    expect(
+      isPrCreateBashCommand(
+        "curl https://gitlab.com/api/v4/projects/1/merge_requests",
+      ),
     ).toBe(false);
   });
 });
@@ -208,16 +269,21 @@ function makeItem(overrides: Partial<TaskBoardItem> = {}): TaskBoardItem {
     assigneeId: SUPER_AGENT_ASSIGNEE_ID,
     assignedBy: null,
     repo: null,
+    repositoryId: null,
+    virtualMcpId: null,
+    sprintId: null,
     dueDate: null,
     sortOrder: 0,
     keySeq: 1,
     externalUrl: null,
+    previewRoutes: [],
     source: null,
     retryAttempts: 0,
     reviewCycleStartedAt: null,
     threads: [],
     tags: [],
     reviewVerdicts: [],
+    statusSince: null,
     createdBy: "system",
     createdAt: "now",
     updatedBy: "system",
@@ -277,6 +343,7 @@ describe("reactToFailedTaskRun on a card that already moved on", () => {
     const calls: string[] = [];
     const taskBoard = {
       failedRunInfo: async () => ({ kind: "error", errorText: null }),
+      runMovesLinkedCards: async () => true,
       linkedTaskIds: async () => ["item-1"],
       getById: async () => ({
         id: "item-1",

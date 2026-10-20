@@ -8,10 +8,7 @@ interface BodyProps {
   onClose: () => void;
 }
 
-/**
- * Hosted chat model picker. Native coding agents own their model selection in
- * their TUI and never render this component.
- */
+/** Hosted chat model picker. */
 export function ModelSelectorBody({ onClose }: BodyProps) {
   return <DecopilotModelSelectorBody onClose={onClose} />;
 }

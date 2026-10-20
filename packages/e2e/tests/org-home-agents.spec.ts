@@ -3,7 +3,7 @@
  * person made.
  *
  * The filter is the whole point. Every org is backfilled with the Studio Pack
- * managers (Agent Manager, Automation Manager, …), so a list that renders
+ * managers (Connection Manager, Automation Manager, …), so a list that renders
  * "all agents" shows scaffolding nobody created — which is what the settings
  * Agents page does today. After filtering, a fresh org's home is the EMPTY
  * state, and that is the common first-run path rather than a rare one.
@@ -16,6 +16,7 @@
 import type { APIRequestContext } from "@playwright/test";
 import { callSelfMcpTool, createHttpConnection } from "../fixtures/mcp-tools";
 import { expect, test } from "../fixtures/test";
+import { connectDevDb } from "../fixtures/db";
 
 /** Cold-Vite route compiles are slow on a loaded box, and this crosses the
  *  shell plus a lazy main-panel view. */
@@ -67,14 +68,14 @@ test.describe("org home — the agent roster", () => {
 
     /* The backfilled managers are plumbing, not the org's work. If this ever
        fails, the home is rendering the unfiltered list again. */
-    for (const manager of ["Agent Manager", "Automation Manager"]) {
+    for (const manager of ["Connection Manager", "Automation Manager"]) {
       await expect(mainPanel.getByText(manager, { exact: true })).toHaveCount(
         0,
       );
     }
   });
 
-  test("a fresh org lands on the empty state, with GitHub import offered", async ({
+  test("a fresh org lands on the empty state, with repository import offered", async ({
     authedPage: { page, orgSlug },
   }) => {
     await page.goto(`/${orgSlug}/home`);
@@ -87,8 +88,46 @@ test.describe("org home — the agent roster", () => {
     await expect(page.getByText("No projects yet")).toBeVisible({
       timeout: SHELL_TIMEOUT_MS,
     });
+    // The project action opens the same provider-neutral repository picker.
     await expect(
-      page.getByRole("button", { name: "Import from GitHub" }),
+      page.getByRole("button", { name: "New Project" }),
     ).toBeVisible();
+  });
+  test("Home shows the CMS training playlist when the organization owns a legacy site", async ({
+    authedPage: { page, user, orgSlug },
+  }, testInfo) => {
+    const db = await connectDevDb();
+    const siteSlug = `training-${orgSlug}`;
+    try {
+      // Legacy sites are imported by deployment administration, not created
+      // through the workspace UI. Seed only this test's organization.
+      await db.query(
+        `INSERT INTO org_sites
+           (slug, organization_id, source, created_by, updated_by)
+         SELECT $1, id, 'manual', $2, $2 FROM organization WHERE slug = $3`,
+        [siteSlug, user.userId, orgSlug],
+      );
+      await page.goto(`/${orgSlug}/home`);
+      const playlist = page
+        .getByTestId("main-panel")
+        .getByRole("link", { name: /CMS training/ });
+      await expect(playlist).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+      await expect(playlist).toHaveAttribute(
+        "href",
+        "https://www.youtube.com/playlist?list=PLZ4WtTgnJfBw",
+      );
+      await expect(playlist).toHaveAttribute("target", "_blank");
+      await expect(
+        playlist.getByRole("img", { name: "deco CMS training playlist" }),
+      ).toBeVisible();
+      await page.screenshot({ path: testInfo.outputPath("home-training.png") });
+    } finally {
+      await db.query(
+        `DELETE FROM org_sites WHERE slug = $1 AND organization_id IN
+           (SELECT id FROM organization WHERE slug = $2)`,
+        [siteSlug, orgSlug],
+      );
+      await db.end();
+    }
   });
 });

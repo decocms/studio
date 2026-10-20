@@ -2,8 +2,8 @@
  * E2E: the destination routes, and the legacy URLs that translate into them.
  *
  * The route grammar under test: **path = which page, search = how that page is
- * laid out.** Home, Chat, Tasks, Reports and Library are real path segments,
- * and so is the main-panel view (`/agents/<view>`); `sidepanel`,
+ * laid out.** Home, Tasks, Reports, Library and Discover are real path segments,
+ * and project views live under `/projects/<agentId>`; `sidepanel`,
  * `mainpanel` and `thread` stay in search because they describe the layout —
  * whether each panel is open, and which conversation is in it.
  *
@@ -45,11 +45,45 @@ async function createProject(
   request: APIRequestContext,
   orgSlug: string,
   title: string,
+  options?: {
+    clonable?: boolean;
+    layoutTabs?: ReadonlyArray<{ id: string; title: string }>;
+  },
 ): Promise<string> {
   const connection = await createHttpConnection(request, orgSlug, {
     title: `${title} placeholder`,
     url: "http://127.0.0.1:1/unused",
   });
+  const metadata =
+    options?.clonable || options?.layoutTabs?.length
+      ? {
+          ...(options.clonable
+            ? {
+                repository: {
+                  url: "https://github.com/example/repo",
+                  owner: "example",
+                  name: "repo",
+                  connectionId: connection.id,
+                },
+              }
+            : {}),
+          ...(options.layoutTabs?.length
+            ? {
+                ui: {
+                  layout: {
+                    tabs: options.layoutTabs.map((tab) => ({
+                      ...tab,
+                      view: {
+                        type: "ext-app" as const,
+                        appId: connection.id,
+                      },
+                    })),
+                  },
+                },
+              }
+            : {}),
+        }
+      : undefined;
   const agent = await callSelfMcpTool<{ item: { id: string } }>(
     request,
     orgSlug,
@@ -60,6 +94,7 @@ async function createProject(
         status: "active",
         pinned: false,
         connections: [{ connection_id: connection.id }],
+        ...(metadata ? { metadata } : {}),
       },
     },
   );
@@ -107,14 +142,13 @@ test.describe("destination routes", () => {
   }) => {
     const orgId = await findOrgId(page.context().request, orgSlug);
 
-    /** Chat is the one destination that declares no default main view, so it is
-     *  the one that opens on the chat panel instead of the main one. */
+    // Every page has a canonical URL; visibility stays in search.
     const destinations = [
       { path: `/${orgSlug}/home`, panel: mainPanel },
       { path: `/${orgSlug}/tasks`, panel: mainPanel },
       { path: `/${orgSlug}/library`, panel: mainPanel },
       { path: `/${orgSlug}/reports`, panel: mainPanel },
-      { path: `/${orgSlug}/agents`, panel: chatPanel },
+      { path: `/${orgSlug}/discover`, panel: mainPanel },
     ] as const;
 
     for (const { path, panel } of destinations) {
@@ -149,39 +183,33 @@ test.describe("destination routes", () => {
     const projectId = await createProject(request, orgSlug, "legacy shape e2e");
     const threadId = await createThread(request, orgSlug, projectId);
 
-    /* The agent survives as `?virtualmcpid=` and the thread id moves out of
-       the path into `?thread=`. The path is what changes, not the param. */
+    // Project identity moves into the path; the chat stays in search.
     await page.goto(`/${orgSlug}/${threadId}?virtualmcpid=${projectId}`);
     await page.waitForURL(
       (url) =>
-        url.pathname === `/${orgSlug}/agents` &&
-        url.searchParams.get("virtualmcpid") === projectId &&
+        url.pathname === `/${orgSlug}/projects/${projectId}` &&
+        url.searchParams.get("virtualmcpid") === null &&
         url.searchParams.get("thread") === threadId,
       { timeout: SHELL_TIMEOUT_MS },
     );
 
-    /* No agent named: no `?virtualmcpid=` either, which is how the Super
-       Agent reads under this grammar. */
+    // A link missing its project resolves to the persisted owner of the chat.
     await page.goto(`/${orgSlug}/${threadId}`);
     await page.waitForURL(
       (url) =>
-        url.pathname === `/${orgSlug}/agents` &&
+        url.pathname === `/${orgSlug}/projects/${projectId}` &&
         url.searchParams.get("virtualmcpid") === null &&
         url.searchParams.get("thread") === threadId,
       { timeout: SHELL_TIMEOUT_MS },
     );
   });
 
-  /**
-   * `main=board` on a coding agent always showed the ORG-WIDE board, so
-   * carrying the project onto `/tasks` would invent a filter the old URL never
-   * had. `main` is dropped too — the path says which page this is now.
-   */
+  // A project chat keeps its owner through legacy destination redirects.
   for (const { main, destination } of [
     { main: "board", destination: "tasks" },
     { main: "files", destination: "library" },
   ] as const) {
-    test(`a legacy main=${main} URL lands on /${destination} without the project`, async ({
+    test(`a legacy main=${main} thread settles in its owning project after /${destination}`, async ({
       authedPage: { page, orgSlug },
     }) => {
       const request = page.context().request;
@@ -196,7 +224,11 @@ test.describe("destination routes", () => {
         `/${orgSlug}/${threadId}?virtualmcpid=${projectId}&main=${main}`,
       );
       await page.waitForURL(
-        (url) => url.pathname === `/${orgSlug}/${destination}`,
+        (url) =>
+          url.pathname ===
+          (main === "board"
+            ? `/${orgSlug}/projects/${projectId}/tasks`
+            : `/${orgSlug}/projects/${projectId}`),
         { timeout: SHELL_TIMEOUT_MS },
       );
       const landed = new URL(page.url());
@@ -264,7 +296,7 @@ test.describe("destination routes", () => {
   });
 
   /**
-   * The main-panel view is a path segment on Chat, and whether the panel is
+   * The main-panel view is a path segment in the project, and whether the panel is
    * OPEN is a separate boolean — which is what lets a closed panel keep
    * remembering its view. `?main=` said both at once and is accepted forever as
    * a legacy INPUT: it is in bookmarks and in mail already delivered.
@@ -275,8 +307,7 @@ test.describe("destination routes", () => {
     const request = page.context().request;
     const projectId = await createProject(request, orgSlug, "panel path e2e");
 
-    /* The address a view is written as: the VIEW is the segment, the project
-       is `?virtualmcpid=`. */
+    // The previously shipped view-first shape promotes project identity into the path.
     await page.goto(`/${orgSlug}/agents/settings?virtualmcpid=${projectId}`);
     await expect(mainPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
 
@@ -284,8 +315,11 @@ test.describe("destination routes", () => {
     await page.goto(
       `/${orgSlug}/agents/settings?virtualmcpid=${projectId}&mainpanel=false`,
     );
+    await expect(chatPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
     await expect(mainPanel(page)).toBeHidden({ timeout: SHELL_TIMEOUT_MS });
-    expect(new URL(page.url()).pathname).toBe(`/${orgSlug}/agents/settings`);
+    expect(new URL(page.url()).pathname).toBe(
+      `/${orgSlug}/projects/${projectId}/settings`,
+    );
 
     /* A bookmark from before the split lands on the same view, with `main`
        retired out of the URL. */
@@ -294,8 +328,8 @@ test.describe("destination routes", () => {
     );
     await page.waitForURL(
       (url) =>
-        url.pathname === `/${orgSlug}/agents/settings` &&
-        url.searchParams.get("virtualmcpid") === projectId &&
+        url.pathname === `/${orgSlug}/projects/${projectId}/settings` &&
+        url.searchParams.get("virtualmcpid") === null &&
         url.searchParams.get("main") === null,
       { timeout: SHELL_TIMEOUT_MS },
     );
@@ -306,7 +340,7 @@ test.describe("destination routes", () => {
    *  search still carries — including report mail, whose CTA an external
    *  service persists and re-sends for orgs that never re-onboard. It must
    *  redirect and keep the view's own payload. */
-  test("a legacy /agents/<project>/<view> URL redirects into ?virtualmcpid=", async ({
+  test("a legacy /agents/<project>/<view> URL redirects into its canonical project path", async ({
     authedPage: { page, orgSlug },
   }) => {
     const request = page.context().request;
@@ -315,15 +349,15 @@ test.describe("destination routes", () => {
     await page.goto(`/${orgSlug}/agents/${projectId}/settings`);
     await page.waitForURL(
       (url) =>
-        url.pathname === `/${orgSlug}/agents/settings` &&
-        url.searchParams.get("virtualmcpid") === projectId,
+        url.pathname === `/${orgSlug}/projects/${projectId}/settings` &&
+        url.searchParams.get("virtualmcpid") === null,
       { timeout: SHELL_TIMEOUT_MS },
     );
     await expect(mainPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
   });
 
   /** A bookmarked project with no view moves into `?virtualmcpid=` too. */
-  test("a lone /agents/<projectId> redirects into ?virtualmcpid=", async ({
+  test("a lone /agents/<projectId> redirects into the canonical project root", async ({
     authedPage: { page, orgSlug },
   }) => {
     const request = page.context().request;
@@ -332,25 +366,19 @@ test.describe("destination routes", () => {
     await page.goto(`/${orgSlug}/agents/${projectId}`);
     await page.waitForURL(
       (url) =>
-        url.pathname === `/${orgSlug}/agents` &&
-        url.searchParams.get("virtualmcpid") === projectId,
+        url.pathname === `/${orgSlug}/projects/${projectId}` &&
+        url.searchParams.get("virtualmcpid") === null,
       { timeout: SHELL_TIMEOUT_MS },
     );
   });
 
-  /** REGRESSION, kept after the project moved to search. One optional segment
-   *  makes a lone `/agents/<view>` unambiguous to the ROUTER, but `beforeLoad`
-   *  still classifies it and sweeps anything that is not a known view into
-   *  `?virtualmcpid=`. A view misclassified there hands a VIEW name to the agent
-   *  lookup and the workspace reads "Agent not found" — this pins that. */
-  test("a lone /agents/<view> is the view, not a project named after it", async ({
+  test("unscoped legacy views resolve without mistaking the view for a project", async ({
     authedPage: { page, orgSlug },
   }) => {
+    const orgId = await findOrgId(page.context().request, orgSlug);
+    const agentId = `decopilot_${orgId}`;
     for (const view of [
       "site-editor",
-      /* Two names the app no longer writes — `preview` before the rename,
-         `content` before Content became `?main=content` on the Site Editor —
-         both still VIEWS, and both still resolvable from a bookmark. */
       "preview",
       "content",
       "settings",
@@ -358,44 +386,25 @@ test.describe("destination routes", () => {
     ]) {
       await page.goto(`/${orgSlug}/agents/${view}`);
       await expect(mainPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
-      /* The workspace, not the not-found page a misclassified segment gives. */
-      await expect(chatPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
-      expect(new URL(page.url()).pathname).toBe(`/${orgSlug}/agents/${view}`);
-      /* Not swept into the scope by the beforeLoad classifier. */
+      await page.waitForURL(
+        (url) => url.pathname.startsWith(`/${orgSlug}/projects/${agentId}`),
+        { timeout: SHELL_TIMEOUT_MS },
+      );
       expect(new URL(page.url()).searchParams.get("virtualmcpid")).toBeNull();
-
-      /* No body assertion for `content` here, deliberately. Content is gated
-         on the agent having SOURCE (`resolveSurfaceTabs` returns [] without
-         it), and this org's only agent is the Super Agent — so the view
-         legitimately falls back to the default rather than rendering
-         Content's empty state. What this test owns is the CLASSIFIER: the
-         segment stays a view and is not swept into `?virtualmcpid=`, which
-         the assertions above prove. */
+      await expect(
+        page.getByText("Agent not found", { exact: true }),
+      ).toHaveCount(0);
     }
-
-    /* The legacy translator mints exactly this shape off a project-less page,
-       and rewrites the retired `preview` to the segment that owns the view. */
-    await page.goto(`/${orgSlug}/home?main=preview`);
-    await page.waitForURL(
-      (url) => url.pathname === `/${orgSlug}/agents/site-editor`,
-      {
-        timeout: SHELL_TIMEOUT_MS,
-      },
-    );
-    await expect(mainPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
-
-    /* INVERTED: `main=content` used to be retired into a `content` segment
-       like every other view. It is Content's own address now — the Site
-       Editor segment KEEPS the param instead of translating it away, and the
-       redirect settles rather than re-firing on its own output. */
-    await page.goto(`/${orgSlug}/home?main=content`);
-    await page.waitForURL(
-      (url) =>
-        url.pathname === `/${orgSlug}/agents/site-editor` &&
-        url.searchParams.get("main") === "content",
-      { timeout: SHELL_TIMEOUT_MS },
-    );
-    await expect(mainPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+    for (const view of ["preview", "content"]) {
+      await page.goto(`/${orgSlug}/home?main=${view}`);
+      await page.waitForURL(
+        (url) =>
+          url.pathname.startsWith(`/${orgSlug}/projects/${agentId}/`) &&
+          !url.searchParams.has("main"),
+        { timeout: SHELL_TIMEOUT_MS },
+      );
+      await expect(mainPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+    }
   });
 
   /**
@@ -436,8 +445,8 @@ test.describe("destination routes", () => {
        the one above, on `/reports`, where it must never appear. */
     await page.waitForURL(
       (url) =>
-        url.pathname === `/${orgSlug}/agents` &&
-        url.searchParams.get("virtualmcpid") === projectId &&
+        url.pathname === `/${orgSlug}/projects/${projectId}` &&
+        url.searchParams.get("virtualmcpid") === null &&
         url.searchParams.get("thread") === threadId,
       { timeout: SHELL_TIMEOUT_MS },
     );

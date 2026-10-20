@@ -83,7 +83,7 @@ export function renderMustacheTemplate(
   if (!template.includes("{")) return undefined;
   const resolved = resolveImageValues(data);
   const result = template.replace(
-    /\{\{\{([^}]+)\}\}\}|\{\{([^}]+)\}\}/g,
+    /\{\{\{(.+?)\}\}\}|\{\{(.+?)\}\}/g,
     (_match, tripleKey: string | undefined, doubleKey: string | undefined) => {
       const key = (tripleKey ?? doubleKey ?? "").trim();
       return formatMustacheValue(getByPath(resolved, key));

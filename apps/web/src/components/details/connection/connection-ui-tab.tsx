@@ -4,10 +4,11 @@ import { CollectionSearch } from "@/components/collections/collection-search.tsx
 import { EmptyState } from "@/components/empty-state.tsx";
 import { ToolAnnotationBadges, type Tool } from "@/components/tools";
 import { Card } from "@decocms/ui/components/card.tsx";
+import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { useConnection, useMCPClient, useProjectContext } from "@/sdk";
 import { getConnectionSlug } from "@decocms/shared/utils/connection-slug";
 import { useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { useT } from "@/i18n/use-t.ts";
 
 interface ConnectionUiTabProps {
@@ -100,16 +101,18 @@ export function ConnectionUiTab({
                 >
                   {/* App preview */}
                   <div className="h-[200px] overflow-hidden border-b border-border">
-                    <MCPAppRenderer
-                      resourceURI={resourceUri}
-                      toolInfo={{
-                        tool: tool as import("@modelcontextprotocol/sdk/types.js").Tool,
-                      }}
-                      displayMode="inline"
-                      minHeight={200}
-                      maxHeight={200}
-                      client={client}
-                    />
+                    <Suspense fallback={<Skeleton className="h-full w-full" />}>
+                      <MCPAppRenderer
+                        resourceURI={resourceUri}
+                        toolInfo={{
+                          tool: tool as import("@modelcontextprotocol/sdk/types.js").Tool,
+                        }}
+                        displayMode="inline"
+                        minHeight={200}
+                        maxHeight={200}
+                        client={client}
+                      />
+                    </Suspense>
                   </div>
 
                   {/* Tool info */}

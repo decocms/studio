@@ -23,7 +23,10 @@ export class Resend implements EmailProvider {
     });
 
     if (!response.ok) {
-      throw new Error(`Failed to send email: ${response.statusText}`);
+      const errorText = await response.text();
+      throw new Error(
+        `Failed to send email via Resend: ${response.statusText} - ${errorText}`,
+      );
     }
   }
 }

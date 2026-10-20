@@ -79,11 +79,9 @@ interface UnifiedAuthFormProps {
   onAuthEvent?: (event: AuthFlowEvent) => void;
   /**
    * Overrides for the underlying network/post-auth actions. `AuthEntry`
-   * passes the platform-resolved overrides here (desktop browser-hop/
-   * Keychain-bridge actions in the desktop build, `undefined` on web).
-   * Omitted -> `defaultAuthFormActions`, i.e. the exact `authClient` calls +
-   * `window.location.href` navigate this form always used. See
-   * `apps/web/src/components/auth-form-actions.ts`.
+   * passes a caller's `onAuthenticated` here. Omitted ->
+   * `defaultAuthFormActions`, i.e. the `authClient` calls + `window.location.href`
+   * navigate. See `apps/web/src/components/auth-form-actions.ts`.
    */
   actions?: Partial<AuthFormActions>;
 }
@@ -662,14 +660,16 @@ export function UnifiedAuthForm({
       {!isForgotPassword && !(isEmailOtp && otpSent) && hasSocialProviders && (
         <div className="grid gap-2">
           {visibleSocialProviders.map((provider) => (
-            <button
+            <Button
               key={provider.name}
               type="button"
+              variant="outline"
+              size={compact ? "lg" : "xl"}
               disabled={isLoading}
               onClick={() => void handleSocialSignIn(provider.name)}
               className={cn(
-                "flex w-full items-center justify-center gap-3 bg-background px-3 text-sm font-medium text-foreground card-shadow transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50 dark:bg-input/30 dark:hover:bg-input/50",
-                compact ? "h-11 rounded-lg" : "h-12 rounded-xl",
+                "flex w-full items-center justify-center gap-3 bg-background px-3 text-sm font-medium text-foreground card-shadow transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50 dark:bg-input/30 dark:hover:bg-input/50 rounded-lg",
+                compact ? "h-11" : "h-12",
               )}
             >
               {provider.icon && (
@@ -686,7 +686,7 @@ export function UnifiedAuthForm({
               {copy.continueWith(
                 provider.name.charAt(0).toUpperCase() + provider.name.slice(1),
               )}
-            </button>
+            </Button>
           ))}
         </div>
       )}
@@ -761,16 +761,14 @@ export function UnifiedAuthForm({
                 )}
               </div>
 
-              <button
+              <Button
                 type="submit"
+                size={compact ? "lg" : "xl"}
                 disabled={isLoading || !canSubmit}
-                className={cn(
-                  "flex items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/80 disabled:pointer-events-none disabled:opacity-50",
-                  compact ? "h-11 sm:w-auto" : "h-12 w-full",
-                )}
+                className={cn(compact ? "sm:w-auto" : "w-full")}
               >
                 {isLoading ? copy.sending : copy.sendCode}
-              </button>
+              </Button>
             </form>
           ) : (
             <form
@@ -805,16 +803,14 @@ export function UnifiedAuthForm({
                 />
               </div>
 
-              <button
+              <Button
                 type="submit"
+                size={compact ? "lg" : "xl"}
                 disabled={isLoading || !canSubmit}
-                className={cn(
-                  "flex items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/80 disabled:pointer-events-none disabled:opacity-50",
-                  compact ? "h-11 sm:w-auto" : "h-12 w-full",
-                )}
+                className={cn(compact ? "sm:w-auto" : "w-full")}
               >
                 {isLoading ? copy.verifying : copy.verify}
-              </button>
+              </Button>
 
               <button
                 type="button"

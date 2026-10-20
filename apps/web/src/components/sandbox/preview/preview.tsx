@@ -1,30 +1,52 @@
-import { useState, useRef, useEffect, type CSSProperties } from "react";
+import type { CSSProperties } from "react";
+import type { TranslationKey } from "@/i18n/use-t.ts";
+import type { PageEntry } from "@/components/sections-editor/page-list";
+import type { LastPreviewPage } from "./last-preview-page";
+import type { OptionSource } from "./path-param-picker";
+import type { SavedRunnableEntry } from "@/components/sandbox/content/runnable-catalog";
+import { LayoutAlt01 } from "@untitledui/icons";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@decocms/ui/components/popover.tsx";
+import {
+  Command,
+  CommandInput,
+  CommandList,
+  CommandGroup,
+  CommandItem,
+  CommandEmpty,
+} from "@decocms/ui/components/command.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { useState, useRef, useEffect } from "react";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
-import { useChatTask } from "@/components/chat/context";
+import { useChatTask, useOptionalChatStream } from "@/components/chat/context";
 import { useProjectContext } from "@/sdk";
 import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
-import { useInsetContext } from "@/layouts/agent-shell-layout";
+import { useVirtualMCPNonBlocking } from "@/sdk";
 import { resolvePreviewDisplay } from "./preview-display";
 import { useIframeLoadRecovery } from "./preview-iframe-recovery";
+import { watchServeContentReload } from "./serve-content-reload";
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
+import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
+import { useLocalStorage } from "@/hooks/use-local-storage";
+import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import { resolveCmsMode } from "@decocms/shared/sdk/types";
 import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import { useT } from "@/i18n/use-t.ts";
-import type { TranslationKey } from "@/i18n/use-t.ts";
 
 import {
+  Code01,
   CursorClick01,
   LinkExternal01,
   ChevronDown,
   Database01,
-  Globe02,
-  LayoutAlt01,
+  Globe01,
   Plus,
   Monitor04,
-  SearchLg,
   Phone02,
-  RefreshCw01,
   Tablet01,
 } from "@untitledui/icons";
 import { cn } from "@decocms/ui/lib/utils.ts";
@@ -34,19 +56,27 @@ import {
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
+import { Panel } from "@/components/panel";
 import {
-  MainPanelHeaderPortal,
-  useMainPanelHeaderSlot,
-} from "@/layouts/agent-shell-layout/panel-header";
-import { useDecofile } from "@/components/sections-editor/use-decofile";
-import { withVariantMatcherOverride } from "@/components/sections-editor/variant-matcher-override";
+  useDecofile,
+  useDecofileCacheKey,
+} from "@/components/sections-editor/use-decofile";
+import {
+  inlinePageOverrideParams,
+  withVariantMatcherOverride,
+} from "@/components/sections-editor/variant-matcher-override";
+import {
+  buildServeDraftPointer,
+  withForcedVariantsInDraftUrl,
+} from "@/components/sections-editor/variant-draft-pointer";
+import { useDecoServeConnection } from "@/hooks/use-deco-serve-connection";
 import { useLiveMeta } from "@/components/sections-editor/use-live-meta";
 import {
   extractGlobalSections,
   extractPages,
   findPageForPath,
+  previewPageForBlock,
   type GlobalSectionEntry,
-  type PageEntry,
 } from "@/components/sections-editor/page-list";
 import {
   fillPathTemplate,
@@ -63,13 +93,14 @@ import {
   withDraftPointer,
 } from "@/components/sections-editor/section-preview-url";
 import { useFastPreviewDraftUrl } from "@/components/sections-editor/use-fast-preview-draft-url";
-import { useDecofileWriting } from "@/components/sections-editor/use-decofile-writing";
-import { toast } from "sonner";
-import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
 import {
-  openExternalUrlInSystemBrowser,
-  registerPreviewOrigin,
-} from "@/lib/desktop/tauri-bridge";
+  confirmPreviewReloaded,
+  contentSyncScope,
+  registerContentPreview,
+  useContentSyncBusy,
+  useContentSyncState,
+} from "@/components/sections-editor/content-sync";
+import { toast } from "sonner";
 import {
   VISUAL_EDITOR_SCRIPT,
   VisualEditorPayloadSchema,
@@ -89,15 +120,14 @@ import {
   lastPreviewPageKey,
   readLastPreviewPage,
   writeLastPreviewPage,
-  type LastPreviewPage,
 } from "./last-preview-page";
 import { derivePhaseProgress } from "./derive-phase-progress";
+import { usePreviewNavigateHandler } from "./preview-navigate-request";
 import {
   classifyParamKinds,
   collectPageLoaderResolveTypes,
   commercePlatformsFromLoaders,
   resolveOptionSources,
-  type OptionSource,
 } from "./path-param-picker";
 import {
   PathParamAutoFill,
@@ -105,14 +135,13 @@ import {
 } from "./path-param-picker-chip";
 import { PathParamInput } from "./path-param-input";
 import { buildPreviewLabel } from "./preview-label";
-import { showCmsPageSelector } from "./cms-controls";
+import { showCmsPageSelector, showPreviewToolbarFor } from "./cms-controls";
 import { useCreatePage } from "@/components/sections-editor/use-create-page";
 import { CreatePageModal } from "@/components/sections-editor/create-page-modal";
 import { sleep } from "@decocms/shared/std";
 import {
   listSavedRunnables,
   manifestLoaderResolveTypes,
-  type SavedRunnableEntry,
 } from "@/components/sandbox/content/runnable-catalog";
 import { track } from "@/lib/posthog-client";
 import { useBlocksPreviewWorkspace } from "@/components/sandbox/blocks/blocks-preview-workspace-context";
@@ -131,15 +160,30 @@ import {
   defaultPreviewEditingMode,
   isBlocksEditingEnabled,
   resolveEffectivePreviewEditingMode,
+  toggleBlocksEditingMode,
   toggleVisualEditingMode,
   type PreviewEditingMode,
 } from "./editing-mode";
+import {
+  contentMode,
+  hostedDraftSession,
+  isProtocolProject,
+  servePreviewUrl,
+} from "@/components/sections-editor/content-backend";
+import { useContentBackend } from "@/components/sections-editor/use-content-backend";
+import { useMainSchemaV8 } from "@/hooks/use-main-schema-v8";
+import { useContentRevision } from "@/components/sections-editor/content-protocol-api";
 import { isContentEditingEnabled } from "@/layouts/main-panel-tabs/content-editing-gate";
+import { type PreviewDeviceSize, withDeviceHint } from "./device-hint";
+import {
+  frameNavigationLoaded,
+  HELD_NAVIGATION_RELEASE_MS,
+  type HeldFrameNavigation,
+  nextFrameNavigation,
+} from "./frame-navigation";
 
 /** Delay before navigating to a newly created page, giving the dev server time to route it. */
 const DEV_SERVER_SETTLE_MS = 500;
-
-type PreviewDeviceSize = "mobile" | "tablet" | "desktop";
 
 /**
  * Logical viewport dimensions per device, matching the legacy admin. The iframe
@@ -162,6 +206,7 @@ const PREVIEW_VIEWPORTS: Record<
 const PREVIEW_OFFSET = 1;
 
 const DEVICE_CYCLE: PreviewDeviceSize[] = ["desktop", "mobile", "tablet"];
+const EDITING_MODES: PreviewEditingMode[] = ["preview", "visual", "blocks"];
 
 // Device labels are resolved per-render in the component to use t()
 const DEVICE_LABEL_KEYS: Record<PreviewDeviceSize, TranslationKey> = {
@@ -169,22 +214,6 @@ const DEVICE_LABEL_KEYS: Record<PreviewDeviceSize, TranslationKey> = {
   tablet: "sandbox.preview.deviceTablet",
   desktop: "sandbox.preview.deviceDesktop",
 };
-
-/**
- * Deco reads `deviceHint` to force SSR device matchers (see deco `deviceOf`).
- * Falls back to the unmodified `url` on a malformed input instead of throwing
- * mid-render and taking down the whole preview panel (same defensive shape as
- * `previewOrigin` below).
- */
-export function withDeviceHint(url: string, device: PreviewDeviceSize): string {
-  try {
-    const parsed = new URL(url, window.location.href);
-    parsed.searchParams.set("deviceHint", device);
-    return parsed.href;
-  } catch {
-    return url;
-  }
-}
 
 /**
  * Force `__decoFBT=0` and `__deco_ssr=1` on the preview URL — `__decoFBT=0`
@@ -229,6 +258,69 @@ export function resolvePreviewUrl(path: string, base: string): string | null {
   } catch {
     return null;
   }
+}
+
+/** A pinned Fast Preview draft URL, tagged with the path it was latched at. */
+export interface PinnedDraft {
+  path: string;
+  url: string;
+}
+
+/**
+ * Fast Preview in-place pinning decision (pure; see the `pinnedDraftUrlRef`
+ * usage below).
+ *
+ * While editing in place the frame's URL is frozen so autosave version bumps
+ * (`?__draft=…@<sha>`) don't reload it mid-edit. But a real page switch changes
+ * the path, and that MUST re-latch: otherwise the frame stays frozen on the old
+ * page and the only thing left to show the new one is the heavy
+ * `/live/previews` in-place POST — which carries the whole decofile and hangs
+ * on large sites (farmrio), so the preview appears stuck on the first page.
+ *
+ * So: re-latch on the first grant AND on any path change; keep the pin for
+ * same-path version bumps. When not editing in place, track the live draft.
+ */
+export function resolveInPlaceDraftUrl(
+  prev: PinnedDraft | null,
+  input: {
+    inPlaceRenderActive: boolean;
+    draftPreviewUrl: string | null;
+    resolvedPath: string;
+  },
+): { pin: PinnedDraft | null; effective: string | null } {
+  if (!input.inPlaceRenderActive) {
+    const pin = input.draftPreviewUrl
+      ? { path: input.resolvedPath, url: input.draftPreviewUrl }
+      : null;
+    return { pin, effective: input.draftPreviewUrl };
+  }
+  if (input.draftPreviewUrl !== null && prev?.path !== input.resolvedPath) {
+    const pin = { path: input.resolvedPath, url: input.draftPreviewUrl };
+    return { pin, effective: pin.url };
+  }
+  return { pin: prev, effective: prev?.url ?? null };
+}
+
+/** In-place render signature: `nav` = which page/path, `content` = the decofile. */
+export interface RenderSig {
+  nav: string;
+  content: string;
+}
+
+/**
+ * Whether an in-place `/live/previews` render should fire (pure).
+ *
+ * A page/path switch (nav change) is shown by re-navigating the frame — see
+ * {@link resolveInPlaceDraftUrl} — so it must NOT POST a render. Only a content
+ * edit on the SAME page renders in place. The first observation and any nav
+ * change just establish a baseline.
+ */
+export function shouldInPlaceRender(
+  prev: RenderSig | null,
+  next: RenderSig,
+): boolean {
+  if (!prev || prev.nav !== next.nav) return false;
+  return prev.content !== next.content;
 }
 
 /**
@@ -282,24 +374,26 @@ function reloadIframeOrFallback(
 
 export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const t = useT();
-  const isDesktopApp = useIsDesktopApp();
   const isMobile = useIsMobile();
-  // Desktop: the main panel header hosts the preview controls (single top bar).
-  // Mobile / standalone (no header slot): render the toolbar inline below.
-  const headerSlot = useMainPanelHeaderSlot();
-  const { currentBranch: branch, taskId: activeTaskId } = useChatTask();
+  // Page tools share the toolbar on every screen; standalone views render them inline.
+  const {
+    currentBranch: branch,
+    taskId: activeTaskId,
+    virtualMcpId: sessionAgentId,
+  } = useChatTask();
+  /** Visual editing asks the chat about a clicked element: none without one
+   *  (the account-less `/site-editor`). */
+  const hasChat = !!useOptionalChatStream();
   const workspace = useBlocksPreviewWorkspace();
-  const inset = useInsetContext();
+  const agent = useVirtualMCPNonBlocking(
+    sessionAgentId === virtualMcpId ? virtualMcpId : null,
+  );
   /** THIS session's runtime, off the thread's own immutable stamp — the one
    *  thread-aware gate, scoped to this agent's entity by the id match. */
   const session = useSessionRuntime(virtualMcpId);
   /** Settings › CMS for this project. `off` is the one thing that keeps a CMS
    *  session out of the blocks editor below. */
-  const cmsMode = resolveCmsMode(
-    inset?.entity?.id === virtualMcpId
-      ? (inset.entity.metadata?.ui?.layout ?? null)
-      : null,
-  );
+  const cmsMode = resolveCmsMode(agent?.metadata?.ui?.layout ?? null);
   const contentEditingEnabled = isContentEditingEnabled(cmsMode);
   const blocksEditingEnabled = isBlocksEditingEnabled({
     contentEditingEnabled,
@@ -309,11 +403,24 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   /** Singular: Visual and Blocks cannot both be active, while device size is
    *  independent and survives a switch. Blocks starts open whenever the shared
    *  Content gate and desktop constraint allow it. */
-  const [editingMode, setEditingMode] = useState<PreviewEditingMode>(() =>
+  const [defaultEditingMode] = useState<PreviewEditingMode>(() =>
     defaultPreviewEditingMode({ cmsMode, isMobile }),
   );
+  /** `null` until the user picks a mode, so the gated default above still
+   *  applies on a first visit instead of being frozen into storage. */
+  const [storedEditingMode, setEditingMode] =
+    useLocalStorage<PreviewEditingMode | null>(
+      LOCALSTORAGE_KEYS.previewEditingMode(virtualMcpId),
+      (existing) =>
+        existing && EDITING_MODES.includes(existing) ? existing : null,
+    );
+  const editingMode = storedEditingMode ?? defaultEditingMode;
   const [previewDeviceSize, setPreviewDeviceSize] =
-    useState<PreviewDeviceSize>("desktop");
+    useLocalStorage<PreviewDeviceSize>(
+      LOCALSTORAGE_KEYS.previewDeviceSize(virtualMcpId),
+      (existing) =>
+        existing && DEVICE_CYCLE.includes(existing) ? existing : "desktop",
+    );
   const [visualElement, setVisualElement] =
     useState<VisualEditorPayload | null>(null);
   /**
@@ -342,17 +449,11 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     });
   // Live canvas size, used to scale the fixed-width frame to fit.
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
-  /** Origin most recently confirmed registered with the native shell via
-   *  `registerPreviewOrigin` — see the effect below that sets it. `null`
-   *  until the very first desktop-app production-mode registration lands. */
-  const [registeredPreviewOrigin, setRegisteredPreviewOrigin] = useState<
-    string | null
-  >(null);
 
   // Pages dropdown in URL bar
   const [pagesOpen, setPagesOpen] = useState(false);
   const [pagesSearch, setPagesSearch] = useState("");
-  const pagesContainerRef = useRef<HTMLDivElement>(null);
+  const pagesListRef = useRef<HTMLDivElement>(null);
   const [createPageDialogOpen, setCreatePageDialogOpen] = useState(false);
   const [createPageError, setCreatePageError] = useState<string | undefined>();
   const [activeGlobalSection, setActiveGlobalSection] =
@@ -363,9 +464,13 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const [directPreviewUrl, setDirectPreviewUrl] = useState<string | null>(null);
 
   // Current iframe path (for sections editor)
-  const [currentPath, setCurrentPath] = useState("/");
+  const [currentPath, setCurrentPath] = useState(() =>
+    workspace.state.target?.kind === "page" ? workspace.state.target.path : "/",
+  );
   /** Explicit page block key from the page picker; disambiguates duplicate paths. */
-  const [pinnedPageKey, setPinnedPageKey] = useState<string | null>(null);
+  const [pinnedPageKey, setPinnedPageKey] = useState<string | null>(() =>
+    workspace.state.target?.kind === "page" ? workspace.state.target.key : null,
+  );
   /** User-provided values for `:param` tokens in path templates, keyed by page block key. */
   const [pathParamsByPage, setPathParamsByPage] = useState<
     Record<string, Record<string, string>>
@@ -398,9 +503,46 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const vmEvents = useSandboxEvents();
   const lifecycle = useSandboxLifecycle();
   const vmEntry = lifecycle.vmEntry;
-  const previewUrl = lifecycle.previewUrl;
   const lifecyclePhase = vmEvents.lifecycle.phase;
-  const devServerReady = lifecyclePhase === "running";
+  /**
+   * Local mode: the pasted tunnel stands in for the managed sandbox dev server.
+   * It replaces `previewUrl` everywhere below — the CMS reads, the preview
+   * iframe, and the editor bridge all target it — and the boot gating is
+   * bypassed (the tunnel is already up), so no pod ever boots.
+   */
+  const { url: tunnelUrl, undecided: tunnelUndecided } =
+    useLocalPreviewUrl(virtualMcpId);
+  /**
+   * A connected `deco serve` (content protocol) stands in the same way: its
+   * app preview is the dev server on this machine. The protocol never runs
+   * site code, so nothing renders in place: the frame is the real app.
+   */
+  const contentBackend = useContentBackend(virtualMcpId, branch);
+  const { connection: serveConnection } = useDecoServeConnection(virtualMcpId);
+  const mainSchema = useMainSchemaV8(virtualMcpId);
+  const previewMode = contentMode({
+    hasServeConnection: !!serveConnection,
+    runtime: session.runtime,
+  });
+  /**
+   * v7 or v8 isn't known yet: GitHub mode while main's answer loads (or is
+   * retried), or a saved Local tunnel waiting for it. The canvas holds a
+   * neutral loader and no site-code path runs, so neither generation's
+   * surface shows first and then switches.
+   */
+  const deciding =
+    tunnelUndecided ||
+    (previewMode === "github" &&
+      (mainSchema === "loading" || mainSchema === "error"));
+  // The protocol never runs site code; nor does anything before the GitHub
+  // mode decision (a v8 site must never arm the v7 render paths first).
+  const runsSiteCode =
+    !isProtocolProject(contentBackend) &&
+    !deciding &&
+    !(previewMode === "github" && contentBackend.kind === "pending");
+  const localPreviewUrl = servePreviewUrl(contentBackend) ?? tunnelUrl;
+  const previewUrl = localPreviewUrl ?? lifecycle.previewUrl;
+  const devServerReady = !!localPreviewUrl || lifecyclePhase === "running";
 
   // Live production URL of the linked site, persisted on the agent's
   // `metadata.previewServerUrl` at import time (deco.cx reports the real domain,
@@ -409,20 +551,23 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // of a blank overlay. `null` (no field, or a site imported before this was
   // persisted) → the original blocking overlay is kept.
   const previewServerUrl =
-    inset?.entity?.id === virtualMcpId
-      ? resolvePreviewServerUrl(inset.entity.metadata)
-      : null;
+    agent?.id === virtualMcpId ? resolvePreviewServerUrl(agent.metadata) : null;
   const fastPreviewEnabled =
-    inset?.entity?.id === virtualMcpId && session.runtime === "cms";
+    !localPreviewUrl &&
+    !tunnelUndecided &&
+    agent?.id === virtualMcpId &&
+    session.runtime === "cms";
   /** This project defaults to CMS — the question `fastPreviewEnabled` answers for the SESSION. */
   const projectDefaultsToCms = session.projectDefault === "cms";
 
   // Base for the `/live/previews` global-section render: production under Fast Preview (no dev server), else the sandbox dev server.
-  const sectionPreviewBase = resolveSectionPreviewBase({
-    sandboxUrl: previewUrl,
-    previewServerUrl,
-    fastPreviewActive: fastPreviewEnabled,
-  });
+  const sectionPreviewBase = runsSiteCode
+    ? resolveSectionPreviewBase({
+        sandboxUrl: previewUrl,
+        previewServerUrl,
+        fastPreviewActive: fastPreviewEnabled,
+      })
+    : null;
 
   // Decofile pages/global sections for the URL bar dropdown. Not gated on the
   // dev server: when it's down we read the committed `.deco/*.gen.json` snapshot
@@ -448,7 +593,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const decofile = decofileQuery.data;
   const meta = metaQuery.data;
   const pages = decofile
-    ? extractPages(decofile).sort((a, b) => a.name.localeCompare(b.name))
+    ? extractPages(decofile, meta).sort((a, b) => a.name.localeCompare(b.name))
     : [];
   const createPageParams =
     virtualMcpId && branch ? { orgSlug: org.slug, virtualMcpId, branch } : null;
@@ -456,7 +601,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const globalSections =
     decofile && meta ? extractGlobalSections(decofile, meta) : [];
   const globalLoaders =
-    decofile && meta ? listSavedRunnables(meta, decofile, "loaders") : [];
+    runsSiteCode && decofile && meta
+      ? listSavedRunnables(meta, decofile, "loaders")
+      : [];
   const filteredPages = !pagesSearch
     ? pages
     : (() => {
@@ -502,14 +649,20 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     activeGlobalSection || activeLoaderKey
       ? null
       : findPageForPath(pages, currentPath, pinnedPageKey);
-  const currentPageName = activeGlobalSection
-    ? activeGlobalSection.name
-    : (activeLoader?.title ?? currentPage?.name);
+
   const currentPageKey = currentPage?.key ?? null;
+  /**
+   * The block the JSON view shows: the global section when one is open —
+   * either as its own destination or opened from inside a page — otherwise the
+   * page itself. It follows the form, not the route.
+   */
+  const jsonBlockKey =
+    workspace.state.target?.kind === "section"
+      ? workspace.state.target.key
+      : (workspace.state.focusedBlockKey ?? currentPageKey);
   const currentPagePath = currentPage?.path ?? null;
 
-  // Path templates: pages like `/blog/:slug` expose inline inputs in the URL
-  // bar. `currentPath` keeps the template (so the page stays matched); the
+  // Path templates: pages like `/blog/:slug` expose inputs in the page popover. `currentPath` keeps the template (so the page stays matched); the
   // iframe navigates to the template with the user's values filled in.
   const pathParamValues =
     (currentPageKey ? pathParamsByPage[currentPageKey] : undefined) ?? {};
@@ -520,7 +673,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // whatever product-search / category loader the running site actually ships.
   // A param with no resolvable source keeps the plain inline input.
   const pathParamSources: Record<string, OptionSource[]> = {};
-  if (devServerReady && previewUrl && meta && decofile) {
+  if (runsSiteCode && devServerReady && previewUrl && meta && decofile) {
     const manifestLoaders = manifestLoaderResolveTypes(meta, "loaders");
     const pageBlock = currentPageKey ? decofile[currentPageKey] : undefined;
     const pageLoaders = collectPageLoaderResolveTypes(
@@ -603,12 +756,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // bumped by every save). No sandbox, no SSE — a new version after a save is
   // still what re-navigates the frame.
   //
-  // Autosave indicator: an in-flight block write shares navigation's top bar.
-  const decofileWriting = useDecofileWriting(
-    org.slug,
-    virtualMcpId ?? "",
-    branch ?? "",
-  );
+  // Content changes (content-sync.ts) share navigation's top bar: saving,
+  // then (hosted v8) until this frame has loaded the change.
+  const contentSyncBusy = useContentSyncBusy(org.slug, virtualMcpId ?? "");
   // Computed BEFORE `display`: it is an input to that decision, so it must not
   // depend on `display.mode` in turn.
   const { url: draftPreviewUrl } = useFastPreviewDraftUrl(
@@ -631,6 +781,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // (no production URL) the blocking booting overlay.
   // Coding sessions boot visibly: no production fallback → the boot console.
   const codingSession = projectDefaultsToCms && session.runtime === "sandbox";
+  // A v8 site's hosted draft: nothing boots, and no draft until the first edit.
+  const hostedDraft = hostedDraftSession(
+    contentBackend,
+    previewMode,
+    mainSchema,
+  );
   const display = resolvePreviewDisplay({
     previewState,
     progressStatus: progress.status,
@@ -638,29 +794,24 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     fastPreviewActive: fastPreviewEnabled,
     fastPreviewReady: !!draftPreviewUrl,
     codingSession,
+    localPreviewUrl,
+    hostedDraft,
+    deciding,
   });
+  /** The frame shows the published site: nothing to draft-render yet. */
+  const showsPublished =
+    display.showWakingPill ||
+    (hostedDraft && display.mode === "production" && !draftPreviewUrl);
   const previewSurfaceActive = display.mode !== "none";
 
   // Origin of the "production" mode's base — an external, org-owned domain
-  // (the published site), unlike "sandbox" mode's `iframeBase`, which is
-  // always this app's own local sandbox-preview-proxy origin (already
-  // allowed natively, no registration needed). `null` outside production
-  // mode, or once no `iframeBase` is available yet.
+  // (the published site). `null` outside production mode, or once no
+  // `iframeBase` is available yet.
   const productionOrigin =
     display.mode === "production" && display.iframeBase
       ? previewOrigin(display.iframeBase)
       : null;
-  // In the desktop app, an external production origin must be registered
-  // with the native shell's navigation policy BEFORE the iframe below is
-  // allowed to navigate there — see `registerPreviewOrigin`'s doc comment
-  // for why this can't be fire-and-forget. Plain browser tabs have no such
-  // gate, so this is a no-op there.
-  const productionOriginReady =
-    !isDesktopApp ||
-    !productionOrigin ||
-    registeredPreviewOrigin === productionOrigin;
-
-  // Origin of the in-iframe editor bridge — sandbox proxy, or the site's own origin under Fast Preview.
+  // Origin of the in-iframe editor bridge — sandbox proxy / Local tunnel, or the site's own origin under Fast Preview.
   const editorBridgeOrigin =
     display.mode === "production"
       ? productionOrigin
@@ -676,84 +827,79 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
    * place, and re-tracks live once the panel closes.
    */
   const inPlaceRenderEnabled =
-    inset?.entity?.id === virtualMcpId &&
-    inset.entity.metadata?.fastPreviewInPlace === true;
-  const inPlaceRenderActive =
-    display.mode === "production" &&
-    fastPreviewEnabled &&
-    inPlaceRenderEnabled &&
-    blocksEditingEnabled &&
-    editingMode === "blocks";
-  const pinnedDraftUrlRef = useRef<string | null>(null);
-  if (!inPlaceRenderActive) {
-    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- track the live draft URL while not editing in place; pin it while editing
-    pinnedDraftUrlRef.current = draftPreviewUrl;
-  }
-  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read the value pinned during this same render (written just above when inactive)
-  const pinnedDraftUrl = pinnedDraftUrlRef.current;
-  const effectiveDraftPreviewUrl = inPlaceRenderActive
-    ? (pinnedDraftUrl ?? draftPreviewUrl)
-    : draftPreviewUrl;
+    agent?.id === virtualMcpId && agent.metadata?.fastPreviewInPlace === true;
+  // Local renders fake edits in place against the tunnel's `/live/previews`.
+  const inPlaceRenderActive = !runsSiteCode
+    ? false
+    : localPreviewUrl
+      ? display.mode === "sandbox" &&
+        blocksEditingEnabled &&
+        editingMode === "blocks"
+      : display.mode === "production" &&
+        fastPreviewEnabled &&
+        inPlaceRenderEnabled &&
+        blocksEditingEnabled &&
+        editingMode === "blocks";
+  // Frozen against autosave version bumps, re-latched on page switch — see resolveInPlaceDraftUrl.
+  const pinnedDraftUrlRef = useRef<PinnedDraft | null>(null);
+  const { pin: nextPinnedDraft, effective: effectiveDraftPreviewUrl } =
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read the pin latched last render before deciding whether to re-latch
+    resolveInPlaceDraftUrl(pinnedDraftUrlRef.current, {
+      inPlaceRenderActive,
+      draftPreviewUrl,
+      resolvedPath,
+    });
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- persist the frozen/relatched pin for the next render's decision
+  pinnedDraftUrlRef.current = nextPinnedDraft;
+
+  // The selected variant: forced variants in the `?__draft=` pointer on a
+  // content-protocol (v8) site, `x-deco-matchers-override` on a legacy one.
+  const variantOverride = workspace.state.variantOverride ?? [];
+  const matcherOverride = runsSiteCode ? variantOverride : [];
+  const forcedVariants = runsSiteCode ? [] : variantOverride;
+  // A connected `deco serve` has no drafts: a pointer to it carries only the
+  // forced variants. With none, `off` drops a pointer the draft cookie kept.
+  const servePointer =
+    serveConnection && servePreviewUrl(contentBackend)
+      ? (buildServeDraftPointer(serveConnection.endpoint, forcedVariants) ??
+        DRAFT_OFF)
+      : null;
 
   const iframeSrc = withDecoFBT(
     display.mode === "sandbox"
       ? withVariantMatcherOverride(
           withDeviceHint(
-            directPreviewUrl ??
-              resolvePreviewUrl(resolvedPath, display.iframeBase!) ??
-              display.iframeBase!,
+            withDraftPointer(
+              directPreviewUrl ??
+                resolvePreviewUrl(resolvedPath, display.iframeBase!) ??
+                display.iframeBase!,
+              servePointer,
+            ),
             previewDeviceSize,
           ),
-          workspace.state.variantOverride ?? [],
+          matcherOverride,
         )
-      : display.mode === "production" && productionOriginReady
+      : display.mode === "production"
         ? // Fast Preview's draft route honours the variant matcher override like the sandbox dev server, so append it here too.
           withVariantMatcherOverride(
             withDeviceHint(
-              // Waking pill up ⇒ no draft is renderable yet, so ask for published.
-              withDraftPointer(
-                directPreviewUrl ??
-                  effectiveDraftPreviewUrl ??
-                  resolvePreviewUrl(resolvedPath, display.iframeBase!) ??
-                  display.iframeBase!,
-                display.showWakingPill ? DRAFT_OFF : null,
+              withForcedVariantsInDraftUrl(
+                // No draft renderable yet (waking, or a hosted draft with no edits), so ask for published.
+                withDraftPointer(
+                  directPreviewUrl ??
+                    effectiveDraftPreviewUrl ??
+                    resolvePreviewUrl(resolvedPath, display.iframeBase!) ??
+                    display.iframeBase!,
+                  showsPublished ? DRAFT_OFF : null,
+                ),
+                forcedVariants,
               ),
               previewDeviceSize,
             ),
-            workspace.state.variantOverride ?? [],
+            matcherOverride,
           )
         : null,
   );
-
-  // Registers `productionOrigin` with the native shell before the iframe
-  // above is allowed to navigate there (see `productionOriginReady`).
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- imperative native-shell IPC gate before cross-origin iframe navigation, mirrors the draft-URL effect just below
-  useEffect(() => {
-    if (!isDesktopApp || !productionOrigin) return;
-    if (registeredPreviewOrigin === productionOrigin) return;
-    let cancelled = false;
-    registerPreviewOrigin(productionOrigin)
-      .then(() => {
-        if (!cancelled) setRegisteredPreviewOrigin(productionOrigin);
-      })
-      .catch((error) => {
-        console.error(
-          "Failed to register preview origin",
-          productionOrigin,
-          error,
-        );
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [isDesktopApp, productionOrigin, registeredPreviewOrigin]);
-
-  // "Open outside the preview pane". In a browser that's a new tab; inside the
-  // Tauri webview there is no tab strip to open into, so `window.open` cannot
-  // serve it — hand the URL to the OS default browser instead, and say so.
-  const openPreviewLabelKey = isDesktopApp
-    ? ("sandbox.preview.openInBrowser" as const)
-    : ("sandbox.preview.openInNewTab" as const);
 
   /**
    * URL for "open in new tab" — the same page, minus Studio's viewport hint.
@@ -772,24 +918,16 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     display.mode === "production"
       ? productionOpenTabBase
         ? withVariantMatcherOverride(
-            productionOpenTabBase,
-            workspace.state.variantOverride ?? [],
+            withForcedVariantsInDraftUrl(productionOpenTabBase, forcedVariants),
+            matcherOverride,
           )
         : null
       : (iframeSrc ?? display.iframeBase);
 
-  const handleOpenPreview = async () => {
+  const handleOpenPreview = () => {
     const url = openInNewTabUrl;
     if (!url) return;
-    if (!isDesktopApp) {
-      window.open(url, "_blank", "noopener");
-      return;
-    }
-    try {
-      await openExternalUrlInSystemBrowser(url);
-    } catch {
-      toast.error(t("sandbox.preview.failedToOpenInBrowser"));
-    }
+    window.open(url, "_blank", "noopener");
   };
 
   // Last visited page (incl. `:param` values), persisted per project+branch.
@@ -802,6 +940,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   };
 
   const sharedTarget = workspace.state.target;
+  // oxlint-disable react/set-state-in-effect
+  // Not a pure state sync: the same pass writes the last page to storage and
+  // steers the mounted iframe, so it has to run after commit.
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- synchronizes the independent Blocks selection with the mounted Preview iframe
   useEffect(() => {
     if (!sharedTarget || !sectionPreviewBase || !meta) return;
@@ -843,6 +984,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     }
     // oxlint-disable-next-line eslint-plugin-react-hooks/exhaustive-deps -- derived helpers must not retrigger selection synchronization every render
   }, [sharedTarget, sectionPreviewBase, meta, pathParamsByPage]);
+  // oxlint-enable react/set-state-in-effect
 
   // Publish the page Preview is showing to the shared workspace so the Blocks
   // panel follows it — Blocks has no page navigator, it edits whatever page
@@ -908,6 +1050,25 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- ref read in reload handler
   iframeSrcRef.current = iframeSrc;
 
+  // Fast Preview: one navigation at a time (frame-navigation.ts). A pointer
+  // that arrives while the frame still loads the last one waits for its load,
+  // then the latest goes in; cancelling a load wastes its render and makes a
+  // site with page-to-page view transitions log "Transition was skipped".
+  const holdFrameNavigation =
+    display.mode === "production" && !!draftPreviewUrl && !localPreviewUrl;
+  const [frameNavigation, setFrameNavigation] = useState<HeldFrameNavigation>({
+    src: iframeSrc ?? undefined,
+    loading: false,
+  });
+  const nextNavigation = nextFrameNavigation(
+    frameNavigation,
+    iframeSrc ?? undefined,
+    holdFrameNavigation,
+  );
+  if (nextNavigation !== frameNavigation) setFrameNavigation(nextNavigation);
+  const frameSrc = nextNavigation.src;
+  const frameLoading = nextNavigation.loading;
+
   // Self-heal a stuck iframe: when the dev server is/was unreachable the frame
   // lands on the browser's connection-refused page and fires no load/error
   // event, so nothing reloads it once the server is back. This watchdog retries
@@ -926,17 +1087,30 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // frame. The version makes the URL distinct, and the ref guard makes the
   // first paint (React already set `src`) and unrelated re-renders no-ops.
   const lastDraftUrlRef = useRef<string | null>(null);
+  // It navigates to the src the frame was given (`frameSrc`, held while a
+  // load is on its way), and releases a held navigation whose load never
+  // fires, so the next pointer still reaches the frame.
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- imperative cross-origin iframe navigation on draft change; .reload() throws cross-origin
   useEffect(() => {
-    if (!draftPreviewUrl || !iframeSrc) return;
-    if (lastDraftUrlRef.current === draftPreviewUrl) return;
+    const release = frameLoading
+      ? setTimeout(
+          () => setFrameNavigation(frameNavigationLoaded),
+          HELD_NAVIGATION_RELEASE_MS,
+        )
+      : null;
+    const clear = () => {
+      if (release) clearTimeout(release);
+    };
+    if (!draftPreviewUrl || !frameSrc) return clear;
+    if (lastDraftUrlRef.current === draftPreviewUrl) return clear;
     lastDraftUrlRef.current = draftPreviewUrl;
     const iframe = previewIframeRef.current;
-    if (iframe && iframe.getAttribute("src") !== iframeSrc) {
+    if (iframe && iframe.getAttribute("src") !== frameSrc) {
       beginNavigation();
-      iframe.src = iframeSrc;
+      iframe.src = frameSrc;
     }
-  }, [draftPreviewUrl, iframeSrc]);
+    return clear;
+  }, [draftPreviewUrl, frameSrc, frameLoading]);
 
   // Post the current page's merged decofile to the frame for an in-place render.
   const renderPreviewInPlace = () => {
@@ -953,10 +1127,10 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       pathTemplate: currentPath,
     });
     if (!req) return;
-    // Carry the selected variant like the reload-based `iframeSrc` does; else the runtime renders the default variant.
+    // Carry the selected variant like the reload-based `iframeSrc` does; else the runtime renders the variant live right now.
     const src = withVariantMatcherOverride(
       req.src,
-      workspace.state.variantOverride ?? [],
+      inlinePageOverrideParams(matcherOverride, currentPageKey),
     );
     win.postMessage(
       { type: "cms-editor::render", src, body: req.body },
@@ -964,14 +1138,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     );
   };
 
-  /**
-   * Refresh the in-place render on a content or page/path change. The frame's
-   * `src` is pinned here, so a page switch can't navigate it — the signature
-   * folds in page + path to fire a render, deduped so onMutate + onSuccess
-   * render once.
-   */
-  const renderSigRef = useRef<string | null>(null);
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- imperative postMessage refresh of a cross-origin frame on content/page change
+  /** Fire the in-place render on a content edit only — see shouldInPlaceRender. */
+  const renderSigRef = useRef<RenderSig | null>(null);
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- imperative postMessage refresh of a cross-origin frame on content change
   useEffect(() => {
     if (
       !inPlaceRenderActive ||
@@ -983,18 +1152,17 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       renderSigRef.current = null;
       return;
     }
-    const sig = JSON.stringify({
-      page: currentPageKey,
-      path: resolvedPath,
-      pathTemplate: currentPath,
-      decofile,
-    });
-    if (renderSigRef.current === sig) return;
-    const isBaseline = renderSigRef.current === null;
+    const sig: RenderSig = {
+      nav: JSON.stringify({
+        page: currentPageKey,
+        path: resolvedPath,
+        pathTemplate: currentPath,
+      }),
+      content: JSON.stringify(decofile),
+    };
+    const render = shouldInPlaceRender(renderSigRef.current, sig);
     renderSigRef.current = sig;
-    // The frame already shows this content via its src; only edits after it render.
-    if (isBaseline) return;
-    renderPreviewInPlace();
+    if (render) renderPreviewInPlace();
     // oxlint-disable-next-line eslint-plugin-react-hooks/exhaustive-deps -- renderPreviewInPlace reads live values; retrigger only on content/page change
   }, [
     decofile,
@@ -1127,9 +1295,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     const win = previewIframeRef.current?.contentWindow;
     const origin = editorBridgeOrigin;
     if (!win || !origin) return;
-    // Sandbox speaks the daemon's `visual-editor::activate`; a Fast Preview production frame speaks the deco framework's `editor::inject`.
+    // Daemon-proxied sandbox speaks `visual-editor::activate`; a Fast Preview production frame and a Local tunnel (a raw deco runtime) speak the framework's `editor::inject`.
     win.postMessage(
-      display.mode === "production"
+      display.mode === "production" || localPreviewUrl
         ? { type: "editor::inject", args: { script: CMS_EDITOR_SCRIPT } }
         : { type: "visual-editor::activate", script: CMS_EDITOR_SCRIPT },
       origin,
@@ -1155,6 +1323,15 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     win.postMessage({ type: "cms-editor::deactivate" }, origin);
   };
 
+  // Parent-driven clear: the cross-origin iframe can't self-detect a frame exit.
+  const clearEditorHover = () => {
+    const win = previewIframeRef.current?.contentWindow;
+    const origin = editorBridgeOrigin;
+    if (!win || !origin) return;
+    win.postMessage({ type: "cms-editor::clear-hover" }, origin);
+    win.postMessage({ type: "visual-editor::clear-hover" }, origin);
+  };
+
   const activateEditingMode = (mode: PreviewEditingMode) => {
     if (mode === "blocks" && !blocksEditingEnabled) return;
     const previousMode = editingMode;
@@ -1162,8 +1339,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       if (mode === "blocks") blocksPanelRef.current?.resize("30%");
       else blocksPanelRef.current?.collapse();
     }
-    // The JSON side panel only makes sense next to the Blocks editor.
-    if (mode !== "blocks") closeJsonPanel();
     setEditingMode(mode);
     setVisualElement(null);
     setCmsSelectedSection(null);
@@ -1181,14 +1356,10 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     );
   };
 
-  const handleRefresh = () => {
-    if (!previewIframeRef.current || !iframeSrc) return;
-    // Same progress bar as page navigation; the iframe's onLoad clears it.
-    beginNavigation();
-    const iframe = previewIframeRef.current;
-    // biome-ignore lint/correctness/noSelfAssign: reloads the iframe
-    // oxlint-disable-next-line no-self-assign
-    iframe.src = iframeSrc;
+  const toggleBlocksEditing = () => {
+    activateEditingMode(
+      toggleBlocksEditingMode(editingMode, blocksEditingEnabled),
+    );
   };
 
   /** Reload the preview without moving keyboard focus. */
@@ -1229,6 +1400,70 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
 
   // Only a moved or restarted dev server; file edits reload the page themselves.
   useSandboxReloadHandler(reloadPreviewPreservingScroll);
+
+  /**
+   * A hosted v8 frame shows every content change (content-sync.ts): when a
+   * change's refresh is done it loads the new content, by navigating to a
+   * moved draft pointer or by reloading the page it shows, and its load ends
+   * the shared pending state (the bar above and the header's "Saving…").
+   */
+  const contentScope = contentSyncScope(org.slug, virtualMcpId ?? "");
+  const confirmsContentReloads =
+    hostedDraft && previewSurfaceActive && !!virtualMcpId;
+  /** The `iframeSrc` the frame last finished loading. */
+  const loadedSrcRef = useRef<string | null>(null);
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- registers this frame with the content-sync store for its lifetime
+  useEffect(() => {
+    if (!confirmsContentReloads) return;
+    return registerContentPreview(contentScope);
+  }, [confirmsContentReloads, contentScope]);
+  const { reload: contentReload } = useContentSyncState(
+    org.slug,
+    virtualMcpId ?? "",
+  );
+  const handledReloadRef = useRef(contentReload.seq);
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- imperative iframe reload when a content change asks for one
+  useEffect(() => {
+    if (handledReloadRef.current === contentReload.seq) return;
+    handledReloadRef.current = contentReload.seq;
+    if (!confirmsContentReloads) return;
+    // A load of the new URL is under way: its onLoad confirms.
+    if (loadedSrcRef.current !== iframeSrcRef.current) return;
+    // The frame already shows the moved pointer.
+    if (contentReload.navigates) {
+      confirmPreviewReloaded(contentScope);
+      return;
+    }
+    reloadPreviewPreservingScroll();
+    // oxlint-disable-next-line react-hooks/exhaustive-deps -- runs once per reload request; the reload reads refs
+  }, [contentReload.seq]);
+
+  // A connected `deco serve` is the exception: a save rewrites the site's
+  // content module, which only the server imports, so the dev server may
+  // swap it without reloading the page in the frame. A new content revision
+  // (a save here, or a read that found the files changed) waits for the
+  // frame to reload itself, as a dev server that reloads on content changes
+  // does, and reloads it otherwise; a reload by the site is confirmed by one
+  // more, since it may have come before its server had the content
+  // (serve-content-reload.ts).
+  const contentCacheKey = useDecofileCacheKey(createPageParams);
+  const contentRevision = useContentRevision(
+    servePreviewUrl(contentBackend) ? contentCacheKey : "",
+  );
+  const shownRevisionRef = useRef(contentRevision);
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- imperative iframe reload in response to a content revision the query cache moved
+  useEffect(() => {
+    const shown = shownRevisionRef.current;
+    shownRevisionRef.current = contentRevision;
+    if (!shown || !contentRevision || shown === contentRevision) return;
+    const iframe = previewIframeRef.current;
+    if (!iframe) return;
+    return watchServeContentReload({
+      iframe,
+      reload: reloadPreviewPreservingScroll,
+    });
+    // oxlint-disable-next-line react-hooks/exhaustive-deps -- reload on a revision change only; the reload reads refs
+  }, [contentRevision]);
 
   const handleDeviceToggle = () => {
     const idx = DEVICE_CYCLE.indexOf(previewDeviceSize);
@@ -1284,7 +1519,35 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     });
   };
 
+  /** Same as following a link inside the frame: no page is pinned. */
+  const navigatePreviewToAgentPath = (path: string) => {
+    if (activeGlobalSection || normPath(path) !== normPath(resolvedPath)) {
+      beginNavigation();
+    }
+    intendedPathRef.current = path;
+    setActiveGlobalSection(null);
+    setActiveLoaderKey(null);
+    setDirectPreviewUrl(null);
+    setCmsSelectedSection(null);
+    setPinnedPageKey(null);
+    setCurrentPath(path);
+    persistLastPage({ path, pageKey: null, params: {} });
+  };
+
+  usePreviewNavigateHandler(previewStorageKey, navigatePreviewToAgentPath);
+
   const navigatePreviewToGlobalSection = (section: GlobalSectionEntry) => {
+    // A Blocks v8 site has no isolated-section route (`/live/previews` is
+    // v7's): show a page that has the block, the home page first. A block no
+    // page uses has nothing to preview.
+    if (isProtocolProject(contentBackend)) {
+      const page = decofile
+        ? previewPageForBlock(decofile, section.key, meta)
+        : null;
+      if (page) navigatePreviewToPage(page);
+      else toast.info(t("sandbox.preview.blockOnNoPage"));
+      return;
+    }
     if (!sectionPreviewBase || !meta) {
       toast.error(t("sandbox.preview.previewMetadataNotReady"));
       return;
@@ -1371,8 +1634,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     }
   };
 
-  const showPreviewToolbar =
-    previewSurfaceActive && (daemonReady || display.mode === "production");
+  const showPreviewToolbar = showPreviewToolbarFor({
+    previewSurfaceActive,
+    daemonReady,
+    production: display.mode === "production",
+    servePreviewUrl: servePreviewUrl(contentBackend),
+  });
 
   /** The page selector shares the exact project-level gate used by Content and
    *  Blocks. Session runtime and metadata readiness do not change the topbar's
@@ -1382,340 +1649,268 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     contentEditingEnabled,
   });
 
-  /** Refresh · what-the-frame-is-showing · open-in-new, kept as one block so
-   *  desktop can put it in the header's centre slot and mobile in its own. The
-   *  middle always renders; `pageSelectorVisible` decides whether it is the
-   *  interactive page selector or a plain domain label. */
-  const urlGroup = showPreviewToolbar ? (
-    <>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <ToolbarIconButton
-            onClick={handleRefresh}
-            aria-label={t("sandbox.preview.refresh")}
+  const closePagePicker = () => {
+    setPagesOpen(false);
+    setPagesSearch("");
+  };
+  const pageName =
+    activeGlobalSection?.name ?? activeLoader?.title ?? currentPage?.name;
+  const blocksLoading = decofileQuery.isPending || metaQuery.isPending;
+  const pagePickerLabel = blocksLoading
+    ? previewOrigin(display.iframeBase)
+    : pageName;
+  const currentPickerValue = activeGlobalSection
+    ? `section:${activeGlobalSection.key}`
+    : activeLoaderKey
+      ? `loader:${activeLoaderKey}`
+      : currentPageKey
+        ? `page:${currentPageKey}`
+        : undefined;
+  const urlControls = showPreviewToolbar ? (
+    pageSelectorVisible ? (
+      <Popover
+        open={pagesOpen}
+        onOpenChange={(open) => {
+          setPagesOpen(open);
+          if (!open) setPagesSearch("");
+        }}
+      >
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            aria-label={t("sandbox.preview.choosePage")}
+            data-testid="preview-page-picker"
+            title={
+              blocksLoading
+                ? (pagePickerLabel ?? undefined)
+                : activeGlobalSection || activeLoader
+                  ? pageName
+                  : [pageName, currentPath].filter(Boolean).join(" · ")
+            }
+            className="group/page-picker flex h-7 w-fit min-w-[320px] items-stretch overflow-hidden whitespace-nowrap rounded-[var(--studio-button-radius,calc(var(--radius)*1.333))] border border-border/60 bg-background text-left text-xs text-muted-foreground transition-colors hover:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <RefreshCw01 size={16} />
-          </ToolbarIconButton>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">
-          {t("sandbox.preview.refresh")}
-        </TooltipContent>
-      </Tooltip>
-
-      {/* The topbar always names what the iframe is showing; only HOW differs
-          by the shared content-editing gate. Enabled projects get the page
-          selector — page name, editable `:param` segments, and the dropdown
-          that also hosts "Create page". Disabled projects get the iframe's
-          domain as plain text. */}
-      {pageSelectorVisible ? (
-        <div ref={pagesContainerRef} className="relative min-w-0 w-64 shrink">
-          <div className="flex h-7 w-full min-w-0 items-center rounded-md border border-border bg-background transition-colors duration-200 hover:bg-accent">
-            {/* Not a <button>: path-template pages render `:param`
-                  inputs inline, and inputs can't nest inside a button.
-                  Keyboard toggling stays on the chevron button. */}
-            <div
-              className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-1 pl-2 pr-1"
-              onClick={() => setPagesOpen((prev) => !prev)}
-            >
+            <span className="flex min-w-0 flex-1 items-center gap-1.5 px-2 transition-colors group-hover/page-picker:bg-accent/50 group-data-[state=open]/page-picker:bg-accent/50">
               {activeGlobalSection && (
-                <span className="shrink-0 inline-flex items-center gap-1 rounded bg-global-section/14 px-1.5 py-0.5 text-[11px] font-medium text-global-section-fg dark:text-global-section-fg-dark">
-                  <Globe02 size={11} />
-                  Global
+                <span className="inline-flex shrink-0 items-center gap-1 rounded bg-global-section/14 px-1.5 py-0.5 text-[11px] font-medium text-global-section-fg dark:text-global-section-fg-dark">
+                  <Globe01 size={11} />
+                  {t("sandbox.preview.globalBadge")}
                 </span>
               )}
               {activeLoader && (
-                <span className="shrink-0 inline-flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                <span className="inline-flex shrink-0 items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
                   <Database01 size={11} />
                   {t("sandbox.preview.loaderBadge")}
                 </span>
               )}
-              {/* Page name in focus, followed by the route path.
-                      Path-template segments (`:param`/`*`) stay editable
-                      inputs; plain paths render as muted text. */}
-              <span
-                className={cn(
-                  "text-[13px] font-medium text-foreground",
-                  // A real page name keeps priority — the route path (flex-1,
-                  // below) is the first to truncate. But the name still carries
-                  // `min-w-0 truncate` so, once the path is fully shed, the name
-                  // clips with an ellipsis instead of sliding under the chevron.
-                  currentPageName == null
-                    ? "min-w-0 flex-1 truncate"
-                    : "min-w-0 shrink truncate",
-                )}
-              >
-                {currentPageName ?? previewLabel}
-              </span>
-              {!activeGlobalSection &&
-                !activeLoaderKey &&
-                currentPageName != null &&
-                currentPath && (
-                  <span className="flex min-w-0 flex-1 items-center overflow-hidden whitespace-nowrap text-[12px] text-muted-foreground">
-                    {splitPathTemplate(currentPath).map((token, i) => {
-                      if (token.type === "text") {
-                        return (
-                          <span
-                            key={`text-${i}`}
-                            className={cn(
-                              i === 0 ? "min-w-0 truncate" : "shrink-0",
-                            )}
-                          >
-                            {token.text}
-                          </span>
-                        );
-                      }
-                      const sources = pathParamSources[token.name];
-                      // Params with a source render as a modal chip; rest inline.
-                      if (sources && pickerSandboxRef) {
-                        return (
-                          <PathParamPickerChip
-                            key={`${currentPageKey}:${token.name}`}
-                            sources={sources}
-                            template={currentPath}
-                            paramName={token.name}
-                            value={pathParamValues[token.name] ?? ""}
-                            sandboxRef={pickerSandboxRef}
-                            onCommit={(value) =>
-                              setPathParamValue(token.name, value)
-                            }
-                          />
-                        );
-                      }
-                      return (
-                        <PathParamInput
-                          key={`${currentPageKey}:${token.name}`}
-                          name={token.name}
-                          value={pathParamValues[token.name] ?? ""}
-                          onCommit={(value) =>
-                            setPathParamValue(token.name, value)
-                          }
-                        />
-                      );
-                    })}
-                  </span>
-                )}
-            </div>
-            <button
-              type="button"
-              className="flex h-full shrink-0 items-center pl-1 pr-2"
-              onClick={() => setPagesOpen((prev) => !prev)}
-              aria-label={t("sandbox.preview.choosePage")}
-              aria-expanded={pagesOpen}
-            >
+              {pagePickerLabel && (
+                <span className="min-w-0 flex-1 truncate font-medium text-foreground">
+                  {pagePickerLabel}
+                </span>
+              )}
+              {!blocksLoading && !activeGlobalSection && !activeLoader && (
+                <span
+                  data-testid="preview-page-path"
+                  className="ml-auto min-w-0 truncate text-right font-mono text-muted-foreground"
+                >
+                  {currentPath}
+                </span>
+              )}
               <ChevronDown
                 size={12}
                 className={cn(
-                  "shrink-0 text-muted-foreground transition-transform",
+                  "shrink-0 transition-transform",
                   pagesOpen && "rotate-180",
                 )}
               />
-            </button>
-          </div>
-
-          {pagesOpen && (
-            <div className="absolute left-1/2 top-full z-50 mt-1.5 w-[500px] max-w-[calc(100vw-2rem)] -translate-x-1/2 overflow-hidden rounded-lg border bg-popover shadow-lg">
-              <div className="px-2 h-10 flex items-center gap-2 border-b">
-                <SearchLg
-                  size={14}
-                  className="shrink-0 text-muted-foreground"
-                  aria-hidden
-                />
-                <input
-                  type="text"
-                  value={pagesSearch}
-                  onChange={(e) => setPagesSearch(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key !== "Enter") return;
-                    const query = pagesSearch.trim();
-                    if (!query) return;
-                    // Enter only navigates when the typed path matches an
-                    // existing page exactly; otherwise it does nothing.
-                    const target = filteredPages.find(
-                      (p) => normPath(p.path) === normPath(query),
-                    );
-                    if (!target) return;
-                    e.preventDefault();
-                    setPagesOpen(false);
-                    setPagesSearch("");
-                    navigatePreviewToPage(target);
-                  }}
-                  placeholder={t("sandbox.preview.searchPagesAndComponents")}
-                  className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-                  autoFocus
-                />
-              </div>
-              <div className="p-1.5 border-b">
-                <button
-                  type="button"
-                  className="flex w-full items-center gap-2.5 rounded-md px-3 py-2.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    setPagesOpen(false);
-                    setPagesSearch("");
-                    setCreatePageError(undefined);
-                    setCreatePageDialogOpen(true);
-                  }}
-                >
-                  <Plus size={16} className="shrink-0 text-muted-foreground" />
-                  <span className="flex-1 font-medium">
-                    {t("sandbox.preview.createNewPage")}
-                  </span>
-                </button>
-              </div>
-              {filteredPages.length === 0 &&
-              filteredGlobalSections.length === 0 &&
-              filteredGlobalLoaders.length === 0 ? (
-                <div className="px-4 py-5 text-center text-xs text-muted-foreground">
-                  {pages.length === 0 &&
-                  globalSections.length === 0 &&
-                  visibleGlobalLoaders.length === 0
-                    ? t("sandbox.preview.noPagesFound")
-                    : t("sandbox.preview.noSearchResults")}
-                </div>
-              ) : (
-                <div className="max-h-80 overflow-y-auto overscroll-contain">
-                  {filteredPages.length > 0 && (
-                    <div className="p-1.5">
-                      {filteredPages.map((page) => (
-                        <button
-                          key={page.key}
-                          type="button"
-                          className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
-                          onMouseDown={(e) => {
-                            e.preventDefault();
-                            setPagesOpen(false);
-                            setPagesSearch("");
-                            navigatePreviewToPage(page);
-                          }}
-                        >
-                          <LayoutAlt01
-                            size={16}
-                            className="shrink-0 text-muted-foreground"
-                          />
-                          <span className="min-w-0 flex-1 truncate font-medium">
-                            {page.name}
-                          </span>
-                          <span className="shrink-0 text-xs text-muted-foreground">
-                            {page.path}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  {filteredGlobalSections.length > 0 && (
-                    <div
-                      className={cn(
-                        "p-1.5",
-                        filteredPages.length > 0 && "border-t",
-                      )}
+            </span>
+          </button>
+        </PopoverTrigger>
+        <PopoverContent
+          className="w-112 max-w-[calc(100vw-2rem)] p-0"
+          align="center"
+          sideOffset={8}
+        >
+          <Command shouldFilter={false} defaultValue={currentPickerValue}>
+            <CommandInput
+              value={pagesSearch}
+              onValueChange={(value) => {
+                setPagesSearch(value);
+                // cmdk skips scrolling when the highlighted item is unchanged.
+                pagesListRef.current?.scrollTo({ top: 0 });
+              }}
+              placeholder={t("sandbox.preview.searchPagesAndComponents")}
+            />
+            <CommandList ref={pagesListRef} className="max-h-80">
+              <CommandEmpty>
+                {pages.length === 0 &&
+                globalSections.length === 0 &&
+                visibleGlobalLoaders.length === 0
+                  ? t("sandbox.preview.noPagesFound")
+                  : t("sandbox.preview.noSearchResults")}
+              </CommandEmpty>
+              {filteredPages.length > 0 && (
+                <CommandGroup>
+                  {filteredPages.map((page) => (
+                    <CommandItem
+                      key={page.key}
+                      value={`page:${page.key}`}
+                      aria-current={
+                        currentPickerValue === `page:${page.key}` || undefined
+                      }
+                      title={`${page.name} · ${page.path}`}
+                      onSelect={() => {
+                        closePagePicker();
+                        navigatePreviewToPage(page);
+                      }}
+                      className="gap-3 px-3 py-2.5 aria-[current=true]:bg-accent aria-[current=true]:text-accent-foreground"
                     >
-                      <div className="px-3 py-2 text-xs font-medium text-muted-foreground">
-                        {t("sandbox.preview.globalComponents")}
-                      </div>
-                      {filteredGlobalSections.map((section) => (
-                        <button
-                          key={section.key}
-                          type="button"
-                          className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
-                          onMouseDown={(e) => {
-                            e.preventDefault();
-                            setPagesOpen(false);
-                            setPagesSearch("");
-                            navigatePreviewToGlobalSection(section);
-                          }}
-                        >
-                          <Globe02
-                            size={16}
-                            className="shrink-0 text-muted-foreground"
-                          />
-                          <span className="min-w-0 flex-1 truncate font-medium">
-                            {section.name}
-                          </span>
-                          <span className="shrink-0 text-xs text-muted-foreground">
-                            {section.resolveType
-                              .split("/")
-                              .pop()
-                              ?.replace(/\.tsx?$/, "")}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  {filteredGlobalLoaders.length > 0 && (
-                    <div
-                      className={cn(
-                        "p-1.5",
-                        (filteredPages.length > 0 ||
-                          filteredGlobalSections.length > 0) &&
-                          "border-t",
-                      )}
-                    >
-                      <div className="px-3 py-2 text-xs font-medium text-muted-foreground">
-                        {t("sandbox.preview.globalLoaders")}
-                      </div>
-                      {filteredGlobalLoaders.map((loader) => (
-                        <button
-                          key={loader.key}
-                          type="button"
-                          className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
-                          onMouseDown={(e) => {
-                            e.preventDefault();
-                            setPagesOpen(false);
-                            setPagesSearch("");
-                            navigatePreviewToLoader(loader);
-                          }}
-                        >
-                          <Database01
-                            size={16}
-                            className="shrink-0 text-muted-foreground"
-                          />
-                          <span className="min-w-0 flex-1 truncate font-medium">
-                            {loader.title}
-                          </span>
-                          <span className="shrink-0 text-xs text-muted-foreground">
-                            {loader.resolveType
-                              .split("/")
-                              .pop()
-                              ?.replace(/\.tsx?$/, "")}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                      <span className="min-w-0 flex-1 truncate text-sm">
+                        {page.name}
+                      </span>
+                      <span className="min-w-0 max-w-1/2 truncate text-right font-mono text-xs text-muted-foreground">
+                        {page.path}
+                      </span>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
               )}
-            </div>
-          )}
-        </div>
-      ) : (
-        <span className="min-w-0 truncate px-2 text-[13px] text-muted-foreground">
-          {previewLabel}
-        </span>
-      )}
-      {/* Available on every surface. Under Fast Preview `iframeSrc` is the
-          site's own page URL carrying `?__draft=<handle>@<version>`, so the
-          opened tab renders the same draft — an ordinary, shareable link. That
-          was not true of the old `/live/previews` render, which is why this
-          button used to be sandbox-only. */}
-      <Tooltip>
-        <TooltipTrigger asChild>
+              {filteredGlobalSections.length > 0 && (
+                <CommandGroup heading={t("sandbox.preview.globalComponents")}>
+                  {filteredGlobalSections.map((section) => (
+                    <CommandItem
+                      key={section.key}
+                      value={`section:${section.key}`}
+                      aria-current={
+                        currentPickerValue === `section:${section.key}` ||
+                        undefined
+                      }
+                      className="aria-[current=true]:bg-accent aria-[current=true]:text-accent-foreground"
+                      onSelect={() => {
+                        closePagePicker();
+                        navigatePreviewToGlobalSection(section);
+                      }}
+                    >
+                      <span className="truncate">{section.name}</span>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              )}
+              {filteredGlobalLoaders.length > 0 && (
+                <CommandGroup heading={t("sandbox.preview.globalLoaders")}>
+                  {filteredGlobalLoaders.map((loader) => (
+                    <CommandItem
+                      key={loader.key}
+                      value={`loader:${loader.key}`}
+                      aria-current={
+                        currentPickerValue === `loader:${loader.key}` ||
+                        undefined
+                      }
+                      className="aria-[current=true]:bg-accent aria-[current=true]:text-accent-foreground"
+                      onSelect={() => {
+                        closePagePicker();
+                        navigatePreviewToLoader(loader);
+                      }}
+                    >
+                      <span className="truncate">{loader.title}</span>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              )}
+            </CommandList>
+          </Command>
+          {!activeGlobalSection &&
+            !activeLoaderKey &&
+            splitPathTemplate(currentPath).some(
+              (token) => token.type !== "text",
+            ) && (
+              <div className="flex flex-wrap items-center gap-1 border-t px-3 py-3 text-xs text-muted-foreground">
+                {splitPathTemplate(currentPath).map((token, i) => {
+                  if (token.type === "text")
+                    return <span key={`text-${i}`}>{token.text}</span>;
+                  const sources = pathParamSources[token.name];
+                  return sources && pickerSandboxRef ? (
+                    <PathParamPickerChip
+                      key={`${currentPageKey}:${token.name}`}
+                      sources={sources}
+                      template={currentPath}
+                      paramName={token.name}
+                      value={pathParamValues[token.name] ?? ""}
+                      sandboxRef={pickerSandboxRef}
+                      onCommit={(value) => setPathParamValue(token.name, value)}
+                    />
+                  ) : (
+                    <PathParamInput
+                      key={`${currentPageKey}:${token.name}`}
+                      name={token.name}
+                      value={pathParamValues[token.name] ?? ""}
+                      onCommit={(value) => setPathParamValue(token.name, value)}
+                    />
+                  );
+                })}
+              </div>
+            )}
+          <div className="border-t p-1.5">
+            <Button
+              variant="ghost"
+              className="w-full justify-start"
+              onClick={() => {
+                closePagePicker();
+                setCreatePageError(undefined);
+                setCreatePageDialogOpen(true);
+              }}
+            >
+              <Plus size={16} />
+              {t("sandbox.preview.createNewPage")}
+            </Button>
+          </div>
+        </PopoverContent>
+      </Popover>
+    ) : (
+      <span className="min-w-0 truncate text-xs text-muted-foreground">
+        {previewLabel}
+      </span>
+    )
+  ) : null;
+
+  const previewNavigation =
+    showPreviewToolbar || contentEditingEnabled ? (
+      <div className="flex min-w-0 items-center gap-1">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <ToolbarIconButton
+              onClick={handleDeviceToggle}
+              aria-label={t(DEVICE_LABEL_KEYS[previewDeviceSize])}
+            >
+              {previewDeviceSize === "mobile" ? (
+                <Phone02 size={16} />
+              ) : previewDeviceSize === "tablet" ? (
+                <Tablet01 size={16} />
+              ) : (
+                <Monitor04 size={16} />
+              )}
+            </ToolbarIconButton>
+          </TooltipTrigger>
+          <TooltipContent>
+            {t(DEVICE_LABEL_KEYS[previewDeviceSize])}
+          </TooltipContent>
+        </Tooltip>
+        {urlControls}
+        <div className="flex shrink-0 items-center gap-1">
           <ToolbarIconButton
-            aria-label={t(openPreviewLabelKey)}
-            onClick={() => void handleOpenPreview()}
+            onClick={handleOpenPreview}
+            aria-label={t("sandbox.preview.openInNewTab")}
           >
             <LinkExternal01 size={16} />
           </ToolbarIconButton>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">{t(openPreviewLabelKey)}</TooltipContent>
-      </Tooltip>
-    </>
-  ) : null;
+        </div>
+      </div>
+    ) : null;
 
   // Desktop composition (portaled into the panel header's centre slot).
-  const urlControls = urlGroup ? (
-    <div className="flex min-w-0 items-center gap-0.5">{urlGroup}</div>
-  ) : null;
-  const canVisualEdit = display.mode === "sandbox";
+
+  // A v7 site keeps visual editing as before; a v8 one needs a chat to ask
+  // (none in the account-less `/site-editor`).
+  const canVisualEdit = (runsSiteCode || hasChat) && display.mode === "sandbox";
 
   // Desktop stays fluid until the canvas is narrower than its logical width; then (and always for mobile/tablet) the frame scales to fit.
   const previewViewport = PREVIEW_VIEWPORTS[previewDeviceSize];
@@ -1743,55 +1938,52 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
         transformOrigin: "top center",
       };
 
-  // Device toggle works on any live iframe; visual-editor toggle is sandbox-only.
-  const floatingPreviewControls = previewSurfaceActive ? (
-    <div className="absolute bottom-4 left-1/2 z-20 -translate-x-1/2 scale-125">
-      <div className="flex items-center gap-0.5 rounded-full border bg-background/60 p-1 shadow-lg backdrop-blur-md">
-        {canVisualEdit && (
-          <>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <ToolbarIconButton
-                  onClick={toggleVisualEditing}
-                  aria-pressed={effectiveEditingMode === "visual"}
-                  aria-label={t("sandbox.preview.visualEditor")}
-                  active={effectiveEditingMode === "visual"}
-                  className="rounded-full"
-                >
-                  <CursorClick01 size={16} />
-                </ToolbarIconButton>
-              </TooltipTrigger>
-              <TooltipContent side="top">
-                {t("sandbox.preview.visualEditor")}
-              </TooltipContent>
-            </Tooltip>
-            <div className="mx-0.5 h-5 w-px bg-border" />
-          </>
-        )}
+  const previewTools = (
+    <>
+      {canVisualEdit && (showPreviewToolbar || contentEditingEnabled) && (
+        <ToolbarIconButton
+          onClick={toggleVisualEditing}
+          aria-pressed={effectiveEditingMode === "visual"}
+          aria-label={t("sandbox.preview.visualEditor")}
+          active={effectiveEditingMode === "visual"}
+        >
+          <CursorClick01 size={16} />
+        </ToolbarIconButton>
+      )}
+      {blocksEditingEnabled && (
         <Tooltip>
           <TooltipTrigger asChild>
             <ToolbarIconButton
-              onClick={handleDeviceToggle}
-              aria-label={t(DEVICE_LABEL_KEYS[previewDeviceSize])}
-              className="rounded-full"
+              onClick={toggleBlocksEditing}
+              aria-pressed={effectiveEditingMode === "blocks"}
+              aria-label={t("sandbox.preview.blocksEditor")}
+              active={effectiveEditingMode === "blocks"}
             >
-              <span
-                key={previewDeviceSize}
-                className="flex items-center justify-center animate-device-icon-pop"
-              >
-                {previewDeviceSize === "mobile" && <Phone02 size={16} />}
-                {previewDeviceSize === "tablet" && <Tablet01 size={16} />}
-                {previewDeviceSize === "desktop" && <Monitor04 size={16} />}
-              </span>
+              <LayoutAlt01 size={16} />
             </ToolbarIconButton>
           </TooltipTrigger>
-          <TooltipContent side="top">
-            {t(DEVICE_LABEL_KEYS[previewDeviceSize])}
+          <TooltipContent>{t("sandbox.preview.blocksEditor")}</TooltipContent>
+        </Tooltip>
+      )}
+      {jsonBlockKey && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <ToolbarIconButton
+              onClick={toggleJsonPanel}
+              aria-pressed={jsonPanelOpen}
+              aria-label={t("sectionsEditor.sectionsEditor.viewJson")}
+              active={jsonPanelOpen}
+            >
+              <Code01 size={16} />
+            </ToolbarIconButton>
+          </TooltipTrigger>
+          <TooltipContent>
+            {t("sectionsEditor.sectionsEditor.viewJson")}
           </TooltipContent>
         </Tooltip>
-      </div>
-    </div>
-  ) : null;
+      )}
+    </>
+  );
 
   // A loader has no canvas, so its desktop Blocks form uses the whole panel.
   const blocksFullWidth =
@@ -1815,28 +2007,22 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
             />
           ) : null,
         )}
-      {headerSlot
-        ? urlControls && (
-            <MainPanelHeaderPortal>{urlControls}</MainPanelHeaderPortal>
-          )
-        : urlGroup && (
-            /* Declares the same container as PanelHeader: without a header slot
-             (mobile or a standalone desktop surface), the controls render
-             inline instead of portaling. Without it their container queries
-             would find no container and every label would stay at full width.
-
-             Equal empty side zones keep the content-sized URL group centered
-             on the bar wherever there is room. */
-            <div className="@container/panel-header relative flex h-12 shrink-0 items-center gap-2 border-b border-border/60 px-3 md:px-4">
-              <div className="flex-1" />
-              <div className="flex min-w-0 shrink items-center justify-center gap-0.5">
-                {urlGroup}
-              </div>
-              <div className="flex-1" />
+      <>
+        <Panel.Toolbar.Center.Portal
+          fallback={
+            <div className="flex min-w-0 items-center justify-center border-b p-2">
+              {previewNavigation}
             </div>
-          )}
+          }
+        >
+          {previewNavigation}
+        </Panel.Toolbar.Center.Portal>
+        <Panel.Toolbar.Right.Portal fallback={previewTools}>
+          {previewTools}
+        </Panel.Toolbar.Right.Portal>
+      </>
 
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-hidden relative">
         {blocksFullWidth ? (
           <div className="relative h-full min-h-0 overflow-hidden">
             <BlocksPanel
@@ -1844,12 +2030,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
               externalSelection={cmsSelectedSection}
               onViewJsonFile={toggleJsonPanel}
             />
-            {jsonPanelOpen && currentPageKey && (
+            {jsonPanelOpen && jsonBlockKey && (
               <div className="absolute inset-0 z-10">
                 <PageJsonPanel
                   ref={jsonPanelHandleRef}
                   virtualMcpId={virtualMcpId}
-                  pageKey={currentPageKey}
+                  pageKey={jsonBlockKey}
                   onClose={closeJsonPanel}
                 />
               </div>
@@ -1859,6 +2045,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
           <ResizablePanelGroup
             orientation="horizontal"
             disabled={effectiveEditingMode !== "blocks"}
+            className="relative isolate"
           >
             <ResizablePanel
               ref={blocksPanelRef}
@@ -1884,30 +2071,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
               id="preview-canvas"
               defaultSize={effectiveEditingMode === "blocks" ? "70%" : "100%"}
               minSize="35%"
-              className="min-w-0 overflow-hidden"
+              className="min-w-0 overflow-hidden relative z-0"
             >
               <ResizablePanelGroup
                 orientation="horizontal"
-                disabled={!(jsonPanelOpen && currentPageKey)}
+                disabled={!(jsonPanelOpen && jsonBlockKey)}
               >
-                {jsonPanelOpen && currentPageKey && (
-                  <>
-                    <ResizablePanel
-                      id="preview-json-editor"
-                      defaultSize="43%"
-                      minSize="20%"
-                      className="min-w-0 overflow-hidden"
-                    >
-                      <PageJsonPanel
-                        ref={jsonPanelHandleRef}
-                        virtualMcpId={virtualMcpId}
-                        pageKey={currentPageKey}
-                        onClose={closeJsonPanel}
-                      />
-                    </ResizablePanel>
-                    <ResizableHandle withHandle />
-                  </>
-                )}
                 <ResizablePanel
                   id="preview-canvas-inner"
                   minSize="30%"
@@ -1941,12 +2110,21 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                     transparent track — no strip across the site, just the
                     moving edge itself, with a soft same-color glow for
                     presence on busy content. */}
-                    {(navigating || decofileWriting) &&
+                    {(navigating || contentSyncBusy) &&
                       previewSurfaceActive && (
                         <div className="absolute inset-x-0 top-0 z-40 h-1 overflow-hidden">
                           <div className="absolute inset-y-0 left-0 rounded-r-full bg-brand shadow-[0_0_6px] shadow-brand/60 animate-preview-ramp" />
                         </div>
                       )}
+
+                    {display.showDecidingLoader && (
+                      <div
+                        data-testid="preview-deciding"
+                        className="absolute inset-0 z-30 flex items-center justify-center"
+                      >
+                        <Spinner className="size-5 text-muted-foreground" />
+                      </div>
+                    )}
 
                     {display.showBlockingOverlay && (
                       <div className="absolute inset-0 z-30">
@@ -1958,25 +2136,30 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                       </div>
                     )}
 
-                    {previewState.kind === "suspended" && (
-                      <div className="absolute inset-0 z-30">
-                        <SandboxStateCard
-                          kind="suspended"
-                          onResume={lifecycle.resume}
-                        />
-                      </div>
-                    )}
+                    {/* Local mode stands in for the managed sandbox, so its lifecycle cards never own the canvas. */}
+                    {!localPreviewUrl &&
+                      !deciding &&
+                      previewState.kind === "suspended" && (
+                        <div className="absolute inset-0 z-30">
+                          <SandboxStateCard
+                            kind="suspended"
+                            onResume={lifecycle.resume}
+                          />
+                        </div>
+                      )}
 
-                    {previewState.kind === "errored" && (
-                      <div className="absolute inset-0 z-30">
-                        <SandboxStateCard
-                          kind="errored"
-                          error={previewState.error}
-                          onRetry={lifecycle.retry}
-                          connectionsHref={`/${org.slug}/settings/connections`}
-                        />
-                      </div>
-                    )}
+                    {!localPreviewUrl &&
+                      !deciding &&
+                      previewState.kind === "errored" && (
+                        <div className="absolute inset-0 z-30">
+                          <SandboxStateCard
+                            kind="errored"
+                            error={previewState.error}
+                            onRetry={lifecycle.retry}
+                            connectionsHref={`/${org.slug}/settings/connections`}
+                          />
+                        </div>
+                      )}
 
                     {display.showWakingPill && (
                       <div className="absolute top-4 left-1/2 z-20 flex max-w-md -translate-x-1/2 items-start gap-3 rounded-xl border border-border bg-muted px-4 py-3 shadow-lg pointer-events-none select-none">
@@ -2005,8 +2188,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                       />
                     )}
 
-                    {floatingPreviewControls}
-
                     {previewSurfaceActive && iframeSrc && (
                       <div
                         className={cn(
@@ -2015,29 +2196,44 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                             "border-x border-border bg-background shadow-sm",
                         )}
                         style={previewFrameStyle}
+                        onMouseLeave={clearEditorHover}
                       >
+                        {/* TODO(security): this frame has no sandbox. It loads the
+                            user's own dev server cross-origin and the editor drives it
+                            (navigation, hover, postMessage), so picking the token set is
+                            a change that needs the real sandbox running to verify — a
+                            missing token silently breaks a customer's site preview.
+                            Deliberately not bolted on during a lint sweep. */}
+                        {/* oxlint-disable-next-line react/iframe-missing-sandbox */}
                         <iframe
                           // Key on the iframe base: remount when the base URL changes
                           // (branch switch, or the production→sandbox swap once the dev
                           // server is up). Path navigation is driven by `iframeSrc`.
                           key={display.iframeBase}
                           ref={previewIframeRef}
-                          src={iframeSrc}
+                          src={frameSrc}
                           className="w-full h-full border-0"
                           title={t("sandbox.preview.devServerPreviewTitle")}
                           onError={iframeRecovery.handleError}
                           onLoad={() => {
+                            // A held Fast Preview pointer may go in now.
+                            setFrameNavigation(frameNavigationLoaded);
                             // A load reached the frame — cancel the recovery watchdog
                             // and reset its backoff before anything else.
                             iframeRecovery.handleLoad();
                             // The page finished loading — always clear the navigation
                             // indicator first, before any of the early returns below.
                             endNavigation();
-                            // Production (Fast Preview) frame is cross-origin: skip the sandbox-only load handling, but the site's real pages still take the CMS overlay via the framework's `editor::inject` listener.
-                            if (display.mode !== "sandbox") {
+                            loadedSrcRef.current = iframeSrcRef.current;
+                            if (confirmsContentReloads) {
+                              confirmPreviewReloaded(contentScope);
+                            }
+                            // Cross-origin frames (Fast Preview production AND the Local tunnel) skip the sandbox-only same-origin load handling; their real pages still take the CMS overlay via the framework's `editor::inject` listener.
+                            if (display.mode !== "sandbox" || localPreviewUrl) {
                               if (
-                                display.mode === "production" &&
-                                !display.showWakingPill &&
+                                ((display.mode === "production" &&
+                                  !display.showWakingPill) ||
+                                  localPreviewUrl) &&
                                 effectiveEditingMode === "blocks"
                               ) {
                                 injectCmsEditor();
@@ -2102,6 +2298,24 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                     )}
                   </div>
                 </ResizablePanel>
+                {jsonPanelOpen && jsonBlockKey && (
+                  <>
+                    <ResizableHandle withHandle />
+                    <ResizablePanel
+                      id="preview-json-editor"
+                      defaultSize="43%"
+                      minSize="20%"
+                      className="min-w-0 overflow-hidden"
+                    >
+                      <PageJsonPanel
+                        ref={jsonPanelHandleRef}
+                        virtualMcpId={virtualMcpId}
+                        pageKey={jsonBlockKey}
+                        onClose={closeJsonPanel}
+                      />
+                    </ResizablePanel>
+                  </>
+                )}
               </ResizablePanelGroup>
             </ResizablePanel>
           </ResizablePanelGroup>

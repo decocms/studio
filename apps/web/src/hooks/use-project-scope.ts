@@ -1,24 +1,14 @@
-/** The active project scope. A project is a FILTER, not a container: picking
- *  one narrows the destinations that say they narrow, and is ignored by the
- *  rest.
- *
- *  ONE CARRIER: `?virtualmcpid=`, and nothing else. It has to mean the same on
- *  Tasks and Library, which have no path segment to hold it — which is why the
- *  agents route gave its `{-$project}` segment up rather than the reverse.
- *
- *  Never auto-selected — a scope nobody chose silently shortens lists, which is
- *  what this param did before only two routes resolved it. */
-
-import { useNavigate, useSearch } from "@tanstack/react-router";
+/** Project scope comes from the canonical route; the API still uses the existing repository filters. */
+import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
+import { isScopableProject } from "@decocms/shared/sdk";
+import { useVirtualMCPNonBlocking, useVirtualMCPsNonBlocking } from "@/sdk";
 import {
-  isDecopilot,
-  isStudioPackAgent,
-  useVirtualMCPNonBlocking,
-  useVirtualMCPsNonBlocking,
-} from "@/sdk";
-import { getDevAgentIds } from "@/lib/agent-capabilities";
-import { projectRepo } from "@/lib/github-repo";
+  DESTINATION_ROUTE,
+  useActivePanelSegment,
+} from "@/hooks/use-destination-route";
+import { navigateToTabLocation } from "@/layouts/main-panel-tabs/tab-route";
+import { projectRepo } from "@/lib/repository-binding";
 
 /** The control renders from the FIRST project: with one there is nothing to
  *  switch between, but its workspace still has to be reachable. Gating this at
@@ -26,24 +16,12 @@ import { projectRepo } from "@/lib/github-repo";
  *  once they navigated away. */
 export const MIN_PROJECTS_FOR_SWITCHER = 1;
 
-/**
- * The projects a person can scope to: their own, minus the plumbing.
- *
- * Decopilot is the org-wide default rather than a project; Studio Pack agents
- * are code-owned scaffolding; dev agents are reached through the Develop/Live
- * toggle on their live counterpart, never as standalone entries.
- */
+/** The projects a person can scope to: their own, minus the plumbing
+ *  ({@link isScopableProject}). */
 export function scopableProjects(
   all: VirtualMCPEntity[] | null | undefined,
 ): VirtualMCPEntity[] {
-  const projects = all ?? [];
-  const devIds = getDevAgentIds(projects);
-  return projects.filter(
-    (project) =>
-      !devIds.has(project.id) &&
-      !isDecopilot(project.id) &&
-      !isStudioPackAgent(project.id),
-  );
+  return (all ?? []).filter(isScopableProject);
 }
 
 export interface ProjectScope {
@@ -68,12 +46,20 @@ export interface ProjectScope {
  *  the sidebar's destination rows in particular promise to paint on the first
  *  frame without reading data. */
 export function useScopeId(): string | null {
-  const search = useSearch({ strict: false }) as { virtualmcpid?: string };
-  return search.virtualmcpid ?? null;
+  const params = useParams({ strict: false });
+  const search = useSearch({ strict: false });
+  if (params.agentId) return params.agentId;
+  const legacy =
+    "virtualmcpid" in search && typeof search.virtualmcpid === "string"
+      ? search.virtualmcpid.trim()
+      : undefined;
+  return legacy || null;
 }
 
 export function useProjectScope(): ProjectScope {
   const navigate = useNavigate();
+  const params = useParams({ strict: false });
+  const currentView = useActivePanelSegment();
   const all = useVirtualMCPsNonBlocking();
 
   const projects = scopableProjects(all);
@@ -94,14 +80,38 @@ export function useProjectScope(): ProjectScope {
   const project =
     listed ?? scopableProjects(unlisted ? [unlisted] : [])[0] ?? null;
 
-  const setScope = (id: string | null) =>
-    navigate({
-      to: ".",
-      search: (prev: Record<string, unknown>) => ({
-        ...prev,
-        virtualmcpid: id ?? undefined,
-      }),
+  const setScope = (id: string | null) => {
+    if (id === scopeId && currentView !== undefined) return;
+    const org = params.org ?? "";
+    const search = (prev: Record<string, unknown>) => ({
+      ...prev,
+      virtualmcpid: undefined,
+      thread: undefined,
+      mainpanel: undefined,
     });
+    if (id) {
+      navigateToTabLocation(navigate, {
+        org,
+        agentId: id,
+        tabId:
+          currentView === "board" || currentView === "reports"
+            ? currentView
+            : "overview",
+        search,
+        replace: false,
+      });
+      return;
+    }
+    if (currentView === "board") {
+      navigate({
+        to: DESTINATION_ROUTE.tasks,
+        params: { org, taskKey: undefined },
+        search,
+      });
+      return;
+    }
+    navigate({ to: DESTINATION_ROUTE.home, params: { org }, search });
+  };
 
   return {
     scopeId,

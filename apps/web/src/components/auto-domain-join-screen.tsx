@@ -93,7 +93,7 @@ export function AutoDomainJoinScreen({
           onClick={handleGoHome}
           disabled={joinMutation.isPending}
         >
-          {t("common.autoDomainJoinScreen.goHome")}
+          {t("common.goHome")}
         </Button>
       </div>
     </AccessScreenLayout>

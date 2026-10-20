@@ -3,6 +3,7 @@ import {
   defaultPreviewEditingMode,
   isBlocksEditingEnabled,
   resolveEffectivePreviewEditingMode,
+  toggleBlocksEditingMode,
   toggleVisualEditingMode,
 } from "./editing-mode";
 
@@ -17,6 +18,26 @@ describe("isBlocksEditingEnabled", () => {
     expect(
       isBlocksEditingEnabled({ contentEditingEnabled: false, isMobile: false }),
     ).toBe(false);
+  });
+});
+
+describe("toggleBlocksEditingMode", () => {
+  test("opens Blocks from Preview or Visual", () => {
+    expect(toggleBlocksEditingMode("preview", true)).toBe("blocks");
+    expect(toggleBlocksEditingMode("visual", true)).toBe("blocks");
+  });
+
+  test("closing Blocks drops to the plain preview", () => {
+    expect(toggleBlocksEditingMode("blocks", true)).toBe("preview");
+  });
+
+  test("stays put when Blocks is unavailable", () => {
+    expect(toggleBlocksEditingMode("preview", false)).toBe("preview");
+    expect(toggleBlocksEditingMode("visual", false)).toBe("visual");
+  });
+
+  test("closing Blocks still works after the gate goes away", () => {
+    expect(toggleBlocksEditingMode("blocks", false)).toBe("preview");
   });
 });
 

@@ -41,6 +41,10 @@ export default function OAuthCallback() {
     };
 
     processCallback();
+    // `t` is intentionally omitted: it is read only for a fallback error
+    // string, and re-running on a language change would re-process the OAuth
+    // callback and close the window a second time.
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (

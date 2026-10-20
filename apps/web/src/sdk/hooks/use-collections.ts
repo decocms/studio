@@ -22,6 +22,7 @@ import {
 } from "@decocms/bindings/collections";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import {
+  type QueryClient,
   useMutation,
   useQueryClient,
   useSuspenseQuery,
@@ -273,7 +274,8 @@ export function useCollectionItem<T extends CollectionEntity>(
   scopeKey: string,
   collectionName: string,
   itemId: string | undefined,
-  client: Client,
+  /** null reads as no item, without a request. */
+  client: Client | null,
 ) {
   const { data } = useSuspenseQuery(
     collectionItemQueryOptions<T>(scopeKey, collectionName, itemId, client),
@@ -361,6 +363,9 @@ export function collectionListQueryOptions<T extends CollectionEntity>(
         name: listToolName,
         arguments: toolArguments,
       });
+      // Reject tool errors before caching; a select error can expose undefined
+      // data during a refetch even to suspense consumers.
+      extractPayload<CollectionListOutput<T>>(result);
       return result;
     },
     staleTime: 30_000,
@@ -476,37 +481,54 @@ export function buildCollectionQueryKey<T extends CollectionEntity>(
   return KEYS.collectionList(client, scopeKey, "", upperName, argsKey);
 }
 
+/** Invalidate all collection queries for this scope and collection. */
+export function invalidateCollectionQueries(
+  queryClient: QueryClient,
+  scopeKey: string,
+  collectionName: string,
+): void {
+  const upperName = collectionName.toUpperCase();
+  queryClient.invalidateQueries({
+    predicate: (query) => {
+      const key = query.queryKey;
+      // Match collectionList/collectionItem keys: [client, scopeKey, "", "collection", collectionName, ...]
+      return (
+        key[1] === scopeKey && key[3] === "collection" && key[4] === upperName
+      );
+    },
+  });
+}
+
 /**
  * Get mutation actions for create, update, and delete operations
  *
  * @param scopeKey - The scope key (connectionId for connection-scoped, virtualMcpId for virtual-mcp-scoped, etc.)
  * @param collectionName - The name of the collection (e.g., "CONNECTIONS", "AGENT")
  * @param client - The MCP client used to call collection tools
+ * @param options.silent - No success/failure toasts: the caller owns the
+ *   feedback (a background write the user didn't ask for says nothing).
  * @returns Object with create, update, and delete mutation hooks
  */
 export function useCollectionActions<T extends CollectionEntity>(
   scopeKey: string,
   collectionName: string,
   client: Client,
+  options: { silent?: boolean } = {},
 ) {
+  const notify = options.silent
+    ? { success: () => {}, error: () => {} }
+    : {
+        success: (message: string) => toast.success(message),
+        error: (message: string) => toast.error(message),
+      };
   const queryClient = useQueryClient();
   const upperName = collectionName.toUpperCase();
   const createToolName = `COLLECTION_${upperName}_CREATE`;
   const updateToolName = `COLLECTION_${upperName}_UPDATE`;
   const deleteToolName = `COLLECTION_${upperName}_DELETE`;
 
-  // Invalidate all collection queries for this scope and collection
-  const invalidateCollection = () => {
-    queryClient.invalidateQueries({
-      predicate: (query) => {
-        const key = query.queryKey;
-        // Match collectionList/collectionItem keys: [client, scopeKey, "", "collection", collectionName, ...]
-        return (
-          key[1] === scopeKey && key[3] === "collection" && key[4] === upperName
-        );
-      },
-    });
-  };
+  const invalidateCollection = () =>
+    invalidateCollectionQueries(queryClient, scopeKey, collectionName);
 
   const create = useMutation({
     mutationFn: async (data: Partial<T>) => {
@@ -529,11 +551,11 @@ export function useCollectionActions<T extends CollectionEntity>(
     },
     onSuccess: () => {
       invalidateCollection();
-      toast.success(getToastMessage("itemCreatedSuccessfully"));
+      notify.success(getToastMessage("itemCreatedSuccessfully"));
     },
     onError: (error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
-      toast.error(getToastMessage("createItemFailed", { error: message }));
+      notify.error(getToastMessage("createItemFailed", { error: message }));
     },
   });
 
@@ -549,11 +571,11 @@ export function useCollectionActions<T extends CollectionEntity>(
     },
     onSuccess: () => {
       invalidateCollection();
-      toast.success(getToastMessage("itemUpdatedSuccessfully"));
+      notify.success(getToastMessage("itemUpdatedSuccessfully"));
     },
     onError: (error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
-      toast.error(getToastMessage("updateItemFailed", { error: message }));
+      notify.error(getToastMessage("updateItemFailed", { error: message }));
     },
   });
 
@@ -569,11 +591,11 @@ export function useCollectionActions<T extends CollectionEntity>(
     },
     onSuccess: () => {
       invalidateCollection();
-      toast.success(getToastMessage("itemDeletedSuccessfully"));
+      notify.success(getToastMessage("itemDeletedSuccessfully"));
     },
     onError: (error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
-      toast.error(getToastMessage("deleteItemFailed", { error: message }));
+      notify.error(getToastMessage("deleteItemFailed", { error: message }));
     },
   });
 

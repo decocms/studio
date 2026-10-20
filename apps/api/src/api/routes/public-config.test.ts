@@ -119,7 +119,7 @@ describe("GET /api/config", () => {
     expect(body.config.runtime).toEqual({ agentSandbox: false });
   });
 
-  it("does not report agent-sandbox in local mode even when enabled", async () => {
+  it("reports agent-sandbox in local mode when enabled", async () => {
     setGlobalSettings({
       ...originalSettings,
       localMode: true,
@@ -129,7 +129,21 @@ describe("GET /api/config", () => {
     const res = await publicConfigRoutes.request("/");
     expect(res.status).toBe(200);
     const body = await res.json();
-    // No cloud agent-sandbox cluster exists locally → cloud Decopilot unavailable.
+    // The explicit opt-in carries the decision: local mode points KUBECONFIG at
+    // a cluster of its own, so it is not a veto.
+    expect(body.config.runtime).toEqual({ agentSandbox: true });
+  });
+
+  it("does not report agent-sandbox in local mode when disabled", async () => {
+    setGlobalSettings({
+      ...originalSettings,
+      localMode: true,
+      agentSandboxEnabled: false,
+    });
+
+    const res = await publicConfigRoutes.request("/");
+    expect(res.status).toBe(200);
+    const body = await res.json();
     expect(body.config.runtime).toEqual({ agentSandbox: false });
   });
 });

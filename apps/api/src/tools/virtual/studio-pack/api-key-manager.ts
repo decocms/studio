@@ -1,4 +1,5 @@
 import { StudioPackAgentId } from "@decocms/shared/sdk";
+import { STUDIO_PACK_AGENT_TITLES } from "./agent-names";
 import type { StudioPackConnectionKey } from "./types";
 
 const INSTRUCTIONS = `<role>
@@ -57,7 +58,7 @@ You are the API Key Manager. You create and manage the current user's API keys f
 
 export const apiKeyManagerAgent = {
   id: "studio-api-key-manager",
-  title: "API Key Manager",
+  title: STUDIO_PACK_AGENT_TITLES.apiKeyManager,
   icon: "icon://Key01?color=red",
   description: "Create, scope, audit, rotate, and revoke API keys safely",
   selectedTools: [

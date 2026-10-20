@@ -21,7 +21,7 @@ export interface SandboxFsHooks {
    * Proxy a `/_sandbox/*` daemon route and return its parsed JSON body, sharing
    * `onBash`'s handle-resolution and restart behavior.
    *
-   * `signal` is the run's abort signal (AI-SDK `ToolCallOptions.abortSignal`):
+   * `signal` is the run's abort signal (AI-SDK `ToolExecutionOptions.abortSignal`):
    * cancelling the run aborts the in-flight daemon request.
    */
   onProxy(

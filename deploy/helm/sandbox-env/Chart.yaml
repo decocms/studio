@@ -9,6 +9,26 @@ description: |
   releases coexist in the shared `agent-sandbox-system` namespace.
   Requires the sandbox-operator chart to already be installed.
 type: application
+# 0.20.0: `goldenUploader.affinity`, so the uploader can run on an image
+# variant's NodePool too — the android Gradle caches it forwards live there.
+# 0.19.0: `imageVariants.<name>.volumeSizes`, merged over `volumeSizes`. The
+# android emulator's AVD lives in `home`, and the 5Gi default evicted every pod
+# that booted it.
+# 0.18.0: sandbox IMAGE variants. Each `imageVariants` entry (default {})
+# renders two more SandboxTemplates — `<base>-<name>` and `<base>-<name>-medium`
+# — with its own image and, optionally, its own nodeSelector/tolerations and
+# resources, so a repository can pin a toolchain that needs other hardware
+# (`android`: an emulator on KVM nodes) without every sandbox paying for it.
+# Studio composes `<base><imageSuffix><sizeSuffix>` and degrades a template the
+# cluster lacks to the base one, so this is additive: with no variants the
+# chart renders exactly the two templates it always did. Each variant also gets
+# SandboxWarmPools at size 0 (`imageVariants.<name>.warmPoolSize` /
+# `.warmPoolMediumSize`). Enable a variant only in an environment that has its
+# nodes: a template that renders but cannot schedule leaves claims Pending.
+# 0.17.0: opt-in `commitSigning` — mounts the bot's SSH signing key into every
+# sandbox pod and tells the daemon which committer it belongs to, so commits
+# made as the bot are signed and repositories that require verified signatures
+# can merge them. Off unless `commitSigning.privateKey` is set.
 # 0.16.2: renewals now land at idleTtlSeconds + `housekeeper.renewSlackSeconds`
 # (default 60) instead of exactly idleTtlSeconds, so the sweep's graceful reap
 # — HTTPRoute deleted before the pod drains — stays ahead of the operator's own
@@ -154,7 +174,7 @@ type: application
 # 0.8.0: org-fs sidecar (orgFs.*) — privileged rclone mounter + main-container
 # mounts. NOTE: the publish workflow skips existing versions, so this MUST
 # stay ahead of the latest published chart (0.7.5 at time of writing).
-version: 0.16.46
+version: 0.20.52
 # appVersion tracks the studio-sandbox image version (image.tag default).
-appVersion: "1.61.5"
+appVersion: "1.93.1"
 kubeVersion: ">=1.30.0-0"

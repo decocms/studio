@@ -197,7 +197,7 @@ describe("createUsageAccumulator", () => {
         inputTokens: 200,
         outputTokens: 100,
         totalTokens: 300,
-        reasoningTokens: 42,
+        outputTokenDetails: { reasoningTokens: 42 },
       } as never,
       providerKey: undefined,
     });

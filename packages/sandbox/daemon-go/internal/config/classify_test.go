@@ -317,3 +317,114 @@ func TestClassifySecondaryRepos(t *testing.T) {
 		t.Errorf("branch + repos change: got %q, want %q", got, KindBranchChange)
 	}
 }
+
+func TestCliEnvFromCloneUrl(t *testing.T) {
+	cases := []struct {
+		name string
+		url  string
+		want map[string]string
+	}{
+		{"github", "https://x-access-token:tok-gh@github.com/acme/site.git", map[string]string{"GH_TOKEN": "tok-gh"}},
+		{"github enterprise", "https://x-access-token:tok@ghe.acme.com/acme/site.git", map[string]string{"GH_TOKEN": "tok", "GH_HOST": "ghe.acme.com"}},
+		{"gitlab", "https://oauth2:tok-gl@gitlab.com/group/sub/project.git", map[string]string{"GITLAB_TOKEN": "tok-gl", "GITLAB_HOST": "https://gitlab.com", "GLAB_IS_OAUTH2": "true"}},
+		{"self-hosted gitlab with port", "https://oauth2:t@gitlab.acme.com:8443/g/p.git", map[string]string{"GITLAB_TOKEN": "t", "GITLAB_HOST": "https://gitlab.acme.com:8443", "GLAB_IS_OAUTH2": "true"}},
+		{"bitbucket", "https://x-token-auth:tok-bb@bitbucket.org/acme/site.git", map[string]string{"BITBUCKET_TOKEN": "tok-bb"}},
+		{"anonymous", "https://github.com/acme/site.git", nil},
+		{"ssh", "git@github.com:acme/site.git", nil},
+		{"unknown username", "https://user:pw@example.com/a/b.git", nil},
+		{"empty", "", nil},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := CliEnvFromCloneUrl(c.url)
+			if len(got) != len(c.want) {
+				t.Fatalf("CliEnvFromCloneUrl(%q) = %v, want %v", c.url, got, c.want)
+			}
+			for k, v := range c.want {
+				if got[k] != v {
+					t.Errorf("CliEnvFromCloneUrl(%q)[%s] = %q, want %q", c.url, k, got[k], v)
+				}
+			}
+		})
+	}
+}
+
+func TestGlabConfigFromCloneUrl(t *testing.T) {
+	got := GlabConfigFromCloneUrl("https://oauth2:tok-gl@gitlab.acme.com:8443/g/sub/p.git")
+	want := "hosts:\n  gitlab.acme.com:8443:\n    token: tok-gl\n" +
+		"    api_host: gitlab.acme.com:8443\n    api_protocol: https\n    is_oauth2: true\n"
+	if got != want {
+		t.Errorf("GlabConfigFromCloneUrl() =\n%q\nwant\n%q", got, want)
+	}
+
+	// Anything that is not a credentialed GitLab remote yields no config, so the
+	// writer removes the file instead of leaving another provider's token behind.
+	for _, url := range []string{
+		"https://x-access-token:tok-gh@github.com/acme/site.git",
+		"https://gitlab.com/acme/site.git",
+		"git@gitlab.com:acme/site.git",
+		"https://oauth2:@gitlab.com/acme/site.git",
+		"",
+	} {
+		if got := GlabConfigFromCloneUrl(url); got != "" {
+			t.Errorf("GlabConfigFromCloneUrl(%q) = %q, want empty", url, got)
+		}
+	}
+}
+
+func TestGlabConfigPath(t *testing.T) {
+	if got, want := GlabConfigPath("/home/sandbox"), "/home/sandbox/.config/glab-cli/config.yml"; got != want {
+		t.Errorf("GlabConfigPath() = %q, want %q", got, want)
+	}
+}
+
+// The hazard the orchestrator's unconditional install exists for.
+//
+// Classify returns the FIRST kind that matches and the credential checks are
+// last, so credentials arriving on the same apply as any workload change are
+// labelled that change — and only bootstrap and branch-change run the clone
+// step, which is where credentials would otherwise be written to disk. A
+// warm-pool pod adopted by a claim is exactly this: the claim's config differs
+// from the pool template's on the workload, so the PAT rode in, was merged into
+// the stored config, and never reached the pod's git config. The pod stayed on
+// the clone token and every private dependency in another repository 404'd.
+//
+// This pins the shadowing so it is a decision and not a surprise. The fix is in
+// Orchestrator.Handle, which installs on every transition regardless of kind;
+// if this test ever flips to KindGitCredentialRefresh, that is a behaviour
+// change to make deliberately, not a reason to drop the unconditional install.
+func TestClassifyShadowsACredentialChangeBehindAWorkloadChange(t *testing.T) {
+	const url = "https://x-access-token:tok@github.com/acme/app.git"
+	withCreds := func(c *TenantConfig, token string) *TenantConfig {
+		out := *c
+		g := *out.Git
+		r := *g.Repository
+		r.SubmoduleCredentials = []SubmoduleCredential{{Host: "github.com", Token: token}}
+		g.Repository = &r
+		out.Git = &g
+		return &out
+	}
+
+	base := withPort(repo(url, "main"), 3000)
+	for _, tc := range []struct {
+		name  string
+		after *TenantConfig
+		want  string
+	}{
+		{"port", withPort(withCreds(base, "pat"), 4000), KindPortChange},
+		{"package manager", withPm(withCreds(base, "pat"), "pnpm", ""), KindPmChange},
+		{"env", withEnv(withCreds(base, "pat"), map[string]string{"A": "1"}), KindEnvChange},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := Classify(base, tc.after).Kind; got != tc.want {
+				t.Fatalf("Classify = %q, want %q", got, tc.want)
+			}
+		})
+	}
+
+	// On its own it IS a credential refresh — the shadowing above is purely an
+	// ordering effect, not a missing case.
+	if got := Classify(base, withCreds(base, "pat")).Kind; got != KindGitCredentialRefresh {
+		t.Fatalf("Classify = %q, want %q", got, KindGitCredentialRefresh)
+	}
+}

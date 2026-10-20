@@ -7,6 +7,7 @@
  *
  *   - direct-navigating to a management settings route shows the no-access
  *     panel instead of the page;
+ *   - General opens for a plain member with only the blocks editor switch;
  *   - the /settings index lands a no-management member on Profile (the always-
  *     accessible fallback), and an owner on General;
  *
@@ -84,11 +85,18 @@ test.describe("settings capability gating", () => {
     });
 
     // Direct-navigating to a management route renders the no-access panel
-    // (the route guard denies) instead of the General settings page.
-    await page.goto(`/${owner.orgSlug}/settings/general`);
-    await expect(page.getByText("No access to general settings")).toBeVisible({
+    // (the route guard denies) instead of the page.
+    await page.goto(`/${owner.orgSlug}/settings/members`);
+    await expect(page.getByText("No access to members")).toBeVisible({
       timeout: 15_000,
     });
+
+    // General opens for every member, but only with the blocks editor switch.
+    await page.goto(`/${owner.orgSlug}/settings/general`);
+    await expect(
+      page.getByRole("switch", { name: "New blocks editor", exact: true }),
+    ).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText("Danger Zone")).toHaveCount(0);
 
     // The settings index redirects a no-management member to Profile — the
     // always-accessible fallback — rather than landing them on a denied tab.

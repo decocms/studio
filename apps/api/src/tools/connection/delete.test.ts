@@ -1,5 +1,10 @@
 import { describe, expect, it, mock } from "bun:test";
 import { WellKnownOrgMCPId } from "@decocms/shared/sdk";
+import {
+  __armRefreshBackoffForTesting,
+  clearRefreshBackoff,
+  isRefreshBackedOff,
+} from "../../oauth/token-refresh";
 import { COLLECTION_CONNECTIONS_DELETE } from "./delete";
 
 function makeCtx(options: {
@@ -58,15 +63,15 @@ describe("COLLECTION_CONNECTIONS_DELETE", () => {
     expect(deleteConnection).not.toHaveBeenCalled();
   });
 
-  it("refuses to delete a connection a thread is pinned to as its repo", async () => {
-    // Regression: deleting it would strand the thread's sandbox permanently.
+  it("deletes a connection a thread is pinned to as its repo", async () => {
+    // Inverted: this used to throw CONNECTION_IN_USE_BY_THREAD, which reached
+    // the user as a raw JSON toast with no way out. An old chat is not a reason
+    // the owner can't delete their own connection.
     const { ctx, deleteConnection } = makeCtx({ referencedByThread: true });
 
-    await expect(
-      COLLECTION_CONNECTIONS_DELETE.handler({ id: "conn_repo" }, ctx),
-    ).rejects.toThrow(/CONNECTION_IN_USE_BY_THREAD/);
+    await COLLECTION_CONNECTIONS_DELETE.handler({ id: "conn_repo" }, ctx);
 
-    expect(deleteConnection).not.toHaveBeenCalled();
+    expect(deleteConnection).toHaveBeenCalledWith("conn_repo");
   });
 
   it("deletes a connection with no thread pinned to it", async () => {
@@ -79,6 +84,29 @@ describe("COLLECTION_CONNECTIONS_DELETE", () => {
 
     expect(result.item.id).toBe("conn_repo");
     expect(deleteConnection).toHaveBeenCalledWith("conn_repo");
+  });
+
+  it("clears the oauth refresh backoff tracker on delete", async () => {
+    // Regression: an unbounded tracker entry lingered past delete, suppressing a reconnect's first refresh.
+    const { ctx } = makeCtx({ referencedByThread: false });
+    // Armed through the test hook, not by provoking a real refresh failure:
+    // provoking one means depending on `refreshAccessToken`, which two other
+    // test files mock.module and never restore, so whether the window armed
+    // depended on which file ran first.
+    __armRefreshBackoffForTesting("conn_repo");
+    expect(isRefreshBackedOff("conn_repo")).toBe(true);
+
+    await COLLECTION_CONNECTIONS_DELETE.handler({ id: "conn_repo" }, ctx);
+
+    try {
+      // Asserted on the window itself, not on whether a later refresh reached
+      // the network. The fetch-based version passed alone and failed in the
+      // full suite: another file leaks a mock.module for
+      // @/oauth/refresh-access-token, so no fetch happens either way.
+      expect(isRefreshBackedOff("conn_repo")).toBe(false);
+    } finally {
+      clearRefreshBackoff("conn_repo");
+    }
   });
 
   it("revokes the connection's trigger callback token on delete", async () => {

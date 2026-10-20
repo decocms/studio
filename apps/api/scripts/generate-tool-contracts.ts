@@ -38,6 +38,14 @@ const toolIoSymbol = checker
 if (!toolIoSymbol) throw new Error("Could not resolve ToolIO");
 
 const toolIo = checker.getDeclaredTypeOfSymbol(toolIoSymbol);
+/** The `any` TYPE becomes `unknown`; an `"any"` string literal is a value a
+ *  schema allows and stays as written. */
+function anyToUnknown(typeText: string): string {
+  return typeText.replace(/"(?:[^"\\]|\\.)*"|\bany\b/g, (match) =>
+    match.startsWith('"') ? match : "unknown",
+  );
+}
+
 const flags =
   ts.TypeFormatFlags.NoTruncation |
   ts.TypeFormatFlags.InTypeAlias |
@@ -52,12 +60,12 @@ for (const tool of checker.getPropertiesOfType(toolIo)) {
   if (!input || !output) continue;
   const inputType = checker.getTypeOfSymbolAtLocation(input, source);
   const outputType = checker.getTypeOfSymbolAtLocation(output, source);
-  const inputText = checker
-    .typeToString(inputType, source, flags)
-    .replace(/\bany\b/g, "unknown");
-  const outputText = checker
-    .typeToString(outputType, source, flags)
-    .replace(/\bany\b/g, "unknown");
+  const inputText = anyToUnknown(
+    checker.typeToString(inputType, source, flags),
+  );
+  const outputText = anyToUnknown(
+    checker.typeToString(outputType, source, flags),
+  );
   entries.push(
     `  ${JSON.stringify(tool.name)}: { input: ${inputText}; output: ${outputText} };`,
   );
@@ -147,8 +155,7 @@ for (const tool of checker.getPropertiesOfType(builtIns)) {
     throw new Error(`Could not infer schemas for chat tool ${tool.name}`);
   }
   const clean = (typeText: string) =>
-    typeText
-      .replace(/\bany\b/g, "unknown")
+    anyToUnknown(typeText)
       .replace(/\bGenerateImageResult\b/g, "StudioGenerateImageResult")
       .replace(/import\("[^"]+"\)\./g, "");
   chatEntries.push(

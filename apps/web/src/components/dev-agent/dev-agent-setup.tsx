@@ -4,7 +4,7 @@
  * toggle in the header. Lives in the agent settings view — the header only
  * shows the toggle, and only once a pair exists.
  *
- * Hidden for agents that are themselves a dev agent (have a `githubRepo`) or
+ * Hidden for agents that are themselves a dev agent (have a `repository`) or
  * Decopilot — those don't link a separate dev counterpart.
  */
 
@@ -21,8 +21,8 @@ import {
 import { isDecopilot, useVirtualMCPActions, useVirtualMCPs } from "@/sdk";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { useT } from "@/i18n/use-t.ts";
-import { GitHubIcon } from "@/components/icons/github-icon";
-import { GitHubRepoPicker } from "@/components/github-repo-picker.tsx";
+import { GitBranch01 } from "@untitledui/icons";
+import { RepositoryImportPicker } from "@/components/repository-import-picker.tsx";
 import {
   agentHasClonableSource,
   getDevAgentIds,
@@ -40,7 +40,7 @@ export function DevAgentSetup({
 
   const devAgentIds = getDevAgentIds(allAgents);
   // Only "live"-style agents set up a dev counterpart: not Decopilot, not
-  // itself a dev agent (githubRepo), and not already the dev side of a pair.
+  // itself a dev agent (repository), and not already the dev side of a pair.
   if (
     isDecopilot(virtualMcp.id) ||
     agentHasClonableSource(virtualMcp.metadata) ||
@@ -133,7 +133,7 @@ export function DevAgentSetup({
                   className="gap-2"
                   onClick={() => setGithubOpen(true)}
                 >
-                  <GitHubIcon className="size-4" />
+                  <GitBranch01 className="size-4" />
                   {t("devAgent.devAgentSetup.importButton")}
                 </Button>
                 {linkableAgents.length > 0 ? (
@@ -159,7 +159,7 @@ export function DevAgentSetup({
           )}
         </CardContent>
       </Card>
-      <GitHubRepoPicker
+      <RepositoryImportPicker
         open={githubOpen}
         onOpenChange={setGithubOpen}
         title={t("devAgent.devAgentSetup.importDialogTitle")}

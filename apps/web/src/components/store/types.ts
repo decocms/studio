@@ -77,7 +77,7 @@ export interface RegistryItem {
   /** Alternative name field used by some registries */
   title?: string;
   /** Primary description of the item */
-  description?: string;
+  description?: string | null;
   /** Alternative description field used by some registries */
   summary?: string;
   /** Icon URL */
@@ -96,7 +96,7 @@ export interface RegistryItem {
   tools?: Array<{
     id?: string;
     name?: string;
-    description?: string | null;
+    description?: string;
   }>;
   /** Available models */
   models?: unknown[];
@@ -108,7 +108,7 @@ export interface RegistryItem {
   cdn?: unknown;
   /** Metadata with various provider-specific information */
   _meta?: MCPRegistryServerMeta;
-  /** Visibility flag used by private-registry based stores */
+  /** Visibility flag from the catalog */
   is_public?: boolean;
   /** Alternative metadata field */
   meta?: {
@@ -184,12 +184,6 @@ export interface RegistryItem {
   };
   /** When the item was last updated */
   updated_at?: string | Date;
-  /** Source registry name (added client-side for merged view) */
-  _sourceName?: string;
-  /** Source registry icon (added client-side for merged view) */
-  _sourceIcon?: string | null;
-  /** Source registry connection ID (added client-side for merged view) */
-  _registryId?: string;
 }
 
 /** Filter item with value and count */

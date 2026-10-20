@@ -10,7 +10,7 @@ export const AI_PROVIDER_KEY_UPDATE = defineTool({
   inputSchema: z.object({
     keyId: z.string(),
     label: z.string().min(1).max(100).optional(),
-    apiKey: z.string().min(1).optional(),
+    apiKey: z.string().min(1).max(4096).optional(),
   }),
   outputSchema: providerKeyOutputSchema,
   handler: async (input, ctx) => {

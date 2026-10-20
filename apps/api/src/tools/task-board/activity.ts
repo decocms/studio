@@ -11,6 +11,7 @@ import { requireAuth } from "@/core/studio-context";
 import type { StudioContext } from "@/core/studio-context";
 import type { TaskBoardActivityAction } from "@/storage/types";
 import { TaskBoardActivitySchema } from "./schema";
+import { withOrgOverride } from "./with-org-override";
 
 /** Append an activity event, swallowing failures — a log write must never fail
  *  the change it describes. */
@@ -54,7 +55,7 @@ export async function recordTaskActivities(
   }
 }
 
-export const TASK_BOARD_ACTIVITY_LIST = defineTool({
+const TASK_BOARD_ACTIVITY_LIST_TOOL = defineTool({
   name: "TASK_BOARD_ACTIVITY_LIST",
   description:
     "List a task board item's change history (timeline, oldest first).",
@@ -83,3 +84,10 @@ export const TASK_BOARD_ACTIVITY_LIST = defineTool({
     return { activity };
   },
 });
+
+/** Exported already wrapped: every consumer — `CORE_TOOLS`, and the Super
+ *  Agent's built-ins, which import this module directly — has to come
+ *  through here, so the cross-org `org` param cannot be missed by one of them. */
+export const TASK_BOARD_ACTIVITY_LIST = withOrgOverride(
+  TASK_BOARD_ACTIVITY_LIST_TOOL,
+);

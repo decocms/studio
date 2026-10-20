@@ -5,6 +5,7 @@ import {
   buildOptions,
   createDeltaCoalescer,
   errorFinishChunks,
+  interactiveToolHook,
   isTransientProviderRejection,
   mcpServersFor,
   promptForRun,
@@ -74,7 +75,6 @@ describe("promptFromUserMessage", () => {
 describe("promptForRun", () => {
   const repoWorkspace = {
     cwd: "/repo",
-    repo: { owner: "o", name: "n", connectedGithub: true },
     branch: "thread-42",
   } as HarnessStreamInputWire["workspace"];
 
@@ -96,7 +96,8 @@ describe("promptForRun", () => {
     // git/gh, on this task's branch: the repo is the only state that outlives
     // the pod, so the prompt has to point at it.
     expect(prompt).toContain("git log");
-    expect(prompt).toContain("gh pr list --head thread-42");
+    expect(prompt).toContain("git remote get-url origin");
+    expect(prompt).toContain("pull or merge request");
     // The two instructions a resumed autonomous run must not miss.
     expect(prompt).toContain("do not start the task over");
     expect(prompt).toContain("never open a second one");
@@ -107,7 +108,7 @@ describe("promptForRun", () => {
       input({ resume: { reason: "the studio pod restarted" } }),
     );
     expect(prompt).toContain("the studio pod restarted");
-    expect(prompt).toContain("<branch>");
+    expect(prompt).toContain("this task's branch");
     expect(prompt).not.toContain("undefined");
   });
 });
@@ -171,6 +172,10 @@ describe("buildOptions", () => {
     expect(options().permissionMode).toBe("bypassPermissions");
   });
 
+  test("plan mode runs the SDK in plan mode", () => {
+    expect(options({ mode: "plan" }).permissionMode).toBe("plan");
+  });
+
   test("keeps Claude Code's own prompt and appends the agent instructions", () => {
     const withInstructions = options({
       agent: { id: "a", instructions: "Be terse." },
@@ -211,11 +216,29 @@ describe("buildOptions", () => {
   });
 
   test("subtracts the dispatch's disallowed tools — that's what makes a reviewer read-only", () => {
-    expect(options().disallowedTools).toBeUndefined();
     expect(
       options({ agent: { id: "a", disallowedTools: ["Write", "Edit"] } })
         .disallowedTools,
-    ).toEqual(["Write", "Edit"]);
+    ).toEqual(["Monitor", "ScheduleWakeup", "Write", "Edit"]);
+  });
+
+  test("never offers a tool whose result arrives after the turn ends", () => {
+    // A run armed a Monitor, ended its turn to wait, and was recorded as
+    // completed: the runner had already exited when the event would have fired.
+    expect(options().disallowedTools).toEqual(["Monitor", "ScheduleWakeup"]);
+    expect(
+      options({ agent: { id: "a", disallowedTools: ["Monitor"] } })
+        .disallowedTools,
+    ).toEqual(["Monitor", "ScheduleWakeup"]);
+    const { append } = options().systemPrompt as { append: string };
+    expect(append).toContain("This run ends when your turn ends");
+  });
+
+  test("names the absolute org-fs root", () => {
+    // The checkout no longer links org-fs in, so a relative `org/...` path
+    // from an older message or skill resolves inside the repo.
+    const { append } = options().systemPrompt as { append: string };
+    expect(append).toContain("mounted at `/app/org/`");
   });
 
   test("points skill authoring at the org-fs mount, instructions or not", () => {
@@ -251,7 +274,6 @@ describe("buildOptions", () => {
     const opts = options({
       workspace: {
         cwd: "/app/repo",
-        repo: { owner: "o", name: "n", connectedGithub: true },
         branch: null,
       },
     });
@@ -306,7 +328,6 @@ describe("buildOptions", () => {
         type: "http",
         url: "https://studio.example/mcp/virtual-mcp/agent_1",
         headers: { Authorization: "Bearer k", "x-org-id": "org_1" },
-        alwaysLoad: true,
       },
     });
   });
@@ -320,7 +341,7 @@ describe("buildOptions", () => {
 
 describe("mcpServersFor", () => {
   const studio = {
-    url: "https://studio.example/mcp/task-run/thrd_1",
+    url: "https://studio.example/mcp/thread/thrd_1",
     headers: { Authorization: "Bearer k" },
     expiresAt: 1,
   };
@@ -349,15 +370,14 @@ describe("mcpServersFor", () => {
         type: "http",
         url: studio.url,
         headers: studio.headers,
-        alwaysLoad: true,
       },
     });
   });
 
-  test("org connections stay deferred; only Studio's own is always loaded", () => {
-    // The whole reason an org can hand a run thirty connections: their tools
-    // sit behind tool search instead of the turn-1 prompt. Studio's own cannot
-    // — the board tools are how the run reports what it did.
+  test("no server is always loaded, Studio's included", () => {
+    // A server-wide `alwaysLoad` sends every tool's schema on every request —
+    // Studio's chat surface is the whole catalog. Studio marks the board tools
+    // always-loaded per tool instead (`_meta["anthropic/alwaysLoad"]`).
     const servers = mcpServersFor(
       input({
         mcp: studio,
@@ -367,7 +387,7 @@ describe("mcpServersFor", () => {
       }),
     );
     expect(servers.linear).not.toHaveProperty("alwaysLoad");
-    expect(servers.studio).toHaveProperty("alwaysLoad", true);
+    expect(servers.studio).not.toHaveProperty("alwaysLoad");
   });
 
   test("Studio's surface survives an org connection named `studio`", () => {
@@ -383,7 +403,6 @@ describe("mcpServersFor", () => {
       type: "http",
       url: studio.url,
       headers: studio.headers,
-      alwaysLoad: true,
     });
   });
 
@@ -475,8 +494,17 @@ describe("createDeltaCoalescer", () => {
     delta: text,
   });
 
+  test("a block's first delta goes out at once: it is the first token", () => {
+    const c = createDeltaCoalescer(100);
+    expect(c.push([delta("a", "H")])).toEqual([delta("a", "H")]);
+    expect(c.push([{ type: "reasoning-delta", id: "a", delta: "t" }])).toEqual([
+      { type: "reasoning-delta", id: "a", delta: "t" },
+    ]);
+  });
+
   test("holds a short delta until something forces it out", () => {
     const c = createDeltaCoalescer(10);
+    c.push([delta("a", "H")]);
     expect(c.push([delta("a", "hi")])).toEqual([]);
     expect(c.drain()).toEqual([delta("a", "hi")]);
     // Drained once; nothing left to emit twice.
@@ -485,6 +513,7 @@ describe("createDeltaCoalescer", () => {
 
   test("concatenates same-block deltas and flushes at the threshold", () => {
     const c = createDeltaCoalescer(5);
+    c.push([delta("a", "H")]);
     expect(c.push([delta("a", "ab")])).toEqual([]);
     expect(c.push([delta("a", "cd")])).toEqual([]);
     expect(c.push([delta("a", "ef")])).toEqual([delta("a", "abcdef")]);
@@ -502,6 +531,7 @@ describe("createDeltaCoalescer", () => {
 
   test("a different block flushes the previous one rather than merging", () => {
     const c = createDeltaCoalescer(100);
+    c.push([delta("a", "A"), delta("b", "B")]);
     c.push([delta("a", "one")]);
     expect(c.push([delta("b", "two")])).toEqual([delta("a", "one")]);
     expect(c.drain()).toEqual([delta("b", "two")]);
@@ -509,6 +539,7 @@ describe("createDeltaCoalescer", () => {
 
   test("reasoning and text deltas are not merged into each other", () => {
     const c = createDeltaCoalescer(100);
+    c.push([{ type: "reasoning-delta", id: "a", delta: "T" }, delta("a", "S")]);
     c.push([{ type: "reasoning-delta", id: "a", delta: "think" }]);
     // Same id, different kind — merging would put reasoning into a text part.
     expect(c.push([delta("a", "say")])).toEqual([
@@ -535,6 +566,7 @@ describe("createDeltaCoalescer", () => {
 
   test("discard drops what is held instead of emitting it", () => {
     const c = createDeltaCoalescer(100);
+    c.push([delta("a", "H")]);
     c.push([delta("a", "abandoned")]);
     c.discard();
     expect(c.drain()).toEqual([]);
@@ -581,5 +613,84 @@ describe("errorFinishChunks", () => {
       { type: "finish-step" },
       { type: "finish", finishReason: "error" },
     ]);
+  });
+});
+
+describe("interactiveToolHook", () => {
+  const ask = (toolName: string, agentId?: string) => {
+    const parked: string[] = [];
+    const matcher = interactiveToolHook((id) => parked.push(id));
+    const hook = matcher.hooks[0]!;
+    const result = hook(
+      {
+        hook_event_name: "PreToolUse",
+        tool_name: toolName,
+        tool_input: { q: 1 },
+        tool_use_id: "call-1",
+        session_id: "s",
+        transcript_path: "/t",
+        cwd: "/",
+        ...(agentId ? { agent_id: agentId } : {}),
+      },
+      "call-1",
+      { signal: new AbortController().signal },
+    );
+    return { matcher: matcher.matcher, result, parked };
+  };
+
+  test("matches only the interactive tools", () => {
+    const pattern = new RegExp(`^(${ask("x").matcher})$`);
+    expect(pattern.test("AskUserQuestion")).toBe(true);
+    expect(pattern.test("ExitPlanMode")).toBe(true);
+    expect(pattern.test("Bash")).toBe(false);
+  });
+
+  for (const toolName of ["AskUserQuestion", "ExitPlanMode"]) {
+    test(`${toolName} is parked for the user and ends the turn`, async () => {
+      const { result, parked } = ask(toolName);
+      expect(await result).toMatchObject({
+        continue: false,
+        hookSpecificOutput: { permissionDecision: "deny" },
+      });
+      expect(parked).toEqual(["call-1"]);
+    });
+  }
+
+  test("a subagent cannot ask the user, and the turn goes on", async () => {
+    const { result, parked } = ask("AskUserQuestion", "agent-1");
+    const output = await result;
+    expect(output).toMatchObject({
+      hookSpecificOutput: { permissionDecision: "deny" },
+    });
+    expect(output).not.toHaveProperty("continue");
+    expect(parked).toEqual([]);
+  });
+});
+
+describe("permission callback", () => {
+  const decide = (mode: "default" | "plan", toolName: string) =>
+    options({ mode }).canUseTool!(
+      toolName,
+      { q: 1 },
+      {
+        signal: new AbortController().signal,
+        toolUseID: "call-1",
+        requestId: "r",
+      },
+    );
+
+  test("is always set, since it is what offers AskUserQuestion", () => {
+    expect(options().canUseTool).toBeDefined();
+  });
+
+  test("allows outside plan mode and denies changes in it", async () => {
+    expect(await decide("default", "Bash")).toEqual({
+      behavior: "allow",
+      updatedInput: { q: 1 },
+    });
+    expect(await decide("plan", "Bash")).toMatchObject({ behavior: "deny" });
+    expect(await decide("plan", "mcp__studio__web_search")).toMatchObject({
+      behavior: "allow",
+    });
   });
 });

@@ -21,9 +21,13 @@
  *   - PATCH writes land as ONE commit per request batch, blocks serialized as
  *     pretty-printed JSON + trailing newline; deleting a key removes EVERY
  *     alias file whose stem decodes to that key.
+ *   - PATCH `expect: { <key>: <fingerprint> | null }` names the block version
+ *     the edit was made against: sha-256 hex of the block's JSON with keys
+ *     sorted at every depth, `null` for "no such block". A mismatch is a 409
+ *     `{ code: "block-conflict", blocks }` and writes nothing.
  */
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { signUpViaApi } from "../fixtures/auth-api";
 import { callSelfMcpTool } from "../fixtures/mcp-tools";
 import { connectDevDb } from "../fixtures/db";
@@ -39,6 +43,22 @@ import { expect, newApiContext, test } from "../fixtures/test";
 /** Serialization the decofile writer uses for a block file. */
 const blockFileContent = (value: unknown): string =>
   `${JSON.stringify(value, null, 2)}\n`;
+
+/** Block fingerprint for PATCH `expect`: sha-256 of key-sorted JSON. */
+const blockFingerprint = (value: unknown): string =>
+  createHash("sha256")
+    .update(
+      JSON.stringify(value, (_key, v: unknown) =>
+        v && typeof v === "object" && !Array.isArray(v)
+          ? Object.fromEntries(
+              Object.entries(v as Record<string, unknown>).sort(([a], [b]) =>
+                a < b ? -1 : a > b ? 1 : 0,
+              ),
+            )
+          : v,
+      ),
+    )
+    .digest("hex");
 
 interface DecofileGetBody {
   version: string;
@@ -145,7 +165,7 @@ test.describe("decofile API", () => {
         },
       );
       // Legacy `productionUrl` key satisfies the URL term (dual-read): with no
-      // githubRepo the NEXT failure surfaces instead of the URL-less 404.
+      // repository the NEXT failure surfaces instead of the URL-less 404.
       const legacyKey = await callSelfMcpTool<{ item: { id: string } }>(
         ctx,
         org,
@@ -166,7 +186,8 @@ test.describe("decofile API", () => {
       );
       expect(legacyRes.status()).toBe(404);
       expect(await legacyRes.json()).toEqual({
-        error: "Project has no GitHub repository",
+        error: "Project has no repository",
+        code: "no_repository",
       });
 
       const flagOnlyRes = await ctx.get(
@@ -198,7 +219,8 @@ test.describe("decofile API", () => {
       );
       expect(urlNoFlagRes.status()).toBe(404);
       expect(await urlNoFlagRes.json()).toEqual({
-        error: "Project has no GitHub repository",
+        error: "Project has no repository",
+        code: "no_repository",
       });
     } finally {
       await ctx.dispose();
@@ -252,7 +274,7 @@ test.describe("decofile API", () => {
       expect(body.version).toMatch(/^[0-9a-f]{40}$/);
       expect(typeof body.token).toBe("string");
       // The API reports the authority it is reachable on, so the editor can
-      // build a draft pointer that works from the native app too.
+      // build a draft pointer the preview server can pull from.
       expect(body.apiHost).toMatch(/^[\w.-]+(:\d+)?$/);
       expect(body.decofile["Hero"]).toEqual(heroBlock);
       // Double-encoded stem → single-decode key keeps the `%20` (the runtime's form).
@@ -509,7 +531,6 @@ test.describe("decofile API", () => {
         baseBranch: "main",
         aheadBy: 0,
         behindBy: 0,
-        lastCommitAt: expect.any(String),
       });
 
       const commitsBefore = (await inspectStubRepo(ctx, owner, repo)).commits
@@ -554,8 +575,140 @@ test.describe("decofile API", () => {
         baseBranch: "main",
         aheadBy: 1,
         behindBy: 0,
-        lastCommitAt: expect.any(String),
       });
+    } finally {
+      await ctx.dispose();
+    }
+  });
+
+  test("PATCH with expect writes only over the block version the edit was made against", async ({
+    playwright,
+  }) => {
+    const ctx = await newApiContext(playwright);
+    try {
+      const user = await signUpViaApi(ctx);
+      const owner = uniqueOwner();
+      const repo = "site";
+      const loaded = {
+        __resolveType: "site/sections/Header.tsx",
+        menu: [{ label: "SSRio", href: "/new-in" }],
+        shelf: { collection: "680" },
+      };
+      await seedStubRepo(ctx, {
+        owner,
+        repo,
+        defaultBranch: "main",
+        branches: {
+          main: {
+            files: { ".deco/blocks/Header.json": blockFileContent(loaded) },
+          },
+          draft: null,
+        },
+      });
+      const project = await createFastPreviewProject(ctx, user.orgSlug, {
+        owner,
+        repo,
+      });
+      const url = decofileUrl(project, "draft");
+
+      // Another editor's change lands after this editor loaded the block.
+      const published = {
+        ...loaded,
+        menu: [{ label: "SS Rio", href: "/new-in" }],
+      };
+      const other = await ctx.patch(url, {
+        data: {
+          set: { Header: published },
+          expect: { Header: blockFingerprint(loaded) },
+        },
+      });
+      expect(other.status()).toBe(200);
+      const headAfterOther = (await inspectStubRepo(ctx, owner, repo)).branches[
+        "draft"
+      ]?.headSha;
+
+      // The stale editor saves the whole block it loaded, plus its own edit.
+      const stale = await ctx.patch(url, {
+        data: {
+          set: { Header: { ...loaded, shelf: { collection: "667" } } },
+          expect: { Header: blockFingerprint(loaded) },
+        },
+      });
+      expect(stale.status()).toBe(409);
+      expect(await stale.json()).toMatchObject({
+        code: "block-conflict",
+        blocks: ["Header"],
+      });
+      const afterStale = await inspectStubRepo(ctx, owner, repo);
+      expect(afterStale.branches["draft"]?.headSha).toBe(headAfterOther);
+      expect(
+        JSON.parse(
+          afterStale.branches["draft"]?.files[
+            ".deco/blocks/Header.json"
+          ] as string,
+        ),
+      ).toEqual(published);
+
+      // Redone against what the read now returns, the edit lands on top.
+      const reread = (await (await ctx.get(url)).json()) as DecofileGetBody;
+      const redone = await ctx.patch(url, {
+        data: {
+          set: { Header: { ...published, shelf: { collection: "667" } } },
+          expect: { Header: blockFingerprint(reread.decofile["Header"]) },
+        },
+      });
+      expect(redone.status()).toBe(200);
+      const final = await inspectStubRepo(ctx, owner, repo);
+      expect(
+        JSON.parse(
+          final.branches["draft"]?.files[".deco/blocks/Header.json"] as string,
+        ),
+      ).toEqual({ ...published, shelf: { collection: "667" } });
+
+      // `null` means "I saw no such block": creating one is fine, replacing one is not.
+      const created = await ctx.patch(url, {
+        data: { set: { Banner: { title: "new" } }, expect: { Banner: null } },
+      });
+      expect(created.status()).toBe(200);
+      const replaced = await ctx.patch(url, {
+        data: { set: { Banner: { title: "again" } }, expect: { Banner: null } },
+      });
+      expect(replaced.status()).toBe(409);
+    } finally {
+      await ctx.dispose();
+    }
+  });
+
+  test("PATCH rejects an expect for a block the patch does not touch, or a malformed fingerprint", async ({
+    playwright,
+  }) => {
+    const ctx = await newApiContext(playwright);
+    try {
+      const user = await signUpViaApi(ctx);
+      const owner = uniqueOwner();
+      const repo = "site";
+      await seedStubRepo(ctx, {
+        owner,
+        repo,
+        defaultBranch: "main",
+        branches: {
+          main: { files: { ".deco/blocks/Hero.json": '{"n":1}\n' } },
+        },
+      });
+      const project = await createFastPreviewProject(ctx, user.orgSlug, {
+        owner,
+        repo,
+      });
+      const url = decofileUrl(project, "draft");
+
+      const untouched = await ctx.patch(url, {
+        data: { set: { Hero: { n: 2 } }, expect: { Footer: null } },
+      });
+      expect(untouched.status()).toBe(400);
+      const malformed = await ctx.patch(url, {
+        data: { set: { Hero: { n: 2 } }, expect: { Hero: "not-a-sha" } },
+      });
+      expect(malformed.status()).toBe(400);
     } finally {
       await ctx.dispose();
     }
@@ -1045,68 +1198,6 @@ test.describe("decofile API", () => {
         },
       ).catch((error: unknown) => error);
       expect(String(refused)).toMatch(/CMS session/i);
-    } finally {
-      await ctx.dispose();
-    }
-  });
-
-  test("status exposes the branch head's last-commit date; null for the default branch and unmaterialized branches", async ({
-    playwright,
-  }) => {
-    const ctx = await newApiContext(playwright);
-    try {
-      const user = await signUpViaApi(ctx);
-      const org = user.orgSlug;
-      const owner = uniqueOwner();
-      const repo = "site";
-
-      const staleAt = new Date(
-        Date.now() - 15 * 24 * 60 * 60 * 1000,
-      ).toISOString();
-      await seedStubRepo(ctx, {
-        owner,
-        repo,
-        defaultBranch: "main",
-        branches: {
-          main: { files: { ".deco/blocks/Hero.json": '{"n":1}\n' } },
-          // A side branch whose only commit is 15 days old (stale-shaped).
-          stale: {
-            files: { ".deco/blocks/Hero.json": '{"n":2}\n' },
-            committedAt: staleAt,
-          },
-        },
-      });
-      const project = await createFastPreviewProject(ctx, org, { owner, repo });
-      const statusUrl = (branch: string) =>
-        `${decofileUrl(project, branch)}/status`;
-
-      // Side branch: its own old commit date comes back verbatim.
-      const stale = await ctx.get(statusUrl("stale"));
-      expect(stale.status()).toBe(200);
-      expect(await stale.json()).toEqual({
-        baseBranch: "main",
-        aheadBy: 1,
-        behindBy: 0,
-        lastCommitAt: staleAt,
-      });
-
-      // Editing the default branch itself is never a stale side branch.
-      const onMain = await ctx.get(statusUrl("main"));
-      expect(await onMain.json()).toEqual({
-        baseBranch: "main",
-        aheadBy: 0,
-        behindBy: 0,
-        lastCommitAt: null,
-      });
-
-      // A branch not yet materialized on GitHub has no age — never stale.
-      const unmaterialized = await ctx.get(statusUrl("thread-minted-branch"));
-      expect(await unmaterialized.json()).toEqual({
-        baseBranch: "main",
-        aheadBy: 0,
-        behindBy: 0,
-        lastCommitAt: null,
-      });
     } finally {
       await ctx.dispose();
     }

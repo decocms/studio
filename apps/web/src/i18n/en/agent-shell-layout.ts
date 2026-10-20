@@ -1,8 +1,8 @@
 export const agentShellLayout = {
   "agentShellLayout.agentShellLayout.runtimeUnavailableOnWeb":
-    "This chat isn't available on the web",
+    "This chat can no longer be continued",
   "agentShellLayout.agentShellLayout.runtimeUnavailableOnWebDescription":
-    "Coding-agent chats run locally in Studio Desktop. Open this chat there to continue.",
+    "This chat's original runtime is no longer supported. Start a new chat to keep working.",
   "agentShellLayout.agentShellLayout.agentNotFound": "Project not found",
   "agentShellLayout.agentShellLayout.agentNotFoundDescription":
     'The project "{virtualMcpId}" does not exist in this organization.',
@@ -10,13 +10,5 @@ export const agentShellLayout = {
     "Something went wrong loading the chat. Try refreshing.",
   "agentShellLayout.agentShellLayout.creatingTask": "Creating task…",
   "agentShellLayout.agentShellLayout.goToOrgHome": "Go to organization home",
-  "agentShellLayout.agentShellLayout.nativeRuntimeUnavailable":
-    "The native terminal runtime is unavailable. Restart Studio and try again.",
-  "agentShellLayout.agentShellLayout.somethingWentWrong":
-    "Something went wrong. Try refreshing.",
   "agentShellLayout.agentShellLayout.taskUnavailable": "Task unavailable",
-  "agentShellLayout.toggleButtons.hideChat": "Hide chat",
-  "agentShellLayout.toggleButtons.hidePanel": "Hide panel",
-  "agentShellLayout.toggleButtons.showChat": "Show chat",
-  "agentShellLayout.toggleButtons.showPanel": "Show panel",
 } as const;

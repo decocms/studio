@@ -9,25 +9,13 @@ import type { ReactNode } from "react";
 // Mock BranchPicker so BranchPill tests don't pull in its heavy
 // network/hook dependencies. The mock just renders a plain <button>
 // so tests can assert the unlocked path forwards to BranchPicker.
-mock.module("../../thread/github/branch-picker", () => ({
+mock.module("../../thread/repository/branch-picker", () => ({
   BranchPicker: ({ spawnsNewChat }: { spawnsNewChat?: boolean }) => (
     <button
       type="button"
       data-spawns-new-chat={spawnsNewChat ? "true" : "false"}
     >
       branch-picker
-    </button>
-  ),
-}));
-
-mock.module("../../thread/github/branch-picker-legacy", () => ({
-  BranchPickerLegacy: ({ spawnsNewChat }: { spawnsNewChat?: boolean }) => (
-    <button
-      type="button"
-      data-testid="legacy"
-      data-spawns-new-chat={spawnsNewChat ? "true" : "false"}
-    >
-      branch-picker-legacy
     </button>
   ),
 }));
@@ -63,13 +51,12 @@ describe("ChatModeRowPure", () => {
 });
 
 const BRANCH_PILL_PROPS = {
-  draftsMode: true,
   orgId: "org-1",
   orgSlug: "my-org",
   userId: "user-1",
   userLabel: "Test User",
   virtualMcpId: "vmcp-1",
-  connectionId: "conn-1",
+  target: { connectionId: "conn-1" },
   owner: "acme",
   repo: "monorepo",
   sandboxMap: undefined,
@@ -95,10 +82,10 @@ describe("BranchPill", () => {
     );
   });
 
-  it("renders the classic picker when draftsMode is off", () => {
-    const { getByTestId } = renderWithQueryClient(
-      <BranchPill {...BRANCH_PILL_PROPS} draftsMode={false} locked={false} />,
+  it("always renders the releases switcher (BranchPicker)", () => {
+    const { getByRole } = renderWithQueryClient(
+      <BranchPill {...BRANCH_PILL_PROPS} locked={false} />,
     );
-    expect(getByTestId("legacy")).toBeInTheDocument();
+    expect(getByRole("button")).toHaveTextContent("branch-picker");
   });
 });

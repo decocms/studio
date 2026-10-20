@@ -21,7 +21,7 @@ import { retry, RetryError } from "@decocms/shared/std";
 import {
   createNoRedirectFetch,
   isPrivateUrl,
-} from "@/tools/registry/discover-tools";
+} from "@/mcp-clients/url-security";
 import {
   authorizationServerMetadataUrls,
   buildPathPrefix,
@@ -93,21 +93,23 @@ async function checkOriginSupportsOAuth(
     // If we get a 401 with WWW-Authenticate, the server supports OAuth
     if (response.status === 401) {
       const wwwAuth = response.headers.get("WWW-Authenticate");
-      if (wwwAuth) {
-        if (looksLikeOAuthWwwAuthenticate(wwwAuth)) {
-          return wwwAuth;
-        }
+      if (wwwAuth && looksLikeOAuthWwwAuthenticate(wwwAuth)) {
+        await drainDiscardedBody(response);
+        return wwwAuth;
       }
 
       // Fallback: Check if server has OAuth metadata endpoints even without WWW-Authenticate.
       // Some servers like ClickHouse support OAuth but don't include WWW-Authenticate header.
+      await drainDiscardedBody(response);
       const hasOAuthMetadata = await checkHasOAuthMetadata(connectionUrl);
       if (hasOAuthMetadata) {
         // Return a synthetic WWW-Authenticate value to indicate OAuth is supported
         return 'Bearer realm="mcp"';
       }
+      return null;
     }
 
+    await drainDiscardedBody(response);
     return null;
   } catch {
     return null;
@@ -138,8 +140,10 @@ async function checkHasOAuthMetadata(connectionUrl: string): Promise<boolean> {
       if (data.authorization_endpoint || data.token_endpoint || data.issuer) {
         return true;
       }
+      return false;
     }
 
+    await drainDiscardedBody(authServerRes);
     return false;
   } catch {
     return false;
@@ -181,9 +185,24 @@ export async function fetchProtectedResourceMetadata(
     ) {
       return response;
     }
+
+    if (i < urls.length - 1) await drainDiscardedBody(response);
   }
 
   return response;
+}
+
+/**
+ * Picks the first `authorization_servers` entry out of protected-resource
+ * metadata JSON, which is untrusted origin-controlled data.
+ */
+export function firstAuthorizationServer(data: unknown): string | undefined {
+  const servers =
+    typeof data === "object" && data !== null
+      ? (data as { authorization_servers?: unknown }).authorization_servers
+      : undefined;
+  const candidate = Array.isArray(servers) ? servers[0] : undefined;
+  return typeof candidate === "string" ? candidate : undefined;
 }
 
 /**
@@ -191,7 +210,7 @@ export async function fetchProtectedResourceMetadata(
  * Falls back to the origin server's root if Protected Resource Metadata doesn't exist,
  * since many servers (like Apify) expose /.well-known/oauth-authorization-server at the root.
  */
-async function getOriginAuthServer(
+export async function getOriginAuthServer(
   connectionUrl: string,
 ): Promise<string | null> {
   // Parse URL upfront - if invalid, bail early
@@ -205,11 +224,9 @@ async function getOriginAuthServer(
   try {
     const response = await fetchProtectedResourceMetadata(connectionUrl);
     if (response.ok) {
-      const data = (await response.json()) as {
-        authorization_servers?: string[];
-      };
-      if (data.authorization_servers?.[0]) {
-        return data.authorization_servers[0];
+      const candidate = firstAuthorizationServer(await response.json());
+      if (candidate) {
+        return candidate;
       }
     }
   } catch {
@@ -682,6 +699,11 @@ class RetriableServerResponse {
   constructor(readonly response: Response) {}
 }
 
+/** Consume a body we're discarding so its connection can be reused; never call on a response returned to a caller. */
+async function drainDiscardedBody(response: Response): Promise<void> {
+  await response.text().catch(() => {});
+}
+
 async function fetchMetadataWithRetry(
   url: string,
   init: RequestInit,
@@ -690,11 +712,16 @@ async function fetchMetadataWithRetry(
     timeoutMs = METADATA_FETCH_TIMEOUT_MS,
   }: { attempts?: number; timeoutMs?: number } = {},
 ): Promise<Response> {
+  let attempt = 0;
   try {
     return await retry(
       async () => {
+        attempt++;
         const res = await fetchWithTimeout(url, init, timeoutMs);
-        if (res.status >= 500) throw new RetriableServerResponse(res);
+        if (res.status >= 500) {
+          if (attempt < attempts) await drainDiscardedBody(res);
+          throw new RetriableServerResponse(res);
+        }
         return res;
       },
       { maxAttempts: attempts, minTimeout: 150, multiplier: 2, jitter: 0 },
@@ -746,8 +773,8 @@ export async function fetchAuthorizationServerMetadata(
   const urlsToTry = authorizationServerMetadataUrls(authServerUrl);
 
   let response: Response | null = null;
-  for (const tryUrl of urlsToTry) {
-    response = await fetchMetadataWithRetry(tryUrl, {
+  for (let i = 0; i < urlsToTry.length; i++) {
+    response = await fetchMetadataWithRetry(urlsToTry[i]!, {
       method: "GET",
       headers: { Accept: "application/json" },
     });
@@ -760,6 +787,8 @@ export async function fetchAuthorizationServerMetadata(
     if (response.status !== 404 && response.status !== 401) {
       return response;
     }
+
+    if (i < urlsToTry.length - 1) await drainDiscardedBody(response);
   }
 
   // Return the last response (will be an error)

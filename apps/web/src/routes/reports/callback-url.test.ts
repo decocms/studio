@@ -6,7 +6,7 @@ import { callbackUrl } from "./callback-url";
 // test fails loudly if an upgrade widens or narrows it — that is the contract
 // callbackUrl() has to satisfy, and every value below is checked against it.
 const BETTER_AUTH_RELATIVE =
-  /^\/(?!\/|\\|%2f|%5c)[\w\-.\+/@]*(?:\?[\w\-.\+/=&%@]*)?$/;
+  /^\/(?!\/|\\|%2f|%5c)[\w\-.+/@]*(?:\?[\w\-.+/=&%@]*)?$/;
 
 // The module reads `window.location` and falls back to a bare path when there
 // is no window (SSR), so the test provides one.

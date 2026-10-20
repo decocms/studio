@@ -1,4 +1,4 @@
-import type { SubmoduleCredential } from "@decocms/shared/sdk";
+import type { SubmoduleCredential } from "@decocms/shared/organization/schema";
 import {
   SecretAccessDeniedError,
   SecretNotFoundError,
@@ -13,7 +13,7 @@ interface ResolveParams {
 }
 
 /**
- * Resolves the per-host submodule credentials declared on a virtual MCP
+ * Resolves the organization's per-host git credentials
  * ({ host, secretId }) into { host, token } by reading each secret from the
  * credential vault. Unlike env (pushed after boot), these must be resolved
  * before `runner.ensure` so the token rides the INITIAL daemon config — the

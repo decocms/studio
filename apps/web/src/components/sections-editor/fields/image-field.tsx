@@ -1,33 +1,25 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Image01, Trash01, Upload01 } from "@untitledui/icons";
-import { toast } from "sonner";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
-import {
-  FilePickerDialog,
-  LAST_CONFIG_KEY,
-} from "@/components/file-picker/file-picker-dialog";
-import { matchSiteSlugConfig } from "@/components/file-picker/match-site-slug-config";
-import { useFileConfigsQuery } from "@/hooks/use-file-configs";
-import { useFilePickerUpload } from "@/hooks/use-file-picker";
+import { FilePickerDialog } from "@/components/file-picker/file-picker-dialog";
 import { ClickToReplaceOverlay } from "./click-to-replace-overlay";
 import { extractUrl } from "./extract-url";
 import { FieldLabel } from "./field-label";
 import type { FieldProps } from "./field-props";
 import { basename, extension } from "./media-filename";
 import { MediaTransformControls } from "./media-transform-controls";
-import { resolveTargetConfigId } from "./resolve-target-config-id";
+import { isSafeImageUrl, safeImageSrc } from "./safe-image-url";
+import { ACCEPTED_IMAGE_TYPES, useImageUpload } from "./use-image-upload";
+import {
+  useServeAssetSrc,
+  useServeAssetUpload,
+} from "./use-serve-asset-upload";
 
-const ACCEPTED_IMAGE_TYPES = new Set([
-  "image/png",
-  "image/jpeg",
-  "image/gif",
-  "image/webp",
-  "image/svg+xml",
-  "image/avif",
-]);
+/** How many times a thumbnail served by the site's dev app is retried. */
+const SERVED_SRC_RETRIES = 3;
 
 export function ImageField({
   schema,
@@ -36,22 +28,30 @@ export function ImageField({
   path,
   label,
   sandbox,
+  compact,
 }: FieldProps) {
   const t = useT();
   const strValue = extractUrl(value);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageErrored, setImageErrored] = useState(false);
+  // An author types this field, so the value is untrusted until it has been
+  // through `safeImageSrc`; an unsafe scheme reduces to "".
+  // On a connected `deco serve` (v8), `/assets/*` loads from the site's dev
+  // app; everywhere else this is `strValue` unchanged.
+  const servedSrc = useServeAssetSrc(sandbox, strValue);
+  // A file just uploaded to `deco serve` can 404 for a moment, until the dev
+  // app's file watcher sees it: a dev-app thumbnail is retried a few times
+  // before it shows as unavailable.
+  const [loadRetry, setLoadRetry] = useState(0);
+  const src = safeImageSrc(
+    loadRetry > 0
+      ? `${servedSrc}${servedSrc.includes("?") ? "&" : "?"}retry=${loadRetry}`
+      : servedSrc,
+  );
+  const unsafe = !!strValue && !src;
   const fileName = strValue ? basename(strValue) : "";
   const ext = fileName ? extension(fileName) : "";
-
-  const configsQuery = useFileConfigsQuery();
-  const upload = useFilePickerUpload();
-  const lockedConfig = matchSiteSlugConfig(
-    configsQuery.data?.configs ?? [],
-    sandbox?.siteSlug,
-  );
 
   /**
    * Reset the load/error tracking when the underlying URL changes. Used
@@ -64,73 +64,61 @@ export function ImageField({
   function setValue(next: string) {
     setImageLoaded(false);
     setImageErrored(false);
+    setLoadRetry(0);
     onChange(next);
   }
 
-  async function handleFiles(files: FileList | File[] | null) {
-    if (!files) return;
-    const list = Array.from(files).filter((f) =>
-      ACCEPTED_IMAGE_TYPES.has(f.type || ""),
-    );
-    if (list.length === 0) {
-      toast.error(t("sectionsEditor.imageField.onlyImageFilesAccepted"));
-      return;
-    }
-
-    const targetConfigId = resolveTargetConfigId(
-      configsQuery.data?.configs ?? [],
-      lockedConfig?.id,
-      typeof window !== "undefined"
-        ? window.localStorage.getItem(LAST_CONFIG_KEY)
-        : null,
-    );
-    if (!targetConfigId) {
-      // No deterministic target — defer to the dialog so the user can
-      // pick a bucket (or be guided to configure one). The dialog won't
-      // auto-upload; the user does it again inside.
-      setPickerOpen(true);
-      return;
-    }
-
-    try {
-      const result = await upload.mutateAsync({
-        configId: targetConfigId,
-        file: list[0]!,
-      });
-      setValue(result.publicUrl);
-      if (list.length > 1) {
-        toast.info(
-          t("sectionsEditor.imageField.uploadedWithExtraFilesIgnored", {
-            fileName: list[0]!.name,
-          }),
-        );
-      }
-    } catch (err) {
-      toast.error(
-        err instanceof Error
-          ? err.message
-          : t("sectionsEditor.imageField.uploadFailed"),
-      );
-    }
+  /**
+   * What the input shows, which is not always what is stored.
+   *
+   * A keystroke that is refused cannot simply be dropped on a controlled
+   * input: `https:` is not yet a safe URL, so rejecting the colon snapped the
+   * field back to the previous text and the address could be pasted but never
+   * typed. The text is kept as a draft and the value commits at each whole,
+   * safe step on the way.
+   */
+  const [urlDraft, setUrlDraft] = useState(strValue);
+  // Re-seed when the value changes elsewhere — picker, drop, trash.
+  const [seenUrl, setSeenUrl] = useState(strValue);
+  if (seenUrl !== strValue) {
+    setSeenUrl(strValue);
+    setUrlDraft(strValue);
   }
 
-  function onDragOver(e: React.DragEvent) {
-    e.preventDefault();
-    if (e.dataTransfer.types.includes("Files")) setIsDragging(true);
+  /**
+   * Keep what the author types, but never persist a scheme that must not
+   * reach a `src` — the payload feeds the site, not only this preview. An
+   * empty field is allowed through; `missingPostFields` is what flags it.
+   */
+  function setTypedValue(next: string) {
+    setUrlDraft(next);
+    const trimmed = next.trim();
+    if (trimmed && !isSafeImageUrl(trimmed)) return;
+    if (trimmed === strValue) return;
+    // Keep the re-seed from reading this write back as an outside change and
+    // overwriting a draft that is still mid-address.
+    setSeenUrl(trimmed);
+    setValue(trimmed);
   }
-  function onDragLeave(e: React.DragEvent) {
-    // Only clear when leaving the wrapper, not when dragging over a child.
-    if (e.currentTarget === e.target) setIsDragging(false);
+
+  /** On the way out, stop showing an address that was never stored. */
+  function revertUnsafeDraft() {
+    if (urlDraft.trim() && !isSafeImageUrl(urlDraft)) setUrlDraft(strValue);
   }
-  function onDrop(e: React.DragEvent) {
-    e.preventDefault();
-    // Stop the drop from bubbling to the chat composer's window-level
-    // drop listener (input.tsx `useWindowFileDrop`), which would otherwise
-    // upload the same file into the chat input too.
-    e.stopPropagation();
-    setIsDragging(false);
-    handleFiles(e.dataTransfer.files);
-  }
+
+  const serveUpload = useServeAssetUpload(sandbox);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  /** Choose a file: the system file dialog for `deco serve`, else the picker. */
+  const browse = () =>
+    serveUpload ? fileInputRef.current?.click() : setPickerOpen(true);
+
+  const { isDragging, isPending, lockedConfigId, dropProps, handleFiles } =
+    useImageUpload({
+      siteSlug: sandbox?.siteSlug,
+      onUploaded: setValue,
+      onNeedsPicker: () => setPickerOpen(true),
+      serveUpload,
+    });
 
   return (
     // grid-cols-[minmax(0,1fr)] forces every child to be at most 100% of
@@ -140,7 +128,8 @@ export function ImageField({
     // clips the input/button focus rings and right borders (cutting off the
     // URL input + Browse button); the grid track already caps width.
     <div className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
-      <div className="min-w-0">
+      {/* An empty label means the surrounding surface already names the field. */}
+      <div className={cn("min-w-0", !label && "hidden")}>
         <FieldLabel
           htmlFor={path}
           label={label}
@@ -151,40 +140,50 @@ export function ImageField({
       </div>
 
       <div
-        onDragOver={onDragOver}
-        onDragLeave={onDragLeave}
-        onDrop={onDrop}
+        {...dropProps}
         className={cn(
-          "group relative w-full overflow-hidden rounded-xl border border-border/60 bg-muted/30 transition",
+          "group relative w-full overflow-hidden rounded-[var(--studio-surface-radius,var(--radius-xl))] border card-shadow border-border/60 bg-muted/30 transition",
           isDragging && "border-primary ring-2 ring-primary/30",
-          upload.isPending && "pointer-events-none opacity-60",
+          isPending && "pointer-events-none opacity-60",
         )}
       >
         {strValue ? (
           <>
             <button
               type="button"
-              onClick={() => setPickerOpen(true)}
+              onClick={browse}
               aria-label={t("sectionsEditor.imageField.replaceImage")}
-              className="relative block h-40 w-full cursor-pointer bg-[image:linear-gradient(45deg,rgba(0,0,0,0.04)_25%,transparent_25%,transparent_75%,rgba(0,0,0,0.04)_75%),linear-gradient(45deg,rgba(0,0,0,0.04)_25%,transparent_25%,transparent_75%,rgba(0,0,0,0.04)_75%)] bg-[position:0_0,8px_8px] [background-size:16px_16px]"
+              className={cn(
+                "relative block w-full cursor-pointer bg-[image:linear-gradient(45deg,rgba(0,0,0,0.04)_25%,transparent_25%,transparent_75%,rgba(0,0,0,0.04)_75%),linear-gradient(45deg,rgba(0,0,0,0.04)_25%,transparent_25%,transparent_75%,rgba(0,0,0,0.04)_75%)] bg-[position:0_0,8px_8px] [background-size:16px_16px]",
+                compact ? "h-28" : "h-40",
+              )}
             >
-              {!imageErrored && (
+              {!imageErrored && !unsafe && (
                 <img
                   // Remount whenever the URL changes so onLoad/onError
                   // wire up fresh for the new src — without this the
                   // load/error tracking can stick to the prior value.
                   key={strValue}
-                  src={strValue}
+                  src={src}
                   alt={label}
                   className={cn(
                     "h-full w-full object-contain transition-opacity",
                     !imageLoaded && "opacity-0",
                   )}
                   onLoad={() => setImageLoaded(true)}
-                  onError={() => setImageErrored(true)}
+                  onError={() => {
+                    if (
+                      servedSrc !== strValue &&
+                      loadRetry < SERVED_SRC_RETRIES
+                    ) {
+                      setTimeout(() => setLoadRetry((n) => n + 1), 600);
+                    } else {
+                      setImageErrored(true);
+                    }
+                  }}
                 />
               )}
-              {imageErrored && (
+              {(imageErrored || unsafe) && (
                 <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-muted-foreground">
                   <Image01 size={20} />
                   <p className="text-xs">
@@ -192,37 +191,44 @@ export function ImageField({
                   </p>
                 </div>
               )}
-              {!imageLoaded && !imageErrored && (
+              {!imageLoaded && !imageErrored && !unsafe && (
                 <div className="absolute inset-0 animate-pulse bg-muted/60" />
               )}
               <ClickToReplaceOverlay />
             </button>
-            <div className="flex items-center gap-2 border-t border-border/60 bg-background/50 px-3 py-2">
-              <span className="min-w-0 flex-1 truncate text-xs font-medium">
-                {fileName}
-              </span>
-              {ext && (
-                <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase text-muted-foreground">
-                  {ext}
+            {!compact && (
+              <div className="flex items-center gap-2 border-t border-border/60 bg-background/50 px-3 py-2">
+                <span className="min-w-0 flex-1 truncate text-xs font-medium">
+                  {fileName}
                 </span>
-              )}
-            </div>
+                {ext && (
+                  <span className="shrink-0 rounded-[var(--studio-control-radius,var(--radius))] bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase text-muted-foreground">
+                    {ext}
+                  </span>
+                )}
+              </div>
+            )}
           </>
         ) : (
           <button
             type="button"
-            onClick={() => setPickerOpen(true)}
-            className="flex h-40 w-full flex-col items-center justify-center gap-2 text-sm text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+            onClick={browse}
+            className={cn(
+              "flex w-full flex-col items-center justify-center gap-2 text-sm text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+              compact ? "h-28" : "h-40",
+            )}
           >
             <Image01 size={20} />
             <span className="text-sm font-medium">
-              {upload.isPending
+              {isPending
                 ? t("sectionsEditor.imageField.uploading")
                 : t("sectionsEditor.imageField.dropImageOrClickToBrowse")}
             </span>
-            <span className="text-xs text-muted-foreground">
-              {t("sectionsEditor.imageField.supportedFormatsAndSize")}
-            </span>
+            {!compact && (
+              <span className="text-xs text-muted-foreground">
+                {t("sectionsEditor.imageField.supportedFormatsAndSize")}
+              </span>
+            )}
           </button>
         )}
 
@@ -239,8 +245,12 @@ export function ImageField({
         <Input
           id={path}
           type="url"
-          value={strValue}
-          onChange={(e) => setValue(e.target.value)}
+          value={urlDraft}
+          onChange={(e) => setTypedValue(e.target.value)}
+          onBlur={revertUnsafeDraft}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setUrlDraft(strValue);
+          }}
           placeholder={t("sectionsEditor.imageField.urlPlaceholder")}
           className="h-9 min-w-0 flex-1"
         />
@@ -249,7 +259,7 @@ export function ImageField({
             type="button"
             variant="outline"
             size="sm"
-            onClick={() => setPickerOpen(true)}
+            onClick={browse}
             className="h-9 shrink-0"
           >
             <Upload01 size={14} />
@@ -273,13 +283,26 @@ export function ImageField({
         )}
       </div>
 
-      <FilePickerDialog
-        open={pickerOpen}
-        onOpenChange={setPickerOpen}
-        mode="image"
-        onSelect={(url) => setValue(url)}
-        lockedConfigId={lockedConfig?.id ?? null}
-      />
+      {serveUpload ? (
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept={[...ACCEPTED_IMAGE_TYPES].join(",")}
+          className="hidden"
+          onChange={(e) => {
+            void handleFiles(e.target.files);
+            e.target.value = "";
+          }}
+        />
+      ) : (
+        <FilePickerDialog
+          open={pickerOpen}
+          onOpenChange={setPickerOpen}
+          mode="image"
+          onSelect={(url) => setValue(url)}
+          lockedConfigId={lockedConfigId}
+        />
+      )}
     </div>
   );
 }

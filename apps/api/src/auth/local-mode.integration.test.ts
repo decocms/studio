@@ -1,7 +1,7 @@
 /**
  * Real-Postgres coverage for pruneUndecryptableJwks() — the local-mode
  * self-heal that recovers pre-fix installs whose JWKS was encrypted under a
- * now-lost random secret (see local-mode.ts / settings/local-secret.ts).
+ * now-lost random secret (see local-mode.ts).
  *
  * These assert the load-bearing part of the storage contract Better Auth uses:
  * privateKey is stored as a JSON-encoded hex ciphertext keyed by the auth

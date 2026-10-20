@@ -2,34 +2,53 @@ import {
   BookOpen01,
   Calendar,
   CalendarDate,
+  ChevronDown,
   CornerUpRight,
   Database01,
   File02,
-  Globe02,
+  Globe01,
   Grid01,
   LayoutAlt01,
   Settings01,
-  Tag01,
+  Sliders02,
+  Stars02,
   CreditCardSearch,
+  Tag01,
   Users01,
   Zap,
 } from "@untitledui/icons";
+import { useState } from "react";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@decocms/ui/components/collapsible.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import type { CollectionCounts, CollectionId } from "./content-browser";
 
+const ADVANCED_IDS = ["sections", "apps", "loaders", "actions"] as const;
+const NONE_HIDDEN: readonly CollectionId[] = [];
+
 export function CollectionsSidebar({
   active,
   counts,
+  hidden = NONE_HIDDEN,
   showBlog,
+  showContext,
   onSelect,
 }: {
   active: CollectionId;
   counts: CollectionCounts;
+  /** Collections this site has no use for, left out of the list. */
+  hidden?: readonly CollectionId[];
   showBlog: boolean;
+  /** The brand context tab, which the org's AI-blog flag governs. */
+  showContext: boolean;
   onSelect: (id: CollectionId) => void;
 }) {
   const t = useT();
+  const shown = (id: CollectionId) => !hidden.includes(id);
   return (
     <div className="w-[208px] shrink-0 border-r flex flex-col">
       <div className="px-3 h-12 flex items-center border-b shrink-0">
@@ -47,22 +66,6 @@ export function CollectionsSidebar({
           onSelect={onSelect}
         />
         <CollectionRow
-          id="sections"
-          icon={Globe02}
-          label={t("sandbox.collectionsSidebar.sections")}
-          count={counts.sections}
-          active={active === "sections"}
-          onSelect={onSelect}
-        />
-        <CollectionRow
-          id="apps"
-          icon={Grid01}
-          label={t("sandbox.collectionsSidebar.apps")}
-          count={counts.apps}
-          active={active === "apps"}
-          onSelect={onSelect}
-        />
-        <CollectionRow
           id="redirects"
           icon={CornerUpRight}
           label={t("sandbox.collectionsSidebar.redirects")}
@@ -70,29 +73,15 @@ export function CollectionsSidebar({
           active={active === "redirects"}
           onSelect={onSelect}
         />
-        <CollectionRow
-          id="loaders"
-          icon={Database01}
-          label={t("sandbox.collectionsSidebar.loaders")}
-          count={counts.loaders}
-          active={active === "loaders"}
-          onSelect={onSelect}
-        />
-        <CollectionRow
-          id="actions"
-          icon={Zap}
-          label={t("sandbox.collectionsSidebar.actions")}
-          count={counts.actions}
-          active={active === "actions"}
-          onSelect={onSelect}
-        />
-        <CollectionRow
-          id="site"
-          icon={Settings01}
-          label={t("sandbox.collectionsSidebar.site")}
-          active={active === "site"}
-          onSelect={onSelect}
-        />
+        {shown("site") && (
+          <CollectionRow
+            id="site"
+            icon={Settings01}
+            label={t("sandbox.collectionsSidebar.site")}
+            active={active === "site"}
+            onSelect={onSelect}
+          />
+        )}
         <CollectionRow
           id="seo"
           icon={CreditCardSearch}
@@ -100,11 +89,26 @@ export function CollectionsSidebar({
           active={active === "seo"}
           onSelect={onSelect}
         />
+        {shown("settings") && (
+          <CollectionRow
+            id="settings"
+            icon={Settings01}
+            label={t("sandbox.collectionsSidebar.settings")}
+            active={active === "settings"}
+            onSelect={onSelect}
+          />
+        )}
         <CollectionRow
           id="calendar"
           icon={Calendar}
           label={t("sandbox.collectionsSidebar.calendar")}
           active={active === "calendar"}
+          onSelect={onSelect}
+        />
+        <AdvancedGroup
+          active={active}
+          counts={counts}
+          shown={shown}
           onSelect={onSelect}
         />
         {showBlog && (
@@ -113,6 +117,15 @@ export function CollectionsSidebar({
               <BookOpen01 size={13} className="shrink-0" />
               {t("sandbox.collectionsSidebar.blog")}
             </div>
+            {showContext && (
+              <CollectionRow
+                id="context"
+                icon={Stars02}
+                label={t("sandbox.collectionsSidebar.context")}
+                active={active === "context"}
+                onSelect={onSelect}
+              />
+            )}
             <CollectionRow
               id="posts"
               icon={File02}
@@ -151,6 +164,88 @@ export function CollectionsSidebar({
   );
 }
 
+function AdvancedGroup({
+  active,
+  counts,
+  shown,
+  onSelect,
+}: {
+  active: CollectionId;
+  counts: CollectionCounts;
+  shown: (id: CollectionId) => boolean;
+  onSelect: (id: CollectionId) => void;
+}) {
+  const t = useT();
+  const activeIsAdvanced = (ADVANCED_IDS as readonly string[]).includes(active);
+  const [userOpen, setUserOpen] = useState(false);
+  // Stay open while an item inside is active, so the active row is never hidden.
+  const open = userOpen || activeIsAdvanced;
+  return (
+    <Collapsible open={open} onOpenChange={setUserOpen}>
+      <CollapsibleTrigger
+        className={cn(
+          "flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm transition-colors cursor-pointer",
+          "text-muted-foreground hover:bg-muted hover:text-foreground",
+        )}
+      >
+        <Sliders02 size={16} className="shrink-0" />
+        <span className="flex-1 truncate">
+          {t("sandbox.collectionsSidebar.advanced")}
+        </span>
+        <ChevronDown
+          size={16}
+          className={cn(
+            "shrink-0 text-muted-foreground/70 transition-transform",
+            open && "rotate-180",
+          )}
+        />
+      </CollapsibleTrigger>
+      <CollapsibleContent className="flex flex-col gap-0.5 pt-0.5">
+        <CollectionRow
+          id="sections"
+          icon={Globe01}
+          label={t("sandbox.collectionsSidebar.sections")}
+          count={counts.sections}
+          active={active === "sections"}
+          onSelect={onSelect}
+          indent
+        />
+        {shown("apps") && (
+          <CollectionRow
+            id="apps"
+            icon={Grid01}
+            label={t("sandbox.collectionsSidebar.apps")}
+            count={counts.apps}
+            active={active === "apps"}
+            onSelect={onSelect}
+            indent
+          />
+        )}
+        <CollectionRow
+          id="loaders"
+          icon={Database01}
+          label={t("sandbox.collectionsSidebar.loaders")}
+          count={counts.loaders}
+          active={active === "loaders"}
+          onSelect={onSelect}
+          indent
+        />
+        {shown("actions") && (
+          <CollectionRow
+            id="actions"
+            icon={Zap}
+            label={t("sandbox.collectionsSidebar.actions")}
+            count={counts.actions}
+            active={active === "actions"}
+            onSelect={onSelect}
+            indent
+          />
+        )}
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
 function CollectionRow({
   id,
   icon: Icon,
@@ -158,6 +253,7 @@ function CollectionRow({
   count,
   active,
   onSelect,
+  indent,
 }: {
   id: CollectionId;
   icon: React.ComponentType<{ size?: number; className?: string }>;
@@ -165,13 +261,15 @@ function CollectionRow({
   count?: number;
   active: boolean;
   onSelect: (id: CollectionId) => void;
+  indent?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={() => onSelect(id)}
       className={cn(
-        "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors cursor-pointer",
+        "flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm transition-colors cursor-pointer",
+        indent && "pl-6",
         active
           ? "bg-accent text-accent-foreground"
           : "text-muted-foreground hover:bg-muted hover:text-foreground",

@@ -1,14 +1,13 @@
 /**
  * The board's project filter — the control that used to say "Repo".
  *
- * A repository is how a project is identified on a card, so the board offers
- * one list: projects, named as you know them, with the repository they pin
- * underneath. This pins the three things a unit test cannot reach — what the
- * picker RENDERS, what the URL carries, and that a link written before the
- * merge still narrows the board it lands on.
+ * The board offers one list: projects, named as you know them, one row each
+ * even when several share a repository. This pins the three things a unit
+ * test cannot reach — what the picker RENDERS, what the URL carries, and that
+ * a link written before the merge still narrows the board it lands on.
  *
  * No run is dispatched and no GitHub connection is created: buckets come from
- * each project's `metadata.githubRepo`, so this depends on no model tier, no
+ * each project's `metadata.repository`, so this depends on no model tier, no
  * provider, and no installation.
  */
 
@@ -47,7 +46,7 @@ async function seedProject(
         pinned: false,
         connections: [],
         metadata: {
-          githubRepo: { url: `https://github.com/${repo}`, owner, name },
+          repository: { url: `https://github.com/${repo}`, owner, name },
         },
       },
     },
@@ -92,10 +91,17 @@ const chip = (page: Page, label: string) =>
  *  lists the org's projects by name too, and this suite is about the board's
  *  control, not that one. */
 const option = (page: Page, label: string) =>
-  page.locator("[cmdk-list]").getByText(label, { exact: true });
+  page
+    .locator('[data-slot="popover-content"]')
+    .getByText(label, { exact: true });
+
+async function openProjectFilter(page: Page) {
+  await chip(page, "Filter").click();
+  await page.getByRole("option", { name: "Project", exact: true }).hover();
+}
 
 test.describe("task board project filter", () => {
-  test("offers projects by name, merges a shared repository, and narrows the board", async ({
+  test("offers projects by name, splits a shared repository, and narrows the board", async ({
     authedPage,
   }) => {
     const { page, orgSlug } = authedPage;
@@ -112,18 +118,24 @@ test.describe("task board project filter", () => {
     await openBoard(page, orgSlug);
     await expect(card(page, "Site work")).toBeVisible({ timeout: 30_000 });
 
-    await chip(page, "Project").click();
+    await openProjectFilter(page);
 
-    /** A project you recognize, not `owner/name` — the whole point of the
-     *  merge. The repository is the subtitle. */
+    /** A single-project repository uses the project name. */
     await expect(option(page, "Marketing Site")).toBeVisible();
 
-    /** Two projects, one repository, ONE row — titled with the repository and
-     *  naming both, rather than a row per project that select the same cards.
-     *  The map this replaced kept whichever project it iterated last. */
-    await expect(option(page, mono)).toHaveCount(1);
-    await expect(option(page, "Storefront, Checkout")).toBeVisible();
+    /** Projects sharing a repository are a row each, not one repository row. */
+    await expect(option(page, "Storefront")).toBeVisible();
+    await expect(option(page, "Checkout")).toBeVisible();
+    await expect(option(page, mono)).toHaveCount(0);
 
+    /** A card naming only the shared repository belongs to neither project. */
+    await option(page, "Storefront").click();
+    await expect(card(page, "Monorepo work")).toBeHidden();
+    await expect(card(page, "Site work")).toBeHidden();
+
+    await openBoard(page, orgSlug);
+    await expect(card(page, "Site work")).toBeVisible({ timeout: 30_000 });
+    await openProjectFilter(page);
     await option(page, "Marketing Site").click();
 
     await expect(card(page, "Site work")).toBeVisible();
@@ -158,7 +170,7 @@ test.describe("task board project filter", () => {
     await openBoard(page, orgSlug);
     await expect(card(page, "Site work")).toBeVisible({ timeout: 30_000 });
 
-    await chip(page, "Project").click();
+    await openProjectFilter(page);
     await option(page, "No project").click();
 
     await expect(card(page, "Unfiled work")).toBeVisible();

@@ -205,6 +205,12 @@ function promptMessagesToParts(
 }
 
 /**
+ * Node types that occupy their own line. Tiptap keeps no newline of its own —
+ * the break IS the block boundary — so the walk has to put one back.
+ */
+const BLOCK_NODES = new Set(["paragraph", "heading", "codeBlock", "listItem"]);
+
+/**
  * Helper to derive UI parts from TiptapDoc
  * Walks the tiptap document to extract inline text and collect resources from prompt tags
  */
@@ -229,7 +235,17 @@ export function derivePartsFromTiptapDoc(
   ) => {
     if (!node) return;
 
-    if (
+    // A block starts a new line. Without this every paragraph ran into the
+    // previous one, so a two-paragraph message reached the model as one — and
+    // a prompt saved from this editor lost the blank lines that make its
+    // markdown parse (a heading glued to the line above is body text).
+    if (BLOCK_NODES.has(node.type ?? "") && inlineText !== "") {
+      inlineText += "\n";
+    }
+
+    if (node.type === "hardBreak") {
+      inlineText += "\n";
+    } else if (
       node.type === "text" &&
       "text" in node &&
       typeof node.text === "string"

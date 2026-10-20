@@ -1,0 +1,48 @@
+name: Smoke-test the Android sandbox image
+description: >
+  Runs packages/sandbox/image-android/smoke-test.sh in the given image under
+  the pod's constraints (read-only rootfs, uid 1000, tmpfs HOME/workdir) with
+  the runner's /dev/kvm passed in.
+inputs:
+  image:
+    description: Image reference to test
+    required: true
+runs:
+  using: composite
+  steps:
+    # GitHub's Linux runners have KVM, but /dev/kvm is root-only until a udev
+    # rule opens it up.
+    - name: Enable KVM
+      shell: bash
+      run: |
+        echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+          | sudo tee /etc/udev/rules.d/99-kvm4all.rules >/dev/null
+        sudo udevadm control --reload-rules
+        sudo udevadm trigger --name-match=kvm
+
+    - name: Run the smoke test
+      shell: bash
+      env:
+        IMAGE: ${{ inputs.image }}
+      run: |
+        set -euo pipefail
+        # HOME and the workdir are disk-backed like the pod's emptyDirs: as
+        # tmpfs, Gradle's caches and the emulator's data disk would compete
+        # with the emulator itself for the runner's RAM.
+        mkdir -p "${RUNNER_TEMP}/qa" "${RUNNER_TEMP}/home" "${RUNNER_TEMP}/app"
+        sudo chown 1000:1000 "${RUNNER_TEMP}/qa" "${RUNNER_TEMP}/home" "${RUNNER_TEMP}/app"
+        docker run --rm --read-only --shm-size=1g --device /dev/kvm \
+          --tmpfs /tmp:rw,exec,size=2g \
+          -v "${RUNNER_TEMP}/home:/home/sandbox" \
+          -v "${RUNNER_TEMP}/app:/app" \
+          --user 1000:1000 -e HOME=/home/sandbox \
+          -v "${GITHUB_WORKSPACE}/packages/sandbox/image-android/smoke-test.sh:/smoke-test.sh:ro" \
+          -v "${RUNNER_TEMP}/qa:/qa" \
+          "${IMAGE}" bash /smoke-test.sh /qa
+
+    - name: Upload screenshots
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: android-smoke-screenshots
+        path: ${{ runner.temp }}/qa

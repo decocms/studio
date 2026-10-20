@@ -1,6 +1,12 @@
 import type { library as libraryEn } from "../en/library.ts";
 
 export const library = {
+  "library.library.all": "Todos os arquivos",
+  "library.library.documents": "Documentos",
+  "library.library.media": "Mídia",
+  "library.library.name": "Nome",
+  "library.library.updated": "Atualizado",
+  "library.library.noFilesInView": "Nenhum arquivo correspondente nesta pasta.",
   "library.brandComponentsPreview.allChip": "Todos",
   "library.brandComponentsPreview.emailPlaceholder": "voce@exemplo.com",
   "library.brandComponentsPreview.errorBadge": "Erro",
@@ -46,7 +52,7 @@ export const library = {
   "library.brandPreview.voiceGuidelines": "Voz & diretrizes",
   "library.brandPreview.voicePlaceholder":
     "Descreva a voz, tom da marca, deve e não deve fazer…",
-  "library.cards.actionsFor": "Ações para {filename}",
+  "library.cards.actionsFor": "Ações para {label}",
   "library.cards.brand": "Marca",
   "library.cards.browseFiles": "Procurar arquivos",
   "library.cards.delete": "Excluir",
@@ -126,31 +132,24 @@ export const library = {
   "library.library.uploadedMultiple": "Enviados {count} arquivos",
   "library.library.uploadedSingle": "Enviado {filename}",
   "library.library.uploading": "Enviando…",
-  "library.libraryViews.brands": "Marcas",
   "library.libraryViews.curatedSkillSetsReadOnly":
     "Conjuntos de skills curados — somente leitura",
-  "library.libraryViews.emptyFolder":
-    "Pasta vazia — envie um arquivo ou crie uma pasta para começar.",
+  "library.libraryViews.readOnly": "Apenas leitura",
+  "library.libraryViews.searchResults": "{count} resultado(s)",
+  "library.libraryViews.emptyFolder": "Esta pasta está vazia",
+  "library.libraryViews.emptyFolderHint":
+    "Arraste arquivos para cá, ou envie e organize em pastas.",
   "library.libraryViews.emptyReadOnlySet":
-    "Vazio — este conjunto somente leitura sincroniza de sua fonte no GitHub.",
+    "Este conjunto somente leitura sincroniza da sua fonte no GitHub.",
   "library.libraryViews.failedToLoad": "Falha ao carregar",
+  "library.libraryViews.sourceChat": "Chat",
+  "library.libraryViews.loadMore": "Carregar mais",
   "library.libraryViews.files": "Arquivos",
-  "library.libraryViews.filesCount": "{count} arquivo(s)",
   "library.libraryViews.folders": "Pastas",
   "library.libraryViews.noFilesMatch":
     'Nenhum arquivo corresponde a "{query}".',
   "library.libraryViews.noPublicSkillSetsConfigured":
     "Nenhum conjunto de skills público configurado.",
-  "library.libraryViews.readOnly": "Somente leitura",
-  "library.libraryViews.recentlyAdded": "Adicionado recentemente",
-  "library.libraryViews.searchResults": "{count} resultado(s)",
-  "library.libraryViews.skillSetsCount": "{count} conjunto(s)",
-  "library.libraryViews.skills": "Skills",
-  "library.libraryViews.volumeOutputsDescription":
-    "Saídas de execução de agentes",
-  "library.libraryViews.volumeUploadsDescription":
-    "Arquivos que seu time envia",
-  "library.syncedRepos.syncFailed": "Última sincronização falhou",
   "library.syncedRepos.syncedAgo": "Sincronizado {ago}",
   "library.syncedRepos.waitingFirstSync": "Aguardando primeira sincronização",
   "library.previewContent.close": "Fechar",
@@ -159,4 +158,28 @@ export const library = {
   "library.previewContent.fileNotAvailable":
     "Este arquivo não está mais disponível.",
   "library.previewContent.openInNewTab": "Abrir em nova aba",
+  "library.entries.size": "Tamanho",
+  "library.entries.listView": "Ver em lista",
+  "library.entries.gridView": "Ver em grade",
+  "library.entries.emptyFolder": "Vazia",
+  "library.entries.itemsCount": "{count} itens",
+  "library.libraryViews.results": "Resultados",
+  "library.entries.itemCount": "1 item",
+  "library.libraryViews.recent": "Recentes",
+  "library.libraryViews.moreInFolder": "+{count}",
+  "library.library.modified": "Modificado",
+  "library.library.modifiedAny": "Qualquer data",
+  "library.library.modifiedToday": "Últimas 24 horas",
+  "library.library.modifiedWeek": "Últimos 7 dias",
+  "library.library.modifiedMonth": "Últimos 30 dias",
+  "library.previewContent.expand": "Expandir",
+  "library.previewContent.collapse": "Mostrar ao lado dos arquivos",
+  "library.library.placeProjects": "Projetos",
+  "library.library.placeUploads": "Uploads",
+  "library.library.placeOutputs": "Outputs",
+  "library.library.placeSkills": "Skills",
+  "library.library.anyType": "Qualquer tipo",
+  "library.library.typeFilter": "Tipo",
+  "library.entries.createdBy": "Criado por",
+  "library.entries.location": "Local",
 } satisfies Record<keyof typeof libraryEn, string>;

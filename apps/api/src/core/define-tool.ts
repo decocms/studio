@@ -17,6 +17,13 @@ import {
   isToolAllowedWhileBlocked,
   OrgBlockedError,
 } from "./org-notice-gate";
+import {
+  FeatureNotInPlanError,
+  assertAiBudget,
+  orgHasFeature,
+  type PlanFeature,
+} from "./plan-feature-gate";
+import { recordGenericToolExecutionMetrics } from "@/monitoring/record-generic-tool-metrics";
 
 // ============================================================================
 // Tool Definition Types
@@ -70,6 +77,19 @@ export interface ToolBinder<
    */
   modelSummary?: (result: z.infer<TOutput>) => string;
 }
+
+/**
+ * What an MCP request knows about one tool call that the input does not carry.
+ * Absent when a tool is called in-process.
+ */
+export interface ToolCallContext {
+  /** Aborts when the client cancels the call or drops the connection. */
+  signal?: AbortSignal;
+  /** Sends an MCP progress notification; absent when the client asked for none. */
+  progress?: (message: string) => Promise<void>;
+  /** The client's own id for this call, when it sends one. */
+  callId?: string;
+}
 /**
  * Tool definition structure
  */
@@ -81,14 +101,35 @@ export interface ToolDefinition<
   handler: (
     input: z.infer<TInput>,
     ctx: StudioContext,
+    call?: ToolCallContext,
   ) => Promise<z.infer<TOutput>>;
+  /**
+   * The plan feature this tool belongs to, if any. Declaring it is the whole
+   * gate — the execute wrapper below refuses the call when the org's plan does
+   * not include it, so no handler has to remember a check.
+   *
+   * The client gates the same keys (`use-entitlements.ts`), but that only stops
+   * a button. This is what stops a request.
+   */
+  requiresFeature?: PlanFeature;
+  /**
+   * Declare on a tool whose execution spends the org's AI allowance. The
+   * execute wrapper refuses it once the usage bar is exhausted — the margin
+   * stop the bar is otherwise only reporting.
+   *
+   * Orthogonal to `requiresFeature` on purpose: `cms` is in the plan and does
+   * not spend, so a full bar must not touch it ("CMS keeps working, chat
+   * pauses"). Inert unless STUDIO_PLANS_ENABLED, like every other gate.
+   */
+  requiresAiBudget?: boolean;
 }
 
 /**
  * Tool with execute wrapper
- * The execute method adds automatic validation and tracing.
- * Tool execution metrics are emitted only from connection-backed monitoring
- * paths so monitoring metrics stay aligned with monitoring logs.
+ * The execute method adds automatic validation, tracing, and latency metrics.
+ * `tool.execution.*` (record-tool-execution-metrics.ts) stays connection-scoped
+ * so it lines up with monitoring logs; this wrapper separately emits
+ * `studio_tool.execution.*` for every in-process Studio tool call.
  */
 export interface Tool<
   TInput extends z.ZodType,
@@ -98,6 +139,7 @@ export interface Tool<
   execute: (
     input: z.infer<TInput>,
     ctx: StudioContext,
+    call?: ToolCallContext,
   ) => Promise<z.infer<TOutput>>;
 }
 
@@ -147,7 +189,10 @@ export function defineTool<
     execute: async (
       input: z.infer<TInput>,
       ctx: StudioContext,
+      call?: ToolCallContext,
     ): Promise<z.infer<TOutput>> => {
+      const startedAt = performance.now();
+      let isError = false;
       return await ctx.timings.measure(
         `tool.${definition.name}`,
         // Start OpenTelemetry span
@@ -182,15 +227,55 @@ export function defineTool<
                   );
                 }
 
+                // A gated tool with no resolvable org runs UNGATED below, and
+                // silently. Harmless today — all five declared tools call
+                // `requireOrganization` in their own handler and throw there —
+                // but that is a coincidence, not a guarantee: the first gated
+                // tool that tolerates a missing org is silently ungated. Say
+                // so, once per call, rather than leaving it invisible.
+                if (
+                  (definition.requiresFeature || definition.requiresAiBudget) &&
+                  !organizationId
+                ) {
+                  console.warn(
+                    `[Plans] ${definition.name} declares a plan gate but no organization is in scope — running UNGATED`,
+                  );
+                }
+
+                // The org's plan has to include this tool's feature. Fails
+                // OPEN when the gateway has no answer at all — see
+                // plan-feature-gate.
+                if (
+                  definition.requiresFeature &&
+                  organizationId &&
+                  !(await orgHasFeature(
+                    ctx,
+                    organizationId,
+                    definition.requiresFeature,
+                  ))
+                ) {
+                  throw new FeatureNotInPlanError(
+                    `${definition.name} needs the ${definition.requiresFeature} feature, which this organization's plan does not include`,
+                    definition.requiresFeature,
+                  );
+                }
+
+                // …and it has to have AI allowance left, when it spends it.
+                if (definition.requiresAiBudget && organizationId) {
+                  await assertAiBudget(ctx, organizationId, definition.name);
+                }
+
                 // MCP protocol already validated input against JSON Schema
                 // We trust the validation and execute the handler directly
-                const output = await definition.handler(input, ctx);
+                const output = await definition.handler(input, ctx, call);
 
                 // Mark span as successful
                 span.setStatus({ code: SpanStatusCode.OK });
 
                 return output;
               } catch (error) {
+                isError = true;
+
                 // Mark span as error
                 span.setStatus({
                   code: SpanStatusCode.ERROR,
@@ -200,6 +285,13 @@ export function defineTool<
 
                 throw error;
               } finally {
+                recordGenericToolExecutionMetrics({
+                  ctx,
+                  toolName: definition.name,
+                  organizationId: ctx.organization?.id ?? "system",
+                  durationMs: performance.now() - startedAt,
+                  isError,
+                });
                 span.end();
               }
             },

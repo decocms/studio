@@ -26,12 +26,22 @@ const stores = new Map<string, Store<QueueItemDTO[]>>();
  */
 const MAX_TRACKED_THREADS = 200;
 
+/**
+ * Guards `refreshMessageQueue` against out-of-order responses: callers fire
+ * it from several independent events without awaiting each other, so two
+ * requests for the same thread can race. Each call claims the next sequence
+ * number for its thread; a response only applies if its call is still the
+ * latest one issued for that thread.
+ */
+const latestRequestSeq = new Map<string, number>();
+
 function touchThread(threadId: string): void {
   if (stores.size < MAX_TRACKED_THREADS || stores.has(threadId)) return;
   const oldest = stores.keys().next().value;
   if (oldest === undefined) return;
   stores.delete(oldest);
   dirtyThreads.delete(oldest);
+  latestRequestSeq.delete(oldest);
   for (const key of pendingBodies.keys()) {
     if (key.startsWith(`${oldest}:`)) pendingBodies.delete(key);
   }
@@ -126,6 +136,8 @@ export async function refreshMessageQueue(
   orgSlug: string,
   threadId: string,
 ): Promise<void> {
+  const seq = (latestRequestSeq.get(threadId) ?? 0) + 1;
+  latestRequestSeq.set(threadId, seq);
   try {
     const res = await fetch(
       `/api/${encodeURIComponent(orgSlug)}/decopilot/queue/${encodeURIComponent(threadId)}`,
@@ -133,6 +145,8 @@ export async function refreshMessageQueue(
     );
     if (!res.ok) return;
     const body = (await res.json()) as { items?: QueueItemDTO[] };
+    // Superseded response — don't clobber newer state.
+    if (latestRequestSeq.get(threadId) !== seq) return;
     setQueue(threadId, body.items ?? []);
   } catch {
     // best-effort — leave the current store contents in place

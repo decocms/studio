@@ -8,12 +8,21 @@ import {
 } from "@/hooks/collections/use-ai-providers";
 import { SimpleModeSection } from "./simple-mode-section";
 import { DecoCreditsHero } from "./deco-credits-hero";
+import { PlanUsageCard } from "./plan-usage-card";
+import { PlanCatalog } from "./plan-catalog";
 import { DecoNudgeCard } from "./deco-nudge-card";
 import { ConnectedProvidersSection } from "./connected-providers-section";
+import { CodexSubscriptionCard } from "./codex-subscription-card";
 import { ClaudeSubscriptionCard } from "./claude-subscription-card";
+import { GithubCopilotCard } from "./github-copilot-card";
 import { ConnectProviderDialog } from "./connect-provider-dialog";
 import { ProviderGrid, type ProviderSelection } from "./provider-grid";
 import { getProviderInventoryState } from "./provider-inventory";
+import {
+  useFeature,
+  useFeaturesSettled,
+  usePlansEnabled,
+} from "@/hooks/use-entitlements";
 
 function ErrorFallback({ error }: { error: Error }) {
   return (
@@ -35,16 +44,41 @@ function OrgAiProvidersContent() {
     useState<ProviderSelection | null>(null);
 
   const aiProviders = useAiProviders();
+  // Bringing your own key is open to every plan; picking the model per tier
+  // is not. Fails OPEN, so a gateway blip shows the picker rather than hiding it.
+  const canChooseModels = useFeature("model_choice");
+  // ...but on a COLD cache that same fail-open paints the picker for a frame
+  // before the answer arrives and removes it. This page is mostly plan-gated,
+  // so hold the whole body rather than let it rearrange itself.
+  const settled = useFeaturesSettled();
+  // With plans ON, PlanUsageCard owns the balance AND the top-up, so the
+  // gateway's own section has nothing left to say: on Free it rendered a
+  // titled card holding a logo and a Disconnect button. Plans OFF still needs
+  // it — that path has no plan card at all.
+  const plansEnabled = usePlansEnabled();
+  const showGatewaySection = hasDeco && !plansEnabled;
   const providers = aiProviders?.providers ?? [];
+
+  if (!settled) {
+    return <Skeleton className="h-64 w-full" />;
+  }
 
   if (!hasHostedProvider) {
     return (
       <>
+        {/* The plan is an org-level fact — it does not depend on which
+            provider keys the org happens to have connected. */}
+        <PlanUsageCard />
+        <PlanCatalog />
         <ProviderGrid
           providers={providers}
           onSelect={setPendingProvider}
           onShowAll={() => setConnectOpen(true)}
         />
+        {/* A user's own plan runs chats with no org provider at all. */}
+        <ClaudeSubscriptionCard />
+        <CodexSubscriptionCard />
+        <GithubCopilotCard />
         <ConnectProviderDialog
           open={pendingProvider !== null || connectOpen}
           onOpenChange={(o) => {
@@ -66,11 +100,18 @@ function OrgAiProvidersContent() {
 
   return (
     <>
-      <Suspense fallback={<Skeleton className="h-16 w-full" />}>
-        <SimpleModeSection />
-      </Suspense>
-      {hasDeco ? <DecoCreditsHero /> : <DecoNudgeCard />}
+      <PlanUsageCard />
+      <PlanCatalog />
+      {showGatewaySection ? <DecoCreditsHero /> : null}
+      {canChooseModels ? (
+        <Suspense fallback={<Skeleton className="h-16 w-full" />}>
+          <SimpleModeSection />
+        </Suspense>
+      ) : null}
+      {hasDeco ? null : <DecoNudgeCard />}
       <ClaudeSubscriptionCard />
+      <CodexSubscriptionCard />
+      <GithubCopilotCard />
       <ConnectedProvidersSection onConnectClick={() => setConnectOpen(true)} />
       <ConnectProviderDialog open={connectOpen} onOpenChange={setConnectOpen} />
     </>

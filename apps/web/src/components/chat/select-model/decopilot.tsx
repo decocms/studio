@@ -1,3 +1,4 @@
+import { isChatModel } from "@decocms/shared/sdk";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Checkbox } from "@decocms/ui/components/checkbox.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
@@ -138,6 +139,17 @@ function classifyModel(modelId: string): TierId | null {
 
   tierCache.set(modelId, result);
   return result;
+}
+
+// Browse mode: shortlist first, but a search term always scans all models.
+export function pickBrowseModels(
+  allModels: AiProviderModel[],
+  shortlistSet: Set<string>,
+  normalizedSearch: string,
+): AiProviderModel[] {
+  if (normalizedSearch) return allModels;
+  const shortlisted = allModels.filter((m) => shortlistSet.has(m.modelId));
+  return shortlisted.length > 0 ? shortlisted : allModels;
 }
 
 function groupByTier(
@@ -479,14 +491,11 @@ function ConnectionModelList({
 }) {
   const t = useT();
   const { models: rawModels } = useAiProviderModels(keyId);
-  // When no explicit filter is given, hide async-research-only models
-  // (e.g. Gemini Deep Research). They aren't usable as a Thinking/Coding/
-  // Fast model — the agent loop's `streamText` rejects them. Callers that
-  // want to expose them (the deep-research slot) pass their own filter that
-  // opts them back in.
+  // Chat cannot use decision or async-research models. Specialized pickers
+  // such as the deep-research slot supply their own capability filter.
   const allModels = filterModelsProp
     ? rawModels.filter(filterModelsProp)
-    : rawModels.filter((m) => m.asyncResearch !== true);
+    : rawModels.filter(isChatModel);
   const [shortlistSet, setShortlistSet] = useState<Set<string>>(
     () => (keyId ? readShortlist(keyId) : null) ?? DEFAULT_SHORTLIST,
   );
@@ -552,10 +561,9 @@ function ConnectionModelList({
     );
   }
 
-  // Browse mode: show shortlisted models (fall back to all if none match)
-  const shortlisted = allModels.filter((m) => shortlistSet.has(m.modelId));
-  const browseable = shortlisted.length > 0 ? shortlisted : allModels;
-  const grouped = groupByTier(applySearch(browseable));
+  const grouped = groupByTier(
+    applySearch(pickBrowseModels(allModels, shortlistSet, normalizedSearch)),
+  );
 
   return (
     <div className="flex-1 overflow-y-auto px-0.5 pt-1 [touch-action:pan-y]">

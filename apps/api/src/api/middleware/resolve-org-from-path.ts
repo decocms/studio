@@ -2,22 +2,29 @@ import type { Context, MiddlewareHandler } from "hono";
 import { isOrgArchived } from "@decocms/shared/organization/org-archived";
 import type { StudioContext } from "../../core/studio-context";
 import { rebindOrgScope } from "../../core/context-factory";
+import { findOrgByPreviousSlug } from "../../core/org-previous-slug";
 
+import {
+  auditTaskBoardAdminAction,
+  isTaskBoardAdminUser,
+} from "../../core/task-board-admin";
 import { isBrowserNavigation } from "../utils/browser-navigation";
 
 /**
- * Public-share endpoints a non-member must still reach: the read proxy
- * (`GET .../fs/:volume/read`, serves public/password files) and the password
- * unlock (`POST .../fs/:volume/unlock`). The membership gate below defers to
- * these; the routes themselves serve only shared content and still gate
- * everything else on ORG_FS_READ (a non-member fails → 403). Every other
- * org-scoped route stays member-gated.
+ * Endpoints a non-member must still reach: the read proxy
+ * (`GET .../fs/:volume/read`, serves public/password files), the password
+ * unlock (`POST .../fs/:volume/unlock`), and uploads through a signed grant
+ * (`PUT .../fs/:volume/upload/:token`, the token is the authentication). The
+ * membership gate below defers to these; the routes themselves serve only
+ * shared content or the granted file and gate everything else (a non-member
+ * fails → 403). Every other org-scoped route stays member-gated.
  */
 function isPublicSharePath(c: Context): boolean {
   const p = c.req.path;
   return (
     (c.req.method === "GET" && /\/fs\/[^/]+\/read$/.test(p)) ||
-    (c.req.method === "POST" && /\/fs\/[^/]+\/unlock$/.test(p))
+    (c.req.method === "POST" && /\/fs\/[^/]+\/unlock$/.test(p)) ||
+    (c.req.method === "PUT" && /\/fs\/[^/]+\/upload\/[^/]+$/.test(p))
   );
 }
 
@@ -56,7 +63,7 @@ export function getApiKeyOrganizationBinding(ctx: StudioContext): {
 
 /**
  * The exhaustive list of service-token routes that resolve the org by ID —
- * their machine caller (commerce-discovery) holds the org id, not the slug.
+ * their machine caller (reports) holds the org id, not the slug.
  * One entry per route, as the path segments AFTER `/api/:org` (`"*"` matches
  * exactly one dynamic segment). Every other route stays slug-only so a slug
  * that happens to equal another org's id can never cause cross-org resolution
@@ -66,7 +73,15 @@ const SERVICE_TOKEN_ROUTES: readonly (readonly string[])[] = [
   ["vault", "connections", "*", "access-token"],
   ["vault", "connections", "*", "configuration"],
   ["internal", "task-board", "import"],
+  ["internal", "task-board", "resolve"],
   ["internal", "commerce-diagnostic", "share-invite"],
+  ["internal", "organization-notices"],
+  ["internal", "repositories", "resolve"],
+  ["internal", "repositories", "*", "tree"],
+  ["internal", "repositories", "*", "file"],
+  ["internal", "repositories", "*", "search"],
+  ["internal", "repositories", "*", "change-requests"],
+  ["internal", "repositories", "*", "commits"],
 ];
 
 /**
@@ -112,7 +127,8 @@ export const resolveOrgFromPath: MiddlewareHandler<{
         ? eb.or([eb("slug", "=", slug), eb("id", "=", slug)])
         : eb("slug", "=", slug),
     )
-    .executeTakeFirst();
+    .executeTakeFirst()
+    .then((found) => found ?? findOrgByPreviousSlug(db, slug));
 
   if (!org) {
     // Bounce browser navigations into the SPA so OrgAccessGate shows the
@@ -181,7 +197,19 @@ export const resolveOrgFromPath: MiddlewareHandler<{
       .where("organizationId", "=", org.id)
       .executeTakeFirst();
 
-    if (!membership) {
+    if (membership) {
+      pathRole = membership.role;
+    } else if (await isTaskBoardAdminUser(db, userId)) {
+      // Widens every org-scoped route, not just the board — see isTaskBoardAdminUser.
+      auditTaskBoardAdminAction({
+        action: "org_scope_admit",
+        actorUserId: userId,
+        targetOrgId: org.id,
+        method: c.req.method,
+        route: c.req.path,
+      });
+      pathRole = "owner";
+    } else {
       // Public-share reads + password unlock are reachable by anyone, incl.
       // signed-in non-members — let them fall through to the route (which serves
       // only shared content and 403s the rest). All other routes stay gated.
@@ -199,8 +227,6 @@ export const resolveOrgFromPath: MiddlewareHandler<{
       }
       // pathRole stays undefined; the org is still resolved + rebound below so
       // the read route can stat the file and serve it if it's public.
-    } else {
-      pathRole = membership.role;
     }
   }
 

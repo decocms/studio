@@ -1,86 +1,69 @@
 import type { SandboxMap } from "@/sdk";
-import { BranchPicker } from "../../thread/github/branch-picker";
-import { BranchPickerLegacy } from "../../thread/github/branch-picker-legacy";
+import type { RepoToolTarget } from "@/lib/repository-binding.ts";
+import { BranchPicker } from "../../thread/repository/branch-picker";
 
 interface Props {
-  /** Draft & Releases mode: on → the releases switcher; off → the classic
-   *  branch/PR picker. */
-  draftsMode: boolean;
   virtualMcpId: string;
+  /** A Blocks v8 site: Localhost instead of main's Local tunnel. */
+  isV8?: boolean;
   userLabel: string | null | undefined;
   value: string | null | undefined;
   onChange: (branch: string) => void;
   onCreateBranch?: (branch: string) => void;
+  /** Adopting a branch/PR opens a sandbox coding session on it. */
+  onAdoptBranch?: (branch: string) => void;
   locked: boolean;
   placement?: "chat" | "header";
-  /** Drafts-mode only: production branch shown as "Produção". */
+  /** Production branch shown as "Produção" in the releases switcher. */
   baseBranch?: string | null;
-  /** Classic-picker only: repo scope for listing branches/PRs. */
+  /** Repo scope for listing branches/PRs. */
   orgId: string;
   orgSlug: string;
   userId: string;
-  connectionId: string | null;
+  target: RepoToolTarget;
   owner: string;
   repo: string;
   sandboxMap: SandboxMap | undefined;
 }
 
-/** Routes to the drafts switcher or the classic branch/PR picker by the
- *  per-agent flag. A `locked` chat has a fixed branch, so any pick/create opens
- *  a new chat on it instead of switching (`spawnsNewChat`). */
+/** The releases switcher. A `locked` chat has a fixed branch, so any pick/create
+ *  opens a new chat on it instead of switching (`spawnsNewChat`). */
 export function BranchPill({
-  draftsMode,
   locked,
   placement,
   value,
   virtualMcpId,
+  isV8,
   userLabel,
   baseBranch,
   onChange,
   onCreateBranch,
+  onAdoptBranch,
   orgId,
   orgSlug,
   userId,
-  connectionId,
+  target,
   owner,
   repo,
   sandboxMap,
 }: Props) {
-  if (draftsMode) {
-    return (
-      <BranchPicker
-        virtualMcpId={virtualMcpId}
-        userLabel={userLabel}
-        value={value}
-        baseBranch={baseBranch}
-        orgId={orgId}
-        orgSlug={orgSlug}
-        userId={userId}
-        connectionId={connectionId}
-        owner={owner}
-        repo={repo}
-        sandboxMap={sandboxMap}
-        onChange={onChange}
-        onCreateBranch={onCreateBranch}
-        spawnsNewChat={locked}
-        placement={placement}
-      />
-    );
-  }
   return (
-    <BranchPickerLegacy
+    <BranchPicker
+      virtualMcpId={virtualMcpId}
+      isV8={isV8}
+      userLabel={userLabel}
+      value={value}
+      baseBranch={baseBranch}
       orgId={orgId}
       orgSlug={orgSlug}
       userId={userId}
-      userLabel={userLabel}
-      virtualMcpId={virtualMcpId}
-      connectionId={connectionId}
+      target={target}
       owner={owner}
       repo={repo}
       sandboxMap={sandboxMap}
-      value={value}
       onChange={onChange}
       onCreateBranch={onCreateBranch}
+      onAdoptBranch={onAdoptBranch}
       spawnsNewChat={locked}
       placement={placement}
     />

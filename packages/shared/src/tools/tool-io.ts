@@ -70,14 +70,7 @@ export interface StudioToolIO {
         | { title: string; url: string; icon: string }[]
         | null
         | undefined;
-      enabled_plugins?: string[] | null | undefined;
-      registry_config?:
-        | {
-            registries: Record<string, { enabled: boolean }>;
-            blockedMcps: string[];
-          }
-        | null
-        | undefined;
+      coding_agent_mcp_excluded?: string[] | null | undefined;
       simple_mode?:
         | {
             tiers: {
@@ -118,6 +111,8 @@ export interface StudioToolIO {
       default_home_agents?: { ids: string[] } | null | undefined;
       flags?:
         | {
+            voice_mode?: boolean | undefined;
+            home_task_intake_enabled?: boolean | undefined;
             demo_mode?: boolean | undefined;
             reports_only?: boolean | undefined;
             reviewer_enabled?: boolean | undefined;
@@ -128,14 +123,25 @@ export interface StudioToolIO {
             cheap_reviewer_model?: boolean | undefined;
             coding_agent_org_mcps?: boolean | undefined;
             coding_agents_claude_code?: boolean | undefined;
+            chat_harness_codex?: boolean | undefined;
+            chat_harness_sandbox_only?: boolean | undefined;
+            sandbox_repo_snapshots?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
             hosting_enabled?: boolean | undefined;
             deco_analytics_enabled?: boolean | undefined;
             e2e_enabled?: boolean | undefined;
+            experiments_enabled?: boolean | undefined;
+            experiments_v2_enabled?: boolean | undefined;
             monitor_enabled?: boolean | undefined;
-            delivery_lanes_enabled?: boolean | undefined;
-            cms_auto_fresh_branch?: boolean | undefined;
+            site_create_enabled?: boolean | undefined;
+            new_blocks_editor?: boolean | undefined;
+            blog_ai_enabled?: boolean | undefined;
+            hide_default_blog_blocks?: boolean | undefined;
           }
+        | null
+        | undefined;
+      submodule_credentials?:
+        | { host: string; secretId: string }[]
         | null
         | undefined;
       createdAt?: string | undefined;
@@ -148,13 +154,7 @@ export interface StudioToolIO {
       sidebar_items?:
         | { title: string; url: string; icon: string }[]
         | undefined;
-      enabled_plugins?: string[] | undefined;
-      registry_config?:
-        | {
-            registries: Record<string, { enabled: boolean }>;
-            blockedMcps: string[];
-          }
-        | undefined;
+      coding_agent_mcp_excluded?: string[] | undefined;
       simple_mode?:
         | {
             tiers: {
@@ -194,6 +194,8 @@ export interface StudioToolIO {
       default_home_agents?: { ids: string[] } | undefined;
       flags?:
         | {
+            voice_mode?: boolean | undefined;
+            home_task_intake_enabled?: boolean | undefined;
             demo_mode?: boolean | undefined;
             reports_only?: boolean | undefined;
             reviewer_enabled?: boolean | undefined;
@@ -204,15 +206,23 @@ export interface StudioToolIO {
             cheap_reviewer_model?: boolean | undefined;
             coding_agent_org_mcps?: boolean | undefined;
             coding_agents_claude_code?: boolean | undefined;
+            chat_harness_codex?: boolean | undefined;
+            chat_harness_sandbox_only?: boolean | undefined;
+            sandbox_repo_snapshots?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
             hosting_enabled?: boolean | undefined;
             deco_analytics_enabled?: boolean | undefined;
             e2e_enabled?: boolean | undefined;
+            experiments_enabled?: boolean | undefined;
+            experiments_v2_enabled?: boolean | undefined;
             monitor_enabled?: boolean | undefined;
-            delivery_lanes_enabled?: boolean | undefined;
-            cms_auto_fresh_branch?: boolean | undefined;
+            site_create_enabled?: boolean | undefined;
+            new_blocks_editor?: boolean | undefined;
+            blog_ai_enabled?: boolean | undefined;
+            hide_default_blog_blocks?: boolean | undefined;
           }
         | undefined;
+      submodule_credentials?: { host: string; secretId: string }[] | undefined;
     };
     output: {
       organizationId: string;
@@ -222,14 +232,7 @@ export interface StudioToolIO {
         | { title: string; url: string; icon: string }[]
         | null
         | undefined;
-      enabled_plugins?: string[] | null | undefined;
-      registry_config?:
-        | {
-            registries: Record<string, { enabled: boolean }>;
-            blockedMcps: string[];
-          }
-        | null
-        | undefined;
+      coding_agent_mcp_excluded?: string[] | null | undefined;
       simple_mode?:
         | {
             tiers: {
@@ -270,6 +273,8 @@ export interface StudioToolIO {
       default_home_agents?: { ids: string[] } | null | undefined;
       flags?:
         | {
+            voice_mode?: boolean | undefined;
+            home_task_intake_enabled?: boolean | undefined;
             demo_mode?: boolean | undefined;
             reports_only?: boolean | undefined;
             reviewer_enabled?: boolean | undefined;
@@ -280,17 +285,36 @@ export interface StudioToolIO {
             cheap_reviewer_model?: boolean | undefined;
             coding_agent_org_mcps?: boolean | undefined;
             coding_agents_claude_code?: boolean | undefined;
+            chat_harness_codex?: boolean | undefined;
+            chat_harness_sandbox_only?: boolean | undefined;
+            sandbox_repo_snapshots?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
             hosting_enabled?: boolean | undefined;
             deco_analytics_enabled?: boolean | undefined;
             e2e_enabled?: boolean | undefined;
+            experiments_enabled?: boolean | undefined;
+            experiments_v2_enabled?: boolean | undefined;
             monitor_enabled?: boolean | undefined;
-            delivery_lanes_enabled?: boolean | undefined;
-            cms_auto_fresh_branch?: boolean | undefined;
+            site_create_enabled?: boolean | undefined;
+            new_blocks_editor?: boolean | undefined;
+            blog_ai_enabled?: boolean | undefined;
+            hide_default_blog_blocks?: boolean | undefined;
           }
         | null
         | undefined;
+      submodule_credentials?:
+        | { host: string; secretId: string }[]
+        | null
+        | undefined;
     };
+  };
+  ORGANIZATION_BLOCKS_EDITOR_SET: {
+    input: { enabled: boolean };
+    output: { enabled: boolean };
+  };
+  ORGANIZATION_HAS_SITE: {
+    input: { [x: string]: never };
+    output: { hasSite: boolean };
   };
   NOTIFICATION_LIST: {
     input: { cursor?: string | undefined; limit?: number | undefined };
@@ -340,8 +364,9 @@ export interface StudioToolIO {
         | "todo"
         | "in_progress"
         | "in_review"
-        | "approved"
-        | "merged"
+        | "qa"
+        | "customer_approval"
+        | "ready_for_deployment"
         | "post_deploy_validation"
         | "archived"
         | undefined;
@@ -349,9 +374,12 @@ export interface StudioToolIO {
       type?: "bug" | "feature" | "chore" | "spike" | "security" | undefined;
       assigneeId?: string | null | undefined;
       repo?: string | null | undefined;
+      virtualMcpId?: string | null | undefined;
       dueDate?: string | null | undefined;
       tagIds?: string[] | undefined;
+      sprintId?: string | null | undefined;
       prUrl?: string | null | undefined;
+      onDuplicate?: "create" | "return_existing" | undefined;
     };
     output: {
       item: {
@@ -365,8 +393,9 @@ export interface StudioToolIO {
           | "todo"
           | "in_progress"
           | "in_review"
-          | "approved"
-          | "merged"
+          | "qa"
+          | "customer_approval"
+          | "ready_for_deployment"
           | "post_deploy_validation"
           | "archived";
         priority: "none" | "low" | "medium" | "high" | "urgent";
@@ -374,10 +403,14 @@ export interface StudioToolIO {
         assigneeId: string | null;
         assignedBy: string | null;
         repo: string | null;
+        repositoryId: string | null;
+        virtualMcpId: string | null;
+        sprintId: string | null;
         dueDate: string | null;
         sortOrder: number;
         keySeq: number | null;
         externalUrl: string | null;
+        previewRoutes: string[];
         source: "jira" | null;
         retryAttempts: number;
         reviewCycleStartedAt: string | null;
@@ -413,11 +446,15 @@ export interface StudioToolIO {
           verdict: "approved" | "changes_requested";
           verified: boolean;
         }[];
+        statusSince: string | null;
         createdBy: string;
         createdAt: string;
         updatedBy: string;
         updatedAt: string;
       };
+      deduplicated: boolean;
+      duplicateCheck: "off" | "matched" | "no_match" | "skipped";
+      duplicateReason: string | null;
     };
   };
   TASK_BOARD_ITEM_LIST: {
@@ -434,8 +471,9 @@ export interface StudioToolIO {
           | "todo"
           | "in_progress"
           | "in_review"
-          | "approved"
-          | "merged"
+          | "qa"
+          | "customer_approval"
+          | "ready_for_deployment"
           | "post_deploy_validation"
           | "archived";
         priority: "none" | "low" | "medium" | "high" | "urgent";
@@ -443,10 +481,14 @@ export interface StudioToolIO {
         assigneeId: string | null;
         assignedBy: string | null;
         repo: string | null;
+        repositoryId: string | null;
+        virtualMcpId: string | null;
+        sprintId: string | null;
         dueDate: string | null;
         sortOrder: number;
         keySeq: number | null;
         externalUrl: string | null;
+        previewRoutes: string[];
         source: "jira" | null;
         retryAttempts: number;
         reviewCycleStartedAt: string | null;
@@ -482,6 +524,7 @@ export interface StudioToolIO {
           verdict: "approved" | "changes_requested";
           verified: boolean;
         }[];
+        statusSince: string | null;
         createdBy: string;
         createdAt: string;
         updatedBy: string;
@@ -502,8 +545,9 @@ export interface StudioToolIO {
         | "todo"
         | "in_progress"
         | "in_review"
-        | "approved"
-        | "merged"
+        | "qa"
+        | "customer_approval"
+        | "ready_for_deployment"
         | "post_deploy_validation"
         | "archived"
         | undefined;
@@ -511,9 +555,12 @@ export interface StudioToolIO {
       type?: "bug" | "feature" | "chore" | "spike" | "security" | undefined;
       assigneeId?: string | null | undefined;
       repo?: string | null | undefined;
+      virtualMcpId?: string | null | undefined;
       dueDate?: string | null | undefined;
       sortOrder?: number | undefined;
+      previewRoutes?: string[] | undefined;
       tagIds?: string[] | undefined;
+      sprintId?: string | null | undefined;
       linkThreadId?: string | undefined;
       prUrl?: string | null | undefined;
     };
@@ -529,8 +576,9 @@ export interface StudioToolIO {
           | "todo"
           | "in_progress"
           | "in_review"
-          | "approved"
-          | "merged"
+          | "qa"
+          | "customer_approval"
+          | "ready_for_deployment"
           | "post_deploy_validation"
           | "archived";
         priority: "none" | "low" | "medium" | "high" | "urgent";
@@ -538,10 +586,14 @@ export interface StudioToolIO {
         assigneeId: string | null;
         assignedBy: string | null;
         repo: string | null;
+        repositoryId: string | null;
+        virtualMcpId: string | null;
+        sprintId: string | null;
         dueDate: string | null;
         sortOrder: number;
         keySeq: number | null;
         externalUrl: string | null;
+        previewRoutes: string[];
         source: "jira" | null;
         retryAttempts: number;
         reviewCycleStartedAt: string | null;
@@ -577,6 +629,7 @@ export interface StudioToolIO {
           verdict: "approved" | "changes_requested";
           verified: boolean;
         }[];
+        statusSince: string | null;
         createdBy: string;
         createdAt: string;
         updatedBy: string;
@@ -588,25 +641,21 @@ export interface StudioToolIO {
     input: { id: string };
     output: { success: boolean };
   };
-  TASK_BOARD_AUTOMATION_LIST: {
-    input: { [x: string]: never };
-    output: { automations: { columnKey: string; prompt: string | null }[] };
-  };
-  TASK_BOARD_AUTOMATION_UPSERT: {
-    input: { columnKey: string; prompt?: string | null | undefined };
-    output: { automation: { columnKey: string; prompt: string | null } };
-  };
-  TASK_BOARD_AUTOMATION_DELETE: {
-    input: { columnKey: string };
-    output: { removed: boolean };
-  };
   TASK_BOARD_PROMPT_LIST: {
     input: { [x: string]: never };
-    output: { prompts: { columnKey: string | null; prompt: string }[] };
+    output: {
+      prompts: { columnKey: string | null; prompt: string; skills: string[] }[];
+    };
   };
   TASK_BOARD_PROMPT_UPSERT: {
-    input: { prompt: string; columnKey?: string | null | undefined };
-    output: { prompt: { columnKey: string | null; prompt: string } };
+    input: {
+      prompt: string;
+      columnKey?: string | null | undefined;
+      skills?: string[] | undefined;
+    };
+    output: {
+      prompt: { columnKey: string | null; prompt: string; skills: string[] };
+    };
   };
   TASK_BOARD_PROMPT_DELETE: {
     input: { columnKey?: string | null | undefined };
@@ -621,6 +670,7 @@ export interface StudioToolIO {
         repoOwner: string;
         repoName: string;
         createdAt: string;
+        updatedAt: string | null;
         title: string | null;
         body: string | null;
         state: "open" | "closed" | null;
@@ -647,6 +697,10 @@ export interface StudioToolIO {
     input: { id: string };
     output: { status: string; supersededThreadIds: string[] };
   };
+  TASK_BOARD_RUN_REVIEWER: {
+    input: { id: string };
+    output: { queued: boolean };
+  };
   TASK_BOARD_RESOLVE_CONFLICT: {
     input: { id: string; prNumber: number };
     output: { status: string };
@@ -654,7 +708,7 @@ export interface StudioToolIO {
   TASK_BOARD_REVIEW_DECISION: {
     input: {
       taskBoardItemId: string;
-      reviewer: "reviewer" | "qa" | "code_review";
+      reviewer: "qa" | "reviewer" | "code_review";
       decision: "approve" | "request_changes";
       notes: string;
       reviewToken?: string | undefined;
@@ -666,11 +720,11 @@ export interface StudioToolIO {
         | "todo"
         | "in_progress"
         | "in_review"
-        | "approved"
-        | "merged"
+        | "qa"
+        | "customer_approval"
+        | "ready_for_deployment"
         | "post_deploy_validation"
         | "archived";
-      merged: boolean;
     };
   };
   TASK_BOARD_PROMOTE_TO_PRODUCTION: {
@@ -682,8 +736,9 @@ export interface StudioToolIO {
         | "todo"
         | "in_progress"
         | "in_review"
-        | "approved"
-        | "merged"
+        | "qa"
+        | "customer_approval"
+        | "ready_for_deployment"
         | "post_deploy_validation"
         | "archived";
       merged: boolean;
@@ -710,7 +765,10 @@ export interface StudioToolIO {
           | "tags_changed"
           | "review_verdict_requested"
           | "merge_conflict_resolution"
-          | "type_changed";
+          | "type_changed"
+          | "duplicate_reported"
+          | "finding_resolved"
+          | "sprint_changed";
         actorId: string | null;
         data: Record<string, unknown>;
         occurredAt: string;
@@ -725,10 +783,12 @@ export interface StudioToolIO {
         taskBoardItemId: string;
         parentId: string | null;
         authorId: string;
+        audience: "internal" | "human";
         body: string;
         resolved: boolean;
         createdAt: string;
         updatedAt: string;
+        threadId?: string | null | undefined;
       }[];
     };
   };
@@ -737,6 +797,7 @@ export interface StudioToolIO {
       taskBoardItemId: string;
       body: string;
       parentId?: string | null | undefined;
+      audience?: "internal" | "human" | undefined;
     };
     output: {
       comment: {
@@ -744,10 +805,12 @@ export interface StudioToolIO {
         taskBoardItemId: string;
         parentId: string | null;
         authorId: string;
+        audience: "internal" | "human";
         body: string;
         resolved: boolean;
         createdAt: string;
         updatedAt: string;
+        threadId?: string | null | undefined;
       };
     };
   };
@@ -763,10 +826,12 @@ export interface StudioToolIO {
         taskBoardItemId: string;
         parentId: string | null;
         authorId: string;
+        audience: "internal" | "human";
         body: string;
         resolved: boolean;
         createdAt: string;
         updatedAt: string;
+        threadId?: string | null | undefined;
       };
     };
   };
@@ -788,327 +853,1795 @@ export interface StudioToolIO {
     input: { externalKeys?: string[] | undefined };
     output: { restored: number };
   };
+  TASK_BOARD_SPRINT_LIST: {
+    input: { [x: string]: never };
+    output: {
+      sprints: {
+        id: string;
+        name: string;
+        state: "active" | "closed" | "future";
+        startDate: string | null;
+        endDate: string | null;
+      }[];
+    };
+  };
+  TASK_BOARD_SPRINT_CREATE: {
+    input: {
+      name: string;
+      startDate?: string | null | undefined;
+      endDate?: string | null | undefined;
+    };
+    output: {
+      sprint: {
+        id: string;
+        name: string;
+        state: "active" | "closed" | "future";
+        startDate: string | null;
+        endDate: string | null;
+      };
+    };
+  };
+  TASK_BOARD_SPRINT_UPDATE: {
+    input: {
+      id: string;
+      name?: string | undefined;
+      startDate?: string | null | undefined;
+      endDate?: string | null | undefined;
+    };
+    output: {
+      sprint: {
+        id: string;
+        name: string;
+        state: "active" | "closed" | "future";
+        startDate: string | null;
+        endDate: string | null;
+      };
+    };
+  };
+  TASK_BOARD_SPRINT_START: {
+    input: { id: string };
+    output: {
+      sprint: {
+        id: string;
+        name: string;
+        state: "active" | "closed" | "future";
+        startDate: string | null;
+        endDate: string | null;
+      };
+    };
+  };
+  TASK_BOARD_SPRINT_COMPLETE: {
+    input: { id: string; moveOpenTo?: string | null | undefined };
+    output: {
+      sprint: {
+        id: string;
+        name: string;
+        state: "active" | "closed" | "future";
+        startDate: string | null;
+        endDate: string | null;
+      };
+      movedTo: string | null;
+      movedCount: number;
+    };
+  };
+  TASK_BOARD_SPRINT_DELETE: {
+    input: { id: string };
+    output: { deleted: boolean; movedCount: number };
+  };
   TASK_ADD_REPO: {
-    input: { connectionId?: string | undefined };
+    input: { id?: string | undefined; connectionId?: string | undefined };
     output: {
       success: boolean;
       message: string;
-      repositories?: { connectionId: string; repo: string }[] | undefined;
+      repositories?: { id: string; repo: string }[] | undefined;
       repo?: string | undefined;
       cloned?: boolean | undefined;
       files?: string | undefined;
     };
   };
-  BRAND_CONTEXT_LIST: {
-    input: { includeArchived?: boolean | undefined };
+  generate_image: {
+    input: {
+      prompt: string;
+      referenceImages?: { uri: string }[] | undefined;
+      aspectRatio?:
+        | "1:1"
+        | "16:9"
+        | "9:16"
+        | "4:3"
+        | "3:4"
+        | "3:2"
+        | "2:3"
+        | undefined;
+      n?: number | undefined;
+    };
     output: {
-      items: {
+      success: true;
+      images: { uri: string; mediaType: string }[];
+      prompt: string;
+      model: string;
+      usage: { inputTokens: number; outputTokens: number };
+      usedReferenceImages: number;
+    };
+  };
+  web_search: {
+    input: { query: string };
+    output: {
+      success: true;
+      query: string;
+      usage: { inputTokens: number; outputTokens: number };
+      content?: string | undefined;
+      uri?: string | undefined;
+      preview?: string | undefined;
+      citations?: { url: string; title?: string | undefined }[] | undefined;
+    };
+  };
+  deep_research: {
+    input: { query: string };
+    output: {
+      success: true;
+      query: string;
+      usage: { inputTokens: number; outputTokens: number };
+      content?: string | undefined;
+      uri?: string | undefined;
+      preview?: string | undefined;
+      citations?: { url: string; title?: string | undefined }[] | undefined;
+    };
+  };
+  suggest_task: {
+    input: { title: string; summary: string };
+    output: { shown: true };
+  };
+  preview_navigate: { input: { path: string }; output: { shown: true } };
+  update_interests: {
+    input: { interests: { title: string; summary: string }[] };
+    output: { ok: true; count: number };
+  };
+  TASK_BOARD_ADMIN_ORG_LIST: {
+    input: { [x: string]: never };
+    output: {
+      isTaskBoardAdmin: boolean;
+      orgs: { id: string; slug: string; name: string }[];
+    };
+  };
+  TASK_BOARD_DELIVERY: {
+    input: {
+      org?: string | undefined;
+      from?: string | undefined;
+      to?: string | undefined;
+      project?: string | undefined;
+    };
+    output: {
+      range: { from: string; to: string };
+      org: string;
+      sections: (
+        | {
+            kind: "stat";
+            title: string;
+            values: {
+              label: string;
+              value: number | null;
+              unit?: string | undefined;
+              previous?: number | null | undefined;
+              better?: "up" | "down" | undefined;
+              detail?: string | undefined;
+              drill?: string | undefined;
+            }[];
+          }
+        | {
+            kind: "series";
+            title: string;
+            points: Record<string, string | number | null>[];
+            unit?: string | undefined;
+          }
+        | {
+            kind: "table";
+            title: string;
+            columns: string[];
+            rows: (string | number | null)[][];
+            units?: Record<string, string> | undefined;
+            drills?: (string | null)[] | undefined;
+          }
+        | {
+            kind: "funnel";
+            title: string;
+            stages: {
+              label: string;
+              value: number;
+              drill?: string | undefined;
+            }[];
+          }
+        | {
+            kind: "bars";
+            title: string;
+            bars: {
+              label: string;
+              value: number;
+              detail?: string | undefined;
+              note?: string | undefined;
+              drill?: string | undefined;
+            }[];
+            unit?: string | undefined;
+            total?: { value: number; label: string } | undefined;
+          }
+        | {
+            kind: "breakdown";
+            title: string;
+            metrics: {
+              key: string;
+              label: string;
+              unit?: string | undefined;
+              better?: "up" | "down" | undefined;
+            }[];
+            dimensions: {
+              label: string;
+              rows: {
+                label: string;
+                count: number;
+                values: Record<string, number | null>;
+                drill?: string | undefined;
+              }[];
+            }[];
+          }
+        | {
+            kind: "matrix";
+            title: string;
+            rowLabel: string;
+            colLabel: string;
+            metrics: {
+              key: string;
+              label: string;
+              unit?: string | undefined;
+              better?: "up" | "down" | undefined;
+            }[];
+            rows: string[];
+            cols: string[];
+            cells: {
+              row: string;
+              col: string;
+              count: number;
+              values: Record<string, number | null>;
+              drill?: string | undefined;
+            }[];
+          }
+        | {
+            kind: "categories";
+            title: string;
+            layout: "stacked" | "grouped";
+            keys: string[];
+            categories: {
+              label: string;
+              values: Record<string, number | null>;
+              drill?: string | undefined;
+            }[];
+            unit?: string | undefined;
+            baseline?: string | undefined;
+          }
+      )[];
+    };
+  };
+  TASK_BOARD_OPERATION: {
+    input: {
+      org?: string | undefined;
+      from?: string | undefined;
+      to?: string | undefined;
+      project?: string | undefined;
+    };
+    output: {
+      range: { from: string; to: string };
+      org: string;
+      sections: (
+        | {
+            kind: "stat";
+            title: string;
+            values: {
+              label: string;
+              value: number | null;
+              unit?: string | undefined;
+              previous?: number | null | undefined;
+              better?: "up" | "down" | undefined;
+              detail?: string | undefined;
+              drill?: string | undefined;
+            }[];
+          }
+        | {
+            kind: "series";
+            title: string;
+            points: Record<string, string | number | null>[];
+            unit?: string | undefined;
+          }
+        | {
+            kind: "table";
+            title: string;
+            columns: string[];
+            rows: (string | number | null)[][];
+            units?: Record<string, string> | undefined;
+            drills?: (string | null)[] | undefined;
+          }
+        | {
+            kind: "funnel";
+            title: string;
+            stages: {
+              label: string;
+              value: number;
+              drill?: string | undefined;
+            }[];
+          }
+        | {
+            kind: "bars";
+            title: string;
+            bars: {
+              label: string;
+              value: number;
+              detail?: string | undefined;
+              note?: string | undefined;
+              drill?: string | undefined;
+            }[];
+            unit?: string | undefined;
+            total?: { value: number; label: string } | undefined;
+          }
+        | {
+            kind: "breakdown";
+            title: string;
+            metrics: {
+              key: string;
+              label: string;
+              unit?: string | undefined;
+              better?: "up" | "down" | undefined;
+            }[];
+            dimensions: {
+              label: string;
+              rows: {
+                label: string;
+                count: number;
+                values: Record<string, number | null>;
+                drill?: string | undefined;
+              }[];
+            }[];
+          }
+        | {
+            kind: "matrix";
+            title: string;
+            rowLabel: string;
+            colLabel: string;
+            metrics: {
+              key: string;
+              label: string;
+              unit?: string | undefined;
+              better?: "up" | "down" | undefined;
+            }[];
+            rows: string[];
+            cols: string[];
+            cells: {
+              row: string;
+              col: string;
+              count: number;
+              values: Record<string, number | null>;
+              drill?: string | undefined;
+            }[];
+          }
+        | {
+            kind: "categories";
+            title: string;
+            layout: "stacked" | "grouped";
+            keys: string[];
+            categories: {
+              label: string;
+              values: Record<string, number | null>;
+              drill?: string | undefined;
+            }[];
+            unit?: string | undefined;
+            baseline?: string | undefined;
+          }
+      )[];
+    };
+  };
+  TASK_BOARD_OPERATION_TASKS: {
+    input: {
+      drill: string;
+      org?: string | undefined;
+      from?: string | undefined;
+      to?: string | undefined;
+      project?: string | undefined;
+    };
+    output: {
+      range: { from: string; to: string };
+      org: string;
+      sections: (
+        | {
+            kind: "stat";
+            title: string;
+            values: {
+              label: string;
+              value: number | null;
+              unit?: string | undefined;
+              previous?: number | null | undefined;
+              better?: "up" | "down" | undefined;
+              detail?: string | undefined;
+              drill?: string | undefined;
+            }[];
+          }
+        | {
+            kind: "series";
+            title: string;
+            points: Record<string, string | number | null>[];
+            unit?: string | undefined;
+          }
+        | {
+            kind: "table";
+            title: string;
+            columns: string[];
+            rows: (string | number | null)[][];
+            units?: Record<string, string> | undefined;
+            drills?: (string | null)[] | undefined;
+          }
+        | {
+            kind: "funnel";
+            title: string;
+            stages: {
+              label: string;
+              value: number;
+              drill?: string | undefined;
+            }[];
+          }
+        | {
+            kind: "bars";
+            title: string;
+            bars: {
+              label: string;
+              value: number;
+              detail?: string | undefined;
+              note?: string | undefined;
+              drill?: string | undefined;
+            }[];
+            unit?: string | undefined;
+            total?: { value: number; label: string } | undefined;
+          }
+        | {
+            kind: "breakdown";
+            title: string;
+            metrics: {
+              key: string;
+              label: string;
+              unit?: string | undefined;
+              better?: "up" | "down" | undefined;
+            }[];
+            dimensions: {
+              label: string;
+              rows: {
+                label: string;
+                count: number;
+                values: Record<string, number | null>;
+                drill?: string | undefined;
+              }[];
+            }[];
+          }
+        | {
+            kind: "matrix";
+            title: string;
+            rowLabel: string;
+            colLabel: string;
+            metrics: {
+              key: string;
+              label: string;
+              unit?: string | undefined;
+              better?: "up" | "down" | undefined;
+            }[];
+            rows: string[];
+            cols: string[];
+            cells: {
+              row: string;
+              col: string;
+              count: number;
+              values: Record<string, number | null>;
+              drill?: string | undefined;
+            }[];
+          }
+        | {
+            kind: "categories";
+            title: string;
+            layout: "stacked" | "grouped";
+            keys: string[];
+            categories: {
+              label: string;
+              values: Record<string, number | null>;
+              drill?: string | undefined;
+            }[];
+            unit?: string | undefined;
+            baseline?: string | undefined;
+          }
+      )[];
+    };
+  };
+  TASK_BOARD_REWORK: {
+    input: {
+      org?: string | undefined;
+      from?: string | undefined;
+      to?: string | undefined;
+      project?: string | undefined;
+    };
+    output: {
+      range: { from: string; to: string };
+      org: string;
+      sections: (
+        | {
+            kind: "stat";
+            title: string;
+            values: {
+              label: string;
+              value: number | null;
+              unit?: string | undefined;
+              previous?: number | null | undefined;
+              better?: "up" | "down" | undefined;
+              detail?: string | undefined;
+              drill?: string | undefined;
+            }[];
+          }
+        | {
+            kind: "series";
+            title: string;
+            points: Record<string, string | number | null>[];
+            unit?: string | undefined;
+          }
+        | {
+            kind: "table";
+            title: string;
+            columns: string[];
+            rows: (string | number | null)[][];
+            units?: Record<string, string> | undefined;
+            drills?: (string | null)[] | undefined;
+          }
+        | {
+            kind: "funnel";
+            title: string;
+            stages: {
+              label: string;
+              value: number;
+              drill?: string | undefined;
+            }[];
+          }
+        | {
+            kind: "bars";
+            title: string;
+            bars: {
+              label: string;
+              value: number;
+              detail?: string | undefined;
+              note?: string | undefined;
+              drill?: string | undefined;
+            }[];
+            unit?: string | undefined;
+            total?: { value: number; label: string } | undefined;
+          }
+        | {
+            kind: "breakdown";
+            title: string;
+            metrics: {
+              key: string;
+              label: string;
+              unit?: string | undefined;
+              better?: "up" | "down" | undefined;
+            }[];
+            dimensions: {
+              label: string;
+              rows: {
+                label: string;
+                count: number;
+                values: Record<string, number | null>;
+                drill?: string | undefined;
+              }[];
+            }[];
+          }
+        | {
+            kind: "matrix";
+            title: string;
+            rowLabel: string;
+            colLabel: string;
+            metrics: {
+              key: string;
+              label: string;
+              unit?: string | undefined;
+              better?: "up" | "down" | undefined;
+            }[];
+            rows: string[];
+            cols: string[];
+            cells: {
+              row: string;
+              col: string;
+              count: number;
+              values: Record<string, number | null>;
+              drill?: string | undefined;
+            }[];
+          }
+        | {
+            kind: "categories";
+            title: string;
+            layout: "stacked" | "grouped";
+            keys: string[];
+            categories: {
+              label: string;
+              values: Record<string, number | null>;
+              drill?: string | undefined;
+            }[];
+            unit?: string | undefined;
+            baseline?: string | undefined;
+          }
+      )[];
+    };
+  };
+  TASK_BOARD_SPRINTS: {
+    input: {
+      org?: string | undefined;
+      from?: string | undefined;
+      to?: string | undefined;
+      project?: string | undefined;
+    };
+    output: {
+      range: { from: string; to: string };
+      org: string;
+      sections: (
+        | {
+            kind: "stat";
+            title: string;
+            values: {
+              label: string;
+              value: number | null;
+              unit?: string | undefined;
+              previous?: number | null | undefined;
+              better?: "up" | "down" | undefined;
+              detail?: string | undefined;
+              drill?: string | undefined;
+            }[];
+          }
+        | {
+            kind: "series";
+            title: string;
+            points: Record<string, string | number | null>[];
+            unit?: string | undefined;
+          }
+        | {
+            kind: "table";
+            title: string;
+            columns: string[];
+            rows: (string | number | null)[][];
+            units?: Record<string, string> | undefined;
+            drills?: (string | null)[] | undefined;
+          }
+        | {
+            kind: "funnel";
+            title: string;
+            stages: {
+              label: string;
+              value: number;
+              drill?: string | undefined;
+            }[];
+          }
+        | {
+            kind: "bars";
+            title: string;
+            bars: {
+              label: string;
+              value: number;
+              detail?: string | undefined;
+              note?: string | undefined;
+              drill?: string | undefined;
+            }[];
+            unit?: string | undefined;
+            total?: { value: number; label: string } | undefined;
+          }
+        | {
+            kind: "breakdown";
+            title: string;
+            metrics: {
+              key: string;
+              label: string;
+              unit?: string | undefined;
+              better?: "up" | "down" | undefined;
+            }[];
+            dimensions: {
+              label: string;
+              rows: {
+                label: string;
+                count: number;
+                values: Record<string, number | null>;
+                drill?: string | undefined;
+              }[];
+            }[];
+          }
+        | {
+            kind: "matrix";
+            title: string;
+            rowLabel: string;
+            colLabel: string;
+            metrics: {
+              key: string;
+              label: string;
+              unit?: string | undefined;
+              better?: "up" | "down" | undefined;
+            }[];
+            rows: string[];
+            cols: string[];
+            cells: {
+              row: string;
+              col: string;
+              count: number;
+              values: Record<string, number | null>;
+              drill?: string | undefined;
+            }[];
+          }
+        | {
+            kind: "categories";
+            title: string;
+            layout: "stacked" | "grouped";
+            keys: string[];
+            categories: {
+              label: string;
+              values: Record<string, number | null>;
+              drill?: string | undefined;
+            }[];
+            unit?: string | undefined;
+            baseline?: string | undefined;
+          }
+      )[];
+    };
+  };
+  TASK_BOARD_STUCK: {
+    input: {
+      org?: string | undefined;
+      from?: string | undefined;
+      to?: string | undefined;
+      project?: string | undefined;
+    };
+    output: {
+      range: { from: string; to: string };
+      org: string;
+      sections: (
+        | {
+            kind: "stat";
+            title: string;
+            values: {
+              label: string;
+              value: number | null;
+              unit?: string | undefined;
+              previous?: number | null | undefined;
+              better?: "up" | "down" | undefined;
+              detail?: string | undefined;
+              drill?: string | undefined;
+            }[];
+          }
+        | {
+            kind: "series";
+            title: string;
+            points: Record<string, string | number | null>[];
+            unit?: string | undefined;
+          }
+        | {
+            kind: "table";
+            title: string;
+            columns: string[];
+            rows: (string | number | null)[][];
+            units?: Record<string, string> | undefined;
+            drills?: (string | null)[] | undefined;
+          }
+        | {
+            kind: "funnel";
+            title: string;
+            stages: {
+              label: string;
+              value: number;
+              drill?: string | undefined;
+            }[];
+          }
+        | {
+            kind: "bars";
+            title: string;
+            bars: {
+              label: string;
+              value: number;
+              detail?: string | undefined;
+              note?: string | undefined;
+              drill?: string | undefined;
+            }[];
+            unit?: string | undefined;
+            total?: { value: number; label: string } | undefined;
+          }
+        | {
+            kind: "breakdown";
+            title: string;
+            metrics: {
+              key: string;
+              label: string;
+              unit?: string | undefined;
+              better?: "up" | "down" | undefined;
+            }[];
+            dimensions: {
+              label: string;
+              rows: {
+                label: string;
+                count: number;
+                values: Record<string, number | null>;
+                drill?: string | undefined;
+              }[];
+            }[];
+          }
+        | {
+            kind: "matrix";
+            title: string;
+            rowLabel: string;
+            colLabel: string;
+            metrics: {
+              key: string;
+              label: string;
+              unit?: string | undefined;
+              better?: "up" | "down" | undefined;
+            }[];
+            rows: string[];
+            cols: string[];
+            cells: {
+              row: string;
+              col: string;
+              count: number;
+              values: Record<string, number | null>;
+              drill?: string | undefined;
+            }[];
+          }
+        | {
+            kind: "categories";
+            title: string;
+            layout: "stacked" | "grouped";
+            keys: string[];
+            categories: {
+              label: string;
+              values: Record<string, number | null>;
+              drill?: string | undefined;
+            }[];
+            unit?: string | undefined;
+            baseline?: string | undefined;
+          }
+      )[];
+    };
+  };
+  TASK_BOARD_COST: {
+    input: {
+      org?: string | undefined;
+      from?: string | undefined;
+      to?: string | undefined;
+      project?: string | undefined;
+    };
+    output: {
+      range: { from: string; to: string };
+      org: string;
+      sections: (
+        | {
+            kind: "stat";
+            title: string;
+            values: {
+              label: string;
+              value: number | null;
+              unit?: string | undefined;
+              previous?: number | null | undefined;
+              better?: "up" | "down" | undefined;
+              detail?: string | undefined;
+              drill?: string | undefined;
+            }[];
+          }
+        | {
+            kind: "series";
+            title: string;
+            points: Record<string, string | number | null>[];
+            unit?: string | undefined;
+          }
+        | {
+            kind: "table";
+            title: string;
+            columns: string[];
+            rows: (string | number | null)[][];
+            units?: Record<string, string> | undefined;
+            drills?: (string | null)[] | undefined;
+          }
+        | {
+            kind: "funnel";
+            title: string;
+            stages: {
+              label: string;
+              value: number;
+              drill?: string | undefined;
+            }[];
+          }
+        | {
+            kind: "bars";
+            title: string;
+            bars: {
+              label: string;
+              value: number;
+              detail?: string | undefined;
+              note?: string | undefined;
+              drill?: string | undefined;
+            }[];
+            unit?: string | undefined;
+            total?: { value: number; label: string } | undefined;
+          }
+        | {
+            kind: "breakdown";
+            title: string;
+            metrics: {
+              key: string;
+              label: string;
+              unit?: string | undefined;
+              better?: "up" | "down" | undefined;
+            }[];
+            dimensions: {
+              label: string;
+              rows: {
+                label: string;
+                count: number;
+                values: Record<string, number | null>;
+                drill?: string | undefined;
+              }[];
+            }[];
+          }
+        | {
+            kind: "matrix";
+            title: string;
+            rowLabel: string;
+            colLabel: string;
+            metrics: {
+              key: string;
+              label: string;
+              unit?: string | undefined;
+              better?: "up" | "down" | undefined;
+            }[];
+            rows: string[];
+            cols: string[];
+            cells: {
+              row: string;
+              col: string;
+              count: number;
+              values: Record<string, number | null>;
+              drill?: string | undefined;
+            }[];
+          }
+        | {
+            kind: "categories";
+            title: string;
+            layout: "stacked" | "grouped";
+            keys: string[];
+            categories: {
+              label: string;
+              values: Record<string, number | null>;
+              drill?: string | undefined;
+            }[];
+            unit?: string | undefined;
+            baseline?: string | undefined;
+          }
+      )[];
+    };
+  };
+  TASK_BOARD_QUALITY: {
+    input: {
+      org?: string | undefined;
+      from?: string | undefined;
+      to?: string | undefined;
+      project?: string | undefined;
+    };
+    output: {
+      range: { from: string; to: string };
+      org: string;
+      sections: (
+        | {
+            kind: "stat";
+            title: string;
+            values: {
+              label: string;
+              value: number | null;
+              unit?: string | undefined;
+              previous?: number | null | undefined;
+              better?: "up" | "down" | undefined;
+              detail?: string | undefined;
+              drill?: string | undefined;
+            }[];
+          }
+        | {
+            kind: "series";
+            title: string;
+            points: Record<string, string | number | null>[];
+            unit?: string | undefined;
+          }
+        | {
+            kind: "table";
+            title: string;
+            columns: string[];
+            rows: (string | number | null)[][];
+            units?: Record<string, string> | undefined;
+            drills?: (string | null)[] | undefined;
+          }
+        | {
+            kind: "funnel";
+            title: string;
+            stages: {
+              label: string;
+              value: number;
+              drill?: string | undefined;
+            }[];
+          }
+        | {
+            kind: "bars";
+            title: string;
+            bars: {
+              label: string;
+              value: number;
+              detail?: string | undefined;
+              note?: string | undefined;
+              drill?: string | undefined;
+            }[];
+            unit?: string | undefined;
+            total?: { value: number; label: string } | undefined;
+          }
+        | {
+            kind: "breakdown";
+            title: string;
+            metrics: {
+              key: string;
+              label: string;
+              unit?: string | undefined;
+              better?: "up" | "down" | undefined;
+            }[];
+            dimensions: {
+              label: string;
+              rows: {
+                label: string;
+                count: number;
+                values: Record<string, number | null>;
+                drill?: string | undefined;
+              }[];
+            }[];
+          }
+        | {
+            kind: "matrix";
+            title: string;
+            rowLabel: string;
+            colLabel: string;
+            metrics: {
+              key: string;
+              label: string;
+              unit?: string | undefined;
+              better?: "up" | "down" | undefined;
+            }[];
+            rows: string[];
+            cols: string[];
+            cells: {
+              row: string;
+              col: string;
+              count: number;
+              values: Record<string, number | null>;
+              drill?: string | undefined;
+            }[];
+          }
+        | {
+            kind: "categories";
+            title: string;
+            layout: "stacked" | "grouped";
+            keys: string[];
+            categories: {
+              label: string;
+              values: Record<string, number | null>;
+              drill?: string | undefined;
+            }[];
+            unit?: string | undefined;
+            baseline?: string | undefined;
+          }
+      )[];
+    };
+  };
+  TASK_BOARD_ERRORS: {
+    input: {
+      org?: string | undefined;
+      from?: string | undefined;
+      to?: string | undefined;
+      project?: string | undefined;
+    };
+    output: {
+      range: { from: string; to: string };
+      org: string;
+      sections: (
+        | {
+            kind: "stat";
+            title: string;
+            values: {
+              label: string;
+              value: number | null;
+              unit?: string | undefined;
+              previous?: number | null | undefined;
+              better?: "up" | "down" | undefined;
+              detail?: string | undefined;
+              drill?: string | undefined;
+            }[];
+          }
+        | {
+            kind: "series";
+            title: string;
+            points: Record<string, string | number | null>[];
+            unit?: string | undefined;
+          }
+        | {
+            kind: "table";
+            title: string;
+            columns: string[];
+            rows: (string | number | null)[][];
+            units?: Record<string, string> | undefined;
+            drills?: (string | null)[] | undefined;
+          }
+        | {
+            kind: "funnel";
+            title: string;
+            stages: {
+              label: string;
+              value: number;
+              drill?: string | undefined;
+            }[];
+          }
+        | {
+            kind: "bars";
+            title: string;
+            bars: {
+              label: string;
+              value: number;
+              detail?: string | undefined;
+              note?: string | undefined;
+              drill?: string | undefined;
+            }[];
+            unit?: string | undefined;
+            total?: { value: number; label: string } | undefined;
+          }
+        | {
+            kind: "breakdown";
+            title: string;
+            metrics: {
+              key: string;
+              label: string;
+              unit?: string | undefined;
+              better?: "up" | "down" | undefined;
+            }[];
+            dimensions: {
+              label: string;
+              rows: {
+                label: string;
+                count: number;
+                values: Record<string, number | null>;
+                drill?: string | undefined;
+              }[];
+            }[];
+          }
+        | {
+            kind: "matrix";
+            title: string;
+            rowLabel: string;
+            colLabel: string;
+            metrics: {
+              key: string;
+              label: string;
+              unit?: string | undefined;
+              better?: "up" | "down" | undefined;
+            }[];
+            rows: string[];
+            cols: string[];
+            cells: {
+              row: string;
+              col: string;
+              count: number;
+              values: Record<string, number | null>;
+              drill?: string | undefined;
+            }[];
+          }
+        | {
+            kind: "categories";
+            title: string;
+            layout: "stacked" | "grouped";
+            keys: string[];
+            categories: {
+              label: string;
+              values: Record<string, number | null>;
+              drill?: string | undefined;
+            }[];
+            unit?: string | undefined;
+            baseline?: string | undefined;
+          }
+      )[];
+    };
+  };
+  TASK_BOARD_TENANTS: {
+    input: {
+      org?: string | undefined;
+      from?: string | undefined;
+      to?: string | undefined;
+      project?: string | undefined;
+    };
+    output: {
+      range: { from: string; to: string };
+      org: string;
+      sections: (
+        | {
+            kind: "stat";
+            title: string;
+            values: {
+              label: string;
+              value: number | null;
+              unit?: string | undefined;
+              previous?: number | null | undefined;
+              better?: "up" | "down" | undefined;
+              detail?: string | undefined;
+              drill?: string | undefined;
+            }[];
+          }
+        | {
+            kind: "series";
+            title: string;
+            points: Record<string, string | number | null>[];
+            unit?: string | undefined;
+          }
+        | {
+            kind: "table";
+            title: string;
+            columns: string[];
+            rows: (string | number | null)[][];
+            units?: Record<string, string> | undefined;
+            drills?: (string | null)[] | undefined;
+          }
+        | {
+            kind: "funnel";
+            title: string;
+            stages: {
+              label: string;
+              value: number;
+              drill?: string | undefined;
+            }[];
+          }
+        | {
+            kind: "bars";
+            title: string;
+            bars: {
+              label: string;
+              value: number;
+              detail?: string | undefined;
+              note?: string | undefined;
+              drill?: string | undefined;
+            }[];
+            unit?: string | undefined;
+            total?: { value: number; label: string } | undefined;
+          }
+        | {
+            kind: "breakdown";
+            title: string;
+            metrics: {
+              key: string;
+              label: string;
+              unit?: string | undefined;
+              better?: "up" | "down" | undefined;
+            }[];
+            dimensions: {
+              label: string;
+              rows: {
+                label: string;
+                count: number;
+                values: Record<string, number | null>;
+                drill?: string | undefined;
+              }[];
+            }[];
+          }
+        | {
+            kind: "matrix";
+            title: string;
+            rowLabel: string;
+            colLabel: string;
+            metrics: {
+              key: string;
+              label: string;
+              unit?: string | undefined;
+              better?: "up" | "down" | undefined;
+            }[];
+            rows: string[];
+            cols: string[];
+            cells: {
+              row: string;
+              col: string;
+              count: number;
+              values: Record<string, number | null>;
+              drill?: string | undefined;
+            }[];
+          }
+        | {
+            kind: "categories";
+            title: string;
+            layout: "stacked" | "grouped";
+            keys: string[];
+            categories: {
+              label: string;
+              values: Record<string, number | null>;
+              drill?: string | undefined;
+            }[];
+            unit?: string | undefined;
+            baseline?: string | undefined;
+          }
+      )[];
+    };
+  };
+  BLOG_SITE_GROUND: {
+    input: {
+      purpose: "format" | "link" | "context" | "brand" | "campaign" | "post";
+      virtualMcpId?: string | undefined;
+      focus?: string | undefined;
+      language?: string | undefined;
+    };
+    output: {
+      report: string;
+      outcome: "ok" | "failed" | "no-site" | "no-tools" | "timeout";
+      toolNames: string[];
+      evidence: string;
+      evidenceUri: string | null;
+      evidenceChars: number;
+    };
+  };
+  BLOG_SITE_CATALOGUE: {
+    input: {
+      grounding?:
+        | {
+            report: string;
+            outcome?:
+              | "ok"
+              | "failed"
+              | "no-site"
+              | "no-tools"
+              | "timeout"
+              | undefined;
+            evidence?: string | undefined;
+            evidenceUri?: string | null | undefined;
+          }
+        | undefined;
+      storeUrl?: string | undefined;
+    };
+    output: {
+      products: {
         id: string;
         name: string;
-        domain: string;
-        overview: string;
-        organizationId: string;
-        createdAt: string;
-        updatedAt: string;
-        logo?: string | null | undefined;
-        favicon?: string | null | undefined;
-        ogImage?: string | null | undefined;
-        fonts?:
-          | {
-              heading?: string | undefined;
-              body?: string | undefined;
-              code?: string | undefined;
-            }
-          | null
-          | undefined;
-        colors?:
-          | {
-              primary?: string | undefined;
-              secondary?: string | undefined;
-              accent?: string | undefined;
-              background?: string | undefined;
-              foreground?: string | undefined;
-            }
-          | null
-          | undefined;
-        images?: Record<string, unknown>[] | null | undefined;
-        metadata?: Record<string, unknown> | null | undefined;
-        isDefault?: boolean | undefined;
-        archivedAt?: string | null | undefined;
+        category: string;
+        price: string;
+        slug: string;
+        url: string;
+        images: string[];
+        description: string;
+      }[];
+      targets: {
+        kind: "category" | "collection";
+        id: string;
+        name: string;
+        slug: string;
+        url: string;
+      }[];
+      read: boolean;
+    };
+  };
+  BLOG_BRAND_EXTRACT: {
+    input: {
+      blocks: { key: string; content: string }[];
+      seo?: { key: string; content: string }[] | undefined;
+      virtualMcpId?: string | undefined;
+      grounding?:
+        | {
+            report: string;
+            outcome?:
+              | "ok"
+              | "failed"
+              | "no-site"
+              | "no-tools"
+              | "timeout"
+              | undefined;
+            evidence?: string | undefined;
+            evidenceUri?: string | null | undefined;
+          }
+        | undefined;
+    };
+    output: {
+      values: { name: string; value: string }[];
+      description: string;
+      language: string;
+      storeUrl: string;
+      companyName: string;
+      targetAudience: string;
+      competitors: { name: string; value: string }[];
+      keywords: string[];
+      commercialPolicies: { name: string; value: string }[];
+      sources: string[];
+    };
+  };
+  BLOG_BRAND_ENRICH: {
+    input: {
+      profile: {
+        values: { name: string; value: string }[];
+        description: string;
+        language: string;
+        storeUrl: string;
+        companyName: string;
+        targetAudience: string;
+        competitors: { name: string; value: string }[];
+        keywords: string[];
+        commercialPolicies: { name: string; value: string }[];
+      };
+      blocks: { key: string; content: string }[];
+      seo?: { key: string; content: string }[] | undefined;
+      grounding?:
+        | {
+            report: string;
+            outcome?:
+              | "ok"
+              | "failed"
+              | "no-site"
+              | "no-tools"
+              | "timeout"
+              | undefined;
+            evidence?: string | undefined;
+            evidenceUri?: string | null | undefined;
+          }
+        | undefined;
+    };
+    output: {
+      companyName: string;
+      description: string;
+      language: string;
+      storeUrl: string;
+      targetAudience: string;
+      values: { name: string; value: string }[];
+      competitors: { name: string; value: string }[];
+      keywords: string[];
+      commercialPolicies: { name: string; value: string }[];
+      specialDates: { name: string; value: string }[];
+      researchSources: string[];
+      searched: boolean;
+      discarded: number;
+      judged: boolean;
+    };
+  };
+  BLOG_CONTEXT_EXTRACT: {
+    input: {
+      brand: {
+        companyName?: string | undefined;
+        description?: string | undefined;
+        language?: string | undefined;
+        storeUrl?: string | undefined;
+        targetAudience?: string | undefined;
+        values?: { name: string; value: string }[] | undefined;
+        competitors?: { name: string; value: string }[] | undefined;
+        keywords?: string[] | undefined;
+        commercialPolicies?: { name: string; value: string }[] | undefined;
+        specialDates?: { name: string; value: string }[] | undefined;
+      };
+      blocks: { key: string; content: string }[];
+      seo?: { key: string; content: string }[] | undefined;
+    };
+    output: {
+      tone: string;
+      dos: { name: string; value: string }[];
+      avoid: { name: string; value: string }[];
+      categories: string[];
+      vocabulary: { name: string; value: string }[];
+      voiceExamples: { text: string; sounds: boolean }[];
+      sources: string[];
+      discarded: number;
+      judged: boolean;
+    };
+  };
+  BLOG_FORMAT_SUGGEST: {
+    input: {
+      brand: {
+        companyName?: string | undefined;
+        description?: string | undefined;
+        language?: string | undefined;
+        storeUrl?: string | undefined;
+        targetAudience?: string | undefined;
+        values?: { name: string; value: string }[] | undefined;
+        competitors?: { name: string; value: string }[] | undefined;
+        keywords?: string[] | undefined;
+        commercialPolicies?: { name: string; value: string }[] | undefined;
+        specialDates?: { name: string; value: string }[] | undefined;
+        tone?: string | undefined;
+        dos?: { name: string; value: string }[] | undefined;
+        avoid?: { name: string; value: string }[] | undefined;
+        categories?: string[] | undefined;
+        vocabulary?: { name: string; value: string }[] | undefined;
+        voiceExamples?: { text: string; sounds: boolean }[] | undefined;
+      };
+      sections?:
+        | { name: string; title: string; description?: string | undefined }[]
+        | undefined;
+      postStructures?: { title: string; sections: string[] }[] | undefined;
+      guidance?: string | undefined;
+      count?: number | undefined;
+      virtualMcpId?: string | undefined;
+      grounding?:
+        | {
+            report: string;
+            outcome?:
+              | "ok"
+              | "failed"
+              | "no-site"
+              | "no-tools"
+              | "timeout"
+              | undefined;
+            evidence?: string | undefined;
+            evidenceUri?: string | null | undefined;
+          }
+        | undefined;
+    };
+    output: { formats: { name: string; value: string }[] };
+  };
+  BLOG_POST_DRAFT: {
+    input: {
+      brand: {
+        description?: string | undefined;
+        language?: string | undefined;
+        storeUrl?: string | undefined;
+        companyName?: string | undefined;
+        targetAudience?: string | undefined;
+        tone?: string | undefined;
+        dos?: { name: string; value: string }[] | undefined;
+        avoid?: { name: string; value: string }[] | undefined;
+        vocabulary?: { name: string; value: string }[] | undefined;
+        voiceExamples?: { text: string; sounds: boolean }[] | undefined;
+      };
+      campaign: {
+        name: string;
+        period: { start: string | null; end: string | null };
+        trigger: {
+          type:
+            | "launch"
+            | "seasonal"
+            | "trend"
+            | "seo_gap"
+            | "inventory"
+            | "partnership"
+            | "reputation";
+          note: string;
+        };
+        intent: {
+          objective:
+            | "awareness"
+            | "education"
+            | "conversion"
+            | "retention"
+            | "repositioning";
+          targets?:
+            | { kind: string; name: string; url: string; description: string }[]
+            | undefined;
+          products?:
+            | {
+                id: string;
+                name: string;
+                url: string;
+                category: string;
+                description: string;
+                images?: string[] | undefined;
+              }[]
+            | undefined;
+          keywords?: string[] | undefined;
+        };
+        guardrails: {
+          avoidComplements?: { name: string; value: string }[] | undefined;
+          toneOverrides?: string | undefined;
+        };
+      };
+      format: { name: string; value: string };
+      blocks: {
+        name: string;
+        title: string;
+        description: string;
+        schema: Record<string, unknown>;
+        example?: Record<string, unknown> | undefined;
+      }[];
+      categories?: { name: string; slug: string }[] | undefined;
+      authors?:
+        | { name: string; email: string; bio?: string | undefined }[]
+        | undefined;
+      extraInstructions?: string | undefined;
+      count?: number | undefined;
+      fileConfigId?: string | undefined;
+      virtualMcpId?: string | undefined;
+      grounding?:
+        | {
+            report: string;
+            outcome?:
+              | "ok"
+              | "failed"
+              | "no-site"
+              | "no-tools"
+              | "timeout"
+              | undefined;
+            evidence?: string | undefined;
+            evidenceUri?: string | null | undefined;
+          }
+        | undefined;
+    };
+    output: {
+      posts: {
+        title: string;
+        seo: { title: string; description: string };
+        excerpt: string;
+        categorySlugs: string[];
+        authorEmails: string[];
+        cover: { url: string; alt: string; prompt: string };
+        sections: {
+          type: string;
+          props: Record<string, unknown>;
+          productIds: string[];
+        }[];
+      }[];
+      gaps: {
+        code:
+          | "no-store-data"
+          | "sections-dropped"
+          | "no-bucket"
+          | "no-image-model"
+          | "images-failed"
+          | "drafts-failed";
+        count?: number | undefined;
       }[];
     };
   };
-  BRAND_CONTEXT_GET: {
-    input: { id: string };
-    output: {
-      id: string;
-      name: string;
-      domain: string;
-      overview: string;
-      createdAt: string;
-      updatedAt: string;
-      organizationId: string;
-      logo?: string | null | undefined;
-      favicon?: string | null | undefined;
-      ogImage?: string | null | undefined;
-      fonts?:
-        | {
-            heading?: string | undefined;
-            body?: string | undefined;
-            code?: string | undefined;
-          }
-        | null
-        | undefined;
-      colors?:
-        | {
-            primary?: string | undefined;
-            secondary?: string | undefined;
-            accent?: string | undefined;
-            background?: string | undefined;
-            foreground?: string | undefined;
-          }
-        | null
-        | undefined;
-      images?: Record<string, unknown>[] | null | undefined;
-      metadata?: Record<string, unknown> | null | undefined;
-      isDefault?: boolean | undefined;
-      archivedAt?: string | null | undefined;
-    };
-  };
-  BRAND_CONTEXT_CREATE: {
+  BLOG_POST_ILLUSTRATE: {
     input: {
-      name: string;
-      domain: string;
-      overview: string;
-      metadata?: Record<string, unknown> | null | undefined;
-      logo?: string | null | undefined;
-      favicon?: string | null | undefined;
-      ogImage?: string | null | undefined;
-      fonts?:
-        | {
-            heading?: string | undefined;
-            body?: string | undefined;
-            code?: string | undefined;
-          }
-        | null
-        | undefined;
-      colors?:
-        | {
-            primary?: string | undefined;
-            secondary?: string | undefined;
-            accent?: string | undefined;
-            background?: string | undefined;
-            foreground?: string | undefined;
-          }
-        | null
-        | undefined;
-      images?: Record<string, unknown>[] | null | undefined;
-      archivedAt?: string | null | undefined;
-      isDefault?: boolean | undefined;
+      requests: { id: string; prompt: string; alt?: string | undefined }[];
+      productImages?: string[] | undefined;
+      companyName?: string | undefined;
+      fileConfigId?: string | undefined;
     };
     output: {
-      id: string;
-      name: string;
-      domain: string;
-      overview: string;
-      organizationId: string;
-      createdAt: string;
-      updatedAt: string;
-      logo?: string | null | undefined;
-      favicon?: string | null | undefined;
-      ogImage?: string | null | undefined;
-      fonts?:
-        | {
-            heading?: string | undefined;
-            body?: string | undefined;
-            code?: string | undefined;
-          }
-        | null
-        | undefined;
-      colors?:
-        | {
-            primary?: string | undefined;
-            secondary?: string | undefined;
-            accent?: string | undefined;
-            background?: string | undefined;
-            foreground?: string | undefined;
-          }
-        | null
-        | undefined;
-      images?: Record<string, unknown>[] | null | undefined;
-      metadata?: Record<string, unknown> | null | undefined;
-      archivedAt?: string | null | undefined;
-      isDefault?: boolean | undefined;
+      images: { id: string; url: string }[];
+      outcome: "ok" | "failed" | "no-bucket" | "no-model";
+      referenced: number;
     };
   };
-  BRAND_CONTEXT_UPDATE: {
+  BLOG_LINK_SUGGEST: {
     input: {
-      id: string;
-      name?: string | undefined;
-      domain?: string | undefined;
-      overview?: string | undefined;
-      logo?: string | null | undefined;
-      favicon?: string | null | undefined;
-      ogImage?: string | null | undefined;
-      fonts?:
+      body: string;
+      posts: { title: string; slug: string }[];
+      count?: number | undefined;
+      virtualMcpId?: string | undefined;
+      grounding?:
         | {
-            heading?: string | undefined;
-            body?: string | undefined;
-            code?: string | undefined;
+            report: string;
+            outcome?:
+              | "ok"
+              | "failed"
+              | "no-site"
+              | "no-tools"
+              | "timeout"
+              | undefined;
+            evidence?: string | undefined;
+            evidenceUri?: string | null | undefined;
           }
-        | null
         | undefined;
-      colors?:
-        | {
-            primary?: string | undefined;
-            secondary?: string | undefined;
-            accent?: string | undefined;
-            background?: string | undefined;
-            foreground?: string | undefined;
-          }
-        | null
-        | undefined;
-      images?: Record<string, unknown>[] | null | undefined;
-      metadata?: Record<string, unknown> | null | undefined;
-      archivedAt?: string | null | undefined;
-      isDefault?: boolean | undefined;
     };
-    output: {
-      id: string;
-      name: string;
-      domain: string;
-      overview: string;
-      organizationId: string;
-      createdAt: string;
-      updatedAt: string;
-      logo?: string | null | undefined;
-      favicon?: string | null | undefined;
-      ogImage?: string | null | undefined;
-      fonts?:
-        | {
-            heading?: string | undefined;
-            body?: string | undefined;
-            code?: string | undefined;
-          }
-        | null
-        | undefined;
-      colors?:
-        | {
-            primary?: string | undefined;
-            secondary?: string | undefined;
-            accent?: string | undefined;
-            background?: string | undefined;
-            foreground?: string | undefined;
-          }
-        | null
-        | undefined;
-      images?: Record<string, unknown>[] | null | undefined;
-      metadata?: Record<string, unknown> | null | undefined;
-      archivedAt?: string | null | undefined;
-      isDefault?: boolean | undefined;
-    };
+    output: { suggestions: { quote: string; slug: string }[] };
   };
-  BRAND_CONTEXT_DELETE: { input: { id: string }; output: { success: boolean } };
-  BRAND_CONTEXT_EXTRACT: {
-    input: { domain: string; brandId?: string | undefined };
-    output: {
-      id: string;
-      name: string;
-      domain: string;
-      overview: string;
-      success: boolean;
-      logo?: string | null | undefined;
-      favicon?: string | null | undefined;
-      ogImage?: string | null | undefined;
-      fonts?:
-        | {
-            heading?: string | undefined;
-            body?: string | undefined;
-            code?: string | undefined;
-          }
-        | null
-        | undefined;
-      colors?:
-        | {
-            primary?: string | undefined;
-            secondary?: string | undefined;
-            accent?: string | undefined;
-            background?: string | undefined;
-            foreground?: string | undefined;
-          }
-        | null
-        | undefined;
-    };
-  };
-  BRAND_GET: {
-    input: { id?: string | undefined };
-    output: {
-      id: string;
-      name: string;
-      domain?: string | undefined;
-      colors?:
-        | {
-            primary?: string | undefined;
-            secondary?: string | undefined;
-            accent?: string | undefined;
-            background?: string | undefined;
-            foreground?: string | undefined;
-          }
-        | undefined;
-      fonts?:
-        | {
-            heading?: string | undefined;
-            body?: string | undefined;
-            code?: string | undefined;
-          }
-        | undefined;
-      assets?:
-        | {
-            logo?: string | undefined;
-            favicon?: string | undefined;
-            ogImage?: string | undefined;
-          }
-        | undefined;
-      overview?: string | undefined;
-      tagline?: string | undefined;
-      tone?: string | undefined;
-      metadata?: Record<string, unknown> | undefined;
-    };
-  };
-  BRAND_LIST: {
-    input: { [x: string]: never };
-    output: {
-      items: {
-        id: string;
-        name: string;
-        domain?: string | undefined;
-        colors?:
-          | {
-              primary?: string | undefined;
-              secondary?: string | undefined;
-              accent?: string | undefined;
-              background?: string | undefined;
-              foreground?: string | undefined;
-            }
-          | undefined;
-        fonts?:
-          | {
-              heading?: string | undefined;
-              body?: string | undefined;
-              code?: string | undefined;
-            }
-          | undefined;
-        assets?:
-          | {
-              logo?: string | undefined;
-              favicon?: string | undefined;
-              ogImage?: string | undefined;
-            }
-          | undefined;
-        overview?: string | undefined;
-        tagline?: string | undefined;
+  BLOG_CAMPAIGN_SUGGEST: {
+    input: {
+      seed: { prompt: string; keywords?: string[] | undefined };
+      brand: {
+        companyName?: string | undefined;
+        description?: string | undefined;
+        language?: string | undefined;
+        storeUrl?: string | undefined;
+        targetAudience?: string | undefined;
+        values?: { name: string; value: string }[] | undefined;
+        competitors?: { name: string; value: string }[] | undefined;
+        keywords?: string[] | undefined;
+        commercialPolicies?: { name: string; value: string }[] | undefined;
+        specialDates?: { name: string; value: string }[] | undefined;
         tone?: string | undefined;
-        metadata?: Record<string, unknown> | undefined;
+        dos?: { name: string; value: string }[] | undefined;
+        avoid?: { name: string; value: string }[] | undefined;
+        categories?: string[] | undefined;
+        vocabulary?: { name: string; value: string }[] | undefined;
+        voiceExamples?: { text: string; sounds: boolean }[] | undefined;
+      };
+      existingNames?: string[] | undefined;
+      count?: number | undefined;
+      virtualMcpId?: string | undefined;
+      grounding?:
+        | {
+            report: string;
+            outcome?:
+              | "ok"
+              | "failed"
+              | "no-site"
+              | "no-tools"
+              | "timeout"
+              | undefined;
+            evidence?: string | undefined;
+            evidenceUri?: string | null | undefined;
+          }
+        | undefined;
+      catalogue?:
+        | {
+            products: {
+              id: string;
+              name: string;
+              category: string;
+              price: string;
+              slug: string;
+              url: string;
+              images: string[];
+              description: string;
+            }[];
+            targets: {
+              kind: "category" | "collection";
+              id: string;
+              name: string;
+              slug: string;
+              url: string;
+            }[];
+          }
+        | undefined;
+    };
+    output: {
+      campaigns: {
+        name: string;
+        period: { start: string | null; end: string | null };
+        trigger: {
+          type:
+            | "launch"
+            | "seasonal"
+            | "trend"
+            | "seo_gap"
+            | "inventory"
+            | "partnership"
+            | "reputation";
+          note: string;
+        };
+        intent: {
+          objective:
+            | "awareness"
+            | "education"
+            | "conversion"
+            | "retention"
+            | "repositioning";
+          targets: {
+            kind: "category" | "collection";
+            id: string;
+            name: string;
+            url: string;
+            description: string;
+          }[];
+          products: {
+            id: string;
+            name: string;
+            url: string;
+            images: string[];
+            category: string;
+            description: string;
+          }[];
+          keywords: string[];
+        };
+        guardrails: {
+          avoidComplements: { name: string; value: string }[];
+          toneOverrides: string;
+        };
+        review: {
+          verdict: "strong" | "workable" | "weak";
+          rationale: string;
+          risks: string[];
+        };
+      }[];
+      grounded: boolean;
+      toolsUsed: string[];
+      gaps: {
+        code:
+          | "failed"
+          | "no-site"
+          | "no-tools"
+          | "timeout-partial"
+          | "timeout-empty"
+          | "nothing-useful"
+          | "targets-dropped"
+          | "products-dropped";
+        count?: number | undefined;
       }[];
     };
   };
@@ -1255,8 +2788,19 @@ export interface StudioToolIO {
     };
   };
   ORGANIZATION_BILLING_CHECKOUT_START: {
-    input: { [x: string]: never };
+    input: { planId?: string | undefined };
     output: { url: string };
+  };
+  ORGANIZATION_BILLING_PLAN_PRICES: {
+    input: { [x: string]: never };
+    output: {
+      prices: {
+        planId: string;
+        amountCents: number;
+        currency: string;
+        interval: string | null;
+      }[];
+    };
   };
   ORGANIZATION_BILLING_PORTAL: {
     input: { [x: string]: never };
@@ -1292,26 +2836,26 @@ export interface StudioToolIO {
       }[];
       pageviewsAvailable: boolean;
       usageUnavailable: boolean;
-      billingUnavailableReason:
-        | "no_team"
-        | "multiple_teams"
-        | "partial_team"
-        | "unavailable"
-        | null;
-      billing: {
-        planType: "free" | "pro" | "enterprise";
-        nextBillingDate: string | null;
-        canManageSubscription: boolean;
-        invoices: {
-          id: string;
-          status: string;
-          dueDate: string | null;
-          value: number;
-          referenceMonth: string | null;
-          nfUrl: string | null;
-          bankSlipUrl: string | null;
-        }[];
-      } | null;
+      teams: {
+        siteSlugs: string[];
+        billing: {
+          planType: "free" | "pro" | "enterprise";
+          nextBillingDate: string | null;
+          canManageSubscription: boolean;
+          invoices: {
+            id: string;
+            status: string;
+            dueDate: string | null;
+            value: number;
+            referenceMonth: string | null;
+            nfUrl: string | null;
+            bankSlipUrl: string | null;
+          }[];
+        } | null;
+        unavailableReason: "partial_team" | "unavailable" | null;
+      }[];
+      siteSlugsWithoutTeam: string[];
+      billingUnavailable: boolean;
     };
   };
   INFRA_BILLING_PORTAL: {
@@ -1329,6 +2873,7 @@ export interface StudioToolIO {
         slug?: string | null | undefined;
         app_name?: string | null | undefined;
         app_id?: string | null | undefined;
+        url_slug?: string | null | undefined;
         connection_url?: string | null | undefined;
         connection_token?: string | null | undefined;
         connection_headers?:
@@ -1445,6 +2990,7 @@ export interface StudioToolIO {
         status: "error" | "active" | "inactive";
         updated_by?: string | undefined;
         slug?: string | null | undefined;
+        url_slug?: string | null | undefined;
         configuration_scopes?: string[] | null | undefined;
       };
     };
@@ -1556,6 +3102,7 @@ export interface StudioToolIO {
         status: "error" | "active" | "inactive";
         updated_by?: string | undefined;
         slug?: string | null | undefined;
+        url_slug?: string | null | undefined;
         configuration_scopes?: string[] | null | undefined;
       }[];
       totalCount?: number | undefined;
@@ -1651,6 +3198,7 @@ export interface StudioToolIO {
         status: "error" | "active" | "inactive";
         updated_by?: string | undefined;
         slug?: string | null | undefined;
+        url_slug?: string | null | undefined;
         configuration_scopes?: string[] | null | undefined;
       } | null;
     };
@@ -1756,6 +3304,7 @@ export interface StudioToolIO {
           | undefined;
         bindings?: string[] | null | undefined;
         status?: "error" | "active" | "inactive" | undefined;
+        url_slug?: string | null | undefined;
       };
     };
     output: {
@@ -1845,6 +3394,7 @@ export interface StudioToolIO {
         status: "error" | "active" | "inactive";
         updated_by?: string | undefined;
         slug?: string | null | undefined;
+        url_slug?: string | null | undefined;
         configuration_scopes?: string[] | null | undefined;
       };
     };
@@ -1938,6 +3488,7 @@ export interface StudioToolIO {
         status: "error" | "active" | "inactive";
         updated_by?: string | undefined;
         slug?: string | null | undefined;
+        url_slug?: string | null | undefined;
         configuration_scopes?: string[] | null | undefined;
       };
     };
@@ -1946,7 +3497,34 @@ export interface StudioToolIO {
     input: { id: string };
     output: { id: string; healthy: boolean; latencyMs: number };
   };
-  COMMERCE_DISCOVERY_SETUP: {
+  CONNECTION_TOOLS_SEARCH: {
+    input: {
+      query: string;
+      limit?: number | undefined;
+      withSchema?: boolean | undefined;
+    };
+    output: {
+      tools: {
+        name: string;
+        description: string;
+        connections: { id: string; title: string }[];
+        inputSchema?: unknown;
+      }[];
+    };
+  };
+  CONNECTION_TOOL_CALL: {
+    input: {
+      connectionId: string;
+      toolName: string;
+      arguments?: Record<string, unknown> | undefined;
+    };
+    output: {
+      content: unknown[];
+      structuredContent?: unknown;
+      isError?: boolean | undefined;
+    };
+  };
+  REPORTS_SETUP: {
     input: { siteUrl: string };
     output: {
       connection: {
@@ -2035,6 +3613,7 @@ export interface StudioToolIO {
         status: "error" | "active" | "inactive";
         updated_by?: string | undefined;
         slug?: string | null | undefined;
+        url_slug?: string | null | undefined;
         configuration_scopes?: string[] | null | undefined;
       };
       virtualMcp: {
@@ -2051,7 +3630,6 @@ export interface StudioToolIO {
         metadata: {
           [x: string]: unknown;
           instructions: string | null;
-          enabled_plugins?: string[] | null | undefined;
           subAgents?: string[] | null | undefined;
           liveAgentId?: string | null | undefined;
           ui?:
@@ -2081,19 +3659,21 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "manual" | "off" | "auto" | "on" | null | undefined;
+                      cms?: "off" | "manual" | "on" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
-                            | "automations"
                             | "overview"
-                            | "assets"
                             | "reports"
                             | "board"
                             | "site-editor"
+                            | "assets"
+                            | "releases"
                             | "hosting"
                             | "e2e"
                             | "analytics"
                             | "cdn"
+                            | "automations"
+                            | "experiments"
                           )[]
                         | null
                         | undefined;
@@ -2142,27 +3722,30 @@ export interface StudioToolIO {
             | undefined;
           sidebarViews?:
             | (
-                | "automations"
                 | "overview"
-                | "assets"
                 | "reports"
                 | "board"
                 | "site-editor"
+                | "assets"
+                | "releases"
                 | "hosting"
                 | "e2e"
                 | "analytics"
                 | "cdn"
+                | "automations"
+                | "experiments"
               )[]
             | null
             | undefined;
           sidebarViewsVersion?: 1 | undefined;
-          githubRepo?:
+          repository?:
             | {
                 url: string;
                 owner: string;
                 name: string;
                 installationId?: number | undefined;
                 connectionId?: string | undefined;
+                repositoryId?: string | undefined;
               }
             | null
             | undefined;
@@ -2176,10 +3759,6 @@ export interface StudioToolIO {
                       | { key: string; kind: "literal"; value: string }
                       | { key: string; kind: "secret"; secretId: string }
                     )[]
-                  | null
-                  | undefined;
-                submoduleCredentials?:
-                  | { host: string; secretId: string }[]
                   | null
                   | undefined;
               }
@@ -2215,7 +3794,6 @@ export interface StudioToolIO {
               }[]
             | null
             | undefined;
-          draftsMode?: boolean | null | undefined;
           fastPreviewInPlace?: boolean | null | undefined;
           sandboxMap?:
             | Record<
@@ -2250,6 +3828,7 @@ export interface StudioToolIO {
           selected_resources: string[] | null;
           selected_prompts: string[] | null;
         }[];
+        url_slug?: string | null | undefined;
         updated_by?: string | undefined;
       };
       reportApp: {
@@ -2260,17 +3839,17 @@ export interface StudioToolIO {
       created: { connection: boolean; virtualMcp: boolean };
     };
   };
-  COMMERCE_DISCOVERY_RUN: {
+  REPORTS_RUN: {
     input: { siteUrl: string };
     output: { triggered: boolean; reason?: string | undefined };
   };
-  COMMERCE_DISCOVERY_BIND: {
+  REPORTS_BIND: {
     input: { siteUrl: string; provider: "ga4" | "gsc"; resourceId: string };
     output:
       | { ok: true; resourceId: string; evidence: string }
       | { ok: false; reason: string; detail: string };
   };
-  COMMERCE_DISCOVERY_CONNECTION_STATUS: {
+  REPORTS_CONNECTION_STATUS: {
     input: { siteUrl: string };
     output: {
       providers: Record<
@@ -2282,6 +3861,19 @@ export interface StudioToolIO {
         }
       >;
       claimed: boolean;
+    };
+  };
+  REPORTS_SET_REPOSITORY: {
+    input: { repositoryId: string | null };
+    output: {
+      repository: {
+        repositoryId: string;
+        provider: "github" | "gitlab" | "bitbucket";
+        host: string;
+        path: string;
+        defaultBranch?: string | null | undefined;
+        webUrl?: string | null | undefined;
+      } | null;
     };
   };
   COLLECTION_VIRTUAL_MCP_CREATE: {
@@ -2332,24 +3924,26 @@ export interface StudioToolIO {
                           chatDefaultOpen?: boolean | null | undefined;
                           cmsDefaultOpen?: boolean | null | undefined;
                           cms?:
-                            | "manual"
                             | "off"
-                            | "auto"
+                            | "manual"
                             | "on"
+                            | "auto"
                             | null
                             | undefined;
                           sidebarViews?:
                             | (
-                                | "automations"
                                 | "overview"
-                                | "assets"
                                 | "reports"
                                 | "board"
                                 | "site-editor"
+                                | "assets"
+                                | "releases"
                                 | "hosting"
                                 | "e2e"
                                 | "analytics"
                                 | "cdn"
+                                | "automations"
+                                | "experiments"
                               )[]
                             | null
                             | undefined;
@@ -2398,27 +3992,30 @@ export interface StudioToolIO {
                 | undefined;
               sidebarViews?:
                 | (
-                    | "automations"
                     | "overview"
-                    | "assets"
                     | "reports"
                     | "board"
                     | "site-editor"
+                    | "assets"
+                    | "releases"
                     | "hosting"
                     | "e2e"
                     | "analytics"
                     | "cdn"
+                    | "automations"
+                    | "experiments"
                   )[]
                 | null
                 | undefined;
               sidebarViewsVersion?: 1 | undefined;
-              githubRepo?:
+              repository?:
                 | {
                     url: string;
                     owner: string;
                     name: string;
                     installationId?: number | undefined;
                     connectionId?: string | undefined;
+                    repositoryId?: string | undefined;
                   }
                 | null
                 | undefined;
@@ -2432,10 +4029,6 @@ export interface StudioToolIO {
                           | { key: string; kind: "literal"; value: string }
                           | { key: string; kind: "secret"; secretId: string }
                         )[]
-                      | null
-                      | undefined;
-                    submoduleCredentials?:
-                      | { host: string; secretId: string }[]
                       | null
                       | undefined;
                   }
@@ -2476,9 +4069,7 @@ export interface StudioToolIO {
                   }[]
                 | null
                 | undefined;
-              draftsMode?: boolean | null | undefined;
               fastPreviewInPlace?: boolean | null | undefined;
-              enabled_plugins?: string[] | null | undefined;
             }
           | null
           | undefined;
@@ -2502,7 +4093,6 @@ export interface StudioToolIO {
         metadata: {
           [x: string]: unknown;
           instructions: string | null;
-          enabled_plugins?: string[] | null | undefined;
           subAgents?: string[] | null | undefined;
           liveAgentId?: string | null | undefined;
           ui?:
@@ -2532,19 +4122,21 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "manual" | "off" | "auto" | "on" | null | undefined;
+                      cms?: "off" | "manual" | "on" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
-                            | "automations"
                             | "overview"
-                            | "assets"
                             | "reports"
                             | "board"
                             | "site-editor"
+                            | "assets"
+                            | "releases"
                             | "hosting"
                             | "e2e"
                             | "analytics"
                             | "cdn"
+                            | "automations"
+                            | "experiments"
                           )[]
                         | null
                         | undefined;
@@ -2593,27 +4185,30 @@ export interface StudioToolIO {
             | undefined;
           sidebarViews?:
             | (
-                | "automations"
                 | "overview"
-                | "assets"
                 | "reports"
                 | "board"
                 | "site-editor"
+                | "assets"
+                | "releases"
                 | "hosting"
                 | "e2e"
                 | "analytics"
                 | "cdn"
+                | "automations"
+                | "experiments"
               )[]
             | null
             | undefined;
           sidebarViewsVersion?: 1 | undefined;
-          githubRepo?:
+          repository?:
             | {
                 url: string;
                 owner: string;
                 name: string;
                 installationId?: number | undefined;
                 connectionId?: string | undefined;
+                repositoryId?: string | undefined;
               }
             | null
             | undefined;
@@ -2627,10 +4222,6 @@ export interface StudioToolIO {
                       | { key: string; kind: "literal"; value: string }
                       | { key: string; kind: "secret"; secretId: string }
                     )[]
-                  | null
-                  | undefined;
-                submoduleCredentials?:
-                  | { host: string; secretId: string }[]
                   | null
                   | undefined;
               }
@@ -2666,7 +4257,6 @@ export interface StudioToolIO {
               }[]
             | null
             | undefined;
-          draftsMode?: boolean | null | undefined;
           fastPreviewInPlace?: boolean | null | undefined;
           sandboxMap?:
             | Record<
@@ -2701,6 +4291,7 @@ export interface StudioToolIO {
           selected_resources: string[] | null;
           selected_prompts: string[] | null;
         }[];
+        url_slug?: string | null | undefined;
         updated_by?: string | undefined;
       };
     };
@@ -2733,7 +4324,6 @@ export interface StudioToolIO {
         metadata: {
           [x: string]: unknown;
           instructions: string | null;
-          enabled_plugins?: string[] | null | undefined;
           subAgents?: string[] | null | undefined;
           liveAgentId?: string | null | undefined;
           ui?:
@@ -2763,19 +4353,21 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "manual" | "off" | "auto" | "on" | null | undefined;
+                      cms?: "off" | "manual" | "on" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
-                            | "automations"
                             | "overview"
-                            | "assets"
                             | "reports"
                             | "board"
                             | "site-editor"
+                            | "assets"
+                            | "releases"
                             | "hosting"
                             | "e2e"
                             | "analytics"
                             | "cdn"
+                            | "automations"
+                            | "experiments"
                           )[]
                         | null
                         | undefined;
@@ -2824,27 +4416,30 @@ export interface StudioToolIO {
             | undefined;
           sidebarViews?:
             | (
-                | "automations"
                 | "overview"
-                | "assets"
                 | "reports"
                 | "board"
                 | "site-editor"
+                | "assets"
+                | "releases"
                 | "hosting"
                 | "e2e"
                 | "analytics"
                 | "cdn"
+                | "automations"
+                | "experiments"
               )[]
             | null
             | undefined;
           sidebarViewsVersion?: 1 | undefined;
-          githubRepo?:
+          repository?:
             | {
                 url: string;
                 owner: string;
                 name: string;
                 installationId?: number | undefined;
                 connectionId?: string | undefined;
+                repositoryId?: string | undefined;
               }
             | null
             | undefined;
@@ -2858,10 +4453,6 @@ export interface StudioToolIO {
                       | { key: string; kind: "literal"; value: string }
                       | { key: string; kind: "secret"; secretId: string }
                     )[]
-                  | null
-                  | undefined;
-                submoduleCredentials?:
-                  | { host: string; secretId: string }[]
                   | null
                   | undefined;
               }
@@ -2897,7 +4488,6 @@ export interface StudioToolIO {
               }[]
             | null
             | undefined;
-          draftsMode?: boolean | null | undefined;
           fastPreviewInPlace?: boolean | null | undefined;
           sandboxMap?:
             | Record<
@@ -2932,6 +4522,7 @@ export interface StudioToolIO {
           selected_resources: string[] | null;
           selected_prompts: string[] | null;
         }[];
+        url_slug?: string | null | undefined;
         updated_by?: string | undefined;
       }[];
       totalCount?: number | undefined;
@@ -2955,7 +4546,6 @@ export interface StudioToolIO {
         metadata: {
           [x: string]: unknown;
           instructions: string | null;
-          enabled_plugins?: string[] | null | undefined;
           subAgents?: string[] | null | undefined;
           liveAgentId?: string | null | undefined;
           ui?:
@@ -2985,19 +4575,21 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "manual" | "off" | "auto" | "on" | null | undefined;
+                      cms?: "off" | "manual" | "on" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
-                            | "automations"
                             | "overview"
-                            | "assets"
                             | "reports"
                             | "board"
                             | "site-editor"
+                            | "assets"
+                            | "releases"
                             | "hosting"
                             | "e2e"
                             | "analytics"
                             | "cdn"
+                            | "automations"
+                            | "experiments"
                           )[]
                         | null
                         | undefined;
@@ -3046,27 +4638,30 @@ export interface StudioToolIO {
             | undefined;
           sidebarViews?:
             | (
-                | "automations"
                 | "overview"
-                | "assets"
                 | "reports"
                 | "board"
                 | "site-editor"
+                | "assets"
+                | "releases"
                 | "hosting"
                 | "e2e"
                 | "analytics"
                 | "cdn"
+                | "automations"
+                | "experiments"
               )[]
             | null
             | undefined;
           sidebarViewsVersion?: 1 | undefined;
-          githubRepo?:
+          repository?:
             | {
                 url: string;
                 owner: string;
                 name: string;
                 installationId?: number | undefined;
                 connectionId?: string | undefined;
+                repositoryId?: string | undefined;
               }
             | null
             | undefined;
@@ -3080,10 +4675,6 @@ export interface StudioToolIO {
                       | { key: string; kind: "literal"; value: string }
                       | { key: string; kind: "secret"; secretId: string }
                     )[]
-                  | null
-                  | undefined;
-                submoduleCredentials?:
-                  | { host: string; secretId: string }[]
                   | null
                   | undefined;
               }
@@ -3119,7 +4710,6 @@ export interface StudioToolIO {
               }[]
             | null
             | undefined;
-          draftsMode?: boolean | null | undefined;
           fastPreviewInPlace?: boolean | null | undefined;
           sandboxMap?:
             | Record<
@@ -3154,6 +4744,7 @@ export interface StudioToolIO {
           selected_resources: string[] | null;
           selected_prompts: string[] | null;
         }[];
+        url_slug?: string | null | undefined;
         updated_by?: string | undefined;
       } | null;
     };
@@ -3163,6 +4754,7 @@ export interface StudioToolIO {
       id: string;
       data: {
         title?: string | undefined;
+        url_slug?: string | null | undefined;
         description?: string | null | undefined;
         icon?: string | null | undefined;
         status?: "active" | "inactive" | undefined;
@@ -3201,24 +4793,26 @@ export interface StudioToolIO {
                           chatDefaultOpen?: boolean | null | undefined;
                           cmsDefaultOpen?: boolean | null | undefined;
                           cms?:
-                            | "manual"
                             | "off"
-                            | "auto"
+                            | "manual"
                             | "on"
+                            | "auto"
                             | null
                             | undefined;
                           sidebarViews?:
                             | (
-                                | "automations"
                                 | "overview"
-                                | "assets"
                                 | "reports"
                                 | "board"
                                 | "site-editor"
+                                | "assets"
+                                | "releases"
                                 | "hosting"
                                 | "e2e"
                                 | "analytics"
                                 | "cdn"
+                                | "automations"
+                                | "experiments"
                               )[]
                             | null
                             | undefined;
@@ -3267,27 +4861,30 @@ export interface StudioToolIO {
                 | undefined;
               sidebarViews?:
                 | (
-                    | "automations"
                     | "overview"
-                    | "assets"
                     | "reports"
                     | "board"
                     | "site-editor"
+                    | "assets"
+                    | "releases"
                     | "hosting"
                     | "e2e"
                     | "analytics"
                     | "cdn"
+                    | "automations"
+                    | "experiments"
                   )[]
                 | null
                 | undefined;
               sidebarViewsVersion?: 1 | undefined;
-              githubRepo?:
+              repository?:
                 | {
                     url: string;
                     owner: string;
                     name: string;
                     installationId?: number | undefined;
                     connectionId?: string | undefined;
+                    repositoryId?: string | undefined;
                   }
                 | null
                 | undefined;
@@ -3301,10 +4898,6 @@ export interface StudioToolIO {
                           | { key: string; kind: "literal"; value: string }
                           | { key: string; kind: "secret"; secretId: string }
                         )[]
-                      | null
-                      | undefined;
-                    submoduleCredentials?:
-                      | { host: string; secretId: string }[]
                       | null
                       | undefined;
                   }
@@ -3345,9 +4938,7 @@ export interface StudioToolIO {
                   }[]
                 | null
                 | undefined;
-              draftsMode?: boolean | null | undefined;
               fastPreviewInPlace?: boolean | null | undefined;
-              enabled_plugins?: string[] | null | undefined;
             }
           | null
           | undefined;
@@ -3379,7 +4970,6 @@ export interface StudioToolIO {
         metadata: {
           [x: string]: unknown;
           instructions: string | null;
-          enabled_plugins?: string[] | null | undefined;
           subAgents?: string[] | null | undefined;
           liveAgentId?: string | null | undefined;
           ui?:
@@ -3409,19 +4999,21 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "manual" | "off" | "auto" | "on" | null | undefined;
+                      cms?: "off" | "manual" | "on" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
-                            | "automations"
                             | "overview"
-                            | "assets"
                             | "reports"
                             | "board"
                             | "site-editor"
+                            | "assets"
+                            | "releases"
                             | "hosting"
                             | "e2e"
                             | "analytics"
                             | "cdn"
+                            | "automations"
+                            | "experiments"
                           )[]
                         | null
                         | undefined;
@@ -3470,27 +5062,30 @@ export interface StudioToolIO {
             | undefined;
           sidebarViews?:
             | (
-                | "automations"
                 | "overview"
-                | "assets"
                 | "reports"
                 | "board"
                 | "site-editor"
+                | "assets"
+                | "releases"
                 | "hosting"
                 | "e2e"
                 | "analytics"
                 | "cdn"
+                | "automations"
+                | "experiments"
               )[]
             | null
             | undefined;
           sidebarViewsVersion?: 1 | undefined;
-          githubRepo?:
+          repository?:
             | {
                 url: string;
                 owner: string;
                 name: string;
                 installationId?: number | undefined;
                 connectionId?: string | undefined;
+                repositoryId?: string | undefined;
               }
             | null
             | undefined;
@@ -3504,10 +5099,6 @@ export interface StudioToolIO {
                       | { key: string; kind: "literal"; value: string }
                       | { key: string; kind: "secret"; secretId: string }
                     )[]
-                  | null
-                  | undefined;
-                submoduleCredentials?:
-                  | { host: string; secretId: string }[]
                   | null
                   | undefined;
               }
@@ -3543,7 +5134,6 @@ export interface StudioToolIO {
               }[]
             | null
             | undefined;
-          draftsMode?: boolean | null | undefined;
           fastPreviewInPlace?: boolean | null | undefined;
           sandboxMap?:
             | Record<
@@ -3578,6 +5168,7 @@ export interface StudioToolIO {
           selected_resources: string[] | null;
           selected_prompts: string[] | null;
         }[];
+        url_slug?: string | null | undefined;
         updated_by?: string | undefined;
       };
     };
@@ -3599,7 +5190,6 @@ export interface StudioToolIO {
         metadata: {
           [x: string]: unknown;
           instructions: string | null;
-          enabled_plugins?: string[] | null | undefined;
           subAgents?: string[] | null | undefined;
           liveAgentId?: string | null | undefined;
           ui?:
@@ -3629,19 +5219,21 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "manual" | "off" | "auto" | "on" | null | undefined;
+                      cms?: "off" | "manual" | "on" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
-                            | "automations"
                             | "overview"
-                            | "assets"
                             | "reports"
                             | "board"
                             | "site-editor"
+                            | "assets"
+                            | "releases"
                             | "hosting"
                             | "e2e"
                             | "analytics"
                             | "cdn"
+                            | "automations"
+                            | "experiments"
                           )[]
                         | null
                         | undefined;
@@ -3690,27 +5282,30 @@ export interface StudioToolIO {
             | undefined;
           sidebarViews?:
             | (
-                | "automations"
                 | "overview"
-                | "assets"
                 | "reports"
                 | "board"
                 | "site-editor"
+                | "assets"
+                | "releases"
                 | "hosting"
                 | "e2e"
                 | "analytics"
                 | "cdn"
+                | "automations"
+                | "experiments"
               )[]
             | null
             | undefined;
           sidebarViewsVersion?: 1 | undefined;
-          githubRepo?:
+          repository?:
             | {
                 url: string;
                 owner: string;
                 name: string;
                 installationId?: number | undefined;
                 connectionId?: string | undefined;
+                repositoryId?: string | undefined;
               }
             | null
             | undefined;
@@ -3724,10 +5319,6 @@ export interface StudioToolIO {
                       | { key: string; kind: "literal"; value: string }
                       | { key: string; kind: "secret"; secretId: string }
                     )[]
-                  | null
-                  | undefined;
-                submoduleCredentials?:
-                  | { host: string; secretId: string }[]
                   | null
                   | undefined;
               }
@@ -3763,7 +5354,6 @@ export interface StudioToolIO {
               }[]
             | null
             | undefined;
-          draftsMode?: boolean | null | undefined;
           fastPreviewInPlace?: boolean | null | undefined;
           sandboxMap?:
             | Record<
@@ -3798,6 +5388,7 @@ export interface StudioToolIO {
           selected_resources: string[] | null;
           selected_prompts: string[] | null;
         }[];
+        url_slug?: string | null | undefined;
         updated_by?: string | undefined;
       };
     };
@@ -4092,6 +5683,37 @@ export interface StudioToolIO {
       };
     };
   };
+  SIDEBAR_GET: {
+    input: { [x: string]: never };
+    output: {
+      folders: { id: string; name: string; projectIds: string[] }[];
+      preferences: {
+        pinned: string[];
+        hidden: string[];
+        dismissed: string[];
+        hiddenFolders: string[];
+      };
+      joinedAt: string | null;
+    };
+  };
+  PROJECT_FOLDERS_SET: {
+    input: { folders: { id: string; name: string; projectIds: string[] }[] };
+    output: { folders: { id: string; name: string; projectIds: string[] }[] };
+  };
+  SIDEBAR_PREFERENCES_SET: {
+    input: {
+      pinned: string[];
+      hidden: string[];
+      dismissed: string[];
+      hiddenFolders: string[];
+    };
+    output: {
+      pinned: string[];
+      hidden: string[];
+      dismissed: string[];
+      hiddenFolders: string[];
+    };
+  };
   COLLECTION_THREADS_CREATE: {
     input: {
       data: {
@@ -4139,6 +5761,8 @@ export interface StudioToolIO {
               runtime?: "cms" | "sandbox" | undefined;
               source?: "jira" | undefined;
               jira_issue_key?: string | undefined;
+              jira_issue_keys?: string[] | undefined;
+              jira_created_issue_keys?: string[] | undefined;
             }
           | undefined;
         run_config?: Record<string, unknown> | null | undefined;
@@ -4209,6 +5833,8 @@ export interface StudioToolIO {
               runtime?: "cms" | "sandbox" | undefined;
               source?: "jira" | undefined;
               jira_issue_key?: string | undefined;
+              jira_issue_keys?: string[] | undefined;
+              jira_created_issue_keys?: string[] | undefined;
             }
           | undefined;
         run_config?: Record<string, unknown> | null | undefined;
@@ -4255,6 +5881,8 @@ export interface StudioToolIO {
               runtime?: "cms" | "sandbox" | undefined;
               source?: "jira" | undefined;
               jira_issue_key?: string | undefined;
+              jira_issue_keys?: string[] | undefined;
+              jira_created_issue_keys?: string[] | undefined;
             }
           | undefined;
         run_config?: Record<string, unknown> | null | undefined;
@@ -4289,6 +5917,8 @@ export interface StudioToolIO {
               runtime?: "cms" | "sandbox" | undefined;
               source?: "jira" | undefined;
               jira_issue_key?: string | undefined;
+              jira_issue_keys?: string[] | undefined;
+              jira_created_issue_keys?: string[] | undefined;
             }
           | undefined;
         branch?: string | null | undefined;
@@ -4331,6 +5961,8 @@ export interface StudioToolIO {
               runtime?: "cms" | "sandbox" | undefined;
               source?: "jira" | undefined;
               jira_issue_key?: string | undefined;
+              jira_issue_keys?: string[] | undefined;
+              jira_created_issue_keys?: string[] | undefined;
             }
           | undefined;
         run_config?: Record<string, unknown> | null | undefined;
@@ -4375,6 +6007,8 @@ export interface StudioToolIO {
               runtime?: "cms" | "sandbox" | undefined;
               source?: "jira" | undefined;
               jira_issue_key?: string | undefined;
+              jira_issue_keys?: string[] | undefined;
+              jira_created_issue_keys?: string[] | undefined;
             }
           | undefined;
         run_config?: Record<string, unknown> | null | undefined;
@@ -4407,6 +6041,281 @@ export interface StudioToolIO {
       }[];
       totalCount?: number | undefined;
       hasMore?: boolean | undefined;
+    };
+  };
+  THREAD_ANALYTICS_ORG_LIST: {
+    input: { [x: string]: never };
+    output: {
+      isAdmin: boolean;
+      orgs: { id: string; slug: string; name: string }[];
+    };
+  };
+  THREAD_ANALYTICS_LIVE: {
+    input: {
+      org?: string | undefined;
+      status?:
+        | "in_progress"
+        | "requires_action"
+        | "failed"
+        | "completed"
+        | undefined;
+      kind?: "task" | "chat" | "automation" | undefined;
+      limit?: number | undefined;
+    };
+    output: {
+      org: string;
+      counts: { running: number; waiting: number; failedLastHour: number };
+      threads: {
+        id: string;
+        orgId: string;
+        orgSlug: string;
+        title: string;
+        status: string;
+        kind: "task" | "chat" | "automation";
+        failureKind: string | null;
+        failureReason: string | null;
+        lastError: string | null;
+        harnessId: string | null;
+        agent: string;
+        userName: string | null;
+        userEmail: string | null;
+        createdAt: string;
+        updatedAt: string;
+        usd: number | null;
+        tokens: number | null;
+      }[];
+    };
+  };
+  THREAD_ANALYTICS_USAGE: {
+    input: {
+      org?: string | undefined;
+      from?: string | undefined;
+      to?: string | undefined;
+      project?: string | undefined;
+    };
+    output: {
+      range: { from: string; to: string };
+      org: string;
+      sections: (
+        | {
+            kind: "stat";
+            title: string;
+            values: {
+              label: string;
+              value: number | null;
+              unit?: string | undefined;
+              previous?: number | null | undefined;
+              better?: "up" | "down" | undefined;
+              detail?: string | undefined;
+              drill?: string | undefined;
+            }[];
+          }
+        | {
+            kind: "series";
+            title: string;
+            points: Record<string, string | number | null>[];
+            unit?: string | undefined;
+          }
+        | {
+            kind: "table";
+            title: string;
+            columns: string[];
+            rows: (string | number | null)[][];
+            units?: Record<string, string> | undefined;
+            drills?: (string | null)[] | undefined;
+          }
+        | {
+            kind: "funnel";
+            title: string;
+            stages: {
+              label: string;
+              value: number;
+              drill?: string | undefined;
+            }[];
+          }
+        | {
+            kind: "bars";
+            title: string;
+            bars: {
+              label: string;
+              value: number;
+              detail?: string | undefined;
+              note?: string | undefined;
+              drill?: string | undefined;
+            }[];
+            unit?: string | undefined;
+            total?: { value: number; label: string } | undefined;
+          }
+        | {
+            kind: "breakdown";
+            title: string;
+            metrics: {
+              key: string;
+              label: string;
+              unit?: string | undefined;
+              better?: "up" | "down" | undefined;
+            }[];
+            dimensions: {
+              label: string;
+              rows: {
+                label: string;
+                count: number;
+                values: Record<string, number | null>;
+                drill?: string | undefined;
+              }[];
+            }[];
+          }
+        | {
+            kind: "matrix";
+            title: string;
+            rowLabel: string;
+            colLabel: string;
+            metrics: {
+              key: string;
+              label: string;
+              unit?: string | undefined;
+              better?: "up" | "down" | undefined;
+            }[];
+            rows: string[];
+            cols: string[];
+            cells: {
+              row: string;
+              col: string;
+              count: number;
+              values: Record<string, number | null>;
+              drill?: string | undefined;
+            }[];
+          }
+        | {
+            kind: "categories";
+            title: string;
+            layout: "stacked" | "grouped";
+            keys: string[];
+            categories: {
+              label: string;
+              values: Record<string, number | null>;
+              drill?: string | undefined;
+            }[];
+            unit?: string | undefined;
+            baseline?: string | undefined;
+          }
+      )[];
+    };
+  };
+  THREAD_ANALYTICS_ERRORS: {
+    input: {
+      org?: string | undefined;
+      from?: string | undefined;
+      to?: string | undefined;
+      project?: string | undefined;
+    };
+    output: {
+      range: { from: string; to: string };
+      org: string;
+      sections: (
+        | {
+            kind: "stat";
+            title: string;
+            values: {
+              label: string;
+              value: number | null;
+              unit?: string | undefined;
+              previous?: number | null | undefined;
+              better?: "up" | "down" | undefined;
+              detail?: string | undefined;
+              drill?: string | undefined;
+            }[];
+          }
+        | {
+            kind: "series";
+            title: string;
+            points: Record<string, string | number | null>[];
+            unit?: string | undefined;
+          }
+        | {
+            kind: "table";
+            title: string;
+            columns: string[];
+            rows: (string | number | null)[][];
+            units?: Record<string, string> | undefined;
+            drills?: (string | null)[] | undefined;
+          }
+        | {
+            kind: "funnel";
+            title: string;
+            stages: {
+              label: string;
+              value: number;
+              drill?: string | undefined;
+            }[];
+          }
+        | {
+            kind: "bars";
+            title: string;
+            bars: {
+              label: string;
+              value: number;
+              detail?: string | undefined;
+              note?: string | undefined;
+              drill?: string | undefined;
+            }[];
+            unit?: string | undefined;
+            total?: { value: number; label: string } | undefined;
+          }
+        | {
+            kind: "breakdown";
+            title: string;
+            metrics: {
+              key: string;
+              label: string;
+              unit?: string | undefined;
+              better?: "up" | "down" | undefined;
+            }[];
+            dimensions: {
+              label: string;
+              rows: {
+                label: string;
+                count: number;
+                values: Record<string, number | null>;
+                drill?: string | undefined;
+              }[];
+            }[];
+          }
+        | {
+            kind: "matrix";
+            title: string;
+            rowLabel: string;
+            colLabel: string;
+            metrics: {
+              key: string;
+              label: string;
+              unit?: string | undefined;
+              better?: "up" | "down" | undefined;
+            }[];
+            rows: string[];
+            cols: string[];
+            cells: {
+              row: string;
+              col: string;
+              count: number;
+              values: Record<string, number | null>;
+              drill?: string | undefined;
+            }[];
+          }
+        | {
+            kind: "categories";
+            title: string;
+            layout: "stacked" | "grouped";
+            keys: string[];
+            categories: {
+              label: string;
+              values: Record<string, number | null>;
+              drill?: string | undefined;
+            }[];
+            unit?: string | undefined;
+            baseline?: string | undefined;
+          }
+      )[];
     };
   };
   TAGS_LIST: {
@@ -4458,6 +6367,214 @@ export interface StudioToolIO {
       }[];
     };
   };
+  EXPERIMENT_LIST: {
+    input: { site: string };
+    output: {
+      experiments: {
+        id: string;
+        organizationId: string;
+        site: string;
+        key: string;
+        name: string;
+        status: "draft" | "running" | "paused" | "ended";
+        goals: string[];
+        variants: {
+          id: string;
+          weight: number;
+          role?: "control" | "treatment" | null | undefined;
+          description?: string | null | undefined;
+        }[];
+        startedAt: string | null;
+        endedAt: string | null;
+        taskBoardItemId: string | null;
+        taskKey: string | null;
+        createdBy: string;
+        createdAt: string;
+        updatedAt: string;
+      }[];
+    };
+  };
+  EXPERIMENT_GET: {
+    input: { site: string; key: string };
+    output: {
+      experiment: {
+        id: string;
+        organizationId: string;
+        site: string;
+        key: string;
+        name: string;
+        status: "draft" | "running" | "paused" | "ended";
+        goals: string[];
+        variants: {
+          id: string;
+          weight: number;
+          role?: "control" | "treatment" | null | undefined;
+          description?: string | null | undefined;
+        }[];
+        startedAt: string | null;
+        endedAt: string | null;
+        taskBoardItemId: string | null;
+        taskKey: string | null;
+        createdBy: string;
+        createdAt: string;
+        updatedAt: string;
+      } | null;
+    };
+  };
+  EXPERIMENT_CREATE: {
+    input: {
+      site: string;
+      key: string;
+      name: string;
+      goals?: string[] | undefined;
+      variants?:
+        | {
+            id: string;
+            weight: number;
+            role?: "control" | "treatment" | null | undefined;
+            description?: string | null | undefined;
+          }[]
+        | undefined;
+    };
+    output: {
+      experiment: {
+        id: string;
+        organizationId: string;
+        site: string;
+        key: string;
+        name: string;
+        status: "draft" | "running" | "paused" | "ended";
+        goals: string[];
+        variants: {
+          id: string;
+          weight: number;
+          role?: "control" | "treatment" | null | undefined;
+          description?: string | null | undefined;
+        }[];
+        startedAt: string | null;
+        endedAt: string | null;
+        taskBoardItemId: string | null;
+        taskKey: string | null;
+        createdBy: string;
+        createdAt: string;
+        updatedAt: string;
+      };
+    };
+  };
+  EXPERIMENT_SUGGEST: {
+    input: { site: string; prompt: string };
+    output: {
+      key: string;
+      name: string;
+      hypothesis: string;
+      variants: {
+        id: string;
+        weight: number;
+        role: "control" | "treatment";
+        description: string;
+      }[];
+    };
+  };
+  EXPERIMENT_IMPLEMENT: {
+    input: { site: string; key: string };
+    output: { taskBoardItemId: string; taskKey: string | null };
+  };
+  EXPERIMENT_IMPLEMENT_LOCAL: {
+    input: {
+      site: string;
+      key: string;
+      variants: {
+        id: string;
+        role?: "control" | "treatment" | null | undefined;
+        description?: string | null | undefined;
+      }[];
+    };
+    output: {
+      implemented: boolean;
+      reason?: string | undefined;
+      cssFile?: string | undefined;
+      targetFile?: string | undefined;
+    };
+  };
+  EXPERIMENT_PREVIEW_SYNC_LOCAL: {
+    input: {
+      site: string;
+      key: string;
+      variants: { id: string; weight: number }[];
+    };
+    output: { synced: boolean };
+  };
+  EXPERIMENT_UPDATE: {
+    input: {
+      site: string;
+      key: string;
+      name?: string | undefined;
+      status?: "draft" | "running" | "paused" | "ended" | undefined;
+      goals?: string[] | undefined;
+      variants?:
+        | {
+            id: string;
+            weight: number;
+            role?: "control" | "treatment" | null | undefined;
+            description?: string | null | undefined;
+          }[]
+        | undefined;
+    };
+    output: {
+      experiment: {
+        id: string;
+        organizationId: string;
+        site: string;
+        key: string;
+        name: string;
+        status: "draft" | "running" | "paused" | "ended";
+        goals: string[];
+        variants: {
+          id: string;
+          weight: number;
+          role?: "control" | "treatment" | null | undefined;
+          description?: string | null | undefined;
+        }[];
+        startedAt: string | null;
+        endedAt: string | null;
+        taskBoardItemId: string | null;
+        taskKey: string | null;
+        createdBy: string;
+        createdAt: string;
+        updatedAt: string;
+      };
+    };
+  };
+  EXPERIMENT_DELETE: {
+    input: { site: string; key: string };
+    output: { site: string; key: string; deleted: boolean };
+  };
+  EXPERIMENT_RESULTS: {
+    input: {
+      site: string;
+      key: string;
+      since?: string | undefined;
+      until?: string | undefined;
+      goals?: string[] | undefined;
+      goalOnDash?: string | undefined;
+    };
+    output: {
+      available: boolean;
+      reason: "not_configured" | "no_site_data" | null;
+      analyticsSite: string;
+      results: {
+        visitors: { default: number; variant: number };
+        goals: { goal: string; default: number; variant: number }[];
+        timeseries: { date: string; default: number; variant: number }[];
+        stats: {
+          totalParticipants: number;
+          sampleSize: number;
+          probabilityVariantBest: number;
+          probabilityDefaultBest: number;
+        };
+      } | null;
+    };
+  };
   AUTOMATION_CREATE: {
     input: {
       name: string;
@@ -4497,6 +6614,7 @@ export interface StudioToolIO {
         created_at: string;
         updated_at: string;
         virtual_mcp_id: string;
+        system_key: string | null;
         messages: unknown;
         models: unknown;
         tools: string[] | null;
@@ -4504,13 +6622,29 @@ export interface StudioToolIO {
         temperature: number;
         triggers: {
           id: string;
-          type: "cron" | "event" | "webhook";
+          type:
+            | "cron"
+            | "event"
+            | "webhook"
+            | "board_column_transition"
+            | "board_pr_ready"
+            | "linked_chat_run"
+            | "board_pr_merged"
+            | "chat_pr_opened"
+            | "jira_transition";
           cron_expression: string | null;
           connection_id: string | null;
           event_type: string | null;
           params: unknown;
           last_run_at: string | null;
           api_key_id: string | null;
+          column_key: string | null;
+          from:
+            | { kind: "any" }
+            | { kind: "earlier" }
+            | { kind: "later" }
+            | { kind: "statuses"; statuses: string[] }
+            | null;
           created_at: string;
         }[];
       } | null;
@@ -4528,6 +6662,14 @@ export interface StudioToolIO {
         trigger_count: number;
         nearest_next_run_at: string | null;
         virtual_mcp_id: string;
+        system_key: string | null;
+        board_triggers: {
+          type:
+            | "board_column_transition"
+            | "board_pr_ready"
+            | "board_pr_merged";
+          column_key: string;
+        }[];
       }[];
     };
   };
@@ -4564,16 +6706,53 @@ export interface StudioToolIO {
   AUTOMATION_TRIGGER_ADD: {
     input: {
       automation_id: string;
-      type: "cron" | "event" | "webhook";
+      type:
+        | "cron"
+        | "event"
+        | "webhook"
+        | "board_column_transition"
+        | "board_pr_ready"
+        | "linked_chat_run"
+        | "board_pr_merged"
+        | "chat_pr_opened"
+        | "jira_transition";
       cron_expression?: string | undefined;
       connection_id?: string | undefined;
       event_type?: string | undefined;
       params?: Record<string, string> | undefined;
+      column_key?:
+        | "done"
+        | "triage"
+        | "todo"
+        | "in_progress"
+        | "in_review"
+        | "qa"
+        | "customer_approval"
+        | "ready_for_deployment"
+        | "post_deploy_validation"
+        | "archived"
+        | undefined;
+      jira_status?: string | undefined;
+      from?:
+        | { kind: "any" }
+        | { kind: "earlier" }
+        | { kind: "later" }
+        | { kind: "statuses"; statuses: string[] }
+        | undefined;
     };
     output: {
       id: string;
       automation_id: string;
-      type: "cron" | "event" | "webhook";
+      type:
+        | "cron"
+        | "event"
+        | "webhook"
+        | "board_column_transition"
+        | "board_pr_ready"
+        | "linked_chat_run"
+        | "board_pr_merged"
+        | "chat_pr_opened"
+        | "jira_transition";
       created_at: string;
       webhook?: { url: string; token: string } | null | undefined;
     };
@@ -4618,39 +6797,6 @@ export interface StudioToolIO {
       };
     };
   };
-  VIRTUAL_MCP_PLUGIN_CONFIG_GET: {
-    input: { virtualMcpId: string; pluginId: string };
-    output: {
-      config: {
-        id: string;
-        virtualMcpId: string;
-        pluginId: string;
-        connectionId: string | null;
-        settings: Record<string, unknown> | null;
-        createdAt: string;
-        updatedAt: string;
-      } | null;
-    };
-  };
-  VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE: {
-    input: {
-      virtualMcpId: string;
-      pluginId: string;
-      connectionId?: string | null | undefined;
-      settings?: Record<string, unknown> | null | undefined;
-    };
-    output: {
-      config: {
-        id: string;
-        virtualMcpId: string;
-        pluginId: string;
-        connectionId: string | null;
-        settings: Record<string, unknown> | null;
-        createdAt: string;
-        updatedAt: string;
-      };
-    };
-  };
   VIRTUAL_MCP_PINNED_VIEWS_UPDATE: {
     input: {
       virtualMcpId: string;
@@ -4689,7 +6835,6 @@ export interface StudioToolIO {
         metadata: {
           [x: string]: unknown;
           instructions: string | null;
-          enabled_plugins?: string[] | null | undefined;
           subAgents?: string[] | null | undefined;
           liveAgentId?: string | null | undefined;
           ui?:
@@ -4719,19 +6864,21 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "manual" | "off" | "auto" | "on" | null | undefined;
+                      cms?: "off" | "manual" | "on" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
-                            | "automations"
                             | "overview"
-                            | "assets"
                             | "reports"
                             | "board"
                             | "site-editor"
+                            | "assets"
+                            | "releases"
                             | "hosting"
                             | "e2e"
                             | "analytics"
                             | "cdn"
+                            | "automations"
+                            | "experiments"
                           )[]
                         | null
                         | undefined;
@@ -4780,27 +6927,30 @@ export interface StudioToolIO {
             | undefined;
           sidebarViews?:
             | (
-                | "automations"
                 | "overview"
-                | "assets"
                 | "reports"
                 | "board"
                 | "site-editor"
+                | "assets"
+                | "releases"
                 | "hosting"
                 | "e2e"
                 | "analytics"
                 | "cdn"
+                | "automations"
+                | "experiments"
               )[]
             | null
             | undefined;
           sidebarViewsVersion?: 1 | undefined;
-          githubRepo?:
+          repository?:
             | {
                 url: string;
                 owner: string;
                 name: string;
                 installationId?: number | undefined;
                 connectionId?: string | undefined;
+                repositoryId?: string | undefined;
               }
             | null
             | undefined;
@@ -4814,10 +6964,6 @@ export interface StudioToolIO {
                       | { key: string; kind: "literal"; value: string }
                       | { key: string; kind: "secret"; secretId: string }
                     )[]
-                  | null
-                  | undefined;
-                submoduleCredentials?:
-                  | { host: string; secretId: string }[]
                   | null
                   | undefined;
               }
@@ -4853,7 +6999,6 @@ export interface StudioToolIO {
               }[]
             | null
             | undefined;
-          draftsMode?: boolean | null | undefined;
           fastPreviewInPlace?: boolean | null | undefined;
           sandboxMap?:
             | Record<
@@ -4888,6 +7033,7 @@ export interface StudioToolIO {
           selected_resources: string[] | null;
           selected_prompts: string[] | null;
         }[];
+        url_slug?: string | null | undefined;
         updated_by?: string | undefined;
       } | null;
     };
@@ -4901,6 +7047,10 @@ export interface StudioToolIO {
         last_used_by?: string | undefined;
       }[];
     };
+  };
+  PROJECT_FOLDER_ENSURE: {
+    input: { id: string };
+    output: { path: string; created: boolean };
   };
   AI_PROVIDERS_LIST: {
     input: { [x: string]: never };
@@ -5093,6 +7243,97 @@ export interface StudioToolIO {
     };
     output: { balanceCents: number };
   };
+  AI_PLAN_ENTITLEMENTS: {
+    input: {
+      providerId:
+        | "google"
+        | "deco"
+        | "anthropic"
+        | "openrouter"
+        | "llmapi"
+        | "openai-compatible";
+    };
+    output: {
+      plan: { id: string; name: string };
+      features: Record<string, boolean>;
+      usage: {
+        percent: number;
+        state: "warn" | "ok" | "exhausted";
+        usedMicros: number | null;
+        limitMicros: number | null;
+      } | null;
+      credits: { remainingUsd: number } | null;
+      tasks: {
+        allowed: boolean;
+        remaining: number | null;
+        denyReason: string | null;
+      };
+      periodStart: string | null;
+      periodEnd: string | null;
+    };
+  };
+  AI_PLAN_LIST: {
+    input: {
+      providerId:
+        | "google"
+        | "deco"
+        | "anthropic"
+        | "openrouter"
+        | "llmapi"
+        | "openai-compatible";
+    };
+    output: {
+      plans: { id: string; name: string; features: Record<string, boolean> }[];
+    };
+  };
+  AI_PLAN_SET: {
+    input: {
+      providerId:
+        | "google"
+        | "deco"
+        | "anthropic"
+        | "openrouter"
+        | "llmapi"
+        | "openai-compatible";
+      planId: "free";
+    };
+    output: {
+      plan: { id: string; name: string };
+      features: Record<string, boolean>;
+    };
+  };
+  AI_PLAN_INVOICE_UPGRADE: {
+    input: { planId: "starter" | "business" };
+    output: { planId: string };
+  };
+  CODEX_SUBSCRIPTION_CONNECT: {
+    input: { authJson: string };
+    output: {
+      connected: boolean;
+      linkedAt: string | null;
+      expiresAt: string | null;
+    };
+  };
+  CODEX_SUBSCRIPTION_STATUS: {
+    input: { [x: string]: never };
+    output: {
+      connected: boolean;
+      linkedAt: string | null;
+      expiresAt: string | null;
+    };
+  };
+  CODEX_SUBSCRIPTION_DISCONNECT: {
+    input: { [x: string]: never };
+    output: {
+      connected: boolean;
+      linkedAt: string | null;
+      expiresAt: string | null;
+    };
+  };
+  CODEX_SUBSCRIPTION_SYNC: {
+    input: { authJson: string; previousHash: string };
+    output: { updated: boolean; authHash: string | null };
+  };
   CLAUDE_SUBSCRIPTION_CONNECT: {
     input: { token: string };
     output: {
@@ -5115,6 +7356,50 @@ export interface StudioToolIO {
       connected: boolean;
       linkedAt: string | null;
       expiresAt: string | null;
+    };
+  };
+  GITHUB_COPILOT_CONNECT: {
+    input: { token: string };
+    output: {
+      connected: boolean;
+      linkedAt: string | null;
+      orgShare: {
+        sharedBy: { id: string; name: string | null };
+        sharedByMe: boolean;
+      } | null;
+    };
+  };
+  GITHUB_COPILOT_STATUS: {
+    input: { [x: string]: never };
+    output: {
+      connected: boolean;
+      linkedAt: string | null;
+      orgShare: {
+        sharedBy: { id: string; name: string | null };
+        sharedByMe: boolean;
+      } | null;
+    };
+  };
+  GITHUB_COPILOT_DISCONNECT: {
+    input: { [x: string]: never };
+    output: {
+      connected: boolean;
+      linkedAt: string | null;
+      orgShare: {
+        sharedBy: { id: string; name: string | null };
+        sharedByMe: boolean;
+      } | null;
+    };
+  };
+  GITHUB_COPILOT_SHARE: {
+    input: { shared: boolean };
+    output: {
+      connected: boolean;
+      linkedAt: string | null;
+      orgShare: {
+        sharedBy: { id: string; name: string | null };
+        sharedByMe: boolean;
+      } | null;
     };
   };
   SECRET_CREATE: {
@@ -5280,15 +7565,17 @@ export interface StudioToolIO {
   };
   ORG_REPO_SYNC_CREATE: {
     input: {
-      connectionId: string;
       volume: string;
+      repositoryId?: string | undefined;
+      connectionId?: string | undefined;
       ref?: string | undefined;
       paths?: { from: string; to?: string | undefined }[] | undefined;
     };
     output: {
       config: {
         id: string;
-        connectionId: string;
+        connectionId: string | null;
+        repositoryId: string | null;
         repoOwner: string;
         repoName: string;
         ref: string;
@@ -5306,7 +7593,8 @@ export interface StudioToolIO {
     output: {
       configs: {
         id: string;
-        connectionId: string;
+        connectionId: string | null;
+        repositoryId: string | null;
         repoOwner: string;
         repoName: string;
         ref: string;
@@ -5329,7 +7617,8 @@ export interface StudioToolIO {
     output: {
       config: {
         id: string;
-        connectionId: string;
+        connectionId: string | null;
+        repositoryId: string | null;
         repoOwner: string;
         repoName: string;
         ref: string;
@@ -5399,7 +7688,7 @@ export interface StudioToolIO {
     output: { deleted: boolean };
   };
   JIRA_BOARDS_LIST: {
-    input: { [x: string]: never };
+    input: { query?: string | undefined };
     output: {
       boards: {
         id: number;
@@ -5416,32 +7705,120 @@ export interface StudioToolIO {
   };
   JIRA_AUTOMATION_LIST: {
     input: { [x: string]: never };
-    output: { automations: { jiraStatus: string; prompt: string | null }[] };
+    output: {
+      automations: {
+        automationId: string;
+        jiraStatus: string;
+        from:
+          | { kind: "any" }
+          | { kind: "earlier" }
+          | { kind: "later" }
+          | { kind: "statuses"; statuses: string[] };
+        prompt: string | null;
+        active: boolean;
+      }[];
+    };
   };
   JIRA_AUTOMATION_UPSERT: {
-    input: { jiraStatus: string; prompt?: string | null | undefined };
-    output: { automation: { jiraStatus: string; prompt: string | null } };
+    input: {
+      jiraStatus: string;
+      from?:
+        | { kind: "any" }
+        | { kind: "earlier" }
+        | { kind: "later" }
+        | { kind: "statuses"; statuses: string[] }
+        | undefined;
+      prompt?: string | null | undefined;
+    };
+    output: {
+      automation: {
+        automationId: string;
+        jiraStatus: string;
+        from:
+          | { kind: "any" }
+          | { kind: "earlier" }
+          | { kind: "later" }
+          | { kind: "statuses"; statuses: string[] };
+        prompt: string | null;
+        active: boolean;
+      };
+    };
   };
-  JIRA_AUTOMATION_DELETE: {
-    input: { jiraStatus: string };
-    output: { removed: boolean };
+  JIRA_RUN_START: {
+    input: {
+      automationId: string;
+      issueKey: string;
+      together?: boolean | undefined;
+    };
+    output: {
+      started: { issueKey: string; issueUrl: string }[];
+      failed: { issueKey: string; error: string }[];
+      unreadable: string[];
+    };
   };
   JIRA_ISSUE_GET: {
-    input: { [x: string]: never };
+    input: {
+      issueKey?: string | undefined;
+      commentsBefore?: number | undefined;
+    };
     output: { key: string; url: string; status: string; markdown: string };
   };
-  JIRA_COMMENT_ADD: { input: { body: string }; output: { commentId: string } };
+  JIRA_COMMENT_ADD: {
+    input: { body: string; issueKey?: string | undefined };
+    output: { commentId: string; embeddedImages: string[] };
+  };
   JIRA_ISSUE_TRANSITION: {
-    input: { toStatus: string };
+    input: { toStatus: string; issueKey?: string | undefined };
     output: { status: string };
   };
   JIRA_ATTACHMENT_DOWNLOAD: {
-    input: { attachmentId: string };
+    input: { attachmentId: string; issueKey?: string | undefined };
     output: {
       url: string;
       filename: string;
       expiresAt: string;
       command: string;
+    };
+  };
+  JIRA_REMOTE_LINK_ADD: {
+    input: {
+      url: string;
+      title: string;
+      issueKey?: string | undefined;
+      summary?: string | undefined;
+      key?: string | undefined;
+    };
+    output: { linkId: number };
+  };
+  JIRA_ISSUE_CREATE: {
+    input: {
+      summary: string;
+      issueType: string;
+      description?: string | undefined;
+      relatesTo?: string[] | undefined;
+      sprint?: "none" | "active" | undefined;
+      storyPoints?: number | undefined;
+    };
+    output: {
+      key: string;
+      url: string;
+      created: boolean;
+      linked: string[];
+      notLinked: { key: string; reason: string }[];
+    };
+  };
+  JIRA_ISSUE_SEARCH: {
+    input: { jql: string; limit?: number | undefined };
+    output: {
+      issues: {
+        key: string;
+        url: string;
+        summary: string;
+        status: string;
+        type: string | null;
+        updated: string;
+      }[];
+      truncated: boolean;
     };
   };
   LIST_OBJECTS: {
@@ -5492,336 +7869,6 @@ export interface StudioToolIO {
   DELETE_OBJECTS: {
     input: { keys: string[] };
     output: { deleted: string[]; errors: { key: string; message: string }[] };
-  };
-  COLLECTION_REGISTRY_APP_LIST: {
-    input: {
-      where?: unknown;
-      orderBy?:
-        | {
-            field: string[];
-            direction: "asc" | "desc";
-            nulls?: "first" | "last" | undefined;
-          }[]
-        | undefined;
-      limit?: number | undefined;
-      offset?: number | undefined;
-      tags?: string[] | undefined;
-      categories?: string[] | undefined;
-      cursor?: string | undefined;
-    };
-    output: {
-      items: {
-        [x: string]: unknown;
-        id: string;
-        title: string;
-        server: {
-          [x: string]: unknown;
-          name: string;
-          title?: string | undefined;
-          description?: string | undefined;
-          version?: string | undefined;
-          websiteUrl?: string | undefined;
-          icons?: { [x: string]: unknown; src: string }[] | undefined;
-          remotes?:
-            | {
-                [x: string]: unknown;
-                type?: string | undefined;
-                url?: string | undefined;
-                name?: string | undefined;
-                title?: string | undefined;
-                description?: string | undefined;
-              }[]
-            | undefined;
-          packages?:
-            | {
-                [x: string]: unknown;
-                identifier: string;
-                version?: string | undefined;
-              }[]
-            | undefined;
-          repository?:
-            | {
-                [x: string]: unknown;
-                url?: string | undefined;
-                source?: string | undefined;
-                subfolder?: string | undefined;
-              }
-            | undefined;
-        };
-        created_at: string;
-        updated_at: string;
-        name?: string | undefined;
-        description?: string | null | undefined;
-        _meta?:
-          | {
-              [x: string]: unknown;
-              "mcp.studio"?:
-                | {
-                    [x: string]: unknown;
-                    verified?: boolean | undefined;
-                    official?: boolean | undefined;
-                    tags?: string[] | undefined;
-                    categories?: string[] | undefined;
-                    friendly_name?: string | null | undefined;
-                    short_description?: string | null | undefined;
-                    owner?: string | null | undefined;
-                    readme?: string | null | undefined;
-                    readme_url?: string | null | undefined;
-                    has_remote?: boolean | undefined;
-                    has_oauth?: boolean | undefined;
-                    tools?:
-                      | {
-                          [x: string]: unknown;
-                          name: string;
-                          description?: string | null | undefined;
-                        }[]
-                      | undefined;
-                  }
-                | undefined;
-              "mcp.mesh"?:
-                | {
-                    [x: string]: unknown;
-                    verified?: boolean | undefined;
-                    official?: boolean | undefined;
-                    tags?: string[] | undefined;
-                    categories?: string[] | undefined;
-                    friendly_name?: string | null | undefined;
-                    short_description?: string | null | undefined;
-                    owner?: string | null | undefined;
-                    readme?: string | null | undefined;
-                    readme_url?: string | null | undefined;
-                    has_remote?: boolean | undefined;
-                    has_oauth?: boolean | undefined;
-                    tools?:
-                      | {
-                          [x: string]: unknown;
-                          name: string;
-                          description?: string | null | undefined;
-                        }[]
-                      | undefined;
-                  }
-                | undefined;
-            }
-          | undefined;
-        is_public?: boolean | undefined;
-        is_unlisted?: boolean | undefined;
-        created_by?: string | undefined;
-      }[];
-      totalCount: number;
-      hasMore?: boolean | undefined;
-      nextCursor?: string | undefined;
-    };
-  };
-  COLLECTION_REGISTRY_APP_GET: {
-    input: { id?: string | undefined; name?: string | undefined };
-    output: {
-      item: {
-        [x: string]: unknown;
-        id: string;
-        title: string;
-        server: {
-          [x: string]: unknown;
-          name: string;
-          title?: string | undefined;
-          description?: string | undefined;
-          version?: string | undefined;
-          websiteUrl?: string | undefined;
-          icons?: { [x: string]: unknown; src: string }[] | undefined;
-          remotes?:
-            | {
-                [x: string]: unknown;
-                type?: string | undefined;
-                url?: string | undefined;
-                name?: string | undefined;
-                title?: string | undefined;
-                description?: string | undefined;
-              }[]
-            | undefined;
-          packages?:
-            | {
-                [x: string]: unknown;
-                identifier: string;
-                version?: string | undefined;
-              }[]
-            | undefined;
-          repository?:
-            | {
-                [x: string]: unknown;
-                url?: string | undefined;
-                source?: string | undefined;
-                subfolder?: string | undefined;
-              }
-            | undefined;
-        };
-        created_at: string;
-        updated_at: string;
-        name?: string | undefined;
-        description?: string | null | undefined;
-        _meta?:
-          | {
-              [x: string]: unknown;
-              "mcp.studio"?:
-                | {
-                    [x: string]: unknown;
-                    verified?: boolean | undefined;
-                    official?: boolean | undefined;
-                    tags?: string[] | undefined;
-                    categories?: string[] | undefined;
-                    friendly_name?: string | null | undefined;
-                    short_description?: string | null | undefined;
-                    owner?: string | null | undefined;
-                    readme?: string | null | undefined;
-                    readme_url?: string | null | undefined;
-                    has_remote?: boolean | undefined;
-                    has_oauth?: boolean | undefined;
-                    tools?:
-                      | {
-                          [x: string]: unknown;
-                          name: string;
-                          description?: string | null | undefined;
-                        }[]
-                      | undefined;
-                  }
-                | undefined;
-              "mcp.mesh"?:
-                | {
-                    [x: string]: unknown;
-                    verified?: boolean | undefined;
-                    official?: boolean | undefined;
-                    tags?: string[] | undefined;
-                    categories?: string[] | undefined;
-                    friendly_name?: string | null | undefined;
-                    short_description?: string | null | undefined;
-                    owner?: string | null | undefined;
-                    readme?: string | null | undefined;
-                    readme_url?: string | null | undefined;
-                    has_remote?: boolean | undefined;
-                    has_oauth?: boolean | undefined;
-                    tools?:
-                      | {
-                          [x: string]: unknown;
-                          name: string;
-                          description?: string | null | undefined;
-                        }[]
-                      | undefined;
-                  }
-                | undefined;
-            }
-          | undefined;
-        is_public?: boolean | undefined;
-        is_unlisted?: boolean | undefined;
-        created_by?: string | undefined;
-      } | null;
-    };
-  };
-  COLLECTION_REGISTRY_APP_VERSIONS: {
-    input: { id?: string | undefined; name?: string | undefined };
-    output: {
-      versions: {
-        [x: string]: unknown;
-        id: string;
-        title: string;
-        server: {
-          [x: string]: unknown;
-          name: string;
-          title?: string | undefined;
-          description?: string | undefined;
-          version?: string | undefined;
-          websiteUrl?: string | undefined;
-          icons?: { [x: string]: unknown; src: string }[] | undefined;
-          remotes?:
-            | {
-                [x: string]: unknown;
-                type?: string | undefined;
-                url?: string | undefined;
-                name?: string | undefined;
-                title?: string | undefined;
-                description?: string | undefined;
-              }[]
-            | undefined;
-          packages?:
-            | {
-                [x: string]: unknown;
-                identifier: string;
-                version?: string | undefined;
-              }[]
-            | undefined;
-          repository?:
-            | {
-                [x: string]: unknown;
-                url?: string | undefined;
-                source?: string | undefined;
-                subfolder?: string | undefined;
-              }
-            | undefined;
-        };
-        created_at: string;
-        updated_at: string;
-        name?: string | undefined;
-        description?: string | null | undefined;
-        _meta?:
-          | {
-              [x: string]: unknown;
-              "mcp.studio"?:
-                | {
-                    [x: string]: unknown;
-                    verified?: boolean | undefined;
-                    official?: boolean | undefined;
-                    tags?: string[] | undefined;
-                    categories?: string[] | undefined;
-                    friendly_name?: string | null | undefined;
-                    short_description?: string | null | undefined;
-                    owner?: string | null | undefined;
-                    readme?: string | null | undefined;
-                    readme_url?: string | null | undefined;
-                    has_remote?: boolean | undefined;
-                    has_oauth?: boolean | undefined;
-                    tools?:
-                      | {
-                          [x: string]: unknown;
-                          name: string;
-                          description?: string | null | undefined;
-                        }[]
-                      | undefined;
-                  }
-                | undefined;
-              "mcp.mesh"?:
-                | {
-                    [x: string]: unknown;
-                    verified?: boolean | undefined;
-                    official?: boolean | undefined;
-                    tags?: string[] | undefined;
-                    categories?: string[] | undefined;
-                    friendly_name?: string | null | undefined;
-                    short_description?: string | null | undefined;
-                    owner?: string | null | undefined;
-                    readme?: string | null | undefined;
-                    readme_url?: string | null | undefined;
-                    has_remote?: boolean | undefined;
-                    has_oauth?: boolean | undefined;
-                    tools?:
-                      | {
-                          [x: string]: unknown;
-                          name: string;
-                          description?: string | null | undefined;
-                        }[]
-                      | undefined;
-                  }
-                | undefined;
-            }
-          | undefined;
-        is_public?: boolean | undefined;
-        is_unlisted?: boolean | undefined;
-        created_by?: string | undefined;
-      }[];
-    };
-  };
-  COLLECTION_REGISTRY_APP_FILTERS: {
-    input: { [x: string]: never };
-    output: {
-      tags: { value: string; count: number }[];
-      categories: { value: string; count: number }[];
-    };
   };
   REGISTRY_ITEM_LIST: {
     input: {
@@ -5878,8 +7925,6 @@ export interface StudioToolIO {
               }
             | undefined;
         };
-        created_at: string;
-        updated_at: string;
         name?: string | undefined;
         description?: string | null | undefined;
         _meta?:
@@ -5935,6 +7980,8 @@ export interface StudioToolIO {
           | undefined;
         is_public?: boolean | undefined;
         is_unlisted?: boolean | undefined;
+        created_at?: string | undefined;
+        updated_at?: string | undefined;
         created_by?: string | undefined;
       }[];
       totalCount: number;
@@ -5942,22 +7989,119 @@ export interface StudioToolIO {
       nextCursor?: string | undefined;
     };
   };
-  REGISTRY_ITEM_SEARCH: {
+  COLLECTION_REGISTRY_APP_LIST: {
     input: {
-      query?: string | undefined;
+      where?: unknown;
+      orderBy?:
+        | {
+            field: string[];
+            direction: "asc" | "desc";
+            nulls?: "first" | "last" | undefined;
+          }[]
+        | undefined;
+      limit?: number | undefined;
+      offset?: number | undefined;
       tags?: string[] | undefined;
       categories?: string[] | undefined;
-      limit?: number | undefined;
       cursor?: string | undefined;
     };
     output: {
       items: {
+        [x: string]: unknown;
         id: string;
         title: string;
-        tags: string[];
-        categories: string[];
-        is_public: boolean;
-        is_unlisted: boolean;
+        server: {
+          [x: string]: unknown;
+          name: string;
+          title?: string | undefined;
+          description?: string | undefined;
+          version?: string | undefined;
+          websiteUrl?: string | undefined;
+          icons?: { [x: string]: unknown; src: string }[] | undefined;
+          remotes?:
+            | {
+                [x: string]: unknown;
+                type?: string | undefined;
+                url?: string | undefined;
+                name?: string | undefined;
+                title?: string | undefined;
+                description?: string | undefined;
+              }[]
+            | undefined;
+          packages?:
+            | {
+                [x: string]: unknown;
+                identifier: string;
+                version?: string | undefined;
+              }[]
+            | undefined;
+          repository?:
+            | {
+                [x: string]: unknown;
+                url?: string | undefined;
+                source?: string | undefined;
+                subfolder?: string | undefined;
+              }
+            | undefined;
+        };
+        name?: string | undefined;
+        description?: string | null | undefined;
+        _meta?:
+          | {
+              [x: string]: unknown;
+              "mcp.studio"?:
+                | {
+                    [x: string]: unknown;
+                    verified?: boolean | undefined;
+                    official?: boolean | undefined;
+                    tags?: string[] | undefined;
+                    categories?: string[] | undefined;
+                    friendly_name?: string | null | undefined;
+                    short_description?: string | null | undefined;
+                    owner?: string | null | undefined;
+                    readme?: string | null | undefined;
+                    readme_url?: string | null | undefined;
+                    has_remote?: boolean | undefined;
+                    has_oauth?: boolean | undefined;
+                    tools?:
+                      | {
+                          [x: string]: unknown;
+                          name: string;
+                          description?: string | null | undefined;
+                        }[]
+                      | undefined;
+                  }
+                | undefined;
+              "mcp.mesh"?:
+                | {
+                    [x: string]: unknown;
+                    verified?: boolean | undefined;
+                    official?: boolean | undefined;
+                    tags?: string[] | undefined;
+                    categories?: string[] | undefined;
+                    friendly_name?: string | null | undefined;
+                    short_description?: string | null | undefined;
+                    owner?: string | null | undefined;
+                    readme?: string | null | undefined;
+                    readme_url?: string | null | undefined;
+                    has_remote?: boolean | undefined;
+                    has_oauth?: boolean | undefined;
+                    tools?:
+                      | {
+                          [x: string]: unknown;
+                          name: string;
+                          description?: string | null | undefined;
+                        }[]
+                      | undefined;
+                  }
+                | undefined;
+            }
+          | undefined;
+        is_public?: boolean | undefined;
+        is_unlisted?: boolean | undefined;
+        created_at?: string | undefined;
+        updated_at?: string | undefined;
+        created_by?: string | undefined;
       }[];
       totalCount: number;
       hasMore?: boolean | undefined;
@@ -6005,8 +8149,6 @@ export interface StudioToolIO {
               }
             | undefined;
         };
-        created_at: string;
-        updated_at: string;
         name?: string | undefined;
         description?: string | null | undefined;
         _meta?:
@@ -6062,6 +8204,110 @@ export interface StudioToolIO {
           | undefined;
         is_public?: boolean | undefined;
         is_unlisted?: boolean | undefined;
+        created_at?: string | undefined;
+        updated_at?: string | undefined;
+        created_by?: string | undefined;
+      } | null;
+    };
+  };
+  COLLECTION_REGISTRY_APP_GET: {
+    input: { id?: string | undefined; name?: string | undefined };
+    output: {
+      item: {
+        [x: string]: unknown;
+        id: string;
+        title: string;
+        server: {
+          [x: string]: unknown;
+          name: string;
+          title?: string | undefined;
+          description?: string | undefined;
+          version?: string | undefined;
+          websiteUrl?: string | undefined;
+          icons?: { [x: string]: unknown; src: string }[] | undefined;
+          remotes?:
+            | {
+                [x: string]: unknown;
+                type?: string | undefined;
+                url?: string | undefined;
+                name?: string | undefined;
+                title?: string | undefined;
+                description?: string | undefined;
+              }[]
+            | undefined;
+          packages?:
+            | {
+                [x: string]: unknown;
+                identifier: string;
+                version?: string | undefined;
+              }[]
+            | undefined;
+          repository?:
+            | {
+                [x: string]: unknown;
+                url?: string | undefined;
+                source?: string | undefined;
+                subfolder?: string | undefined;
+              }
+            | undefined;
+        };
+        name?: string | undefined;
+        description?: string | null | undefined;
+        _meta?:
+          | {
+              [x: string]: unknown;
+              "mcp.studio"?:
+                | {
+                    [x: string]: unknown;
+                    verified?: boolean | undefined;
+                    official?: boolean | undefined;
+                    tags?: string[] | undefined;
+                    categories?: string[] | undefined;
+                    friendly_name?: string | null | undefined;
+                    short_description?: string | null | undefined;
+                    owner?: string | null | undefined;
+                    readme?: string | null | undefined;
+                    readme_url?: string | null | undefined;
+                    has_remote?: boolean | undefined;
+                    has_oauth?: boolean | undefined;
+                    tools?:
+                      | {
+                          [x: string]: unknown;
+                          name: string;
+                          description?: string | null | undefined;
+                        }[]
+                      | undefined;
+                  }
+                | undefined;
+              "mcp.mesh"?:
+                | {
+                    [x: string]: unknown;
+                    verified?: boolean | undefined;
+                    official?: boolean | undefined;
+                    tags?: string[] | undefined;
+                    categories?: string[] | undefined;
+                    friendly_name?: string | null | undefined;
+                    short_description?: string | null | undefined;
+                    owner?: string | null | undefined;
+                    readme?: string | null | undefined;
+                    readme_url?: string | null | undefined;
+                    has_remote?: boolean | undefined;
+                    has_oauth?: boolean | undefined;
+                    tools?:
+                      | {
+                          [x: string]: unknown;
+                          name: string;
+                          description?: string | null | undefined;
+                        }[]
+                      | undefined;
+                  }
+                | undefined;
+            }
+          | undefined;
+        is_public?: boolean | undefined;
+        is_unlisted?: boolean | undefined;
+        created_at?: string | undefined;
+        updated_at?: string | undefined;
         created_by?: string | undefined;
       } | null;
     };
@@ -6107,8 +8353,6 @@ export interface StudioToolIO {
               }
             | undefined;
         };
-        created_at: string;
-        updated_at: string;
         name?: string | undefined;
         description?: string | null | undefined;
         _meta?:
@@ -6164,106 +8408,16 @@ export interface StudioToolIO {
           | undefined;
         is_public?: boolean | undefined;
         is_unlisted?: boolean | undefined;
+        created_at?: string | undefined;
+        updated_at?: string | undefined;
         created_by?: string | undefined;
       }[];
     };
   };
-  REGISTRY_ITEM_CREATE: {
-    input: {
-      data: {
-        id: string;
-        title: string;
-        server: {
-          [x: string]: unknown;
-          name: string;
-          title?: string | undefined;
-          description?: string | undefined;
-          version?: string | undefined;
-          websiteUrl?: string | undefined;
-          icons?: { [x: string]: unknown; src: string }[] | undefined;
-          remotes?:
-            | {
-                [x: string]: unknown;
-                type?: string | undefined;
-                url?: string | undefined;
-                name?: string | undefined;
-                title?: string | undefined;
-                description?: string | undefined;
-              }[]
-            | undefined;
-          packages?:
-            | {
-                [x: string]: unknown;
-                identifier: string;
-                version?: string | undefined;
-              }[]
-            | undefined;
-          repository?:
-            | {
-                [x: string]: unknown;
-                url?: string | undefined;
-                source?: string | undefined;
-                subfolder?: string | undefined;
-              }
-            | undefined;
-        };
-        description?: string | null | undefined;
-        _meta?:
-          | {
-              [x: string]: unknown;
-              "mcp.studio"?:
-                | {
-                    [x: string]: unknown;
-                    verified?: boolean | undefined;
-                    official?: boolean | undefined;
-                    tags?: string[] | undefined;
-                    categories?: string[] | undefined;
-                    friendly_name?: string | null | undefined;
-                    short_description?: string | null | undefined;
-                    owner?: string | null | undefined;
-                    readme?: string | null | undefined;
-                    readme_url?: string | null | undefined;
-                    has_remote?: boolean | undefined;
-                    has_oauth?: boolean | undefined;
-                    tools?:
-                      | {
-                          [x: string]: unknown;
-                          name: string;
-                          description?: string | null | undefined;
-                        }[]
-                      | undefined;
-                  }
-                | undefined;
-              "mcp.mesh"?:
-                | {
-                    [x: string]: unknown;
-                    verified?: boolean | undefined;
-                    official?: boolean | undefined;
-                    tags?: string[] | undefined;
-                    categories?: string[] | undefined;
-                    friendly_name?: string | null | undefined;
-                    short_description?: string | null | undefined;
-                    owner?: string | null | undefined;
-                    readme?: string | null | undefined;
-                    readme_url?: string | null | undefined;
-                    has_remote?: boolean | undefined;
-                    has_oauth?: boolean | undefined;
-                    tools?:
-                      | {
-                          [x: string]: unknown;
-                          name: string;
-                          description?: string | null | undefined;
-                        }[]
-                      | undefined;
-                  }
-                | undefined;
-            }
-          | undefined;
-        is_public?: boolean | undefined;
-      };
-    };
+  COLLECTION_REGISTRY_APP_VERSIONS: {
+    input: { id?: string | undefined; name?: string | undefined };
     output: {
-      item: {
+      versions: {
         [x: string]: unknown;
         id: string;
         title: string;
@@ -6301,8 +8455,6 @@ export interface StudioToolIO {
               }
             | undefined;
         };
-        created_at: string;
-        updated_at: string;
         name?: string | undefined;
         description?: string | null | undefined;
         _meta?:
@@ -6358,402 +8510,10 @@ export interface StudioToolIO {
           | undefined;
         is_public?: boolean | undefined;
         is_unlisted?: boolean | undefined;
+        created_at?: string | undefined;
+        updated_at?: string | undefined;
         created_by?: string | undefined;
-      };
-    };
-  };
-  REGISTRY_ITEM_BULK_CREATE: {
-    input: {
-      items: {
-        id: string;
-        title: string;
-        server: {
-          [x: string]: unknown;
-          name: string;
-          title?: string | undefined;
-          description?: string | undefined;
-          version?: string | undefined;
-          websiteUrl?: string | undefined;
-          icons?: { [x: string]: unknown; src: string }[] | undefined;
-          remotes?:
-            | {
-                [x: string]: unknown;
-                type?: string | undefined;
-                url?: string | undefined;
-                name?: string | undefined;
-                title?: string | undefined;
-                description?: string | undefined;
-              }[]
-            | undefined;
-          packages?:
-            | {
-                [x: string]: unknown;
-                identifier: string;
-                version?: string | undefined;
-              }[]
-            | undefined;
-          repository?:
-            | {
-                [x: string]: unknown;
-                url?: string | undefined;
-                source?: string | undefined;
-                subfolder?: string | undefined;
-              }
-            | undefined;
-        };
-        description?: string | null | undefined;
-        _meta?:
-          | {
-              [x: string]: unknown;
-              "mcp.studio"?:
-                | {
-                    [x: string]: unknown;
-                    verified?: boolean | undefined;
-                    official?: boolean | undefined;
-                    tags?: string[] | undefined;
-                    categories?: string[] | undefined;
-                    friendly_name?: string | null | undefined;
-                    short_description?: string | null | undefined;
-                    owner?: string | null | undefined;
-                    readme?: string | null | undefined;
-                    readme_url?: string | null | undefined;
-                    has_remote?: boolean | undefined;
-                    has_oauth?: boolean | undefined;
-                    tools?:
-                      | {
-                          [x: string]: unknown;
-                          name: string;
-                          description?: string | null | undefined;
-                        }[]
-                      | undefined;
-                  }
-                | undefined;
-              "mcp.mesh"?:
-                | {
-                    [x: string]: unknown;
-                    verified?: boolean | undefined;
-                    official?: boolean | undefined;
-                    tags?: string[] | undefined;
-                    categories?: string[] | undefined;
-                    friendly_name?: string | null | undefined;
-                    short_description?: string | null | undefined;
-                    owner?: string | null | undefined;
-                    readme?: string | null | undefined;
-                    readme_url?: string | null | undefined;
-                    has_remote?: boolean | undefined;
-                    has_oauth?: boolean | undefined;
-                    tools?:
-                      | {
-                          [x: string]: unknown;
-                          name: string;
-                          description?: string | null | undefined;
-                        }[]
-                      | undefined;
-                  }
-                | undefined;
-            }
-          | undefined;
-        is_public?: boolean | undefined;
       }[];
-    };
-    output: { created: number; errors: { id: string; error: string }[] };
-  };
-  REGISTRY_ITEM_UPDATE: {
-    input: {
-      id: string;
-      data: {
-        title?: string | undefined;
-        description?: string | null | undefined;
-        _meta?:
-          | {
-              [x: string]: unknown;
-              "mcp.studio"?:
-                | {
-                    [x: string]: unknown;
-                    verified?: boolean | undefined;
-                    official?: boolean | undefined;
-                    tags?: string[] | undefined;
-                    categories?: string[] | undefined;
-                    friendly_name?: string | null | undefined;
-                    short_description?: string | null | undefined;
-                    owner?: string | null | undefined;
-                    readme?: string | null | undefined;
-                    readme_url?: string | null | undefined;
-                    has_remote?: boolean | undefined;
-                    has_oauth?: boolean | undefined;
-                    tools?:
-                      | {
-                          [x: string]: unknown;
-                          name: string;
-                          description?: string | null | undefined;
-                        }[]
-                      | undefined;
-                  }
-                | undefined;
-              "mcp.mesh"?:
-                | {
-                    [x: string]: unknown;
-                    verified?: boolean | undefined;
-                    official?: boolean | undefined;
-                    tags?: string[] | undefined;
-                    categories?: string[] | undefined;
-                    friendly_name?: string | null | undefined;
-                    short_description?: string | null | undefined;
-                    owner?: string | null | undefined;
-                    readme?: string | null | undefined;
-                    readme_url?: string | null | undefined;
-                    has_remote?: boolean | undefined;
-                    has_oauth?: boolean | undefined;
-                    tools?:
-                      | {
-                          [x: string]: unknown;
-                          name: string;
-                          description?: string | null | undefined;
-                        }[]
-                      | undefined;
-                  }
-                | undefined;
-            }
-          | undefined;
-        server?:
-          | {
-              [x: string]: unknown;
-              name: string;
-              title?: string | undefined;
-              description?: string | undefined;
-              version?: string | undefined;
-              websiteUrl?: string | undefined;
-              icons?: { [x: string]: unknown; src: string }[] | undefined;
-              remotes?:
-                | {
-                    [x: string]: unknown;
-                    type?: string | undefined;
-                    url?: string | undefined;
-                    name?: string | undefined;
-                    title?: string | undefined;
-                    description?: string | undefined;
-                  }[]
-                | undefined;
-              packages?:
-                | {
-                    [x: string]: unknown;
-                    identifier: string;
-                    version?: string | undefined;
-                  }[]
-                | undefined;
-              repository?:
-                | {
-                    [x: string]: unknown;
-                    url?: string | undefined;
-                    source?: string | undefined;
-                    subfolder?: string | undefined;
-                  }
-                | undefined;
-            }
-          | undefined;
-        is_public?: boolean | undefined;
-      };
-    };
-    output: {
-      item: {
-        [x: string]: unknown;
-        id: string;
-        title: string;
-        server: {
-          [x: string]: unknown;
-          name: string;
-          title?: string | undefined;
-          description?: string | undefined;
-          version?: string | undefined;
-          websiteUrl?: string | undefined;
-          icons?: { [x: string]: unknown; src: string }[] | undefined;
-          remotes?:
-            | {
-                [x: string]: unknown;
-                type?: string | undefined;
-                url?: string | undefined;
-                name?: string | undefined;
-                title?: string | undefined;
-                description?: string | undefined;
-              }[]
-            | undefined;
-          packages?:
-            | {
-                [x: string]: unknown;
-                identifier: string;
-                version?: string | undefined;
-              }[]
-            | undefined;
-          repository?:
-            | {
-                [x: string]: unknown;
-                url?: string | undefined;
-                source?: string | undefined;
-                subfolder?: string | undefined;
-              }
-            | undefined;
-        };
-        created_at: string;
-        updated_at: string;
-        name?: string | undefined;
-        description?: string | null | undefined;
-        _meta?:
-          | {
-              [x: string]: unknown;
-              "mcp.studio"?:
-                | {
-                    [x: string]: unknown;
-                    verified?: boolean | undefined;
-                    official?: boolean | undefined;
-                    tags?: string[] | undefined;
-                    categories?: string[] | undefined;
-                    friendly_name?: string | null | undefined;
-                    short_description?: string | null | undefined;
-                    owner?: string | null | undefined;
-                    readme?: string | null | undefined;
-                    readme_url?: string | null | undefined;
-                    has_remote?: boolean | undefined;
-                    has_oauth?: boolean | undefined;
-                    tools?:
-                      | {
-                          [x: string]: unknown;
-                          name: string;
-                          description?: string | null | undefined;
-                        }[]
-                      | undefined;
-                  }
-                | undefined;
-              "mcp.mesh"?:
-                | {
-                    [x: string]: unknown;
-                    verified?: boolean | undefined;
-                    official?: boolean | undefined;
-                    tags?: string[] | undefined;
-                    categories?: string[] | undefined;
-                    friendly_name?: string | null | undefined;
-                    short_description?: string | null | undefined;
-                    owner?: string | null | undefined;
-                    readme?: string | null | undefined;
-                    readme_url?: string | null | undefined;
-                    has_remote?: boolean | undefined;
-                    has_oauth?: boolean | undefined;
-                    tools?:
-                      | {
-                          [x: string]: unknown;
-                          name: string;
-                          description?: string | null | undefined;
-                        }[]
-                      | undefined;
-                  }
-                | undefined;
-            }
-          | undefined;
-        is_public?: boolean | undefined;
-        is_unlisted?: boolean | undefined;
-        created_by?: string | undefined;
-      };
-    };
-  };
-  REGISTRY_ITEM_DELETE: {
-    input: { id: string };
-    output: {
-      item: {
-        [x: string]: unknown;
-        id: string;
-        title: string;
-        server: {
-          [x: string]: unknown;
-          name: string;
-          title?: string | undefined;
-          description?: string | undefined;
-          version?: string | undefined;
-          websiteUrl?: string | undefined;
-          icons?: { [x: string]: unknown; src: string }[] | undefined;
-          remotes?:
-            | {
-                [x: string]: unknown;
-                type?: string | undefined;
-                url?: string | undefined;
-                name?: string | undefined;
-                title?: string | undefined;
-                description?: string | undefined;
-              }[]
-            | undefined;
-          packages?:
-            | {
-                [x: string]: unknown;
-                identifier: string;
-                version?: string | undefined;
-              }[]
-            | undefined;
-          repository?:
-            | {
-                [x: string]: unknown;
-                url?: string | undefined;
-                source?: string | undefined;
-                subfolder?: string | undefined;
-              }
-            | undefined;
-        };
-        created_at: string;
-        updated_at: string;
-        name?: string | undefined;
-        description?: string | null | undefined;
-        _meta?:
-          | {
-              [x: string]: unknown;
-              "mcp.studio"?:
-                | {
-                    [x: string]: unknown;
-                    verified?: boolean | undefined;
-                    official?: boolean | undefined;
-                    tags?: string[] | undefined;
-                    categories?: string[] | undefined;
-                    friendly_name?: string | null | undefined;
-                    short_description?: string | null | undefined;
-                    owner?: string | null | undefined;
-                    readme?: string | null | undefined;
-                    readme_url?: string | null | undefined;
-                    has_remote?: boolean | undefined;
-                    has_oauth?: boolean | undefined;
-                    tools?:
-                      | {
-                          [x: string]: unknown;
-                          name: string;
-                          description?: string | null | undefined;
-                        }[]
-                      | undefined;
-                  }
-                | undefined;
-              "mcp.mesh"?:
-                | {
-                    [x: string]: unknown;
-                    verified?: boolean | undefined;
-                    official?: boolean | undefined;
-                    tags?: string[] | undefined;
-                    categories?: string[] | undefined;
-                    friendly_name?: string | null | undefined;
-                    short_description?: string | null | undefined;
-                    owner?: string | null | undefined;
-                    readme?: string | null | undefined;
-                    readme_url?: string | null | undefined;
-                    has_remote?: boolean | undefined;
-                    has_oauth?: boolean | undefined;
-                    tools?:
-                      | {
-                          [x: string]: unknown;
-                          name: string;
-                          description?: string | null | undefined;
-                        }[]
-                      | undefined;
-                  }
-                | undefined;
-            }
-          | undefined;
-        is_public?: boolean | undefined;
-        is_unlisted?: boolean | undefined;
-        created_by?: string | undefined;
-      };
     };
   };
   REGISTRY_ITEM_FILTERS: {
@@ -6763,762 +8523,41 @@ export interface StudioToolIO {
       categories: { value: string; count: number }[];
     };
   };
-  REGISTRY_DISCOVER_TOOLS: {
-    input: { url: string; type?: "http" | "sse" | undefined };
+  COLLECTION_REGISTRY_APP_FILTERS: {
+    input: { [x: string]: never };
     output: {
-      tools: { name: string; description?: string | null | undefined }[];
-      error?: string | null | undefined;
+      tags: { value: string; count: number }[];
+      categories: { value: string; count: number }[];
     };
   };
-  REGISTRY_AI_GENERATE: {
+  REGISTRY_ITEM_SEARCH: {
     input: {
-      type:
-        | "description"
-        | "tags"
-        | "categories"
-        | "short_description"
-        | "readme";
-      llmConnectionId: string;
-      modelId: string;
-      context: {
-        name?: string | undefined;
-        provider?: string | undefined;
-        url?: string | undefined;
-        owner?: string | undefined;
-        repositoryUrl?: string | undefined;
-        description?: string | undefined;
-        shortDescription?: string | undefined;
-        tags?: string[] | undefined;
-        categories?: string[] | undefined;
-        availableTags?: string[] | undefined;
-        availableCategories?: string[] | undefined;
-        tools?:
-          | { name: string; description?: string | null | undefined }[]
-          | undefined;
-      };
-    };
-    output: { result?: string | undefined; items?: string[] | undefined };
-  };
-  REGISTRY_PUBLISH_REQUEST_LIST: {
-    input: {
-      status?: "pending" | "rejected" | "approved" | undefined;
+      query?: string | undefined;
+      tags?: string[] | undefined;
+      categories?: string[] | undefined;
       limit?: number | undefined;
-      offset?: number | undefined;
-      sortBy?: "title" | "created_at" | undefined;
-      sortDirection?: "asc" | "desc" | undefined;
+      cursor?: string | undefined;
     };
     output: {
       items: {
         id: string;
-        organization_id: string;
-        status: "pending" | "rejected" | "approved";
         title: string;
-        server: {
-          [x: string]: unknown;
-          name: string;
-          title?: string | undefined;
-          description?: string | undefined;
-          version?: string | undefined;
-          websiteUrl?: string | undefined;
-          icons?: { [x: string]: unknown; src: string }[] | undefined;
-          remotes?:
-            | {
-                [x: string]: unknown;
-                type?: string | undefined;
-                url?: string | undefined;
-                name?: string | undefined;
-                title?: string | undefined;
-                description?: string | undefined;
-              }[]
-            | undefined;
-          packages?:
-            | {
-                [x: string]: unknown;
-                identifier: string;
-                version?: string | undefined;
-              }[]
-            | undefined;
-          repository?:
-            | {
-                [x: string]: unknown;
-                url?: string | undefined;
-                source?: string | undefined;
-                subfolder?: string | undefined;
-              }
-            | undefined;
-        };
-        created_at: string;
-        updated_at: string;
-        requested_id?: string | null | undefined;
-        description?: string | null | undefined;
-        _meta?:
-          | {
-              [x: string]: unknown;
-              "mcp.studio"?:
-                | {
-                    [x: string]: unknown;
-                    verified?: boolean | undefined;
-                    official?: boolean | undefined;
-                    tags?: string[] | undefined;
-                    categories?: string[] | undefined;
-                    friendly_name?: string | null | undefined;
-                    short_description?: string | null | undefined;
-                    owner?: string | null | undefined;
-                    readme?: string | null | undefined;
-                    readme_url?: string | null | undefined;
-                    has_remote?: boolean | undefined;
-                    has_oauth?: boolean | undefined;
-                    tools?:
-                      | {
-                          [x: string]: unknown;
-                          name: string;
-                          description?: string | null | undefined;
-                        }[]
-                      | undefined;
-                  }
-                | undefined;
-              "mcp.mesh"?:
-                | {
-                    [x: string]: unknown;
-                    verified?: boolean | undefined;
-                    official?: boolean | undefined;
-                    tags?: string[] | undefined;
-                    categories?: string[] | undefined;
-                    friendly_name?: string | null | undefined;
-                    short_description?: string | null | undefined;
-                    owner?: string | null | undefined;
-                    readme?: string | null | undefined;
-                    readme_url?: string | null | undefined;
-                    has_remote?: boolean | undefined;
-                    has_oauth?: boolean | undefined;
-                    tools?:
-                      | {
-                          [x: string]: unknown;
-                          name: string;
-                          description?: string | null | undefined;
-                        }[]
-                      | undefined;
-                  }
-                | undefined;
-            }
-          | undefined;
-        requester_name?: string | null | undefined;
-        requester_email?: string | null | undefined;
-        reviewer_notes?: string | null | undefined;
+        tags: string[];
+        categories: string[];
+        is_public: boolean;
+        is_unlisted: boolean;
       }[];
       totalCount: number;
+      hasMore?: boolean | undefined;
+      nextCursor?: string | undefined;
     };
-  };
-  REGISTRY_PUBLISH_REQUEST_REVIEW: {
-    input: {
-      id: string;
-      status: "rejected" | "approved";
-      reviewerNotes?: string | null | undefined;
-    };
-    output: {
-      item: {
-        id: string;
-        organization_id: string;
-        status: "pending" | "rejected" | "approved";
-        title: string;
-        server: {
-          [x: string]: unknown;
-          name: string;
-          title?: string | undefined;
-          description?: string | undefined;
-          version?: string | undefined;
-          websiteUrl?: string | undefined;
-          icons?: { [x: string]: unknown; src: string }[] | undefined;
-          remotes?:
-            | {
-                [x: string]: unknown;
-                type?: string | undefined;
-                url?: string | undefined;
-                name?: string | undefined;
-                title?: string | undefined;
-                description?: string | undefined;
-              }[]
-            | undefined;
-          packages?:
-            | {
-                [x: string]: unknown;
-                identifier: string;
-                version?: string | undefined;
-              }[]
-            | undefined;
-          repository?:
-            | {
-                [x: string]: unknown;
-                url?: string | undefined;
-                source?: string | undefined;
-                subfolder?: string | undefined;
-              }
-            | undefined;
-        };
-        created_at: string;
-        updated_at: string;
-        requested_id?: string | null | undefined;
-        description?: string | null | undefined;
-        _meta?:
-          | {
-              [x: string]: unknown;
-              "mcp.studio"?:
-                | {
-                    [x: string]: unknown;
-                    verified?: boolean | undefined;
-                    official?: boolean | undefined;
-                    tags?: string[] | undefined;
-                    categories?: string[] | undefined;
-                    friendly_name?: string | null | undefined;
-                    short_description?: string | null | undefined;
-                    owner?: string | null | undefined;
-                    readme?: string | null | undefined;
-                    readme_url?: string | null | undefined;
-                    has_remote?: boolean | undefined;
-                    has_oauth?: boolean | undefined;
-                    tools?:
-                      | {
-                          [x: string]: unknown;
-                          name: string;
-                          description?: string | null | undefined;
-                        }[]
-                      | undefined;
-                  }
-                | undefined;
-              "mcp.mesh"?:
-                | {
-                    [x: string]: unknown;
-                    verified?: boolean | undefined;
-                    official?: boolean | undefined;
-                    tags?: string[] | undefined;
-                    categories?: string[] | undefined;
-                    friendly_name?: string | null | undefined;
-                    short_description?: string | null | undefined;
-                    owner?: string | null | undefined;
-                    readme?: string | null | undefined;
-                    readme_url?: string | null | undefined;
-                    has_remote?: boolean | undefined;
-                    has_oauth?: boolean | undefined;
-                    tools?:
-                      | {
-                          [x: string]: unknown;
-                          name: string;
-                          description?: string | null | undefined;
-                        }[]
-                      | undefined;
-                  }
-                | undefined;
-            }
-          | undefined;
-        requester_name?: string | null | undefined;
-        requester_email?: string | null | undefined;
-        reviewer_notes?: string | null | undefined;
-      };
-    };
-  };
-  REGISTRY_PUBLISH_REQUEST_COUNT: {
-    input: { [x: string]: never };
-    output: { pending: number };
-  };
-  REGISTRY_PUBLISH_REQUEST_DELETE: {
-    input: { id: string };
-    output: {
-      item: {
-        id: string;
-        organization_id: string;
-        status: "pending" | "rejected" | "approved";
-        title: string;
-        server: {
-          [x: string]: unknown;
-          name: string;
-          title?: string | undefined;
-          description?: string | undefined;
-          version?: string | undefined;
-          websiteUrl?: string | undefined;
-          icons?: { [x: string]: unknown; src: string }[] | undefined;
-          remotes?:
-            | {
-                [x: string]: unknown;
-                type?: string | undefined;
-                url?: string | undefined;
-                name?: string | undefined;
-                title?: string | undefined;
-                description?: string | undefined;
-              }[]
-            | undefined;
-          packages?:
-            | {
-                [x: string]: unknown;
-                identifier: string;
-                version?: string | undefined;
-              }[]
-            | undefined;
-          repository?:
-            | {
-                [x: string]: unknown;
-                url?: string | undefined;
-                source?: string | undefined;
-                subfolder?: string | undefined;
-              }
-            | undefined;
-        };
-        created_at: string;
-        updated_at: string;
-        requested_id?: string | null | undefined;
-        description?: string | null | undefined;
-        _meta?:
-          | {
-              [x: string]: unknown;
-              "mcp.studio"?:
-                | {
-                    [x: string]: unknown;
-                    verified?: boolean | undefined;
-                    official?: boolean | undefined;
-                    tags?: string[] | undefined;
-                    categories?: string[] | undefined;
-                    friendly_name?: string | null | undefined;
-                    short_description?: string | null | undefined;
-                    owner?: string | null | undefined;
-                    readme?: string | null | undefined;
-                    readme_url?: string | null | undefined;
-                    has_remote?: boolean | undefined;
-                    has_oauth?: boolean | undefined;
-                    tools?:
-                      | {
-                          [x: string]: unknown;
-                          name: string;
-                          description?: string | null | undefined;
-                        }[]
-                      | undefined;
-                  }
-                | undefined;
-              "mcp.mesh"?:
-                | {
-                    [x: string]: unknown;
-                    verified?: boolean | undefined;
-                    official?: boolean | undefined;
-                    tags?: string[] | undefined;
-                    categories?: string[] | undefined;
-                    friendly_name?: string | null | undefined;
-                    short_description?: string | null | undefined;
-                    owner?: string | null | undefined;
-                    readme?: string | null | undefined;
-                    readme_url?: string | null | undefined;
-                    has_remote?: boolean | undefined;
-                    has_oauth?: boolean | undefined;
-                    tools?:
-                      | {
-                          [x: string]: unknown;
-                          name: string;
-                          description?: string | null | undefined;
-                        }[]
-                      | undefined;
-                  }
-                | undefined;
-            }
-          | undefined;
-        requester_name?: string | null | undefined;
-        requester_email?: string | null | undefined;
-        reviewer_notes?: string | null | undefined;
-      } | null;
-    };
-  };
-  REGISTRY_PUBLISH_API_KEY_GENERATE: {
-    input: { name: string };
-    output: {
-      id: string;
-      name: string;
-      prefix: string;
-      key: string;
-      createdAt: string;
-    };
-  };
-  REGISTRY_PUBLISH_API_KEY_LIST: {
-    input: { [x: string]: never };
-    output: {
-      items: { id: string; name: string; prefix: string; createdAt: string }[];
-    };
-  };
-  REGISTRY_PUBLISH_API_KEY_REVOKE: {
-    input: { keyId: string };
-    output: { success: boolean; keyId: string };
-  };
-  REGISTRY_MONITOR_RUN_START: {
-    input: {
-      config?:
-        | {
-            monitorMode?:
-              | "health_check"
-              | "tool_call"
-              | "full_agent"
-              | undefined;
-            testMode?: "health_check" | "tool_call" | "full_agent" | undefined;
-            onFailure?:
-              | "none"
-              | "unlisted"
-              | "remove_public"
-              | "remove_private"
-              | "remove_all"
-              | undefined;
-            schedule?: "manual" | "cron" | undefined;
-            cronExpression?: string | undefined;
-            scheduleEventId?: string | undefined;
-            perMcpTimeoutMs?: number | undefined;
-            perToolTimeoutMs?: number | undefined;
-            maxAgentSteps?: number | undefined;
-            testPublicOnly?: boolean | undefined;
-            testPrivateOnly?: boolean | undefined;
-            includePendingRequests?: boolean | undefined;
-            agentContext?: string | undefined;
-            llmConnectionId?: string | undefined;
-            llmModelId?: string | undefined;
-          }
-        | undefined;
-    };
-    output: {
-      run: {
-        id: string;
-        organization_id: string;
-        status: "pending" | "failed" | "completed" | "cancelled" | "running";
-        config_snapshot: {
-          monitorMode: "health_check" | "tool_call" | "full_agent";
-          onFailure:
-            | "none"
-            | "unlisted"
-            | "remove_public"
-            | "remove_private"
-            | "remove_all";
-          schedule: "manual" | "cron";
-          perMcpTimeoutMs: number;
-          perToolTimeoutMs: number;
-          maxAgentSteps: number;
-          testPublicOnly: boolean;
-          testPrivateOnly: boolean;
-          includePendingRequests: boolean;
-          testMode?: "health_check" | "tool_call" | "full_agent" | undefined;
-          cronExpression?: string | undefined;
-          scheduleEventId?: string | undefined;
-          agentContext?: string | undefined;
-          llmConnectionId?: string | undefined;
-          llmModelId?: string | undefined;
-        } | null;
-        total_items: number;
-        tested_items: number;
-        passed_items: number;
-        failed_items: number;
-        skipped_items: number;
-        current_item_id: string | null;
-        started_at: string | null;
-        finished_at: string | null;
-        created_at: string;
-      };
-    };
-  };
-  REGISTRY_MONITOR_RUN_LIST: {
-    input: {
-      status?:
-        | "pending"
-        | "failed"
-        | "completed"
-        | "cancelled"
-        | "running"
-        | undefined;
-      limit?: number | undefined;
-      offset?: number | undefined;
-    };
-    output: {
-      items: {
-        id: string;
-        organization_id: string;
-        status: "pending" | "failed" | "completed" | "cancelled" | "running";
-        config_snapshot: {
-          monitorMode: "health_check" | "tool_call" | "full_agent";
-          onFailure:
-            | "none"
-            | "unlisted"
-            | "remove_public"
-            | "remove_private"
-            | "remove_all";
-          schedule: "manual" | "cron";
-          perMcpTimeoutMs: number;
-          perToolTimeoutMs: number;
-          maxAgentSteps: number;
-          testPublicOnly: boolean;
-          testPrivateOnly: boolean;
-          includePendingRequests: boolean;
-          testMode?: "health_check" | "tool_call" | "full_agent" | undefined;
-          cronExpression?: string | undefined;
-          scheduleEventId?: string | undefined;
-          agentContext?: string | undefined;
-          llmConnectionId?: string | undefined;
-          llmModelId?: string | undefined;
-        } | null;
-        total_items: number;
-        tested_items: number;
-        passed_items: number;
-        failed_items: number;
-        skipped_items: number;
-        current_item_id: string | null;
-        started_at: string | null;
-        finished_at: string | null;
-        created_at: string;
-      }[];
-      totalCount: number;
-    };
-  };
-  REGISTRY_MONITOR_RUN_GET: {
-    input: { runId: string };
-    output: {
-      run: {
-        id: string;
-        organization_id: string;
-        status: "pending" | "failed" | "completed" | "cancelled" | "running";
-        config_snapshot: {
-          monitorMode: "health_check" | "tool_call" | "full_agent";
-          onFailure:
-            | "none"
-            | "unlisted"
-            | "remove_public"
-            | "remove_private"
-            | "remove_all";
-          schedule: "manual" | "cron";
-          perMcpTimeoutMs: number;
-          perToolTimeoutMs: number;
-          maxAgentSteps: number;
-          testPublicOnly: boolean;
-          testPrivateOnly: boolean;
-          includePendingRequests: boolean;
-          testMode?: "health_check" | "tool_call" | "full_agent" | undefined;
-          cronExpression?: string | undefined;
-          scheduleEventId?: string | undefined;
-          agentContext?: string | undefined;
-          llmConnectionId?: string | undefined;
-          llmModelId?: string | undefined;
-        } | null;
-        total_items: number;
-        tested_items: number;
-        passed_items: number;
-        failed_items: number;
-        skipped_items: number;
-        current_item_id: string | null;
-        started_at: string | null;
-        finished_at: string | null;
-        created_at: string;
-      } | null;
-    };
-  };
-  REGISTRY_MONITOR_RUN_CANCEL: {
-    input: { runId: string };
-    output: {
-      run: {
-        id: string;
-        organization_id: string;
-        status: "pending" | "failed" | "completed" | "cancelled" | "running";
-        config_snapshot: {
-          monitorMode: "health_check" | "tool_call" | "full_agent";
-          onFailure:
-            | "none"
-            | "unlisted"
-            | "remove_public"
-            | "remove_private"
-            | "remove_all";
-          schedule: "manual" | "cron";
-          perMcpTimeoutMs: number;
-          perToolTimeoutMs: number;
-          maxAgentSteps: number;
-          testPublicOnly: boolean;
-          testPrivateOnly: boolean;
-          includePendingRequests: boolean;
-          testMode?: "health_check" | "tool_call" | "full_agent" | undefined;
-          cronExpression?: string | undefined;
-          scheduleEventId?: string | undefined;
-          agentContext?: string | undefined;
-          llmConnectionId?: string | undefined;
-          llmModelId?: string | undefined;
-        } | null;
-        total_items: number;
-        tested_items: number;
-        passed_items: number;
-        failed_items: number;
-        skipped_items: number;
-        current_item_id: string | null;
-        started_at: string | null;
-        finished_at: string | null;
-        created_at: string;
-      };
-    };
-  };
-  REGISTRY_MONITOR_RESULT_LIST: {
-    input: {
-      runId: string;
-      status?:
-        | "error"
-        | "failed"
-        | "skipped"
-        | "passed"
-        | "needs_auth"
-        | undefined;
-      limit?: number | undefined;
-      offset?: number | undefined;
-    };
-    output: {
-      items: {
-        id: string;
-        run_id: string;
-        organization_id: string;
-        item_id: string;
-        item_title: string;
-        status: "error" | "failed" | "skipped" | "passed" | "needs_auth";
-        error_message: string | null;
-        connection_ok: boolean;
-        tools_listed: boolean;
-        tool_results: {
-          toolName: string;
-          success: boolean;
-          durationMs: number;
-          input?: Record<string, unknown> | undefined;
-          outputPreview?: string | null | undefined;
-          error?: string | null | undefined;
-        }[];
-        agent_summary: string | null;
-        duration_ms: number;
-        action_taken: string;
-        tested_at: string;
-      }[];
-      totalCount: number;
-    };
-  };
-  REGISTRY_MONITOR_CONNECTION_LIST: {
-    input: { [x: string]: never };
-    output: {
-      items: {
-        mapping: {
-          id: string;
-          organization_id: string;
-          item_id: string;
-          connection_id: string;
-          auth_status: "none" | "needs_auth" | "authenticated";
-          created_at: string;
-          updated_at: string;
-        };
-        item: {
-          [x: string]: unknown;
-          id: string;
-          title: string;
-          server: {
-            [x: string]: unknown;
-            name: string;
-            title?: string | undefined;
-            description?: string | undefined;
-            version?: string | undefined;
-            websiteUrl?: string | undefined;
-            icons?: { [x: string]: unknown; src: string }[] | undefined;
-            remotes?:
-              | {
-                  [x: string]: unknown;
-                  type?: string | undefined;
-                  url?: string | undefined;
-                  name?: string | undefined;
-                  title?: string | undefined;
-                  description?: string | undefined;
-                }[]
-              | undefined;
-            packages?:
-              | {
-                  [x: string]: unknown;
-                  identifier: string;
-                  version?: string | undefined;
-                }[]
-              | undefined;
-            repository?:
-              | {
-                  [x: string]: unknown;
-                  url?: string | undefined;
-                  source?: string | undefined;
-                  subfolder?: string | undefined;
-                }
-              | undefined;
-          };
-          created_at: string;
-          updated_at: string;
-          name?: string | undefined;
-          description?: string | null | undefined;
-          _meta?:
-            | {
-                [x: string]: unknown;
-                "mcp.studio"?:
-                  | {
-                      [x: string]: unknown;
-                      verified?: boolean | undefined;
-                      official?: boolean | undefined;
-                      tags?: string[] | undefined;
-                      categories?: string[] | undefined;
-                      friendly_name?: string | null | undefined;
-                      short_description?: string | null | undefined;
-                      owner?: string | null | undefined;
-                      readme?: string | null | undefined;
-                      readme_url?: string | null | undefined;
-                      has_remote?: boolean | undefined;
-                      has_oauth?: boolean | undefined;
-                      tools?:
-                        | {
-                            [x: string]: unknown;
-                            name: string;
-                            description?: string | null | undefined;
-                          }[]
-                        | undefined;
-                    }
-                  | undefined;
-                "mcp.mesh"?:
-                  | {
-                      [x: string]: unknown;
-                      verified?: boolean | undefined;
-                      official?: boolean | undefined;
-                      tags?: string[] | undefined;
-                      categories?: string[] | undefined;
-                      friendly_name?: string | null | undefined;
-                      short_description?: string | null | undefined;
-                      owner?: string | null | undefined;
-                      readme?: string | null | undefined;
-                      readme_url?: string | null | undefined;
-                      has_remote?: boolean | undefined;
-                      has_oauth?: boolean | undefined;
-                      tools?:
-                        | {
-                            [x: string]: unknown;
-                            name: string;
-                            description?: string | null | undefined;
-                          }[]
-                        | undefined;
-                    }
-                  | undefined;
-              }
-            | undefined;
-          is_public?: boolean | undefined;
-          is_unlisted?: boolean | undefined;
-          created_by?: string | undefined;
-        } | null;
-        remoteUrl: string | null;
-        source: "request" | "store";
-      }[];
-    };
-  };
-  REGISTRY_MONITOR_CONNECTION_SYNC: {
-    input: { [x: string]: never };
-    output: { created: number; updated: number };
-  };
-  REGISTRY_MONITOR_CONNECTION_UPDATE_AUTH: {
-    input: {
-      connectionId: string;
-      authStatus: "none" | "needs_auth" | "authenticated";
-    };
-    output: { success: boolean };
   };
   SANDBOX_START: {
     input: {
       virtualMcpId: string;
       branch?: string | undefined;
       threadId?: string | undefined;
+      provider?: "kubernetes" | "freestyle" | undefined;
     };
     output: {
       previewUrl: string | null;
@@ -7546,49 +8585,230 @@ export interface StudioToolIO {
       }[];
     };
   };
-  GITHUB_SEARCH_BRANCHES: {
+  GIT_PROVIDER_CAPABILITIES: {
+    input: { [x: string]: never };
+    output: {
+      github: {
+        configured: boolean;
+        cliConnectPath: string | null;
+        connectPath: string | null;
+        installPath: string | null;
+      };
+      gitlab: { oauthHosts: string[]; connectPath: string | null };
+      bitbucket: { oauthHosts: string[]; connectPath: string | null };
+    };
+  };
+  GIT_ACCOUNT_LIST: {
+    input: { [x: string]: never };
+    output: {
+      accounts: {
+        id: string;
+        organizationId: string;
+        type: "github" | "gitlab" | "bitbucket";
+        host: string;
+        authKind: "token" | "oauth" | "github_app" | "github_cli";
+        externalAccountId: string;
+        login: string;
+        avatarUrl: string | null;
+        installationId: number | null;
+        status: "active" | "revoked";
+        createdAt: string;
+        updatedAt: string;
+        servable: boolean;
+        accessIssue:
+          | "revoked"
+          | "provider_unavailable"
+          | "installation_missing"
+          | "authorization_required"
+          | "no_repositories"
+          | null;
+        connectedBy: { name: string } | null;
+      }[];
+    };
+  };
+  GIT_ACCOUNT_CONNECT_TOKEN: {
     input: {
-      connectionId: string;
-      owner: string;
-      repo: string;
+      type: "github" | "gitlab" | "bitbucket";
+      host: string;
+      token: string;
+      workspace?: string | undefined;
+    };
+    output: {
+      account: {
+        id: string;
+        organizationId: string;
+        type: "github" | "gitlab" | "bitbucket";
+        host: string;
+        authKind: "token" | "oauth" | "github_app" | "github_cli";
+        externalAccountId: string;
+        login: string;
+        avatarUrl: string | null;
+        installationId: number | null;
+        status: "active" | "revoked";
+        createdAt: string;
+        updatedAt: string;
+        servable: boolean;
+        accessIssue:
+          | "revoked"
+          | "provider_unavailable"
+          | "installation_missing"
+          | "authorization_required"
+          | "no_repositories"
+          | null;
+        connectedBy: { name: string } | null;
+      };
+    };
+  };
+  GIT_ACCOUNT_DELETE: { input: { id: string }; output: { deleted: boolean } };
+  REPOSITORY_LIST: {
+    input: { accountId?: string | undefined };
+    output: {
+      repositories: {
+        id: string;
+        organizationId: string;
+        accountId: string | null;
+        provider: "github" | "gitlab" | "bitbucket";
+        host: string;
+        path: string;
+        externalId: string | null;
+        defaultBranch: string | null;
+        webUrl: string;
+        visibility: "public" | "private" | "internal" | null;
+        sandboxImage: string;
+        createdAt: string;
+        updatedAt: string;
+        usable: boolean;
+      }[];
+    };
+  };
+  REPOSITORY_SEARCH: {
+    input: {
+      accountId: string;
+      query?: string | undefined;
+      page?: number | undefined;
+      perPage?: number | undefined;
+    };
+    output: {
+      repositories: {
+        ref: {
+          provider: "github" | "gitlab" | "bitbucket";
+          host: string;
+          path: string;
+        };
+        externalId: string;
+        defaultBranch: string | null;
+        webUrl: string;
+        visibility: "public" | "private" | "internal";
+        description: string | null;
+        updatedAt: string | null;
+      }[];
+      hasMore: boolean;
+    };
+  };
+  REPOSITORY_LINK: {
+    input: { url: string; accountId?: string | undefined };
+    output: {
+      repository: {
+        id: string;
+        organizationId: string;
+        accountId: string | null;
+        provider: "github" | "gitlab" | "bitbucket";
+        host: string;
+        path: string;
+        externalId: string | null;
+        defaultBranch: string | null;
+        webUrl: string;
+        visibility: "public" | "private" | "internal" | null;
+        sandboxImage: string;
+        createdAt: string;
+        updatedAt: string;
+      };
+    };
+  };
+  REPOSITORY_CREATE_FROM_TEMPLATE: {
+    input: { accountId: string; name: string; template: "storefront" | "blog" };
+    output: {
+      repository: {
+        id: string;
+        organizationId: string;
+        accountId: string | null;
+        provider: "github" | "gitlab" | "bitbucket";
+        host: string;
+        path: string;
+        externalId: string | null;
+        defaultBranch: string | null;
+        webUrl: string;
+        visibility: "public" | "private" | "internal" | null;
+        sandboxImage: string;
+        createdAt: string;
+        updatedAt: string;
+      };
+    };
+  };
+  REPOSITORY_UPDATE: {
+    input: { id: string; sandboxImage: string };
+    output: {
+      repository: {
+        id: string;
+        organizationId: string;
+        accountId: string | null;
+        provider: "github" | "gitlab" | "bitbucket";
+        host: string;
+        path: string;
+        externalId: string | null;
+        defaultBranch: string | null;
+        webUrl: string;
+        visibility: "public" | "private" | "internal" | null;
+        sandboxImage: string;
+        createdAt: string;
+        updatedAt: string;
+      };
+    };
+  };
+  REPOSITORY_DELETE: { input: { id: string }; output: { deleted: boolean } };
+  REPOSITORY_SEARCH_BRANCHES: {
+    input: {
       query: string;
       limit?: number | undefined;
+      cursor?: string | null | undefined;
+      repositoryId?: string | undefined;
+      repoUrl?: string | undefined;
+      connectionId?: string | undefined;
     };
     output: {
       branches: { name: string; author: string | null }[];
       totalCount: number;
+      nextCursor: string | null;
     };
   };
-  GITHUB_PR_STATE: {
+  CHANGE_REQUEST_STATE: {
     input: {
-      connectionId: string;
-      owner: string;
-      repo: string;
       branch: string;
+      repositoryId?: string | undefined;
+      repoUrl?: string | undefined;
+      connectionId?: string | undefined;
     };
     output: {
-      pullRequest: {
+      changeRequest: {
         number: number;
+        url: string;
         title: string;
         body: string;
-        state: "open" | "closed";
-        merged: boolean;
+        state: "open" | "closed" | "merged";
+        draft: boolean;
         mergedAt: string | null;
         base: string;
         head: string;
         headSha: string;
-        headRepoFullName: string | null;
-        htmlUrl: string;
+        headRepoPath: string | null;
         author: string;
-        draft: boolean;
-        mergeableState: "unknown" | "clean" | "dirty" | "blocked";
-        unresolvedConversations: number;
-        missingRequiredApprovals: boolean;
-        changedFiles: number;
-        checks: {
-          id: string;
+        conflicting: boolean | null;
+        checks: "pending" | "passing" | "failing" | null;
+        changedFiles: number | null;
+        checkRuns: {
+          id: string | null;
           name: string;
-          status: "in_progress" | "completed" | "queued";
+          state: "completed" | "queued" | "running";
           conclusion:
             | "success"
             | "skipped"
@@ -7598,40 +8818,144 @@ export interface StudioToolIO {
             | "timed_out"
             | "action_required"
             | null;
-          htmlUrl: string;
+          url: string | null;
           durationMs: number | null;
+          summary: string | null;
         }[];
         comments: {
-          id: number;
+          id: string;
           author: string;
           body: string;
           createdAt: string;
-          htmlUrl: string;
+          updatedAt: string;
+          url: string;
         }[];
+        unresolvedConversations: number;
+        reviewBlocked: boolean;
       } | null;
     };
   };
-  GITHUB_LAST_PUBLISHED_PR: {
-    input: { connectionId: string; owner: string; repo: string; base: string };
+  CHANGE_REQUEST_LAST_MERGED: {
+    input: {
+      base: string;
+      repositoryId?: string | undefined;
+      repoUrl?: string | undefined;
+      connectionId?: string | undefined;
+    };
     output: {
-      pullRequest: {
+      changeRequest: {
         number: number;
+        url: string;
         title: string;
         body: string;
+        state: "open" | "closed" | "merged";
+        draft: boolean;
         mergedAt: string | null;
         base: string;
         head: string;
         headSha: string;
-        htmlUrl: string;
+        headRepoPath: string | null;
         author: string;
+        conflicting: boolean | null;
+        checks: "pending" | "passing" | "failing" | null;
+        changedFiles: number | null;
       } | null;
+    };
+  };
+  CHANGE_REQUEST_LIST_OPEN: {
+    input: {
+      limit?: number | undefined;
+      repositoryId?: string | undefined;
+      repoUrl?: string | undefined;
+      connectionId?: string | undefined;
+    };
+    output: {
+      changeRequests: {
+        number: number;
+        url: string;
+        title: string;
+        body: string;
+        state: "open" | "closed" | "merged";
+        draft: boolean;
+        mergedAt: string | null;
+        base: string;
+        head: string;
+        headSha: string;
+        headRepoPath: string | null;
+        author: string;
+        conflicting: boolean | null;
+        checks: "pending" | "passing" | "failing" | null;
+        changedFiles: number | null;
+      }[];
+    };
+  };
+  CHANGE_REQUEST_CHECK_LOG: {
+    input: {
+      checkId: string;
+      repositoryId?: string | undefined;
+      repoUrl?: string | undefined;
+      connectionId?: string | undefined;
+    };
+    output: { report: string | null };
+  };
+  CHANGE_REQUEST_OPEN: {
+    input: {
+      head: string;
+      base: string;
+      title: string;
+      body?: string | undefined;
+      repositoryId?: string | undefined;
+      repoUrl?: string | undefined;
+      connectionId?: string | undefined;
+    };
+    output: {
+      changeRequest: {
+        number: number;
+        url: string;
+        title: string;
+        body: string;
+        state: "open" | "closed" | "merged";
+        draft: boolean;
+        mergedAt: string | null;
+        base: string;
+        head: string;
+        headSha: string;
+        headRepoPath: string | null;
+        author: string;
+        conflicting: boolean | null;
+        checks: "pending" | "passing" | "failing" | null;
+        changedFiles: number | null;
+      };
+      existed: boolean;
+    };
+  };
+  CHANGE_REQUEST_MERGE: {
+    input: {
+      number: number;
+      strategy?: "any" | "squash" | undefined;
+      commitTitle?: string | undefined;
+      commitMessage?: string | undefined;
+      repositoryId?: string | undefined;
+      repoUrl?: string | undefined;
+      connectionId?: string | undefined;
+    };
+    output: {
+      merged: boolean;
+      reason?:
+        | "error"
+        | "not_found"
+        | "conflict"
+        | "blocked"
+        | "rate_limited"
+        | undefined;
+      detail?: string | undefined;
     };
   };
   GLOBAL_SEARCH: {
     input: {
       query: string;
       limit?: number | undefined;
-      types?: ("task" | "thread")[] | undefined;
+      types?: ("connection" | "task" | "thread")[] | undefined;
     };
     output: {
       items: (
@@ -7654,6 +8978,13 @@ export interface StudioToolIO {
             key: string | null;
             status: string | null;
             repo: string | null;
+          }
+        | {
+            type: "connection";
+            id: string;
+            title: string;
+            icon: string | null;
+            slug: string | null;
           }
       )[];
       totalCount: number;

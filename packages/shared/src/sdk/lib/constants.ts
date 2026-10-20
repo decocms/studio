@@ -31,23 +31,22 @@ export const WellKnownOrgMCPId = {
   DEV_ASSETS: (org: string) => `${org}_dev-assets`,
   /** Site Diagnostics agent (note: prefix-first format, not org-first) */
   SITE_DIAGNOSTICS: (org: string) => `site-diagnostics_${org}`,
-  /** Commerce Discovery MCP */
-  COMMERCE_DISCOVERY: (org: string) => `${org}_commerce-discovery`,
+  /** Reports MCP */
+  REPORTS: (org: string) => `${org}_commerce-discovery`,
 };
 
-// Public origin for the Commerce Discovery (reports) service. Deliberately the
+// Public origin for the Reports (reports) service. Deliberately the
 // stable custom domain, NOT the Cloudflare `workers.dev` URL, so the service can
 // move off Workers later by just repointing DNS — no code change or data
 // migration. This is only the prod default: both the write/claim path
 // (auth-client.ts's .origin) and the read-path "Store Report" connection URL
-// (getWellKnownCommerceDiscoveryConnection below, via its connectionUrl param)
+// (getWellKnownReportsConnection below, via its connectionUrl param)
 // are overridable per-deploy through REPORTS_INTERNAL_API_URL (or the legacy
 // COMMERCE_DISCOVERY_INTERNAL_API_URL), so
 // staging derives both from reports-stg.decocms.com instead.
-export const COMMERCE_DISCOVERY_MCP_URL =
-  "https://reports.decocms.com/api/v2/mcp";
-export const COMMERCE_DISCOVERY_REPORT_TOOL_NAME = "get_my_diagnostic";
-export const COMMERCE_DISCOVERY_ICON = "https://github.com/decocms.png";
+export const REPORTS_MCP_URL = "https://reports.decocms.com/api/v2/mcp";
+export const REPORTS_TOOL_NAME = "get_my_diagnostic";
+export const REPORTS_ICON = "https://github.com/decocms.png";
 
 /**
  * Frontend connection ID for the self/management MCP endpoint.
@@ -62,64 +61,6 @@ export const SELF_MCP_ALIAS_ID = "self";
  * The endpoint is exposed at /mcp/dev-assets.
  */
 export const DEV_ASSETS_MCP_ALIAS_ID = "dev-assets";
-
-/**
- * Get well-known connection definition for the Deco Store registry.
- * This can be used by both frontend and backend to create registry connections.
- *
- * @returns ConnectionCreateData for the Deco Store registry
- */
-export function getWellKnownRegistryConnection(
-  orgId: string,
-): ConnectionCreateData {
-  return {
-    id: WellKnownOrgMCPId.REGISTRY(orgId),
-    title: "Deco Store",
-    description: "Official deco MCP registry with curated integrations",
-    connection_type: "HTTP",
-    connection_url: "https://studio.decocms.com/org/deco/registry/mcp",
-    icon: "https://assets.decocache.com/decocms/00ccf6c3-9e13-4517-83b0-75ab84554bb9/596364c63320075ca58483660156b6d9de9b526e.png",
-    app_name: "deco-registry",
-    app_id: null,
-    connection_token: null,
-    connection_headers: null,
-    oauth_config: null,
-    configuration_state: null,
-    configuration_scopes: null,
-    metadata: {
-      isDefault: true,
-      type: "registry",
-    },
-  };
-}
-
-/**
- * Get well-known connection definition for the Community Registry.
- * Community MCP registry with thousands of handy MCPs.
- *
- * @returns ConnectionCreateData for the Community Registry
- */
-export function getWellKnownCommunityRegistryConnection(): ConnectionCreateData {
-  return {
-    id: "community-registry",
-    title: "MCP Registry",
-    description: "Community MCP registry with thousands of handy MCPs",
-    connection_type: "HTTP",
-    connection_url: "https://sites-registry.deco.site/mcp",
-    icon: "https://assets.decocache.com/decocms/cd7ca472-0f72-463a-b0de-6e44bdd0f9b4/mcp.png",
-    app_name: "mcp-registry",
-    app_id: null,
-    connection_token: null,
-    connection_headers: null,
-    oauth_config: null,
-    configuration_state: null,
-    configuration_scopes: null,
-    metadata: {
-      isDefault: true,
-      type: "registry",
-    },
-  };
-}
 
 /**
  * Get well-known connection definition for the Management MCP (SELF).
@@ -249,11 +190,27 @@ function defineWellKnownAgentVMCP(opts: {
 }
 
 // ---- Decopilot ----
-// Default agent that aggregates ALL org connections. Gateway populates
-// the connections array at lookup time.
+// Default agent. Aggregates no connections — see `storage/virtual.ts` findById.
 const decopilotPrefix = createWellKnownAgentPrefix("decopilot_");
 export const isDecopilot = decopilotPrefix.is;
 export const getDecopilotId = decopilotPrefix.get;
+
+/**
+ * MCP servers that accept only Claude Code's OAuth client. The user signs in
+ * through Claude Code in a short-lived sandbox, and sandboxed runs call the
+ * server directly with the stored token instead of through Studio's proxy.
+ * A host list; detect a rejected client registration once more servers need it.
+ */
+const SANDBOX_SIGN_IN_HOSTS = new Set(["mcp.figma.com"]);
+
+export function signsInFromSandbox(url: string | null | undefined): boolean {
+  if (!url) return false;
+  try {
+    return SANDBOX_SIGN_IN_HOSTS.has(new URL(url).hostname);
+  } catch {
+    return false;
+  }
+}
 
 // ---- Dev connection (ephemeral sandbox dev-server) ----
 // Synthetic, never-persisted connection id pointing at an agent's running
@@ -301,65 +258,28 @@ export function getWellKnownDecopilotVirtualMCP(
   });
 }
 
-// ---- Brand-Context Setup ----
-// Guided-onboarding agent for the brand-context preset task. The
-// `brand_context_setup` built-in is injected by `dispatchRun` when this
-// id is seen; the system prompt lives in `metadata.instructions`.
-const brandContextSetupPrefix = createWellKnownAgentPrefix(
-  "brand-context-setup_",
-);
-export const isBrandContextSetup = brandContextSetupPrefix.is;
-export const getBrandContextSetupId = brandContextSetupPrefix.get;
-
-const BRAND_CONTEXT_SETUP_INSTRUCTIONS = `
-You are running the brand-context onboarding for the user's organization. Your only job in this thread is to set up the organization's brand context:
-
-1. If the user hasn't already given you a website URL, ask for it in one short message. Accept whatever URL they give — don't quibble about format.
-2. As soon as you have a URL, call the \`brand_context_setup\` tool exactly once with that URL.
-3. After the tool returns success, briefly confirm to the user what was captured (brand name + domain) in one or two sentences. Do not list every color or font.
-4. Do NOT call any other tools in this thread. Do NOT call \`brand_context_setup\` more than once.
-
-If the tool returns an error, surface the error message to the user and ask whether they want to try a different URL.
-`.trim();
-
-export function getWellKnownBrandContextSetupVirtualMCP(
-  organizationId: string,
-): VirtualMCPEntity {
-  return defineWellKnownAgentVMCP({
-    id: getBrandContextSetupId(organizationId),
-    organizationId,
-    title: "Brand context setup",
-    description:
-      "Guided onboarding agent that extracts brand context from a website URL.",
-    icon: "https://assets.decocache.com/decocms/fd07a578-6b1c-40f1-bc05-88a3b981695d/f7fc4ffa81aec04e37ae670c3cd4936643a7b269.png",
-    instructions: BRAND_CONTEXT_SETUP_INSTRUCTIONS,
-  });
-}
-
 // ---- Site Diagnostics ----
 const siteDiagnosticsPrefix = createWellKnownAgentPrefix("site-diagnostics_");
 export const isSiteDiagnostics = siteDiagnosticsPrefix.is;
 export const getSiteDiagnosticsId = siteDiagnosticsPrefix.get;
 
-// ---- Commerce Discovery ----
-const commerceDiscoveryPrefix = createWellKnownAgentPrefix(
-  "commerce-discovery_",
-);
-export const isCommerceDiscoveryAgentId = commerceDiscoveryPrefix.is;
-export const getCommerceDiscoveryAgentId = commerceDiscoveryPrefix.get;
+// ---- Reports ----
+const reportsPrefix = createWellKnownAgentPrefix("commerce-discovery_");
+export const isReportsAgentId = reportsPrefix.is;
+export const getReportsAgentId = reportsPrefix.get;
 
-export function getWellKnownCommerceDiscoveryConnection(
+export function getWellKnownReportsConnection(
   orgId: string,
   authorizationToken: string,
-  connectionUrl = COMMERCE_DISCOVERY_MCP_URL,
+  connectionUrl = REPORTS_MCP_URL,
 ): ConnectionCreateData {
   return {
-    id: WellKnownOrgMCPId.COMMERCE_DISCOVERY(orgId),
-    title: "Store Report",
-    description: "Your store's report and diagnostics",
+    id: WellKnownOrgMCPId.REPORTS(orgId),
+    title: "Deco Score",
+    description: "Your store's Deco Score",
     connection_type: "HTTP",
     connection_url: connectionUrl,
-    icon: COMMERCE_DISCOVERY_ICON,
+    icon: REPORTS_ICON,
     app_name: "commerce-discovery",
     app_id: null,
     connection_token: authorizationToken,
@@ -376,12 +296,12 @@ export function getWellKnownCommerceDiscoveryConnection(
 
 export function getWellKnownReportVirtualMCP(
   orgId: string,
-  connectionId = WellKnownOrgMCPId.COMMERCE_DISCOVERY(orgId),
+  connectionId = WellKnownOrgMCPId.REPORTS(orgId),
 ): VirtualMCPCreateData {
   return {
-    title: "Report Agent",
-    description: "Ask anything about your store's report",
-    icon: COMMERCE_DISCOVERY_ICON,
+    title: "Deco Score Agent",
+    description: "Ask anything about your store's Deco Score",
+    icon: REPORTS_ICON,
     status: "active",
     pinned: true,
     metadata: {
@@ -391,16 +311,16 @@ export function getWellKnownReportVirtualMCP(
         pinnedViews: [
           {
             connectionId,
-            toolName: COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
-            label: "Report",
-            icon: COMMERCE_DISCOVERY_ICON,
+            toolName: REPORTS_TOOL_NAME,
+            label: "Deco Score",
+            icon: REPORTS_ICON,
           },
         ],
         layout: {
           defaultMainView: {
             type: "ext-apps",
             id: connectionId,
-            toolName: COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
+            toolName: REPORTS_TOOL_NAME,
           },
           chatDefaultOpen: true,
         },
@@ -426,12 +346,10 @@ export function getWellKnownReportVirtualMCP(
  * Studio Pack agent ID prefixes (org-scoped), keyed the same as StudioPackAgentId below.
  */
 const studioPackAgentPrefixes = {
-  AGENT_MANAGER: createWellKnownAgentPrefix("studio-agent-manager_"),
   AUTOMATION_MANAGER: createWellKnownAgentPrefix("studio-automation-manager_"),
   CONNECTION_MANAGER: createWellKnownAgentPrefix("studio-connection-manager_"),
   API_KEY_MANAGER: createWellKnownAgentPrefix("studio-api-key-manager_"),
   STORE_MANAGER: createWellKnownAgentPrefix("studio-store-manager_"),
-  BRAND_MANAGER: createWellKnownAgentPrefix("studio-brand-manager_"),
   USAGE_MANAGER: createWellKnownAgentPrefix("studio-usage-manager_"),
 } as const;
 
@@ -439,12 +357,10 @@ const studioPackAgentPrefixes = {
  * Studio Pack agent ID generators (org-scoped)
  */
 export const StudioPackAgentId = {
-  AGENT_MANAGER: studioPackAgentPrefixes.AGENT_MANAGER.get,
   AUTOMATION_MANAGER: studioPackAgentPrefixes.AUTOMATION_MANAGER.get,
   CONNECTION_MANAGER: studioPackAgentPrefixes.CONNECTION_MANAGER.get,
   API_KEY_MANAGER: studioPackAgentPrefixes.API_KEY_MANAGER.get,
   STORE_MANAGER: studioPackAgentPrefixes.STORE_MANAGER.get,
-  BRAND_MANAGER: studioPackAgentPrefixes.BRAND_MANAGER.get,
   USAGE_MANAGER: studioPackAgentPrefixes.USAGE_MANAGER.get,
 } as const;
 
@@ -455,6 +371,54 @@ export function isStudioPackAgent(id: string | null | undefined): boolean {
   if (!id) return false;
   return Object.values(studioPackAgentPrefixes).some(
     (prefix) => prefix.is(id) !== null,
+  );
+}
+
+/**
+ * Retired Studio Pack agent ID prefixes: agents that used to be installed
+ * per-org but no longer exist. Their rows linger in orgs that once had them
+ * (the backfill that deletes them is version-gated), so the UI must keep
+ * hiding them as scaffolding even though they are no longer part of the pack.
+ */
+export const RETIRED_STUDIO_PACK_AGENT_ID_PREFIXES = [
+  "studio-agent-manager_",
+  "studio-task-manager_",
+  "studio-brand-manager_",
+] as const;
+
+const retiredStudioPackAgentPrefixes =
+  RETIRED_STUDIO_PACK_AGENT_ID_PREFIXES.map(createWellKnownAgentPrefix);
+
+/**
+ * Check if a connection or virtual MCP ID is a retired Studio Pack agent whose
+ * leftover row should be hidden from users.
+ */
+export function isRetiredStudioPackAgent(
+  id: string | null | undefined,
+): boolean {
+  if (!id) return false;
+  return retiredStudioPackAgentPrefixes.some(
+    (prefix) => prefix.is(id) !== null,
+  );
+}
+
+/**
+ * Whether a virtual MCP is a project a person works in, rather than plumbing:
+ * Decopilot is the org-wide default, Studio Pack agents are code-owned
+ * scaffolding, and a dev agent (`metadata.liveAgentId`) is reached through its
+ * live counterpart. The web's project switcher and the task board's
+ * attribution both count projects with this.
+ */
+export function isScopableProject(project: {
+  id: string;
+  metadata?: { liveAgentId?: unknown } | null;
+}): boolean {
+  const liveAgentId = project.metadata?.liveAgentId;
+  return (
+    !(typeof liveAgentId === "string" && liveAgentId) &&
+    !isDecopilot(project.id) &&
+    !isStudioPackAgent(project.id) &&
+    !isRetiredStudioPackAgent(project.id)
   );
 }
 

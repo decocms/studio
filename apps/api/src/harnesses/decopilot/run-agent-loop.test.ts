@@ -220,6 +220,7 @@ describe("runAgentLoop PR-open → task board thread-link resolution", () => {
       storage: {
         virtualMcps: { list: async () => [] },
         taskBoard: {
+          runMovesLinkedCards: async () => true,
           linkedTaskIds: async (threadId: string, orgId: string) => {
             linkedCalls.push({ threadId, orgId });
             return [];
@@ -235,11 +236,9 @@ describe("runAgentLoop PR-open → task board thread-link resolution", () => {
     command: string,
     linkedCalls: Array<{ threadId: string; orgId: string }>,
   ) {
-    let onStepFinish:
-      | ((step: { toolCalls?: unknown[] }) => unknown)
-      | undefined;
-    const fakeStreamText = (cfg: { onStepFinish?: typeof onStepFinish }) => {
-      onStepFinish = cfg.onStepFinish;
+    let onStepEnd: ((step: { toolCalls?: unknown[] }) => unknown) | undefined;
+    const fakeStreamText = (cfg: { onStepEnd?: typeof onStepEnd }) => {
+      onStepEnd = cfg.onStepEnd;
       return fakeResult;
     };
 
@@ -260,9 +259,9 @@ describe("runAgentLoop PR-open → task board thread-link resolution", () => {
     } as never);
 
     // linkedTaskIds is invoked synchronously (before the first await inside
-    // advanceTaskBoardForRun), so the record is present as soon as the step
+    // openReviewCycleForRun), so the record is present as soon as the step
     // callback returns — no timer needed.
-    await onStepFinish?.({
+    await onStepEnd?.({
       toolCalls: [{ toolName: "bash", input: { command } }],
     });
   }

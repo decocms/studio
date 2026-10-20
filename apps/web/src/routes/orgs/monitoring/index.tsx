@@ -54,7 +54,7 @@ import {
 } from "@decocms/ui/components/time-range-picker.tsx";
 import { expressionToDate } from "@decocms/ui/lib/time-expressions.ts";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { Suspense, useRef, useState } from "react";
+import { Suspense, useDeferredValue, useRef, useState } from "react";
 import { Plus, Trash01, Code01, Grid01 } from "@untitledui/icons";
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import {
@@ -76,6 +76,49 @@ import { ThreadsFiltersPopover } from "./threads-filters-popover.tsx";
 import { AutomationsTabContent } from "./automations.tsx";
 import { getOrgMembers } from "./utils.ts";
 import { track } from "@/lib/posthog-client";
+
+/**
+ * A default of `[]` is a NEW array on every render, so anything derived from
+ * it re-renders even when nothing changed. `never[]` is assignable to any
+ * `T[]`, so one frozen constant serves every optional list prop in this file.
+ */
+const EMPTY_ARRAY: never[] = [];
+
+type MonitoringTab = "threads" | "overview" | "audit" | "automations";
+
+/** Chats come first: they are what the monitor is opened for. */
+function useMonitoringTabs(): { id: MonitoringTab; label: string }[] {
+  const t = useT();
+  return [
+    { id: "threads", label: t("orgs.monitoring.chats") },
+    { id: "overview", label: t("orgs.monitoring.overview") },
+    { id: "audit", label: t("orgs.monitoring.audit") },
+    { id: "automations", label: t("orgs.monitoring.automations") },
+  ];
+}
+
+/** Names the open tab after the route's Monitoring segment, which resets to
+ *  the default view. Unknown tabs render Overview, so they are named so. */
+function MonitoringBreadcrumbs({
+  tab,
+}: {
+  tab: NonNullable<MonitoringSearchParams["tab"]>;
+}) {
+  const { org } = useProjectContext();
+  const tabs = useMonitoringTabs();
+  const current =
+    tabs.find((item) => item.id === tab) ??
+    tabs.find((item) => item.id === "overview");
+  return (
+    <Page.Breadcrumbs
+      after="page"
+      parent={{
+        link: { to: "/$org/settings/monitor", params: { org: org.slug } },
+      }}
+      items={current ? [{ key: "monitor-tab", label: current.label }] : []}
+    />
+  );
+}
 
 // ============================================================================
 // Filters Popover Component
@@ -130,7 +173,7 @@ function FiltersPopover({
   onUpdateFilters,
   onConnectionSearchChange,
   memberOptions,
-  llmUserIds = [],
+  llmUserIds = EMPTY_ARRAY,
   onLlmUserIdsChange,
   showMemberFilter,
 }: FiltersPopoverProps) {
@@ -594,7 +637,7 @@ interface MonitoringDashboardContentProps {
   onUpdateFilters: (updates: Partial<MonitoringSearchParams>) => void;
   onTimeRangeChange: (range: TimeRangeValue) => void;
   onStreamingToggle: () => void;
-  onTabChange: (tab: "overview" | "audit" | "threads" | "automations") => void;
+  onTabChange: (tab: MonitoringTab) => void;
 }
 
 function MonitoringDashboardContent({
@@ -623,8 +666,10 @@ function MonitoringDashboardContent({
   const { data: membersData } = useMembers();
 
   const [connectionSearch, setConnectionSearch] = useState("");
+  // Deferred: a new term keeps the old options up instead of suspending the page.
+  const deferredConnectionSearch = useDeferredValue(connectionSearch);
   const searchFilteredConnections = useConnections({
-    searchTerm: connectionSearch || undefined,
+    searchTerm: deferredConnectionSearch || undefined,
   });
   const connectionOptions = (searchFilteredConnections ?? []).map((conn) => {
     const icon = conn.icon;
@@ -722,27 +767,22 @@ function MonitoringDashboardContent({
     ...propertyApiParams,
   };
 
-  const tabs = [
-    { id: "overview" as const, label: t("orgs.monitoring.overview") },
-    { id: "audit" as const, label: t("orgs.monitoring.audit") },
-    { id: "threads" as const, label: t("orgs.monitoring.chats") },
-    { id: "automations" as const, label: t("orgs.monitoring.automations") },
-  ];
+  const tabs = useMonitoringTabs();
 
   return (
     <>
-      <Page.Body className="!pb-4">
+      <Page.Container className="!pb-4">
         <div className="flex flex-col gap-5">
-          <Page.Title>{t("orgs.monitoring.title")}</Page.Title>
+          <MonitoringBreadcrumbs tab={tab} />
           <div className="flex items-center justify-between gap-4">
             <CollectionTabs
+              placement="page"
               tabs={tabs}
               activeTab={tab}
-              onTabChange={(tabId) =>
-                onTabChange(
-                  tabId as "overview" | "audit" | "threads" | "automations",
-                )
-              }
+              onTabChange={(tabId) => {
+                const next = tabs.find((item) => item.id === tabId);
+                if (next) onTabChange(next.id);
+              }}
             />
             <div className="flex items-center gap-2">
               {(tab === "overview" || tab === "audit") && (
@@ -912,7 +952,7 @@ function MonitoringDashboardContent({
             />
           )}
         </div>
-      </Page.Body>
+      </Page.Container>
 
       {tab === "automations" ? (
         <AutomationsTabContent dateRange={dateRange} />
@@ -931,22 +971,30 @@ function MonitoringDashboardContent({
           filterSource={threadFilterSource}
         />
       ) : tab === "audit" ? (
-        <AuditTabContent
-          client={client}
-          locator={locator}
-          baseParams={baseParams}
-          pageSize={pageSize}
-          isStreaming={isStreaming}
-          streamingRefetchInterval={streamingRefetchInterval}
-          connectionIds={connectionIds}
-          virtualMcpIds={virtualMcpIds}
-          tool={tool}
-          status={status}
-          searchQuery={searchQuery}
-          allConnections={allConnections}
-          allVirtualMcps={allVirtualMcps}
-          membersData={membersData}
-        />
+        <Suspense
+          fallback={
+            <div className="flex-1 flex flex-col overflow-auto md:overflow-hidden">
+              <MonitoringLogsTable.Skeleton />
+            </div>
+          }
+        >
+          <AuditTabContent
+            client={client}
+            locator={locator}
+            baseParams={baseParams}
+            pageSize={pageSize}
+            isStreaming={isStreaming}
+            streamingRefetchInterval={streamingRefetchInterval}
+            connectionIds={connectionIds}
+            virtualMcpIds={virtualMcpIds}
+            tool={tool}
+            status={status}
+            searchQuery={searchQuery}
+            allConnections={allConnections}
+            allVirtualMcps={allVirtualMcps}
+            membersData={membersData}
+          />
+        </Suspense>
       ) : (
         <div className="flex-1 flex flex-col overflow-auto min-w-0">
           <OverviewTabContent
@@ -980,6 +1028,7 @@ function MonitoringDashboardContent({
 
 export default function MonitoringDashboard() {
   const t = useT();
+  const tabs = useMonitoringTabs();
   const { org } = useProjectContext();
   const navigate = useNavigate();
   const search = useSearch({
@@ -987,7 +1036,7 @@ export default function MonitoringDashboard() {
   });
 
   const {
-    tab = "overview",
+    tab = "threads",
     from,
     to,
     connectionId: connectionIds = [],
@@ -1013,15 +1062,19 @@ export default function MonitoringDashboard() {
     });
   };
 
+  // Pinned per picked range, so a re-render can't change the logs query key.
+  const [anchorAt, setAnchorAt] = useState(() => Date.now());
   const handleTimeRangeChange = (range: TimeRangeValue) => {
+    setAnchorAt(Date.now());
     updateFilters({ from: range.from, to: range.to });
   };
 
-  const fromResult = expressionToDate(from);
-  const toResult = expressionToDate(to);
+  const now = new Date(anchorAt);
+  const fromResult = expressionToDate(from, now);
+  const toResult = expressionToDate(to, now);
 
-  const startDate = fromResult.date || new Date(Date.now() - 30 * 60 * 1000);
-  const originalEndDate = toResult.date || new Date();
+  const startDate = fromResult.date || new Date(anchorAt - 24 * 60 * 60 * 1000);
+  const originalEndDate = toResult.date || now;
 
   const displayDateRange = { startDate, endDate: originalEndDate };
 
@@ -1048,9 +1101,9 @@ export default function MonitoringDashboard() {
         <ErrorBoundary
           fallback={
             <>
-              <Page.Body className="!pb-3">
-                <Page.Title>{t("orgs.monitoring.title")}</Page.Title>
-              </Page.Body>
+              <Page.Container className="!pb-3">
+                <MonitoringBreadcrumbs tab={tab} />
+              </Page.Container>
               <Page.Content>
                 <div className="flex-1 flex items-center justify-center h-full">
                   <EmptyState
@@ -1065,35 +1118,20 @@ export default function MonitoringDashboard() {
           <Suspense
             fallback={
               <>
-                <Page.Body className="!pb-3">
+                <Page.Container className="!pb-3">
                   <div className="flex flex-col gap-4">
-                    <Page.Title>{t("orgs.monitoring.title")}</Page.Title>
+                    <MonitoringBreadcrumbs tab={tab} />
                     <CollectionTabs
-                      tabs={[
-                        {
-                          id: "overview",
-                          label: t("orgs.monitoring.overview"),
-                        },
-                        { id: "audit", label: t("orgs.monitoring.audit") },
-                        { id: "threads", label: t("orgs.monitoring.chats") },
-                        {
-                          id: "automations",
-                          label: t("orgs.monitoring.automations"),
-                        },
-                      ]}
+                      placement="page"
+                      tabs={tabs}
                       activeTab={tab}
-                      onTabChange={(tabId) =>
-                        updateFilters({
-                          tab: tabId as
-                            | "overview"
-                            | "audit"
-                            | "threads"
-                            | "automations",
-                        })
-                      }
+                      onTabChange={(tabId) => {
+                        const next = tabs.find((item) => item.id === tabId);
+                        if (next) updateFilters({ tab: next.id });
+                      }}
                     />
                   </div>
-                </Page.Body>
+                </Page.Container>
 
                 {tab === "threads" ? (
                   <div className="flex-1 flex flex-col overflow-auto md:overflow-hidden">

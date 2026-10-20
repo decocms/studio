@@ -1,6 +1,4 @@
 import type { Context, Next } from "hono";
-import { isTuiConsoleIntercepted } from "../../cli/cli-store";
-import { logEmitter } from "../../cli/log-emitter";
 
 // ANSI color codes for elegant logging
 const colors = {
@@ -116,14 +114,12 @@ export function devLogger() {
       displayPath = `${colors.mcp}/mcp/registry${colors.reset}`;
     }
 
-    // Log incoming request (skip when TUI intercepts console to avoid duplicates)
+    // Log incoming request
     const methodColor = getMethodColor(method);
     const arrow = isMcpCall ? "◀" : "←";
-    if (!isTuiConsoleIntercepted()) {
-      console.log(
-        `${colors.dim}${arrow}${colors.reset} ${methodColor}${method}${colors.reset} ${displayPath}${mcpInfo ? ` ${mcpInfo}` : ""}`,
-      );
-    }
+    console.log(
+      `${colors.dim}${arrow}${colors.reset} ${methodColor}${method}${colors.reset} ${displayPath}${mcpInfo ? ` ${mcpInfo}` : ""}`,
+    );
 
     // Wrap next() in try/finally to ensure completion logs always run
     // even if downstream throws an error
@@ -137,20 +133,9 @@ export function devLogger() {
         duration < 1000 ? `${duration}ms` : `${(duration / 1000).toFixed(1)}s`;
       const outArrow = isMcpCall ? "▶" : "→";
 
-      if (!isTuiConsoleIntercepted()) {
-        console.log(
-          `${colors.dim}${outArrow}${colors.reset} ${methodColor}${method}${colors.reset} ${displayPath}${mcpInfo ? ` ${mcpInfo}` : ""} ${statusColor}${status}${colors.reset} ${colors.duration}${durationStr}${colors.reset}`,
-        );
-      }
-
-      // Emit to Ink UI log emitter
-      logEmitter.emit("request", {
-        method,
-        path: sanitizeForLog(path),
-        status,
-        duration,
-        timestamp: new Date(),
-      });
+      console.log(
+        `${colors.dim}${outArrow}${colors.reset} ${methodColor}${method}${colors.reset} ${displayPath}${mcpInfo ? ` ${mcpInfo}` : ""} ${statusColor}${status}${colors.reset} ${colors.duration}${durationStr}${colors.reset}`,
+      );
     }
   };
 }

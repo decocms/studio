@@ -1,6 +1,7 @@
 import { parseAutomationTabId } from "./tab-id";
 import { SettingsTab as AutomationInlineDetail } from "@/views/automations/automation-detail";
 import { AutomationRunsView } from "@/views/automations/automation-runs";
+import { BuiltinAutomationSettings } from "@/views/automations/builtin-automation-settings";
 import { useAutomation } from "@/hooks/use-automations";
 import { Page } from "@/components/page";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -128,13 +129,14 @@ function AutomationTabInner({ id }: { id: string }) {
   return (
     <Page>
       <Page.Content>
-        <Page.Body>
+        <Page.Container>
           <div className="flex items-center justify-between pb-4 shrink-0">
             <Button variant="ghost" size="sm" onClick={onBack}>
               <ArrowLeft size={14} />
               {t("mainPanelTabs.automationTab.backToList")}
             </Button>
             <CollectionTabs
+              placement="page"
               tabs={[
                 {
                   id: "settings",
@@ -148,11 +150,20 @@ function AutomationTabInner({ id }: { id: string }) {
           </div>
 
           {tab === "settings" ? (
-            <AutomationInlineDetail automationId={id} automation={automation} />
+            automation.system_key ? (
+              <BuiltinAutomationSettings automation={automation} />
+            ) : (
+              <AutomationInlineDetail
+                automationId={id}
+                automation={automation}
+              />
+            )
           ) : (
-            <RunsTab automationId={id} triggerIds={triggerIds} />
+            <Suspense fallback={<PanelLoading />}>
+              <RunsTab automationId={id} triggerIds={triggerIds} />
+            </Suspense>
           )}
-        </Page.Body>
+        </Page.Container>
       </Page.Content>
     </Page>
   );

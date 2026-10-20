@@ -15,7 +15,7 @@ import {
   REVALIDATE_MIN_INTERVAL_MS,
 } from "@/mcp-clients/mcp-list-cache";
 import type { ConnectionEntity } from "@/tools/connection/schema";
-import { AccessControl } from "@/core/access-control";
+import { AccessControl, ForbiddenError } from "@/core/access-control";
 import type {
   JSONRPCMessage,
   JSONRPCRequest,
@@ -184,7 +184,17 @@ export class AuthTransport extends WrapperTransport {
       false, // toolName is the downstream connection's own name — don't trust its prefix
     );
 
-    await connectionAccessControl.check(toolName);
+    try {
+      await connectionAccessControl.check(toolName);
+    } catch (error) {
+      if (
+        error instanceof ForbiddenError &&
+        (await agentKeyCovers(ctx, connection.id, toolName))
+      ) {
+        return;
+      }
+      throw error;
+    }
   }
 
   // toolName is the downstream server's own name for it — never trust its prefix, only its _meta.
@@ -206,4 +216,50 @@ export class AuthTransport extends WrapperTransport {
       params.arguments = rest;
     }
   }
+}
+
+/**
+ * A key minted for an agent (`{ <agentId>: [...] }`, e.g. the agent's typegen
+ * key) covers the tools that agent exposes from its connections. The proxy
+ * authorizes by connection, so without this the agent id matches no check and
+ * the key can call nothing — through the agent endpoint or the connection's.
+ */
+export async function agentKeyCovers(
+  ctx: StudioContext,
+  connectionId: string,
+  toolName: string,
+): Promise<boolean> {
+  const organizationId = ctx.organization?.id;
+  if (
+    !ctx.boundAuth?.isApiKeyPrincipal ||
+    !organizationId ||
+    ctx.auth.permissionsOrganizationId !== organizationId
+  ) {
+    return false;
+  }
+  // ponytail: one agent lookup per granting resource, only on the deny path.
+  for (const [resource, tools] of Object.entries(ctx.auth.permissions ?? {})) {
+    if (!tools.includes("*") && !tools.includes(toolName)) continue;
+    const agent = await ctx.storage.virtualMcps.findById(
+      resource,
+      organizationId,
+    );
+    if (
+      agent?.organization_id !== organizationId ||
+      agent.status !== "active"
+    ) {
+      continue;
+    }
+    const member = agent.connections.find(
+      (c) => c.connection_id === connectionId,
+    );
+    if (
+      member &&
+      (member.selected_tools == null ||
+        member.selected_tools.includes(toolName))
+    ) {
+      return true;
+    }
+  }
+  return false;
 }

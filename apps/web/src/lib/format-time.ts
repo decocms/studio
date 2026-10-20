@@ -9,6 +9,22 @@ export function formatDate(value: string | Date): string {
   });
 }
 
+/** Compact relative time ("10h ago", per the design) — long forms like
+ *  "about 2 hours ago" squeeze the filename out of the card. */
+export function timeAgo(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const diffMs = Date.now() - d.getTime();
+  const mins = Math.floor(diffMs / 60_000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
 export function formatTimeAgo(date: Date): string {
   const seconds = differenceInSeconds(new Date(), date);
 
@@ -19,6 +35,34 @@ export function formatTimeAgo(date: Date): string {
   if (seconds < 2592000) return `${Math.floor(seconds / 604800)}w ago`;
   if (seconds < 31536000) return `${Math.floor(seconds / 2592000)}mo ago`;
   return `${Math.floor(seconds / 31536000)}y ago`;
+}
+
+/**
+ * Relative time in the viewer's language ("2 hours ago", "há 2 horas",
+ * "now"), for copy a business user reads. {@link formatTimeAgo} is English
+ * only.
+ */
+export function formatRelativeTime(
+  date: Date,
+  locale: string,
+  now: number = Date.now(),
+): string {
+  const seconds = Math.round((now - date.getTime()) / 1000);
+  const rtf = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
+  const units: [Intl.RelativeTimeFormatUnit, number][] = [
+    ["year", 31_536_000],
+    ["month", 2_592_000],
+    ["week", 604_800],
+    ["day", 86_400],
+    ["hour", 3_600],
+    ["minute", 60],
+  ];
+  for (const [unit, size] of units) {
+    if (Math.abs(seconds) >= size) {
+      return rtf.format(-Math.floor(seconds / size), unit);
+    }
+  }
+  return rtf.format(0, "second");
 }
 
 /**

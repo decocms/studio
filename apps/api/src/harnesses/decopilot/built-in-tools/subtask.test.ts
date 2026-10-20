@@ -223,11 +223,11 @@ describe("resolveSubtaskCodingWorkspace", () => {
         repo: {
           owner: "deco",
           name: "other",
-          connectedGithub: true,
+          linked: true,
         },
         branch: "main",
         cwd: "/repo",
-        workspaceKind: "github",
+        workspaceKind: "repository",
       },
     );
 
@@ -235,11 +235,11 @@ describe("resolveSubtaskCodingWorkspace", () => {
       repo: {
         owner: "deco",
         name: "site",
-        connectedGithub: true,
+        linked: true,
       },
       branch: "main",
       cwd: "/repo",
-      workspaceKind: "github",
+      workspaceKind: "repository",
     });
   });
 
@@ -254,7 +254,7 @@ describe("resolveSubtaskCodingWorkspace", () => {
       {
         branch: "main",
         cwd: "/repo",
-        workspaceKind: "github",
+        workspaceKind: "repository",
       },
     );
 
@@ -262,11 +262,11 @@ describe("resolveSubtaskCodingWorkspace", () => {
       repo: {
         owner: "deco",
         name: "public-site",
-        connectedGithub: false,
+        linked: false,
       },
       branch: "main",
       cwd: "/repo",
-      workspaceKind: "github",
+      workspaceKind: "repository",
     });
   });
 
@@ -463,4 +463,29 @@ describe("toModelOutput (new runAgentLoop-based contract)", () => {
     expect(result.value).toContain("step limit");
     expect(result.value).toContain("ran out of steps");
   });
+});
+
+test("first-class provider repositories carry linked workspace context without a GitHub connection", () => {
+  for (const host of [
+    "github.com",
+    "gitlab.com",
+    "bitbucket.org",
+    "git.example.com",
+  ]) {
+    const url = `https://${host}/example/site`;
+    const workspace = resolveSubtaskCodingWorkspace({
+      repo: {
+        owner: "example",
+        name: "site",
+        repositoryId: "repo_example",
+        url,
+      },
+    });
+    expect(workspace?.repo).toEqual({
+      owner: "example",
+      name: "site",
+      linked: true,
+      url,
+    });
+  }
 });

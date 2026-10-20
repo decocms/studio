@@ -3,6 +3,8 @@ import {
   CLAUDE_CODE_MAX_OUTPUT_TOKENS,
   CLAUDE_SUBSCRIPTION_PROVIDER_ID,
   claudeCodeEnvFromCredential,
+  copilotModelId,
+  GITHUB_COPILOT_PROVIDER_ID,
   modelClassFromMetadata,
   UnsupportedClaudeCodeProviderError,
 } from "./claude-code-env";
@@ -11,6 +13,8 @@ const BUDGET = {
   CLAUDE_CODE_MAX_OUTPUT_TOKENS: `${CLAUDE_CODE_MAX_OUTPUT_TOKENS}`,
   CLAUDE_CODE_MAX_TURNS: null,
   ENABLE_TOOL_SEARCH: "1",
+  FORCE_PROMPT_CACHING_5M: "1",
+  ANTHROPIC_CUSTOM_HEADERS: null,
 };
 
 describe("claudeCodeEnvFromCredential", () => {
@@ -19,7 +23,7 @@ describe("claudeCodeEnvFromCredential", () => {
       claudeCodeEnvFromCredential({ providerId: "anthropic", apiKey: "sk-a" }),
     ).toEqual({
       ...BUDGET,
-      CLAUDE_CODE_MODEL: "claude-opus-5",
+      CLAUDE_CODE_MODEL: "claude-opus-5-5",
       ANTHROPIC_API_KEY: "sk-a",
       ANTHROPIC_AUTH_TOKEN: null,
       CLAUDE_CODE_OAUTH_TOKEN: null,
@@ -42,7 +46,7 @@ describe("claudeCodeEnvFromCredential", () => {
       claudeCodeEnvFromCredential({ providerId: "openrouter", apiKey: "or-1" }),
     ).toEqual({
       ...BUDGET,
-      CLAUDE_CODE_MODEL: "anthropic/claude-opus-5",
+      CLAUDE_CODE_MODEL: "anthropic/claude-opus-5.5",
       ANTHROPIC_API_KEY: "",
       ANTHROPIC_AUTH_TOKEN: "or-1",
       CLAUDE_CODE_OAUTH_TOKEN: null,
@@ -79,7 +83,7 @@ describe("claudeCodeEnvFromCredential", () => {
       claudeCodeEnvFromCredential({ providerId: "deco", apiKey: "deco-1" }),
     ).toEqual({
       ...BUDGET,
-      CLAUDE_CODE_MODEL: "anthropic/claude-opus-5",
+      CLAUDE_CODE_MODEL: "anthropic/claude-opus-5.5",
       ANTHROPIC_API_KEY: "",
       ANTHROPIC_AUTH_TOKEN: "deco-1",
       CLAUDE_CODE_OAUTH_TOKEN: null,
@@ -95,7 +99,7 @@ describe("claudeCodeEnvFromCredential", () => {
       }),
     ).toEqual({
       ...BUDGET,
-      CLAUDE_CODE_MODEL: "claude-opus-5",
+      CLAUDE_CODE_MODEL: "claude-opus-5-5",
       CLAUDE_CODE_OAUTH_TOKEN: "sk-ant-oat-1",
       // Both cleared: either one left behind outranks the OAuth token and the
       // run would silently bill the org's API credit instead of the plan.
@@ -105,8 +109,50 @@ describe("claudeCodeEnvFromCredential", () => {
     });
   });
 
+  test("a linked Copilot token is a bearer against Copilot's endpoint", () => {
+    expect(
+      claudeCodeEnvFromCredential({
+        providerId: GITHUB_COPILOT_PROVIDER_ID,
+        apiKey: "github_pat_1",
+      }),
+    ).toEqual({
+      ...BUDGET,
+      CLAUDE_CODE_MODEL: "claude-sonnet-5.5",
+      ANTHROPIC_API_KEY: "",
+      ANTHROPIC_AUTH_TOKEN: "github_pat_1",
+      CLAUDE_CODE_OAUTH_TOKEN: null,
+      ANTHROPIC_BASE_URL: "https://api.githubcopilot.com",
+      ANTHROPIC_CUSTOM_HEADERS: "Copilot-Integration-Id: copilot-developer-cli",
+    });
+  });
+
+  test("a Copilot chat keeps the chosen Claude model in Copilot's id form", () => {
+    const model = (chosen: string) =>
+      claudeCodeEnvFromCredential(
+        { providerId: GITHUB_COPILOT_PROVIDER_ID, apiKey: "k" },
+        "chat",
+        chosen,
+      ).CLAUDE_CODE_MODEL;
+    expect(model("claude-opus-5-5")).toBe("claude-opus-5.5");
+    expect(model("anthropic/claude-sonnet-5.5")).toBe("claude-sonnet-5.5");
+    expect(model("gpt-5")).toBe("claude-sonnet-5.5");
+  });
+
+  test("copilotModelId leaves single-number versions alone", () => {
+    expect(copilotModelId("claude-sonnet-5")).toBe("claude-sonnet-5");
+    expect(copilotModelId("anthropic/claude-haiku-4.5")).toBe(
+      "claude-haiku-4.5",
+    );
+    expect(copilotModelId("openai/gpt-5")).toBeNull();
+  });
+
   test("a key credential clears a previous run's OAuth token", () => {
-    for (const providerId of ["anthropic", "openrouter", "deco"]) {
+    for (const providerId of [
+      "anthropic",
+      "openrouter",
+      "deco",
+      GITHUB_COPILOT_PROVIDER_ID,
+    ]) {
       expect(
         claudeCodeEnvFromCredential({ providerId, apiKey: "k" })
           .CLAUDE_CODE_OAUTH_TOKEN,
@@ -207,11 +253,64 @@ describe("claudeCodeEnvFromCredential", () => {
     }
   });
 
+  test("the chat's chosen Claude model sets CLAUDE_CODE_MODEL", () => {
+    const model = (providerId: string, chosen: string) =>
+      claudeCodeEnvFromCredential({ providerId, apiKey: "k" }, "chat", chosen)
+        .CLAUDE_CODE_MODEL;
+    expect(model("anthropic", "claude-sonnet-5")).toBe("claude-sonnet-5");
+    expect(model("openrouter", "anthropic/claude-haiku-5")).toBe(
+      "anthropic/claude-haiku-5",
+    );
+    expect(model("deco", "anthropic/claude-sonnet-5")).toBe(
+      "anthropic/claude-sonnet-5",
+    );
+    expect(model(CLAUDE_SUBSCRIPTION_PROVIDER_ID, "claude-sonnet-5")).toBe(
+      "claude-sonnet-5",
+    );
+  });
+
+  test("a chosen model the CLI cannot run on that credential keeps the chat default", () => {
+    const model = (providerId: string, chosen: string) =>
+      claudeCodeEnvFromCredential({ providerId, apiKey: "k" }, "chat", chosen)
+        .CLAUDE_CODE_MODEL;
+    expect(model("openrouter", "google/gemini-3-pro")).toBe(
+      "anthropic/claude-sonnet-5.5",
+    );
+    expect(model("anthropic", "anthropic/claude-sonnet-5")).toBe(
+      "claude-sonnet-5-5",
+    );
+    expect(
+      model(CLAUDE_SUBSCRIPTION_PROVIDER_ID, "anthropic/claude-sonnet-5"),
+    ).toBe("claude-sonnet-5-5");
+  });
+
+  test("a task-board run stays on Opus whatever a chat would pick", () => {
+    expect(
+      claudeCodeEnvFromCredential(
+        { providerId: "anthropic", apiKey: "sk-a" },
+        "default",
+        "claude-sonnet-5",
+      ).CLAUDE_CODE_MODEL,
+    ).toBe("claude-opus-5-5");
+  });
+
+  test("reviewer and conflict runs keep their class model whatever was chosen", () => {
+    for (const modelClass of ["reviewer", "conflict"] as const) {
+      expect(
+        claudeCodeEnvFromCredential(
+          { providerId: "anthropic", apiKey: "sk-a" },
+          modelClass,
+          "claude-opus-5-5",
+        ).CLAUDE_CODE_MODEL,
+      ).toBe("claude-sonnet-5");
+    }
+  });
+
   test("omitting the class keeps the model every run had before", () => {
     expect(
       claudeCodeEnvFromCredential({ providerId: "openrouter", apiKey: "or-1" })
         .CLAUDE_CODE_MODEL,
-    ).toBe("anthropic/claude-opus-5");
+    ).toBe("anthropic/claude-opus-5.5");
   });
 
   test("modelClassFromMetadata only trusts the exact class values", () => {
@@ -267,6 +366,7 @@ describe("tool search", () => {
     ["openrouter"],
     ["deco"],
     [CLAUDE_SUBSCRIPTION_PROVIDER_ID],
+    [GITHUB_COPILOT_PROVIDER_ID],
   ])("%s runs get ENABLE_TOOL_SEARCH", (providerId) => {
     expect(
       claudeCodeEnvFromCredential({ providerId, apiKey: "k" })

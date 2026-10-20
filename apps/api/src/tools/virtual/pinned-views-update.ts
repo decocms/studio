@@ -4,8 +4,10 @@
  * Update the pinned views for a virtual MCP's sidebar
  */
 
+import { isProjectAllowed } from "@decocms/shared/auth/project-scope";
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
+import { resolveCallerProjectScope } from "../../core/project-scope";
 import {
   getUserId,
   requireAuth,
@@ -69,6 +71,12 @@ export const VIRTUAL_MCP_PINNED_VIEWS_UPDATE = defineTool({
       throw new Error(`Virtual MCP not found: ${virtualMcpId}`);
     }
     if (virtualMcp.organization_id !== organization.id) {
+      throw new Error(`Virtual MCP not found: ${virtualMcpId}`);
+    }
+
+    // A project-scoped role may only mutate projects in its allowlist.
+    const projectScope = await resolveCallerProjectScope(ctx);
+    if (!isProjectAllowed(projectScope, virtualMcp.id)) {
       throw new Error(`Virtual MCP not found: ${virtualMcpId}`);
     }
 

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Badge } from "@decocms/ui/components/badge.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   AlertDialog,
@@ -18,7 +19,7 @@ import {
   DropdownMenuTrigger,
 } from "@decocms/ui/components/dropdown-menu.tsx";
 import { Clock, DotsVertical, Trash01, Zap } from "@untitledui/icons";
-import { useVirtualMCP } from "@/sdk";
+import { useVirtualMCPNonBlocking } from "@/sdk";
 import { AgentAvatar } from "@/components/agent-icon";
 import { useT } from "@/i18n/use-t.ts";
 import {
@@ -38,7 +39,7 @@ export function AutomationListRow({
   const t = useT();
   const { remove } = useAutomationActions();
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const agent = useVirtualMCP(
+  const agent = useVirtualMCPNonBlocking(
     showAgent ? automation.virtual_mcp_id : undefined,
   );
 
@@ -94,6 +95,9 @@ export function AutomationListRow({
             <span className="text-sm font-medium text-foreground truncate">
               {automation.name}
             </span>
+            {automation.system_key && (
+              <Badge variant="muted">{t("automations.builtin.badge")}</Badge>
+            )}
             {showAgent && agent && (
               <span className="text-xs text-muted-foreground truncate">
                 · {agent.title}
@@ -110,7 +114,7 @@ export function AutomationListRow({
           onClick={(e) => e.stopPropagation()}
           onKeyDown={(e) => e.stopPropagation()}
           role="presentation"
-          className="shrink-0"
+          className={cn("shrink-0", automation.system_key && "invisible")}
         >
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

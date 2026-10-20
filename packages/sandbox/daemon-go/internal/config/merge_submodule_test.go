@@ -63,19 +63,34 @@ func TestMergeSubmoduleCredentials(t *testing.T) {
 		}
 	})
 
-	// A credentials-only change has no side effect to run — no re-clone, no
-	// restart — so Classify calls it a no-op. That must not be read as "don't
-	// write it down": the store has to end up holding the new value, or a PAT
-	// rotation is accepted with a 200 and silently discarded.
-	t.Run("a credentials-only change is a no-op transition", func(t *testing.T) {
+	// A credentials-only change needs no step — no re-clone, no restart — but it
+	// is NOT a no-op: a no-op is never delivered, and the daemon has to rewrite
+	// the pod's git config so a new PAT starts working and a dropped one stops.
+	t.Run("a credentials-only change is a git-credential-refresh", func(t *testing.T) {
 		before := repoWithCreds()
 		after := repoWithCreds(github)
-		if kind := Classify(before, after).Kind; kind != KindNoOp {
+		if kind := Classify(before, after).Kind; kind != KindGitCredentialRefresh {
+			t.Fatalf("transition = %q, want %q", kind, KindGitCredentialRefresh)
+		}
+	})
+
+	t.Run("a rotated token under an unchanged host still refreshes", func(t *testing.T) {
+		rotated := SubmoduleCredential{Host: github.Host, Token: "ghp_rotated"}
+		if kind := Classify(repoWithCreds(github), repoWithCreds(rotated)).Kind; kind != KindGitCredentialRefresh {
+			t.Fatalf("transition = %q, want %q", kind, KindGitCredentialRefresh)
+		}
+	})
+
+	t.Run("an unchanged credential set stays a no-op", func(t *testing.T) {
+		if kind := Classify(repoWithCreds(github), repoWithCreds(github)).Kind; kind != KindNoOp {
 			t.Fatalf("transition = %q, want %q", kind, KindNoOp)
 		}
 	})
 
-	t.Run("...but the store still persists it", func(t *testing.T) {
+	// That must not be read as "don't write it down": the store has to end up
+	// holding the new value, or a PAT rotation is accepted with a 200 and
+	// silently discarded.
+	t.Run("...and the store still persists it", func(t *testing.T) {
 		store := NewStore()
 		if res := store.Apply(&Patch{Git: &GitConfig{Repository: &GitRepository{
 			CloneUrl: Str("https://github.com/acme/site.git"),
@@ -85,7 +100,7 @@ func TestMergeSubmoduleCredentials(t *testing.T) {
 		res := store.Apply(&Patch{Git: &GitConfig{Repository: &GitRepository{
 			SubmoduleCredentials: []SubmoduleCredential{github},
 		}}})
-		if !res.Applied || res.Transition.Kind != KindNoOp {
+		if !res.Applied || res.Transition.Kind != KindGitCredentialRefresh {
 			t.Fatalf("applied=%v transition=%q", res.Applied, res.Transition.Kind)
 		}
 		// The receipt and the store must agree — this is what regressed.

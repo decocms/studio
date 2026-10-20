@@ -22,19 +22,21 @@ import {
 import {
   GenericToolCallPart,
   GenerateImagePart,
+  ImageGrid,
+  screenshotImageUrl,
   WebSearchPart,
   ProposePlanPart,
   SubtaskPart,
   SubtaskPartFallback,
   UserAskPart,
-  BrandContextPart,
-  BrandContextGetPart,
-  BrandContextListPart,
+  SuggestTaskPart,
   AgentCreatePart,
   AgentListPart,
   ConnectionListPart,
 } from "./parts/tool-call-part/index.ts";
 import { NextActionChip } from "./next-action-chip.tsx";
+import { LiveMessage, LiveMessagePart } from "./live-message.tsx";
+import { LIVE_MESSAGE_PART, useLiveMessages } from "../live-messages.ts";
 import { ThreadHtmlPreviews } from "./thread-html-previews.tsx";
 import { MessageProducedFiles } from "./thread-outputs.tsx";
 import {
@@ -73,10 +75,29 @@ function splitCollapsible(
     // No text parts at all – don't collapse
     return { collapsed: [], tail: renderOrder };
   }
+  // A message the user sent mid-run stays in view, with what the agent did
+  // after reading it.
+  const lastLiveIdx = renderOrder.findLastIndex(
+    (item) =>
+      item.kind === "part" && parts[item.index]?.type === LIVE_MESSAGE_PART,
+  );
+  const boundary =
+    lastLiveIdx !== -1 && lastLiveIdx < lastTextIdx ? lastLiveIdx : lastTextIdx;
   return {
-    collapsed: renderOrder.slice(0, lastTextIdx),
-    tail: renderOrder.slice(lastTextIdx),
+    collapsed: renderOrder.slice(0, boundary),
+    tail: renderOrder.slice(boundary),
   };
+}
+
+/**
+ * Whether a render item is part of the answer itself, as opposed to a live
+ * message shown inside it. Only the answer's last part carries the usage stats.
+ */
+function isVisiblePartItem(
+  item: RenderItem,
+  parts: ChatMessage["parts"],
+): boolean {
+  return item.kind === "part" && parts[item.index]?.type !== LIVE_MESSAGE_PART;
 }
 
 /** Count tool calls and messages in a set of render items. */
@@ -260,7 +281,9 @@ function renderItem({
   const shouldShowUsage =
     isLastVisiblePart ||
     (renderOrder
-      ? renderOrder.findLastIndex((r) => r.kind === "part") === renderIndex
+      ? renderOrder.findLastIndex((r) =>
+          isVisiblePartItem(r, message.parts),
+        ) === renderIndex
       : false);
   const usage = shouldShowUsage
     ? addUsage(emptyUsageStats(), message.metadata?.usage)
@@ -319,6 +342,8 @@ function MessagePart({
           latency={getMeta(part.toolCallId)?.latencySeconds}
         />
       );
+    case "tool-suggest_task":
+      return <SuggestTaskPart part={part} />;
     case "tool-propose_plan":
       return <ProposePlanPart part={part} />;
     case "tool-generate_image":
@@ -375,33 +400,6 @@ function MessagePart({
       return null;
     default: {
       const fallback = part as ToolUIPart;
-      if (
-        fallback.type === "tool-brand_context_setup" ||
-        fallback.type === "tool-BRAND_CONTEXT_EXTRACT"
-      ) {
-        return (
-          <BrandContextPart
-            part={fallback}
-            latency={getMeta(fallback.toolCallId)?.latencySeconds}
-          />
-        );
-      }
-      if (fallback.type === "tool-BRAND_CONTEXT_GET") {
-        return (
-          <BrandContextGetPart
-            part={fallback}
-            latency={getMeta(fallback.toolCallId)?.latencySeconds}
-          />
-        );
-      }
-      if (fallback.type === "tool-BRAND_CONTEXT_LIST") {
-        return (
-          <BrandContextListPart
-            part={fallback}
-            latency={getMeta(fallback.toolCallId)?.latencySeconds}
-          />
-        );
-      }
       if (fallback.type === "tool-COLLECTION_VIRTUAL_MCP_CREATE") {
         return (
           <AgentCreatePart
@@ -427,9 +425,12 @@ function MessagePart({
         );
       }
       if (fallback.type.startsWith("tool-")) {
-        const toolCallId = (fallback as ToolUIPart).toolCallId;
-        const meta = dataParts.toolMetadata.get(toolCallId);
-        return (
+        const toolPart = fallback as ToolUIPart;
+        const meta = dataParts.toolMetadata.get(toolPart.toolCallId);
+        const screenshot = fallback.type.endsWith("__get_screenshot")
+          ? screenshotImageUrl(toolPart.output)
+          : null;
+        const card = (
           <GenericToolCallPart
             part={fallback}
             annotations={meta?.annotations}
@@ -439,6 +440,16 @@ function MessagePart({
             toolMeta={meta?._meta}
           />
         );
+        if (!screenshot) return card;
+        return (
+          <div className="flex flex-col gap-2">
+            {card}
+            <ImageGrid srcs={[screenshot]} alt={toolPart.type.slice(5)} />
+          </div>
+        );
+      }
+      if ((part as { type: string }).type === LIVE_MESSAGE_PART) {
+        return <LiveMessagePart part={part} />;
       }
       if (fallback.type.startsWith("data-")) {
         return null;
@@ -446,6 +457,23 @@ function MessagePart({
       throw new Error(`Unknown part type: ${fallback.type}`);
     }
   }
+}
+
+/** A content-less turn's state, with the live messages sent to it below. */
+function WithPendingLiveMessages({
+  pending,
+  children,
+}: {
+  pending: ReactNode[] | null;
+  children: ReactNode;
+}) {
+  if (!pending || pending.length === 0) return children;
+  return (
+    <div className="flex flex-col gap-3 sm:gap-2">
+      {children}
+      {pending}
+    </div>
+  );
 }
 
 function EmptyAssistantState({
@@ -536,7 +564,7 @@ export function MessageAssistant({
   const [prevIsLoading, setPrevIsLoading] = useState(isLoading);
   if (prevIsLoading !== isLoading) {
     setPrevIsLoading(isLoading);
-    setClientFallbackStartedAt(isLoading ? Date.now() : null);
+    setClientFallbackStartedAt(() => (isLoading ? Date.now() : null));
   }
   const startedAt = turnEpochMs ?? clientFallbackStartedAt;
 
@@ -606,6 +634,14 @@ export function MessageAssistant({
     ? splitCollapsible(renderOrder, message!.parts)
     : { collapsed: [] as RenderItem[], tail: renderOrder };
 
+  // Sent to this run and not read yet: under what it has produced so far.
+  const { pending } = useLiveMessages();
+  const pendingLiveMessages = isLast
+    ? pending.map((live) => (
+        <LiveMessage key={live.id} message={live} pending />
+      ))
+    : null;
+
   return (
     <Container className={className}>
       {hasVisibleContent ? (
@@ -631,7 +667,9 @@ export function MessageAssistant({
           {tail.map((item, idx) => {
             const globalIndex = collapsed.length + idx;
             const isLastPart =
-              tail.findLastIndex((r) => r.kind === "part") === idx;
+              tail.findLastIndex((r) =>
+                isVisiblePartItem(r, message!.parts),
+              ) === idx;
             return renderItem({
               item,
               renderIndex: globalIndex,
@@ -649,6 +687,7 @@ export function MessageAssistant({
           {taskId && (
             <MessageProducedFiles threadId={taskId} message={message!} />
           )}
+          {pendingLiveMessages}
           {isLast && isLoading && startedAt !== null && (
             <GeneratingFooter startedAt={startedAt} />
           )}
@@ -660,10 +699,14 @@ export function MessageAssistant({
           )}
           {!isLoading && <MessageTimestamp message={message!} />}
         </div>
-      ) : isLoading ? (
-        <ThinkingState startedAt={startedAt} />
       ) : (
-        <EmptyAssistantState isRunInProgress={isLast && isRunInProgress} />
+        <WithPendingLiveMessages pending={pendingLiveMessages}>
+          {isLoading ? (
+            <ThinkingState startedAt={startedAt} />
+          ) : (
+            <EmptyAssistantState isRunInProgress={isLast && isRunInProgress} />
+          )}
+        </WithPendingLiveMessages>
       )}
     </Container>
   );

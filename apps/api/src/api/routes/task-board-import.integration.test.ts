@@ -4,8 +4,10 @@
 process.env.ENCRYPTION_KEY ??= Buffer.from("0".repeat(32)).toString("base64");
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
+import { DBOS } from "@dbos-inc/dbos-sdk";
 import { sql } from "kysely";
 import { auth } from "../../auth";
+import type { FireAutomationOutcome } from "../../automations/dbos-workflow";
 import type { StudioDatabase } from "../../database";
 import {
   closeTestPgDatabase,
@@ -13,7 +15,10 @@ import {
   resetTestPgDatabase,
   seedCommonTestPgFixtures,
 } from "../../database/test-db-pg";
+import { CredentialVault } from "../../encryption/credential-vault";
 import { getSettings, setGlobalSettings } from "../../settings";
+import { AIProviderKeyStorage } from "../../storage/ai-provider-keys";
+import { OrganizationSettingsStorage } from "../../storage/organization-settings";
 import { TaskBoardStorage } from "../../storage/task-board";
 import { createApp } from "../app";
 
@@ -44,6 +49,44 @@ const BODY = {
   ],
   source: { url: "shop.com" },
 };
+
+/** The reply entry expected for the item at `index` that landed on `card`. */
+const entry = (
+  index: number,
+  outcome: string,
+  card: { id: string; key_seq: number },
+) => ({ index, outcome, id: card.id, key_seq: card.key_seq });
+
+/**
+ * An OpenAI-compatible server standing in for the org's fast model, so the
+ * semantic pass runs for real: tier resolution, the provider adapter, the HTTP
+ * call, and the parse and gate on the answer. Every chat completion gets
+ * `answer` as its text. Every other path returns 404, including the model
+ * list, and tier resolution tolerates that. Answering the model list would
+ * make the provider factory fetch OpenRouter's catalog over the network.
+ */
+const serveFakeModel = (answer: string) =>
+  Bun.serve({
+    port: 0,
+    fetch(req) {
+      if (new URL(req.url).pathname !== "/v1/chat/completions") {
+        return new Response("not found", { status: 404 });
+      }
+      return Response.json({
+        id: "chatcmpl-test",
+        created: 0,
+        model: "fake-fast",
+        choices: [
+          {
+            index: 0,
+            message: { role: "assistant", content: answer },
+            finish_reason: "stop",
+          },
+        ],
+        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+      });
+    },
+  });
 
 describe("Task Board Import Route", () => {
   let database: StudioDatabase;
@@ -96,6 +139,51 @@ describe("Task Board Import Route", () => {
     }
   });
 
+  /** The org's card with exactly this title. */
+  const cardTitled = (title: string, org = "org_board") =>
+    database.db
+      .selectFrom("task_board_items")
+      .selectAll()
+      .where("organization_id", "=", org)
+      .where("title", "=", title)
+      .executeTakeFirstOrThrow();
+
+  /** Run `fn` with org_board's fast tier on a fake model that gives every call
+   *  `answer`. The key is not a Jev key, so the batch check asks this tier. */
+  const withFastModel = async <T>(
+    answer: string,
+    fn: () => T | Promise<T>,
+  ): Promise<T> => {
+    const model = serveFakeModel(answer);
+    try {
+      const key = await new AIProviderKeyStorage(
+        database.db,
+        new CredentialVault(getSettings().encryptionKey),
+      ).create({
+        providerId: "openai-compatible",
+        label: "Fake fast model",
+        apiKey: JSON.stringify({ baseUrl: `http://127.0.0.1:${model.port}` }),
+        organizationId: "org_board",
+        createdBy: "user_1",
+      });
+      await new OrganizationSettingsStorage(database.db).upsert("org_board", {
+        simple_mode: {
+          tiers: {
+            fast: { keyId: key.id, modelId: "fake-fast" },
+            smart: null,
+            thinking: null,
+            image: null,
+            web_search: null,
+            deep_research: null,
+          },
+        },
+      });
+      return await fn();
+    } finally {
+      await model.stop(true);
+    }
+  };
+
   it("rejects requests without the service token", async () => {
     const noToken = await app.fetch(post("org_board", null, BODY));
     expect(noToken.status).toBe(401);
@@ -113,6 +201,7 @@ describe("Task Board Import Route", () => {
       created: 2,
       updated: 0,
       delegated: 0,
+      items: expect.any(Array),
     });
 
     const settings = await database.db
@@ -123,18 +212,23 @@ describe("Task Board Import Route", () => {
     expect(settings).toBeUndefined();
   });
 
-  it("rejects an invalid body", async () => {
+  it("rejects an empty batch instead of answering with an empty items list", async () => {
     const res = await app.fetch(post("org_board", "svc-secret", { items: [] }));
     expect(res.status).toBe(400);
+    expect(await res.json()).not.toHaveProperty("items");
   });
 
   it("creates triage items as the system principal, resolving the org by id", async () => {
     const res = await app.fetch(post("org_board", "svc-secret", BODY));
     expect(res.status).toBe(200);
-    await expect(res.json()).resolves.toEqual({
+    expect(await res.json()).toEqual({
       created: 2,
       updated: 0,
       delegated: 0,
+      items: [
+        entry(0, "created", await cardTitled("Adicionar H1 na home")),
+        entry(1, "created", await cardTitled("Liberar o GPTBot no WAF")),
+      ],
     });
 
     const rows = await database.db
@@ -161,7 +255,7 @@ describe("Task Board Import Route", () => {
     );
   });
 
-  it("delegates a super-agent item: To Do, owner as the run principal", async () => {
+  it("delegates a super-agent item: In Progress, owner as the run principal", async () => {
     const res = await app.fetch(
       post("org_board", "svc-secret", {
         items: [
@@ -173,10 +267,14 @@ describe("Task Board Import Route", () => {
     expect(res.status).toBe(200);
     // The enqueue itself is best-effort (no model configured in tests) — the
     // delegation must still land on the row.
-    await expect(res.json()).resolves.toEqual({
+    expect(await res.json()).toEqual({
       created: 2,
       updated: 0,
       delegated: 1,
+      items: [
+        entry(0, "created", await cardTitled("Adicionar sinônimos à busca")),
+        entry(1, "created", await cardTitled("Tarefa comum")),
+      ],
     });
 
     const rows = await database.db
@@ -186,7 +284,7 @@ describe("Task Board Import Route", () => {
       .execute();
     const byTitle = new Map(rows.map((r) => [r.title, r]));
     const delegated = byTitle.get("Adicionar sinônimos à busca");
-    expect(delegated?.status).toBe("todo");
+    expect(delegated?.status).toBe("in_progress");
     expect(delegated?.assignee_id).toBe("super-agent");
     expect(delegated?.assigned_by).toBe("user_1"); // the org owner
     expect(delegated?.created_by).toBe("system");
@@ -226,14 +324,16 @@ describe("Task Board Import Route", () => {
       source: { url: "shop.com", run_id: "run_double_fire" },
     };
     const first = await app.fetch(post("org_board", "svc-secret", body));
-    await expect(first.json()).resolves.toEqual({
+    expect(await first.json()).toEqual({
       created: 1,
       updated: 0,
       delegated: 0,
+      items: [entry(0, "created", await cardTitled("Adicionar H1 na home"))],
     });
 
     // The success page and the webhook fire the SAME import seconds apart —
-    // the second one must not double the board.
+    // the second one must not double the board. It wrote nothing, so it has
+    // no per-item outcomes to report and omits `items`.
     const replay = await app.fetch(post("org_board", "svc-secret", body));
     await expect(replay.json()).resolves.toEqual({
       created: 0,
@@ -265,10 +365,12 @@ describe("Task Board Import Route", () => {
         source: { url: "shop.com", run_id: "run_1" },
       }),
     );
+    const card = await cardTitled("Liberar o GPTBot no WAF");
     await expect(run1.json()).resolves.toEqual({
       created: 1,
       updated: 0,
       delegated: 0,
+      items: [entry(0, "created", card)],
     });
 
     // A month later the diagnostic re-runs, finds the same issue with fresh
@@ -291,6 +393,7 @@ describe("Task Board Import Route", () => {
       created: 0,
       updated: 1,
       delegated: 0,
+      items: [entry(0, "updated", card)],
     });
 
     const rows = await database.db
@@ -329,6 +432,7 @@ describe("Task Board Import Route", () => {
       created: 1,
       updated: 0,
       delegated: 0,
+      items: expect.any(Array),
     });
 
     const storage = new TaskBoardStorage(database.db);
@@ -404,11 +508,7 @@ describe("Task Board Import Route", () => {
         source: { url: "shop.com", run_id: "run_b" },
       }),
     );
-    await expect(regression.json()).resolves.toEqual({
-      created: 1,
-      updated: 0,
-      delegated: 0,
-    });
+    const replyBody = await regression.json();
 
     const rows = await database.db
       .selectFrom("task_board_items")
@@ -418,6 +518,14 @@ describe("Task Board Import Route", () => {
       .execute();
     expect(rows).toHaveLength(2);
     expect(rows.map((r) => r.status).sort()).toEqual(["done", "triage"]);
+    // The reply names the fresh card, not the done one.
+    const fresh = rows.find((r) => r.status === "triage")!;
+    expect(replyBody).toEqual({
+      created: 1,
+      updated: 0,
+      delegated: 0,
+      items: [entry(0, "created", fresh)],
+    });
     // Both carry the key — identity survives the lifecycle.
     expect(rows.every((r) => r.external_key === key)).toBe(true);
   });
@@ -433,7 +541,7 @@ describe("Task Board Import Route", () => {
     );
     const created = await database.db
       .selectFrom("task_board_items")
-      .select(["id"])
+      .select(["id", "key_seq"])
       .where("organization_id", "=", "org_board")
       .where("external_key", "=", key)
       .executeTakeFirstOrThrow();
@@ -455,6 +563,7 @@ describe("Task Board Import Route", () => {
       updated: 0,
       delegated: 0,
       dismissed: 1,
+      items: [entry(0, "dismissed", created)],
     });
     // Dismissed, not dropped — same row, so a restore brings back the card.
     expect(
@@ -481,6 +590,7 @@ describe("Task Board Import Route", () => {
       created: 0,
       updated: 1,
       delegated: 0,
+      items: [entry(0, "updated", created)],
     });
     expect(
       await database.db
@@ -526,10 +636,660 @@ describe("Task Board Import Route", () => {
         source: { url: "shop.com", run_id: "run_o2" },
       }),
     );
+    // Its reply names its own new card, never the other org's dismissed one.
+    const otherCard = await cardTitled("Adicionar H1 na home", "org_other");
+    expect(otherCard.id).not.toBe(created.id);
     await expect(other.json()).resolves.toEqual({
       created: 1,
       updated: 0,
       delegated: 0,
+      items: [entry(0, "created", otherCard)],
     });
+  });
+  it("records the repository the finding was written against", async () => {
+    const now = new Date().toISOString();
+    await sql`
+      INSERT INTO repositories
+        (id, organization_id, provider, host, path, web_url, created_at, updated_at)
+      VALUES
+        ('repo_board', 'org_board', 'github', 'github.com', 'acme/storefront',
+         'https://github.com/acme/storefront', ${now}, ${now})
+    `.execute(database.db);
+
+    const key = "diag:shop.com:REPO-001";
+    const res = await app.fetch(
+      post("org_board", "svc-secret", {
+        items: [
+          {
+            title: "Adicionar H1 na home",
+            externalKey: key,
+            repositoryId: "repo_board",
+          },
+        ],
+        source: { url: "shop.com", run_id: "run_r1" },
+      }),
+    );
+    expect(res.status).toBe(200);
+
+    const row = await database.db
+      .selectFrom("task_board_items")
+      .select(["id", "repository_id"])
+      .where("organization_id", "=", "org_board")
+      .where("external_key", "=", key)
+      .executeTakeFirstOrThrow();
+    expect(row.repository_id).toBe("repo_board");
+  });
+
+  it("a refresh picks up a repository the card was created without", async () => {
+    const now = new Date().toISOString();
+    await sql`
+      INSERT INTO repositories
+        (id, organization_id, provider, host, path, web_url, created_at, updated_at)
+      VALUES
+        ('repo_board', 'org_board', 'github', 'github.com', 'acme/storefront',
+         'https://github.com/acme/storefront', ${now}, ${now})
+    `.execute(database.db);
+
+    const key = "diag:shop.com:REPO-002";
+    await app.fetch(
+      post("org_board", "svc-secret", {
+        items: [{ title: "Adicionar H1 na home", externalKey: key }],
+        source: { url: "shop.com", run_id: "run_r2" },
+      }),
+    );
+    const before = await database.db
+      .selectFrom("task_board_items")
+      .select(["repository_id"])
+      .where("external_key", "=", key)
+      .executeTakeFirstOrThrow();
+    expect(before.repository_id).toBeNull();
+
+    await app.fetch(
+      post("org_board", "svc-secret", {
+        items: [
+          {
+            title: "Adicionar H1 na home",
+            externalKey: key,
+            repositoryId: "repo_board",
+          },
+        ],
+        source: { url: "shop.com", run_id: "run_r3" },
+      }),
+    );
+    const after = await database.db
+      .selectFrom("task_board_items")
+      .select(["repository_id"])
+      .where("external_key", "=", key)
+      .executeTakeFirstOrThrow();
+    expect(after.repository_id).toBe("repo_board");
+  });
+
+  it("refuses a repository belonging to another org, writing nothing", async () => {
+    const now = new Date().toISOString();
+    await sql`
+      INSERT INTO "organization" (id, name, slug, "createdAt")
+      VALUES ('org_foreign', 'Foreign Org', 'foreign-org', ${now})
+      ON CONFLICT (id) DO NOTHING
+    `.execute(database.db);
+    await sql`
+      INSERT INTO repositories
+        (id, organization_id, provider, host, path, web_url, created_at, updated_at)
+      VALUES
+        ('repo_foreign', 'org_foreign', 'github', 'github.com', 'other/private',
+         'https://github.com/other/private', ${now}, ${now})
+    `.execute(database.db);
+
+    const res = await app.fetch(
+      post("org_board", "svc-secret", {
+        items: [
+          { title: "Adicionar H1 na home", repositoryId: "repo_foreign" },
+        ],
+        source: { url: "shop.com", run_id: "run_r4" },
+      }),
+    );
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toMatchObject({
+      error: "invalid_repository: repo_foreign",
+    });
+
+    const rows = await database.db
+      .selectFrom("task_board_items")
+      .select(["id"])
+      .where("organization_id", "=", "org_board")
+      .execute();
+    expect(rows).toHaveLength(0);
+  });
+
+  it("refuses a repository that does not exist, before the run_id is burned", async () => {
+    const body = {
+      items: [{ title: "Adicionar H1 na home", repositoryId: "repo_nope" }],
+      source: { url: "shop.com", run_id: "run_r5" },
+    };
+    const refused = await app.fetch(post("org_board", "svc-secret", body));
+    expect(refused.status).toBe(400);
+
+    // The claim must still be available: a rejected import is not a replay.
+    const retried = await app.fetch(
+      post("org_board", "svc-secret", {
+        ...body,
+        items: [{ title: "Adicionar H1 na home" }],
+      }),
+    );
+    await expect(retried.json()).resolves.toEqual({
+      created: 1,
+      updated: 0,
+      delegated: 0,
+      items: expect.any(Array),
+    });
+  });
+
+  it("keyless items still import when the org has no model tier (semantic pass fails open)", async () => {
+    const res = await app.fetch(
+      post("org_board", "svc-secret", {
+        items: [
+          { title: "Imagens sem alt text na home" },
+          { title: "Imagens da home sem texto alternativo" },
+        ],
+      }),
+    );
+    expect(res.status).toBe(200);
+    // No provider is configured for org_board, so nothing folds: two cards.
+    expect(await res.json()).toEqual({
+      created: 2,
+      updated: 0,
+      delegated: 0,
+      items: [
+        entry(0, "created", await cardTitled("Imagens sem alt text na home")),
+        entry(
+          1,
+          "created",
+          await cardTitled("Imagens da home sem texto alternativo"),
+        ),
+      ],
+    });
+  });
+
+  it("an exact title match is refreshed by the deterministic pass, never offered to the model", async () => {
+    await app.fetch(
+      post("org_board", "svc-secret", {
+        items: [{ title: "LCP acima de 4s", description: "v1" }],
+      }),
+    );
+    const res = await app.fetch(
+      post("org_board", "svc-secret", {
+        items: [{ title: "  lcp ACIMA de 4s ", description: "v2" }],
+      }),
+    );
+    await expect(res.json()).resolves.toEqual({
+      created: 0,
+      updated: 1,
+      delegated: 0,
+      items: [entry(0, "updated", await cardTitled("LCP acima de 4s"))],
+    });
+    const rows = await database.db
+      .selectFrom("task_board_items")
+      .select(["description"])
+      .where("organization_id", "=", "org_board")
+      .execute();
+    expect(rows).toEqual([{ description: "v2" }]);
+    const activity = await database.db
+      .selectFrom("task_board_activity")
+      .select(["action"])
+      .where("action", "=", "duplicate_reported")
+      .execute();
+    expect(activity).toHaveLength(0);
+  });
+
+  it("a title repeated in one request folds into the card its first item created", async () => {
+    const res = await app.fetch(
+      post("org_board", "svc-secret", {
+        items: [
+          { title: "Adicionar H1 na home", description: "v1" },
+          { title: "  adicionar h1 NA home", description: "v2" },
+        ],
+      }),
+    );
+    const card = await cardTitled("Adicionar H1 na home");
+    expect(await res.json()).toEqual({
+      created: 1,
+      updated: 1,
+      delegated: 0,
+      items: [entry(0, "created", card), entry(1, "updated", card)],
+    });
+    expect(card.description).toBe("v2");
+    const rows = await database.db
+      .selectFrom("task_board_items")
+      .select(["id"])
+      .where("organization_id", "=", "org_board")
+      .execute();
+    expect(rows).toHaveLength(1);
+  });
+
+  it("a keyless item whose title was dismissed names the dismissed card", async () => {
+    await app.fetch(
+      post("org_board", "svc-secret", {
+        items: [{ title: "Liberar o GPTBot no WAF" }],
+      }),
+    );
+    const dismissed = await cardTitled("Liberar o GPTBot no WAF");
+    await new TaskBoardStorage(database.db).delete(
+      dismissed.id,
+      "org_board",
+      "user_1",
+    );
+
+    // The skipped item keeps its own position; the next one is not shifted up.
+    const res = await app.fetch(
+      post("org_board", "svc-secret", {
+        items: [
+          { title: "liberar o gptbot no WAF" },
+          { title: "Adicionar H1 na home" },
+        ],
+      }),
+    );
+    expect(await res.json()).toEqual({
+      created: 1,
+      updated: 0,
+      delegated: 0,
+      dismissed: 1,
+      items: [
+        entry(0, "dismissed", dismissed),
+        entry(1, "created", await cardTitled("Adicionar H1 na home")),
+      ],
+    });
+  });
+
+  it("a semantic match names the matched card, and refreshes it only when reports owns it", async () => {
+    const storage = new TaskBoardStorage(database.db);
+    const human = await storage.create({
+      organizationId: "org_board",
+      title: "Escrever alt text para as imagens da home",
+      description: "Escrito por uma pessoa.",
+      by: "user_1",
+    });
+    const reports = await storage.create({
+      organizationId: "org_board",
+      title: "LCP alto na home",
+      description: "LCP 4.2s.",
+      by: "system",
+    });
+    const res = await withFastModel(
+      JSON.stringify({
+        matches: [
+          {
+            draft: 0,
+            duplicateOf: human.id,
+            confidence: "high",
+            reason: "Same change.",
+          },
+          {
+            draft: 1,
+            duplicateOf: reports.id,
+            confidence: "high",
+            reason: "Same change.",
+          },
+        ],
+      }),
+      () =>
+        app.fetch(
+          post("org_board", "svc-secret", {
+            items: [
+              {
+                title: "Imagens da home sem texto alternativo",
+                description: "12 imagens sem alt.",
+              },
+              {
+                title: "Reduzir o tempo de carregamento da home",
+                description: "LCP 4.8s.",
+              },
+              { title: "Adicionar H1 na home" },
+            ],
+          }),
+        ),
+    );
+    expect(await res.json()).toEqual({
+      created: 1,
+      updated: 2,
+      delegated: 0,
+      semantic_matches: 2,
+      items: [
+        entry(0, "semantic_match", { id: human.id, key_seq: human.keySeq }),
+        entry(1, "semantic_match", {
+          id: reports.id,
+          key_seq: reports.keySeq,
+        }),
+        entry(2, "created", await cardTitled("Adicionar H1 na home")),
+      ],
+    });
+
+    expect((await cardTitled(human.title)).description).toBe(
+      "Escrito por uma pessoa.",
+    );
+    expect((await cardTitled(reports.title)).description).toBe("LCP 4.8s.");
+    const reported = await database.db
+      .selectFrom("task_board_activity")
+      .select(["task_board_item_id"])
+      .where("action", "=", "duplicate_reported")
+      .execute();
+    expect(reported.map((r) => r.task_board_item_id).sort()).toEqual(
+      [human.id, reports.id].sort(),
+    );
+  });
+
+  /** The fake model's answer: item 1 repeats item 0. */
+  const REPEATS_FIRST = JSON.stringify({
+    matches: [
+      {
+        draft: 1,
+        duplicateOf: null,
+        sameAsDraft: 0,
+        confidence: "high",
+        reason: "Same change.",
+      },
+    ],
+  });
+
+  it("an item repeating an earlier one of the same request folds into that item's card", async () => {
+    const res = await withFastModel(REPEATS_FIRST, () =>
+      app.fetch(
+        post("org_board", "svc-secret", {
+          items: [
+            {
+              title: "Declarar o sitemap no robots.txt",
+              description: "Achado A.",
+            },
+            {
+              title: "Adicionar a linha Sitemap ao robots.txt",
+              description: "Achado B.",
+            },
+            { title: "Adicionar H1 na home" },
+          ],
+        }),
+      ),
+    );
+    const card = await cardTitled("Declarar o sitemap no robots.txt");
+    expect(await res.json()).toEqual({
+      created: 2,
+      updated: 1,
+      delegated: 0,
+      semantic_matches: 1,
+      items: [
+        entry(0, "created", card),
+        entry(1, "semantic_match", card),
+        entry(2, "created", await cardTitled("Adicionar H1 na home")),
+      ],
+    });
+    // The card keeps the first item's content; the repeat goes on its timeline.
+    expect(card.description).toBe("Achado A.");
+    const reported = await database.db
+      .selectFrom("task_board_activity")
+      .select(["task_board_item_id", "data"])
+      .where("action", "=", "duplicate_reported")
+      .execute();
+    expect(reported).toEqual([
+      {
+        task_board_item_id: card.id,
+        data: {
+          title: "Adicionar a linha Sitemap ao robots.txt",
+          reason: "Same change.",
+        },
+      },
+    ]);
+    const rows = await database.db
+      .selectFrom("task_board_items")
+      .select(["id"])
+      .where("organization_id", "=", "org_board")
+      .execute();
+    expect(rows).toHaveLength(2);
+  });
+
+  it("an item repeating a dismissed one of the same request is skipped with it", async () => {
+    const storage = new TaskBoardStorage(database.db);
+    const dismissed = await storage.create({
+      organizationId: "org_board",
+      title: "Declarar o sitemap no robots.txt",
+      by: "system",
+    });
+    await storage.delete(dismissed.id, "org_board", "user_1");
+
+    const res = await withFastModel(REPEATS_FIRST, () =>
+      app.fetch(
+        post("org_board", "svc-secret", {
+          items: [
+            { title: "Declarar o sitemap no robots.txt" },
+            { title: "Adicionar a linha Sitemap ao robots.txt" },
+          ],
+        }),
+      ),
+    );
+    const card = { id: dismissed.id, key_seq: dismissed.keySeq };
+    expect(await res.json()).toEqual({
+      created: 0,
+      updated: 0,
+      delegated: 0,
+      dismissed: 2,
+      items: [entry(0, "dismissed", card), entry(1, "dismissed", card)],
+    });
+    const rows = await database.db
+      .selectFrom("task_board_items")
+      .select(["id"])
+      .where("organization_id", "=", "org_board")
+      .execute();
+    expect(rows).toHaveLength(1);
+  });
+
+  it("an item the org dismissed under another wording stays dismissed", async () => {
+    const storage = new TaskBoardStorage(database.db);
+    const dismissed = await storage.create({
+      organizationId: "org_board",
+      title: "Adicionar alt nas imagens do banner principal da home",
+      by: "system",
+    });
+    await storage.delete(dismissed.id, "org_board", "user_1");
+
+    const res = await withFastModel(
+      JSON.stringify({
+        matches: [
+          {
+            draft: 0,
+            duplicateOf: dismissed.id,
+            confidence: "high",
+            reason: "Same change.",
+          },
+        ],
+      }),
+      () =>
+        app.fetch(
+          post("org_board", "svc-secret", {
+            items: [
+              {
+                title: "Adicionar alt de fallback na imagem do banner da home",
+              },
+              { title: "Adicionar H1 na home" },
+            ],
+          }),
+        ),
+    );
+    expect(await res.json()).toEqual({
+      created: 1,
+      updated: 0,
+      delegated: 0,
+      dismissed: 1,
+      items: [
+        entry(0, "dismissed", { id: dismissed.id, key_seq: dismissed.keySeq }),
+        entry(1, "created", await cardTitled("Adicionar H1 na home")),
+      ],
+    });
+    const rows = await database.db
+      .selectFrom("task_board_items")
+      .select(["id"])
+      .where("organization_id", "=", "org_board")
+      .where("dismissed_at", "is", null)
+      .execute();
+    expect(rows).toHaveLength(1);
+  });
+
+  /** The card's stored finding key. */
+  const keyOf = async (id: string) =>
+    (
+      await database.db
+        .selectFrom("task_board_items")
+        .select(["external_key"])
+        .where("id", "=", id)
+        .executeTakeFirstOrThrow()
+    ).external_key;
+
+  it("a key no card holds joins the keyless card with its title, then matches by key", async () => {
+    const storage = new TaskBoardStorage(database.db);
+    const old = await storage.create({
+      organizationId: "org_board",
+      title: "Adicionar H1 na home",
+      by: "system",
+    });
+    const first = await app.fetch(
+      post("org_board", "svc-secret", {
+        items: [
+          {
+            title: "Adicionar H1 na home",
+            description: "v1",
+            externalKey: "diag:shop.com:ONPG-001",
+          },
+        ],
+      }),
+    );
+    expect((await first.json()).items).toEqual([
+      entry(0, "updated", { id: old.id, key_seq: old.keySeq }),
+    ]);
+    expect(await keyOf(old.id)).toBe("diag:shop.com:ONPG-001");
+
+    // Reworded: the key alone finds the card.
+    const second = await app.fetch(
+      post("org_board", "svc-secret", {
+        items: [
+          {
+            title: "Inclua um H1 na página inicial",
+            description: "v2",
+            externalKey: "diag:shop.com:ONPG-001",
+          },
+        ],
+      }),
+    );
+    expect((await second.json()).items).toEqual([
+      entry(0, "updated", { id: old.id, key_seq: old.keySeq }),
+    ]);
+    expect((await cardTitled("Adicionar H1 na home")).description).toBe("v2");
+  });
+
+  it("a key joins the keyless card the semantic pass matches, dismissed ones included", async () => {
+    const storage = new TaskBoardStorage(database.db);
+    const open = await storage.create({
+      organizationId: "org_board",
+      title: "Escrever alt text para as imagens da home",
+      by: "system",
+    });
+    const dismissed = await storage.create({
+      organizationId: "org_board",
+      title: "Liberar o GPTBot no WAF",
+      by: "system",
+    });
+    await storage.delete(dismissed.id, "org_board", "user_1");
+    const res = await withFastModel(
+      JSON.stringify({
+        matches: [
+          {
+            draft: 0,
+            duplicateOf: open.id,
+            confidence: "high",
+            reason: "Same.",
+          },
+          {
+            draft: 1,
+            duplicateOf: dismissed.id,
+            confidence: "high",
+            reason: "Same.",
+          },
+        ],
+      }),
+      () =>
+        app.fetch(
+          post("org_board", "svc-secret", {
+            items: [
+              {
+                title: "Imagens da home sem texto alternativo",
+                externalKey: "diag:shop.com:A11Y-001",
+              },
+              {
+                title: "Permitir o GPTBot no firewall",
+                externalKey: "diag:shop.com:GEO-001",
+              },
+            ],
+          }),
+        ),
+    );
+    expect((await res.json()).items).toEqual([
+      entry(0, "semantic_match", { id: open.id, key_seq: open.keySeq }),
+      entry(1, "dismissed", { id: dismissed.id, key_seq: dismissed.keySeq }),
+    ]);
+    expect(await keyOf(open.id)).toBe("diag:shop.com:A11Y-001");
+    expect(await keyOf(dismissed.id)).toBe("diag:shop.com:GEO-001");
+  });
+
+  it("a card that already has a key keeps it when another finding lands on it", async () => {
+    await app.fetch(
+      post("org_board", "svc-secret", {
+        items: [
+          {
+            title: "Adicionar H1 na home",
+            externalKey: "diag:shop.com:ONPG-001",
+          },
+        ],
+      }),
+    );
+    const card = await cardTitled("Adicionar H1 na home");
+    const res = await app.fetch(
+      post("org_board", "svc-secret", {
+        items: [
+          {
+            title: "Adicionar H1 na home",
+            externalKey: "diag:shop.com:ONPG-009",
+          },
+        ],
+      }),
+    );
+    expect((await res.json()).items).toEqual([entry(0, "updated", card)]);
+    expect(await keyOf(card.id)).toBe("diag:shop.com:ONPG-001");
+  });
+
+  it("a Super Agent delegation the task quota refuses reports quota_blocked for its card", async () => {
+    // The delegation is a fire of the Implementer, and DBOS is not launched
+    // here: the fire answers with the refusal its dispatch claim returns.
+    const refused: FireAutomationOutcome = {
+      skipped: "rejected",
+      error: { message: "out of runs", quotaReason: "trial_exhausted" },
+    };
+    vi.spyOn(DBOS, "startWorkflow").mockReturnValue(async () => ({
+      getResult: async () => refused,
+    }));
+    const res = await app.fetch(
+      post("org_board", "svc-secret", {
+        items: [
+          { title: "Adicionar sinônimos à busca", assigneeId: "super-agent" },
+          { title: "Tarefa comum" },
+        ],
+      }),
+    );
+    const blocked = await cardTitled("Adicionar sinônimos à busca");
+    expect(await res.json()).toEqual({
+      created: 2,
+      updated: 0,
+      delegated: 0,
+      quota_blocked: 1,
+      items: [
+        entry(0, "quota_blocked", blocked),
+        entry(1, "created", await cardTitled("Tarefa comum")),
+      ],
+    });
+    // Unassigned, so the card does not look delegated with no run behind it.
+    expect(blocked.assignee_id).toBeNull();
   });
 });

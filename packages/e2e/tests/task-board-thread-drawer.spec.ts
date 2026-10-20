@@ -14,6 +14,7 @@
 import { connectDevDb } from "../fixtures/db";
 import { callSelfMcpTool } from "../fixtures/mcp-tools";
 import { expect, test } from "../fixtures/test";
+
 import type { Page } from "@playwright/test";
 
 const detail = (page: Page) => page.getByTestId("task-detail");
@@ -99,9 +100,18 @@ async function openTask(page: Page, orgSlug: string, title: string) {
   await expect(card).toBeVisible({ timeout: 30_000 });
   await card.click();
   await expect(detail(page)).toBeVisible();
+  // Run posts are agent work, listed behind the scenes.
+  await page.getByRole("button", { name: /^Behind the scenes/ }).click();
 }
 
 test.describe("task run drawer", () => {
+  const openRun = (page: Page, body: string) => {
+    const message = detail(page)
+      .getByTestId("task-message")
+      .filter({ hasText: body })
+      .getByRole("button", { name: "Open chat", exact: true });
+    return message.click();
+  };
   test("a run opens in a sheet over the task, not by navigating to it", async ({
     authedPage,
   }) => {
@@ -134,9 +144,7 @@ test.describe("task run drawer", () => {
     await openTask(page, orgSlug, title);
     const url = page.url();
 
-    await detail(page)
-      .getByRole("button", { name: /Super Agent · drawer run/ })
-      .click();
+    await openRun(page, "Rounded once at the end instead of per line item.");
 
     await expect(sheet(page)).toBeVisible();
     await expect(sheet(page)).toContainText(
@@ -199,9 +207,7 @@ test.describe("task run drawer", () => {
     }
 
     await openTask(page, orgSlug, title);
-    await detail(page)
-      .getByRole("button", { name: /QA Agent · second pass/ })
-      .click();
+    await openRun(page, "Second pass verified the first one.");
     await expect(sheet(page)).toContainText(
       "Second pass verified the first one.",
     );
@@ -215,9 +221,7 @@ test.describe("task run drawer", () => {
     // The feed is how the other run is reached.
     await sheet(page).getByRole("button", { name: "Close" }).click();
     await expect(sheet(page)).toHaveCount(0);
-    await detail(page)
-      .getByRole("button", { name: /Super Agent · first pass/ })
-      .click();
+    await openRun(page, "First pass finished, opened a PR.");
     await expect(sheet(page)).toContainText(
       "First pass finished, opened a PR.",
     );
@@ -253,9 +257,7 @@ test.describe("task run drawer", () => {
     }
 
     await openTask(page, orgSlug, title);
-    await detail(page)
-      .getByRole("button", { name: /Super Agent · isolated run/ })
-      .click();
+    await openRun(page, "SENTINEL_LINKED_RUN_MESSAGE");
 
     await expect(sheet(page)).toContainText("SENTINEL_LINKED_RUN_MESSAGE");
     /* The board renders inside the ambient chat's providers. Undetached, the

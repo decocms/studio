@@ -78,7 +78,23 @@ describe("blocksPreviewWorkspaceReducer", () => {
       target: { kind: "page", key: "pages-home", path: "/" },
       editSeoPageKey: null,
       variantOverride: null,
+      focusedBlockKey: null,
     });
+  });
+
+  test("selecting a new target drops the block the JSON view was following", () => {
+    const focused = blocksPreviewWorkspaceReducer(
+      INITIAL_BLOCKS_PREVIEW_WORKSPACE,
+      { type: "focus-block", key: "sections-SharedHero" },
+    );
+    expect(focused.focusedBlockKey).toBe("sections-SharedHero");
+
+    const next = blocksPreviewWorkspaceReducer(focused, {
+      type: "select",
+      target: { kind: "page", key: "pages-about", path: "/about" },
+    });
+
+    expect(next.focusedBlockKey).toBeNull();
   });
 
   test("selecting a new target clears a pending SEO-edit intent", () => {

@@ -1,7 +1,7 @@
 /**
  * Settings type definition for Studio.
  *
- * Constructed once by the startup pipeline, frozen, and available
+ * Resolved once from environment variables, frozen, and available
  * via getSettings() for the lifetime of the process.
  */
 
@@ -18,6 +18,17 @@ export interface Settings {
    *  when unset. */
   publicUrl: string | undefined;
   dataDir: string;
+
+  // Voice
+  // Invalid deployment defaults disable voice creation, not API startup.
+  voiceConversationProvider: "elevenlabs" | "openai" | null;
+  openaiLiveApiKey: string | undefined;
+  openaiLiveModel: string;
+  openaiLiveVoice: string;
+  elevenlabsApiKey: string | undefined;
+  elevenlabsVoiceId: string;
+  elevenlabsVoiceModel: string;
+  elevenlabsConversationModel: string;
 
   // Database
   databaseUrl: string;
@@ -37,9 +48,24 @@ export interface Settings {
   /** Admit `http://localhost:<port>` as a Jira site — a stand-in Jira for
    *  local development and e2e. See `normalizeSiteUrl`. */
   jiraAllowLocalSiteUrl: boolean;
+  /** How long a Jira card must stay in a status before a trigger fires on it
+   *  (`JIRA_SETTLE_SECONDS`, default 20, as on the board). Shortened only by
+   *  e2e. */
+  jiraSettleSeconds: number;
   studioProvisionSecretKey: string | undefined; // Secret key to call the Deco AI Gateway API to provision keys
   /** Lowercased emails allowed onto the /admin instance dashboard (DEPLOYMENT_ADMIN_EMAILS, CSV). */
   deploymentAdminEmails: string[];
+  /** Org ids whose members may read and act across every org's task board
+   *  (STUDIO_ADMIN_ORG_IDS, CSV). Access control, not product gating.
+   *
+   *  Deliberately independent of `deploymentAdminEmails`: a deployment admin
+   *  does NOT implicitly get cross-org kanban, and a member of an admin org
+   *  does NOT get /api/_admin. Never union the two. */
+  taskBoardAdminOrgIds: string[];
+  /** Shared secret for server-to-server calls to /api/_admin (DEPLOYMENT_ADMIN_TOKEN),
+   *  sent as `x-deployment-admin-token`. Read-only routes and member-add only —
+   *  no impersonation. Unset = header ignored entirely. */
+  deploymentAdminToken: string | undefined;
 
   // Observability
   // HTTP URL of the ClickHouse instance holding the OTel-native `otel_logs`
@@ -57,14 +83,14 @@ export interface Settings {
   monitoringOtlpEndpoint: string | undefined;
   otelServiceName: string;
 
-  // Event Bus & Networking
+  // NATS connectivity
   natsUrls: string[];
   /**
-   * Optional NATS credentials file for the Studio process. Managed local NATS
-   * accepts the loopback connection without credentials; externally configured
-   * NATS deployments may set `NATS_CREDS`.
+   * Optional NATS credentials file for the Studio process (`NATS_CREDS`).
    */
   natsCredsPath: string | undefined;
+  natsUser: string | undefined;
+  natsPassword: string | undefined;
 
   // Config files
   configPath: string;
@@ -81,8 +107,47 @@ export interface Settings {
   stripeWebhookSecret: string | undefined;
   stripeSecretKey: string | undefined;
   /** The flat monthly org-subscription price (created in the Stripe
-   *  dashboard); quantity is always 1. */
+   *  dashboard); quantity is always 1. The fallback when a checkout names no
+   *  plan, and the price a deployment with no tiers subscribes on. */
   stripeOrgPriceId: string | undefined;
+  /**
+   * Which gateway plan each subscription Price grants, parsed from
+   * STRIPE_PLAN_PRICE_IDS (`price_abc=starter,price_def=business`).
+   *
+   * This is the join between money and entitlement, and without it a plan is
+   * something a user simply asks for: `AI_PLAN_SET` takes no payment, so an
+   * org admin could hand itself Business by clicking it. A price in this map is
+   * the only thing that can grant a paid tier, and a subscription leaving
+   * `active` takes it away again — see `planIdForStripe`.
+   *
+   * Empty → no plan is granted or revoked by Stripe, and paid tiers can only
+   * be placed by an operator through the gateway's admin API.
+   */
+  stripePlanPriceIds: Record<string, string>;
+  /**
+   * The Customer Portal configuration used for a TIER CHANGE, and only that.
+   *
+   * Deliberately not the account default. The default configuration also backs
+   * `ORGANIZATION_BILLING_PORTAL` — the full self-serve portal — so listing the
+   * tier products there would let any customer switch plans freely, including a
+   * legacy deco.cx subscriber on a much more expensive price dropping itself to
+   * the cheapest new tier. A `flow_data` session is pinned to one price and
+   * cannot wander, so the upgrade path gets its own configuration and the full
+   * portal keeps offering no plan switching at all.
+   *
+   * Its `subscription_update` must list every purchasable plan's product, and
+   * must set `billing_cycle_anchor=unchanged` — `reset` would move an upgraded
+   * org off the 1st-of-month cycle that `firstOfNextMonthUnix` put it on, and
+   * silently undo the alignment between billing and the allowance.
+   *
+   * Unset → Stripe uses the account default, whose product list holds only the
+   * legacy deco.cx plans (Developer, Professional, Grow, Start, Landing, Grátis)
+   * and none of the tiers, so a tier change is refused with Stripe's own message
+   * rather than charging anything. That default is also why the tiers must not
+   * simply be added to it: doing so would put them in the same switchable pool
+   * as the legacy plans, in both directions.
+   */
+  stripePortalConfigurationId: string | undefined;
   /** The single catalog Product every top-up charge hangs off (created once in
    *  the Stripe dashboard). Top-up amounts are arbitrary, so the Price is
    *  ad-hoc per checkout — but it must point at THIS product, or Stripe's
@@ -91,6 +156,16 @@ export interface Settings {
   stripeTopupProductId: string | undefined;
   /** Fee on AI-credit top-ups, percent (default 15 — gateway parity). */
   topupFeePercent: number;
+
+  /**
+   * Master switch for tiered plans (STUDIO_PLANS_ENABLED, default off). Off →
+   * `getOrgPlanState` answers nothing, so every feature gate is open, no model
+   * pin is honoured and no budget is enforced; the browser is told too (via
+   * /api/config) so it stops asking. Separate from `aiGatewayEnabled` on
+   * purpose: deco prod has a gateway and must keep behaving as it does today
+   * until this is set.
+   */
+  plansEnabled: boolean;
 
   // Task-execution quota (billing/task-quota.ts). Dormant unless enforced —
   // self-hosted deployments never turn it on.
@@ -129,6 +204,10 @@ export interface Settings {
    *  reviewer runs for every org on a timer, so it needs one way to stop it that
    *  doesn't require a code change — see `tools/task-board/review-sweeper.ts`. */
   taskBoardReviewSweeperEnabled: boolean;
+  /** How long a card must stay in a column before a `board_column_transition`
+   *  trigger runs on it (`BOARD_TRANSITION_SETTLE_SECONDS`, default 20).
+   *  Shortened only by e2e. */
+  boardTransitionSettleSeconds: number;
   /** Same, for a run whose agent loop executes in its own SANDBOX pod
    *  (SANDBOX_MAX_CONCURRENT_HOSTED_RUNS) — `workerConcurrency` on
    *  HOSTED_HARNESS_SANDBOXED_QUEUE. Much higher than the in-process cap
@@ -162,9 +241,7 @@ export interface Settings {
   duckdbMemoryLimit: string | undefined;
   duckdbThreads: number | undefined;
 
-  // Runtime flags (set by CLI)
-  isCli: boolean;
-  noTui: boolean;
+  // Runtime
   podName: string;
   /** Which DBOS run queues this pod dequeues (pod dispatch-role split). */
   dispatchRole: DispatchRole;
@@ -185,6 +262,15 @@ export interface Settings {
    *  (SANDBOX_RELEASE_ON_RUN_END). Own flag because it changes the dispatch hot
    *  path; off by default. */
   sandboxReleaseOnRunEndEnabled: boolean;
+  /** Start a sandbox-only chat's sandbox when the chat is created, before its
+   *  first message (SANDBOX_PREWARM_ON_THREAD_CREATE). Off by default: it
+   *  provisions for chats that may never send. */
+  sandboxPrewarmOnThreadCreateEnabled: boolean;
+  /** Keep a chat's Claude Code process alive between its turns in the sandbox,
+   *  so a follow-up skips the CLI start and MCP connect
+   *  (SANDBOX_PERSISTENT_HARNESS). Off by default: it changes the dispatch hot
+   *  path, and the process holds its model credential while it idles. */
+  sandboxPersistentHarnessEnabled: boolean;
   /** Grace before that release takes effect, in ms
    *  (SANDBOX_RELEASE_GRACE_MS, default 120000). Long enough that an immediate
    *  follow-up turn adopts the warm pod rather than paying a cold clone. */
@@ -193,7 +279,6 @@ export interface Settings {
   // External service credentials (optional)
   decoSupabaseUrl: string | undefined;
   decoSupabaseServiceKey: string | undefined;
-  firecrawlApiKey: string | undefined;
   /** Deco control-plane REST base URL (e.g.
    *  https://control-plane.infra.deco.cx/api/v1). Read by the per-site Hosting
    *  tab's BFF proxy. Unset ⇒ the Hosting tab is hidden and the proxy 503s. */
@@ -229,6 +314,14 @@ export interface Settings {
   clickhouseAnalyticsUrl: string | undefined;
   clickhouseAnalyticsUsername: string;
   clickhouseAnalyticsPassword: string | undefined;
+  /** Customer data lake: ClickHouse `customer_lake` on the stats-lake cluster.
+   *  Each org reads it as its own read-only user, created on first use through
+   *  the admin account; see customer-lake/client.ts. Unset url, admin password
+   *  or tenant secret = CUSTOMER_LAKE_QUERY reports the lake as unavailable. */
+  customerLakeUrl: string | undefined;
+  customerLakeAdminUsername: string;
+  customerLakeAdminPassword: string | undefined;
+  customerLakeTenantSecret: string | undefined;
   /** OneDollarStats backend key — the legacy platform's pageview source
    *  (pageviews do not live in the warehouse). Unset = pageviews render "—". */
   oneDollarStatsApiKey: string | undefined;
@@ -254,45 +347,24 @@ export interface Settings {
   awsS3TenantRoleArn: string | undefined;
   awsS3TenantProvisionerAccessKeyId: string | undefined;
   awsS3TenantProvisionerSecretAccessKey: string | undefined;
-}
 
-export interface CliFlags {
-  port: string;
-  home: string;
-  baseUrl?: string;
-  localMode: boolean;
-  skipMigrations: boolean;
-  noTui?: boolean;
-  vitePort?: string;
-  nodeEnv?: "production" | "development" | "test";
-}
-
-export interface ServiceInputs {
-  home: string;
-  externalDatabaseUrl: string | null;
-  externalNatsUrl: string | null;
+  // Hosted Deco CMS (Blocks v8). The R2 bucket behind delivery.decocms.com,
+  // written through its S3 API; the endpoint derives from the account id.
+  deliveryR2AccountId: string | undefined;
+  deliveryR2AccessKeyId: string | undefined;
+  deliveryR2SecretAccessKey: string | undefined;
+  deliveryR2Bucket: string | undefined;
+  /** test-only: overrides `https://<account>.r2.cloudflarestorage.com`. */
+  deliveryR2Endpoint: string | undefined;
+  /** test-only: overrides `https://delivery.decocms.com` in draft pointers. */
+  deliveryPublicOrigin: string | undefined;
+  /** Ed25519 private key (base64 PKCS8) that signs site tokens. */
+  siteTokenSigningKey: string | undefined;
   /**
-   * When true, skip auto-provisioning MinIO (e.g. an external S3 store is
-   * already configured via S3_* env). Defaults to provisioning MinIO.
+   * The Cloudflare zone serving the delivery bucket and a token with Zone →
+   * Cache Purge on it: latest.json is purged after every write. Unset = the
+   * purge is skipped with a warning (local/dev/tests).
    */
-  skipMinio?: boolean;
-}
-
-export interface ServiceOutputs {
-  databaseUrl: string;
-  natsUrls: string[];
-  /**
-   * S3 object-storage config for the managed/external store, if any. Null when
-   * object storage is not configured (no managed MinIO, no external S3 env).
-   * Threaded into the frozen Settings so the in-process serve path resolves the
-   * real S3Service; also mirrored into process.env for spawned child servers.
-   */
-  s3: {
-    endpoint: string;
-    bucket: string;
-    accessKeyId: string;
-    secretAccessKey: string;
-    /** true for managed MinIO; reflects operator's S3_FORCE_PATH_STYLE for external S3. */
-    forcePathStyle: boolean;
-  } | null;
+  cfDeliveryZoneId: string | undefined;
+  cfPurgeApiToken: string | undefined;
 }

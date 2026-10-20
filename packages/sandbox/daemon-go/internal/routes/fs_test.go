@@ -206,3 +206,92 @@ func TestWriteEscapesRootNamesTheRoot(t *testing.T) {
 		t.Fatalf("error must name AppRoot %q and RepoDir %q; got %s", deps.AppRoot, deps.RepoDir, msg)
 	}
 }
+
+// A symlink inside the repo pointing outside AppRoot must not let /write
+// follow it: SafePath only clamps the lexical path, so the containment check
+// alone would pass while the actual write landed on the symlink's target.
+func TestWriteRefusesSymlinkEscape(t *testing.T) {
+	outsideDir := t.TempDir()
+	outsideFile := filepath.Join(outsideDir, "secret.txt")
+	if err := os.WriteFile(outsideFile, []byte("original"), 0o644); err != nil {
+		t.Fatalf("seed outside file: %v", err)
+	}
+	deps := seedBlocks(t)
+	link := filepath.Join(deps.RepoDir, "link.txt")
+	if err := os.Symlink(outsideFile, link); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+	body, _ := json.Marshal(map[string]any{"path": "link.txt", "content": "pwned"})
+	req := httptest.NewRequest(http.MethodPost, "/write", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	Write(deps)(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body = %s", rec.Code, rec.Body.String())
+	}
+	got, err := os.ReadFile(outsideFile)
+	if err != nil {
+		t.Fatalf("read outside file: %v", err)
+	}
+	if string(got) != "original" {
+		t.Fatalf("symlink target was written: %q", got)
+	}
+}
+
+// Same escape, via /edit.
+func TestEditRefusesSymlinkEscape(t *testing.T) {
+	outsideDir := t.TempDir()
+	outsideFile := filepath.Join(outsideDir, "secret.txt")
+	if err := os.WriteFile(outsideFile, []byte("original"), 0o644); err != nil {
+		t.Fatalf("seed outside file: %v", err)
+	}
+	deps := seedBlocks(t)
+	link := filepath.Join(deps.RepoDir, "link.txt")
+	if err := os.Symlink(outsideFile, link); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+	newString := "pwned"
+	body, _ := json.Marshal(map[string]any{"path": "link.txt", "old_string": "original", "new_string": newString})
+	req := httptest.NewRequest(http.MethodPost, "/edit", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	Edit(deps)(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body = %s", rec.Code, rec.Body.String())
+	}
+	got, err := os.ReadFile(outsideFile)
+	if err != nil {
+		t.Fatalf("read outside file: %v", err)
+	}
+	if string(got) != "original" {
+		t.Fatalf("symlink target was edited: %q", got)
+	}
+}
+
+// Unlink already marks a deleted path touched so a pre-baseline-arm delete
+// isn't folded into the dirty baseline as boot dirt (see
+// BranchStatusMonitor.MarkUserTouched). A rename deletes `from` the same way,
+// so it must notify both halves, not just the destination it writes.
+func TestRenameNotifiesBothFromAndTo(t *testing.T) {
+	repoDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(repoDir, "old.ts"), []byte("x"), 0o644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	var notified []string
+	deps := FsDeps{
+		AppRoot:            repoDir,
+		RepoDir:            repoDir,
+		OnWorkingTreeWrite: func(path string) { notified = append(notified, path) },
+	}
+	body, _ := json.Marshal(map[string]any{"from": "old.ts", "to": "new.ts"})
+	req := httptest.NewRequest(http.MethodPost, "/rename", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	Rename(deps)(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body = %s", rec.Code, rec.Body.String())
+	}
+	if len(notified) != 2 || notified[0] != "old.ts" || notified[1] != "new.ts" {
+		t.Fatalf("expected notifyWrite(old.ts) then notifyWrite(new.ts), got %v", notified)
+	}
+}

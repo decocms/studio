@@ -1,4 +1,36 @@
 export const chat = {
+  "chat.voice.title": "Voice conversation",
+  "chat.voice.start": "Start voice mode",
+  "chat.voice.idle": "Ready",
+  "chat.voice.connecting": "Connecting…",
+  "chat.voice.listening": "Listening",
+  "chat.voice.working": "Working on your request. You can keep talking.",
+  "chat.voice.backgroundWork": "The agent is working. You can keep talking.",
+  "chat.voice.speaking": "Speaking",
+  "chat.voice.error": "Voice unavailable",
+  "chat.voice.muted": "Microphone muted",
+  "chat.voice.mute": "Mute microphone",
+  "chat.voice.unmute": "Unmute microphone",
+  "chat.voice.backToChat": "Back to chat",
+  "chat.voice.stopWork": "Stop agent work",
+  "chat.voice.retry": "Try again",
+  "chat.voice.permission":
+    "Allow microphone access in your browser to use voice mode.",
+  "chat.voice.unavailable":
+    "Could not start voice mode. Check microphone access and the organization's voice configuration.",
+  "chat.voice.disconnected":
+    "Voice session ended. Your chat and the agent's work are still available.",
+  "chat.voice.sendFailed":
+    "Could not send or complete this request. Return to the chat to check its status.",
+  "chat.input.openFileContext": "The agent sees {name}, the file you have open",
+  "chat.input.openFileDismiss": "Leave this file out",
+  "chat.input.taskMode": "Task",
+  "chat.input.startTask": "Start task",
+  "chat.input.taskPlaceholder":
+    "What needs fixing? Paste a report or attach a screenshot…",
+  "chat.input.taskHint":
+    "We’ll start an agent and email you when its PR is ready for review.",
+
   "chat.agentCreate.agentCreated": "Project created: {name}",
   "chat.agentCreate.cancelled": "Project creation cancelled",
   "chat.agentCreate.couldntCreate": "Couldn't create project",
@@ -7,9 +39,6 @@ export const chat = {
   "chat.agentCreate.creating": "Creating project",
   "chat.agentCreate.seeAgent": "See project",
   "chat.agentCreate.seeAgentLabel": "See project: {name}",
-  "chat.agentIcons.claudeCode": "Claude Code",
-  "chat.agentIcons.codex": "Codex",
-  "chat.agentIcons.opencode": "OpenCode",
   "chat.agentList.agentsNoun": "projects",
   "chat.agentList.couldntLoad": "Couldn't load projects",
   "chat.agentList.listAgents": "List projects",
@@ -36,32 +65,6 @@ export const chat = {
   "chat.assistant.resumedBackgroundTask": "Resumed — background task completed",
   "chat.assistant.resumingTask": "Resuming task...",
   "chat.assistant.toolCallPlural": "{count} tool call(s)",
-  "chat.brandContext.brand": "Brand",
-  "chat.brandContext.brandContextSet": "Brand context set",
-  "chat.brandContext.brandSet": "Brand set: {name}",
-  "chat.brandContext.brandWithName": "Brand · {name}",
-  "chat.brandContext.colorAccent": "Accent",
-  "chat.brandContext.colorBackground": "Background",
-  "chat.brandContext.colorForeground": "Foreground",
-  "chat.brandContext.colorPrimary": "Primary",
-  "chat.brandContext.colorSecondary": "Secondary",
-  "chat.brandContext.colorsSection": "Colors",
-  "chat.brandContext.couldNotLoadBrand": "Couldn't load brand",
-  "chat.brandContext.couldNotLoadBrands": "Couldn't load brands",
-  "chat.brandContext.defaultBadge": "default",
-  "chat.brandContext.extractingBrand": "Extracting brand",
-  "chat.brandContext.extractionFailed": "Brand extraction failed",
-  "chat.brandContext.fromDomain": "from {domain}",
-  "chat.brandContext.loadingBrand": "Loading brand",
-  "chat.brandContext.loadingBrands": "Loading brands",
-  "chat.brandContext.multipleBrands": "{count} brands",
-  "chat.brandContext.noBrandsContext":
-    "The organization hasn't set up any brand context.",
-  "chat.brandContext.noBrandsYet": "No brands yet",
-  "chat.brandContext.oneBrand": "1 brand",
-  "chat.brandContext.typographySection": "Typography",
-  "chat.brandContext.unknownError": "Unknown error",
-  "chat.brandContext.untitled": "Untitled",
   "chat.chat.jumpToLatest": "Jump to latest",
   "chat.chat.loadingOlderMessages": "Loading older messages…",
   "chat.chatContext.activeTaskProviderMissingContext":
@@ -119,35 +122,20 @@ export const chat = {
   "chat.contextPanel.toolsActive": "tools active",
   "chat.contextPanel.usageLabel": "Usage",
   "chat.contextPanel.userPercent": "User {pct}%",
-  "chat.creditsEmptyState.add": "Add",
-  "chat.creditsEmptyState.bestValueLabel": "Best value",
   "chat.creditsEmptyState.description":
     "Your free credits were used in another workspace. Add credits to use AI here.",
-  "chat.creditsEmptyState.enterCustomAmount": "Enter custom amount",
-  "chat.creditsEmptyState.opening": "Opening...",
-  "chat.creditsEmptyState.popularLabel": "Popular",
   "chat.creditsEmptyState.skipForNow": "Skip for now",
-  "chat.creditsEmptyState.starterLabel": "Starter",
   "chat.creditsEmptyState.title": "This workspace has no credits",
-  "chat.creditsEmptyState.topUpFailed": "Top-up failed: {message}",
   "chat.creditsEmptyState.useYourOwnProvider": "Use your own provider",
-  "chat.creditsExhaustedBanner.add": "Add",
   "chat.creditsExhaustedBanner.benefit1": "Access to 100+ AI models",
   "chat.creditsExhaustedBanner.benefit2":
     "Unified API, no separate keys needed",
   "chat.creditsExhaustedBanner.benefit3": "Pay only for what you use",
-  "chat.creditsExhaustedBanner.customPlaceholder": "50",
   "chat.creditsExhaustedBanner.description":
     "Your credits are used up. Add more to continue using AI across all your agents.",
   "chat.creditsExhaustedBanner.dismiss": "Dismiss",
-  "chat.creditsExhaustedBanner.enterCustom": "Enter custom amount",
   "chat.creditsExhaustedBanner.manageProviders": "Manage providers",
-  "chat.creditsExhaustedBanner.opening": "Opening...",
-  "chat.creditsExhaustedBanner.tierBestValue": "Best value",
-  "chat.creditsExhaustedBanner.tierPopular": "Popular",
-  "chat.creditsExhaustedBanner.tierStarter": "Starter",
   "chat.creditsExhaustedBanner.title": "Top up to keep building",
-  "chat.creditsExhaustedBanner.topupError": "Top-up failed: {error}",
   "chat.decopilot.back": "Back",
   "chat.decopilot.couldNotFetchModels":
     "Could not fetch models from this provider.",
@@ -192,6 +180,8 @@ export const chat = {
   "chat.generic.openInPanel": "Open in panel",
   "chat.generic.preparing": "Preparing...",
   "chat.generic.runningFor": "Running for {elapsed}",
+  "chat.generic.waitingFor": "Waiting {duration}",
+  "chat.generic.wrappingUp": "Wrapping up…",
   "chat.generic.retry": "Retry",
   "chat.generic.tool.bash": "Run Command",
   "chat.generic.tool.edit": "Edit File",
@@ -250,8 +240,11 @@ export const chat = {
   "chat.input.modelCannotReadAttachments":
     "This model can't read attachments — switch to one with vision or file support",
   "chat.input.planMode": "Plan mode",
-  "chat.input.codingAgentRequiresDesktop":
-    "Continue this coding-agent chat in the Studio desktop app.",
+  "chat.liveMessage.pending":
+    "Sent to the running agent · read after its current step",
+  "chat.liveMessage.readByAgent": "Read by the agent while it worked",
+  "chat.input.codingAgentUnavailable":
+    "This coding-agent chat can't be continued here.",
   "chat.input.fastPreviewUnavailable":
     "Chat isn't available on Fast Preview projects. Use the CMS to edit content.",
   "chat.fastPreview.chatNeedsSession":
@@ -262,6 +255,7 @@ export const chat = {
   "chat.input.readOnlyOthersChatNamed":
     "Read only - you're viewing {name}'s chat",
   "chat.input.readOnlyThread": "Read only - this chat takes no replies",
+  "chat.input.allowanceExhaustedTitle": "AI allowance used up",
   "chat.input.sendMessage": "Send message",
   "chat.input.sendMessageEnter": "Send message (Enter)",
   "chat.input.stillSendingPreviousMessage":
@@ -294,57 +288,15 @@ export const chat = {
     "Failed to load prompt. Please try again.",
   "chat.nextActionChip.mcpClientNotAvailable": "MCP client not available",
   "chat.nextActionChip.next": "Next:",
-  "chat.nativeAgentEmptyState.agentListLabel": "Coding agents",
-  "chat.nativeAgentEmptyState.detected": "detected",
-  "chat.nativeAgentEmptyState.detecting": "detecting",
-  "chat.nativeAgentEmptyState.heading": "Choose a coding agent",
-  "chat.nativeAgentEmptyState.keyboardHint": "↑↓ select · ↵ launch",
-  "chat.nativeAgentEmptyState.notDetected":
-    "{label} was not detected on this computer",
-  "chat.nativeAgentEmptyState.tryAnyway": "try anyway",
-  "chat.nativeTerminal.chooseAgentFirst":
-    "Choose Claude Code, Codex, or OpenCode before sending a message.",
-  "chat.nativeTerminal.agentLabel": "coding agent",
-  "chat.nativeTerminal.chatClosedBeforePrompt":
-    "The chat closed before your message was sent. Reopen it and try again.",
-  "chat.nativeTerminal.connectionFailed":
-    "We couldn't connect to the coding agent. Reopen the chat and try again.",
-  "chat.nativeTerminal.emptyPrompt": "Write a message before sending.",
-  "chat.nativeTerminal.exitedBeforeReady":
-    "The coding agent stopped before it was ready. Reopen the chat and try again.",
-  "chat.nativeTerminal.promptFailed":
-    "We couldn't send your message. Try again.",
-  "chat.nativeTerminal.promptDeliveryUnknown":
-    "We lost contact after your message was sent. It may already be running, so check the coding agent before sending it again.",
-  "chat.nativeTerminal.promptTooLarge":
-    "This message is too large to send. Shorten it and try again.",
-  "chat.nativeTerminal.attachmentsUnsupported":
-    "File and image attachments aren't available in coding-agent chats yet.",
-  "chat.nativeTerminal.readOnly":
-    "Only the chat owner can open or control its terminal.",
-  "chat.nativeTerminal.readOnlyTitle": "Read-only chat",
-  "chat.nativeTerminal.reconnectingAgent": "Reconnecting to {agent}…",
-  "chat.nativeTerminal.pulseConnected": "connected",
-  "chat.nativeTerminal.pulseInitializing": "initializing",
-  "chat.nativeTerminal.pulseReconnecting": "reconnecting",
-  "chat.nativeTerminal.startingAgent": "Starting {agent}…",
-  "chat.nativeTerminal.structuredActionUnsupported":
-    "This action isn't available in coding-agent chats yet.",
-  "chat.nativeTerminal.terminalLabel": "Coding agent terminal",
-  "chat.nativeTerminal.unsupportedHarness":
-    "This chat was created with an agent that the desktop app doesn't support. Open it in Studio on the web, or update Studio and try again.",
-  "chat.nativeTerminal.unsupportedHarnessTitle":
-    "This chat can't be opened in the desktop app",
-  "chat.nativeTerminal.unexpectedExit":
-    "The coding agent stopped unexpectedly. Reopen the chat and try again.",
-  "chat.nativeTerminal.waitingForAgentOutput": "Waiting for {agent} output…",
-  "chat.nativeTerminal.waitingForTerminalDraw":
-    "waiting for the terminal to draw",
   "chat.noAiProviderEmptyState.headingDefault":
     "Your projects are almost ready",
   "chat.noAiProviderEmptyState.headingWithOrg": "{org} is ready for projects",
   "chat.noAiProviderEmptyState.subtitleDefault":
     "Connect an AI provider to start chatting.",
+  "chat.noAiProviderEmptyState.supportedHeading":
+    "Connect a supported AI provider",
+  "chat.noAiProviderEmptyState.supportedSubtitle":
+    "Chats run on Claude. Connect Anthropic, OpenRouter or the deco AI Gateway, or link your Claude subscription in Settings.",
   "chat.outputFileRow.download": "Download",
   "chat.outputFileRow.downloadFile": "Download {filename}",
   "chat.outputFileRow.open": "Open",
@@ -358,6 +310,7 @@ export const chat = {
   "chat.proposePlan.planReady": "Plan ready",
   "chat.proposePlan.rejected": "Rejected",
   "chat.proposePlan.viewPlan": "View plan",
+  "chat.queueTray.cancelFailed": "Failed to cancel",
   "chat.queueTray.queuedMessage": "{count} queued message",
   "chat.queueTray.queuedMessages": "{count} queued messages",
   "chat.queueTray.removeFromQueue": "Remove from queue",
@@ -489,6 +442,11 @@ export const chat = {
   "chat.uploader.fileTypeNotSupported": "File type not supported",
   "chat.uploader.gotIt": "Got it",
   "chat.userAskQuestion.choiceOptionsAriaLabel": "Choice options",
+  "chat.suggestTask.accepted": "Added to the board",
+  "chat.suggestTask.create": "Create task",
+  "chat.suggestTask.declined": "Kept in chat",
+  "chat.suggestTask.label": "Task suggestion",
+  "chat.suggestTask.notNow": "Not now",
   "chat.userAskQuestion.confirmNo": "No",
   "chat.userAskQuestion.confirmValue": "Confirm {value}",
   "chat.userAskQuestion.confirmYes": "Yes",
@@ -511,6 +469,7 @@ export const chat = {
   "chat.webSearch.showMore": "+{count} more",
   "chat.webSearch.title": "Web search",
   "chat.mention.editPrompt": "Edit {name} prompt arguments",
+  "chat.mention.openSkill": "Open skill {name}",
   "chat.mention.noItemsFound": "No items found",
   "chat.modelPreferences.customizeModel": "Customize {tier} model",
   "chat.modelPreferences.reset": "Reset",
@@ -529,4 +488,14 @@ export const chat = {
   "chat.subscriptionLimit.runsTitle":
     "This task reached its re-run limit. Create a new task to keep going.",
   "chat.subscriptionLimit.subscribeButton": "Subscribe",
+  "chat.planRefused.budgetLabel": "AI allowance used up",
+  "chat.planRefused.budgetTitle":
+    "This organization has used 100% of its AI allowance. Choose a plan to keep chatting.",
+  "chat.planRefused.featureLabel": "Not on this plan",
+  "chat.planRefused.featureTitle":
+    "This organization's plan does not include chat. Choose a plan to keep chatting.",
+  "chat.planRefused.seePlans": "See plans",
+  "chat.threadHtmlPreviews.slidesAndPages": "Slides & pages in this chat",
+  "chat.threadHtmlPreviews.slides": "Slides in this chat",
+  "chat.threadHtmlPreviews.pages": "Pages in this chat",
 } as const;

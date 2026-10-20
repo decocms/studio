@@ -1,4 +1,4 @@
-import { zodSchema, type Tool, type ToolCallOptions } from "ai";
+import { zodSchema, type Tool, type ToolExecutionOptions } from "ai";
 import { z } from "zod";
 
 /**
@@ -100,7 +100,7 @@ export function makeBackgroundable<S extends z.ZodObject<z.ZodRawShape>>(
 
   const innerExecute = innerTool.execute as (
     input: unknown,
-    options: ToolCallOptions,
+    options: ToolExecutionOptions<unknown>,
   ) => unknown;
   const inputSchema = zodSchema(baseSchema.extend(BACKGROUND_PROP));
   const isGenerator =
@@ -110,7 +110,7 @@ export function makeBackgroundable<S extends z.ZodObject<z.ZodRawShape>>(
   const execute = isGenerator
     ? async function* (
         input: Record<string, unknown>,
-        options: ToolCallOptions,
+        options: ToolExecutionOptions<unknown>,
       ) {
         const { background, ...rest } = input;
         const startBackground = async function* () {
@@ -192,7 +192,10 @@ export function makeBackgroundable<S extends z.ZodObject<z.ZodRawShape>>(
           flipSub.dispose();
         }
       }
-    : async (input: Record<string, unknown>, options: ToolCallOptions) => {
+    : async (
+        input: Record<string, unknown>,
+        options: ToolExecutionOptions<unknown>,
+      ) => {
         const { background, ...rest } = input;
         if (background) {
           const { jobId } = await dispatcher.start({

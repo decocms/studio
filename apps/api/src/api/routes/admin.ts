@@ -2,9 +2,10 @@
  * Deployment Admin Routes
  *
  * Instance-level admin surface for operators (debugging a user's issue, fixing
- * org membership) — gated by `DEPLOYMENT_ADMIN_EMAILS`, not by any per-org
- * role. Every endpoint lives behind `requireDeploymentAdmin`, and the raw
- * Better Auth admin plugin (`/api/auth/admin/*`) is fenced off in `app.ts` so
+ * org membership) — gated by `DEPLOYMENT_ADMIN_EMAILS` (a human's session) or
+ * `DEPLOYMENT_ADMIN_TOKEN` (server-to-server, see `hasValidAdminToken`), not
+ * by any per-org role. Every endpoint lives behind `requireDeploymentAdmin`,
+ * and the raw Better Auth admin plugin (`/api/auth/admin/*`) is fenced off in `app.ts` so
  * a pushed `adminUserIds` id can't reach set-role / set-user-password / etc.
  * directly. The one exception the client hits directly is
  * `authClient.admin.stopImpersonating()`, which needs no admin permission.
@@ -18,6 +19,7 @@
  * namespace). The prefix is exported so the mount and the SSO-enforcement
  * exemption in app.ts share one source — see the constant below.
  */
+import { timingSafeEqual } from "node:crypto";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { auth, getTrustedOrigins, grantDeploymentAdmin } from "@/auth";
@@ -26,8 +28,26 @@ import { BUILTIN_ROLES, type BuiltinRole } from "@decocms/shared/auth/roles";
 import { getDb } from "@/database";
 import { OrganizationSettingsStorage } from "@/storage/organization-settings";
 import { OrganizationNoticeStorage } from "@/storage/organization-notices";
-import { OrgSiteConflictError, OrgSiteStorage } from "@/storage/org-sites";
+import {
+  OrgSiteConflictError,
+  OrgSiteLinkError,
+  OrgSiteStorage,
+} from "@/storage/org-sites";
+import { VirtualMCPStorage } from "@/storage/virtual";
+import {
+  backfillSiteClaims,
+  decoSiteExists,
+  type SiteClaimCandidate,
+} from "@/hosted/claim-site";
+import {
+  projectPackagePath,
+  syncBlocksMajorMarker,
+} from "@/hosted/blocks-major";
+import { mainIsV8, projectSite } from "@/hosted/scope";
+import { contentClientForProjectRepo } from "@/git-providers";
+import { parseRepositoryBinding } from "@/tools/sandbox/sync-git-credentials";
 import { OrgNoticeInputSchema } from "@decocms/shared/organization/notice";
+import { isOrgArchived } from "@decocms/shared/organization/org-archived";
 import { invalidateOrgNoticeCache } from "@/core/org-notice-gate";
 import { isValidSiteSlug } from "@decocms/shared/site-slug";
 import {
@@ -39,6 +59,11 @@ import { posthog } from "@/posthog";
 import { getSettings } from "@/settings";
 import type { Env } from "@/api/hono-env";
 import { createAdminPromptRoutes } from "./admin-prompts";
+import {
+  authorizeProjectMetadataPatch,
+  parseProjectMetadataPatch,
+  listSiteProjects,
+} from "./admin-project-metadata";
 
 /**
  * Mount path for the deployment-admin surface. Single source of truth: app.ts
@@ -156,10 +181,57 @@ async function replaceOrgFlags(
     .execute();
 }
 
+/**
+ * Server-to-server credential for /api/_admin: the shared secret in
+ * `DEPLOYMENT_ADMIN_TOKEN`, sent as `x-deployment-admin-token`. Exists because
+ * every other credential this API issues (Studio JWT, API key) resolves to a
+ * user with no email, and the email allowlist below is what gates this surface
+ * — so an operator tool like ai-service had no way in but replaying a human's
+ * browser cookie.
+ *
+ * Own header, not `Authorization: Bearer`, so the token never reaches
+ * better-auth's API-key probe in context-factory (which would log a warn line
+ * carrying its prefix on every call).
+ *
+ * Deliberately NOT accepted for /impersonate: that route mints a session on
+ * behalf of a real admin and its audit trail is `session.impersonatedBy`,
+ * which a header-only caller has no identity to fill. Everything else is
+ * attributable through the route's own audit line.
+ */
+export function matchesAdminToken(
+  provided: string | undefined,
+  expected: string | undefined,
+): boolean {
+  if (!expected || !provided) return false;
+  const a = Buffer.from(provided);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+const MEMBER_ADD_PATH = /^\/orgs\/[^/]+\/members$/;
+
+/** Routes the shared admin token may reach: any GET, plus member-add. */
+export function tokenAllowsRoute(method: string, path: string): boolean {
+  if (method === "GET") return true;
+  const rel = path.slice(ADMIN_API_PREFIX.length);
+  return method === "POST" && MEMBER_ADD_PATH.test(rel);
+}
+
+function hasValidAdminToken(c: Context<Env>): boolean {
+  return matchesAdminToken(
+    c.req.header("x-deployment-admin-token"),
+    getSettings().deploymentAdminToken,
+  );
+}
+
 async function requireDeploymentAdmin(
   c: Context<Env>,
   next: () => Promise<void>,
 ) {
+  if (tokenAllowsRoute(c.req.method, c.req.path) && hasValidAdminToken(c)) {
+    return next();
+  }
+
   const user = c.get("studioContext").auth.user;
   if (!user) {
     return c.json({ error: "Unauthorized" }, 401);
@@ -320,6 +392,8 @@ export function createAdminRoutes(): Hono<Env> {
         "organization.name as name",
         "organization.slug as slug",
         "organization.createdAt as createdAt",
+        // Soft-delete lives in metadata.archived — surface it to badge the row.
+        "organization.metadata as metadata",
       ])
       .select((eb) => eb.fn.count<string>("member.id").as("memberCount"));
 
@@ -339,6 +413,7 @@ export function createAdminRoutes(): Hono<Env> {
         "organization.name",
         "organization.slug",
         "organization.createdAt",
+        "organization.metadata",
       ])
       .orderBy("organization.createdAt", "desc")
       .limit(limit)
@@ -351,10 +426,11 @@ export function createAdminRoutes(): Hono<Env> {
     );
 
     return c.json({
-      organizations: rows.map((row) => ({
+      organizations: rows.map(({ metadata, ...row }) => ({
         ...row,
         memberCount: Number(row.memberCount || 0),
         notice: notices.get(row.id) ?? null,
+        archived: isOrgArchived({ metadata }),
       })),
     });
   });
@@ -585,30 +661,47 @@ export function createAdminRoutes(): Hono<Env> {
       audit("org_site_claim", {});
       return c.json({ site });
     } catch (error) {
+      if (error instanceof OrgSiteLinkError) {
+        return c.json({ error: error.code, message: error.message }, 409);
+      }
       if (!(error instanceof OrgSiteConflictError)) throw error;
       // Owned by another org: refuse unless the caller explicitly confirms the move.
       if (!reassign) {
-        const owner = await db
-          .selectFrom("organization")
-          .select(["name", "slug"])
-          .where("id", "=", error.ownerOrganizationId)
-          .executeTakeFirst();
+        const [owner, row] = await Promise.all([
+          db
+            .selectFrom("organization")
+            .select(["name", "slug"])
+            .where("id", "=", error.ownerOrganizationId)
+            .executeTakeFirst(),
+          storage.getBySlug(slug),
+        ]);
         return c.json(
           {
             error: "owned_by_other_org",
             ownerOrganizationId: error.ownerOrganizationId,
             ownerOrganizationName: owner?.name ?? null,
             ownerOrganizationSlug: owner?.slug ?? null,
+            // A slug a project has used is never moved (its tokens live on).
+            reassignable: !row?.linkedAt,
           },
           409,
         );
       }
-      const site = await storage.reassignSite({
-        slug,
-        organizationId: orgId,
-        source: "manual",
-        by: actorId,
-      });
+      let site: Awaited<ReturnType<typeof storage.reassignSite>>;
+      try {
+        site = await storage.reassignSite({
+          slug,
+          organizationId: orgId,
+          source: "manual",
+          by: actorId,
+        });
+      } catch (reassignError) {
+        if (!(reassignError instanceof OrgSiteLinkError)) throw reassignError;
+        return c.json(
+          { error: reassignError.code, message: reassignError.message },
+          409,
+        );
+      }
       audit("org_site_reassign", {
         from_organization_id: error.ownerOrganizationId,
       });
@@ -636,16 +729,26 @@ export function createAdminRoutes(): Hono<Env> {
       return c.json({ error: "Unauthorized" }, 401);
     }
 
-    const released = await new OrgSiteStorage(db).releaseSite(slug, orgId);
+    let released: boolean;
+    try {
+      released = await new OrgSiteStorage(db).releaseSite(slug, orgId);
+    } catch (error) {
+      if (!(error instanceof OrgSiteLinkError)) throw error;
+      return c.json({ error: error.code, message: error.message }, 409);
+    }
     if (!released) {
       return c.json({ error: "Site not found for this organization" }, 404);
     }
+    const clearedAnalyticsOverrides = await new VirtualMCPStorage(
+      db,
+    ).clearAnalyticsSiteSlugReferences(orgId, slug);
 
     auditAdminAction("org_site_release", {
       actor_user_id: actorId,
       ...(impersonatedBy ? { impersonated_user_id: effectiveActorId } : {}),
       organization_id: orgId,
       slug,
+      cleared_analytics_overrides: clearedAnalyticsOverrides,
     });
     posthog.capture({
       distinctId: actorId ?? orgId,
@@ -655,6 +758,99 @@ export function createAdminRoutes(): Hono<Env> {
     });
 
     return c.json({ ok: true });
+  });
+
+  // Site projects and the metadata keys `ADMIN_PROJECT_METADATA_FIELDS` allows editing.
+  app.get("/orgs/:orgId/projects", async (c) => {
+    const orgId = c.req.param("orgId");
+    const db = getDb().db;
+    const org = await db
+      .selectFrom("organization")
+      .select("id")
+      .where("id", "=", orgId)
+      .executeTakeFirst();
+    if (!org) {
+      return c.json({ error: "Organization not found" }, 404);
+    }
+    const [virtualMcps, sites] = await Promise.all([
+      new VirtualMCPStorage(db).list(orgId),
+      new OrgSiteStorage(db).listByOrg(orgId),
+    ]);
+    const projects = listSiteProjects(
+      virtualMcps,
+      new Map(sites.map((site) => [site.slug, site.projectId])),
+    );
+    return c.json({ projects });
+  });
+
+  app.patch("/orgs/:orgId/projects/:projectId/metadata", async (c) => {
+    const orgId = c.req.param("orgId");
+    const projectId = c.req.param("projectId");
+    const patch = parseProjectMetadataPatch(
+      await c.req.json().catch(() => null),
+    );
+    if (!patch) {
+      return c.json({ error: "Invalid metadata patch" }, 400);
+    }
+
+    const db = getDb().db;
+    const org = await db
+      .selectFrom("organization")
+      .select("id")
+      .where("id", "=", orgId)
+      .executeTakeFirst();
+    if (!org) {
+      return c.json({ error: "Organization not found" }, 404);
+    }
+
+    const { actorId: effectiveActorId, impersonatedBy } =
+      await getAuditActor(c);
+    const actorId = impersonatedBy ?? effectiveActorId;
+    if (!actorId) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+
+    const orgSites = new OrgSiteStorage(db);
+    const denied = await authorizeProjectMetadataPatch(patch, {
+      isSiteOwned: (slug) => orgSites.isOwnedBy(slug, orgId),
+    });
+    if (denied) {
+      return c.json({ error: denied }, 400);
+    }
+
+    const updated = await new VirtualMCPStorage(db).patchMetadata({
+      id: projectId,
+      organizationId: orgId,
+      set: patch.set,
+      unset: patch.unset,
+      by: actorId,
+    });
+    if (!updated) {
+      return c.json({ error: "Project not found for this organization" }, 404);
+    }
+
+    auditAdminAction("project_metadata_update", {
+      actor_user_id: actorId,
+      ...(impersonatedBy ? { impersonated_user_id: effectiveActorId } : {}),
+      organization_id: orgId,
+      project_id: projectId,
+      set: patch.set,
+      unset: patch.unset,
+    });
+    posthog.capture({
+      distinctId: actorId,
+      event: "deployment_admin_project_metadata_updated",
+      groups: { organization: orgId },
+      properties: {
+        actor_user_id: actorId,
+        organization_id: orgId,
+        project_id: projectId,
+        set: patch.set,
+        unset: patch.unset,
+      },
+    });
+
+    return c.json({ set: patch.set, unset: patch.unset });
   });
 
   // Billing notice pinned on an org: a `warn` banner, or a `block` that takes
@@ -761,6 +957,131 @@ export function createAdminRoutes(): Hono<Env> {
     });
 
     return c.json({ ok: true });
+  });
+
+  /**
+   * Links every existing Blocks v8 project (main's `.deco/schema.gen.json`
+   * says `blocksMajor: 8`) to the site it names (`metadata.siteSlug`) in
+   * `org_sites`, as project creation now does, claiming a free slug for its
+   * org first. Safe to re-run; never takes a slug another org, project or
+   * deco.cx has, nor a deleted org's (reported as `refused`), and links
+   * nobody to a slug several orgs' or projects name (`ambiguous`). A dry run
+   * unless the body says `{"dryRun": false}`. A route rather than a
+   * migration: telling a v8 project needs a GitHub read. A real run also
+   * syncs every project's Blocks v8 marker (`metadata.blocksMajor`, the
+   * cached `isV8Schema` answer for main), in every org, and gives each
+   * linked project its site's managed asset config (Studio's S3).
+   */
+  app.post("/hosted/site-claims/backfill", async (c) => {
+    const raw = (await c.req.json().catch(() => ({}))) as {
+      dryRun?: unknown;
+    } | null;
+    const dryRun = raw?.dryRun !== false;
+    const { actorId: effectiveActorId, impersonatedBy } =
+      await getAuditActor(c);
+    const actorId = impersonatedBy ?? effectiveActorId;
+    if (!actorId) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    const db = getDb().db;
+    const ctx = c.var.studioContext;
+    const rows = await db
+      .selectFrom("connections")
+      .innerJoin(
+        "organization",
+        "organization.id",
+        "connections.organization_id",
+      )
+      .select([
+        "connections.id as id",
+        "connections.organization_id as organizationId",
+        "connections.metadata as metadata",
+        "organization.slug as orgSlug",
+        "organization.name as orgName",
+      ])
+      .where("connections.connection_type", "=", "VIRTUAL")
+      .orderBy("connections.created_at", "asc")
+      .execute();
+    const candidates: SiteClaimCandidate[] = [];
+    const orgs = new Map<string, { id: string; slug: string; name: string }>();
+    for (const row of rows) {
+      let metadata: Record<string, unknown> | null = null;
+      try {
+        metadata =
+          typeof row.metadata === "string"
+            ? (JSON.parse(row.metadata) as Record<string, unknown>)
+            : (row.metadata as Record<string, unknown> | null);
+      } catch {
+        continue;
+      }
+      const slug = projectSite(metadata);
+      if (!slug) continue;
+      candidates.push({
+        organizationId: row.organizationId,
+        projectId: row.id,
+        slug,
+      });
+      orgs.set(row.organizationId, {
+        id: row.organizationId,
+        slug: row.orgSlug,
+        name: row.orgName,
+      });
+    }
+    const projects = new VirtualMCPStorage(db);
+    const report = await backfillSiteClaims({
+      orgSites: new OrgSiteStorage(db),
+      isDecoSite: decoSiteExists,
+      candidates,
+      // A linked project's managed asset config (Studio's S3), as at create.
+      fileConfigs: ctx.storage.orgFileConfigs,
+      by: actorId,
+      dryRun,
+      isV8: async ({ organizationId, projectId }) => {
+        const [project] = await projects.listByIds(organizationId, [projectId]);
+        const metadata = (project?.metadata ?? null) as Record<
+          string,
+          unknown
+        > | null;
+        const repository = parseRepositoryBinding(
+          metadata,
+          project?.connections?.map((conn) => conn.connection_id) ?? [],
+        );
+        if (!repository) return false;
+        // Credentials resolve against the project's org, as in admin-prompts.
+        const client = await contentClientForProjectRepo(
+          { ...ctx, organization: orgs.get(organizationId)! },
+          organizationId,
+          repository,
+        );
+        const isV8 = await mainIsV8(
+          client,
+          projectPackagePath(metadata),
+          await client.getDefaultBranch(),
+        );
+        // The project's Blocks v8 marker (hosted/blocks-major.ts). Run this
+        // once before release so existing v8 projects open in Fast Preview.
+        if (!dryRun && project) {
+          await syncBlocksMajorMarker(
+            projects,
+            { id: projectId, organizationId, metadata },
+            isV8,
+            actorId,
+          );
+        }
+        return isV8;
+      },
+    });
+    auditAdminAction("hosted_site_claims_backfill", {
+      actor_user_id: actorId,
+      ...(impersonatedBy ? { impersonated_user_id: effectiveActorId } : {}),
+      dry_run: dryRun,
+      linked: report.linked.length,
+      refused: report.refused.length,
+      ambiguous: report.ambiguous.length,
+      errors: report.errors.length,
+      asset_config_errors: report.assetConfigErrors.length,
+    });
+    return c.json(report);
   });
 
   // The agent-prompt editor (reads/writes decocms/studio over GitHub) — its own

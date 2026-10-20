@@ -317,8 +317,7 @@ export function createUsageAccumulator(): UsageAccumulator {
         inputTokens: parentInputTokens + external.inputTokens,
         outputTokens: parentOutputTokens + external.outputTokens,
         reasoningTokens:
-          (totalUsage as { reasoningTokens?: number } | null | undefined)
-            ?.reasoningTokens ?? undefined,
+          totalUsage?.outputTokenDetails?.reasoningTokens ?? undefined,
         totalTokens: parentTotalTokens + external.totalTokens,
         contextTokens: lastStepInputTokens,
         cachedInputTokens: cache.read,

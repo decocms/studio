@@ -206,11 +206,23 @@ function timeAgo(iso: string | null | undefined): string {
   return rtf.format(-secs, "second");
 }
 
+/** Thrown by {@link fetchJson}/{@link mutateJson}; carries the real HTTP status
+ *  so callers don't have to guess it back out of the error message. */
+class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+  }
+}
+
 /** The pre-token condition: the upstream (or its proxy) answers 401. Rendered as
- *  a calm "not connected" state, not a red error. */
+ *  a calm "not connected" state, not a red error. Keyed on the actual status,
+ *  not the error message — a BFF route can phrase its 401 body however it
+ *  likes without silently breaking this check. */
 function isUnauthorized(error: unknown): boolean {
-  const m = error instanceof Error ? error.message.toLowerCase() : "";
-  return m.includes("unauthorized") || m.includes("401");
+  return error instanceof ApiError && error.status === 401;
 }
 
 function errorText(error: unknown): string {
@@ -225,7 +237,7 @@ async function fetchJson(url: string): Promise<unknown> {
       body && typeof body === "object" && "error" in body
         ? String((body as { error: unknown }).error)
         : `request failed (${res.status})`;
-    throw new Error(err);
+    throw new ApiError(err, res.status);
   }
   return body;
 }
@@ -246,7 +258,7 @@ async function mutateJson(
       data && typeof data === "object" && "error" in data
         ? String((data as { error: unknown }).error)
         : `request failed (${res.status})`;
-    throw new Error(err);
+    throw new ApiError(err, res.status);
   }
   return data;
 }

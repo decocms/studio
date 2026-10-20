@@ -5,9 +5,9 @@
  */
 
 import { createAnthropic } from "@ai-sdk/anthropic";
-import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { createGoogle } from "@ai-sdk/google";
 import { createOpenAI } from "@ai-sdk/openai";
-import type { ProviderV3 } from "@ai-sdk/provider";
+import type { ProviderV4 } from "@ai-sdk/provider";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import {
   isInteractionsOnlyModel,
@@ -19,14 +19,14 @@ import type { StudioProvider } from "./studio-provider";
 
 export interface ResolvedSecretProvider extends StudioProvider {
   info: { id: never; name: string; description: string };
-  aiSdk: ProviderV3;
+  aiSdk: ProviderV4;
   listModels(): Promise<never[]>;
 }
 
 function withProviderSurface(
   source: DecopilotSecretModelSource,
-  aiSdk: ProviderV3,
-  extras: Pick<ResolvedSecretProvider, "asyncResearch"> = {},
+  aiSdk: ProviderV4,
+  extras: Pick<ResolvedSecretProvider, "asyncResearch" | "decisions"> = {},
 ): ResolvedSecretProvider {
   return {
     info: {
@@ -63,7 +63,7 @@ export function createProviderFromSecret(
     case "google":
       return withProviderSurface(
         source,
-        createGoogleGenerativeAI({
+        createGoogle({
           apiKey,
           ...(baseUrl ? { baseURL: baseUrl } : {}),
           ...(extraHeaders ? { headers: extraHeaders } : {}),
@@ -110,7 +110,8 @@ export function createProviderFromSecret(
         Object.assign(aiSdk, {
           languageModel: (...args: Parameters<typeof aiSdk.languageModel>) =>
             baseLanguageModel(...args),
-        }) as ProviderV3,
+        }) as ProviderV4,
+        { decisions: { model: (modelId) => aiSdk.evaluationModel(modelId) } },
       );
     }
 
@@ -136,7 +137,7 @@ export function createProviderFromSecret(
         Object.assign(openai, {
           languageModel: (...args: Parameters<typeof openai.chat>) =>
             openai.chat(...args),
-        }) as ProviderV3,
+        }) as ProviderV4,
       );
     }
 

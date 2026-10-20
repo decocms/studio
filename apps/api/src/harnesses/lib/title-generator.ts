@@ -4,7 +4,7 @@
  * Generates conversation titles in the background using LLM.
  */
 
-import type { LanguageModelV3 } from "@ai-sdk/provider";
+import type { LanguageModelV4 } from "@ai-sdk/provider";
 import { retry } from "@decocms/shared/std";
 import { generateObject } from "ai";
 import { z } from "zod";
@@ -60,7 +60,7 @@ export function genTitle(config: {
   /** Ordered fallback chain, fast/cheap first — each entry is a lazy factory
    *  so an unbuildable model fails only its own attempt (never at call time).
    *  Attempt N uses `models[N]`, clamped to the last entry once exhausted. */
-  models: Array<() => LanguageModelV3>;
+  models: Array<() => LanguageModelV4>;
   userMessage: string;
   /** Override the self-timeout (ms) before falling back to the clamped user
    *  message. Defaults to {@link TITLE_GEN_TIMEOUT_MS}. Tests pass a tiny value. */
@@ -142,7 +142,7 @@ export function genTitle(config: {
           return generateObject({
             model,
             schema: TITLE_SCHEMA,
-            system: TITLE_GENERATOR_PROMPT,
+            instructions: TITLE_GENERATOR_PROMPT,
             messages: [{ role: "user", content: userMessage }],
             temperature: 0.2,
             abortSignal: titleAbortController.signal,

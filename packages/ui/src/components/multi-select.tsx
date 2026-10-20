@@ -18,6 +18,13 @@ import {
 } from "./command.tsx";
 import { Popover, PopoverContent, PopoverTrigger } from "./popover.tsx";
 
+/**
+ * A default of `[]` is a NEW array on every render, so anything derived from
+ * it re-renders even when nothing changed. `never[]` is assignable to any
+ * `T[]`, so one frozen constant serves every optional list prop in this file.
+ */
+const EMPTY_ARRAY: never[] = [];
+
 export interface Option {
   label: string;
   value: string;
@@ -43,7 +50,7 @@ interface MultiSelectProps {
 export function MultiSelect({
   options,
   onValueChange,
-  defaultValue = [],
+  defaultValue = EMPTY_ARRAY,
   placeholder = "Select items",
   variant = "default",
   animation = 0,
@@ -58,12 +65,18 @@ export function MultiSelect({
     React.useState<string[]>(defaultValue);
   const [isPopoverOpen, setIsPopoverOpen] = React.useState(false);
 
+  // Vendored shadcn shape. A render-time prev-guard would be the textbook fix,
+  // but it also changes when a local selection survives a parent re-render —
+  // a behavioural change to a published component that does not belong in a
+  // lint sweep.
+  // oxlint-disable react/set-state-in-effect
   // oxlint-disable-next-line ban-use-effect/ban-use-effect
   React.useEffect(() => {
     if (JSON.stringify(selectedValues) !== JSON.stringify(defaultValue)) {
       setSelectedValues(defaultValue);
     }
   }, [defaultValue, selectedValues]);
+  // oxlint-enable react/set-state-in-effect
 
   const handleInputKeyDown = (event: React.KeyboardEvent) => {
     if (event.key === "Enter") {
@@ -121,7 +134,7 @@ export function MultiSelect({
           {...(asChild ? {} : { variant: "outline" })}
           onClick={handleTogglePopover}
           className={cn(
-            "border-input data-[placeholder]:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/20 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:bg-input/30 dark:hover:bg-input/50 flex w-full max-w-xs items-center justify-between gap-2 rounded-xl border bg-transparent px-3 py-2 text-sm shadow-xs transition-[color,box-shadow] outline-none focus-visible:ring-[2px] disabled:cursor-not-allowed disabled:opacity-50 h-10 min-h-10",
+            "border-input data-[placeholder]:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/20 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:bg-input/30 dark:hover:bg-input/50 flex w-full max-w-xs items-center justify-between gap-2 border bg-transparent px-3 py-2 text-sm shadow-xs transition-[color,box-shadow] outline-none focus-visible:ring-[2px] disabled:cursor-not-allowed disabled:opacity-50 h-10 min-h-10",
             className,
           )}
           disabled={disabled}

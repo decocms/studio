@@ -11,6 +11,7 @@ import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { injectCSP } from "@decocms/shared/mcp-apps/csp-injector";
 import type { McpUiResourceCsp } from "@decocms/shared/mcp-apps/types";
+import { authClient } from "@/lib/auth-client";
 import { useAppBridge } from "./use-app-bridge.ts";
 import { track } from "../lib/posthog-client";
 import { usePreferences } from "../hooks/use-preferences.ts";
@@ -114,12 +115,25 @@ function MCPAppFrame({
   // and pushes a host-context-changed notification to the live iframe.
   const [preferences] = usePreferences();
 
+  // Logged-in user → hostContext.user, so an app can attribute edits / cursors.
+  const { data: session } = authClient.useSession();
+  const sessionUser = session?.user;
+  const user = sessionUser
+    ? {
+        id: sessionUser.id,
+        name: sessionUser.name,
+        email: sessionUser.email,
+        avatarUrl: sessionUser.image ?? undefined,
+      }
+    : undefined;
+
   const { height, isLoading, error, iframeRef } = useAppBridge({
     client,
     displayMode,
     minHeight,
     maxHeight,
     orgId,
+    user,
     locale: preferences.language,
     toolInfo,
     toolInput,
@@ -165,7 +179,11 @@ function MCPAppFrame({
       <iframe
         ref={iframeRef}
         srcDoc={html}
-        sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads"
+        // `allow-same-origin` is deliberately absent: this frame renders HTML
+        // from a third-party MCP server via `srcDoc`, which inherits OUR origin.
+        // With scripts enabled that would be a full sandbox escape — the app
+        // bridge uses postMessage, which needs no same-origin.
+        sandbox="allow-scripts allow-forms allow-popups allow-downloads"
         className={cn("w-full h-full border-0", isLoading && "invisible")}
         title={`MCP App: ${toolName ?? uri}`}
       />

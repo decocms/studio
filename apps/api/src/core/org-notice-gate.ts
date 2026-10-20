@@ -19,6 +19,10 @@ import type { Kysely } from "kysely";
 import { ForbiddenError } from "./access-control";
 import { OrganizationNoticeStorage } from "../storage/organization-notices";
 import type { Database, OrganizationNotice } from "../storage/types";
+import {
+  evictExpiredTtlCacheEntries,
+  refreshTtlCacheEntry,
+} from "./ttl-lru-cache";
 
 /**
  * A notice is set by a human in the admin UI and read on nearly every request,
@@ -27,11 +31,30 @@ import type { Database, OrganizationNotice } from "../storage/types";
  * window matter only for other pods in a multi-instance deployment.
  */
 const ORG_NOTICE_CACHE_TTL_MS = 5 * 60_000;
+// Cap: entries are only ever overwritten on their own next lookup, never dropped otherwise.
+const ORG_NOTICE_CACHE_MAX_SIZE = 10_000;
 
-const orgNoticeCache = new Map<
-  string,
-  { notice: OrganizationNotice | null; at: number }
->();
+type OrgNoticeCacheEntry = { value: OrganizationNotice | null; at: number };
+
+const orgNoticeCache = new Map<string, OrgNoticeCacheEntry>();
+
+/** Write (or refresh) a cache entry. Exported for unit testing. */
+export function refreshOrgNoticeCacheEntry(
+  cache: Map<string, OrgNoticeCacheEntry>,
+  organizationId: string,
+  notice: OrganizationNotice | null,
+): void {
+  refreshTtlCacheEntry(cache, organizationId, notice);
+}
+
+/** Exported for unit testing. */
+export function evictExpiredOrgNoticeEntries(
+  cache: Map<string, OrgNoticeCacheEntry>,
+  maxSize: number,
+  ttlMs: number,
+): void {
+  evictExpiredTtlCacheEntries(cache, maxSize, ttlMs);
+}
 
 /** Thrown when a blocked org's control plane is touched. Serialized as 403. */
 export class OrgBlockedError extends ForbiddenError {
@@ -52,11 +75,16 @@ export async function getActiveOrgNoticeCached(
   organizationId: string,
 ): Promise<OrganizationNotice | null> {
   const hit = orgNoticeCache.get(organizationId);
-  if (hit && Date.now() - hit.at < ORG_NOTICE_CACHE_TTL_MS) return hit.notice;
+  if (hit && Date.now() - hit.at < ORG_NOTICE_CACHE_TTL_MS) return hit.value;
   const notice = await new OrganizationNoticeStorage(db).getActive(
     organizationId,
   );
-  orgNoticeCache.set(organizationId, { notice, at: Date.now() });
+  refreshOrgNoticeCacheEntry(orgNoticeCache, organizationId, notice);
+  evictExpiredOrgNoticeEntries(
+    orgNoticeCache,
+    ORG_NOTICE_CACHE_MAX_SIZE,
+    ORG_NOTICE_CACHE_TTL_MS,
+  );
   return notice;
 }
 
@@ -126,6 +154,15 @@ export function isBlockableOrgRequest(method: string, path: string): boolean {
     return false;
   }
   const segments = path.split("/").filter(Boolean);
+  // The notice service must be able to lift the restriction it owns. Keep this
+  // exemption exact: every other /internal write remains control plane.
+  if (
+    segments.length === 4 &&
+    segments[2] === "internal" &&
+    segments[3] === "organization-notices"
+  ) {
+    return false;
+  }
   // ["api", "<org>", "<first>", ...] — anything shorter has no route to block.
   const first = segments[2];
   if (!first) return false;

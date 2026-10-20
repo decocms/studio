@@ -10,20 +10,19 @@
  *    entries and (b) per-tool annotations used for plan-mode gating.
  *  - VM file-tool binding context (`vmContext`) keyed on whether the
  *    agent is GitHub-linked or ephemeral.
- *
- * Today this code lives inline inside `stream-core.ts` (~lines 530–660);
- * the helper here is unused until Task 12 wires it through the harness
- * factory. Behavior is intended to be byte-for-byte the same as the
- * inline version, modulo the CLI-agent branch (claude-code / codex)
- * which is removed because the decopilot harness never runs against
- * those providers — they have their own harnesses.
  */
 
 import type { ToolSet, UIMessageStreamWriter } from "ai";
-import type { GithubRepo } from "@decocms/shared/sdk";
+import type { RepositoryBinding } from "@decocms/shared/sdk";
 import type { StudioContext } from "@/core/studio-context";
+import type { VirtualMCPEntity } from "@/tools/virtual/schema";
+import type { ConnectionEntity } from "@/tools/connection/schema";
+import { createVirtualClientFrom } from "@/mcp-clients/virtual-mcp";
+import { resolveDevConnection } from "@/api/routes/dev-connection";
+import { readSandboxMap } from "@/tools/sandbox/sandbox-map";
+import { buildClusterMcpToolHooks } from "@/api/routes/decopilot/cluster-mcp-tool-hooks";
 import {
-  getThreadGithubRepo,
+  getThreadRepository,
   getThreadPinnedRef,
   resolveSandboxBranch,
 } from "@/tools/sandbox/thread-repo";
@@ -37,11 +36,9 @@ import {
 } from "./built-in-tools";
 import type { HtmlArtifactBuffer } from "@/harnesses/lib/decopilot/built-in-tools/vm-tools/types";
 import type { ConnectionsBlockTool } from "@/harnesses/lib/decopilot/connections-block";
-import {
-  toolsFromMCP,
-  type PrOpenedEvent,
-  type ToolCallAnalytics,
-} from "@/harnesses/lib/decopilot/mcp-tools";
+import { agentSandboxEnabled } from "@/settings";
+import { sandboxOnlyChatsEnabled } from "@/harnesses/sandbox-only-chats";
+import { toolsFromMCP } from "@/harnesses/lib/decopilot/mcp-tools";
 import { MCP_LIST_TIMEOUT_MS } from "@/core/constants";
 import { MCP_TOOL_CALL_TIMEOUT_MS } from "@/harnesses/lib/decopilot/harness-constants";
 import { requireDecopilotRunContext } from "@/harnesses/lib/decopilot/run-context";
@@ -119,7 +116,7 @@ export interface AssembleDecopilotToolsExtras {
    *  the chat provider when the org's `deep_research` tier shares the chat
    *  credential. */
   deepResearchProvider: StudioProvider | null;
-  /** Per-turn HTML-artifact fast-path mirror (`org/home/{decks,pages}/
+  /** Per-turn HTML-artifact fast-path mirror (`/app/org/home/{decks,pages}/
    *  *.html`) — flushed into org-fs at step-end by the dispatch layer. */
   htmlArtifactBuffer?: HtmlArtifactBuffer;
   /** Usage roll-up sink (Task 17) — forwarded to the `subtask` built-in so a
@@ -130,31 +127,8 @@ export interface AssembleDecopilotToolsExtras {
     totalTokens: number;
   }) => void;
   /** Cluster-injected: makes slow built-ins (generate_image) run as durable
-   *  background jobs instead of holding the turn open. Omitted on desktop. */
+   *  background jobs instead of holding the turn open. */
   backgroundDispatcher?: BackgroundDispatcher | null;
-  /**
-   * Portable MCP-client seam. Generalizes the cluster's in-process
-   * `createVirtualClientFrom(virtualMcp, ctx, superUser,
-   * { listTimeoutMs })` so the daemon/desktop can swap in an HTTP `Client` at
-   * the agent's `mcp.url`. The cluster impl
-   * (supplied by `index.ts`) loads the Virtual MCP by id and returns a live
-   * `PassthroughClient`; the caller owns closing it via `result.close()`.
-   */
-  mcpForAgent: (
-    agentId: string,
-    opts?: { superUser?: boolean; listTimeoutMs?: number },
-  ) => Promise<PassthroughClient>;
-  /** Cluster-injected hook: resolve storage-ref args before each MCP tool
-   *  call. Omitted on desktop (no ctx) → args pass through unchanged. */
-  resolveArgs?: (
-    input: Record<string, unknown>,
-  ) => Promise<Record<string, unknown>>;
-  /** Cluster-injected hook: emit per-tool-call analytics (posthog). Omitted
-   *  on desktop → no analytics. */
-  onToolCalled?: (event: ToolCallAnalytics) => void;
-  /** Cluster-injected hook: a PR was opened via the GitHub MCP — link it to
-   *  the run's task. Omitted on desktop. */
-  onPrOpened?: (event: PrOpenedEvent) => void;
 }
 
 /**
@@ -236,6 +210,21 @@ export async function assembleDecopilotTools(
       ? new Set(input.toolAllowlist)
       : null;
 
+  const virtualMcp = runContext.virtualMcp as VirtualMCPEntity;
+  // Include the running sandbox's dev tools only after confirming it speaks MCP.
+  let devConnection: ConnectionEntity | null = null;
+  if (
+    virtualMcp.id &&
+    input.user.id &&
+    readSandboxMap(virtualMcp.metadata)[input.user.id]
+  ) {
+    devConnection = await resolveDevConnection(
+      ctx,
+      virtualMcp.id,
+      input.user.id,
+      runContext.branch ?? undefined,
+    ).catch(() => null);
+  }
   // superUser=true: the user is already authenticated as an org member,
   // the virtual MCP enforces which connections are in scope, and the
   // per-tool AuthTransport check would block every non-public connection
@@ -247,10 +236,16 @@ export async function assembleDecopilotTools(
   // start dropping working connections out of a chat's toolset. The shared
   // budget keeps the intent (no connection may stall run start) at a value a
   // healthy connection actually meets.
-  const passthroughClient = await extras.mcpForAgent(input.agent.id, {
-    superUser: true,
-    listTimeoutMs: MCP_LIST_TIMEOUT_MS,
-  });
+  const passthroughClient = await createVirtualClientFrom(
+    virtualMcp,
+    ctx,
+    true,
+    {
+      listTimeoutMs: MCP_LIST_TIMEOUT_MS,
+      includeSkillsCatalog: true,
+      additionalConnections: devConnection ? [devConnection] : [],
+    },
+  );
 
   // Once the passthrough client is open, every subsequent failure in
   // tool assembly (toolsFromMCP, getBuiltInTools, listTools, …) MUST
@@ -273,9 +268,7 @@ export async function assembleDecopilotTools(
       {
         isPlanMode,
         timeoutMs: MCP_TOOL_CALL_TIMEOUT_MS,
-        resolveArgs: extras.resolveArgs,
-        onToolCalled: extras.onToolCalled,
-        onPrOpened: extras.onPrOpened,
+        ...buildClusterMcpToolHooks(ctx, extras.threadId),
       },
     );
     // Restrict to the allowlist (if any) so enable_tool enumeration, the
@@ -290,29 +283,33 @@ export async function assembleDecopilotTools(
     // provisioned lazily on the first tool call inside getBuiltInTools.
     //
     // Two keying regimes:
-    // - GitHub-linked agents (githubRepo set) need per-branch isolation
+    // - repository-linked agents (repository set) need per-branch isolation
     //   so PR/branch workflows don't trample each other. Falls back to a
     //   `thread:<taskId>` synthetic branch when no explicit branch is
     //   supplied yet.
-    // - Ephemeral agents (no githubRepo) share one VM per (user, agent)
+    // - Ephemeral agents (no repository) share one VM per (user, agent)
     //   across threads. The skills work is mostly read-heavy and
     //   sharing a sandbox cuts the VM count linearly with thread count.
     //   Tradeoff: concurrent threads share /app, /home/sandbox, /tmp —
     //   parallel writes to overlapping filenames can race. Fine for
     //   reads and scoped outputs; revisit if it bites.
     const vmMetadata = runContext.virtualMcp.metadata as {
-      githubRepo?: GithubRepo | null;
+      repository?: RepositoryBinding | null;
     };
     // A thread-scoped repo (set by `load_repo`, super-agent-only) wins: it's the
     // only place a repo can persist for the synthetic Decopilot agent. Threads of
     // real repo-agents never carry one. When present it pins the thread to a
     // dedicated `thread:<id>` sandbox branch (not the shared "ephemeral" one).
-    const threadRepo = await getThreadGithubRepo(ctx, extras.threadId);
+    const threadRepo = await getThreadRepository(ctx, extras.threadId);
     // Must be read here too, not just in `resolveSandboxBranchForThread`: this
     // derivation and the dispatch path's have to agree exactly, and a pin seen
     // by only one of them would provision a second pod for the same thread.
     const pinnedRef = await getThreadPinnedRef(ctx, extras.threadId);
-    const vmContext: VmContext | null = input.user.id
+    // Without the hosted sandbox, building the file tools throws.
+    const vmEnabled = Boolean(input.user.id) && agentSandboxEnabled();
+    const sandboxOnlyChats =
+      vmEnabled && (await sandboxOnlyChatsEnabled(ctx, organization.id));
+    const vmContext: VmContext | null = vmEnabled
       ? {
           virtualMcpId: input.agent.id,
           // Shared with the sandbox-hosted dispatch path — see
@@ -321,12 +318,13 @@ export async function assembleDecopilotTools(
           branch: resolveSandboxBranch({
             threadId: extras.threadId,
             threadRepo,
-            agentRepo: vmMetadata.githubRepo,
+            agentRepo: vmMetadata.repository,
             runBranch: runContext.branch,
             pinnedRef,
+            sandboxOnlyChats,
           }),
           userId: input.user.id,
-          // Scopes org/output and thread-owned artifacts. Cannot be derived
+          // Scopes /app/org/output and thread-owned artifacts. Cannot be derived
           // from the sandbox row since one ephemeral sandbox serves many
           // threads.
           threadId: extras.threadId,
@@ -357,6 +355,7 @@ export async function assembleDecopilotTools(
         htmlArtifactBuffer: extras.htmlArtifactBuffer,
         taskId: extras.threadId,
         agentId: input.agent.id,
+        isCodeProject: Boolean(vmMetadata.repository?.url || threadRepo),
         onChildUsage: extras.onChildUsage,
         backgroundDispatcher: extras.backgroundDispatcher,
       },

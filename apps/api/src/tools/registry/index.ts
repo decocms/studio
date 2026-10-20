@@ -1,29 +1,8 @@
-import { REGISTRY_ITEM_BULK_CREATE } from "./bulk-create";
-import { REGISTRY_AI_GENERATE } from "./ai-generate";
-import { REGISTRY_ITEM_CREATE } from "./create";
-import { REGISTRY_ITEM_DELETE } from "./delete";
-import { REGISTRY_DISCOVER_TOOLS } from "./discover-tools";
 import { REGISTRY_ITEM_FILTERS } from "./filters";
 import { REGISTRY_ITEM_GET } from "./get";
 import { REGISTRY_ITEM_LIST } from "./list";
 import { REGISTRY_ITEM_SEARCH } from "./search";
-import { REGISTRY_ITEM_UPDATE } from "./update";
 import { REGISTRY_ITEM_VERSIONS } from "./versions";
-import { REGISTRY_PUBLISH_REQUEST_LIST } from "./publish-request-list";
-import { REGISTRY_PUBLISH_REQUEST_REVIEW } from "./publish-request-review";
-import { REGISTRY_PUBLISH_REQUEST_COUNT } from "./publish-request-count";
-import { REGISTRY_PUBLISH_REQUEST_DELETE } from "./publish-request-delete";
-import { REGISTRY_PUBLISH_API_KEY_GENERATE } from "./publish-api-key-generate";
-import { REGISTRY_PUBLISH_API_KEY_LIST } from "./publish-api-key-list";
-import { REGISTRY_PUBLISH_API_KEY_REVOKE } from "./publish-api-key-revoke";
-import { REGISTRY_MONITOR_RUN_START } from "./monitor-run-start";
-import { REGISTRY_MONITOR_RUN_LIST } from "./monitor-run-list";
-import { REGISTRY_MONITOR_RUN_GET } from "./monitor-run-get";
-import { REGISTRY_MONITOR_RUN_CANCEL } from "./monitor-run-cancel";
-import { REGISTRY_MONITOR_RESULT_LIST } from "./monitor-result-list";
-import { REGISTRY_MONITOR_CONNECTION_LIST } from "./monitor-connection-list";
-import { REGISTRY_MONITOR_CONNECTION_SYNC } from "./monitor-connection-sync";
-import { REGISTRY_MONITOR_CONNECTION_UPDATE_AUTH } from "./monitor-connection-update-auth";
 import {
   COLLECTION_REGISTRY_APP_FILTERS,
   COLLECTION_REGISTRY_APP_GET,
@@ -40,26 +19,5 @@ export const tools = [
   REGISTRY_ITEM_SEARCH,
   REGISTRY_ITEM_GET,
   REGISTRY_ITEM_VERSIONS,
-  REGISTRY_ITEM_CREATE,
-  REGISTRY_ITEM_BULK_CREATE,
-  REGISTRY_ITEM_UPDATE,
-  REGISTRY_ITEM_DELETE,
   REGISTRY_ITEM_FILTERS,
-  REGISTRY_DISCOVER_TOOLS,
-  REGISTRY_AI_GENERATE,
-  REGISTRY_PUBLISH_REQUEST_LIST,
-  REGISTRY_PUBLISH_REQUEST_REVIEW,
-  REGISTRY_PUBLISH_REQUEST_COUNT,
-  REGISTRY_PUBLISH_REQUEST_DELETE,
-  REGISTRY_PUBLISH_API_KEY_GENERATE,
-  REGISTRY_PUBLISH_API_KEY_LIST,
-  REGISTRY_PUBLISH_API_KEY_REVOKE,
-  REGISTRY_MONITOR_RUN_START,
-  REGISTRY_MONITOR_RUN_LIST,
-  REGISTRY_MONITOR_RUN_GET,
-  REGISTRY_MONITOR_RUN_CANCEL,
-  REGISTRY_MONITOR_RESULT_LIST,
-  REGISTRY_MONITOR_CONNECTION_LIST,
-  REGISTRY_MONITOR_CONNECTION_SYNC,
-  REGISTRY_MONITOR_CONNECTION_UPDATE_AUTH,
 ];

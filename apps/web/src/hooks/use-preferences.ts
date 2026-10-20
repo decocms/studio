@@ -1,7 +1,9 @@
+import { createContext, use } from "react";
+import type { Locale } from "@/i18n/locale.ts";
+import type { TranslationKey } from "@/i18n/en/index.ts";
 import { useLocalStorage } from "./use-local-storage.ts";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys.ts";
-import { detectLocale, VALID_LOCALES, type Locale } from "@/i18n/locale.ts";
-import type { TranslationKey } from "@/i18n/en/index.ts";
+import { detectLocale, VALID_LOCALES } from "@/i18n/locale.ts";
 
 export type ToolApprovalLevel = "auto" | "readonly";
 export type ThemeMode = "light" | "dark" | "system";
@@ -12,17 +14,16 @@ interface Preferences {
   theme: ThemeMode;
   language: Locale;
   /**
-   * Reveal a settings shortcut on each sidebar project row on hover. Off by
-   * default — the row is a navigation target first, and the shortcut is a
-   * second control competing for the same space.
-   */
-  showProjectSettingsGear: boolean;
-  /**
    * Task-board lanes hidden by default (`HIDDEN_STATUSES`) that this person has
    * pulled back onto the board. Statuses, not lane indexes, so a reordered or
    * renamed lane can't resurrect the wrong column.
    */
   shownTaskBoardLanes: string[];
+  /** Task-board lanes this person collapsed to a narrow strip. Statuses, for
+   *  the same reason as `shownTaskBoardLanes`. */
+  collapsedTaskBoardLanes: string[];
+  /** Project-first navigation opt-in: the org rail, project launcher, project tree and Today/Agents home. */
+  projectFirstNav: boolean;
 }
 
 const DEFAULT_PREFERENCES: Preferences = {
@@ -31,8 +32,9 @@ const DEFAULT_PREFERENCES: Preferences = {
   enableSounds: false,
   theme: "system",
   language: detectLocale(),
-  showProjectSettingsGear: false,
   shownTaskBoardLanes: [],
+  collapsedTaskBoardLanes: [],
+  projectFirstNav: false,
 };
 
 const VALID_TOOL_APPROVAL_LEVELS: ToolApprovalLevel[] = ["auto", "readonly"];
@@ -91,6 +93,13 @@ export function usePreferences() {
     LOCALSTORAGE_KEYS.preferences(),
     (existing) => {
       const merged = { ...DEFAULT_PREFERENCES, ...existing };
+      // Remove retired settings (the blocks editor is now an org flag).
+      if ("showProjectSettingsGear" in merged) {
+        delete merged.showProjectSettingsGear;
+      }
+      if ("compactPageLayout" in merged) {
+        delete merged.compactPageLayout;
+      }
       if (!VALID_TOOL_APPROVAL_LEVELS.includes(merged.toolApprovalLevel)) {
         merged.toolApprovalLevel = "auto";
       }
@@ -103,7 +112,21 @@ export function usePreferences() {
       if (!Array.isArray(merged.shownTaskBoardLanes)) {
         merged.shownTaskBoardLanes = [];
       }
+      if (!Array.isArray(merged.collapsedTaskBoardLanes)) {
+        merged.collapsedTaskBoardLanes = [];
+      }
+      merged.projectFirstNav = merged.projectFirstNav === true;
       return merged;
     },
   );
+}
+
+/** Set by `/site-editor`, which always renders in the New Layout, whatever
+ *  this person's preference says. Scoped to that route's tree. */
+export const ForceProjectFirstNav = createContext(false);
+
+export function useProjectFirstNav(): boolean {
+  const forced = use(ForceProjectFirstNav);
+  const [preferences] = usePreferences();
+  return forced || preferences.projectFirstNav;
 }

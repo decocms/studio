@@ -43,6 +43,7 @@ export const virtualMcp = {
   "virtualMcp.connectionItem.configureResources": "Configure resources",
   "virtualMcp.connectionItem.connectionDisabled": "Connection disabled",
   "virtualMcp.connectionItem.connectionEnabled": "Connection enabled",
+  "virtualMcp.connectionItem.connectionNotFound": "Connection not found",
   "virtualMcp.connectionItem.connectionSettings": "Connection settings",
   "virtualMcp.connectionItem.disable": "Disable",
   "virtualMcp.connectionItem.disableConnection": "Disable connection",
@@ -105,8 +106,6 @@ export const virtualMcp = {
   "virtualMcp.filesSection.selectSkill": "Select skill",
   "virtualMcp.filesSection.uploadFile": "Upload file",
   "virtualMcp.layoutTabContent.noMainView": "No main view",
-  "virtualMcp.layoutTabContent.addConnectionMessage":
-    "Add a connection above to configure app views.",
   "virtualMcp.layoutTabContent.automations": "Automations",
   "virtualMcp.layoutTabContent.chatAlwaysShown":
     "Chat is always shown when it is the default view",
@@ -114,16 +113,30 @@ export const virtualMcp = {
   "virtualMcp.layoutTabContent.mainView": "Main view",
   "virtualMcp.layoutTabContent.mainViewDescription":
     "What users see when they first open this project.",
-  "virtualMcp.layoutTabContent.noInteractiveTools":
-    "None of the connected servers expose interactive tools.",
-  "virtualMcp.layoutTabContent.sidebarViews": "Sidebar views",
-  "virtualMcp.layoutTabContent.sidebarViewsDescription":
-    "Choose which available views appear in this project's sidebar.",
   "virtualMcp.layoutTabContent.settings": "Settings",
   "virtualMcp.layoutTabContent.showChat": "Show chat",
   "virtualMcp.layoutTabContent.showChatDescription":
     "Display Chat in the side panel alongside the main view.",
   "virtualMcp.layoutTabContent.siteEditor": "Site Editor",
+  "virtualMcp.settings.title": "Project settings",
+  "virtualMcp.settings.navigation": "Project settings sections",
+  "virtualMcp.settings.identity.icon": "Project icon",
+  "virtualMcp.settings.identity.iconDescription":
+    "How your project appears in the sidebar and across Studio.",
+  "virtualMcp.settings.identity.name": "Project name",
+  "virtualMcp.settings.identity.description": "Description",
+  "virtualMcp.settings.general.title": "General",
+  "virtualMcp.settings.site.title": "CMS",
+  "virtualMcp.settings.site.classicTitle": "Site and sandbox",
+  "virtualMcp.settings.groups.advanced": "Advanced",
+  "virtualMcp.settings.connections.title": "Connections",
+  "virtualMcp.settings.views.defaults": "Default layout",
+  "virtualMcp.settings.views.sidebar": "Views",
+  "virtualMcp.settings.views.open": "Open",
+  "virtualMcp.settings.views.pin": "Pin to sidebar",
+  "virtualMcp.settings.views.unpin": "Remove from sidebar",
+  "virtualMcp.settings.views.setMainView": "Set as main view",
+  "virtualMcp.settings.views.rowActions": "View options",
   "virtualMcp.subAgentsSection.addSubAgent": "Add sub-project",
   "virtualMcp.subAgentsSection.anyAgent": "Any project",
   "virtualMcp.subAgentsSection.canDelegateToAnyAgent":
@@ -139,6 +152,7 @@ export const virtualMcp = {
   "virtualMcp.subAgentsSection.title": "Sub-projects",
   "virtualMcp.virtualMcp.addConnection": "Add connection",
   "virtualMcp.virtualMcp.agentDeleted": 'Deleted "{title}"',
+  "virtualMcp.virtualMcp.agentNameFallback": "Agent",
   "virtualMcp.virtualMcp.agentNamePlaceholder": "Project name",
   "virtualMcp.virtualMcp.authenticationFailed":
     "Authentication failed: {error}",
@@ -197,9 +211,6 @@ Define step-by-step how the agent should handle requests.
 3. Summarize the result and propose next steps.
 4. Ask for confirmation before making any changes.
 </workflows>`,
-  "virtualMcp.virtualMcp.draftsModeTitle": "Draft & Releases mode",
-  "virtualMcp.virtualMcp.draftsModeDescription":
-    "Replace the branch/PR picker with named drafts: a releases switcher, read-only production, and publish-to-production.",
   "virtualMcp.virtualMcp.publishing": "Publishing",
   "virtualMcp.virtualMcp.publishingDescription":
     "Control when this project's changes can be published directly, skipping pull-request review.",
@@ -213,31 +224,19 @@ Define step-by-step how the agent should handle requests.
   "virtualMcp.virtualMcp.publishPolicyOpenDescription":
     "Publish any change directly, without review.",
   "virtualMcp.virtualMcp.sandbox": "Sandbox",
-  "virtualMcp.virtualMcp.settings": "Settings",
   "virtualMcp.virtualMcp.spaceNotFound": "Space not found",
   "virtualMcp.virtualMcp.spaceNotFoundDescription":
     "This space may have been deleted or you may not have access.",
   "virtualMcp.virtualMcp.subAgents": "Sub-projects",
-  "virtualMcp.virtualMcp.testAgent": "Test Project",
   "virtualMcp.virtualMcpShareModal.agentUrlCopied":
     "Project URL copied to clipboard",
-  "virtualMcp.virtualMcpShareModal.callFromYourApp": "Call from your app",
-  "virtualMcp.virtualMcpShareModal.callFromYourAppDescription":
-    "Create a scoped API key to start a thread, run this project, and stream results from an external system (e.g. a chatbot webhook).",
   "virtualMcp.virtualMcpShareModal.claudeCodeCommandCopied":
     "Claude Code command copied to clipboard",
   "virtualMcp.virtualMcpShareModal.commandCopied":
     "Command copied to clipboard",
   "virtualMcp.virtualMcpShareModal.connect": "Connect",
-  "virtualMcp.virtualMcpShareModal.connectionDetails": "Connection details",
-  "virtualMcp.virtualMcpShareModal.connectionDetailsCopied":
-    "Connection details copied to clipboard",
   "virtualMcp.virtualMcpShareModal.copied": "Copied!",
   "virtualMcp.virtualMcpShareModal.copyUrl": "Copy URL",
-  "virtualMcp.virtualMcpShareModal.createApiKey": "Create API key",
-  "virtualMcp.virtualMcpShareModal.creating": "Creating…",
-  "virtualMcp.virtualMcpShareModal.failedCreateApiKey":
-    "Failed to create API key",
   "virtualMcp.virtualMcpShareModal.failedGenerateApiKey":
     "Failed to generate API key",
   "virtualMcp.virtualMcpShareModal.generateApiKey": "Generate API key",
@@ -254,4 +253,18 @@ Define step-by-step how the agent should handle requests.
   "virtualMcp.virtualMcpShareModal.runtimeVariables": "Runtime variables",
   "virtualMcp.virtualMcpShareModal.storeKeySecurely":
     "Store this key securely — it won't be shown again.",
+  "virtualMcp.settings.general.description":
+    "Instructions, attached files and who this project may delegate to.",
+  "virtualMcp.settings.site.description":
+    "How edits reach the live site, and the repository it runs from.",
+  "virtualMcp.settings.backToSettings": "Settings",
+  "virtualMcp.settings.connections.description":
+    "The MCP servers this project brings together.",
+  "virtualMcp.settings.views.projectViews": "Views",
+  "virtualMcp.settings.value.notLinked": "Not linked",
+  "virtualMcp.settings.value.connectionOne": "1 connection",
+  "virtualMcp.settings.value.connectionMany": "{count} connections",
+  "virtualMcp.settings.value.inSidebar": "{count} in sidebar",
+  "virtualMcp.virtualMcp.settings": "Settings",
+  "virtualMcp.virtualMcp.testAgent": "Test Project",
 } as const;

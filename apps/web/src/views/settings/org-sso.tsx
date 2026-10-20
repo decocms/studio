@@ -137,7 +137,7 @@ export function OrgSsoPage() {
   return (
     <Page>
       <Page.Content>
-        <Page.Body>
+        <Page.Container>
           <SettingsPage>
             <Page.Title>{t("settings.orgSso.securityTitle")}</Page.Title>
             <DomainSettings />
@@ -383,7 +383,7 @@ export function OrgSsoPage() {
               </>
             )}
           </SettingsPage>
-        </Page.Body>
+        </Page.Container>
       </Page.Content>
 
       <AlertDialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -59,6 +61,11 @@ func isSandboxPath(pathname string) bool {
 var processStartedAt = time.Now()
 
 type daemon struct {
+	// A thread's workspace prep started ahead of its run (POST /prepare), taken
+	// by the next run of that thread.
+	prepMu      sync.Mutex
+	prepPending map[string]chan struct{}
+
 	mu              sync.Mutex
 	readyOnce       sync.Once
 	token           string
@@ -126,7 +133,53 @@ type sandboxHandlers struct {
 	tasksList, tasksGet, tasksDelete      http.HandlerFunc
 	tasksKill, tasksKillAll, tasksStream  http.HandlerFunc
 	toolsSync, exec                       http.HandlerFunc
+	mcpLogin                              *routes.McpLogin
 	fs, git, setup                        map[string]http.HandlerFunc
+}
+
+// prepareThread starts a thread's workspace prep (org home, saved session,
+// skill links) in the background, once until a run takes it.
+func (d *daemon) prepareThread(harness, threadId string) {
+	d.prepMu.Lock()
+	defer d.prepMu.Unlock()
+	if _, ok := d.prepPending[threadId]; ok {
+		return
+	}
+	if d.prepPending == nil {
+		d.prepPending = map[string]chan struct{}{}
+	}
+	done := make(chan struct{})
+	d.prepPending[threadId] = done
+	go func() {
+		defer close(done)
+		d.orgFsLinks.WaitHomeReady(threadId)
+		d.orgFsLinks.RestoreSession(harness, threadId)
+		d.orgFsLinks.WaitSkillLinks(skillLinkWait)
+	}()
+}
+
+func (d *daemon) takePrepared(threadId string) chan struct{} {
+	d.prepMu.Lock()
+	defer d.prepMu.Unlock()
+	done := d.prepPending[threadId]
+	delete(d.prepPending, threadId)
+	return done
+}
+
+var prepareIdPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$`)
+
+func (d *daemon) handlePrepare(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Harness  string `json:"harness"`
+		ThreadId string `json:"threadId"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&body); err != nil ||
+		!prepareIdPattern.MatchString(body.ThreadId) || !prepareIdPattern.MatchString(body.Harness) {
+		http.Error(w, "harness and threadId are required", http.StatusBadRequest)
+		return
+	}
+	d.prepareThread(body.Harness, body.ThreadId)
+	w.WriteHeader(http.StatusAccepted)
 }
 
 func (d *daemon) getToken() string {
@@ -550,22 +603,21 @@ func (d *daemon) authed(fn http.HandlerFunc) http.HandlerFunc {
 // harnesses drive the sandbox through fs/exec without a /dispatch envelope, so
 // the links must be ensured here too, keyed on x-thread-id. Applied to the fs
 // and exec routes only: gating /orgfs-config would deadlock provisioning on
-// mounts that appear only after that POST, and gating /setup/clone would create
-// `repo/org` ahead of the clone.
+// mounts that appear only after that POST.
 func (d *daemon) linked(fn http.HandlerFunc) http.HandlerFunc {
 	return d.authed(func(w http.ResponseWriter, r *http.Request) {
 		if threadId := r.Header.Get("x-thread-id"); threadId != "" {
 			d.orgFsLinks.RepointForRun(threadId)
 		} else {
-			d.orgFsLinks.EnsureRepoLink()
+			d.orgFsLinks.EnsureLinks()
 		}
 		fn(w, r)
 	})
 }
 
 // The workspace-touching routes. One list because it is also the set that
-// resolves relative `org/...` paths: registration and the org-fs link hook are
-// the same loop below, so they cannot drift apart.
+// needs this run's org-fs links: registration and the org-fs link hook are the
+// same loop below, so they cannot drift apart.
 var fsRouteNames = []string{
 	"read", "write", "unlink", "mkdir", "rename", "edit", "grep", "glob",
 	"bash",
@@ -611,11 +663,15 @@ func (d *daemon) registerSandboxRoutes(mux *http.ServeMux, pre string, h sandbox
 	mux.HandleFunc("DELETE "+pre+"/runs/{runId}", func(w http.ResponseWriter, r *http.Request) {
 		d.dispatchReg.HandleCancel(w, r, d.getToken)
 	})
+	mux.HandleFunc("POST "+pre+"/runs/{runId}/messages", func(w http.ResponseWriter, r *http.Request) {
+		d.dispatchReg.HandleLiveMessage(w, r, d.getToken)
+	})
 
 	mux.HandleFunc("GET "+pre+"/config", d.authed(h.configRead))
 	mux.HandleFunc("PUT "+pre+"/config", d.authed(h.configUpdate))
 	mux.HandleFunc("POST "+pre+"/config", d.authed(h.configUpdate))
 	mux.HandleFunc("POST "+pre+"/orgfs-config", d.authed(h.orgfsConfig))
+	mux.HandleFunc("POST "+pre+"/prepare", d.authed(d.handlePrepare))
 
 	mux.HandleFunc("GET "+pre+"/tasks", d.authed(h.tasksList))
 	mux.HandleFunc("POST "+pre+"/tasks/kill-all", d.authed(h.tasksKillAll))
@@ -625,6 +681,8 @@ func (d *daemon) registerSandboxRoutes(mux *http.ServeMux, pre string, h sandbox
 	mux.HandleFunc("POST "+pre+"/tasks/{id}/kill", d.authed(h.tasksKill))
 
 	mux.HandleFunc("POST "+pre+"/tools/sync", d.authed(h.toolsSync))
+	mux.HandleFunc("POST "+pre+"/mcp-login", d.authed(h.mcpLogin.Start))
+	mux.HandleFunc("POST "+pre+"/mcp-login/finish", d.authed(h.mcpLogin.Finish))
 	for _, step := range []string{"clone", "install", "start"} {
 		mux.HandleFunc("POST "+pre+"/setup/"+step, d.authed(h.setup[step]))
 	}
@@ -713,7 +771,11 @@ func (d *daemon) shutdown() {
 	d.dispatchReg.CancelAll()
 
 	cfg := d.store.Read()
-	if cfg != nil && cfg.Branch() != "" {
+	// A clone in flight or failed leaves a partial tree that is not the user's
+	// work; committing it would push a broken snapshot onto their branch.
+	phase := d.lifecycle.Current().Phase
+	treeIsOurs := phase != events.PhaseCloning && phase != events.PhaseCloneFailed
+	if cfg != nil && cfg.Branch() != "" && treeIsOurs {
 		publishStartedAt := time.Now()
 		release := d.treeLock.Acquire()
 		err := gitx.Publish(gitx.PublishDeps{
@@ -722,7 +784,8 @@ func (d *daemon) shutdown() {
 			GetOperator: d.operatorIdentity,
 			// "skip", not "throw": an invalid block must not abort the whole
 			// shutdown sync and lose the user's other valid work.
-			OnInvalidBlock: gitx.InvalidBlockSkip,
+			OnInvalidBlock:  gitx.InvalidBlockSkip,
+			RebaseOnDiverge: true,
 		}, "chore(daemon): sync all local changes to remote on shutdown")
 		release()
 		status := "done"
@@ -999,17 +1062,18 @@ func main() {
 	d.branchStatus = gitx.NewBranchStatusMonitor(repoDir, d.broadcaster, d.emitFileChanged)
 
 	d.orchestrator = setup.NewOrchestrator(setup.OrchestratorDeps{
-		AppRoot:      appRoot,
-		RepoDir:      repoDir,
-		LogsDir:      tmpDir,
-		Store:        d.store,
-		TaskManager:  d.tasks,
-		SetStatus:    d.setStatus,
-		GetStatus:    d.getStatus,
-		Broadcaster:  d.broadcaster,
-		InstallState: d.installState,
-		Lifecycle:    d.lifecycle,
-		BranchStatus: d.branchStatus,
+		AppRoot:       appRoot,
+		RepoDir:       repoDir,
+		LogsDir:       tmpDir,
+		Store:         d.store,
+		TaskManager:   d.tasks,
+		SetStatus:     d.setStatus,
+		GetStatus:     d.getStatus,
+		Broadcaster:   d.broadcaster,
+		InstallState:  d.installState,
+		Lifecycle:     d.lifecycle,
+		BranchStatus:  d.branchStatus,
+		CommitSigning: gitx.CommitSigningFromEnv(),
 	})
 	d.store.Subscribe(func(e config.ApplyEvent) {
 		d.orchestrator.Handle(e.Transition)
@@ -1041,6 +1105,12 @@ func main() {
 		RepoDir:    repoDir,
 		StatusPath: os.Getenv("ORGFS_SIDECAR_STATUS_PATH"),
 		ConfigPath: os.Getenv("ORGFS_SIDECAR_CONFIG_PATH"),
+		// Default off: a repoint runs on every dispatch.
+		PruneEmptyThreadDirs: os.Getenv("ORGFS_PRUNE_EMPTY_THREAD_DIRS") == "1",
+	}
+	// Beside the status file: that is where the sidecar looks for it.
+	if p := d.orgFsLinks.StatusPath; p != "" {
+		go activity.Stamp(filepath.Join(filepath.Dir(p), "activity"), 10*time.Second)
 	}
 	// The golden cache's remote tier needs `zstd` in the image; without it every
 	// restore and publish fails into a normal install, silently apart from this.
@@ -1089,8 +1159,14 @@ func main() {
 				cfg := d.store.Read()
 				return cfg != nil && cfg.Branch() != ""
 			},
-			RunActive: func() bool { return d.dispatchReg.HasActiveRuns() },
-			Dirty:     func() bool { return gitx.IsDirty(repoDir) },
+			// Also for two ticks after the last request: a VM provider may delete
+			// a paused sandbox without the SIGTERM that runs the shutdown sync, so
+			// edits made outside a run need a checkpoint before it goes quiet.
+			RunActive: func() bool {
+				return d.dispatchReg.HasActiveRuns() ||
+					activity.Idle().IdleMs < (2*gitx.AutosaveInterval).Milliseconds()
+			},
+			Dirty: func() bool { return gitx.IsDirty(repoDir) },
 		})
 		d.autosave.Start()
 	}
@@ -1101,9 +1177,11 @@ func main() {
 		// The tenant env Studio pushed on the config channel — the harness's model
 		// credential lives there, and it reaches the harness as its spawn
 		// environment, so it dies with the run.
-		// Plus GH_TOKEN, so the harness can open the pull request its prompt asks
-		// for: `git push` already works off the credentialed `origin`, but `gh`
-		// reads a token from the environment and there is none in the pod.
+		// Plus the provider CLI's token (GH_TOKEN for `gh`, GITLAB_TOKEN,
+		// GITLAB_HOST and GLAB_IS_OAUTH2 for `glab`), so the harness can open
+		// the pull/merge request its prompt asks for: `git push` already works
+		// off the credentialed `origin`, but the CLIs read a token from the
+		// environment and there is none in the pod.
 		//
 		// Read back from the clone URL rather than pushed separately, so it cannot
 		// drift from what the working tree pushes with, and it grants the harness
@@ -1113,9 +1191,9 @@ func main() {
 			if cfg == nil {
 				return nil
 			}
-			env := make(map[string]string, len(cfg.Env)+2)
-			if token := config.TokenFromCloneUrl(cfg.CloneUrl()); token != "" {
-				env["GH_TOKEN"] = token
+			env := make(map[string]string, len(cfg.Env)+3)
+			for k, v := range config.CliEnvFromCloneUrl(cfg.CloneUrl()) {
+				env[k] = v
 			}
 			// The org's prefetched skills, as a local plugin the harness loads by
 			// absolute path. Empty until a sync published something, so a pod with
@@ -1123,39 +1201,65 @@ func main() {
 			if dir := d.orgFsLinks.SkillPluginDir(); dir != "" {
 				env["CLAUDE_CODE_PLUGIN_DIRS"] = dir
 			}
-			// Tenant env last: an explicit GH_TOKEN from Studio wins.
+			// Tenant env last: an explicit provider token from Studio wins.
 			for k, v := range cfg.Env {
 				env[k] = v
 			}
 			return env
 		},
 		// Everything the harness needs from the org, in place before it starts:
-		// `org/output` pointed at this run's thread subtree, the org's skills
-		// linked where the SDK scans, this thread's Claude Code session restored,
-		// and `.deco/tools/` refreshed from the run's MCP endpoint.
+		// `<appRoot>/org/output` pointed at this run's thread subtree, the org's
+		// skills linked where the SDK scans, this thread's Claude Code session
+		// restored, and `.deco/tools/` refreshed from the run's MCP endpoint.
 		//
 		// `WaitHomeReady` BLOCKS (bounded) rather than degrading to no link. A run
 		// that starts before its skills and its transcript are there does not
 		// fail — it answers wrongly and silently, which is the worse outcome. See
 		// `WaitHomeReady` for why this one place waits where the rest fail open.
-		BeforeRun: func(info dispatch.RunInfo) {
+		BeforeRun: func(info dispatch.RunInfo) map[string]int64 {
+			ms := map[string]int64{}
+			last := time.Now()
+			step := func(name string) {
+				ms[name] = time.Since(last).Milliseconds()
+				last = time.Now()
+			}
+			// The harness's `glab` authenticates from RunEnv, but the task
+			// manager's PTYs never see RunEnv, so the credential also goes in
+			// glab's config file — refreshed per run, because the clone URL's
+			// token rotates.
+			writeGlabConfig(d.store.Read())
+			step("glab")
 			// Two different waits, in dependency order. This one is for the org
 			// HOME volume to be attached at all: it is what the thread's saved
 			// Claude Code session is restored from, and what the user-scope skills
 			// link points into. It also does the repoint, so a mount that shows up
 			// mid-wait is picked up.
+			prepared := d.takePrepared(info.ThreadId)
+			if prepared != nil {
+				<-prepared
+				step("prepared")
+			}
 			d.orgFsLinks.WaitHomeReady(info.ThreadId)
-			d.orgFsLinks.RestoreSession(info.ThreadId)
+			step("home")
+			// Restored by the prep, and no run of this thread since could change it.
+			if prepared == nil {
+				d.orgFsLinks.RestoreSession(info.Harness, info.ThreadId)
+			}
+			step("session")
 			// And this one is for the public skill-link sync the repoint kicked off
 			// off-thread. Claude Code scans its skill dirs once at startup, so a
 			// symlink that lands after that is invisible for the entire run.
 			// Bounded — a miss costs this run's late skills, not the run.
 			d.orgFsLinks.WaitSkillLinks(skillLinkWait)
+			step("skills")
 			catalogSync.Sync(toolscatalog.Endpoint{
 				URL:       info.McpURL,
 				Headers:   info.McpHeaders,
 				ExpiresAt: info.McpExpiresAt,
 			})
+			step("tools-catalog")
+			slog.Info("dispatch before-run", "run_id", info.ThreadId, "ms", ms)
+			return ms
 		},
 		// What must outlive the pod, moved off it. A skill the model authored into
 		// the checkout would die with the branch; the SDK session would die with
@@ -1163,7 +1267,7 @@ func main() {
 		// path — a crashed turn's transcript is still what the follow-up needs.
 		AfterRun: func(info dispatch.RunInfo) {
 			d.orgFsLinks.AdoptStrayRepoSkills()
-			d.orgFsLinks.SaveSession(info.ThreadId)
+			d.orgFsLinks.SaveSession(info.Harness, info.ThreadId)
 		},
 	}
 
@@ -1293,14 +1397,21 @@ func main() {
 			SetStatus:   d.setStatus,
 		}),
 		toolsSync: routes.ToolsSync(routes.ToolsDeps{AppRoot: appRoot, RepoDir: repoDir}),
+		mcpLogin:  routes.NewMcpLogin(),
 	}
 
 	d.mux = http.NewServeMux()
 	d.registerSandboxRoutes(d.mux, sandboxPrefix, h)
 
-	if diskCfg, ok := config.ReadDiskConfig(repoDir); ok {
-		d.store.Hydrate(diskCfg)
-		d.orchestrator.Handle(config.Transition{Kind: config.KindBootstrap, Config: diskCfg})
+	if diskCfg, found, err := config.ReadDiskConfig(repoDir); err != nil {
+		slog.Error("ignoring malformed .decocms/daemon.json", "error", err)
+	} else if found {
+		if reason := config.Validate(diskCfg); reason != "" {
+			slog.Error("ignoring invalid .decocms/daemon.json", "reason", reason)
+		} else {
+			d.store.Hydrate(diskCfg)
+			d.orchestrator.Handle(config.Transition{Kind: config.KindBootstrap, Config: diskCfg})
+		}
 	}
 	if d.store.Read() == nil {
 		slog.Info("daemon ready, unclaimed — waiting for workload config", "boot_id", bootId)
@@ -1320,4 +1431,34 @@ func main() {
 	}
 	slog.Error("http server exited", "err", server.ListenAndServe())
 	os.Exit(1)
+}
+
+// writeGlabConfig puts the git credential where `glab` reads it, for a GitLab
+// checkout. Best-effort and silent: the CLI is a convenience for the harness,
+// and the clone/push path does not depend on it — a failure here must never
+// fail a run. No-op (and removes a stale file) for any non-GitLab remote, so a
+// pod that switches repos cannot leave another provider's token behind.
+//
+// ⚠️ SECURITY: the file embeds a live token — 0600, and never logged.
+func writeGlabConfig(cfg *config.Enriched) {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return
+	}
+	path := config.GlabConfigPath(home)
+	content := ""
+	if cfg != nil {
+		content = config.GlabConfigFromCloneUrl(cfg.CloneUrl())
+	}
+	if content == "" {
+		os.Remove(path)
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return
+	}
+	// Remove first: WriteFile's mode applies only on create, so writing over a
+	// leftover would inherit its permissions. glab refuses anything but 0600.
+	os.Remove(path)
+	os.WriteFile(path, []byte(content), 0o600)
 }

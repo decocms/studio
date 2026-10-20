@@ -5,17 +5,9 @@ pre-commit:
   parallel: true
   commands:
     fmt:
-      glob: "*.{ts,tsx,js,jsx,json,md}"
+      glob: "*.{ts,tsx,js,jsx,json}"
       run: bunx biome format --write {staged_files}
       stage_fixed: true
     lint:
       glob: "*.{ts,tsx,js,jsx}"
       run: bunx oxlint {staged_files}
-    rust-fmt:
-      root: "apps/native/"
-      glob: "**/*.rs"
-      run: cargo fmt -- --check {staged_files}
-    rust-clippy:
-      root: "apps/native/"
-      glob: "**/*.rs"
-      run: cargo clippy -- -D warnings

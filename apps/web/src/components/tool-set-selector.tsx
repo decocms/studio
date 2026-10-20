@@ -14,6 +14,7 @@ import {
   useMCPClient,
   useProjectContext,
 } from "@/sdk";
+import { collectionItemQueryOptions } from "@/sdk/hooks/use-collections";
 import { useSuspenseInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useDeferredValue, useRef, useState } from "react";
 import { CollectionSearch } from "@/components/collections/collection-search.tsx";
@@ -287,34 +288,20 @@ export function ToolSetSelector({
     ? (sortedConnections.find((c) => c.id === selectedConnectionId) ?? null)
     : null;
 
-  // Fetch tools for the selected connection via GET (list query omits tools)
+  // Fetch tools for the selected connection via GET (list query omits tools).
+  // Same cache entry as `useConnection`, so both read the `{ item }` shape.
   const { data: selectedConnectionData, isFetching: isToolsFetching } =
     useQuery({
-      queryKey: KEYS.collectionItem(
-        client,
+      ...collectionItemQueryOptions<ConnectionEntity>(
         org.id,
-        "",
         "CONNECTIONS",
-        selectedConnectionId ?? "",
+        selectedConnectionId ?? undefined,
+        client,
       ),
-      queryFn: async () => {
-        if (!selectedConnectionId) return null;
-        const result = await client.callTool({
-          name: "COLLECTION_CONNECTIONS_GET",
-          arguments: { id: selectedConnectionId },
-        });
-        const parsed = result.structuredContent as {
-          item: {
-            tools?: Array<{ name: string; description?: string }> | null;
-          } | null;
-        };
-        return parsed?.item ?? null;
-      },
       enabled: !!selectedConnectionId,
-      staleTime: 30_000,
     });
 
-  const connectionTools = selectedConnectionData?.tools ?? [];
+  const connectionTools = selectedConnectionData?.item?.tools ?? [];
 
   // Check if specific tool is enabled
   const isToolSelected = (connectionId: string, toolName: string): boolean => {
@@ -347,28 +334,24 @@ export function ToolSetSelector({
 
   // Toggle all tools for a connection
   const toggleConnection = (connectionId: string) => {
-    const tools = connectionId === selectedConnectionId ? connectionTools : [];
-    if (!tools.length) return;
-
     const currentTools = toolSet[connectionId] ?? [];
-    const allToolNames = tools.map((t) => t.name);
-    const allSelected =
-      currentTools.length > 0 &&
-      allToolNames.every((name) => currentTools.includes(name));
 
-    const newToolSet = { ...toolSet };
-
-    if (allSelected) {
-      // Deselect all tools
+    // Deselect needs no live tool list, so it works for a closed row too.
+    if (currentTools.length > 0) {
+      const newToolSet = { ...toolSet };
       delete newToolSet[connectionId];
-    } else {
-      // Select all tools
-      newToolSet[connectionId] = allToolNames;
-      // Set this connection as the selected connection
-      setSelectedConnectionId(connectionId);
+      onToolSetChange(newToolSet);
+      return;
     }
 
-    onToolSetChange(newToolSet);
+    const tools = connectionId === selectedConnectionId ? connectionTools : [];
+    if (!tools.length) {
+      // Open the row instead of no-op'ing the click.
+      setSelectedConnectionId(connectionId);
+      return;
+    }
+
+    onToolSetChange({ ...toolSet, [connectionId]: tools.map((t) => t.name) });
   };
 
   // Handle connection selection (mobile opens detail view)
@@ -403,9 +386,10 @@ export function ToolSetSelector({
         {/* Filter Buttons */}
         <div className="flex gap-1 p-2 border-b border-border">
           <button
+            type="button"
             onClick={() => setFilterMode("all")}
             className={cn(
-              "flex-1 px-3 py-1.5 text-xs font-medium rounded-md transition-colors border cursor-pointer",
+              "flex-1 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors border cursor-pointer",
               filterMode === "all"
                 ? "bg-muted border-border"
                 : "border-border opacity-75 hover:opacity-100",
@@ -414,9 +398,10 @@ export function ToolSetSelector({
             {t("common.toolSetSelector.filterAll")}
           </button>
           <button
+            type="button"
             onClick={() => setFilterMode("selected")}
             className={cn(
-              "flex-1 px-3 py-1.5 text-xs font-medium rounded-md transition-colors border cursor-pointer",
+              "flex-1 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors border cursor-pointer",
               filterMode === "selected"
                 ? "bg-muted border-border"
                 : "border-border opacity-75 hover:opacity-100",
@@ -425,9 +410,10 @@ export function ToolSetSelector({
             {t("common.toolSetSelector.filterSelected")}
           </button>
           <button
+            type="button"
             onClick={() => setFilterMode("unselected")}
             className={cn(
-              "flex-1 px-3 py-1.5 text-xs font-medium rounded-md transition-colors border cursor-pointer",
+              "flex-1 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors border cursor-pointer",
               filterMode === "unselected"
                 ? "bg-muted border-border"
                 : "border-border opacity-75 hover:opacity-100",

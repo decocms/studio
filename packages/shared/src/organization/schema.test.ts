@@ -1,21 +1,11 @@
 import { describe, expect, it } from "bun:test";
 import {
   autoResolveConflictsEnabled,
-  BrandContextSchema,
   DEFAULT_ON_FLAGS,
   ModelSlotSchema,
   orgFlagEnabled,
+  SubmoduleCredentialSchema,
 } from "./schema";
-
-function baseBrandContext(overrides: Record<string, unknown> = {}) {
-  return {
-    id: "brand_1",
-    name: "Acme",
-    domain: "acme.com",
-    overview: "An acme company",
-    ...overrides,
-  };
-}
 
 describe("orgFlagEnabled", () => {
   it("default-on flags read as enabled unless stored exactly false", () => {
@@ -32,6 +22,16 @@ describe("orgFlagEnabled", () => {
     );
     expect(
       orgFlagEnabled({ reviewer_enabled: false }, "reviewer_enabled"),
+    ).toBe(false);
+  });
+
+  it("sandbox-only chats are on unless an org turned them off", () => {
+    expect(orgFlagEnabled({}, "chat_harness_sandbox_only")).toBe(true);
+    expect(
+      orgFlagEnabled(
+        { chat_harness_sandbox_only: false },
+        "chat_harness_sandbox_only",
+      ),
     ).toBe(false);
   });
 
@@ -81,73 +81,6 @@ describe("orgFlagEnabled", () => {
   });
 });
 
-describe("BrandContextSchema JSON field caps", () => {
-  it("accepts metadata and images within the caps", () => {
-    const result = BrandContextSchema.safeParse(
-      baseBrandContext({
-        metadata: { tone: "playful" },
-        images: [{ url: "https://example.com/a.png" }],
-      }),
-    );
-    expect(result.success).toBe(true);
-  });
-
-  it("rejects an oversized metadata blob", () => {
-    const huge = { blob: "x".repeat(300 * 1024) };
-    const result = BrandContextSchema.safeParse(
-      baseBrandContext({ metadata: huge }),
-    );
-    expect(result.success).toBe(false);
-  });
-
-  it("rejects more than 50 images", () => {
-    const images = Array(51).fill({ url: "https://example.com/a.png" });
-    const result = BrandContextSchema.safeParse(baseBrandContext({ images }));
-    expect(result.success).toBe(false);
-  });
-
-  it("rejects an oversized images blob within the count cap", () => {
-    // Unlike metadata, images had a count cap but no byte cap.
-    const images = [{ blob: "x".repeat(300 * 1024) }];
-    const result = BrandContextSchema.safeParse(baseBrandContext({ images }));
-    expect(result.success).toBe(false);
-  });
-
-  it("rejects an oversized overview, name, domain, or logo URL", () => {
-    expect(
-      BrandContextSchema.safeParse(
-        baseBrandContext({ overview: "x".repeat(5001) }),
-      ).success,
-    ).toBe(false);
-    expect(
-      BrandContextSchema.safeParse(baseBrandContext({ name: "x".repeat(501) }))
-        .success,
-    ).toBe(false);
-    expect(
-      BrandContextSchema.safeParse(
-        baseBrandContext({ domain: "x".repeat(501) }),
-      ).success,
-    ).toBe(false);
-    expect(
-      BrandContextSchema.safeParse(baseBrandContext({ logo: "x".repeat(501) }))
-        .success,
-    ).toBe(false);
-  });
-
-  it("rejects an oversized font family or color value", () => {
-    expect(
-      BrandContextSchema.safeParse(
-        baseBrandContext({ fonts: { heading: "x".repeat(501) } }),
-      ).success,
-    ).toBe(false);
-    expect(
-      BrandContextSchema.safeParse(
-        baseBrandContext({ colors: { primary: "x".repeat(501) } }),
-      ).success,
-    ).toBe(false);
-  });
-});
-
 describe("ModelSlotSchema", () => {
   it("accepts a normal model slot", () => {
     expect(
@@ -173,6 +106,43 @@ describe("ModelSlotSchema", () => {
         keyId: "k",
         modelId: "m",
         title: longString,
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe("SubmoduleCredentialSchema", () => {
+  it("accepts a normal host/secretId pair", () => {
+    expect(
+      SubmoduleCredentialSchema.safeParse({
+        host: "github.com",
+        secretId: "sec_1",
+      }).success,
+    ).toBe(true);
+  });
+
+  it("lowercases the host so it matches the daemon's exact-string comparison", () => {
+    const result = SubmoduleCredentialSchema.safeParse({
+      host: "GitHub.COM",
+      secretId: "sec_1",
+    });
+    expect(result.success).toBe(true);
+    expect(result.success && result.data.host).toBe("github.com");
+  });
+
+  it("rejects an oversized host or secretId", () => {
+    // Regression: these two were left unbounded, unlike every sibling settings string field.
+    const longString = "x".repeat(501);
+    expect(
+      SubmoduleCredentialSchema.safeParse({
+        host: longString.replace(/x/g, "a"),
+        secretId: "sec_1",
+      }).success,
+    ).toBe(false);
+    expect(
+      SubmoduleCredentialSchema.safeParse({
+        host: "github.com",
+        secretId: longString,
       }).success,
     ).toBe(false);
   });

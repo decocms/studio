@@ -1,11 +1,11 @@
 import type { ComponentType, SVGProps } from "react";
 import {
+  ClockRewind,
   BarChartSquare02,
   CheckDone01,
   Code02,
   File02,
   Folder,
-  GitBranch01,
   Globe01,
   Globe02,
   Home02,
@@ -33,11 +33,11 @@ export type SystemTabId =
   | "code"
   | "content"
   | "assets"
+  | "releases"
   | "hosting"
   | "e2e"
   | "analytics"
   | "cdn"
-  | "git"
   | "files";
 
 export const SYSTEM_TAB_ICONS: Record<SystemTabId, IconComponent> = {
@@ -48,11 +48,11 @@ export const SYSTEM_TAB_ICONS: Record<SystemTabId, IconComponent> = {
   code: Code02,
   content: File02,
   assets: Package,
+  releases: ClockRewind,
   hosting: Server01,
   e2e: CheckDone01,
   analytics: BarChartSquare02,
   cdn: Globe02,
-  git: GitBranch01,
   files: Folder,
 };
 

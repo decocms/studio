@@ -62,7 +62,7 @@ This is **not** a license to test route handlers with a mocked DB. Real DB, sing
 
 - **Real Postgres, real NATS, real Better Auth, real HTTP, real browser.**
 - The only acceptable "mock" is at the *infrastructure edge* — e.g., a flaky test MCP server you bring up as a real process, not a mocked client inside the app.
-- **What belongs here:** anything that crosses the auth, HTTP-route, MCP, NATS, event-bus, or UI boundary; any flow whose bugs are wiring bugs (a handler orchestrating real storage + SSE under real concurrency); anything that would otherwise force you to mock your own code to test it.
+- **What belongs here:** anything that crosses the auth, HTTP-route, MCP, NATS, or UI boundary; any flow whose bugs are wiring bugs (a handler orchestrating real storage + SSE under real concurrency); anything that would otherwise force you to mock your own code to test it.
 - **Where:** `packages/e2e/tests/*.spec.ts`.
 
 ## Writing an e2e spec
@@ -101,6 +101,8 @@ Don't do any of these:
 - **Shared global state across tests.** No `beforeAll` that seeds rows other tests depend on.
 - **Hard-coded slugs/emails.** They collide under parallel workers. Use randomized values.
 - **`test.afterAll` SQL cleanup as the default.** Rely on per-test unique orgs/users so cleanup isn't needed.
+- **`mock.module` without a way back.** Bun keeps module mocks alive for the whole shard, and a top-level `afterAll` runs at the end of the PROCESS, not the end of the file — so a module mock at file scope leaks into every later file, and there is no hook that can undo it. Three separate failures came from this: a settings stub left two unrelated files failing on `"http://localhost:undefined"`, and it also made the two flags the plan feature gate reads `undefined`, which the gate treats as "no answer" and OPENS — so a test written for those gates would have passed whether or not the gate worked. `apps/api/src/settings/settings-not-mocked.test.ts` is a canary for exactly that. Install real state through the real accessor (`setGlobalSettings(resolveConfig(...).settings)`), or expose a narrow named test hook on the module that owns the state (`__armRefreshBackoffForTesting`), rather than replacing the module.
+- **Flags `bun test` does not have.** It silently swallows unknown ones — `bun test --definitely-not-a-flag <file>` exits 0 — so a flag that does nothing looks like a flag that works. Check `bun test --help` **of the pinned CI Bun** (`.github/actions/setup-bun`), not whatever is on your machine: `--parallel` reads as a no-op on an older local Bun and is load-bearing on the pinned one, where it runs each file in its own worker process and implies `--isolate`. Dropping it from the root `test` script cost 168 cross-file failures — leaked happy-dom globals, a readonly `window.localStorage`, leaked `mock.module` stubs — none of which reproduce locally.
 
 ## When developing a feature
 
@@ -108,7 +110,7 @@ Decision tree:
 
 1. Is the feature **pure logic** (parser, hash, Zod schema, pure transform, pure state transition)? → Co-located **unit** test, no mocks.
 2. Is the unit under test **a storage adapter**, and does its correctness live in the SQL it emits? → Co-located **`*.integration.test.ts`**, real Postgres, no mocks.
-3. Does the feature **cross auth, an HTTP route, the MCP boundary, NATS, the event bus, or the UI** — or would testing it otherwise force you to mock your own code? → **Playwright** spec.
+3. Does the feature **cross auth, an HTTP route, the MCP boundary, NATS or the UI** — or would testing it otherwise force you to mock your own code? → **Playwright** spec.
 4. Did you just reach for a mock of something you own to make a test compile? → You're in the bad zone. Go back to 2 or 3.
 
 ## Specialized suites (don't write these casually)
@@ -121,8 +123,8 @@ These are not part of the default test loop. They run on dedicated CI workflows.
 ## Running tests
 
 ```bash
-# Unit (pure logic) + storage-integration both run under bun test locally.
-bun test                                         # everything bun-test can run
+# Unit suite, with isolation and infrastructure suites excluded
+bun run test
 bun test apps/api/src/encryption                 # subset
 
 # A single storage-integration file needs a real DATABASE_URL pointing at Postgres
@@ -158,5 +160,3 @@ Adding a test is just choosing the right filename — it auto-routes.
 - Good unit test: [`apps/api/src/encryption/credential-vault.test.ts`](apps/api/src/encryption/credential-vault.test.ts)
 - Good storage-integration test: [`apps/api/src/storage/threads.integration.test.ts`](apps/api/src/storage/threads.integration.test.ts)
 - Good e2e spec: [`packages/e2e/tests/connection-create.spec.ts`](packages/e2e/tests/connection-create.spec.ts)
-</content>
-</invoke>

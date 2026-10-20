@@ -1,8 +1,12 @@
-import { useState } from "react";
 import { toast } from "sonner";
 import { useOrgFsDownloadUrl, useOrgFsMutations } from "@/hooks/use-org-fs";
 import { useT } from "@/i18n/use-t.ts";
-import { FILE_DIR, IMAGE_DIR, UPLOAD_VOLUME } from "./uploads";
+import {
+  EDITOR_FILE_DIR,
+  EDITOR_IMAGE_DIR,
+  EDITOR_UPLOAD_VOLUME,
+} from "@decocms/shared/editor-uploads";
+import { isImageFile } from "./uploads";
 
 /** Images are inlined as a preview, so an oversized one is also a huge render. */
 const MAX_IMAGE_MB = 10;
@@ -18,18 +22,11 @@ const EXT_BY_MIME: Record<string, string> = {
   "image/svg+xml": ".svg",
 };
 
+/** The read route types a file by its extension, so an image needs one: `EXT_BY_MIME` covers every type `isImageFile` takes. */
 function fileExtension(file: File): string {
   return (
-    file.name.match(/\.[a-z0-9]{1,8}$/i)?.[0] ??
-    EXT_BY_MIME[file.type] ??
-    // Nothing to go on: an image still needs an extension for the read route to
-    // serve it back as one, while an attachment is only ever downloaded.
-    (isImageFile(file) ? ".png" : "")
+    file.name.match(/\.[a-z0-9]{1,8}$/i)?.[0] ?? EXT_BY_MIME[file.type] ?? ""
   );
-}
-
-export function isImageFile(file: File): boolean {
-  return file.type.startsWith("image/");
 }
 
 /**
@@ -40,11 +37,8 @@ export function isImageFile(file: File): boolean {
  */
 export function useEditorFileUpload() {
   const t = useT();
-  const { upload } = useOrgFsMutations(UPLOAD_VOLUME);
-  const fileUrl = useOrgFsDownloadUrl(UPLOAD_VOLUME);
-  // A count, not a boolean: pasting three screenshots at once must not clear
-  // the indicator as soon as the first one lands.
-  const [pending, setPending] = useState(0);
+  const { upload } = useOrgFsMutations(EDITOR_UPLOAD_VOLUME);
+  const fileUrl = useOrgFsDownloadUrl(EDITOR_UPLOAD_VOLUME);
 
   const uploadFile = async (file: File): Promise<string | null> => {
     const isImage = isImageFile(file);
@@ -61,9 +55,8 @@ export function useEditorFileUpload() {
     // Pasted screenshots are all named "image.png", and the upload path is
     // derived from the file name — reusing it would overwrite another task's
     // file in place.
-    const dir = isImage ? IMAGE_DIR : FILE_DIR;
+    const dir = isImage ? EDITOR_IMAGE_DIR : EDITOR_FILE_DIR;
     const name = `${crypto.randomUUID()}${fileExtension(file)}`;
-    setPending((n) => n + 1);
     try {
       await upload.mutateAsync({
         dir,
@@ -73,10 +66,8 @@ export function useEditorFileUpload() {
     } catch {
       toast.error(t("markdownEditor.uploadFailed", { name: file.name }));
       return null;
-    } finally {
-      setPending((n) => n - 1);
     }
   };
 
-  return { uploadFile, pending };
+  return { uploadFile };
 }

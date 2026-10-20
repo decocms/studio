@@ -10,6 +10,15 @@ import (
 	"github.com/decocms/studio/sandbox-daemon/internal/orgfs"
 )
 
+const (
+	// maxOrgFsConfigBodyBytes bounds the POST /_sandbox/org-fs/config request body.
+	// Org-fs config is small structured JSON (baseUrl, orgSlug, token, mounts array),
+	// never a file transfer. Without a limit, io.ReadAll could buffer an unbounded
+	// body into memory and crash the daemon, tearing down the sandbox pod on the next
+	// missed health probe.
+	maxOrgFsConfigBodyBytes = 64 * 1024
+)
+
 type HealthDeps struct {
 	DaemonBootId    string
 	GetReady        func() bool
@@ -62,7 +71,7 @@ type OrgFsDeps struct {
 
 func OrgFsConfig(deps OrgFsDeps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		raw, err := io.ReadAll(r.Body)
+		raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxOrgFsConfigBodyBytes))
 		if err != nil {
 			httpx.Error(w, 400, "invalid org-fs config")
 			return

@@ -51,8 +51,9 @@ describe("decorateStorageWithAssetHoisting", () => {
     expect(createNewData?.icon).toStartWith(
       "https://studio.test/api/acme/files/connection-icons/",
     );
-    expect(
-      (createNewData?.metadata as { ui: { icon: string } }).ui.icon,
-    ).toStartWith("https://studio.test/api/acme/files/connection-icons/");
+    const metadata = createNewData?.metadata as { ui: { icon: string } };
+    expect(metadata.ui.icon).toStartWith(
+      "https://studio.test/api/acme/files/connection-icons/",
+    );
   });
 });

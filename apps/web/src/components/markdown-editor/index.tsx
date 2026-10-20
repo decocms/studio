@@ -1,17 +1,14 @@
 import { useRef, useState } from "react";
-import { Spinner } from "@decocms/ui/components/spinner.tsx";
-import { EditorContent, useEditor } from "@tiptap/react";
-import { Selection } from "@tiptap/pm/state";
-import type { EditorView } from "@tiptap/pm/view";
-import { Attachment01 } from "@untitledui/icons";
-import { Button } from "@decocms/ui/components/button.tsx";
+import { EditorContent, useEditor, type Editor } from "@tiptap/react";
 import { cn } from "@decocms/ui/lib/utils.ts";
-import { useT } from "@/i18n/use-t.ts";
+import { EDITOR_LINK_CLASS } from "@/components/sections-editor/editor-classes";
+import { Suggestion } from "@/components/chat/tiptap/mention";
 import { BubbleToolbar } from "./bubble-toolbar";
+import { useEditorUploads } from "./editor-uploads";
 import { markdownEditorExtensions } from "./extensions";
 import { MentionMenu, MentionMenuStore } from "./mention-suggestion";
 import { unwrapListContinuations } from "./unwrap-list-continuations";
-import { isImageFile, useEditorFileUpload } from "./use-file-upload";
+import { AttachFileButton, UploadStatus } from "./upload-controls";
 
 /**
  * Block styling for the editor surface. Explicit rather than `prose`:
@@ -20,9 +17,6 @@ import { isImageFile, useEditorFileUpload } from "./use-file-upload";
  */
 const CONTENT_CLASS = [
   "outline-none",
-  // On the editable element, not the wrapper: the whole area has to be
-  // click-to-place-caret, the way the plain textarea it replaced was.
-  "min-h-[200px] sm:min-h-[320px]",
   "[&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
   "[&_p]:my-3 [&_p]:leading-[1.5]",
   // 20/18/16, all under the card's own 24px title, which outranks them.
@@ -36,7 +30,7 @@ const CONTENT_CLASS = [
   "[&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[0.85em]",
   "[&_pre]:my-3 [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-muted [&_pre]:p-3 [&_pre]:font-mono [&_pre]:text-[13px]",
   "[&_pre_code]:bg-transparent [&_pre_code]:p-0",
-  "[&_a]:text-primary [&_a]:underline [&_a]:underline-offset-2",
+  EDITOR_LINK_CLASS,
   "[&_hr]:my-4 [&_hr]:border-border",
   "[&_strong]:font-semibold [&_strong]:text-foreground",
   // Tables and checklists come from markdown the editor did not author — a
@@ -63,23 +57,97 @@ const PLACEHOLDER_CLASS = [
 ].join(" ");
 
 /**
- * Insert an uploaded file's node and return the position after it, so a batch
- * of pasted files stacks in the order they were picked instead of every insert
- * landing on the same stale offset.
+ * One `@`-mentionable item. `name` is the visible label, and must be a single
+ * word — tiptap's suggestion stops at the first space.
  */
-function insertUpload(
-  view: EditorView,
-  pos: number,
-  typeName: "image" | "attachment",
-  attrs: Record<string, string>,
-): number {
-  const type = view.state.schema.nodes[typeName];
-  if (!type) return pos;
-  const tr = view.state.tr.replaceWith(pos, pos, type.create(attrs));
-  const after = tr.mapping.map(pos, 1);
-  tr.setSelection(Selection.near(tr.doc.resolve(after)));
-  view.dispatch(tr);
-  return view.state.selection.to;
+export interface MarkdownMention {
+  name: string;
+  /**
+   * What the mention points at, stored as the link href. Without it the label
+   * is the only record, and a label that two things share identifies neither.
+   */
+  href?: string;
+  title?: string;
+  description?: string;
+}
+
+export interface MarkdownMentions {
+  items: MarkdownMention[];
+  /** Shown under the editor, to make the `@` discoverable at all. */
+  hint?: string;
+  emptyLabel?: string;
+}
+
+/**
+ * The `@` picker for a fixed list.
+ *
+ * Inserts `@Name` carrying a link to `href`, so the markdown round-trips as
+ * `[@Name](<href>)` — the same shape the member picker uses, and for the same
+ * reason its module gives: the label repeats, the target does not. Falls back
+ * to plain text when an item has no href.
+ *
+ * ponytail: two `@` implementations on one component is real duplication.
+ * Folding this into the member picker means making its item source, its item
+ * row and its insert all injectable — worth doing, but not during a merge, and
+ * that file is under active change.
+ */
+function SectionMentionMenu({
+  editor,
+  mentions,
+}: {
+  editor: Editor;
+  mentions: MarkdownMentions;
+}) {
+  const items = mentions.items;
+  return (
+    <Suggestion<MarkdownMention>
+      editor={editor}
+      char="@"
+      pluginKey="markdownMentionMenu"
+      queryKey={["markdown-editor-mentions"]}
+      queryFn={({ query }) => {
+        const term = query.trim().toLowerCase();
+        return Promise.resolve(
+          term
+            ? items.filter((item) =>
+                `${item.name} ${item.title ?? ""}`.toLowerCase().includes(term),
+              )
+            : items,
+        );
+      }}
+      emptyLabel={mentions.emptyLabel}
+      renderItem={(item) => (
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <span className="truncate font-medium">
+            {item.title ?? item.name}
+          </span>
+          {item.description && (
+            <span className="line-clamp-1 text-xs text-muted-foreground">
+              {item.description}
+            </span>
+          )}
+        </div>
+      )}
+      onSelect={({ range, item }) => {
+        editor
+          .chain()
+          .focus()
+          /** JSON text nodes — `insertContent` with a string parses HTML. The
+           *  trailing space is unmarked, so typing on does not extend the link. */
+          .insertContentAt(range, [
+            {
+              type: "text",
+              text: `@${item.name}`,
+              marks: item.href
+                ? [{ type: "link", attrs: { href: item.href } }]
+                : undefined,
+            },
+            { type: "text", text: " " },
+          ])
+          .run();
+      }}
+    />
+  );
 }
 
 /**
@@ -99,6 +167,9 @@ export function MarkdownEditor({
   onChange,
   placeholder,
   editable = true,
+  attachments = true,
+  mentions,
+  inline = false,
 }: {
   defaultValue: string;
   onChange: (markdown: string) => void;
@@ -106,48 +177,35 @@ export function MarkdownEditor({
   /** Read at creation time only — remount (via `key`) to change it, same as
    *  `defaultValue`. */
   editable?: boolean;
+  /** Off for text-only fields: hides the picker and ignores pasted/dropped files. */
+  attachments?: boolean;
+  /** When set, `@` opens a picker that inserts the item's name as plain text. */
+  mentions?: MarkdownMentions;
+  /** Edits text in place where it is read, like a comment: sized to its
+   *  content, set at the body size around it, and opened by an action, so it
+   *  takes the caret. Read at creation time only. */
+  inline?: boolean;
 }) {
-  const t = useT();
-  const { uploadFile, pending } = useEditorFileUpload();
+  const uploads = useEditorUploads(attachments);
   // One store per editor: created here so it dies with the editor it drives.
   const [mentionStore] = useState(() => new MentionMenuStore());
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // The editor is created once, so its handlers would close over the first
   // render's props. Refs keep them current without re-creating the editor.
   const onChangeRef = useRef(onChange);
-  const uploadRef = useRef(uploadFile);
   // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read only inside editor callbacks, never during render
   onChangeRef.current = onChange;
-  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read only inside editor callbacks, never during render
-  uploadRef.current = uploadFile;
-
-  const uploadInto = (view: EditorView, files: File[], at: number) => {
-    if (files.length === 0) return false;
-    void (async () => {
-      let pos = at;
-      for (const file of files) {
-        const url = await uploadRef.current(file);
-        if (!url) continue;
-        // The original file name is the only description available, and it
-        // survives into the markdown the agent reads as task context — as an
-        // image's alt text, or as an attachment link's text.
-        pos = isImageFile(file)
-          ? insertUpload(view, pos, "image", { src: url, alt: file.name })
-          : insertUpload(view, pos, "attachment", {
-              href: url,
-              name: file.name,
-            });
-      }
-    })();
-    return true;
-  };
 
   const editor = useEditor({
-    extensions: markdownEditorExtensions(placeholder, mentionStore),
+    // Both pickers answer to `@`, so only one gets installed.
+    extensions: markdownEditorExtensions(
+      placeholder,
+      mentions ? undefined : mentionStore,
+    ),
     content: unwrapListContinuations(defaultValue),
     contentType: "markdown",
     editable,
+    autofocus: inline ? "end" : false,
     editorProps: {
       attributes: {
         // A contenteditable has no role and no accessible name of its own, so
@@ -155,33 +213,15 @@ export function MarkdownEditor({
         role: "textbox",
         "aria-label": placeholder ?? "",
         "aria-multiline": "true",
-        class: cn(CONTENT_CLASS, PLACEHOLDER_CLASS),
+        class: cn(
+          CONTENT_CLASS,
+          // On the editable element, so a click anywhere in it places the caret.
+          !inline && "min-h-[200px] sm:min-h-[320px]",
+          PLACEHOLDER_CLASS,
+        ),
       },
-      handlePaste: (view, event) => {
-        const files = Array.from(event.clipboardData?.files ?? []);
-        if (files.length === 0) return false;
-        // We own this file. Stop it bubbling to the chat composer's
-        // window-level drop/paste listener (input.tsx `useWindowFileDrop`),
-        // which would otherwise upload the same file into the chat input.
-        event.stopPropagation();
-        return uploadInto(view, files, view.state.selection.to);
-      },
-      handleDrop: (view, event, _slice, moved) => {
-        // A drag within the editor is a move, not an upload.
-        if (moved) return false;
-        const files = Array.from(event.dataTransfer?.files ?? []);
-        if (files.length === 0) return false;
-        const at = view.posAtCoords({
-          left: event.clientX,
-          top: event.clientY,
-        })?.pos;
-        if (at === undefined) return false;
-        // We own this file. Stop it bubbling to the chat composer's
-        // window-level drop listener (input.tsx `useWindowFileDrop`), which
-        // would otherwise upload the same file into the chat input too.
-        event.stopPropagation();
-        return uploadInto(view, files, at);
-      },
+      handlePaste: uploads.handlePaste,
+      handleDrop: uploads.handleDrop,
     },
     onUpdate: ({ editor, transaction }) => {
       // Selection-only transactions carry no steps, and TipTap fires onUpdate
@@ -193,61 +233,35 @@ export function MarkdownEditor({
 
   if (!editor) return null;
 
-  const pickFiles = (files: FileList | null) => {
-    if (!files || files.length === 0) return;
-    uploadInto(editor.view, Array.from(files), editor.state.selection.to);
-  };
-
   return (
     <div className="flex flex-col">
       <BubbleToolbar editor={editor} />
-      <MentionMenu store={mentionStore} />
+      {!mentions && <MentionMenu store={mentionStore} />}
       <EditorContent
         editor={editor}
-        className="text-[15px] text-muted-foreground"
+        className={cn(
+          inline
+            ? "text-sm text-foreground"
+            : "text-[15px] text-muted-foreground",
+        )}
       />
+      {editable && mentions && (
+        <SectionMentionMenu editor={editor} mentions={mentions} />
+      )}
       {/* Sits clear of the description body so it reads as a control on the
           editor, not as the last line of the text. Hidden when read-only —
           nothing here would do anything. */}
-      <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
-        {editable && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            // Icon-only, so the label has to live on the control itself.
-            aria-label={t("markdownEditor.attachFile")}
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <Attachment01 size={14} />
-          </Button>
+      <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground empty:mt-0">
+        {editable && mentions?.hint && <span>{mentions.hint}</span>}
+        {editable && attachments && (
+          <AttachFileButton
+            onFiles={(files) =>
+              uploads.uploadInto(editor.view, files, editor.state.selection.to)
+            }
+          />
         )}
-        {pending > 0 && (
-          <span
-            className="inline-flex items-center gap-1.5"
-            aria-live="polite"
-            role="status"
-          >
-            <Spinner className="size-3" />
-            {pending === 1
-              ? t("markdownEditor.uploading")
-              : t("markdownEditor.uploadingCount", { count: String(pending) })}
-          </span>
-        )}
+        <UploadStatus pending={uploads.pending} />
       </div>
-      {/* No `accept`: images become previews, everything else a download chip,
-          so there's nothing to exclude. */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        multiple
-        className="hidden"
-        onChange={(e) => {
-          pickFiles(e.target.files);
-          // Let the same file be picked again after a failed upload.
-          e.target.value = "";
-        }}
-      />
     </div>
   );
 }

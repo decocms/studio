@@ -5,7 +5,8 @@ package dispatch
 // keep the two in step:
 //
 //	spawn   argv from HARNESS_RUNNER_CMD, in its own process group
-//	input   {input} as JSON on stdin
+//	input   {harnessId, input} as JSON on stdin; with live messages, one line
+//	        and stdin stays open for them (live_messages.go)
 //	output  a stream of HarnessRunResult frames on stdout, one JSON line each;
 //	        stderr is the pod's log
 //	cancel  cancel ctx — the process group is killed, the CLI with it
@@ -37,14 +38,18 @@ import (
 // frames that did make it, which the consumer has already received.
 //
 // `emit` returning false means the client is gone; reading stops there.
+//
+// `live`, when set, keeps stdin open for the run's live messages.
 func RunHarness(
 	ctx context.Context,
 	argv []string,
+	harnessId string,
 	input json.RawMessage,
 	env map[string]string,
 	emit func([]byte) bool,
+	live *liveMessages,
 ) (int, error) {
-	payload, err := json.Marshal(map[string]any{"input": input})
+	payload, err := json.Marshal(map[string]any{"harnessId": harnessId, "input": input})
 	if err != nil {
 		return 0, err
 	}
@@ -59,7 +64,12 @@ func RunHarness(
 	for key, value := range env {
 		cmd.Env = append(cmd.Env, key+"="+value)
 	}
-	cmd.Stdin = bytes.NewReader(payload)
+	var stdin io.WriteCloser
+	if live == nil {
+		cmd.Stdin = bytes.NewReader(payload)
+	} else if stdin, err = cmd.StdinPipe(); err != nil {
+		return 0, err
+	}
 	cmd.Stderr = os.Stdout // the daemon's logs are stdout-only (see logging_test.go)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -68,6 +78,14 @@ func RunHarness(
 	if err := cmd.Start(); err != nil {
 		return 0, fmt.Errorf("harness runner failed to start: %w", err)
 	}
+	if live != nil {
+		// The envelope first, so it is the runner's first line; only then can a
+		// message follow it.
+		if _, err := stdin.Write(append(payload, '\n')); err == nil {
+			live.open(stdin)
+		}
+		defer live.close()
+	}
 
 	emitted := 0
 	// bufio.Reader, not Scanner: a frame carrying a large tool result exceeds
@@ -75,7 +93,11 @@ func RunHarness(
 	reader := bufio.NewReader(stdout)
 	for {
 		line, readErr := reader.ReadBytes('\n')
-		if frame := resultFrame(line); frame != nil {
+		if id, accepted, ok := liveMessageAck(line); ok {
+			if live != nil {
+				live.ack(id, accepted)
+			}
+		} else if frame := resultFrame(line); frame != nil {
 			emitted++
 			if !emit(frame) {
 				break

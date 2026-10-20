@@ -8,21 +8,31 @@ import {
   RichTextLinkControl,
   ToolbarButton,
 } from "@/components/sections-editor/rich-text-link-control";
+import { EDITOR_LINK_CLASS } from "@/components/sections-editor/editor-classes";
+import type { PreviewProxyRef } from "@/components/sections-editor/preview-fetch-url";
+import { useLinkSources } from "./link-pickers";
 
 /**
  * Inline rich-text editor for Paragraph blocks. Renders the paragraph as
  * formatted text (not a form field) and edits it in place — select text to
  * bold/italic/underline/link via the toolbar that appears while focused.
- * Stores the block's `html` field.
+ * Stores the block's `html` field. When a decofile/sandbox is available, the
+ * link control also offers "link to a post" and "link to a product".
  */
 export function RichTextBlock({
   html,
   placeholder,
   onChange,
+  decofile,
+  sandboxRef,
 }: {
   html: string;
   placeholder?: string;
   onChange: (html: string) => void;
+  /** The site's blocks — enables linking to another post. */
+  decofile?: Record<string, unknown>;
+  /** A running preview — enables linking to a catalog product. */
+  sandboxRef?: PreviewProxyRef | null;
 }) {
   // Keep the latest onChange reachable from TipTap's onUpdate without
   // recreating the editor (which would reset selection/undo on every keystroke).
@@ -58,6 +68,7 @@ export function RichTextBlock({
         class: cn(
           "prose prose-sm dark:prose-invert max-w-none focus:outline-none",
           "leading-relaxed [&_p]:my-0",
+          EDITOR_LINK_CLASS,
         ),
       },
     },
@@ -81,6 +92,8 @@ export function RichTextBlock({
       link: editor?.isActive("link") ?? false,
     }),
   });
+
+  const linkSources = useLinkSources({ decofile, sandboxRef });
 
   if (!editor) return null;
 
@@ -114,6 +127,7 @@ export function RichTextBlock({
             active={marks.link}
             open={linkOpen}
             onOpenChange={setLinkOpen}
+            sources={linkSources}
           />
         </div>
       )}

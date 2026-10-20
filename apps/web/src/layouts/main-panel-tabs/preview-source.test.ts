@@ -20,7 +20,7 @@ describe("resolvePreviewSource", () => {
   it("keeps the agent repo on a claude-code thread of a GitHub project", () => {
     // The mainstream Claude Code flow: repo lives on the AGENT, the sandbox is
     // that repo's checkout, the thread carries a minted git branch and no
-    // thread-level githubRepo. Preview and Code must stay.
+    // thread-level repository. Preview and Code must stay.
     expect(
       resolvePreviewSource({
         ...base,
@@ -41,7 +41,7 @@ describe("resolvePreviewSource", () => {
   });
 
   it("previews the repo a sandbox task run bound mid-run", () => {
-    // TASK_ADD_REPO writes metadata.githubRepo and leaves the bare key alone.
+    // TASK_ADD_REPO writes metadata.repository and leaves the bare key alone.
     expect(
       resolvePreviewSource({
         ...base,

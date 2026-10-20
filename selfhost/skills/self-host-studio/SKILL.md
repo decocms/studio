@@ -192,7 +192,7 @@ values, so a rerun is reproducible. Gitignore it; never inline secret material i
 For the value shapes (managed vs in-cluster deps, secrets with and without ESO,
 ingress, sandbox posture, compute sizing) read
 [`selfhost/production`](https://github.com/decocms/studio/tree/main/selfhost/production)
-and the [Kubernetes guide](https://docs.decocms.com/deco-studio/en/studio/self-hosting/deploy/kubernetes).
+and the [Kubernetes guide](https://docs.decocms.com/studio/self-hosting/deploy/kubernetes).
 
 ## 1. Pick a tier
 
@@ -304,7 +304,7 @@ wildcard **preview URLs** (Istio Gateway + cert-manager; needs Gateway API CRDs)
 - All pods `Running`: app `deco-studio` (3/3), `deco-studio-worker`, `nats`,
   plus deps. K8s: `kubectl -n deco-studio get pods`.
 - DB reachable, UI loads, **signup works** (first user = owner; no preset admin
-  in the served `--no-local-mode`).
+  when the direct server runs with `DECOCMS_LOCAL_MODE` unset or `false`).
 - Access: `kubectl -n deco-studio port-forward svc/deco-studio 8080:80`; a
   LoadBalancer/Ingress URL only after checking `kubectl -n deco-studio get svc`.
 

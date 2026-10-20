@@ -27,7 +27,7 @@ const entry = (
 describe("shouldAutoStart", () => {
   const base = {
     executionEnabled: true,
-    hasActiveGithubRepo: true,
+    hasActiveRepository: true,
     userId: "u1",
     branch: "main",
     vmEntry: null,
@@ -56,7 +56,7 @@ describe("shouldAutoStart", () => {
   });
 
   test("no github repo → false", () => {
-    expect(shouldAutoStart({ ...base, hasActiveGithubRepo: false })).toBe(
+    expect(shouldAutoStart({ ...base, hasActiveRepository: false })).toBe(
       false,
     );
   });
@@ -98,7 +98,7 @@ describe("shouldAdoptBranch", () => {
   const base = {
     threadLoaded: true,
     isOwner: true,
-    hasActiveGithubRepo: true,
+    hasActiveRepository: true,
     branch: null as string | null,
     attempted: false,
   };
@@ -126,7 +126,7 @@ describe("shouldAdoptBranch", () => {
   });
 
   test("no repo → false (nothing to clone, so no branch is needed)", () => {
-    expect(shouldAdoptBranch({ ...base, hasActiveGithubRepo: false })).toBe(
+    expect(shouldAdoptBranch({ ...base, hasActiveRepository: false })).toBe(
       false,
     );
   });

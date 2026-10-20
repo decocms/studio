@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+import type { PublicConfig } from "@decocms/shared/config";
 /**
  * Theme Provider
  *
@@ -6,10 +8,11 @@
  */
 
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { useLayoutEffect, type ReactNode } from "react";
-import type { PublicConfig } from "@decocms/shared/config";
+import { useLayoutEffect } from "react";
+
 import { KEYS } from "@/lib/query-keys";
 import { usePreferences } from "@/hooks/use-preferences";
+import { PUBLIC_CONFIG_STALE_TIME_MS } from "@/hooks/use-public-config";
 
 async function fetchPublicConfig(): Promise<PublicConfig> {
   performance.mark("studio:config-fetch:start");
@@ -77,7 +80,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const { data: publicConfig } = useSuspenseQuery({
     queryKey: KEYS.publicConfig(),
     queryFn: fetchPublicConfig,
-    staleTime: Infinity,
+    // Matches use-public-config.ts — this entry is hydrated from localStorage,
+    // so Infinity here means a server-side config change never reaches an
+    // existing browser. Hydration still paints without a spinner.
+    staleTime: PUBLIC_CONFIG_STALE_TIME_MS,
   });
 
   const [preferences] = usePreferences();

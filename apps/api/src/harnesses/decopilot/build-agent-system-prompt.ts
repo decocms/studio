@@ -24,8 +24,9 @@ import {
   type CodingWorkspacePromptInput,
 } from "@/harnesses/lib/coding-workspace-prompt";
 import { buildOrgFilesystemPrompt } from "@/api/routes/decopilot/constants";
+import { orgFsSandboxPath } from "@/file-storage/mount/provisioning";
 import { sandboxIsDecoSite } from "./built-in-tools/agent-sandbox-fs";
-import type { GithubRepo } from "@decocms/shared/sdk";
+import type { RepositoryBinding } from "@decocms/shared/sdk";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import {
   buildSystemMessages,
@@ -37,6 +38,12 @@ import { renderUserContextBlock } from "@/harnesses/lib/decopilot/user-context-b
 import type { ConnectionsBlockTool } from "@/harnesses/lib/decopilot/connections-block";
 import type { HarnessUserContext } from "@/harnesses/lib/types";
 import { OrgFsNotFoundError } from "@/file-storage/org-fs";
+import {
+  MEMORY_INJECT_CAP,
+  memoryPath,
+  memoryTemplate,
+} from "@decocms/shared/memory";
+import { STUDIO_PACK_AGENT_NAMES } from "@/tools/virtual/studio-pack/agent-names";
 
 const SUBAGENT_IDENTITY_PROMPT = `You are a focused subtask agent delegated a specific task by a parent agent. You are NOT the parent agent.
 
@@ -74,7 +81,7 @@ export interface BuildAgentSystemPromptOptions {
   virtualMcp: {
     id: string;
     instructions?: string;
-    repo?: GithubRepo;
+    repo?: RepositoryBinding;
     delegationTargetIds?: string[] | null;
   };
   kind: "agent" | "subagent";
@@ -155,24 +162,31 @@ export async function buildAgentSystemPrompt(
 
   // Org filesystem layout. org-fs is mounted into every sandbox now (desktop +
   // cluster), so this is unconditional. The home folder mounts at the fixed
-  // `org/home/` for every org, so the prompt names it directly (no `ls org/`
-  // discovery, no per-org slug). Skills are surfaced separately via the
-  // <available-skills> catalog (served instructions). Fully cache-stable.
+  // `/app/org/home/` for every org, so the prompt names it directly (no
+  // `ls /app/org/` discovery, no per-org slug). Skills are surfaced separately
+  // via the <available-skills> catalog (served instructions). Fully
+  // cache-stable.
   add("orgFs", buildOrgFilesystemPrompt(opts.user?.id));
 
   // Eager-load the MEMORY.md indexes (Claude-Code-style persistent memory):
   // one shared org-wide, one private to the current user. Parent agent only —
   // subagents get a focused task, not the whole memory.
   if (opts.kind === "agent") {
-    const homeBase = "org/home";
+    const homeBase = orgFsSandboxPath("home", "");
     const userId = opts.user?.id;
     const [org, usr] = await Promise.all([
-      loadMemoryBlock(opts.ctx, "organization", "MEMORY.md", homeBase, userId),
+      loadMemoryBlock(
+        opts.ctx,
+        "organization",
+        memoryPath("organization", userId ?? ""),
+        homeBase,
+        userId,
+      ),
       userId
         ? loadMemoryBlock(
             opts.ctx,
             "user",
-            `users/${userId}/MEMORY.md`,
+            memoryPath("user", userId),
             homeBase,
             userId,
           )
@@ -185,6 +199,7 @@ export async function buildAgentSystemPrompt(
   if (opts.kind === "agent") {
     if (opts.isDecopilot) {
       add("identity", buildDecopilotAgentPrompt());
+      add("agentManagement", buildAgentManagementPrompt());
     }
     // For custom agents (kind: "agent" && !isDecopilot), no identity
     // prompt — the agent's own instructions (via agentInstructions
@@ -246,23 +261,42 @@ export async function buildAgentSystemPrompt(
   return buildSystemMessages(prompts, opts.date ?? new Date());
 }
 
-/** Cap on the MEMORY.md content folded into every prompt — it is an index, not
- *  a log. Larger files are truncated with a pointer to read the rest on demand. */
-const MEMORY_INJECT_CAP = 16_000;
+/**
+ * Agent-management guidance for the Super Agent — the operating knowledge the
+ * retired Agent Manager carried in its instructions. Only the Super Agent gets
+ * the matching built-ins (`built-in-tools/agent-tools.ts`), so only it gets
+ * this block.
+ */
+function buildAgentManagementPrompt(): string {
+  return `<agent-management>
+You own this org's agents (Virtual MCPs) directly — \`COLLECTION_VIRTUAL_MCP_*\`
+create, read, update and delete them; \`COLLECTION_CONNECTIONS_LIST\`/\`_GET\`
+shows what you can aggregate into one. You cannot create or edit connections.
 
-/** Raw starter content seeded on first load so the agent's later
- *  Read(MEMORY.md) never hits a missing file. Kept minimal — just a heading. */
-function memoryTemplate(scope: "organization" | "user"): string {
-  return scope === "organization"
-    ? "# Organization memory\n\nDurable facts shared with everyone in this organization. Keep this a concise, curated index — not a log.\n"
-    : "# User memory\n\nFacts and preferences specific to you. Keep this a concise, curated index — not a log.\n";
+- One focused responsibility per agent. Don't broaden an agent's scope unless
+  asked, and apply the smallest change set when updating.
+- Write instructions in XML-style sections: \`<role>\`, \`<capabilities>\`,
+  \`<constraints>\`, \`<workflows>\`, with concrete ordered steps. Read
+  \`docs://agents.md\` for the pattern before rewriting a set.
+- On create, seed 3-4 kickstart prompts via the \`prompts\` field of the same
+  create call. Derive them from the agent's role and the tool descriptions of
+  its connections so each is a task the agent can run on turn one — not
+  "How can you help?".
+- Verify a create/update with \`COLLECTION_VIRTUAL_MCP_GET\`; confirm with the
+  user before deleting.
+- The Studio Pack managers (${STUDIO_PACK_AGENT_NAMES}) are system-managed:
+  never modify or delete them, and skip them when auditing.
+- The UI renders agent results as rows and cards. Don't restate their fields —
+  reply with one short line confirming what happened.
+</agent-management>`;
 }
 
 /**
  * Read a MEMORY.md index from the `home` volume and render it as a system
  * block. `scope` is "organization" (shared) or "user" (private to the current
  * user); `path` is volume-relative (e.g. "MEMORY.md" or "users/<id>/MEMORY.md")
- * and `homeBase` is the sandbox mount path ("org/home") used only for display.
+ * and `homeBase` is the sandbox mount path ("/app/org/home") used only for
+ * display.
  * `actor` is the user id used to seed the file on first load.
  *
  * On the first load, if the file is genuinely absent it is created with a raw
@@ -288,9 +322,11 @@ async function loadMemoryBlock(
     // error never clobbers an existing file. Best-effort; never throws.
     if (actor && err instanceof OrgFsNotFoundError) {
       try {
+        // Only into a still-absent file: a member's first save may land between the read and here.
         await ctx.orgFs.write("home", path, memoryTemplate(scope), {
           actor,
           contentType: "text/markdown",
+          expect: { absent: true },
         });
       } catch {
         // ignore — seeding is best-effort

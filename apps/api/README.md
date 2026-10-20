@@ -40,13 +40,15 @@ complete product from one artifact.
 
 ## Usage
 
-Install dependencies and start the complete local environment from the
-repository root:
+Start the complete development environment from the repository root:
 
 ```bash
-bun install
-bun run dev
+docker compose up --build --watch
 ```
+
+Compose runs dependencies and migrations before the API, syncs source changes,
+and keeps installed dependencies and generated artifacts inside Linux. See
+[CONTRIBUTING.md](../../CONTRIBUTING.md) for setup and lifecycle commands.
 
 The API listens on port `3000` by default, while the web app listens on port
 `4000`.
@@ -58,19 +60,14 @@ are already available:
 bun run --cwd=apps/api dev
 ```
 
-`dev` applies migrations before starting the hot-reloading server. Skip that
-migration step when another process already manages the schema:
+The host development command starts only the hot-reloading API. It does not
+start dependency services or run migrations; configure them explicitly.
+`dev:server` is the same direct server entry point.
 
-```bash
-bun run --cwd=apps/api dev:server
-```
-
-Released users start Studio through the npm package:
-
-```bash
-bunx decocms --help
-bunx decocms
-```
+Run released Studio with [Docker Compose](../../selfhost/examples/docker-compose/README.md)
+or the [Helm chart](../../deploy/helm/studio/README.md). The npm CLI remains
+available for application scaffolding and connection tooling; it no longer
+provisions a local runtime.
 
 Build both apps into the combined production distribution, then run it:
 
@@ -115,7 +112,7 @@ Key paths:
 | `src/tools/` | Built-in MCP management tools grouped by domain |
 | `src/database/` and `src/storage/` | Database setup, Kysely adapters, and domain persistence |
 | `src/dbos/` and `src/dispatch-queue/` | Durable workflows and queue coordination |
-| `src/event-bus/` and `src/nats/` | Event delivery and NATS integration |
+| `src/event-bus/` and `src/nats/` | SSE fan-out and shared NATS infrastructure |
 | `src/encryption/` and `src/vault/` | Credential encryption and secure token access |
 | `src/sandbox/` | Hosted agent-sandbox lifecycle and preview routing |
 | `src/observability/` and `src/monitoring/` | Telemetry export and monitoring queries |
@@ -137,10 +134,8 @@ bun test apps/api/src/settings/resolve-config.test.ts
 bun run --cwd=apps/api build:server
 ```
 
-The workspace test script runs Bun tests under `apps/api/src`. Pure logic belongs
-in colocated `*.test.ts` files. Tests that need a real database, network, or full
-application process belong in the black-box E2E tier under `packages/e2e`, as
-described in `TESTING.md`.
+The workspace test script runs Bun tests under `apps/api/src`. Before adding
+or changing tests, read [TESTING.md](../../TESTING.md) to choose the right tier.
 
 Run schema operations explicitly with:
 
@@ -149,7 +144,17 @@ bun run --cwd=apps/api migrate
 bun run --cwd=apps/api better-auth:migrate
 ```
 
-Run `bun run fmt` from the repository root after code changes.
+### Querying local Postgres
+
+Query the Compose database without publishing its port:
+
+```bash
+docker compose exec postgres psql -U studio -d studio
+```
+
+Use the same Compose project name and overrides as the development stack.
+
+Follow the [repository verification instructions](../../AGENTS.md#working-locally).
 
 ## Boundaries
 
@@ -171,24 +176,26 @@ Run `bun run fmt` from the repository root after code changes.
 
 ## Configuration
 
-`dev:server` loads `apps/api/.env` because the workspace command runs with
-`apps/api` as its current directory. The CLI startup path also resolves local
-services and persists state under `DATA_DIR`.
+Host `dev:server` loads `apps/api/.env` because the workspace command runs with
+`apps/api` as its current directory. Compose supplies container environment
+variables explicitly. Services use configured endpoints; the CLI does not
+start PostgreSQL, NATS, or object storage.
 
 Core settings include:
 
 | Setting | Purpose | Default |
 | --- | --- | --- |
 | `PORT` | API listener port | `3000` |
-| `DATA_DIR` | Local services and runtime data | `~/deco` |
+| `DATA_DIR` | Runtime files and local telemetry | `~/deco` |
 | `BASE_URL` | Public origin used in generated URLs | `http://localhost:<PORT>` |
-| `DATABASE_URL` | External PostgreSQL connection | Managed locally when the CLI starts services |
-| `NATS_URL` | External NATS connection, optionally comma-separated | Managed locally when the CLI starts services |
+| `DATABASE_URL` | PostgreSQL connection | `postgresql://postgres:postgres@localhost:5432/postgres`; Compose supplies its service URL |
+| `NATS_URL` | NATS connection, optionally comma-separated | `nats://localhost:4222`; Compose supplies its service URL |
 | `BETTER_AUTH_SECRET` | Stable Better Auth signing secret | Set explicitly in production |
 | `ENCRYPTION_KEY` | Stable credential-vault key | Set explicitly in production |
 | `CONFIG_PATH` | Theme, logo, and monitoring JSON configuration | `./config.json` |
 | `STUDIO_DISPATCH_ROLE` | Queue role: `all`, `api`, or `worker` | `all` |
 | `STUDIO_AGENT_SANDBOX_ENABLED` | Enable hosted AgentSandbox provisioning | `false` |
+| `STUDIO_SANDBOX_CONTROL_PLANE_URL` / `STUDIO_SANDBOX_CONTROL_PLANE_TOKEN` | Ask a remote host (the control plane) for sandboxes instead of running them in-process; Studio pushes their credentials to it every 10 minutes | Unset: in-process |
 | `CLICKHOUSE_URL` | Optional ClickHouse monitoring endpoint | Local monitoring backend |
 
 Authentication providers use `AUTH_*` variables. The validated list lives in

@@ -11,7 +11,20 @@ import {
   fetchProtectedResourceMetadata,
   fetchAuthorizationServerMetadata,
 } from "../api/routes/oauth-proxy";
-import { isPrivateUrl } from "../tools/registry/discover-tools";
+import { guardAgainstPrivateUrl } from "../mcp-clients/url-security";
+
+/**
+ * An unread response body keeps its connection out of the fetch keep-alive
+ * pool. Both metadata probes below are discarded on a non-ok response
+ * without ever being read, so drain them explicitly.
+ */
+async function drainBody(response: Response): Promise<void> {
+  try {
+    await response.body?.cancel();
+  } catch {
+    // ignore — best-effort drain
+  }
+}
 
 /**
  * Resolve the origin's actual OAuth token endpoint from a connection URL.
@@ -37,6 +50,8 @@ export async function resolveOriginTokenEndpoint(
           authorization_servers?: string[];
         };
         authServerUrl = data.authorization_servers?.[0];
+      } else {
+        await drainBody(resourceRes);
       }
     } catch {
       // Protected resource metadata not available, fall through
@@ -52,13 +67,13 @@ export async function resolveOriginTokenEndpoint(
       const data = (await authRes.json()) as {
         token_endpoint?: unknown;
       };
-      // token_endpoint is untrusted, origin-controlled input — reject a private/internal target.
+      // token_endpoint is untrusted, origin-controlled input — reject a private/internal target, resolving DNS so a rebinding domain doesn't slip past.
       if (typeof data.token_endpoint === "string") {
         try {
           const parsed = new URL(data.token_endpoint);
           if (
             (parsed.protocol === "http:" || parsed.protocol === "https:") &&
-            !isPrivateUrl(data.token_endpoint)
+            !(await guardAgainstPrivateUrl(data.token_endpoint))
           ) {
             return data.token_endpoint;
           }
@@ -66,6 +81,8 @@ export async function resolveOriginTokenEndpoint(
           // not a valid URL — fall through to null
         }
       }
+    } else {
+      await drainBody(authRes);
     }
 
     return null;

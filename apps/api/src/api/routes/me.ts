@@ -178,5 +178,46 @@ export const createMeRoutes = () => {
     return c.json({ items: hits.slice(0, limit) });
   });
 
+  /**
+   * `GET /api/_me/organizations` The organizations the caller belongs to, so
+   * a client can find a slug before its first org-scoped call.
+   */
+  app.get("/organizations", async (c) => {
+    const ctx = c.get("studioContext");
+    c.header("Cache-Control", "private, no-store");
+
+    const userId = getUserId(ctx);
+    if (!userId) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+
+    const fence = credentialOrganizationFence(ctx);
+    if (fence === DENY) {
+      return c.json(
+        { error: "forbidden: credential is scoped to another organization" },
+        403,
+      );
+    }
+
+    const memberships = await ctx.boundAuth.organization.list();
+    type Membership = (typeof memberships)[number];
+    const organizations = memberships
+      .filter((org: Membership) => fence === null || org.id === fence)
+      .map((org: Membership) => ({
+        orgId: org.id,
+        slug: org.slug,
+        name: org.name,
+        logo: org.logo ?? null,
+      }));
+    const visible = await createSsoGate(ctx, userId)(organizations);
+
+    return c.json({
+      organizations: visible.map(({ orgId, ...org }) => ({
+        id: orgId,
+        ...org,
+      })),
+    });
+  });
+
   return app;
 };

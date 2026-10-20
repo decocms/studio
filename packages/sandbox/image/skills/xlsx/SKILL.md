@@ -15,7 +15,7 @@ Print sheet contents from an `.xlsx` as TSV. Each sheet is preceded by a
 `--- sheet "<name>" ---` header.
 
 ```
-python org/public/core/xlsx/extract.py <path-to-file.xlsx>
+python /app/org/public/core/xlsx/extract.py <path-to-file.xlsx>
 ```
 
 Empty trailing rows and columns are trimmed. Cell values are stringified;

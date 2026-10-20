@@ -3,7 +3,8 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
-import type { PreviewProxyRef } from "@/components/sections-editor/preview-fetch-url";
+import type { SandboxConfig } from "@/components/sections-editor/fields/field-props";
+import type { ReferencedBlockSaveFn } from "@/components/sections-editor/save-referenced-block";
 import { useT } from "@/i18n/use-t.ts";
 import { BlockEditor, type RawBlock } from "./block-registry";
 
@@ -24,7 +25,10 @@ export function BlockRow({
   onChange,
   onDelete,
   onDuplicate,
+  decofile,
   sandboxRef,
+  previewBaseUrl,
+  onSaveReferencedBlock,
 }: {
   id: string;
   block: RawBlock;
@@ -32,7 +36,10 @@ export function BlockRow({
   onChange: (next: RawBlock) => void;
   onDelete: () => void;
   onDuplicate: () => void;
-  sandboxRef?: PreviewProxyRef | null;
+  decofile?: Record<string, unknown>;
+  sandboxRef?: SandboxConfig | null;
+  previewBaseUrl?: string | null;
+  onSaveReferencedBlock?: ReferencedBlockSaveFn;
 }) {
   const t = useT();
   const {
@@ -59,7 +66,7 @@ export function BlockRow({
       <button
         type="button"
         aria-label={t("sandbox.blockRow.dragToReorder")}
-        className="absolute left-1 top-1.5 flex h-6 w-6 cursor-grab items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground active:cursor-grabbing group-hover/row:opacity-100"
+        className="absolute left-1 top-1.5 flex h-6 w-6 cursor-grab items-center justify-center text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground active:cursor-grabbing group-hover/row:opacity-100 rounded-lg"
         {...attributes}
         {...listeners}
       >
@@ -70,7 +77,7 @@ export function BlockRow({
           type="button"
           aria-label={t("sandbox.blockRow.duplicateBlock")}
           onClick={onDuplicate}
-          className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
+          className="flex h-6 w-6 items-center justify-center text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer rounded-lg"
         >
           <Copy01 size={14} />
         </button>
@@ -78,7 +85,7 @@ export function BlockRow({
           type="button"
           aria-label={t("sandbox.blockRow.deleteBlock")}
           onClick={onDelete}
-          className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-destructive cursor-pointer"
+          className="flex h-6 w-6 items-center justify-center text-muted-foreground hover:bg-muted hover:text-destructive cursor-pointer rounded-lg"
         >
           <Trash01 size={14} />
         </button>
@@ -87,7 +94,10 @@ export function BlockRow({
         block={block}
         meta={meta}
         onChange={onChange}
+        decofile={decofile}
         sandboxRef={sandboxRef}
+        previewBaseUrl={previewBaseUrl}
+        onSaveReferencedBlock={onSaveReferencedBlock}
       />
     </div>
   );

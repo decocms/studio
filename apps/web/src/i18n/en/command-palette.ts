@@ -5,6 +5,7 @@ export const commandPalette = {
   "commandPalette.empty": "Nothing found.",
   "commandPalette.goTo": "Go to",
   "commandPalette.projects": "Projects",
+  "commandPalette.connections": "Connections",
   "commandPalette.actions": "Actions",
   "commandPalette.results": "Results",
   "commandPalette.newProject": "New project",

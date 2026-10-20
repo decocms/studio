@@ -14,6 +14,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   applyThreadLock,
+  assertThreadOwnedByCaller,
   defaultHarnessForAgent,
   assertHostedHarness,
   assertPersistedHostedRuntime,
@@ -178,12 +179,13 @@ describe("assertHostedHarness", () => {
     // Regression: gating the queue GET like a dispatch 409'd it, so a
     // claude-code chat rendered empty and erroring on the web.
     expect(() => assertHostedHarness("claude-code")).not.toThrow();
+    expect(() => assertHostedHarness("codex")).not.toThrow();
     expect(() => assertHostedHarness("decopilot")).not.toThrow();
     expect(() => assertHostedHarness(null)).not.toThrow();
   });
 
   test("rejects native and unknown harnesses", () => {
-    for (const harnessId of ["codex", "opencode", "future"]) {
+    for (const harnessId of ["opencode", "future"]) {
       expect(() => assertHostedHarness(harnessId)).toThrow(
         /Studio desktop app/,
       );
@@ -195,6 +197,7 @@ describe("assertPersistedHostedRuntime", () => {
   test("allows current hosted rows", () => {
     expect(() => assertPersistedHostedRuntime("decopilot")).not.toThrow();
     expect(() => assertPersistedHostedRuntime("claude-code")).not.toThrow();
+    expect(() => assertPersistedHostedRuntime("codex")).not.toThrow();
   });
 
   test("rejects unpinned threads before a hosted control mutation", () => {
@@ -204,7 +207,7 @@ describe("assertPersistedHostedRuntime", () => {
   });
 
   test("rejects native runtime rows", () => {
-    expect(() => assertPersistedHostedRuntime("codex")).toThrow(
+    expect(() => assertPersistedHostedRuntime("opencode")).toThrow(
       /Studio desktop app/,
     );
   });
@@ -333,6 +336,38 @@ describe("applyThreadLock", () => {
     expect(result.branch).toBe("feature-x");
   });
 
+  test("sandbox-only chats: an unlocked thread takes claude-code", () => {
+    for (const thread of [null, { harness_id: null, branch: null }]) {
+      const result = applyThreadLock({
+        taskIdInput: "thread-abc",
+        thread,
+        requestedBranch: undefined,
+        sandboxOnlyChats: true,
+      });
+      expect(result.locked).toBe(false);
+      expect(result.harnessId).toBe("claude-code");
+    }
+    expect(
+      applyThreadLock({
+        taskIdInput: "thread-abc",
+        thread: { harness_id: null, branch: null },
+        requestedBranch: undefined,
+        sandboxOnlyChats: false,
+      }).harnessId,
+    ).toBe("decopilot");
+  });
+
+  test("sandbox-only chats: a locked thread keeps its pin", () => {
+    const result = applyThreadLock({
+      taskIdInput: "thread-abc",
+      thread: makeLockedThread({ harness_id: "decopilot" }),
+      requestedBranch: "feature-x",
+      sandboxOnlyChats: true,
+    });
+    expect(result.locked).toBe(true);
+    expect(result.harnessId).toBe("decopilot");
+  });
+
   test("no taskIdInput (legacy callers): never touches the thread row", () => {
     const result = applyThreadLock({
       taskIdInput: undefined,
@@ -343,6 +378,24 @@ describe("applyThreadLock", () => {
     expect(result.locked).toBe(false);
     expect(result.harnessId).toBe("decopilot");
     expect(result.branch).toBe("feature-x");
+  });
+});
+
+describe("assertThreadOwnedByCaller", () => {
+  test("no thread row (first message ever): never throws", () => {
+    expect(() => assertThreadOwnedByCaller(null, "user-owner")).not.toThrow();
+  });
+
+  test("caller is the thread's creator: never throws", () => {
+    expect(() =>
+      assertThreadOwnedByCaller({ created_by: "user-owner" }, "user-owner"),
+    ).not.toThrow();
+  });
+
+  test("caller is a different org member: throws 403", () => {
+    expect(() =>
+      assertThreadOwnedByCaller({ created_by: "user-owner" }, "user-other"),
+    ).toThrow(/not the owner/);
   });
 });
 
@@ -422,7 +475,7 @@ describe("cancelActiveThreadRun (T7: stop cancels the detached hosted child)", (
 });
 
 describe("defaultHarnessForAgent", () => {
-  const repo = { githubRepo: { url: "https://github.com/acme/site" } };
+  const repo = { repository: { url: "https://github.com/acme/site" } };
 
   test("keeps a repo-backed agent on decopilot while the flag is off", () => {
     expect(
@@ -441,8 +494,8 @@ describe("defaultHarnessForAgent", () => {
       null,
       undefined,
       {},
-      { githubRepo: null },
-      { githubRepo: { url: "" } },
+      { repository: null },
+      { repository: { url: "" } },
     ]) {
       expect(defaultHarnessForAgent({ flagEnabled: true, agentMetadata })).toBe(
         "decopilot",

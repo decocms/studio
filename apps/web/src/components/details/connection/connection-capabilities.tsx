@@ -14,6 +14,13 @@ import { ConnectionUiTab } from "./connection-ui-tab.tsx";
 import { useT } from "@/i18n/use-t.ts";
 
 /**
+ * A default of `[]` is a NEW array on every render, so anything derived from
+ * it re-renders even when nothing changed. `never[]` is assignable to any
+ * `T[]`, so one frozen constant serves every optional list prop in this file.
+ */
+const EMPTY_ARRAY: never[] = [];
+
+/**
  * Converts a snake_case or dot.case tool function name to readable English.
  * e.g. "repos.list" -> "List Repos", "create_issue" -> "Create Issue"
  */
@@ -85,8 +92,8 @@ function EmptyCapabilities({ label }: { label: string }) {
 
 export function ConnectionCapabilities({
   tools,
-  prompts = [],
-  resources = [],
+  prompts = EMPTY_ARRAY,
+  resources = EMPTY_ARRAY,
   connectionId,
   org,
 }: ConnectionCapabilitiesProps) {

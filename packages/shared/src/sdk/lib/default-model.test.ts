@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import type { AiProviderKey, AiProviderModel } from "../types/ai-providers";
 import {
   getFastModel,
+  isChatModel,
   pickSimpleModeDefaults,
   selectDefaultModel,
 } from "./default-model";
@@ -67,5 +68,80 @@ describe("default model preferences", () => {
       modelId: "claude-opus-4-8",
       title: "Claude Opus 4.8",
     });
+  });
+});
+
+describe("image slot", () => {
+  const decoKey: AiProviderKey = {
+    id: "deco-key",
+    providerId: "deco",
+    label: "Deco",
+    presetId: null,
+    createdBy: "user-1",
+    createdAt: "2026-09-10T00:00:00.000Z",
+  };
+
+  function orModel(
+    modelId: string,
+    capabilities: AiProviderModel["capabilities"],
+  ): AiProviderModel {
+    return {
+      providerId: "openrouter",
+      modelId,
+      title: modelId,
+      description: null,
+      logo: null,
+      capabilities,
+      limits: null,
+      costs: null,
+    };
+  }
+
+  // The bug: the auto-router advertises image output, so a bare capability scan
+  // picked it, and it resolved image calls to an arbitrary text model.
+  it("never picks the auto-router, even when it is the only image match", () => {
+    const defaults = pickSimpleModeDefaults([decoKey], {
+      [decoKey.id]: [
+        orModel("openrouter/auto-beta", ["text", "vision", "image"]),
+        orModel("z-ai/glm-5.2", ["text"]),
+      ],
+    });
+
+    expect(defaults.image).toBeNull();
+  });
+
+  it("prefers a real image model over the auto-router", () => {
+    const defaults = pickSimpleModeDefaults([decoKey], {
+      [decoKey.id]: [
+        orModel("openrouter/auto-beta", ["text", "vision", "image"]),
+        orModel("google/gemini-3-pro-image", ["text", "image"]),
+      ],
+    });
+
+    expect(defaults.image?.modelId).toBe("google/gemini-3-pro-image");
+  });
+});
+
+describe("decision models", () => {
+  const decision = {
+    ...model("claude-sonnet-decisions", "Decisions"),
+    capabilities: ["text", "decisions"] as const,
+  };
+  const decisionModel: AiProviderModel = {
+    ...decision,
+    capabilities: [...decision.capabilities],
+  };
+  it("cannot become the chat fallback even when they accept text", () => {
+    expect(isChatModel(decisionModel)).toBe(false);
+    expect(selectDefaultModel([decisionModel], "anthropic")).toBeNull();
+    const chat = model("another-chat", "Chat");
+    expect(
+      selectDefaultModel([decisionModel, chat], "anthropic")?.modelId,
+    ).toBe("another-chat");
+  });
+  it("does not fill chat tiers by a matching model name", () => {
+    expect(
+      pickSimpleModeDefaults([key], { [key.id]: [decisionModel] }).chat,
+    ).toEqual({ fast: null, smart: null, thinking: null });
   });
 });

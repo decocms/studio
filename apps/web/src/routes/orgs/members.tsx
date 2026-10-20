@@ -1,3 +1,5 @@
+import type { TableColumn } from "@/components/collections/collection-table.tsx";
+import { Page } from "@/components/page";
 import { CollectionDisplayButton } from "@/components/collections/collection-display-button.tsx";
 import { SearchInput } from "@decocms/ui/components/search-input.tsx";
 import { CollectionTableWrapper } from "@/components/collections/collection-table-wrapper.tsx";
@@ -35,7 +37,7 @@ import { Avatar } from "@decocms/ui/components/avatar.tsx";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Card } from "@decocms/ui/components/card.tsx";
-import type { TableColumn } from "@/components/collections/collection-table.tsx";
+
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -746,11 +748,11 @@ function OrgMembersContent() {
   ];
 
   const ctaButton = (
-    <div className="flex items-center gap-2">
+    <Page.Actions>
       <InviteMemberDialog
-        trigger={<Button>{t("orgs.members.inviteMember")}</Button>}
+        trigger={<Button size="sm">{t("orgs.members.inviteMember")}</Button>}
       />
-    </div>
+    </Page.Actions>
   );
 
   // Build unified rows for table

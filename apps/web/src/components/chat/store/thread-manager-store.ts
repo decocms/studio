@@ -496,7 +496,7 @@ export class ThreadManagerStore {
    * the panel slot. Unlike `fetchThread` (which short-circuits on a local hit),
    * this always issues `COLLECTION_THREADS_GET`, so a stale panel row picks up
    * metadata bound after the snapshot — e.g. a teammate's thread whose
-   * `githubRepo` / `sandboxMap` was written by `load_repo` after the row was
+   * `repository` / `sandboxMap` was written by `load_repo` after the row was
    * first loaded. A read-only viewer never receives the live `data-open-preview`
    * chunk that patches this client-side, and the thread-status SSE carries no
    * metadata, so without this the preview reads a pre-repo row and shows "no

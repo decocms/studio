@@ -12,8 +12,11 @@
  *
  * Content resolution is asserted alongside it and is deliberately
  * branch-favoured, with no way to ask for anything else: on a git-level
- * conflict the branch's version of every file it touched wins WHOLE FILE,
- * while files only the base changed come along.
+ * conflict the branch's version of every file it touched wins, while files
+ * only the base changed come along. Blocks both sides edited are the
+ * exception: they merge value by value, and the branch wins only the values
+ * both sides changed — otherwise publishing a draft would revert whatever
+ * another draft published to the same block while it was open.
  *
  * All GitHub traffic lands on the local Git Data stub (fixtures/github-stub.ts).
  * Contract shapes are INLINED (black-box suite — no app imports).
@@ -118,7 +121,7 @@ test.describe("fast preview git sync", () => {
     }
   });
 
-  test("a conflict resolves branch-wins — nothing in the body asks for it — keeping the one-commit shape and the branch's whole file", async ({
+  test("a conflict keeps the base's edits to a block the branch also edited, and the branch wins only the value both changed", async ({
     playwright,
   }) => {
     const ctx = await newApiContext(playwright);
@@ -130,18 +133,30 @@ test.describe("fast preview git sync", () => {
         owner,
         repo,
       });
+      const header = { label: "SSRio", collection: "680", title: "a" };
+      const seeded = `${JSON.stringify(header, null, 2)}\n`;
       await seedStubRepo(ctx, {
         owner,
         repo,
         defaultBranch: "main",
         branches: {
-          main: { files: { ".deco/blocks/Hero.json": '{"n":1}\n' } },
-          draft: { files: { ".deco/blocks/Hero.json": '{"n":1}\n' } },
+          main: { files: { ".deco/blocks/Header.json": seeded } },
+          draft: { files: { ".deco/blocks/Header.json": seeded } },
         },
       });
 
-      await writeBlock(ctx, project, "draft", "Hero", { editor: "wins" });
-      await writeBlock(ctx, project, "main", "Hero", { base: "loses" });
+      // Another draft already published a label change and a title change...
+      await writeBlock(ctx, project, "main", "Header", {
+        ...header,
+        label: "SS Rio",
+        title: "published",
+      });
+      // ...while this draft edited the shelf and the same title.
+      await writeBlock(ctx, project, "draft", "Header", {
+        ...header,
+        collection: "667",
+        title: "draft",
+      });
       await writeBlock(ctx, project, "main", "Footer", { f: 1 });
       await setStubMergeMode(ctx, owner, repo, "conflict");
 
@@ -160,9 +175,10 @@ test.describe("fast preview git sync", () => {
       expect(head.message).toContain("branch content wins");
 
       const files = after.branches["draft"]?.files ?? {};
-      // Whole-file branch-wins: the editor's block, not the base's.
-      expect(JSON.parse(files[".deco/blocks/Hero.json"] as string)).toEqual({
-        editor: "wins",
+      expect(JSON.parse(files[".deco/blocks/Header.json"] as string)).toEqual({
+        label: "SS Rio",
+        collection: "667",
+        title: "draft",
       });
       // A path only the base touched is untouched by the overwrite.
       expect(JSON.parse(files[".deco/blocks/Footer.json"] as string)).toEqual({

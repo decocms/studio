@@ -15,7 +15,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
-import { buildRequestHeaders } from "./headers";
+import { buildRequestHeaders, sanitizeCustomHeaders } from "./headers";
 import { createClientPool } from "./client-pool";
 import { createStdioTransport } from "./transport-stdio";
 import {
@@ -27,6 +27,34 @@ import {
 // Singleton pool for STDIO connections — child processes must persist across requests.
 // Separate from the per-request pool on StudioContext (used by HTTP/SSE).
 const stdioPool = createClientPool();
+
+// Shared by every outbound transport: auth first, then monitoring.
+function withAuthAndMonitoring(
+  transport: Transport,
+  opts: {
+    ctx: StudioContext;
+    connection: ConnectionEntity;
+    superUser: boolean;
+    connectionId: string;
+    virtualMcpId: string | undefined;
+  },
+): Transport {
+  return composeTransport(
+    transport,
+    (t) =>
+      new AuthTransport(t, {
+        ctx: opts.ctx,
+        connection: opts.connection,
+        superUser: opts.superUser,
+      }),
+    (t) =>
+      new MonitoringTransport(t, {
+        ctx: opts.ctx,
+        connectionId: opts.connectionId,
+        virtualMcpId: opts.virtualMcpId,
+      }),
+  );
+}
 
 /**
  * Create an MCP client for outbound connections (STDIO, HTTP, Websocket, SSE)
@@ -75,17 +103,13 @@ export async function createOutboundClient(
         cwd: maybeParams.cwd,
       });
 
-      // Compose with auth and monitoring transports
-      transport = composeTransport(
-        transport,
-        (t) => new AuthTransport(t, { ctx, connection, superUser }),
-        (t) =>
-          new MonitoringTransport(t, {
-            ctx,
-            connectionId,
-            virtualMcpId,
-          }),
-      );
+      transport = withAuthAndMonitoring(transport, {
+        ctx,
+        connection,
+        superUser,
+        connectionId,
+        virtualMcpId,
+      });
 
       // STDIO uses a singleton pool — child processes must persist across requests.
       // NOT the per-request pool on ctx (that one is for HTTP/SSE with fresh auth headers).
@@ -114,7 +138,7 @@ export async function createOutboundClient(
 
         const httpParams = connection.connection_headers;
         if (httpParams && "headers" in httpParams) {
-          Object.assign(headers, httpParams.headers);
+          Object.assign(headers, sanitizeCustomHeaders(httpParams.headers));
         }
 
         let transport: Transport = makeBaseTransport(
@@ -122,17 +146,13 @@ export async function createOutboundClient(
           headers,
         );
 
-        // Compose with auth and monitoring transports
-        transport = composeTransport(
-          transport,
-          (t) => new AuthTransport(t, { ctx, connection, superUser }),
-          (t) =>
-            new MonitoringTransport(t, {
-              ctx,
-              connectionId,
-              virtualMcpId,
-            }),
-        );
+        transport = withAuthAndMonitoring(transport, {
+          ctx,
+          connection,
+          superUser,
+          connectionId,
+          virtualMcpId,
+        });
 
         return transport;
       }, connectionId);

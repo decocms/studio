@@ -1,4 +1,5 @@
 import type { UIMessageChunk } from "ai";
+import { markTurn } from "@/harnesses/turn-latency";
 import type { StreamBuffer } from "./stream-buffer";
 
 const RUN_STATUS_STAGES = [
@@ -36,7 +37,11 @@ const STAGE_SET = new Set<string>(RUN_STATUS_STAGES);
 export function shouldPublishRunStatus(
   harnessId: string | null | undefined,
 ): boolean {
-  return harnessId === "decopilot" || harnessId === "claude-code";
+  return (
+    harnessId === "decopilot" ||
+    harnessId === "claude-code" ||
+    harnessId === "codex"
+  );
 }
 
 export type RunStatusChunk = Extract<
@@ -95,6 +100,7 @@ export async function publishRunStatusStage(args: {
   stage: BackendRunStatusStage;
 }): Promise<void> {
   const { streamBuffer, harnessId, taskId, stage } = args;
+  markTurn(taskId, `status:${stage}`);
   if (!streamBuffer || !shouldPublishRunStatus(harnessId)) return;
   try {
     await streamBuffer.publishRawChunk(taskId, buildRunStatusChunk(stage));

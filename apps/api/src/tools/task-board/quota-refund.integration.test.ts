@@ -133,7 +133,7 @@ describe("quota refund on thread finish (wiring)", () => {
     // The advance half moves it to In Review (a repo-less answer IS the
     // deliverable) — so seed a card the advance can't take: no PR, and the
     // card pulled out of In Progress the way a human drag would leave it.
-    await taskBoard.update(task.id, ORG, { status: "todo" }, "system");
+    await taskBoard.update(task.id, ORG, { status: "triage" }, "system");
 
     await advanceTasksToReviewOnThreadFinish(
       taskBoard,
@@ -150,7 +150,7 @@ describe("quota refund on thread finish (wiring)", () => {
     // thread per dispatch, so one finishing must never refund another's spend.
     const { task, thread } = await chargedTask("sibling", "completed");
     await addThread(task.id, "in_progress");
-    await taskBoard.update(task.id, ORG, { status: "todo" }, "system");
+    await taskBoard.update(task.id, ORG, { status: "triage" }, "system");
 
     await advanceTasksToReviewOnThreadFinish(
       taskBoard,
@@ -169,12 +169,15 @@ describe("quota refund on thread finish (wiring)", () => {
       organizationId: ORG,
       url: "https://github.com/acme/repo/pull/7",
       prNumber: 7,
-      repoOwner: "acme",
-      repoName: "repo",
+      repo: {
+        provider: "github",
+        host: "github.com",
+        path: "acme/repo",
+      },
       connectionId: null,
     });
     // Even dragged backwards, a delivered PR keeps the charge.
-    await taskBoard.update(task.id, ORG, { status: "todo" }, "system");
+    await taskBoard.update(task.id, ORG, { status: "triage" }, "system");
 
     await advanceTasksToReviewOnThreadFinish(
       taskBoard,
@@ -186,10 +189,10 @@ describe("quota refund on thread finish (wiring)", () => {
     expect(await stateOf(task.id)).toBe("held");
   });
 
-  it("does NOT refund once the card reached In Review", async () => {
+  it("does NOT refund once the card delivered (a repo-less one reaches QA)", async () => {
     const { task, thread } = await chargedTask("in-review", "completed");
 
-    // The advance half itself moves this one to In Review.
+    // The advance half itself moves this one to QA.
     await advanceTasksToReviewOnThreadFinish(
       taskBoard,
       thread.id,
@@ -197,7 +200,7 @@ describe("quota refund on thread finish (wiring)", () => {
       billing,
     );
 
-    expect((await taskBoard.getById(task.id, ORG))?.status).toBe("in_review");
+    expect((await taskBoard.getById(task.id, ORG))?.status).toBe("qa");
     expect(await stateOf(task.id)).toBe("held");
   });
 
@@ -210,7 +213,7 @@ describe("quota refund on thread finish (wiring)", () => {
     });
     await claimTaskExecution(ctx, task, CONFIG); // no-op: not a reports task
     const thread = await addThread(task.id, "completed");
-    await taskBoard.update(task.id, ORG, { status: "todo" }, "system");
+    await taskBoard.update(task.id, ORG, { status: "triage" }, "system");
 
     await advanceTasksToReviewOnThreadFinish(
       taskBoard,

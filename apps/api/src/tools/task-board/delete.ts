@@ -6,8 +6,8 @@ import { emitTaskBoardDeleted } from "./run-reactions";
 export const TASK_BOARD_ITEM_DELETE = defineTool({
   name: "TASK_BOARD_ITEM_DELETE",
   description:
-    "Delete a task board item. A reports-pushed task also dismisses its " +
-    "finding, so the next diagnostic import won't re-create the card.",
+    "Delete a task board item. A Deco Score task also dismisses its " +
+    "finding, so the next Deco Score import won't re-create the card.",
   annotations: {
     title: "Delete Task Board Item",
     readOnlyHint: false,

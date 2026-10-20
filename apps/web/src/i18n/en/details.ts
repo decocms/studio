@@ -8,6 +8,7 @@ export const details = {
   "details.connection.deleteButton": "Delete",
   "details.connection.descriptionLabel": "Description",
   "details.connection.failedRemoveOAuth": "Failed to remove OAuth: {error}",
+  "details.connection.failedAddInstance": "Failed to add instance",
   "details.connection.failedRemoveOAuthError": "Failed to remove OAuth",
   "details.connection.failedUpdateConnection": "Failed to update connection",
   "details.connection.nameLabel": "Name",
@@ -98,6 +99,11 @@ export const details = {
   "details.mcpConfigurationForm.failedToConnectMcp":
     "Failed to connect MCP: {message}",
   "details.mcpConfigurationForm.noConnectionsFound": "No connections found",
+  "details.mcpConfigurationForm.notAuthenticated": "Not authenticated",
+  "details.mcpConfigurationForm.registryItemNotFound":
+    "MCP Server not found in registry: {bindingType}",
+  "details.mcpConfigurationForm.registryItemNotConnectable":
+    "This MCP Server cannot be connected: no connection method available",
   "details.mcpConfigurationForm.selectPlaceholder": "Select {title}...",
   "details.prompt.bodyPlaceholder": "Write the prompt message…",
   "details.prompt.description": "Description",

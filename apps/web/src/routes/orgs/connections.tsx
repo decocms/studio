@@ -1,3 +1,8 @@
+import type { RegistryItem } from "@/components/store/types";
+import type { HttpConnectionParameters } from "@decocms/shared/sdk/types";
+import type { StdioConnectionParameters } from "@decocms/shared/sdk/types";
+import type { ConnectionProviderHint } from "@/utils/connection-form-helpers";
+import type { ListState } from "@/hooks/use-list-state";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { CollectionDisplayButton } from "@/components/collections/collection-display-button.tsx";
@@ -8,18 +13,17 @@ import { ConnectionCard } from "@/components/connections/connection-card.tsx";
 import { EmptyState } from "@/components/empty-state.tsx";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { Page } from "@/components/page";
-import type { RegistryItem } from "@/components/store/types";
+
 import { DeleteConnectionDialogs } from "@/components/delete-connection-dialogs";
 import { useDeleteConnection } from "@/hooks/use-delete-connection";
 import { useCapability } from "@/hooks/use-capability";
 import { useInfiniteScroll } from "@/hooks/use-infinite-scroll";
 import { useLocalStorage } from "@/hooks/use-local-storage";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
-import { useEnabledRegistries } from "@/hooks/use-enabled-registries";
 import { useListState } from "@/hooks/use-list-state";
 import { authClient } from "@/lib/auth-client";
 import { useAuthConfig } from "@/providers/auth-config-provider";
-import { useMergedStoreDiscovery } from "@/hooks/use-merged-store-discovery";
+import { useRegistryCatalog } from "@/hooks/use-registry-catalog";
 import { getConnectionSlug } from "@decocms/shared/utils/connection-slug";
 import { BulkDeleteDialog } from "./bulk-delete-dialog.tsx";
 import { CatalogItemCard } from "./catalog-item-card.tsx";
@@ -61,18 +65,25 @@ import {
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import {
+  mcpClientQueryOptions,
   useConnectionActions,
   useConnections,
   useProjectContext,
   type ConnectionEntity,
   useVirtualMCPs,
 } from "@/sdk";
+import { resolveConnectedMcpTarget } from "./connected-mcp-target.ts";
 import { useStudioTools } from "@/lib/studio-tools";
 import { toast } from "sonner";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { Container, Globe02, Plus, Terminal, XClose } from "@untitledui/icons";
+import {
+  ConnectionProjects,
+  projectsByConnection,
+} from "@/components/projects/connection-projects";
+import { scopableProjects } from "@/hooks/use-project-scope";
 import { Suspense, useState } from "react";
 import { useForm } from "react-hook-form";
 import { track } from "@/lib/posthog-client";
@@ -81,19 +92,14 @@ import {
   type ConnectionFormData,
 } from "@/components/details/connection/settings-tab/schema";
 
-import type {
-  HttpConnectionParameters,
-  StdioConnectionParameters,
-} from "@decocms/shared/sdk/types";
 import { EnvVarsEditor } from "@/components/env-vars-editor";
 import {
   extractConnectionData,
   getRegistryItemAppName,
 } from "@/utils/extract-connection-data";
 import { authenticateAndPersistOAuth } from "@/lib/authenticate-and-persist-oauth";
-import { KEYS } from "@/lib/query-keys";
+import { KEYS, invalidateVirtualMcpQueries } from "@/lib/query-keys";
 import {
-  type ConnectionProviderHint,
   buildCustomStdioParameters,
   buildNpxParameters,
   inferHardcodedProviderHint,
@@ -126,7 +132,6 @@ type ConnectionStatusFilter = "ALL" | "active" | "inactive" | "error";
 // ---------------------------------------------------------------------------
 // ListState import type alias (re-exported for convenience)
 // ---------------------------------------------------------------------------
-import type { ListState } from "@/hooks/use-list-state";
 
 // ---------------------------------------------------------------------------
 // ConnectionResults props
@@ -137,8 +142,6 @@ interface ConnectionResultsProps {
   activeTab: "connected" | "all";
   typeFilter: ConnectionTypeFilter;
   statusFilter: ConnectionStatusFilter;
-  registryFilter: string;
-  enabledRegistries: Array<{ id: string; title: string; icon: string | null }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -150,8 +153,6 @@ function ConnectionResults({
   activeTab,
   typeFilter,
   statusFilter,
-  registryFilter,
-  enabledRegistries,
 }: ConnectionResultsProps) {
   const t = useT();
   const { org } = useProjectContext();
@@ -177,6 +178,11 @@ function ConnectionResults({
 
   // Agents list (for Add to Agent dialog)
   const agents = useVirtualMCPs();
+  /** Which projects aggregate each connection, for the card footers. Read off
+   *  the list above — the org-level answer to "which storefront does this
+   *  credential feed", which is the question asked right before someone
+   *  revokes one. */
+  const projectsForConnection = projectsByConnection(scopableProjects(agents));
 
   // Apply UI filters (VIRTUAL already excluded server-side)
   const filteredConnections = connections.filter((c) => {
@@ -200,17 +206,14 @@ function ConnectionResults({
     setSelectedIds(new Set());
   };
 
-  // Registry / catalog - merge all enabled registries (server-side search)
-  const mergedDiscovery = useMergedStoreDiscovery(
-    enabledRegistries,
-    listState.searchTerm,
-  );
-  const registryItems = mergedDiscovery.items;
+  // Deco catalog search
+  const catalog = useRegistryCatalog(listState.searchTerm);
+  const registryItems = catalog.items;
 
   const catalogSentinelRef = useInfiniteScroll(
-    mergedDiscovery.loadMore,
-    mergedDiscovery.hasMore,
-    mergedDiscovery.isLoadingMore,
+    catalog.loadMore,
+    catalog.hasMore,
+    catalog.isLoadingMore,
   );
 
   // "All" tab: catalog items from registry (includes already-connected ones)
@@ -218,25 +221,12 @@ function ConnectionResults({
     connections.filter((c) => c.app_name).map((c) => c.app_name as string),
   );
 
-  // Reset registry filter if the selected registry is no longer enabled
-  const effectiveRegistryFilter =
-    registryFilter === "ALL" ||
-    enabledRegistries.some((r) => r.id === registryFilter)
-      ? registryFilter
-      : "ALL";
-
   const isSearching = listState.search.length > 0;
 
   // Catalog items: show on "All" tab always, or on "Connected" tab when searching
   const catalogItems =
     activeTab === "all" || isSearching
       ? registryItems.filter((item) => {
-          if (
-            effectiveRegistryFilter !== "ALL" &&
-            item._registryId !== effectiveRegistryFilter
-          ) {
-            return false;
-          }
           // Exclude already-connected items to avoid duplicates with groupedForDisplay
           if (isSearching) {
             const appName = getRegistryItemAppName(item);
@@ -283,7 +273,8 @@ function ConnectionResults({
         return;
       }
 
-      const { id } = await actions.create.mutateAsync(connectionData);
+      const created = await actions.create.mutateAsync(connectionData);
+      const { id } = created;
 
       // Handle OAuth flow (if needed) + persist, via the shared helper.
       const auth = await authenticateAndPersistOAuth({
@@ -326,7 +317,50 @@ function ConnectionResults({
         toast.success(t("orgs.connections.authenticationSuccessful"));
       }
 
-      toast.success(t("orgs.connections.connectedSuccessfully"));
+      // Own try: the connection exists; a failed listTools isn't a failed connect.
+      let target: ReturnType<typeof resolveConnectedMcpTarget> = null;
+      try {
+        const client = await queryClient.fetchQuery(
+          mcpClientQueryOptions({
+            connectionId: id,
+            orgId: org.id,
+            orgSlug: org.slug,
+          }),
+        );
+        target = resolveConnectedMcpTarget((await client.listTools()).tools);
+      } catch {
+        // No target — the toast below just loses its button.
+      }
+
+      const appSlug = getConnectionSlug(created);
+      const to = !target
+        ? null
+        : target.appToolName
+          ? ({
+              to: "/$org/settings/connections/$appSlug/$collectionName/$itemId",
+              params: {
+                org: org.slug,
+                appSlug,
+                collectionName: "tools",
+                itemId: encodeURIComponent(target.appToolName),
+              },
+            } as const)
+          : ({
+              to: "/$org/settings/connections/$appSlug",
+              params: { org: org.slug, appSlug },
+            } as const);
+
+      toast.success(
+        t("orgs.connections.connectedSuccessfully"),
+        to
+          ? {
+              action: {
+                label: t("orgs.connections.openConnection"),
+                onClick: () => navigate(to),
+              },
+            }
+          : undefined,
+      );
     } catch (error) {
       toast.error(
         t("orgs.connections.failedToConnect", {
@@ -358,16 +392,13 @@ function ConnectionResults({
     setBulkDeleteOpen(false);
     const ids = [...selectedIds];
     track("connections_bulk_delete", { count: ids.length });
-    let deleted = 0;
 
-    for (const id of ids) {
-      try {
-        await studio.call("COLLECTION_CONNECTIONS_DELETE", { id, force: true });
-        deleted++;
-      } catch {
-        // continue with next
-      }
-    }
+    const results = await Promise.allSettled(
+      ids.map((id) =>
+        studio.call("COLLECTION_CONNECTIONS_DELETE", { id, force: true }),
+      ),
+    );
+    const deleted = results.filter((r) => r.status === "fulfilled").length;
 
     invalidateConnections();
     toast.success(t("orgs.connections.deletedConnections", { count: deleted }));
@@ -397,16 +428,10 @@ function ConnectionResults({
       count: ids.length,
       to_status: status,
     });
-    let updated = 0;
-
-    for (const id of ids) {
-      try {
-        await actions.update.mutateAsync({ id, data: { status } });
-        updated++;
-      } catch {
-        // continue
-      }
-    }
+    const results = await Promise.allSettled(
+      ids.map((id) => actions.update.mutateAsync({ id, data: { status } })),
+    );
+    const updated = results.filter((r) => r.status === "fulfilled").length;
 
     invalidateConnections();
     toast.success(
@@ -450,16 +475,7 @@ function ConnectionResults({
         },
       });
 
-      queryClient.invalidateQueries({
-        predicate: (query) => {
-          const key = query.queryKey;
-          return (
-            key[1] === org.id &&
-            key[3] === "collection" &&
-            key[4] === "VIRTUAL_MCP"
-          );
-        },
-      });
+      invalidateVirtualMcpQueries(queryClient, org.id);
 
       toast.success(
         t("orgs.connections.addedConnectionsToAgent", {
@@ -492,7 +508,7 @@ function ConnectionResults({
       />
 
       {/* Cards */}
-      {mergedDiscovery.isInitialLoading && activeTab === "all" ? (
+      {catalog.isInitialLoading && activeTab === "all" ? (
         <div className="flex h-full items-center justify-center">
           <Spinner className="size-8 text-muted-foreground" />
         </div>
@@ -572,6 +588,13 @@ function ConnectionResults({
                       isSelected && "ring-2 ring-primary bg-primary/5",
                     )}
                     selected={selectionMode ? isSelected : undefined}
+                    footer={
+                      <ConnectionProjects
+                        projects={
+                          projectsForConnection.get(connection.id) ?? []
+                        }
+                      />
+                    }
                     headerActionsAlwaysVisible
                     headerActions={
                       <ConnectionCardHeaderActions
@@ -604,7 +627,7 @@ function ConnectionResults({
               {/* Catalog items (uninstalled) — only on "All" tab */}
               {catalogItems.map((item) => (
                 <CatalogItemCard
-                  key={`catalog-${item._registryId}:${item.id}`}
+                  key={item.id}
                   item={item}
                   canManage={canManage}
                   allConnections={connections}
@@ -622,12 +645,11 @@ function ConnectionResults({
                   onConnect={handleInlineConnect}
                 />
               ))}
+              {(activeTab === "all" || isSearching) && (
+                <div ref={catalogSentinelRef} className="col-span-full h-4" />
+              )}
               {(activeTab === "all" || isSearching) &&
-                enabledRegistries.length > 0 && (
-                  <div ref={catalogSentinelRef} className="col-span-full h-4" />
-                )}
-              {(activeTab === "all" || isSearching) &&
-                mergedDiscovery.isLoadingMore && (
+                catalog.isLoadingMore && (
                   <div className="col-span-full flex justify-center py-6">
                     <Spinner className="size-6 text-muted-foreground" />
                   </div>
@@ -693,15 +715,10 @@ function OrgMcpsContent() {
   const [typeFilter, setTypeFilter] = useState<ConnectionTypeFilter>("ALL");
   const [statusFilter, setStatusFilter] =
     useState<ConnectionStatusFilter>("ALL");
-  const [registryFilter, setRegistryFilter] = useState<string>("ALL");
 
-  // Registry / catalog - merge all enabled registries (needed for create dialog provider hints)
-  const enabledRegistries = useEnabledRegistries();
-  const mergedDiscovery = useMergedStoreDiscovery(
-    enabledRegistries,
-    listState.searchTerm,
-  );
-  const registryItems = mergedDiscovery.items;
+  // Deco catalog used for create dialog provider hints
+  const catalog = useRegistryCatalog(listState.searchTerm);
+  const registryItems = catalog.items;
 
   const isStale = listState.search !== listState.searchTerm;
 
@@ -824,7 +841,6 @@ function OrgMcpsContent() {
       metadata: null,
       tools: null,
       bindings: null,
-      status: "inactive",
     });
 
     closeCreateDialog();
@@ -941,7 +957,7 @@ function OrgMcpsContent() {
 
   const ctaButton = canManage ? (
     <div className="flex items-center gap-2">
-      <Button variant="outline" onClick={openCreateDialog}>
+      <Button size="sm" variant="default" onClick={openCreateDialog}>
         <Plus size={14} className="sm:hidden" />
         <span className="hidden sm:inline">
           {t("orgs.connections.customConnection")}
@@ -1353,9 +1369,11 @@ function OrgMcpsContent() {
 
         <Page.Content>
           {/* Title + Toolbar */}
-          <Page.Body>
+          <Page.Container>
             <div className="flex flex-col gap-6">
-              <Page.Title>{t("orgs.connections.pageTitle")}</Page.Title>
+              <Page.Title actions={ctaButton}>
+                {t("orgs.connections.pageTitle")}
+              </Page.Title>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <SearchInput
@@ -1430,36 +1448,12 @@ function OrgMcpsContent() {
                           },
                         ],
                       },
-                      ...(enabledRegistries.length > 1
-                        ? [
-                            {
-                              label: t("orgs.connections.filterRegistry"),
-                              value: registryFilter,
-                              onChange: (v: string) =>
-                                setRegistryFilter(v || "ALL"),
-                              options: [
-                                {
-                                  id: "ALL",
-                                  label: t(
-                                    "orgs.connections.filterAllRegistries",
-                                  ),
-                                },
-                                ...enabledRegistries.map((r) => ({
-                                  id: r.id,
-                                  label: r.id.includes("community-registry")
-                                    ? t("orgs.connections.communityMcpRegistry")
-                                    : r.title,
-                                })),
-                              ],
-                            },
-                          ]
-                        : []),
                     ]}
                   />
                 </div>
-                {ctaButton}
               </div>
               <CollectionTabs
+                placement="page"
                 tabs={[
                   { id: "all", label: t("orgs.connections.tabAll") },
                   {
@@ -1497,13 +1491,11 @@ function OrgMcpsContent() {
                     activeTab={activeTab}
                     typeFilter={typeFilter}
                     statusFilter={statusFilter}
-                    registryFilter={registryFilter}
-                    enabledRegistries={enabledRegistries}
                   />
                 </div>
               </Suspense>
             </div>
-          </Page.Body>
+          </Page.Container>
         </Page.Content>
       </Page>
     </>

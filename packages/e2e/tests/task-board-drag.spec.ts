@@ -72,17 +72,19 @@ test("a card dragged to another lane moves and stays fully visible", async ({
   await pointerDrag(
     page,
     page.locator('button:has-text("Card 3")'),
-    page.locator('[data-lane="todo"]'),
+    page.locator('[data-lane="in_progress"]'),
   );
 
-  const moved = page.locator('[data-lane="todo"] button:has-text("Card 3")');
+  const moved = page.locator(
+    '[data-lane="in_progress"] button:has-text("Card 3")',
+  );
   await expect(moved).toBeVisible();
   // The regression: the dropped card was left at opacity 0.5 forever.
   await expect(moved).toHaveCSS("opacity", "1");
 
   await expect
     .poll(() => statusByTitle(request, orgSlug))
-    .toMatchObject({ "Card 3": "todo", "Card 0": "triage" });
+    .toMatchObject({ "Card 3": "in_progress", "Card 0": "triage" });
 });
 
 test("every card in a multi-selection moves together and none are hidden", async ({
@@ -124,4 +126,37 @@ test("every card in a multi-selection moves together and none are hidden", async
       "Card 3": "in_progress",
       "Card 1": "triage",
     });
+});
+
+test("a card drops into an empty lane beside a lane taller than the screen", async ({
+  authedPage,
+}) => {
+  const { page, orgSlug } = authedPage;
+  const request = page.context().request;
+  await seedCards(request, orgSlug, 20);
+  await openBoard(page, orgSlug);
+  // On a tall screen the empty lane's droppable is tall too, so corner
+  // distance alone puts the long lane's cards closer than the lane itself.
+  await page.setViewportSize({ width: 1280, height: 1600 });
+
+  // The long lane scrolls inside itself instead of stretching every lane.
+  const backlog = page.locator('[data-lane-scroll="triage"]');
+  await expect
+    .poll(() => backlog.evaluate((el) => el.scrollHeight > el.clientHeight + 1))
+    .toBe(true);
+
+  const source = page.locator('[data-lane="triage"] [role="button"]').first();
+  const title = (await source.textContent())?.match(/Card \d+/)?.[0];
+  if (!title) throw new Error("no seeded card at the top of the lane");
+
+  // The regression: the drop resolved to a card in the long lane, so it went
+  // nowhere.
+  await pointerDrag(page, source, page.locator('[data-lane="in_progress"]'));
+
+  await expect(
+    page.locator(`[data-lane="in_progress"] button:has-text("${title}")`),
+  ).toBeVisible();
+  await expect
+    .poll(() => statusByTitle(request, orgSlug))
+    .toMatchObject({ [title]: "in_progress" });
 });

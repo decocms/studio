@@ -65,6 +65,7 @@ export const CLAUDE_SUBSCRIPTION_CONNECT = defineTool({
     token: z
       .string()
       .min(1)
+      .max(4096)
       .describe("The token printed by `claude setup-token` (sk-ant-oat…)"),
   }),
   outputSchema: statusSchema,

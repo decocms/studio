@@ -47,6 +47,7 @@ import { exponentialBackoffWithJitter, sleep } from "@decocms/shared/std";
 import type { Client as MCPClient } from "@modelcontextprotocol/sdk/client/index.js";
 import type { ToolApprovalLevel } from "@/hooks/use-preferences";
 import type { SimpleModeTier } from "@decocms/shared/organization/schema";
+import type { VoiceTranscript } from "@decocms/shared/voice";
 import { Store } from "./store-primitive";
 import { extractToolErrorMessage } from "./mcp-utils";
 import { guardToolInvariant } from "./tool-invariant-guard";
@@ -58,12 +59,16 @@ import {
   parseRunStatusStageChunk,
   type RunStatusStage,
 } from "../run-status";
+import { chatPostErrorMessage } from "../chat-post-error";
 
 export { Store };
 
 // ─── Request options (wire payload alongside `messages`) ─────────────────────
 
 export interface RequestOptions {
+  voiceMode?: boolean;
+  /** Model-only context for a spoken turn; never rendered as message text. */
+  voiceTranscript?: VoiceTranscript;
   tier: SimpleModeTier;
   mode: ChatMode;
   toolApprovalLevel: ToolApprovalLevel;
@@ -75,6 +80,14 @@ export interface RequestOptions {
 }
 
 // ─── Status ──────────────────────────────────────────────────────────────────
+
+/**
+ * Where a message posted during a run went: into the run (`liveRunId` names
+ * it, as the persisted message's metadata does), or behind it.
+ */
+export type MessageDelivery =
+  | { kind: "live"; liveRunId: string }
+  | { kind: "queued" };
 
 export type ConnStatus =
   | { kind: "loading" }
@@ -404,8 +417,16 @@ export class ThreadConnection {
    * dispatch; the caller stashes the message for the dispatch-time flip.
    * Throws if the POST fails so the caller can surface the error.
    */
-  async enqueue(message: UIMessage, opts: RequestOptions): Promise<void> {
-    await this.post(message, opts, undefined, true);
+  /**
+   * POST a message sent while a run is in progress. `live` when the server
+   * delivered it into that run (a sandbox run with live messages on);
+   * `queued` when it waits behind the run as the next turn.
+   */
+  async enqueue(
+    message: UIMessage,
+    opts: RequestOptions,
+  ): Promise<MessageDelivery> {
+    return this.post(message, opts, undefined, true);
   }
 
   /** Append one message to the local body store (dispatch-time tray→body flip). */
@@ -734,7 +755,7 @@ export class ThreadConnection {
     opts: RequestOptions,
     signal?: AbortSignal,
     quiet = false,
-  ): Promise<void> {
+  ): Promise<MessageDelivery> {
     const { system, ...rest } = opts;
     // Attach the system prompt only on a user turn. Tool-output / approval
     // continuations re-POST the assistant message; the server already has
@@ -777,12 +798,19 @@ export class ThreadConnection {
     }
     if (!resp.ok) {
       const text = await resp.text().catch(() => "");
-      throw new Error(text || `POST /messages failed (${resp.status})`);
+      throw new Error(chatPostErrorMessage(text, resp.status));
     }
     // A queued (quiet) POST must not touch the running turn's status display.
     if (!quiet && this.runStatusStage.get() !== null) {
       this.setRunStatusStage("received");
     }
+    const answer = (await resp.json().catch(() => null)) as {
+      delivery?: unknown;
+      liveRunId?: unknown;
+    } | null;
+    return answer?.delivery === "live" && typeof answer.liveRunId === "string"
+      ? { kind: "live", liveRunId: answer.liveRunId }
+      : { kind: "queued" };
   }
 
   // ── Internal: SSE loop ──────────────────────────────────────────────────

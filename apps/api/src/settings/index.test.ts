@@ -44,11 +44,20 @@ describe("agentSandboxEnabled", () => {
     expect(agentSandboxEnabled()).toBe(false);
   });
 
-  it("is false in local mode even when the hosted sandbox is enabled", () => {
+  it("is true in local mode when the hosted sandbox is enabled", () => {
     setGlobalSettings({
       ...originalSettings,
       localMode: true,
       agentSandboxEnabled: true,
+    });
+    expect(agentSandboxEnabled()).toBe(true);
+  });
+
+  it("is false in local mode when the hosted sandbox is disabled", () => {
+    setGlobalSettings({
+      ...originalSettings,
+      localMode: true,
+      agentSandboxEnabled: false,
     });
     expect(agentSandboxEnabled()).toBe(false);
   });

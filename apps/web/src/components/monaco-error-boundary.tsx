@@ -32,7 +32,7 @@ export class MonacoErrorBoundary extends Component<
   override render() {
     if (this.state.hasError) {
       return (
-        <div className="flex items-center justify-center h-full w-full bg-white dark:bg-[#1e1e1e] text-gray-400">
+        <div className="flex items-center justify-center h-full w-full bg-white dark:bg-[#1e1e1e] text-muted-foreground">
           <Spinner size="sm" />
         </div>
       );

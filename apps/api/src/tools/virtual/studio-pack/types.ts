@@ -1,19 +1,5 @@
 import type { StudioContext } from "@/core/studio-context";
 
-export type RuntimeResolveContext = {
-  orgId: string;
-  ctx: StudioContext;
-};
-
-export type ResolvedRuntime = {
-  instructions: string;
-  selectedTools: readonly string[] | null;
-};
-
-export type ResolveRuntime = (
-  rt: RuntimeResolveContext,
-) => Promise<ResolvedRuntime>;
-
 export type ChecklistContext = {
   orgId: string;
   ctx: StudioContext;
@@ -52,7 +38,4 @@ export type ResolvedChecklistItem = {
   alwaysSuggest?: boolean;
 };
 
-export type StudioPackConnectionKey =
-  | "self"
-  | "registry"
-  | "community-registry";
+export type StudioPackConnectionKey = "self";

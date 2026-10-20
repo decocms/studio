@@ -1,4 +1,5 @@
 import { StudioPackAgentId } from "@decocms/shared/sdk";
+import { STUDIO_PACK_AGENT_TITLES } from "./agent-names";
 import type { StudioPackConnectionKey } from "./types";
 
 const INSTRUCTIONS = `<role>
@@ -42,7 +43,7 @@ You are the Connection Manager. You create, configure, test, and manage MCP conn
 
 export const connectionManagerAgent = {
   id: "studio-connection-manager",
-  title: "Connection Manager",
+  title: STUDIO_PACK_AGENT_TITLES.connectionManager,
   icon: "icon://Link01?color=cyan",
   description: "Create, configure, test, and manage connections",
   selectedTools: [

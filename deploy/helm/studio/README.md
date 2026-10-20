@@ -214,6 +214,7 @@ Main sections:
 | `image.tag` | Image tag | `latest` |
 | `nginx.image.repository` | Front-door nginx image repository | `ghcr.io/decocms/studio/studio-nginx` |
 | `nginx.image.tag` | Front-door nginx image tag | `latest` |
+| `nginx.apiMaxConns` | Concurrent requests nginx sends to each API process (upstream `max_conns`) | image default `128` |
 | `service.type` | Service type | `ClusterIP` |
 | `persistence.enabled` | Enable PVC | `true` |
 | `persistence.distributed` | PVC supports ReadWriteMany | `false` |
@@ -616,6 +617,11 @@ image:
   pullPolicy: Always  # Always, IfNotPresent, Never
   tag: "latest"       # Overrides Chart.AppVersion if defined
 ```
+
+The application runs the packaged `server.js` entry point directly. PostgreSQL,
+NATS, and object storage must already be configured; the CLI does not start
+backends. Use the separate migration Job for schema setup; its configured
+Helm/Argo hooks determine deployment ordering.
 
 ### Replicas and Strategy
 

@@ -1,0 +1,460 @@
+import {
+  SELF_MCP_ALIAS_ID,
+  useMCPClient,
+  useProjectContext,
+  useVirtualMCP,
+} from "@/sdk";
+import { useQuery } from "@tanstack/react-query";
+import { useContentSyncBusy } from "@/components/sections-editor/content-sync";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { useState, useRef } from "react";
+import { toast } from "sonner";
+import { authClient } from "@/lib/auth-client.ts";
+import { coAuthorFromSessionUser } from "@/lib/co-author-identity.ts";
+import {
+  repoToolTarget,
+  resolveRepositoryAttachment,
+} from "@/lib/repository-binding.ts";
+import {
+  branchUserLabel,
+  generateBranchName,
+} from "@decocms/shared/branch-name";
+import { useChatStream } from "../../chat/chat-context.tsx";
+import { useChatTask } from "../../chat/index";
+import { usePanelActions } from "@/layouts/shell-layout";
+import {
+  ChangeRequestMergeRefused,
+  mergeRefusalText,
+  squashMergeChangeRequest,
+} from "./change-request-api.ts";
+import { useReleases } from "./use-releases";
+import { PublishDialog, type CmsPublishMode } from "./publish-dialog.tsx";
+import {
+  isPrStateActivelyLoading,
+  selectHeaderButton,
+  type HeaderAction,
+  type HeaderButton,
+} from "./panel-state.ts";
+import * as tpl from "./message-templates.ts";
+import { saveChangesDebug } from "./save-changes-debug.ts";
+import { HeaderButtonRenderer, WithTooltip } from "./header-action-button.tsx";
+import { useSandboxEvents } from "@/components/sandbox/hooks/use-sandbox-events.ts";
+import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context.tsx";
+import { useSandboxStart } from "@/components/sandbox/hooks/use-sandbox-start";
+import { useSessionRuntime } from "@/hooks/use-session-runtime";
+import { useChecks, useLastPublishedPr, usePrByBranch } from "./use-pr-data.ts";
+import { usePrReviews } from "./use-pr-reviews.ts";
+import {
+  fetchGitStatus,
+  hasNothingToReview,
+  normalizePublishPolicy,
+  sandboxGitStatusQueryKey,
+  type PublishPolicy,
+} from "./sandbox-git-api.ts";
+import type {
+  BranchMeta,
+  LifecycleState,
+} from "@/components/sandbox/hooks/sandbox-events-context";
+import { useT, type TFunction } from "@/i18n/use-t";
+
+interface Props {
+  virtualMcpId: string;
+}
+
+/** Sentinel for the branch-not-yet-selected state, translated at render time. */
+function makeBranchLoadingButton(t: TFunction): HeaderButton {
+  return {
+    label: t("thread.headerActions.loadingBranch"),
+    disabled: true,
+    loading: true,
+    variant: "outline",
+    tooltip: t("thread.headerActions.waitingForSandboxBranchTooltip"),
+    menu: [],
+  };
+}
+
+/**
+ * One split button for the current branch + PR state — the same shape AND
+ * language as Fast Preview's `CmsHeaderActions`: "Review & Publish" is the
+ * primary happy path (publish dialog → PR → squash-merge), with
+ * "Submit for review", "Get latest" and "View on provider" in the dropdown.
+ * The sandbox surface adds its agent states ("Fix checks", "Mark ready",
+ * "Address feedback"), which dispatch chat prompts. Fast Preview swaps in
+ * `CmsHeaderActions` at the mount point (`SiteEditorActions`), but this
+ * component keeps its Fast Preview fallbacks for branch metadata since the
+ * `/git/*` routes answer through the provider API server-side either way.
+ */
+export function HeaderActions({ virtualMcpId }: Props) {
+  const t = useT();
+  const { org } = useProjectContext();
+  const { data: session } = authClient.useSession();
+  const vm = useVirtualMCP(virtualMcpId);
+  const { deleteRelease } = useReleases(virtualMcpId);
+  const {
+    currentBranch: branch,
+    setCurrentTaskBranch,
+    createTask,
+    taskId,
+  } = useChatTask();
+  const chat = useChatStream();
+  const { openSidePanel } = usePanelActions();
+  /** `mode` and the policy override outlive `open`, so the closing animation
+   *  doesn't flash the other mode's labels on its way out. */
+  const [surface, setSurface] = useState<{
+    open: boolean;
+    mode: CmsPublishMode;
+    policyOverride: PublishPolicy | null;
+  }>({ open: false, mode: "publish", policyOverride: null });
+  const selfClient = useMCPClient({
+    connectionId: SELF_MCP_ALIAS_ID,
+    orgId: org.id,
+    orgSlug: org.slug,
+  });
+  const startSandbox = useSandboxStart(selfClient);
+  const [changeRequestPending, setChangeRequestPending] = useState(false);
+  const debugKeyRef = useRef("");
+
+  const attachment = resolveRepositoryAttachment(vm);
+  const repository =
+    attachment.status === "attached" || attachment.status === "public-clone"
+      ? attachment.repo
+      : null;
+
+  const {
+    lifecycle: sseLifecycle,
+    branch: sseBranchMeta,
+    phase: claimPhase,
+  } = useSandboxEvents();
+
+  /**
+   * The "is there anything to review" check below. This surface only ever
+   * renders for a sandbox-backed session (`header-info` routes a CMS one to
+   * `CmsHeaderActions`), so the status answers from a local `git status`:
+   * while it reports nothing to review it re-asks every few seconds, because
+   * that verdict disables the publish button and the agent's first edit must
+   * re-arm it without a reload.
+   */
+  const statusRef = {
+    orgSlug: org.slug,
+    virtualMcpId,
+    branch: branch ?? "",
+    // `taskId`, not `activeTask?.id`: the latter is deliberately null during
+    // prop/URL skew, and every writer that invalidates this key uses `taskId`.
+    threadId: taskId ?? null,
+  };
+  const statusQuery = useQuery({
+    queryKey: sandboxGitStatusQueryKey(statusRef),
+    queryFn: () => fetchGitStatus(statusRef),
+    enabled: !!branch,
+    staleTime: 15_000,
+    refetchInterval: (query) =>
+      hasNothingToReview(query.state.data) ? 5_000 : false,
+  });
+  const gitStatus = statusQuery.data ?? null;
+  const branchMeta: BranchMeta = sseBranchMeta;
+  const lifecycle: LifecycleState = sseLifecycle;
+
+  const sandboxBranch = branchMeta.kind === "ready" ? branchMeta.branch : null;
+  // The SSE-derived fallback stays: a `load_repo` thread whose `branch` column
+  // is null but whose live daemon reports one would otherwise be stranded.
+  const sandboxRouteBranch = branch ?? sandboxBranch ?? undefined;
+
+  const headBranch =
+    (branchMeta.kind === "ready" ? branchMeta.branch : null) ??
+    sandboxRouteBranch ??
+    null;
+
+  const prQuery = usePrByBranch({
+    orgId: org.id,
+    orgSlug: org.slug,
+    target: repoToolTarget(repository),
+    owner: repository?.owner ?? "",
+    repo: repository?.name ?? "",
+    branch: headBranch,
+  });
+  const pr = prQuery.data ?? null;
+
+  const checksQuery = useChecks({
+    orgId: org.id,
+    orgSlug: org.slug,
+    target: repoToolTarget(repository),
+    owner: repository?.owner ?? "",
+    repo: repository?.name ?? "",
+    branch: headBranch,
+  });
+
+  const reviewsQuery = usePrReviews({
+    orgId: org.id,
+    orgSlug: org.slug,
+    target: repoToolTarget(repository),
+    owner: repository?.owner ?? "",
+    repo: repository?.name ?? "",
+    branch: headBranch,
+  });
+
+  /** Warmed here so the dialog's "last published" line is ready before the
+   *  click; it is optional copy and must never gate that surface. */
+  const lastPublishedQuery = useLastPublishedPr({
+    orgId: org.id,
+    orgSlug: org.slug,
+    target: repoToolTarget(repository),
+    owner: repository?.owner ?? "",
+    repo: repository?.name ?? "",
+    base: branchMeta.kind === "ready" ? branchMeta.base : null,
+  });
+
+  /** Git state comes solely from the daemon's `branch` SSE event, which applies the boot-dirty baseline filter a raw /git/status poll would miss. */
+  const effectiveBranchMeta = branchMeta;
+
+  const publishPolicy = normalizePublishPolicy(vm?.metadata?.publishPolicy);
+
+  /** An in-flight autosave means the branch state is mid-change — hold the publish surfaces until the write lands. */
+  const decofileSaving = useContentSyncBusy(org.slug, virtualMcpId);
+
+  /**
+   * Preview URL must come from the sandbox lifecycle — the raw
+   * `vm.metadata.sandboxMap` does not always carry it. Called before the early
+   * returns below: `attachment.status` can flip from "detached" to attached
+   * (a live GitHub reconnect) while this component stays mounted, and a hook
+   * called only on some renders breaks React's hook-order invariant.
+   */
+  const { previewUrl } = useSandboxLifecycle();
+  const { previewServerUrl, projectDefault } = useSessionRuntime(virtualMcpId);
+
+  /** Detached repo: render a reconnect pill, never a blank header. */
+  if (attachment.status === "detached") {
+    return (
+      <WithTooltip label={t("thread.headerActions.githubConnectionRemoved")}>
+        <Button size="sm" variant="outline" disabled>
+          {t("thread.headerActions.reconnectGithub")}
+        </Button>
+      </WithTooltip>
+    );
+  }
+  if (!repository) return null;
+
+  const button = headBranch
+    ? selectHeaderButton({
+        lifecycle,
+        branch: effectiveBranchMeta,
+        claimPhase,
+        pr,
+        checks: checksQuery.data ?? [],
+        reviews: reviewsQuery.data ?? null,
+        noReviewableDiff: hasNothingToReview(gitStatus),
+        loading: isPrStateActivelyLoading(prQuery),
+        t,
+      })
+    : makeBranchLoadingButton(t);
+
+  const debugKey = JSON.stringify({
+    label: button.label,
+    branchKind: effectiveBranchMeta.kind,
+    workingTreeDirty:
+      effectiveBranchMeta.kind === "ready"
+        ? effectiveBranchMeta.workingTreeDirty
+        : null,
+    unpushed:
+      effectiveBranchMeta.kind === "ready"
+        ? effectiveBranchMeta.unpushed
+        : null,
+    aheadOfBase:
+      effectiveBranchMeta.kind === "ready"
+        ? effectiveBranchMeta.aheadOfBase
+        : null,
+    lifecycle: lifecycle.phase,
+    headBranch,
+    noReviewableDiff: hasNothingToReview(gitStatus),
+  });
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- debug dedupe ref
+  if (debugKeyRef.current !== debugKey) {
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- debug dedupe ref
+    debugKeyRef.current = debugKey;
+    saveChangesDebug("header button", {
+      label: button.label,
+      tooltip: button.tooltip,
+      action: button.action,
+      chatBranch: branch,
+      sandboxBranch,
+      sandboxRouteBranch,
+      headBranch,
+      branchMeta,
+      effectiveBranchMeta,
+      lifecyclePhase: lifecycle.phase,
+      prNumber: pr?.number ?? null,
+      prState: pr?.state ?? null,
+    });
+  }
+
+  const send = (text: string) => {
+    // Surface the chat panel so the user sees the message we just sent.
+    openSidePanel();
+    return chat.sendMessage({ parts: [{ type: "text", text }] });
+  };
+
+  const isStreaming = chat.isStreaming;
+
+  const baseBranch =
+    effectiveBranchMeta.kind === "ready" ? effectiveBranchMeta.base : "main";
+
+  /** One refetch covers checks and reviews too — they share this cache entry. */
+  const refreshPrState = async () => {
+    await prQuery.refetch();
+  };
+
+  const switchToFreshBranch = async () => {
+    // Always land on a fresh editable draft, never on read-only production.
+    const published = branch;
+    const nextBranch = generateBranchName(branchUserLabel(session?.user));
+    // A new branch in this session would boot another sandbox (pods are keyed by branch).
+    if (projectDefault === "cms") {
+      createTask({ runtime: "cms", branch: nextBranch });
+    } else {
+      await setCurrentTaskBranch(nextBranch);
+    }
+    if (published && published !== baseBranch) {
+      await deleteRelease(published);
+    }
+  };
+
+  const handleSquashMerge = async (pullNumber: number) => {
+    if (!repository || changeRequestPending) return;
+    setChangeRequestPending(true);
+    try {
+      const coAuthor = coAuthorFromSessionUser(session?.user);
+      await squashMergeChangeRequest(org.slug, repoToolTarget(repository), {
+        number: pullNumber,
+        coAuthor,
+      });
+      toast.success(
+        t("thread.headerActions.publishedPr", { prNumber: String(pullNumber) }),
+      );
+      await refreshPrState();
+      await switchToFreshBranch();
+    } catch (err) {
+      toast.error(
+        err instanceof ChangeRequestMergeRefused
+          ? (err.detail ?? mergeRefusalText(err.reason, t))
+          : err instanceof Error
+            ? err.message
+            : t("thread.headerActions.failedToMergePullRequest"),
+      );
+    } finally {
+      setChangeRequestPending(false);
+    }
+  };
+
+  const openSurface = (
+    mode: CmsPublishMode,
+    policyOverride: PublishPolicy | null,
+  ) => setSurface({ open: true, mode, policyOverride });
+
+  const dispatch = (action: HeaderAction) => {
+    if (!headBranch) return;
+    switch (action) {
+      case "publish":
+        openSurface("publish", button.meta?.publishPolicyOverride ?? null);
+        return;
+      case "create-pr":
+        openSurface("review", null);
+        return;
+      case "merge":
+        if (pr) void handleSquashMerge(pr.number);
+        return;
+      case "sync":
+        if (isStreaming) return;
+        void send(tpl.syncBranch({ branch: headBranch, base: baseBranch }));
+        return;
+      case "open-pr-page":
+        if (pr?.htmlUrl) {
+          window.open(pr.htmlUrl, "_blank", "noopener,noreferrer");
+        }
+        return;
+      case "review":
+        if (isStreaming) return;
+        if (pr) void send(tpl.reviewPr({ prNumber: pr.number }));
+        return;
+      case "reopen":
+        if (isStreaming) return;
+        if (pr) void send(tpl.reopenPr({ prNumber: pr.number }));
+        return;
+      case "rebase":
+        if (isStreaming) return;
+        void send(tpl.rebaseOnBase({ branch: headBranch }));
+        return;
+      case "fix-checks":
+        if (isStreaming) return;
+        if (pr)
+          void send(
+            tpl.fixChecks({
+              prNumber: pr.number,
+              failingChecks: button.meta?.failingChecks ?? [],
+            }),
+          );
+        return;
+      case "mark-ready":
+        if (isStreaming) return;
+        if (pr) void send(tpl.markReadyForReview({ prNumber: pr.number }));
+        return;
+      case "resolve-comments":
+        if (isStreaming) return;
+        if (pr) void send(tpl.resolveReviewComments({ prNumber: pr.number }));
+        return;
+    }
+  };
+
+  const actionBusy = changeRequestPending || isStreaming;
+
+  const headerButton = (
+    <HeaderButtonRenderer
+      t={t}
+      button={button}
+      actionBusy={actionBusy}
+      changeRequestPending={changeRequestPending}
+      savePending={decofileSaving}
+      onAction={dispatch}
+    />
+  );
+
+  if (!sandboxRouteBranch) return headerButton;
+
+  return (
+    <>
+      {headerButton}
+      <PublishDialog
+        open={surface.open}
+        mode={surface.mode}
+        fastPreview={false}
+        recoverSandbox={() =>
+          startSandbox.mutateAsync({
+            virtualMcpId,
+            branch: sandboxRouteBranch,
+            ...(taskId ? { threadId: taskId } : {}),
+          })
+        }
+        onOpenChange={(open) => {
+          if (!open) setSurface((current) => ({ ...current, open: false }));
+        }}
+        orgSlug={org.slug}
+        virtualMcpId={virtualMcpId}
+        branch={sandboxRouteBranch}
+        baseBranch={baseBranch}
+        repoTarget={repoToolTarget(repository)}
+        owner={repository.owner}
+        repo={repository.name}
+        publishPolicy={surface.policyOverride ?? publishPolicy}
+        draftPreviewUrl={previewUrl}
+        destinationHost={null}
+        previewServerUrl={previewServerUrl}
+        compareDraft={previewUrl ? { kind: "sandbox", previewUrl } : null}
+        lastPublishedPr={lastPublishedQuery.data ?? null}
+        onRequestApproval={() =>
+          setSurface((current) => ({ ...current, open: true, mode: "review" }))
+        }
+        openPullRequest={pr?.state === "open" ? pr : null}
+        onPullRequestChanged={refreshPrState}
+        onPublished={switchToFreshBranch}
+      />
+    </>
+  );
+}

@@ -6,7 +6,7 @@ import { ArrowRight, Stars02 } from "@untitledui/icons";
 import {
   getPrompt,
   isStudioPackAgent,
-  useMCPClient,
+  useMCPClientNonBlocking,
   useProjectContext,
 } from "@/sdk";
 import type { Prompt } from "@modelcontextprotocol/sdk/types.js";
@@ -28,11 +28,14 @@ export function NextActionChip() {
   const { org } = useProjectContext();
   const virtualMcpId = task?.virtualMcpId;
   const { prompts } = useHomeNextActions(org.slug);
-  const client = useMCPClient({
-    connectionId: virtualMcpId ?? null,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const client = useMCPClientNonBlocking(
+    {
+      connectionId: virtualMcpId ?? null,
+      orgId: org.id,
+      orgSlug: org.slug,
+    },
+    { enabled: !!virtualMcpId && isStudioPackAgent(virtualMcpId) },
+  );
   const [dialogPrompt, setDialogPrompt] = useState<Prompt | null>(null);
 
   if (!virtualMcpId || isStreaming) return null;
@@ -117,9 +120,9 @@ export function NextActionChip() {
       <button
         type="button"
         onClick={handleClick}
-        className="group mt-3 flex items-center gap-2 self-start rounded-full border border-border bg-background px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-border hover:bg-accent/40 hover:text-foreground"
+        className="group mt-3 flex items-center gap-2 self-start rounded-lg border border-border bg-background px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-border hover:bg-accent/40 hover:text-foreground"
       >
-        <Stars02 size={12} className="shrink-0 text-purple-500" />
+        <Stars02 size={12} className="shrink-0 text-special" />
         <span className="font-medium text-foreground/80">
           {t("chat.nextActionChip.next")}
         </span>

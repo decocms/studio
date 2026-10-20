@@ -15,6 +15,8 @@
  * unit-tested in apps/api/src/file-storage/skill-set-sync.test.ts.
  */
 
+import { connectDevDb } from "../fixtures/db";
+
 import type { APIRequestContext } from "@playwright/test";
 import { signUpViaApi } from "../fixtures/auth-api";
 import { callSelfMcpTool, createHttpConnection } from "../fixtures/mcp-tools";
@@ -22,7 +24,8 @@ import { expect, newApiContext, test } from "../fixtures/test";
 
 interface SyncConfig {
   id: string;
-  connectionId: string;
+  connectionId: string | null;
+  repositoryId: string | null;
   repoOwner: string;
   repoName: string;
   ref: string;
@@ -155,6 +158,12 @@ test.describe("org repo sync configs", () => {
         "ORG_REPO_SYNC_CREATE",
         { connectionId: repoConn, volume },
       );
+      expect(config.connectionId).toBeNull();
+      expect(config.repositoryId).not.toBeNull();
+      const { accounts } = await callSelfMcpTool<{
+        accounts: Array<{ type: string }>;
+      }>(ctx, org, "GIT_ACCOUNT_LIST", {});
+      expect(accounts.some((account) => account.type === "github")).toBe(true);
       expect(config.repoOwner).toBe("acme");
       expect(config.repoName).toBe("widget");
       expect(config.ref).toBe("main");
@@ -237,6 +246,102 @@ test.describe("org repo sync configs", () => {
         {},
       );
       expect(finalList.configs.map((c) => c.id)).not.toContain(config.id);
+    } finally {
+      await ctx.dispose();
+    }
+  });
+
+  /**
+   * A sync can be backed by a first-class repository instead of a
+   * `mcp-github` connection. Exactly one source is allowed, and the config
+   * carries the repository's namespace split into owner/name for display.
+   */
+  test("creates a sync from a linked repository", async ({ playwright }) => {
+    const ctx = await newApiContext(playwright);
+    try {
+      const { orgSlug: org } = await signUpViaApi(ctx);
+      const path = `acme/nested/sync-${Date.now()}`;
+      const { repository } = await callSelfMcpTool<{
+        repository: { id: string };
+      }>(ctx, org, "REPOSITORY_LINK", {
+        url: `https://gitlab.com/${path}`,
+      });
+
+      await expect(
+        callSelfMcpTool(ctx, org, "ORG_REPO_SYNC_CREATE", {
+          volume: `vol-${Date.now()}`,
+        }),
+      ).rejects.toThrow(/exactly one/i);
+      await expect(
+        callSelfMcpTool(ctx, org, "ORG_REPO_SYNC_CREATE", {
+          repositoryId: repository.id,
+          connectionId: repository.id,
+          volume: `vol-${Date.now()}`,
+        }),
+      ).rejects.toThrow(/exactly one/i);
+
+      const db = await connectDevDb();
+      try {
+        await db.query(
+          "update repositories set default_branch = $1 where id = $2",
+          ["develop", repository.id],
+        );
+      } finally {
+        await db.end();
+      }
+      const volume = `repo-sync-${Date.now()}`;
+      const { config } = await callSelfMcpTool<{ config: SyncConfig }>(
+        ctx,
+        org,
+        "ORG_REPO_SYNC_CREATE",
+        { repositoryId: repository.id, volume },
+      );
+      expect(config.repositoryId).toBe(repository.id);
+      expect(config.ref).toBe("develop");
+      await expect(
+        callSelfMcpTool(ctx, org, "REPOSITORY_DELETE", { id: repository.id }),
+      ).rejects.toThrow(/sync configurations/);
+      expect(config.connectionId).toBeNull();
+      expect(`${config.repoOwner}/${config.repoName}`).toBe(path);
+
+      const renamedPath = `acme/renamed/${path.split("/").at(-1)}`;
+      const renameDb = await connectDevDb();
+      try {
+        await renameDb.query(
+          "update repositories set path = $1 where id = $2",
+          [renamedPath, repository.id],
+        );
+      } finally {
+        await renameDb.end();
+      }
+      const list = await callSelfMcpTool<{ configs: SyncConfig[] }>(
+        ctx,
+        org,
+        "ORG_REPO_SYNC_LIST",
+        {},
+      );
+      expect(list.configs.find((c) => c.id === config.id)?.repositoryId).toBe(
+        repository.id,
+      );
+
+      const listedConfig = list.configs.find((c) => c.id === config.id);
+      expect(`${listedConfig?.repoOwner}/${listedConfig?.repoName}`).toBe(
+        renamedPath,
+      );
+
+      // Another org cannot name this repository as its sync source.
+      const otherCtx = await newApiContext(playwright);
+      try {
+        const other = await signUpViaApi(otherCtx);
+        await expect(
+          callSelfMcpTool(otherCtx, other.orgSlug, "ORG_REPO_SYNC_CREATE", {
+            repositoryId: repository.id,
+            volume: `stolen-${Date.now()}`,
+          }),
+        ).rejects.toThrow();
+      } finally {
+        await otherCtx.dispose();
+      }
     } finally {
       await ctx.dispose();
     }

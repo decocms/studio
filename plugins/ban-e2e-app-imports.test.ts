@@ -6,7 +6,8 @@ import {
   setDefaultTimeout,
   test,
 } from "bun:test";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { readOxlintConfig } from "./read-oxlintrc.ts";
 
 // Each test here spawns a real `oxlint` subprocess. Under CI's parallel test
 // load (this file, ban-cross-tree-imports, and ban-web-server-imports all
@@ -153,10 +154,7 @@ describe("ban-e2e-app-imports", () => {
 });
 
 test("plugin is registered in .oxlintrc.json at error level", () => {
-  const cfg = JSON.parse(readFileSync(`${ROOT}/.oxlintrc.json`, "utf8")) as {
-    jsPlugins: string[];
-    rules: Record<string, string>;
-  };
+  const cfg = readOxlintConfig(ROOT);
   expect(cfg.jsPlugins).toContain("./plugins/ban-e2e-app-imports.js");
   expect(cfg.rules["ban-e2e-app-imports/ban-e2e-app-imports"]).toBe("error");
 });

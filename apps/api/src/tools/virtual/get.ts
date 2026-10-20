@@ -4,16 +4,23 @@
  * Get a single virtual MCP by ID with collection binding compliance.
  */
 
+import { isProjectAllowed } from "@decocms/shared/auth/project-scope";
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
+import { resolveCallerProjectScope } from "../../core/project-scope";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
 import { VirtualMCPEntitySchema } from "./schema";
+import { findVirtualMcpByIdOrSlug } from "./find-by-id-or-slug";
 
 /**
  * Input schema for getting a virtual MCP
  */
 const GetInputSchema = z.object({
-  id: z.string().describe("ID of the virtual MCP to retrieve"),
+  id: z
+    .string()
+    .describe(
+      "ID or URL slug of the virtual MCP to retrieve. A slug the project used to have also resolves.",
+    ),
 });
 
 export type GetVirtualMCPInput = z.infer<typeof GetInputSchema>;
@@ -30,7 +37,7 @@ const GetOutputSchema = z.object({
 export const COLLECTION_VIRTUAL_MCP_GET = defineTool({
   name: "COLLECTION_VIRTUAL_MCP_GET",
   description:
-    "Get a Virtual MCP's configuration, connections, and virtual tools by ID.",
+    "Get a Virtual MCP's configuration, connections, and virtual tools by ID or URL slug.",
   annotations: {
     title: "Get Virtual MCP",
     readOnlyHint: true,
@@ -47,8 +54,11 @@ export const COLLECTION_VIRTUAL_MCP_GET = defineTool({
 
     await ctx.access.check();
 
-    // Get the virtual MCP
-    const virtualMcp = await ctx.storage.virtualMcps.findById(input.id);
+    const virtualMcp = await findVirtualMcpByIdOrSlug(
+      ctx,
+      organization.id,
+      input.id,
+    );
 
     // Check organization ownership
     if (virtualMcp && virtualMcp.organization_id !== organization.id) {
@@ -57,6 +67,12 @@ export const COLLECTION_VIRTUAL_MCP_GET = defineTool({
     }
 
     if (!virtualMcp) {
+      return { item: null };
+    }
+
+    // Hide projects outside a scoped role's allowlist (don't leak existence).
+    const projectScope = await resolveCallerProjectScope(ctx);
+    if (!isProjectAllowed(projectScope, virtualMcp.id)) {
       return { item: null };
     }
 

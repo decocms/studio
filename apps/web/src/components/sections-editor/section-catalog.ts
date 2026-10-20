@@ -30,6 +30,9 @@ const LIVE_PAGE_RESOLVE_TYPES = [
 
 const PAGE_BLOCK_RESOLVE_TYPES = new Set<string>(LIVE_PAGE_RESOLVE_TYPES);
 
+/** Page block of current deco runtimes — what {@link findLivePageResolveType} falls back to without a manifest. */
+export const DEFAULT_LIVE_PAGE_RESOLVE_TYPE = LIVE_PAGE_RESOLVE_TYPES[0];
+
 /** Theme sections belong in site settings, not the page section picker. */
 const EXCLUDED_SECTION_RESOLVE_TYPES = new Set([
   "site/sections/Theme/Theme.tsx",
@@ -51,7 +54,9 @@ export function findLivePageResolveType(meta: LiveMeta): string {
       }
     }
   }
-  return LIVE_PAGE_RESOLVE_TYPES[0];
+  // Next-major sites: the built-in `page` (or the site's override of it).
+  if (Object.hasOwn(blocks.pages ?? {}, "page")) return "page";
+  return DEFAULT_LIVE_PAGE_RESOLVE_TYPE;
 }
 
 /** Collects block-ref variants from a resolved schema subtree (e.g. page `seo` or `sections`). */
@@ -226,7 +231,7 @@ function catalogEntryFromSchemaRef(
   meta: LiveMeta,
   ref: { resolveType: string; title: string; description?: string },
 ): SectionCatalogEntry {
-  const isSaved = isSavedBlockResolveType(ref.resolveType);
+  const isSaved = isSavedBlockResolveType(ref.resolveType, meta);
   const metadata = isSaved
     ? {}
     : resolveBlockSchemaMetadata(ref.resolveType, meta);
@@ -257,7 +262,7 @@ export function extractSectionCatalog(
 
   const addEntry = (entry: SectionCatalogEntry) => {
     if (shouldSkipSectionResolveType(entry.resolveType)) return;
-    if (isSavedBlockResolveType(entry.resolveType)) {
+    if (isSavedBlockResolveType(entry.resolveType, meta)) {
       if (!isAutoPreviewBlockKey(entry.resolveType)) {
         byResolveType.set(entry.resolveType, entry);
       }

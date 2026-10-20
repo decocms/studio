@@ -1,11 +1,23 @@
-import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { createGoogle } from "@ai-sdk/google";
 import type { ModelCapability } from "@decocms/shared/sdk";
 import {
   isInteractionsOnlyModel,
   pollInteraction,
   submitInteraction,
 } from "./gemini-interactions";
+import {
+  fetchWithTransientRetry,
+  parseJsonResponse,
+  throwResponseError,
+} from "./fetch-transient-retry";
 import type { StudioProvider, ProviderAdapter, ModelInfo } from "../types";
+
+function fetchModelsPageWithRetry(url: URL, apiKey: string): Promise<Response> {
+  return fetchWithTransientRetry("Google listModels", url, {
+    headers: { "x-goog-api-key": apiKey },
+    signal: AbortSignal.timeout(15_000),
+  });
+}
 
 interface GoogleModel {
   baseModelId: string;
@@ -61,7 +73,7 @@ export const googleAdapter: ProviderAdapter = {
   supportedMethods: ["api-key"],
 
   create(apiKey): StudioProvider {
-    const aiSdk = createGoogleGenerativeAI({ apiKey });
+    const aiSdk = createGoogle({ apiKey });
 
     return {
       info: this.info,
@@ -89,38 +101,55 @@ export const googleAdapter: ProviderAdapter = {
       },
 
       async listModels(): Promise<ModelInfo[]> {
-        // Pass the key via header, not the `?key=` query param: outbound fetch
-        // calls are OTel-traced with the full URL (including query string,
-        // see observability/instrumentations/fetch.ts), so a query-param key
-        // would leak into every trace span. gemini-interactions.ts already
-        // uses this same header for the sibling Gemini API.
-        const res = await fetch(
-          "https://generativelanguage.googleapis.com/v1beta/models",
-          { headers: { "x-goog-api-key": apiKey } },
-        );
-        if (!res.ok) {
-          throw new Error(`Google listModels failed: ${res.status}`);
-        }
-        const data: { models: GoogleModel[] } = await res.json();
-        return data.models
+        // Google paginates at 50 models/page by default; follow nextPageToken so a large catalog isn't silently truncated.
+        const models: GoogleModel[] = [];
+        let pageToken: string | undefined;
+        do {
+          const url = new URL(
+            "https://generativelanguage.googleapis.com/v1beta/models",
+          );
+          url.searchParams.set("pageSize", "1000");
+          if (pageToken) url.searchParams.set("pageToken", pageToken);
+          // Key goes via header, not `?key=`: outbound fetches are OTel-traced with the full URL, see observability/instrumentations/fetch.ts.
+          const res = await fetchModelsPageWithRetry(url, apiKey);
+          if (!res.ok) {
+            await throwResponseError("Google listModels", res);
+          }
+          const data = await parseJsonResponse<{
+            models?: GoogleModel[];
+            nextPageToken?: string;
+          }>("Google listModels", res);
+          // Google omits `models` on an empty page instead of `models: []`.
+          models.push(...(data.models ?? []));
+          pageToken = data.nextPageToken;
+        } while (pageToken);
+        return models
           .filter((m: GoogleModel) => m.lifecycleState !== "DEPRECATED")
           .map((m: GoogleModel) => {
             const id = m.name.replace("models/", "");
-            return {
-              modelId: id,
-              providerId: "google" as const,
-              title: m.displayName,
-              description: m.description,
-              logo: null,
-              capabilities: deriveCapabilities(m),
-              limits: {
-                contextWindow: m.inputTokenLimit,
-                maxOutputTokens: m.outputTokenLimit,
-              },
-              costs: null,
-              ...(isInteractionsOnlyModel(id) && { asyncResearch: true }),
-            };
-          });
+            return { m, id, capabilities: deriveCapabilities(m) };
+          })
+          .filter(
+            // Excludes embedding/AQA/tuning-only base models Google also lists.
+            ({ m, id, capabilities }) =>
+              capabilities.length > 0 ||
+              m.supportedGenerationMethods.includes("generateContent") ||
+              isInteractionsOnlyModel(id),
+          )
+          .map(({ m, id, capabilities }) => ({
+            modelId: id,
+            providerId: "google" as const,
+            title: m.displayName,
+            description: m.description,
+            logo: null,
+            capabilities,
+            limits: {
+              contextWindow: m.inputTokenLimit,
+              maxOutputTokens: m.outputTokenLimit,
+            },
+            costs: null,
+            ...(isInteractionsOnlyModel(id) && { asyncResearch: true }),
+          }));
       },
     };
   },

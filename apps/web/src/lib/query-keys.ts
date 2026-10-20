@@ -8,6 +8,8 @@
 import { ProjectLocator } from "@/sdk";
 
 export const KEYS = {
+  registryApp: (orgId: string, appId: string) =>
+    ["registry-app", orgId, appId] as const,
   // Public config (no auth required)
   publicConfig: () => ["publicConfig"] as const,
 
@@ -56,6 +58,52 @@ export const KEYS = {
   taskBoardActivity: (locator: ProjectLocator, itemId: string) =>
     [locator, "task-board-activity", itemId] as const,
 
+  // Cross-org task board admin: whether the caller is one, and the orgs to pick.
+  // Keyed by the org SLUG IN THE PATH, not the locator — the board's context org
+  // moves when an admin points it at another tenant; the answer must not.
+  taskBoardAdminOrgs: (pathOrgSlug: string) =>
+    [pathOrgSlug, "task-board-admin-orgs"] as const,
+
+  // One analytics tool's payload for a given org + range
+  taskBoardAnalytics: (
+    locator: ProjectLocator,
+    tool: string,
+    org: string,
+    project: string,
+    from: string,
+    to: string,
+  ) => [locator, "task-board-analytics", tool, org, project, from, to] as const,
+
+  // The cards behind one operation figure
+  taskBoardOperationTasks: (
+    locator: ProjectLocator,
+    org: string,
+    project: string,
+    from: string,
+    to: string,
+    drill: string,
+  ) =>
+    [
+      locator,
+      "task-board-analytics",
+      "TASK_BOARD_OPERATION_TASKS",
+      org,
+      project,
+      from,
+      to,
+      drill,
+    ] as const,
+
+  // Admin thread analytics; `tick` bumps on each pushed thread status change.
+  threadAnalyticsOrgs: (pathOrgSlug: string) =>
+    [pathOrgSlug, "thread-analytics-orgs"] as const,
+  threadAnalytics: (
+    pathOrgSlug: string,
+    tool: string,
+    params: object,
+    tick: number,
+  ) => [pathOrgSlug, "thread-analytics", tool, params, tick] as const,
+
   // The current user's unread notifications in this org
   notifications: (locator: ProjectLocator) =>
     [locator, "notifications"] as const,
@@ -68,95 +116,57 @@ export const KEYS = {
   taskBoardComments: (locator: ProjectLocator, itemId: string) =>
     [locator, "task-board-comments", itemId] as const,
 
-  homeGithubRecentPrs: (orgId: string, connectionId: string) =>
-    ["home-github-recent-prs", orgId, connectionId] as const,
-
-  homeGithubContributions: (orgId: string, connectionId: string) =>
-    ["home-github-contributions", orgId, connectionId] as const,
-
-  // Authenticated report deck for a scanned domain (/report/:domain). `lang`
-  // (the viewer's locale) is part of the key so switching language refetches.
-  report: (domain: string, key?: string, lang?: string) =>
-    ["report", domain, key ?? "", lang ?? ""] as const,
-  // Prefix of `report` above (no key/lang) — invalidates every variant for a
-  // domain at once, e.g. after an in-place login unlocks the full deck.
+  // Public report for a domain; `lang` in the key so a language switch refetches.
+  report: (domain: string, lang?: string) =>
+    ["report", domain, lang ?? ""] as const,
+  // Prefix of `report` above: invalidates every language variant of a domain.
   reportAll: (domain: string) => ["report", domain] as const,
 
-  commerceDiscoveryConnection: (orgId: string, connectionId: string) =>
-    ["commerce-discovery", "connection", orgId, connectionId] as const,
+  reportsConnection: (orgId: string, connectionId: string) =>
+    ["reports", "connection", orgId, connectionId] as const,
   // Owner diagnostic (get_my_diagnostic) polled by the home report banner —
   // keyed per org + connection so a credential rotation forces a fresh fetch.
-  commerceDiscoveryDiagnostic: (orgId: string, connectionId: string) =>
-    ["commerce-discovery", "diagnostic", orgId, connectionId] as const,
-  commerceDiscoveryVirtualMcp: (orgId: string, virtualMcpId: string) =>
-    ["commerce-discovery", "virtual-mcp", orgId, virtualMcpId] as const,
+  reportsDiagnostic: (orgId: string, connectionId: string) =>
+    ["reports", "diagnostic", orgId, connectionId] as const,
+  reportsVirtualMcp: (orgId: string, virtualMcpId: string) =>
+    ["reports", "virtual-mcp", orgId, virtualMcpId] as const,
 
-  // Commerce companion discovery (Commerce Discovery's live config schema,
+  // Commerce companion discovery (Reports's live config schema,
   // candidate connections satisfying a binding, and the registry batch).
-  commerceDiscoveryCompanionSchema: (orgId: string, connectionId: string) =>
-    ["commerce-discovery", "companion-schema", orgId, connectionId] as const,
-  commerceDiscoveryCompanionConnections: (orgId: string, key: string) =>
-    ["commerce-discovery", "companion-connections", orgId, key] as const,
+  reportsCompanionSchema: (orgId: string, connectionId: string) =>
+    ["reports", "companion-schema", orgId, connectionId] as const,
+  reportsCompanionConnections: (orgId: string, key: string) =>
+    ["reports", "companion-connections", orgId, key] as const,
   // Prefix for every companion-connections query in an org, regardless of the
   // requirements-signature `key`. Use with invalidateQueries to refetch all
   // variants after a connection is created/linked/updated.
-  commerceDiscoveryCompanionConnectionsPrefix: (orgId: string) =>
-    ["commerce-discovery", "companion-connections", orgId] as const,
-  commerceDiscoveryCompanionRegistry: (orgId: string, key: string) =>
-    ["commerce-discovery", "companion-registry", orgId, key] as const,
-  commerceDiscoveryCompanionOAuthStatus: (
-    orgId: string,
-    connectionId: string,
-  ) =>
-    [
-      "commerce-discovery",
-      "companion-oauth-status",
-      orgId,
-      connectionId,
-    ] as const,
-  commerceDiscoveryCompanionGaProperties: (
-    orgId: string,
-    connectionId: string,
-  ) =>
-    [
-      "commerce-discovery",
-      "companion-ga-properties",
-      orgId,
-      connectionId,
-    ] as const,
-  commerceDiscoveryCompanionGscSites: (orgId: string, connectionId: string) =>
-    ["commerce-discovery", "companion-gsc-sites", orgId, connectionId] as const,
+  reportsCompanionConnectionsPrefix: (orgId: string) =>
+    ["reports", "companion-connections", orgId] as const,
+  reportsCompanionRegistry: (orgId: string, key: string) =>
+    ["reports", "companion-registry", orgId, key] as const,
+  reportsCompanionOAuthStatus: (orgId: string, connectionId: string) =>
+    ["reports", "companion-oauth-status", orgId, connectionId] as const,
+  reportsCompanionGaProperties: (orgId: string, connectionId: string) =>
+    ["reports", "companion-ga-properties", orgId, connectionId] as const,
+  reportsCompanionGscSites: (orgId: string, connectionId: string) =>
+    ["reports", "companion-gsc-sites", orgId, connectionId] as const,
   // GitHub repo picker: repos matching a server-side search (empty = default
   // page) for the companion connection. Keyed by query so each search term is
   // cached independently.
-  commerceDiscoveryCompanionGithubRepos: (
+  reportsCompanionGithubRepos: (
     orgId: string,
     connectionId: string,
     query: string,
   ) =>
-    [
-      "commerce-discovery",
-      "companion-github-repos",
-      orgId,
-      connectionId,
-      query,
-    ] as const,
-  // The repo currently selected on the Commerce Discovery connection
+    ["reports", "companion-github-repos", orgId, connectionId, query] as const,
+  // The repo currently selected on the Reports connection
   // (github_repo), read once for prefill — independent of the search query.
-  commerceDiscoveryCompanionGithubSelected: (
-    orgId: string,
-    connectionId: string,
-  ) =>
-    [
-      "commerce-discovery",
-      "companion-github-selected",
-      orgId,
-      connectionId,
-    ] as const,
-  // Per-(org, siteUrl) connection status from commerce-discovery — the single
+  reportsCompanionGithubSelected: (orgId: string, connectionId: string) =>
+    ["reports", "companion-github-selected", orgId, connectionId] as const,
+  // Per-(org, siteUrl) connection status from reports — the single
   // source of truth for "Conectado" across both lanes (OAuth + shared-SA).
-  commerceDiscoveryConnectionStatus: (orgId: string, siteUrl: string) =>
-    ["commerce-discovery", "connection-status", orgId, siteUrl] as const,
+  reportsConnectionStatus: (orgId: string, siteUrl: string) =>
+    ["reports", "connection-status", orgId, siteUrl] as const,
 
   connectionActivity: (
     connectionId: string,
@@ -209,6 +219,10 @@ export const KEYS = {
   // e.g. after an MCP connection re-authenticates.
   mcpClientPrefix: () => ["mcp", "client"] as const,
 
+  // The user's recent threads on one agent, for resolving its entry thread.
+  agentEntryThreads: (orgId: string, userId: string, virtualMcpId: string) =>
+    ["agent-entry-threads", orgId, userId, virtualMcpId] as const,
+
   // Most recent thread per agent.
   virtualMcpLastUsed: (orgId: string, ids: string[]) =>
     ["virtual-mcp", "last-used", orgId, ids] as const,
@@ -219,18 +233,10 @@ export const KEYS = {
   optimisticProjectSidebarViews: (orgId: string, virtualMcpId: string) =>
     ["virtual-mcp", "optimistic-sidebar-views", orgId, virtualMcpId] as const,
 
-  githubBranches: (
-    orgId: string,
-    orgSlug: string,
-    connectionId: string | null | undefined,
-    owner: string,
-    repo: string,
-  ) => ["github-branches", orgId, orgSlug, connectionId, owner, repo] as const,
-
   /**
-   * The branch's pull request with its checks, review state and comments — ONE
-   * key for all four, so those hooks share a single request (see
-   * GITHUB_PR_STATE).
+   * The branch's change request with its CI runs, review state and comments —
+   * ONE key for all four, so those hooks share a single request (see
+   * CHANGE_REQUEST_STATE).
    */
   githubPrState: (
     orgSlug: string,
@@ -256,6 +262,14 @@ export const KEYS = {
       base,
     ] as const,
 
+  /** A repository's open change requests, for the branch picker's list. */
+  githubOpenPrs: (
+    orgSlug: string,
+    connectionId: string | null | undefined,
+    owner: string,
+    repo: string,
+  ) => ["github-open-prs", orgSlug, connectionId, owner, repo] as const,
+
   githubBranchSearch: (
     orgId: string,
     orgSlug: string,
@@ -280,11 +294,18 @@ export const KEYS = {
   infraBillingSites: (organizationId: string) =>
     ["infra-billing-sites", organizationId] as const,
 
+  orgHasSite: (organizationId: string) =>
+    ["org-has-site", organizationId] as const,
+
   infraBilling: (organizationId: string, siteSlug: string, period: string) =>
     ["infra-billing", organizationId, siteSlug, period] as const,
 
   userModelPreferences: (organizationId: string) =>
     ["user-model-preferences", organizationId] as const,
+
+  /** The org's folders plus the caller's pins and hides — `SIDEBAR_GET`. */
+  projectSidebar: (organizationId: string) =>
+    ["project-sidebar", organizationId] as const,
 
   // API keys (scoped by organization; the LIST tool filters by org server-side)
   apiKeysList: (organizationId: string) =>
@@ -307,13 +328,6 @@ export const KEYS = {
    *  signs in and types the same term in the same tab. */
   projectSearch: (userId: string, term: string) =>
     ["project-search", userId, term] as const,
-
-  // Home tile-board layout (positions/sizes/hidden), KV-backed per org.
-  boardLayout: (orgSlug: string) => ["board-layout", orgSlug] as const,
-
-  // Prompts exposed by an agent's gateway (drawer's prompt list).
-  agentPrompts: (orgId: string, agentId: string) =>
-    ["agent-prompts", orgId, agentId] as const,
 
   // Tool call results (generic caching for MCP tool calls)
   // scope is required - scopes the cache (connectionId for connection-scoped, locator for org/project-scoped)
@@ -418,8 +432,6 @@ export const KEYS = {
   // Thread queries (scoped by locator)
   threadsInfinite: (locator: string, paramsKey: string) =>
     ["threads", "list-infinite", locator, paramsKey] as const,
-  overviewThreads: (locator: string) =>
-    ["threads", "overview", locator] as const,
   threadMessages: (locator: string, threadId: string) =>
     ["threads", "messages", locator, threadId] as const,
   threadOutputs: (threadId: string) => ["thread-outputs", threadId] as const,
@@ -465,12 +477,18 @@ export const KEYS = {
 
   // Tags (scoped by locator)
   tags: (locator: string) => [locator, "tags"] as const,
+  experiments: (locator: string, site: string) =>
+    [locator, "experiments", site] as const,
+  experimentResults: (locator: string, site: string, key: string) =>
+    [locator, "experiments", site, key, "results"] as const,
   memberTags: (locator: string, memberId: string) =>
     [locator, "member-tags", memberId] as const,
 
   // Automations (scoped by organization, optionally by project)
   taskBoardPrompts: (organizationId: string) =>
     ["task-board-prompts", organizationId] as const,
+  taskBoardSprints: (organizationId: string) =>
+    ["task-board-sprints", organizationId] as const,
   automationsAll: (organizationId: string) =>
     ["automations", organizationId] as const,
   automations: (organizationId: string, virtualMcpId?: string | null) =>
@@ -510,8 +528,11 @@ export const KEYS = {
   aiProviderKeys: (orgId: string) => ["ai-provider-keys", orgId] as const,
   // The caller's own linked Claude subscription (per user, but the tool call is
   // org-scoped, so the key is too).
+  codexSubscription: (orgId: string, userId: string) =>
+    ["codex-subscription", orgId, userId] as const,
   claudeSubscription: (orgId: string) =>
     ["claude-subscription", orgId] as const,
+  githubCopilot: (orgId: string) => ["github-copilot", orgId] as const,
   aiProviderKeyPreview: (keyId: string) =>
     ["ai-provider-key-preview", keyId] as const,
 
@@ -527,16 +548,56 @@ export const KEYS = {
     ["org-fs", orgId, volume] as const,
   orgFsList: (orgId: string, volume: string, path: string) =>
     ["org-fs", orgId, volume, "list", path] as const,
-  orgFsUsage: (orgId: string, volume: string) =>
-    ["org-fs", orgId, volume, "usage"] as const,
+  /** Under the volume's prefix, so every write to it refreshes the list. */
+  orgFsVolumeFiles: (orgId: string, volume: string) =>
+    ["org-fs", orgId, volume, "files"] as const,
   orgFsStat: (orgId: string, volume: string, path: string) =>
     ["org-fs", orgId, volume, "stat", path] as const,
+  orgFsText: (orgId: string, volume: string, path: string, marker: string) =>
+    ["org-fs", orgId, volume, "text", path, marker] as const,
   orgFsPublicSets: (orgId: string) => ["org-fs-public-sets", orgId] as const,
+  /** Keyed on the folder too, so a renamed project scaffolds its new one. */
+  projectFolderEnsure: (orgId: string, projectId: string, dir: string) =>
+    ["project-folder-ensure", orgId, projectId, dir] as const,
+
+  // The signed-in user's stored profile pictures (instance-level, org-free).
+  userAvatars: () => ["user-avatars"] as const,
   orgRepoSyncs: (orgId: string) => ["org-repo-syncs", orgId] as const,
+
+  // First-class git repositories (Settings → Repositories)
+  gitProviderCapabilities: (orgId: string) =>
+    ["git-provider-capabilities", orgId] as const,
+  githubConnectFlow: (orgId: string, flowId: string) =>
+    ["github-connect-flow", orgId, flowId] as const,
+  githubConnectRepositories: (
+    orgId: string,
+    flowId: string,
+    installationId: number,
+    query: string,
+  ) =>
+    [
+      "github-connect-repositories",
+      orgId,
+      flowId,
+      installationId,
+      query,
+    ] as const,
+  gitAccounts: (orgId: string) => ["git-accounts", orgId] as const,
+  /** Omit `accountId` for the whole org's list — that key is also the prefix a
+   *  mutation invalidates to refresh every per-account listing with it. */
+  repositories: (orgId: string, accountId?: string) =>
+    (accountId
+      ? ["repositories", orgId, accountId]
+      : ["repositories", orgId]) as readonly [string, string, string?],
+  /** Provider-side repo search — hits the provider's API, so the query text is
+   *  part of the key and results are kept while the next page loads. */
+  providerRepoSearch: (orgId: string, accountId: string, query: string) =>
+    ["provider-repo-search-pages", orgId, accountId, query] as const,
 
   // Jira integration (Settings → Jira)
   jiraIntegration: (orgId: string) => ["jira-integration", orgId] as const,
-  jiraBoards: (orgId: string) => ["jira-boards", orgId] as const,
+  jiraBoards: (orgId: string, query: string) =>
+    ["jira-boards", orgId, query] as const,
   jiraBoardColumns: (orgId: string, boardId: string | null) =>
     ["jira-board-columns", orgId, boardId] as const,
   jiraAutomations: (orgId: string) => ["jira-automations", orgId] as const,
@@ -577,6 +638,19 @@ export const KEYS = {
    *  invalidate all search/imageOnly listings after an upload or delete. */
   filePickerObjectsByConfig: (orgId: string, configId: string) =>
     ["file-picker-objects", orgId, configId] as const,
+
+  // Plan, feature flags and the AI usage bar (org-wide, not per user)
+  aiPlanEntitlements: (orgId: string) =>
+    ["ai-plan-entitlements", orgId] as const,
+  aiPlanCatalog: (orgId: string) => ["ai-plan-catalog", orgId] as const,
+  /** The bounded poll that runs after Stripe redirects back, until the webhook
+   *  has landed the new tier — see `use-checkout-return.ts`. Holds a tick
+   *  counter, never a value anything renders. */
+  checkoutReturnPoll: (orgId: string) =>
+    ["checkout-return-poll", orgId] as const,
+  aiPlanPrices: () => ["ai-plan-prices"] as const,
+  // Whether the org has a Stripe account/subscription behind its plan.
+  orgBillingAccount: (orgId: string) => ["org-billing-account", orgId] as const,
 
   // AI provider credits balance (scoped by org + keyId)
   aiProviderCredits: (orgId: string, keyId: string) =>
@@ -625,10 +699,9 @@ export const KEYS = {
   // An org's owned site slugs (org_sites) in the deployment-admin editor.
   deploymentAdminOrgSites: (orgId: string) =>
     ["deployment-admin", "orgs", orgId, "sites"] as const,
-
-  // Brand context (scoped by organization)
-  defaultBrand: (organizationId: string) =>
-    ["brand-context", organizationId, "default"] as const,
+  // An org's site projects and their analytics-site override.
+  deploymentAdminOrgProjects: (orgId: string) =>
+    ["deployment-admin", "orgs", orgId, "projects"] as const,
 
   // Deco sites (scoped by user email)
   decoSites: (email: string | undefined) => ["deco-sites", email] as const,
@@ -707,53 +780,63 @@ export const KEYS = {
   // Sandbox-less Fast Preview draft pointer: {version, token} for the current
   // branch head, populated by decofile API reads/writes (never fetched itself).
   decofileDraft: (cacheKey: string) => ["decofile-draft", cacheKey] as const,
-  // Branch drift + head-commit age for the CMS staleness check.
-  decofileStatus: (cacheKey: string) => ["decofile-status", cacheKey] as const,
   // Variadic so an invalidation call can pass just the org/vmid/branch prefix
   // and still partial-match the full org/vmid/branch/previewUrl query key.
   liveMeta: (...parts: string[]) => ["live-meta", ...parts] as const,
-  // The repo's committed `deno.json`, read for its pinned deco-apps version.
-  denoJson: (orgSlug: string, virtualMcpId: string, branch: string) =>
-    ["deno-json", orgSlug, virtualMcpId, branch] as const,
-  sandboxInvoke: (sandboxKey: string, loaderKey: string) =>
-    ["sandbox-invoke", sandboxKey, loaderKey] as const,
-  // `threadId` is part of the key because it is part of the URL: two sessions
-  // on one branch get different answers from `/config`, and with staleTime
-  // Infinity a shared entry would hand one session the other's repoDir.
-  sandboxRepoDir: (
+  // Which content backend (legacy / content protocol) a project's editor uses.
+  contentBackend: (...parts: string[]) =>
+    ["content-backend", ...parts] as const,
+  // Whether Localhost's app (the preview `deco serve` names) answers.
+  localAppReachable: (url: string) => ["local-app-reachable", url] as const,
+  // Last content-protocol blocks revision and schema version a project saw.
+  contentRevision: (cacheKey: string) =>
+    ["content-revision", cacheKey] as const,
+  // Per block, the content-protocol version of the copy the editor holds.
+  contentVersions: (cacheKey: string) =>
+    ["content-versions", cacheKey] as const,
+  // A protocol project's changes against its base (`changes.list`); the
+  // prefix of its sides too, so one invalidation refreshes both.
+  contentChanges: (cacheKey: string) => ["content-changes", cacheKey] as const,
+  // Who made the other change a conflict dialog shows (hosted v8 drafts),
+  // per version of theirs.
+  conflictAuthor: (draftKey: string, blockKey: string, theirs: string) =>
+    ["conflict-author", draftKey, blockKey, theirs] as const,
+  // Both sides of the listed changes (`changes.get`), per changes revision.
+  contentChangeSides: (cacheKey: string, revision: string) =>
+    ["content-changes", cacheKey, "sides", revision] as const,
+  // A hosted v8 project's draft pointer ({ draft, version }), from the
+  // session decofile read (GitHub backend).
+  protocolDraftRead: (orgSlug: string, virtualMcpId: string, branch: string) =>
+    ["protocol-draft-read", orgSlug, virtualMcpId, branch] as const,
+  // Main's schema answer (`isV8Schema` on main, from the server), once per
+  // project per session: what the editor waits for.
+  mainSchemaV8: (orgSlug: string, virtualMcpId: string) =>
+    ["main-schema-v8", orgSlug, virtualMcpId] as const,
+  // Hosted Deco CMS (v8): a project's releases and site tokens.
+  hostedReleases: (orgSlug: string, virtualMcpId: string) =>
+    ["hosted-releases", orgSlug, virtualMcpId] as const,
+  /** Under `hostedReleases`: a publish or reapply refreshes it too. */
+  hostedReapplyCheck: (
     orgSlug: string,
     virtualMcpId: string,
-    branch: string,
-    threadId: string | null,
-  ) => ["sandbox-repo-dir", orgSlug, virtualMcpId, branch, threadId] as const,
+    sha: string | null,
+    latest: string | null,
+  ) =>
+    [
+      "hosted-releases",
+      orgSlug,
+      virtualMcpId,
+      "reapply-check",
+      sha,
+      latest,
+    ] as const,
+  hostedSiteTokens: (orgSlug: string, virtualMcpId: string) =>
+    ["hosted-site-tokens", orgSlug, virtualMcpId] as const,
+  sandboxInvoke: (sandboxKey: string, loaderKey: string) =>
+    ["sandbox-invoke", sandboxKey, loaderKey] as const,
   // icon-select previews: the site's /sprites.svg, fetched via the preview proxy
   sandboxSprite: (sandboxKey: string) =>
     ["sandbox-sprite", sandboxKey] as const,
-
-  // Native-only coding-agent availability; process-wide, not org-scoped.
-  localAgentCapabilities: () => ["local-agent-capabilities"] as const,
-
-  // GitHub integration
-  githubUserOrgs: (orgId: string, connectionId: string) =>
-    ["github-user-orgs", orgId, connectionId] as const,
-  githubOrgRepos: (
-    orgId: string,
-    connectionId: string,
-    installationLogin: string,
-    query: string,
-  ) =>
-    [
-      "github-org-repos",
-      orgId,
-      connectionId,
-      installationLogin,
-      query,
-    ] as const,
-  // Desktop app (Tauri) only — the Keychain auth-status gate read by
-  // `apps/web/src/desktop/use-desktop-auth.ts`. Lives here because
-  // `plugins/enforce-query-key-constants.ts` requires every query key to be a
-  // constant in this registry; it never appears in the web build's cache.
-  desktopAuthStatus: () => ["desktop", "auth-status"] as const,
 } as const;
 
 export function invalidateVirtualMcpQueries(
@@ -767,22 +850,6 @@ export function invalidateVirtualMcpQueries(
         (!orgId || key[1] === orgId) &&
         key[3] === "collection" &&
         key[4] === "VIRTUAL_MCP"
-      );
-    },
-  });
-}
-
-export function invalidateConnectionQueries(
-  queryClient: import("@tanstack/react-query").QueryClient,
-  orgId?: string,
-) {
-  queryClient.invalidateQueries({
-    predicate: (query) => {
-      const key = query.queryKey;
-      return (
-        (!orgId || key[1] === orgId) &&
-        key[3] === "collection" &&
-        key[4] === "CONNECTIONS"
       );
     },
   });

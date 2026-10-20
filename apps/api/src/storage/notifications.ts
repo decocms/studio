@@ -57,7 +57,9 @@ export class NotificationStorage {
     nextCursor: string | null;
   }> {
     const limit = Math.min(opts.limit ?? PAGE_SIZE, MAX_PAGE_SIZE);
-    const after = opts.cursor ? await this.anchorExists(opts.cursor) : false;
+    const after = opts.cursor
+      ? await this.anchorExists(opts.cursor, userId, organizationId)
+      : false;
 
     let listQuery = this.db
       .selectFrom("notifications")
@@ -71,7 +73,10 @@ export class NotificationStorage {
     if (after) {
       listQuery = listQuery.where(
         sql<boolean>`(created_at, id) <
-          (SELECT created_at, id FROM notifications WHERE id = ${opts.cursor})`,
+          (SELECT created_at, id FROM notifications
+            WHERE id = ${opts.cursor}
+              AND user_id = ${userId}
+              AND organization_id = ${organizationId})`,
       );
     }
     const page = await listQuery.execute();
@@ -99,12 +104,24 @@ export class NotificationStorage {
     };
   }
 
-  /** Whether a cursor still points at a row — see `listUnread`. */
-  private async anchorExists(id: string): Promise<boolean> {
+  /**
+   * Whether a cursor still points at a row — see `listUnread`.
+   *
+   * Scoped to the caller's own user/org: the cursor is client-supplied, and an
+   * id belonging to another user or org must not leak its existence or
+   * ordering position.
+   */
+  private async anchorExists(
+    id: string,
+    userId: string,
+    organizationId: string,
+  ): Promise<boolean> {
     const row = await this.db
       .selectFrom("notifications")
       .select("id")
       .where("id", "=", id)
+      .where("user_id", "=", userId)
+      .where("organization_id", "=", organizationId)
       .executeTakeFirst();
     return !!row;
   }

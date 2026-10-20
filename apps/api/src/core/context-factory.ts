@@ -1,3 +1,4 @@
+import { CodexSubscriptionStorage } from "../storage/codex-subscriptions";
 /**
  * Context Factory
  *
@@ -39,32 +40,31 @@ import type {
 import { getLogsDir, getMetricsDir } from "../monitoring/schema";
 import { OrganizationSettingsStorage } from "../storage/organization-settings";
 import { UserModelPreferencesStorage } from "../storage/user-model-preferences";
-import { VirtualMcpPluginConfigsStorage } from "../storage/virtual-mcp-plugin-configs";
 import { createAutomationsStorage } from "../storage/automations";
 import { KyselyTriggerCallbackTokenStorage } from "../storage/trigger-callback-tokens";
-import { BrandContextStorage } from "../storage/brand-context";
 import { OrganizationDomainStorage } from "../storage/organization-domains";
 import { OrganizationJoinRequestStorage } from "../storage/organization-join-requests";
 import { KyselyKVStorage } from "../storage/kv";
 import { KyselyInterestsStorage } from "../storage/interests";
 import { OrgSsoConfigStorage } from "../storage/org-sso-config";
 import { OrgSsoSessionStorage } from "../storage/org-sso-sessions";
-import {
-  RegistryItemStorage,
-  PublishRequestStorage,
-  PublishApiKeyStorage,
-  MonitorRunStorage,
-  MonitorResultStorage,
-  MonitorConnectionStorage,
-} from "../storage/registry";
-import type { PrivateRegistryDatabase } from "../storage/registry/types";
 import { TagStorage } from "../storage/tags";
+import { SprintStorage } from "../storage/sprints";
+import { ProjectSidebarStorage } from "../storage/project-sidebar";
+import { ExperimentStorage } from "../storage/experiments";
 import { OrganizationBillingStorage } from "../storage/organization-billing";
 import type { Database, Permission } from "../storage/types";
 import { UserStorage } from "../storage/user";
 import { AccessControl } from "./access-control";
+import {
+  getFullOrganizationForUser,
+  listOrganizationsForUser,
+} from "./sessionless-organization";
 import { buildWildcardPermission } from "./permission-wildcard";
-import { isOrgArchived } from "@decocms/shared/organization/org-archived";
+import {
+  isOrgArchived,
+  ORG_ARCHIVED_ERROR,
+} from "@decocms/shared/organization/org-archived";
 import type {
   BetterAuthInstance,
   BoundAuthClient,
@@ -78,17 +78,28 @@ import type {
 
 import type { MemberRoleCache } from "../auth/member-role-cache";
 import { readStudioHeader } from "./studio-headers";
+import {
+  evictExpiredTtlCacheEntries,
+  refreshTtlCacheEntry,
+} from "./ttl-lru-cache";
 
 // ============================================================================
 // Helper Functions
 // ============================================================================
 
+const MAX_PROPERTIES_COUNT = 50;
+const MAX_PROPERTY_STRING_LENGTH = 500;
+
 /**
  * Parse the Studio properties header into a Record<string, string>.
  * The header value should be a JSON object with string values.
  * Returns undefined if the header is missing, empty, or invalid.
+ *
+ * Capped at MAX_PROPERTIES_COUNT entries / MAX_PROPERTY_STRING_LENGTH chars
+ * each — this unsigned, caller-set header lands verbatim in the monitoring
+ * log's `properties` column on every request (see mergeProperties).
  */
-function parsePropertiesHeader(
+export function parsePropertiesHeader(
   headerValue: string | null | undefined,
 ): Record<string, string> | undefined {
   if (!headerValue) return undefined;
@@ -106,7 +117,12 @@ function parsePropertiesHeader(
     // Validate all values are strings
     const result: Record<string, string> = {};
     for (const [key, value] of Object.entries(parsed)) {
-      if (typeof value === "string") {
+      if (Object.keys(result).length >= MAX_PROPERTIES_COUNT) break;
+      if (
+        typeof value === "string" &&
+        key.length <= MAX_PROPERTY_STRING_LENGTH &&
+        value.length <= MAX_PROPERTY_STRING_LENGTH
+      ) {
         result[key] = value;
       }
     }
@@ -173,6 +189,14 @@ interface AuthenticatedUser {
   role?: string;
 }
 
+/** Prefers the JWT-verified connectionId over the client-set x-caller-id header. */
+export function resolveCallerConnectionId(
+  req: Request | undefined,
+  user: Pick<AuthenticatedUser, "connectionId"> | undefined,
+): string | undefined {
+  return user?.connectionId ?? req?.headers.get("x-caller-id") ?? undefined;
+}
+
 /**
  * Extract the canonical organization slug from an org-scoped API path.
  * Header hints are still supported for legacy, unscoped routes, but the URL
@@ -196,6 +220,9 @@ type HasPermissionAPI = (params: {
   body: { permission: Permission; organizationId?: string };
 }) => Promise<{ success?: boolean; error?: unknown } | null>;
 
+/** Which credential authenticated the request, set by `authenticateRequest`. */
+type AuthMethod = "session" | "apiKey" | "mcpOAuth" | "studioJwt";
+
 /**
  * Auth context needed to create a bound auth client
  *
@@ -206,6 +233,8 @@ type HasPermissionAPI = (params: {
 export interface AuthContext {
   headers: Headers;
   auth: BetterAuthInstance;
+  /** Omitted when the caller didn't come through `authenticateRequest`. */
+  authMethod?: AuthMethod;
   role?: string; // User's role (for built-in role bypass)
   permissions?: Permission; // Permissions from API key or custom role (MCP OAuth)
   userId?: string; // User ID for server-side API key operations
@@ -213,6 +242,8 @@ export interface AuthContext {
   /** Org `role`/`permissions` were resolved for — they must not decide a
    *  check against a different one. */
   organizationId?: string;
+  /** Reads custom role statements so browser sessions evaluate them here. */
+  db?: Kysely<Database>;
 }
 
 /**
@@ -232,6 +263,8 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
     userId,
     apiKeyId,
     organizationId: authOrganizationId,
+    authMethod,
+    db,
   } = ctx;
 
   // An API key is authorized SOLELY by its own stored allowlist — the owner's
@@ -240,6 +273,11 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
   // explicit wildcard. Only genuine API keys (apiKeyId present) are gated this
   // way; browser sessions, MCP OAuth, and studio JWTs keep the role-based path.
   const isApiKeyPrincipal = !!apiKeyId;
+
+  // Better Auth holds no session for these credentials, so its session-gated
+  // organization endpoints reject them; read through its adapter instead.
+  const readsOrgsViaAdapter =
+    authMethod === "mcpOAuth" || authMethod === "studioJwt";
 
   // Get hasPermission from Better Auth's organization plugin (for browser sessions)
   const hasPermissionApi = (auth.api as { hasPermission?: HasPermissionAPI })
@@ -302,6 +340,28 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
       );
       if (builtinDecision !== "fallback") {
         return builtinDecision === "grant";
+      }
+
+      // Custom roles: Better Auth matches actions literally, so it would read
+      // `["*", "!TOOL"]` as a grant of TOOL. Evaluate the stored statements
+      // with our own rules instead (see checkRolePermission).
+      if (db && options?.role && options.organizationId) {
+        try {
+          const statements = await fetchRoleStatements(
+            db,
+            options.organizationId,
+            options.role,
+          );
+          return statements.some((statement) =>
+            checkRolePermission(statement, requestedPermission),
+          );
+        } catch (err) {
+          console.error(
+            "[Auth] Role permission lookup failed:",
+            err instanceof Error ? err.message : String(err),
+          );
+          return false;
+        }
       }
 
       // Slow path: delegate to Better Auth's hasPermission API.
@@ -389,6 +449,12 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
       },
 
       get: async (organizationId) => {
+        if (readsOrgsViaAdapter) {
+          const id = organizationId ?? authOrganizationId;
+          return id && userId
+            ? getFullOrganizationForUser(auth, userId, id)
+            : null;
+        }
         return auth.api.getFullOrganization({
           headers,
           query: organizationId ? { organizationId } : undefined,
@@ -400,7 +466,11 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
         // API/UI surface, so filter them here — no caller of this method ever
         // sees them. A future restore flow would read archived orgs from
         // storage directly, not via this method.
-        const orgs = await auth.api.listOrganizations({ headers });
+        const orgs = readsOrgsViaAdapter
+          ? userId
+            ? await listOrganizationsForUser(auth, userId)
+            : []
+          : await auth.api.listOrganizations({ headers });
         return orgs.filter((org: (typeof orgs)[number]) => !isOrgArchived(org));
       },
 
@@ -418,21 +488,6 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
         return auth.api.removeMember({
           headers,
           body: data,
-        });
-      },
-
-      listMembers: async (options) => {
-        return auth.api.listMembers({
-          headers,
-          query: options
-            ? {
-                organizationId: options.organizationId,
-                limit: options.limit,
-                offset: options.offset,
-                filterField: options.filterField,
-                filterValue: options.filterValue,
-              }
-            : undefined,
         });
       },
 
@@ -491,8 +546,16 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
 
 import { createMCPProxy } from "@/api/routes/mcp-proxy-factory";
 import { ConnectionEntity } from "@/tools/connection/schema";
-import { BUILTIN_ROLES, hasAdminRole } from "@decocms/shared/auth/roles";
-import { checkApiKeyPermission } from "../auth/api-key-permissions";
+import {
+  BUILTIN_ROLES,
+  type BuiltinRole,
+  hasAdminRole,
+  rolesOf,
+} from "@decocms/shared/auth/roles";
+import {
+  checkApiKeyPermission,
+  checkRolePermission,
+} from "../auth/api-key-permissions";
 import {
   getCachedBuiltinRoleStatements,
   resolveBuiltinRolePermission,
@@ -509,15 +572,22 @@ import { SecretStorage } from "@/storage/secrets";
 import { OrgFileConfigStorage } from "@/storage/org-file-configs";
 import { OrgSiteStorage } from "@/storage/org-sites";
 import { OrgRepoSyncStorage } from "@/storage/org-repo-syncs";
+import { GitProviderAccountStorage } from "@/storage/git-provider-accounts";
+import { GitProviderAccountCredentialStorage } from "@/storage/git-provider-account-credentials";
+import { RepositoryStorage } from "@/storage/repositories";
+import { GithubConnectFlowStorage } from "@/storage/github-connect-flows";
+import { GitProviderOAuthStateStorage } from "@/storage/git-provider-oauth-states";
 import { JiraIntegrationStorage } from "@/storage/jira-integrations";
-import { ColumnAutomationStorage } from "@/storage/task-board-column-automations";
 import { TaskBoardPromptStorage } from "@/storage/task-board-prompts";
+import { TaskBoardAnalyticsStorage } from "@/storage/task-board-analytics";
+import { ThreadAnalyticsStorage } from "@/storage/thread-analytics";
 import { TaskBoardStorage } from "@/storage/task-board";
 import { NotificationStorage } from "@/storage/notifications";
 import { OrgFsEntryStorage } from "@/storage/org-fs";
 import { OrgFs } from "@/file-storage/org-fs";
 import { OAuthPkceStateStorage } from "@/storage/oauth-pkce-states";
 import { ClaudeSubscriptionStorage } from "@/storage/claude-subscriptions";
+import { OrgSharedPlanStorage } from "@/storage/org-shared-plans";
 import { AIProviderFactory } from "@/ai-providers/factory";
 import type { ModelListCache } from "@/ai-providers/model-list-cache";
 import type { ProviderKeyCache } from "@/storage/provider-key-cache";
@@ -538,7 +608,7 @@ export async function fetchRolePermissions(
   role: string,
 ): Promise<Permission | undefined> {
   // Built-in roles have no custom-role permission row to fetch.
-  if (BUILTIN_ROLES.includes(role as (typeof BUILTIN_ROLES)[number])) {
+  if (BUILTIN_ROLES.includes(role as BuiltinRole)) {
     return undefined;
   }
 
@@ -564,6 +634,26 @@ export async function fetchRolePermissions(
 }
 
 /**
+ * The statements behind a member's role — each entry of Better Auth's
+ * comma-joined multi-role string, OR-ed by the caller. Built-in roles come
+ * from code; a custom role with no stored row contributes an empty statement,
+ * which grants nothing.
+ */
+async function fetchRoleStatements(
+  db: Kysely<Database>,
+  organizationId: string,
+  role: string,
+): Promise<Permission[]> {
+  const builtin = getCachedBuiltinRoleStatements();
+  return Promise.all(
+    rolesOf(role).map(async (one) => {
+      if (BUILTIN_ROLES.includes(one as BuiltinRole)) return builtin[one] ?? {};
+      return (await fetchRolePermissions(db, organizationId, one)) ?? {};
+    }),
+  );
+}
+
+/**
  * Authenticate request using either OAuth session or API key
  * Returns unified authentication data with organization context
  *
@@ -576,7 +666,29 @@ export async function fetchRolePermissions(
 // request, so caching keeps the lookup off the hot path. Archiving is a
 // one-way soft-delete, so a short TTL is plenty.
 const ARCHIVED_CACHE_TTL_MS = 60_000;
-const orgArchivedCache = new Map<string, { archived: boolean; at: number }>();
+// Cap: entries are only ever overwritten on their own next lookup, never dropped otherwise.
+const ARCHIVED_CACHE_MAX_SIZE = 10_000;
+type OrgArchivedCacheEntry = { value: boolean; at: number };
+const orgArchivedCache = new Map<string, OrgArchivedCacheEntry>();
+
+/** Write (or refresh) a cache entry, moving it to the most-recently-set
+ *  position — see ttl-lru-cache.ts. Exported for unit testing. */
+export function refreshOrgArchivedCacheEntry(
+  cache: Map<string, OrgArchivedCacheEntry>,
+  organizationId: string,
+  archived: boolean,
+): void {
+  refreshTtlCacheEntry(cache, organizationId, archived);
+}
+
+/** Exported for unit testing. */
+export function evictExpiredOrgArchivedEntries(
+  cache: Map<string, OrgArchivedCacheEntry>,
+  maxSize: number,
+  ttlMs: number,
+): void {
+  evictExpiredTtlCacheEntries(cache, maxSize, ttlMs);
+}
 
 async function isOrgArchivedCached(
   db: Kysely<Database>,
@@ -585,7 +697,7 @@ async function isOrgArchivedCached(
   spanName: string,
 ): Promise<boolean> {
   const hit = orgArchivedCache.get(organizationId);
-  if (hit && Date.now() - hit.at < ARCHIVED_CACHE_TTL_MS) return hit.archived;
+  if (hit && Date.now() - hit.at < ARCHIVED_CACHE_TTL_MS) return hit.value;
   const orgRow = await timings.measure(spanName, () =>
     db
       .selectFrom("organization")
@@ -594,7 +706,12 @@ async function isOrgArchivedCached(
       .executeTakeFirst(),
   );
   const archived = isOrgArchived(orgRow);
-  orgArchivedCache.set(organizationId, { archived, at: Date.now() });
+  refreshOrgArchivedCacheEntry(orgArchivedCache, organizationId, archived);
+  evictExpiredOrgArchivedEntries(
+    orgArchivedCache,
+    ARCHIVED_CACHE_MAX_SIZE,
+    ARCHIVED_CACHE_TTL_MS,
+  );
   return archived;
 }
 
@@ -709,6 +826,7 @@ async function authenticateRequest(
   timings: FactoryOptions["timings"] = DEFAULT_TIMINGS,
   memberRoleCache?: MemberRoleCache,
 ): Promise<{
+  method?: AuthMethod;
   user?: AuthenticatedUser;
   role?: string;
   permissions?: Permission; // Permissions from API key or custom role (for non-browser sessions)
@@ -799,7 +917,7 @@ async function authenticateRequest(
       });
 
       if (isOrgArchived({ metadata: membership?.orgMetadata })) {
-        throw new Error("Organization is archived");
+        throw new Error(ORG_ARCHIVED_ERROR);
       }
 
       const role = membership?.role;
@@ -825,6 +943,7 @@ async function authenticateRequest(
       }
 
       return {
+        method: "mcpOAuth",
         user: { id: userId, role },
         role,
         permissions,
@@ -903,6 +1022,7 @@ async function authenticateRequest(
         }
 
         return {
+          method: "studioJwt",
           user: {
             id: studioTokenPayload.sub,
             connectionId: studioTokenPayload.metadata?.connectionId,
@@ -982,6 +1102,7 @@ async function authenticateRequest(
         );
 
         return {
+          method: "apiKey",
           apiKeyId: result.key.id,
           // On-behalf-of fully replaces the principal (id + role) so user/role
           // stay consistent; the actor never inherits the key owner's role.
@@ -1114,7 +1235,7 @@ async function authenticateRequest(
         );
 
         if (isOrgArchived({ metadata: membership?.orgMetadata })) {
-          throw new Error("Organization is archived");
+          throw new Error(ORG_ARCHIVED_ERROR);
         }
 
         if (membership) {
@@ -1150,11 +1271,8 @@ async function authenticateRequest(
           session?: { activeOrganizationId?: string };
         } | null;
 
-        if (orgData) {
-          if (isOrgArchived(orgData)) {
-            throw new Error("Organization is archived");
-          }
-
+        // A stale active org means no fallback context, not a failed request.
+        if (orgData && !isOrgArchived(orgData)) {
           organization = {
             id: orgData.id,
             slug: orgData.slug,
@@ -1169,7 +1287,7 @@ async function authenticateRequest(
 
           // Browser sessions use Better Auth's hasPermission API
           // No need to fetch permissions - they're checked via the API
-        } else {
+        } else if (!orgData) {
           organization = {
             id: session.session.activeOrganizationId,
             slug: "",
@@ -1179,6 +1297,7 @@ async function authenticateRequest(
       }
 
       return {
+        method: "session",
         user: {
           id: session.user.id,
           email: session.user.email,
@@ -1194,6 +1313,10 @@ async function authenticateRequest(
     }
   } catch (error) {
     const err = error as Error & { body?: unknown };
+    // An explicitly requested archived org is an answer, not an auth failure.
+    if (err.message === ORG_ARCHIVED_ERROR) {
+      throw error;
+    }
     console.error(
       "[Auth] Session check failed:",
       JSON.stringify(
@@ -1391,8 +1514,10 @@ export async function createStudioContextFactory(
     virtualMcps: new VirtualMCPStorage(config.db),
     users: new UserStorage(config.db),
     tags: new TagStorage(config.db),
+    sprints: new SprintStorage(config.db),
+    projectSidebar: new ProjectSidebarStorage(config.db),
+    experiments: new ExperimentStorage(config.db),
     organizationBilling: new OrganizationBillingStorage(config.db),
-    virtualMcpPluginConfigs: new VirtualMcpPluginConfigsStorage(config.db),
     aiProviderKeys: new AIProviderKeyStorage(
       config.db,
       vault,
@@ -1403,39 +1528,34 @@ export async function createStudioContextFactory(
     orgFileConfigs: new OrgFileConfigStorage(config.db, vault),
     orgSites: new OrgSiteStorage(config.db),
     orgRepoSyncs: new OrgRepoSyncStorage(config.db),
+    gitProviderAccounts: new GitProviderAccountStorage(config.db),
+    gitProviderAccountCredentials: new GitProviderAccountCredentialStorage(
+      config.db,
+      vault,
+    ),
+    gitProviderOAuthStates: new GitProviderOAuthStateStorage(config.db),
+    githubConnectFlows: new GithubConnectFlowStorage(config.db),
+    repositories: new RepositoryStorage(config.db),
     jiraIntegrations: new JiraIntegrationStorage(config.db, vault),
     taskBoard: new TaskBoardStorage(config.db),
-    columnAutomations: new ColumnAutomationStorage(config.db),
     taskBoardPrompts: new TaskBoardPromptStorage(config.db),
+    taskBoardAnalytics: new TaskBoardAnalyticsStorage(config.db),
+    threadAnalytics: new ThreadAnalyticsStorage(config.db),
     notifications: new NotificationStorage(config.db),
     orgFsEntries: new OrgFsEntryStorage(config.db),
     oauthPkceStates: new OAuthPkceStateStorage(config.db),
+    codexSubscriptions: new CodexSubscriptionStorage(config.db, vault),
     claudeSubscriptions: new ClaudeSubscriptionStorage(config.db, vault),
+    githubCopilotSubscriptions: new ClaudeSubscriptionStorage(
+      config.db,
+      vault,
+      "github_copilot_subscriptions",
+    ),
+    orgSharedPlans: new OrgSharedPlanStorage(config.db),
     automations: createAutomationsStorage(config.db),
     triggerCallbackTokens: new KyselyTriggerCallbackTokenStorage(config.db),
     orgSsoConfig: new OrgSsoConfigStorage(config.db, vault),
     orgSsoSessions: new OrgSsoSessionStorage(config.db),
-    registry: {
-      items: new RegistryItemStorage(
-        config.db as unknown as Kysely<PrivateRegistryDatabase>,
-      ),
-      publishRequests: new PublishRequestStorage(
-        config.db as unknown as Kysely<PrivateRegistryDatabase>,
-      ),
-      publishApiKeys: new PublishApiKeyStorage(
-        config.db as unknown as Kysely<PrivateRegistryDatabase>,
-      ),
-      monitorRuns: new MonitorRunStorage(
-        config.db as unknown as Kysely<PrivateRegistryDatabase>,
-      ),
-      monitorResults: new MonitorResultStorage(
-        config.db as unknown as Kysely<PrivateRegistryDatabase>,
-      ),
-      monitorConnections: new MonitorConnectionStorage(
-        config.db as unknown as Kysely<PrivateRegistryDatabase>,
-      ),
-    },
-    brandContext: new BrandContextStorage(config.db),
     organizationDomains: new OrganizationDomainStorage(config.db),
     organizationJoinRequests: new OrganizationJoinRequestStorage(config.db),
     kv: kvStorage,
@@ -1487,18 +1607,14 @@ export async function createStudioContextFactory(
         )
       : { user: undefined };
 
-    // Resolve caller connection ID: explicit header takes priority, then fall
-    // back to the connectionId embedded in the studio JWT. This ensures that
-    // management tools on _self see the caller's connection ID even when the
-    // runtime doesn't set x-caller-id.
-    const connectionId =
-      req?.headers.get("x-caller-id") ??
-      authResult.user?.connectionId ??
-      undefined;
+    // The signed JWT's connectionId is authoritative; x-caller-id is a client-set header, only a fallback.
+    const connectionId = resolveCallerConnectionId(req, authResult.user);
 
     // Create bound auth client (encapsulates HTTP headers and auth context)
     const boundAuth = createBoundAuthClient({
       auth: config.auth,
+      db: config.db,
+      authMethod: authResult.method,
       headers: req?.headers ?? new Headers(),
       role: authResult.role,
       permissions: authResult.permissions,
@@ -1511,6 +1627,10 @@ export async function createStudioContextFactory(
     const studioAuth: StudioContext["auth"] = {
       user: authResult.user,
       tokenOrganizationId: authResult.tokenOrganizationId,
+      permissions: authResult.permissions,
+      permissionsOrganizationId: authResult.permissions
+        ? authResult.organization?.id
+        : undefined,
     };
 
     if (authResult.apiKey) {
@@ -1600,7 +1720,7 @@ export async function createStudioContextFactory(
         wellKnownForwardableHeaders: Object.fromEntries(
           wellKnownForwardableHeaders
             .map((header) => [header, req?.headers.get(header) ?? null])
-            .filter(([_, value]) => value !== null),
+            .filter(([, value]) => value !== null),
         ),
         userAgent:
           (req ? readStudioHeader(req.headers, "client") : null) ||
@@ -1624,7 +1744,6 @@ export async function createStudioContextFactory(
         : undefined,
       getOrCreateClient: clientPool,
       pendingRevalidations: [],
-      firecrawlApiKey: getSettings().firecrawlApiKey,
     };
 
     return ctx;

@@ -7,6 +7,26 @@ export function isValidLoaderResolveType(resolveType: string): boolean {
 }
 
 /**
+ * The read-only VTEX loaders the sandbox-less catalog-invoke route may proxy to
+ * a site's public deco runtime. This is an allowlist, not a pattern: unlike the
+ * sandbox `preview-invoke` (which proxies any resolveType to the user's OWN
+ * sandbox), catalog-invoke can target the site's PRODUCTION runtime, so it is
+ * held to exactly the two product-discovery loaders the blog ProductShelf
+ * picker needs. Mirrors the web picker's `VTEX_*_RESOLVE_TYPE` constants in
+ * `apps/web/.../blog/blocks/product-picker-source.ts` — keep the two in sync.
+ */
+export const CATALOG_LOADER_RESOLVE_TYPES = [
+  "vtex/loaders/intelligentSearch/productList.ts",
+  "vtex/loaders/categories/tree.ts",
+] as const;
+
+export function isCatalogLoaderResolveType(resolveType: string): boolean {
+  return (CATALOG_LOADER_RESOLVE_TYPES as readonly string[]).includes(
+    resolveType,
+  );
+}
+
+/**
  * Split a block-ref (`{ __resolveType, ...props }`) into the single-invoke
  * target Deco expects: POST /deco/invoke/<resolveType> with the loader props
  * as the JSON body.

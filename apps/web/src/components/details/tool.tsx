@@ -1,3 +1,6 @@
+import type { McpUiMessageRequest } from "@modelcontextprotocol/ext-apps";
+import type { ConnectionEntity } from "@/sdk";
+import { Page } from "@/components/page";
 import { MCPAppRenderer } from "@/mcp-apps/mcp-app-renderer";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import {
@@ -46,10 +49,10 @@ import {
   StopCircle,
 } from "@untitledui/icons";
 import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
-import type { McpUiMessageRequest } from "@modelcontextprotocol/ext-apps";
-import { Suspense, useState } from "react";
+
+import { startTransition, Suspense, useState } from "react";
 import { toast } from "sonner";
-import { ViewLayout } from "./layout";
+import { DetailPanel } from "./detail-panel";
 import {
   OAuthAuthenticationState,
   ManualAuthRequiredState,
@@ -61,7 +64,6 @@ import {
   useMCPClient,
   useMCPToolsListQuery,
   useProjectContext,
-  type ConnectionEntity,
 } from "@/sdk";
 import { contentBlocksToTiptapDoc } from "@decocms/shared/mcp-apps/content-blocks";
 import { IntegrationIcon } from "@/components/integration-icon.tsx";
@@ -259,6 +261,9 @@ function ToolDetailsAuthenticated({
   const hasEditedKey = (key: string) =>
     Object.prototype.hasOwnProperty.call(editedParams, key);
 
+  // `react/purity` does not narrow to the render phase: this runs only from
+  // onClick, where timing the call with a monotonic clock is the whole point.
+  // oxlint-disable react/purity
   const handleExecute = async () => {
     setIsExecuting(true);
     setExecutionError(null);
@@ -354,6 +359,7 @@ function ToolDetailsAuthenticated({
       setIsExecuting(false);
     }
   };
+  // oxlint-enable react/purity
 
   const handleInputChange = (key: string, value: unknown) => {
     setEditedParams((prev) => ({ ...prev, [key]: value }));
@@ -727,7 +733,7 @@ function ToolDetailsAuthenticated({
   );
 
   return (
-    <ViewLayout breadcrumb={breadcrumb}>
+    <DetailPanel leading={breadcrumb}>
       <div className="flex flex-col h-full overflow-hidden @container">
         {/* Header */}
         <div className="flex flex-col gap-3 py-7 px-8 bg-background border-b border-border shrink-0">
@@ -739,9 +745,7 @@ function ToolDetailsAuthenticated({
               size="xl"
               className="shrink-0"
             />
-            <h1 className="text-xl font-semibold tracking-tight text-foreground leading-none truncate">
-              {toolName}
-            </h1>
+            <Page.Title>{toolName}</Page.Title>
             {/* MCP Status */}
             <div className="flex items-center gap-2 px-2.5 py-1 bg-muted/50 rounded-md h-fit shrink-0">
               {toolsQuery.isSuccess ? (
@@ -796,7 +800,7 @@ function ToolDetailsAuthenticated({
           </div>
         </div>
       </div>
-    </ViewLayout>
+    </DetailPanel>
   );
 }
 
@@ -844,7 +848,10 @@ export function ToolDetailsView({
         toolName={toolName}
         connectionId={connectionId}
         siblings={siblings}
-        onSelectInstance={setSelectedConnectionId}
+        // A transition keeps the current instance on screen while the next loads.
+        onSelectInstance={(id) =>
+          startTransition(() => setSelectedConnectionId(id))
+        }
         onBack={onBack}
       />
     </Suspense>

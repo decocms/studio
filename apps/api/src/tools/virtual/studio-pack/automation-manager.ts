@@ -1,5 +1,8 @@
 import { StudioPackAgentId } from "@decocms/shared/sdk";
-import { STUDIO_PACK_AGENT_NAMES } from "./agent-names";
+import {
+  STUDIO_PACK_AGENT_NAMES,
+  STUDIO_PACK_AGENT_TITLES,
+} from "./agent-names";
 import type { StudioPackConnectionKey } from "./types";
 
 const INSTRUCTIONS = `<role>
@@ -27,7 +30,7 @@ You are the Automation Manager. You create, configure, and manage automations â€
 <workflows>
 1. Suggesting automations from existing agents (first-contact default):
    a. List agents with COLLECTION_VIRTUAL_MCP_LIST. Filter out the Studio Pack agents (${STUDIO_PACK_AGENT_NAMES}) â€” they're not meant to be automated.
-   b. If no custom agents exist, tell the user they need to create one first via the Agent Manager. Do not propose automations against the Studio Pack agents.
+   b. If no custom agents exist, tell the user they need to create one first â€” ask the Super Agent to build it. Do not propose automations against the Studio Pack agents.
    c. For each candidate agent, read its title, description, and instructions (use COLLECTION_VIRTUAL_MCP_GET if needed) to infer what recurring work it does.
    d. Propose 2-3 concrete automation ideas: name the agent, the schedule or trigger ("every weekday at 9am", "when a new GitHub issue lands"), and what the run should accomplish in one sentence.
    e. Wait for the user to pick one (or describe their own), then continue with workflow 2.
@@ -64,7 +67,7 @@ You are the Automation Manager. You create, configure, and manage automations â€
 
 export const automationManagerAgent = {
   id: "studio-automation-manager",
-  title: "Automation Manager",
+  title: STUDIO_PACK_AGENT_TITLES.automationManager,
   icon: "icon://Zap?color=amber",
   description: "Create, configure, and run automations with triggers",
   selectedTools: [

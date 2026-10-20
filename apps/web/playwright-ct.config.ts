@@ -75,6 +75,30 @@ export default defineConfig({
             find: /^@\/sdk\/hooks\/use-virtual-mcp$/,
             replacement: stub("use-virtual-mcp.ts"),
           },
+          // Org flag read via useProjectContext(); specs pick the editor via the stub.
+          {
+            find: /^@\/hooks\/use-new-blocks-editor$/,
+            replacement: stub("use-new-blocks-editor.ts"),
+          },
+          // The content backend waits for main's schema answer and probes its
+          // backend via useProjectContext(); fields are tested as v7 (legacy)
+          // sites see them. Matches the fields' relative
+          // `../use-content-backend` import too.
+          {
+            find: /^.*\/use-content-backend$/,
+            replacement: stub("use-content-backend.ts"),
+          },
+          // Main's schema answer (the deco serve connection reads it) asks the
+          // server via useProjectContext(): main reads as v7 here.
+          {
+            find: /^.*\/use-main-schema-v8$/,
+            replacement: stub("use-main-schema-v8.ts"),
+          },
+          // Editor uploads PUT to the org filesystem via useProjectContext(), which a bare mount lacks.
+          {
+            find: /^@\/components\/markdown-editor\/use-file-upload$/,
+            replacement: stub("use-file-upload.ts"),
+          },
           // General `@/* -> src/*` alias. MUST come after the stub aliases
           // above so Vite (first-match-wins) resolves those first. Matches
           // only `@/`-prefixed ids, so `@decocms/ui`, `@tanstack/*` etc. are

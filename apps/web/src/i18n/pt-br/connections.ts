@@ -6,6 +6,7 @@ export const connections = {
   "connections.createConnectionDialog.argumentsPlaceholder":
     "arg1 arg2 --flag value",
   "connections.createConnectionDialog.cancelButton": "Cancelar",
+  "connections.createConnectionDialog.closeButton": "Fechar",
   "connections.createConnectionDialog.commandLabel": "Comando *",
   "connections.createConnectionDialog.commandPlaceholder":
     "node, bun, python...",
@@ -47,4 +48,13 @@ export const connections = {
     "Diretório de Trabalho",
   "connections.createConnectionDialog.workingDirectoryPlaceholder":
     "/path/to/project (opcional)",
+  "connections.sandboxSignIn.callbackLabel": "Endereço de redirecionamento",
+  "connections.sandboxSignIn.description":
+    "Este servidor só aceita login pelo Claude Code, então o Studio faz o login pelo Claude Code em um sandbox temporário.",
+  "connections.sandboxSignIn.finish": "Concluir",
+  "connections.sandboxSignIn.openSignIn": "Abrir página de login",
+  "connections.sandboxSignIn.pasteHint":
+    "Depois de aprovar o acesso, seu navegador mostra uma página que não pode ser acessada. Copie o endereço completo dessa página e cole aqui.",
+  "connections.sandboxSignIn.starting": "Iniciando um sandbox…",
+  "connections.sandboxSignIn.title": "Entrar",
 } satisfies Record<keyof typeof connectionsEn, string>;

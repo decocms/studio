@@ -46,9 +46,67 @@ image:
   # instead of silently moving with `:latest`. Bump in lockstep with
   # packages/sandbox/package.json — release-studio-sandbox.yaml tags
   # images using that version. NEVER set this to "latest" in prod.
-  tag: "1.61.5"
+  tag: "1.93.1"
   # Override to Never on local kind clusters that load via `kind load`.
   pullPolicy: IfNotPresent
+
+# ── sandbox image variants (extra SandboxTemplates) ────────────────────
+# Each entry renders TWO more SandboxTemplates —
+# `<base>-<name>` and `<base>-<name>-medium` — identical to the default ones
+# except for what the entry overrides. A repository opts in (Settings →
+# Repositories), Studio composes the template name, and a name the cluster does
+# not have degrades to the base template rather than parking the claim.
+#
+# Per entry:
+#   repository / tag   the image; `tag` defaults to `image.tag`, because the
+#                      variant is built FROM that exact base image and the
+#                      release workflow publishes both under one version.
+#   nodeSelector /     REPLACE the chart-wide ones for this variant's pods —
+#   tolerations        for an image that needs hardware the default pool lacks.
+#   resources          deep-merged over `resources` (and `mediumResources` for
+#                      the -medium template).
+#   volumeSizes        merged over `volumeSizes`.
+#   warmPoolSize /     its own SandboxWarmPools (requires warmPool.enabled).
+#   warmPoolMediumSize Default 0, which costs nothing: an empty pool is served
+#                      by a cold pod from the claim's own template.
+#
+# Default {}: a variant's templates are only safe to render where its nodes
+# exist. A template that renders but cannot schedule does not trigger Studio's
+# fallback — the claim sits Pending instead — so enable a variant per
+# environment, alongside its NodePool.
+#
+# `android` runs an Android emulator so an agent can build a mobile app, tap
+# through it and screenshot it (packages/sandbox/image-android). The emulator
+# needs /dev/kvm, so its pods go to nodes launched with nested virtualization
+# (terraform-eks-cluster: the `sandbox-android` NodePool) and request the KVM
+# device from the device plugin that runs there. The memory is the emulator's
+# 4Gi plus a Gradle build; the disk is its data partition plus Gradle's caches.
+# The AVD (6G data partition), ~/.gradle and the pub cache all live in `home`.
+imageVariants: {}
+# imageVariants:
+#   android:
+#     repository: ghcr.io/decocms/studio/studio-sandbox-android
+#     nodeSelector:
+#       decocms.com/nodepool: sandbox-android
+#     tolerations:
+#       - key: decocms.com/sandbox-android
+#         operator: Equal
+#         value: "true"
+#         effect: NoSchedule
+#     resources:
+#       requests:
+#         cpu: "2"
+#         memory: 8Gi
+#       limits:
+#         cpu: "4"
+#         memory: 12Gi
+#         ephemeral-storage: 40Gi
+#         decocms.com/kvm: "1"
+#     volumeSizes:
+#       home: 24Gi
+#       workdir: 8Gi
+#     warmPoolSize: 0
+#     warmPoolMediumSize: 0
 
 # ── sandbox pod resources (per SandboxClaim) ───────────────────────────
 # Prod ceilings. Adjust per measured workload.
@@ -298,7 +356,7 @@ orgFs:
     repository: ghcr.io/decocms/studio/orgfs-sidecar
     # Bump to ship a new sidecar image — release-orgfs-sidecar.yaml reads
     # this field as the single source of truth (netinit pattern).
-    tag: "0.1.0"
+    tag: "0.2.0"
     pullPolicy: IfNotPresent
   resources:
     requests:
@@ -588,6 +646,10 @@ goldenUploader:
   # on nodes that ran one.
   nodeSelector: {}
   tolerations: []
+  # For an image variant on its own NodePool (android): a nodeSelector cannot
+  # say "either pool", node affinity can. Set nodeSelector to what both pools
+  # share and list both pools' taints in tolerations.
+  affinity: {}
 
 # ── sentinel token ─────────────────────────────────────────────────────
 sentinel:
@@ -665,6 +727,11 @@ warmPool:
 #     - name: tenant-acme-site-prod  # DNS label ending in -<envName>
 #       size: 2                      # keep this many warm pods ready
 tenantPools: []
+
+# Let the runner account create, update and delete SandboxWarmPools in this
+# namespace, for a control plane that renders tenant pools itself and applies
+# them through sandbox ops running as this account. Off: pools are chart-owned.
+hostManagedTenantPools: false
 
 # ── node placeholder / "balloon" (optional) ────────────────────────────
 # Warm NODE capacity for the sandbox NodePool. warmPool warms *pods*; this
@@ -874,3 +941,20 @@ housekeeper:
     limits:
       cpu: 200m
       memory: 128Mi
+
+# ── commit signing ─────────────────────────────────────────────────────
+# Sandboxes commit as the shared bot identity. A repository that requires
+# verified signatures rejects those commits unless they are signed with a key
+# registered on the bot's own forge account. Generate one with
+#   ssh-keygen -t ed25519 -N "" -C decobot-signing -f decobot-signing
+# add `decobot-signing.pub` to the bot account as a *Signing Key* (not an
+# authentication key — signing alone grants no repository access), and set:
+commitSigning:
+  # The committer email the key is registered for. Only commits with this
+  # committer are signed; a human's commit signed with the bot's key would
+  # render as Unverified. Required when privateKey is set.
+  email: ""
+  # The OpenSSH private key (`decobot-signing`). Empty leaves commits unsigned.
+  # Mounted read-only into every sandbox pod of this env, where the daemon
+  # points git at it — so treat it as readable by code running in a sandbox.
+  privateKey: ""

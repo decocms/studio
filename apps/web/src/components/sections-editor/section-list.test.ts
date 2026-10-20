@@ -135,5 +135,39 @@ describe("parseSections", () => {
     // Hidden variant sections are edited via un-hide, not as a single section.
     expect(parsed[0]?.isMultivariate).toBeUndefined();
     expect(parsed[0]?.label).toBe("Variants of CategoryShelf");
+    expect(parsed[0]?.variantOf).toBe("CategoryShelf");
+  });
+
+  // The breadcrumb names the section and its selected variant in one crumb, so
+  // it needs the wrapped section's own label rather than the "Variants of X"
+  // sentence built around it.
+  it("carries the wrapped section's own label beside the sentence", () => {
+    const variant = (rule: string) => ({
+      value: { __resolveType: "site/sections/Category/CategoryShelf.tsx" },
+      rule: { __resolveType: rule },
+    });
+    const parsed = parseSections(
+      [
+        {
+          __resolveType: "website/flags/multivariate/section.ts",
+          variants: [
+            variant("website/matchers/always.ts"),
+            variant("website/matchers/device.ts"),
+          ],
+        },
+      ],
+      {},
+    );
+    expect(parsed[0]?.isMultivariate).toBe(true);
+    expect(parsed[0]?.label).toBe("Variants of CategoryShelf");
+    expect(parsed[0]?.variantOf).toBe("CategoryShelf");
+  });
+
+  it("leaves variantOf unset on a section that has no variants", () => {
+    const parsed = parseSections(
+      [{ __resolveType: "site/sections/Header/Header.tsx" }],
+      {},
+    );
+    expect(parsed[0]?.variantOf).toBeUndefined();
   });
 });

@@ -1,3 +1,52 @@
+import * as migration254codexsubscriptions from "./254-codex-subscriptions";
+import * as migration228orgvoiceconfig from "./228-org-voice-config";
+import * as migration221removeprivateregistry from "./221-remove-private-registry";
+import * as migration222orggitcredentials from "./222-org-git-credentials";
+import * as migration224repositorysandboximage from "./224-repository-sandbox-image";
+import * as migration225threadanalyticsindexes from "./225-thread-analytics-indexes";
+import * as migration226decoscorenames from "./226-deco-score-names";
+import * as migration227taskboardfindingresolvedactivity from "./227-task-board-finding-resolved-activity";
+import * as migration229jiraautomationfrom from "./229-jira-automation-from";
+import * as migration230projectsidebar from "./230-project-sidebar";
+import * as migration231jirachatagent from "./231-jira-chat-agent";
+import * as migration232taskboardpromptskills from "./232-task-board-prompt-skills";
+import * as migration233removejirachatagent from "./233-remove-jira-chat-agent";
+import * as migration234taskboardcommentaudience from "./234-task-board-comment-audience";
+import * as migration235pruneemptythreaddirs from "./235-prune-empty-thread-dirs";
+import * as migration236taskboardsprints from "./236-task-board-sprints";
+import * as migration237orgsitesprojectlink from "./237-org-sites-project-link";
+import * as migration238taskboarddefaultlanes from "./238-task-board-default-lanes";
+import * as migration239taskboardretireoldlanes from "./239-task-board-retire-old-lanes";
+import * as migration240taskboardrestoretodo from "./240-task-board-restore-todo";
+import * as migration241automationboardcolumntransition from "./241-automation-board-column-transition";
+import * as migration242connectionurlslug from "./242-connection-url-slug";
+import * as migration243experimenttaskboarditem from "./243-experiment-task-board-item";
+import * as migration244connectionurlslugrolloutbackfill from "./244-connection-url-slug-rollout-backfill";
+import * as migration245automationsystemkey from "./245-automation-system-key";
+import * as migration246automationprreadytrigger from "./246-automation-pr-ready-trigger";
+import * as migration247automationjiratransition from "./247-automation-jira-transition";
+import * as migration248dropretiredruletables from "./248-drop-retired-rule-tables";
+import * as migration249taskboarditemproject from "./249-task-board-item-project";
+import * as migration250githubcopilotsubscriptions from "./250-github-copilot-subscriptions";
+import * as migration251orgsharedplans from "./251-org-shared-plans";
+import * as migration252automationlinkedchattrigger from "./252-automation-linked-chat-trigger";
+import * as migration253automationprbuiltintriggers from "./253-automation-pr-builtin-triggers";
+import * as migration223droporgmainagentid from "./223-drop-org-main-agent-id";
+import * as migration214connectionssanitizedididx from "./214-connections-sanitized-id-idx";
+import * as migration215commercediscoveryrepository from "./215-commerce-discovery-repository";
+import * as migration216githubcliauth from "./216-github-cli-auth";
+import * as migration211userfsorg from "./211-user-fs-org";
+import * as migration210githubrepositoryauthorization from "./210-github-repository-authorization";
+import * as migration212codingagentmcpexcluded from "./212-coding-agent-mcp-excluded";
+import * as migration213bitbucketgitprovider from "./213-bitbucket-git-provider";
+import * as migration217experiments from "./217-experiments";
+import * as migration218threadmessagepartserroridx from "./218-thread-message-parts-error-idx";
+import * as migration219taskboardduplicatereportedactivity from "./219-task-board-duplicate-reported-activity";
+import * as migration220jiraautomationcontinuepr from "./220-jira-automation-continue-pr";
+import * as migration209githubinstallationauthorization from "./209-github-installation-authorization";
+import * as migration208githubconnectflows from "./208-github-connect-flows";
+import * as migration207taskboardprsrepoidx from "./207-task-board-prs-repo-idx";
+import * as migration206repositoryconsumers from "./206-repository-consumers";
 import { type Migration } from "kysely";
 import * as migration001initialschema from "./001-initial-schema.ts";
 import * as migration002organizationsettings from "./002-organization-settings.ts";
@@ -35,8 +84,8 @@ import * as migration033threadstatus from "./033-thread-status.ts";
 import * as migration034monitoringdashboards from "./034-monitoring-dashboards.ts";
 import * as migration035projectconnections from "./035-project-connections.ts";
 import * as migration036updateregistryurl from "./036-update-registry-url.ts";
-import * as migration037aiproviderkeyss from "./037-ai-provider-keys.ts";
-import * as migration038oauthpkcestatess from "./038-oauth-pkce-states.ts";
+import * as migration037aiproviderkeys from "./037-ai-provider-keys.ts";
+import * as migration038oauthpkcestates from "./038-oauth-pkce-states.ts";
 import * as migration039automations from "./039-automations.ts";
 import * as migration040replacenextrunatwithlastrunat from "./040-replace-next-run-at-with-last-run-at.ts";
 import * as migration041aiproviderkeysuniqueconstraint from "./041-ai-provider-keys-unique-constraint.ts";
@@ -201,6 +250,9 @@ import * as migration199dropjiramirrorandorgcolumns from "./199-drop-jira-mirror
 import * as migration200jirarruntrigger from "./200-jira-run-trigger.ts";
 import * as migration201organizationnotices from "./201-organization-notices.ts";
 import * as migration202redactbase64threadparts from "./202-redact-base64-thread-parts.ts";
+import * as migration203taskboardpreviewroutes from "./203-task-board-preview-routes.ts";
+import * as migration204gitprovideraccountsandrepositories from "./204-git-provider-accounts-and-repositories.ts";
+import * as migration205repositoryreferences from "./205-repository-references.ts";
 
 /**
  * Core migrations for the Studio application.
@@ -246,8 +298,8 @@ const migrations: Record<string, Migration> = {
   "034-monitoring-dashboards": migration034monitoringdashboards,
   "035-project-connections": migration035projectconnections,
   "036-update-registry-url": migration036updateregistryurl,
-  "037-ai-provider-keys": migration037aiproviderkeyss,
-  "038-oauth-pkce-states": migration038oauthpkcestatess,
+  "037-ai-provider-keys": migration037aiproviderkeys,
+  "038-oauth-pkce-states": migration038oauthpkcestates,
   "039-automations": migration039automations,
   "040-replace-next-run-at-with-last-run-at":
     migration040replacenextrunatwithlastrunat,
@@ -437,6 +489,65 @@ const migrations: Record<string, Migration> = {
   "200-jira-run-trigger": migration200jirarruntrigger,
   "201-organization-notices": migration201organizationnotices,
   "202-redact-base64-thread-parts": migration202redactbase64threadparts,
+  "203-task-board-preview-routes": migration203taskboardpreviewroutes,
+  "204-git-provider-accounts-and-repositories":
+    migration204gitprovideraccountsandrepositories,
+  "205-repository-references": migration205repositoryreferences,
+  "206-repository-consumers": migration206repositoryconsumers,
+  "207-task-board-prs-repo-idx": migration207taskboardprsrepoidx,
+  "208-github-connect-flows": migration208githubconnectflows,
+  "209-github-installation-authorization":
+    migration209githubinstallationauthorization,
+  "210-github-repository-authorization":
+    migration210githubrepositoryauthorization,
+  "211-user-fs-org": migration211userfsorg,
+  "212-coding-agent-mcp-excluded": migration212codingagentmcpexcluded,
+  "213-bitbucket-git-provider": migration213bitbucketgitprovider,
+  "214-connections-sanitized-id-idx": migration214connectionssanitizedididx,
+  "215-commerce-discovery-repository": migration215commercediscoveryrepository,
+  "216-github-cli-auth": migration216githubcliauth,
+  "217-experiments": migration217experiments,
+  "218-thread-message-parts-error-idx": migration218threadmessagepartserroridx,
+  "219-task-board-duplicate-reported-activity":
+    migration219taskboardduplicatereportedactivity,
+  "220-jira-automation-continue-pr": migration220jiraautomationcontinuepr,
+  "221-remove-private-registry": migration221removeprivateregistry,
+  "222-org-git-credentials": migration222orggitcredentials,
+  "223-drop-org-main-agent-id": migration223droporgmainagentid,
+  "224-repository-sandbox-image": migration224repositorysandboximage,
+  "225-thread-analytics-indexes": migration225threadanalyticsindexes,
+  "226-deco-score-names": migration226decoscorenames,
+  "227-task-board-finding-resolved-activity":
+    migration227taskboardfindingresolvedactivity,
+  "228-org-voice-config": migration228orgvoiceconfig,
+  "229-jira-automation-from": migration229jiraautomationfrom,
+  "230-project-sidebar": migration230projectsidebar,
+  "231-jira-chat-agent": migration231jirachatagent,
+  "232-task-board-prompt-skills": migration232taskboardpromptskills,
+  "233-remove-jira-chat-agent": migration233removejirachatagent,
+  "234-task-board-comment-audience": migration234taskboardcommentaudience,
+  "235-prune-empty-thread-dirs": migration235pruneemptythreaddirs,
+  "236-task-board-sprints": migration236taskboardsprints,
+  "237-org-sites-project-link": migration237orgsitesprojectlink,
+  "238-task-board-default-lanes": migration238taskboarddefaultlanes,
+  "239-task-board-retire-old-lanes": migration239taskboardretireoldlanes,
+  "240-task-board-restore-todo": migration240taskboardrestoretodo,
+  "241-automation-board-column-transition":
+    migration241automationboardcolumntransition,
+  "242-connection-url-slug": migration242connectionurlslug,
+  "243-experiment-task-board-item": migration243experimenttaskboarditem,
+  "244-connection-url-slug-rollout-backfill":
+    migration244connectionurlslugrolloutbackfill,
+  "245-automation-system-key": migration245automationsystemkey,
+  "246-automation-pr-ready-trigger": migration246automationprreadytrigger,
+  "247-automation-jira-transition": migration247automationjiratransition,
+  "248-drop-retired-rule-tables": migration248dropretiredruletables,
+  "249-task-board-item-project": migration249taskboarditemproject,
+  "250-github-copilot-subscriptions": migration250githubcopilotsubscriptions,
+  "251-org-shared-plans": migration251orgsharedplans,
+  "252-automation-linked-chat-trigger": migration252automationlinkedchattrigger,
+  "253-automation-pr-builtin-triggers": migration253automationprbuiltintriggers,
+  "254-codex-subscriptions": migration254codexsubscriptions,
 };
 
 export default migrations;

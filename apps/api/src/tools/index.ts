@@ -5,7 +5,6 @@
  * Types are inferred from CORE_TOOLS — this is the source of truth.
  */
 
-import { StudioContext } from "@/core/studio-context";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -13,7 +12,7 @@ import { sharedJsonSchemaValidator } from "@decocms/mcp-utils";
 import type { Tool as McpTool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import * as ApiKeyTools from "./apiKeys";
-import * as CommerceDiscoveryTools from "./reports";
+import * as ReportsTools from "./reports";
 import * as ConnectionTools from "./connection";
 import * as DatabaseTools from "./database";
 import * as VirtualMCPTools from "./virtual";
@@ -22,14 +21,19 @@ import * as OrganizationTools from "./organization";
 import * as TaskBoardTools from "./task-board";
 import * as NotificationTools from "./notifications";
 import * as TagTools from "./tags";
+import * as ExperimentTools from "./experiments";
 import * as ThreadTools from "./thread";
 import * as AutomationTools from "./automations";
 import * as UserTools from "./user";
+import * as ProjectSidebarTools from "./project-sidebar";
 import * as AiProvidersTools from "./ai-providers";
+import * as CodexSubscriptionTools from "./codex-subscription";
 import * as ClaudeSubscriptionTools from "./claude-subscription";
+import * as GithubCopilotTools from "./github-copilot";
 import * as SecretsTools from "./secrets";
 import * as FileConfigTools from "./file-configs";
 import * as InfraBillingTools from "./infra-billing";
+import * as CustomerLakeTools from "./customer-lake";
 import { ORG_FS_PUBLIC_SETS_SYNC } from "./org-fs/sync-public-sets";
 import * as OrgRepoSyncTools from "./org-repo-sync";
 import * as JiraTools from "./jira";
@@ -43,7 +47,11 @@ import * as ObjectStorageTools from "./object-storage";
 import * as RegistryTools from "./registry/index";
 import * as SandboxTools from "./sandbox";
 import * as GitHubTools from "./github";
+import * as GitTools from "./git";
+import * as ChangeRequestTools from "./change-requests";
 import * as SearchTools from "./search";
+import * as BlogTools from "./blog";
+import * as ChatTools from "./chat";
 import type { ToolName } from "@decocms/shared/tools/registry-metadata";
 // Core tools - always available
 export const CORE_TOOLS = [
@@ -54,23 +62,26 @@ export const CORE_TOOLS = [
   OrganizationTools.ORGANIZATION_DELETE,
   OrganizationTools.ORGANIZATION_SETTINGS_GET,
   OrganizationTools.ORGANIZATION_SETTINGS_UPDATE,
+  OrganizationTools.ORGANIZATION_BLOCKS_EDITOR_SET,
+  OrganizationTools.ORGANIZATION_HAS_SITE,
   NotificationTools.NOTIFICATION_LIST,
   NotificationTools.NOTIFICATION_MARK_READ,
   NotificationTools.NOTIFICATION_SUBSCRIPTION_SET,
   NotificationTools.NOTIFICATION_SUBSCRIPTION_LIST,
   TaskBoardTools.TASK_BOARD_ITEM_CREATE,
+  // The cross-org `org` param is applied at each tool's own definition, NOT
+  // here — the Super Agent imports these tools directly (see
+  // `decopilot/built-in-tools/task-board-tools.ts`) and never reads this list.
   TaskBoardTools.TASK_BOARD_ITEM_LIST,
   TaskBoardTools.TASK_BOARD_ITEM_UPDATE,
   TaskBoardTools.TASK_BOARD_ITEM_DELETE,
-  TaskBoardTools.TASK_BOARD_AUTOMATION_LIST,
-  TaskBoardTools.TASK_BOARD_AUTOMATION_UPSERT,
-  TaskBoardTools.TASK_BOARD_AUTOMATION_DELETE,
   TaskBoardTools.TASK_BOARD_PROMPT_LIST,
   TaskBoardTools.TASK_BOARD_PROMPT_UPSERT,
   TaskBoardTools.TASK_BOARD_PROMPT_DELETE,
   TaskBoardTools.TASK_BOARD_ITEM_PRS_GET,
   TaskBoardTools.TASK_BOARD_PREVIEW_PROBE,
   TaskBoardTools.TASK_BOARD_ITEM_RERUN,
+  TaskBoardTools.TASK_BOARD_RUN_REVIEWER,
   TaskBoardTools.TASK_BOARD_RESOLVE_CONFLICT,
   TaskBoardTools.TASK_BOARD_REVIEW_DECISION,
   TaskBoardTools.TASK_BOARD_PROMOTE_TO_PRODUCTION,
@@ -81,15 +92,41 @@ export const CORE_TOOLS = [
   TaskBoardTools.TASK_BOARD_COMMENT_DELETE,
   TaskBoardTools.TASK_BOARD_DISMISSED_LIST,
   TaskBoardTools.TASK_BOARD_DISMISSED_RESTORE,
+  TaskBoardTools.TASK_BOARD_SPRINT_LIST,
+  TaskBoardTools.TASK_BOARD_SPRINT_CREATE,
+  TaskBoardTools.TASK_BOARD_SPRINT_UPDATE,
+  TaskBoardTools.TASK_BOARD_SPRINT_START,
+  TaskBoardTools.TASK_BOARD_SPRINT_COMPLETE,
+  TaskBoardTools.TASK_BOARD_SPRINT_DELETE,
   TaskBoardTools.TASK_ADD_REPO,
-  OrganizationTools.BRAND_CONTEXT_LIST,
-  OrganizationTools.BRAND_CONTEXT_GET,
-  OrganizationTools.BRAND_CONTEXT_CREATE,
-  OrganizationTools.BRAND_CONTEXT_UPDATE,
-  OrganizationTools.BRAND_CONTEXT_DELETE,
-  OrganizationTools.BRAND_CONTEXT_EXTRACT,
-  OrganizationTools.BRAND_GET,
-  OrganizationTools.BRAND_LIST,
+  // Decopilot's chat built-ins, for sandbox-hosted runs (thread-mcp.ts)
+  ChatTools.GENERATE_IMAGE,
+  ChatTools.WEB_SEARCH,
+  ChatTools.DEEP_RESEARCH,
+  ChatTools.SUGGEST_TASK,
+  ChatTools.PREVIEW_NAVIGATE,
+  ChatTools.UPDATE_INTERESTS,
+  TaskBoardTools.TASK_BOARD_ADMIN_ORG_LIST,
+  TaskBoardTools.TASK_BOARD_DELIVERY,
+  TaskBoardTools.TASK_BOARD_OPERATION,
+  TaskBoardTools.TASK_BOARD_OPERATION_TASKS,
+  TaskBoardTools.TASK_BOARD_REWORK,
+  TaskBoardTools.TASK_BOARD_SPRINTS,
+  TaskBoardTools.TASK_BOARD_STUCK,
+  TaskBoardTools.TASK_BOARD_COST,
+  TaskBoardTools.TASK_BOARD_QUALITY,
+  TaskBoardTools.TASK_BOARD_ERRORS,
+  TaskBoardTools.TASK_BOARD_TENANTS,
+  BlogTools.BLOG_SITE_GROUND,
+  BlogTools.BLOG_SITE_CATALOGUE,
+  BlogTools.BLOG_BRAND_EXTRACT,
+  BlogTools.BLOG_BRAND_ENRICH,
+  BlogTools.BLOG_CONTEXT_EXTRACT,
+  BlogTools.BLOG_FORMAT_SUGGEST,
+  BlogTools.BLOG_POST_DRAFT,
+  BlogTools.BLOG_POST_ILLUSTRATE,
+  BlogTools.BLOG_LINK_SUGGEST,
+  BlogTools.BLOG_CAMPAIGN_SUGGEST,
   OrganizationTools.ORGANIZATION_DOMAIN_LIST,
   OrganizationTools.ORGANIZATION_DOMAIN_ADD,
   OrganizationTools.ORGANIZATION_DOMAIN_UPDATE,
@@ -103,6 +140,7 @@ export const CORE_TOOLS = [
   OrganizationTools.ORGANIZATION_MEMBER_LIST,
   OrganizationTools.ORGANIZATION_MEMBER_UPDATE_ROLE,
   OrganizationTools.ORGANIZATION_BILLING_CHECKOUT_START,
+  OrganizationTools.ORGANIZATION_BILLING_PLAN_PRICES,
   OrganizationTools.ORGANIZATION_BILLING_PORTAL,
   OrganizationTools.ORGANIZATION_TASK_QUOTA_GET,
 
@@ -110,6 +148,7 @@ export const CORE_TOOLS = [
   InfraBillingTools.INFRA_BILLING_SITES_LIST,
   InfraBillingTools.INFRA_BILLING_GET,
   InfraBillingTools.INFRA_BILLING_PORTAL,
+  CustomerLakeTools.CUSTOMER_LAKE_QUERY,
 
   // Connection collection tools
   ConnectionTools.COLLECTION_CONNECTIONS_CREATE,
@@ -118,10 +157,13 @@ export const CORE_TOOLS = [
   ConnectionTools.COLLECTION_CONNECTIONS_UPDATE,
   ConnectionTools.COLLECTION_CONNECTIONS_DELETE,
   ConnectionTools.CONNECTION_TEST,
-  CommerceDiscoveryTools.COMMERCE_DISCOVERY_SETUP,
-  CommerceDiscoveryTools.COMMERCE_DISCOVERY_RUN,
-  CommerceDiscoveryTools.COMMERCE_DISCOVERY_BIND,
-  CommerceDiscoveryTools.COMMERCE_DISCOVERY_CONNECTION_STATUS,
+  ConnectionTools.CONNECTION_TOOLS_SEARCH,
+  ConnectionTools.CONNECTION_TOOL_CALL,
+  ReportsTools.REPORTS_SETUP,
+  ReportsTools.REPORTS_RUN,
+  ReportsTools.REPORTS_BIND,
+  ReportsTools.REPORTS_CONNECTION_STATUS,
+  ReportsTools.REPORTS_SET_REPOSITORY,
 
   // Virtual MCP collection tools
   VirtualMCPTools.COLLECTION_VIRTUAL_MCP_CREATE,
@@ -151,6 +193,11 @@ export const CORE_TOOLS = [
   UserTools.USER_MODEL_PREFERENCES_GET,
   UserTools.USER_MODEL_PREFERENCES_UPDATE,
 
+  // Project sidebar: org-wide folders, per-member pins and hides
+  ProjectSidebarTools.SIDEBAR_GET,
+  ProjectSidebarTools.PROJECT_FOLDERS_SET,
+  ProjectSidebarTools.SIDEBAR_PREFERENCES_SET,
+
   // Thread collection tools
   ThreadTools.COLLECTION_THREADS_CREATE,
   ThreadTools.COLLECTION_THREADS_LIST,
@@ -158,6 +205,10 @@ export const CORE_TOOLS = [
   ThreadTools.COLLECTION_THREADS_UPDATE,
   ThreadTools.COLLECTION_THREADS_DELETE,
   ThreadTools.COLLECTION_THREAD_MESSAGES_LIST,
+  ThreadTools.THREAD_ANALYTICS_ORG_LIST,
+  ThreadTools.THREAD_ANALYTICS_LIVE,
+  ThreadTools.THREAD_ANALYTICS_USAGE,
+  ThreadTools.THREAD_ANALYTICS_ERRORS,
 
   // Tag tools
   TagTools.TAGS_LIST,
@@ -165,6 +216,16 @@ export const CORE_TOOLS = [
   TagTools.TAGS_DELETE,
   TagTools.MEMBER_TAGS_GET,
   TagTools.MEMBER_TAGS_SET,
+  ExperimentTools.EXPERIMENT_LIST,
+  ExperimentTools.EXPERIMENT_GET,
+  ExperimentTools.EXPERIMENT_CREATE,
+  ExperimentTools.EXPERIMENT_SUGGEST,
+  ExperimentTools.EXPERIMENT_IMPLEMENT,
+  ExperimentTools.EXPERIMENT_IMPLEMENT_LOCAL,
+  ExperimentTools.EXPERIMENT_PREVIEW_SYNC_LOCAL,
+  ExperimentTools.EXPERIMENT_UPDATE,
+  ExperimentTools.EXPERIMENT_DELETE,
+  ExperimentTools.EXPERIMENT_RESULTS,
 
   // Automation tools
   AutomationTools.AUTOMATION_CREATE,
@@ -178,11 +239,9 @@ export const CORE_TOOLS = [
   AutomationTools.AUTOMATION_RUN,
   AutomationTools.AUTOMATION_RUN_STATS,
 
-  // Virtual MCP plugin config tools
-  VirtualMCPTools.VIRTUAL_MCP_PLUGIN_CONFIG_GET,
-  VirtualMCPTools.VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE,
   VirtualMCPTools.VIRTUAL_MCP_PINNED_VIEWS_UPDATE,
   VirtualMCPTools.VIRTUAL_MCP_LAST_USED_LIST,
+  VirtualMCPTools.PROJECT_FOLDER_ENSURE,
 
   // Ai providers tools
   AiProvidersTools.AI_PROVIDERS_LIST,
@@ -198,10 +257,23 @@ export const CORE_TOOLS = [
   AiProvidersTools.AI_PROVIDER_PROVISION_KEY,
   AiProvidersTools.AI_PROVIDER_TOPUP_URL,
   AiProvidersTools.AI_PROVIDER_CREDITS,
+  AiProvidersTools.AI_PLAN_ENTITLEMENTS,
+  AiProvidersTools.AI_PLAN_LIST,
+  AiProvidersTools.AI_PLAN_SET,
+  AiProvidersTools.AI_PLAN_INVOICE_UPGRADE,
+  CodexSubscriptionTools.CODEX_SUBSCRIPTION_CONNECT,
+  CodexSubscriptionTools.CODEX_SUBSCRIPTION_STATUS,
+  CodexSubscriptionTools.CODEX_SUBSCRIPTION_DISCONNECT,
+  CodexSubscriptionTools.CODEX_SUBSCRIPTION_SYNC,
   // Claude subscription (per-user OAuth credential for the claude-code harness)
   ClaudeSubscriptionTools.CLAUDE_SUBSCRIPTION_CONNECT,
   ClaudeSubscriptionTools.CLAUDE_SUBSCRIPTION_STATUS,
   ClaudeSubscriptionTools.CLAUDE_SUBSCRIPTION_DISCONNECT,
+  // GitHub Copilot (per-user token for the claude-code harness)
+  GithubCopilotTools.GITHUB_COPILOT_CONNECT,
+  GithubCopilotTools.GITHUB_COPILOT_STATUS,
+  GithubCopilotTools.GITHUB_COPILOT_DISCONNECT,
+  GithubCopilotTools.GITHUB_COPILOT_SHARE,
   // Secrets tools
   SecretsTools.SECRET_CREATE,
   SecretsTools.SECRET_LIST,
@@ -232,12 +304,15 @@ export const CORE_TOOLS = [
   JiraTools.JIRA_BOARD_COLUMNS_LIST,
   JiraTools.JIRA_AUTOMATION_LIST,
   JiraTools.JIRA_AUTOMATION_UPSERT,
-  JiraTools.JIRA_AUTOMATION_DELETE,
+  JiraTools.JIRA_RUN_START,
   // Served only on a Jira-triggered run's MCP endpoint (task-run-context.ts)
   JiraTools.JIRA_ISSUE_GET,
   JiraTools.JIRA_COMMENT_ADD,
   JiraTools.JIRA_ISSUE_TRANSITION,
   JiraTools.JIRA_ATTACHMENT_DOWNLOAD,
+  JiraTools.JIRA_REMOTE_LINK_ADD,
+  JiraTools.JIRA_ISSUE_CREATE,
+  JiraTools.JIRA_ISSUE_SEARCH,
 
   // Object Storage tools
   ObjectStorageTools.LIST_OBJECTS,
@@ -254,13 +329,29 @@ export const CORE_TOOLS = [
   SandboxTools.SANDBOX_START,
   SandboxTools.SANDBOX_DELETE,
 
-  // GitHub tools (app-only)
+  // GitHub App installations (app-only) — the one surface that is GitHub's own
   GitHubTools.GITHUB_LIST_USER_ORGS,
-  GitHubTools.GITHUB_SEARCH_BRANCHES,
-  GitHubTools.GITHUB_PR_STATE,
-  GitHubTools.GITHUB_LAST_PUBLISHED_PR,
 
-  // Link tools
+  // Git provider accounts + first-class repositories (app-only)
+  GitTools.GIT_PROVIDER_CAPABILITIES,
+  GitTools.GIT_ACCOUNT_LIST,
+  GitTools.GIT_ACCOUNT_CONNECT_TOKEN,
+  GitTools.GIT_ACCOUNT_DELETE,
+  GitTools.REPOSITORY_LIST,
+  GitTools.REPOSITORY_SEARCH,
+  GitTools.REPOSITORY_LINK,
+  GitTools.REPOSITORY_CREATE_FROM_TEMPLATE,
+  GitTools.REPOSITORY_UPDATE,
+  GitTools.REPOSITORY_DELETE,
+  GitTools.REPOSITORY_SEARCH_BRANCHES,
+
+  // Change requests — pull requests on GitHub, merge requests on GitLab (app-only)
+  ChangeRequestTools.CHANGE_REQUEST_STATE,
+  ChangeRequestTools.CHANGE_REQUEST_LAST_MERGED,
+  ChangeRequestTools.CHANGE_REQUEST_LIST_OPEN,
+  ChangeRequestTools.CHANGE_REQUEST_CHECK_LOG,
+  ChangeRequestTools.CHANGE_REQUEST_OPEN,
+  ChangeRequestTools.CHANGE_REQUEST_MERGE,
 
   // Search tools
   SearchTools.GLOBAL_SEARCH,
@@ -289,8 +380,38 @@ export const TOOL_BY_NAME: Map<string, RegistrableTool> = new Map(
 );
 
 /**
- * An MCP server exposing just the named management tools — no prompts, no brand
- * prompts, no resources.
+ * Names a tool answered to before it was renamed.
+ *
+ * A tool name is a wire identifier: an external MCP client, a saved harness
+ * config or a stored allowlist can all name one, and a rename in this repo
+ * updates none of them. So the old name keeps RESOLVING while only the current
+ * one is ADVERTISED — hence a second map rather than extra entries in
+ * `TOOL_BY_NAME`, which every listing iterates and would otherwise show each
+ * renamed tool twice (and register it twice on the MCP server).
+ *
+ * Renaming a tool also moves its permission resource; the other half of that is
+ * the renamed tool's own `ctx.access.check(current, legacy)`.
+ *
+ * Entries are removed once the old name has been out of use for a release.
+ */
+const LEGACY_TOOL_NAMES: Record<string, string> = {
+  COMMERCE_DISCOVERY_SETUP: "REPORTS_SETUP",
+  COMMERCE_DISCOVERY_RUN: "REPORTS_RUN",
+  COMMERCE_DISCOVERY_BIND: "REPORTS_BIND",
+  COMMERCE_DISCOVERY_CONNECTION_STATUS: "REPORTS_CONNECTION_STATUS",
+};
+
+/** A tool by its current name, or by one it used to answer to. */
+export function resolveToolByName(name: string): RegistrableTool | undefined {
+  const current = TOOL_BY_NAME.get(name);
+  if (current) return current;
+  const renamed = LEGACY_TOOL_NAMES[name];
+  return renamed ? TOOL_BY_NAME.get(renamed) : undefined;
+}
+
+/**
+ * An MCP server exposing just the named management tools — no prompts, no
+ * resources.
  *
  * For a machine consumer that needs a handful of tools and pays for the rest in
  * context: the whole management surface is ~200 tools, and a harness handed all
@@ -301,6 +422,8 @@ export const TOOL_BY_NAME: Map<string, RegistrableTool> = new Map(
 export const toolSubsetMCP = (
   name: string,
   toolNames: readonly string[],
+  /** Tools Claude Code keeps in every prompt; the rest wait for tool search. */
+  alwaysLoad: ReadonlySet<string> = new Set(),
 ): McpServer => {
   const server = new McpServer(
     { name, version: "1.0.0" },
@@ -310,18 +433,27 @@ export const toolSubsetMCP = (
     },
   );
   for (const toolName of toolNames) {
-    const tool = TOOL_BY_NAME.get(toolName);
+    const tool = resolveToolByName(toolName);
     if (!tool) {
       console.warn(`[${name}] unknown tool "${toolName}" — not registered`);
       continue;
     }
     const { config, handler } = getToolRegistration(tool);
-    server.registerTool(tool.name, config, handler);
+    server.registerTool(
+      tool.name,
+      alwaysLoad.has(tool.name)
+        ? {
+            ...config,
+            _meta: { ...config._meta, "anthropic/alwaysLoad": true },
+          }
+        : config,
+      handler,
+    );
   }
   return server;
 };
 
-export const managementMCP = async (ctx: StudioContext) => {
+export const managementMCP = () => {
   // Create MCP server directly
   const server = new McpServer(
     { name: "mcp-cms-management", version: "1.0.0" },
@@ -378,85 +510,6 @@ export const managementMCP = async (ctx: StudioContext) => {
     );
   }
 
-  // Register one prompt per brand context (e.g. /brand-acme-corp)
-  if (ctx.organization?.id) {
-    const brands = await ctx.storage.brandContext.list(ctx.organization.id);
-
-    const registeredPromptNames = new Set<string>();
-    for (const brand of brands) {
-      const slug = brand.name
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-|-$/g, "");
-      let promptName = slug ? `brand-${slug}` : `brand-${brand.id}`;
-      // Deduplicate — append ID suffix on collision
-      if (registeredPromptNames.has(promptName)) {
-        promptName = `${promptName}-${brand.id.slice(0, 8)}`;
-      }
-      registeredPromptNames.add(promptName);
-
-      const lines: string[] = [
-        `# Brand: ${brand.name}`,
-        "",
-        `**Domain:** ${brand.domain}`,
-        "",
-        "## Overview",
-        brand.overview,
-      ];
-
-      if (brand.colors) {
-        const colorEntries = Object.entries(brand.colors).filter(([, v]) => v);
-        if (colorEntries.length > 0) {
-          lines.push("", "## Colors");
-          for (const [role, value] of colorEntries) {
-            lines.push(`- **${role}:** ${value}`);
-          }
-        }
-      }
-
-      if (brand.fonts) {
-        const fontEntries = Object.entries(brand.fonts).filter(([, v]) => v);
-        if (fontEntries.length > 0) {
-          lines.push("", "## Fonts");
-          for (const [role, family] of fontEntries) {
-            lines.push(`- ${family} (${role})`);
-          }
-        }
-      }
-
-      if (brand.logo) {
-        lines.push("", `**Logo:** ${brand.logo}`);
-      }
-      if (brand.favicon) {
-        lines.push(`**Favicon:** ${brand.favicon}`);
-      }
-      if (brand.ogImage) {
-        lines.push(`**OG Image:** ${brand.ogImage}`);
-      }
-
-      if (brand.images && brand.images.length > 0) {
-        lines.push("", "## Images");
-        for (const img of brand.images) {
-          const parts = Object.entries(img)
-            .map(([k, v]) => `${k}: ${v}`)
-            .join(", ");
-          lines.push(`- ${parts}`);
-        }
-      }
-
-      const text = lines.join("\n");
-
-      server.prompt(promptName, `Brand context for ${brand.name}`, () => ({
-        messages: [
-          {
-            role: "user" as const,
-            content: { type: "text" as const, text },
-          },
-        ],
-      }));
-    }
-  }
-
   // Register reference resources
   const resources = getResources();
   for (const resource of resources) {
@@ -491,10 +544,8 @@ export const managementMCP = async (ctx: StudioContext) => {
  * via HTTP fails on a cold NATS cache. This bypasses HTTP entirely by
  * connecting a client to the management server over InMemoryTransport.
  */
-export async function listManagementTools(
-  ctx: StudioContext,
-): Promise<McpTool[]> {
-  const server = await managementMCP(ctx);
+export async function listManagementTools(): Promise<McpTool[]> {
+  const server = managementMCP();
   const [clientTransport, serverTransport] =
     InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);

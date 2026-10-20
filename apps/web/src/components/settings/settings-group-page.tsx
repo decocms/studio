@@ -61,7 +61,7 @@ export function SettingsGroupPage({
   return (
     <Page>
       <Page.Content>
-        <Page.Body>
+        <Page.Container>
           <SettingsPage className={className}>
             <SettingsSubnav group={group} />
             <ErrorBoundary fallback={errorFallback}>
@@ -70,7 +70,7 @@ export function SettingsGroupPage({
               </Suspense>
             </ErrorBoundary>
           </SettingsPage>
-        </Page.Body>
+        </Page.Container>
       </Page.Content>
     </Page>
   );

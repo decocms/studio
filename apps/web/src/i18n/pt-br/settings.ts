@@ -1,6 +1,9 @@
 import type { settings as settingsEn } from "../en/settings.ts";
 
 export const settings = {
+  "settings.voice.title": "Modo voz",
+  "settings.voice.description":
+    "Permite conversar por voz com os agentes nos chats. Requer a configuração da ElevenLabs nesta instalação do Studio.",
   "settings.title": "Perfil e preferências",
   "settings.nav.organization": "Organização",
   "settings.nav.build": "Construir",
@@ -12,6 +15,7 @@ export const settings = {
   "settings.nav.billing": "Cobrança e IA",
   "settings.nav.buckets": "Buckets",
   "settings.nav.syncedRepos": "Repos sincronizados",
+  "settings.nav.repositories": "Repositórios",
   "settings.nav.storage": "Armazenamento",
   "settings.nav.advanced": "Avançado",
   "settings.subnav.ariaLabel": "Seções de configurações",
@@ -54,7 +58,7 @@ export const settings = {
   "settings.jira.createTokenLink": "Criar um API token",
   "settings.jira.webhookTitle": "Atualizações instantâneas (webhook)",
   "settings.jira.webhookDescription":
-    "Opcional. Sem ele, uma issue que entra num status automatizado é detectada na próxima verificação de 10 minutos; com ele, a run começa em segundos.",
+    "Opcional. Sem ele, uma issue que entra num status automatizado é detectada na próxima verificação de 5 minutos; com ele, a run começa quando o card fica 20 segundos parado.",
   "settings.jira.webhookCopy": "Copiar",
   "settings.jira.webhookCopied": "URL do webhook copiada",
   "settings.jira.webhookStep1":
@@ -66,22 +70,49 @@ export const settings = {
   "settings.jira.webhookStep4":
     "Opcionalmente restrinja com um filtro JQL, ex.: project = <chave do projeto>.",
   "settings.jira.webhookStep5":
-    "Salve. Uma issue que entra num status automatizado passa a iniciar sua run em segundos.",
+    "Salve. Uma issue que entra num status automatizado passa a iniciar sua run depois de ficar 20 segundos nele.",
   "settings.jira.automationsLabel":
     "Rodar o agente quando uma issue entrar em…",
   "settings.jira.automationsDescription":
-    "Quando uma issue entra em um destes status, o Studio inicia um run do agente nela. O agente lê a issue e a atualiza no Jira; nada é copiado para o quadro.",
+    "As automações que rodam quando uma issue entra num destes status e fica nele por 20 segundos. Abra uma para mudar o prompt, ou dê a qualquer automação um gatilho “Quando uma issue do Jira entra num status”. Um card arrastado por um status, ou para o errado e de volta, não inicia nada. Uma issue que tem um pull request aberto linkado continua nele. O agente lê a issue e a atualiza no Jira; nada é copiado para o quadro.",
+  "settings.jira.toggleAutomation": "Ligar ou desligar {name}",
   "settings.jira.addAutomation": "Adicionar automação",
-  "settings.jira.automationOn": "Automação ativa",
-  "settings.jira.promptPlaceholder": "Revise a issue e deixe um comentário…",
-  "settings.jira.promptHelp":
-    "Deixe vazio para usar a instrução do próprio agente. A descrição, os comentários e os anexos da issue sempre vão junto.",
-  "settings.jira.removeAriaLabel": "Parar de rodar o agente em {status}",
+  "settings.jira.fromAny": "Vindo de qualquer coluna",
+  "settings.jira.fromEarlier": "Vindo de uma coluna anterior",
+  "settings.jira.fromLater": "Vindo de uma coluna posterior (devolvido)",
+  "settings.jira.fromStatuses": "Vindo de {statuses}",
+  "settings.jira.originLabel": "Quando o card vem de",
+  "settings.jira.originStatusesPlaceholder": "Escolha os status",
+  "settings.jira.originHelp":
+    "Um movimento inicia uma regra só: a que nomeia de onde o card veio, senão a da direção dele no board, senão a de qualquer coluna. De onde ele veio é o último status em que ficou parado, não um pelo qual foi arrastado.",
+  "settings.jira.createRule": "Criar automação",
+  "settings.jira.cancelRule": "Cancelar",
   "settings.jira.noColumnsYet": "Este board ainda não tem colunas",
   "settings.jira.columnsFailed":
     "Não foi possível carregar as colunas do board",
+  "settings.jira.testRunLabel": "Rodar na mão",
+  "settings.jira.testRunDescription":
+    "Rode uma das automações acima em uma issue ou num lote agora, sem habilitar a integração \u2014 assim você vê o que o prompt dela faz antes que ele rode em toda issue que entra em um status.",
+  "settings.jira.issueKeysPlaceholder":
+    "ABC-123, ou um link — um por linha, ou separados por vírgula",
+  "settings.jira.issueKeysCount": "{count} issue(s)",
+  "settings.jira.issueKeysUnreadable": "não consegui ler: {items}",
+  "settings.jira.testRunIssueAriaLabel": "Chave ou link da issue do Jira",
+  "settings.jira.testRun": "Rodar agente {count}",
+  "settings.jira.testRunRunning": "Iniciando\u2026",
+  "settings.jira.testRunStarted": "Iniciado em",
+  "settings.jira.testRunFailed": "Não foi possível iniciar o run",
+  "settings.jira.testRunHelp":
+    "Este é um run de verdade: o agente lê a issue real, comenta nela e pode movê-la. Rodar de novo interrompe o run que ainda estiver trabalhando nessa issue, e uma issue com um pull request aberto linkado continua nele.",
+  "settings.jira.testRunAutomation": "Automação a rodar",
+  "settings.jira.testRunNoAutomations":
+    "Adicione uma automação acima primeiro: rodar à mão dispara uma delas.",
+  "settings.jira.together":
+    "Um run só pra todas — o agente vê todas as issues e trabalha nelas como um lote, em vez de um run por issue",
+  "settings.jira.togetherStarted": "Iniciado um run em",
+  "settings.jira.testRunWatch": "Ver os runs no Monitor",
   "settings.syncedRepos.pageDescription":
-    "Repositórios do GitHub espelhados em pastas somente leitura da biblioteca, sincronizados a cada poucos minutos. Ótimo para um repo de skills compartilhado.",
+    "Repositórios Git espelhados em pastas somente leitura da biblioteca, sincronizados a cada poucos minutos. Ótimo para um repo de skills compartilhado.",
   "settings.syncedRepos.addRepo": "Adicionar repo",
   "settings.syncedRepos.cancel": "Cancelar",
   "settings.syncedRepos.create": "Criar",
@@ -90,7 +121,7 @@ export const settings = {
     'Sincronização criada — sincronizando em "{volume}" em segundo plano',
   "settings.syncedRepos.emptyTitle": "Nenhum repo sincronizado ainda",
   "settings.syncedRepos.emptyDescription":
-    "Escolha um repositório do GitHub e ele aparecerá na biblioteca como uma pasta somente leitura, sincronizada automaticamente.",
+    "Escolha um repositório e ele aparecerá na biblioteca como uma pasta somente leitura, sincronizada automaticamente.",
   "settings.syncedRepos.failed": "Algo deu errado",
   "settings.syncedRepos.nameDialogDescription":
     "{repo} será mantido em sincronia nesta pasta somente leitura da biblioteca.",
@@ -103,11 +134,204 @@ export const settings = {
   "settings.syncedRepos.removeTitle": 'Parar de sincronizar "{volume}"?',
   "settings.syncedRepos.removed": "Sincronização removida",
   "settings.syncedRepos.rowSubtitle": "Pasta da biblioteca: {volume}",
+  "settings.repositories.accountsTitle": "Contas conectadas",
+  "settings.repositories.accountsEmptyTitle": "Nenhuma conta conectada",
+  "settings.repositories.accountsEmptyDescription":
+    "Conecte uma conta do GitHub, GitLab ou Bitbucket para navegar pelos seus repositórios e vincular os privados.",
+  "settings.repositories.noProvidersTitle": "Nenhum provedor git configurado",
+  "settings.repositories.noProvidersDescription":
+    "Entrar com GitHub, GitLab ou Bitbucket depende de credenciais do provedor que um administrador configura nesta instalação. Você ainda pode conectar uma conta do GitLab ou do Bitbucket com um token de acesso.",
+  "settings.repositories.githubUnavailable":
+    "Peça a um administrador para habilitar o GitHub.",
+  "settings.repositories.connectGithubCli": "Conectar com GitHub CLI",
+  "settings.repositories.githubCliHint":
+    "Use seu login local do gh para buscar e importar repositórios.",
+  "settings.repositories.authKindGithubCli": "GitHub CLI",
+  "settings.repositories.addGithubAccount":
+    "Adicionar conta ou organização do GitHub",
+  "settings.repositories.githubSelectTitle": "Selecionar repositórios",
+  "settings.repositories.githubSelectedShareHint":
+    "Membros com permissão de repositórios em {organization} poderão usar os repositórios que você autorizar aqui.",
+  "settings.repositories.githubPreselectedHint":
+    "Os repositórios já autorizados ou vinculados estão selecionados quando você tem permissão para autorizá-los. Revise a seleção antes de salvar.",
+  "settings.repositories.githubReplaceHint":
+    "Salvar substitui o acesso atual desta conta no workspace pela sua seleção. Repositórios removidos deixam de receber novas credenciais. Credenciais já emitidas podem funcionar até expirarem.",
+  "settings.repositories.githubFilterRepos": "Buscar repositórios",
+  "settings.repositories.githubNoRepos":
+    "Nenhum repositório disponível para autorizar.",
+  "settings.repositories.githubSearchNoMatches":
+    "Nenhum repositório corresponde à sua busca.",
+  "settings.repositories.githubAccessChanged":
+    "Alguém alterou o acesso desta conta. Volte e revise os repositórios antes de salvar.",
+  "settings.repositories.githubMoreRepos": "Carregar mais repositórios",
+  "settings.repositories.githubBack": "Voltar às contas",
+  "settings.repositories.githubSaveOneRepo": "Autorizar 1 repositório",
+  "settings.repositories.githubSaveRepos": "Autorizar {count} repositórios",
+  "settings.repositories.githubEditWorkspaceAccess":
+    "Alterar acesso do workspace",
+  "settings.repositories.githubShareHint":
+    "Escolha sua conta pessoal do GitHub, ou uma organização onde você administra repositórios, para compartilhar com {organization}. Membros com permissão para repositórios no Studio podem usar esta conexão.",
+  "settings.repositories.githubInstallHint":
+    "Ainda não há nada seu para compartilhar. Instale o app do GitHub na sua conta pessoal ou nos repositórios que você administra, ou peça ao dono da conta para conectá-la ao Studio. Um repositório em que você só colabora não é seu para compartilhar.",
+  "settings.repositories.installGithubAccount": "Instalar em outra conta",
+  "settings.repositories.checkGithubAccess": "Verificar acesso",
+  "settings.repositories.switchGithubUser": "Usar outro login do GitHub",
+  "settings.repositories.githubReturnHint":
+    "O GitHub abre em uma nova aba. Depois de salvar o acesso, volte aqui para escolher a conta. Se ela não aparecer, use Verificar acesso.",
+  "settings.repositories.githubRefreshFailed":
+    "Não foi possível verificar o acesso no GitHub. Tente novamente sem sair desta janela.",
+  "settings.repositories.githubConnected": "Conta do GitHub conectada",
+  "settings.repositories.manageRepositoryAccess":
+    "Gerenciar acesso aos repositórios",
+  "settings.repositories.connectedBy": "Conectado por {name}",
+  "settings.repositories.connectedByUnknown":
+    "Conectado por um usuário indisponível",
+  "settings.repositories.dismiss": "Dispensar",
+  "settings.repositories.tryAgain": "Tentar novamente",
+  "settings.repositories.oauthNoInstallations":
+    "A autorização no GitHub foi concluída, mas nenhuma instalação do app está disponível para este usuário. Adicione uma conta ou organização do GitHub para concluir a configuração.",
+  "settings.repositories.oauthDenied":
+    "A autorização foi cancelada. Conecte novamente quando quiser.",
+  "settings.repositories.oauthExpired":
+    "Esta tentativa de conexão expirou ou pertence a outra sessão. Comece novamente por esta página.",
+  "settings.repositories.oauthNotConfigured":
+    "Este provedor git não está configurado. Peça a um administrador para habilitá-lo.",
+  "settings.repositories.oauthFailed":
+    "Não foi possível conectar sua conta git. Tente novamente. Se o erro persistir, entre em contato com um administrador.",
+  "settings.repositories.authKindGithubApp": "GitHub App",
+  "settings.repositories.authKindOauth": "OAuth",
+  "settings.repositories.authKindToken": "Token pessoal",
+  "settings.repositories.accessUnavailable": "Acesso indisponível",
+  "settings.repositories.accessUnavailableHint":
+    "O Studio não consegue acessar esta conta. Autorize-a novamente para continuar usando seus repositórios.",
+  "settings.repositories.githubReconnect": "Reconectar GitHub",
+  "settings.repositories.authorizeWorkspaceAccess":
+    "Autorizar acesso do workspace",
+  "settings.repositories.selectRepositories": "Selecionar repositórios",
+  "settings.repositories.authorizationRequired":
+    "Falta autorizar este workspace",
+  "settings.repositories.authorizationRequiredHint":
+    "O Studio tem uma instalação do GitHub App registrada para {login}, mas este workspace ainda não tem autorização para usá-la. Entre no GitHub e escolha os repositórios que quer compartilhar com este workspace.",
+  "settings.repositories.accessRevoked": "Acesso revogado",
+  "settings.repositories.accessRevokedHint":
+    "O acesso a esta conta foi revogado. Autorize-a novamente para restaurar o acesso aos repositórios.",
+  "settings.repositories.noAuthorizedRepositories":
+    "Nenhum repositório autorizado",
+  "settings.repositories.noAuthorizedRepositoriesHint":
+    "Este workspace não tem repositórios autorizados por {login}. Selecione quais repositórios ele pode usar.",
+  "settings.repositories.providerUnavailable": "Provedor indisponível",
+  "settings.repositories.providerUnavailableHint":
+    "Esta instalação não está configurada para acessar esta conta. Peça a um administrador para habilitar o provedor.",
+  "settings.repositories.installationMissing":
+    "Conexão com o GitHub incompleta",
+  "settings.repositories.installationMissingHint":
+    "O Studio não tem uma instalação do GitHub App vinculada a esta conta. Conecte o GitHub e selecione a instalação de {login}.",
+  "settings.repositories.githubReconnectUnavailable":
+    "A reconexão com o GitHub não está disponível nesta instalação. Peça a um administrador para configurar o GitHub App e depois autorize o acesso do workspace.",
+  "settings.repositories.disconnect": "Desconectar",
+  "settings.repositories.disconnectTitle": 'Desconectar "{login}"?',
+  "settings.repositories.disconnectDescription":
+    "Os repositórios vinculados por esta conta continuam na lista, mas viram clones públicos anônimos — os privados deixarão de funcionar.",
+  "settings.repositories.disconnected": "Conta desconectada",
+  "settings.repositories.tokenDialogTitle": "Conectar o GitLab com um token",
+  "settings.repositories.tokenDialogDescription":
+    "Use um token de acesso pessoal, de projeto ou de grupo com o escopo api — os agentes usam ele para dar push e abrir merge requests. É guardado criptografado e não é exibido novamente.",
+  "settings.repositories.tokenDialogTitleBitbucket":
+    "Conectar o Bitbucket com um token",
+  "settings.repositories.tokenDialogDescriptionBitbucket":
+    "Use um token de acesso de workspace, de projeto ou de repositório com permissão de escrita em repositórios e pull requests — os agentes usam ele para dar push e abrir pull requests. Somente Bitbucket Cloud. É guardado criptografado e não é exibido novamente.",
+  "settings.repositories.addAccount": "Adicionar conta",
+  "settings.repositories.addAccountTitle": "Conectar uma conta git",
+  "settings.repositories.addAccountDescription":
+    "Escolha onde seus repositórios ficam.",
+  "settings.repositories.chooseMethodDescription":
+    "Escolha como o Studio deve se conectar a este provedor.",
+  "settings.repositories.back": "Voltar",
+  "settings.repositories.providerGithub": "GitHub",
+  "settings.repositories.providerGitlab": "GitLab",
+  "settings.repositories.providerBitbucket": "Bitbucket",
+  "settings.repositories.providerGithubHint":
+    "Instale o app do Studio e escolha os repositórios a compartilhar.",
+  "settings.repositories.providerTokenOrOauthHint":
+    "Conecte com um token de acesso, ou autorize via OAuth.",
+  "settings.repositories.providerTokenOnlyHint":
+    "Conecte com um token de acesso.",
+  "settings.repositories.methodToken": "Usar um token de acesso",
+  "settings.repositories.methodTokenHint":
+    "O provedor limita o token aos repositórios para os quais você o criou.",
+  "settings.repositories.methodOauth": "Autorizar via OAuth",
+  "settings.repositories.methodOauthHint":
+    "Entre e autorize o Studio no seu navegador.",
+  "settings.repositories.methodOauthScopeNote":
+    "Alcança todos os repositórios que esta conta enxerga; não dá para restringir a um subconjunto.",
+  "settings.repositories.methodApp": "Instalar o app do GitHub",
+  "settings.repositories.methodAppHint":
+    "Escolha exatamente quais repositórios o Studio pode usar.",
+  "settings.repositories.tokenStepsTitle": "Como criar o token",
+  "settings.repositories.openProvider": "Abrir provedor",
+  "settings.repositories.tokenWorkspaceLabel": "Workspace",
+  "settings.repositories.tokenWorkspacePlaceholder": "sua-workspace",
+  "settings.repositories.tokenWorkspaceHint":
+    "O slug na URL do Bitbucket. Um token de acesso não consegue dizer a que workspace pertence, então o Studio o verifica contra esta.",
+  "settings.repositories.tokenProjectLabel": "Caminho do projeto (opcional)",
+  "settings.repositories.tokenProjectPlaceholder": "grupo/projeto",
+  "settings.repositories.tokenProjectHint":
+    "Preencha para ir direto à página de tokens desse projeto.",
+  "settings.repositories.bitbucketStep1":
+    "Abra o repositório que o Studio deve alcançar, ou o projeto que os agrupa.",
+  "settings.repositories.bitbucketStep2":
+    "Settings → Security → Access tokens → Create token.",
+  "settings.repositories.bitbucketStep3":
+    "Conceda Repositories read e write, e Pull requests read e write.",
+  "settings.repositories.bitbucketStep4":
+    "Cole o token abaixo. O Bitbucket o mantém restrito ao escopo que você deu.",
+  "settings.repositories.gitlabStep1":
+    "Abra o projeto ou grupo que o Studio deve alcançar.",
+  "settings.repositories.gitlabStep2":
+    "Settings → Access tokens → Add new token.",
+  "settings.repositories.gitlabStep3":
+    "Papel: Developer ou acima. Escopo: api.",
+  "settings.repositories.gitlabStep4":
+    "Cole o token abaixo. Um token de projeto só alcança aquele projeto.",
+  "settings.repositories.tokenHostLabel": "Host",
+  "settings.repositories.tokenHostPlaceholder": "gitlab.com",
+  "settings.repositories.tokenLabel": "Token de acesso",
+  "settings.repositories.tokenPlaceholder": "glpat-…",
+  "settings.repositories.tokenPlaceholderBitbucket": "ATCTT…",
+  "settings.repositories.connect": "Conectar",
+  "settings.repositories.connecting": "Conectando…",
+  "settings.repositories.connected": 'Conectado como "{login}"',
+  "settings.repositories.reposTitle": "Repositórios",
+  "settings.repositories.reposEmptyTitle": "Nenhum repositório ainda",
+  "settings.repositories.reposEmptyDescription":
+    "Escolha um repositório de uma conta conectada do GitHub, GitLab ou Bitbucket.",
+  "settings.repositories.addRepository": "Adicionar repositório",
+  "settings.repositories.moreActions": "Mais ações",
+  "settings.repositories.repoAccountNeedsAttention":
+    "Conectado por {login}, que precisa de atenção em Contas conectadas.",
+  "settings.repositories.unlink": "Desvincular",
+  "settings.repositories.unlinkTitle": 'Desvincular "{path}"?',
+  "settings.repositories.unlinkDescription":
+    "O repositório é removido desta organização. Nada é apagado no provedor.",
+  "settings.repositories.unlinked": "Repositório desvinculado",
+  "settings.repositories.openInProvider": "Abrir repositório",
+  "settings.repositories.visibilityPublic": "Público",
+  "settings.repositories.visibilityPrivate": "Privado",
+  "settings.repositories.visibilityInternal": "Interno",
+  "settings.repositories.anonymousClone": "Clone anônimo",
+  "settings.repositories.sandboxImageLabel": "Imagem do sandbox",
+  "settings.repositories.sandboxImageDefault": "Imagem padrão",
+  "settings.repositories.sandboxImageAndroid": "Emulador Android",
+  "settings.repositories.sandboxImageError":
+    "Não foi possível alterar a imagem do sandbox",
+  "settings.repositories.addDialogTitle": "Adicionar repositório",
+  "settings.repositories.cancel": "Cancelar",
+  "settings.repositories.failed": "Algo deu errado",
   "settings.nav.connections": "Conexões",
   "settings.nav.agents": "Projetos",
   "settings.nav.automations": "Automações",
   "settings.nav.skills": "Skills",
-  "settings.nav.store": "Loja",
+  "settings.nav.memory": "Memória",
   "settings.nav.monitor": "Monitoramento",
   "settings.nav.members": "Membros",
   "settings.nav.security": "Segurança",
@@ -118,9 +342,31 @@ export const settings = {
   "settings.profile.displayName": "Nome de exibição",
   "settings.profile.displayNamePlaceholder": "Seu nome",
   "settings.profile.email": "E-mail",
+  "settings.profile.avatarUpload": "Trocar sua foto",
+  "settings.profile.avatarDialogTitle": "Foto de perfil",
+  "settings.profile.avatarDialogDescription":
+    "Arraste para reposicionar e role para dar zoom. Só a foto em uso fica visível para outras pessoas.",
+  "settings.profile.avatarDeleted": "Foto excluída",
+  "settings.profile.avatarRemove": "Remover",
+  "settings.profile.avatarRemoved": "Foto removida",
+  "settings.profile.avatarUpdated": "Foto atualizada",
+  "settings.profile.avatarUploadError": "Falha ao atualizar a foto",
   "settings.profile.updateSuccess": "Perfil atualizado com sucesso",
   "settings.profile.updateError": "Falha ao atualizar o perfil",
   "settings.preferences.title": "Preferências",
+  "settings.blog.sectionTitle": "Blog",
+  "settings.blog.aiTitle": "Blog com IA",
+  "settings.blog.aiDescription":
+    "Contexto da marca, campanhas e geração de posts. Sem isso, o blog é editado à mão.",
+  "settings.blogBlocks.title": "Esconder os blocos de blog padrão",
+  "settings.blogBlocks.description":
+    "Só os blocos de post do próprio site ficam disponíveis ao escrever, gerar ou importar um post. Blocos já presentes em um post continuam sendo renderizados.",
+  "settings.blocksEditor.title": "Novo editor de blocos",
+  "settings.blocksEditor.description":
+    "Vale para todos desta organização. O restante do Studio sempre usa o novo layout.",
+  "settings.preferences.projectFirstNav": "Navegação centrada em projetos",
+  "settings.preferences.projectFirstNavDescription":
+    "Experimente o trilho de organizações, o launcher de projetos e a home Hoje/Agentes.",
   "settings.preferences.theme": "Tema",
   "settings.preferences.themeDescription": "Seu esquema de cores preferido.",
   "settings.preferences.themeLight": "Tema claro",
@@ -137,9 +383,6 @@ export const settings = {
   "settings.preferences.soundsDescription":
     "Reproduza sons para ações de agentes e notificações.",
   "settings.preferences.soundsPreview": "Ouvir som de notificação",
-  "settings.preferences.projectSettingsGear": "Atalho de configurações",
-  "settings.preferences.projectSettingsGearDescription":
-    "Mostrar um atalho de configurações ao passar o mouse sobre um projeto na barra lateral.",
   "settings.preferences.toolApproval": "Aprovação de ferramentas",
   "settings.preferences.toolApprovalDescription":
     "Controle como as ferramentas são aprovadas antes da execução.",
@@ -194,6 +437,38 @@ export const settings = {
   "settings.skills.errorDescription":
     "O catálogo de skills não pôde ser carregado. Você pode não ter acesso aos arquivos desta organização.",
   "settings.skills.retry": "Tentar novamente",
+  "settings.memory.pageTitle": "Memória",
+  "settings.memory.tabOrg": "Organização",
+  "settings.memory.tabUser": "Só você",
+  "settings.memory.orgHeading": "Compartilhada com todo mundo em {org}",
+  "settings.memory.orgDescription":
+    "O Deco lê isto no começo de cada chat e acrescenta o que aprende. Corrija o que estiver errado ou desatualizado.",
+  "settings.memory.userHeading": "Sua memória pessoal",
+  "settings.memory.userDescription":
+    "Carregada só nos seus chats. Boa para como você gosta de trabalhar, o que é seu e o que pular.",
+  "settings.memory.orgPlaceholder":
+    "Fatos que todos os chats devem saber. Por exemplo: a gente sobe na quinta, preços em BRL, o tom da marca é informal.",
+  "settings.memory.userPlaceholder":
+    "Coisas que o Deco deve lembrar sobre você. Por exemplo: responda em português, cuido do checkout, resumos curtos.",
+  "settings.memory.saving": "Salvando…",
+  "settings.memory.saved": "Salvo",
+  "settings.memory.notSaved": "Não salvo",
+  "settings.memory.saveError":
+    "Não deu para salvar. Continue digitando para tentar de novo.",
+  "settings.memory.readOnly": "Você pode ler esta memória, mas não alterá-la.",
+  "settings.memory.updated": "Atualizada {time}",
+  "settings.memory.notStarted": "Nada lembrado ainda",
+  "settings.memory.conflict": "Esta memória mudou enquanto você editava.",
+  "settings.memory.loadLatest": "Carregar a mais recente",
+  "settings.memory.keepMine": "Manter a minha",
+  "settings.memory.budget": "{percent}% do que os chats leem",
+  "settings.memory.budgetOver": "Os chats só leem o começo",
+  "settings.memory.budgetHint":
+    "Os chats carregam os primeiros 16.000 caracteres. Mantenha isto como um índice curto e leve os detalhes para notas separadas.",
+  "settings.memory.errorTitle": "Não deu para carregar a memória",
+  "settings.memory.errorDescription":
+    "Não deu para carregar os arquivos da organização. Talvez você não tenha acesso a eles.",
+  "settings.memory.retry": "Tentar novamente",
   "settings.buckets.accessKeyIdLabel": "ID de chave de acesso",
   "settings.buckets.addBucket": "Adicionar bucket",
   "settings.buckets.addBucketButton": "Adicionar bucket",
@@ -274,7 +549,6 @@ export const settings = {
   "settings.connectClients.anyOtherClientDescription":
     "Qualquer outro cliente MCP: cole este endpoint nele para dar a esse runtime toda conexão habilitada nesta org, governada pelas suas regras do Decopilot.",
   "settings.connectClients.apiKeyOption": "Chave API",
-  "settings.connectClients.connectAClient": "Conectar um cliente",
   "settings.connectClients.copy": "Copiar",
   "settings.connectClients.doneHideKey": "Concluído, ocultar chave",
   "settings.connectClients.generateKey": "Gerar chave",
@@ -284,6 +558,8 @@ export const settings = {
     "Para CI, Conductor, ou agentes headless que não conseguem abrir um navegador.",
   "settings.connectClients.installMethod": "Método de instalação",
   "settings.connectClients.keyCreated": "Chave criada",
+  "settings.connectClients.mcpDescription":
+    "Para clientes sem shell. Compartilhar arquivos da Library e mandar mensagem para agentes exige a CLI + skill.",
   "settings.connectClients.oauthDiscoveryDetails":
     "Detalhes de descoberta OAuth",
   "settings.connectClients.oauthKeyHint":
@@ -293,6 +569,18 @@ export const settings = {
   "settings.connectClients.oauthOption": "OAuth",
   "settings.connectClients.otherClient": "Outro",
   "settings.connectClients.pageTitle": "Conectar a clientes",
+  "settings.connectClients.recommended": "Recomendado",
+  "settings.connectClients.skillDescription":
+    "Instale a skill do Studio e faça login uma vez. Depois disso, seu agente trabalha com os chats, agentes, tarefas e arquivos da Library desta org pela CLI decocms.",
+  "settings.connectClients.skillInstallStep": "1. Instale a skill",
+  "settings.connectClients.skillLoginHint":
+    "Um navegador abre para você aprovar o login. A sessão se renova sozinha, então só faça login de novo quando o agente pedir.",
+  "settings.connectClients.skillLoginStep": "2. Faça login",
+  "settings.connectClients.skillNeedsBun": "Precisa do Bun.",
+  "settings.connectClients.skillOtherAgentsHint":
+    "O instalador pergunta em quais agentes adicionar a skill.",
+  "settings.connectClients.skillTab": "CLI + skill",
+  "settings.connectClients.skillTitle": "Conectar seu agente",
   "settings.connectClients.snippetOneTimeWarning":
     "Copie este snippet agora — a chave não será exibida novamente. Você pode revogá-la mais tarde na lista abaixo.",
   "settings.connectForms.apiKeyField": "Chave API",
@@ -346,6 +634,26 @@ export const settings = {
   "settings.connectedProvidersSection.emptyState":
     "Traga suas pr\u00f3prias chaves para usar modelos espec\u00edficos junto com o gateway da Deco.",
   "settings.connectedProvidersSection.sectionTitle": "Provedores conectados",
+  "settings.agentTools.chatHarnessCodexTitle":
+    "Usar Codex em novos chats no sandbox",
+  "settings.agentTools.chatHarnessCodexDescription":
+    "Executa novos chats no sandbox com Codex. Vincule sua assinatura do ChatGPT em Provedores de IA ou conecte um provedor da API Responses. Os chats existentes mantêm seu runtime.",
+  "settings.codexSubscription.setupHeading": "Conecte o Codex",
+  "settings.codexSubscription.setupDescription":
+    "Vincule sua assinatura do ChatGPT em Configurações → Provedores de IA ou conecte um provedor com um endpoint da API Responses da OpenAI.",
+  "settings.codexSubscription.active":
+    "Suas execuções do Codex usam sua assinatura do ChatGPT. As credenciais são renovadas automaticamente.",
+  "settings.codexSubscription.connect": "Vincular",
+  "settings.codexSubscription.connected": "Assinatura do ChatGPT vinculada",
+  "settings.codexSubscription.description":
+    "Use sua assinatura do ChatGPT nos chats com Codex no sandbox. As credenciais pertencem a você e ficam criptografadas.",
+  "settings.codexSubscription.disconnect": "Desconectar",
+  "settings.codexSubscription.disconnected":
+    "Assinatura do ChatGPT desconectada",
+  "settings.codexSubscription.howTo":
+    "Execute este comando na sua máquina, entre com o ChatGPT e cole o conteúdo de ~/.codex/auth.json:",
+  "settings.codexSubscription.title": "Sua assinatura do ChatGPT para Codex",
+  "settings.codexSubscription.tokenPlaceholder": "Cole o conteúdo de auth.json",
   "settings.claudeSubscription.active":
     "Seu plano Claude est\u00e1 executando estas tarefas de c\u00f3digo.",
   "settings.claudeSubscription.connect": "Vincular",
@@ -360,7 +668,24 @@ export const settings = {
     "Gere um token na sua pr\u00f3pria m\u00e1quina com",
   "settings.claudeSubscription.title": "Sua assinatura Claude",
   "settings.claudeSubscription.tokenPlaceholder": "Cole seu token",
-  "settings.decoCreditsHero.accessModels": "Acesso a 100+ modelos",
+  "settings.githubCopilot.active":
+    "Seu plano GitHub Copilot est\u00e1 executando estas tarefas de c\u00f3digo.",
+  "settings.githubCopilot.connect": "Vincular",
+  "settings.githubCopilot.connected": "GitHub Copilot conectado",
+  "settings.githubCopilot.description":
+    "Execute tarefas de c\u00f3digo no Claude pelo seu pr\u00f3prio plano GitHub Copilot, em vez do cr\u00e9dito de IA da organiza\u00e7\u00e3o.",
+  "settings.githubCopilot.disconnect": "Desconectar",
+  "settings.githubCopilot.disconnected": "GitHub Copilot desconectado",
+  "settings.githubCopilot.howTo":
+    "Crie um token fine-grained do GitHub com a permiss\u00e3o Copilot Requests",
+  "settings.githubCopilot.sharedBy":
+    "Toda execu\u00e7\u00e3o nesta organiza\u00e7\u00e3o usa o plano GitHub Copilot compartilhado por {name}.",
+  "settings.githubCopilot.shareTitle":
+    "Compartilhar com a organiza\u00e7\u00e3o",
+  "settings.githubCopilot.shareDescription":
+    "Todo chat e tarefa nesta organiza\u00e7\u00e3o roda no seu plano Copilot, antes dos planos dos membros e dos provedores de IA da organiza\u00e7\u00e3o.",
+  "settings.githubCopilot.title": "Seu plano GitHub Copilot",
+  "settings.githubCopilot.tokenPlaceholder": "Cole seu token github_pat_\u2026",
   "settings.decoCreditsHero.add": "Adicionar",
   "settings.decoCreditsHero.addCredits": "Adicionar cr\u00e9ditos",
   "settings.decoCreditsHero.amountPlaceholder": "50",
@@ -379,6 +704,79 @@ export const settings = {
   "settings.decoCreditsHero.disconnectTitle": "Desconectar Deco AI Gateway",
   "settings.decoCreditsHero.refreshBalance": "Atualizar saldo",
   "settings.decoCreditsHero.title": "Deco AI Gateway",
+  "settings.planUsage.title": "Plano",
+  "settings.planUsage.loadFailed":
+    "Não foi possível ler o plano desta organização.",
+  "settings.planUsage.retry": "Tentar novamente",
+  "settings.planUsage.aiUsage": "Uso de IA",
+  "settings.planUsage.usageUnavailable": "Indisponível",
+  "settings.planUsage.used": "usado",
+  "settings.plans.perMonth": "/ mês",
+  "settings.planUsage.periodHint":
+    "Reinicia no começo de cada ciclo de cobrança.",
+  "settings.planUsage.noAiIncluded": "Sem uso de IA incluído.",
+  "settings.planUsage.noPlan": "Nenhum plano ativo",
+  "settings.planUsage.noPlanDescription":
+    "Esta organização não tem um plano ativo. Escolha um abaixo — o primeiro mês do Starter é grátis.",
+  "settings.planUsage.creditsLeft": "restantes",
+  "settings.planUsage.manageBilling": "Gerenciar cobrança",
+  "settings.planUsage.portalFailed":
+    "Não foi possível abrir a cobrança: {message}",
+  "settings.planUsage.subscribe": "Assinar",
+  "settings.planUsage.changePlan": "Mudar de plano",
+  "settings.planUsage.changed": "Plano atualizado",
+  "settings.planUsage.changeFailed":
+    "Não foi possível trocar o plano: {message}",
+  "settings.planUsage.feature.cms": "CMS",
+  "settings.planUsage.feature.chat": "Chat superagent",
+  "settings.planUsage.feature.monitoring": "Analytics do site",
+  "settings.planUsage.feature.kanban": "Kanban agêntico",
+  "settings.planUsage.feature.model_choice": "Escolher o modelo",
+  "settings.planUsage.feature.credits": "Créditos extras",
+  "settings.planUsage.feature.diagnostic": "Deco Score",
+  "settings.planUsage.feature.diagnostic_enriched": "Deco Score enriquecido",
+  "settings.plans.title": "Planos",
+  "settings.plans.loadFailed": "Não foi possível carregar os planos.",
+  "settings.plans.currentPlan": "Plano atual",
+  "settings.plans.firstMonthFree": "1º mês grátis",
+  "settings.plans.startTrial": "Começar teste grátis",
+  "settings.plans.custom.name": "Custom",
+  "settings.plans.custom.description":
+    "Para grandes times com contrato próprio",
+  "settings.plans.custom.cta": "Fale com a gente",
+  "settings.plans.managed": "Seu plano: {plan}. Fale com a gente para mudá-lo.",
+  "settings.plans.invoice.cta": "Adicionar à minha fatura",
+  "settings.plans.invoice.confirm":
+    "O plano {plan} será adicionado à sua próxima fatura. Mudar agora?",
+  "settings.plans.invoice.cancel": "Cancelar",
+  "settings.plans.invoice.switch": "Mudar de plano",
+  "settings.paywall.bullets.kanban.1":
+    "Agentes que fazem o trabalho e movem os cards",
+  "settings.paywall.bullets.kanban.2":
+    "Um board que o time inteiro compartilha",
+  "settings.paywall.bullets.kanban.3": "Colunas, tags e prioridades",
+  "settings.paywall.bullets.allowance.1": "Uma franquia mensal que reinicia",
+  "settings.paywall.bullets.allowance.2":
+    "Compre créditos extras quando quiser",
+  "settings.paywall.bullets.allowance.3": "Sua mensagem fica no composer",
+  "settings.paywall.bullets.cms.1": "Edite conteúdo e layout",
+  "settings.paywall.bullets.cms.2": "Preview ao vivo enquanto edita",
+  "settings.paywall.bullets.cms.3": "Publique quando estiver do jeito certo",
+  "settings.paywall.bullets.monitoring.1": "Pageviews, visitantes e origens",
+  "settings.paywall.bullets.monitoring.2": "Taxa de cache, latência e erros",
+  "settings.paywall.bullets.monitoring.3": "Tráfego por país e dispositivo",
+  "settings.paywall.upgradeTitle": "{feature} vem com o {plan}",
+  "settings.paywall.upgradeDescription":
+    "Libera para todo mundo na organização.",
+  "settings.paywall.description":
+    "O plano desta organização não inclui {feature}. Troque de plano para liberar para todo mundo na org.",
+  "settings.paywall.seePlans": "Ver planos",
+  "settings.paywall.dismiss": "Agora não",
+  "settings.paywall.serverRefusedFeature":
+    "Seu plano não inclui este recurso. Peça a um owner para fazer upgrade, ou veja os planos.",
+  "settings.paywall.serverRefusedBudget":
+    "Esta organização usou todo o limite mensal de IA. O chat e as tarefas ficam pausados até fazer upgrade ou adicionar créditos.",
+
   "settings.decoCreditsHero.topUpFailed": "Recarga falhou: {message}",
   "settings.decoNudgeCard.connectDeco": "Conectar Deco",
   "settings.decoNudgeCard.connecting": "Conectando\u2026",
@@ -476,28 +874,25 @@ export const settings = {
   "settings.orgGeneral.organization": "Organiza\u00e7\u00e3o",
   "settings.review.title": "Revisores e merge",
   "settings.review.description":
-    "O Reviewer autom\u00e1tico roda no pull request de uma tarefa assim que ela entra em Revis\u00e3o (checks passando ou inexistentes). Ele aparece como uma sess\u00e3o no card da tarefa.",
+    "O Reviewer automático roda no pull request de uma tarefa quando o card chega na coluna Em Revisão (checks passando ou inexistentes). Ele aparece como uma sessão no card da tarefa.",
   "settings.review.reviewerTitle": "Ativar Reviewer",
   "settings.review.reviewerDescription":
-    "Revisa o c\u00f3digo com as skills de review do pr\u00f3prio reposit\u00f3rio, corrige o que encontra na branch do pull request e depois testa a mudan\u00e7a no preview do deploy \u2014 e passa a tarefa para você quando n\u00e3o consegue resolver algo.",
+    "Quando o card chega na coluna Em Revisão, revisa o código com as skills de review do próprio repositório, corrige o que encontra na branch do pull request e depois testa a mudança no preview do deploy. Uma aprovação move o card para QA; quando não consegue resolver algo, passa a tarefa para você.",
   "settings.review.cheapReviewerModelTitle":
     "Rodar os revisores em um modelo mais barato",
   "settings.review.cheapReviewerModelDescription":
     "O Reviewer roda em um modelo menor que o Super Agent que escreveu a mudança. Reduz o custo da revisão; pode reduzir a profundidade.",
   "settings.review.autoMergeTitle": "Ativar Auto-merge",
   "settings.review.autoMergeDescription":
-    "Quando todos os revisores habilitados aprovam, mescla o pull request automaticamente em vez de esperar por uma pessoa.",
+    "Quando um card chega em Pronto para Deploy, mescla o pull request automaticamente em vez de esperar alguém clicar em Subir para produção.",
   "settings.review.autoResolveConflictsTitle":
     "Resolver conflitos de merge automaticamente",
   "settings.review.autoResolveConflictsDescription":
-    "Quando um pull request aprovado conflita com a branch base, devolve para o Super Agent fazer checkout da branch, mesclar a base e dar push. Segue o Auto-merge, a menos que você ajuste aqui.",
-  "settings.review.deliveryLanesTitle": "Mostrar as colunas de entrega",
-  "settings.review.deliveryLanesDescription":
-    "Adiciona Aprovado, Implantado e Valida\u00e7\u00e3o P\u00f3s Deploy entre Em Revis\u00e3o e Conclu\u00eddo, e faz um pull request mesclado cair em Implantado em vez de Conclu\u00eddo. Para times cujo processo de release continua depois do merge.",
+    "Quando um pull request em Pronto para Deploy conflita com a branch base, devolve para o Super Agent fazer checkout da branch, mesclar a base e dar push. Segue o Auto-merge, a menos que você ajuste aqui.",
   "settings.review.autoAssignReportTasksTitle":
-    "Atribuir tarefas de relat\u00f3rio ao Super Agent automaticamente",
+    "Atribuir tarefas do Deco Score ao Super Agent automaticamente",
   "settings.review.autoAssignReportTasksDescription":
-    "Tarefas criadas a partir de um relat\u00f3rio s\u00e3o delegadas ao Super Agent automaticamente, em vez de ficarem sem respons\u00e1vel.",
+    "Tarefas criadas a partir do Deco Score são delegadas ao Super Agent automaticamente, em vez de ficarem sem responsável.",
   "settings.review.updateError":
     "N\u00e3o foi poss\u00edvel atualizar a configura\u00e7\u00e3o",
   "settings.taskPrompt.title": "System prompt",
@@ -508,6 +903,7 @@ export const settings = {
   "settings.taskPrompt.saved": "System prompt salvo",
   "settings.taskPrompt.failed":
     "N\u00e3o foi poss\u00edvel salvar o system prompt",
+  "settings.taskPrompt.skillsLabel": "Skills em todas as colunas",
   "settings.agentTools.title": "Ferramentas do agente",
   "settings.agentTools.description":
     "O que um run de agente de c\u00f3digo alcan\u00e7a al\u00e9m do reposit\u00f3rio em que est\u00e1 trabalhando.",
@@ -515,6 +911,33 @@ export const settings = {
     "Dar aos runs as conex\u00f5es MCP desta organiza\u00e7\u00e3o",
   "settings.agentTools.orgMcpsDescription":
     "Cada MCP conectado fica dispon\u00edvel para o Super Agent e para os revisores, al\u00e9m das ferramentas de tarefa que eles sempre recebem. As ferramentas carregam s\u00f3 quando o agente procura por uma, ent\u00e3o conectar mais n\u00e3o ocupa o contexto dele.",
+  "settings.agentTools.orgMcpsPickTitle":
+    "Conex\u00f5es que os runs alcan\u00e7am",
+  "settings.agentTools.orgMcpsPickDescription":
+    "Desligue uma para mant\u00ea-la fora dos runs de coding agent. \u00datil para uma conex\u00e3o que duplica uma ferramenta que o run j\u00e1 tem \u2014 um MCP do mesmo tracker em que o run reporta, por exemplo. Um MCP conectado depois come\u00e7a ligado.",
+  "settings.agentTools.orgMcpsPickAriaLabel":
+    "Deixar os runs alcan\u00e7arem {name}",
+  "settings.agentTools.orgMcpsPickEmpty":
+    "Esta organiza\u00e7\u00e3o ainda n\u00e3o tem conex\u00f5es MCP",
+  "settings.agentTools.orgMcpsPickFailed":
+    "N\u00e3o foi poss\u00edvel salvar quais conex\u00f5es os runs alcan\u00e7am",
+  "settings.agentTools.orgMcpsPickSearch": "Buscar conex\u00f5es\u2026",
+  "settings.agentTools.orgMcpsPickLoadFailed":
+    "N\u00e3o foi poss\u00edvel carregar as conex\u00f5es MCP",
+  "settings.agentTools.orgMcpsPickEnableAll": "Ligar todas",
+  "settings.agentTools.orgMcpsPickDisableAll": "Desligar todas",
+  "settings.agentTools.orgMcpsPickNoMatch":
+    "Nenhuma conex\u00e3o corresponde a essa busca",
+  "settings.agentTools.orgMcpsPickSave": "Salvar",
+  "settings.agentTools.orgMcpsPickSaving": "Salvando\u2026",
+  "settings.agentTools.orgMcpsPickDiscard": "Descartar",
+  "settings.agentTools.orgMcpsPickSaved":
+    "Conex\u00f5es que os runs alcan\u00e7am salvas",
+  "settings.agentTools.chatRuntimeSection": "Chats",
+  "settings.agentTools.chatHarnessSandboxOnlyTitle":
+    "Rodar todo chat com o Claude Code no seu pr\u00f3prio sandbox",
+  "settings.agentTools.chatHarnessSandboxOnlyDescription":
+    "Todo chat novo roda o Claude Code em um sandbox s\u00f3 dele em vez de rodar no Decopilot, e chats existentes do Decopilot mudam na pr\u00f3xima mensagem. A primeira mensagem de um chat espera o sandbox iniciar. Requer uma chave da Anthropic, OpenRouter ou do gateway de IA da deco, ou uma assinatura do Claude.",
   "settings.agentTools.codingAgentsClaudeCodeTitle":
     "Rodar chats de Code Agent com o Claude Code",
   "settings.agentTools.codingAgentsClaudeCodeDescription":
@@ -525,9 +948,15 @@ export const settings = {
   "settings.orgRoleDetail.addMembersToRole": "Adicionar Membros ao Papel",
   "settings.orgRoleDetail.addWithCount": "Adicionar ({count})",
   "settings.orgRoleDetail.added": "Adicionado",
+  "settings.orgRoleDetail.allConnections": "Todas as conex\u00f5es",
+  "settings.orgRoleDetail.allConnectionsDescription":
+    "Todas as ferramentas de todas as conex\u00f5es, inclusive as adicionadas depois. Desmarque uma conex\u00e3o para deix\u00e1-la de fora.",
   "settings.orgRoleDetail.allModels": "Todos os modelos",
   "settings.orgRoleDetail.allOrgPermissions":
     "Todas as permiss\u00f5es da organiza\u00e7\u00e3o",
+  "settings.orgRoleDetail.allProjects": "Todos os projetos",
+  "settings.orgRoleDetail.allProjectsDescription":
+    "Este papel pode acessar todos os projetos, inclusive os criados depois. Desmarque um projeto para escond\u00ea-lo deste papel, ou desative para escolher projetos espec\u00edficos.",
   "settings.orgRoleDetail.builtinRolePermissionsCannotBeChanged":
     "Permiss\u00f5es de papel integrado n\u00e3o podem ser alteradas",
   "settings.orgRoleDetail.cancel": "Cancelar",
@@ -552,11 +981,16 @@ export const settings = {
     'Nenhum membro corresponde a "{searchQuery}"',
   "settings.orgRoleDetail.noPermissionsMatch":
     'Nenhuma permiss\u00e3o corresponde a "{searchQuery}"',
+  "settings.orgRoleDetail.noProjectsAvailable":
+    "Nenhum projeto dispon\u00edvel",
+  "settings.orgRoleDetail.noProjectsMatch":
+    'Nenhum projeto corresponde a "{searchQuery}"',
   "settings.orgRoleDetail.organizationPermissions":
     "Permiss\u00f5es da Organiza\u00e7\u00e3o",
   "settings.orgRoleDetail.owner": "Propriet\u00e1rio",
   "settings.orgRoleDetail.ownerMembershipCannotBeChanged":
     "A associa\u00e7\u00e3o de propriet\u00e1rio n\u00e3o pode ser alterada",
+  "settings.orgRoleDetail.projects": "Projetos",
   "settings.orgRoleDetail.removeMember": "Remover {name} do papel",
   "settings.orgRoleDetail.roleCreatedSuccessfully": "Papel criado com sucesso!",
   "settings.orgRoleDetail.roleName": "Nome do papel",
@@ -570,6 +1004,7 @@ export const settings = {
   "settings.orgRoleDetail.searchMembers": "Procurar membros...",
   "settings.orgRoleDetail.searchModels": "Procurar modelos...",
   "settings.orgRoleDetail.searchPermissions": "Procurar permiss\u00f5es...",
+  "settings.orgRoleDetail.searchProjects": "Procurar projetos...",
   "settings.orgRoleDetail.selectMembersToAddToThisRole":
     "Selecione membros para adicionar a este papel.",
   "settings.orgRoleDetail.showMore": "Mostrar mais ({remaining} restantes)",
@@ -634,41 +1069,6 @@ export const settings = {
   "settings.orgSso.toggleEnforcementError":
     "Falha ao alternar aplica\u00e7\u00e3o de SSO",
   "settings.orgSso.updateButton": "Atualizar",
-  "settings.orgStore.addRegistry": "Adicionar Registro",
-  "settings.orgStore.adding": "Adicionando...",
-  "settings.orgStore.authTokenLabel": "Token de Autentica\u00e7\u00e3o",
-  "settings.orgStore.authTokenPlaceholder": "Token Bearer...",
-  "settings.orgStore.cancel": "Cancelar",
-  "settings.orgStore.communityRegistryDescription":
-    "Registro MCP da comunidade com milhares de MCPs \u00fateis",
-  "settings.orgStore.communityRegistryNotAdded":
-    "Registro MCP da comunidade \u2014 ainda n\u00e3o adicionado",
-  "settings.orgStore.communitySection": "Comunidade",
-  "settings.orgStore.connectionNotFound":
-    "Conex\u00e3o n\u00e3o encontrada \u2014 ser\u00e1 criada automaticamente.",
-  "settings.orgStore.decoStoreDescription":
-    "Registro MCP deco oficial com integra\u00e7\u00f5es selecionadas",
-  "settings.orgStore.decoStoreName": "Loja Deco",
-  "settings.orgStore.decoStoreSection": "Loja Deco",
-  "settings.orgStore.failedAddRegistry": "Falha ao adicionar registro: {error}",
-  "settings.orgStore.failedLoadStoreSettings":
-    "Falha ao carregar configura\u00e7\u00f5es da loja:",
-  "settings.orgStore.mcpRegistry": "Registro MCP",
-  "settings.orgStore.nameLabel": "Nome",
-  "settings.orgStore.namePlaceholder": "p.ex. Registro Acme Corp",
-  "settings.orgStore.optional": "Opcional",
-  "settings.orgStore.pageTitle": "Loja",
-  "settings.orgStore.privateMcpRegistry": "Registro MCP privado",
-  "settings.orgStore.privateRegistriesSection": "Registros Privados",
-  "settings.orgStore.privateRegistry": "Registro Privado",
-  "settings.orgStore.privateRegistryAdded": "Registro privado adicionado",
-  "settings.orgStore.privateRegistryDescription":
-    "Registro MCP privado da sua organiza\u00e7\u00e3o",
-  "settings.orgStore.registryUrlLabel": "URL do Registro",
-  "settings.orgStore.registryUrlPlaceholder":
-    "https://registry.exemplo.com/mcp",
-  "settings.orgStore.remove": "Remover",
-  "settings.orgStore.removeRegistry": "Remover este registro?",
   "settings.organizationForm.failedToReadImage": "Falha ao ler imagem",
   "settings.organizationForm.failedToUpdateOrg":
     "Falha ao atualizar organiza\u00e7\u00e3o",
@@ -677,7 +1077,9 @@ export const settings = {
     "Tamanho recomendado \u00e9 256x256px",
   "settings.organizationForm.logoTitle": "Logo",
   "settings.organizationForm.namePlaceholder": "Nome da organiza\u00e7\u00e3o",
+  "settings.organizationForm.nameRequired": "O nome \u00e9 obrigat\u00f3rio",
   "settings.organizationForm.nameTitle": "Nome",
+  "settings.organizationForm.nameTooLong": "O nome \u00e9 muito longo",
   "settings.organizationForm.updateSuccess":
     "Organiza\u00e7\u00e3o atualizada com sucesso",
   "settings.organizationForm.uploadLogoLabel":
@@ -839,7 +1241,7 @@ export const settings = {
   "settings.infraBilling.tooManySites":
     "Mostrando os primeiros {count} sites. Selecione sites específicos para ver os demais.",
   "settings.infraBilling.multipleTeams":
-    "Plano e faturas são de um único time legado — filtre a seleção para vê-los.",
+    "Estes sites são cobrados por {count} times legados. O plano e as faturas de cada time estão em Faturas.",
   "settings.infraBilling.noTeam":
     "Estes sites não estão vinculados a um time de cobrança legado.",
   "settings.infraBilling.partialTeam":
@@ -871,7 +1273,7 @@ export const settings = {
   "settings.infraBilling.dataTransfer": "Transferência de dados",
   "settings.infraBilling.dataTransferDescription":
     "Banda entregue pela edge e pela origem.",
-  "settings.infraBilling.noInvoices": "Nenhuma fatura emitida para este site.",
+  "settings.infraBilling.noInvoices": "Nenhuma fatura emitida para este time.",
   "settings.infraBilling.invoiceReference": "Referência",
   "settings.infraBilling.invoiceDue": "Vencimento",
   "settings.infraBilling.invoiceAmount": "Valor",
@@ -883,4 +1285,48 @@ export const settings = {
   "settings.infraBilling.statusPaid": "Paga",
   "settings.infraBilling.statusOverdue": "Vencida",
   "settings.infraBilling.statusPending": "Pendente",
+  "settings.gitCredentials.title": "Credenciais git",
+  "settings.gitCredentials.description":
+    "Tokens de acesso pessoal para repositórios git privados dos quais seus projetos dependem mas que o sandbox não alcança sozinho — submódulos e dependências privadas resolvidas por pub, go, npm ou cargo. Usados por todos os sandboxes desta organização. Referencie um segredo de org/usuário por host; URLs SSH são reescritas para HTTPS para que o token se aplique.",
+  "settings.gitCredentials.addCredential": "Adicionar credencial git",
+  "settings.gitCredentials.cancel": "Cancelar",
+  "settings.gitCredentials.createNewSecret": "Criar novo segredo",
+  "settings.gitCredentials.createNewSecretAriaLabel": "Criar novo segredo",
+  "settings.gitCredentials.createNewSecretDescription":
+    "Armazenado criptografado no cofre de credenciais. A credencial git fará referência ao novo segredo pelo id — seu valor nunca sai do servidor.",
+  "settings.gitCredentials.createNewSecretTitle": "Criar novo segredo",
+  "settings.gitCredentials.descriptionLabel": "Descrição (opcional)",
+  "settings.gitCredentials.descriptionPlaceholder":
+    "Para que este token é usado?",
+  "settings.gitCredentials.failedToLoadSecrets": "Falha ao carregar segredos",
+  "settings.gitCredentials.failedToSave": "Falha ao salvar as credenciais git",
+  "settings.gitCredentials.failedToSaveSecret": "Falha ao salvar",
+  "settings.gitCredentials.hostAriaLabel": "Host da credencial git {index}",
+  "settings.gitCredentials.hostInvalidMessage":
+    "Nome de host simples, ex.: github.com (sem esquema ou caminho).",
+  "settings.gitCredentials.hostPlaceholder": "github.com",
+  "settings.gitCredentials.maxReached":
+    "Você atingiu o limite de {max} credenciais git. Remova uma para adicionar outra.",
+  "settings.gitCredentials.nameLabel": "Nome",
+  "settings.gitCredentials.namePlaceholder": "GITHUB_DEPS_PAT",
+  "settings.gitCredentials.nameHelperText":
+    "Letras, dígitos, underscore, ponto, hífen.",
+  "settings.gitCredentials.noSecretsYet":
+    'Nenhum segredo ainda. Use o "+" para criar um.',
+  "settings.gitCredentials.pickSecretPlaceholder": "Escolha um segredo…",
+  "settings.gitCredentials.remove": "Remover",
+  "settings.gitCredentials.removeAriaLabel": "Remover credencial git",
+  "settings.gitCredentials.saveSecret": "Salvar segredo",
+  "settings.gitCredentials.saving": "Salvando…",
+  "settings.gitCredentials.secretAriaLabel":
+    "Segredo da credencial git {index}",
+  "settings.gitCredentials.scopeLabel": "Escopo",
+  "settings.gitCredentials.scopeOrganization":
+    "Organização — visível para todos os membros",
+  "settings.gitCredentials.scopePrivate": "Privado — visível apenas para mim",
+  "settings.gitCredentials.secretSaved": 'Segredo "{name}" salvo',
+  "settings.gitCredentials.tokenExposureWarning":
+    "O token é instalado na configuração git do sandbox durante a sessão, então comandos e agentes executados lá podem usá-lo. Restrinja-o aos repositórios necessários.",
+  "settings.gitCredentials.tokenLabel": "Token de acesso pessoal",
+  "settings.gitCredentials.tokenPlaceholder": "Cole seu token",
 } satisfies Record<keyof typeof settingsEn, string>;

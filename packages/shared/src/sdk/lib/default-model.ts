@@ -4,6 +4,20 @@ import type {
   ProviderId,
 } from "../types/ai-providers";
 
+/** Decision models accept text but cannot generate a chat response. */
+export function isDecisionModel(model: {
+  capabilities?: readonly string[];
+}): boolean {
+  return model.capabilities?.includes("decisions") === true;
+}
+
+export function isChatModel(model: {
+  capabilities?: readonly string[];
+  asyncResearch?: boolean;
+}): boolean {
+  return !isDecisionModel(model) && model.asyncResearch !== true;
+}
+
 /**
  * Preferred default models for each well-known provider.
  *
@@ -115,8 +129,24 @@ export const THINKING_MODEL_PREFERENCES: Partial<Record<ProviderId, string[]>> =
  * Falls back to first model with "image" capability.
  */
 export const IMAGE_MODEL_PREFERENCES: Partial<Record<ProviderId, string[]>> = {
-  openrouter: ["openai/gpt-image-1", "google/gemini-2.0-flash-image"],
-  deco: ["openai/gpt-image-1", "google/gemini-2.0-flash-image"],
+  // Real, current OpenRouter ids. The previous pair (openai/gpt-image-1,
+  // google/gemini-2.0-flash-image) were BOTH retired from the catalog, so
+  // neither the exact nor the substring pass could ever match and the slot fell
+  // through to the capability predicate below — which picks openrouter/auto,
+  // the auto-router. That advertises every modality, then resolves an image
+  // request to whatever text model it likes ("No endpoints available for any
+  // resolved phaser models: z-ai/glm-5.2"). Keep this list ahead of the
+  // catalog, newest first.
+  openrouter: [
+    "google/gemini-3-pro-image",
+    "openai/gpt-5-image",
+    "google/gemini-2.5-flash-image",
+  ],
+  deco: [
+    "google/gemini-3-pro-image",
+    "openai/gpt-5-image",
+    "google/gemini-2.5-flash-image",
+  ],
   llmapi: ["gemini-2.5-flash-image", "gpt-image-1"],
   google: ["gemini-2.0-flash-image"],
 };
@@ -261,7 +291,9 @@ export function pickSimpleModeDefaults(
   };
 
   for (const key of keys) {
-    const models = modelsByKeyId[key.id] ?? [];
+    const models = (modelsByKeyId[key.id] ?? []).filter(
+      (m) => !isDecisionModel(m),
+    );
     const providerId = key.providerId as ProviderId;
 
     if (!result.chat.fast) {
@@ -290,7 +322,14 @@ export function pickSimpleModeDefaults(
         models,
         key.id,
         IMAGE_MODEL_PREFERENCES[providerId] ?? [],
-        (m) => m.capabilities?.includes("image") === true,
+        // ponytail: the auto-router is excluded, not special-cased further.
+        // openrouter/auto{,-beta} advertises EVERY modality including image, so
+        // it always wins a bare capability scan — and then resolves the call to
+        // an arbitrary text model that has no image endpoint. Anything else
+        // claiming image output is a genuine generator.
+        (m) =>
+          m.capabilities?.includes("image") === true &&
+          !m.modelId.startsWith("openrouter/auto"),
       );
     }
     if (!result.webSearch) {
@@ -334,6 +373,7 @@ export function selectDefaultModel(
   providerId: ProviderId,
   keyId?: string,
 ): AiProviderModel | null {
+  models = models.filter(isChatModel);
   if (models.length === 0) return null;
 
   const candidates = DEFAULT_MODEL_PREFERENCES[providerId] ?? [];

@@ -3,17 +3,19 @@
  *  and falling back would put one project's rows under an organization header.
  *  Configurable rows share their presence gates with Layout and additionally
  *  require the project's sidebar selection. The main panel bar keeps
- *  contextual and per-thread views, such as Review changes or an open file,
+ *  per-thread views, such as an open file,
  *  which do not belong in durable navigation. */
 
 import type { ReactNode } from "react";
 import {
+  ClockRewind,
   BarChartSquare02,
+  Beaker02,
   CheckDone01,
   Globe02,
-  Grid01,
   Image01,
   Lightning01,
+  Lock01,
   Monitor01,
   Server01,
 } from "@untitledui/icons";
@@ -24,14 +26,17 @@ import { DESTINATION_ROUTE } from "@/hooks/use-destination-route";
 import { useActivePanelTabId } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { useProjectScope } from "@/hooks/use-project-scope";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
-import { keepAttachedPinnedViews } from "@/layouts/main-panel-tabs/attached-pinned-views";
+import {
+  keepAttachedPinnedViews,
+  pinnedViewsOf,
+} from "@/layouts/main-panel-tabs/attached-pinned-views";
 import {
   formatPinnedViewTabId,
   parseAutomationTabId,
 } from "@/layouts/main-panel-tabs/tab-id";
 import { isSurfaceTab } from "@/layouts/main-panel-tabs/source-system-tabs";
+import { useTabLocked } from "./use-tab-locked";
 import { useNavigateToAgent } from "@/hooks/use-navigate-to-agent";
-import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { useT } from "@/i18n/use-t.ts";
 import { track } from "@/lib/posthog-client";
 import { useLeafRoutePath } from "@/hooks/use-destination-route";
@@ -44,29 +49,9 @@ import {
   type ProjectNativeViewId,
 } from "@/layouts/main-panel-tabs/project-sidebar-views";
 import { useOptimisticProjectSidebarViews } from "@/layouts/main-panel-tabs/optimistic-project-sidebar-views";
-
-/** A project's curated app views. The metadata bag is `.loose()`, so this
- *  validates the shape rather than trusting it. */
-function pinnedViewsOf(project: VirtualMCPEntity): PinnedView[] {
-  const ui = (
-    project.metadata as { ui?: { pinnedViews?: unknown } } | undefined
-  )?.ui;
-  if (!Array.isArray(ui?.pinnedViews)) return [];
-  return ui.pinnedViews.filter(
-    (pv): pv is PinnedView =>
-      !!pv &&
-      typeof pv === "object" &&
-      typeof (pv as PinnedView).connectionId === "string" &&
-      typeof (pv as PinnedView).toolName === "string",
-  );
-}
-
-interface PinnedView {
-  connectionId: string;
-  toolName: string;
-  label?: string;
-  icon?: string | null;
-}
+import { getDeterministicIcon } from "@/components/agent-icon";
+import { resolveTabIcon } from "@/layouts/main-panel-tabs/resolve-tab-icon";
+import { TabIconGlyph } from "@/layouts/main-panel-tabs/tab-icon-glyph";
 
 interface ProjectView {
   key: string;
@@ -88,6 +73,7 @@ export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
   const leafPath = useLeafRoutePath();
   const activeTabId = useActivePanelTabId();
   const nativeViews = useProjectNativeViewPresence(project);
+  const isLocked = useTabLocked();
   const optimisticSidebarViews = useOptimisticProjectSidebarViews(project?.id);
 
   if (!project) return null;
@@ -130,6 +116,10 @@ export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
       label: t("common.mainPanelTabs.assets"),
       icon: <Image01 size={16} />,
     },
+    releases: {
+      label: t("common.mainPanelTabs.releases"),
+      icon: <ClockRewind size={16} />,
+    },
     hosting: {
       label: t("common.mainPanelTabs.hosting"),
       icon: <Server01 size={16} />,
@@ -145,6 +135,10 @@ export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
     cdn: {
       label: t("common.mainPanelTabs.cdn"),
       icon: <Globe02 size={16} />,
+    },
+    experiments: {
+      label: t("experiments.title"),
+      icon: <Beaker02 size={16} />,
     },
   };
   for (const viewId of PROJECT_NATIVE_VIEW_IDS) {
@@ -174,17 +168,26 @@ export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
     (project.connections ?? []).map((c) => c.connection_id),
   )) {
     if (pinned.toolName === "fetch_assets") continue;
+    const panel = formatPinnedViewTabId(pinned.connectionId, pinned.toolName);
+    const icon = resolveTabIcon({
+      tabId: panel,
+      kind: "expanded",
+      iconUrl: pinned.icon,
+      connections: [],
+    });
+    const label = pinned.label || pinned.toolName;
+    const { IconComp: NameIcon } = getDeterministicIcon(label);
     views.push({
       key: `pinned:${pinned.connectionId}:${pinned.toolName}`,
-      label: pinned.label || pinned.toolName,
-      icon: pinned.icon ? (
-        <img src={pinned.icon} alt="" className="size-4 rounded-[3px]" />
-      ) : (
-        <Grid01 size={16} />
-      ),
-      panel: formatPinnedViewTabId(pinned.connectionId, pinned.toolName),
-      isActive: (tabId) =>
-        tabId === formatPinnedViewTabId(pinned.connectionId, pinned.toolName),
+      label,
+      icon:
+        icon.kind === "fallback" ? (
+          <NameIcon size={16} />
+        ) : (
+          <TabIconGlyph icon={icon} />
+        ),
+      panel,
+      isActive: (tabId) => tabId === panel,
     });
   }
   if (selectedViews.has("automations")) {
@@ -201,7 +204,7 @@ export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
     });
   }
 
-  const onProject = leafPath === DESTINATION_ROUTE.agents;
+  const onProject = leafPath.startsWith(DESTINATION_ROUTE.projects);
 
   return (
     <SidebarMenu className="gap-1">
@@ -212,6 +215,11 @@ export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
           label={view.label}
           dataTour={view.dataTour}
           isActive={onProject && view.isActive(activeTabId)}
+          trailing={
+            isLocked(view.panel) ? (
+              <Lock01 size={14} className="text-muted-foreground" />
+            ) : undefined
+          }
           /** No `link`, so this renders a button: these resolve a SESSION,
            *  reusing an empty thread of the right runtime or minting one. The
            *  destination id is not knowable at render time, so there is no

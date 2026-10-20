@@ -1,13 +1,13 @@
 import type { ModelCapability } from "@decocms/shared/sdk";
 import type { AIProviderKeyStorage } from "../storage/ai-provider-keys";
 import type { ModelListCache } from "./model-list-cache";
-import type {
-  StudioProvider,
-  ModelInfo,
-  OpenRouterAPIModel,
-  ProviderAdapter,
-} from "./types";
+import type { StudioProvider, ModelInfo, OpenRouterAPIModel } from "./types";
 import { getProviders } from "./registry";
+import {
+  fetchWithTransientRetry,
+  throwResponseError,
+} from "./adapters/fetch-transient-retry";
+import { deriveModalityCapabilities } from "./adapters/model-capabilities";
 
 // Sentinel org ID for the shared OpenRouter metadata cache (not org-specific)
 const OR_INDEX_ORG_ID = "_global";
@@ -16,33 +16,39 @@ function stripProviderPrefix(id: string): string {
   return id.includes("/") ? id.split("/").slice(1).join("/") : id;
 }
 
+// Skips a model missing the nested metadata mapOpenRouterModel relies on (mirrors adapters/openrouter.ts).
+function isMappableModel(m: OpenRouterAPIModel): boolean {
+  return (
+    typeof m.id === "string" &&
+    !!m.architecture &&
+    Array.isArray(m.architecture.input_modalities) &&
+    Array.isArray(m.architecture.output_modalities) &&
+    !!m.top_provider &&
+    !!m.pricing
+  );
+}
+
 function mapOpenRouterModel(m: OpenRouterAPIModel): ModelInfo {
-  const canTools = m.supported_parameters.includes("tools");
-  const canReasoning = m.supported_parameters.includes("reasoning");
   return {
     providerId: "openrouter",
     modelId: stripProviderPrefix(m.id),
     title: m.name,
     description: m.description || null,
     logo: null,
-    capabilities: [
-      ...new Set([
-        // "image" in input_modalities means the model accepts image input (vision),
-        // not that it generates images. Remap to "vision" so we distinguish from
-        // "image" in output_modalities which means actual image generation.
-        ...m.architecture.input_modalities.map((mod) =>
-          mod === "image" ? "vision" : mod,
-        ),
-        ...m.architecture.output_modalities,
-        ...(canTools ? (["tools"] as const) : []),
-        ...(canReasoning ? (["reasoning"] as const) : []),
-      ]),
-    ] as ModelCapability[],
+    capabilities: deriveModalityCapabilities(
+      m.architecture.input_modalities,
+      m.architecture.output_modalities,
+      m.supported_parameters,
+      m.supported_parameters?.includes("reasoning") ? ["reasoning"] : [],
+    ),
     limits: {
       contextWindow: m.context_length,
       maxOutputTokens: m.top_provider.max_completion_tokens || null,
     },
-    costs: { input: m.pricing.prompt, output: m.pricing.completion },
+    costs: {
+      input: Number(m.pricing.prompt) || 0,
+      output: Number(m.pricing.completion) || 0,
+    },
   };
 }
 
@@ -72,12 +78,14 @@ async function getOpenRouterIndex(
     if (cached) return buildIndex(cached);
   }
   try {
-    const res = await fetch("https://openrouter.ai/api/v1/models", {
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (!res.ok) return new Map();
+    const res = await fetchWithTransientRetry(
+      "OpenRouter enrichment index",
+      "https://openrouter.ai/api/v1/models",
+      { signal: AbortSignal.timeout(10_000) },
+    );
+    if (!res.ok) await throwResponseError("OpenRouter enrichment index", res);
     const { data }: { data: OpenRouterAPIModel[] } = await res.json();
-    const models = data.map(mapOpenRouterModel);
+    const models = data.filter(isMappableModel).map(mapOpenRouterModel);
     if (cache) await cache.set(OR_INDEX_ORG_ID, "openrouter", models);
     return buildIndex(models);
   } catch {
@@ -160,6 +168,34 @@ export class AIProviderFactory {
     return adapter.create(apiKey);
   }
 
+  /** Discover Decisions only when requested; never block the chat catalog on it. */
+  async listDecisionModels(
+    keyId: string,
+    organizationId: string,
+  ): Promise<ModelInfo[]> {
+    const provider = await this.activate(keyId, organizationId);
+    if (!provider.decisions?.listModels)
+      throw new Error("Provider does not support decision model discovery");
+    const cacheId = `${provider.info.id}:decisions`;
+    const cached = await this.cache?.get(organizationId, cacheId);
+    if (cached) return cached;
+    const seen = new Set<string>();
+    const models = (await provider.decisions.listModels())
+      .filter((model) => {
+        if (
+          model.deprecated ||
+          !model.capabilities.includes("decisions") ||
+          seen.has(model.modelId)
+        )
+          return false;
+        seen.add(model.modelId);
+        return true;
+      })
+      .map((model) => ({ ...model, providerId: provider.info.id }));
+    await this.cache?.set(organizationId, cacheId, models);
+    return models;
+  }
+
   async listModels(
     keyId: string,
     organizationId: string,
@@ -178,7 +214,7 @@ export class AIProviderFactory {
         // Re-apply per-request flags (e.g. asyncResearch) on the cached
         // payload — entries cached before the flag existed otherwise leak
         // through stale.
-        return applyProviderFlags(cached, adapter, apiKey);
+        return applyProviderFlags(cached, adapter.create(apiKey));
       }
     }
 
@@ -194,11 +230,11 @@ export class AIProviderFactory {
       return true;
     });
 
-    if (providerId !== "openrouter") {
+    if (providerId !== "openrouter" && providerId !== "deco") {
       const index = await getOpenRouterIndex(this.cache);
       models = enrich(models, index);
     } else {
-      // OpenRouter path skips enrich() — still apply provider-specific fixes.
+      // Both catalogs already come from OpenRouter; only apply local fixes.
       models = models.map((m) => ({
         ...m,
         capabilities: applyAnthropicPdfCapability(m.capabilities, m),
@@ -211,23 +247,18 @@ export class AIProviderFactory {
       await this.cache.set(organizationId, providerId, result);
     }
 
-    return applyProviderFlags(result, adapter, apiKey);
+    return applyProviderFlags(result, provider);
   }
 }
 
 /**
  * Stamp request-time flags onto a model list. Lets us ship new flags
  * (currently `asyncResearch`) without forcing a cache invalidation.
- *
- * Creates a provider once and reuses it across all models — `adapter.create`
- * is cheap (just closure construction) but worth not repeating per model.
  */
 function applyProviderFlags(
   models: ModelInfo[],
-  adapter: ProviderAdapter,
-  apiKey: string,
+  provider: StudioProvider,
 ): ModelInfo[] {
-  const provider = adapter.create(apiKey);
   const asyncResearch = provider.asyncResearch;
   if (!asyncResearch) return models;
   return models.map((m) =>

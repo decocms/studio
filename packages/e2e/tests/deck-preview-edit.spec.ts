@@ -78,9 +78,13 @@ test.describe("deck preview tab", () => {
       { data: { virtual_mcp_id: agent.item.id } },
     );
 
+    // Open both panels so the resize regression exercises their shared handle.
     await page.goto(
-      `/${orgSlug}/${thread.item.id}?virtualmcpid=${agent.item.id}&main=deck:${encodeURIComponent(DECK_PATH)}`,
+      `/${orgSlug}/${thread.item.id}?virtualmcpid=${agent.item.id}&main=deck:${encodeURIComponent(DECK_PATH)}&sidepanel=true`,
     );
+    await expect(page.getByTestId("chat-panel")).toBeVisible({
+      timeout: 30_000,
+    });
 
     // The deck pill labels the tab with the deck name. Generous timeout:
     // first paint pays the Vite dev-server cold transform.

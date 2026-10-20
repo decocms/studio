@@ -1,4 +1,5 @@
 import { Button } from "@decocms/ui/components/button.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { AlertCircle, AlertTriangle, Copy01 } from "@untitledui/icons";
 import { toast } from "sonner";
 import {
@@ -17,14 +18,18 @@ import {
   selectActivePlan,
 } from "./propose-plan";
 import { UserAskQuestionHighlight } from "./user-ask-question";
+import { SuggestTaskHighlight } from "./suggest-task";
+import { isSuggestTaskPending } from "./is-suggest-task-pending";
 import { TodosHighlight } from "./todos";
 import { CollapsibleHighlight } from "./collapsible-highlight";
 import { CreditsExhaustedBanner } from "../credits-exhausted-banner";
 import { SubscriptionLimitHighlight } from "./subscription-limit";
+import { PlanRefusedHighlight } from "./plan-refused";
 import { useHighlightFlags } from "./use-highlight-count";
 import { useOpenBillingUrl } from "@/hooks/use-open-billing-url";
+import { useFeature } from "@/hooks/use-entitlements";
 import { parseErrorMessage } from "./parse-error-message";
-import type { UserAskToolPart } from "../types";
+import type { SuggestTaskToolPart, UserAskToolPart } from "../types";
 
 // ============================================================================
 // StatusHighlight (error | warning)
@@ -144,7 +149,7 @@ function StatusHighlight(props: StatusHighlightProps) {
               }}
               aria-label={t("chat.highlight.copyErrorDetails")}
               title={t("chat.highlight.copy")}
-              className="absolute right-1.5 top-1.5 z-10 flex h-6 w-6 items-center justify-center rounded-md bg-background/80 text-muted-foreground backdrop-blur-sm transition-colors hover:bg-background hover:text-foreground"
+              className="absolute right-1.5 top-1.5 z-10 flex h-6 w-6 items-center justify-center rounded-lg bg-background/80 text-muted-foreground backdrop-blur-sm transition-colors hover:bg-background hover:text-foreground"
             >
               <Copy01 className="size-3.5" />
             </button>
@@ -162,7 +167,13 @@ function StatusHighlight(props: StatusHighlightProps) {
 // ChatHighlight - main component
 // ============================================================================
 
-export function ChatHighlight() {
+export function ChatHighlight({
+  inline = false,
+  voiceMode = false,
+}: {
+  inline?: boolean;
+  voiceMode?: boolean;
+} = {}) {
   const t = useT();
   const {
     error,
@@ -176,7 +187,8 @@ export function ChatHighlight() {
   } = useChatStream();
   const [preferences, setPreferences] = usePreferences();
   const { virtualMcpId, createTaskWithMessage } = useChatTask();
-  const { chatMode, simpleModeTier } = useChatPrefs();
+  const { chatMode, setChatMode, simpleModeTier } = useChatPrefs();
+  const canBuyCredits = useFeature("credits");
   const { mutate: subscribe } = useOpenBillingUrl(
     "ORGANIZATION_BILLING_CHECKOUT_START",
     "taskBoard.subscriptionPaywall.checkoutError",
@@ -191,6 +203,7 @@ export function ChatHighlight() {
   const buildRequestOptions = (
     toolApprovalLevel: ToolApprovalLevel,
   ): RequestOptions => ({
+    ...(voiceMode ? { voiceMode: true } : {}),
     tier: simpleModeTier,
     mode: chatMode,
     toolApprovalLevel,
@@ -207,6 +220,9 @@ export function ChatHighlight() {
   const userAskParts = assistantParts.filter(
     (part) => part.type === "tool-user_ask",
   );
+  const suggestTaskParts = assistantParts.filter(
+    isSuggestTaskPending,
+  ) as SuggestTaskToolPart[];
   const pendingPlans = extractPendingPlans(assistantParts);
   const pendingApprovals = extractPendingApprovals(
     assistantParts as Array<{
@@ -256,7 +272,22 @@ export function ChatHighlight() {
     );
   };
 
+  const handleSuggestTaskRespond = (
+    part: SuggestTaskToolPart,
+    accepted: boolean,
+  ) => {
+    void submit(
+      {
+        kind: "toolOutput",
+        toolCallId: part.toolCallId,
+        output: { accepted },
+      },
+      buildRequestOptions(currentApprovalLevel),
+    );
+  };
+
   const handlePlanApprove = (planText: string) => {
+    setChatMode("default");
     // Set approval level to auto and persist
     setPreferences({ ...preferences, toolApprovalLevel: "auto" });
 
@@ -304,7 +335,21 @@ export function ChatHighlight() {
   const flags = useHighlightFlags();
 
   if (flags.isCreditExhausted) {
-    return <CreditsExhaustedBanner onDismiss={clearError} />;
+    // A mid-stream 402 on a plan without `credits` has nothing to sell: the
+    // top-up dialog renders NOTHING for such an org, so the turn failed with no
+    // card, no message and no explanation at all — the exact state this fix
+    // exists for. Send them to the plan instead, the only way past it. Free
+    // takes the top-up branch now; this is the revoked-per-org case.
+    return canBuyCredits ? (
+      <CreditsExhaustedBanner onDismiss={clearError} />
+    ) : (
+      <div className={cn(!inline && "absolute bottom-full left-0 right-0")}>
+        <PlanRefusedHighlight
+          kind="ai_budget_exhausted"
+          onDismiss={clearError}
+        />
+      </div>
+    );
   }
 
   const { showError, showWarning, hasApprovals } = flags;
@@ -313,7 +358,7 @@ export function ChatHighlight() {
   const approvalKey = pendingApprovals.map((a) => a.approvalId).join("|");
 
   return (
-    <div className="absolute bottom-full left-0 right-0">
+    <div className={cn(!inline && "absolute bottom-full left-0 right-0")}>
       <TodosHighlight todos={flags.todos} />
       {flags.subscriptionErrorKind && (
         <SubscriptionLimitHighlight
@@ -321,6 +366,9 @@ export function ChatHighlight() {
           onDismiss={clearError}
           onSubscribe={handleSubscribe}
         />
+      )}
+      {flags.planRefusal && (
+        <PlanRefusedHighlight kind={flags.planRefusal} onDismiss={clearError} />
       )}
       {showError && (
         <StatusHighlight
@@ -353,6 +401,14 @@ export function ChatHighlight() {
           isStreaming={isStreaming}
           onApprove={handlePlanApprove}
           onDismiss={handlePlanDismiss}
+        />
+      )}
+      {flags.hasTaskSuggestion && (
+        <SuggestTaskHighlight
+          key={suggestTaskParts.at(-1)?.toolCallId ?? ""}
+          parts={suggestTaskParts}
+          isStreaming={isStreaming}
+          onRespond={handleSuggestTaskRespond}
         />
       )}
       {flags.isWaitingForUserInput && (

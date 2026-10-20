@@ -1,0 +1,573 @@
+/**
+ * `GitProviderClient` for GitHub (github.com and GitHub Enterprise).
+ *
+ * Two modes, picked by the options union:
+ * - installation: Studio's GitHub App is installed on the account and tokens
+ *   are minted per call through `GithubAppAuth` — repo-scoped for pushes,
+ *   read-only account-wide for listing and reading. When the account carries a
+ *   partial grant (`repositoryIds`), account-wide means grant-wide: every
+ *   token, and so every listing and read, stops at those repositories.
+ * - token: a user OAuth grant or personal access token supplied by a
+ *   `TokenSource`; the same token serves every call.
+ */
+
+import {
+  type RepoRef,
+  repoName,
+  splitOwnerName,
+} from "@decocms/shared/git-providers";
+import { GITHUB_SCOPED_PERMISSIONS } from "@decocms/shared/github-repo-scope";
+import { retry } from "@decocms/shared/std";
+import {
+  type CreateFromTemplateParams,
+  type GitAccessToken,
+  type GitIdentity,
+  type GitProviderClient,
+  GitProviderError,
+  type ListReposOptions,
+  type RepoSummary,
+  type RepoVisibility,
+  type TokenOptions,
+  type TokenSource,
+} from "../types";
+import { type GithubAppAuth, MAX_TOKEN_REPOSITORIES } from "./app-auth";
+import {
+  githubApiBaseUrl,
+  type GithubFetchInit,
+  githubErrorMessage,
+  githubFailure,
+  githubFailureFromBody,
+  githubFetch,
+  githubJson,
+} from "./http";
+
+export type GithubProviderClientOptions =
+  | {
+      host: string;
+      installationId: number;
+      /**
+       * The repositories of the installation this Studio organization was
+       * granted, by id. Null is the whole installation.
+       */
+      repositoryIds?: number[] | null;
+      appAuth: GithubAppAuth;
+    }
+  | { host: string; tokenSource: TokenSource };
+
+/** Enough to list, inspect and read files in every repository of the installation. */
+const ACCOUNT_READ_PERMISSIONS: Record<string, string> = {
+  metadata: "read",
+  contents: "read",
+};
+
+/** Generate a repository, then read it back while GitHub copies the template. */
+const CREATE_REPO_PERMISSIONS: Record<string, string> = {
+  administration: "write",
+  contents: "read",
+  metadata: "read",
+};
+
+/** GitHub copies a template asynchronously; how long to wait for the first commit. */
+const TEMPLATE_COPY_ATTEMPTS = 8;
+const TEMPLATE_COPY_MIN_WAIT_MS = 500;
+const TEMPLATE_COPY_MAX_WAIT_MS = 4_000;
+
+class TemplateStillCopying extends Error {}
+
+const DEFAULT_PER_PAGE = 30;
+const MAX_PER_PAGE = 100;
+
+/** Raw-content media type for `GET /repos/{o}/{r}/contents/{path}`. */
+const RAW_CONTENT_ACCEPT = "application/vnd.github.raw+json";
+
+/** A whole-repo archive is a download, not a REST call — it needs room to stream. */
+const ARCHIVE_TIMEOUT_MS = 60_000;
+
+/** The fields of GitHub's repository object the mapping reads. */
+export interface GithubRepoJson {
+  id: number;
+  full_name: string;
+  private: boolean;
+  visibility?: string | null;
+  default_branch?: string | null;
+  html_url: string;
+  description?: string | null;
+  pushed_at?: string | null;
+  updated_at?: string | null;
+}
+
+function isRepoVisibility(value: string): value is RepoVisibility {
+  return value === "public" || value === "private" || value === "internal";
+}
+
+/** Pure: GitHub repository object → neutral `RepoSummary`. */
+export function mapGithubRepo(json: GithubRepoJson, host: string): RepoSummary {
+  let visibility: RepoVisibility = "public";
+  if (json.private) visibility = "private";
+  else if (json.visibility && isRepoVisibility(json.visibility)) {
+    visibility = json.visibility;
+  }
+  return {
+    ref: { provider: "github", host, path: json.full_name },
+    externalId: String(json.id),
+    defaultBranch: json.default_branch ?? null,
+    webUrl: json.html_url,
+    visibility,
+    description: json.description ?? null,
+    updatedAt: json.pushed_at ?? json.updated_at ?? null,
+  };
+}
+
+/**
+ * Pure: the client-side `query` filter for repository listings — a
+ * case-insensitive substring match over `owner/name`. Empty/blank queries
+ * match everything.
+ */
+export function matchesRepoQuery(
+  fullName: string,
+  query: string | undefined,
+): boolean {
+  const needle = query?.trim().toLowerCase();
+  if (!needle) return true;
+  return fullName.toLowerCase().includes(needle);
+}
+
+export interface GithubUserJson {
+  login: string;
+  name?: string | null;
+  email?: string | null;
+}
+
+/**
+ * Pure: commit author identity for a user token. `/user` omits the email
+ * when it is private; GitHub's noreply address keeps the commit attributed.
+ */
+export function mapGithubIdentity(json: GithubUserJson): GitIdentity {
+  return {
+    name: json.name || json.login,
+    email: json.email || `${json.login}@users.noreply.github.com`,
+  };
+}
+
+function encodePath(path: string): string {
+  return path.split("/").filter(Boolean).map(encodeURIComponent).join("/");
+}
+
+/**
+ * Pure: API path of the tarball endpoint for `repo` at `ref`. Omitting `ref`
+ * leaves the endpoint on the repository's default branch. GitHub answers 302
+ * to a signed codeload URL; `fetch` follows it and drops the Authorization
+ * header cross-origin, which is what the signed URL expects.
+ */
+export function githubTarballPath(repo: RepoRef, ref?: string): string {
+  const { owner, name } = splitOwnerName(repo);
+  const base = `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/tarball`;
+  return ref ? `${base}/${encodeURIComponent(ref)}` : base;
+}
+
+function cannotCreateIn(
+  owner: string,
+  status: number,
+  viaApp: boolean,
+): GitProviderError {
+  return new GitProviderError({
+    provider: "github",
+    status,
+    message: viaApp
+      ? `Studio cannot create repositories in ${owner}. The GitHub App needs the Administration permission there; ask an owner of ${owner} to accept it.`
+      : `The connected GitHub account cannot create repositories in ${owner}.`,
+  });
+}
+
+export class GithubProviderClient implements GitProviderClient {
+  readonly kind = "github" as const;
+  readonly host: string;
+  private readonly apiBaseUrl: string;
+  private readonly options: GithubProviderClientOptions;
+  /** Repository path → id, for the grant check. Per client, so per request. */
+  private readonly grantedIds = new Map<string, number>();
+
+  constructor(options: GithubProviderClientOptions) {
+    this.options = options;
+    this.host = options.host.toLowerCase();
+    // `githubApiBaseUrl`, not the bare host mapping: it is the one that honours
+    // `GITHUB_API_BASE_URL`, which is how e2e keeps this client off github.com.
+    this.apiBaseUrl = githubApiBaseUrl(options.host);
+  }
+
+  async tokenForRepo(
+    repo: RepoRef,
+    opts: TokenOptions = {},
+  ): Promise<GitAccessToken> {
+    const options = this.options;
+    if ("appAuth" in options) {
+      const granted = options.repositoryIds ?? null;
+      // GitHub honours the restriction below exactly: a repository left out
+      // of the mint 404s for the whole run.
+      const siblings = opts.alsoRepositories ?? [];
+      const minted = await options.appAuth.installationToken(
+        options.installationId,
+        {
+          // A name is enough when the whole installation is Studio's to use.
+          // Under a partial grant it is not: the installation may well cover
+          // repositories nobody here administers, and GitHub would mint for
+          // them just as readily. So the repository is resolved through the
+          // grant first and the token asks for that id and no other.
+          ...(granted
+            ? {
+                repositoryIds: [
+                  await this.grantedRepositoryId(repo, granted),
+                  ...(await this.grantedSiblingIds(repo, siblings, granted)),
+                ],
+              }
+            : { repositories: [repoName(repo), ...siblings] }),
+          permissions: GITHUB_SCOPED_PERMISSIONS,
+          bufferMs: opts.bufferMs,
+          forceRefresh: opts.forceRefresh,
+        },
+      );
+      return {
+        token: minted.token,
+        kind: "installation",
+        expiresAt: minted.expiresAt,
+      };
+    }
+    return this.sourceToken(options.tokenSource, opts);
+  }
+
+  async accountToken(opts: TokenOptions = {}): Promise<GitAccessToken> {
+    const options = this.options;
+    if ("appAuth" in options) {
+      const minted = await options.appAuth.installationToken(
+        options.installationId,
+        {
+          ...(options.repositoryIds
+            ? { repositoryIds: options.repositoryIds }
+            : {}),
+          permissions: ACCOUNT_READ_PERMISSIONS,
+          bufferMs: opts.bufferMs,
+          forceRefresh: opts.forceRefresh,
+        },
+      );
+      return {
+        token: minted.token,
+        kind: "installation",
+        expiresAt: minted.expiresAt,
+      };
+    }
+    return this.sourceToken(options.tokenSource, opts);
+  }
+
+  /**
+   * The id of `repo` within a partial grant, or a 403.
+   *
+   * The lookup runs on the account token, which is itself minted for the
+   * granted ids, so a repository outside the grant answers 404 here and never
+   * reaches the mint. The id is memoized: `archiveTarball` asks twice when its
+   * first token turns out to be dead.
+   */
+  private async grantedRepositoryId(
+    repo: RepoRef,
+    granted: number[],
+  ): Promise<number> {
+    const key = repo.path.toLowerCase();
+    const memoized = this.grantedIds.get(key);
+    if (memoized !== undefined) return memoized;
+    const id = Number((await this.getRepo(repo))?.externalId);
+    if (!Number.isSafeInteger(id) || !granted.includes(id)) {
+      throw new GitProviderError({
+        provider: "github",
+        status: 403,
+        message: `${repo.path} is outside what this GitHub account authorized for Studio. Ask someone who administers it to connect it.`,
+      });
+    }
+    this.grantedIds.set(key, id);
+    return id;
+  }
+
+  /**
+   * Ids for `siblings` that the grant covers, dropping the rest.
+   *
+   * Unlike the repository being worked on, a sibling outside the grant is not
+   * an error: the manifest says what the checkout wants, the grant says what
+   * Studio may hand over, and a dependency nobody authorized simply is not in
+   * the token. The fetch of that one repository then 404s, with the grant as
+   * the honest reason.
+   *
+   * Sequential, not a `Promise.all`: this is bounded by the manifest's sibling
+   * cap and GitHub's secondary rate limit punishes a burst of repo lookups.
+   */
+  private async grantedSiblingIds(
+    repo: RepoRef,
+    siblings: string[],
+    granted: number[],
+  ): Promise<number[]> {
+    const { owner } = splitOwnerName(repo);
+    const ids: number[] = [];
+    for (const name of siblings) {
+      const summary = await this.getRepo({
+        ...repo,
+        path: `${owner}/${name}`,
+      }).catch(() => null);
+      const id = Number(summary?.externalId);
+      if (Number.isSafeInteger(id) && granted.includes(id)) ids.push(id);
+    }
+    return ids;
+  }
+
+  async createRepoFromTemplate(
+    params: CreateFromTemplateParams,
+  ): Promise<RepoSummary> {
+    const operation = "create_repo_from_template";
+    const { template, owner, name } = params;
+    const token = await this.creationToken(owner);
+    const res = await githubFetch(
+      `${this.apiBaseUrl}/repos/${encodeURIComponent(template.owner)}/${encodeURIComponent(template.name)}/generate`,
+      {
+        method: "POST",
+        token,
+        operation,
+        body: {
+          owner,
+          name,
+          private: params.private,
+          include_all_branches: false,
+        },
+      },
+    );
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      if (
+        res.status === 422 &&
+        /already exists/i.test(githubErrorMessage(text))
+      ) {
+        throw new GitProviderError({
+          provider: "github",
+          status: 409,
+          message: `${owner}/${name} already exists on GitHub. Choose another name.`,
+        });
+      }
+      if (res.status === 403 || res.status === 404) {
+        throw cannotCreateIn(owner, res.status, "appAuth" in this.options);
+      }
+      throw githubFailureFromBody(res.status, text, operation);
+    }
+    const summary = mapGithubRepo(
+      await githubJson<GithubRepoJson>(res, operation),
+      this.host,
+    );
+    // Best effort: throwing here would strand a repo whose name can't be reused.
+    await this.waitForTemplateCopy(summary.ref, token).catch(() => {});
+    return summary;
+  }
+
+  /**
+   * A token that may create a repository under `owner`. A partial grant
+   * restricts tokens by repository id, and the new repository has none yet, so
+   * this one spans the installation. It serves the generate call and its
+   * read-back only and never leaves the client.
+   */
+  private async creationToken(owner: string): Promise<string> {
+    const options = this.options;
+    if (!("appAuth" in options)) {
+      return (await this.sourceToken(options.tokenSource, {})).token;
+    }
+    // The new repository joins the grant, which could then no longer be minted.
+    if ((options.repositoryIds?.length ?? 0) >= MAX_TOKEN_REPOSITORIES) {
+      throw new GitProviderError({
+        provider: "github",
+        status: 409,
+        message: `This GitHub account already grants Studio ${MAX_TOKEN_REPOSITORIES} repositories, the most one account can. Create the site with another account.`,
+      });
+    }
+    try {
+      const minted = await options.appAuth.installationToken(
+        options.installationId,
+        { permissions: CREATE_REPO_PERMISSIONS },
+      );
+      return minted.token;
+    } catch (err) {
+      // 422: the installation has not accepted the Administration permission.
+      if (err instanceof GitProviderError && err.status === 422) {
+        throw cannotCreateIn(owner, 403, true);
+      }
+      throw err;
+    }
+  }
+
+  /** Until the template's first commit lands, the repository answers 409 (empty). */
+  private async waitForTemplateCopy(
+    repo: RepoRef,
+    token: string,
+  ): Promise<void> {
+    const { owner, name } = splitOwnerName(repo);
+    const url = `${this.apiBaseUrl}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/commits?per_page=1`;
+    await retry(
+      async () => {
+        const res = await githubFetch(url, {
+          token,
+          operation: "wait_template_copy",
+        });
+        await res.body?.cancel().catch(() => {});
+        if (!res.ok) throw new TemplateStillCopying();
+      },
+      {
+        maxAttempts: TEMPLATE_COPY_ATTEMPTS,
+        minTimeout: TEMPLATE_COPY_MIN_WAIT_MS,
+        maxTimeout: TEMPLATE_COPY_MAX_WAIT_MS,
+        isRetriable: (err) => err instanceof TemplateStillCopying,
+      },
+    );
+  }
+
+  private async sourceToken(
+    source: TokenSource,
+    opts: TokenOptions,
+  ): Promise<GitAccessToken> {
+    const token = await source.get(opts);
+    if (!token) {
+      throw new GitProviderError({
+        provider: "github",
+        status: 401,
+        message: `No usable GitHub token for ${this.host}; reconnect the account`,
+      });
+    }
+    return token;
+  }
+
+  async getRepo(repo: RepoRef): Promise<RepoSummary | null> {
+    const operation = "get_repo";
+    const { owner, name } = splitOwnerName(repo);
+    const res = await this.request(
+      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}`,
+      { operation },
+    );
+    if (res.status === 404) {
+      await res.body?.cancel().catch(() => {});
+      return null;
+    }
+    if (!res.ok) throw await githubFailure(res, operation);
+    return mapGithubRepo(
+      await githubJson<GithubRepoJson>(res, operation),
+      this.host,
+    );
+  }
+
+  async listRepos(
+    opts: ListReposOptions = {},
+  ): Promise<{ repositories: RepoSummary[]; hasMore: boolean }> {
+    const page = Math.max(1, Math.floor(opts.page ?? 1));
+    const perPage = Math.min(
+      MAX_PER_PAGE,
+      Math.max(1, Math.floor(opts.perPage ?? DEFAULT_PER_PAGE)),
+    );
+    const paging = `per_page=${perPage}&page=${page}`;
+
+    let repos: GithubRepoJson[];
+    if ("appAuth" in this.options) {
+      const operation = "list_installation_repositories";
+      const res = await this.request(`/installation/repositories?${paging}`, {
+        operation,
+      });
+      if (!res.ok) throw await githubFailure(res, operation);
+      const body = await githubJson<{ repositories?: GithubRepoJson[] }>(
+        res,
+        operation,
+      );
+      repos = Array.isArray(body.repositories) ? body.repositories : [];
+    } else {
+      const operation = "list_user_repositories";
+      const res = await this.request(
+        `/user/repos?affiliation=owner,collaborator,organization_member&sort=pushed&${paging}`,
+        { operation },
+      );
+      if (!res.ok) throw await githubFailure(res, operation);
+      const body = await githubJson<GithubRepoJson[]>(res, operation);
+      repos = Array.isArray(body) ? body : [];
+    }
+
+    return {
+      repositories: repos
+        .filter((r) => matchesRepoQuery(r.full_name, opts.query))
+        .map((r) => mapGithubRepo(r, this.host)),
+      // Filtering must not hide the remaining provider pages.
+      hasMore: repos.length === perPage,
+    };
+  }
+
+  async readFile(
+    repo: RepoRef,
+    path: string,
+    ref?: string,
+  ): Promise<string | null> {
+    const operation = "read_file";
+    const { owner, name } = splitOwnerName(repo);
+    const query = ref ? `?ref=${encodeURIComponent(ref)}` : "";
+    const res = await this.request(
+      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/contents/${encodePath(path)}${query}`,
+      { operation, accept: RAW_CONTENT_ACCEPT },
+    );
+    if (res.status === 404) {
+      await res.body?.cancel().catch(() => {});
+      return null;
+    }
+    if (!res.ok) throw await githubFailure(res, operation);
+    return res.text();
+  }
+
+  async archiveTarball(
+    repo: RepoRef,
+    ref?: string,
+  ): Promise<ReadableStream<Uint8Array> | null> {
+    const operation = "archive_tarball";
+    const url = `${this.apiBaseUrl}${githubTarballPath(repo, ref)}`;
+    const token = await this.tokenForRepo(repo);
+    let res = await githubFetch(url, {
+      operation,
+      token: token.token,
+      timeoutMs: ARCHIVE_TIMEOUT_MS,
+    });
+    if (res.status === 401) {
+      await res.body?.cancel().catch(() => {});
+      const refreshed = await this.tokenForRepo(repo, { forceRefresh: true });
+      res = await githubFetch(url, {
+        operation,
+        token: refreshed.token,
+        timeoutMs: ARCHIVE_TIMEOUT_MS,
+      });
+    }
+    if (res.status === 404) {
+      await res.body?.cancel().catch(() => {});
+      return null;
+    }
+    if (!res.ok) throw await githubFailure(res, operation);
+    return res.body;
+  }
+
+  async identity(): Promise<GitIdentity | null> {
+    // Installation tokens are not a user: `/user` answers 401 for them.
+    if ("appAuth" in this.options) return null;
+    const operation = "get_user";
+    const res = await this.request("/user", { operation });
+    if (!res.ok) throw await githubFailure(res, operation);
+    return mapGithubIdentity(await githubJson<GithubUserJson>(res, operation));
+  }
+
+  /**
+   * One authenticated REST call with the account token. A 401 means the
+   * token died before `expiresAt` said so (revoked, rotated): re-mint or
+   * refresh once and retry, and let the caller judge the second answer.
+   */
+  private async request(
+    path: string,
+    init: Omit<GithubFetchInit, "token">,
+  ): Promise<Response> {
+    const url = `${this.apiBaseUrl}${path}`;
+    const first = await this.accountToken();
+    const res = await githubFetch(url, { ...init, token: first.token });
+    if (res.status !== 401) return res;
+    await res.body?.cancel().catch(() => {});
+    const refreshed = await this.accountToken({ forceRefresh: true });
+    return githubFetch(url, { ...init, token: refreshed.token });
+  }
+}

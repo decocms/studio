@@ -1,6 +1,40 @@
 import type { chat as chatEn } from "../en/chat.ts";
 
 export const chat = {
+  "chat.voice.title": "Conversa por voz",
+  "chat.voice.start": "Iniciar modo voz",
+  "chat.voice.idle": "Pronto",
+  "chat.voice.connecting": "Conectando…",
+  "chat.voice.listening": "Ouvindo",
+  "chat.voice.working": "Trabalhando no seu pedido. Pode continuar falando.",
+  "chat.voice.backgroundWork":
+    "O agente está trabalhando. Pode continuar falando.",
+  "chat.voice.speaking": "Falando",
+  "chat.voice.error": "Voz indisponível",
+  "chat.voice.muted": "Microfone silenciado",
+  "chat.voice.mute": "Silenciar microfone",
+  "chat.voice.unmute": "Ativar microfone",
+  "chat.voice.backToChat": "Voltar ao chat",
+  "chat.voice.stopWork": "Parar o trabalho do agente",
+  "chat.voice.retry": "Tentar novamente",
+  "chat.voice.permission":
+    "Permita o acesso ao microfone no navegador para usar o modo voz.",
+  "chat.voice.unavailable":
+    "Não foi possível iniciar o modo voz. Confira o acesso ao microfone e a configuração de voz da organização.",
+  "chat.voice.disconnected":
+    "A sessão de voz terminou. O chat e o trabalho do agente continuam disponíveis.",
+  "chat.voice.sendFailed":
+    "Não foi possível enviar ou concluir este pedido. Volte ao chat para conferir o estado dele.",
+  "chat.input.openFileContext":
+    "O agente vê {name}, o arquivo que você tem aberto",
+  "chat.input.openFileDismiss": "Deixar este arquivo de fora",
+  "chat.input.taskMode": "Tarefa",
+  "chat.input.startTask": "Iniciar tarefa",
+  "chat.input.taskPlaceholder":
+    "O que precisa ser corrigido? Cole um relato ou anexe uma captura de tela…",
+  "chat.input.taskHint":
+    "Vamos iniciar um agente e enviar um e-mail quando o PR estiver pronto para revisão.",
+
   "chat.agentCreate.agentCreated": "Projeto criado: {name}",
   "chat.agentCreate.cancelled": "Criação de projeto cancelada",
   "chat.agentCreate.couldntCreate": "Não foi possível criar o projeto",
@@ -9,9 +43,6 @@ export const chat = {
   "chat.agentCreate.creating": "Criando projeto",
   "chat.agentCreate.seeAgent": "Ver projeto",
   "chat.agentCreate.seeAgentLabel": "Ver projeto: {name}",
-  "chat.agentIcons.claudeCode": "Claude Code",
-  "chat.agentIcons.codex": "Codex",
-  "chat.agentIcons.opencode": "OpenCode",
   "chat.agentList.agentsNoun": "projetos",
   "chat.agentList.couldntLoad": "Não foi possível carregar projetos",
   "chat.agentList.listAgents": "Listar projetos",
@@ -39,32 +70,6 @@ export const chat = {
     "Retomado — tarefa em segundo plano concluída",
   "chat.assistant.resumingTask": "Retomando tarefa...",
   "chat.assistant.toolCallPlural": "{count} chamada(s) de ferramenta",
-  "chat.brandContext.brand": "Marca",
-  "chat.brandContext.brandContextSet": "Contexto de marca definido",
-  "chat.brandContext.brandSet": "Marca definida: {name}",
-  "chat.brandContext.brandWithName": "Marca · {name}",
-  "chat.brandContext.colorAccent": "Destaque",
-  "chat.brandContext.colorBackground": "Fundo",
-  "chat.brandContext.colorForeground": "Primeiro Plano",
-  "chat.brandContext.colorPrimary": "Primário",
-  "chat.brandContext.colorSecondary": "Secundário",
-  "chat.brandContext.colorsSection": "Cores",
-  "chat.brandContext.couldNotLoadBrand": "Não foi possível carregar a marca",
-  "chat.brandContext.couldNotLoadBrands": "Não foi possível carregar as marcas",
-  "chat.brandContext.defaultBadge": "padrão",
-  "chat.brandContext.extractingBrand": "Extraindo marca",
-  "chat.brandContext.extractionFailed": "Falha ao extrair marca",
-  "chat.brandContext.fromDomain": "de {domain}",
-  "chat.brandContext.loadingBrand": "Carregando marca",
-  "chat.brandContext.loadingBrands": "Carregando marcas",
-  "chat.brandContext.multipleBrands": "{count} marca(s)",
-  "chat.brandContext.noBrandsContext":
-    "A organização ainda não configurou nenhum contexto de marca.",
-  "chat.brandContext.noBrandsYet": "Nenhuma marca ainda",
-  "chat.brandContext.oneBrand": "1 marca",
-  "chat.brandContext.typographySection": "Tipografia",
-  "chat.brandContext.unknownError": "Erro desconhecido",
-  "chat.brandContext.untitled": "Sem Título",
   "chat.chat.jumpToLatest": "Ir para o mais recente",
   "chat.chat.loadingOlderMessages": "Carregando mensagens mais antigas…",
   "chat.chatContext.activeTaskProviderMissingContext":
@@ -123,35 +128,20 @@ export const chat = {
   "chat.contextPanel.toolsActive": "ferramentas ativas",
   "chat.contextPanel.usageLabel": "Uso",
   "chat.contextPanel.userPercent": "Usuário {pct}%",
-  "chat.creditsEmptyState.add": "Adicionar",
-  "chat.creditsEmptyState.bestValueLabel": "Melhor custo",
   "chat.creditsEmptyState.description":
     "Seus créditos gratuitos foram utilizados em outro workspace. Adicione créditos para usar IA aqui.",
-  "chat.creditsEmptyState.enterCustomAmount": "Inserir valor personalizado",
-  "chat.creditsEmptyState.opening": "Abrindo...",
-  "chat.creditsEmptyState.popularLabel": "Popular",
   "chat.creditsEmptyState.skipForNow": "Pular por enquanto",
-  "chat.creditsEmptyState.starterLabel": "Iniciante",
   "chat.creditsEmptyState.title": "Este workspace não possui créditos",
-  "chat.creditsEmptyState.topUpFailed": "Falha ao recarregar: {message}",
   "chat.creditsEmptyState.useYourOwnProvider": "Usar seu próprio provedor",
-  "chat.creditsExhaustedBanner.add": "Adicionar",
   "chat.creditsExhaustedBanner.benefit1": "Acesso a 100+ modelos de IA",
   "chat.creditsExhaustedBanner.benefit2":
     "API unificada, sem necessidade de chaves separadas",
   "chat.creditsExhaustedBanner.benefit3": "Pague apenas pelo que usar",
-  "chat.creditsExhaustedBanner.customPlaceholder": "50",
   "chat.creditsExhaustedBanner.description":
     "Seus créditos foram esgotados. Adicione mais para continuar usando IA em todos os seus agentes.",
   "chat.creditsExhaustedBanner.dismiss": "Descartar",
-  "chat.creditsExhaustedBanner.enterCustom": "Inserir valor personalizado",
   "chat.creditsExhaustedBanner.manageProviders": "Gerenciar provedores",
-  "chat.creditsExhaustedBanner.opening": "Abrindo...",
-  "chat.creditsExhaustedBanner.tierBestValue": "Melhor valor",
-  "chat.creditsExhaustedBanner.tierPopular": "Popular",
-  "chat.creditsExhaustedBanner.tierStarter": "Iniciante",
   "chat.creditsExhaustedBanner.title": "Recarregue para continuar criando",
-  "chat.creditsExhaustedBanner.topupError": "Falha na recarga: {error}",
   "chat.decopilot.back": "Voltar",
   "chat.decopilot.couldNotFetchModels":
     "Não foi possível buscar modelos deste provedor.",
@@ -198,6 +188,8 @@ export const chat = {
   "chat.generic.openInPanel": "Abrir no painel",
   "chat.generic.preparing": "Preparando...",
   "chat.generic.runningFor": "Executando há {elapsed}",
+  "chat.generic.waitingFor": "Aguardando {duration}",
+  "chat.generic.wrappingUp": "Finalizando…",
   "chat.generic.retry": "Tentar novamente",
   "chat.generic.tool.bash": "Executar Comando",
   "chat.generic.tool.edit": "Editar Arquivo",
@@ -257,8 +249,11 @@ export const chat = {
   "chat.input.modelCannotReadAttachments":
     "Este modelo não consegue ler anexos — mude para um com suporte a visão ou arquivos",
   "chat.input.planMode": "Modo de planejamento",
-  "chat.input.codingAgentRequiresDesktop":
-    "Continue este chat do agente de código no aplicativo Studio para desktop.",
+  "chat.liveMessage.pending":
+    "Enviada ao agente em execução · lida depois do passo atual",
+  "chat.liveMessage.readByAgent": "Lida pelo agente enquanto trabalhava",
+  "chat.input.codingAgentUnavailable":
+    "Este chat do agente de código não pode ser continuado aqui.",
   "chat.input.fastPreviewUnavailable":
     "O chat não está disponível em projetos Fast Preview. Use o CMS para editar o conteúdo.",
   "chat.fastPreview.chatNeedsSession":
@@ -270,6 +265,7 @@ export const chat = {
     "Apenas leitura - você está visualizando o chat de {name}",
   "chat.input.readOnlyThread":
     "Apenas leitura - este chat não aceita respostas",
+  "chat.input.allowanceExhaustedTitle": "Limite de IA esgotado",
   "chat.input.sendMessage": "Enviar mensagem",
   "chat.input.sendMessageEnter": "Enviar mensagem (Enter)",
   "chat.input.stillSendingPreviousMessage":
@@ -303,57 +299,16 @@ export const chat = {
     "Falha ao carregar prompt. Tente novamente.",
   "chat.nextActionChip.mcpClientNotAvailable": "Cliente MCP não disponível",
   "chat.nextActionChip.next": "Próximo:",
-  "chat.nativeAgentEmptyState.agentListLabel": "Agentes de codificação",
-  "chat.nativeAgentEmptyState.detected": "detectado",
-  "chat.nativeAgentEmptyState.detecting": "detectando",
-  "chat.nativeAgentEmptyState.heading": "Escolha um agente de codificação",
-  "chat.nativeAgentEmptyState.keyboardHint": "↑↓ selecionar · ↵ iniciar",
-  "chat.nativeAgentEmptyState.notDetected":
-    "{label} não foi detectado neste computador",
-  "chat.nativeAgentEmptyState.tryAnyway": "tentar mesmo assim",
-  "chat.nativeTerminal.chooseAgentFirst":
-    "Escolha Claude Code, Codex ou OpenCode antes de enviar uma mensagem.",
-  "chat.nativeTerminal.agentLabel": "agente de codificação",
-  "chat.nativeTerminal.chatClosedBeforePrompt":
-    "O chat foi fechado antes do envio da mensagem. Reabra-o e tente novamente.",
-  "chat.nativeTerminal.connectionFailed":
-    "Não foi possível conectar ao agente de codificação. Reabra o chat e tente novamente.",
-  "chat.nativeTerminal.emptyPrompt": "Escreva uma mensagem antes de enviar.",
-  "chat.nativeTerminal.exitedBeforeReady":
-    "O agente de codificação parou antes de ficar pronto. Reabra o chat e tente novamente.",
-  "chat.nativeTerminal.promptFailed": "Não foi possível enviar a mensagem.",
-  "chat.nativeTerminal.promptDeliveryUnknown":
-    "Perdemos a conexão depois que sua mensagem foi enviada. Ela pode já estar em execução; confira o agente de codificação antes de enviar novamente.",
-  "chat.nativeTerminal.promptTooLarge":
-    "Esta mensagem é grande demais para enviar. Encurte-a e tente novamente.",
-  "chat.nativeTerminal.attachmentsUnsupported":
-    "Anexos de arquivos e imagens ainda não estão disponíveis em chats com agentes de codificação.",
-  "chat.nativeTerminal.readOnly":
-    "Somente o proprietário do chat pode abrir ou controlar o terminal.",
-  "chat.nativeTerminal.readOnlyTitle": "Chat somente leitura",
-  "chat.nativeTerminal.reconnectingAgent": "Reconectando ao {agent}…",
-  "chat.nativeTerminal.pulseConnected": "conectado",
-  "chat.nativeTerminal.pulseInitializing": "inicializando",
-  "chat.nativeTerminal.pulseReconnecting": "reconectando",
-  "chat.nativeTerminal.startingAgent": "Iniciando {agent}…",
-  "chat.nativeTerminal.structuredActionUnsupported":
-    "Esta ação ainda não está disponível em chats com agentes de codificação.",
-  "chat.nativeTerminal.terminalLabel": "Terminal do agente de codificação",
-  "chat.nativeTerminal.unsupportedHarness":
-    "Este chat foi criado com um agente que o aplicativo para desktop não suporta. Abra-o no Studio pela web ou atualize o Studio e tente novamente.",
-  "chat.nativeTerminal.unsupportedHarnessTitle":
-    "Este chat não pode ser aberto no aplicativo para desktop",
-  "chat.nativeTerminal.unexpectedExit":
-    "O agente de codificação parou inesperadamente. Reabra o chat e tente novamente.",
-  "chat.nativeTerminal.waitingForAgentOutput": "Aguardando saída do {agent}…",
-  "chat.nativeTerminal.waitingForTerminalDraw":
-    "aguardando a exibição do terminal",
   "chat.noAiProviderEmptyState.headingDefault":
     "Seus projetos estão quase prontos",
   "chat.noAiProviderEmptyState.headingWithOrg":
     "{org} está pronto para projetos",
   "chat.noAiProviderEmptyState.subtitleDefault":
     "Conecte um provedor de IA para começar a conversar.",
+  "chat.noAiProviderEmptyState.supportedHeading":
+    "Conecte um provedor de IA compatível",
+  "chat.noAiProviderEmptyState.supportedSubtitle":
+    "Os chats rodam no Claude. Conecte Anthropic, OpenRouter ou o deco AI Gateway, ou vincule sua assinatura do Claude nas Configurações.",
   "chat.outputFileRow.download": "Baixar",
   "chat.outputFileRow.downloadFile": "Baixar {filename}",
   "chat.outputFileRow.open": "Abrir",
@@ -367,6 +322,7 @@ export const chat = {
   "chat.proposePlan.planReady": "Plano pronto",
   "chat.proposePlan.rejected": "Rejeitado",
   "chat.proposePlan.viewPlan": "Ver plano",
+  "chat.queueTray.cancelFailed": "Falha ao cancelar",
   "chat.queueTray.queuedMessage": "{count} mensagem na fila",
   "chat.queueTray.queuedMessages": "{count} mensagens na fila",
   "chat.queueTray.removeFromQueue": "Remover da fila",
@@ -502,6 +458,11 @@ export const chat = {
   "chat.uploader.fileTypeNotSupported": "Tipo de arquivo não suportado",
   "chat.uploader.gotIt": "Entendi",
   "chat.userAskQuestion.choiceOptionsAriaLabel": "Opções de escolha",
+  "chat.suggestTask.accepted": "Adicionada ao quadro",
+  "chat.suggestTask.create": "Criar tarefa",
+  "chat.suggestTask.declined": "Mantido no chat",
+  "chat.suggestTask.label": "Sugestão de tarefa",
+  "chat.suggestTask.notNow": "Agora não",
   "chat.userAskQuestion.confirmNo": "Não",
   "chat.userAskQuestion.confirmValue": "Confirme {value}",
   "chat.userAskQuestion.confirmYes": "Sim",
@@ -526,6 +487,7 @@ export const chat = {
   "chat.webSearch.showMore": "+{count} mais",
   "chat.webSearch.title": "Busca na web",
   "chat.mention.editPrompt": "Editar argumentos do prompt {name}",
+  "chat.mention.openSkill": "Abrir a skill {name}",
   "chat.mention.noItemsFound": "Nenhum item encontrado",
   "chat.modelPreferences.customizeModel": "Personalizar modelo de {tier}",
   "chat.modelPreferences.reset": "Redefinir",
@@ -544,4 +506,14 @@ export const chat = {
   "chat.subscriptionLimit.runsTitle":
     "Esta task atingiu o limite de re-execuções. Crie uma nova task para continuar.",
   "chat.subscriptionLimit.subscribeButton": "Assinar",
+  "chat.planRefused.budgetLabel": "Limite de IA esgotado",
+  "chat.planRefused.budgetTitle":
+    "Esta organização usou 100% do seu limite de IA. Escolha um plano para continuar conversando.",
+  "chat.planRefused.featureLabel": "Fora deste plano",
+  "chat.planRefused.featureTitle":
+    "O plano desta organização não inclui chat. Escolha um plano para continuar conversando.",
+  "chat.planRefused.seePlans": "Ver planos",
+  "chat.threadHtmlPreviews.slidesAndPages": "Slides e páginas neste chat",
+  "chat.threadHtmlPreviews.slides": "Slides neste chat",
+  "chat.threadHtmlPreviews.pages": "Páginas neste chat",
 } satisfies Record<keyof typeof chatEn, string>;

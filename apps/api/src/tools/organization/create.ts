@@ -31,7 +31,7 @@ export const ORGANIZATION_CREATE = defineTool({
         "Slug is reserved by Studio",
       ),
     name: z.string().min(1).max(255),
-    description: z.string().optional(),
+    description: z.string().max(500).optional(),
   }),
 
   outputSchema: z.object({

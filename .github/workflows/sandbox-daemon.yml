@@ -16,7 +16,6 @@ on:
     paths-ignore:
       - "apps/api/package.json"
       - ".github/**"
-      - "apps/docs/**"
       - "**/*.md"
   pull_request:
     branches:
@@ -69,6 +68,8 @@ jobs:
             [ -z "$f" ] && continue
             case "$f" in
               packages/sandbox/*|packages/typegen/*|packages/shared/*) relevant=true; break ;;
+              # Studio's content protocol over the daemon's file routes.
+              apps/api/src/sandbox/content-storage*|apps/api/src/api/routes/sandbox-proxy.ts) relevant=true; break ;;
             esac
           done <<< "$FILES"
           echo "relevant=$relevant" >> "$GITHUB_OUTPUT"
@@ -111,6 +112,14 @@ jobs:
         env:
           DAEMON_E2E_CMD: ${{ github.workspace }}/packages/sandbox/daemon-go/bin/daemon
         run: bun test packages/sandbox/daemon-e2e/daemon*.e2e.test.ts
+
+      - name: Run the content protocol over the daemon
+        # Studio serves a sandbox's content protocol over the daemon's file
+        # routes (apps/api/src/sandbox/content-storage.ts): the protocol's
+        # conformance and parity suites against this same binary.
+        env:
+          DAEMON_E2E_CMD: ${{ github.workspace }}/packages/sandbox/daemon-go/bin/daemon
+        run: bun test apps/api/src/sandbox/content-storage.daemon.e2e.test.ts
 
   docker-smoke:
     needs: changes

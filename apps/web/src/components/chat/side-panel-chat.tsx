@@ -1,6 +1,7 @@
+import { supportsCodex } from "@decocms/shared/harness/codex-models";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useProjectContext } from "@/sdk";
-import { useState } from "react";
+import { use, useState } from "react";
 import { ErrorBoundary } from "../error-boundary";
 import { MainPanelBoundary } from "@/layouts/main-panel-boundary";
 import { useT } from "@/i18n/use-t.ts";
@@ -16,32 +17,59 @@ import { ThreadFilesPanel } from "./thread-files-panel";
 import { wasCreditsEmptyDismissed } from "./credits-empty-state";
 
 import { useDecoCredits } from "@/hooks/use-deco-credits";
+import { supportsClaudeCode } from "@decocms/shared/sdk/types/ai-providers";
+import { ChatVoiceBindings, VoiceModePanel, useVoiceMode } from "./voice";
 
 // ---------- Panel content ----------
 
 function ChatSidePanelContent() {
+  use(useChatStream().ready);
+  return (
+    <ChatVoiceBindings>
+      <ChatSidePanelBody />
+    </ChatVoiceBindings>
+  );
+}
+
+function ChatSidePanelBody() {
+  const { active: voiceActive } = useVoiceMode();
   const { org } = useProjectContext();
   const taskCtx = useOptionalChatTask();
   const { isChatEmpty } = useChatStream();
   const [activePanel, setActivePanel] = useState<"chat" | "context">("chat");
   const deco = useDecoCredits();
+  const t = useT();
 
-  // The structured chat side panel is web-only. Native uses the terminal
-  // runtime adapter instead, so cloud provider setup is the only gate here.
+  // Cloud provider setup is the only gate here.
   const needsRuntimeSetup = useNeedsRuntimeSetup();
   const { runtime } = useSessionRuntime(taskCtx?.virtualMcpId);
   // A CMS session never talks to a model, so neither an unconfigured AI
   // provider nor the agent's icebreakers are ITS empty state. It has exactly
   // one: the "Start coding session" CTA the composer renders. Offering
   // "Create Agents" to a session that cannot run one is a dead end.
-  const showProviderEmptyState = needsRuntimeSetup && runtime !== "cms";
+  const showProviderEmptyState =
+    needsRuntimeSetup !== null && runtime !== "cms";
 
   if (showProviderEmptyState) {
     return (
       <Chat className="animate-in fade-in-0 duration-200">
         <Chat.Main className="flex flex-col items-center">
           <Chat.EmptyState>
-            <Chat.NoAiProviderEmptyState />
+            {needsRuntimeSetup === "codex-provider" ? (
+              <Chat.NoAiProviderEmptyState
+                title={t("settings.codexSubscription.setupHeading")}
+                description={t("settings.codexSubscription.setupDescription")}
+                providerFilter={supportsCodex}
+              />
+            ) : needsRuntimeSetup === "claude-code-provider" ? (
+              <Chat.NoAiProviderEmptyState
+                title={t("chat.noAiProviderEmptyState.supportedHeading")}
+                description={t("chat.noAiProviderEmptyState.supportedSubtitle")}
+                providerFilter={supportsClaudeCode}
+              />
+            ) : (
+              <Chat.NoAiProviderEmptyState />
+            )}
           </Chat.EmptyState>
         </Chat.Main>
       </Chat>
@@ -63,37 +91,41 @@ function ChatSidePanelContent() {
       {showCreditsModal && <Chat.CreditsEmptyState />}
 
       {/* Chat view */}
-      <div
-        inert={activePanel !== "chat" ? true : undefined}
-        aria-hidden={activePanel !== "chat"}
-        className={cn(
-          "absolute inset-0 flex flex-col transition-opacity duration-100 ease-out",
-          activePanel !== "chat"
-            ? "opacity-0 pointer-events-none"
-            : "opacity-100",
-        )}
-      >
-        {isChatEmpty && runtime !== "cms" ? (
-          <AgentHome onOpenContextPanel={() => setActivePanel("context")} />
-        ) : (
-          <>
-            {/* @container: the files panel floats in the right gutter on
+      {!voiceActive && (
+        <div
+          inert={activePanel !== "chat" ? true : undefined}
+          aria-hidden={activePanel !== "chat"}
+          className={cn(
+            "absolute inset-0 flex flex-col transition-opacity duration-100 ease-out",
+            activePanel !== "chat"
+              ? "opacity-0 pointer-events-none"
+              : "opacity-100",
+          )}
+        >
+          {isChatEmpty && runtime !== "cms" ? (
+            <AgentHome onOpenContextPanel={() => setActivePanel("context")} />
+          ) : (
+            <>
+              {/* @container: the files panel floats in the right gutter on
                 wide chats and becomes an in-flow topbar (flex row above
                 the scroller) when the gutter can't fit it */}
-            <Chat.Main className="relative flex flex-col overflow-hidden @container">
-              <ThreadFilesPanel />
-              <div className="min-h-0 flex-1">
-                <Chat.Messages />
-              </div>
-            </Chat.Main>
-            <Chat.Footer>
-              <Chat.Input
-                onOpenContextPanel={() => setActivePanel("context")}
-              />
-            </Chat.Footer>
-          </>
-        )}
-      </div>
+              <Chat.Main className="relative flex flex-col overflow-hidden @container">
+                <ThreadFilesPanel />
+                <div className="min-h-0 flex-1">
+                  <Chat.Messages />
+                </div>
+              </Chat.Main>
+              <Chat.Footer>
+                <Chat.Input
+                  onOpenContextPanel={() => setActivePanel("context")}
+                />
+              </Chat.Footer>
+            </>
+          )}
+        </div>
+      )}
+
+      <VoiceModePanel />
 
       {/* Context view */}
       <div

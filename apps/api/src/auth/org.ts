@@ -1,8 +1,5 @@
-import {
-  getWellKnownCommunityRegistryConnection,
-  getWellKnownRegistryConnection,
-  getWellKnownSelfConnection,
-} from "@decocms/shared/sdk";
+import { getWellKnownSelfConnection } from "@decocms/shared/sdk";
+import { ensureBuiltinAutomations } from "../automations/builtin";
 import { decoAiGatewayAdapter } from "@/ai-providers/adapters/deco-ai-gateway";
 import { getBaseUrl } from "@/core/server-constants";
 import { getDb } from "@/database";
@@ -70,14 +67,6 @@ function getDefaultOrgMcps(organizationId: string): MCPCreationSpec[] {
         );
       },
       data: getWellKnownSelfConnection(getBaseUrl(), organizationId),
-    },
-    // MCP Registry (Community Registry) - public registry, no permissions required
-    {
-      data: getWellKnownCommunityRegistryConnection(),
-    },
-    // Deco Store Registry - official deco MCP registry with curated integrations (installed last)
-    {
-      data: getWellKnownRegistryConnection(organizationId),
     },
   ];
 }
@@ -161,6 +150,15 @@ export async function seedOrgDb(organizationId: string, createdBy: string) {
       await enqueueInstallStudioPack({ orgId: organizationId, createdBy });
     } catch (err) {
       console.error("Failed to enqueue studio pack install:", err);
+    }
+
+    try {
+      await ensureBuiltinAutomations(database.db, {
+        id: organizationId,
+        createdBy,
+      });
+    } catch (err) {
+      console.error("Failed to seed built-in automations:", err);
     }
 
     if (

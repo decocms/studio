@@ -1,14 +1,16 @@
 /**
  * Public surface. `agent-sandbox` sits behind its own subpath export
  * (./provider/agent-sandbox) because its SDK is heavy and not every deploy
- * needs it. `local-api` remains in shared persisted/native contracts but
- * has no server-side provider implementation.
+ * needs it. `local-api` remains in shared persisted contracts for records left
+ * by the discontinued desktop app but has no server-side provider
+ * implementation.
  */
 
 export type {
   EnsureOptions,
   EnsureRepo,
   PodTermination,
+  SandboxProviderKind,
   SandboxPurpose,
   Sandbox,
   SandboxId,
@@ -25,4 +27,6 @@ export type {
   RunnerStateStoreOps,
 } from "./state-store";
 export { composeSandboxRef } from "./sandbox-ref";
+export { sandboxProviderOfError } from "./shared/provider-tag";
+export { RUNNER_KIND } from "./shared/proxy-metrics";
 export { createSandboxFsHooks } from "./sandbox-fs-hooks";

@@ -4,12 +4,13 @@ import { AlertTriangle, RefreshCw01 } from "@untitledui/icons";
 import { captureException } from "@/lib/posthog-client";
 import { ArchivedOrgScreen } from "@/components/archived-org-screen";
 import { NoPermissionState } from "@/components/no-permission-state";
+import { ORG_ARCHIVED_ERROR } from "@decocms/shared/organization/org-archived";
 import { useT } from "@/i18n/use-t.ts";
 
 const CHUNK_RELOAD_KEY = "__studio_chunk_reload_ts";
 
 function isArchivedOrgError(error: Error | null): boolean {
-  return error?.message === "Organization is archived";
+  return error?.message === ORG_ARCHIVED_ERROR;
 }
 
 function isAccessDeniedError(error: Error | null): boolean {

@@ -30,6 +30,7 @@ export type ToolCategory =
   | "Users"
   | "API Keys"
   | "Tags"
+  | "Experiments"
   | "AI Providers"
   | "Secrets"
   | "File Configs"
@@ -37,10 +38,13 @@ export type ToolCategory =
   | "Object Storage"
   | "Registry"
   | "GitHub"
+  | "Git"
   | "VM"
   | "Search"
   | "Task Board"
-  | "Jira";
+  | "Jira"
+  | "Blog"
+  | "Chat";
 
 /**
  * All tool names - keep in sync with CORE_TOOLS in apps/api/src/tools/index.ts
@@ -54,14 +58,18 @@ const ALL_TOOL_NAMES = [
   "ORGANIZATION_DELETE",
   "ORGANIZATION_SETTINGS_GET",
   "ORGANIZATION_SETTINGS_UPDATE",
-  "BRAND_CONTEXT_LIST",
-  "BRAND_CONTEXT_GET",
-  "BRAND_CONTEXT_CREATE",
-  "BRAND_CONTEXT_UPDATE",
-  "BRAND_CONTEXT_DELETE",
-  "BRAND_CONTEXT_EXTRACT",
-  "BRAND_GET",
-  "BRAND_LIST",
+  "ORGANIZATION_BLOCKS_EDITOR_SET",
+  "ORGANIZATION_HAS_SITE",
+  "BLOG_SITE_GROUND",
+  "BLOG_SITE_CATALOGUE",
+  "BLOG_BRAND_EXTRACT",
+  "BLOG_BRAND_ENRICH",
+  "BLOG_CONTEXT_EXTRACT",
+  "BLOG_FORMAT_SUGGEST",
+  "BLOG_POST_DRAFT",
+  "BLOG_POST_ILLUSTRATE",
+  "BLOG_LINK_SUGGEST",
+  "BLOG_CAMPAIGN_SUGGEST",
   "ORGANIZATION_DOMAIN_LIST",
   "ORGANIZATION_DOMAIN_ADD",
   "ORGANIZATION_DOMAIN_UPDATE",
@@ -76,11 +84,14 @@ const ALL_TOOL_NAMES = [
   "ORGANIZATION_MEMBER_UPDATE_ROLE",
   "ORGANIZATION_BILLING_CHECKOUT_START",
   "ORGANIZATION_BILLING_PORTAL",
+  "ORGANIZATION_BILLING_PLAN_PRICES",
   "ORGANIZATION_TASK_QUOTA_GET",
   // Legacy deco.cx infra billing
   "INFRA_BILLING_SITES_LIST",
   "INFRA_BILLING_GET",
   "INFRA_BILLING_PORTAL",
+  // Customer data lake
+  "CUSTOMER_LAKE_QUERY",
   // Connection tools
   "COLLECTION_CONNECTIONS_CREATE",
   "COLLECTION_CONNECTIONS_LIST",
@@ -88,10 +99,13 @@ const ALL_TOOL_NAMES = [
   "COLLECTION_CONNECTIONS_UPDATE",
   "COLLECTION_CONNECTIONS_DELETE",
   "CONNECTION_TEST",
-  "COMMERCE_DISCOVERY_SETUP",
-  "COMMERCE_DISCOVERY_RUN",
-  "COMMERCE_DISCOVERY_BIND",
-  "COMMERCE_DISCOVERY_CONNECTION_STATUS",
+  "CONNECTION_TOOLS_SEARCH",
+  "CONNECTION_TOOL_CALL",
+  "REPORTS_SETUP",
+  "REPORTS_RUN",
+  "REPORTS_BIND",
+  "REPORTS_CONNECTION_STATUS",
+  "REPORTS_SET_REPOSITORY",
   // Virtual MCP tools
   "COLLECTION_VIRTUAL_MCP_CREATE",
   "COLLECTION_VIRTUAL_MCP_LIST",
@@ -115,6 +129,10 @@ const ALL_TOOL_NAMES = [
   "USER_GET",
   "USER_MODEL_PREFERENCES_GET",
   "USER_MODEL_PREFERENCES_UPDATE",
+  // Project sidebar tools
+  "SIDEBAR_GET",
+  "PROJECT_FOLDERS_SET",
+  "SIDEBAR_PREFERENCES_SET",
   // Thread tools
   "COLLECTION_THREADS_CREATE",
   "COLLECTION_THREADS_LIST",
@@ -128,6 +146,17 @@ const ALL_TOOL_NAMES = [
   "TAGS_DELETE",
   "MEMBER_TAGS_GET",
   "MEMBER_TAGS_SET",
+  // Experiment tools
+  "EXPERIMENT_LIST",
+  "EXPERIMENT_GET",
+  "EXPERIMENT_CREATE",
+  "EXPERIMENT_SUGGEST",
+  "EXPERIMENT_IMPLEMENT",
+  "EXPERIMENT_IMPLEMENT_LOCAL",
+  "EXPERIMENT_PREVIEW_SYNC_LOCAL",
+  "EXPERIMENT_UPDATE",
+  "EXPERIMENT_DELETE",
+  "EXPERIMENT_RESULTS",
   // Automation tools
   "AUTOMATION_CREATE",
   "AUTOMATION_GET",
@@ -140,10 +169,9 @@ const ALL_TOOL_NAMES = [
   "AUTOMATION_RUN",
   "AUTOMATION_RUN_STATS",
   // Virtual MCP plugin config and pinned views tools
-  "VIRTUAL_MCP_PLUGIN_CONFIG_GET",
-  "VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE",
   "VIRTUAL_MCP_PINNED_VIEWS_UPDATE",
   "VIRTUAL_MCP_LAST_USED_LIST",
+  "PROJECT_FOLDER_ENSURE",
 
   // Ai providers tools
   "AI_PROVIDERS_LIST",
@@ -159,11 +187,25 @@ const ALL_TOOL_NAMES = [
   "AI_PROVIDER_PROVISION_KEY",
   "AI_PROVIDER_TOPUP_URL",
   "AI_PROVIDER_CREDITS",
+  "AI_PLAN_ENTITLEMENTS",
+  "AI_PLAN_LIST",
+  "AI_PLAN_SET",
+  "AI_PLAN_INVOICE_UPGRADE",
 
   // Claude subscription (per-user OAuth credential for the claude-code harness)
+  "CODEX_SUBSCRIPTION_CONNECT",
+  "CODEX_SUBSCRIPTION_STATUS",
+  "CODEX_SUBSCRIPTION_DISCONNECT",
+  "CODEX_SUBSCRIPTION_SYNC",
   "CLAUDE_SUBSCRIPTION_CONNECT",
   "CLAUDE_SUBSCRIPTION_STATUS",
   "CLAUDE_SUBSCRIPTION_DISCONNECT",
+
+  // GitHub Copilot (per-user token for the claude-code harness)
+  "GITHUB_COPILOT_CONNECT",
+  "GITHUB_COPILOT_STATUS",
+  "GITHUB_COPILOT_DISCONNECT",
+  "GITHUB_COPILOT_SHARE",
 
   // Secrets vault tools
   "SECRET_CREATE",
@@ -195,11 +237,14 @@ const ALL_TOOL_NAMES = [
   "JIRA_BOARD_COLUMNS_LIST",
   "JIRA_AUTOMATION_LIST",
   "JIRA_AUTOMATION_UPSERT",
-  "JIRA_AUTOMATION_DELETE",
+  "JIRA_RUN_START",
   "JIRA_ISSUE_GET",
   "JIRA_COMMENT_ADD",
   "JIRA_ISSUE_TRANSITION",
   "JIRA_ATTACHMENT_DOWNLOAD",
+  "JIRA_REMOTE_LINK_ADD",
+  "JIRA_ISSUE_CREATE",
+  "JIRA_ISSUE_SEARCH",
 
   // Object Storage tools
   "LIST_OBJECTS",
@@ -218,38 +263,35 @@ const ALL_TOOL_NAMES = [
   "REGISTRY_ITEM_SEARCH",
   "REGISTRY_ITEM_GET",
   "REGISTRY_ITEM_VERSIONS",
-  "REGISTRY_ITEM_CREATE",
-  "REGISTRY_ITEM_BULK_CREATE",
-  "REGISTRY_ITEM_UPDATE",
-  "REGISTRY_ITEM_DELETE",
   "REGISTRY_ITEM_FILTERS",
-  "REGISTRY_DISCOVER_TOOLS",
-  "REGISTRY_AI_GENERATE",
-  "REGISTRY_PUBLISH_REQUEST_LIST",
-  "REGISTRY_PUBLISH_REQUEST_REVIEW",
-  "REGISTRY_PUBLISH_REQUEST_COUNT",
-  "REGISTRY_PUBLISH_REQUEST_DELETE",
-  "REGISTRY_PUBLISH_API_KEY_GENERATE",
-  "REGISTRY_PUBLISH_API_KEY_LIST",
-  "REGISTRY_PUBLISH_API_KEY_REVOKE",
-  "REGISTRY_MONITOR_RUN_START",
-  "REGISTRY_MONITOR_RUN_LIST",
-  "REGISTRY_MONITOR_RUN_GET",
-  "REGISTRY_MONITOR_RUN_CANCEL",
-  "REGISTRY_MONITOR_RESULT_LIST",
-  "REGISTRY_MONITOR_CONNECTION_LIST",
-  "REGISTRY_MONITOR_CONNECTION_SYNC",
-  "REGISTRY_MONITOR_CONNECTION_UPDATE_AUTH",
 
   // VM tools (app-only)
   "SANDBOX_START",
   "SANDBOX_DELETE",
 
-  // GitHub tools (app-only)
+  // GitHub App installations (app-only)
   "GITHUB_LIST_USER_ORGS",
-  "GITHUB_SEARCH_BRANCHES",
-  "GITHUB_PR_STATE",
-  "GITHUB_LAST_PUBLISHED_PR",
+
+  // Git provider accounts + repositories (app-only)
+  "GIT_PROVIDER_CAPABILITIES",
+  "GIT_ACCOUNT_LIST",
+  "GIT_ACCOUNT_CONNECT_TOKEN",
+  "GIT_ACCOUNT_DELETE",
+  "REPOSITORY_LIST",
+  "REPOSITORY_SEARCH",
+  "REPOSITORY_LINK",
+  "REPOSITORY_CREATE_FROM_TEMPLATE",
+  "REPOSITORY_UPDATE",
+  "REPOSITORY_DELETE",
+  "REPOSITORY_SEARCH_BRANCHES",
+
+  // Change requests — pull requests on GitHub, merge requests on GitLab (app-only)
+  "CHANGE_REQUEST_STATE",
+  "CHANGE_REQUEST_LAST_MERGED",
+  "CHANGE_REQUEST_LIST_OPEN",
+  "CHANGE_REQUEST_CHECK_LOG",
+  "CHANGE_REQUEST_OPEN",
+  "CHANGE_REQUEST_MERGE",
 
   // Search tools
   "GLOBAL_SEARCH",
@@ -259,15 +301,13 @@ const ALL_TOOL_NAMES = [
   "TASK_BOARD_ITEM_LIST",
   "TASK_BOARD_ITEM_UPDATE",
   "TASK_BOARD_ITEM_DELETE",
-  "TASK_BOARD_AUTOMATION_LIST",
-  "TASK_BOARD_AUTOMATION_UPSERT",
-  "TASK_BOARD_AUTOMATION_DELETE",
   "TASK_BOARD_PROMPT_LIST",
   "TASK_BOARD_PROMPT_UPSERT",
   "TASK_BOARD_PROMPT_DELETE",
   "TASK_BOARD_ITEM_PRS_GET",
   "TASK_BOARD_PREVIEW_PROBE",
   "TASK_BOARD_ITEM_RERUN",
+  "TASK_BOARD_RUN_REVIEWER",
   "TASK_BOARD_RESOLVE_CONFLICT",
   "TASK_BOARD_REVIEW_DECISION",
   "TASK_BOARD_PROMOTE_TO_PRODUCTION",
@@ -278,7 +318,34 @@ const ALL_TOOL_NAMES = [
   "TASK_BOARD_COMMENT_DELETE",
   "TASK_BOARD_DISMISSED_LIST",
   "TASK_BOARD_DISMISSED_RESTORE",
+  "TASK_BOARD_SPRINT_LIST",
+  "TASK_BOARD_SPRINT_CREATE",
+  "TASK_BOARD_SPRINT_UPDATE",
+  "TASK_BOARD_SPRINT_START",
+  "TASK_BOARD_SPRINT_COMPLETE",
+  "TASK_BOARD_SPRINT_DELETE",
+  "TASK_BOARD_ADMIN_ORG_LIST",
+  "TASK_BOARD_DELIVERY",
+  "TASK_BOARD_OPERATION",
+  "TASK_BOARD_OPERATION_TASKS",
+  "TASK_BOARD_REWORK",
+  "TASK_BOARD_SPRINTS",
+  "TASK_BOARD_STUCK",
+  "TASK_BOARD_COST",
+  "TASK_BOARD_QUALITY",
+  "TASK_BOARD_ERRORS",
+  "TASK_BOARD_TENANTS",
+  "THREAD_ANALYTICS_ORG_LIST",
+  "THREAD_ANALYTICS_LIVE",
+  "THREAD_ANALYTICS_USAGE",
+  "THREAD_ANALYTICS_ERRORS",
   "TASK_ADD_REPO",
+  "generate_image",
+  "web_search",
+  "deep_research",
+  "suggest_task",
+  "preview_navigate",
+  "update_interests",
   "NOTIFICATION_LIST",
   "NOTIFICATION_MARK_READ",
   "NOTIFICATION_SUBSCRIPTION_SET",
@@ -347,45 +414,66 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Organizations",
   },
   {
-    name: "BRAND_CONTEXT_LIST",
-    description: "List brand contexts",
+    name: "ORGANIZATION_BLOCKS_EDITOR_SET",
+    description: "Switch the organization's blocks editor",
     category: "Organizations",
   },
   {
-    name: "BRAND_CONTEXT_GET",
-    description: "View brand context",
-    category: "Organizations",
+    name: "BLOG_SITE_GROUND",
+    description:
+      "Read the site's connected systems once, for the generators that follow",
+    category: "Blog",
   },
   {
-    name: "BRAND_CONTEXT_CREATE",
-    description: "Create brand context",
-    category: "Organizations",
+    name: "BLOG_SITE_CATALOGUE",
+    description:
+      "Turn a grounding pass's raw output into the store's catalogue",
+    category: "Blog",
   },
   {
-    name: "BRAND_CONTEXT_UPDATE",
-    description: "Update brand context",
-    category: "Organizations",
+    name: "BLOG_BRAND_EXTRACT",
+    description:
+      "Infer a brand's identity (name, audience, values, competitors) from a site",
+    category: "Blog",
   },
   {
-    name: "BRAND_CONTEXT_DELETE",
-    description: "Delete brand context",
-    category: "Organizations",
-    dangerous: true,
+    name: "BLOG_BRAND_ENRICH",
+    description:
+      "Research a brand on the web and drop the claims its evidence does not support",
+    category: "Blog",
   },
   {
-    name: "BRAND_CONTEXT_EXTRACT",
-    description: "Extract brand context from website",
-    category: "Organizations",
+    name: "BLOG_CONTEXT_EXTRACT",
+    description:
+      "Infer a blog's writing context (tone, dos and don'ts) from a site",
+    category: "Blog",
   },
   {
-    name: "BRAND_GET",
-    description: "Get brand (binding)",
-    category: "Organizations",
+    name: "BLOG_FORMAT_SUGGEST",
+    description: "Name the post formats a blog writes in",
+    category: "Blog",
   },
   {
-    name: "BRAND_LIST",
-    description: "List brands (binding)",
-    category: "Organizations",
+    name: "BLOG_CAMPAIGN_SUGGEST",
+    description:
+      "Propose campaigns from a seed, grounded in the site's systems",
+    category: "Blog",
+  },
+  {
+    name: "BLOG_POST_DRAFT",
+    description: "Write a blog post from a theme and a format",
+    category: "Blog",
+  },
+  {
+    name: "BLOG_POST_ILLUSTRATE",
+    description:
+      "Draw a drafted post's images, conditioned on the product's own photographs",
+    category: "Blog",
+  },
+  {
+    name: "BLOG_LINK_SUGGEST",
+    description: "Propose internal links from a post to the site's other posts",
+    category: "Blog",
   },
   {
     name: "ORGANIZATION_DOMAIN_LIST",
@@ -462,6 +550,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Organizations",
   },
   {
+    name: "ORGANIZATION_BILLING_PLAN_PRICES",
+    description: "Read each plan's monthly price from Stripe",
+    category: "Organizations",
+  },
+  {
     name: "ORGANIZATION_TASK_QUOTA_GET",
     description: "Get the org's auto-task quota usage",
     category: "Organizations",
@@ -480,6 +573,17 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "INFRA_BILLING_PORTAL",
     description: "Open the Stripe billing portal for an owned site",
+    category: "Organizations",
+  },
+  {
+    name: "CUSTOMER_LAKE_QUERY",
+    description: "Run read-only SQL over the organization's data lake",
+    category: "Monitoring",
+  },
+  {
+    name: "ORGANIZATION_HAS_SITE",
+    description:
+      "Whether this organization owns at least one legacy deco.cx site",
     category: "Organizations",
   },
   // Connection tools
@@ -515,23 +619,38 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Connections",
   },
   {
-    name: "COMMERCE_DISCOVERY_SETUP",
-    description: "Set up Commerce Discovery",
+    name: "CONNECTION_TOOLS_SEARCH",
+    description: "Search the tools of your connections",
     category: "Connections",
   },
   {
-    name: "COMMERCE_DISCOVERY_RUN",
-    description: "Run Commerce Discovery",
+    name: "CONNECTION_TOOL_CALL",
+    description: "Call a tool on one of your connections",
     category: "Connections",
   },
   {
-    name: "COMMERCE_DISCOVERY_BIND",
-    description: "Bind Commerce Discovery data source",
+    name: "REPORTS_SETUP",
+    description: "Set up Deco Score",
     category: "Connections",
   },
   {
-    name: "COMMERCE_DISCOVERY_CONNECTION_STATUS",
-    description: "Read Commerce Discovery connection status",
+    name: "REPORTS_RUN",
+    description: "Run Deco Score",
+    category: "Connections",
+  },
+  {
+    name: "REPORTS_BIND",
+    description: "Bind Deco Score data source",
+    category: "Connections",
+  },
+  {
+    name: "REPORTS_CONNECTION_STATUS",
+    description: "Read Deco Score connection status",
+    category: "Connections",
+  },
+  {
+    name: "REPORTS_SET_REPOSITORY",
+    description: "Set the Deco Score repository",
     category: "Connections",
   },
   {
@@ -630,6 +749,23 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     description: "Set the calling user's chat tier → model overrides",
     category: "Users",
   },
+  // Project sidebar tools
+  {
+    name: "SIDEBAR_GET",
+    description:
+      "Get the org's project folders and the caller's pins and hides",
+    category: "Virtual MCPs",
+  },
+  {
+    name: "PROJECT_FOLDERS_SET",
+    description: "Replace the organization's project folders",
+    category: "Virtual MCPs",
+  },
+  {
+    name: "SIDEBAR_PREFERENCES_SET",
+    description: "Set the calling member's pinned and hidden projects",
+    category: "Users",
+  },
   // Thread tools
   {
     name: "COLLECTION_THREADS_CREATE",
@@ -678,6 +814,59 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     description: "Delete organization tag",
     category: "Tags",
     dangerous: true,
+  },
+  {
+    name: "EXPERIMENT_LIST",
+    description: "List a site's A/B experiments",
+    category: "Experiments",
+  },
+  {
+    name: "EXPERIMENT_GET",
+    description: "Get one A/B experiment",
+    category: "Experiments",
+  },
+  {
+    name: "EXPERIMENT_CREATE",
+    description: "Create an A/B experiment",
+    category: "Experiments",
+  },
+  {
+    name: "EXPERIMENT_SUGGEST",
+    description: "Suggest an A/B experiment from a plain-language prompt",
+    category: "Experiments",
+  },
+  {
+    name: "EXPERIMENT_IMPLEMENT",
+    description:
+      "Delegate an experiment's frontend implementation to the Super Agent",
+    category: "Experiments",
+  },
+  {
+    name: "EXPERIMENT_PREVIEW_SYNC_LOCAL",
+    description: "[local dev only] Preview a draft experiment on a local site",
+    category: "Experiments",
+  },
+  {
+    name: "EXPERIMENT_IMPLEMENT_LOCAL",
+    description:
+      "[local dev only] Write an experiment's hook + gate directly into a local site's source",
+    category: "Experiments",
+  },
+  {
+    name: "EXPERIMENT_UPDATE",
+    description: "Update an A/B experiment",
+    category: "Experiments",
+  },
+  {
+    name: "EXPERIMENT_DELETE",
+    description: "Delete an A/B experiment",
+    category: "Experiments",
+    dangerous: true,
+  },
+  {
+    name: "EXPERIMENT_RESULTS",
+    description: "A/B results for one experiment",
+    category: "Experiments",
   },
   {
     name: "MEMBER_TAGS_GET",
@@ -743,16 +932,6 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   },
   // Virtual MCP plugin config and pinned views tools
   {
-    name: "VIRTUAL_MCP_PLUGIN_CONFIG_GET",
-    description: "View virtual MCP plugin configuration",
-    category: "Virtual MCPs",
-  },
-  {
-    name: "VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE",
-    description: "Update virtual MCP plugin configuration",
-    category: "Virtual MCPs",
-  },
-  {
     name: "VIRTUAL_MCP_PINNED_VIEWS_UPDATE",
     description: "Update virtual MCP pinned sidebar views",
     category: "Virtual MCPs",
@@ -760,6 +939,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "VIRTUAL_MCP_LAST_USED_LIST",
     description: "Get last-used info for one or more virtual MCPs",
+    category: "Virtual MCPs",
+  },
+  {
+    name: "PROJECT_FOLDER_ENSURE",
+    description: "Give a project's folder its shape, once",
     category: "Virtual MCPs",
   },
   {
@@ -824,6 +1008,26 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "AI Providers",
   },
   {
+    name: "CODEX_SUBSCRIPTION_CONNECT",
+    description: "Link your ChatGPT subscription for Codex",
+    category: "AI Providers",
+  },
+  {
+    name: "CODEX_SUBSCRIPTION_STATUS",
+    description: "Whether your ChatGPT subscription is linked for Codex",
+    category: "AI Providers",
+  },
+  {
+    name: "CODEX_SUBSCRIPTION_DISCONNECT",
+    description: "Unlink your ChatGPT subscription for Codex",
+    category: "AI Providers",
+  },
+  {
+    name: "CODEX_SUBSCRIPTION_SYNC",
+    description: "Save credentials refreshed by your Codex runtime",
+    category: "AI Providers",
+  },
+  {
     name: "CLAUDE_SUBSCRIPTION_CONNECT",
     description: "Link your own Claude subscription with a setup token",
     category: "AI Providers",
@@ -839,8 +1043,48 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "AI Providers",
   },
   {
+    name: "GITHUB_COPILOT_CONNECT",
+    description: "Link your own GitHub Copilot plan with a GitHub token",
+    category: "AI Providers",
+  },
+  {
+    name: "GITHUB_COPILOT_STATUS",
+    description: "Whether your GitHub Copilot plan is linked, and since when",
+    category: "AI Providers",
+  },
+  {
+    name: "GITHUB_COPILOT_DISCONNECT",
+    description: "Unlink your GitHub Copilot plan",
+    category: "AI Providers",
+  },
+  {
+    name: "GITHUB_COPILOT_SHARE",
+    description: "Share your GitHub Copilot plan with the organization",
+    category: "AI Providers",
+  },
+  {
     name: "AI_PROVIDER_CREDITS",
     description: "Get current credit balance for a provider",
+    category: "AI Providers",
+  },
+  {
+    name: "AI_PLAN_ENTITLEMENTS",
+    description: "Get the org's plan, feature flags and AI usage bar",
+    category: "AI Providers",
+  },
+  {
+    name: "AI_PLAN_LIST",
+    description: "List the plans an organization can move to",
+    category: "AI Providers",
+  },
+  {
+    name: "AI_PLAN_SET",
+    description: "Change the organization's plan",
+    category: "AI Providers",
+  },
+  {
+    name: "AI_PLAN_INVOICE_UPGRADE",
+    description: "Move the organization to a paid plan billed on its invoice",
     category: "AI Providers",
   },
   // Secrets tools
@@ -924,38 +1168,53 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   },
   {
     name: "JIRA_AUTOMATION_LIST",
-    description: "List which Jira statuses start an agent run",
+    description: "List the automations Jira status changes fire",
     category: "Jira",
   },
   {
     name: "JIRA_AUTOMATION_UPSERT",
-    description: "Run the agent on issues entering a Jira status",
+    description: "Fire an automation on issues entering a Jira status",
     category: "Jira",
   },
   {
-    name: "JIRA_AUTOMATION_DELETE",
-    description: "Stop running the agent on issues entering a Jira status",
+    name: "JIRA_RUN_START",
+    description: "Fire an automation on Jira issues now",
     category: "Jira",
   },
   {
     name: "JIRA_ISSUE_GET",
-    description: "Re-read the Jira issue a run is working on",
+    description: "Read a Jira issue on the board from a run",
     category: "Jira",
   },
   {
     name: "JIRA_COMMENT_ADD",
-    description: "Comment on the Jira issue a run is working on",
+    description: "Comment on a Jira issue on the board from a run",
     category: "Jira",
   },
   {
     name: "JIRA_ISSUE_TRANSITION",
-    description: "Move the Jira issue a run is working on to another status",
+    description: "Move a Jira issue on the board to another status",
     category: "Jira",
   },
   {
     name: "JIRA_ATTACHMENT_DOWNLOAD",
     description:
-      "Get a short-lived download URL for an attachment of the run's Jira issue",
+      "Get a short-lived download URL for an attachment of a Jira issue",
+    category: "Jira",
+  },
+  {
+    name: "JIRA_REMOTE_LINK_ADD",
+    description: "Link a pull request or deploy preview on a Jira issue",
+    category: "Jira",
+  },
+  {
+    name: "JIRA_ISSUE_CREATE",
+    description: "Create a Jira issue on the board from a run",
+    category: "Jira",
+  },
+  {
+    name: "JIRA_ISSUE_SEARCH",
+    description: "Search the Jira board's issues with JQL from a run",
     category: "Jira",
   },
   {
@@ -1036,7 +1295,7 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   },
   {
     name: "REGISTRY_ITEM_LIST",
-    description: "List private registry items",
+    description: "List Deco registry items",
     category: "Registry",
   },
   {
@@ -1055,116 +1314,8 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Registry",
   },
   {
-    name: "REGISTRY_ITEM_CREATE",
-    description: "Create registry item",
-    category: "Registry",
-  },
-  {
-    name: "REGISTRY_ITEM_BULK_CREATE",
-    description: "Bulk create registry items",
-    category: "Registry",
-  },
-  {
-    name: "REGISTRY_ITEM_UPDATE",
-    description: "Update registry item",
-    category: "Registry",
-  },
-  {
-    name: "REGISTRY_ITEM_DELETE",
-    description: "Delete registry item",
-    category: "Registry",
-    dangerous: true,
-  },
-  {
     name: "REGISTRY_ITEM_FILTERS",
     description: "Get registry item filters",
-    category: "Registry",
-  },
-  {
-    name: "REGISTRY_DISCOVER_TOOLS",
-    description: "Discover tools from MCP server",
-    category: "Registry",
-  },
-  {
-    name: "REGISTRY_AI_GENERATE",
-    description: "AI-generate registry content",
-    category: "Registry",
-  },
-  {
-    name: "REGISTRY_PUBLISH_REQUEST_LIST",
-    description: "List publish requests",
-    category: "Registry",
-  },
-  {
-    name: "REGISTRY_PUBLISH_REQUEST_REVIEW",
-    description: "Review publish request",
-    category: "Registry",
-  },
-  {
-    name: "REGISTRY_PUBLISH_REQUEST_COUNT",
-    description: "Count pending publish requests",
-    category: "Registry",
-  },
-  {
-    name: "REGISTRY_PUBLISH_REQUEST_DELETE",
-    description: "Delete publish request",
-    category: "Registry",
-    dangerous: true,
-  },
-  {
-    name: "REGISTRY_PUBLISH_API_KEY_GENERATE",
-    description: "Generate publish API key",
-    category: "Registry",
-  },
-  {
-    name: "REGISTRY_PUBLISH_API_KEY_LIST",
-    description: "List publish API keys",
-    category: "Registry",
-  },
-  {
-    name: "REGISTRY_PUBLISH_API_KEY_REVOKE",
-    description: "Revoke publish API key",
-    category: "Registry",
-    dangerous: true,
-  },
-  {
-    name: "REGISTRY_MONITOR_RUN_START",
-    description: "Start monitor run",
-    category: "Registry",
-  },
-  {
-    name: "REGISTRY_MONITOR_RUN_LIST",
-    description: "List monitor runs",
-    category: "Registry",
-  },
-  {
-    name: "REGISTRY_MONITOR_RUN_GET",
-    description: "Get monitor run details",
-    category: "Registry",
-  },
-  {
-    name: "REGISTRY_MONITOR_RUN_CANCEL",
-    description: "Cancel monitor run",
-    category: "Registry",
-  },
-  {
-    name: "REGISTRY_MONITOR_RESULT_LIST",
-    description: "List monitor results",
-    category: "Registry",
-  },
-  {
-    name: "REGISTRY_MONITOR_CONNECTION_LIST",
-    description: "List monitor connections",
-    category: "Registry",
-  },
-  {
-    name: "REGISTRY_MONITOR_CONNECTION_SYNC",
-    description: "Sync monitor connections",
-    category: "Registry",
-  },
-  {
-    name: "REGISTRY_MONITOR_CONNECTION_UPDATE_AUTH",
-    description: "Update monitor connection auth",
     category: "Registry",
   },
   {
@@ -1182,22 +1333,97 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     description: "List GitHub user's personal account and organizations",
     category: "GitHub",
   },
+  // Git provider accounts + repositories
   {
-    name: "GITHUB_SEARCH_BRANCHES",
-    description: "Search a repository's branches by name substring",
-    category: "GitHub",
+    name: "GIT_PROVIDER_CAPABILITIES",
+    description:
+      "Which git providers this deployment can connect, with their connect URLs",
+    category: "Git",
   },
   {
-    name: "GITHUB_PR_STATE",
-    description:
-      "Read a branch's pull request with its checks, review state and comments",
-    category: "GitHub",
+    name: "GIT_ACCOUNT_LIST",
+    description: "List the git provider accounts connected to the organization",
+    category: "Git",
   },
   {
-    name: "GITHUB_LAST_PUBLISHED_PR",
+    name: "GIT_ACCOUNT_CONNECT_TOKEN",
+    description: "Connect a git provider account with an access token",
+    category: "Git",
+  },
+  {
+    name: "GIT_ACCOUNT_DELETE",
+    description: "Disconnect a git provider account",
+    category: "Git",
+  },
+  {
+    name: "REPOSITORY_LIST",
+    description: "List the repositories linked to the organization",
+    category: "Git",
+  },
+  {
+    name: "REPOSITORY_SEARCH",
+    description: "Search the repositories an account can reach on its provider",
+    category: "Git",
+  },
+  {
+    name: "REPOSITORY_LINK",
+    description: "Link a repository to the organization",
+    category: "Git",
+  },
+  {
+    name: "REPOSITORY_CREATE_FROM_TEMPLATE",
+    description: "Create a site repository from a template and link it",
+    category: "Git",
+  },
+  {
+    name: "REPOSITORY_SEARCH_BRANCHES",
     description:
-      "Read the most recently merged pull request into a base branch",
-    category: "GitHub",
+      "Search a repository's branches by name substring, on either provider",
+    category: "Git",
+  },
+  {
+    name: "CHANGE_REQUEST_STATE",
+    description:
+      "Read a branch's change request with its CI runs, review state and comments",
+    category: "Git",
+  },
+  {
+    name: "CHANGE_REQUEST_LAST_MERGED",
+    description:
+      "Read the most recently merged change request into a base branch",
+    category: "Git",
+  },
+  {
+    name: "CHANGE_REQUEST_LIST_OPEN",
+    description: "List a repository's open change requests",
+    category: "Git",
+  },
+  {
+    name: "CHANGE_REQUEST_CHECK_LOG",
+    description: "Read one CI run's report for a change request",
+    category: "Git",
+  },
+  {
+    name: "CHANGE_REQUEST_OPEN",
+    description:
+      "Propose a branch onto another, reusing the branch's existing change request",
+    category: "Git",
+  },
+  {
+    name: "CHANGE_REQUEST_MERGE",
+    description: "Land a change request, reporting why it could not merge",
+    category: "Git",
+  },
+  {
+    name: "REPOSITORY_UPDATE",
+    description:
+      "Change a linked repository's settings, such as its sandbox image",
+    category: "Git",
+  },
+  {
+    name: "REPOSITORY_DELETE",
+    description: "Unlink a repository from the organization",
+    category: "Git",
   },
   // Search tools
   {
@@ -1227,21 +1453,6 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     description: "Delete task board item",
     category: "Task Board",
     dangerous: true,
-  },
-  {
-    name: "TASK_BOARD_AUTOMATION_LIST",
-    description: "List what the board runs when a card lands in each column",
-    category: "Task Board",
-  },
-  {
-    name: "TASK_BOARD_AUTOMATION_UPSERT",
-    description: "Run the agent on cards landing in a board column",
-    category: "Task Board",
-  },
-  {
-    name: "TASK_BOARD_AUTOMATION_DELETE",
-    description: "Stop running the agent on cards landing in a board column",
-    category: "Task Board",
   },
   {
     name: "TASK_BOARD_PROMPT_LIST",
@@ -1276,6 +1487,13 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     name: "TASK_BOARD_ITEM_RERUN",
     description:
       "Re-run a task with the Super Agent, failing any run still holding it open",
+    category: "Task Board",
+    dangerous: true,
+  },
+  {
+    name: "TASK_BOARD_RUN_REVIEWER",
+    description:
+      "Run the Reviewer on a task even when the organization has automated review turned off",
     category: "Task Board",
     dangerous: true,
   },
@@ -1348,20 +1566,168 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "TASK_BOARD_DISMISSED_LIST",
     description:
-      "List diagnostic findings dismissed by deleting their task board cards",
+      "List Deco Score findings dismissed by deleting their task board cards",
     category: "Task Board",
   },
   {
     name: "TASK_BOARD_DISMISSED_RESTORE",
     description:
-      "Un-dismiss diagnostic findings so the next report import pushes them again",
+      "Un-dismiss Deco Score findings so the next Deco Score import pushes them again",
     category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_SPRINT_LIST",
+    description: "List the board's sprints",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_SPRINT_CREATE",
+    description: "Plan a new sprint",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_SPRINT_UPDATE",
+    description: "Rename a sprint or change its dates",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_SPRINT_START",
+    description: "Start a planned sprint",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_SPRINT_COMPLETE",
+    description: "Complete a running sprint and move its unfinished cards on",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_SPRINT_DELETE",
+    description: "Delete a sprint, sending its cards to the backlog",
+    category: "Task Board",
+    dangerous: true,
+  },
+  {
+    name: "TASK_BOARD_ADMIN_ORG_LIST",
+    description:
+      "Whether the caller may read every org's task board, and the orgs that have board items",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_DELIVERY",
+    description:
+      "Task board throughput and flow — completions, PR rate, lead vs cycle time, dwell by lane",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_OPERATION",
+    description:
+      "How autonomously the agent delivers — run to production funnel, no-human rate, failed-QA rate, and where people stepped in",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_OPERATION_TASKS",
+    description: "The cards behind one task board operation figure",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_REWORK",
+    description:
+      "Why tasks come back — failed-QA and needed-a-person rates by type, priority, tag, sprint and author",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_SPRINTS",
+    description:
+      "Sprint velocity — committed, completed, and completed with no human",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_STUCK",
+    description: "Task board work that is stuck right now, and WIP by age",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_COST",
+    description:
+      "Task board spend — total, per task, per shipped PR, and the coverage % behind those figures",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_QUALITY",
+    description:
+      "Task board quality — first-pass yield, rework, autonomy, abandonment, retry burn",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_ERRORS",
+    description:
+      "Task board run failures — counts, kinds, live error feed, error signatures, superseded runs",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_TENANTS",
+    description: "Per-tenant task board scorecard and queue wait",
+    category: "Task Board",
+  },
+  {
+    name: "THREAD_ANALYTICS_ORG_LIST",
+    description:
+      "Whether the caller may read every org's threads, and the orgs that have any",
+    category: "Threads",
+  },
+  {
+    name: "THREAD_ANALYTICS_LIVE",
+    description:
+      "Recently active threads across orgs with status, owner and spend (admin orgs)",
+    category: "Threads",
+  },
+  {
+    name: "THREAD_ANALYTICS_USAGE",
+    description:
+      "Token and USD usage by org, user, agent and kind; top spenders (admin orgs)",
+    category: "Threads",
+  },
+  {
+    name: "THREAD_ANALYTICS_ERRORS",
+    description:
+      "Failed threads, error feed and error signatures across orgs (admin orgs)",
+    category: "Threads",
   },
   {
     name: "TASK_ADD_REPO",
     description:
       "Clone an organization repository into the sandbox of the task run calling it",
     category: "Task Board",
+  },
+  {
+    name: "generate_image",
+    description: "Generate an image with the organization's image model",
+    category: "Chat",
+  },
+  {
+    name: "web_search",
+    description: "Search the web and synthesize a short cited answer",
+    category: "Chat",
+  },
+  {
+    name: "deep_research",
+    description: "Run multi-source web research into a cited report",
+    category: "Chat",
+  },
+  {
+    name: "suggest_task",
+    description: "Offer the user a task card for the board",
+    category: "Chat",
+  },
+  {
+    name: "preview_navigate",
+    description: "Navigate the user's live preview to a page",
+    category: "Chat",
+  },
+  {
+    name: "update_interests",
+    description: "Record the user's durable goals for the current agent",
+    category: "Chat",
   },
 ];
 
@@ -1397,15 +1763,27 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
     description: "Tools all org members can access by default",
     section: "Basic Usage",
     tools: [
+      // Personal credentials never grant access to another member's plan.
+      "CODEX_SUBSCRIPTION_CONNECT",
+      "CODEX_SUBSCRIPTION_STATUS",
+      "CODEX_SUBSCRIPTION_DISCONNECT",
+      "CODEX_SUBSCRIPTION_SYNC",
       // View connections
       "COLLECTION_CONNECTIONS_LIST",
       "COLLECTION_CONNECTIONS_GET",
       "CONNECTION_TEST",
+      // Each call is still authorized per connection by the proxy.
+      "CONNECTION_TOOLS_SEARCH",
+      "CONNECTION_TOOL_CALL",
       // View agents
       "COLLECTION_VIRTUAL_MCP_LIST",
       "COLLECTION_VIRTUAL_MCP_GET",
-      "VIRTUAL_MCP_PLUGIN_CONFIG_GET",
       "VIRTUAL_MCP_LAST_USED_LIST",
+      // Project sidebar: org folders are readable, pins/hides are the caller's own.
+      "SIDEBAR_GET",
+      "SIDEBAR_PREFERENCES_SET",
+      // Every member already has ORG_FS_WRITE (below).
+      "PROJECT_FOLDER_ENSURE",
       // View automations
       "AUTOMATION_GET",
       "AUTOMATION_LIST",
@@ -1420,6 +1798,16 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "AI_PROVIDERS_ACTIVE",
       "AI_PROVIDER_KEY_LIST",
       "AI_PROVIDER_CREDITS",
+      "AI_PLAN_ENTITLEMENTS",
+      "AI_PLAN_LIST",
+      // Read-only, and the plan catalog and every paywall quote from it — a
+      // member who may see the tiers may see what they cost.
+      "ORGANIZATION_BILLING_PLAN_PRICES",
+      // NOT AI_PLAN_SET — it lives in `ai-providers:manage` only. It changes
+      // the org's plan and takes no payment, so granting it to every member
+      // let any member hand its org every feature (including `ai_service`)
+      // for free. Reading the plan and the catalog stays basic-usage: the
+      // billing card and the plan picker need both.
       "AI_PROVIDER_TOPUP_URL",
       // Object storage access
       "LIST_OBJECTS",
@@ -1436,10 +1824,17 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       // Sandbox previews, and the branch picker that feeds them
       "SANDBOX_START",
       "SANDBOX_DELETE",
-      "GITHUB_SEARCH_BRANCHES",
-      // The PR panel's whole read side, for anyone who can open a preview
-      "GITHUB_PR_STATE",
-      "GITHUB_LAST_PUBLISHED_PR",
+      "REPOSITORY_SEARCH_BRANCHES",
+      // Repo picker reads: which accounts/repos exist and what can be connected
+      "GIT_PROVIDER_CAPABILITIES",
+      "GIT_ACCOUNT_LIST",
+      "REPOSITORY_LIST",
+      "REPOSITORY_SEARCH",
+      // The change-request panel's whole read side, for anyone who can open a preview
+      "CHANGE_REQUEST_STATE",
+      "CHANGE_REQUEST_LAST_MERGED",
+      "CHANGE_REQUEST_LIST_OPEN",
+      "CHANGE_REQUEST_CHECK_LOG",
       // Cross-resource discovery / command palette
       "GLOBAL_SEARCH",
       // App-shell essentials (read-only) — every member hits these on first
@@ -1447,10 +1842,12 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       //   SETTINGS_GET → sidebar / plugins / model tiers loaded at shell boot
       //   USER_GET     → resolve member display ("created by" on agents, etc.);
       //                  handler scopes to shared-org members, no secrets
-      //   BRAND_CONTEXT_LIST → org branding for the chat empty state
       "ORGANIZATION_SETTINGS_GET",
       "USER_GET",
-      "BRAND_CONTEXT_LIST",
+      // Boolean "org owns a legacy site" (no slugs) — gates the home's CMS-training card.
+      "ORGANIZATION_HAS_SITE",
+      // Any member picks the org's blocks editor; writes only that one flag.
+      "ORGANIZATION_BLOCKS_EDITOR_SET",
       // Chat threads — talking to an agent is the most basic usage of the
       // product, so every member can CRUD their OWN threads. Per-thread access
       // is scoped at the handler level (you only see your own threads unless
@@ -1467,15 +1864,13 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "TASK_BOARD_ITEM_LIST",
       "TASK_BOARD_ITEM_UPDATE",
       "TASK_BOARD_ITEM_DELETE",
-      "TASK_BOARD_AUTOMATION_LIST",
-      "TASK_BOARD_AUTOMATION_UPSERT",
-      "TASK_BOARD_AUTOMATION_DELETE",
       "TASK_BOARD_PROMPT_LIST",
       "TASK_BOARD_PROMPT_UPSERT",
       "TASK_BOARD_PROMPT_DELETE",
       "TASK_BOARD_ITEM_PRS_GET",
       "TASK_BOARD_PREVIEW_PROBE",
       "TASK_BOARD_ITEM_RERUN",
+      "TASK_BOARD_RUN_REVIEWER",
       "TASK_BOARD_REVIEW_DECISION",
       "TASK_BOARD_PROMOTE_TO_PRODUCTION",
       "TASK_BOARD_ACTIVITY_LIST",
@@ -1485,18 +1880,45 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "TASK_BOARD_COMMENT_DELETE",
       "TASK_BOARD_DISMISSED_LIST",
       "TASK_BOARD_DISMISSED_RESTORE",
+      "TASK_BOARD_SPRINT_LIST",
+      "TASK_BOARD_SPRINT_CREATE",
+      "TASK_BOARD_SPRINT_UPDATE",
+      "TASK_BOARD_SPRINT_START",
+      "TASK_BOARD_SPRINT_COMPLETE",
+      "TASK_BOARD_SPRINT_DELETE",
+      "TASK_BOARD_ADMIN_ORG_LIST",
+      "TASK_BOARD_DELIVERY",
+      "TASK_BOARD_OPERATION",
+      "TASK_BOARD_OPERATION_TASKS",
+      "TASK_BOARD_REWORK",
+      "TASK_BOARD_SPRINTS",
+      "TASK_BOARD_STUCK",
+      "TASK_BOARD_COST",
+      "TASK_BOARD_QUALITY",
+      "TASK_BOARD_ERRORS",
+      "TASK_BOARD_TENANTS",
+      "THREAD_ANALYTICS_ORG_LIST",
+      "THREAD_ANALYTICS_LIVE",
+      "THREAD_ANALYTICS_USAGE",
+      "THREAD_ANALYTICS_ERRORS",
       "NOTIFICATION_LIST",
       "NOTIFICATION_MARK_READ",
       "NOTIFICATION_SUBSCRIPTION_SET",
       "NOTIFICATION_SUBSCRIPTION_LIST",
+      // Chat tools Decopilot ran for every member as built-ins.
+      "generate_image",
+      "web_search",
+      "deep_research",
+      "suggest_task",
+      "preview_navigate",
+      "update_interests",
     ],
   },
   // Organization
   {
     id: "org:manage",
     label: "Manage organization",
-    description:
-      "Edit organization settings, brand context, and domain configuration",
+    description: "Edit organization settings and domain configuration",
     section: "Organization",
     tools: [
       "ORGANIZATION_GET",
@@ -1504,14 +1926,6 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "ORGANIZATION_UPDATE",
       "ORGANIZATION_SETTINGS_GET",
       "ORGANIZATION_SETTINGS_UPDATE",
-      "BRAND_CONTEXT_LIST",
-      "BRAND_CONTEXT_GET",
-      "BRAND_CONTEXT_CREATE",
-      "BRAND_CONTEXT_UPDATE",
-      "BRAND_CONTEXT_DELETE",
-      "BRAND_CONTEXT_EXTRACT",
-      "BRAND_GET",
-      "BRAND_LIST",
       "ORGANIZATION_DOMAIN_LIST",
       "ORGANIZATION_DOMAIN_ADD",
       "ORGANIZATION_DOMAIN_UPDATE",
@@ -1524,7 +1938,7 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "JIRA_BOARD_COLUMNS_LIST",
       "JIRA_AUTOMATION_LIST",
       "JIRA_AUTOMATION_UPSERT",
-      "JIRA_AUTOMATION_DELETE",
+      "JIRA_RUN_START",
     ],
   },
   {
@@ -1537,9 +1951,8 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "ORGANIZATION_MEMBER_ADD",
       "ORGANIZATION_MEMBER_REMOVE",
       "ORGANIZATION_MEMBER_UPDATE_ROLE",
-      // Seats live on the members page and change who the org pays for —
-      // same trust tier as adding/removing the member itself. Checkout and
-      // preview are the money half of the same surface.
+      // The org's plan subscription and billing — the same trust tier as
+      // adding/removing a member.
       "ORGANIZATION_BILLING_CHECKOUT_START",
       "ORGANIZATION_BILLING_PORTAL",
       "ORGANIZATION_TASK_QUOTA_GET",
@@ -1565,10 +1978,11 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "COLLECTION_CONNECTIONS_CREATE",
       "COLLECTION_CONNECTIONS_UPDATE",
       "COLLECTION_CONNECTIONS_DELETE",
-      "COMMERCE_DISCOVERY_SETUP",
-      "COMMERCE_DISCOVERY_RUN",
-      "COMMERCE_DISCOVERY_BIND",
-      "COMMERCE_DISCOVERY_CONNECTION_STATUS",
+      "REPORTS_SETUP",
+      "REPORTS_RUN",
+      "REPORTS_BIND",
+      "REPORTS_CONNECTION_STATUS",
+      "REPORTS_SET_REPOSITORY",
     ],
     dangerous: true,
   },
@@ -1581,8 +1995,9 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "COLLECTION_VIRTUAL_MCP_CREATE",
       "COLLECTION_VIRTUAL_MCP_UPDATE",
       "COLLECTION_VIRTUAL_MCP_DELETE",
-      "VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE",
       "VIRTUAL_MCP_PINNED_VIEWS_UPDATE",
+      // Folders are org-wide structure, so they sit with managing projects.
+      "PROJECT_FOLDERS_SET",
     ],
     dangerous: true,
   },
@@ -1663,9 +2078,17 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "AI_PROVIDER_PROVISION_KEY",
       "AI_PROVIDER_TOPUP_URL",
       "AI_PROVIDER_CREDITS",
+      "AI_PLAN_ENTITLEMENTS",
+      "AI_PLAN_LIST",
+      "AI_PLAN_SET",
+      "AI_PLAN_INVOICE_UPGRADE",
       "CLAUDE_SUBSCRIPTION_CONNECT",
       "CLAUDE_SUBSCRIPTION_STATUS",
       "CLAUDE_SUBSCRIPTION_DISCONNECT",
+      "GITHUB_COPILOT_CONNECT",
+      "GITHUB_COPILOT_STATUS",
+      "GITHUB_COPILOT_DISCONNECT",
+      "GITHUB_COPILOT_SHARE",
     ],
   },
   // Organization (tags moved here from Developer)
@@ -1682,11 +2105,31 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "MEMBER_TAGS_SET",
     ],
   },
+  // Experiments
+  {
+    id: "experiments:manage",
+    label: "Manage experiments",
+    description: "Create, update, and delete A/B experiments, and view results",
+    section: "Experiments",
+    tools: [
+      "EXPERIMENT_LIST",
+      "EXPERIMENT_GET",
+      "EXPERIMENT_CREATE",
+      "EXPERIMENT_SUGGEST",
+      "EXPERIMENT_IMPLEMENT",
+      "EXPERIMENT_IMPLEMENT_LOCAL",
+      "EXPERIMENT_PREVIEW_SYNC_LOCAL",
+      "EXPERIMENT_UPDATE",
+      "EXPERIMENT_DELETE",
+      "EXPERIMENT_RESULTS",
+    ],
+    dangerous: true,
+  },
   // Store & Registry
   {
     id: "registry:manage",
-    label: "Manage registry",
-    description: "Browse, publish, and manage items in the registry",
+    label: "Browse registry",
+    description: "Browse the Deco MCP catalog",
     section: "Store & Registry",
     tools: [
       "COLLECTION_REGISTRY_APP_LIST",
@@ -1698,36 +2141,6 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "REGISTRY_ITEM_GET",
       "REGISTRY_ITEM_VERSIONS",
       "REGISTRY_ITEM_FILTERS",
-      "REGISTRY_DISCOVER_TOOLS",
-      "REGISTRY_ITEM_CREATE",
-      "REGISTRY_ITEM_BULK_CREATE",
-      "REGISTRY_ITEM_UPDATE",
-      "REGISTRY_ITEM_DELETE",
-      "REGISTRY_AI_GENERATE",
-      "REGISTRY_PUBLISH_REQUEST_LIST",
-      "REGISTRY_PUBLISH_REQUEST_REVIEW",
-      "REGISTRY_PUBLISH_REQUEST_COUNT",
-      "REGISTRY_PUBLISH_REQUEST_DELETE",
-      "REGISTRY_PUBLISH_API_KEY_GENERATE",
-      "REGISTRY_PUBLISH_API_KEY_LIST",
-      "REGISTRY_PUBLISH_API_KEY_REVOKE",
-    ],
-    dangerous: true,
-  },
-  {
-    id: "registry:monitor",
-    label: "Monitor registry health",
-    description: "Run health checks on registry connections and view results",
-    section: "Store & Registry",
-    tools: [
-      "REGISTRY_MONITOR_RUN_START",
-      "REGISTRY_MONITOR_RUN_LIST",
-      "REGISTRY_MONITOR_RUN_GET",
-      "REGISTRY_MONITOR_RUN_CANCEL",
-      "REGISTRY_MONITOR_RESULT_LIST",
-      "REGISTRY_MONITOR_CONNECTION_LIST",
-      "REGISTRY_MONITOR_CONNECTION_SYNC",
-      "REGISTRY_MONITOR_CONNECTION_UPDATE_AUTH",
     ],
   },
   // Developer
@@ -1750,6 +2163,14 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
     section: "Developer",
     tools: ["DELETE_OBJECT", "DELETE_OBJECTS"],
     dangerous: true,
+  },
+  {
+    id: "lake:read",
+    label: "Query the data lake",
+    description:
+      "Run read-only SQL over the organization's own data lake (orders from connected stores)",
+    section: "Developer",
+    tools: ["CUSTOMER_LAKE_QUERY"],
   },
   {
     id: "connections:sql",
@@ -1843,7 +2264,8 @@ export function isCapabilityEnabled(
   allowAll: boolean,
 ): boolean {
   if (allowAll) return true;
-  return cap.tools.every((tool) => enabledTools.includes(tool));
+  const enabledSet = new Set(enabledTools);
+  return cap.tools.every((tool) => enabledSet.has(tool));
 }
 
 /**
@@ -1940,6 +2362,7 @@ export function getToolsByCategory(): Record<ToolCategory, ToolMetadata[]> {
     Users: [],
     "API Keys": [],
     Tags: [],
+    Experiments: [],
     "AI Providers": [],
     Secrets: [],
     "File Configs": [],
@@ -1947,10 +2370,13 @@ export function getToolsByCategory(): Record<ToolCategory, ToolMetadata[]> {
     "Object Storage": [],
     Registry: [],
     GitHub: [],
+    Git: [],
     VM: [],
     Search: [],
     "Task Board": [],
     Jira: [],
+    Blog: [],
+    Chat: [],
   };
 
   for (const tool of MANAGEMENT_TOOLS) {

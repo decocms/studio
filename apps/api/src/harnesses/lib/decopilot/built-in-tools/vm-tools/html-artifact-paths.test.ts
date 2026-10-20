@@ -44,7 +44,7 @@ describe("matchHtmlArtifactEntry", () => {
 });
 
 describe("matchHtmlArtifactToolPath", () => {
-  test("matches mount-relative tool paths", () => {
+  test("matches absolute and legacy relative tool paths", () => {
     expect(
       matchHtmlArtifactToolPath("org/acme/decks/launch.html", "acme"),
     ).toEqual({
@@ -60,7 +60,7 @@ describe("matchHtmlArtifactToolPath", () => {
       kind: "deck",
     });
     expect(
-      matchHtmlArtifactToolPath("/app/repo/org/acme/decks/launch.html", "acme"),
+      matchHtmlArtifactToolPath("/app/org/acme/decks/launch.html", "acme"),
     ).toEqual({ path: "decks/launch.html", name: "launch", kind: "deck" });
     expect(
       matchHtmlArtifactToolPath("org/acme/pages/landing.html", "acme"),
@@ -79,6 +79,13 @@ describe("matchHtmlArtifactToolPath", () => {
       name: "launch",
       kind: "deck",
     });
+    expect(
+      matchHtmlArtifactToolPath("/app/org/home/pages/landing.html", "home"),
+    ).toEqual({
+      path: "pages/landing.html",
+      name: "landing",
+      kind: "page",
+    });
   });
 
   test("rejects other mounts, volumes, and traversal-ish paths", () => {
@@ -91,6 +98,10 @@ describe("matchHtmlArtifactToolPath", () => {
     expect(matchHtmlArtifactToolPath("decks/launch.html", "acme")).toBeNull();
     expect(
       matchHtmlArtifactToolPath("xorg/acme/decks/launch.html", "acme"),
+    ).toBeNull();
+    // The repo no longer links org-fs in, so this is a repo file.
+    expect(
+      matchHtmlArtifactToolPath("/app/repo/org/acme/decks/launch.html", "acme"),
     ).toBeNull();
     expect(
       matchHtmlArtifactToolPath("org/acme/decks/launch.html", ""),

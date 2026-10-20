@@ -5,7 +5,7 @@
  * Also handles MCP configuration state and scopes validation.
  */
 
-import { clientFromConnection } from "@/mcp-clients";
+import { notifyMcpConfiguration } from "./on-configuration";
 import { DownstreamTokenStorage } from "@/storage/downstream-token";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
@@ -24,6 +24,8 @@ import {
   validateConfiguration,
 } from "./credential-grants";
 import { fetchToolsFromMCP } from "./fetch-tools";
+import { assertSiteSlugUnchanged } from "../virtual/site-slug-guard";
+import { pinnedSiteSlugOnRename } from "../virtual/pin-site-slug";
 import {
   buildVirtualUrl,
   type ConnectionEntity,
@@ -138,6 +140,34 @@ export const COLLECTION_CONNECTIONS_UPDATE = defineTool({
     // Verify it exists and belongs to the current organization
     if (!existing || existing.organization_id !== organization.id) {
       throw new Error("Connection not found in organization");
+    }
+
+    // A VIRTUAL row is a project: its metadata carries the immutable site slug,
+    // which this generic write must neither change nor drop — nor move by a
+    // rename, for a legacy project whose slug is still its title.
+    if (
+      existing.connection_type === "VIRTUAL" &&
+      (data.metadata !== undefined || data.title !== undefined)
+    ) {
+      const project = await ctx.storage.virtualMcps.findById(existing.id);
+      if (project) {
+        if (data.metadata !== undefined) {
+          assertSiteSlugUnchanged(project, data.metadata);
+          const siteSlug = project.metadata?.siteSlug;
+          if (siteSlug) data.metadata = { ...data.metadata, siteSlug };
+        }
+        const pinned = pinnedSiteSlugOnRename({
+          nextTitle: data.title,
+          currentTitle: project.title,
+          currentSiteSlug: project.metadata?.siteSlug,
+        });
+        if (pinned) {
+          data.metadata = {
+            ...(data.metadata ?? project.metadata ?? {}),
+            siteSlug: pinned,
+          };
+        }
+      }
     }
 
     // Validate VIRTUAL connections if connection_type or connection_url is being updated
@@ -382,21 +412,11 @@ export const COLLECTION_CONNECTIONS_UPDATE = defineTool({
     // Ignore errors but await for the response before responding
     if (savedConfigurationChanged && finalState && finalScopes) {
       try {
-        // Create client - pool manages lifecycle, best-effort call
-        const client = await clientFromConnection(
-          connectionForCallback,
-          ctx,
-          false,
-        );
-
-        await client.callTool({
-          name: "ON_MCP_CONFIGURATION",
-          arguments: {
-            state: finalState,
-            scopes: finalScopes,
-            firstRun,
-            ...(vaultBootstrap ? { vault: vaultBootstrap } : {}),
-          },
+        await notifyMcpConfiguration(ctx, connectionForCallback, {
+          state: finalState,
+          scopes: finalScopes,
+          firstRun,
+          ...(vaultBootstrap ? { vault: vaultBootstrap } : {}),
         });
       } catch (error) {
         console.error("Failed to invoke ON_MCP_CONFIGURATION callback", error);

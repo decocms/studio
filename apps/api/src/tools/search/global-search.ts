@@ -5,7 +5,8 @@
  * matches so callers can render mixed result lists without knowing which
  * resource types are searchable today.
  *
- * Threads and task-board cards are searchable. To add a new resource type:
+ * Threads, task-board cards and MCP connections are searchable. To add a new
+ * resource type:
  *   1. Extend `SearchResultSchema` with a new discriminated branch.
  *   2. Add a corresponding case in the handler that queries that resource.
  *   3. Add the type name to `SEARCHABLE_TYPES`.
@@ -20,7 +21,7 @@ import { requireOrganization } from "../../core/studio-context";
 import { normalizeThreadForResponse } from "../thread/helpers";
 import { taskKey } from "@decocms/shared/task-key";
 
-const SEARCHABLE_TYPES = ["thread", "task"] as const;
+const SEARCHABLE_TYPES = ["thread", "task", "connection"] as const;
 
 const ThreadResultSchema = z.object({
   type: z.literal("thread"),
@@ -47,9 +48,21 @@ const TaskResultSchema = z.object({
   repo: z.string().nullable(),
 });
 
+/** An installed MCP server. Addressed by `slug`, which is what
+ *  `/$org/settings/connections/$appSlug` routes on — a row whose slug is null
+ *  has no detail page, so the client must not mint one. */
+const ConnectionResultSchema = z.object({
+  type: z.literal("connection"),
+  id: z.string(),
+  title: z.string(),
+  icon: z.string().nullable(),
+  slug: z.string().nullable(),
+});
+
 const SearchResultSchema = z.discriminatedUnion("type", [
   ThreadResultSchema,
   TaskResultSchema,
+  ConnectionResultSchema,
 ]);
 
 const InputSchema = z.object({
@@ -113,7 +126,7 @@ export function includesSearchType(
 export const GLOBAL_SEARCH = defineTool({
   name: "GLOBAL_SEARCH",
   description:
-    "Search across organization resources by free-text query. Returns a typed union of matches (currently: threads and task-board cards). New resource types may be added over time without changes to the call shape.",
+    "Search across organization resources by free-text query. Returns a typed union of matches (currently: threads, task-board cards and MCP connections). New resource types may be added over time without changes to the call shape.",
   annotations: {
     title: "Global Search",
     readOnlyHint: true,
@@ -130,19 +143,40 @@ export const GLOBAL_SEARCH = defineTool({
     const limit = input.limit ?? 20;
     const includeThreads = includesSearchType(input.types, "thread");
     const includeTasks = includesSearchType(input.types, "task");
+    const includeConnections = includesSearchType(input.types, "connection");
 
     const items: z.infer<typeof SearchResultSchema>[] = [];
     let totalCount = 0;
 
-    if (includeThreads) {
-      const { threads, total } = await ctx.storage.threads.list(undefined, {
-        limit,
-        offset: 0,
-        search: normalizeSearchQuery(input.query),
-        includeArchived: false,
-      });
-      totalCount += total;
-      for (const thread of threads) {
+    // Three independent lookups, run concurrently instead of one-at-a-time.
+    const [threadsResult, tasksResult, connectionsResult] = await Promise.all([
+      includeThreads
+        ? ctx.storage.threads.list(undefined, {
+            limit,
+            offset: 0,
+            search: normalizeSearchQuery(input.query),
+            includeArchived: false,
+          })
+        : null,
+      includeTasks
+        ? ctx.storage.taskBoard.searchByTitle(
+            organization.id,
+            normalizeSearchQuery(input.query) ?? "",
+            limit,
+          )
+        : null,
+      includeConnections
+        ? ctx.storage.connections.searchByTitle(
+            organization.id,
+            normalizeSearchQuery(input.query) ?? "",
+            limit,
+          )
+        : null,
+    ]);
+
+    if (threadsResult) {
+      totalCount += threadsResult.total;
+      for (const thread of threadsResult.threads) {
         items.push({
           type: "thread",
           id: thread.id,
@@ -160,17 +194,9 @@ export const GLOBAL_SEARCH = defineTool({
       }
     }
 
-    if (includeTasks) {
-      /** An empty query is the documented "most recently updated" case: an
-       *  empty term matches every title, and the storage query already orders
-       *  by `updated_at desc` under the same limit. */
-      const tasks = await ctx.storage.taskBoard.searchByTitle(
-        organization.id,
-        normalizeSearchQuery(input.query) ?? "",
-        limit,
-      );
-      totalCount += tasks.length;
-      for (const task of tasks) {
+    if (tasksResult) {
+      totalCount += tasksResult.length;
+      for (const task of tasksResult) {
         items.push({
           type: "task",
           id: task.id,
@@ -183,6 +209,19 @@ export const GLOBAL_SEARCH = defineTool({
             : null,
           status: task.status ?? null,
           repo: task.repo ?? null,
+        });
+      }
+    }
+
+    if (connectionsResult) {
+      totalCount += connectionsResult.length;
+      for (const connection of connectionsResult) {
+        items.push({
+          type: "connection",
+          id: connection.id,
+          title: connection.title,
+          icon: connection.icon ?? null,
+          slug: connection.slug ?? null,
         });
       }
     }

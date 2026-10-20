@@ -7,6 +7,7 @@ import {
 
 const noFlags: HighlightFlags = {
   isCreditExhausted: false,
+  planRefusal: null,
   subscriptionErrorKind: null,
   hasTodos: false,
   showError: false,
@@ -14,6 +15,7 @@ const noFlags: HighlightFlags = {
   hasApprovals: false,
   hasPlans: false,
   isWaitingForUserInput: false,
+  hasTaskSuggestion: false,
   todos: [],
 };
 
@@ -151,5 +153,26 @@ describe("deriveHighlightFlags", () => {
         isWaitingForApprovals: true,
       }),
     ).toEqual({ ...noFlags, hasApprovals: true });
+  });
+});
+
+describe("plan refusals", () => {
+  test("a plan-refused turn gets its own card, not the raw error card", () => {
+    expect(
+      deriveHighlightFlags({
+        ...baseInput,
+        error: new Error("[PLAN_BUDGET] Chat is paused"),
+      }),
+    ).toEqual({ ...noFlags, planRefusal: "ai_budget_exhausted" });
+  });
+
+  test("still streaming → no card yet", () => {
+    expect(
+      deriveHighlightFlags({
+        ...baseInput,
+        isStreaming: true,
+        error: new Error("[PLAN_BUDGET] Chat is paused"),
+      }),
+    ).toEqual(noFlags);
   });
 });

@@ -21,7 +21,7 @@ import {
 import { Container } from "@untitledui/icons";
 import { Link, useParams, useRouter } from "@tanstack/react-router";
 import { Suspense, type ComponentType } from "react";
-import { ViewLayout } from "@/components/details/layout";
+import { DetailPanel } from "@/components/details/detail-panel";
 import { useT } from "@/i18n/use-t.ts";
 
 interface CollectionDetailsProps {
@@ -173,7 +173,7 @@ function CollectionDetailsContent() {
   }
 
   return (
-    <ViewLayout breadcrumb={breadcrumb}>
+    <DetailPanel leading={breadcrumb}>
       <EmptyState
         icon={<Container size={36} className="text-muted-foreground" />}
         title={t("orgs.collectionDetail.noComponentDefinedTitle")}
@@ -183,7 +183,7 @@ function CollectionDetailsContent() {
           children: t("orgs.collectionDetail.goBackButton"),
         }}
       />
-    </ViewLayout>
+    </DetailPanel>
   );
 }
 

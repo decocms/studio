@@ -1,14 +1,23 @@
 import { useRef, useState } from "react";
+import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
+import Placeholder from "@tiptap/extension-placeholder";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
+import { EDITOR_LINK_CLASS } from "@/components/sections-editor/editor-classes";
+import type { PreviewProxyRef } from "@/components/sections-editor/preview-fetch-url";
+import { useLinkSources } from "./link-pickers";
+import { listHtmlToRows, rowsToListHtml } from "./list-html";
+import { InlineMarksToolbar } from "./marks-toolbar";
 import { FloatingToolbar, InlineText, ToolbarButton } from "./primitives";
 
-const HEADING_LEVELS = ["1", "2", "3"] as const;
+const HEADING_LEVELS = ["1", "2", "3", "4"] as const;
 
 const HEADING_LABEL_KEY = {
   "1": "sandbox.plainBlocks.headingLevel1",
   "2": "sandbox.plainBlocks.headingLevel2",
   "3": "sandbox.plainBlocks.headingLevel3",
+  "4": "sandbox.plainBlocks.headingLevel4",
 } as const;
 
 const HEADING_CLASS: Record<string, string> = {
@@ -114,120 +123,122 @@ export function CodeBlock({
 }
 
 /**
- * List block. Deco stores items as a newline-separated string plus a
- * `style` (ordered/unordered). Each item is a wrapping, inline-editable
- * row: Enter adds the next item (and moves the caret there), Backspace on
- * an empty row removes it, and Up/Down move between items at the edges.
+ * Editor surface for a List block. Two toolbars, because they answer two
+ * different questions: the block toolbar above picks the list *format*
+ * (bulleted / numbered), and the bubble toolbar over a selection formats the
+ * item's *content*. Backed by a TipTap list over deco's `items` + `style`
+ * shape — see `list-html.ts`.
  */
 export function ListBlock({
   items,
   style,
   onChange,
+  decofile,
+  sandboxRef,
 }: {
   items: string;
   style: string;
   onChange: (next: { items: string; style: string }) => void;
+  /** The site's blocks — enables linking to another post. */
+  decofile?: Record<string, unknown>;
+  /** A running preview — enables linking to a catalog product. */
+  sandboxRef?: PreviewProxyRef | null;
 }) {
-  const ordered = style === "ordered";
-  const rows = items.length ? items.split("\n") : [""];
-  const [focused, setFocused] = useState(false);
   const t = useT();
-  const refs = useRef<(HTMLTextAreaElement | null)[]>([]);
+  const linkSources = useLinkSources({ decofile, sandboxRef });
 
-  const commit = (nextRows: string[]) =>
-    onChange({ items: nextRows.join("\n"), style });
+  // Read from onUpdate only — recreating the editor would reset selection/undo.
+  const onChangeRef = useRef(onChange);
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read only inside the onUpdate callback, never during render
+  onChangeRef.current = onChange;
+  const styleRef = useRef(style);
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read only inside the onUpdate callback, never during render
+  styleRef.current = style;
 
-  const focusRow = (i: number, caret: "start" | "end") =>
-    requestAnimationFrame(() => {
-      const el = refs.current[i];
-      if (!el) return;
-      el.focus();
-      const pos = caret === "end" ? el.value.length : 0;
-      el.setSelectionRange(pos, pos);
-    });
+  const editor = useEditor({
+    extensions: [
+      StarterKit.configure({
+        // Cleared so each link's own `target` decides same-tab vs new-tab.
+        link: { HTMLAttributes: {} },
+        // The block IS a list; every other structure is its own deco block.
+        heading: false,
+        blockquote: false,
+        codeBlock: false,
+        horizontalRule: false,
+        dropcursor: false,
+        gapcursor: false,
+      }),
+      Placeholder.configure({
+        placeholder: t("sandbox.plainBlocks.listItemPlaceholder"),
+      }),
+    ],
+    content: rowsToListHtml(items, style === "ordered"),
+    editorProps: {
+      attributes: {
+        // Markers styled by hand: `prose` is a no-op here (no typography plugin).
+        class: cn(
+          "focus:outline-none text-[15px] leading-relaxed",
+          "[&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-7 [&_ol]:pl-7",
+          "[&_ul]:my-0 [&_ol]:my-0 [&_li]:pl-1.5 [&_li]:my-1 [&_p]:my-0",
+          "marker:text-muted-foreground marker:tabular-nums",
+          EDITOR_LINK_CLASS,
+        ),
+      },
+      // Swallow Tab: a flat `items` string has nowhere to put nesting.
+      handleKeyDown: (_view, event) => event.key === "Tab",
+    },
+    onUpdate: ({ editor }) => {
+      onChangeRef.current({
+        items: listHtmlToRows(editor.getHTML()).join("\n"),
+        style: editor.isActive("orderedList")
+          ? "ordered"
+          : editor.isActive("bulletList")
+            ? "unordered"
+            : styleRef.current,
+      });
+    },
+  });
+
+  // TipTap v3 doesn't re-render on transactions; select focus/format reactively.
+  const format = useEditorState({
+    editor,
+    selector: ({ editor }) => ({
+      isFocused: editor?.isFocused ?? false,
+      bullet: editor?.isActive("bulletList") ?? false,
+      ordered: editor?.isActive("orderedList") ?? false,
+    }),
+  });
+
+  if (!editor) return null;
 
   return (
-    <div
-      className="relative"
-      onFocus={() => setFocused(true)}
-      onBlur={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
-          setFocused(false);
-        }
-      }}
-    >
-      {focused && (
+    <div className="relative">
+      {format.isFocused && (
         <FloatingToolbar>
           <ToolbarButton
-            active={!ordered}
+            active={format.bullet}
             label={t("sandbox.plainBlocks.bulletedLabel")}
-            onClick={() => onChange({ items, style: "unordered" })}
+            // Toggling the active type would lift the items out of the list.
+            onClick={() =>
+              !format.bullet && editor.chain().focus().toggleBulletList().run()
+            }
           >
             •
           </ToolbarButton>
           <ToolbarButton
-            active={ordered}
+            active={format.ordered}
             label={t("sandbox.plainBlocks.numberedLabel")}
-            onClick={() => onChange({ items, style: "ordered" })}
+            onClick={() =>
+              !format.ordered &&
+              editor.chain().focus().toggleOrderedList().run()
+            }
           >
             1.
           </ToolbarButton>
         </FloatingToolbar>
       )}
-      <ul className="space-y-1">
-        {rows.map((row, i) => (
-          <li key={i} className="flex items-start gap-2.5">
-            <span className="min-w-5 shrink-0 select-none pt-px text-right text-[15px] leading-relaxed text-muted-foreground tabular-nums">
-              {ordered ? `${i + 1}.` : "•"}
-            </span>
-            <InlineText
-              inputRef={(el) => {
-                refs.current[i] = el;
-              }}
-              value={row}
-              onChange={(value) => {
-                const next = [...rows];
-                next[i] = value;
-                commit(next);
-              }}
-              onKeyDown={(e) => {
-                const el = e.currentTarget;
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  const next = [...rows];
-                  next.splice(i + 1, 0, "");
-                  commit(next);
-                  focusRow(i + 1, "start");
-                } else if (
-                  e.key === "Backspace" &&
-                  row === "" &&
-                  rows.length > 1
-                ) {
-                  e.preventDefault();
-                  commit(rows.filter((_, idx) => idx !== i));
-                  focusRow(Math.max(0, i - 1), "end");
-                } else if (
-                  e.key === "ArrowUp" &&
-                  el.selectionStart === 0 &&
-                  i > 0
-                ) {
-                  e.preventDefault();
-                  focusRow(i - 1, "end");
-                } else if (
-                  e.key === "ArrowDown" &&
-                  el.selectionEnd === row.length &&
-                  i < rows.length - 1
-                ) {
-                  e.preventDefault();
-                  focusRow(i + 1, "end");
-                }
-              }}
-              placeholder={t("sandbox.plainBlocks.listItemPlaceholder")}
-              className="text-[15px] leading-relaxed text-foreground"
-            />
-          </li>
-        ))}
-      </ul>
+      <InlineMarksToolbar editor={editor} sources={linkSources} />
+      <EditorContent editor={editor} className="text-foreground" />
     </div>
   );
 }

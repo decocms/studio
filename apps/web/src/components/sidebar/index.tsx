@@ -13,16 +13,19 @@
 import { ErrorBoundary } from "@/components/error-boundary";
 import { useExitProjectScope } from "@/hooks/use-exit-project-scope";
 import { useInSettings } from "@/hooks/use-in-settings";
+import { useProjectFirstNav } from "@/hooks/use-preferences";
 import { useScopeId } from "@/hooks/use-project-scope";
 import { useT } from "@/i18n/use-t.ts";
 import { SidebarAccountFooter } from "./footer/sidebar-footer";
 import { SidebarAccountFooterMobile } from "./footer/sidebar-footer-mobile";
 import { SidebarPickerHeader, SidebarPickerHeaderMobile } from "./header";
 import { NavDestinationsContent } from "./nav-destinations";
+import { NavDestinationsContentClassic } from "./nav-destinations-classic";
 import { SidebarBackRow } from "./nav-row";
 import { NavSettingsRow } from "./nav-settings-row";
 import { ProjectNav } from "./project-nav";
 import { SidebarProjectsSection } from "./projects-section";
+import { SidebarProjectsTree } from "./projects-section-tree";
 import {
   SettingsBackRow,
   SettingsNav,
@@ -56,28 +59,35 @@ function ProjectBackRow({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-/** The body: org-wide destinations, then the scoped project's own rows, then
- *  Settings — LAST by construction, being a sibling of both lists rather than a
- *  member of either, so the project zone rendering nothing cannot move it.
+/** The body: the destinations you can reach from here, then the projects list.
+ *  Settings is one of those destinations, not a zone of its own — it used to sit
+ *  in a third group under an "Organization" heading, which made a row that
+ *  behaves like Home read as a different kind of thing.
  *  No Suspense boundary, deliberately. Nothing in here blocks: the destinations
  *  are literals and the project zone reads its list non-blocking, so the whole
  *  nav paints on the first frame. A boundary used to wrap this because the body
  *  listed one row per project off a suspense query — restoring either would put
  *  a skeleton back in front of the sidebar. */
 function OrgSidebarBody({ onNavigate }: { onNavigate?: () => void }) {
+  const projectFirstNav = useProjectFirstNav();
   return (
     <ErrorBoundary>
-      <div className="flex flex-col gap-1">
-        <NavDestinationsContent onNavigate={onNavigate} />
-        <ProjectNav onNavigate={onNavigate} />
-        {/* Settings closes the DESTINATIONS, above the project list. The list
-            grows with the org and nests a few rows under each entry, so a row
-            pinned after it drifts further from the fixed nav it belongs to on
-            every project added — and lands at the bottom of a scroll on a big
-            org. Everything above this rule is a place; everything below is the
-            org's map. */}
-        <NavSettingsRow onNavigate={onNavigate} />
-        <SidebarProjectsSection onNavigate={onNavigate} />
+      <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-1">
+          {projectFirstNav ? (
+            <NavDestinationsContent onNavigate={onNavigate} />
+          ) : (
+            <NavDestinationsContentClassic onNavigate={onNavigate} />
+          )}
+          <ProjectNav onNavigate={onNavigate} />
+          {/* Project-first navigation reaches settings from the org rail instead. */}
+          {!projectFirstNav && <NavSettingsRow onNavigate={onNavigate} />}
+        </div>
+        {projectFirstNav ? (
+          <SidebarProjectsTree onNavigate={onNavigate} />
+        ) : (
+          <SidebarProjectsSection onNavigate={onNavigate} />
+        )}
       </div>
     </ErrorBoundary>
   );
@@ -97,13 +107,27 @@ export function StudioSidebar() {
 }
 
 export function StudioSidebarMobile({ onClose }: { onClose: () => void }) {
+  const inSettings = useInSettings();
+
   return (
     <SidebarShell
       sheet
       header={<SidebarPickerHeaderMobile onClose={onClose} />}
-      back={<ProjectBackRow onNavigate={onClose} />}
-      body={<OrgSidebarBody onNavigate={onClose} />}
-      footer={<SidebarAccountFooterMobile />}
+      back={
+        inSettings ? (
+          <SettingsBackRow onNavigate={onClose} />
+        ) : (
+          <ProjectBackRow onNavigate={onClose} />
+        )
+      }
+      body={
+        inSettings ? (
+          <SettingsNav onNavigate={onClose} />
+        ) : (
+          <OrgSidebarBody onNavigate={onClose} />
+        )
+      }
+      footer={inSettings ? <SettingsVersion /> : <SidebarAccountFooterMobile />}
     />
   );
 }

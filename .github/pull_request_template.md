@@ -5,7 +5,7 @@
 > Name the tests you ran or added and what you observed. "Verified manually" or "existing tests" without specifics doesn't count.
 
 ## Screenshots/Demonstration
-> Add screenshots or a Loom video if your changes affect the UI.
+> For UI changes, embed uploaded screenshots or a video here. Follow the [PR evidence rules](../AGENTS.md#check-the-behavior-you-changed).
 
 ## How to Test
 > Provide step-by-step instructions for reviewers to test your changes:

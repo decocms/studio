@@ -1,13 +1,9 @@
 import type { StudioContext } from "@/core/studio-context";
 import type { TaskBoardItem } from "@/storage/types";
-import {
-  outstandingReviewFeedback,
-  SUPER_AGENT_ASSIGNEE_ID,
-} from "@decocms/shared/task-board";
+import { LANES, outstandingReviewFeedback } from "@decocms/shared/task-board";
 import {
   claimTaskExecution,
   rollbackTaskExecution,
-  TaskQuotaError,
   userInitiatedTaskQuotaConfig,
 } from "../../billing/task-quota";
 import { isReportsTask } from "@decocms/shared/task-board";
@@ -24,30 +20,6 @@ import {
 } from "./claude-code-task-run";
 
 /**
- * The shared post-write reaction for a task delegated to the Super Agent:
- * enqueue the run. No-op for any other assignee, so callers that already know
- * the write delegated (create) and callers that gate on the transition
- * (update) share one body. The SSE broadcast is emitted by each write site
- * itself (every create/update broadcasts, not just delegations). Enqueue is
- * best-effort — the task is already persisted, so a dispatch failure (e.g. no
- * model configured) must never fail the write that delegated it.
- */
-export async function reactToSuperAgentDelegation(
-  ctx: StudioContext,
-  item: TaskBoardItem,
-  opts?: Pick<SuperAgentPromptOpts, "userInitiated" | "instruction">,
-): Promise<void> {
-  if (item.assigneeId !== SUPER_AGENT_ASSIGNEE_ID) return;
-  await enqueueSuperAgentForTask(ctx, item, opts).catch((err) => {
-    // A paywall rejection is NOT best-effort: swallowing it would leave the
-    // task delegated-but-never-running with only a log line. Callers decide
-    // (the update tool surfaces it; the import route un-delegates).
-    if (err instanceof TaskQuotaError) throw err;
-    console.error("[task-board] Super Agent enqueue failed", err);
-  });
-}
-
-/**
  * Enqueue a Super Agent run for a task delegated to it. Creates a fresh thread
  * seeded with the task in context, then dispatches the org's Super Agent (the
  * well-known Decopilot agent) on it via the durable thread-gate queue.
@@ -56,17 +28,39 @@ export async function reactToSuperAgentDelegation(
  * a single text message, smart tier, no tool allowlist. Iterate on the prompt,
  * model, and metadata from here.
  */
+/**
+ * The pull request a re-run continues. `others` are the issue's open pull
+ * requests in its OTHER repositories — a change that spans two storefronts
+ * has one in each. The sandbox is pinned to `head` only, so the prompt names
+ * the others with their branches for the run to check out after cloning.
+ */
+export interface ContinuedPullRequest {
+  number: number;
+  url: string;
+  head?: string;
+  others?: Array<{ number: number; url: string; head: string; repo: string }>;
+}
+
 /** Options that steer the Super Agent prompt for a re-run on an existing PR. */
 export type SuperAgentPromptOpts = {
   /** What the board's rule for this column says to do. Replaces the default
    *  opening instruction; the task's own title and description still follow,
    *  or the agent would not know which card it is on. */
   instruction?: string;
+  /** The lane whose rules the run follows. Defaults to In Progress, where the
+   *  Super Agent works; a column automation passes its own column. */
+  column?: string | null;
   /** A reviewer's change request — leads the re-run prompt. */
   feedback?: string;
   /** The PR already under review, so the re-run updates it in place instead
-   *  of opening a second PR. */
-  pr?: { number: number; url: string };
+   *  of opening a second PR.
+   *
+   *  `head` lets a caller that resolved the branch ITSELF supply it — the Jira
+   *  path does, because `resolveRerunBranch` reads the BOARD's linked pull
+   *  requests and a Jira anchor deliberately has none. Without it the prompt
+   *  would name a pull request the sandbox is not booted on, which is the
+   *  combination that produced duplicates. */
+  pr?: ContinuedPullRequest;
   /** This re-run exists to resolve a merge conflict on `pr` (not reviewer
    *  feedback): the lead instructs a checkout + base merge + push. Requires
    *  `pr` — without it the conflict lead is skipped (a conflict instruction
@@ -79,99 +73,24 @@ export type SuperAgentPromptOpts = {
   /** A human asked for this run (`TASK_BOARD_ITEM_RERUN`), so the per-task run
    *  cap — which bounds automatic re-dispatch — does not apply to it. */
   userInitiated?: boolean;
-  /** The run works on something outside the board — a Jira issue — and the
-   *  card is only its anchor. `body` replaces the card's description in the
-   *  prompt, `title` names the thread, and the thread is stamped so its tools
-   *  and the monitoring filter can tell it apart. */
-  source?: { kind: "jira"; issueKey: string; title: string; body: string };
+  /** The run works on something outside the board — one Jira issue, or a
+   *  batch of them — and the card is only its anchor. `body` replaces the
+   *  card's description in the prompt, `title` names the thread, and the
+   *  thread is stamped with `issueKeys` so its Jira tools know which issue
+   *  a call without a key means and the monitoring filter can tell it
+   *  apart. */
+  source?: { kind: "jira"; issueKeys: string[]; title: string; body: string };
+  /** An automation fired this run on the card: its agent runs it, the thread
+   *  is named after it and listed in its history, and `fence` makes the fire
+   *  start one run however many times it is replayed. */
+  automation?: {
+    name: string;
+    agentId: string;
+    /** Absent for a manual fire, which no trigger started. */
+    triggerId?: string;
+    fence: { threadId: string; workflowID: string };
+  };
 };
-
-/**
- * The autonomous Super Agent prompt for a task. Pure (no I/O) so the branch
- * selection is unit-tested: a fresh attempt, a reviewer's change request, or a
- * merge-conflict resolution — the last two lead with an instruction to update
- * the EXISTING PR rather than open a second one. Conflict resolution wins over
- * feedback when both are set.
- */
-export function buildSuperAgentTaskPrompt(
-  task: { id: string; title: string; description: string | null },
-  opts?: SuperAgentPromptOpts,
-): string {
-  // Guidance tuned from observed runs. First: let the agent judge whether the
-  // task even touches a repo — not every task does, and forcing a PR on a
-  // research/answer task made it invent code changes. Only when it works on a
-  // repo does the commit/push/PR flow apply. Then keep it direct: don't hunt for
-  // the dev-server port, don't chase incidental symbols. Keep it tight — a
-  // bloated prompt costs tokens every step.
-  // prompt-region:start super-agent
-  return [
-    // A column's rule supplies its own instruction; without one this is the
-    // Super Agent's, which is what every run used before rules existed.
-    opts?.instruction?.trim() || "You've been assigned this task. Complete it.",
-    "",
-    "You are running AUTONOMOUSLY — no human is watching this run, so drive it " +
-      "to completion on your own. Use `user_ask` ONLY for a genuine, " +
-      "unresolvable blocker a human must clear (a missing credential/secret, or " +
-      "a decision so ambiguous you truly cannot proceed) — that should be rare. " +
-      "Do not ask for confirmation of a reasonable choice; make it and move on.",
-    "",
-    `Title: ${task.title}`,
-    task.description ? `\nDescription:\n${task.description}\n` : "",
-    // A conflict re-run leads with the resolution instruction; a reviewer's
-    // change request leads with its feedback. Either way the whole point is to
-    // update the EXISTING PR, not re-do the task or open a second PR.
-    opts?.resolveConflict && opts.pr
-      ? [
-          `Your pull request #${opts.pr.number} (${opts.pr.url}) is approved but can't be merged — it has a MERGE CONFLICT with its base branch.`,
-          `Load the repo, CHECK OUT that PR's branch (e.g. \`gh pr checkout ${opts.pr.number}\`), then merge (or rebase) the base branch into it and resolve the conflicts, and push to update the SAME pull request — do NOT open a new one or start a new branch. Resolve conflicts by preserving BOTH sides' intent; never blindly discard either side. Change only what resolving the conflict requires.`,
-          "",
-        ].join("\n")
-      : // When a reviewer bounced the task back, its feedback is the whole point
-        // of this re-run — lead with it so the model addresses it (and updates
-        // the EXISTING PR), not re-does the task from scratch or opens a second.
-        opts?.feedback
-        ? [
-            opts.pr
-              ? `A reviewer requested changes on the existing pull request #${opts.pr.number} (${opts.pr.url}):`
-              : "A reviewer requested changes on your previous work:",
-            opts.feedback,
-            opts.pr
-              ? `Load the repo, then CHECK OUT that PR's branch (e.g. \`gh pr checkout ${opts.pr.number}\`) before editing, address the feedback, commit, and push to update the SAME pull request — do NOT open a new one or start a new branch.`
-              : "Address this feedback.",
-            "",
-          ].join("\n")
-        : // A person re-delegated a task that already has an open PR. No
-          // feedback to lead with, but the sandbox booted on that PR's branch,
-          // so the default "commit on a new branch and open a pull request"
-          // below would contradict where the run actually is — and produce the
-          // second PR this pin exists to prevent.
-          opts?.pr
-          ? [
-              `This task already has an open pull request #${opts.pr.number} (${opts.pr.url}), and you are already on its branch.`,
-              `Continue that work: commit and push to update the SAME pull request — do NOT open a new one or start a new branch. If you find it already does everything the task asks, say so and stop rather than changing it.`,
-              "",
-            ].join("\n")
-          : "",
-    "How to work:",
-    "- First decide whether this task requires changing code in a repository. Some tasks (research, answering a question, planning) don't. If it doesn't, just do the work directly — don't load a repo or open a PR.",
-    // A re-run's lead block above (reviewer feedback OR conflict resolution)
-    // overrides this: only a FIRST attempt opens a new branch + PR; a re-run
-    // checks out the existing PR's branch and pushes to it.
-    opts?.pr
-      ? "- If it DOES need code changes: use the `load_repo` tool to load the relevant repository, make the change, then commit and push to the pull request named above."
-      : "- If it DOES need code changes: use the `load_repo` tool to load the relevant repository, then make the change, commit on a new branch, push, and open a pull request. Only then does a PR apply.",
-    "- Prefer the GitHub tool to open the PR. If it errors or targets the wrong repo, fall back to `git push` + the GitHub REST API (the auth token is embedded in the `origin` URL).",
-    // "IF a dev server is running" was a condition the run could not evaluate,
-    // on a pod where the answer is always no (`harness-run` => `cloneOnly`), so
-    // it read as an invitation to go looking. State the fact instead.
-    "- No dev server is running and dependencies are NOT installed — this sandbox is a checkout. Don't hunt for a port, and don't run a full typecheck/build just to verify a small edit.",
-    "- Change only what the task needs. Don't trace the definition of a pre-existing symbol that's incidental to your change — note it in one line and move on. Prefer one or two broad searches over many narrow retries.",
-    "- Only if you hit a genuine blocker a human must clear (see above) may you call `user_ask` — otherwise keep going and finish the task.",
-    "",
-    `(task id: ${task.id})`,
-  ].join("\n");
-  // prompt-region:end super-agent
-}
 
 /**
  * The head branch of the task's linked PR `prNumber`, or null when we can't
@@ -266,7 +185,6 @@ export async function enqueueSuperAgentForTask(
     opts?.userInitiated ? userInitiatedTaskQuotaConfig() : undefined,
   );
 
-  let harness: "claude-code" | "decopilot" = "decopilot";
   try {
     // A re-run told to update an existing PR must land on that PR's BRANCH.
     // Asking the model to `gh pr checkout` (which the prompt does, and has
@@ -287,10 +205,12 @@ export async function enqueueSuperAgentForTask(
     const reusesPrBranch = getSettings().taskBoardRerunReusesPrBranch;
     const pr =
       opts?.pr ?? (reusesPrBranch ? await openPrForTask(ctx, task) : undefined);
+    // A caller-supplied head (a Jira issue's linked pull request) always wins over the flag.
     const pinnedRef =
-      reusesPrBranch && pr
+      opts?.pr?.head ??
+      (reusesPrBranch && pr
         ? await resolveRerunBranch(ctx, task, pr.number)
-        : null;
+        : null);
     // The prompt must name the same PR the sandbox booted on. Only widened when
     // the flag is on: naming a PR the run is NOT pinned to is the combination
     // that produced the duplicates.
@@ -315,20 +235,34 @@ export async function enqueueSuperAgentForTask(
           }
         : opts;
 
-    // Sandbox-hosted claude-code takes every task that has a repo it could work
-    // in — bound before dispatch when there's exactly one, otherwise chosen
-    // mid-run with `TASK_ADD_REPO` (see `claude-code-task-run.ts`). An org with
-    // no repos imported runs Decopilot exactly as before.
-    const choice = await resolveTaskRepoChoice(ctx, task.organizationId);
+    // One repo is bound before dispatch; otherwise the run picks with `TASK_ADD_REPO`.
+    // A card that already names its repo binds THAT one, so a multi-repo org
+    // doesn't spend a turn re-picking what the card already decided.
+    const choice = await resolveTaskRepoChoice(ctx, task.organizationId, {
+      repositoryId: task.repositoryId,
+      repo: task.repo,
+    });
 
     // A run on an external issue reads the issue, not the card: the card's
     // description is empty on purpose, so the prompt gets the rendered issue.
     const promptTask = opts?.source
       ? { ...task, description: opts.source.body }
       : task;
-    const title = opts?.source?.title ?? `Super Agent: ${task.title}`;
+    const title =
+      opts?.source?.title ??
+      (opts?.automation
+        ? `${opts.automation.name}: ${task.title}`
+        : `Super Agent: ${task.title}`);
     const runMetadata = opts?.source
-      ? { source: opts.source.kind, jira_issue_key: opts.source.issueKey }
+      ? {
+          source: opts.source.kind,
+          jira_issue_keys: opts.source.issueKeys,
+          // The single key stays for a run on one issue, which is what every
+          // reader before batches existed looks for.
+          ...(opts.source.issueKeys.length === 1
+            ? { jira_issue_key: opts.source.issueKeys[0] }
+            : {}),
+        }
       : undefined;
 
     // Set here, not per caller, so the automatic hand-back and the manual
@@ -336,34 +270,49 @@ export async function enqueueSuperAgentForTask(
     const modelClass: ClaudeCodeModelClass | undefined = opts?.resolveConflict
       ? "conflict"
       : undefined;
+    const rulesColumn =
+      opts?.column !== undefined ? opts.column : LANES.progress;
 
-    if (choice) {
-      harness = "claude-code";
-      const repo = "repo" in choice ? choice.repo : null;
-      await enqueueAgentRunForTask(ctx, task, {
-        title,
-        ...(runMetadata ? { metadata: runMetadata } : {}),
-        ...(opts?.runClass ? { runClass: opts.runClass } : {}),
-        ...(pinnedRef ? { pinnedRef } : {}),
-        prompt: buildClaudeCodeTaskPrompt(promptTask, repo, {
-          ...promptOpts,
-          // Names the candidates in the prompt so the run doesn't spend its first
-          // step asking what exists.
-          ...("choices" in choice ? { repoChoices: choice.choices } : {}),
-        }),
-        temperature: 0.5,
-        harnessId: "claude-code",
-        ...(modelClass ? { modelClass } : {}),
-        ...(repo ? { repo } : {}),
-      });
-    } else {
-      await enqueueAgentRunForTask(ctx, task, {
-        title,
-        ...(runMetadata ? { metadata: runMetadata } : {}),
-        ...(opts?.runClass ? { runClass: opts.runClass } : {}),
-        prompt: buildSuperAgentTaskPrompt(promptTask, promptOpts),
-        temperature: 0.5,
-        ...(pinnedRef ? { pinnedRef } : {}),
+    if (!choice) {
+      throw new Error(
+        "Task runs need the hosted sandbox, which this deployment does not have.",
+      );
+    }
+    const repo = "repo" in choice ? choice.repo : null;
+    const { system, message } = buildClaudeCodeTaskPrompt(promptTask, repo, {
+      ...promptOpts,
+      // Names the candidates so the run doesn't spend its first step asking what exists.
+      ...("choices" in choice ? { repoChoices: choice.choices } : {}),
+    });
+    const dispatched = await enqueueAgentRunForTask(ctx, task, {
+      title,
+      rulesColumn,
+      ...(runMetadata ? { metadata: runMetadata } : {}),
+      ...(opts?.runClass ? { runClass: opts.runClass } : {}),
+      ...(pinnedRef ? { pinnedRef } : {}),
+      prompt: message,
+      system,
+      temperature: 0.5,
+      ...(modelClass ? { modelClass } : {}),
+      ...(repo ? { repo } : {}),
+      ...(opts?.automation
+        ? {
+            agentId: opts.automation.agentId,
+            triggerId: opts.automation.triggerId,
+            fence: opts.automation.fence,
+          }
+        : {}),
+    });
+    // The Super Agent working a card, not an automation on another column.
+    if (dispatched.isNew && rulesColumn === LANES.progress) {
+      captureOrgEvent({
+        event: "task_run_started",
+        organizationId: task.organizationId,
+        properties: {
+          task_id: task.id,
+          reports_task: isReportsTask(task),
+          from: task.status,
+        },
       });
     }
   } catch (err) {
@@ -409,7 +358,7 @@ export async function enqueueSuperAgentForTask(
       task_id: task.id,
       reports_task: isReportsTask(task),
       claim,
-      harness,
+      harness: "claude-code",
       ...(opts?.runClass ? { run_class: opts.runClass } : {}),
     },
   });

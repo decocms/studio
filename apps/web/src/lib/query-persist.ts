@@ -14,6 +14,7 @@
 
 import { type QueryClient, dehydrate, hydrate } from "@tanstack/react-query";
 import { clearHtmlResourceCache } from "./html-resource-persist";
+import { KEYS } from "./query-keys";
 
 const STORAGE_KEY = "studio:rq-cache";
 const MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24h
@@ -39,6 +40,16 @@ const WRITE_DEBOUNCE_MS = 1000;
 // is an authorization gate (a stale "you're a member" value would render the
 // org shell instead of the invite / no-access screen — see shell-layout.tsx),
 // and session state must always revalidate against the server.
+//
+// `ai-plan-entitlements` is deliberately NOT here either, for the same class
+// of reason. A hydrated entry restores with `status: "success"`, so
+// `useFeaturesSettled()` is immediately true and `useModelDisclosure()`
+// immediately `isSuccess` — from a decision that may be a day old. That paints
+// model names and per-message costs for an org that has since dropped off
+// Ultra, and paints `FeaturePaywall` at an org that paid ninety seconds ago,
+// on the first frame of every reload. The flicker this was added to remove is
+// already handled properly by the third-state skeleton in
+// `main-panel-tabs/index.tsx`.
 const PERSISTED_KEY_HEADS = new Set([
   "publicConfig",
   "ai-provider-keys",
@@ -95,6 +106,22 @@ export function hydrateQueryClient(queryClient: QueryClient): void {
     }
 
     hydrate(queryClient, parsed.state);
+
+    // `hydrate` restores each entry with its ORIGINAL `dataUpdatedAt`, so a
+    // reload inside publicConfig's staleTime serves the persisted copy and
+    // never asks the server. publicConfig is how every *deployment* flag
+    // reaches the browser (STUDIO_PLANS_ENABLED among them), and those flip
+    // server-side with no version bump — so flipping one and restarting, which
+    // takes far less than the staleTime, left the old value painted with
+    // nothing to dislodge it. Mark it invalidated: an invalidated query is
+    // stale regardless of staleTime, so the first observer refetches once via
+    // `refetchOnMount`. Hydration still paints instantly; only the guaranteed
+    // revalidation is added, and only for this one key.
+    queryClient.invalidateQueries({
+      queryKey: KEYS.publicConfig(),
+      refetchType: "none",
+    });
+
     cacheRestored = true;
   } catch {
     // Corrupt entry — drop it, never let it block boot.
@@ -131,10 +158,24 @@ export function persistQueryClient(queryClient: QueryClient): () => void {
     }
   };
 
-  return queryClient.getQueryCache().subscribe(() => {
+  const unsubscribe = queryClient.getQueryCache().subscribe(() => {
     if (timer != null) return;
     timer = setTimeout(write, WRITE_DEBOUNCE_MS);
   });
+
+  // A reload within the debounce window must hydrate the latest saved values.
+  const flushPendingWrite = () => {
+    if (timer == null) return;
+    clearTimeout(timer);
+    write();
+  };
+  window.addEventListener("pagehide", flushPendingWrite);
+
+  return () => {
+    if (timer != null) clearTimeout(timer);
+    window.removeEventListener("pagehide", flushPendingWrite);
+    unsubscribe();
+  };
 }
 
 // --- Active-org cache (user-scoped) -----------------------------------------

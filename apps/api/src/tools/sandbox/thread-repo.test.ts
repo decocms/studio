@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { GithubRepo } from "@decocms/shared/sdk";
+import type { RepositoryBinding } from "@decocms/shared/sdk";
 import {
   repointedRepoBinding,
   resolveSandboxBranch,
@@ -44,6 +44,21 @@ test("syntheticBranchToGitRef maps a synthetic key to a real, valid, non-default
   }
 });
 
+test("syntheticBranchToGitRef's flat form has no slash for a protected */* pattern to match", () => {
+  expect(syntheticBranchToGitRef("thread:t1", { flat: true })).toBe(
+    "sandbox-thread-t1",
+  );
+  expect(syntheticBranchToGitRef("thread:t1/conn_a", { flat: true })).toBe(
+    "sandbox-thread-t1-conn_a",
+  );
+  for (const ref of ["thread:t1", "thread:t1/conn_a"]) {
+    const out = syntheticBranchToGitRef(ref, { flat: true });
+    expect(out.includes("/")).toBe(false);
+    expect(out).not.toBe(syntheticBranchToGitRef(ref));
+    expect(/^[A-Za-z0-9._-]+$/.test(out)).toBe(true);
+  }
+});
+
 test("syntheticBranchToGitRef is deterministic and per-thread distinct (restore + isolation)", () => {
   expect(syntheticBranchToGitRef(threadBranch("t1"))).toBe(
     syntheticBranchToGitRef(threadBranch("t1")),
@@ -61,8 +76,8 @@ test("a thread-bound repo wins and pins its own branch", () => {
   expect(
     resolveSandboxBranch({
       threadId: "t1",
-      threadRepo: { connectionId: "conn_a" } as GithubRepo,
-      agentRepo: { connectionId: "conn_b" } as GithubRepo,
+      threadRepo: { connectionId: "conn_a" } as RepositoryBinding,
+      agentRepo: { connectionId: "conn_b" } as RepositoryBinding,
       runBranch: "main",
     }),
   ).toBe("thread:t1/conn_a");
@@ -82,7 +97,7 @@ test("a repo-agent uses the run's branch when it has one", () => {
     resolveSandboxBranch({
       threadId: "t1",
       threadRepo: null,
-      agentRepo: { connectionId: "conn_b" } as GithubRepo,
+      agentRepo: { connectionId: "conn_b" } as RepositoryBinding,
       runBranch: "feature/x",
     }),
   ).toBe("feature/x");
@@ -93,7 +108,7 @@ test("a repo-agent with no branch yet falls back to a per-thread branch", () => 
     resolveSandboxBranch({
       threadId: "t1",
       threadRepo: null,
-      agentRepo: { connectionId: "conn_b" } as GithubRepo,
+      agentRepo: { connectionId: "conn_b" } as RepositoryBinding,
     }),
   ).toBe("thread:t1");
   // Null and undefined must behave identically — the callers supply both.
@@ -101,14 +116,14 @@ test("a repo-agent with no branch yet falls back to a per-thread branch", () => 
     resolveSandboxBranch({
       threadId: "t1",
       threadRepo: null,
-      agentRepo: { connectionId: "conn_b" } as GithubRepo,
+      agentRepo: { connectionId: "conn_b" } as RepositoryBinding,
       runBranch: null,
     }),
   ).toBe("thread:t1");
 });
 
 test("different threads of one repo-agent never share a branch", () => {
-  const agentRepo = { connectionId: "conn_b" } as GithubRepo;
+  const agentRepo = { connectionId: "conn_b" } as RepositoryBinding;
   expect(
     resolveSandboxBranch({ threadId: "t1", threadRepo: null, agentRepo }),
   ).not.toBe(
@@ -123,7 +138,7 @@ test("the bare thread key survives a repo bound mid-run", () => {
   expect(
     resolveSandboxBranch({
       threadId: "t1",
-      threadRepo: { connectionId: "conn_a" } as GithubRepo,
+      threadRepo: { connectionId: "conn_a" } as RepositoryBinding,
       runBranch: "thread:t1",
     }),
   ).toBe("thread:t1");
@@ -133,7 +148,7 @@ test("only the bare key pins — load_repo's repo-scoped key still switches", ()
   expect(
     resolveSandboxBranch({
       threadId: "t1",
-      threadRepo: { connectionId: "conn_b" } as GithubRepo,
+      threadRepo: { connectionId: "conn_b" } as RepositoryBinding,
       runBranch: "thread:t1/conn_a",
     }),
   ).toBe("thread:t1/conn_b");
@@ -141,7 +156,7 @@ test("only the bare key pins — load_repo's repo-scoped key still switches", ()
   expect(
     resolveSandboxBranch({
       threadId: "t1",
-      threadRepo: { connectionId: "conn_a" } as GithubRepo,
+      threadRepo: { connectionId: "conn_a" } as RepositoryBinding,
       runBranch: "thread:t2",
     }),
   ).toBe("thread:t1/conn_a");
@@ -166,8 +181,8 @@ test("a pinned ref wins over a thread-bound repo's derived branch", () => {
   expect(
     resolveSandboxBranch({
       threadId: "t1",
-      threadRepo: { connectionId: "conn_a" } as GithubRepo,
-      agentRepo: { connectionId: "conn_b" } as GithubRepo,
+      threadRepo: { connectionId: "conn_a" } as RepositoryBinding,
+      agentRepo: { connectionId: "conn_b" } as RepositoryBinding,
       runBranch: "main",
       pinnedRef: "sandbox/thread-older-conn_a",
     }),
@@ -197,14 +212,86 @@ test("an absent pinned ref changes nothing", () => {
     expect(
       resolveSandboxBranch({
         threadId: "t1",
-        threadRepo: { connectionId: "conn_a" } as GithubRepo,
+        threadRepo: { connectionId: "conn_a" } as RepositoryBinding,
         pinnedRef,
       }),
     ).toBe("thread:t1/conn_a");
   }
 });
 
-const DEAD_REPO: GithubRepo = {
+/** `chat_harness_sandbox_only` changes only the repo-less rows; every other row must match flag-off exactly. */
+test.each([
+  {
+    row: "no repo",
+    args: { threadId: "t1", threadRepo: null },
+    off: "ephemeral",
+    on: "thread:t1",
+  },
+  {
+    row: "no repo, stale client branch",
+    args: { threadId: "t1", threadRepo: null, runBranch: "ephemeral" },
+    off: "ephemeral",
+    on: "thread:t1",
+  },
+  {
+    row: "thread-bound repo",
+    args: {
+      threadId: "t1",
+      threadRepo: { connectionId: "conn_a" } as RepositoryBinding,
+    },
+    off: "thread:t1/conn_a",
+    on: "thread:t1/conn_a",
+  },
+  {
+    row: "repo-agent with a branch",
+    args: {
+      threadId: "t1",
+      threadRepo: null,
+      agentRepo: { connectionId: "conn_b" } as RepositoryBinding,
+      runBranch: "feature/x",
+    },
+    off: "feature/x",
+    on: "feature/x",
+  },
+  {
+    row: "repo-agent without a branch",
+    args: {
+      threadId: "t1",
+      threadRepo: null,
+      agentRepo: { connectionId: "conn_b" } as RepositoryBinding,
+    },
+    off: "thread:t1",
+    on: "thread:t1",
+  },
+  {
+    row: "pinned ref",
+    args: { threadId: "t1", threadRepo: null, pinnedRef: "fix/pr-branch" },
+    off: "fix/pr-branch",
+    on: "fix/pr-branch",
+  },
+])("sandbox-only chats keying: $row", ({ args, off, on }) => {
+  expect(resolveSandboxBranch(args)).toBe(off);
+  expect(resolveSandboxBranch({ ...args, sandboxOnlyChats: false })).toBe(off);
+  expect(resolveSandboxBranch({ ...args, sandboxOnlyChats: true })).toBe(on);
+});
+
+test("sandbox-only chats never share a sandbox across threads", () => {
+  expect(
+    resolveSandboxBranch({
+      threadId: "t1",
+      threadRepo: null,
+      sandboxOnlyChats: true,
+    }),
+  ).not.toBe(
+    resolveSandboxBranch({
+      threadId: "t2",
+      threadRepo: null,
+      sandboxOnlyChats: true,
+    }),
+  );
+});
+
+const DEAD_REPO: RepositoryBinding = {
   url: "https://github.com/acme/storefront",
   owner: "acme",
   name: "storefront",

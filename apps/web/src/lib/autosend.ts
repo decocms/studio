@@ -22,7 +22,7 @@ export interface StoredAutosendPayload extends AutosendPayload {
   status: AutosendStatus;
   /** Number of dispatch attempts already claimed. */
   attempt: number;
-  /** Starts one fresh, bounded retry window after an explicit native rejection. */
+  /** Start of a fresh, bounded retry window, when one was granted. */
   retryAt?: number;
 }
 
@@ -144,39 +144,4 @@ export function clearStoredAutosend(
   taskId: string,
 ): void {
   storage.removeItem(autosendStorageKey(locator, taskId));
-}
-
-/**
- * Return a claimed payload to pending after a native terminal launch/submit
- * was explicitly rejected. The createdAt comparison prevents an older failed
- * message from overwriting a newer one, while the attempt comparison prevents
- * a late rejection from mutating a retry already claimed after a remount.
- * The second rejected attempt exhausts the handoff and removes it.
- */
-export function restoreStoredAutosend(
-  storage: StorageLike,
-  locator: ProjectLocator | string,
-  taskId: string,
-  createdAt: number,
-  attempt: number,
-  now = Date.now(),
-): void {
-  const key = autosendStorageKey(locator, taskId);
-  const payload = readStoredAutosend(storage, locator, taskId);
-  if (
-    !payload ||
-    payload.status !== "sending" ||
-    payload.createdAt !== createdAt ||
-    payload.attempt !== attempt
-  ) {
-    return;
-  }
-  if (payload.attempt >= AUTOSEND_MAX_ATTEMPTS) {
-    storage.removeItem(key);
-    return;
-  }
-  storage.setItem(
-    key,
-    JSON.stringify({ ...payload, status: "pending", retryAt: now }),
-  );
 }

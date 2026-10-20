@@ -85,7 +85,7 @@ describe("resolveTaskSwitchSearch — no memory (agent default applies)", () => 
   test("omits sidepanel on agent switch (no saved layout)", () => {
     // Regression guard: the switch must not pin `sidepanel` in the URL. Its
     // omission is what lets resolveDefaultPanelState honor the target agent's
-    // chatDefaultOpen / defaultMainView (see use-layout-state.test.ts) instead
+    // chatDefaultOpen / defaultMainView (see use-chat-layout-state.test.ts) instead
     // of forcing chat open — this function has no access to that config itself.
     expect(
       resolve({

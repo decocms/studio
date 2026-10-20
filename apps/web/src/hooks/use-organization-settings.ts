@@ -1,4 +1,4 @@
-import { useProjectContext, WellKnownOrgMCPId } from "@/sdk";
+import { useProjectContext } from "@/sdk";
 import { authClient } from "@/lib/auth-client";
 import { usePublicConfig } from "@/hooks/use-public-config";
 import {
@@ -22,6 +22,7 @@ import {
 import type {
   OrgFlags,
   SimpleModeTier,
+  SubmoduleCredential,
 } from "@decocms/shared/organization/schema";
 import { reviewerEnabled } from "@decocms/shared/task-board";
 
@@ -35,11 +36,6 @@ export interface SimpleModeConfig {
   tiers: Record<SimpleModeTier, ModelSlot | null>;
 }
 
-export interface RegistryConfig {
-  registries: Record<string, { enabled: boolean }>;
-  blockedMcps: string[];
-}
-
 export interface DefaultHomeAgentsConfig {
   ids: string[];
 }
@@ -47,11 +43,11 @@ export interface DefaultHomeAgentsConfig {
 export interface OrganizationSettings {
   organizationId: string;
   sidebar_items: unknown[] | null;
-  enabled_plugins: string[] | null;
-  registry_config: RegistryConfig | null;
+  coding_agent_mcp_excluded: string[] | null;
   simple_mode: SimpleModeConfig | null;
   default_home_agents: DefaultHomeAgentsConfig | null;
   flags: OrgFlags | null;
+  submodule_credentials: SubmoduleCredential[] | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -59,11 +55,11 @@ export interface OrganizationSettings {
 const EMPTY_SETTINGS: OrganizationSettings = {
   organizationId: "",
   sidebar_items: null,
-  enabled_plugins: null,
-  registry_config: null,
+  coding_agent_mcp_excluded: null,
   simple_mode: null,
   default_home_agents: null,
   flags: null,
+  submodule_credentials: null,
 };
 
 const EMPTY_SIMPLE_MODE: SimpleModeConfig = {
@@ -115,38 +111,20 @@ function useOrganizationSettings<T = OrganizationSettings>(
   return useQuery({
     ...organizationSettingsQueryOptions(org.slug, org.id),
     select: select as (data: OrganizationSettings) => T,
+    // No org (the account-less `/site-editor`): flags keep their defaults.
+    enabled: !!org.id,
   });
-}
-
-/**
- * Non-blocking shell read. Used by shell-layout, which mounts
- * ProjectContextProvider and therefore can't call useProjectContext() yet — so
- * it passes `orgId`/`orgSlug` explicitly. Same query key as the other variants.
- *
- * Deliberately non-suspense: the shell must NOT block its whole subtree
- * (sidebar, home, tiles) on the org-settings round-trip. `enabled_plugins` is
- * the only field consumed downstream and every consumer is null-safe, so we
- * render immediately with `null` and let the value fill in when the query
- * resolves.
- */
-export function useOrganizationSettingsNonBlocking(
-  orgId: string,
-  orgSlug: string,
-): OrganizationSettings | null {
-  const { data } = useQuery(organizationSettingsQueryOptions(orgSlug, orgId));
-
-  return data ?? null;
 }
 
 type OrgSettingsUpdateInput = Partial<
   Pick<
     OrganizationSettings,
     | "sidebar_items"
-    | "enabled_plugins"
-    | "registry_config"
+    | "coding_agent_mcp_excluded"
     | "simple_mode"
     | "default_home_agents"
     | "flags"
+    | "submodule_credentials"
   >
 >;
 
@@ -257,6 +235,54 @@ export function useOrgFlag(flag: keyof OrgFlags): boolean {
   return data ?? DEFAULT_ON_FLAGS.has(flag);
 }
 
+/**
+ * {@link useOrgFlag}, but `undefined` while the org settings load — for
+ * gates that must not act on the pre-load default (routing reads to one
+ * backend, then switching them to another).
+ */
+export function useOrgFlagState(flag: keyof OrgFlags): boolean | undefined {
+  const { data, isError } = useOrganizationSettings((s) =>
+    orgFlagEnabled(s.flags, flag),
+  );
+  // A failed read falls back to the default rather than waiting forever.
+  return data ?? (isError ? DEFAULT_ON_FLAGS.has(flag) : undefined);
+}
+
+/**
+ * `chat_harness_sandbox_only` as the API applies it: a deployment without
+ * hosted sandboxes keeps Decopilot whatever the flag says.
+ */
+export function useSandboxOnlyChats(): boolean {
+  const flag = useOrgFlag("chat_harness_sandbox_only");
+  return usePublicConfig().runtime.agentSandbox && flag;
+}
+
+/**
+ * Writer for the org's blocks editor. Not `useSetOrgFlag`: that goes through
+ * ORGANIZATION_SETTINGS_UPDATE (org:manage), while any member may switch the
+ * editor through the basic-usage ORGANIZATION_BLOCKS_EDITOR_SET.
+ */
+export function useSetNewBlocksEditor() {
+  const { org } = useProjectContext();
+  const studio = useStudioTools();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (enabled: boolean) =>
+      studio.call("ORGANIZATION_BLOCKS_EDITOR_SET", { enabled }),
+    onSuccess: ({ enabled }) => {
+      queryClient.setQueryData(
+        KEYS.organizationSettings(org.id),
+        (prev: OrganizationSettings | undefined) =>
+          prev && {
+            ...prev,
+            flags: { ...prev.flags, new_blocks_editor: enabled },
+          },
+      );
+    },
+  });
+}
+
 /** deco.cx staff — the internal audience the in-flight surfaces open to first. */
 function isDecoStaffEmail(email: string | null | undefined): boolean {
   return !!email && email.trim().toLowerCase().endsWith("@deco.cx");
@@ -278,6 +304,7 @@ export interface ControlPlaneViews {
   analytics: boolean;
   e2e: boolean;
   monitor: boolean;
+  experiments: boolean;
 }
 
 /**
@@ -309,11 +336,13 @@ export function useControlPlaneViews(): ControlPlaneViews {
   const analyticsFlag = useOrgFlag("deco_analytics_enabled");
   const e2eFlag = useOrgFlag("e2e_enabled");
   const monitorFlag = useOrgFlag("monitor_enabled");
+  const experimentsFlag = useOrgFlag("experiments_enabled");
   return {
     hosting: staffOrLocal || controlPlaneGa || hostingFlag,
     analytics: staffOrLocal || controlPlaneGa || analyticsFlag,
     e2e: staffOrLocal || controlPlaneGa || e2eFlag,
     monitor: staffOrLocal || monitorGa || monitorFlag,
+    experiments: staffOrLocal || controlPlaneGa || experimentsFlag,
   };
 }
 
@@ -362,41 +391,41 @@ export function useSetOrgFlag() {
   };
 }
 
-export function useRegistryConfig(): RegistryConfig | null {
-  const { data } = useOrganizationSettings((s) => s.registry_config);
-  return data ?? null;
+/**
+ * Connections a coding-agent run must not mount, even with
+ * `coding_agent_org_mcps` on. The full list is stored, so a write replaces it.
+ */
+export function useCodingAgentExcludedMcps(): string[] {
+  const { data } = useOrganizationSettings((s) => s.coding_agent_mcp_excluded);
+  return data ?? [];
 }
 
-export function useUpdateRegistryConfig() {
+export function useSetCodingAgentExcludedMcps() {
   const mutation = useUpdateOrganizationSettings();
   return {
     ...mutation,
-    mutate: (config: RegistryConfig, options?: OrgSettingsMutateOptions) =>
-      mutation.mutate({ registry_config: config }, options),
-    mutateAsync: (config: RegistryConfig, options?: OrgSettingsMutateOptions) =>
-      mutation.mutateAsync({ registry_config: config }, options),
+    mutate: (ids: string[], options?: OrgSettingsMutateOptions) =>
+      mutation.mutate({ coding_agent_mcp_excluded: ids }, options),
   };
 }
 
-export interface HomeAgentsWriter {
-  /** The freshest id list, read live from the cache (not a render snapshot). */
-  currentIds: () => string[];
-  /**
-   * Queue a write. `transform` receives the freshest id list and returns the
-   * next one, or `null` to skip (no-op guards like "already on home").
-   */
-  apply: (transform: (ids: string[]) => string[] | null) => Promise<void>;
+/**
+ * Per-host PATs (as vault secret ids) every sandbox in the org installs in its
+ * git config, for submodules and private package deps the clone token can't
+ * reach. The full list is stored, so a write replaces it.
+ */
+export function useGitCredentials(): SubmoduleCredential[] {
+  const { data } = useOrganizationSettings((s) => s.submodule_credentials);
+  return data ?? [];
 }
 
-export function useIsRegistryEnabled(): (connectionId: string) => boolean {
-  const { org } = useProjectContext();
-  const registryConfig = useRegistryConfig();
-  const decoStoreId = WellKnownOrgMCPId.REGISTRY(org.id);
-
-  return (connectionId: string): boolean => {
-    if (!registryConfig) return connectionId === decoStoreId;
-    const entry = registryConfig.registries[connectionId];
-    if (!entry) return connectionId === decoStoreId;
-    return entry.enabled;
+export function useSetGitCredentials() {
+  const mutation = useUpdateOrganizationSettings();
+  return {
+    ...mutation,
+    mutateAsync: (
+      credentials: SubmoduleCredential[],
+      options?: OrgSettingsMutateOptions,
+    ) => mutation.mutateAsync({ submodule_credentials: credentials }, options),
   };
 }

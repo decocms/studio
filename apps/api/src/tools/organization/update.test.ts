@@ -25,6 +25,15 @@ function makeCtx() {
 }
 
 describe("ORGANIZATION_UPDATE", () => {
+  it("rejects a description over 500 characters", () => {
+    const result = ORGANIZATION_UPDATE.inputSchema.safeParse({
+      id: "org-1",
+      description: "x".repeat(501),
+    });
+
+    expect(result.success).toBe(false);
+  });
+
   it("persists an explicit empty description instead of dropping it", async () => {
     const ctx = makeCtx();
 

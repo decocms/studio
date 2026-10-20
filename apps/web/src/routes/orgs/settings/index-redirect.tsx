@@ -46,9 +46,6 @@ export default function SettingsIndexRedirect() {
       <Navigate to="/$org/settings/automations" params={{ org }} replace />
     );
   }
-  if (can("registry:manage")) {
-    return <Navigate to="/$org/settings/store" params={{ org }} replace />;
-  }
   if (can("monitoring:view")) {
     return <Navigate to="/$org/settings/monitor" params={{ org }} replace />;
   }

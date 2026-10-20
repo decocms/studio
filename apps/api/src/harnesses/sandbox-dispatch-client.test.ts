@@ -4,12 +4,15 @@ import { harnessRunResultSchema } from "@decocms/sandbox/dispatch/schemas";
 import { WellKnownOrgMCPId } from "@decocms/shared/sdk";
 import { withModelMetadata } from "./with-model-metadata";
 import {
+  cancelDaemonRun,
   describeTermination,
   dispatchWithContinuation,
   errorForTerminal,
   harnessRunsInSandbox,
+  harnessSessionKey,
   isRunSuperseded,
   isStudioOwnedConnection,
+  orgOutputFallbackInstruction,
   sandboxStateInstruction,
   selectRunConnections,
   isUnreachableStatus,
@@ -18,6 +21,7 @@ import {
   RunSupersededError,
   SandboxUnreachableError,
 } from "./sandbox-dispatch-client";
+import { sandboxPathsAsUploads } from "@/tools/task-board/description-uploads";
 
 function bodyOf(text: string): ReadableStream<Uint8Array> {
   return new ReadableStream({
@@ -52,7 +56,7 @@ describe("isStudioOwnedConnection", () => {
     ["registry", WellKnownOrgMCPId.REGISTRY],
     ["community registry", WellKnownOrgMCPId.COMMUNITY_REGISTRY],
     ["dev assets", WellKnownOrgMCPId.DEV_ASSETS],
-    ["commerce discovery", WellKnownOrgMCPId.COMMERCE_DISCOVERY],
+    ["reports", WellKnownOrgMCPId.REPORTS],
   ])("excludes the %s connection", (_name, wellKnownId) => {
     expect(isStudioOwnedConnection(orgId, wellKnownId(orgId))).toBe(true);
   });
@@ -70,6 +74,24 @@ describe("selectRunConnections", () => {
     { id: "conn_broken", status: "error" },
     { id: WellKnownOrgMCPId.SELF(organizationId), status: "active" },
   ];
+
+  test("mounts a sandbox sign-in connection without the agent or the org-wide flag, unless excluded", () => {
+    const figma = {
+      id: "conn_figma",
+      status: "active",
+      connection_url: "https://mcp.figma.com/mcp",
+    };
+    const select = (excludedIds?: Set<string>) =>
+      selectRunConnections({
+        organizationId,
+        orgWide: false,
+        ownIds: new Set<string>(),
+        excludedIds,
+        connections: [...connections, figma],
+      }).map((c) => c.id);
+    expect(select()).toEqual(["conn_figma"]);
+    expect(select(new Set(["conn_figma"]))).toEqual([]);
+  });
 
   test("mounts the agent's own connections without the org-wide flag", () => {
     expect(
@@ -103,11 +125,99 @@ describe("selectRunConnections", () => {
       }).map((c) => c.id),
     ).toEqual(["conn_github", "conn_vtex"]);
   });
+
+  // The point of the exclusion list: the org-wide opt-in is all-or-nothing,
+  // and some connections are the wrong tool for a coding run even so.
+  test("an excluded connection is not mounted under the org-wide flag", () => {
+    expect(
+      selectRunConnections({
+        organizationId,
+        orgWide: true,
+        ownIds: new Set<string>(),
+        excludedIds: new Set(["conn_vtex"]),
+        connections,
+      }).map((c) => c.id),
+    ).toEqual(["conn_github"]);
+  });
+
+  // An exclusion someone set explicitly must not be silently reinstated
+  // because the connection also happens to be aggregated on the agent.
+  test("an exclusion outranks the agent's own aggregation", () => {
+    expect(
+      selectRunConnections({
+        organizationId,
+        orgWide: false,
+        ownIds: new Set(["conn_github", "conn_vtex"]),
+        excludedIds: new Set(["conn_github"]),
+        connections,
+      }).map((c) => c.id),
+    ).toEqual(["conn_vtex"]);
+  });
+
+  test("an empty or absent exclusion list changes nothing", () => {
+    for (const excludedIds of [undefined, new Set<string>()]) {
+      expect(
+        selectRunConnections({
+          organizationId,
+          orgWide: true,
+          ownIds: new Set<string>(),
+          excludedIds,
+          connections,
+        }).map((c) => c.id),
+      ).toEqual(["conn_github", "conn_vtex"]);
+    }
+  });
+});
+
+describe("harnessSessionKey", () => {
+  const turn = (overrides: Record<string, unknown> = {}) =>
+    ({
+      threadId: "thrd_1",
+      userMessage: { parts: [{ type: "text", text: "first" }] },
+      workspace: { cwd: null },
+      mode: "default",
+      mcp: {
+        url: "https://studio.test/mcp",
+        headers: { a: "1" },
+        expiresAt: 1,
+      },
+      ...overrides,
+    }) as unknown as Parameters<typeof harnessSessionKey>[0];
+
+  test("a follow-up with a new message, title and MCP bearer keeps the session", () => {
+    expect(
+      harnessSessionKey(
+        turn({
+          userMessage: { parts: [{ type: "text", text: "second" }] },
+          currentThreadTitle: "Named",
+          mcp: {
+            url: "https://studio.test/mcp",
+            headers: { a: "2" },
+            expiresAt: 2,
+          },
+        }),
+      ),
+    ).toBe(harnessSessionKey(turn()));
+  });
+
+  test("anything that shapes the session gets a new one", () => {
+    expect(harnessSessionKey(turn({ mode: "plan" }))).not.toBe(
+      harnessSessionKey(turn()),
+    );
+    expect(
+      harnessSessionKey(
+        turn({
+          mcp: { url: "https://other.test/mcp", headers: {}, expiresAt: 1 },
+        }),
+      ),
+    ).not.toBe(harnessSessionKey(turn()));
+  });
 });
 
 describe("harnessRunsInSandbox", () => {
   test("claude-code is sandbox-hosted", () => {
     expect(harnessRunsInSandbox("claude-code")).toBe(true);
+    expect(harnessRunsInSandbox("codex")).toBe(true);
   });
 
   test("decopilot is not — it runs in-process", () => {
@@ -308,19 +418,95 @@ describe("pushSandboxEnv", () => {
     expect(thrown).toBeInstanceOf(Error);
   });
 
-  test("a 404/410/5xx status from the daemon is retriable, not a hard failure", async () => {
-    for (const status of [404, 410, 503]) {
+  test("a 401/404/410/5xx status from the daemon is retriable, not a hard failure", async () => {
+    for (const status of [401, 404, 410, 503]) {
       const provider = fakeProvider(
         async () => new Response("gone", { status }),
       );
       let thrown: unknown;
       try {
-        await pushSandboxEnv(provider, "handle-1", { FOO: "bar" });
+        await pushSandboxEnv(provider, "handle-1", { FOO: "bar" }, 1);
       } catch (err) {
         thrown = err;
       }
       expect(thrown).toBeInstanceOf(SandboxUnreachableError);
     }
+  });
+
+  test("waits out a gateway error from a waking VM instead of failing the turn", async () => {
+    const statuses = [502, 503, 204];
+    let calls = 0;
+    const provider = fakeProvider(
+      async () => new Response(null, { status: statuses[calls++] }),
+    );
+    await pushSandboxEnv(provider, "handle-1", { FOO: "bar" }, 1);
+    expect(calls).toBe(3);
+  });
+
+  test("gives up on a VM that never wakes, with the last status", async () => {
+    let calls = 0;
+    const provider = fakeProvider(async () => {
+      calls++;
+      return new Response("bad gateway", { status: 502 });
+    });
+    let thrown: unknown;
+    try {
+      await pushSandboxEnv(provider, "handle-1", { FOO: "bar" }, 1);
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown).toBeInstanceOf(SandboxUnreachableError);
+    expect(String(thrown)).toContain("502");
+    expect(calls).toBe(6);
+  });
+
+  test("a 404 is the sandbox gone, not waking — no wait", async () => {
+    let calls = 0;
+    const provider = fakeProvider(async () => {
+      calls++;
+      return new Response("gone", { status: 404 });
+    });
+    await pushSandboxEnv(provider, "handle-1", { FOO: "bar" }, 1).catch(
+      () => {},
+    );
+    expect(calls).toBe(1);
+  });
+});
+
+describe("cancelDaemonRun", () => {
+  test("DELETEs the turn's run on the daemon", async () => {
+    const calls: { handle: string; path: string; method: string }[] = [];
+    const provider = {
+      proxyDaemonRequest: async (
+        handle: string,
+        path: string,
+        init: { method: string },
+      ) => {
+        calls.push({ handle, path, method: init.method });
+        return new Response(null, { status: 204 });
+      },
+    } as unknown as Parameters<typeof cancelDaemonRun>[0];
+    await cancelDaemonRun(provider, "handle-1", "thread-1:fence-1");
+    expect(calls).toEqual([
+      {
+        handle: "handle-1",
+        path: "/_sandbox/runs/thread-1%3Afence-1",
+        method: "DELETE",
+      },
+    ]);
+  });
+
+  test("never throws: a dead or rejecting daemon leaves the stop to its grace", async () => {
+    const throwing = {
+      proxyDaemonRequest: async () => {
+        throw new Error("connection refused");
+      },
+    } as unknown as Parameters<typeof cancelDaemonRun>[0];
+    const rejecting = {
+      proxyDaemonRequest: async () => new Response("nope", { status: 503 }),
+    } as unknown as Parameters<typeof cancelDaemonRun>[0];
+    await expect(cancelDaemonRun(throwing, "h", "r")).resolves.toBeUndefined();
+    await expect(cancelDaemonRun(rejecting, "h", "r")).resolves.toBeUndefined();
   });
 });
 
@@ -412,22 +598,29 @@ describe("dispatchWithContinuation", () => {
     // Dropping this `start` too left the run with parts and no message: the
     // projector never opened one, so the turn rendered empty.
     let attempt = 0;
+    const resumes: Array<{ reason: string } | null> = [];
+    const revalidations: boolean[] = [];
     const chunks = await collect(
       dispatchWithContinuation({
         runId: "run_1",
         resume: null,
         aborted: () => false,
-        dispatchOnce: () =>
-          ++attempt === 1
+        dispatchOnce: (resume, revalidate) => {
+          resumes.push(resume);
+          revalidations.push(revalidate);
+          return ++attempt === 1
             ? dispatch([], new SandboxUnreachableError("pod never answered"))()
             : dispatch([
                 chunk("start", { messageId: "msg_b" }),
                 chunk("finish"),
-              ])(),
+              ])();
+        },
       }),
     );
     expect(chunks.map((c) => c.type)).toEqual(["start", "finish"]);
     expect((chunks[0] as { messageId?: string }).messageId).toBe("msg_b");
+    expect(resumes).toEqual([null, null]);
+    expect(revalidations).toEqual([false, true]);
   });
 
   test("a caller-supplied resume drops the harness's first `start` too", async () => {
@@ -718,7 +911,10 @@ describe("a lost sandbox's cause reaches the agent and the thread", () => {
         dispatchOnce: (resume) => {
           resumes.push(resume);
           return ++attempt === 1
-            ? dispatch([], new SandboxUnreachableError("stream broke"))()
+            ? dispatch(
+                [chunk("start")],
+                new SandboxUnreachableError("stream broke"),
+              )()
             : dispatch([chunk("start"), chunk("finish")])();
         },
       }),
@@ -853,5 +1049,29 @@ describe("sandboxStateInstruction", () => {
     for (const warm of [true, false]) {
       expect(sandboxStateInstruction(warm)).not.toContain("may");
     }
+  });
+});
+
+describe("orgOutputFallbackInstruction", () => {
+  const text = orgOutputFallbackInstruction("thrd_abc");
+
+  test("names the run's own folder in the outputs mount, never /tmp", () => {
+    expect(text).toContain("/app/org/output");
+    expect(text).toContain("/app/org/.outputs/thrd_abc/");
+    expect(text).toContain("never use `/tmp`");
+  });
+
+  test("only while the mount point exists, never by creating it", () => {
+    expect(text).toContain("but `/app/org/.outputs` does");
+    expect(text).toContain("Never create `/app/org/.outputs` yourself");
+  });
+
+  // The instruction is only worth giving if a comment that follows it renders.
+  test("points at a path task comments turn into an image", () => {
+    const shot = "/app/org/.outputs/thrd_abc/qa/after.png";
+    expect(text).toContain(shot.slice(0, shot.lastIndexOf("qa/")));
+    expect(sandboxPathsAsUploads(`![after](${shot})`, "acme")).toBe(
+      "![after](/api/acme/fs/outputs/read?path=thrd_abc%2Fqa%2Fafter.png)",
+    );
   });
 });

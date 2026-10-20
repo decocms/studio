@@ -7,11 +7,13 @@ export const PROJECT_SIDEBAR_VIEW_IDS = [
   "board",
   "site-editor",
   "assets",
+  "releases",
   "hosting",
   "e2e",
   "analytics",
   "cdn",
   "automations",
+  "experiments",
 ] as const satisfies readonly VirtualMcpSidebarView[];
 
 /** Initial selection for projects that have not explicitly saved sidebar
@@ -32,10 +34,12 @@ export type ProjectSidebarViewId = (typeof PROJECT_SIDEBAR_VIEW_IDS)[number];
 /** Native panels whose availability is discovered from project resources. */
 export const PROJECT_NATIVE_VIEW_IDS = [
   "assets",
+  "releases",
   "hosting",
   "e2e",
   "analytics",
   "cdn",
+  "experiments",
 ] as const satisfies readonly ProjectSidebarViewId[];
 
 export type ProjectNativeViewId = (typeof PROJECT_NATIVE_VIEW_IDS)[number];
@@ -46,6 +50,9 @@ export type ProjectSidebarViewPresence = Record<ProjectSidebarViewId, boolean>;
 export interface ProjectNativeViewPending {
   assets: boolean;
   siteAccess: boolean;
+  /** Main's schema is not read yet (or can't be, on a site last found v8),
+   *  so whether the site has Releases is not known. */
+  releases?: boolean;
 }
 
 export interface ProjectSidebarViewsMetadata {
@@ -130,8 +137,8 @@ export function isProjectNativeViewId(
   return PROJECT_NATIVE_VIEW_IDS.some((viewId) => viewId === value);
 }
 
-/** Combine permanent project capabilities with the five resource-backed
- * native panels. */
+/** Combine permanent project capabilities with the resource-backed native
+ * panels. */
 export function projectSidebarViewPresence(
   hasClonableSource: boolean,
   native: ProjectNativeViewPresence,
@@ -142,10 +149,14 @@ export function projectSidebarViewPresence(
     board: hasClonableSource,
     "site-editor": hasClonableSource,
     assets: native.assets,
+    // Hosted Deco CMS releases: a v8 site's repo history.
+    releases: hasClonableSource && native.releases,
     hosting: native.hosting,
     e2e: native.e2e,
     analytics: native.analytics,
     cdn: native.cdn,
+    // Authored in the Site Editor decofile — only where a CMS source exists.
+    experiments: hasClonableSource && native.experiments,
     automations: true,
   };
 }
@@ -208,6 +219,9 @@ export function projectSidebarViewUnavailable(
 ): boolean {
   if (!isProjectSidebarViewId(viewId) || presence[viewId]) return false;
   if (!isProjectNativeViewId(viewId)) return true;
+  // Releases follows main's schema (`useMainSchemaV8`): a deep link waits
+  // for that read instead of bouncing to Settings before it lands.
+  if (viewId === "releases") return !pending.releases;
   return !(viewId === "assets" ? pending.assets : pending.siteAccess);
 }
 

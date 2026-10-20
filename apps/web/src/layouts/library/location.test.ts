@@ -1,7 +1,11 @@
 import { describe, expect, it } from "bun:test";
 import {
+  libraryPlaceOf,
+  namedFolderOf,
   basename,
   browsePathFor,
+  libraryTrail,
+  orgFsMountPath,
   parseLibraryPath,
   segmentLabel,
 } from "./location";
@@ -67,6 +71,32 @@ describe("browsePathFor", () => {
   });
 });
 
+describe("orgFsMountPath", () => {
+  it("maps each volume to its absolute sandbox mount", () => {
+    expect(orgFsMountPath("home")).toBe("/app/org/home");
+    expect(orgFsMountPath("home/decks/q3.html")).toBe(
+      "/app/org/home/decks/q3.html",
+    );
+    expect(orgFsMountPath("outputs/t_1/report.md")).toBe(
+      "/app/org/.outputs/t_1/report.md",
+    );
+    expect(orgFsMountPath("uploads/t_1/a.pdf")).toBe(
+      "/app/org/.uploads/t_1/a.pdf",
+    );
+    expect(orgFsMountPath("public/core/skills/web")).toBe(
+      "/app/org/public/core/skills/web",
+    );
+    expect(orgFsMountPath("site-repo/src/x.ts")).toBe(
+      "/app/org/site-repo/src/x.ts",
+    );
+  });
+
+  it("is null without a single volume", () => {
+    expect(orgFsMountPath("")).toBeNull();
+    expect(orgFsMountPath("public")).toBeNull();
+  });
+});
+
 describe("segmentLabel", () => {
   it("presents the public volume as skills, everything else as-is", () => {
     expect(segmentLabel("public")).toBe("skills");
@@ -78,5 +108,83 @@ describe("basename", () => {
   it("returns the last segment", () => {
     expect(basename("a/b/c.txt")).toBe("c.txt");
     expect(basename("c.txt")).toBe("c.txt");
+  });
+});
+
+describe("libraryTrail", () => {
+  it("is empty at the root — the root is the place, not a step to it", () => {
+    expect(libraryTrail("home", "home")).toEqual([]);
+    expect(libraryTrail("home/projects/farm", "home/projects/farm")).toEqual(
+      [],
+    );
+  });
+
+  it("walks the segments below the root", () => {
+    expect(libraryTrail("home/decks/q3", "home")).toEqual([
+      { label: "decks", path: "home/decks" },
+      { label: "q3", path: "home/decks/q3" },
+    ]);
+  });
+
+  it("a project root hides the folders above it", () => {
+    expect(
+      libraryTrail("home/projects/farm/decks", "home/projects/farm"),
+    ).toEqual([{ label: "decks", path: "home/projects/farm/decks" }]);
+  });
+
+  it("labels `public` as skills, like every other segment reader", () => {
+    expect(libraryTrail("public/core", "")[0]?.label).toBe("skills");
+  });
+
+  /** A breadcrumb that silently empties strands someone in a folder. */
+  it("a path outside the root falls back to its own full trail", () => {
+    expect(libraryTrail("uploads/docs", "home")).toEqual([
+      { label: "uploads", path: "uploads" },
+      { label: "docs", path: "uploads/docs" },
+    ]);
+  });
+});
+
+describe("namedFolderOf", () => {
+  it("is the parent folder", () => {
+    expect(namedFolderOf("briefs/today.md")).toBe("briefs");
+    expect(namedFolderOf("today.md")).toBe("");
+  });
+
+  it("skips generated-id folders", () => {
+    expect(
+      namedFolderOf("chat/6a36530c-acd5-4c86-9e48-7654a6696aaa/image.png"),
+    ).toBe("chat");
+    expect(namedFolderOf("6a36530c-acd5-4c86-9e48-7654a6696aaa/a.png")).toBe(
+      "",
+    );
+  });
+});
+
+describe("libraryPlaceOf", () => {
+  const place = (path: string) => libraryPlaceOf(parseLibraryPath(path));
+
+  it("is the drive for the home root and its folders", () => {
+    expect(place("home")).toBe("all");
+    expect(place("home/briefs/2026")).toBe("all");
+  });
+
+  it("is projects anywhere under the projects folder", () => {
+    expect(place("home/projects")).toBe("projects");
+    expect(place("home/projects/loja/Meetings")).toBe("projects");
+  });
+
+  it("does not mistake a folder that only starts with the name", () => {
+    expect(place("home/projects-old")).toBe("all");
+  });
+
+  it("is public for the shared skill sets", () => {
+    expect(place("public")).toBe("public");
+    expect(place("public/core/skills")).toBe("public");
+  });
+
+  it("is the volume itself for the other volumes", () => {
+    expect(place("uploads/abc")).toBe("uploads");
+    expect(place("outputs")).toBe("outputs");
   });
 });

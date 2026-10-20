@@ -16,6 +16,12 @@ export interface ParsedSection {
   isHidden?: boolean;
   isSavedBlock?: boolean;
   isMultivariate?: boolean;
+  /**
+   * For a multivariate row, the wrapped section's own label — `label` reads
+   * "Variants of X" and callers that need just the X should not have to parse
+   * it back out of the sentence.
+   */
+  variantOf?: string;
 }
 
 /** A saved block's own `name`, or its resolveType humanized, or a positional fallback. */
@@ -107,6 +113,7 @@ export function parseSections(
             index: idx,
             resolveType: rt,
             label: `Variants of ${sectionLabel}`,
+            variantOf: sectionLabel,
             isHidden: true,
             isLazy: innerIsLazy,
           };
@@ -146,6 +153,7 @@ export function parseSections(
         index: idx,
         resolveType: rt,
         label: `Variants of ${sectionLabel}`,
+        variantOf: sectionLabel,
         isMultivariate: true,
         isLazy,
       };

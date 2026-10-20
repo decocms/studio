@@ -1,0 +1,622 @@
+import { buildSandboxUrl, type SandboxProxyRef } from "@/sdk/sandbox-url";
+
+export interface GitStatusFile {
+  path: string;
+  index: string;
+  working_dir: string;
+}
+
+export interface GitStatus {
+  not_added: string[];
+  conflicted: string[];
+  created: string[];
+  deleted: string[];
+  modified: string[];
+  renamed: unknown[];
+  files: GitStatusFile[];
+  staged: string[];
+  ahead: number;
+  behind: number;
+  current: string | null;
+  tracking: string | null;
+  detached: boolean;
+  base?: string;
+  aheadOfBase?: number;
+  behindBase?: number;
+  headSha?: string;
+  /** Commits on HEAD not on origin/<branch> (from /git/status). */
+  unpushed?: number;
+  /**
+   * base…head changed paths without their contents — the publish manifest.
+   * Fast Preview only: GitHub's compare response carries it for free, the
+   * sandbox daemon has no equivalent, so absent means "ask /git/diff instead".
+   */
+  changedFiles?: GitChangedFile[];
+  /** Changed-path count BEFORE the cap; `changedFiles` may be shorter. */
+  changedFilesTotal?: number;
+  /** True when the cap dropped paths — never offer an all-files action then. */
+  changedFilesTruncated?: boolean;
+}
+
+/** How a path changed between base and head. Mirrors the api's CompatChangedFile. */
+export interface GitChangedFile {
+  path: string;
+  status: "added" | "modified" | "removed" | "renamed";
+  /** Rename source; absent otherwise. */
+  previousPath?: string;
+}
+
+export interface GitDiffEntry {
+  from: string | null;
+  to: string | null;
+}
+
+export interface GitDiffResult {
+  diffs: Record<string, GitDiffEntry>;
+  mergeBaseSha?: string;
+}
+
+function buildSandboxGitUrl(ref: SandboxProxyRef, endpoint: string) {
+  return buildSandboxUrl(ref, `git/${endpoint}`);
+}
+
+/** Error carrying the HTTP status so callers can back off on unreachable
+ *  sandboxes (503 no runner, 410 handle gone) instead of polling forever. */
+class SandboxGitError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = "SandboxGitError";
+  }
+}
+
+/** The sandbox is gone / has no runner — polling it again won't help until
+ *  it's re-provisioned, so back off the interval rather than flood errors.
+ *  404 is the daemon's "sandbox not found" (handle idle-evicted); without it
+ *  the status poll keeps hammering `/git/status` every 3s against a sandbox
+ *  that no longer exists. 503 = no runner, 410 = handle gone. */
+export function isSandboxUnreachable(error: unknown): boolean {
+  return (
+    error instanceof SandboxGitError &&
+    (error.status === 503 || error.status === 410 || error.status === 404)
+  );
+}
+
+/**
+ * Retry predicate for the Fast Preview git queries: a 429 is GitHub refusing us
+ * for rate reasons, and retrying that is the burst that keeps the window shut.
+ * Everything else keeps the client's default single retry.
+ */
+function retryGitRequest(failureCount: number, error: unknown): boolean {
+  if (error instanceof SandboxGitError && error.status === 429) return false;
+  return failureCount < 1;
+}
+
+async function parseJson<T>(res: Response): Promise<T> {
+  let body: T & { error?: string };
+  try {
+    body = (await res.json()) as T & { error?: string };
+  } catch {
+    // Malformed body must surface as SandboxGitError, not a raw SyntaxError.
+    throw new SandboxGitError(`Request failed (${res.status})`, res.status);
+  }
+  if (!res.ok) {
+    throw new SandboxGitError(
+      typeof body.error === "string"
+        ? body.error
+        : `Request failed (${res.status})`,
+      res.status,
+    );
+  }
+  return body;
+}
+
+export interface SandboxGitCallOptions {
+  fastPreview?: boolean;
+}
+
+/** Never cache sandbox git/fs calls — 410 Gone must not stick in disk cache. */
+function sandboxFetch(url: string, init?: RequestInit): Promise<Response> {
+  return fetch(url, { cache: "no-store", ...init });
+}
+
+export async function fetchGitStatus(ref: SandboxProxyRef): Promise<GitStatus> {
+  const res = await sandboxFetch(buildSandboxGitUrl(ref, "status"), undefined);
+  return parseJson<GitStatus>(res);
+}
+
+export async function fetchGitDiff(
+  ref: SandboxProxyRef,
+  options?: { base?: string; headSha?: string },
+): Promise<GitDiffResult> {
+  // Always send a body, even when every field is absent (the working-tree
+  // diff). A bodyless POST is what broke the publish dialog: the Go daemon fed
+  // "" to json.Unmarshal and 400'd with "unexpected end of JSON input", which
+  // the dialog rendered raw. Every other call in this file already sends JSON.
+  const res = await sandboxFetch(buildSandboxGitUrl(ref, "diff"), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      ...(options?.base ? { base: options.base } : {}),
+      ...(options?.headSha ? { headSha: options.headSha } : {}),
+    }),
+  });
+  return parseJson<GitDiffResult>(res);
+}
+
+/**
+ * Drop auto-generated files (Tailwind CSS output, `blocks.gen.json`) from a
+ * diff before sending it to `judge-review`. Their full-content `from`/`to`
+ * bodies can be megabytes on their own and blew past the endpoint's 512KB body
+ * limit (413), and they carry no signal for the judge.
+ */
+export function stripGeneratedFilesFromDiff(
+  diff: GitDiffResult,
+): GitDiffResult {
+  const diffs: Record<string, GitDiffEntry> = {};
+  for (const [path, entry] of Object.entries(diff.diffs)) {
+    if (isBlocksGenJsonPath(path) || isTailwindCssPath(path)) continue;
+    diffs[path] = entry;
+  }
+  return { ...diff, diffs };
+}
+
+export async function publishGitChanges(
+  ref: SandboxProxyRef,
+  message: string,
+): Promise<void> {
+  const res = await sandboxFetch(buildSandboxGitUrl(ref, "publish"), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ message }),
+  });
+  await parseJson(res);
+}
+
+/**
+ * Sync the branch with `base`. On a git-level conflict the server resolves
+ * branch-wins — the branch's content wins for every path it touched. Not
+ * negotiable per call: a conflict dialog is worse than a branch-favoured merge
+ * for the non-technical editor, and the sandbox daemon has never offered the
+ * choice either.
+ */
+export async function rebaseGitBranch(
+  ref: SandboxProxyRef,
+  base: string,
+): Promise<void> {
+  const res = await sandboxFetch(buildSandboxGitUrl(ref, "rebase"), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ base }),
+  });
+  await parseJson(res);
+}
+
+/** Auto-generated by @decocms/start when `.deco/blocks/` changes. */
+function isBlocksGenJsonPath(path: string): boolean {
+  return path === "blocks.gen.json" || path.endsWith("/blocks.gen.json");
+}
+
+/** Auto-generated Tailwind CSS output. */
+function isTailwindCssPath(path: string): boolean {
+  return (
+    path === "static/tailwind.css" || path.endsWith("/static/tailwind.css")
+  );
+}
+
+/** Rewritten as a side effect of any save, and never reverted by an undo. */
+export function isGeneratedArtifactPath(path: string): boolean {
+  return (
+    isBlocksGenJsonPath(path) ||
+    isTailwindCssPath(path) ||
+    path.endsWith("generate.digests.json") ||
+    path.endsWith("meta.gen.json")
+  );
+}
+
+/** Uncommitted work that would actually change the site. */
+export function hasPublishableLocalWork(
+  status: GitStatus | null | undefined,
+): boolean {
+  if (!status) return false;
+  if (status.conflicted.length > 0 || status.renamed.length > 0) return true;
+  return [
+    ...status.modified,
+    ...status.created,
+    ...status.deleted,
+    ...status.not_added,
+    ...status.staged,
+  ].some((path) => !isGeneratedArtifactPath(path));
+}
+
+/**
+ * Nothing a publish could carry: no non-generated local change, no commit ahead
+ * of base, nothing unpushed. `false` for an absent status — "unknown" must never
+ * read as "empty". Answered from the deepened `/git/status` the publish dialog
+ * reads, so it is the same verdict that dialog would reach.
+ */
+export function hasNothingToReview(
+  status: GitStatus | null | undefined,
+): boolean {
+  if (!status) return false;
+  return (
+    !hasPublishableLocalWork(status) &&
+    (status.aheadOfBase ?? 0) === 0 &&
+    (status.unpushed ?? 0) === 0
+  );
+}
+
+/**
+ * CMS artifacts live under a `.deco/` directory. The `/.deco/` (and `/.deco`)
+ * forms also match projects whose package path isn't the repo root
+ * (`<pkg>/.deco/...`), matching how block writes are addressed elsewhere.
+ */
+function isDecoPath(path: string): boolean {
+  return (
+    path === ".deco" ||
+    path.endsWith("/.deco") ||
+    path.startsWith(".deco/") ||
+    path.includes("/.deco/")
+  );
+}
+
+/**
+ * Publish (squash-merge) is only allowed for CMS JSON under `.deco/` (plus
+ * generated assets). Decided from paths alone, so the gate can be resolved
+ * from the changed-file manifest before any file body has been fetched.
+ */
+export function isDecoOnlyPaths(paths: readonly string[]): boolean {
+  if (paths.length === 0) return false;
+  return paths.every(
+    (p) => isDecoPath(p) || isBlocksGenJsonPath(p) || isTailwindCssPath(p),
+  );
+}
+
+/** {@link isDecoOnlyPaths} over a loaded diff's paths. */
+export function isDecoOnlyDiff(
+  diff: GitDiffResult | null | undefined,
+): boolean {
+  if (!diff) return false;
+  return isDecoOnlyPaths(Object.keys(diff.diffs));
+}
+
+/**
+ * Per-code-agent policy controlling when a direct publish is allowed:
+ * - `smart` (default): a cheap AI judges whether the code needs review.
+ * - `code-review`: any code change requires review (only deco/design publishes).
+ * - `open`: everything publishes directly.
+ * Mirrors `PublishPolicy` in `@decocms/mesh-sdk` (kept local to avoid pulling
+ * the SDK into this browser module).
+ */
+export type PublishPolicy = "smart" | "code-review" | "open";
+
+export const DEFAULT_PUBLISH_POLICY: PublishPolicy = "smart";
+
+/** Coerce an untrusted `metadata.publishPolicy` value into a valid policy. */
+export function normalizePublishPolicy(value: unknown): PublishPolicy {
+  return value === "code-review" || value === "open" || value === "smart"
+    ? value
+    : DEFAULT_PUBLISH_POLICY;
+}
+
+/** Verdict from the cheap AI judge on whether a code diff needs human review. */
+export interface ReviewVerdict {
+  requiresReview: boolean;
+  reason: string;
+}
+
+/**
+ * Stable content fingerprint of a diff, used to cache the AI review verdict per
+ * distinct set of changes. Hashes every path plus its FULL from/to content, so
+ * any change to the diff yields a different signature. This matters for safety:
+ * the verdict is cached with `staleTime: Infinity`, so a fingerprint that
+ * collided on two different diffs could reuse a stale "publish allowed" verdict
+ * for code that actually needs review — failing open. A full-content djb2 hash
+ * avoids that (unlike a length+prefix fingerprint, which a length-preserving
+ * edit deep in a file can collide). Cheap: O(diff size), memoized by the React
+ * compiler on the stable diff reference.
+ */
+export function reviewDiffSignature(diff: GitDiffResult): string {
+  let hash = 5381;
+  const mix = (s: string) => {
+    for (let i = 0; i < s.length; i++) {
+      hash = ((hash << 5) + hash + s.charCodeAt(i)) | 0;
+    }
+  };
+  for (const path of Object.keys(diff.diffs).sort()) {
+    const entry = diff.diffs[path];
+    mix(path);
+    mix(" from:");
+    mix(entry?.from ?? "");
+    mix(" to:");
+    mix(entry?.to ?? "");
+    mix("  ");
+  }
+  return (hash >>> 0).toString(36);
+}
+
+/**
+ * Ask the server-side cheap-model judge whether this publish payload needs
+ * review. Only meaningful for `smart` policy on a diff that contains code
+ * (see `needsSmartReviewJudgment`). Generated files are stripped to keep the
+ * payload under the endpoint's body limit.
+ */
+export async function fetchReviewVerdict(
+  ref: SandboxProxyRef,
+  payload: { status: GitStatus; diff: GitDiffResult; language?: string },
+): Promise<ReviewVerdict> {
+  const res = await sandboxFetch(buildSandboxGitUrl(ref, "judge-review"), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      status: payload.status,
+      diff: stripGeneratedFilesFromDiff(payload.diff),
+      // The `reason` is shown to the user, so ask the model to write it in
+      // the UI language. This is a deliberate exception to "don't thread
+      // locale to the server" — it applies only to this displayed AI text.
+      ...(payload.language ? { language: payload.language } : {}),
+    }),
+  });
+  return parseJson<ReviewVerdict>(res);
+}
+
+export async function discardGitFiles(
+  ref: SandboxProxyRef,
+  filepaths: string[],
+): Promise<void> {
+  const res = await sandboxFetch(buildSandboxGitUrl(ref, "discard"), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ filepaths }),
+  });
+  await parseJson(res);
+}
+
+const GIT_HEAD_BRANCH_KEY = "current" satisfies keyof GitStatus;
+
+export function readGitHeadBranch(
+  status: GitStatus | null | undefined,
+): string | null {
+  return status?.[GIT_HEAD_BRANCH_KEY] ?? null;
+}
+
+/** Every session's status entry of one branch (the key minus `threadId`). */
+export function sandboxGitStatusQueryPrefix(
+  orgSlug: string,
+  virtualMcpId: string,
+  branch: string,
+) {
+  return ["sandbox-git-status", orgSlug, virtualMcpId, branch] as const;
+}
+
+export function sandboxGitStatusQueryKey(ref: SandboxProxyRef) {
+  return [
+    "sandbox-git-status",
+    ref.orgSlug,
+    ref.virtualMcpId,
+    ref.branch,
+    ref.threadId,
+  ] as const;
+}
+
+/**
+ * How long the changed-file manifest may be trusted before revalidating. A
+ * teammate's or the coding agent's commit can appear up to this late; the
+ * publish itself re-checks the head before it mutates anything, so the cost of
+ * being stale is a late-appearing card, never a publish of unseen work.
+ */
+const GIT_STATUS_STALE_MS = 5_000;
+
+/**
+ * The single definition of the git-status read. The Fast Preview header and the
+ * publish popover share one cache entry, so the popover opens on data the
+ * header already fetched — spread this into both rather than restating the key.
+ * Deliberately without `enabled`: `useSuspenseQuery` has no such option.
+ */
+export function sandboxGitStatusQueryOptions(ref: SandboxProxyRef) {
+  return {
+    queryKey: sandboxGitStatusQueryKey(ref),
+    queryFn: () => fetchGitStatus(ref),
+    staleTime: GIT_STATUS_STALE_MS,
+    retry: retryGitRequest,
+  };
+}
+
+function countGitChanges(status: GitStatus | null): number {
+  if (!status) return 0;
+  return (
+    status.modified.length +
+    status.created.length +
+    status.deleted.length +
+    status.not_added.length +
+    status.renamed.length
+  );
+}
+
+/** True when the working tree or index has uncommitted work. */
+export function hasGitLocalWork(status: GitStatus | null | undefined): boolean {
+  if (!status) return false;
+  return (
+    countGitChanges(status) > 0 ||
+    status.staged.length > 0 ||
+    status.conflicted.length > 0
+  );
+}
+
+/** True when the branch still needs commit and/or push (ignores base…head PR diff). */
+export function hasLocalWorkToPush(
+  status: GitStatus | null | undefined,
+): boolean {
+  if (!status) return false;
+  if (
+    hasGitLocalWork(status) ||
+    status.ahead > 0 ||
+    (status.unpushed ?? 0) > 0
+  ) {
+    return true;
+  }
+  // Legacy sandboxes omitted unpushed until origin/<branch> existed remotely.
+  return (
+    status.unpushed === undefined &&
+    (status.aheadOfBase ?? 0) > 0 &&
+    status.tracking == null
+  );
+}
+
+/** True when there is local work to commit, unpushed commits, or working-tree diff paths. */
+export function hasUnpublishedWork(
+  status: GitStatus | null | undefined,
+  diff: GitDiffResult | null | undefined,
+): boolean {
+  if (!status) return false;
+  return (
+    hasLocalWorkToPush(status) ||
+    (diff != null && Object.keys(diff.diffs).length > 0)
+  );
+}
+
+export interface PublishGate {
+  allowed: boolean;
+  reason: string | null;
+  /**
+   * `smart` policy only: the AI judge is still running, so the decision isn't
+   * known yet. The button should be disabled (not optimistically enabled) with
+   * a "reviewing" tooltip until the verdict arrives. `reason` is null here
+   * because the tooltip copy is i18n'd at the component level.
+   */
+  pending?: boolean;
+}
+
+/**
+ * Union of the committed base…head diff and the uncommitted working-tree diff —
+ * the full set of changes a direct publish squash-merges into base. Publish
+ * commits the working tree, then squash-merges base…HEAD, so the payload is
+ * both; the daemon can only return one diff at a time, so callers fetch both
+ * and combine here. Working-tree entries win for paths present in both (they
+ * hold the latest, about-to-be-committed content).
+ */
+export function combinePublishDiffs(
+  baseDiff: GitDiffResult | null | undefined,
+  workingDiff: GitDiffResult | null | undefined,
+): GitDiffResult {
+  return {
+    diffs: { ...(baseDiff?.diffs ?? {}), ...(workingDiff?.diffs ?? {}) },
+    ...(baseDiff?.mergeBaseSha ? { mergeBaseSha: baseDiff.mergeBaseSha } : {}),
+  };
+}
+
+/** Commits a publish would carry. A daemon that omits `aheadOfBase` is asked, not assumed clean. */
+export function mayHaveCommitsToPublish(status: GitStatus): boolean {
+  return (
+    status.aheadOfBase === undefined ||
+    status.aheadOfBase > 0 ||
+    status.ahead > 0 ||
+    (status.unpushed ?? 0) > 0
+  );
+}
+
+/**
+ * Everything a publish carries. Fast Preview has no working tree, so base…head
+ * is the whole of it; a sandbox publish also commits its working tree, and the
+ * daemon returns one diff per call, so both are fetched and combined.
+ */
+export async function fetchPublishDiff(
+  ref: SandboxProxyRef,
+  status: GitStatus,
+  base: string,
+  call?: SandboxGitCallOptions,
+): Promise<GitDiffResult> {
+  if (call?.fastPreview) return fetchGitDiff(ref, { base });
+  const baseOptions = status.headSha
+    ? { base, headSha: status.headSha }
+    : { base };
+  const [baseDiff, workingDiff] = await Promise.all([
+    mayHaveCommitsToPublish(status) ? fetchGitDiff(ref, baseOptions) : null,
+    hasGitLocalWork(status) ? fetchGitDiff(ref) : null,
+  ]);
+  return combinePublishDiffs(baseDiff, workingDiff);
+}
+
+/**
+ * Whether the changes may be squash-merged straight to base, bypassing review,
+ * for the given publish policy. `diff` must be the full publish payload (see
+ * `combinePublishDiffs`) so the gate sees every file — committed and
+ * uncommitted.
+ *
+ * This is the SYNCHRONOUS decision and covers every case except `smart` with
+ * code in the diff — that one needs the async AI verdict, so callers must first
+ * check `needsSmartReviewJudgment` and use `smartReviewGate` when it's true.
+ * (Calling this for that case falls back to the safe `code-review` behavior.)
+ */
+export function canPublishDirectly(
+  diff: GitDiffResult | null | undefined,
+  policy: PublishPolicy = "code-review",
+): PublishGate {
+  if (policy === "open") return { allowed: true, reason: null };
+  // `smart` deco-only diffs (and all `code-review`) fall through to the
+  // deco-only rule: content/design publishes, code is blocked. Reason is left
+  // null — the component renders a localized generic tooltip for this case.
+  return isDecoOnlyDiff(diff)
+    ? { allowed: true, reason: null }
+    : { allowed: false, reason: null };
+}
+
+/**
+ * The gate decided from the changed-file manifest alone — what the publish
+ * surface uses while file bodies are still loading, and what it falls back to
+ * when they fail to load at all.
+ *
+ * Never resolves to `allowed` on incomplete information: an empty path list is
+ * "not known yet", and `smart` policy over code returns `pending` so the button
+ * stays disabled until the judge (which needs the bodies) has actually run.
+ */
+export function resolvePathGate(
+  paths: readonly string[],
+  policy: PublishPolicy,
+): PublishGate {
+  if (paths.length === 0) return { allowed: false, reason: null };
+  if (policy === "open") return { allowed: true, reason: null };
+  if (isDecoOnlyPaths(paths)) return { allowed: true, reason: null };
+  if (policy === "smart")
+    return { allowed: false, reason: null, pending: true };
+  return { allowed: false, reason: null };
+}
+
+/**
+ * True when deciding the gate requires the async AI judge: `smart` policy on a
+ * non-empty diff that contains code. Deco-only diffs never need the judge
+ * (they always publish), and `code-review`/`open` are fully synchronous.
+ */
+export function needsSmartReviewJudgment(
+  diff: GitDiffResult | null | undefined,
+  policy: PublishPolicy,
+): boolean {
+  if (policy !== "smart") return false;
+  if (!diff || Object.keys(diff.diffs).length === 0) return false;
+  return !isDecoOnlyDiff(diff);
+}
+
+/**
+ * Resolve the gate for `smart` policy from the AI verdict.
+ * - While the judge is still running: block (`pending`) so the button can't be
+ *   clicked before the decision is known — the component shows a "reviewing"
+ *   tooltip.
+ * - When the judge is unavailable (no model provider, error → no verdict):
+ *   permissive, allow the direct publish rather than blocking on the AI.
+ * - Otherwise honour the verdict.
+ */
+export function smartReviewGate(
+  verdict: ReviewVerdict | null | undefined,
+  loading: boolean,
+): PublishGate {
+  if (loading) return { allowed: false, reason: null, pending: true };
+  if (!verdict) return { allowed: true, reason: null };
+  if (!verdict.requiresReview) return { allowed: true, reason: null };
+  // The AI reason is localized (the judge is asked to write in the UI
+  // language); show it. Fall back to null so the component renders its own
+  // localized generic message when the model returned no reason.
+  const reason = verdict.reason?.trim();
+  return { allowed: false, reason: reason ? reason : null };
+}

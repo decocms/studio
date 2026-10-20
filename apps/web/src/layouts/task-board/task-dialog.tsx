@@ -1,18 +1,23 @@
-import { Fragment, useRef, useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
+import type { TaskBoardItemType } from "./config";
+import type { TaskBoardItem } from "./config";
+import type { TaskBoardItemPr } from "./config";
+import type { TaskBoardItemPriority } from "./config";
+import type { TaskBoardItemStatus } from "./config";
+import type { TaskBoardItemThread } from "./config";
+import type { TaskBoardActivity } from "@/hooks/use-task-board-activity";
+import type { CommentAuthor } from "./task-comments";
+import type { TaskComment } from "./task-comments";
+import { useParams } from "@tanstack/react-router";
+import { taskSharePath } from "./task-route";
+import { Fragment, useRef, useState } from "react";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import {
   Dialog,
   DialogContent,
   DialogTitle,
 } from "@decocms/ui/components/dialog.tsx";
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "@decocms/ui/components/breadcrumb.tsx";
+import { Page } from "@/components/page";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -27,6 +32,12 @@ import {
 } from "@decocms/ui/components/popover.tsx";
 import { Calendar as DayPickerCalendar } from "@decocms/ui/components/calendar.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
+import { IconButton } from "@decocms/ui/components/icon-button.tsx";
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from "@decocms/ui/components/alert.tsx";
 import { Avatar } from "@decocms/ui/components/avatar.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import {
@@ -63,14 +74,20 @@ import {
   Link03,
   Tag01,
   Trash03,
+  User01,
   UserPlus01,
   X,
+  Zap,
+  Inbox01,
 } from "@untitledui/icons";
+import { useTaskBoardSprints } from "@/hooks/use-task-board-sprints";
+import { formatSprintDays, sprintLabel } from "./sprint-label";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
 import { ReviewerIcon } from "@/components/reviewer-icon";
 import { MemoizedMarkdown } from "@/components/chat/markdown";
 import {
   CANONICAL_COLUMN_KEYS,
+  canRunReviewerManually,
   isReportsTask,
   isReviewerThreadTitle,
 } from "@decocms/shared/task-board";
@@ -86,23 +103,16 @@ import {
   PRIORITY_CONFIG,
   TASK_TYPE_CONFIG,
   TASK_TYPES,
-  type TaskBoardItemType,
   DEFAULT_TASK_TYPE,
   laneHeader,
   laneVisual,
   STATUS_CONFIG,
-  moveTargets,
   statusIconClassName,
   SUPER_AGENT_ASSIGNEE_ID,
   isFeedWorthyActivity,
   isLiveAttempt,
   tagDotColor,
   type Member,
-  type TaskBoardItem,
-  type TaskBoardItemPr,
-  type TaskBoardItemPriority,
-  type TaskBoardItemStatus,
-  type TaskBoardItemThread,
 } from "./config";
 import { summarizeTaskCost } from "./task-cost";
 import {
@@ -110,29 +120,32 @@ import {
   isSuccessfulCheck,
   prCardActions,
 } from "./pr-card-actions";
+import { PreviewButton } from "./preview-button";
+import { decodeRunFailureReason, lastRunFailure } from "./run-failure";
+import { githubReauthUrl } from "./github-reauth-url";
+import { useRepositories } from "@/hooks/use-git-providers";
+import { SANDBOX_START_ERROR_CODES } from "@decocms/shared/sandbox-start-errors";
 import { toast } from "sonner";
 import { useTaskBoardItemPrs } from "@/hooks/use-task-board-item-prs";
-import { usePreviewProbe } from "@/hooks/use-preview-probe";
-import {
-  useTaskBoardActivity,
-  type TaskBoardActivity,
-} from "@/hooks/use-task-board-activity";
-import {
-  useOrgFlag,
-  useReviewerEnabled,
-} from "@/hooks/use-organization-settings";
+import { useTaskBoardActivity } from "@/hooks/use-task-board-activity";
+import { useReviewerEnabled } from "@/hooks/use-organization-settings";
 import { usePromoteToProduction } from "@/hooks/use-promote-to-production";
 import { useResolveConflict } from "@/hooks/use-resolve-conflict";
-import {
-  enabledReviewers,
-  laneCanShip,
-  reviewsSatisfiedForPromotion,
-} from "./review-status";
+import { useRunReviewer } from "@/hooks/use-run-reviewer";
+import { laneCanShip } from "./review-status";
 import { formatTimeAgo } from "@/lib/format-time";
-import { GitHubIcon } from "@/components/icons/github-icon";
+import { GitProviderIcon } from "@/components/icons/git-provider-icon";
+import {
+  changeRequestNumberLabel,
+  parseChangeRequestUrl,
+} from "@decocms/shared/git-providers";
 import { useConnections, useProjectContext } from "@/sdk";
 import { NO_TASKS, useProjectIndex } from "@/hooks/use-project-index";
-import { entryForFilter, stampableEntries } from "@/lib/project-index";
+import {
+  entryForFilter,
+  stampableEntries,
+  stampFor,
+} from "@/lib/project-index";
 import { ProjectEntryIcon, ProjectEntryRow } from "@/components/project-entry";
 import { listRepoScopeLabels } from "@decocms/shared/github-repo-scope";
 import { isResolvedRunFailure } from "@decocms/shared/entities";
@@ -142,14 +155,16 @@ import { extractDescriptionLinks } from "./description-links";
 import { TaskThreadSheet } from "./task-thread-sheet";
 import { taskKey } from "@decocms/shared/task-key";
 import { authClient } from "@/lib/auth-client";
+import { CommentThreadCard } from "./task-comments";
 import {
-  CommentThreadCard,
-  NewCommentComposer,
-  type CommentAuthor,
-  type TaskComment,
-} from "./task-comments";
-import { useTaskBoardComments } from "@/hooks/use-task-board-comments";
+  humanFacing,
+  type TaskBoardCommentThread,
+  useBehindTheScenes,
+  useTaskBoardComments,
+} from "@/hooks/use-task-board-comments";
 import { SubscribeToggle } from "./subscribe-button";
+import { TaskConversationFrame } from "./task-conversation-frame";
+import { TaskMessage } from "./task-message";
 
 // ponytail: pinned to end-of-day so "due today" doesn't flip to overdue
 // mid-morning. Local zone in, UTC out.
@@ -180,8 +195,12 @@ type TaskForm = {
   type: TaskBoardItemType;
   assigneeId: string | null;
   repo: string | null;
+  /** The project picked, written beside `repo`; see `stampFor`. */
+  virtualMcpId: string | null;
   dueDate: Date | null;
   tagIds: string[];
+  /** Create mode only; an existing card's sprint is read live off the item. */
+  sprintId: string | null;
 };
 
 /**
@@ -235,6 +254,36 @@ const EMPTY_PROPERTY = "opacity-50";
  * Hidden entirely when no run recorded usage, so a card that never ran shows
  * nothing rather than a $0.00 we did not measure.
  */
+/** One row of the Sprint property's picker. */
+function SprintOption({
+  icon,
+  label,
+  hint,
+  selected,
+  onSelect,
+}: {
+  icon: ReactNode;
+  label: string;
+  hint?: string | null;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-foreground hover:bg-accent"
+      onClick={onSelect}
+    >
+      {icon}
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      {hint && (
+        <span className="shrink-0 text-xs text-muted-foreground">{hint}</span>
+      )}
+      {selected && <Check size={14} className="shrink-0" />}
+    </button>
+  );
+}
+
 function TaskCost({ threads }: { threads?: TaskBoardItemThread[] }) {
   const t = useT();
   const summary = summarizeTaskCost(threads);
@@ -353,7 +402,13 @@ function RecordSection({
         </CollapsibleTrigger>
         {action}
       </div>
-      <CollapsibleContent>{children}</CollapsibleContent>
+      {/* Radix clips this to animate its HEIGHT, and a card inside draws its
+          hairline outside its own box. So the clip box grows by a margin, which
+          leaves the animated height alone, and an inner pad puts the content
+          back where it was. Padding here instead would stop it collapsing. */}
+      <CollapsibleContent className="-mx-2 -mb-2">
+        <div className="px-2 pb-2">{children}</div>
+      </CollapsibleContent>
     </Collapsible>
   );
 }
@@ -369,6 +424,17 @@ interface TaskEditorProps {
   /** In create mode, the status to start the new task in (e.g. the lane the
    * "+" was clicked from). Falls back to "triage". */
   defaultStatus?: TaskBoardItemStatus;
+  /** In create mode, the project to stamp the new task with (the board's own,
+   * or the active Project filter's), so a card made while the board is
+   * narrowed to a project belongs to it. */
+  defaultProject?: { repo: string | null; virtualMcpId: string | null };
+  /** In create mode, the sprint to plan the new task into (the one the board
+   * is showing); null for the backlog. */
+  defaultSprintId?: string | null;
+  /** Edit mode only: move the task to a sprint, or null for the backlog. Its
+   * own write, not part of the autosave: a sprint completed while the card is
+   * open moves it, and a later edit must not move it back. */
+  onSetSprint?: (sprintId: string | null) => void;
   onSubmit: (input: {
     title: string;
     description: string | null;
@@ -377,8 +443,11 @@ interface TaskEditorProps {
     type: TaskBoardItemType;
     assigneeId: string | null;
     repo: string | null;
+    virtualMcpId: string | null;
     dueDate: string | null;
     tagIds: string[];
+    /** Create mode only. */
+    sprintId?: string | null;
   }) => void;
   onDelete?: () => void;
   /** Edit mode only: create a copy of this task. */
@@ -413,6 +482,9 @@ function TaskBoardItemEditor({
   onClose,
   item,
   defaultStatus,
+  defaultProject,
+  defaultSprintId,
+  onSetSprint,
   onSubmit,
   onDelete,
   onClone,
@@ -425,9 +497,9 @@ function TaskBoardItemEditor({
 }: TaskEditorProps) {
   const t = useT();
   const { org } = useProjectContext();
+  const { agentId } = useParams({ strict: false });
   const { data } = useMembers();
   const members = (data?.data?.members ?? []) as Member[];
-  const deliveryEnabled = useOrgFlag("delivery_lanes_enabled");
   const { handleCopy, copied } = useCopy();
   const { handleCopy: copyLink, copied: linkCopied } = useCopy();
   const { handleCopy: copyId, copied: idCopied } = useCopy();
@@ -450,12 +522,25 @@ function TaskBoardItemEditor({
     priority: item?.priority ?? "medium",
     type: item?.type ?? DEFAULT_TASK_TYPE,
     assigneeId: item?.assigneeId ?? null,
-    repo: item?.repo ?? null,
+    // Edit keeps the card's own; create seeds from the active project.
+    repo: item ? item.repo : (defaultProject?.repo ?? null),
+    virtualMcpId: item
+      ? item.virtualMcpId
+      : (defaultProject?.virtualMcpId ?? null),
     dueDate: parseIsoDate(item?.dueDate),
     tagIds: item?.tags.map((tag) => tag.id) ?? [],
+    sprintId: defaultSprintId ?? null,
   });
-  const { title, description, status, priority, assigneeId, repo, dueDate } =
-    form;
+  const {
+    title,
+    description,
+    status,
+    priority,
+    assigneeId,
+    repo,
+    virtualMcpId,
+    dueDate,
+  } = form;
   /**
    * The bucket this card's repository belongs to, so the control shows the
    * PROJECT — its avatar and its name — rather than the string underneath.
@@ -465,11 +550,18 @@ function TaskBoardItemEditor({
    * its project and should say so. The reachability gate decides what you can
    * PICK, not what an existing value is called. Undefined only when nothing in
    * the org names that repository, which renders as the raw `owner/name`.
+   *
+   * A stamped project names itself, which on a repository several projects
+   * share is the only way to tell which one.
    */
-  const selectedEntry = repo ? entryForFilter(repo, projectIndex) : undefined;
+  const selectedEntry =
+    (virtualMcpId ? entryForFilter(virtualMcpId, projectIndex) : undefined) ??
+    (repo ? entryForFilter(repo, projectIndex) : undefined);
   const taskType = form.type;
   const tagIds = form.tagIds;
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
+  const [editingPost, setEditingPost] = useState(!item);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [descriptionOverflows, setDescriptionOverflows] = useState(false);
   const collapseDescription = descriptionOverflows && !descriptionExpanded;
   /** Measured against the collapsed cap, not the rendered box, so expanding
@@ -484,6 +576,18 @@ function TaskBoardItemEditor({
     return () => observer.disconnect();
   };
   const [dueOpen, setDueOpen] = useState(false);
+  const [sprintOpen, setSprintOpen] = useState(false);
+  const sprints = useTaskBoardSprints();
+  const sprintId = item ? item.sprintId : form.sprintId;
+  const selectedSprint = sprints.find((sprint) => sprint.id === sprintId);
+  const plannableSprints = sprints.filter(
+    (sprint) => sprint.state !== "closed",
+  );
+  const pickSprint = (next: string | null) => {
+    setSprintOpen(false);
+    if (item) onSetSprint?.(next);
+    else patch({ sprintId: next });
+  };
   const [assigneeOpen, setAssigneeOpen] = useState(false);
   const [tagsOpen, setTagsOpen] = useState(false);
   /** The linked run being read in the sheet, by id rather than by object: a
@@ -515,8 +619,10 @@ function TaskBoardItemEditor({
       type: v.type,
       assigneeId: v.assigneeId,
       repo: v.repo,
+      virtualMcpId: v.virtualMcpId,
       dueDate: v.dueDate ? toEndOfDayIso(v.dueDate) : null,
       tagIds: v.tagIds,
+      ...(item ? {} : { sprintId: v.sprintId }),
     });
   };
 
@@ -634,6 +740,11 @@ function TaskBoardItemEditor({
   const assignedBy = item?.assignedBy
     ? members.find((m) => m.userId === item.assignedBy)
     : undefined;
+  /** Who filed the task. Read-only; `system`-authored (Reports import) shows
+   *  as "Report", a departed author resolves to no member. */
+  const creator = item
+    ? members.find((m) => m.userId === item.createdBy)
+    : undefined;
   const StatusIcon = laneVisual(status).icon;
   // Reports-generated tasks: content (title/description/priority) is owned by
   // the reports sync, which refreshes it on open items — TASK_BOARD_ITEM_UPDATE
@@ -642,354 +753,445 @@ function TaskBoardItemEditor({
   const contentLocked = !!item && isReportsTask(item);
 
   /** Header row: what the task is on the left, its actions on the right. */
-  const header = (
-    <div className="flex shrink-0 items-center justify-between gap-2 px-6 pb-4 pt-6 sm:px-8">
-      {chrome === "page" ? (
-        /* The page's way back out. The key doubles as the trail's leaf, so
-             there is no separate id chip in this chrome. */
-        <Breadcrumb className="-ml-2">
-          <BreadcrumbList className="text-[15px]">
-            <BreadcrumbItem>
-              {/* A button, not an anchor: leaving flushes a pending autosave
-                    and the board it returns to is a search-param away, not a
-                    document to link to. */}
-              <BreadcrumbLink
-                asChild
-                className="rounded-md px-2 py-1 text-muted-foreground hover:bg-accent"
-              >
-                <button type="button" onClick={close}>
-                  {t("taskBoard.taskDetail.breadcrumbTasks")}
-                </button>
-              </BreadcrumbLink>
-            </BreadcrumbItem>
-            <BreadcrumbSeparator />
-            <BreadcrumbItem>
-              <BreadcrumbPage className="px-2 py-1">
-                {key ?? t("taskBoard.taskDetail.breadcrumbTask")}
-              </BreadcrumbPage>
-            </BreadcrumbItem>
-          </BreadcrumbList>
-        </Breadcrumb>
-      ) : /* Null only for a card written before the key backfill, which has
-              no key to show. */
-      key ? (
+  /** The task's own actions. A page hands them to the page header beside
+   *  its trail; a dialog has no header to give them to. */
+  const actions = (
+    <div className="flex items-center gap-2">
+      {item && (
         <Button
           variant="ghost"
           size="sm"
-          title={key}
-          aria-label={t("taskBoard.taskDialog.copyIdAriaLabel")}
-          /* -ml-2 cancels the button's own padding so the glyph starts on
-                 the pane's 32px gutter, as drawn. */
-          className="-ml-2 gap-2 px-2 text-[15px] text-muted-foreground hover:text-foreground"
-          onClick={() => {
-            copyId(key);
-            toast.success(t("taskBoard.taskDialog.idCopied"));
-          }}
+          className="lg:hidden"
+          onClick={() => setDetailsOpen((value) => !value)}
+          aria-expanded={detailsOpen}
         >
-          {idCopied ? <Check size={16} /> : <Bookmark size={16} />}
-          {key}
+          {t("taskBoard.conversation.details")}
         </Button>
-      ) : (
-        /* Create mode: the key is minted on save. A placeholder keeps the
-               row from reading as broken. */
-        <span
-          aria-hidden
-          className="flex h-7 items-center gap-2 text-[15px] text-muted-foreground opacity-50"
-        >
-          <Bookmark size={16} />–
+      )}
+      {/* Autosave has no button, so this is the only sign of a write. */}
+      {item && isSaving && (
+        <span className="mr-1 text-sm text-muted-foreground">
+          {t("taskBoard.taskDialog.savingLabel")}
         </span>
       )}
-
-      <div className="flex items-center gap-0.5">
-        {/* Autosave has no button, so this is the only sign of a write. */}
-        {item && isSaving && (
-          <span className="mr-1 text-sm text-muted-foreground">
-            {t("taskBoard.taskDialog.savingLabel")}
-          </span>
-        )}
-        {item?.externalUrl && (
-          /* The card's issue in the tracker it came from. It used to be the
+      {item?.externalUrl && (
+        /* The card's issue in the tracker it came from. It used to be the
              first line of the description, which put it in every agent
              prompt — it is a link for a person, so it lives here. */
-          <Button
-            asChild
-            variant="ghost"
-            size="icon-sm"
-            aria-label={t("taskBoard.taskDialog.openInTrackerAriaLabel")}
-            title={item.externalUrl}
-            className="text-muted-foreground hover:text-foreground"
+        <IconButton
+          asChild
+          variant="secondary"
+          label={t("taskBoard.taskDialog.openInTrackerAriaLabel")}
+        >
+          <a href={item.externalUrl} target="_blank" rel="noreferrer">
+            <LinkExternal01 size={16} />
+          </a>
+        </IconButton>
+      )}
+      {item && (
+        <>
+          <IconButton
+            variant="secondary"
+            label={t("taskBoard.taskDialog.shareAriaLabel")}
+            onClick={() => {
+              copyLink(
+                `${window.location.origin}${taskSharePath(org.slug, item, agentId)}`,
+              );
+              toast.success(t("taskBoard.taskDialog.linkCopied"));
+            }}
           >
-            <a href={item.externalUrl} target="_blank" rel="noreferrer">
-              <LinkExternal01 size={16} />
-            </a>
-          </Button>
-        )}
-        {item && (
-          <>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label={t("taskBoard.taskDialog.shareAriaLabel")}
-              title={t("taskBoard.taskDialog.shareTitle")}
-              className="text-muted-foreground hover:text-foreground"
-              onClick={() => {
-                copyLink(
-                  `${window.location.origin}/${org.slug}/tasks/${key ?? item.id}`,
-                );
-                toast.success(t("taskBoard.taskDialog.linkCopied"));
-              }}
-            >
-              {linkCopied ? <Check size={16} /> : <Link03 size={16} />}
-            </Button>
-            {/* Non-modal: a modal menu blocks outside pointer events by
+            {linkCopied ? <Check size={16} /> : <Link03 size={16} />}
+          </IconButton>
+          {/* Non-modal: a modal menu blocks outside pointer events by
                     setting `pointer-events: none` on <body>, and half these
                     items unmount the dialog they live in — leaving that style
                     behind with no layer to restore it. */}
-            <DropdownMenu modal={false}>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={t("taskBoard.taskDialog.moreActionsAriaLabel")}
-                  className="text-muted-foreground hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground"
+          <DropdownMenu modal={false}>
+            <DropdownMenuTrigger asChild>
+              {/* A plain Button, not IconButton: `asChild` has to land on the
+                  button itself, and IconButton would put a Tooltip root in
+                  between, which silently swallows the trigger props. */}
+              <Button
+                variant="secondary"
+                size="icon-sm"
+                aria-label={t("taskBoard.taskDialog.moreActionsAriaLabel")}
+              >
+                <DotsHorizontal size={16} />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              {onNewChat && (
+                <DropdownMenuItem onSelect={onNewChat}>
+                  <Edit05 size={16} />
+                  {t("taskBoard.taskDialog.newChatButton")}
+                </DropdownMenuItem>
+              )}
+              {showAutoFix && (
+                <DropdownMenuItem onSelect={onAutoFix}>
+                  <Lightning01 size={16} />
+                  {t("taskBoard.taskBoard.autoFix")}
+                </DropdownMenuItem>
+              )}
+              {showRerun && (
+                <DropdownMenuItem onSelect={onRerun}>
+                  <RefreshCw01 size={16} />
+                  {t("taskBoard.taskBoard.rerun")}
+                </DropdownMenuItem>
+              )}
+              {(onNewChat || showAutoFix || showRerun) && (
+                <DropdownMenuSeparator />
+              )}
+              {description && (
+                <DropdownMenuItem onSelect={() => handleCopy(description)}>
+                  {copied ? <Check size={16} /> : <Copy01 size={16} />}
+                  {t("taskBoard.taskDialog.copyDescription")}
+                </DropdownMenuItem>
+              )}
+              {onClone && (
+                <DropdownMenuItem onSelect={onClone}>
+                  <Copy06 size={16} />
+                  {t("taskBoard.taskDialog.cloneTask")}
+                </DropdownMenuItem>
+              )}
+              {onArchive && status !== "archived" && (
+                <DropdownMenuItem
+                  onSelect={() => {
+                    cancelPending();
+                    onArchive();
+                  }}
                 >
-                  <DotsHorizontal size={16} />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                {onNewChat && (
-                  <DropdownMenuItem onSelect={onNewChat}>
-                    <Edit05 size={16} />
-                    {t("taskBoard.taskDialog.newChatButton")}
-                  </DropdownMenuItem>
-                )}
-                {showAutoFix && (
-                  <DropdownMenuItem onSelect={onAutoFix}>
-                    <Lightning01 size={16} />
-                    {t("taskBoard.taskBoard.autoFix")}
-                  </DropdownMenuItem>
-                )}
-                {showRerun && (
-                  <DropdownMenuItem onSelect={onRerun}>
-                    <RefreshCw01 size={16} />
-                    {t("taskBoard.taskBoard.rerun")}
-                  </DropdownMenuItem>
-                )}
-                {(onNewChat || showAutoFix || showRerun) && (
-                  <DropdownMenuSeparator />
-                )}
-                {description && (
-                  <DropdownMenuItem onSelect={() => handleCopy(description)}>
-                    {copied ? <Check size={16} /> : <Copy01 size={16} />}
-                    {t("taskBoard.taskDialog.copyDescription")}
-                  </DropdownMenuItem>
-                )}
-                {onClone && (
-                  <DropdownMenuItem onSelect={onClone}>
-                    <Copy06 size={16} />
-                    {t("taskBoard.taskDialog.cloneTask")}
-                  </DropdownMenuItem>
-                )}
-                {onArchive && status !== "archived" && (
-                  <DropdownMenuItem
-                    onSelect={() => {
-                      cancelPending();
-                      onArchive();
-                    }}
-                  >
-                    <Archive size={16} />
-                    {t("taskBoard.taskDialog.archiveTask")}
-                  </DropdownMenuItem>
-                )}
-                {onDelete && (
-                  /* Drop the pending autosave first: flushing it on the
+                  <Archive size={16} />
+                  {t("taskBoard.taskDialog.archiveTask")}
+                </DropdownMenuItem>
+              )}
+              {onDelete && (
+                /* Drop the pending autosave first: flushing it on the
                          way out would write to the row being deleted. */
-                  <DropdownMenuItem
-                    variant="destructive"
-                    onSelect={() => {
-                      cancelPending();
-                      onDelete();
-                    }}
-                  >
-                    <Trash03 size={16} />
-                    {t("taskBoard.taskDialog.deleteTask")}
-                  </DropdownMenuItem>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </>
-        )}
-        {chrome === "dialog" && (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={t("taskBoard.taskDialog.closeAriaLabel")}
-            className="text-muted-foreground hover:text-foreground"
-            onClick={close}
-          >
-            <X size={16} />
-          </Button>
-        )}
-      </div>
+                <DropdownMenuItem
+                  variant="destructive"
+                  onSelect={() => {
+                    cancelPending();
+                    onDelete();
+                  }}
+                >
+                  <Trash03 size={16} />
+                  {t("taskBoard.taskDialog.deleteTask")}
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </>
+      )}
+      {chrome === "dialog" && (
+        <IconButton
+          variant="secondary"
+          label={t("taskBoard.taskDialog.closeAriaLabel")}
+          onClick={close}
+        >
+          <X size={16} />
+        </IconButton>
+      )}
     </div>
   );
+
+  /** Header row: only a DIALOG draws one. A page hands the same three things
+   *  to the page header instead — its trail, its title and its actions — the
+   *  way Library hands over its folder trail. The "Tasks" crumb stays a button
+   *  rather than a link: leaving flushes a pending autosave, and the board it
+   *  returns to is a search-param away. The key doubles as the trail's leaf, so
+   *  a page shows no id chip. */
+  const header =
+    chrome === "page" ? (
+      <>
+        <Page.Breadcrumbs
+          after="page"
+          parent={{
+            label: t("taskBoard.taskDetail.breadcrumbTasks"),
+            onSelect: close,
+          }}
+          items={[
+            {
+              key: "task",
+              label: key ?? t("taskBoard.taskDetail.breadcrumbTask"),
+            },
+          ]}
+        />
+        <Page.Actions>{actions}</Page.Actions>
+      </>
+    ) : (
+      <div className="flex shrink-0 items-center justify-between gap-2 px-6 pb-4 pt-6 sm:px-8">
+        {/* Null only for a card written before the key backfill, which has
+            no key to show. */}
+        {key ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            title={key}
+            aria-label={t("taskBoard.taskDialog.copyIdAriaLabel")}
+            /* -ml-2 cancels the button's own padding so the glyph starts on
+                 the pane's 32px gutter, as drawn. */
+            className="-ml-2 gap-2 px-2 text-[15px] text-muted-foreground hover:text-foreground"
+            onClick={() => {
+              copyId(key);
+              toast.success(t("taskBoard.taskDialog.idCopied"));
+            }}
+          >
+            {idCopied ? <Check size={16} /> : <Bookmark size={16} />}
+            {key}
+          </Button>
+        ) : (
+          /* Create mode: the key is minted on save. A placeholder keeps the
+               row from reading as broken. */
+          <span
+            aria-hidden
+            className="flex h-7 items-center gap-2 text-[15px] text-muted-foreground opacity-50"
+          >
+            <Bookmark size={16} />–
+          </span>
+        )}
+
+        {actions}
+      </div>
+    );
 
   const body = (
     <>
       {/* Above the scroll area, so it never moves. The page centers it on the
           same column as the content below. */}
       {chrome === "page" ? (
-        <div className="mx-auto w-full max-w-[1040px]">{header}</div>
+        <div className={cn("mx-auto w-full", "max-w-[1280px]")}>{header}</div>
       ) : (
         header
       )}
 
-      {/* The one scroll container, and it spans the full width so the
-          scrollbar rides the window's edge rather than the centered column's.
-          Task and properties scroll together, so the wheel works with the
-          pointer anywhere. */}
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+      {/* The conversation and inspector each own their scroll position. */}
+      <div
+        className={cn(
+          "flex min-h-0 flex-1 flex-col",
+          item ? "overflow-hidden" : "overflow-y-auto",
+        )}
+      >
         <div
           className={cn(
-            "flex flex-col sm:flex-row",
-            chrome === "page" && "mx-auto w-full max-w-[1040px]",
+            "flex flex-col",
+            "min-h-0 flex-1 lg:flex-row",
+            chrome === "page" && "mx-auto w-full",
+            chrome === "page" && "max-w-[1280px]",
           )}
         >
-          {/* Editor pane — content-height on mobile so it doesn't leave a big
-              gap above the properties; fills the column on desktop. */}
-          <div className="flex min-w-0 flex-col gap-2 p-6 sm:flex-1 sm:p-8 sm:pt-6">
-            <div>
-              <textarea
-                ref={(el) => {
-                  if (!el) return;
-                  el.style.height = "auto";
-                  el.style.height = `${el.scrollHeight}px`;
-                }}
-                value={title}
-                onChange={(e) => {
-                  if (contentLocked) return;
-                  patch({ title: e.target.value }, true);
-                  e.target.style.height = "auto";
-                  e.target.style.height = `${e.target.scrollHeight}px`;
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") e.preventDefault();
-                }}
-                onBlur={flush}
-                placeholder={t("taskBoard.taskDialog.taskTitlePlaceholder")}
-                autoFocus
-                rows={1}
-                readOnly={contentLocked}
-                className={cn(
-                  "w-full resize-none overflow-hidden border-0 bg-transparent text-2xl font-semibold leading-snug text-foreground outline-none placeholder:text-foreground/30",
-                  contentLocked && "cursor-default",
-                )}
-              />
-              {contentLocked && (
-                <p className="mb-3 mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <Lock01 size={12} />
-                  {t("taskBoard.taskDialog.reportsContentLocked")}
-                </p>
-              )}
-            </div>
-
-            <div className="flex flex-col">
-              <div className="flex flex-col py-6">
-                <div
-                  // Clip only while folded: the image node's remove button is
-                  // absolute and reaches outside a 1px image's box, so a
-                  // permanent clip puts it out of reach.
-                  className={cn(
-                    "relative",
-                    collapseDescription && "overflow-hidden",
-                  )}
-                  style={
-                    collapseDescription
-                      ? { maxHeight: DESCRIPTION_MAX_HEIGHT }
-                      : undefined
-                  }
-                  // Expand before editing: no caret under the fold.
-                  onFocusCapture={() => setDescriptionExpanded(true)}
-                  onBlurCapture={flush}
-                >
-                  <div ref={measureDescription} data-testid="task-description">
-                    {/* Markdown in, markdown out — the value also becomes
-                        prompt context for the agent, and plain-text
-                        descriptions written before this editor existed still
-                        parse as-is. */}
-                    <MarkdownEditor
-                      defaultValue={description}
-                      onChange={(next) => patch({ description: next }, true)}
-                      placeholder={t(
-                        "taskBoard.taskDialog.descriptionPlaceholder",
+          {/* The original post and conversation share one reading column. */}
+          <TaskConversationFrame item={item} hidden={!!item && detailsOpen}>
+            <div className="flex min-w-0 flex-col gap-2 px-5 py-6 sm:px-8">
+              {item && (
+                <div className="mb-3 flex items-center gap-2 text-sm text-muted-foreground">
+                  <Avatar
+                    url={creator?.user?.image ?? undefined}
+                    fallback={getInitials(creator?.user?.name)}
+                    shape="circle"
+                    size="xs"
+                  />
+                  <span className="font-medium text-foreground">
+                    {isReportsTask(item)
+                      ? t("taskBoard.taskDialog.createdBySystemLabel")
+                      : (creator?.user?.name ??
+                        t("taskBoard.taskDialog.unknownCreatorLabel"))}
+                  </span>
+                  <time dateTime={item.createdAt}>
+                    {formatTimeAgo(new Date(item.createdAt))}
+                  </time>
+                  {!contentLocked && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="ml-auto"
+                      onClick={() => {
+                        flush();
+                        setEditingPost((value) => !value);
+                      }}
+                    >
+                      {t(
+                        editingPost
+                          ? "taskBoard.conversation.doneEditing"
+                          : "taskBoard.conversation.edit",
                       )}
-                      editable={!contentLocked}
-                    />
-                  </div>
-                  {collapseDescription && (
-                    <div
-                      aria-hidden
-                      className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-background to-transparent"
-                    />
+                    </Button>
                   )}
                 </div>
-                {descriptionOverflows && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="mt-2 w-fit text-muted-foreground hover:text-foreground"
-                    onClick={() => setDescriptionExpanded((open) => !open)}
-                  >
-                    <ChevronDown
-                      size={14}
-                      className={cn(
-                        "transition-transform",
-                        descriptionExpanded && "rotate-180",
-                      )}
-                    />
-                    {t(
-                      descriptionExpanded
-                        ? "taskBoard.taskDialog.showLess"
-                        : "taskBoard.taskDialog.showMore",
+              )}
+              <div>
+                {item && !editingPost ? (
+                  <h1 className="text-2xl font-semibold leading-snug text-foreground">
+                    {title}
+                  </h1>
+                ) : (
+                  <textarea
+                    ref={(el) => {
+                      if (!el) return;
+                      el.style.height = "auto";
+                      el.style.height = `${el.scrollHeight}px`;
+                    }}
+                    value={title}
+                    onChange={(e) => {
+                      if (contentLocked) return;
+                      patch({ title: e.target.value }, true);
+                      e.target.style.height = "auto";
+                      e.target.style.height = `${e.target.scrollHeight}px`;
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") e.preventDefault();
+                    }}
+                    onBlur={flush}
+                    placeholder={t("taskBoard.taskDialog.taskTitlePlaceholder")}
+                    autoFocus={!item}
+                    rows={1}
+                    readOnly={contentLocked}
+                    className={cn(
+                      "w-full resize-none overflow-hidden border-0 bg-transparent text-2xl font-semibold leading-snug text-foreground outline-none placeholder:text-foreground/30",
+                      contentLocked && "cursor-default",
                     )}
-                  </Button>
+                  />
+                )}
+                {item && tagIds.length > 0 && (
+                  <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    {tagIds.map((id) => {
+                      const tag = orgTags.find(
+                        (candidate) => candidate.id === id,
+                      );
+                      return tag ? (
+                        <span
+                          key={id}
+                          className="rounded-md border border-border px-2 py-1"
+                        >
+                          {tag.name}
+                        </span>
+                      ) : null;
+                    })}
+                  </div>
+                )}
+                {contentLocked && (
+                  <p className="mb-3 mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Lock01 size={12} />
+                    {t("taskBoard.taskDialog.reportsContentLocked")}
+                  </p>
                 )}
               </div>
 
-              {/* Separates the task itself from the record of it (links,
+              {item && (
+                <RunFailureBanner
+                  item={item}
+                  orgSlug={org.slug}
+                  onRerun={onRerun}
+                />
+              )}
+
+              <div className="flex flex-col">
+                <div className="flex flex-col py-6">
+                  <div
+                    // Clip only while folded: the image node's remove button is
+                    // absolute and reaches outside a 1px image's box, so a
+                    // permanent clip puts it out of reach.
+                    className={cn(
+                      "relative",
+                      collapseDescription && "overflow-hidden",
+                    )}
+                    style={
+                      collapseDescription
+                        ? { maxHeight: DESCRIPTION_MAX_HEIGHT }
+                        : undefined
+                    }
+                    // Expand before editing: no caret under the fold.
+                    onFocusCapture={() => setDescriptionExpanded(true)}
+                    onBlurCapture={flush}
+                  >
+                    <div
+                      ref={measureDescription}
+                      data-testid="task-description"
+                    >
+                      {/* Markdown in, markdown out — the value also becomes
+                        prompt context for the agent, and plain-text
+                        descriptions written before this editor existed still
+                        parse as-is. */}
+                      {item && !editingPost ? (
+                        <MemoizedMarkdown
+                          id={`task-post-${item.id}`}
+                          text={description}
+                        />
+                      ) : (
+                        <MarkdownEditor
+                          defaultValue={description}
+                          onChange={(next) =>
+                            patch({ description: next }, true)
+                          }
+                          placeholder={t(
+                            "taskBoard.taskDialog.descriptionPlaceholder",
+                          )}
+                          editable={!contentLocked}
+                        />
+                      )}
+                    </div>
+                    {collapseDescription && (
+                      <div
+                        aria-hidden
+                        className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-background to-transparent"
+                      />
+                    )}
+                  </div>
+                  {descriptionOverflows && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="mt-2 w-fit text-muted-foreground hover:text-foreground"
+                      onClick={() => setDescriptionExpanded((open) => !open)}
+                    >
+                      <ChevronDown
+                        size={14}
+                        className={cn(
+                          "transition-transform",
+                          descriptionExpanded && "rotate-180",
+                        )}
+                      />
+                      {t(
+                        descriptionExpanded
+                          ? "taskBoard.taskDialog.showLess"
+                          : "taskBoard.taskDialog.showMore",
+                      )}
+                    </Button>
+                  )}
+                </div>
+
+                {/* Separates the task itself from the record of it (links,
                   activity). Edit mode only — a new task has neither. */}
-              {item && (
-                <div className="py-4">
-                  <hr className="border-border" />
-                </div>
-              )}
+                {item && (
+                  <div className="py-4">
+                    <hr className="border-border" />
+                  </div>
+                )}
 
-              {item && (
-                <div className="flex flex-col gap-8">
-                  <LinksSection
-                    item={item}
-                    description={description}
-                    onOpenPreview={onOpenPreview}
-                  />
-                  <ActivitySection
-                    item={item}
-                    members={members}
-                    startedBy={assignedBy ?? assignee}
-                    onOpenThread={(thread) => setOpenThreadId(thread.threadId)}
-                  />
-                </div>
-              )}
+                {item && (
+                  <div className="flex flex-col gap-8">
+                    <ActivitySection
+                      item={item}
+                      members={members}
+                      onOpenThread={(thread) =>
+                        setOpenThreadId(thread.threadId)
+                      }
+                    />
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
+          </TaskConversationFrame>
 
-          {/* Properties pane — wrapping chips under the editor on mobile, a
-              stacked sidebar on desktop. Pinned on desktop so it stays put
-              while the task scrolls past it; `self-start` keeps it its own
-              height (a stretched item has no room to stick), and the viewport
-              cap lets a pane taller than the screen scroll itself rather than
-              lose its bottom. */}
-          <div className="flex w-full shrink-0 flex-col gap-8 border-t border-border p-6 sm:sticky sm:top-0 sm:max-h-dvh sm:w-[300px] sm:self-start sm:overflow-y-auto sm:border-t-0">
+          {/* On mobile, Details switches panes without unmounting the draft. */}
+          <div
+            data-testid="task-inspector"
+            className={cn(
+              "w-full flex-col gap-6 border-t border-border p-6",
+              "min-h-0 flex-1 overflow-y-auto lg:flex lg:w-[320px] lg:flex-none lg:border-l lg:border-t-0",
+              item ? (detailsOpen ? "flex" : "hidden") : "flex",
+            )}
+          >
             {item && <ReviewsGroup item={item} />}
 
             <PropertyGroup label={t("taskBoard.taskDialog.propertiesLabel")}>
@@ -1008,7 +1210,7 @@ function TaskBoardItemEditor({
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-44">
-                  {moveTargets(deliveryEnabled).map((s) => {
+                  {CANONICAL_COLUMN_KEYS.map((s) => {
                     const { label, visual } = laneHeader(s, t);
                     const Icon = visual.icon;
                     return (
@@ -1114,6 +1316,41 @@ function TaskBoardItemEditor({
                   ))}
                 </DropdownMenuContent>
               </DropdownMenu>
+
+              {item && (
+                <div
+                  className="inline-flex h-9 items-center justify-start gap-2 px-3 text-sm font-medium text-foreground"
+                  title={t("taskBoard.taskDialog.createdByLabel")}
+                >
+                  {isReportsTask(item) ? (
+                    <>
+                      <Lightning01
+                        size={16}
+                        className="text-muted-foreground"
+                      />
+                      {t("taskBoard.taskDialog.createdBySystemLabel")}
+                    </>
+                  ) : creator ? (
+                    <>
+                      <Avatar
+                        url={creator.user?.image ?? undefined}
+                        fallback={getInitials(creator.user?.name)}
+                        shape="circle"
+                        size="2xs"
+                      />
+                      <span className="truncate">
+                        {creator.user?.name ??
+                          t("taskBoard.taskDialog.unknownCreatorLabel")}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <User01 size={16} className="text-muted-foreground" />
+                      {t("taskBoard.taskDialog.unknownCreatorLabel")}
+                    </>
+                  )}
+                </div>
+              )}
 
               <div className="flex flex-col">
                 {/* modal: without it the parent Dialog's scroll-lock
@@ -1268,6 +1505,51 @@ function TaskBoardItemEditor({
                 </PopoverContent>
               </Popover>
 
+              {(sprints.length > 0 || sprintId) && (
+                <Popover open={sprintOpen} onOpenChange={setSprintOpen} modal>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      className={cn(
+                        PROPERTY_BUTTON,
+                        !sprintId && EMPTY_PROPERTY,
+                      )}
+                    >
+                      <Zap size={16} className="text-muted-foreground" />
+                      <span className="truncate">
+                        {selectedSprint
+                          ? sprintLabel(selectedSprint, t)
+                          : sprintId
+                            ? t("taskBoard.sprints.goneLabel")
+                            : t("taskBoard.sprints.backlog")}
+                      </span>
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent align="start" className="w-64 p-1">
+                    <SprintOption
+                      icon={
+                        <Inbox01 size={14} className="text-muted-foreground" />
+                      }
+                      label={t("taskBoard.sprints.backlog")}
+                      selected={!sprintId}
+                      onSelect={() => pickSprint(null)}
+                    />
+                    {plannableSprints.map((sprint) => (
+                      <SprintOption
+                        key={sprint.id}
+                        icon={
+                          <Zap size={14} className="text-muted-foreground" />
+                        }
+                        label={sprintLabel(sprint, t)}
+                        hint={formatSprintDays(sprint)}
+                        selected={sprint.id === sprintId}
+                        onSelect={() => pickSprint(sprint.id)}
+                      />
+                    ))}
+                  </PopoverContent>
+                </Popover>
+              )}
+
               <TaskCost threads={item?.threads} />
             </PropertyGroup>
 
@@ -1289,51 +1571,47 @@ function TaskBoardItemEditor({
                       const tag = orgTags.find((ot) => ot.id === tagId);
                       if (!tag) return null;
                       return (
-                        <button
+                        // Two sibling buttons, not one nested in the other — a <button> can't validly contain another interactive element.
+                        <div
                           key={tagId}
-                          type="button"
-                          onClick={() => setTagsOpen(true)}
                           className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-sm font-medium text-foreground transition-colors hover:bg-muted"
                         >
-                          <span
-                            className="size-2 shrink-0 rounded-full"
-                            style={{ backgroundColor: tagDotColor(tag.color) }}
-                          />
-                          <span className="truncate">{tag.name}</span>
-                          <span
-                            role="button"
-                            tabIndex={0}
+                          <button
+                            type="button"
+                            onClick={() => setTagsOpen(true)}
+                            className="inline-flex items-center gap-1.5"
+                          >
+                            <span
+                              className="size-2 shrink-0 rounded-full"
+                              style={{
+                                backgroundColor: tagDotColor(tag.color),
+                              }}
+                            />
+                            <span className="truncate">{tag.name}</span>
+                          </button>
+                          <button
+                            type="button"
                             aria-label={t(
                               "taskBoard.taskDialog.removeTagAriaLabel",
                               { name: tag.name },
                             )}
-                            className="-mr-0.5 flex size-3.5 items-center justify-center rounded-sm text-muted-foreground hover:bg-background hover:text-foreground"
-                            onClick={(e) => {
-                              e.stopPropagation();
+                            className="-mr-0.5 flex size-3.5 items-center justify-center rounded-lg text-muted-foreground hover:bg-background hover:text-foreground"
+                            onClick={() => {
                               patch({
                                 tagIds: tagIds.filter((id) => id !== tagId),
                               });
                             }}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter" || e.key === " ") {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                patch({
-                                  tagIds: tagIds.filter((id) => id !== tagId),
-                                });
-                              }
-                            }}
                           >
                             <X size={10} />
-                          </span>
-                        </button>
+                          </button>
+                        </div>
                       );
                     })}
                     <PopoverTrigger asChild>
                       <button
                         type="button"
                         aria-label={t("taskBoard.taskDialog.addTagButton")}
-                        className="flex size-7 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                        className="flex size-7 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                       >
                         <Plus size={14} />
                       </button>
@@ -1360,9 +1638,8 @@ function TaskBoardItemEditor({
             </PropertyGroup>
 
             <PropertyGroup label={t("taskBoard.taskDialog.projectLabel")}>
-              {/* Which project this task pertains to. The value persisted is
-                  still the repository — that is the only per-card link there
-                  is — but what you PICK is a project, named as you know it. */}
+              {/* Which project this task pertains to: the project itself and
+                  the repository its run checks out. */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button
@@ -1372,7 +1649,7 @@ function TaskBoardItemEditor({
                     className={cn(
                       PROPERTY_BUTTON,
                       "max-w-full",
-                      !repo && EMPTY_PROPERTY,
+                      !repo && !virtualMcpId && EMPTY_PROPERTY,
                     )}
                   >
                     <ProjectEntryIcon entry={selectedEntry} />
@@ -1384,14 +1661,14 @@ function TaskBoardItemEditor({
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-64">
-                  <DropdownMenuItem onSelect={() => patch({ repo: null })}>
+                  <DropdownMenuItem onSelect={() => patch(stampFor(null))}>
                     {t("taskBoard.taskDialog.noProject")}
                   </DropdownMenuItem>
                   {projectEntries.map((entry) => (
                     <DropdownMenuItem
                       key={entry.id}
                       className="gap-2"
-                      onSelect={() => patch({ repo: entry.repo })}
+                      onSelect={() => patch(stampFor(entry))}
                     >
                       <ProjectEntryRow entry={entry} />
                     </DropdownMenuItem>
@@ -1399,6 +1676,13 @@ function TaskBoardItemEditor({
                 </DropdownMenuContent>
               </DropdownMenu>
             </PropertyGroup>
+            {item && (
+              <LinksSection
+                item={item}
+                description={description}
+                onOpenPreview={onOpenPreview}
+              />
+            )}
           </div>
         </div>
       </div>
@@ -1469,7 +1753,12 @@ function TaskBoardItemEditor({
 export function TaskBoardItemDialog(
   props: Pick<
     TaskEditorProps,
-    "onClose" | "defaultStatus" | "onSubmit" | "isSaving"
+    | "onClose"
+    | "defaultStatus"
+    | "defaultProject"
+    | "defaultSprintId"
+    | "onSubmit"
+    | "isSaving"
   > & { open: boolean },
 ) {
   return <TaskBoardItemEditor {...props} chrome="dialog" />;
@@ -1557,17 +1846,14 @@ function threadStatusStyle(
 }
 
 /**
- * A linked agent session (thread) — the WHOLE card is clickable (opens the
- * run's chat), with a hover state + "Open" affordance so it's obvious it's
- * interactive, plus the live run status and last message.
+ * A linked run uses the same message surface as its reports and human comments.
  */
+
 function ThreadActivityItem({
   thread,
-  startedBy,
   onOpen,
 }: {
   thread: TaskBoardItemThread;
-  startedBy?: Member;
   onOpen?: (thread: TaskBoardItemThread) => void;
 }) {
   const t = useT();
@@ -1580,69 +1866,47 @@ function ThreadActivityItem({
   const isReviewerThread = isReviewerThreadTitle(thread.title, "reviewer");
 
   return (
-    <button
-      type="button"
-      disabled={!onOpen}
-      onClick={() => onOpen?.(thread)}
-      className="group flex w-full flex-col gap-2 rounded-xl bg-card p-4 text-left card-shadow transition-colors enabled:hover:bg-muted/60 disabled:cursor-default"
-    >
-      <div className="flex items-center gap-2">
-        {isReviewerThread ? (
-          <ReviewerIcon size={16} className="shrink-0" />
-        ) : (
-          <SuperAgentIcon size={16} className="shrink-0" />
+    <div className="border-b border-border/50 pb-4">
+      <TaskMessage
+        id={`run-${thread.threadId}`}
+        author={t(
+          isReviewerThread
+            ? "taskBoard.conversation.reviewer"
+            : "taskBoard.taskDialog.superAgentLabel",
         )}
-        <span className="truncate text-sm font-medium text-foreground">
-          {thread.title || t("taskBoard.taskDialog.superAgentDefaultName")}
-        </span>
-        {startedBy && (
-          <>
-            <span className="shrink-0 text-sm text-muted-foreground/50">
-              {t("taskBoard.taskDialog.startedByLabel")}
-            </span>
-            <Avatar
-              url={startedBy.user?.image ?? undefined}
-              fallback={getInitials(startedBy.user?.name)}
-              shape="circle"
-              size="2xs"
-            />
-            <span className="truncate text-sm text-foreground">
-              {startedBy.user?.name ?? t("taskBoard.taskDialog.someoneLabel")}
-            </span>
-          </>
-        )}
-        {onOpen && (
-          <span className="ml-auto flex shrink-0 items-center gap-1 text-xs text-muted-foreground/60 group-hover:text-foreground">
-            {t("taskBoard.taskDialog.openThreadHint")}
-            <ChevronRight size={14} />
-          </span>
-        )}
-      </div>
-      {state && (
-        <div className="flex items-center gap-2">
-          <span
-            className={cn(
-              "flex shrink-0 items-center gap-1.5",
-              state.className,
-            )}
-          >
-            {/* A spinning status glyph is a loading indicator, so it is the
+        avatar={
+          isReviewerThread ? (
+            <ReviewerIcon size={24} />
+          ) : (
+            <SuperAgentIcon size={24} />
+          )
+        }
+        createdAt={thread.createdAt}
+        body={message || thread.title || ""}
+        // Only a run waiting on a person shows outside behind the scenes.
+        muted={thread.status !== "requires_action"}
+        onOpenThread={onOpen ? () => onOpen(thread) : undefined}
+        metadata={
+          state && (
+            <span
+              className={cn(
+                "flex shrink-0 items-center gap-1.5",
+                state.className,
+              )}
+            >
+              {/* A spinning status glyph is a loading indicator, so it is the
                 shared Spinner; the settled states keep their own icon. */}
-            {state.spin ? (
-              <Spinner className="size-[15px]" label={state.label} />
-            ) : (
-              <state.icon size={15} />
-            )}
-            <span className="text-sm">{state.label}</span>
-          </span>
-          {message && (
-            <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
-              {message}
+              {state.spin ? (
+                <Spinner className="size-[15px]" label={state.label} />
+              ) : (
+                <state.icon size={15} />
+              )}
+              <span className="text-xs">{state.label}</span>
             </span>
-          )}
-        </div>
-      )}
-    </button>
+          )
+        }
+      />
+    </div>
   );
 }
 
@@ -1673,7 +1937,13 @@ function prStateStyle(
       className: "text-muted-foreground",
       icon: GitPullRequest,
     };
-  // "open" or unknown live state — still a link the user can follow.
+  // Both null means GitHub never answered — an unknown must not read as Open.
+  if (pr.state === null && pr.merged === null)
+    return {
+      label: t("taskBoard.taskDialog.prStateUnknown"),
+      className: "text-muted-foreground",
+      icon: GitPullRequest,
+    };
   return {
     label: t("taskBoard.taskDialog.prStateOpen"),
     className: "text-success",
@@ -1741,77 +2011,16 @@ function checkRunStyle(check: TaskBoardItemPr["checks"][number]): {
 }
 
 /**
- * The "Open preview" button, enabled only once the preview URL actually answers.
- *
- * A preview deploy is regularly still building — or already torn down — while
- * the PR still advertises its URL, so the plain link sent people to a 404. The
- * status can only be read server-side (CORS makes a cross-origin response
- * opaque to the browser), so this blocks on `usePreviewProbe` and offers the
- * link only on a < 400.
- */
-function PreviewButton({ url }: { url: string }) {
-  const t = useT();
-  const { data, isPending, isError } = usePreviewProbe(url);
-  const available = data?.available ?? false;
-
-  if (isPending) {
-    return (
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className="gap-1.5"
-        disabled
-      >
-        <Spinner className="size-[14px]" />
-        {t("taskBoard.taskDialog.previewLabel")}
-      </Button>
-    );
-  }
-
-  if (!available || isError) {
-    return (
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className="gap-1.5"
-        disabled
-        title={t("taskBoard.taskDialog.previewUnavailableTitle")}
-      >
-        <Globe01 size={14} />
-        {t("taskBoard.taskDialog.previewUnavailable")}
-      </Button>
-    );
-  }
-
-  return (
-    <Button
-      asChild
-      type="button"
-      variant="outline"
-      size="sm"
-      className="gap-1.5"
-    >
-      <a href={url} target="_blank" rel="noreferrer">
-        <Globe01 size={14} />
-        {t("taskBoard.taskDialog.previewLabel")}
-        <LinkExternal01 size={12} />
-      </a>
-    </Button>
-  );
-}
-
-/**
- * One PR card: identity + the `#123 ↗` GitHub link, an action row (Edit /
- * preview / ship), and an expandable checks footer that opens each CI check
- * with its GitHub output markdown (fetched for failing runs).
+ * One PR card: identity + the `#123 ↗` link (`!123` on GitLab), an action
+ * row (Edit / preview / ship), and an expandable checks footer that opens each
+ * CI check with its output markdown (fetched for failing runs).
  */
 function PrCard({
   pr,
+  routes,
   revalidating,
   previewThread,
-  reviewsReady,
+  readyToShip,
   shipPending,
   resolvePending,
   onShip,
@@ -1819,11 +2028,13 @@ function PrCard({
   onOpenPreview,
 }: {
   pr: TaskBoardItemPr;
+  /** The task's reported preview routes, offered under this PR's preview. */
+  routes: string[];
   /** A live GitHub read is in flight behind the values shown. */
   revalidating: boolean;
   previewThread?: TaskBoardItemThread;
-  /** Task-level: In Review + every enabled reviewer approved. */
-  reviewsReady: boolean;
+  /** Task-level: the card sits in Ready for Deployment. */
+  readyToShip: boolean;
   shipPending: boolean;
   resolvePending: boolean;
   onShip: () => void;
@@ -1832,11 +2043,13 @@ function PrCard({
 }) {
   const t = useT();
   const [checksOpen, setChecksOpen] = useState(false);
+  // Rows linked before urls were canonicalised are all GitHub.
+  const provider = parseChangeRequestUrl(pr.url)?.repo.provider ?? "github";
   const style = prStateStyle(pr, t);
   const checksState = prChecksStyle(pr.checksStatus, t);
   const { isOpen, hasConflict, showShip, showResolveConflict } = prCardActions(
     pr,
-    reviewsReady,
+    readyToShip,
   );
   const hasActions =
     !!previewThread || !!pr.previewUrl || showShip || showResolveConflict;
@@ -1856,7 +2069,7 @@ function PrCard({
   return (
     <div
       className={cn(
-        "flex flex-col gap-3 rounded-xl bg-card p-3 card-shadow",
+        "flex flex-col gap-3 rounded-xl border border-border bg-card p-3",
         // Cards are seeded from localStorage, so what's on screen may be a
         // minute (or a day) old. The breathing border says "these numbers are
         // being checked" without blanking the card back to a skeleton.
@@ -1864,7 +2077,10 @@ function PrCard({
       )}
     >
       <div className="flex items-center gap-3">
-        <GitHubIcon className="size-4 shrink-0 text-foreground" />
+        <GitProviderIcon
+          provider={provider}
+          className="size-4 shrink-0 text-foreground"
+        />
         <span className="min-w-0 flex-1 truncate text-sm text-foreground">
           {pr.title ?? `${pr.repoOwner}/${pr.repoName}`}
         </span>
@@ -1884,7 +2100,7 @@ function PrCard({
           title={pr.url}
           className="group flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted"
         >
-          #{pr.number}
+          {changeRequestNumberLabel(provider, pr.number)}
           <LinkExternal01
             size={12}
             className="text-muted-foreground/60 group-hover:text-foreground"
@@ -1912,7 +2128,9 @@ function PrCard({
               {t("taskBoard.taskDialog.openPreviewButton")}
             </Button>
           )}
-          {pr.previewUrl && <PreviewButton url={pr.previewUrl} />}
+          {pr.previewUrl && (
+            <PreviewButton url={pr.previewUrl} routes={routes} />
+          )}
           {showShip && (
             <Button
               type="button"
@@ -2022,7 +2240,7 @@ function PrCard({
  *  preview) is still loading — the enrichment can take a moment. */
 function PrCardSkeleton() {
   return (
-    <div className="flex flex-col gap-3 rounded-xl bg-card p-3 card-shadow">
+    <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-3">
       <div className="flex items-center gap-3">
         <Skeleton className="size-4 shrink-0 rounded" />
         <Skeleton className="h-4 min-w-0 flex-1" />
@@ -2039,7 +2257,7 @@ function PrCardSkeleton() {
 
 /**
  * Links panel: the task's related pull requests (live GitHub state) plus any
- * links found in the description, aggregated in one place. Hidden when there's
+ * links found in the original post and replies. Hidden when there's
  * nothing to show.
  */
 function LinksSection({
@@ -2057,11 +2275,19 @@ function LinksSection({
     isLoading: prsLoading,
     isFetching: prsFetching,
   } = useTaskBoardItemPrs(item.id);
-  const { data: activity } = useTaskBoardActivity(item.id);
-  const reviewerOn = useReviewerEnabled();
   const promote = usePromoteToProduction(item.id);
   const resolveConflict = useResolveConflict(item.id);
-  const links = extractDescriptionLinks(description);
+  const comments = useTaskBoardComments(item.id);
+
+  const links = extractDescriptionLinks(
+    [
+      description,
+      ...comments.threads.flatMap((thread) => [
+        thread.body,
+        ...thread.replies.map((reply) => reply.body),
+      ]),
+    ].join("\n\n"),
+  );
   // Keep the section up (with a skeleton) while the PR enrichment loads; a
   // PR-less task resolves instantly, so the skeleton barely flashes for it.
   const loadingPrs = prsLoading && !prs;
@@ -2069,17 +2295,11 @@ function LinksSection({
     return null;
   }
 
-  // Task-level readiness for the manual ship button: a shippable lane + every
-  // enabled reviewer approved. Shown regardless of auto-merge — it's a manual
-  // escape hatch (a human can ship even while auto-merge is pending/blocked on
-  // token verification). The per-card PrCard adds the PR-open + green-checks gate.
-  const reviewsReady =
-    laneCanShip(item.status) &&
-    reviewsSatisfiedForPromotion(
-      activity ?? [],
-      enabledReviewers(reviewerOn),
-      item.reviewCycleStartedAt,
-    );
+  // Task-level readiness for the manual ship button: the card reached Ready
+  // for Deployment. Shown regardless of auto-merge, so a person can ship while
+  // auto-merge is pending or blocked. The per-card PrCard adds the PR-open +
+  // green-checks gate.
+  const readyToShip = laneCanShip(item.status);
   const onShip = () =>
     promote.mutate(undefined, {
       onSuccess: (res) =>
@@ -2116,9 +2336,10 @@ function LinksSection({
             <PrCard
               key={pr.url}
               pr={pr}
+              routes={item.previewRoutes ?? []}
               revalidating={prsFetching}
               previewThread={previewThread}
-              reviewsReady={reviewsReady}
+              readyToShip={readyToShip}
               shipPending={promote.isPending}
               resolvePending={resolveConflict.isPending}
               onShip={onShip}
@@ -2151,23 +2372,74 @@ function LinksSection({
 }
 
 /**
+ * "Run reviewer" — the escape hatch for a card an org with automated review
+ * turned off left unreviewed. Sits in the Activity header because that is where
+ * the review shows up once it starts.
+ *
+ * Renders nothing unless {@link canRunReviewerManually}; the server enforces the
+ * same conditions, so a stale render costs a toast, not a stray agent run.
+ */
+function RunReviewerButton({ item }: { item: TaskBoardItem }) {
+  const t = useT();
+  const reviewerOn = useReviewerEnabled();
+  const { data: prs } = useTaskBoardItemPrs(item.id);
+  const runReviewer = useRunReviewer(item.id);
+
+  const offer = canRunReviewerManually({
+    reviewerEnabled: reviewerOn,
+    hasPullRequest: (prs ?? []).length > 0,
+    threadTitles: item.threads.map((thread) => thread.title),
+  });
+  if (!offer) return null;
+
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      disabled={runReviewer.isPending}
+      title={t("taskBoard.taskDialog.runReviewerTitle")}
+      className="h-7 gap-1.5 px-2 text-sm font-normal text-muted-foreground"
+      onClick={() =>
+        runReviewer.mutate(undefined, {
+          onSuccess: (res) =>
+            res?.queued
+              ? toast.success(t("taskBoard.taskDialog.runReviewerSuccess"))
+              : toast.info(t("taskBoard.taskDialog.runReviewerAlreadyRunning")),
+          // The tool's refusals name what to do about them ("wait for the Super
+          // Agent", "no pull request yet"), so they beat a generic string.
+          onError: (err: Error) =>
+            toast.error(
+              err.message || t("taskBoard.taskDialog.runReviewerError"),
+            ),
+        })
+      }
+    >
+      <ReviewerIcon size={14} className="shrink-0" />
+      {t("taskBoard.taskDialog.runReviewerButton")}
+    </Button>
+  );
+}
+
+/**
  * Activity feed: the task's change timeline (created, moved, (re)assigned), its
- * linked agent sessions and its comment threads, interleaved most-recent-first.
+ * linked agent sessions and its comment threads, interleaved oldest-first.
+ * Agent sessions and internal comments are handoff between agents, shown only
+ * behind the scenes.
  * Consecutive timeline events render as one run joined by a rail; a thread or a
- * comment renders as a card. A composer at the bottom starts a new thread.
+ * comment renders as a post. The conversation frame owns the composer.
  */
 function ActivitySection({
   item,
   members,
-  startedBy,
   onOpenThread,
 }: {
   item: TaskBoardItem;
   members: Member[];
-  startedBy?: Member;
   onOpenThread?: (thread: TaskBoardItemThread) => void;
 }) {
   const t = useT();
+
   const { data: activity } = useTaskBoardActivity(item.id);
   const { data: session } = authClient.useSession();
   const memberByUserId = new Map(members.map((m) => [m.userId, m]));
@@ -2178,17 +2450,48 @@ function ActivitySection({
     image: session?.user?.image,
   };
   const comments = useTaskBoardComments(item.id);
+  const [behindTheScenes, setBehindTheScenes] = useBehindTheScenes();
+  const humanThreads = humanFacing(comments.threads);
+  const liveRuns = item.threads.filter(isLiveAttempt);
+  // A run waiting on a person is talking to them; any other run is the agents'
+  // own work, like their handoff comments.
+  const waitingRuns = liveRuns.filter(
+    (thread) => thread.status === "requires_action",
+  );
+  const messageCount = (threads: TaskBoardCommentThread[]) =>
+    threads.reduce((sum, thread) => sum + 1 + thread.replies.length, 0);
+  const behindTheScenesCount =
+    messageCount(comments.threads) -
+    messageCount(humanThreads) +
+    liveRuns.length -
+    waitingRuns.length;
 
   /** A comment's author, resolved from the org's members; falls back to the id
    *  so a comment from a since-removed member still renders. The Super Agent
    *  writes its own comments during a task run and is not a member, so it is
    *  resolved first — `isAgent` is what renders its glyph. */
-  const authorOf = (userId: string): CommentAuthor => {
+  const sourceRun = (threadId: string | null | undefined) =>
+    item.threads.find((thread) => thread.threadId === threadId);
+  const openSourceRun = (threadId: string | null | undefined) => {
+    const run = sourceRun(threadId);
+    return run && onOpenThread ? () => onOpenThread(run) : undefined;
+  };
+  const authorOf = (
+    userId: string,
+    threadId?: string | null,
+  ): CommentAuthor => {
     if (userId === SUPER_AGENT_ASSIGNEE_ID) {
+      const run = sourceRun(threadId);
+      const isReviewer = !!run && isReviewerThreadTitle(run.title, "reviewer");
       return {
         id: userId,
-        name: t("taskBoard.taskDialog.superAgentLabel"),
+        name: t(
+          isReviewer
+            ? "taskBoard.conversation.reviewer"
+            : "taskBoard.taskDialog.superAgentLabel",
+        ),
         isAgent: true,
+        isReviewer,
       };
     }
     if (userId === me.id) return me;
@@ -2199,15 +2502,20 @@ function ActivitySection({
       image: member?.user?.image,
     };
   };
-  const threads: TaskComment[] = comments.threads.map((thread) => ({
+  const shownThreads = behindTheScenes ? comments.threads : humanThreads;
+  const threads: TaskComment[] = shownThreads.map((thread) => ({
     id: thread.id,
-    author: authorOf(thread.authorId),
+    author: authorOf(thread.authorId, thread.threadId),
+    onOpenThread: openSourceRun(thread.threadId),
+    internal: thread.audience === "internal",
     body: thread.body,
     createdAt: thread.createdAt,
     resolved: thread.resolved,
     replies: thread.replies.map((reply) => ({
       id: reply.id,
-      author: authorOf(reply.authorId),
+      author: authorOf(reply.authorId, reply.threadId),
+      onOpenThread: openSourceRun(reply.threadId),
+      internal: reply.audience === "internal",
       body: reply.body,
       createdAt: reply.createdAt,
       replies: [],
@@ -2226,7 +2534,7 @@ function ActivitySection({
         activity: a,
       }),
     ),
-    ...item.threads.filter(isLiveAttempt).map(
+    ...(behindTheScenes ? liveRuns : waitingRuns).map(
       (thread): Ev => ({
         kind: "thread",
         at: new Date(thread.createdAt).getTime(),
@@ -2240,7 +2548,7 @@ function ActivitySection({
         comment,
       }),
     ),
-  ].sort((a, b) => b.at - a.at);
+  ].sort((a, b) => a.at - b.at);
 
   // Group consecutive timeline events so their avatars connect with a rail.
   const blocks: (
@@ -2248,6 +2556,14 @@ function ActivitySection({
     | { type: "thread"; thread: TaskBoardItemThread }
     | { type: "comment"; comment: TaskComment }
   )[] = [];
+  const blockDate = (block: (typeof blocks)[number]) =>
+    new Date(
+      block.type === "timeline"
+        ? block.items[0]!.occurredAt
+        : block.type === "thread"
+          ? block.thread.createdAt
+          : block.comment.createdAt,
+    );
   for (const ev of events) {
     if (ev.kind === "thread") {
       blocks.push({ type: "thread", thread: ev.thread });
@@ -2258,63 +2574,115 @@ function ActivitySection({
       continue;
     }
     const last = blocks[blocks.length - 1];
-    if (last?.type === "timeline") last.items.push(ev.activity);
+    if (
+      last?.type === "timeline" &&
+      blockDate(last).toDateString() === new Date(ev.at).toDateString()
+    )
+      last.items.push(ev.activity);
     else blocks.push({ type: "timeline", items: [ev.activity] });
   }
 
   return (
-    <RecordSection
-      label={t("taskBoard.taskDialog.activityLabel")}
-      action={<SubscribeToggle itemId={item.id} members={members} />}
-    >
+    <section className="flex flex-col gap-5">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-sm font-medium text-muted-foreground">
+          {t("taskBoard.conversation.replies")}
+        </h2>
+        <div className="flex items-center gap-1">
+          {(behindTheScenes || behindTheScenesCount > 0) && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setBehindTheScenes(!behindTheScenes)}
+              className="h-7 px-2 text-sm font-normal text-muted-foreground"
+            >
+              {behindTheScenes
+                ? t("taskBoard.conversation.hideBehindTheScenes")
+                : t("taskBoard.conversation.showBehindTheScenes", {
+                    count: behindTheScenesCount,
+                  })}
+            </Button>
+          )}
+          <RunReviewerButton item={item} />
+          <SubscribeToggle itemId={item.id} members={members} />
+        </div>
+      </div>
       <div className="flex flex-col gap-5">
-        {/* At the top: the feed reads newest-first, so this is where a new
-            comment lands. */}
-        <NewCommentComposer
-          me={me}
-          onSubmit={(body) => comments.post.mutate({ body })}
-        />
         {blocks.map((block, i) => {
-          if (block.type === "timeline") {
+          const date = blockDate(block);
+          const previous = blocks[i - 1];
+          const showDate =
+            !previous ||
+            blockDate(previous).toDateString() !== date.toDateString();
+          const entry = () => {
+            if (block.type === "timeline") {
+              return (
+                <TimelineBlock
+                  items={block.items}
+                  memberByUserId={memberByUserId}
+                />
+              );
+            }
+            if (block.type === "comment") {
+              return (
+                <CommentThreadCard
+                  key={`comment-${block.comment.id}`}
+                  thread={block.comment}
+                  me={me}
+                  onEdit={async (commentId, body) => {
+                    try {
+                      await comments.edit.mutateAsync({ id: commentId, body });
+                      return true;
+                    } catch (error) {
+                      toast.error(
+                        error instanceof Error
+                          ? error.message
+                          : t("taskBoard.taskDialog.commentEditFailed"),
+                      );
+                      return false;
+                    }
+                  }}
+                  onDelete={(commentId) => comments.remove.mutate(commentId)}
+                />
+              );
+            }
+
             return (
-              <TimelineBlock
-                // A positional run of one feed: the index IS its identity.
-                key={`timeline-${i}`}
-                items={block.items}
-                memberByUserId={memberByUserId}
+              <ThreadActivityItem
+                key={`thread-${block.thread.threadId}`}
+                thread={block.thread}
+                onOpen={onOpenThread}
               />
             );
-          }
-          if (block.type === "comment") {
-            return (
-              <CommentThreadCard
-                key={`comment-${block.comment.id}`}
-                thread={block.comment}
-                me={me}
-                onReply={(body) =>
-                  comments.post.mutate({ body, parentId: block.comment.id })
-                }
-                onDelete={(commentId) => comments.remove.mutate(commentId)}
-                onToggleResolved={() =>
-                  comments.setResolved.mutate({
-                    id: block.comment.id,
-                    resolved: !block.comment.resolved,
-                  })
-                }
-              />
-            );
-          }
+          };
+          const blockKey =
+            block.type === "timeline"
+              ? block.items[0]!.id
+              : block.type === "thread"
+                ? block.thread.threadId
+                : block.comment.id;
           return (
-            <ThreadActivityItem
-              key={`thread-${block.thread.threadId}`}
-              thread={block.thread}
-              startedBy={startedBy}
-              onOpen={onOpenThread}
-            />
+            <Fragment key={`${block.type}-${blockKey}`}>
+              {showDate && (
+                <div className="flex items-center gap-3 py-2 text-xs font-medium text-muted-foreground">
+                  <span className="h-px flex-1 bg-border" />
+                  <time dateTime={date.toISOString()}>
+                    {date.toLocaleDateString(undefined, {
+                      day: "numeric",
+                      month: "long",
+                      year: "numeric",
+                    })}
+                  </time>
+                  <span className="h-px flex-1 bg-border" />
+                </div>
+              )}
+              {entry()}
+            </Fragment>
           );
         })}
       </div>
-    </RecordSection>
+    </section>
   );
 }
 
@@ -2464,6 +2832,20 @@ function describeActivity(
       />
     );
   };
+  const sprintChip = (ref: unknown) => {
+    const name =
+      ref && typeof ref === "object" && "name" in ref
+        ? (ref as { name?: unknown }).name
+        : null;
+    return (
+      <ValueChip
+        icon={<Zap size={14} className="text-muted-foreground" />}
+        label={
+          typeof name === "string" ? name : t("taskBoard.sprints.goneLabel")
+        }
+      />
+    );
+  };
   const reviewerChip = (reviewer: unknown) => (
     <ValueChip
       icon={<ReviewerIcon size={14} />}
@@ -2477,13 +2859,25 @@ function describeActivity(
   switch (a.action) {
     case "created":
       return t("taskBoard.taskDialog.activityCreated");
+    case "duplicate_reported": {
+      const title = typeof d.title === "string" ? d.title : null;
+      return title
+        ? t("taskBoard.taskDialog.activityDuplicateReportedTitled", { title })
+        : t("taskBoard.taskDialog.activityDuplicateReported");
+    }
+    case "finding_resolved":
+      return t("taskBoard.taskDialog.activityFindingResolved", {
+        url: String(d.url ?? ""),
+      });
     case "status_changed": {
       // Written as In Progress → In Progress, so the move prose said nothing.
+      // Stored as a stringified Error, wire prefix and all.
+      const reason = decodeRunFailureReason(d.reason);
       if (typeof d.retry === "number") {
         return t("taskBoard.taskDialog.activityRetryScheduled", {
           attempt: String(d.retry),
           of: String(d.of ?? d.retry),
-          reason: String(d.reason ?? ""),
+          reason,
         });
       }
       if (typeof d.retriesSpent === "number" && d.retriesSpent > 0) {
@@ -2491,6 +2885,7 @@ function describeActivity(
           t("taskBoard.taskDialog.activityRetriesExhausted", {
             to,
             count: String(d.retriesSpent),
+            reason,
           }),
           { to: statusChip(d.to) },
         );
@@ -2543,6 +2938,19 @@ function describeActivity(
       });
     case "description_changed":
       return t("taskBoard.taskDialog.activityDescriptionUpdated");
+    // `from`/`to` are `{ id, name }`, or null for the backlog.
+    case "sprint_changed":
+      if (d.to == null)
+        return interleaveChips(
+          t("taskBoard.sprints.activityToBacklog", { from }),
+          { from: sprintChip(d.from) },
+        );
+      return interleaveChips(
+        d.from == null
+          ? t("taskBoard.sprints.activitySet", { to })
+          : t("taskBoard.sprints.activityFromTo", { from, to }),
+        { from: sprintChip(d.from), to: sprintChip(d.to) },
+      );
     case "tags_changed":
       if (!Array.isArray(d.to) || d.to.length === 0)
         return t("taskBoard.taskDialog.activityTagsCleared");
@@ -2584,8 +2992,11 @@ function describeActivity(
     case "merge_conflict_resolution":
       return t("taskBoard.taskDialog.activityMergeConflictResolution");
     case "merge_failed": {
-      // `detail` names the repo (no_connection) or carries GitHub's refusal
-      // text — the difference between "it's broken" and "connect this repo".
+      /**
+       * `detail` names the repo (no_connection) or carries the provider's
+       * refusal text — the difference between "it's broken" and "connect this
+       * repo".
+       */
       const detail = typeof d.detail === "string" ? d.detail : "";
       switch (d.reason) {
         case "no_pr":
@@ -2600,6 +3011,9 @@ function describeActivity(
             : t("taskBoard.taskDialog.activityMergeFailed");
         case "rate_limited":
           return t("taskBoard.taskDialog.activityMergeFailedRateLimited");
+        // The one refusal with an automatic answer: the agent can rebase.
+        case "conflict":
+          return t("taskBoard.taskDialog.activityMergeFailedConflict");
         case "refused":
           return detail
             ? t("taskBoard.taskDialog.activityMergeFailedRefused", { detail })
@@ -2623,6 +3037,15 @@ function isMachineActor(actorId: string | null): boolean {
   return !actorId || actorId === SUPER_AGENT_ASSIGNEE_ID;
 }
 
+/** The reports engine also logs with a null actor: a passing check's note and
+ *  the move to done it caused are the Deco Score's, not the Super Agent's. */
+function isDecoScoreEntry(a: TaskBoardActivity): boolean {
+  return (
+    a.action === "finding_resolved" ||
+    (a.action === "status_changed" && a.data.reason === "finding_resolved")
+  );
+}
+
 /** A run of consecutive timeline events, avatars joined by a vertical rail. */
 function TimelineBlock({
   items,
@@ -2634,17 +3057,28 @@ function TimelineBlock({
   const t = useT();
   const [expanded, setExpanded] = useState(false);
 
-  const actorName = (actorId: string | null) => {
-    if (isMachineActor(actorId)) {
+  const actorName = (a: TaskBoardActivity) => {
+    if (isDecoScoreEntry(a)) {
+      return t("taskBoard.taskDialog.createdBySystemLabel");
+    }
+    if (isMachineActor(a.actorId)) {
       return t("taskBoard.taskDialog.superAgentLabel");
     }
     return (
-      memberByUserId.get(actorId!)?.user?.name ??
+      memberByUserId.get(a.actorId!)?.user?.name ??
       t("taskBoard.taskDialog.someoneLabel")
     );
   };
 
-  const actorAvatar = (actorId: string | null): ReactNode => {
+  const actorAvatar = (a: TaskBoardActivity): ReactNode => {
+    const actorId = a.actorId;
+    if (isDecoScoreEntry(a)) {
+      return (
+        <span className="z-10 flex size-4 shrink-0 items-center justify-center bg-background">
+          <Lightning01 size={14} className="text-muted-foreground" />
+        </span>
+      );
+    }
     if (isMachineActor(actorId)) {
       return (
         <span className="z-10 flex size-4 shrink-0 items-center justify-center bg-background">
@@ -2678,9 +3112,9 @@ function TimelineBlock({
       )}
       {visible.map((a) => (
         <div key={a.id} className="relative flex items-center gap-2.5">
-          {actorAvatar(a.actorId)}
+          {actorAvatar(a)}
           <span className="min-w-0 truncate text-xs text-muted-foreground">
-            {actorName(a.actorId)} {describeActivity(a, t, memberByUserId)}
+            {actorName(a)} {describeActivity(a, t, memberByUserId)}
             <span className="text-muted-foreground/60">
               {" · "}
               {formatTimeAgo(new Date(a.occurredAt))}
@@ -2707,5 +3141,89 @@ function TimelineBlock({
         </button>
       )}
     </div>
+  );
+}
+
+/**
+ * Why the card's last run died, and the one button that can fix it.
+ *
+ * The timeline already carried this text, but as prose with a wire prefix on
+ * it and no remedy — so the two failures a human can actually clear (a GitHub
+ * App installation that lost its permissions, a repo whose connection is gone)
+ * read as noise. Re-run is offered alongside because it is the right next step
+ * once the auth is fixed, and because a re-run BEFORE fixing it fails again
+ * inside a second, which is what made Re-run look broken.
+ *
+ * Renders nothing unless the newest status move carries a reason, so a card
+ * that got anywhere since has no banner. See {@link lastRunFailure}.
+ */
+function RunFailureBanner({
+  item,
+  orgSlug,
+  onRerun,
+}: {
+  item: TaskBoardItem;
+  orgSlug: string;
+  onRerun?: () => void;
+}) {
+  const t = useT();
+  const { data: activity } = useTaskBoardActivity(item.id);
+  const { data: repositories } = useRepositories();
+  const failure = lastRunFailure(activity ?? []);
+  if (!failure) return null;
+
+  const needsGithubAuth =
+    failure.code === SANDBOX_START_ERROR_CODES.githubNotAuthenticated;
+  const connectionMissing =
+    failure.code === SANDBOX_START_ERROR_CODES.githubConnectionMissing;
+  const reauth = githubReauthUrl({
+    orgSlug,
+    repo: item.repo,
+    repositories: repositories ?? [],
+    returnTo: taskSharePath(orgSlug, item),
+  });
+
+  return (
+    <Alert variant="destructive" className="mt-2 flex-col">
+      <div className="flex items-start gap-3">
+        <AlertCircle />
+        <div className="flex flex-col gap-1">
+          <AlertTitle>{t("taskBoard.taskDialog.runFailedTitle")}</AlertTitle>
+          <AlertDescription>
+            {connectionMissing
+              ? t("taskBoard.taskDialog.runFailedGithubMissing")
+              : needsGithubAuth
+                ? t("taskBoard.taskDialog.runFailedGithubAuth")
+                : failure.message}
+          </AlertDescription>
+          {needsGithubAuth && reauth.ownerOnly && reauth.owner && (
+            <AlertDescription>
+              {t("taskBoard.taskDialog.runFailedGithubOwnerOnly", {
+                owner: reauth.owner,
+              })}
+            </AlertDescription>
+          )}
+        </div>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-2 self-start">
+        {(needsGithubAuth || connectionMissing) && (
+          <Button size="sm" asChild>
+            <a href={reauth.url}>
+              {t(
+                connectionMissing
+                  ? "taskBoard.taskDialog.runFailedLinkRepo"
+                  : "taskBoard.taskDialog.runFailedReconnect",
+              )}
+            </a>
+          </Button>
+        )}
+        {onRerun && (
+          <Button size="sm" variant="outline" onClick={onRerun}>
+            <RefreshCw01 size={14} />
+            {t("taskBoard.taskBoard.rerun")}
+          </Button>
+        )}
+      </div>
+    </Alert>
   );
 }

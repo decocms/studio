@@ -37,6 +37,7 @@ import { posthog } from "@/posthog";
 import { getBaseUrl } from "@/core/server-constants";
 import { createAccessControl, Role } from "@decocms/better-auth/plugins/access";
 import { getDb, getDatabaseUrl, getDbDialect } from "../database";
+import { findOrgByPreviousSlug } from "../core/org-previous-slug";
 import { createEmailOtpConfig } from "./email-otp";
 import { createEmailSender, findEmailProvider } from "./email-providers";
 import { emailButton, emailParagraph, emailTemplate } from "./email-template";
@@ -238,6 +239,12 @@ const plugins = [
   // Organization plugin for multi-tenant organization management
   // https://www.better-auth.com/docs/plugins/organization
   organization({
+    // Seats are unlimited on every plan; Better Auth otherwise caps at 100. It
+    // is also its default page size for listMembers / getFullOrganization.
+    // Rides the plans flag so merging this changes nothing until plans ship.
+    ...(getSettings().plansEnabled && {
+      membershipLimit: Number.MAX_SAFE_INTEGER,
+    }),
     organizationCreation: {
       afterCreate: async (data) => {
         await seedOrgDb(data.organization.id, data.member.userId);
@@ -249,6 +256,15 @@ const plugins = [
       // and MCP tool wrappers.
       beforeCreateOrganization: async ({ organization }) => {
         rejectReservedOrganizationSlug(organization.slug);
+        // A renamed org's old slug still routes to it; a new org must not take it over.
+        if (
+          organization.slug &&
+          (await findOrgByPreviousSlug(getDb().db, organization.slug))
+        ) {
+          throw new APIError("BAD_REQUEST", {
+            message: "Organization slug is already taken.",
+          });
+        }
       },
       // Keep base64 logos out of the org row (they bloat every
       // organization.list response). Mirrors `backfill-assets
@@ -301,6 +317,7 @@ const plugins = [
       owner,
     },
     sendInvitationEmail,
+    invitationExpiresIn: 7 * 24 * 60 * 60, // 7 days (Better Auth default is 48h)
   }),
 
   // MCP plugin for OAuth 2.1 server
@@ -445,13 +462,6 @@ export function getTrustedOrigins(): string[] {
 }
 
 const settings = getSettings();
-
-// Hard cap on inline base64 avatars stored in `user.image`. Avatar upload is
-// disabled in the UI, so `image` should only ever be a short OAuth provider
-// URL; this cap is a backstop against direct API callers. Oversized data: URLs
-// bloat every /get-session response and previously broke login via the
-// set-auth-jwt header.
-const MAX_INLINE_AVATAR_LENGTH = 256 * 1024;
 
 // Falling back to a fixed string baked into this open-source repo would let
 // anyone who forgets to set BETTER_AUTH_SECRET run with a publicly-known
@@ -666,19 +676,21 @@ export const auth = betterAuth({
         },
       },
       update: {
-        // Defense in depth: never persist an oversized base64 avatar. Upload
-        // is disabled in the UI, but a direct API caller could still send a
-        // multi-megabyte data: URL. See MAX_INLINE_AVATAR_LENGTH.
+        /**
+         * `user.image` rides inline in every /get-session response, and an
+         * oversized data: URL previously broke login through the set-auth-jwt
+         * header. Avatars now live in the uploader's filesystem (POST
+         * /api/_users/avatar) and `image` carries that URL, so an inline
+         * data: URL has no legitimate producer left — reject it outright
+         * rather than cap it. Provider logins supply an https URL, never a
+         * data: one.
+         */
         before: async (data) => {
           const image = (data as { image?: unknown }).image;
-          if (
-            typeof image === "string" &&
-            image.startsWith("data:") &&
-            image.length > MAX_INLINE_AVATAR_LENGTH
-          ) {
-            throw new APIError("PAYLOAD_TOO_LARGE", {
+          if (typeof image === "string" && image.startsWith("data:")) {
+            throw new APIError("BAD_REQUEST", {
               message:
-                "Avatar image is too large. Upload an image smaller than 5MB.",
+                "Inline image data is not accepted. Upload the avatar to /api/_users/avatar and set `image` to the returned URL.",
             });
           }
         },

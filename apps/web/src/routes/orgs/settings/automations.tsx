@@ -50,13 +50,13 @@ function SettingsAutomationsPage() {
 
   const handleBrowseAgents = () => {
     track("automations_empty_state_browse_agents_clicked");
-    navigate({ to: "/$org/settings/agents", params: { org: org.slug } });
+    navigate({ to: "/$org/settings/projects", params: { org: org.slug } });
   };
 
   return (
     <Page>
       <Page.Content>
-        <Page.Body>
+        <Page.Container>
           <div className="flex flex-col gap-6">
             <Page.Title>{t("settings.automations.pageTitle")}</Page.Title>
             {automations.length > 0 && (
@@ -105,7 +105,7 @@ function SettingsAutomationsPage() {
               ))}
             </div>
           )}
-        </Page.Body>
+        </Page.Container>
       </Page.Content>
     </Page>
   );

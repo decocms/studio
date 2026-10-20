@@ -20,7 +20,6 @@ import Suggestion, {
 } from "@tiptap/suggestion";
 import { Extension, type Editor, type Range } from "@tiptap/core";
 import { PluginKey } from "@tiptap/pm/state";
-import type { Node } from "@tiptap/pm/model";
 import { createPortal } from "react-dom";
 import { Avatar } from "@decocms/ui/components/avatar.tsx";
 import {
@@ -115,7 +114,7 @@ interface Dismissal {
 }
 
 /** The text at `from`, as long as `length`, clamped to the document. */
-function textAt(doc: Node, from: number, length: number): string {
+function textAt(doc: any, from: number, length: number): string {
   const to = Math.min(from + length, doc.content.size);
   return from >= to ? "" : doc.textBetween(from, to, "\ufffc", "\ufffc");
 }

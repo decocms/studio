@@ -1,3 +1,4 @@
+import { CODEX_SUBSCRIPTION_PROVIDER_ID } from "@decocms/shared/harness/codex-models";
 /**
  * Model credentials for the sandbox-hosted claude-code harness.
  *
@@ -18,11 +19,16 @@
  *    `deco` (the Deco AI Gateway) provisions OpenRouter keys used against
  *    openrouter.ai directly, so it takes the same path — as it does in every
  *    other provider switch (`provider-from-secret`, `studio-provider`).
+ *  - the dispatching user's own GitHub Copilot plan: their GitHub token as a
+ *    bearer against Copilot's Anthropic-compatible `/v1/messages`, which takes
+ *    Copilot's own (dotted) Claude model ids.
  *
  * Anything else fails loudly at dispatch. The alternative — provisioning a pod
  * with a credential the SDK cannot use — surfaces as an opaque model error
  * several minutes later, which is much worse than a clear refusal now.
  */
+
+import { isClaudeCodeModel } from "@decocms/shared/harness/claude-code-models";
 
 /**
  * Pseudo-provider id for a user's own Claude subscription (linked over OAuth,
@@ -31,13 +37,62 @@
  */
 export const CLAUDE_SUBSCRIPTION_PROVIDER_ID = "claude-subscription";
 
+/** Pseudo-provider id for a user's own GitHub Copilot plan (stored per user). */
+export const GITHUB_COPILOT_PROVIDER_ID = "github-copilot";
+
+/** The user's own plans, which outrank and bypass the org's model keys. */
+export function isUserPlanCredential(credentialId: string): boolean {
+  return (
+    credentialId === CODEX_SUBSCRIPTION_PROVIDER_ID ||
+    credentialId === CLAUDE_SUBSCRIPTION_PROVIDER_ID ||
+    credentialId === GITHUB_COPILOT_PROVIDER_ID
+  );
+}
+
+/**
+ * The chat model of a run billed to the user's own plan when the org has no
+ * model of its own: the harness's default Claude model.
+ */
+export function claudeSubscriptionChatModel(
+  credentialId: string = CLAUDE_SUBSCRIPTION_PROVIDER_ID,
+): {
+  credentialId: string;
+  thinking: { id: string; title: string; provider: string };
+} {
+  const id = CLAUDE_CODE_MODEL.anthropic.chat;
+  return {
+    credentialId,
+    thinking: { id, title: id, provider: "anthropic" },
+  };
+}
+
 /** OpenRouter's Anthropic-compatible base. The SDK appends `/v1/messages`. */
 const OPENROUTER_ANTHROPIC_BASE_URL = "https://openrouter.ai/api";
 
+/** Copilot's Anthropic-compatible base. The SDK appends `/v1/messages`. */
+const GITHUB_COPILOT_BASE_URL = "https://api.githubcopilot.com";
+const COPILOT_INTEGRATION_HEADER =
+  "Copilot-Integration-Id: copilot-developer-cli";
+
 /**
- * Which model a run gets. Not the agent's thinking slot — the SDK drives the
- * `claude` CLI, which only works against Claude models, so the slot's id is not
- * usable here.
+ * A chat's Claude model in Copilot's id form: `claude-sonnet-5-5` and
+ * `anthropic/claude-sonnet-5.5` both become `claude-sonnet-5.5`. Null when
+ * the id is not a Claude model.
+ */
+export function copilotModelId(modelId: string): string | null {
+  const id = modelId.replace(/^anthropic\//, "");
+  if (!id.startsWith("claude-")) return null;
+  return id.replace(/-(\d+)-(\d+)$/, "-$1.$2");
+}
+
+/**
+ * Which model a run gets when the chat did not pick a Claude model itself (see
+ * `chosenModel` below) — the SDK drives the `claude` CLI, which only works
+ * against Claude models, so any other slot id is not usable here.
+ *
+ * `default` is a task-board run's builder. `chat` is an interactive chat, which
+ * honors the model the chat picked and otherwise gets the cheaper tier: a chat
+ * is mostly conversation and lookups, and on Opus a short one cost ~$2.
  *
  * `reviewer` is a cheaper tier for the Reviewer, whose job is
  * to read a diff and reach a verdict rather than write the change. Together
@@ -52,21 +107,31 @@ const OPENROUTER_ANTHROPIC_BASE_URL = "https://openrouter.ai/api";
  * priced for, and it is a class of its own rather than `reviewer` so the run
  * metadata says what the run actually was.
  */
-export type ClaudeCodeModelClass = "default" | "reviewer" | "conflict";
+export type ClaudeCodeModelClass = "default" | "chat" | "reviewer" | "conflict";
 
 const CLAUDE_CODE_MODEL: Record<
-  "anthropic" | "openrouter",
+  "anthropic" | "openrouter" | "copilot",
   Record<ClaudeCodeModelClass, string>
 > = {
   anthropic: {
-    default: "claude-opus-5",
+    default: "claude-opus-5-5",
+    chat: "claude-sonnet-5-5",
     reviewer: "claude-sonnet-5",
     conflict: "claude-sonnet-5",
   },
   openrouter: {
-    default: "anthropic/claude-opus-5",
+    default: "anthropic/claude-opus-5.5",
+    chat: "anthropic/claude-sonnet-5.5",
     reviewer: "anthropic/claude-sonnet-5",
     conflict: "anthropic/claude-sonnet-5",
+  },
+  // Sonnet even for the builder: Copilot plans gate Opus per account (off on a
+  // fresh Pro seat), and an unavailable model fails the run with a 400.
+  copilot: {
+    default: "claude-sonnet-5.5",
+    chat: "claude-sonnet-5.5",
+    reviewer: "claude-sonnet-5",
+    conflict: "claude-sonnet-5",
   },
 };
 
@@ -76,6 +141,10 @@ const CLAUDE_CODE_MODEL: Record<
  * changes no schema and no DBOS step I/O.
  */
 export const MODEL_CLASS_METADATA_KEY = "claudeCodeModelClass";
+
+/** Thread metadata key holding a task run's `appendInstructions`, reused by
+ *  every later turn on that thread. */
+export const TASK_RUN_INSTRUCTIONS_KEY = "taskRunInstructions";
 
 /** Narrow an untrusted `runMetadata` value to a class. Pure — unit-tested. */
 export function modelClassFromMetadata(
@@ -117,6 +186,7 @@ export const CLAUDE_CODE_MAX_OUTPUT_TOKENS = 32_000;
  */
 const CLAUDE_CODE_MAX_TURNS: Record<ClaudeCodeModelClass, number | null> = {
   default: null,
+  chat: null,
   reviewer: 60,
   conflict: 60,
 };
@@ -151,6 +221,14 @@ const CLAUDE_CODE_MAX_TURNS: Record<ClaudeCodeModelClass, number | null> = {
  */
 const TOOL_SEARCH = "1";
 
+/**
+ * Five-minute prompt cache instead of the CLI's default one hour. A 1h write is
+ * billed at 2x input against 1.25x for 5m, and a chat turn writes ~200k tokens
+ * of prompt that is rarely reused an hour later, so the longer TTL only raised
+ * the price of every write.
+ */
+const PROMPT_CACHE_5M = "1";
+
 /** The subset of a resolved model source this needs. */
 export interface ClaudeCodeCredential {
   providerId: string;
@@ -162,7 +240,7 @@ export interface ClaudeCodeCredential {
 export class UnsupportedClaudeCodeProviderError extends Error {
   constructor(providerId: string) {
     super(
-      `the claude-code harness needs an Anthropic, OpenRouter or Deco model ` +
+      `the claude-code harness needs an Anthropic, OpenRouter, Deco or GitHub Copilot model ` +
         `credential; this run's model resolves to "${providerId}". Point the ` +
         `agent's thinking model at one of those, or run it with Decopilot.`,
     );
@@ -181,8 +259,16 @@ export class UnsupportedClaudeCodeProviderError extends Error {
 export function claudeCodeEnvFromCredential(
   credential: ClaudeCodeCredential,
   modelClass: ClaudeCodeModelClass = "default",
+  /** The model the chat picked; honored only for the chat class. */
+  chosenModel?: string,
 ): Record<string, string | null> {
   const { providerId, apiKey, baseUrl } = credential;
+  const modelFor = (shape: "anthropic" | "openrouter") =>
+    modelClass === "chat" &&
+    chosenModel &&
+    isClaudeCodeModel(shape === "anthropic" ? shape : providerId, chosenModel)
+      ? chosenModel
+      : CLAUDE_CODE_MODEL[shape][modelClass];
   /** Properties of the run, not of the credential — so every shape carries them.
    *  `null` deletes the turn cap, so a sandbox that last ran a reviewer does not
    *  carry that cap into a Super Agent run. */
@@ -191,11 +277,14 @@ export function claudeCodeEnvFromCredential(
     CLAUDE_CODE_MAX_OUTPUT_TOKENS: `${CLAUDE_CODE_MAX_OUTPUT_TOKENS}`,
     CLAUDE_CODE_MAX_TURNS: maxTurns === null ? null : `${maxTurns}`,
     ENABLE_TOOL_SEARCH: TOOL_SEARCH,
+    FORCE_PROMPT_CACHING_5M: PROMPT_CACHE_5M,
+    // Only Copilot sets it; null clears a previous Copilot run's header.
+    ANTHROPIC_CUSTOM_HEADERS: null,
   };
   if (providerId === "anthropic") {
     return {
       ...budget,
-      CLAUDE_CODE_MODEL: CLAUDE_CODE_MODEL.anthropic[modelClass],
+      CLAUDE_CODE_MODEL: modelFor("anthropic"),
       ANTHROPIC_API_KEY: apiKey,
       ANTHROPIC_AUTH_TOKEN: null,
       CLAUDE_CODE_OAUTH_TOKEN: null,
@@ -208,7 +297,7 @@ export function claudeCodeEnvFromCredential(
     // leftover one outranks it and the run bills the org's API credit instead.
     return {
       ...budget,
-      CLAUDE_CODE_MODEL: CLAUDE_CODE_MODEL.anthropic[modelClass],
+      CLAUDE_CODE_MODEL: modelFor("anthropic"),
       CLAUDE_CODE_OAUTH_TOKEN: apiKey,
       ANTHROPIC_API_KEY: null,
       ANTHROPIC_AUTH_TOKEN: null,
@@ -218,13 +307,29 @@ export function claudeCodeEnvFromCredential(
   if (providerId === "openrouter" || providerId === "deco") {
     return {
       ...budget,
-      CLAUDE_CODE_MODEL: CLAUDE_CODE_MODEL.openrouter[modelClass],
+      CLAUDE_CODE_MODEL: modelFor("openrouter"),
       // Empty, not absent: a non-empty API key takes precedence over the auth
       // token and would be sent to OpenRouter as an Anthropic key.
       ANTHROPIC_API_KEY: "",
       ANTHROPIC_AUTH_TOKEN: apiKey,
       CLAUDE_CODE_OAUTH_TOKEN: null,
       ANTHROPIC_BASE_URL: baseUrl ?? OPENROUTER_ANTHROPIC_BASE_URL,
+    };
+  }
+  if (providerId === GITHUB_COPILOT_PROVIDER_ID) {
+    const chosen =
+      modelClass === "chat" && chosenModel ? copilotModelId(chosenModel) : null;
+    return {
+      ...budget,
+      CLAUDE_CODE_MODEL: chosen ?? CLAUDE_CODE_MODEL.copilot[modelClass],
+      // Empty, not absent, for the same reason as OpenRouter above.
+      ANTHROPIC_API_KEY: "",
+      ANTHROPIC_AUTH_TOKEN: apiKey,
+      CLAUDE_CODE_OAUTH_TOKEN: null,
+      ANTHROPIC_BASE_URL: GITHUB_COPILOT_BASE_URL,
+      // Copilot refuses a personal access token ("not supported for this
+      // endpoint") unless the request names Copilot CLI's integration.
+      ANTHROPIC_CUSTOM_HEADERS: COPILOT_INTEGRATION_HEADER,
     };
   }
   throw new UnsupportedClaudeCodeProviderError(providerId);

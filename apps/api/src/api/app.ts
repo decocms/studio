@@ -9,6 +9,7 @@
  */
 
 import { readFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
 import { sleep } from "@decocms/shared/std";
 import { jetstreamManager } from "@nats-io/jetstream";
 import { getSettings } from "../settings";
@@ -26,6 +27,11 @@ import {
   setTaskBoardArchiveSweepRuntime,
 } from "@/tools/task-board/dbos-archive-sweep";
 import {
+  registerSubscriptionSweepWorkflow,
+  setSubscriptionSweepRuntime,
+} from "@/billing/dbos-subscription-sweep";
+import { startPlanCacheBroadcast } from "@/billing/plan-cache-broadcast";
+import {
   registerNotificationDigestWorkflow,
   setNotificationDigestRuntime,
 } from "@/notifications/dbos-digest";
@@ -40,7 +46,7 @@ import {
 } from "@/tools/task-board/dbos-github-read";
 import { getPublicUrl } from "@/core/server-constants";
 import { usesLocalObjectStorage } from "../tools/connection/dev-assets";
-import { DECO_STORE_URL, isDecoHostedMcp } from "@/core/deco-constants";
+import { isDecoHostedMcp } from "@/core/deco-constants";
 import { createDecopilotThreadStatusEvent } from "@decocms/shared/sdk";
 import { PrometheusSerializer } from "@opentelemetry/exporter-prometheus";
 import { Hono } from "hono";
@@ -70,8 +76,9 @@ import {
 } from "../observability";
 import { posthog } from "../posthog";
 import authRoutes from "./routes/auth";
-import desktopAuthRoutes from "./routes/desktop-auth";
 import { ME_API_PREFIX, createMeRoutes } from "./routes/me";
+import { createUserFsRoutes } from "./routes/user-fs";
+import { USER_FS_API_PREFIX } from "@/file-storage/user-fs";
 import {
   ADMIN_API_PREFIX,
   createAdminRoutes,
@@ -92,6 +99,10 @@ import {
 import { handleApiError } from "./error-handler";
 import { resolveOrgFromPath } from "./middleware/resolve-org-from-path";
 import { createOrgScopedApi } from "./routes/org-scoped";
+import { ElevenLabsConversationAdapter } from "@/ai-providers/voice/elevenlabs-conversation";
+import { OpenAIConversationAdapter } from "@/ai-providers/voice/openai";
+import { ElevenLabsSpeechAdapter } from "@/ai-providers/voice/elevenlabs";
+import { VoiceSessions } from "@/voice/sessions";
 import {
   createDecoSitesOrgRoutes,
   createDecoSitesUserRoutes,
@@ -104,23 +115,30 @@ import {
   createWellKnownAuthServerRoutes,
   fetchAuthorizationServerMetadata,
   fetchProtectedResourceMetadata,
+  firstAuthorizationServer,
   protectedResourceMetadataHandler,
 } from "./routes/oauth-proxy";
 import openaiCompatRoutes from "./routes/openai-compat";
 import { createProxyRoutes } from "./routes/proxy";
 import { createTriggerCallbackRoutes } from "./routes/trigger-callback";
 import { createEditorResolveRoutes } from "./routes/editor-resolve";
+import {
+  ORGANIZATION_NOTICES_API_PREFIX,
+  createOrganizationNoticeSiteResolutionRoutes,
+} from "./routes/organization-notices-service";
 import publicConfigRoutes from "./routes/public-config";
 import { createReportPagesRoutes } from "./routes/report-pages";
 import reportsRoutes from "./routes/reports";
 import { stripeWebhookRoutes } from "./routes/stripe-webhook";
-import { githubWebhookRoutes } from "./routes/github-webhook";
+import { createGithubWebhookRoutes } from "./routes/github-webhook";
+import { registerSandboxCredentialPushWorkflow } from "@/sandbox/dbos-credential-push";
 import { createJiraAttachmentRoutes } from "./routes/jira-attachments";
 import { createJiraWebhookRoutes } from "./routes/jira-webhook";
 import {
   registerJiraTriggerSweepWorkflow,
   setJiraTriggerSweepRuntime,
 } from "@/jira/dbos-jira-trigger-sweep";
+import { gitProviderCallbackRoutes } from "./routes/git-providers";
 import filesRoutes from "./routes/files";
 import { createThreadOutputsRoutes } from "./routes/thread-outputs";
 import { createSelfRoutes } from "./routes/self";
@@ -129,13 +147,13 @@ import {
   shouldSkipStudioContext,
   SYSTEM_PATHS,
 } from "./utils/paths";
-import { CredentialVault } from "../encryption/credential-vault";
 import type { CancelBroadcast } from "./routes/decopilot/cancel-broadcast";
 import { setCancelBroadcast } from "./routes/decopilot/cancel-registry";
 import {
   createNatsConnectionProvider,
   type NatsConnectionProvider,
 } from "../nats/connection";
+import pkg from "../../package.json" with { type: "json" };
 import {
   JetStreamKVMcpListCache,
   setMcpListCache,
@@ -146,6 +164,7 @@ import {
   setSkillCatalogCache,
   type SkillCatalogCache,
 } from "../file-storage/skill-catalog-cache";
+import { setOrgFsNotifyConnection } from "../file-storage/org-fs-notify";
 import {
   JetStreamKVPrCache,
   PR_CARDS_CACHE,
@@ -183,11 +202,18 @@ import type { RunReactorDeps } from "./routes/decopilot/run-reactor";
 import { emitTerminalThreadStatus } from "./routes/decopilot/thread-status-events";
 import { SqlThreadStorage } from "../storage/threads";
 import { OrganizationBillingStorage } from "../storage/organization-billing";
-import { TaskBoardStorage } from "../storage/task-board";
+import { setBoardMoveListener, TaskBoardStorage } from "../storage/task-board";
 import { advanceTasksToReviewOnThreadFinish } from "../tools/task-board/run-reactions";
 import { SqlAsyncResearchJobStorage } from "../storage/async-research-jobs";
 import { AsyncResearchJobSweeper } from "../storage/async-research-jobs-sweeper";
 import { TaskBoardReviewSweeper } from "../tools/task-board/review-sweeper";
+import {
+  onBoardMove,
+  registerBoardTransitionWorkflows,
+  setBoardTransitionRuntime,
+} from "../automations/board-column-transition-workflows";
+import { ensureBuiltinAutomations } from "../automations/builtin";
+import { buildOrgContext } from "../tools/task-board/org-context";
 import { registerMonitoringRetentionWorkflow } from "../monitoring/dbos-retention-workflow";
 import "../auth/install-studio-pack-workflow";
 import { cleanupOldMonitoringFiles } from "../monitoring/ndjson-retention";
@@ -211,7 +237,10 @@ import {
   THREAD_GATE_PARTITION_CONCURRENCY,
   THREAD_GATE_QUEUE,
 } from "../dispatch-queue";
-import { GITHUB_READS_QUEUE } from "../dispatch-queue/queue-names";
+import {
+  BOARD_TRANSITIONS_QUEUE,
+  GITHUB_READS_QUEUE,
+} from "../dispatch-queue/queue-names";
 import { setProjectorWorkflowRuntime } from "./routes/decopilot/projector-workflow";
 import { synthesizedErrorMessageId } from "./routes/decopilot/message-ids";
 import { backfillStudioPackForAllOrgs } from "../auth/install-studio-pack-workflow";
@@ -266,63 +295,6 @@ function rejectAfter(ms: number): Promise<never> {
 let currentDecopilotCleanup: (() => void | Promise<void>) | null = null;
 
 // ============================================================================
-// Deco Store OAuth Helpers
-// ============================================================================
-
-/**
- * Get project_locator from the Deco Store registry connection.
- * Returns the locator string or null if not found/configured.
- *
- * @param ctx - The studio context
- * @param organizationId - The organization ID to search for the registry connection
- */
-async function getDecoStoreProjectLocator(
-  ctx: StudioContext,
-  organizationId: string,
-): Promise<string | null> {
-  // Find registry connection by URL within the organization
-  const { items: connections } = await ctx.storage.connections.list(
-    organizationId,
-    {
-      where: {
-        field: ["connection_url"],
-        operator: "like",
-        value: `${DECO_STORE_URL}%`,
-      },
-      limit: 1,
-    },
-  );
-  const registryConn = connections[0];
-
-  if (!registryConn?.configuration_state) {
-    return null;
-  }
-
-  return (registryConn.configuration_state as Record<string, unknown>)
-    .project_locator as string | null;
-}
-
-/**
- * Build OAuth query params for deco-hosted MCPs.
- * Uses project_locator from Deco Store registry or falls back to auto_personal.
- */
-function buildDecoOAuthParams(projectLocator: string | null): URLSearchParams {
-  const params = new URLSearchParams();
-
-  if (projectLocator) {
-    const [org, project] = projectLocator.split("/");
-    if (org) params.set("workspace_hint", org);
-    if (project) params.set("project_hint", project);
-  } else {
-    params.set("auto_personal", "true");
-  }
-
-  params.set("force_new", "true");
-
-  return params;
-}
-
-// ============================================================================
 // Inline route handlers (extracted to named functions so they can be
 // dual-mounted at both the legacy paths and the new `/api/:org/...` paths.)
 // ============================================================================
@@ -332,7 +304,8 @@ function buildDecoOAuthParams(projectLocator: string | null): URLSearchParams {
  * routes, the OAuth proxy (legacy `/oauth-proxy/...` and canonical
  * `/api/:org/oauth-proxy/...` — both must stay reachable so a browser
  * session mid-connect to a downstream MCP isn't 403'd before it can
- * establish an SSO session), and the instance-level admin surface.
+ * establish an SSO session), and the instance-level admin and user-filesystem
+ * surfaces.
  */
 export function isSsoExemptPath(path: string): boolean {
   return (
@@ -346,7 +319,11 @@ export function isSsoExemptPath(path: string): boolean {
     // Instance-level operator surface — not governed by any single org's SSO
     // policy. Without this, an admin whose active org enforces SSO gets 403'd
     // off the whole dashboard, and the UI reads that as "not an admin".
-    path.startsWith(`${ADMIN_API_PREFIX}/`)
+    path.startsWith(`${ADMIN_API_PREFIX}/`) ||
+    // A person's own filesystem belongs to them, not to a tenant, so no single
+    // org's SSO policy governs it — and published files must serve with no
+    // session at all.
+    path.startsWith(`${USER_FS_API_PREFIX}/`)
   );
 }
 
@@ -357,22 +334,31 @@ export function isSsoExemptPath(path: string): boolean {
  * cookie-authenticated cross-site request against this API and read the
  * response — a permissive-CORS-with-credentials hole. Only reflect
  * localhost/127.0.0.1 (the Vite dev server, on a different port than the
- * API), the native desktop app's local control origin (see below), and the
- * deployment's own origin, falling back to the request's own origin when
+ * API) and the deployment's own origin, falling back to the request's own origin when
  * `baseUrl` isn't configured (same fallback already used for redirect_uri
  * validation above).
  */
 /**
- * The native desktop app terminates local TLS on its own real domain
- * (`local.studio.decocms.com`, any port — see apps/native's
- * `control_origin.rs`/`local_tls.rs`) rather than `localhost`, because a
- * secure context needs a real domain and per-sandbox cookie isolation needs
- * one the browser groups as a single site. Exact hostname match only — a
- * subdomain or suffix (`evil.local.studio.decocms.com`,
- * `local.studio.decocms.com.evil.example`) must NOT pass.
+ * Secret voice session grants (`voice/grant.ts`) are HMAC-signed and verified
+ * with. Every OTHER secret-derived signer in this codebase (`auth/jwt.ts`,
+ * `core/signing-key.ts`, `decofile/draft-token.ts`) falls back to a random,
+ * non-persistent secret when neither STUDIO_JWT_SECRET nor
+ * BETTER_AUTH_SECRET is configured. This call site passed them straight
+ * through instead: a non-local deployment that sets neither leaves
+ * `betterAuthSecret` as `""` (see `settings/pipeline.ts`), so `grant.ts`'s own
+ * `if (!secret) throw` fires on every sign/verify, 500ing every voice session
+ * instead of degrading like the rest of the app.
  */
-function isNativeDesktopControlOrigin(hostname: string): boolean {
-  return hostname === "local.studio.decocms.com";
+export function resolveVoiceSigningSecret(settings: {
+  studioJwtSecret: string | undefined;
+  betterAuthSecret: string;
+}): string {
+  const configured = settings.studioJwtSecret || settings.betterAuthSecret;
+  if (configured) return configured;
+  console.warn(
+    "STUDIO_JWT_SECRET/BETTER_AUTH_SECRET not set - generating a random secret for voice sessions (not persistent across restarts)",
+  );
+  return randomBytes(32).toString("base64");
 }
 
 export function resolveCorsOrigin(
@@ -391,17 +377,6 @@ export function resolveCorsOrigin(
   if (originHost === "localhost" || originHost === "127.0.0.1") {
     return origin;
   }
-  // A connection's OAuth `authorization_servers` / `token_endpoint` /
-  // `registration_endpoint` legitimately point straight at this deployment
-  // (oauth-proxy.ts deliberately doesn't proxy those — see
-  // `apps/native/crates/local-api/src/routes/upstream.rs`'s
-  // `rewrite_origin_urls`), so the desktop webview calls them cross-origin —
-  // without this, every discovery/register/token fetch in that flow fails
-  // with no ACAO header ("Load failed" client-side).
-  if (isNativeDesktopControlOrigin(originHost)) {
-    return origin;
-  }
-
   const allowedOrigin = baseUrl ?? requestOrigin;
   try {
     if (new URL(allowedOrigin).origin === origin) {
@@ -417,12 +392,8 @@ export function resolveCorsOrigin(
  * Decide whether `redirectUrl` may receive the `/authorize` proxy's
  * redirect — this is the OAuth-hijacking guard: an attacker who could name
  * an arbitrary `redirect_uri` could have the authorization code delivered to
- * their own origin instead of ours. Allows this deployment's own origin,
- * bare `localhost` (any port, for local web dev), and the native desktop
- * app's local control origin (its `/_auth/mcp-callback` — see
- * `apps/native/src/lib/desktop/mcp-oauth-adapter.ts` — lives there, not on
- * this deployment, since consent happens in the user's REAL browser as a top-
- * level navigation, which no cross-origin fetch or cookie ever touches).
+ * their own origin instead of ours. Allows this deployment's own origin and
+ * bare `localhost` (any port, for local web dev).
  */
 export function isAllowedOAuthRedirectUri(
   redirectUrl: URL,
@@ -430,8 +401,7 @@ export function isAllowedOAuthRedirectUri(
 ): boolean {
   return (
     redirectUrl.origin === new URL(allowedOrigin).origin ||
-    redirectUrl.hostname === "localhost" ||
-    isNativeDesktopControlOrigin(redirectUrl.hostname)
+    redirectUrl.hostname === "localhost"
   );
 }
 
@@ -514,10 +484,7 @@ const oauthProxyHandler: MiddlewareHandler<Env> = async (c) => {
 
   if (resourceRes.ok) {
     // Origin has Protected Resource Metadata - use authorization_servers from it
-    const resourceData = (await resourceRes.json()) as {
-      authorization_servers?: string[];
-    };
-    originAuthServer = resourceData.authorization_servers?.[0];
+    originAuthServer = firstAuthorizationServer(await resourceRes.json());
   }
 
   // Fall back to origin root if:
@@ -604,24 +571,9 @@ const oauthProxyHandler: MiddlewareHandler<Env> = async (c) => {
       targetUrl.searchParams.set("resource", resourceIndicator);
     }
 
-    // Add smart OAuth params for deco-hosted MCPs to skip org/project selection
-    // Wrapped in try-catch to ensure OAuth redirect proceeds even if smart params fail
     if (isDecoHostedMcp(connection.connection_url)) {
-      try {
-        const projectLocator = await getDecoStoreProjectLocator(
-          ctx,
-          connection.organization_id,
-        );
-        const smartParams = buildDecoOAuthParams(projectLocator);
-        for (const [key, value] of smartParams) {
-          targetUrl.searchParams.set(key, value);
-        }
-      } catch (error) {
-        console.warn(
-          "[oauth-proxy] Failed to get smart OAuth params, proceeding without:",
-          error,
-        );
-      }
+      targetUrl.searchParams.set("auto_personal", "true");
+      targetUrl.searchParams.set("force_new", "true");
     }
 
     return c.redirect(targetUrl.toString(), 302);
@@ -870,6 +822,24 @@ export const watchHandler: MiddlewareHandler<Env> = async (c) => {
         .filter(Boolean)
     : null;
 
+  // `?scope=all`: every org's events, for admin-org members only.
+  const allOrgs = c.req.query("scope") === "all";
+  if (
+    allOrgs &&
+    (!isAdminOrgId(orgId) || !(await isTaskBoardAdminCtx(studioContext)))
+  ) {
+    return c.json({ error: "forbidden" }, 403);
+  }
+  const listenerKey = allOrgs ? ALL_ORGS : orgId;
+  if (allOrgs) {
+    auditTaskBoardAdminAction({
+      action: "watch_all_orgs",
+      actorUserId: userId,
+      actorOrgId: orgId,
+      targetOrgId: "all",
+    });
+  }
+
   const listenerId = crypto.randomUUID();
 
   return streamSSE(c, async (stream) => {
@@ -887,20 +857,22 @@ export const watchHandler: MiddlewareHandler<Env> = async (c) => {
     // Register listener with the SSE hub
     const registered = sseHub.add({
       id: listenerId,
-      organizationId: orgId,
+      organizationId: listenerKey,
       typePatterns: typePatterns?.length ? typePatterns : null,
-      push: (event: SSEEvent) => {
+      push: (event: SSEEvent, eventOrgId: string) => {
         // Write to the SSE stream — fire-and-forget
         stream
           .writeSSE({
             id: event.id,
             event: event.type,
-            data: JSON.stringify(event),
+            data: JSON.stringify(
+              allOrgs ? { ...event, organizationId: eventOrgId } : event,
+            ),
           })
           .catch(() => {
             // Stream broken — remove immediately so no further events are
             // attempted. onAbort handles interval cleanup.
-            sseHub.remove(orgId, listenerId);
+            sseHub.remove(listenerKey, listenerId);
           });
       },
     });
@@ -919,7 +891,9 @@ export const watchHandler: MiddlewareHandler<Env> = async (c) => {
     // Send periodic keepalive comments to detect dead connections
     const keepaliveInterval = setInterval(() => {
       stream.writeSSE({ event: "keepalive", data: "" }).catch(() => {
+        // Don't wait for onAbort, which may never fire for a half-closed socket.
         clearInterval(keepaliveInterval);
+        sseHub.remove(listenerKey, listenerId);
       });
     }, 30_000);
 
@@ -927,7 +901,7 @@ export const watchHandler: MiddlewareHandler<Env> = async (c) => {
     await new Promise<void>((resolve) => {
       stream.onAbort(() => {
         clearInterval(keepaliveInterval);
-        sseHub.remove(orgId, listenerId);
+        sseHub.remove(listenerKey, listenerId);
         resolve();
       });
     });
@@ -950,7 +924,12 @@ import {
 import { Env } from "./hono-env";
 import { devLogger } from "./utils/dev-logger";
 import { streamSSE } from "hono/streaming";
-import { type SSEEvent, sseHub } from "../event-bus";
+import { ALL_ORGS, type SSEEvent, sseHub } from "../event-bus";
+import {
+  auditTaskBoardAdminAction,
+  isAdminOrgId,
+  isTaskBoardAdminCtx,
+} from "@/core/task-board-admin";
 import {
   BACKGROUND_TOOLS_PARTITION_CONCURRENCY,
   BACKGROUND_TOOLS_QUEUE,
@@ -1082,8 +1061,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   } else {
     // Production/dev mode: connect to NATS (required)
     natsProvider = createNatsConnectionProvider();
-    // External NATS deployments may require a credentials file. Managed local
-    // NATS accepts the loopback connection without one.
+    // Credentials files and username/password authentication are mutually exclusive.
     const credsPath = getSettings().natsCredsPath;
     let creds: string | undefined;
     if (credsPath) {
@@ -1096,13 +1074,18 @@ export async function createApp(options: CreateAppOptions = {}) {
         );
       }
     }
-    natsProvider.init(getSettings().natsUrls, creds ? { creds } : undefined);
+    natsProvider.init(getSettings().natsUrls, {
+      creds,
+      user: getSettings().natsUser,
+      password: getSettings().natsPassword,
+    });
 
     // Cross-pod MCP list cache is gated by the same flag as the read cache.
     // When disabled, leave mcpListCache null so getMcpListCache() callers fetch live.
     const tlc = isMcpCacheEnabled()
       ? new JetStreamKVMcpListCache({
           getJetStream: () => natsProvider!.getJetStream(),
+          selfListVersion: pkg.version,
         })
       : null;
     tlc?.init().catch(() => {});
@@ -1182,6 +1165,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Set tool list cache after cleanup to avoid previous cleanup nulling the new cache
   setMcpListCache(mcpListCache);
   setSkillCatalogCache(skillCatalogCache);
+  setOrgFsNotifyConnection(() => natsProvider?.getConnection() ?? null);
   setPrCaches(prCaches);
   setConnectionCircuitStore(connectionCircuitStore);
 
@@ -1250,6 +1234,14 @@ export async function createApp(options: CreateAppOptions = {}) {
   const flipConnection = () => natsProvider?.getConnection() ?? null;
   initFlipBroadcast(flipConnection);
   natsProvider?.onReady(() => initFlipBroadcast(flipConnection));
+
+  // Cross-pod plan-cache invalidation, same shape and same lane. Without it a
+  // plan change only reached the pod that handled it, so for the 60s TTL the
+  // features a customer had just bought worked or not depending on which
+  // replica answered. Local-only without NATS, which for one pod is already
+  // correct.
+  startPlanCacheBroadcast(flipConnection);
+  natsProvider?.onReady(() => startPlanCacheBroadcast(flipConnection));
   streamBuffer.init().catch((err) => {
     console.warn(
       "[Decopilot] StreamBuffer init failed, attach/late-join disabled:",
@@ -1274,6 +1266,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     connectionCircuitStore.teardown();
     setMcpListCache(null);
     setSkillCatalogCache(null);
+    setOrgFsNotifyConnection(null);
     setPrCaches(null);
     setConnectionCircuitStore(null);
   };
@@ -1325,7 +1318,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     c.header("Content-Security-Policy", "frame-ancestors 'none'");
   });
 
-  if (!getSettings().noTui) {
+  if (getSettings().nodeEnv === "development") {
     app.use("*", devLogger());
   }
 
@@ -1491,14 +1484,23 @@ export async function createApp(options: CreateAppOptions = {}) {
   // report data and scan operations behind this proxy require a user session.
   app.route("/api/_reports", reportsRoutes);
 
-  // Stripe webhook (per-seat billing): signature-authed, no session — the
+  // Stripe webhook (plan subscriptions): signature-authed, no session — the
   // caller is Stripe. Instance-level namespace, before the /api/:org catch-all.
   app.route("/api/_stripe", stripeWebhookRoutes);
 
   // GitHub push webhook (tenant warm-pool freshness): HMAC-authed, no session.
   // Optional — 503 without GITHUB_WEBHOOK_SECRET, and pools refresh on their
   // own schedule regardless.
-  app.route("/api/_github", githubWebhookRoutes);
+  app.route(
+    "/api/_github",
+    createGithubWebhookRoutes({
+      taskBoard: () => projectorTaskBoard,
+      contextFactory: () => automationContextFactory,
+    }),
+  );
+  // Git provider OAuth callbacks: the state, not the URL, carries org+user.
+  app.route("/api/_git", gitProviderCallbackRoutes);
+
   // Jira: the issue-event intake that starts runs, and the attachment grant
   // route those runs download through. Both authenticate by capability
   // (per-org secret, signed token), not by session.
@@ -1519,10 +1521,6 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   // Auth routes (API key management via web UI)
   app.route("/api/auth/custom", authRoutes);
-  // Native desktop authentication: a bearer-only identity probe plus the
-  // bearer-to-session bridge used by system-browser login. Mounted before the
-  // `/api/auth/*` Better Auth catchall so these explicit routes win.
-  app.route("/api/auth/desktop", desktopAuthRoutes);
 
   // Fence off the raw Better Auth admin plugin (/api/auth/admin/*) from
   // external callers — see fenceRawAdminSurface's doc in routes/admin.ts for
@@ -1625,7 +1623,6 @@ export async function createApp(options: CreateAppOptions = {}) {
   // StudioContext Injection Middleware
   // ============================================================================
 
-  // Create context factory with the provided database and event bus
   // Context factory only needs the Kysely instance, not the full StudioDatabase
   const memberRoleCache = createMemberRoleCache({ ttlMs: 2 * 60 * 1000 });
   const factory = await createStudioContextFactory({
@@ -1644,10 +1641,6 @@ export async function createApp(options: CreateAppOptions = {}) {
   });
   ContextFactory.set(factory);
 
-  // Credential vault — shared by the Private Registry public routes (mounted
-  // below).
-  const vault = new CredentialVault(getSettings().encryptionKey);
-
   // Public skill sets: synced by a DBOS scheduled workflow (one pod per tick
   // instead of every pod racing its own loop). This only stashes deps — the
   // workflow no-ops when ORGFS_PUBLIC_SETS is unset.
@@ -1659,7 +1652,10 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Hourly auto-archive of settled Done cards, one org leg per candidate org.
   setTaskBoardArchiveSweepRuntime({ db: database.db });
 
-  // Every 10 minutes: the Jira transitions the webhook may have missed.
+  // Hourly: the paid tiers whose `subscription.deleted` never arrived.
+  setSubscriptionSweepRuntime({ db: database.db });
+
+  // Every 5 minutes: the Jira transitions the webhook may have missed.
   setJiraTriggerSweepRuntime({
     db: database.db,
     encryptionKey: getSettings().encryptionKey,
@@ -1686,7 +1682,6 @@ export async function createApp(options: CreateAppOptions = {}) {
   const automationContextFactory = createAutomationContextFactory({
     db: database.db,
   });
-
   // Stash deps for the DBOS workflow body. Safe to call before DBOS.launch():
   // it only writes a module-level pointer, no DBOS API calls.
   // The actual dispatch (and its dispatch-run deps) lives on the thread-gate
@@ -1694,6 +1689,12 @@ export async function createApp(options: CreateAppOptions = {}) {
   setAutomationRuntime({
     storage: automationsStorage,
     studioContextFactory: automationContextFactory,
+    orgContextFactory: (organizationId) =>
+      buildOrgContext(database.db, organizationId),
+    systemDatabaseUrl: withSslmode(
+      getSettings().databaseUrl,
+      getSettings().databasePgSsl,
+    ),
   });
 
   // The per-thread gate starts the hosted run and lets the consume step write
@@ -1701,6 +1702,10 @@ export async function createApp(options: CreateAppOptions = {}) {
   // needs a `dispatchRunFn` or a status-poll cap. Wiring happens before
   // `DBOS.launch()` for the same reasons as automations.
   setThreadGateRuntime({
+    systemDatabaseUrl: withSslmode(
+      getSettings().databaseUrl,
+      getSettings().databasePgSsl,
+    ),
     studioContextFactory: automationContextFactory,
     deps: {
       runRegistry,
@@ -1760,6 +1765,20 @@ export async function createApp(options: CreateAppOptions = {}) {
       taskBoardReviewSweeper.dispose();
     };
   }
+  // Fires `board_column_transition` automation triggers when a card settles
+  // in a column: every logged lane move is offered to the settle wait, and a
+  // 5-minute sweep catches what it missed.
+  setBoardTransitionRuntime({
+    automations: automationsStorage,
+    taskBoard: projectorTaskBoard,
+    fire: enqueueAutomationFire,
+    systemDatabaseUrl: withSslmode(
+      getSettings().databaseUrl,
+      getSettings().databasePgSsl,
+    ),
+    settleMs: getSettings().boardTransitionSettleSeconds * 1000,
+  });
+  setBoardMoveListener(onBoardMove);
   setProjectorWorkflowRuntime({
     getJetStream: () => natsProvider?.getJetStream() ?? null,
     getJetStreamManager: async () => {
@@ -1937,10 +1956,13 @@ export async function createApp(options: CreateAppOptions = {}) {
   registerPublicSetsSyncWorkflow();
   registerOrgRepoSyncWorkflow();
   registerTaskBoardArchiveSweepWorkflow();
+  registerSubscriptionSweepWorkflow();
   registerJiraTriggerSweepWorkflow();
+  registerBoardTransitionWorkflows();
   registerNotificationDigestWorkflow();
   registerTaskBoardMergedTagSweepWorkflow();
   registerTaskBoardGithubReadWorkflow();
+  registerSandboxCredentialPushWorkflow();
 
   const automationRunner: StudioContext["automationRunner"] = async (
     automationId,
@@ -2202,10 +2224,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   });
   app.route("/api", decopilotRoutes);
 
-  // Stable file redirect endpoint (resolves studio-storage: URIs to presigned URLs).
-  // Resolve the org from the URL before serving so the stable URL cannot drift
-  // to the session-active org when the path targets a different org.
-  app.use("/api/:org/files/*", resolveOrgFromPath);
+  // Stable file redirect endpoint; org resolution for this path is already registered above with decopilot/v1.
   app.route("/api", filesRoutes);
 
   // Thread outputs (model-shared files surfaced as download chips in the chat)
@@ -2282,40 +2301,8 @@ export async function createApp(options: CreateAppOptions = {}) {
   legacyDecoSitesOrg.route("/", createDecoSitesOrgRoutes());
   app.route("/api/deco-sites", legacyDecoSitesOrg);
 
-  // ============================================================================
-  // Private Registry public routes (first-class feature)
-  // Registered BEFORE the org-scoped sub-app so the more specific
-  // `/api/:org/registry/*` mounts win over the catch-all org sub-app.
-  // These are PUBLIC endpoints — they do their own org lookup and must NOT
-  // go through `resolveOrgFromPath` (which would enforce membership).
-  // ============================================================================
-
-  const { createPublishRequestHandler, createPublicMCPHandler } = await import(
-    "@/api/routes/registry"
-  );
-  const registryRouteCtx = {
-    db: database.db as any,
-    vault: {
-      encrypt: (value: string) => vault.encrypt(value),
-      decrypt: (value: string) => vault.decrypt(value),
-    },
-  };
-  const publishRequestHandler = createPublishRequestHandler(registryRouteCtx);
-  const publicMCPHandler = createPublicMCPHandler(registryRouteCtx);
-
-  // Legacy mounts (with deprecation log)
-  app.use("/org/:orgRef/registry/publish-request", logDeprecatedRoute);
-  app.post("/org/:orgRef/registry/publish-request", publishRequestHandler);
-  app.use("/org/:orgSlug/registry/*", logDeprecatedRoute);
-  app.all("/org/:orgSlug/registry/*", publicMCPHandler);
-
-  // New canonical mounts (no deprecation log; mounted at the top level so they
-  // resolve their own org and bypass `resolveOrgFromPath`).
-  app.post("/api/:org/registry/publish-request", publishRequestHandler);
-  app.all("/api/:org/registry/*", publicMCPHandler);
-
   // Deployment admin dashboard. Static segment — must register before the
-  // `:org` catch-all below, same trick as the registry mounts above. That
+  // `:org` catch-all below, so that
   // registration order is the real no-collision guarantee: ORGANIZATION_CREATE
   // rejects slugs outside `^[a-z0-9-]+$`, but the raw better-auth
   // organization/create endpoint enforces no charset, so an `_admin`-slugged
@@ -2323,6 +2310,13 @@ export async function createApp(options: CreateAppOptions = {}) {
   // admin surface. The `_` prefix just keeps well-behaved slugs from ever
   // wanting the name (a bare `admin` is a legal, live slug).
   app.route(ADMIN_API_PREFIX, createAdminRoutes());
+
+  // Cross-org site ownership lookup for the organization-notices service.
+  // Registered before the /api/:org catch-all under a static prefix.
+  app.route(
+    ORGANIZATION_NOTICES_API_PREFIX,
+    createOrganizationNoticeSiteResolutionRoutes(),
+  );
 
   // Storefront "." shortcut: resolve (site, domain) → editor. Instance-level (org from org_sites), so it must win over `:org` below.
   app.route("/api/_editor-resolve", createEditorResolveRoutes());
@@ -2332,10 +2326,46 @@ export async function createApp(options: CreateAppOptions = {}) {
   // tenant, which is exactly what these routes must not do.
   app.route(ME_API_PREFIX, createMeRoutes());
 
+  // Per-user filesystems (avatars today). Instance-level for the same reason
+  // as the routes above, plus one of its own: published files here serve
+  // without a session, which no `/api/:org` route may do.
+  app.route(USER_FS_API_PREFIX, createUserFsRoutes());
+
   // New canonical org-scoped API surface — all routes that depend on org context
   // live here. Old routes still work (with deprecation logs) until the cleanup
   // PR removes them after the deprecation window.
+  const voiceSettings = getSettings();
+  const speechAdapter = voiceSettings.elevenlabsApiKey
+    ? new ElevenLabsSpeechAdapter({
+        apiKey: voiceSettings.elevenlabsApiKey,
+        model: voiceSettings.elevenlabsVoiceModel,
+        conversationModel: voiceSettings.elevenlabsConversationModel,
+        voiceId: voiceSettings.elevenlabsVoiceId,
+      })
+    : null;
+  const conversationAdapters = {
+    openai: voiceSettings.openaiLiveApiKey
+      ? new OpenAIConversationAdapter({
+          apiKey: voiceSettings.openaiLiveApiKey,
+          voice: voiceSettings.openaiLiveVoice,
+        })
+      : null,
+    elevenlabs: speechAdapter
+      ? new ElevenLabsConversationAdapter(
+          speechAdapter,
+          () => natsProvider?.getConnection() ?? null,
+        )
+      : null,
+  };
+  const voiceSessions = new VoiceSessions({
+    adapter: speechAdapter,
+    conversationAdapters,
+    defaults: voiceSettings,
+    secret: resolveVoiceSigningSecret(voiceSettings),
+    getConnection: () => natsProvider?.getConnection() ?? null,
+  });
   const orgScopedApi = createOrgScopedApi({
+    voiceSessions,
     kvStorage,
     runRegistry,
     streamBuffer,
@@ -2462,6 +2492,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     // enforced in the system DB, so it is a cap on ALL replicas together —
     // the one thing an in-process token bucket could never be.
     await DBOS.registerQueue(GITHUB_READS_QUEUE, GITHUB_READS_QUEUE_PARAMS);
+    await DBOS.registerQueue(BOARD_TRANSITIONS_QUEUE);
     await reconcileAutomationSchedules(automationsStorage);
 
     // One-time cleanup of the retired per-automation/global gate queues.
@@ -2485,6 +2516,13 @@ export async function createApp(options: CreateAppOptions = {}) {
     // replicas/workers all enqueueing in parallel collapse via OAOO.
     backfillStudioPackForAllOrgs().catch((err) => {
       console.error("[studio-pack-backfill] failed:", err);
+    });
+
+    // Seeds the built-in automations an org lacks. One set-based statement
+    // per built-in, a no-op once every org has them; replicas booting
+    // together collapse on the unique key.
+    ensureBuiltinAutomations(database.db).catch((err) => {
+      console.error("[automations] built-in seed failed:", err);
     });
 
     // Fire-and-forget immediate public-sets sync (hour-bucketed workflow ID,

@@ -11,11 +11,6 @@ import {
   SECTION_MULTIVARIATE_RESOLVE_TYPE,
 } from "./section-types";
 
-const PAGE_RESOLVE_TYPES = new Set([
-  "website/pages/Page.tsx",
-  "$live/pages/LivePage.tsx",
-]);
-
 export interface PageVariant {
   label: string;
   sections: RawSection[];
@@ -89,16 +84,6 @@ export function wrapMultivariateArrayValue(
     variants[0] = { ...variants[0], value: nextArray };
   }
   return { ...obj, variants };
-}
-
-function isPageBlock(val: unknown): val is Record<string, unknown> {
-  if (!val || typeof val !== "object" || Array.isArray(val)) return false;
-  const obj = val as Record<string, unknown>;
-  return (
-    typeof obj.__resolveType === "string" &&
-    PAGE_RESOLVE_TYPES.has(obj.__resolveType) &&
-    typeof obj.path === "string"
-  );
 }
 
 export function getPageVariantCount(
@@ -284,43 +269,62 @@ export function buildPageSectionsFromVariants(
   return createMultivariatePageSections(variants, obj);
 }
 
-function forEachPageVariantRule(
+/**
+ * Visit every object reachable from the decofile, skipping the subtree stored
+ * under `skipKey`. The walk is iterative so a deep block cannot overflow the
+ * stack, and it memoizes object identity so malformed or cyclic user data
+ * terminates. A consequence of the memo: an object reachable from two
+ * positions is visited once.
+ */
+function forEachDecofileObject(
   decofile: Record<string, unknown>,
-  visit: (
-    rule: Record<string, unknown> | undefined,
-    pageKey: string,
-    variantIndex: number,
-  ) => void,
+  skipKey: string | null,
+  visit: (node: Record<string, unknown>) => void,
 ): void {
-  for (const [pageKey, val] of Object.entries(decofile)) {
-    if (!isPageBlock(val)) continue;
-    const sections = val.sections;
-    if (Array.isArray(sections)) {
-      visit(undefined, pageKey, 0);
+  const stack: unknown[] = [];
+  for (const [key, value] of Object.entries(decofile)) {
+    if (key === skipKey) continue;
+    stack.push(value);
+  }
+  const seen = new Set<object>();
+  while (stack.length > 0) {
+    const node = stack.pop();
+    if (!node || typeof node !== "object") continue;
+    if (seen.has(node)) continue;
+    seen.add(node);
+    if (Array.isArray(node)) {
+      for (const item of node) stack.push(item);
       continue;
     }
-    if (!sections || typeof sections !== "object") continue;
-    const variants = (sections as Record<string, unknown>).variants;
-    if (!Array.isArray(variants)) continue;
-    for (let i = 0; i < variants.length; i++) {
-      const variant = variants[i] as Record<string, unknown> | undefined;
-      visit(variant?.rule as Record<string, unknown> | undefined, pageKey, i);
-    }
+    visit(node as Record<string, unknown>);
+    for (const value of Object.values(node)) stack.push(value);
   }
 }
 
+/**
+ * How many places still reference the saved matcher block `blockKey`. The
+ * caller deletes the block when this is 0, so a missed reference deletes live
+ * user data — hence the walk is shape-blind: every object in the decofile is
+ * inspected, not just page variant rules. A reference reaches a matcher from a
+ * page variant's `rule`, from inside a `website/matchers/multi.ts` `matchers`
+ * array at any depth, from a section- or field-level
+ * `<scope>/flags/multivariate/<kind>.ts` container nested anywhere, or from any
+ * non-page block (a saved global section wrapper, another saved matcher).
+ *
+ * Over-counting merely keeps an unused block around; under-counting destroys
+ * data, so unknown shapes count as references. The block's own body is skipped:
+ * a self-reference in malformed data would otherwise pin the orphan forever.
+ */
 export function countSavedMatcherBlockReferences(
   decofile: Record<string, unknown>,
   blockKey: string,
   meta?: LiveMeta | null,
 ): number {
+  if (!blockKey) return 0;
   let count = 0;
-  forEachPageVariantRule(decofile, (rule) => {
-    if (!rule) return;
-    const rt = (rule.__resolveType as string) ?? "";
-    if (rt === blockKey && isSavedMatcherBlockReference(rule, decofile, meta)) {
-      count++;
-    }
+  forEachDecofileObject(decofile, blockKey, (node) => {
+    if (node.__resolveType !== blockKey) return;
+    if (isSavedMatcherBlockReference(node, decofile, meta)) count++;
   });
   return count;
 }

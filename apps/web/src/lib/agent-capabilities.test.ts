@@ -1,8 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import {
   agentHasClonableSource,
-  agentHasConnectedGithub,
-  agentShowsGithubHeaderActions,
+  agentHasConnectedRepository,
+  agentShowsRepositoryHeaderActions,
+  findDevPartner,
 } from "./agent-capabilities";
 
 describe("agentHasClonableSource", () => {
@@ -11,20 +12,20 @@ describe("agentHasClonableSource", () => {
     expect(agentHasClonableSource(undefined)).toBe(false);
   });
 
-  it("returns false for metadata without githubRepo", () => {
+  it("returns false for metadata without repository", () => {
     expect(agentHasClonableSource({})).toBe(false);
-    expect(agentHasClonableSource({ githubRepo: null })).toBe(false);
+    expect(agentHasClonableSource({ repository: null })).toBe(false);
   });
 
-  it("returns false when githubRepo.url is absent or empty", () => {
-    expect(agentHasClonableSource({ githubRepo: {} })).toBe(false);
-    expect(agentHasClonableSource({ githubRepo: { url: "" } })).toBe(false);
+  it("returns false when repository.url is absent or empty", () => {
+    expect(agentHasClonableSource({ repository: {} })).toBe(false);
+    expect(agentHasClonableSource({ repository: { url: "" } })).toBe(false);
   });
 
   it("returns true for a Start Website agent (no connectionId)", () => {
     expect(
       agentHasClonableSource({
-        githubRepo: {
+        repository: {
           url: "https://github.com/decocms/webapp-template",
           owner: "decocms",
           name: "webapp-template",
@@ -36,7 +37,7 @@ describe("agentHasClonableSource", () => {
   it("returns true for a github-imported agent (with connectionId)", () => {
     expect(
       agentHasClonableSource({
-        githubRepo: {
+        repository: {
           url: "https://github.com/acme/app",
           owner: "acme",
           name: "app",
@@ -53,31 +54,31 @@ describe("agentHasClonableSource", () => {
   });
 });
 
-describe("agentHasConnectedGithub", () => {
+describe("agentHasConnectedRepository", () => {
   it("returns false for null/undefined virtualMcp", () => {
-    expect(agentHasConnectedGithub(null)).toBe(false);
-    expect(agentHasConnectedGithub(undefined)).toBe(false);
+    expect(agentHasConnectedRepository(null)).toBe(false);
+    expect(agentHasConnectedRepository(undefined)).toBe(false);
   });
 
   it("returns false for a Start Website agent (no connectionId)", () => {
     const vm = {
       connections: [],
       metadata: {
-        githubRepo: {
+        repository: {
           url: "https://github.com/decocms/webapp-template",
           owner: "decocms",
           name: "webapp-template",
         },
       },
     } as any;
-    expect(agentHasConnectedGithub(vm)).toBe(false);
+    expect(agentHasConnectedRepository(vm)).toBe(false);
   });
 
   it("returns false when connectionId is set but the connection is detached", () => {
     const vm = {
       connections: [{ connection_id: "conn_other" }],
       metadata: {
-        githubRepo: {
+        repository: {
           url: "https://github.com/acme/app",
           owner: "acme",
           name: "app",
@@ -85,14 +86,14 @@ describe("agentHasConnectedGithub", () => {
         },
       },
     } as any;
-    expect(agentHasConnectedGithub(vm)).toBe(false);
+    expect(agentHasConnectedRepository(vm)).toBe(false);
   });
 
   it("returns true when connectionId is set and the connection is attached", () => {
     const vm = {
       connections: [{ connection_id: "conn_github" }],
       metadata: {
-        githubRepo: {
+        repository: {
           url: "https://github.com/acme/app",
           owner: "acme",
           name: "app",
@@ -100,18 +101,18 @@ describe("agentHasConnectedGithub", () => {
         },
       },
     } as any;
-    expect(agentHasConnectedGithub(vm)).toBe(true);
+    expect(agentHasConnectedRepository(vm)).toBe(true);
   });
 });
 
-describe("agentShowsGithubHeaderActions", () => {
+describe("agentShowsRepositoryHeaderActions", () => {
   it("returns false for a Start Website agent cloned from a public template", () => {
     expect(
-      agentShowsGithubHeaderActions({
+      agentShowsRepositoryHeaderActions({
         connections: [],
         metadata: {
           instructions: null,
-          githubRepo: {
+          repository: {
             url: "https://github.com/decocms/webapp-template",
             owner: "decocms",
             name: "webapp-template",
@@ -123,7 +124,7 @@ describe("agentShowsGithubHeaderActions", () => {
 
   it("returns true for an imported repo with an attached GitHub connection", () => {
     expect(
-      agentShowsGithubHeaderActions({
+      agentShowsRepositoryHeaderActions({
         connections: [
           {
             connection_id: "conn_github",
@@ -134,7 +135,7 @@ describe("agentShowsGithubHeaderActions", () => {
         ],
         metadata: {
           instructions: null,
-          githubRepo: {
+          repository: {
             url: "https://github.com/acme/app",
             owner: "acme",
             name: "app",
@@ -145,13 +146,30 @@ describe("agentShowsGithubHeaderActions", () => {
     ).toBe(true);
   });
 
+  it("returns true for a repository-backed project with no aggregated connection", () => {
+    expect(
+      agentShowsRepositoryHeaderActions({
+        connections: [],
+        metadata: {
+          instructions: null,
+          repository: {
+            url: "https://github.com/acme/app",
+            owner: "acme",
+            name: "app",
+            repositoryId: "repo_1",
+          },
+        },
+      } as any),
+    ).toBe(true);
+  });
+
   it("returns true for a detached imported repo (so the header can offer reconnect)", () => {
     expect(
-      agentShowsGithubHeaderActions({
+      agentShowsRepositoryHeaderActions({
         connections: [{ connection_id: "conn_other" }],
         metadata: {
           instructions: null,
-          githubRepo: {
+          repository: {
             url: "https://github.com/acme/app",
             owner: "acme",
             name: "app",
@@ -160,5 +178,43 @@ describe("agentShowsGithubHeaderActions", () => {
         },
       } as any),
     ).toBe(true);
+  });
+});
+
+describe("findDevPartner", () => {
+  it("returns null for a null/undefined agent", () => {
+    expect(findDevPartner(null, [])).toBeNull();
+    expect(findDevPartner(undefined, [])).toBeNull();
+  });
+
+  it("resolves the dev agent's live counterpart when it's in the list", () => {
+    const dev = { id: "vir_dev", metadata: { liveAgentId: "vir_live" } } as any;
+    const live = { id: "vir_live", metadata: {} } as any;
+    expect(findDevPartner(dev, [dev, live])).toEqual({
+      mode: "dev",
+      targetId: "vir_live",
+    });
+  });
+
+  it("resolves the live agent's dev counterpart via reverse lookup", () => {
+    const dev = { id: "vir_dev", metadata: { liveAgentId: "vir_live" } } as any;
+    const live = { id: "vir_live", metadata: {} } as any;
+    expect(findDevPartner(live, [dev, live])).toEqual({
+      mode: "live",
+      targetId: "vir_dev",
+    });
+  });
+
+  it("returns null when liveAgentId is dangling (the live agent was deleted)", () => {
+    const dev = {
+      id: "vir_dev",
+      metadata: { liveAgentId: "vir_deleted" },
+    } as any;
+    expect(findDevPartner(dev, [dev])).toBeNull();
+  });
+
+  it("returns null for an agent that isn't part of a dev/live pair", () => {
+    const solo = { id: "vir_solo", metadata: {} } as any;
+    expect(findDevPartner(solo, [solo])).toBeNull();
   });
 });

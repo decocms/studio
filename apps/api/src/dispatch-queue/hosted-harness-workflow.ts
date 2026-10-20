@@ -101,10 +101,7 @@ import {
   HOSTED_HARNESS_SANDBOXED_QUEUE,
 } from "./queue-names";
 import { runPriority } from "./run-priority";
-import {
-  advanceTaskBoardForRun,
-  reopenTasksOnThreadRun,
-} from "@/tools/task-board/run-reactions";
+import { reopenTasksOnThreadRun } from "@/tools/task-board/run-reactions";
 
 // These types mirror the thread-gate runtime's shapes. They're defined locally
 // (rather than imported from `./thread-gate-workflow`) to avoid an import cycle
@@ -232,11 +229,9 @@ export async function runHostedHarness(
 
   // Fire-and-forget: moving the card must not delay the loop.
   try {
-    void advanceTaskBoardForRun(studioCtx, "progress", input.threadId);
-
     // If the user re-engaged a task that had moved to In Review, pull it back to
     // In Progress. Link-based (`task_board_item_threads`), so it fires for a
-    // re-prompt that carries no run metadata — unlike the forward advance above.
+    // re-prompt that carries no run metadata.
     //
     // Skipped when `runMetadata.taskBoardItemId` is set: that means this
     // execution IS the Super Agent's own task run (dispatched by
@@ -625,16 +620,28 @@ export async function startHostedHarness(
 }
 
 /**
- * Best-effort cancel of a hosted-harness child workflow. The in-memory
- * cancel path (`cancelBroadcast` + run-registry CANCEL → AbortController) already
- * stops the running harness loop; this additionally tells DBOS to stop
- * recovering / retrying the child workflow on pod recycles. Cancelling an
- * already-finished or unknown workflow is a no-op (caller wraps in try/catch as a
- * safety net regardless).
+ * Best-effort cancel of a hosted-harness child workflow and of the gate that
+ * started it. The in-memory cancel path (`cancelBroadcast` + run-registry
+ * CANCEL → AbortController) already stops the running harness loop; this
+ * additionally tells DBOS to stop recovering / retrying the child workflow on
+ * pod recycles.
+ *
+ * The gate holds the thread's queue slot until its projection sees a terminal,
+ * and a cancelled child cannot publish one. `cancelThreadGateHead` finds gates
+ * by their `thread-run:` id; a run enqueued under another id (a board run, a
+ * card comment) is found here, through the child's parent, or it holds the
+ * slot until the idle timeout. Cancelling an already-finished or unknown
+ * workflow is a no-op (caller wraps in try/catch as a safety net regardless).
  */
 export async function cancelHostedHarness(
   runId: string,
   fenceToken: string,
 ): Promise<void> {
+  const child = await DBOS.getWorkflowStatus(
+    hostedChildWorkflowId(runId, fenceToken),
+  );
   await DBOS.cancelWorkflow(hostedChildWorkflowId(runId, fenceToken));
+  if (child?.parentWorkflowID) {
+    await DBOS.cancelWorkflow(child.parentWorkflowID);
+  }
 }

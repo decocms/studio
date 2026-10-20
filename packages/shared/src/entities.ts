@@ -1,3 +1,4 @@
+import type { CanonicalColumnKey } from "./task-board";
 import type { Metadata } from "./chat.ts";
 import type { ThreadRuntime } from "./thread/session-runtime.ts";
 import type { ReviewerKind } from "./task-board.ts";
@@ -94,12 +95,7 @@ export interface StudioThreadMessage {
   updated_at: string;
 }
 
-export type TaskBoardItemStatus =
-  | "triage"
-  | "todo"
-  | "in_progress"
-  | "in_review"
-  | "done";
+export type TaskBoardItemStatus = CanonicalColumnKey;
 
 /** What KIND of work a card is — its shape, not its area (that's tags). */
 export type TaskBoardItemType =
@@ -165,6 +161,15 @@ export interface TaskBoardItem {
   assignedBy: string | null;
   /** `owner/name` of the repo (site) this task pertains to. */
   repo: string | null;
+  /** The first-class repository this task names, when its writer knew it —
+   *  preferred over `repo` for binding a run's checkout. Mirrors
+   *  `taskBoardItemSchema` in `apps/api/src/tools/task-board/schema.ts`. */
+  repositoryId: string | null;
+  /** The project this card belongs to; null leaves it attributed by its
+   *  repository and runs. Mirrors `taskBoardItemSchema`. */
+  virtualMcpId: string | null;
+  /** The sprint this card is planned into; null = backlog. */
+  sprintId: string | null;
   dueDate: string | null;
   /** Manual drag-to-reorder position within a lane, ascending. */
   sortOrder: number;
@@ -173,6 +178,9 @@ export interface TaskBoardItem {
   /** Link to that issue in the tracker, for a human to open. Never folded into
    *  `description`, which agent prompts quote verbatim. */
   externalUrl: string | null;
+  /** Paths this task's work created or edited, joined onto a PR's deploy-preview
+   *  origin by the card. Empty when the task named none. */
+  previewRoutes: string[];
   /** `jira` for the hidden anchor of a Jira-triggered run; null for a card the
    *  board shows. */
   source: "jira" | null;
@@ -194,39 +202,12 @@ export interface TaskBoardItem {
     verdict: "approved" | "changes_requested";
     verified: boolean;
   }[];
+  /** When the card entered its current status; null when the log cannot say. */
+  statusSince: string | null;
   createdBy: string;
   createdAt: string;
   updatedBy: string;
   updatedAt: string;
-}
-
-export interface BrandContext {
-  id: string;
-  organizationId: string;
-  name: string;
-  domain: string;
-  overview: string;
-  logo: string | null;
-  favicon: string | null;
-  ogImage: string | null;
-  fonts: {
-    heading?: string;
-    body?: string;
-    code?: string;
-  } | null;
-  colors: {
-    primary?: string;
-    secondary?: string;
-    accent?: string;
-    background?: string;
-    foreground?: string;
-  } | null;
-  images: Record<string, unknown>[] | null;
-  metadata: Record<string, unknown> | null;
-  archivedAt: Date | string | null;
-  isDefault: boolean;
-  createdAt: Date | string;
-  updatedAt: Date | string;
 }
 
 /** Sanitized organization SSO configuration returned to browser clients. */

@@ -5,10 +5,15 @@
  * Threads are organization-scoped, messages are thread-scoped.
  */
 
+import { sameRepositoryBinding } from "@decocms/shared/repository-binding";
+import {
+  readRepositoryMetadata,
+  writeRepositoryMetadata,
+} from "./repository-metadata";
 import { sql, type Kysely } from "kysely";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
 import type { ThreadRuntime } from "@decocms/shared/thread/session-runtime";
-import type { GithubRepo } from "@decocms/shared/sdk";
+import type { RepositoryBinding } from "@decocms/shared/sdk";
 import { DEFAULT_THREAD_TITLE } from "@/api/routes/decopilot/constants";
 import type {
   ThreadCreateData,
@@ -48,6 +53,13 @@ export function escapeLikePattern(value: string): string {
  * contexts). Any method call without a valid org throws immediately so misuse
  * surfaces at the call site rather than silently operating on `organization_id = ""`.
  */
+/** What a file listing needs to name the chat a file came from. */
+export interface ThreadSummary {
+  id: string;
+  title: string;
+  virtual_mcp_id: string;
+}
+
 export class OrgScopedThreadStorage {
   constructor(
     private inner: SqlThreadStorage,
@@ -92,12 +104,23 @@ export class OrgScopedThreadStorage {
     return this.inner.get(id, this.requireOrg());
   }
 
+  summaries(ids: readonly string[]): Promise<ThreadSummary[]> {
+    return this.inner.summaries(ids, this.requireOrg());
+  }
+
   update(id: string, data: ThreadUpdateData): Promise<Thread> {
     return this.inner.update(id, this.requireOrg(), data);
   }
 
-  appendThreadGithubRepo(id: string, repo: GithubRepo): Promise<GithubRepo[]> {
-    return this.inner.appendThreadGithubRepo(id, this.requireOrg(), repo);
+  appendThreadRepository(
+    id: string,
+    repo: RepositoryBinding,
+  ): Promise<RepositoryBinding[]> {
+    return this.inner.appendThreadRepository(id, this.requireOrg(), repo);
+  }
+
+  recordJiraIssueCreated(id: string, issueKey: string): Promise<string[]> {
+    return this.inner.recordJiraIssueCreated(id, this.requireOrg(), issueKey);
   }
 
   pinRuntimeIfUnset(
@@ -105,6 +128,13 @@ export class OrgScopedThreadStorage {
     pin: ThreadRuntimePin,
   ): Promise<ThreadRuntimePinResult> {
     return this.inner.pinRuntimeIfUnset(id, this.requireOrg(), pin);
+  }
+
+  repinDecopilotToClaudeCode(
+    id: string,
+    branch: string,
+  ): Promise<ThreadRuntimePinResult> {
+    return this.inner.repinDecopilotToClaudeCode(id, this.requireOrg(), branch);
   }
 
   stampRuntimeIfAbsent(id: string, runtime: ThreadRuntime): Promise<boolean> {
@@ -330,7 +360,7 @@ export class SqlThreadStorage implements ThreadStoragePort {
         ? { message_storage_version: data.message_storage_version }
         : {}),
       ...(data.metadata !== undefined
-        ? { metadata: JSON.stringify(data.metadata) }
+        ? { metadata: JSON.stringify(writeRepositoryMetadata(data.metadata)) }
         : {}),
     };
 
@@ -351,9 +381,28 @@ export class SqlThreadStorage implements ThreadStoragePort {
       .selectAll()
       .where("id", "=", id)
       .where("organization_id", "=", data.organization_id)
-      .executeTakeFirstOrThrow();
+      .executeTakeFirst();
+
+    // `id` is a global PK but caller-suppliable, so a different org may own it.
+    if (!existing) {
+      throw new Error(`Thread id "${id}" is already in use`);
+    }
 
     return { ...this.threadFromDbRow(existing), isNew: false };
+  }
+
+  /** Title and agent of each listed thread in the org; unknown ids are skipped. */
+  async summaries(
+    ids: readonly string[],
+    organizationId: string,
+  ): Promise<ThreadSummary[]> {
+    if (ids.length === 0) return [];
+    return this.db
+      .selectFrom("threads")
+      .select(["id", "title", "virtual_mcp_id"])
+      .where("organization_id", "=", organizationId)
+      .where("id", "in", [...ids])
+      .execute();
   }
 
   async get(id: string, organizationId: string): Promise<Thread | null> {
@@ -417,7 +466,9 @@ export class SqlThreadStorage implements ThreadStoragePort {
       updateData.failure_kind = data.failure_kind;
     }
     if (data.metadata !== undefined) {
-      updateData.metadata = JSON.stringify(data.metadata);
+      updateData.metadata = JSON.stringify(
+        writeRepositoryMetadata(data.metadata),
+      );
     }
     if (data.branch !== undefined) {
       updateData.branch = data.branch;
@@ -444,51 +495,98 @@ export class SqlThreadStorage implements ThreadStoragePort {
   }
 
   /**
-   * Append a repo to `metadata.githubRepos`, in SQL, returning the whole list.
-   *
-   * The append happens inside one UPDATE rather than as a read in JS followed
-   * by a write: the model can fire two `TASK_ADD_REPO` calls at once, and a
-   * read-modify-write loses the slower one — with the pod already holding the
-   * checkout the lost entry describes, so nothing looks wrong until the pod is
-   * recreated without it.
-   *
-   * Keyed on `owner/name`, so re-adding a repo the thread already has is a
-   * no-op instead of a duplicate directory.
+   * Append under a row lock so concurrent tool calls preserve every checkout.
+   * The reference table and compatibility JSON must commit together.
    */
-  async appendThreadGithubRepo(
+  async appendThreadRepository(
     id: string,
     organizationId: string,
-    repo: GithubRepo,
-  ): Promise<GithubRepo[]> {
-    const key = `${repo.owner}/${repo.name}`.toLowerCase();
+    repo: RepositoryBinding,
+  ): Promise<RepositoryBinding[]> {
+    return this.db.transaction().execute(async (trx) => {
+      // Lock the destination before reading metadata: concurrent appends must
+      // preserve each other's checkouts and commit the table/JSON together.
+      const thread = await trx
+        .selectFrom("threads")
+        .select("metadata")
+        .where("id", "=", id)
+        .where("organization_id", "=", organizationId)
+        .forUpdate()
+        .executeTakeFirst();
+      if (!thread) return [];
+      if (repo.repositoryId) {
+        await trx
+          .selectFrom("repositories")
+          .select("id")
+          .where("id", "=", repo.repositoryId)
+          .where("organization_id", "=", organizationId)
+          .executeTakeFirstOrThrow();
+        await trx
+          .insertInto("thread_repositories")
+          .values({
+            thread_id: id,
+            organization_id: organizationId,
+            repository_id: repo.repositoryId,
+          })
+          .onConflict((oc) =>
+            oc.columns(["thread_id", "repository_id"]).doNothing(),
+          )
+          .execute();
+      }
+      const metadata = readRepositoryMetadata(thread.metadata) ?? {};
+      const repos = (metadata.additionalRepositories ?? []).filter(
+        (existing) => !sameRepositoryBinding(existing, repo),
+      );
+      repos.push(repo);
+      await trx
+        .updateTable("threads")
+        .set({
+          metadata: JSON.stringify(
+            writeRepositoryMetadata({
+              ...metadata,
+              additionalRepositories: repos,
+            }),
+          ),
+          updated_at: new Date(),
+        })
+        .where("id", "=", id)
+        .where("organization_id", "=", organizationId)
+        .execute();
+      return repos;
+    });
+  }
+
+  /**
+   * Add an issue to the thread's `jira_created_issue_keys`, returning the
+   * list: what `JIRA_ISSUE_CREATE` counts against its cap and checks before
+   * repeating itself.
+   *
+   * One UPDATE, not a read in JS and a write of the whole blob: the run's
+   * tool calls can overlap, and a read-modify-write would drop the slower
+   * one's key. Recording a key twice is a no-op.
+   */
+  async recordJiraIssueCreated(
+    id: string,
+    organizationId: string,
+    issueKey: string,
+  ): Promise<string[]> {
+    const entry = sql`jsonb_build_array(${issueKey}::text)`;
+    const keys = sql`coalesce(metadata->'jira_created_issue_keys', '[]'::jsonb)`;
     const row = await this.db
       .updateTable("threads")
       .set({
-        metadata: sql`
-          jsonb_set(
-            coalesce(metadata, '{}'::jsonb),
-            '{githubRepos}',
-            coalesce(
-              (
-                SELECT jsonb_agg(entry)
-                  FROM jsonb_array_elements(
-                         coalesce(metadata->'githubRepos', '[]'::jsonb)
-                       ) AS entry
-                 WHERE lower(
-                         (entry->>'owner') || '/' || (entry->>'name')
-                       ) <> ${key}
-              ),
-              '[]'::jsonb
-            ) || ${JSON.stringify([repo])}::jsonb
-          )
-        `,
-        updated_at: new Date(),
+        metadata: sql`coalesce(metadata, '{}'::jsonb) || jsonb_build_object(
+          'jira_created_issue_keys',
+          CASE WHEN ${keys} @> ${entry} THEN ${keys} ELSE ${keys} || ${entry} END
+        )`,
+        updated_at: new Date().toISOString(),
       })
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
-      .returning(sql<GithubRepo[]>`metadata->'githubRepos'`.as("repos"))
+      .returning(sql<string[]>`metadata->'jira_created_issue_keys'`.as("keys"))
       .executeTakeFirst();
-    return row?.repos ?? [];
+    if (!row) throw new Error(`Thread ${id} not found`);
+    return row.keys;
   }
 
   async pinRuntimeIfUnset(
@@ -511,6 +609,36 @@ export class SqlThreadStorage implements ThreadStoragePort {
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
       .where("harness_id", "is", null)
+      .returningAll()
+      .executeTakeFirst();
+
+    if (row) {
+      return { thread: this.threadFromDbRow(row), claimed: true };
+    }
+
+    return {
+      thread: await this.get(id, organizationId),
+      claimed: false,
+    };
+  }
+
+  async repinDecopilotToClaudeCode(
+    id: string,
+    organizationId: string,
+    branch: string,
+  ): Promise<ThreadRuntimePinResult> {
+    const row = await this.db
+      .updateTable("threads")
+      .set({
+        harness_id: "claude-code",
+        branch: sql<string>`case when ${sql.ref("branch")} is null or ${sql.ref(
+          "branch",
+        )} = 'ephemeral' then ${branch} else ${sql.ref("branch")} end`,
+        updated_at: new Date().toISOString(),
+      })
+      .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
+      .where("harness_id", "=", "decopilot")
       .returningAll()
       .executeTakeFirst();
 
@@ -681,7 +809,7 @@ export class SqlThreadStorage implements ThreadStoragePort {
     const now = new Date().toISOString();
     let query = this.db
       .updateTable("threads")
-      .set({ status: "failed", updated_at: now })
+      .set({ status: "failed", run_owner_pod: null, updated_at: now })
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
       .where("status", "=", "in_progress");
@@ -1240,6 +1368,8 @@ export class SqlThreadStorage implements ThreadStoragePort {
         metadata = row.metadata;
       }
     }
+
+    metadata = readRepositoryMetadata(metadata) ?? {};
 
     return {
       id: row.id,

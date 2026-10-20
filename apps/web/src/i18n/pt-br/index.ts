@@ -1,3 +1,5 @@
+import { page } from "./page";
+import { projects } from "./projects.ts";
 import { virtualMcp } from "./virtual-mcp.ts";
 import { user } from "./user.ts";
 import { tools } from "./tools.ts";
@@ -9,7 +11,6 @@ import { sectionsEditor } from "./sections-editor.ts";
 import { routes } from "./routes.ts";
 import { reports } from "./reports.ts";
 import { releaseChannel } from "./release-channel.ts";
-import { registry } from "./registry.ts";
 import { orgs } from "./orgs.ts";
 import { monitoring } from "./monitoring.ts";
 import { mainPanelTabs } from "./main-panel-tabs.ts";
@@ -17,22 +18,29 @@ import { markdownEditor } from "./markdown-editor.ts";
 import { library } from "./library.ts";
 import { layouts } from "./layouts.ts";
 import { layoutTour } from "./layout-tour.ts";
+import { imageUpload } from "./image-upload.ts";
 import { home } from "./home.ts";
 import { header } from "./header.ts";
 import { filePicker } from "./file-picker.ts";
 import { devAgent } from "./dev-agent.ts";
-import { downloadApp } from "./download-app.ts";
 import { details } from "./details.ts";
 import { deck } from "./deck.ts";
 import { discover } from "./discover.ts";
 import { commandPalette } from "./command-palette.ts";
 import { connections } from "./connections.ts";
+import { experiments } from "./experiments.ts";
+import { releases } from "./releases.ts";
+import { siteTokens } from "./site-tokens.ts";
 import { common } from "./common.ts";
-import { commerceOnboarding } from "./commerce-onboarding.ts";
+import { reportsOnboarding } from "./reports-onboarding.ts";
 import { collections } from "./collections.ts";
 import { chooseEditor } from "./choose-editor.ts";
+import { decoServe } from "./deco-serve.ts";
+import { siteEditor } from "./site-editor.ts";
 import { chat } from "./chat.ts";
+import { credits } from "./credits.ts";
 import { automations } from "./automations.ts";
+import { agents } from "./agents.ts";
 import { agentShellLayout } from "./agent-shell-layout.ts";
 import { admin } from "./admin.ts";
 import { sandbox } from "./sandbox.ts";
@@ -53,34 +61,42 @@ export const ptBR = {
   ...routes,
   ...reports,
   ...releaseChannel,
-  ...registry,
   ...orgs,
   ...monitoring,
   ...mainPanelTabs,
+  ...experiments,
+  ...releases,
+  ...siteTokens,
   ...markdownEditor,
   ...library,
   ...layouts,
   ...layoutTour,
+  ...imageUpload,
   ...home,
   ...header,
   ...filePicker,
   ...devAgent,
-  ...downloadApp,
   ...details,
   ...deck,
   ...discover,
   ...commandPalette,
   ...connections,
   ...common,
-  ...commerceOnboarding,
+  ...reportsOnboarding,
   ...collections,
   ...chooseEditor,
+  ...decoServe,
+  ...siteEditor,
   ...chat,
+  ...credits,
   ...automations,
+  ...agents,
   ...agentShellLayout,
   ...admin,
   ...sandbox,
   ...settings,
   ...announcements,
   ...assets,
+  ...projects,
+  ...page,
 } satisfies Record<TranslationKey, string>;

@@ -28,6 +28,22 @@ describe("GLOBAL_SEARCH", () => {
       title: "Gamma launch retro",
       created_by: env.userId,
     });
+    await env.ctx.storage.connections.create({
+      id: "conn_stripe",
+      organization_id: env.orgId,
+      title: "Stripe Payments",
+      connection_type: "HTTP",
+      connection_url: "https://mcp.stripe.example/mcp",
+      created_by: env.userId,
+    });
+    await env.ctx.storage.connections.create({
+      id: "conn_linear",
+      organization_id: env.orgId,
+      title: "Linear",
+      connection_type: "HTTP",
+      connection_url: "https://mcp.linear.example/mcp",
+      created_by: env.userId,
+    });
   });
   afterAll(async () => {
     await env.close();
@@ -89,9 +105,45 @@ describe("GLOBAL_SEARCH", () => {
     const unfiltered = GLOBAL_SEARCH.outputSchema.parse(
       await GLOBAL_SEARCH.handler({ query: "launch" }, env.ctx),
     );
-    expect(filtered.items.map((i) => i.id).sort()).toEqual(
-      unfiltered.items.map((i) => i.id).sort(),
+    /** Compare the THREAD rows of each call, not every row: the unfiltered
+     *  call also returns tasks and connections, so an equality over the whole
+     *  list only held while no other type happened to match. */
+    const threadIds = (items: typeof filtered.items) =>
+      items
+        .filter((item) => item.type === "thread")
+        .map((item) => item.id)
+        .sort();
+
+    expect(threadIds(filtered.items)).toEqual(threadIds(unfiltered.items));
+    expect(filtered.items.every((item) => item.type === "thread")).toBe(true);
+  });
+
+  it("finds a connection by a token in its title", async () => {
+    const parsed = GLOBAL_SEARCH.outputSchema.parse(
+      await GLOBAL_SEARCH.handler({ query: "stripe" }, env.ctx),
     );
+    const connections = parsed.items.filter(
+      (item) => item.type === "connection",
+    );
+
+    expect(connections.map((item) => item.id)).toEqual(["conn_stripe"]);
+    // The client routes on `slug`, so it has to survive the round trip.
+    expect(connections[0]?.slug).toBeTruthy();
+  });
+
+  it("narrows to connections when `types` asks for them", async () => {
+    const parsed = GLOBAL_SEARCH.outputSchema.parse(
+      await GLOBAL_SEARCH.handler(
+        { query: "", types: ["connection"] },
+        env.ctx,
+      ),
+    );
+
+    expect(parsed.items.every((item) => item.type === "connection")).toBe(true);
+    expect(parsed.items.map((item) => item.id).sort()).toEqual([
+      "conn_linear",
+      "conn_stripe",
+    ]);
   });
 
   it("returns no items when `types` is an empty array", async () => {

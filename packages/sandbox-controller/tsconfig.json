@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    // Lets the declaration bundle inline the private workspace packages.
+    "baseUrl": ".",
+    "paths": {
+      "@decocms/sandbox/provider": ["../sandbox/server/provider/index.ts"],
+      "@decocms/sandbox/provider/agent-sandbox": [
+        "../sandbox/server/provider/agent-sandbox/index.ts"
+      ],
+      "@decocms/sandbox/provider/*": ["../sandbox/server/provider/*.ts"],
+      "@decocms/shared/git-providers": ["../shared/src/git-providers/index.ts"],
+      "@decocms/shared/std": ["../shared/src/std/index.ts"]
+    }
+  },
+  "include": ["index.ts", "tsup.config.ts"]
+}

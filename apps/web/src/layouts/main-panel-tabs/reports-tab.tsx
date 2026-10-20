@@ -1,17 +1,17 @@
-/**
- * ReportsTab — what the sidebar's Reports destination opens for an org that has
- * no report yet (the route's own `reports` view).
+/** ReportsTab — what the sidebar's Reports destination opens, on both sides of
+ * the project scope: the INDEX at org scope (`ReportsIndex`, one row per
+ * project), and that project's report inside one.
  *
  * Reports used to be hidden until a diagnostic existed, which left no way to ask
  * for one from inside the product: the only entry was the public
- * /commerce-onboarding funnel. So the destination is always listed now and lands
+ * /reports-onboarding funnel. So the destination is always listed now and lands
  * here, on an empty state that starts the diagnostic.
  *
  * Starting it is exactly the onboarding hand-off, reused rather than
- * reimplemented: COMMERCE_DISCOVERY_SETUP claims the site, then we navigate to
+ * reimplemented: REPORTS_SETUP claims the site, then we navigate to
  * the org home thread with `?connect=1`, which mounts the blocking
- * CommerceConnectModal — the step that asks for the data sources (GA4/GSC/VTEX/
- * GitHub), triggers COMMERCE_DISCOVERY_RUN and opens the report.
+ * ReportsConnectModal — the step that asks for the data sources (GA4/GSC/VTEX/
+ * GitHub), triggers REPORTS_RUN and opens the report.
  *
  * Once a diagnostic does exist this tab IS the report app: Reports is a
  * destination, so which view it shows follows from whether a report exists, not
@@ -32,18 +32,21 @@ import { ErrorBoundary } from "@/components/error-boundary";
 import { DESTINATION_ROUTE } from "@/hooks/use-destination-route";
 import { useT } from "@/i18n/use-t.ts";
 import { track } from "@/lib/posthog-client";
-import { useCommerceDiagnostic } from "@/hooks/use-commerce-diagnostic";
+import { useReportsDiagnostic } from "@/hooks/use-reports-diagnostic";
 import { MiniReportPage } from "@/components/home/mini-report-page";
 import {
-  COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
-  getWellKnownDecopilotVirtualMCP,
+  REPORTS_TOOL_NAME,
   SELF_MCP_ALIAS_ID,
   useMCPClient,
   useProjectContext,
 } from "@/sdk";
-import { parseSelfToolResult } from "@/routes/commerce-onboarding/self-tool-result.ts";
-import { translateSiteError } from "@/routes/commerce-onboarding/site-error.ts";
+import { parseSelfToolResult } from "@/routes/reports-onboarding/self-tool-result.ts";
+import { translateSiteError } from "@/routes/reports-onboarding/site-error.ts";
 import { PanelLoading } from "@/layouts/main-panel-boundary";
+import { ReportsIndex } from "@/components/projects/reports-index";
+import { useProjectScope, useScopeId } from "@/hooks/use-project-scope";
+import { readProjectProfile, storeHost } from "@/lib/project-profile.ts";
+import { useProjectFirstNav } from "@/hooks/use-preferences";
 
 const AppViewContent = lazy(() =>
   import("@/routes/project-app-view").then((m) => ({
@@ -52,17 +55,42 @@ const AppViewContent = lazy(() =>
 );
 
 export function ReportsTab() {
+  const projectFirstNav = useProjectFirstNav();
+  const scopeId = useScopeId();
+  const { project } = useProjectScope();
   const { diagnostic, isLoading, siteUrl, connectionId } =
-    useCommerceDiagnostic();
+    useReportsDiagnostic();
+
+  /** At ORG scope this is the index over every project's report; inside a
+   *  project it is that project's own, below. */
+  if (projectFirstNav && !scopeId) {
+    return (
+      <Suspense fallback={<PanelLoading />}>
+        <ReportsIndex />
+      </Suspense>
+    );
+  }
 
   if (isLoading) return <PanelLoading />;
 
-  if (diagnostic) {
+  const projectSiteUrl =
+    projectFirstNav && project ? readProjectProfile(project).storeUrl : null;
+
+  /** Whether the org's one diagnostic is about THIS project: the backend still
+   *  keeps one per org (`use-project-reports.ts`), so without this every
+   *  project would render the same numbers under its own name. A project that
+   *  names no storefront keeps the old behaviour. */
+  const ownsDiagnostic =
+    !projectSiteUrl ||
+    !siteUrl ||
+    storeHost(projectSiteUrl) === storeHost(siteUrl);
+
+  if (diagnostic && ownsDiagnostic) {
     return (
       <Suspense fallback={<PanelLoading />}>
         <AppViewContent
           connectionId={connectionId}
-          toolName={COMMERCE_DISCOVERY_REPORT_TOOL_NAME}
+          toolName={REPORTS_TOOL_NAME}
         />
       </Suspense>
     );
@@ -70,11 +98,16 @@ export function ReportsTab() {
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-y-auto">
+      {/* The project's own storefront seeds the form, so starting a report
+          from inside a project never asks for an address the project already
+          knows. */}
       <ErrorBoundary
-        fallback={() => <StartDiagnosticState claimedSiteUrl={siteUrl} />}
+        fallback={() => (
+          <StartDiagnosticState claimedSiteUrl={projectSiteUrl ?? siteUrl} />
+        )}
       >
         <Suspense fallback={<PanelLoading />}>
-          <StartDiagnostic claimedSiteUrl={siteUrl} />
+          <StartDiagnostic claimedSiteUrl={projectSiteUrl ?? siteUrl} />
         </Suspense>
       </ErrorBoundary>
     </div>
@@ -166,7 +199,7 @@ function StartDiagnostic({
     mutationFn: async (url: string) =>
       parseSelfToolResult<unknown>(
         await selfClient.callTool({
-          name: "COMMERCE_DISCOVERY_SETUP",
+          name: "REPORTS_SETUP",
           arguments: { siteUrl: url },
         }),
       ),
@@ -199,10 +232,9 @@ function StartDiagnostic({
     }
     // The connections step triggers the run and opens the report.
     navigate({
-      to: DESTINATION_ROUTE.agents,
-      params: { org: org.slug, panel: undefined },
+      to: DESTINATION_ROUTE.home,
+      params: { org: org.slug },
       search: {
-        virtualmcpid: getWellKnownDecopilotVirtualMCP(org.id).id,
         connect: "1",
         siteUrl: normalized.value,
       },

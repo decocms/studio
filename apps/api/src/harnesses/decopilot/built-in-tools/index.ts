@@ -29,6 +29,7 @@ const BUILTIN_TOOL_ANNOTATIONS: Record<
   open_in_agent: { readOnly: false, destructive: false },
   subtask: { readOnly: false, destructive: false },
   user_ask: { readOnly: true, destructive: false },
+  suggest_task: { readOnly: true, destructive: false },
   propose_plan: { readOnly: true, destructive: false },
   enable_tool: { readOnly: true, destructive: false },
   todo_write: { readOnly: false, destructive: false },
@@ -42,6 +43,17 @@ const BUILTIN_TOOL_ANNOTATIONS: Record<
   TASK_BOARD_ITEM_UPDATE: { readOnly: false, destructive: false },
   TASK_BOARD_ITEM_DELETE: { readOnly: false, destructive: true },
   TASK_BOARD_ITEM_PRS_GET: { readOnly: true, destructive: false },
+  TASK_BOARD_ADMIN_ORG_LIST: { readOnly: true, destructive: false },
+  TASK_BOARD_DELIVERY: { readOnly: true, destructive: false },
+  TASK_BOARD_OPERATION: { readOnly: true, destructive: false },
+  TASK_BOARD_OPERATION_TASKS: { readOnly: true, destructive: false },
+  TASK_BOARD_REWORK: { readOnly: true, destructive: false },
+  TASK_BOARD_SPRINTS: { readOnly: true, destructive: false },
+  TASK_BOARD_STUCK: { readOnly: true, destructive: false },
+  TASK_BOARD_COST: { readOnly: true, destructive: false },
+  TASK_BOARD_QUALITY: { readOnly: true, destructive: false },
+  TASK_BOARD_ERRORS: { readOnly: true, destructive: false },
+  TASK_BOARD_TENANTS: { readOnly: true, destructive: false },
 };
 import { createReadToolOutputTool } from "@/harnesses/lib/decopilot/built-in-tools/read-tool-output";
 import { type VirtualClient } from "@/harnesses/lib/decopilot/built-in-tools/sandbox";
@@ -60,13 +72,19 @@ import { makeBackgroundable } from "@/harnesses/lib/decopilot/built-in-tools/bac
 import { registerFlip } from "@/harnesses/decopilot/flip-registry";
 import type { BackgroundDispatcher } from "@/harnesses/lib/decopilot/built-in-tools/backgroundable";
 import { GenerateImageInputSchema } from "@/harnesses/lib/decopilot/built-in-tools/portable-media-tools";
-import { createWebSearchTool } from "@/harnesses/lib/decopilot/built-in-tools/web-search";
-import { createClusterResearchJob } from "./cluster-research-job";
+import {
+  createWebSearchTool,
+  DEEP_RESEARCH_DESCRIPTION,
+} from "@/harnesses/lib/decopilot/built-in-tools/web-search";
+import { createClusterResearchJob } from "@/tools/chat/research-job";
 import type { PendingImage } from "@/harnesses/lib/decopilot/built-in-tools/vm-tools/types";
 import { buildPortableBuiltInTools } from "@/harnesses/lib/decopilot/built-in-tools/portable-built-ins";
 import { createThreadTools } from "./thread-tools";
 import { createJiraRunTools } from "./jira-run-tools";
 import { createTaskBoardTools } from "./task-board-tools";
+import { suggestTaskTool } from "./suggest-task";
+import { isDecopilot } from "@decocms/shared/sdk";
+import { createAgentTools } from "./agent-tools";
 import type { ModelsConfig } from "@/harnesses/lib/types";
 import type { StudioProvider } from "@/ai-providers/types";
 import { getSettings } from "@/settings";
@@ -82,7 +100,7 @@ export type VmContext = {
   userId: string;
   /**
    * Current thread id. Sent with sandbox filesystem calls so the daemon can
-   * point `org/output/` at this thread's subtree. Required because one
+   * point `/app/org/output/` at this thread's subtree. Required because one
    * ephemeral sandbox can serve multiple threads of the same (user, agent).
    */
   threadId: string;
@@ -140,6 +158,11 @@ export interface BuiltinToolParams {
   /** Current agent (virtual MCP) id — scopes the per-agent interests memory
    *  written by `update_interests`. */
   agentId: string;
+  /** True when the agent is a code project — it has a checked-out GitHub repo,
+   *  either on its own metadata or pinned to the thread by `load_repo`. Gates
+   *  `suggest_task`: on an agent with no repo, a task card has nothing to run
+   *  against. */
+  isCodeProject?: boolean;
   /** Usage roll-up sink (Task 17) — forwarded to the `subtask` tool so a
    *  delegated child run's tokens fold into the parent run's accumulator. */
   onChildUsage?: (usage: {
@@ -185,6 +208,7 @@ async function buildAllTools(
     htmlArtifactBuffer,
     taskId,
     agentId,
+    isCodeProject = false,
     onChildUsage,
     backgroundDispatcher,
   } = params;
@@ -226,14 +250,25 @@ async function buildAllTools(
   // anchor nobody reads, so handing it the board tools would have it record its
   // work where no one looks while the issue stayed untouched. The sandbox
   // harness makes the same swap at its run-scoped MCP endpoint
-  // (`resolveTaskRunToolNames`); this is the same rule for the Decopilot path,
+  // (`resolveThreadToolNames`); this is the same rule for the Decopilot path,
   // which an org with no repo to work in takes.
   Object.assign(
     tools,
     (await isJiraRun(ctx, taskId))
       ? createJiraRunTools(ctx, taskId)
-      : createTaskBoardTools(ctx),
+      : createTaskBoardTools(ctx, toolOutputMap),
   );
+  // Agent-management built-ins — the Super Agent is the only agent that has
+  // no connections to reach them through, and it is the one asked to create or
+  // fix an agent. Scoped to it so a user-built agent doesn't silently gain the
+  // power to rewrite its siblings. They stay on the Studio MCP endpoint too.
+  if (isDecopilot(agentId)) {
+    Object.assign(tools, createAgentTools(ctx));
+  }
+  // A task card is work for a repo; an agent without one has nowhere to send it.
+  if (isDecopilot(agentId) || isCodeProject) {
+    tools.suggest_task = suggestTaskTool;
+  }
   // VM file tools — six LLM-visible tools (read/write/edit/grep/glob/bash)
   // always registered when a vmContext is provided. The handle is resolved
   // lazily on the first tool invocation: `ensureSandbox` either reuses
@@ -405,16 +440,12 @@ async function buildAllTools(
       researchJob,
       toolOutputMap,
       taskId,
-      description:
-        "Run in-depth, multi-source research and synthesize a comprehensive, " +
-        "cited report. Use this when the user needs thorough analysis, a " +
-        "literature/market review, or a question that warrants exploring many " +
-        "sources — accuracy and depth matter more than latency. For quick " +
-        "lookups or fact-checks, use `web_search` instead.",
+      description: DEEP_RESEARCH_DESCRIPTION,
     });
   }
   return tools as {
     user_ask: typeof userAskTool;
+    suggest_task: typeof suggestTaskTool;
     todo_write: typeof todoWriteTool;
     propose_plan: typeof proposePlanTool;
     update_interests: ReturnType<typeof createUpdateInterestsTool>;

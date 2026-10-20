@@ -58,18 +58,45 @@ func ServeWs(w http.ResponseWriter, r *http.Request, deps WsDeps) {
 	}
 	defer upstream.Close()
 
+	serveUpstream(clientConn, clientBuf, r, upstream, deps.OnClientData)
+}
+
+// serveUpstream forwards the upgrade request to an already-dialed upstream and
+// splices the two connections together. Split out from ServeWs so the
+// write-failure branch below — the dial succeeded but the upstream dropped
+// before the handshake could be forwarded, e.g. a dev server still restarting
+// — is exercisable with a fake `upstream` in tests, without a real TCP dial.
+func serveUpstream(clientConn net.Conn, clientBuf io.Reader, r *http.Request, upstream net.Conn, onClientData func()) {
+	// Same "connect then close" contract as ServeWs's two failure branches: the
+	// client gets a clean WebSocket close instead of a bare TCP reset it can't
+	// interpret as anything but a broken connection.
 	if err := writeUpgradeRequest(upstream, r); err != nil {
+		if completeHandshake(clientConn, r) == nil {
+			sendClose(clientConn, 1011, "upstream not reachable")
+		}
 		return
 	}
 
+	splice(clientConn, clientBuf, upstream, onClientData)
+}
+
+// splice pumps bytes bidirectionally between the client and the upstream dev
+// server. A half-close (CloseWrite) lets a well-behaved peer see EOF and close
+// its own side in turn, but a peer that never does — e.g. a client that
+// leaves its WebSocket open without sending anything after the dev server
+// closes — would otherwise leave the other goroutine's Read blocked forever,
+// leaking the goroutine and the hijacked connection for the life of the
+// daemon. So once either side finishes, both connections are closed to force
+// the other Read to return before this function waits for it.
+func splice(clientConn net.Conn, clientBuf io.Reader, upstream net.Conn, onClientData func()) {
 	done := make(chan struct{}, 2)
 	go func() {
 		buf := make([]byte, 32*1024)
 		for {
 			n, rerr := clientBuf.Read(buf)
 			if n > 0 {
-				if deps.OnClientData != nil {
-					deps.OnClientData()
+				if onClientData != nil {
+					onClientData()
 				}
 				if _, werr := upstream.Write(buf[:n]); werr != nil {
 					break
@@ -92,6 +119,8 @@ func ServeWs(w http.ResponseWriter, r *http.Request, deps WsDeps) {
 		done <- struct{}{}
 	}()
 	<-done
+	clientConn.Close()
+	upstream.Close()
 	<-done
 }
 

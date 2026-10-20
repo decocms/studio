@@ -32,6 +32,11 @@ function editorOf(page: Page) {
   return page.getByTestId("task-description").locator(".ProseMirror");
 }
 
+/** The description's file input; the comment composer holds a second one. */
+function fileInputOf(page: Page) {
+  return page.getByTestId("task-description").locator('input[type="file"]');
+}
+
 /** The task rendered in place of the board — `/$org/tasks/DECO-01`. */
 function detailOf(page: Page) {
   return page.getByTestId("task-detail");
@@ -58,8 +63,12 @@ const AUTOSAVE_POLL_TIMEOUT_MS = 15_000;
  * timeout above.
  */
 async function closeTask(page: Page) {
-  // The breadcrumb, not Escape: in the editor, Escape only blurs.
-  await detailOf(page).getByRole("button", { name: "Tasks" }).click();
+  // The breadcrumb, not Escape: in the editor, Escape only blurs. It lives in
+  // the page header now, not inside the detail.
+  await page
+    .getByTestId("page-header")
+    .getByRole("button", { name: "Tasks" })
+    .click();
   await expect(detailOf(page)).toHaveCount(0);
 }
 
@@ -68,6 +77,10 @@ async function openTask(page: Page, orgSlug: string, title: string) {
   const card = page.getByText(title, { exact: true });
   await card.waitFor({ state: "visible", timeout: FIRST_PAINT_MS });
   await card.click();
+  await page
+    .getByTestId("task-detail")
+    .getByRole("button", { name: "Edit", exact: true })
+    .click();
   await editorOf(page).waitFor({ state: "visible", timeout: FIRST_PAINT_MS });
 }
 
@@ -147,12 +160,13 @@ test.describe("task description markdown editor", () => {
     );
 
     await openTask(page, orgSlug, title);
-    const detail = detailOf(page);
     const editor = editorOf(page);
 
-    await detail
-      .locator('input[type="file"]')
-      .setInputFiles({ name: PNG_NAME, mimeType: "image/png", buffer: PNG });
+    await fileInputOf(page).setInputFiles({
+      name: PNG_NAME,
+      mimeType: "image/png",
+      buffer: PNG,
+    });
 
     // Rendered as an actual image, and its URL is nowhere in the visible text.
     // `img[src]`: ProseMirror adds 0×0 `ProseMirror-separator` images of its own.
@@ -232,10 +246,9 @@ test.describe("task description markdown editor", () => {
     );
 
     await openTask(page, orgSlug, title);
-    const detail = detailOf(page);
     const editor = editorOf(page);
 
-    await detail.locator('input[type="file"]').setInputFiles({
+    await fileInputOf(page).setInputFiles({
       name: DOC_NAME,
       mimeType: "text/plain",
       buffer: DOC,

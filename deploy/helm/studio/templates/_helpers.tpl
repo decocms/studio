@@ -434,8 +434,8 @@ introduced to avoid in the first place.
 {{/*
 Validates per-PR preview releases. Every failure here is something that would
 otherwise render a healthy-looking object that silently does nothing: an
-HTTPRoute with no hostname matches no traffic, a pod without --skip-migrations
-races the PreSync migration Job, and a provisioner Job without admin
+HTTPRoute with no hostname matches no traffic, a pod using a different
+entrypoint can bypass migration ownership, and a provisioner Job without admin
 credentials cannot create the database the pods are about to connect to.
 */}}
 {{- define "chart-deco-studio.validatePreview" -}}
@@ -452,8 +452,8 @@ credentials cannot create the database the pods are about to connect to.
 {{- if not .Values.preview.gateway.name }}
 {{- fail "chart-deco-studio: preview.gateway.name is required when preview.enabled=true" -}}
 {{- end }}
-{{- if not (has "--skip-migrations" (.Values.image.command | default list)) }}
-{{- fail "chart-deco-studio: preview.enabled=true requires --skip-migrations in image.command; the PreSync Job is the single migration writer and neither the API nor the worker containers (which share image.command) may race it" -}}
+{{- if not (has "node_modules/decocms/dist/server/server.js" (.Values.image.command | default list)) }}
+{{- fail "chart-deco-studio: preview.enabled=true requires the direct server entrypoint in image.command; schema changes belong to migration jobs" -}}
 {{- end }}
 {{- end }}
 {{- end }}

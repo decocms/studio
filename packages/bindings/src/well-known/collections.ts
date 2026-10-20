@@ -72,6 +72,18 @@ export const WhereExpressionSchema: z.ZodType<WhereExpression> = z.lazy(() =>
 );
 
 /**
+ * Translate a SQL LIKE/ILIKE pattern (`%` = any chars, `_` = single char) into
+ * an anchored, case-insensitive regex. Shared by every in-memory `where`
+ * evaluator that mirrors a `like`/`ilike` filter also pushed down to SQL, so
+ * the two never drift apart.
+ */
+export function likePatternToRegExp(pattern: string): RegExp {
+  const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const translated = escaped.replace(/%/g, ".*").replace(/_/g, ".");
+  return new RegExp(`^${translated}$`, "i");
+}
+
+/**
  * Order by expression for sorting
  */
 export const OrderByExpressionSchema = z.object({

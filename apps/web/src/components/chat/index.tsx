@@ -24,6 +24,7 @@ import { useHighlightCount } from "./highlight/use-highlight-count";
 import { ChatInput } from "./input";
 import { MessagePair, useMessagePairs } from "./message/pair.tsx";
 import { selectHiddenFromBody } from "./queue-items.ts";
+import { LiveMessagesContext, placeLiveMessages } from "./live-messages.ts";
 import { useMessageQueue } from "./use-message-queue.ts";
 import { useOpenPreviewOnRepoLoad } from "./use-open-preview-on-repo-load.ts";
 import { SubtaskRunsProvider } from "./subtask-runs-context.tsx";
@@ -137,6 +138,7 @@ function ChatMessages() {
     hasMoreOlder,
     isFetchingOlder,
     fetchOlderMessages,
+    isRunInProgress,
   } = useChatStream();
   const { taskId } = useChatTask();
 
@@ -150,10 +152,17 @@ function ChatMessages() {
   // optimistic enqueue or was fetched back from the DB on reload.
   const queueItems = useMessageQueue(taskId ?? "");
   const hiddenFromBody = selectHiddenFromBody(queueItems);
-  const visibleMessages =
+  const unqueuedMessages =
     hiddenFromBody.size === 0
       ? messages
       : messages.filter((m) => !hiddenFromBody.has(m.id));
+  // Messages sent into a running sandbox turn render inside its answer,
+  // not as turns of their own (see live-messages.ts).
+  const liveMessages = placeLiveMessages(
+    unqueuedMessages,
+    status === "submitted" || status === "streaming" || isRunInProgress,
+  );
+  const visibleMessages = liveMessages.visible;
   const messagePairs = useMessagePairs(visibleMessages);
   const lastMessagePair = messagePairs.at(-1);
   const highlightCount = useHighlightCount();
@@ -194,29 +203,30 @@ function ChatMessages() {
   };
 
   return (
-    <SubtaskRunsProvider messages={messages}>
-      {/* Positioning context for the jump-to-latest pill. Height-neutral:
+    <LiveMessagesContext.Provider value={liveMessages}>
+      <SubtaskRunsProvider messages={messages}>
+        {/* Positioning context for the jump-to-latest pill. Height-neutral:
           the scroller's h-full now resolves against this wrapper, which
           takes the exact box the scroller had. */}
-      <div className="relative h-full w-full min-w-0">
-        <div
-          ref={setScrollerEl}
-          data-chat-scroller
-          // CONSTRAINT: this element's COMPUTED `overflow` shorthand must stay
-          // in {auto, scroll} or use-stick-to-bottom's wheel-escape dies. The
-          // lib's wheel handler walks ancestors testing
-          // `["scroll","auto"].includes(getComputedStyle(el).overflow)` — the
-          // SHORTHAND, not overflow-y alone. `overflow-y-auto` with an unset
-          // overflow-x computes (CSS visible→auto coercion, since the two
-          // longhands differ) to a single `"auto"` shorthand, which passes.
-          // Adding `overflow-x-hidden` HERE would make it `"hidden auto"` and
-          // fail the test, killing wheel-up escape on the primary chat
-          // scroller. That's why horizontal clipping lives on the contentRef
-          // wrapper below instead, not here.
-          className="w-full min-w-0 max-w-full overflow-y-auto h-full [container-type:size]"
-          style={{ paddingBottom }}
-        >
-          {/*
+        <div className="relative h-full w-full min-w-0">
+          <div
+            ref={setScrollerEl}
+            data-chat-scroller
+            // CONSTRAINT: this element's COMPUTED `overflow` shorthand must stay
+            // in {auto, scroll} or use-stick-to-bottom's wheel-escape dies. The
+            // lib's wheel handler walks ancestors testing
+            // `["scroll","auto"].includes(getComputedStyle(el).overflow)` — the
+            // SHORTHAND, not overflow-y alone. `overflow-y-auto` with an unset
+            // overflow-x computes (CSS visible→auto coercion, since the two
+            // longhands differ) to a single `"auto"` shorthand, which passes.
+            // Adding `overflow-x-hidden` HERE would make it `"hidden auto"` and
+            // fail the test, killing wheel-up escape on the primary chat
+            // scroller. That's why horizontal clipping lives on the contentRef
+            // wrapper below instead, not here.
+            className="w-full min-w-0 max-w-full overflow-y-auto h-full [container-type:size]"
+            style={{ paddingBottom }}
+          >
+            {/*
           Single wrapper around ALL scrollable content so the lib's
           ResizeObserver (on contentRef) sees growth from both the older
           pairs AND the streaming last pair. Height is left auto/content-
@@ -248,63 +258,64 @@ function ChatMessages() {
           single-level min-h-full, with or without the highlight-stack's
           inline paddingBottom on the scroller.
         */}
-          <div ref={stick.contentRef} className="overflow-x-clip">
-            <div className="flex flex-col min-w-0 max-w-2xl mx-auto w-full">
-              <div ref={sentinelRef} aria-hidden className="h-px" />
-              {isFetchingOlder && (
-                <div className="flex items-center justify-center py-3 text-xs text-muted-foreground">
-                  {t("chat.chat.loadingOlderMessages")}
+            <div ref={stick.contentRef} className="overflow-x-clip">
+              <div className="flex flex-col min-w-0 max-w-2xl mx-auto w-full">
+                <div ref={sentinelRef} aria-hidden className="h-px" />
+                {isFetchingOlder && (
+                  <div className="flex items-center justify-center py-3 text-xs text-muted-foreground">
+                    {t("chat.chat.loadingOlderMessages")}
+                  </div>
+                )}
+                {messagePairs.slice(0, -1).map((pair, index) => (
+                  <MessagePair
+                    key={`pair-${pair.user?.id ?? pair.assistant?.id}`}
+                    pair={pair}
+                    isLastPair={false}
+                    status={
+                      index === messagePairs.length - 1 ? status : undefined
+                    }
+                  />
+                ))}
+              </div>
+              {lastMessagePair && (
+                <div className="min-h-[100cqh] min-w-0 max-w-2xl mx-auto w-full">
+                  <MessagePair
+                    key={`pair-${lastMessagePair.user?.id ?? lastMessagePair.assistant?.id}`}
+                    pair={lastMessagePair}
+                    isLastPair={true}
+                    status={status}
+                  />
                 </div>
               )}
-              {messagePairs.slice(0, -1).map((pair, index) => (
-                <MessagePair
-                  key={`pair-${pair.user?.id ?? pair.assistant?.id}`}
-                  pair={pair}
-                  isLastPair={false}
-                  status={
-                    index === messagePairs.length - 1 ? status : undefined
-                  }
-                />
-              ))}
             </div>
-            {lastMessagePair && (
-              <div className="min-h-[100cqh] min-w-0 max-w-2xl mx-auto w-full">
-                <MessagePair
-                  key={`pair-${lastMessagePair.user?.id ?? lastMessagePair.assistant?.id}`}
-                  pair={lastMessagePair}
-                  isLastPair={true}
-                  status={status}
-                />
-              </div>
-            )}
           </div>
-        </div>
-        {/* Jump-to-latest pill — the standard affordance while detached from
+          {/* Jump-to-latest pill — the standard affordance while detached from
           the bottom (isAtBottom is false once the user escapes the follow or
           scrolls up through history; it already treats "within 70px" as at
           bottom, so it never flickers at rest). scrollToBottom() both
           scrolls and re-arms the library's stickiness. Sits `bottom` above
           the highlight-stack reservation so collapsed highlight cards never
           cover it (paddingBottom already includes the 16px baseline). */}
-        {!stick.isAtBottom && (
-          <Button
-            type="button"
-            // Outline look, but with the translucent dark-mode background
-            // (dark:bg-input/30) overridden to a SOLID theme surface — the
-            // default translucency makes it unreadable over streaming text,
-            // while bg-primary reads as a white blob in dark mode.
-            variant="outline"
-            size="icon-sm"
-            aria-label={t("chat.chat.jumpToLatest")}
-            className="absolute left-1/2 z-50 -translate-x-1/2 rounded-full shadow-md animate-in fade-in duration-200 dark:bg-background dark:hover:bg-accent"
-            style={{ bottom: paddingBottom + 8 }}
-            onClick={() => void stick.scrollToBottom()}
-          >
-            <ArrowDown size={14} />
-          </Button>
-        )}
-      </div>
-    </SubtaskRunsProvider>
+          {!stick.isAtBottom && (
+            <Button
+              type="button"
+              // Outline look, but with the translucent dark-mode background
+              // (dark:bg-input/30) overridden to a SOLID theme surface — the
+              // default translucency makes it unreadable over streaming text,
+              // while bg-primary reads as a white blob in dark mode.
+              variant="outline"
+              size="icon-sm"
+              aria-label={t("chat.chat.jumpToLatest")}
+              className="absolute left-1/2 z-50 -translate-x-1/2 shadow-md animate-in fade-in duration-200 dark:bg-background dark:hover:bg-accent"
+              style={{ bottom: paddingBottom + 8 }}
+              onClick={() => void stick.scrollToBottom()}
+            >
+              <ArrowDown size={14} />
+            </Button>
+          )}
+        </div>
+      </SubtaskRunsProvider>
+    </LiveMessagesContext.Provider>
   );
 }
 

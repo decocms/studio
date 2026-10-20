@@ -1,33 +1,22 @@
-import { createHash } from "node:crypto";
 import type { StudioContext } from "@/core/studio-context";
 import type { TaskBoardItem } from "@/storage/types";
 import {
   enabledReviewerKinds,
   isReviewerThreadTitle,
-  PR_DIFF_RECIPE,
-  NO_VISUAL_SURFACE,
+  LANES,
   REVIEWER_KINDS,
   REVIEWER_LABEL,
   reviewCycleStart,
   reviewCycleVerdicts,
-  SHALLOW_CHECKOUT_NOTE,
   type ReviewerKind,
 } from "@decocms/shared/task-board";
-import { recordTaskActivity } from "./activity";
-import { emitTaskBoardUpdated, handTaskToHuman } from "./run-reactions";
-import { enqueueAgentRunForTask } from "./enqueue-task-run";
-import {
-  resolveTaskRepoChoice,
-  type TaskRepoChoice,
-} from "./claude-code-task-run";
+import { handTaskToHuman } from "./run-reactions";
 import { isThreadRunStale } from "@/tools/thread/helpers";
-import { mintReviewToken } from "./review-token";
-import {
-  sandboxUploadHint,
-  uploadsAsSandboxPaths,
-} from "./description-uploads";
 import { nudgeThreadTurn } from "./nudge-thread";
 import { orgFlagEnabled } from "@decocms/shared/organization/schema";
+import { enqueueAutomationFire } from "@/automations/dbos-sync";
+import { REVIEWER_SYSTEM_KEY } from "@/automations/builtin";
+import { reviewFenceKey } from "./reviewer-run";
 import type { ClaudeCodeModelClass } from "@/harnesses/claude-code-env";
 
 /** Thread statuses past which a reviewer run is done — a live run has a
@@ -62,10 +51,10 @@ function isThreadRunLive(
  * True while the task's author — the Super Agent, i.e. any run thread that
  * isn't a reviewer's — is still going.
  *
- * The Super Agent is told to link the PR and set In Review *while still
- * running* (`claude-code-task-run.ts`), so the card is reviewable long before
- * the run that owns the branch is finished. Title is the discriminator the rest
- * of the board already uses (`resolveTaskRunToolNames`); liveness is
+ * Opening the PR moves the card to In Review *while the Super Agent is still
+ * running*, so the card is reviewable long before the run that owns the
+ * branch is finished. Title is the discriminator the rest
+ * of the board already uses (`resolveThreadToolNames`); liveness is
  * {@link isThreadRunLive}, so a dead author's stall window releases the card
  * rather than stranding it.
  */
@@ -76,74 +65,6 @@ export function authorRunLive(task: TaskBoardItem, now: number): boolean {
       isThreadRunLive(thr, now),
   );
 }
-
-/** The reviewer's instructions. Shared scaffolding (load the PR, end with a
- *  decision) lives in the prompt builder; this is the persona, and the ORDER in
- *  it is load-bearing — see `ReviewerKind`. No `disallowedTools`: the reviewer
- *  is the last run on the task, so it has to be able to fix what it finds. */
-const REVIEWER_FOCUS: Record<ReviewerKind, string> = {
-  // prompt-region:start reviewer
-  reviewer:
-    "You are the Reviewer, the LAST automated run on this task. Your job is to " +
-    "confirm the task ACTUALLY SOLVED THE PROBLEM, fix what is wrong with how " +
-    "it was solved, and then ship or hand over. Nothing picks up findings you " +
-    "only describe, so an issue you write down and leave is an issue that " +
-    "ships.\n" +
-    "Do it in THIS ORDER — the order is the point:\n" +
-    "1. REVIEW the code. FIRST look for a review skill/command appropriate to " +
-    "this repository's stack (e.g. a `/review`, `code-review`, or " +
-    "`security-review` skill, or the repo's CONTRIBUTING/review guidelines) " +
-    "and use it. Read the diff critically for correctness, security and " +
-    "quality, and note concrete issues with file/line references.\n" +
-    "2. FIX what you found, on the PR's OWN branch, and push to that same pull " +
-    "request — never a new branch, never a new pull request, never a force " +
-    "push, and never any other ref. Keep the fixes scoped to what your review " +
-    "found; do not redesign the change. Before you push, run the repository's " +
-    "own checks (its type-check / lint / test / format scripts) and make them " +
-    "pass — you are approving this code, so an unverified fix of yours is the " +
-    "same defect as the one you were fixing. If a fix does not hold, revert it " +
-    "and describe it instead of pushing it.\n" +
-    "3. EXERCISE the change on the PR's deploy preview, AFTER your push, on the " +
-    "preview of the commit you actually pushed — the earlier preview is a " +
-    "different build and a verdict on it is a verdict on bytes that will not " +
-    "ship. Wait for it if it is still building. Deep-link to the specific " +
-    "page/route the task affects (not just its root), check the acceptance " +
-    "criteria implied by the title and description, and look for regressions " +
-    "in the affected flow. Judge OUTCOMES, not the diff — NEVER approve on " +
-    "inspection alone. For any VISUAL change capture the affected view BEFORE " +
-    "(the current production / base-branch site) and AFTER (the preview), and " +
-    "for a responsive change capture BOTH a desktop and a real mobile view (a " +
-    "phone viewport AND a mobile user-agent — not a narrowed desktop). The " +
-    "How-to steps below name the exact screenshot tool for your run.\n" +
-    "If the preview will not render (303s, hangs, blank) or you otherwise " +
-    "cannot exercise the change, do NOT approve: request changes stating what " +
-    "is blocking and what is needed to unblock. An unverified preview is not a " +
-    "pass.\n" +
-    "4. RECORD the whole pass as a task comment BEFORE the decision — a " +
-    "durable record, separate from the short decision summary, and REQUIRED: a " +
-    "verdict with no comment is an incomplete run and you will be asked for " +
-    "one. Structure it: what you read and the concrete issues with file/line " +
-    "references, WHICH of them you fixed (with the commits), the acceptance " +
-    "criteria / scenarios you exercised with a pass/fail on each, a " +
-    "before→after pointer to the screenshots, the exact URL(s) and viewport, " +
-    "and anything you did not review or could not verify and why.\n" +
-    "That comment must ALWAYS carry the visual change: embed the before/after " +
-    "screenshots in it whenever the change has any visual surface. If it has " +
-    `none, write the exact words \`${NO_VISUAL_SURFACE}\` in the comment and ` +
-    "name why (backend-only, config, test-only) — that literal is what a " +
-    "machine check looks for, so no paraphrase of it counts, and silence about " +
-    "screenshots is not an acceptable answer either way.\n" +
-    "5. DECIDE. Approve once the pull request is in the state you would " +
-    "approve. Only `request_changes` for something you genuinely cannot settle " +
-    "here (a product decision, a missing credential, an approach that needs " +
-    "rethinking) — that hands the card to a human, it does not start another " +
-    "agent round. NEVER end your run without having called " +
-    "`TASK_BOARD_REVIEW_DECISION`: a run that stops to wait on a background " +
-    "task, or that runs low on room, must decide on what it knows first. An " +
-    "unrecorded verdict strands the card and is the one failure this run " +
-    "cannot leave behind.",
-  // prompt-region:end reviewer
-};
 
 /**
  * Enqueue a review run for every reviewer the org enabled that hasn't already
@@ -204,15 +125,24 @@ export async function enqueueEnabledReviewers(
      *  below.
      *  Omitted means "not checked", which dispatches as it always did. */
     previewMatchesHead?: boolean;
+    /**
+     * Reviewers to dispatch regardless of the org's `reviewer_enabled` flag —
+     * the org setting is the only gate this replaces. `TASK_BOARD_RUN_REVIEWER`
+     * passes it so a human can ask for the one review their org turned off;
+     * every other gate below (a live author run, the attempt cap, a reviewer
+     * already on this cycle) still applies, which is what stops the button
+     * dispatching a second reviewer onto a card that has one.
+     */
+    kinds?: ReviewerKind[];
   },
-): Promise<void> {
+): Promise<ReviewerKind[]> {
   const settings = await ctx.storage.organizationSettings.get(
     task.organizationId,
   );
-  const enabled = enabledReviewerKinds(settings?.flags);
-  if (enabled.length === 0) return;
+  const enabled = opts?.kinds ?? enabledReviewerKinds(settings?.flags);
+  if (enabled.length === 0) return [];
   // Deferred, not dropped — both callers re-poll; above the hand-offs on purpose.
-  if (authorRunLive(task, Date.now())) return;
+  if (authorRunLive(task, Date.now())) return [];
   const modelClass: ClaudeCodeModelClass = orgFlagEnabled(
     settings?.flags,
     "cheap_reviewer_model",
@@ -236,6 +166,10 @@ export async function enqueueEnabledReviewers(
   // Which reviewers actually ruled this cycle. A reviewer thread that completed
   // without one is a spent attempt, not a review — see `isSpentAttempt`.
   const decided = reviewCycleVerdicts(activity, { cycleStartedAt });
+
+  // Reviewers this call really dispatched — every gate below is a silent skip,
+  // and the manual button needs to tell the human which of the two happened.
+  const dispatched: ReviewerKind[] = [];
 
   // One reviewer today, but the enqueue stays a fan-out over `enabled`: each
   // dispatch is independent (its own fence id), and this runs on
@@ -322,18 +256,19 @@ export async function enqueueEnabledReviewers(
         Date.now(),
         verdictRecorded,
       );
-      await enqueueReviewerForTask(
-        ctx,
-        task,
+      const queued = await fireReviewer(ctx, task, {
         kind,
         cycleAt,
         attempt,
         modelClass,
-      ).catch((err) =>
-        console.error(`[task-board] ${kind} reviewer enqueue failed`, err),
-      );
+      }).catch((err) => {
+        console.error(`[task-board] ${kind} reviewer enqueue failed`, err);
+        return false;
+      });
+      if (queued) dispatched.push(kind);
     }),
   );
+  return dispatched;
 }
 
 /**
@@ -362,57 +297,6 @@ export function spentAttemptsThisCycle(
       isSpentAttempt(thr, now, verdictRecorded) &&
       new Date(thr.createdAt).getTime() >= lastInReviewAt,
   ).length;
-}
-
-/**
- * The connectionId for the repository a card already names, when the org has
- * several and the run would otherwise have to go looking.
- *
- * Every reviewer in a multi-repo org opened by calling `TASK_ADD_REPO` with no
- * arguments — the discovery form, which answers with the org's whole catalog —
- * and only then called it again with the id. A card that names its repo makes
- * that round trip pure waste. Null when the card names no repo, when the sole
- * repo is already cloned (nothing to pick), or when the name matches nothing
- * loadable: each leaves the run to discover it as before.
- */
-export function pinnedRepoConnectionId(
-  taskRepo: string | null,
-  choice: TaskRepoChoice,
-): string | null {
-  if (!taskRepo || !choice || !("choices" in choice)) return null;
-  return choice.choices.find((c) => c.repo === taskRepo)?.connectionId ?? null;
-}
-
-/**
- * When this reviewer last finished a run on an EARLIER review cycle, in ms —
- * else 0.
- *
- * A re-review is not a review: the Super Agent pushed more commits onto a PR
- * this reviewer already read end to end. Told nothing, the second run repeats
- * the first almost exactly (in production, $3.39 against $3.51 for a fraction
- * of the change). Given the moment it last ruled, it can ask git what moved.
- *
- * Only `completed` threads count. A `failed` (or otherwise dead, see
- * `isSpentAttempt`) prior attempt never read the PR end to end and posted no
- * verdict — telling the next run it's a "RE-REVIEW" of a diff slice since that
- * corpse's last heartbeat would have it skip reviewing code nobody actually
- * reviewed.
- */
-export function priorCycleReviewAt(
-  task: TaskBoardItem,
-  kind: ReviewerKind,
-  lastInReviewAt: number,
-): number {
-  const times = task.threads
-    .filter(
-      (thr) =>
-        isReviewerThreadTitle(thr.title, kind) &&
-        thr.status === "completed" &&
-        new Date(thr.createdAt).getTime() < lastInReviewAt,
-    )
-    .map((thr) => new Date(thr.lastActiveAt).getTime())
-    .filter((ms) => Number.isFinite(ms));
-  return times.length === 0 ? 0 : Math.max(...times);
 }
 
 /** A reviewer attempt that produced no verdict and never will: it failed, it
@@ -659,206 +543,59 @@ async function requestMissingVerdict(
   });
 }
 
-/**
- * The one string that identifies a reviewer dispatch: (task, reviewer, cycle,
- * attempt). Both fences below are derived from it, so they can only agree.
- * `toISOString()` must be the ONLY serialization of the cycle — a formatting
- * difference between the trigger paths silently breaks the fence.
- */
-function reviewFenceKey(
-  taskId: string,
-  kind: ReviewerKind,
-  cycleAt: Date,
-  attempt: number,
-): string {
-  return `review:${taskId}:${kind}:${cycleAt.toISOString()}:${attempt}`;
-}
-
-/**
- * The reviewer run's thread id, derived from the fence key so the `threads` PK
- * IS the dispatch fence: the two triggers (60s sweeper, the task dialog's 10s
- * poll) can race and the loser's insert conflicts instead of spawning a second
- * reviewer run.
- */
-function reviewerThreadId(fenceKey: string): string {
-  const digest = createHash("sha256")
-    .update(fenceKey)
-    .digest("hex")
-    .slice(0, 32);
-  return `thrd_${digest}`;
-}
-
-/**
- * Enqueue a single reviewer run: a fresh thread (titled `<Reviewer>: <task>`),
- * a "delegated to <reviewer>" timeline entry, and the review prompt dispatched
- * on the org's agent. The reviewer ends by calling `TASK_BOARD_REVIEW_DECISION`.
- *
- * `attempt` is the cycle's spent-attempt count — it only moves the fence, so a
- * retry after a dead attempt gets ids of its own instead of colliding with the
- * corpse.
- */
-async function enqueueReviewerForTask(
+/** Fire the built-in Reviewer on `task`; the fire workflow starts the run
+ *  (`automations/card-run.ts`). False when the org has no Reviewer yet. */
+async function fireReviewer(
   ctx: StudioContext,
   task: TaskBoardItem,
-  kind: ReviewerKind,
-  cycleAt: Date,
-  attempt: number,
-  modelClass: ClaudeCodeModelClass,
-): Promise<void> {
-  const organizationId = task.organizationId;
-  // Proves to TASK_BOARD_REVIEW_DECISION that the caller is this reviewer.
-  const reviewToken = mintReviewToken(task.id, kind, cycleAt);
-
-  // Same harness the Super Agent runs on, for the same reason: a review needs
-  // real `git`/`gh` on a checkout, and — the blocking one — only a
-  // sandbox-hosted run is handed the task-run MCP surface that carries
-  // `TASK_BOARD_ITEM_PRS_GET` and `TASK_BOARD_REVIEW_DECISION`. On Decopilot
-  // (the previous default) both came back `not_found` from `enable_tool`, so a
-  // reviewer could reach its verdict and never record it. Falls back to
-  // Decopilot when the org has no importable repo, exactly as the Super Agent
-  // does — with no repo there is no checkout to review anyway.
-  const choice = await resolveTaskRepoChoice(ctx, organizationId);
-  const repo = choice && "repo" in choice ? choice.repo : null;
-  const sandboxed = choice !== null;
-  const priorReviewAt = priorCycleReviewAt(task, kind, cycleAt.getTime());
-  const pinnedConnectionId = pinnedRepoConnectionId(task.repo, choice);
-  // Over the sandbox's MCP client the task-run tools are namespaced; hosted
-  // Decopilot calls them bare. Naming them wrong is not cosmetic — it is what
-  // the model retries `enable_tool` against before giving up.
-  const prsGetTool = sandboxed
-    ? "mcp__studio__TASK_BOARD_ITEM_PRS_GET"
-    : "TASK_BOARD_ITEM_PRS_GET";
-  const decisionTool = sandboxed
-    ? "mcp__studio__TASK_BOARD_REVIEW_DECISION"
-    : "TASK_BOARD_REVIEW_DECISION";
-  const commentTool = sandboxed
-    ? "mcp__studio__TASK_BOARD_COMMENT_CREATE"
-    : "TASK_BOARD_COMMENT_CREATE";
-  const commentListTool = sandboxed
-    ? "mcp__studio__TASK_BOARD_COMMENT_LIST"
-    : "TASK_BOARD_COMMENT_LIST";
-
-  // Who this run IS. On the sandboxed path this becomes the harness's system
-  // instructions (`agent.instructions`), replacing the org agent's own — those
-  // describe the Super Agent that wrote the PR, which is the last persona a
-  // reviewer of that PR should inherit. The Decopilot fallback has no such hook,
-  // so there it is prepended to the prompt instead (same text, one home).
-  const instructions = [
-    REVIEWER_FOCUS[kind],
-    "",
-    "You are running AUTONOMOUSLY — no human is watching this run. Making the " +
-      "approve / request-changes call IS your job; you are the decision-maker, " +
-      "not an assistant asking a human to decide. NEVER use `user_ask` to ask " +
-      'whether to approve, or to confirm an obvious call ("Approve the PR?"). ' +
-      "Reserve `user_ask` for a genuine, unresolvable blocker only a human can " +
-      "clear (e.g. a missing credential, or a requirement so ambiguous you " +
-      "truly cannot judge the outcome) — that should be rare. When in doubt " +
-      "between asking and deciding, DECIDE.",
-    "",
-    "Do NOT merge the pull request — the board does that itself once your " +
-      "approval is in. Pushing fixes to the PR's own branch is expected of " +
-      "you; opening a second pull request, force-pushing, or touching any " +
-      "other ref is not.",
-  ].join("\n");
-
-  // Sandboxed only — `uploadsAsSandboxPaths` points at an org-fs mount the hosted harness lacks.
-  const reviewerDescription =
-    task.description && sandboxed
-      ? uploadsAsSandboxPaths(task.description)
-      : task.description;
-  const reviewerUploadHint =
-    task.description && reviewerDescription
-      ? sandboxUploadHint(task.description, reviewerDescription)
-      : null;
-
-  const prompt = [
-    ...(sandboxed ? [] : [instructions, ""]),
-    `Task title: ${task.title}`,
-    reviewerDescription ? `\nTask description:\n${reviewerDescription}\n` : "",
-    ...(reviewerUploadHint ? [reviewerUploadHint, ""] : []),
-    "How to work:",
-    `- Call \`${prsGetTool}\` with the task id below to find the pull request under review.`,
-    repo
-      ? `- The repository ${repo.owner}/${repo.name} is already cloned at your working directory and \`git\` and \`gh\` are authenticated — check the PR's branch out there to inspect / exercise the change. ${SHALLOW_CHECKOUT_NOTE}`
-      : sandboxed
-        ? `- Your working directory is EMPTY. Call \`mcp__studio__TASK_ADD_REPO\` ${
-            pinnedConnectionId
-              ? `with connectionId \`${pinnedConnectionId}\` (${task.repo}) FIRST — do NOT call it with no arguments, that only lists the org's repositories and costs you a turn.`
-              : `with the connectionId of the PR's repository FIRST;`
-          } it clones the repository and waits for the checkout, and \`git\` and \`gh\` are authenticated once it returns. ${SHALLOW_CHECKOUT_NOTE}`
-        : "- Load the PR's repository to inspect / exercise the change.",
-    `- ${PR_DIFF_RECIPE}`,
-    ...(priorReviewAt > 0
-      ? [
-          `- This is a RE-REVIEW. You already reviewed an earlier version of this pull request and asked for changes, and there are more commits since (a human re-delegated the card, or your own fixes from that round are in the history). Read your own previous notes with \`${commentListTool}\`, then review WHAT MOVED SINCE — \`gh pr diff <number>\` still shows the whole PR, so narrow it with \`git log --since='${new Date(priorReviewAt).toISOString()}' --oneline\` and diff only those commits. Confirm your earlier notes were addressed and check the new commits for their own problems. Do NOT re-read the parts of the PR you already cleared.`,
-        ]
-      : []),
-    `- Fix the issues you find on the PR's branch, run the repository's own checks, and push to that same PR. You are the last automated run on this task — nothing picks up findings you only describe.`,
-    `- THEN exercise the change on the PR's deploy \`previewUrl\` (from \`${prsGetTool}\`) — re-read it after your push so you get the preview of YOUR commit, and wait for it if it is still building. Deep-link to the page/route the task affects (not root). If you cannot render or exercise it, do NOT approve — \`request_changes\` with what's blocking.`,
-    // One path now: the browser lives in the sandbox image, and BOTH harnesses
-    // have a sandbox to run it in — the hosted one gets its own once the repo
-    // is loaded, which this prompt already tells it to do. Unlike a hosted
-    // capture service, a local browser can also reach the run's OWN dev server
-    // on localhost.
-    '- For a VISUAL change, capture before/after by running `qa-screenshot <url> org/output/qa/<name>.png [--mobile] [--full] [--selector=<css>] [--console]` (headless Chromium, baked into the sandbox; also works against a dev server you started on localhost — none is running by default, this pod is a checkout). Choose the framing: default is the top viewport, `--full` is the whole page, and `--selector=\'<css>\'` frames just the component you changed (best for a focused before/after). Add `--mobile` too for a responsive change, and `--console` to catch the runtime errors a screenshot alone reports as a pass. WRITE them under `org/output/` — that\'s what surfaces them on the task. Then `Read` the files to actually LOOK at them: a screenshot you never opened is not verification. To INTERACT with a page — click, hit-test with `document.elementFromPoint`, fill a form — `qa-screenshot` is not enough, but the browser it drives is yours: write a throwaway node script that requires the global playwright-core: `const { chromium } = require("/usr/local/lib/node_modules/playwright-core"); chromium.launch({ executablePath: "/usr/bin/chromium", args: ["--no-sandbox"] })`. Do NOT report a check as impossible because Playwright is missing — it is installed.',
-    `- Record what you validated with \`${commentTool}\` (scenarios + pass/fail, the exact URL + viewport, and anything you couldn't verify) BEFORE your decision. EMBED the before/after shots inline as markdown images referencing their org/output path, and put each before/after PAIR in a two-column table so they render side by side, e.g.:\n\n| Before | After |\n| --- | --- |\n| ![before desktop](org/output/qa/before-desktop.png) | ![after desktop](org/output/qa/after-desktop.png) |\n\nStudio renders those as real images in the comment.`,
-    `- End the run by calling \`${decisionTool}\` exactly once with the task id, ` +
-      `reviewer "${kind}", the reviewToken below, and your decision:`,
-    "  - `approve` when it's good to ship. Include a short summary of what you verified.",
-    "  - `request_changes` ONLY for something you cannot settle here — it hands the task to a human, it does not start another agent round. Include specific, actionable notes.",
-    "- The reviewToken proves you are this reviewer — pass it through EXACTLY as given. Without it your approval won't count toward an automatic merge.",
-    `- \`${decisionTool}\` is how the verdict is recorded. A review that ends without it is thrown away and the task stays stuck In Review, so call it even when your notes are short.`,
-    "",
-    `(task id: ${task.id})`,
-    `(reviewToken: ${reviewToken})`,
-  ].join("\n");
-
-  // Create + link the reviewer thread and dispatch its run (shared plumbing).
-  const fenceKey = reviewFenceKey(task.id, kind, cycleAt, attempt);
-  const fenceThreadId = reviewerThreadId(fenceKey);
-  const { isNew } = await enqueueAgentRunForTask(ctx, task, {
-    // A verdict is the last thing between this card and Done — it outranks
-    // starting a new task for the next slot.
-    runClass: "reviewer",
-    title: `${REVIEWER_LABEL[kind]}: ${task.title}`,
-    prompt,
-    temperature: 0.3,
-    ...(sandboxed
-      ? {
-          harnessId: "claude-code" as const,
-          modelClass,
-          agent: { instructions },
-        }
-      : {}),
-    ...(repo ? { repo } : {}),
-    fence: { threadId: fenceThreadId, workflowID: fenceKey },
-  }).catch(async (err) => {
-    // Nothing was dispatched, but the fence thread may already exist — and
-    // `reviewerHandledThisCycle` would then read it as this cycle's reviewer
-    // forever. Drop it so the next trigger retries.
-    await ctx.storage.threads
-      .delete(fenceThreadId)
-      .catch((delErr) =>
-        console.error(
-          `[task-board] ${kind} fence thread cleanup failed`,
-          delErr,
-        ),
-      );
-    throw err;
-  });
-  // A concurrent trigger got there first — it owns this reviewer's dispatch.
-  if (!isNew) return;
-
-  // Timeline: "Super Agent delegated to <reviewer>" (machine actor → null), and
-  // broadcast the now-linked thread so the card shows the reviewer session live
-  // (reviewer runs never advance the card's status, so no status-advance emit
-  // carries the fresh link — do it explicitly).
-  await recordTaskActivity(ctx, {
-    taskBoardItemId: task.id,
-    action: "review_requested",
-    actorId: null,
-    data: { reviewer: kind },
-  });
-  const linked = await ctx.storage.taskBoard.getById(task.id, organizationId);
-  if (linked) emitTaskBoardUpdated(organizationId, linked);
+  review: {
+    kind: ReviewerKind;
+    cycleAt: Date;
+    attempt: number;
+    modelClass: ClaudeCodeModelClass;
+  },
+): Promise<boolean> {
+  const builtin = await ctx.storage.automations.findBuiltinTrigger(
+    task.organizationId,
+    REVIEWER_SYSTEM_KEY,
+  );
+  if (!builtin) {
+    console.warn(
+      `[task-board] org ${task.organizationId} has no built-in Reviewer yet; review of ${task.id} waits`,
+    );
+    return false;
+  }
+  const eventKey = reviewFenceKey(
+    task.id,
+    review.kind,
+    review.cycleAt,
+    review.attempt,
+  );
+  await enqueueAutomationFire(
+    {
+      automationId: builtin.automationId,
+      organizationId: task.organizationId,
+      triggerId: builtin.triggerId,
+      target: {
+        kind: "card",
+        itemId: task.id,
+        columnKey: LANES.review,
+        eventKey,
+        movedBy: null,
+        review: {
+          kind: review.kind,
+          cycleAt: review.cycleAt.toISOString(),
+          attempt: review.attempt,
+          modelClass: review.modelClass,
+        },
+      },
+    },
+    // The sweep and the dialog's poll both ask, seconds apart, before the run
+    // links its thread; one fire per minute per attempt is enough to retry a
+    // dispatch that failed and dropped its fence.
+    {
+      idempotencyKey: `${eventKey}:${Math.floor(Date.now() / 60_000)}`,
+    },
+  );
+  return true;
 }

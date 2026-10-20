@@ -1,5 +1,5 @@
 import { AgentAvatar } from "@/components/agent-icon";
-import { useVirtualMCP } from "@/sdk";
+import { useVirtualMCPNonBlocking } from "@/sdk";
 import { Zap } from "@untitledui/icons";
 import { useT } from "@/i18n/use-t.ts";
 
@@ -27,7 +27,7 @@ export function McpAvatar({
       {showAutomationBadge && (
         <span
           aria-label={t("tasksPanel.mcpAvatar.automationTriggered")}
-          className="absolute -bottom-0.5 -right-0.5 flex size-4 items-center justify-center rounded-full bg-blue-500 border border-blue-600 text-white"
+          className="absolute -bottom-0.5 -right-0.5 flex size-4 items-center justify-center rounded-full bg-special border border-special text-special-foreground"
         >
           <Zap size={10} className="text-white" />
         </span>
@@ -43,7 +43,7 @@ function McpAvatarInner({
   virtualMcpId: string;
   size: "xs" | "sm" | "md";
 }) {
-  const entity = useVirtualMCP(virtualMcpId);
+  const entity = useVirtualMCPNonBlocking(virtualMcpId);
   if (!entity) return <AgentAvatar icon={null} name="?" size={size} />;
   return (
     <AgentAvatar icon={entity.icon ?? null} name={entity.title} size={size} />

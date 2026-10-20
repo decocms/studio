@@ -3,7 +3,7 @@ import {
   DropdownMenuItem,
 } from "@decocms/ui/components/dropdown-menu.tsx";
 import { Users03 } from "@untitledui/icons";
-import { GitHubIcon } from "@/components/icons/github-icon";
+import { GitBranch01 } from "@untitledui/icons";
 import { useT } from "@/i18n/use-t.ts";
 
 interface CreateAgentDropdownContentProps {
@@ -37,7 +37,7 @@ export function CreateAgentDropdownContent({
         {t("common.createAgentDropdown.createFromScratch")}
       </DropdownMenuItem>
       <DropdownMenuItem onClick={onImportGitHub}>
-        <GitHubIcon className="size-3.5" />
+        <GitBranch01 className="size-3.5" />
         {t("common.createAgentDropdown.importFromGitHub")}
         {showBetaBadge && (
           <span className="ml-auto text-[10px] font-medium text-muted-foreground bg-muted rounded px-1 py-0.5">

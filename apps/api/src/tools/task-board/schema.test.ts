@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { TaskBoardItem } from "@/storage/types";
 import { TaskBoardItemSchema } from "./schema";
 import { z } from "zod";
 
@@ -32,22 +33,27 @@ describe("TaskBoardItemSchema – proxy round-trip validation", () => {
     organizationId: "org_1",
     title: "Fix the thing",
     description: null,
-    status: "todo" as const,
+    status: "triage" as const,
     priority: "high" as const,
     type: "bug" as const,
     assigneeId: null,
     assignedBy: null,
     repo: null,
+    repositoryId: null,
+    virtualMcpId: null,
+    sprintId: null,
     dueDate: null,
     sortOrder: 0,
     keySeq: 1,
     externalUrl: null,
+    previewRoutes: [],
     source: null,
     retryAttempts: 0,
     reviewCycleStartedAt: null,
     threads: [],
     tags: [],
     reviewVerdicts: [],
+    statusSince: null,
     createdBy: "user_1",
     createdAt: "2024-01-01T00:00:00.000Z",
     updatedBy: "user_1",
@@ -87,6 +93,22 @@ describe("TaskBoardItemSchema – proxy round-trip validation", () => {
       await server.close();
     }
   }
+
+  /**
+   * The same bug has now shipped four times (`retryAttempts`, `lastActiveAt`,
+   * `reviewVerdicts`, `repositoryId`): a field lands on `TaskBoardItem` and
+   * nobody mirrors it here, so this closed object rejects every response.
+   * This makes the next one a `bun run check` failure instead — the round-trip
+   * tests below only cover fields somebody remembered to write a case for.
+   */
+  it("models every field the storage layer returns", () => {
+    const allFieldsModeled: [
+      Exclude<keyof TaskBoardItem, keyof z.infer<typeof TaskBoardItemSchema>>,
+    ] extends [never]
+      ? true
+      : "TaskBoardItemSchema is missing a field of TaskBoardItem" = true;
+    expect(allFieldsModeled).toBe(true);
+  });
 
   it("accepts an item with retryAttempts: 0 (the common case)", async () => {
     const result = await roundTrip({ item: baseItem });

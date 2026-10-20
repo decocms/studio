@@ -29,7 +29,7 @@ export function orgSettingsPath(
  * thing on `/tasks` and `/library`, which have no segment to put it in.
  *
  * Every server-side emitter of this link goes through here. Two of them mint
- * URLs that outlive us — the report CTA is persisted by the commerce-discovery
+ * URLs that outlive us — the report CTA is persisted by the reports
  * service per (org, site) and refreshes only when setup re-runs, and share
  * invites sit in delivered mail — so a future rename has to be a compile error
  * here, not a dead link nobody can recall.

@@ -62,6 +62,9 @@ function estimatePayloadBytes(value: unknown, budget: number): number {
 // The same pass redacts credentials (below) — this table is the one place every
 // harness's output funnels through on its way to durable storage, so it is the
 // only guard that cannot be bypassed by a new producer.
+// Matching the NUL control character is the entire purpose here: Postgres
+// rejects it in a text column, so it is stripped before the insert.
+// oxlint-disable-next-line eslint/no-control-regex
 const NUL = /\u0000/g;
 const LONE_SURROGATE =
   /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
@@ -285,6 +288,34 @@ export class SqlThreadMessagePartStorage {
       }
     });
     return parts;
+  }
+
+  /**
+   * Resolve a tool call the user answered: its part becomes
+   * `output-available` with `output`. Returns the updated tool part payload,
+   * or null when the thread has no assistant tool part with that id.
+   */
+  async answerToolCall(
+    threadId: string,
+    toolCallId: string,
+    output: unknown,
+  ): Promise<Record<string, unknown> | null> {
+    const patch = serializePayload({ state: "output-available", output });
+    const rows = await this.db
+      .updateTable("thread_message_parts")
+      .set({
+        kind: "tool_result",
+        payload: sql`payload || ${patch}::jsonb`,
+      })
+      .where("thread_id", "=", threadId)
+      .where("role", "=", "assistant")
+      .where(sql<string>`payload->>'toolCallId'`, "=", toolCallId)
+      .returning("payload")
+      .execute();
+    const payload = rows[0]?.payload;
+    return typeof payload === "object" && payload !== null
+      ? (payload as Record<string, unknown>)
+      : null;
   }
 
   /**

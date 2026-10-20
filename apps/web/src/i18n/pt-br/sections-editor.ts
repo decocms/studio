@@ -5,6 +5,9 @@ export const sectionsEditor = {
   "sectionsEditor.addSectionModal.searchPlaceholder": "Pesquisar seções...",
   "sectionsEditor.addSectionModal.title": "Adicionar seção",
   "sectionsEditor.anyOfField.configuration": "Configuração",
+  "sectionsEditor.anyOfField.noSectionsFound": "Nenhuma seção encontrada.",
+  "sectionsEditor.anyOfField.searchSections": "Procurar seções…",
+  "sectionsEditor.anyOfField.browseSections": "Ver todas as seções",
   "sectionsEditor.anyOfField.detach": "Desanexar",
   "sectionsEditor.anyOfField.global": "Global",
   "sectionsEditor.anyOfField.globalBlockSaved": 'Bloco global "{name}" salvo',
@@ -19,6 +22,8 @@ export const sectionsEditor = {
   "sectionsEditor.arrayField.delete": "Excluir",
   "sectionsEditor.arrayField.duplicate": "Duplicar",
   "sectionsEditor.arrayField.hideItem": "Ocultar item",
+  "sectionsEditor.arrayField.layoutDrill": "Abrir um item por vez",
+  "sectionsEditor.arrayField.layoutInline": "Editar os itens na lista",
   "sectionsEditor.arrayField.openActionsFor": "Abrir ações para {label}",
   "sectionsEditor.arrayField.sectionPickerNotAvailable":
     "O seletor de seção não está disponível neste editor.",
@@ -45,6 +50,12 @@ export const sectionsEditor = {
   "sectionsEditor.dynamicOptionsField.useValue": 'Usar "{value}"',
   "sectionsEditor.enumField.selectPlaceholder": "Selecionar...",
   "sectionsEditor.enumField.clearOption": "Nenhum",
+  "sectionsEditor.formatMatcher.dateRange": "De {start} até {end}",
+  "sectionsEditor.formatMatcher.fromDate": "A partir de {date}",
+  "sectionsEditor.formatMatcher.untilDate": "Termina em {date}",
+  "sectionsEditor.field.missingRequired": "Falta um campo obrigatório",
+  "sectionsEditor.field.missingRequiredTooltip":
+    "Campo obrigatório não preenchido.",
   "sectionsEditor.fileField.browseButton": "Procurar",
   "sectionsEditor.fileField.dropFileHint":
     "Solte um arquivo ou clique para procurar",
@@ -66,6 +77,12 @@ export const sectionsEditor = {
   "sectionsEditor.imageField.dropImageOrClickToBrowse":
     "Solte uma imagem ou clique para procurar",
   "sectionsEditor.imageField.dropToUpload": "Solte para enviar",
+  "sectionsEditor.imageField.desktopSlot": "Imagem desktop",
+  "sectionsEditor.imageField.dropMobileImage":
+    "Solte a imagem mobile ou clique para procurar",
+  "sectionsEditor.imageField.mobileSlot": "Imagem mobile (abaixo de 768px)",
+  "sectionsEditor.imageField.mobileUrlLabel": "URL mobile",
+  "sectionsEditor.imageField.urlLabel": "URL",
   "sectionsEditor.imageField.onlyImageFilesAccepted":
     "Apenas arquivos de imagem são aceitos aqui.",
   "sectionsEditor.imageField.previewUnavailable": "Visualização indisponível",
@@ -73,6 +90,8 @@ export const sectionsEditor = {
   "sectionsEditor.imageField.replaceImage": "Substituir imagem",
   "sectionsEditor.imageField.supportedFormatsAndSize":
     "PNG, JPEG, WebP, GIF, SVG, AVIF — até 100 MB",
+  "sectionsEditor.imageField.unsafeUrl":
+    "Esse endereço não pode ser usado como origem de imagem.",
   "sectionsEditor.imageField.uploadFailed": "Falha no envio",
   "sectionsEditor.imageField.uploadedWithExtraFilesIgnored":
     "Enviado {fileName}; arquivos adicionais foram ignorados (campo de seleção única).",
@@ -116,6 +135,7 @@ export const sectionsEditor = {
   "sectionsEditor.mediaTransformControls.mutedLabel": "Mudo",
   "sectionsEditor.mediaTransformControls.qualityLabel": "Qualidade",
   "sectionsEditor.multivariateFieldWrapper.addVariant": "Adicionar variante",
+  "sectionsEditor.multivariateFieldWrapper.variantsOf": "Variantes de {label}",
   "sectionsEditor.multivariateFieldWrapper.ruleLabel": "Regra",
   "sectionsEditor.multivariateFieldWrapper.variantN": "Variante {n}",
   "sectionsEditor.pageJsonDialog.close": "Fechar",
@@ -130,6 +150,16 @@ export const sectionsEditor = {
   "sectionsEditor.pageJsonDialog.saving": "Salvando…",
   "sectionsEditor.pageJsonDialog.title": "Page JSON",
   "sectionsEditor.pageJsonDialog.titleShort": "JSON",
+  "sectionsEditor.pageSections.blockNameAlreadyExists":
+    "Já existe um bloco com este nome.",
+  "sectionsEditor.pageSections.blockNameIsBlockType":
+    "Um tipo de bloco já usa este nome. Escolha outro.",
+  "sectionsEditor.pageSections.blockNameInvalidChars":
+    "Use letras, números, espaços, hífens ou sublinhados. Deve começar com uma letra.",
+  "sectionsEditor.pageSections.blockNameNoSlashes":
+    "O nome do bloco não pode conter barras.",
+  "sectionsEditor.pageSections.blockNameRequired":
+    "O nome do bloco é obrigatório.",
   "sectionsEditor.pageTemplateSelect.blankPageDefaultLabel": "Página em branco",
   "sectionsEditor.pageTemplateSelect.blankPageLabel": "Página em branco",
   "sectionsEditor.pageTemplateSelect.noPagesFoundMessage":
@@ -142,6 +172,7 @@ export const sectionsEditor = {
   "sectionsEditor.pageVariantTabs.duplicateAction": "Duplicar",
   "sectionsEditor.pageVariantTabs.renameAction": "Renomear",
   "sectionsEditor.pageVariantTabs.variantsLabel": "Variantes",
+  "sectionsEditor.panelSections.seo": "SEO e metadados",
   "sectionsEditor.richTextColorControl.colorButtonLabel": "Cor do texto",
   "sectionsEditor.richTextColorControl.customLabel": "Personalizada",
   "sectionsEditor.richTextColorControl.defaultLabel": "Padrão",
@@ -163,11 +194,29 @@ export const sectionsEditor = {
   "sectionsEditor.richTextLinkControl.applyLinkLabel": "Aplicar link",
   "sectionsEditor.richTextLinkControl.linkButtonLabel": "Link",
   "sectionsEditor.richTextLinkControl.newTabLabel": "Nova aba",
+  "sectionsEditor.richTextLinkControl.tabUrl": "URL",
   "sectionsEditor.richTextLinkControl.removeLinkLabel": "Remover link",
   "sectionsEditor.richTextLinkControl.sameTabLabel": "Mesma aba",
   "sectionsEditor.richTextLinkControl.urlInputAriaLabel": "URL do link",
   "sectionsEditor.richTextLinkControl.urlInputPlaceholder":
     "Cole ou digite um link…",
+  "sectionsEditor.secretField.encryptButton": "Criptografar",
+  "sectionsEditor.secretField.encryptFailedMessage":
+    "Não foi possível criptografar este segredo com a chave do site, então ele não foi salvo. Verifique se o site está no ar e tente novamente.",
+  "sectionsEditor.fileField.tooLarge":
+    "Este arquivo é maior do que o servidor local aceita ({max}).",
+  "sectionsEditor.secretField.backendUnavailableMessage":
+    "Os segredos podem ser editados quando o servidor de conteúdo do site responder.",
+  "sectionsEditor.secretField.encryptingMessage":
+    "Criptografando com a chave do site…",
+  "sectionsEditor.secretField.legacySecretUnavailableMessage":
+    "Este segredo foi salvo por um site Deco mais antigo e não pode ser editado aqui. Ele é recriptografado quando o site migra.",
+  "sectionsEditor.secretField.noPublicKeyMessage":
+    "Adicione a chave pública do site, .deco/secrets.pub, para editar campos secretos. Os valores são criptografados no seu navegador com ela.",
+  "sectionsEditor.secretField.pendingMessage":
+    "Ainda não salvo. Pressione Enter para criptografar e salvar.",
+  "sectionsEditor.secretField.plaintextStoredMessage":
+    "O valor armazenado não está criptografado e não vai funcionar. Digite o segredo novamente para criptografá-lo.",
   "sectionsEditor.secretField.leaveBlankPlaceholder":
     "Deixe em branco para manter o valor atual",
   "sectionsEditor.secretField.secretNamePlaceholder": "Nome do segredo",
@@ -185,6 +234,7 @@ export const sectionsEditor = {
     "Ativar renderização assíncrona",
   "sectionsEditor.sectionList.hideSection": "Ocultar seção",
   "sectionsEditor.sectionList.makeReusableMenuItem": "Tornar reutilizável",
+  "sectionsEditor.sectionList.asyncBadge": "Renderização assíncrona",
   "sectionsEditor.sectionList.noSections": "Nenhuma seção nesta página.",
   "sectionsEditor.sectionList.sectionActionsMenu": "Ações de seção",
   "sectionsEditor.sectionList.showSection": "Mostrar seção",
@@ -216,7 +266,6 @@ export const sectionsEditor = {
   "sectionsEditor.sectionsEditor.couldNotRemoveVariants":
     "Não foi possível remover variantes.",
   "sectionsEditor.sectionsEditor.editSeo": "Editar SEO",
-  "sectionsEditor.sectionsEditor.editingBreadcrumb": "Breadcrumb de edição",
   "sectionsEditor.sectionsEditor.editingInVariant":
     "Editando na variante: {variant}",
   "sectionsEditor.sectionsEditor.failedToRenameVariant":
@@ -225,6 +274,9 @@ export const sectionsEditor = {
     "Falha ao salvar bloco global",
   "sectionsEditor.sectionsEditor.globalBlockNotFound":
     "Bloco global não encontrado",
+  "sectionsEditor.sectionsEditor.manageVariants": "Gerenciar variantes…",
+  "sectionsEditor.sectionsEditor.globalSectionSubtitle":
+    "Compartilhada em todo o site",
   "sectionsEditor.sectionsEditor.globalSectionBanner":
     "Esta é uma seção global. As alterações são aplicadas em todos os lugares em que esta seção é usada em seu site.",
   "sectionsEditor.sectionsEditor.globalSectionTooltip":
@@ -237,6 +289,55 @@ export const sectionsEditor = {
     "Nenhum campo editável para esta variante.",
   "sectionsEditor.sectionsEditor.noPageFound":
     "Nenhuma página encontrada para {currentPath}",
+  "sectionsEditor.sectionsEditor.blockChangedElsewhere":
+    "Este bloco mudou enquanto você editava e não foi possível salvar. A versão mais recente foi carregada.",
+  "sectionsEditor.sectionsEditor.blockFieldsChangedElsewhere":
+    "Não foi possível salvar: {fields} mudou enquanto você editava. A versão mais recente foi carregada.",
+  "sectionsEditor.formConflict.titleOne":
+    "Outra pessoa mudou o campo “{label}” enquanto você editava",
+  "sectionsEditor.formConflict.descriptionOne":
+    "Escolha qual versão manter. A outra é descartada.",
+  "sectionsEditor.formConflict.titleStep":
+    "Outra pessoa também mudou o campo “{label}”",
+  "sectionsEditor.formConflict.descriptionStep":
+    "Escolha qual versão manter. Dá para voltar antes de salvar.",
+  "sectionsEditor.formConflict.summaryYours": "a sua",
+  "sectionsEditor.formConflict.summaryTheirs": "a deles",
+  "sectionsEditor.formConflict.steps": "Campos para escolher",
+  "sectionsEditor.formConflict.stepCount": "{step} de {count}",
+  "sectionsEditor.formConflict.stepChangedAgain": "{label}, mudou de novo",
+  "sectionsEditor.formConflict.back": "Voltar",
+  "sectionsEditor.formConflict.next": "Próximo",
+  "sectionsEditor.formConflict.ok": "OK",
+  "sectionsEditor.formConflict.changedAgain":
+    "A versão deles mudou de novo enquanto isto estava aberto e já aparece abaixo.",
+  "sectionsEditor.formConflict.changedAgainSteps":
+    "A versão deles mudou de novo enquanto isto estava aberto. Cada etapa já mostra a mais nova.",
+  "sectionsEditor.formConflict.you": "Você",
+  "sectionsEditor.formConflict.someoneElse": "Outra pessoa",
+  "sectionsEditor.formConflict.yourVersionNotSaved":
+    "Sua versão · ainda não salva",
+  "sectionsEditor.formConflict.theirVersionSaved": "Versão deles · já salva",
+  "sectionsEditor.formConflict.titleOneNamed":
+    "{name} mudou o campo “{label}” enquanto você editava",
+  "sectionsEditor.formConflict.titleOneYou":
+    "Você mudou o campo “{label}” em outra aba ou janela",
+  "sectionsEditor.formConflict.titleStepNamed":
+    "{name} também mudou o campo “{label}”",
+  "sectionsEditor.formConflict.titleStepYou":
+    "Você também mudou o campo “{label}” em outra aba ou janela",
+  "sectionsEditor.formConflict.summaryTheirsNamed": "a de {name}",
+  "sectionsEditor.formConflict.youElsewhere": "Você, em outra aba ou janela",
+  "sectionsEditor.formConflict.savedAt": "salva {when}",
+  "sectionsEditor.formConflict.empty": "Vazio",
+  "sectionsEditor.formConflict.yes": "Sim",
+  "sectionsEditor.formConflict.no": "Não",
+  "sectionsEditor.formConflict.oneItem": "1 item",
+  "sectionsEditor.formConflict.items": "{count} itens",
+  "sectionsEditor.sectionsEditor.sectionReplacedElsewhere":
+    "Esta seção foi substituída enquanto você editava. O formulário agora mostra a seção atual, e sua última alteração não foi salva.",
+  "sectionsEditor.sectionsEditor.blockMergedWithOthers":
+    "Outra pessoa também editou este bloco. As duas alterações foram mantidas.",
   "sectionsEditor.sectionsEditor.saveFailed": "Falha ao salvar: {error}",
   "sectionsEditor.sectionsEditor.savedGlobalBlock":
     'Bloco global salvo "{blockId}"',
@@ -253,6 +354,7 @@ export const sectionsEditor = {
   "sectionsEditor.sectionsEditor.variantRule": "Regra de variante",
   "sectionsEditor.sectionsEditor.viewJson": "Ver JSON",
   "sectionsEditor.sectionsEditorPanels.addVariant": "Adicionar variante",
+  "sectionsEditor.sectionsEditorPanels.createVariants": "Criar variantes",
   "sectionsEditor.sectionsEditorPanels.backToRule": "Voltar para regra",
   "sectionsEditor.sectionsEditorPanels.changePathTitle":
     "Alterar o caminho desta página?",
@@ -260,7 +362,9 @@ export const sectionsEditor = {
     'A URL da página muda de "{from}" para "{to}". A URL antiga deixa de funcionar e links de entrada ou SEO podem quebrar.',
   "sectionsEditor.sectionsEditorPanels.changePathCancel": "Cancelar",
   "sectionsEditor.sectionsEditorPanels.changePathConfirm": "Alterar caminho",
+  "sectionsEditor.sectionsEditorPanels.pageNameLabel": "Nome da página",
   "sectionsEditor.sectionsEditorPanels.pageNamePlaceholder": "Nome da página",
+  "sectionsEditor.sectionsEditorPanels.pathLabel": "Caminho da URL",
   "sectionsEditor.sectionsEditorPanels.pathPlaceholder": "/caminho",
   "sectionsEditor.sectionsEditorPanels.variantRuleBreadcrumb":
     "Migalhas da regra de variante",

@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+import { Page } from "@/components/page";
 /**
  * Discover — what this org does NOT have yet.
  *
@@ -15,7 +17,7 @@
  */
 
 import { Link } from "@tanstack/react-router";
-import type { ReactNode } from "react";
+
 import {
   ArrowRight,
   Check,
@@ -34,7 +36,7 @@ import { track } from "@/lib/posthog-client";
 import { useProjectContext, useConnections } from "@/sdk";
 import { useProjectScope } from "@/hooks/use-project-scope";
 import { hasOwnConnection } from "@/lib/seeded-connections";
-import { getActiveGithubRepo } from "@/lib/github-repo";
+import { getActiveRepository } from "@/lib/repository-binding";
 import { useMembersQuery } from "@/hooks/use-members";
 import { useFileConfigsQuery } from "@/hooks/use-file-configs";
 import { matchSiteSlugConfig } from "@/components/file-picker/match-site-slug-config";
@@ -112,11 +114,7 @@ function useSetupSteps(): SetupStep[] {
       icon: <Plus size={18} />,
       action: (
         <Button asChild variant="outline" size="sm">
-          <Link
-            to={DESTINATION_ROUTE.agents}
-            params={{ org: org.slug, panel: undefined }}
-            search={{ virtualmcpid: undefined }}
-          >
+          <Link to={DESTINATION_ROUTE.home} params={{ org: org.slug }}>
             {t("discover.setup.projectAction")}
           </Link>
         </Button>
@@ -164,13 +162,13 @@ function useCapabilities(): Capability[] {
   const github = useConnections({ slug: "mcp-github" });
   const fileConfigs = useFileConfigsQuery();
 
-  const anyRepo = projects.some((project) => getActiveGithubRepo(project));
+  const anyRepo = projects.some((project) => getActiveRepository(project));
   /** Content's gate, as the tab bar states it (`source-system-tabs.ts`): a
    *  checked-out source AND a CMS mode other than `off`. A repo alone is not
    *  content editing. */
   const anyCmsProject = projects.some(
     (project) =>
-      !!getActiveGithubRepo(project) &&
+      !!getActiveRepository(project) &&
       resolveCmsMode(project.metadata?.ui?.layout) !== "off",
   );
   /** Assets' gate, likewise: a file config bound to THIS project's site slug,
@@ -247,9 +245,7 @@ export function DiscoverTab() {
     <div className="flex h-full min-h-0 flex-col overflow-y-auto">
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-10 p-6 md:p-10">
         <header className="flex flex-col gap-2">
-          <h1 className="text-2xl font-semibold text-foreground">
-            {t("discover.title")}
-          </h1>
+          <Page.Title>{t("discover.title")}</Page.Title>
           <p className="max-w-prose text-sm text-muted-foreground">
             {t("discover.subtitle")}
           </p>

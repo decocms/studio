@@ -9,44 +9,61 @@ import { resolveTier } from "@/core/resolve-tier";
 import { enqueueThreadRun } from "@/dispatch-queue";
 import { PartEmitter } from "@/api/routes/decopilot/part-emitter";
 import { getDecopilotId } from "@decocms/shared/sdk";
-import type { HostedHarnessId } from "@/api/routes/decopilot/dispatch-run";
 import { threadBranch } from "@/tools/sandbox/thread-repo";
-import { harnessRunsInSandbox } from "@/harnesses/sandbox-dispatch-client";
 import {
   MODEL_CLASS_METADATA_KEY,
+  TASK_RUN_INSTRUCTIONS_KEY,
   type ClaudeCodeModelClass,
 } from "@/harnesses/claude-code-env";
 import type { TaskRepo } from "./claude-code-task-run";
+import {
+  assertAiBudget,
+  FeatureNotInPlanError,
+  orgHasFeature,
+} from "@/core/plan-feature-gate";
+import { emitTaskBoardUpdated } from "./run-reactions";
 
 /**
- * Fold the board's system prompt (Settings → Board) into one run.
- *
- * Sandbox harness: rides as `agent.appendInstructions`, which dispatch-run adds
- * to whatever instructions the run resolves to and claude-code then appends to
- * its OWN preset prompt. Two appends, nothing replaced — the board's house
- * rules are standing context, not a persona, and must not displace the org
- * agent's instructions (`agent.instructions` would: the resolution there is
- * `??`, so setting it on a Super Agent run silently drops the agent's own).
- *
- * Hosted Decopilot: it reads `agent.instructions`, not the append field, so the
- * text leads the user prompt instead — the same trick the reviewer enqueue
- * uses. Pure, so all three branches are unit-tested without a StudioContext.
+ * The system text one run appends to its agent's instructions: the caller's
+ * own (how this run works) then the board's rules for its lane. Appended, never
+ * `agent.instructions`, which would replace the org agent's own (`??` in
+ * `resolveAgentInstructions`).
  */
-export function withOrgTaskPrompt<
-  A extends { appendInstructions?: string } | undefined,
->(
-  run: { agent: A; prompt: string },
+export function withBoardPrompt(
+  system: string | undefined,
   boardPrompt: string | undefined,
-  sandboxed: boolean,
-): { agent: A; prompt: string } {
-  if (!boardPrompt) return run;
-  if (!sandboxed) {
-    return { agent: run.agent, prompt: `${boardPrompt}\n\n${run.prompt}` };
+): string | undefined {
+  return [system, boardPrompt].filter(Boolean).join("\n\n") || undefined;
+}
+
+/**
+ * Broadcast a task whose fresh run thread was just linked, so open boards and
+ * task panels show the new run without a manual refresh.
+ *
+ * The other emit sites all ride a LANE change, and a re-run has none left:
+ * `TASK_BOARD_ITEM_RERUN` moves the card to In Progress itself before the run is
+ * queued, and nothing moves it when the run starts — leaving every client on
+ * the pre-enqueue item, whose only run is the superseded one. This is also the emit that wins the race the other
+ * way: the rerun tool's own broadcast is written before this link exists, so an
+ * SSE push arriving after the mutation's refetch would otherwise overwrite the
+ * fresh list with a thread-less snapshot.
+ *
+ * Best-effort — a broadcast must never fail a dispatch. The hidden Jira anchor
+ * is skipped: no board renders it.
+ */
+async function emitRunLinked(
+  ctx: { storage: Pick<StudioContext["storage"], "taskBoard"> },
+  taskId: string,
+  organizationId: string,
+): Promise<void> {
+  try {
+    const item = await ctx.storage.taskBoard.getById(taskId, organizationId);
+    if (item && item.source !== "jira") {
+      emitTaskBoardUpdated(organizationId, item);
+    }
+  } catch (err) {
+    console.error("[task-board] run-link broadcast failed", err);
   }
-  return {
-    agent: { ...run.agent, appendInstructions: boardPrompt } as A,
-    prompt: run.prompt,
-  };
 }
 
 /**
@@ -62,25 +79,28 @@ export async function enqueueAgentRunForTask(
   task: TaskBoardItem,
   opts: {
     title: string;
+    /** The user turn the thread shows: the task itself. */
     prompt: string;
+    /** How this run works — rides in the system prompt, out of the thread. */
+    system?: string;
     temperature: number;
-    /** Hosted harness for this run. Defaults to Decopilot. */
-    harnessId?: HostedHarnessId;
+    /**
+     * The lane whose rules this run follows, beside the org-wide ones. By role,
+     * not by where the card sits: the implementer follows In Progress's and
+     * the reviewer In Review's. Null for the org-wide rules alone.
+     */
+    rulesColumn: string | null;
     /**
      * Repo to bind to the run's thread BEFORE dispatch, so the pod boots with
-     * the checkout already in it. Omitted for a `claude-code` run in an org with
-     * several repos: that run gets its own repo-less sandbox on the bare
+     * the checkout already in it. Omitted when the org has several repos (or
+     * none): that run gets its own repo-less sandbox on the bare
      * `thread:<id>` key and clones into it with `TASK_ADD_REPO`.
      */
     repo?: TaskRepo;
-    /**
-     * Per-run agent overrides — instructions (the run's persona) and the
-     * built-in tools it must not have. Only the sandbox-hosted harness reads
-     * them; a Decopilot fallback run must carry its persona in the prompt.
-     */
+    /** Per-run agent overrides — instructions (the run's persona) and the
+     *  built-in tools it must not have. */
     agent?: {
       instructions?: string;
-      appendInstructions?: string;
       disallowedTools?: string[];
     };
     /**
@@ -108,30 +128,58 @@ export async function enqueueAgentRunForTask(
     /** Extra thread metadata, merged over the run's own — how a Jira-triggered
      *  run is stamped for its tool surface and the monitoring filter. */
     metadata?: Record<string, unknown>;
+    /** The agent the run is, when an automation chose one. Defaults to the
+     *  org's Super Agent. */
+    agentId?: string;
+    /** The automation trigger that fired this run, stamped on the thread so
+     *  the automation's run history lists it. */
+    triggerId?: string;
   },
 ): Promise<{ threadId: string; isNew: boolean }> {
   const organizationId = task.organizationId;
   const userId = task.assignedBy ?? task.createdBy;
-  const harnessId = opts.harnessId ?? "decopilot";
+  const harnessId = "claude-code";
+
+  // The Kanban gate, at the point that spends.
+  //
+  // `kanban` is an Ultra feature, and until now it was enforced ONLY by the
+  // client's tab paywall — a dialog in a browser. Every TASK_BOARD_* tool sits
+  // in the basic-usage capability, granted to every member of every org, so a
+  // Free org could create a card and re-run it through the tool REST endpoint
+  // and get a working, unbilled agent fleet. The gateway built a chokepoint for
+  // this (`POST /api/teams/:org/tasks/claim`, with its 402 and its trial
+  // grants) and mesh never called it.
+  //
+  // Gated HERE rather than on the ~25 board tools: reading and organising a
+  // board costs nothing, dispatching an agent run is the thing that spends. The
+  // budget stop rides along for the same reason.
+  //
+  // Both fail OPEN when the gateway has no answer, like every other gate.
+  if (!(await orgHasFeature(ctx, organizationId, "kanban"))) {
+    throw new FeatureNotInPlanError(
+      "Running a task agent needs the kanban feature, which this plan does not include.",
+      "kanban",
+    );
+  }
+  await assertAiBudget(ctx, organizationId, "running a task agent");
 
   const model = await resolveTier(ctx, "smart");
-  const agentId = getDecopilotId(organizationId);
+  const agentId = opts.agentId ?? getDecopilotId(organizationId);
 
-  // The board's standing instructions for this card — the org-wide prompt plus
-  // its column's, if either is set. Best-effort: an unreadable row costs the
-  // run its house rules, never the dispatch.
+  // Best-effort: an unreadable row costs the run its house rules, never the dispatch.
   const boardPrompt = await ctx.storage.taskBoardPrompts
-    .promptFor(organizationId, task.status)
+    .promptFor(organizationId, opts.rulesColumn)
     .catch(() => undefined);
-  const sandboxed = harnessRunsInSandbox(harnessId);
-  const { agent, prompt } = withOrgTaskPrompt(
-    { agent: opts.agent, prompt: opts.prompt },
-    boardPrompt,
-    sandboxed,
-  );
+  const appendInstructions = withBoardPrompt(opts.system, boardPrompt);
+  const agent = {
+    ...opts.agent,
+    ...(appendInstructions ? { appendInstructions } : {}),
+  };
+  const prompt = opts.prompt;
 
   const thread = await ctx.storage.threads.create({
     ...(opts.fence ? { id: opts.fence.threadId } : {}),
+    ...(opts.triggerId ? { trigger_id: opts.triggerId } : {}),
     organization_id: organizationId,
     title: opts.title,
     status: "in_progress",
@@ -168,17 +216,27 @@ export async function enqueueAgentRunForTask(
   const metadata = {
     ...(thread.metadata ?? {}),
     ...(opts.metadata ?? {}),
+    ...(appendInstructions
+      ? { [TASK_RUN_INSTRUCTIONS_KEY]: appendInstructions }
+      : {}),
     // Read back by `resolveSandboxBranch` at provision time (via the thread, so
     // a durable re-dispatch resolves the same pod). See `pinnedRef` above.
     ...(opts.pinnedRef ? { pinnedRef: opts.pinnedRef } : {}),
     ...(opts.repo
       ? {
-          githubRepo: {
+          repository: {
             url: opts.repo.url,
             owner: opts.repo.owner,
             name: opts.repo.name,
-            installationId: opts.repo.installationId,
-            connectionId: opts.repo.connectionId,
+            ...(opts.repo.installationId !== undefined
+              ? { installationId: opts.repo.installationId }
+              : {}),
+            ...(opts.repo.connectionId
+              ? { connectionId: opts.repo.connectionId }
+              : {}),
+            ...(opts.repo.repositoryId
+              ? { repositoryId: opts.repo.repositoryId }
+              : {}),
           },
         }
       : {}),
@@ -192,19 +250,19 @@ export async function enqueueAgentRunForTask(
   const sandboxBranch = opts.pinnedRef
     ? opts.pinnedRef
     : opts.repo
-      ? threadBranch(thread.id, opts.repo.connectionId)
-      : sandboxed
-        ? threadBranch(thread.id)
-        : null;
+      ? threadBranch(thread.id, opts.repo.id)
+      : threadBranch(thread.id);
   await ctx.storage.threads.update(thread.id, {
     metadata,
-    ...(sandboxBranch ? { branch: sandboxBranch } : {}),
+    branch: sandboxBranch,
     updated_by: userId,
   });
 
   // Link the run thread to the task (many-to-many) so the board can render it
   // in the card and derive its live run state.
   await ctx.storage.taskBoard.linkThread(task.id, thread.id, organizationId);
+
+  await emitRunLinked(ctx, task.id, organizationId);
 
   const requestMessage = {
     id: crypto.randomUUID(),
@@ -241,7 +299,7 @@ export async function enqueueAgentRunForTask(
           credentialId: model.credentialId,
           thinking: { id: model.modelId, title: model.modelMeta.title },
         },
-        agent: { id: agentId, ...(agent ?? {}) },
+        agent: { id: agentId, ...agent },
         temperature: opts.temperature,
         toolApprovalLevel: "auto",
         mode: "default",
@@ -252,7 +310,7 @@ export async function enqueueAgentRunForTask(
         // derives the key from the thread's repo when there is one, and needs the
         // explicit bare key when there isn't. Carried in the durable snapshot, so a
         // recovered re-dispatch resolves the same pod.
-        ...(opts.repo ? {} : sandboxBranch ? { branch: sandboxBranch } : {}),
+        ...(opts.repo ? {} : { branch: sandboxBranch }),
         taskId: thread.id,
         // Reports tasks carry the subscription-billing stamp: their AI usage
         // is included in the org subscription (billing/subsidized-runs.ts).

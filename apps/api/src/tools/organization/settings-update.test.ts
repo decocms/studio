@@ -103,7 +103,7 @@ describe("ORGANIZATION_SETTINGS_UPDATE", () => {
     expect(result.success).toBe(false);
   });
 
-  it("rejects oversized sidebar_items, blockedMcps, default_home_agents.ids, and enabled_plugins", () => {
+  it("rejects oversized sidebar_items and default_home_agents.ids", () => {
     const item = { title: "x", url: "/x", icon: "star" };
 
     expect(
@@ -116,26 +116,35 @@ describe("ORGANIZATION_SETTINGS_UPDATE", () => {
     expect(
       ORGANIZATION_SETTINGS_UPDATE.inputSchema.safeParse({
         organizationId: "org-a",
-        enabled_plugins: Array(201).fill("plugin"),
-      }).success,
-    ).toBe(false);
-
-    expect(
-      ORGANIZATION_SETTINGS_UPDATE.inputSchema.safeParse({
-        organizationId: "org-a",
-        registry_config: { registries: {}, blockedMcps: Array(501).fill("x") },
-      }).success,
-    ).toBe(false);
-
-    expect(
-      ORGANIZATION_SETTINGS_UPDATE.inputSchema.safeParse({
-        organizationId: "org-a",
         default_home_agents: { ids: Array(101).fill("vmcp") },
       }).success,
     ).toBe(false);
   });
 
-  it("rejects an oversized string in a sidebar item, enabled_plugins entry, blockedMcps entry, registries key, or default_home_agents id", () => {
+  it("rejects duplicate hosts in submodule_credentials", () => {
+    // A second entry for the same host would silently never take effect.
+    expect(
+      ORGANIZATION_SETTINGS_UPDATE.inputSchema.safeParse({
+        organizationId: "org-a",
+        submodule_credentials: [
+          { host: "github.com", secretId: "secret-1" },
+          { host: "github.com", secretId: "secret-2" },
+        ],
+      }).success,
+    ).toBe(false);
+
+    expect(
+      ORGANIZATION_SETTINGS_UPDATE.inputSchema.safeParse({
+        organizationId: "org-a",
+        submodule_credentials: [
+          { host: "github.com", secretId: "secret-1" },
+          { host: "gitlab.com", secretId: "secret-2" },
+        ],
+      }).success,
+    ).toBe(true);
+  });
+
+  it("rejects an oversized string in a sidebar item or default_home_agents id", () => {
     const longString = "x".repeat(501);
 
     expect(
@@ -148,45 +157,15 @@ describe("ORGANIZATION_SETTINGS_UPDATE", () => {
     expect(
       ORGANIZATION_SETTINGS_UPDATE.inputSchema.safeParse({
         organizationId: "org-a",
-        enabled_plugins: [longString],
-      }).success,
-    ).toBe(false);
-
-    expect(
-      ORGANIZATION_SETTINGS_UPDATE.inputSchema.safeParse({
-        organizationId: "org-a",
-        registry_config: { registries: {}, blockedMcps: [longString] },
-      }).success,
-    ).toBe(false);
-
-    expect(
-      ORGANIZATION_SETTINGS_UPDATE.inputSchema.safeParse({
-        organizationId: "org-a",
-        registry_config: {
-          registries: { [longString]: { enabled: true } },
-          blockedMcps: [],
-        },
-      }).success,
-    ).toBe(false);
-
-    expect(
-      ORGANIZATION_SETTINGS_UPDATE.inputSchema.safeParse({
-        organizationId: "org-a",
         default_home_agents: { ids: [longString] },
       }).success,
     ).toBe(false);
   });
 
-  it("rejects an oversized registries record on registry_config", () => {
-    // Regression: registries was the one sibling collection left uncapped.
-    const registries = Object.fromEntries(
-      Array.from({ length: 201 }, (_, i) => [`conn-${i}`, { enabled: true }]),
-    );
-
+  it("rejects an empty or whitespace-only organizationId", () => {
     expect(
       ORGANIZATION_SETTINGS_UPDATE.inputSchema.safeParse({
-        organizationId: "org-a",
-        registry_config: { registries, blockedMcps: [] },
+        organizationId: "",
       }).success,
     ).toBe(false);
   });

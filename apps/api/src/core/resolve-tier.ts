@@ -1,4 +1,5 @@
 import type { StudioContext } from "@/core/studio-context";
+import { orgPinnedModel } from "@/core/plan-feature-gate";
 import {
   ChatTierSchema,
   type SimpleModeTier,
@@ -42,6 +43,9 @@ export interface ResolvedTier {
 }
 
 export interface ResolveTierOptions {
+  /** Runtime constraints apply to explicit slots, admin pins, and catalog defaults. */
+  acceptProvider?: (providerId: string) => boolean;
+  acceptModel?: (providerId: string, modelId: string) => boolean;
   /**
    * Layer the caller's personal chat-tier override (USER_MODEL_PREFERENCES)
    * on top of the org slot. Opt-in, and only ever honored for fast/smart/
@@ -49,7 +53,7 @@ export interface ResolveTierOptions {
    *
    * Off by default because most `resolveTier` callers are not "this user's
    * chat": automations run as their creator, and the task-board super agent,
-   * background tools, commit-message suggestion and review judge all resolve a
+   * background tools and review judge all resolve a
    * tier on someone's behalf. An admin who sets an automation to "smart" must
    * not have it silently change model when its creator later edits a personal
    * chat preference. Interactive chat (decopilot/routes.ts) opts in.
@@ -142,15 +146,52 @@ export async function resolveTier(
 
   const keys = (
     await ctx.storage.aiProviderKeys.list({ organizationId: orgId })
-  ).filter((key) => isHostedProviderId(key.providerId));
+  ).filter(
+    (key) =>
+      isHostedProviderId(key.providerId) &&
+      (opts?.acceptProvider?.(key.providerId) ?? true),
+  );
+
+  // A deco-admin pin outranks everything — but ONLY for an org without
+  // `model_choice`. §6: below Ultra deco picks the model and the org is not
+  // told which one ran, so neither its own slot nor a member's personal
+  // override may move it. An Ultra org bought the right to choose and keeps it.
+  //
+  // The pin is a bare model id: it can only ever mean "on the org's gateway
+  // key", which is the one credential a deco admin can speak for. No deco key
+  // (self-hosted, or BYOK-only) means no pin to apply, and resolution falls
+  // through untouched.
+  const pinnedModelId = await orgPinnedModel(ctx, orgId, tier);
+  const decoKey = pinnedModelId
+    ? keys.find((k) => k.providerId === "deco")
+    : undefined;
+  if (
+    pinnedModelId &&
+    decoKey &&
+    (opts?.acceptModel?.(decoKey.providerId, pinnedModelId) ?? true)
+  ) {
+    const catalog = await fetchModelList(ctx, decoKey.id, orgId).catch(
+      () => [] as AiProviderModel[],
+    );
+    return {
+      credentialId: decoKey.id,
+      modelId: pinnedModelId,
+      modelMeta: metaFromCatalogEntry(catalog, pinnedModelId),
+    };
+  }
 
   // Prefer the user override, then the org slot; take the first whose key is
   // still live. A slot pointing at a deleted key is skipped so resolution
-  // degrades cleanly: user → org → default-pick.
+  // degrades cleanly: pin → user → org → default-pick.
   // ponytail: read-time liveness check is why deleting a provider key needs no
   // sweep of every user's saved override — a stale slot just falls through.
   for (const slot of [userSlot, orgSlot]) {
-    if (slot && keys.some((k) => k.id === slot.keyId)) {
+    const key = slot ? keys.find((k) => k.id === slot.keyId) : undefined;
+    if (
+      slot &&
+      key &&
+      (opts?.acceptModel?.(key.providerId, slot.modelId) ?? true)
+    ) {
       const catalog = await fetchModelList(ctx, slot.keyId, orgId).catch(
         () => [] as AiProviderModel[],
       );
@@ -171,8 +212,11 @@ export async function resolveTier(
   const modelsByKeyId: Record<string, AiProviderModel[]> = {};
   await Promise.all(
     keys.map(async (k) => {
-      modelsByKeyId[k.id] = await fetchModelList(ctx, k.id, orgId).catch(
+      const catalog = await fetchModelList(ctx, k.id, orgId).catch(
         () => [] as AiProviderModel[],
+      );
+      modelsByKeyId[k.id] = catalog.filter(
+        (model) => opts?.acceptModel?.(k.providerId, model.modelId) ?? true,
       );
     }),
   );

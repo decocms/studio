@@ -24,6 +24,13 @@ import { ViewModeToggle } from "@decocms/ui/components/view-mode-toggle.tsx";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 
+/**
+ * A default of `[]` is a NEW array on every render, so anything derived from
+ * it re-renders even when nothing changed. `never[]` is assignable to any
+ * `T[]`, so one frozen constant serves every optional list prop in this file.
+ */
+const EMPTY_ARRAY: never[] = [];
+
 export interface FilterGroup {
   label: string;
   value: string;
@@ -47,8 +54,8 @@ export function CollectionDisplayButton({
   sortKey,
   sortDirection,
   onSort,
-  sortOptions = [],
-  filters = [],
+  sortOptions = EMPTY_ARRAY,
+  filters = EMPTY_ARRAY,
 }: CollectionDisplayButtonProps) {
   const t = useT();
   const activeFilterCount = filters.filter((f) => f.value !== "ALL").length;
@@ -59,7 +66,14 @@ export function CollectionDisplayButton({
         <Tooltip>
           <TooltipTrigger asChild>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="icon" className="relative">
+              <Button
+                variant="outline"
+                size="icon"
+                className="relative"
+                aria-label={t(
+                  "collections.collectionDisplayButton.displayAndFilters",
+                )}
+              >
                 <Sliders01 size={16} />
                 {activeFilterCount > 0 && (
                   <Badge

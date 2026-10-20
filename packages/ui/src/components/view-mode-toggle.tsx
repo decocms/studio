@@ -5,7 +5,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "./tooltip.tsx";
 
 export interface ViewModeOption<T extends string = string> {
   value: T;
-  icon: ReactNode;
+  /** Optional when the option has a label. */
+  icon?: ReactNode;
   label?: string;
   tooltip?: string;
 }
@@ -70,7 +71,7 @@ export function ViewModeToggle<T extends string = string>({
   const config = sizeConfig[size];
 
   return (
-    <div className={cn("relative flex gap-0 bg-muted rounded-lg", className)}>
+    <div className={cn("relative flex gap-0 bg-muted rounded-full", className)}>
       {options.map((option, i) => {
         const btn = (
           <button
@@ -80,9 +81,9 @@ export function ViewModeToggle<T extends string = string>({
             key={option.value}
             type="button"
             onClick={() => onValueChange(option.value)}
-            aria-label={option.label}
+            aria-label={option.label ?? option.tooltip}
             className={cn(
-              "relative z-10 flex items-center justify-center gap-2 rounded-lg transition-colors [transition-timing-function:var(--ease-out-cubic)] duration-200",
+              "relative z-10 flex items-center justify-center gap-2 rounded-full transition-colors [transition-timing-function:var(--ease-out-cubic)] duration-200",
               fullWidth
                 ? "flex-1 h-12 px-4"
                 : option.label
@@ -90,17 +91,19 @@ export function ViewModeToggle<T extends string = string>({
                   : config.button,
             )}
           >
-            <span
-              className={cn(
-                "transition-colors ease-out duration-200 flex items-center justify-center [&>svg]:size-[1em]",
-                config.icon,
-                value === option.value
-                  ? "text-foreground"
-                  : "text-muted-foreground",
-              )}
-            >
-              {option.icon}
-            </span>
+            {option.icon && (
+              <span
+                className={cn(
+                  "transition-colors ease-out duration-200 flex items-center justify-center [&>svg]:size-[1em]",
+                  config.icon,
+                  value === option.value
+                    ? "text-foreground"
+                    : "text-muted-foreground",
+                )}
+              >
+                {option.icon}
+              </span>
+            )}
             {option.label && (
               <span
                 className={cn(
@@ -126,7 +129,7 @@ export function ViewModeToggle<T extends string = string>({
       {/* Sliding indicator */}
       <div
         className={cn(
-          "absolute z-0 bg-background rounded-lg border-shadow transition-all [transition-timing-function:var(--ease-out-cubic)] duration-200",
+          "absolute z-0 bg-background rounded-full border-shadow transition-all [transition-timing-function:var(--ease-out-cubic)] duration-200",
           fullWidth ? "h-12" : config.button,
         )}
         style={{

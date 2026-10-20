@@ -10,7 +10,7 @@
  * Black-box: the studio server reaches this over HTTP only — no app imports.
  * Uses `node:http` (NOT `Bun.serve`) so it typechecks under the suite's Node
  * types and runs under either node or bun (same rationale as
- * commerce-upgrade-mock.ts).
+ * reports-upgrade-mock.ts).
  *
  * Git model (per "owner/repo"):
  *   - blobs:   content-addressed utf-8 strings
@@ -19,9 +19,9 @@
  *   - refs:    `branch -> commitSha`
  *
  * GitHub-shaped endpoints (only what the decofile client calls):
- *   GET   /repos/{o}/{r}                              -> { default_branch }
+ *   GET   /repos/{o}/{r}                              -> { id, full_name, private, html_url, default_branch }
  *   GET   /repos/{o}/{r}/git/ref/heads/{branch}       -> { object: { sha } }
- *   GET   /repos/{o}/{r}/git/commits/{sha}            -> { tree: { sha }, parents }
+ *   GET   /repos/{o}/{r}/git/commits/{sha}            -> { message, committer, tree: { sha }, parents }
  *   GET   /repos/{o}/{r}/git/trees/{sha}[?recursive=1] -> { tree: [...], truncated } (non-recursive = direct children + subtree shas)
  *   GET   /repos/{o}/{r}/git/blobs/{sha}              -> { content, encoding }
  *   GET   /repos/{o}/{r}/contents/{path}?ref={sha}    -> { sha, content, encoding }
@@ -32,16 +32,31 @@
  *   POST  /repos/{o}/{r}/merges                       -> 201 {sha} / 204 / 409 / 405
  *   GET   /repos/{o}/{r}/pulls?state&base&head        -> [ { number, html_url } ]
  *   POST  /repos/{o}/{r}/pulls                        -> { number, html_url }
- *   GET   /repos/{o}/{r}/compare/{base}...{head}      -> { ahead_by, behind_by, merge_base_commit, files, commits }
+ *   GET   /repos/{o}/{r}/compare/{base}...{head}      -> { ahead_by, behind_by, merge_base_commit, files, commits } (branch or sha)
+ *   GET   /repos/{o}/{r}/commits                      -> [ { sha } ] (default-branch head)
+ *   POST  /repos/{o}/{r}/generate                     -> 201 new repo from this template (422 name taken)
+ *
+ * GitHub App endpoints (the git-provider account suite):
+ *   GET   /user/installations                          -> { installations }
+ *   GET   /user/installations/{id}/repositories        -> { repositories }
+ *   POST  /app/installations/{id}/access_tokens        -> { token, expires_at }
+ *
+ * A minted token carries its own scope (`ghs-inst-{id}-all` or
+ * `ghs-inst-{id}-ids-{a}.{b}`), and `/repos/{o}/{r}` answers 404 for a
+ * repository outside it — the same wall GitHub puts up, so a test can prove
+ * Studio never widens a partial grant. Any other Authorization value is taken
+ * as an unrestricted legacy token, which is what the decofile suite sends.
  *
  * Test-only admin endpoints (no auth):
  *   GET  /health
+ *   POST  /graphql                                    RepoCommits (commit history) only
  *   POST /__admin/repos                    seed a repo (see SeedRepoBody)
  *   GET  /__admin/repos/{o}/{r}            inspect refs/commits/files per branch
  *   POST /__admin/repos/{o}/{r}/config     { mergeMode } — flip merge behavior
  */
 
 import { createHash } from "node:crypto";
+import { sleep } from "@decocms/shared/std";
 import {
   createServer,
   type IncomingMessage,
@@ -62,8 +77,6 @@ interface CommitRecord {
   treeSha: string;
   parents: string[];
   message: string;
-  /** Committer date (ISO); the branch head's drives the CMS staleness check. */
-  committedAt: string;
 }
 
 interface PullRecord {
@@ -76,6 +89,8 @@ interface PullRecord {
 }
 
 interface RepoState {
+  /** GitHub's numeric repository id, which is what a token scope names. */
+  id: number;
   owner: string;
   name: string;
   defaultBranch: string;
@@ -102,6 +117,8 @@ interface RepoState {
 interface SeedRepoBody {
   owner: string;
   repo: string;
+  /** Numeric id, for tests that pin it to an installation grant. */
+  id?: number;
   defaultBranch?: string;
   /**
    * Per-branch file map (`path -> content`). The default branch becomes a root
@@ -109,10 +126,7 @@ interface SeedRepoBody {
    * (i.e. ahead-by-1). A branch entry WITHOUT a `files` key aliases the
    * default head instead (ahead-by-0) — handy for drift/status tests.
    */
-  branches?: Record<
-    string,
-    { files?: Record<string, string>; committedAt?: string } | null
-  >;
+  branches?: Record<string, { files?: Record<string, string> } | null>;
   mergeMode?: MergeMode;
   /** Make recursive tree reads return `truncated: true`, simulating a repo too
    *  large for GitHub's recursive listing. */
@@ -120,6 +134,21 @@ interface SeedRepoBody {
 }
 
 const repos = new Map<string, RepoState>();
+let repoIdSequence = 1_000_000;
+function nextRepoId(): number {
+  return ++repoIdSequence;
+}
+
+/**
+ * The repository ids an Authorization header may reach, or null for every one.
+ *
+ * Only tokens this stub minted carry a scope; anything else is treated as
+ * unrestricted so the suites that send a static token are unaffected.
+ */
+function tokenScope(authorization: string | undefined): number[] | null {
+  const scope = /^Bearer ghs-inst-\d+-ids-([\d.]+)$/.exec(authorization ?? "");
+  return scope?.[1] ? scope[1].split(".").map(Number) : null;
+}
 let commitCounter = 0;
 
 function sha1(input: string): string {
@@ -130,8 +159,13 @@ function repoKey(owner: string, name: string): string {
   return `${owner}/${name}`;
 }
 
+/** Git's own blob id, so callers that hash content locally agree with the stub. */
 function putBlob(repo: RepoState, content: string): string {
-  const sha = sha1(`blob:${content}`);
+  const bytes = Buffer.from(content, "utf-8");
+  const sha = createHash("sha1")
+    .update(`blob ${bytes.length}\0`)
+    .update(bytes)
+    .digest("hex");
   repo.blobs.set(sha, content);
   return sha;
 }
@@ -148,14 +182,13 @@ function putCommit(
   treeSha: string,
   parents: string[],
   message: string,
-  committedAt: string = new Date().toISOString(),
 ): string {
   // The counter keeps same-(tree,parents,message) commits distinct — this is
   // fixture code, not git; determinism-per-run is all the tests need.
   const sha = sha1(
     `commit:${treeSha}:${parents.join(",")}:${message}:${commitCounter++}`,
   );
-  repo.commits.set(sha, { sha, treeSha, parents, message, committedAt });
+  repo.commits.set(sha, { sha, treeSha, parents, message });
   repo.commitLog.push(sha);
   return sha;
 }
@@ -234,6 +267,7 @@ function mergeBaseOf(repo: RepoState, a: string, b: string): string | null {
 function seedRepo(body: SeedRepoBody): RepoState {
   const defaultBranch = body.defaultBranch ?? "main";
   const repo: RepoState = {
+    id: body.id ?? nextRepoId(),
     owner: body.owner,
     name: body.repo,
     defaultBranch,
@@ -260,13 +294,7 @@ function seedRepo(body: SeedRepoBody): RepoState {
       ]),
     ),
   );
-  const defaultHead = putCommit(
-    repo,
-    defaultTree,
-    [],
-    `seed ${defaultBranch}`,
-    branches[defaultBranch]?.committedAt,
-  );
+  const defaultHead = putCommit(repo, defaultTree, [], `seed ${defaultBranch}`);
   repo.refs.set(defaultBranch, defaultHead);
 
   for (const [branch, spec] of Object.entries(branches)) {
@@ -286,7 +314,7 @@ function seedRepo(body: SeedRepoBody): RepoState {
     );
     repo.refs.set(
       branch,
-      putCommit(repo, tree, [defaultHead], `seed ${branch}`, spec.committedAt),
+      putCommit(repo, tree, [defaultHead], `seed ${branch}`),
     );
   }
   repos.set(repoKey(body.owner, body.repo), repo);
@@ -299,6 +327,66 @@ function readBody(req: IncomingMessage): Promise<string> {
     req.on("data", (chunk) => chunks.push(chunk));
     req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
     req.on("error", reject);
+  });
+}
+
+/**
+ * GraphQL, for the one query a spec needs: a ref's commit history (the
+ * insights client's `RepoCommits`), first-parent from the ref's head. Any
+ * other query answers a GraphQL error.
+ */
+async function handleGraphql(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  const body = JSON.parse(await readBody(req)) as {
+    query?: string;
+    variables?: Record<string, unknown>;
+  };
+  const vars = body.variables ?? {};
+  const repo = repos.get(repoKey(String(vars.owner), String(vars.name)));
+  if (!body.query?.includes("query RepoCommits") || !repo) {
+    json(res, 200, { errors: [{ message: "unsupported by the stub" }] });
+    return;
+  }
+  const ref = typeof vars.ref === "string" ? vars.ref : repo.defaultBranch;
+  const shas: string[] = [];
+  for (
+    let sha = repo.refs.get(ref);
+    sha !== undefined;
+    sha = repo.commits.get(sha)?.parents[0]
+  ) {
+    shas.push(sha);
+  }
+  const start = typeof vars.after === "string" ? Number(vars.after) : 0;
+  const limit = Number(vars.limit ?? 50);
+  const page = shas.slice(start, start + limit);
+  const target = {
+    history: {
+      pageInfo: {
+        hasNextPage: start + page.length < shas.length,
+        endCursor: String(start + page.length),
+      },
+      nodes: page.map((oid) => ({
+        oid,
+        committedDate: new Date().toISOString(),
+        messageHeadline: (repo.commits.get(oid)?.message ?? "").split("\n")[0],
+        messageBody: (repo.commits.get(oid)?.message ?? "")
+          .split("\n")
+          .slice(1)
+          .join("\n")
+          .trim(),
+        author: { name: "e2e", email: null, user: null },
+      })),
+    },
+  };
+  json(res, 200, {
+    data: {
+      repository:
+        typeof vars.ref === "string"
+          ? { ref: { target } }
+          : { defaultBranchRef: { target } },
+    },
   });
 }
 
@@ -405,7 +493,9 @@ async function handleRepos(
   const owner = segments[1];
   const name = segments[2];
   const repo = owner && name ? repos.get(repoKey(owner, name)) : undefined;
-  if (!repo) {
+  const scope = tokenScope(req.headers.authorization);
+  // Out of scope reads as absent, exactly as it does on github.com.
+  if (!repo || (scope && !scope.includes(repo.id))) {
     notFound(res);
     return;
   }
@@ -414,11 +504,58 @@ async function handleRepos(
   // GET /repos/{o}/{r}
   if (req.method === "GET" && rest.length === 0) {
     json(res, 200, {
+      id: repo.id,
       name: repo.name,
       full_name: repoKey(repo.owner, repo.name),
+      private: true,
+      html_url: `https://github.com/${repoKey(repo.owner, repo.name)}`,
       default_branch: repo.defaultBranch,
       owner: { login: repo.owner },
     });
+    return;
+  }
+
+  // POST /repos/{o}/{r}/generate — a repo-scoped token already 404'd above.
+  if (req.method === "POST" && rest.length === 1 && rest[0] === "generate") {
+    const body = JSON.parse((await readBody(req)) || "{}") as {
+      owner?: string;
+      name?: string;
+      private?: boolean;
+    };
+    if (!body.owner || !body.name) {
+      json(res, 422, { message: "owner and name are required" });
+      return;
+    }
+    if (repos.has(repoKey(body.owner, body.name))) {
+      json(res, 422, {
+        message: "Could not clone: Name already exists on this account",
+      });
+      return;
+    }
+    const head = repo.refs.get(repo.defaultBranch);
+    const created = seedRepo({
+      owner: body.owner,
+      repo: body.name,
+      branches: {
+        main: { files: head ? filesAtCommit(repo, head) : {} },
+      },
+    });
+    json(res, 201, {
+      id: created.id,
+      name: created.name,
+      full_name: repoKey(created.owner, created.name),
+      private: body.private ?? false,
+      html_url: `https://github.com/${repoKey(created.owner, created.name)}`,
+      default_branch: created.defaultBranch,
+      owner: { login: created.owner },
+    });
+    return;
+  }
+
+  // GET /repos/{o}/{r}/commits
+  if (req.method === "GET" && rest.length === 1 && rest[0] === "commits") {
+    const head = repo.refs.get(repo.defaultBranch);
+    json(res, 200, head ? [{ sha: head }] : []);
     return;
   }
 
@@ -426,18 +563,11 @@ async function handleRepos(
   if (req.method === "GET" && rest[0] === "branches" && rest.length >= 2) {
     const branch = rest.slice(1).join("/");
     const sha = repo.refs.get(branch);
-    const commit = sha ? repo.commits.get(sha) : undefined;
-    if (!sha || !commit) {
+    if (!sha) {
       notFound(res);
       return;
     }
-    json(res, 200, {
-      name: branch,
-      commit: {
-        sha,
-        commit: { committer: { date: commit.committedAt } },
-      },
-    });
+    json(res, 200, { name: branch, commit: { sha } });
     return;
   }
 
@@ -476,6 +606,7 @@ async function handleRepos(
     json(res, 200, {
       sha: commit.sha,
       message: commit.message,
+      committer: { date: new Date().toISOString() },
       tree: { sha: commit.treeSha },
       parents: commit.parents.map((sha) => ({ sha })),
     });
@@ -842,8 +973,13 @@ async function handleRepos(
     const [rawBase, rawHead] = rawSpec.split("...");
     const decodePath = (raw: string | undefined): string =>
       (raw ?? "").split("/").map(decodeURIComponent).join("/");
-    const baseSha = repo.refs.get(decodePath(rawBase));
-    const headSha = repo.refs.get(decodePath(rawHead));
+    // A side is a branch or, as on real GitHub, a commit sha.
+    const resolve = (raw: string | undefined): string | undefined => {
+      const name = decodePath(raw);
+      return repo.refs.get(name) ?? (repo.commits.has(name) ? name : undefined);
+    };
+    const baseSha = resolve(rawBase);
+    const headSha = resolve(rawHead);
     if (!baseSha || !headSha) {
       notFound(res);
       return;
@@ -900,12 +1036,216 @@ async function handleRepos(
   notFound(res);
 }
 
+interface UserInstallation {
+  id: number;
+  account: {
+    id: number;
+    login: string;
+    avatar_url: string | null;
+    type: "Organization" | "User";
+  };
+  /**
+   * What `GET /user/installations/{id}/repositories` answers for this user.
+   * `admin` is GitHub's "can this person install the App here" signal.
+   */
+  repositories?: Array<{ id: number; permissions?: { admin?: boolean } }>;
+}
+
 export function createGithubStubServer(): Server {
+  const userRequests = new Map<
+    string,
+    { paths: string[]; active: number; peak: number }
+  >();
+  const users = new Map<
+    string,
+    {
+      installations: UserInstallation[];
+      user: { id: number; login: string };
+      identityStatus?: number;
+      repositoryDelayMs?: number;
+      repositories?: Array<{
+        id: number;
+        full_name: string;
+        private: boolean;
+        html_url: string;
+        default_branch: string;
+      }>;
+    }
+  >();
+  const codes = new Map<string, string>();
   return createServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost");
     const dispatch = async (): Promise<void> => {
+      const userToken =
+        req.headers.authorization?.replace(/^Bearer /, "") ?? "";
+      if (
+        req.method === "GET" &&
+        url.pathname === "/__admin/github-user-requests"
+      ) {
+        json(
+          res,
+          200,
+          userRequests.get(userToken) ?? { paths: [], active: 0, peak: 0 },
+        );
+        return;
+      }
+      if (req.method === "GET" && url.pathname.startsWith("/user")) {
+        let requests = userRequests.get(userToken);
+        if (!requests) {
+          requests = { paths: [], active: 0, peak: 0 };
+          userRequests.set(userToken, requests);
+        }
+        requests.paths.push(url.pathname + url.search);
+        if (/^\/user\/installations\/\d+\/repositories$/.test(url.pathname)) {
+          requests.active++;
+          requests.peak = Math.max(requests.peak, requests.active);
+          await sleep(users.get(userToken)?.repositoryDelayMs ?? 0);
+          requests.active--;
+        }
+      }
       if (req.method === "GET" && url.pathname === "/health") {
         json(res, 200, { ok: true });
+        return;
+      }
+      if (req.method === "POST" && url.pathname === "/__admin/github-users") {
+        const body = JSON.parse(await readBody(req)) as {
+          token: string;
+          installations: UserInstallation[];
+          user: { id: number; login: string };
+          identityStatus?: number;
+          repositoryDelayMs?: number;
+          repositories?: Array<{
+            id: number;
+            full_name: string;
+            private: boolean;
+            html_url: string;
+            default_branch: string;
+          }>;
+        };
+        users.set(body.token, body);
+        json(res, 200, { ok: true });
+        return;
+      }
+      if (req.method === "POST" && url.pathname === "/__admin/github-codes") {
+        const body = JSON.parse(await readBody(req)) as {
+          code: string;
+          token: string;
+        };
+        codes.set(body.code, body.token);
+        json(res, 200, { ok: true });
+        return;
+      }
+      if (
+        req.method === "POST" &&
+        url.pathname === "/login/oauth/access_token"
+      ) {
+        const body = JSON.parse(await readBody(req)) as { code: string };
+        const token = codes.get(body.code);
+        codes.delete(body.code);
+        json(
+          res,
+          200,
+          token
+            ? { access_token: token, token_type: "bearer", expires_in: 28800 }
+            : { error: "bad_verification_code" },
+        );
+        return;
+      }
+      if (req.method === "GET" && url.pathname === "/user/repos") {
+        const user = users.get(userToken);
+        if (!user) {
+          json(res, 401, { message: "Bad credentials" });
+          return;
+        }
+        const page = Number(url.searchParams.get("page") ?? 1);
+        const perPage = Number(url.searchParams.get("per_page") ?? 30);
+        json(
+          res,
+          200,
+          (user.repositories ?? []).slice((page - 1) * perPage, page * perPage),
+        );
+        return;
+      }
+      if (req.method === "GET" && url.pathname === "/user") {
+        const user = users.get(userToken);
+        if (!user) {
+          json(res, 401, { message: "Bad credentials" });
+          return;
+        }
+        json(
+          res,
+          user.identityStatus ?? 200,
+          user.identityStatus ? { message: "Denied" } : user.user,
+        );
+        return;
+      }
+      const installationRepositories =
+        /^\/user\/installations\/(\d+)\/repositories$/.exec(url.pathname);
+      if (
+        req.method === "GET" &&
+        (url.pathname === "/user/installations" || installationRepositories)
+      ) {
+        const installations = users.get(
+          req.headers.authorization?.replace(/^Bearer /, "") ?? "",
+        )?.installations;
+        if (!installations) {
+          json(res, 401, { message: "Bad credentials" });
+          return;
+        }
+        const page = Number(url.searchParams.get("page") ?? 1);
+        const perPage = Number(url.searchParams.get("per_page") ?? 100);
+        const slice = <T>(items: T[]) =>
+          items.slice((page - 1) * perPage, page * perPage);
+        if (url.pathname === "/user/installations") {
+          json(res, 200, {
+            installations: slice(installations),
+            total_count: installations.length,
+          });
+          return;
+        }
+        const id = Number(installationRepositories?.[1]);
+        const installation = installations.find((item) => item.id === id);
+        if (!installation) {
+          notFound(res);
+          return;
+        }
+        const repositories = installation.repositories ?? [];
+        json(res, 200, {
+          repositories: slice(repositories),
+          total_count: repositories.length,
+        });
+        return;
+      }
+      if (
+        req.method === "POST" &&
+        /^\/app\/installations\/\d+\/access_tokens$/.test(url.pathname)
+      ) {
+        const installationId = url.pathname.split("/")[3];
+        const body = JSON.parse((await readBody(req)) || "{}") as {
+          repository_ids?: number[];
+          permissions?: Record<string, string>;
+        };
+        // The scope travels in the token, so a later read can be judged by it.
+        const scope = body.repository_ids?.length
+          ? `ids-${body.repository_ids.join(".")}`
+          : "all";
+        json(res, 201, {
+          token: `ghs-inst-${installationId}-${scope}`,
+          expires_at: new Date(Date.now() + 3_600_000).toISOString(),
+          permissions: body.permissions ?? {},
+        });
+        return;
+      }
+      if (
+        req.method === "GET" &&
+        url.pathname.startsWith("/app/installations/")
+      ) {
+        const id = Number(url.pathname.split("/").at(-1));
+        const installation = [...users.values()]
+          .flatMap((user) => user.installations)
+          .find((item) => item.id === id);
+        if (installation) json(res, 200, installation);
+        else notFound(res);
         return;
       }
       if (url.pathname.startsWith("/__admin/")) {
@@ -914,6 +1254,10 @@ export function createGithubStubServer(): Server {
       }
       if (url.pathname.startsWith("/repos/")) {
         await handleRepos(req, res, url);
+        return;
+      }
+      if (req.method === "POST" && url.pathname === "/graphql") {
+        await handleGraphql(req, res);
         return;
       }
       notFound(res);

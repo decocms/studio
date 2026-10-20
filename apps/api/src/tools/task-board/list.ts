@@ -1,10 +1,15 @@
 import { CANONICAL_COLUMNS } from "@decocms/shared/task-board";
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
+import {
+  isCardInVisibleProject,
+  resolveHiddenProjectIds,
+} from "@/core/project-scope";
 import { requireAuth } from "@/core/studio-context";
 import { listRepoScopeLabels } from "@decocms/shared/github-repo-scope";
 import { TaskBoardItemSchema } from "./schema";
 import { recoverStalledTasks } from "./stall-recovery";
+import { withOrgOverride } from "./with-org-override";
 
 /** A board column as the client renders it — mirrors `BoardColumn` in shared. */
 const BoardColumnSchema = z.object({
@@ -13,7 +18,7 @@ const BoardColumnSchema = z.object({
   position: z.number(),
 });
 
-export const TASK_BOARD_ITEM_LIST = defineTool({
+const TASK_BOARD_ITEM_LIST_TOOL = defineTool({
   name: "TASK_BOARD_ITEM_LIST",
   description:
     "List all task board items for the organization, plus the `owner/name` " +
@@ -45,19 +50,40 @@ export const TASK_BOARD_ITEM_LIST = defineTool({
       );
     }
 
-    const [items, { items: githubConnections }] = await Promise.all([
-      ctx.storage.taskBoard.list(organizationId),
-      ctx.storage.connections.list(organizationId, { slug: "mcp-github" }),
-    ]);
-    const repos = listRepoScopeLabels(githubConnections);
+    const [allItems, { items: githubConnections }, repositories, hidden] =
+      await Promise.all([
+        ctx.storage.taskBoard.list(organizationId),
+        ctx.storage.connections.list(organizationId, { slug: "mcp-github" }),
+        ctx.storage.repositories.listByOrg(organizationId),
+        resolveHiddenProjectIds(ctx),
+      ]);
+    const items = allItems.filter((item) =>
+      isCardInVisibleProject(hidden, item),
+    );
+    /**
+     * Both eras, deduped: the org's first-class repositories and the legacy
+     * repo-scoped connections. A GitLab-only org has no connection at all, so
+     * reading only those was what left its board with no repository filter.
+     */
+    const repos = [
+      ...new Set([
+        ...repositories.map((repository) => repository.path),
+        ...listRepoScopeLabels(githubConnections),
+      ]),
+    ];
 
     // Opening the board is the stall-recovery trigger: re-run the thread-finish
     // decision over the list we just loaded, for the cards whose finish hook
     // missed. Fire-and-forget — a stuck card must not slow down or break the
     // read, and the returned list is deliberately the pre-recovery one (the
     // moves broadcast over SSE, which is how the board already learns them).
-    void recoverStalledTasks(ctx, items);
+    void recoverStalledTasks(ctx, allItems);
 
     return { items, repos, columns: CANONICAL_COLUMNS };
   },
 });
+
+/** Exported already wrapped: every consumer — `CORE_TOOLS`, and the Super
+ *  Agent's built-ins, which import this module directly — has to come
+ *  through here, so the cross-org `org` param cannot be missed by one of them. */
+export const TASK_BOARD_ITEM_LIST = withOrgOverride(TASK_BOARD_ITEM_LIST_TOOL);

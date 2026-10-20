@@ -9,6 +9,7 @@ export const details = {
   "details.connection.connectionEnabled": "Conexão habilitada",
   "details.connection.deleteButton": "Excluir",
   "details.connection.descriptionLabel": "Descrição",
+  "details.connection.failedAddInstance": "Falha ao adicionar instância",
   "details.connection.failedRemoveOAuth": "Falha ao remover OAuth: {error}",
   "details.connection.failedRemoveOAuthError": "Falha ao remover OAuth",
   "details.connection.failedUpdateConnection": "Falha ao atualizar conexão",
@@ -102,6 +103,11 @@ export const details = {
     "Falha ao conectar MCP: {message}",
   "details.mcpConfigurationForm.noConnectionsFound":
     "Nenhuma conexão encontrada",
+  "details.mcpConfigurationForm.notAuthenticated": "Não autenticado",
+  "details.mcpConfigurationForm.registryItemNotFound":
+    "Servidor MCP não encontrado no registro: {bindingType}",
+  "details.mcpConfigurationForm.registryItemNotConnectable":
+    "Este servidor MCP não pode ser conectado: nenhum método de conexão disponível",
   "details.mcpConfigurationForm.selectPlaceholder": "Selecionar {title}...",
   "details.prompt.bodyPlaceholder": "Escreva a mensagem do prompt…",
   "details.prompt.description": "Descrição",

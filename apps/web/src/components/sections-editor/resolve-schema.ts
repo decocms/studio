@@ -1,4 +1,5 @@
 import {
+  isEmbeddedUnionResolveType,
   isManifestAppResolveType,
   parseSavedBlockSchemaTitle,
 } from "./block-type-utils";
@@ -73,6 +74,23 @@ export interface SchemaProperty {
    * anyOf union.
    */
   plainSchema?: SchemaProperty;
+  /**
+   * A `lazy` block (`Lazy<T>` in next-major Blocks): `properties.value` holds
+   * the form of `T`, and the stored value is `{ __resolveType: "lazy", value }`.
+   */
+  lazy?: boolean;
+  /**
+   * For "array" fields collapsed from a union that also accepts loaders or
+   * saved blocks: the block-ref picker for those branches. Rendered instead of
+   * the array editor when the stored value is a `{ __resolveType }` reference.
+   */
+  loaderRef?: SchemaProperty;
+  /**
+   * `$ref` of a recursive type whose nested schema was skipped because it
+   * re-entered itself (`Item.children: Item[]`). Expand it on demand with
+   * {@link resolveSchemaRef}.
+   */
+  recursiveRef?: string;
 }
 
 export type SchemaAnyOfRef = NonNullable<SchemaProperty["anyOfRefs"]>[number];
@@ -92,8 +110,28 @@ type RawSchema = Record<string, unknown>;
 /** Max `$ref` / `allOf` hops while flattening top-level properties. */
 const MAX_COLLECT_PROPS_DEPTH = 12;
 
-/** Max recursion while building nested field schemas. */
+/**
+ * Max recursion while eagerly materializing a multi-branch union's nested
+ * branch schemas ({@link eagerBranchSchema}). Kept low because that path is the
+ * combinatorial one: a `__SECTION_REF__` selector lists every section, many of
+ * which point back at the same union, so materializing each branch's subtree at
+ * depth explodes. The cycle guard (`seen`) and {@link MAX_ANYOF_EAGER_SCHEMA_BRANCHES}
+ * bound the width; this bounds the depth.
+ */
 const MAX_BUILD_PROPERTY_DEPTH = 8;
+
+/**
+ * Max recursion for plain structural descent — an object's `properties`, an
+ * array's `items`, and inline plain-data unions (`A | B`). Unlike union-branch
+ * materialization above, this path is cycle-free (a `$ref` cycle is caught by
+ * `seen` regardless of depth; inline nesting is a finite tree) and linear in the
+ * schema's node count, so it gets a far higher cap. Without it, deeply-nested
+ * data structures — e.g. a mega-menu of `departmentMenus → menu → submenuColumns
+ * → submenuGroups → submenuGroupItems`, ~5 nested arrays with no `__resolveType`
+ * boundary to reset depth — resolve their leaf `items`/`properties` to
+ * `undefined` past depth 8, and the Content editor renders a blank form panel.
+ */
+const MAX_STRUCTURE_DEPTH = 32;
 
 /**
  * Above this branch count, a block-ref union (e.g. the `__SECTION_REF__`
@@ -279,8 +317,28 @@ export function resolveSchema(
   resolveType: string,
   meta: LiveMeta,
 ): SchemaProperty | null {
+  return buildSchema(meta, { resolveType });
+}
+
+/** Build the schema of a definition `$ref` (see {@link SchemaProperty.recursiveRef}). */
+export function resolveSchemaRef(ref: string, meta: LiveMeta): SchemaProperty {
+  return buildSchema(meta, { ref });
+}
+
+function buildSchema(meta: LiveMeta, target: { ref: string }): SchemaProperty;
+function buildSchema(
+  meta: LiveMeta,
+  target: { resolveType: string },
+): SchemaProperty | null;
+function buildSchema(
+  meta: LiveMeta,
+  target: { resolveType: string } | { ref: string },
+): SchemaProperty | null {
   const globalSchema = meta.schema ?? {};
-  const blockSchema = lookupManifestBlockSchema(resolveType, meta);
+  const blockSchema =
+    "resolveType" in target
+      ? lookupManifestBlockSchema(target.resolveType, meta)
+      : {};
   // Always read $defs/definitions from the global live schema. Manifest block
   // entries often carry `$ref` plus an empty `definitions` object; spreading
   // blockSchema over globalSchema clobbers the real defs and breaks $ref
@@ -370,6 +428,41 @@ export function resolveSchema(
     const key = s.$ref.split("/").pop() ?? "";
     if (!key || seen.has(key)) return s;
     return unwrapRefAliases(resolveRef(s.$ref), new Set([...seen, key]));
+  };
+
+  const inlineLoaderResolveType = (s: RawSchema): string | undefined => {
+    const rtEnum = (
+      (s.properties as RawSchema | undefined)?.__resolveType as
+        | RawSchema
+        | undefined
+    )?.enum;
+    return Array.isArray(rtEnum) && typeof rtEnum[0] === "string"
+      ? rtEnum[0]
+      : undefined;
+  };
+
+  const isInlineLoaderBranch = (s: RawSchema): boolean =>
+    inlineLoaderResolveType(s) !== undefined;
+
+  /**
+   * deco buckets loaders by return type and nests the plain bucket inside the
+   * nullable one (`[Product]|null` → `$ref [Product]`), so a loader returning
+   * `T` sits one union below a `T | null` prop's own loader branches.
+   */
+  const nestedUnionLoaderBranches = (
+    branch: RawSchema,
+    seen: Set<string> = new Set(),
+  ): RawSchema[] => {
+    if (typeof branch.$ref !== "string") return [];
+    const key = branch.$ref.split("/").pop() ?? "";
+    if (!key || seen.has(key)) return [];
+    const def = resolveRef(branch.$ref);
+    const union = def.anyOf ?? def.oneOf;
+    if (!Array.isArray(union)) return [];
+    const nextSeen = new Set([...seen, key]);
+    return (union as RawSchema[]).flatMap((b) =>
+      isInlineLoaderBranch(b) ? [b] : nestedUnionLoaderBranches(b, nextSeen),
+    );
   };
 
   const isSchemaHidden = (s: RawSchema): boolean => {
@@ -465,15 +558,8 @@ export function resolveSchema(
     }
     resolved = unwrapRefAliases(resolved);
 
-    // Cycle guard for recursive block-ref unions. The `__SECTION_REF__`
-    // "pick any section" selector lists every section, and 20+ of those
-    // sections themselves have a `Section` field pointing back at the same
-    // union. Without this guard, eagerly materializing each branch's nested
-    // `schema` recurses ~exponentially and blows up browser memory (multi-GB).
-    // When we re-enter a union already on the current path, we still emit the
-    // selector's option list but skip the per-branch nested schema — the UI
-    // resolves the selected branch lazily via resolveSchema().
-    const cyclicUnion = vRefKey !== undefined && seen.has(vRefKey);
+    // Re-entered refs (Section unions, Product → hasVariant: Product[]) recurse exponentially; emit the node, skip its nested schema (expanded on demand via `recursiveRef`).
+    const cyclicRef = vRefKey !== undefined && seen.has(vRefKey);
     const unionSeen =
       vRefKey !== undefined ? new Set([...seen, vRefKey]) : seen;
 
@@ -495,7 +581,7 @@ export function resolveSchema(
       branchCount: number,
       lazilyResolvable = true,
     ): SchemaProperty | undefined =>
-      !cyclicUnion &&
+      !cyclicRef &&
       (!lazilyResolvable || branchCount <= MAX_ANYOF_EAGER_SCHEMA_BRANCHES) &&
       branchDepth < MAX_BUILD_PROPERTY_DEPTH
         ? buildProperty(branch, branchDepth, unionSeen)
@@ -589,14 +675,7 @@ export function resolveSchema(
         }
 
         // deco.cx inline loader branches
-        const loaderBranches = nonNull.filter((a) => {
-          const rtEnum = (
-            (a.properties as RawSchema | undefined)?.__resolveType as
-              | RawSchema
-              | undefined
-          )?.enum;
-          return Array.isArray(rtEnum) && typeof rtEnum[0] === "string";
-        });
+        const loaderBranches = nonNull.filter(isInlineLoaderBranch);
 
         // Site `global` / page `sections`: plain section arrays with an optional
         // page multivariate flag branch. Prefer the array (admin hides the flag UI).
@@ -605,6 +684,12 @@ export function resolveSchema(
         const arrayBranch = nonNull
           .map((branch) => unwrapRefAliases(branch))
           .find(isArraySchemaBranch);
+        // Collapse to the array editor only when the array's siblings are all module refs/loaders (app flag list + product-list loader); an inline data-object sibling makes this a branch selector, not a config array.
+        const arraySiblingsAreModuleRefs = nonNull
+          .filter((b) => !isArraySchemaBranch(unwrapRefAliases(b)))
+          .every(
+            (b) => typeof b.$ref === "string" || loaderBranches.includes(b),
+          );
         const hasPageMultivariateLoader = loaderBranches.some((branch) => {
           const rtEnum = (
             (branch.properties as RawSchema | undefined)?.__resolveType as
@@ -616,49 +701,18 @@ export function resolveSchema(
             rtEnum[0] === PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE
           );
         });
-        if (arrayBranch) {
-          const isConfigArray = !isSectionLoaderArrayBranch(
-            arrayBranch,
-            resolveRef,
-          );
-          if (isConfigArray && nonNull.length > 1) {
-            const built = buildProperty(arrayBranch, depth + 1, unionSeen);
-            return {
-              ...built,
-              type: "array",
-              title:
-                typeof resolved.title === "string"
-                  ? resolved.title
-                  : built.title,
-              description:
-                typeof resolved.description === "string"
-                  ? resolved.description
-                  : built.description,
-            };
+        const buildLoaderBlockRef = (): SchemaProperty => {
+          const pickerBranches = new Map<string, RawSchema>();
+          for (const branch of [
+            ...loaderBranches,
+            ...nonNull
+              .filter((b) => !loaderBranches.includes(b))
+              .flatMap((b) => nestedUnionLoaderBranches(b)),
+          ]) {
+            const rt = inlineLoaderResolveType(branch);
+            if (rt && !pickerBranches.has(rt)) pickerBranches.set(rt, branch);
           }
-          if (hasPageMultivariateLoader) {
-            const built = buildProperty(arrayBranch, depth + 1, unionSeen);
-            return {
-              ...built,
-              type: "array",
-              title:
-                typeof resolved.title === "string"
-                  ? resolved.title
-                  : built.title,
-              description:
-                typeof resolved.description === "string"
-                  ? resolved.description
-                  : built.description,
-            };
-          }
-        }
-
-        if (loaderBranches.length > 0) {
-          const loaderRefs = loaderBranches.map((branch) => {
-            const rtSchema = (branch.properties as RawSchema | undefined)
-              ?.__resolveType as RawSchema | undefined;
-            const rtEnum = (rtSchema?.enum ?? []) as unknown[];
-            const rt = String(rtEnum[0]);
+          const loaderRefs = [...pickerBranches].map(([rt, branch]) => {
             return {
               resolveType: rt,
               title:
@@ -669,7 +723,7 @@ export function resolveSchema(
                 typeof branch.description === "string"
                   ? branch.description
                   : undefined,
-              schema: eagerBranchSchema(branch, depth + 1, nonNull.length),
+              schema: eagerBranchSchema(branch, depth + 1, pickerBranches.size),
             };
           });
 
@@ -733,32 +787,123 @@ export function resolveSchema(
           );
           // Built directly (not eagerBranchSchema) so its depth cap can't null this leaf and demote the field to a block-ref picker at deep nesting.
           const plainSchema =
-            nonLoaderBranches.length === 1 && !cyclicUnion
+            nonLoaderBranches.length === 1 && !cyclicRef
               ? buildProperty(nonLoaderBranches[0]!, depth + 1, unionSeen)
               : undefined;
 
           return {
             type: "block-ref",
             title:
-              typeof resolved.title === "string" ? resolved.title : undefined,
+              typeof v.title === "string"
+                ? v.title
+                : typeof resolved.title === "string"
+                  ? resolved.title
+                  : undefined,
             description:
-              typeof resolved.description === "string"
-                ? resolved.description
-                : undefined,
+              typeof v.description === "string"
+                ? v.description
+                : typeof resolved.description === "string"
+                  ? resolved.description
+                  : undefined,
             anyOfRefs,
             plainSchema,
             hidden:
               isSchemaHidden(resolved) || isSchemaHidden(v) ? true : undefined,
           };
+        };
+
+        if (arrayBranch) {
+          const isConfigArray = !isSectionLoaderArrayBranch(
+            arrayBranch,
+            resolveRef,
+          );
+          if (
+            isConfigArray &&
+            nonNull.length > 1 &&
+            arraySiblingsAreModuleRefs
+          ) {
+            const built = buildProperty(arrayBranch, depth + 1, unionSeen);
+            // The prop's own @title/@description sit beside its `$ref`.
+            const title =
+              typeof v.title === "string"
+                ? v.title
+                : typeof resolved.title === "string"
+                  ? resolved.title
+                  : built.title;
+            const description =
+              typeof v.description === "string"
+                ? v.description
+                : typeof resolved.description === "string"
+                  ? resolved.description
+                  : built.description;
+            return {
+              ...built,
+              type: "array",
+              title,
+              description,
+              loaderRef:
+                loaderBranches.length > 0
+                  ? { ...buildLoaderBlockRef(), title, description }
+                  : undefined,
+            };
+          }
+          if (hasPageMultivariateLoader) {
+            const built = buildProperty(arrayBranch, depth + 1, unionSeen);
+            return {
+              ...built,
+              type: "array",
+              title:
+                typeof resolved.title === "string"
+                  ? resolved.title
+                  : built.title,
+              description:
+                typeof resolved.description === "string"
+                  ? resolved.description
+                  : built.description,
+            };
+          }
         }
 
-        // Unions discriminated by a `type` field (e.g. ImageCard | TextCard).
+        if (loaderBranches.length > 0) return buildLoaderBlockRef();
+
+        // A branch is a real module/block when its def carries `__resolveType` or a saved-block title.
+        const branchHasModuleIdentity = (branch: RawSchema): boolean => {
+          const def = resolveBranchDef(branch);
+          if (
+            typeof def.title === "string" &&
+            parseSavedBlockSchemaTitle(def.title)
+          ) {
+            return true;
+          }
+          const rtEnum = (
+            (def.properties as RawSchema | undefined)?.__resolveType as
+              | RawSchema
+              | undefined
+          )?.enum;
+          if (Array.isArray(rtEnum) && typeof rtEnum[0] === "string") {
+            return true;
+          }
+          if (Array.isArray(def.allOf)) {
+            for (const part of def.allOf as RawSchema[]) {
+              const e = (
+                (part.properties as RawSchema | undefined)?.__resolveType as
+                  | RawSchema
+                  | undefined
+              )?.enum;
+              if (Array.isArray(e) && typeof e[0] === "string") return true;
+            }
+          }
+          return false;
+        };
+
+        // A branch with real module identity is keyed by its resolveType, not by its own `type` input prop.
         const typeDiscriminators = nonNull.map((branch) =>
           typeDiscriminatorFromBranch(branch),
         );
         const isTypeDiscriminatedUnion =
           nonNull.length > 1 &&
-          typeDiscriminators.every((disc) => typeof disc === "string");
+          typeDiscriminators.every((disc) => typeof disc === "string") &&
+          !nonNull.some(branchHasModuleIdentity);
 
         if (isTypeDiscriminatedUnion) {
           const anyOfRefs = nonNull.map((branch, index) => {
@@ -798,41 +943,6 @@ export function resolveSchema(
           };
         }
 
-        // A union branch is a real module/block (loader, section, saved block)
-        // only when its resolved def carries a `__resolveType` or a saved-block
-        // title. Deco also emits plain *data* unions (e.g. `Location | Map`) as
-        // an anyOf of `$ref`s to bare object defs with none of those — those must
-        // render as an inline branch selector, NOT as a block picker (which would
-        // find no resolveType, drop every branch at the `continue` below, and
-        // return an empty block-ref that renders as `[object Object]`).
-        const branchHasModuleIdentity = (branch: RawSchema): boolean => {
-          const def = resolveBranchDef(branch);
-          if (
-            typeof def.title === "string" &&
-            parseSavedBlockSchemaTitle(def.title)
-          ) {
-            return true;
-          }
-          const rtEnum = (
-            (def.properties as RawSchema | undefined)?.__resolveType as
-              | RawSchema
-              | undefined
-          )?.enum;
-          if (Array.isArray(rtEnum) && typeof rtEnum[0] === "string") {
-            return true;
-          }
-          if (Array.isArray(def.allOf)) {
-            for (const part of def.allOf as RawSchema[]) {
-              const e = (
-                (part.properties as RawSchema | undefined)?.__resolveType as
-                  | RawSchema
-                  | undefined
-              )?.enum;
-              if (Array.isArray(e) && typeof e[0] === "string") return true;
-            }
-          }
-          return false;
-        };
         // A plain-data union (Location | Map): every branch — inline or behind a
         // `$ref` — resolves to a bare object with no module identity.
         const branchIsPlainDataObject = (branch: RawSchema): boolean => {
@@ -840,10 +950,19 @@ export function resolveSchema(
           const def = resolveBranchDef(branch);
           return def.type === "object" || Boolean(def.properties);
         };
-        // allOf is merged as an object earlier, so this block only sees choice unions.
+        // A plain-data array branch (e.g. `PromoBarTitle[]`) selectable alongside object branches — not a section/loader picker array.
+        const branchIsPlainDataArray = (branch: RawSchema): boolean => {
+          const def = unwrapRefAliases(branch);
+          if (!isArraySchemaBranch(def)) return false;
+          return !isSectionLoaderArrayBranch(def, resolveRef);
+        };
+        // allOf is merged as an object earlier, so this block only sees choice unions (objects, or objects mixed with plain-data arrays).
         const isPlainDataUnion =
-          depth < MAX_BUILD_PROPERTY_DEPTH &&
-          nonNull.every(branchIsPlainDataObject);
+          depth < MAX_STRUCTURE_DEPTH &&
+          nonNull.every(
+            (b) => branchIsPlainDataObject(b) || branchIsPlainDataArray(b),
+          ) &&
+          nonNull.some(branchIsPlainDataObject);
 
         // All branches are $refs to block/loader defs
         const allRefs = nonNull.every((a) => typeof a.$ref === "string");
@@ -853,6 +972,9 @@ export function resolveSchema(
             const def = resolveRef(branch.$ref as string);
             let rt: string | undefined;
             let title: string | undefined;
+            // A `__resolveType` enum names a real block even without a `/`:
+            // next-major Blocks uses short keys like `hero`.
+            let rtFromEnum = false;
 
             if (typeof def.title === "string") {
               const saved = parseSavedBlockSchemaTitle(def.title);
@@ -869,6 +991,7 @@ export function resolveSchema(
                 const e = rtProp.enum;
                 if (Array.isArray(e) && typeof e[0] === "string") {
                   rt = e[0];
+                  rtFromEnum = true;
                   break;
                 }
               }
@@ -881,16 +1004,24 @@ export function resolveSchema(
               const e = rtProp?.enum;
               if (Array.isArray(e) && typeof e[0] === "string") {
                 rt = e[0];
+                rtFromEnum = true;
               }
             }
             if (!rt) {
               rt = (branch.$ref as string).split("/").pop() ?? "";
             }
-            const discriminatorValue = typeDiscriminatorFromBranch(branch);
-            // Skip the `Resolvable` placeholder: it has no `__resolveType.enum`
-            // so `rt` degrades to the bare ref key (no `/`). All real module
-            // blocks (matchers, loaders, sections) contain `/` in their path.
-            if (!discriminatorValue && !rt.includes("/")) continue;
+            const isBlock =
+              rt.includes("/") ||
+              (rtFromEnum && !isEmbeddedUnionResolveType(rt));
+            // A real block (a module path, or a short name from a `__resolveType` enum) is keyed by its resolveType, not by a `type` input prop; only embedded unions (bare ref key) use the discriminator.
+            const discriminatorValue = isBlock
+              ? undefined
+              : typeDiscriminatorFromBranch(branch);
+            // Skip the `Resolvable` placeholder: it has no `__resolveType.enum`,
+            // so `rt` degrades to the bare ref key and isn't a block.
+            if (!discriminatorValue && !isBlock) continue;
+            // `lazy` is only ever written around a `Lazy<T>` value, never picked.
+            if (rtFromEnum && rt === "lazy") continue;
             anyOfRefs.push({
               resolveType: discriminatorValue ?? rt,
               title:
@@ -909,11 +1040,17 @@ export function resolveSchema(
           return {
             type: "block-ref",
             title:
-              typeof resolved.title === "string" ? resolved.title : undefined,
+              typeof v.title === "string"
+                ? v.title
+                : typeof resolved.title === "string"
+                  ? resolved.title
+                  : undefined,
             description:
-              typeof resolved.description === "string"
-                ? resolved.description
-                : undefined,
+              typeof v.description === "string"
+                ? v.description
+                : typeof resolved.description === "string"
+                  ? resolved.description
+                  : undefined,
             anyOfRefs,
             hidden:
               isSchemaHidden(resolved) || isSchemaHidden(v) ? true : undefined,
@@ -1003,13 +1140,15 @@ export function resolveSchema(
       type = "object";
     }
 
-    // Nested properties for object types. Bumped past depth 3 because real
-    // deco sections nest images at depth 4+ (`images[].desktop.src`); the
-    // old cap left those leaves un-resolved and stripped their `format`.
+    // Nested properties for object types (see MAX_STRUCTURE_DEPTH).
     let nestedProperties: Record<string, SchemaProperty> | undefined;
     let requiredKeys: string[] | undefined;
-    if (depth < MAX_BUILD_PROPERTY_DEPTH) {
+    let lazyBlock = false;
+    if (depth < MAX_STRUCTURE_DEPTH && !cyclicRef) {
       const nestedRaw = collectProps(resolved);
+      const rtEnum = (nestedRaw.__resolveType as RawSchema | undefined)?.enum;
+      lazyBlock =
+        Array.isArray(rtEnum) && rtEnum.length === 1 && rtEnum[0] === "lazy";
       const nestedRequired = asStringArray(nestedRaw.__required);
       if (nestedRequired.length > 0) requiredKeys = nestedRequired;
       const nestedEntries = Object.entries(nestedRaw).filter(
@@ -1031,19 +1170,19 @@ export function resolveSchema(
     let itemsSchema: SchemaProperty | undefined;
     if (
       (type === "array" || resolved.type === "array") &&
-      depth < MAX_BUILD_PROPERTY_DEPTH
+      depth < MAX_STRUCTURE_DEPTH &&
+      !cyclicRef
     ) {
-      let rawItems = resolved.items as RawSchema | undefined;
+      const rawItems = resolved.items as RawSchema | undefined;
       if (rawItems) {
-        if (typeof rawItems.$ref === "string") {
-          rawItems = resolveRef(rawItems.$ref);
-        }
+        // Pass the `$ref` itself so the cycle guard sees the item type.
         itemsSchema = buildProperty(rawItems, depth + 1, unionSeen);
+        const itemsDef = resolveBranchDef(rawItems);
         if (
-          typeof rawItems.title === "string" &&
-          rawItems.title.includes("{{")
+          typeof itemsDef.title === "string" &&
+          itemsDef.title.includes("{{")
         ) {
-          itemsSchema.titleBy = rawItems.title;
+          itemsSchema.titleBy = itemsDef.title;
         }
       }
     }
@@ -1091,6 +1230,13 @@ export function resolveSchema(
       properties: nestedProperties,
       required: requiredKeys,
       items: itemsSchema,
+      lazy: lazyBlock && !!nestedProperties?.value ? true : undefined,
+      recursiveRef:
+        cyclicRef &&
+        typeof v.$ref === "string" &&
+        (type === "object" || type === "array" || resolved.type === "array")
+          ? v.$ref
+          : undefined,
       hidden: isSchemaHidden(resolved) || isSchemaHidden(v) ? true : undefined,
       titleBy:
         typeof resolved.titleBy === "string"
@@ -1108,6 +1254,8 @@ export function resolveSchema(
             : fromLeaf<string>("options"),
     };
   };
+
+  if ("ref" in target) return buildProperty({ $ref: target.ref });
 
   // deco wraps a block's config as
   //   { type:"object", allOf:[{$ref:<Props>}], properties:{__resolveType:{…}},

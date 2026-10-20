@@ -4,8 +4,10 @@
  * Update an existing virtual MCP with collection binding compliance.
  */
 
+import { isProjectAllowed } from "@decocms/shared/auth/project-scope";
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
+import { resolveCallerProjectScope } from "../../core/project-scope";
 import {
   getUserId,
   requireAuth,
@@ -16,7 +18,12 @@ import { VirtualMCPEntitySchema, VirtualMCPUpdateDataSchema } from "./schema";
 import { requireOrgAdminForPinnedField } from "./require-org-admin-for-pin";
 import { requireConnectionsInOrganization } from "./require-connections-in-org";
 import { pinnedSiteSlugOnRename } from "./pin-site-slug";
-import { stripServerManagedMetadata } from "../strip-server-managed-metadata";
+import { assertSiteSlugUnchanged } from "./site-slug-guard";
+import { claimProjectFolderFor } from "./project-folder-ensure";
+import {
+  metadataKeptOnClear,
+  stripServerManagedMetadata,
+} from "../strip-server-managed-metadata";
 
 /**
  * Input schema for updating a virtual MCP
@@ -71,14 +78,22 @@ export const COLLECTION_VIRTUAL_MCP_UPDATE = defineTool({
       throw new Error(`Virtual MCP not found: ${input.id}`);
     }
 
+    // A project-scoped role may only mutate projects in its allowlist.
+    const projectScope = await resolveCallerProjectScope(ctx);
+    if (!isProjectAllowed(projectScope, existing.id)) {
+      throw new Error(`Virtual MCP not found: ${input.id}`);
+    }
+
     // `prompts` lives in org-fs, not on the agent row — pull it out before the
     // row update and re-seed separately below.
     const { prompts, metadata: rawMetadata, ...updateData } = input.data;
+    // The site slug is set once, by the create/import flow; never changed here.
+    assertSiteSlugUnchanged(existing, rawMetadata);
     let metadata = stripServerManagedMetadata(rawMetadata);
     if (metadata && existing.metadata) {
       metadata = { ...existing.metadata, ...metadata };
-    } else if (metadata === null && existing.metadata?.sandboxMap) {
-      metadata = { sandboxMap: existing.metadata.sandboxMap };
+    } else if (metadata === null) {
+      metadata = metadataKeptOnClear(existing.metadata);
     }
     const data = {
       ...updateData,
@@ -97,6 +112,30 @@ export const COLLECTION_VIRTUAL_MCP_UPDATE = defineTool({
         ...data.metadata,
         siteSlug: pinnedSiteSlug,
       };
+    }
+
+    // A rename must not move the project's files: claim the folder under the
+    // outgoing title first, if nothing has yet.
+    if (data.title !== undefined && data.title !== existing.title) {
+      const folderName = await claimProjectFolderFor(
+        ctx,
+        organization.id,
+        existing,
+        userId,
+      ).catch((err) => {
+        console.error("[project-folder] claim on rename failed", {
+          projectId: existing.id,
+          err,
+        });
+        return null;
+      });
+      if (folderName) {
+        data.metadata = {
+          ...existing.metadata,
+          ...data.metadata,
+          projectFolderName: folderName,
+        };
+      }
     }
 
     if (data.pinned !== undefined && data.pinned !== existing.pinned) {

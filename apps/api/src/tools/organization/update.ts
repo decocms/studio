@@ -4,6 +4,7 @@
  * Update an existing organization
  */
 
+import { parseOrgMetadata } from "@decocms/shared/organization/org-archived";
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
@@ -20,7 +21,7 @@ export const ORGANIZATION_UPDATE = defineTool({
   },
   inputSchema: z.object({
     name: z.string().min(1).max(255).optional(),
-    description: z.string().optional(),
+    description: z.string().max(500).optional(),
   }),
 
   outputSchema: z.object({
@@ -52,7 +53,7 @@ export const ORGANIZATION_UPDATE = defineTool({
     if (input.description !== undefined) {
       const existing = await ctx.boundAuth.organization.get(org.id);
       updateData.metadata = {
-        ...existing?.metadata,
+        ...parseOrgMetadata(existing?.metadata),
         description: input.description,
       };
     }

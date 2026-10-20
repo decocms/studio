@@ -19,15 +19,15 @@ mock.module("../../shared/github-clone-info", () => ({
 
 const {
   GitPushAuthError,
-  parseGithubRepoFromMetadata,
+  parseRepositoryBinding,
   refreshSandboxGitCredentials,
 } = await import("./sync-git-credentials");
 
-describe("parseGithubRepoFromMetadata", () => {
+describe("parseRepositoryBinding", () => {
   test("returns public-clone repo without connectionId", () => {
-    const repo = parseGithubRepoFromMetadata(
+    const repo = parseRepositoryBinding(
       {
-        githubRepo: {
+        repository: {
           owner: "deco-sites",
           name: "baggagio-tanstack",
         },
@@ -39,9 +39,9 @@ describe("parseGithubRepoFromMetadata", () => {
   });
 
   test("returns null when connectionId is stale", () => {
-    const repo = parseGithubRepoFromMetadata(
+    const repo = parseRepositoryBinding(
       {
-        githubRepo: {
+        repository: {
           owner: "deco-sites",
           name: "baggagio-tanstack",
           connectionId: "conn_github",
@@ -53,9 +53,9 @@ describe("parseGithubRepoFromMetadata", () => {
   });
 
   test("returns repo when connectionId is attached", () => {
-    const repo = parseGithubRepoFromMetadata(
+    const repo = parseRepositoryBinding(
       {
-        githubRepo: {
+        repository: {
           owner: "deco-sites",
           name: "baggagio-tanstack",
           connectionId: "conn_github",
@@ -79,7 +79,12 @@ describe("refreshSandboxGitCredentials", () => {
   test("decodes buildCloneInfo's SANDBOX_START_ERROR_CODES prefix into a clean GitPushAuthError", async () => {
     const ctx = {
       organization: { id: "org_1" },
-      storage: { connections: { findById: async () => null } },
+      storage: {
+        connections: { findById: async () => null },
+        // No repository row: this test covers the legacy `mcp-github` path.
+        repositories: { get: async () => null, findByRef: async () => null },
+        gitProviderAccounts: { getUnscoped: async () => null },
+      },
       db: {},
       vault: {},
     } as unknown as StudioContext;

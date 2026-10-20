@@ -15,14 +15,52 @@ import {
 import {
   normalizeThreadForResponse,
   requireOwnedVirtualMcp,
-  type GithubRepoMeta,
+  type RepositoryMetadata,
 } from "./helpers";
 import {
   ThreadEntitySchema,
   ThreadUpdateDataSchema,
 } from "@decocms/shared/thread/schema";
+import type { VirtualMCPEntity } from "@decocms/shared/sdk/types/virtual-mcp";
 import { parseThreadRuntime } from "@decocms/shared/thread/session-runtime";
 import { stripServerManagedMetadata } from "../strip-server-managed-metadata";
+import type { StudioContext } from "../../core/studio-context";
+import type { Thread } from "../../storage/types";
+import { sandboxOnlyChatsEnabled } from "../../harnesses/sandbox-only-chats";
+import { getAgentSandboxProvider } from "../../sandbox/lifecycle";
+import { getSettings } from "../../settings";
+import { readSandboxMap, resolveVm } from "../sandbox/sandbox-map";
+import { threadIdFromBranch } from "../sandbox/thread-repo";
+
+/**
+ * Bring shutdown of an archived chat's own sandboxes forward. Not a delete: an
+ * archived chat can be reopened, and its work is pushed on shutdown. Never
+ * throws.
+ */
+async function releaseThreadSandboxes(
+  ctx: StudioContext,
+  thread: Thread,
+): Promise<void> {
+  const sandboxMap = readSandboxMap(thread.metadata);
+  const handles = Object.entries(sandboxMap).flatMap(([userId, branches]) =>
+    Object.keys(branches ?? {})
+      .filter((branch) => threadIdFromBranch(branch) === thread.id)
+      .flatMap(
+        (branch) => resolveVm(sandboxMap, userId, branch)?.sandboxHandle ?? [],
+      ),
+  );
+  if (handles.length === 0) return;
+  try {
+    const provider = await getAgentSandboxProvider(ctx);
+    await Promise.allSettled(
+      handles.map((handle) =>
+        provider.releaseAfter(handle, getSettings().sandboxReleaseGraceMs),
+      ),
+    );
+  } catch (err) {
+    console.warn("[threads:update] sandbox release on archive failed", err);
+  }
+}
 
 /**
  * Input schema for updating threads
@@ -70,25 +108,35 @@ export const COLLECTION_THREADS_UPDATE = defineTool({
       throw new Error("Thread not found in organization");
     }
 
+    let effectiveVmcp: VirtualMCPEntity | undefined;
     if (data.virtual_mcp_id !== undefined) {
       // Guards against re-pointing a thread at another org's agent.
-      await requireOwnedVirtualMcp(
+      effectiveVmcp = await requireOwnedVirtualMcp(
         ctx.storage.virtualMcps,
         data.virtual_mcp_id,
         organization.id,
       );
     }
 
-    if (data.branch === null && existing.virtual_mcp_id) {
-      const vmcp = await ctx.storage.virtualMcps.findById(
-        existing.virtual_mcp_id,
-        organization.id,
-      );
-      const githubRepo = (vmcp?.metadata as GithubRepoMeta | null | undefined)
-        ?.githubRepo;
-      if (githubRepo) {
+    // Check the vMCP this update points to, not the one being replaced.
+    const effectiveVirtualMcpId =
+      data.virtual_mcp_id !== undefined
+        ? data.virtual_mcp_id
+        : existing.virtual_mcp_id;
+
+    if (data.branch === null && effectiveVirtualMcpId) {
+      const vmcp =
+        effectiveVmcp ??
+        (await ctx.storage.virtualMcps.findById(
+          effectiveVirtualMcpId,
+          organization.id,
+        ));
+      const repository = (
+        vmcp?.metadata as RepositoryMetadata | null | undefined
+      )?.repository;
+      if (repository) {
         throw new Error(
-          "Cannot set branch=null on a github-linked thread (vMCP has githubRepo)",
+          "Cannot set branch=null on a repository-linked thread (vMCP has repository)",
         );
       }
     }
@@ -143,6 +191,14 @@ export const COLLECTION_THREADS_UPDATE = defineTool({
     }
 
     const thread = await ctx.storage.threads.update(id, updateData);
+
+    if (
+      data.hidden === true &&
+      !existing.hidden &&
+      (await sandboxOnlyChatsEnabled(ctx, organization.id))
+    ) {
+      await releaseThreadSandboxes(ctx, existing);
+    }
 
     // Fire chat_archived / chat_unarchived when the hidden flag flips. Only
     // fires on the specific transition, not on title/description edits that

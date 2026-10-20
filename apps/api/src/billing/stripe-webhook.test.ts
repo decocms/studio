@@ -3,6 +3,9 @@ import { createHmac } from "node:crypto";
 import {
   mapSubscriptionStatus,
   parseStripeEvent,
+  invoicePeriodEnd,
+  planIdForPrices,
+  planIdForStripe,
   subscriptionFunnelEvent,
   verifyStripeSignature,
   type HandledStripeEvent,
@@ -206,5 +209,187 @@ describe("subscriptionFunnelEvent", () => {
     expect(
       subscriptionFunnelEvent(evt("customer.created"), handled),
     ).toBeNull();
+  });
+});
+
+/**
+ * The join between money and entitlement. Before this existed, `AI_PLAN_SET`
+ * granted any tier for free and a cancelled subscription revoked nothing: the
+ * billing row read `canceled` while the org kept every paid feature and its
+ * full AI allowance, indefinitely.
+ */
+describe("planIdForStripe", () => {
+  const MAP = { price_pro: "pro", price_ultra: "ultra" };
+  const sub = (priceId: string) => ({
+    items: { data: [{ price: { id: priceId } }] },
+  });
+
+  /**
+   * THE payment gate. `active` on a new price is Stripe reporting the swap, not
+   * the payment: the portal's update flow changes the item and invoices the
+   * proration separately. Granting here gave an org the tier before the money
+   * cleared, and if that invoice then declined the subscription went `past_due`
+   * — which is grace — so it kept a tier it never paid for for weeks.
+   */
+  test("an active subscription grants NOTHING — the money has not cleared yet", () => {
+    expect(planIdForStripe("active", sub("price_ultra"), MAP)).toBeUndefined();
+    expect(planIdForStripe("active", sub("price_pro"), MAP)).toBeUndefined();
+  });
+
+  test("a cancelled subscription drops the org to free", () => {
+    expect(planIdForStripe("canceled", sub("price_ultra"), MAP)).toBe("free");
+  });
+
+  /** …including one whose price was unmapped after the fact. An org must never
+   *  keep a paid tier because the operator edited the price map. */
+  test("drops to free even when the price is not in the map", () => {
+    expect(planIdForStripe("canceled", sub("price_gone"), MAP)).toBe("free");
+    expect(planIdForStripe("canceled", {}, MAP)).toBe("free");
+  });
+
+  /** Dunning grace, matching task-quota.ts — the two must not disagree about
+   *  what a delinquent org can do. `undefined` means "leave the plan alone". */
+  test("past_due changes nothing while Stripe is still retrying the card", () => {
+    expect(
+      planIdForStripe("past_due", sub("price_ultra"), MAP),
+    ).toBeUndefined();
+  });
+
+  /** Whatever the price is, active alone grants nothing — mapped, unmapped or
+   *  absent. Revocation is the only thing a state change may do on its own. */
+  test("no shape of an active subscription grants a tier", () => {
+    expect(
+      planIdForStripe("active", sub("price_unknown"), MAP),
+    ).toBeUndefined();
+    expect(planIdForStripe("active", {}, MAP)).toBeUndefined();
+    expect(planIdForStripe("active", sub("price_pro"), {})).toBeUndefined();
+  });
+
+  /**
+   * The lapse cases still revoke IMMEDIATELY, and must not be made to wait for
+   * a payment that by definition is not coming. Gating grants on money is only
+   * safe because taking the tier away stayed instant.
+   */
+  test("every non-active, non-dunning state revokes at once", () => {
+    for (const status of [
+      "canceled",
+      "unpaid",
+      "incomplete_expired",
+      "paused",
+    ]) {
+      expect(planIdForStripe(status, sub("price_ultra"), MAP)).toBe("free");
+    }
+  });
+
+  test("resolves a plan price sitting beside add-on prices", () => {
+    const mixed = {
+      items: {
+        data: [
+          { price: { id: "price_addon" } },
+          { price: { id: "price_pro" } },
+        ],
+      },
+    };
+    expect(planIdForPrices(mixed, MAP)).toBe("pro");
+  });
+
+  test("reads a price given as a bare id, as Stripe sends it unexpanded", () => {
+    expect(
+      planIdForPrices({ items: { data: [{ price: "price_pro" }] } }, MAP),
+    ).toBe("pro");
+  });
+
+  test("an upgrade's proration invoice resolves to the price being MOVED TO", () => {
+    // The real shape of a Pro -> Ultra proration invoice, captured from a live
+    // test-mode upgrade: Stripe puts the CREDIT for the plan being left first,
+    // the charge for the plan being moved to second. Reading first-match here
+    // returned `pro` for an org that had just paid to be on Ultra — and that
+    // invoice is immediately `paid`, so `invoice.paid` applied the downgrade.
+    const prorationInvoice = {
+      items: {
+        data: [
+          { amount: -25000, price: { id: "price_pro" }, proration: true },
+          { amount: 500000, price: { id: "price_ultra" }, proration: true },
+        ],
+      },
+    };
+    expect(planIdForPrices(prorationInvoice, MAP)).toBe("ultra");
+  });
+
+  test("a downgrade's proration invoice resolves to the cheaper plan, not the credited one", () => {
+    // Ultra -> Pro: the credit is the big number and comes first. Amount size
+    // must not decide this either — only the sign does.
+    const downgrade = {
+      items: {
+        data: [
+          { amount: -500000, price: { id: "price_ultra" }, proration: true },
+          { amount: 25000, price: { id: "price_pro" }, proration: true },
+        ],
+      },
+    };
+    expect(planIdForPrices(downgrade, MAP)).toBe("pro");
+  });
+
+  test("a fully-credited line never names the plan, even alone", () => {
+    // All that is left is what the org is leaving. Naming it would re-grant a
+    // tier the customer is no longer paying for.
+    expect(
+      planIdForPrices(
+        { items: { data: [{ amount: -25000, price: { id: "price_pro" } }] } },
+        MAP,
+      ),
+    ).toBeUndefined();
+  });
+
+  test("a zero-amount line is not a plan either", () => {
+    expect(
+      planIdForPrices(
+        { items: { data: [{ amount: 0, price: { id: "price_pro" } }] } },
+        MAP,
+      ),
+    ).toBeUndefined();
+  });
+
+  test("a proration invoice's period end is the period BOUGHT, not the gather window", () => {
+    // Real shape from a Pro -> Ultra upgrade: the invoice's own period_end is
+    // ~now (it gathered items over [last invoice, now]), while the lines carry
+    // the period actually paid for. Writing the former as current_period_end
+    // moves the renewal date into the past AND re-keys the task-quota bucket,
+    // handing out a fresh month of executions on every tier change.
+    const gatherWindowEnd = 1789495282; // 2026-09-15T18:01:22Z
+    const periodBought = 1792087280; // 2026-10-15T18:01:20Z
+    const invoice = {
+      period_end: gatherWindowEnd,
+      lines: {
+        data: [
+          {
+            amount: -25000,
+            period: { start: gatherWindowEnd, end: periodBought },
+          },
+          {
+            amount: 500000,
+            period: { start: gatherWindowEnd, end: periodBought },
+          },
+        ],
+      },
+    };
+    expect(invoicePeriodEnd(invoice)?.toISOString()).toBe(
+      new Date(periodBought * 1000).toISOString(),
+    );
+  });
+
+  test("an invoice whose lines carry no period falls back to its own", () => {
+    expect(
+      invoicePeriodEnd({
+        period_end: 1792087280,
+        lines: { data: [{}] },
+      })?.toISOString(),
+    ).toBe(new Date(1792087280 * 1000).toISOString());
+  });
+
+  test("subscription items still resolve — they carry no amount at all", () => {
+    // The guard must not break the customer.subscription.updated path, whose
+    // items have a price and no `amount` field.
+    expect(planIdForPrices(sub("price_ultra"), MAP)).toBe("ultra");
   });
 });

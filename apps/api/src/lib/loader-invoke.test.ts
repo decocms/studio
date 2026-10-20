@@ -1,6 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import {
   buildLoaderInvokeUrl,
+  CATALOG_LOADER_RESOLVE_TYPES,
+  isCatalogLoaderResolveType,
   isValidLoaderResolveType,
   parseLoaderInvokeRequest,
 } from "./loader-invoke";
@@ -83,6 +85,30 @@ describe("parseLoaderInvokeRequest", () => {
       resolveType: "vtex/loaders/intelligentSearch/productList.ts",
       payload: { props: { ids: ["149524"] }, simulationBehavior: "default" },
     });
+  });
+});
+
+describe("isCatalogLoaderResolveType", () => {
+  it("accepts exactly the two VTEX catalog loaders", () => {
+    expect(
+      isCatalogLoaderResolveType(
+        "vtex/loaders/intelligentSearch/productList.ts",
+      ),
+    ).toBe(true);
+    expect(isCatalogLoaderResolveType("vtex/loaders/categories/tree.ts")).toBe(
+      true,
+    );
+    expect(CATALOG_LOADER_RESOLVE_TYPES).toHaveLength(2);
+  });
+
+  it("rejects any other valid loader — the allowlist can reach production", () => {
+    expect(isCatalogLoaderResolveType("vtex/actions/cart/addItems.ts")).toBe(
+      false,
+    );
+    expect(isCatalogLoaderResolveType("apps/my-app/loaders/products.ts")).toBe(
+      false,
+    );
+    expect(isCatalogLoaderResolveType("")).toBe(false);
   });
 });
 

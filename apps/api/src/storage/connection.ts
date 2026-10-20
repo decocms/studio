@@ -6,6 +6,10 @@
  */
 
 import {
+  readRepositoryMetadata,
+  writeRepositoryMetadata,
+} from "./repository-metadata";
+import {
   type Insertable,
   type Kysely,
   type RawBuilder,
@@ -28,13 +32,14 @@ import { isStdioParameters } from "../tools/connection/schema";
 import {
   createNoRedirectFetch,
   guardAgainstPrivateUrl,
-} from "../tools/registry/discover-tools";
+} from "../mcp-clients/url-security";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
 import {
   getWellKnownDecopilotConnection,
   isDecopilot,
 } from "@decocms/shared/sdk";
 import { getConnectionSlug } from "@decocms/shared/utils/connection-slug";
+import { urlSlugBase } from "@decocms/shared/url-slug";
 import { CONNECTION_DECRYPT_DISABLE_THRESHOLD } from "../core/constants";
 import {
   isDecryptDisabled,
@@ -42,13 +47,20 @@ import {
   recordDecryptFailure,
   recordDecryptSuccess,
 } from "./decrypt-failure-tracker";
+import { escapeLikePattern } from "./threads";
 import type { ConnectionStoragePort } from "./ports";
+import {
+  changeUrlSlug,
+  isUrlSlugConflict,
+  resolveUrlSlug,
+  withAllocatedUrlSlug,
+} from "./url-slug";
 import type { Database } from "./types";
 
-/** JSON fields that need serialization/deserialization */
+/** JSON fields that need serialization/deserialization. oauth_config is handled
+ * separately below since it's encrypted (it may carry a client secret). */
 const JSON_FIELDS = [
   "connection_headers",
-  "oauth_config",
   "configuration_scopes",
   "metadata",
   "bindings",
@@ -66,6 +78,7 @@ type RawConnectionRow = {
   app_name: string | null;
   app_id: string | null;
   slug: string | null;
+  url_slug: string | null;
   connection_type: "HTTP" | "SSE" | "Websocket" | "STDIO" | "VIRTUAL";
   connection_url: string | null;
   connection_token: string | null;
@@ -91,6 +104,7 @@ const TOP_LEVEL_COLUMNS = new Set([
   "app_name",
   "app_id",
   "slug",
+  "url_slug",
   "connection_type",
   "connection_url",
   // connection_token is intentionally excluded — sensitive
@@ -218,71 +232,56 @@ export class ConnectionStorage implements ConnectionStoragePort {
       return this.update(id, data);
     }
 
-    const slug = getConnectionSlug(data);
-    const serialized = await this.serializeConnection({
-      ...data,
-      id: data.id ?? id,
-      slug,
-      status: "active",
-      created_at: now,
-      updated_at: now,
-    });
-    let row: RawConnectionRow | undefined;
-    try {
-      // returningAll() avoids a second round trip to re-fetch the inserted row.
-      row = (await this.db
-        .insertInto("connections")
-        .values(serialized as Insertable<Database["connections"]>)
-        .returningAll()
-        .executeTakeFirst()) as RawConnectionRow | undefined;
-    } catch (error) {
-      // Race with a concurrent create() for the same id: match createNew()'s error.
-      if (
-        error instanceof Error &&
-        (error.message.includes("duplicate key") ||
-          error.message.includes("unique constraint"))
-      ) {
-        throw new Error("Connection ID already exists");
-      }
-      throw error;
-    }
-    if (!row) {
-      throw new Error(`Failed to create connection with id: ${id}`);
-    }
-
-    return this.deserializeConnection(row as RawConnectionRow);
+    // A concurrent create() for the same id surfaces as createNew()'s error.
+    return this.insertNew(id, data, now);
   }
 
   async createNew(data: Partial<ConnectionEntity>): Promise<ConnectionEntity> {
     const id = data.id ?? generatePrefixedId("conn");
-    const now = new Date().toISOString();
-    const slug = getConnectionSlug(data);
-    const serialized = await this.serializeConnection({
-      ...data,
-      id,
-      slug,
-      status: "active",
-      created_at: now,
-      updated_at: now,
-    });
+    return this.insertNew(id, data, new Date().toISOString());
+  }
 
-    let row: RawConnectionRow | undefined;
-    try {
-      row = (await this.db
-        .insertInto("connections")
-        .values(serialized as Insertable<Database["connections"]>)
-        .returningAll()
-        .executeTakeFirst()) as RawConnectionRow | undefined;
-    } catch (error) {
-      if (
-        error instanceof Error &&
-        (error.message.includes("duplicate key") ||
-          error.message.includes("unique constraint"))
-      ) {
-        throw new Error("Connection ID already exists");
-      }
-      throw error;
-    }
+  private async insertNew(
+    id: string,
+    data: Partial<ConnectionEntity>,
+    now: string,
+  ): Promise<ConnectionEntity> {
+    const { url_slug: _urlSlug, ...rest } = data;
+    const slug = getConnectionSlug(data);
+    const row = await withAllocatedUrlSlug(
+      this.db,
+      data.organization_id ?? "",
+      urlSlugBase(data.title, urlSlugBase(slug, "app")),
+      async (urlSlug) => {
+        const serialized = await this.serializeConnection({
+          ...rest,
+          id,
+          slug,
+          url_slug: urlSlug,
+          status: "active",
+          created_at: now,
+          updated_at: now,
+        });
+        try {
+          // returningAll() avoids a second round trip to re-fetch the inserted row.
+          return (await this.db
+            .insertInto("connections")
+            .values(serialized as Insertable<Database["connections"]>)
+            .returningAll()
+            .executeTakeFirst()) as RawConnectionRow | undefined;
+        } catch (error) {
+          if (
+            error instanceof Error &&
+            !isUrlSlugConflict(error) &&
+            (error.message.includes("duplicate key") ||
+              error.message.includes("unique constraint"))
+          ) {
+            throw new Error("Connection ID already exists");
+          }
+          throw error;
+        }
+      },
+    );
 
     if (!row) {
       throw new Error(`Failed to create connection with id: ${id}`);
@@ -365,12 +364,10 @@ export class ConnectionStorage implements ConnectionStoragePort {
       query = query.where(applyWhereToSql(options.where));
     }
 
-    // Count before pagination
+    // Count before pagination — built off the pre-orderBy/limit `query`, so it's independent of both.
     const countQuery = this.db
       .selectFrom(query.as("filtered"))
       .select(sql<number>`count(*)::int`.as("count"));
-    const countResult = await countQuery.executeTakeFirst();
-    const totalCount = countResult?.count ?? 0;
 
     // Apply orderBy
     if (options?.orderBy && options.orderBy.length > 0) {
@@ -392,13 +389,66 @@ export class ConnectionStorage implements ConnectionStoragePort {
       query = query.offset(options.offset);
     }
 
-    const rows = await query.execute();
+    const [countResult, rows] = await Promise.all([
+      countQuery.executeTakeFirst(),
+      query.execute(),
+    ]);
+    const totalCount = countResult?.count ?? 0;
 
     const items = await Promise.all(
       rows.map((row) => this.deserializeConnection(row as RawConnectionRow)),
     );
 
     return { items, totalCount };
+  }
+
+  /**
+   * Title search for the command palette.
+   *
+   * Deliberately NOT `list()`: that one runs every row through
+   * `deserializeConnection`, which decrypts the connection token, the
+   * configuration state, the OAuth config and every STDIO env var. A palette
+   * fires this on each keystroke and renders nothing but a name and an icon,
+   * so pulling live credentials into memory to answer it is both waste and
+   * needless exposure. Selects the display columns only — no vault call.
+   *
+   * VIRTUAL connections are excluded because they are projects/agents, which
+   * the palette already lists from its own client-side scope.
+   */
+  async searchByTitle(
+    organizationId: string,
+    search: string,
+    limit: number,
+  ): Promise<Array<Pick<ConnectionEntity, "id" | "title" | "icon" | "slug">>> {
+    let query = this.db
+      .selectFrom("connections")
+      .select(["id", "title", "icon", "slug"])
+      .where("organization_id", "=", organizationId)
+      .where("connection_type", "!=", "VIRTUAL");
+
+    if (search) {
+      query = query.where("title", "ilike", `%${escapeLikePattern(search)}%`);
+    }
+
+    const rows = await query
+      .orderBy("updated_at", "desc")
+      .limit(limit)
+      .execute();
+
+    return rows.map((row) => ({
+      id: row.id,
+      title: row.title ?? "",
+      icon: row.icon ?? null,
+      slug: row.slug ?? null,
+    }));
+  }
+
+  resolveUrlSlug(
+    organizationId: string,
+    slug: string,
+    kind: "project" | "connection",
+  ) {
+    return resolveUrlSlug(this.db, organizationId, slug, kind);
   }
 
   async update(
@@ -411,9 +461,15 @@ export class ConnectionStorage implements ConnectionStoragePort {
       organization_id: _organizationId,
       created_by: _createdBy,
       created_at: _createdAt,
+      url_slug: urlSlug,
       ...safeData
     } = data;
     data = safeData;
+
+    // Never through the SET clause: a slug change also records the old slug.
+    if (urlSlug) {
+      await changeUrlSlug(this.db, id, urlSlug);
+    }
 
     if (Object.keys(data).length === 0) {
       const connection = await this.findById(id);
@@ -431,7 +487,7 @@ export class ConnectionStorage implements ConnectionStoragePort {
     // Skip findById() here — it decrypts secrets we don't need just for a slug merge.
     const existing = await this.db
       .selectFrom("connections")
-      .select(["app_name", "connection_url", "title"])
+      .select(["app_name", "connection_url", "title", "connection_type"])
       .where("id", "=", id)
       .executeTakeFirst();
     if (existing) {
@@ -446,10 +502,13 @@ export class ConnectionStorage implements ConnectionStoragePort {
       });
     }
 
-    const serialized = await this.serializeConnection({
-      ...slugData,
-      updated_at: new Date().toISOString(),
-    });
+    const serialized = await this.serializeConnection(
+      {
+        ...slugData,
+        updated_at: new Date().toISOString(),
+      },
+      data.connection_type ?? existing?.connection_type,
+    );
 
     const row = await this.db
       .updateTable("connections")
@@ -467,7 +526,7 @@ export class ConnectionStorage implements ConnectionStoragePort {
   /**
    * Is any thread pinned to this connection as its repo?
    *
-   * `threads.metadata.githubRepo.connectionId` is a pointer with no FK behind
+   * `threads.metadata.repository.connectionId` is a pointer with no FK behind
    * it, so deleting the connection strands every thread that holds it — the
    * sandbox can never boot again. Callers that tear a repo connection down
    * must check this first.
@@ -476,6 +535,7 @@ export class ConnectionStorage implements ConnectionStoragePort {
     const row = await this.db
       .selectFrom("threads")
       .select("id")
+      // Compatibility: the database retains the indexed legacy repository key.
       .where(sql<boolean>`metadata -> 'githubRepo' ->> 'connectionId' = ${id}`)
       .limit(1)
       .executeTakeFirst();
@@ -572,8 +632,13 @@ export class ConnectionStorage implements ConnectionStoragePort {
    */
   private async serializeConnection(
     data: Partial<ConnectionEntity>,
+    connectionType = data.connection_type,
   ): Promise<Updateable<Database["connections"]>> {
     const result: Record<string, unknown> = {};
+    const storedMetadata =
+      connectionType === "VIRTUAL"
+        ? writeRepositoryMetadata(data.metadata)
+        : data.metadata;
 
     for (const [key, value] of Object.entries(data)) {
       if (value === undefined) continue;
@@ -586,6 +651,9 @@ export class ConnectionStorage implements ConnectionStoragePort {
         // Encrypt configuration state
         const stateJson = JSON.stringify(value);
         result[key] = await this.vault.encrypt(stateJson);
+      } else if (key === "oauth_config" && value) {
+        // May carry an OAuth client secret — encrypt like connection_token.
+        result[key] = await this.vault.encrypt(JSON.stringify(value));
       } else if (key === "connection_headers" && value) {
         // For STDIO, encrypt envVars before storing
         const params = value as ConnectionParameters;
@@ -602,12 +670,18 @@ export class ConnectionStorage implements ConnectionStoragePort {
           result[key] = JSON.stringify(params);
         }
       } else if (JSON_FIELDS.includes(key as (typeof JSON_FIELDS)[number])) {
-        result[key] = value ? JSON.stringify(value) : null;
+        result[key] = value
+          ? JSON.stringify(key === "metadata" ? storedMetadata : value)
+          : null;
       } else {
         result[key] = value;
       }
     }
 
+    if (connectionType === "VIRTUAL" && data.metadata !== undefined) {
+      const binding = readRepositoryMetadata(storedMetadata)?.repository;
+      result.repository_id = binding?.repositoryId ?? null;
+    }
     return result as Updateable<Database["connections"]>;
   }
 
@@ -692,28 +766,43 @@ export class ConnectionStorage implements ConnectionStoragePort {
       }
     }
 
-    if (decryptErrors.length > 0) {
-      await this.handleDecryptFailures(row, decryptErrors);
-    } else if (row.connection_token || row.configuration_state) {
-      recordDecryptSuccess(row.id);
+    // Falls back to plain JSON for connections written before encryption.
+    let decryptedOAuthConfig: OAuthConfig | null = null;
+    if (typeof row.oauth_config === "string") {
+      try {
+        decryptedOAuthConfig = JSON.parse(
+          await this.vault.decrypt(row.oauth_config),
+        );
+      } catch {
+        try {
+          decryptedOAuthConfig = JSON.parse(row.oauth_config);
+        } catch (error) {
+          decryptErrors.push({ label: "oauth config", error });
+        }
+      }
+    } else {
+      decryptedOAuthConfig = row.oauth_config;
     }
 
     // Parse and decrypt connection_headers
     let connectionParameters: ConnectionParameters | null = null;
+    let hasEnvVars = false;
     if (row.connection_headers) {
       try {
         const parsed = JSON.parse(row.connection_headers);
         // For STDIO, decrypt envVars
         if (isStdioParameters(parsed) && parsed.envVars) {
+          hasEnvVars = true;
           const decryptedEnvVars: Record<string, string> = {};
           for (const [envKey, envValue] of Object.entries(parsed.envVars)) {
             try {
               decryptedEnvVars[envKey] = await this.vault.decrypt(
                 envValue as string,
               );
-            } catch {
-              // If decryption fails, keep encrypted value (migration case)
-              decryptedEnvVars[envKey] = envValue as string;
+            } catch (error) {
+              // Don't hand the spawned process raw ciphertext as its env var value.
+              decryptedEnvVars[envKey] = "";
+              decryptErrors.push({ label: `env var "${envKey}"`, error });
             }
           }
           connectionParameters = {
@@ -729,6 +818,17 @@ export class ConnectionStorage implements ConnectionStoragePort {
           error,
         );
       }
+    }
+
+    if (decryptErrors.length > 0) {
+      await this.handleDecryptFailures(row, decryptErrors);
+    } else if (
+      row.connection_token ||
+      row.configuration_state ||
+      row.oauth_config ||
+      hasEnvVars
+    ) {
+      recordDecryptSuccess(row.id);
     }
 
     const parseJson = <T>(value: string | T | null): T | null => {
@@ -754,14 +854,20 @@ export class ConnectionStorage implements ConnectionStoragePort {
       app_name: row.app_name,
       app_id: row.app_id,
       slug: row.slug,
+      url_slug: row.url_slug,
       connection_type: row.connection_type,
       connection_url: row.connection_url,
       connection_token: decryptedToken,
       connection_headers: connectionParameters,
-      oauth_config: parseJson<OAuthConfig>(row.oauth_config),
+      oauth_config: decryptedOAuthConfig,
       configuration_state: decryptedConfigState,
       configuration_scopes: parseJson<string[]>(row.configuration_scopes),
-      metadata: parseJson<Record<string, unknown>>(row.metadata),
+      metadata:
+        row.connection_type === "VIRTUAL"
+          ? readRepositoryMetadata(
+              parseJson<Record<string, unknown>>(row.metadata),
+            )
+          : parseJson<Record<string, unknown>>(row.metadata),
       tools: null,
       bindings: parseJson<string[]>(row.bindings),
       status: row.status,

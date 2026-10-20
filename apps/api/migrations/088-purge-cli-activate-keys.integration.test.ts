@@ -6,7 +6,14 @@
  * `AI_PROVIDER_CLI_ACTIVATE` tool) and leaves all other rows untouched.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  setDefaultTimeout,
+} from "bun:test";
 import { sql } from "kysely";
 import {
   closeTestPgDatabase,
@@ -16,6 +23,12 @@ import {
 } from "../src/database/test-db-pg";
 import type { StudioDatabase } from "../src/database";
 import { up as up088 } from "./088-purge-cli-activate-keys";
+
+// Each test resets the schema from scratch, and that reset truncates every
+// table there is — a cost that grows with every migration the repo adds. On a
+// shared CI Postgres the hook alone can outlast bun's 5s default, and an
+// aborted hook surfaces as an unrelated "driver has already been destroyed".
+setDefaultTimeout(30_000);
 
 const ORG = "org_test";
 const USER = "user_test";

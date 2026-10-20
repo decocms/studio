@@ -1,10 +1,17 @@
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { useProjectContext } from "@/sdk";
+import { getWellKnownDecopilotVirtualMCP, useProjectContext } from "@/sdk";
 import { isPerThreadTab } from "@/layouts/main-panel-tabs/tab-id";
-import { DESTINATION_ROUTE } from "@/hooks/use-destination-route";
-import { panelLocationForTab } from "@/layouts/main-panel-tabs/panel-route";
 import { useActivePanelTabId } from "@/layouts/main-panel-tabs/use-panel-navigate";
-import { useRouteThreadId, useRouteVirtualMcpId } from "@/layouts/thread-route";
+import {
+  canonicalThreadRouteTarget,
+  navigateToTabRouteTarget,
+  tabRouteLocation,
+} from "@/layouts/main-panel-tabs/tab-route";
+import {
+  useRouteAgentId,
+  useRouteThreadId,
+  useRouteVirtualMcpId,
+} from "@/layouts/thread-route";
 import { AUTOSEND_QUERY_VALUE } from "@/lib/autosend";
 
 export interface ChatNavigation {
@@ -12,10 +19,8 @@ export interface ChatNavigation {
   virtualMcpId: string;
   /** The thread the matched route names, or `null` where it names none. */
   taskId: string | null;
-  /** Navigate to a task: the chat route, with the thread in `?thread=` and the
-   *  agent in `?virtualmcpid=` — the one carrier of the project scope, written
-   *  explicitly because retention would otherwise hand back the scope in force.
-   *  `autosend` tells the route to consume the stored handoff message. */
+  /** Navigate to a task in its agent-owned route. `autosend` tells the route to
+   * consume the stored handoff message. */
   navigateToTask: (
     taskId: string,
     opts?: { virtualMcpId?: string; autosend?: boolean },
@@ -33,11 +38,12 @@ export function useChatNavigation(): ChatNavigation {
   const taskId = useRouteThreadId();
 
   /**
-   * The same route-aware answer the shell and the breadcrumb use: only the
-   * routes whose agent IS the scope resolve `?virtualmcpid=`, so a leftover
-   * filter on an org-level page cannot redirect a chat's messages.
+   * The same route-aware answer the shell and breadcrumb use: `$agentId` wins,
+   * legacy thread search is accepted only by its compatibility route, and org
+   * pages fall back to Decopilot.
    */
   const virtualMcpId = useRouteVirtualMcpId();
+  const routeAgentId = useRouteAgentId();
   const activeTabId = useActivePanelTabId();
   const search = useSearch({ strict: false }) as { sidepanel?: boolean };
 
@@ -46,22 +52,55 @@ export function useChatNavigation(): ChatNavigation {
     opts?: { virtualMcpId?: string; autosend?: boolean },
   ) => {
     /** A view that belongs to the thread being left does not follow it; a
-     *  system view does, as the `{-$panel}` segment. */
+     *  system view does, by navigating to its canonical route. */
     const carried =
       activeTabId && !isPerThreadTab(activeTabId) ? activeTabId : undefined;
-    const view = carried ? panelLocationForTab(carried) : null;
-    navigate({
-      to: DESTINATION_ROUTE.agents,
-      params: { org: org.slug, panel: view?.panel },
-      search: {
-        virtualmcpid: opts?.virtualMcpId ?? virtualMcpId,
+    /** Org destinations cannot encode an agent. A thread opened from one moves
+     * to its agent overview; agent-owned views carry forward as themselves. */
+    const targetAgentId = opts?.virtualMcpId ?? virtualMcpId;
+    const superAgentId = getWellKnownDecopilotVirtualMCP(org.id).id;
+    /** The org's own chat needs no agent in the path, so on a route that
+     *  names no agent it opens in place: the folder and file the question is
+     *  about stay open. A project's Library names its agent and must not. */
+    if (
+      targetAgentId === superAgentId &&
+      routeAgentId === undefined &&
+      carried &&
+      tabRouteLocation(carried).kind === "org-destination"
+    ) {
+      void navigate({
+        to: ".",
+        search: (prev: Record<string, unknown>) => ({
+          ...prev,
+          thread: taskId,
+          /** Thread-scoped: the thread being left must not describe this one. */
+          mainpanel: undefined,
+          autosend: opts?.autosend ? AUTOSEND_QUERY_VALUE : undefined,
+        }),
+      });
+      return;
+    }
+    const tabId =
+      targetAgentId === virtualMcpId &&
+      carried &&
+      tabRouteLocation(carried).kind !== "org-destination"
+        ? carried
+        : "overview";
+    const target = canonicalThreadRouteTarget({
+      org: org.slug,
+      agentId: targetAgentId,
+      superAgentId,
+      tabId,
+    });
+    navigateToTabRouteTarget(navigate, target, {
+      search: () => ({
         thread: taskId,
-        ...(view?.payload ?? {}),
         ...(typeof search.sidepanel === "boolean"
           ? { sidepanel: search.sidepanel }
           : {}),
         ...(opts?.autosend ? { autosend: AUTOSEND_QUERY_VALUE } : {}),
-      },
+      }),
+      replace: false,
     });
   };
 

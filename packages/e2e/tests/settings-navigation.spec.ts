@@ -9,8 +9,8 @@ import { sleep } from "@decocms/shared/std";
 import { expect, test } from "../fixtures/test";
 
 const SIDEBAR = '[data-slot="sidebar"]';
-const SUBNAV = '[data-slot="settings-subnav"]';
-const HEADING = '[data-slot="settings-heading"]';
+const SUBNAV = '[data-testid="settings-subnav"]';
+const HEADING = '[data-testid="page-header"]';
 
 test.describe("settings sidebar", () => {
   test("advanced rows stay collapsed until asked for", async ({
@@ -80,8 +80,12 @@ test.describe("settings tabs", () => {
     await expect(page.locator(HEADING)).toContainText("Connect to clients");
     await expect(page.locator(SUBNAV)).toHaveCount(0);
     await expect(
-      page.getByRole("heading", { name: "Connect a client" }),
+      page.getByRole("heading", { name: "Connect your agent" }),
     ).toBeVisible();
+    await expect(
+      page.getByRole("tab", { name: /CLI \+ skill/ }),
+      "the skill opens first",
+    ).toHaveAttribute("aria-selected", "true");
     await expect(page.getByRole("heading", { name: "API keys" })).toBeVisible();
 
     const row = page

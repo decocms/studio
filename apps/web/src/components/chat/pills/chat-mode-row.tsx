@@ -2,16 +2,19 @@ import type { ReactNode } from "react";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { useOptionalChatStream, useOptionalChatTask } from "../context";
 import { BranchPill } from "./branch-pill";
+import { useBaseBranch } from "../../thread/repository/use-version-gate";
 import {
-  draftsModeEnabled,
-  useBaseBranch,
-} from "../../thread/github/use-version-gate";
-import { getActiveGithubRepo } from "@/lib/github-repo";
+  getActiveRepository,
+  hasRepoCredential,
+  repoTargetKey,
+  repoToolTarget,
+} from "@/lib/repository-binding";
 import { useProjectContext } from "@/sdk";
 import {
   defaultThreadRuntime,
   readThreadRuntime,
 } from "@decocms/shared/thread/session-runtime";
+import { useMainSchemaV8 } from "@/hooks/use-main-schema-v8";
 import { authClient } from "@/lib/auth-client";
 import { branchUserLabel } from "@decocms/shared/branch-name";
 
@@ -22,11 +25,7 @@ interface PureProps {
 /**
  * Pure layout — used by tests. Renders the branch pill (when present) in the
  * parent flex flow. Returns null when there is nothing to show.
- *
- * The runtime choice (Cloud sandbox vs This device) is NOT surfaced here — it
- * lives in the "Smart" model selector's Cloud ⟷ This device toggle, which
- * writes through the same `pendingAgentOption`. A standalone pill here was
- * redundant, so this row only carries the branch pill.
+
  */
 export function ChatModeRowPure({ branchPill }: PureProps) {
   if (!branchPill) return null;
@@ -40,9 +39,9 @@ interface SmartProps {
 
 /**
  * Smart wrapper. Renders the BranchPill for agents imported from GitHub —
- * `metadata.githubRepo` exists AND has an attached `connectionId` (an
+ * `metadata.repository` exists AND has an attached `connectionId` (an
  * authenticated user repo, not a public-template clone). Start Website agents
- * populate `metadata.githubRepo.url` for the template but leave `connectionId`
+ * populate `metadata.repository.url` for the template but leave `connectionId`
  * unset; branches aren't meaningful there.
  *
  * Locked flag is derived from `useOptionalChatStream().messages.length > 0`.
@@ -62,8 +61,8 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
     readThreadRuntime(taskCtx?.activeTask?.metadata, virtualMcp?.metadata) ===
       "sandbox";
 
-  const githubRepo = getActiveGithubRepo(virtualMcp);
-  const connectionId = githubRepo?.connectionId;
+  const repository = getActiveRepository(virtualMcp);
+  const repoTarget = repoToolTarget(repository);
 
   const { data: session } = authClient.useSession();
   const userLabel = branchUserLabel(session?.user);
@@ -72,7 +71,9 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
 
   // Production branch shown as "Produção"; one shared source with the gate.
   const baseBranch = useBaseBranch(virtualMcp, currentBranch);
-  const draftsMode = draftsModeEnabled(virtualMcp);
+  // The Localhost item is for Blocks v8 sites (main's schema); v7 keeps
+  // main's Advanced → Local.
+  const mainSchema = useMainSchemaV8(virtualMcp?.id);
 
   // Locked chat's branch is fixed: open a new chat on the picked branch.
   const onChange = (next: string) => {
@@ -85,26 +86,31 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
       createTask({ branch: next });
     else if (setCurrentTaskBranch) void setCurrentTaskBranch(next);
   };
+  // Adopting a branch/PR opens a sandbox coding session on its code.
+  const onAdoptBranch = createTask
+    ? (next: string) => createTask({ runtime: "sandbox", branch: next })
+    : undefined;
 
   const branchPill =
-    githubRepo && connectionId ? (
+    repository && hasRepoCredential(repoTarget) ? (
       <BranchPill
         // Remount per repo so the previous project's switcher state can't leak.
-        key={`${connectionId}:${githubRepo.owner}/${githubRepo.name}`}
-        draftsMode={draftsMode}
+        key={`${repoTargetKey(repoTarget)}:${repository.owner}/${repository.name}`}
         userLabel={userLabel}
         virtualMcpId={virtualMcp?.id ?? ""}
+        isV8={mainSchema === "v8"}
         value={currentBranch}
         baseBranch={baseBranch}
         orgId={org.id}
         orgSlug={org.slug}
         userId={userId}
-        connectionId={connectionId}
-        owner={githubRepo.owner}
-        repo={githubRepo.name}
+        target={repoTarget}
+        owner={repository.owner}
+        repo={repository.name}
         sandboxMap={virtualMcp?.metadata?.sandboxMap}
         onChange={onChange}
         onCreateBranch={onCreateBranch}
+        onAdoptBranch={onAdoptBranch}
         locked={locked}
         placement="chat"
       />

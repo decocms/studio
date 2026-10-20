@@ -1,6 +1,7 @@
 package gitx
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/url"
@@ -38,13 +39,49 @@ func CloneUrlHasCredentials(rawUrl string) bool {
 	return u.User.Username() != "" || hasPass
 }
 
+// RequiresCloneCredentials reports whether pushing to `originUrl` is bound to
+// fail for lack of a credential: an HTTPS remote with no userinfo. The pod has
+// no credential helper and no SSH key, so a bare HTTPS origin cannot push on
+// any provider — refusing here turns a raw `git push` auth failure into the
+// actionable message the UI knows how to render. SSH and credentialed URLs pass.
+func RequiresCloneCredentials(originUrl string) bool {
+	trimmed := strings.TrimSpace(originUrl)
+	if !strings.HasPrefix(strings.ToLower(trimmed), "https://") {
+		return false
+	}
+	return !CloneUrlHasCredentials(trimmed)
+}
+
 // SyncOriginRemote points `origin` at the credentialed clone URL.
+//
+// Run's error text unconditionally embeds the joined argv (see run.go), and
+// this is the one Run call in the daemon whose argv carries a live token —
+// every other credentialed git operation keeps it out of argv entirely (see
+// prepareSubmoduleCredentials). A `remote set-url` failure here would
+// otherwise put the token in the orchestrator's setup-log broadcast
+// (syncGitRemoteCredentials) or a publish error surfaced to the caller.
 func SyncOriginRemote(repoDir, cloneUrl string) error {
 	if !CloneUrlHasCredentials(cloneUrl) {
 		return nil
 	}
 	_, err := Run([]string{"remote", "set-url", "origin", cloneUrl}, RunOpts{Cwd: repoDir})
-	return err
+	return redactCredentialedURL(err, cloneUrl)
+}
+
+// redactCredentialedURL strips rawUrl's userinfo out of err's message. Fails
+// closed: an unparseable rawUrl means the token can't be located to redact,
+// so the whole message is dropped rather than risking a raw token surviving
+// in a shape this substring match missed.
+func redactCredentialedURL(err error, rawUrl string) error {
+	if err == nil {
+		return nil
+	}
+	u, parseErr := url.Parse(rawUrl)
+	if parseErr != nil || u.User == nil {
+		return errors.New("git remote set-url origin failed")
+	}
+	u.User = nil
+	return errors.New(strings.ReplaceAll(err.Error(), rawUrl, u.String()))
 }
 
 // PublishBlockedError is returned when publish refuses the current branch. The
@@ -88,6 +125,13 @@ type PublishDeps struct {
 	// diverged. Interactive publish only — shutdown sync leaves it off so a
 	// stale teardown never clobbers a concurrent sandbox's work.
 	ReconcileRemote bool
+	// RebaseOnDiverge replays the sandbox's commits onto origin/<branch> when
+	// someone else pushed to it, and pushes the result as a fast-forward. A
+	// conflicting rebase is aborted and the work goes to a rescue branch
+	// instead, so it is never lost and never clobbers the other writer.
+	// Shutdown sync only: the harness is cancelled by then, so rewriting the
+	// tree races no writer.
+	RebaseOnDiverge bool
 }
 
 func changedPaths(status WorkingTreeStatus) []string {
@@ -141,6 +185,17 @@ func dotenvName(base string) bool {
 // branch, and GitHub, first. A push is irreversible (a force-push does not undo
 // a leak), which is what makes dropping them the safe default even though it
 // means a repo that genuinely tracks a `.env` cannot change it from a sandbox.
+// matchesDenyEntry reports whether rel is (or is under) a deny-list entry.
+// Only a trailing-slash entry matches as a directory prefix; a bare entry
+// names one file, so it must match exactly — otherwise "static/tailwind.css"
+// would also swallow an unrelated "static/tailwind.css.map".
+func matchesDenyEntry(rel, deny string) bool {
+	if strings.HasSuffix(deny, "/") {
+		return rel == strings.TrimSuffix(deny, "/") || strings.HasPrefix(rel, deny)
+	}
+	return rel == deny
+}
+
 func dropNeverCommit(paths []string) []string {
 	out := make([]string, 0, len(paths))
 	for _, p := range paths {
@@ -150,7 +205,7 @@ func dropNeverCommit(paths []string) []string {
 			reason = "dotenv file"
 		}
 		for _, deny := range NeverCommit {
-			if rel == strings.TrimSuffix(deny, "/") || strings.HasPrefix(rel, deny) {
+			if matchesDenyEntry(rel, deny) {
 				reason = "daemon-managed path"
 				break
 			}
@@ -158,7 +213,7 @@ func dropNeverCommit(paths []string) []string {
 		// The pre-commit hook covers the agent's own `git add -A`; publish
 		// pushes with --no-verify, so it needs the same list in code.
 		for _, deny := range BuildArtifacts {
-			if rel == strings.TrimSuffix(deny, "/") || strings.HasPrefix(rel, deny) {
+			if matchesDenyEntry(rel, deny) {
 				reason = "generated build artifact"
 				break
 			}
@@ -276,7 +331,7 @@ func pushEnv(repoDir string) map[string]string {
 	}
 }
 
-func pushBranch(repoDir, branch string, reconcileRemote bool) error {
+func pushBranch(repoDir, branch string, deps PublishDeps) error {
 	// --no-verify: a repo's pre-push script can hang the push, and the shutdown
 	// sync shares this path with no room to wait it out before SIGKILL.
 	args := append(append([]string{}, gitPushConfig...), "push", "--no-verify", "-u", "origin", branch)
@@ -291,10 +346,13 @@ func pushBranch(repoDir, branch string, reconcileRemote bool) error {
 		}
 		time.Sleep(pushRetryDelayMs * time.Millisecond)
 	}
+	if deps.RebaseOnDiverge && IsNonFastForwardError(err) {
+		return rebaseOntoRemoteOrRescue(repoDir, branch, args)
+	}
 	// origin/<branch> diverged: a prior publish force-pushed a rebased history,
 	// or the sandbox was re-provisioned from base and lost the branch's local
 	// commits. Reconcile by force-pushing the state the user sees.
-	if !reconcileRemote || !IsNonFastForwardError(err) {
+	if !deps.ReconcileRemote || !IsNonFastForwardError(err) {
 		return err
 	}
 	fetchArgs := append(append([]string{}, gitPushConfig...), "fetch", "origin", branch)
@@ -381,15 +439,36 @@ func Publish(deps PublishDeps, message string) error {
 		}
 	} else {
 		originUrl, _ := tryReadGit(repoDir, []string{"remote", "get-url", "origin"})
-		if strings.Contains(originUrl, "github.com") && !CloneUrlHasCredentials(originUrl) {
+		if RequiresCloneCredentials(originUrl) {
 			return &GitError{
-				Msg:    "GitHub push requires an authenticated clone URL. Connect GitHub for this project and restart the sandbox.",
+				Msg:    "Pushing requires an authenticated clone URL. Connect the repository's git provider for this project and restart the sandbox.",
 				Status: -1,
 			}
 		}
 	}
 
-	return pushBranch(repoDir, branch, deps.ReconcileRemote)
+	return pushBranch(repoDir, branch, deps)
+}
+
+func rebaseOntoRemoteOrRescue(repoDir, branch string, pushArgs []string) error {
+	env := pushEnv(repoDir)
+	fetchArgs := append(append([]string{}, gitPushConfig...), "fetch", "origin", branch)
+	if _, err := Run(fetchArgs, RunOpts{Cwd: repoDir, Env: env}); err != nil {
+		return err
+	}
+	rebaseArgs := []string{"-c", "core.hooksPath=" + getEmptyHooksDir(), "rebase", "origin/" + branch}
+	if _, err := Run(rebaseArgs, RunOpts{Cwd: repoDir, Env: rebaseEnv(repoDir, env, nonInteractiveEnv)}); err != nil {
+		abortRebase(repoDir)
+	} else if _, err := Run(pushArgs, RunOpts{Cwd: repoDir, Env: env}); err == nil {
+		return nil
+	}
+	rescue := fmt.Sprintf("%s-rescue-%d", branch, time.Now().Unix())
+	rescueArgs := append(append([]string{}, gitPushConfig...), "push", "--no-verify", "origin", "HEAD:refs/heads/"+rescue)
+	if _, err := Run(rescueArgs, RunOpts{Cwd: repoDir, Env: env}); err != nil {
+		return err
+	}
+	slog.Warn("branch diverged and could not be rebased; pushed the work to a rescue branch", "branch", branch, "rescue", rescue)
+	return nil
 }
 
 // Discard restores tracked files and deletes untracked ones.

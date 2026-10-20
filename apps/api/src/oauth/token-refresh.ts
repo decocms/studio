@@ -13,11 +13,26 @@
 
 import { exponentialBackoffWithJitter } from "@decocms/shared/std";
 import type { DownstreamToken } from "../storage/types";
-import type { DownstreamTokenStorage } from "../storage/downstream-token";
+import type {
+  DownstreamTokenData,
+  DownstreamTokenStorage,
+} from "../storage/downstream-token";
 import { refreshAccessToken } from "./refresh-access-token";
 import { resolveOriginTokenEndpoint } from "./resolve-token-endpoint";
 
 export type { TokenRefreshResult } from "./refresh-access-token";
+
+/**
+ * The storage surface the refresh helpers need. `DownstreamTokenStorage`
+ * (grants keyed by connection id) is the original implementation; the git
+ * provider account credential store implements the same shape keyed by
+ * account id, so one refresh path serves both. `DownstreamToken.connectionId`
+ * is therefore "the grant's owner key", whatever table it lives in.
+ */
+export type OAuthGrantStore = Pick<
+  DownstreamTokenStorage,
+  "get" | "delete" | "isExpired"
+> & { upsert(data: DownstreamTokenData): Promise<unknown> };
 
 export const PROACTIVE_REFRESH_BUFFER_MS = 5 * 60 * 1000;
 
@@ -87,9 +102,42 @@ export function clearRefreshBackoff(connectionId?: string): void {
   else refreshBackoff.clear();
 }
 
+/**
+ * Arm a suppression window directly. Test hook, mirroring
+ * `__resetSharedLifecyclesForTesting` in sandbox/lifecycle.
+ *
+ * A test that wants an armed window would otherwise have to produce a real
+ * refresh FAILURE to get one, which means depending on `refreshAccessToken` —
+ * and that module is `mock.module`'d by two other test files whose mocks
+ * outlive them (Bun keeps module mocks alive for the whole shard). Whether the
+ * window armed then depended on which file ran first.
+ */
+export function __armRefreshBackoffForTesting(connectionId: string): void {
+  refreshBackoff.set(connectionId, {
+    attempt: 1,
+    nextAttemptAt: Date.now() + REFRESH_BACKOFF_CAP_MS,
+  });
+}
+
+/**
+ * Whether a connection is currently inside its suppression window — the exact
+ * condition `refreshAndStore` short-circuits on.
+ *
+ * Exported so a test can assert the window directly instead of inferring it
+ * from whether a network call happened. That inference is what made
+ * `delete.test.ts`'s backoff assertion fail in the full suite while passing
+ * alone: another file leaks a `mock.module` for `@/oauth/refresh-access-token`,
+ * so no fetch occurs either way and the test read a mocked dependency as a
+ * still-armed backoff.
+ */
+export function isRefreshBackedOff(connectionId: string): boolean {
+  const backoff = refreshBackoff.get(connectionId);
+  return !!backoff && Date.now() < backoff.nextAttemptAt;
+}
+
 async function refreshAndStoreOnce(
   token: DownstreamToken,
-  tokenStorage: DownstreamTokenStorage,
+  tokenStorage: OAuthGrantStore,
 ): Promise<{ accessToken: string | null; permanent: boolean }> {
   const result = await refreshAccessToken(token);
   if (!result.success || !result.accessToken) {
@@ -115,10 +163,13 @@ async function refreshAndStoreOnce(
       accessToken: result.accessToken,
       refreshToken: result.refreshToken ?? token.refreshToken,
       scope: result.scope ?? token.scope,
+      // A rejected expires_in must fail safe as already-expired, not "never expires".
       expiresAt:
-        result.expiresIn === undefined
-          ? null
-          : new Date(Date.now() + result.expiresIn * 1000),
+        result.expiresIn !== undefined
+          ? new Date(Date.now() + result.expiresIn * 1000)
+          : result.expiresInMalformed
+            ? new Date()
+            : null,
       clientId: token.clientId,
       clientSecret: token.clientSecret,
       tokenEndpoint: token.tokenEndpoint,
@@ -136,7 +187,7 @@ async function refreshAndStoreOnce(
 
 export function refreshAndStore(
   token: DownstreamToken,
-  tokenStorage: DownstreamTokenStorage,
+  tokenStorage: OAuthGrantStore,
 ): Promise<string | null> {
   const existing = inflightRefreshes.get(token.connectionId);
   if (existing) return existing;
@@ -178,8 +229,8 @@ export function refreshAndStore(
 
 export type ValidDownstreamAccessTokenResult =
   | { state: "missing"; accessToken: null }
-  | { state: "valid"; accessToken: string }
-  | { state: "refreshed"; accessToken: string }
+  | { state: "valid"; accessToken: string; expiresAt: Date | null }
+  | { state: "refreshed"; accessToken: string; expiresAt: Date | null }
   | { state: "refresh_failed"; accessToken: null }
   | { state: "expired_without_refresh"; accessToken: null };
 
@@ -193,7 +244,7 @@ export type ValidDownstreamAccessTokenResult =
 export async function getValidDownstreamAccessToken(params: {
   connectionId: string;
   connectionUrl?: string | null;
-  tokenStorage: DownstreamTokenStorage;
+  tokenStorage: OAuthGrantStore;
   bufferMs?: number;
   force?: boolean;
 }): Promise<ValidDownstreamAccessTokenResult> {
@@ -208,7 +259,11 @@ export async function getValidDownstreamAccessToken(params: {
   const expired = tokenStorage.isExpired(token, bufferMs);
 
   if (!force && !expired) {
-    return { state: "valid", accessToken: token.accessToken };
+    return {
+      state: "valid",
+      accessToken: token.accessToken,
+      expiresAt: expiryOf(token),
+    };
   }
 
   if (!refreshable) {
@@ -232,5 +287,20 @@ export async function getValidDownstreamAccessToken(params: {
     tokenStorage,
   );
   if (!accessToken) return { state: "refresh_failed", accessToken: null };
-  return { state: "refreshed", accessToken };
+  // The refresh stored the new expiry; a store that failed keeps the old
+  // one, which only understates the new token's life.
+  const stored = await tokenStorage.get(connectionId).catch(() => null);
+  return {
+    state: "refreshed",
+    accessToken,
+    expiresAt:
+      stored?.accessToken === accessToken ? expiryOf(stored) : expiryOf(token),
+  };
+}
+
+/** Null when the token never expires; an unparseable expiry reads as now. */
+function expiryOf(token: DownstreamToken): Date | null {
+  if (!token.expiresAt) return null;
+  const at = new Date(token.expiresAt);
+  return Number.isNaN(at.getTime()) ? new Date() : at;
 }

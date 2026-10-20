@@ -7,10 +7,12 @@
  * card sits In Progress forever with nothing running behind it. Opening the
  * board re-runs the same decision over the list it just loaded:
  *
- *   every used thread terminal, newest `completed` → advance to In Review. This
- *     is the finish hook's own job, done late; costs two queries, no model call.
+ *   every used thread terminal, newest `completed` → advance (In Review with a
+ *     PR, QA without). This is the finish hook's own job, done late; costs two
+ *     queries, no model call.
  *   every used thread terminal, newest `failed`    → nudge the thread once: one
- *     user turn asking the agent to finish what it started. Advancing here would
+ *     user turn asking the agent to finish what it started, on a thread whose
+ *     run may move the card (`runMovesLinkedCards`). Advancing here would
  *     mark unfinished work as reviewable.
  *   any thread `requires_action` / `in_progress` → leave it. The first is parked
  *     on a `user_ask` (a human owns it), the second is either live or the stall
@@ -34,7 +36,7 @@
 
 import type { StudioContext } from "@/core/studio-context";
 import { nudgeThreadTurn } from "./nudge-thread";
-import { shouldAdvanceToReview } from "@/storage/task-board";
+import { isRepoBacked, shouldAdvanceToReview } from "@/storage/task-board";
 import type { TaskBoardItem, Thread } from "@/storage/types";
 import { advanceTasksToReviewOnThreadFinish } from "./run-reactions";
 import { isThreadRunStale } from "@/tools/thread/helpers";
@@ -223,7 +225,7 @@ export async function recoverStalledTasks(
     let hasPr: boolean;
     try {
       hasPr =
-        item.repo != null &&
+        isRepoBacked(item) &&
         (await ctx.storage.taskBoard.listPrs(item.id, organizationId)).length >
           0;
     } catch (err) {
@@ -247,7 +249,12 @@ export async function recoverStalledTasks(
           organizationId,
           ctx.storage.organizationBilling,
         );
-      } else {
+      } else if (
+        await ctx.storage.taskBoard.runMovesLinkedCards(
+          thread.threadId,
+          organizationId,
+        )
+      ) {
         await nudgeThread(ctx, item, row);
       }
     } catch (err) {

@@ -257,7 +257,7 @@ function ChatCard({
         {t("sectionsEditor.seoPreview.chatCardHint")}
       </p>
       <div
-        className="overflow-hidden rounded-md"
+        className="overflow-hidden rounded-[var(--studio-surface-radius,var(--radius-md))]"
         style={{
           background: "#fff",
           borderLeft: `3px solid ${accent}`,
@@ -331,7 +331,7 @@ function AttachmentCard({
         </div>
         <PreviewImage
           src={seo.image}
-          className="size-14 shrink-0 rounded"
+          className="size-14 shrink-0 rounded-[var(--studio-control-radius,var(--radius))]"
           iconSize={16}
         />
       </div>

@@ -6,12 +6,12 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
-import { useVirtualMCP } from "@/sdk";
+import { useVirtualMCPNonBlocking } from "@/sdk";
 import { useT } from "@/i18n/use-t.ts";
 import { AgentAvatar } from "@/components/agent-icon";
 import { getStatusConfig } from "@/lib/task-status";
 import { formatTimeAgo } from "@/lib/format-time";
-import { getActiveGithubRepo } from "@/lib/github-repo";
+import { getActiveRepository } from "@/lib/repository-binding";
 import { isSyntheticBranch } from "@decocms/shared/is-synthetic-branch";
 import { useClockTick } from "@/lib/use-clock-tick";
 import type { Task } from "@/components/chat/task/types";
@@ -48,10 +48,10 @@ export function TaskRow({
   const config = getStatusConfig(task.status);
   const StatusIcon = config.icon;
   const isToolCallRun = task.metadata?.kind === "tool_call_run";
-  const virtualMcp = useVirtualMCP(
+  const virtualMcp = useVirtualMCPNonBlocking(
     isToolCallRun ? undefined : task.virtual_mcp_id,
   );
-  const githubRepo = getActiveGithubRepo(virtualMcp);
+  const repository = getActiveRepository(virtualMcp);
   // Subscribe to a 60s heartbeat so the relative timestamp re-renders even
   // when `task` is referentially stable.
   useClockTick(60_000);
@@ -99,7 +99,7 @@ export function TaskRow({
             <Zap
               size={12}
               aria-label={t("tasksPanel.taskRow.automationTriggered")}
-              className="shrink-0 text-blue-500"
+              className="shrink-0 text-special"
             />
           )}
           <div className="text-sm text-foreground truncate">
@@ -120,10 +120,10 @@ export function TaskRow({
                 <span className="truncate font-mono">{task.branch}</span>
                 <span className="shrink-0">·</span>
               </>
-            ) : githubRepo ? (
+            ) : repository ? (
               <>
                 <span className="truncate">
-                  {githubRepo.owner}/{githubRepo.name}
+                  {repository.owner}/{repository.name}
                 </span>
                 <span className="shrink-0">·</span>
               </>
@@ -164,7 +164,7 @@ export function TaskRow({
                   e.stopPropagation();
                   onArchive();
                 }}
-                className="[grid-area:slot] opacity-0 pointer-events-none group-hover/row:opacity-100 group-hover/row:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto transition-opacity flex size-8 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                className="[grid-area:slot] opacity-0 pointer-events-none group-hover/row:opacity-100 group-hover/row:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto transition-opacity flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
               >
                 <Archive size={14} />
               </button>

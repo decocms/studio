@@ -25,8 +25,9 @@ function entry(name: string): SkillCatalogEntry {
     id: `home/${name}`,
     name,
     description: null,
+    disableModelInvocation: false,
     source: "home",
-    sandboxPath: `org/home/${name}`,
+    sandboxPath: `/app/org/home/${name}`,
     volume: "home",
     path: name,
   };

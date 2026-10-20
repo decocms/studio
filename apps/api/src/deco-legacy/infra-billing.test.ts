@@ -3,6 +3,7 @@ import {
   aggregateUsage,
   clampUntil,
   dateRange,
+  groupSitesByTeam,
   monthInterval,
   nextBillingDate,
   planTypeOf,
@@ -30,6 +31,68 @@ describe("monthInterval", () => {
       since: "2025-12-01",
       until: "2025-12-31",
     });
+  });
+});
+
+describe("groupSitesByTeam", () => {
+  const rows = [
+    { name: "site-a", team: 1 },
+    { name: "site-b", team: 2 },
+    { name: "site-c", team: 2 },
+    { name: "site-d", team: null },
+  ];
+
+  it("reports each team the selection spans instead of giving up", () => {
+    const { teams, withoutTeam } = groupSitesByTeam(
+      ["site-a", "site-b", "site-c"],
+      rows,
+      rows,
+      ["site-a", "site-b", "site-c"],
+    );
+    expect(teams).toEqual([
+      { teamId: 1, siteSlugs: ["site-a"], fullyOwned: true },
+      { teamId: 2, siteSlugs: ["site-b", "site-c"], fullyOwned: true },
+    ]);
+    expect(withoutTeam).toEqual([]);
+  });
+
+  it("withholds a team that also bills a site outside the org", () => {
+    const { teams } = groupSitesByTeam(
+      ["site-a", "site-b"],
+      rows,
+      [...rows, { name: "other-org-site", team: 2 }],
+      ["site-a", "site-b", "site-c"],
+    );
+    expect(teams.map((t) => [t.teamId, t.fullyOwned])).toEqual([
+      [1, true],
+      [2, false],
+    ]);
+  });
+
+  it("counts an unselected owned site toward full ownership", () => {
+    const { teams } = groupSitesByTeam(["site-b"], rows, rows, [
+      "site-b",
+      "site-c",
+    ]);
+    expect(teams).toEqual([
+      { teamId: 2, siteSlugs: ["site-b"], fullyOwned: true },
+    ]);
+  });
+
+  it("lists sites with no team, or unknown to the legacy platform", () => {
+    const { teams, withoutTeam } = groupSitesByTeam(
+      ["site-d", "site-missing"],
+      rows,
+      [],
+      ["site-d", "site-missing"],
+    );
+    expect(teams).toEqual([]);
+    expect(withoutTeam).toEqual(["site-d", "site-missing"]);
+  });
+
+  it("is not fully owned when the team's site list came back empty", () => {
+    const { teams } = groupSitesByTeam(["site-a"], rows, [], ["site-a"]);
+    expect(teams[0]?.fullyOwned).toBe(false);
   });
 });
 

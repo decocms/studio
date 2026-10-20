@@ -1,26 +1,38 @@
+import type { PermissionCapability } from "@decocms/shared/tools/registry-metadata";
+import type { OrganizationRole } from "@/hooks/use-organization-roles";
+import type { ConnectionEntity } from "@/sdk";
+import type { AiProviderKey } from "@/hooks/collections/use-ai-providers";
+import type { TFunction } from "@/i18n/use-t.ts";
+import { Panel } from "@/components/panel";
 import {
   getCapabilitySections,
   isCapabilityEnabled,
   toggleCapabilityInTools,
-  type PermissionCapability,
 } from "@decocms/shared/tools/registry-metadata";
+import { CONNECTION_SCOPE_KEY } from "@decocms/shared/auth/connection-scope";
+import {
+  denyEntry,
+  listFromFilter,
+  PERMISSION_WILDCARD,
+  permissionListFilter,
+} from "@decocms/shared/auth/permission-list";
+import {
+  getProjectScope,
+  PROJECT_SCOPE_KEY,
+  projectScopeFilter,
+} from "@decocms/shared/auth/project-scope";
 import { DEFAULT_LOGO, PROVIDER_LOGOS } from "@/utils/ai-providers-logos";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { ToolSetSelector } from "@/components/tool-set-selector.tsx";
 import { useMembers } from "@/hooks/use-members";
-import { type OrganizationRole } from "@/hooks/use-organization-roles";
+
 import { useOrgAuthClient } from "@/hooks/use-org-auth-client";
 import { getInitials } from "@/lib/get-initials";
 import { KEYS } from "@/lib/query-keys";
 import { track } from "@/lib/posthog-client";
 import { getRoleColor, getRoleDotColor } from "@/lib/role-color";
+import { useConnections, useProjectContext } from "@/sdk";
 import {
-  useConnections,
-  useProjectContext,
-  type ConnectionEntity,
-} from "@/sdk";
-import {
-  type AiProviderKey,
   useHostedAiProviderKeys,
   useSuspenseAiProviderModels,
 } from "@/hooks/collections/use-ai-providers";
@@ -48,14 +60,17 @@ import {
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Suspense, useDeferredValue, useState } from "react";
+import { type ReactNode, Suspense, useDeferredValue, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 import { SearchInput } from "@decocms/ui/components/search-input.tsx";
 import { Page } from "@/components/page";
 import { IntegrationIcon } from "@/components/integration-icon";
-import { type TFunction, useT } from "@/i18n/use-t.ts";
+import { ProjectIcon } from "@/components/project-icon";
+import { useVirtualMCPsNonBlocking } from "@/sdk/hooks/use-virtual-mcp";
+import { scopableProjects } from "@/hooks/use-project-scope";
+import { useT } from "@/i18n/use-t.ts";
 import {
   SettingsCard,
   SettingsCardItem,
@@ -63,11 +78,16 @@ import {
 } from "@/components/settings/settings-section";
 import {
   AlertTriangle,
+  Building02,
   ChevronDown,
   ChevronRight,
+  CpuChip01,
+  Folder,
   Lock01,
   Plus,
+  Users03,
   X,
+  ZapSquare,
 } from "@untitledui/icons";
 
 // ============================================================================
@@ -94,6 +114,13 @@ const roleFormSchema = z.object({
   toolSet: z.record(z.string(), z.array(z.string())),
   allowAllModels: z.boolean(),
   modelSet: z.record(z.string(), z.array(z.string())),
+  allowAllProjects: z.boolean(),
+  projectSet: z.array(z.string()),
+  /** Projects hidden from a role that otherwise sees all of them. */
+  projectExceptions: z.array(z.string()),
+  allowAllConnections: z.boolean(),
+  /** Connections left out of an all-connections grant. */
+  connectionExceptions: z.array(z.string()),
   memberIds: z.array(z.string()),
 });
 
@@ -716,6 +743,252 @@ function ModelsPermissionsTab({
   );
 }
 
+// Projects Permissions Tab — scope a role to a specific set of projects.
+interface ProjectsPermissionsTabProps {
+  allowAllProjects: boolean;
+  projectSet: string[];
+  projectExceptions: string[];
+  onAllowAllChange: (allowAll: boolean) => void;
+  onProjectSetChange: (projectSet: string[]) => void;
+  onProjectExceptionsChange: (projectExceptions: string[]) => void;
+  readOnly?: boolean;
+  searchQuery: string;
+}
+
+function ProjectsPermissionsTab({
+  allowAllProjects,
+  projectSet,
+  projectExceptions,
+  onAllowAllChange,
+  onProjectSetChange,
+  onProjectExceptionsChange,
+  readOnly = false,
+  searchQuery,
+}: ProjectsPermissionsTabProps) {
+  const t = useT();
+  const deferredSearchQuery = useDeferredValue(searchQuery);
+  const virtualMcps = useVirtualMCPsNonBlocking();
+  const projects = scopableProjects(virtualMcps);
+
+  const q = deferredSearchQuery.trim().toLowerCase();
+  const filteredProjects = q
+    ? projects.filter((p) => p.title.toLowerCase().includes(q))
+    : projects;
+
+  const toggleProject = (projectId: string) => {
+    // Under "all", an unchecked project is an exception, so projects created
+    // later stay visible to the role.
+    const [list, onChange] = allowAllProjects
+      ? [projectExceptions, onProjectExceptionsChange]
+      : [projectSet, onProjectSetChange];
+    onChange(
+      list.includes(projectId)
+        ? list.filter((id) => id !== projectId)
+        : [...list, projectId],
+    );
+  };
+
+  const setAllowAll = (allowAll: boolean) => {
+    onAllowAllChange(allowAll);
+    onProjectSetChange([]);
+    onProjectExceptionsChange([]);
+  };
+
+  return (
+    <div className="flex flex-col h-full overflow-auto gap-6 p-4">
+      <div
+        className={cn(
+          "flex items-center justify-between px-4 py-3 rounded-lg border border-border bg-card",
+          !readOnly && "hover:bg-muted/50 cursor-pointer",
+        )}
+        onClick={() => {
+          if (readOnly) return;
+          setAllowAll(!allowAllProjects);
+        }}
+      >
+        <div className="flex flex-col gap-0.5">
+          <span className="text-sm font-medium">
+            {t("settings.orgRoleDetail.allProjects")}
+          </span>
+          <span className="text-xs text-muted-foreground">
+            {t("settings.orgRoleDetail.allProjectsDescription")}
+          </span>
+        </div>
+        <div onClick={(e) => e.stopPropagation()}>
+          {readOnly ? (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div>
+                    <Switch
+                      checked={allowAllProjects}
+                      disabled
+                      onCheckedChange={() => {}}
+                    />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>
+                    {t(
+                      "settings.orgRoleDetail.builtinRolePermissionsCannotBeChanged",
+                    )}
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          ) : (
+            <Switch checked={allowAllProjects} onCheckedChange={setAllowAll} />
+          )}
+        </div>
+      </div>
+
+      {projects.length === 0 ? (
+        <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
+          {t("settings.orgRoleDetail.noProjectsAvailable")}
+        </div>
+      ) : filteredProjects.length === 0 ? (
+        <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
+          {t("settings.orgRoleDetail.noProjectsMatch", { searchQuery })}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-1">
+          {filteredProjects.map((project) => {
+            const checked = allowAllProjects
+              ? !projectExceptions.includes(project.id)
+              : projectSet.includes(project.id);
+            return (
+              <label
+                key={project.id}
+                className={cn(
+                  "flex items-center gap-3 px-3 py-2 rounded-lg border border-transparent",
+                  readOnly
+                    ? "cursor-default"
+                    : "hover:bg-muted/50 cursor-pointer",
+                )}
+              >
+                <Checkbox
+                  checked={checked}
+                  disabled={readOnly}
+                  onCheckedChange={() => {
+                    if (readOnly) return;
+                    toggleProject(project.id);
+                  }}
+                />
+                <ProjectIcon icon={project.icon} name={project.title} />
+                <span className="text-sm truncate">{project.title}</span>
+              </label>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
+// Connections Permissions Tab
+// ============================================================================
+
+interface ConnectionsPermissionsTabProps {
+  allowAllConnections: boolean;
+  connectionExceptions: string[];
+  onAllowAllChange: (allowAll: boolean) => void;
+  onConnectionExceptionsChange: (connectionExceptions: string[]) => void;
+  readOnly?: boolean;
+  searchQuery: string;
+  /** The per-connection tool picker, shown when not granting everything. */
+  children: ReactNode;
+}
+
+function ConnectionsPermissionsTab({
+  allowAllConnections,
+  connectionExceptions,
+  onAllowAllChange,
+  onConnectionExceptionsChange,
+  readOnly = false,
+  searchQuery,
+  children,
+}: ConnectionsPermissionsTabProps) {
+  const t = useT();
+  const deferredSearchQuery = useDeferredValue(searchQuery);
+  const connections = useConnections();
+
+  const q = deferredSearchQuery.trim().toLowerCase();
+  const filteredConnections = q
+    ? connections.filter((c) => c.title.toLowerCase().includes(q))
+    : connections;
+
+  const toggleConnection = (connectionId: string) => {
+    onConnectionExceptionsChange(
+      connectionExceptions.includes(connectionId)
+        ? connectionExceptions.filter((id) => id !== connectionId)
+        : [...connectionExceptions, connectionId],
+    );
+  };
+
+  return (
+    <div className="flex flex-col h-full">
+      <div
+        className={cn(
+          "flex items-center justify-between px-4 py-3 border-b border-border",
+          !readOnly && "hover:bg-muted/50 cursor-pointer",
+        )}
+        onClick={() => {
+          if (readOnly) return;
+          onAllowAllChange(!allowAllConnections);
+        }}
+      >
+        <div className="flex flex-col gap-0.5">
+          <span className="text-sm font-medium">
+            {t("settings.orgRoleDetail.allConnections")}
+          </span>
+          <span className="text-xs text-muted-foreground">
+            {t("settings.orgRoleDetail.allConnectionsDescription")}
+          </span>
+        </div>
+        <div onClick={(e) => e.stopPropagation()}>
+          {makeToggle(t, allowAllConnections, readOnly, () =>
+            onAllowAllChange(!allowAllConnections),
+          )}
+        </div>
+      </div>
+
+      {allowAllConnections ? (
+        <div className="flex-1 min-h-0 overflow-auto p-4 flex flex-col gap-1">
+          {filteredConnections.map((connection) => (
+            <label
+              key={connection.id}
+              className={cn(
+                "flex items-center gap-3 px-3 py-2 rounded-lg border border-transparent",
+                readOnly
+                  ? "cursor-default"
+                  : "hover:bg-muted/50 cursor-pointer",
+              )}
+            >
+              <Checkbox
+                checked={!connectionExceptions.includes(connection.id)}
+                disabled={readOnly}
+                onCheckedChange={() => {
+                  if (readOnly) return;
+                  toggleConnection(connection.id);
+                }}
+              />
+              <IntegrationIcon
+                icon={connection.icon}
+                name={connection.title}
+                size="sm"
+              />
+              <span className="text-sm truncate">{connection.title}</span>
+            </label>
+          ))}
+        </div>
+      ) : (
+        <div className="flex-1 min-h-0">{children}</div>
+      )}
+    </div>
+  );
+}
+
 // ============================================================================
 // Add Member Dialog
 // ============================================================================
@@ -1068,6 +1341,11 @@ function loadBuiltinRoleIntoForm(
     toolSet: {},
     allowAllModels: true,
     modelSet: {},
+    allowAllProjects: true,
+    projectSet: [],
+    projectExceptions: [],
+    allowAllConnections: isOwnerOrAdmin,
+    connectionExceptions: [],
     memberIds: members.filter((m) => m.role === role).map((m) => m.id),
   };
 }
@@ -1086,7 +1364,13 @@ function convertRoleToFormData(
 
   const toolSet: Record<string, string[]> = {};
   for (const [key, tools] of Object.entries(permission)) {
-    if (key === "self" || key === "models") continue;
+    if (
+      key === "self" ||
+      key === "models" ||
+      key === PROJECT_SCOPE_KEY ||
+      key === CONNECTION_SCOPE_KEY
+    )
+      continue;
     if (key === "*") {
       for (const conn of connections) {
         toolSet[conn.id] = tools.includes("*")
@@ -1118,6 +1402,11 @@ function convertRoleToFormData(
     }
   }
 
+  const projectFilter = projectScopeFilter(getProjectScope(permission));
+  const connectionFilter = permissionListFilter(
+    permission[CONNECTION_SCOPE_KEY] ?? [],
+  );
+
   return {
     role: { id: role.id, slug: role.role, label: role.label },
     allowAllStaticPermissions: hasAllStaticPerms,
@@ -1125,6 +1414,13 @@ function convertRoleToFormData(
     toolSet,
     allowAllModels: hasAllModels,
     modelSet,
+    allowAllProjects: projectFilter.kind !== "only",
+    projectSet: projectFilter.kind === "only" ? projectFilter.names : [],
+    projectExceptions:
+      projectFilter.kind === "except" ? projectFilter.names : [],
+    allowAllConnections: connectionFilter.kind !== "only",
+    connectionExceptions:
+      connectionFilter.kind === "except" ? connectionFilter.names : [],
     memberIds: members.filter((m) => m.role === role.role).map((m) => m.id),
   };
 }
@@ -1162,6 +1458,21 @@ function buildPermission(
     }
     if (modelEntries.length > 0) permission["models"] = modelEntries;
   }
+  // Omit key = all projects; present = scoped (project-scope.ts).
+  if (!data.allowAllProjects) {
+    permission[PROJECT_SCOPE_KEY] = data.projectSet;
+  } else if (data.projectExceptions.length > 0) {
+    permission[PROJECT_SCOPE_KEY] = listFromFilter({
+      kind: "except",
+      names: data.projectExceptions,
+    });
+  }
+  if (data.allowAllConnections) {
+    permission[CONNECTION_SCOPE_KEY] = [
+      PERMISSION_WILDCARD,
+      ...data.connectionExceptions.map(denyEntry),
+    ];
+  }
   return permission;
 }
 
@@ -1188,6 +1499,11 @@ function getInitialFormValues(
     toolSet: {},
     allowAllModels: true,
     modelSet: {},
+    allowAllProjects: true,
+    projectSet: [],
+    projectExceptions: [],
+    allowAllConnections: false,
+    connectionExceptions: [],
     memberIds: [],
   };
 }
@@ -1293,7 +1609,7 @@ function RoleDetailPageInner({
   const isNew = target.kind === "new";
 
   const [activeTab, setActiveTab] = useState<
-    "mcp" | "org" | "models" | "members"
+    "mcp" | "org" | "models" | "projects" | "members"
   >(isBuiltin ? "org" : "mcp");
 
   const form = useForm<RoleFormData>({
@@ -1458,15 +1774,30 @@ function RoleDetailPageInner({
           {
             id: "mcp" as const,
             label: t("settings.orgRoleDetail.mcpPermissions"),
+            icon: ZapSquare,
           },
         ]
       : []),
     {
       id: "org" as const,
       label: t("settings.orgRoleDetail.organizationPermissions"),
+      icon: Building02,
     },
-    { id: "models" as const, label: t("settings.orgRoleDetail.models") },
-    { id: "members" as const, label: t("settings.orgRoleDetail.members") },
+    {
+      id: "models" as const,
+      label: t("settings.orgRoleDetail.models"),
+      icon: CpuChip01,
+    },
+    {
+      id: "projects" as const,
+      label: t("settings.orgRoleDetail.projects"),
+      icon: Folder,
+    },
+    {
+      id: "members" as const,
+      label: t("settings.orgRoleDetail.members"),
+      icon: Users03,
+    },
   ];
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -1481,6 +1812,7 @@ function RoleDetailPageInner({
     mcp: t("settings.orgRoleDetail.searchMcpServers"),
     org: t("settings.orgRoleDetail.searchPermissions"),
     models: t("settings.orgRoleDetail.searchModels"),
+    projects: t("settings.orgRoleDetail.searchProjects"),
     members: t("settings.orgRoleDetail.searchMembers"),
   };
 
@@ -1551,24 +1883,21 @@ function RoleDetailPageInner({
               </div>
             </Page.Title>
 
-            <div className="flex items-center gap-2">
-              {tabs.map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => handleTabChange(tab.id)}
-                  className={cn(
-                    "h-7 px-2 text-sm rounded-lg border border-input transition-colors inline-flex items-center",
-                    activeTab === tab.id
-                      ? "bg-accent border-border text-foreground"
-                      : "bg-transparent text-muted-foreground hover:border-border hover:bg-accent/50 hover:text-foreground",
-                  )}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-
+            <>
+              <Panel.Toolbar.Left.Portal>
+                <Page.Tabs>
+                  {tabs.map((tab) => (
+                    <Page.Tab
+                      key={tab.id}
+                      active={activeTab === tab.id}
+                      onClick={() => handleTabChange(tab.id)}
+                    >
+                      {tab.label}
+                    </Page.Tab>
+                  ))}
+                </Page.Tabs>
+              </Panel.Toolbar.Left.Portal>
+            </>
             <div className="flex items-center justify-between gap-3">
               <SearchInput
                 value={searchQuery}
@@ -1598,18 +1927,49 @@ function RoleDetailPageInner({
             className={cn(
               activeTab !== "org" && "h-full overflow-hidden",
               activeTab !== "models" &&
+                activeTab !== "projects" &&
                 activeTab !== "org" &&
                 "border border-border rounded-xl bg-card",
             )}
           >
             {activeTab === "mcp" && !isOwnerBuiltin && (
-              <ToolSetSelector
-                toolSet={form.watch("toolSet")}
-                onToolSetChange={(newToolSet) =>
-                  form.setValue("toolSet", newToolSet, { shouldDirty: true })
+              <Suspense
+                fallback={
+                  <div className="flex items-center justify-center h-full">
+                    <Spinner className="size-6 text-muted-foreground" />
+                  </div>
                 }
-                searchQuery={searchQuery}
-              />
+              >
+                <ConnectionsPermissionsTab
+                  allowAllConnections={form.watch("allowAllConnections")}
+                  connectionExceptions={form.watch("connectionExceptions")}
+                  onAllowAllChange={(v) => {
+                    form.setValue("allowAllConnections", v, {
+                      shouldDirty: true,
+                    });
+                    form.setValue("connectionExceptions", [], {
+                      shouldDirty: true,
+                    });
+                  }}
+                  onConnectionExceptionsChange={(v) =>
+                    form.setValue("connectionExceptions", v, {
+                      shouldDirty: true,
+                    })
+                  }
+                  readOnly={target.kind === "builtin"}
+                  searchQuery={searchQuery}
+                >
+                  <ToolSetSelector
+                    toolSet={form.watch("toolSet")}
+                    onToolSetChange={(newToolSet) =>
+                      form.setValue("toolSet", newToolSet, {
+                        shouldDirty: true,
+                      })
+                    }
+                    searchQuery={searchQuery}
+                  />
+                </ConnectionsPermissionsTab>
+              </Suspense>
             )}
             {activeTab === "org" && (
               <OrgPermissionsTab
@@ -1638,6 +1998,24 @@ function RoleDetailPageInner({
                 }
                 onModelSetChange={(v) =>
                   form.setValue("modelSet", v, { shouldDirty: true })
+                }
+                readOnly={isOwnerBuiltin}
+                searchQuery={searchQuery}
+              />
+            )}
+            {activeTab === "projects" && (
+              <ProjectsPermissionsTab
+                allowAllProjects={form.watch("allowAllProjects")}
+                projectSet={form.watch("projectSet")}
+                projectExceptions={form.watch("projectExceptions")}
+                onAllowAllChange={(v) =>
+                  form.setValue("allowAllProjects", v, { shouldDirty: true })
+                }
+                onProjectSetChange={(v) =>
+                  form.setValue("projectSet", v, { shouldDirty: true })
+                }
+                onProjectExceptionsChange={(v) =>
+                  form.setValue("projectExceptions", v, { shouldDirty: true })
                 }
                 readOnly={isOwnerBuiltin}
                 searchQuery={searchQuery}

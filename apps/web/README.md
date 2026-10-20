@@ -38,18 +38,19 @@ packages the same assets in the `studio-nginx` image.
 
 ## Usage
 
-Install dependencies and start the complete Studio development environment from
-the repository root:
+Start the complete Studio development environment from the repository root:
+
+```bash
+docker compose up --build --watch
+```
+
+See [contributor setup](../../CONTRIBUTING.md) for prerequisites and worktrees.
+
+To run only Vite on the host against an existing API:
 
 ```bash
 bun install
-bun run dev
-```
-
-To run only Vite, start the API separately and then run:
-
-```bash
-bun run --cwd=apps/web dev
+STUDIO_API_TARGET=https://studio.example.test bun run dev:web
 ```
 
 Vite listens on `http://localhost:4000` and proxies server routes to
@@ -69,11 +70,13 @@ bun run build:studio
 
 ## Architecture
 
+See [Layout, ChatLayout, Panel, and Page](docs/component-architecture.md) for layout
+ownership, compound component APIs, naming conventions, and annotated screenshots.
+
 `src/router.tsx` creates the TanStack Router tree and mounts the top-level
-providers; `src/index.web.tsx` is the browser entry that renders it (the Tauri
-desktop build has its own entry, `src/index.native.tsx`). Route components load
-lazily, TanStack Query manages remote state, and shared UI primitives come from
-`@decocms/ui`.
+providers; `src/index.web.tsx` is the browser entry that renders it. Route
+components load lazily, TanStack Query manages remote state, and shared UI
+primitives come from `@decocms/ui`.
 
 ```text
 TanStack Router
@@ -97,7 +100,6 @@ Key paths:
 | Path | Purpose |
 | --- | --- |
 | `src/index.web.tsx` | Web application entry point |
-| `src/index.native.tsx` | Tauri desktop application entry point |
 | `src/router.tsx` | TanStack Router route tree |
 | `src/routes/` | Route components and route-specific logic |
 | `src/layouts/` | Authenticated shell and shared page layouts |
@@ -164,7 +166,8 @@ Do not change it to `bun --bun vite dev`: the proxy depends on Node's
 | Setting | Purpose | Default |
 | --- | --- | --- |
 | `VITE_PORT` | Vite listener and HMR client port | `4000` |
-| `PORT` | API port used to construct the proxy target | `3000` |
+| `STUDIO_LOCAL_API_TARGET` | Explicit development API proxy target | `http://localhost:<PORT>` |
+| `PORT` | API port when no proxy target is set | `3000` |
 | `HOST=0.0.0.0` | Bind Vite on all interfaces for sandbox previews | Disabled |
 
 The client deliberately uses relative server URLs. Do not add a separate
@@ -174,7 +177,7 @@ the request.
 ## Related documentation
 
 - [Studio API](../api/README.md)
-- [Studio documentation site](../docs/README.md)
+- [Studio documentation](https://docs.decocms.com/studio)
 - [Repository guidelines](../../AGENTS.md)
 - [Testing strategy](../../TESTING.md)
 - [Project overview](../../README.md)

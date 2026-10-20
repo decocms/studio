@@ -15,9 +15,8 @@ FROM oven/bun:1-slim
 #   own roots so they're unaffected; only the native extension needs this.
 #   Named explicitly so it's marked manually-installed and survives the
 #   --auto-remove purge below.
-# - unzip: needed by embedded-postgres.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      ca-certificates unzip && \
+      ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
 # Create non-root user and app directories
@@ -52,10 +51,4 @@ EXPOSE 3000
 
 # Set environment to production
 ENV NODE_ENV=production
-# Preserve the historical filename so existing `/app/data` volumes keep their
-# database across the app-directory split.
-ENV DATABASE_URL=file:/app/data/mesh.db
-
-# The CLI handles migrations automatically on startup
-# Use --skip-migrations if you want to manage migrations separately
-CMD ["bun", "run", "deco", "--no-tui", "--no-local-mode"]
+CMD ["bun", "run", "node_modules/decocms/dist/server/server.js"]

@@ -48,7 +48,10 @@ func GitDiff(deps GitDeps) http.HandlerFunc {
 			HeadSha string `json:"headSha"`
 		}
 		if r.Method == "POST" {
-			decodeBody(r, &body)
+			if err := decodeBody(r, &body); err != nil {
+				httpx.Error(w, 400, err.Error())
+				return
+			}
 		}
 		base := strings.TrimSpace(body.Base)
 		headSha := strings.TrimSpace(body.HeadSha)

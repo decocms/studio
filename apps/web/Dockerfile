@@ -13,6 +13,9 @@ RUN tar -xzf /tmp/decocms.tgz -C /src
 FROM nginxinc/nginx-unprivileged:1.27-alpine
 
 COPY --from=bundle /src/package/dist/client/ /usr/share/nginx/html/
-COPY deploy/helm/studio/files/api-nginx.conf /etc/nginx/conf.d/default.conf
+COPY deploy/helm/studio/files/api-nginx.conf /etc/nginx/templates/default.conf.template
+RUN rm -f /etc/nginx/conf.d/default.conf
+ENV NGINX_ENVSUBST_FILTER=^STUDIO_NGINX_ \
+    STUDIO_NGINX_API_MAX_CONNS=128
 
 EXPOSE 8080

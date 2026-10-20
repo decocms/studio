@@ -3,6 +3,7 @@
  * Displays and allows inline editing of cron-based triggers.
  */
 
+import { JiraIcon } from "@/components/icons/jira-icon";
 import {
   useAutomationActions,
   type AutomationTrigger,
@@ -30,6 +31,7 @@ import {
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Clock,
+  Columns01,
   Edit01,
   Globe01,
   RefreshCw01,
@@ -38,15 +40,63 @@ import {
 } from "@untitledui/icons";
 import { useState } from "react";
 import { toast } from "sonner";
+import { laneHeader } from "@/layouts/task-board/config";
+
+/**
+ * Cron triggers have no update endpoint: a new schedule is added, then the
+ * old trigger row is removed. If the removal fails after the add succeeded,
+ * roll the add back instead of leaving two live cron triggers for the same
+ * automation, each firing on its own schedule.
+ */
+export async function swapCronTrigger(args: {
+  cronExpression: string;
+  automationId: string;
+  oldTriggerId: string;
+  addTrigger: (
+    input: Record<string, unknown>,
+  ) => Promise<{ id: string; automation_id: string }>;
+  removeTrigger: (input: {
+    trigger_id: string;
+    automation_id: string;
+  }) => Promise<unknown>;
+}): Promise<void> {
+  const {
+    cronExpression,
+    automationId,
+    oldTriggerId,
+    addTrigger,
+    removeTrigger,
+  } = args;
+  const added = await addTrigger({
+    automation_id: automationId,
+    type: "cron",
+    cron_expression: cronExpression,
+  });
+  try {
+    await removeTrigger({
+      trigger_id: oldTriggerId,
+      automation_id: automationId,
+    });
+  } catch (err) {
+    await removeTrigger({
+      trigger_id: added.id,
+      automation_id: automationId,
+    }).catch(() => {});
+    throw err;
+  }
+}
 
 export function TriggerCard({
   trigger,
   automationId,
   connectionName,
+  readOnly = false,
 }: {
   trigger: AutomationTrigger;
   automationId: string;
   connectionName?: string;
+  /** A built-in's starter: shown, never changed. */
+  readOnly?: boolean;
 }) {
   const t = useT();
   const {
@@ -72,6 +122,18 @@ export function TriggerCard({
     removeTrigger.isPending || addTrigger.isPending || rotateToken.isPending;
   const isCron = trigger.type === "cron";
   const isWebhook = trigger.type === "webhook";
+  const isColumnTransition = trigger.type === "board_column_transition";
+  const prStarter =
+    trigger.type === "board_pr_ready"
+      ? t("automations.triggerCard.prReady")
+      : trigger.type === "linked_chat_run"
+        ? t("automations.triggerCard.linkedChatRun")
+        : trigger.type === "board_pr_merged"
+          ? t("automations.triggerCard.prMerged")
+          : trigger.type === "chat_pr_opened"
+            ? t("automations.triggerCard.chatPrOpened")
+            : null;
+  const isJiraTransition = trigger.type === "jira_transition";
 
   const handleRemove = async () => {
     try {
@@ -86,19 +148,14 @@ export function TriggerCard({
     setConfirmDelete(false);
   };
 
-  // Cron triggers have no update endpoint: a new schedule is added, then the
-  // old trigger row is removed.
-  const replaceCronTrigger = async (cronExpression: string) => {
-    await addTrigger.mutateAsync({
-      automation_id: automationId,
-      type: "cron",
-      cron_expression: cronExpression,
+  const replaceCronTrigger = (cronExpression: string) =>
+    swapCronTrigger({
+      cronExpression,
+      automationId,
+      oldTriggerId: trigger.id,
+      addTrigger: (input) => addTrigger.mutateAsync(input),
+      removeTrigger: (input) => removeTrigger.mutateAsync(input),
     });
-    await removeTrigger.mutateAsync({
-      trigger_id: trigger.id,
-      automation_id: automationId,
-    });
-  };
 
   const handleEditSave = async () => {
     const val = editValue.trim();
@@ -125,10 +182,8 @@ export function TriggerCard({
         automation_id: automationId,
       });
       setRotatedSecret({ url: result.url, token: result.token });
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Failed to rotate token";
-      toast.error(message);
+    } catch {
+      toast.error(t("automations.triggerCard.failedToRotateToken"));
     }
   };
 
@@ -152,6 +207,10 @@ export function TriggerCard({
       <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg border border-border bg-background group">
         {isCron ? (
           <Clock size={14} className="text-muted-foreground shrink-0" />
+        ) : isJiraTransition ? (
+          <JiraIcon size={14} className="shrink-0" />
+        ) : isColumnTransition || prStarter ? (
+          <Columns01 size={14} className="text-muted-foreground shrink-0" />
         ) : isWebhook ? (
           <Globe01 size={14} className="text-muted-foreground shrink-0" />
         ) : (
@@ -206,12 +265,27 @@ export function TriggerCard({
             <span className="text-sm font-mono text-xs text-muted-foreground truncate">
               {isCron
                 ? humanReadableCron(trigger.cron_expression ?? "")
-                : isWebhook
-                  ? t("automations.triggerCard.webhookPostToFire")
-                  : `${trigger.event_type}${connectionName ? ` · ${connectionName}` : ""}`}
+                : isColumnTransition
+                  ? t("automations.triggerCard.cardEntersColumn", {
+                      lane: laneHeader(trigger.column_key ?? "", t).label,
+                    })
+                  : prStarter
+                    ? prStarter
+                    : isJiraTransition
+                      ? t("automations.triggerCard.issueEntersJiraStatus", {
+                          status: trigger.column_key ?? "",
+                        })
+                      : isWebhook
+                        ? t("automations.triggerCard.webhookPostToFire")
+                        : `${trigger.event_type}${connectionName ? ` · ${connectionName}` : ""}`}
             </span>
+            {isColumnTransition && <ColumnOrigin from={trigger.from} />}
+            {isJiraTransition && <JiraOrigin from={trigger.from} />}
             {!isCron &&
               !isWebhook &&
+              !isColumnTransition &&
+              !prStarter &&
+              !isJiraTransition &&
               trigger.params &&
               Object.keys(trigger.params).length > 0 && (
                 <span className="text-xs text-muted-foreground/60 truncate">
@@ -232,6 +306,7 @@ export function TriggerCard({
               variant="ghost"
               size="sm"
               className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+              aria-label={t("automations.triggerCard.editSchedule")}
               onClick={() => {
                 setEditValue(trigger.cron_expression ?? "");
                 setIsEditing(true);
@@ -246,19 +321,23 @@ export function TriggerCard({
               size="sm"
               className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
               title={t("automations.triggerCard.rotateToken")}
+              aria-label={t("automations.triggerCard.rotateToken")}
               onClick={() => setConfirmRotate(true)}
             >
               <RefreshCw01 size={13} className="text-muted-foreground" />
             </Button>
           )}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-            onClick={() => setConfirmDelete(true)}
-          >
-            <XClose size={13} className="text-muted-foreground" />
-          </Button>
+          {!readOnly && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+              aria-label={t("automations.triggerCard.removeStarter")}
+              onClick={() => setConfirmDelete(true)}
+            >
+              <XClose size={13} className="text-muted-foreground" />
+            </Button>
+          )}
         </div>
       </div>
 
@@ -318,5 +397,50 @@ export function TriggerCard({
         description={t("automations.triggerCard.newWebhookTokenDescription")}
       />
     </>
+  );
+}
+
+/** Which cards the starter runs on: where they came from, and only ones
+ *  nobody owns. */
+function ColumnOrigin({ from }: { from: AutomationTrigger["from"] }) {
+  const t = useT();
+  const origin =
+    !from || from.kind === "any"
+      ? null
+      : from.kind === "earlier"
+        ? t("automations.triggerCard.fromEarlier")
+        : from.kind === "later"
+          ? t("automations.triggerCard.fromLater")
+          : from.kind === "statuses"
+            ? t("automations.triggerCard.fromColumns", {
+                columns: from.statuses
+                  .map((key) => laneHeader(key, t).label)
+                  .join(", "),
+              })
+            : null;
+  // A person's card is never taken over, whatever the origin.
+  const text = [origin, t("automations.triggerCard.unownedOnly")]
+    .filter(Boolean)
+    .join(" · ");
+  return (
+    <span className="text-xs text-muted-foreground/60 truncate">{text}</span>
+  );
+}
+
+function JiraOrigin({ from }: { from: AutomationTrigger["from"] }) {
+  const t = useT();
+  if (!from || from.kind === "any") return null;
+  return (
+    <span className="text-xs text-muted-foreground/60 truncate">
+      {from.kind === "earlier"
+        ? t("automations.triggerCard.fromEarlier")
+        : from.kind === "later"
+          ? t("automations.triggerCard.fromLater")
+          : from.kind === "statuses"
+            ? t("automations.triggerCard.fromColumns", {
+                columns: from.statuses.join(", "),
+              })
+            : null}
+    </span>
   );
 }

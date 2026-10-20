@@ -21,11 +21,22 @@ async function run(body: string): Promise<Record<string, unknown>> {
     new Response(proc.stdout).text(),
     proc.exited,
   ]);
-  expect(exitCode).toBe(0);
+  // Every case here is a rejection, and a rejection exits non-zero.
+  expect(exitCode).not.toBe(0);
   return JSON.parse(stdout.trim()) as Record<string, unknown>;
 }
 
 describe("harness-runner wire", () => {
+  test.each([
+    ["an unknown harness", { harnessId: "made-up", input: {} }],
+    ["a missing harness", { input: {} }],
+  ])("%s is an unknown_harness error frame", async (_, body) => {
+    expect(await run(JSON.stringify(body))).toEqual({
+      chunks: [],
+      error: { code: "unknown_harness", message: expect.any(String) },
+    });
+  });
+
   test("malformed stdin is bad_input", async () => {
     const result = await run("{not json");
     expect(result.chunks).toEqual([]);
@@ -35,5 +46,26 @@ describe("harness-runner wire", () => {
   test("a missing input is bad_input", async () => {
     const result = await run("{}");
     expect(result.error).toMatchObject({ code: "bad_input" });
+  });
+
+  test("a live message with no turn running is answered, and refused", async () => {
+    // A kept runner between turns: the daemon must hear `accepted: false` so
+    // Studio queues the message instead of counting it delivered.
+    const proc = Bun.spawn(["bun", `${import.meta.dir}/main.ts`], {
+      stdin: new TextEncoder().encode(
+        `${JSON.stringify({ liveMessage: { id: "m1", text: "hello" } })}\n`,
+      ),
+      stdout: "pipe",
+      stderr: "inherit",
+      env: { ...process.env, HARNESS_RUNNER_PERSISTENT: "1" },
+    });
+    const [stdout, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      proc.exited,
+    ]);
+    expect(exitCode).toBe(0);
+    expect(JSON.parse(stdout.trim())).toEqual({
+      liveMessageAck: { id: "m1", accepted: false },
+    });
   });
 });

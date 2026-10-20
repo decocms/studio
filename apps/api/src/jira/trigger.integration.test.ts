@@ -2,8 +2,7 @@
  * Real-Postgres coverage for what the Jira trigger leans on in storage.
  *
  * The fence is the point: the webhook, its redelivery and the safety-net poll
- * can all report the same transition, and exactly one of them may dispatch a
- * paid run. That is a conditional insert on a real unique key, which no
+ * can all report the same transition, and exactly one of them may fire it. That is a conditional insert on a real unique key, which no
  * in-memory fake can be trusted to model.
  */
 
@@ -16,6 +15,7 @@ import {
   resetTestPgDatabase,
 } from "../database/test-db-pg";
 import { CredentialVault } from "../encryption/credential-vault";
+import { createAutomationsStorage } from "../storage/automations";
 import { JiraIntegrationStorage } from "../storage/jira-integrations";
 import { TaskBoardStorage } from "../storage/task-board";
 
@@ -110,24 +110,59 @@ describe("Jira trigger storage (real Postgres)", () => {
     expect(card.source).toBeNull();
   });
 
-  it("stores a rule per Jira status, and deleting it is the off switch", async () => {
-    expect(await jira.getAutomation(ORG, "Doing")).toBeNull();
-    await jira.upsertAutomation(ORG, "Doing", null);
-    expect(await jira.getAutomation(ORG, "Doing")).toEqual({
+  it("lists an org's Jira triggers by status, and only its own", async () => {
+    const automations = createAutomationsStorage(database.db);
+    const make = async (name: string, status: string, active = true) => {
+      const automation = await automations.create({
+        organization_id: ORG,
+        name,
+        active,
+        created_by: USER,
+        messages: "[]",
+        models: "{}",
+        virtual_mcp_id: `decopilot_${ORG}`,
+      });
+      await automations.addTrigger({
+        automation_id: automation.id,
+        type: "jira_transition",
+        column_key: status,
+        from_kind: "statuses",
+        from_statuses: ["Backlog", "Client QA"],
+      });
+      return automation;
+    };
+    const doing = await make("doing", "Doing");
+    await make("review", "Code Review");
+    const paused = await make("paused", "Doing", false);
+
+    const onDoing = await automations.listJiraTransitionTriggers(ORG, {
       jiraStatus: "Doing",
-      prompt: null,
     });
-    await jira.upsertAutomation(ORG, "Doing", "Fix it");
-    expect((await jira.getAutomation(ORG, "Doing"))?.prompt).toBe("Fix it");
-    await jira.upsertAutomation(ORG, "QA", "Test it");
-    expect((await jira.listAutomations(ORG)).map((a) => a.jiraStatus)).toEqual([
-      "Doing",
-      "QA",
-    ]);
-    expect(await jira.removeAutomation(ORG, "Doing")).toBe(true);
-    expect(await jira.removeAutomation(ORG, "Doing")).toBe(false);
-    expect(await jira.getAutomation(ORG, "Doing")).toBeNull();
-    // Another org's rules are not this org's.
-    expect(await jira.listAutomations("org_other")).toEqual([]);
+    expect(onDoing.map((t) => t.automation.name)).toEqual(["doing", "paused"]);
+    expect(onDoing[0]?.from_statuses).toEqual(["Backlog", "Client QA"]);
+    expect(
+      (
+        await automations.listJiraTransitionTriggers(ORG, {
+          jiraStatus: "Doing",
+          activeOnly: true,
+        })
+      ).map((t) => t.automation_id),
+    ).toEqual([doing.id]);
+    expect(await automations.listJiraTransitionTriggers(ORG)).toHaveLength(3);
+    expect(await automations.listJiraTransitionTriggers("org_other")).toEqual(
+      [],
+    );
+    // A board trigger on a column named like a status is not a Jira trigger.
+    await automations.addTrigger({
+      automation_id: paused.id,
+      type: "board_column_transition",
+      column_key: "Doing",
+      from_kind: "any",
+    });
+    expect(
+      await automations.listJiraTransitionTriggers(ORG, {
+        jiraStatus: "Doing",
+      }),
+    ).toHaveLength(2);
   });
 });

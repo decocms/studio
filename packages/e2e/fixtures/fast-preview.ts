@@ -28,11 +28,10 @@ export async function seedStubRepo(
   params: {
     owner: string;
     repo: string;
+    /** Keep a re-seeded repo's id (tokens are scoped by it). */
+    id?: number;
     defaultBranch?: string;
-    branches?: Record<
-      string,
-      { files?: Record<string, string>; committedAt?: string } | null
-    >;
+    branches?: Record<string, { files?: Record<string, string> } | null>;
     mergeMode?: "merge" | "conflict" | "blocked";
     truncateRecursive?: boolean;
   },
@@ -41,6 +40,30 @@ export async function seedStubRepo(
     data: params,
   });
   expect(res.ok()).toBe(true);
+}
+
+/**
+ * Moves a seeded repo's `main` to `files` (a new head), as a merge from
+ * elsewhere would: the repo is re-seeded with its own id.
+ */
+export async function moveStubMain(
+  ctx: APIRequestContext,
+  owner: string,
+  repo: string,
+  files: Record<string, string>,
+): Promise<void> {
+  const res = await ctx.get(`${GITHUB_STUB_ORIGIN}/repos/${owner}/${repo}`, {
+    headers: { authorization: "token e2e-admin" },
+  });
+  expect(res.ok()).toBe(true);
+  const { id } = (await res.json()) as { id: number };
+  await seedStubRepo(ctx, {
+    owner,
+    repo,
+    id,
+    defaultBranch: "main",
+    branches: { main: { files } },
+  });
 }
 
 export async function inspectStubRepo(
@@ -81,7 +104,7 @@ export interface FastPreviewProject {
  * Full Fast Preview project wiring: repo-scoped GitHub child + unexpired
  * downstream token + a virtual MCP carrying the Fast Preview gate.
  * `repoScopeMode` picks which real repo-child shape to seed; the two resolve
- * credentials down different paths (see `client-for-repo`), and the default is
+ * credentials down different paths (see `git-providers/content`), and the default is
  * the one every repo imported since refreshable grants landed actually has.
  */
 export async function createFastPreviewProject(
@@ -100,6 +123,11 @@ export async function createFastPreviewProject(
      * on an outbound connection to a real host.
      */
     connectionUrl?: string;
+    previewServerUrl?: string;
+    /** The public site id (`metadata.siteSlug`) the hosted Deco CMS keys on. */
+    siteSlug?: string;
+    /** The v7 Fast Preview switch (default on). */
+    fastPreview?: boolean;
   },
 ): Promise<FastPreviewProject> {
   const {
@@ -163,9 +191,11 @@ export async function createFastPreviewProject(
       data: {
         title: `${repo} ${Date.now()}`,
         metadata: {
-          fastPreview: true,
-          previewServerUrl: `https://${repo}.example.com`,
-          githubRepo: {
+          fastPreview: params.fastPreview ?? true,
+          ...(params.siteSlug ? { siteSlug: params.siteSlug } : {}),
+          previewServerUrl:
+            params.previewServerUrl ?? `https://${repo}.example.com`,
+          repository: {
             owner,
             name: repo,
             url: `https://github.com/${owner}/${repo}`,
@@ -179,6 +209,8 @@ export async function createFastPreviewProject(
   );
   const vmcpId = vmcp.item.id;
   expect(vmcpId).toBeTruthy();
+  // Hosted features need the project linked to its site in `org_sites`:
+  // creating the project linked its `siteSlug` (hosted/claim-site.ts).
 
   return { org, owner, repo, vmcpId, childConnectionId };
 }

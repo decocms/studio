@@ -4,7 +4,7 @@
  *
  * The tool emits a transient `data-open-preview` stream chunk (handled in
  * chat-context's observer) which opens the tab live AND patches the repo it
- * bound (`githubRepo` + `sandboxMap`) onto the local thread row — but a chunk is
+ * bound (`repository` + `sandboxMap`) onto the local thread row — but a chunk is
  * only seen by the client that is actively streaming the run. Someone VIEWING
  * the chat of a background Super Agent run (opened from the task board's
  * activity card) or reopening a finished run never receives it, so the tab never

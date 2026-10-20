@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { LayoutAlt04, Lightning01 } from "@untitledui/icons";
+import {
+  File02,
+  Globe01,
+  Heart,
+  LayoutAlt04,
+  Lightning01,
+} from "@untitledui/icons";
 import { resolveTabIcon, SYSTEM_TAB_ICONS } from "./resolve-tab-icon";
 
 type TestConn = { id: string; icon: string | null };
@@ -9,7 +15,6 @@ describe("SYSTEM_TAB_ICONS", () => {
     expect(SYSTEM_TAB_ICONS.settings).toBe(LayoutAlt04);
     expect(SYSTEM_TAB_ICONS.automations).toBe(Lightning01);
     expect(SYSTEM_TAB_ICONS["site-editor"]).toBeDefined();
-    expect(SYSTEM_TAB_ICONS.git).toBeDefined();
     expect(SYSTEM_TAB_ICONS.code).toBeDefined();
   });
 });
@@ -26,6 +31,45 @@ describe("code system icon", () => {
 });
 
 describe("resolveTabIcon", () => {
+  test.each(["icon://Heart", "icon://Heart?color=emerald"])(
+    "resolves a pinned app's %s to a component without a connection lookup",
+    (iconUrl) => {
+      expect(
+        resolveTabIcon({
+          tabId: "app:connection:WISHLIST_DASHBOARD",
+          kind: "expanded",
+          iconUrl,
+          connections: [],
+        }),
+      ).toEqual({ kind: "component", Component: Heart });
+    },
+  );
+
+  test.each([null, undefined, "", "icon://", "icon://UnknownIcon"])(
+    "falls back for an absent or unknown pinned app icon: %s",
+    (iconUrl) => {
+      expect(
+        resolveTabIcon({
+          tabId: "app:connection:APP_DASHBOARD",
+          kind: "expanded",
+          iconUrl,
+          connections: [],
+        }),
+      ).toEqual({ kind: "fallback" });
+    },
+  );
+
+  test("preserves a pinned app's image URL without a connection lookup", () => {
+    expect(
+      resolveTabIcon({
+        tabId: "app:connection:APP_DASHBOARD",
+        kind: "expanded",
+        iconUrl: "https://example.com/icon.png",
+        connections: [],
+      }),
+    ).toEqual({ kind: "url", src: "https://example.com/icon.png" });
+  });
+
   const conns: TestConn[] = [
     { id: "app-a", icon: "https://example.com/a.png" },
     { id: "app-b", icon: null },
@@ -39,6 +83,26 @@ describe("resolveTabIcon", () => {
         connections: conns,
       }),
     ).toEqual({ kind: "component", Component: LayoutAlt04 });
+  });
+
+  test("site-editor (Preview) resolves to the globe icon", () => {
+    expect(
+      resolveTabIcon({
+        tabId: "site-editor",
+        kind: "system",
+        connections: conns,
+      }),
+    ).toEqual({ kind: "component", Component: Globe01 });
+  });
+
+  test("content resolves to the document icon", () => {
+    expect(
+      resolveTabIcon({
+        tabId: "content",
+        kind: "system",
+        connections: conns,
+      }),
+    ).toEqual({ kind: "component", Component: File02 });
   });
 
   test("system tab with an id absent from SYSTEM_TAB_ICONS → fallback", () => {

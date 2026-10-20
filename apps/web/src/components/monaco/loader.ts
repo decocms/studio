@@ -6,11 +6,8 @@ import { MONACO_VS_PATH } from "@/lib/monaco-vs-path";
  * Monaco's worker entry point, which the language services (TypeScript
  * diagnostics, JSON validation) and the diff computation run in.
  *
- * Declaring it matters as much as pointing the loader at our own origin:
- * left undeclared, monaco's AMD loader wraps every worker in a `blob:` URL,
- * and the packaged shell's `worker-src` — absent, so inherited from
- * `script-src 'self'` — refuses that just as flatly as it refuses a CDN.
- * Given an explicit URL, monaco constructs the worker from it directly.
+ * Left undeclared, monaco's AMD loader wraps every worker in a `blob:` URL;
+ * given an explicit URL, it constructs the worker from it directly.
  */
 const MONACO_WORKER_PATH = `${MONACO_VS_PATH}/base/worker/workerMain.js`;
 

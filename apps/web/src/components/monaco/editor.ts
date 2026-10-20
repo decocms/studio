@@ -11,9 +11,8 @@ import { configureMonacoLoader } from "./loader";
  *
  * Importing this module configures the loader, which is the whole point: the
  * engine path is latched by whichever `<Editor>` mounts first, and the value
- * it would latch by default is a CDN URL the packaged desktop app cannot load
- * at all. A component that reached `@monaco-editor/react` on its own would
- * render a permanent spinner there, with nothing failing anywhere else.
+ * it would latch by default is a CDN URL serving a DIFFERENT monaco version
+ * than the one this app ships and self-hosts.
  */
 configureMonacoLoader();
 

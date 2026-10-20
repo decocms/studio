@@ -1,8 +1,9 @@
 import { useProjectContext } from "@/sdk";
 import type { TaskBoardItemPr } from "@/layouts/task-board/config";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { KEYS } from "@/lib/query-keys";
 import { useStudioTools } from "@/lib/studio-tools";
+import { useTaskBoardItemPrsEvents } from "./use-task-board-item-prs-events";
 import {
   readCachedTaskPrs,
   writeCachedTaskPrs,
@@ -10,10 +11,12 @@ import {
 
 /** Poll interval for a task's PRs while the dialog is open. The tool fetches
  *  live GitHub state — PR/checks status and the checks→QA hand-off it drives —
- *  so a periodic refresh keeps the review lane moving without a webhook. Kept at
- *  one minute to stay well within GitHub's rate limits, since every poll fans
- *  out to live GitHub PR + checks calls. The query is only active while the
- *  dialog (and thus this hook) is mounted. */
+ *  so a periodic refresh keeps the review lane moving. Kept at one minute to
+ *  stay well within GitHub's rate limits, since every poll can fan out to live
+ *  GitHub PR + checks calls — polling a mid-flight PR any faster is what took
+ *  the App's rate limit out. Freshness comes from the webhook push above; this
+ *  is the fallback for repos the App is not installed on. The query is only
+ *  active while the dialog (and thus this hook) is mounted. */
 const PRS_POLL_INTERVAL_MS = 60_000;
 
 /** While a card is still waiting on GitHub the server answers from the database
@@ -33,8 +36,23 @@ const isUnenriched = (pr: TaskBoardItemPr) => pr.state === null;
  * while the dialog is open, so poll it.
  */
 export function useTaskBoardItemPrs(itemId: string | undefined) {
-  const { locator } = useProjectContext();
+  const { org, locator } = useProjectContext();
   const studio = useStudioTools();
+  const queryClient = useQueryClient();
+
+  // The webhook's push path: fresh cards land here as soon as GitHub reports CI
+  // finished or the deploy bot commented, which is why the poll below can stay
+  // at the idle minute instead of chasing the same states at 10s.
+  useTaskBoardItemPrsEvents({
+    orgSlug: org.slug,
+    itemId,
+    onPrs: (prs) => {
+      queryClient.setQueryData(
+        KEYS.taskBoardItemPrs(locator, itemId ?? ""),
+        prs,
+      );
+    },
+  });
 
   return useQuery({
     queryKey: KEYS.taskBoardItemPrs(locator, itemId ?? ""),

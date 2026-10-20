@@ -6,14 +6,10 @@
  * or navigate to settings for full provider management.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { track } from "@/lib/posthog-client";
 import { Check } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
-import {
-  ToggleGroup,
-  ToggleGroupItem,
-} from "@decocms/ui/components/toggle-group.tsx";
 import {
   Dialog,
   DialogContent,
@@ -21,28 +17,12 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@decocms/ui/components/dialog.tsx";
-import { Input } from "@decocms/ui/components/input.tsx";
-import { cn } from "@decocms/ui/lib/utils.ts";
-import { useMutation } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { useFeature } from "@/hooks/use-entitlements";
 import { useProjectContext } from "@/sdk";
 import { useNavigate } from "@tanstack/react-router";
 import { useDecoCredits } from "@/hooks/use-deco-credits";
-import { useStudioTools } from "@/lib/studio-tools";
 import { useT } from "@/i18n/use-t";
-
-const QUICK_AMOUNTS = {
-  usd: [
-    { dollars: 10, labelKey: "chat.creditsExhaustedBanner.tierStarter" },
-    { dollars: 20, labelKey: "chat.creditsExhaustedBanner.tierPopular" },
-    { dollars: 100, labelKey: "chat.creditsExhaustedBanner.tierBestValue" },
-  ],
-  brl: [
-    { dollars: 50, labelKey: "chat.creditsExhaustedBanner.tierStarter" },
-    { dollars: 100, labelKey: "chat.creditsExhaustedBanner.tierPopular" },
-    { dollars: 500, labelKey: "chat.creditsExhaustedBanner.tierBestValue" },
-  ],
-} as const;
+import { TopUpAmounts } from "@/components/credits/top-up-amounts";
 
 const BENEFITS_KEYS = [
   "chat.creditsExhaustedBanner.benefit1",
@@ -58,41 +38,25 @@ export function CreditsExhaustedBanner({
   const { org } = useProjectContext();
   const navigate = useNavigate();
   const { decoKeyId } = useDecoCredits();
-  const studio = useStudioTools();
   const t = useT();
-
-  const [customAmount, setCustomAmount] = useState("");
-  const [showCustom, setShowCustom] = useState(false);
-  const [currency, setCurrency] = useState<"usd" | "brl">("usd");
-  const currencySymbol = currency === "brl" ? "R$" : "$";
+  /**
+   * A plan without the `credits` feature cannot top up: `AI_PROVIDER_TOPUP_URL`
+   * declares `requiresFeature: "credits"`, so every amount on this surface
+   * would return `403 feature_not_in_plan`. Every plan has it today, Free
+   * included; an org can still have it revoked. The caller in
+   * `highlight/index.tsx` checks the same gate and shows the plan refusal
+   * instead, so returning null here is never the org's whole answer. Fails
+   * OPEN like every other access gate, so a gateway blip still lets an org
+   * that CAN pay, pay.
+   */
+  const canBuyCredits = useFeature("credits");
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect
   useEffect(() => {
     track("credits_exhausted_shown", { organization_id: org.id });
   }, [org.id]);
 
-  const { mutate: topUp, isPending } = useMutation({
-    mutationFn: async (amountCents: number) => {
-      const { url } = await studio.call("AI_PROVIDER_TOPUP_URL", {
-        providerId: "deco",
-        amountCents,
-        currency,
-      });
-      return url;
-    },
-    onSuccess: (url) => {
-      if (url) window.open(url, "_blank", "noopener,noreferrer");
-      onDismiss?.();
-    },
-    onError: (err) => {
-      toast.error(
-        t("chat.creditsExhaustedBanner.topupError", { error: err.message }),
-      );
-    },
-  });
-
-  const customNum = parseFloat(customAmount);
-  const isCustomValid = !isNaN(customNum) && customNum >= 1;
+  if (!canBuyCredits) return null;
 
   return (
     <Dialog open onOpenChange={(open) => !open && onDismiss?.()}>
@@ -135,115 +99,16 @@ export function CreditsExhaustedBanner({
         {/* Amount selection */}
         {decoKeyId && (
           <div className="px-8 pt-5 pb-6">
-            {/* Currency toggle */}
-            <div className="mb-4">
-              <ToggleGroup
-                type="single"
-                variant="outline"
-                size="sm"
-                value={currency}
-                onValueChange={(v) => {
-                  if (v) setCurrency(v as "usd" | "brl");
-                }}
-              >
-                <ToggleGroupItem value="usd" className="h-8 px-3 text-xs">
-                  USD
-                </ToggleGroupItem>
-                <ToggleGroupItem value="brl" className="h-8 px-3 text-xs">
-                  BRL
-                </ToggleGroupItem>
-              </ToggleGroup>
-            </div>
-
-            {/* Pricing card */}
             <div className="rounded-xl border border-border p-5">
-              <div className="grid grid-cols-3 gap-2.5">
-                {QUICK_AMOUNTS[currency].map(({ dollars, labelKey }) => (
-                  <button
-                    key={dollars}
-                    type="button"
-                    disabled={isPending}
-                    onClick={() => {
-                      track("credits_topup_clicked", {
-                        amount_cents: dollars * 100,
-                        currency,
-                        tier_label: labelKey,
-                        source: "exhausted_banner",
-                      });
-                      topUp(dollars * 100);
-                    }}
-                    className={cn(
-                      "relative flex flex-col items-center gap-1 py-5 rounded-xl border transition-all duration-150 cursor-pointer",
-                      "disabled:opacity-50 disabled:cursor-wait",
-                      "border-border hover:border-foreground/20 hover:bg-muted/30",
-                    )}
-                  >
-                    <span className="text-2xl font-semibold tabular-nums text-foreground">
-                      {currencySymbol}
-                      {dollars}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {t(labelKey)}
-                    </span>
-                  </button>
-                ))}
-              </div>
-
-              {/* Custom amount */}
-              {showCustom ? (
-                <div className="flex gap-2 mt-3">
-                  <div className="relative flex-1">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground select-none">
-                      {currencySymbol}
-                    </span>
-                    <Input
-                      type="number"
-                      min="1"
-                      step="1"
-                      placeholder={t(
-                        "chat.creditsExhaustedBanner.customPlaceholder",
-                      )}
-                      value={customAmount}
-                      onChange={(e) => setCustomAmount(e.target.value)}
-                      className="h-10 text-sm pl-7"
-                      autoFocus
-                    />
-                  </div>
-                  <Button
-                    className="h-10"
-                    disabled={!isCustomValid || isPending}
-                    onClick={() => {
-                      track("credits_topup_clicked", {
-                        amount_cents: Math.round(customNum * 100),
-                        currency,
-                        tier_label: "custom",
-                        source: "exhausted_banner",
-                      });
-                      topUp(Math.round(customNum * 100));
-                    }}
-                  >
-                    {isPending
-                      ? t("chat.creditsExhaustedBanner.opening")
-                      : t("chat.creditsExhaustedBanner.add")}
-                  </Button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  className="w-full mt-3 text-xs text-muted-foreground hover:text-foreground transition-colors py-1"
-                  onClick={() => setShowCustom(true)}
-                >
-                  {t("chat.creditsExhaustedBanner.enterCustom")}
-                </button>
-              )}
+              <TopUpAmounts source="exhausted_banner" onDone={onDismiss} />
             </div>
 
             {/* Benefits */}
             <div className="mt-5 rounded-xl bg-muted/25 border border-border/50 p-4 space-y-3">
               {BENEFITS_KEYS.map((key) => (
                 <div key={key} className="flex items-center gap-3">
-                  <div className="flex items-center justify-center size-5 rounded-full bg-[hsl(var(--chart-1))]/15 shrink-0">
-                    <Check size={12} className="text-[hsl(var(--chart-1))]" />
+                  <div className="flex items-center justify-center size-5 rounded-full bg-success/15 shrink-0">
+                    <Check size={12} className="text-success" />
                   </div>
                   <span className="text-sm text-foreground/80">{t(key)}</span>
                 </div>

@@ -1,3 +1,5 @@
+import type { SandboxImage } from "@decocms/shared/git-providers";
+
 /** Shared inputs and outputs for the hosted AgentSandboxProvider. */
 
 export interface SandboxId {
@@ -27,6 +29,30 @@ export interface Sandbox {
    * expensive (a needless cold start, or minutes polling a dead port).
    */
   warmPoolAdopted: boolean;
+  /** Where the sandbox runs. */
+  provider: SandboxProviderKind;
+  /** Why it runs there, when `SandboxProviderRouter` had a choice to make. */
+  placement?: SandboxPlacement;
+}
+
+export const SANDBOX_PLACEMENT_REASONS = [
+  "existing",
+  "requested",
+  "split",
+  "capacity",
+  "fallback",
+  "image",
+  // No longer chosen, but a control plane on an older controller still sends it.
+  "warm-pool",
+  "freestyle-unavailable",
+] as const;
+
+export type SandboxPlacementReason = (typeof SANDBOX_PLACEMENT_REASONS)[number];
+
+export interface SandboxPlacement {
+  reason: SandboxPlacementReason;
+  /** The provider whose ensure failed, when `reason` is `fallback`. */
+  fallbackFrom?: SandboxProviderKind;
 }
 
 /** When omitted, no dev server is started; the default tool image is used. */
@@ -78,6 +104,12 @@ export interface EnsureRepo {
    * `cloneUrl` at first provision. Absent for anonymous/public clones.
    */
   connectionId?: string;
+  /**
+   * First-class repository backing `cloneUrl` (Studio-owned credentials).
+   * When set, re-minting goes through the repository's provider account and
+   * `connectionId` is absent. Absent for legacy and anonymous clones.
+   */
+  repositoryId?: string;
   userName: string;
   userEmail: string;
   branch?: string;
@@ -99,15 +131,40 @@ export interface EnsureRepo {
    * been using.
    */
   directoryName?: string;
+  /**
+   * When the credential in `cloneUrl` expires (epoch ms); absent when there is
+   * none or it is unknown. A host keeps the credential for recovery until then.
+   */
+  credentialExpiresAt?: number;
 }
 
+/** Where a sandbox runs. See `SandboxProviderRouter`. */
+export type SandboxProviderKind = "kubernetes" | "freestyle";
+
 export interface EnsureOptions {
+  /**
+   * Where a NEW sandbox should run, when that provider is configured and can
+   * serve the request. An existing sandbox stays where it is. Consumed by
+   * `SandboxProviderRouter`; the providers themselves ignore it.
+   */
+  provider?: SandboxProviderKind;
   /**
    * Defaults to `interactive` when absent. AgentSandboxProvider uses this to
    * decide the SandboxTemplate (memory ceiling) and the warm pool, so it has
    * to survive into the persisted opts a resurrected claim is rebuilt from.
    */
   purpose?: SandboxPurpose;
+  /**
+   * The image the primary repository asked for, defaulting to `default`.
+   * AgentSandboxProvider turns it into a SandboxTemplate suffix — a claim can
+   * override neither image nor resources, so each one is its own template —
+   * and a non-default image opts out of tenant and warm pools, which are
+   * built from the default image's template.
+   *
+   * Persisted alongside `purpose` for the same reason: a resurrected claim is
+   * rebuilt from these opts and must land on the same image.
+   */
+  sandboxImage?: SandboxImage;
   /**
    * The synthetic isolation key, recorded as the claim's `git-branch`
    * ANNOTATION for operators reading `kubectl get sandboxclaim -o yaml`.
@@ -144,6 +201,12 @@ export interface EnsureOptions {
    * config names none, and then installs.
    */
   cloneOnly?: boolean;
+  /**
+   * Start from a snapshot of `repo` with its dependencies installed and its
+   * dev server running, rebuilt whenever its default branch moves. Freestyle only; ignored
+   * elsewhere and without `repo`.
+   */
+  repoSnapshot?: boolean;
   /** Frozen for the sandbox's lifetime — changing requires recreate. */
   env?: Record<string, string>;
   /**

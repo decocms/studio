@@ -115,6 +115,54 @@ export async function processFile(
   }
 }
 
+/** The slice of `EditorView` `handleFileDrop` needs. */
+interface DropView {
+  posAtCoords: (coords: {
+    left: number;
+    top: number;
+  }) => { pos: number } | null;
+  state: { selection: { to: number } };
+}
+
+/**
+ * ProseMirror `handleDrop`: inserts dropped files at the drop position. Only
+ * calls `preventDefault` once it commits to handling the drop, so an
+ * unresolved drop position falls through to the window-level fallback
+ * instead of being silently swallowed.
+ */
+export function handleFileDrop(
+  view: DropView,
+  event: DragEvent,
+  moved: boolean,
+  processFile: (file: File, position: number) => Promise<void>,
+): boolean {
+  if (moved) return false;
+
+  const files = event.dataTransfer?.files;
+  if (!files || files.length === 0) return false;
+
+  const coordinates = view.posAtCoords({
+    left: event.clientX,
+    top: event.clientY,
+  });
+
+  if (!coordinates) return false;
+
+  event.preventDefault();
+
+  // Re-reads the selection after each insert so files land in order.
+  const fileArray = Array.from(files);
+  void (async () => {
+    let insertPos = coordinates.pos;
+    for (const file of fileArray) {
+      await processFile(file, insertPos);
+      insertPos = view.state.selection.to;
+    }
+  })();
+
+  return true;
+}
+
 /**
  * FileUploader component that registers a ProseMirror plugin to handle file drops.
  * Uses a ref to keep the latest selectedModel in sync for file processing.
@@ -166,37 +214,10 @@ export function FileUploader({
     const fileDropPlugin = new Plugin({
       key: pluginKey,
       props: {
-        handleDrop: (view, event, _slice, moved) => {
-          // Don't handle if it's a move within the editor
-          if (moved) return false;
-
-          const files = event.dataTransfer?.files;
-          if (!files || files.length === 0) return false;
-
-          event.preventDefault();
-
-          // Get drop position
-          const coordinates = view.posAtCoords({
-            left: event.clientX,
-            top: event.clientY,
-          });
-
-          if (!coordinates) return false;
-
-          // Process dropped files one at a time, re-reading the selection after
-          // each insert so multiple files land in order instead of racing to
-          // insert at the same stale position.
-          const fileArray = Array.from(files);
-          void (async () => {
-            let insertPos = coordinates.pos;
-            for (const file of fileArray) {
-              await processFileRef.current?.(file, insertPos);
-              insertPos = view.state.selection.to;
-            }
-          })();
-
-          return true;
-        },
+        handleDrop: (view, event, _slice, moved) =>
+          handleFileDrop(view, event, moved, (file, position) =>
+            processFileRef.current(file, position),
+          ),
 
         handlePaste: (view, event) => {
           const items = event.clipboardData?.items;

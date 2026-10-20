@@ -1,0 +1,9 @@
+services:
+  nats:
+    command: ["-c", "/etc/nats/shared.conf"]
+    volumes:
+      - ${NATS_CONFIG:?Set the absolute path of your local NATS account config}:/etc/nats/shared.conf:ro
+
+networks:
+  studio-network:
+    name: ${STUDIO_INFRA_NETWORK:-studio-infra}

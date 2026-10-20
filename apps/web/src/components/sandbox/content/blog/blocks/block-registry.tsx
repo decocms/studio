@@ -1,20 +1,17 @@
 import { useT } from "@/i18n/use-t.ts";
-import { SchemaForm } from "@/components/sections-editor/schema-form";
-import {
-  resolveSchema,
-  type LiveMeta,
-} from "@/components/sections-editor/resolve-schema";
-import type { PreviewProxyRef } from "@/components/sections-editor/preview-fetch-url";
+import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
+import type { SandboxConfig } from "@/components/sections-editor/fields/field-props";
+import type { ReferencedBlockSaveFn } from "@/components/sections-editor/save-referenced-block";
 import { RichTextBlock } from "./rich-text-block";
 import { CodeBlock, HeadingBlock, ListBlock, QuoteBlock } from "./plain-blocks";
 import {
-  BlockImageBlock,
   CalloutBlock,
   CtaBlock,
   DividerBlock,
   StatBlock,
   VideoBlock,
 } from "./media-blocks";
+import { BlockImageBlock } from "./image-block";
 import {
   CardGroupBlock,
   ChecklistBlock,
@@ -25,7 +22,8 @@ import {
 import { ProductCardBlock, ProductShelfBlock } from "./product-blocks";
 import { TableBlock } from "./table-block";
 import { blockComponentName, isBlogPostBlockResolveType } from "../blog-data";
-import { str } from "./primitives";
+import { GenericBlockEditor } from "./generic-block";
+import { jsonField, str } from "./primitives";
 
 export type RawBlock = { __resolveType?: string } & Record<string, unknown>;
 
@@ -39,13 +37,25 @@ export function BlockEditor({
   block,
   meta,
   onChange,
+  decofile,
   sandboxRef,
+  previewBaseUrl,
+  onSaveReferencedBlock,
 }: {
   block: RawBlock;
   meta: LiveMeta;
   onChange: (next: RawBlock) => void;
-  /** Running sandbox coords — enables the VTEX product picker when present. */
-  sandboxRef?: PreviewProxyRef | null;
+  /** The site's blocks — enables linking to another post from rich text. */
+  decofile?: Record<string, unknown>;
+  /**
+   * Running sandbox coords — enables the VTEX product picker, and in the
+   * generic editor the uploads, icon picker and `@options` loaders.
+   */
+  sandboxRef?: SandboxConfig | null;
+  /** Section previews in the generic editor's array fields. */
+  previewBaseUrl?: string | null;
+  /** Where the generic editor persists edits to a field pointing at a saved block. */
+  onSaveReferencedBlock?: ReferencedBlockSaveFn;
 }) {
   const t = useT();
   const resolveType = block.__resolveType ?? "";
@@ -60,6 +70,8 @@ export function BlockEditor({
             html={str(block.html)}
             placeholder={t("sandbox.blockRegistry.writeSomethingPlaceholder")}
             onChange={(html) => onChange({ ...block, html })}
+            decofile={decofile}
+            sandboxRef={sandboxRef}
           />
         );
       case "Heading":
@@ -91,6 +103,8 @@ export function BlockEditor({
             items={str(block.items)}
             style={str(block.style)}
             onChange={(next) => onChange({ ...block, ...next })}
+            decofile={decofile}
+            sandboxRef={sandboxRef}
           />
         );
       case "BlockImage":
@@ -134,18 +148,14 @@ export function BlockEditor({
       case "StatGroup":
         return (
           <StatGroupBlock
-            stats={str(block.stats)}
+            stats={jsonField(block.stats)}
             onChange={(stats) => onChange({ ...block, stats })}
           />
         );
       case "CardGroup":
         return (
           <CardGroupBlock
-            cards={
-              typeof block.cards === "string"
-                ? block.cards
-                : JSON.stringify(block.cards ?? [])
-            }
+            cards={jsonField(block.cards)}
             onChange={(cards) => onChange({ ...block, cards })}
           />
         );
@@ -153,7 +163,7 @@ export function BlockEditor({
         return (
           <ChecklistBlock
             title={str(block.title)}
-            items={str(block.items)}
+            items={jsonField(block.items)}
             onChange={(next) => onChange({ ...block, ...next })}
           />
         );
@@ -161,32 +171,26 @@ export function BlockEditor({
         return (
           <StepsBlock
             title={str(block.title)}
-            steps={str(block.steps)}
+            steps={jsonField(block.steps)}
             onChange={(next) => onChange({ ...block, ...next })}
           />
         );
       case "Comparison":
         return (
           <ComparisonBlock
-            left={str(block.left)}
-            right={str(block.right)}
+            left={jsonField(block.left, {})}
+            right={jsonField(block.right, {})}
             onChange={(next) => onChange({ ...block, ...next })}
           />
         );
       case "Table":
         return (
           <TableBlock
-            headers={
-              typeof block.headers === "string"
-                ? block.headers
-                : JSON.stringify(block.headers ?? [])
-            }
-            rows={
-              typeof block.rows === "string"
-                ? block.rows
-                : JSON.stringify(block.rows ?? [])
-            }
+            headers={jsonField(block.headers)}
+            rows={jsonField(block.rows)}
             onChange={(next) => onChange({ ...block, ...next })}
+            decofile={decofile}
+            sandboxRef={sandboxRef}
           />
         );
       case "ProductCard":
@@ -210,24 +214,15 @@ export function BlockEditor({
     }
   }
 
-  {
-    const schema = resolveType ? resolveSchema(resolveType, meta) : null;
-    if (!schema) {
-      return (
-        <p className="text-xs text-muted-foreground">
-          {t("sandbox.blockRegistry.unknownBlockType", {
-            type: resolveType ?? "",
-          })}
-        </p>
-      );
-    }
-    return (
-      <SchemaForm
-        schema={schema}
-        value={block}
-        onChange={(v) => onChange(v as RawBlock)}
-        basePath=""
-      />
-    );
-  }
+  return (
+    <GenericBlockEditor
+      block={block}
+      meta={meta}
+      onChange={onChange}
+      decofile={decofile}
+      sandbox={sandboxRef}
+      previewBaseUrl={previewBaseUrl}
+      onSaveReferencedBlock={onSaveReferencedBlock}
+    />
+  );
 }

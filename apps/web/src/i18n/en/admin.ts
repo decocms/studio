@@ -9,6 +9,7 @@ export const admin = {
   "admin.layout.restrictedToDashboard":
     "This dashboard is restricted to deployment admins.",
   "admin.layout.usersTab": "Users",
+  "admin.orgs.archived": "Archived",
   "admin.orgs.notice": "Notice",
   "admin.orgs.noticeFor": "Billing notice for {org}",
   "admin.orgs.noticeDescription":
@@ -79,20 +80,36 @@ export const admin = {
   "admin.orgs.saving": "Saving...",
   "admin.orgs.searchPlaceholder": "Search organizations by name or slug...",
   "admin.orgs.anotherOrg": "another organization",
+  "admin.orgs.analyticsOwnSite": "Own site ({slug})",
+  "admin.orgs.analyticsSiteCleared":
+    "{project} analytics now read its own site",
+  "admin.orgs.analyticsSiteNotOwned": "{slug} (not owned)",
+  "admin.orgs.analyticsSiteSaved": "{project} analytics now read {slug}",
   "admin.orgs.close": "Close",
   "admin.orgs.failedAddSite": "Failed to add site",
+  "admin.orgs.failedLoadProjects": "Failed to load projects",
   "admin.orgs.failedLoadSites": "Failed to load sites",
   "admin.orgs.failedRemoveSite": "Failed to remove site",
+  "admin.orgs.failedSaveAnalyticsSite": "Failed to update analytics site",
   "admin.orgs.invalidSiteSlug":
     "Use lowercase letters, digits and hyphens (e.g. my-site)",
   "admin.orgs.loading": "Loading...",
+  "admin.orgs.noProjects": "This organization has no site projects.",
   "admin.orgs.noSites": "This organization owns no sites.",
+  "admin.orgs.projectAnalytics": "Project analytics",
+  "admin.orgs.projectAnalyticsDescription":
+    "The site whose traffic Monitor and experiment results read. Point a migrated project, such as a TanStack rewrite, at the site that serves its production domains.",
   "admin.orgs.reassignConfirm": "Move site here",
   "admin.orgs.remove": "Remove",
   "admin.orgs.siteAdded": "Added {slug} to {org}",
   "admin.orgs.siteReassigned": "Moved {slug} to {org}",
   "admin.orgs.siteReassignWarning":
     '"{slug}" belongs to {owner} and will be moved to this organization.',
+  "admin.orgs.siteInUse": "In use",
+  "admin.orgs.siteInUseHint":
+    "A project uses this site id, so it can't be removed or moved: CDN paths, tokens and asset URLs use it.",
+  "admin.orgs.siteNotReassignable":
+    '"{slug}" belongs to {owner} and a project uses it, so it can\'t be moved: CDN paths, tokens and asset URLs use it.',
   "admin.orgs.siteRemoved": "Removed {slug} from {org}",
   "admin.orgs.siteSlugPlaceholder": "my-site",
   "admin.orgs.sites": "Sites",

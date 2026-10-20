@@ -1,69 +1,6 @@
 import { useState } from "react";
-import { ImageField } from "@/components/sections-editor/fields/image-field";
-import { cn } from "@decocms/ui/lib/utils.ts";
-import { FloatingToolbar, InlineText, ToolbarButton, str } from "./primitives";
+import { FloatingToolbar, InlineText, ToolbarButton } from "./primitives";
 import { useT } from "@/i18n/use-t";
-
-// ---------------------------------------------------------------- Image
-
-export function BlockImageBlock({
-  block,
-  onChange,
-}: {
-  block: Record<string, unknown>;
-  onChange: (next: Record<string, unknown>) => void;
-}) {
-  const t = useT();
-  const size = str(block.size) || "normal";
-  return (
-    <div className="space-y-2">
-      <ImageField
-        schema={{
-          type: "string",
-          format: "image-uri",
-          title: t("sandbox.mediaBlocks.image"),
-        }}
-        value={block.url}
-        onChange={(v) => onChange({ ...block, url: v })}
-        path="block-image-url"
-        label={t("sandbox.mediaBlocks.image")}
-      />
-      <InlineText
-        value={str(block.caption)}
-        onChange={(v) => onChange({ ...block, caption: v })}
-        placeholder={t("sandbox.mediaBlocks.addCaption")}
-        className="text-center text-sm italic text-muted-foreground"
-      />
-      <div className="flex items-center gap-3 text-xs text-muted-foreground">
-        <div className="flex items-center gap-1">
-          {(["normal", "full"] as const).map((s) => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => onChange({ ...block, size: s })}
-              className={cn(
-                "rounded px-2 py-0.5 transition-colors cursor-pointer",
-                size === s
-                  ? "bg-accent text-accent-foreground"
-                  : "hover:bg-muted",
-              )}
-            >
-              {s === "full"
-                ? t("sandbox.mediaBlocks.fullWidth")
-                : t("sandbox.mediaBlocks.normal")}
-            </button>
-          ))}
-        </div>
-        <input
-          value={str(block.alt)}
-          onChange={(e) => onChange({ ...block, alt: e.target.value })}
-          placeholder={t("sandbox.mediaBlocks.altText")}
-          className="flex-1 border-0 bg-transparent p-0 text-xs outline-none placeholder:text-muted-foreground/50 focus:ring-0"
-        />
-      </div>
-    </div>
-  );
-}
 
 // ---------------------------------------------------------------- Video
 
@@ -90,9 +27,16 @@ export function VideoBlock({
     <div className="space-y-2">
       {embed ? (
         <div className="relative aspect-video overflow-hidden rounded-md border bg-muted">
+          {/* Cross-origin YouTube/Vimeo embed: `allow-same-origin` keeps the
+              EMBED's origin, not ours, so pairing it with `allow-scripts` is
+              not the sandbox escape the rule warns about — that case is a
+              same-origin or `srcDoc` frame. Both tokens are required for
+              playback. */}
           <iframe
             src={embed}
             title={caption || t("sandbox.mediaBlocks.video")}
+            // oxlint-disable-next-line react/iframe-missing-sandbox
+            sandbox="allow-scripts allow-same-origin allow-presentation"
             className="absolute inset-0 h-full w-full border-0"
             allowFullScreen
           />

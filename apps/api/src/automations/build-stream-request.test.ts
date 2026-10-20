@@ -26,6 +26,7 @@ function makeAutomation(overrides?: Partial<Automation>): Automation {
     temperature: 0.7,
     max_agent_steps: null,
     virtual_mcp_id: "agent_1",
+    system_key: null,
     created_at: "2026-01-01T00:00:00Z",
     updated_at: "2026-01-01T00:00:00Z",
     ...overrides,
@@ -49,6 +50,19 @@ function makeResolvedModel(
 }
 
 describe("buildStreamRequest", () => {
+  it("runs on the harness its thread was created with, Decopilot by default", () => {
+    const args = [
+      makeAutomation(),
+      "trig_1",
+      "thrd_1",
+      makeResolvedModel(),
+    ] as const;
+    expect(buildStreamRequest(...args).harnessId).toBe("decopilot");
+    expect(
+      buildStreamRequest(...args, undefined, "claude-code").harnessId,
+    ).toBe("claude-code");
+  });
+
   it("generates fresh message ids derived from taskId (not the stored ones)", () => {
     const result = buildStreamRequest(
       makeAutomation(),

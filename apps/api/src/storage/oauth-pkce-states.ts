@@ -11,6 +11,9 @@ export class OAuthPkceStateStorage {
     organizationId: string,
     userId: string,
   ): Promise<string> {
+    // Prunes abandoned states — consume() is the only other deletion path.
+    await this.deleteExpired(organizationId);
+
     const id = crypto.randomUUID();
     const expiresAt = new Date(Date.now() + STATE_TTL_MS);
 
@@ -27,6 +30,14 @@ export class OAuthPkceStateStorage {
       .execute();
 
     return id;
+  }
+
+  private async deleteExpired(organizationId: string): Promise<void> {
+    await this.db
+      .deleteFrom("oauth_pkce_states")
+      .where("organization_id", "=", organizationId)
+      .where("expires_at", "<", new Date())
+      .execute();
   }
 
   /** Atomically retrieve and delete the verifier (single-use). Validates org/user ownership. */

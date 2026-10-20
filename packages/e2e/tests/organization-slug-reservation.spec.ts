@@ -19,6 +19,7 @@ const RESERVED_SLUGS = [
   "onboarding",
   "org",
   "report",
+  "reports-onboarding",
   "reset-password",
 ] as const;
 

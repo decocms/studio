@@ -1,4 +1,4 @@
-import type { LanguageModelV3 } from "@ai-sdk/provider";
+import type { LanguageModelV4 } from "@ai-sdk/provider";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
@@ -39,7 +39,7 @@ export type DecopilotObjectStorageSource = {
 export type DecopilotModelSource =
   | {
       kind: "in-process";
-      model: LanguageModelV3;
+      model: LanguageModelV4;
       modelId: string;
     }
   | {

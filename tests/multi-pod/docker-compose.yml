@@ -44,25 +44,31 @@ services:
       retries: 5
       start_period: 5s
 
-  # External S3 (object store). Runs as its OWN container so it survives a
-  # Studio pod SIGKILL+restart — the rollout-churn scenario needs pods to reboot
-  # cleanly, and Studio's DECOCMS_LOCAL_MODE otherwise spawns an embedded MinIO
-  # *child* that dies with the container and races/crashes on reprovision. With
-  # S3_ENDPOINT + bucket + creds set below, ensureServices takes the external
-  # path (skipMinio) and never manages an embedded instance. Also faithful to
-  # prod, which uses external S3. No healthcheck: the minio server image ships
-  # no curl/wget/shell to probe with, and Studio's provisionMinioBucket already
-  # retries the startup ECONNREFUSED race.
+  # Object storage lives independently of Studio pod restarts.
   minio:
-    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z # pinned in .github/actions/start-minio
     command: server /data
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
 
-  # Migrations run once before any Studio pod starts. Pods themselves skip the
-  # migration step (we override the entrypoint with a direct start command) to
-  # avoid races on parallel boot.
+  minio-init:
+    image: pgsty/mc:RELEASE.2026-09-16T00-00-00Z
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        attempts=0
+        until mc alias set local http://minio:9000 minioadmin minioadmin && mc ready local; do
+          attempts=$$((attempts + 1))
+          [ "$$attempts" -lt 30 ] || exit 1
+          sleep 1
+        done
+        mc mb --ignore-existing local/studio-dev
+    depends_on:
+      minio:
+        condition: service_started
+
+  # Both schemas are prepared once before any Studio pod starts.
   migrate:
     # The only service with a `build:` — it tags the shared image, and every
     # mesh pod (which depends_on migrate completing) reuses the tag instead of
@@ -72,7 +78,7 @@ services:
       dockerfile: tests/resilience/Dockerfile.studio
     image: deco-multipod-studio:latest
     working_dir: /app/apps/api
-    command: ["bun", "run", "migrate"]
+    command: ["sh", "-ec", "bun run migrate && bun run migrate:dbos"]
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/postgres
     depends_on:
@@ -90,13 +96,8 @@ services:
     # surfaced via the healthcheck, not papered over by a restart.
     restart: "no"
     working_dir: /app/apps/api
-    # Bypass the Dockerfile entrypoint (which runs `bun run migrate` before
-    # exec'ing the CLI) AND pass `--skip-migrations` so the CLI's own boot
-    # migration is suppressed too. Without the flag each of the three pods
-    # would race on the migration step independently of the `migrate`
-    # service. The `migrate` service is the single source of truth for
-    # schema state; pods read-only at boot.
-    command: ["bun", "run", "src/cli.ts", "--no-tui", "--skip-migrations"]
+    # The migration service owns schema changes; runtime boots directly.
+    command: ["bun", "run", "src/index.ts"]
     environment: &studio-env
       NODE_ENV: production
       PORT: "3000"
@@ -112,7 +113,7 @@ services:
       DATA_DIR: /app/data
       # Bound a silent recovered run inside rollout-churn's terminal poll.
       RUN_IDLE_TIMEOUT_MS: "120000"
-      # External S3 → ensureServices skips embedded MinIO (survives restarts).
+      # Object storage survives Studio restarts.
       S3_ENDPOINT: http://minio:9000
       S3_BUCKET: studio-dev
       S3_ACCESS_KEY_ID: minioadmin
@@ -133,8 +134,8 @@ services:
         condition: service_healthy
       nats:
         condition: service_healthy
-      minio:
-        condition: service_started
+      minio-init:
+        condition: service_completed_successfully
       migrate:
         condition: service_completed_successfully
     healthcheck:
@@ -144,13 +145,7 @@ services:
       start_period: 60s
       retries: 20
 
-  # Each additional Studio service waits for the previous pod to be healthy
-  # before starting. This serializes *first-boot* DBOS migrations: even with
-  # Studio's own --skip-migrations, DBOS still runs its system-schema
-  # migrations on `DBOS.launch()` and three parallel boots race on
-  # inserts into `dbos.dbos_migrations` (unique-constraint violations
-  # crash pods 2/3). Once the schema exists, subsequent boots are
-  # idempotent — restarting a single pod mid-test stays fast.
+  # Stagger initial boot to keep resource use predictable in CI.
   mesh-2:
     <<: *studio
     environment:
@@ -163,8 +158,8 @@ services:
         condition: service_healthy
       nats:
         condition: service_healthy
-      minio:
-        condition: service_started
+      minio-init:
+        condition: service_completed_successfully
       migrate:
         condition: service_completed_successfully
       mesh-1:
@@ -182,8 +177,8 @@ services:
         condition: service_healthy
       nats:
         condition: service_healthy
-      minio:
-        condition: service_started
+      minio-init:
+        condition: service_completed_successfully
       migrate:
         condition: service_completed_successfully
       mesh-2:

@@ -1,14 +1,16 @@
 /**
  * GitHub rate-limit telemetry. Every path that talks to api.github.com competes
- * for ONE budget per installation token; `dbos-github-read.ts` records that
- * budget shutting for 17 hours, and the ceiling it added was sized against an
- * estimate because nothing measured the real thing.
+ * for one budget per credential; `dbos-github-read.ts` records that budget
+ * shutting for 17 hours, and the ceiling it added was sized against an estimate
+ * because nothing measured the real thing.
  *
- * `lane` tags the transport, not the caller: the question to answer is which of
- * our ways of reaching GitHub spends the budget. `resource` stays an attribute
- * rather than being collapsed — REST and GraphQL are metered separately
- * (requests/hour vs points/hour) through these same headers, so a remaining
- * count means nothing without knowing which pool it drained.
+ * Three attributes, three different questions. `installation` is WHOSE window a
+ * call spent (`git-providers/github/budget-owner.ts`) — the one an operator
+ * needs before deciding whom to throttle. `lane` is the transport, not the
+ * caller: which of our ways of reaching GitHub spends the budget. `resource`
+ * stays separate rather than being collapsed — REST and GraphQL are metered
+ * differently (requests/hour vs points/hour) through these same headers, so a
+ * remaining count means nothing without knowing which pool it drained.
  */
 
 import type { Counter, Gauge } from "@opentelemetry/api";
@@ -95,34 +97,33 @@ let limitedCounter: Counter | null = null;
  */
 export function recordGithubRateLimit(
   headers: Headers,
-  attrs: { lane: GithubLane; operation: string },
+  attrs: { lane: GithubLane; operation: string; installation: string },
 ): GithubRateLimitSnapshot {
   const snapshot = readGithubRateLimit(headers);
-  const labels = {
-    lane: attrs.lane,
-    operation: attrs.operation,
-    resource: snapshot.resource ?? "unknown",
-  };
+  const resource = snapshot.resource ?? "unknown";
+  // A budget belongs to (installation, resource) — `operation` on a gauge only made it report whichever call touched it last.
+  const budget = { installation: attrs.installation, resource };
+  const call = { ...budget, lane: attrs.lane, operation: attrs.operation };
 
   callCounter ??= meter.createCounter("github_api_calls", {
     description: "Calls to the GitHub API, by transport and operation",
     unit: "{calls}",
   });
-  callCounter.add(1, labels);
+  callCounter.add(1, call);
 
   if (snapshot.remaining !== null) {
     remainingGauge ??= meter.createGauge("github_rate_limit_remaining", {
       description: "Requests (REST) or points (GraphQL) left in the window",
       unit: "{requests}",
     });
-    remainingGauge.record(snapshot.remaining, labels);
+    remainingGauge.record(snapshot.remaining, budget);
   }
   if (snapshot.used !== null) {
     usedGauge ??= meter.createGauge("github_rate_limit_used", {
       description: "Requests (REST) or points (GraphQL) spent in the window",
       unit: "{requests}",
     });
-    usedGauge.record(snapshot.used, labels);
+    usedGauge.record(snapshot.used, budget);
   }
 
   return snapshot;
@@ -135,6 +136,8 @@ export function recordGithubRateLimit(
 export function countGithubRateLimited(attrs: {
   lane: GithubLane;
   operation: string;
+  /** Whose window was exhausted — see `git-providers/github/budget-owner.ts`. */
+  installation: string;
   /** "primary" when the window is exhausted, "secondary" for a burst refusal. */
   kind: "primary" | "secondary";
 }): void {

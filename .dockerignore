@@ -35,6 +35,9 @@ docs
 !README.md
 
 # Environment files
+.env
+**/.env
+**/.env.*
 .env.local
 .env.*.local
 .env.development
@@ -46,3 +49,6 @@ docs
 .turbo
 .next
 .cache
+**/target
+apps/api/data
+packages/sandbox/daemon-go/bin

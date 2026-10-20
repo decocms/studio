@@ -12,6 +12,7 @@ import { retry, sleep } from "@decocms/shared/std";
 import {
   AUTOMATIONS_QUEUE,
   BACKGROUND_TOOLS_QUEUE,
+  BOARD_TRANSITIONS_QUEUE,
   GITHUB_READS_QUEUE,
   HOSTED_HARNESS_QUEUE,
   HOSTED_HARNESS_SANDBOXED_QUEUE,
@@ -85,6 +86,8 @@ const RUN_QUEUES = [
   // and awaits its enqueued read, so an "api"-only deployment would block
   // forever if no worker dequeued this.
   GITHUB_READS_QUEUE,
+  // A board settle wait ends by dispatching an automation run.
+  BOARD_TRANSITIONS_QUEUE,
   // Board→Jira comment pushes are outbound I/O, i.e. worker load.
 ];
 const listenQueues: string[] | undefined =
@@ -168,7 +171,7 @@ const previewBaseDomain = parsePreviewBaseDomain(
 );
 const previewProxyDeps = {
   baseDomain: previewBaseDomain ?? "",
-  // getOrInitSharedRunner resolves to the AgentSandboxProvider when enabled,
+  // getOrInitSharedRunner resolves to the SandboxProvider when enabled,
   // or null — exactly what PreviewProxyDeps
   // wants, so no kind check or cast is needed.
   getRunner: getOrInitRunnerForPreview,
@@ -243,15 +246,6 @@ await retry(
     jitter: 0.5,
   },
 );
-
-// When running via CLI, the calling script handles its own banner/config output
-if (!settings.isCli) {
-  const { bannerLines } = await import("./cli/banner-art");
-  console.log("");
-  for (const line of bannerLines()) {
-    console.log(line);
-  }
-}
 
 const server = Bun.serve({
   // This was necessary because MCP has SSE endpoints (like notification) that disconnects after 10 seconds (default bun idle timeout)

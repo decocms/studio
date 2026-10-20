@@ -172,8 +172,12 @@ describe("createProjectorChunkStreamFromMessages", () => {
   // relies on to tell a true liveness breach apart from a real projection bug.
   describe("liveness: idle-timeout as a first-class silence terminal", () => {
     test("a fully silent source trips StreamIdleTimeoutError after idleTimeoutMs", async () => {
+      // Never yielding IS the fixture: it mimics a dead executor, so only
+      // the consumer's idle timeout can end this test. A plain function would
+      // not satisfy AsyncIterable.
+      // oxlint-disable-next-line eslint/require-yield
       async function* silent(): AsyncIterable<Msg> {
-        await new Promise<never>(() => {}); // mimics a dead executor: never yields
+        await new Promise<never>(() => {});
       }
       const stream = createProjectorChunkStreamFromMessages({
         messages: silent(),

@@ -31,7 +31,7 @@ func ValidateHarnessInput(input json.RawMessage) string {
 	if reason := validateMcp(obj["mcp"]); reason != "" {
 		return reason
 	}
-	if reason := requireEnum(obj, "mode", []string{"default", "plan", "web-search", "gen-image"}); reason != "" {
+	if reason := requireEnum(obj, "mode", []string{"default", "plan", "web-search", "deep-research", "gen-image"}); reason != "" {
 		return reason
 	}
 	if reason := requireNumber(obj, "temperature"); reason != "" {
@@ -57,8 +57,9 @@ func ValidateHarnessInput(input json.RawMessage) string {
 // the corresponding preparation step is skipped.
 func runInfoOf(raw json.RawMessage) RunInfo {
 	var in struct {
-		ThreadId string `json:"threadId"`
-		Mcp      struct {
+		ThreadId     string `json:"threadId"`
+		LiveMessages bool   `json:"liveMessages"`
+		Mcp          struct {
 			URL       string            `json:"url"`
 			Headers   map[string]string `json:"headers"`
 			ExpiresAt float64           `json:"expiresAt"`
@@ -69,6 +70,7 @@ func runInfoOf(raw json.RawMessage) RunInfo {
 	}
 	return RunInfo{
 		ThreadId:     in.ThreadId,
+		LiveMessages: in.LiveMessages,
 		McpURL:       in.Mcp.URL,
 		McpHeaders:   in.Mcp.Headers,
 		McpExpiresAt: int64(in.Mcp.ExpiresAt),
@@ -133,12 +135,7 @@ func validateWorkspace(raw json.RawMessage) string {
 		return "workspace: required"
 	}
 	var ws struct {
-		Cwd  *string `json:"cwd"`
-		Repo *struct {
-			Owner           *string `json:"owner"`
-			Name            *string `json:"name"`
-			ConnectedGithub *bool   `json:"connectedGithub"`
-		} `json:"repo"`
+		Cwd *string `json:"cwd"`
 	}
 	var probe map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &probe); err != nil || probe == nil {
@@ -155,13 +152,6 @@ func validateWorkspace(raw json.RawMessage) string {
 	}
 	if *ws.Cwd != "/repo" {
 		return "workspace.cwd: must be \"/repo\" or null"
-	}
-	// `repo` is optional: a task run on the bare `thread:<id>` key gets a
-	// repo-less sandbox and clones into /repo mid-run via TASK_ADD_REPO. When
-	// present it must be complete.
-	if ws.Repo != nil &&
-		(ws.Repo.Owner == nil || ws.Repo.Name == nil || ws.Repo.ConnectedGithub == nil) {
-		return "workspace.repo: owner, name and connectedGithub are required"
 	}
 	if _, ok := probe["branch"]; !ok {
 		return "workspace.branch: required"

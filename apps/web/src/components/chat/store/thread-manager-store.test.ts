@@ -99,15 +99,15 @@ describe("ThreadManagerStore /watch snapshot", () => {
 });
 
 describe("ThreadManagerStore boot-buffer disarm on load failure", () => {
-  /** The freeze this pins: one failed COLLECTION_THREADS_LIST (routine while
-   *  the native listener boots) left the boot buffer armed forever, so every
-   *  later watch event queued behind a drain that never came — a thread stuck
-   *  rendering "Done" while its run streamed, until a full reload. */
+  /** The freeze this pins: one failed COLLECTION_THREADS_LIST left the boot
+   *  buffer armed forever, so every later watch event queued behind a drain
+   *  that never came — a thread stuck rendering "Done" while its run streamed,
+   *  until a full reload. */
   it("a failed initial load still lets later status events through", async () => {
     const sse = makeFakePool();
     const client = {
       callTool: mock(async () => {
-        throw new Error("native chat queue recovery failed");
+        throw new Error("thread list failed");
       }),
     } as unknown as MCPClient;
     const store = new ThreadManagerStore("acme", "loc-1", { client, sse });

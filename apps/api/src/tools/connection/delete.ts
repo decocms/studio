@@ -8,8 +8,10 @@ import {
   CollectionDeleteInputSchema,
   createCollectionDeleteOutputSchema,
 } from "@decocms/bindings/collections";
+import { WellKnownOrgMCPId } from "@decocms/shared/sdk";
 import { z } from "zod";
 import { posthog } from "../../posthog";
+import { releaseReportsSite } from "../reports/release";
 import { defineTool } from "../../core/define-tool";
 import {
   getUserId,
@@ -18,6 +20,7 @@ import {
 } from "../../core/studio-context";
 import { getMcpListCache } from "../../mcp-clients/mcp-list-cache";
 import { invalidateConnectionCaches } from "../../mcp-clients/mcp-cache-invalidation";
+import { clearRefreshBackoff } from "../../oauth/token-refresh";
 import { isDevAssetsConnection, usesLocalObjectStorage } from "./dev-assets";
 import { ConnectionEntitySchema } from "./schema";
 
@@ -103,11 +106,6 @@ export const COLLECTION_CONNECTIONS_DELETE = defineTool({
       }
     }
 
-    // A thread pinned to this connection as its repo would be stranded — same case VIRTUAL_MCP_DELETE guards.
-    if (await ctx.storage.connections.isReferencedByThread(input.id)) {
-      throw new Error(JSON.stringify({ code: "CONNECTION_IN_USE_BY_THREAD" }));
-    }
-
     // An automation's event trigger connection_id has no FK, so it would strand silently.
     const referencingAutomations =
       await ctx.storage.automations.listActiveByEventTriggerConnectionId(
@@ -133,25 +131,25 @@ export const COLLECTION_CONNECTIONS_DELETE = defineTool({
     // Delete connection
     await ctx.storage.connections.delete(input.id);
 
+    if (
+      input.id === WellKnownOrgMCPId.REPORTS(organization.id) &&
+      typeof metadata?.siteUrl === "string"
+    ) {
+      releaseReportsSite({
+        siteUrl: metadata.siteUrl,
+        orgId: organization.id,
+        cause: "connection_deleted",
+      });
+    }
+
+    // Drop the unbounded oauth refresh backoff tracker entry so it doesn't linger.
+    clearRefreshBackoff(input.id);
+
     // trigger_callback_tokens.connection_id has no FK either — same class of orphan.
     await ctx.storage.triggerCallbackTokens.deleteByConnection(
       input.id,
       organization.id,
     );
-
-    // Cleanup registry_config references to the deleted connection
-    const orgSettings = await ctx.storage.organizationSettings.get(
-      organization.id,
-    );
-    if (orgSettings?.registry_config) {
-      const { registries, blockedMcps } = orgSettings.registry_config;
-      if (input.id in registries) {
-        const { [input.id]: _, ...rest } = registries;
-        await ctx.storage.organizationSettings.upsert(organization.id, {
-          registry_config: { registries: rest, blockedMcps },
-        });
-      }
-    }
 
     // Invalidate NATS KV cache
     getMcpListCache()

@@ -11,18 +11,29 @@
 import {
   collectMentionAccountIds,
   type JiraClient,
+  type JiraUser,
   jiraBodyToText,
   JiraUserDirectory,
 } from "./client";
+import { mentionMarkdown } from "./wiki-markdown";
 
 export interface IssueForPrompt {
+  /** Jira's own issue id. The stable identity a link is keyed by — an issue's
+   *  KEY changes when it moves project, its id does not. */
+  id: string;
   key: string;
   url: string;
   summary: string;
   status: string;
+  /** People on the issue, rendered as mentions a run can copy. */
+  reporter: string | null;
+  assignee: string | null;
   description: string;
   comments: Array<{ author: string; created: string; body: string }>;
   attachments: Array<{ id: string; filename: string; size: number }>;
+  /** The card's web links. A review run's pull request is one of these —
+   *  the implementing run was told to put it there. */
+  links: Array<{ url: string; title: string }>;
 }
 
 /** Caps so one sprawling issue cannot crowd out the instruction. */
@@ -33,15 +44,25 @@ export function issueUrl(siteUrl: string, key: string): string {
   return `${siteUrl.replace(/\/+$/, "")}/browse/${encodeURIComponent(key)}`;
 }
 
-/** Read everything the prompt shows, resolving mentions to names once. */
+/**
+ * Read everything the prompt shows, resolving mentions to names once.
+ *
+ * `issueIdOrKey` is either, as Jira's own endpoint takes either: the trigger
+ * knows the id from the changelog, a person firing a run by hand knows the key.
+ */
 export async function loadIssueForPrompt(
   client: JiraClient,
   siteUrl: string,
-  issueId: string,
+  issueIdOrKey: string,
 ): Promise<IssueForPrompt> {
-  const [issue, comments] = await Promise.all([
-    client.getIssue(issueId),
-    client.listComments(issueId),
+  const [issue, comments, links] = await Promise.all([
+    client.getIssue(issueIdOrKey),
+    client.listComments(issueIdOrKey),
+    // A card with no web links is normal, and a permission that forbids
+    // reading them must not cost the run the whole issue.
+    client
+      .listRemoteLinks(issueIdOrKey)
+      .catch(() => []),
   ]);
   const users = new JiraUserDirectory(client);
   const names = await users.resolve([
@@ -49,13 +70,16 @@ export async function loadIssueForPrompt(
     ...comments.flatMap((c) => collectMentionAccountIds(c.body)),
   ]);
   return {
+    id: issue.id,
     key: issue.key,
     url: issueUrl(siteUrl, issue.key),
     summary: issue.fields.summary,
     status: issue.fields.status.name,
+    reporter: person(issue.fields.reporter),
+    assignee: person(issue.fields.assignee),
     description: jiraBodyToText(issue.fields.description, names).trim(),
     comments: comments.map((c) => ({
-      author: c.author?.displayName ?? "Unknown",
+      author: person(c.author) ?? "Unknown",
       created: c.created,
       body: jiraBodyToText(c.body, names).trim(),
     })),
@@ -64,7 +88,12 @@ export async function loadIssueForPrompt(
       filename: a.filename,
       size: a.size,
     })),
+    links,
   };
+}
+
+function person(user: JiraUser | null | undefined): string | null {
+  return user ? mentionMarkdown(user.accountId, user.displayName) : null;
 }
 
 function clip(text: string, max: number): string {
@@ -77,10 +106,44 @@ function humanSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function renderIssueForPrompt(issue: IssueForPrompt): string {
+/** The status change that started a run — how a rule's run learns where the
+ *  card came from and who sent it. */
+export interface StatusMove {
+  toStatus: string;
+  fromStatus: string | null;
+  movedBy: JiraUser | null;
+  movedAt: string | null;
+}
+
+function renderMove(move: StatusMove): string {
+  const parts = [`Moved into ${move.toStatus}`];
+  if (move.fromStatus) parts.push(`from ${move.fromStatus}`);
+  const by = person(move.movedBy);
+  if (by) parts.push(`by ${by}`);
+  if (move.movedAt) parts.push(`at ${move.movedAt}`);
+  return `${parts.join(" ")} — the move that started this run.`;
+}
+
+export interface RenderIssueOptions {
+  /**
+   * Render only the comments older than this one: the first `commentsBefore`
+   * of the thread, oldest first. How a run pages back through a thread whose
+   * newest comments filled the budget; the marker below names the value.
+   */
+  commentsBefore?: number;
+}
+
+export function renderIssueForPrompt(
+  issue: IssueForPrompt,
+  move?: StatusMove,
+  options: RenderIssueOptions = {},
+): string {
   const lines: string[] = [
     `# ${issue.key}: ${issue.summary}`,
     `Status: ${issue.status}`,
+    ...(move ? [renderMove(move)] : []),
+    ...(issue.reporter ? [`Reporter: ${issue.reporter}`] : []),
+    ...(issue.assignee ? [`Assignee: ${issue.assignee}`] : []),
     `Link: ${issue.url}`,
     "",
     "## Description",
@@ -88,6 +151,12 @@ export function renderIssueForPrompt(issue: IssueForPrompt): string {
       ? clip(issue.description, MAX_DESCRIPTION_CHARS)
       : "_(empty)_",
   ];
+  if (issue.links.length > 0) {
+    lines.push("", "## Web links");
+    for (const link of issue.links) {
+      lines.push(`- [${link.title}](${link.url})`);
+    }
+  }
   if (issue.attachments.length > 0) {
     lines.push("", "## Attachments");
     for (const a of issue.attachments) {
@@ -100,16 +169,81 @@ export function renderIssueForPrompt(issue: IssueForPrompt): string {
       "Fetch one with `JIRA_ATTACHMENT_DOWNLOAD` and the attachment id; it returns a short-lived URL to `curl` into the sandbox.",
     );
   }
-  if (issue.comments.length > 0) {
-    lines.push("", "## Comments");
+  const total = issue.comments.length;
+  const end = Math.min(options.commentsBefore ?? total, total);
+  if (end > 0) {
+    lines.push(
+      "",
+      end < total ? `## Comments (1–${end} of ${total})` : "## Comments",
+    );
+    // The budget goes to the NEWEST comments: the latest review verdict or a
+    // client's rejection is what a run acts on, and it is the one a long
+    // thread of earlier handoffs would otherwise push out.
+    const kept: typeof issue.comments = [];
+    let oldestClipped = false;
     let budget = MAX_COMMENTS_CHARS;
-    for (const c of issue.comments) {
-      const body = clip(c.body, Math.max(0, budget));
-      lines.push(`**${c.author}** (${c.created}):`, body, "");
+    for (let i = end - 1; i >= 0 && budget > 0; i--) {
+      const c = issue.comments[i];
+      if (!c) continue;
+      const body = clip(c.body, budget);
+      kept.unshift({ ...c, body });
+      oldestClipped = body !== c.body;
       budget -= body.length;
-      if (budget <= 0) {
-        lines.push("[… older comments omitted]");
-        break;
+    }
+    const omitted = end - kept.length;
+    // Where the next page ends: before the oldest comment shown in full. A
+    // clipped one is re-read whole on that page, unless it is the only one
+    // here — then it alone exceeds the budget and paging would not move.
+    const nextBefore = oldestClipped && kept.length > 1 ? omitted + 1 : omitted;
+    if (omitted > 0) {
+      lines.push(
+        `[… ${omitted} older comment${omitted === 1 ? "" : "s"} omitted]`,
+      );
+    }
+    if (nextBefore > 0) {
+      lines.push(
+        `To read the earlier comments, call JIRA_ISSUE_GET with \`commentsBefore: ${nextBefore}\`.`,
+      );
+    }
+    if (omitted > 0 || nextBefore > 0) lines.push("");
+    for (const c of kept) {
+      lines.push(`**${c.author}** (${c.created}):`, c.body, "");
+    }
+  }
+  return lines.join("\n").trim();
+}
+
+/**
+ * Several issues, for the opening message of ONE run started on a batch.
+ *
+ * A digest, not the full rendering: fourteen issues' descriptions and comment
+ * threads would bury the instruction, and a batch run is about what the
+ * issues have in common (their pull requests, their status) more than any one
+ * body. The web links are kept — a pull request is one — and the full issue is
+ * a `JIRA_ISSUE_GET` away.
+ */
+export function renderIssuesForPrompt(
+  issues: readonly IssueForPrompt[],
+): string {
+  const lines: string[] = [
+    `# ${issues.length} Jira issues`,
+    "This run works on every issue below. Each Jira tool takes `issueKey` to say " +
+      "which one it is about; `JIRA_ISSUE_GET` with a key returns that issue in " +
+      "full — description, comments, attachments.",
+  ];
+  for (const issue of issues) {
+    lines.push(
+      "",
+      `## ${issue.key}: ${issue.summary}`,
+      `Status: ${issue.status}`,
+      ...(issue.reporter ? [`Reporter: ${issue.reporter}`] : []),
+      ...(issue.assignee ? [`Assignee: ${issue.assignee}`] : []),
+      `Link: ${issue.url}`,
+    );
+    if (issue.links.length > 0) {
+      lines.push("Web links:");
+      for (const link of issue.links) {
+        lines.push(`- [${link.title}](${link.url})`);
       }
     }
   }

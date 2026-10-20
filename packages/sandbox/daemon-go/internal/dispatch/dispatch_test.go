@@ -84,23 +84,80 @@ func TestValidateHarnessInputRejectsEmpty(t *testing.T) {
 	}
 }
 
+const minimalHarnessInput = `{
+	"threadId": "t1",
+	"userMessage": {"role": "user"},
+	"harness": {},
+	"workspace": {"cwd": null},
+	"models": {"thinking": {"id": "m", "title": "M", "credentialId": "c"}},
+	"mcp": {"url": "https://example.com/mcp", "headers": {}, "expiresAt": 123},
+	"mode": "default",
+	"temperature": 0.5,
+	"toolApprovalLevel": "auto",
+	"user": {"id": "u", "email": "u@example.com"},
+	"organizationId": "org",
+	"agent": {"id": "a"}
+}`
+
 func TestValidateHarnessInputAcceptsMinimalFrame(t *testing.T) {
-	input := `{
-		"threadId": "t1",
-		"userMessage": {"role": "user"},
-		"harness": {},
-		"workspace": {"cwd": null},
-		"models": {"thinking": {"id": "m", "title": "M", "credentialId": "c"}},
-		"mcp": {"url": "https://example.com/mcp", "headers": {}, "expiresAt": 123},
-		"mode": "default",
-		"temperature": 0.5,
-		"toolApprovalLevel": "auto",
-		"user": {"id": "u", "email": "u@example.com"},
-		"organizationId": "org",
-		"agent": {"id": "a"}
-	}`
-	if reason := ValidateHarnessInput(json.RawMessage(input)); reason != "" {
+	if reason := ValidateHarnessInput(json.RawMessage(minimalHarnessInput)); reason != "" {
 		t.Fatalf("minimal frame rejected: %s", reason)
+	}
+}
+
+// An envelope without `harnessId` (older Studio) still runs claude-code.
+func TestDispatchCarriesTheEnvelopeHarness(t *testing.T) {
+	const token = "tkn"
+	dispatch := func(envelope string) (int, string) {
+		t.Helper()
+		var seen string
+		req := httptest.NewRequest("POST", "/dispatch", strings.NewReader(envelope))
+		req.Header.Set("Authorization", "Bearer "+token)
+		rec := httptest.NewRecorder()
+		NewRegistry().HandleDispatch(rec, req, Deps{
+			DaemonToken: func() string { return token },
+			BeforeRun:   func(info RunInfo) map[string]int64 { seen = info.Harness; return nil },
+		})
+		return rec.Code, seen
+	}
+	cases := []struct{ name, harness, want string }{
+		{"absent defaults to claude-code", ``, "claude-code"},
+		{"null defaults to claude-code", `"harnessId": null,`, "claude-code"},
+		{"passed through", `"harnessId": "codex",`, "codex"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			code, seen := dispatch(`{` + tc.harness + `"runId": "r", "input": ` + minimalHarnessInput + `}`)
+			if code != 200 || seen != tc.want {
+				t.Fatalf("got status %d harness %q, want 200 %q", code, seen, tc.want)
+			}
+		})
+	}
+	if code, _ := dispatch(`{"harnessId": 1, "runId": "r", "input": ` + minimalHarnessInput + `}`); code != 400 {
+		t.Fatalf("a non-string harnessId returned %d, want 400", code)
+	}
+}
+
+// Every chat mode pill the composer offers reaches the daemon.
+func TestValidateHarnessInputAcceptsEveryChatMode(t *testing.T) {
+	for _, mode := range []string{"default", "plan", "web-search", "deep-research", "gen-image"} {
+		input := `{
+			"threadId": "t1",
+			"userMessage": {"role": "user"},
+			"harness": {},
+			"workspace": {"cwd": null},
+			"models": {"thinking": {"id": "m", "title": "M", "credentialId": "c"}},
+			"mcp": {"url": "https://example.com/mcp", "headers": {}, "expiresAt": 123},
+			"mode": "` + mode + `",
+			"temperature": 0.5,
+			"toolApprovalLevel": "auto",
+			"user": {"id": "u", "email": "u@example.com"},
+			"organizationId": "org",
+			"agent": {"id": "a"}
+		}`
+		if reason := ValidateHarnessInput(json.RawMessage(input)); reason != "" {
+			t.Fatalf("mode %q rejected: %s", mode, reason)
+		}
 	}
 }
 
@@ -126,8 +183,8 @@ func TestValidateHarnessInputAcceptsRepolessRepoCwd(t *testing.T) {
 	if reason := ValidateHarnessInput(frame(`{"cwd": "/repo", "branch": "b"}`)); reason != "" {
 		t.Fatalf("repo-less /repo workspace rejected: %s", reason)
 	}
-	if reason := ValidateHarnessInput(frame(`{"cwd": "/repo", "branch": "b", "repo": {"owner": "o"}}`)); reason == "" {
-		t.Fatal("partial repo must be rejected")
+	if reason := ValidateHarnessInput(frame(`{"cwd": "/repo", "branch": "b", "repo": {"owner": "o"}}`)); reason != "" {
+		t.Fatalf("unused workspace metadata must not affect dispatch: %s", reason)
 	}
 	if reason := ValidateHarnessInput(frame(`{"cwd": "/repo"}`)); reason == "" {
 		t.Fatal("missing branch must be rejected")
@@ -302,6 +359,9 @@ func TestTombstoneMarksOnlyAskedForCancels(t *testing.T) {
 	const token = "tkn"
 	reg := NewRegistry()
 	entry, _ := claimForTest(reg, "run-1", func() {})
+	// Simulates the harness having already exited by the time CancelAll waits
+	// on it, so the test doesn't pay cancelAllWait's real timeout.
+	close(entry.done)
 
 	// Shutdown (`CancelAll`) and a dropped connection leave no tombstone: the
 	// run is continuable, so it must NOT be reported as cancelled.
@@ -328,6 +388,43 @@ func TestTombstoneMarksOnlyAskedForCancels(t *testing.T) {
 	// Scoped to the run it named — a sibling run on the same pod is untouched.
 	if reg.tombstoned("run-2") {
 		t.Fatal("a cancel must not tombstone another run")
+	}
+}
+
+// CancelAll's caller (the shutdown publish) needs the harness's writes to have
+// actually stopped, not merely asked to stop — cancelling a context only
+// requests that, the process group takes real time to die. Without waiting on
+// `done`, CancelAll returned the instant it fired the kill signal and the
+// publish could start committing the tree while the CLI was still writing to
+// it.
+func TestCancelAllWaitsForRunsToActuallyExit(t *testing.T) {
+	restore := cancelAllWait
+	cancelAllWait = 200 * time.Millisecond
+	defer func() { cancelAllWait = restore }()
+
+	reg := NewRegistry()
+	claimForTest(reg, "run-1", func() {})
+	// Nobody ever closes the entry's `done` here — simulates a harness process
+	// that does not reap within the shutdown budget.
+	started := time.Now()
+	reg.CancelAll()
+	if elapsed := time.Since(started); elapsed < cancelAllWait {
+		t.Fatalf("CancelAll returned after %s, before its own wait budget of %s — "+
+			"it isn't actually waiting for the run to exit", elapsed, cancelAllWait)
+	}
+
+	// A run that DOES exit in time is not held past its own completion.
+	reg2 := NewRegistry()
+	entry2, _ := claimForTest(reg2, "run-2", func() {})
+	go func() {
+		time.Sleep(10 * time.Millisecond)
+		close(entry2.done)
+	}()
+	started = time.Now()
+	reg2.CancelAll()
+	if elapsed := time.Since(started); elapsed >= cancelAllWait {
+		t.Fatalf("CancelAll waited the full budget (%s) for a run that exited "+
+			"promptly", elapsed)
 	}
 }
 

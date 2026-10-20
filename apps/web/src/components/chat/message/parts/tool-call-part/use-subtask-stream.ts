@@ -58,6 +58,9 @@ export function useSubtaskStream(args: {
   const [messages, setMessages] = useState<UIMessage[]>([]);
   const [streaming, setStreaming] = useState(false);
 
+  // oxlint-disable react/set-state-in-effect
+  // The setState calls here ARE the stream's output, not a copy of a prop, so
+  // `react/set-state-in-effect` has nothing to derive them from during render.
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- an SSE subscription is a mount/enable-scoped side effect; a ref-bound effect is the natural fit (mirrors useTopSentinel in chat/index.tsx).
   useEffect(() => {
     if (!enabled || !jobId || !threadId) return;
@@ -92,6 +95,7 @@ export function useSubtaskStream(args: {
     })();
     return () => abort.abort();
   }, [enabled, jobId, threadId, orgSlug]);
+  // oxlint-enable react/set-state-in-effect
 
   return { messages, streaming };
 }

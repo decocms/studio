@@ -25,7 +25,7 @@ interface UseAutoInstallGitHubResult {
   retry: () => void;
 }
 
-const GITHUB_APP_ID = "deco/mcp-github";
+const GITHUB_APP_ID = "deco/github-mcp";
 
 export function useAutoInstallGitHub(opts: {
   enabled: boolean;

@@ -12,19 +12,27 @@
  */
 
 import type { ColumnType } from "kysely";
+import type { SprintState } from "@decocms/shared/sprints";
 import type { OAuthConfig } from "../tools/connection/schema";
 import type { TaskBoardActivityAction } from "../tools/task-board/schema";
 import type { ChatMessage } from "../api/routes/decopilot/types";
 import type { ProviderId, ThreadStatus } from "@decocms/shared/sdk";
 import type { NotificationType } from "@decocms/shared/notification-types";
 import type {
+  ProjectFolder,
+  SidebarPreferences,
+} from "@decocms/shared/project-sidebar";
+import type {
   OrgFlags,
+  SubmoduleCredential,
   UserModelPreferences,
 } from "@decocms/shared/organization/schema";
 import type { OrgNoticeSeverity } from "@decocms/shared/organization/notice";
 import type { ThreadMetadata } from "@decocms/shared/entities";
-import type { ReviewerKind } from "@decocms/shared/task-board";
-import type { PrivateRegistryDatabase } from "./registry/types";
+import type {
+  ReviewerKind,
+  TaskCommentAudience,
+} from "@decocms/shared/task-board";
 
 export type {
   OrgSsoConfigPublic,
@@ -142,11 +150,6 @@ export interface SidebarItem {
   icon: string;
 }
 
-export interface RegistryConfig {
-  registries: Record<string, { enabled: boolean }>;
-  blockedMcps: string[];
-}
-
 export interface SimpleModeModelSlot {
   keyId: string;
   modelId: string;
@@ -173,35 +176,64 @@ export interface UserModelPreferencesTable {
   updated_at: ColumnType<Date, Date | string, Date | string>;
 }
 
+/** An org's sidebar folders, one JSON document — see migration 230. */
+export interface OrgProjectFoldersTable {
+  organization_id: string;
+  folders: JsonObject<ProjectFolder[]>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+/** One member's pins and hides in one org — see migration 230. */
+export interface UserSidebarPreferencesTable {
+  user_id: string;
+  organization_id: string;
+  preferences: JsonObject<SidebarPreferences>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
 export interface DefaultHomeAgentsConfig {
   ids: string[];
 }
 
 export interface OrganizationSettingsTable {
   organizationId: string;
+  voice_provider: string | null;
+  voice_model: string | null;
   sidebar_items: JsonArray<SidebarItem[]> | null;
-  enabled_plugins: JsonArray<string[]> | null;
-  registry_config: JsonObject<RegistryConfig> | null;
+  // Connection ids a coding-agent run must not mount, even with
+  // `coding_agent_org_mcps` on. See migration 212.
+  coding_agent_mcp_excluded: JsonArray<string[]> | null;
   simple_mode: JsonObject<SimpleModeConfig> | null;
   default_home_agents: JsonObject<DefaultHomeAgentsConfig> | null;
   // Boolean toggles bag — the flag set lives in OrgFlagsSchema
   // (@decocms/shared/organization/schema); updates shallow-merge.
   flags: JsonObject<OrgFlags> | null;
-  // Virtual MCP id the org lands on (`/$org`) instead of the Super Agent.
+  // Per-host PATs every sandbox in the org installs in its git config.
+  submodule_credentials: JsonArray<SubmoduleCredential[]> | null;
   createdAt: ColumnType<Date, Date | string, never>;
   updatedAt: ColumnType<Date, Date | string, Date | string>;
 }
 
 export interface OrganizationSettings {
   organizationId: string;
+  voice_provider: string | null;
+  voice_model: string | null;
   sidebar_items: SidebarItem[] | null;
-  enabled_plugins: string[] | null;
-  registry_config: RegistryConfig | null;
+  coding_agent_mcp_excluded: string[] | null;
   simple_mode: SimpleModeConfig | null;
   default_home_agents: DefaultHomeAgentsConfig | null;
   flags: OrgFlags | null;
+  submodule_credentials: SubmoduleCredential[] | null;
   createdAt: Date | string;
   updatedAt: Date | string;
+}
+
+/** A `url_slug` a connection used to have, kept so old links resolve. */
+export interface ConnectionSlugAliasTable {
+  organization_id: string;
+  slug: string;
+  connection_id: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
 }
 
 /**
@@ -219,6 +251,7 @@ export interface MCPConnectionTable {
   app_name: string | null;
   app_id: string | null;
   slug: string | null;
+  url_slug: string | null; // Unique per org; names the row in Studio URLs
 
   // Connection details
   connection_type: "HTTP" | "SSE" | "Websocket" | "STDIO" | "VIRTUAL";
@@ -237,10 +270,34 @@ export interface MCPConnectionTable {
   metadata: JsonObject<Record<string, unknown>> | null;
   bindings: JsonArray<string[]> | null; // Detected bindings (CHAT, EMAIL, etc.)
 
+  /**
+   * The repository a VIRTUAL connection (an agent) works in — migration 205.
+   * Null for every other connection type, and for an agent with no repository.
+   *
+   * Preferred over `metadata.repository`, which is still written and read as
+   * the fallback until the expand completes. A GitLab project in subgroups
+   * only fits here: the JSON's `owner`/`name` pair cannot carry a namespace.
+   */
+  repository_id: string | null;
+
   status: "active" | "inactive" | "error";
   pinned: boolean;
   created_at: ColumnType<Date, Date | string, never>;
   updated_at: ColumnType<Date, Date | string, Date | string>;
+}
+
+/**
+ * A repository checked out into a thread's run, beyond the agent's own.
+ *
+ * `TASK_ADD_REPO` appends here so one run can hold several checkouts. The
+ * primary key is what makes a concurrent double-add a no-op — the reason this
+ * is a table and not the `metadata.additionalRepositories` array it replaces.
+ */
+export interface ThreadRepositoryTable {
+  thread_id: string;
+  organization_id: string;
+  repository_id: string;
+  added_at: ColumnType<Date, Date | string | undefined, never>;
 }
 
 // MCPConnection runtime type is now ConnectionEntity from "../tools/connection/schema"
@@ -457,7 +514,8 @@ export interface OAuthPkceStateTable {
   created_at: ColumnType<Date, Date | string, never>;
 }
 
-/** A user's linked Claude subscription token (migration 162). */
+/** A user's linked Claude subscription token (migration 162), and the same
+ *  shape for a linked GitHub Copilot token (migration 250). */
 export interface ClaudeSubscriptionTable {
   user_id: string;
   encrypted_access_token: string;
@@ -710,6 +768,14 @@ export interface BetterAuthOrganizationTable {
   createdAt: ColumnType<Date, string, string>;
 }
 
+/** A member's linked plan shared with their org (migration 251). */
+export interface OrgSharedPlanTable {
+  organization_id: string;
+  provider_id: string;
+  user_id: string;
+  created_at: ColumnType<Date, Date | string, never>;
+}
+
 /**
  * Better Auth member table (organization membership)
  */
@@ -947,7 +1013,7 @@ export interface ThreadTable {
   >;
   /** Virtual MCP (agent) this thread was initiated with */
   virtual_mcp_id: string;
-  /** Git branch this thread is pinned to (GitHub-linked virtualmcps only) */
+  /** Git branch this thread is pinned to (repository-linked projects only) */
   branch: string | null;
   /** Dormant legacy column retained in the physical schema; runtime code ignores it. */
   sandbox_provider_kind: string | null;
@@ -1025,7 +1091,7 @@ export interface Thread {
   last_progress_at: string | null;
   /** Virtual MCP (agent) this thread was initiated with */
   virtual_mcp_id: string;
-  /** Git branch this thread is pinned to (GitHub-linked virtualmcps only) */
+  /** Git branch this thread is pinned to (repository-linked projects only) */
   branch: string | null;
   /** Harness id pinned on first message (e.g. "claude-code", "codex", "decopilot") */
   harness_id: string | null;
@@ -1194,7 +1260,7 @@ export interface ThreadMessagePartTable {
 // Member Tags Table Definitions
 // ============================================================================
 
-/** Per-org subsidy gateway key (migration 159) — vault-encrypted; see
+/** Per-org subsidy gateway key (migration 160) — vault-encrypted; see
  *  storage/subsidized-gateway-keys.ts. */
 export interface SubsidizedGatewayKeyTable {
   organization_id: string;
@@ -1202,7 +1268,7 @@ export interface SubsidizedGatewayKeyTable {
   created_at: ColumnType<Date, Date | string | undefined, never>;
 }
 
-/** Quota ledger for reports-pushed task executions (migration 158) — one
+/** Quota ledger for reports-pushed task executions (migration 160) — one
  *  claim per task, bucketed by period_key (see billing/task-quota.ts). */
 /** `held` = charged (counts toward the period); `released` = refunded
  *  because the run produced nothing. A union, so a typo in a comparison is a
@@ -1320,24 +1386,6 @@ export interface MemberTag {
 }
 
 // ============================================================================
-// Virtual MCP Plugin Config Table Definition
-// ============================================================================
-
-/**
- * Virtual MCP plugin config table definition
- * Per-virtual-MCP plugin configuration with optional MCP connection binding
- */
-export interface VirtualMcpPluginConfigTable {
-  id: string;
-  virtual_mcp_id: string;
-  plugin_id: string;
-  connection_id: string | null;
-  settings: JsonObject<Record<string, unknown>> | null;
-  created_at: ColumnType<Date, Date | string, never>;
-  updated_at: ColumnType<Date, Date | string, Date | string>;
-}
-
-// ============================================================================
 // Automations Table Definitions
 // ============================================================================
 
@@ -1360,6 +1408,9 @@ export interface AutomationTable {
   // Parent agent-loop step cap (AI SDK stopWhen). null = PARENT_STEP_LIMIT.
   max_agent_steps: number | null;
   virtual_mcp_id: string;
+  /** Set on a built-in automation Studio seeds in every org (see
+   *  `automations/builtin.ts`); null on the ones people create. */
+  system_key: ColumnType<string | null, string | null | undefined, never>;
   created_at: ColumnType<Date, Date | string, never>;
   updated_at: ColumnType<Date, Date | string, Date | string>;
 }
@@ -1379,6 +1430,7 @@ export interface Automation {
   temperature: number;
   max_agent_steps: number | null;
   virtual_mcp_id: string;
+  system_key: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -1408,7 +1460,24 @@ export interface AutomationTriggerTable {
   // For webhook triggers: Better Auth apikey.id used to authenticate POSTs.
   // Null for cron/event triggers.
   api_key_id: string | null;
+  // For board_column_transition triggers: the column a card entered; for
+  // jira_transition triggers: the Jira status an issue entered. Both say
+  // which moves count by where it came from. Null / '{}' for the others.
+  column_key: string | null;
+  from_kind: BoardTransitionFromKind | null;
+  from_statuses: ColumnType<string[], string[] | undefined, string[]>;
   created_at: ColumnType<Date, Date | string, never>;
+}
+
+/** Which moves into a column a `board_column_transition` trigger answers, by
+ *  where the card came from. */
+export type BoardTransitionFromKind = "any" | "earlier" | "later" | "statuses";
+
+/** One fire claimed per (trigger, event) — see migration 241. */
+export interface AutomationTriggerFireTable {
+  trigger_id: string;
+  event_key: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
 }
 
 /**
@@ -1417,7 +1486,7 @@ export interface AutomationTriggerTable {
 export interface AutomationTrigger {
   id: string;
   automation_id: string;
-  type: "cron" | "event" | "webhook";
+  type: AutomationTriggerType;
   cron_expression: string | null;
   connection_id: string | null;
   event_type: string | null;
@@ -1425,8 +1494,22 @@ export interface AutomationTrigger {
   last_run_at: string | null;
   next_run_at: string | null;
   api_key_id: string | null;
+  column_key: string | null;
+  from_kind: BoardTransitionFromKind | null;
+  from_statuses: string[];
   created_at: string;
 }
+
+export type AutomationTriggerType =
+  | "cron"
+  | "event"
+  | "webhook"
+  | "board_column_transition"
+  | "board_pr_ready"
+  | "linked_chat_run"
+  | "board_pr_merged"
+  | "chat_pr_opened"
+  | "jira_transition";
 
 /**
  * Trigger callback token table - stores hashed tokens for external MCP callbacks
@@ -1529,9 +1612,22 @@ export interface OrgSiteTable {
   // Globally-unique site slug = object-key prefix namespace in the shared
   // tenant bucket. Primary key enforces global uniqueness across orgs.
   slug: string;
-  organization_id: string;
+  // NULL = tombstone: the org was deleted and the slug stays reserved forever.
+  organization_id: ColumnType<string | null, string, string | null>;
   // Provenance of the claim: 'deco-import' (migrated) or 'manual'.
   source: ColumnType<string, string | undefined, string>;
+  // The project (VIRTUAL connection) this slug is the site of; one per project.
+  project_id: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
+  // First time the slug was linked to a project; never cleared.
+  linked_at: ColumnType<
+    Date | null,
+    Date | string | null | undefined,
+    Date | string | null
+  >;
   created_by: string;
   created_at: ColumnType<Date, Date | string | undefined, never>;
   updated_by: string;
@@ -1540,8 +1636,13 @@ export interface OrgSiteTable {
 
 export interface OrgSite {
   slug: string;
-  organizationId: string;
+  /** Null for a tombstone (its org was deleted): reserved, nobody can claim it. */
+  organizationId: string | null;
   source: string;
+  /** The project this slug is the site of, if linked. */
+  projectId: string | null;
+  /** When the slug was first linked to a project; set once, never cleared. */
+  linkedAt: string | null;
   createdBy: string;
   createdAt: string;
   updatedBy: string;
@@ -1599,8 +1700,13 @@ export interface OrganizationNotice {
 export interface OrgRepoSyncTable {
   id: ColumnType<string, string | undefined, never>;
   organization_id: string;
-  /** Repo-scoped `mcp-github` connection the sync mints tokens from. */
-  connection_id: string;
+  /** Repo-scoped `mcp-github` connection the sync mints tokens from; null
+   *  once the sync is backed by a first-class `repository_id` instead. */
+  connection_id: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
   repo_owner: string;
   repo_name: string;
   ref: ColumnType<string, string | undefined, string>;
@@ -1611,6 +1717,12 @@ export interface OrgRepoSyncTable {
     string
   >;
   volume: string;
+  /** First-class repository (migration 204); null until backfilled/linked. */
+  repository_id: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
   enabled: ColumnType<boolean, boolean | undefined, boolean>;
   last_synced_at: ColumnType<Date | null, never, Date | string | null>;
   last_sync_error: ColumnType<string | null, never, string | null>;
@@ -1622,7 +1734,8 @@ export interface OrgRepoSyncTable {
 export interface OrgRepoSync {
   id: string;
   organizationId: string;
-  connectionId: string;
+  connectionId: string | null;
+  repositoryId: string | null;
   repoOwner: string;
   repoName: string;
   ref: string;
@@ -1641,8 +1754,9 @@ export type TaskBoardItemStatus =
   | "todo"
   | "in_progress"
   | "in_review"
-  | "approved"
-  | "merged"
+  | "qa"
+  | "customer_approval"
+  | "ready_for_deployment"
   | "post_deploy_validation"
   | "done"
   | "archived";
@@ -1679,6 +1793,25 @@ export interface TaskBoardItemTable {
   assignee_id: string | null;
   assigned_by: string | null;
   repo: string | null;
+  /** First-class repository (migration 204); null until backfilled/linked. */
+  repository_id: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
+  /** The project the card belongs to (`connections.id`, migration 249). */
+  virtual_mcp_id: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
+  /** The sprint the card is planned into (`task_board_sprints.id`); null =
+   *  backlog. */
+  sprint_id: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
   due_date: ColumnType<
     Date | null,
     Date | string | null | undefined,
@@ -1693,6 +1826,14 @@ export interface TaskBoardItemTable {
   source: ColumnType<"jira" | null, "jira" | null | undefined, "jira" | null>;
   external_url: ColumnType<
     string | null,
+    string | null | undefined,
+    string | null
+  >;
+  /** Paths the task's work created or edited (`["/cliente-vip"]`), joined onto
+   *  a PR's deploy-preview origin by the card. Reported by the run through
+   *  `TASK_BOARD_ITEM_UPDATE`; null for a task that never named one. */
+  preview_routes: ColumnType<
+    string[] | null,
     string | null | undefined,
     string | null
   >;
@@ -1762,32 +1903,35 @@ export interface TaskBoardItemTable {
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
 }
 
+/** A sprint the board owns (migration 236). Days are `date` columns, read
+ *  back as `YYYY-MM-DD` text by the storage adapter. */
+export interface TaskBoardSprintTable {
+  id: string;
+  organization_id: string;
+  name: string;
+  state: ColumnType<SprintState, SprintState | undefined, SprintState>;
+  start_date: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
+  end_date: ColumnType<string | null, string | null | undefined, string | null>;
+  created_by: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
 /**
  * Instructions appended to the system prompt of every agent run dispatched
  * from a board card (migration 197). `column_key` null is the org-wide row;
  * a non-null key scopes the text to one column.
- *
- * Distinct from `TaskBoardColumnAutomationTable` below: that one's `prompt` is
- * the opening USER instruction of the run a column rule fires, this one is
- * standing context every run carries.
  */
 export interface TaskBoardPromptTable {
   id: string;
   organization_id: string;
   column_key: string | null;
   prompt: string;
-  created_at: ColumnType<Date, Date | string | undefined, Date | string>;
-  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
-}
-
-/** A rule the board runs when a card lands in a column (migration 189). The
- *  row's existence is the switch; `prompt` null means the Super Agent's own
- *  instruction. */
-export interface TaskBoardColumnAutomationTable {
-  id: string;
-  organization_id: string;
-  column_key: string;
-  prompt: string | null;
+  skills: ColumnType<string[], string[] | undefined, string[]>;
   created_at: ColumnType<Date, Date | string | undefined, Date | string>;
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
 }
@@ -1821,6 +1965,8 @@ export interface TaskBoardItemPrTable {
   /** Source GitHub MCP connection, when the PR was opened via MCP. Null for
    *  bash-opened PRs — the live fetcher falls back to the org's shared conn. */
   connection_id: string | null;
+  /** First-class repository (migration 204); null until backfilled/linked. */
+  repository_id: string | null;
   created_at: ColumnType<Date, Date | string | undefined, never>;
 }
 
@@ -1834,6 +1980,12 @@ export interface TaskBoardCommentTable {
   author_id: string;
   /** The agent run that wrote it (migration 187); null for a human's comment. */
   thread_id: string | null;
+  /** Migration 234. */
+  audience: ColumnType<
+    TaskCommentAudience,
+    TaskCommentAudience | undefined,
+    TaskCommentAudience
+  >;
   body: string;
   resolved: ColumnType<boolean, boolean | undefined, boolean>;
   created_at: ColumnType<Date, Date | string | undefined, never>;
@@ -1870,13 +2022,23 @@ export interface TaskBoardItemTagRef {
   createdAt: string;
 }
 
-/** A PR linked to a task — identity only. Title/state are fetched live. */
+/**
+ * A change request linked to a task — identity only. Title/state are fetched
+ * live through a `ChangeRequestClient`.
+ *
+ * `url` is the identity that matters: it names the provider, the host and the
+ * repository path, which is the only shape a GitLab project nested in
+ * subgroups fits. `repoOwner`/`repoName` are the pre-provider split, kept for
+ * the legacy readers; `repositoryId` is the credential, and `connectionId` the
+ * legacy one it replaces.
+ */
 export interface TaskBoardItemPrRef {
   url: string;
   number: number;
   repoOwner: string;
   repoName: string;
   connectionId: string | null;
+  repositoryId: string | null;
   createdAt: string;
 }
 
@@ -1907,7 +2069,7 @@ export interface TaskBoardItemThreadRef {
   title: string | null;
   /** Latest assistant text, for the card's one-line activity preview. */
   lastMessage: string | null;
-  /** True when a repo is bound to the thread (`metadata.githubRepo`) — the
+  /** True when a repo is bound to the thread (`metadata.repository`) — the
    *  card opens the live dev Preview instead of staying on the board. */
   hasPreview: boolean;
   /** `threads.failure_kind` — null unless `status` is `failed`. Some kinds mean
@@ -1953,6 +2115,19 @@ export interface TaskBoardItem {
   /** `owner/name` of the repo (site) this task pertains to. Nullable: tasks
    *  created org-wide (no site context) carry none. */
   repo: string | null;
+  /**
+   * The first-class repository this task was written against, when its writer
+   * knew it. Preferred over `repo` when binding a run's checkout: a name can
+   * match two rows in an org that mirrors a repository across hosts, an id
+   * cannot. Null for a card that names only a name, or none at all.
+   */
+  repositoryId: string | null;
+  /** The project this card belongs to. Attribution only: a run still checks
+   *  out `repo`/`repositoryId`. Null leaves the card attributed by its
+   *  repository and runs, as before migration 249. */
+  virtualMcpId: string | null;
+  /** The sprint this card is planned into; null = backlog. */
+  sprintId: string | null;
   dueDate: string | null;
   /** Manual drag-to-reorder position within a lane, ascending. */
   sortOrder: number;
@@ -1961,6 +2136,8 @@ export interface TaskBoardItem {
   /** Link to that issue in the tracker, for a human to open. Never part of the
    *  description, which is quoted into agent prompts verbatim. */
   externalUrl: string | null;
+  /** Paths this task's work created or edited; empty when it named none. */
+  previewRoutes: string[];
   /** `jira` for the hidden anchor of a Jira-triggered run; null for a card the
    *  board shows. */
   source: "jira" | null;
@@ -1979,6 +2156,8 @@ export interface TaskBoardItem {
   /** Each reviewer's standing verdict in the current review cycle, in
    *  `REVIEWER_KINDS` order. Reviewers that have not decided are absent. */
   reviewVerdicts: TaskBoardItemReviewVerdict[];
+  /** When the card entered its current status; null when the log cannot say. */
+  statusSince: string | null;
   createdBy: string;
   createdAt: string;
   updatedBy: string;
@@ -2015,62 +2194,6 @@ export interface TaskBoardActivity {
   /** Event payload — e.g. { from, to } for a status/assignee change. */
   data: Record<string, unknown>;
   occurredAt: string;
-}
-
-// ============================================================================
-// Brand Context Table Definition
-// ============================================================================
-
-export interface BrandContextTable {
-  id: string;
-  organization_id: string;
-  name: string;
-  domain: string;
-  overview: string;
-  logo: string | null;
-  favicon: string | null;
-  og_image: string | null;
-  fonts: string | null;
-  colors: string | null;
-  images: string | null;
-  metadata: string | null;
-  archived_at: ColumnType<
-    Date | null,
-    Date | string | null,
-    Date | string | null
-  >;
-  is_default: boolean;
-  created_at: ColumnType<Date, Date | string, never>;
-  updated_at: ColumnType<Date, Date | string, Date | string>;
-}
-
-export interface BrandContext {
-  id: string;
-  organizationId: string;
-  name: string;
-  domain: string;
-  overview: string;
-  logo: string | null;
-  favicon: string | null;
-  ogImage: string | null;
-  fonts: {
-    heading?: string;
-    body?: string;
-    code?: string;
-  } | null;
-  colors: {
-    primary?: string;
-    secondary?: string;
-    accent?: string;
-    background?: string;
-    foreground?: string;
-  } | null;
-  images: Record<string, unknown>[] | null;
-  metadata: Record<string, unknown> | null;
-  archivedAt: Date | string | null;
-  isDefault: boolean;
-  createdAt: Date | string;
-  updatedAt: Date | string;
 }
 
 /** Per-org Jira Cloud integration config. */
@@ -2116,17 +2239,6 @@ export interface TaskBoardItemJiraLinkTable {
   jira_issue_id: string;
   jira_issue_key: string;
   created_at: ColumnType<Date, Date | string | undefined, never>;
-}
-
-/** A rule the Jira integration runs when an issue enters a status (migration
- *  200). Row existence is the switch; `prompt` null is the agent's own
- *  instruction. */
-export interface OrgJiraColumnAutomationTable {
-  organization_id: string;
-  jira_status: string;
-  prompt: string | null;
-  created_at: ColumnType<Date, Date | string | undefined, Date | string>;
-  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
 }
 
 /** One row per Jira transition a run was dispatched for — the fence between
@@ -2182,13 +2294,167 @@ export interface NotificationTable {
   created_at: ColumnType<Date, Date | string | undefined, never>;
 }
 
-export interface Database extends PrivateRegistryDatabase {
+// ============================== Git providers ===============================
+
+export type GitProviderKindColumn = "github" | "gitlab" | "bitbucket";
+export type GitAuthKindColumn = "github_app" | "oauth" | "token" | "github_cli";
+export type GitAccountStatusColumn = "active" | "revoked";
+
+export interface GitProviderAccountTable {
+  /**
+   * The granted repositories of the installation, by id. Null is the whole
+   * installation; an empty list would grant nothing and is never written.
+   */
+  installation_repository_ids: ColumnType<
+    number[] | null,
+    string | null | undefined,
+    string | null
+  >;
+  installation_authorized_by: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
+  id: ColumnType<string, string | undefined, never>;
+  organization_id: string;
+  type: GitProviderKindColumn;
+  host: string;
+  auth_kind: GitAuthKindColumn;
+  external_account_id: string;
+  login: string;
+  avatar_url: string | null;
+  /** bigint: pg returns it as a string. */
+  installation_id: ColumnType<
+    string | number | null,
+    string | number | null | undefined,
+    string | number | null
+  >;
+  /** Legacy `mcp-github` connection whose grant a backfilled account borrows. */
+  credential_connection_id: string | null;
+  status: ColumnType<
+    GitAccountStatusColumn,
+    GitAccountStatusColumn | undefined,
+    GitAccountStatusColumn
+  >;
+  created_by: string | null;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+export interface GitProviderAccountCredentialTable {
+  account_id: string;
+  access_token: string; // Encrypted
+  refresh_token: string | null; // Encrypted
+  scope: string | null;
+  expires_at: ColumnType<
+    Date | null,
+    Date | string | null | undefined,
+    Date | string | null
+  >;
+  client_id: string | null;
+  client_secret: string | null; // Encrypted
+  token_endpoint: string | null;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+export interface GitProviderOAuthStateTable {
+  id: string;
+  organization_id: string;
+  user_id: string;
+  provider: GitProviderKindColumn;
+  host: string;
+  return_to: string;
+  expires_at: ColumnType<Date, Date | string, never>;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+}
+
+export interface RepositoryTable {
+  id: ColumnType<string, string | undefined, never>;
+  organization_id: string;
+  account_id: string | null;
+  provider: GitProviderKindColumn;
+  host: string;
+  path: string;
+  external_id: string | null;
+  default_branch: string | null;
+  web_url: string;
+  visibility: "public" | "private" | "internal" | null;
+  /** SandboxImage. NULL = the deployment default image. */
+  sandbox_image: string | null;
+  /** Repo-scoped `mcp-github` child whose token still clones this repo. */
+  legacy_connection_id: string | null;
+  created_by: string | null;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+/** A/B experiments — per-site metadata (the traffic-split block lives in the
+ *  site's decofile, not here). */
+export interface ExperimentVariant {
+  id: string;
+  weight: number;
+  role?: "control" | "treatment" | null;
+  /** One sentence, from EXPERIMENT_SUGGEST or typed by the operator: what
+   *  this arm specifically shows/does. Optional — manually-created rows
+   *  before this field existed have none. */
+  description?: string | null;
+}
+
+export interface ExperimentTable {
+  id: string;
+  organization_id: string;
+  /** Admin site slug the experiment belongs to. */
+  site: string;
+  /** Stable per-site key (also the decofile block key). */
+  key: string;
+  name: string;
+  /** draft | running | paused | ended. */
+  status: string;
+  goals: JsonObject<string[]>;
+  variants: JsonObject<ExperimentVariant[]>;
+  started_at: ColumnType<
+    Date | null,
+    Date | string | null,
+    Date | string | null
+  >;
+  ended_at: ColumnType<Date | null, Date | string | null, Date | string | null>;
+  /** The task board card the frontend implementation was delegated to, so the
+   *  tab can follow its pull request and deploy preview. NULL until delegated. */
+  task_board_item_id: string | null;
+  created_by: string;
+  created_at: ColumnType<Date, Date | string, never>;
+  updated_at: ColumnType<Date, Date | string, Date | string>;
+}
+
+export interface Experiment {
+  id: string;
+  organizationId: string;
+  site: string;
+  key: string;
+  name: string;
+  status: "draft" | "running" | "paused" | "ended";
+  goals: string[];
+  variants: ExperimentVariant[];
+  startedAt: string | null;
+  endedAt: string | null;
+  /** @see ExperimentTable.task_board_item_id */
+  taskBoardItemId: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Database {
   // Core tables (all within organization scope)
   users: UserTable; // System users
   user: BetterAuthUserTable; // Better Auth core table (singular)
   connections: MCPConnectionTable; // MCP connections (organization-scoped)
+  thread_repositories: ThreadRepositoryTable;
   organization_settings: OrganizationSettingsTable; // Organization-level configuration
   user_model_preferences: UserModelPreferencesTable; // Per-user chat tier → model overrides
+  org_project_folders: OrgProjectFoldersTable; // Org-wide sidebar folders
+  user_sidebar_preferences: UserSidebarPreferencesTable; // Per-user pins / hides
   api_keys: ApiKeyTable; // Better Auth API keys
 
   // OAuth tables (for MCP OAuth server)
@@ -2211,6 +2477,7 @@ export interface Database extends PrivateRegistryDatabase {
 
   // Connection aggregations (for VIRTUAL connections / agents)
   connection_aggregations: ConnectionAggregationTable;
+  connection_slug_aliases: ConnectionSlugAliasTable;
 
   threads: ThreadTable;
   thread_messages: ThreadMessageTable;
@@ -2221,13 +2488,12 @@ export interface Database extends PrivateRegistryDatabase {
   organization_tags: OrganizationTagTable;
   member_tags: MemberTagTable;
 
-  // Per-seat billing (dormant behind STUDIO_BILLING_ENFORCED)
+  // Plan billing
   organization_billing: OrganizationBillingTable;
   task_quota_claims: TaskQuotaClaimTable;
   subsidized_gateway_keys: SubsidizedGatewayKeyTable;
 
   // Virtual MCP plugin configs
-  virtual_mcp_plugin_configs: VirtualMcpPluginConfigTable;
 
   // AI Provider keys tables
   ai_provider_keys: AIProviderKeyTable;
@@ -2243,11 +2509,20 @@ export interface Database extends PrivateRegistryDatabase {
 
   // OAuth PKCE state table (short-lived, server-side verifier storage)
   oauth_pkce_states: OAuthPkceStateTable;
+  codex_subscriptions: {
+    user_id: string;
+    encrypted_auth: string;
+    auth_hash: string;
+    created_at: Date;
+  };
   claude_subscriptions: ClaudeSubscriptionTable;
+  github_copilot_subscriptions: ClaudeSubscriptionTable;
+  org_shared_plans: OrgSharedPlanTable;
 
   // Automations tables
   automations: AutomationTable;
   automation_triggers: AutomationTriggerTable;
+  automation_trigger_fires: AutomationTriggerFireTable;
 
   // Trigger callback tokens (for external MCP → Studio callbacks)
   trigger_callback_tokens: TriggerCallbackTokenTable;
@@ -2259,9 +2534,6 @@ export interface Database extends PrivateRegistryDatabase {
   // Generic org-scoped KV store
   kv: KVTable;
 
-  // Brand context (org-scoped company profile)
-  brand_context: BrandContextTable;
-
   // Organization domain claims (for auto-join / request-to-join)
   organization_domains: OrganizationDomainTable;
 
@@ -2270,12 +2542,24 @@ export interface Database extends PrivateRegistryDatabase {
 
   // Asset tenancy: org ownership of globally-unique site slugs
   org_sites: OrgSiteTable;
+  experiments: ExperimentTable;
 
   // Deployment-admin billing warning / block pinned on an org
   organization_notices: OrganizationNoticeTable;
   org_repo_sync: OrgRepoSyncTable;
+  git_provider_accounts: GitProviderAccountTable;
+  git_provider_account_credentials: GitProviderAccountCredentialTable;
+  git_provider_oauth_states: GitProviderOAuthStateTable;
+  github_connect_flows: {
+    id: string;
+    organization_id: string;
+    user_id: string;
+    encrypted_access_token: string;
+    expires_at: ColumnType<Date, Date, never>;
+  };
+  repositories: RepositoryTable;
   task_board_items: TaskBoardItemTable;
-  task_board_column_automations: TaskBoardColumnAutomationTable;
+  task_board_sprints: TaskBoardSprintTable;
   task_board_prompts: TaskBoardPromptTable;
   task_board_item_threads: TaskBoardItemThreadTable;
   task_board_activity: TaskBoardActivityTable;
@@ -2288,7 +2572,6 @@ export interface Database extends PrivateRegistryDatabase {
   // Jira integration
   org_jira_integrations: OrgJiraIntegrationTable;
   task_board_item_jira_links: TaskBoardItemJiraLinkTable;
-  org_jira_column_automations: OrgJiraColumnAutomationTable;
   jira_trigger_claims: JiraTriggerClaimTable;
 
   // Follow/inbox for the task board

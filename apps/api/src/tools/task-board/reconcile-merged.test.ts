@@ -5,14 +5,14 @@
  * status write and the timeline entry, none of which need Postgres.
  *
  * The live PR states arrive from the sweeper's own throttled PR read, so there
- * is no GitHub reader to stub here (see `advanceToDoneIfMerged`'s doc comment).
+ * is no GitHub reader to stub here (see `shipIfMerged`'s doc comment).
  */
 
 import { describe, expect, it } from "bun:test";
 import type { StudioContext } from "@/core/studio-context";
 import type { TaskBoardItem } from "@/storage/types";
 import type { PrLanding } from "./archive-merged";
-import { advanceToDoneIfMerged } from "./reconcile-merged";
+import { shipIfMerged } from "./reconcile-merged";
 
 const REPO = { repoOwner: "acme", repoName: "storefront" };
 const merged: PrLanding = { ...REPO, state: "closed", merged: true };
@@ -37,18 +37,15 @@ const item = (over: Partial<TaskBoardItem> = {}): TaskBoardItem =>
   }) as TaskBoardItem;
 
 function fakeCtx(
-  over: { humanRejectedDone?: boolean; deliveryLanes?: boolean } = {},
+  over: { humanRejectedDone?: boolean; builtinActive?: boolean | null } = {},
 ) {
   const updates: { status: string }[] = [];
   const activity: Record<string, unknown>[] = [];
   const ctx = {
     storage: {
-      organizationSettings: {
-        get: async () => ({
-          flags: {
-            delivery_lanes_enabled: over.deliveryLanes ?? false,
-          },
-        }),
+      automations: {
+        builtinActive: async () =>
+          over.builtinActive === undefined ? true : over.builtinActive,
       },
       taskBoard: {
         hasHumanRejectedDone: async () => over.humanRejectedDone ?? false,
@@ -58,7 +55,7 @@ function fakeCtx(
           patch: { status: string },
         ) => {
           updates.push(patch);
-          return item({ status: "done" });
+          return item({ status: "post_deploy_validation" });
         },
         recordActivity: async (entry: Record<string, unknown>) => {
           activity.push(entry);
@@ -69,36 +66,28 @@ function fakeCtx(
   return { ctx, updates, activity };
 }
 
-describe("advanceToDoneIfMerged", () => {
-  it("moves a card whose PR landed outside Studio to Done, and says why", async () => {
+describe("shipIfMerged", () => {
+  it("moves a card whose PR landed outside Studio to Post-deploy Validation, and says why", async () => {
     const { ctx, updates, activity } = fakeCtx();
-    expect(await advanceToDoneIfMerged(ctx, item(), [merged])).toBe(true);
-    expect(updates).toEqual([{ status: "done" }]);
+    expect(await shipIfMerged(ctx, item(), [merged])).toBe(true);
+    expect(updates).toEqual([{ status: "post_deploy_validation" }]);
     expect(activity).toEqual([
       {
         taskBoardItemId: "item-1",
         action: "status_changed",
         actorId: null,
-        data: { from: "in_review", to: "done", reason: "pr_merged" },
+        data: {
+          from: "in_review",
+          to: "post_deploy_validation",
+          reason: "pr_merged",
+        },
       },
     ]);
   });
 
-  // With the lanes on a merged PR is DEPLOYED, not finished.
-  it("lands on Merged when the org runs the delivery lanes", async () => {
-    const { ctx, updates, activity } = fakeCtx({ deliveryLanes: true });
-    expect(await advanceToDoneIfMerged(ctx, item(), [merged])).toBe(true);
-    expect(updates).toEqual([{ status: "merged" }]);
-    expect(activity[0]).toMatchObject({
-      data: { from: "in_review", to: "merged", reason: "pr_merged" },
-    });
-  });
-
-  // The org-owned board needs the same discriminator a manual move sets (#6725).
-
   it("leaves an unmerged card alone", async () => {
     const { ctx, updates } = fakeCtx();
-    expect(await advanceToDoneIfMerged(ctx, item(), [openPr])).toBe(false);
+    expect(await shipIfMerged(ctx, item(), [openPr])).toBe(false);
     expect(updates).toEqual([]);
   });
 
@@ -106,46 +95,40 @@ describe("advanceToDoneIfMerged", () => {
   // shipped. This is also what an unregistered/timed-out throttled read yields.
   it("defers to the next sweep when GitHub does not answer", async () => {
     const { ctx } = fakeCtx();
-    expect(await advanceToDoneIfMerged(ctx, item(), [unreadable])).toBe(false);
+    expect(await shipIfMerged(ctx, item(), [unreadable])).toBe(false);
   });
 
   it("needs every repo the card touches to have landed", async () => {
     const { ctx } = fakeCtx();
-    expect(
-      await advanceToDoneIfMerged(ctx, item(), [merged, otherRepoOpen]),
-    ).toBe(false);
+    expect(await shipIfMerged(ctx, item(), [merged, otherRepoOpen])).toBe(
+      false,
+    );
   });
 
   // Inverts the old every-PR rule, which stranded a bounced card in review.
   it("moves past a PR the bounce abandoned in the same repo", async () => {
     const { ctx, updates } = fakeCtx();
-    expect(await advanceToDoneIfMerged(ctx, item(), [abandoned, merged])).toBe(
-      true,
-    );
-    expect(updates).toEqual([{ status: "done" }]);
+    expect(await shipIfMerged(ctx, item(), [abandoned, merged])).toBe(true);
+    expect(updates).toEqual([{ status: "post_deploy_validation" }]);
   });
 
   it("does nothing for a card with no linked PR", async () => {
     const { ctx } = fakeCtx();
-    expect(await advanceToDoneIfMerged(ctx, item(), [])).toBe(false);
+    expect(await shipIfMerged(ctx, item(), [])).toBe(false);
   });
 
   it("only ever moves a card that is still in the review phase", async () => {
     const { ctx } = fakeCtx();
     expect(
-      await advanceToDoneIfMerged(ctx, item({ status: "in_progress" }), [
-        merged,
-      ]),
+      await shipIfMerged(ctx, item({ status: "in_progress" }), [merged]),
     ).toBe(false);
   });
 
-  // A card whose reviewer is still working reads In Progress since migration
-  // 189, and a PR merged out from under it must still catch the card up —
-  // gating on the lane alone would leave it behind forever.
+  // A cycle the previous release opened In Progress is still a review.
   it("moves an In Progress card whose review cycle is open", async () => {
     const { ctx, updates } = fakeCtx();
     expect(
-      await advanceToDoneIfMerged(
+      await shipIfMerged(
         ctx,
         item({
           status: "in_progress",
@@ -154,13 +137,25 @@ describe("advanceToDoneIfMerged", () => {
         [merged],
       ),
     ).toBe(true);
-    expect(updates).toEqual([{ status: "done" }]);
+    expect(updates).toEqual([{ status: "post_deploy_validation" }]);
   });
 
   // A person who pulled the card back out of Done outranks a merged PR.
   it("honors a human's rejection of Done", async () => {
     const { ctx, updates } = fakeCtx({ humanRejectedDone: true });
-    expect(await advanceToDoneIfMerged(ctx, item(), [merged])).toBe(false);
+    expect(await shipIfMerged(ctx, item(), [merged])).toBe(false);
     expect(updates).toEqual([]);
+  });
+
+  it("leaves the card where it is while the built-in is off", async () => {
+    const { ctx, updates } = fakeCtx({ builtinActive: false });
+    expect(await shipIfMerged(ctx, item(), [merged])).toBe(false);
+    expect(updates).toEqual([]);
+  });
+
+  it("ships for an org not seeded with the built-in yet", async () => {
+    const { ctx, updates } = fakeCtx({ builtinActive: null });
+    expect(await shipIfMerged(ctx, item(), [merged])).toBe(true);
+    expect(updates).toEqual([{ status: "post_deploy_validation" }]);
   });
 });

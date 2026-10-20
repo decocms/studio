@@ -4,7 +4,7 @@
  * Handles auto-seeding an admin user and "Local" organization
  * for the zero-ceremony local developer experience.
  *
- * Only runs when DECOCMS_LOCAL_MODE=true (set by CLI).
+ * Only runs when DECOCMS_LOCAL_MODE=true.
  */
 
 import { getDb, type StudioDatabase } from "@/database";
@@ -20,18 +20,18 @@ const LEGACY_LOCAL_EMAIL_DOMAIN = "localhost.mesh";
 /**
  * Self-heal stale JWKS keys left by a pre-fix local install.
  *
- * Before local mode persisted a stable secret (see settings/local-secret.ts),
+ * Older local runtimes did not persist a stable authentication secret, so
  * Better Auth minted a fresh random secret every process start and encrypted
  * the JWKS private key with it. On the next boot the now-different secret could
  * not decrypt that key — `GET /api/auth/get-session` 500s and the user is
- * trapped in an unbreakable login loop. Persisting the secret stops NEW installs
+ * trapped in an unbreakable login loop. Configuring a stable secret stops new installs
  * from ever reaching that state, but a DB seeded by a pre-fix version still
  * carries a JWKS row encrypted under a secret that no longer exists, so those
  * users stay stuck until the row is cleared.
  *
  * So on every local-mode boot, probe each JWKS row with the current secret and
  * drop any that no longer decrypt. Better Auth transparently regenerates a fresh
- * key (encrypted with the persisted secret) on the next sign, so `bunx decocms`
+ * key (encrypted with the configured secret) on the next sign, so local mode
  * self-recovers with no manual DB surgery. Local mode is loopback-only, so
  * discarding a signing key only invalidates local sessions the broken boot had
  * already invalidated anyway.

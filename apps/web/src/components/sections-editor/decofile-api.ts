@@ -14,6 +14,12 @@
 import { useQuery } from "@tanstack/react-query";
 import type { QueryClient } from "@tanstack/react-query";
 import { KEYS } from "@/lib/query-keys";
+import {
+  isMainSchemaChangedResponse,
+  MainSchemaChangedError,
+  mainSchemaHeaders,
+  resetMainSchemaAnswer,
+} from "@/hooks/main-schema-changed";
 
 export interface DecofileScopeParams {
   orgSlug: string;
@@ -29,8 +35,7 @@ export interface DecofileDraft {
   /**
    * Authority (host[:port]) the preview server should pull the draft from —
    * the API tells us where IT is reachable, because `window.location.host` is
-   * the tauri-local server in the native app (session-gated, unreachable from
-   * a deployed site).
+   * not guaranteed to be an origin a deployed site can reach.
    */
   apiHost: string;
 }
@@ -38,6 +43,21 @@ export interface DecofileDraft {
 export interface DecofilePatchBody {
   set?: Record<string, unknown>;
   delete?: string[];
+  /** Per block: fingerprint of the version the edit was made against, `null` for none. */
+  expect?: Record<string, string | null>;
+}
+
+/** The branch's copy of `blocks` changed after the edit was made; nothing was written. */
+export class BlockConflictError extends Error {
+  constructor(
+    readonly blocks: string[],
+    message: string,
+    /** JSON pointers of the values the edit and the stored block both changed, when known. */
+    readonly fields: string[] = [],
+  ) {
+    super(message);
+    this.name = "BlockConflictError";
+  }
 }
 
 function decofileCacheKey(params: DecofileScopeParams): string {
@@ -55,6 +75,23 @@ export function decofileWriteMutationKey(
   branch: string,
 ) {
   return ["decofile-write", orgSlug, virtualMcpId, branch] as const;
+}
+
+/**
+ * Serialization scope for those writes. TanStack runs mutations sharing a
+ * `scope.id` one at a time; `mutationKey` alone only identifies them. Every
+ * hook that WRITES the decofile must pass this, or it races the others — an
+ * autosave landing after a delete resurrects the block that was just removed.
+ * Observers (`useIsMutating`) need the key only.
+ */
+export function decofileWriteScope(
+  orgSlug: string,
+  virtualMcpId: string,
+  branch: string,
+) {
+  return {
+    id: decofileWriteMutationKey(orgSlug, virtualMcpId, branch).join(":"),
+  };
 }
 
 function decofileApiUrl(params: DecofileScopeParams): string {
@@ -78,6 +115,38 @@ export function setDecofileDraft(
   draft: DecofileDraft,
 ): void {
   queryClient.setQueryData(KEYS.decofileDraft(decofileCacheKey(params)), draft);
+}
+
+/** The draft pointer the last read or write stashed, if any. */
+export function getDecofileDraft(
+  queryClient: QueryClient,
+  params: DecofileScopeParams,
+): DecofileDraft | null {
+  return (
+    queryClient.getQueryData<DecofileDraft>(
+      KEYS.decofileDraft(decofileCacheKey(params)),
+    ) ?? null
+  );
+}
+
+/**
+ * Whether the branch head moved past `version`: the same read as
+ * {@link fetchDecofile}, conditional on the head commit (`If-None-Match`), so
+ * an unchanged branch answers 304 with no body and no new draft grant (a new
+ * grant is a new preview pointer, which reloads the frame). v7 (Fast Preview)
+ * only. Failures answer false: the caller asks again on its next tick.
+ */
+export async function decofileHeadMoved(
+  params: DecofileScopeParams,
+  version: string,
+): Promise<boolean> {
+  const res = await fetch(decofileApiUrl(params), {
+    cache: "no-store",
+    headers: { ...mainSchemaHeaders("v7"), "if-none-match": `"${version}"` },
+  }).catch(() => null);
+  // 409: main turned v8, or the site isn't this project's; the full read
+  // (fetchDecofile) is what tells the editor.
+  return res?.status === 200 || res?.status === 409;
 }
 
 /**
@@ -106,7 +175,16 @@ export async function fetchDecofile(
   queryClient: QueryClient,
   params: DecofileScopeParams,
 ): Promise<Record<string, unknown>> {
-  const res = await fetch(decofileApiUrl(params), { cache: "no-store" });
+  // Only the v7 (legacy) editor reads this shape: a main that turned v8
+  // since answers `main_schema_changed`, and the editor decides again.
+  const res = await fetch(decofileApiUrl(params), {
+    cache: "no-store",
+    headers: mainSchemaHeaders("v7"),
+  });
+  if (await isMainSchemaChangedResponse(res)) {
+    resetMainSchemaAnswer(queryClient, params.orgSlug, params.virtualMcpId);
+    throw new MainSchemaChangedError();
+  }
   if (!res.ok) {
     const err = new Error(`Failed to fetch decofile: ${res.status}`);
     (err as { status?: number }).status = res.status;
@@ -128,59 +206,6 @@ export async function fetchDecofile(
   return body.decofile;
 }
 
-/**
- * A CMS branch is stale once its last commit is older than this. Git has no
- * ref-creation time, so "last commit" doubles as "last touched" (an untouched
- * side branch keeps the base commit it was cut from — old the moment the
- * default branch advances). See {@link fetchDecofileStatus}.
- */
-export const CMS_STALE_BRANCH_MS = 2 * 24 * 60 * 60 * 1000;
-
-interface DecofileStatus {
-  baseBranch: string;
-  aheadBy: number;
-  behindBy: number;
-  /**
-   * Head commit's committer date (ISO), or null when the branch is the default
-   * branch or not yet materialized on GitHub — either way, never auto-switch.
-   */
-  lastCommitAt: string | null;
-}
-
-/**
- * Pure staleness predicate — kept side-effect-free so it unit-tests without a
- * server. `null`/unparseable `lastCommitAt` is never stale (see DecofileStatus).
- */
-export function isBranchStale(
-  lastCommitAt: string | null | undefined,
-  now: number,
-  windowMs: number = CMS_STALE_BRANCH_MS,
-): boolean {
-  if (!lastCommitAt) return false;
-  const at = new Date(lastCommitAt).getTime();
-  if (Number.isNaN(at)) return false;
-  return now - at > windowMs;
-}
-
-/** GET branch drift + head-commit age; the CMS auto-fresh-branch check reads it. */
-async function fetchDecofileStatus(
-  params: DecofileScopeParams,
-): Promise<DecofileStatus> {
-  const res = await fetch(`${decofileApiUrl(params)}/status`, {
-    cache: "no-store",
-  });
-  if (!res.ok) return throwResponseError(res, "Status");
-  return (await res.json()) as DecofileStatus;
-}
-
-export function decofileStatusQueryOptions(params: DecofileScopeParams) {
-  return {
-    queryKey: KEYS.decofileStatus(decofileCacheKey(params)),
-    queryFn: () => fetchDecofileStatus(params),
-    staleTime: 30_000,
-  };
-}
-
 /** PATCH blocks; resolves with the draft pointer of the carrying commit. */
 export async function patchDecofile(
   params: DecofileScopeParams,
@@ -191,6 +216,20 @@ export async function patchDecofile(
     headers: { "content-type": "application/json" },
     body: JSON.stringify(patch),
   });
+  if (res.status === 409) {
+    const body = (await res.json().catch(() => ({}))) as {
+      code?: string;
+      blocks?: string[];
+      error?: string;
+    };
+    if (body.code === "block-conflict") {
+      throw new BlockConflictError(
+        body.blocks ?? [],
+        body.error ?? "Block changed",
+      );
+    }
+    throw new Error(body.error ?? `Save failed (${res.status})`);
+  }
   if (!res.ok) return throwResponseError(res, "Save");
   const body = (await res.json()) as Partial<DecofileDraft> &
     Pick<DecofileDraft, "version" | "token">;

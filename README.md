@@ -63,19 +63,17 @@ Start with one team. Standardize approved models, tools, and context. Expand acr
 
 ## Quick Start
 
-```bash
-bunx decostudio
-```
-
-Or clone and run from source:
+Install Docker with Compose, then run from source:
 
 ```bash
 git clone https://github.com/decocms/studio.git
-bun install
-bun run dev
+cd studio
+docker compose up --build --watch
 ```
 
-> runs at [http://localhost:4000](http://localhost:4000) (client) with API routes proxied to the Bun server
+Open [http://localhost:4000](http://localhost:4000). Compose starts PostgreSQL,
+NATS, object storage, migrations, and the hot-reloading API and web app.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for contributor setup and worktrees.
 
 ---
 
@@ -111,7 +109,7 @@ Account for every model and tool call. Trace the user, agent, model, tools, late
 
 | | |
 |---|---|
-| **Local** | `bunx decostudio` on your desktop. Embedded PostgreSQL. Private. |
+| **Local** | Docker Compose on your laptop, including PostgreSQL, NATS, and object storage. |
 | **Cloud** | Log in to studio.decocms.com. Control local projects from any browser. |
 | **Team** | Invite people. SSO and role-based access. Shared connections. Cost attribution. |
 | **Enterprise** | Self-hosted. Organization isolation, tool-scoped API keys, audit logs. Your infra, your rules. |
@@ -130,7 +128,6 @@ Account for every model and tool call. Trace the user, agent, model, tools, late
 | **Observability** | Traces, costs, errors, and latency per user, agent, and connection — one dashboard |
 | **Access Control** | SSO + RBAC via Better Auth — OAuth 2.1 and tool-scoped API keys per workspace/project |
 | **Multi-tenancy** | Organization/project isolation for config, credentials, policies, and audit logs |
-| **Event Bus** | Pub/sub between connections with scheduled/cron delivery and at-least-once guarantees |
 | **Bindings** | Capability contracts so tools target interfaces, not specific implementations |
 | **Store** | Discover and install agents, tools, and templates |
 
@@ -175,6 +172,13 @@ Every tool call gets input/output validation, access control, audit logging, and
 
 ---
 
+## Documentation
+
+[Studio documentation](https://docs.decocms.com/studio) lives in
+[docs-tanstack](https://github.com/deco-sites/docs-tanstack), alongside the
+Storefront documentation. Update public product guides and architecture there.
+Workspace READMEs and engineering plans stay here with the implementation.
+
 ## Project Structure
 
 ### Applications
@@ -182,8 +186,6 @@ Every tool call gets input/output validation, access control, audit logging, and
 | Workspace | Purpose |
 | --- | --- |
 | [`apps/api`](./apps/api/README.md) | Hono API, authentication, tools, storage, migrations, and the `deco` CLI |
-| [`apps/docs`](./apps/docs/README.md) | Astro documentation site |
-| [`apps/native`](./apps/native/README.md) | Tauri desktop app and local Rust runtime |
 | [`apps/web`](./apps/web/README.md) | Vite and React 19 administration interface |
 
 ### Packages
@@ -197,6 +199,7 @@ Every tool call gets input/output validation, access control, audit logging, and
 | [`packages/mcp-utils`](./packages/mcp-utils/README.md) | MCP proxy, gateway, aggregation, and sandbox primitives |
 | [`packages/runtime`](./packages/runtime/README.md) | Runtime helpers for MCP servers, OAuth, tools, and triggers |
 | [`packages/sandbox`](./packages/sandbox/README.md) | Agent sandbox lifecycle, daemon, dispatch, and proxy implementation |
+| [`packages/sandbox-controller`](./packages/sandbox-controller/README.md) | Sandbox provider bundled for a remote host such as the control plane |
 | [`packages/shared`](./packages/shared/README.md) | Private isomorphic contracts, SDK utilities, and async primitives |
 | [`packages/typegen`](./packages/typegen/README.md) | Typed client generator for Studio Virtual MCPs |
 | [`packages/ui`](./packages/ui/README.md) | Internal React design system |
@@ -207,7 +210,7 @@ Every tool call gets input/output validation, access control, audit logging, and
 
 ```bash
 bun install          # Install dependencies
-bun run dev          # Run the web app and API
+bun run dev          # Docker Compose Watch: dependencies, migrations, API + web
 bun test             # Run tests
 bun run check        # Type check
 bun run lint         # Lint
@@ -222,48 +225,30 @@ bun run --cwd=apps/api dev:server   # Hono server with hot reload
 bun run --cwd=apps/api migrate      # Run database migrations
 ```
 
-### Worktrees
-
-`dev:worktree` routes `http://<WORKTREE_SLUG>.localhost` via Caddy — useful for running multiple workspaces without port conflicts.
-
-```bash
-# One-time setup
-brew install caddy && caddy start
-
-# Start
-WORKTREE_SLUG=my-feature bun run dev:worktree
-
-# Conductor adapter (sets WORKTREE_SLUG from CONDUCTOR_WORKSPACE_NAME)
-bun run dev:conductor
-```
+For parallel worktrees, Compose lifecycle commands, and frontend-only work,
+see [CONTRIBUTING.md](CONTRIBUTING.md#getting-started).
 
 ---
 
 ## Deploy Anywhere
 
 ```bash
-# Docker (embedded PostgreSQL)
-docker compose -f deploy/docker-compose/docker-compose.yml up
-
-# Docker (PostgreSQL)
-docker compose -f deploy/docker-compose/docker-compose.postgres.yml up
-
-# Bun
-bun run build:studio && bun run --cwd=apps/api start
+# Docker Compose: released Studio + PostgreSQL + NATS + object storage
+docker compose -f selfhost/examples/docker-compose/compose.yaml up -d
 
 # Kubernetes (Helm)
 helm install deco-studio oci://ghcr.io/decocms/chart-deco-studio --version <version> -n deco-studio --create-namespace
 ```
 
-No vendor lock-in. Runs on Docker, Kubernetes, AWS, GCP, or local runtimes.
+Run Studio with Docker Compose or Kubernetes on your own infrastructure.
 
 ### What you need to run it
 
 | Tier | Footprint |
 |---|---|
-| **Laptop** | Nothing. One process, embedded PostgreSQL. |
-| **Docker** | The published image. Bring PostgreSQL or use the embedded one. |
-| **Production (Helm)** | PostgreSQL you bring, plus optional NATS (event bus wake-up), ClickHouse + OTel Collector (traces and analytics), and the sandbox operator (isolated agent environments on Kubernetes). Your identity provider, your model keys, your storage. |
+| **Laptop** | Docker with Compose; the development stack includes its dependencies. |
+| **Docker** | Published Studio image with configured PostgreSQL, NATS, and object storage. |
+| **Production (Helm)** | PostgreSQL you bring, plus NATS for streaming and cross-pod coordination, ClickHouse + OTel Collector (traces and analytics), and the sandbox operator (isolated agent environments on Kubernetes). Your identity provider, your model keys, your storage. |
 
 ### Production topology
 
@@ -276,15 +261,15 @@ graph TB
     subgraph k8s ["Kubernetes (Helm)"]
         api["Studio API + Admin UI"]
         api --> sandbox["Agent sandboxes<br/>(sandbox-operator)"]
-        api -->|"notify"| nats["NATS"]
+        api <-->|"streams and broadcasts"| nats["NATS"]
         api -->|"traces · costs"| otel["OTel Collector"]
-        nats -->|"wake"| worker["Workers<br/>event bus · schedules"]
+        nats <-->|"streams and broadcasts"| worker["Workers<br/>DBOS runs"]
         otel --> ch[("ClickHouse")]
     end
 
     pg[("PostgreSQL")]
     api --> pg
-    worker --> pg
+    worker <-->|"DBOS queues and journal"| pg
 
     subgraph upstream ["Models & tools"]
         models["Anthropic · OpenAI<br/>OpenRouter · Ollama"]
@@ -305,7 +290,7 @@ Every box is optional except Studio and PostgreSQL — start small, turn on the 
 | Runtime | Bun / Node |
 | Language | TypeScript + Zod |
 | Framework | Hono (API) + Vite + React 19 |
-| Database | Kysely → embedded PostgreSQL / PostgreSQL |
+| Database | Kysely → PostgreSQL |
 | Auth | Better Auth (OAuth 2.1 + API keys) |
 | Observability | OpenTelemetry |
 | UI | React 19 + Tailwind v4 + shadcn |

@@ -6,6 +6,7 @@
  */
 
 import { z } from "zod";
+import { UrlSlugSchema } from "../../url-slug";
 
 /**
  * Virtual MCP connection schema - defines which connection and tools/resources/prompts are included
@@ -45,13 +46,6 @@ const SELECTED_ITEMS_MAX = 500;
  *  hundreds of MCPs. */
 const CONNECTIONS_MAX = 200;
 
-/** Cap on how many plugin IDs `metadata.enabled_plugins` can carry on write —
- *  same rationale as the sibling cap on organization_settings.enabled_plugins
- *  (apps/api/src/tools/organization/settings-update.ts): the plugin registry
- *  is a small, finite set, so an unbounded array here is attacker-controlled
- *  payload size, not a real agent config. */
-const ENABLED_PLUGINS_MAX = 200;
-
 /** Cap on how many sub-agent IDs this agent can delegate to. */
 const SUBAGENTS_MAX = 200;
 
@@ -70,14 +64,12 @@ const TABS_MAX = 20;
 /** Cap on knowledge files attached to an agent. */
 const KNOWLEDGE_MAX = 100;
 
-/** Cap on releases (named branches) per agent. */
-const RELEASES_MAX = 50;
+/** Cap on releases (named branches) per agent. Exported so the UI can gate
+ * creation at the cap instead of letting the write 400 on the server. */
+export const RELEASES_MAX = 300;
 
 /** Cap on runtime env vars injected per sandbox. */
 const RUNTIME_ENV_MAX = 100;
-
-/** Cap on git submodule credentials per sandbox. */
-const SUBMODULE_CREDENTIALS_MAX = 50;
 
 /** Cap on a single literal env var's value length — an unbounded string here
  *  is attacker-controlled payload size on a mutation input (posted verbatim
@@ -154,11 +146,13 @@ export const VirtualMcpSidebarViewSchema = z.enum([
   "board",
   "site-editor",
   "assets",
+  "releases",
   "hosting",
   "e2e",
   "analytics",
   "cdn",
   "automations",
+  "experiments",
 ]);
 
 export type VirtualMcpSidebarView = z.infer<typeof VirtualMcpSidebarViewSchema>;
@@ -425,37 +419,6 @@ const RuntimeEnvEntrySchema = z.discriminatedUnion("kind", [
 export type RuntimeEnvEntry = z.infer<typeof RuntimeEnvEntrySchema>;
 
 /**
- * One git submodule credential on a virtual MCP. Submodules live in other
- * repositories/orgs that the main clone's per-repo GitHub App token cannot
- * reach, so the user supplies a PAT (stored as a vault secret) keyed by the
- * submodule's host. Studio resolves `secretId` against the credential vault on
- * every SANDBOX_START and posts the token to the daemon on a git-only channel
- * (never the env bag) so `git submodule update` can authenticate. `host` is the
- * bare hostname (e.g. "github.com"); the daemon rewrites `git@<host>:` SSH
- * submodule URLs to HTTPS so the token applies.
- */
-/**
- * A bare submodule hostname with an optional port (e.g. "github.com",
- * "gitlab.example.com:8443"). Single source of truth for the shape: the schema
- * below enforces it, and both the sandbox UI and daemon import it.
- */
-export const SUBMODULE_HOST_RE = /^[a-zA-Z0-9.-]+(?::[0-9]+)?$/;
-
-const SubmoduleCredentialSchema = z.object({
-  host: z
-    .string()
-    .min(1)
-    .regex(SUBMODULE_HOST_RE)
-    .describe("Submodule host, e.g. 'github.com' (bare hostname, no scheme)."),
-  secretId: z
-    .string()
-    .min(1)
-    .describe("Vault secret id holding the PAT used to fetch this host."),
-});
-
-export type SubmoduleCredential = z.infer<typeof SubmoduleCredentialSchema>;
-
-/**
  * User-pinned runtime configuration stored under `metadata.runtime`. Empty
  * fields fall back to autodetect on the next SANDBOX_START.
  */
@@ -489,23 +452,15 @@ const RuntimeMetadataSchema = z.object({
     .describe(
       "Env vars injected on every SANDBOX_START. Literal entries inline their value; secret entries store a secretId that Studio resolves via the credential vault before posting /_sandbox/config.",
     ),
-  submoduleCredentials: z
-    .array(SubmoduleCredentialSchema)
-    .max(SUBMODULE_CREDENTIALS_MAX)
-    .nullable()
-    .optional()
-    .describe(
-      "Git submodule credentials injected on every SANDBOX_START. Each entry maps a host to a vault secret (PAT) that Studio resolves before posting /_sandbox/config; the daemon uses it to authenticate `git submodule update` for submodules on that host.",
-    ),
 });
 
 export type RuntimeMetadata = z.infer<typeof RuntimeMetadataSchema>;
 
 /**
- * GitHub repository linked to a virtual MCP
+ * Repository linked to a project or thread, across git providers.
  */
-const GithubRepoSchema = z.object({
-  url: z.string().describe("GitHub repository URL"),
+export const RepositoryBindingSchema = z.object({
+  url: z.string().describe("Repository URL, including its provider host"),
   owner: z.string().describe("Repository owner"),
   name: z.string().describe("Repository name"),
   installationId: z
@@ -520,9 +475,15 @@ const GithubRepoSchema = z.object({
     .describe(
       "ID of the mcp-github connection used for authentication. Absent for public repos cloned without credentials.",
     ),
+  repositoryId: z
+    .string()
+    .optional()
+    .describe(
+      "First-class repository (REPOSITORY_LINK) backing this binding. When set, credentials come from the repository's git provider account rather than connectionId.",
+    ),
 });
 
-export type GithubRepo = z.infer<typeof GithubRepoSchema>;
+export type RepositoryBinding = z.infer<typeof RepositoryBindingSchema>;
 
 const SandboxMapOwnerKindSchema = z.enum(["agent-sandbox", "local-api"]);
 
@@ -536,8 +497,8 @@ type SandboxMapOwnerKind = z.infer<typeof SandboxMapOwnerKindSchema>;
  *  - agent-sandbox: hosted Studio reaches the daemon through its proxy; the
  *    preview URL is a per-claim HTTPRoute host or a local-development
  *    port-forward.
- *  - local-api: the native app's local-api owns lifecycle, filesystem, and
- *    preview routing on the user's machine.
+ *  - local-api: owned by the discontinued desktop app's local runtime;
+ *    existing records are preserved but no longer created.
  *
  * `previewUrl` is nullable: blank / tool sandboxes (no `workload`, no dev
  * server) have nothing to render. UI code MUST check before constructing
@@ -828,14 +789,6 @@ const releasesMetadataField = z
     "Curated list of named, branch-backed releases shown in the version switcher. The base branch ('No ar') is derived, not stored here.",
   );
 
-const draftsModeMetadataField = z
-  .boolean()
-  .nullable()
-  .optional()
-  .describe(
-    "Draft & Releases mode: gates the drafts UX (releases switcher, read-only production, publish-to-production). Off (default) keeps the classic branch/PR picker and post-publish behavior.",
-  );
-
 /**
  * Shared metadata definition for VirtualMCP entity. Used in VirtualMCPEntitySchema,
  * VirtualMCPCreateDataSchema, and VirtualMCPUpdateDataSchema to avoid duplication.
@@ -847,12 +800,6 @@ const VirtualMcpMetadataFields = {
     .nullable()
     .optional()
     .describe("Instructions also used as system prompt"),
-  enabled_plugins: z
-    .array(z.string())
-    .max(ENABLED_PLUGINS_MAX)
-    .nullable()
-    .optional()
-    .describe("List of enabled plugin IDs"),
   subAgents: z
     .array(z.string())
     .max(SUBAGENTS_MAX)
@@ -885,9 +832,9 @@ const VirtualMcpMetadataFields = {
     .describe(
       "Version 1 marks metadata.sidebarViews as an exact list that can disable legacy default rows.",
     ),
-  githubRepo: GithubRepoSchema.nullable()
+  repository: RepositoryBindingSchema.nullable()
     .optional()
-    .describe("Linked GitHub repository"),
+    .describe("Linked repository"),
   runtime: RuntimeMetadataSchema.nullable()
     .optional()
     .describe(
@@ -898,7 +845,9 @@ const VirtualMcpMetadataFields = {
     .string()
     .nullable()
     .optional()
-    .describe("Linked asset site slug (managed storage tenancy)"),
+    .describe(
+      "The project's site id (asset tenancy, CDN paths, site tokens). Set once when the site is created or imported; any write that would change it is refused.",
+    ),
   publishPolicy: publishPolicyMetadataField,
   previewServerUrl: previewServerUrlMetadataField,
   productionUrl: z
@@ -917,7 +866,6 @@ const VirtualMcpMetadataFields = {
     ),
   fastPreview: fastPreviewMetadataField,
   releases: releasesMetadataField,
-  draftsMode: draftsModeMetadataField,
   fastPreviewInPlace: fastPreviewInPlaceMetadataField,
 } as const satisfies z.ZodRawShape;
 
@@ -929,6 +877,11 @@ export const VirtualMCPEntitySchema = z.object({
   // Base collection entity fields
   id: z.string().describe("Unique identifier"),
   title: z.string().describe("Human-readable name"),
+  url_slug: z
+    .string()
+    .nullable()
+    .optional()
+    .describe("Name of the project in Studio URLs, unique in the organization"),
   description: z.string().nullable().describe("Description"),
   icon: z.string().nullable().describe("Icon URL"),
   created_at: z.string().describe("Creation timestamp"),
@@ -1010,14 +963,6 @@ export const VirtualMCPCreateDataSchema = z.object({
   pinned: z.boolean().optional().default(false).describe("Pin to sidebar"),
   metadata: z
     .object(VirtualMcpMetadataFields)
-    .extend({
-      enabled_plugins: z
-        .array(z.string())
-        .max(ENABLED_PLUGINS_MAX)
-        .nullable()
-        .optional()
-        .describe("List of enabled plugin IDs"),
-    })
     .loose()
     .superRefine((metadata, ctx) => {
       if ("sandboxMap" in metadata) {
@@ -1053,6 +998,9 @@ export type VirtualMCPCreateData = z.infer<typeof VirtualMCPCreateDataSchema>;
  */
 export const VirtualMCPUpdateDataSchema = z.object({
   title: z.string().min(1).max(255).optional().describe("New name"),
+  url_slug: UrlSlugSchema.nullish().describe(
+    "New URL slug. The old one keeps redirecting. Renaming does not change it. null keeps the current slug.",
+  ),
   description: z
     .string()
     .max(500)
@@ -1064,14 +1012,6 @@ export const VirtualMCPUpdateDataSchema = z.object({
   pinned: z.boolean().optional().describe("Pin/unpin from sidebar"),
   metadata: z
     .object(VirtualMcpMetadataFields)
-    .extend({
-      enabled_plugins: z
-        .array(z.string())
-        .max(ENABLED_PLUGINS_MAX)
-        .nullable()
-        .optional()
-        .describe("List of enabled plugin IDs"),
-    })
     .loose()
     .superRefine((metadata, ctx) => {
       if ("sandboxMap" in metadata) {

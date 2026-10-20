@@ -4,7 +4,7 @@
  * The Library projects the org filesystem as one tree rooted at the org's
  * `home` volume: the first segment is the volume, and the synthetic `public`
  * namespace maps `public/<set>/...` → readonly volume `public-<set>`
- * (mirroring the sandbox's `org/public/<set>` mounts).
+ * (mirroring the sandbox's `/app/org/public/<set>` mounts).
  *
  *   "home"                 → the landing view (the org's home folder)
  *   "uploads/docs"         → volume "uploads", dir "docs"
@@ -15,7 +15,11 @@
  * page falls back to `HOME_MOUNT_PATH`.
  */
 
-import { HOME_MOUNT_PATH } from "@decocms/shared/organization/home-mount";
+import {
+  HOME_MOUNT_PATH,
+  SANDBOX_ORG_ROOT,
+} from "@decocms/shared/organization/home-mount";
+import { PROJECTS_FOLDER } from "@decocms/shared/organization/project-folder";
 
 export interface LibraryLocation {
   /** Raw path segments, as browsed (incl. the `public/<set>` prefix). */
@@ -95,8 +99,8 @@ export function basename(path: string): string {
 
 /**
  * Sandbox mount path for a Library browse path — where the agent's file tools
- * (`read`/`edit`/`grep`) actually reach the file: `org/home/…`,
- * `org/public/<set>/…`, etc.
+ * (`read`/`edit`/`grep`) actually reach the file: `/app/org/home/…`,
+ * `/app/org/public/<set>/…`, etc.
  *
  * Client mirror of the server's `orgFsSandboxPath`
  * (`apps/api/src/file-storage/mount/provisioning.ts`); the browse-path →
@@ -107,12 +111,69 @@ export function orgFsMountPath(browsePath: string): string | null {
   const { volume, dirPath } = parseLibraryPath(browsePath);
   if (!volume) return null;
   let base: string;
-  if (volume === "home") base = "org/home";
-  else if (volume === "outputs") base = "org/.outputs";
-  else if (volume === "uploads") base = "org/.uploads";
+  if (volume === "home") base = `${SANDBOX_ORG_ROOT}/${HOME_MOUNT_PATH}`;
+  else if (volume === "outputs") base = `${SANDBOX_ORG_ROOT}/.outputs`;
+  else if (volume === "uploads") base = `${SANDBOX_ORG_ROOT}/.uploads`;
   else {
     const set = publicSetOf(volume);
-    base = set ? `org/public/${set}` : `org/${volume}`;
+    base = `${SANDBOX_ORG_ROOT}/${set ? `public/${set}` : volume}`;
   }
   return dirPath ? `${base}/${dirPath}` : base;
+}
+
+export interface LibraryCrumb {
+  /** Display label for the segment. */
+  label: string;
+  /** Browse path that opens it. */
+  path: string;
+}
+
+/**
+ * The trail from a tree's root to the folder being browsed, root EXCLUSIVE.
+ *
+ * The root is drawn separately in every chrome that shows this — it is the name
+ * of the place you are in (the drive, or a project), not a step on the way to
+ * it. A path that is not under `root` falls back to its own full trail rather
+ * than returning nothing: a breadcrumb that silently empties is how someone
+ * gets stranded in a folder with no way back up.
+ */
+export function libraryTrail(browsePath: string, root: string): LibraryCrumb[] {
+  const segments = browsePath.split("/").filter(Boolean);
+  const rootSegments = root.split("/").filter(Boolean);
+  const under = rootSegments.every((seg, i) => segments[i] === seg);
+  const offset = under ? rootSegments.length : 0;
+  return segments.slice(offset).map((segment, index) => ({
+    label: segmentLabel(segment),
+    path: segments.slice(0, offset + index + 1).join("/"),
+  }));
+}
+
+const GENERATED_ID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** A folder named by an id the product generated, such as a chat's. */
+export function isGeneratedId(segment: string): boolean {
+  return GENERATED_ID.test(segment);
+}
+
+/** The folder a file is in, as a person would name it. A generated-id folder
+ *  (each chat upload gets one) belongs to the folder above it. */
+export function namedFolderOf(path: string): string {
+  const segments = path.split("/").slice(0, -1);
+  while (segments.length > 0 && GENERATED_ID.test(segments.at(-1) ?? "")) {
+    segments.pop();
+  }
+  return segments.join("/");
+}
+
+/** Which place in the Library's top bar a location belongs to: `all` for the
+ *  member's own drive, `projects` inside the projects folder, `public` for the
+ *  shared skill sets, or the volume's own name. */
+export function libraryPlaceOf(location: LibraryLocation): string {
+  if (location.isPublic) return "public";
+  if (location.volume === HOME_MOUNT_PATH) {
+    const [first] = location.dirPath.split("/");
+    return first === PROJECTS_FOLDER ? PROJECTS_FOLDER : "all";
+  }
+  return location.volume ?? "all";
 }

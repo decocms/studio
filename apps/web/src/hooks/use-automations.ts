@@ -114,11 +114,27 @@ export interface AutomationListItem {
   trigger_count: number;
   virtual_mcp_id: string;
   nearest_next_run_at: string | null;
+  /** Set on a built-in, which can only be turned on or off. */
+  system_key: string | null;
+  /** Its board starters: each one's column and type. */
+  board_triggers: {
+    type: "board_column_transition" | "board_pr_ready" | "board_pr_merged";
+    column_key: string;
+  }[];
 }
 
 export interface AutomationTrigger {
   id: string;
-  type: "cron" | "event" | "webhook";
+  type:
+    | "cron"
+    | "event"
+    | "webhook"
+    | "board_column_transition"
+    | "board_pr_ready"
+    | "linked_chat_run"
+    | "board_pr_merged"
+    | "chat_pr_opened"
+    | "jira_transition";
   cron_expression: string | null;
   connection_id: string | null;
   event_type: string | null;
@@ -126,6 +142,14 @@ export interface AutomationTrigger {
   last_run_at: string | null;
   next_run_at: string | null;
   api_key_id: string | null;
+  /** For `board_column_transition`: the board column a card enters; for
+   *  `jira_transition`: the Jira status an issue enters. */
+  column_key: string | null;
+  /** For both: which moves count, by where the card came from. */
+  from:
+    | { kind: "any" | "earlier" | "later" }
+    | { kind: "statuses"; statuses: string[] }
+    | null;
   created_at: string;
 }
 
@@ -137,6 +161,7 @@ export interface AutomationDetail {
   created_at: string;
   updated_at: string;
   virtual_mcp_id: string;
+  system_key: string | null;
   messages: unknown[];
   models: {
     tier?: "fast" | "smart" | "thinking";
@@ -270,8 +295,12 @@ export function useAutomationActions() {
   const studio = useStudioTools();
   const queryClient = useQueryClient();
 
+  // The Jira settings list automations by their Jira starter.
   const invalidateAll = () =>
-    queryClient.invalidateQueries({ queryKey: KEYS.automationsAll(org.id) });
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: KEYS.automationsAll(org.id) }),
+      queryClient.invalidateQueries({ queryKey: KEYS.jiraAutomations(org.id) }),
+    ]);
 
   const invalidateOne = (id: string) =>
     queryClient.invalidateQueries({ queryKey: KEYS.automation(org.id, id) });
@@ -305,6 +334,10 @@ export function useAutomationActions() {
       if (typeof variables.id === "string") {
         invalidateOne(variables.id);
       }
+      // The built-in Reviewer's switch is the org's review flag.
+      queryClient.invalidateQueries({
+        queryKey: KEYS.organizationSettings(org.id),
+      });
       toast.success("Automation updated successfully");
     },
     onError: (error: unknown) => {

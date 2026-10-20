@@ -1,35 +1,32 @@
 /**
- * Library — the org filesystem as a Drive-like home (Figma qFc7wr91 node
- * 7870-5644).
+ * Library — the org filesystem, as the drive of a computer.
  *
- * It opens on the org's own home folder, named after the org: no synthetic
- * "root" listing of volumes and nothing labelled "home". The other volumes
- * (`uploads`, `outputs`, `public`) present as system folders inside it — same
- * mounts, different framing. The breadcrumb is the only place the current
- * folder is named, which frees the header row for the search box.
+ * Rooted rather than absolute: `root` is the top of the tree, the org's home
+ * folder or one project's (`@decocms/shared/organization/project-folder`). The breadcrumb starts there,
+ * search narrows under it, and nothing above it is reachable by walking up.
  *
- * Search sits in that row and follows you: cross-volume at the home root,
- * narrowed to the current folder's subtree anywhere else. Browse location lives
- * in `?path=` and the open preview in `?preview=`, so both are linkable and
- * survive reload.
+ * `?path=`, `?preview=`, `?layout=` and `?sort=` are all in the URL, so a
+ * folder, a file and how someone reads them survive a reload.
  */
 
 import { useRef, useState } from "react";
+import { Page } from "@/components/page";
+import { Panel } from "@/components/panel";
+import {
+  LIBRARY_MODIFIED,
+  type LibraryFileView,
+  type LibraryModified,
+} from "./file-view";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useProjectContext } from "@/sdk";
 import { toast } from "sonner";
 import { useT } from "@/i18n/use-t.ts";
-import {
-  Eye,
-  Plus,
-  RefreshCw01,
-  SearchLg,
-  Upload01,
-  XClose,
-} from "@untitledui/icons";
+import { Eye, Plus, RefreshCw01, Upload01 } from "@untitledui/icons";
 import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import { Button } from "@decocms/ui/components/button.tsx";
+import { IconButton } from "@decocms/ui/components/icon-button.tsx";
+import { SearchToggle } from "@decocms/ui/components/search-toggle.tsx";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -54,18 +51,35 @@ import {
   homeDisplayName,
 } from "@decocms/shared/organization/home-mount";
 import { KEYS } from "@/lib/query-keys";
+import { clearOpenFileDismissal } from "@/hooks/use-open-library-file";
 import { useDebouncedValue } from "@/hooks/use-debounced-value.ts";
-import { useOrgFsMutations } from "@/hooks/use-org-fs";
-import { basename, parseLibraryPath, segmentLabel } from "./location";
-import { useOrgRepoSyncVolumes } from "@/hooks/use-org-repo-syncs";
+import { useOrgFsMutations, useOrgFsPublicSets } from "@/hooks/use-org-fs";
+import { FilterMenu } from "./filter-menu";
+import { PROJECTS_FOLDER } from "@decocms/shared/organization/project-folder";
+import {
+  basename,
+  libraryPlaceOf,
+  libraryTrail,
+  parseLibraryPath,
+  segmentLabel,
+} from "./location";
+import { LIBRARY_SORTS, type LibrarySort } from "./entries";
+import {
+  useOrgRepoSyncs,
+  useOrgRepoSyncVolumes,
+} from "@/hooks/use-org-repo-syncs";
 import { BrandPreviewDialog } from "./brand-preview";
 import { ShareDialog, type ShareTarget } from "./file-share-button";
 import { LibraryPreviewDialog } from "./preview-dialog";
 import { SkillPreviewDialog } from "./skill-preview";
 import {
-  Breadcrumbs,
   LIBRARY_VOLUMES,
+  LayoutToggle,
+  type LibraryLayout,
+  type ListingView,
   type PendingDelete,
+  ChatFilesView,
+  isChatVolume,
   PublicSetsView,
   SearchResultsView,
   SYSTEM_FOLDER_NAMES,
@@ -73,10 +87,17 @@ import {
 } from "./library-views";
 
 export function LibraryPage({
+  root = HOME_MOUNT_PATH,
+  rootLabel,
   onOpenFile: onOpenFileOverride,
   onOpenSkill: onOpenSkillOverride,
   onOpenBrand: onOpenBrandOverride,
 }: {
+  /** Top of the tree this page shows. Defaults to the org's drive. */
+  root?: string;
+  /** What to call that root in copy and in the breadcrumb. Defaults to the
+   *  org's home-folder name. */
+  rootLabel?: string;
   /** Override file-open behaviour (e.g. open as a panel tab instead of ?preview=). */
   onOpenFile?: (previewPath: string) => void;
   onOpenSkill?: (skillPath: string) => void;
@@ -88,14 +109,62 @@ export function LibraryPage({
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const search = useSearch({ strict: false }) as {
+    fileView?: LibraryFileView;
+    modified?: LibraryModified;
+    layout?: LibraryLayout;
+    sort?: LibrarySort;
     path?: string;
     preview?: string;
     skill?: string;
     brand?: string;
   };
-  // The home folder is the top of the tree, so a missing (or emptied) `?path=`
-  // lands there rather than on a volumes listing.
-  const browsePath = search.path || HOME_MOUNT_PATH;
+  const fileView = search.fileView ?? "all";
+  const modified = search.modified ?? "any";
+  const layout: LibraryLayout = search.layout === "grid" ? "grid" : "list";
+  /** Files a chat dropped in read best newest first; a member's own by name. */
+  const startLocation = parseLibraryPath(search.path || root);
+  const defaultSort: LibrarySort =
+    isChatVolume(startLocation.volume) && !startLocation.dirPath
+      ? "updated"
+      : "name";
+  const sort: LibrarySort =
+    LIBRARY_SORTS.find((option) => option === search.sort) ?? defaultSort;
+  const setSearchParam = (
+    key:
+      | "path"
+      | "preview"
+      | "skill"
+      | "brand"
+      | "fileView"
+      | "modified"
+      | "layout"
+      | "sort",
+    value: string | null,
+  ) =>
+    navigate({
+      to: ".",
+      search: (prev: Record<string, unknown>) => ({
+        ...prev,
+        [key]: value || undefined,
+      }),
+    });
+  const setFileView = (view: LibraryFileView) =>
+    setSearchParam("fileView", view === "all" ? null : view);
+  /** This page shows the previews it opens; an override sends them elsewhere. */
+  const ownsPreview = !onOpenFileOverride;
+  const view: ListingView = {
+    layout,
+    sort,
+    fileView,
+    modified,
+    previewPath: ownsPreview ? search.preview : undefined,
+    onLayout: (next) => setSearchParam("layout", next === "list" ? null : next),
+    onSort: (next) =>
+      setSearchParam("sort", next === defaultSort ? null : next),
+  };
+
+  /** A missing (or emptied) `?path=` lands at the tree's root. */
+  const browsePath = search.path || root;
   const parsedLocation = parseLibraryPath(browsePath);
   // Synced-repo volumes are mirrors of their GitHub source: local writes would
   // be deleted on the next sync cycle, so the Library browses them read-only
@@ -106,18 +175,15 @@ export function LibraryPage({
       ? { ...parsedLocation, readOnly: true }
       : parsedLocation;
 
-  const setSearchParam = (
-    key: "path" | "preview" | "skill" | "brand",
-    value: string | null,
-  ) =>
-    navigate({
-      to: ".",
-      search: (prev: Record<string, unknown>) => ({
-        ...prev,
-        [key]: value || undefined,
-      }),
-    });
   const onOpenDir = (path: string) => setSearchParam("path", path);
+  const homeLabel = rootLabel ?? homeDisplayName(org.slug);
+  const trail = libraryTrail(browsePath, root);
+  const atRoot = trail.length === 0;
+  const breadcrumbs = trail.map((crumb) => ({
+    key: `folder:${crumb.path}`,
+    label: crumb.label,
+    onSelect: () => onOpenDir(crumb.path),
+  }));
   // preview/skill/brand share the single right panel, so opening one clears
   // the others — otherwise a second one just queues behind the precedence
   // order (preview › skill › brand) and only shows once the first is closed.
@@ -132,9 +198,11 @@ export function LibraryPage({
         [kind]: value,
       }),
     });
-  const onOpenFile =
-    onOpenFileOverride ??
-    ((previewPath: string) => openPreview("preview", previewPath));
+  const onOpenFile = (previewPath: string) => {
+    clearOpenFileDismissal();
+    if (onOpenFileOverride) onOpenFileOverride(previewPath);
+    else openPreview("preview", previewPath);
+  };
   const onOpenSkill =
     onOpenSkillOverride ??
     ((skillPath: string) => openPreview("skill", skillPath));
@@ -142,14 +210,12 @@ export function LibraryPage({
     onOpenBrandOverride ??
     ((brandPath: string) => openPreview("brand", brandPath));
 
-  // The search box lives in the header row and follows the browse location:
-  // cross-volume at the home root, narrowed to this folder's subtree elsewhere.
-  // (`volume === null` is the `public` sets listing — global there; scoping it
-  // would need a multi-volume filter.)
+  /** Search follows the location. `volume === null` is the public-sets
+   *  listing, which has no single volume to scope to. */
   const [searchText, setSearchText] = useState("");
   const searchQuery = useDebouncedValue(searchText.trim(), 300);
   const searchScope =
-    !location.isHomeRoot && location.volume !== null
+    !atRoot && location.volume !== null
       ? { volume: location.volume, prefix: location.dirPath }
       : undefined;
   const searchPlaceholder = searchScope
@@ -158,8 +224,8 @@ export function LibraryPage({
       })
     : t("library.library.searchPlaceholder");
   // What to call the current folder in copy — never the internal "home".
-  const locationLabel = location.isHomeRoot
-    ? homeDisplayName(org.slug)
+  const locationLabel = atRoot
+    ? homeLabel
     : segmentLabel(location.segments.at(-1) ?? "");
 
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(
@@ -190,6 +256,10 @@ export function LibraryPage({
   // Deletes can target any volume (the recent feed is cross-volume), so they
   // get their own hook instance bound to the pending entry's volume.
   const { remove } = useOrgFsMutations(pendingDelete?.volume ?? "uploads");
+
+  /** Reserved names belong to the DRIVE's root: a project folder may hold its
+   *  own `uploads` with nothing to collide with. */
+  const isDriveRoot = location.isHomeRoot && root === HOME_MOUNT_PATH;
 
   async function handleUpload(files: FileList | null) {
     if (!browseVolume || !files || files.length === 0) return;
@@ -250,7 +320,7 @@ export function LibraryPage({
   async function handleCreateFolder() {
     const name = newFolderName.trim();
     if (!browseVolume || !name) return;
-    if (location.isHomeRoot && SYSTEM_FOLDER_NAMES.has(name.toLowerCase())) {
+    if (isDriveRoot && SYSTEM_FOLDER_NAMES.has(name.toLowerCase())) {
       toast.error(t("library.library.folderNameReserved", { name }));
       return;
     }
@@ -304,7 +374,7 @@ export function LibraryPage({
     // land a hand-made folder on top of a system-folder card.
     if (
       renameTarget.kind === "dir" &&
-      location.isHomeRoot &&
+      isDriveRoot &&
       SYSTEM_FOLDER_NAMES.has(newName.toLowerCase())
     ) {
       toast.error(t("library.library.folderNameReserved", { name: newName }));
@@ -363,11 +433,8 @@ export function LibraryPage({
     queryClient.invalidateQueries({ queryKey: KEYS.orgFsPublicSets(org.id) });
   }
 
-  // Right-clicking empty space creates a folder here. This listens on the whole
-  // page, so anything interactive has to opt out first: entry cards that own a
-  // rename menu call preventDefault, and everything else (the search box, the
-  // toolbar, the cards with no menu of their own) keeps its native menu — a
-  // right-click meant for "paste" must never become "new folder".
+  /** Right-click on empty space makes a folder. Listens page-wide, so anything
+   *  with its own menu opts out with `preventDefault`. */
   function handleContextMenuEmpty(e: React.MouseEvent) {
     if (e.defaultPrevented || !browseVolume) return;
     if (
@@ -380,6 +447,181 @@ export function LibraryPage({
     e.preventDefault();
     setNewFolderOpen(true);
   }
+
+  /** The controls both chromes show, in one place so they cannot drift. */
+  const controls = (
+    <>
+      <IconButton
+        label={t("library.library.refresh")}
+        tooltipSide="bottom"
+        /* `secondary`, like the controls either side of it. */
+        variant="secondary"
+        onClick={refresh}
+      >
+        <RefreshCw01 />
+      </IconButton>
+      {browseVolume && (
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => setNewFolderOpen(true)}
+          aria-label={t("library.library.newFolder")}
+        >
+          <Plus size={14} />
+          <span className="hidden @lg/panel-header:inline">
+            {t("library.library.newFolder")}
+          </span>
+        </Button>
+      )}
+    </>
+  );
+
+  const primaryAction = location.readOnly ? (
+    <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+      <Eye size={12} />
+      {t("library.library.readOnly")}
+    </span>
+  ) : (
+    <Button
+      size="sm"
+      disabled={upload.isPending}
+      onClick={() => fileInputRef.current?.click()}
+      aria-label={
+        upload.isPending
+          ? t("library.library.uploading")
+          : t("library.library.uploadFile")
+      }
+    >
+      <Upload01 size={14} />
+      <span className="hidden @lg/panel-header:inline">
+        {upload.isPending
+          ? t("library.library.uploading")
+          : t("library.library.uploadFile")}
+      </span>
+    </Button>
+  );
+
+  /** What an empty, writable place offers. */
+  const uploadAction = (
+    <Button size="sm" onClick={() => fileInputRef.current?.click()}>
+      <Upload01 size={14} />
+      {t("library.library.uploadFile")}
+    </Button>
+  );
+  const emptyActions = (
+    <div className="flex items-center gap-2">
+      {uploadAction}
+      <Button
+        variant="secondary"
+        size="sm"
+        onClick={() => setNewFolderOpen(true)}
+      >
+        <Plus size={14} />
+        {t("library.library.newFolder")}
+      </Button>
+    </div>
+  );
+  /** A chat-filled volume's root lists its files, not its per-chat folders. */
+  const isChatVolumeRoot = isChatVolume(location.volume) && !location.dirPath;
+
+  /** The places of the drive, each a separate volume or folder underneath.
+   *  Only the org's drive has them: a project's files are one place. */
+  const syncs = useOrgRepoSyncs();
+  const publicSets = useOrgFsPublicSets();
+  const place = libraryPlaceOf(location);
+  const places =
+    root === HOME_MOUNT_PATH
+      ? [
+          { key: "all", label: t("library.library.all"), path: root },
+          {
+            key: PROJECTS_FOLDER,
+            label: t("library.library.placeProjects"),
+            path: `${HOME_MOUNT_PATH}/${PROJECTS_FOLDER}`,
+          },
+          {
+            key: "uploads",
+            label: t("library.library.placeUploads"),
+            path: "uploads",
+          },
+          {
+            key: "outputs",
+            label: t("library.library.placeOutputs"),
+            path: "outputs",
+          },
+          ...((publicSets.data?.length ?? 0) > 0
+            ? [
+                {
+                  key: "public",
+                  label: t("library.library.placeSkills"),
+                  path: "public",
+                },
+              ]
+            : []),
+          ...(syncs.data ?? []).map((sync) => ({
+            key: sync.volume,
+            label: sync.volume,
+            path: sync.volume,
+          })),
+        ]
+      : [];
+
+  const modifiedOptions = LIBRARY_MODIFIED.map((value) => ({
+    value,
+    label: {
+      any: t("library.library.modifiedAny"),
+      today: t("library.library.modifiedToday"),
+      week: t("library.library.modifiedWeek"),
+      month: t("library.library.modifiedMonth"),
+    }[value],
+  }));
+  const typeOptions = (["all", "documents", "media"] as const).map((value) => ({
+    value,
+    label: t(
+      value === "all" ? "library.library.anyType" : `library.library.${value}`,
+    ),
+  }));
+
+  /** One bar: where to look, then what to keep. Drive's order. */
+  const filters = (
+    <Page.Tabs>
+      {places.map((p) => (
+        <Page.Tab
+          key={p.key}
+          active={place === p.key}
+          onClick={() => onOpenDir(p.path)}
+        >
+          {p.label}
+        </Page.Tab>
+      ))}
+      {places.length > 0 && (
+        <span aria-hidden className="mx-1 h-4 w-px shrink-0 bg-border" />
+      )}
+      <FilterMenu
+        label={
+          fileView === "all"
+            ? t("library.library.typeFilter")
+            : typeOptions.find((o) => o.value === fileView)?.label
+        }
+        value={fileView}
+        options={typeOptions}
+        active={fileView !== "all"}
+        onChange={setFileView}
+      />
+      <FilterMenu
+        label={
+          modified === "any"
+            ? t("library.library.modified")
+            : modifiedOptions.find((o) => o.value === modified)?.label
+        }
+        value={modified}
+        options={modifiedOptions}
+        active={modified !== "any"}
+        onChange={(next) =>
+          void setSearchParam("modified", next === "any" ? null : next)
+        }
+      />
+    </Page.Tabs>
+  );
 
   return (
     <div
@@ -400,89 +642,48 @@ export function LibraryPage({
           </div>
         </div>
       )}
-      <div className="h-full overflow-y-auto">
-        <div className="mx-auto flex w-full max-w-[900px] flex-col gap-10 px-6 py-10 lg:px-10">
-          {/* One header row: the breadcrumb names the location (no heading
-              repeating it), and the reclaimed space holds the search box. */}
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="min-w-0 flex-1 basis-full sm:basis-auto">
-              <Breadcrumbs
-                segments={location.segments}
-                onNavigate={onOpenDir}
-              />
-            </div>
-            <div className="relative w-full shrink-0 sm:w-56">
-              <SearchLg
-                size={16}
-                className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted-foreground"
-              />
-              <Input
-                value={searchText}
-                onChange={(e) => setSearchText(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") setSearchText("");
-                }}
-                placeholder={searchPlaceholder}
-                className="h-9 rounded-xl pr-9 pl-9"
-              />
-              {searchText && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="absolute top-1/2 right-1.5 size-7 -translate-y-1/2"
-                  onClick={() => setSearchText("")}
-                  aria-label={t("library.library.clearSearch")}
-                >
-                  <XClose size={14} />
-                </Button>
-              )}
-            </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={refresh}
-              aria-label={t("library.library.refresh")}
-            >
-              <RefreshCw01 size={14} />
-            </Button>
-            {browseVolume && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setNewFolderOpen(true)}
-              >
-                <Plus size={14} />
-                {t("library.library.newFolder")}
-              </Button>
-            )}
-            {location.readOnly ? (
-              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Eye size={12} />
-                {t("library.library.readOnly")}
-              </span>
-            ) : (
-              <Button
-                size="sm"
-                disabled={upload.isPending}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <Upload01 size={14} />
-                {upload.isPending
-                  ? t("library.library.uploading")
-                  : t("library.library.uploadFile")}
-              </Button>
-            )}
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              className="hidden"
-              onChange={(e) => void handleUpload(e.target.files)}
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        className="hidden"
+        onChange={(e) => void handleUpload(e.target.files)}
+      />
+      <Page.Breadcrumbs
+        after="page"
+        parent={{
+          onSelect: () => onOpenDir(root),
+          /** Only spread when there IS one, so an empty label does not erase
+           *  the route's own. */
+          ...(rootLabel ? { label: rootLabel } : {}),
+        }}
+        items={breadcrumbs}
+      />
+      <Page.Actions
+        secondary={
+          <>
+            <SearchToggle
+              value={searchText}
+              onChange={setSearchText}
+              label={t("library.library.searchPlaceholder")}
+              placeholder={searchPlaceholder}
+              clearLabel={t("library.library.clearSearch")}
             />
-          </div>
-
+            {controls}
+          </>
+        }
+      >
+        {primaryAction}
+      </Page.Actions>
+      <Panel.Toolbar.Left.Portal>{filters}</Panel.Toolbar.Left.Portal>
+      <Panel.Toolbar.Right.Portal>
+        <LayoutToggle layout={layout} onChange={view.onLayout} />
+      </Panel.Toolbar.Right.Portal>
+      <div className="h-full overflow-y-auto">
+        <div className="mx-auto flex w-full flex-col max-w-[1200px] gap-8 px-4 py-6 md:px-8">
           {searchQuery ? (
             <SearchResultsView
+              view={view}
               query={searchQuery}
               scope={searchScope}
               stale={searchText.trim() !== searchQuery}
@@ -491,9 +692,22 @@ export function LibraryPage({
               onDelete={setPendingDelete}
             />
           ) : location.volume === null ? (
-            <PublicSetsView onOpenDir={onOpenDir} />
+            <PublicSetsView view={view} onOpenDir={onOpenDir} />
+          ) : isChatVolumeRoot ? (
+            <ChatFilesView
+              key={location.volume}
+              volume={location.volume}
+              view={view}
+              onOpenDir={onOpenDir}
+              onOpenFile={onOpenFile}
+              onShare={setShareTarget}
+              onDelete={setPendingDelete}
+              emptyActions={uploadAction}
+            />
           ) : (
             <VolumeView
+              view={view}
+              root={root}
               // remount on volume switch so list state never bleeds across
               key={location.volume}
               location={location}
@@ -509,6 +723,7 @@ export function LibraryPage({
                 setRenameOpen(true);
               }}
               onMove={handleMove}
+              emptyActions={emptyActions}
             />
           )}
         </div>

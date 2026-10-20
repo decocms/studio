@@ -3,20 +3,27 @@ import { Hono } from "hono";
 import { z } from "zod";
 import type { StudioContext } from "@/core/studio-context";
 import {
+  isReportsTask,
+  LANES,
   nextTagColor,
   SUPER_AGENT_ASSIGNEE_ID,
 } from "@decocms/shared/task-board";
+import {
+  findDuplicatesForBatch,
+  type IndexedDraft,
+} from "@/tools/task-board/duplicate-check";
+import type { BatchDuplicate } from "@/tools/task-board/duplicate-decisions";
 import { captureOrgEvent } from "@/posthog";
 import { TagStorage } from "@/storage/tags";
 import { TaskBoardStorage } from "@/storage/task-board";
 import type { TaskBoardItem } from "@/storage/types";
-import { reactToSuperAgentDelegation } from "@/tools/task-board/enqueue-super-agent";
+import { reactToSuperAgentDelegation } from "@/automations/fire-implementer";
 import { emitTaskBoardUpdated } from "@/tools/task-board/run-reactions";
 import { TaskBoardItemPrioritySchema } from "@/tools/task-board/schema";
 import { bearerToken, isVaultServiceToken } from "./credential-vault";
 
 /**
- * Internal task-board import — a trusted machine service (commerce-discovery's
+ * Internal task-board import — a trusted machine service (reports's
  * diagnostic worker) batch-creates task board items for the org at the end of
  * an enriched report run.
  *
@@ -43,7 +50,10 @@ import { bearerToken, isVaultServiceToken } from "./credential-vault";
  *   a human may have touched those) instead of creating a duplicate, so
  *   recurring diagnostic runs converge on the same card. A done item is NOT
  *   matched — a regression creates a fresh card. Refreshes never re-trigger
- *   the Super Agent delegation.
+ *   the Super Agent delegation. A key no card holds yet is matched like a
+ *   keyless item (title, then the semantic pass), and a card without a key
+ *   that it lands on adopts it: cards filed before the sender sent keys
+ *   join them on the first keyed import and match by key from then on.
  *   When an item carries NO externalKey, its normalized title stands in as the
  *   finding identity. `externalKey` is optional and at least one real producer
  *   never sends it, so the dedup above was simply never reached: one board
@@ -53,7 +63,21 @@ import { bearerToken, isVaultServiceToken } from "./credential-vault";
  *   deliberately not fuzzy, because two findings that differ by a few words are
  *   usually two findings, and wrongly merging them loses one silently.
  *
- * A DISMISSED key (`dismissed_at` set) is skipped and counted in `dismissed`.
+ * A DISMISSED key (`dismissed_at` set) is skipped and counted in `dismissed`,
+ * and so is an item the semantic pass matches to a dismissed reports card.
+ *
+ * The reply carries counts and `items`. The counts are `created`, `updated`
+ * and `delegated`, plus `dismissed`, `semantic_matches` and `quota_blocked`
+ * when they are not zero. `items` has one `{ index, outcome, id, key_seq }`
+ * entry per request item, in request order, and `id` and `key_seq` name the
+ * card the item created, refreshed, matched or was blocked by. `outcome` is
+ * the most specific label, so every `semantic_match` is also counted in
+ * `updated` and every `quota_blocked` in `created`. A `semantic_match` reads
+ * the same whether the import refreshed a reports card, left a human's card
+ * alone, or folded the item into the card an earlier item of the same request
+ * landed on. A `quota_blocked` card exists, but the task quota refused its Super
+ * Agent delegation, so the import unassigned it. A replayed run_id wrote
+ * nothing and replies without `items`.
  *
  * An item may carry `tags` — org tag NAMES the sender owns (the reports sync
  * labels every card `Report` plus the finding's domain, e.g. `SEO`, `GEO`,
@@ -63,9 +87,17 @@ import { bearerToken, isVaultServiceToken } from "./credential-vault";
  * `addItemTags`): a refresh re-asserts the sender's labels without removing the
  * ones a human put on the card.
  *
+ * An item may carry `repositoryId` — the Studio repository the sender read
+ * while writing the finding. It travels because a NAME is not an identity: the
+ * dispatch that binds a checkout matches `owner/name` against the org's
+ * repositories, which is ambiguous for an org that mirrors one project across
+ * two hosts and wrong for a card whose repository was renamed since. The id is
+ * verified against this org before anything is written, so a sender cannot
+ * point a card at another tenant's repository.
+ *
  * An item may carry `assigneeId` — a real org member, or the Super Agent
- * sentinel to queue the task for an agent run (status forced to To Do, same as
- * the create tool). A delegated run must execute as a REAL org member
+ * sentinel to queue the task for an agent run (status forced to In Progress,
+ * same as the create tool). A delegated run must execute as a REAL org member
  * (`threads.created_by` is FK'd to `user.id`, and the harness's context
  * factory rejects non-members), so the org's owner stands in as `assigned_by`
  * until the Deco service user exists.
@@ -75,6 +107,23 @@ type Variables = {
   studioContext: StudioContext;
 };
 
+type ImportItemOutcome =
+  | "created"
+  | "updated"
+  | "semantic_match"
+  | "dismissed"
+  | "quota_blocked";
+
+/** One entry of the reply's `items`; see the module note. */
+interface ImportItemResult {
+  index: number;
+  outcome: ImportItemOutcome;
+  id: string;
+  key_seq: number;
+}
+
+type CardRef = Pick<ImportItemResult, "id" | "key_seq">;
+
 /**
  * Finding identity for an item that carries no `externalKey`: the title with
  * case and whitespace differences flattened. Nothing more aggressive — see the
@@ -82,6 +131,65 @@ type Variables = {
  */
 export function normalizeTitleKey(title: string): string {
   return title.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+/**
+ * The third, semantic dedup pass — what the two exact keys cannot catch: a
+ * keyless finding whose wording drifted between runs, one a human already
+ * filed in their own words, one the org dismissed under another wording, or
+ * two findings of one request that ask for the same change.
+ *
+ * Only items whose key no card holds (keyless ones included) and without an
+ * exact title match against an open card are offered, and it runs before the
+ * transaction so no model
+ * latency sits inside it. Only a high-confidence verdict naming an offered
+ * card or an earlier offered item counts (see `findDuplicatesForBatch`).
+ * Best-effort: no model tier, a provider error, or a malformed answer yields
+ * no matches and the items are created as before.
+ *
+ * Returns item index → the card that already tracks it (open, or a reports
+ * card the org dismissed, listed in `dismissedIds`), or the index of the
+ * earlier item it repeats.
+ */
+async function semanticMatchesFor(
+  ctx: StudioContext,
+  organizationId: string,
+  items: readonly {
+    title: string;
+    description?: string | null;
+    externalKey?: string;
+  }[],
+  openTitleKeys: ReadonlySet<string>,
+  heldKeys: ReadonlySet<string>,
+): Promise<{
+  matches: Map<number, BatchDuplicate>;
+  dismissedIds: ReadonlySet<string>;
+}> {
+  const drafts: IndexedDraft[] = [];
+  items.forEach((item, index) => {
+    if (item.externalKey && heldKeys.has(item.externalKey)) return;
+    if (openTitleKeys.has(normalizeTitleKey(item.title))) return;
+    drafts.push({ index, title: item.title, description: item.description });
+  });
+  if (drafts.length === 0)
+    return { matches: new Map(), dismissedIds: new Set() };
+  try {
+    const dismissed = (
+      await ctx.storage.taskBoard.listDismissed(organizationId)
+    ).filter(isReportsTask);
+    return {
+      matches: await findDuplicatesForBatch(
+        ctx,
+        organizationId,
+        drafts,
+        dismissed,
+      ),
+      dismissedIds: new Set(dismissed.map((card) => card.id)),
+    };
+  } catch (err) {
+    console.warn("[task-board-import] semantic dedup skipped", err);
+    return { matches: new Map(), dismissedIds: new Set() };
+  }
 }
 
 export const importBodySchema = z.object({
@@ -99,6 +207,9 @@ export const importBodySchema = z.object({
          *  plus the finding's domain). Resolved case-insensitively against the
          *  org's tags, created when missing, attached additively. */
         tags: z.array(z.string().min(1).max(50)).max(8).optional(),
+        /** The Studio repository the finding was written against. Must belong
+         *  to this org; see the module note on why it is worth carrying. */
+        repositoryId: z.string().min(1).max(200).optional(),
       }),
     )
     .min(1)
@@ -144,9 +255,6 @@ export const createTaskBoardImportRoutes = () => {
         : item,
     );
 
-    // Validate real-member assignees against the member table directly — the
-    // create tool's assertValidAssignee goes through boundAuth, which needs a
-    // user session this service-token route doesn't have.
     for (const item of items) {
       if (!item.assigneeId || item.assigneeId === SUPER_AGENT_ASSIGNEE_ID)
         continue;
@@ -161,6 +269,26 @@ export const createTaskBoardImportRoutes = () => {
           { error: `assignee is not a member: ${item.assigneeId}` },
           400,
         );
+      }
+    }
+
+    // Every repository named in the batch must be one THIS org owns. Checked
+    // once for the distinct set rather than per item, and before the
+    // transaction, so a bad id costs one query and writes nothing.
+    const repositoryIds = [
+      ...new Set(items.flatMap((item) => item.repositoryId ?? [])),
+    ];
+    if (repositoryIds.length > 0) {
+      const owned = await ctx.db
+        .selectFrom("repositories")
+        .select(["id"])
+        .where("organization_id", "=", organizationId)
+        .where("id", "in", repositoryIds)
+        .execute();
+      const ownedIds = new Set(owned.map((row) => row.id));
+      const foreign = repositoryIds.find((id) => !ownedIds.has(id));
+      if (foreign) {
+        return c.json({ error: `invalid_repository: ${foreign}` }, 400);
       }
     }
 
@@ -180,6 +308,24 @@ export const createTaskBoardImportRoutes = () => {
         .executeTakeFirst();
       ownerId = owner?.userId ?? null;
     }
+
+    // Exact-title matches are the transaction's job; the model only sees the rest.
+    const openTitleKeys = new Set(
+      (await ctx.storage.taskBoard.list(organizationId))
+        .filter((row) => row.status !== "done")
+        .map((row) => normalizeTitleKey(row.title)),
+    );
+    const heldKeys = await ctx.storage.taskBoard.heldFindingKeys(
+      organizationId,
+      items.flatMap((i) => i.externalKey ?? []),
+    );
+    const { matches: semantic, dismissedIds } = await semanticMatchesFor(
+      ctx,
+      organizationId,
+      items,
+      openTitleKeys,
+      heldKeys,
+    );
 
     const runId = parsed.data.source?.run_id;
 
@@ -203,37 +349,12 @@ export const createTaskBoardImportRoutes = () => {
       // suppress the finding.
       const keys = items.flatMap((i) => i.externalKey ?? []);
       const openByKey = new Map<string, string>();
-      const dismissed = new Set<string>();
-
-      // Title-keyed fallback for items with no externalKey. Scoped to the org's
-      // non-done cards and only paid for when some item actually lacks a key.
-      const openByTitle = new Map<string, string>();
-      const dismissedTitles = new Set<string>();
-      if (items.some((i) => !i.externalKey)) {
-        const rows = await trx
-          .selectFrom("task_board_items")
-          .select(["id", "title", "status", "dismissed_at"])
-          .where("organization_id", "=", organizationId)
-          .where((eb) =>
-            eb.or([
-              eb("dismissed_at", "is not", null),
-              eb("status", "!=", "done"),
-            ]),
-          )
-          .execute();
-        for (const row of rows) {
-          const key = normalizeTitleKey(row.title);
-          if (row.dismissed_at) dismissedTitles.add(key);
-          else if (row.status !== "done" && !openByTitle.has(key)) {
-            openByTitle.set(key, row.id);
-          }
-        }
-      }
+      const dismissedByKey = new Map<string, CardRef>();
 
       if (keys.length > 0) {
         const rows = await trx
           .selectFrom("task_board_items")
-          .select(["id", "external_key", "status", "dismissed_at"])
+          .select(["id", "key_seq", "external_key", "status", "dismissed_at"])
           .where("organization_id", "=", organizationId)
           .where("external_key", "in", keys)
           .where((eb) =>
@@ -246,9 +367,44 @@ export const createTaskBoardImportRoutes = () => {
         for (const row of rows) {
           if (!row.external_key) continue;
           // Dismissal wins over an open card with the same key.
-          if (row.dismissed_at) dismissed.add(row.external_key);
-          else if (row.status !== "done")
+          if (row.dismissed_at) {
+            dismissedByKey.set(row.external_key, {
+              id: row.id,
+              key_seq: row.key_seq,
+            });
+          } else if (row.status !== "done")
             openByKey.set(row.external_key, row.id);
+        }
+      }
+
+      /** Whether a card holds the item's key, so the key alone settles it. */
+      const heldKey = (key: string | undefined): key is string =>
+        key !== undefined && (openByKey.has(key) || dismissedByKey.has(key));
+
+      // Title-keyed fallback for an item whose key no card holds (keyless ones
+      // included). Scoped to the org's non-done cards and only paid for when
+      // some item needs it.
+      const openByTitle = new Map<string, string>();
+      const dismissedByTitle = new Map<string, CardRef>();
+      if (items.some((i) => !heldKey(i.externalKey))) {
+        const rows = await trx
+          .selectFrom("task_board_items")
+          .select(["id", "key_seq", "title", "status", "dismissed_at"])
+          .where("organization_id", "=", organizationId)
+          .where((eb) =>
+            eb.or([
+              eb("dismissed_at", "is not", null),
+              eb("status", "!=", "done"),
+            ]),
+          )
+          .execute();
+        for (const row of rows) {
+          const key = normalizeTitleKey(row.title);
+          if (row.dismissed_at) {
+            dismissedByTitle.set(key, { id: row.id, key_seq: row.key_seq });
+          } else if (row.status !== "done" && !openByTitle.has(key)) {
+            openByTitle.set(key, row.id);
+          }
         }
       }
 
@@ -298,23 +454,40 @@ export const createTaskBoardImportRoutes = () => {
         return (await storage.getById(row.id, organizationId)) ?? row;
       };
       const touched: TaskBoardItem[] = [];
-      const delegations: TaskBoardItem[] = [];
-      let created = 0;
-      let updated = 0;
-      let skipped = 0;
-      for (const item of items) {
+      const delegations: { row: TaskBoardItem; result: ImportItemResult }[] =
+        [];
+      const results: ImportItemResult[] = [];
+      for (const [index, item] of items.entries()) {
         const titleKey = normalizeTitleKey(item.title);
-        const isDismissed = item.externalKey
-          ? dismissed.has(item.externalKey)
-          : dismissedTitles.has(titleKey);
-        if (isDismissed) {
-          skipped++;
+        const key = item.externalKey;
+        // A key a card holds settles the item. Otherwise it is matched as a
+        // keyless item is, and the card it lands on adopts its key: cards
+        // filed before the sender sent keys join them once, then match by key.
+        const byKey = heldKey(key);
+        const adopt = key !== undefined && !byKey ? key : undefined;
+        const dismissedCard = byKey
+          ? dismissedByKey.get(key)
+          : dismissedByTitle.get(titleKey);
+        if (dismissedCard) {
+          if (adopt) {
+            await storage.adoptExternalKey(
+              dismissedCard.id,
+              organizationId,
+              adopt,
+            );
+            dismissedByKey.set(adopt, dismissedCard);
+          }
+          results.push({ index, outcome: "dismissed", ...dismissedCard });
           continue;
         }
-        const existingId = item.externalKey
-          ? openByKey.get(item.externalKey)
+        const existingId = byKey
+          ? openByKey.get(key)
           : openByTitle.get(titleKey);
         if (existingId) {
+          if (adopt) {
+            await storage.adoptExternalKey(existingId, organizationId, adopt);
+            openByKey.set(adopt, existingId);
+          }
           // Refresh the finding's card: new evidence + severity. Title,
           // status and assignee stay — a human may have touched them, and a
           // refresh must never re-queue a delegation.
@@ -324,11 +497,97 @@ export const createTaskBoardImportRoutes = () => {
             {
               description: item.description ?? null,
               priority: item.priority,
+              // Refreshed like the evidence, not preserved like the title: a
+              // card created before the sender knew the repository has to pick
+              // it up, and a re-diagnosis that moved to a different repository
+              // is the sender correcting itself, not a human's edit.
+              ...(item.repositoryId !== undefined
+                ? { repositoryId: item.repositoryId }
+                : {}),
             },
             "system",
           );
           touched.push(await withTags(row, item.tags));
-          updated++;
+          results.push({
+            index,
+            outcome: "updated",
+            id: row.id,
+            key_seq: row.keySeq,
+          });
+          continue;
+        }
+        const match = byKey ? undefined : semantic.get(index);
+        // A repeat of an earlier item lands where that item did, dismissal
+        // included.
+        const earlier =
+          match && "draft" in match
+            ? results.find((r) => r.index === match.draft)
+            : undefined;
+        if (earlier?.outcome === "dismissed") {
+          results.push({ ...earlier, index });
+          continue;
+        }
+        // The org dismissed this finding under another wording.
+        if (match && "item" in match && dismissedIds.has(match.item.id)) {
+          if (adopt) {
+            await storage.adoptExternalKey(
+              match.item.id,
+              organizationId,
+              adopt,
+            );
+            dismissedByKey.set(adopt, {
+              id: match.item.id,
+              key_seq: match.item.keySeq,
+            });
+          }
+          results.push({
+            index,
+            outcome: "dismissed",
+            id: match.item.id,
+            key_seq: match.item.keySeq,
+          });
+          continue;
+        }
+        const matched =
+          match && "item" in match
+            ? match.item
+            : earlier && (await storage.getById(earlier.id, organizationId));
+        if (match && matched) {
+          // Only a reports-owned card is refreshed; a human's keeps its
+          // content, and so does the card an earlier item just wrote.
+          const row =
+            "item" in match && isReportsTask(matched)
+              ? await storage.update(
+                  matched.id,
+                  organizationId,
+                  {
+                    description: item.description ?? null,
+                    priority: item.priority,
+                    ...(item.repositoryId !== undefined
+                      ? { repositoryId: item.repositoryId }
+                      : {}),
+                  },
+                  "system",
+                )
+              : matched;
+          await storage.recordActivity({
+            taskBoardItemId: matched.id,
+            action: "duplicate_reported",
+            actorId: null,
+            data: { title: item.title, reason: match.reason },
+          });
+          if (adopt) {
+            await storage.adoptExternalKey(matched.id, organizationId, adopt);
+            openByKey.set(adopt, matched.id);
+          }
+          openByTitle.set(titleKey, matched.id);
+          touched.push(await withTags(row, item.tags));
+          results.push({
+            index,
+            outcome: "semantic_match",
+            id: row.id,
+            key_seq: row.keySeq,
+          });
           continue;
         }
         const toSuperAgent = item.assigneeId === SUPER_AGENT_ASSIGNEE_ID;
@@ -336,8 +595,9 @@ export const createTaskBoardImportRoutes = () => {
           organizationId,
           title: item.title,
           description: item.description ?? null,
-          // A task handed to the Super Agent is queued to run — land it in To Do.
-          status: toSuperAgent ? "todo" : undefined,
+          // A task handed to the Super Agent is about to run — land it where
+          // the Super Agent works.
+          status: toSuperAgent ? LANES.progress : undefined,
           priority: item.priority,
           assigneeId: item.assigneeId ?? null,
           // The delegation principal: the run executes as this user, so the
@@ -349,16 +609,23 @@ export const createTaskBoardImportRoutes = () => {
               ? "system"
               : null,
           externalKey: item.externalKey ?? null,
+          repositoryId: item.repositoryId ?? null,
           by: "system",
         });
-        // A within-batch duplicate key folds into the row just created.
-        if (item.externalKey) openByKey.set(item.externalKey, row.id);
-        else openByTitle.set(titleKey, row.id);
+        // A within-batch duplicate key or title folds into the row just created.
+        if (key) openByKey.set(key, row.id);
+        openByTitle.set(titleKey, row.id);
         touched.push(await withTags(row, item.tags));
-        created++;
-        if (toSuperAgent) delegations.push(row);
+        const result: ImportItemResult = {
+          index,
+          outcome: "created",
+          id: row.id,
+          key_seq: row.keySeq,
+        };
+        results.push(result);
+        if (toSuperAgent) delegations.push({ row, result });
       }
-      return { touched, delegations, created, updated, skipped };
+      return { touched, delegations, results };
     });
 
     if (!outcome)
@@ -372,14 +639,13 @@ export const createTaskBoardImportRoutes = () => {
     // no run behind it: un-assign it (the user sees the paywall when they
     // delegate it themselves) and report it apart from the ones that ran.
     let delegated = 0;
-    let quotaBlocked = 0;
-    for (const row of outcome.delegations) {
+    for (const { row, result } of outcome.delegations) {
       try {
         await reactToSuperAgentDelegation(ctx, row);
         delegated++;
       } catch (err) {
         if (!(err instanceof TaskQuotaError)) throw err;
-        quotaBlocked++;
+        result.outcome = "quota_blocked";
         await new TaskBoardStorage(ctx.db)
           .update(row.id, organizationId, { assigneeId: null }, "system")
           .then((updated) => emitTaskBoardUpdated(organizationId, updated))
@@ -389,16 +655,27 @@ export const createTaskBoardImportRoutes = () => {
       }
     }
 
+    const count = (...kinds: ImportItemOutcome[]) =>
+      outcome.results.filter((r) => kinds.includes(r.outcome)).length;
+    const counts = {
+      created: count("created", "quota_blocked"),
+      updated: count("updated", "semantic_match"),
+      dismissed: count("dismissed"),
+      semanticMatches: count("semantic_match"),
+      quotaBlocked: count("quota_blocked"),
+    };
+
     // Receiver's counterpart to the engine's diagnostic_tasks_pushed — join on run_id, never sum.
     captureOrgEvent({
       event: "task_board_import_landed",
       organizationId,
       properties: {
-        created: outcome.created,
-        updated: outcome.updated,
-        skipped: outcome.skipped,
+        created: counts.created,
+        updated: counts.updated,
+        skipped: counts.dismissed,
+        semantic_matches: counts.semanticMatches,
         delegated,
-        quota_blocked: quotaBlocked,
+        quota_blocked: counts.quotaBlocked,
         ...(runId ? { run_id: runId } : {}),
         ...(parsed.data.source?.url
           ? { source_url: parsed.data.source.url }
@@ -407,12 +684,17 @@ export const createTaskBoardImportRoutes = () => {
     });
 
     return c.json({
-      created: outcome.created,
-      updated: outcome.updated,
+      created: counts.created,
+      updated: counts.updated,
       delegated,
       // Report the skips — a silent one reads as "imported everything".
-      ...(outcome.skipped > 0 && { dismissed: outcome.skipped }),
-      ...(quotaBlocked > 0 && { quota_blocked: quotaBlocked }),
+      ...(counts.dismissed > 0 && { dismissed: counts.dismissed }),
+      // How many of `updated` were folded by the model rather than an exact key.
+      ...(counts.semanticMatches > 0 && {
+        semantic_matches: counts.semanticMatches,
+      }),
+      ...(counts.quotaBlocked > 0 && { quota_blocked: counts.quotaBlocked }),
+      items: outcome.results,
     });
   });
 

@@ -282,9 +282,6 @@ export function StringField({
         type={format === "url" ? "url" : "text"}
         value={strValue}
         onChange={(e) => onChange(e.target.value)}
-        placeholder={
-          schema.default != null ? String(schema.default) : undefined
-        }
         className="h-10"
       />
     </div>

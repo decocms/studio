@@ -106,7 +106,11 @@ export function TimeRangePicker({
     return value.from === range.from && value.to === range.to;
   };
 
-  const displayText = getTimeRangeDisplayText(value.from, value.to);
+  const displayText = getTimeRangeDisplayText(
+    value.from,
+    value.to,
+    quickRanges,
+  );
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -185,7 +189,7 @@ export function TimeRangePicker({
                       type="button"
                       onClick={() => handleQuickRangeSelect(range)}
                       className={cn(
-                        "w-full text-left px-3 py-2 text-sm rounded-md transition-colors",
+                        "w-full text-left px-3 py-2 text-sm rounded-lg transition-colors",
                         "hover:bg-accent hover:text-accent-foreground",
                         isSelected &&
                           "bg-accent text-accent-foreground font-medium",

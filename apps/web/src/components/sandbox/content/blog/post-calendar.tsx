@@ -12,28 +12,16 @@
  */
 import { useState } from "react";
 import {
-  AlertCircle,
   CalendarDate,
   ChevronLeft,
   ChevronRight,
   Plus,
 } from "@untitledui/icons";
-import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
-} from "@decocms/ui/components/alert.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { ScrollArea } from "@decocms/ui/components/scroll-area.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { usePreferences } from "@/hooks/use-preferences.ts";
 import { useT } from "@/i18n/use-t.ts";
-import {
-  APPS_SCHEDULING_VERSION,
-  APPS_UPDATE_COMMAND,
-  type BlogSupport,
-  supportsScheduling,
-} from "./blog-capabilities";
 import {
   addMonths,
   buildMonthWeeks,
@@ -57,49 +45,8 @@ const SCHEDULED_CHIP =
 const UNSCHEDULED_CHIP =
   "border-dashed border-border bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground";
 
-/**
- * Sits over the blurred grid when the site can't back scheduling. Never a CTA
- * — the fix is a command in the repo, not a button here.
- */
-function SupportOverlay({ support }: { support: BlogSupport }) {
-  const t = useT();
-  const runtimeUnsupported = support.kind === "unsupported-runtime";
-  return (
-    <div className="absolute inset-0 flex items-center justify-center bg-background/30 p-6">
-      <Alert
-        variant="warning"
-        className="max-w-md bg-background/95 shadow-lg backdrop-blur"
-      >
-        <AlertCircle />
-        <div>
-          <AlertTitle>
-            {t(
-              runtimeUnsupported
-                ? "sandbox.postCalendar.unsupportedRuntimeTitle"
-                : "sandbox.postCalendar.outdatedAppsTitle",
-            )}
-          </AlertTitle>
-          <AlertDescription>
-            {runtimeUnsupported
-              ? t("sandbox.postCalendar.unsupportedRuntimeDescription")
-              : t("sandbox.postCalendar.outdatedAppsDescription", {
-                  required: APPS_SCHEDULING_VERSION,
-                })}
-          </AlertDescription>
-          {!runtimeUnsupported && (
-            <code className="mt-2 block rounded-md bg-muted px-2 py-1 font-mono text-xs text-foreground">
-              {APPS_UPDATE_COMMAND}
-            </code>
-          )}
-        </div>
-      </Alert>
-    </div>
-  );
-}
-
 export function PostCalendar({
   decofile,
-  support,
   selectedKey,
   onSelect,
   onCreate,
@@ -107,8 +54,6 @@ export function PostCalendar({
   isCreating = false,
 }: {
   decofile: Record<string, unknown>;
-  /** Gates the "+" affordance — see {@link supportsScheduling}. */
-  support: BlogSupport;
   /** Decofile key of the post currently open in the editor, if any. */
   selectedKey?: string | null;
   onSelect: (key: string) => void;
@@ -119,7 +64,6 @@ export function PostCalendar({
   isCreating?: boolean;
 }) {
   const t = useT();
-  const canSchedule = supportsScheduling(support);
   // Set on dragstart so a day cell can highlight only for a real drop.
   const [dragging, setDragging] = useState<string | null>(null);
   const [preferences] = usePreferences();
@@ -181,10 +125,7 @@ export function PostCalendar({
       </div>
 
       <div className="relative flex-1 min-h-0">
-        <ScrollArea
-          className={cn("h-full", !canSchedule && "blur-[2px] select-none")}
-          inert={!canSchedule}
-        >
+        <ScrollArea className="h-full">
           <div className="flex min-w-[880px] gap-4 p-4">
             <div className="flex-1 min-w-0">
               <div className="grid grid-cols-7 mb-2">
@@ -232,30 +173,25 @@ export function PostCalendar({
                         >
                           {day.getDate()}
                         </div>
-                        {canSchedule && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="size-6 opacity-0 transition-opacity group-hover/day:opacity-100 focus-visible:opacity-100"
-                            disabled={isCreating}
-                            onClick={() => onCreate(day)}
-                            aria-label={t(
-                              "sandbox.postCalendar.schedulePostOn",
-                              {
-                                date: dayLabel.format(day),
-                              },
-                            )}
-                          >
-                            <Plus size={14} />
-                          </Button>
-                        )}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="size-6 opacity-0 transition-opacity group-hover/day:opacity-100 focus-visible:opacity-100"
+                          disabled={isCreating}
+                          onClick={() => onCreate(day)}
+                          aria-label={t("sandbox.postCalendar.schedulePostOn", {
+                            date: dayLabel.format(day),
+                          })}
+                        >
+                          <Plus size={14} />
+                        </Button>
                       </div>
                       {entries.map((entry) => (
                         <PostChip
                           key={entry.post.key}
                           entry={entry}
                           active={entry.post.key === selectedKey}
-                          draggable={canSchedule && entry.scheduled}
+                          draggable={entry.scheduled}
                           onSelect={onSelect}
                           onDragStateChange={setDragging}
                         />
@@ -301,7 +237,6 @@ export function PostCalendar({
             </div>
           </div>
         </ScrollArea>
-        {!canSchedule && <SupportOverlay support={support} />}
       </div>
     </div>
   );
@@ -359,7 +294,7 @@ function PostChip({
       onClick={() => onSelect(post.key)}
       title={`${post.title} · ${status}`}
       className={cn(
-        "w-full truncate rounded-md border px-2 py-1 text-left text-xs font-medium transition-colors",
+        "w-full truncate rounded-lg border px-2 py-1 text-left text-xs font-medium transition-colors",
         scheduled ? SCHEDULED_CHIP : UNSCHEDULED_CHIP,
         draggable && "cursor-grab active:cursor-grabbing",
         active && "ring-2 ring-primary",

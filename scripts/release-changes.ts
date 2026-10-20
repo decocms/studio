@@ -1,21 +1,22 @@
 import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
+// apps/web ships inside the api image, so it shares the api version.
 const API_MANIFEST = "apps/api/package.json";
-// The desktop app and the server share ONE release line: apps/api and
-// apps/native carry the same version, always bumped together, so "what
-// version are you on?" has a single answer whether the surface is the
-// deployed web app or the installed binary. apps/web is embedded in both
-// (served by the api image, baked into the desktop bundle), which is why a
-// web change rolls the pair too. The native manifest's bump is what
-// .github/workflows/release-native.yaml keys the DMG/zip release and the
-// Homebrew cask off.
-const NATIVE_MANIFEST = "apps/native/package.json";
 // Tags the sandbox image and, via release-tagging.yaml's CHART_IMAGE_LOCKSTEP,
 // the sandbox-env chart's image.tag.
 const SANDBOX_MANIFEST = "packages/sandbox/package.json";
+// @decocms/sandbox-controller bundles these sources and publishes on a version
+// its registry does not have yet (publish-sandbox-controller-npm.yaml, whose
+// trigger paths list the same directories).
+const SANDBOX_CONTROLLER_MANIFEST = "packages/sandbox-controller/package.json";
+const SANDBOX_CONTROLLER_SOURCES = [
+  "packages/sandbox/server/",
+  "packages/shared/src/git-providers/",
+  "packages/shared/src/std/",
+];
 
-export type DeployScope = "both" | "server" | "web" | "none";
+export type DeployScope = "both" | "server" | "web";
 
 export interface ReleaseChanges {
   deployScope: DeployScope;
@@ -34,34 +35,20 @@ export function parseChangedFiles(contents: string): string[] {
 export function releaseManifestCandidates(files: readonly string[]): string[] {
   const manifests = new Set<string>();
 
-  const addReleaseLine = () => {
-    // ONE release line — apps/api and apps/native move together, always.
-    // Adding one without the other is how the deployed server and the
-    // installed desktop app end up answering "what version?" differently,
-    // permanently (each manifest bumps from its own current value, so a
-    // single-sided bump is an offset forever).
-    manifests.add(API_MANIFEST);
-    manifests.add(NATIVE_MANIFEST);
-  };
-
   for (const file of files) {
     if (file === "package.json" || file === "scripts/build-studio.ts") {
-      addReleaseLine();
+      manifests.add(API_MANIFEST);
       continue;
     }
 
-    if (
-      file.startsWith("apps/api/") ||
-      file.startsWith("apps/web/") ||
-      file.startsWith("apps/native/")
-    ) {
-      addReleaseLine();
+    if (file.startsWith("apps/api/") || file.startsWith("apps/web/")) {
+      manifests.add(API_MANIFEST);
       continue;
     }
 
     // The nginx config is baked into the web image tagged with the API version.
     if (file.startsWith("deploy/helm/studio/files/")) {
-      addReleaseLine();
+      manifests.add(API_MANIFEST);
       continue;
     }
 
@@ -75,11 +62,21 @@ export function releaseManifestCandidates(files: readonly string[]): string[] {
       manifests.add(SANDBOX_MANIFEST);
     }
 
+    if (SANDBOX_CONTROLLER_SOURCES.some((dir) => file.startsWith(dir))) {
+      manifests.add(SANDBOX_CONTROLLER_MANIFEST);
+    }
+
     const packageMatch = /^packages\/([^/]+)\//.exec(file);
     const packageDirectory = packageMatch?.[1];
     if (packageDirectory) {
       manifests.add(`packages/${packageDirectory}/package.json`);
     }
+  }
+
+  // The controller's default Freestyle image is tagged from the sandbox
+  // version it bundles, so a new image only reaches it through a new release.
+  if (manifests.has(SANDBOX_MANIFEST)) {
+    manifests.add(SANDBOX_CONTROLLER_MANIFEST);
   }
 
   return [...manifests].sort();
@@ -100,16 +97,8 @@ export function classifyReleaseChanges(
 ): ReleaseChanges {
   const hasApiChanges = files.some((file) => file.startsWith("apps/api/"));
   const hasWebChanges = files.some((file) => file.startsWith("apps/web/"));
-  // A merge that touches ONLY the desktop app bumps the shared release line
-  // (the version must stay single) but changes nothing any pod runs — "none"
-  // tells the CD dispatch to skip the fleet. A consumer that predates the
-  // value treats it like the old fallthrough ("both"), so this can only
-  // reduce churn, never lose a rollout.
-  const nativeOnly =
-    files.length > 0 && files.every((file) => file.startsWith("apps/native/"));
-  const deployScope = nativeOnly
-    ? "none"
-    : hasApiChanges && !hasWebChanges
+  const deployScope =
+    hasApiChanges && !hasWebChanges
       ? "server"
       : hasWebChanges && !hasApiChanges
         ? "web"

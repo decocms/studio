@@ -1,67 +1,35 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { callStudioTool } from "./studio-tools";
+import { describe, expect, it } from "bun:test";
+import {
+  PLAN_REFUSAL_CODES,
+  planRefusalOf,
+  StudioToolError,
+} from "./studio-tools";
 
-let originalFetch: typeof globalThis.fetch;
-
-beforeEach(() => {
-  originalFetch = globalThis.fetch;
-});
-
-afterEach(() => {
-  globalThis.fetch = originalFetch;
-});
-
-describe("callStudioTool", () => {
-  test("returns the parsed JSON body on success", async () => {
-    const body = { id: "conn_1", healthy: true, latencyMs: 12 };
-    globalThis.fetch = (async () =>
-      new Response(JSON.stringify(body), {
-        status: 200,
-      })) as unknown as typeof globalThis.fetch;
-
-    const result = await callStudioTool("acme", "CONNECTION_TEST", {
-      id: "conn_1",
-    });
-    expect(result).toEqual(body);
+describe("planRefusalOf", () => {
+  it("recognises both codes the server actually sends", () => {
+    for (const code of Object.values(PLAN_REFUSAL_CODES)) {
+      expect(planRefusalOf(new StudioToolError("nope", 403, code))).toBe(code);
+    }
   });
 
-  test("throws a StudioToolError with the server message on non-2xx", async () => {
-    globalThis.fetch = (async () =>
-      new Response(JSON.stringify({ error: "not found" }), {
-        status: 404,
-      })) as unknown as typeof globalThis.fetch;
-
-    await expect(
-      callStudioTool("acme", "CONNECTION_TEST", { id: "conn_1" }),
-    ).rejects.toMatchObject({ message: "not found", status: 404 });
+  it("is null for a tool error carrying no code — the old shape", () => {
+    expect(planRefusalOf(new StudioToolError("boom", 500))).toBeNull();
   });
 
-  test("falls back to a generic message when the error body isn't JSON", async () => {
-    globalThis.fetch = (async () =>
-      new Response("<html>502 Bad Gateway</html>", {
-        status: 502,
-      })) as unknown as typeof globalThis.fetch;
-
-    await expect(
-      callStudioTool("acme", "CONNECTION_TEST", { id: "conn_1" }),
-    ).rejects.toMatchObject({
-      message: "CONNECTION_TEST failed (502)",
-      status: 502,
-    });
+  it("is null for some other code, so an unrelated 403 is not a paywall", () => {
+    expect(
+      planRefusalOf(new StudioToolError("nope", 403, "forbidden")),
+    ).toBeNull();
   });
 
-  test("throws a StudioToolError instead of a raw parse error when a 2xx body isn't JSON", async () => {
-    globalThis.fetch = (async () =>
-      new Response("<html>upstream proxy glitch</html>", {
-        status: 200,
-      })) as unknown as typeof globalThis.fetch;
-
-    await expect(
-      callStudioTool("acme", "CONNECTION_TEST", { id: "conn_1" }),
-    ).rejects.toMatchObject({
-      name: "StudioToolError",
-      message: "CONNECTION_TEST returned a non-JSON response",
-      status: 200,
-    });
+  it("is null for anything that is not a StudioToolError", () => {
+    for (const other of [
+      null,
+      undefined,
+      "feature_not_in_plan",
+      new Error("x"),
+    ]) {
+      expect(planRefusalOf(other)).toBeNull();
+    }
   });
 });

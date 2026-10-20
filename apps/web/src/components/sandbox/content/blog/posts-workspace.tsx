@@ -1,0 +1,1004 @@
+/**
+ * The Posts area: one workspace with two views of the same lifecycle — a Kanban
+ * Board (lanes by status, drag to advance) and a grouped List (by status by
+ * default). Opening a post swaps to the editor;
+ * the caller renders that with a Back button. Statuses are the blog app's own
+ * `PostStatus` vocabulary; deleting a post is a soft delete into Archived.
+ */
+import { Fragment, type ReactNode, Suspense, useRef, useState } from "react";
+import {
+  AlertCircle,
+  Copy01,
+  CalendarDate,
+  CheckCircle,
+  ChevronDown,
+  ChevronRight,
+  Columns03,
+  List,
+  Loading02,
+  Pilcrow01,
+  Plus,
+  Stars02,
+  Trash01,
+  Upload01,
+} from "@untitledui/icons";
+import { toast } from "sonner";
+import { Badge } from "@decocms/ui/components/badge.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@decocms/ui/components/dialog.tsx";
+import { Checkbox } from "@decocms/ui/components/checkbox.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
+import { useT } from "@/i18n/use-t.ts";
+import { useBlogAi } from "@/hooks/use-blog-ai";
+import { useHideDefaultBlogBlocks } from "@/hooks/use-hide-default-blog-blocks";
+import { useHostedAiProviderKeys } from "@/hooks/collections/use-ai-providers";
+import { useSaveBlock } from "@/components/sections-editor/use-save-block";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@decocms/ui/components/dropdown-menu.tsx";
+import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
+import { GeneratePostDialog } from "./generate-post-dialog";
+import { useGeneratePost } from "./use-generate-post";
+import { POST_STATUS_LABEL, type PostStatusMove } from "./use-post-status-move";
+import {
+  buildPlanningPostBlock,
+  emptyDraftPostPayload,
+  getBlogPayload,
+  listAllPostsWithMeta,
+  listBlogPayloads,
+  newPostId,
+  planningMeta,
+  planningPostKey,
+  type PostMeta,
+  type PostStatus,
+  POST_STATUSES,
+  sectionResolveTypes,
+} from "./blog-data";
+import {
+  buildImportedPostPayload,
+  looksLikeHtml,
+  parseImportedContent,
+  sectionsToBlocks,
+} from "./import-content";
+import { MonacoCodeEditor } from "@/components/monaco-editor";
+import { str } from "./blocks/primitives";
+import {
+  PostFilterBar,
+  PostSearchInput,
+  PostSelectionToolbar,
+  type PostSort,
+} from "./post-toolbar";
+
+export type PostsView = "board" | "list";
+const STATUS_VARIANT: Record<
+  PostStatus,
+  "secondary" | "warning" | "success" | "outline"
+> = {
+  draft: "outline",
+  generating: "secondary",
+  awaiting_review: "warning",
+  scheduled: "secondary",
+  published: "success",
+  archived: "outline",
+};
+
+/** The agentic lanes sit ahead of the manual ones, in pipeline order. */
+const LEAD_LANE: PostStatus = "generating";
+
+/** Board order: what the agent is writing comes before what a human moves. */
+const BOARD_LANES: PostStatus[] = [
+  LEAD_LANE,
+  ...POST_STATUSES.filter((status) => status !== LEAD_LANE),
+];
+
+/** Go-live instant of a post (ISO, so lexical order is chronological). */
+const postDateKey = (post: PostMeta) =>
+  post.scheduledDatetime || post.date || "";
+
+/** Newest first — for the scheduled and published lanes/groups. */
+const byDateDesc = (a: PostMeta, b: PostMeta) =>
+  postDateKey(b).localeCompare(postDateKey(a));
+
+/** These statuses read as a timeline; everything else keeps its natural order. */
+const isDatedStatus = (status: PostStatus) =>
+  status === "scheduled" || status === "published";
+
+/** Drag payload key — the dragged post's block key. */
+const DRAG_KEY = "application/x-post-key";
+
+export function PostsWorkspace({
+  orgSlug,
+  virtualMcpId,
+  branch,
+  decofile,
+  view,
+  selectedKey,
+  onViewChange,
+  onOpen,
+  onClose,
+  move,
+  meta,
+  renderDetail,
+}: {
+  orgSlug: string;
+  virtualMcpId: string;
+  branch: string;
+  decofile: Record<string, unknown>;
+  view: PostsView;
+  /** The open post — a highlighted row in list mode, an open drawer in board mode. */
+  selectedKey?: string | null;
+  onViewChange: (view: PostsView) => void;
+  onOpen: (key: string) => void;
+  /** Close the board's post drawer. */
+  onClose?: () => void;
+  /** The shared status transition — the same one the editor's control uses. */
+  move: PostStatusMove;
+  /** Live schema — which section kinds generation may write. */
+  meta: LiveMeta;
+  /** Renders the open post — the list's right pane or the board's floating panel. */
+  renderDetail?: (
+    key: string,
+    controls?: {
+      expanded?: boolean;
+      onToggleExpand?: () => void;
+      onClose?: () => void;
+    },
+  ) => ReactNode;
+}) {
+  const t = useT();
+  const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
+  const hasAi = useHostedAiProviderKeys().length > 0;
+  const blogAi = useBlogAi();
+  const hideDefaults = useHideDefaultBlogBlocks();
+
+  const [dragOverLane, setDragOverLane] = useState<PostStatus | null>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [generateOpen, setGenerateOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importText, setImportText] = useState("");
+  const fileInput = useRef<HTMLInputElement>(null);
+  /**
+   * How a lane opens is the board's call, not a saved preference: a lane with
+   * posts comes open, an empty one comes closed. Toggling only holds for the
+   * visit, keyed by status so a reordered board can't reopen the wrong lane.
+   */
+  const [laneOverrides, setLaneOverrides] = useState<Record<string, boolean>>(
+    {},
+  );
+  const isLaneCollapsed = (lane: string, empty: boolean) =>
+    laneOverrides[lane] ?? empty;
+  const setLaneCollapsed = (lane: string, collapsed: boolean) =>
+    setLaneOverrides((prev) => ({ ...prev, [lane]: collapsed }));
+
+  const generatePost = useGeneratePost({
+    orgSlug,
+    virtualMcpId,
+    branch,
+    decofile,
+    meta,
+    onStarted: (keys) => {
+      const first = keys[0];
+      if (first) onOpen(first);
+    },
+  });
+
+  const posts = listAllPostsWithMeta(decofile);
+  const payloadOf = (key: string) =>
+    getBlogPayload(
+      decofile[key] as Record<string, unknown> | undefined,
+      "posts",
+    );
+  // List mode shows the first post by default, so the detail pane is never empty.
+  const detailKey =
+    selectedKey && posts.some((p) => p.key === selectedKey)
+      ? selectedKey
+      : (posts[0]?.key ?? null);
+
+  /**
+   * Delete is a soft delete: the post moves to Archived, off every working
+   * lane but still recoverable by dragging it back out.
+   */
+  const archivePost = async (post: PostMeta) => {
+    if (await move.apply(post.key, "archived")) {
+      toast.success(t("sandbox.postBoard.archived"));
+    }
+  };
+
+  // -- List view: filter, sort, selection -------------------------------------
+
+  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
+  const [authorFilter, setAuthorFilter] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<PostStatus | null>(null);
+  const [sort, setSort] = useState<PostSort>("date-desc");
+  const [query, setQuery] = useState("");
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+
+  /** Counts describe the whole blog, not the current filter — a option showing
+   *  0 is the answer to "is there anything under this?", so it must not vanish. */
+  const statusCounts = posts.reduce<Partial<Record<PostStatus, number>>>(
+    (counts, post) => {
+      counts[post.status] = (counts[post.status] ?? 0) + 1;
+      return counts;
+    },
+    {},
+  );
+  const countBy = (pick: (post: PostMeta) => string[]) => {
+    const counts = new Map<string, number>();
+    for (const post of posts) {
+      for (const value of pick(post)) {
+        counts.set(value, (counts.get(value) ?? 0) + 1);
+      }
+    }
+    return counts;
+  };
+  const categoryCounts = countBy((post) => post.categorySlugs);
+  const authorCounts = countBy((post) => post.authorEmails);
+  const categoryOptions = listBlogPayloads(decofile, "categories").map(
+    ({ payload }) => ({
+      slug: str(payload.slug),
+      name: str(payload.name) || str(payload.slug),
+      count: categoryCounts.get(str(payload.slug)) ?? 0,
+    }),
+  );
+  const authorOptions = listBlogPayloads(decofile, "authors").map(
+    ({ payload }) => ({
+      email: str(payload.email),
+      name: str(payload.name) || str(payload.email),
+      count: authorCounts.get(str(payload.email)) ?? 0,
+    }),
+  );
+
+  // Title and slug are what the row shows, so they are what search matches.
+  const q = query.trim().toLowerCase();
+  const listedPosts = posts
+    .filter((p) => !categoryFilter || p.categorySlugs.includes(categoryFilter))
+    .filter((p) => !authorFilter || p.authorEmails.includes(authorFilter))
+    .filter((p) => !statusFilter || p.status === statusFilter)
+    .filter(
+      (p) =>
+        !q ||
+        p.title.toLowerCase().includes(q) ||
+        p.slug.toLowerCase().includes(q),
+    )
+    .sort((a, b) => {
+      if (sort === "az") return a.title.localeCompare(b.title);
+      if (sort === "za") return b.title.localeCompare(a.title);
+      // ISO dates sort lexically; a post with no date sinks to the bottom.
+      const cmp = (a.scheduledDatetime || a.date).localeCompare(
+        b.scheduledDatetime || b.date,
+      );
+      return sort === "date-asc" ? cmp : -cmp;
+    });
+
+  const selectionActive = selectedKeys.size > 0;
+  const toggleSelect = (key: string) =>
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
+  const toggleSelectAll = () =>
+    setSelectedKeys((prev) =>
+      listedPosts.every((p) => prev.has(p.key))
+        ? new Set()
+        : new Set(listedPosts.map((p) => p.key)),
+    );
+
+  /** Sequential on purpose: concurrent decofile writes overwrite each other. */
+  const archiveSelected = async () => {
+    let archived = 0;
+    for (const key of selectedKeys) {
+      if (await move.apply(key, "archived")) archived += 1;
+    }
+    setSelectedKeys(new Set());
+    if (archived > 0) toast.success(t("sandbox.postBoard.archived"));
+  };
+
+  const onDrop = (next: PostStatus, key: string) => {
+    setDragOverLane(null);
+    void move.apply(key, next);
+  };
+
+  const writePost = () => {
+    const key = planningPostKey(newPostId());
+    const payload = emptyDraftPostPayload({ title: "", now: new Date() });
+    save.mutate({ blockKey: key, data: buildPlanningPostBlock(key, payload) });
+    onOpen(key);
+  };
+
+  /**
+   * Import externally-authored HTML/Markdown into a review-ready post — no AI,
+   * no credits. Parsed onto the site's own blocks so it renders on-brand.
+   */
+  const importContent = () => {
+    const parsed = parseImportedContent(importText);
+    const blocks = sectionsToBlocks(
+      parsed.sections,
+      sectionResolveTypes(meta, { hideDefaults }),
+    );
+    if (blocks.length === 0 && !parsed.title.trim()) {
+      toast.error(t("sandbox.postBoard.importEmpty"));
+      return;
+    }
+    const key = planningPostKey(newPostId());
+    const payload = buildImportedPostPayload({
+      title: parsed.title,
+      blocks,
+      takenSlugs: posts.map((p) => p.slug).filter(Boolean),
+      now: new Date(),
+    });
+    save.mutate({ blockKey: key, data: buildPlanningPostBlock(key, payload) });
+    setImportOpen(false);
+    setImportText("");
+    toast.success(t("sandbox.postBoard.imported"));
+    onOpen(key);
+  };
+
+  return (
+    <div className="relative flex h-full min-w-0 flex-col">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b px-6 py-3">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-0.5 rounded-lg border p-0.5">
+            <ToggleButton
+              active={view === "list"}
+              onClick={() => onViewChange("list")}
+              icon={<List size={14} />}
+              label={t("sandbox.postBoard.viewList")}
+            />
+            <ToggleButton
+              active={view === "board"}
+              onClick={() => onViewChange("board")}
+              icon={<Columns03 size={14} />}
+              label={t("sandbox.postBoard.viewBoard")}
+            />
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button type="button" size="sm">
+                <Plus size={14} />
+                {t("sandbox.postBoard.newPost")}
+                <ChevronDown size={14} />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              {blogAi && (
+                <DropdownMenuItem onClick={() => setGenerateOpen(true)}>
+                  <Stars02 size={14} />
+                  <div className="flex flex-col">
+                    <span>{t("sandbox.postBoard.newPostGenerate")}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {t("sandbox.postBoard.newPostGenerateHint")}
+                    </span>
+                  </div>
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem onClick={writePost}>
+                <Pilcrow01 size={14} />
+                <div className="flex flex-col">
+                  <span>{t("sandbox.postBoard.newPostWrite")}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {t("sandbox.postBoard.newPostWriteHint")}
+                  </span>
+                </div>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setImportOpen(true)}>
+                <Upload01 size={14} />
+                <div className="flex flex-col">
+                  <span>{t("sandbox.postBoard.importContent")}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {t("sandbox.postBoard.importContentHint")}
+                  </span>
+                </div>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          {blogAi && (
+            <GeneratePostDialog
+              open={generateOpen}
+              onOpenChange={setGenerateOpen}
+              decofile={decofile}
+              hasAi={hasAi}
+              onGenerate={(briefing) => void generatePost(briefing)}
+            />
+          )}
+          <Dialog open={importOpen} onOpenChange={setImportOpen}>
+            <DialogContent className="max-h-[85vh] sm:max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>{t("sandbox.postBoard.importTitle")}</DialogTitle>
+                <DialogDescription>
+                  {t("sandbox.postBoard.importDescription")}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-3">
+                {/* A code editor, not a textarea: the paste is a whole HTML
+                    document, and `field-sizing-content` grew the box to the
+                    width of its longest line, painting out over the dialog.
+                    This one wraps, highlights, and owns its own scrolling. */}
+                <div className="h-72 overflow-hidden rounded-[var(--studio-control-radius,var(--radius-xl))] border bg-[var(--studio-input-background)]">
+                  <MonacoCodeEditor
+                    code={importText}
+                    language={looksLikeHtml(importText) ? "html" : "markdown"}
+                    height="100%"
+                    autoFocus
+                    onChange={(value) => setImportText(value ?? "")}
+                  />
+                </div>
+                <input
+                  ref={fileInput}
+                  type="file"
+                  accept=".html,.htm,.md,.markdown,.txt"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (file) setImportText(await file.text());
+                    e.target.value = "";
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fileInput.current?.click()}
+                >
+                  <Upload01 size={14} />
+                  {t("sandbox.postBoard.importUpload")}
+                </Button>
+              </div>
+              <DialogFooter>
+                <Button
+                  type="button"
+                  disabled={!importText.trim()}
+                  onClick={importContent}
+                >
+                  <Upload01 size={14} />
+                  {t("sandbox.postBoard.importRun")}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
+      </div>
+
+      {posts.length === 0 ? (
+        <EmptyState
+          className="flex-1"
+          icon={<Stars02 size={22} />}
+          title={t("sandbox.postBoard.emptyTitle")}
+          description={t("sandbox.postBoard.emptyDescription")}
+          buttonProps={{
+            children: t("sandbox.postBoard.newPost"),
+            onClick: writePost,
+          }}
+        />
+      ) : view === "board" ? (
+        <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto p-4">
+          {BOARD_LANES.map((status) => {
+            const laneLabel = t(POST_STATUS_LABEL[status]);
+            const lanePosts = posts.filter((p) => p.status === status);
+            if (isDatedStatus(status)) lanePosts.sort(byDateDesc);
+            const isCollapsed = isLaneCollapsed(status, lanePosts.length === 0);
+            return (
+              <Fragment key={status}>
+                <div
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setDragOverLane(status);
+                  }}
+                  onDragLeave={() =>
+                    setDragOverLane((l) => (l === status ? null : l))
+                  }
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    onDrop(status, e.dataTransfer.getData(DRAG_KEY));
+                  }}
+                  className={cn(
+                    "flex shrink-0 flex-col rounded-xl border bg-muted/30 transition-colors",
+                    isCollapsed ? "w-11" : "w-72",
+                    dragOverLane === status && "border-primary bg-primary/5",
+                  )}
+                >
+                  {isCollapsed ? (
+                    // Still a drop target, so a post can be dropped onto a closed lane.
+                    <button
+                      type="button"
+                      onClick={() => setLaneCollapsed(status, false)}
+                      aria-label={t("sandbox.postBoard.expandLane", {
+                        lane: laneLabel,
+                      })}
+                      aria-expanded={false}
+                      className="flex min-h-0 flex-1 cursor-pointer flex-col items-center gap-2 py-2.5 text-muted-foreground hover:text-foreground"
+                    >
+                      <ChevronRight size={14} className="shrink-0" />
+                      <span className="text-xs tabular-nums">
+                        {lanePosts.length}
+                      </span>
+                      <span className="[writing-mode:vertical-rl] text-sm font-medium">
+                        {laneLabel}
+                      </span>
+                    </button>
+                  ) : (
+                    <>
+                      <div className="flex items-center justify-between gap-2 px-3 py-2.5 text-sm font-medium">
+                        <button
+                          type="button"
+                          onClick={() => setLaneCollapsed(status, true)}
+                          aria-label={t("sandbox.postBoard.collapseLane", {
+                            lane: laneLabel,
+                          })}
+                          aria-expanded
+                          className="flex min-w-0 cursor-pointer items-center gap-1.5 text-left hover:text-muted-foreground"
+                        >
+                          <ChevronDown size={14} className="shrink-0" />
+                          <span className="truncate">{laneLabel}</span>
+                        </button>
+                        <span className="text-xs tabular-nums text-muted-foreground">
+                          {lanePosts.length}
+                        </span>
+                      </div>
+                      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-2 pb-2">
+                        {lanePosts.length === 0 ? (
+                          <p className="px-1 py-6 text-center text-xs text-muted-foreground">
+                            {t("sandbox.postBoard.laneEmpty")}
+                          </p>
+                        ) : (
+                          lanePosts.map((post) => (
+                            <PostCard
+                              key={post.key}
+                              post={post}
+                              payload={payloadOf(post.key)}
+                              moving={move.isMoving(post.key)}
+                              onOpen={() => onOpen(post.key)}
+                              onArchive={
+                                post.status === "archived"
+                                  ? undefined
+                                  : () => void archivePost(post)
+                              }
+                            />
+                          ))
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+                {status === LEAD_LANE && (
+                  <div
+                    aria-hidden
+                    className="my-1 w-px shrink-0 self-stretch bg-border"
+                  />
+                )}
+              </Fragment>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="flex min-h-0 flex-1">
+          <div className="flex w-80 shrink-0 flex-col border-r">
+            <PostSearchInput value={query} onChange={setQuery} />
+            {selectionActive ? (
+              <PostSelectionToolbar
+                count={selectedKeys.size}
+                allSelected={
+                  listedPosts.length > 0 &&
+                  listedPosts.every((p) => selectedKeys.has(p.key))
+                }
+                onToggleSelectAll={toggleSelectAll}
+                onArchive={() => void archiveSelected()}
+                onExit={() => setSelectedKeys(new Set())}
+              />
+            ) : (
+              <PostFilterBar
+                categories={categoryOptions}
+                authors={authorOptions}
+                statusCounts={statusCounts}
+                categoryFilter={categoryFilter}
+                authorFilter={authorFilter}
+                statusFilter={statusFilter}
+                sort={sort}
+                onCategoryFilterChange={setCategoryFilter}
+                onAuthorFilterChange={setAuthorFilter}
+                onStatusFilterChange={setStatusFilter}
+                onSortChange={setSort}
+              />
+            )}
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <PostList
+                posts={listedPosts}
+                selectedKey={detailKey}
+                selectionActive={selectionActive}
+                selectedKeys={selectedKeys}
+                onToggleSelect={toggleSelect}
+                onOpen={onOpen}
+                isMoving={move.isMoving}
+                onArchive={(post) => void archivePost(post)}
+              />
+            </div>
+          </div>
+          <div className="min-w-0 flex-1 overflow-hidden">
+            {detailKey && renderDetail ? (
+              <Suspense
+                fallback={
+                  <div className="flex h-full items-center justify-center">
+                    <Loading02
+                      size={20}
+                      className="animate-spin text-muted-foreground"
+                    />
+                  </div>
+                }
+              >
+                {renderDetail(detailKey)}
+              </Suspense>
+            ) : (
+              <div className="flex h-full items-center justify-center px-6 text-center text-sm text-muted-foreground">
+                {t("sandbox.postBoard.selectPrompt")}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {view === "board" && selectedKey && expanded && renderDetail && (
+        <div className="absolute inset-0 z-30 flex flex-col bg-background">
+          {renderDetail(selectedKey, {
+            expanded: true,
+            onToggleExpand: () => setExpanded(false),
+            onClose: () => {
+              setExpanded(false);
+              onClose?.();
+            },
+          })}
+        </div>
+      )}
+
+      <Dialog
+        open={view === "board" && !!selectedKey && !expanded}
+        onOpenChange={(open) => {
+          if (!open) {
+            setExpanded(false);
+            onClose?.();
+          }
+        }}
+      >
+        <DialogContent
+          closeButtonClassName="hidden"
+          className="left-auto right-4 top-4 bottom-4 flex h-auto translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl"
+        >
+          <DialogTitle className="sr-only">
+            {t("sandbox.collectionsSidebar.posts")}
+          </DialogTitle>
+          {selectedKey && renderDetail ? (
+            <Suspense
+              fallback={
+                <div className="flex h-full items-center justify-center">
+                  <Loading02
+                    size={20}
+                    className="animate-spin text-muted-foreground"
+                  />
+                </div>
+              }
+            >
+              {renderDetail(selectedKey, {
+                expanded: false,
+                onToggleExpand: () => setExpanded(true),
+                onClose: () => onClose?.(),
+              })}
+            </Suspense>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function ToggleButton({
+  active,
+  onClick,
+  icon,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon?: React.ReactNode;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "inline-flex cursor-pointer items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
+        active
+          ? "bg-accent text-accent-foreground"
+          : "text-muted-foreground hover:text-foreground",
+      )}
+    >
+      {icon}
+      {label}
+    </button>
+  );
+}
+
+function PostList({
+  posts,
+  selectedKey,
+  selectionActive,
+  selectedKeys,
+  onToggleSelect,
+  onOpen,
+  isMoving,
+  onArchive,
+}: {
+  /** Already filtered and sorted by the toolbar — rendered in order. */
+  posts: PostMeta[];
+  selectedKey?: string | null;
+  selectionActive: boolean;
+  selectedKeys: Set<string>;
+  onToggleSelect: (key: string) => void;
+  onOpen: (key: string) => void;
+  isMoving: (key: string) => boolean;
+  onArchive: (post: PostMeta) => void;
+}) {
+  const t = useT();
+  if (posts.length === 0) {
+    return (
+      <p className="px-3 py-6 text-center text-xs text-muted-foreground">
+        {t("sandbox.postList.noMatches")}
+      </p>
+    );
+  }
+  return (
+    <ul className="divide-y">
+      {posts.map((post) => (
+        <PostRow
+          key={post.key}
+          post={post}
+          selected={post.key === selectedKey}
+          selectionActive={selectionActive}
+          checked={selectedKeys.has(post.key)}
+          onToggleSelect={() => onToggleSelect(post.key)}
+          moving={isMoving(post.key)}
+          onOpen={() => onOpen(post.key)}
+          onArchive={
+            post.status === "archived" ? undefined : () => onArchive(post)
+          }
+        />
+      ))}
+    </ul>
+  );
+}
+
+function PostRow({
+  post,
+  selected,
+  selectionActive,
+  checked,
+  onToggleSelect,
+  moving,
+  onOpen,
+  onArchive,
+}: {
+  post: PostMeta;
+  selected: boolean;
+  /** Any post is selected, so a row click picks instead of opening. */
+  selectionActive: boolean;
+  checked: boolean;
+  onToggleSelect: () => void;
+  /** A move for this post is in flight — freeze the delete action. */
+  moving: boolean;
+  onOpen: () => void;
+  /** Omitted for a post that is already archived — there is nothing to archive. */
+  onArchive?: () => void;
+}) {
+  const t = useT();
+  const hasIssues =
+    post.status === "awaiting_review" && post.missing.length > 0;
+  const hasDate = post.status === "scheduled" || post.status === "published";
+  return (
+    <li className="group/row relative">
+      {/* Revealed on hover until something is picked, then always shown. */}
+      <span
+        className={cn(
+          "absolute left-3 top-3 z-10 transition-opacity",
+          selectionActive || checked
+            ? "opacity-100"
+            : "opacity-0 focus-within:opacity-100 group-hover/row:opacity-100",
+        )}
+      >
+        <Checkbox
+          checked={checked}
+          onCheckedChange={() => onToggleSelect()}
+          aria-label={post.title || t("sandbox.postBoard.untitled")}
+        />
+      </span>
+      {onArchive && !selectionActive && (
+        <ArchiveButton
+          onArchive={onArchive}
+          disabled={moving}
+          className="top-2.5"
+        />
+      )}
+      <button
+        type="button"
+        onClick={() => (selectionActive ? onToggleSelect() : onOpen())}
+        aria-current={selected}
+        className={cn(
+          "flex w-full cursor-pointer flex-col gap-1.5 py-2.5 pl-10 pr-3 text-left text-sm transition-colors",
+          selected
+            ? "bg-accent text-accent-foreground"
+            : "bg-card hover:bg-muted/50",
+        )}
+      >
+        <span className="min-w-0 truncate pr-6 font-medium">
+          {post.title || t("sandbox.postBoard.untitled")}
+        </span>
+        <div className="flex items-center gap-2">
+          <Badge variant={STATUS_VARIANT[post.status]} className="shrink-0">
+            {t(POST_STATUS_LABEL[post.status])}
+          </Badge>
+          {hasIssues && (
+            <span className="inline-flex items-center gap-1 text-xs text-warning">
+              <AlertCircle size={12} />
+              {post.missing.length}
+            </span>
+          )}
+          {post.duplicateTitle && (
+            <span
+              className="inline-flex items-center gap-1 text-xs text-warning"
+              title={t("sandbox.postBoard.duplicateTitle")}
+            >
+              <Copy01 size={12} aria-hidden />
+              <span className="sr-only">
+                {t("sandbox.postBoard.duplicateTitle")}
+              </span>
+            </span>
+          )}
+          {hasDate && (
+            <span className="inline-flex items-center gap-1 text-xs tabular-nums text-muted-foreground">
+              <CalendarDate size={12} />
+              {(post.scheduledDatetime || post.date || "").slice(0, 10)}
+            </span>
+          )}
+        </div>
+      </button>
+    </li>
+  );
+}
+
+function PostCard({
+  post,
+  payload,
+  moving,
+  onOpen,
+  onArchive,
+}: {
+  post: PostMeta;
+  payload: Record<string, unknown>;
+  /** A move for this post is in flight — freeze it so a second one can't race. */
+  moving: boolean;
+  onOpen: () => void;
+  /** Omitted for a post that is already archived — there is nothing to archive. */
+  onArchive?: () => void;
+}) {
+  const t = useT();
+  const draggable = post.status !== "generating" && !moving;
+  const plan = planningMeta(payload);
+
+  return (
+    <div
+      className={cn(
+        "group/card relative rounded-lg border bg-card shadow-sm transition-colors hover:border-primary/40",
+        !draggable && "opacity-80",
+      )}
+    >
+      {onArchive && (
+        <ArchiveButton
+          onArchive={onArchive}
+          disabled={moving}
+          className="top-2"
+        />
+      )}
+      <button
+        type="button"
+        draggable={draggable}
+        onDragStart={(e) => e.dataTransfer.setData(DRAG_KEY, post.key)}
+        onClick={onOpen}
+        className={cn(
+          "block w-full p-3 text-left",
+          draggable ? "cursor-grab active:cursor-grabbing" : "cursor-pointer",
+        )}
+      >
+        <p className="line-clamp-2 pr-6 text-sm font-medium">
+          {post.title || t("sandbox.postBoard.untitled")}
+        </p>
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          {post.status === "draft" && plan.format?.name && (
+            <Badge variant="outline" className="max-w-full truncate">
+              {plan.format.name}
+            </Badge>
+          )}
+          {post.status === "generating" && (
+            <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Loading02 size={12} className="animate-spin" />
+              {t("sandbox.postBoard.generatingLabel")}
+            </span>
+          )}
+          {post.status === "awaiting_review" &&
+            (post.missing.length > 0 ? (
+              <span className="inline-flex items-center gap-1 text-xs text-warning">
+                <AlertCircle size={12} />
+                {t("sandbox.postBoard.nIssues", {
+                  count: String(post.missing.length),
+                })}
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-xs text-success">
+                <CheckCircle size={12} />
+                {t("sandbox.postBoard.readyToSchedule")}
+              </span>
+            ))}
+          {(post.status === "scheduled" || post.status === "published") && (
+            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+              <CalendarDate size={12} />
+              {(post.scheduledDatetime || post.date || "").slice(0, 10)}
+            </span>
+          )}
+          {post.duplicateTitle && (
+            <span className="inline-flex items-center gap-1 text-xs text-warning">
+              <Copy01 size={12} aria-hidden />
+              {t("sandbox.postBoard.duplicateTitle")}
+            </span>
+          )}
+        </div>
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Delete affordance for a post. Deleting is a soft delete — the post moves to
+ * the Archived lane, so nothing is lost and no confirmation is warranted.
+ */
+function ArchiveButton({
+  label,
+  onArchive,
+  disabled,
+  className,
+}: {
+  label?: string;
+  onArchive: () => void;
+  disabled?: boolean;
+  className?: string;
+}) {
+  const t = useT();
+  const text = label ?? t("sandbox.postBoard.delete");
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      aria-label={text}
+      title={text}
+      onClick={(e) => {
+        e.stopPropagation();
+        onArchive();
+      }}
+      className={cn(
+        "absolute right-2 z-10 flex size-6 cursor-pointer items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-destructive focus-visible:opacity-100 group-hover/card:opacity-100 group-hover/row:opacity-100",
+        className,
+      )}
+    >
+      <Trash01 size={13} />
+    </button>
+  );
+}

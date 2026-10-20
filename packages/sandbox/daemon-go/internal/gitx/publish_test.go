@@ -166,3 +166,41 @@ func TestDiscardRestoresRenamedFile(t *testing.T) {
 		t.Fatalf("new.txt should have been removed, stat err: %v", err)
 	}
 }
+
+// Regression: Run's error text unconditionally embeds argv (see run.go), and
+// SyncOriginRemote is the one call site whose argv carries a live token. A
+// `remote set-url` failure — no `origin` remote configured, here — must not
+// leak it into the returned error, which the orchestrator broadcasts to the
+// setup log and a publish caller may surface to the client.
+func TestSyncOriginRemoteRedactsTokenOnFailure(t *testing.T) {
+	repo := initRepoOnBranch(t, "main")
+	cloneUrl := "https://x-access-token:ghs_live_secret@github.com/acme/site.git"
+
+	err := SyncOriginRemote(repo, cloneUrl)
+	if err == nil {
+		t.Fatal("expected an error: repo has no origin remote to set-url on")
+	}
+	if strings.Contains(err.Error(), "ghs_live_secret") {
+		t.Fatalf("error leaked the token: %q", err.Error())
+	}
+}
+
+func TestRequiresCloneCredentials(t *testing.T) {
+	cases := []struct {
+		url  string
+		want bool
+	}{
+		{"https://github.com/acme/site.git", true},
+		{"https://gitlab.acme.com/group/sub/project.git", true},
+		{"https://x-access-token:tok@github.com/acme/site.git", false},
+		{"https://oauth2:tok@gitlab.com/g/p.git", false},
+		{"git@github.com:acme/site.git", false},
+		{"ssh://git@gitlab.com/g/p.git", false},
+		{"", false},
+	}
+	for _, c := range cases {
+		if got := RequiresCloneCredentials(c.url); got != c.want {
+			t.Errorf("RequiresCloneCredentials(%q) = %v, want %v", c.url, got, c.want)
+		}
+	}
+}

@@ -3,7 +3,6 @@ import {
   type StudioContext,
   getOrganizationId,
   getUserId,
-  hasOrganization,
   isAuthenticated,
   requireAuth,
   requireOrganization,
@@ -23,6 +22,11 @@ const createMockContext = (
     organizationBilling: null as never,
     subsidizedGatewayKeys: null as never,
     organizationSettings: null as never,
+    gitProviderAccounts: null as never,
+    gitProviderAccountCredentials: null as never,
+    gitProviderOAuthStates: null as never,
+    githubConnectFlows: null as never,
+    repositories: null as never,
     userModelPreferences: null as never,
     monitoring: null as never,
     virtualMcps: null as never,
@@ -30,7 +34,9 @@ const createMockContext = (
     threads: null as never,
     asyncResearchJobs: null as never,
     tags: null as never,
-    virtualMcpPluginConfigs: null as never,
+    sprints: null as never,
+    projectSidebar: null as never,
+    experiments: null as never,
     aiProviderKeys: null as never,
     secrets: null as never,
     orgFileConfigs: null as never,
@@ -38,18 +44,20 @@ const createMockContext = (
     orgRepoSyncs: null as never,
     jiraIntegrations: null as never,
     taskBoard: null as never,
-    columnAutomations: null as never,
     taskBoardPrompts: null as never,
+    taskBoardAnalytics: null as never,
+    threadAnalytics: null as never,
     notifications: null as never,
     orgFsEntries: null as never,
     oauthPkceStates: null as never,
+    codexSubscriptions: null as never,
     claudeSubscriptions: null as never,
+    githubCopilotSubscriptions: null as never,
+    orgSharedPlans: null as never,
     automations: null as never,
     orgSsoConfig: null as never,
     orgSsoSessions: null as never,
     triggerCallbackTokens: null as never,
-    registry: null as never,
-    brandContext: null as never,
     organizationDomains: null as never,
     organizationJoinRequests: null as never,
     kv: null as never,
@@ -67,7 +75,6 @@ const createMockContext = (
       list: async () => ({ data: [], error: null }),
       addMember: async () => ({ data: null, error: null }),
       removeMember: async () => {},
-      listMembers: async () => ({ data: [], error: null }),
       updateMemberRole: async () => ({ data: null, error: null }),
     },
   } as never,
@@ -90,20 +97,6 @@ const createMockContext = (
 });
 
 describe("StudioContext Utilities", () => {
-  describe("hasOrganization", () => {
-    it("should return true when organization is defined", () => {
-      const ctx = createMockContext({
-        organization: { id: "org_1", slug: "test-org", name: "Test Org" },
-      });
-      expect(hasOrganization(ctx)).toBe(true);
-    });
-
-    it("should return false when organization is undefined", () => {
-      const ctx = createMockContext();
-      expect(hasOrganization(ctx)).toBe(false);
-    });
-  });
-
   describe("getOrganizationId", () => {
     it("should return organization ID when defined", () => {
       const ctx = createMockContext({

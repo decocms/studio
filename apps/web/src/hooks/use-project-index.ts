@@ -36,7 +36,7 @@ import { scopableProjects } from "./use-project-scope";
  * An array literal in a default parameter, and a hook called in argument
  * position, each make the React Compiler bail out of memoizing this hook
  * entirely — and a fresh `ProjectIndex` identity every render invalidates every
- * downstream scope keyed on it (`TaskFiltersBar`'s guard is `$[2] !== index`).
+ * downstream scope keyed on it (`useFilterFields`'s guard is `$[2] !== index`).
  * Both are avoided here deliberately; `useMemo` is banned in this repo.
  */
 const NO_EXTRA_REPOS: readonly string[] = [];

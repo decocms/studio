@@ -12,63 +12,412 @@ export const sandbox = {
     "No editable fields for this section.",
   "sandbox.availableSectionEditor.saveAsGlobalSection":
     "Save as global section",
+  "sandbox.autonomous.noAiProvider":
+    "This organization has no AI provider connected — connect one in Settings → AI Providers to use this",
+  "sandbox.blockDocument.addBlock": "Add block",
   "sandbox.blockPicker.blocksLabel": "Blocks",
   "sandbox.blockPicker.customBlocksLabel": "Custom blocks",
   "sandbox.blockPicker.insertBlockButton": "Insert block",
   "sandbox.blockPicker.noBlocksFound": "No blocks found.",
   "sandbox.blockPicker.searchPlaceholder": "Search blocks…",
+  "sandbox.blogBrand.addCompetitor": "Add competitor",
+  "sandbox.blogBrand.addDo": "Add a do",
+  "sandbox.blogBrand.addDont": "Add a don't",
+  "sandbox.blogBrand.addValue": "Add value",
+  "sandbox.blogBrand.audienceLabel": "Target audience",
+  "sandbox.blogBrand.companyNameLabel": "Brand name",
+  "sandbox.blogBrand.competitorsBodyPlaceholder":
+    "How they position themselves, and where this brand differs",
+  "sandbox.blogBrand.competitorsHint":
+    "A brand doesn't name its rivals in its own copy, so these come from a web search when your organization has one configured.",
+  "sandbox.blogBrand.competitorsLabel": "Competitors",
+  "sandbox.blogBrand.competitorsNamePlaceholder": "Competitor name",
+  "sandbox.blogBrand.descriptionLabel": "What the brand does",
+  "sandbox.blogBrand.dontsBodyPlaceholder":
+    "What not to do, and why — e.g. never print prices in a text block, use a ProductCard",
+  "sandbox.blogBrand.dontsHint":
+    "Banned words, claims, formats and topics. Each one gets a name and the rule itself.",
+  "sandbox.blogBrand.dontsNamePlaceholder": "What this guardrail is about",
+  "sandbox.blogBrand.dosBodyPlaceholder":
+    "The instruction itself — e.g. open with the customer's problem, never with the company",
+  "sandbox.blogBrand.dosHint":
+    "Instructions every generated post must follow. Write instructions, not adjectives.",
+  "sandbox.blogBrand.dosNamePlaceholder": "What this rule is about",
+  "sandbox.blogBrand.addKeyword": "Add keyword",
+  "sandbox.blogBrand.addPolicy": "Add policy",
+  "sandbox.blogBrand.addSpecialDate": "Add date",
+  "sandbox.blogBrand.addVocabulary": "Add word",
+  "sandbox.blogBrand.keywordsHint":
+    "The terms this brand should be found by — what someone types looking for what it sells. Enter or a comma adds one.",
+  "sandbox.blogBrand.keywordsLabel": "Brand keywords",
+  "sandbox.blogBrand.keywordsPlaceholder": "Add a term and press Enter",
+  "sandbox.blogBrand.removeKeyword": "Remove term",
+  "sandbox.blogBrand.phaseResearching": "Researching the brand on the web…",
+  "sandbox.blogBrand.policiesBodyPlaceholder":
+    "The terms, with their actual numbers and conditions",
+  "sandbox.blogBrand.policiesHint":
+    "Exchanges, shipping, warranty. Facts a post may need to state — copy the numbers exactly.",
+  "sandbox.blogBrand.policiesLabel": "Commercial policies",
+  "sandbox.blogBrand.policiesNamePlaceholder": "Which policy",
+  "sandbox.blogBrand.specialDatesBodyPlaceholder":
+    "What this date means for this brand — what it sells then, what it says then",
+  "sandbox.blogBrand.specialDatesHint":
+    "The commercial moments this brand's year turns around — its own and the retail calendar it runs on. Not a calendar pin: these move year to year.",
+  "sandbox.blogBrand.specialDatesLabel": "Special dates",
+  "sandbox.blogBrand.specialDatesNamePlaceholder": "The date's name",
+  "sandbox.blogBrand.vocabularyBodyPlaceholder":
+    "What it names, and which word it replaces",
+  "sandbox.blogBrand.vocabularyHint":
+    "The brand's own words, and the ordinary ones they displace. A post using the displaced word reads as an impostor.",
+  "sandbox.blogBrand.vocabularyLabel": "Vocabulary",
+  "sandbox.blogBrand.vocabularyNamePlaceholder": "The word to use",
+  "sandbox.blogBrand.extractReplaced": "{count} field(s) rewritten",
+  "sandbox.blogBrand.fillDialogDescription":
+    "Some of this is already written. Choose what the fill may touch.",
+  "sandbox.blogBrand.fillDialogTitle": "Fill the context",
+  "sandbox.blogBrand.fillOnlyEmpty": "Only what's empty",
+  "sandbox.blogBrand.fillOnlyEmptyHint":
+    "Leaves everything you wrote exactly as it is, and fills the blanks around it.",
+  "sandbox.blogBrand.fillReplace": "Start over",
+  "sandbox.blogBrand.fillReplaceHint":
+    "Rewrites every field the model has an answer for. What you wrote there is lost; a field it can't answer keeps its current value.",
+  "sandbox.blogBrand.addVoiceExample": "Add phrase",
+  "sandbox.blogBrand.voiceExamplesDoesNotSound": "Doesn't sound like it",
+  "sandbox.blogBrand.voiceExamplesHint":
+    "A voice is faster to show than to describe. Paste real sentences and mark each one: the ones that sound like the brand are what a generated post should match, and the ones that don't are what pins down how far the first ones go.",
+  "sandbox.blogBrand.voiceExamplesLabel": "Example phrases",
+  "sandbox.blogBrand.voiceExamplesPlaceholder": "Paste a sentence",
+  "sandbox.blogBrand.voiceExamplesSounds": "Sounds like the brand",
+  "sandbox.blogBrand.extractButton": "Fill",
+  "sandbox.blogBrand.extractFailed":
+    "Could not read the brand from this site's content",
+  "sandbox.blogBrand.extractAllDiscarded":
+    "Nothing was filled — everything found fell below the confidence bar. The site's own pages are the evidence; thin pages give thin answers.",
+  "sandbox.blogBrand.extractDiscarded":
+    "{count} finding(s) discarded for low confidence or relevance",
+  "sandbox.blogBrand.extractFilled": "Filled {count} empty field(s)",
+  "sandbox.blogBrand.extractHint":
+    "Reads {count} block(s) from this site — existing posts first, since that's the brand actually writing posts.",
+  "sandbox.blogBrand.extractNoContent":
+    "No content to read yet. Write a post, or fill the fields below by hand.",
+  "sandbox.blogBrand.extractNothingEmpty":
+    "Nothing to fill — every field already has a value. Clear a field to refill it.",
+  "sandbox.blogBrand.languageLabel": "Writing language",
+  "sandbox.blogBrand.noCompetitorsFound":
+    "No competitors found. Add them by hand, or configure a web search model for this organization.",
+  "sandbox.blogBrand.phaseInferring": "Inferring the voice and the rules…",
+  "sandbox.blogBrand.phaseReading": "Reading this site's content…",
+  "sandbox.blogBrand.removeItem": "Remove item",
+  "sandbox.blogBrand.tabBasics": "Basics",
+  "sandbox.blogBrand.tabDos": "Generation rules",
+  "sandbox.blogBrand.tabExtra": "Extra context",
+  "sandbox.blogBrand.tabGuardrails": "Guardrails",
+  "sandbox.blogBrand.toneLabel": "Tone of voice",
+  "sandbox.blogBrand.toneHint":
+    "How the brand writes: how it addresses the reader, sentence rhythm, humor, jargon level.",
+  "sandbox.blogBrand.storeUrlHint":
+    "The public domain, as a reader would type it. Product and category links are built from it — without it they carry the platform's internal address.",
+  "sandbox.blogBrand.storeUrlInvalid":
+    "Not a valid address. It has to start with http:// or https://.",
+  "sandbox.blogBrand.storeUrlLabel": "Store address",
+  "sandbox.blogBrand.untitledRule": "Untitled",
+  "sandbox.blogBrand.valuesBodyPlaceholder":
+    "What the brand claims, and the evidence for it",
+  "sandbox.blogBrand.valuesLabel": "Brand values",
+  "sandbox.blogBrand.valuesNamePlaceholder": "The value",
+  "sandbox.blockRegistry.backToFields": "Back to the field list",
+  "sandbox.blockRegistry.breadcrumbLabel": "Field trail",
   "sandbox.blockRegistry.unknownBlockType":
     'Unknown block type{type ? ` (${type})` : ""}.',
   "sandbox.blockRegistry.writeSomethingPlaceholder": "Write something…",
   "sandbox.blockRow.deleteBlock": "Delete block",
   "sandbox.blockRow.dragToReorder": "Drag to reorder",
   "sandbox.blockRow.duplicateBlock": "Duplicate block",
+  "sandbox.blogCustomFields.backToFields": "Back to the field list",
+  "sandbox.blogCustomFields.breadcrumbLabel": "Field trail",
+  "sandbox.blogCustomFields.title": "Other fields",
+  "sandbox.blogCustomFields.description":
+    "Fields this site's own content type declares, beyond the ones above.",
+  "sandbox.campaigns.addProduct": "Add by hand",
+  "sandbox.campaigns.objectiveHelpLabel": "When to use each objective",
+  "sandbox.campaigns.pickCategory": "Browse the store",
+  "sandbox.campaigns.pickProducts": "Browse the store",
+  "sandbox.campaigns.productCategoryPlaceholder": "Main category",
+  "sandbox.campaigns.productDescriptionPlaceholder": "Short description",
+  "sandbox.campaigns.productIdPlaceholder": "ID",
+  "sandbox.campaigns.productNamePlaceholder": "Product name",
+  "sandbox.campaigns.productUrlPlaceholder": "https://…",
+  "sandbox.campaigns.productsHint":
+    "The products the copy may name. They apply to any target — and they are stored here, not fetched at write time.",
+  "sandbox.campaigns.productsLabel": "Highlighted products",
+  "sandbox.campaigns.removeProduct": "Remove product",
+  "sandbox.campaigns.targetDescriptionPlaceholder":
+    "What this slice covers, and who for",
+  "sandbox.campaigns.targetCollectionIdPlaceholder":
+    "Collection ID in the store — this is what identifies it",
+  "sandbox.campaigns.targetIdPlaceholder": "Store ID (optional)",
+  "sandbox.campaigns.targetNamePlaceholder": "Category or collection name",
+  "sandbox.campaigns.triggerHelpLabel": "When to use each trigger",
+  "sandbox.campaigns.triggerInventoryHelp":
+    "There is stock sitting still that needs to move.",
+  "sandbox.campaigns.triggerLaunchHelp":
+    "Something new landed in the catalog — a product, a line, a collection.",
+  "sandbox.campaigns.triggerPartnershipHelp":
+    "A collab, a co-marketing push or an ambassador to introduce.",
+  "sandbox.campaigns.triggerReputationHelp":
+    "There is a perception of the brand that needs an answer.",
+  "sandbox.campaigns.triggerSeasonalHelp":
+    "A date that comes back every year and that customers already expect.",
+  "sandbox.campaigns.triggerSeoGapHelp":
+    "People are searching for this and the brand does not show up.",
+  "sandbox.campaigns.triggerTrendHelp":
+    "Something is happening in the market or the culture right now, and it will pass.",
+  "sandbox.campaigns.addImage": "Add image",
+  "sandbox.campaigns.removeImage": "Remove image",
+  "sandbox.campaigns.untitledProduct": "Unnamed product",
+  "sandbox.campaigns.untitledTarget": "Unnamed target",
+  "sandbox.campaigns.facetContent": "Content",
+  "sandbox.campaigns.facetCta": "CTA",
+  "sandbox.campaigns.facetMetric": "Metric",
+  "sandbox.campaigns.facetProduct": "Product",
+  "sandbox.campaigns.objectiveAwarenessContent":
+    "Broad subjects, from the brand's world rather than its catalog. E.g. “Taking up running after 40”.",
+  "sandbox.campaigns.objectiveAwarenessCta":
+    "Light — read another post, subscribe, follow the brand.",
+  "sandbox.campaigns.objectiveAwarenessHelp":
+    "Get more people to know the brand. The reader is not thinking about buying yet — they may not know they need this.",
+  "sandbox.campaigns.objectiveAwarenessMetric": "Traffic, new visitors, reach.",
+  "sandbox.campaigns.objectiveAwarenessProduct":
+    "Barely there, as a natural mention.",
+  "sandbox.campaigns.objectiveConversionContent":
+    "Comparisons, “best X for Y”, answers to objections. E.g. “Glide 4 or Speed 3: which one for a half marathon”.",
+  "sandbox.campaigns.objectiveConversionCta":
+    "Strong and repeated, straight to the product or collection.",
+  "sandbox.campaigns.objectiveConversionHelp":
+    "Sell. The reader is already deciding and needs a push, or help choosing.",
+  "sandbox.campaigns.objectiveConversionMetric":
+    "Clicks to the product, conversions, attributed revenue.",
+  "sandbox.campaigns.objectiveConversionNote":
+    "The typical objective for seasonal and inventory campaigns.",
+  "sandbox.campaigns.objectiveConversionProduct":
+    "The centre of the piece, with concrete data — price, attributes, link.",
+  "sandbox.campaigns.objectiveEducationContent":
+    "Guides and explanations — how it works, how to choose. E.g. “Shoe drop: what it is and why it matters”.",
+  "sandbox.campaigns.objectiveEducationCta":
+    "Moderate — see the category, open the size guide.",
+  "sandbox.campaigns.objectiveEducationHelp":
+    "Teach something that leaves the reader readier to decide. They already have the interest and want to understand it.",
+  "sandbox.campaigns.objectiveEducationMetric":
+    "Time on page, posts per session, organic ranking.",
+  "sandbox.campaigns.objectiveEducationNote":
+    "The most common objective for SEO gap campaigns.",
+  "sandbox.campaigns.objectiveEducationProduct":
+    "Shows up as an example of what was explained.",
+  "sandbox.campaigns.objectiveRepositioningContent":
+    "Posts that demonstrate the new identity — opinion, behind the scenes, expertise.",
+  "sandbox.campaigns.objectiveRepositioningCta": "Light to moderate.",
+  "sandbox.campaigns.objectiveRepositioningHelp":
+    "Change how people see the brand: a new segment, a new price range, a new image. E.g. a store seen as cheap that wants to be seen as expert.",
+  "sandbox.campaigns.objectiveRepositioningMetric":
+    "Harder. Engagement, a shift in who arrives, mentions.",
+  "sandbox.campaigns.objectiveRepositioningProduct":
+    "Selective: only what reinforces the new image.",
+  "sandbox.campaigns.objectiveRetentionContent":
+    "Use, care and what comes after the purchase. E.g. “Washing your shoes without wrecking the midsole”.",
+  "sandbox.campaigns.objectiveRetentionCta":
+    "Light — repurchase, an accessory, support.",
+  "sandbox.campaigns.objectiveRetentionHelp":
+    "Get someone who already bought to make more of it and come back. The reader is a customer.",
+  "sandbox.campaigns.objectiveRetentionMetric":
+    "Repurchase, frequency, returning customers.",
+  "sandbox.campaigns.objectiveRetentionProduct":
+    "What they already own — and what pairs with it.",
+  "sandbox.campaigns.productImageLabel": "Product image",
+  "sandbox.campaignGen.back": "Back",
+  "sandbox.campaignGen.cardSummary":
+    "{targets} target(s) · {products} product(s)",
+  "sandbox.campaignGen.countHint":
+    "At most. If the starting point is already specific, one comes back — and that is a good answer.",
+  "sandbox.campaignGen.countLabel": "How many proposals",
+  "sandbox.campaignGen.create": "Create {count} campaign(s)",
+  "sandbox.campaignGen.failed": "Could not generate the campaigns",
+  "sandbox.campaignGen.gapNoSite":
+    "This site has no connections to read, so nothing here was checked against the store: targets, products and any figure come from the brand context alone.",
+  "sandbox.campaignGen.gapNoTools":
+    "The connected systems offer no read-only tools, so none could be consulted. Nothing here was checked against the store.",
+  "sandbox.campaignGen.gapTimeoutPartial":
+    "The store was still answering when the search ran out of time — {count} call(s) came back, but the findings were discarded. Try again, or narrow the starting point.",
+  "sandbox.campaignGen.gapTimeoutEmpty":
+    "The search for store data ran out of time before anything came back.",
+  "sandbox.campaignGen.gapFailed":
+    "The search for store data could not be completed, so nothing here was checked against it.",
+  "sandbox.campaignGen.gapNothingUseful":
+    "The connected systems were reachable but reported nothing useful for this starting point.",
+  "sandbox.campaignGen.gapTargetsDropped":
+    "{count} proposed target(s) were dropped: nothing in the store data backed them.",
+  "sandbox.campaignGen.gapProductsDropped":
+    "{count} proposed product(s) were dropped: nothing in the store data backed them.",
+  "sandbox.campaignGen.generate": "Generate",
+  "sandbox.campaignGen.keywordsHint":
+    "The terms this campaign should aim at. Enter or comma adds one.",
+  "sandbox.campaignGen.keywordsLabel": "Keywords",
+  "sandbox.campaignGen.keywordsPlaceholder": "Type a term and press Enter",
+  "sandbox.campaignGen.noCandidates":
+    "Nothing came back. Try a more specific starting point.",
+  "sandbox.campaignGen.open": "Generate campaigns",
+  "sandbox.campaignGen.phaseReading": "Reading the connected systems",
+  "sandbox.campaignGen.phaseReviewing": "Reviewing each one",
+  "sandbox.campaignGen.phaseWriting": "Writing the proposals",
+  "sandbox.campaignGen.promptHint":
+    "In your words: what the moment is, and why it is worth writing about now.",
+  "sandbox.campaignGen.promptLabel": "What is happening",
+  "sandbox.campaignGen.promptPlaceholder":
+    "e.g. summer starts in December and we want to rank for sunscreen before our competitors do",
+  "sandbox.campaignGen.removeKeyword": "Remove term",
+  "sandbox.campaignGen.savedSeeds": "Saved starting points",
+  "sandbox.campaignGen.seedNameLabel": "Name",
+  "sandbox.campaignGen.seedNamePlaceholder": "e.g. Summer 2027",
+  "sandbox.campaignGen.stepPick": "Choose",
+  "sandbox.campaignGen.stepRunning": "Generating",
+  "sandbox.campaignGen.stepSeed": "Starting point",
+  "sandbox.campaignGen.subtitle":
+    "Write the starting point. Generation reads the systems connected to this site to discover the rest.",
+  "sandbox.campaignGen.title": "Generate campaigns",
+  "sandbox.campaignGen.untitledSeed": "Unnamed",
+  "sandbox.campaignGen.verdictStrong": "Ready",
+  "sandbox.campaignGen.verdictWeak": "Weak",
+  "sandbox.campaignGen.verdictWorkable": "Workable",
+  "sandbox.campaigns.add": "New campaign",
+  "sandbox.campaigns.addAvoid": "Add guardrail",
+  "sandbox.campaigns.addTarget": "Add target",
+  "sandbox.campaigns.avoidBodyPlaceholder":
+    "What must not happen, and why this campaign in particular needs it said",
+  "sandbox.campaigns.avoidHint":
+    "Added to the brand's guardrails for this campaign only — it never replaces them.",
+  "sandbox.campaigns.avoidLabel": "Extra guardrails",
+  "sandbox.campaigns.avoidNamePlaceholder": "What this guardrail is about",
+  "sandbox.campaigns.close": "Close",
+  "sandbox.campaigns.collapseLane": "Collapse {lane}",
+  "sandbox.campaigns.deleteCancel": "Cancel",
+  "sandbox.campaigns.deleteConfirm": "Delete",
+  "sandbox.campaigns.deleteDescription":
+    "“{name}” will be gone for good, along with the targets, products and guardrails inside it. Posts already written from it stay.",
+  "sandbox.campaigns.deleteTitle": "Delete this campaign?",
+  "sandbox.campaigns.empty":
+    "No campaigns yet. A campaign is a moment worth writing for — a launch, a date, a search you do not answer.",
+  "sandbox.campaigns.expandLane": "Expand {lane}",
+  "sandbox.campaigns.keywordsHint":
+    "The terms this campaign should be found by. Enter or a comma adds one.",
+  "sandbox.campaigns.keywordsLabel": "Keywords",
+  "sandbox.campaigns.keywordsPlaceholder": "Add a term and press Enter",
+  "sandbox.campaigns.laneEmpty": "Nothing here",
+  "sandbox.campaigns.moveFailed": "Could not move the campaign",
+  "sandbox.campaigns.nameLabel": "Name",
+  "sandbox.campaigns.namePlaceholder": "e.g. Black Friday 2026",
+  "sandbox.campaigns.noMatches": "No campaign matches that.",
+  "sandbox.campaigns.objectiveAwareness": "Awareness",
+  "sandbox.campaigns.objectiveConversion": "Conversion",
+  "sandbox.campaigns.objectiveEducation": "Education",
+  "sandbox.campaigns.objectiveHint":
+    "What a post written for this campaign is trying to achieve.",
+  "sandbox.campaigns.objectiveLabel": "Objective",
+  "sandbox.campaigns.objectiveRepositioning": "Repositioning",
+  "sandbox.campaigns.objectiveRetention": "Retention",
+  "sandbox.campaigns.periodClear": "Clear the period",
+  "sandbox.campaigns.periodEmpty": "No dates",
+  "sandbox.campaigns.periodLabel": "Period",
+  "sandbox.campaigns.remove": "Delete campaign",
+  "sandbox.campaigns.removeKeyword": "Remove term",
+  "sandbox.campaigns.removeTarget": "Remove target",
+  "sandbox.campaigns.searchPlaceholder": "Search campaigns",
+  "sandbox.campaigns.selectPrompt": "Pick a campaign to edit it.",
+  "sandbox.campaigns.statusActive": "Active",
+  "sandbox.campaigns.statusDraft": "Drafts",
+  "sandbox.campaigns.statusFinished": "Finished",
+  "sandbox.campaigns.statusLabel": "Status",
+  "sandbox.campaigns.statusPaused": "Paused",
+  "sandbox.campaigns.targetCategory": "Category",
+  "sandbox.campaigns.targetCollection": "Collection",
+  "sandbox.campaigns.targetUrlPlaceholder": "https://…",
+  "sandbox.campaigns.targetUrlRequired":
+    "A target needs its URL — it is what a post links to.",
+  "sandbox.campaigns.targetsHint":
+    "What this campaign sells. Any storefront: the URL is what identifies it.",
+  "sandbox.campaigns.targetsLabel": "Targets",
+  "sandbox.campaigns.toneHint":
+    "Replaces the brand's tone while this campaign runs. Leave empty to keep it.",
+  "sandbox.campaigns.toneLabel": "Tone override",
+  "sandbox.campaigns.tonePlaceholder":
+    "e.g. shorter sentences, more urgency, no jokes",
+  "sandbox.campaigns.triggerHint":
+    "Why this campaign exists. The note is what a writer reads to understand the moment.",
+  "sandbox.campaigns.triggerInventory": "Inventory",
+  "sandbox.campaigns.triggerLabel": "Trigger",
+  "sandbox.campaigns.triggerLaunch": "Launch",
+  "sandbox.campaigns.triggerNotePlaceholder":
+    "What is happening, and why it is worth writing about now",
+  "sandbox.campaigns.triggerPartnership": "Partnership",
+  "sandbox.campaigns.triggerReputation": "Reputation",
+  "sandbox.campaigns.triggerSeasonal": "Seasonal",
+  "sandbox.campaigns.triggerSeoGap": "SEO gap",
+  "sandbox.campaigns.triggerTrend": "Trend",
+  "sandbox.campaigns.untitled": "Untitled campaign",
+  "sandbox.campaigns.viewBoard": "Board",
+  "sandbox.campaigns.viewList": "List",
+  "sandbox.blogContext.removeEntry": "Remove",
+  "sandbox.blogContext.subtitle":
+    "The brand context your blog is written from — voice, formats and the campaigns it writes for.",
+  "sandbox.blogContext.tabAutomations": "Automations",
+  "sandbox.blogContext.tabBrand": "Brand",
+  "sandbox.blogContext.tabFormats": "Formats",
+  "sandbox.blogContext.tabCampaigns": "Campaigns",
+  "sandbox.blogContext.title": "Context",
+  "sandbox.blogField.title": "Title",
+  "sandbox.blogField.slug": "Slug",
+  "sandbox.blogField.category": "Category",
+  "sandbox.blogField.excerpt": "Excerpt",
+  "sandbox.blogField.image": "Cover image",
+  "sandbox.blogField.name": "Name",
   "sandbox.bootingVisual.phaseCloning": "Cloning your repo",
   "sandbox.bootingVisual.phaseDev": "Starting your preview",
   "sandbox.bootingVisual.phaseInstall": "Installing packages",
   "sandbox.bootingVisual.phaseProvision": "Reserving sandbox",
-  "sandbox.bulkCategoryPanel.applyButton": "Apply",
-  "sandbox.bulkCategoryPanel.cancelButton": "Cancel",
-  "sandbox.bulkCategoryPanel.categoryLabel": "Category",
-  "sandbox.bulkCategoryPanel.descriptionEmpty":
-    "Select posts from the list to choose what this update applies to.",
-  "sandbox.bulkCategoryPanel.descriptionWithCount":
-    "Choose a category to apply to {count} post(s).",
-  "sandbox.bulkCategoryPanel.exitSelection": "Exit selection",
-  "sandbox.bulkCategoryPanel.modeAddDescription":
-    "Keep existing categories and add this one.",
-  "sandbox.bulkCategoryPanel.modeAddTitle": "Add category",
-  "sandbox.bulkCategoryPanel.modeReplaceDescription":
-    "Remove all current categories and set only this one.",
-  "sandbox.bulkCategoryPanel.modeReplaceTitle": "Replace category",
-  "sandbox.bulkCategoryPanel.noCategoriesMessage":
-    "No categories yet — create one in the Categories collection.",
-  "sandbox.bulkCategoryPanel.noPostsSelectedMessage":
-    "No posts selected yet — pick them from the list on the left.",
-  "sandbox.bulkCategoryPanel.selectCategoryPlaceholder": "Select a category",
-  "sandbox.bulkCategoryPanel.selectedCount": "{count} post(s) selected",
-  "sandbox.bulkCategoryPanel.selectedPostsLabel": "{count} selected post(s)",
-  "sandbox.bulkCategoryPanel.title": "Update category",
-  "sandbox.bulkCategoryPanel.updatingButton": "Updating…",
   "sandbox.categoryEditor.addPostsButton": "Add posts",
   "sandbox.categoryEditor.cancelButton": "Cancel",
   "sandbox.categoryEditor.categoryNamePlaceholder": "Category name",
   "sandbox.categoryEditor.contentTitle": "Content",
   "sandbox.categoryEditor.descriptionLabel": "Description",
+  "sandbox.categoryEditor.duplicateNameWarning":
+    "Another category already uses this name. Duplicate names are hard to tell apart when tagging a post.",
   "sandbox.categoryEditor.descriptionPlaceholder":
     "Short description for this category",
   "sandbox.categoryEditor.noContentEmpty":
     "This category has no content yet. Use ⊕ to add your first block.",
+  "sandbox.categoryEditor.parentDescription":
+    "Nests this category under another one. Leave empty for a root category.",
+  "sandbox.categoryEditor.parentLabel": "Parent category",
+  "sandbox.categoryEditor.parentNone": "None (root category)",
   "sandbox.categoryEditor.pickPostsTooltip":
     "Pick posts to add to this category",
   "sandbox.categoryEditor.postsInCategory": "{count} post(s) in this category",
   "sandbox.categoryEditor.previewTooltip":
     "Open the category preview in a new tab",
+  "sandbox.cmsSettingsBlock.conflictDescription":
+    'A block named CMS already exists with type "{type}". Rename it to edit the CMS settings here.',
+  "sandbox.cmsSettingsBlock.conflictTitle": "CMS settings unavailable",
+  "sandbox.cmsSettingsBlock.defaultsNotice":
+    "Not saved yet: these are the defaults. Your first change creates the CMS block.",
+  "sandbox.cmsSettingsBlock.description":
+    "Preview hosts, telemetry and analytics. The site reads them from its published release: changes take effect once published, never in a draft preview.",
   "sandbox.categoryEditor.renameActionButton": "Rename & update posts",
   "sandbox.categoryEditor.renameDialogDescription":
     'Changing the slug from "{oldSlug}" to "{newSlug}" will update {count} post(s) that reference this category.',
+  "sandbox.categoryEditor.renameDialogChildren":
+    "{count} subcategory(ies) will be re-pointed at the new slug.",
   "sandbox.categoryEditor.renameDialogTitle": "Rename category slug?",
   "sandbox.categoryEditor.renameFailed": "Rename failed",
+  "sandbox.categoryEditor.renameNameSuccess":
+    "Updated the category name on {count} post(s)",
   "sandbox.categoryEditor.renameSuccessNoPosts": "Renamed slug",
   "sandbox.categoryEditor.renameSuccessWithPosts":
     "Renamed slug and updated {count} post(s)",
@@ -76,17 +425,27 @@ export const sandbox = {
   "sandbox.categoryEditor.seeCategoryPreview": "See category preview",
   "sandbox.categoryEditor.setSlugTooltip":
     "Set a slug to add posts to this category",
+  "sandbox.categoryEditor.slugDeduped":
+    "That slug was already taken — saved as \u201c{slug}\u201d.",
   "sandbox.categoryEditor.slugLabel": "Slug",
   "sandbox.categoryEditor.slugPlaceholder": "my-category",
   "sandbox.categoryEditor.untitledCategory": "Untitled category",
   "sandbox.categoryEditor.untitledPost": "Untitled post",
+  "sandbox.cmsSettings.contentEditing.description":
+    "Whether this project offers a CMS.",
+  "sandbox.cmsSettings.contentEditing.off": "Disabled",
+  "sandbox.cmsSettings.contentEditing.offDescription":
+    "No Content view or Blocks form in the Site Editor. The site still previews, and the project can still edit content.",
+  "sandbox.cmsSettings.contentEditing.title": "Content editing",
   "sandbox.collectionsSidebar.actions": "Actions",
+  "sandbox.collectionsSidebar.advanced": "Advanced",
   "sandbox.collectionsSidebar.apps": "Apps",
   "sandbox.collectionsSidebar.authors": "Authors",
   "sandbox.collectionsSidebar.blog": "Blog",
   "sandbox.collectionsSidebar.calendar": "Calendar",
   "sandbox.collectionsSidebar.categories": "Categories",
   "sandbox.collectionsSidebar.content": "Content",
+  "sandbox.collectionsSidebar.context": "Context",
   "sandbox.collectionsSidebar.loaders": "Loaders",
   "sandbox.collectionsSidebar.pages": "Pages",
   "sandbox.collectionsSidebar.postSchedule": "Scheduling",
@@ -94,6 +453,7 @@ export const sandbox = {
   "sandbox.collectionsSidebar.redirects": "Redirects",
   "sandbox.collectionsSidebar.sections": "Sections",
   "sandbox.collectionsSidebar.seo": "SEO",
+  "sandbox.collectionsSidebar.settings": "Settings",
   "sandbox.collectionsSidebar.site": "Site",
   "sandbox.contentBrowser.createdSection": 'Created section "{name}"',
   "sandbox.contentBrowser.duplicateFailed": "Duplicate failed",
@@ -163,6 +523,7 @@ export const sandbox = {
     "Move this value into the encrypted vault. The env var will then reference the secret by id — its value never leaves the server.",
   "sandbox.envVarsField.saveValueAsSecretTitle": "Save value as secret",
   "sandbox.envVarsField.saving": "Saving…",
+  "sandbox.envVarsField.secretAriaLabel": "Env var {index} secret",
   "sandbox.envVarsField.scopeLabel": "Scope",
   "sandbox.envVarsField.scopeOrganization":
     "Organization — visible to all members",
@@ -175,6 +536,8 @@ export const sandbox = {
   "sandbox.envVarsField.valuePlaceholder": "value",
   "sandbox.fileExplorer.askTheAiPlaceholder": "Ask the AI...",
   "sandbox.fileExplorer.deleteFailed": "Delete failed",
+  "sandbox.fileExplorer.discardUnsavedChangesConfirm":
+    "This file has unsaved changes. Close it anyway?",
   "sandbox.fileExplorer.failedToCopyText": "Failed to copy {label}",
   "sandbox.fileExplorer.failedToLoadFolder": "Failed to load folder",
   "sandbox.fileExplorer.failedToOpenFile": "Failed to open file",
@@ -241,6 +604,89 @@ export const sandbox = {
   "sandbox.fileTreeRow.newFile": "New File",
   "sandbox.fileTreeRow.newFolder": "New Folder",
   "sandbox.fileTreeRow.rename": "Rename",
+  "sandbox.formats.add": "New format",
+  "sandbox.formats.bodyPlaceholder":
+    "When to use it, how it opens and closes, roughly how long, and which sections carry it…",
+  "sandbox.formats.countLabel": "How many",
+  "sandbox.formats.guidanceHint":
+    "Optional. What these formats should cover — a campaign, a season, a kind of post the blog keeps needing.",
+  "sandbox.formats.guidanceLabel": "Extra instructions",
+  "sandbox.formats.guidancePlaceholder": "e.g. one format for product launches",
+  "sandbox.formats.hint":
+    "A format guides generation, it doesn't dictate it — describe the intent and let the model decide the order. Type @ to cite one of your sections.",
+  "sandbox.formats.mentionEmpty": "No matching section",
+  "sandbox.formats.mentionHint": "Type @ to cite a section",
+  "sandbox.formats.namePlaceholder": "The format, named by the job it does",
+  "sandbox.formats.noNewFormats":
+    "Nothing new came back — every format proposed was already on the list.",
+  "sandbox.formats.phaseReading": "Reading how your posts are built…",
+  "sandbox.formats.phaseWriting": "Naming the formats…",
+  "sandbox.formats.starterButton": "Use the standard format",
+  "sandbox.formats.starterHint":
+    "Add a plain format built from the sections this site has — no AI, no credits",
+  "sandbox.formats.starterAdded":
+    "No AI model is configured for this org, so a starter format was added for you to edit.",
+  "sandbox.formats.starterBody":
+    "Use this for a straightforward post: open with the subject and why it matters to the reader, develop it in a few short passages, and close with what to do next.\n\nSections that carry it: {sections}. How many of each, and in what order, depends on the theme.",
+  "sandbox.formats.starterBodyNoSections":
+    "Use this for a straightforward post: open with the subject and why it matters to the reader, develop it in a few short passages, and close with what to do next.\n\nThis site reports no post sections yet — once it does, cite them here with @.",
+  "sandbox.formats.starterName": "Standard post",
+  "sandbox.formats.suggestButton": "Suggest formats",
+  "sandbox.formats.suggestFailed": "Couldn't suggest formats",
+  "sandbox.formats.suggestHint":
+    "Name the formats this blog already writes in, from how its posts are built",
+  "sandbox.formats.suggested": "{count} format(s) added",
+  "sandbox.formats.unknownCitations":
+    "This format cites sections the site doesn't have: {names}",
+  "sandbox.generatePost.stepCampaign": "Campaign",
+  "sandbox.generatePost.campaignHint":
+    "A post is written for a campaign: it carries the moment, the products it may name and the links to them.",
+  "sandbox.generatePost.noCampaigns":
+    "No campaign to write for yet. Create one under Context → Campaigns.",
+  "sandbox.generatePost.campaignProducts": "{count} product(s)",
+  "sandbox.generatePost.campaignNoProducts": "No products",
+  "sandbox.generatePost.formatBlocksHint":
+    "The blocks this format cites are the only ones a post may be built from, and each is filled to its own schema.",
+  "sandbox.generatePost.countLabel": "How many drafts",
+  "sandbox.generatePost.countHint":
+    "Each takes a different angle on the same campaign. They land as separate cards.",
+  "sandbox.generatePost.coverHint":
+    "Every draft gets a cover image, generated and uploaded to your bucket.",
+  "sandbox.generatePost.gapNoStoreData":
+    "No connected system answered, so nothing in these posts was checked against the store.",
+  "sandbox.generatePost.gapSectionsDropped":
+    "{count} section(s) were dropped: their props did not match the block that renders them.",
+  "sandbox.generatePost.gapNoBucket":
+    "No bucket to upload images to, so the posts have no cover. Configure one under Settings → Buckets.",
+  "sandbox.generatePost.gapNoImageModel":
+    "This organization has no image model configured, so the posts have no cover.",
+  "sandbox.generatePost.gapImagesFailed":
+    "The cover images could not be generated. The posts are otherwise complete.",
+  "sandbox.generatePost.gapDraftsFailed":
+    "{count} draft(s) could not be written and their cards were left empty.",
+  "sandbox.generatePost.back": "Back",
+  "sandbox.generatePost.blockedBrand":
+    "Fill in {fields} on the Brand tab first — a post written without them reads like any other brand's.",
+  "sandbox.generatePost.done": "Wrote {count} draft(s) — ready for review",
+  "sandbox.generatePost.extraLabel": "Anything else?",
+  "sandbox.generatePost.extraPlaceholder":
+    "What you want on top of everything else, in your words.",
+  "sandbox.generatePost.failed": "Could not write these posts",
+  "sandbox.generatePost.formatHint":
+    "Pick a format this brand already uses, or describe a new one.",
+  "sandbox.generatePost.formatNameLabel": "Format name",
+  "sandbox.generatePost.formatNamePlaceholder":
+    "The format, named by the job it does",
+  "sandbox.generatePost.formatValueLabel": "How a post like this is built",
+  "sandbox.generatePost.formatValuePlaceholder":
+    "How it opens, develops and closes.",
+  "sandbox.generatePost.generate": "Generate {count} draft(s)",
+  "sandbox.generatePost.next": "Next",
+  "sandbox.generatePost.stepExtra": "Instructions",
+  "sandbox.generatePost.stepFormat": "Format",
+  "sandbox.generatePost.subtitle":
+    "Pick the campaign and the format. The posts land on the board as drafts.",
+  "sandbox.generatePost.title": "Generate posts",
   "sandbox.itemActions.addVariant": "Add variant",
   "sandbox.itemActions.delete": "Delete",
   "sandbox.itemActions.duplicate": "Duplicate",
@@ -248,7 +694,10 @@ export const sandbox = {
   "sandbox.itemActions.moreActions": "More actions",
   "sandbox.itemActions.rename": "Rename",
   "sandbox.itemActions.viewJson": "View JSON",
+  "sandbox.itemRow.duplicateName": "Another record uses this name",
+  "sandbox.itemRow.missingFields": "Missing: {fields}",
   "sandbox.itemRow.selectItem": "Select {title}",
+  "sandbox.itemRow.variantCount": "{count} variants",
   "sandbox.listBlocks.addCard": "Add card",
   "sandbox.listBlocks.addItem": "Add item",
   "sandbox.listBlocks.addStat": "Add stat",
@@ -272,14 +721,36 @@ export const sandbox = {
   "sandbox.listBlocks.stepsTitle": "Steps title (optional)",
   "sandbox.mediaBlocks.addCaption": "Add a caption…",
   "sandbox.mediaBlocks.altText": "Alt text (accessibility)",
+  "sandbox.mediaBlocks.altLabel": "Alt",
   "sandbox.mediaBlocks.buttonLabel": "Button label",
   "sandbox.mediaBlocks.calloutText": "Callout text…",
   "sandbox.mediaBlocks.calloutTitle": "Callout title",
   "sandbox.mediaBlocks.destinationUrlPlaceholder":
     "https://destination-url.com",
+  "sandbox.linkSuggest.button": "Suggest links",
+  "sandbox.linkSuggest.hint":
+    "Find phrases to link to your other posts (uses AI credits)",
+  "sandbox.linkSuggest.noCandidates": "No other posts to link to yet",
+  "sandbox.linkSuggest.title": "Suggested internal links",
+  "sandbox.linkSuggest.description":
+    "Pick which phrases to link to your other posts. Nothing changes until you apply.",
+  "sandbox.linkSuggest.none": "No internal links to suggest.",
+  "sandbox.linkSuggest.apply": "Apply {count}",
+  "sandbox.linkSuggest.applied": "Applied {count} link(s)",
+  "sandbox.linkSuggest.failed": "Could not suggest links",
+  "sandbox.linkPicker.tabPost": "Post",
+  "sandbox.linkPicker.tabProduct": "Product",
+  "sandbox.linkPicker.searchPosts": "Search your posts…",
+  "sandbox.linkPicker.noPosts": "No matching posts",
+  "sandbox.linkPicker.searchProducts": "Search your catalog…",
+  "sandbox.linkPicker.searching": "Searching…",
+  "sandbox.linkPicker.noProducts": "No matching products",
   "sandbox.mediaBlocks.divider": "Divider",
   "sandbox.mediaBlocks.fullWidth": "Full width",
   "sandbox.mediaBlocks.image": "Image",
+  "sandbox.mediaBlocks.highPriority": "Priority",
+  "sandbox.mediaBlocks.highPriorityHint":
+    "Loads eagerly with high fetch priority. Use for images above the fold.",
   "sandbox.mediaBlocks.label": "Label",
   "sandbox.mediaBlocks.normal": "Normal",
   "sandbox.mediaBlocks.optionalDescription": "Optional description",
@@ -323,11 +794,60 @@ export const sandbox = {
   "sandbox.plainBlocks.headingLevel1": "Heading 1",
   "sandbox.plainBlocks.headingLevel2": "Heading 2",
   "sandbox.plainBlocks.headingLevel3": "Heading 3",
+  "sandbox.plainBlocks.headingLevel4": "Heading 4",
   "sandbox.plainBlocks.headingPlaceholder": "Heading",
   "sandbox.plainBlocks.languagePlaceholder": "language",
   "sandbox.plainBlocks.listItemPlaceholder": "List item",
   "sandbox.plainBlocks.numberedLabel": "Numbered",
   "sandbox.plainBlocks.quotePlaceholder": "Quote",
+  "sandbox.postBoard.close": "Close",
+  "sandbox.postBoard.archived": "Moved to Archived",
+  "sandbox.postBoard.collapse": "Collapse to panel",
+  "sandbox.postBoard.collapseLane": "Collapse {lane}",
+  "sandbox.postBoard.delete": "Delete",
+  "sandbox.postBoard.emptyDescription":
+    "Generate a few ideas and shape them into published posts.",
+  "sandbox.postBoard.emptyTitle": "No posts yet",
+  "sandbox.postBoard.duplicateTitle": "Duplicate title",
+  "sandbox.postBoard.expand": "Expand to full page",
+  "sandbox.postBoard.expandLane": "Expand {lane}",
+  "sandbox.postBoard.laneEmpty": "Nothing here yet",
+  "sandbox.postBoard.laneArchived": "Archived",
+  "sandbox.postBoard.laneGenerating": "Generating",
+  "sandbox.postBoard.laneDraft": "Draft",
+  "sandbox.postBoard.laneAwaitingReview": "Awaiting review",
+  "sandbox.postBoard.lanePublished": "Published",
+  "sandbox.postBoard.laneScheduled": "Scheduled",
+  "sandbox.postBoard.moveBlocked":
+    "This post is missing required fields — open it to finish before scheduling.",
+  "sandbox.postBoard.moveFailed": "Could not move this post",
+  "sandbox.postBoard.moveInFlight": "Still moving this post…",
+  "sandbox.postBoard.moveNotATarget":
+    "Generating is set by the generation run, not by hand.",
+  "sandbox.postBoard.nIssues": "{count} to fix before scheduling",
+  "sandbox.postBoard.newPost": "New post",
+  "sandbox.postBoard.newPostGenerate": "Generate",
+  "sandbox.postBoard.newPostGenerateHint":
+    "Write it with AI, from your context",
+  "sandbox.postBoard.newPostWrite": "Write",
+  "sandbox.postBoard.newPostWriteHint": "Start an empty draft yourself",
+  "sandbox.postBoard.importContent": "Import content",
+  "sandbox.postBoard.importContentHint":
+    "Bring in HTML or Markdown you already wrote",
+  "sandbox.postBoard.importTitle": "Import content",
+  "sandbox.postBoard.importDescription":
+    "Paste HTML or Markdown you already wrote. It becomes an editable draft in your design system — no AI, no credits.",
+  "sandbox.postBoard.importUpload": "Upload a file",
+  "sandbox.postBoard.importRun": "Import",
+  "sandbox.postBoard.importEmpty": "Nothing to import — the content was empty.",
+  "sandbox.postBoard.imported": "Imported — review and publish.",
+  "sandbox.postBoard.readyToSchedule": "Ready to schedule",
+  "sandbox.postBoard.selectPrompt": "Select a post to view it here.",
+  "sandbox.postBoard.untitled": "Untitled post",
+  "sandbox.postBoard.generatingLabel": "Generating…",
+  "sandbox.postBoard.usesCredits": "Uses AI credits",
+  "sandbox.postBoard.viewBoard": "Board",
+  "sandbox.postBoard.viewList": "List",
   "sandbox.postCalendar.couldNotCreate": "Could not create",
   "sandbox.postCalendar.couldNotReschedule": "Could not reschedule",
   "sandbox.postCalendar.createdScheduledPost": "Created scheduled post",
@@ -336,19 +856,12 @@ export const sandbox = {
   "sandbox.postCalendar.next": "Next month",
   "sandbox.postCalendar.onlyScheduledCanMove":
     "Only scheduled posts can be moved.",
-  "sandbox.postCalendar.outdatedAppsDescription":
-    "Scheduling needs deco apps {required} or newer. Update this site's pin by running:",
-  "sandbox.postCalendar.outdatedAppsTitle": "Update this site's apps version",
   "sandbox.postCalendar.previous": "Previous month",
   "sandbox.postCalendar.schedulePostOn": "Schedule a post on {date}",
   "sandbox.postCalendar.today": "Today",
   "sandbox.postCalendar.unscheduledHint":
     "Dashed posts aren't scheduled — they sit on their display date, and nothing will publish them.",
   "sandbox.postCalendar.undatedEmpty": "Every post has a date.",
-  "sandbox.postCalendar.unsupportedRuntimeDescription":
-    "This site doesn't run the deco blog app, so nothing here can publish a post on a schedule. The calendar below is read-only.",
-  "sandbox.postCalendar.unsupportedRuntimeTitle":
-    "TanStack sites aren't supported yet",
   "sandbox.postCalendar.undatedLabel": "No date · {count}",
   "sandbox.postEditor.addPropLabel": "Add prop",
   "sandbox.postEditor.authorsLabel": "Authors",
@@ -359,6 +872,16 @@ export const sandbox = {
   "sandbox.postEditor.coverAltLabel": "Cover image alt text",
   "sandbox.postEditor.coverImageLabel": "Cover image",
   "sandbox.postEditor.dateLabel": "Date",
+  "sandbox.postEditor.deletePost": "Delete post",
+  "sandbox.postEditor.deletePostCancel": "Cancel",
+  "sandbox.postEditor.deletePostConfirmBody":
+    '"{title}" will be removed permanently. This can\'t be undone.',
+  "sandbox.postEditor.deletePostConfirmTitle": "Delete this post?",
+  "sandbox.postEditor.deletePostFailed": "Delete failed",
+  "sandbox.postEditor.deletePostSuccess": 'Deleted "{title}"',
+  "sandbox.postEditor.deletingPost": "Deleting…",
+  "sandbox.postEditor.duplicateTitleWarning":
+    "Another post already uses this title. Duplicate titles compete with each other in search.",
   "sandbox.postEditor.excerptLabel": "Excerpt",
   "sandbox.postEditor.extraPropsLabel": "Extra props",
   "sandbox.postEditor.issuePlural": "issues",
@@ -373,14 +896,13 @@ export const sandbox = {
   "sandbox.postEditor.noContentYet":
     "This post has no content yet. Use ⊕ to add your first block.",
   "sandbox.postEditor.postTitlePlaceholder": "Post title",
+  "sandbox.postEditor.readTimeLabel": "Read time (minutes)",
   "sandbox.postEditor.previewRequiresSlugAndCategory":
     "Set the post slug (and its category) plus the blog app's pageSlug to preview",
   "sandbox.postEditor.previewTooltip": "Open the post preview in a new tab",
-  "sandbox.postEditor.publishedLabel": "Published",
   "sandbox.postEditor.scheduledDatetimeDescription":
     "When this post goes live. The site publishes it on its own once this moment passes.",
   "sandbox.postEditor.scheduledDatetimeLabel": "Goes live at",
-  "sandbox.postEditor.schedulingLabel": "Scheduled",
   "sandbox.postEditor.removePropLabel": "Remove prop",
   "sandbox.postEditor.seePreview": "See preview",
   "sandbox.postEditor.selectAuthorsPlaceholder": "Select authors",
@@ -396,22 +918,28 @@ export const sandbox = {
   "sandbox.postEditor.seoSectionLabel": "SEO",
   "sandbox.postEditor.seoTitleLabel": "SEO title",
   "sandbox.postEditor.settingsTab": "Settings",
+  "sandbox.postEditor.statusLabel": "Status",
+  "sandbox.postEditor.slugDeduped":
+    "That slug was already taken — saved as “{slug}”.",
   "sandbox.postEditor.slugLabel": "Slug",
   "sandbox.postEditor.slugPlaceholder": "my-post",
-  "sandbox.postEditor.untitledPost": "Untitled post",
   "sandbox.postEditor.valuePlaceholder": "value",
+  "sandbox.postList.noMatches": "No posts match your search or filters.",
   "sandbox.postToolbar.allPosts": "All posts",
+  "sandbox.postToolbar.archiveSelected": "Archive selected",
+  "sandbox.postToolbar.archiveSelectedPosts": "Archive selected posts",
   "sandbox.postToolbar.authorLabel": "Author",
   "sandbox.postToolbar.categoryLabel": "Category",
   "sandbox.postToolbar.clearFilter": "Clear filter",
-  "sandbox.postToolbar.deleteSelected": "Delete selected",
-  "sandbox.postToolbar.deleteSelectedPosts": "Delete selected posts",
   "sandbox.postToolbar.deselectAll": "Deselect all",
   "sandbox.postToolbar.deselectAllPosts": "Deselect all posts",
   "sandbox.postToolbar.exitSelection": "Exit selection",
   "sandbox.postToolbar.filterBy": "Filter by",
   "sandbox.postToolbar.filterLabel": "Filter",
   "sandbox.postToolbar.itemsSelected": "{count} selected",
+  "sandbox.postToolbar.clearSearch": "Clear search",
+  "sandbox.postToolbar.searchAriaLabel": "Search posts",
+  "sandbox.postToolbar.searchPlaceholder": "Search posts",
   "sandbox.postToolbar.selectAll": "Select all",
   "sandbox.postToolbar.selectAllPosts": "Select all posts",
   "sandbox.postToolbar.sortAZ": "A–Z",
@@ -423,10 +951,7 @@ export const sandbox = {
   "sandbox.postToolbar.sortTitleAZ": "Title A–Z",
   "sandbox.postToolbar.sortTitleZA": "Title Z–A",
   "sandbox.postToolbar.sortZA": "Z–A",
-  "sandbox.postToolbar.statusDraft": "Draft",
   "sandbox.postToolbar.statusLabel": "Status",
-  "sandbox.postToolbar.statusScheduled": "Scheduled",
-  "sandbox.postToolbar.statusPublished": "Published",
   "sandbox.preview.catchAllParamLabel": "path",
   "sandbox.preview.choosePage": "Choose page",
   "sandbox.preview.clickElementToAsk": "Click any element to ask the AI",
@@ -440,6 +965,7 @@ export const sandbox = {
   "sandbox.preview.deviceTablet": "Tablet (768px)",
   "sandbox.preview.enterToGo": "Enter to go",
   "sandbox.preview.failedToCreatePage": "Failed to create page",
+  "sandbox.preview.globalBadge": "Global",
   "sandbox.preview.globalComponents": "Global components",
   "sandbox.preview.globalLoaders": "Global loaders",
   "sandbox.preview.loaderBadge": "Loader",
@@ -447,12 +973,12 @@ export const sandbox = {
   "sandbox.preview.noPagesFound": "No pages found in this site.",
   "sandbox.preview.noSearchResults": "No results match your search.",
   "sandbox.preview.noServerRunning": "No server running",
-  "sandbox.preview.openInBrowser": "Open in browser",
-  "sandbox.preview.failedToOpenInBrowser": "Couldn't open your browser",
   "sandbox.preview.openInNewTab": "Open in new tab",
   "sandbox.preview.pageAlreadyExists":
     'A page with path "{path}" already exists.',
   "sandbox.preview.pageCreated": 'Page "{name}" created',
+  "sandbox.preview.blockOnNoPage":
+    "This block isn't used on any page, so there's nothing to preview.",
   "sandbox.preview.previewMetadataNotReady": "Preview metadata not ready yet",
   "sandbox.preview.refresh": "Refresh",
   "sandbox.preview.searchPagesAndComponents": "Search pages and components...",
@@ -462,6 +988,7 @@ export const sandbox = {
   "sandbox.preview.templateNoLongerExists":
     "Selected template no longer exists.",
   "sandbox.preview.valueForParam": "Value for {label}",
+  "sandbox.preview.blocksEditor": "Blocks editor",
   "sandbox.preview.visualEditor": "Visual editor",
   "sandbox.productBlocks.addProductIdButton": "Add product ID",
   "sandbox.productBlocks.addProductsButton": "Add products",
@@ -522,22 +1049,32 @@ export const sandbox = {
   "sandbox.productPickerDialog.searchProductsPlaceholder":
     "Search products by name or ID…",
   "sandbox.productPickerDialog.selectedCount": "{count} selected",
-  "sandbox.productPickerDialog.typeToSearchPrompt": "Type to search products.",
   "sandbox.recordEditor.fieldAvatar": "Avatar",
   "sandbox.recordEditor.fieldCompany": "Company",
   "sandbox.recordEditor.fieldEmail": "Email",
   "sandbox.recordEditor.fieldJobTitle": "Job title",
   "sandbox.recordEditor.fieldName": "Name",
   "sandbox.recordEditor.fieldType": "Type",
+  "sandbox.recordEditor.fieldUrl": "Website",
   "sandbox.recordEditor.optionOrganization": "Organization",
   "sandbox.recordEditor.optionPerson": "Person",
   "sandbox.recordEditor.placeholderEmail": "author@example.com",
+  "sandbox.recordEditor.placeholderUrl": "https://example.com",
   "sandbox.recordEditor.titleAuthor": "Author",
+  "sandbox.redirectFormDialog.title": "Create redirect",
+  "sandbox.redirectFormDialog.submit": "Create",
+  "sandbox.redirectFormDialog.pending": "Creating…",
+  "sandbox.redirectFormDialog.cancel": "Cancel",
+  "sandbox.redirectFormDialog.errorRequired": "From and To are required.",
   "sandbox.redirectEditor.discardQueryParameters": "Discard query parameters",
   "sandbox.redirectEditor.fromDescription":
     "The source path to match. Supports URLPattern syntax (e.g. /product/:slug).",
   "sandbox.redirectEditor.fromLabel": "From",
   "sandbox.redirectEditor.fromPlaceholder": "/old-path",
+  "sandbox.redirectEditor.statusDescription":
+    "An explicit status code wins over the type.",
+  "sandbox.redirectEditor.statusFromType": "Follow the type ({status})",
+  "sandbox.redirectEditor.statusLabel": "Status code",
   "sandbox.redirectEditor.title": "Redirect",
   "sandbox.redirectEditor.toDescription":
     "The destination — a relative path or an absolute URL.",
@@ -556,19 +1093,15 @@ export const sandbox = {
     "New chats start as CMS sessions, previewed on your preview server instead of a sandbox. Existing chats keep the mode they were created with.",
   "sandbox.cmsSettings.fastPreview.needsPreviewServerUrl":
     "Set a preview server above to enable Fast Preview.",
+  "sandbox.cmsSettings.blocksV8.needsPreviewServerUrl":
+    "Add your site's address above to preview drafts. Until then, new chats start a coding session.",
   "sandbox.cmsSettings.fastPreviewInPlace.label":
     "Instant preview (experimental)",
   "sandbox.cmsSettings.fastPreviewInPlace.description":
     "Refresh edits in place, without waiting for a save — much faster, but only works on websites that have /live/previews route.",
-  "sandbox.cmsSettings.contentEditing.title": "Content editing",
-  "sandbox.cmsSettings.contentEditing.description":
-    "Whether this project offers a CMS.",
   "sandbox.cmsSettings.contentEditing.on": "Enabled",
   "sandbox.cmsSettings.contentEditing.onDescription":
     "The Site Editor offers Content and opens Blocks beside Preview on desktop.",
-  "sandbox.cmsSettings.contentEditing.off": "Disabled",
-  "sandbox.cmsSettings.contentEditing.offDescription":
-    "No Content view or Blocks form in the Site Editor. The site still previews, and the project can still edit content.",
   "sandbox.cmsUnavailable.noPreviewServer":
     "It's a CMS session, but this project has no preview server configured.",
   "sandbox.cmsUnavailable.noRepo":
@@ -577,6 +1110,8 @@ export const sandbox = {
     "Continue this branch in a coding session",
   "sandbox.previewServerUrlField.description":
     "Your live server's address, used to preview content. Required for Fast Preview.",
+  "sandbox.previewServerUrlField.descriptionBlocksV8":
+    "Your live site's address. Studio shows your drafts on it before you publish.",
   "sandbox.previewServerUrlField.label": "Preview server",
   "sandbox.previewServerUrlField.placeholder": "https://example.com",
   "sandbox.fieldDescriptionTooltipsField.label": "Compact descriptions",
@@ -588,13 +1123,11 @@ export const sandbox = {
     "The connected GitHub repository for this project. Manage in Connections.",
   "sandbox.runnableBlockEditor.availableModeDescription":
     "{typeLabel} — edits stay local until you save this as a global {singular}. Run to invoke it against the live preview.",
-  "sandbox.runnableBlockEditor.backToList": "Back to list",
   "sandbox.runnableBlockEditor.closeJsonEditor": "Close JSON editor",
   "sandbox.runnableBlockEditor.closeResult": "Close result",
   "sandbox.runnableBlockEditor.collapse": "Collapse",
   "sandbox.runnableBlockEditor.collapseResult": "Collapse result",
   "sandbox.runnableBlockEditor.editAsJson": "Edit as JSON",
-  "sandbox.runnableBlockEditor.editingBreadcrumb": "Editing breadcrumb",
   "sandbox.runnableBlockEditor.expand": "Expand",
   "sandbox.runnableBlockEditor.expandResult": "Expand result",
   "sandbox.runnableBlockEditor.failedToRun": "Failed to run {singular}",
@@ -646,14 +1179,34 @@ export const sandbox = {
   "sandbox.runtimeFields.packagePathDescription":
     "Path (relative to repo root) to the directory containing package.json. Leave blank for the repo root.",
   "sandbox.savedSectionEditor.closeJsonEditor": "Close JSON editor",
+  "sandbox.saveStatus.failed": "Couldn't save",
+  "sandbox.saveStatus.saved": "Saved",
+  "sandbox.saveStatus.saving": "Saving…",
   "sandbox.savedSectionEditor.editAsJson": "Edit as JSON",
-  "sandbox.savedSectionEditor.editingBreadcrumb": "Editing breadcrumb",
   "sandbox.savedSectionEditor.globalSectionDescription":
     "Global section — changes save automatically and apply everywhere it's used.",
   "sandbox.savedSectionEditor.invalidJsonError":
     "Invalid JSON — changes aren't saved until it parses.",
   "sandbox.savedSectionEditor.noEditableFields":
     "No editable fields for this section.",
+  "sandbox.schemaless.back": "All blocks",
+  "sandbox.schemaless.bannerBody":
+    "Until then, each block opens with plain fields built from its saved values, and saving keeps every other value as it is. Generate the schema in your site's folder; this page picks it up on its own.",
+  "sandbox.schemaless.bannerTitle":
+    "Forms get proper fields once the schema exists",
+  "sandbox.schemaless.docsLink": "About deco schema",
+  "sandbox.schemaless.empty": "Empty",
+  "sandbox.schemaless.item": "Item {n}",
+  "sandbox.schemaless.itemCount": "{count} items",
+  "sandbox.schemaless.listLabel": "Saved blocks",
+  "sandbox.schemaless.noBlocks": "No saved blocks yet.",
+  "sandbox.schemaless.noMatches": "No blocks match your search.",
+  "sandbox.schemaless.noType": "Without a type",
+  "sandbox.schemaless.notANumber":
+    "Enter a number. The saved value stays until you do.",
+  "sandbox.schemaless.notSet": "Not set",
+  "sandbox.schemaless.pickBlock": "Pick a block to see its content.",
+  "sandbox.schemaless.searchPlaceholder": "Search blocks",
   "sandbox.sectionRenameDialog.cancel": "Cancel",
   "sandbox.sectionRenameDialog.description":
     "Updates the display name. The internal key stays the same so pages referencing this section keep working.",
@@ -676,50 +1229,6 @@ export const sandbox = {
   "sandbox.stateCard.suspendedHeadline": "Sandbox is paused",
   "sandbox.stateCard.resumeToContinue": "Resume to continue.",
   "sandbox.stateCard.retry": "Retry",
-  "sandbox.submoduleCredentialsField.addSubmoduleCredential":
-    "Add submodule credential",
-  "sandbox.submoduleCredentialsField.cancel": "Cancel",
-  "sandbox.submoduleCredentialsField.createNewSecret": "Create new secret",
-  "sandbox.submoduleCredentialsField.createNewSecretAriaLabel":
-    "Create new secret",
-  "sandbox.submoduleCredentialsField.createNewSecretDescription":
-    "Stored encrypted in the credential vault. The submodule credential will reference the new secret by id — its value never leaves the server.",
-  "sandbox.submoduleCredentialsField.createNewSecretTitle": "Create new secret",
-  "sandbox.submoduleCredentialsField.description":
-    "Personal access tokens for cloning private git submodules that live in other repositories. Reference an org/user secret per host; SSH submodule URLs are rewritten to HTTPS so the token applies.",
-  "sandbox.submoduleCredentialsField.descriptionLabel":
-    "Description (optional)",
-  "sandbox.submoduleCredentialsField.descriptionPlaceholder":
-    "What is this token used for?",
-  "sandbox.submoduleCredentialsField.failedToLoadSecrets":
-    "Failed to load secrets",
-  "sandbox.submoduleCredentialsField.failedToSaveSecret": "Failed to save",
-  "sandbox.submoduleCredentialsField.hostAriaLabel":
-    "Submodule credential {index} host",
-  "sandbox.submoduleCredentialsField.hostInvalidMessage":
-    "Bare hostname, e.g. github.com (no scheme or path).",
-  "sandbox.submoduleCredentialsField.hostPlaceholder": "github.com",
-  "sandbox.submoduleCredentialsField.nameLabel": "Name",
-  "sandbox.submoduleCredentialsField.namePlaceholder": "GITHUB_SUBMODULE_PAT",
-  "sandbox.submoduleCredentialsField.nameHelperText":
-    "Letters, digits, underscore, dot, hyphen.",
-  "sandbox.submoduleCredentialsField.noSecretsYet":
-    'No secrets yet. Use the "+" to create one.',
-  "sandbox.submoduleCredentialsField.pickSecretPlaceholder": "Pick a secret…",
-  "sandbox.submoduleCredentialsField.remove": "Remove",
-  "sandbox.submoduleCredentialsField.removeAriaLabel":
-    "Remove submodule credential",
-  "sandbox.submoduleCredentialsField.saveSecret": "Save secret",
-  "sandbox.submoduleCredentialsField.saving": "Saving…",
-  "sandbox.submoduleCredentialsField.scopeLabel": "Scope",
-  "sandbox.submoduleCredentialsField.scopeOrganization":
-    "Organization — visible to all members",
-  "sandbox.submoduleCredentialsField.scopePrivate":
-    "Private — only visible to me",
-  "sandbox.submoduleCredentialsField.secretSaved": 'Saved secret "{name}"',
-  "sandbox.submoduleCredentialsField.title": "Submodule credentials",
-  "sandbox.submoduleCredentialsField.tokenLabel": "Personal access token",
-  "sandbox.submoduleCredentialsField.tokenPlaceholder": "ghp_…",
   "sandbox.tableBlock.addColumn": "Add column",
   "sandbox.tableBlock.addRow": "Add row",
   "sandbox.tableBlock.headerPlaceholder": "Header {n}",

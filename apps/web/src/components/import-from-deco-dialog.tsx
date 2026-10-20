@@ -33,7 +33,7 @@ import { Button } from "@decocms/ui/components/button.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { ArrowLeft } from "@untitledui/icons";
 import { authClient } from "@/lib/auth-client";
-import { KEYS } from "@/lib/query-keys";
+import { KEYS, invalidateVirtualMcpQueries } from "@/lib/query-keys";
 import { generateSlug } from "@/lib/slug";
 import { CollectionSearch } from "@/components/collections/collection-search.tsx";
 import { GitHubIcon } from "@/components/icons/github-icon";
@@ -186,16 +186,16 @@ export function ImportFromDecoDialog({
         throw new Error(t("common.importFromDecoDialog.siteNoLongerAvailable"));
       }
 
-      const githubRepo = resolveDecoSiteGithubRepo(siteName, site.metadata);
+      const repository = resolveDecoSiteGithubRepo(siteName, site.metadata);
 
       const githubInstallation = findGithubInstallation(
         installations,
-        githubRepo.owner,
+        repository.owner,
       );
       if (!githubInstallation) {
         throw new Error(
           t("common.importFromDecoDialog.installGithubApp", {
-            owner: githubRepo.owner,
+            owner: repository.owner,
             installUrl: GITHUB_APP_INSTALL_URL,
           }),
         );
@@ -239,8 +239,8 @@ export function ImportFromDecoDialog({
             orgSlug: org.slug,
             sourceConnection: effectiveGithubConnection,
             installationId: githubInstallation.installationId,
-            owner: githubRepo.owner,
-            repo: githubRepo.name,
+            owner: repository.owner,
+            repo: repository.name,
             githubCallTool: (req) => githubClient.callTool(req),
             selfCallTool: (req) => client.callTool(req),
           });
@@ -265,15 +265,14 @@ export function ImportFromDecoDialog({
               icon: projectIcon ?? null,
               metadata: {
                 instructions: null,
-                enabled_plugins: [],
                 // Link the agent to its asset site so the CMS resolves uploads to managed storage.
                 siteSlug,
                 previewServerUrl,
                 productionUrl: previewServerUrl,
-                githubRepo: {
-                  owner: githubRepo.owner,
-                  name: githubRepo.name,
-                  url: githubRepo.url,
+                repository: {
+                  owner: repository.owner,
+                  name: repository.name,
+                  url: repository.url,
                   installationId: githubInstallation.installationId,
                   connectionId: childConnectionId,
                 },
@@ -329,16 +328,7 @@ export function ImportFromDecoDialog({
       // Invalidate the projects list using a predicate — the collection list
       // key starts with the client instance, so a plain queryKey prefix never
       // matches it.
-      queryClient.invalidateQueries({
-        predicate: (query) => {
-          const key = query.queryKey;
-          return (
-            key[1] === org.id &&
-            key[3] === "collection" &&
-            key[4] === "VIRTUAL_MCP"
-          );
-        },
-      });
+      invalidateVirtualMcpQueries(queryClient, org.id);
       toast.success(t("common.importFromDecoDialog.importSuccess", { slug }));
       handleClose(false);
       navigateToAgent(virtualMcpId);
@@ -371,7 +361,7 @@ export function ImportFromDecoDialog({
               type="button"
               onClick={onBack}
               className="flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
-              aria-label={t("common.importFromDecoDialog.goBack")}
+              aria-label={t("common.goBack")}
             >
               <ArrowLeft size={18} />
             </button>

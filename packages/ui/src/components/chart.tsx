@@ -82,7 +82,10 @@ const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
   }
 
   return (
+    // Generated CSS custom properties for this chart's theme, not user HTML,
+    // and a <style> element cannot execute script. Vendored shadcn shape.
     <style
+      // oxlint-disable-next-line react/no-danger
       dangerouslySetInnerHTML={{
         __html: Object.entries(THEMES)
           .map(

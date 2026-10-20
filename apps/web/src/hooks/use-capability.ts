@@ -26,7 +26,6 @@ export type CapabilityId =
   | "ai-providers:manage"
   | "tags:manage"
   | "registry:manage"
-  | "registry:monitor"
   | "api-keys:manage"
   | "storage:delete"
   | "connections:sql";

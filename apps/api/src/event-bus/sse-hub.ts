@@ -1,9 +1,9 @@
 /**
- * SSE Hub — In-memory fan-out for event bus events
+ * SSE Hub: organization-scoped fan-out for realtime updates
  *
  * Provides a lightweight pub/sub layer that SSE connections subscribe to.
- * When events are published through the EventBus, they are also pushed
- * to all connected SSE clients for the same organization.
+ * Producers call emit() to push updates to connected SSE clients for the
+ * same organization.
  *
  * Cross-pod support:
  * The hub delegates broadcasting to an SSEBroadcastStrategy (NatsSSEBroadcast),
@@ -41,8 +41,15 @@ export interface SSEListener {
   /** Optional event type patterns to filter (supports wildcard suffix, e.g. "workflow.*") */
   typePatterns: string[] | null;
   /** Callback to push an event to the SSE stream */
-  push: (event: SSEEvent) => void;
+  push: (event: SSEEvent, organizationId: string) => void;
 }
+
+/**
+ * Listener key that receives every org's events — the admin threads view.
+ * Every pod already gets every org's events over NATS, so this is one extra
+ * map lookup per event, not extra traffic. Org ids are never `*`.
+ */
+export const ALL_ORGS = "*";
 
 export interface SSEEvent {
   id: string;
@@ -68,7 +75,7 @@ const MAX_TOTAL_CONNECTIONS = 500;
 // ============================================================================
 
 /**
- * SSE hub for fan-out of event bus events to SSE connections.
+ * SSE hub for delivery of realtime updates to connected clients.
  *
  * Holds references to active listener callbacks — no event data.
  * Memory usage is proportional to connected SSE clients, not event volume.
@@ -191,7 +198,12 @@ class SSEHub {
    * This is the actual fan-out to HTTP streams on this process.
    */
   private localEmit(organizationId: string, event: SSEEvent): void {
-    const orgListeners = this.listeners.get(organizationId);
+    this.deliver(organizationId, organizationId, event);
+    this.deliver(ALL_ORGS, organizationId, event);
+  }
+
+  private deliver(key: string, organizationId: string, event: SSEEvent): void {
+    const orgListeners = this.listeners.get(key);
     if (!orgListeners || orgListeners.size === 0) return;
 
     for (const listener of orgListeners.values()) {
@@ -203,9 +215,9 @@ class SSEHub {
       }
 
       try {
-        listener.push(event);
+        listener.push(event, organizationId);
       } catch {
-        this.remove(organizationId, listener.id);
+        this.remove(key, listener.id);
       }
     }
   }

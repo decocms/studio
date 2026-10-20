@@ -16,9 +16,9 @@ test.describe("sandbox drawer is scoped to the Site Editor", () => {
       url: "http://127.0.0.1:1/unused",
     });
 
-    // Clonable agent: connections[] AND metadata.githubRepo both reference
+    // Clonable agent: connections[] AND metadata.repository both reference
     // the same connection id (both halves are required for
-    // `getActiveGithubRepo` → non-null, which is what
+    // `getActiveRepository` → non-null, which is what
     // `agentHasClonableSource` checks).
     const agent = await callSelfMcpTool<{ item: { id: string } }>(
       api,
@@ -32,7 +32,7 @@ test.describe("sandbox drawer is scoped to the Site Editor", () => {
           pinned: false,
           connections: [{ connection_id: conn.id }],
           metadata: {
-            githubRepo: {
+            repository: {
               url: "https://github.com/example/repo",
               owner: "example",
               name: "repo",

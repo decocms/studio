@@ -4,7 +4,7 @@
  * Launched as a Playwright `webServer` so the studio server's decofile routes
  * can read/write/publish against an in-memory git model instead of
  * api.github.com. The studio server is pointed here via `GITHUB_API_BASE_URL`
- * in the Playwright config. Follows the commerce-upgrade-mock.ts pattern.
+ * in the Playwright config. Follows the reports-upgrade-mock.ts pattern.
  */
 
 import { createGithubStubServer } from "./github-stub";

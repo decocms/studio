@@ -50,7 +50,7 @@ export function NewChatCrumb() {
           type="button"
           onClick={handleNewChat}
           aria-label={t("sidebar.taskGroupsList.newChat")}
-          className="flex shrink-0 items-center rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+          className="flex shrink-0 items-center rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
         >
           <Edit05 size={16} />
         </button>

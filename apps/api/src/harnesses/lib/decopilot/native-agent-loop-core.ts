@@ -25,7 +25,7 @@ export interface NativeAgentLoopCoreOptions {
 }
 
 export interface NativeAgentLoopCoreHandle {
-  result: StreamTextResult<ToolSet, never>;
+  result: StreamTextResult<ToolSet, {}, never>;
   error: Promise<string | undefined>;
 }
 
@@ -63,16 +63,17 @@ export function runNativeAgentLoopCore(
   const streamTextFn = opts.streamText ?? defaultStreamText;
   const result = streamTextFn({
     model: opts.model,
-    system: opts.systemMessages,
+    instructions: opts.systemMessages,
     messages: opts.messages,
     tools: opts.tools,
     providerOptions: OPENROUTER_CACHE_PROVIDER_OPTIONS,
+    include: { requestBody: true },
     prepareStep: opts.prepareStep as never,
     temperature: opts.temperature,
     maxOutputTokens: opts.maxOutputTokens,
     stopWhen: opts.stopWhen,
     abortSignal: opts.abortSignal,
-    onStepFinish: opts.onStepFinish as never,
+    onStepEnd: opts.onStepFinish as never,
     onError: async (event: { error?: unknown }) => {
       const rawError = event.error ?? event;
       const message = stringifyProviderError(rawError);
@@ -82,7 +83,7 @@ export function runNativeAgentLoopCore(
     onAbort: async () => {
       finalizeError(capturedError ?? "Run aborted before completion.");
     },
-  }) as StreamTextResult<ToolSet, never>;
+  }) as StreamTextResult<ToolSet, {}, never>;
 
   Promise.resolve(result.finishReason)
     .then(() => {

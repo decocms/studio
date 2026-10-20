@@ -16,7 +16,7 @@ import { getSettings } from "@/settings";
 import { type AdfMedia, markdownToAdf } from "./markdown-adf";
 import {
   collectWikiMentionAccountIds,
-  escapeMentionName,
+  mentionMarkdown,
   UNKNOWN_MENTION,
   wikiToMarkdown,
 } from "./wiki-markdown";
@@ -80,26 +80,110 @@ export interface JiraAttachment {
   mimeType?: string;
 }
 
-/** One changelog entry: what changed on the issue, and when. */
-export interface JiraChangelogHistory {
+/** One status change on an issue: a changelog entry that moved it. */
+export interface JiraStatusChange {
+  /** The changelog entry's id — the transition's identity. */
   id: string;
-  created: string;
-  items: Array<{ field: string; toString?: string | null; to?: string | null }>;
+  /** Epoch milliseconds. */
+  at: number;
+  /** Null when Jira attributes the change to no one. */
+  by: JiraUser | null;
+  fromId: string | null;
+  from: string | null;
+  toId: string | null;
+  to: string;
+}
+
+export interface JiraUser {
+  accountId: string;
+  displayName: string;
 }
 
 export interface JiraComment {
   id: string;
-  author: { accountId: string; displayName: string } | null;
+  author: JiraUser | null;
   /** Atlassian Document Format tree. */
   body: unknown;
   created: string;
 }
+
+/** What creating an issue of one type in one project takes. */
+export interface JiraCreateMeta {
+  issueTypeId: string;
+  issueTypeName: string;
+  /** Null when the type's create screen has no story points field. */
+  storyPointsFieldId: string | null;
+  /** Null when the type's create screen has no sprint field. */
+  sprintFieldId: string | null;
+}
+
+/** Team-managed projects' story points field; company-managed ones name a
+ *  plain number field "Story Points", hence the name fallback. */
+const STORY_POINTS_CUSTOM_TYPE = "com.pyxis.greenhopper.jira:jsw-story-points";
+const STORY_POINTS_NAME = /^story points?( estimate)?$/i;
+const SPRINT_CUSTOM_TYPE = "com.pyxis.greenhopper.jira:gh-sprint";
 
 const ISSUE_FIELDS =
   "summary,status,priority,issuetype,updated,description,comment";
 
 /** Issues per search page. Jira's own ceiling for a fields-bearing search. */
 const SEARCH_PAGE_SIZE = 100;
+
+/** Status changes per bulk-changelog page; Jira caps the page lower if it must. */
+const CHANGELOG_PAGE_SIZE = 1000;
+
+/** An issue with more moves than this is not one a rule reasons about. */
+const MAX_CHANGELOG_PAGES = 5;
+
+function asString(value: unknown): string | null {
+  return typeof value === "string" && value !== "" ? value : null;
+}
+
+/** A changelog author, or null when the entry has none an agent could mention. */
+function asJiraUser(value: unknown): JiraUser | null {
+  if (typeof value !== "object" || value === null) return null;
+  const { accountId, displayName } = value as {
+    accountId?: unknown;
+    displayName?: unknown;
+  };
+  const id = asString(accountId);
+  if (!id) return null;
+  return { accountId: id, displayName: asString(displayName) ?? id };
+}
+
+/** The status move one changelog entry records, or null if it records none.
+ *  The bulk endpoint gives `created` in epoch ms; the issue endpoint in ISO. */
+function statusChangeOf(history: {
+  id?: unknown;
+  created?: unknown;
+  author?: unknown;
+  items?: Array<{
+    fieldId?: unknown;
+    from?: unknown;
+    fromString?: unknown;
+    to?: unknown;
+    toString?: unknown;
+  }>;
+}): JiraStatusChange | null {
+  const item = history.items?.find((i) => i.fieldId === "status");
+  const to = asString(item?.toString);
+  const id =
+    typeof history.id === "number" ? String(history.id) : asString(history.id);
+  const at =
+    typeof history.created === "number"
+      ? history.created
+      : Date.parse(asString(history.created) ?? "");
+  if (!item || !to || !id || !Number.isFinite(at)) return null;
+  return {
+    id,
+    at,
+    by: asJiraUser(history.author),
+    fromId: asString(item.from),
+    from: asString(item.fromString),
+    toId: asString(item.to),
+    to,
+  };
+}
 
 /** A non-2xx answer from Jira, carrying the status so a caller can react to a
  *  specific one (a 400 means the request body was refused, not the request). */
@@ -183,6 +267,42 @@ function stripOrderBy(jql: string): string {
   return jql.replace(/\s+order\s+by\s+[\s\S]*$/i, "").trim();
 }
 
+/**
+ * A caller's JQL narrowed to a scope: `(<scope>) AND (<clause>) ORDER BY …`.
+ *
+ * The clause must be self-contained. `a) OR (project = X` would close the
+ * scope's group and OR its way out of it, so a clause whose parentheses do
+ * not balance outside quoted strings is refused rather than wrapped.
+ */
+export function narrowJql(scope: string, jql: string): string {
+  const match = jql.match(/(^|\s)order\s+by\s[\s\S]*$/i);
+  const clause = (match ? jql.slice(0, match.index) : jql).trim();
+  const orderBy = match ? ` ${match[0].trim()}` : "";
+  let depth = 0;
+  let quote: string | null = null;
+  for (let i = 0; i < clause.length; i++) {
+    const char = clause[i];
+    if (quote) {
+      if (char === "\\") i++;
+      else if (char === quote) quote = null;
+    } else if (char === '"' || char === "'") {
+      quote = char;
+    } else if (char === "(") {
+      depth++;
+    } else if (char === ")" && --depth < 0) {
+      break;
+    }
+  }
+  if (depth !== 0 || quote) {
+    throw new Error(
+      "The JQL's parentheses or quotes do not balance — send one self-contained condition",
+    );
+  }
+  return clause
+    ? `(${scope}) AND (${clause})${orderBy}`
+    : `(${scope})${orderBy}`;
+}
+
 /** Guard for interpolating a board id into a path. */
 export function assertBoardId(boardId: string): string {
   if (!/^\d+$/.test(boardId)) {
@@ -217,7 +337,12 @@ export class JiraClient {
         headers: {
           Authorization: this.authHeader,
           Accept: "application/json",
-          ...(init?.body ? { "Content-Type": "application/json" } : {}),
+          // Only a string body is JSON. A FormData body must keep the boundary
+          // `fetch` computes for it — naming the type here truncates the upload.
+          ...(typeof init?.body === "string"
+            ? { "Content-Type": "application/json" }
+            : {}),
+          ...(init?.headers as Record<string, string> | undefined),
         },
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
@@ -299,11 +424,20 @@ export class JiraClient {
     return users;
   }
 
-  /** Boards visible to the credentials — the board picker. */
-  async listBoards(): Promise<JiraBoard[]> {
+  /**
+   * Boards visible to the credentials — the board picker. Capped at 200: a
+   * large site holds thousands, so past the first pages the picker finds a
+   * board by `name`, which Jira matches as a case-insensitive substring.
+   */
+  async listBoards(name?: string): Promise<JiraBoard[]> {
     const boards: JiraBoard[] = [];
     let startAt = 0;
     while (boards.length < 200) {
+      const query = new URLSearchParams({
+        startAt: String(startAt),
+        maxResults: "50",
+      });
+      if (name) query.set("name", name);
       const page = await this.request<{
         values: Array<{
           id: number;
@@ -312,7 +446,7 @@ export class JiraClient {
           location?: { projectKey?: string; projectName?: string };
         }>;
         isLast: boolean;
-      }>(`/rest/agile/1.0/board?startAt=${startAt}&maxResults=50`);
+      }>(`/rest/agile/1.0/board?${query}`);
       boards.push(
         ...page.values.map((board) => ({
           id: board.id,
@@ -330,6 +464,19 @@ export class JiraClient {
 
   /** The board's columns with their status NAMES, in board order — what the
    *  settings UI shows (tenants know column names, not raw statuses). */
+  /** Each column's status ids, left to right — the board's order, in one
+   *  request, for telling a move forward from one back. */
+  async getBoardColumnStatusIds(boardId: string): Promise<string[][]> {
+    const config = await this.request<{
+      columnConfig?: {
+        columns?: Array<{ statuses?: Array<{ id: string }> }>;
+      };
+    }>(`/rest/agile/1.0/board/${assertBoardId(boardId)}/configuration`);
+    return (config.columnConfig?.columns ?? []).map((column) =>
+      (column.statuses ?? []).map((status) => status.id),
+    );
+  }
+
   async getBoardColumns(boardId: string): Promise<JiraBoardColumn[]> {
     const config = await this.request<{
       columnConfig?: {
@@ -404,6 +551,46 @@ export class JiraClient {
   }
 
   /**
+   * The project a board lives in, from its location. What a chat creates an
+   * issue in: there is no run issue to take the project from.
+   */
+  async getBoardProjectKey(boardId: string): Promise<string> {
+    const board = await this.request<{
+      location?: { projectKey?: string } | null;
+    }>(`/rest/agile/1.0/board/${encodeURIComponent(boardId)}`);
+    const projectKey = board.location?.projectKey;
+    if (!projectKey) {
+      throw new Error(
+        `Jira board ${boardId} is not tied to a single project, so there is no project to create the issue in`,
+      );
+    }
+    return projectKey;
+  }
+
+  /**
+   * Whether the issue is on the board — matches the board's own scope, the
+   * same query the trigger watches. A key Jira does not know is a 400 from
+   * search, and simply not on the board.
+   */
+  async isOnBoard(boardId: string, issueKey: string): Promise<boolean> {
+    const scope = await this.getBoardScopeJql(boardId);
+    const query = new URLSearchParams({
+      jql: narrowJql(scope, `key = "${issueKey.replace(/["\\]/g, "")}"`),
+      maxResults: "1",
+      fields: "summary",
+    });
+    try {
+      const page = await this.request<{ issues?: unknown[] }>(
+        `/rest/api/3/search/jql?${query}`,
+      );
+      return (page.issues?.length ?? 0) > 0;
+    } catch (err) {
+      if (err instanceof JiraRequestError && err.status === 400) return false;
+      throw err;
+    }
+  }
+
+  /**
    * One page of a JQL search, newest pagination (`nextPageToken`).
    *
    * `/rest/api/3/search/jql` has no `total` and no `startAt` — it walks a
@@ -414,27 +601,18 @@ export class JiraClient {
   async searchIssues(params: {
     jql: string;
     nextPageToken?: string;
-    /** Carry each issue's changelog, for a caller that needs its transitions. */
-    expandChangelog?: boolean;
-  }): Promise<{
-    issues: Array<
-      JiraIssue & { changelog?: { histories: JiraChangelogHistory[] } }
-    >;
-    nextPageToken: string | null;
-  }> {
+  }): Promise<{ issues: JiraIssue[]; nextPageToken: string | null }> {
     const query = new URLSearchParams({
       jql: params.jql,
       maxResults: String(SEARCH_PAGE_SIZE),
       fields: ISSUE_FIELDS,
     });
-    if (params.expandChangelog) query.set("expand", "changelog");
     if (params.nextPageToken) query.set("nextPageToken", params.nextPageToken);
     const page = await this.request<{
       issues?: Array<{
         id: string;
         key: string;
         fields: JiraIssueFields & Record<string, unknown>;
-        changelog?: { histories: JiraChangelogHistory[] };
       }>;
       nextPageToken?: string | null;
     }>(`/rest/api/3/search/jql?${query}`);
@@ -442,6 +620,58 @@ export class JiraClient {
       issues: page.issues ?? [],
       nextPageToken: page.nextPageToken ?? null,
     };
+  }
+
+  /**
+   * Every status change an issue has had, oldest first.
+   *
+   * The bulk changelog endpoint, filtered to the status field: an issue's
+   * full changelog is mostly attachments and field edits, and paging through
+   * it to find the moves costs a request per hundred entries.
+   */
+  async listStatusChanges(issueIdOrKey: string): Promise<JiraStatusChange[]> {
+    type Page = {
+      issueChangeLogs?: Array<{
+        changeHistories?: Array<{
+          id?: unknown;
+          created?: unknown;
+          author?: unknown;
+          items?: Array<{
+            fieldId?: unknown;
+            from?: unknown;
+            fromString?: unknown;
+            to?: unknown;
+            toString?: unknown;
+          }>;
+        }>;
+      }>;
+      nextPageToken?: string | null;
+    };
+    const out: JiraStatusChange[] = [];
+    let nextPageToken: string | undefined;
+    for (let page = 0; page < MAX_CHANGELOG_PAGES; page++) {
+      const result = await this.request<Page>(
+        "/rest/api/3/changelog/bulkfetch",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            issueIdsOrKeys: [issueIdOrKey],
+            fieldIds: ["status"],
+            maxResults: CHANGELOG_PAGE_SIZE,
+            ...(nextPageToken ? { nextPageToken } : {}),
+          }),
+        },
+      );
+      for (const log of result.issueChangeLogs ?? []) {
+        for (const history of log.changeHistories ?? []) {
+          const change = statusChangeOf(history);
+          if (change) out.push(change);
+        }
+      }
+      nextPageToken = result.nextPageToken ?? undefined;
+      if (!nextPageToken) break;
+    }
+    return out.sort((a, b) => a.at - b.at || Number(a.id) - Number(b.id));
   }
 
   /** One issue with what a run's opening message shows. */
@@ -453,10 +683,12 @@ export class JiraClient {
       status: { name: string };
       description: unknown;
       attachment?: JiraAttachment[];
+      reporter?: JiraUser | null;
+      assignee?: JiraUser | null;
     };
   }> {
     return this.request(
-      `/rest/api/3/issue/${encodeURIComponent(issueId)}?fields=summary,status,description,attachment`,
+      `/rest/api/3/issue/${encodeURIComponent(issueId)}?fields=summary,status,description,attachment,reporter,assignee`,
     );
   }
 
@@ -564,6 +796,262 @@ export class JiraClient {
     }
   }
 
+  /**
+   * Upload one file to the issue.
+   *
+   * `X-Atlassian-Token: no-check` is required — Jira rejects a multipart
+   * attachment POST without it as XSRF, whatever the credential.
+   */
+  async uploadAttachment(
+    issueIdOrKey: string,
+    filename: string,
+    bytes: Uint8Array,
+    contentType = "application/octet-stream",
+  ): Promise<JiraAttachment> {
+    const form = new FormData();
+    form.append(
+      "file",
+      new Blob([bytes as BlobPart], { type: contentType }),
+      filename,
+    );
+    const created = await this.request<JiraAttachment[]>(
+      `/rest/api/3/issue/${encodeURIComponent(issueIdOrKey)}/attachments`,
+      {
+        method: "POST",
+        body: form,
+        headers: { "X-Atlassian-Token": "no-check" },
+      },
+      // A retried upload would leave a duplicate attachment on the issue.
+      { idempotent: false },
+    );
+    const attachment = created[0];
+    if (!attachment) {
+      throw new Error(
+        `Jira accepted the upload of ${filename} but named no attachment`,
+      );
+    }
+    return attachment;
+  }
+
+  /**
+   * The media-services uuid of an attachment — what an ADF `media` node
+   * addresses. The numeric attachment id is NOT it; Jira answers a comment
+   * carrying one with `ATTACHMENT_VALIDATION_ERROR`.
+   *
+   * The content endpoint answers 303 to the media CDN and the uuid is the last
+   * path segment of that `Location`. Read WITHOUT following the redirect: the
+   * hop is a file download, and the platform drops Authorization across it
+   * anyway (see `downloadAttachment`).
+   */
+  async attachmentMediaUuid(attachmentId: string): Promise<string | null> {
+    const response = await fetch(
+      `${this.baseUrl}/rest/api/3/attachment/content/${encodeURIComponent(attachmentId)}`,
+      {
+        headers: { Authorization: this.authHeader },
+        redirect: "manual",
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      },
+    );
+    return mediaUuidFromLocation(response.headers.get("location"));
+  }
+
+  /**
+   * A remote link on the issue — how a pull request and a deploy preview get
+   * onto the card as links a person can click, rather than buried in a comment.
+   *
+   * `globalId` makes it idempotent: posting the same one twice updates that
+   * link instead of adding a second.
+   */
+  async addRemoteLink(
+    issueIdOrKey: string,
+    link: { url: string; title: string; summary?: string; globalId?: string },
+  ): Promise<{ id: number }> {
+    return this.request<{ id: number }>(
+      `/rest/api/3/issue/${encodeURIComponent(issueIdOrKey)}/remotelink`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          ...(link.globalId ? { globalId: link.globalId } : {}),
+          object: {
+            url: link.url,
+            title: link.title,
+            ...(link.summary ? { summary: link.summary } : {}),
+          },
+        }),
+      },
+      { idempotent: false },
+    );
+  }
+
+  /**
+   * The issue's web links, oldest first.
+   *
+   * What a review run needs before anything else: the pull request it is
+   * supposed to review is on the card as one of these, put there by the run
+   * that implemented the issue.
+   */
+  async listRemoteLinks(
+    issueIdOrKey: string,
+  ): Promise<Array<{ url: string; title: string }>> {
+    const links = await this.request<
+      Array<{ object?: { url?: unknown; title?: unknown } }>
+    >(`/rest/api/3/issue/${encodeURIComponent(issueIdOrKey)}/remotelink`);
+    return links.flatMap((link) => {
+      const url = link.object?.url;
+      if (typeof url !== "string" || url === "") return [];
+      const title = link.object?.title;
+      return [{ url, title: typeof title === "string" ? title : url }];
+    });
+  }
+
+  /**
+   * What creating an issue of `issueType` in the project takes: the type's id
+   * and the ids of the two fields a caller may set by meaning rather than by
+   * id — story points and sprint are custom fields whose ids differ per site.
+   *
+   * `issueType` is matched against the type's name case-insensitively, or its
+   * id. The error names the project's types, which is what a caller needs to
+   * pick again.
+   */
+  async getCreateMeta(
+    projectKey: string,
+    issueType: string,
+  ): Promise<JiraCreateMeta> {
+    const project = encodeURIComponent(projectKey);
+    const types = await this.request<{
+      issueTypes?: Array<{ id: string; name: string; subtask?: boolean }>;
+    }>(`/rest/api/3/issue/createmeta/${project}/issuetypes?maxResults=200`);
+    const wanted = issueType.trim().toLowerCase();
+    const candidates = (types.issueTypes ?? []).filter((t) => !t.subtask);
+    const type = candidates.find(
+      (t) => t.name.toLowerCase() === wanted || t.id === wanted,
+    );
+    if (!type) {
+      throw new Error(
+        `${projectKey} has no issue type "${issueType}" — it has: ${
+          candidates.map((t) => t.name).join(", ") || "none"
+        }`,
+      );
+    }
+    const meta = await this.request<{
+      fields?: Array<{
+        fieldId: string;
+        name: string;
+        schema?: { custom?: string };
+      }>;
+    }>(
+      `/rest/api/3/issue/createmeta/${project}/issuetypes/${encodeURIComponent(type.id)}?maxResults=200`,
+    );
+    const fields = meta.fields ?? [];
+    const storyPoints =
+      fields.find((f) => f.schema?.custom === STORY_POINTS_CUSTOM_TYPE) ??
+      fields.find((f) => STORY_POINTS_NAME.test(f.name));
+    const sprint = fields.find((f) => f.schema?.custom === SPRINT_CUSTOM_TYPE);
+    return {
+      issueTypeId: type.id,
+      issueTypeName: type.name,
+      storyPointsFieldId: storyPoints?.fieldId ?? null,
+      sprintFieldId: sprint?.fieldId ?? null,
+    };
+  }
+
+  /** The board's active sprint, or null when it has none running. */
+  async getActiveSprint(
+    boardId: string,
+  ): Promise<{ id: number; name: string } | null> {
+    const page = await this.request<{
+      values?: Array<{ id: number; name: string }>;
+    }>(`/rest/agile/1.0/board/${assertBoardId(boardId)}/sprint?state=active`);
+    const sprint = page.values?.[0];
+    return sprint ? { id: sprint.id, name: sprint.name } : null;
+  }
+
+  /**
+   * Create an issue. `fields` carries the custom fields `getCreateMeta`
+   * resolved, keyed by their ids.
+   *
+   * Not retried: a timeout can land after Jira created the issue. A 400 is
+   * Jira refusing the request, so nothing was created and it is safe to post
+   * once more with the description flattened — the same fallback a comment
+   * gets. A 400 about a field fails the second time too, and propagates.
+   */
+  async createIssue(params: {
+    projectKey: string;
+    issueTypeId: string;
+    summary: string;
+    description?: string;
+    fields?: Record<string, unknown>;
+  }): Promise<{ id: string; key: string }> {
+    const post = (description: unknown) =>
+      this.request<{ id: string; key: string }>(
+        "/rest/api/3/issue",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            fields: {
+              ...params.fields,
+              project: { key: params.projectKey },
+              issuetype: { id: params.issueTypeId },
+              summary: params.summary,
+              ...(description ? { description } : {}),
+            },
+          }),
+        },
+        { idempotent: false },
+      );
+    if (!params.description) return post(undefined);
+    try {
+      return await post(markdownToAdf(params.description));
+    } catch (err) {
+      if (!(err instanceof JiraRequestError) || err.status !== 400) throw err;
+      console.warn(`[jira] description rejected as ADF, posting flat: ${err}`);
+      return post(textToAdf(params.description));
+    }
+  }
+
+  /** The keys of the issues linked to this one, by link type name. */
+  async listLinkedIssueKeys(
+    issueIdOrKey: string,
+    linkType: string,
+  ): Promise<string[]> {
+    const issue = await this.request<{
+      fields?: {
+        issuelinks?: Array<{
+          type?: { name?: string };
+          inwardIssue?: { key?: string };
+          outwardIssue?: { key?: string };
+        }>;
+      };
+    }>(
+      `/rest/api/3/issue/${encodeURIComponent(issueIdOrKey)}?fields=issuelinks`,
+    );
+    return (issue.fields?.issuelinks ?? []).flatMap((link) => {
+      if (link.type?.name !== linkType) return [];
+      const key = link.inwardIssue?.key ?? link.outwardIssue?.key;
+      return key ? [key] : [];
+    });
+  }
+
+  /** Link two issues. Not retried: a second POST adds a second link. */
+  async linkIssues(
+    linkType: string,
+    inwardKey: string,
+    outwardKey: string,
+  ): Promise<void> {
+    await this.request<void>(
+      "/rest/api/3/issueLink",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          type: { name: linkType },
+          inwardIssue: { key: inwardKey },
+          outwardIssue: { key: outwardKey },
+        }),
+      },
+      { idempotent: false },
+    );
+  }
+
   /** Attachments on the issue. */
   async listAttachments(issueId: string): Promise<JiraAttachment[]> {
     const issue = await this.request<{
@@ -608,11 +1096,10 @@ function mentionText(
   attrs: MentionAttrs | undefined,
   names: ReadonlyMap<string, string>,
 ): string {
-  const label = mentionLabel(attrs);
-  if (label) return `@${escapeMentionName(label)}`;
-  const id = typeof attrs?.id === "string" ? attrs.id : "";
-  const name = id ? names.get(id) : undefined;
-  return name ? `@${escapeMentionName(name)}` : UNKNOWN_MENTION;
+  const id = typeof attrs?.id === "string" && attrs.id !== "" ? attrs.id : "";
+  const name = mentionLabel(attrs) ?? (id ? names.get(id) : undefined);
+  if (!id && !name) return UNKNOWN_MENTION;
+  return mentionMarkdown(id || undefined, name);
 }
 
 /** Account ids in a body that a name lookup has to resolve, so a run can batch
@@ -919,4 +1406,20 @@ export class JiraUserDirectory {
     }
     return resolved;
   }
+}
+
+/**
+ * The media uuid out of the `Location` the attachment-content endpoint
+ * redirects to, or null when the header is absent or shaped differently.
+ *
+ * Pure, so the parse is unit-tested: the uuid is what an ADF `media` node
+ * addresses, and getting it wrong makes Jira reject the whole comment.
+ */
+export function mediaUuidFromLocation(location: string | null): string | null {
+  if (!location) return null;
+  const match =
+    /\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:[/?]|$)/i.exec(
+      location,
+    );
+  return match?.[1] ?? null;
 }

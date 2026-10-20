@@ -1,7 +1,5 @@
 import { Button } from "@decocms/ui/components/button.tsx";
-import { useState } from "react";
 import { AnnouncementCard } from "@/components/announcement-card";
-import { DownloadAppDialog } from "@/components/download-app-dialog";
 import { startLayoutTour } from "@/components/layout-tour/layout-tour";
 import {
   DESTINATION_ROUTE,
@@ -13,6 +11,7 @@ import { useActivePanelTabId } from "@/layouts/main-panel-tabs/use-panel-navigat
 import { useReleaseSeenState } from "@/hooks/use-release-seen-state";
 import { useT } from "@/i18n/use-t.ts";
 import { authClient } from "@/lib/auth-client";
+import { useClockTick } from "@/lib/use-clock-tick";
 import { RELEASES } from "@/lib/release-feed";
 
 const FRESHNESS_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
@@ -67,8 +66,7 @@ export function FloatingReleaseCard() {
   const onSiteEditor = inProject && !!activeTab && isSurfaceTab(activeTab);
   const { data: session } = authClient.useSession();
   const { isSeen, markSeen } = useReleaseSeenState();
-  const [downloadOpen, setDownloadOpen] = useState(false);
-  const now = Date.now();
+  const now = useClockTick(60_000);
   const candidate = pickFloatingCandidate(now);
 
   if (!candidate) return null;
@@ -116,14 +114,8 @@ export function FloatingReleaseCard() {
             <Button asChild size="sm" onClick={() => markSeen(candidate.id)}>
               <a href={candidate.cta.href}>{candidate.cta.label}</a>
             </Button>
-          ) : candidate.cta.action === "start-tour" ? (
-            <Button size="sm" onClick={startTour}>
-              {candidate.cta.label}
-            </Button>
           ) : (
-            // Not markSeen here: seeing the release unmounts this card — and
-            // the dialog with it. Marked when the dialog closes instead.
-            <Button size="sm" onClick={() => setDownloadOpen(true)}>
+            <Button size="sm" onClick={startTour}>
               {candidate.cta.label}
             </Button>
           )
@@ -146,14 +138,6 @@ export function FloatingReleaseCard() {
           </li>
         ))}
       </ul>
-
-      <DownloadAppDialog
-        open={downloadOpen}
-        onOpenChange={(open) => {
-          setDownloadOpen(open);
-          if (!open) markSeen(candidate.id);
-        }}
-      />
     </AnnouncementCard>
   );
 }

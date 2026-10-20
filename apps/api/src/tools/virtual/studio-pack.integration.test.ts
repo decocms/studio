@@ -1,6 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { sql } from "kysely";
-import { StudioPackAgentId, WellKnownOrgMCPId } from "@decocms/shared/sdk";
+import {
+  RETIRED_STUDIO_PACK_AGENT_ID_PREFIXES,
+  StudioPackAgentId,
+  WellKnownOrgMCPId,
+} from "@decocms/shared/sdk";
 import {
   closeTestPgDatabase,
   connectTestPgDatabase,
@@ -101,7 +105,7 @@ describe("installStudioPack", () => {
     expect(stores.length).toBe(1);
   });
 
-  test("Store Manager aggregates registry and community-registry", async () => {
+  test("Store Manager uses the built-in Deco registry tools", async () => {
     await installStudioPack(orgId, userId, virtualMcpStorage);
     const storeId = StudioPackAgentId.STORE_MANAGER(orgId);
     const store = await virtualMcpStorage.findById(storeId, orgId);
@@ -109,21 +113,43 @@ describe("installStudioPack", () => {
     const connIds = (store?.connections ?? [])
       .map((c) => c.connection_id)
       .sort();
-    expect(connIds).toEqual(
-      [
-        WellKnownOrgMCPId.REGISTRY(orgId),
-        WellKnownOrgMCPId.COMMUNITY_REGISTRY(orgId),
-      ].sort(),
+    expect(connIds).toEqual([WellKnownOrgMCPId.SELF(orgId)]);
+    expect(store?.connections[0]?.selected_tools).toContain(
+      "REGISTRY_ITEM_SEARCH",
     );
   });
 
   test("legacy managers still bind to the self connection", async () => {
     await installStudioPack(orgId, userId, virtualMcpStorage);
-    const agentId = StudioPackAgentId.AGENT_MANAGER(orgId);
+    const agentId = StudioPackAgentId.AUTOMATION_MANAGER(orgId);
     const agent = await virtualMcpStorage.findById(agentId, orgId);
     const connIds = (agent?.connections ?? []).map((c) => c.connection_id);
     expect(connIds).toEqual([WellKnownOrgMCPId.SELF(orgId)]);
   });
+
+  for (const prefix of RETIRED_STUDIO_PACK_AGENT_ID_PREFIXES) {
+    test(`deletes a previously-installed ${prefix} agent`, async () => {
+      const retiredId = `${prefix}${orgId}`;
+      await virtualMcpStorage.create(
+        orgId,
+        userId,
+        {
+          title: "Retired manager",
+          description: "retired",
+          icon: null,
+          status: "active",
+          pinned: false,
+          metadata: {},
+          connections: [],
+        },
+        { id: retiredId },
+      );
+
+      await installStudioPack(orgId, userId, virtualMcpStorage);
+
+      expect(await virtualMcpStorage.findById(retiredId, orgId)).toBeNull();
+    });
+  }
 
   test("API Key Manager exposes only key management and read-only discovery tools", async () => {
     await installStudioPack(orgId, userId, virtualMcpStorage);
@@ -144,28 +170,6 @@ describe("installStudioPack", () => {
       "COLLECTION_CONNECTIONS_LIST",
       "COLLECTION_CONNECTIONS_GET",
     ]);
-  });
-
-  test("deletes a previously-installed Task Manager", async () => {
-    const retiredId = `studio-task-manager_${orgId}`;
-    await virtualMcpStorage.create(
-      orgId,
-      userId,
-      {
-        title: "Task Manager",
-        description: "retired",
-        icon: "icon://Flag01",
-        status: "active",
-        pinned: false,
-        metadata: {},
-        connections: [],
-      },
-      { id: retiredId },
-    );
-
-    await installStudioPack(orgId, userId, virtualMcpStorage);
-
-    expect(await virtualMcpStorage.findById(retiredId, orgId)).toBeNull();
   });
 
   test("overwrites stale tool selections on an existing API Key Manager", async () => {

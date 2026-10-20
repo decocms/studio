@@ -15,13 +15,15 @@ describe("StudioPackAgentId", () => {
 
 describe("isStudioPackAgent", () => {
   test("recognises every studio-pack manager id", () => {
-    expect(isStudioPackAgent("studio-agent-manager_org_xyz")).toBe(true);
     expect(isStudioPackAgent("studio-automation-manager_org_xyz")).toBe(true);
     expect(isStudioPackAgent("studio-connection-manager_org_xyz")).toBe(true);
     expect(isStudioPackAgent("studio-api-key-manager_org_xyz")).toBe(true);
     expect(isStudioPackAgent("studio-store-manager_org_xyz")).toBe(true);
-    expect(isStudioPackAgent("studio-brand-manager_org_xyz")).toBe(true);
     expect(isStudioPackAgent("studio-usage-manager_org_xyz")).toBe(true);
+  });
+
+  test("does not recognise the retired Agent Manager", () => {
+    expect(isStudioPackAgent("studio-agent-manager_org_xyz")).toBe(false);
   });
 
   test("rejects unrelated ids", () => {
@@ -30,12 +32,14 @@ describe("isStudioPackAgent", () => {
     expect(isStudioPackAgent("vir_abc")).toBe(false);
     // Retired: its tools are Super Agent built-ins now.
     expect(isStudioPackAgent("studio-task-manager_org_xyz")).toBe(false);
+    // Retired with the brand context it managed.
+    expect(isStudioPackAgent("studio-brand-manager_org_xyz")).toBe(false);
     expect(isStudioPackAgent("decopilot_org_xyz")).toBe(false);
   });
 });
 
 describe("getWellKnownReportVirtualMCP", () => {
-  test("pins the Commerce Discovery agent to the org sidebar", () => {
+  test("pins the Reports agent to the org sidebar", () => {
     expect(getWellKnownReportVirtualMCP("org_xyz", "conn_xyz").pinned).toBe(
       true,
     );

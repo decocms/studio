@@ -37,9 +37,20 @@ describe("categoryPathToFacets", () => {
 });
 
 describe("buildProductRequests", () => {
-  test("returns nothing for a blank term", () => {
-    expect(buildProductRequests("search", "")).toEqual([]);
-    expect(buildProductRequests("search", "   ")).toEqual([]);
+  test("blank search term browses the catalog, still with a discriminator", () => {
+    // `{ count }` alone matches no variant of the loader's props union, and the
+    // runtime answers `Unknown props` — the empty browse needs `query` too.
+    const expected = [
+      {
+        resolveType: VTEX_PRODUCT_LIST_RESOLVE_TYPE,
+        props: { query: "", count: PRODUCT_PICKER_COUNT },
+      },
+    ];
+    expect(buildProductRequests("search", "")).toEqual(expected);
+    expect(buildProductRequests("search", "   ")).toEqual(expected);
+  });
+
+  test("cluster/category need a selection — blank yields no requests", () => {
     expect(buildProductRequests("cluster", "")).toEqual([]);
     expect(buildProductRequests("category", "")).toEqual([]);
   });
@@ -131,7 +142,59 @@ describe("productOptionsFromPayload", () => {
         id: "151331",
         label: "Tênis Corrida",
         image: "https://cdn/img.jpg",
+        images: ["https://cdn/img.jpg"],
       },
+    ]);
+  });
+
+  test("carries every image, deduped, with the first as the thumbnail", () => {
+    const [option] = productOptionsFromPayload([
+      {
+        productID: "1",
+        name: "A",
+        image: [
+          { url: "https://cdn/1.jpg" },
+          { url: "https://cdn/1.jpg" },
+          { url: "https://cdn/2.jpg" },
+          { url: "https://cdn/3.jpg" },
+          { url: "https://cdn/4.jpg" },
+        ],
+      },
+    ]);
+    expect(option?.images).toEqual([
+      "https://cdn/1.jpg",
+      "https://cdn/2.jpg",
+      "https://cdn/3.jpg",
+      "https://cdn/4.jpg",
+    ]);
+    expect(option?.image).toBe("https://cdn/1.jpg");
+  });
+
+  test("reads the main category as the deepest segment of the path", () => {
+    const [option] = productOptionsFromPayload([
+      { productID: "1", name: "A", category: "Casa > Cozinha > Panelas" },
+    ]);
+    expect(option?.category).toBe("Panelas");
+  });
+
+  test("strips markup out of the description", () => {
+    const [option] = productOptionsFromPayload([
+      { productID: "1", name: "A", description: "<p>Curta</p>  <b>e</b> boa" },
+    ]);
+    expect(option?.description).toBe("Curta e boa");
+  });
+
+  test("captures the PDP url from the product or its variant", () => {
+    expect(
+      productOptionsFromPayload([
+        { productID: "1", name: "A", url: "/a/p" },
+        { productID: "2", name: "B", isVariantOf: { url: "/b/p" } },
+        { productID: "3", name: "C" },
+      ]),
+    ).toEqual([
+      { id: "1", label: "A", image: undefined, images: [], url: "/a/p" },
+      { id: "2", label: "B", image: undefined, images: [], url: "/b/p" },
+      { id: "3", label: "C", image: undefined, images: [], url: undefined },
     ]);
   });
 
@@ -140,12 +203,12 @@ describe("productOptionsFromPayload", () => {
       productOptionsFromPayload({
         products: [{ productID: "1", name: "A" }],
       }),
-    ).toEqual([{ id: "1", label: "A", image: undefined }]);
+    ).toEqual([{ id: "1", label: "A", image: undefined, images: [] }]);
   });
 
   test("falls back to sku then id for the label", () => {
     expect(productOptionsFromPayload([{ sku: 42 }])).toEqual([
-      { id: "42", label: "42", image: undefined },
+      { id: "42", label: "42", image: undefined, images: [] },
     ]);
   });
 
@@ -156,7 +219,7 @@ describe("productOptionsFromPayload", () => {
         { productID: "1", name: "First" },
         { productID: "1", name: "Dup" },
       ]),
-    ).toEqual([{ id: "1", label: "First", image: undefined }]);
+    ).toEqual([{ id: "1", label: "First", image: undefined, images: [] }]);
   });
 
   test("tolerates non-list payloads", () => {
@@ -183,9 +246,18 @@ describe("categoryOptionsFromPayload", () => {
 
   test("flattens the tree into breadcrumb-labelled paths", () => {
     expect(categoryOptionsFromPayload(tree)).toEqual([
-      { path: "moda", label: "Moda" },
-      { path: "moda/calcados", label: "Moda › Calçados" },
+      { path: "moda", label: "Moda", url: "https://store.com/moda" },
+      {
+        path: "moda/calcados",
+        label: "Moda › Calçados",
+        url: "https://store.com/moda/calcados",
+      },
     ]);
+  });
+
+  test("keeps the absolute URL the tree reports, not just the path", () => {
+    const [first] = categoryOptionsFromPayload(tree);
+    expect(first?.url).toBe("https://store.com/moda");
   });
 
   test("returns empty for non-array payloads", () => {
@@ -199,15 +271,15 @@ describe("categoryOptionsFromPayload", () => {
         { name: "A", url: "https://x/a" },
         { name: "A again", url: "https://x/a" },
       ]),
-    ).toEqual([{ path: "a", label: "A" }]);
+    ).toEqual([{ path: "a", label: "A", url: "https://x/a" }]);
   });
 });
 
 describe("filterCategoryOptions", () => {
   const options = [
-    { path: "moda", label: "Moda" },
-    { path: "moda/calcados", label: "Moda › Calçados" },
-    { path: "eletronicos", label: "Eletrônicos" },
+    { path: "moda", label: "Moda", url: "https://x/moda" },
+    { path: "moda/calcados", label: "Moda › Calçados", url: "https://x/c" },
+    { path: "eletronicos", label: "Eletrônicos", url: "https://x/e" },
   ];
 
   test("returns all when the term is blank", () => {
@@ -216,10 +288,10 @@ describe("filterCategoryOptions", () => {
 
   test("matches label or path case-insensitively", () => {
     expect(filterCategoryOptions(options, "calc")).toEqual([
-      { path: "moda/calcados", label: "Moda › Calçados" },
+      { path: "moda/calcados", label: "Moda › Calçados", url: "https://x/c" },
     ]);
     expect(filterCategoryOptions(options, "ELETR")).toEqual([
-      { path: "eletronicos", label: "Eletrônicos" },
+      { path: "eletronicos", label: "Eletrônicos", url: "https://x/e" },
     ]);
   });
 
@@ -227,6 +299,7 @@ describe("filterCategoryOptions", () => {
     const many = Array.from({ length: 100 }, (_, i) => ({
       path: `c${i}`,
       label: `Cat ${i}`,
+      url: `https://x/c${i}`,
     }));
     expect(filterCategoryOptions(many, "", 10)).toHaveLength(10);
   });

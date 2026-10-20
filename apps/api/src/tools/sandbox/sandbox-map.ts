@@ -4,8 +4,8 @@
  * Lookup: sandboxMap[userId][branch][sandboxProviderKind] -> SandboxRecord
  *
  * Stored in the virtualmcp's metadata JSON column. Hosted threads sharing the
- * same (user, branch) pair share one `agent-sandbox` entry. Native `local-api`
- * entries may coexist in the same branch cell and are preserved by writes.
+ * same (user, branch) pair share one `agent-sandbox` entry. `local-api`
+ * entries left by the discontinued desktop app may coexist in the same branch cell and are preserved by writes.
  *
  * NOTE: read-modify-write is NOT atomic across pods — two concurrent SANDBOX_START
  * calls for the same (sandbox, user, branch) can race. Accepted for v1. A

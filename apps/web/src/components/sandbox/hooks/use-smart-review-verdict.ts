@@ -7,7 +7,7 @@ import {
   type GitDiffResult,
   type GitStatus,
   type ReviewVerdict,
-} from "../../thread/github/sandbox-git-api.ts";
+} from "../../thread/repository/sandbox-git-api.ts";
 
 export function smartReviewVerdictQueryKey(args: {
   orgSlug: string;
@@ -75,7 +75,6 @@ export function useSmartReviewVerdict(args: {
       fetchReviewVerdict(
         { orgSlug, virtualMcpId, branch, threadId },
         { status: status!, diff: diff!, language },
-        fastPreview ? { fastPreview: true } : undefined,
       ),
     enabled: canRun,
     staleTime: Infinity,

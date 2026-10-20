@@ -13,6 +13,16 @@
 export const SANDBOX_GONE_TERMINAL_CODE = "sandbox_gone";
 
 /**
+ * The daemon's terminal code for an attempt displaced by a takeover — another
+ * dispatch now owns the run, so this attempt's stream ends without a failure.
+ *
+ * Kept here for the same reason as `SANDBOX_GONE_TERMINAL_CODE`: the daemon
+ * writes the literal (`terminalFrame("superseded", ...)` in dispatch.go),
+ * `sandbox-dispatch-client` maps it to `RunSupersededError`.
+ */
+export const SUPERSEDED_TERMINAL_CODE = "superseded";
+
+/**
  * Stable marker on every `SandboxUnreachableError` message — same convention as
  * `[SUBSCRIPTION_REQUIRED]` and `[CREDITS]`: a prefix that survives the trip
  * through an error part's text, so a reader downstream can recognize the class

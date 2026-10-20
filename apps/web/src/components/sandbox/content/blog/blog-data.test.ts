@@ -1,23 +1,87 @@
 import { describe, expect, test } from "bun:test";
 import {
-  addCategoryToPost,
   blockComponentName,
   blocksPostStatus,
   buildBlogBlock,
   DEFAULT_SCHEDULE_HOUR,
   defaultScheduledDatetime,
+  blogBlockTypeFor,
   discoverBlogBlockTypes,
   emptyBlogPayload,
+  KNOWN_BLOG_BLOCK_EXAMPLES,
   listPostsWithMeta,
   missingPostFields,
+  canDeletePost,
   postStatus,
   relationPickerState,
   removeCategoryFromPost,
+  duplicateTitleKeys,
+  hasDuplicateName,
+  missingCategoryFields,
   renameCategoryOnPost,
-  replaceCategoryOnPost,
+  reparentCategory,
+  extractBlockProse,
+  filledBrandRules,
+  normalizeBrandRules,
+  normalizeTerms,
+  filledTerms,
+  selectBrandEvidence,
   setPostStatus,
   stampPostModified,
+  scanCampaigns,
+  buildCampaignBlock,
+  emptyCampaign,
+  newCampaignKey,
+  CAMPAIGN_KEY_PREFIX,
+  CAMPAIGN_SEED_KEY_PREFIX,
+  buildCampaignSeedBlock,
+  scanCampaignSeeds,
+  PLANNING_POST_KEY_PREFIX,
+  emptyDraftPostPayload,
+  blockExample,
+  planningMeta,
+  productSlotOf,
+  rawBlockSchema,
+  reconciledSchema,
+  buildPlanningPostBlock,
+  listAuthorRefs,
+  listPlanningPosts,
+  listAllPostPayloads,
+  listAllPostsWithMeta,
+  movePostToStatus,
+  planningPostKey,
+  livePostKey,
+  postIdOfKey,
+  buildGeneratedPostPayload,
+  buildPostSections,
+  citedSections,
+  defaultFormatSections,
+  missingBrandForGeneration,
+  splitBlogContext,
+  applyExtractResult,
+  normalizeVoiceExamples,
+  filledVoiceExamples,
+  asBlock,
+  brandBlockToSave,
+  pickBlogFields,
+  BRAND_FIELDS,
+  CONTEXT_FIELDS,
+  readBlogContext,
+  contextForTools,
+  BRAND_BLOCK_KEY,
+  CONTEXT_BLOCK_KEY,
+  postStructures,
+  sectionResolveTypes,
+  maskSlugInput,
+  scanBlogEntries,
+  slugifyTitle,
+  uniqueCategorySlug,
+  uniqueSlug,
+  uniquePostSlug,
+  unknownCitations,
+  linkifyCitations,
 } from "./blog-data";
+import { BRAND_EVIDENCE_MAX_BLOCKS } from "@decocms/shared/blog-brand-evidence";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 
 /** Build a decofile keyed by post block id, from `{ slug → payload }`. */
@@ -119,6 +183,28 @@ describe("discoverBlogBlockTypes", () => {
     expect(out.map((b) => b.title)).toEqual(["Alpha", "Zeta"]);
   });
 
+  test("hideDefaults drops the app built-ins and keeps the site's own", () => {
+    const out = discoverBlogBlockTypes(
+      metaWith([
+        "blog/sections/blocks/Paragraph.tsx",
+        "site/sections/Blog/Post/Paragraph.tsx",
+        "blog/sections/blocks/Quote.tsx",
+      ]),
+      { hideDefaults: true },
+    );
+    expect(out.map((b) => b.resolveType)).toEqual([
+      "site/sections/Blog/Post/Paragraph.tsx",
+    ]);
+  });
+
+  test("hideDefaults can leave no block eligible at all", () => {
+    expect(
+      discoverBlogBlockTypes(metaWith(["blog/sections/blocks/Paragraph.tsx"]), {
+        hideDefaults: true,
+      }),
+    ).toEqual([]);
+  });
+
   test("tags source as 'app' for blog/sections/blocks and 'site' otherwise", () => {
     const out = discoverBlogBlockTypes(
       metaWith([
@@ -142,11 +228,12 @@ describe("discoverBlogBlockTypes", () => {
     expect(paragraph.iconName).toBe("Pilcrow01");
   });
 
-  test("unknown component names get fallback icon and no description", () => {
+  test("unknown component names are humanized, with a fallback icon and no description", () => {
     const custom = discoverBlogBlockTypes(
       metaWith(["site/sections/Blog/Post/MyWeirdBlock.tsx"]),
     )[0]!;
-    expect(custom.title).toBe("MyWeirdBlock");
+    // The picker shows this to a person, so the class name is not the label.
+    expect(custom.title).toBe("My weird block");
     expect(custom.description).toBeUndefined();
     expect(custom.iconName).toBe("Box");
   });
@@ -219,6 +306,80 @@ describe("discoverBlogBlockTypes", () => {
   });
 });
 
+describe("blogBlockTypeFor", () => {
+  test("names a block from its resolveType alone (the generic editor's header)", () => {
+    const block = blogBlockTypeFor(
+      "site/sections/Blog/Post/Promo.tsx",
+      metaWithSchemas([
+        {
+          resolveType: "site/sections/Blog/Post/Promo.tsx",
+          title: "Promo banner",
+          description: "A banner with a call to action",
+          icon: "Star01",
+        },
+      ]),
+    );
+    expect(block).toEqual({
+      resolveType: "site/sections/Blog/Post/Promo.tsx",
+      title: "Promo banner",
+      description: "A banner with a call to action",
+      iconName: "Star01",
+      iconUrl: undefined,
+      source: "site",
+    });
+  });
+
+  test("falls back to the humanized component name when the schema says nothing", () => {
+    const block = blogBlockTypeFor(
+      "site/sections/Blog/Post/MyWeirdBlock.tsx",
+      metaWith(["site/sections/Blog/Post/MyWeirdBlock.tsx"]),
+    );
+    expect(block.title).toBe("My weird block");
+    expect(block.iconName).toBe("Box");
+  });
+
+  test("agrees with the inserter for the same block", () => {
+    const meta = metaWithSchemas([
+      {
+        resolveType: "site/sections/Blog/Post/Promo.tsx",
+        title: "Promo banner",
+      },
+    ]);
+    expect(blogBlockTypeFor("site/sections/Blog/Post/Promo.tsx", meta)).toEqual(
+      discoverBlogBlockTypes(meta)[0]!,
+    );
+  });
+});
+
+describe("listAuthorRefs", () => {
+  const decofile = {
+    "collections/blog/authors/ana": {
+      __resolveType: "blog/loaders/Author.ts",
+      author: {
+        name: "Ana",
+        email: "ana@marca.com",
+        jobTitle: "Editora",
+        url: "https://ana.example.com",
+      },
+    },
+    "collections/blog/authors/sem-email": {
+      __resolveType: "blog/loaders/Author.ts",
+      author: { name: "Sem email", email: "" },
+    },
+  };
+
+  test("carries the whole record, not just the identity", () => {
+    expect(listAuthorRefs(decofile)).toEqual([
+      {
+        name: "Ana",
+        email: "ana@marca.com",
+        jobTitle: "Editora",
+        url: "https://ana.example.com",
+      },
+    ]);
+  });
+});
+
 describe("listPostsWithMeta", () => {
   test("reports each post's status for the list filter", () => {
     const decofile = decofileWithPosts({
@@ -253,6 +414,7 @@ describe("listPostsWithMeta", () => {
     expect(listPostsWithMeta(decofile)).toEqual([
       {
         key: "collections/blog/posts/a",
+        duplicateTitle: false,
         title: "Hello",
         slug: "hello",
         date: "2024-01-02",
@@ -261,9 +423,10 @@ describe("listPostsWithMeta", () => {
         categorySlugs: ["news"],
         authorEmails: ["ada@x.com"],
         // no excerpt or cover image on this fixture
-        missing: ["Excerpt", "Cover image"],
+        missing: ["excerpt", "image"],
         // no `status` on this fixture — posts predating the field are published
         status: "published",
+        form: "live",
       },
     ]);
   });
@@ -326,11 +489,11 @@ describe("missingPostFields", () => {
 
   test("lists every missing required field in order", () => {
     expect(missingPostFields({})).toEqual([
-      "Title",
-      "Slug",
-      "Category",
-      "Excerpt",
-      "Cover image",
+      "title",
+      "slug",
+      "category",
+      "excerpt",
+      "image",
     ]);
   });
 
@@ -343,7 +506,7 @@ describe("missingPostFields", () => {
         excerpt: "\n\t ",
         image: "https://cdn/cover.jpg",
       }),
-    ).toEqual(["Title", "Excerpt"]);
+    ).toEqual(["title", "excerpt"]);
   });
 
   test("needs at least one category with a slug", () => {
@@ -355,7 +518,7 @@ describe("missingPostFields", () => {
         excerpt: "e",
         image: "https://cdn/cover.jpg",
       }),
-    ).toEqual(["Category"]);
+    ).toEqual(["category"]);
   });
 
   test("requires a cover image", () => {
@@ -366,7 +529,7 @@ describe("missingPostFields", () => {
         categories: ["news"],
         excerpt: "e",
       }),
-    ).toEqual(["Cover image"]);
+    ).toEqual(["image"]);
   });
 
   test("accepts plain-string categories", () => {
@@ -395,19 +558,29 @@ describe("blocksPostStatus", () => {
     expect(blocksPostStatus({ status: "draft" }, "published")).toBe(true);
   });
 
-  test("never blocks scheduling — a schedule is a plan, not a release", () => {
-    expect(blocksPostStatus({ status: "draft" }, "scheduled")).toBe(false);
-    expect(blocksPostStatus({ status: "published" }, "scheduled")).toBe(false);
+  test("blocks scheduling an incomplete post — a live date needs a live post", () => {
+    expect(blocksPostStatus({ status: "awaiting_review" }, "scheduled")).toBe(
+      true,
+    );
+    expect(blocksPostStatus({ status: "published" }, "scheduled")).toBe(true);
   });
 
-  test("lets an incomplete post be re-scheduled after scheduling was turned off", () => {
-    const off = setPostStatus({ title: "Untitled post" }, "draft", new Date());
-    expect(blocksPostStatus(off, "scheduled")).toBe(false);
+  test("lets a complete post be scheduled", () => {
+    expect(blocksPostStatus({ ...COMPLETE_POST }, "scheduled")).toBe(false);
   });
 
-  test("never blocks dropping to draft", () => {
-    expect(blocksPostStatus({ status: "published" }, "draft")).toBe(false);
-    expect(blocksPostStatus({ status: "scheduled" }, "draft")).toBe(false);
+  test("never blocks pulling a post back to review", () => {
+    expect(blocksPostStatus({ status: "published" }, "awaiting_review")).toBe(
+      false,
+    );
+    expect(blocksPostStatus({ status: "scheduled" }, "awaiting_review")).toBe(
+      false,
+    );
+  });
+
+  test("never blocks archiving — archived is not a live state", () => {
+    expect(blocksPostStatus({ status: "published" }, "archived")).toBe(false);
+    expect(blocksPostStatus({ status: "draft" }, "archived")).toBe(false);
   });
 
   test("does not block the state the post is already in", () => {
@@ -429,21 +602,29 @@ describe("postStatus", () => {
     expect(postStatus({ status: 1 })).toBe("published");
   });
 
-  test("is case- and whitespace-sensitive: only exact values match", () => {
-    expect(postStatus({ status: "Published" })).toBe("draft");
-    expect(postStatus({ status: " published " })).toBe("draft");
-    expect(postStatus({ status: " scheduled " })).toBe("draft");
+  test("is case- and whitespace-sensitive: an inexact value is unrecognized", () => {
+    expect(postStatus({ status: "Published" })).toBe("awaiting_review");
+    expect(postStatus({ status: " published " })).toBe("awaiting_review");
+    expect(postStatus({ status: " scheduled " })).toBe("awaiting_review");
   });
 
-  test("reads the three editable states", () => {
-    expect(postStatus({ status: "published" })).toBe("published");
-    expect(postStatus({ status: "scheduled" })).toBe("scheduled");
+  // Every value must round-trip: this is the blog app's own PostStatus union.
+  test("reads the six lifecycle states", () => {
     expect(postStatus({ status: "draft" })).toBe("draft");
+    expect(postStatus({ status: "generating" })).toBe("generating");
+    expect(postStatus({ status: "awaiting_review" })).toBe("awaiting_review");
+    expect(postStatus({ status: "scheduled" })).toBe("scheduled");
+    expect(postStatus({ status: "published" })).toBe("published");
+    expect(postStatus({ status: "archived" })).toBe("archived");
   });
 
-  test("reads states the CMS doesn't edit as draft", () => {
-    expect(postStatus({ status: "generating" })).toBe("draft");
-    expect(postStatus({ status: "awaiting_review" })).toBe("draft");
+  test("reads the legacy Studio-only names as their app equivalents", () => {
+    expect(postStatus({ status: "idea" })).toBe("draft");
+    expect(postStatus({ status: "in_review" })).toBe("awaiting_review");
+  });
+
+  test("reads an unrecognized status as awaiting_review, never live", () => {
+    expect(postStatus({ status: "nonsense" })).toBe("awaiting_review");
   });
 
   test("reads scheduled from the status alone, with no datetime", () => {
@@ -496,13 +677,13 @@ describe("setPostStatus", () => {
     expect(new Date(next.scheduledDatetime as string).getDate()).toBe(22);
   });
 
-  test("clears the instant when leaving scheduled for draft", () => {
+  test("clears the instant when leaving scheduled for review", () => {
     const next = setPostStatus(
       { status: "scheduled", scheduledDatetime: new Date().toISOString() },
-      "draft",
+      "awaiting_review",
       now,
     );
-    expect(next.status).toBe("draft");
+    expect(next.status).toBe("awaiting_review");
     expect(next.scheduledDatetime).toBe("");
   });
 
@@ -520,6 +701,398 @@ describe("setPostStatus", () => {
     const payload = { status: "draft", title: "Hello" };
     setPostStatus(payload, "scheduled", now);
     expect(payload).toEqual({ status: "draft", title: "Hello" });
+  });
+});
+
+describe("scanCampaigns", () => {
+  const key = `${CAMPAIGN_KEY_PREFIX}a`;
+
+  test("reads a full campaign back", () => {
+    const [campaign] = scanCampaigns({
+      [key]: buildCampaignBlock(key, {
+        name: "Black Friday 2026",
+        seedKey: "blog-manager/campaign-seeds/s1",
+        status: "active",
+        period: { start: "2026-11-20", end: "2026-11-30" },
+        trigger: { type: "seasonal", note: "A semana inteira, não o dia." },
+        intent: {
+          objective: "conversion",
+          targets: [
+            {
+              kind: "category",
+              id: "climatizacao/ar-condicionado",
+              name: "Ar condicionado",
+              url: "https://loja.com/ar",
+              description: "Split e janela",
+            },
+          ],
+          products: [
+            {
+              id: "1234",
+              name: "Split 12000 BTUs",
+              url: "https://loja.com/ar/split-12000",
+              images: ["https://loja.com/img/split.jpg"],
+              category: "Ar condicionado",
+              description: "Inverter, quente e frio.",
+            },
+          ],
+          keywords: ["ar condicionado"],
+        },
+        guardrails: {
+          avoidComplements: [{ name: "Preço", value: "Nunca no título" }],
+          toneOverrides: "Mais urgência",
+        },
+        createdAt: "2026-01-01",
+        updatedAt: "2026-01-02",
+      }),
+    });
+    expect(campaign).toEqual({
+      key,
+      name: "Black Friday 2026",
+      seedKey: "blog-manager/campaign-seeds/s1",
+      status: "active",
+      period: { start: "2026-11-20", end: "2026-11-30" },
+      trigger: { type: "seasonal", note: "A semana inteira, não o dia." },
+      intent: {
+        objective: "conversion",
+        targets: [
+          {
+            kind: "category",
+            id: "climatizacao/ar-condicionado",
+            name: "Ar condicionado",
+            url: "https://loja.com/ar",
+            description: "Split e janela",
+          },
+        ],
+        products: [
+          {
+            id: "1234",
+            name: "Split 12000 BTUs",
+            url: "https://loja.com/ar/split-12000",
+            images: ["https://loja.com/img/split.jpg"],
+            category: "Ar condicionado",
+            description: "Inverter, quente e frio.",
+          },
+        ],
+        keywords: ["ar condicionado"],
+      },
+      guardrails: {
+        avoidComplements: [{ name: "Preço", value: "Nunca no título" }],
+        toneOverrides: "Mais urgência",
+      },
+      createdAt: "2026-01-01",
+      updatedAt: "2026-01-02",
+    });
+  });
+
+  test("a half-written campaign reads, because that is the normal case", () => {
+    const [campaign] = scanCampaigns({ [key]: { campaignName: "Rascunho" } });
+    expect(campaign?.name).toBe("Rascunho");
+    expect(campaign?.status).toBe("draft");
+    expect(campaign?.trigger.type).toBe("seasonal");
+    expect(campaign?.intent.objective).toBe("awareness");
+    expect(campaign?.period).toEqual({ start: null, end: null });
+  });
+
+  test("an unknown enum value reads as the default, never breaking the board", () => {
+    const [campaign] = scanCampaigns({
+      [key]: {
+        status: "cancelled",
+        trigger: { type: "vibes" },
+        intent: { objective: "virality", targets: [{ kind: "sku", url: "u" }] },
+      },
+    });
+    expect(campaign?.status).toBe("draft");
+    expect(campaign?.trigger.type).toBe("seasonal");
+    expect(campaign?.intent.objective).toBe("awareness");
+    // A target left over from when "product" was a kind reads as a category.
+    expect(campaign?.intent.targets[0]?.kind).toBe("category");
+  });
+
+  test("a campaign with no products reads as an empty list", () => {
+    const [campaign] = scanCampaigns({
+      [key]: { campaignName: "Sem produtos", intent: { targets: [] } },
+    });
+    expect(campaign?.intent.products).toEqual([]);
+  });
+
+  test("a blank image slot survives, so the editor can add an empty row", () => {
+    const [campaign] = scanCampaigns({
+      [key]: { intent: { products: [{ name: "P", images: ["a", ""] }] } },
+    });
+    expect(campaign?.intent.products[0]?.images).toEqual(["a", ""]);
+  });
+
+  test("images are capped, and the older single `image` still reads", () => {
+    const [capped] = scanCampaigns({
+      [key]: { intent: { products: [{ images: ["1", "2", "3", "4"] }] } },
+    });
+    expect(capped?.intent.products[0]?.images).toEqual(["1", "2", "3"]);
+    const [legacy] = scanCampaigns({
+      [key]: { intent: { products: [{ image: "only" }] } },
+    });
+    expect(legacy?.intent.products[0]?.images).toEqual(["only"]);
+  });
+
+  test("a hand-typed product keeps its blank id", () => {
+    const [campaign] = scanCampaigns({
+      [key]: { intent: { products: [{ name: "Digitado", url: "/p" }] } },
+    });
+    expect(campaign?.intent.products).toEqual([
+      {
+        id: "",
+        name: "Digitado",
+        url: "/p",
+        images: [],
+        category: "",
+        description: "",
+      },
+    ]);
+  });
+
+  test("a blank date is null, not an empty string", () => {
+    const [campaign] = scanCampaigns({
+      [key]: { period: { start: "2026-01-01", end: "" } },
+    });
+    expect(campaign?.period).toEqual({ start: "2026-01-01", end: null });
+  });
+
+  test("newest first, falling back to the name", () => {
+    const campaigns = scanCampaigns({
+      [`${CAMPAIGN_KEY_PREFIX}a`]: {
+        campaignName: "Antiga",
+        createdAt: "2026-01-01",
+      },
+      [`${CAMPAIGN_KEY_PREFIX}b`]: {
+        campaignName: "Nova",
+        createdAt: "2026-02-01",
+      },
+    });
+    expect(campaigns.map((c) => c.name)).toEqual(["Nova", "Antiga"]);
+  });
+
+  test("leaves every other planning block alone", () => {
+    expect(
+      scanCampaigns({
+        "blog-manager/campaign-seeds/b": { name: "A seed" },
+        "blog-manager-brand": { campaignName: "nope" },
+      }),
+    ).toEqual([]);
+  });
+
+  test("ignores a corrupt block rather than throwing", () => {
+    expect(scanCampaigns({ [key]: "corrupt" })).toEqual([]);
+  });
+});
+
+describe("campaign seeds", () => {
+  const key = `${CAMPAIGN_SEED_KEY_PREFIX}a`;
+
+  test("round-trips a seed", () => {
+    const [seed] = scanCampaignSeeds({
+      [key]: buildCampaignSeedBlock(key, {
+        name: "Verão 2027",
+        keywords: ["protetor solar", "praia"],
+        prompt: "Começar a falar de verão antes dos concorrentes.",
+        createdAt: "2026-01-01",
+        updatedAt: "2026-01-02",
+      }),
+    });
+    expect(seed).toEqual({
+      key,
+      name: "Verão 2027",
+      keywords: ["protetor solar", "praia"],
+      prompt: "Começar a falar de verão antes dos concorrentes.",
+      createdAt: "2026-01-01",
+      updatedAt: "2026-01-02",
+    });
+  });
+
+  test("a half-written seed reads, because that is the normal case", () => {
+    const [seed] = scanCampaignSeeds({ [key]: { seedName: "Rascunho" } });
+    expect(seed?.name).toBe("Rascunho");
+    expect(seed?.keywords).toEqual([]);
+    expect(seed?.prompt).toBe("");
+  });
+
+  test("newest first", () => {
+    const seeds = scanCampaignSeeds({
+      [`${CAMPAIGN_SEED_KEY_PREFIX}a`]: {
+        seedName: "Antiga",
+        createdAt: "2026-01-01",
+      },
+      [`${CAMPAIGN_SEED_KEY_PREFIX}b`]: {
+        seedName: "Nova",
+        createdAt: "2026-02-01",
+      },
+    });
+    expect(seeds.map((s) => s.name)).toEqual(["Nova", "Antiga"]);
+  });
+
+  test("ignores blocks that are not seeds", () => {
+    expect(scanCampaignSeeds({ [`${CAMPAIGN_KEY_PREFIX}a`]: {} })).toEqual([]);
+  });
+
+  test("a campaign with no seedKey reads as empty, not undefined", () => {
+    const [campaign] = scanCampaigns({
+      [`${CAMPAIGN_KEY_PREFIX}x`]: { campaignName: "À mão" },
+    });
+    expect(campaign?.seedKey).toBe("");
+  });
+});
+
+describe("buildCampaignBlock", () => {
+  test("round-trips through scanCampaigns", () => {
+    const key = newCampaignKey();
+    const campaign = emptyCampaign(new Date("2026-03-04T05:06:07.000Z"));
+    const [read] = scanCampaigns({
+      [key]: buildCampaignBlock(key, campaign),
+    });
+    expect(read).toEqual({ key, ...campaign });
+  });
+
+  test("carries the block key in `name`, like every planning block", () => {
+    const key = newCampaignKey();
+    const block = buildCampaignBlock(key, emptyCampaign(new Date()));
+    expect(block.name).toBe(key);
+  });
+
+  test("writes an absent date as an empty string, so the shape is stable", () => {
+    const key = newCampaignKey();
+    const block = buildCampaignBlock(key, emptyCampaign(new Date()));
+    expect(block.period).toEqual({ start: "", end: "" });
+  });
+});
+
+describe("newCampaignKey", () => {
+  test("is under the campaigns prefix and unique", () => {
+    const a = newCampaignKey();
+    const b = newCampaignKey();
+    expect(a.startsWith(CAMPAIGN_KEY_PREFIX)).toBe(true);
+    expect(a).not.toBe(b);
+  });
+});
+
+describe("emptyDraftPostPayload / planningMeta", () => {
+  const now = new Date(2026, 7, 21, 15, 30);
+
+  test("starts a post as a briefing with no body", () => {
+    const payload = emptyDraftPostPayload({
+      title: "How to read a label",
+      planning: { campaignKey: "c1", brief: "Angle." },
+      now,
+    });
+    expect(payload.status).toBe("draft");
+    expect(payload.sections).toEqual([]);
+    expect(postStatus(payload)).toBe("draft");
+    expect(planningMeta(payload).brief).toBe("Angle.");
+    expect(planningMeta(payload).campaignKey).toBe("c1");
+  });
+
+  test("planningMeta tolerates a missing planning object", () => {
+    expect(planningMeta({})).toEqual({});
+  });
+});
+
+describe("listPlanningPosts / listAllPostsWithMeta", () => {
+  test("planning posts are read by prefix and excluded from the live list", () => {
+    const decofile = {
+      [`${PLANNING_POST_KEY_PREFIX}1`]: buildPlanningPostBlock(
+        `${PLANNING_POST_KEY_PREFIX}1`,
+        { title: "An idea", status: "draft" },
+      ),
+      ...decofileWithPosts({
+        "collections/blog/posts/2": { title: "Live", status: "published" },
+      }),
+    };
+    expect(listPlanningPosts(decofile).map((p) => p.payload.title)).toEqual([
+      "An idea",
+    ]);
+    // The live-only list never sees planning posts.
+    expect(listPostsWithMeta(decofile).map((p) => p.title)).toEqual(["Live"]);
+    const all = listAllPostsWithMeta(decofile);
+    expect(
+      Object.fromEntries(all.map((p) => [p.title, [p.status, p.form]])),
+    ).toEqual({
+      "An idea": ["draft", "planning"],
+      Live: ["published", "live"],
+    });
+  });
+});
+
+describe("movePostToStatus", () => {
+  const now = new Date(2026, 7, 21, 15, 30);
+  const complete = {
+    title: "Hello",
+    slug: "hello",
+    categories: ["news"],
+    excerpt: "A short summary.",
+    image: "https://cdn/cover.jpg",
+  };
+
+  test("promotes a planning post to a live block, preserving id and slug", () => {
+    const key = planningPostKey("abc123");
+    const move = movePostToStatus(
+      { key, payload: { ...complete, status: "awaiting_review" } },
+      "scheduled",
+      now,
+    );
+    const targetKey = livePostKey("abc123");
+    expect(move.deletes).toEqual([key]);
+    const block = move.writes[targetKey] as Record<string, unknown>;
+    expect(block.__resolveType).toBe("blog/loaders/Blogpost.ts");
+    const post = block.post as Record<string, unknown>;
+    expect(post.slug).toBe("hello");
+    expect(post.status).toBe("scheduled");
+    expect(typeof post.scheduledDatetime).toBe("string");
+  });
+
+  test("demotes a live post back to a planning block with no resolveType", () => {
+    const key = livePostKey("abc123");
+    const move = movePostToStatus(
+      { key, payload: { ...complete, status: "scheduled" } },
+      "awaiting_review",
+      now,
+    );
+    const targetKey = planningPostKey("abc123");
+    expect(move.deletes).toEqual([key]);
+    const block = move.writes[targetKey] as Record<string, unknown>;
+    expect("__resolveType" in block).toBe(false);
+    const post = block.post as Record<string, unknown>;
+    expect(post.status).toBe("awaiting_review");
+    expect(post.scheduledDatetime).toBe("");
+  });
+
+  test("a within-planning move rewrites in place with nothing to delete", () => {
+    const key = planningPostKey("abc123");
+    const move = movePostToStatus(
+      { key, payload: { title: "T", status: "draft" } },
+      "awaiting_review",
+      now,
+    );
+    expect(move.deletes).toEqual([]);
+    expect(Object.keys(move.writes)).toEqual([key]);
+  });
+
+  test("archiving a live post demotes it, so the site stops rendering it", () => {
+    const key = livePostKey("abc123");
+    const move = movePostToStatus(
+      { key, payload: { ...complete, status: "published" } },
+      "archived",
+      now,
+    );
+    const targetKey = planningPostKey("abc123");
+    expect(move.deletes).toEqual([key]);
+    const block = move.writes[targetKey] as Record<string, unknown>;
+    expect("__resolveType" in block).toBe(false);
+    expect((block.post as Record<string, unknown>).status).toBe("archived");
+  });
+});
+
+describe("postIdOfKey", () => {
+  test("reads the shared id from either form's key", () => {
+    expect(postIdOfKey(planningPostKey("xyz"))).toBe("xyz");
+    expect(postIdOfKey(livePostKey("xyz"))).toBe("xyz");
   });
 });
 
@@ -660,68 +1233,6 @@ describe("emptyBlogPayload", () => {
   });
 });
 
-describe("addCategoryToPost", () => {
-  test("appends a new category and keeps existing ones", () => {
-    const payload = { categories: [{ name: "News", slug: "news" }] };
-    const next = addCategoryToPost(payload, { name: "Tips", slug: "tips" });
-    expect(next.categories).toEqual([
-      { name: "News", slug: "news" },
-      { name: "Tips", slug: "tips" },
-    ]);
-  });
-
-  test("initializes categories when the post has none", () => {
-    const next = addCategoryToPost(
-      { title: "P" },
-      { name: "News", slug: "news" },
-    );
-    expect(next).toEqual({
-      title: "P",
-      categories: [{ name: "News", slug: "news" }],
-    });
-  });
-
-  test("is idempotent — adding a present slug does not duplicate", () => {
-    const payload = { categories: [{ name: "News", slug: "news" }] };
-    const next = addCategoryToPost(payload, { name: "News", slug: "news" });
-    expect(next.categories).toEqual([{ name: "News", slug: "news" }]);
-  });
-
-  test("does not mutate the input payload", () => {
-    const payload = { categories: [{ name: "News", slug: "news" }] };
-    addCategoryToPost(payload, { name: "Tips", slug: "tips" });
-    expect(payload.categories).toEqual([{ name: "News", slug: "news" }]);
-  });
-});
-
-describe("replaceCategoryOnPost", () => {
-  test("replaces all categories with the chosen one", () => {
-    const payload = {
-      categories: [
-        { name: "News", slug: "news" },
-        { name: "Tips", slug: "tips" },
-      ],
-    };
-    const next = replaceCategoryOnPost(payload, {
-      name: "Guides",
-      slug: "guides",
-    });
-    expect(next.categories).toEqual([{ name: "Guides", slug: "guides" }]);
-  });
-
-  test("sets the category when the post had none", () => {
-    const next = replaceCategoryOnPost({}, { name: "News", slug: "news" });
-    expect(next.categories).toEqual([{ name: "News", slug: "news" }]);
-  });
-
-  test("is a no-op when it already has exactly that category", () => {
-    const payload = { categories: [{ name: "News", slug: "news" }] };
-    expect(replaceCategoryOnPost(payload, { name: "News", slug: "news" })).toBe(
-      payload,
-    );
-  });
-});
-
 describe("renameCategoryOnPost", () => {
   test("rewrites the matching slug and name, preserving others and order", () => {
     const payload = {
@@ -822,5 +1333,1943 @@ describe("removeCategoryFromPost", () => {
     const payload = { categories: [{ name: "Old", slug: "old" }] };
     removeCategoryFromPost(payload, "old");
     expect(payload.categories).toEqual([{ name: "Old", slug: "old" }]);
+  });
+});
+
+/** A category block, as the decofile stores it. */
+function categoryBlock(name: string, slug = "") {
+  return {
+    __resolveType: "blog/loaders/Category.ts",
+    category: { name, slug },
+  };
+}
+
+/** A post block, as the decofile stores it. */
+function postBlock(title: string) {
+  return { __resolveType: "blog/loaders/Blogpost.ts", post: { title } };
+}
+
+describe("uniqueSlug", () => {
+  test("names the random fallback after the caller's collection", () => {
+    expect(uniqueSlug("!!! ???", [], "category")).toMatch(
+      /^category-[0-9a-f]{6}$/,
+    );
+  });
+
+  test("suffixes until it stops colliding", () => {
+    expect(uniqueCategorySlug("news", ["news", "news-2"])).toBe("news-3");
+  });
+
+  test("leaves a free slug alone", () => {
+    expect(uniqueCategorySlug("news", ["tips"])).toBe("news");
+  });
+
+  test("normalizes before comparing, so an accented input still collides", () => {
+    expect(uniqueCategorySlug("Notícias", ["noticias"])).toBe("noticias-2");
+  });
+
+  test("shortens the base so the suffix still fits the 80-char cap", () => {
+    const long = "a".repeat(80);
+    const result = uniqueCategorySlug(long, [long]);
+    expect(result.length).toBeLessThanOrEqual(80);
+    expect(result.endsWith("-2")).toBe(true);
+  });
+});
+
+describe("hasDuplicateName", () => {
+  const decofile = {
+    "collections/blog/categories/a": categoryBlock("Receitas", "receitas"),
+    "collections/blog/categories/b": categoryBlock("Dicas", "dicas"),
+    "collections/blog/posts/p": postBlock("Receitas"),
+  };
+
+  test("ignores the record asking the question", () => {
+    expect(
+      hasDuplicateName(
+        decofile,
+        "categories",
+        "collections/blog/categories/a",
+        "Receitas",
+      ),
+    ).toBe(false);
+  });
+
+  test("folds casing, accents and spacing", () => {
+    expect(
+      hasDuplicateName(
+        decofile,
+        "categories",
+        "collections/blog/categories/b",
+        "  RECEÍTAS  ",
+      ),
+    ).toBe(true);
+  });
+
+  test("an empty name is never a duplicate", () => {
+    expect(hasDuplicateName(decofile, "categories", "new-key", "   ")).toBe(
+      false,
+    );
+  });
+
+  test("does not cross kinds", () => {
+    expect(hasDuplicateName(decofile, "posts", "new-key", "Dicas")).toBe(false);
+  });
+});
+
+/** A planning draft: no `__resolveType`, so the site never resolves it. */
+function planningPost(id: string, title: string) {
+  return { [`blog-manager/posts/${id}`]: { post: { title } } };
+}
+
+describe("duplicate titles across both post forms", () => {
+  const decofile = {
+    ...planningPost("a", "Receitas"),
+    ...planningPost("b", "receitas"),
+    ...planningPost("c", "Dicas"),
+    "collections/blog/posts/d": postBlock("RECEÍTAS"),
+  };
+
+  test("a planning draft counts — it carries no __resolveType", () => {
+    expect(
+      hasDuplicateName(decofile, "posts", "blog-manager/posts/c", "Receitas"),
+    ).toBe(true);
+  });
+
+  test("flags every colliding key, planning and live alike", () => {
+    expect([...duplicateTitleKeys(decofile)].sort()).toEqual([
+      "blog-manager/posts/a",
+      "blog-manager/posts/b",
+      "collections/blog/posts/d",
+    ]);
+  });
+
+  test("leaves a unique title alone", () => {
+    expect(duplicateTitleKeys(decofile).has("blog-manager/posts/c")).toBe(
+      false,
+    );
+  });
+
+  test("does not flag two untitled drafts via the label fallback", () => {
+    const untitled = { ...planningPost("x", ""), ...planningPost("y", "") };
+    expect(duplicateTitleKeys(untitled).size).toBe(0);
+  });
+
+  test("listAllPostsWithMeta carries the flag onto both forms", () => {
+    const flagged = listAllPostsWithMeta(decofile)
+      .filter((p) => p.duplicateTitle)
+      .map((p) => p.key)
+      .sort();
+    expect(flagged).toEqual([
+      "blog-manager/posts/a",
+      "blog-manager/posts/b",
+      "collections/blog/posts/d",
+    ]);
+  });
+});
+
+describe("scanBlogEntries duplicate names", () => {
+  test("marks both sides of a collision", () => {
+    const entries = scanBlogEntries({
+      a: categoryBlock("Receitas", "receitas"),
+      b: categoryBlock("receitas", "receitas-2"),
+      c: categoryBlock("Dicas", "dicas"),
+    }).categories;
+    const marked = entries
+      .filter((e) => e.duplicateName)
+      .map((e) => e.slug)
+      .sort();
+    expect(marked).toEqual(["receitas", "receitas-2"]);
+  });
+
+  test("does not mark two unnamed records sharing the label fallback", () => {
+    const entries = scanBlogEntries({
+      a: categoryBlock("", "one"),
+      b: categoryBlock("", "two"),
+    }).categories;
+    expect(entries.every((e) => !e.duplicateName)).toBe(true);
+  });
+
+  test("does not cross kinds", () => {
+    const scanned = scanBlogEntries({
+      a: categoryBlock("Receitas", "receitas"),
+      p: postBlock("Receitas"),
+    });
+    expect(scanned.categories[0]?.duplicateName).toBeUndefined();
+    expect(scanned.posts[0]?.duplicateName).toBeUndefined();
+  });
+});
+
+describe("listAllPostPayloads", () => {
+  test("includes a planning draft, which carries no __resolveType", () => {
+    const decofile = {
+      ...planningPost("a", "Draft"),
+      "collections/blog/posts/b": postBlock("Live"),
+    };
+    expect(
+      listAllPostPayloads(decofile)
+        .map(({ key }) => key)
+        .sort(),
+    ).toEqual(["blog-manager/posts/a", "collections/blog/posts/b"]);
+  });
+});
+
+describe("renameCategoryOnPost reaches a draft", () => {
+  test("a planning payload is rewritten like a live one", () => {
+    const draft = { title: "D", categories: [{ name: "Old", slug: "old" }] };
+    expect(
+      renameCategoryOnPost(draft, "old", { name: "New", slug: "new" }),
+    ).toEqual({ title: "D", categories: [{ name: "New", slug: "new" }] });
+  });
+});
+
+describe("missingCategoryFields", () => {
+  test("is empty for a complete category", () => {
+    expect(missingCategoryFields({ name: "News", slug: "news" })).toEqual([]);
+  });
+
+  test("names both fields when the payload is bare", () => {
+    expect(missingCategoryFields({})).toEqual(["name", "slug"]);
+  });
+
+  test("treats whitespace as absent", () => {
+    expect(missingCategoryFields({ name: "  ", slug: "news" })).toEqual([
+      "name",
+    ]);
+  });
+
+  test("ignores non-string values", () => {
+    expect(missingCategoryFields({ name: 7, slug: null })).toEqual([
+      "name",
+      "slug",
+    ]);
+  });
+});
+
+describe("renameCategoryOnPost (name-only pass)", () => {
+  test("refreshes a stale denormalized name", () => {
+    const payload = { categories: [{ name: "Old", slug: "news" }] };
+    expect(
+      renameCategoryOnPost(payload, "news", { name: "New", slug: "news" }),
+    ).toEqual({ categories: [{ name: "New", slug: "news" }] });
+  });
+
+  test("is a no-op (same reference) when the name already matches", () => {
+    const payload = { categories: [{ name: "News", slug: "news" }] };
+    expect(
+      renameCategoryOnPost(payload, "news", { name: "News", slug: "news" }),
+    ).toBe(payload);
+  });
+
+  test("leaves sibling categories untouched", () => {
+    const payload = {
+      categories: [
+        { name: "Old", slug: "news" },
+        { name: "Tips", slug: "tips" },
+      ],
+    };
+    const next = renameCategoryOnPost(payload, "news", {
+      name: "New",
+      slug: "news",
+    }) as { categories: unknown[] };
+    expect(next.categories).toEqual([
+      { name: "New", slug: "news" },
+      { name: "Tips", slug: "tips" },
+    ]);
+  });
+
+  test("upgrades a plain-string reference to the full ref", () => {
+    const payload = { categories: ["news"] };
+    expect(
+      renameCategoryOnPost(payload, "news", { name: "News", slug: "news" }),
+    ).toEqual({ categories: [{ name: "News", slug: "news" }] });
+  });
+});
+
+describe("reparentCategory", () => {
+  test("repoints a child at the parent's new slug", () => {
+    const payload = { name: "Desserts", slug: "desserts", parentSlug: "food" };
+    expect(reparentCategory(payload, "food", "recipes")).toEqual({
+      name: "Desserts",
+      slug: "desserts",
+      parentSlug: "recipes",
+    });
+  });
+
+  test("is a no-op (same reference) for a different parent", () => {
+    const payload = { slug: "news", parentSlug: "home" };
+    expect(reparentCategory(payload, "food", "recipes")).toBe(payload);
+  });
+
+  test("is a no-op (same reference) for a root category", () => {
+    const payload = { slug: "news" };
+    expect(reparentCategory(payload, "food", "recipes")).toBe(payload);
+  });
+
+  test("does not mutate the input payload", () => {
+    const payload = { slug: "desserts", parentSlug: "food" };
+    reparentCategory(payload, "food", "recipes");
+    expect(payload.parentSlug).toBe("food");
+  });
+});
+
+describe("normalizeBrandRules", () => {
+  test("promotes a legacy flat string to a rule name", () => {
+    expect(
+      normalizeBrandRules(["Nunca escreva preço em bloco de texto"]),
+    ).toEqual([{ name: "Nunca escreva preço em bloco de texto", value: "" }]);
+  });
+
+  test("passes a well-formed rule through", () => {
+    const rule = { name: "Preços", value: "Use **ProductCard**." };
+    expect(normalizeBrandRules([rule])).toEqual([rule]);
+  });
+
+  test("handles a list that mixes both shapes — a half-migrated block", () => {
+    expect(
+      normalizeBrandRules(["antiga", { name: "nova", value: "corpo" }]),
+    ).toEqual([
+      { name: "antiga", value: "" },
+      { name: "nova", value: "corpo" },
+    ]);
+  });
+
+  test("keeps a rule that has only a body", () => {
+    expect(normalizeBrandRules([{ value: "só o corpo" }])).toEqual([
+      { name: "", value: "só o corpo" },
+    ]);
+  });
+
+  test("keeps a blank object — it's a row the user just added", () => {
+    expect(normalizeBrandRules([{ name: "", value: "" }])).toEqual([
+      { name: "", value: "" },
+    ]);
+    expect(normalizeBrandRules([{}])).toEqual([{ name: "", value: "" }]);
+  });
+
+  test("drops blank legacy strings and anything that isn't an object", () => {
+    expect(normalizeBrandRules(["", "   ", null, 42])).toEqual([]);
+  });
+
+  test("returns empty for a non-array, including the absent field", () => {
+    expect(normalizeBrandRules(undefined)).toEqual([]);
+    expect(normalizeBrandRules("nao é lista")).toEqual([]);
+    expect(normalizeBrandRules({ name: "solto" })).toEqual([]);
+  });
+});
+
+describe("extractBlockProse", () => {
+  test("drops asset urls, keeps the prose beside them", () => {
+    const block = {
+      video: { src: "https://player.vimeo.com/progressive_redirect/x.mp4" },
+      thumbnail: "https://cdn.example.com/site/2024/banner-mobile.jpg",
+      alt: "do rio pro mundo",
+    };
+    const out = extractBlockProse(block);
+
+    expect(out).toContain("do rio pro mundo");
+    expect(out).not.toContain("vimeo");
+    expect(out).not.toContain("cdn.example.com");
+  });
+
+  test("drops identifiers and dimension labels, not phrases", () => {
+    const out = extractBlockProse({
+      __resolveType: "site/sections/Layout/Flex.tsx",
+      gap: "20px",
+      title: "encontre a loja mais próxima de você",
+    });
+
+    expect(out).not.toContain("Flex.tsx");
+    expect(out).not.toContain("20px");
+    expect(out).toContain("encontre a loja mais próxima de você");
+  });
+
+  test("keeps the prop name, so the model knows what kind of copy it is", () => {
+    expect(extractBlockProse({ alt: "92% de funcionárias" })).toBe(
+      "alt: 92% de funcionárias",
+    );
+  });
+
+  test("keeps html stored as a string", () => {
+    const html = "<p>verifique os detalhes direto na sua mochila</p>";
+    expect(extractBlockProse({ text: html })).toContain("sua mochila");
+  });
+
+  test("drops exact duplicates — a banner repeats across a whole site", () => {
+    const out = extractBlockProse([
+      { text: "vem pro app e ganhe desconto" },
+      { text: "vem pro app e ganhe desconto" },
+    ]);
+    expect(out.split("\n")).toHaveLength(1);
+  });
+
+  test("keeps casing variants — the inconsistency is a fact about the brand", () => {
+    const out = extractBlockProse([
+      { text: "O custo pode mudar" },
+      { text: "o custo pode mudar" },
+    ]);
+    expect(out.split("\n")).toHaveLength(2);
+  });
+});
+
+/** The sampler takes PageEntry[] now; tests name pages by key and path. */
+function pagesOf(...entries: [string, string][]) {
+  return entries.map(([key, path]) => ({ key, name: key, path }));
+}
+
+describe("selectBrandEvidence", () => {
+  test("ranks a prose-heavy page above a url-heavy one", () => {
+    const decofile = {
+      "pages/plp": {
+        path: "/roupas",
+        sections: [{ src: "https://cdn.example.com/a-very-long-asset.jpg" }],
+      },
+      "pages/sobre": {
+        path: "/sobre",
+        sections: [{ text: "a biodiversidade brasileira acende em nós" }],
+      },
+    };
+
+    expect(
+      selectBrandEvidence(
+        decofile,
+        pagesOf(["pages/plp", "/roupas"], ["pages/sobre", "/sobre"]),
+      ).blocks.map((b) => b.key),
+    ).toEqual(["pages/sobre", "pages/plp"]);
+  });
+
+  test("never sends more blocks than BLOG_BRAND_EXTRACT accepts", () => {
+    // Short prose stays far under the character budget, so the count is the
+    // only thing that stops this — and the tool's schema rejects the call
+    // outright if it arrives over the cap.
+    const pages = Array.from({ length: 300 }, (_, i) => ({
+      key: `pages/p${i}`,
+      name: `p${i}`,
+      path: `/p${i}`,
+    }));
+    const decofile = Object.fromEntries(
+      pages.map((page, i) => [
+        page.key,
+        { path: page.path, sections: [{ text: `uma frase curta ${i}` }] },
+      ]),
+    );
+
+    const selected = selectBrandEvidence(decofile, pages).blocks;
+
+    expect(selected.length).toBe(BRAND_EVIDENCE_MAX_BLOCKS);
+    expect(
+      selected.reduce((total, block) => total + block.content.length, 0),
+    ).toBeLessThan(60_000);
+  });
+
+  test("ranks posts before categories before pages", () => {
+    const decofile = {
+      ...decofileWithPosts({
+        "collections/blog/posts/a": { content: "prose" },
+      }),
+      "collections/blog/categories/c": buildBlogBlock(
+        "collections/blog/categories/c",
+        "categories",
+        { name: "News", slug: "news" },
+      ),
+      "pages/home": { path: "/", sections: [] },
+    };
+
+    expect(
+      selectBrandEvidence(decofile, pagesOf(["pages/home", "/"])).blocks.map(
+        (b) => b.key,
+      ),
+    ).toEqual([
+      "collections/blog/posts/a",
+      "collections/blog/categories/c",
+      "pages/home",
+    ]);
+  });
+
+  test("puts the post with the most prose first", () => {
+    const decofile = decofileWithPosts({
+      "collections/blog/posts/short": { content: "oi" },
+      "collections/blog/posts/long": { content: "prosa da marca ".repeat(50) },
+    });
+
+    expect(selectBrandEvidence(decofile, []).blocks.map((b) => b.key)).toEqual([
+      "collections/blog/posts/long",
+      "collections/blog/posts/short",
+    ]);
+  });
+
+  test("stops once the char budget is spent instead of sending everything", () => {
+    const posts: Record<string, Record<string, unknown>> = {};
+    for (let i = 0; i < 20; i++) {
+      posts[`collections/blog/posts/p${i}`] = {
+        content: "prosa da marca ".repeat(1_000),
+      };
+    }
+
+    const selected = selectBrandEvidence(decofileWithPosts(posts), []).blocks;
+    const total = selected.reduce((sum, b) => sum + b.content.length, 0);
+
+    expect(selected.length).toBeLessThan(20);
+    expect(total).toBeLessThanOrEqual(60_000);
+  });
+
+  test("returns nothing for a site with no content", () => {
+    expect(selectBrandEvidence({}, []).blocks).toEqual([]);
+  });
+
+  test("skips page keys the decofile doesn't have", () => {
+    expect(
+      selectBrandEvidence({}, pagesOf(["pages/ghost", "/ghost"])).blocks,
+    ).toEqual([]);
+  });
+});
+
+describe("postStructures", () => {
+  test("reads each post's section sequence as component names, in order", () => {
+    const decofile = decofileWithPosts({
+      "collections/blog/posts/a": {
+        title: "Guia",
+        sections: [
+          { __resolveType: "blog/sections/blocks/Heading.tsx" },
+          { __resolveType: "site/sections/Blog/Post/Paragraph.tsx" },
+          { __resolveType: "blog/sections/blocks/ProductShelf.tsx" },
+        ],
+      },
+    });
+    expect(postStructures(decofile)).toEqual([
+      {
+        key: "collections/blog/posts/a",
+        title: "Guia",
+        sections: ["Heading", "Paragraph", "ProductShelf"],
+      },
+    ]);
+  });
+
+  test("a post with no sections still reports its title", () => {
+    const decofile = decofileWithPosts({
+      "collections/blog/posts/empty": { title: "Vazio" },
+    });
+    expect(postStructures(decofile)[0]?.sections).toEqual([]);
+  });
+
+  test("skips sections without a resolveType instead of emitting blanks", () => {
+    const decofile = decofileWithPosts({
+      "collections/blog/posts/a": {
+        sections: [
+          { __resolveType: "blog/sections/blocks/Heading.tsx" },
+          { text: "orphan" },
+          "not an object",
+        ],
+      },
+    });
+    expect(postStructures(decofile)[0]?.sections).toEqual(["Heading"]);
+  });
+
+  test("caps at 40 posts so the suggestion prompt stays bounded", () => {
+    const posts: Record<string, Record<string, unknown>> = {};
+    for (let i = 0; i < 60; i++) {
+      posts[`collections/blog/posts/p${i}`] = { title: `Post ${i}` };
+    }
+    expect(postStructures(decofileWithPosts(posts))).toHaveLength(40);
+  });
+});
+
+describe("citedSections", () => {
+  test("collects distinct @mentions", () => {
+    expect(
+      citedSections("Abre com @Heading, depois @Paragraph e mais @Paragraph."),
+    ).toEqual(["Heading", "Paragraph"]);
+  });
+
+  test("ignores an @ inside a word, so an email is not a citation", () => {
+    expect(citedSections("fale com contato@marca.com.br")).toEqual([]);
+  });
+
+  test("reads a citation after a bracket or at the start of a line", () => {
+    expect(citedSections("@Heading\n- (@Cta) no fim")).toEqual([
+      "Heading",
+      "Cta",
+    ]);
+  });
+
+  test("stops at punctuation but keeps dashes inside the name", () => {
+    expect(citedSections("use @Product-Card.")).toEqual(["Product-Card"]);
+  });
+
+  test("finds nothing in prose without mentions", () => {
+    expect(citedSections("Um formato de guia prático.")).toEqual([]);
+  });
+
+  test("reads the linked form as the resolveType it points at", () => {
+    expect(
+      citedSections("Abre com [@Heading](site/sections/Blog/Post/Heading.tsx)"),
+    ).toEqual(["site/sections/Blog/Post/Heading.tsx"]);
+  });
+
+  test("resolves a bare name through the site's inventory when given one", () => {
+    expect(
+      citedSections("@Heading", {
+        Heading: "blog/sections/blocks/Heading.tsx",
+      }),
+    ).toEqual(["blog/sections/blocks/Heading.tsx"]);
+  });
+
+  test("a link label is never also read as a bare citation", () => {
+    expect(
+      citedSections("[@Heading](blog/sections/blocks/Heading.tsx)"),
+    ).toEqual(["blog/sections/blocks/Heading.tsx"]);
+  });
+});
+
+describe("unknownCitations", () => {
+  const BY_NAME = {
+    Heading: "blog/sections/blocks/Heading.tsx",
+    Paragraph: "blog/sections/blocks/Paragraph.tsx",
+  };
+  const AVAILABLE = Object.values(BY_NAME);
+
+  test("reports only the citations the site does not have", () => {
+    expect(
+      unknownCitations("@Heading e @Removida", AVAILABLE, BY_NAME),
+    ).toEqual(["Removida"]);
+  });
+
+  test("nothing to report when every citation resolves", () => {
+    expect(unknownCitations("@Heading", AVAILABLE, BY_NAME)).toEqual([]);
+  });
+
+  test("a linked citation is checked by its resolveType, not its label", () => {
+    expect(
+      unknownCitations(
+        "[@Heading](blog/sections/blocks/Heading.tsx)",
+        AVAILABLE,
+        BY_NAME,
+      ),
+    ).toEqual([]);
+    expect(
+      unknownCitations(
+        "[@Heading](site/sections/Blog/Post/Heading.tsx)",
+        AVAILABLE,
+        BY_NAME,
+      ),
+    ).toEqual(["site/sections/Blog/Post/Heading.tsx"]);
+  });
+
+  test("every citation is unknown on a site with no blog sections", () => {
+    expect(unknownCitations("@Heading e @Cta", [])).toEqual(["Heading", "Cta"]);
+  });
+});
+
+describe("linkifyCitations", () => {
+  const BY_NAME = {
+    Heading: "blog/sections/blocks/Heading.tsx",
+    Cta: "site/sections/Blog/Post/Cta.tsx",
+  };
+
+  test("turns a bare citation into a link to the block it names", () => {
+    expect(linkifyCitations("Abre com @Heading.", BY_NAME)).toBe(
+      "Abre com [@Heading](blog/sections/blocks/Heading.tsx).",
+    );
+  });
+
+  test("leaves a name this site has no block for alone, so it stays reportable", () => {
+    expect(linkifyCitations("usa @Removida", BY_NAME)).toBe("usa @Removida");
+  });
+
+  test("never re-wraps a citation that is already linked", () => {
+    const already = "[@Heading](blog/sections/blocks/Heading.tsx) e @Cta";
+    expect(linkifyCitations(already, BY_NAME)).toBe(
+      "[@Heading](blog/sections/blocks/Heading.tsx) e [@Cta](site/sections/Blog/Post/Cta.tsx)",
+    );
+  });
+
+  test("an email is not a citation", () => {
+    expect(linkifyCitations("fale com contato@marca.com.br", BY_NAME)).toBe(
+      "fale com contato@marca.com.br",
+    );
+  });
+});
+
+describe("defaultFormatSections", () => {
+  test("keeps the preferred order and drops what the site lacks", () => {
+    expect(
+      defaultFormatSections({
+        Cta: "blog/sections/blocks/Cta.tsx",
+        Paragraph: "blog/sections/blocks/Paragraph.tsx",
+        Heading: "blog/sections/blocks/Heading.tsx",
+        Shelf: "blog/sections/blocks/Shelf.tsx",
+      }),
+    ).toEqual(["Heading", "Paragraph", "Cta"]);
+  });
+
+  test("returns nothing when the site has none of them", () => {
+    expect(
+      defaultFormatSections({ Shelf: "blog/sections/blocks/Shelf.tsx" }),
+    ).toEqual([]);
+  });
+});
+
+describe("filledBrandRules", () => {
+  test("drops the blank row the editor keeps, so a prompt never sees it", () => {
+    expect(
+      filledBrandRules([
+        { name: "Preços", value: "Use ProductCard." },
+        { name: "", value: "" },
+      ]),
+    ).toEqual([{ name: "Preços", value: "Use ProductCard." }]);
+  });
+
+  test("whitespace is not substance", () => {
+    expect(filledBrandRules([{ name: "  ", value: "\n" }])).toEqual([]);
+  });
+
+  test("a name alone or a body alone counts as written", () => {
+    const rules = [
+      { name: "só nome", value: "" },
+      { name: "", value: "só corpo" },
+    ];
+    expect(filledBrandRules(rules)).toEqual(rules);
+  });
+});
+
+describe("missingBrandForGeneration", () => {
+  const complete = {
+    companyName: "Marca",
+    language: "pt-BR",
+    description: "Vende roupa",
+    tone: "Segunda pessoa, sem humor",
+    targetAudience: "Quem procura linho",
+    dos: [{ name: "Abertura", value: "Comece pelo leitor" }],
+    avoid: [{ name: "Preço", value: "Nunca em bloco de texto" }],
+  };
+
+  test("nothing missing when the three required tabs are filled", () => {
+    expect(missingBrandForGeneration(complete)).toEqual([]);
+  });
+
+  test("an absent block is missing everything", () => {
+    expect(missingBrandForGeneration(undefined)).toEqual([
+      "companyName",
+      "language",
+      "description",
+      "tone",
+      "targetAudience",
+      "dos",
+      "avoid",
+    ]);
+  });
+
+  test("whitespace does not satisfy a text field", () => {
+    expect(missingBrandForGeneration({ ...complete, tone: "   " })).toEqual([
+      "tone",
+    ]);
+  });
+
+  test("a rule list holding only the blank editor row counts as missing", () => {
+    expect(
+      missingBrandForGeneration({
+        ...complete,
+        dos: [{ name: "", value: "" }],
+      }),
+    ).toEqual(["dos"]);
+  });
+
+  test("values, categories and competitors are not required", () => {
+    expect(
+      missingBrandForGeneration({
+        ...complete,
+        values: [],
+        categories: [],
+        competitors: [],
+      }),
+    ).toEqual([]);
+  });
+});
+
+describe("sectionResolveTypes", () => {
+  test("maps a component name to this site's own resolveType", () => {
+    expect(
+      sectionResolveTypes(metaWith(["site/sections/Blog/Post/Heading.tsx"])),
+    ).toEqual({ Heading: "site/sections/Blog/Post/Heading.tsx" });
+  });
+
+  test("one name wins when app and site both define it", () => {
+    const map = sectionResolveTypes(
+      metaWith([
+        "blog/sections/blocks/Paragraph.tsx",
+        "site/sections/Blog/Post/Paragraph.tsx",
+      ]),
+    );
+    expect(Object.keys(map)).toEqual(["Paragraph"]);
+  });
+
+  test("a site with no post sections maps nothing", () => {
+    expect(sectionResolveTypes(metaWith(["site/sections/Header.tsx"]))).toEqual(
+      {},
+    );
+  });
+
+  test("hideDefaults keeps generation off the app built-ins", () => {
+    expect(
+      sectionResolveTypes(
+        metaWith([
+          "blog/sections/blocks/Heading.tsx",
+          "site/sections/Blog/Post/Paragraph.tsx",
+        ]),
+        { hideDefaults: true },
+      ),
+    ).toEqual({ Paragraph: "site/sections/Blog/Post/Paragraph.tsx" });
+  });
+});
+
+describe("buildPostSections", () => {
+  const types = {
+    Heading: "blog/sections/blocks/Heading.tsx",
+    Paragraph: "blog/sections/blocks/Paragraph.tsx",
+    List: "blog/sections/blocks/List.tsx",
+  };
+
+  /**
+   * The props come already checked against the block's own schema, so this is
+   * a spread. These pin the two things it still decides: the resolveType, and
+   * what happens to a kind the site does not have.
+   */
+  test("writes the props through, under the site's own resolveType", () => {
+    expect(
+      buildPostSections(
+        [
+          {
+            type: "List",
+            props: { items: "um\ndois", style: "ordered" },
+            productIds: [],
+          },
+        ],
+        types,
+      ),
+    ).toEqual([
+      { __resolveType: types.List, items: "um\ndois", style: "ordered" },
+    ]);
+  });
+
+  test("carries a prop this file has never heard of", () => {
+    expect(
+      buildPostSections(
+        [
+          {
+            type: "Heading",
+            props: { text: "Oi", eyebrow: "Guia", size: 3 },
+            productIds: [],
+          },
+        ],
+        types,
+      ),
+    ).toEqual([
+      { __resolveType: types.Heading, text: "Oi", eyebrow: "Guia", size: 3 },
+    ]);
+  });
+
+  test("drops a kind this site cannot render", () => {
+    expect(
+      buildPostSections(
+        [
+          { type: "Heading", props: { text: "fica" }, productIds: [] },
+          { type: "Callout", props: { title: "sai" }, productIds: [] },
+        ],
+        { Heading: types.Heading },
+      ),
+    ).toEqual([{ __resolveType: types.Heading, text: "fica" }]);
+  });
+
+  test("a section with no props is still the block", () => {
+    expect(
+      buildPostSections(
+        [{ type: "Heading", props: {}, productIds: [] }],
+        types,
+      ),
+    ).toEqual([{ __resolveType: types.Heading }]);
+  });
+
+  test("keeps the reading order", () => {
+    const built = buildPostSections(
+      [
+        { type: "Heading", props: { text: "a" }, productIds: [] },
+        { type: "Paragraph", props: { html: "b" }, productIds: [] },
+        { type: "Heading", props: { text: "c" }, productIds: [] },
+      ],
+      types,
+    );
+    expect(built.map((b) => b.__resolveType)).toEqual([
+      types.Heading,
+      types.Paragraph,
+      types.Heading,
+    ]);
+  });
+});
+
+describe("slugifyTitle", () => {
+  test("folds accents and drops punctuation", () => {
+    expect(slugifyTitle("Como ler a etiqueta de composição!")).toBe(
+      "como-ler-a-etiqueta-de-composicao",
+    );
+  });
+
+  test("collapses runs and trims the edges", () => {
+    expect(slugifyTitle("  --  Linho   &   Algodão -- ")).toBe("linho-algodao");
+  });
+
+  test("a title with nothing slug-worthy yields empty", () => {
+    expect(slugifyTitle("!!! ???")).toBe("");
+  });
+});
+
+describe("maskSlugInput", () => {
+  test("folds accents, lowercases and hyphenates as the author types", () => {
+    expect(maskSlugInput("Meu Post Legal")).toBe("meu-post-legal");
+    expect(maskSlugInput("ação")).toBe("acao");
+  });
+
+  test("keeps a trailing hyphen so a separator survives the next keystroke", () => {
+    expect(maskSlugInput("meu-")).toBe("meu-");
+    expect(maskSlugInput("meu post ")).toBe("meu-post-");
+    // Trailing punctuation is the same case — slugifyTitle trims it on blur.
+    expect(maskSlugInput("Meu Post Legal!")).toBe("meu-post-legal-");
+    expect(slugifyTitle(maskSlugInput("Meu Post Legal!"))).toBe(
+      "meu-post-legal",
+    );
+  });
+
+  test("drops leading hyphens and collapses runs", () => {
+    expect(maskSlugInput("---a---b")).toBe("a-b");
+  });
+
+  test("caps at 80 characters", () => {
+    expect(maskSlugInput("a".repeat(120))).toHaveLength(80);
+  });
+});
+
+describe("uniquePostSlug", () => {
+  test("uses the plain slug when it's free", () => {
+    expect(uniquePostSlug("Linho no verão", [])).toBe("linho-no-verao");
+  });
+
+  test("suffixes past a collision", () => {
+    expect(uniquePostSlug("Linho", ["linho"])).toBe("linho-2");
+    expect(uniquePostSlug("Linho", ["linho", "linho-2"])).toBe("linho-3");
+  });
+
+  test("falls back to a random slug for an unslugifiable title", () => {
+    expect(uniquePostSlug("!!!", [])).toMatch(/^post-[0-9a-f]{6}$/);
+  });
+
+  test("keeps the suffixed slug inside the 80-character cap", () => {
+    const long = "a".repeat(80);
+    const result = uniquePostSlug(long, [long]);
+    expect(result).toHaveLength(80);
+    expect(result).toBe(`${"a".repeat(78)}-2`);
+  });
+
+  test("does not leave a dangling hyphen after shortening the base", () => {
+    const long = `${"a".repeat(77)}-bb`;
+    expect(uniquePostSlug(long, [long])).toBe(`${"a".repeat(77)}-2`);
+  });
+
+  // The slug editor passes an already-slugified value, not a title.
+  test("is idempotent on an input that is already a slug", () => {
+    expect(uniquePostSlug("linho-no-verao", [])).toBe("linho-no-verao");
+    expect(uniquePostSlug("linho-no-verao", ["linho-no-verao"])).toBe(
+      "linho-no-verao-2",
+    );
+  });
+});
+
+describe("buildGeneratedPostPayload", () => {
+  const args = {
+    draft: {
+      title: "Por que o linho amassa",
+      excerpt: "E o que isso diz sobre a peça.",
+      seo: { title: "Por que o linho amassa", description: "Entenda a fibra." },
+      categorySlugs: ["tecidos"],
+      authorEmails: ["ana@marca.com"],
+      cover: {
+        url: "https://cdn.loja.com.br/capa.png",
+        alt: "Camisa de linho",
+      },
+      sections: [
+        { type: "Paragraph", props: { html: "corpo" }, productIds: [] },
+      ],
+    },
+    resolveTypes: { Paragraph: "blog/sections/blocks/Paragraph.tsx" },
+    categories: [
+      { name: "Tecidos", slug: "tecidos" },
+      { name: "Outra", slug: "outra" },
+    ],
+    authors: [
+      { name: "Ana", email: "ana@marca.com" },
+      { name: "Bruno", email: "bruno@marca.com" },
+    ],
+    takenSlugs: [],
+    now: new Date("2026-08-21T12:00:00.000Z"),
+  };
+
+  test("lands in review, never scheduled or published", () => {
+    const payload = buildGeneratedPostPayload(args);
+    expect(payload.status).toBe("awaiting_review");
+    expect(payload.scheduledDatetime).toBe("");
+  });
+
+  test("the editorial date is the day it was generated", () => {
+    expect(buildGeneratedPostPayload(args).date).toBe("2026-08-21");
+  });
+
+  test("resolves only the chosen categories into stored refs", () => {
+    expect(buildGeneratedPostPayload(args).categories).toEqual([
+      { name: "Tecidos", slug: "tecidos" },
+    ]);
+  });
+
+  test("resolves only the chosen authors into stored refs", () => {
+    expect(buildGeneratedPostPayload(args).authors).toEqual([
+      { name: "Ana", email: "ana@marca.com" },
+    ]);
+  });
+
+  test("the chosen author's whole record rides onto the post", () => {
+    const payload = buildGeneratedPostPayload({
+      ...args,
+      authors: [
+        {
+          name: "Ana",
+          email: "ana@marca.com",
+          jobTitle: "Editora",
+          url: "https://ana.example.com",
+          avatar: "https://cdn.example.com/ana.png",
+        },
+      ],
+    });
+    expect(payload.authors).toEqual([
+      {
+        name: "Ana",
+        email: "ana@marca.com",
+        jobTitle: "Editora",
+        url: "https://ana.example.com",
+        avatar: "https://cdn.example.com/ana.png",
+      },
+    ]);
+  });
+
+  test("an unmatched pick attributes nobody rather than inventing an author", () => {
+    const payload = buildGeneratedPostPayload({
+      ...args,
+      draft: { ...args.draft, authorEmails: ["ghost@marca.com"] },
+    });
+    expect(payload.authors).toEqual([]);
+  });
+
+  test("keeps the briefing, so the card still shows its format", () => {
+    const payload = buildGeneratedPostPayload({
+      ...args,
+      planning: { format: { name: "Guia", value: "Passo a passo" } },
+    });
+    expect(planningMeta(payload).format?.name).toBe("Guia");
+  });
+
+  test("carries the generated cover, so the post is not born incomplete", () => {
+    const payload = buildGeneratedPostPayload(args);
+    expect(payload.image).toBe("https://cdn.loja.com.br/capa.png");
+    expect(payload.alt).toBe("Camisa de linho");
+    expect((payload.seo as Record<string, unknown>).image).toBe(
+      "https://cdn.loja.com.br/capa.png",
+    );
+    expect(missingPostFields(payload)).toEqual([]);
+  });
+
+  test("an image that could not be made is still reported as missing", () => {
+    const payload = buildGeneratedPostPayload({
+      ...args,
+      draft: { ...args.draft, cover: { url: "", alt: "" } },
+    });
+    expect(missingPostFields(payload)).toEqual(["image"]);
+  });
+
+  test("avoids a slug another post already holds", () => {
+    expect(
+      buildGeneratedPostPayload({
+        ...args,
+        takenSlugs: ["por-que-o-linho-amassa"],
+      }).slug,
+    ).toBe("por-que-o-linho-amassa-2");
+  });
+});
+
+describe("splitBlogContext", () => {
+  const brandFields = {
+    companyName: "Marca",
+    description: "Vende roupa",
+    language: "pt-BR",
+    targetAudience: "Quem procura linho",
+    values: [{ name: "Origem", value: "Tecido nacional" }],
+    competitors: [{ name: "Outra", value: "Fala de preço" }],
+  };
+  const contextFields = {
+    tone: "Segunda pessoa, sem humor",
+    dos: [{ name: "Abertura", value: "Comece pelo leitor" }],
+    avoid: [{ name: "Preço", value: "Nunca em bloco de texto" }],
+    categories: ["Moda"],
+  };
+
+  test("splits a block written after the split", () => {
+    const { brand, context } = splitBlogContext(brandFields, contextFields);
+    expect(brand).toEqual(brandFields);
+    expect(context).toEqual(contextFields);
+  });
+
+  test("a legacy brand block seeds the writing rules", () => {
+    const legacy = { ...brandFields, ...contextFields };
+    const { brand, context } = splitBlogContext(legacy, undefined);
+    expect(brand).toEqual(brandFields);
+    expect(context).toEqual(contextFields);
+  });
+
+  test("the context block wins over the legacy copies in the brand block", () => {
+    const legacy = { ...brandFields, tone: "Tom antigo", dos: [], avoid: [] };
+    const { brand, context } = splitBlogContext(legacy, contextFields);
+    expect(context).toEqual(contextFields);
+    expect(brand).not.toHaveProperty("tone");
+  });
+
+  test("the brand half never carries a writing-rule field", () => {
+    const legacy = { ...brandFields, ...contextFields };
+    const { brand } = splitBlogContext(legacy, contextFields);
+    for (const field of ["tone", "dos", "avoid", "categories"]) {
+      expect(brand).not.toHaveProperty(field);
+    }
+  });
+
+  test("an empty context block is a real answer, not a reason to fall back", () => {
+    const legacy = { ...brandFields, ...contextFields };
+    const { context } = splitBlogContext(legacy, {});
+    expect(context).toEqual({});
+  });
+
+  test("absent blocks give two empty halves", () => {
+    expect(splitBlogContext(undefined, undefined)).toEqual({
+      brand: {},
+      context: {},
+      merged: {},
+    });
+  });
+
+  test("merged holds both halves", () => {
+    const { merged } = splitBlogContext(brandFields, contextFields);
+    expect(merged).toEqual({ ...brandFields, ...contextFields });
+  });
+
+  test("readBlogContext reads both keys off the decofile", () => {
+    const { merged } = readBlogContext({
+      [BRAND_BLOCK_KEY]: brandFields,
+      [CONTEXT_BLOCK_KEY]: contextFields,
+      "site/pages/home": { path: "/" },
+    });
+    expect(merged).toEqual({ ...brandFields, ...contextFields });
+  });
+});
+
+describe("contextForTools", () => {
+  test("carries the fields the prompts actually render", () => {
+    const { merged } = splitBlogContext(
+      {
+        competitors: [{ name: "Rival", value: "Vende o mesmo mais barato" }],
+        specialDates: [
+          { name: "Volta às aulas", value: "Janeiro e fevereiro" },
+        ],
+      },
+      {},
+    );
+    const forTools = contextForTools(merged);
+    expect(forTools.competitors).toHaveLength(1);
+    expect(forTools.specialDates).toHaveLength(1);
+  });
+
+  test("normalises the store address, and blanks an unusable one", () => {
+    const usable = splitBlogContext({ storeUrl: " https://loja.com " }, {});
+    expect(contextForTools(usable.merged).storeUrl).toBe("https://loja.com/");
+    const junk = splitBlogContext({ storeUrl: "javascript:alert(1)" }, {});
+    expect(contextForTools(junk.merged).storeUrl).toBe("");
+  });
+
+  test("spans both halves and drops the blank editor rows", () => {
+    const { merged } = splitBlogContext(
+      { companyName: "Marca", values: [{ name: "", value: "" }] },
+      { tone: "Seco", dos: [{ name: "Abertura", value: "Pelo leitor" }] },
+    );
+    expect(contextForTools(merged)).toEqual({
+      companyName: "Marca",
+      description: "",
+      language: "",
+      storeUrl: "",
+      tone: "Seco",
+      targetAudience: "",
+      values: [],
+      competitors: [],
+      specialDates: [],
+      dos: [{ name: "Abertura", value: "Pelo leitor" }],
+      avoid: [],
+      keywords: [],
+      commercialPolicies: [],
+      vocabulary: [],
+      voiceExamples: [],
+    });
+  });
+
+  test("hands keywords on as plain terms, including from the legacy rule shape", () => {
+    const { merged } = splitBlogContext(
+      {
+        keywords: [
+          { name: "linho crú", value: "quem procura tecido natural" },
+          { name: "", value: "" },
+        ],
+      },
+      {},
+    );
+    expect(contextForTools(merged).keywords).toEqual(["linho crú"]);
+  });
+});
+
+describe("normalizeTerms", () => {
+  test("passes a plain term list through", () => {
+    expect(normalizeTerms(["linho", "vestido de festa"])).toEqual([
+      "linho",
+      "vestido de festa",
+    ]);
+  });
+
+  test("reads the term out of the legacy { name, value } row", () => {
+    expect(
+      normalizeTerms([{ name: "linho", value: "quem busca tecido natural" }]),
+    ).toEqual(["linho"]);
+  });
+
+  test("falls back to the body when a legacy row only had one", () => {
+    expect(normalizeTerms([{ name: "", value: "linho" }])).toEqual(["linho"]);
+  });
+
+  test("keeps a blank row, which is a row someone just added", () => {
+    expect(normalizeTerms(["", "linho"])).toEqual(["", "linho"]);
+    expect(filledTerms(normalizeTerms(["", "linho"]))).toEqual(["linho"]);
+  });
+
+  test("anything that is not a list is no terms at all", () => {
+    expect(normalizeTerms(undefined)).toEqual([]);
+    expect(normalizeTerms("linho")).toEqual([]);
+    expect(normalizeTerms([42, null])).toEqual([]);
+  });
+});
+
+describe("applyExtractResult, term fields", () => {
+  test("writes a plain string list, never re-objectified into rules", () => {
+    const target: Record<string, unknown> = { keywords: [] };
+    const touched = applyExtractResult(
+      target,
+      { keywords: ["linho crú", "vestido de festa"] },
+      {
+        mode: "empty",
+        textFields: [],
+        ruleFields: [],
+        termFields: ["keywords"],
+      },
+    );
+    expect(touched).toEqual(["keywords"]);
+    expect(target.keywords).toEqual(["linho crú", "vestido de festa"]);
+  });
+
+  test("empty mode leaves terms a person already chose", () => {
+    const target: Record<string, unknown> = { keywords: ["linho"] };
+    applyExtractResult(
+      target,
+      { keywords: ["seda"] },
+      {
+        mode: "empty",
+        textFields: [],
+        ruleFields: [],
+        termFields: ["keywords"],
+      },
+    );
+    expect(target.keywords).toEqual(["linho"]);
+  });
+
+  test("a list of only blank terms is not an answer", () => {
+    const target: Record<string, unknown> = { keywords: ["linho"] };
+    applyExtractResult(
+      target,
+      { keywords: ["", "  "] },
+      {
+        mode: "replace",
+        textFields: [],
+        ruleFields: [],
+        termFields: ["keywords"],
+      },
+    );
+    expect(target.keywords).toEqual(["linho"]);
+  });
+});
+
+describe("missingBrandForGeneration, across the two blocks", () => {
+  test("is satisfied by the merged view, never by one half alone", () => {
+    const brandBlock = {
+      companyName: "Marca",
+      language: "pt-BR",
+      description: "Vende roupa",
+      targetAudience: "Quem procura linho",
+    };
+    const contextBlock = {
+      tone: "Seco",
+      dos: [{ name: "Abertura", value: "Pelo leitor" }],
+      avoid: [{ name: "Preço", value: "Nunca em texto" }],
+    };
+    const { brand, merged } = splitBlogContext(brandBlock, contextBlock);
+    expect(missingBrandForGeneration(brand)).toEqual(["tone", "dos", "avoid"]);
+    expect(missingBrandForGeneration(merged)).toEqual([]);
+  });
+});
+
+describe("asBlock", () => {
+  test("an absent block is the SAME reference every call", () => {
+    // What keeps the editor's `useAutosave` from re-seeding forever.
+    expect(asBlock(undefined)).toBe(asBlock(null));
+    expect(asBlock(undefined)).toBe(asBlock("not a block"));
+  });
+
+  test("a stored block is passed through by reference", () => {
+    const block = { companyName: "Marca" };
+    expect(asBlock(block)).toBe(block);
+  });
+});
+
+describe("pickBlogFields", () => {
+  test("narrowing to the brand half leaves the writing rules behind", () => {
+    const legacy = {
+      companyName: "Marca",
+      tone: "Seco",
+      dos: [{ name: "Abertura", value: "Pelo leitor" }],
+    };
+    expect(pickBlogFields(legacy, BRAND_FIELDS)).toEqual({
+      companyName: "Marca",
+    });
+  });
+
+  test("the same legacy block saved as context keeps only the rules", () => {
+    const legacy = {
+      companyName: "Marca",
+      tone: "Seco",
+      dos: [{ name: "Abertura", value: "Pelo leitor" }],
+    };
+    expect(pickBlogFields(legacy, CONTEXT_FIELDS)).toEqual({
+      tone: "Seco",
+      dos: [{ name: "Abertura", value: "Pelo leitor" }],
+    });
+  });
+
+  test("a field the block never had stays absent, rather than becoming undefined", () => {
+    expect(pickBlogFields({ tone: "Seco" }, CONTEXT_FIELDS)).toEqual({
+      tone: "Seco",
+    });
+  });
+});
+
+/**
+ * Narrowing is right, but only once there is somewhere else for the rules to
+ * go. Every site written before the split keeps them in the brand block, and a
+ * brand block written without them is a brand that lost its voice to one
+ * keystroke in an unrelated field.
+ */
+describe("brandBlockToSave", () => {
+  const legacy = {
+    companyName: "Marca",
+    tone: "Seco",
+    dos: [{ name: "Abertura", value: "Pelo leitor" }],
+  };
+
+  test("carries the rules while no context block exists to hold them", () => {
+    expect(
+      brandBlockToSave(
+        { ...legacy, companyName: "Marca B" },
+        legacy,
+        undefined,
+      ),
+    ).toEqual({
+      companyName: "Marca B",
+      tone: "Seco",
+      dos: [{ name: "Abertura", value: "Pelo leitor" }],
+    });
+  });
+
+  test("sheds them once the context block holds them", () => {
+    expect(brandBlockToSave(legacy, legacy, { tone: "Seco" })).toEqual({
+      companyName: "Marca",
+    });
+  });
+
+  test("an empty context block is still a context block", () => {
+    expect(brandBlockToSave(legacy, legacy, {})).toEqual({
+      companyName: "Marca",
+    });
+  });
+
+  test("reads the rules from storage, not from a draft already narrowed", () => {
+    expect(brandBlockToSave({ companyName: "Marca B" }, legacy, null)).toEqual({
+      companyName: "Marca B",
+      tone: "Seco",
+      dos: [{ name: "Abertura", value: "Pelo leitor" }],
+    });
+  });
+
+  test("an edited brand field wins over the stored copy", () => {
+    expect(
+      brandBlockToSave({ companyName: "Novo" }, { companyName: "Velho" }, null),
+    ).toEqual({ companyName: "Novo" });
+  });
+
+  test("a site with no rules to carry saves just the brand half", () => {
+    expect(brandBlockToSave({ companyName: "Marca" }, {}, null)).toEqual({
+      companyName: "Marca",
+    });
+  });
+});
+
+describe("applyExtractResult", () => {
+  const opts = (mode: "empty" | "replace") => ({
+    mode,
+    textFields: ["tone"] as const,
+    ruleFields: ["dos"] as const,
+  });
+  const result = {
+    tone: "Seco e direto",
+    dos: [{ name: "Abertura", value: "Pelo leitor" }],
+  };
+
+  test("empty mode fills a blank", () => {
+    const target: Record<string, unknown> = {};
+    expect(applyExtractResult(target, result, opts("empty"))).toEqual([
+      "tone",
+      "dos",
+    ]);
+    expect(target.tone).toBe("Seco e direto");
+  });
+
+  test("empty mode never touches what a person wrote", () => {
+    const target: Record<string, unknown> = {
+      tone: "Meu tom",
+      dos: [{ name: "Minha regra", value: "" }],
+    };
+    expect(applyExtractResult(target, result, opts("empty"))).toEqual([]);
+    expect(target.tone).toBe("Meu tom");
+    expect(target.dos).toEqual([{ name: "Minha regra", value: "" }]);
+  });
+
+  test("empty mode treats whitespace and a blank editor row as empty", () => {
+    const target: Record<string, unknown> = {
+      tone: "   ",
+      dos: [{ name: "", value: "" }],
+    };
+    expect(applyExtractResult(target, result, opts("empty"))).toEqual([
+      "tone",
+      "dos",
+    ]);
+  });
+
+  test("replace mode overwrites what a person wrote", () => {
+    const target: Record<string, unknown> = {
+      tone: "Meu tom",
+      dos: [{ name: "Minha regra", value: "corpo" }],
+    };
+    expect(applyExtractResult(target, result, opts("replace"))).toEqual([
+      "tone",
+      "dos",
+    ]);
+    expect(target.tone).toBe("Seco e direto");
+    expect(target.dos).toEqual([{ name: "Abertura", value: "Pelo leitor" }]);
+  });
+
+  test("replace keeps a field the model could not answer, rather than wiping it", () => {
+    const target: Record<string, unknown> = { tone: "Meu tom", dos: [] };
+    expect(
+      applyExtractResult(target, { tone: "", dos: [] }, opts("replace")),
+    ).toEqual([]);
+    expect(target.tone).toBe("Meu tom");
+  });
+
+  test("a rule list of only blank rows is not an answer", () => {
+    const target: Record<string, unknown> = {};
+    expect(
+      applyExtractResult(
+        target,
+        { dos: [{ name: "", value: "" }] },
+        opts("replace"),
+      ),
+    ).toEqual([]);
+    expect(target.dos).toBeUndefined();
+  });
+});
+
+describe("normalizeVoiceExamples", () => {
+  test("reads the stored shape", () => {
+    expect(
+      normalizeVoiceExamples([
+        { text: "do rio pro mundo", sounds: true },
+        { text: "Adquira já o seu produto", sounds: false },
+      ]),
+    ).toEqual([
+      { text: "do rio pro mundo", sounds: true },
+      { text: "Adquira já o seu produto", sounds: false },
+    ]);
+  });
+
+  test("tolerates the `{ name, value }` shape this field briefly had", () => {
+    expect(
+      normalizeVoiceExamples([
+        { name: "collections/blog/posts/a", value: "do rio pro mundo" },
+      ]),
+    ).toEqual([{ text: "do rio pro mundo", sounds: true }]);
+  });
+
+  test("a bare string is a sentence to imitate", () => {
+    expect(normalizeVoiceExamples(["do rio pro mundo"])).toEqual([
+      { text: "do rio pro mundo", sounds: true },
+    ]);
+  });
+
+  test("defaults to `sounds` — only an explicit false is a counter-example", () => {
+    expect(normalizeVoiceExamples([{ text: "oi" }])).toEqual([
+      { text: "oi", sounds: true },
+    ]);
+  });
+
+  test("keeps the blank row the add button just created", () => {
+    expect(normalizeVoiceExamples([{ text: "", sounds: true }])).toHaveLength(
+      1,
+    );
+    expect(filledVoiceExamples([{ text: "", sounds: true }])).toEqual([]);
+  });
+
+  test("anything that is not a list is no examples", () => {
+    expect(normalizeVoiceExamples(undefined)).toEqual([]);
+    expect(normalizeVoiceExamples("nope")).toEqual([]);
+  });
+});
+
+describe("applyExtractResult, example fields", () => {
+  const opts = (mode: "empty" | "replace") => ({
+    mode,
+    textFields: [] as const,
+    ruleFields: [] as const,
+    exampleFields: ["voiceExamples"] as const,
+  });
+
+  test("fills a blank with what the extract found", () => {
+    const target: Record<string, unknown> = {};
+    expect(
+      applyExtractResult(
+        target,
+        { voiceExamples: [{ text: "do rio pro mundo", sounds: true }] },
+        opts("empty"),
+      ),
+    ).toEqual(["voiceExamples"]);
+  });
+
+  test("empty mode leaves the counter-examples a human marked", () => {
+    const target: Record<string, unknown> = {
+      voiceExamples: [{ text: "Adquira já", sounds: false }],
+    };
+    expect(
+      applyExtractResult(
+        target,
+        { voiceExamples: [{ text: "do rio pro mundo", sounds: true }] },
+        opts("empty"),
+      ),
+    ).toEqual([]);
+    expect(target.voiceExamples).toEqual([
+      { text: "Adquira já", sounds: false },
+    ]);
+  });
+});
+
+describe("canDeletePost", () => {
+  test("allows an archived post", () => {
+    expect(canDeletePost({ status: "archived" })).toBe(true);
+  });
+
+  test("refuses every other status, including the live ones", () => {
+    for (const status of [
+      "draft",
+      "idea",
+      "generating",
+      "awaiting_review",
+      "in_review",
+      "scheduled",
+      "published",
+    ]) {
+      expect(canDeletePost({ status })).toBe(false);
+    }
+  });
+
+  test("refuses a post with no status — that reads as published", () => {
+    expect(canDeletePost({})).toBe(false);
+  });
+
+  test("refuses an unrecognized status rather than guessing", () => {
+    expect(canDeletePost({ status: "whatever" })).toBe(false);
+  });
+});
+
+describe("blockExample", () => {
+  const LIST = "site/sections/Blog/Post/List.tsx";
+  const post = (sections: Record<string, unknown>[]) => ({
+    __resolveType: "blog/loaders/Blogpost.ts",
+    post: { title: "Um post", sections },
+  });
+
+  test("finds how the site stores a block", () => {
+    expect(
+      blockExample(LIST, {
+        "collections/blog/posts/a": post([
+          { __resolveType: LIST, items: "a\nb", style: "ordered" },
+        ]),
+      }),
+    ).toEqual({ items: "a\nb", style: "ordered" });
+  });
+
+  test("never carries the resolveType into the example", () => {
+    const example = blockExample(LIST, {
+      "collections/blog/posts/a": post([{ __resolveType: LIST, items: "a" }]),
+    });
+    expect(example).not.toHaveProperty("__resolveType");
+  });
+
+  test("skips a block stored with no props, which teaches nothing", () => {
+    expect(
+      blockExample(LIST, {
+        "collections/blog/posts/a": post([
+          { __resolveType: LIST },
+          { __resolveType: LIST, items: "a" },
+        ]),
+      }),
+    ).toEqual({ items: "a" });
+  });
+
+  test("skips one too long to be worth the prompt", () => {
+    expect(
+      blockExample(LIST, {
+        "collections/blog/posts/a": post([
+          { __resolveType: LIST, items: "x".repeat(900) },
+        ]),
+      }),
+    ).toBeUndefined();
+  });
+
+  /** A planning post may have been generated wrong; copying it back in would make it permanent. */
+  test("reads live posts only, never a draft of our own making", () => {
+    expect(
+      blockExample(LIST, {
+        "blog-manager/posts/draft": {
+          name: "blog-manager/posts/draft",
+          post: { sections: [{ __resolveType: LIST, items: { "1": "a" } }] },
+        },
+      }),
+    ).toBeUndefined();
+  });
+
+  test("answers nothing for a block no post uses yet", () => {
+    expect(blockExample(LIST, {})).toBeUndefined();
+  });
+});
+
+/**
+ * Telling the writer to follow the example and then validating against a schema
+ * that contradicts it costs the section either way. These pin which side gives.
+ */
+describe("reconciledSchema", () => {
+  const listSchema = {
+    type: "object",
+    properties: {
+      items: { type: "object" },
+      style: { type: "string", enum: ["ordered", "unordered"] },
+    },
+  };
+
+  test("drops a type a block the site renders disproves", () => {
+    expect(
+      reconciledSchema(listSchema, { items: "a\nb", style: "ordered" }),
+    ).toEqual({
+      type: "object",
+      properties: {
+        items: {},
+        style: { type: "string", enum: ["ordered", "unordered"] },
+      },
+    });
+  });
+
+  test("leaves the schema alone where the two agree", () => {
+    expect(reconciledSchema(listSchema, { style: "ordered" })).toBe(listSchema);
+  });
+
+  test("a block with no example to show keeps every assertion", () => {
+    expect(reconciledSchema(listSchema, undefined)).toBe(listSchema);
+  });
+
+  test("takes the enum out with the type, since it described the wrong shape", () => {
+    const schema = {
+      type: "object",
+      properties: { size: { type: "string", enum: ["full", "normal"] } },
+    };
+    expect(reconciledSchema(schema, { size: 2 })).toEqual({
+      type: "object",
+      properties: { size: {} },
+    });
+  });
+
+  test("a stored null disproves nothing — it is an empty slot, not a type", () => {
+    expect(reconciledSchema(listSchema, { items: null })).toBe(listSchema);
+  });
+
+  test("ignores a prop the schema never declared", () => {
+    expect(reconciledSchema(listSchema, { mystery: 1 })).toBe(listSchema);
+  });
+});
+
+/**
+ * The editor's view of a schema exists to render a form, so it flattens what a
+ * form cannot show — a `string | string[]` prop comes out of it typed `object`.
+ * The meta carries the real thing one hop behind deco's block wrapper.
+ */
+describe("rawBlockSchema", () => {
+  const RT = "site/sections/Blog/Post/List.tsx";
+  const meta = {
+    manifest: {
+      blocks: {
+        sections: { [RT]: { $ref: "#/definitions/List", namespace: "site" } },
+      },
+    },
+    schema: {
+      definitions: {
+        List: {
+          type: "object",
+          allOf: [{ $ref: "#/definitions/ListProps" }],
+          required: ["__resolveType"],
+          properties: {
+            __resolveType: { type: "string", enum: [RT] },
+          },
+        },
+        ListProps: {
+          type: "object",
+          required: ["items"],
+          properties: {
+            items: {
+              anyOf: [
+                { type: "string" },
+                { type: "array", items: { type: "string" } },
+              ],
+            },
+            style: { type: "string", enum: ["ordered", "unordered"] },
+          },
+        },
+      },
+    },
+  } as unknown as LiveMeta;
+
+  test("keeps the union a form had to flatten", () => {
+    expect(rawBlockSchema(RT, meta)).toEqual({
+      type: "object",
+      required: ["items"],
+      properties: {
+        items: {
+          anyOf: [
+            { type: "string" },
+            { type: "array", items: { type: "string" } },
+          ],
+        },
+        style: { type: "string", enum: ["ordered", "unordered"] },
+      },
+    });
+  });
+
+  test("never hands over the resolveType, which the caller stamps", () => {
+    const schema = rawBlockSchema(RT, meta);
+    const properties = schema.properties as Record<string, unknown>;
+    expect(properties).not.toHaveProperty("__resolveType");
+    expect(schema.required).toEqual(["items"]);
+  });
+
+  test("answers nothing for a block this meta has never heard of", () => {
+    expect(rawBlockSchema("site/sections/Nope.tsx", meta)).toEqual({});
+  });
+
+  test("a ref that goes nowhere resolves to an open schema, never a throw", () => {
+    const broken = {
+      manifest: {
+        blocks: { sections: { [RT]: { $ref: "#/definitions/Gone" } } },
+      },
+      schema: { definitions: {} },
+    } as unknown as LiveMeta;
+    expect(rawBlockSchema(RT, broken)).toEqual({});
+  });
+
+  test("stops following a ref that points at itself", () => {
+    const cyclic = {
+      manifest: { blocks: { sections: { [RT]: { $ref: "#/definitions/A" } } } },
+      schema: { definitions: { A: { $ref: "#/definitions/A" } } },
+    } as unknown as LiveMeta;
+    expect(rawBlockSchema(RT, cyclic)).toEqual({});
+  });
+});
+
+/**
+ * Every product shape but one carries a `__resolveType`, which the writer never
+ * sees and so cannot compose. It chooses ids; the shape comes from a block the
+ * site already renders.
+ */
+describe("buildPostSections — product slots", () => {
+  const types = { ProductShelf: "site/sections/Blog/Post/ProductShelf.tsx" };
+  const section = (productIds: string[]) => [
+    { type: "ProductShelf", props: { title: "Recomendados" }, productIds },
+  ];
+
+  test("writes ids into the loader ref a site stores, keeping its wiring", () => {
+    const shape = {
+      ProductShelf: {
+        products: {
+          __resolveType: "vtex/loaders/intelligentSearch/productList.ts",
+          props: { ids: ["000"], simulationBehavior: "default" },
+        },
+      },
+    };
+    expect(buildPostSections(section(["111", "222"]), types, shape)).toEqual([
+      {
+        __resolveType: types.ProductShelf,
+        title: "Recomendados",
+        products: {
+          __resolveType: "vtex/loaders/intelligentSearch/productList.ts",
+          props: { ids: ["111", "222"], simulationBehavior: "default" },
+        },
+      },
+    ]);
+  });
+
+  test("writes a plain id plainly, for a site that stores no wiring", () => {
+    const shape = { ProductShelf: { products: ["000"] } };
+    expect(buildPostSections(section(["111", "222"]), types, shape)).toEqual([
+      {
+        __resolveType: types.ProductShelf,
+        title: "Recomendados",
+        products: ["111", "222"],
+      },
+    ]);
+  });
+
+  /** Guessing a loader ref hands a site something its own section cannot read. */
+  test("leaves the slot alone when no block shows how this site stores it", () => {
+    expect(buildPostSections(section(["111"]), types, {})).toEqual([
+      { __resolveType: types.ProductShelf, title: "Recomendados" },
+    ]);
+  });
+
+  test("a block with no ids chosen is untouched", () => {
+    const shape = { ProductShelf: { products: ["000"] } };
+    expect(buildPostSections(section([]), types, shape)).toEqual([
+      { __resolveType: types.ProductShelf, title: "Recomendados" },
+    ]);
+  });
+});
+
+describe("productSlotOf", () => {
+  test("finds the single-product slot", () => {
+    expect(productSlotOf({ product: "1", badge: "Novo" })).toBe("product");
+  });
+
+  test("finds the shelf slot", () => {
+    expect(productSlotOf({ title: "t", products: [] })).toBe("products");
+  });
+
+  test("answers nothing for a block that shows no product", () => {
+    expect(productSlotOf({ text: "oi" })).toBeNull();
+    expect(productSlotOf(undefined)).toBeNull();
+  });
+});
+
+/**
+ * These stand in where a site has no published post to learn from, so a wrong
+ * one is worse than none: it would teach every new site the same mistake.
+ */
+describe("KNOWN_BLOG_BLOCK_EXAMPLES", () => {
+  /** The blocks Studio draws its own editor for — see `block-registry.tsx`. */
+  const BESPOKE = [
+    "Paragraph",
+    "Heading",
+    "Quote",
+    "Code",
+    "List",
+    "BlockImage",
+    "Video",
+    "Divider",
+    "Cta",
+    "Callout",
+    "Stat",
+    "StatGroup",
+    "CardGroup",
+    "Checklist",
+    "Steps",
+    "Comparison",
+    "Table",
+  ];
+
+  test("covers every block whose editor Studio owns", () => {
+    const missing = BESPOKE.filter(
+      (name) => !(name in KNOWN_BLOG_BLOCK_EXAMPLES),
+    );
+    expect(missing).toEqual([]);
+  });
+
+  /** The shape is the site's, and `writeProductListIds` is what writes it. */
+  test("never carries a product slot, which is not an example's to give", () => {
+    for (const [name, example] of Object.entries(KNOWN_BLOG_BLOCK_EXAMPLES)) {
+      expect({ name, slot: productSlotOf(example) }).toEqual({
+        name,
+        slot: null,
+      });
+    }
+  });
+
+  test("never carries a resolveType, which the caller stamps", () => {
+    for (const example of Object.values(KNOWN_BLOG_BLOCK_EXAMPLES)) {
+      expect(example).not.toHaveProperty("__resolveType");
+    }
+  });
+
+  /** Several of these blocks keep structured data as JSON inside a string. */
+  test("every JSON-in-a-string prop actually parses", () => {
+    const encoded: Record<string, string[]> = {
+      StatGroup: ["stats"],
+      CardGroup: ["cards"],
+      Checklist: ["items"],
+      Steps: ["steps"],
+      Comparison: ["left", "right"],
+      Table: ["headers", "rows"],
+    };
+    for (const [name, props] of Object.entries(encoded)) {
+      for (const prop of props) {
+        const raw = KNOWN_BLOG_BLOCK_EXAMPLES[name]?.[prop];
+        expect({ name, prop, type: typeof raw }).toEqual({
+          name,
+          prop,
+          type: "string",
+        });
+        expect(() => JSON.parse(raw as string)).not.toThrow();
+      }
+    }
+  });
+
+  /** A `List` stores one newline-joined string, never an array. */
+  test("the list keeps its items as one string", () => {
+    const items = KNOWN_BLOG_BLOCK_EXAMPLES.List?.items;
+    expect(typeof items).toBe("string");
+    expect(items as string).toContain("\n");
   });
 });

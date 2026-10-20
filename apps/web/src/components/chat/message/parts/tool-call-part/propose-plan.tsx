@@ -24,7 +24,7 @@ export function ProposePlanPart({ part }: ProposePlanPartProps) {
     <div className="my-1.5 flex flex-col gap-1">
       {/* Header */}
       <div className="flex items-center gap-2">
-        <BookOpen01 className="size-4 text-purple-500 shrink-0" />
+        <BookOpen01 className="size-4 text-special shrink-0" />
         <span className="text-[14px] font-medium text-foreground/80">
           {t("chat.proposePlan.implementationPlan")}
         </span>
@@ -46,7 +46,7 @@ export function ProposePlanPart({ part }: ProposePlanPartProps) {
         <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground transition-colors">
           {t("chat.proposePlan.viewPlan")}
         </summary>
-        <div className="mt-1 pl-2 border-l-2 border-purple-500/30 prose prose-sm max-w-none text-sm">
+        <div className="mt-1 pl-2 border-l-2 border-special/30 prose prose-sm max-w-none text-sm">
           <MessageTextPart
             id="plan-content"
             part={{ type: "text", text: plan }}
