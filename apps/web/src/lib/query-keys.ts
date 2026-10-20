@@ -338,9 +338,6 @@ export const KEYS = {
   // orgId: organization ID
   // scopeKey: connectionId for connection-scoped tools, virtualMcpId/gatewayId for scoped tools, etc.
   // client: MCP client instance for cache isolation
-  // Base prefix for invalidating all collection variants
-  collection: (orgId: string, scopeKey: string, collectionName: string) =>
-    [orgId, scopeKey, "collection", collectionName] as const,
   // Item query
   collectionItem: (
     client: unknown,
@@ -854,6 +851,27 @@ export const KEYS = {
   sandboxSprite: (sandboxKey: string) =>
     ["sandbox-sprite", sandboxKey] as const,
 } as const;
+
+/** Invalidates every collectionItem/collectionList/collectionListInfinite
+ *  cache for one scopeKey + collection name. Those keys lead with the MCP
+ *  client instance, which a caller rarely has on hand, so this predicate
+ *  matches on the fields after it instead of a literal queryKey prefix. */
+export function invalidateCollectionQueries(
+  queryClient: import("@tanstack/react-query").QueryClient,
+  scopeKey: string,
+  collectionName: string,
+) {
+  queryClient.invalidateQueries({
+    predicate: (query) => {
+      const key = query.queryKey;
+      return (
+        key[1] === scopeKey &&
+        key[3] === "collection" &&
+        key[4] === collectionName
+      );
+    },
+  });
+}
 
 export function invalidateVirtualMcpQueries(
   queryClient: import("@tanstack/react-query").QueryClient,

@@ -9,8 +9,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useMatch } from "@tanstack/react-router";
 import { toast } from "sonner";
-import { KEYS } from "../lib/query-keys";
-import { useProjectContext } from "@/sdk";
+import { invalidateCollectionQueries } from "../lib/query-keys";
 
 /**
  * Hook that returns an onToolCall handler for invalidating collection queries
@@ -19,7 +18,6 @@ import { useProjectContext } from "@/sdk";
  */
 export function useInvalidateCollectionsOnToolCall() {
   const queryClient = useQueryClient();
-  const { org } = useProjectContext();
   const collectionMatch = useMatch({
     from: "/shell/$org/settings/connections/$appSlug/$collectionName/$itemId",
     shouldThrow: false,
@@ -47,11 +45,8 @@ export function useInvalidateCollectionsOnToolCall() {
       return;
     }
 
-    // Invalidate all queries for this collection using the base prefix
-    // This will invalidate both list and item queries
-    queryClient.invalidateQueries({
-      queryKey: KEYS.collection(org.slug, connectionId, collectionName),
-    });
+    // Invalidate both list and item queries for this collection + scope
+    invalidateCollectionQueries(queryClient, connectionId, collectionName);
 
     // Notify user that collection was updated
     const formattedCollectionName = collectionName
