@@ -124,6 +124,7 @@ export interface StudioToolIO {
             cheap_reviewer_model?: boolean | undefined;
             coding_agent_org_mcps?: boolean | undefined;
             coding_agents_claude_code?: boolean | undefined;
+            task_board_codex?: boolean | undefined;
             chat_harness_codex?: boolean | undefined;
             chat_harness_sandbox_only?: boolean | undefined;
             sandbox_repo_snapshots?: boolean | undefined;
@@ -208,6 +209,7 @@ export interface StudioToolIO {
             cheap_reviewer_model?: boolean | undefined;
             coding_agent_org_mcps?: boolean | undefined;
             coding_agents_claude_code?: boolean | undefined;
+            task_board_codex?: boolean | undefined;
             chat_harness_codex?: boolean | undefined;
             chat_harness_sandbox_only?: boolean | undefined;
             sandbox_repo_snapshots?: boolean | undefined;
@@ -288,6 +290,7 @@ export interface StudioToolIO {
             cheap_reviewer_model?: boolean | undefined;
             coding_agent_org_mcps?: boolean | undefined;
             coding_agents_claude_code?: boolean | undefined;
+            task_board_codex?: boolean | undefined;
             chat_harness_codex?: boolean | undefined;
             chat_harness_sandbox_only?: boolean | undefined;
             sandbox_repo_snapshots?: boolean | undefined;
@@ -377,6 +380,7 @@ export interface StudioToolIO {
         | undefined;
       priority?: "none" | "low" | "medium" | "high" | "urgent" | undefined;
       type?: "bug" | "feature" | "chore" | "spike" | "security" | undefined;
+      harnessId?: "claude-code" | "codex" | undefined;
       assigneeId?: string | null | undefined;
       repo?: string | null | undefined;
       virtualMcpId?: string | null | undefined;
@@ -388,6 +392,7 @@ export interface StudioToolIO {
     };
     output: {
       item: {
+        harnessId: "claude-code" | "codex";
         id: string;
         organizationId: string;
         title: string;
@@ -466,6 +471,7 @@ export interface StudioToolIO {
     input: { [x: string]: never };
     output: {
       items: {
+        harnessId: "claude-code" | "codex";
         id: string;
         organizationId: string;
         title: string;
@@ -558,6 +564,7 @@ export interface StudioToolIO {
         | undefined;
       priority?: "none" | "low" | "medium" | "high" | "urgent" | undefined;
       type?: "bug" | "feature" | "chore" | "spike" | "security" | undefined;
+      harnessId?: "claude-code" | "codex" | undefined;
       assigneeId?: string | null | undefined;
       repo?: string | null | undefined;
       virtualMcpId?: string | null | undefined;
@@ -571,6 +578,7 @@ export interface StudioToolIO {
     };
     output: {
       item: {
+        harnessId: "claude-code" | "codex";
         id: string;
         organizationId: string;
         title: string;
@@ -7149,13 +7157,13 @@ export interface StudioToolIO {
     input: {
       providerId?:
         | "google"
+        | "claude-code"
+        | "codex"
         | "deco"
         | "anthropic"
         | "openrouter"
         | "llmapi"
         | "openai-compatible"
-        | "claude-code"
-        | "codex"
         | undefined;
     };
     output: {

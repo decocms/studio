@@ -1,4 +1,8 @@
+import { z } from "zod";
 import { orgFlagEnabled } from "./organization/schema";
+
+export const TaskBoardHarnessSchema = z.enum(["claude-code", "codex"]);
+export type TaskBoardHarnessId = z.infer<typeof TaskBoardHarnessSchema>;
 
 /**
  * Sentinel `assigneeId` for the org's Super Agent (the well-known Decopilot

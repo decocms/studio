@@ -1,4 +1,5 @@
-import { LANES } from "@decocms/shared/task-board";
+import { resolveTaskRunModel } from "./task-run-harness";
+import { LANES, TaskBoardHarnessSchema } from "@decocms/shared/task-board";
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import {
@@ -51,6 +52,9 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
     status: TaskBoardItemStatusSchema.optional(),
     priority: TaskBoardItemPrioritySchema.optional(),
     type: TaskBoardItemTypeSchema.optional(),
+    harnessId: TaskBoardHarnessSchema.optional().describe(
+      "Runtime for future implementation runs and retries. Defaults to claude-code. Codex requires the task_board_codex organization flag and a linked ChatGPT plan or compatible Responses API provider. Does not change reviewer runs or an active run.",
+    ),
     assigneeId: z.string().nullable().optional(),
     repo: z.string().max(MAX_TASK_REPO_LENGTH).nullable().optional(),
     virtualMcpId: z
@@ -174,7 +178,12 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
       }
     }
 
+    if (input.harnessId === "codex") {
+      await resolveTaskRunModel(ctx, organizationId, getUserId(ctx)!, "codex");
+    }
+
     let item = await ctx.storage.taskBoard.create({
+      harnessId: input.harnessId,
       organizationId,
       title: input.title,
       description: input.description ?? null,

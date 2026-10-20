@@ -1,3 +1,4 @@
+import * as migration256taskboardharness from "./256-task-board-harness";
 import * as migration254codexsubscriptions from "./254-codex-subscriptions";
 import * as migration255ordermonitor from "./255-order-monitor";
 import * as migration228orgvoiceconfig from "./228-org-voice-config";
@@ -550,6 +551,7 @@ const migrations: Record<string, Migration> = {
   "253-automation-pr-builtin-triggers": migration253automationprbuiltintriggers,
   "254-codex-subscriptions": migration254codexsubscriptions,
   "255-order-monitor": migration255ordermonitor,
+  "256-task-board-harness": migration256taskboardharness,
 };
 
 export default migrations;

@@ -1,4 +1,5 @@
-import { LANES } from "@decocms/shared/task-board";
+import { resolveTaskRunModel } from "./task-run-harness";
+import { LANES, TaskBoardHarnessSchema } from "@decocms/shared/task-board";
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { getUserId, requireAuth } from "@/core/studio-context";
@@ -59,6 +60,7 @@ const LOGGED_FIELDS: {
  * `type` skipped the write entirely and still answered 200 with the old item.
  */
 const UPDATABLE_FIELDS = [
+  "harnessId",
   "title",
   "description",
   "status",
@@ -191,6 +193,9 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     status: TaskBoardItemStatusSchema.optional(),
     priority: TaskBoardItemPrioritySchema.optional(),
     type: TaskBoardItemTypeSchema.optional(),
+    harnessId: TaskBoardHarnessSchema.optional().describe(
+      "Runtime for future implementation runs and retries. Defaults to claude-code. Codex requires the task_board_codex organization flag and a linked ChatGPT plan or compatible Responses API provider. Does not change reviewer runs or an active run.",
+    ),
     assigneeId: z.string().nullable().optional(),
     repo: z.string().max(MAX_TASK_REPO_LENGTH).nullable().optional(),
     virtualMcpId: z
@@ -368,6 +373,21 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
       }
     }
 
+    if (
+      previous &&
+      (input.harnessId ?? previous.harnessId) === "codex" &&
+      (input.harnessId !== undefined || becameSuperAgent)
+    ) {
+      await resolveTaskRunModel(
+        ctx,
+        organizationId,
+        assigneeChanged && input.assigneeId
+          ? getUserId(ctx)!
+          : (previous.assignedBy ?? previous.createdBy),
+        "codex",
+      );
+    }
+
     // Tags are a separate join table, applied before the item is (re)fetched
     // below so attachTags() picks up the new set either way. Every id must
     // belong to this org — otherwise a caller could attach another org's tag.
@@ -390,6 +410,7 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
         input.id,
         organizationId,
         {
+          harnessId: input.harnessId,
           title: input.title,
           description: input.description,
           status: nextStatus,

@@ -259,6 +259,7 @@ describe("isPrCreateBashCommand", () => {
 
 function makeItem(overrides: Partial<TaskBoardItem> = {}): TaskBoardItem {
   return {
+    harnessId: "claude-code",
     id: "item-1",
     organizationId: "org-1",
     title: "t",

@@ -30,6 +30,7 @@ import type {
 } from "./types";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
 import {
+  type TaskBoardHarnessId,
   DEFAULT_TASK_TYPE,
   isReviewerThreadTitle,
   LANES,
@@ -404,6 +405,7 @@ export class TaskBoardStorage {
   }
 
   async create(params: {
+    harnessId?: TaskBoardHarnessId;
     organizationId: string;
     title: string;
     description?: string | null;
@@ -454,6 +456,7 @@ export class TaskBoardStorage {
           type: params.type ?? DEFAULT_TASK_TYPE,
           assignee_id: params.assigneeId ?? null,
           assigned_by: params.assignedBy ?? null,
+          harness_id: params.harnessId ?? "claude-code",
           repo: params.repo ?? null,
           repository_id: params.repositoryId ?? null,
           virtual_mcp_id: params.virtualMcpId ?? null,
@@ -499,6 +502,7 @@ export class TaskBoardStorage {
     id: string,
     organizationId: string,
     data: {
+      harnessId?: TaskBoardHarnessId;
       title?: string;
       description?: string | null;
       status?: string;
@@ -520,6 +524,7 @@ export class TaskBoardStorage {
     const row = await this.db
       .updateTable("task_board_items")
       .set({
+        ...(data.harnessId !== undefined ? { harness_id: data.harnessId } : {}),
         ...(data.title !== undefined ? { title: data.title } : {}),
         ...(data.description !== undefined
           ? { description: data.description }
@@ -3039,6 +3044,7 @@ export class TaskBoardStorage {
   }
 
   private itemFromDbRow(row: {
+    harness_id?: TaskBoardHarnessId;
     id: string;
     organization_id: string;
     title: string;
@@ -3075,6 +3081,7 @@ export class TaskBoardStorage {
       type: (row.type ?? DEFAULT_TASK_TYPE) as TaskBoardItemType,
       assigneeId: row.assignee_id,
       assignedBy: row.assigned_by,
+      harnessId: row.harness_id ?? "claude-code",
       repo: row.repo,
       repositoryId: row.repository_id ?? null,
       virtualMcpId: row.virtual_mcp_id ?? null,

@@ -23,6 +23,7 @@ function card(
   sortOrder: number,
 ): BoardItem {
   return {
+    harnessId: "claude-code",
     id,
     organizationId: "preview",
     title,

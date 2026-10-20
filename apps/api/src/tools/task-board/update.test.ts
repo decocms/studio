@@ -17,6 +17,7 @@ import {
 
 function item(overrides: Partial<TaskBoardItem> = {}): TaskBoardItem {
   return {
+    harnessId: "claude-code",
     id: "board_1",
     organizationId: "org_1",
     title: "Title",

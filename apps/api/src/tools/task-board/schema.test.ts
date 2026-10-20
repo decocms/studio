@@ -49,6 +49,7 @@ describe("TaskBoardItemSchema – proxy round-trip validation", () => {
     previewRoutes: [],
     source: null,
     retryAttempts: 0,
+    harnessId: "claude-code",
     reviewCycleStartedAt: null,
     threads: [],
     tags: [],
