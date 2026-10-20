@@ -68,6 +68,12 @@ type Orchestrator struct {
 	// The `running` state a checkout interrupted, restored by stepStartInner
 	// when the dev server turns out never to have stopped. Zero otherwise.
 	interruptedRunning events.LifecycleState
+	// "Run this step even though the usual short-circuit says it is already
+	// done." Set by ResumeInstall/ResumeStart and consumed by the step itself,
+	// so the intent travels WITH the queued step: a caller that mutated shared
+	// state instead would have it overwritten by whatever is already in flight.
+	forceInstall bool
+	forceStart   bool
 
 	// Held for the duration of a secondary-checkout sweep. Its own lock, not
 	// `mu`: the sweep runs OFF the step queue (see CloneSecondariesNow) and must
@@ -132,6 +138,52 @@ func (o *Orchestrator) ResumeFrom(step Step) {
 	o.enqueue(step)
 }
 
+// ResumeInstall queues an install. `force` makes it run even when the install
+// fingerprint still matches — the fingerprint is the package manager, the
+// runtime and the branch HEAD, so a dependency added to the working tree
+// without a commit is invisible to it and the step would skip an install the
+// caller knows it needs.
+func (o *Orchestrator) ResumeInstall(force bool) {
+	o.armForce(&o.forceInstall, force)
+	o.clearCrashError()
+	o.enqueue(StepInstall)
+}
+
+// ResumeStart queues a start. `force` respawns the dev server even when the
+// same command is already running or the install fingerprint does not match —
+// the two short-circuits that otherwise make this a no-op. It is the user
+// asking for the process back: after a failed install (which stopped the dev
+// task and marked the fingerprint bad) nothing else can bring it up, and a
+// restart that silently does nothing is how freshly pushed env never reaches
+// the process it was pushed for.
+func (o *Orchestrator) ResumeStart(force bool) {
+	o.armForce(&o.forceStart, force)
+	o.clearCrashError()
+	o.enqueue(StepStart)
+}
+
+// armForce raises a force flag for the step about to be queued. Never lowers
+// one: a plain resume arriving between a forced resume and its step must not
+// cancel the force.
+func (o *Orchestrator) armForce(flag *bool, force bool) {
+	if !force {
+		return
+	}
+	o.mu.Lock()
+	*flag = true
+	o.mu.Unlock()
+}
+
+// takeForce reads and clears a force flag. Consumed inside the step, once: a
+// second step must not inherit the first one's intent.
+func (o *Orchestrator) takeForce(flag *bool) bool {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	forced := *flag
+	*flag = false
+	return forced
+}
+
 // RestartDev force-respawns the dev server. It clears a latched crash error
 // (so the start step below isn't skipped) and unconditionally stops the current
 // dev task before restarting, so it recovers a process that is alive-but-wedged
@@ -140,6 +192,11 @@ func (o *Orchestrator) ResumeFrom(step Step) {
 // ResumeFrom(StepStart) would short-circuit on "dev already running".
 func (o *Orchestrator) RestartDev() {
 	o.clearCrashError()
+	// Forced for the same reason it stops the task by hand: the gates below
+	// are what make a plain resume a no-op. Without it the fingerprint check
+	// refuses every restart after a failed install, which is exactly when the
+	// watchdog is the only thing left trying.
+	o.armForce(&o.forceStart, true)
 	o.stopDevTask()
 	o.enqueue(StepStart)
 }
@@ -613,7 +670,11 @@ func (o *Orchestrator) stepInstallInner() bool {
 		o.chunk("[orchestrator] clone-only: skipping dependency install\r\n")
 		return true
 	}
-	if o.deps.InstallState.IsInstalledFor(cfg, o.branchHead()) {
+	// Forced: the shared install state is not consulted at all, so an install
+	// finishing concurrently cannot mark the fingerprint good underneath this
+	// one and turn it back into the skip it was asked to bypass.
+	if !o.takeForce(&o.forceInstall) &&
+		o.deps.InstallState.IsInstalledFor(cfg, o.branchHead()) {
 		o.broadcastDiscoveredScripts(cfg)
 		return true
 	}
@@ -767,6 +828,7 @@ func (o *Orchestrator) relinkAfterGolden(cfg *config.Enriched, tier RestoreSourc
 }
 
 func (o *Orchestrator) stepStartInner() startOutcome {
+	forced := o.takeForce(&o.forceStart)
 	cfg := o.deps.Store.Read()
 	if cfg == nil {
 		return startSkipped
@@ -780,7 +842,10 @@ func (o *Orchestrator) stepStartInner() startOutcome {
 		o.chunk(fmt.Sprintf("\r\n[orchestrator] skipping start: status=%s (resume to retry)\r\n", status.State))
 		return startSkipped
 	}
-	if !o.deps.InstallState.IsInstalledFor(cfg, o.branchHead()) {
+	// A failed install stops the dev task and marks the fingerprint bad, so
+	// this gate would then refuse every restart — the watchdog's included —
+	// and leave the pod with no way back. A forced start is the way out.
+	if !forced && !o.deps.InstallState.IsInstalledFor(cfg, o.branchHead()) {
 		o.chunk("\r\n[orchestrator] skipping start: install fingerprint mismatch\r\n")
 		return startSkipped
 	}
@@ -793,7 +858,7 @@ func (o *Orchestrator) stepStartInner() startOutcome {
 		return startFailed
 	}
 
-	if runningCmd, runningCwd, found := o.deps.TaskManager.RunningCommandByLogName(command.Source); found &&
+	if runningCmd, runningCwd, found := o.deps.TaskManager.RunningCommandByLogName(command.Source); !forced && found &&
 		runningCmd == command.Cmd && runningCwd == command.Cwd {
 		o.chunk(fmt.Sprintf("[orchestrator] dev already running (%s) — skipping restart\r\n", command.Source))
 		cur := o.deps.Lifecycle.Current().Phase

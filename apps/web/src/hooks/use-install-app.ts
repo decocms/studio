@@ -19,6 +19,7 @@ import { useContentSyncTarget } from "@/components/sections-editor/use-content-s
 import { usePackagePath } from "@/components/sections-editor/use-package-path";
 import { readCommittedText } from "@/components/sections-editor/read-committed-file";
 import { sandboxGitStatusQueryKey } from "@/components/thread/repository/sandbox-git-api";
+import { dependencyInstallFor } from "@/hooks/dependency-install";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { KEYS } from "@/lib/query-keys";
@@ -77,26 +78,32 @@ async function writeFile(
 }
 
 /**
- * Ask the pod to install the dependency just written to `package.json`.
+ * Ask the pod to install the dependency this install needs.
  *
- * `force=1` is required, not an optimisation: the daemon skips the step when
- * its install fingerprint still matches, and that fingerprint is the package
- * manager, the runtime and the branch HEAD — none of which an uncommitted
- * `package.json` moves. Without it the step returns "enqueued" and installs
- * nothing.
+ * `force` is for the case the daemon cannot see: its install fingerprint is
+ * the package manager, the runtime and the branch HEAD, so a `package.json`
+ * we just rewrote in the working tree leaves it unchanged and the step would
+ * skip. Forced only when we actually rewrote it — forcing otherwise tears
+ * down a healthy dev server to reinstall a tree that did not move.
  *
- * Returns once the step is QUEUED, not once it is done: the orchestrator runs
- * it on its own goroutine. Nothing here waits, because nothing has to — a real
- * install stops the dev server, and the `install -> start` cascade brings it
- * back on the tree as it is then.
+ * Unforced is still worth sending when the dependency is already declared: it
+ * no-ops when the fingerprint matches, and it is what recovers an earlier
+ * attempt whose install failed (a failure marks the fingerprint bad, so the
+ * step runs).
+ *
+ * Returns once the step is QUEUED, not once it is done — the orchestrator runs
+ * it on its own goroutine. A failure surfaces in the setup stream, not here.
  *
  * Pod-addressed: `setup/:step` acts on whatever is running at this ref and
  * takes no thread.
  */
-async function requestDependencyInstall(ref: SandboxRef): Promise<void> {
+async function requestDependencyInstall(
+  ref: SandboxRef,
+  force: boolean,
+): Promise<void> {
   const res = await fetch(
     buildSandboxUrl({ ...ref, threadId: null }, "setup/install", {
-      force: "1",
+      force: force ? "1" : "0",
     }),
     { method: "POST" },
   );
@@ -181,15 +188,16 @@ export function useInstallApp({
       return runContentChange(content, {
         kind: "edit",
         write: async () => {
-          // package.json first: the install reads it, and every later write
-          // imports what it fetches. A failure before the install leaves an
-          // unused dependency, never a module with nothing behind it.
+          // package.json first, so the install that follows reads it. Only an
+          // ordering: the step is queued, not awaited, so the writes below can
+          // land while it runs and a failed install surfaces in the setup
+          // stream rather than here.
           const manifest = patches.files.find(
             (file) => file.path === "package.json",
           );
           if (manifest) await writeFile(ref, packagePath, manifest);
-          // Deno needs none of this: the `apps/` import-map alias covers it.
-          if (patches.dependency) await requestDependencyInstall(ref);
+          const install = dependencyInstallFor(patches);
+          if (install) await requestDependencyInstall(ref, install.force);
           for (const file of patches.files) {
             if (file.path !== "package.json") {
               await writeFile(ref, packagePath, file);

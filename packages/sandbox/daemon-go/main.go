@@ -1379,20 +1379,12 @@ func main() {
 		},
 		setup: map[string]http.HandlerFunc{
 			"clone": routes.Setup("clone", func(bool) { d.orchestrator.ResumeFrom(setup.StepClone) }),
-			// `force` drops the install fingerprint first. That fingerprint is
-			// the package manager, the runtime and the BRANCH HEAD, so a
-			// dependency added to the working tree without a commit leaves it
-			// unchanged and the step would short-circuit — never installing,
-			// and never stopping the dev server that is about to import the
-			// missing package. Callers that edit `package.json` in place (the
-			// CMS app install) ask for the install they actually need.
-			"install": routes.Setup("install", func(force bool) {
-				if force {
-					d.installState.Clear()
-				}
-				d.orchestrator.ResumeFrom(setup.StepInstall)
-			}),
-			"start": routes.Setup("start", func(bool) { d.orchestrator.ResumeFrom(setup.StepStart) }),
+			// `force` is honoured by install and start; each documents what it
+			// bypasses on the orchestrator. It is carried into the queued step
+			// rather than applied here, so a step already in flight cannot undo
+			// it.
+			"install": routes.Setup("install", d.orchestrator.ResumeInstall),
+			"start":   routes.Setup("start", d.orchestrator.ResumeStart),
 		},
 		tasksList:    routes.TasksList(tasksDeps),
 		tasksGet:     routes.TasksGet(tasksDeps),

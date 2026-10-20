@@ -1,6 +1,7 @@
 package setup
 
 import (
+	"sync"
 	"testing"
 
 	"github.com/decocms/studio/sandbox-daemon/internal/config"
@@ -14,37 +15,94 @@ func enriched(pm string) *config.Enriched {
 	}}
 }
 
-// The fingerprint is what decides whether an install is skipped, so what it
-// does NOT cover is the contract worth pinning: a dependency added to the
-// working tree moves neither the branch head nor the package manager, and the
-// step would short-circuit on a package.json it has never read.
+// Why `force` exists: the fingerprint is the package manager, the runtime and
+// the branch head, so editing package.json in the working tree moves none of
+// it and the install would be skipped on a manifest it has never read.
 func TestFingerprintIgnoresTheWorkingTree(t *testing.T) {
 	state := NewInstallState()
 	cfg := enriched("bun")
 	state.Mark(Fingerprint(cfg, "head-1"), true)
 
-	if !state.IsInstalledFor(cfg, "head-1") {
-		t.Fatal("a marked install should read as installed for its own inputs")
-	}
-	// Same config, same commit: editing package.json in place is invisible here.
 	if !state.IsInstalledFor(enriched("bun"), "head-1") {
-		t.Fatal("fingerprint should be stable across equal inputs")
+		t.Fatal("equal config and head should read as installed")
 	}
 	if state.IsInstalledFor(cfg, "head-2") {
 		t.Fatal("a new branch head should invalidate the install")
 	}
 }
 
-// Clear is how a caller that edited the manifest in place gets the install it
-// asked for (`setup/install?force=1`).
-func TestClearForcesTheNextInstall(t *testing.T) {
-	state := NewInstallState()
-	cfg := enriched("bun")
-	state.Mark(Fingerprint(cfg, "head-1"), true)
+// The force travels with the queued step. Were it applied to InstallState from
+// the HTTP goroutine instead, an install finishing in between would re-Mark the
+// fingerprint and the queued step would skip — the silent no-op this flag
+// exists to prevent.
+func TestForceSurvivesAConcurrentMark(t *testing.T) {
+	o := &Orchestrator{}
+	o.armForce(&o.forceInstall, true)
 
-	state.Clear()
+	NewInstallState().Mark(Fingerprint(enriched("bun"), "head-1"), true)
 
-	if state.IsInstalledFor(cfg, "head-1") {
-		t.Fatal("Clear should make the next install run")
+	if !o.takeForce(&o.forceInstall) {
+		t.Fatal("the queued step lost its force")
+	}
+}
+
+func TestTakeForceIsConsumedOnce(t *testing.T) {
+	o := &Orchestrator{}
+	o.armForce(&o.forceInstall, true)
+
+	if !o.takeForce(&o.forceInstall) {
+		t.Fatal("first read should see the force")
+	}
+	// A later step must not inherit it.
+	if o.takeForce(&o.forceInstall) {
+		t.Fatal("force should not survive the step that consumed it")
+	}
+}
+
+// A plain resume arriving between a forced one and its step must not cancel it.
+func TestArmForceNeverLowersTheFlag(t *testing.T) {
+	o := &Orchestrator{}
+	o.armForce(&o.forceInstall, true)
+	o.armForce(&o.forceInstall, false)
+
+	if !o.takeForce(&o.forceInstall) {
+		t.Fatal("an unforced resume cleared a pending force")
+	}
+}
+
+func TestForceFlagsAreIndependentPerStep(t *testing.T) {
+	o := &Orchestrator{}
+	o.armForce(&o.forceInstall, true)
+
+	if o.takeForce(&o.forceStart) {
+		t.Fatal("forcing an install should not force a start")
+	}
+	if !o.takeForce(&o.forceInstall) {
+		t.Fatal("the install force should still be there")
+	}
+}
+
+// Exactly one caller may act on a force, however many race for it.
+func TestTakeForceIsRaceSafe(t *testing.T) {
+	o := &Orchestrator{}
+	o.armForce(&o.forceInstall, true)
+
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	wins := 0
+	for range 32 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if o.takeForce(&o.forceInstall) {
+				mu.Lock()
+				wins++
+				mu.Unlock()
+			}
+		}()
+	}
+	wg.Wait()
+	if wins != 1 {
+		t.Fatalf("force taken %d times, want exactly 1", wins)
 	}
 }
