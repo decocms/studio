@@ -25,6 +25,11 @@ const UNSAFE_TAGS = new Set([
   "link",
   "meta",
   "base",
+  // SVG SMIL elements can rewrite a safe attribute to javascript: at render time.
+  "animate",
+  "animatetransform",
+  "animatemotion",
+  "set",
 ]);
 
 const URL_ATTRS = new Set([

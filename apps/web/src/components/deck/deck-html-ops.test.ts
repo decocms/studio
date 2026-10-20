@@ -193,6 +193,18 @@ describe("applyDeckOp", () => {
     expect(out).toContain("<a>click</a>");
   });
 
+  test("replace strips SVG SMIL animate elements that rewrite href", () => {
+    const out = applyDeckOp(DECK, {
+      kind: "replace",
+      at: 0,
+      html:
+        '<section class="a"><svg><a href="#safe">' +
+        '<animate attributeName="href" values="javascript:alert(1)" />click</a></svg></section>',
+    });
+    expect(out).not.toContain("<animate");
+    expect(out).not.toContain("javascript:");
+  });
+
   test("replace keeps pasted base64 images", () => {
     const out = applyDeckOp(DECK, {
       kind: "replace",
