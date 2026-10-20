@@ -296,6 +296,12 @@ export interface OrderMonitorStateTable {
   since: ColumnType<Date, Date, Date>;
   evaluated_at: ColumnType<Date, Date, Date>;
   verdict: JsonObject<Record<string, unknown>>;
+  /** The status the last tick replaced. */
+  prev_status: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
   task_board_item_id: ColumnType<
     string | null,
     string | null | undefined,

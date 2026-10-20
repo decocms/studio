@@ -253,9 +253,14 @@ export async function syncIncidentTask(
     // VTEX didn't answer: ask again next tick rather than tell the customer
     // something only our ingest may have, until the wait runs out.
     if (vtexCount === null) {
-      if (at.getTime() - since.getTime() < CROSS_CHECK_GRACE_MS) {
+      // From the first wait, not the status: warning ↔ alert must not restart it.
+      const waitingSince = verdict.crossCheckSince
+        ? new Date(verdict.crossCheckSince)
+        : at;
+      if (at.getTime() - waitingSince.getTime() < CROSS_CHECK_GRACE_MS) {
         await storage.setVerdictFlags(organizationId, connectionId, rule, {
           crossCheckPending: true,
+          crossCheckSince: waitingSince.toISOString(),
         });
         return null;
       }

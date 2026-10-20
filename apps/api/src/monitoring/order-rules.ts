@@ -73,7 +73,7 @@ export interface StoreDay {
 /** `from`/`to` are bucket indexes of day 0, `to` exclusive; `from` is negative while the window reaches into the day before. */
 export type Verdict = Omit<
   OrderMonitorVerdict,
-  "timezone" | "ingestIncident" | "crossCheckPending"
+  "timezone" | "ingestIncident" | "crossCheckPending" | "crossCheckSince"
 >;
 
 const sum = (a: number[], from = 0, to = a.length) =>

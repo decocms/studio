@@ -239,15 +239,40 @@ describe("syncIncidentTask", () => {
     await writeStates(database.db, store, later, verdicts("warning"), "UTC");
     await storage.setVerdictFlags(ORG, STORE, "orders_drop", {
       crossCheckPending: true,
+      crossCheckSince: later.toISOString(),
     });
     expect(
       await writeStates(database.db, store, at, verdicts("ok"), "UTC"),
     ).toBeNull();
     expect((await state())?.status).toBe("warning");
 
-    // A newer tick still in the incident keeps the open waiting on VTEX.
+    // A newer tick still in the incident keeps the open waiting on VTEX,
+    // from when the wait started.
     const next = new Date(later.getTime() + 5 * 60_000);
     await writeStates(database.db, store, next, verdicts("alert"), "UTC");
     expect((await state())?.verdict.crossCheckPending).toBe(true);
+    expect((await state())?.verdict.crossCheckSince).toBe(later.toISOString());
+
+    // A tick re-run after its write committed sees the transition it made.
+    const okAt = new Date(next.getTime() + 5 * 60_000);
+    await writeStates(database.db, store, okAt, verdicts("ok"), "UTC");
+    const tick = new Date(okAt.getTime() + 5 * 60_000);
+    const first = await writeStates(
+      database.db,
+      store,
+      tick,
+      verdicts("warning"),
+      "UTC",
+    );
+    const rerun = await writeStates(
+      database.db,
+      store,
+      tick,
+      verdicts("warning"),
+      "UTC",
+    );
+    expect(first?.prev.get("orders_drop")?.status).toBe("ok");
+    expect(rerun?.prev.get("orders_drop")?.status).toBe("ok");
+    expect((await state())?.since).toEqual(tick);
   });
 });

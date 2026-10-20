@@ -1,3 +1,4 @@
+import type { OrderMonitorVerdict } from "@decocms/shared/order-monitor";
 import { type Kysely, sql } from "kysely";
 import type { Database } from "./types";
 
@@ -15,6 +16,8 @@ export interface OrderMonitorStateRow {
   since: Date;
   evaluatedAt: Date;
   verdict: Record<string, unknown>;
+  /** The status this row's tick replaced. */
+  prevStatus?: string | null;
 }
 
 export interface StoredOrderMonitorState extends OrderMonitorStateRow {
@@ -79,6 +82,7 @@ export class OrderMonitorStorage {
         "s.since",
         "s.evaluated_at",
         "s.verdict",
+        "s.prev_status",
         "t.id as task_id",
         "t.key_seq as task_key_seq",
       ])
@@ -92,6 +96,7 @@ export class OrderMonitorStorage {
       since: r.since,
       evaluatedAt: r.evaluated_at,
       verdict: r.verdict,
+      prevStatus: r.prev_status,
       task:
         r.task_id && r.task_key_seq !== null
           ? { id: r.task_id, keySeq: r.task_key_seq }
@@ -117,6 +122,7 @@ export class OrderMonitorStorage {
           since: s.since,
           evaluated_at: s.evaluatedAt,
           verdict: JSON.stringify(s.verdict),
+          prev_status: s.prevStatus ?? null,
         })),
       )
       .onConflict((oc) =>
@@ -125,6 +131,7 @@ export class OrderMonitorStorage {
           since: (eb) => eb.ref("excluded.since"),
           evaluated_at: (eb) => eb.ref("excluded.evaluated_at"),
           verdict: (eb) => eb.ref("excluded.verdict"),
+          prev_status: (eb) => eb.ref("excluded.prev_status"),
         }),
       )
       .execute();
@@ -198,12 +205,17 @@ export class OrderMonitorStorage {
       .map((m) => m.userId);
   }
 
-  /** Merges incident flags into the rule's verdict (`ingestIncident`, `crossCheckPending`). */
+  /** Merges incident flags into the rule's verdict. */
   async setVerdictFlags(
     organizationId: string,
     connectionId: string,
     rule: string,
-    flags: Partial<Record<"ingestIncident" | "crossCheckPending", boolean>>,
+    flags: Partial<
+      Pick<
+        OrderMonitorVerdict,
+        "ingestIncident" | "crossCheckPending" | "crossCheckSince"
+      >
+    >,
   ): Promise<void> {
     await this.db
       .updateTable("order_monitor_state")

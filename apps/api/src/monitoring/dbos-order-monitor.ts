@@ -94,10 +94,17 @@ interface StoreResult {
   error?: string;
 }
 
+const storeLock = (trx: Kysely<Database>, connectionId: string) =>
+  sql`select pg_advisory_xact_lock(hashtext(${`order-monitor:${connectionId}`})::bigint)`.execute(
+    trx,
+  );
+
 /**
  * Writes one tick's verdicts and returns them with the ones they replaced.
  * Overlapping ticks (one ran past 5 min) take turns per store, and an older
- * tick that lost the race writes nothing over newer verdicts (null).
+ * tick that lost the race writes nothing over newer verdicts (null). A tick
+ * re-run after its write committed (crash before DBOS recorded the step) gets
+ * the same transitions back from `prev_status`.
  */
 export async function writeStates(
   db: Kysely<Database>,
@@ -107,38 +114,53 @@ export async function writeStates(
   timezone: string,
 ) {
   return db.transaction().execute(async (trx) => {
-    await sql`select pg_advisory_xact_lock(hashtext(${`order-monitor:${connectionId}`})::bigint)`.execute(
-      trx,
-    );
+    await storeLock(trx, connectionId);
     const storage = new OrderMonitorStorage(trx);
+    const rows = await storage.listStates(organizationId, connectionId);
+    if (rows.some((s) => s.evaluatedAt > at)) return null;
     const prev = new Map(
-      (await storage.listStates(organizationId, connectionId)).map((s) => [
-        s.rule,
-        s,
-      ]),
+      rows.map((s) => {
+        const rerun = s.evaluatedAt.getTime() === at.getTime();
+        return [
+          s.rule,
+          {
+            status: rerun ? (s.prevStatus ?? undefined) : s.status,
+            // `since` belongs to the row's own status: on a re-run, this tick's.
+            sinceStatus: s.status,
+            since: s.since,
+            verdict: s.verdict,
+            task: s.task,
+          },
+        ];
+      }),
     );
-    if ([...prev.values()].some((s) => s.evaluatedAt > at)) return null;
     const states = RULES.map((rule) => {
       const before = prev.get(rule);
       const incident = isIncident(verdicts[rule].status);
+      const carried = (flag: "ingestIncident" | "crossCheckPending") =>
+        incident && before?.verdict[flag] === true;
       const verdict: OrderMonitorVerdict = {
         ...verdicts[rule],
         timezone,
         // An incident judged ours stays ours until it ends; an open waiting
-        // on VTEX keeps waiting.
-        ...(incident && before?.verdict.ingestIncident === true
-          ? { ingestIncident: true }
-          : {}),
-        ...(incident && before?.verdict.crossCheckPending === true
-          ? { crossCheckPending: true }
+        // on VTEX keeps waiting, from when it started.
+        ...(carried("ingestIncident") ? { ingestIncident: true } : {}),
+        ...(carried("crossCheckPending")
+          ? {
+              crossCheckPending: true,
+              ...(typeof before?.verdict.crossCheckSince === "string"
+                ? { crossCheckSince: before.verdict.crossCheckSince }
+                : {}),
+            }
           : {}),
       };
       return {
         rule,
         status: verdict.status,
-        since: before?.status === verdict.status ? before.since : at,
+        since: before?.sinceStatus === verdict.status ? before.since : at,
         evaluatedAt: at,
         verdict: { ...verdict },
+        prevStatus: before?.status ?? null,
       };
     });
     await storage.upsertStates(organizationId, connectionId, states);
@@ -229,11 +251,16 @@ async function syncOneIncident(
     const db = requireDb();
     const ctx = await buildOrgContext(db, input.organizationId);
     if (!ctx) return {};
-    // Dates come back as strings from a recorded step.
-    await syncIncidentTask(ctx, db, storage(), {
-      ...input,
-      at: new Date(input.at),
-      since: new Date(input.since),
+    // The store's lock, as `writeStates` takes it: overlapping ticks can't
+    // both open a card, and a tick's write can't drop the flags set here.
+    await db.transaction().execute(async (trx) => {
+      await storeLock(trx, input.connectionId);
+      // Dates come back as strings from a recorded step.
+      await syncIncidentTask(ctx, db, new OrderMonitorStorage(trx), {
+        ...input,
+        at: new Date(input.at),
+        since: new Date(input.since),
+      });
     });
     emitOrderMonitorEvaluated(input.organizationId, input.connectionId);
     return {};

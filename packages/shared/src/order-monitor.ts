@@ -30,6 +30,8 @@ export interface OrderMonitorVerdict {
   ingestIncident?: boolean;
   /** The card waits on VTEX to confirm the drop; the sweep retries the open. */
   crossCheckPending?: boolean;
+  /** When the open started waiting on VTEX; the wait is bounded from here. */
+  crossCheckSince?: string;
 }
 
 export interface OrderMonitorRuleState {

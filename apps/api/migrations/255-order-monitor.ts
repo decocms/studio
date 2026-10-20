@@ -28,6 +28,9 @@ export async function up(db: Kysely<unknown>): Promise<void> {
     .addColumn("since", "timestamptz", (col) => col.notNull())
     .addColumn("evaluated_at", "timestamptz", (col) => col.notNull())
     .addColumn("verdict", "jsonb", (col) => col.notNull())
+    // The status this tick replaced, so a tick re-run after its write
+    // committed still sees its transition.
+    .addColumn("prev_status", "text")
     // The open incident's card. A person deleting it clears the link; the
     // next transition into warning/alert opens a new one.
     .addColumn("task_board_item_id", "text", (col) =>
