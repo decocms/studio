@@ -1771,7 +1771,10 @@ function OrdersSection({
         <select
           aria-label={t("orderMonitor.pickStore")}
           value={current.connectionId}
-          onChange={(e) => setPicked(e.target.value)}
+          onChange={(e) => {
+            setPicked(e.target.value);
+            setAt(undefined);
+          }}
           className="self-start rounded-lg border border-border bg-card px-2.5 py-1 text-xs"
         >
           {stores.map((s) => (
@@ -1845,6 +1848,8 @@ export function CdnTab({ virtualMcpId }: { virtualMcpId: string }) {
     sections.find((sec) => sec.id === chosenSection)?.id ?? sections[0]?.id;
 
   if (!section) {
+    // Without a site, the Orders sub-tab may still be on its way.
+    if (storesQuery.isLoading) return <Skeleton className="m-4 h-40" />;
     return (
       <EmptyState
         icon={<Globe01 className="size-5" />}

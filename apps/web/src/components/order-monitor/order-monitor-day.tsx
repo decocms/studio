@@ -154,6 +154,7 @@ function endOfLocalDay(date: string, tz: string): string {
 /** `YYYY-MM-DD` of `instant` in `tz` (en-CA formats that way). */
 const localDate = (instant: Date, tz: string) =>
   instant.toLocaleDateString("en-CA", { timeZone: tz });
+const MIN_DATE = "2000-01-01";
 
 const sum = (values: (number | null)[]) =>
   values.reduce<number>((s, v) => s + (v ?? 0), 0);
@@ -672,10 +673,12 @@ export function OrderMonitorDayView({
             type="date"
             aria-label={t("orderMonitor.pickDay")}
             value={day.date}
+            min={MIN_DATE}
             max={today}
             onChange={(e) => {
               const date = e.target.value;
-              if (!date) return;
+              // Typing a year digit by digit passes through 0002, 0020, 0202.
+              if (!date || date < MIN_DATE) return;
               // Today is "now", so it stays live instead of freezing at 23:59:59.
               onAtChange(
                 date >= today ? undefined : endOfLocalDay(date, day.timezone),

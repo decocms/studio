@@ -5,7 +5,6 @@
  */
 
 import {
-  keepPreviousData,
   type QueryClient,
   useQuery,
   useQueryClient,
@@ -21,8 +20,8 @@ import { orderMonitorWatchView } from "./watch-sse-pool";
 
 const FALLBACK_REFETCH_MS = 5 * 60_000;
 
-async function fetchJson<T>(url: string): Promise<T> {
-  const res = await fetch(url);
+async function fetchJson<T>(url: string, signal: AbortSignal): Promise<T> {
+  const res = await fetch(url, { signal });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
     const error =
@@ -38,21 +37,39 @@ const base = (orgSlug: string) =>
   `/api/${encodeURIComponent(orgSlug)}/order-monitor/stores`;
 
 /** One stable subscribe per org, so the shared stream isn't re-opened per render. */
-const subscribers = new Map<string, (onChange: () => void) => () => void>();
+const subscribers = new Map<string, () => () => void>();
+/** One stream listener per org however many hooks mount, so an event invalidates once. */
+const listeners = new Map<string, { count: number; unsubscribe: () => void }>();
 const noSubscribe = () => () => {};
 const zero = () => 0;
 
 function subscribeFor(orgSlug: string, queryClient: QueryClient) {
   let subscribe = subscribers.get(orgSlug);
   if (!subscribe) {
-    subscribe = (onChange) => {
-      const refresh = () => {
-        queryClient.invalidateQueries({
-          queryKey: KEYS.orderMonitor(orgSlug),
-        });
-        onChange();
+    subscribe = () => {
+      let listener = listeners.get(orgSlug);
+      if (!listener) {
+        const refresh = () =>
+          queryClient.invalidateQueries({
+            queryKey: KEYS.orderMonitor(orgSlug),
+          });
+        listener = {
+          count: 0,
+          unsubscribe: orderMonitorWatchView.subscribe(
+            orgSlug,
+            refresh,
+            refresh,
+          ),
+        };
+        listeners.set(orgSlug, listener);
+      }
+      const current = listener;
+      current.count++;
+      return () => {
+        if (--current.count > 0) return;
+        current.unsubscribe();
+        listeners.delete(orgSlug);
       };
-      return orderMonitorWatchView.subscribe(orgSlug, refresh, refresh);
     };
     subscribers.set(orgSlug, subscribe);
   }
@@ -73,8 +90,8 @@ export function useOrderMonitorStores(orgSlug: string, enabled: boolean) {
   useOrderMonitorLive(orgSlug, enabled);
   return useQuery({
     queryKey: KEYS.orderMonitorStores(orgSlug),
-    queryFn: () =>
-      fetchJson<{ stores: OrderMonitorStore[] }>(base(orgSlug)).then(
+    queryFn: ({ signal }) =>
+      fetchJson<{ stores: OrderMonitorStore[] }>(base(orgSlug), signal).then(
         (body) => body.stores,
       ),
     enabled: enabled && !!orgSlug,
@@ -93,13 +110,16 @@ export function useOrderMonitorDay(
   const query = at ? `?at=${encodeURIComponent(at)}` : "";
   return useQuery({
     queryKey: KEYS.orderMonitorDay(orgSlug, connectionId, at ?? "now"),
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       fetchJson<OrderMonitorDay>(
         `${base(orgSlug)}/${encodeURIComponent(connectionId)}/day${query}`,
+        signal,
       ),
     // A past instant doesn't change; "now" moves with the sweep.
     refetchInterval: at ? false : FALLBACK_REFETCH_MS,
-    placeholderData: keepPreviousData,
+    // Another day of the same store, not another store's chart.
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey[3] === connectionId ? previous : undefined,
     retry: false,
   });
 }
@@ -121,9 +141,10 @@ export function useOrderMonitorPushes(
       at ?? "now",
       virtualMcpId ?? "",
     ),
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       fetchJson<OrderMonitorPushes>(
         `${base(orgSlug)}/${encodeURIComponent(connectionId)}/pushes${search}`,
+        signal,
       ),
     refetchInterval: at ? false : FALLBACK_REFETCH_MS,
     retry: false,
