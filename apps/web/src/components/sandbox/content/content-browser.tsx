@@ -1,4 +1,5 @@
 import { useBlogAi } from "@/hooks/use-blog-ai";
+import { useOrgFlag } from "@/hooks/use-organization-settings";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Suspense, lazy, useState } from "react";
@@ -546,12 +547,18 @@ function ContentBrowserReady({
    * renders a pasted tunnel and persists nothing, so it has none either.
    */
   const localPreviewUrl = useLocalPreviewUrl(virtualMcpId).url;
-  const canInstallApps = siteTechnology !== null && !localPreviewUrl;
+  const canInstallApps =
+    useOrgFlag("site_apps_install_enabled") &&
+    siteTechnology !== null &&
+    !localPreviewUrl;
   /**
    * Installable apps come from this repository's registry
    * (`@decocms/shared/site-apps`), not a fetch: the catalogue ships with the
    * code that knows how to install each entry, so the two cannot drift. An
    * unknown stack contributes none, leaving only what the runtime reports.
+   *
+   * Built on every render rather than behind the Apps tab: its length is that
+   * tab's count badge. The compiler memoizes it (`ban-memoization`).
    */
   const appCatalog =
     meta && decofile
