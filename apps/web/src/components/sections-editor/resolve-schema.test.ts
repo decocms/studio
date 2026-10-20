@@ -293,6 +293,16 @@ describe("resolveSchema – app resolveType aliases", () => {
     expect(resolved?.properties?.account?.title).toBe("Account Name");
   });
 
+  test("doesn't throw when a resolveType has non-Latin1 characters", () => {
+    const resolveType = "site/apps/lojinha/café.ts";
+    const meta: LiveMeta = {
+      manifest: { blocks: {} },
+      schema: {},
+    };
+
+    expect(() => resolveSchema(resolveType, meta)).not.toThrow();
+  });
+
   test("merges properties from deeply nested allOf chains", () => {
     const resolveType = "site/apps/site.ts";
     const encoded = Buffer.from(resolveType).toString("base64");
