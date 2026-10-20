@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/experimental-ct-react";
 import type { Page } from "@playwright/test";
-import { MonitorV8 } from "../../src/layouts/main-panel-tabs/monitor-v8-tab.tsx";
+import { SiteTelemetryMonitor } from "../../src/layouts/main-panel-tabs/monitor-v8-tab.tsx";
 import {
   fixtureErrors,
   fixtureReleases,
@@ -55,7 +55,7 @@ test("shows the site's requests, latency, cache and slowest pages", async ({
   page,
 }) => {
   await serve(page, healthy());
-  const c = await mount(<MonitorV8 base={BASE} site="demo" />);
+  const c = await mount(<SiteTelemetryMonitor base={BASE} site="demo" />);
 
   await expect(c.getByText("48.2K")).toBeVisible();
   await expect(c.getByText("0.4%").first()).toBeVisible();
@@ -74,7 +74,7 @@ test("lists upstream calls and sampled errors in their tabs", async ({
   page,
 }) => {
   await serve(page, healthy());
-  const c = await mount(<MonitorV8 base={BASE} site="demo" />);
+  const c = await mount(<SiteTelemetryMonitor base={BASE} site="demo" />);
 
   await c.getByRole("tab", { name: "Upstreams" }).click();
   await expect(c.getByText("listing")).toBeVisible();
@@ -95,7 +95,7 @@ test("asks for the right range", async ({ mount, page }) => {
       json: { available: true, data: null, reason: "no_requests" },
     });
   });
-  const c = await mount(<MonitorV8 base={BASE} site="demo" />);
+  const c = await mount(<SiteTelemetryMonitor base={BASE} site="demo" />);
   await expect(c.getByText("No requests in this range")).toBeVisible();
   expect(asked).toContain("24h");
   await c.getByRole("tab", { name: "7 days" }).click();
@@ -115,7 +115,7 @@ test("explains missing request metrics and points to what already works", async 
           data: view === "upstreams" ? fixtureUpstreams : [],
         },
   );
-  const c = await mount(<MonitorV8 base={BASE} site="demo" />);
+  const c = await mount(<SiteTelemetryMonitor base={BASE} site="demo" />);
 
   await expect(c.getByText("Request metrics are on their way")).toBeVisible();
   await expect(
@@ -136,7 +136,7 @@ test("says calmly when there's no data yet, or nothing went wrong", async ({
       ? { available: true, view, data: null, reason: "no_telemetry" }
       : { available: true, view, data: [] },
   );
-  const c = await mount(<MonitorV8 base={BASE} site="demo" />);
+  const c = await mount(<SiteTelemetryMonitor base={BASE} site="demo" />);
   await expect(c.getByText("Waiting for this site's first data")).toBeVisible();
   await c.getByRole("tab", { name: "Errors" }).click();
   await expect(c.getByText("No errors in this range")).toBeVisible();
@@ -159,7 +159,7 @@ test("offers a retry when the warehouse doesn't answer", async ({
           ),
         }),
   );
-  const c = await mount(<MonitorV8 base={BASE} site="demo" />);
+  const c = await mount(<SiteTelemetryMonitor base={BASE} site="demo" />);
   await expect(c.getByText("Monitor couldn't load right now")).toBeVisible();
   fail = false;
   await c.getByRole("button", { name: "Try again" }).click();

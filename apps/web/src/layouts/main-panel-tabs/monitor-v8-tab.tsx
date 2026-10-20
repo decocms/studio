@@ -806,7 +806,13 @@ function ErrorsSection({ base, range }: { base: string; range: SiteRange }) {
  * The v8 Monitor for one site. `base` is `/api/:org/monitor/:site`, the slug
  * the site's token was issued for (its `deco.site`).
  */
-export function MonitorV8({ base, site }: { base: string; site: string }) {
+export function SiteTelemetryMonitor({
+  base,
+  site,
+}: {
+  base: string;
+  site: string;
+}) {
   const t = useT();
   const [section, setSection] = useState<SiteSection>("site");
   const [range, setRange] = useState<SiteRange>("24h");

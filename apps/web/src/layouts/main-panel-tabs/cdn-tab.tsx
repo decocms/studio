@@ -46,7 +46,7 @@ import {
   resolveAnalyticsSiteSlug,
 } from "@decocms/shared/site-slug";
 import { useMainSchemaV8 } from "@/hooks/use-main-schema-v8";
-import { MonitorV8 } from "./monitor-v8-tab";
+import { SiteTelemetryMonitor } from "./monitor-v8-tab";
 import { monitorKind } from "./monitor-v8";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t.ts";
@@ -1785,7 +1785,7 @@ export function CdnTab({ virtualMcpId }: { virtualMcpId: string }) {
     );
   }
   return (
-    <MonitorV8
+    <SiteTelemetryMonitor
       key={site}
       base={`/api/${org.slug}/monitor/${encodeURIComponent(site)}`}
       site={site}
