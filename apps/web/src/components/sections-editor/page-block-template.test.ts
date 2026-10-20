@@ -5,6 +5,7 @@ import {
   generatePageBlockKey,
 } from "./page-block-template";
 import type { LiveMeta } from "./resolve-schema";
+import { noSchemaMeta } from "./schemaless";
 
 describe("page-block-template", () => {
   it("createEmptyPageBlock uses default resolve types", () => {
@@ -32,6 +33,15 @@ describe("page-block-template", () => {
     expect(createEmptyPageBlock("About", "/about", meta)).toEqual(
       createEmptyPageBlock("About", "/about"),
     );
+  });
+
+  it("gives a next-major site with no schema yet the built-in page, no SEO", () => {
+    expect(createEmptyPageBlock("About", "/about", noSchemaMeta())).toEqual({
+      name: "About",
+      path: "/about",
+      sections: [],
+      __resolveType: "page",
+    });
   });
 
   it("generatePageBlockKey encodes the page name with a unique suffix", () => {

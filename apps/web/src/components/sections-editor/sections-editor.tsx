@@ -76,7 +76,11 @@ import type { ParsedSection } from "./section-list";
 import { resolveSchema, type SchemaProperty } from "./resolve-schema";
 import { findSiteSeoEntry, resolveSeoTarget } from "./seo-block";
 import { defaultPageSeoResolveType } from "./seo-schema";
-import { activeSeoResolveType, buildSeoSavePayload } from "./seo-save";
+import {
+  activeSeoResolveType,
+  buildSeoSavePayload,
+  withPageSeo,
+} from "./seo-save";
 import { isSeoEnabled, unwrapSeoConfig } from "./seo-lazy-render";
 import { PageSeoForm } from "./page-seo-form";
 import { extractMatcherGlobals, extractMatchers } from "./matcher-picker";
@@ -1824,7 +1828,7 @@ export function SectionsEditor({
       pendingPageFieldsRef.current = {};
 
       if (seoPatch?.raw !== undefined) {
-        return { ...block, seo: seoPatch.raw };
+        return withPageSeo(block, seoPatch.raw, meta);
       }
       if (seoPatch?.inner !== undefined) {
         return buildSeoSavePayload(target, resolved, block, seoPatch.inner);

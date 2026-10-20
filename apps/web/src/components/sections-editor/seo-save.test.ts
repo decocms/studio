@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { activeSeoResolveType, buildSeoSavePayload } from "./seo-save";
+import type { LiveMeta } from "./resolve-schema";
+import {
+  activeSeoResolveType,
+  buildSeoSavePayload,
+  withPageSeo,
+} from "./seo-save";
 import type { ResolvedSeo } from "./seo-block";
 import { LAZY_RENDER_RESOLVE_TYPE } from "./seo-lazy-render";
 
@@ -185,5 +190,48 @@ describe("activeSeoResolveType", () => {
     expect(activeSeoResolveType({ title: "X" }, resolved)).toBe(
       "website/sections/Seo/SeoV2.tsx",
     );
+  });
+});
+
+describe("withPageSeo", () => {
+  const v8Meta: LiveMeta = {
+    manifest: { blocks: { pages: { page: { $ref: "#/definitions/page" } } } },
+    schema: { definitions: { page: { type: "object" } } },
+  };
+  const v7Meta: LiveMeta = {
+    manifest: {
+      blocks: {
+        pages: { "website/pages/Page.tsx": { $ref: "#/definitions/P" } },
+      },
+    },
+    schema: { definitions: { P: { type: "object" } } },
+  };
+  const block = {
+    __resolveType: "page",
+    name: "Home",
+    sections: [],
+    seo: { __resolveType: "seo", title: "Home" },
+  };
+
+  test("turning SEO off on a next-major site drops the field", () => {
+    expect(withPageSeo(block, null, v8Meta)).toEqual({
+      __resolveType: "page",
+      name: "Home",
+      sections: [],
+    });
+  });
+
+  test("turning SEO off on a v7 site saves seo: null, as before", () => {
+    expect(withPageSeo(block, null, v7Meta)).toEqual({ ...block, seo: null });
+    expect(withPageSeo(block, null, undefined)).toEqual({
+      ...block,
+      seo: null,
+    });
+  });
+
+  test("turning SEO on sets the value on either", () => {
+    const seo = { __resolveType: "seo" };
+    expect(withPageSeo(block, seo, v8Meta)).toEqual({ ...block, seo });
+    expect(withPageSeo(block, seo, v7Meta)).toEqual({ ...block, seo });
   });
 });

@@ -81,6 +81,14 @@ export function substringFilter(value: string, search: string): number {
   return value.toLowerCase().includes(search.trim().toLowerCase()) ? 1 : 0;
 }
 
+/** The schema's `aliases` (v7 name → next-major name); empty on v7 schemas. */
+function schemaAliases(meta: LiveMeta): Record<string, string> {
+  const aliases = (meta as { aliases?: unknown }).aliases;
+  return aliases && typeof aliases === "object"
+    ? (aliases as Record<string, string>)
+    : {};
+}
+
 /**
  * Extract the list of available matcher block types from live meta.
  * Looks for block-type keys that contain "matchers" (e.g. "matchers",
@@ -90,6 +98,10 @@ export function extractMatchers(meta: LiveMeta): MatcherEntry[] {
   const blocks = meta.manifest?.blocks ?? {};
   const result: MatcherEntry[] = [];
   const seen = new Set<string>();
+  // Next-major schemas list the v7 names of their built-ins (e.g.
+  // `website/matchers/never.ts` for `never`) under `aliases`, so old content
+  // still resolves. They are the same matcher: offer only the real name.
+  const aliases = schemaAliases(meta);
 
   for (const [blockType, blockMap] of Object.entries(blocks)) {
     if (!blockType.includes("matchers")) continue;
@@ -108,12 +120,19 @@ export function extractMatchers(meta: LiveMeta): MatcherEntry[] {
       // block-type group (e.g. "matchers" and "website/matchers").
       if (seen.has(resolveType)) continue;
       seen.add(resolveType);
+      const target = aliases[resolveType];
+      if (target && Object.hasOwn(blockMap, target)) continue;
 
       const metadata = resolveBlockSchemaMetadata(resolveType, meta);
+      // A built-in's generated title is its bare name (`never`, `date`).
+      const title =
+        metadata.title && metadata.title !== resolveType
+          ? metadata.title
+          : labelFromResolveType(resolveType);
 
       result.push({
         resolveType,
-        title: metadata.title ?? labelFromResolveType(resolveType),
+        title,
         description: metadata.description,
         iconName: resolveMatcherIconName(resolveType, metadata.icon),
       });

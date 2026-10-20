@@ -69,6 +69,48 @@ describe("extractMatchers", () => {
     );
   });
 
+  it("lists a next-major site's matchers once, by readable names", () => {
+    const meta = {
+      ...metaWithBlocks({
+        matchers: {
+          device: { title: "Device", description: "By device" },
+          always: { title: "always", description: "Always true" },
+          never: { title: "never", description: "Always false: hides a block" },
+          date: { title: "date", description: "True from start until end" },
+          "website/matchers/always.ts": { title: "website/matchers/always.ts" },
+          "website/matchers/never.ts": {
+            title: "website/matchers/never.ts",
+            description: "Always false: hides a block",
+          },
+        },
+      }),
+      aliases: {
+        "website/matchers/always.ts": "always",
+        "website/matchers/never.ts": "never",
+      },
+    } as LiveMeta;
+
+    expect(extractMatchers(meta).map((m) => [m.resolveType, m.title])).toEqual([
+      ["device", "Device"],
+      ["never", "Never"],
+      ["date", "Date"],
+    ]);
+  });
+
+  it("keeps a v7 matcher name when the schema has no short name for it", () => {
+    const meta = {
+      ...metaWithBlocks({
+        "website/matchers": {
+          "website/matchers/never.ts": { title: "Never" },
+        },
+      }),
+      aliases: { "website/matchers/never.ts": "never" },
+    } as LiveMeta;
+    expect(extractMatchers(meta).map((m) => m.resolveType)).toEqual([
+      "website/matchers/never.ts",
+    ]);
+  });
+
   it("dedupes a matcher registered under more than one block-type group", () => {
     const meta = metaWithBlocks({
       matchers: {

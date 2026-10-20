@@ -3,6 +3,7 @@ import {
   findNewPageResolveType,
   isLegacyPageResolveType,
 } from "./section-catalog";
+import { isNoSchemaMeta } from "./schemaless";
 import { defaultPageSeoResolveType } from "./seo-schema";
 
 /**
@@ -21,14 +22,22 @@ export function generatePageBlockKey(name: string): string {
 /**
  * A new, empty page, typed from the site's own schema: the page type the site
  * declares (`page` on next-major sites) and, for `seo`, the SEO type its page
- * schema's `seo` field offers — no `seo` at all when it offers none. A v7 site
- * (or no schema yet) gets the v7 page and SEO section, as before.
+ * schema's `seo` field offers — no `seo` at all when it offers none. A
+ * next-major site with no schema generated yet gets the built-in `page` and no
+ * `seo`. A v7 site (or no schema passed) gets the v7 page and SEO section, as
+ * before.
  */
 export function createEmptyPageBlock(
   name: string,
   path: string,
   meta?: LiveMeta | null,
 ): Record<string, unknown> {
+  // A next-major site whose schema isn't generated yet: Blocks 8's built-in
+  // `page`, which every such site has, and no SEO, whose type only the schema
+  // names. Never the v7 names, which the site may not declare.
+  if (isNoSchemaMeta(meta)) {
+    return { name, path, sections: [] as unknown[], __resolveType: "page" };
+  }
   const pageResolveType = findNewPageResolveType(meta ?? undefined);
   if (!meta || isLegacyPageResolveType(pageResolveType)) {
     return {
