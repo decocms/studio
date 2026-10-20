@@ -215,11 +215,11 @@ function OrgMcpExclusionList() {
     : mountable;
 
   const draftSet = new Set(draft);
-  // Only the ids that still exist: a connection deleted since this was saved
-  // would otherwise sit in the list forever and count as a pending change.
+  // Prune both sides to ids that still exist, or a deleted connection reads as a pending change forever.
+  const stillMountable = (id: string) => mountable.some((c) => c.id === id);
   const dirty =
-    idsKey(draft.filter((id) => mountable.some((c) => c.id === id))) !==
-    savedKey;
+    idsKey(draft.filter(stillMountable)) !==
+    idsKey(saved.filter(stillMountable));
   const allVisibleOn =
     visible.length > 0 && visible.every((c) => !draftSet.has(c.id));
 
