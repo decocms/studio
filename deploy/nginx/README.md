@@ -11,7 +11,10 @@ container:
 - nginx listens on `8080`, owns the pod's `http` port, serves
   `/usr/share/nginx/html`, and returns `/healthz` locally.
 - API/system paths such as `/api`, `/mcp`, `/oauth-proxy`, `/.well-known`,
-  `/org`, `/health`, and `/metrics` proxy to the two local Bun API containers.
+  `/org`, and `/health` proxy to the two local Bun API containers.
+- `/metrics` returns 404 on the public port, including preview virtual hosts.
+- Port `8081` serves only `/metrics`, proxying to the existing API processes on
+  `3000` and `3001`. It must not be published by a Service or ingress.
 - Preview hostnames matching `<handle>.preview.<base>` proxy all paths to the
   API so sandbox preview requests do not fall through to the SPA fallback.
 - `/assets/*` is served with immutable cache headers; missing assets return 404
@@ -66,3 +69,22 @@ proxied to the API.
 Rollouts and rollbacks now move both images together by tag. To roll back the
 front door and API consistently, set both `image.tag` and `nginx.image.tag` to
 the previous release.
+
+
+## Prometheus scraping
+
+The public nginx listener on `8080` returns 404 for `/metrics`. The dedicated
+listener on `8081` serves only `/metrics` and proxies it to the existing API
+processes on `3000` and `3001`. Keep `8081` private: do not publish it through a
+Service, ingress, or internet-facing load balancer.
+
+The Helm chart points API pod scrape annotations to port `8081` and declares
+that container port for annotation-based discovery. The application Service
+continues to expose only its HTTP port. Worker scraping is unchanged.
+
+Upgrade the nginx image and chart together. Older charts scrape port `8080`,
+which the new nginx image blocks. Older nginx images do not listen on `8081`.
+No API image or application configuration change is required.
+
+The API itself still serves `/metrics`. Deployments exposing Bun directly
+must restrict the endpoint in their own reverse proxy or network configuration.

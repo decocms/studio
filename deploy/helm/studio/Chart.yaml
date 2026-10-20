@@ -2,6 +2,8 @@ apiVersion: v2
 name: chart-deco-studio
 description: Helm chart for deco Studio — supports inline secrets, external secretName, and AWS Secrets Manager via ExternalSecret
 type: application
+# 0.17.0: nginx blocks public /metrics; API pod scraping moves to port 8081.
+# Requires an nginx image with the pod-only scrape listener.
 # 0.16.2: nginx.apiMaxConns sets the per-API-process upstream max_conns
 # (requires a studio-nginx image that renders it; default stays 128).
 # 0.16.1: let a single-node NATS recover a poisoned JetStream stream by using
@@ -82,7 +84,7 @@ type: application
 # when disabled, so existing releases are unaffected.
 # 0.12.4: chart-managed API/worker dispatch roles now use
 # STUDIO_DISPATCH_ROLE; legacy overrides are rejected.
-version: 0.16.2
+version: 0.17.0
 appVersion: "latest"
 
 dependencies:
