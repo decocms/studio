@@ -131,10 +131,18 @@ async function postDaemonLiveMessage(
  */
 export async function liveRunSandbox(
   ctx: StudioContext,
-  args: { threadId: string; agentId: string; runBranch: string },
+  args: {
+    threadId: string;
+    agentId: string;
+    runBranch: string;
+    organizationId: string;
+  },
 ): Promise<string | null> {
   const virtualMcp = await ctx.storage.virtualMcps.findById(args.agentId);
-  if (!virtualMcp) return null;
+  // Client-supplied agentId; findById alone doesn't prove org ownership.
+  if (!virtualMcp || virtualMcp.organization_id !== args.organizationId) {
+    return null;
+  }
   const agent = resolveEffectiveStudioPackVirtualMcp(virtualMcp, args.agentId);
   const branch = await resolveSandboxBranchForThread(ctx, {
     threadId: args.threadId,
@@ -209,6 +217,7 @@ export async function deliverLiveMessage<M extends LiveMessage>(args: {
         threadId: thread.id,
         agentId: args.agentId,
         runBranch: args.runBranch,
+        organizationId: args.organizationId,
       });
       if (!handle) return false;
       const provider = await getAgentSandboxProvider(ctx);

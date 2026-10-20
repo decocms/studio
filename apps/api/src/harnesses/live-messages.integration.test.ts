@@ -218,6 +218,7 @@ describe("live messages", () => {
         threadId: thread.id,
         agentId,
         runBranch: threadBranch(thread.id),
+        organizationId: env.orgId,
       }),
     ).toBe("sbx-live-1");
     // An agent with no sandbox for this branch has nothing to deliver into.
@@ -226,6 +227,16 @@ describe("live messages", () => {
         threadId: thread.id,
         agentId,
         runBranch: "some-other-branch",
+        organizationId: env.orgId,
+      }),
+    ).toBeNull();
+    // An agent id belonging to another org must not resolve its sandbox.
+    expect(
+      await liveRunSandbox(ctx, {
+        threadId: thread.id,
+        agentId,
+        runBranch: threadBranch(thread.id),
+        organizationId: "org_456",
       }),
     ).toBeNull();
   });
