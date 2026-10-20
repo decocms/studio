@@ -265,8 +265,10 @@ export class GitlabChangeRequestClient implements ChangeRequestClient {
     this.projectBase = `/projects/${encodeProjectPath(params.repo.path)}`;
   }
 
-  private async token(): Promise<string> {
-    const issued = await this.tokenSource.get();
+  private async token(force?: boolean): Promise<string> {
+    const issued = await this.tokenSource.get(
+      force ? { forceRefresh: true } : undefined,
+    );
     if (issued) return issued.token;
     throw new GitProviderError({
       provider: "gitlab",
@@ -275,7 +277,12 @@ export class GitlabChangeRequestClient implements ChangeRequestClient {
     });
   }
 
-  /** One REST call under the project. 404 answers null; other non-2xx throws. */
+  /**
+   * One REST call under the project. 404 answers null; other non-2xx throws.
+   * A 401 means the token died before its own expiry said so (revoked,
+   * rotated): re-mint/refresh once and retry, matching
+   * `GitlabProviderClient.authedFetch`.
+   */
   private async call(
     pathAndQuery: string,
     init: {
@@ -284,11 +291,19 @@ export class GitlabChangeRequestClient implements ChangeRequestClient {
       accept?: string;
     } = {},
   ): Promise<Response | null> {
-    const res = await gitlabFetch(
+    let res = await gitlabFetch(
       `${this.apiBase}${this.projectBase}${pathAndQuery}`,
       await this.token(),
       init,
     );
+    if (res.status === 401) {
+      await res.body?.cancel().catch(() => {});
+      res = await gitlabFetch(
+        `${this.apiBase}${this.projectBase}${pathAndQuery}`,
+        await this.token(true),
+        init,
+      );
+    }
     if (res.status === 404) {
       await res.body?.cancel().catch(() => {});
       return null;
