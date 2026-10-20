@@ -1,3 +1,5 @@
+import { authClient } from "@/lib/auth-client";
+import { SubscriptionUsage } from "./subscription-usage";
 /**
  * Link your own Claude subscription, so sandbox-hosted claude-code runs bill
  * against your plan instead of the org's AI credit.
@@ -19,19 +21,29 @@ import { useT } from "@/i18n/use-t.ts";
 export function ClaudeSubscriptionCard() {
   const t = useT();
   const { org } = useProjectContext();
+  const { data: session } = authClient.useSession();
+  const userId = session?.user.id ?? "";
   const studio = useStudioTools();
   const queryClient = useQueryClient();
   const [token, setToken] = useState("");
 
   const status = useQuery({
-    queryKey: KEYS.claudeSubscription(org.id),
+    queryKey: KEYS.claudeSubscription(org.id, userId),
     queryFn: () => studio.call("CLAUDE_SUBSCRIPTION_STATUS", {}),
+    enabled: Boolean(userId),
   });
 
-  const invalidate = () =>
-    queryClient.invalidateQueries({
-      queryKey: KEYS.claudeSubscription(org.id),
+  const invalidate = async () => {
+    await queryClient.cancelQueries({
+      queryKey: KEYS.subscriptionUsage(org.id, userId, "claude"),
     });
+    queryClient.removeQueries({
+      queryKey: KEYS.subscriptionUsage(org.id, userId, "claude"),
+    });
+    await queryClient.invalidateQueries({
+      queryKey: KEYS.claudeSubscription(org.id, userId),
+    });
+  };
 
   const connect = useMutation({
     mutationFn: () => studio.call("CLAUDE_SUBSCRIPTION_CONNECT", { token }),
@@ -82,6 +94,14 @@ export function ClaudeSubscriptionCard() {
           </Button>
         ) : null}
       </div>
+      {connected && (
+        <SubscriptionUsage
+          provider="claude"
+          orgId={org.id}
+          userId={userId}
+          linkedAt={status.data?.linkedAt ?? null}
+        />
+      )}
       {connected ? null : (
         <div className="flex flex-col gap-2">
           <p className="text-sm text-muted-foreground">

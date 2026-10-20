@@ -7326,6 +7326,37 @@ export interface StudioToolIO {
       expiresAt: string | null;
     };
   };
+  SUBSCRIPTION_USAGE_GET: {
+    input: { provider: "codex" | "claude" };
+    output: {
+      status: "available" | "unavailable" | "disconnected";
+      reason:
+        | "permission"
+        | "authorization"
+        | "rate_limited"
+        | "provider_error"
+        | "invalid_response"
+        | "no_data"
+        | null;
+      checkedAt: string | null;
+      retryAt: string | null;
+      limitReached: boolean | null;
+      windows: {
+        id:
+          | "primary"
+          | "secondary"
+          | "code_review_primary"
+          | "code_review_secondary"
+          | "five_hour"
+          | "seven_day"
+          | "seven_day_sonnet"
+          | "seven_day_opus";
+        usedPercent: number;
+        resetAt: string | null;
+        windowSeconds: number | null;
+      }[];
+    };
+  };
   CODEX_SUBSCRIPTION_DISCONNECT: {
     input: { [x: string]: never };
     output: {
@@ -8948,9 +8979,9 @@ export interface StudioToolIO {
       reason?:
         | "error"
         | "not_found"
+        | "rate_limited"
         | "conflict"
         | "blocked"
-        | "rate_limited"
         | undefined;
       detail?: string | undefined;
     };

@@ -530,8 +530,19 @@ export const KEYS = {
   // org-scoped, so the key is too).
   codexSubscription: (orgId: string, userId: string) =>
     ["codex-subscription", orgId, userId] as const,
-  claudeSubscription: (orgId: string) =>
-    ["claude-subscription", orgId] as const,
+  claudeSubscription: (orgId: string, userId: string) =>
+    ["claude-subscription", orgId, userId] as const,
+  subscriptionUsage: (
+    orgId: string,
+    userId: string,
+    provider: "claude" | "codex",
+  ) => ["subscription-usage", orgId, userId, provider] as const,
+  subscriptionUsageSnapshot: (
+    orgId: string,
+    userId: string,
+    provider: "claude" | "codex",
+    linkedAt: string | null,
+  ) => ["subscription-usage", orgId, userId, provider, linkedAt] as const,
   githubCopilot: (orgId: string) => ["github-copilot", orgId] as const,
   aiProviderKeyPreview: (keyId: string) =>
     ["ai-provider-key-preview", keyId] as const,

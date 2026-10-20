@@ -1,6 +1,38 @@
 import type { settings as settingsEn } from "../en/settings.ts";
 
 export const settings = {
+  "settings.subscriptionUsage.title": "Uso do plano",
+  "settings.subscriptionUsage.refresh": "Atualizar",
+  "settings.subscriptionUsage.loading": "Carregando limites de uso…",
+  "settings.subscriptionUsage.fiveHour": "Janela de 5 horas",
+  "settings.subscriptionUsage.weekly": "Limite semanal",
+  "settings.subscriptionUsage.sonnet": "Sonnet · semanal",
+  "settings.subscriptionUsage.opus": "Opus · semanal",
+  "settings.subscriptionUsage.codeReview": "Revisão de código",
+  "settings.subscriptionUsage.hours": "Janela de {hours} horas",
+  "settings.subscriptionUsage.primary": "Limite principal",
+  "settings.subscriptionUsage.secondary": "Limite secundário",
+  "settings.subscriptionUsage.used": "{percent}% usado",
+  "settings.subscriptionUsage.resets": "Renova em {date}",
+  "settings.subscriptionUsage.resetUnknown":
+    "Horário de renovação não informado",
+  "settings.subscriptionUsage.limitReached": "Limite atingido",
+  "settings.subscriptionUsage.permission":
+    "Este token não permite consultar limites. Veja o uso no site do provedor.",
+  "settings.subscriptionUsage.authorization":
+    "O provedor não autorizou a consulta. Vincule seu plano novamente para atualizar as credenciais.",
+  "settings.subscriptionUsage.rateLimited":
+    "O provedor está limitando as consultas. Tente novamente após o horário abaixo.",
+  "settings.subscriptionUsage.disconnected":
+    "Vincule seu plano para consultar os limites.",
+  "settings.subscriptionUsage.unavailable":
+    "Os limites estão indisponíveis agora. Consulte o provedor para ver o status atual.",
+  "settings.subscriptionUsage.retryAt": "Tente novamente em {date}",
+  "settings.subscriptionUsage.checkedAt": "Consultado em {date}",
+  "settings.subscriptionUsage.sharedUsage":
+    "Inclui uso fora do Studio. Estes limites pertencem ao seu plano pessoal.",
+  "settings.subscriptionUsage.openProvider": "Ver no provedor",
+
   "settings.voice.title": "Modo voz",
   "settings.voice.description":
     "Permite conversar por voz com os agentes nos chats. Requer a configuração da ElevenLabs nesta instalação do Studio.",

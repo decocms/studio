@@ -193,6 +193,7 @@ const ALL_TOOL_NAMES = [
   // Claude subscription (per-user OAuth credential for the claude-code harness)
   "CODEX_SUBSCRIPTION_CONNECT",
   "CODEX_SUBSCRIPTION_STATUS",
+  "SUBSCRIPTION_USAGE_GET",
   "CODEX_SUBSCRIPTION_DISCONNECT",
   "CODEX_SUBSCRIPTION_SYNC",
   "CLAUDE_SUBSCRIPTION_CONNECT",
@@ -1005,6 +1006,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "AI Providers",
   },
   {
+    name: "SUBSCRIPTION_USAGE_GET",
+    description: "Read your personal subscription usage and reset times",
+    category: "AI Providers",
+  },
+  {
     name: "CODEX_SUBSCRIPTION_STATUS",
     description: "Whether your ChatGPT subscription is linked for Codex",
     category: "AI Providers",
@@ -1758,6 +1764,7 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       // Personal credentials never grant access to another member's plan.
       "CODEX_SUBSCRIPTION_CONNECT",
       "CODEX_SUBSCRIPTION_STATUS",
+      "SUBSCRIPTION_USAGE_GET",
       "CODEX_SUBSCRIPTION_DISCONNECT",
       "CODEX_SUBSCRIPTION_SYNC",
       // View connections

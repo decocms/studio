@@ -37,7 +37,7 @@ export function useNeedsRuntimeSetup(): RuntimeSetupNeed {
     supportsClaudeCode(key.providerId),
   );
   const subscription = useQuery({
-    queryKey: KEYS.claudeSubscription(org.id),
+    queryKey: KEYS.claudeSubscription(org.id, userId),
     queryFn: () => studio.call("CLAUDE_SUBSCRIPTION_STATUS", {}),
     enabled: sandboxOnlyChats && !codexChats && !hasClaudeCodeKey,
   });

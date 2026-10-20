@@ -1,4 +1,35 @@
 export const settings = {
+  "settings.subscriptionUsage.title": "Plan usage",
+  "settings.subscriptionUsage.refresh": "Refresh",
+  "settings.subscriptionUsage.loading": "Loading usage limits…",
+  "settings.subscriptionUsage.fiveHour": "5-hour window",
+  "settings.subscriptionUsage.weekly": "Weekly limit",
+  "settings.subscriptionUsage.sonnet": "Sonnet · weekly",
+  "settings.subscriptionUsage.opus": "Opus · weekly",
+  "settings.subscriptionUsage.codeReview": "Code review",
+  "settings.subscriptionUsage.hours": "{hours}-hour window",
+  "settings.subscriptionUsage.primary": "Primary limit",
+  "settings.subscriptionUsage.secondary": "Secondary limit",
+  "settings.subscriptionUsage.used": "{percent}% used",
+  "settings.subscriptionUsage.resets": "Resets {date}",
+  "settings.subscriptionUsage.resetUnknown": "Reset time not provided",
+  "settings.subscriptionUsage.limitReached": "Limit reached",
+  "settings.subscriptionUsage.permission":
+    "This token cannot read usage limits. Check usage on the provider’s website.",
+  "settings.subscriptionUsage.authorization":
+    "The provider could not authorize this usage request. Relink your subscription to refresh its credentials.",
+  "settings.subscriptionUsage.rateLimited":
+    "The provider is limiting usage checks. Try again after the time below.",
+  "settings.subscriptionUsage.disconnected":
+    "Link your subscription to view usage limits.",
+  "settings.subscriptionUsage.unavailable":
+    "Usage limits are unavailable right now. Check the provider for the latest status.",
+  "settings.subscriptionUsage.retryAt": "Try again {date}",
+  "settings.subscriptionUsage.checkedAt": "Checked {date}",
+  "settings.subscriptionUsage.sharedUsage":
+    "Includes usage outside Studio. These limits belong to your personal plan.",
+  "settings.subscriptionUsage.openProvider": "View on provider",
+
   "settings.voice.title": "Voice mode",
   "settings.voice.description":
     "Let members talk to agents in chats. Requires ElevenLabs to be configured on this Studio deployment.",
