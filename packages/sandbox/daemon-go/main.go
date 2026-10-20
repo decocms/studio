@@ -1403,7 +1403,9 @@ func main() {
 	d.mux = http.NewServeMux()
 	d.registerSandboxRoutes(d.mux, sandboxPrefix, h)
 
-	if diskCfg, ok := config.ReadDiskConfig(repoDir); ok {
+	if diskCfg, found, err := config.ReadDiskConfig(repoDir); err != nil {
+		slog.Error("ignoring malformed .decocms/daemon.json", "error", err)
+	} else if found {
 		if reason := config.Validate(diskCfg); reason != "" {
 			slog.Error("ignoring invalid .decocms/daemon.json", "reason", reason)
 		} else {
