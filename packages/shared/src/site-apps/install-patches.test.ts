@@ -209,6 +209,19 @@ autoconfigApps(generatedBlocks, APP_REGISTRY);
     ).toThrow(/monolithic `@decocms\/apps` registry/);
   });
 
+  it("refuses the legacy wiring when the import clause is wrapped", () => {
+    const legacy = `import {
+  APP_REGISTRY,
+  autoconfigApps,
+} from "@decocms/apps/registry";
+
+autoconfigApps(generatedBlocks, APP_REGISTRY);
+`;
+    expect(() =>
+      makeInstallAppPatches(tanstackInput({ setupTs: legacy })),
+    ).toThrow(/monolithic `@decocms\/apps` registry/);
+  });
+
   it("refuses a setup.ts with no APP_REGISTRY", () => {
     expect(() =>
       makeInstallAppPatches(

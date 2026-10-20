@@ -141,7 +141,12 @@ const APP_REGISTRY_ARRAY = /const\s+APP_REGISTRY\b[^=]*=\s*\[/;
  * every platform at once. A per-package entry has nowhere to go there, and
  * adding one of the split `@decocms/apps-*` packages would not register it.
  */
-const IMPORTED_APP_REGISTRY = /import\s*\{[^}]*\bAPP_REGISTRY\b[^}]*\}\s*from/;
+function importsAppRegistry(setupTs: string): boolean {
+  // Clause scanned whole, then searched: a `\{[^}]*APP_REGISTRY` rescans to
+  // EOF from every `import {` that never closes, which is quadratic.
+  const clauses = setupTs.match(/\bimport\s*\{[^{}]*\}\s*from\b/g) ?? [];
+  return clauses.some((clause) => /\bAPP_REGISTRY\b/.test(clause));
+}
 
 /**
  * Wire the app into the site's `APP_REGISTRY`. That array is what
@@ -237,10 +242,7 @@ export function makeInstallAppPatches(
       content: addDependency(packageJson, pkg.name, version),
     });
   }
-  if (
-    !APP_REGISTRY_ARRAY.test(setupTs) &&
-    IMPORTED_APP_REGISTRY.test(setupTs)
-  ) {
+  if (!APP_REGISTRY_ARRAY.test(setupTs) && importsAppRegistry(setupTs)) {
     throw new SiteAppInstallError(
       "This branch still wires apps through the monolithic `@decocms/apps` registry, which cannot see the split `@decocms/apps-*` packages. Move src/setup.ts to a local `APP_REGISTRY` array first.",
     );
