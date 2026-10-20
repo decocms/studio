@@ -103,20 +103,41 @@ interface SaveBlockVariables {
  * key and block. Right after a commit the provider can keep answering with the
  * previous head for a few seconds; a re-read that returns one of these is this
  * tab's own past, not another editor's change, and must not be merged in.
+ * Module-scoped (outlives any one editor), so entries are capped and
+ * LRU-evicted: a long tab session touching many branches/blocks must not grow
+ * this map forever.
  */
 const ownVersions = new Map<string, string[]>();
 const OWN_VERSIONS_KEPT = 20;
+const OWN_VERSIONS_TRACKED_KEYS = 200;
 const ECHO_RETRY_MS = 1_500;
 
-function rememberOwnVersion(key: string, value: unknown): void {
-  const versions = ownVersions.get(key) ?? [];
-  versions.push(canonicalBlockJson(value));
-  if (versions.length > OWN_VERSIONS_KEPT) versions.shift();
+/** Fetch `key`'s versions, marking it most-recently-used and evicting the oldest key over the cap. */
+function touchOwnVersions(key: string): string[] {
+  const existing = ownVersions.get(key);
+  ownVersions.delete(key);
+  const versions = existing ?? [];
   ownVersions.set(key, versions);
+  if (ownVersions.size > OWN_VERSIONS_TRACKED_KEYS) {
+    const oldest = ownVersions.keys().next().value;
+    if (oldest !== undefined) ownVersions.delete(oldest);
+  }
+  return versions;
 }
 
-function isOwnVersion(key: string, value: unknown): boolean {
-  return ownVersions.get(key)?.includes(canonicalBlockJson(value)) ?? false;
+export function rememberOwnVersion(key: string, value: unknown): void {
+  const versions = touchOwnVersions(key);
+  versions.push(canonicalBlockJson(value));
+  if (versions.length > OWN_VERSIONS_KEPT) versions.shift();
+}
+
+export function isOwnVersion(key: string, value: unknown): boolean {
+  return touchOwnVersions(key).includes(canonicalBlockJson(value));
+}
+
+/** Test-only: how many distinct block keys are currently tracked. */
+export function ownVersionsTrackedKeyCount(): number {
+  return ownVersions.size;
 }
 
 async function blockExpectation(
