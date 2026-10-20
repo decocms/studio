@@ -58,6 +58,46 @@ describe("FreestyleSandboxProvider", () => {
     provider.close();
   });
 
+  test("retries the org-fs relay while the edge answers 502", async () => {
+    const relays: number[] = [];
+    globalThis.fetch = Object.assign(
+      async (input: RequestInfo | URL) => {
+        if (!String(input).endsWith("/_sandbox/orgfs-config")) {
+          return Response.json({});
+        }
+        relays.push(Date.now());
+        return relays.length === 1
+          ? new Response("the mapped VM refused the request", { status: 502 })
+          : Response.json({ written: true });
+      },
+      { preconnect: realFetch.preconnect },
+    );
+    const { client } = fakeClient();
+    const provider = new FreestyleSandboxProvider({ apiKey: "k", client });
+    await provider.ensure(ID, { orgFsConfigJson: "{}" });
+    expect(relays).toHaveLength(2);
+    provider.close();
+  });
+
+  test("does not retry an org-fs relay the daemon refused", async () => {
+    let relays = 0;
+    globalThis.fetch = Object.assign(
+      async (input: RequestInfo | URL) => {
+        if (!String(input).endsWith("/_sandbox/orgfs-config")) {
+          return Response.json({});
+        }
+        relays++;
+        return new Response("unauthorized", { status: 401 });
+      },
+      { preconnect: realFetch.preconnect },
+    );
+    const { client } = fakeClient();
+    const provider = new FreestyleSandboxProvider({ apiKey: "k", client });
+    await provider.ensure(ID, { orgFsConfigJson: "{}" });
+    expect(relays).toBe(1);
+    provider.close();
+  });
+
   test("warm caches each namespace mode in a separate base snapshot", async () => {
     const snapshots: string[] = [];
     const exec: string[] = [];

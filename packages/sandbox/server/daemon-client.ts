@@ -16,8 +16,9 @@ export class ConfigRequestError extends Error {
   constructor(
     readonly status: number,
     body: string,
+    endpoint = "/_sandbox/config",
   ) {
-    super(`sandbox daemon /_sandbox/config returned ${status}: ${body}`);
+    super(`sandbox daemon ${endpoint} returned ${status}: ${body}`);
     this.name = "ConfigRequestError";
   }
 }
@@ -304,8 +305,10 @@ export async function postOrgFsConfig(
     CONFIG_TIMEOUT_MS,
   );
   if (!res.ok) {
-    throw new Error(
-      `sandbox daemon /_sandbox/orgfs-config returned ${res.status}: ${res.body}`,
+    throw new ConfigRequestError(
+      res.status,
+      res.body,
+      "/_sandbox/orgfs-config",
     );
   }
   return parseJsonResponse<{ written: boolean }>(

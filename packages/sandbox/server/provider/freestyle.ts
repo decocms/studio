@@ -17,7 +17,7 @@ import {
   FreestyleApiError,
   type Vm,
 } from "freestyle";
-import { sleep } from "@decocms/shared/std";
+import { retry, sleep } from "@decocms/shared/std";
 import pkg from "../../package.json" with { type: "json" };
 import {
   ConfigRequestError,
@@ -626,11 +626,11 @@ export class FreestyleSandboxProvider implements SandboxProvider {
     // A rebooted VM lost its mounts with the tmpfs ctl dir. A mounted sidecar
     // ignores the rewrite, and the daemon takes the fresh token either way.
     if (opts.orgFsConfigJson) {
-      await postOrgFsConfig(
+      await this.relayOrgFsConfig(
         found.daemon.url,
         found.daemon.token,
         opts.orgFsConfigJson,
-      ).catch((err) => console.warn(`[${LOG_LABEL}] org-fs relay failed`, err));
+      );
     }
     const patch = gitCredentialRefreshPatch(opts);
     if (patch) {
@@ -732,9 +732,7 @@ export class FreestyleSandboxProvider implements SandboxProvider {
       );
       step("claim");
       if (opts.orgFsConfigJson) {
-        await postOrgFsConfig(daemon.url, token, opts.orgFsConfigJson).catch(
-          (err) => console.warn(`[${LOG_LABEL}] org-fs relay failed`, err),
-        );
+        await this.relayOrgFsConfig(daemon.url, token, opts.orgFsConfigJson);
       }
       step("orgfs-config");
       console.log(
@@ -747,6 +745,25 @@ export class FreestyleSandboxProvider implements SandboxProvider {
     }
     this.remember(handle, { vm, daemon });
     return repoSnapshot !== null;
+  }
+
+  /**
+   * Best-effort: a sandbox without org-fs still runs. Freestyle's edge can
+   * answer 502 for a moment after a VM starts, even after the daemon took
+   * its claim, and a missed relay leaves the turn without `/app/org`.
+   */
+  private async relayOrgFsConfig(
+    url: string,
+    token: string,
+    configJson: string,
+  ): Promise<void> {
+    await retry(() => postOrgFsConfig(url, token, configJson), {
+      maxAttempts: 8,
+      minTimeout: 250,
+      maxTimeout: 4_000,
+      isRetriable: (err) =>
+        err instanceof ConfigRequestError && err.status === 502,
+    }).catch((err) => console.warn(`[${LOG_LABEL}] org-fs relay failed`, err));
   }
 
   /**
