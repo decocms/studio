@@ -8,7 +8,7 @@
  * resolution.
  */
 import { afterEach, describe, expect, it } from "bun:test";
-import type { TokenOptions } from "../types";
+import { GitProviderError, type TokenOptions } from "../types";
 import {
   checksFromPipelineStatus,
   conflictFromMergeRequest,
@@ -456,5 +456,29 @@ describe("GitlabChangeRequestClient's 401 handling", () => {
     expect(cr.number).toBe(9);
     expect(calls).toBe(2);
     expect(tokensRequested).toEqual([undefined, { forceRefresh: true }]);
+  });
+});
+
+describe("GitlabChangeRequestClient's malformed-body handling", () => {
+  const originalFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("degrades a malformed 2xx body into a GitProviderError instead of a raw SyntaxError", async () => {
+    globalThis.fetch = (async () =>
+      new Response("<html>not json</html>", {
+        status: 200,
+      })) as unknown as typeof fetch;
+
+    const client = new GitlabChangeRequestClient({
+      repo: { provider: "gitlab", host: "gitlab.com", path: "acme/site" },
+      tokenSource: {
+        kind: "oauth",
+        get: async () => ({ token: "t", kind: "oauth", expiresAt: null }),
+      },
+    });
+
+    await expect(client.read(7)).rejects.toBeInstanceOf(GitProviderError);
   });
 });

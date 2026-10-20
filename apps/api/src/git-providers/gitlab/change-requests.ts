@@ -17,7 +17,12 @@
 
 import { changeRequestUrl, type RepoRef } from "@decocms/shared/git-providers";
 import { encodeProjectPath } from "./client";
-import { gitlabApiBaseUrl, gitlabFailure, gitlabFetch } from "./http";
+import {
+  gitlabApiBaseUrl,
+  gitlabFailure,
+  gitlabFetch,
+  gitlabJson,
+} from "./http";
 import { GitProviderError, type TokenSource } from "../types";
 import {
   type ChangeRequest,
@@ -322,7 +327,7 @@ export class GitlabChangeRequestClient implements ChangeRequestClient {
     init?: { method?: "GET" | "POST" | "PUT" | "DELETE"; body?: unknown },
   ): Promise<T | null> {
     const res = await this.call(pathAndQuery, init);
-    return res === null ? null : ((await res.json()) as T);
+    return res === null ? null : await gitlabJson<T>(res, pathAndQuery);
   }
 
   private mrPath(iid: number): string {
@@ -488,7 +493,11 @@ export class GitlabChangeRequestClient implements ChangeRequestClient {
         description: params.body || undefined,
       },
     });
-    if (res.ok) return this.map((await res.json()) as RawMergeRequest);
+    if (res.ok) {
+      return this.map(
+        await gitlabJson<RawMergeRequest>(res, "open_merge_request"),
+      );
+    }
     const failure = await gitlabFailure(res);
     if (/already exists/i.test(failure.message)) {
       throw new ChangeRequestExists(
