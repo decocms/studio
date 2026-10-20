@@ -840,6 +840,20 @@ export function resolveAgentInstructions(
 }
 
 /**
+ * `virtualMcps.findById`'s `organizationId` param only resolves well-known
+ * synthetic ids (decopilot) — for a normal row it does NOT filter by org, so
+ * existence alone doesn't prove the agent is this org's. Exported so the
+ * cross-org guard is unit-tested without a DB.
+ */
+export function assertVirtualMcpOwnedByOrg<
+  T extends { organization_id: string },
+>(virtualMcp: T | null, organizationId: string): asserts virtualMcp is T {
+  if (!virtualMcp || virtualMcp.organization_id !== organizationId) {
+    throw new PermanentRunError("agent_not_found", "Agent not found");
+  }
+}
+
+/**
  * Setup phase shared by both dispatch variants. Claims the run, loads
  * conversation history, assembles the wire harness input, and constructs a
  * LAZY `uiStream` whose first pull dispatches through the harness registry
@@ -1082,9 +1096,7 @@ async function prepareRun(
         })
       : null;
 
-    if (!virtualMcp) {
-      throw new PermanentRunError("agent_not_found", "Agent not found");
-    }
+    assertVirtualMcpOwnedByOrg(virtualMcp, input.organizationId);
     const effectiveVirtualMcp = resolveEffectiveStudioPackVirtualMcp(
       virtualMcp,
       input.agent.id,
