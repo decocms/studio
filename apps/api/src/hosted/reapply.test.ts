@@ -24,7 +24,11 @@ beforeAll(() => {
 });
 
 const HOME_V1 = serializeBlock({ path: "/", title: "v1" });
-const ANA = { userName: "Ana", userEmail: "ana@acme.com" };
+const ANA = {
+  userName: "Ana",
+  userEmail: "ana@acme.com",
+  authorsCommit: true,
+};
 
 function setup(extra: Record<string, string> = {}) {
   const git = fakeRepo({
@@ -263,7 +267,9 @@ describe("reapplyVersion", () => {
     const original = await release();
     git.pushDirect({ ".deco/blocks/Home.json": serializeBlock({ t: 2 }) });
     await release();
-    await reapplyVersion(repo, original, { coAuthor: { userName: "Ana" } });
+    await reapplyVersion(repo, original, {
+      coAuthor: { userName: "Ana", authorsCommit: true },
+    });
     expect(git.history[0]?.author).toBeNull();
     // The trailer is its own block; `reappliedFrom` reads the line anywhere.
     expect(git.history[0]?.message).toEndWith("\n\nCo-authored-by: Ana");

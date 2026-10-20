@@ -4,6 +4,7 @@ import {
   type CommitOperator,
 } from "@decocms/sandbox/shared";
 import { orgFlagEnabled } from "@decocms/shared/organization/schema";
+import { orgFlagsCached } from "../core/org-flags-cache";
 import type { StudioContext } from "../core/studio-context";
 
 export function coAuthorFromStudioContext(
@@ -21,7 +22,7 @@ export function coAuthorFromStudioContext(
  * The acting user as a commit identity, carrying their organization's
  * `commits_authored_by_editor` answer. Every commit Studio writes on someone's
  * behalf goes through here, so no path can attribute one without consulting
- * the flag. One settings read per request, not per commit.
+ * the flag. The settings read is cached per org, not made per request.
  */
 export async function commitOperatorFromStudioContext(
   ctx: StudioContext,
@@ -29,17 +30,13 @@ export async function commitOperatorFromStudioContext(
   const identity = coAuthorFromStudioContext(ctx);
   if (!identity) return undefined;
   const organizationId = ctx.organization?.id;
-  const settings = organizationId
-    ? await ctx.storage.organizationSettings
-        .get(organizationId)
-        .catch(() => null)
+  const flags = organizationId
+    ? await orgFlagsCached(ctx, organizationId)
     : null;
   return {
     ...identity,
-    authorsCommit: orgFlagEnabled(
-      settings?.flags,
-      "commits_authored_by_editor",
-    ),
+    operatorId: ctx.auth.user?.id,
+    authorsCommit: orgFlagEnabled(flags, "commits_authored_by_editor"),
   };
 }
 

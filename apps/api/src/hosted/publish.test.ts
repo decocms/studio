@@ -80,7 +80,11 @@ describe("publishDraft", () => {
     }));
     await publishDraft(repo, drafts, REF, {
       message: "Update home",
-      coAuthor: { userName: "Ana", userEmail: "ana@acme.com" },
+      coAuthor: {
+        userName: "Ana",
+        userEmail: "ana@acme.com",
+        authorsCommit: true,
+      },
     });
     expect(git.history[0]).toMatchObject({
       message: "Update home",
@@ -116,7 +120,7 @@ describe("publishDraft", () => {
     }));
     await publishDraft(repo, drafts, REF, {
       message: "Update home",
-      coAuthor: { userName: "Ana" },
+      coAuthor: { userName: "Ana", authorsCommit: true },
     });
     expect(git.history[0]).toMatchObject({
       message: "Update home\n\nCo-authored-by: Ana",

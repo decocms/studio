@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import type { CommitOperator } from "@decocms/sandbox/shared";
 import type { TreeEntry } from "@/git-providers";
 import {
   buildDiscardPlan,
@@ -211,12 +212,14 @@ describe("buildPublishStatus", () => {
 });
 
 describe("squashAttribution", () => {
-  const ANA = { userName: "Ana", userEmail: "ana@acme.com" };
+  const ANA = {
+    userName: "Ana",
+    userEmail: "ana@acme.com",
+    authorsCommit: true,
+  };
   const BOB_TRAILER = "Co-authored-by: Bob <bob@acme.com>";
-  const sync = (
-    collapsed: string[],
-    operator?: Partial<typeof ANA> & { authorsCommit?: boolean },
-  ) => squashAttribution("draft", "main", false, collapsed, operator as never);
+  const sync = (collapsed: string[], operator?: CommitOperator) =>
+    squashAttribution("draft", "main", false, collapsed, operator);
 
   it("makes whoever synced the author, with no trailer repeating them", () => {
     const { message, author } = sync([], ANA);
@@ -225,7 +228,10 @@ describe("squashAttribution", () => {
   });
 
   it("falls back to a trailer when the operator has no usable email", () => {
-    const { message, author } = sync([], { userName: "Ana" });
+    const { message, author } = sync([], {
+      userName: "Ana",
+      authorsCommit: true,
+    });
     expect(author).toBeNull();
     expect(message).toBe(
       "chore(decofile): sync draft with main\n\nCo-authored-by: Ana",
@@ -247,6 +253,7 @@ describe("squashAttribution", () => {
     // Trailer-only Ana: exactly one line, even when the history repeats it.
     const fallback = sync(["chore: x\n\nCo-authored-by: Ana"], {
       userName: "Ana",
+      authorsCommit: true,
     });
     expect(fallback.message.match(/Co-authored-by: Ana/g)).toHaveLength(1);
   });

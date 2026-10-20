@@ -7,11 +7,16 @@ import {
 
 const JANE = { id: "u1", name: "Jane", email: "jane@example.com" };
 
-/** A context whose org settings carry `flags`; no org at all when null. */
+/**
+ * A context whose org settings carry `flags`; no org at all when null. Each
+ * one gets its own org id: `orgFlagsCached` keeps a process-wide entry per
+ * org, so a shared id would let one case answer the next.
+ */
 const ctx = (flags: Record<string, unknown> | null, user: unknown = JANE) =>
   ({
     auth: { user },
-    organization: flags === null ? undefined : { id: "org1" },
+    organization:
+      flags === null ? undefined : { id: `org_${crypto.randomUUID()}` },
     storage: {
       organizationSettings: { get: async () => ({ flags }) },
     },
@@ -36,6 +41,7 @@ describe("commitOperatorFromStudioContext", () => {
     ).toEqual({
       userName: "Jane",
       userEmail: "jane@example.com",
+      operatorId: "u1",
       authorsCommit: true,
     });
   });

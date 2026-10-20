@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import type { GitAuthor } from "@decocms/sandbox/shared";
+import type { CommitOperator, GitAuthor } from "@decocms/sandbox/shared";
 import type { RepoRef } from "@decocms/shared/git-providers";
 import type {
   BranchPage,
@@ -133,20 +133,33 @@ function fakeClient(opts: FakeOpts) {
 }
 
 describe("enqueueDecofilePatch attribution", () => {
-  const deps = (f: ReturnType<typeof fakeClient>, coAuthor?: unknown) => ({
+  const ANA: CommitOperator = {
+    userName: "Ana",
+    userEmail: "ana@acme.com",
+    authorsCommit: true,
+    operatorId: "u-ana",
+  };
+  const BOB: CommitOperator = {
+    userName: "Bob",
+    userEmail: "bob@acme.com",
+    authorsCommit: true,
+    operatorId: "u-bob",
+  };
+  const deps = (
+    f: ReturnType<typeof fakeClient>,
+    coAuthor?: CommitOperator,
+  ) => ({
     client: f.client,
     branch: "feature",
     packagePath: null,
-    coAuthor: coAuthor as never,
+    coAuthor,
   });
 
   it("makes the editor the commit author, with no trailer repeating them", async () => {
     const f = fakeClient({ stems: ["Header"], tracksGen: false });
-    await enqueueDecofilePatch(
-      `q-author-${Date.now()}`,
-      deps(f, { userName: "Ana", userEmail: "ana@acme.com" }),
-      { set: { Header: { __resolveType: "Header" } } },
-    );
+    await enqueueDecofilePatch(`q-author-${Date.now()}`, deps(f, ANA), {
+      set: { Header: { __resolveType: "Header" } },
+    });
     expect(f.lastCommit?.author).toEqual({
       name: "Ana",
       email: "ana@acme.com",
@@ -158,11 +171,7 @@ describe("enqueueDecofilePatch attribution", () => {
     const f = fakeClient({ stems: ["Header"], tracksGen: false });
     await enqueueDecofilePatch(
       `q-flagged-off-${Date.now()}`,
-      deps(f, {
-        userName: "Ana",
-        userEmail: "ana@acme.com",
-        authorsCommit: false,
-      }),
+      deps(f, { ...ANA, authorsCommit: false }),
       { set: { Header: { __resolveType: "Header" } } },
     );
     expect(f.lastCommit?.author).toBeNull();
@@ -175,13 +184,93 @@ describe("enqueueDecofilePatch attribution", () => {
     const f = fakeClient({ stems: ["Header"], tracksGen: false });
     await enqueueDecofilePatch(
       `q-trailer-${Date.now()}`,
-      deps(f, { userName: "Ana" }),
+      deps(f, { userName: "Ana", authorsCommit: true, operatorId: "u-ana" }),
       { set: { Header: { __resolveType: "Header" } } },
     );
     expect(f.lastCommit?.author).toBeNull();
     expect(f.lastCommit?.message).toBe(
       "chore(decofile): update Header\n\nCo-authored-by: Ana",
     );
+  });
+
+  /**
+   * A batch is per branch, not per person: two editors saving at once land in
+   * one commit. It is nobody's alone, so it stays the bot's and names both —
+   * before this, it was authored by whoever happened to save last.
+   */
+  it("gives a batch of two editors to neither, naming both", async () => {
+    const f = fakeClient({ stems: ["Header", "Footer"], tracksGen: false });
+    const queue = `q-two-editors-${Date.now()}`;
+    // Holds the queue so the next two land in ONE batch.
+    const blocker = enqueueDecofilePatch(queue, deps(f, ANA), {
+      set: { Header: { __resolveType: "Header", x: 1 } },
+    });
+    const byAna = enqueueDecofilePatch(queue, deps(f, ANA), {
+      set: { Header: { __resolveType: "Header", x: 2 } },
+    });
+    const byBob = enqueueDecofilePatch(queue, deps(f, BOB), {
+      set: { Footer: { __resolveType: "Footer" } },
+    });
+    await Promise.all([blocker, byAna, byBob]);
+
+    expect(f.commitAttempts).toBe(2);
+    expect(f.lastCommit?.author).toBeNull();
+    expect(f.lastCommit?.message).toContain(
+      "Co-authored-by: Ana <ana@acme.com>",
+    );
+    expect(f.lastCommit?.message).toContain(
+      "Co-authored-by: Bob <bob@acme.com>",
+    );
+  });
+
+  it("still authors a batch where one editor saved twice", async () => {
+    const f = fakeClient({ stems: ["Header", "Footer"], tracksGen: false });
+    const queue = `q-one-editor-${Date.now()}`;
+    const blocker = enqueueDecofilePatch(queue, deps(f, ANA), {
+      set: { Header: { __resolveType: "Header", x: 1 } },
+    });
+    const second = enqueueDecofilePatch(queue, deps(f, ANA), {
+      set: { Header: { __resolveType: "Header", x: 2 } },
+    });
+    // The same person, saved by a request that carried no e-mail: still her.
+    const third = enqueueDecofilePatch(
+      queue,
+      deps(f, { userName: "Ana", authorsCommit: true, operatorId: "u-ana" }),
+      { set: { Footer: { __resolveType: "Footer" } } },
+    );
+    await Promise.all([blocker, second, third]);
+
+    expect(f.commitAttempts).toBe(2);
+    expect(f.lastCommit?.author).toEqual({
+      name: "Ana",
+      email: "ana@acme.com",
+    });
+    expect(f.lastCommit?.message).not.toContain("Co-authored-by");
+  });
+
+  it("names only the editors whose patches the commit carries", async () => {
+    const f = fakeClient({ stems: ["Header", "Footer"], tracksGen: false });
+    const queue = `q-rejected-editor-${Date.now()}`;
+    const blocker = enqueueDecofilePatch(queue, deps(f, ANA), {
+      set: { Header: { __resolveType: "Header", x: 1 } },
+    });
+    // Bob's expectation is stale, so nothing of his reaches the commit.
+    const stale = enqueueDecofilePatch(queue, deps(f, BOB), {
+      set: { Header: { __resolveType: "Header", x: 9 } },
+      expect: { Header: "sha-that-moved-on" },
+    });
+    const byAna = enqueueDecofilePatch(queue, deps(f, ANA), {
+      set: { Footer: { __resolveType: "Footer" } },
+    });
+    await blocker;
+    await expect(stale).rejects.toBeInstanceOf(BlockConflictError);
+    await byAna;
+
+    expect(f.lastCommit?.author).toEqual({
+      name: "Ana",
+      email: "ana@acme.com",
+    });
+    expect(f.lastCommit?.message).not.toContain("Bob");
   });
 });
 

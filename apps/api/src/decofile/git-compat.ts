@@ -597,10 +597,18 @@ async function restoreAbandonedSync(
 }
 
 /**
- * The squash commit's message and author. Collapsing N commits into one would
- * drop their attribution, so whoever triggered the sync authors it (git's
- * convention for a squash) and the editors it collapses stay co-authors:
- * `Co-authored-by:` trailers left by those with no usable e-mail are re-emitted.
+ * The squash commit's message and author.
+ *
+ * Whoever triggered the sync authors it, which is git's convention for a
+ * squash and the opposite of an autosave batch (there nobody triggered
+ * anything, so the commit stays the bot's and every editor is a co-author —
+ * see `commitAttribution`).
+ *
+ * What it recovers of the collapsed commits is only their `Co-authored-by:`
+ * trailers. An editor who authored their own commit left no trailer, and
+ * `compareDetailed` reports messages but not authors, so their name does not
+ * survive the squash. Closing that means carrying authors through that
+ * contract on all three providers.
  */
 export function squashAttribution(
   branch: string,
