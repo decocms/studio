@@ -1004,6 +1004,8 @@ export const sandbox = {
     "Este bloco não é usado em nenhuma página, então não há o que visualizar.",
   "sandbox.preview.previewMetadataNotReady":
     "Metadados de visualização não estão prontos ainda",
+  "sandbox.preview.pageSchemaNotReady":
+    "O site ainda está carregando. Tente de novo em instantes.",
   "sandbox.preview.refresh": "Atualizar",
   "sandbox.preview.searchPagesAndComponents":
     "Procurar páginas e componentes...",

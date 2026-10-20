@@ -673,6 +673,7 @@ function ContentBrowserReady({
     const updatedSections = appendPageVariantSections(
       fullPageData.sections,
       seedSections,
+      meta,
     );
     if (!updatedSections) return;
     try {

@@ -161,6 +161,7 @@ export function CategoryEditor({
     category,
     previewBaseUrl,
     draftPointer,
+    meta,
   });
 
   // The slug input is a free-text draft, committed only on blur — its

@@ -4,12 +4,8 @@ import {
   isSavedBlockResolveType,
 } from "./block-type-utils";
 import { globalSectionLabel } from "./page-list";
+import { isPageResolveType } from "./page-types";
 import { resolveSchema, type LiveMeta } from "./resolve-schema";
-
-const PAGE_RESOLVE_TYPES = new Set([
-  "website/pages/Page.tsx",
-  "$live/pages/LivePage.tsx",
-]);
 
 export interface UnwrappedMatcherRule {
   resolveType: string;
@@ -27,7 +23,7 @@ function isMatcherBlockData(
 ): boolean {
   const moduleRt = blockData.__resolveType;
   if (typeof moduleRt !== "string" || !moduleRt) return false;
-  if (PAGE_RESOLVE_TYPES.has(moduleRt)) return false;
+  if (isPageResolveType(moduleRt, meta)) return false;
 
   if (meta) {
     return isManifestMatcherResolveType(meta, moduleRt);

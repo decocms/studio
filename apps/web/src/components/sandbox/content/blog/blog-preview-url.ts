@@ -1,5 +1,7 @@
 import { withDraftPointer } from "@/components/sections-editor/section-preview-url";
 import { extractPathParams } from "@/components/sections-editor/page-path-utils";
+import { isPageResolveType } from "@/components/sections-editor/page-types";
+import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 import { scanBlogEntries } from "./blog-data";
 import { categoryPathSegments } from "./category-tree";
 
@@ -44,17 +46,12 @@ function readBlogAppProp(
  * `BlogCategoryPage`); we pick the fewest-param match so a paginated variant
  * (`…/page/:page`) never shadows the canonical route.
  */
-const PAGE_RESOLVE_TYPES = new Set([
-  "website/pages/Page.tsx",
-  "$live/pages/LivePage.tsx",
-]);
-
 /** The `path` of a decofile Page block, or `null` for any other block shape. */
-function pageBlockPath(block: unknown): string | null {
+function pageBlockPath(block: unknown, meta?: LiveMeta | null): string | null {
   if (!block || typeof block !== "object" || Array.isArray(block)) return null;
   const obj = block as Record<string, unknown>;
   if (typeof obj.__resolveType !== "string") return null;
-  if (!PAGE_RESOLVE_TYPES.has(obj.__resolveType)) return null;
+  if (!isPageResolveType(obj.__resolveType, meta)) return null;
   return typeof obj.path === "string" ? obj.path : null;
 }
 
@@ -71,11 +68,12 @@ function paramCount(path: string): number {
 function findBlogPageTemplateByMarker(
   decofile: Record<string, unknown>,
   marker: RegExp,
+  meta?: LiveMeta | null,
 ): string | null {
   let best: string | null = null;
   let bestParams = Number.POSITIVE_INFINITY;
   for (const block of Object.values(decofile)) {
-    const path = pageBlockPath(block);
+    const path = pageBlockPath(block, meta);
     if (!path) continue;
     if (!marker.test(JSON.stringify(block))) continue;
     const params = paramCount(path);
@@ -92,21 +90,24 @@ function findBlogPageTemplateByMarker(
 const BLOG_POST_PAGE_MARKER = /blogpostpage/i;
 const BLOG_CATEGORY_PAGE_MARKER = /blogcategorypage/i;
 
+/** `meta` (the site's schema) lets a next-major site's page types count as pages. */
 export function findBlogPageSlug(
   decofile: Record<string, unknown>,
+  meta?: LiveMeta | null,
 ): string | null {
   return (
     readBlogAppProp(decofile, "pageSlug") ??
-    findBlogPageTemplateByMarker(decofile, BLOG_POST_PAGE_MARKER)
+    findBlogPageTemplateByMarker(decofile, BLOG_POST_PAGE_MARKER, meta)
   );
 }
 
 export function findBlogCategorySlug(
   decofile: Record<string, unknown>,
+  meta?: LiveMeta | null,
 ): string | null {
   return (
     readBlogAppProp(decofile, "categorySlug") ??
-    findBlogPageTemplateByMarker(decofile, BLOG_CATEGORY_PAGE_MARKER)
+    findBlogPageTemplateByMarker(decofile, BLOG_CATEGORY_PAGE_MARKER, meta)
   );
 }
 
@@ -229,15 +230,18 @@ export function buildBlogCategoryPreviewUrl({
   category,
   previewBaseUrl,
   draftPointer,
+  meta,
 }: {
   decofile: Record<string, unknown>;
   category: Record<string, unknown>;
   previewBaseUrl: string | null | undefined;
   /** Fast Preview grant, so the link opens the unpublished draft. */
   draftPointer?: string | null;
+  /** The site's schema, for its page types. */
+  meta?: LiveMeta | null;
 }): string | null {
   if (!previewBaseUrl) return null;
-  const template = findBlogCategorySlug(decofile);
+  const template = findBlogCategorySlug(decofile, meta);
   if (!template) return null;
 
   const slug = str(category.slug);
@@ -265,15 +269,18 @@ export function buildBlogPostPreviewUrl({
   post,
   previewBaseUrl,
   draftPointer,
+  meta,
 }: {
   decofile: Record<string, unknown>;
   post: Record<string, unknown>;
   previewBaseUrl: string | null | undefined;
   /** Fast Preview grant, so the link opens the unpublished draft. */
   draftPointer?: string | null;
+  /** The site's schema, for its page types. */
+  meta?: LiveMeta | null;
 }): string | null {
   if (!previewBaseUrl) return null;
-  const template = findBlogPageSlug(decofile);
+  const template = findBlogPageSlug(decofile, meta);
   if (!template) return null;
 
   const leaf = firstCategorySlug(post);

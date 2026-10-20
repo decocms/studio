@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { SeoFormChrome } from "./seo-form-chrome";
 import { SeoFormFields } from "./seo-form-fields";
 import { SeoTypeSelect } from "./seo-type-select";
+import { useT } from "@/i18n/use-t.ts";
 import type { SchemaProperty } from "./resolve-schema";
 import type { Crumb } from "./schema-form-breadcrumb";
 import type { SeoTypeOption } from "./seo-schema";
@@ -30,6 +31,8 @@ interface PageSeoFormProps {
   beforeFields?: ReactNode;
   /** False on v8, which has no async rendering: no switch at all. */
   asyncRenderAvailable?: boolean;
+  /** The site's schema is still loading: SEO can't be turned on yet. */
+  seoTypesLoading?: boolean;
 }
 
 /** Page SEO: Enable + type + fields + Async render (admin EditSEO layout). */
@@ -49,9 +52,15 @@ export function PageSeoForm({
   onBumpFormKey,
   beforeFields,
   asyncRenderAvailable = true,
+  seoTypesLoading = false,
 }: PageSeoFormProps) {
+  const t = useT();
+  // No SEO type to start from (a next-major page schema that lists none):
+  // SEO can't be turned on, rather than saving a type-less SEO block.
+  const seoTypeAvailable = !seoTypesLoading && defaultResolveType !== "";
   const handleEnableChange = (enabled: boolean) => {
     if (enabled) {
+      if (!seoTypeAvailable) return;
       const nextRaw = defaultEnabledSeo(defaultResolveType);
       onPersistRaw(nextRaw);
       onClearForm();
@@ -78,6 +87,12 @@ export function PageSeoForm({
     <SeoFormChrome
       rawSeo={rawSeo}
       onEnableChange={handleEnableChange}
+      enableUnavailable={!seoTypeAvailable}
+      enableUnavailableHint={
+        seoTypeAvailable || seoTypesLoading
+          ? undefined
+          : t("sectionsEditor.seoFormChrome.noSeoTypeHint")
+      }
       onAsyncRenderChange={
         asyncRenderAvailable ? handleAsyncRenderChange : undefined
       }

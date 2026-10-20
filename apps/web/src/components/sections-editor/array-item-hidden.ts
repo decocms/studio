@@ -1,5 +1,7 @@
+import type { LiveMeta } from "./resolve-schema";
 import {
-  NEVER_MATCHER_RESOLVE_TYPE,
+  isNeverMatcherResolveType,
+  neverMatcherResolveType,
   PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE,
 } from "./section-types";
 
@@ -28,14 +30,19 @@ function asWrap(item: unknown): HiddenItemWrap | null {
 export function isArrayItemHidden(item: unknown): boolean {
   const wrap = asWrap(item);
   const first = wrap?.variants?.[0];
-  return first?.rule?.__resolveType === NEVER_MATCHER_RESOLVE_TYPE;
+  return isNeverMatcherResolveType(first?.rule?.__resolveType);
 }
 
 /** Wrap an item value so it never renders on the live site. */
-export function hideArrayItem(value: unknown): HiddenItemWrap {
+export function hideArrayItem(
+  value: unknown,
+  meta?: LiveMeta | null,
+): HiddenItemWrap {
   return {
     __resolveType: PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE,
-    variants: [{ value, rule: { __resolveType: NEVER_MATCHER_RESOLVE_TYPE } }],
+    variants: [
+      { value, rule: { __resolveType: neverMatcherResolveType(meta) } },
+    ],
   };
 }
 

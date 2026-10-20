@@ -136,7 +136,10 @@ import {
 import { PathParamInput } from "./path-param-input";
 import { buildPreviewLabel } from "./preview-label";
 import { showCmsPageSelector, showPreviewToolbarFor } from "./cms-controls";
-import { useCreatePage } from "@/components/sections-editor/use-create-page";
+import {
+  PageSchemaNotReadyError,
+  useCreatePage,
+} from "@/components/sections-editor/use-create-page";
 import { CreatePageModal } from "@/components/sections-editor/create-page-modal";
 import { sleep } from "@decocms/shared/std";
 import {
@@ -1616,6 +1619,8 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
         path: trimmedPath,
         template,
         meta,
+        // The schema may not have arrived yet: read it rather than guess.
+        loadMeta: async () => (await metaQuery.refetch()).data,
       });
       setCreatePageDialogOpen(false);
       toast.success(t("sandbox.preview.pageCreated", { name }));
@@ -1628,9 +1633,11 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       activateEditingMode("blocks");
     } catch (error) {
       setCreatePageError(
-        error instanceof Error
-          ? error.message
-          : t("sandbox.preview.failedToCreatePage"),
+        error instanceof PageSchemaNotReadyError
+          ? t("sandbox.preview.pageSchemaNotReady")
+          : error instanceof Error
+            ? error.message
+            : t("sandbox.preview.failedToCreatePage"),
       );
     }
   };

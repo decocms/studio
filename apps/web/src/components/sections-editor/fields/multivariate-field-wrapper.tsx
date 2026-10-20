@@ -36,7 +36,7 @@ import { VariantRuleEditor } from "../variant-rule-editor";
 import { VariantRenameDialog } from "../variant-rename-dialog";
 import { VariantRuleSection, VariantSelect } from "../sections-editor-panels";
 import { HeaderSlotPortal } from "../header-slot";
-import { ALWAYS_MATCHER_RESOLVE_TYPE } from "../section-types";
+import { alwaysMatcherResolveType } from "../section-types";
 import { cachedResolveSchema } from "./resolved-schema-cache";
 import type { VariantMatcherOps } from "../variant-matcher-rename";
 
@@ -118,7 +118,9 @@ export function MultivariateFieldWrapper({
                 "sectionsEditor.multivariateFieldWrapper.addVariant",
               )}
               onClick={() => {
-                onChange(wrapAsMultivariate(value, multivariateResolveType));
+                onChange(
+                  wrapAsMultivariate(value, multivariateResolveType, meta),
+                );
                 setSelectedIndex(0);
               }}
             >
@@ -191,7 +193,7 @@ export function MultivariateFieldWrapper({
   };
 
   const handleAdd = () => {
-    const next = appendVariant(wrapper);
+    const next = appendVariant(wrapper, meta);
     onChange(next);
     setSelectedIndex(next.variants.length - 1);
   };
@@ -224,7 +226,7 @@ export function MultivariateFieldWrapper({
     // persists a valid rule (see seedMatcherRule).
     const rule = resolveType
       ? seedMatcherRule(resolveType, meta)
-      : { __resolveType: ALWAYS_MATCHER_RESOLVE_TYPE };
+      : { __resolveType: alwaysMatcherResolveType(meta) };
     onChange(updateVariantRule(wrapper, safeIndex, rule));
   };
 

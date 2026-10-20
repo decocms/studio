@@ -980,6 +980,8 @@ export const sandbox = {
   "sandbox.preview.blockOnNoPage":
     "This block isn't used on any page, so there's nothing to preview.",
   "sandbox.preview.previewMetadataNotReady": "Preview metadata not ready yet",
+  "sandbox.preview.pageSchemaNotReady":
+    "The site is still loading. Try again in a moment.",
   "sandbox.preview.refresh": "Refresh",
   "sandbox.preview.searchPagesAndComponents": "Search pages and components...",
   "sandbox.preview.startingPreview": "Starting your preview",

@@ -385,6 +385,8 @@ export const sectionsEditor = {
   "sectionsEditor.seoFormChrome.asyncRenderLabel": "Renderização assíncrona",
   "sectionsEditor.seoFormChrome.documentationLinkText": "documentação",
   "sectionsEditor.seoFormChrome.enableLabel": "Ativar SEO",
+  "sectionsEditor.seoFormChrome.noSeoTypeHint":
+    "Este site ainda não tem configurações de SEO para páginas. Quando os desenvolvedores as adicionarem, você poderá ativar o SEO aqui.",
   "sectionsEditor.seoPreview.chatCardHint":
     "Aqui está um post que você poderia escrever com o link do seu site:",
   "sectionsEditor.seoPreview.fallbackDescription":

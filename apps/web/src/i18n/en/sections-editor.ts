@@ -371,6 +371,8 @@ export const sectionsEditor = {
   "sectionsEditor.seoFormChrome.asyncRenderLabel": "Async render",
   "sectionsEditor.seoFormChrome.documentationLinkText": "documentation",
   "sectionsEditor.seoFormChrome.enableLabel": "Enable SEO",
+  "sectionsEditor.seoFormChrome.noSeoTypeHint":
+    "This site has no SEO settings for pages yet. Once its developers add them, you can turn SEO on here.",
   "sectionsEditor.seoPreview.chatCardHint":
     "Here's a post you might write with the link of your website:",
   "sectionsEditor.seoPreview.fallbackDescription":

@@ -72,6 +72,7 @@ export function unwrapMultivariateArrayValue(value: unknown): unknown[] | null {
 export function wrapMultivariateArrayValue(
   original: unknown,
   nextArray: unknown[],
+  meta?: LiveMeta | null,
 ): unknown {
   if (!isMultivariateArrayWrapper(original)) return nextArray;
   const obj = structuredClone(original) as Record<string, unknown>;
@@ -79,7 +80,7 @@ export function wrapMultivariateArrayValue(
     ...((obj.variants as Array<Record<string, unknown>>) ?? []),
   ];
   if (variants.length === 0) {
-    variants.push({ rule: defaultVariantRule(), value: nextArray });
+    variants.push({ rule: defaultVariantRule(meta), value: nextArray });
   } else {
     variants[0] = { ...variants[0], value: nextArray };
   }
@@ -162,9 +163,12 @@ export function parsePageVariants(
   return [];
 }
 
-function createPageVariantEntry(value: RawSection[]): Record<string, unknown> {
+function createPageVariantEntry(
+  value: RawSection[],
+  meta: LiveMeta | null | undefined,
+): Record<string, unknown> {
   return {
-    rule: defaultVariantRule(),
+    rule: defaultVariantRule(meta),
     value,
   };
 }
@@ -187,12 +191,13 @@ function createMultivariatePageSections(
 export function appendPageVariantSections(
   current: unknown,
   seedSections: RawSection[],
+  meta?: LiveMeta | null,
 ): Record<string, unknown> | null {
   const seed = structuredClone(seedSections);
   if (Array.isArray(current)) {
     return createMultivariatePageSections([
-      createPageVariantEntry(current),
-      createPageVariantEntry(seed),
+      createPageVariantEntry(current, meta),
+      createPageVariantEntry(seed, meta),
     ]);
   }
   if (current && typeof current === "object") {
@@ -201,7 +206,7 @@ export function appendPageVariantSections(
       return createMultivariatePageSections(
         [
           ...(obj.variants as Array<Record<string, unknown>>),
-          createPageVariantEntry(seed),
+          createPageVariantEntry(seed, meta),
         ],
         obj,
       );
@@ -209,8 +214,8 @@ export function appendPageVariantSections(
     return null;
   }
   return createMultivariatePageSections([
-    createPageVariantEntry([]),
-    createPageVariantEntry(seed),
+    createPageVariantEntry([], meta),
+    createPageVariantEntry(seed, meta),
   ]);
 }
 

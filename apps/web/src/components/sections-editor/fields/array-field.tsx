@@ -389,7 +389,7 @@ export function ArrayField({
     const next = [...items];
     next[index] = isArrayItemHidden(item)
       ? showArrayItem(item)
-      : hideArrayItem(item);
+      : hideArrayItem(item, meta);
     onChange(next);
   };
 
@@ -401,7 +401,9 @@ export function ArrayField({
   const updateItem = (index: number, val: unknown) => {
     const next = [...items];
     // Preserve the hidden wrapper when editing a hidden item's inner value.
-    next[index] = isArrayItemHidden(items[index]) ? hideArrayItem(val) : val;
+    next[index] = isArrayItemHidden(items[index])
+      ? hideArrayItem(val, meta)
+      : val;
     onChange(next);
 
     // When editing the currently selected item, its display label may change

@@ -93,7 +93,7 @@ import { SectionVariantList } from "./section-variant-list";
 import type { Crumb } from "./schema-form-breadcrumb";
 import { crumbLabel, headerBackTargetIndex } from "./schema-form-breadcrumb";
 import {
-  ALWAYS_MATCHER_RESOLVE_TYPE,
+  alwaysMatcherResolveType,
   defaultVariantRule,
   type RawSection,
 } from "./section-types";
@@ -1894,7 +1894,7 @@ export function SectionsEditor({
 
     const next = parsed.isHidden
       ? showSection(rawSection)
-      : hideSection(rawSection);
+      : hideSection(rawSection, meta);
     if (!next) return;
 
     const updatedSections = [...rawSections];
@@ -2165,7 +2165,7 @@ export function SectionsEditor({
     const parsed = parsedSections[sectionIndex];
     if (!rawSection || !parsed) return;
 
-    const result = appendSectionVariant(rawSection, parsed);
+    const result = appendSectionVariant(rawSection, parsed, undefined, meta);
     if (!result) {
       toast.error(t("sectionsEditor.sectionsEditor.sectionCannotHaveVariants"));
       return;
@@ -2427,7 +2427,7 @@ export function SectionsEditor({
     // persists a valid rule (see seedMatcherRule).
     const newRule: Record<string, unknown> = newRt
       ? seedMatcherRule(newRt, meta)
-      : { __resolveType: ALWAYS_MATCHER_RESOLVE_TYPE };
+      : { __resolveType: alwaysMatcherResolveType(meta) };
     setRuleFormValue(newRt ? newRule : {});
     scheduleRuleSave(newRule);
   };
@@ -2603,7 +2603,7 @@ export function SectionsEditor({
     setSectionRuleResolveType(newRt);
     const newRule: Record<string, unknown> = newRt
       ? seedMatcherRule(newRt, meta)
-      : { __resolveType: ALWAYS_MATCHER_RESOLVE_TYPE };
+      : { __resolveType: alwaysMatcherResolveType(meta) };
     setSectionRuleFormValue(newRt ? newRule : {});
     scheduleSectionRuleSave(newRule);
   };
@@ -2914,6 +2914,7 @@ export function SectionsEditor({
     const updatedSections = appendPageVariantSections(
       fullPageData.sections,
       rawSections,
+      meta,
     );
     if (!updatedSections) return;
 
@@ -3108,7 +3109,7 @@ export function SectionsEditor({
         const keepIndex = pickVariantToKeepIndex({ variants });
         const kept = variants[keepIndex];
         if (!kept) return null;
-        return [{ ...kept, rule: defaultVariantRule() }];
+        return [{ ...kept, rule: defaultVariantRule(meta) }];
       },
       () => {
         setActiveVariantIndex(0);
@@ -4033,6 +4034,7 @@ export function SectionsEditor({
           rawSeo={displayRawSeo}
           innerSeo={effectiveInner}
           defaultResolveType={defaultResolveType}
+          seoTypesLoading={!meta}
           seoSchema={seoSchema}
           activeResolveType={activeSeoType}
           seoTypeOptions={seoTypeOptions}
@@ -4067,6 +4069,7 @@ export function SectionsEditor({
               rawSeo={displayRawSeo}
               innerSeo={effectiveInner}
               defaultResolveType={defaultResolveType}
+              seoTypesLoading={!meta}
               seoSchema={seoSchema}
               activeResolveType={activeSeoType}
               seoTypeOptions={seoTypeOptions}

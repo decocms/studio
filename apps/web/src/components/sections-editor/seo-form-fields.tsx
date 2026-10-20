@@ -28,7 +28,7 @@ export function SeoFormFields({
   onBreadcrumbChange,
   siteDefaultSeo,
 }: SeoFormFieldsProps) {
-  const mode = getSeoFormMode(resolveType);
+  const mode = getSeoFormMode(resolveType, schema);
 
   if (mode === "general") {
     return (

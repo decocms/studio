@@ -2,10 +2,13 @@ import type { ParsedSection } from "./parse-sections";
 import { isLazyResolveType, LAZY_RENDER_RESOLVE_TYPE } from "./section-lazy";
 import {
   defaultVariantRule,
-  NEVER_MATCHER_RESOLVE_TYPE,
+  isAlwaysMatcherResolveType,
+  isNeverMatcherResolveType,
+  neverMatcherResolveType,
   SECTION_MULTIVARIATE_RESOLVE_TYPE,
   type RawSection,
 } from "./section-types";
+import type { LiveMeta } from "./resolve-schema";
 
 export type { RawSection };
 
@@ -31,11 +34,7 @@ function readHiddenNeverVariantValue(raw: RawSection): RawSection | null {
     | undefined;
   const first = variants?.[0];
   const rule = first?.rule as Record<string, unknown> | undefined;
-  if (
-    (rule?.__resolveType as string | undefined) !== NEVER_MATCHER_RESOLVE_TYPE
-  ) {
-    return null;
-  }
+  if (!isNeverMatcherResolveType(rule?.__resolveType)) return null;
   return (first?.value as RawSection | undefined) ?? null;
 }
 
@@ -46,12 +45,15 @@ function readHiddenNeverVariantValue(raw: RawSection): RawSection | null {
  * Lazy and hidden are mutually exclusive — hiding unwraps lazy first so the
  * stored variant value is always the core section.
  */
-export function hideSection(raw: RawSection): RawSection {
+export function hideSection(
+  raw: RawSection,
+  meta?: LiveMeta | null,
+): RawSection {
   const core = unwrapLazySection(raw);
   return {
     __resolveType: SECTION_MULTIVARIATE_RESOLVE_TYPE,
     variants: [
-      { value: core, rule: { __resolveType: NEVER_MATCHER_RESOLVE_TYPE } },
+      { value: core, rule: { __resolveType: neverMatcherResolveType(meta) } },
     ],
   } as RawSection;
 }
@@ -144,16 +146,11 @@ export interface SectionFlagVariant {
   rule?: Record<string, unknown>;
 }
 
-const DEFAULT_MATCHER_TYPES = [
-  "website/matchers/always.ts",
-  "$live/matchers/MatchAlways.ts",
-];
-
 export function isDefaultVariantRule(rule?: Record<string, unknown>): boolean {
   if (!rule) return false;
   const rt = (rule.__resolveType as string) ?? "";
   if (rt === "") return Object.keys(rule).length === 0;
-  return DEFAULT_MATCHER_TYPES.includes(rt) || rt.includes("always");
+  return isAlwaysMatcherResolveType(rt) || rt.includes("always");
 }
 
 export function pickVariantToKeepIndex(mvObj: Record<string, unknown>): number {
@@ -380,9 +377,10 @@ export function deleteMultivariateSectionVariant(
 
 function createSectionVariantEntry(
   value: Record<string, unknown>,
+  meta: LiveMeta | null | undefined,
 ): Record<string, unknown> {
   return {
-    rule: defaultVariantRule(),
+    rule: defaultVariantRule(meta),
     value: structuredClone(value),
   };
 }
@@ -437,7 +435,8 @@ function extractSectionVariantSeed(
 function wrapSectionAsMultivariate(
   raw: RawSection,
   parsed: ParsedSection,
-  seedValue?: Record<string, unknown>,
+  seedValue: Record<string, unknown> | undefined,
+  meta: LiveMeta | null | undefined,
 ): RawSection | null {
   if (parsed.isMultivariate || parsed.isHidden) return null;
 
@@ -445,8 +444,8 @@ function wrapSectionAsMultivariate(
   if (!seed) return null;
 
   const mvObj = createMultivariateSectionObject([
-    createSectionVariantEntry(seed),
-    createSectionVariantEntry(seed),
+    createSectionVariantEntry(seed, meta),
+    createSectionVariantEntry(seed, meta),
   ]);
 
   if (parsed.isLazy) {
@@ -467,6 +466,7 @@ export function appendSectionVariant(
   raw: RawSection,
   parsed: ParsedSection,
   seedValue?: Record<string, unknown>,
+  meta?: LiveMeta | null,
 ): { section: RawSection; newVariantIndex: number } | null {
   if (parsed.isHidden || parsed.isSavedBlock) return null;
 
@@ -483,7 +483,7 @@ export function appendSectionVariant(
     if (!seed) return null;
 
     const updatedMvObj = createMultivariateSectionObject(
-      [...variants, createSectionVariantEntry(seed)],
+      [...variants, createSectionVariantEntry(seed, meta)],
       mvObj,
     );
     return {
@@ -492,7 +492,7 @@ export function appendSectionVariant(
     };
   }
 
-  const wrapped = wrapSectionAsMultivariate(raw, parsed, seedValue);
+  const wrapped = wrapSectionAsMultivariate(raw, parsed, seedValue, meta);
   if (!wrapped) return null;
   return { section: wrapped, newVariantIndex: 1 };
 }

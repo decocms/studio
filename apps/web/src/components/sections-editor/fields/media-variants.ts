@@ -1,3 +1,4 @@
+import type { LiveMeta } from "../resolve-schema";
 import { defaultVariantRule } from "../section-types";
 import { isDefaultVariantRule } from "../section-variants";
 import { unwrapLazy, wrapLazy } from "../lazy-value";
@@ -32,6 +33,7 @@ export function isMultivariateWrapper(
 export function wrapAsMultivariate(
   value: unknown,
   resolveType: string,
+  meta?: LiveMeta | null,
 ): MultivariateWrapper {
   const stored = () =>
     resolveType === LAZY_VALUES_MULTIVARIATE
@@ -40,8 +42,8 @@ export function wrapAsMultivariate(
   return {
     __resolveType: resolveType,
     variants: [
-      { rule: defaultVariantRule(), value: stored() },
-      { rule: defaultVariantRule(), value: stored() },
+      { rule: defaultVariantRule(meta), value: stored() },
+      { rule: defaultVariantRule(meta), value: stored() },
     ],
   };
 }
@@ -63,11 +65,12 @@ export function flattenMultivariate(wrapper: MultivariateWrapper): unknown {
 /** Add a variant cloned from last. */
 export function appendVariant(
   wrapper: MultivariateWrapper,
+  meta?: LiveMeta | null,
 ): MultivariateWrapper {
   const variants = [...wrapper.variants];
   const last = variants[variants.length - 1];
   const newVariant: MultivariateVariant = {
-    rule: defaultVariantRule(),
+    rule: defaultVariantRule(meta),
     value: last ? structuredClone(last.value) : undefined,
   };
   return { ...wrapper, variants: [...variants, newVariant] };

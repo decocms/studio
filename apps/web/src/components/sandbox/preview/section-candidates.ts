@@ -1,5 +1,5 @@
 import { isLazyResolveType } from "@/components/sections-editor/section-lazy";
-import { NEVER_MATCHER_RESOLVE_TYPE } from "@/components/sections-editor/section-types";
+import { isNeverMatcherResolveType } from "@/components/sections-editor/section-types";
 
 /**
  * Candidate top-level `data-manifest-key`s a page section can render as, used
@@ -44,7 +44,7 @@ export function resolveSectionCandidates(
       variants.length === 0 ||
       variants.every((v) => {
         const rule = (v as { rule?: { __resolveType?: unknown } })?.rule;
-        return rule?.__resolveType === NEVER_MATCHER_RESOLVE_TYPE;
+        return isNeverMatcherResolveType(rule?.__resolveType);
       });
     if (allNever) return null;
     const keys: string[] = [];

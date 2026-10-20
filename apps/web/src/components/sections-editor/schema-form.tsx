@@ -205,7 +205,9 @@ export function renderField(fieldProps: FieldProps) {
           schema={arraySchema}
           value={multivariateArray}
           onChange={(next) =>
-            props.onChange(wrapMultivariateArrayValue(value, next as unknown[]))
+            props.onChange(
+              wrapMultivariateArrayValue(value, next as unknown[], props.meta),
+            )
           }
         />
       );

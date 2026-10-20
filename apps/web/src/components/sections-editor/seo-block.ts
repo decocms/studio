@@ -1,5 +1,5 @@
 import type { LiveMeta } from "./resolve-schema";
-import { declaresBuiltInPage } from "./section-catalog";
+import { isPageResolveType } from "./page-types";
 import { unwrapSeoConfig, wrapSeoPersistValue } from "./seo-lazy-render";
 import {
   isSeoSectionResolveType,
@@ -9,23 +9,6 @@ import {
   resolveSiteSeoResolveType,
   type SeoTypeOption,
 } from "./seo-schema";
-
-const PAGE_RESOLVE_TYPES = new Set([
-  "website/pages/Page.tsx",
-  "$live/pages/LivePage.tsx",
-  // Next-major's built-in page.
-  "page",
-]);
-
-/**
- * Whether a block type is a page: a known page name or, on a next-major site,
- * any type its manifest lists under `pages` (a site's own routable types).
- */
-function isPageResolveType(resolveType: string, meta?: LiveMeta): boolean {
-  if (PAGE_RESOLVE_TYPES.has(resolveType)) return true;
-  if (!declaresBuiltInPage(meta)) return false;
-  return Object.hasOwn(meta?.manifest?.blocks?.pages ?? {}, resolveType);
-}
 
 /** Default deco SEO section type when manifest schemas are unavailable. */
 export const DEFAULT_SEO_RESOLVE_TYPE = "website/sections/Seo/SeoV2.tsx";

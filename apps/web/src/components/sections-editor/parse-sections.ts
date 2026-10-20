@@ -2,7 +2,7 @@ import { isSavedBlockResolveType } from "./block-type-utils";
 import { isLazyResolveType } from "./section-lazy";
 import {
   labelFromResolveType,
-  NEVER_MATCHER_RESOLVE_TYPE,
+  isNeverMatcherResolveType,
   PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE,
   SECTION_MULTIVARIATE_RESOLVE_TYPE,
   type RawSection,
@@ -77,8 +77,7 @@ export function parseSections(
 
       if (
         rawVariants.length === 1 &&
-        ((rawVariants[0]?.rule?.__resolveType as string) ?? "") ===
-          NEVER_MATCHER_RESOLVE_TYPE
+        isNeverMatcherResolveType(rawVariants[0]?.rule?.__resolveType)
       ) {
         const innerValue = (rawVariants[0]?.value ?? {}) as Record<
           string,
