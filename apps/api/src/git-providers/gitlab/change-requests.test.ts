@@ -357,4 +357,36 @@ describe("GitlabChangeRequestClient's 401 handling", () => {
     expect(calls).toBe(2);
     expect(tokensRequested).toEqual([undefined, { forceRefresh: true }]);
   });
+
+  it("refreshes a stale token once and retries opening a merge request", async () => {
+    const tokensRequested: (TokenOptions | undefined)[] = [];
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      if (calls === 1) return new Response("", { status: 401 });
+      return new Response(JSON.stringify({ iid: 9, title: "hi" }), {
+        status: 200,
+      });
+    }) as unknown as typeof fetch;
+
+    const client = new GitlabChangeRequestClient({
+      repo: { provider: "gitlab", host: "gitlab.com", path: "acme/site" },
+      tokenSource: {
+        kind: "oauth",
+        get: async (opts) => {
+          tokensRequested.push(opts);
+          return { token: "t", kind: "oauth", expiresAt: null };
+        },
+      },
+    });
+
+    const cr = await client.open({
+      head: "feature",
+      base: "main",
+      title: "hi",
+    });
+    expect(cr.number).toBe(9);
+    expect(calls).toBe(2);
+    expect(tokensRequested).toEqual([undefined, { forceRefresh: true }]);
+  });
 });

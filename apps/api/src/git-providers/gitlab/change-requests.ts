@@ -278,11 +278,28 @@ export class GitlabChangeRequestClient implements ChangeRequestClient {
   }
 
   /**
-   * One REST call under the project. 404 answers null; other non-2xx throws.
-   * A 401 means the token died before its own expiry said so (revoked,
-   * rotated): re-mint/refresh once and retry, matching
-   * `GitlabProviderClient.authedFetch`.
+   * One authenticated REST call under the project. A 401 means the token
+   * died before its own expiry said so (revoked, rotated): re-mint/refresh
+   * once and retry, matching `GitlabProviderClient.authedFetch`.
    */
+  private async authedFetch(
+    pathAndQuery: string,
+    init: {
+      method?: "GET" | "POST" | "PUT" | "DELETE";
+      body?: unknown;
+      accept?: string;
+    } = {},
+  ): Promise<Response> {
+    const url = `${this.apiBase}${this.projectBase}${pathAndQuery}`;
+    let res = await gitlabFetch(url, await this.token(), init);
+    if (res.status === 401) {
+      await res.body?.cancel().catch(() => {});
+      res = await gitlabFetch(url, await this.token(true), init);
+    }
+    return res;
+  }
+
+  /** One REST call under the project. 404 answers null; other non-2xx throws. */
   private async call(
     pathAndQuery: string,
     init: {
@@ -291,19 +308,7 @@ export class GitlabChangeRequestClient implements ChangeRequestClient {
       accept?: string;
     } = {},
   ): Promise<Response | null> {
-    let res = await gitlabFetch(
-      `${this.apiBase}${this.projectBase}${pathAndQuery}`,
-      await this.token(),
-      init,
-    );
-    if (res.status === 401) {
-      await res.body?.cancel().catch(() => {});
-      res = await gitlabFetch(
-        `${this.apiBase}${this.projectBase}${pathAndQuery}`,
-        await this.token(true),
-        init,
-      );
-    }
+    const res = await this.authedFetch(pathAndQuery, init);
     if (res.status === 404) {
       await res.body?.cancel().catch(() => {});
       return null;
@@ -453,19 +458,15 @@ export class GitlabChangeRequestClient implements ChangeRequestClient {
   }
 
   async open(params: OpenChangeRequestParams): Promise<ChangeRequest> {
-    const res = await gitlabFetch(
-      `${this.apiBase}${this.projectBase}/merge_requests`,
-      await this.token(),
-      {
-        method: "POST",
-        body: {
-          source_branch: params.head,
-          target_branch: params.base,
-          title: params.title,
-          description: params.body || undefined,
-        },
+    const res = await this.authedFetch("/merge_requests", {
+      method: "POST",
+      body: {
+        source_branch: params.head,
+        target_branch: params.base,
+        title: params.title,
+        description: params.body || undefined,
       },
-    );
+    });
     if (res.ok) return this.map((await res.json()) as RawMergeRequest);
     const failure = await gitlabFailure(res);
     if (/already exists/i.test(failure.message)) {
@@ -488,26 +489,22 @@ export class GitlabChangeRequestClient implements ChangeRequestClient {
     const squash = params.strategy === "squash";
     let res: Response;
     try {
-      res = await gitlabFetch(
-        `${this.apiBase}${this.projectBase}${this.mrPath(number)}/merge`,
-        await this.token(),
-        {
-          method: "PUT",
-          body: {
-            squash,
-            ...(params.commitTitle || params.commitMessage
-              ? {
-                  [squash ? "squash_commit_message" : "merge_commit_message"]: [
-                    params.commitTitle,
-                    params.commitMessage,
-                  ]
-                    .filter(Boolean)
-                    .join("\n\n"),
-                }
-              : {}),
-          },
+      res = await this.authedFetch(`${this.mrPath(number)}/merge`, {
+        method: "PUT",
+        body: {
+          squash,
+          ...(params.commitTitle || params.commitMessage
+            ? {
+                [squash ? "squash_commit_message" : "merge_commit_message"]: [
+                  params.commitTitle,
+                  params.commitMessage,
+                ]
+                  .filter(Boolean)
+                  .join("\n\n"),
+              }
+            : {}),
         },
-      );
+      });
     } catch (cause) {
       const detail = cause instanceof Error ? cause.message : String(cause);
       const rateLimited =
