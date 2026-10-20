@@ -22,7 +22,7 @@
 
 import {
   commitAttribution,
-  type CoAuthorIdentity,
+  type CommitOperator,
 } from "@decocms/sandbox/shared";
 import {
   blockFileName,
@@ -221,7 +221,7 @@ export async function commitBlocksToMain(
     next: Iterable<BlockSource>;
   },
   message: string,
-  coAuthor?: CoAuthorIdentity | null,
+  coAuthor?: CommitOperator | null,
 ): Promise<string> {
   const changes = [...files.changes];
   const gen = await regenerateGenArtifact({
@@ -259,7 +259,7 @@ async function commitDraftToMain(
   repo: HostedRepo,
   draft: DraftBody,
   message: string,
-  coAuthor?: CoAuthorIdentity | null,
+  coAuthor?: CommitOperator | null,
 ): Promise<string | null> {
   const headSha = await requireBranchHead(repo.client, repo.mainBranch);
   const { changes, tree, next } = await draftFileChanges(repo, headSha, draft);
@@ -358,7 +358,7 @@ export async function publishDraft(
   repo: HostedRepo,
   drafts: DraftStore,
   ref: HostedDraftRef,
-  note: { message: string; coAuthor?: CoAuthorIdentity | null },
+  note: { message: string; coAuthor?: CommitOperator | null },
   hooks: PublishHooks = {},
 ): Promise<PublishResult> {
   const draft = await drafts.load(ref);

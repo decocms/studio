@@ -23,7 +23,7 @@
  * to link the new version to the one it reapplied.
  */
 
-import type { CoAuthorIdentity } from "@decocms/sandbox/shared";
+import type { CommitOperator } from "@decocms/sandbox/shared";
 import {
   type FileChange,
   requireBranchHead,
@@ -203,7 +203,7 @@ type ReapplyResult =
 export async function reapplyVersion(
   repo: HostedRepo,
   targetSha: string,
-  options: { coAuthor?: CoAuthorIdentity | null } = {},
+  options: { coAuthor?: CommitOperator | null } = {},
   hooks: PublishHooks = {},
 ): Promise<ReapplyResult> {
   await requireRelease(repo, targetSha);

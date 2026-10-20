@@ -39,6 +39,7 @@ export {
   normalizeCoAuthorIdentity,
   stripCoAuthorTrailers,
   type CoAuthorIdentity,
+  type CommitOperator,
   type GitAuthor,
 } from "./git-co-author";
 

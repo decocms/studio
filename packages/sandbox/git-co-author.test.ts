@@ -147,6 +147,20 @@ describe("commitAttribution", () => {
     });
   });
 
+  it("keeps them a co-author when the flag says they may not author", () => {
+    expect(
+      commitAttribution("feat: update hero", {
+        userName: "Jane Doe",
+        userEmail: "jane@example.com",
+        authorsCommit: false,
+      }),
+    ).toEqual({
+      message:
+        "feat: update hero\n\nCo-authored-by: Jane Doe <jane@example.com>",
+      author: null,
+    });
+  });
+
   it("leaves the message alone and authors nothing without an operator", () => {
     expect(commitAttribution("chore: x", null)).toEqual({
       message: "chore: x",

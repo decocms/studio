@@ -154,6 +154,23 @@ describe("enqueueDecofilePatch attribution", () => {
     expect(f.lastCommit?.message).toBe("chore(decofile): update Header");
   });
 
+  it("leaves the commit to the bot when the flag is off", async () => {
+    const f = fakeClient({ stems: ["Header"], tracksGen: false });
+    await enqueueDecofilePatch(
+      `q-flagged-off-${Date.now()}`,
+      deps(f, {
+        userName: "Ana",
+        userEmail: "ana@acme.com",
+        authorsCommit: false,
+      }),
+      { set: { Header: { __resolveType: "Header" } } },
+    );
+    expect(f.lastCommit?.author).toBeNull();
+    expect(f.lastCommit?.message).toBe(
+      "chore(decofile): update Header\n\nCo-authored-by: Ana <ana@acme.com>",
+    );
+  });
+
   it("falls back to the trailer when the editor has no usable email", async () => {
     const f = fakeClient({ stems: ["Header"], tracksGen: false });
     await enqueueDecofilePatch(

@@ -1,6 +1,6 @@
 import {
   commitAttribution,
-  type CoAuthorIdentity,
+  type CommitOperator,
 } from "@decocms/sandbox/shared";
 import {
   blockKeyToFileStem,
@@ -69,7 +69,7 @@ export interface CommitDeps {
    * Acting user. Becomes the commit's git author when they have a usable
    * name + email, and a `Co-authored-by:` trailer when they do not.
    */
-  coAuthor?: CoAuthorIdentity | null;
+  coAuthor?: CommitOperator | null;
 }
 
 interface QueuedPatch {

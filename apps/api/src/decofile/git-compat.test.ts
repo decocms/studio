@@ -215,8 +215,8 @@ describe("squashAttribution", () => {
   const BOB_TRAILER = "Co-authored-by: Bob <bob@acme.com>";
   const sync = (
     collapsed: string[],
-    operator?: typeof ANA | { userName: string },
-  ) => squashAttribution("draft", "main", false, collapsed, operator);
+    operator?: Partial<typeof ANA> & { authorsCommit?: boolean },
+  ) => squashAttribution("draft", "main", false, collapsed, operator as never);
 
   it("makes whoever synced the author, with no trailer repeating them", () => {
     const { message, author } = sync([], ANA);
@@ -259,6 +259,14 @@ describe("squashAttribution", () => {
     expect(author).toBeNull();
     expect(message).toBe(
       `chore(decofile): sync draft with main\n\n${BOB_TRAILER}`,
+    );
+  });
+
+  it("does not author when the flag withholds it", () => {
+    const { message, author } = sync([], { ...ANA, authorsCommit: false });
+    expect(author).toBeNull();
+    expect(message).toBe(
+      "chore(decofile): sync draft with main\n\nCo-authored-by: Ana <ana@acme.com>",
     );
   });
 

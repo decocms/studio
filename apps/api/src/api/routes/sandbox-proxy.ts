@@ -43,7 +43,10 @@ import {
 } from "../../core/studio-context";
 import type { Env } from "../hono-env";
 import { patchSandboxOperator } from "../../tools/sandbox/patch-sandbox-operator";
-import { coAuthorFromStudioContext } from "@/lib/co-author-identity";
+import {
+  authoringOperator,
+  commitOperatorFromStudioContext,
+} from "@/lib/co-author-identity";
 import { handleVmEvents } from "./sandbox-events-handler";
 import { resolveAndPushEnv } from "../../tools/sandbox/resolve-env";
 import { readValidatedRuntimeEnv } from "../../tools/sandbox/helpers";
@@ -1112,7 +1115,9 @@ export const createSandboxRoutes = () => {
             client,
             claim.branch,
             filepaths,
-            coAuthorFromStudioContext(c.var.studioContext),
+            authoringOperator(
+              await commitOperatorFromStudioContext(c.var.studioContext),
+            ),
           );
           return c.json({ ok: true }, 200, SANDBOX_PROXY_CACHE_HEADERS);
         } catch (err) {
@@ -1150,7 +1155,9 @@ export const createSandboxRoutes = () => {
             client,
             claim.branch,
             base,
-            coAuthorFromStudioContext(c.var.studioContext),
+            authoringOperator(
+              await commitOperatorFromStudioContext(c.var.studioContext),
+            ),
           );
           return c.json({ ok: true }, 200, SANDBOX_PROXY_CACHE_HEADERS);
         } catch (err) {

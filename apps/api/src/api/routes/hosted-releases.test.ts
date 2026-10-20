@@ -43,6 +43,8 @@ function context(): StudioContext {
     access: { getRole: () => "owner", check: async () => {} },
     storage: {
       kv: memoryKv(),
+      // Read for the `commits_authored_by_editor` flag: unset ⇒ off.
+      organizationSettings: { get: async () => null },
       virtualMcps: {
         findById: async (id: string) => (id === "p1" ? project : null),
         patchMetadata: async () => true,

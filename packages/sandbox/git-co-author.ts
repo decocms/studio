@@ -69,6 +69,16 @@ export function appendCoAuthorToPullRequestBody(
   return appendCoAuthorTrailer(trimmed, operator);
 }
 
+/**
+ * An operator plus whether they may author the commit at all. `authorsCommit`
+ * is the organization's `commits_authored_by_editor` flag, resolved where the
+ * request is served; absent means yes, for a caller with no flag to consult.
+ * False keeps them a co-author and leaves the commit to the writing account.
+ */
+export interface CommitOperator extends CoAuthorIdentity {
+  readonly authorsCommit?: boolean;
+}
+
 /** A git author line's two halves. Git has no author without an email. */
 export interface GitAuthor {
   readonly name: string;
@@ -80,17 +90,17 @@ export interface GitAuthor {
  * daemon's `gitx.CommitAttribution`, so a commit written through a provider
  * API attributes exactly like one the daemon runs `git commit` for.
  *
- *  - name AND email → they are the git author, and the now-redundant
- *    `Co-authored-by:` trailer is dropped. Only the author changes; the
- *    committer stays the caller's own identity.
+ *  - name AND email, and the flag lets them → they are the git author, and
+ *    the now-redundant `Co-authored-by:` trailer is dropped. Only the author
+ *    changes; the committer stays the caller's own identity.
  *  - otherwise → no valid author can be formed, so the trailer carries it.
  */
 export function commitAttribution(
   message: string,
-  operator: CoAuthorIdentity | null | undefined,
+  operator: CommitOperator | null | undefined,
 ): { message: string; author: GitAuthor | null } {
   const normalized = normalizeCoAuthorIdentity(operator);
-  if (normalized?.userEmail) {
+  if (normalized?.userEmail && operator?.authorsCommit !== false) {
     return {
       message: stripCoAuthorTrailers(message),
       author: { name: normalized.userName, email: normalized.userEmail },

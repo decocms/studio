@@ -16,7 +16,7 @@
 import {
   appendCoAuthorTrailer,
   commitAttribution,
-  type CoAuthorIdentity,
+  type CommitOperator,
   type GitAuthor,
 } from "@decocms/sandbox/shared";
 import {
@@ -244,7 +244,7 @@ export async function repoGitRebase(
   client: RepoContentClient,
   branch: string,
   base: string,
-  operator?: CoAuthorIdentity | null,
+  operator?: CommitOperator | null,
 ): Promise<void> {
   for (let attempt = 1; ; attempt++) {
     // Read first: the write's own guard re-reads it, catching a later autosave.
@@ -532,7 +532,7 @@ export async function repoGitDiscard(
   client: RepoContentClient,
   branch: string,
   filepaths: string[],
-  operator?: CoAuthorIdentity | null,
+  operator?: CommitOperator | null,
 ): Promise<void> {
   if (filepaths.length === 0) return;
   const base = await client.getDefaultBranch();
@@ -607,7 +607,7 @@ export function squashAttribution(
   base: string,
   branchWon: boolean,
   collapsed: string[],
-  operator?: CoAuthorIdentity | null,
+  operator?: CommitOperator | null,
 ): { message: string; author: GitAuthor | null } {
   const subject = branchWon
     ? `chore(decofile): sync ${branch} with ${base} (branch content wins)`

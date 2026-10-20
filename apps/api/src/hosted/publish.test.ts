@@ -88,6 +88,26 @@ describe("publishDraft", () => {
     });
   });
 
+  it("leaves the commit to the bot when the flag is off", async () => {
+    const { git, drafts, repo } = setup();
+    await drafts.update(REF, () => ({
+      set: { Home: { path: "/", title: "v2" } },
+      delete: [],
+    }));
+    await publishDraft(repo, drafts, REF, {
+      message: "Update home",
+      coAuthor: {
+        userName: "Ana",
+        userEmail: "ana@acme.com",
+        authorsCommit: false,
+      },
+    });
+    expect(git.history[0]).toMatchObject({
+      message: "Update home\n\nCo-authored-by: Ana <ana@acme.com>",
+      author: null,
+    });
+  });
+
   it("keeps the co-author trailer when the publisher has no usable email", async () => {
     const { git, drafts, repo } = setup();
     await drafts.update(REF, () => ({
