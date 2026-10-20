@@ -5403,15 +5403,6 @@ export interface StudioToolIO {
       };
     };
   };
-  DATABASES_RUN_SQL: {
-    input: { sql: string; params?: unknown[] | undefined };
-    output: {
-      result: {
-        results?: unknown[] | undefined;
-        success?: boolean | undefined;
-      }[];
-    };
-  };
   MONITORING_HEATMAP: {
     input: {
       startDate?: string | undefined;

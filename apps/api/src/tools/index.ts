@@ -14,7 +14,6 @@ import { z } from "zod";
 import * as ApiKeyTools from "./apiKeys";
 import * as ReportsTools from "./reports";
 import * as ConnectionTools from "./connection";
-import * as DatabaseTools from "./database";
 import * as VirtualMCPTools from "./virtual";
 import * as MonitoringTools from "./monitoring";
 import * as OrganizationTools from "./organization";
@@ -171,9 +170,6 @@ export const CORE_TOOLS = [
   VirtualMCPTools.COLLECTION_VIRTUAL_MCP_GET,
   VirtualMCPTools.COLLECTION_VIRTUAL_MCP_UPDATE,
   VirtualMCPTools.COLLECTION_VIRTUAL_MCP_DELETE,
-
-  // Database tools
-  DatabaseTools.DATABASES_RUN_SQL,
 
   // Monitoring tools
   MonitoringTools.MONITORING_HEATMAP,

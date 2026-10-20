@@ -112,8 +112,6 @@ const ALL_TOOL_NAMES = [
   "COLLECTION_VIRTUAL_MCP_GET",
   "COLLECTION_VIRTUAL_MCP_UPDATE",
   "COLLECTION_VIRTUAL_MCP_DELETE",
-  // Database tools
-  "DATABASES_RUN_SQL",
   // Monitoring tools
   "MONITORING_HEATMAP",
   "MONITORING_LOG_GET",
@@ -652,12 +650,6 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     name: "REPORTS_SET_REPOSITORY",
     description: "Set the Deco Score repository",
     category: "Connections",
-  },
-  {
-    name: "DATABASES_RUN_SQL",
-    description: "Run SQL queries",
-    category: "Connections",
-    dangerous: true,
   },
   // Virtual MCP tools
   {
@@ -2171,14 +2163,6 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "Run read-only SQL over the organization's own data lake (orders from connected stores)",
     section: "Developer",
     tools: ["CUSTOMER_LAKE_QUERY"],
-  },
-  {
-    id: "connections:sql",
-    label: "Run SQL queries",
-    description: "Execute raw SQL against connected databases",
-    section: "Developer",
-    tools: ["DATABASES_RUN_SQL"],
-    dangerous: true,
   },
 ];
 
