@@ -171,34 +171,39 @@ export const COLLECTION_CONNECTIONS_CREATE = defineTool({
           )
         : [];
 
-    if (credentialGrants.length > 0) {
+    // Notify the downstream MCP of its initial config even without a credential grant.
+    if (configurationState && configurationScopes?.length) {
       let createdWorkloadTokenId: string | undefined;
       try {
-        await ctx.storage.connectionCredentialVault.replaceGrantsForSubject({
-          organizationId: organization.id,
-          subjectConnectionId: connection.id,
-          createdBy: userId,
-          grants: credentialGrants,
-        });
-        const { plaintextToken, record } =
-          await ctx.storage.connectionCredentialVault.createOrRotateWorkloadToken(
-            {
-              organizationId: organization.id,
-              subjectConnectionId: connection.id,
-            },
-          );
-        createdWorkloadTokenId = record.id;
+        let vault: Parameters<typeof notifyMcpConfiguration>[2]["vault"];
+        if (credentialGrants.length > 0) {
+          await ctx.storage.connectionCredentialVault.replaceGrantsForSubject({
+            organizationId: organization.id,
+            subjectConnectionId: connection.id,
+            createdBy: userId,
+            grants: credentialGrants,
+          });
+          const { plaintextToken, record } =
+            await ctx.storage.connectionCredentialVault.createOrRotateWorkloadToken(
+              {
+                organizationId: organization.id,
+                subjectConnectionId: connection.id,
+              },
+            );
+          createdWorkloadTokenId = record.id;
+          vault = {
+            baseUrl: ctx.baseUrl,
+            org: organization.slug ?? organization.id,
+            subjectConnectionId: connection.id,
+            token: plaintextToken,
+          };
+        }
 
         await notifyMcpConfiguration(ctx, connection, {
           state: configurationState as Record<string, unknown>,
           scopes: configurationScopes as string[],
           firstRun: true,
-          vault: {
-            baseUrl: ctx.baseUrl,
-            org: organization.slug ?? organization.id,
-            subjectConnectionId: connection.id,
-            token: plaintextToken,
-          },
+          ...(vault ? { vault } : {}),
         });
       } catch (error) {
         if (createdWorkloadTokenId) {
