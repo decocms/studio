@@ -20,6 +20,8 @@ export const sectionsEditor = {
   "sectionsEditor.arrayField.delete": "Delete",
   "sectionsEditor.arrayField.duplicate": "Duplicate",
   "sectionsEditor.arrayField.hideItem": "Hide item",
+  "sectionsEditor.arrayField.nonArrayValue":
+    "This field holds a value that can't be shown as a list, so it is read-only here.",
   "sectionsEditor.arrayField.layoutDrill": "Open one item at a time",
   "sectionsEditor.arrayField.layoutInline": "Edit items in the list",
   "sectionsEditor.arrayField.openActionsFor": "Open actions for {label}",

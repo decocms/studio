@@ -80,9 +80,10 @@ export interface SchemaProperty {
    */
   lazy?: boolean;
   /**
-   * For "array" fields collapsed from a union that also accepts loaders or
-   * saved blocks: the block-ref picker for those branches. Rendered instead of
-   * the array editor when the stored value is a `{ __resolveType }` reference.
+   * For "array" and "inline-union" fields built from a union that also accepts
+   * loaders or saved blocks: the block-ref picker for those branches. Rendered
+   * instead of the field when the stored value is a `{ __resolveType }`
+   * reference.
    */
   loaderRef?: SchemaProperty;
   /**
@@ -684,12 +685,47 @@ function buildSchema(
         const arrayBranch = nonNull
           .map((branch) => unwrapRefAliases(branch))
           .find(isArraySchemaBranch);
+        // `LoaderReturnType<T | null> | T[]`: the `$ref` sibling is a union holding the loader's plain `T` (stored inline, no `__resolveType`) next to its loader/saved-block branches.
+        const inlineLoaderDataUnion = (
+          branch: RawSchema,
+        ): { data: RawSchema[]; loaders: RawSchema[] } | undefined => {
+          if (typeof branch.$ref !== "string") return undefined;
+          const def = unwrapRefAliases(branch);
+          const union = (def.anyOf ?? def.oneOf) as RawSchema[] | undefined;
+          if (!Array.isArray(union)) return undefined;
+          const loaders = [
+            ...union.filter(isInlineLoaderBranch),
+            ...union
+              .filter((b) => !isInlineLoaderBranch(b))
+              .flatMap((b) => nestedUnionLoaderBranches(b)),
+          ];
+          const data = union.filter((b) => {
+            if (isInlineLoaderBranch(b) || b.type === "null") return false;
+            const d = resolveBranchDef(b);
+            const props = d.properties as RawSchema | undefined;
+            return (
+              !props?.__resolveType &&
+              !d.anyOf &&
+              !d.oneOf &&
+              (d.type === "object" || Boolean(props))
+            );
+          });
+          return loaders.length > 0 && data.length > 0
+            ? { data, loaders }
+            : undefined;
+        };
+        const inlineLoaderDataSiblings = nonNull.flatMap((b) => {
+          const found = inlineLoaderDataUnion(b);
+          return found ? [found] : [];
+        });
         // Collapse to the array editor only when the array's siblings are all module refs/loaders (app flag list + product-list loader); an inline data-object sibling makes this a branch selector, not a config array.
-        const arraySiblingsAreModuleRefs = nonNull
-          .filter((b) => !isArraySchemaBranch(unwrapRefAliases(b)))
-          .every(
-            (b) => typeof b.$ref === "string" || loaderBranches.includes(b),
-          );
+        const arraySiblingsAreModuleRefs =
+          inlineLoaderDataSiblings.length === 0 &&
+          nonNull
+            .filter((b) => !isArraySchemaBranch(unwrapRefAliases(b)))
+            .every(
+              (b) => typeof b.$ref === "string" || loaderBranches.includes(b),
+            );
         const hasPageMultivariateLoader = loaderBranches.some((branch) => {
           const rtEnum = (
             (branch.properties as RawSchema | undefined)?.__resolveType as
@@ -701,13 +737,16 @@ function buildSchema(
             rtEnum[0] === PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE
           );
         });
-        const buildLoaderBlockRef = (): SchemaProperty => {
+        const buildLoaderBlockRef = (
+          extraLoaderBranches: RawSchema[] = [],
+        ): SchemaProperty => {
           const pickerBranches = new Map<string, RawSchema>();
           for (const branch of [
             ...loaderBranches,
             ...nonNull
               .filter((b) => !loaderBranches.includes(b))
               .flatMap((b) => nestedUnionLoaderBranches(b)),
+            ...extraLoaderBranches,
           ]) {
             const rt = inlineLoaderResolveType(branch);
             if (rt && !pickerBranches.has(rt)) pickerBranches.set(rt, branch);
@@ -817,6 +856,57 @@ function buildSchema(
             arrayBranch,
             resolveRef,
           );
+          // Pick between the loader's inline data and the plain list; a stored `{ __resolveType }` renders through `loaderRef`.
+          if (isConfigArray && inlineLoaderDataSiblings.length > 0) {
+            const title =
+              typeof v.title === "string"
+                ? v.title
+                : typeof resolved.title === "string" &&
+                    !isMachineGeneratedTitle(resolved.title)
+                  ? resolved.title
+                  : undefined;
+            const description =
+              typeof v.description === "string"
+                ? v.description
+                : typeof resolved.description === "string"
+                  ? resolved.description
+                  : undefined;
+            const rawArrayBranch = nonNull.find((b) =>
+              isArraySchemaBranch(unwrapRefAliases(b)),
+            )!;
+            const dataBranches = inlineLoaderDataSiblings.flatMap(
+              (s) => s.data,
+            );
+            return {
+              type: "inline-union",
+              title,
+              description,
+              inlineUnionBranches: [
+                ...dataBranches.map((branch, index) => ({
+                  title: branchTitle(branch, `Option ${index + 1}`),
+                  schema: buildProperty(branch, depth + 1, unionSeen),
+                })),
+                {
+                  title: branchTitle(
+                    rawArrayBranch,
+                    `Option ${dataBranches.length + 1}`,
+                  ),
+                  schema: buildProperty(arrayBranch, depth + 1, unionSeen),
+                },
+              ],
+              loaderRef: {
+                ...buildLoaderBlockRef(
+                  inlineLoaderDataSiblings.flatMap((s) => s.loaders),
+                ),
+                title,
+                description,
+              },
+              hidden:
+                isSchemaHidden(resolved) || isSchemaHidden(v)
+                  ? true
+                  : undefined,
+            };
+          }
           if (
             isConfigArray &&
             nonNull.length > 1 &&

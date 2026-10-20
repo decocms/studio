@@ -50,6 +50,7 @@ import {
   type ArrayEntry,
   createArrayEntries,
   insertEntryAfter,
+  isNonArrayStoredValue,
   remapEntryIndices,
   removeEntryAt,
   resizeArrayEntries,
@@ -591,6 +592,17 @@ export function ArrayField({
       selectedIndex,
       selection?.innerPath ?? [],
       arrayItemPrefix,
+    );
+  }
+
+  if (isNonArrayStoredValue(value)) {
+    return (
+      <div className="space-y-2">
+        <span className="min-w-0 truncate text-sm font-medium">{label}</span>
+        <p className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+          {t("sectionsEditor.arrayField.nonArrayValue")}
+        </p>
+      </div>
     );
   }
 

@@ -22,6 +22,8 @@ export const sectionsEditor = {
   "sectionsEditor.arrayField.delete": "Excluir",
   "sectionsEditor.arrayField.duplicate": "Duplicar",
   "sectionsEditor.arrayField.hideItem": "Ocultar item",
+  "sectionsEditor.arrayField.nonArrayValue":
+    "Este campo guarda um valor que não pode ser exibido como lista, por isso fica somente leitura aqui.",
   "sectionsEditor.arrayField.layoutDrill": "Abrir um item por vez",
   "sectionsEditor.arrayField.layoutInline": "Editar os itens na lista",
   "sectionsEditor.arrayField.openActionsFor": "Abrir ações para {label}",

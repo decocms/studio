@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   insertEntryAfter,
+  isNonArrayStoredValue,
   removeEntryAt,
   type ArrayEntry,
 } from "./array-entries";
@@ -49,5 +50,15 @@ describe("removeEntryAt", () => {
     // "b" (originally B) must now point at index 0, matching B's new position.
     expect(next.find((e) => e.id === "b")?.index).toBe(0);
     expect(next.find((e) => e.id === "c")?.index).toBe(1);
+  });
+});
+
+describe("isNonArrayStoredValue", () => {
+  test("flags a stored object, not missing or array values", () => {
+    expect(isNonArrayStoredValue({ promotion: [] })).toBe(true);
+    expect(isNonArrayStoredValue("text")).toBe(true);
+    expect(isNonArrayStoredValue([])).toBe(false);
+    expect(isNonArrayStoredValue(undefined)).toBe(false);
+    expect(isNonArrayStoredValue(null)).toBe(false);
   });
 });
