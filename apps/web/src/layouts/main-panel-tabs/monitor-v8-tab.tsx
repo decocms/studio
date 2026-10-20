@@ -731,7 +731,7 @@ function UpstreamsSection({ base, range }: { base: string; range: SiteRange }) {
             >
               {formatShare(u.errorRate)}
             </span>,
-            u.cachedRate ? formatShare(u.cachedRate) : "—",
+            formatShare(u.cachedRate),
           ],
         }))}
       />
