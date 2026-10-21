@@ -50,6 +50,8 @@ describe("TaskBoardItemSchema – proxy round-trip validation", () => {
     source: null,
     retryAttempts: 0,
     harnessId: "claude-code",
+    parentId: null,
+    isEpic: false,
     reviewCycleStartedAt: null,
     threads: [],
     tags: [],

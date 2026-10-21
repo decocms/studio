@@ -422,6 +422,9 @@ export class TaskBoardStorage {
     virtualMcpId?: string | null;
     /** The sprint the card is planned into; absent = backlog. */
     sprintId?: string | null;
+    /** The epic or card to file this one under; see `assertParentAllowed`. */
+    parentId?: string | null;
+    isEpic?: boolean;
     dueDate?: string | null;
     /** Sender-minted finding identity — see task-board-import. */
     externalKey?: string | null;
@@ -461,6 +464,8 @@ export class TaskBoardStorage {
           repository_id: params.repositoryId ?? null,
           virtual_mcp_id: params.virtualMcpId ?? null,
           sprint_id: params.sprintId ?? null,
+          parent_id: params.parentId ?? null,
+          is_epic: params.isEpic ?? false,
           due_date: params.dueDate ?? null,
           external_key: params.externalKey ?? null,
           external_url: params.externalUrl ?? null,
@@ -490,6 +495,14 @@ export class TaskBoardStorage {
       await sql`select pg_advisory_xact_lock(hashtext(${`task-board-key-seq:${params.organizationId}`})::bigint)`.execute(
         trx,
       );
+      if (params.parentId) {
+        await assertParentAllowed(trx, {
+          organizationId: params.organizationId,
+          childId: null,
+          childIsEpic: params.isEpic ?? false,
+          parentId: params.parentId,
+        });
+      }
       return insert(trx);
     });
 
@@ -518,12 +531,41 @@ export class TaskBoardStorage {
       externalUrl?: string | null;
       previewRoutes?: string[] | null;
       sortOrder?: number;
+      /** See `applyHierarchy` for the rules. */
+      parentId?: string | null;
+      isEpic?: boolean;
     },
     by: string,
   ): Promise<TaskBoardItem> {
-    const row = await this.db
+    const hierarchyChange =
+      data.parentId !== undefined || data.isEpic !== undefined;
+    const row = hierarchyChange
+      ? await this.inTransaction(async (trx) => {
+          const hierarchy = await applyHierarchy(trx, id, organizationId, {
+            parentId: data.parentId,
+            isEpic: data.isEpic,
+          });
+          return this.writeUpdate(trx, id, organizationId, data, hierarchy, by);
+        })
+      : await this.writeUpdate(this.db, id, organizationId, data, {}, by);
+
+    const item = this.itemFromDbRow(row);
+    await this.attachRefs([item], organizationId);
+    return item;
+  }
+
+  private writeUpdate(
+    db: Kysely<Database>,
+    id: string,
+    organizationId: string,
+    data: Parameters<TaskBoardStorage["update"]>[2],
+    hierarchy: { parent_id?: string | null; is_epic?: boolean },
+    by: string,
+  ) {
+    return db
       .updateTable("task_board_items")
       .set({
+        ...hierarchy,
         ...(data.harnessId !== undefined ? { harness_id: data.harnessId } : {}),
         ...(data.title !== undefined ? { title: data.title } : {}),
         ...(data.description !== undefined
@@ -581,10 +623,17 @@ export class TaskBoardStorage {
       .where("organization_id", "=", organizationId)
       .returningAll()
       .executeTakeFirstOrThrow();
+  }
 
-    const item = this.itemFromDbRow(row);
-    await this.attachRefs([item], organizationId);
-    return item;
+  /** Ids of the cards filed directly under `id`. */
+  async childIds(id: string, organizationId: string): Promise<string[]> {
+    const rows = await this.db
+      .selectFrom("task_board_items")
+      .select("id")
+      .where("organization_id", "=", organizationId)
+      .where("parent_id", "=", id)
+      .execute();
+    return rows.map((row) => row.id);
   }
 
   /**
@@ -628,6 +677,14 @@ export class TaskBoardStorage {
           .where("organization_id", "=", organizationId)
           // Already dismissed — keep the first dismissal's who/when.
           .where("dismissed_at", "is", null)
+          .execute();
+        // The row stays, so the foreign key won't release its children: do it
+        // here, or they would sit under a card nobody can open.
+        await trx
+          .updateTable("task_board_items")
+          .set({ parent_id: null })
+          .where("parent_id", "=", id)
+          .where("organization_id", "=", organizationId)
           .execute();
         return true;
       }
@@ -3066,6 +3123,8 @@ export class TaskBoardStorage {
     key_seq: number;
     retry_attempts?: number;
     review_cycle_started_at?: string | Date | null;
+    parent_id?: string | null;
+    is_epic?: boolean;
     created_by: string;
     created_at: string | Date;
     updated_by: string;
@@ -3082,6 +3141,8 @@ export class TaskBoardStorage {
       assigneeId: row.assignee_id,
       assignedBy: row.assigned_by,
       harnessId: row.harness_id ?? "claude-code",
+      parentId: row.parent_id ?? null,
+      isEpic: row.is_epic ?? false,
       repo: row.repo,
       repositoryId: row.repository_id ?? null,
       virtualMcpId: row.virtual_mcp_id ?? null,
@@ -3117,4 +3178,147 @@ export class TaskBoardStorage {
           : row.updated_at,
     };
   }
+}
+/** A rejected epic or subtask change; the message is for the caller. */
+export class TaskBoardHierarchyError extends Error {
+  override name = "TaskBoardHierarchyError";
+}
+
+/**
+ * Whether a card may sit under `parentId`. The parent row is locked, so two
+ * concurrent moves can't combine into a shape neither would be allowed alone.
+ *
+ * The board nests three levels at most: epic, card, subtask. An epic takes no
+ * parent, a subtask's parent is a card that is not itself a subtask, and a
+ * card with subtasks can't become one. Those rules already rule out cycles;
+ * the ancestor walk keeps that true if they loosen.
+ */
+async function assertParentAllowed(
+  db: Kysely<Database>,
+  params: {
+    organizationId: string;
+    /** Null for a card being created, which has no children yet. */
+    childId: string | null;
+    childIsEpic: boolean;
+    parentId: string;
+  },
+): Promise<void> {
+  const { organizationId, childId, parentId } = params;
+  if (parentId === childId) {
+    throw new TaskBoardHierarchyError("A card can't be its own parent.");
+  }
+  if (params.childIsEpic) {
+    throw new TaskBoardHierarchyError("An epic can't have a parent.");
+  }
+  const parent = await db
+    .selectFrom("task_board_items")
+    .select(["id", "parent_id", "is_epic"])
+    .where("id", "=", parentId)
+    .where("organization_id", "=", organizationId)
+    .where("dismissed_at", "is", null)
+    .where("source", "is", null)
+    .forUpdate()
+    .executeTakeFirst();
+  if (!parent) {
+    throw new TaskBoardHierarchyError(`Parent card not found: ${parentId}`);
+  }
+  if (parent.is_epic) return;
+
+  if (parent.parent_id) {
+    const grandparent = await db
+      .selectFrom("task_board_items")
+      .select("is_epic")
+      .where("id", "=", parent.parent_id)
+      .where("organization_id", "=", organizationId)
+      .executeTakeFirst();
+    if (grandparent && !grandparent.is_epic) {
+      throw new TaskBoardHierarchyError(
+        "A subtask can't have subtasks of its own.",
+      );
+    }
+  }
+  if (!childId) return;
+
+  const child = await db
+    .selectFrom("task_board_items")
+    .select("id")
+    .where("organization_id", "=", organizationId)
+    .where("parent_id", "=", childId)
+    .limit(1)
+    .executeTakeFirst();
+  if (child) {
+    throw new TaskBoardHierarchyError(
+      "A card with subtasks can't become a subtask.",
+    );
+  }
+
+  // UNION, not UNION ALL: it stops at a row it has seen, so a cycle written
+  // some other way can't loop forever.
+  const cycle = await sql<{ id: string }>`
+    WITH RECURSIVE ancestors AS (
+      SELECT id, parent_id FROM task_board_items
+      WHERE id = ${parentId} AND organization_id = ${organizationId}
+      UNION
+      SELECT t.id, t.parent_id FROM task_board_items t
+      JOIN ancestors a ON t.id = a.parent_id
+      WHERE t.organization_id = ${organizationId}
+    )
+    SELECT id FROM ancestors WHERE id = ${childId} LIMIT 1
+  `.execute(db);
+  if (cycle.rows.length > 0) {
+    throw new TaskBoardHierarchyError(
+      "That parent is already under this card.",
+    );
+  }
+}
+
+/**
+ * Resolve a parent or epic change on `id` into the columns to write.
+ *
+ * Making a card an epic lifts it out of its parent. Turning an epic back into
+ * a card releases its children to the top level: under a plain card they
+ * would become hidden subtasks, and their own subtasks would sit a level
+ * deeper than anything shows.
+ */
+async function applyHierarchy(
+  db: Kysely<Database>,
+  id: string,
+  organizationId: string,
+  change: { parentId?: string | null; isEpic?: boolean },
+): Promise<{ parent_id: string | null; is_epic: boolean }> {
+  const current = await db
+    .selectFrom("task_board_items")
+    .select(["parent_id", "is_epic"])
+    .where("id", "=", id)
+    .where("organization_id", "=", organizationId)
+    .forUpdate()
+    .executeTakeFirst();
+  if (!current) throw new Error(`Task board item not found: ${id}`);
+
+  const isEpic = change.isEpic ?? current.is_epic;
+  if (isEpic && change.parentId) {
+    throw new TaskBoardHierarchyError("An epic can't have a parent.");
+  }
+  if (current.is_epic && !isEpic) {
+    await db
+      .updateTable("task_board_items")
+      .set({ parent_id: null })
+      .where("organization_id", "=", organizationId)
+      .where("parent_id", "=", id)
+      .execute();
+  }
+  const parentId = isEpic
+    ? null
+    : change.parentId !== undefined
+      ? change.parentId
+      : current.parent_id;
+  if (parentId && parentId !== current.parent_id) {
+    await assertParentAllowed(db, {
+      organizationId,
+      childId: id,
+      childIsEpic: isEpic,
+      parentId,
+    });
+  }
+  return { parent_id: parentId, is_epic: isEpic };
 }

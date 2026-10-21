@@ -33,6 +33,8 @@ import type { TaskBoardItem } from "./config";
 function item(id: string, sortOrder: number): TaskBoardItem {
   return {
     harnessId: "claude-code",
+    parentId: null,
+    isEpic: false,
     id,
     organizationId: "org-1",
     title: id,

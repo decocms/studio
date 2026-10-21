@@ -385,6 +385,8 @@ export interface StudioToolIO {
       repo?: string | null | undefined;
       virtualMcpId?: string | null | undefined;
       dueDate?: string | null | undefined;
+      parentId?: string | null | undefined;
+      isEpic?: boolean | undefined;
       tagIds?: string[] | undefined;
       sprintId?: string | null | undefined;
       prUrl?: string | null | undefined;
@@ -393,6 +395,8 @@ export interface StudioToolIO {
     output: {
       item: {
         harnessId: "claude-code" | "codex";
+        parentId: string | null;
+        isEpic: boolean;
         id: string;
         organizationId: string;
         title: string;
@@ -472,6 +476,8 @@ export interface StudioToolIO {
     output: {
       items: {
         harnessId: "claude-code" | "codex";
+        parentId: string | null;
+        isEpic: boolean;
         id: string;
         organizationId: string;
         title: string;
@@ -571,6 +577,8 @@ export interface StudioToolIO {
       dueDate?: string | null | undefined;
       sortOrder?: number | undefined;
       previewRoutes?: string[] | undefined;
+      parentId?: string | null | undefined;
+      isEpic?: boolean | undefined;
       tagIds?: string[] | undefined;
       sprintId?: string | null | undefined;
       linkThreadId?: string | undefined;
@@ -579,6 +587,8 @@ export interface StudioToolIO {
     output: {
       item: {
         harnessId: "claude-code" | "codex";
+        parentId: string | null;
+        isEpic: boolean;
         id: string;
         organizationId: string;
         title: string;
