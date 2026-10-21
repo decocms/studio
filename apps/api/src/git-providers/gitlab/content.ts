@@ -406,10 +406,12 @@ export class GitlabContentClient implements RepoContentClient {
     if (res === null) {
       return { branches: [], totalCount: 0, nextCursor: null };
     }
-    const rows = (await res.json()) as Array<{
-      name?: string;
-      commit?: { author_name?: string | null };
-    }>;
+    const rows = await gitlabJson<
+      Array<{
+        name?: string;
+        commit?: { author_name?: string | null };
+      }>
+    >(res, "searchBranches");
     const branches = rows.flatMap((row) =>
       typeof row.name === "string"
         ? [{ name: row.name, author: row.commit?.author_name ?? null }]
@@ -1071,7 +1073,7 @@ export class GitlabContentClient implements RepoContentClient {
         `${this.projectBase}/repository/tree?${query}`,
       );
       if (res === null) return out;
-      const rows: unknown = await res.json();
+      const rows: unknown = await gitlabJson(res, "listTree");
       if (!Array.isArray(rows)) {
         throw new GitProviderError({
           provider: "gitlab",
