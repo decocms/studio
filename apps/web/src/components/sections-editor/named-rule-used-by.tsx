@@ -47,7 +47,7 @@ export function NamedRuleUsedBy({
             : t("sectionsEditor.namedRuleUses.emptyCampaigns")}
         </p>
       ) : (
-        <UseList rows={rows} marked={marked} onOpen={onOpen} />
+        <NamedRuleUseList rows={rows} marked={marked} onOpen={onOpen} />
       )}
       {wholeRows.length > 0 && (
         <div className="mt-3 flex flex-col gap-1">
@@ -61,14 +61,15 @@ export function NamedRuleUsedBy({
               ? t("sectionsEditor.namedRuleUses.wholeTestsHint")
               : t("sectionsEditor.namedRuleUses.wholeCampaignsHint")}
           </p>
-          <UseList rows={wholeRows} marked={marked} onOpen={onOpen} />
+          <NamedRuleUseList rows={wholeRows} marked={marked} onOpen={onOpen} />
         </div>
       )}
     </section>
   );
 }
 
-function UseList({
+/** The rows of "Used by", each with an Open button (removed uses have none). */
+export function NamedRuleUseList({
   rows,
   marked,
   onOpen,

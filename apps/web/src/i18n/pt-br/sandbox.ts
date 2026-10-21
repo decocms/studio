@@ -1355,7 +1355,7 @@ export const sandbox = {
   "sandbox.dateCampaigns.delete": "Excluir campanha",
   "sandbox.dateCampaigns.deleted": "Campanha “{name}” excluída do seu rascunho",
   "sandbox.dateCampaigns.deletedHint":
-    "As variantes que a usavam deixam de aparecer quando você publicar. Desfazer traz ela de volta.",
+    "Ela sai do site quando você publicar. Desfazer traz ela de volta.",
   "sandbox.dateCampaigns.undo": "Desfazer",
   "sandbox.dateCampaigns.saved": "Salvo no seu rascunho",
   "sandbox.dateCampaigns.savedHint": "Vai ao ar quando você publicar.",

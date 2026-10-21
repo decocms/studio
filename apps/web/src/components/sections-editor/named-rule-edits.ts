@@ -8,6 +8,7 @@
 
 import {
   type CampaignWindow,
+  NAMED_RULE_KINDS,
   type NamedRuleKind,
   namedRuleKindInfo,
   readNamedRuleBlock,
@@ -15,6 +16,7 @@ import {
   withoutNamedRuleEntry,
 } from "./named-rules";
 import { newNameProblem, type NewNameProblem } from "./named-rule-picker";
+import { findRuleReferences } from "./rule-references";
 import type { NamedRuleChange } from "./use-apply-named-rule";
 
 type ValueOf<K extends NamedRuleKind> = K extends "experiments"
@@ -67,10 +69,9 @@ export function planNamedRuleCreate<K extends NamedRuleKind>(
 }
 
 /**
- * The change that removes `name` from the block. The rules that name it stay
- * as they are: their variants stop showing until they name another one, and
- * creating the name again brings them back. `null` when there's nothing to
- * remove.
+ * The change that removes `name` from the block. A name that a rule still
+ * uses can't be removed (the editor first takes the test or campaign off
+ * those pages): `null` then, and when there's nothing to remove.
  */
 export function planNamedRuleDelete(
   decofile: Record<string, unknown>,
@@ -79,7 +80,7 @@ export function planNamedRuleDelete(
 ): NamedRuleChange | null {
   const read = readNamedRuleBlock(decofile, kind);
   if (read.kind !== "saved" || !Object.hasOwn(read.block, name)) return null;
-  return {
+  const change = {
     writes: {
       [namedRuleKindInfo(kind).blockKey]: withoutNamedRuleEntry(
         read.block,
@@ -87,6 +88,44 @@ export function planNamedRuleDelete(
       ),
     },
   };
+  return namedRulesLeftInUse(decofile, change).length > 0 ? null : change;
+}
+
+/**
+ * The tests and campaigns a change would remove while a rule (a page's or a
+ * section's variant, a saved rule) still names them once it lands. Studio
+ * never sends such a change: the names must leave the pages first. A rename
+ * rewrites every rule in the same change, so it removes none in use. Only
+ * rules by name count; a section that reads the whole map just reads a
+ * missing name as false.
+ */
+export function namedRulesLeftInUse(
+  decofile: Record<string, unknown>,
+  change: Pick<NamedRuleChange, "writes" | "deletes">,
+): Array<{ kind: NamedRuleKind; name: string }> {
+  const removed: Array<{ kind: NamedRuleKind; name: string }> = [];
+  for (const kind of NAMED_RULE_KINDS) {
+    const { blockKey } = namedRuleKindInfo(kind);
+    const written = Object.hasOwn(change.writes, blockKey);
+    const deleted = !written && (change.deletes ?? []).includes(blockKey);
+    if (!written && !deleted) continue;
+    const before = readNamedRuleBlock(decofile, kind);
+    if (before.kind !== "saved") continue;
+    const after = written ? change.writes[blockKey]! : {};
+    for (const name of Object.keys(before.block)) {
+      if (name === "__resolveType" || Object.hasOwn(after, name)) continue;
+      removed.push({ kind, name });
+    }
+  }
+  if (removed.length === 0) return [];
+  const next: Record<string, unknown> = { ...decofile, ...change.writes };
+  for (const key of change.deletes ?? []) {
+    if (!Object.hasOwn(change.writes, key)) delete next[key];
+  }
+  const refs = findRuleReferences(next);
+  return removed.filter(
+    ({ kind, name }) => (refs[kind].byName.get(name) ?? []).length > 0,
+  );
 }
 
 /**

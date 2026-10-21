@@ -1326,7 +1326,7 @@ export const sandbox = {
   "sandbox.dateCampaigns.delete": "Delete campaign",
   "sandbox.dateCampaigns.deleted": "Campaign “{name}” deleted from your draft",
   "sandbox.dateCampaigns.deletedHint":
-    "Variants that used it stop showing once you publish. Undo brings it back.",
+    "It leaves the site when you publish. Undo brings it back.",
   "sandbox.dateCampaigns.undo": "Undo",
   "sandbox.dateCampaigns.saved": "Saved in your draft",
   "sandbox.dateCampaigns.savedHint": "It goes live when you publish.",

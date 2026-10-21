@@ -150,6 +150,18 @@ export const sectionsEditor = {
     "Sections that read every campaign",
   "sectionsEditor.namedRuleUses.wholeCampaignsHint":
     "These sections decide in their own code which campaigns they look at.",
+  "sectionsEditor.namedRuleDelete.inUseTests":
+    "Please remove the tests on these pages first.",
+  "sectionsEditor.namedRuleDelete.inUseTestsHint":
+    "These pages show a variant to visitors in “{name}”. Open each one and change or remove that variant; then you can delete the test.",
+  "sectionsEditor.namedRuleDelete.inUseCampaigns":
+    "Please remove the campaign from these pages first.",
+  "sectionsEditor.namedRuleDelete.inUseCampaignsHint":
+    "These pages show a variant during “{name}”. Open each one and change or remove that variant; then you can delete the campaign.",
+  "sectionsEditor.namedRuleDelete.close": "Close",
+  "sectionsEditor.namedRules.inUse": "This is still used on your pages",
+  "sectionsEditor.namedRules.inUseHint":
+    "Nothing was changed. Take it off the pages that use it first; “Used by” lists them.",
   "sectionsEditor.namedRules.changedMeanwhile":
     "This changed while you were editing",
   "sectionsEditor.namedRules.changedMeanwhileHint":

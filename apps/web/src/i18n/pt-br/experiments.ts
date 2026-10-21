@@ -173,7 +173,7 @@ export const experiments = {
   "experiments.v8.delete": "Excluir teste",
   "experiments.v8.deleted": "Teste “{name}” excluído do seu rascunho",
   "experiments.v8.deletedHint":
-    "As variantes que o usavam deixam de aparecer quando você publicar. Desfazer traz ele de volta.",
+    "Ele sai do site quando você publicar. Desfazer traz ele de volta.",
   "experiments.v8.undo": "Desfazer",
   "experiments.v8.saved": "Salvo no seu rascunho",
   "experiments.v8.savedHint": "Vai ao ar quando você publicar.",

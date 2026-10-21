@@ -10,12 +10,13 @@
  * between running. A running test's name is locked (visitors are grouped by
  * it); renaming one that isn't running rewrites every rule that names it in
  * the same change. "Used by" lists the pages and sections that use it, with
- * the uses not published yet marked.
+ * the uses not published yet marked. A test that pages use can't be deleted:
+ * Delete lists those pages instead (named-rule-delete.tsx).
  */
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { Beaker02, Plus, Trash01 } from "@untitledui/icons";
+import { Beaker02, Plus } from "@untitledui/icons";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Card } from "@decocms/ui/components/card.tsx";
@@ -34,9 +35,9 @@ import { Page } from "@/components/page";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import {
   planNamedRuleCreate,
-  planNamedRuleDelete,
   planNamedRuleSet,
 } from "@/components/sections-editor/named-rule-edits";
+import { NamedRuleDeleteButton } from "@/components/sections-editor/named-rule-delete";
 import {
   newNameProblem,
   parseShareInput,
@@ -58,6 +59,7 @@ import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 import { planNamedRuleRename } from "@/components/sections-editor/rule-references";
 import { SITE_EDITOR_SAVE_TOAST } from "@/components/sections-editor/site-editor-toast";
 import {
+  type NamedRuleApplyOutcome,
   type NamedRuleChange,
   useApplyNamedRule,
 } from "@/components/sections-editor/use-apply-named-rule";
@@ -312,25 +314,9 @@ function ExperimentsV8Ready({
         onOpenUse={openUse}
         onSave={save}
         onRenamed={setOpenName}
-        onDeleted={async (change, share) => {
-          const outcome = await apply(change);
-          if (!outcome.ok) return;
-          setOpenName(null);
-          const kept = change.writes.experiments!;
-          toast.success(t("experiments.v8.deleted", { name: opened.name }), {
-            id: SITE_EDITOR_SAVE_TOAST,
-            description: t("experiments.v8.deletedHint"),
-            action: {
-              label: t("experiments.v8.undo"),
-              onClick: () =>
-                void save({
-                  writes: {
-                    experiments: { ...kept, [opened.name]: share },
-                  },
-                }),
-            },
-          });
-        }}
+        apply={apply}
+        onDeleted={() => setOpenName(null)}
+        onUndo={(change) => void save(change)}
       />
     );
   }
@@ -488,7 +474,9 @@ function ExperimentDetailV8({
   onOpenUse,
   onSave,
   onRenamed,
+  apply,
   onDeleted,
+  onUndo,
 }: {
   row: ExperimentRowModel;
   decofile: Record<string, unknown>;
@@ -499,7 +487,9 @@ function ExperimentDetailV8({
   onOpenUse: (row: NamedRuleUseRow) => void;
   onSave: (change: NamedRuleChange | null) => Promise<boolean>;
   onRenamed: (name: string) => void;
-  onDeleted: (change: NamedRuleChange, share: number) => Promise<void>;
+  apply: (change: NamedRuleChange) => Promise<NamedRuleApplyOutcome>;
+  onDeleted: () => void;
+  onUndo: (change: NamedRuleChange) => void;
 }) {
   const t = useT();
   const [share, setShare] = useState(String(row.share));
@@ -558,22 +548,18 @@ function ExperimentDetailV8({
         items={[{ key: "experiment", label: row.name }]}
       />
       <Page.Actions>
-        <Button
-          size="sm"
-          variant="ghost"
-          disabled={pending}
-          onClick={() => {
-            const change = planNamedRuleDelete(
-              decofile,
-              "experiments",
-              row.name,
-            );
-            if (change) void onDeleted(change, row.share);
-          }}
-        >
-          <Trash01 size={16} />
-          {t("experiments.v8.delete")}
-        </Button>
+        <NamedRuleDeleteButton
+          kind="experiments"
+          name={row.name}
+          decofile={decofile}
+          meta={meta}
+          uses={uses}
+          pending={pending}
+          apply={apply}
+          onDeleted={onDeleted}
+          onUndo={onUndo}
+          onOpenUse={onOpenUse}
+        />
       </Page.Actions>
       <Page.Content>
         <Page.Container>

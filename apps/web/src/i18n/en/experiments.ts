@@ -169,7 +169,7 @@ export const experiments = {
   "experiments.v8.delete": "Delete test",
   "experiments.v8.deleted": "Test “{name}” deleted from your draft",
   "experiments.v8.deletedHint":
-    "Variants that used it stop showing once you publish. Undo brings it back.",
+    "It leaves the site when you publish. Undo brings it back.",
   "experiments.v8.undo": "Undo",
   "experiments.v8.saved": "Saved in your draft",
   "experiments.v8.savedHint": "It goes live when you publish.",

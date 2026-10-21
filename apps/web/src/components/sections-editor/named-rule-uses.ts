@@ -82,27 +82,8 @@ export function namedRuleUseRows(
   decofile: Record<string, unknown>,
   meta?: LiveMeta | null,
 ): NamedRuleUseRow[] {
-  const labelFrom = (blockKey: string) => {
-    const value =
-      decofile[blockKey] ??
-      (uses.published ? uses.published[blockKey] : undefined);
-    const page = pageEntryFromBlock(blockKey, value, meta);
-    if (page) {
-      return {
-        blockKind: "page" as const,
-        title: page.name,
-        path: page.path,
-      };
-    }
-    const record =
-      value && typeof value === "object" && !Array.isArray(value)
-        ? (value as Record<string, unknown>)
-        : {};
-    return {
-      blockKind: "section" as const,
-      title: globalSectionLabel(safeDecode(blockKey), record),
-    };
-  };
+  const labelFrom = (blockKey: string) =>
+    rowLabel(blockKey, uses, decofile, meta);
 
   const rows: NamedRuleUseRow[] = [];
   const seen = new Set<string>();
@@ -135,6 +116,64 @@ export function namedRuleUseRows(
     });
   }
   return sortRows(rows);
+}
+
+/**
+ * What keeps a name from being deleted: every block in the draft whose rule
+ * names it (a page's or a section's variant, and a saved rule that names it
+ * even when nothing uses that rule), one row per block and variant. Uses the
+ * draft already removed don't count, nor do sections that read the whole map
+ * (a missing name reads false there).
+ */
+export function namedRuleBlockingRows(
+  uses: NamedRuleUses,
+  kind: NamedRuleKind,
+  name: string,
+  decofile: Record<string, unknown>,
+  meta?: LiveMeta | null,
+): NamedRuleUseRow[] {
+  const rows: NamedRuleUseRow[] = [];
+  const seen = new Set<string>();
+  for (const ref of uses.refs[kind].byName.get(name) ?? []) {
+    if (ref.state === "removed-in-draft") continue;
+    const variant = ref.variant ? ref.variant.index + 1 : undefined;
+    const key = `${ref.blockKey}#${variant ?? ""}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    rows.push({
+      blockKey: ref.blockKey,
+      // A saved rule is known by its name.
+      ...(ref.savedRule
+        ? { blockKind: "section" as const, title: safeDecode(ref.blockKey) }
+        : rowLabel(ref.blockKey, uses, decofile, meta)),
+      ...(variant ? { variant } : {}),
+      wholeBlock: false,
+      state: ref.state,
+    });
+  }
+  return sortRows(rows);
+}
+
+/** A page by its name and path; anything else as a section. */
+function rowLabel(
+  blockKey: string,
+  uses: NamedRuleUses,
+  decofile: Record<string, unknown>,
+  meta?: LiveMeta | null,
+): Pick<NamedRuleUseRow, "blockKind" | "title" | "path"> {
+  const value =
+    decofile[blockKey] ??
+    (uses.published ? uses.published[blockKey] : undefined);
+  const page = pageEntryFromBlock(blockKey, value, meta);
+  if (page) return { blockKind: "page", title: page.name, path: page.path };
+  const record =
+    value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
+  return {
+    blockKind: "section",
+    title: globalSectionLabel(safeDecode(blockKey), record),
+  };
 }
 
 /** By title, then variant; the uses the draft removed last. */

@@ -5,8 +5,9 @@
  * this is the whole calendar of the site; nothing is left out.
  *
  * List → detail: change the window, rename (every rule that names it is
- * rewritten in the same change), delete (with an Undo). A timeline shows one
- * row per campaign. Each change is one guarded `blocks.apply` into the draft
+ * rewritten in the same change), delete (with an Undo; for a campaign that
+ * pages use, Delete lists those pages instead, to take it off them first).
+ * A timeline shows one row per campaign. Each change is one guarded `blocks.apply` into the draft
  * and goes live with the normal Publish.
  */
 
@@ -19,7 +20,6 @@ import {
   ChevronRight,
   List,
   Plus,
-  Trash01,
 } from "@untitledui/icons";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -37,9 +37,9 @@ import { useT } from "@/i18n/use-t.ts";
 import { formatCampaignWindow } from "@/components/sections-editor/format-matcher";
 import {
   planNamedRuleCreate,
-  planNamedRuleDelete,
   planNamedRuleSet,
 } from "@/components/sections-editor/named-rule-edits";
+import { NamedRuleDeleteButton } from "@/components/sections-editor/named-rule-delete";
 import {
   isoToLocalInput,
   newNameProblem,
@@ -61,6 +61,7 @@ import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 import { planNamedRuleRename } from "@/components/sections-editor/rule-references";
 import { SITE_EDITOR_SAVE_TOAST } from "@/components/sections-editor/site-editor-toast";
 import {
+  type NamedRuleApplyOutcome,
   type NamedRuleChange,
   useApplyNamedRule,
 } from "@/components/sections-editor/use-apply-named-rule";
@@ -233,28 +234,9 @@ export function CampaignsView({
         onOpenUse={onOpenUse}
         onSave={save}
         onRenamed={setOpenName}
-        onDelete={async (change) => {
-          const outcome = await apply(change);
-          if (!outcome.ok) return;
-          setOpenName(null);
-          const kept = change.writes.campaigns!;
-          toast.success(
-            t("sandbox.dateCampaigns.deleted", { name: opened.name }),
-            {
-              id: SITE_EDITOR_SAVE_TOAST,
-              description: t("sandbox.dateCampaigns.deletedHint"),
-              action: {
-                label: t("sandbox.dateCampaigns.undo"),
-                onClick: () =>
-                  void save({
-                    writes: {
-                      campaigns: { ...kept, [opened.name]: opened.window },
-                    },
-                  }),
-              },
-            },
-          );
-        }}
+        apply={apply}
+        onDeleted={() => setOpenName(null)}
+        onUndo={(change) => void save(change)}
       />
     );
   }
@@ -557,7 +539,9 @@ function CampaignDetail({
   onOpenUse,
   onSave,
   onRenamed,
-  onDelete,
+  apply,
+  onDeleted,
+  onUndo,
 }: {
   row: CampaignRowModel;
   decofile: Record<string, unknown>;
@@ -568,7 +552,9 @@ function CampaignDetail({
   onOpenUse: (row: NamedRuleUseRow) => void;
   onSave: (change: NamedRuleChange | null, title?: string) => Promise<boolean>;
   onRenamed: (name: string) => void;
-  onDelete: (change: NamedRuleChange) => Promise<void>;
+  apply: (change: NamedRuleChange) => Promise<NamedRuleApplyOutcome>;
+  onDeleted: () => void;
+  onUndo: (change: NamedRuleChange) => void;
 }) {
   const t = useT();
   const [start, setStart] = useState(isoToLocalInput(row.window.start));
@@ -634,18 +620,18 @@ function CampaignDetail({
           <ArrowLeft size={16} />
           {t("sandbox.dateCampaigns.allCampaigns")}
         </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled={pending}
-          onClick={() => {
-            const change = planNamedRuleDelete(decofile, "campaigns", row.name);
-            if (change) void onDelete(change);
-          }}
-        >
-          <Trash01 size={16} />
-          {t("sandbox.dateCampaigns.delete")}
-        </Button>
+        <NamedRuleDeleteButton
+          kind="campaigns"
+          name={row.name}
+          decofile={decofile}
+          meta={meta}
+          uses={uses}
+          pending={pending}
+          apply={apply}
+          onDeleted={onDeleted}
+          onUndo={onUndo}
+          onOpenUse={onOpenUse}
+        />
       </div>
       <ScrollArea className="min-h-0 flex-1">
         <div className="flex max-w-2xl flex-col gap-6 p-4">

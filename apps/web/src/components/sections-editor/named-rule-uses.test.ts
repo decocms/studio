@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import type { ChangeDetail } from "@decocms/blocks/protocol";
 import {
   namedRuleEntryState,
+  namedRulesLeftInUse,
   namedRulesRemovedInDraft,
   planNamedRuleCreate,
   planNamedRuleDelete,
@@ -9,10 +10,12 @@ import {
   publishedNamedRuleValue,
 } from "./named-rule-edits";
 import {
+  namedRuleBlockingRows,
   namedRuleUseCount,
   namedRuleUseRows,
   namedRuleUses,
 } from "./named-rule-uses";
+import { planNamedRuleRename } from "./rule-references";
 
 const builtIn = { $ref: "#/definitions/x", namespace: "deco" };
 const meta = {
@@ -333,5 +336,119 @@ describe("named rule edits", () => {
         "experiments",
       ),
     ).toEqual(["a"]);
+  });
+});
+
+describe("deleting a name that pages use", () => {
+  const decofile = {
+    experiments: { __resolveType: "split-traffic", used: 50, free: 10 },
+    campaigns: {
+      __resolveType: "date-windows",
+      bf: { start: "2026-11-27T00:00:00Z" },
+      spare: {},
+    },
+    "pages-home": page("Home", "/", experiment("used")),
+    "pages-sale": page("Sale", "/sale", campaign("bf")),
+    // Reads every test in its own code: never blocks a delete.
+    Banner: {
+      __resolveType: "site/sections/Banner.tsx",
+      tests: { __resolveType: "experiments" },
+    },
+  };
+
+  it("is refused while a rule names it, and plain when nothing does", () => {
+    expect(planNamedRuleDelete(decofile, "experiments", "used")).toBeNull();
+    expect(planNamedRuleDelete(decofile, "campaigns", "bf")).toBeNull();
+    expect(planNamedRuleDelete(decofile, "experiments", "free")).toEqual({
+      writes: {
+        experiments: { __resolveType: "split-traffic", used: 50 },
+      },
+    });
+    expect(planNamedRuleDelete(decofile, "campaigns", "spare")).not.toBeNull();
+  });
+
+  it("finds a used name removed by any change, but never by a rename", () => {
+    expect(
+      namedRulesLeftInUse(decofile, {
+        writes: { experiments: { __resolveType: "split-traffic" } },
+      }),
+    ).toEqual([{ kind: "experiments", name: "used" }]);
+    expect(
+      namedRulesLeftInUse(decofile, { writes: {}, deletes: ["campaigns"] }),
+    ).toEqual([{ kind: "campaigns", name: "bf" }]);
+    // The page goes in the same change: nothing is left using the test.
+    expect(
+      namedRulesLeftInUse(decofile, {
+        writes: { experiments: { __resolveType: "split-traffic", free: 10 } },
+        deletes: ["pages-home"],
+      }),
+    ).toEqual([]);
+    // A test that isn't running can be renamed: every rule moves with it.
+    const off = {
+      ...decofile,
+      experiments: { __resolveType: "split-traffic", used: 0 },
+    };
+    const rename = planNamedRuleRename(
+      off,
+      "experiments",
+      "used",
+      "renamed",
+      meta,
+    );
+    expect(rename).not.toBeNull();
+    expect(namedRulesLeftInUse(off, rename!)).toEqual([]);
+  });
+
+  it("lists the pages, variants and saved rules that keep it", () => {
+    const withSavedRule = {
+      ...decofile,
+      "Used test": experiment("used"),
+      "pages-promo": page("Promo", "/promo", { __resolveType: "Used test" }),
+    };
+    const uses = namedRuleUses({
+      decofile: withSavedRule,
+      meta,
+      changeCount: 0,
+      sides: undefined,
+    });
+    const rows = namedRuleBlockingRows(
+      uses,
+      "experiments",
+      "used",
+      withSavedRule,
+      meta,
+    );
+    expect(rows.map((row) => [row.title, row.path, row.variant])).toEqual([
+      ["Home", "/", 1],
+      ["Promo", "/promo", 1],
+      ["Used test", undefined, undefined],
+    ]);
+    expect(
+      namedRuleBlockingRows(uses, "experiments", "free", withSavedRule, meta),
+    ).toEqual([]);
+  });
+
+  it("doesn't count a use the draft already removed", () => {
+    const draft = {
+      ...decofile,
+      "pages-home": page("Home", "/", { __resolveType: "always" }),
+    };
+    const uses = namedRuleUses({
+      decofile: draft,
+      meta,
+      changeCount: 1,
+      sides: {
+        "pages-home": side(decofile["pages-home"], draft["pages-home"]),
+      },
+    });
+    expect(
+      namedRuleUseRows(uses, "experiments", "used", draft, meta).map(
+        (row) => row.state,
+      ),
+    ).toEqual(["removed-in-draft"]);
+    expect(
+      namedRuleBlockingRows(uses, "experiments", "used", draft, meta),
+    ).toEqual([]);
+    expect(planNamedRuleDelete(draft, "experiments", "used")).not.toBeNull();
   });
 });

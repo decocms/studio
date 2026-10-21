@@ -320,4 +320,39 @@ describe("useApplyNamedRule", () => {
       queryClient.getQueryData(KEYS.contentVersions(CACHE_KEY)),
     ).toMatchObject({ home: "home@0" });
   });
+
+  it("never removes a test a page still uses, however the change was made", async () => {
+    const { queryClient, result } = setup();
+    const stored = { home: homeWithTest, experiments };
+    server.blocks = { ...stored };
+    server.versions = { home: "home@0", experiments: "experiments@0" };
+    queryClient.setQueryData(KEYS.decofile(CACHE_KEY), stored);
+    queryClient.setQueryData(KEYS.contentVersions(CACHE_KEY), {
+      home: "home@0",
+      experiments: "experiments@0",
+    });
+    let outcome: unknown;
+    await act(async () => {
+      outcome = await result.current.apply({
+        writes: { experiments: { __resolveType: "split-traffic" } },
+      });
+    });
+    expect(outcome).toEqual({ ok: false, reason: "in-use" });
+    await act(async () => {
+      outcome = await result.current.apply({
+        writes: {},
+        deletes: ["experiments"],
+      });
+    });
+    expect(outcome).toEqual({ ok: false, reason: "in-use" });
+    expect(server.applied).toEqual([]);
+    expect(cached(queryClient)).toEqual(stored);
+    // With the page's rule changed in the same write, it goes.
+    await act(async () => {
+      outcome = await result.current.apply({
+        writes: { experiments: { __resolveType: "split-traffic" }, home },
+      });
+    });
+    expect(outcome).toEqual({ ok: true });
+  });
 });

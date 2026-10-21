@@ -155,6 +155,18 @@ export const sectionsEditor = {
     "Seções que leem todas as campanhas",
   "sectionsEditor.namedRuleUses.wholeCampaignsHint":
     "Estas seções decidem no próprio código quais campanhas consultam.",
+  "sectionsEditor.namedRuleDelete.inUseTests":
+    "Remova primeiro os testes destas páginas.",
+  "sectionsEditor.namedRuleDelete.inUseTestsHint":
+    "Estas páginas mostram uma variante para os visitantes em “{name}”. Abra cada uma e altere ou remova essa variante; depois você pode excluir o teste.",
+  "sectionsEditor.namedRuleDelete.inUseCampaigns":
+    "Remova primeiro a campanha destas páginas.",
+  "sectionsEditor.namedRuleDelete.inUseCampaignsHint":
+    "Estas páginas mostram uma variante durante “{name}”. Abra cada uma e altere ou remova essa variante; depois você pode excluir a campanha.",
+  "sectionsEditor.namedRuleDelete.close": "Fechar",
+  "sectionsEditor.namedRules.inUse": "Isto ainda é usado nas suas páginas",
+  "sectionsEditor.namedRules.inUseHint":
+    "Nada foi alterado. Tire primeiro das páginas que usam; “Usado em” mostra quais são.",
   "sectionsEditor.namedRules.changedMeanwhile":
     "Isto mudou enquanto você editava",
   "sectionsEditor.namedRules.changedMeanwhileHint":
