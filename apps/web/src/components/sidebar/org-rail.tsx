@@ -45,7 +45,7 @@ import {
 import { useRecentOrgs } from "@/hooks/use-recent-orgs";
 import { useLocalStorage } from "@/hooks/use-local-storage";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
-import { railOrgLimit, railOrgs } from "@/lib/recent-orgs";
+import { railOrgLimit, railOrgs, withCurrentOrg } from "@/lib/recent-orgs";
 import {
   EMPTY_RAIL_ORG_PREFS,
   arrangeRailOrgs,
@@ -350,7 +350,7 @@ export function OrgRail() {
   const localApp = openApp && openApp.projectId === null ? openApp.app : null;
   const recents = localApp ? [] : recent;
 
-  const orgs = (organizations ?? []) as RailOrg[];
+  const orgs = withCurrentOrg((organizations ?? []) as RailOrg[], currentOrg);
   const { recent: recentOrgs, remember } = useRecentOrgs();
   /** Hidden, pinned and dragged order. Hidden orgs stay in search, and
    *  opening one from there puts it back. */

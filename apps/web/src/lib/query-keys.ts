@@ -328,6 +328,8 @@ export const KEYS = {
    *  signs in and types the same term in the same tab. */
   projectSearch: (userId: string, term: string) =>
     ["project-search", userId, term] as const,
+  organizationSearch: (userId: string, term: string) =>
+    ["organization-search", userId, term] as const,
 
   // Tool call results (generic caching for MCP tool calls)
   // scope is required - scopes the cache (connectionId for connection-scoped, locator for org/project-scoped)

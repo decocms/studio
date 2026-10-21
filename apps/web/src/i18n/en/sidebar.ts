@@ -66,6 +66,7 @@ export const sidebar = {
   "sidebar.rail.pinOrganization": "Pin to sidebar",
   "sidebar.rail.unpinOrganization": "Unpin from sidebar",
   "sidebar.rail.searchEmpty": "No organization matches that.",
+  "sidebar.rail.searchFailed": "Could not search organizations.",
   "sidebar.rail.searchMoreOrganizations": "Search organizations ({count} more)",
   "sidebar.rail.searchOrganizations": "Search organizations",
   "sidebar.rail.searchPlaceholder": "Search by name or URL",

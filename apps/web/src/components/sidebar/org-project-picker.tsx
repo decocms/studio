@@ -47,7 +47,9 @@ import { ProjectIcon } from "@/components/project-icon";
 import { CreateOrganizationDialog } from "@/components/create-organization-dialog";
 import { InvitationRow, OrgIcon } from "@/components/header/org-switcher";
 import { usePendingInvitations } from "@/hooks/use-pending-invitations";
+import { useOrganizationSearch } from "@/hooks/use-organization-search";
 import { useActiveOrganizations } from "@/lib/auth-client";
+import { withCurrentOrg } from "@/lib/recent-orgs";
 import {
   type ProjectSearchHit,
   useProjectSearch,
@@ -202,28 +204,20 @@ function PickerContent({
    *  the current org keeps the group non-empty for everyone, and it reads
    *  better besides: the list now answers "which orgs am I in", not "which
    *  orgs am I not looking at". */
-  const allOrgs = ((organizations ?? []) as PickerOrg[])
-    .slice()
-    .sort((a, b) => (a.slug === org.slug ? -1 : b.slug === org.slug ? 1 : 0));
+  const allOrgs = withCurrentOrg(
+    (organizations ?? []) as PickerOrg[],
+    org,
+  ).sort((a, b) => (a.slug === org.slug ? -1 : b.slug === org.slug ? 1 : 0));
 
   const { hits, isSearching, isStale, isError } = useProjectSearch(
     searching ? term : "",
   );
-  /** Organizations matching the term, filtered CLIENT-side. The full list is
-   *  already in memory (`useActiveOrganizations`), so matching it by name or
-   *  slug is free and instant — no per-org scan, which is the cost the project
-   *  search endpoint exists to avoid. This is what lets the search field honour
-   *  its "organizations and projects" placeholder: without it, typing an org's
-   *  name found nothing, since the project endpoint only knows about projects. */
-  const orgMatches = searching
-    ? allOrgs.filter((candidate) => {
-        const q = term.toLowerCase();
-        return (
-          candidate.name.toLowerCase().includes(q) ||
-          candidate.slug.toLowerCase().includes(q)
-        );
-      })
-    : [];
+  /** Organizations matching the term, searched on the server: the in-memory
+   *  list stops at Better Auth's first page, so filtering it could not find
+   *  an org past it. This is what lets the search field honour its
+   *  "organizations and projects" placeholder. */
+  const orgSearch = useOrganizationSearch(searching ? term : "");
+  const orgMatches = orgSearch.hits;
   /** The settings tree is its own shell; the scope means nothing inside it. */
   const inSettings = useLeafRoutePath().startsWith("/$org/settings");
 
@@ -291,11 +285,13 @@ function PickerContent({
             {/* A failed search is not an empty one: saying "nothing matches"
                 when the request never landed invents an answer the server
                 never gave. */}
-            {isError && (
+            {(isError || orgSearch.isError) && (
               <CommandEmpty>{t("sidebar.picker.searchFailed")}</CommandEmpty>
             )}
             {!isError &&
+              !orgSearch.isError &&
               !isSearching &&
+              !orgSearch.isSearching &&
               hits.length === 0 &&
               orgMatches.length === 0 && (
                 <CommandEmpty>
@@ -325,10 +321,12 @@ function PickerContent({
               </CommandGroup>
             )}
             {/* Organizations matching the term, listed after the projects to
-                mirror the browsing order. Local data, so it shows instantly
-                even while the project request is still in flight. */}
+                mirror the browsing order. */}
             {orgMatches.length > 0 && (
-              <CommandGroup heading={t("sidebar.picker.orgsHeading")}>
+              <CommandGroup
+                heading={t("sidebar.picker.orgsHeading")}
+                className={cn(orgSearch.isStale && "opacity-50")}
+              >
                 {orgMatches.map((candidate: PickerOrg) => (
                   <OrgRow
                     key={candidate.id}
