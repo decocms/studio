@@ -327,10 +327,19 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
 
     let query = this.db
       .selectFrom("connections")
-      .innerJoin("member", (join) =>
-        join
-          .onRef("member.organizationId", "=", "connections.organization_id")
-          .on("member.userId", "=", userId),
+      // EXISTS, not a join: a user can hold two member rows in one org.
+      .where((eb) =>
+        eb.exists(
+          eb
+            .selectFrom("member")
+            .select("member.id")
+            .whereRef(
+              "member.organizationId",
+              "=",
+              "connections.organization_id",
+            )
+            .where("member.userId", "=", userId),
+        ),
       )
       .innerJoin(
         "organization",
