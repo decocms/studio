@@ -43,6 +43,8 @@ import {
   pollProtocolContent,
 } from "@/components/sections-editor/content-protocol-api";
 import { decofileWriteScope } from "@/components/sections-editor/decofile-api";
+import { blocksUsingMissingNamedRules } from "@/components/sections-editor/named-rule-uses";
+import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 import {
   blockKeyFromDiffPath,
   type PublishChange,
@@ -80,8 +82,6 @@ const server = {
   /** The entries moved since the list was read: a discard is a Conflict. */
   conflict: false,
   onDiscard: null as (() => void) | null,
-  /** The site schema `schema.get` answers. */
-  schema: {} as Record<string, unknown>,
 };
 
 function resetServer() {
@@ -94,32 +94,6 @@ function resetServer() {
   server.failDiscard = false;
   server.conflict = false;
   server.onDiscard = null;
-  server.schema = {};
-}
-
-/** `changes.get` over the fake draft: main's side and the layered one. */
-function changesGet(names: string[]) {
-  const now = layered();
-  return {
-    base: { revision: `main-${server.head}`, resolvedRef: "main" },
-    entries: Object.fromEntries(
-      names.map((name) => [
-        name,
-        {
-          kind: Object.hasOwn(server.draft.set, name)
-            ? "set"
-            : server.draft.delete.includes(name)
-              ? "delete"
-              : null,
-          before: (server.main[name] as Record<string, unknown>) ?? null,
-          after: (now[name] as Record<string, unknown>) ?? null,
-          version: Object.hasOwn(now, name) ? `v-${name}` : null,
-          baseVersion: Object.hasOwn(server.main, name) ? "b" : null,
-        },
-      ]),
-    ),
-    diagnostics: [],
-  };
 }
 
 const revision = () => `${server.head}~e${server.etag}`;
@@ -192,39 +166,30 @@ function hostedBackend() {
     },
     // The content poll: blocks.list (layered), schema.get, changes.list.
     batch: async (
-      calls: Array<{
-        method: string;
-        params?: { ifNoneMatch?: string; names?: string[] };
-      }>,
+      calls: Array<{ method: string; params?: { ifNoneMatch?: string } }>,
     ) =>
       calls.map((call) =>
-        call.method === "changes.get"
-          ? { ok: true, result: changesGet(call.params?.names ?? []) }
-          : call.method === "blocks.list"
-            ? {
+        call.method === "blocks.list"
+          ? {
+              ok: true,
+              // As the core answers: "not modified" for the revision seen.
+              result:
+                call.params?.ifNoneMatch === revision()
+                  ? { notModified: true, revision: revision() }
+                  : {
+                      notModified: false,
+                      revision: revision(),
+                      resolvedRef: null,
+                      blocks: layered(),
+                      versions: {},
+                    },
+            }
+          : call.method === "changes.list"
+            ? { ok: true, result: changesList() }
+            : {
                 ok: true,
-                // As the core answers: "not modified" for the revision seen.
-                result:
-                  call.params?.ifNoneMatch === revision()
-                    ? { notModified: true, revision: revision() }
-                    : {
-                        notModified: false,
-                        revision: revision(),
-                        resolvedRef: null,
-                        blocks: layered(),
-                        versions: {},
-                      },
-              }
-            : call.method === "changes.list"
-              ? { ok: true, result: changesList() }
-              : {
-                  ok: true,
-                  result: {
-                    notModified: false,
-                    version: "s1",
-                    schema: server.schema,
-                  },
-                },
+                result: { notModified: false, version: "s1", schema: {} },
+              },
       ),
     changesList: async () => changesList(),
     changesDiscard: async (params: {
@@ -692,9 +657,9 @@ describe("useCmsPublishActions on a hosted v8 site", () => {
   });
 });
 
-describe("useCmsPublishActions: a test or campaign pages use never goes away", () => {
+describe("useCmsPublishActions: a discard is never blocked", () => {
   const builtIn = { $ref: "#/definitions/x", namespace: "deco" };
-  const namedRuleSchema = {
+  const meta = {
     manifest: {
       blocks: {
         matchers: { always: builtIn, date: builtIn, experiment: builtIn },
@@ -704,7 +669,7 @@ describe("useCmsPublishActions: a test or campaign pages use never goes away", (
       },
     },
     schema: {},
-  };
+  } as unknown as LiveMeta;
   const promoPage = {
     __resolveType: "page",
     name: "Promo",
@@ -730,9 +695,8 @@ describe("useCmsPublishActions: a test or campaign pages use never goes away", (
     entry: testsEntry,
   } as unknown as PublishChange;
 
-  it("discarding only the A/B tests change a page in the draft uses: nothing is discarded, the dialog lists the page", async () => {
+  it("discarding only the A/B tests change a page uses goes through, and the page is flagged", async () => {
     const { backend } = hostedBackend();
-    server.schema = namedRuleSchema;
     server.main = {
       experiments: { __resolveType: "split-traffic", hero: 50 },
     };
@@ -741,75 +705,25 @@ describe("useCmsPublishActions: a test or campaign pages use never goes away", (
       "pages-promo": promoPage,
     };
     await mountPolledBlocks(backend);
+    expect(blocksUsingMissingNamedRules(editorBlocks()!, meta).size).toBe(0);
     const { result } = render(backend, {
       hosted: true,
       entries: [testsEntry, { name: "pages-promo", version: "v-pages-promo" }],
     });
     await act(() => result.current.discardChange(testsChange));
-    expect(server.discardCalls).toEqual([]);
-    expect(server.draft.set).toHaveProperty("experiments");
-    expect(toasts).toEqual([]);
-    expect(result.current.discardBlocked).toEqual([
-      expect.objectContaining({
-        kind: "experiments",
-        name: "promo",
-        cause: "removes",
-        rows: [
-          expect.objectContaining({ blockKey: "pages-promo", title: "Promo" }),
-        ],
-      }),
+    await act(settle);
+    expect(server.discardCalls).toEqual([
+      { names: ["experiments"], ifMatch: { experiments: "v-experiments" } },
     ]);
-    expect(getContentSyncState(SCOPE).phase).not.toBe("saving");
-    act(() => result.current.closeDiscardBlocked());
-    expect(result.current.discardBlocked).toBeNull();
-    // Discard all brings both back to main together: allowed.
-    await act(() => result.current.discardAll());
-    expect(server.discardCalls).toHaveLength(1);
-    expect(server.draft).toEqual({ set: {}, delete: [] });
-  });
-
-  it("a page change another tab made meanwhile counts: the check reads the draft as stored", async () => {
-    const { backend } = hostedBackend();
-    server.schema = namedRuleSchema;
-    server.main = {
+    expect(toasts).toEqual([{ kind: "success", message: expect.any(String) }]);
+    // The page still names "promo", which the draft no longer has.
+    expect(editorBlocks()).toEqual({
       experiments: { __resolveType: "split-traffic", hero: 50 },
-    };
-    server.draft.set = {
-      experiments: { __resolveType: "split-traffic", hero: 50, promo: 20 },
-    };
-    await mountPolledBlocks(backend);
-    // Another tab adds a page using "promo" after this editor last read.
-    server.draft.set = { ...server.draft.set, "pages-promo": promoPage };
-    server.etag++;
-    const { result } = render(backend, {
-      hosted: true,
-      entries: [testsEntry],
+      "pages-promo": promoPage,
     });
-    await act(() => result.current.discardChange(testsChange));
-    expect(server.discardCalls).toEqual([]);
-    expect(result.current.discardBlocked?.[0]?.name).toBe("promo");
-  });
-
-  it("Discard all is always allowed: it returns the draft to what's live, unchecked", async () => {
-    const { backend } = hostedBackend();
-    server.schema = namedRuleSchema;
-    server.main = {
-      experiments: { __resolveType: "split-traffic", hero: 50 },
-    };
-    server.draft.set = {
-      experiments: { __resolveType: "split-traffic", hero: 50, promo: 20 },
-    };
-    await mountPolledBlocks(backend);
-    // A single discard of the same list would be blocked (the test above).
-    server.draft.set = { ...server.draft.set, "pages-promo": promoPage };
-    server.etag++;
-    const { result } = render(backend, {
-      hosted: true,
-      entries: [testsEntry],
-    });
-    await act(() => result.current.discardAll());
-    expect(result.current.discardBlocked).toBeNull();
-    expect(server.discardCalls).toHaveLength(1);
+    expect([...blocksUsingMissingNamedRules(editorBlocks()!, meta)]).toEqual([
+      ["pages-promo", ["experiments"]],
+    ]);
   });
 });
 

@@ -10,8 +10,8 @@
  * between running. A running test's name is locked (visitors are grouped by
  * it); renaming one that isn't running rewrites every rule that names it in
  * the same change. "Used by" lists the pages and sections that use it, with
- * the uses not published yet marked. A test that pages use can't be deleted:
- * Delete lists those pages instead (named-rule-delete.tsx).
+ * the uses not published yet marked. Delete is never blocked; pages that
+ * still use a test that no longer exists are listed under the tests.
  */
 
 import { useState } from "react";
@@ -43,8 +43,12 @@ import {
   parseShareInput,
 } from "@/components/sections-editor/named-rule-picker";
 import { NamedRuleCreateForm } from "@/components/sections-editor/named-rule-step";
-import { NamedRuleUsedBy } from "@/components/sections-editor/named-rule-used-by";
 import {
+  MissingNamedRuleUses,
+  NamedRuleUsedBy,
+} from "@/components/sections-editor/named-rule-used-by";
+import {
+  missingNamedRuleRows,
   type NamedRuleUseRow,
   type NamedRuleUses,
   namedRuleUseRows,
@@ -278,6 +282,9 @@ function ExperimentsV8Ready({
 
   const rows = experimentRows(decofile, uses);
   const removed = removedExperiments(decofile, uses);
+  const missing = uses
+    ? missingNamedRuleRows(uses, "experiments", decofile, meta)
+    : [];
 
   /** One change into the draft, with one toast for it. */
   const save = async (
@@ -360,6 +367,11 @@ function ExperimentsV8Ready({
                 ))}
               </Card>
             )}
+            <MissingNamedRuleUses
+              kind="experiments"
+              rows={missing}
+              onOpen={openUse}
+            />
             {removed.length > 0 && (
               <div className="flex flex-col gap-1">
                 <h3 className="text-sm font-medium">
@@ -558,13 +570,11 @@ function ExperimentDetailV8({
           kind="experiments"
           name={row.name}
           meta={meta}
-          uses={uses}
           pending={pending}
           apply={apply}
           reread={reread}
           onDeleted={onDeleted}
           onUndo={onUndo}
-          onOpenUse={onOpenUse}
         />
       </Page.Actions>
       <Page.Content>

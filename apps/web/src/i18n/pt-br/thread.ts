@@ -177,6 +177,9 @@ export const thread = {
   "thread.publishPopover.abTests": "Testes A/B",
   "thread.publishPopover.campaignDates": "Datas das campanhas",
   "thread.publishPopover.globalSection": "Seção global",
+  "thread.publishPopover.missingTest": "Usa um teste que não existe mais",
+  "thread.publishPopover.missingCampaign":
+    "Usa uma campanha que não existe mais",
   "thread.publishPopover.lastPublished": "Última publicação {when}",
   "thread.publishPopover.lastPublishedBy":
     "Última publicação {when} por {name}",
@@ -204,15 +207,6 @@ export const thread = {
   "thread.publishPopover.publishing": "Publicando…",
   "thread.publishPopover.requestApproval": "Pedir aprovação",
   "thread.publishPopover.discarded": "{name} descartado",
-  "thread.publishPopover.discardBlocked.title":
-    "Altere estas páginas primeiro.",
-  "thread.publishPopover.discardBlocked.usesTest":
-    "Elas usam o teste “{name}”.",
-  "thread.publishPopover.discardBlocked.usesCampaign":
-    "Elas usam a campanha “{name}”.",
-  "thread.publishPopover.discardBlocked.returns":
-    "Descartar isto traz de volta uma variante que usa “{name}”, que você excluiu no rascunho.",
-  "thread.publishPopover.discardBlocked.close": "Fechar",
   "thread.publishPopover.discard": "Descartar",
   "thread.publishPopover.discardAll": "Descartar tudo",
   "thread.publishPopover.discardAllConfirm": "Isso não pode ser desfeito.",

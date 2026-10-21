@@ -27,26 +27,7 @@ import {
   discardContentChanges,
   isChangedMeanwhile,
   isOutdatedServerError,
-  readChangeSides,
 } from "@/components/sections-editor/content-changes.ts";
-import { rereadProtocolContent } from "@/components/sections-editor/content-protocol-api.ts";
-import {
-  type NamedRuleDiscardBreak,
-  namedRuleDiscardBreaks,
-} from "@/components/sections-editor/named-rule-discard.ts";
-import {
-  NAMED_RULE_KINDS,
-  namedRuleSupport,
-} from "@/components/sections-editor/named-rules.ts";
-import { ContentProtocolError } from "@decocms/blocks/protocol";
-
-/** A discard not sent: it would leave pages naming a missing test or campaign. */
-class DiscardBlockedError extends Error {
-  constructor(readonly breaks: NamedRuleDiscardBreak[]) {
-    super("The discard would leave pages using a missing test or campaign");
-    this.name = "DiscardBlockedError";
-  }
-}
 import { KEYS } from "@/lib/query-keys.ts";
 import { MAIN_SCHEMA_CHANGED } from "@decocms/shared/blocks-major";
 import { resetMainSchemaAnswer } from "@/hooks/main-schema-changed";
@@ -122,12 +103,6 @@ interface CmsPublishActions {
   submit: () => Promise<void>;
   discardChange: (change: PublishChange) => Promise<void>;
   discardAll: () => Promise<void>;
-  /**
-   * A discard that would leave pages using a test or campaign that no longer
-   * exists: nothing was discarded; the dialog lists them until closed.
-   */
-  discardBlocked: NamedRuleDiscardBreak[] | null;
-  closeDiscardBlocked: () => void;
 }
 
 /**
@@ -140,13 +115,6 @@ interface CmsPublishActions {
  * the version the list showed: one changed since (someone else's save) is a
  * Conflict, nothing is dropped, and the list shows what is there now. One
  * toast either way.
- *
- * A test or campaign a page uses never goes away (named-rule-discard.ts):
- * in the queue, right before the discard, the draft and both sides of those
- * changes are read again, and a discard that would leave a page naming one
- * that doesn't exist is not sent; `onBlocked` gets what it would break
- * instead (no error toast). Discarding every change (`all`) is never
- * checked: it returns the draft to exactly what's live.
  */
 export function useContentDiscard(args: {
   orgSlug: string;
@@ -154,8 +122,6 @@ export function useContentDiscard(args: {
   branch: string | null;
   /** Re-reads the caller's list after a Conflict. */
   refresh: () => Promise<unknown>;
-  /** The discard would break a test or campaign's pages: nothing was sent. */
-  onBlocked: (breaks: NamedRuleDiscardBreak[]) => void;
 }) {
   const t = useT();
   const queryClient = useQueryClient();
@@ -164,51 +130,10 @@ export function useContentDiscard(args: {
     virtualMcpId: args.virtualMcpId,
     branch: args.branch,
   });
-  /**
-   * What discarding `entries` would break, read fresh: the draft as stored
-   * and both sides of those changes. A site whose schema has neither A/B
-   * tests nor campaigns has none to break, so nothing more is read.
-   */
-  const discardBreaks = async (
-    backend: ProtocolBackend,
-    entries: ReadonlyArray<{ name: string; version: string | null }>,
-  ): Promise<NamedRuleDiscardBreak[]> => {
-    if (!content.cacheKey || !args.branch) return [];
-    const current = await rereadProtocolContent(
-      queryClient,
-      backend,
-      {
-        orgSlug: args.orgSlug,
-        virtualMcpId: args.virtualMcpId,
-        branch: args.branch,
-      },
-      content.cacheKey,
-    );
-    const meta =
-      current.meta instanceof ContentProtocolError ? null : current.meta;
-    if (
-      meta &&
-      NAMED_RULE_KINDS.every(
-        (kind) => namedRuleSupport(meta, kind) === "missing",
-      )
-    ) {
-      return [];
-    }
-    const names = entries.map((entry) => entry.name);
-    const sides = await readChangeSides(backend.client, names);
-    return namedRuleDiscardBreaks({
-      draft: current.blocks,
-      sides: sides.entries,
-      names,
-      meta,
-    });
-  };
-
   return async (
     backend: ProtocolBackend,
     entries: ReadonlyArray<{ name: string; version: string | null }>,
     success: string,
-    options?: { all?: boolean },
   ): Promise<void> => {
     try {
       await runContentDiscard(content, {
@@ -216,21 +141,10 @@ export function useContentDiscard(args: {
         // The revision is not adopted (an edit's is): the editor holds no
         // copy of the base's blocks, so the refresh must read them, and a
         // poll conditional on this revision would answer "not modified".
-        write: async () => {
-          // In the queue, after the saves in flight landed: what is stored now.
-          const breaks = options?.all
-            ? []
-            : await discardBreaks(backend, entries);
-          if (breaks.length > 0) throw new DiscardBlockedError(breaks);
-          return discardContentChanges(backend.client, entries);
-        },
+        write: () => discardContentChanges(backend.client, entries),
       });
       toast.success(success);
     } catch (error) {
-      if (error instanceof DiscardBlockedError) {
-        args.onBlocked(error.breaks);
-        return;
-      }
       if (isChangedMeanwhile(error)) {
         toast.info(t("siteEditor.discard.changedMeanwhile"));
         await args.refresh().catch(() => {});
@@ -278,9 +192,6 @@ export function useCmsPublishActions(
   const [publishErrorDetail, setPublishErrorDetail] = useState<string | null>(
     null,
   );
-  const [discardBlocked, setDiscardBlocked] = useState<
-    NamedRuleDiscardBreak[] | null
-  >(null);
 
   const noteParts = () =>
     publishNoteParts(
@@ -432,7 +343,6 @@ export function useCmsPublishActions(
     virtualMcpId: target.virtualMcpId,
     branch: target.branch,
     refresh,
-    onBlocked: setDiscardBlocked,
   });
 
   /** A v7 discard: its git path, as before; only the pending state is shared. */
@@ -465,8 +375,6 @@ export function useCmsPublishActions(
     isPublishing,
     publishError,
     publishErrorDetail,
-    discardBlocked,
-    closeDiscardBlocked: () => setDiscardBlocked(null),
     // Hosted callers never pass review mode (no pull request to open).
     submit:
       mode === "review" ? submitForReview : hosted ? publishHosted : publish,
@@ -482,9 +390,7 @@ export function useCmsPublishActions(
       const success = t("thread.publishDialog.allChangesDiscarded");
       if (protocol) {
         if (protocol.entries.length === 0) return;
-        await discardEntries(protocol.backend, protocol.entries, success, {
-          all: true,
-        });
+        await discardEntries(protocol.backend, protocol.entries, success);
         return;
       }
       if (allPaths.length === 0) return;

@@ -14,6 +14,7 @@ import type { ProtocolBackend } from "@/components/sections-editor/content-backe
 import { protocolMetaQueryKey } from "@/components/sections-editor/content-protocol-api.ts";
 import type { DecofileScopeParams } from "@/components/sections-editor/decofile-api.ts";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema.ts";
+import { blocksUsingMissingNamedRules } from "@/components/sections-editor/named-rule-uses.ts";
 import {
   type ContentChanges,
   readContentChanges,
@@ -90,11 +91,15 @@ export function useContentPublishState(args: {
   const sides = useContentChangeSides(backend, cacheKey, changes);
   const lookup = useCurrentBlocks(cacheKey);
   const meta = useCachedSchema(backend, scope);
+  // Pages whose rules name a test or campaign the draft no longer has.
+  const missingRules =
+    lookup && meta ? blocksUsingMissingNamedRules(lookup, meta) : null;
   const summary = summarizeContentChanges({
     changes: changes.changes,
     sides: sides.data ?? null,
     lookup,
     meta,
+    ...(missingRules ? { missingRules } : {}),
   });
   return {
     changes,

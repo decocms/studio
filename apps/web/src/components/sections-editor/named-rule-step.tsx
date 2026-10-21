@@ -423,8 +423,9 @@ export function NamedRuleCreateForm({
 /**
  * Where a variant's rule names a test or campaign: the name, locked (it is
  * changed by picking another above), what it does now, and the way to the
- * Experiments tab or Campaigns view. A name the block doesn't have, and a
- * date rule still written with its own dates, say what to do instead.
+ * Experiments tab or Campaigns view. A name the block doesn't have (deleted,
+ * discarded, another tab) says it no longer exists, with the picker right
+ * above; a date rule still written with its own dates says what to do.
  */
 export function NamedRuleRow({
   kind,
@@ -445,8 +446,8 @@ export function NamedRuleRow({
     ? t("sectionsEditor.namedRulePicker.inlineDate")
     : missing
       ? tests
-        ? t("sectionsEditor.namedRulePicker.missingTest", { name })
-        : t("sectionsEditor.namedRulePicker.missingCampaign", { name })
+        ? t("sectionsEditor.namedRulePicker.missingTest")
+        : t("sectionsEditor.namedRulePicker.missingCampaign")
       : tests
         ? t("sectionsEditor.namedRulePicker.testRowHint")
         : t("sectionsEditor.namedRulePicker.campaignRowHint");
@@ -466,7 +467,15 @@ export function NamedRuleRow({
           )}
         </div>
       )}
-      <p className="text-xs text-muted-foreground">{note}</p>
+      <p
+        className={cn(
+          "text-xs",
+          missing && !inlineDate ? "text-foreground" : "text-muted-foreground",
+        )}
+        data-testid={missing && !inlineDate ? "named-rule-missing" : undefined}
+      >
+        {note}
+      </p>
       {!inlineDate && <NamedRuleViewsLink kind={kind} />}
     </div>
   );

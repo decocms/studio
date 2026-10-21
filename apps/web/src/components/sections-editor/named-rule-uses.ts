@@ -7,10 +7,14 @@
 
 import type { ChangeDetail } from "@decocms/blocks/protocol";
 import { pageEntryFromBlock, globalSectionLabel } from "./page-list";
-import type { NamedRuleKind } from "./named-rules";
+import {
+  NAMED_RULE_KINDS,
+  type NamedRuleKind,
+  namedRuleSupport,
+  readNamedRuleBlock,
+} from "./named-rules";
 import {
   findRuleReferences,
-  findSavedMatcherReferences,
   type MarkedRuleReferences,
   markReferenceStates,
   publishedDecofile,
@@ -59,14 +63,8 @@ export function namedRuleUses(input: {
 /** One row of "Used by": a page or a saved section, and how it uses the name. */
 export interface NamedRuleUseRow {
   blockKey: string;
-  /**
-   * A page opens in the editor by its key; a section as a section. A saved
-   * rule doesn't open (the editor has no form for one): the pages that use
-   * it are listed beside it, and one nothing uses can be removed.
-   */
-  blockKind: "page" | "section" | "rule";
-  /** A saved rule that no page, section or other saved rule uses. */
-  unused?: boolean;
+  /** A page opens in the editor by its key; a section as a section. */
+  blockKind: "page" | "section";
   title: string;
   /** A page's path. */
   path?: string;
@@ -125,48 +123,6 @@ export function namedRuleUseRows(
   return sortRows(rows);
 }
 
-/**
- * What keeps a name from being deleted: every block in the draft whose rule
- * names it (a page's or a section's variant, and a saved rule that names it
- * even when nothing uses that rule), one row per block and variant. Uses the
- * draft already removed don't count, nor do sections that read the whole map
- * (a missing name reads false there).
- */
-export function namedRuleBlockingRows(
-  uses: NamedRuleUses,
-  kind: NamedRuleKind,
-  name: string,
-  decofile: Record<string, unknown>,
-  meta?: LiveMeta | null,
-): NamedRuleUseRow[] {
-  const rows: NamedRuleUseRow[] = [];
-  const seen = new Set<string>();
-  for (const ref of uses.refs[kind].byName.get(name) ?? []) {
-    if (ref.state === "removed-in-draft") continue;
-    const variant = ref.variant ? ref.variant.index + 1 : undefined;
-    const key = `${ref.blockKey}#${variant ?? ""}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    rows.push({
-      blockKey: ref.blockKey,
-      // A saved rule is known by its name.
-      ...(ref.savedRule
-        ? {
-            blockKind: "rule" as const,
-            title: safeDecode(ref.blockKey),
-            unused:
-              findSavedMatcherReferences(decofile, ref.blockKey, meta)
-                .length === 0,
-          }
-        : rowLabel(ref.blockKey, uses, decofile, meta)),
-      ...(variant ? { variant } : {}),
-      wholeBlock: false,
-      state: ref.state,
-    });
-  }
-  return sortRows(rows);
-}
-
 /** A page by its name and path; anything else as a section. */
 function rowLabel(
   blockKey: string,
@@ -199,6 +155,85 @@ function sortRows(rows: NamedRuleUseRow[]): NamedRuleUseRow[] {
       a.title.localeCompare(b.title) ||
       (a.variant ?? 0) - (b.variant ?? 0),
   );
+}
+
+/**
+ * The names the draft's rules use that its `experiments` or `campaigns`
+ * block doesn't have: deleted, discarded, removed in another tab or never
+ * created. Nothing is blocked for them; the views point them out so the
+ * editor picks another or removes the variant. Uses the draft already
+ * removed don't count.
+ */
+export function missingNamedRules(
+  uses: NamedRuleUses,
+  kind: NamedRuleKind,
+  decofile: Record<string, unknown>,
+): string[] {
+  const read = readNamedRuleBlock(decofile, kind);
+  if (read.kind === "conflict") return [];
+  const missing: string[] = [];
+  for (const [name, refs] of uses.refs[kind].byName) {
+    if (Object.hasOwn(read.block, name)) continue;
+    if (refs.some((ref) => ref.state !== "removed-in-draft")) {
+      missing.push(name);
+    }
+  }
+  return missing;
+}
+
+/**
+ * The pages and sections whose rules name a test or campaign that doesn't
+ * exist, one row per block and variant, as "Used by" lists them.
+ */
+export function missingNamedRuleRows(
+  uses: NamedRuleUses,
+  kind: NamedRuleKind,
+  decofile: Record<string, unknown>,
+  meta?: LiveMeta | null,
+): NamedRuleUseRow[] {
+  const rows: NamedRuleUseRow[] = [];
+  const seen = new Set<string>();
+  for (const name of missingNamedRules(uses, kind, decofile)) {
+    for (const row of namedRuleUseRows(uses, kind, name, decofile, meta)) {
+      const key = `${row.blockKey}#${row.variant ?? ""}`;
+      if (row.state === "removed-in-draft" || seen.has(key)) continue;
+      seen.add(key);
+      rows.push(row);
+    }
+  }
+  return sortRows(rows);
+}
+
+/**
+ * Per block, the kinds whose names its rules use but the draft doesn't
+ * have, for the kinds the site's schema has built in. The Publish review
+ * flags those cards; nothing is blocked.
+ */
+export function blocksUsingMissingNamedRules(
+  decofile: Record<string, unknown>,
+  meta: LiveMeta | null | undefined,
+): Map<string, NamedRuleKind[]> {
+  const out = new Map<string, NamedRuleKind[]>();
+  const kinds = NAMED_RULE_KINDS.filter(
+    (kind) => namedRuleSupport(meta, kind) === "available",
+  );
+  if (kinds.length === 0) return out;
+  const uses = namedRuleUses({
+    decofile,
+    meta,
+    changeCount: 0,
+    sides: undefined,
+  });
+  for (const kind of kinds) {
+    for (const name of missingNamedRules(uses, kind, decofile)) {
+      for (const ref of uses.refs[kind].byName.get(name) ?? []) {
+        const list = out.get(ref.blockKey) ?? [];
+        if (!list.includes(kind)) list.push(kind);
+        out.set(ref.blockKey, list);
+      }
+    }
+  }
+  return out;
 }
 
 /** How many blocks use a name, as the list shows it (removed uses left out). */

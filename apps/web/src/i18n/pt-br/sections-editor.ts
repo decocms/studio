@@ -124,9 +124,9 @@ export const sectionsEditor = {
   "sectionsEditor.namedRulePicker.campaignRowHint":
     "Para mudar as datas, abra Campanhas.",
   "sectionsEditor.namedRulePicker.missingTest":
-    "“{name}” ainda não é um dos seus testes, então esta variante não aparece. Escolha um teste acima ou crie este.",
+    "Este teste não existe mais. Escolha outro ou remova esta variante.",
   "sectionsEditor.namedRulePicker.missingCampaign":
-    "“{name}” ainda não é uma das suas campanhas, então esta variante não aparece. Escolha uma campanha acima ou crie esta.",
+    "Esta campanha não existe mais. Escolha outra ou remova esta variante.",
   "sectionsEditor.namedRulePicker.inlineDate":
     "Estas datas ainda não são uma campanha, então esta variante não aparece. Escolha Data acima para usar uma campanha ou criar uma com estas datas.",
   "sectionsEditor.namedRulePicker.fieldTests": "Seus testes A/B",
@@ -155,29 +155,14 @@ export const sectionsEditor = {
     "Seções que leem todas as campanhas",
   "sectionsEditor.namedRuleUses.wholeCampaignsHint":
     "Estas seções decidem no próprio código quais campanhas consultam.",
-  "sectionsEditor.namedRuleDelete.inUseTests":
-    "Remova primeiro os testes destas páginas.",
-  "sectionsEditor.namedRuleDelete.inUseTestsHint":
-    "Estas páginas mostram uma variante para os visitantes em “{name}”. Abra cada uma e altere ou remova essa variante; depois você pode excluir o teste.",
-  "sectionsEditor.namedRuleDelete.inUseCampaigns":
-    "Remova primeiro a campanha destas páginas.",
-  "sectionsEditor.namedRuleDelete.inUseCampaignsHint":
-    "Estas páginas mostram uma variante durante “{name}”. Abra cada uma e altere ou remova essa variante; depois você pode excluir a campanha.",
-  "sectionsEditor.namedRuleDelete.close": "Fechar",
-  "sectionsEditor.namedRuleDelete.inUseTestsHintRules":
-    "Estas páginas e regras salvas usam “{name}”. Abra cada página e altere ou remova essa variante, e remova as regras salvas que nenhuma página usa; depois você pode excluir o teste.",
-  "sectionsEditor.namedRuleDelete.inUseCampaignsHintRules":
-    "Estas páginas e regras salvas usam “{name}”. Abra cada página e altere ou remova essa variante, e remova as regras salvas que nenhuma página usa; depois você pode excluir a campanha.",
-  "sectionsEditor.namedRuleDelete.ruleRemoved":
-    "Regra salva “{name}” removida do seu rascunho",
-  "sectionsEditor.namedRuleDelete.undo": "Desfazer",
-  "sectionsEditor.namedRuleUses.savedRule": "Regra salva",
-  "sectionsEditor.namedRuleUses.savedRuleUsed": "usada pelas páginas da lista",
-  "sectionsEditor.namedRuleUses.savedRuleUnused": "nenhuma página usa",
-  "sectionsEditor.namedRuleUses.removeRule": "Remover",
-  "sectionsEditor.namedRules.inUse": "Isto ainda é usado nas suas páginas",
-  "sectionsEditor.namedRules.inUseHint":
-    "Nada foi alterado. Antes, ajuste as páginas que ainda usam isto; “Usado em” mostra quais são.",
+  "sectionsEditor.namedRuleDelete.stillUsedOne":
+    "1 página ainda usa. Desfazer traz de volta.",
+  "sectionsEditor.namedRuleDelete.stillUsed":
+    "{count} páginas ainda usam. Desfazer traz de volta.",
+  "sectionsEditor.namedRuleUses.missingTests":
+    "Estas páginas usam testes que não existem mais.",
+  "sectionsEditor.namedRuleUses.missingCampaigns":
+    "Estas páginas usam campanhas que não existem mais.",
   "sectionsEditor.namedRules.changedMeanwhile":
     "Isto mudou enquanto você editava",
   "sectionsEditor.namedRules.changedMeanwhileHint":

@@ -134,6 +134,7 @@ export function PublishChangeCard({
 
   const detail = changeDetail(change, t);
   const subLines = changeSubLines(change, t);
+  const missing = change.missingRules ?? [];
   /** Holds the height a sub-line will occupy, so the list does not grow under
    *  the cursor when bodies land. Only `edited` cards gain sub-lines from
    *  bodies — a new page already counts its sections, and new or removed
@@ -225,6 +226,20 @@ export function PublishChangeCard({
       ) : reservesSubLine ? (
         <div className="mt-1 space-y-0.5 pl-[26px]">
           <PublishGhost className="h-4 w-2/3" />
+        </div>
+      ) : null}
+      {missing.length > 0 ? (
+        <div
+          className="mt-1 space-y-0.5 pl-[26px] text-xs text-foreground"
+          data-testid="publish-change-missing-rule"
+        >
+          {missing.map((kind) => (
+            <div key={kind} className="truncate">
+              {kind === "experiments"
+                ? t("thread.publishPopover.missingTest")
+                : t("thread.publishPopover.missingCampaign")}
+            </div>
+          ))}
         </div>
       ) : null}
     </PublishCardFrame>

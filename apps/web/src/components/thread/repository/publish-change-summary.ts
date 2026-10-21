@@ -19,6 +19,7 @@ import { SECRET_BLOCK_TYPE } from "@decocms/shared/secret-ciphertext";
 import { isLazyWrapper } from "@/components/sections-editor/lazy-value";
 import type { ContentChangeSides } from "@/components/sections-editor/content-changes";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
+import type { NamedRuleKind } from "@/components/sections-editor/named-rules";
 import {
   globalSectionLabel,
   isSiteAppBlock,
@@ -77,6 +78,11 @@ export interface PublishChange {
   sections: PublishSectionChange[];
   fromJson: Record<string, unknown> | null;
   toJson: Record<string, unknown> | null;
+  /**
+   * v8: its rules name a test or campaign of these kinds that the draft
+   * doesn't have (deleted, discarded). The card says so; nothing is blocked.
+   */
+  missingRules?: NamedRuleKind[];
 }
 
 /**
@@ -741,6 +747,11 @@ interface ContentChangesInput {
    * it the page reads as a global section with one changed field.
    */
   meta?: LiveMeta | null;
+  /**
+   * Per block, the kinds of test or campaign its rules name that the draft
+   * doesn't have (named-rule-uses.ts `blocksUsingMissingNamedRules`).
+   */
+  missingRules?: ReadonlyMap<string, NamedRuleKind[]>;
 }
 
 /**
@@ -753,7 +764,7 @@ interface ContentChangesInput {
 export function summarizeContentChanges(
   input: ContentChangesInput,
 ): PublishChangeSummary {
-  const { changes, sides, lookup, meta } = input;
+  const { changes, sides, lookup, meta, missingRules } = input;
   const pages: PublishChange[] = [];
   const blocks: PublishChange[] = [];
   /** The sides of `name` the server couldn't read (any spelling's file). */
@@ -783,12 +794,14 @@ export function summarizeContentChanges(
     const headShape = readBlockShape(lookup, name);
     const nameShape = headShape ?? toJson ?? fromJson;
     const unreadable = unreadableOf(name);
+    const missing = missingRules?.get(name);
     const common = {
       blockKey: name,
       status,
       filepaths: [],
       entry: { name, version: change.version },
       ...(unreadable.length > 0 ? { unreadable } : {}),
+      ...(missing && missing.length > 0 ? { missingRules: missing } : {}),
       fromJson: maskSecrets(fromJson),
       toJson: maskSecrets(toJson ?? (status === "new" ? headShape : null)),
     };

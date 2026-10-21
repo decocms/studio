@@ -6,7 +6,14 @@ import type { ReactElement } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@decocms/ui/components/tooltip.tsx";
 import { MatcherPicker, type MatcherEntry } from "./matcher-picker";
-import type { NamedRulePick, NamedRulePickerKind } from "./named-rule-picker";
+import {
+  type NamedRulePick,
+  type NamedRulePickerKind,
+  namedRuleRowState,
+} from "./named-rule-picker";
+import { namedRuleOf } from "./named-rules";
+import { VariantRuleEditor } from "./variant-rule-editor";
+import { ptBR } from "@/i18n/pt-br/index.ts";
 import {
   NamedRuleCreateForm,
   NamedRuleRow,
@@ -160,12 +167,52 @@ describe("the locked row", () => {
     expect(open).toHaveBeenCalledWith("experiments");
   });
 
-  test("says what to do for a missing campaign, and shows no link without a way there", () => {
+  test("says a missing campaign no longer exists, and shows no link without a way there", () => {
     render(<NamedRuleRow kind="campaigns" name="gone" summary="" missing />);
     expect(
-      within(document.body).getByText(/“gone” isn't one of your campaigns yet/),
-    ).toBeInTheDocument();
+      within(document.body).getByTestId("named-rule-missing").textContent,
+    ).toBe(
+      "This campaign no longer exists. Pick another or remove this variant.",
+    );
     expect(within(document.body).queryByRole("button")).toBeNull();
+  });
+
+  test("a deleted test: the variant says so, with the picker one click away", () => {
+    const rule = { __resolveType: "experiment", name: "gone" };
+    render(
+      <VariantRuleEditor
+        currentRt="experiment"
+        currentLabel="A/B test"
+        matchers={MATCHERS}
+        globals={[]}
+        onSelect={() => {}}
+        onSelectGlobal={() => {}}
+        schema={null}
+        formValue={null}
+        onChange={() => {}}
+        formKey="rule"
+        formWrapperClassName=""
+        named={{ kinds: KINDS, selected: namedRuleOf(rule), onPick: () => {} }}
+        namedRow={namedRuleRowState(rule, KINDS)}
+      />,
+    );
+    const body = within(document.body);
+    expect(body.getByTestId("named-rule-missing").textContent).toBe(
+      "This test no longer exists. Pick another or remove this variant.",
+    );
+    fireEvent.click(body.getByRole("button", { name: /A\/B test/ }));
+    expect(
+      within(body.getByRole("dialog")).queryAllByRole("option").length,
+    ).toBeGreaterThan(0);
+  });
+
+  test("says it in pt-br too", () => {
+    expect(ptBR["sectionsEditor.namedRulePicker.missingTest"]).toBe(
+      "Este teste não existe mais. Escolha outro ou remova esta variante.",
+    );
+    expect(ptBR["sectionsEditor.namedRulePicker.missingCampaign"]).toBe(
+      "Esta campanha não existe mais. Escolha outra ou remova esta variante.",
+    );
   });
 });
 

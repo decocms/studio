@@ -14,7 +14,6 @@ import {
   decofileWriteMutationKey,
   decofileWriteScope,
 } from "./decofile-api";
-import { namedRulesLeftInUse } from "./named-rule-edits";
 import { isSaveConflict } from "./serve-save-error";
 import { SITE_EDITOR_SAVE_TOAST, toastSaveError } from "./site-editor-toast";
 import { useContentBackend } from "./use-content-backend";
@@ -81,19 +80,15 @@ export type NamedRuleApplyOutcome =
    * the editor now holds the stored copies, so the user can look and redo.
    * `unavailable`: the site's content can't be written right now.
    * `failed`: the write failed; the toast says why.
-   * `in-use`: it would remove a test or campaign that pages still use; the
-   * Experiments tab and the Campaigns view list them first, so this only
-   * stops a change made some other way.
    */
-  | { ok: false; reason: "changed" | "unavailable" | "failed" | "in-use" };
+  | { ok: false; reason: "changed" | "unavailable" | "failed" };
 
 /**
  * Writes a {@link NamedRuleChange} into the editor's draft as ONE guarded
  * `blocks.apply`; it goes live with the next Publish, like any other edit.
  * The editor's copy changes at once and comes back if the write fails. A
  * refused write reads the stored blocks again and says so in one calm toast;
- * nothing is retried over someone else's change. A change that would remove
- * a test or campaign a rule still names is never sent.
+ * nothing is retried over someone else's change.
  */
 export function useApplyNamedRule({
   orgSlug,
@@ -153,14 +148,6 @@ export function useApplyNamedRule({
       });
       return { ok: false, reason: "unavailable" };
     }
-    const current = queryClient.getQueryData<Record<string, unknown>>(queryKey);
-    if (current && namedRulesLeftInUse(current, change).length > 0) {
-      toast.info(t("sectionsEditor.namedRules.inUse"), {
-        id: SITE_EDITOR_SAVE_TOAST,
-        description: t("sectionsEditor.namedRules.inUseHint"),
-      });
-      return { ok: false, reason: "in-use" };
-    }
     const writes = sanitizeSecretsForPersistence(change.writes);
     const plan = planNamedRuleApply({ ...change, writes }, (blockKey) =>
       protocolBlockVersion(queryClient, cacheKey, blockKey),
@@ -211,8 +198,8 @@ export function useApplyNamedRule({
 
   /**
    * The draft as stored right now (content-protocol-api.ts
-   * `rereadProtocolContent`): what a delete or an Undo plans from, so a use
-   * or a name another tab added meanwhile counts. `null` when it can't be
+   * `rereadProtocolContent`): what a delete, an Undo or a rename plans from,
+   * so a use or a name another tab added meanwhile counts. `null` when it can't be
    * read; the caller then changes nothing.
    */
   const reread = async (): Promise<Record<string, unknown> | null> => {

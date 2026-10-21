@@ -168,6 +168,9 @@ export const thread = {
   "thread.publishPopover.abTests": "A/B tests",
   "thread.publishPopover.campaignDates": "Campaign dates",
   "thread.publishPopover.globalSection": "Global section",
+  "thread.publishPopover.missingTest": "Uses a test that no longer exists",
+  "thread.publishPopover.missingCampaign":
+    "Uses a campaign that no longer exists",
   "thread.publishPopover.lastPublished": "Last published {when}",
   "thread.publishPopover.lastPublishedBy": "Last published {when} by {name}",
   "thread.publishPopover.needsReviewGeneric":
@@ -193,15 +196,6 @@ export const thread = {
   "thread.publishPopover.publishing": "Publishing…",
   "thread.publishPopover.requestApproval": "Request approval",
   "thread.publishPopover.discarded": "Discarded {name}",
-  "thread.publishPopover.discardBlocked.title":
-    "Please change these pages first.",
-  "thread.publishPopover.discardBlocked.usesTest":
-    "They use the test “{name}”.",
-  "thread.publishPopover.discardBlocked.usesCampaign":
-    "They use the campaign “{name}”.",
-  "thread.publishPopover.discardBlocked.returns":
-    "Discarding this brings back a variant that uses “{name}”, which your draft deleted.",
-  "thread.publishPopover.discardBlocked.close": "Close",
   "thread.publishPopover.discard": "Discard",
   "thread.publishPopover.discardAll": "Discard all",
   "thread.publishPopover.discardAllConfirm": "This can't be undone.",

@@ -47,10 +47,6 @@ import {
   ReviewPaneGhost,
 } from "./publish-dialog.tsx";
 import { useContentDiscard } from "./use-cms-publish-actions.ts";
-import { DiscardBlockedDialog } from "./discard-blocked-dialog.tsx";
-import { usePanelNavigate } from "@/layouts/main-panel-tabs/use-panel-navigate.ts";
-import { contentSearchForUse } from "@/layouts/main-panel-tabs/experiments-v8-model.ts";
-import type { NamedRuleDiscardBreak } from "@/components/sections-editor/named-rule-discard.ts";
 import { useContentPublishState } from "./use-content-publish-state.ts";
 
 /** The header's "Changes" button on Localhost, and the dialog it opens. */
@@ -220,15 +216,11 @@ function LocalChangesContent({
     cacheKey,
     scope: { orgSlug, virtualMcpId, branch },
   });
-  const [discardBlocked, setDiscardBlocked] = useState<
-    NamedRuleDiscardBreak[] | null
-  >(null);
   const discard = useContentDiscard({
     orgSlug,
     virtualMcpId,
     branch,
     refresh: state.refresh,
-    onBlocked: setDiscardBlocked,
   });
   const isDiscarding =
     useContentSyncState(orgSlug, virtualMcpId).phase === "saving";
@@ -236,7 +228,6 @@ function LocalChangesContent({
   const [activeId, setActiveId] = useState<string | null>(null);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [discardAllConfirm, setDiscardAllConfirm] = useState(false);
-  const { openPanel } = usePanelNavigate();
 
   const { summary } = state;
   const changes = [...summary.pages, ...summary.blocks];
@@ -325,7 +316,6 @@ function LocalChangesContent({
                     backend,
                     state.entries,
                     t("thread.publishDialog.allChangesDiscarded"),
-                    { all: true },
                   )
                 }
                 disabled={isDiscarding}
@@ -380,24 +370,7 @@ function LocalChangesContent({
       list={
         <LocalChangesFrame
           title={title}
-          trailing={
-            <>
-              {discardAll}
-              <DiscardBlockedDialog
-                breaks={discardBlocked}
-                onClose={() => setDiscardBlocked(null)}
-                onOpen={(row) => {
-                  onClose();
-                  openPanel("content", {
-                    search: (prev) => ({
-                      ...prev,
-                      ...contentSearchForUse(row),
-                    }),
-                  });
-                }}
-              />
-            </>
-          }
+          trailing={discardAll}
           body={body}
           onClose={onClose}
         />

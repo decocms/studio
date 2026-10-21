@@ -5,10 +5,10 @@
  * this is the whole calendar of the site; nothing is left out.
  *
  * List → detail: change the window, rename (every rule that names it is
- * rewritten in the same change), delete (with an Undo; for a campaign that
- * pages use, Delete lists those pages instead, to take it off them first).
- * A timeline shows one row per campaign. Each change is one guarded `blocks.apply` into the draft
- * and goes live with the normal Publish.
+ * rewritten in the same change), delete (never blocked, with an Undo; pages
+ * that still use a campaign that no longer exists are listed under the
+ * campaigns). A timeline shows one row per campaign. Each change is one
+ * guarded `blocks.apply` into the draft and goes live with the normal Publish.
  */
 
 import { useState } from "react";
@@ -46,8 +46,12 @@ import {
   windowFromInputs,
 } from "@/components/sections-editor/named-rule-picker";
 import { NamedRuleCreateForm } from "@/components/sections-editor/named-rule-step";
-import { NamedRuleUsedBy } from "@/components/sections-editor/named-rule-used-by";
 import {
+  MissingNamedRuleUses,
+  NamedRuleUsedBy,
+} from "@/components/sections-editor/named-rule-used-by";
+import {
+  missingNamedRuleRows,
   type NamedRuleUseRow,
   type NamedRuleUses,
   namedRuleUseRows,
@@ -204,6 +208,9 @@ export function CampaignsView({
 
   const rows = campaignRows(decofile, uses, now);
   const removed = removedCampaigns(decofile, uses);
+  const missing = uses
+    ? missingNamedRuleRows(uses, "campaigns", decofile, meta)
+    : [];
 
   const save = async (
     change: NamedRuleChange | null,
@@ -292,6 +299,11 @@ export function CampaignsView({
           ) : (
             <CampaignTimeline rows={rows} now={now} onOpen={setOpenName} />
           )}
+          <MissingNamedRuleUses
+            kind="campaigns"
+            rows={missing}
+            onOpen={onOpenUse}
+          />
           {removed.length > 0 && (
             <div className="flex flex-col gap-1">
               <h3 className="text-sm font-medium">
@@ -633,13 +645,11 @@ function CampaignDetail({
           kind="campaigns"
           name={row.name}
           meta={meta}
-          uses={uses}
           pending={pending}
           apply={apply}
           reread={reread}
           onDeleted={onDeleted}
           onUndo={onUndo}
-          onOpenUse={onOpenUse}
         />
       </div>
       <ScrollArea className="min-h-0 flex-1">
