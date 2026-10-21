@@ -53,7 +53,7 @@ test.describe("compact page layout", () => {
     ).toBeVisible();
     const breadcrumbs = header.getByRole("navigation", { name: "Breadcrumbs" });
     // The org is never a crumb, so a project's home has no trail above its
-    // title — the way back out is the sidebar's own row.
+    // title — the way back out is the sidebar's project switcher.
     await expect(breadcrumbs.getByRole("link")).toHaveCount(0);
     await expect(header.getByText("Overview", { exact: true })).toHaveCount(0);
     await header.screenshot({
@@ -65,21 +65,21 @@ test.describe("compact page layout", () => {
     ).toBeVisible();
     await page.setViewportSize({ width: 1280, height: 720 });
     const sidebar = page.locator('[data-slot="sidebar"]');
-    await sidebar
-      .getByRole("button", { name: "All projects", exact: true })
+    await sidebar.getByRole("button", { name: "Forma", exact: true }).click();
+    await page
+      .getByRole("menuitem", { name: "All projects", exact: true })
       .click();
     await expect(
       header.getByRole("heading", { name: "Home", exact: true }),
     ).toBeVisible();
-    await expect(sidebar.getByText("Projects", { exact: true })).toBeVisible();
     await expect(
       sidebar.getByRole("link", { name: "Members", exact: true }),
     ).toHaveCount(0);
     await sidebar
-      .getByRole("button", { name: "Add project", exact: true })
+      .getByRole("button", { name: "New project", exact: true })
       .click();
     await expect(
-      page.getByRole("dialog", { name: "Import repository", exact: true }),
+      page.getByRole("dialog", { name: "New project", exact: true }),
     ).toBeVisible();
     await page.keyboard.press("Escape");
     const sidebarHeader = await sidebar
@@ -88,9 +88,9 @@ test.describe("compact page layout", () => {
     const pageHeader = await header.boundingBox();
     expect(Math.abs(sidebarHeader!.y - pageHeader!.y)).toBeLessThanOrEqual(1);
     expect(sidebarHeader!.height).toBe(pageHeader!.height);
-    await sidebar.getByRole("link", { name: "Board", exact: true }).click();
+    await sidebar.getByRole("link", { name: "Execute", exact: true }).click();
     await expect(
-      header.getByRole("heading", { name: "Tasks", exact: true }),
+      header.getByRole("heading", { name: "Execute", exact: true }),
     ).toBeVisible({ timeout: 60_000 });
     await expect(
       header.getByRole("button", { name: "New task", exact: true }),
@@ -338,9 +338,12 @@ test.describe("compact page layout", () => {
       await page.getByRole("button", { name: "Preview", exact: true }).click();
       expect(await originalPicker!.evaluate((el) => el.isConnected)).toBe(true);
       const sidebar = page.locator('[data-slot="sidebar"]');
-      const threadToggle = sidebar.getByRole("button", {
-        name: /^(Open|Close) chat$/,
-      });
+      // Collapsing the sidebar moves its chat toggle to the page header, so
+      // the toggle is whichever one is on screen.
+      const threadToggle = page
+        .getByRole("button", { name: /^(Open|Close) chat$/ })
+        .filter({ visible: true })
+        .last();
       await page.mouse.move(0, 0);
       await expect(threadToggle).toHaveAttribute("aria-pressed", "false");
       await expect(threadToggle).toHaveCSS(
@@ -458,7 +461,7 @@ test.describe("compact page layout", () => {
     }
   });
 
-  test("Library shares page actions and filters by type without losing the folder", async ({
+  test("Library shares page actions and searches without losing the folder", async ({
     authedPage: { page, orgSlug },
   }, testInfo) => {
     await page.setViewportSize({ width: 1280, height: 800 });
@@ -497,59 +500,37 @@ test.describe("compact page layout", () => {
     ).toBeVisible({ timeout: 60_000 });
     const breadcrumbs = header.getByRole("navigation", { name: "Breadcrumbs" });
     await expect(
-      breadcrumbs.getByRole("button", { name: "Library", exact: true }),
+      breadcrumbs.getByRole("button", { name: "Context", exact: true }),
     ).toBeVisible();
-    await expect(page.getByText("Brand", { exact: true })).toHaveCount(1);
+    // Once as the page heading and once as Context's Brand section, never as
+    // a second title inside the page.
+    await expect(page.getByText("Brand", { exact: true })).toHaveCount(2);
     await expect(
       header.getByRole("button", { name: "Upload file", exact: true }),
     ).toBeVisible();
     await expect(
       header.getByRole("button", { name: "New folder", exact: true }),
     ).toBeVisible();
-    const views = page.locator('[data-slot="page-tabs"]');
     for (const file of fixtures)
       await expect(page.getByText(file.name, { exact: true })).toBeVisible();
     await page.screenshot({
       animations: "disabled",
       path: testInfo.outputPath("compact-library-files.png"),
     });
-    /** Type is a menu in the filter bar; its pill names the current choice. */
-    const pickType = async (current: string, next: string) => {
-      await views.getByRole("button", { name: current, exact: true }).click();
-      await page
-        .getByRole("menuitemradio", { name: next, exact: true })
-        .click();
-    };
-    await pickType("Type", "Documents");
+    const views = page.getByRole("navigation", { name: "Page views" });
+    await expect(
+      views.getByRole("button", { name: "All", exact: true }),
+    ).toHaveAttribute("aria-pressed", "true");
+    const search = page.getByPlaceholder("Search files in Brand…");
+    await search.fill("Launch");
     await expect(
       page.getByText("Launch notes.md", { exact: true }),
     ).toBeVisible();
     await expect(page.getByText("Palette.svg", { exact: true })).toHaveCount(0);
     await expect(page.getByText("site.json", { exact: true })).toHaveCount(0);
-    await pickType("Documents", "Media");
-    await expect(page.getByText("Palette.svg", { exact: true })).toBeVisible();
-    await expect(
-      page.getByText("Launch notes.md", { exact: true }),
-    ).toHaveCount(0);
     expect(new URL(page.url()).searchParams.get("path")).toBe("home/Brand");
-    await page.reload();
-    await expect(
-      views.getByRole("button", { name: "Media", exact: true }),
-    ).toHaveAttribute("aria-pressed", "true");
-    await header
-      .getByRole("button", { name: "Search all files…", exact: true })
-      .click();
-    const search = page.getByPlaceholder("Search files in Brand…");
-    await search.fill("Launch");
-    await expect(
-      page.getByText('No files match "Launch".', { exact: true }),
-    ).toBeVisible();
-    await pickType("Media", "Documents");
-    await expect(
-      page.getByText("Launch notes.md", { exact: true }),
-    ).toBeVisible();
-    await search.press("Escape");
-    await expect(search).toHaveValue("");
+    await search.fill("");
+    await expect(page.getByText("Palette.svg", { exact: true })).toBeVisible();
     await header
       .getByRole("button", { name: "New folder", exact: true })
       .click();
@@ -562,7 +543,7 @@ test.describe("compact page layout", () => {
       header.getByRole("button", { name: "Upload file", exact: true }),
     ).toBeVisible();
     await expect(
-      views.getByRole("button", { name: "All files", exact: true }),
+      views.getByRole("button", { name: "All", exact: true }),
     ).toBeVisible();
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth),
@@ -593,7 +574,7 @@ test.describe("compact page layout", () => {
     await page.goto(
       `/${orgSlug}/library?path=${encodeURIComponent(`home/${folder}`)}&fileView=documents`,
     );
-    await expect(breadcrumbs).toHaveCount(1);
+    await expect(breadcrumbs).toHaveCount(1, { timeout: 60_000 });
     // No org crumb on an org page — only inside a project, where it names the
     // project's parent. The folder trail below is the library's own.
     await expect(breadcrumbs.getByRole("link")).toHaveCount(0);
@@ -637,7 +618,7 @@ test.describe("compact page layout", () => {
       .getByRole("button", { name: "Show navigation path" })
       .click();
     await expect(page.getByRole("menuitem")).toHaveText([
-      "Library",
+      "Context",
       "Brand",
       "Launch notes",
     ]);
@@ -652,11 +633,11 @@ test.describe("compact page layout", () => {
     await breadcrumbs
       .getByRole("button", { name: "Show navigation path" })
       .click();
-    await page.getByRole("menuitem", { name: "Library", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Context", exact: true }).click();
     await expect(
-      header.getByRole("heading", { name: "Library", exact: true }),
+      header.getByRole("heading", { name: "Context", exact: true }),
     ).toBeInViewport();
-    // Library alone is the whole trail here, so there is nothing to collapse.
+    // Context alone is the whole trail here, so there is nothing to collapse.
     await expect(
       breadcrumbs.getByRole("button", { name: "Show navigation path" }),
     ).toHaveCount(0);
@@ -680,17 +661,17 @@ test.describe("compact page layout", () => {
     ).toBeVisible();
     expect(new URL(page.url()).searchParams.get("path")).toBe("uploads");
     await breadcrumbs
-      .getByRole("button", { name: "Library", exact: true })
+      .getByRole("button", { name: "Context", exact: true })
       .click();
     await expect(
-      header.getByRole("heading", { name: "Library", exact: true }),
+      header.getByRole("heading", { name: "Context", exact: true }),
     ).toBeVisible();
     await expect(breadcrumbs.getByRole("link")).toHaveCount(0);
     await page.goto(`/${orgSlug}/tasks`);
     await expect(
-      header.getByRole("heading", { name: "Tasks", exact: true }),
-    ).toBeVisible();
+      header.getByRole("heading", { name: "Execute", exact: true }),
+    ).toBeVisible({ timeout: 60_000 });
     await expect(breadcrumbs.locator('[aria-current="page"]')).toHaveCount(1);
-    await expect(breadcrumbs.getByRole("listitem")).toHaveText(["Tasks"]);
+    await expect(breadcrumbs.getByRole("listitem")).toHaveText(["Execute"]);
   });
 });

@@ -59,7 +59,6 @@ function threadParam(page: Page): string | null {
 }
 
 test.describe("app takeover chat", () => {
-  test.use({ projectFirstNav: true });
   test.describe.configure({ timeout: 180_000 });
 
   test("starting and switching threads keeps the chat open and the app mounted", async ({
