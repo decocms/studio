@@ -2518,6 +2518,7 @@ function Lanes({
           itemOf: (cardId) => placed.find((item) => item.id === cardId),
           fromStatus: saved.status,
           toStatus: lane,
+          dragged: groupOf(draggedId),
         })
       : null;
   };
