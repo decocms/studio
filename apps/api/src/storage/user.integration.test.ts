@@ -35,7 +35,7 @@ describe("UserStorage.searchOrganizations", () => {
     await seedCommonTestPgFixtures(database);
     storage = new UserStorage(database.db);
 
-    // Past Better Auth's 100-row page, with the searched-for org joined last.
+    // Past the first 100 rows, with the searched-for org joined last.
     for (let i = 0; i < 105; i++) {
       const id = `org_filler_${String(i).padStart(3, "0")}`;
       await addOrg(id, `Filler ${i}`, `filler-${i}`);

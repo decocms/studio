@@ -94,7 +94,7 @@ export class UserStorage implements UserStoragePort {
 
   /**
    * Organizations the user belongs to whose name or slug contains `term`.
-   * Better Auth's own list stops at its adapter's default page of 100, so a
+   * Better Auth's own list stops at its adapter's page of 500, so a
    * search over it cannot reach the rest of a large membership.
    */
   async searchOrganizations(options: {
