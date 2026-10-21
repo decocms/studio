@@ -542,6 +542,8 @@ export function ChatInput({
       : undefined);
 
   const tiptapRef = useRef<TiptapInputHandle | null>(null);
+  // Latches the home composer's submit against a double-Enter/key-repeat race, since it has no server request to probe like `stream.isSendInFlight()`.
+  const homeSubmitInFlightRef = useRef(false);
   // True while the @/ suggestion dropdown is open — read by TiptapProvider's
   // Enter-to-submit handler so selecting a suggestion doesn't also send the
   // still-unresolved draft (ProseMirror's keydown listener runs before the
@@ -640,6 +642,11 @@ export function ChatInput({
         }
         void stream.sendMessage(tiptapDoc);
       } else {
+        if (homeSubmitInFlightRef.current) {
+          toast.info(t("chat.input.stillSendingPreviousMessage"));
+          return;
+        }
+        homeSubmitInFlightRef.current = true;
         if (taskIntake) track("task_report_submitted", { source: "home" });
         // Task mode needs Decopilot's task-board tools, whatever the
         // composer's selector says.
@@ -647,6 +654,8 @@ export function ChatInput({
           tiptapDoc,
           virtualMcp: taskIntake ? null : selectedVirtualMcp,
           taskIntake,
+        }).finally(() => {
+          homeSubmitInFlightRef.current = false;
         });
       }
       clearChatDraft(sessionStorage, locator, draftKey);
