@@ -436,7 +436,7 @@ function OrdersChart({
   );
 }
 
-function CancellationsChart({
+export function CancellationsChart({
   day,
   pushes,
 }: {
@@ -480,6 +480,7 @@ function CancellationsChart({
           <button
             key={k.id}
             type="button"
+            aria-pressed={kind === k.id}
             onClick={() => setKind(k.id)}
             className={cn(
               "rounded-lg px-3 py-1 text-xs font-medium transition-colors",
