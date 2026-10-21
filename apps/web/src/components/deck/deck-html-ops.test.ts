@@ -213,4 +213,16 @@ describe("applyDeckOp", () => {
     });
     expect(out).toContain("data:image/png;base64,AAA=");
   });
+
+  test("replace strips a data:image/svg+xml href that can embed a script", () => {
+    const out = applyDeckOp(DECK, {
+      kind: "replace",
+      at: 0,
+      html:
+        '<section class="a"><a href="data:image/svg+xml,' +
+        "<svg xmlns=%27http://www.w3.org/2000/svg%27>" +
+        '<script>alert(1)</script></svg>">click</a></section>',
+    });
+    expect(out).not.toContain("data:image/svg+xml");
+  });
 });

@@ -50,7 +50,10 @@ function isSafeUrlAttrValue(value: string): boolean {
   } catch {
     return true;
   }
-  if (protocol === "data:") return /^data:image\//i.test(value.trim());
+  // svg+xml can embed <script>, which runs when opened as a document.
+  if (protocol === "data:") {
+    return /^data:image\/(?!svg\+xml)/i.test(value.trim());
+  }
   return !UNSAFE_URL_PROTOCOLS.has(protocol);
 }
 
