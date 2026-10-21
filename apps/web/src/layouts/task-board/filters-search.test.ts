@@ -292,6 +292,8 @@ describe("enabledLayout", () => {
 
   test("sends a reader without it to the board, not to a view with no tabs", () => {
     expect(enabledLayout("feed", false)).toBe("board");
+    expect(enabledLayout("epics", false)).toBe("board");
+    expect(enabledLayout("epics", true)).toBe("epics");
   });
 
   test("leaves the two unflagged layouts alone either way", () => {

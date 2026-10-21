@@ -122,6 +122,56 @@ export function cardNeedsAttention(item: TaskBoardItem): boolean {
 }
 
 /**
+ * Whether a card rides the board's critical swimlane: work that can't wait, so
+ * it never sits among polish. Settled cards never qualify.
+ */
+export function isCriticalTask(item: TaskBoardItem): boolean {
+  if (item.status === "done" || item.status === "archived") return false;
+  return (
+    item.priority === "urgent" ||
+    item.priority === "high" ||
+    item.type === "security" ||
+    isTaskBlocked(item) ||
+    agentRunState(item) === "failed"
+  );
+}
+
+/** dnd-kit id prefix for a lane's critical well, so an empty one takes a drop. */
+export const CRITICAL_DROPPABLE_PREFIX = "critical:";
+
+/** The swimlane a drop lands in: a well's own droppable, else the card under it. */
+export function dropSwimlane({
+  overId,
+  itemOf,
+}: {
+  overId: string | number | undefined;
+  itemOf: (cardId: string) => TaskBoardItem | undefined;
+}): "critical" | "improvements" | null {
+  if (overId === undefined) return null;
+  const id = String(overId);
+  if (id.startsWith(CRITICAL_DROPPABLE_PREFIX)) return "critical";
+  if (id.startsWith(LANE_DROPPABLE_PREFIX)) return "improvements";
+  const card = itemOf(id);
+  if (!card) return null;
+  return isCriticalTask(card) ? "critical" : "improvements";
+}
+
+/**
+ * The priority a card needs to land in `swimlane`, or null when it already
+ * belongs there. Leaving Critical only lowers a card that priority alone kept
+ * there; a security or blocked card stays critical whatever its priority.
+ */
+export function swimlanePriority(
+  item: TaskBoardItem,
+  swimlane: "critical" | "improvements",
+): TaskBoardItemPriority | null {
+  const critical = isCriticalTask(item);
+  if (swimlane === "critical") return critical ? null : "high";
+  if (!critical) return null;
+  return isCriticalTask({ ...item, priority: "medium" }) ? null : "medium";
+}
+
+/**
  * Status-icon classes for a task card/row. A task waiting on input pulses in
  * `warning` — same token as its "Needs input" badge, so a stalled task doesn't
  * look like it's still progressing.
@@ -453,9 +503,10 @@ export function dropLane({
 }): CanonicalColumnKey | null {
   if (overId === undefined) return null;
   const id = String(overId);
-  const status = id.startsWith(LANE_DROPPABLE_PREFIX)
-    ? id.slice(LANE_DROPPABLE_PREFIX.length)
-    : statusOf(id);
+  const prefix = [LANE_DROPPABLE_PREFIX, CRITICAL_DROPPABLE_PREFIX].find((p) =>
+    id.startsWith(p),
+  );
+  const status = prefix ? id.slice(prefix.length) : statusOf(id);
   return status !== undefined && isColumnKey(status) ? status : null;
 }
 
