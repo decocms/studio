@@ -145,10 +145,9 @@ function OrgHomeBody({
     <div className="flex flex-col gap-8">
       <div className="flex flex-col gap-1">
         <span className="text-xs text-muted-foreground">{eyebrow}</span>
-        <h1 className="text-2xl font-medium text-foreground">{greeting}</h1>
-        <p className="mt-1 text-base text-pretty text-muted-foreground">
-          {brief}
-        </p>
+        <h1 className="max-w-[40ch] text-2xl font-medium text-balance text-foreground">
+          {greeting} {brief}
+        </h1>
       </div>
       <ForYou
         waiting={waiting}
