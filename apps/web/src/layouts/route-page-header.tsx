@@ -111,20 +111,30 @@ export function RoutePageHeader({
     <Page.Header
       leading={
         <>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <ToolbarIconButton
-                className={cn(!sidebarHidden && "md:hidden")}
-                onClick={toggleSidebar}
-                aria-label={t("page.expandSidebar")}
-              >
-                <LayoutLeft size={16} />
-              </ToolbarIconButton>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              {t("page.expandSidebar")}
-            </TooltipContent>
-          </Tooltip>
+          {projectFirstNav ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <ToolbarIconButton
+                  className={cn(!sidebarHidden && "md:hidden")}
+                  onClick={toggleSidebar}
+                  aria-label={t("page.expandSidebar")}
+                >
+                  <LayoutLeft size={16} />
+                </ToolbarIconButton>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                {t("page.expandSidebar")}
+              </TooltipContent>
+            </Tooltip>
+          ) : (
+            <ToolbarIconButton
+              className="md:hidden"
+              onClick={toggleSidebar}
+              aria-label={t("layouts.shellControls.toggleSidebar")}
+            >
+              <LayoutLeft size={16} />
+            </ToolbarIconButton>
+          )}
           {chatToggle}
         </>
       }

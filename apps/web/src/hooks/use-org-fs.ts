@@ -545,10 +545,9 @@ export async function writeOrgFsTextIf(
   path: string,
   body: string,
   expect: OrgFsWriteExpect | null,
+  contentType = "text/markdown; charset=utf-8",
 ): Promise<OrgFsConditionalWrite> {
-  const headers: Record<string, string> = {
-    "content-type": "text/markdown; charset=utf-8",
-  };
+  const headers: Record<string, string> = { "content-type": contentType };
   if (expect && "absent" in expect) headers["if-none-match"] = "*";
   else if (expect) headers["if-match"] = `"${expect.contentHash}"`;
   const res = await fetch(fsUrl(orgSlug, volume, "file", { path }), {

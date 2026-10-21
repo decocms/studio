@@ -552,9 +552,11 @@ function AccountsSection({
 }
 
 function RepositoriesSection({
+  guided,
   onAdd,
   onUnlink,
 }: {
+  guided: boolean;
   onAdd: () => void;
   onUnlink: (repository: Repository) => void;
 }) {
@@ -596,10 +598,19 @@ function RepositoriesSection({
               {t("settings.repositories.reposEmptyDescription")}
             </p>
           </div>
-          <Button variant="outline" size="sm" onClick={onAdd}>
-            <Plus size={16} />
-            {t("settings.repositories.addRepository")}
-          </Button>
+          {guided ? (
+            <Button variant="outline" size="sm" onClick={onAdd}>
+              <Plus size={16} />
+              {t("settings.repositories.addRepository")}
+            </Button>
+          ) : (
+            <Page.Actions>
+              <Button size="sm" onClick={onAdd}>
+                <Plus size={14} />
+                {t("settings.repositories.addRepository")}
+              </Button>
+            </Page.Actions>
+          )}
         </div>
       ) : (
         <div data-testid="repositories-list">
@@ -750,6 +761,7 @@ export function RepositoriesContent({
 
       {showRepositories && (
         <RepositoriesSection
+          guided={guided}
           onAdd={() => setAddOpen(true)}
           onUnlink={setPendingRepository}
         />

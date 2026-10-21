@@ -893,7 +893,6 @@ function VirtualMcpDetailViewWithData({
   const showInstructions = inContext
     ? contextSection === "instructions"
     : showGeneral;
-  const showSubAgents = !inContext && showGeneral;
   // Site tokens are for Blocks v8 sites only (hosted Deco CMS); a v7 site
   // never shows them.
   const hostedCms = useMainSchemaV8(virtualMcp.id) === "v8";
@@ -1126,7 +1125,7 @@ function VirtualMcpDetailViewWithData({
               {showInstructions && <FilesSection form={form} />}
 
               {/* Sub-agents section — delegation allowlist for the subtask tool */}
-              {showSubAgents && (
+              {showGeneral && (
                 <ErrorBoundary fallback={() => null}>
                   <Suspense
                     fallback={

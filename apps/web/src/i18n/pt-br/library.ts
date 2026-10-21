@@ -73,6 +73,10 @@ export const library = {
   "library.brandPreview.addLogo": "Adicionar logo",
   "library.brandPreview.brandNotAvailable":
     "Esta marca não está mais disponível.",
+  "library.brandPreview.brandChanged":
+    "A marca mudou enquanto você editava. Confira a versão mais recente e salve de novo.",
+  "library.brandPreview.invalidColor":
+    "Corrija as cores inválidas antes de salvar.",
   "library.brandPreview.brandSaved": "Marca salva",
   "library.brandPreview.cancel": "Cancelar",
   "library.brandPreview.colors": "Cores",

@@ -36,12 +36,15 @@ import { EmptyState } from "@/components/empty-state";
 import { Page } from "@/components/page";
 import { useAskInChat } from "@/hooks/use-ask-in-chat";
 import {
+  fetchOrgFsStat,
+  fetchOrgFsText,
+  invalidateOrgFsWrite,
   type OrgFsEntry,
   useFileText,
   useOrgFsFileUrl,
   useOrgFsList,
   useOrgFsMutations,
-  useOrgFsWriteText,
+  writeOrgFsTextIf,
 } from "@/hooks/use-org-fs";
 import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/use-t.ts";
@@ -189,7 +192,7 @@ function BrandDetail({ brand }: { brand: OrgFsEntry }) {
   const fileUrl = useOrgFsFileUrl();
   const queryClient = useQueryClient();
   const ask = useAskInChat();
-  const writeText = useOrgFsWriteText(HOME_MOUNT_PATH);
+  const { org } = useProjectContext();
   const { upload, remove } = useOrgFsMutations(HOME_MOUNT_PATH);
   const logoInput = useRef<HTMLInputElement>(null);
   /** Null while reading; while editing, what changed, by section title or token id. */
@@ -200,7 +203,8 @@ function BrandDetail({ brand }: { brand: OrgFsEntry }) {
   } | null>(null);
   const [saving, setSaving] = useState(false);
   const editing = draft !== null;
-  const files = useOrgFsList(HOME_MOUNT_PATH, brand.path).data ?? [];
+  const listing = useOrgFsList(HOME_MOUNT_PATH, brand.path);
+  const files = listing.data ?? [];
   const has = (name: string) =>
     files.some((f) => f.kind === "file" && basename(f.path) === name);
   const tokensUrl = fileUrl(HOME_MOUNT_PATH, `${brand.path}/tokens.css`);
@@ -208,6 +212,11 @@ function BrandDetail({ brand }: { brand: OrgFsEntry }) {
   const tokensCss = useFileText(tokensUrl, { enabled: has("tokens.css") });
   const brandMd = useFileText(mdUrl, { enabled: has("brand.md") });
 
+  /* Saving rebuilds whole files, so editing waits until both have been read. */
+  const loaded =
+    listing.isSuccess &&
+    (!has("brand.md") || typeof brandMd.data === "string") &&
+    (!has("tokens.css") || typeof tokensCss.data === "string");
   const raw = brandMd.data ?? "";
   const md = parseSkillMd(raw);
   const name = md.name ?? titleCase(basename(brand.path));
@@ -250,41 +259,65 @@ function BrandDetail({ brand }: { brand: OrgFsEntry }) {
     if (draft.quote !== null && draft.quote.trim() !== (quote ?? "").trim()) {
       nextMd = writeQuote(nextMd, draft.quote);
     }
-    let nextCss = tokensCss.data ?? "";
+    const invalid = Object.entries(draft.tokens).some(
+      ([id, value]) =>
+        (SWATCHES as readonly string[]).includes(id) && !isColorValue(value),
+    );
+    if (invalid) {
+      toast.error(t("library.brandPreview.invalidColor"));
+      return;
+    }
+    const baseCss = tokensCss.data ?? "";
+    let nextCss = baseCss;
     for (const [id, value] of Object.entries(draft.tokens)) {
-      /* A half-typed hex is not a color yet; the file keeps the last one. */
-      const color = (SWATCHES as readonly string[]).includes(id);
-      if (color && !isColorValue(value)) continue;
       if (value !== token(id)) {
         nextCss = updateBrandToken(nextCss, `--brand-${id}`, value);
       }
     }
+    const writes: {
+      file: string;
+      base: string;
+      next: string;
+      type: string;
+      url: string;
+    }[] = [];
+    if (nextMd !== raw) {
+      writes.push({
+        file: "brand.md",
+        base: raw,
+        next: nextMd,
+        type: "text/markdown; charset=utf-8",
+        url: mdUrl,
+      });
+    }
+    if (nextCss !== baseCss) {
+      writes.push({
+        file: "tokens.css",
+        base: baseCss,
+        next: nextCss,
+        type: "text/css; charset=utf-8",
+        url: tokensUrl,
+      });
+    }
     setSaving(true);
     try {
-      const writes: [string, string, string, string][] = [];
-      if (nextMd !== raw) {
-        writes.push([
-          "brand.md",
-          nextMd,
-          "text/markdown; charset=utf-8",
-          mdUrl,
-        ]);
-      }
-      if (nextCss !== (tokensCss.data ?? "")) {
-        writes.push([
-          "tokens.css",
-          nextCss,
-          "text/css; charset=utf-8",
-          tokensUrl,
-        ]);
-      }
-      for (const [file, text, contentType, url] of writes) {
-        await writeText.mutateAsync({
-          path: `${brand.path}/${file}`,
-          body: text,
-          contentType,
+      for (const write of writes) {
+        const path = `${brand.path}/${write.file}`;
+        const outcome = await writeIfUnchanged(org.slug, path, write);
+        await queryClient.invalidateQueries({
+          queryKey: KEYS.fileText(write.url),
         });
-        await queryClient.invalidateQueries({ queryKey: KEYS.fileText(url) });
+        invalidateOrgFsWrite(queryClient, org.id, HOME_MOUNT_PATH);
+        if (outcome !== "saved") {
+          toast.error(
+            t(
+              outcome === "conflict"
+                ? "library.brandPreview.brandChanged"
+                : "library.brandPreview.failedSaveBrand",
+            ),
+          );
+          return;
+        }
       }
       if (writes.length > 0)
         toast.success(t("library.brandPreview.brandSaved"));
@@ -369,6 +402,7 @@ function BrandDetail({ brand }: { brand: OrgFsEntry }) {
     );
 
   function startEditing() {
+    if (!loaded) return;
     setDraft({ sections: {}, tokens: {}, quote: null });
   }
 
@@ -400,7 +434,7 @@ function BrandDetail({ brand }: { brand: OrgFsEntry }) {
             >
               {t("library.context.fillFromSite")}
             </Button>
-            <Button size="sm" onClick={startEditing}>
+            <Button size="sm" disabled={!loaded} onClick={startEditing}>
               {t("library.context.editBrand")}
             </Button>
           </>
@@ -731,4 +765,34 @@ function VoiceExample({
       </span>
     </div>
   );
+}
+
+/**
+ * Writes `next` only over the text the edit started from, so a save never
+ * replaces what an agent or teammate wrote meanwhile.
+ */
+async function writeIfUnchanged(
+  orgSlug: string,
+  path: string,
+  write: { base: string; next: string; type: string },
+): Promise<"saved" | "conflict" | "forbidden"> {
+  const stat = await fetchOrgFsStat(orgSlug, HOME_MOUNT_PATH, path);
+  const current = stat
+    ? await fetchOrgFsText(orgSlug, HOME_MOUNT_PATH, path)
+    : "";
+  if (current !== write.base) return "conflict";
+  const expect = !stat
+    ? { absent: true as const }
+    : stat.contentHash
+      ? { contentHash: stat.contentHash }
+      : null;
+  const result = await writeOrgFsTextIf(
+    orgSlug,
+    HOME_MOUNT_PATH,
+    path,
+    write.next,
+    expect,
+    write.type,
+  );
+  return result.ok ? "saved" : result.reason;
 }
