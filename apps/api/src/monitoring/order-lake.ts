@@ -166,14 +166,25 @@ export function doneBuckets(at: Date, timezone: string): number {
   return Math.max(0, Math.floor((minutes - INGEST_GRACE_MIN) / 15));
 }
 
+const zeros = () => new Array<number>(BUCKETS_PER_DAY).fill(0);
+
 function emptyDays(): Record<DayAgo, DaySeries> {
-  const zeros = () => new Array<number>(BUCKETS_PER_DAY).fill(0);
   return Object.fromEntries(
     DAYS_AGO.map((d) => [
       d,
       { placed: zeros(), canceled: zeros(), denied: zeros() },
     ]),
   ) as Record<DayAgo, DaySeries>;
+}
+
+// Counts come back as strings (UInt64 in JSONEachRow).
+function dayCell(
+  days: Record<DayAgo, DaySeries>,
+  row: Record<string, unknown>,
+) {
+  const day = days[Number(row.days_ago) as DayAgo];
+  const b = Number(row.bucket);
+  return day && b >= 0 && b < BUCKETS_PER_DAY ? { day, b } : null;
 }
 
 /** The store's IANA zone, or null when the lake has none for it. */
@@ -217,18 +228,12 @@ export async function loadStoreDay(
   ]);
 
   const days = emptyDays();
-  // Counts come back as strings (UInt64 in JSONEachRow).
-  const cell = (row: Record<string, unknown>) => {
-    const day = days[Number(row.days_ago) as DayAgo];
-    const b = Number(row.bucket);
-    return day && b >= 0 && b < BUCKETS_PER_DAY ? { day, b } : null;
-  };
   for (const row of orders) {
-    const c = cell(row);
+    const c = dayCell(days, row);
     if (c) c.day.placed[c.b] = Number(row.placed);
   }
   for (const row of events) {
-    const c = cell(row);
+    const c = dayCell(days, row);
     if (!c) continue;
     c.day.canceled[c.b] = Number(row.canceled);
     c.day.denied[c.b] = Number(row.denied);
@@ -237,11 +242,10 @@ export async function loadStoreDay(
   if (approx) {
     const approxDays = emptyDays();
     for (const row of approx) {
-      const day = approxDays[Number(row.days_ago) as DayAgo];
-      const b = Number(row.bucket);
-      if (!day || b < 0 || b >= BUCKETS_PER_DAY) continue;
-      day.canceled[b] = Number(row.canceled);
-      day.denied[b] = Number(row.denied);
+      const c = dayCell(approxDays, row);
+      if (!c) continue;
+      c.day.canceled[c.b] = Number(row.canceled);
+      c.day.denied[c.b] = Number(row.denied);
     }
     approximate = approxDays;
   }
@@ -280,7 +284,6 @@ async function loadChannels(
     names.map((n) => [String(n.channel_id), String(n.name)]),
   );
   const byId = new Map<string, { today: number[]; d1: number[] }>();
-  const zeros = () => new Array<number>(BUCKETS_PER_DAY).fill(0);
   for (const row of rows) {
     const id = String(row.channel);
     const b = Number(row.bucket);
