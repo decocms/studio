@@ -47,6 +47,30 @@ describe("discoverEndpoint", () => {
     write(JSON.stringify({ headers: {} }));
     expect(discoverEndpoint(root)).toBeNull();
   });
+
+  test("returns null when headers is not an object", () => {
+    write(JSON.stringify({ url: "http://x", headers: "invalid" }));
+    expect(discoverEndpoint(root)).toBeNull();
+
+    write(JSON.stringify({ url: "http://x", headers: null }));
+    expect(discoverEndpoint(root)).toBeNull();
+  });
+
+  test("returns null when expiresAt is not a number", () => {
+    write(JSON.stringify({ url: "http://x", expiresAt: "invalid" }));
+    expect(discoverEndpoint(root)).toBeNull();
+
+    write(JSON.stringify({ url: "http://x", expiresAt: true }));
+    expect(discoverEndpoint(root)).toBeNull();
+  });
+
+  test("accepts extra fields beyond the interface", () => {
+    write(JSON.stringify({ url: "http://x", extra: "allowed" }));
+    expect(discoverEndpoint(root)).toEqual({
+      url: "http://x",
+      extra: "allowed",
+    });
+  });
 });
 
 describe("withMcpId / mcpIdFromUrl", () => {
