@@ -25,7 +25,7 @@ export const releases = {
   "releases.reapplyBody":
     "Making it current publishes a new release with the same content as “{title}”. Changes made since will be replaced on your site.",
   "releases.reapplyUndoHint":
-    "To go back afterwards, make the release that is Latest now current again.",
+    "The release marked Latest stays in the list: to go back afterwards, make it current again.",
   "releases.reapplyConfirm": "Make current",
   "releases.reapplying": "Making current…",
   "releases.reapplied": "Made current. Your site will show it shortly.",

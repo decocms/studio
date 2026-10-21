@@ -3,7 +3,7 @@ import type { releases as enReleases } from "../en/releases.ts";
 export const releases = {
   "releases.title": "Releases",
   "releases.subtitle":
-    "Todas as releases do seu site, da mais recente para a mais antiga. Torne atual uma anterior para trazer o conteúdo dela de volta.",
+    "Todas as releases do seu site, da mais recente para a mais antiga. Para trazer de volta o conteúdo de uma anterior, torne-a atual.",
   "releases.loadFailed": "Não foi possível carregar suas releases.",
   "releases.nothingPublished": "Nada publicado ainda",
   "releases.lastPublished": "Última publicação {when}.",
@@ -15,7 +15,7 @@ export const releases = {
   "releases.reapplyBody":
     "Ao torná-la atual, publicamos uma nova release com o mesmo conteúdo de “{title}”. As alterações feitas desde então serão substituídas no seu site.",
   "releases.reapplyUndoHint":
-    "Para voltar depois, torne atual de novo a release que agora é a Mais recente.",
+    "A release marcada como Mais recente continua na lista: para voltar depois, torne-a atual de novo.",
   "releases.reapplyConfirm": "Tornar atual",
   "releases.reapplying": "Tornando atual…",
   "releases.reapplied":

@@ -230,5 +230,33 @@ export function useApplyNamedRule({
     }
   };
 
-  return { apply, reread, isPending: mutation.isPending };
+  /**
+   * A change planned from the draft as stored right now, for one that takes a
+   * name away (a rename): a use another tab added meanwhile is rewritten
+   * with the others, never left naming a test or campaign that is gone.
+   * `null`, with one calm toast, when the draft can't be read or the change
+   * no longer fits what is stored (it now shows that).
+   */
+  const planStored = async (
+    plan: (decofile: Record<string, unknown>) => NamedRuleChange | null,
+  ): Promise<NamedRuleChange | null> => {
+    const fresh = await reread();
+    if (!fresh) {
+      toast.info(t("sectionsEditor.namedRules.unavailable"), {
+        id: SITE_EDITOR_SAVE_TOAST,
+        description: t("sectionsEditor.namedRules.unavailableHint"),
+      });
+      return null;
+    }
+    const change = plan(fresh);
+    if (!change) {
+      toast.info(t("sectionsEditor.namedRules.changedMeanwhile"), {
+        id: SITE_EDITOR_SAVE_TOAST,
+        description: t("sectionsEditor.namedRules.changedMeanwhileHint"),
+      });
+    }
+    return change;
+  };
+
+  return { apply, reread, planStored, isPending: mutation.isPending };
 }

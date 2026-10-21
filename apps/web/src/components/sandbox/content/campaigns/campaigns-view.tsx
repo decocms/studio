@@ -165,7 +165,7 @@ export function CampaignsView({
     decofile,
     meta,
   });
-  const { apply, reread, isPending } = useApplyNamedRule({
+  const { apply, reread, planStored, isPending } = useApplyNamedRule({
     orgSlug,
     virtualMcpId,
     branch,
@@ -236,6 +236,7 @@ export function CampaignsView({
         onRenamed={setOpenName}
         apply={apply}
         reread={reread}
+        planStored={planStored}
         onDeleted={() => setOpenName(null)}
         onUndo={(change) => void save(change)}
       />
@@ -542,6 +543,7 @@ function CampaignDetail({
   onRenamed,
   apply,
   reread,
+  planStored,
   onDeleted,
   onUndo,
 }: {
@@ -556,6 +558,10 @@ function CampaignDetail({
   onRenamed: (name: string) => void;
   apply: (change: NamedRuleChange) => Promise<NamedRuleApplyOutcome>;
   reread: () => Promise<Record<string, unknown> | null>;
+  /** Plans a rename from the draft as stored now (use-apply-named-rule.ts). */
+  planStored: (
+    plan: (decofile: Record<string, unknown>) => NamedRuleChange | null,
+  ) => Promise<NamedRuleChange | null>;
   onDeleted: () => void;
   onUndo: (change: NamedRuleChange) => void;
 }) {
@@ -601,19 +607,19 @@ function CampaignDetail({
     );
   };
 
-  const rename = () => {
+  /** Planned from the draft as stored now, so every use gets the new name. */
+  const rename = async () => {
     const next = name.trim();
     if (nameProblem || next === row.name) return;
-    const plan = planNamedRuleRename(
-      decofile,
-      "campaigns",
-      row.name,
-      next,
-      meta,
+    const plan = await planStored((stored) =>
+      planNamedRuleRename(stored, "campaigns", row.name, next, meta),
     );
-    void onSave(plan, t("sandbox.dateCampaigns.renamed", { name: next })).then(
-      (ok) => ok && onRenamed(next),
-    );
+    if (
+      plan &&
+      (await onSave(plan, t("sandbox.dateCampaigns.renamed", { name: next })))
+    ) {
+      onRenamed(next);
+    }
   };
 
   return (
@@ -722,7 +728,7 @@ function CampaignDetail({
                 size="sm"
                 variant="outline"
                 disabled={pending || !!nameProblem || name.trim() === row.name}
-                onClick={rename}
+                onClick={() => void rename()}
               >
                 {t("sandbox.dateCampaigns.rename")}
               </Button>

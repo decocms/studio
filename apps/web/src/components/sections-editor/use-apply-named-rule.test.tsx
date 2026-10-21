@@ -424,4 +424,58 @@ describe("useApplyNamedRule", () => {
     });
     expect(fresh.value).toBeNull();
   });
+
+  it("a rename planned from the stored draft renames a use another tab added", async () => {
+    const { queryClient, result } = setup();
+    // A paused test (a running one keeps its name).
+    const experiments = { __resolveType: "split-traffic", hero: 0 };
+    // This editor holds `home` and `experiments`; another tab then put
+    // "hero" on `promo`, which this editor hasn't read.
+    server.blocks = { home, experiments };
+    server.versions = { home: "home@0", experiments: "experiments@0" };
+    queryClient.setQueryData(KEYS.decofile(CACHE_KEY), { home, experiments });
+    queryClient.setQueryData(KEYS.contentVersions(CACHE_KEY), {
+      home: "home@0",
+      experiments: "experiments@0",
+    });
+    server.blocks = { home, promo: homeWithTest, experiments };
+    server.versions = {
+      home: "home@0",
+      promo: "promo@1",
+      experiments: "experiments@0",
+    };
+    let outcome: unknown;
+    await act(async () => {
+      const change = await result.current.planStored((stored) =>
+        planNamedRuleRename(stored, "experiments", "hero", "launch"),
+      );
+      outcome = change ? await result.current.apply(change) : null;
+    });
+    expect(outcome).toEqual({ ok: true });
+    // Nothing is left naming "hero".
+    expect(server.blocks.experiments).toEqual({
+      __resolveType: "split-traffic",
+      launch: 0,
+    });
+    expect(server.blocks.promo).toEqual(
+      page({ __resolveType: "experiment", name: "launch" }),
+    );
+    expect(server.applied.at(-1)?.ifMatch).toMatchObject({
+      experiments: "experiments@0",
+      promo: "promo@1",
+    });
+  });
+
+  it("plans nothing when the draft can't be read", async () => {
+    const { result } = setup();
+    server.unreachable = true;
+    const plan = mock(() => ({ writes: {} }));
+    let change: unknown = "unset";
+    await act(async () => {
+      change = await result.current.planStored(plan);
+    });
+    expect(change).toBeNull();
+    expect(plan).not.toHaveBeenCalled();
+    expect(server.applied).toEqual([]);
+  });
 });

@@ -76,7 +76,7 @@ const EXACT_EXCEPTIONS: Record<"en" | "pt-br", Record<string, string>> = {
     "releases.reapplyBody":
       "Making it current publishes a new release with the same content as “{title}”. Changes made since will be replaced on your site.",
     "releases.reapplyUndoHint":
-      "To go back afterwards, make the release that is Latest now current again.",
+      "The release marked Latest stays in the list: to go back afterwards, make it current again.",
     "releases.reapplying": "Making current…",
     "releases.reapplied": "Made current. Your site will show it shortly.",
     "releases.reappliedUndoHint":
@@ -92,12 +92,12 @@ const EXACT_EXCEPTIONS: Record<"en" | "pt-br", Record<string, string>> = {
     "releases.reapply": "Tornar atual",
     "releases.reapplyConfirm": "Tornar atual",
     "releases.subtitle":
-      "Todas as releases do seu site, da mais recente para a mais antiga. Torne atual uma anterior para trazer o conteúdo dela de volta.",
+      "Todas as releases do seu site, da mais recente para a mais antiga. Para trazer de volta o conteúdo de uma anterior, torne-a atual.",
     "releases.reapplyTitle": "Tornar esta release atual?",
     "releases.reapplyBody":
       "Ao torná-la atual, publicamos uma nova release com o mesmo conteúdo de “{title}”. As alterações feitas desde então serão substituídas no seu site.",
     "releases.reapplyUndoHint":
-      "Para voltar depois, torne atual de novo a release que agora é a Mais recente.",
+      "A release marcada como Mais recente continua na lista: para voltar depois, torne-a atual de novo.",
     "releases.reapplying": "Tornando atual…",
     "releases.reapplied":
       "Release tornada atual. Seu site vai mostrá-la em instantes.",
