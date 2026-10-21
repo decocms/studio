@@ -585,13 +585,18 @@ function channelLabel(c: OrderMonitorChannel, t: TFunction): string {
   return c.name ?? t("orderMonitor.channelFallback", { id: c.id || "—" });
 }
 
-/** Today's orders per sales channel, each with its count so far vs D-1 at the same time. */
+/** Orders per sales channel, today against D-1 (dashed), each with its count so far vs D-1 at the same time. */
 function ChannelsChart({ day }: { day: OrderMonitorDay }) {
   const t = useT();
   const { channels } = day;
   const data = HOURS.map((h) => ({
     x: h,
-    ...Object.fromEntries(channels.map((c, i) => [`c${i}`, c.today[h]])),
+    ...Object.fromEntries(
+      channels.flatMap((c, i) => [
+        [`c${i}`, c.today[h]],
+        [`d${i}`, c.d1[h]],
+      ]),
+    ),
   }));
   return (
     <>
@@ -622,9 +627,17 @@ function ChannelsChart({ day }: { day: OrderMonitorDay }) {
       </div>
       <ChartContainer
         config={Object.fromEntries(
-          channels.map((c, i) => [
-            `c${i}`,
-            { label: channelLabel(c, t), color: channelColor(i) },
+          channels.flatMap((c, i) => [
+            [`c${i}`, { label: channelLabel(c, t), color: channelColor(i) }],
+            [
+              `d${i}`,
+              {
+                label: t("orderMonitor.channelD1", {
+                  channel: channelLabel(c, t),
+                }),
+                color: channelColor(i),
+              },
+            ],
           ]),
         )}
         className="h-56 w-full"
@@ -646,6 +659,17 @@ function ChannelsChart({ day }: { day: OrderMonitorDay }) {
               />
             }
           />
+          {channels.map((c, i) => (
+            <Line
+              key={`d${c.id}`}
+              dataKey={`d${i}`}
+              stroke={channelColor(i)}
+              strokeWidth={1.5}
+              strokeOpacity={0.5}
+              strokeDasharray="4 4"
+              dot={false}
+            />
+          ))}
           {channels.map((c, i) => (
             <Line
               key={c.id}

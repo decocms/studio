@@ -15,6 +15,7 @@ export const orderMonitor = {
   "orderMonitor.ordersTitle": "Pedidos ({count} até agora)",
   "orderMonitor.channelsTitle": "Por canal de venda",
   "orderMonitor.channelFallback": "Canal {id}",
+  "orderMonitor.channelD1": "{channel} (D-1)",
   "orderMonitor.vsD1SameTime": "{pct} vs D-1 neste horário",
   "orderMonitor.cancellationsTitle": "Cancelamentos",
   "orderMonitor.canceled": "Cancelados",
