@@ -234,10 +234,26 @@ export async function loadStoreDay(
     queryCustomerLake(organizationId, ORDERS_SQL, params),
     queryCustomerLake(organizationId, EVENTS_SQL, params),
     queryCustomerLake(organizationId, FIRST_EVENT_SQL, params),
+    // Chart only: don't sink the real orders/events data over this.
     opts.approximate
-      ? queryCustomerLake(organizationId, APPROX_CANCELS_SQL, params)
+      ? queryCustomerLake(organizationId, APPROX_CANCELS_SQL, params).catch(
+          (err) => {
+            console.warn("[order-monitor] approximate cancels read failed", {
+              error: err instanceof Error ? err.message : String(err),
+            });
+            return [];
+          },
+        )
       : null,
-    opts.channels ? loadChannels(organizationId, params) : undefined,
+    // Chart only, same reason.
+    opts.channels
+      ? loadChannels(organizationId, params).catch((err) => {
+          console.warn("[order-monitor] channels read failed", {
+            error: err instanceof Error ? err.message : String(err),
+          });
+          return undefined;
+        })
+      : undefined,
   ]);
 
   const days = emptyDays();
