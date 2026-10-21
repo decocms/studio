@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseRunBody } from "./reports";
+import app, { parseRunBody } from "./reports";
 
 describe("parseRunBody", () => {
   test("a literal JSON null body doesn't crash — no domain, no distinctId", () => {
@@ -27,5 +27,20 @@ describe("parseRunBody", () => {
       distinctId: "x".repeat(201),
     });
     expect(distinctId).toBeUndefined();
+  });
+});
+
+describe("POST /run", () => {
+  test("rejects an oversized anonymous body before parsing it", async () => {
+    const oversized = JSON.stringify({ domain: "x".repeat(16 * 1024) });
+    const res = await app.request("/run", {
+      method: "POST",
+      body: oversized,
+      headers: {
+        "content-type": "application/json",
+        "content-length": String(oversized.length),
+      },
+    });
+    expect(res.status).toBe(413);
   });
 });
