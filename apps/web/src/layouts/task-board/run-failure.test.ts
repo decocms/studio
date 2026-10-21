@@ -73,6 +73,15 @@ describe("lastRunFailure", () => {
     ).toBeNull();
   });
 
+  test("the lanes migration and a superseded dispatch are not failures", () => {
+    expect(
+      lastRunFailure([moved({ to: "todo", reason: "board_lanes" })]),
+    ).toBeNull();
+    expect(
+      lastRunFailure([moved({ to: "todo", reason: "superseded" })]),
+    ).toBeNull();
+  });
+
   test("a pending retry is not a standing failure", () => {
     expect(
       lastRunFailure([moved({ to: "in_progress", retry: 1, reason: "boom" })]),
