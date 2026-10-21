@@ -133,6 +133,7 @@ import {
   LANE_DROPPABLE_PREFIX,
   CRITICAL_DROPPABLE_PREFIX,
   dropSwimlane,
+  hasCriticalWell,
   swimlanePriority,
   laneHeader,
   laneVisual,
@@ -155,7 +156,6 @@ import {
   SubtaskPill,
   laneCards,
   useEpicBoard,
-  useHierarchy,
 } from "./epics";
 import { useTags } from "@/hooks/use-tags";
 import { useReviewerEnabled } from "@/hooks/use-organization-settings";
@@ -1418,16 +1418,24 @@ function TaskBoardBody({
     navigate({ to: ".", ...taskAddress(taskRouteSegment(org.slug, item)) });
   };
 
-  const { hierarchy, setParent, setEpic } = useHierarchy(org.id);
+  // The API refuses shapes the board can't show (a subtask's subtask, an
+  // epic under a card), so its reason is worth showing as-is.
+  const onHierarchyError = (err: unknown) =>
+    toast.error(
+      err instanceof Error && err.message
+        ? err.message
+        : t("taskBoard.taskBoard.actionError"),
+    );
   const epicBoard = {
     items,
     memberByUserId,
     onSetStatus: (id: string, status: TaskBoardItemStatus) =>
       actions.update.mutate({ id, status }),
-    hierarchy,
     orgSlug: org.slug,
-    setParent,
-    setEpic,
+    setParent: (id: string, parentId: string | null) =>
+      actions.update.mutate({ id, parentId }, { onError: onHierarchyError }),
+    setEpic: (id: string, isEpic: boolean) =>
+      actions.update.mutate({ id, isEpic }, { onError: onHierarchyError }),
     onOpen: openTask,
     onShowEpics: () => {
       const address = taskAddress(undefined);
@@ -1447,20 +1455,19 @@ function TaskBoardBody({
           status: "todo",
           repo: parent.repo,
           virtualMcpId: parent.virtualMcpId,
+          parentId: parent.id,
         })
-        .then(({ item }) => setParent(item.id, parent.id)),
+        .catch(onHierarchyError),
   };
   const createEpic = () =>
     actions.create
       .mutateAsync({
         title: t("taskBoard.epics.newEpicTitle"),
         status: "todo",
+        isEpic: true,
         ...activeProjectStamp,
       })
-      .then(({ item }) => {
-        setEpic(item.id, true);
-        openTask(item);
-      });
+      .then(({ item }) => openTask(item), onHierarchyError);
 
   const closeCreate = () => {
     setDialogOpen(false);
@@ -1582,7 +1589,8 @@ function TaskBoardBody({
                     handleFiltersChange({ ...filters, sprint })
                   }
                 />
-                {items.length > 0 && (
+                {/* Epics lists every epic; the board's filters don't apply to it. */}
+                {items.length > 0 && layout !== "epics" && (
                   <>
                     {/* No width swap: these three are ~100px together, so there
                       is no panel narrow enough to be worth trading them for a
@@ -1752,11 +1760,7 @@ function TaskBoardBody({
       ) : layout === "board" ? (
         <Lanes
           visible={!openItem}
-          items={
-            feedEnabled
-              ? laneCards(hierarchy, visibleItems, items)
-              : visibleItems
-          }
+          items={feedEnabled ? laneCards(visibleItems, items) : visibleItems}
           members={members}
           memberByUserId={memberByUserId}
           selectedIds={selectedIds}
@@ -1764,17 +1768,20 @@ function TaskBoardBody({
           onSelectAllInLane={selectAllInLane}
           onOpen={openTask}
           onCreate={openCreateInLane}
-          onMove={(ids, status, sortOrder, priorities) => {
+          onMove={(ids, status, sortOrder, priorities, onFailed) => {
             // Cards dragged together land as a consecutive run ending at the
             // drop point, keeping `ids` order.
             const orders = runSortOrders(sortOrder, ids.length);
             ids.forEach((id, i) =>
-              actions.update.mutate({
-                id,
-                status,
-                sortOrder: orders[i]!,
-                ...(priorities.has(id) && { priority: priorities.get(id) }),
-              }),
+              actions.update.mutate(
+                {
+                  id,
+                  status,
+                  sortOrder: orders[i]!,
+                  ...(priorities.has(id) && { priority: priorities.get(id) }),
+                },
+                { onError: () => onFailed(id) },
+              ),
             );
           }}
           onAssign={(id, userId) => {
@@ -2420,6 +2427,8 @@ function Lanes({
     sortOrder: number,
     /** Cards whose drop crossed swimlanes, with the priority that puts them there. */
     priorities: Map<string, TaskBoardItemPriority>,
+    /** A card's write failed: drop its override so it shows where the server has it. */
+    onFailed: (id: string) => void,
   ) => void;
   onAutoFix?: (item: TaskBoardItem) => void;
   onRerun?: (item: TaskBoardItem) => void;
@@ -2591,23 +2600,34 @@ function Lanes({
     }),
   );
 
-  const swimlaneUnder = (overId: string | number | undefined) =>
-    swimlanes
+  const swimlaneUnder = (
+    overId: string | number | undefined,
+    draggedId: string,
+    lane: string,
+  ) => {
+    const saved = items.find((item) => item.id === draggedId);
+    return swimlanes && saved
       ? dropSwimlane({
           overId,
           itemOf: (cardId) => placed.find((item) => item.id === cardId),
+          fromStatus: saved.status,
+          toStatus: lane,
         })
       : null;
+  };
 
   const handleDragOver = (event: DragOverEvent) => {
     const id = String(event.active.id);
     const lane = laneOf(event.over?.id);
     const current = placed.find((item) => item.id === id);
-    if (!lane || !current) return;
-    const swimlane = swimlaneUnder(event.over?.id);
-    const crossesSwimlane =
-      !!swimlane && (swimlane === "critical") !== isCriticalTask(current);
-    if (current.status === lane && !crossesSwimlane) return;
+    const saved = items.find((item) => item.id === id);
+    if (!lane || !current || !saved) return;
+    const swimlane = swimlaneUnder(event.over?.id, id, lane);
+    const priority =
+      (swimlane && swimlanePriority(saved, swimlane)) || undefined;
+    if (current.status === lane && overrides.get(id)?.priority === priority) {
+      return;
+    }
     // Preview the group in the lane or well under the cursor so the gap opens there.
     const ids = groupOf(id);
     const overId = String(event.over?.id ?? "");
@@ -2647,7 +2667,7 @@ function Lanes({
         : arrayMove(laneNow, from, Math.min(to, laneNow.length - 1));
 
     // Crossing between Critical and Improvements is a priority change.
-    const swimlane = swimlaneUnder(event.over?.id);
+    const swimlane = swimlaneUnder(event.over?.id, id, lane);
     const priorities = new Map<string, TaskBoardItemPriority>();
     for (const groupId of ids) {
       const saved = items.find((item) => item.id === groupId);
@@ -2681,7 +2701,13 @@ function Lanes({
     );
     place(ids, lane, slot, swimlane);
     setLandedIds(ids);
-    onMove(ids, lane, slot, priorities);
+    onMove(ids, lane, slot, priorities, (failedId) =>
+      setOverrides((prev) => {
+        const next = new Map(prev);
+        next.delete(failedId);
+        return next;
+      }),
+    );
   };
 
   const activeItem = activeId
@@ -2990,8 +3016,10 @@ function Lane({
   const { setNodeRef } = useDroppable({
     id: `${LANE_DROPPABLE_PREFIX}${status}`,
   });
+  const criticalWell = hasCriticalWell(status);
   const { setNodeRef: setCriticalRef } = useDroppable({
     id: `${CRITICAL_DROPPABLE_PREFIX}${status}`,
+    disabled: !criticalWell,
   });
 
   const critical = items.filter(isCriticalTask);
@@ -3226,7 +3254,13 @@ function Lane({
       </div>
       {swimlanes ? (
         <>
-          <div className="flex min-h-0 min-w-0 flex-col gap-3 px-1 pt-4.5">
+          {/* Done and Archived keep the row, so the wells below stay aligned. */}
+          <div
+            className={cn(
+              "flex min-h-0 min-w-0 flex-col gap-3 px-1 pt-4.5",
+              !criticalWell && "invisible",
+            )}
+          >
             <SwimlaneLabel
               visible={labelled}
               icon={AlertOctagon}
@@ -3235,7 +3269,7 @@ function Lane({
             />
             <div
               ref={setCriticalRef}
-              data-lane-scroll={status}
+              data-lane-scroll={criticalWell ? status : undefined}
               className={SWIMLANE_PANEL}
             >
               <SortableContext
@@ -3453,7 +3487,7 @@ function SortableTaskCard({
   onTypeChange?: (type: TaskBoardItemType) => void;
   onDueDateChange?: (iso: string) => void;
 }) {
-  const isEpic = !!useEpicBoard()?.hierarchy.epics.includes(item.id);
+  const isEpic = !!useEpicBoard() && item.isEpic;
   const {
     attributes,
     listeners,
@@ -3535,9 +3569,9 @@ function TaskCard({
   const epicBoard = useEpicBoard();
   const inHierarchy =
     !!epicBoard &&
-    (epicBoard.hierarchy.epics.includes(item.id) ||
-      !!epicBoard.hierarchy.parents[item.id] ||
-      Object.values(epicBoard.hierarchy.parents).includes(item.id));
+    (item.isEpic ||
+      !!item.parentId ||
+      epicBoard.items.some((other) => other.parentId === item.id));
   const runState = agentRunState(item);
   // A state of the card, not a label on it — hence the colour, not a chip.
   const attentionLabel = cardNeedsAttention(item)

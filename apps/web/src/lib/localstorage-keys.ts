@@ -29,9 +29,6 @@ export const LOCALSTORAGE_KEYS = {
   /** The assignee filter the org's task board opens on for this user. */
   taskBoardAssignee: (orgId: string, userId: string) =>
     `studio:task-board-assignee:${orgId}:${userId}`,
-  /** Which cards are epics and which card each one sits under — a browser-only
-   *  prototype until the API carries a parent. */
-  taskBoardHierarchy: (orgId: string) => `studio:task-board-hierarchy:${orgId}`,
   /** One entry per org holding the apps last opened in it — see
    *  `lib/recent-apps.ts`. */
   recentApps: (orgSlug: string) => `studio:recent-apps:${orgSlug}`,

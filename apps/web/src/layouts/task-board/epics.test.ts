@@ -1,14 +1,26 @@
 import { describe, expect, test } from "bun:test";
 import type { TaskBoardItem } from "./config";
-import { childrenOf, epicStatus, laneCards, progressOf } from "./epics";
+import {
+  childrenOf,
+  epicStatus,
+  isSubtask,
+  laneCards,
+  progressOf,
+} from "./epics";
 
-const card = (id: string, status: TaskBoardItem["status"] = "todo") =>
-  ({ id, status }) as TaskBoardItem;
-
-const hierarchy = {
-  epics: ["epic"],
-  parents: { a: "epic", b: "epic", sub: "a" },
-};
+const card = (
+  id: string,
+  status: TaskBoardItem["status"] = "todo",
+  patch: Partial<TaskBoardItem> = {},
+) =>
+  ({
+    id,
+    status,
+    parentId: null,
+    isEpic: false,
+    threads: [],
+    ...patch,
+  }) as unknown as TaskBoardItem;
 
 describe("progressOf", () => {
   test("splits children into done, in flight and not started", () => {
@@ -38,15 +50,15 @@ describe("progressOf", () => {
 
 describe("laneCards", () => {
   const items = [
-    card("epic", "todo"),
-    card("a", "in_progress"),
-    card("b", "todo"),
-    card("sub", "todo"),
+    card("epic", "todo", { isEpic: true }),
+    card("a", "in_progress", { parentId: "epic" }),
+    card("b", "todo", { parentId: "epic" }),
+    card("sub", "todo", { parentId: "a" }),
     card("loose", "qa"),
   ];
 
   test("keeps subtasks inside their parent", () => {
-    expect(laneCards(hierarchy, items, items).map((i) => i.id)).toEqual([
+    expect(laneCards(items, items).map((i) => i.id)).toEqual([
       "epic",
       "a",
       "b",
@@ -55,27 +67,66 @@ describe("laneCards", () => {
   });
 
   test("puts an epic in the lane its cards add up to", () => {
-    const epic = laneCards(hierarchy, items, items).find(
-      (i) => i.id === "epic",
-    );
+    const epic = laneCards(items, items).find((i) => i.id === "epic");
     expect(epic?.status).toBe("in_progress");
   });
 
+  test("leaves an archived epic archived", () => {
+    const archived = [card("epic", "archived", { isEpic: true }), items[1]!];
+    expect(laneCards(archived, archived)[0]?.status).toBe("archived");
+  });
+
   test("leaves every other card where it was saved", () => {
-    const loose = laneCards(hierarchy, items, items).find(
-      (i) => i.id === "loose",
-    );
+    const loose = laneCards(items, items).find((i) => i.id === "loose");
     expect(loose?.status).toBe("qa");
+  });
+
+  test("shows a subtask whose parent is gone", () => {
+    const orphan = card("orphan", "todo", { parentId: "deleted" });
+    expect(laneCards([orphan], [orphan]).map((i) => i.id)).toEqual(["orphan"]);
+  });
+
+  test("shows a subtask that waits on a person or failed", () => {
+    const parent = card("parent", "in_progress");
+    const blocked = card("blocked", "in_progress", {
+      parentId: "parent",
+      threads: [{ status: "requires_action" }] as TaskBoardItem["threads"],
+    });
+    const settled = card("settled", "done", {
+      parentId: "parent",
+      threads: [{ status: "requires_action" }] as TaskBoardItem["threads"],
+    });
+    const all = [parent, blocked, settled];
+    expect(laneCards(all, all).map((i) => i.id)).toEqual(["parent", "blocked"]);
   });
 });
 
 describe("childrenOf", () => {
   test("returns only direct children", () => {
-    const items = ["epic", "a", "b", "sub", "loose"].map((id) => card(id));
-    expect(childrenOf(hierarchy, items, "epic").map((i) => i.id)).toEqual([
-      "a",
-      "b",
-    ]);
+    const items = [
+      card("epic", "todo", { isEpic: true }),
+      card("a", "todo", { parentId: "epic" }),
+      card("b", "todo", { parentId: "epic" }),
+      card("sub", "todo", { parentId: "a" }),
+    ];
+    expect(childrenOf(items, "epic").map((i) => i.id)).toEqual(["a", "b"]);
+  });
+});
+
+describe("isSubtask", () => {
+  const items = [
+    card("epic", "todo", { isEpic: true }),
+    card("a", "todo", { parentId: "epic" }),
+    card("sub", "todo", { parentId: "a" }),
+  ];
+
+  test("is a card under another card", () => {
+    expect(isSubtask(items, items[2]!)).toBe(true);
+  });
+
+  test("is not a card under an epic, or at the top level", () => {
+    expect(isSubtask(items, items[1]!)).toBe(false);
+    expect(isSubtask(items, items[0]!)).toBe(false);
   });
 });
 

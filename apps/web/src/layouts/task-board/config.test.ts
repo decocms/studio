@@ -12,6 +12,7 @@ import {
   cardNeedsAttention,
   isCriticalTask,
   dropSwimlane,
+  hasCriticalWell,
   swimlanePriority,
   CRITICAL_DROPPABLE_PREFIX,
   LANE_DROPPABLE_PREFIX,
@@ -574,8 +575,17 @@ describe("dropSwimlane", () => {
     ["urgent", { ...item("urgent", 0), priority: "urgent" as const }],
     ["plain", item("plain", 1)],
   ]);
-  const over = (overId: string | undefined) =>
-    dropSwimlane({ overId, itemOf: (id) => cards.get(id) });
+  const over = (
+    overId: string | undefined,
+    fromStatus = "todo",
+    toStatus = "todo",
+  ) =>
+    dropSwimlane({
+      overId,
+      itemOf: (id) => cards.get(id),
+      fromStatus,
+      toStatus,
+    });
 
   test("a well's own droppable names its swimlane", () => {
     expect(over(`${CRITICAL_DROPPABLE_PREFIX}todo`)).toBe("critical");
@@ -590,6 +600,47 @@ describe("dropSwimlane", () => {
   test("nothing under the pointer is no swimlane", () => {
     expect(over(undefined)).toBeNull();
     expect(over("gone")).toBeNull();
+  });
+
+  test("a lane change keeps the card's well unless dropped on Critical", () => {
+    expect(over("plain", "todo", "in_progress")).toBeNull();
+    expect(over("urgent", "todo", "in_progress")).toBeNull();
+    expect(
+      over(`${LANE_DROPPABLE_PREFIX}in_progress`, "todo", "in_progress"),
+    ).toBeNull();
+    expect(
+      over(`${CRITICAL_DROPPABLE_PREFIX}in_progress`, "todo", "in_progress"),
+    ).toBe("critical");
+  });
+
+  test("Done and Archived have no swimlanes", () => {
+    for (const status of ["done", "archived"]) {
+      expect(hasCriticalWell(status)).toBe(false);
+      expect(over("plain", "todo", status)).toBeNull();
+      expect(
+        over(`${LANE_DROPPABLE_PREFIX}${status}`, "todo", status),
+      ).toBeNull();
+      expect(over("plain", status, status)).toBeNull();
+    }
+    expect(hasCriticalWell("todo")).toBe(true);
+  });
+
+  test("an urgent card keeps its priority across a lane round trip", () => {
+    const urgent = cards.get("urgent")!;
+    // Out to In Progress over an Improvements card, then back over one.
+    for (const [from, to] of [
+      ["todo", "in_progress"],
+      ["in_progress", "todo"],
+    ] as const) {
+      const swimlane = over("plain", from, to);
+      expect(swimlane && swimlanePriority(urgent, swimlane)).toBeNull();
+    }
+  });
+
+  test("an urgent card dropped in Done keeps its priority", () => {
+    const urgent = cards.get("urgent")!;
+    const swimlane = over(`${LANE_DROPPABLE_PREFIX}done`, "todo", "done");
+    expect(swimlane && swimlanePriority(urgent, swimlane)).toBeNull();
   });
 });
 

@@ -139,17 +139,35 @@ export function isCriticalTask(item: TaskBoardItem): boolean {
 /** dnd-kit id prefix for a lane's critical well, so an empty one takes a drop. */
 export const CRITICAL_DROPPABLE_PREFIX = "critical:";
 
-/** The swimlane a drop lands in: a well's own droppable, else the card under it. */
+/** Lanes with no Critical well: settled work is not ranked by urgency. */
+export function hasCriticalWell(status: string): boolean {
+  return status !== "done" && status !== "archived";
+}
+
+/**
+ * The swimlane a drop puts a card in, or null to leave its priority alone.
+ *
+ * Within a lane, the well or card under the pointer decides. A lane change
+ * only moves wells when dropped on a Critical well itself: dropping among
+ * another lane's cards (or on a collapsed lane) keeps the card in its own
+ * well, so moving work along never rewrites its priority by accident.
+ */
 export function dropSwimlane({
   overId,
   itemOf,
+  fromStatus,
+  toStatus,
 }: {
   overId: string | number | undefined;
   itemOf: (cardId: string) => TaskBoardItem | undefined;
+  /** The lane the card is saved in. */
+  fromStatus: string;
+  toStatus: string;
 }): "critical" | "improvements" | null {
-  if (overId === undefined) return null;
+  if (overId === undefined || !hasCriticalWell(toStatus)) return null;
   const id = String(overId);
   if (id.startsWith(CRITICAL_DROPPABLE_PREFIX)) return "critical";
+  if (fromStatus !== toStatus) return null;
   if (id.startsWith(LANE_DROPPABLE_PREFIX)) return "improvements";
   const card = itemOf(id);
   if (!card) return null;

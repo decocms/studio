@@ -1,10 +1,8 @@
 /**
- * Epics and subtasks: one parent relation over ordinary cards. An epic is a
- * card marked as one; a card under an epic still rides the board, while a card
- * under any other card is that card's subtask and lives only inside it.
- *
- * Prototype: the hierarchy is kept in this browser until the API carries a
- * parent, so nothing here reaches another member or another machine.
+ * Epics and subtasks: one parent relation over ordinary cards (`parentId`,
+ * `isEpic`). An epic is a card marked as one; a card under an epic still rides
+ * the board, while a card under any other card is that card's subtask and
+ * lives inside it. The API enforces the nesting rules.
  */
 
 import { createContext, use, useState, type ReactNode } from "react";
@@ -29,12 +27,12 @@ import {
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { runningAgents } from "@/components/org-home/daily-pulse";
 import { TaskAssigneeAvatar } from "@/components/task-assignee-avatar";
-import { useLocalStorage } from "@/hooks/use-local-storage";
 import { useT } from "@/i18n/use-t.ts";
-import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import {
+  agentRunState,
   DEFAULT_TASK_TYPE,
   isCriticalTask,
+  isTaskBlocked,
   laneHeader,
   laneVisual,
   PRIORITY_CONFIG,
@@ -42,14 +40,6 @@ import {
   type Member,
   type TaskBoardItem,
 } from "./config";
-
-export interface Hierarchy {
-  epics: string[];
-  /** Child card id to parent card id. */
-  parents: Record<string, string>;
-}
-
-const EMPTY_HIERARCHY: Hierarchy = { epics: [], parents: {} };
 
 type Segment = "done" | "active" | "todo";
 
@@ -76,7 +66,7 @@ function segmentOf(status: TaskBoardItem["status"]): Segment | null {
   }
 }
 
-export interface Progress {
+interface Progress {
   done: number;
   active: number;
   todo: number;
@@ -103,29 +93,53 @@ export function epicStatus(progress: Progress): TaskBoardItem["status"] {
 }
 
 export function childrenOf(
-  hierarchy: Hierarchy,
   items: readonly TaskBoardItem[],
   id: string,
 ): TaskBoardItem[] {
-  return items.filter((item) => hierarchy.parents[item.id] === id);
+  return items.filter((item) => item.parentId === id);
 }
 
-/** The cards the lanes draw: subtasks stay inside their parent, and an epic
- *  rides the lane its cards put it in rather than the one it was saved in. */
+/** The card `item` sits under. A parent no longer on the board (deleted,
+ *  dismissed) reads as none, so the card shows at the top level. */
+function parentOf(
+  items: readonly TaskBoardItem[],
+  item: TaskBoardItem,
+): TaskBoardItem | undefined {
+  return item.parentId
+    ? items.find((other) => other.id === item.parentId)
+    : undefined;
+}
+
+/** Whether `item` is a subtask: under a card that is not an epic. */
+export function isSubtask(
+  items: readonly TaskBoardItem[],
+  item: TaskBoardItem,
+): boolean {
+  const parent = parentOf(items, item);
+  return !!parent && !parent.isEpic;
+}
+
+/** A subtask the lanes still show: one waiting on a person or with a failed
+ *  run must not hide behind its parent's progress pill. */
+function subtaskNeedsAttention(item: TaskBoardItem): boolean {
+  if (item.status === "done" || item.status === "archived") return false;
+  return isTaskBlocked(item) || agentRunState(item) === "failed";
+}
+
+/** The cards the lanes draw: subtasks stay inside their parent unless they
+ *  need attention, and an epic rides the lane its cards put it in rather than
+ *  the one it was saved in. An archived epic stays archived. */
 export function laneCards(
-  hierarchy: Hierarchy,
   visible: readonly TaskBoardItem[],
   all: readonly TaskBoardItem[],
 ): TaskBoardItem[] {
   return visible.flatMap((item) => {
-    if (hierarchy.epics.includes(item.id)) {
-      const status = epicStatus(
-        progressOf(childrenOf(hierarchy, all, item.id)),
-      );
+    if (item.isEpic) {
+      if (item.status === "archived") return [item];
+      const status = epicStatus(progressOf(childrenOf(all, item.id)));
       return [{ ...item, status }];
     }
-    const parent = hierarchy.parents[item.id];
-    return parent && !hierarchy.epics.includes(parent) ? [] : [item];
+    return isSubtask(all, item) && !subtaskNeedsAttention(item) ? [] : [item];
   });
 }
 
@@ -133,7 +147,6 @@ interface EpicBoard {
   items: readonly TaskBoardItem[];
   memberByUserId: ReadonlyMap<string, Member>;
   onSetStatus: (id: string, status: TaskBoardItem["status"]) => void;
-  hierarchy: Hierarchy;
   orgSlug: string;
   setParent: (id: string, parentId: string | null) => void;
   setEpic: (id: string, epic: boolean) => void;
@@ -149,30 +162,6 @@ const EpicBoardContext = createContext<EpicBoard | null>(null);
 /** Null outside a board, so a card rendered elsewhere simply shows no hierarchy. */
 export function useEpicBoard(): EpicBoard | null {
   return use(EpicBoardContext);
-}
-
-export function useHierarchy(orgId: string) {
-  const [hierarchy, setHierarchy] = useLocalStorage<Hierarchy>(
-    LOCALSTORAGE_KEYS.taskBoardHierarchy(orgId),
-    EMPTY_HIERARCHY,
-  );
-  const setParent = (id: string, parentId: string | null) =>
-    setHierarchy((prev) => {
-      const { [id]: _previous, ...parents } = prev.parents;
-      return {
-        ...prev,
-        parents: parentId ? { ...parents, [id]: parentId } : parents,
-      };
-    });
-  // An epic sits at the top: turning a card into one lifts it out of its parent.
-  const setEpic = (id: string, epic: boolean) =>
-    setHierarchy((prev) => {
-      const { [id]: _previous, ...parents } = prev.parents;
-      return epic
-        ? { epics: [...prev.epics.filter((e) => e !== id), id], parents }
-        : { epics: prev.epics.filter((e) => e !== id), parents: prev.parents };
-    });
-  return { hierarchy, setParent, setEpic };
 }
 
 export function EpicBoardProvider({
@@ -213,10 +202,8 @@ function ProgressBar({
 export function EpicPill({ item }: { item: TaskBoardItem }) {
   const board = useEpicBoard();
   if (!board) return null;
-  const parentId = board.hierarchy.parents[item.id];
-  if (!parentId || !board.hierarchy.epics.includes(parentId)) return null;
-  const epic = board.items.find((i) => i.id === parentId);
-  if (!epic) return null;
+  const epic = parentOf(board.items, item);
+  if (!epic?.isEpic) return null;
   return (
     <span
       title={epic.title}
@@ -232,10 +219,8 @@ export function EpicPill({ item }: { item: TaskBoardItem }) {
 export function EpicProgressPill({ item }: { item: TaskBoardItem }) {
   const t = useT();
   const board = useEpicBoard();
-  if (!board || !board.hierarchy.epics.includes(item.id)) return null;
-  const progress = progressOf(
-    childrenOf(board.hierarchy, board.items, item.id),
-  );
+  if (!board || !item.isEpic) return null;
+  const progress = progressOf(childrenOf(board.items, item.id));
   return (
     <span className="inline-flex h-5 items-center gap-1.5 rounded-md bg-chart-1/15 px-1.5 text-xs font-medium text-foreground">
       <Lightning01 size={11} className="shrink-0 text-chart-1" />
@@ -252,10 +237,8 @@ export function EpicProgressPill({ item }: { item: TaskBoardItem }) {
 export function SubtaskPill({ item }: { item: TaskBoardItem }) {
   const t = useT();
   const board = useEpicBoard();
-  if (!board || board.hierarchy.epics.includes(item.id)) return null;
-  const progress = progressOf(
-    childrenOf(board.hierarchy, board.items, item.id),
-  );
+  if (!board || item.isEpic) return null;
+  const progress = progressOf(childrenOf(board.items, item.id));
   if (progress.total === 0) return null;
   return (
     <span
@@ -273,9 +256,7 @@ export function EpicsView() {
   const t = useT();
   const board = useEpicBoard();
   if (!board) return null;
-  const epics = board.hierarchy.epics
-    .map((id) => board.items.find((item) => item.id === id))
-    .filter((item): item is TaskBoardItem => !!item);
+  const epics = board.items.filter((item) => item.isEpic);
 
   if (epics.length === 0) {
     return (
@@ -290,7 +271,7 @@ export function EpicsView() {
         <EpicCard
           key={epic.id}
           epic={epic}
-          workItems={childrenOf(board.hierarchy, board.items, epic.id)}
+          workItems={childrenOf(board.items, epic.id)}
           board={board}
         />
       ))}
@@ -466,15 +447,9 @@ export function ParentProperty({
   const t = useT();
   const board = useEpicBoard();
   if (!board) return null;
-  const isEpic = board.hierarchy.epics.includes(item.id);
-  const parentId = board.hierarchy.parents[item.id];
-  const parent = parentId
-    ? board.items.find((i) => i.id === parentId)
-    : undefined;
-  const epics = board.hierarchy.epics
-    .filter((id) => id !== item.id)
-    .map((id) => board.items.find((i) => i.id === id))
-    .filter((i): i is TaskBoardItem => !!i);
+  const isEpic = item.isEpic;
+  const parent = parentOf(board.items, item);
+  const epics = board.items.filter((i) => i.isEpic && i.id !== item.id);
 
   return (
     <DropdownMenu>
@@ -487,7 +462,7 @@ export function ParentProperty({
             </>
           ) : parent ? (
             <>
-              {board.hierarchy.epics.includes(parent.id) ? (
+              {parent.isEpic ? (
                 <Lightning01 size={16} className="shrink-0 text-chart-1" />
               ) : (
                 <Dataflow03 size={16} className="shrink-0" />
@@ -546,18 +521,17 @@ export function ChildrenSection({ item }: { item: TaskBoardItem }) {
   const board = useEpicBoard();
   const [draft, setDraft] = useState("");
   if (!board) return null;
-  const isEpic = board.hierarchy.epics.includes(item.id);
-  const parentId = board.hierarchy.parents[item.id];
-  if (parentId && !board.hierarchy.epics.includes(parentId)) return null;
+  const isEpic = item.isEpic;
+  if (isSubtask(board.items, item)) return null;
 
-  const children = childrenOf(board.hierarchy, board.items, item.id);
+  const children = childrenOf(board.items, item.id);
   const progress = progressOf(children);
   const candidates = isEpic
     ? board.items.filter(
         (i) =>
           i.id !== item.id &&
-          !board.hierarchy.epics.includes(i.id) &&
-          !board.hierarchy.parents[i.id] &&
+          !i.isEpic &&
+          !parentOf(board.items, i) &&
           i.status !== "archived",
       )
     : [];
@@ -654,10 +628,10 @@ function ChildRow({
   const TypeIcon = type.icon;
   const priority = PRIORITY_CONFIG[child.priority];
   const PriorityIcon = priority.icon;
-  const isEpic = board.hierarchy.epics.includes(child.id);
+  const isEpic = child.isEpic;
   // An epic's status is its cards', so its row reports it rather than offering it.
   const statusKey = isEpic
-    ? epicStatus(progressOf(childrenOf(board.hierarchy, board.items, child.id)))
+    ? epicStatus(progressOf(childrenOf(board.items, child.id)))
     : child.status;
   const status = laneHeader(statusKey, t);
   const done = statusKey === "done";
@@ -763,12 +737,9 @@ export function ParentSection({ item }: { item: TaskBoardItem }) {
   const t = useT();
   const board = useEpicBoard();
   if (!board) return null;
-  const parentId = board.hierarchy.parents[item.id];
-  const parent = parentId
-    ? board.items.find((i) => i.id === parentId)
-    : undefined;
+  const parent = parentOf(board.items, item);
   if (!parent) return null;
-  const isEpic = board.hierarchy.epics.includes(parent.id);
+  const isEpic = parent.isEpic;
 
   return (
     <div className="flex flex-col gap-3 pb-6">
@@ -790,17 +761,14 @@ export function useHierarchyCrumb(
   const t = useT();
   const board = useEpicBoard();
   if (!board || !item) return null;
-  if (board.hierarchy.epics.includes(item.id)) {
+  if (item.isEpic) {
     return {
       key: "epics",
       label: t("taskBoard.epics.tab"),
       onSelect: board.onShowEpics,
     };
   }
-  const parentId = board.hierarchy.parents[item.id];
-  const parent = parentId
-    ? board.items.find((i) => i.id === parentId)
-    : undefined;
+  const parent = parentOf(board.items, item);
   if (!parent) return null;
   return {
     key: "parent",
