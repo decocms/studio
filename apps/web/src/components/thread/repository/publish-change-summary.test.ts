@@ -6,6 +6,7 @@ import {
   publishChangeDigest,
   resolveVersionNote,
   maskSecrets,
+  namedRuleBlockOfChange,
   SECRET_MASK,
   sectionDisplayName,
   summarizeContentChanges,
@@ -820,5 +821,41 @@ describe("maskSecrets", () => {
       b: { __resolveType: "website/loaders/secret.ts", encrypted: SECRET_MASK },
       c: "plain",
     });
+  });
+});
+
+describe("namedRuleBlockOfChange", () => {
+  const block = (json: Record<string, unknown> | null, before = json) => ({
+    kind: "block" as const,
+    toJson: json,
+    fromJson: before,
+  });
+  it("names the A/B tests and campaigns blocks by their type", () => {
+    expect(
+      namedRuleBlockOfChange(block({ __resolveType: "split-traffic", a: 50 })),
+    ).toBe("experiments");
+    expect(
+      namedRuleBlockOfChange(block({ __resolveType: "date-windows" })),
+    ).toBe("campaigns");
+    // Deleted in the draft: the published side still says what it was.
+    expect(
+      namedRuleBlockOfChange(block(null, { __resolveType: "date-windows" })),
+    ).toBe("campaigns");
+  });
+  it("leaves every other block, and pages, as they were", () => {
+    expect(namedRuleBlockOfChange(block({ __resolveType: "Header" }))).toBe(
+      null,
+    );
+    // A v7 site's own block named experiments, of another type.
+    expect(
+      namedRuleBlockOfChange(block({ __resolveType: "site/loaders/x.ts" })),
+    ).toBe(null);
+    expect(
+      namedRuleBlockOfChange({
+        kind: "page",
+        toJson: { __resolveType: "split-traffic" },
+        fromJson: null,
+      }),
+    ).toBe(null);
   });
 });

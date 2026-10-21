@@ -165,6 +165,8 @@ export const thread = {
   "thread.publishPopover.chipRemoved": "Removed",
   "thread.publishPopover.emptyHint": "Your latest changes are already live.",
   "thread.publishPopover.everythingLive": "Everything is published",
+  "thread.publishPopover.abTests": "A/B tests",
+  "thread.publishPopover.campaignDates": "Campaign dates",
   "thread.publishPopover.globalSection": "Global section",
   "thread.publishPopover.lastPublished": "Last published {when}",
   "thread.publishPopover.lastPublishedBy": "Last published {when} by {name}",
