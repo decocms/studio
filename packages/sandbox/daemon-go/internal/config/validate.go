@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -75,6 +76,9 @@ func validateGit(git *GitConfig) string {
 	if *git.Repository.CloneUrl == "" {
 		return "git.repository.cloneUrl is empty"
 	}
+	if reason := validateCloneUrl(*git.Repository.CloneUrl); reason != "" {
+		return "git.repository.cloneUrl " + reason
+	}
 	if git.Repository.Branch != nil {
 		b := *git.Repository.Branch
 		if !IsSyntheticBranch(b) && (!branchRe.MatchString(b) || strings.HasPrefix(b, "-")) {
@@ -85,6 +89,9 @@ func validateGit(git *GitConfig) string {
 	for i, repo := range git.Repositories {
 		if repo.CloneUrl == nil || *repo.CloneUrl == "" {
 			return fmt.Sprintf("git.repositories[%d].cloneUrl is required", i)
+		}
+		if reason := validateCloneUrl(*repo.CloneUrl); reason != "" {
+			return fmt.Sprintf("git.repositories[%d].cloneUrl %s", i, reason)
 		}
 		// The name becomes a directory, so it is a path input from off-pod.
 		if repo.RepoName == nil || !repoNameRe.MatchString(*repo.RepoName) {
@@ -111,6 +118,20 @@ func validateGit(git *GitConfig) string {
 		if git.Identity.UserEmail == nil || *git.Identity.UserEmail == "" {
 			return "git.identity.userEmail is required"
 		}
+	}
+	return ""
+}
+
+// validateCloneUrl rejects any scheme but https. `git clone` dispatches on the
+// URL's scheme to its own transport helpers, and some of those are not "fetch
+// bytes": `ext::<command>` runs an arbitrary shell command as the clone
+// transport, and `file://` reads the pod's local filesystem instead of a
+// remote. Studio only ever mints https URLs (with the token as userinfo), so
+// anything else is a crafted config, not a legitimate repository.
+func validateCloneUrl(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "https" {
+		return "must be an https URL"
 	}
 	return ""
 }

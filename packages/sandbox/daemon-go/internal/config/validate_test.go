@@ -38,6 +38,23 @@ func TestValidateApplicationRejectsEscapingPmPath(t *testing.T) {
 	}
 }
 
+func TestValidateGitRejectsNonHttpsCloneUrl(t *testing.T) {
+	cases := []string{
+		"ext::sh -c touch% /tmp/pwned",
+		"file:///etc/passwd",
+		"git://example.com/repo.git",
+		"ssh://git@example.com/repo.git",
+	}
+	for _, raw := range cases {
+		t.Run(raw, func(t *testing.T) {
+			git := &GitConfig{Repository: &GitRepository{CloneUrl: Str(raw)}}
+			if reason := validateGit(git); reason == "" {
+				t.Fatalf("validateGit accepted non-https cloneUrl %q", raw)
+			}
+		})
+	}
+}
+
 func TestValidateGitRejectsDuplicateSecondaryRepoNames(t *testing.T) {
 	git := &GitConfig{
 		Repository: &GitRepository{CloneUrl: Str("https://example.com/primary.git")},
