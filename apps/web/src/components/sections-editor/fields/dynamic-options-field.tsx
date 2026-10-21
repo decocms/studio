@@ -90,10 +90,11 @@ export function resolveOptions(
 /**
  * Origin the `@options` loader is invoked against: the sandbox dev server when
  * one is running, else the base the section gallery renders against (Fast
- * Preview, or the site's own deco runtime). `/deco/invoke` is a public,
- * CORS-enabled endpoint on both, so a sandbox-less session still reaches a real
- * loader. Stays undefined for a content-protocol project, whose preview base is
- * itself null because no site code runs.
+ * Preview, the site's own deco runtime, or a Local tunnel), so a sandbox-less
+ * session still reaches a real loader. Cross-origin reachability is
+ * `fetchDynamicOptions`' problem, not this one — single invoke is not
+ * CORS-enabled on every deco. Stays undefined for a content-protocol project,
+ * whose preview base is itself null because no site code runs.
  */
 export function resolveOptionsPreviewUrl(
   sandboxPreviewUrl: string | undefined,
@@ -227,27 +228,57 @@ function optionPreviewSrc(
   return undefined;
 }
 
-async function fetchDynamicOptions(
+const invokePost = (url: string, body: unknown) =>
+  fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+/**
+ * Invoke an `@options` loader on the site.
+ *
+ * Single invoke (`/deco/invoke/<key>`) is the target on every runtime, but the
+ * deco runtime sends no CORS headers for it (fixed in deco-cx/deco#1248), so
+ * from a cross-origin preview — a dev tunnel, the site's own runtime under
+ * Fast Preview — the browser blocks the call before the loader runs. Its batch
+ * sibling (`POST /deco/invoke`, body keyed by handler name) has always allowed
+ * the CMS origin, so a REJECTED fetch retries there.
+ *
+ * Only a rejected fetch falls back. An HTTP error is the loader answering, and
+ * TanStack sites register `/deco/invoke/$` alone — no batch route to retry on,
+ * so retrying a 404 there would just cost a second request. Drop the fallback
+ * once sites run a deco carrying #1248.
+ */
+export async function fetchDynamicOptions(
   previewUrl: string,
   loaderPath: string,
   term?: string,
 ): Promise<DynamicOption[]> {
-  const payload: Record<string, unknown> = {};
+  const props: Record<string, unknown> = {};
   if (term) {
-    payload.term = term;
+    props.term = term;
   }
   const base = previewUrl.replace(/\/+$/, "");
-  const url = `${base}/deco/invoke/${loaderPath}`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) {
-    throw new Error(`Failed to fetch dynamic options: ${res.status}`);
+  const res = await invokePost(
+    `${base}/deco/invoke/${loaderPath}`,
+    props,
+  ).catch(() => null);
+  if (res) {
+    if (!res.ok) {
+      throw new Error(`Failed to fetch dynamic options: ${res.status}`);
+    }
+    return normalizeOptions(await res.json());
   }
-  const data = await res.json();
-  return normalizeOptions(data);
+
+  const batch = await invokePost(`${base}/deco/invoke`, {
+    options: { key: loaderPath, props },
+  });
+  if (!batch.ok) {
+    throw new Error(`Failed to fetch dynamic options: ${batch.status}`);
+  }
+  const data = (await batch.json()) as Record<string, unknown> | null;
+  return normalizeOptions(data?.options);
 }
 
 function OptionPreview({

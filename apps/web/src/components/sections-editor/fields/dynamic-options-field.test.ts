@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import type { DynamicOption } from "./dynamic-options-field";
 import {
   enumFallbackOptions,
+  fetchDynamicOptions,
   filterOptions,
   hasNoOptionSource,
   normalizeOptions,
@@ -303,5 +305,105 @@ describe("hasNoOptionSource", () => {
         enumFallbackCount: 0,
       }),
     ).toBe(true);
+  });
+});
+
+describe("fetchDynamicOptions", () => {
+  const json = (body: unknown) =>
+    new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+
+  const withFetch = async (
+    impl: (url: string, init: RequestInit) => Promise<Response>,
+    run: () => Promise<DynamicOption[]>,
+  ) => {
+    const calls: string[] = [];
+    const original = globalThis.fetch;
+    globalThis.fetch = ((url: string, init: RequestInit) => {
+      calls.push(url);
+      return impl(url, init);
+    }) as typeof fetch;
+    try {
+      return { result: await run(), calls };
+    } finally {
+      globalThis.fetch = original;
+    }
+  };
+
+  test("invokes the single-invoke route with the props as the body", async () => {
+    let body: unknown;
+    const { result, calls } = await withFetch(
+      (_url, init) => {
+        body = JSON.parse(String(init.body));
+        return Promise.resolve(json(["a", "b"]));
+      },
+      () =>
+        fetchDynamicOptions("https://site.example.com/", "loaders/x.ts", "q"),
+    );
+    expect(calls).toEqual([
+      "https://site.example.com/deco/invoke/loaders/x.ts",
+    ]);
+    expect(body).toEqual({ term: "q" });
+    expect(result).toEqual([
+      { value: "a", label: "a" },
+      { value: "b", label: "b" },
+    ]);
+  });
+
+  test("retries on the batch route when the browser rejects the call", async () => {
+    // CORS rejection: `fetch` rejects, it does not answer with a status.
+    let batchBody: unknown;
+    const { result, calls } = await withFetch(
+      (url, init) => {
+        if (url.endsWith("/deco/invoke/loaders/x.ts")) {
+          return Promise.reject(new TypeError("Failed to fetch"));
+        }
+        batchBody = JSON.parse(String(init.body));
+        return Promise.resolve(json({ options: ["a"] }));
+      },
+      () => fetchDynamicOptions("https://site.example.com", "loaders/x.ts"),
+    );
+    expect(calls).toEqual([
+      "https://site.example.com/deco/invoke/loaders/x.ts",
+      "https://site.example.com/deco/invoke",
+    ]);
+    expect(batchBody).toEqual({
+      options: { key: "loaders/x.ts", props: {} },
+    });
+    expect(result).toEqual([{ value: "a", label: "a" }]);
+  });
+
+  test("does not retry an HTTP error — that is the loader answering", async () => {
+    const original = globalThis.fetch;
+    const calls: string[] = [];
+    globalThis.fetch = ((url: string) => {
+      calls.push(url);
+      return Promise.resolve(new Response("nope", { status: 404 }));
+    }) as typeof fetch;
+    try {
+      await expect(
+        fetchDynamicOptions("https://site.example.com", "loaders/x.ts"),
+      ).rejects.toThrow("404");
+      expect(calls).toHaveLength(1);
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+
+  test("surfaces a batch failure instead of returning empty options", async () => {
+    const original = globalThis.fetch;
+    globalThis.fetch = ((url: string) =>
+      url.endsWith("/deco/invoke")
+        ? Promise.resolve(new Response("nope", { status: 500 }))
+        : Promise.reject(new TypeError("Failed to fetch"))) as typeof fetch;
+    try {
+      await expect(
+        fetchDynamicOptions("https://site.example.com", "loaders/x.ts"),
+      ).rejects.toThrow("500");
+    } finally {
+      globalThis.fetch = original;
+    }
   });
 });
