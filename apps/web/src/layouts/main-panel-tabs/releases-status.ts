@@ -24,7 +24,6 @@ export function latestSha(
   return current ? current.revision : null;
 }
 
-/** Whether a row offers "Make current": an earlier release that was released. */
 /**
  * Whether a version can be opened in the preview ("Preview this version"):
  * any one with a companion release, the latest included. The site reads that
@@ -36,6 +35,7 @@ export function canPreviewRelease(
   return commit.hasRelease && /^[0-9a-f]{40}$/.test(commit.sha);
 }
 
+/** Whether a row offers "Make current": an earlier release that was released. */
 export function canReapply(
   commit: Pick<ReleaseCommit, "sha" | "hasRelease">,
   current: ReleasePointer | null,
@@ -43,7 +43,8 @@ export function canReapply(
   return commit.hasRelease && !isLatest(commit.sha, current);
 }
 
-const REAPPLY_PREFIX = "Reapply: ";
+/** The server's note prefix for "Make current" (older notes: "Reapply: "). */
+const MADE_CURRENT_PREFIXES = ["Made current: ", "Reapply: "];
 /** The server's dated note: "release from …" (older notes: "version from …"). */
 const REAPPLY_OF_DATE =
   /^(?:release|version) from (\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}) UTC$/;
@@ -72,8 +73,9 @@ export function releaseTitle(
 ): string {
   if (!commit.hasRelease) return t("releases.siteUpdate");
   const title = titleLine(commit.message);
-  if (title.startsWith(REAPPLY_PREFIX)) {
-    const rest = title.slice(REAPPLY_PREFIX.length).trim();
+  const prefix = MADE_CURRENT_PREFIXES.find((p) => title.startsWith(p));
+  if (prefix) {
+    const rest = title.slice(prefix.length).trim();
     const dated = rest.match(REAPPLY_OF_DATE);
     if (dated) {
       const when = new Date(`${dated[1]}T${dated[2]}:00Z`);

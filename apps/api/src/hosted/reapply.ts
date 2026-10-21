@@ -18,9 +18,10 @@
  *     tell the user how to go back. Reapplying the previous version undoes it.
  *   - Content already equal to main's commits nothing ("up-to-date").
  *
- * The commit message follows git's revert convention: `Reapply: <note>`,
- * never chained, plus a `Reapplied-From: <sha>` trailer that Releases reads
- * to link the new version to the one it reapplied.
+ * The commit message names the Releases action: `Made current: <note>`
+ * (older ones say `Reapply: <note>`), never chained, plus a
+ * `Reapplied-From: <sha>` trailer that Releases reads to link the new
+ * version to the one it reapplied.
  */
 
 import {
@@ -53,7 +54,10 @@ export class NotPublishedError extends Error {
   }
 }
 
-const PREFIX = "Reapply: ";
+/** The note's prefix: the Releases screen's "Make current" action. */
+const PREFIX = "Made current: ";
+/** The prefix notes had before the action was named "Make current". */
+const LEGACY_PREFIX = "Reapply: ";
 /** Publish's fallback title when there was no note (`decofileCommitMessage`). */
 const NO_NOTE = /^chore\(decofile\):/;
 const REAPPLIED_FROM = "Reapplied-From";
@@ -68,9 +72,9 @@ function utcMinute(date: string): string | null {
 
 /**
  * The new version's title for reapplying a version whose commit has
- * `message` and `date`: `Reapply: <its note>`. Reapplying a reapplied
- * version keeps the one prefix (it names the same content); a version
- * without a note is named by its date, in the Releases screen's words
+ * `message` and `date`: `Made current: <its note>`. Reapplying a reapplied
+ * version keeps the one prefix (it names the same content; an older
+ * `Reapply: ` becomes `Made current: `); a version without a note is named by its date, in the Releases screen's words
  * (`release from <date>`; older notes say `version from <date>`).
  */
 export function reapplyTitle(original: {
@@ -79,6 +83,9 @@ export function reapplyTitle(original: {
 }): string {
   const title = original.message.split("\n")[0]?.trim() ?? "";
   if (title.startsWith(PREFIX) && title.length > PREFIX.length) return title;
+  if (title.startsWith(LEGACY_PREFIX) && title.length > LEGACY_PREFIX.length) {
+    return `${PREFIX}${title.slice(LEGACY_PREFIX.length)}`;
+  }
   if (title && !NO_NOTE.test(title)) return `${PREFIX}${title}`;
   const when = utcMinute(original.date);
   return when ? `${PREFIX}release from ${when}` : `${PREFIX}earlier release`;

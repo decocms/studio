@@ -227,7 +227,7 @@ describe("reapplyVersion", () => {
     expect(gen.Home).toEqual({ path: "/", title: "v1" });
   });
 
-  it("writes the Reapply message, and Releases links the new row to the original", async () => {
+  it("writes the Made current note, and Releases links the new row to the original", async () => {
     const { git, repo, release } = setup();
     git.pushDirect(
       { ".deco/blocks/Home.json": serializeBlock({ t: 1 }) },
@@ -238,7 +238,7 @@ describe("reapplyVersion", () => {
     await release();
     await reapplyVersion(repo, original, { coAuthor: ANA });
     expect(git.history[0]?.message).toBe(
-      `Reapply: Black Friday banner\n\nReapplied-From: ${original}\nCo-authored-by: Ana <ana@acme.com>`,
+      `Made current: Black Friday banner\n\nReapplied-From: ${original}\nCo-authored-by: Ana <ana@acme.com>`,
     );
     const page = await listReleases(
       repo,
@@ -246,7 +246,7 @@ describe("reapplyVersion", () => {
       null,
     );
     expect(page.commits[0]).toMatchObject({
-      message: "Reapply: Black Friday banner",
+      message: "Made current: Black Friday banner",
       hasRelease: true,
       reapplyOf: { sha: original },
     });
@@ -269,44 +269,56 @@ describe("reapplyVersion", () => {
 describe("reapply message", () => {
   const date = "2026-10-01T09:30:12Z";
 
-  it("is `Reapply: <note>`", () => {
+  it("is `Made current: <note>`", () => {
     expect(reapplyTitle({ message: "Summer sale\n\nbody", date })).toBe(
-      "Reapply: Summer sale",
+      "Made current: Summer sale",
     );
   });
 
   it("never chains: reapplying a reapplied version keeps one prefix", () => {
-    expect(reapplyTitle({ message: "Reapply: Summer sale", date })).toBe(
-      "Reapply: Summer sale",
+    expect(reapplyTitle({ message: "Made current: Summer sale", date })).toBe(
+      "Made current: Summer sale",
     );
   });
 
-  it("names a release without a note by its date", () => {
-    expect(
-      reapplyTitle({ message: "chore(decofile): update Home", date }),
-    ).toBe("Reapply: release from 2026-10-01 09:30 UTC");
-    expect(reapplyTitle({ message: "", date })).toBe(
-      "Reapply: release from 2026-10-01 09:30 UTC",
+  it("renames an older `Reapply: ` note instead of chaining", () => {
+    expect(reapplyTitle({ message: "Reapply: Summer sale", date })).toBe(
+      "Made current: Summer sale",
     );
-    expect(reapplyTitle({ message: "", date: "nope" })).toBe(
-      "Reapply: earlier release",
-    );
-    // …and keeps that name when reapplied again.
     expect(
       reapplyTitle({
         message: "Reapply: release from 2026-10-01 09:30 UTC",
         date: "2026-10-05T00:00:00Z",
       }),
-    ).toBe("Reapply: release from 2026-10-01 09:30 UTC");
+    ).toBe("Made current: release from 2026-10-01 09:30 UTC");
+  });
+
+  it("names a release without a note by its date", () => {
+    expect(
+      reapplyTitle({ message: "chore(decofile): update Home", date }),
+    ).toBe("Made current: release from 2026-10-01 09:30 UTC");
+    expect(reapplyTitle({ message: "", date })).toBe(
+      "Made current: release from 2026-10-01 09:30 UTC",
+    );
+    expect(reapplyTitle({ message: "", date: "nope" })).toBe(
+      "Made current: earlier release",
+    );
+    // …and keeps that name when reapplied again.
+    expect(
+      reapplyTitle({
+        message: "Made current: release from 2026-10-01 09:30 UTC",
+        date: "2026-10-05T00:00:00Z",
+      }),
+    ).toBe("Made current: release from 2026-10-01 09:30 UTC");
   });
 
   it("ends with the Reapplied-From trailer, co-author in the same block", () => {
     const sha = "a".repeat(40);
     expect(reapplyMessage({ message: "Hi", date }, sha)).toBe(
-      `Reapply: Hi\n\nReapplied-From: ${sha}`,
+      `Made current: Hi\n\nReapplied-From: ${sha}`,
     );
     expect(reapplyMessage({ message: "Hi", date }, sha, ANA)).toBe(
-      `Reapply: Hi\n\nReapplied-From: ${sha}\nCo-authored-by: Ana <ana@acme.com>`,
+      `Made current: Hi\n\nReapplied-From: ${sha}\nCo-authored-by: Ana <ana@acme.com>`,
     );
     expect(reappliedFrom(reapplyMessage({ message: "Hi", date }, sha))).toBe(
       sha,

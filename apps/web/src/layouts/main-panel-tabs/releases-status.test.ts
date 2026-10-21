@@ -77,36 +77,45 @@ describe("releaseTitle", () => {
   test("a note is shown as written", () => {
     expect(releaseTitle(t, commit(OLD), "en")).toBe("Summer sale");
   });
-  test("a reapplied version is labeled in the viewer's language", () => {
-    const reapplied = commit(NEW, {
-      message: "Reapply: Summer sale",
-      reapplyOf: { sha: OLD, date: null },
-    });
-    expect(releaseTitle(t, reapplied, "en")).toBe("Reapply: Summer sale");
-    expect(releaseTitle(tPt, reapplied, "pt-BR")).toBe(
-      "Reaplicação: Summer sale",
-    );
-  });
-  test("reapplying a release without a note names its date", () => {
+  test("a release made current is labeled in the viewer's language", () => {
     for (const message of [
+      "Made current: Summer sale",
+      "Reapply: Summer sale",
+    ]) {
+      const reapplied = commit(NEW, {
+        message,
+        reapplyOf: { sha: OLD, date: null },
+      });
+      expect(releaseTitle(t, reapplied, "en")).toBe(
+        "Made current: Summer sale",
+      );
+      expect(releaseTitle(tPt, reapplied, "pt-BR")).toBe(
+        "Tornada atual: Summer sale",
+      );
+    }
+  });
+  test("making current a release without a note names its date", () => {
+    for (const message of [
+      "Made current: release from 2026-10-01 09:30 UTC",
+      // Notes the server wrote before the action was named "Make current".
       "Reapply: release from 2026-10-01 09:30 UTC",
-      // A note the server wrote before it said "release".
       "Reapply: version from 2026-10-01 09:30 UTC",
     ]) {
       const reapplied = commit(NEW, { message });
       expect(releaseTitle(t, reapplied, "en")).toMatch(
-        /^Reapply: release from Oct 1, 2026/,
+        /^Made current: release from Oct 1, 2026/,
       );
       expect(releaseTitle(tPt, reapplied, "pt-BR")).toMatch(
-        /^Reaplicação da release de 1 de out\. de 2026/,
+        /^Tornada atual: release de 1 de out\. de 2026/,
       );
     }
     for (const message of [
+      "Made current: earlier release",
       "Reapply: earlier release",
       "Reapply: earlier version",
     ]) {
       expect(releaseTitle(t, commit(NEW, { message }), "en")).toBe(
-        "Reapply: Published changes",
+        "Made current: Published changes",
       );
     }
   });

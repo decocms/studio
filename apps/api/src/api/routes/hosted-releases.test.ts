@@ -115,7 +115,7 @@ describe("POST releases/:sha/reapply", () => {
       release: "current",
       schemaChanged: false,
     });
-    expect(git.history[0]?.message).toStartWith("Reapply: initial\n\n");
+    expect(git.history[0]?.message).toStartWith("Made current: initial\n\n");
     expect(git.filesAt(sha)[".deco/blocks/Home.json"]).toBe(
       serializeBlock({ path: "/", title: "v1" }),
     );

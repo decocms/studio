@@ -3,7 +3,7 @@ import type { releases as enReleases } from "../en/releases.ts";
 export const releases = {
   "releases.title": "Releases",
   "releases.subtitle":
-    "Todas as releases do seu site, da mais recente para a mais antiga. Reaplique uma anterior para trazer o conteúdo dela de volta.",
+    "Todas as releases do seu site, da mais recente para a mais antiga. Torne atual uma anterior para trazer o conteúdo dela de volta.",
   "releases.loadFailed": "Não foi possível carregar suas releases.",
   "releases.nothingPublished": "Nada publicado ainda",
   "releases.lastPublished": "Última publicação {when}.",
@@ -11,22 +11,23 @@ export const releases = {
   "releases.actions": "Ações da release",
   "releases.preview": "Visualizar esta versão",
   "releases.reapply": "Tornar atual",
-  "releases.reapplyTitle": "Reaplicar esta release?",
+  "releases.reapplyTitle": "Tornar esta release atual?",
   "releases.reapplyBody":
-    "Isso publica uma nova release com o mesmo conteúdo de “{title}”. As alterações feitas desde então serão substituídas no seu site.",
+    "Ao torná-la atual, publicamos uma nova release com o mesmo conteúdo de “{title}”. As alterações feitas desde então serão substituídas no seu site.",
   "releases.reapplyUndoHint":
-    "Se algo não ficar certo depois, reaplique a release que você tem agora para voltar.",
+    "Para voltar depois, torne atual de novo a release que agora é a Mais recente.",
   "releases.reapplyConfirm": "Tornar atual",
-  "releases.reapplying": "Reaplicando…",
-  "releases.reapplied": "Reaplicada. Seu site vai mostrá-la em instantes.",
+  "releases.reapplying": "Tornando atual…",
+  "releases.reapplied":
+    "Release tornada atual. Seu site vai mostrá-la em instantes.",
   "releases.reappliedUndoHint":
-    "Se algo não ficar certo, reaplique a release anterior para voltar.",
-  "releases.reapplyFailed": "Não foi possível reaplicar esta release.",
+    "Se algo não ficar certo, torne atual de novo a release anterior para voltar.",
+  "releases.reapplyFailed": "Não foi possível tornar esta release atual.",
   "releases.alreadyShown": "Seu site já tem o conteúdo desta release.",
   "releases.publishedMeanwhile":
-    "Alguém publicou enquanto você reaplicava, então nada mudou. Tente de novo.",
-  "releases.reapplyOf": "Reaplicação: {title}",
-  "releases.reapplyOfDate": "Reaplicação da release de {when}",
+    "Alguém publicou enquanto você tornava esta release atual, então nada mudou. Tente de novo.",
+  "releases.reapplyOf": "Tornada atual: {title}",
+  "releases.reapplyOfDate": "Tornada atual: release de {when}",
   "releases.sameContentAs": "Mesmo conteúdo da release de {when}",
   "releases.untitled": "Alterações publicadas",
   "releases.siteUpdate": "Atualização do site",
