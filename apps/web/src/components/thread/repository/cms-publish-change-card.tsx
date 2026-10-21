@@ -10,6 +10,7 @@ import {
 } from "@decocms/ui/components/tooltip.tsx";
 import { File06, LayoutAlt01, Trash01 } from "@untitledui/icons";
 import { useT, type TFunction } from "@/i18n/use-t.ts";
+import { namedRuleUsePlaces } from "@/components/sections-editor/named-rule-use-copy.ts";
 import {
   namedRuleBlockOfChange,
   publishChangeDigest,
@@ -136,6 +137,7 @@ export function PublishChangeCard({
   const subLines = changeSubLines(change, t);
   const missing = change.missingRules ?? [];
   const missingUses = change.missingRuleUses;
+  const missingPlaces = missingUses ? namedRuleUsePlaces(t, missingUses) : null;
   /** Holds the height a sub-line will occupy, so the list does not grow under
    *  the cursor when bodies land. Only `edited` cards gain sub-lines from
    *  bodies — a new page already counts its sections, and new or removed
@@ -243,21 +245,25 @@ export function PublishChangeCard({
           ))}
         </div>
       ) : null}
-      {missingUses ? (
+      {missingUses && missingPlaces ? (
         <div
           className="mt-1 truncate pl-[26px] text-xs text-foreground"
           data-testid="publish-change-missing-rule-uses"
         >
           {missingUses.kind === "experiments"
-            ? missingUses.count === 1
-              ? t("thread.publishPopover.missingTestUsesOne")
-              : t("thread.publishPopover.missingTestUses", {
-                  count: String(missingUses.count),
+            ? missingPlaces.one
+              ? t("thread.publishPopover.missingTestUsesOne", {
+                  places: missingPlaces.places,
                 })
-            : missingUses.count === 1
-              ? t("thread.publishPopover.missingCampaignUsesOne")
+              : t("thread.publishPopover.missingTestUses", {
+                  places: missingPlaces.places,
+                })
+            : missingPlaces.one
+              ? t("thread.publishPopover.missingCampaignUsesOne", {
+                  places: missingPlaces.places,
+                })
               : t("thread.publishPopover.missingCampaignUses", {
-                  count: String(missingUses.count),
+                  places: missingPlaces.places,
                 })}
         </div>
       ) : null}

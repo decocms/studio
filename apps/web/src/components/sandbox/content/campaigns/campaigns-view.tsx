@@ -6,7 +6,7 @@
  *
  * List → detail: change the window, rename (every rule that names it is
  * rewritten in the same change), delete (never blocked, with an Undo; pages
- * that still use a campaign that no longer exists are listed under the
+ * that still use a campaign that isn't there are listed under the
  * campaigns). A timeline shows one row per campaign. Each change is one
  * guarded `blocks.apply` into the draft and goes live with the normal Publish.
  */

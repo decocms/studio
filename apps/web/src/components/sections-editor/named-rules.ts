@@ -194,6 +194,17 @@ export function readNamedRuleBlock<K extends NamedRuleKind>(
   return { kind: "saved", block, values, invalid };
 }
 
+/**
+ * Whether a test or campaign exists, the one definition every view uses
+ * (the picker row, the Experiments tab, the Campaigns view, the Publish
+ * review): the block has the name with a value Studio can read. A name
+ * whose value can't be read isn't listed anywhere, so it counts as missing
+ * too, and creating it writes a readable value in its place.
+ */
+export function namedRuleExists(read: NamedRuleBlock, name: string): boolean {
+  return read.kind !== "conflict" && Object.hasOwn(read.values, name);
+}
+
 /** The usable names of both kinds (empty for an absent or conflicting block). */
 export function readNamedRuleValues(
   decofile: Record<string, unknown>,

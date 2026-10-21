@@ -9,6 +9,7 @@ import {
   namedRuleSupport,
   type NamedRuleKind,
   NAMED_RULE_KINDS,
+  namedRuleExists,
   readNamedRuleBlock,
   withNamedRuleEntry,
 } from "./named-rules";
@@ -58,6 +59,7 @@ export function namedRulePickerKinds(
       kinds.push({ kind, state: "conflict", entries: [] });
       continue;
     }
+    // Only names that exist (`namedRuleExists`): readable values.
     const entries = Object.entries(block.values).map(([name, value]) => ({
       name,
       summary: namedRuleSummary(kind, value),
@@ -188,7 +190,8 @@ export type NamedRulePick =
  * What a pick writes: the rule, and the block with the new name when the pick
  * creates one. `conflict` when the block holds something else (nothing is
  * written over it). A name created meanwhile is used as it is, never
- * replaced.
+ * replaced; one whose value Studio can't read (`namedRuleExists`) gets the
+ * new value.
  */
 export function planNamedRulePick(
   decofile: Record<string, unknown>,
@@ -206,7 +209,7 @@ export function planNamedRulePick(
   if (!pick.create) return { ok: true, rule, blockWrite: null };
   const block = readNamedRuleBlock(decofile, pick.kind);
   if (block.kind === "conflict") return { ok: false, reason: "conflict" };
-  if (Object.hasOwn(block.block, name)) {
+  if (namedRuleExists(block, name)) {
     return { ok: true, rule, blockWrite: null };
   }
   const value =

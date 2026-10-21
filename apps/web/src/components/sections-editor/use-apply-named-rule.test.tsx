@@ -355,7 +355,7 @@ describe("useApplyNamedRule", () => {
     ).toMatchObject({ home: "home@0" });
   });
 
-  it("removes a test a page still uses: the page then shows it no longer exists", async () => {
+  it("removes a test a page still uses: the page then shows it isn't there", async () => {
     const { queryClient, result } = setup();
     const stored = { home: homeWithTest, experiments };
     server.blocks = { ...stored };

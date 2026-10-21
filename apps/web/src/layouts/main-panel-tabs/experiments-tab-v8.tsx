@@ -11,7 +11,7 @@
  * it); renaming one that isn't running rewrites every rule that names it in
  * the same change. "Used by" lists the pages and sections that use it, with
  * the uses not published yet marked. Delete is never blocked; pages that
- * still use a test that no longer exists are listed under the tests.
+ * still use a test that isn't there are listed under the tests.
  */
 
 import { useState } from "react";

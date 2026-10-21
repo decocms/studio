@@ -168,17 +168,18 @@ export const thread = {
   "thread.publishPopover.abTests": "A/B tests",
   "thread.publishPopover.campaignDates": "Campaign dates",
   "thread.publishPopover.globalSection": "Global section",
-  "thread.publishPopover.missingTest": "Uses a test that no longer exists",
+  "thread.publishPopover.missingTest":
+    "Uses a test that isn't in your A/B tests",
   "thread.publishPopover.missingCampaign":
-    "Uses a campaign that no longer exists",
+    "Uses a campaign that isn't in your campaigns",
   "thread.publishPopover.missingTestUsesOne":
-    "1 page still uses a test that no longer exists",
+    "{places} uses a test that isn't in your A/B tests",
   "thread.publishPopover.missingTestUses":
-    "{count} pages still use tests that no longer exist",
+    "{places} use tests that aren't in your A/B tests",
   "thread.publishPopover.missingCampaignUsesOne":
-    "1 page still uses a campaign that no longer exists",
+    "{places} uses a campaign that isn't in your campaigns",
   "thread.publishPopover.missingCampaignUses":
-    "{count} pages still use campaigns that no longer exist",
+    "{places} use campaigns that aren't in your campaigns",
   "thread.publishPopover.lastPublished": "Last published {when}",
   "thread.publishPopover.lastPublishedBy": "Last published {when} by {name}",
   "thread.publishPopover.needsReviewGeneric":

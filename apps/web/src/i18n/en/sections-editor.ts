@@ -119,13 +119,19 @@ export const sectionsEditor = {
   "sectionsEditor.namedRulePicker.campaignRowHint":
     "To change its dates, open Campaigns.",
   "sectionsEditor.namedRulePicker.missingTest":
-    "This test no longer exists. Pick another or remove this variant.",
+    "This test isn't in your A/B tests. Pick another, create it, or remove this variant.",
   "sectionsEditor.namedRulePicker.missingCampaign":
-    "This campaign no longer exists. Pick another or remove this variant.",
+    "This campaign isn't in your campaigns. Pick another, create it, or remove this variant.",
+  "sectionsEditor.namedRulePicker.missingTestNoCreate":
+    "This test isn't in your A/B tests. Pick another or remove this variant.",
+  "sectionsEditor.namedRulePicker.missingCampaignNoCreate":
+    "This campaign isn't in your campaigns. Pick another or remove this variant.",
+  "sectionsEditor.namedRulePicker.createMissing": "Create it",
+  "sectionsEditor.namedRulePicker.createMissingSubmit": "Create",
   "sectionsEditor.namedRulePicker.missingTestWithin":
-    "This rule uses a test that no longer exists. Change the rule or remove this variant.",
+    "This rule uses a test that isn't in your A/B tests. Change the rule or remove this variant.",
   "sectionsEditor.namedRulePicker.missingCampaignWithin":
-    "This rule uses a campaign that no longer exists. Change the rule or remove this variant.",
+    "This rule uses a campaign that isn't in your campaigns. Change the rule or remove this variant.",
   "sectionsEditor.namedRulePicker.inlineDate":
     "These dates aren't a campaign yet, so this variant doesn't show. Choose Date above to pick a campaign, or create one with these dates.",
   "sectionsEditor.namedRulePicker.fieldTests": "Your A/B tests",
@@ -155,13 +161,18 @@ export const sectionsEditor = {
   "sectionsEditor.namedRuleUses.wholeCampaignsHint":
     "These sections decide in their own code which campaigns they look at.",
   "sectionsEditor.namedRuleDelete.stillUsedOne":
-    "1 page still uses it. Undo brings it back.",
+    "{places} still uses it. Undo brings it back.",
   "sectionsEditor.namedRuleDelete.stillUsed":
-    "{count} pages still use it. Undo brings it back.",
+    "{places} still use it. Undo brings it back.",
+  "sectionsEditor.namedRuleUses.countPageOne": "1 page",
+  "sectionsEditor.namedRuleUses.countPages": "{count} pages",
+  "sectionsEditor.namedRuleUses.countSectionOne": "1 section",
+  "sectionsEditor.namedRuleUses.countSections": "{count} sections",
+  "sectionsEditor.namedRuleUses.countBoth": "{pages} and {sections}",
   "sectionsEditor.namedRuleUses.missingTests":
-    "These pages use tests that no longer exist.",
+    "These pages and sections use tests that aren't in your A/B tests.",
   "sectionsEditor.namedRuleUses.missingCampaigns":
-    "These pages use campaigns that no longer exist.",
+    "These pages and sections use campaigns that aren't in your campaigns.",
   "sectionsEditor.namedRules.changedMeanwhile":
     "This changed while you were editing",
   "sectionsEditor.namedRules.changedMeanwhileHint":

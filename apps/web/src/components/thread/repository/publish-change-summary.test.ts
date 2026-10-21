@@ -867,7 +867,7 @@ describe("summarizeContentChanges (a v8 source's changes.list)", () => {
     ).toBeUndefined();
   });
 
-  it("says on the A/B tests card how many pages still use a test it deleted", () => {
+  it("says on the A/B tests card how many pages and sections use a test it deleted", () => {
     const builtIn = { $ref: "#/definitions/x", namespace: "deco" };
     const meta = {
       manifest: {
@@ -892,10 +892,20 @@ describe("summarizeContentChanges (a v8 source's changes.list)", () => {
         ],
       },
     });
-    // "hero" was deleted in the draft; the two pages have no change.
+    // "hero" was deleted in the draft; the two pages and the saved section
+    // have no change.
     const lookup = {
       "pages-a": page("/a"),
       "pages-b": page("/b"),
+      Hero: {
+        __resolveType: "site/sections/Hero.tsx",
+        title: {
+          __resolveType: "multivariate",
+          variants: [
+            { rule: { __resolveType: "experiment", name: "hero" }, value: "B" },
+          ],
+        },
+      },
       experiments: { __resolveType: "split-traffic", other: 20 },
     };
     const input = {
@@ -909,12 +919,18 @@ describe("summarizeContentChanges (a v8 source's changes.list)", () => {
       ...input,
       missingRuleUses: missingNamedRuleUseCounts(lookup, meta),
     }).blocks[0]!;
-    expect(card.missingRuleUses).toEqual({ kind: "experiments", count: 2 });
+    // Pages and sections counted apart, so the copy never calls a section a page.
+    expect(card.missingRuleUses).toEqual({
+      kind: "experiments",
+      pages: 2,
+      sections: 1,
+    });
     // Once the pages pick another test, the card says nothing.
     const fixed = {
       ...lookup,
       "pages-a": { ...page("/a"), sections: [] },
       "pages-b": { ...page("/b"), sections: [] },
+      Hero: { __resolveType: "site/sections/Hero.tsx", title: "A" },
     };
     expect(
       summarizeContentChanges({

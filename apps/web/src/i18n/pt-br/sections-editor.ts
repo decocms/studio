@@ -124,13 +124,19 @@ export const sectionsEditor = {
   "sectionsEditor.namedRulePicker.campaignRowHint":
     "Para mudar as datas, abra Campanhas.",
   "sectionsEditor.namedRulePicker.missingTest":
-    "Este teste não existe mais. Escolha outro ou remova esta variante.",
+    "Este teste não está nos seus testes A/B. Escolha outro, crie-o ou remova esta variante.",
   "sectionsEditor.namedRulePicker.missingCampaign":
-    "Esta campanha não existe mais. Escolha outra ou remova esta variante.",
+    "Esta campanha não está nas suas campanhas. Escolha outra, crie-a ou remova esta variante.",
+  "sectionsEditor.namedRulePicker.missingTestNoCreate":
+    "Este teste não está nos seus testes A/B. Escolha outro ou remova esta variante.",
+  "sectionsEditor.namedRulePicker.missingCampaignNoCreate":
+    "Esta campanha não está nas suas campanhas. Escolha outra ou remova esta variante.",
+  "sectionsEditor.namedRulePicker.createMissing": "Criar",
+  "sectionsEditor.namedRulePicker.createMissingSubmit": "Criar",
   "sectionsEditor.namedRulePicker.missingTestWithin":
-    "Esta regra usa um teste que não existe mais. Altere a regra ou remova esta variante.",
+    "Esta regra usa um teste que não está nos seus testes A/B. Altere a regra ou remova esta variante.",
   "sectionsEditor.namedRulePicker.missingCampaignWithin":
-    "Esta regra usa uma campanha que não existe mais. Altere a regra ou remova esta variante.",
+    "Esta regra usa uma campanha que não está nas suas campanhas. Altere a regra ou remova esta variante.",
   "sectionsEditor.namedRulePicker.inlineDate":
     "Estas datas ainda não são uma campanha, então esta variante não aparece. Escolha Data acima para usar uma campanha ou criar uma com estas datas.",
   "sectionsEditor.namedRulePicker.fieldTests": "Seus testes A/B",
@@ -160,13 +166,18 @@ export const sectionsEditor = {
   "sectionsEditor.namedRuleUses.wholeCampaignsHint":
     "Estas seções decidem no próprio código quais campanhas consultam.",
   "sectionsEditor.namedRuleDelete.stillUsedOne":
-    "1 página ainda usa. Desfazer traz de volta.",
+    "{places} ainda usa. Desfazer traz de volta.",
   "sectionsEditor.namedRuleDelete.stillUsed":
-    "{count} páginas ainda usam. Desfazer traz de volta.",
+    "{places} ainda usam. Desfazer traz de volta.",
+  "sectionsEditor.namedRuleUses.countPageOne": "1 página",
+  "sectionsEditor.namedRuleUses.countPages": "{count} páginas",
+  "sectionsEditor.namedRuleUses.countSectionOne": "1 seção",
+  "sectionsEditor.namedRuleUses.countSections": "{count} seções",
+  "sectionsEditor.namedRuleUses.countBoth": "{pages} e {sections}",
   "sectionsEditor.namedRuleUses.missingTests":
-    "Estas páginas usam testes que não existem mais.",
+    "Estas páginas e seções usam testes que não estão nos seus testes A/B.",
   "sectionsEditor.namedRuleUses.missingCampaigns":
-    "Estas páginas usam campanhas que não existem mais.",
+    "Estas páginas e seções usam campanhas que não estão nas suas campanhas.",
   "sectionsEditor.namedRules.changedMeanwhile":
     "Isto mudou enquanto você editava",
   "sectionsEditor.namedRules.changedMeanwhileHint":

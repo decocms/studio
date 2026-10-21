@@ -9,6 +9,7 @@ import type { ChangeDetail } from "@decocms/blocks/protocol";
 import { pageEntryFromBlock, globalSectionLabel } from "./page-list";
 import {
   NAMED_RULE_KINDS,
+  namedRuleExists,
   type NamedRuleKind,
   namedRuleSupport,
   readNamedRuleBlock,
@@ -33,11 +34,73 @@ export interface NamedRuleUses {
 }
 
 /**
+ * Results by the identity of their inputs: the draft, the schema and the
+ * sides are the query cache's objects, which stay the same until they
+ * change, so a view that renders again (the Publish review, the tabs) reads
+ * the result it already has instead of walking the whole draft again. Held
+ * weakly: a draft no one holds any more drops its results.
+ */
+interface MemoNode {
+  weak: WeakMap<object, MemoNode>;
+  strong: Map<unknown, MemoNode>;
+  value?: unknown;
+  has: boolean;
+}
+
+const newMemoNode = (): MemoNode => ({
+  weak: new WeakMap(),
+  strong: new Map(),
+  has: false,
+});
+
+const MEMO_ROOTS = new Map<string, MemoNode>();
+
+function memoized<V>(
+  name: string,
+  keys: readonly unknown[],
+  compute: () => V,
+): V {
+  let node: MemoNode = MEMO_ROOTS.get(name) ?? newMemoNode();
+  MEMO_ROOTS.set(name, node);
+  for (const key of keys) {
+    const isObject =
+      (typeof key === "object" && key !== null) || typeof key === "function";
+    let next: MemoNode | undefined = isObject
+      ? node.weak.get(key as object)
+      : node.strong.get(key);
+    if (!next) {
+      next = newMemoNode();
+      if (isObject) node.weak.set(key as object, next);
+      else node.strong.set(key, next);
+    }
+    node = next;
+  }
+  if (!node.has) {
+    node.value = compute();
+    node.has = true;
+  }
+  return node.value as V;
+}
+
+/**
  * The draft's uses, marked against the published content. `changeCount` is
  * how many entries the draft changed (`undefined` while the list loads);
  * `sides` both sides of them (`undefined` while they load).
  */
 export function namedRuleUses(input: {
+  decofile: Record<string, unknown>;
+  meta?: LiveMeta | null;
+  changeCount: number | undefined;
+  sides: Record<string, ChangeDetail> | undefined;
+}): NamedRuleUses {
+  return memoized(
+    "uses",
+    [input.decofile, input.meta, input.changeCount, input.sides],
+    () => computeNamedRuleUses(input),
+  );
+}
+
+function computeNamedRuleUses(input: {
   decofile: Record<string, unknown>;
   meta?: LiveMeta | null;
   changeCount: number | undefined;
@@ -158,27 +221,30 @@ function sortRows(rows: NamedRuleUseRow[]): NamedRuleUseRow[] {
 }
 
 /**
- * The names the draft's rules use that its `experiments` or `campaigns`
- * block doesn't have: deleted, discarded, removed in another tab or never
- * created. Nothing is blocked for them; the views point them out so the
- * editor picks another or removes the variant. Uses the draft already
- * removed don't count.
+ * The names the draft's rules use that don't exist (`namedRuleExists`: not
+ * in its `experiments` or `campaigns` block, or with a value Studio can't
+ * read): deleted, discarded, removed in another tab, never created or typed
+ * by hand. Nothing is blocked for them; the views point them out so the
+ * editor picks another, creates it or removes the variant. Uses the draft
+ * already removed don't count.
  */
 export function missingNamedRules(
   uses: NamedRuleUses,
   kind: NamedRuleKind,
   decofile: Record<string, unknown>,
 ): string[] {
-  const read = readNamedRuleBlock(decofile, kind);
-  if (read.kind === "conflict") return [];
-  const missing: string[] = [];
-  for (const [name, refs] of uses.refs[kind].byName) {
-    if (Object.hasOwn(read.block, name)) continue;
-    if (refs.some((ref) => ref.state !== "removed-in-draft")) {
-      missing.push(name);
+  return memoized("missing", [uses, decofile, kind], () => {
+    const read = readNamedRuleBlock(decofile, kind);
+    if (read.kind === "conflict") return [];
+    const missing: string[] = [];
+    for (const [name, refs] of uses.refs[kind].byName) {
+      if (namedRuleExists(read, name)) continue;
+      if (refs.some((ref) => ref.state !== "removed-in-draft")) {
+        missing.push(name);
+      }
     }
-  }
-  return missing;
+    return missing;
+  });
 }
 
 /**
@@ -191,82 +257,96 @@ export function missingNamedRuleRows(
   decofile: Record<string, unknown>,
   meta?: LiveMeta | null,
 ): NamedRuleUseRow[] {
-  const rows: NamedRuleUseRow[] = [];
-  const seen = new Set<string>();
-  for (const name of missingNamedRules(uses, kind, decofile)) {
-    for (const row of namedRuleUseRows(uses, kind, name, decofile, meta)) {
-      const key = `${row.blockKey}#${row.variant ?? ""}`;
-      if (row.state === "removed-in-draft" || seen.has(key)) continue;
-      seen.add(key);
-      rows.push(row);
+  return memoized("missingRows", [uses, decofile, meta, kind], () => {
+    const rows: NamedRuleUseRow[] = [];
+    const seen = new Set<string>();
+    for (const name of missingNamedRules(uses, kind, decofile)) {
+      for (const row of namedRuleUseRows(uses, kind, name, decofile, meta)) {
+        const key = `${row.blockKey}#${row.variant ?? ""}`;
+        if (row.state === "removed-in-draft" || seen.has(key)) continue;
+        seen.add(key);
+        rows.push(row);
+      }
     }
-  }
-  return sortRows(rows);
+    return sortRows(rows);
+  });
+}
+
+/** The kinds the site's schema has built in. */
+function availableKinds(meta: LiveMeta | null | undefined): NamedRuleKind[] {
+  return NAMED_RULE_KINDS.filter(
+    (kind) => namedRuleSupport(meta, kind) === "available",
+  );
+}
+
+/** The draft's uses on its own (no published side), as the Publish review reads them. */
+function draftUses(
+  decofile: Record<string, unknown>,
+  meta: LiveMeta | null | undefined,
+): NamedRuleUses {
+  return namedRuleUses({ decofile, meta, changeCount: 0, sides: undefined });
 }
 
 /**
- * Per block, the kinds whose names its rules use but the draft doesn't
- * have, for the kinds the site's schema has built in. The Publish review
- * flags those cards; nothing is blocked.
+ * Per block, the kinds whose names its rules use but that don't exist, for
+ * the kinds the site's schema has built in. The Publish review flags those
+ * cards; nothing is blocked.
  */
 export function blocksUsingMissingNamedRules(
   decofile: Record<string, unknown>,
   meta: LiveMeta | null | undefined,
 ): Map<string, NamedRuleKind[]> {
-  const out = new Map<string, NamedRuleKind[]>();
-  const kinds = NAMED_RULE_KINDS.filter(
-    (kind) => namedRuleSupport(meta, kind) === "available",
-  );
-  if (kinds.length === 0) return out;
-  const uses = namedRuleUses({
-    decofile,
-    meta,
-    changeCount: 0,
-    sides: undefined,
-  });
-  for (const kind of kinds) {
-    for (const name of missingNamedRules(uses, kind, decofile)) {
-      for (const ref of uses.refs[kind].byName.get(name) ?? []) {
-        const list = out.get(ref.blockKey) ?? [];
-        if (!list.includes(kind)) list.push(kind);
-        out.set(ref.blockKey, list);
+  return memoized("blocksUsingMissing", [decofile, meta], () => {
+    const out = new Map<string, NamedRuleKind[]>();
+    const kinds = availableKinds(meta);
+    if (kinds.length === 0) return out;
+    const uses = draftUses(decofile, meta);
+    for (const kind of kinds) {
+      for (const name of missingNamedRules(uses, kind, decofile)) {
+        for (const ref of uses.refs[kind].byName.get(name) ?? []) {
+          const list = out.get(ref.blockKey) ?? [];
+          if (!list.includes(kind)) list.push(kind);
+          out.set(ref.blockKey, list);
+        }
       }
     }
-  }
-  return out;
+    return out;
+  });
+}
+
+/** How many pages and how many sections, counted apart so the copy says each. */
+export interface NamedRuleUseCounts {
+  pages: number;
+  sections: number;
 }
 
 /**
- * Per kind the site's schema has built in, how many pages and sections use a
- * test or campaign the draft doesn't have. The Publish review says so on the
- * A/B tests or Campaigns card, since those pages may have no card of their
- * own; nothing is blocked.
+ * Per kind the site's schema has built in, how many pages and how many
+ * sections use a test or campaign that doesn't exist. The Publish review
+ * says so on the A/B tests or Campaigns card, since those pages may have no
+ * card of their own; nothing is blocked.
  */
 export function missingNamedRuleUseCounts(
   decofile: Record<string, unknown>,
   meta: LiveMeta | null | undefined,
-): Map<NamedRuleKind, number> {
-  const out = new Map<NamedRuleKind, number>();
-  const kinds = NAMED_RULE_KINDS.filter(
-    (kind) => namedRuleSupport(meta, kind) === "available",
-  );
-  if (kinds.length === 0) return out;
-  const uses = namedRuleUses({
-    decofile,
-    meta,
-    changeCount: 0,
-    sides: undefined,
-  });
-  for (const kind of kinds) {
-    const blocks = new Set<string>();
-    for (const name of missingNamedRules(uses, kind, decofile)) {
-      for (const ref of uses.refs[kind].byName.get(name) ?? []) {
-        if (!ref.savedRule) blocks.add(ref.blockKey);
+): Map<NamedRuleKind, NamedRuleUseCounts> {
+  return memoized("missingUseCounts", [decofile, meta], () => {
+    const out = new Map<NamedRuleKind, NamedRuleUseCounts>();
+    const kinds = availableKinds(meta);
+    if (kinds.length === 0) return out;
+    const uses = draftUses(decofile, meta);
+    for (const kind of kinds) {
+      const blocks = new Set<string>();
+      for (const name of missingNamedRules(uses, kind, decofile)) {
+        for (const ref of uses.refs[kind].byName.get(name) ?? []) {
+          if (!ref.savedRule) blocks.add(ref.blockKey);
+        }
       }
+      const counts = countByKind(blocks, uses, decofile, meta);
+      if (counts.pages + counts.sections > 0) out.set(kind, counts);
     }
-    if (blocks.size > 0) out.set(kind, blocks.size);
-  }
-  return out;
+    return out;
+  });
 }
 
 /** How many blocks use a name, as the list shows it (removed uses left out). */
@@ -275,12 +355,51 @@ export function namedRuleUseCount(
   kind: NamedRuleKind,
   name: string,
 ): number {
+  return usingBlocks(uses, kind, name).size;
+}
+
+/**
+ * How many pages and how many sections use a name in the draft (removed
+ * uses left out): the Delete toast says each.
+ */
+export function namedRuleUseCounts(
+  decofile: Record<string, unknown>,
+  meta: LiveMeta | null | undefined,
+  kind: NamedRuleKind,
+  name: string,
+): NamedRuleUseCounts {
+  const uses = draftUses(decofile, meta);
+  return countByKind(usingBlocks(uses, kind, name), uses, decofile, meta);
+}
+
+function usingBlocks(
+  uses: NamedRuleUses,
+  kind: NamedRuleKind,
+  name: string,
+): Set<string> {
   const blocks = new Set<string>();
   for (const ref of uses.refs[kind].byName.get(name) ?? []) {
     if (ref.savedRule || ref.state === "removed-in-draft") continue;
     blocks.add(ref.blockKey);
   }
-  return blocks.size;
+  return blocks;
+}
+
+function countByKind(
+  blocks: Iterable<string>,
+  uses: NamedRuleUses,
+  decofile: Record<string, unknown>,
+  meta: LiveMeta | null | undefined,
+): NamedRuleUseCounts {
+  const counts: NamedRuleUseCounts = { pages: 0, sections: 0 };
+  for (const blockKey of blocks) {
+    if (rowLabel(blockKey, uses, decofile, meta).blockKind === "page") {
+      counts.pages++;
+    } else {
+      counts.sections++;
+    }
+  }
+  return counts;
 }
 
 function safeDecode(key: string): string {

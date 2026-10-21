@@ -4,12 +4,15 @@ import {
   type MatcherGlobalEntry,
   type NamedRulePickerProps,
 } from "./matcher-picker";
+import { useState } from "react";
 import {
   missingNamedRuleWithin,
+  type NamedRulePick,
   type NamedRuleRowState,
+  newNameProblem,
 } from "./named-rule-picker";
 import { useT } from "@/i18n/use-t.ts";
-import { NamedRuleRow } from "./named-rule-step";
+import { NamedRuleCreateForm, NamedRuleRow } from "./named-rule-step";
 import { VariantRuleForm } from "./sections-editor-panels";
 import { type LiveMeta, type SchemaProperty } from "./resolve-schema";
 import type { SandboxConfig } from "./fields/field-props";
@@ -68,14 +71,41 @@ export function VariantRuleEditor({
   namedRow?: NamedRuleRowState | null;
   /**
    * The variant's rule as stored, so a test or campaign it names inside (a
-   * `multi`, a saved rule) that no longer exists is pointed out.
+   * `multi`, a saved rule) that isn't there is pointed out.
    */
   rule?: unknown;
 }) {
   const t = useT();
+  const [creating, setCreating] = useState(false);
+  const [createPending, setCreatePending] = useState(false);
   const missingWithin = named
     ? missingNamedRuleWithin(rule, named.kinds, decofile)
     : null;
+  // A name the rule uses but the site doesn't have can be created right
+  // here, as the picker would, when its kind takes new names.
+  const rowKind =
+    named && namedRow
+      ? named.kinds.find((k) => k.kind === namedRow.kind)
+      : undefined;
+  const existingNames = rowKind ? rowKind.entries.map((e) => e.name) : [];
+  const canCreate =
+    !!named &&
+    !!namedRow &&
+    namedRow.missing &&
+    !namedRow.inlineDate &&
+    !!rowKind &&
+    rowKind.state !== "conflict" &&
+    newNameProblem(namedRow.name, existingNames) === null;
+  const create = async (pick: NamedRulePick) => {
+    if (!named) return;
+    setCreatePending(true);
+    try {
+      await named.onPick(pick);
+    } finally {
+      setCreatePending(false);
+    }
+    setCreating(false);
+  };
   return (
     <>
       <MatcherPicker
@@ -90,13 +120,30 @@ export function VariantRuleEditor({
       />
       {named && namedRow && !currentGlobalKey ? (
         <div className={formWrapperClassName}>
-          <NamedRuleRow
-            kind={namedRow.kind}
-            name={namedRow.name}
-            summary={namedRow.summary}
-            missing={namedRow.missing}
-            inlineDate={namedRow.inlineDate}
-          />
+          {canCreate && creating ? (
+            <div className="rounded-[var(--studio-control-radius,var(--radius-md))] border border-border/80">
+              <NamedRuleCreateForm
+                kind={namedRow.kind}
+                initialName={namedRow.name}
+                existingNames={existingNames}
+                pending={createPending}
+                submitLabel={t(
+                  "sectionsEditor.namedRulePicker.createMissingSubmit",
+                )}
+                onBack={() => setCreating(false)}
+                onSubmit={(pick) => void create(pick)}
+              />
+            </div>
+          ) : (
+            <NamedRuleRow
+              kind={namedRow.kind}
+              name={namedRow.name}
+              summary={namedRow.summary}
+              missing={namedRow.missing}
+              inlineDate={namedRow.inlineDate}
+              {...(canCreate ? { onCreate: () => setCreating(true) } : {})}
+            />
+          )}
         </div>
       ) : (
         schema &&

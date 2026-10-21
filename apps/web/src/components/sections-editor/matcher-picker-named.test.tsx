@@ -1,7 +1,12 @@
 import { setupComponentTest } from "../../../test/setup";
 setupComponentTest();
 import { beforeAll, describe, expect, mock, test } from "bun:test";
-import { fireEvent, render as rtlRender, within } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render as rtlRender,
+  within,
+} from "@testing-library/react";
 import type { ReactElement } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@decocms/ui/components/tooltip.tsx";
@@ -167,17 +172,17 @@ describe("the locked row", () => {
     expect(open).toHaveBeenCalledWith("experiments");
   });
 
-  test("says a missing campaign no longer exists, and shows no link without a way there", () => {
+  test("says a missing campaign isn't there, and shows no link or Create without a way there", () => {
     render(<NamedRuleRow kind="campaigns" name="gone" summary="" missing />);
     expect(
       within(document.body).getByTestId("named-rule-missing").textContent,
     ).toBe(
-      "This campaign no longer exists. Pick another or remove this variant.",
+      "This campaign isn't in your campaigns. Pick another or remove this variant.",
     );
     expect(within(document.body).queryByRole("button")).toBeNull();
   });
 
-  test("a deleted test: the variant says so, with the picker one click away", () => {
+  test("a deleted or never-created test: the variant says so, with the picker one click away", () => {
     const rule = { __resolveType: "experiment", name: "gone" };
     render(
       <VariantRuleEditor
@@ -198,7 +203,7 @@ describe("the locked row", () => {
     );
     const body = within(document.body);
     expect(body.getByTestId("named-rule-missing").textContent).toBe(
-      "This test no longer exists. Pick another or remove this variant.",
+      "This test isn't in your A/B tests. Pick another, create it, or remove this variant.",
     );
     fireEvent.click(body.getByRole("button", { name: /A\/B test/ }));
     expect(
@@ -235,19 +240,83 @@ describe("the locked row", () => {
       within(document.body).getByTestId("named-rule-missing-within")
         .textContent,
     ).toBe(
-      "This rule uses a test that no longer exists. Change the rule or remove this variant.",
+      "This rule uses a test that isn't in your A/B tests. Change the rule or remove this variant.",
+    );
+  });
+
+  test("Create it makes the missing test under the same name, in one pick", async () => {
+    const rule = { __resolveType: "experiment", name: "typed-by-hand" };
+    const onPick = mock((_pick: NamedRulePick) => Promise.resolve());
+    render(
+      <VariantRuleEditor
+        currentRt="experiment"
+        currentLabel="A/B test"
+        matchers={MATCHERS}
+        globals={[]}
+        onSelect={() => {}}
+        onSelectGlobal={() => {}}
+        schema={null}
+        formValue={null}
+        onChange={() => {}}
+        formKey="rule"
+        formWrapperClassName=""
+        named={{ kinds: KINDS, selected: namedRuleOf(rule), onPick }}
+        namedRow={namedRuleRowState(rule, KINDS)}
+      />,
+    );
+    const body = within(document.body);
+    fireEvent.click(body.getByRole("button", { name: "Create it" }));
+    expect(body.getByLabelText("Name")).toHaveValue("typed-by-hand");
+    await act(async () => {
+      fireEvent.click(body.getByRole("button", { name: "Create" }));
+    });
+    expect(onPick).toHaveBeenCalledWith({
+      kind: "experiments",
+      name: "typed-by-hand",
+      create: { share: 50 },
+    });
+    // Back to the row once saved.
+    expect(body.getByTestId("named-rule-row")).toBeInTheDocument();
+  });
+
+  test("no Create it where the picker can't create (a block that holds something else)", () => {
+    const rule = { __resolveType: "experiment", name: "gone" };
+    const kinds: NamedRulePickerKind[] = [
+      { kind: "experiments", state: "conflict", entries: [] },
+    ];
+    render(
+      <VariantRuleEditor
+        currentRt="experiment"
+        currentLabel="A/B test"
+        matchers={MATCHERS}
+        globals={[]}
+        onSelect={() => {}}
+        onSelectGlobal={() => {}}
+        schema={null}
+        formValue={null}
+        onChange={() => {}}
+        formKey="rule"
+        formWrapperClassName=""
+        named={{ kinds, selected: namedRuleOf(rule), onPick: () => {} }}
+        namedRow={namedRuleRowState(rule, kinds)}
+      />,
+    );
+    const body = within(document.body);
+    expect(body.queryByRole("button", { name: "Create it" })).toBeNull();
+    expect(body.getByTestId("named-rule-missing").textContent).toBe(
+      "This test isn't in your A/B tests. Pick another or remove this variant.",
     );
   });
 
   test("says it in pt-br too", () => {
     expect(ptBR["sectionsEditor.namedRulePicker.missingTest"]).toBe(
-      "Este teste não existe mais. Escolha outro ou remova esta variante.",
+      "Este teste não está nos seus testes A/B. Escolha outro, crie-o ou remova esta variante.",
     );
     expect(ptBR["sectionsEditor.namedRulePicker.missingCampaign"]).toBe(
-      "Esta campanha não existe mais. Escolha outra ou remova esta variante.",
+      "Esta campanha não está nas suas campanhas. Escolha outra, crie-a ou remova esta variante.",
     );
     expect(ptBR["sectionsEditor.namedRulePicker.missingTestWithin"]).toBe(
-      "Esta regra usa um teste que não existe mais. Altere a regra ou remova esta variante.",
+      "Esta regra usa um teste que não está nos seus testes A/B. Altere a regra ou remova esta variante.",
     );
   });
 });

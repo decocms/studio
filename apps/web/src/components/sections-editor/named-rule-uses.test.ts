@@ -9,10 +9,17 @@ import {
   publishedNamedRuleValue,
 } from "./named-rule-edits";
 import {
+  namedRulePickerKinds,
+  namedRuleRowState,
+  planNamedRulePick,
+} from "./named-rule-picker";
+import {
   blocksUsingMissingNamedRules,
   missingNamedRuleRows,
+  missingNamedRuleUseCounts,
   missingNamedRules,
   namedRuleUseCount,
+  namedRuleUseCounts,
   namedRuleUseRows,
   namedRuleUses,
 } from "./named-rule-uses";
@@ -339,7 +346,7 @@ describe("named rule edits", () => {
   });
 });
 
-describe("a test or campaign that no longer exists", () => {
+describe("a test or campaign that isn't there", () => {
   const decofile = {
     experiments: { __resolveType: "split-traffic", used: 50, free: 10 },
     campaigns: {
@@ -428,5 +435,142 @@ describe("a test or campaign that no longer exists", () => {
         schema: {},
       }).size,
     ).toBe(0);
+  });
+});
+
+describe("one definition of a missing name, everywhere", () => {
+  // "hero" holds a share Studio can't read: no view lists it.
+  const draft = {
+    experiments: { __resolveType: "split-traffic", hero: "fifty", ok: 10 },
+    "pages-home": page("Home", "/", experiment("hero")),
+  };
+
+  it("the picker row, the tab's list and the Publish review all call it missing", () => {
+    const kinds = namedRulePickerKinds(meta, draft);
+    expect(kinds[0]!.entries.map((e) => e.name)).toEqual(["ok"]);
+    expect(namedRuleRowState(experiment("hero"), kinds)?.missing).toBe(true);
+    const uses = namedRuleUses({
+      decofile: draft,
+      meta,
+      changeCount: 0,
+      sides: undefined,
+    });
+    expect(missingNamedRules(uses, "experiments", draft)).toEqual(["hero"]);
+    expect(
+      missingNamedRuleRows(uses, "experiments", draft, meta).map(
+        (r) => r.title,
+      ),
+    ).toEqual(["Home"]);
+    expect([...blocksUsingMissingNamedRules(draft, meta)]).toEqual([
+      ["pages-home", ["experiments"]],
+    ]);
+  });
+
+  it("creating it writes a value Studio can read in its place", () => {
+    expect(
+      planNamedRulePick(draft, {
+        kind: "experiments",
+        name: "hero",
+        create: { share: 50 },
+      }),
+    ).toEqual({
+      ok: true,
+      rule: experiment("hero"),
+      blockWrite: {
+        blockKey: "experiments",
+        block: { __resolveType: "split-traffic", hero: 50, ok: 10 },
+      },
+    });
+    // A readable one created meanwhile is used as it is.
+    expect(
+      planNamedRulePick(draft, {
+        kind: "experiments",
+        name: "ok",
+        create: { share: 50 },
+      }),
+    ).toMatchObject({ ok: true, blockWrite: null });
+  });
+});
+
+describe("counting where a name is used", () => {
+  const section = (rule: unknown) => ({
+    __resolveType: "site/sections/Hero.tsx",
+    title: {
+      __resolveType: "multivariate",
+      variants: [{ rule, value: "B" }],
+    },
+  });
+  const draft = {
+    experiments: { __resolveType: "split-traffic", kept: 10 },
+    "pages-a": page("A", "/a", experiment("gone")),
+    "pages-b": page("B", "/b", experiment("gone")),
+    Hero: section(experiment("gone")),
+    Other: section(experiment("kept")),
+  };
+
+  it("says pages and sections apart", () => {
+    expect(missingNamedRuleUseCounts(draft, meta).get("experiments")).toEqual({
+      pages: 2,
+      sections: 1,
+    });
+    expect(namedRuleUseCounts(draft, meta, "experiments", "kept")).toEqual({
+      pages: 0,
+      sections: 1,
+    });
+  });
+});
+
+describe("the missing-name flags are computed once per draft", () => {
+  /** A draft that counts how often something walks its keys. */
+  const counted = (value: Record<string, unknown>) => {
+    const reads = { count: 0 };
+    const proxy = new Proxy(value, {
+      ownKeys(target) {
+        reads.count++;
+        return Reflect.ownKeys(target);
+      },
+    });
+    return { proxy, reads };
+  };
+  const base = {
+    experiments: { __resolveType: "split-traffic", kept: 10 },
+    "pages-a": page("A", "/a", experiment("gone")),
+  };
+
+  it("reads the same draft and schema once, however many renders ask", () => {
+    const { proxy, reads } = counted({ ...base });
+    const flags = blocksUsingMissingNamedRules(proxy, meta);
+    const counts = missingNamedRuleUseCounts(proxy, meta);
+    const after = reads.count;
+    expect(after).toBeGreaterThan(0);
+    for (let render = 0; render < 5; render++) {
+      expect(blocksUsingMissingNamedRules(proxy, meta)).toBe(flags);
+      expect(missingNamedRuleUseCounts(proxy, meta)).toBe(counts);
+    }
+    expect(reads.count).toBe(after);
+  });
+
+  it("the tab's rows too, for the same uses", () => {
+    const { proxy, reads } = counted({ ...base });
+    const input = { decofile: proxy, meta, changeCount: 0, sides: undefined };
+    const uses = namedRuleUses(input);
+    const rows = missingNamedRuleRows(uses, "experiments", proxy, meta);
+    const after = reads.count;
+    // A render builds a new input object from the same query data.
+    const again = namedRuleUses({ ...input });
+    expect(again).toBe(uses);
+    expect(missingNamedRuleRows(again, "experiments", proxy, meta)).toBe(rows);
+    expect(reads.count).toBe(after);
+  });
+
+  it("computes again when the draft changes", () => {
+    const first = blocksUsingMissingNamedRules({ ...base }, meta);
+    const fixed = {
+      ...base,
+      experiments: { __resolveType: "split-traffic", kept: 10, gone: 5 },
+    };
+    const second = blocksUsingMissingNamedRules(fixed, meta);
+    expect(first.size).toBe(1);
+    expect(second.size).toBe(0);
   });
 });

@@ -157,7 +157,7 @@ function setup(
 }
 
 describe("NamedRuleDeleteButton", () => {
-  test("a test that pages use is deleted, with an Undo and how many pages still use it", async () => {
+  test("a test that pages use is deleted, with an Undo and how many pages and sections still use it", async () => {
     const { apply, onDeleted, onUndo, body, button } = setup(
       "experiments",
       "hero",
@@ -205,6 +205,30 @@ describe("NamedRuleDeleteButton", () => {
     await act(async () => fireEvent.click(button));
     expect(toastCalls[0]!.description).toBe(
       "2 pages still use it. Undo brings it back.",
+    );
+  });
+
+  test("the toast counts pages and sections apart, never a section as a page", async () => {
+    const now = {
+      ...decofile,
+      "pages-promo": page("Promo", "/promo", {
+        __resolveType: "experiment",
+        name: "hero",
+      }),
+      Hero: {
+        __resolveType: "site/sections/Hero.tsx",
+        title: {
+          __resolveType: "multivariate",
+          variants: [
+            { rule: { __resolveType: "experiment", name: "hero" }, value: "B" },
+          ],
+        },
+      },
+    };
+    const { button } = setup("experiments", "hero", { stored: [now] });
+    await act(async () => fireEvent.click(button));
+    expect(toastCalls[0]!.description).toBe(
+      "2 pages and 1 section still use it. Undo brings it back.",
     );
   });
 
@@ -329,10 +353,10 @@ describe("NamedRuleDeleteButton", () => {
 
   test("the toast speaks pt-br too", () => {
     expect(ptBR["sectionsEditor.namedRuleDelete.stillUsedOne"]).toBe(
-      "1 página ainda usa. Desfazer traz de volta.",
+      "{places} ainda usa. Desfazer traz de volta.",
     );
     expect(ptBR["sectionsEditor.namedRuleDelete.stillUsed"]).toBe(
-      "{count} páginas ainda usam. Desfazer traz de volta.",
+      "{places} ainda usam. Desfazer traz de volta.",
     );
     expect(ptBR["sectionsEditor.namedRuleDelete.stillUsed"]).not.toBe(
       en["sectionsEditor.namedRuleDelete.stillUsed"],

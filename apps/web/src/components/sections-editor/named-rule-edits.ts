@@ -69,7 +69,7 @@ export function planNamedRuleCreate<K extends NamedRuleKind>(
 /**
  * The change that removes `name` from the block; `null` when there's
  * nothing to remove. Pages that still use it are left as they are: they
- * show that the test or campaign no longer exists (named-rule-uses.ts
+ * show that the test or campaign isn't there (named-rule-uses.ts
  * `missingNamedRules`), and Undo puts it back.
  */
 export function planNamedRuleDelete(

@@ -143,7 +143,7 @@ function NamedRuleUseList({
 
 /**
  * A calm line in the Experiments tab or the Campaigns view when pages use a
- * test or campaign that no longer exists (deleted, discarded, another tab),
+ * test or campaign that isn't there (deleted, discarded, never created),
  * with those pages, each opening in the site editor. Nothing is blocked.
  */
 export function MissingNamedRuleUses({

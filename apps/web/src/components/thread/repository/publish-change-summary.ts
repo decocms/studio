@@ -23,6 +23,7 @@ import {
   type NamedRuleKind,
   namedRuleKindOfBlock,
 } from "@/components/sections-editor/named-rules";
+import type { NamedRuleUseCounts } from "@/components/sections-editor/named-rule-uses";
 import {
   globalSectionLabel,
   isSiteAppBlock,
@@ -83,15 +84,16 @@ export interface PublishChange {
   toJson: Record<string, unknown> | null;
   /**
    * v8: its rules name a test or campaign of these kinds that the draft
-   * doesn't have (deleted, discarded). The card says so; nothing is blocked.
+   * doesn't have (deleted, discarded, never created). The card says so;
+   * nothing is blocked.
    */
   missingRules?: NamedRuleKind[];
   /**
-   * v8, on the A/B tests or Campaigns card: how many pages and sections use
-   * one of its names that the draft doesn't have. Those pages may have no
-   * card of their own; nothing is blocked.
+   * v8, on the A/B tests or Campaigns card: how many pages and how many
+   * sections use a name the draft doesn't have. Those may have no card of
+   * their own; nothing is blocked.
    */
-  missingRuleUses?: { kind: NamedRuleKind; count: number };
+  missingRuleUses?: { kind: NamedRuleKind } & NamedRuleUseCounts;
 }
 
 /**
@@ -762,10 +764,10 @@ interface ContentChangesInput {
    */
   missingRules?: ReadonlyMap<string, NamedRuleKind[]>;
   /**
-   * Per kind, how many pages and sections use a name the draft doesn't have
-   * (named-rule-uses.ts `missingNamedRuleUseCounts`).
+   * Per kind, how many pages and how many sections use a name the draft
+   * doesn't have (named-rule-uses.ts `missingNamedRuleUseCounts`).
    */
-  missingRuleUses?: ReadonlyMap<NamedRuleKind, number>;
+  missingRuleUses?: ReadonlyMap<NamedRuleKind, NamedRuleUseCounts>;
 }
 
 /**
@@ -810,7 +812,7 @@ export function summarizeContentChanges(
     const unreadable = unreadableOf(name);
     const missing = missingRules?.get(name);
     const ruleKind = namedRuleKindOfBlock(name);
-    const usesCount = ruleKind ? (missingRuleUses?.get(ruleKind) ?? 0) : 0;
+    const usesCounts = ruleKind ? missingRuleUses?.get(ruleKind) : undefined;
     const common = {
       blockKey: name,
       status,
@@ -818,8 +820,8 @@ export function summarizeContentChanges(
       entry: { name, version: change.version },
       ...(unreadable.length > 0 ? { unreadable } : {}),
       ...(missing && missing.length > 0 ? { missingRules: missing } : {}),
-      ...(ruleKind && usesCount > 0
-        ? { missingRuleUses: { kind: ruleKind, count: usesCount } }
+      ...(ruleKind && usesCounts && usesCounts.pages + usesCounts.sections > 0
+        ? { missingRuleUses: { kind: ruleKind, ...usesCounts } }
         : {}),
       fromJson: maskSecrets(fromJson),
       toJson: maskSecrets(toJson ?? (status === "new" ? headShape : null)),

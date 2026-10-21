@@ -1,8 +1,9 @@
 /**
  * Delete for a test (Experiments tab) or a campaign (Campaigns view). It is
  * never blocked: the name leaves the draft at once, with an Undo, and when
- * pages still use it the toast says how many. Those pages then show that the
- * test or campaign no longer exists (named-rule-uses.ts `missingNamedRules`).
+ * pages or sections still use it the toast says how many of each. Those then
+ * show that the test or campaign isn't there (named-rule-uses.ts
+ * `missingNamedRules`).
  *
  * Delete reads the draft as stored right now (another tab may have changed
  * it) and plans from that copy; Undo puts back only the deleted name onto
@@ -15,7 +16,8 @@ import { Trash01 } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { useT } from "@/i18n/use-t.ts";
 import { planNamedRuleDelete, planNamedRuleRestore } from "./named-rule-edits";
-import { namedRuleUseCount, namedRuleUses } from "./named-rule-uses";
+import { namedRuleUseCounts } from "./named-rule-uses";
+import { namedRuleUsePlaces } from "./named-rule-use-copy";
 import { type NamedRuleKind, readNamedRuleBlock } from "./named-rules";
 import type { LiveMeta } from "./resolve-schema";
 import { SITE_EDITOR_SAVE_TOAST } from "./site-editor-toast";
@@ -23,22 +25,6 @@ import type {
   NamedRuleApplyOutcome,
   NamedRuleChange,
 } from "./use-apply-named-rule";
-
-/** How many pages and sections use `name` in `decofile`. */
-function pagesUsing(
-  kind: NamedRuleKind,
-  name: string,
-  decofile: Record<string, unknown>,
-  meta?: LiveMeta | null,
-): number {
-  const uses = namedRuleUses({
-    decofile,
-    meta,
-    changeCount: 0,
-    sides: undefined,
-  });
-  return namedRuleUseCount(uses, kind, name);
-}
 
 export function NamedRuleDeleteButton({
   kind,
@@ -99,7 +85,10 @@ export function NamedRuleDeleteButton({
     if (!change) return;
     const read = readNamedRuleBlock(fresh, kind);
     const raw = read.kind === "saved" ? read.block[name] : undefined;
-    const count = pagesUsing(kind, name, fresh, meta);
+    const used = namedRuleUsePlaces(
+      t,
+      namedRuleUseCounts(fresh, meta, kind, name),
+    );
     const outcome = await apply(change);
     if (!outcome.ok) return;
     onDeleted();
@@ -109,16 +98,17 @@ export function NamedRuleDeleteButton({
         : t("sandbox.dateCampaigns.deleted", { name }),
       {
         id: SITE_EDITOR_SAVE_TOAST,
-        description:
-          count === 1
-            ? t("sectionsEditor.namedRuleDelete.stillUsedOne")
-            : count > 1
-              ? t("sectionsEditor.namedRuleDelete.stillUsed", {
-                  count: String(count),
-                })
-              : tests
-                ? t("experiments.v8.deletedHint")
-                : t("sandbox.dateCampaigns.deletedHint"),
+        description: used?.one
+          ? t("sectionsEditor.namedRuleDelete.stillUsedOne", {
+              places: used.places,
+            })
+          : used
+            ? t("sectionsEditor.namedRuleDelete.stillUsed", {
+                places: used.places,
+              })
+            : tests
+              ? t("experiments.v8.deletedHint")
+              : t("sandbox.dateCampaigns.deletedHint"),
         action: {
           label: tests
             ? t("experiments.v8.undo")

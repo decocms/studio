@@ -423,9 +423,10 @@ export function NamedRuleCreateForm({
 /**
  * Where a variant's rule names a test or campaign: the name, locked (it is
  * changed by picking another above), what it does now, and the way to the
- * Experiments tab or Campaigns view. A name the block doesn't have (deleted,
- * discarded, another tab) says it no longer exists, with the picker right
- * above; a date rule still written with its own dates says what to do.
+ * Experiments tab or Campaigns view. A name that isn't there (deleted,
+ * discarded, never created, typed by hand) says so, with the picker right
+ * above and, when the picker can create it (`onCreate`), "Create it"; a date
+ * rule still written with its own dates says what to do.
  */
 export function NamedRuleRow({
   kind,
@@ -433,21 +434,28 @@ export function NamedRuleRow({
   summary,
   missing,
   inlineDate,
+  onCreate,
 }: {
   kind: NamedRuleKind;
   name: string;
   summary: string;
   missing: boolean;
   inlineDate?: boolean;
+  /** Opens the form that creates the missing name. */
+  onCreate?: () => void;
 }) {
   const t = useT();
   const tests = kind === "experiments";
   const note = inlineDate
     ? t("sectionsEditor.namedRulePicker.inlineDate")
     : missing
-      ? tests
-        ? t("sectionsEditor.namedRulePicker.missingTest")
-        : t("sectionsEditor.namedRulePicker.missingCampaign")
+      ? onCreate
+        ? tests
+          ? t("sectionsEditor.namedRulePicker.missingTest")
+          : t("sectionsEditor.namedRulePicker.missingCampaign")
+        : tests
+          ? t("sectionsEditor.namedRulePicker.missingTestNoCreate")
+          : t("sectionsEditor.namedRulePicker.missingCampaignNoCreate")
       : tests
         ? t("sectionsEditor.namedRulePicker.testRowHint")
         : t("sectionsEditor.namedRulePicker.campaignRowHint");
@@ -476,6 +484,18 @@ export function NamedRuleRow({
       >
         {note}
       </p>
+      {missing && !inlineDate && onCreate && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="w-fit"
+          onClick={onCreate}
+        >
+          <Plus className="size-4" />
+          {t("sectionsEditor.namedRulePicker.createMissing")}
+        </Button>
+      )}
       {!inlineDate && <NamedRuleViewsLink kind={kind} />}
     </div>
   );

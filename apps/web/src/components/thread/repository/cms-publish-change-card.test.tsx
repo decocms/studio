@@ -42,11 +42,11 @@ function renderCard(change: PublishChange) {
 }
 
 describe("PublishChangeCard", () => {
-  test("a page that uses a test or campaign that no longer exists says so, and can still be published or discarded", () => {
+  test("a page that uses a test or campaign that isn't there says so, and can still be published or discarded", () => {
     const body = renderCard(promo(["experiments", "campaigns"]));
     const note = body.getByTestId("publish-change-missing-rule");
     expect(note.textContent).toBe(
-      "Uses a test that no longer existsUses a campaign that no longer exists",
+      "Uses a test that isn't in your A/B testsUses a campaign that isn't in your campaigns",
     );
     expect(body.getByRole("button", { name: "Discard" })).not.toBeDisabled();
   });
@@ -56,34 +56,42 @@ describe("PublishChangeCard", () => {
     expect(body.queryByTestId("publish-change-missing-rule")).toBeNull();
   });
 
-  test("the A/B tests card says how many pages still use a test it no longer has", () => {
-    const tests = (count: number): PublishChange => ({
+  test("the A/B tests card counts pages and sections apart", () => {
+    const tests = (pages: number, sections: number): PublishChange => ({
       ...promo(),
       kind: "block",
       blockKey: "experiments",
       name: "A/B tests",
-      missingRuleUses: { kind: "experiments", count },
+      missingRuleUses: { kind: "experiments", pages, sections },
     });
-    expect(
-      renderCard(tests(2)).getByTestId("publish-change-missing-rule-uses")
-        .textContent,
-    ).toBe("2 pages still use tests that no longer exist");
-    cleanup();
-    expect(
-      renderCard(tests(1)).getByTestId("publish-change-missing-rule-uses")
-        .textContent,
-    ).toBe("1 page still uses a test that no longer exists");
+    const line = (pages: number, sections: number) => {
+      cleanup();
+      return renderCard(tests(pages, sections)).getByTestId(
+        "publish-change-missing-rule-uses",
+      ).textContent;
+    };
+    expect(line(2, 0)).toBe("2 pages use tests that aren't in your A/B tests");
+    expect(line(1, 0)).toBe("1 page uses a test that isn't in your A/B tests");
+    expect(line(0, 1)).toBe(
+      "1 section uses a test that isn't in your A/B tests",
+    );
+    expect(line(2, 1)).toBe(
+      "2 pages and 1 section use tests that aren't in your A/B tests",
+    );
   });
 
   test("speaks pt-br too", () => {
     expect(ptBR["thread.publishPopover.missingTest"]).toBe(
-      "Usa um teste que não existe mais",
+      "Usa um teste que não está nos seus testes A/B",
     );
     expect(ptBR["thread.publishPopover.missingCampaign"]).toBe(
-      "Usa uma campanha que não existe mais",
+      "Usa uma campanha que não está nas suas campanhas",
     );
     expect(ptBR["thread.publishPopover.missingTestUses"]).toBe(
-      "{count} páginas ainda usam testes que não existem mais",
+      "{places} usam testes que não estão nos seus testes A/B",
+    );
+    expect(ptBR["sectionsEditor.namedRuleUses.countBoth"]).toBe(
+      "{pages} e {sections}",
     );
   });
 });

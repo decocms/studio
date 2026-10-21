@@ -103,7 +103,7 @@ describe("NamedRuleUsedBy", () => {
 });
 
 describe("MissingNamedRuleUses", () => {
-  test("a calm line lists the pages that use a test that no longer exists, each one opening", () => {
+  test("a calm line lists the pages and sections that use a test that isn't there, each one opening", () => {
     const onOpen = mock((_row: NamedRuleUseRow) => {});
     render(
       <MissingNamedRuleUses
@@ -116,7 +116,9 @@ describe("MissingNamedRuleUses", () => {
       within(document.body).getByTestId("named-rule-missing-uses"),
     );
     expect(
-      section.getByText("These pages use tests that no longer exist."),
+      section.getByText(
+        "These pages and sections use tests that aren't in your A/B tests.",
+      ),
     ).toBeTruthy();
     fireEvent.click(section.getByText("Open"));
     expect(onOpen).toHaveBeenCalledWith(rows[0]);
@@ -130,13 +132,13 @@ describe("MissingNamedRuleUses", () => {
       within(document.body).queryByTestId("named-rule-missing-uses"),
     ).toBeNull();
     expect(en["sectionsEditor.namedRuleUses.missingCampaigns"]).toBe(
-      "These pages use campaigns that no longer exist.",
+      "These pages and sections use campaigns that aren't in your campaigns.",
     );
     expect(ptBR["sectionsEditor.namedRuleUses.missingTests"]).toBe(
-      "Estas páginas usam testes que não existem mais.",
+      "Estas páginas e seções usam testes que não estão nos seus testes A/B.",
     );
     expect(ptBR["sectionsEditor.namedRuleUses.missingCampaigns"]).toBe(
-      "Estas páginas usam campanhas que não existem mais.",
+      "Estas páginas e seções usam campanhas que não estão nas suas campanhas.",
     );
   });
 });
