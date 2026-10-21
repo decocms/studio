@@ -69,6 +69,9 @@ export const orgs = {
   "orgs.connections.openConnection": "Open connection",
   "orgs.connections.connectionDisabled": "Connection disabled",
   "orgs.connections.connectionEnabled": "Connection enabled",
+  "orgs.connections.connectionDeleted": "Connection deleted successfully",
+  "orgs.connections.failedToDeleteConnection":
+    "Failed to delete connection: {error}",
   "orgs.connections.createConnection": "Create Connection",
   "orgs.connections.createConnectionDescription":
     "Create a custom connection in your organization. Fill in the details below.",

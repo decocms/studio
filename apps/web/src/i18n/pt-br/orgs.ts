@@ -72,6 +72,9 @@ export const orgs = {
   "orgs.connections.openConnection": "Abrir conexão",
   "orgs.connections.connectionDisabled": "Conexão desativada",
   "orgs.connections.connectionEnabled": "Conexão ativada",
+  "orgs.connections.connectionDeleted": "Conexão deletada com sucesso",
+  "orgs.connections.failedToDeleteConnection":
+    "Falha ao deletar conexão: {error}",
   "orgs.connections.createConnection": "Criar Conexão",
   "orgs.connections.createConnectionDescription":
     "Crie uma conexão personalizada em sua organização. Preencha os detalhes abaixo.",
