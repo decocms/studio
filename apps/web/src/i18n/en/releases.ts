@@ -1,11 +1,13 @@
 /**
  * The Releases screen of a hosted site (the `releases` route). Business-user
- * copy: "Latest" is the release your last publish made the newest; "Reapply
- * release" publishes a new release with an earlier one's content (the same
- * words as the "Reapply: …" note it writes). Always "release", never
- * "version". Calm words: when something
- * might look different, say how to go back. No CDN, git, commit, revert, sha,
- * "current", "live" or "version" (`site-editor-copy.test.ts` enforces it).
+ * copy: "Latest" is the release your last publish made the newest; "Make
+ * current" publishes a new release with an earlier one's content (the note it
+ * writes says "Reapply: …"), and "Preview this version" opens an earlier
+ * release in a preview. Those two menu items (and the confirm button) are the
+ * only places that say "version" or "current"; everything else says
+ * "release". Calm words: when something might look different, say how to go
+ * back. No CDN, git, commit, revert, sha or "live"
+ * (`site-editor-copy.test.ts` enforces it).
  */
 export const releases = {
   "releases.title": "Releases",
@@ -16,14 +18,14 @@ export const releases = {
   "releases.lastPublished": "Last published {when}.",
   "releases.latest": "Latest",
   "releases.actions": "Release actions",
-  "releases.preview": "Preview this release",
-  "releases.reapply": "Reapply release",
+  "releases.preview": "Preview this version",
+  "releases.reapply": "Make current",
   "releases.reapplyTitle": "Reapply this release?",
   "releases.reapplyBody":
     "This publishes a new release with the same content as “{title}”. Changes made since will be replaced on your site.",
   "releases.reapplyUndoHint":
     "If something doesn't look right afterwards, reapply the release you have now to go back.",
-  "releases.reapplyConfirm": "Reapply",
+  "releases.reapplyConfirm": "Make current",
   "releases.reapplying": "Reapplying…",
   "releases.reapplied": "Reapplied. Your site will show it shortly.",
   "releases.reappliedUndoHint":

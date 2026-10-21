@@ -2,7 +2,8 @@
  * The site editor speaks to business users: its copy never names the
  * machinery behind a save or a publish. A publish toast says the site will
  * show it shortly, never "live"; the Releases screen says "release", never
- * "version".
+ * "version", except its two actions on an earlier release: "Preview this
+ * version" and "Make current" (the words the experiments design uses).
  */
 
 import { describe, expect, test } from "bun:test";
@@ -31,17 +32,15 @@ const BANNED: RegExp[] = [
   /\brevision/i,
   /\bsha\b/i,
   /\bcurrent\b/i,
-  /make current/i,
-  /tornar atual/i,
+  /\batual\b/i,
   /\brevert/i,
   /revers/i,
 ];
 
 /**
  * The Releases screen says "Latest" for the newest release, never what a
- * visitor sees right now; its action is "Reapply release" (always
- * "release", never "version"); and it stays calm (it says how to go back,
- * it doesn't warn twice).
+ * visitor sees right now; it says "release", never "version"; and it stays
+ * calm (it says how to go back, it doesn't warn twice).
  */
 const RELEASES_BANNED: RegExp[] = [
   /\blive\b/i,
@@ -53,6 +52,29 @@ const RELEASES_BANNED: RegExp[] = [
   /\banyway\b/i,
   /mesmo assim/i,
 ];
+
+/**
+ * The only strings allowed to say "version" or "current": the two actions on
+ * an earlier release (and the confirm button of the second), exactly these
+ * words. "Current" is still banned in every other string, since a sentence
+ * about what is "current" reads as what visitors see right now, which the
+ * site's cache decides, not Studio.
+ */
+const EXACT_EXCEPTIONS: Record<"en" | "pt-br", Record<string, string>> = {
+  en: {
+    "releases.preview": "Preview this version",
+    "releases.reapply": "Make current",
+    "releases.reapplyConfirm": "Make current",
+  },
+  "pt-br": {
+    "releases.preview": "Visualizar esta versão",
+    "releases.reapply": "Tornar atual",
+    "releases.reapplyConfirm": "Tornar atual",
+  },
+};
+
+const isException = (lang: "en" | "pt-br", key: string, value: string) =>
+  EXACT_EXCEPTIONS[lang][key] === value;
 
 /** Publish toasts: "Published. Your site will show it shortly." Never "live". */
 const PUBLISH_TOAST_PREFIX = "siteEditor.publish.";
@@ -72,6 +94,7 @@ describe("site editor copy", () => {
       const entries = siteEditorEntries(dict as Record<string, string>);
       expect(entries.length).toBeGreaterThan(0);
       for (const [key, value] of entries) {
+        if (isException(name, key, value)) continue;
         for (const banned of BANNED) {
           if (banned.test(value)) {
             throw new Error(`${key} says ${banned}: "${value}"`);
@@ -85,12 +108,13 @@ describe("site editor copy", () => {
     ["en", en],
     ["pt-br", ptBR],
   ] as const) {
-    test(`${name}: Releases say Latest and Reapply, calmly`, () => {
+    test(`${name}: Releases say Latest and release, calmly`, () => {
       const entries = Object.entries(dict as Record<string, string>).filter(
         ([key]) => key.startsWith("releases."),
       );
       expect(entries.length).toBeGreaterThan(0);
       for (const [key, value] of entries) {
+        if (isException(name, key, value)) continue;
         for (const banned of RELEASES_BANNED) {
           if (banned.test(value)) {
             throw new Error(`${key} says ${banned}: "${value}"`);
@@ -119,6 +143,17 @@ describe("site editor copy", () => {
     });
   }
 
+  test("the exceptions are exactly the Releases action words", () => {
+    for (const [lang, dict] of [
+      ["en", en],
+      ["pt-br", ptBR],
+    ] as const) {
+      for (const [key, value] of Object.entries(EXACT_EXCEPTIONS[lang])) {
+        expect((dict as Record<string, string>)[key]).toBe(value);
+      }
+    }
+  });
+
   test("the exact Published and Reapply words", () => {
     expect(en["siteEditor.publish.published"]).toBe(
       "Published. Your site will show it shortly.",
@@ -126,8 +161,10 @@ describe("site editor copy", () => {
     expect(ptBR["siteEditor.publish.published"]).toBe(
       "Publicado. Seu site vai mostrar em instantes.",
     );
-    expect(en["releases.reapply"]).toBe("Reapply release");
-    expect(ptBR["releases.reapply"]).toBe("Reaplicar release");
+    expect(en["releases.preview"]).toBe("Preview this version");
+    expect(ptBR["releases.preview"]).toBe("Visualizar esta versão");
+    expect(en["releases.reapply"]).toBe("Make current");
+    expect(ptBR["releases.reapply"]).toBe("Tornar atual");
     expect(en["releases.reapplyTitle"]).toBe("Reapply this release?");
     expect(ptBR["releases.reapplyTitle"]).toBe("Reaplicar esta release?");
     expect(en["releases.reapplied"]).toBe(

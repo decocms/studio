@@ -9,14 +9,14 @@ export const releases = {
   "releases.lastPublished": "Última publicação {when}.",
   "releases.latest": "Mais recente",
   "releases.actions": "Ações da release",
-  "releases.preview": "Visualizar esta release",
-  "releases.reapply": "Reaplicar release",
+  "releases.preview": "Visualizar esta versão",
+  "releases.reapply": "Tornar atual",
   "releases.reapplyTitle": "Reaplicar esta release?",
   "releases.reapplyBody":
     "Isso publica uma nova release com o mesmo conteúdo de “{title}”. As alterações feitas desde então serão substituídas no seu site.",
   "releases.reapplyUndoHint":
     "Se algo não ficar certo depois, reaplique a release que você tem agora para voltar.",
-  "releases.reapplyConfirm": "Reaplicar",
+  "releases.reapplyConfirm": "Tornar atual",
   "releases.reapplying": "Reaplicando…",
   "releases.reapplied": "Reaplicada. Seu site vai mostrá-la em instantes.",
   "releases.reappliedUndoHint":

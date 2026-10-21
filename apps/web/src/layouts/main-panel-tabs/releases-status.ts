@@ -1,6 +1,6 @@
 /**
  * What each row of the Releases screen says, as pure functions: its title in
- * business words, its pill and whether it offers Reapply release.
+ * business words, its pill and whether it offers "Make current".
  *
  * "Latest" is the version latest.json names: the newest one Publish (or a
  * reapply) put on the CDN. It says nothing about what a visitor's page
@@ -24,7 +24,7 @@ export function latestSha(
   return current ? current.revision : null;
 }
 
-/** Whether a row offers Reapply release: an earlier release that was released. */
+/** Whether a row offers "Make current": an earlier release that was released. */
 /**
  * Whether a version can be opened in the preview ("Preview this version"):
  * any one with a companion release, the latest included. The site reads that
