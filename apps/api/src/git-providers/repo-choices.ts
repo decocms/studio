@@ -26,7 +26,7 @@ import {
   repoWebUrl,
   splitOwnerName,
 } from "@decocms/shared/git-providers";
-import { accountIsServable } from "./credentials";
+import { accountGrantCovers, accountIsServable } from "./credentials";
 import {
   type LegacyRepoChoice,
   listLegacyRepoChoices,
@@ -126,16 +126,11 @@ export async function listOrgRepoChoices(
     const account = repository.accountId
       ? accountById.get(repository.accountId)
       : undefined;
-    if (!account || !accountIsServable(account)) return false;
-    if (
-      account.authKind === "github_app" &&
-      account.installationRepositoryIds !== null
-    ) {
-      return account.installationRepositoryIds.includes(
-        Number(repository.externalId),
-      );
-    }
-    return true;
+    return (
+      !!account &&
+      accountIsServable(account) &&
+      accountGrantCovers(account, repository)
+    );
   });
   return mergeRepoChoices(servable, await listLegacyRepoChoices(ctx, orgId));
 }

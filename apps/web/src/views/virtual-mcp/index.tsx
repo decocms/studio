@@ -80,6 +80,7 @@ import {
   SettingsSection,
 } from "@/components/settings/settings-section";
 import { useProjectSettingsSection } from "./settings/use-settings-section";
+import type { ProjectSettingsSectionKey } from "./settings/sections";
 import { SiteTokenSection } from "./settings/site-token-section";
 import { PreviewSettingsRows } from "./settings/preview-settings-rows";
 import { useMainSchemaV8 } from "@/hooks/use-main-schema-v8";
@@ -91,7 +92,6 @@ import {
   agentHasClonableSource,
   agentHasConnectedRepository,
 } from "@/lib/agent-capabilities";
-import { DevAgentSetup } from "@/components/dev-agent/dev-agent-setup.tsx";
 import { EnvVarsField } from "@/components/sandbox/runtime-card/env-vars-field";
 import { omitSandboxMap } from "@/lib/omit-sandbox-map";
 import { RepoRow } from "@/components/sandbox/runtime-card/repo-row";
@@ -331,8 +331,10 @@ function decodeJwtEmail(token: string): string | null {
 
 function VirtualMcpDetailViewWithData({
   virtualMcp,
+  contextSection,
 }: {
   virtualMcp: VirtualMCPEntity;
+  contextSection: ProjectContextSection | null;
 }) {
   const t = useT();
   const locale = useDateFnsLocale();
@@ -880,7 +882,17 @@ function VirtualMcpDetailViewWithData({
   };
 
   const addedConnectionIds = new Set(connections.map((c) => c.connection_id));
-  const { section } = useProjectSettingsSection();
+  const { section: settingsSection } = useProjectSettingsSection();
+  /** In Context the menu picks the section; Instructions there is its own page. */
+  const inContext = contextSection !== null;
+  const section =
+    contextSection === "instructions"
+      ? null
+      : (contextSection ?? settingsSection);
+  const showGeneral = section === "general";
+  const showInstructions = inContext
+    ? contextSection === "instructions"
+    : showGeneral;
   // Site tokens are for Blocks v8 sites only (hosted Deco CMS); a v7 site
   // never shows them.
   const hostedCms = useMainSchemaV8(virtualMcp.id) === "v8";
@@ -950,8 +962,13 @@ function VirtualMcpDetailViewWithData({
   return (
     <Page>
       <>
-        <Page.Title>{t("virtualMcp.settings.title")}</Page.Title>
-        <ProjectSettingsTabs section={section ?? "general"} />
+        {/* Context names the page and lists its sections in its own menu. */}
+        {!inContext && (
+          <>
+            <Page.Title>{t("virtualMcp.settings.title")}</Page.Title>
+            <ProjectSettingsTabs section={section ?? "general"} />
+          </>
+        )}
         <Page.Actions
           secondary={section === "connections" ? connectButton : undefined}
         >
@@ -964,7 +981,7 @@ function VirtualMcpDetailViewWithData({
             connectButton
           )}
         </Page.Actions>
-        <Page.Content key={section}>
+        <Page.Content key={contextSection ?? section}>
           <Page.Container
             width="standard"
             className="@container/project-settings"
@@ -972,8 +989,8 @@ function VirtualMcpDetailViewWithData({
             <SettingsPage>
               {/* Its own sections, so SettingsPage spaces them like every other
                 pair rather than the tighter rhythm inside the identity block. */}
-              {section === "general" && <ProjectViewsSection views={views} />}
-              {section === "general" && (
+              {showGeneral && <ProjectViewsSection views={views} />}
+              {showGeneral && (
                 <div className="flex flex-col gap-4">
                   <ProjectIdentity form={form} onCommit={flushAndSave} />
                   <div className="flex flex-wrap items-center gap-2 px-4 text-xs text-muted-foreground">
@@ -1050,7 +1067,7 @@ function VirtualMcpDetailViewWithData({
               )}
 
               {/* Instructions section */}
-              {section === "general" && (
+              {showInstructions && (
                 <section className="flex flex-col gap-3">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <h2 className="text-sm font-medium text-foreground">
@@ -1105,10 +1122,10 @@ function VirtualMcpDetailViewWithData({
               )}
 
               {/* Files section — files attached to the agent as reference */}
-              {section === "general" && <FilesSection form={form} />}
+              {showInstructions && <FilesSection form={form} />}
 
               {/* Sub-agents section — delegation allowlist for the subtask tool */}
-              {section === "general" && (
+              {showGeneral && (
                 <ErrorBoundary fallback={() => null}>
                   <Suspense
                     fallback={
@@ -1127,9 +1144,6 @@ function VirtualMcpDetailViewWithData({
                   </Suspense>
                 </ErrorBoundary>
               )}
-
-              {/* Development agent section (link a dev counterpart) */}
-              {section === "site" && <DevAgentSetup virtualMcp={virtualMcp} />}
 
               {/* CMS — content editing, then how changes reach the live
                 site. Publishing is code-agent only. */}
@@ -1209,7 +1223,7 @@ function VirtualMcpDetailViewWithData({
                   </SettingsCard>
                 </SettingsSection>
               )}
-              {section === "general" && (
+              {showGeneral && (
                 <SettingsSection
                   title={t("virtualMcp.settings.groups.advanced")}
                 >
@@ -1339,10 +1353,16 @@ function VirtualMcpDetailViewWithData({
 // Exported view component (route-agnostic)
 // ---------------------------------------------------------------------------
 
+/** A section of the project's Context: settings plus Instructions on its own. */
+export type ProjectContextSection = ProjectSettingsSectionKey | "instructions";
+
 export function VirtualMcpDetailView({
   virtualMcpId,
+  contextSection = null,
 }: {
   virtualMcpId: string;
+  /** Drawn as this section of the project's Context. */
+  contextSection?: ProjectContextSection | null;
 }) {
   const t = useT();
   const navigate = useNavigate();
@@ -1378,6 +1398,7 @@ export function VirtualMcpDetailView({
       // Re-seed the form on agent switch, not just on GitHub-repo change.
       key={`${virtualMcp.id}:${getActiveRepository(virtualMcp)?.connectionId ?? ""}`}
       virtualMcp={virtualMcp}
+      contextSection={contextSection}
     />
   );
 }

@@ -413,6 +413,17 @@ function IconAvatar({
   );
 }
 
+/** The tint a project's avatar draws in, for chrome that has to match it. */
+export function agentIconColor(
+  icon: string | null | undefined,
+  name: string,
+): AgentIconColor {
+  const parsed = parseIconString(icon);
+  if (parsed.type !== "fallback" && parsed.color)
+    return getIconColor(parsed.color);
+  return getDeterministicIcon(name).color;
+}
+
 export function AgentAvatar({
   icon,
   name,

@@ -48,6 +48,9 @@ export interface Settings {
   /** Admit `http://localhost:<port>` as a Jira site — a stand-in Jira for
    *  local development and e2e. See `normalizeSiteUrl`. */
   jiraAllowLocalSiteUrl: boolean;
+  /** Trusted deployment overrides for subscription usage upstreams. */
+  codexUsageUrl: string;
+  claudeUsageUrl: string;
   /** How long a Jira card must stay in a status before a trigger fires on it
    *  (`JIRA_SETTLE_SECONDS`, default 20, as on the board). Shortened only by
    *  e2e. */

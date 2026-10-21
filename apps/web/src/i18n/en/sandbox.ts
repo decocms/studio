@@ -2,6 +2,10 @@ export const sandbox = {
   "sandbox.appEditor.createdSection": 'Created section "{name}"',
   "sandbox.appEditor.editingBreadcrumb": "Editing breadcrumb",
   "sandbox.appEditor.failedAddSection": "Could not add section",
+  "sandbox.appEditor.schemaAwaitsBuild":
+    "Installed. Its settings appear once the site is built with this app — the schema is generated from the app's own module.",
+  "sandbox.appEditor.installNeedsCodingSession":
+    "Start a coding session to install apps.",
   "sandbox.appEditor.loadingSchema": "Loading app schema…",
   "sandbox.appEditor.noEditableSchema":
     "No editable schema found for this app.",
@@ -43,7 +47,6 @@ export const sandbox = {
   "sandbox.blogBrand.dosHint":
     "Instructions every generated post must follow. Write instructions, not adjectives.",
   "sandbox.blogBrand.dosNamePlaceholder": "What this rule is about",
-  "sandbox.blogBrand.addKeyword": "Add keyword",
   "sandbox.blogBrand.addPolicy": "Add policy",
   "sandbox.blogBrand.addSpecialDate": "Add date",
   "sandbox.blogBrand.addVocabulary": "Add word",
@@ -364,7 +367,6 @@ export const sandbox = {
   "sandbox.campaigns.untitled": "Untitled campaign",
   "sandbox.campaigns.viewBoard": "Board",
   "sandbox.campaigns.viewList": "List",
-  "sandbox.blogContext.removeEntry": "Remove",
   "sandbox.blogContext.subtitle":
     "The brand context your blog is written from — voice, formats and the campaigns it writes for.",
   "sandbox.blogContext.tabAutomations": "Automations",
@@ -456,6 +458,14 @@ export const sandbox = {
   "sandbox.collectionsSidebar.settings": "Settings",
   "sandbox.collectionsSidebar.site": "Site",
   "sandbox.contentBrowser.createdSection": 'Created section "{name}"',
+  "sandbox.contentBrowser.deleteDialog.cancel": "Cancel",
+  "sandbox.contentBrowser.deleteDialog.delete": "Delete",
+  "sandbox.contentBrowser.deleteDialog.deleting": "Deleting…",
+  "sandbox.contentBrowser.deleteDialog.descriptionPermanent":
+    '"{label}" will be removed permanently. This can\'t be undone.',
+  "sandbox.contentBrowser.deleteDialog.descriptionSection":
+    '"{label}" will be removed. Pages that still reference it will lose this section.',
+  "sandbox.contentBrowser.deleteDialog.title": "Delete {noun}?",
   "sandbox.contentBrowser.duplicateFailed": "Duplicate failed",
   "sandbox.contentBrowser.duplicatedSection": 'Duplicated "{name}"',
   "sandbox.contentBrowser.renameFailed": "Rename failed",
@@ -747,7 +757,6 @@ export const sandbox = {
   "sandbox.linkPicker.noProducts": "No matching products",
   "sandbox.mediaBlocks.divider": "Divider",
   "sandbox.mediaBlocks.fullWidth": "Full width",
-  "sandbox.mediaBlocks.image": "Image",
   "sandbox.mediaBlocks.highPriority": "Priority",
   "sandbox.mediaBlocks.highPriorityHint":
     "Loads eagerly with high fetch priority. Use for images above the fold.",

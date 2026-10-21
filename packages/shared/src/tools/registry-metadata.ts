@@ -193,6 +193,7 @@ const ALL_TOOL_NAMES = [
   // Claude subscription (per-user OAuth credential for the claude-code harness)
   "CODEX_SUBSCRIPTION_CONNECT",
   "CODEX_SUBSCRIPTION_STATUS",
+  "SUBSCRIPTION_USAGE_GET",
   "CODEX_SUBSCRIPTION_DISCONNECT",
   "CODEX_SUBSCRIPTION_SYNC",
   "CLAUDE_SUBSCRIPTION_CONNECT",
@@ -1005,6 +1006,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "AI Providers",
   },
   {
+    name: "SUBSCRIPTION_USAGE_GET",
+    description: "Read your personal subscription usage and reset times",
+    category: "AI Providers",
+  },
+  {
     name: "CODEX_SUBSCRIPTION_STATUS",
     description: "Whether your ChatGPT subscription is linked for Codex",
     category: "AI Providers",
@@ -1758,6 +1764,7 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       // Personal credentials never grant access to another member's plan.
       "CODEX_SUBSCRIPTION_CONNECT",
       "CODEX_SUBSCRIPTION_STATUS",
+      "SUBSCRIPTION_USAGE_GET",
       "CODEX_SUBSCRIPTION_DISCONNECT",
       "CODEX_SUBSCRIPTION_SYNC",
       // View connections
@@ -2220,12 +2227,14 @@ export const USER_ROLE_TOOLS: ReadonlySet<string> = new Set(
 
 /**
  * Group gated capabilities by their UI section (e.g., "Organization", "Automations").
- * Used to render the role editor's capability picker.
+ * Used to render the role editor's capability picker. (memoized)
  */
 export function getCapabilitySections(): Array<{
   section: string;
   capabilities: PermissionCapability[];
 }> {
+  if (cachedCapabilitySections) return cachedCapabilitySections;
+
   const map = new Map<string, PermissionCapability[]>();
   for (const cap of PERMISSION_CAPABILITIES) {
     if (cap.id === BASIC_USAGE_CAPABILITY_ID) continue;
@@ -2233,10 +2242,13 @@ export function getCapabilitySections(): Array<{
     arr.push(cap);
     map.set(cap.section, arr);
   }
-  return Array.from(map.entries()).map(([section, capabilities]) => ({
-    section,
-    capabilities,
-  }));
+  cachedCapabilitySections = Array.from(map.entries()).map(
+    ([section, capabilities]) => ({
+      section,
+      capabilities,
+    }),
+  );
+  return cachedCapabilitySections;
 }
 
 /**
@@ -2260,27 +2272,28 @@ export function toggleCapabilityInTools(
   currentTools: string[],
   enable: boolean,
 ): string[] {
-  if (enable) {
-    const toolSet = new Set(currentTools);
-    for (const tool of cap.tools) toolSet.add(tool);
-    return Array.from(toolSet);
-  }
   const toolSet = new Set(currentTools);
-  for (const tool of cap.tools) toolSet.delete(tool);
+  for (const tool of cap.tools) {
+    if (enable) toolSet.add(tool);
+    else toolSet.delete(tool);
+  }
   return Array.from(toolSet);
 }
 
 /**
  * Map of gated capability id → granted, for the privileged built-in roles
  * (owner / admin) which bypass every permission check. The hidden basic-usage
- * capability is never part of the map — it's always-on and not UI-gated.
+ * capability is never part of the map — it's always-on and not UI-gated. (memoized)
  */
 export function allCapabilitiesGranted(): Record<string, boolean> {
+  if (cachedAllCapabilitiesGranted) return cachedAllCapabilitiesGranted;
+
   const out: Record<string, boolean> = {};
   for (const cap of PERMISSION_CAPABILITIES) {
     if (cap.id === BASIC_USAGE_CAPABILITY_ID) continue;
     out[cap.id] = true;
   }
+  cachedAllCapabilitiesGranted = out;
   return out;
 }
 
@@ -2329,14 +2342,20 @@ export function resolveCapabilities(
   return out;
 }
 
-// ============================================================================
-// Exports
-// ============================================================================
+// Memoized results — static data never changes after first compute
+let cachedToolsByCategory: Record<ToolCategory, ToolMetadata[]> | null = null;
+let cachedCapabilitySections: Array<{
+  section: string;
+  capabilities: PermissionCapability[];
+}> | null = null;
+let cachedAllCapabilitiesGranted: Record<string, boolean> | null = null;
 
 /**
  * Get tools grouped by category
  */
 export function getToolsByCategory(): Record<ToolCategory, ToolMetadata[]> {
+  if (cachedToolsByCategory) return cachedToolsByCategory;
+
   const grouped: Record<ToolCategory, ToolMetadata[]> = {
     Organizations: [],
     Connections: [],
@@ -2367,5 +2386,6 @@ export function getToolsByCategory(): Record<ToolCategory, ToolMetadata[]> {
     grouped[tool.category].push(tool);
   }
 
+  cachedToolsByCategory = grouped;
   return grouped;
 }

@@ -60,6 +60,18 @@ export interface OrderMonitorSeries {
   y1: number[];
 }
 
+/** One sales channel's orders (`orders.sales_channel`), per clock hour like `OrderMonitorDay.orders`. */
+export interface OrderMonitorChannel {
+  id: string;
+  /** The store's name for the channel; null until the ingest has written one. */
+  name: string | null;
+  today: (number | null)[];
+  d1: number[];
+  /** Orders today so far, and on D-1 up to the same time of day. */
+  soFar: number;
+  d1SoFar: number;
+}
+
 export interface OrderMonitorDay {
   at: string;
   timezone: string;
@@ -91,6 +103,8 @@ export interface OrderMonitorDay {
     y1: number;
   };
   verdicts: Record<OrderMonitorRule, OrderMonitorVerdict>;
+  /** Busiest on D-1 first, so a channel keeps its place and color through the day. */
+  channels: OrderMonitorChannel[];
 }
 
 export interface OrderMonitorPush {

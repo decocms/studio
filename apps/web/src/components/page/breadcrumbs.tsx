@@ -18,6 +18,7 @@ import { useElementWidth } from "@/hooks/use-element-width";
 import {
   BreadcrumbContribution,
   BreadcrumbProvider,
+  DetachedBreadcrumbs,
   useBreadcrumbStore,
 } from "./breadcrumb-context";
 import {
@@ -221,4 +222,5 @@ function PageBreadcrumbsRoot(extension: BreadcrumbExtension) {
 
 export const PageBreadcrumbs = Object.assign(PageBreadcrumbsRoot, {
   Provider: BreadcrumbProvider,
+  Detached: DetachedBreadcrumbs,
 });

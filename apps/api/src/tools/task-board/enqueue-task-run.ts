@@ -5,7 +5,7 @@ import {
 } from "@/dispatch-queue/run-priority";
 import type { StudioContext } from "@/core/studio-context";
 import type { TaskBoardItem } from "@/storage/types";
-import { resolveTier } from "@/core/resolve-tier";
+import { resolveTaskRunModel, taskRunHarness } from "./task-run-harness";
 import { enqueueThreadRun } from "@/dispatch-queue";
 import { PartEmitter } from "@/api/routes/decopilot/part-emitter";
 import { getDecopilotId } from "@decocms/shared/sdk";
@@ -138,7 +138,7 @@ export async function enqueueAgentRunForTask(
 ): Promise<{ threadId: string; isNew: boolean }> {
   const organizationId = task.organizationId;
   const userId = task.assignedBy ?? task.createdBy;
-  const harnessId = "claude-code";
+  const harnessId = taskRunHarness(task.harnessId, opts.runClass);
 
   // The Kanban gate, at the point that spends.
   //
@@ -163,7 +163,12 @@ export async function enqueueAgentRunForTask(
   }
   await assertAiBudget(ctx, organizationId, "running a task agent");
 
-  const model = await resolveTier(ctx, "smart");
+  const model = await resolveTaskRunModel(
+    ctx,
+    organizationId,
+    userId,
+    harnessId,
+  );
   const agentId = opts.agentId ?? getDecopilotId(organizationId);
 
   // Best-effort: an unreadable row costs the run its house rules, never the dispatch.

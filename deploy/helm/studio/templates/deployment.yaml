@@ -28,11 +28,9 @@ spec:
       {{- if or .Values.metrics.scrape .Values.podAnnotations }}
       annotations:
         {{- if .Values.metrics.scrape }}
-        # Annotation-based discovery: vmagent's kubernetes-pods job scrapes the
-        # nginx proxies /metrics to the API containers; scrape the service-facing
-        # http port so annotation discovery follows the front door.
+        # Scrape the dedicated pod-only listener, never the public HTTP port.
         prometheus.io/scrape: "true"
-        prometheus.io/port: "8080"
+        prometheus.io/port: "8081"
         prometheus.io/path: {{ .Values.metrics.path | quote }}
         {{- end }}
         {{- with .Values.podAnnotations }}
@@ -81,6 +79,11 @@ spec:
             - name: http
               containerPort: 8080
               protocol: TCP
+            {{- if .Values.metrics.scrape }}
+            - name: metrics
+              containerPort: 8081
+              protocol: TCP
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /healthz

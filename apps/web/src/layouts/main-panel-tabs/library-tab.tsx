@@ -32,6 +32,7 @@ export function LibraryTab({
   root,
   rootLabel,
   filePreview = "panel",
+  context,
 }: {
   /** Top of the tree — one project's folder, or the org's drive by default. */
   root?: string;
@@ -47,6 +48,8 @@ export function LibraryTab({
    * `side` leaves it to the Library, which opens it beside the list.
    */
   filePreview?: FilePreviewMode;
+  /** Drawn inside Context. */
+  context?: boolean;
 } = {}) {
   const { openPanel } = usePanelNavigate();
   const [openFile, setOpenFile] = useState<string | null>(null);
@@ -58,6 +61,7 @@ export function LibraryTab({
       <LibraryPage
         root={root}
         rootLabel={rootLabel}
+        context={context}
         onOpenFile={fileOpener(filePreview, setOpenFile, (path) =>
           openPanel(formatLibraryFileTabId(path)),
         )}

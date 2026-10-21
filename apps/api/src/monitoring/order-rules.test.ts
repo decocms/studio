@@ -1,5 +1,10 @@
 import { describe, expect, it } from "bun:test";
-import { dstBuckets, doneBuckets, localDayStart } from "./order-lake";
+import {
+  dstBuckets,
+  doneBuckets,
+  localBucketStart,
+  localDayStart,
+} from "./order-lake";
 import {
   buildDayView,
   BUCKETS_PER_DAY,
@@ -173,6 +178,21 @@ describe("DST", () => {
       ).toISOString(),
     ).toBe("2026-11-01T04:00:00.000Z");
   });
+
+  it("agrees with localDayStart on bucket 0 across a switch", () => {
+    expect(
+      localBucketStart(
+        new Date("2026-03-08T12:00:00Z"),
+        "America/New_York",
+        0,
+      ).toISOString(),
+    ).toBe(
+      localDayStart(
+        new Date("2026-03-08T12:00:00Z"),
+        "America/New_York",
+      ).toISOString(),
+    );
+  });
 });
 
 describe("buildDayView", () => {
@@ -213,6 +233,31 @@ describe("buildDayView", () => {
     expect(v.cancellations.canceled.w1[0]).toBe(8); // approximation: 2 × 4
     // No 28 days of history, so no spike band.
     expect(v.cancellations.canceledWarnAt[0]).toBeNull();
+  });
+
+  it("splits orders by channel, busiest on D-1 first, so far vs D-1 at the same time", () => {
+    const channels = [
+      { id: "1", name: null, today: flat(2), d1: flat(1) },
+      // The app went dark at 06:00 today; D-1 was its busiest.
+      {
+        id: "10",
+        name: "App",
+        today: withDip(flat(3), 24, 96, 0),
+        d1: flat(3),
+      },
+    ];
+    const v = buildDayView(store({}, {}, { channels }), at);
+    expect(v.channels.map((c) => c.id)).toEqual(["10", "1"]);
+    expect(v.channels[0]).toMatchObject({
+      name: "App",
+      soFar: 72,
+      d1SoFar: 144,
+    });
+    expect(v.channels[0]?.today[5]).toBe(12);
+    expect(v.channels[0]?.today[6]).toBe(0);
+    expect(v.channels[0]?.today[12]).toBeNull();
+    expect(v.channels[1]).toMatchObject({ name: null, soFar: 96, d1SoFar: 48 });
+    expect(buildDayView(store({}), at).channels).toEqual([]);
   });
 });
 

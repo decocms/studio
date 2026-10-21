@@ -8,7 +8,8 @@ import { useLocalStorage } from "@/hooks/use-local-storage";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import { isModKey } from "@/lib/keyboard-shortcuts";
 import { calculateUsageStats } from "@/lib/usage-utils.ts";
-import { AUTOSEND_QUERY_VALUE, writeStoredAutosend } from "@/lib/autosend";
+import { writeStoredAutosend } from "@/lib/autosend";
+import { homeSubmitSearch } from "./home-submit-search";
 import {
   HOME_DRAFT_KEY,
   clearChatDraft,
@@ -359,17 +360,7 @@ function useHomeSubmit() {
       // Toast already surfaced by the store; navigate anyway — the route's
       // ensure-fallback will retry if the row is missing.
     }
-    const search: Record<string, string | boolean> = {
-      autosend: AUTOSEND_QUERY_VALUE,
-    };
-    // `sidepanel` is retained across navigation, so submitting from a Home
-    // whose chat panel is collapsed would land on the new thread with the
-    // report invisible behind "Show chat". Task mode is a hand-off — show the
-    // work, and only the work.
-    if (taskIntake) {
-      search.sidepanel = true;
-      search.mainpanel = false;
-    }
+    const search = homeSubmitSearch(taskIntake);
     navigateToTabRouteTarget(
       navigate,
       canonicalThreadRouteTarget({
@@ -386,10 +377,13 @@ export function ChatInput({
   onOpenContextPanel,
   showConnectionsBanner = false,
   homeTaskComposer = false,
+  taskHint = true,
 }: {
   onOpenContextPanel?: () => void;
   showConnectionsBanner?: boolean;
   homeTaskComposer?: boolean;
+  /** The PR-review promise under the composer; off where the work is not code. */
+  taskHint?: boolean;
 }) {
   const t = useT();
   const stream = useOptionalChatStream();
@@ -961,7 +955,7 @@ export function ChatInput({
                         disabled={!canSubmit && !showStopOrCancel}
                         className={cn(
                           taskIntake
-                            ? "h-8 px-3 transition-all"
+                            ? "h-8 px-3 transition-all @max-[479px]/chat-bottom:w-8 @max-[479px]/chat-bottom:px-0"
                             : "size-8 transition-all",
                           !canSubmit &&
                             !showStopOrCancel &&
@@ -990,7 +984,11 @@ export function ChatInput({
                           <Stop size={20} />
                         ) : (
                           <>
-                            {taskIntake && t("chat.input.startTask")}
+                            {taskIntake && (
+                              <span className="hidden @[480px]/chat-bottom:inline">
+                                {t("chat.input.startTask")}
+                              </span>
+                            )}
                             <ArrowUp size={20} />
                           </>
                         )}
@@ -1002,7 +1000,7 @@ export function ChatInput({
             </form>
           </TiptapProvider>
 
-          {homeTaskComposer && taskIntake && (
+          {taskIntake && taskHint && (
             <p className="px-3 pt-3 text-left text-xs text-muted-foreground">
               {t("chat.input.taskHint")}
             </p>

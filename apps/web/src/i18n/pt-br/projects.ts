@@ -1,6 +1,7 @@
 import type { projects as projectsEn } from "../en/projects.ts";
 
 export const projects = {
+  "projects.overview.metrics": "Métricas",
   "projects.platform.vtex": "VTEX",
   "projects.platform.shopify": "Shopify",
   "projects.platform.wake": "Wake",
@@ -63,8 +64,6 @@ export const projects = {
   "projects.flat.viewFiles": "Arquivos",
   "projects.flat.viewAnalytics": "Análise",
   "projects.apps.heading": "Apps",
-  "projects.apps.seeAll": "Ver todos",
-  "projects.apps.showLess": "Ver menos",
   "projects.apps.reports": "Relatório",
   "projects.apps.reportsCaption": "O que está errado na loja",
   "projects.apps.siteEditor": "Editor de site",
@@ -85,5 +84,4 @@ export const projects = {
   "projects.apps.automationsCaption": "Trabalho que roda em agenda",
   "projects.apps.experiments": "Experimentos",
   "projects.apps.experimentsCaption": "Testes A/B e seus resultados",
-  "projects.flat.close": "Fechar",
 } as const satisfies Record<keyof typeof projectsEn, string>;

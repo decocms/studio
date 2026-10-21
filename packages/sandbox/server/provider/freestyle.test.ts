@@ -58,6 +58,46 @@ describe("FreestyleSandboxProvider", () => {
     provider.close();
   });
 
+  test("retries the org-fs relay while the edge answers 502", async () => {
+    const relays: number[] = [];
+    globalThis.fetch = Object.assign(
+      async (input: RequestInfo | URL) => {
+        if (!String(input).endsWith("/_sandbox/orgfs-config")) {
+          return Response.json({});
+        }
+        relays.push(Date.now());
+        return relays.length === 1
+          ? new Response("the mapped VM refused the request", { status: 502 })
+          : Response.json({ written: true });
+      },
+      { preconnect: realFetch.preconnect },
+    );
+    const { client } = fakeClient();
+    const provider = new FreestyleSandboxProvider({ apiKey: "k", client });
+    await provider.ensure(ID, { orgFsConfigJson: "{}" });
+    expect(relays).toHaveLength(2);
+    provider.close();
+  });
+
+  test("does not retry an org-fs relay the daemon refused", async () => {
+    let relays = 0;
+    globalThis.fetch = Object.assign(
+      async (input: RequestInfo | URL) => {
+        if (!String(input).endsWith("/_sandbox/orgfs-config")) {
+          return Response.json({});
+        }
+        relays++;
+        return new Response("unauthorized", { status: 401 });
+      },
+      { preconnect: realFetch.preconnect },
+    );
+    const { client } = fakeClient();
+    const provider = new FreestyleSandboxProvider({ apiKey: "k", client });
+    await provider.ensure(ID, { orgFsConfigJson: "{}" });
+    expect(relays).toBe(1);
+    provider.close();
+  });
+
   test("warm caches each namespace mode in a separate base snapshot", async () => {
     const snapshots: string[] = [];
     const exec: string[] = [];
@@ -182,6 +222,38 @@ describe("pauseIdle", () => {
     });
     expect(await provider.pauseIdle()).toEqual(["quiet"]);
     expect(pauses).toEqual(["id-quiet"]);
+    provider.close();
+  });
+
+  test("doesn't skip a VM that shifts into the next page after an earlier page is paused", async () => {
+    globalThis.fetch = Object.assign(
+      async () => Response.json({ idleMs: 60 * 60_000 }),
+      { preconnect: realFetch.preconnect },
+    );
+    const all = Array.from({ length: 150 }, (_, i) => vm(`v${i}`));
+    const pauses: string[] = [];
+    const client = {
+      vms: {
+        list: async ({ limit, offset }: { limit: number; offset: number }) => ({
+          vms: all.slice(offset, offset + limit),
+        }),
+        ref: (id: string) => ({
+          pause: async () => {
+            pauses.push(id);
+            const idx = all.findIndex((v) => v.id === id);
+            all.splice(idx, 1);
+          },
+        }),
+      },
+    } as unknown as Freestyle;
+    const provider = new FreestyleSandboxProvider({
+      apiKey: "k",
+      client,
+      idlePauseMs: 10 * 60_000,
+    });
+    const result = await provider.pauseIdle();
+    expect(result).toHaveLength(150);
+    expect(pauses).toHaveLength(150);
     provider.close();
   });
 
@@ -317,6 +389,20 @@ describe("resume reclaims a daemon that lost its claim", () => {
     expect(execs).toEqual(["reboot -f"]);
     expect(calls).toHaveLength(2);
     expect(calls[1]!.body.auth).toEqual({ rotateToken: TOKEN });
+    provider.close();
+  });
+
+  test("retries a reclaim while the edge answers 502", async () => {
+    const { client, execs } = existingVm();
+    const calls = daemon([
+      () => new Response("the mapped VM refused the request", { status: 502 }),
+      () => Response.json({}),
+    ]);
+    const provider = new FreestyleSandboxProvider({ apiKey: "k", client });
+    await provider.ensure(ID);
+    expect(calls).toHaveLength(2);
+    expect(calls[1]!.body.auth).toEqual({ rotateToken: TOKEN });
+    expect(execs).toEqual([]);
     provider.close();
   });
 });

@@ -1,3 +1,4 @@
+import { TaskBoardHarnessSchema } from "@decocms/shared/task-board";
 import { z } from "zod";
 
 import {
@@ -160,6 +161,9 @@ export const TaskBoardItemPrSchema = z.object({
 });
 
 export const TaskBoardItemSchema = z.object({
+  harnessId: TaskBoardHarnessSchema,
+  parentId: z.string().nullable(),
+  isEpic: z.boolean(),
   id: z.string(),
   organizationId: z.string(),
   title: z.string(),

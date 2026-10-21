@@ -4,6 +4,10 @@ export const sandbox = {
   "sandbox.appEditor.createdSection": 'Seção "{name}" criada',
   "sandbox.appEditor.editingBreadcrumb": "Trilha de navegação de edição",
   "sandbox.appEditor.failedAddSection": "Não foi possível adicionar a seção",
+  "sandbox.appEditor.schemaAwaitsBuild":
+    "Instalado. As configurações aparecem depois que o site for buildado com este app — o schema é gerado a partir do módulo do próprio app.",
+  "sandbox.appEditor.installNeedsCodingSession":
+    "Inicie uma sessão de código para instalar apps.",
   "sandbox.appEditor.loadingSchema": "Carregando schema do app…",
   "sandbox.appEditor.noEditableSchema":
     "Nenhum schema editável foi encontrado para este app.",
@@ -46,7 +50,6 @@ export const sandbox = {
   "sandbox.blogBrand.dosHint":
     "Instruções que todo post gerado deve seguir. Escreva instruções, não adjetivos.",
   "sandbox.blogBrand.dosNamePlaceholder": "Sobre o que é esta regra",
-  "sandbox.blogBrand.addKeyword": "Adicionar palavra-chave",
   "sandbox.blogBrand.addPolicy": "Adicionar política",
   "sandbox.blogBrand.addSpecialDate": "Adicionar data",
   "sandbox.blogBrand.addVocabulary": "Adicionar palavra",
@@ -368,7 +371,6 @@ export const sandbox = {
   "sandbox.campaigns.untitled": "Campanha sem título",
   "sandbox.campaigns.viewBoard": "Quadro",
   "sandbox.campaigns.viewList": "Lista",
-  "sandbox.blogContext.removeEntry": "Remover",
   "sandbox.blogContext.subtitle":
     "O contexto de marca do qual seu blog é escrito — voz, formatos e as campanhas para as quais ele escreve.",
   "sandbox.blogContext.tabAutomations": "Automações",
@@ -461,6 +463,14 @@ export const sandbox = {
   "sandbox.collectionsSidebar.settings": "Configurações",
   "sandbox.collectionsSidebar.site": "Site",
   "sandbox.contentBrowser.createdSection": 'Seção "{name}" criada',
+  "sandbox.contentBrowser.deleteDialog.cancel": "Cancelar",
+  "sandbox.contentBrowser.deleteDialog.delete": "Excluir",
+  "sandbox.contentBrowser.deleteDialog.deleting": "Excluindo…",
+  "sandbox.contentBrowser.deleteDialog.descriptionPermanent":
+    '"{label}" será removido permanentemente. Isso não pode ser desfeito.',
+  "sandbox.contentBrowser.deleteDialog.descriptionSection":
+    '"{label}" será removida. Páginas que ainda a referenciam perderão esta seção.',
+  "sandbox.contentBrowser.deleteDialog.title": "Excluir {noun}?",
   "sandbox.contentBrowser.duplicateFailed": "Falha ao duplicar",
   "sandbox.contentBrowser.duplicatedSection": '"{name}" duplicada',
   "sandbox.contentBrowser.renameFailed": "Falha ao renomear",
@@ -759,7 +769,6 @@ export const sandbox = {
   "sandbox.linkPicker.noProducts": "Nenhum produto encontrado",
   "sandbox.mediaBlocks.divider": "Divisor",
   "sandbox.mediaBlocks.fullWidth": "Largura total",
-  "sandbox.mediaBlocks.image": "Imagem",
   "sandbox.mediaBlocks.highPriority": "Prioridade",
   "sandbox.mediaBlocks.highPriorityHint":
     "Carrega de imediato e com prioridade alta. Use em imagens acima da dobra.",

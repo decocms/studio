@@ -124,6 +124,7 @@ export interface StudioToolIO {
             cheap_reviewer_model?: boolean | undefined;
             coding_agent_org_mcps?: boolean | undefined;
             coding_agents_claude_code?: boolean | undefined;
+            task_board_codex?: boolean | undefined;
             chat_harness_codex?: boolean | undefined;
             chat_harness_sandbox_only?: boolean | undefined;
             sandbox_repo_snapshots?: boolean | undefined;
@@ -137,6 +138,7 @@ export interface StudioToolIO {
             site_create_enabled?: boolean | undefined;
             new_blocks_editor?: boolean | undefined;
             blog_ai_enabled?: boolean | undefined;
+            site_apps_install_enabled?: boolean | undefined;
             hide_default_blog_blocks?: boolean | undefined;
           }
         | null
@@ -207,6 +209,7 @@ export interface StudioToolIO {
             cheap_reviewer_model?: boolean | undefined;
             coding_agent_org_mcps?: boolean | undefined;
             coding_agents_claude_code?: boolean | undefined;
+            task_board_codex?: boolean | undefined;
             chat_harness_codex?: boolean | undefined;
             chat_harness_sandbox_only?: boolean | undefined;
             sandbox_repo_snapshots?: boolean | undefined;
@@ -220,6 +223,7 @@ export interface StudioToolIO {
             site_create_enabled?: boolean | undefined;
             new_blocks_editor?: boolean | undefined;
             blog_ai_enabled?: boolean | undefined;
+            site_apps_install_enabled?: boolean | undefined;
             hide_default_blog_blocks?: boolean | undefined;
           }
         | undefined;
@@ -286,6 +290,7 @@ export interface StudioToolIO {
             cheap_reviewer_model?: boolean | undefined;
             coding_agent_org_mcps?: boolean | undefined;
             coding_agents_claude_code?: boolean | undefined;
+            task_board_codex?: boolean | undefined;
             chat_harness_codex?: boolean | undefined;
             chat_harness_sandbox_only?: boolean | undefined;
             sandbox_repo_snapshots?: boolean | undefined;
@@ -299,6 +304,7 @@ export interface StudioToolIO {
             site_create_enabled?: boolean | undefined;
             new_blocks_editor?: boolean | undefined;
             blog_ai_enabled?: boolean | undefined;
+            site_apps_install_enabled?: boolean | undefined;
             hide_default_blog_blocks?: boolean | undefined;
           }
         | null
@@ -374,10 +380,13 @@ export interface StudioToolIO {
         | undefined;
       priority?: "none" | "low" | "medium" | "high" | "urgent" | undefined;
       type?: "bug" | "feature" | "chore" | "spike" | "security" | undefined;
+      harnessId?: "claude-code" | "codex" | undefined;
       assigneeId?: string | null | undefined;
       repo?: string | null | undefined;
       virtualMcpId?: string | null | undefined;
       dueDate?: string | null | undefined;
+      parentId?: string | null | undefined;
+      isEpic?: boolean | undefined;
       tagIds?: string[] | undefined;
       sprintId?: string | null | undefined;
       prUrl?: string | null | undefined;
@@ -385,6 +394,9 @@ export interface StudioToolIO {
     };
     output: {
       item: {
+        harnessId: "claude-code" | "codex";
+        parentId: string | null;
+        isEpic: boolean;
         id: string;
         organizationId: string;
         title: string;
@@ -463,6 +475,9 @@ export interface StudioToolIO {
     input: { [x: string]: never };
     output: {
       items: {
+        harnessId: "claude-code" | "codex";
+        parentId: string | null;
+        isEpic: boolean;
         id: string;
         organizationId: string;
         title: string;
@@ -555,12 +570,15 @@ export interface StudioToolIO {
         | undefined;
       priority?: "none" | "low" | "medium" | "high" | "urgent" | undefined;
       type?: "bug" | "feature" | "chore" | "spike" | "security" | undefined;
+      harnessId?: "claude-code" | "codex" | undefined;
       assigneeId?: string | null | undefined;
       repo?: string | null | undefined;
       virtualMcpId?: string | null | undefined;
       dueDate?: string | null | undefined;
       sortOrder?: number | undefined;
       previewRoutes?: string[] | undefined;
+      parentId?: string | null | undefined;
+      isEpic?: boolean | undefined;
       tagIds?: string[] | undefined;
       sprintId?: string | null | undefined;
       linkThreadId?: string | undefined;
@@ -568,6 +586,9 @@ export interface StudioToolIO {
     };
     output: {
       item: {
+        harnessId: "claude-code" | "codex";
+        parentId: string | null;
+        isEpic: boolean;
         id: string;
         organizationId: string;
         title: string;
@@ -3641,7 +3662,6 @@ export interface StudioToolIO {
           [x: string]: unknown;
           instructions: string | null;
           subAgents?: string[] | null | undefined;
-          liveAgentId?: string | null | undefined;
           ui?:
             | {
                 banner?: string | null | undefined;
@@ -3905,7 +3925,6 @@ export interface StudioToolIO {
               [x: string]: unknown;
               instructions?: string | null | undefined;
               subAgents?: string[] | null | undefined;
-              liveAgentId?: string | null | undefined;
               ui?:
                 | {
                     banner?: string | null | undefined;
@@ -4104,7 +4123,6 @@ export interface StudioToolIO {
           [x: string]: unknown;
           instructions: string | null;
           subAgents?: string[] | null | undefined;
-          liveAgentId?: string | null | undefined;
           ui?:
             | {
                 banner?: string | null | undefined;
@@ -4335,7 +4353,6 @@ export interface StudioToolIO {
           [x: string]: unknown;
           instructions: string | null;
           subAgents?: string[] | null | undefined;
-          liveAgentId?: string | null | undefined;
           ui?:
             | {
                 banner?: string | null | undefined;
@@ -4557,7 +4574,6 @@ export interface StudioToolIO {
           [x: string]: unknown;
           instructions: string | null;
           subAgents?: string[] | null | undefined;
-          liveAgentId?: string | null | undefined;
           ui?:
             | {
                 banner?: string | null | undefined;
@@ -4774,7 +4790,6 @@ export interface StudioToolIO {
               [x: string]: unknown;
               instructions?: string | null | undefined;
               subAgents?: string[] | null | undefined;
-              liveAgentId?: string | null | undefined;
               ui?:
                 | {
                     banner?: string | null | undefined;
@@ -4981,7 +4996,6 @@ export interface StudioToolIO {
           [x: string]: unknown;
           instructions: string | null;
           subAgents?: string[] | null | undefined;
-          liveAgentId?: string | null | undefined;
           ui?:
             | {
                 banner?: string | null | undefined;
@@ -5201,7 +5215,6 @@ export interface StudioToolIO {
           [x: string]: unknown;
           instructions: string | null;
           subAgents?: string[] | null | undefined;
-          liveAgentId?: string | null | undefined;
           ui?:
             | {
                 banner?: string | null | undefined;
@@ -6837,7 +6850,6 @@ export interface StudioToolIO {
           [x: string]: unknown;
           instructions: string | null;
           subAgents?: string[] | null | undefined;
-          liveAgentId?: string | null | undefined;
           ui?:
             | {
                 banner?: string | null | undefined;
@@ -7146,13 +7158,13 @@ export interface StudioToolIO {
     input: {
       providerId?:
         | "google"
+        | "claude-code"
+        | "codex"
         | "deco"
         | "anthropic"
         | "openrouter"
         | "llmapi"
         | "openai-compatible"
-        | "claude-code"
-        | "codex"
         | undefined;
     };
     output: {
@@ -7321,6 +7333,37 @@ export interface StudioToolIO {
       connected: boolean;
       linkedAt: string | null;
       expiresAt: string | null;
+    };
+  };
+  SUBSCRIPTION_USAGE_GET: {
+    input: { provider: "codex" | "claude" };
+    output: {
+      status: "available" | "unavailable" | "disconnected";
+      reason:
+        | "permission"
+        | "authorization"
+        | "rate_limited"
+        | "provider_error"
+        | "invalid_response"
+        | "no_data"
+        | null;
+      checkedAt: string | null;
+      retryAt: string | null;
+      limitReached: boolean | null;
+      windows: {
+        id:
+          | "primary"
+          | "secondary"
+          | "code_review_primary"
+          | "code_review_secondary"
+          | "five_hour"
+          | "seven_day"
+          | "seven_day_sonnet"
+          | "seven_day_opus";
+        usedPercent: number;
+        resetAt: string | null;
+        windowSeconds: number | null;
+      }[];
     };
   };
   CODEX_SUBSCRIPTION_DISCONNECT: {
@@ -8945,9 +8988,9 @@ export interface StudioToolIO {
       reason?:
         | "error"
         | "not_found"
+        | "rate_limited"
         | "conflict"
         | "blocked"
-        | "rate_limited"
         | undefined;
       detail?: string | undefined;
     };

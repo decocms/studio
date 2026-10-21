@@ -370,7 +370,6 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
       id: row.id,
       title: row.title,
       icon: row.icon,
-      // `connections.metadata` is a TEXT column holding JSON, so the driver hands back a string: a consumer reading `metadata.liveAgentId` off the raw value always saw `undefined` and let dev-agent rows through.
       metadata: readRepositoryMetadata(
         this.parseJson<Record<string, unknown>>(row.metadata),
       ),

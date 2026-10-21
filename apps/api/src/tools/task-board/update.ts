@@ -1,4 +1,5 @@
-import { LANES } from "@decocms/shared/task-board";
+import { resolveTaskRunModel } from "./task-run-harness";
+import { LANES, TaskBoardHarnessSchema } from "@decocms/shared/task-board";
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { getUserId, requireAuth } from "@/core/studio-context";
@@ -59,6 +60,7 @@ const LOGGED_FIELDS: {
  * `type` skipped the write entirely and still answered 200 with the old item.
  */
 const UPDATABLE_FIELDS = [
+  "harnessId",
   "title",
   "description",
   "status",
@@ -72,6 +74,8 @@ const UPDATABLE_FIELDS = [
   "previewRoutes",
   "tagIds",
   "sprintId",
+  "parentId",
+  "isEpic",
 ] as const;
 
 /** Whether an update touches any persisted field, as opposed to only linking a thread or a PR. */
@@ -191,6 +195,9 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     status: TaskBoardItemStatusSchema.optional(),
     priority: TaskBoardItemPrioritySchema.optional(),
     type: TaskBoardItemTypeSchema.optional(),
+    harnessId: TaskBoardHarnessSchema.optional().describe(
+      "Runtime for future implementation runs and retries. Defaults to claude-code. Codex requires the task_board_codex organization flag and a linked ChatGPT plan or compatible Responses API provider. Does not change reviewer runs or an active run.",
+    ),
     assigneeId: z.string().nullable().optional(),
     repo: z.string().max(MAX_TASK_REPO_LENGTH).nullable().optional(),
     virtualMcpId: z
@@ -214,6 +221,23 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
           "card joins each onto the pull request's deploy-preview origin so " +
           "a reviewer can open the pages directly. Replaces the previous set; " +
           "pass [] to clear.",
+      ),
+    parentId: z
+      .string()
+      .nullable()
+      .optional()
+      .describe(
+        "File the card under this card (an id in this organization), or null " +
+          "for the top level. Under an epic the card stays on the board; under " +
+          "any other card it is that card's subtask. Nests three levels at " +
+          "most: an epic takes no parent and a subtask takes no subtasks.",
+      ),
+    isEpic: z
+      .boolean()
+      .optional()
+      .describe(
+        "Mark the card as an epic, which groups cards and takes no parent. " +
+          "Turning an epic back into a card moves its cards to the top level.",
       ),
     /** Replaces the task's tags with this exact set (org tag ids). */
     tagIds: z.array(z.string()).max(1000).optional(),
@@ -368,6 +392,21 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
       }
     }
 
+    if (
+      previous &&
+      (input.harnessId ?? previous.harnessId) === "codex" &&
+      (input.harnessId !== undefined || becameSuperAgent)
+    ) {
+      await resolveTaskRunModel(
+        ctx,
+        organizationId,
+        assigneeChanged && input.assigneeId
+          ? getUserId(ctx)!
+          : (previous.assignedBy ?? previous.createdBy),
+        "codex",
+      );
+    }
+
     // Tags are a separate join table, applied before the item is (re)fetched
     // below so attachTags() picks up the new set either way. Every id must
     // belong to this org — otherwise a caller could attach another org's tag.
@@ -382,6 +421,13 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
       );
     }
 
+    // Turning an epic back into a card releases its cards; read them first
+    // so every open board hears they moved.
+    const releasedIds =
+      previous?.isEpic && input.isEpic === false
+        ? await ctx.storage.taskBoard.childIds(input.id, organizationId)
+        : [];
+
     // A pure link (no field edits) must not bump the task's updated_at — skip
     // the write and re-read the item, now carrying the newly linked thread.
     let item: TaskBoardItem;
@@ -390,6 +436,7 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
         input.id,
         organizationId,
         {
+          harnessId: input.harnessId,
           title: input.title,
           description: input.description,
           status: nextStatus,
@@ -408,6 +455,8 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
           sortOrder: input.sortOrder,
           previewRoutes: normalizePreviewRoutes(input.previewRoutes),
           sprintId: input.sprintId,
+          parentId: input.parentId,
+          isEpic: input.isEpic,
         },
         getUserId(ctx)!,
       );
@@ -486,6 +535,13 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     // Same for a teammate's board.
     if (hasFieldUpdate || input.linkThreadId || pr) {
       emitTaskBoardUpdated(organizationId, item);
+    }
+    for (const releasedId of releasedIds) {
+      const released = await ctx.storage.taskBoard.getById(
+        releasedId,
+        organizationId,
+      );
+      if (released) emitTaskBoardUpdated(organizationId, released);
     }
     if (becameSuperAgent) {
       await reactToSuperAgentDelegation(ctx, item, { userInitiated: true });

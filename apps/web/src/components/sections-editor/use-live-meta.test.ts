@@ -1,6 +1,11 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it, mock } from "bun:test";
 import { KEYS } from "@/lib/query-keys";
-import { liveMetaQueryKey, metaSourceOrder } from "./use-live-meta";
+import type { LiveMeta } from "./resolve-schema";
+import {
+  fetchLiveMeta,
+  liveMetaQueryKey,
+  metaSourceOrder,
+} from "./use-live-meta";
 
 const PREVIEW = "https://sandbox.example.deco.host";
 const PROD = "https://www.example.com";
@@ -141,5 +146,81 @@ describe("liveMetaQueryKey", () => {
     expect(liveMetaQueryKey({ ...params, productionUrl: PROD })).not.toEqual(
       liveMetaQueryKey({ ...params, productionUrl: "https://other.example" }),
     );
+  });
+});
+
+describe("fetchLiveMeta", () => {
+  const realFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+  });
+
+  const held: LiveMeta = {
+    manifest: { blocks: {} },
+    schema: { definitions: {} },
+    etag: '"meta-old"',
+  };
+  const fresh: LiveMeta = {
+    manifest: { blocks: {} },
+    schema: { definitions: { Banner: {} } },
+    etag: '"meta-new"',
+  };
+
+  function stubFetch(answer: () => Promise<Response>) {
+    const calls: RequestInit[] = [];
+    globalThis.fetch = mock(
+      (_url: string | URL | Request, init?: RequestInit) => {
+        calls.push(init ?? {});
+        return answer();
+      },
+    ) as unknown as typeof fetch;
+    return calls;
+  }
+
+  it("first read: plain GET, no conditional header", async () => {
+    const calls = stubFetch(async () => Response.json(fresh));
+    expect(await fetchLiveMeta(PREVIEW)).toEqual(fresh);
+    expect(calls[0]?.headers).toEqual({});
+  });
+
+  it("revalidates the held schema with its etag; 304 keeps it", async () => {
+    const calls = stubFetch(async () => new Response(null, { status: 304 }));
+    expect(await fetchLiveMeta(PREVIEW, held)).toBe(held);
+    expect(calls[0]?.headers).toEqual({ "If-None-Match": '"meta-old"' });
+  });
+
+  it("a changed schema replaces the held one", async () => {
+    stubFetch(async () => Response.json(fresh));
+    expect(await fetchLiveMeta(PREVIEW, held)).toEqual(fresh);
+  });
+
+  it("held schema without an etag: plain GET", async () => {
+    const calls = stubFetch(async () => Response.json(fresh));
+    await fetchLiveMeta(PREVIEW, { ...held, etag: undefined });
+    expect(calls[0]?.headers).toEqual({});
+  });
+
+  it("a rejected revalidation (older dev server's CORS) keeps the held schema", async () => {
+    stubFetch(async () => {
+      throw new TypeError("Failed to fetch");
+    });
+    expect(await fetchLiveMeta(PREVIEW, held)).toBe(held);
+  });
+
+  it("nothing held and no answer: null", async () => {
+    stubFetch(async () => {
+      throw new TypeError("Failed to fetch");
+    });
+    expect(await fetchLiveMeta(PREVIEW)).toBeNull();
+  });
+
+  it("an HTML 200 (not a deco site) is no answer", async () => {
+    stubFetch(async () => new Response("<!doctype html>", { status: 200 }));
+    expect(await fetchLiveMeta(PREVIEW)).toBeNull();
+  });
+
+  it("a 5xx on revalidation is no answer", async () => {
+    stubFetch(async () => new Response("down", { status: 502 }));
+    expect(await fetchLiveMeta(PREVIEW, held)).toBeNull();
   });
 });

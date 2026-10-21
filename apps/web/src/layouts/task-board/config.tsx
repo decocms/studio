@@ -122,6 +122,74 @@ export function cardNeedsAttention(item: TaskBoardItem): boolean {
 }
 
 /**
+ * Whether a card rides the board's critical swimlane: work that can't wait, so
+ * it never sits among polish. High priority is not enough; that well is for
+ * urgent work. Settled cards never qualify.
+ */
+export function isCriticalTask(item: TaskBoardItem): boolean {
+  if (item.status === "done" || item.status === "archived") return false;
+  return (
+    item.priority === "urgent" ||
+    item.type === "security" ||
+    isTaskBlocked(item) ||
+    agentRunState(item) === "failed"
+  );
+}
+
+/** dnd-kit id prefix for a lane's critical well, so an empty one takes a drop. */
+export const CRITICAL_DROPPABLE_PREFIX = "critical:";
+
+/** Lanes with no Critical well: settled work is not ranked by urgency. */
+export function hasCriticalWell(status: string): boolean {
+  return status !== "done" && status !== "archived";
+}
+
+/**
+ * The swimlane a drop puts a card in, or null to leave its priority alone.
+ *
+ * Within a lane, the well or card under the pointer decides. A lane change
+ * only moves wells when dropped on a Critical well itself: dropping among
+ * another lane's cards (or on a collapsed lane) keeps the card in its own
+ * well, so moving work along never rewrites its priority by accident.
+ */
+export function dropSwimlane({
+  overId,
+  itemOf,
+  fromStatus,
+  toStatus,
+}: {
+  overId: string | number | undefined;
+  itemOf: (cardId: string) => TaskBoardItem | undefined;
+  /** The lane the card is saved in. */
+  fromStatus: string;
+  toStatus: string;
+}): "critical" | "improvements" | null {
+  if (overId === undefined || !hasCriticalWell(toStatus)) return null;
+  const id = String(overId);
+  if (id.startsWith(CRITICAL_DROPPABLE_PREFIX)) return "critical";
+  if (fromStatus !== toStatus) return null;
+  if (id.startsWith(LANE_DROPPABLE_PREFIX)) return "improvements";
+  const card = itemOf(id);
+  if (!card) return null;
+  return isCriticalTask(card) ? "critical" : "improvements";
+}
+
+/**
+ * The priority a card needs to land in `swimlane`, or null when it already
+ * belongs there. Leaving Critical only lowers a card that priority alone kept
+ * there; a security or blocked card stays critical whatever its priority.
+ */
+export function swimlanePriority(
+  item: TaskBoardItem,
+  swimlane: "critical" | "improvements",
+): TaskBoardItemPriority | null {
+  const critical = isCriticalTask(item);
+  if (swimlane === "critical") return critical ? null : "urgent";
+  if (!critical) return null;
+  return isCriticalTask({ ...item, priority: "high" }) ? null : "high";
+}
+
+/**
  * Status-icon classes for a task card/row. A task waiting on input pulses in
  * `warning` — same token as its "Needs input" badge, so a stalled task doesn't
  * look like it's still progressing.
@@ -359,29 +427,27 @@ export const TASK_TYPE_CONFIG: Record<
   },
 };
 
-/**
- * Which lanes the board draws as columns, and which collapse into the "Hidden
- * columns" drawer. A lane hides when it's hidden by default (`HIDDEN_STATUSES`)
- * unless `shownLanes` brings it back.
- */
-export function laneVisibility({
-  shownLanes,
-}: {
-  /** `string[]`: it comes out of localStorage, which can hold a dead lane. */
-  shownLanes: readonly string[];
-}): {
+/** Whether a lane is drawn as a column: this person's override, else the
+ *  default (`HIDDEN_STATUSES`). */
+export function isLaneShown(
+  status: string,
+  /** Comes out of localStorage, so it can hold a dead lane. */
+  overrides: Readonly<Record<string, boolean>>,
+): boolean {
+  return (
+    overrides[status] ??
+    !(HIDDEN_STATUSES as readonly string[]).includes(status)
+  );
+}
+
+/** Lanes drawn as columns vs. the "Hidden columns" drawer. */
+export function laneVisibility(overrides: Readonly<Record<string, boolean>>): {
   lanes: CanonicalColumnKey[];
   hidden: CanonicalColumnKey[];
-  hideable: CanonicalColumnKey[];
 } {
-  const hideable = CANONICAL_COLUMN_KEYS.filter((s) =>
-    HIDDEN_STATUSES.includes(s),
-  );
-  const hidden = hideable.filter((s) => !shownLanes.includes(s));
   return {
-    lanes: CANONICAL_COLUMN_KEYS.filter((s) => !hidden.includes(s)),
-    hidden,
-    hideable,
+    lanes: CANONICAL_COLUMN_KEYS.filter((s) => isLaneShown(s, overrides)),
+    hidden: CANONICAL_COLUMN_KEYS.filter((s) => !isLaneShown(s, overrides)),
   };
 }
 
@@ -455,9 +521,10 @@ export function dropLane({
 }): CanonicalColumnKey | null {
   if (overId === undefined) return null;
   const id = String(overId);
-  const status = id.startsWith(LANE_DROPPABLE_PREFIX)
-    ? id.slice(LANE_DROPPABLE_PREFIX.length)
-    : statusOf(id);
+  const prefix = [LANE_DROPPABLE_PREFIX, CRITICAL_DROPPABLE_PREFIX].find((p) =>
+    id.startsWith(p),
+  );
+  const status = prefix ? id.slice(prefix.length) : statusOf(id);
   return status !== undefined && isColumnKey(status) ? status : null;
 }
 

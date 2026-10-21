@@ -1,4 +1,10 @@
 import type { ReactNode } from "react";
+import {
+  ChildrenSection,
+  ParentProperty,
+  ParentSection,
+  useHierarchyCrumb,
+} from "./epics";
 import type { TaskBoardItemType } from "./config";
 import type { TaskBoardItem } from "./config";
 import type { TaskBoardItemPr } from "./config";
@@ -900,6 +906,7 @@ function TaskBoardItemEditor({
    *  rather than a link: leaving flushes a pending autosave, and the board it
    *  returns to is a search-param away. The key doubles as the trail's leaf, so
    *  a page shows no id chip. */
+  const hierarchyCrumb = useHierarchyCrumb(item);
   const header =
     chrome === "page" ? (
       <>
@@ -910,6 +917,7 @@ function TaskBoardItemEditor({
             onSelect: close,
           }}
           items={[
+            ...(hierarchyCrumb ? [hierarchyCrumb] : []),
             {
               key: "task",
               label: key ?? t("taskBoard.taskDetail.breadcrumbTask"),
@@ -1159,6 +1167,9 @@ function TaskBoardItemEditor({
                     </Button>
                   )}
                 </div>
+
+                {item && <ParentSection item={item} />}
+                {item && <ChildrenSection item={item} />}
 
                 {/* Separates the task itself from the record of it (links,
                   activity). Edit mode only — a new task has neither. */}
@@ -1636,6 +1647,12 @@ function TaskBoardItemEditor({
                 </PopoverContent>
               </Popover>
             </PropertyGroup>
+
+            {item && (
+              <PropertyGroup label={t("taskBoard.epics.parentLabel")}>
+                <ParentProperty item={item} buttonClassName={PROPERTY_BUTTON} />
+              </PropertyGroup>
+            )}
 
             <PropertyGroup label={t("taskBoard.taskDialog.projectLabel")}>
               {/* Which project this task pertains to: the project itself and

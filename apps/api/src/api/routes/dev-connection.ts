@@ -12,10 +12,6 @@
  * sandbox — there is no shared row to leak across users. No sandbox running for
  * the user → `null` (callers render a "start dev server" state).
  *
- * Returns `null` unless the agent is the dev side of a dev/live pair (the
- * MCP-app signal — see the gate below), so plain website/Hydrogen sandbox
- * agents never get a dev connection.
- *
  * Auth: authless by default — the preview URL is open (its unguessable handle
  * is the secret, Vercel-style). If the app gates /mcp behind a query token
  * (`MCP_AUTH_TOKEN`), it's appended to the URL — query params survive the
@@ -97,7 +93,7 @@ async function servesMcp(connectionUrl: string): Promise<boolean> {
  * Resolve the synthetic dev connection for `agentId` and the acting user.
  * Returns `null` unless the acting user has a running sandbox for this agent AND
  * that sandbox's dev server actually speaks MCP at `/api/mcp` (probed once,
- * memoized). Repo/pairing-agnostic — the real signal is "a sandbox serving an
+ * memoized). Repository-agnostic — the real signal is "a sandbox serving an
  * MCP app", so a freshly imported (or even repo-less) MCP-app sandbox surfaces
  * its tools/views, while a Start-Website/Hydrogen sandbox (a Vite site, no MCP)
  * does not. A missing dev token is NOT a null condition: it just yields an
@@ -138,7 +134,7 @@ export async function resolveDevConnection(
     : `${base}/api/mcp`;
 
   // The real gate: only surface a connection if the dev server actually speaks
-  // MCP. This is what makes it repo/pairing-agnostic — any sandbox serving an
+  // MCP. This is what makes it repository-agnostic — any sandbox serving an
   // MCP app qualifies, a Vite-site sandbox (Start-Website/Hydrogen) does not.
   // Memoized per URL so the hot path doesn't re-probe (see servesMcp).
   if (!(await servesMcp(connection_url))) return null;

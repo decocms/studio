@@ -30,6 +30,7 @@ import type {
 import type { OrgNoticeSeverity } from "@decocms/shared/organization/notice";
 import type { ThreadMetadata } from "@decocms/shared/entities";
 import type {
+  TaskBoardHarnessId,
   ReviewerKind,
   TaskCommentAudience,
 } from "@decocms/shared/task-board";
@@ -1800,6 +1801,11 @@ export type TaskBoardItemType =
   | "security";
 
 export interface TaskBoardItemTable {
+  harness_id: ColumnType<
+    TaskBoardHarnessId,
+    TaskBoardHarnessId | undefined,
+    TaskBoardHarnessId
+  >;
   id: string;
   organization_id: string;
   title: string;
@@ -1828,6 +1834,14 @@ export interface TaskBoardItemTable {
     string | null | undefined,
     string | null
   >;
+  /** The card this one sits under: an epic, or a card it is a subtask of
+   *  (migration 257). */
+  parent_id: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
+  is_epic: ColumnType<boolean, boolean | undefined, boolean>;
   /** The sprint the card is planned into (`task_board_sprints.id`); null =
    *  backlog. */
   sprint_id: ColumnType<
@@ -2125,6 +2139,10 @@ export interface TaskBoardItemThreadRef {
 }
 
 export interface TaskBoardItem {
+  harnessId: TaskBoardHarnessId;
+  /** The epic or card this one sits under; null at the top level. */
+  parentId: string | null;
+  isEpic: boolean;
   id: string;
   organizationId: string;
   title: string;

@@ -225,6 +225,10 @@ export function resolveConfig(
     localMode: toBool(envVars.DECOCMS_LOCAL_MODE),
     disableRateLimit: toBool(envVars.DISABLE_RATE_LIMIT),
     jiraAllowLocalSiteUrl: toBool(envVars.JIRA_ALLOW_LOCAL_SITE_URL),
+    codexUsageUrl:
+      envVars.CODEX_USAGE_URL || "https://chatgpt.com/backend-api/wham/usage",
+    claudeUsageUrl:
+      envVars.CLAUDE_USAGE_URL || "https://api.anthropic.com/api/oauth/usage",
     jiraSettleSeconds: toPositiveIntegerOrDefault(
       "JIRA_SETTLE_SECONDS",
       envVars.JIRA_SETTLE_SECONDS,

@@ -843,6 +843,20 @@ describe("SANDBOX_START", () => {
     ).rejects.toThrow(SANDBOX_START_ERROR_CODES.githubConnectionMissing);
   });
 
+  it("ensureSandbox boots without a repository it cannot clone", async () => {
+    const virtualMcp = makeVirtualMcp(ORG_ID, BASE_METADATA);
+    const ctx = makeCtx({ virtualMcp, connectionRowExists: false });
+
+    const entry = await ensureSandbox(
+      { virtualMcpId: VMCP_ID, branch: BRANCH },
+      ctx,
+    );
+
+    expect(entry.sandboxHandle).toBe("vm_xyz");
+    const [, opts] = mockEnsure.mock.calls[0]! as [SandboxId, EnsureOptions];
+    expect(opts.repo).toBeUndefined();
+  });
+
   it("refreshes an expired GitHub token before handing it to the runner", async () => {
     const pastExpiry = new Date(Date.now() - 60_000).toISOString();
     mockTokenGet.mockImplementation(async () => ({

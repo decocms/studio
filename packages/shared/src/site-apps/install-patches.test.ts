@@ -1,0 +1,455 @@
+import { describe, expect, it } from "bun:test";
+import { findSiteApp } from "./index";
+import { makeInstallAppPatches, SiteAppInstallError } from "./install-patches";
+import type { SiteAppRegistryEntry } from "./types";
+
+const vtexDeno = findSiteApp("deno", "deco-vtex")!;
+const blogTanstack = findSiteApp("tanstack", "deco-blog")!;
+
+const PACKAGE_JSON = `{
+  "name": "storefront-tanstack",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite dev"
+  },
+  "dependencies": {
+    "@decocms/apps-shopify": "^7.77.1",
+    "@decocms/blocks": "^7.77.1",
+    "@tanstack/react-router": "^1.0.0",
+    "react": "^19.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0"
+  }
+}
+`;
+
+const SETUP_TS = `import "./cache-config";
+
+import { createSiteSetup } from "@decocms/blocks/setup";
+import { autoconfigApps, type AppRegistry } from "@decocms/blocks-admin/apps";
+import { SHOPIFY_REGISTRY_ENTRY } from "@decocms/apps-shopify/registry";
+import * as shopifyMod from "@decocms/apps-shopify/mod";
+import { blocks as generatedBlocks } from "../.deco/blocks.gen";
+
+const APP_REGISTRY: AppRegistry = [
+  { ...SHOPIFY_REGISTRY_ENTRY, module: async () => shopifyMod as never },
+];
+
+createSiteSetup({ blocks: generatedBlocks });
+
+await autoconfigApps(generatedBlocks, APP_REGISTRY);
+`;
+
+const tanstackInput = (
+  overrides?: Partial<Parameters<typeof makeInstallAppPatches>[0]>,
+) => ({
+  technology: "tanstack" as const,
+  entry: blogTanstack,
+  decocmsVersion: "^7.77.1",
+  packageJson: PACKAGE_JSON,
+  setupTs: SETUP_TS,
+  ...overrides,
+});
+
+const fileAt = (
+  patches: ReturnType<typeof makeInstallAppPatches>,
+  path: string,
+) => patches.files.find((file) => file.path === path);
+
+describe("makeInstallAppPatches — deno", () => {
+  it("writes the app re-export and the block, and adds no dependency", () => {
+    const patches = makeInstallAppPatches({
+      technology: "deno",
+      entry: vtexDeno,
+    });
+
+    expect(patches.files).toEqual([
+      {
+        path: "apps/deco/vtex.ts",
+        content:
+          'export { default } from "apps/vtex/mod.ts";\nexport * from "apps/vtex/mod.ts";\n',
+      },
+    ]);
+    expect(patches.block).toEqual({
+      key: "deco-vtex",
+      value: { __resolveType: "site/apps/deco/vtex.ts" },
+    });
+  });
+});
+
+describe("makeInstallAppPatches — tanstack", () => {
+  it("writes the re-export, the dependency, the registry entry and the block", () => {
+    const patches = makeInstallAppPatches(tanstackInput());
+
+    expect(patches.files.map((file) => file.path).sort()).toEqual([
+      "package.json",
+      "src/apps/deco/blog.ts",
+      "src/setup.ts",
+    ]);
+    expect(patches.block).toEqual({
+      key: "deco-blog",
+      value: { __resolveType: "site/apps/deco/blog.ts" },
+    });
+    expect(fileAt(patches, "src/apps/deco/blog.ts")!.content).toBe(
+      'export * from "@decocms/apps-blog/mod";\n',
+    );
+  });
+
+  it("inserts the dependency alphabetically and leaves every other byte alone", () => {
+    const patches = makeInstallAppPatches(tanstackInput());
+
+    expect(fileAt(patches, "package.json")!.content).toBe(
+      PACKAGE_JSON.replace(
+        '    "@decocms/apps-shopify": "^7.77.1",\n',
+        '    "@decocms/apps-blog": "^7.77.1",\n    "@decocms/apps-shopify": "^7.77.1",\n',
+      ),
+    );
+  });
+
+  it("appends a dependency that sorts last, re-commaing the previous entry", () => {
+    const content = fileAt(
+      makeInstallAppPatches(
+        tanstackInput({
+          packageJson: `{
+  "dependencies": {
+    "@decocms/apps-algolia": "^7.77.1"
+  }
+}
+`,
+        }),
+      ),
+      "package.json",
+    )!.content;
+
+    expect(content).toBe(`{
+  "dependencies": {
+    "@decocms/apps-algolia": "^7.77.1",
+    "@decocms/apps-blog": "^7.77.1"
+  }
+}
+`);
+  });
+
+  it("writes to the manifest's own dependencies, not a nested one", () => {
+    const content = fileAt(
+      makeInstallAppPatches(
+        tanstackInput({
+          packageJson: `{
+  "pnpm": {
+    "dependencies": {
+      "a": "1"
+    }
+  },
+  "dependencies": {
+    "@decocms/blocks": "^7.77.1"
+  }
+}
+`,
+        }),
+      ),
+      "package.json",
+    )!.content;
+
+    expect(content).toBe(`{
+  "pnpm": {
+    "dependencies": {
+      "a": "1"
+    }
+  },
+  "dependencies": {
+    "@decocms/apps-blog": "^7.77.1",
+    "@decocms/blocks": "^7.77.1"
+  }
+}
+`);
+  });
+
+  it("adds a dependency that only an overrides block mentions", () => {
+    const patches = makeInstallAppPatches(
+      tanstackInput({
+        packageJson: `{
+  "dependencies": {
+    "@decocms/blocks": "^7.77.1"
+  },
+  "overrides": {
+    "@decocms/apps-blog": "1.0.0"
+  }
+}
+`,
+      }),
+    );
+
+    // An override pins a version for the tree; it depends on nothing.
+    expect(fileAt(patches, "package.json")!.content).toContain(
+      '"@decocms/apps-blog": "^7.77.1"',
+    );
+    expect(patches.dependency).toBe("@decocms/apps-blog");
+  });
+
+  it("adds both imports and the registry entry to setup.ts", () => {
+    const content = fileAt(
+      makeInstallAppPatches(tanstackInput()),
+      "src/setup.ts",
+    )!.content;
+
+    expect(content).toBe(`import "./cache-config";
+
+import { createSiteSetup } from "@decocms/blocks/setup";
+import { autoconfigApps, type AppRegistry } from "@decocms/blocks-admin/apps";
+import { SHOPIFY_REGISTRY_ENTRY } from "@decocms/apps-shopify/registry";
+import * as shopifyMod from "@decocms/apps-shopify/mod";
+import { blocks as generatedBlocks } from "../.deco/blocks.gen";
+import { BLOG_REGISTRY_ENTRY } from "@decocms/apps-blog/registry";
+import * as blogMod from "@decocms/apps-blog/mod";
+
+const APP_REGISTRY: AppRegistry = [
+  { ...BLOG_REGISTRY_ENTRY, module: async () => blogMod as never },
+  { ...SHOPIFY_REGISTRY_ENTRY, module: async () => shopifyMod as never },
+];
+
+createSiteSetup({ blocks: generatedBlocks });
+
+await autoconfigApps(generatedBlocks, APP_REGISTRY);
+`);
+  });
+
+  it("fills an empty APP_REGISTRY", () => {
+    const content = fileAt(
+      makeInstallAppPatches(
+        tanstackInput({
+          setupTs:
+            'import { autoconfigApps } from "@decocms/blocks-admin/apps";\n\nconst APP_REGISTRY = [];\n',
+        }),
+      ),
+      "src/setup.ts",
+    )!.content;
+
+    expect(
+      content,
+    ).toBe(`import { autoconfigApps } from "@decocms/blocks-admin/apps";
+import { BLOG_REGISTRY_ENTRY } from "@decocms/apps-blog/registry";
+import * as blogMod from "@decocms/apps-blog/mod";
+
+const APP_REGISTRY = [
+  { ...BLOG_REGISTRY_ENTRY, module: async () => blogMod as never },
+];
+`);
+  });
+
+  it("inserts after an import clause wrapped over several lines", () => {
+    const content = fileAt(
+      makeInstallAppPatches(
+        tanstackInput({
+          setupTs: `import {
+  autoconfigApps,
+  type AppRegistry,
+} from "@decocms/blocks-admin/apps";
+
+const APP_REGISTRY: AppRegistry = [];
+`,
+        }),
+      ),
+      "src/setup.ts",
+    )!.content;
+
+    expect(content).toBe(`import {
+  autoconfigApps,
+  type AppRegistry,
+} from "@decocms/blocks-admin/apps";
+import { BLOG_REGISTRY_ENTRY } from "@decocms/apps-blog/registry";
+import * as blogMod from "@decocms/apps-blog/mod";
+
+const APP_REGISTRY: AppRegistry = [
+  { ...BLOG_REGISTRY_ENTRY, module: async () => blogMod as never },
+];
+`);
+  });
+
+  it("inserts after a side-effect import, which has no clause", () => {
+    const content = fileAt(
+      makeInstallAppPatches(
+        tanstackInput({
+          setupTs: `import { autoconfigApps } from "@decocms/blocks-admin/apps";
+import "./cache-config";
+
+const APP_REGISTRY = [];
+`,
+        }),
+      ),
+      "src/setup.ts",
+    )!.content;
+
+    expect(
+      content,
+    ).toBe(`import { autoconfigApps } from "@decocms/blocks-admin/apps";
+import "./cache-config";
+import { BLOG_REGISTRY_ENTRY } from "@decocms/apps-blog/registry";
+import * as blogMod from "@decocms/apps-blog/mod";
+
+const APP_REGISTRY = [
+  { ...BLOG_REGISTRY_ENTRY, module: async () => blogMod as never },
+];
+`);
+  });
+
+  it("is idempotent — a second install of the same app patches nothing but the block", () => {
+    const first = makeInstallAppPatches(tanstackInput());
+    const second = makeInstallAppPatches(
+      tanstackInput({
+        packageJson: fileAt(first, "package.json")!.content,
+        setupTs: fileAt(first, "src/setup.ts")!.content,
+      }),
+    );
+
+    expect(second.files.map((file) => file.path)).toEqual([
+      "src/apps/deco/blog.ts",
+    ]);
+    expect(second.block).toEqual(first.block);
+  });
+
+  it("reports the dependency even when package.json already declares it", () => {
+    const patches = makeInstallAppPatches(tanstackInput());
+    const retry = makeInstallAppPatches(
+      tanstackInput({ packageJson: fileAt(patches, "package.json")!.content }),
+    );
+
+    // The first attempt may have died after the manifest landed and before
+    // node_modules had the package; the retry still has to install it.
+    expect(fileAt(retry, "package.json")).toBeUndefined();
+    expect(retry.dependency).toBe("@decocms/apps-blog");
+  });
+
+  it("refuses a @decocms range only its own workspace resolves", () => {
+    for (const range of ["catalog:", "workspace:*", "link:../blocks"]) {
+      expect(() =>
+        makeInstallAppPatches(tanstackInput({ decocmsVersion: range })),
+      ).toThrow(`pinned at "${range}"`);
+    }
+  });
+
+  // The patch is a textual splice into a file the site owns, and the layouts
+  // below all occur in real templates. Parsing the result is the only check
+  // that catches a splice landing mid-statement.
+  it.each([
+    [
+      "a clause wrapped over several lines",
+      `import {\n  autoconfigApps,\n  type AppRegistry,\n} from "@decocms/blocks-admin/apps";\n\nconst APP_REGISTRY: AppRegistry = [];\n`,
+    ],
+    [
+      "a side-effect import last",
+      `import { autoconfigApps } from "@decocms/blocks-admin/apps";\nimport "./cache-config";\n\nconst APP_REGISTRY = [];\n`,
+    ],
+    [
+      "no semicolons",
+      `import { autoconfigApps } from "@decocms/blocks-admin/apps"\n\nconst APP_REGISTRY = []\n`,
+    ],
+    [
+      "single-quoted specifiers",
+      `import { autoconfigApps } from '@decocms/blocks-admin/apps';\n\nconst APP_REGISTRY = [];\n`,
+    ],
+    [
+      "no trailing newline",
+      `import { autoconfigApps } from "@decocms/blocks-admin/apps";\nconst APP_REGISTRY = [];`,
+    ],
+  ])("writes a setup.ts that parses, given %s", (_layout, setupTs) => {
+    const content = fileAt(
+      makeInstallAppPatches(tanstackInput({ setupTs })),
+      "src/setup.ts",
+    )!.content;
+
+    const transpiler = new Bun.Transpiler({ loader: "ts" });
+    expect(() => transpiler.transformSync(content)).not.toThrow();
+    expect(transpiler.scanImports(content).map((i) => i.path)).toContain(
+      "@decocms/apps-blog/registry",
+    );
+    expect(content).toContain("...BLOG_REGISTRY_ENTRY, module:");
+  });
+
+  it("refuses the legacy wiring, naming the real blocker", () => {
+    // Shape captured from a real branch: imported, so there is no array to add to.
+    const legacy = `import { autoconfigApps } from "@decocms/start/apps/autoconfig";
+import { APP_REGISTRY } from "@decocms/apps/registry";
+
+autoconfigApps(generatedBlocks, APP_REGISTRY);
+`;
+    expect(() =>
+      makeInstallAppPatches(tanstackInput({ setupTs: legacy })),
+    ).toThrow(/monolithic `@decocms\/apps` registry/);
+  });
+
+  it("refuses the legacy wiring when the import clause is wrapped", () => {
+    const legacy = `import {
+  APP_REGISTRY,
+  autoconfigApps,
+} from "@decocms/apps/registry";
+
+autoconfigApps(generatedBlocks, APP_REGISTRY);
+`;
+    expect(() =>
+      makeInstallAppPatches(tanstackInput({ setupTs: legacy })),
+    ).toThrow(/monolithic `@decocms\/apps` registry/);
+  });
+
+  it("refuses a setup.ts with no APP_REGISTRY", () => {
+    expect(() =>
+      makeInstallAppPatches(
+        tanstackInput({ setupTs: 'import "./cache-config";\n' }),
+      ),
+    ).toThrow(SiteAppInstallError);
+  });
+
+  it("refuses a package.json with no dependencies object", () => {
+    expect(() =>
+      makeInstallAppPatches(
+        tanstackInput({ packageJson: '{\n  "name": "site"\n}\n' }),
+      ),
+    ).toThrow(/no "dependencies"/);
+  });
+
+  it("refuses a repository that declares no @decocms package", () => {
+    expect(() =>
+      makeInstallAppPatches(tanstackInput({ decocmsVersion: null })),
+    ).toThrow(/not a TanStack deco site/);
+  });
+
+  it("refuses an app with no TanStack package", () => {
+    const denoOnly: SiteAppRegistryEntry = { ...vtexDeno, npm: undefined };
+    expect(() =>
+      makeInstallAppPatches(tanstackInput({ entry: denoOnly })),
+    ).toThrow(/only available on Deno sites/);
+  });
+});
+
+describe("the module path and the block's resolveType", () => {
+  // The generator keys an app by its path below `src/` (TanStack) or the repo
+  // root (Deno); a pair that disagrees resolves to no schema at all.
+  const cases = [
+    {
+      technology: "deno" as const,
+      key: "deco-vtex",
+      file: "apps/deco/vtex.ts",
+    },
+    {
+      technology: "tanstack" as const,
+      key: "deco-blog",
+      file: "src/apps/deco/blog.ts",
+    },
+  ];
+
+  it.each(cases)("agree on $technology", ({ technology, key, file }) => {
+    const patches = makeInstallAppPatches({
+      technology,
+      entry: findSiteApp(technology, key)!,
+      decocmsVersion: "^7.77.1",
+      packageJson: PACKAGE_JSON,
+      setupTs: SETUP_TS,
+    });
+
+    const module = patches.files.find((f) => f.path === file);
+    expect(module).toBeDefined();
+    const fromPath = module!.path.replace(/^src\//, "").replace(/^/, "site/");
+    expect(patches.block.value.__resolveType).toBe(fromPath);
+  });
+});

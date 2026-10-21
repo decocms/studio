@@ -1,8 +1,19 @@
 import { describe, expect, it } from "bun:test";
+import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import {
   buildConnectionRequestHeaders,
+  fetchScopesFromMCP,
   fetchToolsFromMCP,
 } from "./fetch-tools";
+
+function fakeClient(responseText: string): Client {
+  return {
+    callTool: async () => ({
+      isError: false,
+      content: [{ type: "text", text: responseText }],
+    }),
+  } as unknown as Client;
+}
 
 describe("buildConnectionRequestHeaders", () => {
   it("merges bearer token and custom headers for an HTTP connection", () => {
@@ -46,6 +57,22 @@ describe("buildConnectionRequestHeaders", () => {
     });
 
     expect(headers).toEqual({ "Content-Type": "application/json" });
+  });
+});
+
+describe("fetchScopesFromMCP", () => {
+  it("returns scopes when every element is a string", async () => {
+    const scopes = await fetchScopesFromMCP(
+      fakeClient(JSON.stringify({ scopes: ["CONFIG::READ"] })),
+    );
+    expect(scopes).toEqual(["CONFIG::READ"]);
+  });
+
+  it("rejects a response whose scopes array holds a non-string element", async () => {
+    const scopes = await fetchScopesFromMCP(
+      fakeClient(JSON.stringify({ scopes: ["CONFIG::READ", 42] })),
+    );
+    expect(scopes).toBeNull();
   });
 });
 

@@ -328,6 +328,8 @@ export const KEYS = {
    *  signs in and types the same term in the same tab. */
   projectSearch: (userId: string, term: string) =>
     ["project-search", userId, term] as const,
+  organizationSearch: (userId: string, term: string) =>
+    ["organization-search", userId, term] as const,
 
   // Tool call results (generic caching for MCP tool calls)
   // scope is required - scopes the cache (connectionId for connection-scoped, locator for org/project-scoped)
@@ -530,8 +532,19 @@ export const KEYS = {
   // org-scoped, so the key is too).
   codexSubscription: (orgId: string, userId: string) =>
     ["codex-subscription", orgId, userId] as const,
-  claudeSubscription: (orgId: string) =>
-    ["claude-subscription", orgId] as const,
+  claudeSubscription: (orgId: string, userId: string) =>
+    ["claude-subscription", orgId, userId] as const,
+  subscriptionUsage: (
+    orgId: string,
+    userId: string,
+    provider: "claude" | "codex",
+  ) => ["subscription-usage", orgId, userId, provider] as const,
+  subscriptionUsageSnapshot: (
+    orgId: string,
+    userId: string,
+    provider: "claude" | "codex",
+    linkedAt: string | null,
+  ) => ["subscription-usage", orgId, userId, provider, linkedAt] as const,
   githubCopilot: (orgId: string) => ["github-copilot", orgId] as const,
   aiProviderKeyPreview: (keyId: string) =>
     ["ai-provider-key-preview", keyId] as const,
@@ -705,7 +718,6 @@ export const KEYS = {
 
   // Deco sites (scoped by user email)
   decoSites: (email: string | undefined) => ["deco-sites", email] as const,
-  decoApps: () => ["deco-apps"] as const,
 
   // Hosting tab — per-site control-plane reads (scoped by org + site slug),
   // proxied through the BFF at /api/:org/hosting/:site/*.
@@ -854,6 +866,23 @@ export const KEYS = {
   sandboxSprite: (sandboxKey: string) =>
     ["sandbox-sprite", sandboxKey] as const,
 } as const;
+
+/** Invalidates every CONNECTIONS collection cache entry for an org
+ *  (collectionItem/collectionList/collectionListInfinite, all keyed
+ *  [client, orgId, scopeKey, "collection", "CONNECTIONS", ...]). */
+export function invalidateConnectionsCollection(
+  queryClient: import("@tanstack/react-query").QueryClient,
+  orgId: string,
+) {
+  queryClient.invalidateQueries({
+    predicate: (query) => {
+      const key = query.queryKey;
+      return (
+        key[1] === orgId && key[3] === "collection" && key[4] === "CONNECTIONS"
+      );
+    },
+  });
+}
 
 export function invalidateVirtualMcpQueries(
   queryClient: import("@tanstack/react-query").QueryClient,

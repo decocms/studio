@@ -1439,6 +1439,18 @@ The chart already includes:
 
 ## Monitoring
 
+The nginx public listener returns 404 for `/metrics`. With `metrics.scrape:
+true`, API pod annotation discovery scrapes the dedicated nginx listener on
+port `8081`, which forwards `/metrics` to the existing API processes. The
+application Service continues to expose only the public HTTP port. Worker
+scraping is unchanged.
+
+Chart `0.17.0` requires an nginx image with the internal scrape listener.
+Upgrade the nginx image and chart together. Existing external scrapers must
+move to the private pod listener. The API's own `/metrics` endpoint is
+unchanged: deployments exposing the API directly must restrict it in their
+reverse proxy or network configuration.
+
 ### Labels for Selection
 
 All resources have standardized labels:

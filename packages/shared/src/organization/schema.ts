@@ -226,6 +226,12 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "Run chats on a Code Agent (an agent imported from a GitHub repo) with the claude-code harness inside its sandbox, instead of hosted Decopilot. Off by default: it changes the runtime of every such chat, and claude-code flushes whole turns rather than streaming tokens.",
     ),
+  task_board_codex: z
+    .boolean()
+    .optional()
+    .describe(
+      "Allow tasks to select the Codex harness. Off by default; existing tasks keep Claude Code. Reviewers keep their own runtime.",
+    ),
   chat_harness_codex: z
     .boolean()
     .optional()
@@ -303,6 +309,12 @@ export const OrgFlagsSchema = z.object({
     .optional()
     .describe(
       "The blog's brand context tab and its agentic generation — campaigns, post drafting and link suggestions. Off by default; with it off the blog is written by hand and every BLOG_* tool refuses, over MCP and in the app alike, so an agent cannot spend the organization's credits on a feature it turned off.",
+    ),
+  site_apps_install_enabled: z
+    .boolean()
+    .optional()
+    .describe(
+      "Installing a site app from the Apps tab: writes the app module, the npm dependency and the registry entry into the project's repository, then reinstalls dependencies and restarts the dev script on the running sandbox. Off by default, for every org — the catalogue stays browsable without it and nothing is installable. Rollout lever, separate from the deploy.",
     ),
   hide_default_blog_blocks: z
     .boolean()

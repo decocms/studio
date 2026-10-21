@@ -25,6 +25,7 @@ import { useSearch, useNavigate } from "@tanstack/react-router";
 import {
   AlertTriangle,
   Container,
+  ChevronRight,
   DotsHorizontal,
   GitBranch01,
   LinkBroken01,
@@ -61,6 +62,11 @@ import {
 } from "@decocms/ui/components/dropdown-menu.tsx";
 import { IconButton } from "@decocms/ui/components/icon-button.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@decocms/ui/components/collapsible.tsx";
 import {
   Tooltip,
   TooltipContent,
@@ -546,9 +552,11 @@ function AccountsSection({
 }
 
 function RepositoriesSection({
+  guided,
   onAdd,
   onUnlink,
 }: {
+  guided: boolean;
   onAdd: () => void;
   onUnlink: (repository: Repository) => void;
 }) {
@@ -590,12 +598,19 @@ function RepositoriesSection({
               {t("settings.repositories.reposEmptyDescription")}
             </p>
           </div>
-          <Page.Actions>
-            <Button size="sm" onClick={onAdd}>
-              <Plus size={14} />
+          {guided ? (
+            <Button variant="outline" size="sm" onClick={onAdd}>
+              <Plus size={16} />
               {t("settings.repositories.addRepository")}
             </Button>
-          </Page.Actions>
+          ) : (
+            <Page.Actions>
+              <Button size="sm" onClick={onAdd}>
+                <Plus size={14} />
+                {t("settings.repositories.addRepository")}
+              </Button>
+            </Page.Actions>
+          )}
         </div>
       ) : (
         <div data-testid="repositories-list">
@@ -674,8 +689,20 @@ function ConnectError() {
   );
 }
 
-function RepositoriesContent() {
+export function RepositoriesContent({
+  guided = false,
+}: {
+  /** Context: one step at a time, accounts before repositories, extras folded. */
+  guided?: boolean;
+} = {}) {
   const t = useT();
+  const accounts = useGitAccounts();
+  const repositories = useRepositories();
+  /** A repository comes from an account, so without either there is one step. */
+  const showRepositories =
+    !guided ||
+    (accounts.data?.length ?? 0) > 0 ||
+    (repositories.data?.length ?? 0) > 0;
   const navigate = useNavigate();
   const search = useSearch({ strict: false });
   const deleteAccount = useDeleteGitAccount();
@@ -732,14 +759,32 @@ function RepositoriesContent() {
         />
       )}
 
-      <RepositoriesSection
-        onAdd={() => setAddOpen(true)}
-        onUnlink={setPendingRepository}
-      />
+      {showRepositories && (
+        <RepositoriesSection
+          guided={guided}
+          onAdd={() => setAddOpen(true)}
+          onUnlink={setPendingRepository}
+        />
+      )}
 
       <AccountsSection onDisconnect={setPendingAccount} />
 
-      <GitCredentialsSection />
+      {guided ? (
+        <Collapsible>
+          <CollapsibleTrigger className="group flex items-center gap-1.5 px-4 text-sm text-muted-foreground hover:text-foreground">
+            <ChevronRight
+              size={14}
+              className="transition-transform group-data-[state=open]:rotate-90"
+            />
+            {t("settings.nav.advanced")}
+          </CollapsibleTrigger>
+          <CollapsibleContent className="pt-4">
+            <GitCredentialsSection />
+          </CollapsibleContent>
+        </Collapsible>
+      ) : (
+        <GitCredentialsSection />
+      )}
 
       {addOpen && (
         <RepositoryPicker

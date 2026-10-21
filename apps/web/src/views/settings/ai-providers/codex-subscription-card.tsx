@@ -1,3 +1,4 @@
+import { SubscriptionUsage } from "./subscription-usage";
 import { authClient } from "@/lib/auth-client";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -21,12 +22,20 @@ export function CodexSubscriptionCard() {
   const status = useQuery({
     queryKey: KEYS.codexSubscription(org.id, userId),
     queryFn: () => studio.call("CODEX_SUBSCRIPTION_STATUS", {}),
+    enabled: Boolean(userId),
   });
 
-  const invalidate = () =>
-    queryClient.invalidateQueries({
+  const invalidate = async () => {
+    await queryClient.cancelQueries({
+      queryKey: KEYS.subscriptionUsage(org.id, userId, "codex"),
+    });
+    queryClient.removeQueries({
+      queryKey: KEYS.subscriptionUsage(org.id, userId, "codex"),
+    });
+    await queryClient.invalidateQueries({
       queryKey: KEYS.codexSubscription(org.id, userId),
     });
+  };
 
   const connect = useMutation({
     mutationFn: () =>
@@ -73,6 +82,14 @@ export function CodexSubscriptionCard() {
           </Button>
         ) : null}
       </div>
+      {connected && (
+        <SubscriptionUsage
+          provider="codex"
+          orgId={org.id}
+          userId={userId}
+          linkedAt={status.data?.linkedAt ?? null}
+        />
+      )}
       {connected ? null : (
         <div className="flex flex-col gap-2">
           <p className="text-sm text-muted-foreground">

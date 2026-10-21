@@ -70,7 +70,11 @@ const hostedEnv = `DELIVERY_R2_ENDPOINT=${deliveryStubOrigin} DELIVERY_R2_BUCKET
 const vaultServiceToken = "e2e-vault-service-token";
 const organizationNoticesApiKey = "e2e-organization-notices-api-key";
 
-const apiServerCommand = `bun run --cwd=../../packages/sandbox build && bun run migrate && bun run migrate:dbos && ${hostedEnv} MCP_CACHE_ENABLED=true GITHUB_WEBHOOK_SECRET=e2e-github-webhook-secret VAULT_SERVICE_TOKEN=${vaultServiceToken} ORGANIZATION_NOTICES_API_KEY=${organizationNoticesApiKey} REPORTS_INTERNAL_API_URL=${commerceMockOrigin} REPORTS_INTERNAL_API_KEY=${commerceMockKey} GITHUB_API_BASE_URL=${githubStubOrigin} GITHUB_GRAPHQL_URL=${githubStubOrigin}/graphql JIRA_ALLOW_LOCAL_SITE_URL=1 JIRA_SETTLE_SECONDS=2 BOARD_TRANSITION_SETTLE_SECONDS=5 BASE_URL=${appOrigin} PORT=${serverPort} VITE_PORT=${appPort} RUN_IDLE_TIMEOUT_MS=120000 DEPLOYMENT_ADMIN_EMAILS=deployment-admin@e2e.local,deployment-admin-2@e2e.local bun run dev`;
+const subscriptionUsageStubPort =
+  process.env.SUBSCRIPTION_USAGE_STUB_PORT || "4105";
+const subscriptionUsageStubOrigin = `http://127.0.0.1:${subscriptionUsageStubPort}`;
+
+const apiServerCommand = `bun run --cwd=../../packages/sandbox build && bun run migrate && bun run migrate:dbos && ${hostedEnv} CODEX_USAGE_URL=${subscriptionUsageStubOrigin}/codex CLAUDE_USAGE_URL=${subscriptionUsageStubOrigin}/claude MCP_CACHE_ENABLED=true GITHUB_WEBHOOK_SECRET=e2e-github-webhook-secret VAULT_SERVICE_TOKEN=${vaultServiceToken} ORGANIZATION_NOTICES_API_KEY=${organizationNoticesApiKey} REPORTS_INTERNAL_API_URL=${commerceMockOrigin} REPORTS_INTERNAL_API_KEY=${commerceMockKey} GITHUB_API_BASE_URL=${githubStubOrigin} GITHUB_GRAPHQL_URL=${githubStubOrigin}/graphql JIRA_ALLOW_LOCAL_SITE_URL=1 JIRA_SETTLE_SECONDS=2 BOARD_TRANSITION_SETTLE_SECONDS=5 BASE_URL=${appOrigin} PORT=${serverPort} VITE_PORT=${appPort} RUN_IDLE_TIMEOUT_MS=120000 DEPLOYMENT_ADMIN_EMAILS=deployment-admin@e2e.local,deployment-admin-2@e2e.local bun run dev`;
 // CI serves the PRODUCTION build via `vite preview` (same Node proxy as dev —
 // see apps/web/vite.config.ts): the suite's charter is production-like
 // behavior, and the dev server's on-demand transform inflated browser-heavy
@@ -127,6 +131,12 @@ export default defineConfig({
     },
   ],
   webServer: [
+    {
+      command: `SUBSCRIPTION_USAGE_STUB_PORT=${subscriptionUsageStubPort} bun run test:usage-provider`,
+      url: `${subscriptionUsageStubOrigin}/health`,
+      reuseExistingServer: !process.env.CI,
+      timeout: 30_000,
+    },
     {
       // Mock commerce-skills upgrade API. Started before the studio server so
       // REPORTS_SETUP can mint a token over HTTP without reaching

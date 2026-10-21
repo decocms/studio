@@ -946,3 +946,17 @@
     animation-iteration-count: infinite !important;
   }
 }
+
+/* Navigations that opt into a view transition (switching orgs on the rail). */
+::view-transition-group(*) {
+  animation-duration: 220ms;
+  animation-timing-function: cubic-bezier(0.2, 0, 0, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}

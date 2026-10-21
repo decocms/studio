@@ -87,8 +87,8 @@ import {
 // Helper Functions
 // ============================================================================
 
-const MAX_PROPERTIES_COUNT = 50;
-const MAX_PROPERTY_STRING_LENGTH = 500;
+export const MAX_PROPERTIES_COUNT = 50;
+export const MAX_PROPERTY_STRING_LENGTH = 500;
 
 /**
  * Parse the Studio properties header into a Record<string, string>.

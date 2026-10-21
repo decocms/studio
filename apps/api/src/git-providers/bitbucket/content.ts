@@ -47,6 +47,7 @@ import {
   bbqString,
   bitbucketFailure,
   bitbucketFetch,
+  bitbucketJson,
   type BitbucketPage,
   nextPageNumber,
 } from "./http";
@@ -888,7 +889,7 @@ export class BitbucketContentClient implements RepoContentClient {
         });
       }
       if (!res.ok) throw await bitbucketFailure(res);
-      const json = (await res.json()) as BitbucketPullRequestRow;
+      const json = await bitbucketJson<BitbucketPullRequestRow>(res, "merge");
       if (json.state !== "MERGED") {
         throw new GitProviderError({
           provider: "bitbucket",
@@ -1059,7 +1060,7 @@ export class BitbucketContentClient implements RepoContentClient {
   private async jsonAt<T>(url: string, init?: CallInit): Promise<T | null> {
     const res = await this.callAt(url, init);
     if (res === null) return null;
-    return (await res.json()) as T;
+    return bitbucketJson<T>(res, url);
   }
 
   private call(

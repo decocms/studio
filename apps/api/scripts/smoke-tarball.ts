@@ -25,7 +25,7 @@
  */
 
 import { $ } from "bun";
-import { mkdtemp, realpath, writeFile } from "fs/promises";
+import { mkdtemp, realpath, rm, writeFile } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
 
@@ -39,58 +39,65 @@ const scratch = await mkdtemp(join(tmpdir(), "decocms-smoke-"));
 console.log(`📦 Smoke-testing ${tarball}`);
 console.log(`   scratch dir: ${scratch}`);
 
-await writeFile(
-  join(scratch, "package.json"),
-  `${JSON.stringify({
-    name: "decocms-smoke",
-    version: "0.0.0",
-    private: true,
-  })}\n`,
-);
-
-// Install exactly the way a consumer would (`bun add decocms@<version>`).
-await $`bun add ${tarball}`.cwd(scratch);
-
-// The public package is the combined distribution. A release is incomplete if
-// the independently built web app was not staged into the API package before
-// packing, even when the server CLI itself still boots.
-const clientIndex = join(
-  scratch,
-  "node_modules",
-  "decocms",
-  "dist",
-  "client",
-  "index.html",
-);
-if (!(await Bun.file(clientIndex).exists())) {
-  console.error(`Missing staged browser entrypoint: ${clientIndex}`);
-  process.exit(1);
-}
-
-// Invoke the `deco` bin. The bundle's top-level ESM imports execute
-// eagerly during load, so a missing external crashes here before
-// --version prints — same symptom a real consumer would hit.
-const cliBin = join(scratch, "node_modules", ".bin", "deco");
-const studioCli = join(
-  scratch,
-  "node_modules",
-  "decocms",
-  "dist",
-  "server",
-  "cli.js",
-);
-// Another installed package with a `deco` bin (@decocms/blocks has one) can
-// win the link and start instead of Studio: the bin must be Studio's CLI.
-if ((await realpath(cliBin)) !== (await realpath(studioCli))) {
-  console.error(
-    `node_modules/.bin/deco resolves to ${await realpath(cliBin)}, not Studio's ${studioCli}`,
+try {
+  await writeFile(
+    join(scratch, "package.json"),
+    `${JSON.stringify({
+      name: "decocms-smoke",
+      version: "0.0.0",
+      private: true,
+    })}\n`,
   );
-  process.exit(1);
-}
-await $`${cliBin} --version`.cwd(scratch);
-// What the Docker image runs (apps/api/Dockerfile CMD): the CLI by path.
-await $`bun run node_modules/decocms/dist/server/cli.js --version`.cwd(scratch);
 
-console.log(
-  "✅ Smoke test passed — browser assets are present and every external resolves at startup.",
-);
+  // Install exactly the way a consumer would (`bun add decocms@<version>`).
+  await $`bun add ${tarball}`.cwd(scratch);
+
+  // The public package is the combined distribution. A release is incomplete if
+  // the independently built web app was not staged into the API package before
+  // packing, even when the server CLI itself still boots.
+  const clientIndex = join(
+    scratch,
+    "node_modules",
+    "decocms",
+    "dist",
+    "client",
+    "index.html",
+  );
+  if (!(await Bun.file(clientIndex).exists())) {
+    throw new Error(`Missing staged browser entrypoint: ${clientIndex}`);
+  }
+
+  // Invoke the `deco` bin. The bundle's top-level ESM imports execute
+  // eagerly during load, so a missing external crashes here before
+  // --version prints — same symptom a real consumer would hit.
+  const cliBin = join(scratch, "node_modules", ".bin", "deco");
+  const studioCli = join(
+    scratch,
+    "node_modules",
+    "decocms",
+    "dist",
+    "server",
+    "cli.js",
+  );
+  // Another installed package with a `deco` bin (@decocms/blocks has one) can
+  // win the link and start instead of Studio: the bin must be Studio's CLI.
+  if ((await realpath(cliBin)) !== (await realpath(studioCli))) {
+    throw new Error(
+      `node_modules/.bin/deco resolves to ${await realpath(cliBin)}, not Studio's ${studioCli}`,
+    );
+  }
+  await $`${cliBin} --version`.cwd(scratch);
+  // What the Docker image runs (apps/api/Dockerfile CMD): the CLI by path.
+  await $`bun run node_modules/decocms/dist/server/cli.js --version`.cwd(
+    scratch,
+  );
+
+  console.log(
+    "✅ Smoke test passed — browser assets are present and every external resolves at startup.",
+  );
+} catch (error) {
+  console.error(error instanceof Error ? error.message : error);
+  process.exitCode = 1;
+} finally {
+  await rm(scratch, { recursive: true, force: true });
+}

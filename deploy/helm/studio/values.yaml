@@ -267,8 +267,8 @@ service:
 
 # Prometheus scraping of the app's /metrics endpoint (HTTP request-duration
 # histogram, event-loop delay, runtime metrics). Adds prometheus.io/* pod
-# annotations for vmagent's kubernetes-pods job. Disable if your cluster uses
-# ServiceMonitor CRDs or doesn't scrape pods by annotation.
+# annotations for vmagent's kubernetes-pods job. Scrapers use pod-only ports
+# (8081 on the API/nginx pod). Worker scraping is unchanged.
 metrics:
   scrape: true
   path: /metrics
