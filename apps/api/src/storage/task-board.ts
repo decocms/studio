@@ -3131,7 +3131,7 @@ export class TaskBoardStorage {
     harness_id?: TaskBoardHarnessId;
     id: string;
     organization_id: string;
-    board_id: string | null;
+    board_id: string;
     title: string;
     description: string | null;
     status: string;
@@ -3222,7 +3222,7 @@ async function boardForProject(
 ): Promise<{ board_id?: string }> {
   const current = await db
     .selectFrom("task_board_items as i")
-    .leftJoin("task_boards as b", "b.id", "i.board_id")
+    .innerJoin("task_boards as b", "b.id", "i.board_id")
     .select("b.type")
     .where("i.id", "=", id)
     .where("i.organization_id", "=", organizationId)
@@ -3231,7 +3231,7 @@ async function boardForProject(
   const boardId = await ensureBoard(db, {
     organizationId,
     virtualMcpId,
-    type: current.type ?? DEFAULT_BOARD_TYPE,
+    type: current.type,
   });
   return { board_id: boardId };
 }

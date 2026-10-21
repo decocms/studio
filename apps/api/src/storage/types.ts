@@ -1809,9 +1809,8 @@ export interface TaskBoardItemTable {
   >;
   id: string;
   organization_id: string;
-  /** The board the card is filed under (`task_boards.id`, migration 258).
-   *  Null only for a card a release without the column created. */
-  board_id: ColumnType<string | null, string | null | undefined, string | null>;
+  /** The board the card is filed under (`task_boards.id`, migration 258). */
+  board_id: string;
   title: string;
   description: string | null;
   /** The key of the column the card sits in — free text, because on a board
@@ -2155,9 +2154,8 @@ export interface TaskBoardItemThreadRef {
 
 export interface TaskBoardItem {
   harnessId: TaskBoardHarnessId;
-  /** The board the card is filed under; null only for a card created by a
-   *  release that predates boards. */
-  boardId: string | null;
+  /** The board the card is filed under. */
+  boardId: string;
   /** The epic or card this one sits under; null at the top level. */
   parentId: string | null;
   isEpic: boolean;

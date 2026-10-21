@@ -14,6 +14,10 @@ import {
 import type { StudioDatabase } from "../src/database";
 import { TaskBoardStorage } from "../src/storage/task-board";
 import { up } from "./258-task-boards";
+import {
+  down as allowCardsWithoutBoard,
+  up as requireBoardOnCards,
+} from "./259-task-board-items-board-required";
 
 describe("migration 258 — task boards", () => {
   let database: StudioDatabase;
@@ -23,10 +27,12 @@ describe("migration 258 — task boards", () => {
     database = await connectTestPgDatabase();
     await resetTestPgDatabase(database);
     await seedCommonTestPgFixtures(database);
+    await allowCardsWithoutBoard(db());
     storage = new TaskBoardStorage(database.db);
   });
 
   afterEach(async () => {
+    await requireBoardOnCards(db());
     await closeTestPgDatabase(database);
   });
 

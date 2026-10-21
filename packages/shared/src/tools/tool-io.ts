@@ -419,7 +419,7 @@ export interface StudioToolIO {
         repo: string | null;
         repositoryId: string | null;
         virtualMcpId: string | null;
-        boardId: string | null;
+        boardId: string;
         sprintId: string | null;
         dueDate: string | null;
         sortOrder: number;
@@ -501,7 +501,7 @@ export interface StudioToolIO {
         repo: string | null;
         repositoryId: string | null;
         virtualMcpId: string | null;
-        boardId: string | null;
+        boardId: string;
         sprintId: string | null;
         dueDate: string | null;
         sortOrder: number;
@@ -613,7 +613,7 @@ export interface StudioToolIO {
         repo: string | null;
         repositoryId: string | null;
         virtualMcpId: string | null;
-        boardId: string | null;
+        boardId: string;
         sprintId: string | null;
         dueDate: string | null;
         sortOrder: number;
