@@ -602,6 +602,35 @@ describe("dropSwimlane", () => {
     expect(over("gone")).toBeNull();
   });
 
+  test("over a dragged card, the card keeps the well its preview put it in", () => {
+    const previewed = new Map([
+      [
+        "moved",
+        {
+          ...item("moved", 0),
+          status: "in_progress",
+          priority: "urgent" as const,
+        },
+      ],
+      ["plain", item("plain", 1)],
+    ]);
+    const overDragged = (
+      overId: string,
+      fromStatus: string,
+      toStatus: string,
+    ) =>
+      dropSwimlane({
+        overId,
+        itemOf: (id) => previewed.get(id),
+        fromStatus,
+        toStatus,
+        dragged: ["moved", "plain"],
+      });
+    expect(overDragged("moved", "todo", "in_progress")).toBe("critical");
+    expect(overDragged("plain", "todo", "in_progress")).toBeNull();
+    expect(overDragged("plain", "todo", "todo")).toBe("improvements");
+  });
+
   test("a lane change keeps the card's well unless dropped on Critical", () => {
     expect(over("plain", "todo", "in_progress")).toBeNull();
     expect(over("urgent", "todo", "in_progress")).toBeNull();

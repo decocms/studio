@@ -151,22 +151,36 @@ export function hasCriticalWell(status: string): boolean {
  * only moves wells when dropped on a Critical well itself: dropping among
  * another lane's cards (or on a collapsed lane) keeps the card in its own
  * well, so moving work along never rewrites its priority by accident.
+ *
+ * Over one of the dragged cards themselves, the card stays in the well the
+ * preview already put it in. Reading that card as "another lane's card" would
+ * take it back out of a Critical well it was just previewed into, under the
+ * pointer again, and the drag would flip between the two wells forever.
  */
 export function dropSwimlane({
   overId,
   itemOf,
   fromStatus,
   toStatus,
+  dragged = [],
 }: {
   overId: string | number | undefined;
+  /** A card as the board shows it, preview included. */
   itemOf: (cardId: string) => TaskBoardItem | undefined;
   /** The lane the card is saved in. */
   fromStatus: string;
   toStatus: string;
+  /** The ids of the cards being dragged. */
+  dragged?: readonly string[];
 }): "critical" | "improvements" | null {
   if (overId === undefined || !hasCriticalWell(toStatus)) return null;
   const id = String(overId);
   if (id.startsWith(CRITICAL_DROPPABLE_PREFIX)) return "critical";
+  if (dragged.includes(id)) {
+    const card = itemOf(id);
+    if (card && isCriticalTask(card)) return "critical";
+    return fromStatus === toStatus ? "improvements" : null;
+  }
   if (fromStatus !== toStatus) return null;
   if (id.startsWith(LANE_DROPPABLE_PREFIX)) return "improvements";
   const card = itemOf(id);
