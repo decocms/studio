@@ -173,6 +173,9 @@ export interface TaskBoardItem {
   /** The project this card belongs to; null leaves it attributed by its
    *  repository and runs. Mirrors `taskBoardItemSchema`. */
   virtualMcpId: string | null;
+  /** The board the card is filed under; null only for a card created by a
+   *  release that predates boards. Mirrors `taskBoardItemSchema`. */
+  boardId: string | null;
   /** The sprint this card is planned into; null = backlog. */
   sprintId: string | null;
   dueDate: string | null;

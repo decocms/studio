@@ -214,6 +214,20 @@ export const CANONICAL_COLUMN_KEYS = [
 export type CanonicalColumnKey = (typeof CANONICAL_COLUMN_KEYS)[number];
 
 /**
+ * The pipelines a board can run. Each type is an opinionated set of columns,
+ * automations and context defined here in code; nobody composes their own.
+ * A project, and the organization itself, has at most one board of each type.
+ *
+ * `development` is the board Studio has always had: `CANONICAL_COLUMN_KEYS`.
+ */
+export const BOARD_TYPES = ["development"] as const;
+
+export type BoardType = (typeof BOARD_TYPES)[number];
+
+/** The board a card lands on when nobody picked one. */
+export const DEFAULT_BOARD_TYPE: BoardType = "development";
+
+/**
  * The columns Studio's lifecycle gives meanings to, by meaning.
  *
  * Named so the writers and SQL predicates that move cards say what they mean

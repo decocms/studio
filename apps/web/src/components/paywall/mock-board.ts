@@ -28,6 +28,7 @@ function card(
     isEpic: false,
     id,
     organizationId: "preview",
+    boardId: null,
     title,
     description: null,
     repositoryId: null,

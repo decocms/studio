@@ -186,6 +186,10 @@ export const TaskBoardItemSchema = z.object({
   /** The project this card belongs to; null leaves it attributed by its
    *  repository and runs. Attribution only — a run checks out `repo`. */
   virtualMcpId: z.string().nullable(),
+  /** The board the card is filed under; null only for a card created by a
+   *  release that predates boards. Present on every `TaskBoardItem`, so it
+   *  MUST be modeled here. */
+  boardId: z.string().nullable(),
   /** The sprint this card is planned into (see `TASK_BOARD_SPRINT_LIST`);
    *  null = backlog. Present on every `TaskBoardItem`, so it MUST be modeled
    *  here or Ajv-revalidating MCP clients reject every response. */

@@ -8,6 +8,7 @@
  */
 
 import { urlSlugBase } from "@decocms/shared/url-slug";
+import { releaseProjectBoards } from "./task-boards";
 import { changeUrlSlug, withAllocatedUrlSlug } from "./url-slug";
 import {
   readRepositoryMetadata,
@@ -739,6 +740,8 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
 
   async delete(id: string): Promise<void> {
     await this.db.transaction().execute(async (trx) => {
+      await releaseProjectBoards(trx, id);
+
       // Delete threads initiated with this agent.
       await trx
         .deleteFrom("threads")

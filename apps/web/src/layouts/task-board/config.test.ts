@@ -38,6 +38,7 @@ function item(id: string, sortOrder: number): TaskBoardItem {
     isEpic: false,
     id,
     organizationId: "org-1",
+    boardId: "tboard-1",
     title: id,
     description: null,
     status: "triage",
