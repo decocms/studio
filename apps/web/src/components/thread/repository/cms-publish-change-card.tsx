@@ -9,7 +9,7 @@ import {
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
 import { File06, LayoutAlt01, Trash01 } from "@untitledui/icons";
-import { useT, type TFunction } from "@/i18n/use-t.ts";
+import { useT, type TFunction, type TranslationKey } from "@/i18n/use-t.ts";
 import { namedRuleUsePlaces } from "@/components/sections-editor/named-rule-use-copy.ts";
 import {
   namedRuleBlockOfChange,
@@ -26,6 +26,34 @@ import {
  */
 export function changeId(change: PublishChange): string {
   return change.filepaths[0] ?? change.blockKey ?? change.name;
+}
+
+/**
+ * The A/B tests or Campaigns card's line: the verb follows how many places,
+ * the noun how many distinct names are missing ("2 pages use a test", "1
+ * page uses tests").
+ */
+function missingUsesKey(
+  uses: NonNullable<PublishChange["missingRuleUses"]>,
+): TranslationKey {
+  const onePlace = uses.pages + uses.sections === 1;
+  const oneName = uses.names === 1;
+  if (uses.kind === "experiments") {
+    return oneName
+      ? onePlace
+        ? "thread.publishPopover.missingTestUsesOne"
+        : "thread.publishPopover.missingTestUses"
+      : onePlace
+        ? "thread.publishPopover.missingTestsUsesOne"
+        : "thread.publishPopover.missingTestsUses";
+  }
+  return oneName
+    ? onePlace
+      ? "thread.publishPopover.missingCampaignUsesOne"
+      : "thread.publishPopover.missingCampaignUses"
+    : onePlace
+      ? "thread.publishPopover.missingCampaignsUsesOne"
+      : "thread.publishPopover.missingCampaignsUses";
 }
 
 function statusLabel(status: PublishChangeStatus, t: TFunction) {
@@ -250,21 +278,7 @@ export function PublishChangeCard({
           className="mt-1 truncate pl-[26px] text-xs text-foreground"
           data-testid="publish-change-missing-rule-uses"
         >
-          {missingUses.kind === "experiments"
-            ? missingPlaces.one
-              ? t("thread.publishPopover.missingTestUsesOne", {
-                  places: missingPlaces.places,
-                })
-              : t("thread.publishPopover.missingTestUses", {
-                  places: missingPlaces.places,
-                })
-            : missingPlaces.one
-              ? t("thread.publishPopover.missingCampaignUsesOne", {
-                  places: missingPlaces.places,
-                })
-              : t("thread.publishPopover.missingCampaignUses", {
-                  places: missingPlaces.places,
-                })}
+          {t(missingUsesKey(missingUses), { places: missingPlaces.places })}
         </div>
       ) : null}
     </PublishCardFrame>

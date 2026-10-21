@@ -1,7 +1,12 @@
 import { setupComponentTest } from "../../../test/setup";
 setupComponentTest();
 import { describe, expect, mock, test } from "bun:test";
-import { fireEvent, render as rtlRender, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render as rtlRender,
+  within,
+} from "@testing-library/react";
 import type { ReactElement } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { en } from "@/i18n/en/index.ts";
@@ -109,6 +114,7 @@ describe("MissingNamedRuleUses", () => {
       <MissingNamedRuleUses
         kind="experiments"
         rows={rows.slice(0, 1)}
+        names={2}
         onOpen={onOpen}
       />,
     );
@@ -126,7 +132,12 @@ describe("MissingNamedRuleUses", () => {
 
   test("says campaigns for campaigns, in pt-br too, and nothing when none", () => {
     render(
-      <MissingNamedRuleUses kind="campaigns" rows={[]} onOpen={() => {}} />,
+      <MissingNamedRuleUses
+        kind="campaigns"
+        rows={[]}
+        names={0}
+        onOpen={() => {}}
+      />,
     );
     expect(
       within(document.body).queryByTestId("named-rule-missing-uses"),
@@ -139,6 +150,34 @@ describe("MissingNamedRuleUses", () => {
     );
     expect(ptBR["sectionsEditor.namedRuleUses.missingCampaigns"]).toBe(
       "Estas páginas e seções usam campanhas que não estão nas suas campanhas.",
+    );
+    expect(ptBR["sectionsEditor.namedRuleUses.missingTestOne"]).toBe(
+      "Estas páginas e seções usam um teste que não está nos seus testes A/B.",
+    );
+    expect(ptBR["sectionsEditor.namedRuleUses.missingCampaignOne"]).toBe(
+      "Estas páginas e seções usam uma campanha que não está nas suas campanhas.",
+    );
+  });
+
+  test("one name used in several places says a test, not tests", () => {
+    const line = (kind: "experiments" | "campaigns") => {
+      cleanup();
+      render(
+        <MissingNamedRuleUses
+          kind={kind}
+          rows={rows}
+          names={1}
+          onOpen={() => {}}
+        />,
+      );
+      return within(document.body).getByTestId("named-rule-missing-uses")
+        .firstElementChild?.textContent;
+    };
+    expect(line("experiments")).toBe(
+      "These pages and sections use a test that isn't in your A/B tests.",
+    );
+    expect(line("campaigns")).toBe(
+      "These pages and sections use a campaign that isn't in your campaigns.",
     );
   });
 });

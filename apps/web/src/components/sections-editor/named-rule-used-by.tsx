@@ -149,10 +149,13 @@ function NamedRuleUseList({
 export function MissingNamedRuleUses({
   kind,
   rows,
+  names,
   onOpen,
 }: {
   kind: NamedRuleKind;
   rows: NamedRuleUseRow[];
+  /** How many distinct names are missing: "a test" or "tests". */
+  names: number;
   onOpen: (row: NamedRuleUseRow) => void;
 }) {
   const t = useT();
@@ -164,8 +167,12 @@ export function MissingNamedRuleUses({
     >
       <p className="text-sm text-muted-foreground">
         {kind === "experiments"
-          ? t("sectionsEditor.namedRuleUses.missingTests")
-          : t("sectionsEditor.namedRuleUses.missingCampaigns")}
+          ? names === 1
+            ? t("sectionsEditor.namedRuleUses.missingTestOne")
+            : t("sectionsEditor.namedRuleUses.missingTests")
+          : names === 1
+            ? t("sectionsEditor.namedRuleUses.missingCampaignOne")
+            : t("sectionsEditor.namedRuleUses.missingCampaigns")}
       </p>
       <NamedRuleUseList rows={rows} marked={false} onOpen={onOpen} />
     </section>

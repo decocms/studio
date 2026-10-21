@@ -169,8 +169,12 @@ export const sectionsEditor = {
   "sectionsEditor.namedRuleUses.countSectionOne": "1 section",
   "sectionsEditor.namedRuleUses.countSections": "{count} sections",
   "sectionsEditor.namedRuleUses.countBoth": "{pages} and {sections}",
+  "sectionsEditor.namedRuleUses.missingTestOne":
+    "These pages and sections use a test that isn't in your A/B tests.",
   "sectionsEditor.namedRuleUses.missingTests":
     "These pages and sections use tests that aren't in your A/B tests.",
+  "sectionsEditor.namedRuleUses.missingCampaignOne":
+    "These pages and sections use a campaign that isn't in your campaigns.",
   "sectionsEditor.namedRuleUses.missingCampaigns":
     "These pages and sections use campaigns that aren't in your campaigns.",
   "sectionsEditor.namedRules.changedMeanwhile":

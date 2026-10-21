@@ -183,11 +183,19 @@ export const thread = {
     "Usa uma campanha que não está nas suas campanhas",
   "thread.publishPopover.missingTestUsesOne":
     "{places} usa um teste que não está nos seus testes A/B",
+  "thread.publishPopover.missingTestsUsesOne":
+    "{places} usa testes que não estão nos seus testes A/B",
   "thread.publishPopover.missingTestUses":
+    "{places} usam um teste que não está nos seus testes A/B",
+  "thread.publishPopover.missingTestsUses":
     "{places} usam testes que não estão nos seus testes A/B",
   "thread.publishPopover.missingCampaignUsesOne":
     "{places} usa uma campanha que não está nas suas campanhas",
+  "thread.publishPopover.missingCampaignsUsesOne":
+    "{places} usa campanhas que não estão nas suas campanhas",
   "thread.publishPopover.missingCampaignUses":
+    "{places} usam uma campanha que não está nas suas campanhas",
+  "thread.publishPopover.missingCampaignsUses":
     "{places} usam campanhas que não estão nas suas campanhas",
   "thread.publishPopover.lastPublished": "Última publicação {when}",
   "thread.publishPopover.lastPublishedBy":

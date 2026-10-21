@@ -342,8 +342,24 @@ describe("the locked row", () => {
     );
     const body = within(document.body);
     expect(body.queryByRole("button", { name: "Create it" })).toBeNull();
-    expect(body.getByTestId("named-rule-missing").textContent).toBe(
-      "This test isn't in your A/B tests. Pick another or remove this variant.",
+    // The picker's own explanation, not "isn't in your A/B tests": there is
+    // nothing to pick until that block is renamed.
+    expect(body.queryByTestId("named-rule-missing")).toBeNull();
+    expect(body.getByTestId("named-rule-conflict").textContent).toBe(
+      "Your site has a block named “experiments” that isn't a list of A/B tests, so tests can't be added yet. Rename that block, then come back here.",
+    );
+  });
+
+  test("a campaign in a block that holds something else gets the picker's explanation too", () => {
+    const rule = { __resolveType: "date", campaign: "gone" };
+    const kinds: NamedRulePickerKind[] = [
+      { kind: "campaigns", state: "conflict", entries: [] },
+    ];
+    render(<NamedRuleRow {...namedRuleRowState(rule, kinds)!} />);
+    const body = within(document.body);
+    expect(body.queryByTestId("named-rule-missing")).toBeNull();
+    expect(body.getByTestId("named-rule-conflict").textContent).toBe(
+      "Your site has a block named “campaigns” that isn't a list of campaigns, so campaigns can't be added yet. Rename that block, then come back here.",
     );
   });
 

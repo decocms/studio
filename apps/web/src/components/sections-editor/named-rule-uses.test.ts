@@ -9,12 +9,14 @@ import {
   publishedNamedRuleValue,
 } from "./named-rule-edits";
 import {
+  missingNamedRuleWithin,
   namedRulePickerKinds,
   namedRuleRowState,
   planNamedRulePick,
 } from "./named-rule-picker";
 import {
   blocksUsingMissingNamedRules,
+  missingNamedRuleRowNames,
   missingNamedRuleRows,
   missingNamedRuleUseCounts,
   missingNamedRules,
@@ -492,6 +494,45 @@ describe("one definition of a missing name, everywhere", () => {
   });
 });
 
+describe("a block that holds something else (a clash)", () => {
+  // "experiments" is some other block: its names can't be read, so none is
+  // called missing; the row says what the picker says instead.
+  const draft = {
+    experiments: { __resolveType: "hero-banner", title: "x" },
+    "pages-home": page("Home", "/", experiment("hero")),
+    "pages-sale": page("Sale", "/sale", {
+      __resolveType: "multi",
+      op: "and",
+      matchers: [experiment("hero"), { __resolveType: "always" }],
+    }),
+  };
+
+  it("the row explains the clash and nothing calls the name missing", () => {
+    const kinds = namedRulePickerKinds(meta, draft);
+    expect(namedRuleRowState(experiment("hero"), kinds)).toMatchObject({
+      missing: false,
+      conflict: true,
+    });
+    expect(
+      missingNamedRuleWithin(
+        (draft["pages-sale"].sections.variants[0] as { rule: unknown }).rule,
+        kinds,
+        draft,
+      ),
+    ).toBeNull();
+    const uses = namedRuleUses({
+      decofile: draft,
+      meta,
+      changeCount: 0,
+      sides: undefined,
+    });
+    expect(missingNamedRules(uses, "experiments", draft)).toEqual([]);
+    expect(missingNamedRuleRows(uses, "experiments", draft, meta)).toEqual([]);
+    expect(blocksUsingMissingNamedRules(draft, meta).size).toBe(0);
+    expect(missingNamedRuleUseCounts(draft, meta).size).toBe(0);
+  });
+});
+
 describe("counting where a name is used", () => {
   const section = (rule: unknown) => ({
     __resolveType: "site/sections/Hero.tsx",
@@ -512,11 +553,59 @@ describe("counting where a name is used", () => {
     expect(missingNamedRuleUseCounts(draft, meta).get("experiments")).toEqual({
       pages: 2,
       sections: 1,
+      names: 1,
     });
     expect(namedRuleUseCounts(draft, meta, "experiments", "kept")).toEqual({
       pages: 0,
       sections: 1,
     });
+  });
+});
+
+describe("how many names are missing, for a test or tests", () => {
+  const draft = {
+    experiments: { __resolveType: "split-traffic", kept: 10 },
+    "pages-a": page("A", "/a", experiment("gone")),
+    "pages-b": page("B", "/b", experiment("gone")),
+  };
+  const usesOf = (decofile: Record<string, unknown>) =>
+    namedRuleUses({ decofile, meta, changeCount: 0, sides: undefined });
+
+  it("one name used in several places is one name", () => {
+    expect(missingNamedRuleUseCounts(draft, meta).get("experiments")).toEqual({
+      pages: 2,
+      sections: 0,
+      names: 1,
+    });
+    expect(
+      missingNamedRuleRowNames(usesOf(draft), "experiments", draft, meta),
+    ).toBe(1);
+  });
+
+  it("two names, even on one page, are two", () => {
+    const two = {
+      ...draft,
+      "pages-b": page("B", "/b", experiment("other")),
+    };
+    expect(missingNamedRuleUseCounts(two, meta).get("experiments")).toEqual({
+      pages: 2,
+      sections: 0,
+      names: 2,
+    });
+    expect(
+      missingNamedRuleRowNames(usesOf(two), "experiments", two, meta),
+    ).toBe(2);
+    const onePage = {
+      experiments: draft.experiments,
+      "pages-a": page("A", "/a", {
+        __resolveType: "multi",
+        op: "and",
+        matchers: [experiment("gone"), experiment("other")],
+      }),
+    };
+    expect(missingNamedRuleUseCounts(onePage, meta).get("experiments")).toEqual(
+      { pages: 1, sections: 0, names: 2 },
+    );
   });
 });
 

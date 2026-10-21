@@ -48,6 +48,7 @@ import {
   NamedRuleUsedBy,
 } from "@/components/sections-editor/named-rule-used-by";
 import {
+  missingNamedRuleRowNames,
   missingNamedRuleRows,
   type NamedRuleUseRow,
   type NamedRuleUses,
@@ -285,6 +286,9 @@ function ExperimentsV8Ready({
   const missing = uses
     ? missingNamedRuleRows(uses, "experiments", decofile, meta)
     : [];
+  const missingNames = uses
+    ? missingNamedRuleRowNames(uses, "experiments", decofile, meta)
+    : 0;
 
   /** One change into the draft, with one toast for it. */
   const save = async (
@@ -370,6 +374,7 @@ function ExperimentsV8Ready({
             <MissingNamedRuleUses
               kind="experiments"
               rows={missing}
+              names={missingNames}
               onOpen={openUse}
             />
             {removed.length > 0 && (

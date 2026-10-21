@@ -243,8 +243,13 @@ export interface NamedRuleRowState {
   kind: NamedRuleKind;
   name: string;
   summary: string;
-  /** The rule names something the block doesn't have. */
+  /**
+   * The rule names something the block doesn't have. Never with `conflict`:
+   * a block that holds something else has its own explanation.
+   */
   missing: boolean;
+  /** The kind's block holds something else (the picker's `conflict`). */
+  conflict: boolean;
   /** A `date { start, end }` rule from before campaigns. */
   inlineDate: boolean;
 }
@@ -260,11 +265,15 @@ export function namedRuleRowState(
 ): NamedRuleRowState | null {
   const current = currentNamedRule(rule, kinds);
   if (current) {
+    const conflict = kinds.some(
+      (k) => k.kind === current.kind && k.state === "conflict",
+    );
     return {
       kind: current.kind,
       name: current.name,
       summary: current.entry?.summary ?? "",
-      missing: current.entry === null,
+      missing: current.entry === null && !conflict,
+      conflict,
       inlineDate: false,
     };
   }
@@ -274,6 +283,7 @@ export function namedRuleRowState(
       name: "",
       summary: "",
       missing: false,
+      conflict: false,
       inlineDate: true,
     };
   }

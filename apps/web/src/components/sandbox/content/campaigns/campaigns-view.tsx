@@ -51,6 +51,7 @@ import {
   NamedRuleUsedBy,
 } from "@/components/sections-editor/named-rule-used-by";
 import {
+  missingNamedRuleRowNames,
   missingNamedRuleRows,
   type NamedRuleUseRow,
   type NamedRuleUses,
@@ -211,6 +212,9 @@ export function CampaignsView({
   const missing = uses
     ? missingNamedRuleRows(uses, "campaigns", decofile, meta)
     : [];
+  const missingNames = uses
+    ? missingNamedRuleRowNames(uses, "campaigns", decofile, meta)
+    : 0;
 
   const save = async (
     change: NamedRuleChange | null,
@@ -302,6 +306,7 @@ export function CampaignsView({
           <MissingNamedRuleUses
             kind="campaigns"
             rows={missing}
+            names={missingNames}
             onOpen={onOpenUse}
           />
           {removed.length > 0 && (

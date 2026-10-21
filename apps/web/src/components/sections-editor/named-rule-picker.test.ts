@@ -271,6 +271,7 @@ describe("the rule editor's row", () => {
       name: "hero-test",
       summary: "50% of visitors",
       missing: false,
+      conflict: false,
       inlineDate: false,
     });
   });
@@ -279,6 +280,21 @@ describe("the rule editor's row", () => {
     expect(
       namedRuleRowState({ __resolveType: "date", campaign: "gone" }, kinds),
     ).toMatchObject({ kind: "campaigns", name: "gone", missing: true });
+  });
+
+  it("isn't missing when the kind's block holds something else: that has its own explanation", () => {
+    expect(
+      namedRuleRowState({ __resolveType: "experiment", name: "gone" }, [
+        { kind: "experiments", state: "conflict", entries: [] },
+      ]),
+    ).toEqual({
+      kind: "experiments",
+      name: "gone",
+      summary: "",
+      missing: false,
+      conflict: true,
+      inlineDate: false,
+    });
   });
 
   it("guides an inline date rule into a campaign", () => {

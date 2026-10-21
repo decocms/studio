@@ -23,7 +23,7 @@ import {
   type NamedRuleKind,
   namedRuleKindOfBlock,
 } from "@/components/sections-editor/named-rules";
-import type { NamedRuleUseCounts } from "@/components/sections-editor/named-rule-uses";
+import type { MissingNamedRuleUseCounts } from "@/components/sections-editor/named-rule-uses";
 import {
   globalSectionLabel,
   isSiteAppBlock,
@@ -93,7 +93,7 @@ export interface PublishChange {
    * sections use a name the draft doesn't have. Those may have no card of
    * their own; nothing is blocked.
    */
-  missingRuleUses?: { kind: NamedRuleKind } & NamedRuleUseCounts;
+  missingRuleUses?: { kind: NamedRuleKind } & MissingNamedRuleUseCounts;
 }
 
 /**
@@ -767,7 +767,7 @@ interface ContentChangesInput {
    * Per kind, how many pages and how many sections use a name the draft
    * doesn't have (named-rule-uses.ts `missingNamedRuleUseCounts`).
    */
-  missingRuleUses?: ReadonlyMap<NamedRuleKind, NamedRuleUseCounts>;
+  missingRuleUses?: ReadonlyMap<NamedRuleKind, MissingNamedRuleUseCounts>;
 }
 
 /**

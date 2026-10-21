@@ -426,13 +426,16 @@ export function NamedRuleCreateForm({
  * Experiments tab or Campaigns view. A name that isn't there (deleted,
  * discarded, never created, typed by hand) says so, with the picker right
  * above and, when the picker can create it (`onCreate`), "Create it"; a date
- * rule still written with its own dates says what to do.
+ * rule still written with its own dates says what to do. When the kind's
+ * block holds something else (`conflict`), the row says what the picker
+ * says, since nothing can be picked or created until that block is renamed.
  */
 export function NamedRuleRow({
   kind,
   name,
   summary,
   missing,
+  conflict,
   inlineDate,
   onCreate,
 }: {
@@ -440,6 +443,8 @@ export function NamedRuleRow({
   name: string;
   summary: string;
   missing: boolean;
+  /** The kind's block holds something else (the picker's `conflict`). */
+  conflict?: boolean;
   inlineDate?: boolean;
   /** Opens the form that creates the missing name. */
   onCreate?: () => void;
@@ -448,17 +453,21 @@ export function NamedRuleRow({
   const tests = kind === "experiments";
   const note = inlineDate
     ? t("sectionsEditor.namedRulePicker.inlineDate")
-    : missing
-      ? onCreate
-        ? tests
-          ? t("sectionsEditor.namedRulePicker.missingTest")
-          : t("sectionsEditor.namedRulePicker.missingCampaign")
+    : conflict
+      ? tests
+        ? t("sectionsEditor.namedRulePicker.conflictTests")
+        : t("sectionsEditor.namedRulePicker.conflictCampaigns")
+      : missing
+        ? onCreate
+          ? tests
+            ? t("sectionsEditor.namedRulePicker.missingTest")
+            : t("sectionsEditor.namedRulePicker.missingCampaign")
+          : tests
+            ? t("sectionsEditor.namedRulePicker.missingTestNoCreate")
+            : t("sectionsEditor.namedRulePicker.missingCampaignNoCreate")
         : tests
-          ? t("sectionsEditor.namedRulePicker.missingTestNoCreate")
-          : t("sectionsEditor.namedRulePicker.missingCampaignNoCreate")
-      : tests
-        ? t("sectionsEditor.namedRulePicker.testRowHint")
-        : t("sectionsEditor.namedRulePicker.campaignRowHint");
+          ? t("sectionsEditor.namedRulePicker.testRowHint")
+          : t("sectionsEditor.namedRulePicker.campaignRowHint");
   return (
     <div
       className="flex flex-col gap-1.5 rounded-[var(--studio-control-radius,var(--radius-md))] border border-border/80 bg-muted/30 px-3 py-2"
@@ -478,9 +487,19 @@ export function NamedRuleRow({
       <p
         className={cn(
           "text-xs",
-          missing && !inlineDate ? "text-foreground" : "text-muted-foreground",
+          (missing || conflict) && !inlineDate
+            ? "text-foreground"
+            : "text-muted-foreground",
         )}
-        data-testid={missing && !inlineDate ? "named-rule-missing" : undefined}
+        data-testid={
+          inlineDate
+            ? undefined
+            : conflict
+              ? "named-rule-conflict"
+              : missing
+                ? "named-rule-missing"
+                : undefined
+        }
       >
         {note}
       </p>

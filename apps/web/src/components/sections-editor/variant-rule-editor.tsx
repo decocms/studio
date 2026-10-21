@@ -149,6 +149,7 @@ export function VariantRuleEditor({
               name={namedRow.name}
               summary={namedRow.summary}
               missing={namedRow.missing}
+              conflict={namedRow.conflict}
               inlineDate={namedRow.inlineDate}
               {...(canCreate
                 ? { onCreate: () => setCreatingFor(createFor) }

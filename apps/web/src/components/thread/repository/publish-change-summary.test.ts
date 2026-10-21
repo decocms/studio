@@ -924,6 +924,7 @@ describe("summarizeContentChanges (a v8 source's changes.list)", () => {
       kind: "experiments",
       pages: 2,
       sections: 1,
+      names: 1,
     });
     // Once the pages pick another test, the card says nothing.
     const fixed = {

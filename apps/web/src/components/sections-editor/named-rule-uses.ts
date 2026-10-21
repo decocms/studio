@@ -257,18 +257,45 @@ export function missingNamedRuleRows(
   decofile: Record<string, unknown>,
   meta?: LiveMeta | null,
 ): NamedRuleUseRow[] {
+  return missingRowsAndNames(uses, kind, decofile, meta).rows;
+}
+
+/**
+ * How many distinct missing names those rows come from, so the line above
+ * them says "a test" or "tests".
+ */
+export function missingNamedRuleRowNames(
+  uses: NamedRuleUses,
+  kind: NamedRuleKind,
+  decofile: Record<string, unknown>,
+  meta?: LiveMeta | null,
+): number {
+  return missingRowsAndNames(uses, kind, decofile, meta).names;
+}
+
+function missingRowsAndNames(
+  uses: NamedRuleUses,
+  kind: NamedRuleKind,
+  decofile: Record<string, unknown>,
+  meta?: LiveMeta | null,
+): { rows: NamedRuleUseRow[]; names: number } {
   return memoized("missingRows", [uses, decofile, meta, kind], () => {
     const rows: NamedRuleUseRow[] = [];
     const seen = new Set<string>();
+    let names = 0;
     for (const name of missingNamedRules(uses, kind, decofile)) {
+      let listed = false;
       for (const row of namedRuleUseRows(uses, kind, name, decofile, meta)) {
+        if (row.state === "removed-in-draft") continue;
+        listed = true;
         const key = `${row.blockKey}#${row.variant ?? ""}`;
-        if (row.state === "removed-in-draft" || seen.has(key)) continue;
+        if (seen.has(key)) continue;
         seen.add(key);
         rows.push(row);
       }
+      if (listed) names++;
     }
-    return sortRows(rows);
+    return { rows: sortRows(rows), names };
   });
 }
 
@@ -320,30 +347,43 @@ export interface NamedRuleUseCounts {
   sections: number;
 }
 
+/** Where missing names are used, and how many distinct names are missing. */
+export interface MissingNamedRuleUseCounts extends NamedRuleUseCounts {
+  /** Distinct names, so the copy says "a test" or "tests". */
+  names: number;
+}
+
 /**
  * Per kind the site's schema has built in, how many pages and how many
- * sections use a test or campaign that doesn't exist. The Publish review
+ * sections use a test or campaign that doesn't exist, and how many such names. The Publish review
  * says so on the A/B tests or Campaigns card, since those pages may have no
  * card of their own; nothing is blocked.
  */
 export function missingNamedRuleUseCounts(
   decofile: Record<string, unknown>,
   meta: LiveMeta | null | undefined,
-): Map<NamedRuleKind, NamedRuleUseCounts> {
+): Map<NamedRuleKind, MissingNamedRuleUseCounts> {
   return memoized("missingUseCounts", [decofile, meta], () => {
-    const out = new Map<NamedRuleKind, NamedRuleUseCounts>();
+    const out = new Map<NamedRuleKind, MissingNamedRuleUseCounts>();
     const kinds = availableKinds(meta);
     if (kinds.length === 0) return out;
     const uses = draftUses(decofile, meta);
     for (const kind of kinds) {
       const blocks = new Set<string>();
+      let names = 0;
       for (const name of missingNamedRules(uses, kind, decofile)) {
+        let counted = false;
         for (const ref of uses.refs[kind].byName.get(name) ?? []) {
-          if (!ref.savedRule) blocks.add(ref.blockKey);
+          if (ref.savedRule) continue;
+          blocks.add(ref.blockKey);
+          counted = true;
         }
+        if (counted) names++;
       }
       const counts = countByKind(blocks, uses, decofile, meta);
-      if (counts.pages + counts.sections > 0) out.set(kind, counts);
+      if (counts.pages + counts.sections > 0) {
+        out.set(kind, { ...counts, names });
+      }
     }
     return out;
   });
