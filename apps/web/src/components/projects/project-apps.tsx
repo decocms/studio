@@ -330,23 +330,10 @@ export function AppsCard({
 }
 
 /** Hidden until a tile lands: which apps a project has is only known once
- *  presence resolves. `card` draws it as the org home's apps card. */
-function AppsSection({
-  card,
-  children,
-}: {
-  card?: boolean;
-  children: ReactNode;
-}) {
+ *  presence resolves. */
+function AppsSection({ children }: { children: ReactNode }) {
   const t = useT();
-  return card ? (
-    <AppsCard
-      title={t("projects.apps.heading")}
-      className="hidden has-[a]:flex"
-    >
-      {children}
-    </AppsCard>
-  ) : (
+  return (
     <section className="hidden flex-col gap-3 has-[a]:flex">
       {/* `pl-3` matches the Board/List/Feed tabs below, whose `sm` pills carry
           `px-3`. */}
@@ -361,14 +348,12 @@ function AppsSection({
 export function ProjectApps({
   project,
   orgSlug,
-  card,
 }: {
   project: VirtualMCPEntity;
   orgSlug: string;
-  card?: boolean;
 }) {
   return (
-    <AppsSection card={card}>
+    <AppsSection>
       <ProjectAppTiles project={project} orgSlug={orgSlug} />
     </AppsSection>
   );

@@ -1,8 +1,4 @@
-/**
- * A project's Overview under the new navigation: a task to start, its apps,
- * what in it is asking for you, then its rhythms. The board itself is
- * Execute; this is the glance.
- */
+/** A project's Overview under the new navigation: a task to start, what asks for you, its rhythms. */
 
 import { Suspense } from "react";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
@@ -17,7 +13,6 @@ import { tasksNeedingMe } from "@/components/org-home/daily-pulse";
 import { ForYou, Metrics } from "@/components/org-home/home-overview";
 import { useOrgTasksSuspense } from "@/components/org-home/use-org-tasks";
 import { Page } from "@/components/page";
-import { ProjectApps } from "@/components/projects/project-apps";
 import { useInboxFeed } from "@/hooks/use-inbox-feed";
 import { scopableProjects } from "@/hooks/use-project-scope";
 import { useT } from "@/i18n/use-t.ts";
@@ -40,7 +35,6 @@ function ProjectOverviewBody({ project }: { project: VirtualMCPEntity }) {
 
   return (
     <>
-      <ProjectApps project={project} orgSlug={org.slug} card />
       <ForYou
         waiting={tasksNeedingMe(projectTasks, session?.user?.id)}
         tasks={projectTasks}
