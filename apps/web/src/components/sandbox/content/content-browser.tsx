@@ -1536,17 +1536,28 @@ function ContentBrowserReady({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{`Delete ${deleteNoun}?`}</AlertDialogTitle>
+            <AlertDialogTitle>
+              {t("sandbox.contentBrowser.deleteDialog.title", {
+                noun: deleteNoun,
+              })}
+            </AlertDialogTitle>
             <AlertDialogDescription>
               {deleteTarget?.kind === "section"
-                ? `"${deleteTarget.label}" will be removed. Pages that still reference it will lose this section.`
+                ? t("sandbox.contentBrowser.deleteDialog.descriptionSection", {
+                    label: deleteTarget.label,
+                  })
                 : deleteTarget
-                  ? `"${deleteTarget.label}" will be removed permanently. This can't be undone.`
+                  ? t(
+                      "sandbox.contentBrowser.deleteDialog.descriptionPermanent",
+                      { label: deleteTarget.label },
+                    )
                   : null}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={isDeleting}>
+              {t("sandbox.contentBrowser.deleteDialog.cancel")}
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={(e) => {
                 e.preventDefault();
@@ -1558,10 +1569,10 @@ function ContentBrowserReady({
               {isDeleting ? (
                 <>
                   <Spinner className="size-3.5" />
-                  Deleting…
+                  {t("sandbox.contentBrowser.deleteDialog.deleting")}
                 </>
               ) : (
-                "Delete"
+                t("sandbox.contentBrowser.deleteDialog.delete")
               )}
             </AlertDialogAction>
           </AlertDialogFooter>
