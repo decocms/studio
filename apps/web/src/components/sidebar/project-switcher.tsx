@@ -1,8 +1,7 @@
 /**
- * The sidebar's header inside a project, under the new navigation: the
- * project's name behind a back arrow, which leaves to the org. Switching
- * projects is the org's sidebar. Outside a project — or before the scoped one
- * resolves — it is the org label.
+ * The sidebar's header inside a project: the project's name behind a back
+ * arrow, which leaves to the org. Switching projects is the org's sidebar.
+ * Outside a project — or before the scoped one resolves — it is the org label.
  */
 
 import { ArrowLeft } from "@untitledui/icons";

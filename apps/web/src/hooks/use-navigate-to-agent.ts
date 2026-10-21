@@ -9,7 +9,6 @@ import { useRecentProjects } from "@/hooks/use-recent-projects";
 import {
   navigateToTabLocation,
   tabRouteLocation,
-  tabRouteTarget,
 } from "@/layouts/main-panel-tabs/tab-route";
 import {
   fetchVirtualMCPs,
@@ -29,12 +28,12 @@ import {
   type ThreadRuntime,
 } from "@decocms/shared/thread/session-runtime";
 import { writeThreadIntent } from "@/lib/thread-intent";
-import { useProjectFirstNav } from "@/hooks/use-preferences";
 
 const NO_THREADS: Task[] = [];
 
 interface NavigateToAgentOptions {
-  /** Main view to land on, as a tab id. Resolved to its owning route. */
+  /** Main view to land on, as a tab id. Resolved to its owning route. Without
+   *  one, the project's workspace opens. */
   panel?: string;
   /** The runtime the landed-on session must be. A thread's runtime is stamped
    *  once at creation and immutable, so this both picks which empty chat can be
@@ -60,25 +59,15 @@ export function useNavigateToAgent() {
   const manager = useOptionalThreadManager();
   /** Cold-entry base ("main"): no current branch to resolve a PR base from. */
   const baseBranch = useBaseBranch(undefined, null);
-  const projectFirstNav = useProjectFirstNav();
   const { remember: rememberProject } = useRecentProjects(org.slug);
 
-  /** The navigation proper, once the wanted runtime is known. */
+  /** The navigation to a view, once the wanted runtime is known. */
   const go = (
     virtualMcpId: string,
-    options: NavigateToAgentOptions | undefined,
+    tabId: string,
+    runtime: ThreadRuntime | undefined,
     wantedRuntime: ThreadRuntime | undefined,
   ) => {
-    /** "Open this project" enters its workspace, and the sidebar follows it.
-     *  Naming a VIEW is a different ask ("open its settings", "open this
-     *  automation") and keeps the path below. Recorded here because this is
-     *  the single funnel every "open this project" caller goes through. */
-    if (projectFirstNav && !options?.panel) {
-      rememberProject(virtualMcpId);
-      void navigate(projectWorkspaceLink(org.slug, virtualMcpId));
-      return;
-    }
-    const tabId = options?.panel ?? "overview";
     /** Organization destinations do not belong to an agent session. Navigate
      * there without minting a thread whose identity the route cannot encode. */
     if (tabRouteLocation(tabId).kind === "org-destination") {
@@ -107,7 +96,7 @@ export function useNavigateToAgent() {
      *  loading-guarded resolver (ThreadSessionRoute), which runs in the project's
      *  own scope, own it. We keep resolving here only when a specific runtime was
      *  requested: that path parks a runtime intent the shell resolver can't read. */
-    const delegateEntryToShell = !options?.runtime;
+    const delegateEntryToShell = !runtime;
     const entry = delegateEntryToShell
       ? undefined
       : findAgentEntryThread(
@@ -125,10 +114,8 @@ export function useNavigateToAgent() {
     /** Park the runtime for the create the route loader will run. Only for a
      *  fresh id — a resumed thread is already stamped, and re-parking would
      *  leave an unclaimed key behind. `taskId` is undefined when delegating. */
-    if (taskId && !entry && options?.runtime) {
-      writeThreadIntent(sessionStorage, locator, taskId, {
-        runtime: options.runtime,
-      });
+    if (taskId && !entry && runtime) {
+      writeThreadIntent(sessionStorage, locator, taskId, { runtime });
     }
     navigateToTabLocation(navigate, {
       tabId,
@@ -142,18 +129,32 @@ export function useNavigateToAgent() {
   };
 
   return (virtualMcpId: string, options?: NavigateToAgentOptions) => {
-    if (
-      tabRouteLocation(options?.panel ?? "overview").kind === "org-destination"
-    ) {
-      return go(virtualMcpId, options, undefined);
+    /** "Open this project" enters its workspace, and the sidebar follows it.
+     *  Naming a VIEW is a different ask ("open its settings", "open this
+     *  automation") and keeps the path below. Recorded here because this is
+     *  the single funnel every "open this project" caller goes through. */
+    const tabId = options?.panel;
+    if (!tabId) {
+      rememberProject(virtualMcpId);
+      void navigate(projectWorkspaceLink(org.slug, virtualMcpId));
+      return;
+    }
+    const runtime = options?.runtime;
+    if (tabRouteLocation(tabId).kind === "org-destination") {
+      return go(virtualMcpId, tabId, runtime, undefined);
     }
     // Both of these answer without awaiting, in the click's own task.
     const cached = cachedAgents.find((a) => a.id === virtualMcpId);
-    if (options?.runtime) {
-      return go(virtualMcpId, options, options.runtime);
+    if (runtime) {
+      return go(virtualMcpId, tabId, runtime, runtime);
     }
     if (cached) {
-      return go(virtualMcpId, options, defaultThreadRuntime(cached.metadata));
+      return go(
+        virtualMcpId,
+        tabId,
+        runtime,
+        defaultThreadRuntime(cached.metadata),
+      );
     }
     /** Cold cache — a click in the first beat after load. Fetch rather than
      *  pass `undefined`: an absent expected runtime makes `runtimeMatches` match
@@ -166,15 +167,15 @@ export function useNavigateToAgent() {
       .then((target) =>
         go(
           virtualMcpId,
-          options,
+          tabId,
+          runtime,
           target ? defaultThreadRuntime(target.metadata) : undefined,
         ),
       );
   };
 }
 
-/** A project's workspace, under the new navigation: entering it scopes the
- *  sidebar to the project. */
+/** A project's workspace: entering it scopes the sidebar to the project. */
 function projectWorkspaceLink(
   orgSlug: string,
   virtualMcpId: string,
@@ -190,29 +191,5 @@ function projectWorkspaceLink(
       thread: undefined,
       mainpanel: undefined,
     }),
-  };
-}
-
-/**
- * The same destination `useNavigateToAgent` lands on, as `LinkProps` for a real
- * anchor — so middle-click and "open in new tab" work. Only for callers that
- * request no `runtime`: then no thread id is minted at click time and the
- * target project's shell resolves its own entry thread, so the URL is fully
- * knowable at render time.
- */
-export function useAgentLink() {
-  const { org } = useProjectContext();
-  const projectFirstNav = useProjectFirstNav();
-
-  return (virtualMcpId: string, panel?: string): LinkProps => {
-    if (projectFirstNav && !panel) {
-      return projectWorkspaceLink(org.slug, virtualMcpId);
-    }
-    const target = tabRouteTarget({
-      tabId: panel ?? "overview",
-      org: org.slug,
-      agentId: virtualMcpId,
-    });
-    return { to: target.to, params: target.params, search: target.search };
   };
 }

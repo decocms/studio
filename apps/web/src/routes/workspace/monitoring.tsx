@@ -1,10 +1,9 @@
 /**
  * Monitor, at org and project scope. It reads what is wired (the order
- * monitor, the projects' sites and repositories, the org's connections). Only
- * the new navigation announces it, so anyone else lands on home.
+ * monitor, the projects' sites and repositories, the org's connections).
  */
 
-import { Navigate, useNavigate, useSearch } from "@tanstack/react-router";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import { ChatLayout } from "@/components/chat-layout";
 import {
   MonitorPage,
@@ -16,7 +15,6 @@ import {
   DESTINATION_ROUTE,
   PROJECT_ROUTE,
 } from "@/hooks/use-destination-route";
-import { useProjectFirstNav } from "@/hooks/use-preferences";
 import { useScopeId } from "@/hooks/use-project-scope";
 import { useProjectContext } from "@/sdk";
 
@@ -73,12 +71,7 @@ function MonitoringContent() {
   const { org } = useProjectContext();
   const scopeId = useScopeId();
   const navigate = useNavigate();
-  const projectFirstNav = useProjectFirstNav();
   const selection = useMonitorSearch();
-
-  if (!projectFirstNav) {
-    return <Navigate to="/$org/home" params={{ org: org.slug }} replace />;
-  }
 
   const onSelect = (next: MonitorSelection) => {
     if (scopeId) {
