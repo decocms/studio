@@ -122,6 +122,10 @@ export const sectionsEditor = {
     "This test no longer exists. Pick another or remove this variant.",
   "sectionsEditor.namedRulePicker.missingCampaign":
     "This campaign no longer exists. Pick another or remove this variant.",
+  "sectionsEditor.namedRulePicker.missingTestWithin":
+    "This rule uses a test that no longer exists. Change the rule or remove this variant.",
+  "sectionsEditor.namedRulePicker.missingCampaignWithin":
+    "This rule uses a campaign that no longer exists. Change the rule or remove this variant.",
   "sectionsEditor.namedRulePicker.inlineDate":
     "These dates aren't a campaign yet, so this variant doesn't show. Choose Date above to pick a campaign, or create one with these dates.",
   "sectionsEditor.namedRulePicker.fieldTests": "Your A/B tests",

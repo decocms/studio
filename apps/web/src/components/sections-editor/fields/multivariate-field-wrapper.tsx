@@ -381,6 +381,7 @@ export function MultivariateFieldWrapper({
                 onSelectGlobal={handleSelectGlobal}
                 named={named}
                 namedRow={namedRow}
+                rule={currentRule}
                 schema={ruleSchema}
                 formValue={ruleFormValue}
                 onChange={handleRuleFormChange}
@@ -442,6 +443,7 @@ export function MultivariateFieldWrapper({
             onSelectGlobal={handleSelectGlobal}
             named={named}
             namedRow={namedRow}
+            rule={currentRule}
             schema={ruleSchema}
             formValue={ruleFormValue}
             onChange={handleRuleFormChange}

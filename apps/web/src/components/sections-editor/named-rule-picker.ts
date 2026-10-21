@@ -278,6 +278,61 @@ export function namedRuleRowState(
 }
 
 /**
+ * The kind of a test or campaign that a rule names somewhere inside it but
+ * the picker doesn't have: inside a `multi`, a `lazy` value or a saved rule
+ * the rule refers to (at any depth). The editor shows those rules with their
+ * own form, so it says so under the form; nothing is blocked. `null` when
+ * every name exists, and for a rule the locked row already covers.
+ */
+export function missingNamedRuleWithin(
+  rule: unknown,
+  kinds: NamedRulePickerKind[],
+  decofile: Record<string, unknown> | undefined,
+): NamedRuleKind | null {
+  if (kinds.length === 0 || namedRuleOf(rule)) return null;
+  // A kind whose block holds something else has its own explanation.
+  const missing = (kind: NamedRuleKind, name: string) => {
+    const offered = kinds.find((k) => k.kind === kind);
+    return (
+      !!offered &&
+      offered.state !== "conflict" &&
+      !offered.entries.some((e) => e.name === name)
+    );
+  };
+  const followed = new Set<string>();
+  const stack: unknown[] = [rule];
+  while (stack.length > 0) {
+    const node = stack.pop();
+    if (Array.isArray(node)) {
+      stack.push(...node);
+      continue;
+    }
+    if (!node || typeof node !== "object") continue;
+    const named = namedRuleOf(node);
+    if (named) {
+      if (missing(named.kind, named.name)) return named.kind;
+      continue;
+    }
+    const record = node as Record<string, unknown>;
+    const ref = record.__resolveType;
+    // A saved rule, read from the draft (a cycle stops at one seen before).
+    if (
+      typeof ref === "string" &&
+      decofile &&
+      Object.hasOwn(decofile, ref) &&
+      !followed.has(ref)
+    ) {
+      followed.add(ref);
+      stack.push(decofile[ref]);
+    }
+    for (const [key, value] of Object.entries(record)) {
+      if (key !== "__resolveType") stack.push(value);
+    }
+  }
+  return null;
+}
+
+/**
  * The kind a field's value points at as a whole: `{ "__resolveType":
  * "experiments" }` or `"campaigns"`, nothing else in it.
  */

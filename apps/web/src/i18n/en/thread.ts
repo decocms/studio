@@ -171,6 +171,14 @@ export const thread = {
   "thread.publishPopover.missingTest": "Uses a test that no longer exists",
   "thread.publishPopover.missingCampaign":
     "Uses a campaign that no longer exists",
+  "thread.publishPopover.missingTestUsesOne":
+    "1 page still uses a test that no longer exists",
+  "thread.publishPopover.missingTestUses":
+    "{count} pages still use tests that no longer exist",
+  "thread.publishPopover.missingCampaignUsesOne":
+    "1 page still uses a campaign that no longer exists",
+  "thread.publishPopover.missingCampaignUses":
+    "{count} pages still use campaigns that no longer exist",
   "thread.publishPopover.lastPublished": "Last published {when}",
   "thread.publishPopover.lastPublishedBy": "Last published {when} by {name}",
   "thread.publishPopover.needsReviewGeneric":

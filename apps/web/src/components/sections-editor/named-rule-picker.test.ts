@@ -4,6 +4,7 @@ import {
   inlineDateWindow,
   isoToLocalInput,
   localInputToIso,
+  missingNamedRuleWithin,
   namedRuleBlockFieldKinds,
   namedRuleBlockFieldValue,
   namedRuleMatchers,
@@ -293,6 +294,64 @@ describe("the rule editor's row", () => {
     expect(namedRuleRowState({ __resolveType: "always" }, kinds)).toBeNull();
     expect(
       namedRuleRowState({ __resolveType: "experiment", name: "x" }, []),
+    ).toBeNull();
+  });
+});
+
+describe("a test or campaign named inside a rule", () => {
+  const kinds = namedRulePickerKinds(V8_META, { experiments, campaigns });
+  const gone = { __resolveType: "experiment", name: "gone" };
+
+  it("is pointed out inside a multi, a lazy value and a saved rule", () => {
+    expect(
+      missingNamedRuleWithin(
+        { __resolveType: "multi", op: "and", matchers: [gone] },
+        kinds,
+        {},
+      ),
+    ).toBe("experiments");
+    expect(
+      missingNamedRuleWithin(
+        {
+          __resolveType: "lazy",
+          value: { __resolveType: "date", campaign: "x" },
+        },
+        kinds,
+        {},
+      ),
+    ).toBe("campaigns");
+    const decofile = {
+      "Saved rule": { __resolveType: "multi", matchers: [gone] },
+      Outer: { __resolveType: "Saved rule" },
+    };
+    expect(
+      missingNamedRuleWithin({ __resolveType: "Outer" }, kinds, decofile),
+    ).toBe("experiments");
+  });
+
+  it("says nothing when the names exist, for the locked row, or in a cycle", () => {
+    const ok = { __resolveType: "experiment", name: "hero-test" };
+    expect(
+      missingNamedRuleWithin(
+        { __resolveType: "multi", matchers: [ok] },
+        kinds,
+        {},
+      ),
+    ).toBeNull();
+    // The row under the picker already says it for a rule that is the name.
+    expect(missingNamedRuleWithin(gone, kinds, {})).toBeNull();
+    expect(
+      missingNamedRuleWithin({ __resolveType: "A" }, kinds, {
+        A: { __resolveType: "B" },
+        B: { __resolveType: "A" },
+      }),
+    ).toBeNull();
+    expect(
+      missingNamedRuleWithin(
+        { __resolveType: "multi", matchers: [gone] },
+        [],
+        {},
+      ),
     ).toBeNull();
   });
 });

@@ -127,6 +127,10 @@ export const sectionsEditor = {
     "Este teste não existe mais. Escolha outro ou remova esta variante.",
   "sectionsEditor.namedRulePicker.missingCampaign":
     "Esta campanha não existe mais. Escolha outra ou remova esta variante.",
+  "sectionsEditor.namedRulePicker.missingTestWithin":
+    "Esta regra usa um teste que não existe mais. Altere a regra ou remova esta variante.",
+  "sectionsEditor.namedRulePicker.missingCampaignWithin":
+    "Esta regra usa uma campanha que não existe mais. Altere a regra ou remova esta variante.",
   "sectionsEditor.namedRulePicker.inlineDate":
     "Estas datas ainda não são uma campanha, então esta variante não aparece. Escolha Data acima para usar uma campanha ou criar uma com estas datas.",
   "sectionsEditor.namedRulePicker.fieldTests": "Seus testes A/B",

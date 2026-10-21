@@ -16,7 +16,10 @@ import {
 import { changeId } from "./cms-publish-change-card";
 import type { GitChangedFile, GitDiffResult } from "./sandbox-git-api";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
-import { blocksUsingMissingNamedRules } from "@/components/sections-editor/named-rule-uses";
+import {
+  blocksUsingMissingNamedRules,
+  missingNamedRuleUseCounts,
+} from "@/components/sections-editor/named-rule-uses";
 
 const HOME_KEY = "pages-home-c4bcbfb771e9";
 const HOME_PATH = `.deco/blocks/${encodeURIComponent(HOME_KEY)}.json`;
@@ -861,6 +864,64 @@ describe("summarizeContentChanges (a v8 source's changes.list)", () => {
         meta,
         missingRules: blocksUsingMissingNamedRules(withTest, meta),
       }).pages[0]!.missingRules,
+    ).toBeUndefined();
+  });
+
+  it("says on the A/B tests card how many pages still use a test it deleted", () => {
+    const builtIn = { $ref: "#/definitions/x", namespace: "deco" };
+    const meta = {
+      manifest: {
+        blocks: {
+          matchers: { always: builtIn, experiment: builtIn, date: builtIn },
+          loaders: { multivariate: builtIn, lazy: builtIn },
+          content: { "split-traffic": builtIn, "date-windows": builtIn },
+          pages: { page: builtIn },
+        },
+      },
+      schema: {},
+    } as unknown as LiveMeta;
+    const page = (path: string) => ({
+      __resolveType: "page",
+      name: path,
+      path,
+      sections: {
+        __resolveType: "multivariate",
+        variants: [
+          { rule: { __resolveType: "always" }, value: [] },
+          { rule: { __resolveType: "experiment", name: "hero" }, value: [] },
+        ],
+      },
+    });
+    // "hero" was deleted in the draft; the two pages have no change.
+    const lookup = {
+      "pages-a": page("/a"),
+      "pages-b": page("/b"),
+      experiments: { __resolveType: "split-traffic", other: 20 },
+    };
+    const input = {
+      changes: {
+        experiments: { kind: "set" as const, version: "v", baseVersion: null },
+      },
+      lookup,
+      meta,
+    };
+    const card = summarizeContentChanges({
+      ...input,
+      missingRuleUses: missingNamedRuleUseCounts(lookup, meta),
+    }).blocks[0]!;
+    expect(card.missingRuleUses).toEqual({ kind: "experiments", count: 2 });
+    // Once the pages pick another test, the card says nothing.
+    const fixed = {
+      ...lookup,
+      "pages-a": { ...page("/a"), sections: [] },
+      "pages-b": { ...page("/b"), sections: [] },
+    };
+    expect(
+      summarizeContentChanges({
+        ...input,
+        lookup: fixed,
+        missingRuleUses: missingNamedRuleUseCounts(fixed, meta),
+      }).blocks[0]!.missingRuleUses,
     ).toBeUndefined();
   });
 });

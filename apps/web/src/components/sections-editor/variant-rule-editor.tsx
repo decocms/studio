@@ -4,7 +4,11 @@ import {
   type MatcherGlobalEntry,
   type NamedRulePickerProps,
 } from "./matcher-picker";
-import type { NamedRuleRowState } from "./named-rule-picker";
+import {
+  missingNamedRuleWithin,
+  type NamedRuleRowState,
+} from "./named-rule-picker";
+import { useT } from "@/i18n/use-t.ts";
 import { NamedRuleRow } from "./named-rule-step";
 import { VariantRuleForm } from "./sections-editor-panels";
 import { type LiveMeta, type SchemaProperty } from "./resolve-schema";
@@ -34,6 +38,7 @@ export function VariantRuleEditor({
   sandbox,
   named,
   namedRow,
+  rule,
 }: {
   currentRt: string;
   currentLabel: string;
@@ -61,7 +66,16 @@ export function VariantRuleEditor({
    * replaces the free-text form, so the name only changes through the picker.
    */
   namedRow?: NamedRuleRowState | null;
+  /**
+   * The variant's rule as stored, so a test or campaign it names inside (a
+   * `multi`, a saved rule) that no longer exists is pointed out.
+   */
+  rule?: unknown;
 }) {
+  const t = useT();
+  const missingWithin = named
+    ? missingNamedRuleWithin(rule, named.kinds, decofile)
+    : null;
   return (
     <>
       <MatcherPicker
@@ -100,6 +114,16 @@ export function VariantRuleEditor({
             />
           </div>
         )
+      )}
+      {missingWithin && (
+        <p
+          className="text-xs text-foreground"
+          data-testid="named-rule-missing-within"
+        >
+          {missingWithin === "experiments"
+            ? t("sectionsEditor.namedRulePicker.missingTestWithin")
+            : t("sectionsEditor.namedRulePicker.missingCampaignWithin")}
+        </p>
       )}
     </>
   );

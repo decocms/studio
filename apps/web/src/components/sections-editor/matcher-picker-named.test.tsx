@@ -206,12 +206,48 @@ describe("the locked row", () => {
     ).toBeGreaterThan(0);
   });
 
+  test("a deleted test inside a combined rule: the variant says so under its form", () => {
+    const rule = {
+      __resolveType: "multi",
+      op: "and",
+      matchers: [{ __resolveType: "experiment", name: "gone" }],
+    };
+    render(
+      <VariantRuleEditor
+        currentRt="multi"
+        currentLabel="Multi"
+        matchers={MATCHERS}
+        globals={[]}
+        onSelect={() => {}}
+        onSelectGlobal={() => {}}
+        schema={null}
+        formValue={null}
+        onChange={() => {}}
+        formKey="rule"
+        formWrapperClassName=""
+        named={{ kinds: KINDS, selected: namedRuleOf(rule), onPick: () => {} }}
+        namedRow={namedRuleRowState(rule, KINDS)}
+        rule={rule}
+        decofile={{}}
+      />,
+    );
+    expect(
+      within(document.body).getByTestId("named-rule-missing-within")
+        .textContent,
+    ).toBe(
+      "This rule uses a test that no longer exists. Change the rule or remove this variant.",
+    );
+  });
+
   test("says it in pt-br too", () => {
     expect(ptBR["sectionsEditor.namedRulePicker.missingTest"]).toBe(
       "Este teste não existe mais. Escolha outro ou remova esta variante.",
     );
     expect(ptBR["sectionsEditor.namedRulePicker.missingCampaign"]).toBe(
       "Esta campanha não existe mais. Escolha outra ou remova esta variante.",
+    );
+    expect(ptBR["sectionsEditor.namedRulePicker.missingTestWithin"]).toBe(
+      "Esta regra usa um teste que não existe mais. Altere a regra ou remova esta variante.",
     );
   });
 });

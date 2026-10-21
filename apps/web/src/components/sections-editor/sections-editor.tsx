@@ -4233,6 +4233,7 @@ export function SectionsEditor({
                 handlePageVariantPickNamedRule,
               )}
               namedRow={namedRuleRowState(activeVariant?.rule, namedRuleKinds)}
+              rule={activeVariant?.rule}
               schema={ruleSchema}
               formValue={ruleFormValue}
               onChange={handleRuleFormChange}
@@ -4297,6 +4298,7 @@ export function SectionsEditor({
             activeSectionFlagVariant?.rule,
             namedRuleKinds,
           )}
+          rule={activeSectionFlagVariant?.rule}
           schema={sectionRuleSchema}
           formValue={sectionRuleFormValue}
           onChange={handleSectionRuleFormChange}
@@ -4487,6 +4489,7 @@ export function SectionsEditor({
                   activeVariant?.rule,
                   namedRuleKinds,
                 )}
+                rule={activeVariant?.rule}
                 schema={ruleSchema}
                 formValue={ruleFormValue}
                 onChange={handleRuleFormChange}

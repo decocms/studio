@@ -236,6 +236,39 @@ export function blocksUsingMissingNamedRules(
   return out;
 }
 
+/**
+ * Per kind the site's schema has built in, how many pages and sections use a
+ * test or campaign the draft doesn't have. The Publish review says so on the
+ * A/B tests or Campaigns card, since those pages may have no card of their
+ * own; nothing is blocked.
+ */
+export function missingNamedRuleUseCounts(
+  decofile: Record<string, unknown>,
+  meta: LiveMeta | null | undefined,
+): Map<NamedRuleKind, number> {
+  const out = new Map<NamedRuleKind, number>();
+  const kinds = NAMED_RULE_KINDS.filter(
+    (kind) => namedRuleSupport(meta, kind) === "available",
+  );
+  if (kinds.length === 0) return out;
+  const uses = namedRuleUses({
+    decofile,
+    meta,
+    changeCount: 0,
+    sides: undefined,
+  });
+  for (const kind of kinds) {
+    const blocks = new Set<string>();
+    for (const name of missingNamedRules(uses, kind, decofile)) {
+      for (const ref of uses.refs[kind].byName.get(name) ?? []) {
+        if (!ref.savedRule) blocks.add(ref.blockKey);
+      }
+    }
+    if (blocks.size > 0) out.set(kind, blocks.size);
+  }
+  return out;
+}
+
 /** How many blocks use a name, as the list shows it (removed uses left out). */
 export function namedRuleUseCount(
   uses: NamedRuleUses,
