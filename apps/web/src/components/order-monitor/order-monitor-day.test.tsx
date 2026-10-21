@@ -6,7 +6,7 @@ import "@testing-library/jest-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import type { OrderMonitorDay } from "@decocms/shared/order-monitor";
-import { CancellationsChart } from "./order-monitor-day";
+import { CancellationsChart, splitRunningHour } from "./order-monitor-day";
 
 // useT() reads the language preference through TanStack Query.
 function wrapper({ children }: { children: ReactNode }) {
@@ -49,5 +49,32 @@ describe("CancellationsChart", () => {
     fireEvent.click(denied);
     expect(denied).toHaveAttribute("aria-pressed", "true");
     expect(canceled).toHaveAttribute("aria-pressed", "false");
+  });
+});
+
+describe("splitRunningHour", () => {
+  const today = [10, 40, 8, ...new Array(21).fill(null)];
+
+  it("draws the running hour as its hourly pace, dashed from the hour before", () => {
+    // 2 hours and 1 bucket in: 02:00 has its first 15 minutes.
+    const { full, pace } = splitRunningHour(today, 9);
+    expect(full.slice(0, 3)).toEqual([10, 40, null]);
+    expect(pace.slice(0, 3)).toEqual([null, 40, 32]);
+    expect(pace.slice(3).every((v) => v === null)).toBe(true);
+  });
+
+  it("leaves a day whose last hour is complete untouched", () => {
+    const { full, pace } = splitRunningHour(today, 12);
+    expect(full).toEqual(today);
+    expect(pace.every((v) => v === null)).toBe(true);
+  });
+
+  it("has nothing to connect to in the first hour", () => {
+    const { full, pace } = splitRunningHour(
+      [3, ...new Array(23).fill(null)],
+      2,
+    );
+    expect(full[0]).toBeNull();
+    expect(pace[0]).toBe(6);
   });
 });

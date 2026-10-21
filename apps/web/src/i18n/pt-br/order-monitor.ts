@@ -37,6 +37,9 @@ export const orderMonitor = {
   "orderMonitor.series.y1": "A-1",
   "orderMonitor.series.expected": "Esperado",
   "orderMonitor.series.projection": "Projeção",
+  "orderMonitor.series.pace": "Hoje, no ritmo desta hora",
+  "orderMonitor.partialHour":
+    "{hour} · primeiros {minutes} min, no ritmo de uma hora",
   "orderMonitor.rule.ordersDrop": "Pedidos",
   "orderMonitor.rule.deniedSpike": "Pagamentos negados",
   "orderMonitor.rule.cancelSpike": "Cancelamentos",

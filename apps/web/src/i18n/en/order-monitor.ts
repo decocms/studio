@@ -35,6 +35,9 @@ export const orderMonitor = {
   "orderMonitor.series.y1": "Y-1",
   "orderMonitor.series.expected": "Expected",
   "orderMonitor.series.projection": "Projection",
+  "orderMonitor.series.pace": "Today, at this hour's pace",
+  "orderMonitor.partialHour":
+    "{hour} · first {minutes} min, shown at its hourly pace",
   "orderMonitor.rule.ordersDrop": "Orders",
   "orderMonitor.rule.deniedSpike": "Payment denials",
   "orderMonitor.rule.cancelSpike": "Cancellations",
