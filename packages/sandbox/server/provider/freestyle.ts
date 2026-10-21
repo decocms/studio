@@ -1032,17 +1032,19 @@ export class FreestyleSandboxProvider implements SandboxProvider {
     this.sweeping = true;
     try {
       const paused: (string | null)[] = [];
-      // One page's idle checks in flight at a time, never the whole fleet.
-      for (let offset = 0; ; offset += IDLE_SWEEP_PAGE) {
+      // One page's idle checks in flight at a time; offset accounts for VMs this sweep already paused out of the "running" filter.
+      for (let offset = 0; ; ) {
         const { vms } = await this.freestyle.vms.list({
           state: "running",
           limit: IDLE_SWEEP_PAGE,
           offset,
         });
-        paused.push(
-          ...(await Promise.all(vms.map((data) => this.pauseIfOverIdle(data)))),
+        const results = await Promise.all(
+          vms.map((data) => this.pauseIfOverIdle(data)),
         );
+        paused.push(...results);
         if (vms.length < IDLE_SWEEP_PAGE) break;
+        offset += vms.length - results.filter((h) => h !== null).length;
       }
       return paused.filter((h) => h !== null);
     } catch (err) {
