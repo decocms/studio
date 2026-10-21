@@ -13,6 +13,11 @@ test("a name with brackets can't break out of the link", () => {
   expect(parseMentions(mentionMarkdown("usr_1", "A]hi[B"))).toEqual(["usr_1"]);
 });
 
+test("a name made only of brackets still produces a parseable mention", () => {
+  expect(parseMentions(mentionMarkdown("usr_1", "[]"))).toEqual(["usr_1"]);
+  expect(parseMentions(mentionMarkdown("usr_1", ""))).toEqual(["usr_1"]);
+});
+
 test("no mentions is empty, not a throw", () => {
   expect(parseMentions("")).toEqual([]);
   expect(parseMentions("plain @ana text")).toEqual([]);
