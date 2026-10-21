@@ -79,6 +79,21 @@ export interface PublishChange {
   toJson: Record<string, unknown> | null;
 }
 
+/**
+ * The site's A/B tests (`split-traffic`) or campaigns (`date-windows`) block
+ * behind a block card, from its content; null for any other block. They are
+ * content, not sections, so the card names them as such.
+ */
+export function namedRuleBlockOfChange(
+  change: Pick<PublishChange, "kind" | "toJson" | "fromJson">,
+): "experiments" | "campaigns" | null {
+  if (change.kind !== "block") return null;
+  const resolveType = (change.toJson ?? change.fromJson)?.__resolveType;
+  if (resolveType === "split-traffic") return "experiments";
+  if (resolveType === "date-windows") return "campaigns";
+  return null;
+}
+
 export interface PublishChangeSummary {
   pages: PublishChange[];
   blocks: PublishChange[];

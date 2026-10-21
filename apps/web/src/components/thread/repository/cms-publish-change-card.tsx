@@ -11,6 +11,7 @@ import {
 import { File06, LayoutAlt01, Trash01 } from "@untitledui/icons";
 import { useT, type TFunction } from "@/i18n/use-t.ts";
 import {
+  namedRuleBlockOfChange,
   publishChangeDigest,
   type PublishChange,
   type PublishChangeStatus,
@@ -55,6 +56,9 @@ function changeIcon(change: PublishChange, t: TFunction) {
 function changeDetail(change: PublishChange, t: TFunction) {
   if (change.kind === "page") return change.pagePath;
   if (change.kind !== "block") return null;
+  const named = namedRuleBlockOfChange(change);
+  if (named === "experiments") return t("thread.publishPopover.abTests");
+  if (named === "campaigns") return t("thread.publishPopover.campaignDates");
   return change.isSiteApp
     ? t("thread.publishPopover.siteConfiguration")
     : t("thread.publishPopover.globalSection");
