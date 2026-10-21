@@ -187,6 +187,19 @@ function dayCell(
   return day && b >= 0 && b < BUCKETS_PER_DAY ? { day, b } : null;
 }
 
+// Real and approximate cancellation rows share these two columns.
+function applyCancelDenied(
+  days: Record<DayAgo, DaySeries>,
+  rows: Record<string, unknown>[],
+) {
+  for (const row of rows) {
+    const c = dayCell(days, row);
+    if (!c) continue;
+    c.day.canceled[c.b] = Number(row.canceled);
+    c.day.denied[c.b] = Number(row.denied);
+  }
+}
+
 /** The store's IANA zone, or null when the lake has none for it. */
 export async function loadStoreTimezone(
   organizationId: string,
@@ -232,21 +245,11 @@ export async function loadStoreDay(
     const c = dayCell(days, row);
     if (c) c.day.placed[c.b] = Number(row.placed);
   }
-  for (const row of events) {
-    const c = dayCell(days, row);
-    if (!c) continue;
-    c.day.canceled[c.b] = Number(row.canceled);
-    c.day.denied[c.b] = Number(row.denied);
-  }
+  applyCancelDenied(days, events);
   let approximate: StoreDay["approximate"];
   if (approx) {
     const approxDays = emptyDays();
-    for (const row of approx) {
-      const c = dayCell(approxDays, row);
-      if (!c) continue;
-      c.day.canceled[c.b] = Number(row.canceled);
-      c.day.denied[c.b] = Number(row.denied);
-    }
+    applyCancelDenied(approxDays, approx);
     approximate = approxDays;
   }
 
