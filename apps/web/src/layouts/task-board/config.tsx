@@ -123,13 +123,13 @@ export function cardNeedsAttention(item: TaskBoardItem): boolean {
 
 /**
  * Whether a card rides the board's critical swimlane: work that can't wait, so
- * it never sits among polish. Settled cards never qualify.
+ * it never sits among polish. High priority is not enough; that well is for
+ * urgent work. Settled cards never qualify.
  */
 export function isCriticalTask(item: TaskBoardItem): boolean {
   if (item.status === "done" || item.status === "archived") return false;
   return (
     item.priority === "urgent" ||
-    item.priority === "high" ||
     item.type === "security" ||
     isTaskBlocked(item) ||
     agentRunState(item) === "failed"
@@ -184,9 +184,9 @@ export function swimlanePriority(
   swimlane: "critical" | "improvements",
 ): TaskBoardItemPriority | null {
   const critical = isCriticalTask(item);
-  if (swimlane === "critical") return critical ? null : "high";
+  if (swimlane === "critical") return critical ? null : "urgent";
   if (!critical) return null;
-  return isCriticalTask({ ...item, priority: "medium" }) ? null : "medium";
+  return isCriticalTask({ ...item, priority: "high" }) ? null : "high";
 }
 
 /**

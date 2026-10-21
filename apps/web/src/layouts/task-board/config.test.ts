@@ -540,9 +540,8 @@ describe("boardGridColumns", () => {
 describe("isCriticalTask", () => {
   const at = (patch: Partial<TaskBoardItem>) => ({ ...item("t", 0), ...patch });
 
-  test("urgent, high, security, blocked and failed work is critical", () => {
+  test("urgent, security, blocked and failed work is critical", () => {
     expect(isCriticalTask(at({ priority: "urgent" }))).toBe(true);
-    expect(isCriticalTask(at({ priority: "high" }))).toBe(true);
     expect(isCriticalTask(at({ type: "security" }))).toBe(true);
     expect(
       isCriticalTask(
@@ -553,7 +552,8 @@ describe("isCriticalTask", () => {
     ).toBe(true);
   });
 
-  test("ordinary work is an improvement", () => {
+  test("ordinary and high-priority work is an improvement", () => {
+    expect(isCriticalTask(at({ priority: "high" }))).toBe(false);
     expect(isCriticalTask(at({ priority: "medium" }))).toBe(false);
     expect(isCriticalTask(at({ priority: "none", type: "feature" }))).toBe(
       false,
@@ -647,8 +647,13 @@ describe("dropSwimlane", () => {
 describe("swimlanePriority", () => {
   const at = (patch: Partial<TaskBoardItem>) => ({ ...item("t", 0), ...patch });
 
-  test("into Critical raises an ordinary card to high", () => {
-    expect(swimlanePriority(at({ priority: "low" }), "critical")).toBe("high");
+  test("into Critical makes a card urgent", () => {
+    expect(swimlanePriority(at({ priority: "low" }), "critical")).toBe(
+      "urgent",
+    );
+    expect(swimlanePriority(at({ priority: "high" }), "critical")).toBe(
+      "urgent",
+    );
   });
 
   test("a card already in its swimlane needs no change", () => {
@@ -660,14 +665,14 @@ describe("swimlanePriority", () => {
 
   test("out of Critical lowers a card that priority alone kept there", () => {
     expect(swimlanePriority(at({ priority: "urgent" }), "improvements")).toBe(
-      "medium",
+      "high",
     );
   });
 
   test("a security card stays critical, so its priority is left alone", () => {
     expect(
       swimlanePriority(
-        at({ priority: "high", type: "security" }),
+        at({ priority: "urgent", type: "security" }),
         "improvements",
       ),
     ).toBeNull();

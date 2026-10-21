@@ -1768,7 +1768,7 @@ function TaskBoardBody({
           onSelectAllInLane={selectAllInLane}
           onOpen={openTask}
           onCreate={openCreateInLane}
-          onMove={(ids, status, sortOrder, priorities, onFailed) => {
+          onMove={(ids, status, sortOrder, priorities, onSettled) => {
             // Cards dragged together land as a consecutive run ending at the
             // drop point, keeping `ids` order.
             const orders = runSortOrders(sortOrder, ids.length);
@@ -1780,7 +1780,7 @@ function TaskBoardBody({
                   sortOrder: orders[i]!,
                   ...(priorities.has(id) && { priority: priorities.get(id) }),
                 },
-                { onError: () => onFailed(id) },
+                { onSettled: () => onSettled(id) },
               ),
             );
           }}
@@ -2427,8 +2427,9 @@ function Lanes({
     sortOrder: number,
     /** Cards whose drop crossed swimlanes, with the priority that puts them there. */
     priorities: Map<string, TaskBoardItemPriority>,
-    /** A card's write failed: drop its override so it shows where the server has it. */
-    onFailed: (id: string) => void,
+    /** A card's write settled: drop its override so the card shows what the
+     *  server has, and a later edit (say, its priority) isn't masked by it. */
+    onSettled: (id: string) => void,
   ) => void;
   onAutoFix?: (item: TaskBoardItem) => void;
   onRerun?: (item: TaskBoardItem) => void;
@@ -2701,10 +2702,22 @@ function Lanes({
     );
     place(ids, lane, slot, swimlane);
     setLandedIds(ids);
-    onMove(ids, lane, slot, priorities, (failedId) =>
+    const written = new Map(
+      runSortOrders(slot, ids.length).map((order, i) => [ids[i]!, order]),
+    );
+    onMove(ids, lane, slot, priorities, (settledId) =>
       setOverrides((prev) => {
+        // A newer drag of the same card owns its override now.
+        const current = prev.get(settledId);
+        if (
+          !current ||
+          current.status !== lane ||
+          current.sortOrder !== written.get(settledId)
+        ) {
+          return prev;
+        }
         const next = new Map(prev);
-        next.delete(failedId);
+        next.delete(settledId);
         return next;
       }),
     );
