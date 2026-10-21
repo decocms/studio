@@ -248,7 +248,10 @@ export interface NamedRuleRowState {
    * a block that holds something else has its own explanation.
    */
   missing: boolean;
-  /** The kind's block holds something else (the picker's `conflict`). */
+  /**
+   * The kind's block holds something else (the picker's `conflict`), also
+   * for an inline-date rule, since no campaign can be picked or created.
+   */
   conflict: boolean;
   /** A `date { start, end }` rule from before campaigns. */
   inlineDate: boolean;
@@ -283,7 +286,9 @@ export function namedRuleRowState(
       name: "",
       summary: "",
       missing: false,
-      conflict: false,
+      conflict: kinds.some(
+        (k) => k.kind === "campaigns" && k.state === "conflict",
+      ),
       inlineDate: true,
     };
   }

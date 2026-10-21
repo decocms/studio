@@ -428,7 +428,8 @@ export function NamedRuleCreateForm({
  * above and, when the picker can create it (`onCreate`), "Create it"; a date
  * rule still written with its own dates says what to do. When the kind's
  * block holds something else (`conflict`), the row says what the picker
- * says, since nothing can be picked or created until that block is renamed.
+ * says, inline-date rule included, since nothing can be picked or created
+ * until that block is renamed.
  */
 export function NamedRuleRow({
   kind,
@@ -451,12 +452,12 @@ export function NamedRuleRow({
 }) {
   const t = useT();
   const tests = kind === "experiments";
-  const note = inlineDate
-    ? t("sectionsEditor.namedRulePicker.inlineDate")
-    : conflict
-      ? tests
-        ? t("sectionsEditor.namedRulePicker.conflictTests")
-        : t("sectionsEditor.namedRulePicker.conflictCampaigns")
+  const note = conflict
+    ? tests
+      ? t("sectionsEditor.namedRulePicker.conflictTests")
+      : t("sectionsEditor.namedRulePicker.conflictCampaigns")
+    : inlineDate
+      ? t("sectionsEditor.namedRulePicker.inlineDate")
       : missing
         ? onCreate
           ? tests
@@ -487,18 +488,16 @@ export function NamedRuleRow({
       <p
         className={cn(
           "text-xs",
-          (missing || conflict) && !inlineDate
+          conflict || (missing && !inlineDate)
             ? "text-foreground"
             : "text-muted-foreground",
         )}
         data-testid={
-          inlineDate
-            ? undefined
-            : conflict
-              ? "named-rule-conflict"
-              : missing
-                ? "named-rule-missing"
-                : undefined
+          conflict
+            ? "named-rule-conflict"
+            : missing && !inlineDate
+              ? "named-rule-missing"
+              : undefined
         }
       >
         {note}

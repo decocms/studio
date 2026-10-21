@@ -363,6 +363,18 @@ describe("the locked row", () => {
     );
   });
 
+  test('an inline date rule gets the clash explanation, not "Choose Date above"', () => {
+    const rule = { __resolveType: "date", start: "2026-01-01T00:00:00Z" };
+    const kinds: NamedRulePickerKind[] = [
+      { kind: "campaigns", state: "conflict", entries: [] },
+    ];
+    render(<NamedRuleRow {...namedRuleRowState(rule, kinds)!} />);
+    const body = within(document.body);
+    expect(body.getByTestId("named-rule-conflict").textContent).toBe(
+      "Your site has a block named “campaigns” that isn't a list of campaigns, so campaigns can't be added yet. Rename that block, then come back here.",
+    );
+  });
+
   test("says it in pt-br too", () => {
     expect(ptBR["sectionsEditor.namedRulePicker.missingTest"]).toBe(
       "Este teste não está nos seus testes A/B. Escolha outro, crie-o ou remova esta variante.",

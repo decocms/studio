@@ -303,7 +303,16 @@ describe("the rule editor's row", () => {
         { __resolveType: "date", start: "2026-01-01T00:00:00Z" },
         kinds,
       ),
-    ).toMatchObject({ kind: "campaigns", inlineDate: true });
+    ).toMatchObject({ kind: "campaigns", inlineDate: true, conflict: false });
+  });
+
+  it("an inline date rule on a site whose campaigns block holds something else gets that explanation", () => {
+    expect(
+      namedRuleRowState(
+        { __resolveType: "date", start: "2026-01-01T00:00:00Z" },
+        [{ kind: "campaigns", state: "conflict", entries: [] }],
+      ),
+    ).toMatchObject({ kind: "campaigns", inlineDate: true, conflict: true });
   });
 
   it("leaves other rules, and sites without the kinds, as they are", () => {
