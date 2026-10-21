@@ -76,8 +76,16 @@ export function VariantRuleEditor({
   rule?: unknown;
 }) {
   const t = useT();
-  const [creating, setCreating] = useState(false);
+  // The create form belongs to the variant and name it was opened for:
+  // switching variants (this editor isn't remounted) closes it, so a pick
+  // never lands on a variant the form wasn't opened from.
+  const createFor = namedRow
+    ? `${formKey}\u0000${namedRow.kind}\u0000${namedRow.name}`
+    : null;
+  const [creatingFor, setCreatingFor] = useState<string | null>(null);
   const [createPending, setCreatePending] = useState(false);
+  if (creatingFor !== null && creatingFor !== createFor) setCreatingFor(null);
+  const creating = creatingFor !== null && creatingFor === createFor;
   const missingWithin = named
     ? missingNamedRuleWithin(rule, named.kinds, decofile)
     : null;
@@ -104,7 +112,7 @@ export function VariantRuleEditor({
     } finally {
       setCreatePending(false);
     }
-    setCreating(false);
+    setCreatingFor(null);
   };
   return (
     <>
@@ -123,6 +131,7 @@ export function VariantRuleEditor({
           {canCreate && creating ? (
             <div className="rounded-[var(--studio-control-radius,var(--radius-md))] border border-border/80">
               <NamedRuleCreateForm
+                key={createFor ?? ""}
                 kind={namedRow.kind}
                 initialName={namedRow.name}
                 existingNames={existingNames}
@@ -130,7 +139,7 @@ export function VariantRuleEditor({
                 submitLabel={t(
                   "sectionsEditor.namedRulePicker.createMissingSubmit",
                 )}
-                onBack={() => setCreating(false)}
+                onBack={() => setCreatingFor(null)}
                 onSubmit={(pick) => void create(pick)}
               />
             </div>
@@ -141,7 +150,9 @@ export function VariantRuleEditor({
               summary={namedRow.summary}
               missing={namedRow.missing}
               inlineDate={namedRow.inlineDate}
-              {...(canCreate ? { onCreate: () => setCreating(true) } : {})}
+              {...(canCreate
+                ? { onCreate: () => setCreatingFor(createFor) }
+                : {})}
             />
           )}
         </div>

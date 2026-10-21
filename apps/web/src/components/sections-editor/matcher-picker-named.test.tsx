@@ -279,6 +279,45 @@ describe("the locked row", () => {
     expect(body.getByTestId("named-rule-row")).toBeInTheDocument();
   });
 
+  test("switching to another variant closes the create form, so it never creates for the wrong one", () => {
+    const onPick = mock((_pick: NamedRulePick) => Promise.resolve());
+    const editor = (index: number, name: string) => {
+      const rule = { __resolveType: "experiment", name };
+      return (
+        <QueryClientProvider client={client}>
+          <TooltipProvider>
+            <VariantRuleEditor
+              currentRt="experiment"
+              currentLabel="A/B test"
+              matchers={MATCHERS}
+              globals={[]}
+              onSelect={() => {}}
+              onSelectGlobal={() => {}}
+              schema={null}
+              formValue={null}
+              onChange={() => {}}
+              formKey={`${index}:experiment`}
+              formWrapperClassName=""
+              named={{ kinds: KINDS, selected: namedRuleOf(rule), onPick }}
+              namedRow={namedRuleRowState(rule, KINDS)}
+            />
+          </TooltipProvider>
+        </QueryClientProvider>
+      );
+    };
+    const client = new QueryClient();
+    const view = rtlRender(editor(0, "summer"));
+    const body = within(document.body);
+    fireEvent.click(body.getByRole("button", { name: "Create it" }));
+    expect(body.getByLabelText("Name")).toHaveValue("summer");
+    view.rerender(editor(1, "winter"));
+    expect(body.queryByLabelText("Name")).toBeNull();
+    expect(body.getByTestId("named-rule-row")).toBeInTheDocument();
+    fireEvent.click(body.getByRole("button", { name: "Create it" }));
+    expect(body.getByLabelText("Name")).toHaveValue("winter");
+    expect(onPick).not.toHaveBeenCalled();
+  });
+
   test("no Create it where the picker can't create (a block that holds something else)", () => {
     const rule = { __resolveType: "experiment", name: "gone" };
     const kinds: NamedRulePickerKind[] = [
