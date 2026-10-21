@@ -1,7 +1,6 @@
 import type { sidebar as sidebarEn } from "../en/sidebar.ts";
 
 export const sidebar = {
-  "sidebar.projects.addProject": "Adicionar projeto",
   "sidebar.agentsSection.codeAgents": "Projetos de Código",
   "sidebar.header.closeSidebar": "Fechar barra lateral",
   "sidebar.header.toggleSidebar": "Abrir ou fechar barra lateral",
@@ -16,7 +15,6 @@ export const sidebar = {
   "sidebar.navDestinations.tasks": "Board",
   "sidebar.navDestinations.plan": "Planejar",
   "sidebar.navDestinations.monitor": "Monitorar",
-  "sidebar.navDestinations.threadAnalytics": "Análise de chats",
   "sidebar.myThreadsSection.noChatsYet": "Nenhum chat ainda",
   "sidebar.myThreadsSection.noChatsMatchFilters":
     "Nenhum chat corresponde aos seus filtros",
@@ -50,21 +48,7 @@ export const sidebar = {
   "sidebar.customize.folderOptions": "Opções da pasta",
   "sidebar.projects.heading": "Projetos",
   "sidebar.scope.allProjects": "Todos os projetos",
-  "sidebar.picker.ariaLabel": "Organiza\u00e7\u00e3o e projeto: {name}",
-  "sidebar.picker.projectInOrg": "{project} — {org}",
   "sidebar.picker.newOrganization": "Nova organização",
-  "sidebar.picker.newProject": "Novo projeto",
-  "sidebar.picker.noMatches": "Nada corresponde a \u201c{query}\u201d",
-  "sidebar.picker.searchFailed":
-    "N\u00e3o foi poss\u00edvel buscar agora \u2014 continue digitando para tentar de novo",
-  "sidebar.picker.orgsHeading": "Organiza\u00e7\u00f5es",
-  "sidebar.picker.projectsHeading": "Projetos",
-  "sidebar.picker.searchPlaceholder":
-    "Buscar organiza\u00e7\u00f5es e projetos\u2026",
-  "sidebar.picker.title": "Organiza\u00e7\u00f5es e projetos",
-  "sidebar.picker.moreExist":
-    "H\u00e1 mais projetos do que cabem aqui \u2014 continue digitando",
-  "sidebar.picker.verbTravel": "Abrir {name}",
   "sidebar.rail.ariaLabel": "Organizações",
   "sidebar.rail.closeApp": "Fechar {name}",
   "sidebar.rail.hideOrganization": "Ocultar da barra lateral",

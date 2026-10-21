@@ -105,7 +105,6 @@ export const taskBoard = {
     "Nenhuma tarefa corresponde a estes filtros.",
   "taskBoard.taskBoard.noTasksYet":
     "Nenhuma tarefa ainda. Comece uma com Nova tarefa.",
-  "taskBoard.taskBoard.tasksTitle": "Tarefas",
   "taskBoard.taskBoard.laneMenuAriaLabel": "Mais ações para {lane}",
   "taskBoard.taskBoard.selectAllInLane": "Selecionar todos",
   "taskBoard.taskBoard.columnsLabel": "Colunas",
@@ -114,11 +113,6 @@ export const taskBoard = {
   "taskBoard.taskBoard.collapseColumnAriaLabel": "Recolher {lane}",
   "taskBoard.taskBoard.expandColumn": "Expandir",
   "taskBoard.taskBoard.expandColumnAriaLabel": "Expandir {lane}",
-  "taskBoard.agenticSetup.button": "Configuração com agente",
-  "taskBoard.agenticSetup.message":
-    "Me ajude a configurar meu quadro para o trabalho que estou fazendo.",
-  "taskBoard.agenticSetup.failed":
-    "Não foi possível iniciar o chat de configuração do quadro",
   "taskBoard.dropHint.pickUp": "{names} vai pegar este card",
   "taskBoard.dropHint.pickUpMany": "{names} vai pegar estes cards",
   "taskBoard.columnRules.menuItem": "Regras e automações",

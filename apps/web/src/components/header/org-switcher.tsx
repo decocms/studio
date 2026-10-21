@@ -1,6 +1,5 @@
-/** Org switcher building blocks: the org mark and the invitation row. The
- *  popover itself is gone — `OrgProjectPicker` names org and project together,
- *  so a separate org list had nowhere left to open from. */
+/** Org switcher building blocks: the org mark and the invitation row. Orgs
+ *  are switched from the org rail. */
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@decocms/ui/components/button.tsx";

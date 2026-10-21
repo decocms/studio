@@ -203,17 +203,6 @@ export function boardSearchParams(
 }
 
 /**
- * The layout a reader is actually allowed to be in.
- *
- * Feed and Epics are flag-only views, so a reader without the flag falls back to Board.
- */
-export function enabledLayout(layout: Layout, feedEnabled: boolean): Layout {
-  return (layout === "feed" || layout === "epics") && !feedEnabled
-    ? "board"
-    : layout;
-}
-
-/**
  * The selection a bulk action is allowed to touch: only cards currently on
  * screen. The project scope is not the board's own control — it can change
  * under a live selection — so a stale id must never reach an update or a

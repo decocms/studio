@@ -1,23 +1,6 @@
 import type { routes as routesEn } from "../en/routes.ts";
 
 export const routes = {
-  "routes.agentsList.agentsHeading": "Projetos",
-  "routes.agentsList.askAdminToCreate":
-    "Peça a um administrador da organização para criar um.",
-  "routes.agentsList.cancelButton": "Cancelar",
-  "routes.agentsList.createAgent": "Criar Projeto",
-  "routes.agentsList.createAgentToGetStarted": "Crie um projeto para começar.",
-  "routes.agentsList.deleteAgentDescription":
-    "Esta ação não pode ser desfeita. Isto deletará permanentemente",
-  "routes.agentsList.deleteAgentTitle": "Deletar Projeto?",
-  "routes.agentsList.deleteButton": "Deletar",
-  "routes.agentsList.deletedAgent": 'Projeto "{title}" deletado',
-  "routes.agentsList.noAgentsFound": "Nenhum projeto encontrado",
-  "routes.agentsList.noAgentsMatchSearch":
-    'Nenhum projeto corresponde a "{search}"',
-  "routes.agentsList.noAgentsYet": "Nenhum projeto ainda",
-  "routes.agentsList.searchPlaceholder": "Pesquise um projeto...",
-  "routes.agentsList.title": "Projetos",
   "routes.reportsOnboarding.authCopy.accountExists":
     "Já existe uma conta com este e-mail. Tente entrar em vez de criar uma nova conta.",
   "routes.reportsOnboarding.authCopy.alreadyHaveAccount": "Já tem uma conta? ",

@@ -360,7 +360,6 @@ export const settings = {
   "settings.repositories.cancel": "Cancelar",
   "settings.repositories.failed": "Algo deu errado",
   "settings.nav.connections": "Conexões",
-  "settings.nav.agents": "Projetos",
   "settings.nav.automations": "Automações",
   "settings.nav.skills": "Skills",
   "settings.nav.memory": "Memória",
@@ -396,9 +395,6 @@ export const settings = {
   "settings.blocksEditor.title": "Novo editor de blocos",
   "settings.blocksEditor.description":
     "Vale para todos desta organização. O restante do Studio sempre usa o novo layout.",
-  "settings.preferences.projectFirstNav": "Navegação centrada em projetos",
-  "settings.preferences.projectFirstNavDescription":
-    "Experimente o trilho de organizações, o launcher de projetos e a home Hoje/Agentes.",
   "settings.preferences.theme": "Tema",
   "settings.preferences.themeDescription": "Seu esquema de cores preferido.",
   "settings.preferences.themeLight": "Tema claro",
@@ -436,7 +432,6 @@ export const settings = {
     "Nenhuma automa\u00e7\u00e3o encontrada",
   "settings.automations.pageTitle": "Automa\u00e7\u00f5es",
   "settings.automations.searchPlaceholder": "Pesquisar automa\u00e7\u00f5es...",
-  "settings.skills.pageTitle": "Skills",
   "settings.skills.importButton": "Importar skill",
   "settings.skills.importing": "Importando\u2026",
   "settings.skills.importSuccess": '"{name}" importada',
@@ -469,15 +464,10 @@ export const settings = {
   "settings.skills.errorDescription":
     "O catálogo de skills não pôde ser carregado. Você pode não ter acesso aos arquivos desta organização.",
   "settings.skills.retry": "Tentar novamente",
-  "settings.memory.pageTitle": "Memória",
   "settings.memory.tabOrg": "Organização",
   "settings.memory.tabUser": "Só você",
   "settings.memory.orgHeading": "Compartilhada com todo mundo em {org}",
-  "settings.memory.orgDescription":
-    "O Deco lê isto no começo de cada chat e acrescenta o que aprende. Corrija o que estiver errado ou desatualizado.",
   "settings.memory.userHeading": "Sua memória pessoal",
-  "settings.memory.userDescription":
-    "Carregada só nos seus chats. Boa para como você gosta de trabalhar, o que é seu e o que pular.",
   "settings.memory.orgPlaceholder":
     "Fatos que todos os chats devem saber. Por exemplo: a gente sobe na quinta, preços em BRL, o tom da marca é informal.",
   "settings.memory.userPlaceholder":

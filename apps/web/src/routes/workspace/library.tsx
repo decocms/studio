@@ -3,7 +3,6 @@ import { HOME_MOUNT_PATH } from "@decocms/shared/organization/home-mount";
 import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import { ChatLayout, useChatLayout } from "@/components/chat-layout";
 import { Page } from "@/components/page";
-import { useProjectFirstNav } from "@/hooks/use-preferences";
 import {
   ContextSectionBody,
   ContextShell,
@@ -21,8 +20,7 @@ export default function LibraryRoute() {
     expanded?: boolean;
     section?: ContextSection;
   };
-  /** Project-first nav shows the Library as Context's files, under its menu. */
-  const projectFirstNav = useProjectFirstNav();
+  /** The Library is Context's files, under its menu. */
   const contextSection = orgSection(section);
   const show = (next: { path?: string; preview?: string; expanded?: true }) =>
     navigate({
@@ -41,7 +39,7 @@ export default function LibraryRoute() {
   const isMobile = useIsMobile();
   const chatBeside = useChatLayout().threadOpen && !isMobile;
 
-  if (projectFirstNav && contextSection !== "files") {
+  if (contextSection !== "files") {
     return (
       <ChatLayout.Content>
         <ContextShell section={contextSection}>
@@ -99,13 +97,9 @@ export default function LibraryRoute() {
     >
       {/* Beside the list: a main-panel tab would carry the org's drive into
           an agent's workspace. */}
-      {projectFirstNav ? (
-        <ContextShell section="files">
-          <LibraryTab filePreview="side" context />
-        </ContextShell>
-      ) : (
-        <LibraryTab filePreview="side" />
-      )}
+      <ContextShell section="files">
+        <LibraryTab filePreview="side" context />
+      </ContextShell>
     </ChatLayout.Content>
   );
 }

@@ -11,20 +11,12 @@
  *  HOW the slots are spaced lives in `SidebarShell` and only there. */
 
 import { ErrorBoundary } from "@/components/error-boundary";
-import { useExitProjectScope } from "@/hooks/use-exit-project-scope";
 import { useInSettings } from "@/hooks/use-in-settings";
-import { useProjectFirstNav } from "@/hooks/use-preferences";
-import { useScopeId } from "@/hooks/use-project-scope";
-import { useT } from "@/i18n/use-t.ts";
 import { SidebarAccountFooter } from "./footer/sidebar-footer";
 import { SidebarAccountFooterMobile } from "./footer/sidebar-footer-mobile";
 import { SidebarPickerHeader, SidebarPickerHeaderMobile } from "./header";
 import { NavDestinationsContent } from "./nav-destinations";
-import { NavDestinationsContentClassic } from "./nav-destinations-classic";
-import { SidebarBackRow } from "./nav-row";
-import { NavSettingsRow } from "./nav-settings-row";
 import { ProjectNav } from "./project-nav";
-import { SidebarProjectsSection } from "./projects-section";
 import { SidebarProjectsTree } from "./projects-section-tree";
 import {
   SettingsBackRow,
@@ -32,34 +24,6 @@ import {
   SettingsVersion,
 } from "./settings-sidebar";
 import { SidebarShell } from "./shell";
-
-/** Cloudflare's "← Back to Domains", for a project.
- *  It renders on the RAW scope, not the resolved project. A `?virtualmcpid=`
- *  naming a project you cannot see — deleted, revoked, or just not loaded yet —
- *  otherwise hides the project rows AND Library AND this row, leaving a sidebar
- *  scoped to nothing with no way out of it. The param is retained across every
- *  navigation, so that state is permanent, not transient. */
-function ProjectBackRow({ onNavigate }: { onNavigate?: () => void }) {
-  const t = useT();
-  const scopeId = useScopeId();
-  const exitToOrg = useExitProjectScope();
-  // The new navigation leaves through the header's switcher and the org rail.
-  const projectFirstNav = useProjectFirstNav();
-
-  if (!scopeId || projectFirstNav) return null;
-
-  return (
-    <SidebarBackRow
-      label={t("sidebar.scope.allProjects")}
-      /** Not a link: where leaving lands depends on whether this route
-       *  RESOLVES the scope, which only `useExitProjectScope` knows. */
-      onSelect={() => {
-        exitToOrg();
-        onNavigate?.();
-      }}
-    />
-  );
-}
 
 /** The body: the destinations you can reach from here, then the projects list.
  *  Settings is one of those destinations, not a zone of its own — it used to sit
@@ -71,32 +35,12 @@ function ProjectBackRow({ onNavigate }: { onNavigate?: () => void }) {
  *  listed one row per project off a suspense query — restoring either would put
  *  a skeleton back in front of the sidebar. */
 function OrgSidebarBody({ onNavigate }: { onNavigate?: () => void }) {
-  const t = useT();
-  const projectFirstNav = useProjectFirstNav();
   return (
     <ErrorBoundary>
       <div className="flex flex-col gap-6">
-        <div className="flex flex-col gap-1">
-          {projectFirstNav ? (
-            <NavDestinationsContent onNavigate={onNavigate} />
-          ) : (
-            <NavDestinationsContentClassic onNavigate={onNavigate} />
-          )}
-          {!projectFirstNav && <ProjectNav onNavigate={onNavigate} />}
-          {/* Project-first navigation reaches settings from the org rail instead. */}
-          {!projectFirstNav && <NavSettingsRow onNavigate={onNavigate} />}
-        </div>
-        {projectFirstNav && (
-          <ProjectNav
-            onNavigate={onNavigate}
-            heading={t("sidebar.projectNav.apps")}
-          />
-        )}
-        {projectFirstNav ? (
-          <SidebarProjectsTree onNavigate={onNavigate} />
-        ) : (
-          <SidebarProjectsSection onNavigate={onNavigate} />
-        )}
+        <NavDestinationsContent onNavigate={onNavigate} />
+        <ProjectNav onNavigate={onNavigate} />
+        <SidebarProjectsTree onNavigate={onNavigate} />
       </div>
     </ErrorBoundary>
   );
@@ -108,7 +52,7 @@ export function StudioSidebar() {
   return (
     <SidebarShell
       header={<SidebarPickerHeader />}
-      back={inSettings ? <SettingsBackRow /> : <ProjectBackRow />}
+      back={inSettings && <SettingsBackRow />}
       body={inSettings ? <SettingsNav /> : <OrgSidebarBody />}
       footer={inSettings ? <SettingsVersion /> : <SidebarAccountFooter />}
     />
@@ -122,13 +66,7 @@ export function StudioSidebarMobile({ onClose }: { onClose: () => void }) {
     <SidebarShell
       sheet
       header={<SidebarPickerHeaderMobile onClose={onClose} />}
-      back={
-        inSettings ? (
-          <SettingsBackRow onNavigate={onClose} />
-        ) : (
-          <ProjectBackRow onNavigate={onClose} />
-        )
-      }
+      back={inSettings && <SettingsBackRow onNavigate={onClose} />}
       body={
         inSettings ? (
           <SettingsNav onNavigate={onClose} />

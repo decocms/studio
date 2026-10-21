@@ -46,7 +46,6 @@ import { PanelLoading } from "@/layouts/main-panel-boundary";
 import { ReportsIndex } from "@/components/projects/reports-index";
 import { useProjectScope, useScopeId } from "@/hooks/use-project-scope";
 import { readProjectProfile, storeHost } from "@/lib/project-profile.ts";
-import { useProjectFirstNav } from "@/hooks/use-preferences";
 
 const AppViewContent = lazy(() =>
   import("@/routes/project-app-view").then((m) => ({
@@ -55,7 +54,6 @@ const AppViewContent = lazy(() =>
 );
 
 export function ReportsTab() {
-  const projectFirstNav = useProjectFirstNav();
   const scopeId = useScopeId();
   const { project } = useProjectScope();
   const { diagnostic, isLoading, siteUrl, connectionId } =
@@ -63,7 +61,7 @@ export function ReportsTab() {
 
   /** At ORG scope this is the index over every project's report; inside a
    *  project it is that project's own, below. */
-  if (projectFirstNav && !scopeId) {
+  if (!scopeId) {
     return (
       <Suspense fallback={<PanelLoading />}>
         <ReportsIndex />
@@ -73,8 +71,7 @@ export function ReportsTab() {
 
   if (isLoading) return <PanelLoading />;
 
-  const projectSiteUrl =
-    projectFirstNav && project ? readProjectProfile(project).storeUrl : null;
+  const projectSiteUrl = project ? readProjectProfile(project).storeUrl : null;
 
   /** Whether the org's one diagnostic is about THIS project: the backend still
    *  keeps one per org (`use-project-reports.ts`), so without this every

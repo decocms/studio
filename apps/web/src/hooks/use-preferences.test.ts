@@ -1,9 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  PROJECT_FIRST_NAV_DEFAULT_SINCE,
-  projectFirstNavEnabled,
-  readLaneVisibility,
-} from "./use-preferences.ts";
+import { readLaneVisibility } from "./use-preferences.ts";
 
 describe("readLaneVisibility", () => {
   test("starts empty when nothing is stored", () => {
@@ -37,29 +33,5 @@ describe("readLaneVisibility", () => {
   test("ignores a malformed stored value", () => {
     expect(readLaneVisibility({ taskBoardLaneVisibility: ["qa"] })).toEqual({});
     expect(readLaneVisibility({ shownTaskBoardLanes: "archived" })).toEqual({});
-  });
-});
-
-describe("projectFirstNavEnabled", () => {
-  const before = new Date(PROJECT_FIRST_NAV_DEFAULT_SINCE - 1);
-  const after = new Date(PROJECT_FIRST_NAV_DEFAULT_SINCE + 1);
-
-  test("new accounts start in project-first navigation", () => {
-    expect(projectFirstNavEnabled(undefined, after)).toBe(true);
-    expect(projectFirstNavEnabled(undefined, after.toISOString())).toBe(true);
-  });
-
-  test("older accounts keep the classic navigation", () => {
-    expect(projectFirstNavEnabled(undefined, before)).toBe(false);
-  });
-
-  test("a stored choice wins over the account's age", () => {
-    expect(projectFirstNavEnabled(false, after)).toBe(false);
-    expect(projectFirstNavEnabled(true, before)).toBe(true);
-  });
-
-  test("an unknown or invalid creation date keeps the classic navigation", () => {
-    expect(projectFirstNavEnabled(undefined, undefined)).toBe(false);
-    expect(projectFirstNavEnabled(undefined, "not a date")).toBe(false);
   });
 });

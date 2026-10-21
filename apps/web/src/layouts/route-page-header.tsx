@@ -15,7 +15,6 @@ import { ToolbarIconButton } from "@/components/toolbar-icon-button";
 import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
 import { useInSettings } from "@/hooks/use-in-settings";
 import { useOptionalChatLayout } from "@/components/chat-layout";
-import { useProjectFirstNav } from "@/hooks/use-preferences";
 
 import { useScopeId } from "@/hooks/use-project-scope";
 import { useT } from "@/i18n/use-t";
@@ -37,7 +36,6 @@ export function RoutePageHeader({
   const { toggleSidebar } = useSidebar();
   const collapsed = useSidebarCollapsed();
   const chatLayout = useOptionalChatLayout();
-  const projectFirstNav = useProjectFirstNav();
   const page = useRouterState({
     select: (state) =>
       state.matches.findLast((match) => match.staticData.pageTitle)?.staticData,
@@ -51,25 +49,18 @@ export function RoutePageHeader({
       scopeId
       ? projectTitle
       : t("sidebar.navDestinations.home")
-    : // Project-first nav calls the Library Context.
-      projectFirstNav && page?.mainView === "files"
+    : // The Library is called Context.
+      page?.mainView === "files"
       ? t("sidebar.navDestinations.context")
       : t(page?.pageTitle ?? "page.view");
-  /** Project-first navigation: the crumb is the way out of an app, so it lands
-   *  on the project as the reader knows it: its one screen. Sending them to
-   *  the scoped workspace instead is how someone loses the sidebar and cannot
-   *  get it back. With the flag off there is no flat project screen to land
-   *  on, so it goes back to the scoped workspace, as it always has. */
-  const projectLink = projectFirstNav
-    ? {
-        to: "/$org/projects" as const,
-        params: { org: org.slug },
-        search: { project: scopeId ?? undefined },
-      }
-    : {
-        to: "/$org/projects/$agentId" as const,
-        params: { org: org.slug, agentId: scopeId ?? "" },
-      };
+  /** The crumb is the way out of an app, so it lands on the project as the
+   *  reader knows it: its one screen. Sending them to the scoped workspace
+   *  instead is how someone loses the sidebar and cannot get it back. */
+  const projectLink = {
+    to: "/$org/projects" as const,
+    params: { org: org.slug },
+    search: { project: scopeId ?? undefined },
+  };
   const breadcrumbs: BreadcrumbItem[] = [];
   if (inSettings) {
     breadcrumbs.push({
@@ -85,9 +76,9 @@ export function RoutePageHeader({
     });
   }
   breadcrumbs.push({ key: "page", label: title });
-  /** Project-first collapses the sidebar away, and its toggles with it: they
-   *  move here, beside the breadcrumb. */
-  const sidebarHidden = projectFirstNav && collapsed;
+  /** A collapsed sidebar takes its toggles with it: they move here, beside the
+   *  breadcrumb. */
+  const sidebarHidden = collapsed;
   const chatToggle = sidebarHidden && chatLayout && !chatLayout.threadless && (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -111,30 +102,20 @@ export function RoutePageHeader({
     <Page.Header
       leading={
         <>
-          {projectFirstNav ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <ToolbarIconButton
-                  className={cn(!sidebarHidden && "md:hidden")}
-                  onClick={toggleSidebar}
-                  aria-label={t("page.expandSidebar")}
-                >
-                  <LayoutLeft size={16} />
-                </ToolbarIconButton>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                {t("page.expandSidebar")}
-              </TooltipContent>
-            </Tooltip>
-          ) : (
-            <ToolbarIconButton
-              className="md:hidden"
-              onClick={toggleSidebar}
-              aria-label={t("layouts.shellControls.toggleSidebar")}
-            >
-              <LayoutLeft size={16} />
-            </ToolbarIconButton>
-          )}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <ToolbarIconButton
+                className={cn(!sidebarHidden && "md:hidden")}
+                onClick={toggleSidebar}
+                aria-label={t("page.expandSidebar")}
+              >
+                <LayoutLeft size={16} />
+              </ToolbarIconButton>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              {t("page.expandSidebar")}
+            </TooltipContent>
+          </Tooltip>
           {chatToggle}
         </>
       }

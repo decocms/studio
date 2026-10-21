@@ -10,22 +10,18 @@ import {
   useRouterState,
 } from "@tanstack/react-router";
 import {
-  GitBranch01,
   BarChart10,
   Building02,
   Folder,
   Columns03,
-  Stars01,
   CreditCard01,
   HardDrive,
   Key01,
-  Lightbulb02,
   LinkExternal01,
   Lock01,
   User01,
   Users03,
   Zap,
-  ZapSquare,
 } from "@untitledui/icons";
 import {
   groupRoutes,
@@ -35,7 +31,6 @@ import {
 import { useVisibleSettingsTabs } from "@/components/settings/use-settings-tabs";
 import { type CapabilityId, useCapabilities } from "@/hooks/use-capability";
 import { usePendingJoinRequests } from "@/hooks/use-join-requests";
-import { useProjectFirstNav } from "@/hooks/use-preferences";
 import { useT } from "@/i18n/use-t.ts";
 
 /** A route the sidebar can point a row at. `settings-tab-groups.ts` stores the
@@ -71,16 +66,13 @@ export interface SettingsNavGroup {
 }
 
 /** Your account, then the three groups of org screens people work in, then
- *  everything rare behind a collapsed "Advanced". */
-/** Rows project-first nav moves out of Settings into Context. */
-const IN_CONTEXT = new Set(["repositories", "connections", "skills", "memory"]);
-
+ *  everything rare behind a collapsed "Advanced". Repositories, connections,
+ *  skills and memory live in a project's Context, not here. */
 export function useSettingsSidebarGroups(): SettingsNavGroup[] {
   const t = useT();
   const { capabilities, isPrivileged, loading, error } = useCapabilities();
   const joinRequestCount = usePendingJoinRequests().length;
   const visibleTabs = useVisibleSettingsTabs();
-  const projectFirstNav = useProjectFirstNav();
 
   const groups: SettingsNavGroup[] = [
     {
@@ -133,49 +125,17 @@ export function useSettingsSidebarGroups(): SettingsNavGroup[] {
       label: t("settings.nav.build"),
       items: [
         {
-          key: "repositories",
-          label: t("settings.nav.repositories"),
-          icon: <GitBranch01 size={14} />,
-          to: "/$org/settings/repositories",
-          requires: "file-configs:manage",
+          key: "projects",
+          label: t("projects.settings.title"),
+          icon: <Folder size={14} />,
+          to: "/$org/settings/projects",
         },
-        {
-          key: "connections",
-          label: t("settings.nav.connections"),
-          icon: <ZapSquare size={14} />,
-          to: "/$org/settings/connections",
-        },
-        projectFirstNav
-          ? {
-              key: "projects",
-              label: t("projects.settings.title"),
-              icon: <Folder size={14} />,
-              to: "/$org/settings/projects",
-            }
-          : {
-              key: "agents",
-              label: t("settings.nav.agents"),
-              icon: <Users03 size={14} />,
-              to: "/$org/settings/agents",
-            },
         {
           key: "automations",
           label: t("settings.nav.automations"),
           icon: <Zap size={14} />,
           to: "/$org/settings/automations",
           requires: "automations:manage",
-        },
-        {
-          key: "skills",
-          label: t("settings.nav.skills"),
-          icon: <Stars01 size={14} />,
-          to: "/$org/settings/skills",
-        },
-        {
-          key: "memory",
-          label: t("settings.nav.memory"),
-          icon: <Lightbulb02 size={14} />,
-          to: "/$org/settings/memory",
         },
       ],
     },
@@ -240,7 +200,6 @@ export function useSettingsSidebarGroups(): SettingsNavGroup[] {
     .map((group) => ({
       ...group,
       items: group.items.flatMap((item) => {
-        if (projectFirstNav && IN_CONTEXT.has(item.key)) return [];
         if (item.group) {
           /** Route the row at the first tab this member can open. A tabless
            *  group (Connect) has nothing to pick, so the row keeps its own

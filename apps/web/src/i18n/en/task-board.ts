@@ -102,7 +102,6 @@ export const taskBoard = {
   "taskBoard.taskBoard.newTaskInLaneTitle": "New task in {lane}",
   "taskBoard.taskBoard.noTasksMatch": "No tasks match these filters.",
   "taskBoard.taskBoard.noTasksYet": "No tasks yet. Start one with New task.",
-  "taskBoard.taskBoard.tasksTitle": "Tasks",
   "taskBoard.taskBoard.laneMenuAriaLabel": "More actions for {lane}",
   "taskBoard.taskBoard.selectAllInLane": "Select all",
   "taskBoard.taskBoard.columnsLabel": "Columns",
@@ -111,10 +110,6 @@ export const taskBoard = {
   "taskBoard.taskBoard.collapseColumnAriaLabel": "Collapse {lane}",
   "taskBoard.taskBoard.expandColumn": "Expand",
   "taskBoard.taskBoard.expandColumnAriaLabel": "Expand {lane}",
-  "taskBoard.agenticSetup.button": "Agentic Setup",
-  "taskBoard.agenticSetup.message":
-    "Help me set up my board around the work I'm doing.",
-  "taskBoard.agenticSetup.failed": "Couldn't start the board setup chat",
   "taskBoard.dropHint.pickUp": "{names} will pick this card up",
   "taskBoard.dropHint.pickUpMany": "{names} will pick these cards up",
   "taskBoard.columnRules.menuItem": "Rules and automations",

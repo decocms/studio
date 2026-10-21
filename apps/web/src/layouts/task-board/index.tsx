@@ -37,7 +37,6 @@ import {
 } from "./admin-controls";
 import { BoardOrgProvider } from "./board-org";
 import { authClient } from "@/lib/auth-client";
-import { AgenticSetupButton } from "./agentic-setup";
 import { ColumnRulesSheet, useEntryAutomations } from "./column-rules";
 import { useTaskBoardRulesLive } from "@/hooks/use-task-board-prompts";
 import { getInitials } from "@/lib/get-initials";
@@ -159,7 +158,7 @@ import {
 } from "./epics";
 import { useTags } from "@/hooks/use-tags";
 import { useReviewerEnabled } from "@/hooks/use-organization-settings";
-import { usePreferences, useProjectFirstNav } from "@/hooks/use-preferences";
+import { usePreferences } from "@/hooks/use-preferences";
 import {
   TaskBoardItemDetail,
   TaskBoardItemDialog,
@@ -213,7 +212,6 @@ import {
 } from "./list-groups";
 import { UNASSIGNED_FILTER } from "./task-filters-core";
 import {
-  enabledLayout,
   savedAssigneeDefault,
   useBoardSearch,
   visibleSelection,
@@ -876,7 +874,6 @@ function AssigneeDisplay({
   onAssign?: (userId: string | null) => void;
   showDelegation?: boolean;
 }) {
-  const collapseWhenHidden = useProjectFirstNav();
   const t = useT();
   const [open, setOpen] = useState(false);
 
@@ -938,8 +935,7 @@ function AssigneeDisplay({
           className={cn(
             "flex size-6 shrink-0 items-center justify-center rounded-full border border-dashed border-muted-foreground/40 text-muted-foreground/40 opacity-0 transition-[color,border-color,opacity] group-hover:opacity-100 hover:border-muted-foreground hover:text-muted-foreground focus-visible:opacity-100 data-[state=open]:opacity-100",
             // Takes no room until shown, so the glyphs beside it sit flush right.
-            collapseWhenHidden &&
-              "-ml-2 w-0 scale-75 overflow-hidden border-0 transition-[color,border-color,opacity,width,margin,scale] duration-150 ease-out group-hover:ml-0 group-hover:w-6 group-hover:scale-100 group-hover:border focus-visible:ml-0 focus-visible:w-6 focus-visible:scale-100 focus-visible:border data-[state=open]:ml-0 data-[state=open]:w-6 data-[state=open]:scale-100 data-[state=open]:border motion-reduce:transition-none",
+            "-ml-2 w-0 scale-75 overflow-hidden border-0 transition-[color,border-color,opacity,width,margin,scale] duration-150 ease-out group-hover:ml-0 group-hover:w-6 group-hover:scale-100 group-hover:border focus-visible:ml-0 focus-visible:w-6 focus-visible:scale-100 focus-visible:border data-[state=open]:ml-0 data-[state=open]:w-6 data-[state=open]:scale-100 data-[state=open]:border motion-reduce:transition-none",
           )}
         >
           <UserPlus01 size={13} />
@@ -1097,11 +1093,6 @@ function TaskBoardBody({
   const members = (membersData?.data?.members ?? []) as Member[];
   const memberByUserId = new Map(members.map((m) => [m.userId, m]));
 
-  /** The feed is part of project-first navigation, so it is the flag's to
-   *  offer. With the flag off there is no Feed tab and no way to reach one, so
-   *  a `?view=feed` link shared from a colleague who HAS the flag has to land
-   *  on the board rather than on a view with no tab to leave it by. */
-  const feedEnabled = useProjectFirstNav();
   const viewerId = session?.user?.id ?? null;
   const [savedAssignee, setSavedAssignee] = useLocalStorage<string | null>(
     LOCALSTORAGE_KEYS.taskBoardAssignee(org.id, viewerId ?? ""),
@@ -1123,7 +1114,7 @@ function TaskBoardBody({
     setSortDirection,
   } = useBoardSearch(
     {
-      layout: inlineTabs && feedEnabled ? "feed" : "board",
+      layout: inlineTabs ? "feed" : "board",
       assignee:
         viewerId === null
           ? null
@@ -1151,7 +1142,7 @@ function TaskBoardBody({
     sprints.find(
       (sprint) => sprint.id === filters.sprint && sprint.state !== "closed",
     )?.id ?? null;
-  const layout = enabledLayout(urlLayout, feedEnabled);
+  const layout = urlLayout;
   const grouping = {
     groupBy,
     subgroupBy,
@@ -1490,24 +1481,22 @@ function TaskBoardBody({
     return <Navigate to="." {...taskAddress(canonicalKey)} replace />;
   }
 
-  /** Board / List, and Feed and Epics behind the flag. One definition for both
-   *  placements — see `inlineTabs`. */
+  /** Feed, Board, List and Epics. One definition for both placements — see
+   *  `inlineTabs`. */
   const layoutTabs = (
     <Page.Tabs>
-      {feedEnabled && (
-        <Page.Tab
-          active={layout === "feed"}
-          aria-label={t("taskBoard.taskBoard.layoutViewAriaLabel", {
-            label: t("common.taskBoard.feedView"),
-          })}
-          onClick={() => {
-            setLayout("feed");
-            clearSelection();
-          }}
-        >
-          {t("common.taskBoard.feedView")}
-        </Page.Tab>
-      )}
+      <Page.Tab
+        active={layout === "feed"}
+        aria-label={t("taskBoard.taskBoard.layoutViewAriaLabel", {
+          label: t("common.taskBoard.feedView"),
+        })}
+        onClick={() => {
+          setLayout("feed");
+          clearSelection();
+        }}
+      >
+        {t("common.taskBoard.feedView")}
+      </Page.Tab>
       <Page.Tab
         active={layout === "board"}
         aria-label={t("taskBoard.taskBoard.layoutViewAriaLabel", {
@@ -1529,20 +1518,18 @@ function TaskBoardBody({
       >
         {t("common.taskBoard.listView")}
       </Page.Tab>
-      {feedEnabled && (
-        <Page.Tab
-          active={layout === "epics"}
-          aria-label={t("taskBoard.taskBoard.layoutViewAriaLabel", {
-            label: t("taskBoard.epics.tab"),
-          })}
-          onClick={() => {
-            setLayout("epics");
-            clearSelection();
-          }}
-        >
-          {t("taskBoard.epics.tab")}
-        </Page.Tab>
-      )}
+      <Page.Tab
+        active={layout === "epics"}
+        aria-label={t("taskBoard.taskBoard.layoutViewAriaLabel", {
+          label: t("taskBoard.epics.tab"),
+        })}
+        onClick={() => {
+          setLayout("epics");
+          clearSelection();
+        }}
+      >
+        {t("taskBoard.epics.tab")}
+      </Page.Tab>
     </Page.Tabs>
   );
 
@@ -1574,10 +1561,7 @@ function TaskBoardBody({
         <>
           {/* From the scope, so two overrides cannot disagree. */}
           <Page.Title>
-            {scopeProject?.title ??
-              (feedEnabled
-                ? t("sidebar.navDestinations.spineTasks")
-                : t("taskBoard.taskBoard.tasksTitle"))}
+            {scopeProject?.title ?? t("sidebar.navDestinations.spineTasks")}
           </Page.Title>
           <Page.Actions
             secondary={
@@ -1644,7 +1628,6 @@ function TaskBoardBody({
           >
             <TaskBoardAdminControls />
             <TaskBoardAnalyticsButton project={scopeId} />
-            {!feedEnabled && <AgenticSetupButton />}
             {layout === "epics" ? (
               <Button size="sm" onClick={createEpic}>
                 <Plus size={16} />
@@ -1664,9 +1647,7 @@ function TaskBoardBody({
               {/* Same page padding as the project overview header above it (`Page.Container`'s), not the org-wide board's. */}
               <div className="mx-auto flex w-full max-w-[1680px] items-center justify-between gap-3 px-4 pt-4 pb-3 md:px-8">
                 {layoutTabs}
-                {feedEnabled && (
-                  <AgentsRunningBadge items={items} onOpen={openTask} />
-                )}
+                <AgentsRunningBadge items={items} onOpen={openTask} />
               </div>
             </div>
           ) : (
@@ -1675,9 +1656,7 @@ function TaskBoardBody({
                 {layoutTabs}
               </Panel.Toolbar.Left.Portal>
               <Panel.Toolbar.Right.Portal>
-                {feedEnabled && (
-                  <AgentsRunningBadge items={items} onOpen={openTask} />
-                )}
+                <AgentsRunningBadge items={items} onOpen={openTask} />
               </Panel.Toolbar.Right.Portal>
             </>
           )}
@@ -1760,7 +1739,7 @@ function TaskBoardBody({
       ) : layout === "board" ? (
         <Lanes
           visible={!openItem}
-          items={feedEnabled ? laneCards(visibleItems, items) : visibleItems}
+          items={laneCards(visibleItems, items)}
           members={members}
           memberByUserId={memberByUserId}
           selectedIds={selectedIds}
@@ -2100,11 +2079,7 @@ function TaskBoardBody({
       )}
     </div>
   );
-  return (
-    <EpicBoardProvider value={feedEnabled ? epicBoard : null}>
-      {page}
-    </EpicBoardProvider>
-  );
+  return <EpicBoardProvider value={epicBoard}>{page}</EpicBoardProvider>;
 }
 
 /**
@@ -2531,10 +2506,8 @@ function Lanes({
     visible,
   );
 
-  const swimlanes = useProjectFirstNav();
-  const laneOrder = swimlanes ? byLaneOrder : bySortOrder;
   const laneItems = (status: string) =>
-    placed.filter((item) => item.status === status).sort(laneOrder);
+    placed.filter((item) => item.status === status).sort(byLaneOrder);
 
   const {
     lanes: boardLanes,
@@ -2607,7 +2580,7 @@ function Lanes({
     lane: string,
   ) => {
     const saved = items.find((item) => item.id === draggedId);
-    return swimlanes && saved
+    return saved
       ? dropSwimlane({
           overId,
           itemOf: (cardId) => placed.find((item) => item.id === cardId),
@@ -2679,7 +2652,7 @@ function Lanes({
     // Dropped back exactly where it started — skip the write entirely.
     const serverOrder = items
       .filter((item) => item.status === lane)
-      .sort(laneOrder)
+      .sort(byLaneOrder)
       .map((item) => item.id)
       .join();
     if (
@@ -2755,13 +2728,10 @@ function Lanes({
     >
       {/* Scroll container spans the full panel width so the wheel works even
           when the pointer is in the empty margins on wide monitors. */}
-      {/* With swimlanes the whole board scrolls as one, so its rows stay aligned. */}
+      {/* The whole board scrolls as one, so its swimlane rows stay aligned. */}
       <div
         ref={attachBoard}
-        className={cn(
-          "min-h-0 flex-1 overflow-x-auto",
-          swimlanes && "overflow-y-auto",
-        )}
+        className="min-h-0 flex-1 overflow-x-auto overflow-y-auto"
       >
         {/* Padding lives on the capped row (not the scroll container) so its
             left edge matches the header's max-w + px exactly. Bottom breathing
@@ -2774,9 +2744,7 @@ function Lanes({
           className={cn(
             "mx-auto grid w-full max-w-[1680px]",
             // Lanes subgrid these rows so the swimlanes align across columns.
-            swimlanes
-              ? "min-h-full grid-rows-[auto_auto_1fr] gap-x-3 pb-6"
-              : "h-full gap-3",
+            "min-h-full grid-rows-[auto_auto_1fr] gap-x-3 pb-6",
             inlineTabs ? "px-4 pt-4 md:px-8" : "px-4 pt-6 sm:px-8",
           )}
           style={{
@@ -2825,7 +2793,6 @@ function Lanes({
               onToggleCollapsed={() => toggleLaneCollapsed(status)}
               labelled={status === labelledLane}
               anyCritical={anyCritical}
-              swimlanes={swimlanes}
             />
           ))}
           {hiddenLanes.length > 0 && (
@@ -2833,7 +2800,6 @@ function Lanes({
               statuses={hiddenLanes}
               countOf={(status) => laneItems(status).length}
               onShow={(status) => setLaneShown(status, true)}
-              swimlanes={swimlanes}
             />
           )}
         </div>
@@ -2889,18 +2855,14 @@ function HiddenLanes({
   statuses,
   countOf,
   onShow,
-  swimlanes,
 }: {
-  swimlanes: boolean;
   statuses: string[];
   countOf: (status: string) => number;
   onShow: (status: string) => void;
 }) {
   const t = useT();
   return (
-    <details
-      className={cn("group h-full min-w-0 py-1", swimlanes && "row-span-3")}
-    >
+    <details className="group row-span-3 h-full min-w-0 py-1">
       <summary className="flex cursor-pointer list-none items-center gap-1.5 px-2 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground [&::-webkit-details-marker]:hidden">
         <ChevronRight
           size={14}
@@ -2980,7 +2942,6 @@ function Lane({
   onToggleCollapsed,
   labelled,
   anyCritical,
-  swimlanes,
 }: {
   status: TaskBoardItemStatus;
   items: TaskBoardItem[];
@@ -3013,8 +2974,6 @@ function Lane({
   /** The one lane that prints the swimlane names; the rest keep their height. */
   labelled: boolean;
   anyCritical: boolean;
-  /** Critical / Improvements wells, behind the new navigation. */
-  swimlanes: boolean;
 }) {
   const t = useT();
   const { label, visual } = laneHeader(status, t);
@@ -3079,10 +3038,7 @@ function Lane({
         data-lane={status}
         data-lane-collapsed=""
         data-drop-target={isTarget || undefined}
-        className={cn(
-          "group/lane flex h-full min-h-0 min-w-0 flex-col items-center py-1",
-          swimlanes && "row-span-3",
-        )}
+        className="group/lane row-span-3 flex h-full min-h-0 min-w-0 flex-col items-center py-1"
       >
         <div
           className={cn(
@@ -3136,9 +3092,7 @@ function Lane({
         // every lane grows to the longest one instead of scrolling on its own.
         "group/lane min-h-0 min-w-0 rounded-xl py-1 transition-colors",
         // A phone shows one lane at a time, so aligning wells across lanes only pads them.
-        swimlanes
-          ? "row-span-3 grid grid-rows-subgrid max-md:flex max-md:flex-col"
-          : "flex h-full flex-col",
+        "row-span-3 grid grid-rows-subgrid max-md:flex max-md:flex-col",
         announce
           ? "bg-special/15 ring-1 ring-inset ring-special/30"
           : isTarget && "bg-muted/50",
@@ -3265,78 +3219,59 @@ function Lane({
           </div>
         )}
       </div>
-      {swimlanes ? (
-        <>
-          {/* Done and Archived keep the row, so the wells below stay aligned. */}
-          <div
-            className={cn(
-              "flex min-h-0 min-w-0 flex-col gap-3 px-1 pt-4.5",
-              !criticalWell && "invisible",
-            )}
-          >
-            <SwimlaneLabel
-              visible={labelled}
-              icon={AlertOctagon}
-              iconClassName="text-destructive"
-              label={t("taskBoard.taskBoard.swimlaneCritical")}
-            />
-            <div
-              ref={setCriticalRef}
-              data-lane-scroll={criticalWell ? status : undefined}
-              className={SWIMLANE_PANEL}
-            >
-              <SortableContext
-                items={critical.map((item) => item.id)}
-                strategy={verticalListSortingStrategy}
-              >
-                {critical.map(renderCard)}
-              </SortableContext>
-              {labelled && !anyCritical && (
-                <p className="px-1 py-2 text-sm text-muted-foreground">
-                  {t("taskBoard.taskBoard.attentionEmpty")}
-                </p>
-              )}
-            </div>
-          </div>
-          <div className="flex min-h-0 flex-col gap-3 px-1 pt-7 pb-1">
-            <SwimlaneLabel
-              visible={labelled}
-              icon={Stars02}
-              iconClassName="text-muted-foreground"
-              label={t("taskBoard.taskBoard.swimlaneImprovements")}
-            />
-            <div
-              ref={setNodeRef}
-              data-lane-scroll={status}
-              className={cn(SWIMLANE_PANEL, "pb-16")}
-            >
-              <SortableContext
-                items={rest.map((item) => item.id)}
-                strategy={verticalListSortingStrategy}
-              >
-                {rest.map(renderCard)}
-              </SortableContext>
-            </div>
-          </div>
-        </>
-      ) : (
-        /* px-1 so each card's shadow has room inside the scrollport — an
-           overflow-y container clips the x-axis too, which would clip a FLIP-
-           animated card mid-flight between lanes (see `use-flip-lanes`,
-           keyed off `data-lane-scroll`). */
+      <>
+        {/* Done and Archived keep the row, so the wells below stay aligned. */}
         <div
-          ref={setNodeRef}
-          data-lane-scroll={status}
-          className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-1 pt-1 pb-16 [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1"
+          className={cn(
+            "flex min-h-0 min-w-0 flex-col gap-3 px-1 pt-4.5",
+            !criticalWell && "invisible",
+          )}
         >
-          <SortableContext
-            items={items.map((item) => item.id)}
-            strategy={verticalListSortingStrategy}
+          <SwimlaneLabel
+            visible={labelled}
+            icon={AlertOctagon}
+            iconClassName="text-destructive"
+            label={t("taskBoard.taskBoard.swimlaneCritical")}
+          />
+          <div
+            ref={setCriticalRef}
+            data-lane-scroll={criticalWell ? status : undefined}
+            className={SWIMLANE_PANEL}
           >
-            {items.map(renderCard)}
-          </SortableContext>
+            <SortableContext
+              items={critical.map((item) => item.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              {critical.map(renderCard)}
+            </SortableContext>
+            {labelled && !anyCritical && (
+              <p className="px-1 py-2 text-sm text-muted-foreground">
+                {t("taskBoard.taskBoard.attentionEmpty")}
+              </p>
+            )}
+          </div>
         </div>
-      )}
+        <div className="flex min-h-0 flex-col gap-3 px-1 pt-7 pb-1">
+          <SwimlaneLabel
+            visible={labelled}
+            icon={Stars02}
+            iconClassName="text-muted-foreground"
+            label={t("taskBoard.taskBoard.swimlaneImprovements")}
+          />
+          <div
+            ref={setNodeRef}
+            data-lane-scroll={status}
+            className={cn(SWIMLANE_PANEL, "pb-16")}
+          >
+            <SortableContext
+              items={rest.map((item) => item.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              {rest.map(renderCard)}
+            </SortableContext>
+          </div>
+        </div>
+      </>
       <ColumnRulesSheet
         columnKey={status}
         label={label}

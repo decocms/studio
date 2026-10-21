@@ -15,7 +15,6 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types/virtual-mcp";
 import { useProjectContext } from "../context";
 import {
-  collectionListPageQueryOptions,
   collectionItemQueryOptions,
   collectionListQueryOptions,
   useCollectionActions,
@@ -164,47 +163,6 @@ export async function fetchVirtualMCPs(
   /** `fetchQuery` returns the raw result — `select` is observer-level — so
    *  apply the options' own select rather than re-deriving the extraction. */
   return listOptions.select(await queryClient.fetchQuery(listOptions));
-}
-
-/**
- * The same list, keeping the page counts the server returns.
- *
- * Shares `useVirtualMCPsNonBlocking`'s query key exactly — only the `select`
- * differs — so asking for the count costs no extra request. Without this a
- * truncated list is indistinguishable from a complete one.
- */
-export function useVirtualMCPsPage(options: UseVirtualMCPsOptions = {}): {
-  items: VirtualMCPEntity[];
-  totalCount?: number;
-  hasMore?: boolean;
-} {
-  const { org } = useProjectContext();
-  /** Non-blocking, for the same reason as `useVirtualMCPsNonBlocking` above:
-   *  the sidebar's org/project picker calls this (for `hasMore` alone) and the
-   *  sidebar mounts with no Suspense boundary of its own, so a suspending read
-   *  escapes to the route boundary and replaces the PAINTED shell with the
-   *  panel spinner — the backwards transition the boundary exists to prevent. */
-  const client = useMCPClientNonBlocking({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
-
-  const { data } = useQuery({
-    ...collectionListPageQueryOptions<VirtualMCPEntity>(
-      org.id,
-      "VIRTUAL_MCP",
-      client,
-      options,
-    ),
-    enabled: !!client,
-  });
-
-  return {
-    items: data?.items ?? [],
-    totalCount: data?.totalCount,
-    hasMore: data?.hasMore,
-  };
 }
 
 /**

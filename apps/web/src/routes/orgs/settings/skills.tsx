@@ -23,9 +23,7 @@ import {
 } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Card } from "@decocms/ui/components/card.tsx";
-import { SearchInput } from "@decocms/ui/components/search-input.tsx";
 import { SearchToggle } from "@decocms/ui/components/search-toggle.tsx";
-import { useProjectFirstNav } from "@/hooks/use-preferences";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import {
@@ -216,7 +214,6 @@ export default function SettingsSkillsPage() {
   const folderInputRef = useRef<HTMLInputElement>(null);
 
   const [search, setSearch] = useState("");
-  const projectFirstNav = useProjectFirstNav();
   const [source, setSource] = useState(ALL_SOURCES);
   const [importing, setImporting] = useState(false);
   const [previewPath, setPreviewPath] = useState<string | null>(null);
@@ -395,41 +392,19 @@ export default function SettingsSkillsPage() {
               column — the Connections page's rhythm. */}
           <div className="flex flex-col gap-6">
             {/* Hosted in Context, search sits in the bar like the files'. */}
-            {projectFirstNav ? (
-              <Page.Actions
-                secondary={
-                  <SearchToggle
-                    value={search}
-                    onChange={setSearch}
-                    label={t("library.context.search")}
-                    placeholder={t("settings.skills.searchPlaceholder")}
-                    clearLabel={t("library.library.clearSearch")}
-                  />
-                }
-              >
-                {importButton}
-              </Page.Actions>
-            ) : (
-              <Page.Title actions={importButton}>
-                {t("settings.skills.pageTitle")}
-              </Page.Title>
-            )}
-            <div className="flex flex-wrap items-center justify-between gap-3 empty:hidden">
-              {!projectFirstNav && (
-                <SearchInput
+            <Page.Actions
+              secondary={
+                <SearchToggle
                   value={search}
                   onChange={setSearch}
+                  label={t("library.context.search")}
                   placeholder={t("settings.skills.searchPlaceholder")}
-                  className="w-full md:w-[375px]"
-                  onKeyDown={(event) => {
-                    if (event.key === "Escape") {
-                      setSearch("");
-                      (event.target as HTMLInputElement).blur();
-                    }
-                  }}
+                  clearLabel={t("library.library.clearSearch")}
                 />
-              )}
-            </div>
+              }
+            >
+              {importButton}
+            </Page.Actions>
             <input
               ref={folderInputRef}
               type="file"

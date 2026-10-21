@@ -1,5 +1,5 @@
 /**
- * The org Overview under the new navigation, built only from what the page
+ * The org Overview, built only from what the page
  * already loads: the board, the inbox and the app history. Three bands —
  * where you were (recent apps), what wants you today (mentions and the
  * actionable queue), and how each project is moving (a few rhythms).

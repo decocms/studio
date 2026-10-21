@@ -146,38 +146,7 @@ export const common = {
   "common.iconPicker.randomIcon": "Ícone aleatório",
   "common.iconPicker.uploadHint": "Clique para enviar uma imagem (máx 2MB)",
   "common.iconPicker.uploadTab": "Upload",
-  "common.importFromDecoDialog.cancel": "Cancelar",
-  "common.importFromDecoDialog.failedToConnectGithub":
-    "Falha ao conectar GitHub",
-  "common.importFromDecoDialog.failedToCreateAgent":
-    "Falha ao criar o projeto importado",
-  "common.importFromDecoDialog.failedToPrepareImport":
-    "Falha ao preparar a importação da deco.cx",
-  "common.importFromDecoDialog.githubNotConnected":
-    "GitHub não está conectado. Conclua a configuração do GitHub e tente novamente.",
-  "common.importFromDecoDialog.import": "Importar",
-  "common.importFromDecoDialog.importFailed": "Falha na importação: {error}",
-  "common.importFromDecoDialog.importSuccess": "Importado {slug} de deco.cx",
-  "common.importFromDecoDialog.importing": "Importando...",
-  "common.importFromDecoDialog.installGithubApp":
-    'Instale o aplicativo GitHub na organização "{owner}" para importar este site. {installUrl}',
   "common.loading": "Carregando",
-  "common.importFromDecoDialog.loadingSites": "Carregando sites...",
-  "common.importFromDecoDialog.noSitesFound":
-    "Nenhum site encontrado para esta conta.",
-  "common.importFromDecoDialog.noSitesMatch":
-    'Nenhum site corresponde a "{search}"',
-  "common.importFromDecoDialog.retryGithubSetup":
-    "Tentar configurar GitHub novamente",
-  "common.importFromDecoDialog.searchPlaceholder": "Procurar sites...",
-  "common.importFromDecoDialog.selectGithubConnection":
-    "Selecione uma conexão GitHub",
-  "common.importFromDecoDialog.settingUpGithub":
-    "Configurando conexão com GitHub...",
-  "common.importFromDecoDialog.siteNoLongerAvailable":
-    "O site selecionado não está mais disponível",
-  "common.importFromDecoDialog.title": "Importar de deco.cx",
-  "common.importFromDecoDialog.unknownError": "Erro desconhecido",
   "common.index.pageNotFound": "Página não encontrada",
   "common.index.pageNotFoundDescription":
     "A página que você está procurando não existe ou foi movida.",
@@ -256,9 +225,6 @@ export const common = {
   "common.toolSetSelector.searchPlaceholder": "Pesquisar servidores MCP...",
   "common.toolSetSelector.selectConnection":
     "Selecione uma conexão para visualizar suas ferramentas",
-  "common.createAgentDropdown.createFromScratch": "Criar do zero",
-  "common.createAgentDropdown.importFromGitHub": "Importar repositório",
-  "common.createAgentDropdown.importFromDeco": "Importar do deco.cx",
   "common.mainPanelTabs.preview": "Visualização",
   "common.mainPanelTabs.code": "Código",
   "common.mainPanelTabs.content": "Conteúdo",
