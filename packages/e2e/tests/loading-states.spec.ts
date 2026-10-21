@@ -197,22 +197,17 @@ test.describe("loading states", () => {
     }, secondSlug);
     expect(created).toBeLessThan(400);
 
-    /* Reload so the picker lists the new org. This goto is SETUP — the watch is
-       armed after it, so the boot splash it runs is not what is being measured. */
+    /* Reload so the org rail lists the new org. This goto is SETUP — the watch
+       is armed after it, so the boot splash it runs is not what is being
+       measured. */
     await bootShell(page, `/${orgSlug}/home`);
     await armLoadingWatch(page);
 
-    /* The picker is the ONE in-app control that changes `$org`, so it is the
-       only way to exercise this without a reload. Open it and click the row —
-       do NOT type into its search box: the box searches AGENTS, not orgs, so a
-       filtered list would hide the very row this test needs. */
+    /* The org rail is the ONE in-app control that changes `$org`, so it is
+       the only way to exercise this without a reload. */
     await page
-      .locator('[data-slot="sidebar"] button[aria-label^="Organization"]')
-      .first()
-      .click();
-    await page
-      .getByRole("option", { name: secondSlug, exact: false })
-      .first()
+      .getByLabel("Organizations", { exact: true })
+      .getByRole("button", { name: secondSlug, exact: true })
       .click();
 
     await page.waitForURL((url) => url.pathname.startsWith(`/${secondSlug}`), {

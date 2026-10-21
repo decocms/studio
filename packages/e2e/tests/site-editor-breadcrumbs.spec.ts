@@ -237,7 +237,7 @@ test.describe("Site Editor breadcrumbs", () => {
         trail.getByRole("link", { name: "Forma", exact: true }),
       ).toHaveAttribute(
         "href",
-        `/${orgSlug}/projects/${project.vmcpId}?sidepanel=false`,
+        `/${orgSlug}/projects?project=${project.vmcpId}&sidepanel=false`,
       );
       await blocks
         .getByRole("textbox", { name: "Description", exact: true })

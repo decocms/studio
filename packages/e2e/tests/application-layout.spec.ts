@@ -3,7 +3,7 @@ import { expect, test } from "../fixtures/test";
 test.describe("shared application layout", () => {
   test.setTimeout(120_000);
 
-  test("the sidebar stays mounted and preserves its width and collapsed preference across settings", async ({
+  test("the sidebar stays mounted across settings and preserves its width and collapsed preference", async ({
     authedPage: { page, orgSlug },
   }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
@@ -33,17 +33,12 @@ test.describe("shared application layout", () => {
       .toBeGreaterThan(initialWidth + 40);
     const chosenWidth = (await sidebar.boundingBox())!.width;
 
-    await sidebar.getByRole("button", { name: "Collapse sidebar" }).click();
-    await expect(sidebar).toHaveAttribute("data-state", "collapsed");
     await sidebar.getByRole("link", { name: "Settings", exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`/${orgSlug}/settings/general$`));
     await expect(
       page.getByRole("heading", { name: "Organization", exact: true }),
     ).toBeVisible();
-    await expect(sidebar).toHaveAttribute("data-state", "collapsed");
-    await expect(
-      sidebar.getByRole("button", { name: "Open chat" }),
-    ).toBeVisible();
+    await expect(sidebar).toHaveAttribute("data-state", "expanded");
     expect(
       await originalSidebar!.evaluate((element) => element.isConnected),
     ).toBe(true);
@@ -56,7 +51,6 @@ test.describe("shared application layout", () => {
       .click();
     await expect(page).toHaveURL(new RegExp(`/${orgSlug}/home$`));
     await expect(page.getByTestId("main-panel")).toBeVisible();
-    await expect(sidebar).toHaveAttribute("data-state", "collapsed");
     expect(
       await originalSidebar!.evaluate((element) => element.isConnected),
     ).toBe(true);
@@ -64,15 +58,17 @@ test.describe("shared application layout", () => {
       await originalFrame!.evaluate((element) => element.isConnected),
     ).toBe(true);
 
-    await sidebar.getByRole("button", { name: "Expand sidebar" }).click();
-    await expect(sidebar).toHaveAttribute("data-state", "expanded");
-    await expect
-      .poll(async () =>
-        Math.abs((await sidebar.boundingBox())!.width - chosenWidth),
-      )
-      .toBeLessThan(2);
+    // Collapsed, the sidebar takes no room: its toggle moves to the page header.
+    await sidebar.getByRole("button", { name: "Collapse sidebar" }).click();
+    await expect(sidebar).toHaveAttribute("data-state", "collapsed");
     await page.reload();
     await expect(page.getByTestId("main-panel")).toBeVisible();
+    await expect(sidebar).toHaveAttribute("data-state", "collapsed");
+    await page
+      .getByTestId("page-header")
+      .getByRole("button", { name: "Expand sidebar" })
+      .click();
+    await expect(sidebar).toHaveAttribute("data-state", "expanded");
     await expect
       .poll(async () =>
         Math.abs((await sidebar.boundingBox())!.width - chosenWidth),
@@ -102,7 +98,7 @@ test.describe("shared application layout", () => {
     ).toBeVisible({ timeout: 90_000 });
     await expect(page.getByTestId("chat-panel")).toHaveCount(0);
     await expect(
-      page.getByRole("button", { name: "Toggle sidebar", exact: true }),
+      page.getByRole("button", { name: "Expand sidebar", exact: true }),
     ).toHaveCount(1);
 
     const navigation = page.getByRole("dialog", {
@@ -110,7 +106,7 @@ test.describe("shared application layout", () => {
       exact: true,
     });
     await page
-      .getByRole("button", { name: "Toggle sidebar", exact: true })
+      .getByRole("button", { name: "Expand sidebar", exact: true })
       .click();
     await expect(navigation).toBeVisible();
     await expect(
@@ -130,11 +126,11 @@ test.describe("shared application layout", () => {
         .getByRole("heading", { name: "Home", exact: true }),
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Toggle sidebar", exact: true }),
+      page.getByRole("button", { name: "Expand sidebar", exact: true }),
     ).toHaveCount(1);
 
     await page
-      .getByRole("button", { name: "Toggle sidebar", exact: true })
+      .getByRole("button", { name: "Expand sidebar", exact: true })
       .click();
     await navigation
       .getByRole("link", { name: "Settings", exact: true })
@@ -147,7 +143,7 @@ test.describe("shared application layout", () => {
       page.getByRole("button", { name: "Switch to Chat", exact: true }),
     ).toHaveCount(0);
     await expect(
-      page.getByRole("button", { name: "Toggle sidebar", exact: true }),
+      page.getByRole("button", { name: "Expand sidebar", exact: true }),
     ).toHaveCount(1);
     expect(pageErrors).toEqual([]);
   });

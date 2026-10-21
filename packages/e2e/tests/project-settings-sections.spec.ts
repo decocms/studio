@@ -6,7 +6,8 @@ import {
   uniqueOwner,
 } from "../fixtures/fast-preview";
 
-test.describe("project settings tabs", () => {
+/** A project's settings are sections of its Context, beside its files. */
+test.describe("project settings sections", () => {
   test.setTimeout(120_000);
 
   test("tabs share the page header and preserve edits, history, and view preferences", async ({
@@ -27,22 +28,25 @@ test.describe("project settings tabs", () => {
         },
       },
     );
-    const path = `/${orgSlug}/projects/${item.id}/settings`;
-    await page.goto(path);
+    const path = `/${orgSlug}/projects/${item.id}/library`;
+    await page.goto(`${path}?section=general`);
     const header = page.getByTestId("page-header");
     const tabs = page
-      .locator('[data-slot="panel-toolbar"]')
-      .getByRole("navigation", { name: "Project settings sections" });
+      .getByTestId("main-panel")
+      .locator("nav")
+      .filter({ has: page.getByRole("link", { name: "Instructions" }) });
     const content = page.locator('[data-slot="page-content"]');
     const name = content.getByRole("textbox", { name: "Project name" });
     await expect(name).toHaveValue("Forma", { timeout: 60_000 });
     await expect(
-      header.getByRole("heading", { level: 1, name: "Project settings" }),
+      header.getByRole("heading", { level: 1, name: "General" }),
     ).toBeVisible();
     await expect(tabs.getByRole("link")).toHaveText([
-      "General",
+      "All files",
+      "Instructions",
       "Connections",
       "CMS",
+      "General",
     ]);
     await expect(tabs.getByRole("link", { name: "General" })).toHaveAttribute(
       "aria-current",
@@ -77,9 +81,6 @@ test.describe("project settings tabs", () => {
         return saved.title;
       })
       .toBe("Forma Studio");
-    await expect(
-      header.getByRole("link", { name: "Forma Studio", exact: true }),
-    ).toBeVisible();
     await page.reload();
     await expect(name).toHaveValue("Forma Studio");
 
@@ -134,9 +135,6 @@ test.describe("project settings tabs", () => {
     const description = content.getByRole("textbox", { name: "Description" });
     await description.scrollIntoViewIfNeeded();
     await expect(description).toBeInViewport();
-    await expect(
-      header.getByRole("button", { name: "Connect", exact: true }),
-    ).toBeInViewport();
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth),
     ).toBeLessThanOrEqual(390);
@@ -154,15 +152,9 @@ test.describe("project settings tabs", () => {
     await expect(
       header.getByRole("button", { name: "Add connection", exact: true }),
     ).toBeInViewport();
-    await page.goto(`${path}?section=unknown`);
-    await expect(name).toHaveValue("Forma Studio");
-    await expect(tabs.getByRole("link", { name: "General" })).toHaveAttribute(
-      "aria-current",
-      "page",
-    );
   });
 
-  test("existing Site links keep preview settings editable across tab changes", async ({
+  test("existing Site links keep preview settings editable across section changes", async ({
     authedPage: { page, orgSlug },
   }, testInfo) => {
     await page.setViewportSize({ width: 1280, height: 900 });
@@ -180,11 +172,18 @@ test.describe("project settings tabs", () => {
       connectionUrl: "http://127.0.0.1:1/unused",
       previewServerUrl: "https://forma.example.com/",
     });
+    // The settings route of old links lands on the same Context section.
     const path = `/${orgSlug}/projects/${project.vmcpId}/settings`;
     await page.goto(`${path}?section=site`);
-    const tabs = page.getByRole("navigation", {
-      name: "Project settings sections",
-    });
+    await page.waitForURL(
+      (url) =>
+        url.pathname === `/${orgSlug}/projects/${project.vmcpId}/library` &&
+        url.searchParams.get("section") === "site",
+    );
+    const tabs = page
+      .getByTestId("main-panel")
+      .locator("nav")
+      .filter({ has: page.getByRole("link", { name: "Instructions" }) });
     await expect(
       tabs.getByRole("link", { name: "CMS", exact: true }),
     ).toHaveAttribute("aria-current", "page", { timeout: 60_000 });
@@ -194,14 +193,6 @@ test.describe("project settings tabs", () => {
     });
     await expect(previewServer).toHaveValue("https://forma.example.com/");
     await previewServer.fill("https://preview.forma.example.com/");
-    await tabs.getByRole("link", { name: "Connections", exact: true }).click();
-    await expect(
-      tabs.getByRole("link", { name: "Connections", exact: true }),
-    ).toHaveAttribute("aria-current", "page");
-    await page.goBack();
-    await expect(previewServer).toHaveValue(
-      "https://preview.forma.example.com/",
-    );
     await expect
       .poll(async () => {
         const { item } = await callSelfMcpTool<{
@@ -212,6 +203,14 @@ test.describe("project settings tabs", () => {
         return item.metadata.previewServerUrl;
       })
       .toBe("https://preview.forma.example.com/");
+    await tabs.getByRole("link", { name: "Connections", exact: true }).click();
+    await expect(
+      tabs.getByRole("link", { name: "Connections", exact: true }),
+    ).toHaveAttribute("aria-current", "page");
+    await page.goBack();
+    await expect(previewServer).toHaveValue(
+      "https://preview.forma.example.com/",
+    );
     await page.reload();
     await expect(previewServer).toHaveValue(
       "https://preview.forma.example.com/",

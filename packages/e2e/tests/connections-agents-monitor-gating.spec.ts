@@ -89,21 +89,27 @@ test.describe("connections / agents / monitor gating", () => {
     // Connections page loads and the create CTA IS shown — the built-in user
     // role is granted connections:manage (USER_ROLE_CAPABILITY_IDS).
     await page.goto(`/${owner.orgSlug}/settings/connections`);
-    await expect(page.getByPlaceholder("Search for a connection")).toBeVisible({
-      timeout: 15_000,
-    });
+    await page
+      .getByRole("button", { name: "Search", exact: true })
+      .click({ timeout: 15_000 });
+    await expect(
+      page.getByPlaceholder("Search for a connection"),
+    ).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Custom Connection" }),
     ).toBeVisible();
 
-    // Agents page loads and the create CTA IS shown — the built-in user role
-    // is granted agents:manage (USER_ROLE_CAPABILITY_IDS).
+    // The old Agents page lands on Projects, and the create CTA IS shown — the
+    // built-in user role is granted agents:manage (USER_ROLE_CAPABILITY_IDS).
     await page.goto(`/${owner.orgSlug}/settings/agents`);
-    await expect(page.getByPlaceholder("Search for a project...")).toBeVisible({
+    await expect(page).toHaveURL(
+      new RegExp(`/${owner.orgSlug}/settings/projects$`),
+    );
+    await expect(page.getByTestId("projects-empty-state")).toBeVisible({
       timeout: 15_000,
     });
     await expect(
-      page.getByRole("button", { name: "Create Project" }),
+      page.getByRole("button", { name: "New project" }).first(),
     ).toBeVisible();
 
     await ownerCtx.dispose();

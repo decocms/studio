@@ -8,7 +8,12 @@ for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 720 });
     await page.goto(`/${orgSlug}/home`);
     await page
-      .getByRole("button", { name: "New Project", exact: true })
+      .getByRole("button", { name: "New project", exact: true })
+      .first()
+      .click();
+    await page
+      .getByRole("dialog", { name: "New project" })
+      .getByRole("button", { name: /^Import a codebase/ })
       .click();
     const dialog = page.getByRole("dialog");
     // One entry point, not a button per provider-and-method combination.
@@ -131,7 +136,14 @@ test("home imports an already linked GitLab repository as an agent without a Git
     { url: "https://gitlab.com/example-group/nested/import-project" },
   );
   await page.goto(`/${orgSlug}/home`);
-  await page.getByRole("button", { name: "New Project", exact: true }).click();
+  await page
+    .getByRole("button", { name: "New project", exact: true })
+    .first()
+    .click();
+  await page
+    .getByRole("dialog", { name: "New project" })
+    .getByRole("button", { name: /^Import a codebase/ })
+    .click();
   await page
     .getByRole("dialog")
     .getByRole("button", { name: /example-group\/nested\/import-project/ })
