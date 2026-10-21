@@ -481,4 +481,21 @@ describe("GitlabChangeRequestClient's malformed-body handling", () => {
 
     await expect(client.read(7)).rejects.toBeInstanceOf(GitProviderError);
   });
+
+  it("degrades a well-formed but non-array list body into a GitProviderError", async () => {
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ message: "not found" }), {
+        status: 200,
+      })) as unknown as typeof fetch;
+
+    const client = new GitlabChangeRequestClient({
+      repo: { provider: "gitlab", host: "gitlab.com", path: "acme/site" },
+      tokenSource: {
+        kind: "oauth",
+        get: async () => ({ token: "t", kind: "oauth", expiresAt: null }),
+      },
+    });
+
+    await expect(client.listOpen(10)).rejects.toBeInstanceOf(GitProviderError);
+  });
 });

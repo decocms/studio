@@ -330,6 +330,23 @@ export class GitlabChangeRequestClient implements ChangeRequestClient {
     return res === null ? null : await gitlabJson<T>(res, pathAndQuery);
   }
 
+  /** Like `json`, but a well-formed non-array body degrades to a GitProviderError instead of crashing the caller's array ops. */
+  private async jsonArray<T>(
+    pathAndQuery: string,
+    init?: { method?: "GET" | "POST" | "PUT" | "DELETE"; body?: unknown },
+  ): Promise<T[] | null> {
+    const rows = await this.json<unknown>(pathAndQuery, init);
+    if (rows === null) return null;
+    if (!Array.isArray(rows)) {
+      throw new GitProviderError({
+        provider: "gitlab",
+        status: 502,
+        message: `GitLab ${pathAndQuery} returned a non-array payload`,
+      });
+    }
+    return rows as T[];
+  }
+
   private mrPath(iid: number): string {
     return `/merge_requests/${iid}`;
   }
@@ -390,7 +407,7 @@ export class GitlabChangeRequestClient implements ChangeRequestClient {
   }
 
   async readForBranch(branch: string): Promise<ChangeRequest | null> {
-    const rows = await this.json<RawMergeRequest[]>(
+    const rows = await this.jsonArray<RawMergeRequest>(
       `/merge_requests?source_branch=${encodeURIComponent(branch)}` +
         `&state=all&order_by=updated_at&sort=desc&per_page=1`,
     );
@@ -418,16 +435,16 @@ export class GitlabChangeRequestClient implements ChangeRequestClient {
     const pipelineId = (mr.head_pipeline ?? mr.pipeline)?.id ?? null;
 
     const [notes, discussions, jobs] = await Promise.all([
-      this.json<RawNote[]>(
+      this.jsonArray<RawNote>(
         `${this.mrPath(iid)}/notes` +
           `?sort=desc&order_by=created_at&per_page=${COMMENT_PAGE_SIZE}`,
       ),
-      this.json<RawDiscussion[]>(
+      this.jsonArray<RawDiscussion>(
         `${this.mrPath(iid)}/discussions?per_page=${PAGE_SIZE}`,
       ),
       pipelineId === null
         ? Promise.resolve(null)
-        : this.json<RawJob[]>(
+        : this.jsonArray<RawJob>(
             `/pipelines/${pipelineId}/jobs?per_page=${PAGE_SIZE}`,
           ),
     ]);
@@ -459,7 +476,7 @@ export class GitlabChangeRequestClient implements ChangeRequestClient {
   }
 
   async listOpen(limit: number): Promise<ChangeRequest[]> {
-    const rows = await this.json<RawMergeRequest[]>(
+    const rows = await this.jsonArray<RawMergeRequest>(
       `/merge_requests?state=opened&order_by=updated_at&sort=desc` +
         `&per_page=${Math.min(limit, PAGE_SIZE)}`,
     );
@@ -467,7 +484,7 @@ export class GitlabChangeRequestClient implements ChangeRequestClient {
   }
 
   async lastMergedInto(base: string): Promise<ChangeRequest | null> {
-    const rows = await this.json<RawMergeRequest[]>(
+    const rows = await this.jsonArray<RawMergeRequest>(
       `/merge_requests?state=merged&target_branch=${encodeURIComponent(base)}` +
         `&order_by=updated_at&sort=desc&per_page=20`,
     );
@@ -591,13 +608,11 @@ export class GitlabChangeRequestClient implements ChangeRequestClient {
   }
 
   async readDeployedUrl(sha: string): Promise<string | null> {
-    const deployments = await this.json<
-      Array<{
-        sha?: string | null;
-        status?: string | null;
-        environment?: { external_url?: string | null } | null;
-      }>
-    >(`/deployments?order_by=id&sort=desc&per_page=${DEPLOYMENTS_SCANNED}`);
+    const deployments = await this.jsonArray<{
+      sha?: string | null;
+      status?: string | null;
+      environment?: { external_url?: string | null } | null;
+    }>(`/deployments?order_by=id&sort=desc&per_page=${DEPLOYMENTS_SCANNED}`);
     for (const deployment of deployments ?? []) {
       if (deployment.sha !== sha) continue;
       if (deployment.status !== "success") continue;
