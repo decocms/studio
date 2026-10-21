@@ -127,12 +127,13 @@ function MarkdownImage(props: React.ImgHTMLAttributes<HTMLImageElement>) {
   const t = useT();
   const { src, alt, ...rest } = props;
   if (!src) return <img {...props} />;
+  const resolvedAlt = alt || t("chat.markdown.image");
   return (
-    <ImageLightbox src={src} alt={alt ?? t("chat.markdown.image")}>
+    <ImageLightbox src={src} alt={resolvedAlt}>
       <img
         {...rest}
         src={src}
-        alt={alt}
+        alt={resolvedAlt}
         className="max-w-full rounded-lg border border-border hover:border-foreground/20 transition-colors"
       />
     </ImageLightbox>
