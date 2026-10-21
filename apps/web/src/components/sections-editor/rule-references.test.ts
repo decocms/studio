@@ -4,6 +4,7 @@ import {
   findRuleReferences,
   findSavedMatcherReferences,
   markReferenceStates,
+  planNamedRuleRename,
   publishedDecofile,
   type RuleReference,
 } from "./rule-references";
@@ -21,12 +22,11 @@ const v8Meta = {
         always: builtIn,
         date: builtIn,
         experiment: builtIn,
-        schedule: builtIn,
         and: { $ref: "#/definitions/and", namespace: "site" },
         device: { $ref: "#/definitions/device", namespace: "site" },
       },
       loaders: { multivariate: builtIn, lazy: builtIn },
-      content: { experiments: builtIn, schedules: builtIn },
+      content: { "split-traffic": builtIn, "date-windows": builtIn },
       pages: { page: builtIn },
       sections: { hero: { $ref: "#/definitions/hero", namespace: "site" } },
     },
@@ -35,7 +35,7 @@ const v8Meta = {
 };
 
 const experiment = (name: string) => ({ __resolveType: "experiment", name });
-const schedule = (name: string) => ({ __resolveType: "schedule", name });
+const campaign = (name: string) => ({ __resolveType: "date", campaign: name });
 const lazy = (value: unknown) => ({ __resolveType: "lazy", value });
 const always = () => ({ __resolveType: "always" });
 
@@ -78,17 +78,17 @@ describe("findRuleReferences on v8 content", () => {
       },
     };
     const refs = findRuleReferences(decofile, v8Meta);
-    expect(summary(refs.experiments)).toEqual({
+    expect(summary(refs.experiments.byName)).toEqual({
       "hero-headline": ["home sections.variants.0.rule #0"],
     });
-    const [ref] = refs.experiments.get("hero-headline")!;
+    const [ref] = refs.experiments.byName.get("hero-headline")!;
     expect(ref!.variant).toEqual({
       containerPath: ["sections"],
       containerType: "multivariate",
       index: 0,
       experiment: "hero-headline",
     });
-    expect(refs.schedules.size).toBe(0);
+    expect(refs.campaigns.byName.size).toBe(0);
   });
 
   it("finds a section variant inside a page variant's lazy list, and a rule inside a multi", () => {
@@ -102,7 +102,7 @@ describe("findRuleReferences on v8 content", () => {
               rule: {
                 __resolveType: "website/matchers/multi.ts",
                 op: "AND",
-                matchers: [schedule("Black Friday"), experiment("bf-hero")],
+                matchers: [campaign("Black Friday"), experiment("bf-hero")],
               },
               value: lazy([
                 { __resolveType: "hero" },
@@ -123,13 +123,13 @@ describe("findRuleReferences on v8 content", () => {
       },
     };
     const refs = findRuleReferences(decofile, v8Meta);
-    expect(summary(refs.experiments)).toEqual({
+    expect(summary(refs.experiments.byName)).toEqual({
       "bf-hero": [
         "home sections.variants.0.rule.matchers.1 #0",
         "home sections.variants.0.value.value.1.variants.0.rule #0",
       ],
     });
-    expect(summary(refs.schedules)).toEqual({
+    expect(summary(refs.campaigns.byName)).toEqual({
       "Black Friday": ["home sections.variants.0.rule.matchers.0 #0"],
     });
   });
@@ -141,13 +141,15 @@ describe("findRuleReferences on v8 content", () => {
         title: {
           __resolveType: "multivariate",
           variants: [
-            { rule: schedule("Summer"), value: lazy("Summer starts here") },
+            { rule: campaign("Summer"), value: lazy("Summer starts here") },
             { rule: always(), value: lazy("New collection") },
           ],
         },
       },
     };
-    expect(summary(findRuleReferences(decofile, v8Meta).schedules)).toEqual({
+    expect(
+      summary(findRuleReferences(decofile, v8Meta).campaigns.byName),
+    ).toEqual({
       Summer: ["Home Hero title.variants.0.rule #0"],
     });
   });
@@ -171,7 +173,7 @@ describe("findRuleReferences on v8 content", () => {
       },
     };
     const refs = findRuleReferences(decofile, v8Meta);
-    expect(summary(refs.experiments)).toEqual({
+    expect(summary(refs.experiments.byName)).toEqual({
       hero: [
         "Hero test - saved",
         "Hero test on mobile rules.0 - via Hero test saved",
@@ -190,14 +192,14 @@ describe("findRuleReferences on v8 content", () => {
       B: { __resolveType: "and", rules: [{ __resolveType: "A" }] },
     };
     const refs = findRuleReferences(decofile, v8Meta);
-    expect(summary(refs.experiments)).toEqual({
+    expect(summary(refs.experiments.byName)).toEqual({
       t: ["A rules.0 - saved", "B rules.0 - via A saved"],
     });
   });
 
-  it("lists a name the Experiments block doesn't have, and an unfinished empty name", () => {
+  it("lists a name the experiments block doesn't have, and an unfinished empty name", () => {
     const decofile = {
-      Experiments: { __resolveType: "experiments", other: 10 },
+      experiments: { __resolveType: "split-traffic", other: 10 },
       Banner: {
         __resolveType: "multivariate",
         variants: [
@@ -207,24 +209,24 @@ describe("findRuleReferences on v8 content", () => {
       },
     };
     const refs = findRuleReferences(decofile, v8Meta);
-    expect([...refs.experiments.keys()].sort()).toEqual(["", "gone"]);
-    expect(refs.experiments.has("other")).toBe(false);
+    expect([...refs.experiments.byName.keys()].sort()).toEqual(["", "gone"]);
+    expect(refs.experiments.byName.has("other")).toBe(false);
   });
 
   it("terminates on cyclic and malformed content", () => {
     const loop: Record<string, unknown> = {
       __resolveType: "multivariate",
-      variants: [{ rule: schedule("s"), value: null }],
+      variants: [{ rule: campaign("s"), value: null }],
     };
     loop.self = loop;
     const decofile = {
       Loop: loop,
       nothing: null,
-      text: "schedule",
-      list: [[[schedule("deep")]]],
+      text: "date",
+      list: [[[campaign("deep")]]],
     };
     const refs = findRuleReferences(decofile, v8Meta);
-    expect(summary(refs.schedules)).toEqual({
+    expect(summary(refs.campaigns.byName)).toEqual({
       s: ["Loop variants.0.rule #0"],
       deep: ["list 0.0.0 -"],
     });
@@ -239,7 +241,7 @@ describe("findRuleReferences on v7-shaped variants", () => {
         sections: {
           __resolveType: PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE,
           variants: [
-            { rule: schedule("Sale"), value: [] },
+            { rule: campaign("Sale"), value: [] },
             {
               rule: { __resolveType: "website/matchers/always.ts" },
               value: [
@@ -256,10 +258,10 @@ describe("findRuleReferences on v7-shaped variants", () => {
       },
     };
     const refs = findRuleReferences(decofile, v8Meta);
-    expect(summary(refs.schedules)).toEqual({
+    expect(summary(refs.campaigns.byName)).toEqual({
       Sale: ["home sections.variants.0.rule #0"],
     });
-    const [ref] = refs.experiments.get("t")!;
+    const [ref] = refs.experiments.byName.get("t")!;
     expect(ref!.variant).toEqual({
       containerPath: ["sections", "variants", 1, "value", 0],
       containerType: SECTION_MULTIVARIATE_RESOLVE_TYPE,
@@ -282,8 +284,8 @@ describe("findRuleReferences on v7-shaped variants", () => {
       },
     };
     const refs = findRuleReferences(decofile);
-    expect(refs.experiments.size).toBe(0);
-    expect(refs.schedules.size).toBe(0);
+    expect(refs.experiments.byName.size).toBe(0);
+    expect(refs.campaigns.byName.size).toBe(0);
   });
 });
 
@@ -343,7 +345,7 @@ describe("draft and published references", () => {
     const published = publishedDecofile(draft, {
       home: side(page([experiment("old")]), draft.home),
       about: side(null, draft.about),
-      gone: side(page([schedule("x")]), null),
+      gone: side(page([campaign("x")]), null),
       // The base has it, but its published side couldn't be read.
       shop: side(null, draft.shop, "b9"),
       same: {
@@ -356,7 +358,7 @@ describe("draft and published references", () => {
     });
     expect(published).toEqual({
       home: page([experiment("old")]),
-      gone: page([schedule("x")]),
+      gone: page([campaign("x")]),
       shop: draft.shop,
     });
   });
@@ -378,7 +380,7 @@ describe("draft and published references", () => {
       findRuleReferences(publishedContent, v8Meta),
     );
     const states = Object.fromEntries(
-      marked.experiments
+      marked.experiments.byName
         .get("t")!
         .map((ref) => [[ref.blockKey, ...ref.via].join("<"), ref.state]),
     );
@@ -395,10 +397,269 @@ describe("draft and published references", () => {
   it("lists a name only the published content uses", () => {
     const marked = markReferenceStates(
       findRuleReferences({}, v8Meta),
-      findRuleReferences({ home: page([schedule("Old sale")]) }, v8Meta),
+      findRuleReferences({ home: page([campaign("Old sale")]) }, v8Meta),
     );
-    expect(marked.schedules.get("Old sale")!.map((ref) => ref.state)).toEqual([
-      "removed-in-draft",
+    expect(
+      marked.campaigns.byName.get("Old sale")!.map((ref) => ref.state),
+    ).toEqual(["removed-in-draft"]);
+  });
+});
+
+describe("whole-block uses: a section that decides in its own code", () => {
+  const hero = () => ({
+    __resolveType: "hero",
+    experiments: { __resolveType: "experiments" },
+    campaigns: { __resolveType: "campaigns" },
+  });
+
+  it("lists a section prop that takes the experiments or campaigns map", () => {
+    const decofile = {
+      experiments: { __resolveType: "split-traffic", "hero-test": 50 },
+      home: {
+        __resolveType: "page",
+        sections: [hero(), lazy({ ...hero(), campaigns: undefined })],
+      },
+    };
+    const refs = findRuleReferences(decofile, v8Meta);
+    expect(
+      refs.experiments.wholeBlock.map(
+        (r) => `${r.blockKey} ${r.path.join(".")}`,
+      ),
+    ).toEqual([
+      "home sections.1.value.experiments",
+      "home sections.0.experiments",
     ]);
+    // Not saved yet: still a use, the first change creates the block.
+    expect(refs.campaigns.wholeBlock).toEqual([
+      {
+        kind: "campaigns",
+        blockKey: "home",
+        path: ["sections", 0, "campaigns"],
+      },
+    ]);
+    // The block itself isn't a use of itself, and uses by name stay apart.
+    expect(refs.experiments.byName.size).toBe(0);
+  });
+
+  it("isn't a use when the block under that name has another type", () => {
+    const decofile = {
+      campaigns: { __resolveType: "site/loaders/campaigns.ts" },
+      home: { __resolveType: "page", sections: [hero()] },
+    };
+    const refs = findRuleReferences(decofile, v8Meta);
+    expect(refs.campaigns.wholeBlock).toEqual([]);
+    expect(refs.experiments.wholeBlock).toHaveLength(1);
+  });
+
+  it("marks a prop added in the draft, and one the draft removed", () => {
+    const marked = markReferenceStates(
+      findRuleReferences({
+        home: { __resolveType: "page", sections: [hero()] },
+      }),
+      findRuleReferences({
+        about: { __resolveType: "page", sections: [hero()] },
+      }),
+    );
+    expect(
+      marked.campaigns.wholeBlock.map((r) => `${r.blockKey}:${r.state}`),
+    ).toEqual(["home:draft-only", "about:removed-in-draft"]);
+  });
+});
+
+describe("date rules that name no campaign", () => {
+  it("doesn't list a date rule written inline, or v7's date matchers", () => {
+    const decofile = {
+      home: {
+        __resolveType: "page",
+        sections: {
+          __resolveType: "multivariate",
+          variants: [
+            {
+              rule: {
+                __resolveType: "date",
+                start: "2026-11-27T00:00:00-03:00",
+                end: "2026-12-01T00:00:00-03:00",
+              },
+              value: lazy([]),
+            },
+            {
+              rule: {
+                __resolveType: "website/matchers/date.ts",
+                start: "2026-11-27T00:00:00-03:00",
+                campaign: "not a v8 rule",
+              },
+              value: lazy([]),
+            },
+            { rule: campaign("black-friday"), value: lazy([]) },
+          ],
+        },
+      },
+    };
+    const refs = findRuleReferences(decofile, v8Meta);
+    expect([...refs.campaigns.byName.keys()]).toEqual(["black-friday"]);
+  });
+});
+
+describe("v7 content stays as it is", () => {
+  it("finds no uses in a v7 site, even with blocks named like the kinds", () => {
+    const decofile = {
+      // A v7 site's own blocks that happen to have these names.
+      experiments: { __resolveType: "site/loaders/experiments.ts" },
+      campaigns: { __resolveType: "site/loaders/campaigns.ts" },
+      "Black Friday": {
+        __resolveType: "website/matchers/date.ts",
+        start: "2026-11-27T00:00:00-03:00",
+      },
+      home: {
+        __resolveType: "website/pages/Page.tsx",
+        sections: {
+          __resolveType: PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE,
+          variants: [
+            { rule: { __resolveType: "Black Friday" }, value: [] },
+            {
+              rule: {
+                __resolveType: "$live/matchers/MatchRandom.ts",
+                traffic: 0.5,
+              },
+              value: [
+                {
+                  __resolveType: "site/sections/Promo.tsx",
+                  flags: { __resolveType: "experiments" },
+                  dates: { __resolveType: "campaigns" },
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+    const refs = findRuleReferences(decofile);
+    for (const kind of ["experiments", "campaigns"] as const) {
+      expect(refs[kind].byName.size).toBe(0);
+      expect(refs[kind].wholeBlock).toEqual([]);
+    }
+    // The saved v7 rule is still found where it is used.
+    expect(
+      findSavedMatcherReferences(decofile, "Black Friday").map(
+        (r) => r.blockKey,
+      ),
+    ).toEqual(["home"]);
+  });
+});
+
+describe("planNamedRuleRename", () => {
+  const window = { start: "2026-11-27T00:00:00-03:00" };
+  const decofile = {
+    campaigns: {
+      __resolveType: "date-windows",
+      "black-friday": window,
+      launch: {},
+    },
+    "BF on mobile": {
+      __resolveType: "and",
+      rules: [campaign("black-friday"), { __resolveType: "device" }],
+    },
+    home: {
+      __resolveType: "page",
+      sections: {
+        __resolveType: "multivariate",
+        variants: [
+          {
+            rule: {
+              __resolveType: "website/matchers/multi.ts",
+              op: "OR",
+              matchers: [campaign("black-friday"), campaign("launch")],
+            },
+            value: lazy([]),
+          },
+          { rule: campaign("black-friday"), value: lazy([]) },
+          { rule: { __resolveType: "BF on mobile" }, value: lazy([]) },
+        ],
+      },
+    },
+    about: { __resolveType: "page", sections: [] },
+  };
+
+  it("renames the entry in place and rewrites every rule that names it, in one change", () => {
+    const plan = planNamedRuleRename(
+      decofile,
+      "campaigns",
+      "black-friday",
+      "Black Friday",
+      v8Meta,
+    );
+    expect(Object.keys(plan!.writes).sort()).toEqual([
+      "BF on mobile",
+      "campaigns",
+      "home",
+    ]);
+    expect(Object.keys(plan!.writes.campaigns!)).toEqual([
+      "__resolveType",
+      "Black Friday",
+      "launch",
+    ]);
+    const home = plan!.writes.home as typeof decofile.home;
+    expect(home.sections.variants[0]!.rule).toEqual({
+      __resolveType: "website/matchers/multi.ts",
+      op: "OR",
+      matchers: [campaign("Black Friday"), campaign("launch")],
+    });
+    expect(home.sections.variants[1]!.rule).toEqual(campaign("Black Friday"));
+    // The page that uses the saved rule keeps its reference.
+    expect(home.sections.variants[2]!.rule).toEqual({
+      __resolveType: "BF on mobile",
+    });
+    expect(plan!.writes["BF on mobile"]).toEqual({
+      __resolveType: "and",
+      rules: [campaign("Black Friday"), { __resolveType: "device" }],
+    });
+    // The draft as read is untouched.
+    expect(decofile.home.sections.variants[1]!.rule).toEqual(
+      campaign("black-friday"),
+    );
+  });
+
+  it("renames an A/B test the same way", () => {
+    const plan = planNamedRuleRename(
+      {
+        experiments: { __resolveType: "split-traffic", hero: 0 },
+        home: { __resolveType: "page", sections: { rule: experiment("hero") } },
+      },
+      "experiments",
+      "hero",
+      "hero-2",
+    );
+    expect(plan!.writes).toEqual({
+      experiments: { __resolveType: "split-traffic", "hero-2": 0 },
+      home: { __resolveType: "page", sections: { rule: experiment("hero-2") } },
+    });
+  });
+
+  it("is null when there is nothing to rename or the new name is taken", () => {
+    expect(
+      planNamedRuleRename(decofile, "campaigns", "black-friday", "launch"),
+    ).toBeNull();
+    expect(
+      planNamedRuleRename(decofile, "campaigns", "black-friday", " "),
+    ).toBeNull();
+    expect(planNamedRuleRename(decofile, "campaigns", "gone", "x")).toBeNull();
+    expect(planNamedRuleRename({}, "experiments", "a", "b")).toBeNull();
+    // A running test's name is locked.
+    expect(
+      planNamedRuleRename(
+        { experiments: { __resolveType: "split-traffic", hero: 50 } },
+        "experiments",
+        "hero",
+        "hero-2",
+      ),
+    ).toBeNull();
+    expect(
+      planNamedRuleRename(
+        { campaigns: { __resolveType: "other", a: {} } },
+        "campaigns",
+        "a",
+        "b",
+      ),
+    ).toBeNull();
   });
 });

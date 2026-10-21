@@ -387,7 +387,7 @@ describe("formatMatcher", () => {
       new Date(year, month, day, hour, minute).toISOString();
     const named = {
       experiments: { "hero-headline": 50, off: 0 },
-      schedules: {
+      campaigns: {
         "Black Friday": { start: local(10, 27), end: local(11, 2) },
         Launch: { start: local(2, 1) },
         Clearance: { end: local(0, 31, 23, 59) },
@@ -420,36 +420,36 @@ describe("formatMatcher", () => {
     test("names a campaign with its dates; the end is exclusive", () => {
       expect(
         formatMatcher(
-          { __resolveType: "schedule", name: "Black Friday" },
+          { __resolveType: "date", campaign: "Black Friday" },
           named,
         ),
       ).toBe("Campaign: Black Friday (Nov 27 – Dec 1)");
       expect(
-        formatMatcher({ __resolveType: "schedule", name: "Launch" }, named),
+        formatMatcher({ __resolveType: "date", campaign: "Launch" }, named),
       ).toBe("Campaign: Launch (from Mar 1)");
       expect(
-        formatMatcher({ __resolveType: "schedule", name: "Clearance" }, named),
+        formatMatcher({ __resolveType: "date", campaign: "Clearance" }, named),
       ).toBe("Campaign: Clearance (until Jan 31)");
     });
 
     test("names a campaign with no dates, or unknown, by its name", () => {
       expect(
-        formatMatcher({ __resolveType: "schedule", name: "Forever" }, named),
+        formatMatcher({ __resolveType: "date", campaign: "Forever" }, named),
       ).toBe("Campaign: Forever");
       expect(
-        formatMatcher({ __resolveType: "schedule", name: "Black Friday" }),
+        formatMatcher({ __resolveType: "date", campaign: "Black Friday" }),
       ).toBe("Campaign: Black Friday");
-      expect(formatMatcher({ __resolveType: "schedule", name: " " })).toBe(
+      expect(formatMatcher({ __resolveType: "date", campaign: " " })).toBe(
         "Campaign",
       );
     });
 
     test("shows the year and times outside the current year or whole days", () => {
       const label = formatMatcher(
-        { __resolveType: "schedule", name: "Old" },
+        { __resolveType: "date", campaign: "Old" },
         {
           experiments: {},
-          schedules: {
+          campaigns: {
             Old: {
               start: new Date(2020, 10, 27, 10, 30).toISOString(),
               end: new Date(2020, 11, 1, 18, 0).toISOString(),
@@ -462,6 +462,20 @@ describe("formatMatcher", () => {
       expect(label).toContain(" – ");
     });
 
+    test("keeps showing a date rule written with its own dates", () => {
+      const label = formatMatcher(
+        {
+          __resolveType: "date",
+          start: new Date(2020, 10, 27).toISOString(),
+          end: new Date(2020, 11, 1).toISOString(),
+        },
+        named,
+      );
+      expect(label).toStartWith("From ");
+      expect(label).toContain("2020");
+      expect(formatMatcher({ __resolveType: "date" })).toBe("Date");
+    });
+
     test("labels named rules inside a multi with their values", () => {
       expect(
         formatMatcher(
@@ -469,7 +483,7 @@ describe("formatMatcher", () => {
             __resolveType: "website/matchers/multi.ts",
             op: "AND",
             matchers: [
-              { __resolveType: "schedule", name: "Launch" },
+              { __resolveType: "date", campaign: "Launch" },
               { __resolveType: "experiment", name: "hero-headline" },
             ],
           },

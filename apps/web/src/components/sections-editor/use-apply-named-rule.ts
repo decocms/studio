@@ -21,7 +21,7 @@ import { applyMoveToDecofile } from "./use-move-blocks";
 
 /**
  * One change to the site's A/B tests or campaigns (named-rules.ts): the
- * `Experiments` or `Schedules` block, and the blocks whose rules use its
+ * `experiments` or `campaigns` block, and the blocks whose rules use its
  * names (a page or section given a new rule, every rule a rename rewrites).
  */
 export interface NamedRuleChange {

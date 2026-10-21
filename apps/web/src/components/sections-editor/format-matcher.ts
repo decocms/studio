@@ -1,7 +1,7 @@
 import { readLanguage } from "@/hooks/use-preferences.ts";
 import type { Locale } from "@/i18n/locale.ts";
 import { translate } from "@/i18n/use-t.ts";
-import type { NamedRuleValues, ScheduleWindow } from "./named-rules";
+import type { CampaignWindow, NamedRuleValues } from "./named-rules";
 import { labelFromResolveType } from "./section-types";
 
 const capitalize = (s: string) =>
@@ -121,7 +121,7 @@ function formatDateRange(rule: Record<string, unknown>): string | null {
  * The year is left out when every bound falls in the current one, as a
  * campaign usually does ("Nov 27 – Dec 1").
  */
-function formatWindow(window: ScheduleWindow): string | null {
+function formatWindow(window: CampaignWindow): string | null {
   const startDate = parseDate(window.start ?? "");
   const endDate = parseDate(window.end ?? "");
   if (!startDate && !endDate) return null;
@@ -177,20 +177,20 @@ function formatExperiment(
       });
 }
 
-/** `schedule { name }`: the campaign's name and, when known, its dates. */
-function formatSchedule(
+/** `date { campaign }`: the campaign's name and, when known, its dates. */
+function formatCampaign(
   rule: Record<string, unknown>,
   named: NamedRuleValues | undefined,
 ): string {
-  const name = typeof rule.name === "string" ? rule.name.trim() : "";
-  if (!name) return translate("sectionsEditor.formatMatcher.schedule");
+  const name = typeof rule.campaign === "string" ? rule.campaign.trim() : "";
+  if (!name) return translate("sectionsEditor.formatMatcher.campaign");
   const window =
-    named && Object.hasOwn(named.schedules, name)
-      ? formatWindow(named.schedules[name]!)
+    named && Object.hasOwn(named.campaigns, name)
+      ? formatWindow(named.campaigns[name]!)
       : null;
   return window === null
-    ? translate("sectionsEditor.formatMatcher.scheduleNamed", { name })
-    : translate("sectionsEditor.formatMatcher.scheduleWindow", {
+    ? translate("sectionsEditor.formatMatcher.campaignNamed", { name })
+    : translate("sectionsEditor.formatMatcher.campaignWindow", {
         name,
         window,
       });
@@ -256,14 +256,17 @@ function formatRule(
 
     case "website/matchers/date.ts":
     case "$live/matchers/MatchDate.ts":
-    case "date":
       return formatDateRange(rule) ?? labelFromResolveType(rt);
+
+    // v8: a campaign by name. A rule still written with its own dates
+    // (before campaigns) keeps showing them.
+    case "date":
+      return typeof rule.campaign === "string"
+        ? formatCampaign(rule, named)
+        : (formatDateRange(rule) ?? labelFromResolveType(rt));
 
     case "experiment":
       return formatExperiment(rule, named);
-
-    case "schedule":
-      return formatSchedule(rule, named);
 
     case "website/matchers/random.ts":
     case "$live/matchers/MatchRandom.ts": {

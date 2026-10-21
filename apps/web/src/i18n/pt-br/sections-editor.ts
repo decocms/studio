@@ -59,9 +59,9 @@ export const sectionsEditor = {
   "sectionsEditor.formatMatcher.experimentNamed": "Teste A/B: {name}",
   "sectionsEditor.formatMatcher.experimentShare":
     "Teste A/B: {name} ({share}%)",
-  "sectionsEditor.formatMatcher.schedule": "Campanha",
-  "sectionsEditor.formatMatcher.scheduleNamed": "Campanha: {name}",
-  "sectionsEditor.formatMatcher.scheduleWindow": "Campanha: {name} ({window})",
+  "sectionsEditor.formatMatcher.campaign": "Campanha",
+  "sectionsEditor.formatMatcher.campaignNamed": "Campanha: {name}",
+  "sectionsEditor.formatMatcher.campaignWindow": "Campanha: {name} ({window})",
   "sectionsEditor.formatMatcher.windowRange": "{start} – {end}",
   "sectionsEditor.formatMatcher.windowFrom": "a partir de {date}",
   "sectionsEditor.formatMatcher.windowUntil": "até {date}",

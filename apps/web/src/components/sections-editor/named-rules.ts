@@ -3,22 +3,24 @@ import type { LiveMeta } from "./resolve-schema";
 /**
  * Named rules of a Blocks (v8) site: A/B tests and campaigns, kept as content.
  * Each kind is one well-known saved block of a built-in type that maps a name
- * to its setting, and one built-in matcher that a variant's rule uses with
- * that name (`@decocms/blocks` `builtins/experiments.ts` and
- * `builtins/schedules.ts`):
+ * to its setting, and one built-in rule that names an entry of that block
+ * (`@decocms/blocks` `builtins/experiments.ts` and `builtins/campaigns.ts`):
  *
- * - `Experiments` (type `experiments`): name → whole percentage of visitors
- *   in the test (0 off, 100 everyone, anything between running). Matcher
+ * - `experiments` (type `split-traffic`): name → whole percentage of visitors
+ *   in the test (0 off, 100 everyone, anything between running). Rule
  *   `experiment { name }`.
- * - `Schedules` (type `schedules`): name → one window `{ start?, end? }`, ISO
- *   date-times with an offset, `end` exclusive. Matcher `schedule { name }`.
- *   Editors see these as "Campaigns".
+ * - `campaigns` (type `date-windows`): name → one window `{ start?, end? }`,
+ *   ISO date-times with an offset, `end` exclusive. Rule `date { campaign }`.
+ *   Every date of a site lives here: a `date` rule always names a campaign.
  *
- * Like `CMS` (cms-settings.ts), the editor knows only the names and types;
- * everything is read from and written to the content, in a draft.
+ * Resolving either block gives the site name → true/false, never a share or a
+ * date; a section can take the whole map as a prop (`{ "__resolveType":
+ * "experiments" }`). Like `cms-settings` (cms-settings.ts), the editor knows
+ * only the names and types; everything is read from and written to the
+ * content, in a draft.
  */
 
-export type NamedRuleKind = "experiments" | "schedules";
+export type NamedRuleKind = "experiments" | "campaigns";
 
 export interface NamedRuleKindInfo {
   kind: NamedRuleKind;
@@ -26,34 +28,50 @@ export interface NamedRuleKindInfo {
   blockKey: string;
   /** The built-in type of that block. */
   resolveType: string;
-  /** The built-in matcher a rule uses, with `{ name }`. */
+  /** The built-in rule that names one of the block's entries. */
   matcher: string;
+  /** The rule's field that holds the name. */
+  field: string;
 }
 
 const NAMED_RULES: Readonly<Record<NamedRuleKind, NamedRuleKindInfo>> = {
   experiments: {
     kind: "experiments",
-    blockKey: "Experiments",
-    resolveType: "experiments",
+    blockKey: "experiments",
+    resolveType: "split-traffic",
     matcher: "experiment",
+    field: "name",
   },
-  schedules: {
-    kind: "schedules",
-    blockKey: "Schedules",
-    resolveType: "schedules",
-    matcher: "schedule",
+  campaigns: {
+    kind: "campaigns",
+    blockKey: "campaigns",
+    resolveType: "date-windows",
+    matcher: "date",
+    field: "campaign",
   },
 };
 
 export const NAMED_RULE_KINDS: readonly NamedRuleKind[] = [
   "experiments",
-  "schedules",
+  "campaigns",
 ];
 
-/** The kind whose matcher is `resolveType`, if any. */
+export function namedRuleKindInfo(kind: NamedRuleKind): NamedRuleKindInfo {
+  return NAMED_RULES[kind];
+}
+
+/** The kind whose rule is `resolveType`, if any. */
 function namedRuleKindOfMatcher(resolveType: unknown): NamedRuleKind | null {
   for (const kind of NAMED_RULE_KINDS) {
     if (NAMED_RULES[kind].matcher === resolveType) return kind;
+  }
+  return null;
+}
+
+/** The kind whose saved block is `blockKey`, if any. */
+export function namedRuleKindOfBlock(blockKey: unknown): NamedRuleKind | null {
+  for (const kind of NAMED_RULE_KINDS) {
+    if (NAMED_RULES[kind].blockKey === blockKey) return kind;
   }
   return null;
 }
@@ -64,10 +82,12 @@ const BUILT_IN_NAMESPACE = "deco";
 /**
  * Whether the site can use a kind, from its schema:
  *
- * - `available`: the schema lists the built-in type and matcher (a published
+ * - `available`: the schema lists the built-in type and rule (a published
  *   `@decocms/blocks` that has them, `deco schema` run since).
  * - `missing`: it lists neither, or only one of them (an older
- *   `@decocms/blocks`, a schema not regenerated yet, or a v7 site).
+ *   `@decocms/blocks`, a schema not regenerated yet, or a v7 site). An older
+ *   v8 schema lists `date` (with inline `start`/`end`) but no `date-windows`:
+ *   that is `missing` too.
  * - `replaced`: the site's block map declares one of the names itself, so the
  *   site's code, not the built-in, decides what they mean.
  */
@@ -97,15 +117,16 @@ function findManifestEntry(
   return null;
 }
 
-/** One A/B test's share, or one campaign's window, as saved. */
-export interface ScheduleWindow {
+/** One campaign's window, as saved. */
+export interface CampaignWindow {
   start?: string;
   end?: string;
 }
 
+/** Per kind, each name's setting: a test's share, a campaign's window. */
 export interface NamedRuleValues {
   experiments: Record<string, number>;
-  schedules: Record<string, ScheduleWindow>;
+  campaigns: Record<string, CampaignWindow>;
 }
 
 type ValueOf<K extends NamedRuleKind> = NamedRuleValues[K][string];
@@ -178,10 +199,10 @@ export function readNamedRuleValues(
   decofile: Record<string, unknown>,
 ): NamedRuleValues {
   const experiments = readNamedRuleBlock(decofile, "experiments");
-  const schedules = readNamedRuleBlock(decofile, "schedules");
+  const campaigns = readNamedRuleBlock(decofile, "campaigns");
   return {
     experiments: experiments.kind === "conflict" ? {} : experiments.values,
-    schedules: schedules.kind === "conflict" ? {} : schedules.values,
+    campaigns: campaigns.kind === "conflict" ? {} : campaigns.values,
   };
 }
 
@@ -194,9 +215,9 @@ function parseShare(value: unknown): number | null {
     : null;
 }
 
-function parseWindow(value: unknown): ScheduleWindow | null {
+function parseWindow(value: unknown): CampaignWindow | null {
   if (!isPlainRecord(value)) return null;
-  const window: ScheduleWindow = {};
+  const window: CampaignWindow = {};
   for (const bound of ["start", "end"] as const) {
     const raw = value[bound];
     // A cleared field saves as null or "": no bound.
@@ -226,16 +247,42 @@ export function canRenameExperiment(share: number | undefined): boolean {
 }
 
 /**
- * The name a rule refers to, when it is a kind's matcher with a string name
- * (an empty name included, so an unfinished rule is still found).
+ * The name a rule refers to, when it is a kind's rule with a string name
+ * (`experiment { name }`, `date { campaign }`; an empty name included, so an
+ * unfinished rule is still found). A `date` rule written inline (`{ start,
+ * end }`, from before campaigns) names nothing: it is not a campaign's use.
  */
 export function namedRuleOf(
   rule: unknown,
 ): { kind: NamedRuleKind; name: string } | null {
   if (!isPlainRecord(rule)) return null;
   const kind = namedRuleKindOfMatcher(rule.__resolveType);
-  if (!kind || typeof rule.name !== "string") return null;
-  return { kind, name: rule.name };
+  if (!kind) return null;
+  const name = rule[NAMED_RULES[kind].field];
+  return typeof name === "string" ? { kind, name } : null;
+}
+
+/** The rule that names `name`: `experiment { name }` or `date { campaign }`. */
+export function namedRule(
+  kind: NamedRuleKind,
+  name: string,
+): Record<string, unknown> {
+  const info = NAMED_RULES[kind];
+  return { __resolveType: info.matcher, [info.field]: name };
+}
+
+/**
+ * A `date` rule still written with its own dates (`{ start, end }`), from
+ * before campaigns. The runtime no longer runs it (it is false) and `deco
+ * check` warns; the migration turns each into a campaign.
+ */
+export function isInlineDateRule(rule: unknown): boolean {
+  return (
+    isPlainRecord(rule) &&
+    rule.__resolveType === NAMED_RULES.campaigns.matcher &&
+    typeof rule[NAMED_RULES.campaigns.field] !== "string" &&
+    (Object.hasOwn(rule, "start") || Object.hasOwn(rule, "end"))
+  );
 }
 
 /**

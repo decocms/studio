@@ -11,6 +11,7 @@ import {
   ErrorCode,
 } from "@decocms/blocks/protocol";
 import { KEYS } from "@/lib/query-keys";
+import { planNamedRuleRename } from "./rule-references";
 import type { ProtocolBackend } from "./content-backend";
 import { resetContentSync } from "./content-sync";
 import * as realBackend from "./use-content-backend";
@@ -135,9 +136,9 @@ const page = (rule: Record<string, unknown>) => ({
 });
 const home = page({ __resolveType: "always" });
 const homeWithTest = page({ __resolveType: "experiment", name: "hero" });
-const experiments = { __resolveType: "experiments", hero: 50 };
+const experiments = { __resolveType: "split-traffic", hero: 50 };
 
-/** The editor read `home` at `home@0` and no `Experiments`. */
+/** The editor read `home` at `home@0` and no `experiments`. */
 function setup() {
   server.blocks = { home };
   server.versions = { home: "home@0" };
@@ -163,14 +164,14 @@ const cached = (queryClient: QueryClient) =>
 describe("planNamedRuleApply", () => {
   it("guards every block it writes or deletes", () => {
     const versions: Record<string, string | null> = {
-      Experiments: null,
+      experiments: null,
       home: "h1",
       old: "o1",
     };
     expect(
       planNamedRuleApply(
         {
-          writes: { Experiments: experiments, home: homeWithTest },
+          writes: { experiments, home: homeWithTest },
           deletes: ["old", "home"],
         },
         (key) => versions[key],
@@ -178,11 +179,38 @@ describe("planNamedRuleApply", () => {
     ).toEqual({
       kind: "apply",
       patch: {
-        set: { Experiments: experiments, home: homeWithTest },
+        set: { experiments, home: homeWithTest },
         delete: ["old"],
       },
-      ifMatch: { Experiments: null, home: "h1", old: "o1" },
+      ifMatch: { experiments: null, home: "h1", old: "o1" },
     });
+  });
+
+  it("guards a campaign rename: the block and every page that names it", () => {
+    const draft = {
+      campaigns: {
+        __resolveType: "date-windows",
+        "black-friday": { start: "2026-11-27T00:00:00-03:00" },
+      },
+      home: page({ __resolveType: "date", campaign: "black-friday" }),
+      about: page({ __resolveType: "always" }),
+    };
+    const rename = planNamedRuleRename(
+      draft,
+      "campaigns",
+      "black-friday",
+      "Black Friday",
+    )!;
+    const plan = planNamedRuleApply(rename, (key) => `${key}@3`);
+    expect(plan.kind).toBe("apply");
+    if (plan.kind !== "apply") return;
+    expect(plan.ifMatch).toEqual({
+      campaigns: "campaigns@3",
+      home: "home@3",
+    });
+    expect(plan.patch.set?.home).toEqual(
+      page({ __resolveType: "date", campaign: "Black Friday" }),
+    );
   });
 
   it("asks for a read when a block's version isn't known yet", () => {
@@ -199,43 +227,43 @@ describe("useApplyNamedRule", () => {
     let outcome: unknown;
     await act(async () => {
       outcome = await result.current.apply({
-        writes: { Experiments: experiments, home: homeWithTest },
+        writes: { experiments, home: homeWithTest },
       });
     });
     expect(outcome).toEqual({ ok: true });
     expect(server.applied).toEqual([
       {
-        set: { Experiments: experiments, home: homeWithTest },
-        ifMatch: { Experiments: null, home: "home@0" },
+        set: { experiments, home: homeWithTest },
+        ifMatch: { experiments: null, home: "home@0" },
       },
     ]);
     expect(cached(queryClient)).toEqual({
       home: homeWithTest,
-      Experiments: experiments,
+      experiments,
     });
     expect(
       queryClient.getQueryData(KEYS.contentVersions(CACHE_KEY)),
-    ).toMatchObject({ Experiments: "Experiments@1", home: "home@1" });
+    ).toMatchObject({ experiments: "experiments@1", home: "home@1" });
   });
 
   it("writes nothing over a test created meanwhile, and shows what is stored", async () => {
     const { queryClient, result } = setup();
-    const theirs = { __resolveType: "experiments", banner: 10 };
-    server.blocks.Experiments = theirs;
-    server.versions.Experiments = "theirs@1";
+    const theirs = { __resolveType: "split-traffic", banner: 10 };
+    server.blocks.experiments = theirs;
+    server.versions.experiments = "theirs@1";
     let outcome: unknown;
     await act(async () => {
       outcome = await result.current.apply({
-        writes: { Experiments: experiments, home: homeWithTest },
+        writes: { experiments, home: homeWithTest },
       });
     });
     expect(outcome).toEqual({ ok: false, reason: "changed" });
     // Neither block was written: the page keeps its rule, theirs is intact.
-    expect(server.blocks).toEqual({ home, Experiments: theirs });
-    expect(cached(queryClient)).toEqual({ home, Experiments: theirs });
+    expect(server.blocks).toEqual({ home, experiments: theirs });
+    expect(cached(queryClient)).toEqual({ home, experiments: theirs });
     expect(
       queryClient.getQueryData(KEYS.contentVersions(CACHE_KEY)),
-    ).toMatchObject({ home: "home@0", Experiments: "theirs@1" });
+    ).toMatchObject({ home: "home@0", experiments: "theirs@1" });
   });
 
   it("writes nothing when the page changed meanwhile", async () => {
@@ -246,11 +274,11 @@ describe("useApplyNamedRule", () => {
     let outcome: unknown;
     await act(async () => {
       outcome = await result.current.apply({
-        writes: { Experiments: experiments, home: homeWithTest },
+        writes: { experiments, home: homeWithTest },
       });
     });
     expect(outcome).toEqual({ ok: false, reason: "changed" });
-    expect(server.blocks.Experiments).toBeUndefined();
+    expect(server.blocks.experiments).toBeUndefined();
     expect(cached(queryClient)).toEqual({ home: edited });
   });
 

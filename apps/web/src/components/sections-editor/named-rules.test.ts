@@ -2,6 +2,8 @@ import { describe, expect, it } from "bun:test";
 import {
   canRenameExperiment,
   experimentStatus,
+  isInlineDateRule,
+  namedRule,
   namedRuleOf,
   namedRuleSupport,
   readNamedRuleBlock,
@@ -11,7 +13,10 @@ import {
   withRenamedNamedRuleEntry,
 } from "./named-rules";
 
-/** The manifest `deco schema` writes for the built-ins (blocks with Experiments and Schedules). */
+/**
+ * The manifest `deco schema` writes for the built-ins (blocks with
+ * split-traffic and date-windows), as run on a copy of the demo site.
+ */
 const builtIn = (key: string, namespace = "deco") => ({
   $ref: `#/definitions/${btoa(key)}`,
   namespace,
@@ -23,12 +28,11 @@ const v8Meta = {
         always: builtIn("always"),
         date: builtIn("date"),
         experiment: builtIn("experiment"),
-        schedule: builtIn("schedule"),
       },
       content: {
         "cms-settings": builtIn("cms-settings"),
-        experiments: builtIn("experiments"),
-        schedules: builtIn("schedules"),
+        "split-traffic": builtIn("split-traffic"),
+        "date-windows": builtIn("date-windows"),
       },
     },
   },
@@ -37,10 +41,11 @@ const v8Meta = {
 describe("namedRuleSupport", () => {
   it("is available when the schema lists the built-in type and matcher", () => {
     expect(namedRuleSupport(v8Meta, "experiments")).toBe("available");
-    expect(namedRuleSupport(v8Meta, "schedules")).toBe("available");
+    expect(namedRuleSupport(v8Meta, "campaigns")).toBe("available");
   });
 
   it("is missing on a schema from before the built-ins, a v7 schema or none", () => {
+    // Before campaigns, v8 had a `date` rule with its own dates.
     const older = {
       manifest: {
         blocks: {
@@ -50,7 +55,7 @@ describe("namedRuleSupport", () => {
       },
     };
     expect(namedRuleSupport(older, "experiments")).toBe("missing");
-    expect(namedRuleSupport(older, "schedules")).toBe("missing");
+    expect(namedRuleSupport(older, "campaigns")).toBe("missing");
     const v7 = {
       manifest: {
         blocks: {
@@ -61,19 +66,24 @@ describe("namedRuleSupport", () => {
       },
     };
     expect(namedRuleSupport(v7, "experiments")).toBe("missing");
-    expect(namedRuleSupport(undefined, "schedules")).toBe("missing");
+    expect(namedRuleSupport(undefined, "campaigns")).toBe("missing");
     // Half of a kind is not the kind.
     const onlyMatcher = {
-      manifest: { blocks: { matchers: { schedule: builtIn("schedule") } } },
+      manifest: { blocks: { matchers: { experiment: builtIn("experiment") } } },
     };
-    expect(namedRuleSupport(onlyMatcher, "schedules")).toBe("missing");
+    expect(namedRuleSupport(onlyMatcher, "experiments")).toBe("missing");
   });
 
   it("is replaced when the site's block map declares one of the names", () => {
     const meta = structuredClone(v8Meta);
-    meta.manifest.blocks.content.experiments = builtIn("experiments", "site");
+    meta.manifest.blocks.content["split-traffic"] = builtIn(
+      "split-traffic",
+      "site",
+    );
     expect(namedRuleSupport(meta, "experiments")).toBe("replaced");
-    expect(namedRuleSupport(meta, "schedules")).toBe("available");
+    expect(namedRuleSupport(meta, "campaigns")).toBe("available");
+    meta.manifest.blocks.matchers.date = builtIn("date", "site");
+    expect(namedRuleSupport(meta, "campaigns")).toBe("replaced");
   });
 });
 
@@ -82,20 +92,27 @@ describe("readNamedRuleBlock", () => {
     const read = readNamedRuleBlock({}, "experiments");
     expect(read).toEqual({
       kind: "absent",
-      block: { __resolveType: "experiments" },
+      block: { __resolveType: "split-traffic" },
       values: {},
       invalid: [],
     });
-    expect(readNamedRuleBlock({ Schedules: null }, "schedules").kind).toBe(
+    expect(readNamedRuleBlock({ campaigns: null }, "campaigns").kind).toBe(
       "absent",
     );
+    // Only the lowercase saved names count.
+    expect(
+      readNamedRuleBlock(
+        { Experiments: { __resolveType: "experiments", a: 1 } },
+        "experiments",
+      ).kind,
+    ).toBe("absent");
   });
 
   it("reads each test's share, listing what isn't a whole 0–100", () => {
     const read = readNamedRuleBlock(
       {
-        Experiments: {
-          __resolveType: "experiments",
+        experiments: {
+          __resolveType: "split-traffic",
           "hero-headline": 50,
           off: 0,
           shipped: 100,
@@ -115,8 +132,8 @@ describe("readNamedRuleBlock", () => {
   it("reads each campaign's window; a cleared bound is no bound", () => {
     const read = readNamedRuleBlock(
       {
-        Schedules: {
-          __resolveType: "schedules",
+        campaigns: {
+          __resolveType: "date-windows",
           "Black Friday": {
             start: "2026-11-27T00:00:00-03:00",
             end: "2026-12-02T00:00:00-03:00",
@@ -128,7 +145,7 @@ describe("readNamedRuleBlock", () => {
           NotAWindow: "2026-01-01",
         },
       },
-      "schedules",
+      "campaigns",
     );
     expect(read.kind).toBe("saved");
     if (read.kind !== "saved") return;
@@ -147,11 +164,11 @@ describe("readNamedRuleBlock", () => {
   it("is a conflict for a block of that name with another type, never a write", () => {
     expect(
       readNamedRuleBlock(
-        { Experiments: { __resolveType: "site/loaders/flags.ts", a: 1 } },
+        { experiments: { __resolveType: "site/loaders/flags.ts", a: 1 } },
         "experiments",
       ),
     ).toEqual({ kind: "conflict", resolveType: "site/loaders/flags.ts" });
-    expect(readNamedRuleBlock({ Schedules: [1, 2] }, "schedules")).toEqual({
+    expect(readNamedRuleBlock({ campaigns: [1, 2] }, "campaigns")).toEqual({
       kind: "conflict",
       resolveType: "",
     });
@@ -160,7 +177,7 @@ describe("readNamedRuleBlock", () => {
   it("doesn't read inherited names", () => {
     const read = readNamedRuleBlock(
       JSON.parse(
-        '{"Experiments":{"__resolveType":"experiments","__proto__":5}}',
+        '{"experiments":{"__resolveType":"split-traffic","__proto__":5}}',
       ),
       "experiments",
     );
@@ -175,10 +192,10 @@ describe("readNamedRuleValues", () => {
   it("reads both kinds, and nothing from a conflicting block", () => {
     expect(
       readNamedRuleValues({
-        Experiments: { __resolveType: "experiments", a: 20 },
-        Schedules: { __resolveType: "something-else", b: {} },
+        experiments: { __resolveType: "split-traffic", a: 20 },
+        campaigns: { __resolveType: "something-else", b: {} },
       }),
-    ).toEqual({ experiments: { a: 20 }, schedules: {} });
+    ).toEqual({ experiments: { a: 20 }, campaigns: {} });
   });
 });
 
@@ -204,35 +221,82 @@ describe("namedRuleOf", () => {
       kind: "experiments",
       name: "hero",
     });
-    expect(namedRuleOf({ __resolveType: "schedule", name: "" })).toEqual({
-      kind: "schedules",
+    expect(
+      namedRuleOf({ __resolveType: "date", campaign: "Black Friday" }),
+    ).toEqual({ kind: "campaigns", name: "Black Friday" });
+    expect(namedRuleOf({ __resolveType: "date", campaign: "" })).toEqual({
+      kind: "campaigns",
       name: "",
     });
   });
 
   it("is null for any other rule", () => {
     expect(namedRuleOf({ __resolveType: "date", name: "x" })).toBeNull();
+    expect(
+      namedRuleOf({ __resolveType: "date", start: "2026-11-27T00:00:00Z" }),
+    ).toBeNull();
+    expect(
+      namedRuleOf({ __resolveType: "website/matchers/date.ts", campaign: "x" }),
+    ).toBeNull();
     expect(namedRuleOf({ __resolveType: "experiment" })).toBeNull();
-    expect(namedRuleOf({ __resolveType: "Experiments" })).toBeNull();
+    expect(
+      namedRuleOf({ __resolveType: "experiment", campaign: "x" }),
+    ).toBeNull();
+    expect(namedRuleOf({ __resolveType: "experiments" })).toBeNull();
     expect(namedRuleOf(null)).toBeNull();
     expect(namedRuleOf([])).toBeNull();
   });
 });
 
+describe("namedRule and inline dates", () => {
+  it("builds the rule that names an entry", () => {
+    expect(namedRule("experiments", "hero")).toEqual({
+      __resolveType: "experiment",
+      name: "hero",
+    });
+    expect(namedRule("campaigns", "Black Friday")).toEqual({
+      __resolveType: "date",
+      campaign: "Black Friday",
+    });
+  });
+
+  it("tells a date rule with its own dates from one naming a campaign", () => {
+    expect(
+      isInlineDateRule({
+        __resolveType: "date",
+        start: "2026-11-27T00:00:00-03:00",
+        end: "2026-12-01T00:00:00-03:00",
+      }),
+    ).toBe(true);
+    expect(isInlineDateRule({ __resolveType: "date", end: "" })).toBe(true);
+    expect(isInlineDateRule({ __resolveType: "date", campaign: "x" })).toBe(
+      false,
+    );
+    expect(isInlineDateRule({ __resolveType: "date" })).toBe(false);
+    // v7's date matcher is v7's: left alone.
+    expect(
+      isInlineDateRule({
+        __resolveType: "website/matchers/date.ts",
+        start: "2026-11-27T00:00:00-03:00",
+      }),
+    ).toBe(false);
+  });
+});
+
 describe("editing the block", () => {
-  const block = { __resolveType: "schedules", a: { start: "x" }, b: {} };
+  const block = { __resolveType: "date-windows", a: { start: "x" }, b: {} };
 
   it("adds or replaces a name, keeping the others", () => {
     expect(
       withNamedRuleEntry(
-        { __resolveType: "experiments" },
+        { __resolveType: "split-traffic" },
         "experiments",
         "t",
         50,
       ),
-    ).toEqual({ __resolveType: "experiments", t: 50 });
-    expect(withNamedRuleEntry(block, "schedules", "a", { end: "y" })).toEqual({
-      __resolveType: "schedules",
+    ).toEqual({ __resolveType: "split-traffic", t: 50 });
+    expect(withNamedRuleEntry(block, "campaigns", "a", { end: "y" })).toEqual({
+      __resolveType: "date-windows",
       a: { end: "y" },
       b: {},
     });
@@ -240,7 +304,7 @@ describe("editing the block", () => {
 
   it("removes a name, never the type", () => {
     expect(withoutNamedRuleEntry(block, "a")).toEqual({
-      __resolveType: "schedules",
+      __resolveType: "date-windows",
       b: {},
     });
     expect(withoutNamedRuleEntry(block, "__resolveType")).toBe(block);
@@ -249,7 +313,7 @@ describe("editing the block", () => {
   it("renames in place, and not onto a taken name", () => {
     const renamed = withRenamedNamedRuleEntry(block, "a", "c");
     expect(renamed).toEqual({
-      __resolveType: "schedules",
+      __resolveType: "date-windows",
       c: { start: "x" },
       b: {},
     });

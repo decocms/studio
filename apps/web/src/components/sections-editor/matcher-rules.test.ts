@@ -144,14 +144,24 @@ describe("matcher-rules", () => {
     ).toBe("Mobile Promo");
   });
 
-  it("labels an A/B test rule with its share from the content's Experiments", () => {
+  it("labels an A/B test rule with its share from the content's experiments", () => {
     expect(
       resolveVariantRuleLabel(
         { __resolveType: "experiment", name: "hero" },
-        { Experiments: { __resolveType: "experiments", hero: 20 } },
+        { experiments: { __resolveType: "split-traffic", hero: 20 } },
         formatMatcher,
       ),
     ).toBe("A/B test: hero (20%)");
+  });
+
+  it("labels a date rule with its campaign from the content's campaigns", () => {
+    expect(
+      resolveVariantRuleLabel(
+        { __resolveType: "date", campaign: "Launch" },
+        { campaigns: { __resolveType: "date-windows", Launch: {} } },
+        formatMatcher,
+      ),
+    ).toBe("Campaign: Launch");
   });
 
   it("builds matcher block payloads and references", () => {
