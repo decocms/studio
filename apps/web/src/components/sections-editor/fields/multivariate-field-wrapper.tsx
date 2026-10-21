@@ -39,6 +39,14 @@ import { HeaderSlotPortal } from "../header-slot";
 import { alwaysMatcherResolveType } from "../section-types";
 import { cachedResolveSchema } from "./resolved-schema-cache";
 import type { VariantMatcherOps } from "../variant-matcher-rename";
+import type { NamedRulePickerProps } from "../matcher-picker";
+import {
+  inlineDateWindow,
+  type NamedRulePick,
+  namedRuleRowState,
+} from "../named-rule-picker";
+import { namedRuleOf } from "../named-rules";
+import { useNamedRuleFieldSupport } from "../named-rule-step";
 
 // `meta` changes only on page load; `resolveType` changes only on rule picker
 // selection — cache the matcher list per meta instance (WeakMap, so a stale
@@ -102,6 +110,7 @@ export function MultivariateFieldWrapper({
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [renameIndex, setRenameIndex] = useState<number | null>(null);
   const [renamePending, setRenamePending] = useState(false);
+  const namedSupport = useNamedRuleFieldSupport();
 
   if (!isMultivariateWrapper(value)) {
     return (
@@ -269,6 +278,30 @@ export function MultivariateFieldWrapper({
     );
   };
 
+  // v8: tests and campaigns by name. Directly-opened flags save the whole
+  // block with a new name's block at once (onVariantMatcherOp); a variant
+  // inside a section's field saves the new name first, then the field.
+  const handlePickNamedRule = async (pick: NamedRulePick) => {
+    if (onVariantMatcherOp?.selectNamedRule) {
+      await onVariantMatcherOp.selectNamedRule(wrapperRecord, safeIndex, pick);
+      return;
+    }
+    const rule = await namedSupport?.prepare(pick);
+    if (rule) onChange(updateVariantRule(wrapper, safeIndex, rule));
+  };
+  const named: NamedRulePickerProps | undefined =
+    namedSupport && namedSupport.kinds.length > 0
+      ? {
+          kinds: namedSupport.kinds,
+          selected: namedRuleOf(currentRule),
+          campaignPrefill: inlineDateWindow(currentRule),
+          onPick: handlePickNamedRule,
+        }
+      : undefined;
+  const namedRow = namedSupport
+    ? namedRuleRowState(currentRule, namedSupport.kinds)
+    : null;
+
   const handleRename = async (index: number, nextName: string) => {
     if (!onVariantMatcherOp) return;
     setRenamePending(true);
@@ -346,6 +379,8 @@ export function MultivariateFieldWrapper({
                 globals={globals}
                 onSelect={handleRuleChange}
                 onSelectGlobal={handleSelectGlobal}
+                named={named}
+                namedRow={namedRow}
                 schema={ruleSchema}
                 formValue={ruleFormValue}
                 onChange={handleRuleFormChange}
@@ -405,6 +440,8 @@ export function MultivariateFieldWrapper({
             globals={globals}
             onSelect={handleRuleChange}
             onSelectGlobal={handleSelectGlobal}
+            named={named}
+            namedRow={namedRow}
             schema={ruleSchema}
             formValue={ruleFormValue}
             onChange={handleRuleFormChange}

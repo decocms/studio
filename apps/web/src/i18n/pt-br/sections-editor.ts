@@ -65,6 +65,79 @@ export const sectionsEditor = {
   "sectionsEditor.formatMatcher.windowRange": "{start} – {end}",
   "sectionsEditor.formatMatcher.windowFrom": "a partir de {date}",
   "sectionsEditor.formatMatcher.windowUntil": "até {date}",
+  "sectionsEditor.namedRulePicker.abTestTitle": "Teste A/B",
+  "sectionsEditor.namedRulePicker.abTestDescription":
+    "Mostre esta variante para uma parte dos visitantes",
+  "sectionsEditor.namedRulePicker.dateTitle": "Data",
+  "sectionsEditor.namedRulePicker.dateDescription":
+    "Mostre esta variante enquanto uma campanha estiver no ar",
+  "sectionsEditor.namedRulePicker.back": "Todas as regras",
+  "sectionsEditor.namedRulePicker.searchTests":
+    "Busque seus testes ou digite um nome novo…",
+  "sectionsEditor.namedRulePicker.searchCampaigns":
+    "Busque suas campanhas ou digite um nome novo…",
+  "sectionsEditor.namedRulePicker.testsHeading": "Seus testes A/B",
+  "sectionsEditor.namedRulePicker.campaignsHeading": "Suas campanhas",
+  "sectionsEditor.namedRulePicker.noTests":
+    "Nenhum teste ainda. Digite um nome para criar um.",
+  "sectionsEditor.namedRulePicker.noCampaigns":
+    "Nenhuma campanha ainda. Digite um nome para criar uma.",
+  "sectionsEditor.namedRulePicker.createTest": "Criar teste “{name}”",
+  "sectionsEditor.namedRulePicker.createCampaign": "Criar campanha “{name}”",
+  "sectionsEditor.namedRulePicker.shareOfVisitors": "{share}% dos visitantes",
+  "sectionsEditor.namedRulePicker.alwaysRunning": "Sem datas: sempre no ar",
+  "sectionsEditor.namedRulePicker.conflictTests":
+    "Seu site tem um bloco chamado “experiments” que não é uma lista de testes A/B, então ainda não dá para adicionar testes. Renomeie esse bloco e volte aqui.",
+  "sectionsEditor.namedRulePicker.conflictCampaigns":
+    "Seu site tem um bloco chamado “campaigns” que não é uma lista de campanhas, então ainda não dá para adicionar campanhas. Renomeie esse bloco e volte aqui.",
+  "sectionsEditor.namedRulePicker.newTestTitle": "Novo teste A/B",
+  "sectionsEditor.namedRulePicker.newCampaignTitle": "Nova campanha",
+  "sectionsEditor.namedRulePicker.nameLabel": "Nome",
+  "sectionsEditor.namedRulePicker.shareLabel":
+    "Visitantes que veem esta variante (%)",
+  "sectionsEditor.namedRulePicker.shareHint":
+    "0 deixa o teste desligado, 100 mostra para todos. Você pode mudar depois em Experimentos.",
+  "sectionsEditor.namedRulePicker.startLabel": "Começa",
+  "sectionsEditor.namedRulePicker.endLabel": "Termina",
+  "sectionsEditor.namedRulePicker.windowHint":
+    "Deixe uma data vazia para manter aquele lado aberto. Os horários estão no fuso do seu computador.",
+  "sectionsEditor.namedRulePicker.nameEmpty": "Dê um nome.",
+  "sectionsEditor.namedRulePicker.nameTaken":
+    "Esse nome já está em uso. Escolha-o na lista.",
+  "sectionsEditor.namedRulePicker.nameReserved":
+    "Nomes não podem começar com dois sublinhados.",
+  "sectionsEditor.namedRulePicker.shareInvalid":
+    "Use um número inteiro de 0 a 100.",
+  "sectionsEditor.namedRulePicker.endBeforeStart":
+    "O fim precisa ser depois do começo.",
+  "sectionsEditor.namedRulePicker.createAndUse": "Criar e usar",
+  "sectionsEditor.namedRulePicker.cancel": "Voltar",
+  "sectionsEditor.namedRulePicker.createdTest": "Teste “{name}” adicionado",
+  "sectionsEditor.namedRulePicker.createdCampaign":
+    "Campanha “{name}” adicionada",
+  "sectionsEditor.namedRulePicker.createdHint":
+    "Está salvo no seu rascunho e vai ao ar quando você publicar.",
+  "sectionsEditor.namedRulePicker.openExperiments": "Abrir Experimentos",
+  "sectionsEditor.namedRulePicker.openCampaigns": "Abrir Campanhas",
+  "sectionsEditor.namedRulePicker.testRowHint":
+    "Para mudar quem vê, abra Experimentos.",
+  "sectionsEditor.namedRulePicker.campaignRowHint":
+    "Para mudar as datas, abra Campanhas.",
+  "sectionsEditor.namedRulePicker.missingTest":
+    "“{name}” ainda não é um dos seus testes, então esta variante não aparece. Escolha um teste acima ou crie este.",
+  "sectionsEditor.namedRulePicker.missingCampaign":
+    "“{name}” ainda não é uma das suas campanhas, então esta variante não aparece. Escolha uma campanha acima ou crie esta.",
+  "sectionsEditor.namedRulePicker.inlineDate":
+    "Estas datas ainda não são uma campanha, então esta variante não aparece. Escolha Data acima para usar uma campanha ou criar uma com estas datas.",
+  "sectionsEditor.namedRulePicker.fieldTests": "Seus testes A/B",
+  "sectionsEditor.namedRulePicker.fieldTestsHint":
+    "A seção recebe cada teste como ligado ou desligado para o visitante.",
+  "sectionsEditor.namedRulePicker.fieldCampaigns": "Suas campanhas",
+  "sectionsEditor.namedRulePicker.fieldCampaignsHint":
+    "A seção recebe cada campanha como no ar ou não.",
+  "sectionsEditor.namedRulePicker.fieldNone": "Nada",
+  "sectionsEditor.namedRulePicker.fieldPlaceholder":
+    "Escolha o que este campo lê",
   "sectionsEditor.namedRules.changedMeanwhile":
     "Isto mudou enquanto você editava",
   "sectionsEditor.namedRules.changedMeanwhileHint":

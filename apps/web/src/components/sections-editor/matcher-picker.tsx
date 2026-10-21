@@ -21,7 +21,21 @@ import {
 } from "./matcher-rules";
 import { globalSectionLabel } from "./page-list";
 import { formatMatcher } from "./format-matcher";
-import { readNamedRuleValues } from "./named-rules";
+import {
+  type CampaignWindow,
+  type NamedRuleKind,
+  readNamedRuleValues,
+} from "./named-rules";
+import {
+  type NamedRulePick,
+  type NamedRulePickerKind,
+  namedRuleMatchers,
+} from "./named-rule-picker";
+import {
+  NamedRuleCreateForm,
+  NamedRuleKindItems,
+  NamedRuleNameStep,
+} from "./named-rule-step";
 
 /**
  * A default of `[]` is a NEW array on every render, so anything derived from
@@ -158,6 +172,22 @@ function resolveCurrentMatcherIcon(
 /**
  * A button + CommandDialog that lets users pick a matcher type for a variant rule.
  */
+/** The picker's v8 "A/B test" and "Date" items (named-rule-picker.ts). */
+export interface NamedRulePickerProps {
+  kinds: NamedRulePickerKind[];
+  /** The test or campaign the variant's rule names now, if any. */
+  selected: { kind: NamedRuleKind; name: string } | null;
+  /** Dates a new campaign starts with (an inline date rule being moved). */
+  campaignPrefill?: CampaignWindow | null;
+  /** Writes the pick; resolves once saved (or refused, with its toast). */
+  onPick: (pick: NamedRulePick) => Promise<unknown> | void;
+}
+
+type PickerStep =
+  | { view: "rules" }
+  | { view: "names"; kind: NamedRuleKind }
+  | { view: "create"; kind: NamedRuleKind; name: string };
+
 export function MatcherPicker({
   currentRt,
   currentLabel,
@@ -166,6 +196,7 @@ export function MatcherPicker({
   globals = EMPTY_ARRAY,
   onSelect,
   onSelectGlobal,
+  named,
 }: {
   currentRt: string;
   currentLabel: string;
@@ -175,9 +206,41 @@ export function MatcherPicker({
   globals?: MatcherGlobalEntry[];
   onSelect: (resolveType: string) => void;
   onSelectGlobal?: (blockKey: string) => void;
+  /** v8 only: tests and campaigns by name. Absent, the picker is as before. */
+  named?: NamedRulePickerProps;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpenState] = useState(false);
+  const [step, setStep] = useState<PickerStep>({ view: "rules" });
+  const [pending, setPending] = useState(false);
+  const setOpen = (next: boolean) => {
+    setOpenState(next);
+    if (!next) setStep({ view: "rules" });
+  };
   const t = useT();
+  const namedKinds = named?.kinds ?? EMPTY_ARRAY;
+  // The named items stand in for the raw `experiment` and `date` rules.
+  const hiddenMatchers = namedRuleMatchers(namedKinds);
+  const listedMatchers =
+    hiddenMatchers.size > 0
+      ? matchers.filter((m) => !hiddenMatchers.has(m.resolveType))
+      : matchers;
+  const currentNamedKind =
+    !currentGlobalKey && named?.selected ? named.selected.kind : null;
+  const stepKind =
+    step.view === "rules"
+      ? null
+      : (namedKinds.find((k) => k.kind === step.kind) ?? null);
+
+  const handlePick = async (pick: NamedRulePick) => {
+    if (!named) return;
+    setPending(true);
+    try {
+      await named.onPick(pick);
+    } finally {
+      setPending(false);
+    }
+    setOpen(false);
+  };
   // A saved-block reference wins the trigger icon; otherwise fall back to the
   // built-in matcher module's icon.
   const currentGlobal = currentGlobalKey
@@ -219,84 +282,126 @@ export function MatcherPicker({
         className="sm:max-w-lg"
         filter={substringFilter}
       >
-        <CommandInput
-          placeholder={t("sectionsEditor.matcherPicker.searchRulesPlaceholder")}
-        />
-        <CommandList>
-          <CommandEmpty>
-            {t("sectionsEditor.matcherPicker.noRulesFound")}
-          </CommandEmpty>
-          <CommandGroup>
-            <CommandItem
-              value={`${t("sectionsEditor.matcherPicker.alwaysLabel")} ${t("sectionsEditor.matcherPicker.targetAllUsers")}`}
-              onSelect={() => handleSelect("")}
-              className={cn(
-                "gap-2.5",
-                !currentRt && !currentGlobalKey && "bg-accent/60",
+        {step.view === "names" && stepKind ? (
+          <NamedRuleNameStep
+            key={stepKind.kind}
+            kind={stepKind}
+            currentName={
+              named?.selected?.kind === stepKind.kind
+                ? named.selected.name
+                : null
+            }
+            onBack={() => setStep({ view: "rules" })}
+            onPick={(name) =>
+              void handlePick({ kind: stepKind.kind, name } as NamedRulePick)
+            }
+            onCreate={(name) =>
+              setStep({ view: "create", kind: stepKind.kind, name })
+            }
+          />
+        ) : step.view === "create" && stepKind ? (
+          <NamedRuleCreateForm
+            kind={stepKind.kind}
+            initialName={step.name}
+            existingNames={stepKind.entries.map((e) => e.name)}
+            prefill={
+              stepKind.kind === "campaigns" ? named?.campaignPrefill : null
+            }
+            pending={pending}
+            onBack={() => setStep({ view: "names", kind: stepKind.kind })}
+            onSubmit={(pick) => void handlePick(pick)}
+          />
+        ) : (
+          <>
+            <CommandInput
+              placeholder={t(
+                "sectionsEditor.matcherPicker.searchRulesPlaceholder",
               )}
-            >
-              <MatcherIcon iconName={ALWAYS_MATCHER_ICON} size="sm" />
-              <div className="flex min-w-0 flex-1 flex-col">
-                <span className="text-sm">
-                  {t("sectionsEditor.matcherPicker.alwaysLabel")}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {t("sectionsEditor.matcherPicker.targetAllUsers")}
-                </span>
-              </div>
-            </CommandItem>
-            {matchers.map((matcher) => (
-              <CommandItem
-                key={matcher.resolveType}
-                value={`${matcher.title} ${matcher.resolveType} ${matcher.description ?? ""}`}
-                onSelect={() => handleSelect(matcher.resolveType)}
-                className={cn(
-                  "gap-2.5",
-                  !currentGlobalKey &&
-                    currentRt === matcher.resolveType &&
-                    "bg-accent/60",
-                )}
-              >
-                <MatcherIcon iconName={matcher.iconName} size="sm" />
-                <div className="flex min-w-0 flex-1 flex-col">
-                  <span className="text-sm">{matcher.title}</span>
-                  {matcher.description && (
-                    <span className="truncate text-xs text-muted-foreground">
-                      {matcher.description}
-                    </span>
-                  )}
-                </div>
-              </CommandItem>
-            ))}
-          </CommandGroup>
-          {globals.length > 0 && (
-            <CommandGroup
-              heading={t("sectionsEditor.matcherPicker.savedRulesHeading")}
-            >
-              {globals.map((global) => (
+            />
+            <CommandList>
+              <CommandEmpty>
+                {t("sectionsEditor.matcherPicker.noRulesFound")}
+              </CommandEmpty>
+              <CommandGroup>
                 <CommandItem
-                  key={global.blockKey}
-                  value={`${global.title} ${global.blockKey} ${global.description ?? ""}`}
-                  onSelect={() => handleSelectGlobal(global.blockKey)}
+                  value={`${t("sectionsEditor.matcherPicker.alwaysLabel")} ${t("sectionsEditor.matcherPicker.targetAllUsers")}`}
+                  onSelect={() => handleSelect("")}
                   className={cn(
                     "gap-2.5",
-                    currentGlobalKey === global.blockKey && "bg-accent/60",
+                    !currentRt && !currentGlobalKey && "bg-accent/60",
                   )}
                 >
-                  <MatcherIcon iconName={global.iconName} size="sm" />
+                  <MatcherIcon iconName={ALWAYS_MATCHER_ICON} size="sm" />
                   <div className="flex min-w-0 flex-1 flex-col">
-                    <span className="truncate text-sm">{global.title}</span>
-                    {global.description && (
-                      <span className="truncate text-xs text-muted-foreground">
-                        {global.description}
-                      </span>
-                    )}
+                    <span className="text-sm">
+                      {t("sectionsEditor.matcherPicker.alwaysLabel")}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {t("sectionsEditor.matcherPicker.targetAllUsers")}
+                    </span>
                   </div>
                 </CommandItem>
-              ))}
-            </CommandGroup>
-          )}
-        </CommandList>
+                {namedKinds.length > 0 && (
+                  <NamedRuleKindItems
+                    kinds={namedKinds}
+                    currentKind={currentNamedKind}
+                    onOpen={(kind) => setStep({ view: "names", kind })}
+                  />
+                )}
+                {listedMatchers.map((matcher) => (
+                  <CommandItem
+                    key={matcher.resolveType}
+                    value={`${matcher.title} ${matcher.resolveType} ${matcher.description ?? ""}`}
+                    onSelect={() => handleSelect(matcher.resolveType)}
+                    className={cn(
+                      "gap-2.5",
+                      !currentGlobalKey &&
+                        currentRt === matcher.resolveType &&
+                        "bg-accent/60",
+                    )}
+                  >
+                    <MatcherIcon iconName={matcher.iconName} size="sm" />
+                    <div className="flex min-w-0 flex-1 flex-col">
+                      <span className="text-sm">{matcher.title}</span>
+                      {matcher.description && (
+                        <span className="truncate text-xs text-muted-foreground">
+                          {matcher.description}
+                        </span>
+                      )}
+                    </div>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+              {globals.length > 0 && (
+                <CommandGroup
+                  heading={t("sectionsEditor.matcherPicker.savedRulesHeading")}
+                >
+                  {globals.map((global) => (
+                    <CommandItem
+                      key={global.blockKey}
+                      value={`${global.title} ${global.blockKey} ${global.description ?? ""}`}
+                      onSelect={() => handleSelectGlobal(global.blockKey)}
+                      className={cn(
+                        "gap-2.5",
+                        currentGlobalKey === global.blockKey && "bg-accent/60",
+                      )}
+                    >
+                      <MatcherIcon iconName={global.iconName} size="sm" />
+                      <div className="flex min-w-0 flex-1 flex-col">
+                        <span className="truncate text-sm">{global.title}</span>
+                        {global.description && (
+                          <span className="truncate text-xs text-muted-foreground">
+                            {global.description}
+                          </span>
+                        )}
+                      </div>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              )}
+            </CommandList>
+          </>
+        )}
       </CommandDialog>
     </>
   );

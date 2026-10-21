@@ -12,6 +12,10 @@ import { EnumField } from "./fields/enum-field";
 import { ArrayField } from "./fields/array-field";
 import { ObjectField } from "./fields/object-field";
 import { AnyOfField } from "./fields/any-of-field";
+import {
+  fitsNamedRuleBlock,
+  NamedRuleBlockFieldGate,
+} from "./fields/named-rule-block-field";
 import { DynamicOptionsField } from "./fields/dynamic-options-field";
 import { FileField } from "./fields/file-field";
 import { ImageField } from "./fields/image-field";
@@ -164,7 +168,22 @@ function renderResolvedBlockRefValue(props: FieldProps): ReactNode | null {
   );
 }
 
-export function renderField(fieldProps: FieldProps) {
+export function renderField(fieldProps: FieldProps): ReactNode {
+  // A prop that can read the site's tests or campaigns as a whole: the
+  // editor's named-rule support decides (NamedRuleBlockFieldGate).
+  if (fitsNamedRuleBlock(fieldProps.schema)) {
+    return (
+      <NamedRuleBlockFieldGate
+        key={fieldProps.path}
+        {...fieldProps}
+        fallback={renderFieldBody}
+      />
+    );
+  }
+  return renderFieldBody(fieldProps);
+}
+
+function renderFieldBody(fieldProps: FieldProps): ReactNode {
   const props = {
     ...fieldProps,
     schema: expandRecursiveSchema(fieldProps.schema, fieldProps.meta),

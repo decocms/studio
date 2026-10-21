@@ -12,6 +12,7 @@ import {
 } from "@decocms/blocks/protocol";
 import { KEYS } from "@/lib/query-keys";
 import { planNamedRuleRename } from "./rule-references";
+import { planNamedRulePick } from "./named-rule-picker";
 import type { ProtocolBackend } from "./content-backend";
 import { resetContentSync } from "./content-sync";
 import * as realBackend from "./use-content-backend";
@@ -244,6 +245,30 @@ describe("useApplyNamedRule", () => {
     expect(
       queryClient.getQueryData(KEYS.contentVersions(CACHE_KEY)),
     ).toMatchObject({ experiments: "experiments@1", home: "home@1" });
+  });
+
+  it("a test created in the rule picker lands with the page in one guarded write", async () => {
+    const { result } = setup();
+    const plan = planNamedRulePick(
+      { home },
+      { kind: "experiments", name: "hero", create: { share: 50 } },
+    );
+    if (!plan.ok || !plan.blockWrite) throw new Error("expected a create");
+    const carrier = page(plan.rule);
+    await act(async () => {
+      await result.current.apply({
+        writes: {
+          home: carrier,
+          [plan.blockWrite!.blockKey]: plan.blockWrite!.block,
+        },
+      });
+    });
+    expect(server.applied).toEqual([
+      {
+        set: { home: homeWithTest, experiments },
+        ifMatch: { home: "home@0", experiments: null },
+      },
+    ]);
   });
 
   it("writes nothing over a test created meanwhile, and shows what is stored", async () => {

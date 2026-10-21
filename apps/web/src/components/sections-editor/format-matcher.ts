@@ -121,7 +121,7 @@ function formatDateRange(rule: Record<string, unknown>): string | null {
  * The year is left out when every bound falls in the current one, as a
  * campaign usually does ("Nov 27 – Dec 1").
  */
-function formatWindow(window: CampaignWindow): string | null {
+export function formatCampaignWindow(window: CampaignWindow): string | null {
   const startDate = parseDate(window.start ?? "");
   const endDate = parseDate(window.end ?? "");
   if (!startDate && !endDate) return null;
@@ -186,7 +186,7 @@ function formatCampaign(
   if (!name) return translate("sectionsEditor.formatMatcher.campaign");
   const window =
     named && Object.hasOwn(named.campaigns, name)
-      ? formatWindow(named.campaigns[name]!)
+      ? formatCampaignWindow(named.campaigns[name]!)
       : null;
   return window === null
     ? translate("sectionsEditor.formatMatcher.campaignNamed", { name })

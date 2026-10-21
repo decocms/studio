@@ -61,6 +61,78 @@ export const sectionsEditor = {
   "sectionsEditor.formatMatcher.windowRange": "{start} – {end}",
   "sectionsEditor.formatMatcher.windowFrom": "from {date}",
   "sectionsEditor.formatMatcher.windowUntil": "until {date}",
+  "sectionsEditor.namedRulePicker.abTestTitle": "A/B test",
+  "sectionsEditor.namedRulePicker.abTestDescription":
+    "Show this variant to a share of visitors",
+  "sectionsEditor.namedRulePicker.dateTitle": "Date",
+  "sectionsEditor.namedRulePicker.dateDescription":
+    "Show this variant while a campaign is running",
+  "sectionsEditor.namedRulePicker.back": "All rules",
+  "sectionsEditor.namedRulePicker.searchTests":
+    "Search your tests or type a new name…",
+  "sectionsEditor.namedRulePicker.searchCampaigns":
+    "Search your campaigns or type a new name…",
+  "sectionsEditor.namedRulePicker.testsHeading": "Your A/B tests",
+  "sectionsEditor.namedRulePicker.campaignsHeading": "Your campaigns",
+  "sectionsEditor.namedRulePicker.noTests":
+    "No tests yet. Type a name to create one.",
+  "sectionsEditor.namedRulePicker.noCampaigns":
+    "No campaigns yet. Type a name to create one.",
+  "sectionsEditor.namedRulePicker.createTest": "Create test “{name}”",
+  "sectionsEditor.namedRulePicker.createCampaign": "Create campaign “{name}”",
+  "sectionsEditor.namedRulePicker.shareOfVisitors": "{share}% of visitors",
+  "sectionsEditor.namedRulePicker.alwaysRunning": "No dates: always running",
+  "sectionsEditor.namedRulePicker.conflictTests":
+    "Your site has a block named “experiments” that isn't a list of A/B tests, so tests can't be added yet. Rename that block, then come back here.",
+  "sectionsEditor.namedRulePicker.conflictCampaigns":
+    "Your site has a block named “campaigns” that isn't a list of campaigns, so campaigns can't be added yet. Rename that block, then come back here.",
+  "sectionsEditor.namedRulePicker.newTestTitle": "New A/B test",
+  "sectionsEditor.namedRulePicker.newCampaignTitle": "New campaign",
+  "sectionsEditor.namedRulePicker.nameLabel": "Name",
+  "sectionsEditor.namedRulePicker.shareLabel":
+    "Visitors who see this variant (%)",
+  "sectionsEditor.namedRulePicker.shareHint":
+    "0 keeps the test off, 100 shows it to everyone. You can change it later in Experiments.",
+  "sectionsEditor.namedRulePicker.startLabel": "Starts",
+  "sectionsEditor.namedRulePicker.endLabel": "Ends",
+  "sectionsEditor.namedRulePicker.windowHint":
+    "Leave a date empty to keep that side open. Times are in your computer's time zone.",
+  "sectionsEditor.namedRulePicker.nameEmpty": "Give it a name.",
+  "sectionsEditor.namedRulePicker.nameTaken":
+    "That name is already in use. Pick it from the list instead.",
+  "sectionsEditor.namedRulePicker.nameReserved":
+    "Names can't start with two underscores.",
+  "sectionsEditor.namedRulePicker.shareInvalid":
+    "Use a whole number from 0 to 100.",
+  "sectionsEditor.namedRulePicker.endBeforeStart":
+    "The end needs to be after the start.",
+  "sectionsEditor.namedRulePicker.createAndUse": "Create and use",
+  "sectionsEditor.namedRulePicker.cancel": "Back",
+  "sectionsEditor.namedRulePicker.createdTest": "Test “{name}” added",
+  "sectionsEditor.namedRulePicker.createdCampaign": "Campaign “{name}” added",
+  "sectionsEditor.namedRulePicker.createdHint":
+    "It's saved in your draft and goes live when you publish.",
+  "sectionsEditor.namedRulePicker.openExperiments": "Open Experiments",
+  "sectionsEditor.namedRulePicker.openCampaigns": "Open Campaigns",
+  "sectionsEditor.namedRulePicker.testRowHint":
+    "To change who sees it, open Experiments.",
+  "sectionsEditor.namedRulePicker.campaignRowHint":
+    "To change its dates, open Campaigns.",
+  "sectionsEditor.namedRulePicker.missingTest":
+    "“{name}” isn't one of your tests yet, so this variant doesn't show. Pick a test above, or create it.",
+  "sectionsEditor.namedRulePicker.missingCampaign":
+    "“{name}” isn't one of your campaigns yet, so this variant doesn't show. Pick a campaign above, or create it.",
+  "sectionsEditor.namedRulePicker.inlineDate":
+    "These dates aren't a campaign yet, so this variant doesn't show. Choose Date above to pick a campaign, or create one with these dates.",
+  "sectionsEditor.namedRulePicker.fieldTests": "Your A/B tests",
+  "sectionsEditor.namedRulePicker.fieldTestsHint":
+    "The section gets each test as on or off for the visitor.",
+  "sectionsEditor.namedRulePicker.fieldCampaigns": "Your campaigns",
+  "sectionsEditor.namedRulePicker.fieldCampaignsHint":
+    "The section gets each campaign as running or not.",
+  "sectionsEditor.namedRulePicker.fieldNone": "Nothing",
+  "sectionsEditor.namedRulePicker.fieldPlaceholder":
+    "Choose what this field reads",
   "sectionsEditor.namedRules.changedMeanwhile":
     "This changed while you were editing",
   "sectionsEditor.namedRules.changedMeanwhileHint":

@@ -3,7 +3,12 @@ import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Suspense, lazy, useState } from "react";
 import { type Query } from "@tanstack/react-query";
-import { useSearch } from "@tanstack/react-router";
+import { useNavigate, useSearch } from "@tanstack/react-router";
+import { PROJECT_ROUTE } from "@/hooks/use-destination-route";
+import {
+  type NamedRuleViews,
+  NamedRuleViewsProvider,
+} from "@/components/sections-editor/named-rule-step";
 import {
   AlertCircle,
   CornerUpRight,
@@ -429,6 +434,22 @@ function ContentBrowserReady({
   );
   const blogAi = useBlogAi();
   const activeCollection = visibleCollection(storedCollection, blogAi);
+  const navigate = useNavigate();
+  // Where a variant's test or campaign is managed: the Experiments tab, and
+  // the Campaigns view (the calendar collection on this line).
+  const namedRuleViews: NamedRuleViews = {
+    open: (kind) => {
+      if (kind === "campaigns") {
+        setSelection(null);
+        setActiveCollection("calendar");
+        return;
+      }
+      void navigate({
+        to: PROJECT_ROUTE.experiments,
+        params: { org: orgSlug, agentId: virtualMcpId },
+      });
+    },
+  };
   const [selection, setSelection] = useState<Selection>(() =>
     contentDeepLink.contentItem && isBlogKind(activeCollection)
       ? { collection: activeCollection, key: contentDeepLink.contentItem }
@@ -1341,36 +1362,38 @@ function ContentBrowserReady({
                   block={decofile[selection.key] as Record<string, unknown>}
                 />
               ) : (
-                <SectionsEditor
-                  key={
-                    selection.collection === "pages"
-                      ? `page:${selection.key}`
-                      : `section:${selection.key}`
-                  }
-                  orgSlug={orgSlug}
-                  virtualMcpId={virtualMcpId}
-                  branch={branch}
-                  previewReady
-                  previewUrl={previewUrl ?? undefined}
-                  currentPath={
-                    selection.collection === "pages" ? selection.path : "/"
-                  }
-                  activePageBlockKey={
-                    selection.collection === "pages" ? selection.key : null
-                  }
-                  activeGlobalBlockKey={
-                    selection.collection === "sections" ? selection.key : null
-                  }
-                  initialEditSeo={
-                    selection.collection === "pages" &&
-                    openPageSeoKey === selection.key
-                  }
-                  onExitSeo={() => setOpenPageSeoKey(null)}
-                  onSelectRoot={() => {
-                    setSelection(null);
-                    setOpenPageSeoKey(null);
-                  }}
-                />
+                <NamedRuleViewsProvider value={namedRuleViews}>
+                  <SectionsEditor
+                    key={
+                      selection.collection === "pages"
+                        ? `page:${selection.key}`
+                        : `section:${selection.key}`
+                    }
+                    orgSlug={orgSlug}
+                    virtualMcpId={virtualMcpId}
+                    branch={branch}
+                    previewReady
+                    previewUrl={previewUrl ?? undefined}
+                    currentPath={
+                      selection.collection === "pages" ? selection.path : "/"
+                    }
+                    activePageBlockKey={
+                      selection.collection === "pages" ? selection.key : null
+                    }
+                    activeGlobalBlockKey={
+                      selection.collection === "sections" ? selection.key : null
+                    }
+                    initialEditSeo={
+                      selection.collection === "pages" &&
+                      openPageSeoKey === selection.key
+                    }
+                    onExitSeo={() => setOpenPageSeoKey(null)}
+                    onSelectRoot={() => {
+                      setSelection(null);
+                      setOpenPageSeoKey(null);
+                    }}
+                  />
+                </NamedRuleViewsProvider>
               )
             ) : (
               <EmptyMessage

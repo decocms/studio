@@ -86,7 +86,29 @@ import { PageSeoForm } from "./page-seo-form";
 import { extractMatcherGlobals, extractMatchers } from "./matcher-picker";
 import { PageVariantTabs, VariantTabIcon } from "./page-variant-tabs";
 import { MakeReusableModal } from "./make-reusable-modal";
-import { errorDetail, errorDetailsDescription } from "./site-editor-toast";
+import {
+  errorDetail,
+  errorDetailsDescription,
+  SITE_EDITOR_SAVE_TOAST,
+} from "./site-editor-toast";
+import {
+  inlineDateWindow,
+  type NamedRulePick,
+  namedRulePickerKinds,
+  namedRuleRowState,
+  planNamedRulePick,
+} from "./named-rule-picker";
+import type { NamedRulePickerProps } from "./matcher-picker";
+import {
+  NamedRuleFieldProvider,
+  type NamedRuleFieldSupport,
+} from "./named-rule-step";
+import {
+  namedRuleKindInfo,
+  namedRuleOf,
+  readNamedRuleBlock,
+} from "./named-rules";
+import { useApplyNamedRule } from "./use-apply-named-rule";
 import { AddSectionModal } from "./add-section-modal";
 import { useSectionPreviewBase } from "./use-section-preview-base";
 import { useContentBackend } from "./use-content-backend";
@@ -528,6 +550,7 @@ export function SectionsEditor({
     );
   });
   const deleteBlock = useDeleteBlock({ orgSlug, virtualMcpId, branch });
+  const applyNamedRule = useApplyNamedRule({ orgSlug, virtualMcpId, branch });
   const [renameVariantPending, setRenameVariantPending] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingSectionSaveRef = useRef<{
@@ -2336,6 +2359,22 @@ export function SectionsEditor({
   const availableMatchers = meta ? extractMatchers(meta) : [];
   const availableMatcherGlobals =
     meta && decofile ? extractMatcherGlobals(meta, decofile) : [];
+  // v8: the picker's "A/B test" and "Date" (none on v7 or an older schema).
+  const namedRuleKinds =
+    meta && decofile ? namedRulePickerKinds(meta, decofile) : [];
+  const namedRulePropsFor = (
+    rule: unknown,
+    onPick: (pick: NamedRulePick) => Promise<void>,
+  ): NamedRulePickerProps | undefined => {
+    if (namedRuleKinds.length === 0) return undefined;
+    const named = namedRuleOf(rule);
+    return {
+      kinds: namedRuleKinds,
+      selected: named,
+      campaignPrefill: inlineDateWindow(rule),
+      onPick,
+    };
+  };
   const canAddSection =
     !isGlobalBlockMode && !!(galleryAvailable && meta && decofile);
 
@@ -2461,6 +2500,141 @@ export function SectionsEditor({
       ? { __resolveType: ruleResolveType, ...next }
       : { ...next };
     scheduleRuleSave(newRule);
+  };
+
+  /**
+   * Writes a pick from the rule picker's "A/B test" or "Date": the block that
+   * carries the variant (built by `withRule`) and, for a new name, the
+   * `experiments`/`campaigns` block, in ONE guarded save to the draft. A
+   * refused save says so in one toast and changes nothing.
+   */
+  const saveNamedRulePick = async (
+    pick: NamedRulePick,
+    latestDecofile: Record<string, unknown>,
+    /** The carrier with the rule; `undefined` when the caller places it. */
+    withRule:
+      | ((
+          rule: Record<string, unknown>,
+        ) => { blockKey: string; data: Record<string, unknown> } | null)
+      | undefined,
+  ): Promise<{
+    rule: Record<string, unknown>;
+    projected: Record<string, unknown>;
+  } | null> => {
+    const plan = planNamedRulePick(latestDecofile, pick);
+    if (!plan.ok) {
+      if (plan.reason === "conflict") {
+        toast.info(
+          pick.kind === "experiments"
+            ? t("sectionsEditor.namedRulePicker.conflictTests")
+            : t("sectionsEditor.namedRulePicker.conflictCampaigns"),
+          { id: SITE_EDITOR_SAVE_TOAST },
+        );
+      }
+      return null;
+    }
+    const writes: Record<string, Record<string, unknown>> = {};
+    if (withRule) {
+      const target = withRule(plan.rule);
+      if (!target) return null;
+      writes[target.blockKey] = target.data;
+    }
+    if (plan.blockWrite) {
+      writes[plan.blockWrite.blockKey] = plan.blockWrite.block;
+    }
+    if (Object.keys(writes).length > 0) {
+      const outcome = await applyNamedRule.apply({ writes });
+      if (!outcome.ok) return null;
+    }
+    if (plan.blockWrite) {
+      toast.success(
+        pick.kind === "experiments"
+          ? t("sectionsEditor.namedRulePicker.createdTest", {
+              name: pick.name.trim(),
+            })
+          : t("sectionsEditor.namedRulePicker.createdCampaign", {
+              name: pick.name.trim(),
+            }),
+        {
+          id: SITE_EDITOR_SAVE_TOAST,
+          description: t("sectionsEditor.namedRulePicker.createdHint"),
+        },
+      );
+    }
+    return { rule: plan.rule, projected: { ...latestDecofile, ...writes } };
+  };
+
+  /**
+   * A variant inside a section's field: a new name's block is saved first
+   * (guarded); the rule then goes into the field and is saved with the form.
+   */
+  const namedRuleFieldSupport: NamedRuleFieldSupport | null =
+    namedRuleKinds.length > 0
+      ? {
+          kinds: namedRuleKinds,
+          prepare: async (pick) => {
+            const saved = await saveNamedRulePick(
+              pick,
+              latestRef.current.decofile,
+              undefined,
+            );
+            return saved?.rule ?? null;
+          },
+          ensureBlock: async (kind) => {
+            const block = readNamedRuleBlock(latestRef.current.decofile, kind);
+            if (block.kind === "saved") return true;
+            if (block.kind === "conflict") return false;
+            const outcome = await applyNamedRule.apply({
+              writes: { [namedRuleKindInfo(kind).blockKey]: block.block },
+            });
+            return outcome.ok;
+          },
+        }
+      : null;
+
+  /** The active page variant's rule names a test or campaign (picked or created). */
+  const handlePageVariantPickNamedRule = async (pick: NamedRulePick) => {
+    cancelPendingRuleSaves();
+    const {
+      activePageKey: pageKey,
+      decofile: latestDecofile,
+      variantIndex,
+    } = latestRef.current;
+    if (!pageKey) return;
+    let prevBlockKey: string | null = null;
+    const saved = await saveNamedRulePick(pick, latestDecofile, (rule) => {
+      const fullPageData = latestDecofile[pageKey] as Record<string, unknown>;
+      const current = fullPageData?.sections;
+      if (!current || typeof current !== "object" || Array.isArray(current)) {
+        return null;
+      }
+      const mv = current as Record<string, unknown>;
+      if (!Array.isArray(mv.variants)) return null;
+      const variants = [...(mv.variants as Array<Record<string, unknown>>)];
+      const target = variants[variantIndex];
+      if (!target) return null;
+      prevBlockKey = getSavedMatcherBlockKey(
+        target.rule as Record<string, unknown> | undefined,
+        latestDecofile,
+        meta,
+      );
+      variants[variantIndex] = { ...target, rule };
+      return {
+        blockKey: pageKey,
+        data: { ...fullPageData, sections: { ...mv, variants } },
+      };
+    });
+    if (!saved) return;
+    const { resolveType, formValue } = readMatcherRuleFormState(
+      saved.rule,
+      saved.projected,
+      meta ?? undefined,
+    );
+    setRuleResolveType(resolveType);
+    setRuleFormValue(formValue);
+    if (prevBlockKey)
+      await cleanupOrphanMatcherBlock(prevBlockKey, saved.projected);
+    onSaved?.();
   };
 
   /**
@@ -2637,6 +2811,69 @@ export function SectionsEditor({
       ? { __resolveType: sectionRuleResolveType, ...next }
       : { ...next };
     scheduleSectionRuleSave(newRule);
+  };
+
+  /** The active section variant's rule names a test or campaign. */
+  const handleSectionVariantPickNamedRule = async (pick: NamedRulePick) => {
+    cancelPendingRuleSaves();
+    const {
+      selectedSectionIndex: targetSectionIndex,
+      sectionVariantIndex: targetSectionVariantIndex,
+      rawSections: latestRawSections,
+      parsedSections: latestParsedSections,
+      decofile: latestDecofile,
+      activePageKey: pageKey,
+      pageVariants: latestVariants,
+      variantIndex: latestVariantIndex,
+    } = latestRef.current;
+    if (targetSectionIndex === null || !pageKey) return;
+    let prevBlockKey: string | null = null;
+    const saved = await saveNamedRulePick(pick, latestDecofile, (rule) => {
+      const rawSection = latestRawSections[targetSectionIndex];
+      const parsed = latestParsedSections[targetSectionIndex];
+      if (!rawSection || !parsed?.isMultivariate) return null;
+      const mvObj = getMultivariateSectionObject(rawSection, parsed);
+      if (!mvObj) return null;
+      const variants = (mvObj.variants as Array<Record<string, unknown>>) ?? [];
+      prevBlockKey = getSavedMatcherBlockKey(
+        variants[targetSectionVariantIndex]?.rule as
+          | Record<string, unknown>
+          | undefined,
+        latestDecofile,
+        meta,
+      );
+      const updatedSections = [...latestRawSections];
+      updatedSections[targetSectionIndex] = rebuildSectionWithMultivariate(
+        rawSection,
+        parsed,
+        updateMultivariateSectionVariantRule(
+          mvObj,
+          targetSectionVariantIndex,
+          rule,
+        ),
+      );
+      return {
+        blockKey: pageKey,
+        data: buildPageDataWithSections(
+          latestDecofile,
+          pageKey,
+          updatedSections,
+          latestVariantIndex,
+          latestVariants,
+        ),
+      };
+    });
+    if (!saved) return;
+    const { resolveType, formValue } = readMatcherRuleFormState(
+      saved.rule,
+      saved.projected,
+      meta ?? undefined,
+    );
+    setSectionRuleResolveType(resolveType);
+    setSectionRuleFormValue(formValue);
+    if (prevBlockKey)
+      await cleanupOrphanMatcherBlock(prevBlockKey, saved.projected);
+    onSaved?.();
   };
 
   /**
@@ -3650,9 +3887,53 @@ export function SectionsEditor({
     }
   };
 
+  /**
+   * A variant's rule inside a directly-opened section flag (global-block
+   * mode) names a test or campaign: the whole block and, for a new name, the
+   * `experiments`/`campaigns` block in one guarded save.
+   */
+  const handleFieldVariantPickNamedRule = async (
+    wrapperValue: Record<string, unknown>,
+    variantIndex: number,
+    pick: NamedRulePick,
+  ) => {
+    cancelPendingRuleSaves();
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
+    waitingFormSavesRef.current.clear();
+    const { activePageKey: targetBlockKey, decofile: latestDecofile } =
+      latestRef.current;
+    if (!targetBlockKey) return;
+    let prevBlockKey: string | null = null;
+    let data: Record<string, unknown> | null = null;
+    const saved = await saveNamedRulePick(pick, latestDecofile, (rule) => {
+      const variants = Array.isArray(wrapperValue.variants)
+        ? [...(wrapperValue.variants as Array<Record<string, unknown>>)]
+        : [];
+      const target = variants[variantIndex];
+      if (!target) return null;
+      prevBlockKey = getSavedMatcherBlockKey(
+        target.rule as Record<string, unknown> | undefined,
+        latestDecofile,
+        meta,
+      );
+      variants[variantIndex] = { ...target, rule };
+      data = { ...wrapperValue, variants };
+      return { blockKey: targetBlockKey, data };
+    });
+    if (!saved || !data) return;
+    setFormValue(data);
+    if (prevBlockKey)
+      await cleanupOrphanMatcherBlock(prevBlockKey, saved.projected);
+    onSaved?.();
+  };
+
   const fieldVariantMatcherOps: VariantMatcherOps = {
     rename: handleRenameFieldVariantMatcher,
     selectGlobal: handleFieldVariantSelectGlobal,
+    selectNamedRule: handleFieldVariantPickNamedRule,
   };
 
   const exitSectionEditing = () => {
@@ -3947,6 +4228,11 @@ export function SectionsEditor({
               globals={availableMatcherGlobals}
               onSelect={handleMatcherTypeChange}
               onSelectGlobal={handlePageVariantSelectGlobal}
+              named={namedRulePropsFor(
+                activeVariant?.rule,
+                handlePageVariantPickNamedRule,
+              )}
+              namedRow={namedRuleRowState(activeVariant?.rule, namedRuleKinds)}
               schema={ruleSchema}
               formValue={ruleFormValue}
               onChange={handleRuleFormChange}
@@ -4003,6 +4289,14 @@ export function SectionsEditor({
           globals={availableMatcherGlobals}
           onSelect={handleSectionMatcherTypeChange}
           onSelectGlobal={handleSectionVariantSelectGlobal}
+          named={namedRulePropsFor(
+            activeSectionFlagVariant?.rule,
+            handleSectionVariantPickNamedRule,
+          )}
+          namedRow={namedRuleRowState(
+            activeSectionFlagVariant?.rule,
+            namedRuleKinds,
+          )}
           schema={sectionRuleSchema}
           formValue={sectionRuleFormValue}
           onChange={handleSectionRuleFormChange}
@@ -4185,6 +4479,14 @@ export function SectionsEditor({
                 globals={availableMatcherGlobals}
                 onSelect={handleMatcherTypeChange}
                 onSelectGlobal={handlePageVariantSelectGlobal}
+                named={namedRulePropsFor(
+                  activeVariant?.rule,
+                  handlePageVariantPickNamedRule,
+                )}
+                namedRow={namedRuleRowState(
+                  activeVariant?.rule,
+                  namedRuleKinds,
+                )}
                 schema={ruleSchema}
                 formValue={ruleFormValue}
                 onChange={handleRuleFormChange}
@@ -4390,26 +4692,28 @@ export function SectionsEditor({
               sectionFlagVariants.length > 0 &&
               fieldBreadcrumbs.length === 0 &&
               sectionVariantsPanel}
-            <SchemaFormPanel
-              activeSchema={activeSchema}
-              formValue={formValue}
-              formResetKey={formResetKey}
-              onFormChange={handleFormChange}
-              onBreadcrumbChange={setFieldBreadcrumbs}
-              breadcrumbPath={fieldBreadcrumbs}
-              emptyMessage={t(
-                "sectionsEditor.sectionsEditor.noEditableFieldsForVariant",
-              )}
-              meta={meta}
-              decofile={decofile}
-              onSaveReferencedBlock={saveReferencedBlock}
-              sandbox={sandbox}
-              previewBaseUrl={sectionPreviewBase}
-              onRequestAddSection={handleRequestAddSection}
-              onVariantMatcherOp={
-                isGlobalBlockMode ? fieldVariantMatcherOps : undefined
-              }
-            />
+            <NamedRuleFieldProvider value={namedRuleFieldSupport}>
+              <SchemaFormPanel
+                activeSchema={activeSchema}
+                formValue={formValue}
+                formResetKey={formResetKey}
+                onFormChange={handleFormChange}
+                onBreadcrumbChange={setFieldBreadcrumbs}
+                breadcrumbPath={fieldBreadcrumbs}
+                emptyMessage={t(
+                  "sectionsEditor.sectionsEditor.noEditableFieldsForVariant",
+                )}
+                meta={meta}
+                decofile={decofile}
+                onSaveReferencedBlock={saveReferencedBlock}
+                sandbox={sandbox}
+                previewBaseUrl={sectionPreviewBase}
+                onRequestAddSection={handleRequestAddSection}
+                onVariantMatcherOp={
+                  isGlobalBlockMode ? fieldVariantMatcherOps : undefined
+                }
+              />
+            </NamedRuleFieldProvider>
           </ScrollArea>
         ) : isGlobalBlockMode ? (
           <ScrollArea
@@ -4418,23 +4722,25 @@ export function SectionsEditor({
             onBlur={handleFormBlur}
             className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block"
           >
-            <SchemaFormPanel
-              activeSchema={activeSchema}
-              formValue={formValue}
-              formResetKey={formResetKey}
-              onFormChange={handleFormChange}
-              onBreadcrumbChange={setFieldBreadcrumbs}
-              breadcrumbPath={fieldBreadcrumbs}
-              emptyMessage={t(
-                "sectionsEditor.sectionsEditor.noEditableFieldsForGlobalBlock",
-              )}
-              meta={meta}
-              decofile={decofile}
-              onSaveReferencedBlock={saveReferencedBlock}
-              sandbox={sandbox}
-              previewBaseUrl={sectionPreviewBase}
-              onRequestAddSection={handleRequestAddSection}
-            />
+            <NamedRuleFieldProvider value={namedRuleFieldSupport}>
+              <SchemaFormPanel
+                activeSchema={activeSchema}
+                formValue={formValue}
+                formResetKey={formResetKey}
+                onFormChange={handleFormChange}
+                onBreadcrumbChange={setFieldBreadcrumbs}
+                breadcrumbPath={fieldBreadcrumbs}
+                emptyMessage={t(
+                  "sectionsEditor.sectionsEditor.noEditableFieldsForGlobalBlock",
+                )}
+                meta={meta}
+                decofile={decofile}
+                onSaveReferencedBlock={saveReferencedBlock}
+                sandbox={sandbox}
+                previewBaseUrl={sectionPreviewBase}
+                onRequestAddSection={handleRequestAddSection}
+              />
+            </NamedRuleFieldProvider>
           </ScrollArea>
         ) : editingSeo ? (
           compact ? (
