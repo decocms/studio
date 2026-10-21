@@ -194,15 +194,13 @@ export const thread = {
   "thread.publishPopover.requestApproval": "Request approval",
   "thread.publishPopover.discarded": "Discarded {name}",
   "thread.publishPopover.discardBlocked.title":
-    "This change goes with another one",
-  "thread.publishPopover.discardBlocked.removesTest":
-    "These pages use the test “{name}”, which discarding this would take away. First change those variants or discard those pages' changes; then you can discard this one.",
-  "thread.publishPopover.discardBlocked.removesCampaign":
-    "These pages use the campaign “{name}”, which discarding this would take away. First change those variants or discard those pages' changes; then you can discard this one.",
-  "thread.publishPopover.discardBlocked.returnsTest":
-    "Discarding this brings back a variant that uses the test “{name}”, which your draft deleted. First discard the change to “A/B tests” so the test comes back; then you can discard this one.",
-  "thread.publishPopover.discardBlocked.returnsCampaign":
-    "Discarding this brings back a variant that uses the campaign “{name}”, which your draft deleted. First discard the change to “Campaign dates” so the campaign comes back; then you can discard this one.",
+    "Please change these pages first.",
+  "thread.publishPopover.discardBlocked.usesTest":
+    "They use the test “{name}”.",
+  "thread.publishPopover.discardBlocked.usesCampaign":
+    "They use the campaign “{name}”.",
+  "thread.publishPopover.discardBlocked.returns":
+    "Discarding this brings back a variant that uses “{name}”, which your draft deleted.",
   "thread.publishPopover.discardBlocked.close": "Close",
   "thread.publishPopover.discard": "Discard",
   "thread.publishPopover.discardAll": "Discard all",

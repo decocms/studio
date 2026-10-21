@@ -1,9 +1,9 @@
 /**
  * Shown instead of a discard that would leave pages using a test or campaign
- * that no longer exists (named-rule-discard.ts): nothing was discarded. For
- * each name it says what to discard or change first and lists the pages, in
- * the same calm style as Delete's dialog in the Experiments tab, with one
- * Close button.
+ * that no longer exists (named-rule-discard.ts): nothing was discarded. Same
+ * shape and tone as Delete's dialog in the Experiments tab: a title asking to
+ * change these pages first, one short line per name, its pages (each opening
+ * in the site editor), and Close. Discard all is never blocked.
  */
 
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -18,13 +18,17 @@ import {
 import { useT } from "@/i18n/use-t.ts";
 import type { NamedRuleDiscardBreak } from "@/components/sections-editor/named-rule-discard.ts";
 import { NamedRuleUseList } from "@/components/sections-editor/named-rule-used-by.tsx";
+import type { NamedRuleUseRow } from "@/components/sections-editor/named-rule-uses.ts";
 
 export function DiscardBlockedDialog({
   breaks,
   onClose,
+  onOpen,
 }: {
   breaks: NamedRuleDiscardBreak[] | null;
   onClose: () => void;
+  /** Opens a page or section in the site editor (the dialog closes first). */
+  onOpen: (row: NamedRuleUseRow) => void;
 }) {
   const t = useT();
   const line = (item: NamedRuleDiscardBreak) => {
@@ -32,12 +36,10 @@ export function DiscardBlockedDialog({
     const name = item.name;
     if (item.cause === "removes") {
       return tests
-        ? t("thread.publishPopover.discardBlocked.removesTest", { name })
-        : t("thread.publishPopover.discardBlocked.removesCampaign", { name });
+        ? t("thread.publishPopover.discardBlocked.usesTest", { name })
+        : t("thread.publishPopover.discardBlocked.usesCampaign", { name });
     }
-    return tests
-      ? t("thread.publishPopover.discardBlocked.returnsTest", { name })
-      : t("thread.publishPopover.discardBlocked.returnsCampaign", { name });
+    return t("thread.publishPopover.discardBlocked.returns", { name });
   };
   return (
     <Dialog open={breaks !== null} onOpenChange={(open) => !open && onClose()}>
@@ -61,7 +63,14 @@ export function DiscardBlockedDialog({
               className="flex flex-col gap-2"
             >
               <p className="text-sm text-muted-foreground">{line(item)}</p>
-              <NamedRuleUseList rows={item.rows} marked={false} />
+              <NamedRuleUseList
+                rows={item.rows}
+                marked={false}
+                onOpen={(row) => {
+                  onClose();
+                  onOpen(row);
+                }}
+              />
             </div>
           ))}
         </div>

@@ -91,6 +91,8 @@ import type { ProtocolBackend } from "@/components/sections-editor/content-backe
 import { useContentSyncState } from "@/components/sections-editor/content-sync.ts";
 import { ErrorDetails } from "@/components/sections-editor/site-editor-toast.tsx";
 import { DiscardBlockedDialog } from "./discard-blocked-dialog.tsx";
+import { usePanelNavigate } from "@/layouts/main-panel-tabs/use-panel-navigate.ts";
+import { contentSearchForUse } from "@/layouts/main-panel-tabs/experiments-v8-model.ts";
 
 export type { CmsPublishMode };
 
@@ -692,6 +694,7 @@ function CmsPublishView({
    *  change list that lands after mount still describes itself. */
   const [editedNote, setEditedNote] = useState<string | null>(null);
   const [discardAllConfirm, setDiscardAllConfirm] = useState(false);
+  const { openPanel } = usePanelNavigate();
   /** The card shown in the review pane. */
   const [activeId, setActiveId] = useState<string | null>(null);
   /** Cards visited, most recent first — their panes stay mounted. */
@@ -1021,6 +1024,15 @@ function CmsPublishView({
                   <DiscardBlockedDialog
                     breaks={discardBlocked}
                     onClose={closeDiscardBlocked}
+                    onOpen={(row) => {
+                      onOpenChange(false);
+                      openPanel("content", {
+                        search: (prev) => ({
+                          ...prev,
+                          ...contentSearchForUse(row),
+                        }),
+                      });
+                    }}
                   />
                 </>
               }

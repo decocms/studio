@@ -789,6 +789,28 @@ describe("useCmsPublishActions: a test or campaign pages use never goes away", (
     expect(server.discardCalls).toEqual([]);
     expect(result.current.discardBlocked?.[0]?.name).toBe("promo");
   });
+
+  it("Discard all is always allowed: it returns the draft to what's live, unchecked", async () => {
+    const { backend } = hostedBackend();
+    server.schema = namedRuleSchema;
+    server.main = {
+      experiments: { __resolveType: "split-traffic", hero: 50 },
+    };
+    server.draft.set = {
+      experiments: { __resolveType: "split-traffic", hero: 50, promo: 20 },
+    };
+    await mountPolledBlocks(backend);
+    // A single discard of the same list would be blocked (the test above).
+    server.draft.set = { ...server.draft.set, "pages-promo": promoPage };
+    server.etag++;
+    const { result } = render(backend, {
+      hosted: true,
+      entries: [testsEntry],
+    });
+    await act(() => result.current.discardAll());
+    expect(result.current.discardBlocked).toBeNull();
+    expect(server.discardCalls).toHaveLength(1);
+  });
 });
 
 describe("useCmsPublishActions on a v7 site", () => {

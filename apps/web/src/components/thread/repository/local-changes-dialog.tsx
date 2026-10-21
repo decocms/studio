@@ -48,6 +48,8 @@ import {
 } from "./publish-dialog.tsx";
 import { useContentDiscard } from "./use-cms-publish-actions.ts";
 import { DiscardBlockedDialog } from "./discard-blocked-dialog.tsx";
+import { usePanelNavigate } from "@/layouts/main-panel-tabs/use-panel-navigate.ts";
+import { contentSearchForUse } from "@/layouts/main-panel-tabs/experiments-v8-model.ts";
 import type { NamedRuleDiscardBreak } from "@/components/sections-editor/named-rule-discard.ts";
 import { useContentPublishState } from "./use-content-publish-state.ts";
 
@@ -234,6 +236,7 @@ function LocalChangesContent({
   const [activeId, setActiveId] = useState<string | null>(null);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [discardAllConfirm, setDiscardAllConfirm] = useState(false);
+  const { openPanel } = usePanelNavigate();
 
   const { summary } = state;
   const changes = [...summary.pages, ...summary.blocks];
@@ -322,6 +325,7 @@ function LocalChangesContent({
                     backend,
                     state.entries,
                     t("thread.publishDialog.allChangesDiscarded"),
+                    { all: true },
                   )
                 }
                 disabled={isDiscarding}
@@ -382,6 +386,15 @@ function LocalChangesContent({
               <DiscardBlockedDialog
                 breaks={discardBlocked}
                 onClose={() => setDiscardBlocked(null)}
+                onOpen={(row) => {
+                  onClose();
+                  openPanel("content", {
+                    search: (prev) => ({
+                      ...prev,
+                      ...contentSearchForUse(row),
+                    }),
+                  });
+                }}
               />
             </>
           }

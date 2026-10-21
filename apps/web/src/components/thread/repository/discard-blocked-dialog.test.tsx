@@ -29,69 +29,83 @@ const row = {
 };
 
 describe("DiscardBlockedDialog", () => {
-  test("says what to do first for each name, lists the pages, and closes with one button", async () => {
+  test("has the delete dialog's shape: one title, one short line per name, the pages with Open, and Close", async () => {
     const onClose = mock(() => {});
+    const onOpen = mock((_row: unknown) => {});
     render(
       <DiscardBlockedDialog
         breaks={[
           { kind: "experiments", name: "promo", cause: "removes", rows: [row] },
+          { kind: "campaigns", name: "bf", cause: "removes", rows: [row] },
           {
             kind: "campaigns",
-            name: "bf",
+            name: "xmas",
             cause: "returns",
             rows: [{ ...row, blockKey: "pages-sale", title: "Sale" }],
           },
         ]}
         onClose={onClose}
+        onOpen={onOpen}
       />,
     );
     const dialog = within(within(document.body).getByTestId("discard-blocked"));
-    expect(dialog.getByText("This change goes with another one")).toBeTruthy();
+    expect(dialog.getByText("Please change these pages first.")).toBeTruthy();
+    expect(dialog.getByText("They use the test “promo”.")).toBeTruthy();
+    expect(dialog.getByText("They use the campaign “bf”.")).toBeTruthy();
     expect(
       dialog.getByText(
-        "These pages use the test “promo”, which discarding this would take away. First change those variants or discard those pages' changes; then you can discard this one.",
-      ),
-    ).toBeTruthy();
-    expect(
-      dialog.getByText(
-        "Discarding this brings back a variant that uses the campaign “bf”, which your draft deleted. First discard the change to “Campaign dates” so the campaign comes back; then you can discard this one.",
+        "Discarding this brings back a variant that uses “xmas”, which your draft deleted.",
       ),
     ).toBeTruthy();
     const items = dialog.getAllByRole("listitem");
     expect(items.map((item) => item.textContent)).toEqual([
       expect.stringContaining("Promo"),
+      expect.stringContaining("Promo"),
       expect.stringContaining("Sale"),
     ]);
-    // Nothing opens from here; one Close.
-    expect(dialog.queryByText("Open")).toBeNull();
+    // Each page opens in the site editor, as in Delete's dialog; the dialog
+    // closes first.
+    await act(async () =>
+      fireEvent.click(within(items[2]!).getByRole("button", { name: /Open/ })),
+    );
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onOpen).toHaveBeenCalledWith(
+      expect.objectContaining({ blockKey: "pages-sale" }),
+    );
     const close = dialog
       .getAllByRole("button")
-      .filter((b) => !b.classList.contains("hidden"));
+      .filter((b) => !b.classList.contains("hidden"))
+      .filter((b) => b.textContent?.trim() !== "Open");
     expect(close.map((b) => b.textContent?.trim())).toEqual(["Close"]);
     await act(async () => fireEvent.click(close[0]!));
-    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalledTimes(2);
   });
 
-  test("speaks pt-br, naming the publish cards as the dialog shows them", () => {
-    for (const key of [
+  test("speaks pt-br, as short as the English", () => {
+    const keys = [
       "thread.publishPopover.discardBlocked.title",
-      "thread.publishPopover.discardBlocked.removesTest",
-      "thread.publishPopover.discardBlocked.removesCampaign",
-      "thread.publishPopover.discardBlocked.returnsTest",
-      "thread.publishPopover.discardBlocked.returnsCampaign",
+      "thread.publishPopover.discardBlocked.usesTest",
+      "thread.publishPopover.discardBlocked.usesCampaign",
+      "thread.publishPopover.discardBlocked.returns",
       "thread.publishPopover.discardBlocked.close",
-    ] as const) {
+    ] as const;
+    for (const key of keys) {
       expect(ptBR[key]).toBeTruthy();
       expect(ptBR[key]).not.toBe(en[key]);
     }
-    expect(ptBR["thread.publishPopover.discardBlocked.returnsTest"]).toContain(
-      `“${ptBR["thread.publishPopover.abTests"]}”`,
+    expect(ptBR["thread.publishPopover.discardBlocked.title"]).toBe(
+      "Altere estas páginas primeiro.",
     );
-    expect(
-      ptBR["thread.publishPopover.discardBlocked.returnsCampaign"],
-    ).toContain(`“${ptBR["thread.publishPopover.campaignDates"]}”`);
-    expect(en["thread.publishPopover.discardBlocked.returnsTest"]).toContain(
-      `“${en["thread.publishPopover.abTests"]}”`,
+    expect(ptBR["thread.publishPopover.discardBlocked.usesTest"]).toBe(
+      "Elas usam o teste “{name}”.",
     );
+    expect(ptBR["thread.publishPopover.discardBlocked.usesCampaign"]).toBe(
+      "Elas usam a campanha “{name}”.",
+    );
+    // One short line each: no "first … then" instructions.
+    for (const key of keys) {
+      expect(en[key]).not.toContain("then you can");
+      expect(ptBR[key]).not.toContain("depois você pode");
+    }
   });
 });

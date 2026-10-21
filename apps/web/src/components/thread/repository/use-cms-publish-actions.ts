@@ -145,7 +145,8 @@ interface CmsPublishActions {
  * in the queue, right before the discard, the draft and both sides of those
  * changes are read again, and a discard that would leave a page naming one
  * that doesn't exist is not sent; `onBlocked` gets what it would break
- * instead (no error toast).
+ * instead (no error toast). Discarding every change (`all`) is never
+ * checked: it returns the draft to exactly what's live.
  */
 export function useContentDiscard(args: {
   orgSlug: string;
@@ -207,6 +208,7 @@ export function useContentDiscard(args: {
     backend: ProtocolBackend,
     entries: ReadonlyArray<{ name: string; version: string | null }>,
     success: string,
+    options?: { all?: boolean },
   ): Promise<void> => {
     try {
       await runContentDiscard(content, {
@@ -216,7 +218,9 @@ export function useContentDiscard(args: {
         // poll conditional on this revision would answer "not modified".
         write: async () => {
           // In the queue, after the saves in flight landed: what is stored now.
-          const breaks = await discardBreaks(backend, entries);
+          const breaks = options?.all
+            ? []
+            : await discardBreaks(backend, entries);
           if (breaks.length > 0) throw new DiscardBlockedError(breaks);
           return discardContentChanges(backend.client, entries);
         },
@@ -478,7 +482,9 @@ export function useCmsPublishActions(
       const success = t("thread.publishDialog.allChangesDiscarded");
       if (protocol) {
         if (protocol.entries.length === 0) return;
-        await discardEntries(protocol.backend, protocol.entries, success);
+        await discardEntries(protocol.backend, protocol.entries, success, {
+          all: true,
+        });
         return;
       }
       if (allPaths.length === 0) return;
