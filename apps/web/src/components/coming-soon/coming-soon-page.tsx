@@ -15,6 +15,7 @@ import {
   TrendUp01,
 } from "@untitledui/icons";
 import { Badge } from "@decocms/ui/components/badge.tsx";
+import { Page } from "@/components/page";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useProjectFirstNav } from "@/hooks/use-preferences";
 import { useT } from "@/i18n/use-t.ts";
@@ -189,42 +190,44 @@ export function ComingSoonPage({ kind }: { kind: Kind }) {
     return <Navigate to="/$org/home" params={{ org: org.slug }} replace />;
   }
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-      <div className="mx-auto flex w-full max-w-2xl flex-col items-center gap-10 px-4 pt-12 pb-16 md:pt-20">
-        <div aria-hidden className="relative w-full max-w-md">
-          <div className="absolute inset-x-10 -top-4 h-40 rounded-full bg-chart-2/20 blur-3xl" />
-          <div className="relative rounded-2xl bg-card p-6 card-shadow [mask-image:linear-gradient(to_bottom,black_65%,transparent)]">
-            <Sketch kind={kind} />
+    <Page>
+      <Page.Content>
+        <div className="mx-auto flex w-full max-w-2xl flex-col items-center gap-10 px-4 pt-12 pb-16 md:pt-20">
+          <div aria-hidden className="relative w-full max-w-md">
+            <div className="absolute inset-x-10 -top-4 h-40 rounded-full bg-chart-2/20 blur-3xl" />
+            <div className="relative rounded-2xl bg-card p-6 card-shadow [mask-image:linear-gradient(to_bottom,black_65%,transparent)]">
+              <Sketch kind={kind} />
+            </div>
           </div>
-        </div>
-        <div className="flex flex-col items-center gap-3 text-center">
-          <Badge variant="muted">{t("home.comingSoon.badge")}</Badge>
-          <h1 className="text-2xl font-medium text-balance text-foreground">
-            {t(copy.heading)}
-          </h1>
-          <p className="max-w-md text-sm text-pretty text-muted-foreground">
-            {t(copy.description)}
-          </p>
-        </div>
-        <ul className="grid w-full gap-3 sm:grid-cols-3">
-          {copy.points.map(({ Icon, labelKey, tone }) => (
-            <li
-              key={labelKey}
-              className="flex items-center gap-3 rounded-xl bg-card p-4 card-shadow sm:flex-col sm:items-start"
-            >
-              <span
-                className={cn(
-                  "flex size-9 shrink-0 items-center justify-center rounded-lg",
-                  tone,
-                )}
+          <div className="flex flex-col items-center gap-3 text-center">
+            <Badge variant="muted">{t("home.comingSoon.badge")}</Badge>
+            <h1 className="text-2xl font-medium text-balance text-foreground">
+              {t(copy.heading)}
+            </h1>
+            <p className="max-w-md text-sm text-pretty text-muted-foreground">
+              {t(copy.description)}
+            </p>
+          </div>
+          <ul className="grid w-full gap-3 sm:grid-cols-3">
+            {copy.points.map(({ Icon, labelKey, tone }) => (
+              <li
+                key={labelKey}
+                className="flex items-center gap-3 rounded-xl bg-card p-4 card-shadow sm:flex-col sm:items-start"
               >
-                <Icon size={18} />
-              </span>
-              <span className="text-sm text-foreground">{t(labelKey)}</span>
-            </li>
-          ))}
-        </ul>
-      </div>
-    </div>
+                <span
+                  className={cn(
+                    "flex size-9 shrink-0 items-center justify-center rounded-lg",
+                    tone,
+                  )}
+                >
+                  <Icon size={18} />
+                </span>
+                <span className="text-sm text-foreground">{t(labelKey)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </Page.Content>
+    </Page>
   );
 }

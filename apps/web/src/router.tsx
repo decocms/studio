@@ -1188,7 +1188,11 @@ const planRoute = createRoute({
   errorComponent: ChatLayoutError,
   getParentRoute: () => threadSessionRoute,
   path: "/plan",
-  staticData: { pageTitle: "sidebar.navDestinations.plan" },
+  staticData: {
+    pageTitle: "sidebar.navDestinations.plan",
+    defaultMain: "plan",
+    mainView: "plan",
+  },
   component: lazyRouteComponent(() => import("./routes/workspace/plan.tsx")),
 });
 const orgMonitoringPlaceholderRoute = createRoute({
@@ -1196,7 +1200,11 @@ const orgMonitoringPlaceholderRoute = createRoute({
   errorComponent: ChatLayoutError,
   getParentRoute: () => threadSessionRoute,
   path: "/monitoring",
-  staticData: { pageTitle: "sidebar.navDestinations.monitor" },
+  staticData: {
+    pageTitle: "sidebar.navDestinations.monitor",
+    defaultMain: "monitoring",
+    mainView: "monitoring",
+  },
   component: lazyRouteComponent(
     () => import("./routes/workspace/monitoring.tsx"),
   ),
@@ -1206,7 +1214,11 @@ const projectPlanRoute = createRoute({
   errorComponent: ChatLayoutError,
   getParentRoute: () => agentWorkspaceRoute,
   path: "/plan",
-  staticData: { pageTitle: "sidebar.navDestinations.plan" },
+  staticData: {
+    pageTitle: "sidebar.navDestinations.plan",
+    defaultMain: "plan",
+    mainView: "plan",
+  },
   component: lazyRouteComponent(() => import("./routes/workspace/plan.tsx")),
 });
 const projectMonitoringRoute = createRoute({
@@ -1214,7 +1226,11 @@ const projectMonitoringRoute = createRoute({
   errorComponent: ChatLayoutError,
   getParentRoute: () => agentWorkspaceRoute,
   path: "/monitoring",
-  staticData: { pageTitle: "sidebar.navDestinations.monitor" },
+  staticData: {
+    pageTitle: "sidebar.navDestinations.monitor",
+    defaultMain: "monitoring",
+    mainView: "monitoring",
+  },
   component: lazyRouteComponent(
     () => import("./routes/workspace/monitoring.tsx"),
   ),

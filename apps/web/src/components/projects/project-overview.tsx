@@ -62,28 +62,30 @@ function ProjectOverviewBody({ project }: { project: VirtualMCPEntity }) {
 
 export function ProjectOverview({ project }: { project: VirtualMCPEntity }) {
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+    <Page>
       <Page.Actions>
         <ConnectPill />
       </Page.Actions>
-      <div className="mx-auto flex w-full max-w-[1680px] flex-col gap-6 px-4 pt-4 pb-8 md:px-8">
-        <Suspense fallback={null}>
-          <DetachedChatContext>
-            <ChatPrefsProvider>
-              <ChatInput homeTaskComposer taskHint={false} />
-            </ChatPrefsProvider>
-          </DetachedChatContext>
-        </Suspense>
-        <Suspense
-          fallback={
-            <div className="flex h-72 items-center justify-center">
-              <Spinner className="size-5 text-muted-foreground" />
-            </div>
-          }
-        >
-          <ProjectOverviewBody project={project} />
-        </Suspense>
-      </div>
-    </div>
+      <Page.Content>
+        <div className="mx-auto flex w-full max-w-[1680px] flex-col gap-6 px-4 pt-4 pb-8 md:px-8">
+          <Suspense fallback={null}>
+            <DetachedChatContext>
+              <ChatPrefsProvider>
+                <ChatInput homeTaskComposer taskHint={false} />
+              </ChatPrefsProvider>
+            </DetachedChatContext>
+          </Suspense>
+          <Suspense
+            fallback={
+              <div className="flex h-72 items-center justify-center">
+                <Spinner className="size-5 text-muted-foreground" />
+              </div>
+            }
+          >
+            <ProjectOverviewBody project={project} />
+          </Suspense>
+        </div>
+      </Page.Content>
+    </Page>
   );
 }
