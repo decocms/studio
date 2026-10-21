@@ -98,6 +98,23 @@ export function accountIsServable(account: GitProviderAccountRecord): boolean {
   return accountAccessIssue(account) === null;
 }
 
+/**
+ * Whether the account's grant reaches `repository`. Only a partial GitHub App
+ * grant can leave a repository out, and only a recorded id can prove it is in:
+ * a row with no id cannot be minted for, since the mint resolves the id first.
+ */
+export function accountGrantCovers(
+  account: GitProviderAccountRecord,
+  repository: Pick<RepositoryRecord, "externalId">,
+): boolean {
+  if (account.authKind !== "github_app") return true;
+  if (account.installationRepositoryIds === null) return true;
+  return (
+    repository.externalId !== null &&
+    account.installationRepositoryIds.includes(Number(repository.externalId))
+  );
+}
+
 export function accountAccessIssue(
   account: GitProviderAccountRecord,
 ):
@@ -426,7 +443,8 @@ export interface GitProviderStoragePorts {
 /**
  * True when `repository` should be cloned through Studio-owned credentials
  * rather than the legacy `mcp-github` connection path: it has an account and
- * Studio can serve that account.
+ * Studio can serve that account. A repository its account's grant leaves out
+ * keeps its legacy connection when it has one, which carries its own grant.
  */
 export async function repositoryUsesStudioCredentials(
   storage: Pick<GitProviderStoragePorts, "gitProviderAccounts">,
@@ -436,5 +454,8 @@ export async function repositoryUsesStudioCredentials(
   const account = await storage.gitProviderAccounts.getUnscoped(
     repository.accountId,
   );
-  return account !== null && accountIsServable(account);
+  if (account === null || !accountIsServable(account)) return false;
+  return (
+    !repository.legacyConnectionId || accountGrantCovers(account, repository)
+  );
 }

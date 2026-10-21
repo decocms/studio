@@ -275,10 +275,11 @@ export class GithubProviderClient implements GitProviderClient {
     if (memoized !== undefined) return memoized;
     const id = Number((await this.getRepo(repo))?.externalId);
     if (!Number.isSafeInteger(id) || !granted.includes(id)) {
+      const { owner } = splitOwnerName(repo);
       throw new GitProviderError({
         provider: "github",
         status: 403,
-        message: `${repo.path} is outside what this GitHub account authorized for Studio. Ask someone who administers it to connect it.`,
+        message: `Studio's GitHub App is installed on ${owner} without access to ${repo.path}. Someone who administers ${owner} on GitHub has to add it to the app's repository access, then reconnect the account in Studio.`,
       });
     }
     this.grantedIds.set(key, id);
