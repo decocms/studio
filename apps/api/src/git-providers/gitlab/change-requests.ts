@@ -511,9 +511,15 @@ export class GitlabChangeRequestClient implements ChangeRequestClient {
       },
     });
     if (res.ok) {
-      return this.map(
-        await gitlabJson<RawMergeRequest>(res, "open_merge_request"),
-      );
+      const mr = await gitlabJson<unknown>(res, "open_merge_request");
+      if (mr === null || typeof mr !== "object" || Array.isArray(mr)) {
+        throw new GitProviderError({
+          provider: "gitlab",
+          status: 502,
+          message: "GitLab open_merge_request returned a non-object payload",
+        });
+      }
+      return this.map(mr as RawMergeRequest);
     }
     const failure = await gitlabFailure(res);
     if (/already exists/i.test(failure.message)) {

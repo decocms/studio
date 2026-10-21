@@ -498,4 +498,23 @@ describe("GitlabChangeRequestClient's malformed-body handling", () => {
 
     await expect(client.listOpen(10)).rejects.toBeInstanceOf(GitProviderError);
   });
+
+  it("degrades a well-formed but non-object body from opening a merge request", async () => {
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify([]), {
+        status: 200,
+      })) as unknown as typeof fetch;
+
+    const client = new GitlabChangeRequestClient({
+      repo: { provider: "gitlab", host: "gitlab.com", path: "acme/site" },
+      tokenSource: {
+        kind: "oauth",
+        get: async () => ({ token: "t", kind: "oauth", expiresAt: null }),
+      },
+    });
+
+    await expect(
+      client.open({ head: "feature", base: "main", title: "hi" }),
+    ).rejects.toBeInstanceOf(GitProviderError);
+  });
 });
