@@ -25,6 +25,17 @@ export function latestSha(
 }
 
 /** Whether a row offers Reapply release: an earlier release that was released. */
+/**
+ * Whether a version can be opened in the preview ("Preview this version"):
+ * any one with a companion release, the latest included. The site reads that
+ * release by its commit SHA from a Studio link only.
+ */
+export function canPreviewRelease(
+  commit: Pick<ReleaseCommit, "sha" | "hasRelease">,
+): boolean {
+  return commit.hasRelease && /^[0-9a-f]{40}$/.test(commit.sha);
+}
+
 export function canReapply(
   commit: Pick<ReleaseCommit, "sha" | "hasRelease">,
   current: ReleasePointer | null,

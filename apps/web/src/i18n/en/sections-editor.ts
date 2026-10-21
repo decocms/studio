@@ -133,6 +133,23 @@ export const sectionsEditor = {
   "sectionsEditor.namedRulePicker.fieldNone": "Nothing",
   "sectionsEditor.namedRulePicker.fieldPlaceholder":
     "Choose what this field reads",
+  "sectionsEditor.namedRuleUses.title": "Used by",
+  "sectionsEditor.namedRuleUses.loading": "Checking where it's used…",
+  "sectionsEditor.namedRuleUses.variant": "Variant {index}",
+  "sectionsEditor.namedRuleUses.draftOnly": "Not published yet",
+  "sectionsEditor.namedRuleUses.removed": "Removed in your draft",
+  "sectionsEditor.namedRuleUses.open": "Open",
+  "sectionsEditor.namedRuleUses.emptyTests":
+    "Not used yet. In the site editor, give a variant the rule “A/B test” and pick this test.",
+  "sectionsEditor.namedRuleUses.emptyCampaigns":
+    "Not used yet. In the site editor, give a variant the rule “Date” and pick this campaign.",
+  "sectionsEditor.namedRuleUses.wholeTests": "Sections that read every test",
+  "sectionsEditor.namedRuleUses.wholeTestsHint":
+    "These sections decide in their own code which tests they look at.",
+  "sectionsEditor.namedRuleUses.wholeCampaigns":
+    "Sections that read every campaign",
+  "sectionsEditor.namedRuleUses.wholeCampaignsHint":
+    "These sections decide in their own code which campaigns they look at.",
   "sectionsEditor.namedRules.changedMeanwhile":
     "This changed while you were editing",
   "sectionsEditor.namedRules.changedMeanwhileHint":

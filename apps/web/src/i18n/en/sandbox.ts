@@ -1271,4 +1271,90 @@ export const sandbox = {
   "sandbox.variantCalendar.variantBlock": "Variant / Block",
   "sandbox.visualEditorPrompt.inputPlaceholder": "Ask the AI...",
   "sandbox.visualEditorPrompt.sendButton": "Send",
+  "sandbox.collectionsSidebar.campaigns": "Campaigns",
+  "sandbox.dateCampaigns.title": "Campaigns",
+  "sandbox.dateCampaigns.intro":
+    "Every date on your site is a campaign: a variant with the rule “Date” shows while its campaign runs. Changes are saved in your draft and go live when you publish.",
+  "sandbox.dateCampaigns.new": "New campaign",
+  "sandbox.dateCampaigns.empty.title": "No campaigns yet",
+  "sandbox.dateCampaigns.empty.desc":
+    "Create one here, or from a variant in the site editor: choose the rule “Date” and type a name.",
+  "sandbox.dateCampaigns.listMode": "List",
+  "sandbox.dateCampaigns.timelineMode": "Timeline",
+  "sandbox.dateCampaigns.status.running": "Running",
+  "sandbox.dateCampaigns.status.upcoming": "Upcoming",
+  "sandbox.dateCampaigns.status.ended": "Ended",
+  "sandbox.dateCampaigns.status.always": "Always on",
+  "sandbox.dateCampaigns.status.unreadable": "Dates can't be read",
+  "sandbox.dateCampaigns.noDates": "No dates: always running",
+  "sandbox.dateCampaigns.usedBy": "Used by {count}",
+  "sandbox.dateCampaigns.notUsed": "Not used yet",
+  "sandbox.dateCampaigns.state.new": "Not published yet",
+  "sandbox.dateCampaigns.state.changed": "Changed in your draft",
+  "sandbox.dateCampaigns.removedTitle": "Removed in your draft",
+  "sandbox.dateCampaigns.removedHint":
+    "These campaigns stop when you publish. To keep one, create it again with the same name.",
+  "sandbox.dateCampaigns.startLabel": "Starts",
+  "sandbox.dateCampaigns.endLabel": "Ends",
+  "sandbox.dateCampaigns.windowHint":
+    "Leave a date empty to keep that side open. Times are in your computer's time zone.",
+  "sandbox.dateCampaigns.endBeforeStart":
+    "The end needs to be after the start.",
+  "sandbox.dateCampaigns.unreadableHint":
+    "One of its dates can't be read, so its variants don't show. Pick new dates and save.",
+  "sandbox.dateCampaigns.publishedWindow": "Published: {window}",
+  "sandbox.dateCampaigns.saveDates": "Save dates",
+  "sandbox.dateCampaigns.nameLabel": "Name",
+  "sandbox.dateCampaigns.rename": "Rename",
+  "sandbox.dateCampaigns.renameHint":
+    "Every variant that uses this campaign is updated in the same change.",
+  "sandbox.dateCampaigns.renameWholeHint":
+    "Sections that read every campaign in their own code still look for the old name. Update them in the site editor.",
+  "sandbox.dateCampaigns.nameEmpty": "Give it a name.",
+  "sandbox.dateCampaigns.nameTaken": "That name is already in use.",
+  "sandbox.dateCampaigns.nameReserved":
+    "Names can't start with two underscores.",
+  "sandbox.dateCampaigns.delete": "Delete campaign",
+  "sandbox.dateCampaigns.deleted": "Campaign “{name}” deleted from your draft",
+  "sandbox.dateCampaigns.deletedHint":
+    "Variants that used it stop showing once you publish. Undo brings it back.",
+  "sandbox.dateCampaigns.undo": "Undo",
+  "sandbox.dateCampaigns.saved": "Saved in your draft",
+  "sandbox.dateCampaigns.savedHint": "It goes live when you publish.",
+  "sandbox.dateCampaigns.renamed": "Campaign renamed to “{name}”",
+  "sandbox.dateCampaigns.created": "Campaign “{name}” added",
+  "sandbox.dateCampaigns.create": "Create",
+  "sandbox.dateCampaigns.allCampaigns": "All campaigns",
+  "sandbox.dateCampaigns.today": "Today",
+  "sandbox.dateCampaigns.previous": "Earlier",
+  "sandbox.dateCampaigns.next": "Later",
+  "sandbox.dateCampaigns.nothingInRange": "No campaign runs in these months.",
+  "sandbox.dateCampaigns.missing.title":
+    "Your site needs an update for campaigns",
+  "sandbox.dateCampaigns.missing.desc":
+    "Ask your developer to update the site to the latest version of Blocks and publish it. Your campaigns will show up here.",
+  "sandbox.dateCampaigns.replaced.title":
+    "Your site handles campaigns in its own code",
+  "sandbox.dateCampaigns.replaced.desc":
+    "Its developers defined their own campaigns, so they can't be changed here. Ask them how to change one.",
+  "sandbox.dateCampaigns.conflict.title":
+    "Your site already has a block named “campaigns”",
+  "sandbox.dateCampaigns.conflict.desc":
+    "It isn't a list of campaigns, so campaigns can't be added yet. Rename that block, then come back here.",
+  "sandbox.previewAs.label": "Preview as",
+  "sandbox.previewAs.intro":
+    "Only this preview changes. Your visitors keep seeing the site as it is.",
+  "sandbox.previewAs.unavailable":
+    "Make a change or publish your site first; then the preview can show another moment or force a test.",
+  "sandbox.previewAs.momentLabel": "Preview as of",
+  "sandbox.previewAs.momentHint":
+    "Campaigns show as they will at this moment. Times are in your computer's time zone.",
+  "sandbox.previewAs.now": "Now",
+  "sandbox.previewAs.testsLabel": "A/B tests",
+  "sandbox.previewAs.testsHint":
+    "Not set: you see the side your own visit got.",
+  "sandbox.previewAs.noTests": "No A/B tests yet.",
+  "sandbox.previewAs.off": "Off",
+  "sandbox.previewAs.on": "On",
+  "sandbox.previewAs.reset": "Show as it is now",
 } as const;

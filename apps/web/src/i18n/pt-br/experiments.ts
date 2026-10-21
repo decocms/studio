@@ -134,4 +134,70 @@ export const experiments = {
   "experiments.results.sampleSize": "Amostra alvo",
   "experiments.results.probBest": "Probabilidade da variante ser melhor",
   "experiments.results.goal": "Objetivo",
+  "experiments.v8.intro":
+    "Seus testes A/B fazem parte do conteúdo do site. Toda mudança fica salva no seu rascunho e vai ao ar quando você publica.",
+  "experiments.v8.new": "Novo teste A/B",
+  "experiments.v8.empty.title": "Nenhum teste A/B ainda",
+  "experiments.v8.empty.desc":
+    "Crie um aqui ou a partir de uma variante no editor do site: escolha a regra “Teste A/B” e digite um nome.",
+  "experiments.v8.status.off": "Desligado",
+  "experiments.v8.status.running": "Rodando",
+  "experiments.v8.status.everyone": "Todos",
+  "experiments.v8.share": "{share}% dos visitantes",
+  "experiments.v8.usedBy": "Usado em {count}",
+  "experiments.v8.notUsed": "Ainda não usado",
+  "experiments.v8.state.new": "Ainda não publicado",
+  "experiments.v8.state.changed": "Alterado no seu rascunho",
+  "experiments.v8.removedTitle": "Removidos no seu rascunho",
+  "experiments.v8.removedHint":
+    "Estes testes param quando você publicar. Para manter um, crie-o de novo com o mesmo nome.",
+  "experiments.v8.shareLabel": "Visitantes que veem o teste (%)",
+  "experiments.v8.shareHint":
+    "0 desliga o teste, 100 mostra para todos. Cada visitante continua no lado que recebeu.",
+  "experiments.v8.shareInvalid": "Use um número inteiro de 0 a 100.",
+  "experiments.v8.publishedShare": "Publicado: {share}% dos visitantes",
+  "experiments.v8.save": "Salvar",
+  "experiments.v8.turnOff": "Desligar",
+  "experiments.v8.showEveryone": "Mostrar para todos",
+  "experiments.v8.nameLabel": "Nome",
+  "experiments.v8.rename": "Renomear",
+  "experiments.v8.renameHint":
+    "Toda variante que usa este teste é atualizada na mesma mudança.",
+  "experiments.v8.nameLocked":
+    "O nome não pode mudar enquanto o teste roda: os visitantes são agrupados por ele. Desligue o teste para renomeá-lo.",
+  "experiments.v8.nameTaken": "Esse nome já está em uso.",
+  "experiments.v8.nameEmpty": "Dê um nome.",
+  "experiments.v8.nameReserved":
+    "Nomes não podem começar com dois sublinhados.",
+  "experiments.v8.cancel": "Cancelar",
+  "experiments.v8.delete": "Excluir teste",
+  "experiments.v8.deleted": "Teste “{name}” excluído do seu rascunho",
+  "experiments.v8.deletedHint":
+    "As variantes que o usavam deixam de aparecer quando você publicar. Desfazer traz ele de volta.",
+  "experiments.v8.undo": "Desfazer",
+  "experiments.v8.saved": "Salvo no seu rascunho",
+  "experiments.v8.savedHint": "Vai ao ar quando você publicar.",
+  "experiments.v8.created": "Teste “{name}” adicionado",
+  "experiments.v8.create": "Criar",
+  "experiments.v8.missing.title":
+    "Seu site precisa de uma atualização para testes A/B",
+  "experiments.v8.missing.desc":
+    "Peça ao seu desenvolvedor para atualizar o site para a versão mais recente do Blocks e publicá-lo. Seus testes vão aparecer aqui.",
+  "experiments.v8.replaced.title":
+    "Seu site cuida dos testes A/B no próprio código",
+  "experiments.v8.replaced.desc":
+    "Os desenvolvedores definiram os próprios testes, então eles não podem ser alterados aqui. Pergunte a eles como mudar um.",
+  "experiments.v8.conflict.title":
+    "Seu site já tem um bloco chamado “experiments”",
+  "experiments.v8.conflict.desc":
+    "Ele não é uma lista de testes A/B, então ainda não dá para adicionar testes. Renomeie esse bloco no editor do site e volte aqui.",
+  "experiments.v8.noDraft.title":
+    "Abra o editor do site para começar um rascunho",
+  "experiments.v8.noDraft.desc":
+    "Seus testes ficam salvos em um rascunho, como qualquer outra edição. Abra o editor do site uma vez e volte aqui.",
+  "experiments.v8.openEditor": "Abrir o editor do site",
+  "experiments.v8.loadFailed": "Não foi possível carregar seus testes.",
+  "experiments.v8.tryAgain": "Tentar de novo",
+  "experiments.v8.previewHint":
+    "Para ver um teste ligado ou desligado antes de publicar, use “Visualizar como” na pré-visualização do editor do site.",
 } satisfies Record<keyof typeof enExperiments, string>;

@@ -9,6 +9,7 @@ export const releases = {
   "releases.lastPublished": "Última publicação {when}.",
   "releases.latest": "Mais recente",
   "releases.actions": "Ações da release",
+  "releases.preview": "Visualizar esta release",
   "releases.reapply": "Reaplicar release",
   "releases.reapplyTitle": "Reaplicar esta release?",
   "releases.reapplyBody":

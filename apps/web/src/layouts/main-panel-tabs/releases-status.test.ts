@@ -5,6 +5,7 @@ import { ptBR } from "@/i18n/pt-br/index.ts";
 import type { TFunction } from "@/i18n/use-t.ts";
 import type { ReleaseCommit } from "./releases-api";
 import {
+  canPreviewRelease,
   canReapply,
   isLatest,
   latestSha,
@@ -46,6 +47,16 @@ describe("Latest is the version latest.json names", () => {
     expect(latestSha({ current: pointer(NEW) })).toBe(NEW);
     expect(latestSha({ current: null })).toBeNull();
     expect(latestSha(undefined)).toBeNull();
+  });
+});
+
+describe("canPreviewRelease", () => {
+  test("any version with a release can be previewed, the latest too", () => {
+    expect(canPreviewRelease(commit(OLD))).toBe(true);
+    expect(canPreviewRelease(commit(NEW))).toBe(true);
+  });
+  test("not a commit without a release", () => {
+    expect(canPreviewRelease(commit(OLD, { hasRelease: false }))).toBe(false);
   });
 });
 

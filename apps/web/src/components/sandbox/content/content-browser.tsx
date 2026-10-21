@@ -3,8 +3,7 @@ import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Suspense, lazy, useState } from "react";
 import { type Query } from "@tanstack/react-query";
-import { useNavigate, useSearch } from "@tanstack/react-router";
-import { PROJECT_ROUTE } from "@/hooks/use-destination-route";
+import { useSearch } from "@tanstack/react-router";
 import {
   type NamedRuleViews,
   NamedRuleViewsProvider,
@@ -65,6 +64,7 @@ import type { AppCatalogEntry } from "./app-catalog";
 import { ListEmpty } from "./list-empty";
 import { useDecoAppsCatalog } from "@/hooks/use-deco-apps-catalog";
 import { useNewBlocksEditorState } from "@/hooks/use-new-blocks-editor";
+import { usePanelNavigate } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { normalizePagePath } from "@/components/sections-editor/page-path-utils";
 import {
   appendPageVariantSections,
@@ -199,6 +199,12 @@ const VariantCalendar = lazy(() =>
   })),
 );
 
+const CampaignsView = lazy(() =>
+  import("./campaigns/campaigns-view").then((m) => ({
+    default: m.CampaignsView,
+  })),
+);
+
 const PostCalendar = lazy(() =>
   import("./blog/post-calendar").then((m) => ({ default: m.PostCalendar })),
 );
@@ -215,6 +221,7 @@ export type CollectionId =
   | "seo"
   | "settings"
   | "calendar"
+  | "campaigns"
   | "post-schedule"
   | "loaders"
   | "actions"
@@ -234,8 +241,26 @@ export type CollectionId =
 export function visibleCollection(
   active: CollectionId,
   blogAi: boolean,
+  /** A Blocks (v8) site: Campaigns stands where v7's Calendar is. */
+  blocksV8 = false,
 ): CollectionId {
-  return active === "context" && !blogAi ? "posts" : active;
+  if (active === "context" && !blogAi) return "posts";
+  if (blocksV8 && active === "calendar") return "campaigns";
+  if (!blocksV8 && active === "campaigns") return "calendar";
+  return active;
+}
+
+/**
+ * A `?contentCollection=` deep link's collection: a blog collection (the Blog
+ * Manager's "Editar no Studio"), Sections, or Campaigns (the Experiments
+ * tab's and the rule picker's links). Anything else opens Pages.
+ */
+export function deepLinkCollection(
+  param: string | undefined,
+): CollectionId | null {
+  if (!param) return null;
+  if (isBlogKind(param as CollectionId)) return param as CollectionId;
+  return param === "sections" || param === "campaigns" ? param : null;
 }
 
 export type CollectionCounts = Record<
@@ -426,32 +451,31 @@ function ContentBrowserReady({
   // "." deep-link below.
   const contentDeepLink = useSearch({ strict: false }) as ContentSearchParams;
   const [storedCollection, setActiveCollection] = useState<CollectionId>(
-    () =>
-      (contentDeepLink.contentCollection &&
-        isBlogKind(contentDeepLink.contentCollection as CollectionId) &&
-        (contentDeepLink.contentCollection as CollectionId)) ||
-      "pages",
+    () => deepLinkCollection(contentDeepLink.contentCollection) ?? "pages",
   );
   const blogAi = useBlogAi();
-  const activeCollection = visibleCollection(storedCollection, blogAi);
-  const navigate = useNavigate();
+  const activeCollection = visibleCollection(
+    storedCollection,
+    blogAi,
+    !runsSiteCode,
+  );
+  const { openPanel } = usePanelNavigate();
   // Where a variant's test or campaign is managed: the Experiments tab, and
-  // the Campaigns view (the calendar collection on this line).
+  // the Campaigns view.
   const namedRuleViews: NamedRuleViews = {
     open: (kind) => {
       if (kind === "campaigns") {
         setSelection(null);
-        setActiveCollection("calendar");
+        setActiveCollection("campaigns");
         return;
       }
-      void navigate({
-        to: PROJECT_ROUTE.experiments,
-        params: { org: orgSlug, agentId: virtualMcpId },
-      });
+      // Keeps the open thread, so the tab works in this same draft.
+      openPanel("experiments");
     },
   };
   const [selection, setSelection] = useState<Selection>(() =>
-    contentDeepLink.contentItem && isBlogKind(activeCollection)
+    contentDeepLink.contentItem &&
+    (isBlogKind(activeCollection) || activeCollection === "sections")
       ? { collection: activeCollection, key: contentDeepLink.contentItem }
       : null,
   );
@@ -640,9 +664,11 @@ function ContentBrowserReady({
   const actionsCount = countAvailableRunnables(meta, "actions");
   // What a content-protocol site has no use for: app installs (no site code
   // runs), v7's site app block, and an empty Actions folder.
+  // v7 keeps its Calendar; a v8 site's dates are its Campaigns.
   const hiddenCollections: CollectionId[] = runsSiteCode
-    ? ["settings"]
+    ? ["settings", "campaigns"]
     : [
+        "calendar",
         "apps",
         ...(siteApp ? [] : (["site"] as const)),
         ...(actionsCount === 0 ? (["actions"] as const) : []),
@@ -1092,6 +1118,7 @@ function ContentBrowserReady({
         activeCollection !== "settings" &&
         activeCollection !== "context" &&
         activeCollection !== "calendar" &&
+        activeCollection !== "campaigns" &&
         activeCollection !== "post-schedule" &&
         activeCollection !== "posts" &&
         activeCollection !== "loaders" &&
@@ -1179,6 +1206,27 @@ function ContentBrowserReady({
           >
             {activeCollection === "calendar" ? (
               <VariantCalendar decofile={decofile} />
+            ) : activeCollection === "campaigns" ? (
+              <CampaignsView
+                orgSlug={orgSlug}
+                virtualMcpId={virtualMcpId}
+                branch={branch}
+                decofile={decofile}
+                meta={meta}
+                onOpenUse={(use) => {
+                  if (use.blockKind === "page" && use.path !== undefined) {
+                    setActiveCollection("pages");
+                    selectItem({
+                      collection: "pages",
+                      key: use.blockKey,
+                      path: use.path,
+                    });
+                  } else {
+                    setActiveCollection("sections");
+                    selectItem({ collection: "sections", key: use.blockKey });
+                  }
+                }}
+              />
             ) : activeCollection === "post-schedule" ? (
               <PostCalendar
                 decofile={decofile}

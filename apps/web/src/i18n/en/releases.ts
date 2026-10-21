@@ -16,6 +16,7 @@ export const releases = {
   "releases.lastPublished": "Last published {when}.",
   "releases.latest": "Latest",
   "releases.actions": "Release actions",
+  "releases.preview": "Preview this release",
   "releases.reapply": "Reapply release",
   "releases.reapplyTitle": "Reapply this release?",
   "releases.reapplyBody":

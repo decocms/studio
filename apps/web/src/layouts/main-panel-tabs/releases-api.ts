@@ -66,9 +66,14 @@ async function readJson<T>(res: Response): Promise<T> {
   return json as T;
 }
 
-export function useReleases(orgSlug: string, virtualMcpId: string) {
+export function useReleases(
+  orgSlug: string,
+  virtualMcpId: string,
+  options: { enabled?: boolean } = {},
+) {
   return useInfiniteQuery({
     queryKey: KEYS.hostedReleases(orgSlug, virtualMcpId),
+    enabled: options.enabled ?? true,
     queryFn: async ({ pageParam }) => {
       const query = pageParam ? `?cursor=${encodeURIComponent(pageParam)}` : "";
       return readJson<ReleasesPage>(

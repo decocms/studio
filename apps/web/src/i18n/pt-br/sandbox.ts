@@ -1301,4 +1301,89 @@ export const sandbox = {
   "sandbox.variantCalendar.variantBlock": "Variante / Bloco",
   "sandbox.visualEditorPrompt.inputPlaceholder": "Pergunte à IA...",
   "sandbox.visualEditorPrompt.sendButton": "Enviar",
+  "sandbox.collectionsSidebar.campaigns": "Campanhas",
+  "sandbox.dateCampaigns.title": "Campanhas",
+  "sandbox.dateCampaigns.intro":
+    "Toda data do seu site é uma campanha: uma variante com a regra “Data” aparece enquanto a campanha dela está rodando. As mudanças ficam salvas no seu rascunho e vão ao ar quando você publica.",
+  "sandbox.dateCampaigns.new": "Nova campanha",
+  "sandbox.dateCampaigns.empty.title": "Nenhuma campanha ainda",
+  "sandbox.dateCampaigns.empty.desc":
+    "Crie uma aqui ou a partir de uma variante no editor do site: escolha a regra “Data” e digite um nome.",
+  "sandbox.dateCampaigns.listMode": "Lista",
+  "sandbox.dateCampaigns.timelineMode": "Linha do tempo",
+  "sandbox.dateCampaigns.status.running": "Rodando",
+  "sandbox.dateCampaigns.status.upcoming": "Em breve",
+  "sandbox.dateCampaigns.status.ended": "Encerrada",
+  "sandbox.dateCampaigns.status.always": "Sempre ativa",
+  "sandbox.dateCampaigns.status.unreadable": "Datas ilegíveis",
+  "sandbox.dateCampaigns.noDates": "Sem datas: sempre rodando",
+  "sandbox.dateCampaigns.usedBy": "Usada em {count}",
+  "sandbox.dateCampaigns.notUsed": "Ainda não usada",
+  "sandbox.dateCampaigns.state.new": "Ainda não publicada",
+  "sandbox.dateCampaigns.state.changed": "Alterada no seu rascunho",
+  "sandbox.dateCampaigns.removedTitle": "Removidas no seu rascunho",
+  "sandbox.dateCampaigns.removedHint":
+    "Estas campanhas param quando você publicar. Para manter uma, crie-a de novo com o mesmo nome.",
+  "sandbox.dateCampaigns.startLabel": "Começa",
+  "sandbox.dateCampaigns.endLabel": "Termina",
+  "sandbox.dateCampaigns.windowHint":
+    "Deixe uma data vazia para manter aquele lado aberto. Os horários estão no fuso do seu computador.",
+  "sandbox.dateCampaigns.endBeforeStart": "O fim precisa ser depois do início.",
+  "sandbox.dateCampaigns.unreadableHint":
+    "Uma das datas não pode ser lida, então as variantes dela não aparecem. Escolha novas datas e salve.",
+  "sandbox.dateCampaigns.publishedWindow": "Publicado: {window}",
+  "sandbox.dateCampaigns.saveDates": "Salvar datas",
+  "sandbox.dateCampaigns.nameLabel": "Nome",
+  "sandbox.dateCampaigns.rename": "Renomear",
+  "sandbox.dateCampaigns.renameHint":
+    "Toda variante que usa esta campanha é atualizada na mesma mudança.",
+  "sandbox.dateCampaigns.renameWholeHint":
+    "Seções que leem todas as campanhas no próprio código continuam procurando o nome antigo. Atualize-as no editor do site.",
+  "sandbox.dateCampaigns.nameEmpty": "Dê um nome.",
+  "sandbox.dateCampaigns.nameTaken": "Esse nome já está em uso.",
+  "sandbox.dateCampaigns.nameReserved":
+    "Nomes não podem começar com dois sublinhados.",
+  "sandbox.dateCampaigns.delete": "Excluir campanha",
+  "sandbox.dateCampaigns.deleted": "Campanha “{name}” excluída do seu rascunho",
+  "sandbox.dateCampaigns.deletedHint":
+    "As variantes que a usavam deixam de aparecer quando você publicar. Desfazer traz ela de volta.",
+  "sandbox.dateCampaigns.undo": "Desfazer",
+  "sandbox.dateCampaigns.saved": "Salvo no seu rascunho",
+  "sandbox.dateCampaigns.savedHint": "Vai ao ar quando você publicar.",
+  "sandbox.dateCampaigns.renamed": "Campanha renomeada para “{name}”",
+  "sandbox.dateCampaigns.created": "Campanha “{name}” adicionada",
+  "sandbox.dateCampaigns.create": "Criar",
+  "sandbox.dateCampaigns.allCampaigns": "Todas as campanhas",
+  "sandbox.dateCampaigns.today": "Hoje",
+  "sandbox.dateCampaigns.previous": "Antes",
+  "sandbox.dateCampaigns.next": "Depois",
+  "sandbox.dateCampaigns.nothingInRange": "Nenhuma campanha roda nestes meses.",
+  "sandbox.dateCampaigns.missing.title":
+    "Seu site precisa de uma atualização para campanhas",
+  "sandbox.dateCampaigns.missing.desc":
+    "Peça ao seu desenvolvedor para atualizar o site para a versão mais recente do Blocks e publicá-lo. Suas campanhas vão aparecer aqui.",
+  "sandbox.dateCampaigns.replaced.title":
+    "Seu site cuida das campanhas no próprio código",
+  "sandbox.dateCampaigns.replaced.desc":
+    "Os desenvolvedores definiram as próprias campanhas, então elas não podem ser alteradas aqui. Pergunte a eles como mudar uma.",
+  "sandbox.dateCampaigns.conflict.title":
+    "Seu site já tem um bloco chamado “campaigns”",
+  "sandbox.dateCampaigns.conflict.desc":
+    "Ele não é uma lista de campanhas, então ainda não dá para adicionar campanhas. Renomeie esse bloco e volte aqui.",
+  "sandbox.previewAs.label": "Visualizar como",
+  "sandbox.previewAs.intro":
+    "Só esta pré-visualização muda. Seus visitantes continuam vendo o site como ele está.",
+  "sandbox.previewAs.unavailable":
+    "Faça uma mudança ou publique o site primeiro; depois a pré-visualização pode mostrar outro momento ou forçar um teste.",
+  "sandbox.previewAs.momentLabel": "Visualizar em",
+  "sandbox.previewAs.momentHint":
+    "As campanhas aparecem como vão estar neste momento. Os horários estão no fuso do seu computador.",
+  "sandbox.previewAs.now": "Agora",
+  "sandbox.previewAs.testsLabel": "Testes A/B",
+  "sandbox.previewAs.testsHint":
+    "Sem escolha: você vê o lado que a sua própria visita recebeu.",
+  "sandbox.previewAs.noTests": "Nenhum teste A/B ainda.",
+  "sandbox.previewAs.off": "Desligado",
+  "sandbox.previewAs.on": "Ligado",
+  "sandbox.previewAs.reset": "Mostrar como está agora",
 } satisfies Record<keyof typeof sandboxEn, string>;

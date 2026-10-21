@@ -265,6 +265,7 @@ export function NamedRuleCreateForm({
   existingNames,
   prefill,
   pending,
+  submitLabel,
   onBack,
   onSubmit,
 }: {
@@ -274,6 +275,8 @@ export function NamedRuleCreateForm({
   /** A campaign's starting dates (an inline date rule being moved). */
   prefill?: CampaignWindow | null;
   pending?: boolean;
+  /** The button's words; "Create and use" in the rule picker. */
+  submitLabel?: string;
   onBack: () => void;
   onSubmit: (pick: NamedRulePick) => void;
 }) {
@@ -410,7 +413,7 @@ export function NamedRuleCreateForm({
           {t("sectionsEditor.namedRulePicker.cancel")}
         </Button>
         <Button type="submit" size="sm" disabled={pending}>
-          {t("sectionsEditor.namedRulePicker.createAndUse")}
+          {submitLabel ?? t("sectionsEditor.namedRulePicker.createAndUse")}
         </Button>
       </div>
     </form>

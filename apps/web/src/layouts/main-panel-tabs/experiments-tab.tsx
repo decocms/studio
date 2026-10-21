@@ -3,6 +3,9 @@ import { Link, useSearch } from "@tanstack/react-router";
 import { useOrgFlag } from "@/hooks/use-organization-settings";
 import { LegacyExperimentsTab } from "./experiments-tab-legacy";
 import { pickExperimentsTab } from "./experiments-tab-choice";
+import { ExperimentsTabSkeleton, ExperimentsTabV8 } from "./experiments-tab-v8";
+import { useMainSchemaV8 } from "@/hooks/use-main-schema-v8";
+
 import { Cell, Pie, PieChart } from "recharts";
 import {
   ArrowUpRight,
@@ -1902,16 +1905,23 @@ function ExperimentsTabV2({ virtualMcpId }: { virtualMcpId: string }) {
 }
 
 /**
- * Picks which Experiments tab an org gets. `experiments_enabled` already
- * decided the tab is reachable; this only chooses between the rebuilt
- * experience and the one main shipped. See {@link pickExperimentsTab}.
+ * Picks which Experiments tab a site gets. The route already decided the tab
+ * is reachable; this chooses between the v8 tab (the site's `experiments`
+ * block, in the draft), the rebuilt experience and the one main shipped. See
+ * {@link pickExperimentsTab}.
  */
 export function ExperimentsTab({ virtualMcpId }: { virtualMcpId: string }) {
   const { ui } = useSearch({ strict: false }) as { ui?: string };
   const flagEnabled = useOrgFlag("experiments_v2_enabled");
-  return pickExperimentsTab(flagEnabled, ui) === "v2" ? (
-    <ExperimentsTabV2 virtualMcpId={virtualMcpId} />
-  ) : (
-    <LegacyExperimentsTab virtualMcpId={virtualMcpId} />
-  );
+  const siteMajor = useMainSchemaV8(virtualMcpId);
+  switch (pickExperimentsTab({ flagEnabled, siteMajor, ui })) {
+    case "v8":
+      return <ExperimentsTabV8 virtualMcpId={virtualMcpId} />;
+    case "loading":
+      return <ExperimentsTabSkeleton />;
+    case "v2":
+      return <ExperimentsTabV2 virtualMcpId={virtualMcpId} />;
+    case "legacy":
+      return <LegacyExperimentsTab virtualMcpId={virtualMcpId} />;
+  }
 }

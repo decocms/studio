@@ -11,6 +11,7 @@ import {
   resolveAgentSiteSlug,
   resolveAnalyticsSiteSlug,
 } from "@decocms/shared/site-slug";
+import { experimentsTabVisible } from "./experiments-tab-choice";
 import type { ProjectNativeViewPresence } from "./project-sidebar-views";
 
 export interface ProjectNativeViewPresenceResult {
@@ -76,7 +77,11 @@ export function useProjectNativeViewPresence(
           ? ownsSite
           : ownsAnalyticsSite) &&
         controlPlaneViews.monitor,
-      experiments: controlPlaneViews.experiments,
+      // Every v8 site: its A/B tests are content its editors own.
+      experiments: experimentsTabVisible(
+        controlPlaneViews.experiments,
+        mainSchema,
+      ),
     },
     assetsPending: !!siteSlug && fileConfigs.isPending,
     // "error" is a site last found v8 whose main can't be read yet: the

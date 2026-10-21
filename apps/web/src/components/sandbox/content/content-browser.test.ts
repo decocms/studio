@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { visibleCollection } from "./content-browser";
+import { deepLinkCollection, visibleCollection } from "./content-browser";
 
 /**
  * The context tab is the one collection an org can turn off, and it is reached
@@ -21,5 +21,31 @@ describe("visibleCollection", () => {
       expect(visibleCollection("posts", blogAi)).toBe("posts");
       expect(visibleCollection("sections", blogAi)).toBe("sections");
     }
+  });
+});
+
+describe("visibleCollection on a Blocks (v8) site", () => {
+  test("Campaigns stands where the Calendar is", () => {
+    expect(visibleCollection("calendar", false, true)).toBe("campaigns");
+    expect(visibleCollection("campaigns", false, true)).toBe("campaigns");
+  });
+
+  test("a v7 site keeps its Calendar", () => {
+    expect(visibleCollection("campaigns", false, false)).toBe("calendar");
+    expect(visibleCollection("calendar", false)).toBe("calendar");
+  });
+});
+
+describe("deepLinkCollection", () => {
+  test("opens a blog collection, Sections or Campaigns", () => {
+    expect(deepLinkCollection("posts")).toBe("posts");
+    expect(deepLinkCollection("sections")).toBe("sections");
+    expect(deepLinkCollection("campaigns")).toBe("campaigns");
+  });
+
+  test("anything else opens the default", () => {
+    expect(deepLinkCollection(undefined)).toBeNull();
+    expect(deepLinkCollection("settings")).toBeNull();
+    expect(deepLinkCollection("nope")).toBeNull();
   });
 });

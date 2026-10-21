@@ -138,6 +138,23 @@ export const sectionsEditor = {
   "sectionsEditor.namedRulePicker.fieldNone": "Nada",
   "sectionsEditor.namedRulePicker.fieldPlaceholder":
     "Escolha o que este campo lê",
+  "sectionsEditor.namedRuleUses.title": "Usado em",
+  "sectionsEditor.namedRuleUses.loading": "Verificando onde é usado…",
+  "sectionsEditor.namedRuleUses.variant": "Variante {index}",
+  "sectionsEditor.namedRuleUses.draftOnly": "Ainda não publicado",
+  "sectionsEditor.namedRuleUses.removed": "Removido no seu rascunho",
+  "sectionsEditor.namedRuleUses.open": "Abrir",
+  "sectionsEditor.namedRuleUses.emptyTests":
+    "Ainda não usado. No editor do site, dê a uma variante a regra “Teste A/B” e escolha este teste.",
+  "sectionsEditor.namedRuleUses.emptyCampaigns":
+    "Ainda não usado. No editor do site, dê a uma variante a regra “Data” e escolha esta campanha.",
+  "sectionsEditor.namedRuleUses.wholeTests": "Seções que leem todos os testes",
+  "sectionsEditor.namedRuleUses.wholeTestsHint":
+    "Estas seções decidem no próprio código quais testes consultam.",
+  "sectionsEditor.namedRuleUses.wholeCampaigns":
+    "Seções que leem todas as campanhas",
+  "sectionsEditor.namedRuleUses.wholeCampaignsHint":
+    "Estas seções decidem no próprio código quais campanhas consultam.",
   "sectionsEditor.namedRules.changedMeanwhile":
     "Isto mudou enquanto você editava",
   "sectionsEditor.namedRules.changedMeanwhileHint":
