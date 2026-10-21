@@ -198,12 +198,23 @@ export const TERMINAL_THREAD_STATUSES = new Set([
  * `repo` its legacy `owner/name` label (migration 204), so a card carrying
  * only the id is repo-backed too — read as repo-less, its run went to QA,
  * past the sweeper that finds a PR opened inside the sandbox by its branch.
+ *
+ * A Super Agent card whose used thread has a repository bound counts too: the
+ * run can bind it on the thread alone (the org's only repo, or `TASK_ADD_REPO`),
+ * leaving both columns empty. Only the Super Agent's, because the sweeper
+ * settles no other card.
  */
 export function isRepoBacked(item: {
   repo?: string | null;
   repositoryId?: string | null;
+  assigneeId?: string | null;
+  threads?: { hasMessages: boolean; hasPreview?: boolean }[];
 }): boolean {
-  return item.repo != null || item.repositoryId != null;
+  if (item.repo != null || item.repositoryId != null) return true;
+  return (
+    item.assigneeId === SUPER_AGENT_ASSIGNEE_ID &&
+    (item.threads ?? []).some((t) => t.hasMessages && t.hasPreview)
+  );
 }
 
 /**
@@ -228,7 +239,12 @@ export function shouldAdvanceToReview(
     status: string;
     repo?: string | null;
     repositoryId?: string | null;
-    threads: { status: string | null; hasMessages: boolean }[];
+    assigneeId?: string | null;
+    threads: {
+      status: string | null;
+      hasMessages: boolean;
+      hasPreview?: boolean;
+    }[];
   },
   /** Whether a PR is linked — a repo-backed task needs one to advance on finish. */
   hasPr = false,
