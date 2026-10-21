@@ -1,15 +1,17 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import {
   isProtectedBranch,
   buildCommitActions,
   isBranchExistsConflict,
   isCommitConflict,
+  GitlabContentClient,
   mapCompareDiff,
   mapMergeRequest,
   mapMergeRequestState,
   pooledMap,
   type ResolvedChange,
 } from "./content";
+import { GitProviderError } from "../types";
 import { gitlabErrorMessage } from "./http";
 
 describe("buildCommitActions", () => {
@@ -440,5 +442,31 @@ describe("isProtectedBranch", () => {
       isProtectedBranch("The file has changed since you started editing it: a"),
     ).toBe(false);
     expect(isProtectedBranch("404 Project Not Found")).toBe(false);
+  });
+});
+
+describe("GitlabContentClient's malformed-body handling", () => {
+  const originalFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  test("degrades a malformed 2xx project body into a GitProviderError", async () => {
+    globalThis.fetch = (async () =>
+      new Response("<html>upstream error</html>", {
+        status: 200,
+      })) as unknown as typeof fetch;
+
+    const client = new GitlabContentClient({
+      repo: { provider: "gitlab", host: "gitlab.com", path: "acme/site" },
+      tokenSource: {
+        kind: "oauth",
+        get: async () => ({ token: "t", kind: "oauth", expiresAt: null }),
+      },
+    });
+
+    await expect(client.getDefaultBranch()).rejects.toBeInstanceOf(
+      GitProviderError,
+    );
   });
 });

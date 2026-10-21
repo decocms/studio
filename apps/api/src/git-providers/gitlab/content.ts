@@ -28,7 +28,7 @@ import {
   encodeProjectPath,
   GitlabProviderClient,
 } from "./client";
-import { gitlabApiBaseUrl, gitlabFailure } from "./http";
+import { gitlabApiBaseUrl, gitlabFailure, gitlabJson } from "./http";
 import { decoDirFor, groupPathsByDirectory } from "../paths";
 import { GitProviderError, type TokenSource } from "../types";
 import {
@@ -1137,7 +1137,7 @@ export class GitlabContentClient implements RepoContentClient {
   ): Promise<T | null> {
     const res = await this.call(pathAndQuery, init);
     if (res === null) return null;
-    return (await res.json()) as T;
+    return gitlabJson<T>(res, pathAndQuery);
   }
 
   /**
