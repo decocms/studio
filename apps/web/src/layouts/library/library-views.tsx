@@ -188,6 +188,8 @@ export interface ListingView {
   modified: LibraryModified;
   /** The file whose preview is open beside the list, as a browse path. */
   previewPath?: string;
+  /** Context's drive: recent files join the root's table instead of cards. */
+  flat?: boolean;
 }
 
 /** The two filters, as one test. */
@@ -390,6 +392,7 @@ function FilesSection({
           sort={view.sort}
           onSort={view.onSort}
           locationLabel={locationLabel}
+          plain={view.flat}
         >
           {children}
         </EntryList>
@@ -836,9 +839,12 @@ export function VolumeView({
       ? `${homeDisplayName(org.slug)}/${name}`
       : undefined;
 
-  const recent = isDriveRoot ? (
-    <Recent view={view} onOpenFile={onOpenFile} />
-  ) : null;
+  const flatRoot = isDriveRoot && !!view.flat;
+  const recentFeed = useOrgFsRecent(undefined, { enabled: flatRoot });
+  const recent =
+    isDriveRoot && !flatRoot ? (
+      <Recent view={view} onOpenFile={onOpenFile} />
+    ) : null;
 
   if (listing.isPending) {
     return (
@@ -948,10 +954,24 @@ export function VolumeView({
     }
   };
 
+  /** The drive's own files are already rows; the feed adds everything else. */
+  const feed = flatRoot
+    ? (recentFeed.data ?? []).filter(
+        (e) =>
+          matchesView(e, view) &&
+          !(e.volume === HOME_MOUNT_PATH && !e.path.includes("/")),
+      )
+    : [];
+
   /** One list, the way Finder and Dropbox show a folder: what is in it, with
    *  nothing above it competing for the eye. */
-  const table = rows.length > 0 && (
-    <EntryList sort={view.sort} onSort={view.onSort}>
+  const table = rows.length + feed.length > 0 && (
+    <EntryList
+      sort={view.sort}
+      onSort={view.onSort}
+      locationLabel={flatRoot ? t("library.entries.location") : undefined}
+      plain={view.flat}
+    >
       {rows.map((item) => {
         const path = browsePathFor(location, item.path);
         const project = inProjectsFolder
@@ -983,6 +1003,28 @@ export function VolumeView({
                   onDrop: item.kind === "folder" ? onMove : undefined,
                 },
               ),
+            }}
+          />
+        );
+      })}
+      {feed.map((e) => {
+        const previewPath = browsePathForEntry(e.volume, e.path);
+        const item = toLibraryEntry(e);
+        return (
+          <EntryRow
+            key={`${e.volume}/${e.path}`}
+            entry={item}
+            secondary={locationOf(e.volume, e.path, org.slug)}
+            selected={view.previewPath === previewPath}
+            publicState={publicStateOf(e)}
+            actions={{
+              onOpen: () => onOpenFile(previewPath),
+              download: {
+                url: fileUrl(e.volume, e.path),
+                filename: item.name,
+              },
+              onDelete: () =>
+                onDelete({ volume: e.volume, path: e.path, kind: "file" }),
             }}
           />
         );

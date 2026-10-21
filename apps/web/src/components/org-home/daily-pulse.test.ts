@@ -2,13 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { buildProjectIndex } from "@/lib/project-index";
 import {
   attentionReason,
-  costSeriesForProjectMonthToDate,
   costSeriesMonthToDate,
-  monthlyCost,
   projectSummaries,
   runningAgents,
   runsSeries,
-  runsToday,
   shippedSeries,
   shippedSince,
   tasksNeedingMe,
@@ -42,62 +39,6 @@ const task = (over: Record<string, unknown> = {}) =>
     repo: null,
     ...over,
   }) as never;
-
-describe("shippedSince", () => {
-  const since = NOW - 86_400_000;
-
-  test("counts merged work at or after the window start", () => {
-    expect(
-      shippedSince(
-        [
-          task({ status: "done", updatedAt: daysAgo(0.5) }),
-          task({ status: "post_deploy_validation", updatedAt: daysAgo(0.5) }),
-          task({ status: "done", updatedAt: new Date(since).toISOString() }),
-        ],
-        since,
-      ),
-    ).toBe(3);
-  });
-
-  test("a card waiting on QA or its release has not shipped", () => {
-    expect(
-      shippedSince(
-        [
-          task({ status: "qa", updatedAt: daysAgo(0.5) }),
-          task({ status: "ready_for_deployment", updatedAt: daysAgo(0.5) }),
-        ],
-        since,
-      ),
-    ).toBe(0);
-  });
-
-  test("does not count what shipped before the window", () => {
-    expect(
-      shippedSince([task({ status: "done", updatedAt: daysAgo(2) })], since),
-    ).toBe(0);
-  });
-
-  test("an archived card did not ship", () => {
-    expect(
-      shippedSince(
-        [task({ status: "archived", updatedAt: daysAgo(0.5) })],
-        since,
-      ),
-    ).toBe(0);
-  });
-
-  test("an unparseable or missing timestamp never counts", () => {
-    expect(
-      shippedSince(
-        [
-          task({ status: "done", updatedAt: "not a date" }),
-          task({ status: "done", updatedAt: null }),
-        ],
-        since,
-      ),
-    ).toBe(0);
-  });
-});
 
 describe("tasksNeedingMe", () => {
   test("a run asking a question is waiting on a person", () => {
@@ -320,93 +261,28 @@ describe("runningAgents", () => {
 });
 
 describe("shippedSeries", () => {
-  const project = {
-    id: "p1",
-    title: "p1",
-    created_at: "2026-01-01T00:00:00Z",
-    metadata: {
-      repository: {
-        owner: "deco",
-        name: "farm",
-        url: "https://github.com/deco/farm",
-      },
-    },
-    connections: [],
-  } as never;
-
   test("buckets by day, oldest first", () => {
-    const index = buildProjectIndex([project]);
     const series = shippedSeries(
-      index,
       [
-        task({ status: "done", updatedAt: daysAgo(0), repo: "deco/farm" }),
-        task({ status: "done", updatedAt: daysAgo(0), repo: "deco/farm" }),
-        task({ status: "done", updatedAt: daysAgo(3), repo: "deco/farm" }),
+        task({ status: "done", updatedAt: daysAgo(0) }),
+        task({ status: "done", updatedAt: daysAgo(0) }),
+        task({ status: "done", updatedAt: daysAgo(3) }),
+        task({ status: "in_progress", updatedAt: daysAgo(1) }),
       ],
-      "p1",
       7,
       NOW,
     );
     expect(series).toEqual([0, 0, 0, 1, 0, 0, 2]);
   });
 
-  test("another project's work is not in this project's line", () => {
-    const index = buildProjectIndex([project]);
-    const series = shippedSeries(
-      index,
-      [task({ status: "done", updatedAt: daysAgo(0), repo: "deco/other" })],
-      "p1",
-      7,
-      NOW,
-    );
-    expect(series).toEqual([0, 0, 0, 0, 0, 0, 0]);
-  });
-
   /** Older than the window falls out rather than piling onto day zero. */
   test("work older than the window is not in the line", () => {
-    const index = buildProjectIndex([project]);
     const series = shippedSeries(
-      index,
-      [task({ status: "done", updatedAt: daysAgo(30), repo: "deco/farm" })],
-      "p1",
+      [task({ status: "done", updatedAt: daysAgo(30) })],
       7,
       NOW,
     );
     expect(series.reduce((a, b) => a + b, 0)).toBe(0);
-  });
-});
-
-describe("runsToday", () => {
-  const AT_NOON = Date.parse("2026-09-22T12:00:00Z");
-  const todayAt = (hour: number) =>
-    new Date(new Date(AT_NOON).setHours(hour, 0, 0, 0)).toISOString();
-
-  test("counts the runs touched since midnight", () => {
-    expect(
-      runsToday(
-        [
-          task({ threads: [thread("completed", todayAt(9))] }),
-          task({ threads: [thread("completed", daysAgo(2))] }),
-        ],
-        AT_NOON,
-      ).runs,
-    ).toBe(1);
-  });
-
-  /** Live is a state, not a window: a run started yesterday and still going is
-   *  the one most worth knowing about. */
-  test("live counts what is still in progress whenever it started", () => {
-    expect(
-      runsToday([task({ threads: [thread("in_progress", daysAgo(3))] })], NOW)
-        .live,
-    ).toBe(1);
-  });
-
-  test("an unparseable timestamp is not today", () => {
-    expect(
-      runsToday([task({ threads: [thread("completed", "not a date")] })], NOW)
-        .runs,
-    ).toBe(0);
   });
 });
 
@@ -440,25 +316,7 @@ describe("runsSeries", () => {
   });
 });
 
-describe("monthlyCost", () => {
-  const project = (id: string, repo: string) =>
-    ({
-      id,
-      title: id,
-      created_at: "2026-01-01T00:00:00Z",
-      metadata: {
-        repository: {
-          owner: repo.split("/")[0],
-          name: repo.split("/")[1],
-          url: `https://github.com/${repo}`,
-        },
-      },
-      connections: [],
-    }) as never;
-  const index = buildProjectIndex([
-    project("p1", "deco/farm"),
-    project("p2", "deco/osklen"),
-  ]);
+describe("costSeriesMonthToDate", () => {
   /** Mid-month, so "since the 1st" and "last 7 days" cannot be confused. */
   const MID = Date.parse("2026-09-20T12:00:00Z");
   const onDay = (day: number) =>
@@ -466,146 +324,77 @@ describe("monthlyCost", () => {
       Date.parse(`2026-09-${String(day).padStart(2, "0")}T10:00:00Z`),
     ).toISOString();
 
-  test("totals the month and ranks the projects that spent it", () => {
-    const cost = monthlyCost(
-      index,
-      [
-        task({
-          repo: "deco/farm",
-          threads: [thread("completed", onDay(3), { costUsd: 2 })],
-        }),
-        task({
-          repo: "deco/osklen",
-          threads: [thread("completed", onDay(9), { costUsd: 5 })],
-        }),
-      ],
-      MID,
-    );
-    expect(cost.total).toBe(7);
-    expect(cost.byProject).toEqual([
-      { projectId: "p2", usd: 5 },
-      { projectId: "p1", usd: 2 },
-    ]);
-  });
-
-  /** Calendar month, not a rolling window: a bill arrives per month. */
-  test("last month's spend is not on this month's total", () => {
-    expect(
-      monthlyCost(
-        index,
-        [
-          task({
-            repo: "deco/farm",
-            threads: [
-              thread("completed", "2026-08-28T10:00:00Z", { costUsd: 9 }),
-            ],
-          }),
-        ],
-        MID,
-      ).total,
-    ).toBe(0);
-  });
-
-  test("a project that spent nothing is not in the ranking", () => {
-    expect(
-      monthlyCost(
-        index,
-        [task({ repo: "deco/farm", threads: [thread("completed", onDay(3))] })],
-        MID,
-      ).byProject,
-    ).toEqual([]);
-  });
-
-  /** A ratio with a zero denominator is not a number anyone should read. */
-  test("cost per shipped card is null when nothing shipped", () => {
-    expect(
-      monthlyCost(
-        index,
-        [
-          task({
-            repo: "deco/farm",
-            threads: [thread("completed", onDay(3), { costUsd: 4 })],
-          }),
-        ],
-        MID,
-      ).perShipped,
-    ).toBe(null);
-  });
-
-  test("cost per shipped card divides by what actually shipped", () => {
-    const cost = monthlyCost(
-      index,
-      [
-        task({
-          status: "done",
-          repo: "deco/farm",
-          updatedAt: onDay(5),
-          threads: [thread("completed", onDay(5), { costUsd: 6 })],
-        }),
-        task({
-          status: "done",
-          repo: "deco/farm",
-          updatedAt: onDay(6),
-          threads: [thread("completed", onDay(6), { costUsd: 4 })],
-        }),
-      ],
-      MID,
-    );
-    expect(cost.perShipped).toBe(5);
-  });
-
-  /** Same window as the total above — a "this month" headline and its chart
-   *  must never quietly disagree on what window they're both claiming. */
-  test("costSeriesMonthToDate buckets spend by calendar day since the 1st", () => {
-    expect(
-      costSeriesMonthToDate(
-        [
-          task({
-            repo: "deco/farm",
-            threads: [thread("completed", onDay(1), { costUsd: 2 })],
-          }),
-          task({
-            repo: "deco/osklen",
-            threads: [thread("completed", onDay(20), { costUsd: 5 })],
-          }),
-        ],
-        MID,
-      ),
-    ).toEqual([2, ...new Array(18).fill(0), 5]);
-  });
-
-  test("costSeriesMonthToDate drops last month's spend, not clamped into day one", () => {
+  test("buckets dollars by day since the 1st, last month excluded", () => {
     const series = costSeriesMonthToDate(
       [
         task({
-          repo: "deco/farm",
           threads: [
-            thread("completed", "2026-08-28T10:00:00Z", { costUsd: 9 }),
+            thread("completed", onDay(3), { costUsd: 2 }),
+            thread("completed", "2026-08-30T10:00:00Z", { costUsd: 9 }),
           ],
         }),
+        task({ threads: [thread("completed", onDay(3), { costUsd: 5 })] }),
       ],
       MID,
     );
-    expect(series.reduce((sum, day) => sum + day, 0)).toBe(0);
+    expect(series).toHaveLength(20);
+    expect(series[2]).toBe(7);
+    expect(series.reduce((sum, day) => sum + day, 0)).toBe(7);
+  });
+});
+
+describe("shippedSince", () => {
+  const since = NOW - 86_400_000;
+
+  test("counts merged work at or after the window start", () => {
+    expect(
+      shippedSince(
+        [
+          task({ status: "done", updatedAt: daysAgo(0.5) }),
+          task({ status: "post_deploy_validation", updatedAt: daysAgo(0.5) }),
+          task({ status: "done", updatedAt: new Date(since).toISOString() }),
+        ],
+        since,
+      ),
+    ).toBe(3);
   });
 
-  test("costSeriesForProjectMonthToDate scopes the series to one project", () => {
-    const series = costSeriesForProjectMonthToDate(
-      index,
-      [
-        task({
-          repo: "deco/farm",
-          threads: [thread("completed", onDay(3), { costUsd: 2 })],
-        }),
-        task({
-          repo: "deco/osklen",
-          threads: [thread("completed", onDay(3), { costUsd: 5 })],
-        }),
-      ],
-      "p1",
-      MID,
-    );
-    expect(series[2]).toBe(2);
-    expect(series.reduce((sum, day) => sum + day, 0)).toBe(2);
+  test("a card waiting on QA or its release has not shipped", () => {
+    expect(
+      shippedSince(
+        [
+          task({ status: "qa", updatedAt: daysAgo(0.5) }),
+          task({ status: "ready_for_deployment", updatedAt: daysAgo(0.5) }),
+        ],
+        since,
+      ),
+    ).toBe(0);
+  });
+
+  test("does not count what shipped before the window", () => {
+    expect(
+      shippedSince([task({ status: "done", updatedAt: daysAgo(2) })], since),
+    ).toBe(0);
+  });
+
+  test("an archived card did not ship", () => {
+    expect(
+      shippedSince(
+        [task({ status: "archived", updatedAt: daysAgo(0.5) })],
+        since,
+      ),
+    ).toBe(0);
+  });
+
+  test("an unparseable or missing timestamp never counts", () => {
+    expect(
+      shippedSince(
+        [
+          task({ status: "done", updatedAt: "not a date" }),
+          task({ status: "done", updatedAt: null }),
+        ],
+        since,
+      ),
+    ).toBe(0);
   });
 });

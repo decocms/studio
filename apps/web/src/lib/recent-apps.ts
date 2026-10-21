@@ -49,23 +49,6 @@ export function dropRecentApp(
   return list.filter((it) => !isSame(it, entry));
 }
 
-/** Enough history to order an org's whole launcher, not just the rail. */
-const APP_OPENS_LIMIT = 100;
-
-/** One app in one project. `app` is a `LaunchableViewId` or a
- *  `formatPinnedViewTabId` id. */
-export function appOpenKey(projectId: string, app: string): string {
-  return JSON.stringify([projectId, app]);
-}
-
-export function pushAppOpen(
-  list: readonly string[],
-  key: string,
-  limit: number = APP_OPENS_LIMIT,
-): string[] {
-  return [key, ...list.filter((it) => it !== key)].slice(0, limit);
-}
-
 /** The app a route IS. `projectId` is null for the account-less
  *  `/site-editor` (`staticData.local`): the app is open, but no project (and
  *  no org) owns it, so it is marked on the rail and never recorded.

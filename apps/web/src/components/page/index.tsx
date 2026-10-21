@@ -47,7 +47,7 @@ const CONTAINER_WIDTH = {
 } as const;
 
 /** Pages inside a column with its own toolbar start on that toolbar's edge. */
-const PAGE_INSET = "px-4 md:pl-6 md:pr-8";
+export const PAGE_INSET = "px-4 md:pl-6 md:pr-8";
 
 const ContainerInset = createContext(false);
 

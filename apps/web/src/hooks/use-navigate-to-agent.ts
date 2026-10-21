@@ -5,6 +5,7 @@
  * agent navigation with automatic personal sidebar membership.
  */
 
+import { useRecentProjects } from "@/hooks/use-recent-projects";
 import {
   navigateToTabLocation,
   tabRouteLocation,
@@ -60,6 +61,7 @@ export function useNavigateToAgent() {
   /** Cold-entry base ("main"): no current branch to resolve a PR base from. */
   const baseBranch = useBaseBranch(undefined, null);
   const projectFirstNav = useProjectFirstNav();
+  const { remember: rememberProject } = useRecentProjects(org.slug);
 
   /** The navigation proper, once the wanted runtime is known. */
   const go = (
@@ -67,24 +69,13 @@ export function useNavigateToAgent() {
     options: NavigateToAgentOptions | undefined,
     wantedRuntime: ThreadRuntime | undefined,
   ) => {
-    /** "Open this project" lands on its one screen — a project is not a scope
-     *  you enter. Naming a VIEW is a different ask ("open its settings", "open
-     *  this automation"), and those are destinations inside the scoped
-     *  workspace, so they keep the path below. Here because this is the single
-     *  funnel every "open this project" caller already goes through. */
+    /** "Open this project" enters its workspace, and the sidebar follows it.
+     *  Naming a VIEW is a different ask ("open its settings", "open this
+     *  automation") and keeps the path below. Recorded here because this is
+     *  the single funnel every "open this project" caller goes through. */
     if (projectFirstNav && !options?.panel) {
-      void navigate({
-        to: "/$org/projects",
-        params: { org: org.slug },
-        search: (prev: Record<string, unknown>) => ({
-          ...prev,
-          project: virtualMcpId,
-          virtualmcpid: undefined,
-          /** Home's own param. Search is spread forward, so leaving it on
-           *  would carry the Agents destination onto a project's screen. */
-          view: undefined,
-        }),
-      });
+      rememberProject(virtualMcpId);
+      void navigate(projectWorkspaceLink(org.slug, virtualMcpId));
       return;
     }
     const tabId = options?.panel ?? "overview";
@@ -182,6 +173,26 @@ export function useNavigateToAgent() {
   };
 }
 
+/** A project's workspace, under the new navigation: entering it scopes the
+ *  sidebar to the project. */
+function projectWorkspaceLink(
+  orgSlug: string,
+  virtualMcpId: string,
+): LinkProps {
+  return {
+    to: "/$org/projects/$agentId",
+    params: { org: orgSlug, agentId: virtualMcpId },
+    // A carried-over thread would route back to the project it belongs to.
+    search: (prev: Record<string, unknown>) => ({
+      ...prev,
+      project: undefined,
+      virtualmcpid: undefined,
+      thread: undefined,
+      mainpanel: undefined,
+    }),
+  };
+}
+
 /**
  * The same destination `useNavigateToAgent` lands on, as `LinkProps` for a real
  * anchor — so middle-click and "open in new tab" work. Only for callers that
@@ -195,16 +206,7 @@ export function useAgentLink() {
 
   return (virtualMcpId: string, panel?: string): LinkProps => {
     if (projectFirstNav && !panel) {
-      return {
-        to: "/$org/projects",
-        params: { org: org.slug },
-        search: (prev: Record<string, unknown>) => ({
-          ...prev,
-          project: virtualMcpId,
-          virtualmcpid: undefined,
-          view: undefined,
-        }),
-      };
+      return projectWorkspaceLink(org.slug, virtualMcpId);
     }
     const target = tabRouteTarget({
       tabId: panel ?? "overview",

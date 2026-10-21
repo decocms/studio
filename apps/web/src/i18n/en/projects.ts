@@ -1,5 +1,6 @@
 export const projects = {
   // Platforms
+  "projects.overview.metrics": "Metrics",
   "projects.platform.vtex": "VTEX",
   "projects.platform.shopify": "Shopify",
   "projects.platform.wake": "Wake",
@@ -69,8 +70,6 @@ export const projects = {
   "projects.flat.viewFiles": "Files",
   "projects.flat.viewAnalytics": "Analytics",
   "projects.apps.heading": "Apps",
-  "projects.apps.seeAll": "See all",
-  "projects.apps.showLess": "Show less",
   "projects.apps.reports": "Report",
   "projects.apps.reportsCaption": "What is wrong with the storefront",
   "projects.apps.siteEditor": "Site editor",
@@ -91,5 +90,4 @@ export const projects = {
   "projects.apps.automationsCaption": "Work that runs on a schedule",
   "projects.apps.experiments": "Experiments",
   "projects.apps.experimentsCaption": "A/B tests and their results",
-  "projects.flat.close": "Close",
 } as const;

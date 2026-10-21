@@ -32,6 +32,8 @@ import {
   memoryTemplate,
 } from "@decocms/shared/memory";
 import { Page } from "@/components/page";
+import { Panel } from "@/components/panel";
+import { useProjectFirstNav } from "@/hooks/use-preferences";
 import { CollectionTabs } from "@/components/collections/collection-tabs.tsx";
 import { EmptyState } from "@/components/empty-state.tsx";
 import { useProjectContext } from "@/sdk";
@@ -158,10 +160,13 @@ function MemoryDocument({
   scope,
   userId,
   label,
+  compact,
 }: {
   scope: MemoryScope;
   userId: string;
   label: string;
+  /** Context: the status rides in the toolbar and the editor takes the page. */
+  compact: boolean;
 }) {
   const t = useT();
   const { org } = useProjectContext();
@@ -282,6 +287,22 @@ function MemoryDocument({
       ? relativeTime(stat.data.updatedAt, now, language)
       : null;
 
+  const footer = (
+    <div className="flex min-h-5 items-center justify-between gap-3 text-meta">
+      <span
+        className={cn(
+          "inline-flex items-center gap-1.5",
+          status === "error" && "text-destructive",
+        )}
+        aria-live="polite"
+      >
+        {status === "saving" && <Spinner className="size-3" />}
+        {statusLabel(t, status, updated)}
+      </span>
+      <PromptBudget length={length ?? value.trim().length} />
+    </div>
+  );
+
   return (
     <div className="flex flex-col gap-4">
       {status === "conflict" && (
@@ -316,23 +337,18 @@ function MemoryDocument({
             setLength(e.target.value.trim().length);
             saver.change(e.target.value, shown);
           }}
-          className="field-sizing-content min-h-[320px] w-full resize-none bg-transparent font-mono text-[13px] leading-6 text-foreground outline-none placeholder:text-muted-foreground"
+          className={cn(
+            "field-sizing-content w-full resize-none bg-transparent font-mono text-[13px] leading-6 text-foreground outline-none placeholder:text-muted-foreground",
+            compact ? "min-h-[60vh]" : "min-h-[320px]",
+          )}
         />
       </Card>
 
-      <div className="flex min-h-5 items-center justify-between gap-3 text-meta">
-        <span
-          className={cn(
-            "inline-flex items-center gap-1.5",
-            status === "error" && "text-destructive",
-          )}
-          aria-live="polite"
-        >
-          {status === "saving" && <Spinner className="size-3" />}
-          {statusLabel(t, status, updated)}
-        </span>
-        <PromptBudget length={length ?? value.trim().length} />
-      </div>
+      {compact ? (
+        <Panel.Toolbar.Right.Portal>{footer}</Panel.Toolbar.Right.Portal>
+      ) : (
+        footer
+      )}
     </div>
   );
 }
@@ -342,6 +358,7 @@ export default function SettingsMemoryPage() {
   const { org } = useProjectContext();
   const navigate = useNavigate();
   const search = useSearch({ strict: false });
+  const projectFirstNav = useProjectFirstNav();
   const scope: MemoryScope = search.scope === "user" ? "user" : "organization";
   const { data: session } = authClient.useSession();
   const userId = session?.user.id;
@@ -354,9 +371,12 @@ export default function SettingsMemoryPage() {
   return (
     <Page>
       <Page.Content>
-        <Page.Container width="reading">
+        <Page.Container width={projectFirstNav ? "standard" : "reading"}>
           <div className="flex flex-col gap-6">
-            <Page.Title>{t("settings.memory.pageTitle")}</Page.Title>
+            {/* Context names the page in its breadcrumb. */}
+            {!projectFirstNav && (
+              <Page.Title>{t("settings.memory.pageTitle")}</Page.Title>
+            )}
             <CollectionTabs
               placement="page"
               tabs={[
@@ -366,35 +386,40 @@ export default function SettingsMemoryPage() {
               activeTab={scope}
               onTabChange={(id) =>
                 navigate({
-                  to: "/$org/settings/memory",
-                  params: { org: org.slug },
-                  search: id === "user" ? { scope: "user" } : {},
+                  to: ".",
+                  search: (prev: Record<string, unknown>) => ({
+                    ...prev,
+                    scope: id === "user" ? "user" : undefined,
+                  }),
                   replace: true,
                 })
               }
             />
             <div className="flex flex-col gap-4">
-              <div className="flex items-start gap-3">
-                <span className="surface-inset flex size-9 shrink-0 items-center justify-center rounded-full text-muted-foreground">
-                  <ScopeIcon size={16} />
-                </span>
-                <div className="flex min-w-0 flex-col gap-0.5">
-                  <p className="text-sm font-medium text-foreground">
-                    {heading}
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    {scope === "organization"
-                      ? t("settings.memory.orgDescription")
-                      : t("settings.memory.userDescription")}
-                  </p>
+              {!projectFirstNav && (
+                <div className="flex items-start gap-3">
+                  <span className="surface-inset flex size-9 shrink-0 items-center justify-center rounded-full text-muted-foreground">
+                    <ScopeIcon size={16} />
+                  </span>
+                  <div className="flex min-w-0 flex-col gap-0.5">
+                    <p className="text-sm font-medium text-foreground">
+                      {heading}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {scope === "organization"
+                        ? t("settings.memory.orgDescription")
+                        : t("settings.memory.userDescription")}
+                    </p>
+                  </div>
                 </div>
-              </div>
+              )}
               {userId ? (
                 <MemoryDocument
                   key={scope}
                   scope={scope}
                   userId={userId}
                   label={heading}
+                  compact={projectFirstNav}
                 />
               ) : (
                 <EditorSkeleton />

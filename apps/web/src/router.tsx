@@ -527,9 +527,6 @@ const orgHomeRoute = createRoute({
     /** Reports onboarding hand-off, forwarded verbatim by the `/$org` resolver. */
     connect: z.coerce.string().optional(),
     siteUrl: z.string().optional(),
-    /** The org's OTHER destination, on this route rather than `/$org/agents`
-     *  for the reason `projectsIndexRoute` documents below. */
-    view: z.enum(["agents"]).optional(),
   }),
   component: lazyRouteComponent(() => import("./routes/workspace/home.tsx")),
 });
@@ -1185,6 +1182,44 @@ const libraryRoute = createRoute({
   component: lazyRouteComponent(() => import("./routes/workspace/library.tsx")),
 });
 
+/** Plan and Monitoring: announced in the new navigation, a placeholder until built. */
+const planRoute = createRoute({
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
+  getParentRoute: () => threadSessionRoute,
+  path: "/plan",
+  staticData: { pageTitle: "sidebar.navDestinations.plan" },
+  component: lazyRouteComponent(() => import("./routes/workspace/plan.tsx")),
+});
+const orgMonitoringPlaceholderRoute = createRoute({
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
+  getParentRoute: () => threadSessionRoute,
+  path: "/monitoring",
+  staticData: { pageTitle: "sidebar.navDestinations.monitor" },
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/monitoring.tsx"),
+  ),
+});
+const projectPlanRoute = createRoute({
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
+  getParentRoute: () => agentWorkspaceRoute,
+  path: "/plan",
+  staticData: { pageTitle: "sidebar.navDestinations.plan" },
+  component: lazyRouteComponent(() => import("./routes/workspace/plan.tsx")),
+});
+const projectMonitoringRoute = createRoute({
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
+  getParentRoute: () => agentWorkspaceRoute,
+  path: "/monitoring",
+  staticData: { pageTitle: "sidebar.navDestinations.monitor" },
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/monitoring.tsx"),
+  ),
+});
+
 /** Discover remains an existing destination; this layer only changes routing. */
 const discoverRoute = createRoute({
   pendingComponent: ChatLayoutPending,
@@ -1660,6 +1695,8 @@ const agentWorkspaceWithChildren = agentWorkspaceRoute.addChildren([
   agentLibraryFileRoute,
   agentConnectSourcesRoute,
   agentLegacyProjectViewRoute,
+  projectPlanRoute,
+  projectMonitoringRoute,
 ]);
 
 const threadSessionWithChildren = threadSessionRoute.addChildren([
@@ -1675,6 +1712,8 @@ const threadSessionWithChildren = threadSessionRoute.addChildren([
   reportsRoute,
   libraryRoute,
   discoverRoute,
+  planRoute,
+  orgMonitoringPlaceholderRoute,
 ]);
 
 const threadRouteWithChildren = threadRoute.addChildren([

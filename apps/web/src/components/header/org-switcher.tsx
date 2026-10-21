@@ -28,6 +28,7 @@ function getOrgColorStyle(name: string): {
 const ORG_ICON_SIZES = {
   xs: { box: "size-5", text: "text-[9px]" },
   sm: { box: "size-6", text: "text-xs" },
+  md: { box: "size-8", text: "text-sm" },
   lg: { box: "size-9", text: "text-sm" },
 } as const;
 
@@ -39,7 +40,7 @@ export function OrgIcon({
   org: { name: string; logo?: string | null };
   size?: keyof typeof ORG_ICON_SIZES;
   /** The rail wants a rounder mark than the picker's list rows. */
-  rounded?: "rounded-md" | "rounded-xl";
+  rounded?: "rounded-md" | "rounded-[10px]" | "rounded-xl";
 }) {
   const { box: sizeClass, text: textClass } = ORG_ICON_SIZES[size];
   /**

@@ -7,24 +7,56 @@
  * the org's drive would leave you in a project's chrome looking at another
  * project's files.
  */
+import { useSearch } from "@tanstack/react-router";
 import { ChatLayout } from "@/components/chat-layout";
 import { LibraryTab } from "@/layouts/main-panel-tabs/library-tab";
 import { useEnsureProjectFolder } from "@/hooks/use-ensure-project-folder";
+import { useProjectFirstNav } from "@/hooks/use-preferences";
 import { useProjectScope } from "@/hooks/use-project-scope";
+import { useT } from "@/i18n/use-t.ts";
+import { ContextShell, projectSection } from "@/layouts/context/context-shell";
+import type { ContextSection } from "@/lib/legacy-workspace-search";
+import { VirtualMcpDetailView } from "@/views/virtual-mcp";
 import { projectFolderPath } from "@decocms/shared/organization/project-folder";
 
+/** Under project-first nav: the project's Context, its files plus its settings. */
 export default function AgentLibraryRoute() {
   const { project } = useProjectScope();
+  const t = useT();
+  const projectFirstNav = useProjectFirstNav();
+  const { section } = useSearch({ strict: false }) as {
+    section?: ContextSection;
+  };
   useEnsureProjectFolder(project);
+  /* Remounts once the project resolves, never briefly rooted at the drive. */
+  const files = (
+    <LibraryTab
+      key={project?.id ?? "pending"}
+      root={project ? projectFolderPath(project) : undefined}
+      rootLabel={
+        projectFirstNav
+          ? t("sidebar.navDestinations.context")
+          : (project?.title ?? undefined)
+      }
+      filePreview={projectFirstNav ? "dialog" : undefined}
+      context={projectFirstNav}
+    />
+  );
+  if (!projectFirstNav) return <ChatLayout.Content>{files}</ChatLayout.Content>;
+
+  const current = projectSection(section);
   return (
     <ChatLayout.Content>
-      {/* Remounts when the project resolves, so the tree is never briefly
-          rooted at the drive under a project's name. */}
-      <LibraryTab
-        key={project?.id ?? "pending"}
-        root={project ? projectFolderPath(project) : undefined}
-        rootLabel={project?.title ?? undefined}
-      />
+      <ContextShell scope="project" section={current}>
+        {current === "files" ? (
+          files
+        ) : project ? (
+          <VirtualMcpDetailView
+            virtualMcpId={project.id}
+            contextSection={current}
+          />
+        ) : null}
+      </ContextShell>
     </ChatLayout.Content>
   );
 }

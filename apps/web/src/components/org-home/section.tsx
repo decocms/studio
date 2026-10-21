@@ -56,25 +56,3 @@ export function HomeCardRow({
     </li>
   );
 }
-
-/**
- * Work on the left, standing readouts on the right, one column when the panel
- * cannot hold both. 1.35 to 1: the left holds sentences and the right holds
- * numbers, but a 30% rail starves into a void beside the long column.
- */
-export function HomeSplit({
-  main,
-  aside,
-}: {
-  main: ReactNode;
-  aside: ReactNode;
-}) {
-  return (
-    <div className="@container">
-      <div className="grid grid-cols-1 items-start gap-6 @4xl:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
-        <div className="flex min-w-0 flex-col gap-6">{main}</div>
-        <div className="flex min-w-0 flex-col gap-6">{aside}</div>
-      </div>
-    </div>
-  );
-}
