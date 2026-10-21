@@ -119,6 +119,7 @@ import {
   isTaskHandedToHuman,
   HIDDEN_STATUSES,
   boardGridColumns,
+  isLaneShown,
   laneVisibility,
   PRIORITIES,
   PRIORITY_CONFIG,
@@ -1337,7 +1338,7 @@ function TaskBoardBody({
     : visibleItems.filter(
         (item) =>
           !HIDDEN_STATUSES.includes(item.status) ||
-          preferences.shownTaskBoardLanes.includes(item.status),
+          isLaneShown(item.status, preferences.taskBoardLaneVisibility),
       );
   // Sorted before grouping, so every group reads in the chosen order too.
   const visibleListItems =
@@ -2223,23 +2224,18 @@ function bySortOrder(a: TaskBoardItem, b: TaskBoardItem) {
   return a.sortOrder - b.sortOrder;
 }
 
-/** Shown and hidden lanes persist per person, so the choice survives a
- *  reload. The toolbar menu and the board read the same preference. */
+/** Lane visibility persists per person, so the choice survives a reload. The
+ *  toolbar menu and the board read the same preference. */
 function useLaneVisibility() {
   const [preferences, setPreferences] = usePreferences();
-  const { lanes, hidden } = laneVisibility({
-    shownLanes: preferences.shownTaskBoardLanes,
-    hiddenLanes: preferences.hiddenTaskBoardLanes,
-  });
+  const { lanes, hidden } = laneVisibility(preferences.taskBoardLaneVisibility);
   const setLaneShown = (status: string, shown: boolean) =>
     setPreferences((prev) => ({
       ...prev,
-      shownTaskBoardLanes: shown
-        ? [...prev.shownTaskBoardLanes.filter((s) => s !== status), status]
-        : prev.shownTaskBoardLanes.filter((s) => s !== status),
-      hiddenTaskBoardLanes: shown
-        ? prev.hiddenTaskBoardLanes.filter((s) => s !== status)
-        : [...prev.hiddenTaskBoardLanes.filter((s) => s !== status), status],
+      taskBoardLaneVisibility: {
+        ...prev.taskBoardLaneVisibility,
+        [status]: shown,
+      },
     }));
   return { lanes, hidden, setLaneShown };
 }
@@ -2954,9 +2950,7 @@ function Lane({
                 draggedCount > 1
                   ? "taskBoard.dropHint.pickUpMany"
                   : "taskBoard.dropHint.pickUp",
-                {
-                  names: takers.join(", "),
-                },
+                { names: takers.join(", ") },
               )}
             </span>
           </div>

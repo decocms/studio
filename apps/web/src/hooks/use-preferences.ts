@@ -13,16 +13,13 @@ interface Preferences {
   theme: ThemeMode;
   language: Locale;
   /**
-   * Task-board lanes hidden by default (`HIDDEN_STATUSES`) that this person has
-   * pulled back onto the board. Statuses, not lane indexes, so a reordered or
-   * renamed lane can't resurrect the wrong column.
+   * Task-board lanes this person showed (`true`) or hid (`false`), overriding
+   * the default (`HIDDEN_STATUSES`). Keyed by status, not lane index, so a
+   * reordered or renamed lane can't resurrect the wrong column.
    */
-  shownTaskBoardLanes: string[];
-  /** Task-board lanes this person chose to hide, on top of the hidden-by-default
-   *  ones. Empty by default: everyone sees every lane. */
-  hiddenTaskBoardLanes: string[];
+  taskBoardLaneVisibility: Record<string, boolean>;
   /** Task-board lanes this person collapsed to a narrow strip. Statuses, for
-   *  the same reason as `shownTaskBoardLanes`. */
+   *  the same reason as `taskBoardLaneVisibility`. */
   collapsedTaskBoardLanes: string[];
   /** Project-first navigation opt-in: the org rail, project launcher, project tree and Today/Agents home. */
   projectFirstNav: boolean;
@@ -34,8 +31,7 @@ const DEFAULT_PREFERENCES: Preferences = {
   enableSounds: false,
   theme: "system",
   language: detectLocale(),
-  shownTaskBoardLanes: [],
-  hiddenTaskBoardLanes: [],
+  taskBoardLaneVisibility: {},
   collapsedTaskBoardLanes: [],
   projectFirstNav: false,
 };
@@ -91,6 +87,26 @@ export function readLanguage(): Locale {
   return detectLocale();
 }
 
+/** The stored lane overrides, keeping only boolean entries. Folds in the
+ *  retired `shownTaskBoardLanes` list, whose lanes were all shown. */
+export function readLaneVisibility(
+  stored: Record<string, unknown>,
+): Record<string, boolean> {
+  const visibility: Record<string, boolean> = {};
+  if (Array.isArray(stored.shownTaskBoardLanes)) {
+    for (const status of stored.shownTaskBoardLanes) {
+      if (typeof status === "string") visibility[status] = true;
+    }
+  }
+  const current = stored.taskBoardLaneVisibility;
+  if (current && typeof current === "object" && !Array.isArray(current)) {
+    for (const [status, shown] of Object.entries(current)) {
+      if (typeof shown === "boolean") visibility[status] = shown;
+    }
+  }
+  return visibility;
+}
+
 export function usePreferences() {
   return useLocalStorage<Preferences>(
     LOCALSTORAGE_KEYS.preferences(),
@@ -112,11 +128,9 @@ export function usePreferences() {
       if (!VALID_LOCALES.includes(merged.language)) {
         merged.language = detectLocale();
       }
-      if (!Array.isArray(merged.shownTaskBoardLanes)) {
-        merged.shownTaskBoardLanes = [];
-      }
-      if (!Array.isArray(merged.hiddenTaskBoardLanes)) {
-        merged.hiddenTaskBoardLanes = [];
+      merged.taskBoardLaneVisibility = readLaneVisibility(merged);
+      if ("shownTaskBoardLanes" in merged) {
+        delete merged.shownTaskBoardLanes;
       }
       if (!Array.isArray(merged.collapsedTaskBoardLanes)) {
         merged.collapsedTaskBoardLanes = [];
