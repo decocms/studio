@@ -22,10 +22,10 @@ describe("UserStorage.searchOrganizations", () => {
     `.execute(database.db);
   }
 
-  async function join(userId: string, orgId: string) {
+  async function join(userId: string, orgId: string, suffix = "") {
     await sql`
       INSERT INTO "member" (id, "organizationId", "userId", role, "createdAt")
-      VALUES (${`mem_${userId}_${orgId}`}, ${orgId}, ${userId}, 'user', ${NOW})
+      VALUES (${`mem_${userId}_${orgId}${suffix}`}, ${orgId}, ${userId}, 'user', ${NOW})
     `.execute(database.db);
   }
 
@@ -47,6 +47,9 @@ describe("UserStorage.searchOrganizations", () => {
     await join("user_123", "org_other");
     await addOrg("org_pct", "100% Off", "hundred-off");
     await join("user_1", "org_pct");
+    await addOrg("org_twice", "Twice Joined", "twice-joined");
+    await join("user_1", "org_twice");
+    await join("user_1", "org_twice", "_again");
   });
 
   afterAll(async () => {
@@ -76,6 +79,15 @@ describe("UserStorage.searchOrganizations", () => {
       limit: 20,
     });
     expect(hits.map((org) => org.slug)).toEqual(["deco-elsewhere"]);
+  });
+
+  it("lists an org once when the user holds two member rows in it", async () => {
+    const hits = await storage.searchOrganizations({
+      userId: "user_1",
+      term: "twice",
+      limit: 20,
+    });
+    expect(hits.map((org) => org.slug)).toEqual(["twice-joined"]);
   });
 
   it("treats LIKE wildcards in the term literally", async () => {

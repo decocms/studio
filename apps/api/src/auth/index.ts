@@ -44,7 +44,6 @@ import { emailButton, emailParagraph, emailTemplate } from "./email-template";
 import { createMagicLinkConfig } from "./magic-link";
 import { seedOrgDb } from "./org";
 import { hoistOrgLogo } from "./hoist-org-logo";
-import { rejectDuplicateMembership } from "./reject-duplicate-membership";
 import { identifyAuthenticatedUser } from "./posthog-identify";
 import { ADMIN_ROLES } from "@decocms/shared/auth/roles";
 import { getBuiltinRoleStatements } from "./builtin-role-permission";
@@ -266,9 +265,6 @@ const plugins = [
             message: "Organization slug is already taken.",
           });
         }
-      },
-      beforeAcceptInvitation: async ({ invitation, user }) => {
-        await rejectDuplicateMembership(getDb().db, invitation, user.id);
       },
       // Keep base64 logos out of the org row (they bloat every
       // organization.list response). Mirrors `backfill-assets

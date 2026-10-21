@@ -112,10 +112,15 @@ export class UserStorage implements UserStoragePort {
 
     let query = this.db
       .selectFrom("organization")
-      .innerJoin("member", (join) =>
-        join
-          .onRef("member.organizationId", "=", "organization.id")
-          .on("member.userId", "=", userId),
+      // EXISTS, not a join: a user can hold two member rows in one org.
+      .where((eb) =>
+        eb.exists(
+          eb
+            .selectFrom("member")
+            .select("member.id")
+            .whereRef("member.organizationId", "=", "organization.id")
+            .where("member.userId", "=", userId),
+        ),
       )
       .where((eb) =>
         eb.or([
