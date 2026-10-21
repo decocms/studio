@@ -360,6 +360,7 @@ const plugins = [
     // API_KEY_CREATE tool requires `permissions`, and the internal minters pass
     // their own). A key is authorized solely by its allowlist — see
     // auth/api-key-permissions.ts. A key with no allowlist grants nothing.
+    // Off on purpose: requests per key are limited in auth/api-key-rate-limit.ts.
     rateLimit: {
       enabled: false,
     },

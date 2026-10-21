@@ -646,3 +646,26 @@ describe("resolveConfig plans gateway JWT secret", () => {
     });
   });
 });
+
+describe("resolveConfig API key rate limit", () => {
+  it("is off by default with 600 requests per minute", () => {
+    const settings = resolveConfig({});
+    expect(settings.apiKeyRateLimitMode).toBe("off");
+    expect(settings.apiKeyRateLimitPerMinute).toBe(600);
+  });
+
+  it("honors overrides and rejects garbage at boot", () => {
+    const settings = resolveConfig({
+      API_KEY_RATE_LIMIT_MODE: "enforce",
+      API_KEY_RATE_LIMIT_PER_MINUTE: "120",
+    });
+    expect(settings.apiKeyRateLimitMode).toBe("enforce");
+    expect(settings.apiKeyRateLimitPerMinute).toBe(120);
+    expect(() => resolveConfig({ API_KEY_RATE_LIMIT_MODE: "on" })).toThrow(
+      "API_KEY_RATE_LIMIT_MODE must be off, observe or enforce",
+    );
+    expect(() => resolveConfig({ API_KEY_RATE_LIMIT_PER_MINUTE: "0" })).toThrow(
+      "API_KEY_RATE_LIMIT_PER_MINUTE must be a positive integer",
+    );
+  });
+});

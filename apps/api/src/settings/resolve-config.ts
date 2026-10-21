@@ -59,6 +59,16 @@ function toBool(value: string | undefined): boolean {
   return value === "true" || value === "1";
 }
 
+function toApiKeyRateLimitMode(
+  value: string | undefined,
+): "off" | "observe" | "enforce" {
+  if (value === undefined || value === "") return "off";
+  if (value === "off" || value === "observe" || value === "enforce") {
+    return value;
+  }
+  throw new Error("API_KEY_RATE_LIMIT_MODE must be off, observe or enforce");
+}
+
 function toPositiveIntegerOrUndefined(
   name: string,
   value: string | undefined,
@@ -224,6 +234,12 @@ export function resolveConfig(
     ),
     localMode: toBool(envVars.DECOCMS_LOCAL_MODE),
     disableRateLimit: toBool(envVars.DISABLE_RATE_LIMIT),
+    apiKeyRateLimitMode: toApiKeyRateLimitMode(envVars.API_KEY_RATE_LIMIT_MODE),
+    apiKeyRateLimitPerMinute: toPositiveIntegerOrDefault(
+      "API_KEY_RATE_LIMIT_PER_MINUTE",
+      envVars.API_KEY_RATE_LIMIT_PER_MINUTE,
+      600,
+    ),
     jiraAllowLocalSiteUrl: toBool(envVars.JIRA_ALLOW_LOCAL_SITE_URL),
     codexUsageUrl:
       envVars.CODEX_USAGE_URL || "https://chatgpt.com/backend-api/wham/usage",

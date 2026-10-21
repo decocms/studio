@@ -45,6 +45,12 @@ export interface Settings {
   studioJwtSecret: string | undefined;
   localMode: boolean;
   disableRateLimit: boolean;
+  /** Per-API-key request ceiling (`API_KEY_RATE_LIMIT_MODE`): `off` (default),
+   *  `observe` (count and report keys over the limit, never block) or `enforce`
+   *  (answer 429). See `auth/api-key-rate-limit.ts`. */
+  apiKeyRateLimitMode: "off" | "observe" | "enforce";
+  /** Requests per key per minute, per pod (`API_KEY_RATE_LIMIT_PER_MINUTE`). */
+  apiKeyRateLimitPerMinute: number;
   /** Admit `http://localhost:<port>` as a Jira site — a stand-in Jira for
    *  local development and e2e. See `normalizeSiteUrl`. */
   jiraAllowLocalSiteUrl: boolean;

@@ -58,6 +58,10 @@ import { getCookie } from "hono/cookie";
 import { cors } from "hono/cors";
 import { endTime, startTime, timing } from "hono/timing";
 import { auth } from "../auth";
+import {
+  createApiKeyRateLimiter,
+  reportApiKeyRateLimitExceeded,
+} from "../auth/api-key-rate-limit";
 import { createMemberRoleCache } from "../auth/member-role-cache";
 import {
   ContextFactory,
@@ -2033,6 +2037,18 @@ export async function createApp(options: CreateAppOptions = {}) {
   cleanupExpiredApiKeys();
   setInterval(cleanupExpiredApiKeys, 24 * 60 * 60 * 1000).unref();
 
+  const { apiKeyRateLimitMode, apiKeyRateLimitPerMinute } = getSettings();
+  const apiKeyRateLimiter =
+    apiKeyRateLimitMode === "off"
+      ? null
+      : createApiKeyRateLimiter({
+          mode: apiKeyRateLimitMode,
+          limit: apiKeyRateLimitPerMinute,
+          windowMs: 60_000,
+          onExceeded: (keyId) =>
+            reportApiKeyRateLimitExceeded(keyId, apiKeyRateLimitMode),
+        });
+
   // Inject StudioContext into requests
   // Skip auth routes, static files, health check, and metrics - they don't need StudioContext
   app.use("*", async (c, next) => {
@@ -2054,6 +2070,15 @@ export async function createApp(options: CreateAppOptions = {}) {
     const studioCtx = await ContextFactory.create(c.req.raw, { timings });
     studioCtx.automationRunner = automationRunner;
     c.set("studioContext", studioCtx);
+
+    const apiKeyId = studioCtx.auth.apiKey?.id;
+    if (apiKeyId && apiKeyRateLimiter) {
+      const { allowed, retryAfterSeconds } = apiKeyRateLimiter.hit(apiKeyId);
+      if (!allowed) {
+        c.header("Retry-After", String(retryAfterSeconds));
+        return c.json({ error: "API key rate limit exceeded" }, 429);
+      }
+    }
 
     try {
       await next();
