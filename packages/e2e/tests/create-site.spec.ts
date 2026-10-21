@@ -102,7 +102,14 @@ test("New project creates a site from a template in the chosen GitHub account an
   });
 
   await page.goto(`/${orgSlug}/home`);
-  await page.getByRole("button", { name: "New Project", exact: true }).click();
+  await page
+    .getByRole("button", { name: "New project", exact: true })
+    .first()
+    .click();
+  await page
+    .getByRole("dialog", { name: "New project" })
+    .getByRole("button", { name: /^Import a codebase/ })
+    .click();
   const dialog = page.getByRole("dialog");
   const shot = (name: string) =>
     page.screenshot({
