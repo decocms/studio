@@ -507,4 +507,23 @@ describe("GitlabContentClient's malformed-body handling", () => {
       client.listDecofileEntries("main", null),
     ).rejects.toBeInstanceOf(GitProviderError);
   });
+
+  test("degrades a well-formed but non-array branch-search body into a GitProviderError", async () => {
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ message: "not found" }), {
+        status: 200,
+      })) as unknown as typeof fetch;
+
+    const client = new GitlabContentClient({
+      repo: { provider: "gitlab", host: "gitlab.com", path: "acme/site" },
+      tokenSource: {
+        kind: "oauth",
+        get: async () => ({ token: "t", kind: "oauth", expiresAt: null }),
+      },
+    });
+
+    await expect(
+      client.searchBranches({ query: "main", limit: 10 }),
+    ).rejects.toBeInstanceOf(GitProviderError);
+  });
 });
