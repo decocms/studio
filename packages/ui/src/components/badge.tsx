@@ -26,9 +26,15 @@ const badgeVariants = cva(
          *  colour and never competes with the label beside it. */
         muted:
           "border-transparent bg-muted text-muted-foreground [a&]:hover:bg-muted/80",
+        /** Live work by the product's own agents — the brand lime, kept pale so
+         *  it marks activity without reading as a status. */
+        brand:
+          "border-transparent bg-brand/30 text-foreground [a&]:hover:bg-brand/40 [button&]:hover:bg-brand/40",
       },
       size: {
         default: "px-2 py-0.5",
+        /** Sits in a toolbar beside buttons and tabs, so it takes their height. */
+        control: "h-7 gap-1.5 pr-3 pl-1.5",
         icon: "size-5",
         /** A token built from parts — a filter chip's field / operator / value
          *  / remove. The sections carry their own padding and hairlines, so the

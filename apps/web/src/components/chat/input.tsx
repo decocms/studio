@@ -386,10 +386,13 @@ export function ChatInput({
   onOpenContextPanel,
   showConnectionsBanner = false,
   homeTaskComposer = false,
+  taskHint = true,
 }: {
   onOpenContextPanel?: () => void;
   showConnectionsBanner?: boolean;
   homeTaskComposer?: boolean;
+  /** The PR-review promise under the composer; off where the work is not code. */
+  taskHint?: boolean;
 }) {
   const t = useT();
   const stream = useOptionalChatStream();
@@ -961,7 +964,7 @@ export function ChatInput({
                         disabled={!canSubmit && !showStopOrCancel}
                         className={cn(
                           taskIntake
-                            ? "h-8 px-3 transition-all"
+                            ? "h-8 px-3 transition-all @max-[479px]/chat-bottom:w-8 @max-[479px]/chat-bottom:px-0"
                             : "size-8 transition-all",
                           !canSubmit &&
                             !showStopOrCancel &&
@@ -990,7 +993,11 @@ export function ChatInput({
                           <Stop size={20} />
                         ) : (
                           <>
-                            {taskIntake && t("chat.input.startTask")}
+                            {taskIntake && (
+                              <span className="hidden @[480px]/chat-bottom:inline">
+                                {t("chat.input.startTask")}
+                              </span>
+                            )}
                             <ArrowUp size={20} />
                           </>
                         )}
@@ -1002,7 +1009,7 @@ export function ChatInput({
             </form>
           </TiptapProvider>
 
-          {homeTaskComposer && taskIntake && (
+          {taskIntake && taskHint && (
             <p className="px-3 pt-3 text-left text-xs text-muted-foreground">
               {t("chat.input.taskHint")}
             </p>

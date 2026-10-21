@@ -2,6 +2,7 @@ import type { BreadcrumbItem } from "./breadcrumb-model";
 import type { ComponentPropsWithoutRef } from "react";
 import type { PropsWithChildren } from "react";
 import type { ReactNode } from "react";
+import { createContext, use } from "react";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { useT } from "@/i18n/use-t";
 
@@ -45,18 +46,27 @@ const CONTAINER_WIDTH = {
   fluid: "max-w-none",
 } as const;
 
+/** Pages inside a column with its own toolbar start on that toolbar's edge. */
+const PAGE_INSET = "px-4 md:pl-6 md:pr-8";
+
+const ContainerInset = createContext(false);
+
 function PageContainer({
   className,
   width = "wide",
   ...props
 }: ComponentPropsWithoutRef<"div"> & { width?: keyof typeof CONTAINER_WIDTH }) {
+  const inset = use(ContainerInset);
   return (
     <div
       {...props}
       data-slot="page-container"
       data-width={width}
       className={cn(
-        "mx-auto w-full px-4 py-6 md:px-8 md:py-8",
+        "w-full",
+        inset
+          ? cn(PAGE_INSET, "pt-4 pb-8")
+          : "mx-auto px-4 py-6 md:px-8 md:py-8",
         CONTAINER_WIDTH[width],
         className,
       )}
@@ -220,7 +230,7 @@ export const Page = Object.assign(PageRoot, {
   Tab: PageTab,
   Actions: PageActions,
   Content: PageContent,
-  Container: PageContainer,
+  Container: Object.assign(PageContainer, { Inset: ContainerInset }),
   Title: PageTitle,
   Breadcrumbs: PageBreadcrumbs,
 });
