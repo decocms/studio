@@ -101,21 +101,41 @@ const toastSpy = spyOn(toast, "success").mockImplementation(((
   toastCalls.push({ message: String(message), action: options?.action });
   return 1;
 }) as never);
-afterAll(() => toastSpy.mockRestore());
+const infoCalls: string[] = [];
+const infoSpy = spyOn(toast, "info").mockImplementation(((message: unknown) => {
+  infoCalls.push(String(message));
+  return 1;
+}) as never);
+afterAll(() => {
+  toastSpy.mockRestore();
+  infoSpy.mockRestore();
+});
 beforeEach(() => {
   toastCalls.length = 0;
+  infoCalls.length = 0;
 });
 
 function setup(
   kind: NamedRuleKind,
   name: string,
-  options: { loading?: boolean } = {},
+  options: {
+    loading?: boolean;
+    /** What each read of the stored draft answers, in order (last repeats). */
+    stored?: Array<Record<string, unknown> | null>;
+  } = {},
 ) {
   const apply = mock(
     async (_change: NamedRuleChange): Promise<NamedRuleApplyOutcome> => ({
       ok: true,
     }),
   );
+  const answers = options.stored ?? [decofile];
+  let reads = 0;
+  const reread = mock(async () => {
+    const answer = answers[Math.min(reads, answers.length - 1)] ?? null;
+    reads++;
+    return answer;
+  });
   const onDeleted = mock(() => {});
   const onUndo = mock((_change: NamedRuleChange) => {});
   const onOpenUse = mock((_row: NamedRuleUseRow) => {});
@@ -123,11 +143,11 @@ function setup(
     <NamedRuleDeleteButton
       kind={kind}
       name={name}
-      decofile={decofile}
       meta={meta}
       uses={options.loading ? null : uses}
       pending={false}
       apply={apply}
+      reread={reread}
       onDeleted={onDeleted}
       onUndo={onUndo}
       onOpenUse={onOpenUse}
@@ -137,7 +157,7 @@ function setup(
   const button = body.getByRole("button", {
     name: kind === "experiments" ? "Delete test" : "Delete campaign",
   });
-  return { apply, onDeleted, onUndo, onOpenUse, body, button };
+  return { apply, reread, onDeleted, onUndo, onOpenUse, body, button };
 }
 
 describe("NamedRuleDeleteButton", () => {
@@ -184,10 +204,7 @@ describe("NamedRuleDeleteButton", () => {
   });
 
   test("an unused test is deleted from the draft, with an Undo", async () => {
-    const { apply, onDeleted, onUndo, body, button } = setup(
-      "experiments",
-      "spare",
-    );
+    const { apply, onDeleted, body, button } = setup("experiments", "spare");
     await act(async () => fireEvent.click(button));
     expect(body.queryByTestId("named-rule-in-use")).toBeNull();
     expect(apply).toHaveBeenCalledWith({
@@ -198,12 +215,73 @@ describe("NamedRuleDeleteButton", () => {
       "Test “spare” deleted from your draft",
     ]);
     expect(toastCalls[0]!.action?.label).toBe("Undo");
-    toastCalls[0]!.action!.onClick();
+  });
+
+  test("another tab started using the test: Delete reads the draft again and refuses", async () => {
+    // The view's uses (read earlier) say "spare" is unused; the stored draft
+    // now has a page using it.
+    const now = {
+      ...decofile,
+      "pages-promo": page("Promo", "/promo", {
+        __resolveType: "experiment",
+        name: "spare",
+      }),
+    };
+    const { apply, reread, onDeleted, body, button } = setup(
+      "experiments",
+      "spare",
+      { stored: [now] },
+    );
+    await act(async () => fireEvent.click(button));
+    expect(reread).toHaveBeenCalledTimes(1);
+    const dialog = within(body.getByTestId("named-rule-in-use"));
+    const items = dialog.getAllByRole("listitem");
+    expect(items).toHaveLength(1);
+    expect(items[0]!.textContent).toContain("Promo");
+    expect(apply).not.toHaveBeenCalled();
+    expect(onDeleted).not.toHaveBeenCalled();
+  });
+
+  test("when the draft can't be read, nothing is deleted and one calm toast says so", async () => {
+    const { apply, body, button } = setup("experiments", "spare", {
+      stored: [null],
+    });
+    await act(async () => fireEvent.click(button));
+    expect(apply).not.toHaveBeenCalled();
+    expect(body.queryByTestId("named-rule-in-use")).toBeNull();
+    expect(infoCalls).toEqual(["Can't save this right now"]);
+  });
+
+  test("Undo puts back only the deleted test, onto the block as it is now", async () => {
+    // After the delete, another tab created "fresh".
+    const later = {
+      ...decofile,
+      experiments: { __resolveType: "split-traffic", hero: 50, fresh: 5 },
+    };
+    const { onUndo, button } = setup("experiments", "spare", {
+      stored: [decofile, later],
+    });
+    await act(async () => fireEvent.click(button));
+    await act(async () => toastCalls[0]!.action!.onClick());
     expect(onUndo).toHaveBeenCalledWith({
       writes: {
-        experiments: { __resolveType: "split-traffic", hero: 50, spare: 10 },
+        experiments: {
+          __resolveType: "split-traffic",
+          hero: 50,
+          fresh: 5,
+          spare: 10,
+        },
       },
     });
+  });
+
+  test("Undo does nothing when the test is back already", async () => {
+    const { onUndo, button } = setup("experiments", "spare", {
+      stored: [decofile, decofile],
+    });
+    await act(async () => fireEvent.click(button));
+    await act(async () => toastCalls[0]!.action!.onClick());
+    expect(onUndo).not.toHaveBeenCalled();
   });
 
   test("while the uses load, Delete waits and says why", () => {
@@ -238,7 +316,18 @@ describe("NamedRuleDeleteButton", () => {
   });
 
   test("an unused campaign is deleted, with an Undo that brings its window back", async () => {
-    const { apply, onUndo, button } = setup("campaigns", "spare");
+    const { apply, onUndo, button } = setup("campaigns", "spare", {
+      stored: [
+        decofile,
+        {
+          ...decofile,
+          campaigns: {
+            __resolveType: "date-windows",
+            bf: decofile.campaigns.bf,
+          },
+        },
+      ],
+    });
     await act(async () => fireEvent.click(button));
     expect(apply).toHaveBeenCalledWith({
       writes: {
@@ -251,9 +340,103 @@ describe("NamedRuleDeleteButton", () => {
     expect(toastCalls.map((call) => call.message)).toEqual([
       "Campaign “spare” deleted from your draft",
     ]);
-    toastCalls[0]!.action!.onClick();
+    await act(async () => toastCalls[0]!.action!.onClick());
     expect(onUndo).toHaveBeenCalledWith({
       writes: { campaigns: decofile.campaigns },
+    });
+  });
+
+  describe("saved rules", () => {
+    const withRules = {
+      ...decofile,
+      experiments: { __resolveType: "split-traffic", hero: 50, promo: 20 },
+      // A saved rule a page uses, and one that nothing uses.
+      "Promo%20visitors": { __resolveType: "experiment", name: "promo" },
+      "Old%20promo": { __resolveType: "experiment", name: "promo" },
+      "pages-promo": page("Promo", "/promo", {
+        __resolveType: "Promo%20visitors",
+      }),
+    };
+    const withoutOld = Object.fromEntries(
+      Object.entries(withRules).filter(([key]) => key !== "Old%20promo"),
+    );
+
+    test("they are listed beside the pages, and never open as a section", async () => {
+      const { body, button } = setup("experiments", "promo", {
+        stored: [withRules],
+      });
+      await act(async () => fireEvent.click(button));
+      const dialog = within(body.getByTestId("named-rule-in-use"));
+      // The line fits saved rules too.
+      expect(
+        dialog.getByText(
+          "These pages and saved rules use “promo”. Open each page and change or remove that variant, and remove any saved rule no page uses; then you can delete the test.",
+        ),
+      ).toBeTruthy();
+      const items = dialog.getAllByRole("listitem");
+      const text = items.map((item) => item.textContent ?? "");
+      expect(
+        text.some((t) => t.includes("Promo") && t.includes("/promo")),
+      ).toBe(true);
+      const used = items.find((item) =>
+        item.textContent?.includes("Promo visitors"),
+      )!;
+      expect(used.textContent).toContain(
+        "Saved rule · used by the pages listed",
+      );
+      expect(within(used).queryByRole("button")).toBeNull();
+      const unused = items.find((item) =>
+        item.textContent?.includes("Old promo"),
+      )!;
+      expect(unused.textContent).toContain("Saved rule · no page uses it");
+      expect(within(unused).queryByText("Open")).toBeNull();
+      expect(within(unused).getByText("Remove")).toBeTruthy();
+      // Only the page opens.
+      expect(dialog.getAllByText("Open")).toHaveLength(1);
+    });
+
+    test("a saved rule nothing uses is removed from the dialog, with an Undo", async () => {
+      const { apply, onUndo, body, button } = setup("experiments", "promo", {
+        stored: [withRules, withRules, withoutOld],
+      });
+      await act(async () => fireEvent.click(button));
+      const dialog = within(body.getByTestId("named-rule-in-use"));
+      await act(async () => fireEvent.click(dialog.getByText("Remove")));
+      expect(apply).toHaveBeenCalledWith({
+        writes: {},
+        deletes: ["Old%20promo"],
+      });
+      expect(toastCalls.map((call) => call.message)).toEqual([
+        "Saved rule “Old promo” removed from your draft",
+      ]);
+      // The dialog now lists what still keeps the test.
+      const rows = within(body.getByTestId("named-rule-in-use"))
+        .getAllByRole("listitem")
+        .map((item) => item.textContent ?? "");
+      expect(rows.some((row) => row.includes("Old promo"))).toBe(false);
+      expect(rows.some((row) => row.includes("Promo visitors"))).toBe(true);
+      toastCalls[0]!.action!.onClick();
+      expect(onUndo).toHaveBeenCalledWith({
+        writes: { "Old%20promo": withRules["Old%20promo"] },
+      });
+    });
+
+    test("a saved rule that became used meanwhile isn't removed", async () => {
+      const usedNow = {
+        ...withRules,
+        "pages-old": page("Old", "/old", { __resolveType: "Old%20promo" }),
+      };
+      const { apply, body, button } = setup("experiments", "promo", {
+        stored: [withRules, usedNow],
+      });
+      await act(async () => fireEvent.click(button));
+      const dialog = within(body.getByTestId("named-rule-in-use"));
+      await act(async () => fireEvent.click(dialog.getByText("Remove")));
+      expect(apply).not.toHaveBeenCalled();
+      const rows = within(body.getByTestId("named-rule-in-use"))
+        .getAllByRole("listitem")
+        .map((item) => item.textContent ?? "");
+      expect(rows.some((row) => row.includes("/old"))).toBe(true);
     });
   });
 
@@ -264,10 +447,20 @@ describe("NamedRuleDeleteButton", () => {
     expect(ptBR["sectionsEditor.namedRuleDelete.inUseCampaigns"]).toBe(
       "Remova primeiro a campanha destas páginas.",
     );
+    expect(ptBR["sectionsEditor.namedRules.inUseHint"]).toBe(
+      "Nada foi alterado. Antes, ajuste as páginas que ainda usam isto; “Usado em” mostra quais são.",
+    );
     for (const key of [
       "sectionsEditor.namedRuleDelete.inUseTestsHint",
       "sectionsEditor.namedRuleDelete.inUseCampaignsHint",
+      "sectionsEditor.namedRuleDelete.inUseTestsHintRules",
+      "sectionsEditor.namedRuleDelete.inUseCampaignsHintRules",
+      "sectionsEditor.namedRuleDelete.ruleRemoved",
       "sectionsEditor.namedRuleDelete.close",
+      "sectionsEditor.namedRuleUses.savedRule",
+      "sectionsEditor.namedRuleUses.savedRuleUsed",
+      "sectionsEditor.namedRuleUses.savedRuleUnused",
+      "sectionsEditor.namedRuleUses.removeRule",
       "sectionsEditor.namedRules.inUse",
       "sectionsEditor.namedRules.inUseHint",
     ] as const) {

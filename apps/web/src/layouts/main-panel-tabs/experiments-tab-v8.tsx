@@ -219,7 +219,7 @@ function ExperimentsV8Ready({
     decofile,
     meta,
   });
-  const { apply, isPending } = useApplyNamedRule({
+  const { apply, reread, isPending } = useApplyNamedRule({
     orgSlug,
     virtualMcpId,
     branch,
@@ -315,6 +315,7 @@ function ExperimentsV8Ready({
         onSave={save}
         onRenamed={setOpenName}
         apply={apply}
+        reread={reread}
         onDeleted={() => setOpenName(null)}
         onUndo={(change) => void save(change)}
       />
@@ -475,6 +476,7 @@ function ExperimentDetailV8({
   onSave,
   onRenamed,
   apply,
+  reread,
   onDeleted,
   onUndo,
 }: {
@@ -488,6 +490,7 @@ function ExperimentDetailV8({
   onSave: (change: NamedRuleChange | null) => Promise<boolean>;
   onRenamed: (name: string) => void;
   apply: (change: NamedRuleChange) => Promise<NamedRuleApplyOutcome>;
+  reread: () => Promise<Record<string, unknown> | null>;
   onDeleted: () => void;
   onUndo: (change: NamedRuleChange) => void;
 }) {
@@ -551,11 +554,11 @@ function ExperimentDetailV8({
         <NamedRuleDeleteButton
           kind="experiments"
           name={row.name}
-          decofile={decofile}
           meta={meta}
           uses={uses}
           pending={pending}
           apply={apply}
+          reread={reread}
           onDeleted={onDeleted}
           onUndo={onUndo}
           onOpenUse={onOpenUse}

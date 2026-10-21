@@ -16,7 +16,12 @@ import {
   withoutNamedRuleEntry,
 } from "./named-rules";
 import { newNameProblem, type NewNameProblem } from "./named-rule-picker";
-import { findRuleReferences } from "./rule-references";
+import {
+  findRuleReferences,
+  findSavedMatcherReferences,
+} from "./rule-references";
+import { isSavedMatcherBlockReference } from "./matcher-rules";
+import type { LiveMeta } from "./resolve-schema";
 import type { NamedRuleChange } from "./use-apply-named-rule";
 
 type ValueOf<K extends NamedRuleKind> = K extends "experiments"
@@ -89,6 +94,53 @@ export function planNamedRuleDelete(
     },
   };
   return namedRulesLeftInUse(decofile, change).length > 0 ? null : change;
+}
+
+/**
+ * Undo of a delete: the change that puts back only `name`, with the value it
+ * had (`raw`, as stored), onto the block as it is now, so a test or campaign
+ * created since stays. `null` when the name is back already (nothing to
+ * undo) or the block holds something else.
+ */
+export function planNamedRuleRestore(
+  decofile: Record<string, unknown>,
+  kind: NamedRuleKind,
+  name: string,
+  raw: unknown,
+): NamedRuleChange | null {
+  if (raw === undefined) return null;
+  const read = readNamedRuleBlock(decofile, kind);
+  if (read.kind === "conflict" || Object.hasOwn(read.block, name)) return null;
+  return {
+    writes: {
+      [namedRuleKindInfo(kind).blockKey]: withNamedRuleEntry(
+        read.block,
+        kind,
+        name,
+        raw as never,
+      ),
+    },
+  };
+}
+
+/**
+ * The change that removes the saved rule `blockKey`, only while nothing uses
+ * it (no page, section or other saved rule refers to it): `null` otherwise.
+ */
+export function planSavedRuleRemove(
+  decofile: Record<string, unknown>,
+  blockKey: string,
+  meta?: LiveMeta | null,
+): NamedRuleChange | null {
+  if (
+    !isSavedMatcherBlockReference({ __resolveType: blockKey }, decofile, meta)
+  ) {
+    return null;
+  }
+  if (findSavedMatcherReferences(decofile, blockKey, meta).length > 0) {
+    return null;
+  }
+  return { writes: {}, deletes: [blockKey] };
 }
 
 /**

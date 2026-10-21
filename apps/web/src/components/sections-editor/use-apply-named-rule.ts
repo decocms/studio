@@ -7,6 +7,7 @@ import {
   applyProtocolPatch,
   protocolBlockVersion,
   reloadProtocolBlock,
+  rereadProtocolContent,
 } from "./content-protocol-api";
 import {
   type DecofilePatchBody,
@@ -208,5 +209,26 @@ export function useApplyNamedRule({
     }
   };
 
-  return { apply, isPending: mutation.isPending };
+  /**
+   * The draft as stored right now (content-protocol-api.ts
+   * `rereadProtocolContent`): what a delete or an Undo plans from, so a use
+   * or a name another tab added meanwhile counts. `null` when it can't be
+   * read; the caller then changes nothing.
+   */
+  const reread = async (): Promise<Record<string, unknown> | null> => {
+    if (!protocol) return null;
+    try {
+      const content = await rereadProtocolContent(
+        queryClient,
+        protocol,
+        params,
+        cacheKey,
+      );
+      return content.blocks;
+    } catch {
+      return null;
+    }
+  };
+
+  return { apply, reread, isPending: mutation.isPending };
 }

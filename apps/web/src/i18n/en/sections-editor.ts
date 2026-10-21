@@ -159,6 +159,17 @@ export const sectionsEditor = {
   "sectionsEditor.namedRuleDelete.inUseCampaignsHint":
     "These pages show a variant during “{name}”. Open each one and change or remove that variant; then you can delete the campaign.",
   "sectionsEditor.namedRuleDelete.close": "Close",
+  "sectionsEditor.namedRuleDelete.inUseTestsHintRules":
+    "These pages and saved rules use “{name}”. Open each page and change or remove that variant, and remove any saved rule no page uses; then you can delete the test.",
+  "sectionsEditor.namedRuleDelete.inUseCampaignsHintRules":
+    "These pages and saved rules use “{name}”. Open each page and change or remove that variant, and remove any saved rule no page uses; then you can delete the campaign.",
+  "sectionsEditor.namedRuleDelete.ruleRemoved":
+    "Saved rule “{name}” removed from your draft",
+  "sectionsEditor.namedRuleDelete.undo": "Undo",
+  "sectionsEditor.namedRuleUses.savedRule": "Saved rule",
+  "sectionsEditor.namedRuleUses.savedRuleUsed": "used by the pages listed",
+  "sectionsEditor.namedRuleUses.savedRuleUnused": "no page uses it",
+  "sectionsEditor.namedRuleUses.removeRule": "Remove",
   "sectionsEditor.namedRules.inUse": "This is still used on your pages",
   "sectionsEditor.namedRules.inUseHint":
     "Nothing was changed. Take it off the pages that use it first; “Used by” lists them.",

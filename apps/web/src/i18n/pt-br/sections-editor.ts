@@ -164,9 +164,20 @@ export const sectionsEditor = {
   "sectionsEditor.namedRuleDelete.inUseCampaignsHint":
     "Estas páginas mostram uma variante durante “{name}”. Abra cada uma e altere ou remova essa variante; depois você pode excluir a campanha.",
   "sectionsEditor.namedRuleDelete.close": "Fechar",
+  "sectionsEditor.namedRuleDelete.inUseTestsHintRules":
+    "Estas páginas e regras salvas usam “{name}”. Abra cada página e altere ou remova essa variante, e remova as regras salvas que nenhuma página usa; depois você pode excluir o teste.",
+  "sectionsEditor.namedRuleDelete.inUseCampaignsHintRules":
+    "Estas páginas e regras salvas usam “{name}”. Abra cada página e altere ou remova essa variante, e remova as regras salvas que nenhuma página usa; depois você pode excluir a campanha.",
+  "sectionsEditor.namedRuleDelete.ruleRemoved":
+    "Regra salva “{name}” removida do seu rascunho",
+  "sectionsEditor.namedRuleDelete.undo": "Desfazer",
+  "sectionsEditor.namedRuleUses.savedRule": "Regra salva",
+  "sectionsEditor.namedRuleUses.savedRuleUsed": "usada pelas páginas da lista",
+  "sectionsEditor.namedRuleUses.savedRuleUnused": "nenhuma página usa",
+  "sectionsEditor.namedRuleUses.removeRule": "Remover",
   "sectionsEditor.namedRules.inUse": "Isto ainda é usado nas suas páginas",
   "sectionsEditor.namedRules.inUseHint":
-    "Nada foi alterado. Tire primeiro das páginas que usam; “Usado em” mostra quais são.",
+    "Nada foi alterado. Antes, ajuste as páginas que ainda usam isto; “Usado em” mostra quais são.",
   "sectionsEditor.namedRules.changedMeanwhile":
     "Isto mudou enquanto você editava",
   "sectionsEditor.namedRules.changedMeanwhileHint":

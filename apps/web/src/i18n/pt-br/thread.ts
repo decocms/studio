@@ -204,6 +204,17 @@ export const thread = {
   "thread.publishPopover.publishing": "Publicando…",
   "thread.publishPopover.requestApproval": "Pedir aprovação",
   "thread.publishPopover.discarded": "{name} descartado",
+  "thread.publishPopover.discardBlocked.title":
+    "Esta alteração depende de outra",
+  "thread.publishPopover.discardBlocked.removesTest":
+    "Estas páginas usam o teste “{name}”, que sairia do rascunho com este descarte. Primeiro altere essas variantes ou descarte as alterações dessas páginas; depois você pode descartar esta.",
+  "thread.publishPopover.discardBlocked.removesCampaign":
+    "Estas páginas usam a campanha “{name}”, que sairia do rascunho com este descarte. Primeiro altere essas variantes ou descarte as alterações dessas páginas; depois você pode descartar esta.",
+  "thread.publishPopover.discardBlocked.returnsTest":
+    "Descartar isto traz de volta uma variante que usa o teste “{name}”, que você excluiu no rascunho. Primeiro descarte a alteração em “Testes A/B” para o teste voltar; depois você pode descartar esta.",
+  "thread.publishPopover.discardBlocked.returnsCampaign":
+    "Descartar isto traz de volta uma variante que usa a campanha “{name}”, que você excluiu no rascunho. Primeiro descarte a alteração em “Datas das campanhas” para a campanha voltar; depois você pode descartar esta.",
+  "thread.publishPopover.discardBlocked.close": "Fechar",
   "thread.publishPopover.discard": "Descartar",
   "thread.publishPopover.discardAll": "Descartar tudo",
   "thread.publishPopover.discardAllConfirm": "Isso não pode ser desfeito.",

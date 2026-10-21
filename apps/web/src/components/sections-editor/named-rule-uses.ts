@@ -10,6 +10,7 @@ import { pageEntryFromBlock, globalSectionLabel } from "./page-list";
 import type { NamedRuleKind } from "./named-rules";
 import {
   findRuleReferences,
+  findSavedMatcherReferences,
   type MarkedRuleReferences,
   markReferenceStates,
   publishedDecofile,
@@ -58,8 +59,14 @@ export function namedRuleUses(input: {
 /** One row of "Used by": a page or a saved section, and how it uses the name. */
 export interface NamedRuleUseRow {
   blockKey: string;
-  /** A page opens in the editor by its key; anything else as a section. */
-  blockKind: "page" | "section";
+  /**
+   * A page opens in the editor by its key; a section as a section. A saved
+   * rule doesn't open (the editor has no form for one): the pages that use
+   * it are listed beside it, and one nothing uses can be removed.
+   */
+  blockKind: "page" | "section" | "rule";
+  /** A saved rule that no page, section or other saved rule uses. */
+  unused?: boolean;
   title: string;
   /** A page's path. */
   path?: string;
@@ -144,7 +151,13 @@ export function namedRuleBlockingRows(
       blockKey: ref.blockKey,
       // A saved rule is known by its name.
       ...(ref.savedRule
-        ? { blockKind: "section" as const, title: safeDecode(ref.blockKey) }
+        ? {
+            blockKind: "rule" as const,
+            title: safeDecode(ref.blockKey),
+            unused:
+              findSavedMatcherReferences(decofile, ref.blockKey, meta)
+                .length === 0,
+          }
         : rowLabel(ref.blockKey, uses, decofile, meta)),
       ...(variant ? { variant } : {}),
       wholeBlock: false,

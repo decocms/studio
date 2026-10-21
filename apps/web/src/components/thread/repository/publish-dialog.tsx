@@ -90,6 +90,7 @@ import { useDecofileCacheKey } from "@/components/sections-editor/use-decofile.t
 import type { ProtocolBackend } from "@/components/sections-editor/content-backend.ts";
 import { useContentSyncState } from "@/components/sections-editor/content-sync.ts";
 import { ErrorDetails } from "@/components/sections-editor/site-editor-toast.tsx";
+import { DiscardBlockedDialog } from "./discard-blocked-dialog.tsx";
 
 export type { CmsPublishMode };
 
@@ -755,6 +756,8 @@ function CmsPublishView({
     submit,
     discardChange,
     discardAll,
+    discardBlocked,
+    closeDiscardBlocked,
   } = useCmsPublishActions({
     mode: isReview ? "review" : "publish",
     target,
@@ -1012,7 +1015,15 @@ function CmsPublishView({
               mode={mode}
               title={<span className="truncate">{headerTitle}</span>}
               subLine={subLine}
-              trailing={discardAllControl}
+              trailing={
+                <>
+                  {discardAllControl}
+                  <DiscardBlockedDialog
+                    breaks={discardBlocked}
+                    onClose={closeDiscardBlocked}
+                  />
+                </>
+              }
             />
           }
           body={body}

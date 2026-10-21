@@ -34,6 +34,8 @@ const server = {
     delete?: string[];
     ifMatch?: Record<string, string | null>;
   }>,
+  /** The content can't be read. */
+  unreachable: false,
 };
 
 const client = {
@@ -82,6 +84,37 @@ const client = {
     ),
     diagnostics: [],
   }),
+  // The content poll (`blocks.list`, `schema.get`, `changes.list`).
+  batch: async (calls: Array<{ method: string }>) => {
+    if (server.unreachable) throw new Error("offline");
+    return calls.map((call) =>
+      call.method === "blocks.list"
+        ? {
+            ok: true,
+            result: {
+              notModified: false,
+              revision: `r-stored-${server.applied.length}`,
+              resolvedRef: null,
+              blocks: server.blocks,
+              versions: server.versions,
+            },
+          }
+        : call.method === "schema.get"
+          ? {
+              ok: true,
+              result: { notModified: false, version: "s1", schema: {} },
+            }
+          : {
+              ok: true,
+              result: {
+                notModified: false,
+                revision: "c1",
+                base: { revision: "main", resolvedRef: "main" },
+                changes: {},
+              },
+            },
+    );
+  },
   changesList: async () => ({
     notModified: false,
     revision: "c1",
@@ -144,6 +177,7 @@ function setup() {
   server.blocks = { home };
   server.versions = { home: "home@0" };
   server.applied = [];
+  server.unreachable = false;
   const queryClient = new QueryClient();
   queryClient.setQueryData(KEYS.decofile(CACHE_KEY), { home });
   queryClient.setQueryData(KEYS.contentVersions(CACHE_KEY), {
@@ -354,5 +388,40 @@ describe("useApplyNamedRule", () => {
       });
     });
     expect(outcome).toEqual({ ok: true });
+  });
+
+  it("reread answers the draft as stored, not the editor's older copy, and adopts its versions", async () => {
+    const { queryClient, result } = setup();
+    // Another tab added a page using "hero" after this editor read.
+    server.blocks = { home, promo: homeWithTest, experiments };
+    server.versions = {
+      home: "home@0",
+      promo: "promo@1",
+      experiments: "experiments@1",
+    };
+    const fresh: { value: Record<string, unknown> | null } = { value: null };
+    await act(async () => {
+      fresh.value = await result.current.reread();
+    });
+    expect(fresh.value).toEqual({ home, promo: homeWithTest, experiments });
+    expect(cached(queryClient)).toEqual({
+      home,
+      promo: homeWithTest,
+      experiments,
+    });
+    // A write planned from it is guarded by the versions it came with.
+    expect(
+      queryClient.getQueryData(KEYS.contentVersions(CACHE_KEY)),
+    ).toMatchObject({ experiments: "experiments@1" });
+  });
+
+  it("reread is null when the content can't be read, so nothing is planned from a guess", async () => {
+    const { result } = setup();
+    server.unreachable = true;
+    const fresh: { value: Record<string, unknown> | null } = { value: {} };
+    await act(async () => {
+      fresh.value = await result.current.reread();
+    });
+    expect(fresh.value).toBeNull();
   });
 });

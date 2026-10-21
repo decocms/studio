@@ -47,6 +47,8 @@ import {
   ReviewPaneGhost,
 } from "./publish-dialog.tsx";
 import { useContentDiscard } from "./use-cms-publish-actions.ts";
+import { DiscardBlockedDialog } from "./discard-blocked-dialog.tsx";
+import type { NamedRuleDiscardBreak } from "@/components/sections-editor/named-rule-discard.ts";
 import { useContentPublishState } from "./use-content-publish-state.ts";
 
 /** The header's "Changes" button on Localhost, and the dialog it opens. */
@@ -216,11 +218,15 @@ function LocalChangesContent({
     cacheKey,
     scope: { orgSlug, virtualMcpId, branch },
   });
+  const [discardBlocked, setDiscardBlocked] = useState<
+    NamedRuleDiscardBreak[] | null
+  >(null);
   const discard = useContentDiscard({
     orgSlug,
     virtualMcpId,
     branch,
     refresh: state.refresh,
+    onBlocked: setDiscardBlocked,
   });
   const isDiscarding =
     useContentSyncState(orgSlug, virtualMcpId).phase === "saving";
@@ -370,7 +376,15 @@ function LocalChangesContent({
       list={
         <LocalChangesFrame
           title={title}
-          trailing={discardAll}
+          trailing={
+            <>
+              {discardAll}
+              <DiscardBlockedDialog
+                breaks={discardBlocked}
+                onClose={() => setDiscardBlocked(null)}
+              />
+            </>
+          }
           body={body}
           onClose={onClose}
         />

@@ -165,7 +165,7 @@ export function CampaignsView({
     decofile,
     meta,
   });
-  const { apply, isPending } = useApplyNamedRule({
+  const { apply, reread, isPending } = useApplyNamedRule({
     orgSlug,
     virtualMcpId,
     branch,
@@ -235,6 +235,7 @@ export function CampaignsView({
         onSave={save}
         onRenamed={setOpenName}
         apply={apply}
+        reread={reread}
         onDeleted={() => setOpenName(null)}
         onUndo={(change) => void save(change)}
       />
@@ -540,6 +541,7 @@ function CampaignDetail({
   onSave,
   onRenamed,
   apply,
+  reread,
   onDeleted,
   onUndo,
 }: {
@@ -553,6 +555,7 @@ function CampaignDetail({
   onSave: (change: NamedRuleChange | null, title?: string) => Promise<boolean>;
   onRenamed: (name: string) => void;
   apply: (change: NamedRuleChange) => Promise<NamedRuleApplyOutcome>;
+  reread: () => Promise<Record<string, unknown> | null>;
   onDeleted: () => void;
   onUndo: (change: NamedRuleChange) => void;
 }) {
@@ -623,11 +626,11 @@ function CampaignDetail({
         <NamedRuleDeleteButton
           kind="campaigns"
           name={row.name}
-          decofile={decofile}
           meta={meta}
           uses={uses}
           pending={pending}
           apply={apply}
+          reread={reread}
           onDeleted={onDeleted}
           onUndo={onUndo}
           onOpenUse={onOpenUse}

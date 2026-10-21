@@ -1,4 +1,9 @@
-import { ArrowUpRight, File02, LayoutAlt01 } from "@untitledui/icons";
+import {
+  ArrowUpRight,
+  File02,
+  FilterLines,
+  LayoutAlt01,
+} from "@untitledui/icons";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
@@ -68,22 +73,34 @@ export function NamedRuleUsedBy({
   );
 }
 
-/** The rows of "Used by", each with an Open button (removed uses have none). */
+/**
+ * The rows of "Used by", each page or section with an Open button (removed
+ * uses have none). A saved rule doesn't open: it says the pages listed use
+ * it, or, when nothing uses it, offers Remove (`onRemoveRule`).
+ */
 export function NamedRuleUseList({
   rows,
   marked,
   onOpen,
+  onRemoveRule,
 }: {
   rows: NamedRuleUseRow[];
   marked: boolean;
   onOpen?: (row: NamedRuleUseRow) => void;
+  onRemoveRule?: (row: NamedRuleUseRow) => void;
 }) {
   const t = useT();
   return (
     <ul className="divide-y divide-border/60 rounded-md border border-border/60">
       {rows.map((row) => {
-        const Icon = row.blockKind === "page" ? LayoutAlt01 : File02;
+        const Icon =
+          row.blockKind === "page"
+            ? LayoutAlt01
+            : row.blockKind === "rule"
+              ? FilterLines
+              : File02;
         const removed = row.state === "removed-in-draft";
+        const rule = row.blockKind === "rule";
         return (
           <li
             key={`${row.blockKey}#${row.variant ?? ""}#${row.wholeBlock}`}
@@ -102,6 +119,13 @@ export function NamedRuleUseList({
               </p>
               <p className="truncate text-xs text-muted-foreground">
                 {[
+                  rule
+                    ? `${t("sectionsEditor.namedRuleUses.savedRule")} · ${
+                        row.unused
+                          ? t("sectionsEditor.namedRuleUses.savedRuleUnused")
+                          : t("sectionsEditor.namedRuleUses.savedRuleUsed")
+                      }`
+                    : null,
                   row.path,
                   row.variant
                     ? t("sectionsEditor.namedRuleUses.variant", {
@@ -123,7 +147,17 @@ export function NamedRuleUseList({
                 {t("sectionsEditor.namedRuleUses.removed")}
               </Badge>
             )}
-            {onOpen && !removed && (
+            {rule && row.unused && onRemoveRule && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => onRemoveRule(row)}
+              >
+                {t("sectionsEditor.namedRuleUses.removeRule")}
+              </Button>
+            )}
+            {onOpen && !removed && !rule && (
               <Button
                 type="button"
                 variant="ghost"
