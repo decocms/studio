@@ -8,6 +8,16 @@ import {
   labelFromResolveType,
 } from "./section-types";
 
+/** The built-in blocks a prop can read as a whole (`experiments`, `campaigns`). */
+const WHOLE_BLOCK_TYPES = new Set(["split-traffic", "date-windows"]);
+
+/** The `__resolveType` a block definition declares, or "". */
+function refBranchResolveType(def: Record<string, unknown>): string {
+  const props = def.properties as Record<string, unknown> | undefined;
+  const e = (props?.__resolveType as { enum?: unknown[] } | undefined)?.enum;
+  return Array.isArray(e) && typeof e[0] === "string" ? e[0] : "";
+}
+
 /**
  * Schema resolution for /live/_meta JSON Schemas.
  *
@@ -1058,9 +1068,25 @@ function buildSchema(
 
         // All branches are $refs to block/loader defs
         const allRefs = nonNull.every((a) => typeof a.$ref === "string");
-        if (allRefs && !isPlainDataUnion) {
+        // A prop typed as a map of names to true/false (`Record<string,
+        // boolean>`) is written inline, next to the built-in blocks that fit
+        // it (`split-traffic`, `date-windows`): it reads a whole saved block
+        // (`experiments`, `campaigns`), as a prop typed `Assignments` does,
+        // whose inline branch is a `$ref` and so takes the path below.
+        const readsWholeNamedRuleBlock =
+          !allRefs &&
+          nonNull.some(
+            (b) =>
+              typeof b.$ref === "string" &&
+              WHOLE_BLOCK_TYPES.has(refBranchResolveType(resolveRef(b.$ref))),
+          ) &&
+          nonNull.every(
+            (b) => typeof b.$ref === "string" || branchIsPlainDataObject(b),
+          );
+        if ((allRefs || readsWholeNamedRuleBlock) && !isPlainDataUnion) {
           const anyOfRefs: SchemaAnyOfRef[] = [];
           for (const branch of nonNull) {
+            if (typeof branch.$ref !== "string") continue;
             const def = resolveRef(branch.$ref as string);
             let rt: string | undefined;
             let title: string | undefined;

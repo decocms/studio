@@ -485,6 +485,22 @@ const PROPS_META = {
             nullable: true,
             title: "Experiments",
           },
+          // `campaigns?: Record<string, boolean>`: the inline branch is
+          // written in place, not as a `$ref` (the stack's real output).
+          campaigns: {
+            anyOf: [
+              { $ref: "#/definitions/Resolvable" },
+              {
+                type: "object",
+                additionalProperties: { type: "boolean" },
+                title: "Inline data",
+              },
+              { $ref: "#/definitions/c3BsaXQtdHJhZmZpYw==" },
+              { $ref: "#/definitions/ZGF0ZS13aW5kb3dz" },
+            ],
+            nullable: true,
+            title: "Campaigns",
+          },
           labels: {
             type: "object",
             additionalProperties: {
@@ -505,6 +521,13 @@ describe("the schema of a prop that reads a whole block", () => {
     expect(field.type).toBe("block-ref");
     const kinds = namedRulePickerKinds(V8_META, {});
     expect(namedRuleBlockFieldKinds(field, undefined, kinds)).toEqual([
+      "experiments",
+      "campaigns",
+    ]);
+    // Typed `Record<string, boolean>`, written inline: the same two.
+    const campaigns = hero.properties!.campaigns!;
+    expect(campaigns.type).toBe("block-ref");
+    expect(namedRuleBlockFieldKinds(campaigns, undefined, kinds)).toEqual([
       "experiments",
       "campaigns",
     ]);
