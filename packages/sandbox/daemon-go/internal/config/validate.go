@@ -122,16 +122,14 @@ func validateGit(git *GitConfig) string {
 	return ""
 }
 
-// validateCloneUrl rejects any scheme but https. `git clone` dispatches on the
-// URL's scheme to its own transport helpers, and some of those are not "fetch
-// bytes": `ext::<command>` runs an arbitrary shell command as the clone
-// transport, and `file://` reads the pod's local filesystem instead of a
-// remote. Studio only ever mints https URLs (with the token as userinfo), so
-// anything else is a crafted config, not a legitimate repository.
+// validateCloneUrl allows https (what Studio mints) and file (local bare
+// repos; the sandbox already exposes its own filesystem). Every other scheme
+// is a crafted config: `ext::<command>` runs a shell command as the clone
+// transport, and ssh/git would reach hosts Studio never hands out.
 func validateCloneUrl(raw string) string {
 	u, err := url.Parse(raw)
-	if err != nil || u.Scheme != "https" {
-		return "must be an https URL"
+	if err != nil || (u.Scheme != "https" && u.Scheme != "file") {
+		return "must be an https or file URL"
 	}
 	return ""
 }
