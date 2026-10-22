@@ -832,7 +832,7 @@ test.describe("content protocol on GitHub", () => {
       expect(releases.serving).toBeUndefined();
       expect(releases.commits[0]).toMatchObject({
         sha: third.sha,
-        message: "Reapply: Publish One",
+        message: "Made current: Publish One",
         hasRelease: true,
         reapplyOf: { sha: first.sha },
       });
