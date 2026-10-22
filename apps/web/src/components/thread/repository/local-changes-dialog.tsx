@@ -256,6 +256,7 @@ function LocalChangesContent({
               key={id}
               change={change}
               bodyPending={state.sidesPending}
+              v8
               selected={selected !== null && changeId(selected) === id}
               onSelect={() => setActiveId(id)}
               confirming={confirmingId === id}

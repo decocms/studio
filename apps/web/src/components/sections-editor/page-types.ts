@@ -1,3 +1,4 @@
+import { isV8Schema } from "@decocms/shared/blocks-major";
 import type { LiveMeta } from "./resolve-schema";
 
 /** v7 (and Fresh/Deno) page block types, known without a schema. */
@@ -18,4 +19,17 @@ export function isPageResolveType(
 ): boolean {
   if (LEGACY_PAGE_RESOLVE_TYPES.has(resolveType)) return true;
   return Object.hasOwn(meta?.manifest?.blocks?.pages ?? {}, resolveType);
+}
+
+/**
+ * {@link isPageResolveType} where v7 only knew the two v7 page names (the
+ * site SEO lookup, the blog's page templates): a Blocks v8 site's schema
+ * (`isV8Schema`) adds its own page types; any other site keeps the v7 names
+ * alone, as before.
+ */
+export function isPageResolveTypeOnV8(
+  resolveType: string,
+  meta?: Pick<LiveMeta, "manifest"> | null,
+): boolean {
+  return isPageResolveType(resolveType, isV8Schema(meta) ? meta : undefined);
 }

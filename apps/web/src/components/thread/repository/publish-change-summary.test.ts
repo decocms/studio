@@ -47,6 +47,32 @@ function diffOf(entries: GitDiffResult["diffs"]): GitDiffResult {
   return { diffs: entries };
 }
 
+/**
+ * The same before/after as a Blocks v8 site's content changes
+ * (`summarizeContentChanges`), keyed by the diff's block names.
+ */
+function contentSummaryOf(entries: GitDiffResult["diffs"]) {
+  type Input = Parameters<typeof summarizeContentChanges>[0];
+  const changes: Record<string, unknown> = {};
+  const sideEntries: Record<string, unknown> = {};
+  for (const [path, body] of Object.entries(entries)) {
+    const name = blockKeyFromDiffPath(path)!;
+    const before = body.from === null ? null : JSON.parse(body.from);
+    const after = body.to === null ? null : JSON.parse(body.to);
+    const change = {
+      kind: after === null ? "delete" : "set",
+      version: after === null ? null : "v2",
+      baseVersion: before === null ? null : "v1",
+    };
+    changes[name] = change;
+    sideEntries[name] = { ...change, before, after };
+  }
+  return summarizeContentChanges({
+    changes: changes as Input["changes"],
+    sides: { entries: sideEntries, diagnostics: [] } as Input["sides"],
+  });
+}
+
 describe("blockKeyFromDiffPath", () => {
   it("maps block files at the repo root and under a package path", () => {
     expect(blockKeyFromDiffPath(HOME_PATH)).toBe(HOME_KEY);
@@ -252,7 +278,7 @@ describe("summarizePublishChanges", () => {
     ]);
   });
 
-  it("walks v8 multivariate section paths, one lazy value deeper", () => {
+  it("v7: a page variant's list in a lazy block is no section list, as before", () => {
     const variant = (title: string) => ({
       __resolveType: "website/pages/Page.tsx",
       name: "Home",
@@ -278,6 +304,33 @@ describe("summarizePublishChanges", () => {
         },
       }),
     );
+    expect(summary.pages[0]!.sections).toEqual([]);
+  });
+
+  it("v8: walks multivariate section paths, one lazy value deeper", () => {
+    const variant = (title: string) => ({
+      __resolveType: "website/pages/Page.tsx",
+      name: "Home",
+      path: "/",
+      sections: {
+        __resolveType: "multivariate",
+        variants: [
+          {
+            rule: { __resolveType: "always" },
+            value: {
+              __resolveType: "lazy",
+              value: [{ __resolveType: "hero", title }],
+            },
+          },
+        ],
+      },
+    });
+    const summary = contentSummaryOf({
+      [HOME_PATH]: {
+        from: JSON.stringify(variant("Before")),
+        to: JSON.stringify(variant("After")),
+      },
+    });
     const field = summary.pages[0]!.sections[0]!.fields[0]!;
     expect(field.path).toEqual([
       "sections",
@@ -422,7 +475,7 @@ describe("buildAutoNote", () => {
     );
   });
 
-  it("names the sections inside variants, never the type of the variants or lazy wrapper", () => {
+  it("v7: names each changed section by its type, as before", () => {
     const variants = (title: string) => ({
       __resolveType: "multivariate",
       variants: [
@@ -460,6 +513,64 @@ describe("buildAutoNote", () => {
         summarizePublishChanges(
           diffOf({ [HOME_PATH]: { from: page(from), to: page(to) } }),
         ),
+      );
+    expect(note([variants("A")], [variants("B")])).toBe(
+      "Updated Home Page (Multivariate)",
+    );
+    expect(note([lazyLoaded("A")], [lazyLoaded("B")])).toBe(
+      "Updated Home Page (Lazy)",
+    );
+    expect(note([v7Flag("A")], [v7Flag("B")])).toBe(
+      "Updated Home Page (Section)",
+    );
+    // Not collapsed: one entry per changed section.
+    expect(note([v7Flag("A"), v7Flag("A")], [v7Flag("B"), v7Flag("B")])).toBe(
+      "Updated Home Page (Section, Section)",
+    );
+    expect(
+      note(
+        [{ __resolveType: "site/sections/product-shelf.tsx", a: 1 }],
+        [{ __resolveType: "site/sections/product-shelf.tsx", a: 2 }],
+      ),
+    ).toBe("Updated Home Page (Product shelf)");
+  });
+
+  it("v8: names the sections inside variants, never the type of the variants or lazy wrapper", () => {
+    const variants = (title: string) => ({
+      __resolveType: "multivariate",
+      variants: [
+        {
+          rule: { __resolveType: "always" },
+          value: {
+            __resolveType: "lazy",
+            value: { __resolveType: "site/sections/Hero.tsx", title },
+          },
+        },
+      ],
+    });
+    const lazyLoaded = (title: string) => ({
+      __resolveType: "website/sections/Rendering/Lazy.tsx",
+      section: { __resolveType: "site/sections/Shelf.tsx", title },
+    });
+    const v7Flag = (title: string) => ({
+      __resolveType: "website/flags/multivariate/section.ts",
+      variants: [
+        {
+          rule: { __resolveType: "website/matchers/always.ts" },
+          value: { __resolveType: "site/sections/Hero.tsx", title },
+        },
+      ],
+    });
+    const page = (sections: unknown[]) =>
+      JSON.stringify({
+        __resolveType: "website/pages/Page.tsx",
+        name: "Home Page",
+        path: "/",
+        sections,
+      });
+    const note = (from: unknown[], to: unknown[]) =>
+      buildAutoNote(
+        contentSummaryOf({ [HOME_PATH]: { from: page(from), to: page(to) } }),
       );
     // PO decision: the section the variants hold, through the lazy block.
     expect(note([variants("A")], [variants("B")])).toBe(
@@ -502,7 +613,7 @@ describe("buildAutoNote", () => {
     ).toBe("Updated Home Page (Hero, Footer)");
   });
 
-  it("names the sections of the variants that changed first, each once", () => {
+  it("v8: names the sections of the variants that changed first, each once", () => {
     const variant = (section: string, title: string) => ({
       rule: { __resolveType: "always" },
       value: {
@@ -519,9 +630,7 @@ describe("buildAutoNote", () => {
       });
     const note = (from: unknown[], to: unknown[]) =>
       buildAutoNote(
-        summarizePublishChanges(
-          diffOf({ [HOME_PATH]: { from: page(from), to: page(to) } }),
-        ),
+        contentSummaryOf({ [HOME_PATH]: { from: page(from), to: page(to) } }),
       );
     expect(
       note(
@@ -552,7 +661,7 @@ describe("buildAutoNote", () => {
     ).toBe("Updated Home Page");
   });
 
-  it("names the sections inside a page's own variants", () => {
+  it("v8: names the sections inside a page's own variants", () => {
     const page = (title: string) =>
       JSON.stringify({
         __resolveType: "website/pages/Page.tsx",
@@ -573,27 +682,28 @@ describe("buildAutoNote", () => {
       });
     expect(
       buildAutoNote(
-        summarizePublishChanges(
-          diffOf({ [HOME_PATH]: { from: page("a"), to: page("b") } }),
-        ),
+        contentSummaryOf({ [HOME_PATH]: { from: page("a"), to: page("b") } }),
       ),
     ).toBe("Updated Home Page (Hero)");
   });
 
-  it("calls the A/B tests and campaigns blocks by what they hold", () => {
-    const summary = summarizePublishChanges(
-      diffOf({
-        [".deco/blocks/experiments.json"]: {
-          from: JSON.stringify({ __resolveType: "split-traffic", a: 50 }),
-          to: JSON.stringify({ __resolveType: "split-traffic", a: 20 }),
-        },
-        [".deco/blocks/campaigns.json"]: {
-          from: null,
-          to: JSON.stringify({ __resolveType: "calendar", bf: {} }),
-        },
-      }),
+  it("calls the A/B tests and campaigns blocks by what they hold (v8), by name on v7", () => {
+    const entries = {
+      [".deco/blocks/experiments.json"]: {
+        from: JSON.stringify({ __resolveType: "split-traffic", a: 50 }),
+        to: JSON.stringify({ __resolveType: "split-traffic", a: 20 }),
+      },
+      [".deco/blocks/campaigns.json"]: {
+        from: null,
+        to: JSON.stringify({ __resolveType: "calendar", bf: {} }),
+      },
+    };
+    expect(buildAutoNote(contentSummaryOf(entries))).toBe(
+      "Changed Campaign dates and A/B tests",
     );
-    expect(buildAutoNote(summary)).toBe("Changed Campaign dates and A/B tests");
+    expect(buildAutoNote(summarizePublishChanges(diffOf(entries)))).toBe(
+      "Changed Campaigns and Experiments",
+    );
   });
 
   it("collapses long name lists and fits the note in a title", () => {
@@ -645,7 +755,24 @@ describe("humanizeFieldName / sectionDisplayName", () => {
     expect(sectionDisplayName({}, 2)).toBe("Section 3");
   });
 
-  it("names a section in the release title as the site editor and Used by do", () => {
+  it("v7: names a section by its humanized file name, as before", () => {
+    const names = [
+      "site/sections/hero-scene.tsx",
+      "site/sections/hero_scene.tsx",
+      "Hero Scene",
+      "Header   default",
+    ].map((resolveType) =>
+      sectionDisplayName({ __resolveType: resolveType }, 0),
+    );
+    expect(names).toEqual([
+      "Hero scene",
+      "Hero scene",
+      "Hero scene",
+      "Header   default",
+    ]);
+  });
+
+  it("v8: names a section in the release title as the site editor and Used by do", () => {
     for (const resolveType of [
       "site/sections/hero-scene.tsx",
       "site/sections/hero_scene.tsx",
@@ -654,7 +781,7 @@ describe("humanizeFieldName / sectionDisplayName", () => {
       const section = { __resolveType: resolveType, title: "A" };
       const editorName = parseSections([section], {})[0]?.label ?? "";
       expect(editorName).toBe("Hero Scene");
-      expect(sectionDisplayName(section, 0)).toBe(editorName);
+      expect(sectionDisplayName(section, 0, true)).toBe(editorName);
       const page = (title: string) =>
         JSON.stringify({
           __resolveType: "website/pages/Page.tsx",
@@ -664,9 +791,7 @@ describe("humanizeFieldName / sectionDisplayName", () => {
         });
       expect(
         buildAutoNote(
-          summarizePublishChanges(
-            diffOf({ [HOME_PATH]: { from: page("A"), to: page("B") } }),
-          ),
+          contentSummaryOf({ [HOME_PATH]: { from: page("A"), to: page("B") } }),
         ),
       ).toBe("Updated Home Page (Hero Scene)");
     }
@@ -1241,32 +1366,63 @@ describe("namedRuleBlockOfChange", () => {
     toJson: json,
     fromJson: before,
   });
-  it("names the A/B tests and campaigns blocks by their type", () => {
+  it("v8: names the A/B tests and campaigns blocks by their type", () => {
+    const named = (entries: GitDiffResult["diffs"]) =>
+      namedRuleBlockOfChange(contentSummaryOf(entries).blocks[0]!);
     expect(
-      namedRuleBlockOfChange(block({ __resolveType: "split-traffic", a: 50 })),
+      named({
+        ".deco/blocks/x.json": {
+          from: null,
+          to: JSON.stringify({ __resolveType: "split-traffic", a: 50 }),
+        },
+      }),
     ).toBe("experiments");
-    expect(namedRuleBlockOfChange(block({ __resolveType: "calendar" }))).toBe(
-      "campaigns",
-    );
+    expect(
+      named({
+        ".deco/blocks/x.json": {
+          from: null,
+          to: JSON.stringify({ __resolveType: "calendar" }),
+        },
+      }),
+    ).toBe("campaigns");
     // Deleted in the draft: the published side still says what it was.
     expect(
-      namedRuleBlockOfChange(block(null, { __resolveType: "calendar" })),
+      named({
+        ".deco/blocks/x.json": {
+          from: JSON.stringify({ __resolveType: "calendar" }),
+          to: null,
+        },
+      }),
     ).toBe("campaigns");
+  });
+  it("v7: never one, whatever its content, as before", () => {
+    expect(
+      namedRuleBlockOfChange(block({ __resolveType: "split-traffic", a: 50 })),
+    ).toBe(null);
+    const summary = summarizePublishChanges(
+      diffOf({
+        ".deco/blocks/campaigns.json": {
+          from: null,
+          to: JSON.stringify({ __resolveType: "calendar" }),
+        },
+      }),
+    );
+    expect(namedRuleBlockOfChange(summary.blocks[0]!)).toBe(null);
+    expect(
+      namedRuleBlockOfChange(
+        summarizePublishManifest({
+          files: [{ path: ".deco/blocks/campaigns.json", status: "added" }],
+          lookup: { campaigns: { __resolveType: "calendar" } },
+        }).blocks[0]!,
+      ),
+    ).toBe(null);
   });
   it("leaves every other block, and pages, as they were", () => {
     expect(namedRuleBlockOfChange(block({ __resolveType: "Header" }))).toBe(
       null,
     );
-    // A v7 site's own block named experiments, of another type.
     expect(
-      namedRuleBlockOfChange(block({ __resolveType: "site/loaders/x.ts" })),
-    ).toBe(null);
-    expect(
-      namedRuleBlockOfChange({
-        kind: "page",
-        toJson: { __resolveType: "split-traffic" },
-        fromJson: null,
-      }),
+      namedRuleBlockOfChange({ kind: "page", namedRule: "experiments" }),
     ).toBe(null);
   });
 });

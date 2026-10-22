@@ -7,7 +7,7 @@ import {
   ExperimentsTabSkeleton,
   ExperimentsBlockTab,
 } from "./experiments-block-tab";
-import { useMainSchemaV8 } from "@/hooks/use-main-schema-v8";
+import { useLastFoundV8, useMainSchemaV8 } from "@/hooks/use-main-schema-v8";
 
 import {
   armColors,
@@ -1868,7 +1868,8 @@ export function ExperimentsTab({ virtualMcpId }: { virtualMcpId: string }) {
   const { ui } = useSearch({ strict: false }) as { ui?: string };
   const flagEnabled = useOrgFlag("experiments_v2_enabled");
   const siteMajor = useMainSchemaV8(virtualMcpId);
-  switch (pickExperimentsTab({ flagEnabled, siteMajor, ui })) {
+  const lastFoundV8 = useLastFoundV8(virtualMcpId);
+  switch (pickExperimentsTab({ flagEnabled, siteMajor, ui, lastFoundV8 })) {
     case "v8":
       return <ExperimentsBlockTab virtualMcpId={virtualMcpId} />;
     case "loading":

@@ -3,6 +3,7 @@ import { SeoFormChrome } from "./seo-form-chrome";
 import { SeoFormFields } from "./seo-form-fields";
 import { SeoTypeSelect } from "./seo-type-select";
 import { useT } from "@/i18n/use-t.ts";
+import { useV8Editor } from "./v8-editor-context";
 import type { SchemaProperty } from "./resolve-schema";
 import type { Crumb } from "./schema-form-breadcrumb";
 import type { SeoTypeOption } from "./seo-schema";
@@ -55,9 +56,12 @@ export function PageSeoForm({
   seoTypesLoading = false,
 }: PageSeoFormProps) {
   const t = useT();
-  // No SEO type to start from (a next-major page schema that lists none):
-  // SEO can't be turned on, rather than saving a type-less SEO block.
-  const seoTypeAvailable = !seoTypesLoading && defaultResolveType !== "";
+  // v8: no SEO type to start from (a page schema that lists none, or the
+  // schema still loading): SEO can't be turned on, rather than saving a
+  // type-less SEO block. v7 keeps its switch as before.
+  const v8 = useV8Editor();
+  const seoTypeAvailable =
+    !v8 || (!seoTypesLoading && defaultResolveType !== "");
   const handleEnableChange = (enabled: boolean) => {
     if (enabled) {
       if (!seoTypeAvailable) return;

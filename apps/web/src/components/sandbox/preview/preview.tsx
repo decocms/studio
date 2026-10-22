@@ -879,7 +879,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // "Preview as" (a Blocks v8 site): the moment and forced tests ride on the
   // same link, never on the published site (preview-link.ts).
   const previewAsAvailable =
-    !runsSiteCode &&
+    isProtocolProject(contentBackend) &&
     NAMED_RULE_KINDS.some(
       (kind) => namedRuleSupport(meta, kind) === "available",
     );
@@ -1680,9 +1680,14 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
         name,
         path: trimmedPath,
         template,
-        meta,
-        // The schema may not have arrived yet: read it rather than guess.
-        loadMeta: async () => (await metaQuery.refetch()).data,
+        // A Blocks v8 site's page is typed from its schema, which may not
+        // have arrived yet: read it rather than guess. v7 needs none.
+        schema: isProtocolProject(contentBackend)
+          ? {
+              meta,
+              loadMeta: async () => (await metaQuery.refetch()).data,
+            }
+          : undefined,
       });
       setCreatePageDialogOpen(false);
       toast.success(t("sandbox.preview.pageCreated", { name }));

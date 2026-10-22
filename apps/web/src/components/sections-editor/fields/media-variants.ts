@@ -56,12 +56,14 @@ export function flattenMultivariate(wrapper: MultivariateWrapper): unknown {
 }
 
 /**
- * Add a variant cloned from the last one, at `newVariantIndex`: above a
- * trailing catch-all, else at the end.
+ * Add a variant cloned from the last one, at `newVariantIndex` (v8: above a
+ * trailing catch-all, else at the end; v7: at the end).
  */
 export function appendVariant(
   wrapper: MultivariateWrapper,
   meta?: LiveMeta | null,
+  /** A Blocks v8 site (see `newVariantIndex`). */
+  v8 = false,
 ): MultivariateWrapper {
   const variants = [...wrapper.variants];
   const last = variants[variants.length - 1];
@@ -69,7 +71,7 @@ export function appendVariant(
     rule: defaultVariantRule(meta),
     value: last ? structuredClone(last.value) : undefined,
   };
-  variants.splice(newVariantIndex(wrapper.variants), 0, newVariant);
+  variants.splice(newVariantIndex(wrapper.variants, v8), 0, newVariant);
   return { ...wrapper, variants };
 }
 
@@ -88,12 +90,14 @@ export function deleteVariant(
 export function duplicateVariant(
   wrapper: MultivariateWrapper,
   index: number,
+  /** A Blocks v8 site (see `duplicateVariantIndex`). */
+  v8 = false,
 ): MultivariateWrapper {
   const variants = [...wrapper.variants];
   const source = variants[index];
   if (!source) return wrapper;
   variants.splice(
-    duplicateVariantIndex(wrapper.variants, index),
+    duplicateVariantIndex(wrapper.variants, index, v8),
     0,
     structuredClone(source),
   );

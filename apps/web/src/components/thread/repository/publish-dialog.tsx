@@ -90,6 +90,7 @@ import { useDecofileCacheKey } from "@/components/sections-editor/use-decofile.t
 import type { ProtocolBackend } from "@/components/sections-editor/content-backend.ts";
 import { useContentSyncState } from "@/components/sections-editor/content-sync.ts";
 import { ErrorDetails } from "@/components/sections-editor/site-editor-toast.tsx";
+import { publishTitle } from "./publish-title.ts";
 
 export type { CmsPublishMode };
 
@@ -782,11 +783,7 @@ function CmsPublishView({
         : t("thread.publishPopover.submitCountForReview", {
             count: summary.count,
           })
-    : summary.count === 0
-      ? t("thread.publishPopover.publish")
-      : summary.count === 1
-        ? t("thread.publishPopover.publishOne")
-        : t("thread.publishPopover.publishCount", { count: summary.count });
+    : publishTitle(summary.count, baseBranch, !!source.v8, t);
 
   /** Review mode names the PR it will update; publish mode, the last release. */
   const subLine = (() => {
@@ -839,6 +836,7 @@ function CmsPublishView({
               }
               isPublishing={isPublishing}
               isDiscarding={isDiscarding}
+              v8={!!source.v8}
             />
           );
         })}

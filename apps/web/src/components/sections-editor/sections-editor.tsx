@@ -202,6 +202,7 @@ import { VariantRuleEditor } from "./variant-rule-editor";
 import { withVariantValue } from "./variant-shape";
 import { isLazyWrapper } from "./lazy-value";
 import { HeaderSlotProvider, HeaderSlotTarget } from "./header-slot";
+import { V8EditorProvider } from "./v8-editor-context";
 
 /** One toast for a section form's save outcome, however many saves it took. */
 const STALE_FORM_TOAST = "section-form-stale-save";
@@ -834,7 +835,9 @@ export function SectionsEditor({
     multivariate: pageIsMultivariate,
     index: safeVariantIndex,
     variants: pageVariants.map((v) => ({ rule: v.rule })),
+    // v8's `multivariate` keeps each page variant's sections in a `lazy` block.
     lazyValues:
+      protocolProject &&
       pageIsMultivariate &&
       isLazyWrapper(
         (
@@ -2237,6 +2240,7 @@ export function SectionsEditor({
     const updatedMvObj = duplicateMultivariateSectionVariant(
       mvObj,
       variantIndex,
+      protocolProject,
     );
     const updatedSections = [...rawSections];
     updatedSections[selectedSectionIndex] = rebuildSectionWithMultivariate(
@@ -2248,17 +2252,19 @@ export function SectionsEditor({
     const nextIndex = duplicateVariantIndex(
       (mvObj.variants as unknown[]) ?? [],
       variantIndex,
+      protocolProject,
     );
     setActiveSectionVariantIndex(nextIndex);
     setFieldBreadcrumbs([]);
     setFormResetKey((key) => key + 1);
-    // The copy is now the variant being edited: the preview shows it.
+    // v8: the copy is now the variant being edited, so the preview shows it
+    // (a v7 preview stays where it is).
     applySectionVariant(
       updatedSections[selectedSectionIndex],
       parsed,
       nextIndex,
       selectedSectionIndex,
-      true,
+      protocolProject,
     );
     savePageSections(updatedSections);
   };
@@ -2303,13 +2309,14 @@ export function SectionsEditor({
     }
 
     setActiveSectionVariantIndex(nextIndex);
-    // The preview follows the edited variant to its new place in the list.
+    // v8: the preview follows the edited variant to its new place in the
+    // list (a v7 preview stays where it is).
     applySectionVariant(
       updatedSections[selectedSectionIndex],
       parsed,
       nextIndex,
       selectedSectionIndex,
-      true,
+      protocolProject,
     );
     savePageSections(updatedSections);
   };
@@ -2322,7 +2329,13 @@ export function SectionsEditor({
     const parsed = parsedSections[sectionIndex];
     if (!rawSection || !parsed) return;
 
-    const result = appendSectionVariant(rawSection, parsed, undefined, meta);
+    const result = appendSectionVariant(
+      rawSection,
+      parsed,
+      undefined,
+      meta,
+      protocolProject,
+    );
     if (!result) {
       toast.error(t("sectionsEditor.sectionsEditor.sectionCannotHaveVariants"));
       return;
@@ -2340,14 +2353,15 @@ export function SectionsEditor({
     setActiveSectionVariantIndex(result.newVariantIndex);
     setFieldBreadcrumbs([]);
     setFormResetKey((key) => key + 1);
-    // The new variant is the one being edited: the preview shows it, so an
-    // edit to it shows there even while an earlier variant's rule matches.
+    // v8: the new variant is the one being edited, so the preview shows it
+    // and an edit to it shows there even while an earlier variant's rule
+    // matches (a v7 preview stays where it is).
     applySectionVariant(
       result.section,
       nextParsed,
       result.newVariantIndex,
       sectionIndex,
-      true,
+      protocolProject,
     );
     savePageSections(updatedSections);
   };
@@ -2476,7 +2490,9 @@ export function SectionsEditor({
     meta && decofile ? extractMatcherGlobals(meta, decofile) : [];
   // v8: the picker's "A/B test" and "Campaign" (none on v7 or an older schema).
   const namedRuleKinds =
-    meta && decofile ? namedRulePickerKinds(meta, decofile) : [];
+    protocolProject && meta && decofile
+      ? namedRulePickerKinds(meta, decofile)
+      : [];
   const namedRulePropsFor = (
     rule: unknown,
     onPick: (pick: NamedRulePick) => Promise<void>,
@@ -3271,7 +3287,7 @@ export function SectionsEditor({
     if (!activePageKey) return;
     // Cancel a pending rule-autosave timer — it writes into
     // `variants[latestVariantIndex]` (read fresh via latestRef) when it fires.
-    // The new variant goes above the Default one, so it shifts that index,
+    // On v8 the new variant goes above the Default one, so it shifts that index,
     // and a stale save firing after this mutation would also clobber the
     // newly-saved data with an outdated variants array.
     cancelPendingRuleSaves();
@@ -3289,6 +3305,7 @@ export function SectionsEditor({
       fullPageData.sections,
       rawSections,
       meta,
+      protocolProject,
     );
     if (!added) return;
 
@@ -3482,8 +3499,16 @@ export function SectionsEditor({
     let copyIndex = variantIndex + 1;
     mutatePageVariants(
       (variants) => {
-        copyIndex = duplicateVariantIndex(variants, variantIndex);
-        return duplicatePageVariantEntry(variants, variantIndex);
+        copyIndex = duplicateVariantIndex(
+          variants,
+          variantIndex,
+          protocolProject,
+        );
+        return duplicatePageVariantEntry(
+          variants,
+          variantIndex,
+          protocolProject,
+        );
       },
       () => {
         // Land the user on the freshly-created clone.
@@ -4450,7 +4475,7 @@ export function SectionsEditor({
           rawSeo={displayRawSeo}
           innerSeo={effectiveInner}
           defaultResolveType={defaultResolveType}
-          seoTypesLoading={!meta}
+          seoTypesLoading={protocolProject && !meta}
           seoSchema={seoSchema}
           activeResolveType={activeSeoType}
           seoTypeOptions={seoTypeOptions}
@@ -4485,7 +4510,7 @@ export function SectionsEditor({
               rawSeo={displayRawSeo}
               innerSeo={effectiveInner}
               defaultResolveType={defaultResolveType}
-              seoTypesLoading={!meta}
+              seoTypesLoading={protocolProject && !meta}
               seoSchema={seoSchema}
               activeResolveType={activeSeoType}
               seoTypeOptions={seoTypeOptions}
@@ -4607,123 +4632,104 @@ export function SectionsEditor({
   );
 
   return (
-    <HeaderSlotProvider>
-      <div className="flex h-full min-w-0 w-full flex-col">
-        {!compact && backButton && (
-          <div className="flex min-w-0 shrink-0 items-center gap-2 px-3 py-2">
-            {backButton}
-          </div>
-        )}
-        {/* Compact contributes even a lone crumb, since the page header is the
+    <V8EditorProvider value={protocolProject}>
+      <HeaderSlotProvider>
+        <div className="flex h-full min-w-0 w-full flex-col">
+          {!compact && backButton && (
+            <div className="flex min-w-0 shrink-0 items-center gap-2 px-3 py-2">
+              {backButton}
+            </div>
+          )}
+          {/* Compact contributes even a lone crumb, since the page header is the
           only place the page name shows there. Classic renders the trail in
           place, and at the page root that lone crumb would just repeat the
           name already sitting in the panel's own name field. */}
-        {(compact || headerCrumbs.length > 1) && (
-          <BlockBreadcrumbs
-            crumbs={headerCrumbs}
-            onSelect={handleBreadcrumbClick}
-            onSelectRoot={() => {
-              pageBlockSave.flush();
-              if (onSelectRoot) onSelectRoot();
-              else handleBreadcrumbClick(0);
-            }}
-          />
-        )}
-        {/* Compact's page header — one row, every state. What changes between
+          {(compact || headerCrumbs.length > 1) && (
+            <BlockBreadcrumbs
+              crumbs={headerCrumbs}
+              onSelect={handleBreadcrumbClick}
+              onSelectRoot={() => {
+                pageBlockSave.flush();
+                if (onSelectRoot) onSelectRoot();
+                else handleBreadcrumbClick(0);
+              }}
+            />
+          )}
+          {/* Compact's page header — one row, every state. What changes between
           them is which pieces are present, never where they sit. Classic's
           header is a different shape entirely and lives in `classicHeader`. */}
-        <div className="shrink-0">
-          {!compact ? (
-            classicHeader
-          ) : (
-            <div
-              className={cn(
-                "flex items-center gap-2 border-b px-3 py-2.5",
-                showGlobalBanner &&
-                  "border-global-section/22 bg-global-section/12 dark:bg-global-section/16",
-              )}
-            >
-              {compact && backButton}
-              {showGlobalBanner && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="shrink-0 cursor-help">
-                      <Globe01 className="size-4 text-global-section-fg dark:text-global-section-fg-dark" />
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom" className="max-w-[260px]">
-                    {t("sectionsEditor.sectionsEditor.globalSectionTooltip")}
-                  </TooltipContent>
-                </Tooltip>
-              )}
-              <div className="flex min-w-0 flex-1 flex-col leading-tight">
-                <span className="truncate text-sm font-semibold">
-                  {headerTitle}
-                </span>
-                {headerSubtitle && (
-                  <span className="truncate text-xs text-muted-foreground">
-                    {headerSubtitle}
-                  </span>
+          <div className="shrink-0">
+            {!compact ? (
+              classicHeader
+            ) : (
+              <div
+                className={cn(
+                  "flex items-center gap-2 border-b px-3 py-2.5",
+                  showGlobalBanner &&
+                    "border-global-section/22 bg-global-section/12 dark:bg-global-section/16",
                 )}
-              </div>
-              {/* The variant control always describes the block that is open, so a
-              section never advertises the page variant it was reached through.
-              The breadcrumb carries that. */}
-              {atPanelRoot && hasMultipleVariants && activeVariant && (
-                <VariantSelect
-                  variants={pageVariants}
-                  activeIndex={safeVariantIndex}
-                  onSelect={selectPageVariant}
-                  onManage={openVariantManager}
-                  onRemoveAll={handleRemoveAllPageVariants}
-                />
-              )}
-              {/* The same select one level down, for the open section's own
-              variants. Hidden once a nested field is open, where the focused
-              form owns the panel. */}
-              {showSectionVariantSelect && (
-                <VariantSelect
-                  variants={sectionFlagVariants}
-                  activeIndex={safeSectionVariantIndex}
-                  onSelect={handleSelectSectionVariant}
-                  onManage={openSectionVariantManager}
-                  onRemoveAll={handleRemoveAllSectionVariants}
-                />
-              )}
-              {/* Without variants there is no select to add from, so the page
-              still needs its own entry point — in the same slot the select
-              would occupy, never after the tools. */}
-              {atPanelRoot && !hasMultipleVariants && (
-                <AddVariantButton onClick={handleAddPageVariant} />
-              )}
-              {showAddSectionVariant && (
-                <AddVariantButton onClick={() => handleAddSectionVariant()} />
-              )}
-              {/* A field that has taken over the panel puts its own control
-                here — see `header-slot.tsx`. */}
-              <HeaderSlotTarget />
-              {atPanelRoot && (
-                <>
+              >
+                {compact && backButton}
+                {showGlobalBanner && (
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon"
-                        aria-label={t("sectionsEditor.sectionsEditor.editSeo")}
-                        className="size-7 shrink-0"
-                        onClick={openSeo}
-                      >
-                        <CreditCardSearch size={14} />
-                      </Button>
+                      <span className="shrink-0 cursor-help">
+                        <Globe01 className="size-4 text-global-section-fg dark:text-global-section-fg-dark" />
+                      </span>
                     </TooltipTrigger>
-                    <TooltipContent side="bottom">
-                      {t("sectionsEditor.sectionsEditor.editSeo")}
+                    <TooltipContent side="bottom" className="max-w-[260px]">
+                      {t("sectionsEditor.sectionsEditor.globalSectionTooltip")}
                     </TooltipContent>
                   </Tooltip>
-                  {/* Only when nothing outside owns the JSON view. Inside the
-                  preview the toolbar carries it. */}
-                  {!onViewJsonFile && (
+                )}
+                <div className="flex min-w-0 flex-1 flex-col leading-tight">
+                  <span className="truncate text-sm font-semibold">
+                    {headerTitle}
+                  </span>
+                  {headerSubtitle && (
+                    <span className="truncate text-xs text-muted-foreground">
+                      {headerSubtitle}
+                    </span>
+                  )}
+                </div>
+                {/* The variant control always describes the block that is open, so a
+              section never advertises the page variant it was reached through.
+              The breadcrumb carries that. */}
+                {atPanelRoot && hasMultipleVariants && activeVariant && (
+                  <VariantSelect
+                    variants={pageVariants}
+                    activeIndex={safeVariantIndex}
+                    onSelect={selectPageVariant}
+                    onManage={openVariantManager}
+                    onRemoveAll={handleRemoveAllPageVariants}
+                  />
+                )}
+                {/* The same select one level down, for the open section's own
+              variants. Hidden once a nested field is open, where the focused
+              form owns the panel. */}
+                {showSectionVariantSelect && (
+                  <VariantSelect
+                    variants={sectionFlagVariants}
+                    activeIndex={safeSectionVariantIndex}
+                    onSelect={handleSelectSectionVariant}
+                    onManage={openSectionVariantManager}
+                    onRemoveAll={handleRemoveAllSectionVariants}
+                  />
+                )}
+                {/* Without variants there is no select to add from, so the page
+              still needs its own entry point — in the same slot the select
+              would occupy, never after the tools. */}
+                {atPanelRoot && !hasMultipleVariants && (
+                  <AddVariantButton onClick={handleAddPageVariant} />
+                )}
+                {showAddSectionVariant && (
+                  <AddVariantButton onClick={() => handleAddSectionVariant()} />
+                )}
+                {/* A field that has taken over the panel puts its own control
+                here — see `header-slot.tsx`. */}
+                <HeaderSlotTarget />
+                {atPanelRoot && (
+                  <>
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button
@@ -4731,269 +4737,303 @@ export function SectionsEditor({
                           variant="outline"
                           size="icon"
                           aria-label={t(
-                            "sectionsEditor.sectionsEditor.viewJson",
+                            "sectionsEditor.sectionsEditor.editSeo",
                           )}
                           className="size-7 shrink-0"
-                          onClick={() => setJsonOpen(true)}
+                          onClick={openSeo}
                         >
-                          <Code01 size={14} />
+                          <CreditCardSearch size={14} />
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent side="bottom">
-                        {t("sectionsEditor.sectionsEditor.viewJson")}
+                        {t("sectionsEditor.sectionsEditor.editSeo")}
                       </TooltipContent>
                     </Tooltip>
-                  )}
-                </>
-              )}
-            </div>
-          )}
-        </div>
-
-        {waitingChoice && (
-          <FormConflictDialog
-            key={conflictDialogKey(waitingChoice.formBase)}
-            open
-            fields={conflictFields(
-              waitingChoice.plan,
-              waitingChoice.target.schema,
+                    {/* Only when nothing outside owns the JSON view. Inside the
+                  preview the toolbar carries it. */}
+                    {!onViewJsonFile && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            aria-label={t(
+                              "sectionsEditor.sectionsEditor.viewJson",
+                            )}
+                            className="size-7 shrink-0"
+                            onClick={() => setJsonOpen(true)}
+                          >
+                            <Code01 size={14} />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">
+                          {t("sectionsEditor.sectionsEditor.viewJson")}
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+                  </>
+                )}
+              </div>
             )}
-            choices={waitingChoice.choices}
-            changedAgain={waitingChoice.changedAgain}
-            author={conflictAuthor}
-            fresh={waitingChoice.fresh}
-            onChoose={(pointer, choice) =>
-              setConflictChoices({
-                ...waitingChoice.choices,
-                [pointer]: choice,
-              })
-            }
-            onApply={applyFormConflict}
-          />
-        )}
+          </div>
 
-        {/* Drill-down: section form or global-block form, else the panel accordion */}
-        {managingSectionVariants ? (
-          <VariantsManagerScreen
-            key="editor-section-variants"
-            onAdd={() => handleAddSectionVariant()}
-          >
-            {sectionVariantsPanel}
-          </VariantsManagerScreen>
-        ) : isEditing ? (
-          <ScrollArea
-            key="editor-section-form"
-            viewportRef={fieldScrollRef}
-            onBlur={handleFormBlur}
-            className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block"
-          >
-            {/* Classic only: compact moves these into the header select and the variant manager. */}
-            {!compact &&
-              isEditingMultivariateSection &&
-              sectionFlagVariants.length > 0 &&
-              fieldBreadcrumbs.length === 0 &&
-              sectionVariantsPanel}
-            <NamedRuleFieldProvider value={namedRuleFieldSupport}>
-              <RootVariantFocusProvider
-                value={isGlobalBlockMode ? rootVariantFocus : null}
-              >
-                <SchemaFormPanel
-                  activeSchema={activeSchema}
-                  formValue={formValue}
-                  formResetKey={formResetKey}
-                  onFormChange={handleFormChange}
-                  onBreadcrumbChange={setFieldBreadcrumbs}
-                  breadcrumbPath={fieldBreadcrumbs}
-                  emptyMessage={t(
-                    "sectionsEditor.sectionsEditor.noEditableFieldsForVariant",
-                  )}
-                  meta={meta}
-                  decofile={decofile}
-                  onSaveReferencedBlock={saveReferencedBlock}
-                  sandbox={sandbox}
-                  previewBaseUrl={sectionPreviewBase}
-                  onRequestAddSection={handleRequestAddSection}
-                  onVariantMatcherOp={
-                    isGlobalBlockMode ? fieldVariantMatcherOps : undefined
-                  }
-                />
-              </RootVariantFocusProvider>
-            </NamedRuleFieldProvider>
-          </ScrollArea>
-        ) : isGlobalBlockMode ? (
-          <ScrollArea
-            key="editor-global-block"
-            viewportRef={fieldScrollRef}
-            onBlur={handleFormBlur}
-            className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block"
-          >
-            <NamedRuleFieldProvider value={namedRuleFieldSupport}>
-              <RootVariantFocusProvider
-                value={isGlobalBlockMode ? rootVariantFocus : null}
-              >
-                <SchemaFormPanel
-                  activeSchema={activeSchema}
-                  formValue={formValue}
-                  formResetKey={formResetKey}
-                  onFormChange={handleFormChange}
-                  onBreadcrumbChange={setFieldBreadcrumbs}
-                  breadcrumbPath={fieldBreadcrumbs}
-                  emptyMessage={t(
-                    "sectionsEditor.sectionsEditor.noEditableFieldsForGlobalBlock",
-                  )}
-                  meta={meta}
-                  decofile={decofile}
-                  onSaveReferencedBlock={saveReferencedBlock}
-                  sandbox={sandbox}
-                  previewBaseUrl={sectionPreviewBase}
-                  onRequestAddSection={handleRequestAddSection}
-                />
-              </RootVariantFocusProvider>
-            </NamedRuleFieldProvider>
-          </ScrollArea>
-        ) : editingSeo ? (
-          compact ? (
+          {waitingChoice && (
+            <FormConflictDialog
+              key={conflictDialogKey(waitingChoice.formBase)}
+              open
+              fields={conflictFields(
+                waitingChoice.plan,
+                waitingChoice.target.schema,
+              )}
+              choices={waitingChoice.choices}
+              changedAgain={waitingChoice.changedAgain}
+              author={conflictAuthor}
+              fresh={waitingChoice.fresh}
+              onChoose={(pointer, choice) =>
+                setConflictChoices({
+                  ...waitingChoice.choices,
+                  [pointer]: choice,
+                })
+              }
+              onApply={applyFormConflict}
+            />
+          )}
+
+          {/* Drill-down: section form or global-block form, else the panel accordion */}
+          {managingSectionVariants ? (
+            <VariantsManagerScreen
+              key="editor-section-variants"
+              onAdd={() => handleAddSectionVariant()}
+            >
+              {sectionVariantsPanel}
+            </VariantsManagerScreen>
+          ) : isEditing ? (
             <ScrollArea
-              key="editor-seo"
+              key="editor-section-form"
+              viewportRef={fieldScrollRef}
+              onBlur={handleFormBlur}
               className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block"
             >
-              <div className="p-3">{seoPanel}</div>
+              {/* Classic only: compact moves these into the header select and the variant manager. */}
+              {!compact &&
+                isEditingMultivariateSection &&
+                sectionFlagVariants.length > 0 &&
+                fieldBreadcrumbs.length === 0 &&
+                sectionVariantsPanel}
+              <NamedRuleFieldProvider value={namedRuleFieldSupport}>
+                <RootVariantFocusProvider
+                  value={
+                    isGlobalBlockMode && protocolProject
+                      ? rootVariantFocus
+                      : null
+                  }
+                >
+                  <SchemaFormPanel
+                    activeSchema={activeSchema}
+                    formValue={formValue}
+                    formResetKey={formResetKey}
+                    onFormChange={handleFormChange}
+                    onBreadcrumbChange={setFieldBreadcrumbs}
+                    breadcrumbPath={fieldBreadcrumbs}
+                    emptyMessage={t(
+                      "sectionsEditor.sectionsEditor.noEditableFieldsForVariant",
+                    )}
+                    meta={meta}
+                    decofile={decofile}
+                    onSaveReferencedBlock={saveReferencedBlock}
+                    sandbox={sandbox}
+                    previewBaseUrl={sectionPreviewBase}
+                    onRequestAddSection={handleRequestAddSection}
+                    onVariantMatcherOp={
+                      isGlobalBlockMode ? fieldVariantMatcherOps : undefined
+                    }
+                  />
+                </RootVariantFocusProvider>
+              </NamedRuleFieldProvider>
             </ScrollArea>
-          ) : (
-            classicSeoBody
-          )
-        ) : managingVariants ? (
-          <VariantsManagerScreen
-            key="editor-variants"
-            onAdd={handleAddPageVariant}
-          >
-            {variantsPanel}
-          </VariantsManagerScreen>
-        ) : compact ? (
-          <div
-            key="editor-section-list"
-            className="flex min-h-0 flex-1 flex-col"
-          >
-            <ScrollArea className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block">
-              <div className="py-2">{sectionsPanel}</div>
+          ) : isGlobalBlockMode ? (
+            <ScrollArea
+              key="editor-global-block"
+              viewportRef={fieldScrollRef}
+              onBlur={handleFormBlur}
+              className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block"
+            >
+              <NamedRuleFieldProvider value={namedRuleFieldSupport}>
+                <RootVariantFocusProvider
+                  value={
+                    isGlobalBlockMode && protocolProject
+                      ? rootVariantFocus
+                      : null
+                  }
+                >
+                  <SchemaFormPanel
+                    activeSchema={activeSchema}
+                    formValue={formValue}
+                    formResetKey={formResetKey}
+                    onFormChange={handleFormChange}
+                    onBreadcrumbChange={setFieldBreadcrumbs}
+                    breadcrumbPath={fieldBreadcrumbs}
+                    emptyMessage={t(
+                      "sectionsEditor.sectionsEditor.noEditableFieldsForGlobalBlock",
+                    )}
+                    meta={meta}
+                    decofile={decofile}
+                    onSaveReferencedBlock={saveReferencedBlock}
+                    sandbox={sandbox}
+                    previewBaseUrl={sectionPreviewBase}
+                    onRequestAddSection={handleRequestAddSection}
+                  />
+                </RootVariantFocusProvider>
+              </NamedRuleFieldProvider>
             </ScrollArea>
-            <div className="shrink-0 border-t p-2">
-              <AddSectionButton
-                canAddSection={canAddSection}
-                onAddSection={() => setAddSectionOpen(true)}
-              />
+          ) : editingSeo ? (
+            compact ? (
+              <ScrollArea
+                key="editor-seo"
+                className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block"
+              >
+                <div className="p-3">{seoPanel}</div>
+              </ScrollArea>
+            ) : (
+              classicSeoBody
+            )
+          ) : managingVariants ? (
+            <VariantsManagerScreen
+              key="editor-variants"
+              onAdd={handleAddPageVariant}
+            >
+              {variantsPanel}
+            </VariantsManagerScreen>
+          ) : compact ? (
+            <div
+              key="editor-section-list"
+              className="flex min-h-0 flex-1 flex-col"
+            >
+              <ScrollArea className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block">
+                <div className="py-2">{sectionsPanel}</div>
+              </ScrollArea>
+              <div className="shrink-0 border-t p-2">
+                <AddSectionButton
+                  canAddSection={canAddSection}
+                  onAddSection={() => setAddSectionOpen(true)}
+                />
+              </div>
             </div>
-          </div>
-        ) : (
-          classicSectionListBody
-        )}
+          ) : (
+            classicSectionListBody
+          )}
 
-        <MakeReusableModal
-          open={makeReusableIndex !== null}
-          onOpenChange={(open) => {
-            if (!open) setMakeReusableIndex(null);
-          }}
-          defaultBlockId={
-            makeReusableIndex !== null
-              ? suggestBlockId(parsedSections[makeReusableIndex]?.label ?? "")
-              : ""
-          }
-          isPending={saveBlock.isPending}
-          onSubmit={handleMakeReusableSubmit}
-        />
-
-        {galleryAvailable && (
-          <AddSectionModal
-            open={addSectionOpen}
+          <MakeReusableModal
+            open={makeReusableIndex !== null}
             onOpenChange={(open) => {
-              setAddSectionOpen(open);
-              if (!open) pendingAppendRef.current = null;
+              if (!open) setMakeReusableIndex(null);
             }}
-            meta={meta}
-            decofile={decofile}
-            previewBaseUrl={sectionPreviewBase}
-            onSelect={handleSelectSectionFromModal}
-          />
-        )}
-
-        {jsonOpen && activePageKey && decofile && (
-          <PageJsonDialog
-            open={jsonOpen}
-            onOpenChange={setJsonOpen}
-            pageKey={activePageKey}
-            decofile={decofile}
-          />
-        )}
-
-        {renameVariantIndex !== null && (
-          <VariantRenameDialog
-            open
-            initialName={
-              isSavedMatcherBlockReference(
-                pageVariants[renameVariantIndex]?.rule,
-                decofile ?? {},
-                meta ?? undefined,
-              )
-                ? resolveVariantRuleLabel(
-                    pageVariants[renameVariantIndex]?.rule,
-                    decofile ?? {},
-                    formatMatcher,
-                    meta ?? undefined,
-                  )
+            defaultBlockId={
+              makeReusableIndex !== null
+                ? suggestBlockId(parsedSections[makeReusableIndex]?.label ?? "")
                 : ""
             }
-            autoLabel={formatMatcher(
-              resolveEffectiveMatcherRule(
-                pageVariants[renameVariantIndex]?.rule,
-                decofile ?? {},
-                meta ?? undefined,
-              ),
-            )}
-            isPending={renameVariantPending}
-            onSubmit={async (name) => {
-              await handleRenamePageVariant(renameVariantIndex, name);
-            }}
-            onOpenChange={(open) => {
-              if (!open && !renameVariantPending) setRenameVariantIndex(null);
-            }}
+            isPending={saveBlock.isPending}
+            onSubmit={handleMakeReusableSubmit}
           />
-        )}
 
-        {renameSectionVariantIndex !== null && (
-          <VariantRenameDialog
-            open
-            initialName={
-              isSavedMatcherBlockReference(
-                sectionFlagVariants[renameSectionVariantIndex]?.rule,
-                decofile ?? {},
-                meta ?? undefined,
-              )
-                ? resolveVariantRuleLabel(
-                    sectionFlagVariants[renameSectionVariantIndex]?.rule,
-                    decofile ?? {},
-                    formatMatcher,
-                    meta ?? undefined,
-                  )
-                : ""
-            }
-            autoLabel={formatMatcher(
-              resolveEffectiveMatcherRule(
-                sectionFlagVariants[renameSectionVariantIndex]?.rule,
-                decofile ?? {},
-                meta ?? undefined,
-              ),
-            )}
-            isPending={renameVariantPending}
-            onSubmit={async (name) => {
-              await handleRenameSectionVariant(renameSectionVariantIndex, name);
-            }}
-            onOpenChange={(open) => {
-              if (!open && !renameVariantPending)
-                setRenameSectionVariantIndex(null);
-            }}
-          />
-        )}
-      </div>
-    </HeaderSlotProvider>
+          {galleryAvailable && (
+            <AddSectionModal
+              open={addSectionOpen}
+              onOpenChange={(open) => {
+                setAddSectionOpen(open);
+                if (!open) pendingAppendRef.current = null;
+              }}
+              meta={meta}
+              decofile={decofile}
+              previewBaseUrl={sectionPreviewBase}
+              onSelect={handleSelectSectionFromModal}
+            />
+          )}
+
+          {jsonOpen && activePageKey && decofile && (
+            <PageJsonDialog
+              open={jsonOpen}
+              onOpenChange={setJsonOpen}
+              pageKey={activePageKey}
+              decofile={decofile}
+            />
+          )}
+
+          {renameVariantIndex !== null && (
+            <VariantRenameDialog
+              open
+              initialName={
+                isSavedMatcherBlockReference(
+                  pageVariants[renameVariantIndex]?.rule,
+                  decofile ?? {},
+                  meta ?? undefined,
+                )
+                  ? resolveVariantRuleLabel(
+                      pageVariants[renameVariantIndex]?.rule,
+                      decofile ?? {},
+                      formatMatcher,
+                      meta ?? undefined,
+                    )
+                  : ""
+              }
+              autoLabel={formatMatcher(
+                resolveEffectiveMatcherRule(
+                  pageVariants[renameVariantIndex]?.rule,
+                  decofile ?? {},
+                  meta ?? undefined,
+                ),
+              )}
+              isPending={renameVariantPending}
+              onSubmit={async (name) => {
+                await handleRenamePageVariant(renameVariantIndex, name);
+              }}
+              onOpenChange={(open) => {
+                if (!open && !renameVariantPending) setRenameVariantIndex(null);
+              }}
+            />
+          )}
+
+          {renameSectionVariantIndex !== null && (
+            <VariantRenameDialog
+              open
+              initialName={
+                isSavedMatcherBlockReference(
+                  sectionFlagVariants[renameSectionVariantIndex]?.rule,
+                  decofile ?? {},
+                  meta ?? undefined,
+                )
+                  ? resolveVariantRuleLabel(
+                      sectionFlagVariants[renameSectionVariantIndex]?.rule,
+                      decofile ?? {},
+                      formatMatcher,
+                      meta ?? undefined,
+                    )
+                  : ""
+              }
+              autoLabel={formatMatcher(
+                resolveEffectiveMatcherRule(
+                  sectionFlagVariants[renameSectionVariantIndex]?.rule,
+                  decofile ?? {},
+                  meta ?? undefined,
+                ),
+              )}
+              isPending={renameVariantPending}
+              onSubmit={async (name) => {
+                await handleRenameSectionVariant(
+                  renameSectionVariantIndex,
+                  name,
+                );
+              }}
+              onOpenChange={(open) => {
+                if (!open && !renameVariantPending)
+                  setRenameSectionVariantIndex(null);
+              }}
+            />
+          )}
+        </div>
+      </HeaderSlotProvider>
+    </V8EditorProvider>
   );
 }

@@ -156,9 +156,92 @@ describe("page-variants", () => {
     expect(getPageVariantCount(decofile, "promo")).toBe(2);
   });
 
-  it("adds a variant seeded from provided sections above the current ones", () => {
+  it("v7: appends a variant seeded from provided sections", () => {
     const seed = [{ __resolveType: "site/sections/Hero.tsx" }];
     const result = appendPageVariantSections([{ __resolveType: "A" }], seed);
+    expect(result).toEqual({
+      sections: {
+        __resolveType: "website/flags/multivariate.ts",
+        variants: [
+          {
+            rule: { __resolveType: "website/matchers/always.ts" },
+            value: [{ __resolveType: "A" }],
+          },
+          {
+            rule: { __resolveType: "website/matchers/always.ts" },
+            value: seed,
+          },
+        ],
+      },
+      newVariantIndex: 1,
+    });
+  });
+
+  it("v7: appends after a trailing catch-all and selects the last", () => {
+    const mobile = {
+      rule: { __resolveType: "website/matchers/device.ts", mobile: true },
+      value: [{ __resolveType: "Mobile" }],
+    };
+    const fallback = {
+      rule: { __resolveType: "website/matchers/always.ts" },
+      value: [{ __resolveType: "Default" }],
+    };
+    const seed = [{ __resolveType: "Seed" }];
+    const result = appendPageVariantSections(
+      {
+        __resolveType: "website/flags/multivariate.ts",
+        variants: [mobile, fallback],
+      },
+      seed,
+    );
+    expect(result?.newVariantIndex).toBe(2);
+    const variants = (result?.sections.variants ?? []) as Array<{
+      value: unknown;
+    }>;
+    expect(variants.map((variant) => variant.value)).toEqual([
+      mobile.value,
+      fallback.value,
+      seed,
+    ]);
+    // A page with no sections shape gets an empty first variant, as before.
+    expect(appendPageVariantSections(undefined, seed)).toEqual({
+      sections: {
+        __resolveType: "website/flags/multivariate.ts",
+        variants: [
+          { rule: { __resolveType: "website/matchers/always.ts" }, value: [] },
+          {
+            rule: { __resolveType: "website/matchers/always.ts" },
+            value: seed,
+          },
+        ],
+      },
+      newVariantIndex: 1,
+    });
+  });
+
+  it("v7: duplicates a page variant right after it", () => {
+    const mobile = {
+      rule: { __resolveType: "website/matchers/device.ts", mobile: true },
+      value: [{ __resolveType: "Mobile" }],
+    };
+    const fallback = {
+      rule: { __resolveType: "website/matchers/always.ts" },
+      value: [{ __resolveType: "Default" }],
+    };
+    const next = duplicatePageVariantEntry([mobile, fallback], 1);
+    expect(next?.[1]).toBe(fallback);
+    expect(next?.[2]).toEqual(fallback);
+    expect(next?.[2]).not.toBe(fallback);
+  });
+
+  it("v8: adds a variant seeded from provided sections above the current ones", () => {
+    const seed = [{ __resolveType: "site/sections/Hero.tsx" }];
+    const result = appendPageVariantSections(
+      [{ __resolveType: "A" }],
+      seed,
+      undefined,
+      true,
+    );
     expect(result).toEqual({
       sections: {
         __resolveType: "website/flags/multivariate.ts",
@@ -177,7 +260,7 @@ describe("page-variants", () => {
     });
   });
 
-  it("adds a page variant above a trailing catch-all, keeping the order", () => {
+  it("v8: adds a page variant above a trailing catch-all, keeping the order", () => {
     const mobile = {
       rule: { __resolveType: "website/matchers/device.ts", mobile: true },
       value: [{ __resolveType: "Mobile" }],
@@ -193,6 +276,8 @@ describe("page-variants", () => {
         variants: [mobile, fallback],
       },
       seed,
+      undefined,
+      true,
     );
     expect(result?.newVariantIndex).toBe(1);
     const variants = (result?.sections.variants ?? []) as Array<{
@@ -210,15 +295,19 @@ describe("page-variants", () => {
       rule: { __resolveType: "website/matchers/device.ts", mobile: true },
       value: [{ __resolveType: "Mobile" }],
     };
-    const result = appendPageVariantSections(
-      { __resolveType: "website/flags/multivariate.ts", variants: [mobile] },
-      [{ __resolveType: "Seed" }],
-    );
-    expect(result?.newVariantIndex).toBe(1);
-    expect(result?.sections.variants).toHaveLength(2);
+    for (const v8 of [true, false]) {
+      const result = appendPageVariantSections(
+        { __resolveType: "website/flags/multivariate.ts", variants: [mobile] },
+        [{ __resolveType: "Seed" }],
+        undefined,
+        v8,
+      );
+      expect(result?.newVariantIndex).toBe(1);
+      expect(result?.sections.variants).toHaveLength(2);
+    }
   });
 
-  it("duplicates the catch-all page variant above it", () => {
+  it("v8: duplicates the catch-all page variant above it", () => {
     const mobile = {
       rule: { __resolveType: "website/matchers/device.ts", mobile: true },
       value: [{ __resolveType: "Mobile" }],
@@ -227,10 +316,10 @@ describe("page-variants", () => {
       rule: { __resolveType: "website/matchers/always.ts" },
       value: [{ __resolveType: "Default" }],
     };
-    const next = duplicatePageVariantEntry([mobile, fallback], 1);
+    const next = duplicatePageVariantEntry([mobile, fallback], 1, true);
     expect(next?.[2]).toBe(fallback);
     expect(next?.[1]).toEqual(fallback);
-    expect(duplicatePageVariantEntry([mobile, fallback], 0)?.[1]).toEqual(
+    expect(duplicatePageVariantEntry([mobile, fallback], 0, true)?.[1]).toEqual(
       mobile,
     );
   });

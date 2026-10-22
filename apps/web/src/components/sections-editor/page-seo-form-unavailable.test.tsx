@@ -10,6 +10,7 @@ mock.module("@/hooks/use-new-blocks-editor", () => ({
 }));
 
 import { PageSeoForm } from "./page-seo-form";
+import { V8EditorProvider } from "./v8-editor-context";
 
 /**
  * A next-major page schema can list no SEO type: SEO can't be turned on
@@ -19,24 +20,28 @@ function renderSeo(props: {
   rawSeo: unknown;
   defaultResolveType: string;
   seoTypesLoading?: boolean;
+  /** A Blocks v8 site's editor (the default here); false renders v7's. */
+  v8?: boolean;
 }) {
   const persisted: unknown[] = [];
   render(
     <QueryClientProvider client={new QueryClient()}>
-      <PageSeoForm
-        rawSeo={props.rawSeo}
-        innerSeo={{}}
-        defaultResolveType={props.defaultResolveType}
-        seoTypesLoading={props.seoTypesLoading}
-        seoSchema={null}
-        activeResolveType={null}
-        formResetKey={0}
-        onPersistRaw={(raw) => persisted.push(raw)}
-        onInnerChange={() => {}}
-        onClearForm={() => {}}
-        onBumpFormKey={() => {}}
-        asyncRenderAvailable={false}
-      />
+      <V8EditorProvider value={props.v8 ?? true}>
+        <PageSeoForm
+          rawSeo={props.rawSeo}
+          innerSeo={{}}
+          defaultResolveType={props.defaultResolveType}
+          seoTypesLoading={props.seoTypesLoading}
+          seoSchema={null}
+          activeResolveType={null}
+          formResetKey={0}
+          onPersistRaw={(raw) => persisted.push(raw)}
+          onInnerChange={() => {}}
+          onClearForm={() => {}}
+          onBumpFormKey={() => {}}
+          asyncRenderAvailable={false}
+        />
+      </V8EditorProvider>
     </QueryClientProvider>,
   );
   const toggle = document.querySelector("#seo-enable") as HTMLButtonElement;
@@ -44,7 +49,36 @@ function renderSeo(props: {
   return { toggle, hint, persisted };
 }
 
-describe("page SEO without an SEO type", () => {
+describe("v7: page SEO as before", () => {
+  test("the switch turns SEO on even before the schema loads", () => {
+    const { toggle, hint, persisted } = renderSeo({
+      rawSeo: null,
+      defaultResolveType: "",
+      seoTypesLoading: true,
+      v8: false,
+    });
+    expect(toggle.disabled).toBe(false);
+    expect(hint).toBeNull();
+    fireEvent.click(toggle);
+    expect(persisted).toEqual([{ __resolveType: "" }]);
+    document.body.innerHTML = "";
+  });
+
+  test("with the schema, turning SEO on saves its default type", () => {
+    const { toggle, persisted } = renderSeo({
+      rawSeo: null,
+      defaultResolveType: "website/sections/Seo/SeoV2.tsx",
+      v8: false,
+    });
+    fireEvent.click(toggle);
+    expect(persisted).toEqual([
+      { __resolveType: "website/sections/Seo/SeoV2.tsx" },
+    ]);
+    document.body.innerHTML = "";
+  });
+});
+
+describe("v8: page SEO without an SEO type", () => {
   test("the switch is off and says why", () => {
     const { toggle, hint, persisted } = renderSeo({
       rawSeo: null,

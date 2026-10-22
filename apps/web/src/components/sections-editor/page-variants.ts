@@ -247,22 +247,25 @@ function createMultivariatePageSections(
 }
 
 /**
- * Add a page variant seeded from `seedSections`, above the trailing catch-all
- * (see `newVariantIndex`): a page without variants becomes the new variant
- * followed by the current sections. Returns null when the current sections
- * shape cannot be extended.
+ * Add a page variant seeded from `seedSections`. On a Blocks v8 site it goes
+ * above the trailing catch-all (see `newVariantIndex`), and a page without
+ * variants becomes the new variant followed by the current sections. Any
+ * other site keeps v7's order: the new variant last, after the current
+ * sections. Returns null when the current sections shape cannot be extended.
  */
 export function appendPageVariantSections(
   current: unknown,
   seedSections: RawSection[],
   meta?: LiveMeta | null,
+  /** A Blocks v8 site. */
+  v8 = false,
 ): { sections: Record<string, unknown>; newVariantIndex: number } | null {
   const seed = structuredClone(seedSections);
   if (current && typeof current === "object" && !Array.isArray(current)) {
     const obj = current as Record<string, unknown>;
     if (!Array.isArray(obj.variants)) return null;
     const variants = [...(obj.variants as Array<Record<string, unknown>>)];
-    const insertAt = newVariantIndex(variants);
+    const insertAt = newVariantIndex(variants, v8);
     variants.splice(
       insertAt,
       0,
@@ -274,6 +277,24 @@ export function appendPageVariantSections(
     };
   }
   const newType = pageMultivariateTypeFor(undefined, meta);
+  if (!v8) {
+    // v7: the current sections (none for an unknown shape), then the new one.
+    return {
+      sections: createMultivariatePageSections(
+        [
+          createPageVariantEntry(
+            Array.isArray(current) ? (current as RawSection[]) : [],
+            meta,
+            newType,
+          ),
+          createPageVariantEntry(seed, meta, newType),
+        ],
+        undefined,
+        meta,
+      ),
+      newVariantIndex: 1,
+    };
+  }
   return {
     sections: createMultivariatePageSections(
       [
@@ -299,12 +320,14 @@ export function appendPageVariantSections(
 export function duplicatePageVariantEntry(
   variants: Array<Record<string, unknown>>,
   variantIndex: number,
+  /** A Blocks v8 site (see `duplicateVariantIndex`). */
+  v8 = false,
 ): Array<Record<string, unknown>> | null {
   const source = variants[variantIndex];
   if (!source) return null;
   const next = [...variants];
   next.splice(
-    duplicateVariantIndex(variants, variantIndex),
+    duplicateVariantIndex(variants, variantIndex, v8),
     0,
     structuredClone(source),
   );

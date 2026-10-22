@@ -68,7 +68,8 @@ function fieldsWithin(
 
 /**
  * The form layout for an SEO type. v7 file names keep admin's layouts (other
- * file paths, the full form). Next-major's short names are read from the
+ * file paths, the full form). Off a Blocks v8 site (`v8` false) every other
+ * type gets the full form, as before. On v8, short names are read from the
  * schema: the General layout (with its "Use default" toggles) when every field
  * is a general SEO field, the product/listing layout when its name says so and
  * every field fits, and the full form otherwise — a layout never hides one of
@@ -77,9 +78,11 @@ function fieldsWithin(
 export function getSeoFormMode(
   resolveType: string,
   schema?: SchemaProperty | null,
+  v8 = false,
 ): SeoFormMode {
   const v7 = v7SeoFormMode(resolveType);
   if (v7) return v7;
+  if (!v8) return "full";
   // Any other file path is a v7 type admin had no layout for.
   if (resolveType.includes("/")) return "full";
   const hint = nameHint(resolveType);
@@ -107,8 +110,10 @@ function fieldKeysForMode(mode: SeoFormMode): readonly string[] | null {
 export function filterSeoSchema(
   schema: SchemaProperty,
   resolveType: string,
+  /** A Blocks v8 site (see `getSeoFormMode`). */
+  v8 = false,
 ): SchemaProperty {
-  const keys = fieldKeysForMode(getSeoFormMode(resolveType, schema));
+  const keys = fieldKeysForMode(getSeoFormMode(resolveType, schema, v8));
   if (!keys || !schema.properties) return schema;
 
   const properties: Record<string, SchemaProperty> = {};

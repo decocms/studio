@@ -373,29 +373,46 @@ describe("compareUrl", () => {
 
 describe("comparePlaceholder", () => {
   test("a new page has no before, a removed page no after", () => {
-    expect(comparePlaceholder({ kind: "page", status: "new" })).toEqual({
-      before: "new",
-      after: null,
-    });
-    expect(comparePlaceholder({ kind: "page", status: "removed" })).toEqual({
-      before: null,
-      after: "removed",
-    });
+    for (const v8 of [true, false]) {
+      expect(comparePlaceholder({ kind: "page", status: "new" }, v8)).toEqual({
+        before: "new",
+        after: null,
+      });
+      expect(
+        comparePlaceholder({ kind: "page", status: "removed" }, v8),
+      ).toEqual({ before: null, after: "removed" });
+    }
   });
 
-  test("a new or removed block renders the page on both sides", () => {
+  test("v8: a new or removed block renders the page on both sides", () => {
     for (const status of ["new", "removed", "edited"] as const) {
-      expect(comparePlaceholder({ kind: "block", status })).toEqual({
+      expect(comparePlaceholder({ kind: "block", status }, true)).toEqual({
         before: null,
         after: null,
       });
     }
   });
 
+  test("v7: a new or removed block shows the placeholder, as before", () => {
+    expect(comparePlaceholder({ kind: "block", status: "new" }, false)).toEqual(
+      { before: "new", after: null },
+    );
+    expect(
+      comparePlaceholder({ kind: "block", status: "removed" }, false),
+    ).toEqual({ before: null, after: "removed" });
+    expect(
+      comparePlaceholder({ kind: "block", status: "edited" }, false),
+    ).toEqual({ before: null, after: null });
+  });
+
   test("a new or removed code file renders the page on both sides", () => {
-    expect(comparePlaceholder({ kind: "other", status: "new" })).toEqual({
-      before: null,
-      after: null,
-    });
+    for (const v8 of [true, false]) {
+      for (const status of ["new", "removed"] as const) {
+        expect(comparePlaceholder({ kind: "other", status }, v8)).toEqual({
+          before: null,
+          after: null,
+        });
+      }
+    }
   });
 });

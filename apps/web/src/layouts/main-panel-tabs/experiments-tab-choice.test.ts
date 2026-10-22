@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import {
   editsBlocksDraft,
+  experimentsRouteView,
   experimentsTabVisible,
   pickExperimentsTab,
 } from "./experiments-tab-choice";
@@ -46,9 +47,45 @@ describe("pickExperimentsTab", () => {
     expect(pick(false, undefined, "error")).toBe("v8");
   });
 
-  it("waits while main's schema is read, so no other tab flashes first", () => {
-    expect(pick(true, undefined, "loading")).toBe("loading");
-    expect(pick(false, undefined, "loading")).toBe("loading");
+  it("v8 (last found v8): waits while main's schema is read, so no other tab flashes first", () => {
+    for (const flagEnabled of [true, false]) {
+      expect(
+        pickExperimentsTab({
+          flagEnabled,
+          ui: undefined,
+          siteMajor: "loading",
+          lastFoundV8: true,
+        }),
+      ).toBe("loading");
+    }
+  });
+
+  it("v7 (never found v8): shows v7's choice at once while main's schema is read, as before", () => {
+    expect(pick(true, undefined, "loading")).toBe("v2");
+    expect(pick(false, undefined, "loading")).toBe("legacy");
+    expect(pick(true, "legacy", "loading")).toBe("legacy");
+  });
+});
+
+describe("experimentsRouteView", () => {
+  const view = (
+    orgEnabled: boolean,
+    siteMajor: "v8" | "v7" | "loading" | "error",
+    lastFoundV8 = false,
+  ) => experimentsRouteView({ orgEnabled, siteMajor, lastFoundV8 });
+
+  it("v7: the org's rollout decides at once, loading or not, as before", () => {
+    expect(view(true, "v7")).toBe("tab");
+    expect(view(false, "v7")).toBe("settings");
+    expect(view(true, "loading")).toBe("tab");
+    expect(view(false, "loading")).toBe("settings");
+  });
+
+  it("v8: the tab whatever the rollout, waiting on a site last found v8", () => {
+    expect(view(false, "v8")).toBe("tab");
+    expect(view(false, "error", true)).toBe("tab");
+    expect(view(false, "loading", true)).toBe("loading");
+    expect(view(true, "loading", true)).toBe("tab");
   });
 });
 

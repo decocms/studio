@@ -47,6 +47,7 @@ import {
 } from "../named-rule-picker";
 import { namedRuleOf } from "../named-rules";
 import { useNamedRuleFieldSupport } from "../named-rule-step";
+import { useV8Editor } from "../v8-editor-context";
 
 // `meta` changes only on page load; `resolveType` changes only on rule picker
 // selection — cache the matcher list per meta instance (WeakMap, so a stale
@@ -123,6 +124,7 @@ export function MultivariateFieldWrapper({
   const compact = useNewBlocksEditor();
   const VariantIcon = compact ? LayersThree01 : Flag01;
   const { value, onChange, meta, path, label, focused, decofile } = props;
+  const v8 = useV8Editor();
   const focusContext = useContext(RootVariantFocusContext);
   const rootFocus = path === "" ? focusContext : null;
   const [selectedIndex, setSelectedIndex] = useState(
@@ -227,8 +229,8 @@ export function MultivariateFieldWrapper({
   };
 
   const handleAdd = () => {
-    onChange(appendVariant(wrapper, meta));
-    showVariant(newVariantIndex(wrapper.variants));
+    onChange(appendVariant(wrapper, meta, v8));
+    showVariant(newVariantIndex(wrapper.variants, v8));
   };
 
   const handleDelete = (index: number) => {
@@ -241,8 +243,8 @@ export function MultivariateFieldWrapper({
   };
 
   const handleDuplicate = (index: number) => {
-    onChange(duplicateVariant(wrapper, index));
-    showVariant(duplicateVariantIndex(wrapper.variants, index));
+    onChange(duplicateVariant(wrapper, index, v8));
+    showVariant(duplicateVariantIndex(wrapper.variants, index, v8));
   };
 
   const handleReorder = (from: number, to: number) => {

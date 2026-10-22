@@ -18,16 +18,13 @@ export const PROJECT_SIDEBAR_VIEW_IDS = [
 ] as const satisfies readonly VirtualMcpSidebarView[];
 
 /** Initial selection for projects that have not explicitly saved sidebar
- * preferences yet. Experiments and Calendar are peers of the Site Editor on a
- * Blocks (v8) site (their presence gates keep them off where they don't
- * apply: Calendar is v8-only). */
+ * preferences yet. A Blocks (v8) site also gets Experiments and Calendar,
+ * peers of its Site Editor, through {@link offeredProjectSidebarViews}. */
 export const DEFAULT_PROJECT_SIDEBAR_VIEWS = [
   "overview",
   "reports",
   "board",
   "site-editor",
-  "experiments",
-  "calendar",
 ] as const satisfies readonly VirtualMcpSidebarView[];
 
 /** Unversioned values came from the first native-only rollout, in which core

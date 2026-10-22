@@ -37,15 +37,23 @@ describe("visibleCollection on a Blocks (v8) site", () => {
 });
 
 describe("deepLinkCollection", () => {
-  test("opens a blog collection, Sections or Campaigns", () => {
-    expect(deepLinkCollection("posts")).toBe("posts");
-    expect(deepLinkCollection("sections")).toBe("sections");
-    expect(deepLinkCollection("campaigns")).toBe("campaigns");
+  test("v8: opens a blog collection, Sections or Campaigns", () => {
+    expect(deepLinkCollection("posts", true)).toBe("posts");
+    expect(deepLinkCollection("sections", true)).toBe("sections");
+    expect(deepLinkCollection("campaigns", true)).toBe("campaigns");
+  });
+
+  test("v7: only a blog collection, as before; anything else opens Pages", () => {
+    expect(deepLinkCollection("posts", false)).toBe("posts");
+    expect(deepLinkCollection("sections", false)).toBeNull();
+    expect(deepLinkCollection("campaigns", false)).toBeNull();
   });
 
   test("anything else opens the default", () => {
-    expect(deepLinkCollection(undefined)).toBeNull();
-    expect(deepLinkCollection("settings")).toBeNull();
-    expect(deepLinkCollection("nope")).toBeNull();
+    for (const v8 of [true, false]) {
+      expect(deepLinkCollection(undefined, v8)).toBeNull();
+      expect(deepLinkCollection("settings", v8)).toBeNull();
+      expect(deepLinkCollection("nope", v8)).toBeNull();
+    }
   });
 });

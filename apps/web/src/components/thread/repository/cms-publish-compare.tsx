@@ -185,7 +185,7 @@ export function PublishCompare({
       : null;
   })();
 
-  const placeholder = comparePlaceholder(change);
+  const placeholder = comparePlaceholder(change, !!v8);
   const beforePane =
     placeholder.before === "new" ? (
       <ComparePlaceholder

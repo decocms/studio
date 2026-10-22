@@ -1,6 +1,6 @@
 import { withDraftPointer } from "@/components/sections-editor/section-preview-url";
 import { extractPathParams } from "@/components/sections-editor/page-path-utils";
-import { isPageResolveType } from "@/components/sections-editor/page-types";
+import { isPageResolveTypeOnV8 } from "@/components/sections-editor/page-types";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 import { scanBlogEntries } from "./blog-data";
 import { categoryPathSegments } from "./category-tree";
@@ -51,7 +51,7 @@ function pageBlockPath(block: unknown, meta?: LiveMeta | null): string | null {
   if (!block || typeof block !== "object" || Array.isArray(block)) return null;
   const obj = block as Record<string, unknown>;
   if (typeof obj.__resolveType !== "string") return null;
-  if (!isPageResolveType(obj.__resolveType, meta)) return null;
+  if (!isPageResolveTypeOnV8(obj.__resolveType, meta)) return null;
   return typeof obj.path === "string" ? obj.path : null;
 }
 

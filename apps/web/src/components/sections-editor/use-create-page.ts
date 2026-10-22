@@ -41,6 +41,33 @@ export async function schemaForNewPage(
   return loaded;
 }
 
+/** Where a Blocks v8 site's empty page is typed from (see `emptyPageBlock`). */
+export interface NewPageSchema {
+  /** The site's schema, when loaded. */
+  meta?: LiveMeta | null;
+  /** Reads the schema when `meta` hasn't loaded yet. */
+  loadMeta?: () => Promise<LiveMeta | null | undefined>;
+}
+
+/**
+ * The block an empty new page is saved as. A Blocks v8 site (`schema` given)
+ * types it from its schema, read now when it hasn't loaded yet, and never
+ * guesses. Any other site gets v7's page and SEO section without waiting for
+ * a schema, as before.
+ */
+export async function emptyPageBlock(
+  name: string,
+  path: string,
+  schema?: NewPageSchema,
+): Promise<Record<string, unknown>> {
+  if (!schema) return createEmptyPageBlock(name, path);
+  return createEmptyPageBlock(
+    name,
+    path,
+    await schemaForNewPage(schema.meta, schema.loadMeta),
+  );
+}
+
 export function useCreatePage(params: UseCreatePageParams | null) {
   const saveBlock = useSaveBlock(
     params ?? { orgSlug: "", virtualMcpId: "", branch: "" },
@@ -51,8 +78,7 @@ export function useCreatePage(params: UseCreatePageParams | null) {
       name,
       path,
       template,
-      meta,
-      loadMeta,
+      schema,
     }: {
       name: string;
       path: string;
@@ -61,10 +87,11 @@ export function useCreatePage(params: UseCreatePageParams | null) {
        * and only name/path are overridden; otherwise an empty page is built.
        */
       template?: Record<string, unknown> | null;
-      /** The site's schema: an empty page takes its page and SEO types from it. */
-      meta?: LiveMeta | null;
-      /** Reads the schema when `meta` hasn't loaded yet. */
-      loadMeta?: () => Promise<LiveMeta | null | undefined>;
+      /**
+       * A Blocks v8 site's schema: an empty page takes its page and SEO
+       * types from it. Absent on any other site (v7's page, as before).
+       */
+      schema?: NewPageSchema;
     }): Promise<CreatePageResult> => {
       if (!params?.virtualMcpId || !params.branch) {
         throw new Error("Sandbox not ready");
@@ -72,11 +99,7 @@ export function useCreatePage(params: UseCreatePageParams | null) {
       const blockKey = generatePageBlockKey(name);
       const data = template
         ? { ...template, name, path }
-        : createEmptyPageBlock(
-            name,
-            path,
-            await schemaForNewPage(meta, loadMeta),
-          );
+        : await emptyPageBlock(name, path, schema);
       await saveBlock.mutateAsync({ blockKey, data });
       return { key: blockKey, name, path };
     },

@@ -3,6 +3,7 @@ import { SchemaForm } from "./schema-form";
 import type { Crumb } from "./schema-form-breadcrumb";
 import { GeneralSeoForm } from "./general-seo-form";
 import { filterSeoSchema, getSeoFormMode } from "./seo-form-mode";
+import { useV8Editor } from "./v8-editor-context";
 
 interface SeoFormFieldsProps {
   schema: SchemaProperty;
@@ -28,7 +29,8 @@ export function SeoFormFields({
   onBreadcrumbChange,
   siteDefaultSeo,
 }: SeoFormFieldsProps) {
-  const mode = getSeoFormMode(resolveType, schema);
+  const v8 = useV8Editor();
+  const mode = getSeoFormMode(resolveType, schema, v8);
 
   if (mode === "general") {
     return (
@@ -42,7 +44,7 @@ export function SeoFormFields({
     );
   }
 
-  const filtered = filterSeoSchema(schema, resolveType);
+  const filtered = filterSeoSchema(schema, resolveType, v8);
 
   return (
     <SchemaForm

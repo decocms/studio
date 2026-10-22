@@ -99,8 +99,12 @@ function changeDetail(change: PublishChange, t: TFunction) {
  * "Lazy — Section" rows that pushed the next card off screen. Counts stay one
  * line; the review pane is where names and fields belong.
  */
-function changeSubLines(change: PublishChange, t: TFunction): string[] {
-  const digest = publishChangeDigest(change);
+function changeSubLines(
+  change: PublishChange,
+  t: TFunction,
+  v8: boolean,
+): string[] {
+  const digest = publishChangeDigest(change, v8);
   if (digest.newPageSections !== null) {
     return [
       digest.newPageSections === 1
@@ -146,6 +150,8 @@ interface PublishChangeCardProps {
   onDiscard?: () => void;
   isPublishing: boolean;
   isDiscarding: boolean;
+  /** A Blocks v8 site's change (`publishChangeDigest`). Absent on v7. */
+  v8?: boolean;
 }
 
 export function PublishChangeCard({
@@ -158,11 +164,12 @@ export function PublishChangeCard({
   onDiscard,
   isPublishing,
   isDiscarding,
+  v8 = false,
 }: PublishChangeCardProps) {
   const t = useT();
 
   const detail = changeDetail(change, t);
-  const subLines = changeSubLines(change, t);
+  const subLines = changeSubLines(change, t, v8);
   const missing = change.missingRules ?? [];
   const missingUses = change.missingRuleUses;
   const missingPlaces = missingUses ? namedRuleUsePlaces(t, missingUses) : null;

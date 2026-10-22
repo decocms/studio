@@ -120,17 +120,16 @@ export interface PublishChange {
 }
 
 /**
- * The site's A/B tests (`split-traffic`) or campaigns (`calendar`) block
- * behind a block card, from its content; null for any other block. They are
- * content, not sections, so the card names them as such.
+ * A Blocks v8 site's A/B tests (`split-traffic`) or campaigns (`calendar`)
+ * block behind a block card (`namedRule`, which only a v8 summary sets);
+ * null for any other block and on v7. They are content, not sections, so the
+ * card names them as such.
  */
 export function namedRuleBlockOfChange(
-  change: Pick<PublishChange, "kind" | "toJson" | "fromJson" | "namedRule">,
+  change: Pick<PublishChange, "kind" | "namedRule">,
 ): NamedRuleKind | null {
   if (change.kind !== "block") return null;
-  return (
-    change.namedRule ?? namedRuleKindOfShape(change.toJson ?? change.fromJson)
-  );
+  return change.namedRule ?? null;
 }
 
 /** The named-rule block a block's content is, by its type. */
@@ -145,19 +144,18 @@ function namedRuleKindOfShape(
 }
 
 /**
- * The named-rule block a changed block is: by its content's type when any
- * side can be read (a block of that name with another type is not one). On
- * a v8 site (`byName`), by its name when none can, since the sides load
- * after the list and may not load at all.
+ * The named-rule block a v8 site's changed block is: by its content's type
+ * when any side can be read (a block of that name with another type is not
+ * one), else by its name, since the sides load after the list and may not
+ * load at all.
  */
 function namedRuleOfBlock(
   name: string,
   shapes: Array<Record<string, unknown> | null | undefined>,
-  byName: boolean,
 ): NamedRuleKind | null {
   const shape = shapes.find((s) => s && typeof s === "object");
   if (shape) return namedRuleKindOfShape(shape);
-  return byName ? namedRuleKindOfBlock(name) : null;
+  return namedRuleKindOfBlock(name);
 }
 
 export interface PublishChangeSummary {
@@ -168,6 +166,11 @@ export interface PublishChangeSummary {
   generated: string[];
   /** Cards shown to the user: pages + blocks + other. */
   count: number;
+  /**
+   * A Blocks v8 site's content changes (`summarizeContentChanges`): the
+   * version note names sections as the v8 editor does. Absent on v7.
+   */
+  v8?: true;
 }
 
 const BLOCK_FILE_RE = /(?:^|\/)\.deco\/blocks\/([^/]+)\.json$/;
@@ -211,15 +214,24 @@ export function humanizeFieldName(key: string): string {
 }
 
 /**
- * Display name for a section entry ("site/sections/Hero.tsx" → "Hero"), as the
- * site editor's section list and "Used by" name it (`labelFromResolveType`), so
- * the release title says "Hero Scene" where the editor does.
+ * Display name for a section entry ("site/sections/Hero.tsx" → "Hero"). On a
+ * Blocks v8 site (`v8`), as the site editor's section list and "Used by" name
+ * it (`labelFromResolveType`), so the release title says "Hero Scene" where
+ * the editor does; on v7, the file name humanized, as before.
  */
-export function sectionDisplayName(section: unknown, index: number): string {
+export function sectionDisplayName(
+  section: unknown,
+  index: number,
+  v8 = false,
+): string {
   if (section && typeof section === "object" && !Array.isArray(section)) {
     const resolveType = (section as Record<string, unknown>).__resolveType;
     if (typeof resolveType === "string" && resolveType.trim()) {
-      return labelFromResolveType(resolveType);
+      if (v8) return labelFromResolveType(resolveType);
+      const basename = resolveType.split("/").pop() ?? resolveType;
+      const stem = basename.replace(/\.[jt]sx?$/, "");
+      // A saved-block reference resolves to the block key itself — humanize it.
+      return humanizeFieldName(stem) || stem;
     }
   }
   return `Section ${index + 1}`;
@@ -312,12 +324,12 @@ function heldNames(
   ];
   const names = ordered
     .flatMap((variant) => heldSections(variant?.value))
-    .map((held) => sectionDisplayName(held, index));
+    .map((held) => sectionDisplayName(held, index, true));
   return [...new Set(names)];
 }
 
 /**
- * A changed section, by the name of the section it is: a lazy-loaded one by
+ * A v8 site's changed section, by the name of the section it is: a lazy-loaded one by
  * the section it loads, and flagged `wrapper` when it is variants (or a lazy
  * wrapper around them), whose type is no name the author knows; a wrapper
  * carries the names of the sections its variants hold.
@@ -348,8 +360,8 @@ function sectionChange(
   const held = wrapper ? heldNames(section, previous, index) : [];
   return {
     name: wrapper
-      ? sectionDisplayName(section, index)
-      : sectionDisplayName(named, index),
+      ? sectionDisplayName(section, index, true)
+      : sectionDisplayName(named, index, true),
     kind: "section",
     status,
     fields,
@@ -369,7 +381,11 @@ interface SectionWithPath {
  * per variant under `sections.variants[i].value` (multivariate pages). Returns
  * each section with the JSON path that reaches it, valid in both shapes.
  */
-function sectionsWithPaths(block: Record<string, unknown>): SectionWithPath[] {
+function sectionsWithPaths(
+  block: Record<string, unknown>,
+  /** A Blocks v8 site: a page variant's list may sit in a `lazy` block. */
+  v8: boolean,
+): SectionWithPath[] {
   const sections = block.sections;
   if (Array.isArray(sections)) {
     return sections.flatMap((section, i) =>
@@ -392,7 +408,7 @@ function sectionsWithPaths(block: Record<string, unknown>): SectionWithPath[] {
             ? (variant as Record<string, unknown>).value
             : null;
         // v8's `multivariate` keeps the list in a `lazy` block, one `value` deeper.
-        const lazy = isLazyWrapper(stored);
+        const lazy = v8 && isLazyWrapper(stored);
         const value = lazy ? stored.value : stored;
         if (!Array.isArray(value)) return [];
         const listPath: (string | number)[] = lazy
@@ -460,19 +476,29 @@ function shallowFieldDiff(
 
 const PAGE_TOP_LEVEL_SKIP = new Set(["sections"]);
 
-/** Section-level changes between two parsed page blocks. */
+/**
+ * Section-level changes between two parsed page blocks. A Blocks v8 site's
+ * (`v8`) name each section as the v8 editor does (`sectionChange`); v7's
+ * keep the plain section entries, as before.
+ */
 function diffPageSections(
   from: Record<string, unknown> | null,
   to: Record<string, unknown> | null,
+  v8 = false,
 ): PublishSectionChange[] {
-  const fromSections = from ? sectionsWithPaths(from) : [];
-  const toSections = to ? sectionsWithPaths(to) : [];
+  const fromSections = from ? sectionsWithPaths(from, v8) : [];
+  const toSections = to ? sectionsWithPaths(to, v8) : [];
   const changes: PublishSectionChange[] = [];
 
   const max = Math.max(fromSections.length, toSections.length);
   for (let i = 0; i < max; i++) {
     const fromEntry = fromSections[i];
     const toEntry = toSections[i];
+    if (!v8) {
+      const legacy = legacySectionChange(fromEntry, toEntry, i);
+      if (legacy) changes.push(legacy);
+      continue;
+    }
     if (fromEntry && toEntry) {
       if (sameValue(fromEntry.section, toEntry.section)) continue;
       changes.push(
@@ -505,6 +531,44 @@ function diffPageSections(
     });
   }
   return changes;
+}
+
+/** v7's entry for one section position: `{ name, kind, status, fields }`. */
+function legacySectionChange(
+  fromEntry: SectionWithPath | undefined,
+  toEntry: SectionWithPath | undefined,
+  i: number,
+): PublishSectionChange | null {
+  if (fromEntry && toEntry) {
+    if (sameValue(fromEntry.section, toEntry.section)) return null;
+    return {
+      name: sectionDisplayName(toEntry.section, i),
+      kind: "section",
+      status: "edited",
+      fields: shallowFieldDiff(
+        fromEntry.section,
+        toEntry.section,
+        toEntry.basePath,
+      ),
+    };
+  }
+  if (toEntry) {
+    return {
+      name: sectionDisplayName(toEntry.section, i),
+      kind: "section",
+      status: "new",
+      fields: [],
+    };
+  }
+  if (fromEntry) {
+    return {
+      name: sectionDisplayName(fromEntry.section, i),
+      kind: "section",
+      status: "removed",
+      fields: [],
+    };
+  }
+  return null;
 }
 
 function otherChange(path: string, status: PublishChangeStatus): PublishChange {
@@ -716,16 +780,10 @@ export function summarizePublishManifest(
     }
 
     const label = globalSectionLabel(blockKey, nameShape ?? {});
-    const namedRule = namedRuleOfBlock(
-      blockKey,
-      [headShape, toJson, fromJson],
-      false,
-    );
     blocks.push({
       kind: "block",
       blockKey,
       name: label,
-      ...(namedRule ? { namedRule } : {}),
       pagePath: null,
       isSiteApp: isSiteAppBlock(blockKey, headShape ?? {}),
       status,
@@ -789,12 +847,23 @@ function listNames(names: string[]): string {
 }
 
 /**
- * "Home (Hero, Footer)": the page and the sections the author knows by name.
- * A wrapper's type ("Multivariate", "Lazy") says nothing to them, so variants
- * are named by the sections they hold ("Home (Hero)"); variants that hold no
- * section by name leave the page alone: "Home".
+ * "Home (Hero, Footer)": the page and its first changed sections, by name.
+ * On v8 (`v8`), only the sections the author knows by name: a wrapper's type
+ * ("Multivariate", "Lazy") says nothing to them, so variants are named by the
+ * sections they hold ("Home (Hero)"), each name once; variants that hold no
+ * section by name leave the page alone: "Home". v7 lists the first three
+ * section entries, as before.
  */
-function pageNoteName(change: PublishChange): string {
+function pageNoteName(change: PublishChange, v8: boolean): string {
+  if (!v8) {
+    const legacyNames = change.sections
+      .filter((s) => s.kind === "section")
+      .map((s) => s.name)
+      .slice(0, 3);
+    return legacyNames.length > 0
+      ? `${change.name} (${legacyNames.join(", ")})`
+      : change.name;
+  }
   const sectionNames = [
     ...new Set(
       change.sections
@@ -829,7 +898,9 @@ export function buildAutoNote(summary: PublishChangeSummary): string {
   const removedPages = summary.pages.filter((p) => p.status === "removed");
 
   if (editedPages.length > 0) {
-    segments.push(`updated ${listNames(editedPages.map(pageNoteName))}`);
+    segments.push(
+      `updated ${listNames(editedPages.map((page) => pageNoteName(page, !!summary.v8)))}`,
+    );
   }
   if (newPages.length > 0) {
     const label = newPages.length === 1 ? "page" : "pages";
@@ -859,8 +930,11 @@ export function buildAutoNote(summary: PublishChangeSummary): string {
 }
 
 /** Section count of a parsed page block, across both section shapes. */
-function countPageSections(block: Record<string, unknown> | null): number {
-  return block ? sectionsWithPaths(block).length : 0;
+function countPageSections(
+  block: Record<string, unknown> | null,
+  v8: boolean,
+): number {
+  return block ? sectionsWithPaths(block, v8).length : 0;
 }
 
 /**
@@ -886,11 +960,13 @@ export interface PublishChangeDigest {
 
 export function publishChangeDigest(
   change: PublishChange,
+  /** A Blocks v8 site's change (see `sectionsWithPaths`). */
+  v8 = false,
 ): PublishChangeDigest {
   const digest: PublishChangeDigest = {
     newPageSections:
       change.kind === "page" && change.status === "new"
-        ? countPageSections(change.toJson)
+        ? countPageSections(change.toJson, v8)
         : null,
     sections: 0,
     settings: false,
@@ -1045,7 +1121,7 @@ export function summarizeContentChanges(
         isSiteApp: false,
         sections:
           status === "edited"
-            ? diffPageSections(fromJson, toJson).map((section) => ({
+            ? diffPageSections(fromJson, toJson, true).map((section) => ({
                 ...section,
                 fields: maskFields(section.fields),
               }))
@@ -1054,11 +1130,7 @@ export function summarizeContentChanges(
       continue;
     }
     const label = globalSectionLabel(name, nameShape ?? {});
-    const namedRule = namedRuleOfBlock(
-      name,
-      [headShape, toJson, fromJson],
-      true,
-    );
+    const namedRule = namedRuleOfBlock(name, [headShape, toJson, fromJson]);
     blocks.push({
       ...common,
       kind: "block",
@@ -1086,5 +1158,6 @@ export function summarizeContentChanges(
     other: [],
     generated: [],
     count: pages.length + blocks.length,
+    v8: true,
   };
 }

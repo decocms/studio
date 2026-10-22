@@ -1,3 +1,4 @@
+import { isV8Schema } from "@decocms/shared/blocks-major";
 import {
   isAutoPreviewBlockKey,
   isManifestSectionResolveType,
@@ -44,16 +45,25 @@ const EXCLUDED_SECTION_RESOLVE_TYPES = new Set([
 
 /**
  * Next-major Blocks names block types with short keys (`theme`, `hero`), not
- * file paths, so the v7 path above never matches there: a short key named
- * `theme` (any case) is the site's theme too.
+ * file paths, so the v7 path above never matches there: on a Blocks v8 site
+ * (`v8`) a short key named `theme` (any case) is the site's theme too. On v7
+ * such a key is a saved block like any other, as before.
  */
-function isExcludedSectionResolveType(resolveType: string): boolean {
+function isExcludedSectionResolveType(
+  resolveType: string,
+  v8: boolean,
+): boolean {
   if (EXCLUDED_SECTION_RESOLVE_TYPES.has(resolveType)) return true;
-  return !resolveType.includes("/") && resolveType.toLowerCase() === "theme";
+  return (
+    v8 && !resolveType.includes("/") && resolveType.toLowerCase() === "theme"
+  );
 }
 
-function shouldSkipSectionResolveType(resolveType: string): boolean {
-  if (isExcludedSectionResolveType(resolveType)) return true;
+function shouldSkipSectionResolveType(
+  resolveType: string,
+  meta: LiveMeta,
+): boolean {
+  if (isExcludedSectionResolveType(resolveType, isV8Schema(meta))) return true;
   if (isLazyResolveType(resolveType)) return true;
   if (resolveType.toLowerCase().includes("preview")) return true;
   return false;
@@ -127,7 +137,7 @@ function listManifestSections(meta: LiveMeta): SectionCatalogEntry[] {
     if (!blockType.includes("sections")) continue;
 
     for (const resolveType of Object.keys(blockMap)) {
-      if (shouldSkipSectionResolveType(resolveType)) continue;
+      if (shouldSkipSectionResolveType(resolveType, meta)) continue;
 
       const metadata = resolveBlockSchemaMetadata(resolveType, meta);
       entries.push({
@@ -162,7 +172,7 @@ export function listAvailableSections(
   for (const [blockType, blockMap] of Object.entries(blocks)) {
     if (!blockType.includes("sections")) continue;
     for (const resolveType of Object.keys(blockMap)) {
-      if (shouldSkipSectionResolveType(resolveType)) continue;
+      if (shouldSkipSectionResolveType(resolveType, meta)) continue;
       if (byResolveType.has(resolveType)) continue;
       byResolveType.set(resolveType, {
         resolveType,
@@ -254,7 +264,7 @@ export function listSavedSectionBlocks(
     if (typeof rt !== "string") continue;
     if (PAGE_BLOCK_RESOLVE_TYPES.has(rt)) continue;
     if (typeof obj.path === "string") continue;
-    if (shouldSkipSectionResolveType(rt)) continue;
+    if (shouldSkipSectionResolveType(rt, meta)) continue;
 
     const isSectionBlock =
       isManifestSectionResolveType(meta, rt) ||
@@ -308,7 +318,7 @@ export function extractSectionCatalog(
   const byResolveType = new Map<string, SectionCatalogEntry>();
 
   const addEntry = (entry: SectionCatalogEntry) => {
-    if (shouldSkipSectionResolveType(entry.resolveType)) return;
+    if (shouldSkipSectionResolveType(entry.resolveType, meta)) return;
     if (isSavedBlockResolveType(entry.resolveType, meta)) {
       if (!isAutoPreviewBlockKey(entry.resolveType)) {
         byResolveType.set(entry.resolveType, entry);

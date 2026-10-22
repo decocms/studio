@@ -30,10 +30,15 @@ import {
   hideSection,
   isDefaultVariantRule,
 } from "./section-variants";
-import { schemaForNewPage, PageSchemaNotReadyError } from "./use-create-page";
+import {
+  emptyPageBlock,
+  schemaForNewPage,
+  PageSchemaNotReadyError,
+} from "./use-create-page";
 
 /** The manifest `deco schema` writes for a next-major site (short names). */
 const V8: LiveMeta = {
+  blocksMajor: 8,
   manifest: {
     blocks: {
       pages: { page: {}, post: {}, "website/pages/Page.tsx": {} },
@@ -117,14 +122,21 @@ describe("always/never matcher names come from the schema", () => {
 
   test("new variants get the site's always matcher", () => {
     const parsed = parseSections([HERO], {})[0]!;
-    const section = appendSectionVariant(HERO, parsed, undefined, V8)?.section;
+    const section = appendSectionVariant(
+      HERO,
+      parsed,
+      undefined,
+      V8,
+      true,
+    )?.section;
     const rules = (section?.variants ?? []).map((v) => v.rule);
     expect(rules).toEqual([
       { __resolveType: "always" },
       { __resolveType: "always" },
     ]);
 
-    const page = appendPageVariantSections([HERO], [HERO], V8)?.sections as {
+    const page = appendPageVariantSections([HERO], [HERO], V8, true)
+      ?.sections as {
       variants: Array<{ rule: unknown }>;
     };
     expect(page.variants.map((v) => v.rule)).toEqual([
@@ -141,7 +153,7 @@ describe("always/never matcher names come from the schema", () => {
       { __resolveType: "always" },
       { __resolveType: "always" },
     ]);
-    expect(appendVariant(field, V8).variants[2]?.rule).toEqual({
+    expect(appendVariant(field, V8, true).variants[2]?.rule).toEqual({
       __resolveType: "always",
     });
 
@@ -211,23 +223,36 @@ describe("SEO form layouts on next-major", () => {
     );
   });
 
-  test("a short name is laid out by its fields", () => {
-    expect(getSeoFormMode("seo", schema("title", "description"))).toBe(
+  test("v8: a short name is laid out by its fields", () => {
+    expect(getSeoFormMode("seo", schema("title", "description"), true)).toBe(
       "general",
     );
-    expect(getSeoFormMode("productSeo", schema("title", "jsonLD"))).toBe("pdp");
-    expect(getSeoFormMode("listingSeo", schema("title", "configJsonLD"))).toBe(
-      "plp",
+    expect(getSeoFormMode("productSeo", schema("title", "jsonLD"), true)).toBe(
+      "pdp",
     );
+    expect(
+      getSeoFormMode("listingSeo", schema("title", "configJsonLD"), true),
+    ).toBe("plp");
     // A field no layout has: the full form, so nothing is hidden.
     const custom = schema("title", "keywords");
-    expect(getSeoFormMode("seo", custom)).toBe("full");
+    expect(getSeoFormMode("seo", custom, true)).toBe("full");
     expect(
-      Object.keys(filterSeoSchema(custom, "seo").properties ?? {}),
+      Object.keys(filterSeoSchema(custom, "seo", true).properties ?? {}),
     ).toEqual(["title", "keywords"]);
     // No schema: the name alone.
-    expect(getSeoFormMode("productSeo")).toBe("pdp");
-    expect(getSeoFormMode("seo")).toBe("full");
+    expect(getSeoFormMode("productSeo", undefined, true)).toBe("pdp");
+    expect(getSeoFormMode("seo", undefined, true)).toBe("full");
+  });
+  test("v7: a short name (a saved block) gets the full form, as before", () => {
+    expect(getSeoFormMode("seo", schema("title", "description"))).toBe("full");
+    expect(getSeoFormMode("productSeo", schema("title", "jsonLD"))).toBe(
+      "full",
+    );
+    expect(getSeoFormMode("productSeo")).toBe("full");
+    const general = schema("title", "description", "keywords");
+    expect(
+      Object.keys(filterSeoSchema(general, "seo").properties ?? {}),
+    ).toEqual(["title", "description", "keywords"]);
   });
 });
 
@@ -253,5 +278,34 @@ describe("a new page waits for the schema", () => {
     await expect(schemaForNewPage(undefined)).rejects.toBeInstanceOf(
       PageSchemaNotReadyError,
     );
+  });
+});
+
+describe("an empty new page by site generation", () => {
+  test("v7: the v7 page and SEO section, with no schema read", async () => {
+    expect(await emptyPageBlock("Home", "/")).toEqual({
+      name: "Home",
+      path: "/",
+      sections: [],
+      seo: { __resolveType: "website/sections/Seo/SeoV2.tsx" },
+      __resolveType: "website/pages/Page.tsx",
+    });
+  });
+
+  test("v8: typed from the schema, read when missing, never guessed", async () => {
+    expect(
+      (await emptyPageBlock("Home", "/", { meta: V8 })).__resolveType,
+    ).toBe("page");
+    expect(
+      (
+        await emptyPageBlock("Home", "/", {
+          meta: null,
+          loadMeta: async () => V8,
+        })
+      ).__resolveType,
+    ).toBe("page");
+    await expect(
+      emptyPageBlock("Home", "/", { meta: null, loadMeta: async () => null }),
+    ).rejects.toBeInstanceOf(PageSchemaNotReadyError);
   });
 });

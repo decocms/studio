@@ -486,6 +486,8 @@ export function useProjectViews({
   return {
     /** Every view this project can open, in sidebar order. */
     projectViews: availableSidebarViews,
+    /** A Blocks (v8) site (its Calendar is present). */
+    blocksSite,
     labels: sidebarViewLabels,
     pinned: (viewId: ProjectSidebarViewId) => sidebarViews.includes(viewId),
     isMainView: (value: string) => defaultMainView === value,

@@ -164,11 +164,16 @@ export function isDefaultVariantRule(rule?: Record<string, unknown>): boolean {
 }
 
 /**
- * Where a new variant goes: just above a trailing catch-all (a last variant
- * that always matches), so the new one is checked before it; at the end when
- * the list has no such catch-all.
+ * Where a new variant goes. On a Blocks v8 site: just above a trailing
+ * catch-all (a last variant that always matches), so the new one is checked
+ * before it, and at the end when the list has no such catch-all. Any other
+ * site keeps v7's order: always at the end.
  */
-export function newVariantIndex(variants: ReadonlyArray<unknown>): number {
+export function newVariantIndex(
+  variants: ReadonlyArray<unknown>,
+  v8: boolean,
+): number {
+  if (!v8) return variants.length;
   const last = variants[variants.length - 1] as
     | Record<string, unknown>
     | undefined;
@@ -179,14 +184,15 @@ export function newVariantIndex(variants: ReadonlyArray<unknown>): number {
 }
 
 /**
- * Where the copy of `sourceIndex` goes: right after it, unless that is below
- * the trailing catch-all (copying the catch-all itself), then right above it.
+ * Where the copy of `sourceIndex` goes: right after it. On a Blocks v8 site,
+ * a copy of the trailing catch-all goes right above it instead.
  */
 export function duplicateVariantIndex(
   variants: ReadonlyArray<unknown>,
   sourceIndex: number,
+  v8: boolean,
 ): number {
-  return Math.min(sourceIndex + 1, newVariantIndex(variants));
+  return Math.min(sourceIndex + 1, newVariantIndex(variants, v8));
 }
 
 export function pickVariantToKeepIndex(mvObj: Record<string, unknown>): number {
@@ -370,6 +376,8 @@ export function updateMultivariateSectionVariantRule(
 export function duplicateMultivariateSectionVariant(
   mvObj: Record<string, unknown>,
   variantIndex: number,
+  /** A Blocks v8 site (see `duplicateVariantIndex`). */
+  v8 = false,
 ): Record<string, unknown> {
   const variants = [
     ...((mvObj.variants as Array<Record<string, unknown>>) ?? []),
@@ -378,7 +386,7 @@ export function duplicateMultivariateSectionVariant(
   if (!source) return mvObj;
 
   variants.splice(
-    duplicateVariantIndex(variants, variantIndex),
+    duplicateVariantIndex(variants, variantIndex, v8),
     0,
     structuredClone(source),
   );
@@ -528,15 +536,18 @@ function wrapSectionAsMultivariate(
 }
 
 /**
- * Add a section variant above the trailing catch-all (see `newVariantIndex`).
- * Wraps plain/lazy sections on first use; extends existing multivariate
- * sections. Returns null when the shape cannot be extended.
+ * Add a section variant where `newVariantIndex` puts it (v8: above the
+ * trailing catch-all; v7: at the end). Wraps plain/lazy sections on first
+ * use; extends existing multivariate sections. Returns null when the shape
+ * cannot be extended.
  */
 export function appendSectionVariant(
   raw: RawSection,
   parsed: ParsedSection,
   seedValue?: Record<string, unknown>,
   meta?: LiveMeta | null,
+  /** A Blocks v8 site (see `newVariantIndex`). */
+  v8 = false,
 ): { section: RawSection; newVariantIndex: number } | null {
   if (parsed.isHidden || parsed.isSavedBlock) return null;
 
@@ -553,7 +564,7 @@ export function appendSectionVariant(
     if (!seed) return null;
 
     const resolveType = sectionMultivariateTypeFor(mvObj, meta);
-    const insertAt = newVariantIndex(variants);
+    const insertAt = newVariantIndex(variants, v8);
     const nextVariants = [...variants];
     nextVariants.splice(
       insertAt,
@@ -573,5 +584,7 @@ export function appendSectionVariant(
 
   const wrapped = wrapSectionAsMultivariate(raw, parsed, seedValue, meta);
   if (!wrapped) return null;
-  return { section: wrapped, newVariantIndex: 0 };
+  // v8: the copy first, the original below it as the catch-all; v7 selects
+  // the second of its two copies, as before.
+  return { section: wrapped, newVariantIndex: v8 ? 0 : 1 };
 }

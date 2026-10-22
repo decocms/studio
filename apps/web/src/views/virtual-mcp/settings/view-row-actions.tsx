@@ -36,7 +36,15 @@ import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import type { ProjectSidebarViewId } from "@/layouts/main-panel-tabs/project-sidebar-views";
 
-export function SidebarViewIcon({ viewId }: { viewId: ProjectSidebarViewId }) {
+export function SidebarViewIcon({
+  viewId,
+  blocksSite = false,
+}: {
+  viewId: ProjectSidebarViewId;
+  /** A Blocks (v8) site: Experiments wears its beaker, as in the sidebar.
+   *  Elsewhere it keeps the generic icon, as before. */
+  blocksSite?: boolean;
+}) {
   if (viewId === "overview") return <Home02 size={16} />;
   if (viewId === "reports") return <BarChartSquare02 size={16} />;
   if (viewId === "board") return <Columns03 size={16} />;
@@ -47,7 +55,7 @@ export function SidebarViewIcon({ viewId }: { viewId: ProjectSidebarViewId }) {
   if (viewId === "e2e") return <CheckDone01 size={16} />;
   if (viewId === "analytics") return <BarChartSquare02 size={16} />;
   if (viewId === "cdn") return <Globe02 size={16} />;
-  if (viewId === "experiments") return <Beaker02 size={16} />;
+  if (viewId === "experiments" && blocksSite) return <Beaker02 size={16} />;
   if (viewId === "calendar") return <Calendar size={16} />;
   return <Lightning01 size={16} />;
 }

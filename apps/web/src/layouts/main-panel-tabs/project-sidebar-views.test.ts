@@ -161,8 +161,6 @@ describe("project sidebar views", () => {
       "board",
       "site-editor",
       "assets",
-      "experiments",
-      "calendar",
     ]);
     expect(effectiveProjectSidebarViews(null)).toEqual(
       DEFAULT_PROJECT_SIDEBAR_VIEWS,
@@ -170,6 +168,49 @@ describe("project sidebar views", () => {
     expect(effectiveProjectSidebarViews([])).toEqual(
       DEFAULT_PROJECT_SIDEBAR_VIEWS,
     );
+  });
+
+  test("v7: an unversioned project's defaults never include Experiments, as before", () => {
+    const presence = projectSidebarViewPresence(
+      true,
+      nativePresence(["experiments"]),
+    );
+    expect(DEFAULT_PROJECT_SIDEBAR_VIEWS).toEqual([
+      "overview",
+      "reports",
+      "board",
+      "site-editor",
+    ]);
+    expect(
+      selectedProjectSidebarViews(
+        undefined,
+        presence,
+        undefined,
+        offeredProjectSidebarViews(undefined, false),
+      ),
+    ).toEqual(["overview", "reports", "board", "site-editor"]);
+  });
+
+  test("v8: an unversioned project also shows Experiments and Calendar", () => {
+    const presence = projectSidebarViewPresence(
+      true,
+      nativePresence(["experiments", "calendar"]),
+    );
+    expect(
+      selectedProjectSidebarViews(
+        undefined,
+        presence,
+        undefined,
+        offeredProjectSidebarViews(undefined, true),
+      ),
+    ).toEqual([
+      "overview",
+      "reports",
+      "board",
+      "site-editor",
+      "experiments",
+      "calendar",
+    ]);
   });
 
   test("treats versioned null and empty selections as an explicit all-off", () => {
@@ -259,8 +300,6 @@ describe("project sidebar views", () => {
       "board",
       "site-editor",
       "assets",
-      "experiments",
-      "calendar",
     ]);
     expect(
       toggleProjectSidebarView(
@@ -375,7 +414,14 @@ describe("Calendar and Experiments on a Blocks (v8) site", () => {
       true,
       nativePresence(["experiments", "calendar"]),
     );
-    expect(selectedProjectSidebarViews(undefined, v8)).toEqual([
+    expect(
+      selectedProjectSidebarViews(
+        undefined,
+        v8,
+        undefined,
+        offeredProjectSidebarViews(undefined, true),
+      ),
+    ).toEqual([
       "overview",
       "reports",
       "board",
@@ -489,10 +535,15 @@ describe("Experiments and Calendar added once to a Blocks site's saved list", ()
     ]);
   });
 
-  test("unversioned projects keep the defaults, offers or not", () => {
-    expect(selectedProjectSidebarViews(undefined, v8, undefined, [])).toContain(
-      "calendar",
-    );
+  test("unversioned projects get the defaults plus the offers", () => {
+    expect(
+      selectedProjectSidebarViews(
+        undefined,
+        v8,
+        undefined,
+        offeredProjectSidebarViews(undefined, true),
+      ),
+    ).toContain("calendar");
   });
 
   test("Calendar is still only where it shows today", () => {

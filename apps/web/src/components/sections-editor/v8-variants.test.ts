@@ -143,7 +143,7 @@ describe("v8 writers: multivariate, each value in a lazy block", () => {
 
   test("adding a section variant", () => {
     const [parsed] = parseSections([HERO], {});
-    const result = appendSectionVariant(HERO, parsed!, undefined, V8);
+    const result = appendSectionVariant(HERO, parsed!, undefined, V8, true);
     expect(result?.newVariantIndex).toBe(0);
     expect(result?.section).toEqual({
       __resolveType: "multivariate",
@@ -161,6 +161,7 @@ describe("v8 writers: multivariate, each value in a lazy block", () => {
       mvParsed!,
       { ...HERO, title: "Third" },
       V8,
+      true,
     );
     expect(third?.newVariantIndex).toBe(1);
     expect(third?.section.variants?.[1]).toEqual({
@@ -170,7 +171,7 @@ describe("v8 writers: multivariate, each value in a lazy block", () => {
   });
 
   test("adding a page variant", () => {
-    expect(appendPageVariantSections([HERO], [FOOTER], V8)).toEqual({
+    expect(appendPageVariantSections([HERO], [FOOTER], V8, true)).toEqual({
       sections: {
         __resolveType: "multivariate",
         variants: [
@@ -202,7 +203,7 @@ describe("v8 writers: multivariate, each value in a lazy block", () => {
         { rule: ALWAYS, value: lazy("a.png") },
       ],
     });
-    expect(appendVariant(wrapper, V8).variants[2]?.value).toEqual(
+    expect(appendVariant(wrapper, V8, true).variants[2]?.value).toEqual(
       lazy("a.png"),
     );
     expect(flattenMultivariate(wrapper)).toBe("a.png");
@@ -242,11 +243,11 @@ describe("v7 writers: exactly the old output", () => {
     expect(appendPageVariantSections([V7_HERO], [], V7)?.sections).toEqual({
       __resolveType: "website/flags/multivariate.ts",
       variants: [
-        { rule: { __resolveType: "website/matchers/always.ts" }, value: [] },
         {
           rule: { __resolveType: "website/matchers/always.ts" },
           value: [V7_HERO],
         },
+        { rule: { __resolveType: "website/matchers/always.ts" }, value: [] },
       ],
     });
 
@@ -460,7 +461,7 @@ describe("editing keeps each block's own shape", () => {
     const [parsed] = parseSections([legacy], {});
     expect(parsed?.isMultivariate).toBe(true);
 
-    const appended = appendSectionVariant(legacy, parsed!, undefined, V8);
+    const appended = appendSectionVariant(legacy, parsed!, undefined, V8, true);
     expect(appended?.section.__resolveType).toBe(
       "website/flags/multivariate/section.ts",
     );
@@ -490,7 +491,7 @@ describe("editing keeps each block's own shape", () => {
       variants: [{ rule: ALWAYS, value: [HERO] }],
     };
     expect(
-      appendPageVariantSections(legacyPage, [FOOTER], V8)?.sections,
+      appendPageVariantSections(legacyPage, [FOOTER], V8, true)?.sections,
     ).toEqual({
       __resolveType: "website/flags/multivariate.ts",
       variants: [
@@ -580,7 +581,7 @@ describe("the JSON Studio writes resolves with @decocms/blocks", () => {
   test("section variants: the first true rule's section, only it runs", async () => {
     runs.length = 0;
     const [parsed] = parseSections([HERO], {});
-    const appended = appendSectionVariant(HERO, parsed!, undefined, V8)!;
+    const appended = appendSectionVariant(HERO, parsed!, undefined, V8, true)!;
     const mv = appended.section as unknown as {
       variants: Array<{ rule: unknown; value: unknown }>;
     };
