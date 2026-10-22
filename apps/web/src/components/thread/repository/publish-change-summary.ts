@@ -18,6 +18,7 @@ import {
 import { SECRET_BLOCK_TYPE } from "@decocms/shared/secret-ciphertext";
 import { isLazyWrapper } from "@/components/sections-editor/lazy-value";
 import { isLazyResolveType } from "@/components/sections-editor/section-lazy";
+import { labelFromResolveType } from "@/components/sections-editor/section-types";
 import { isMultivariateResolveType } from "@/components/sections-editor/variant-shape";
 import type { ContentChangeSides } from "@/components/sections-editor/content-changes";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
@@ -209,15 +210,16 @@ export function humanizeFieldName(key: string): string {
   );
 }
 
-/** Display name for a section entry ("site/sections/Hero.tsx" → "Hero"). */
+/**
+ * Display name for a section entry ("site/sections/Hero.tsx" → "Hero"), as the
+ * site editor's section list and "Used by" name it (`labelFromResolveType`), so
+ * the release title says "Hero Scene" where the editor does.
+ */
 export function sectionDisplayName(section: unknown, index: number): string {
   if (section && typeof section === "object" && !Array.isArray(section)) {
     const resolveType = (section as Record<string, unknown>).__resolveType;
     if (typeof resolveType === "string" && resolveType.trim()) {
-      const basename = resolveType.split("/").pop() ?? resolveType;
-      const stem = basename.replace(/\.[jt]sx?$/, "");
-      // A saved-block reference resolves to the block key itself — humanize it.
-      return humanizeFieldName(stem) || stem;
+      return labelFromResolveType(resolveType);
     }
   }
   return `Section ${index + 1}`;

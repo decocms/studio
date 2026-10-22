@@ -21,6 +21,7 @@ import {
   blocksUsingMissingNamedRules,
   missingNamedRuleUseCounts,
 } from "@/components/sections-editor/named-rule-uses";
+import { parseSections } from "@/components/sections-editor/parse-sections";
 
 const HOME_KEY = "pages-home-c4bcbfb771e9";
 const HOME_PATH = `.deco/blocks/${encodeURIComponent(HOME_KEY)}.json`;
@@ -642,6 +643,33 @@ describe("humanizeFieldName / sectionDisplayName", () => {
       sectionDisplayName({ __resolveType: "site/sections/Hero.tsx" }, 0),
     ).toBe("Hero");
     expect(sectionDisplayName({}, 2)).toBe("Section 3");
+  });
+
+  it("names a section in the release title as the site editor and Used by do", () => {
+    for (const resolveType of [
+      "site/sections/hero-scene.tsx",
+      "site/sections/hero_scene.tsx",
+      "Hero Scene",
+    ]) {
+      const section = { __resolveType: resolveType, title: "A" };
+      const editorName = parseSections([section], {})[0]?.label ?? "";
+      expect(editorName).toBe("Hero Scene");
+      expect(sectionDisplayName(section, 0)).toBe(editorName);
+      const page = (title: string) =>
+        JSON.stringify({
+          __resolveType: "website/pages/Page.tsx",
+          name: "Home Page",
+          path: "/",
+          sections: [{ ...section, title }],
+        });
+      expect(
+        buildAutoNote(
+          summarizePublishChanges(
+            diffOf({ [HOME_PATH]: { from: page("A"), to: page("B") } }),
+          ),
+        ),
+      ).toBe("Updated Home Page (Hero Scene)");
+    }
   });
 });
 
