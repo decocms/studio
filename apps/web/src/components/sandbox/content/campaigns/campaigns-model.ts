@@ -176,3 +176,58 @@ export function timelineBar(
     openEnd: barEnd > to,
   };
 }
+
+/** Where a bar's name goes: on the bar, or beside it when the bar is short. */
+export type TimelineLabelPlacement = "inside" | "after" | "before";
+
+/**
+ * Roughly how much of the range one character of a bar's name takes (11px
+ * text on the narrowest timeline, four months over ~450px), and the bar's
+ * own padding, in percent of the range.
+ */
+const LABEL_CHAR_WIDTH = 1.5;
+const LABEL_PADDING = 4;
+
+/**
+ * Whether a campaign's name fits on its bar. A short campaign on a
+ * four-month range is a few pixels wide: its name goes after the bar, or
+ * before it when the bar ends near the range's right edge, so it is always
+ * readable and never cut to "b…".
+ */
+export function timelineLabelPlacement(
+  bar: Pick<TimelineBar, "left" | "width">,
+  name: string,
+): TimelineLabelPlacement {
+  const needed = name.length * LABEL_CHAR_WIDTH + LABEL_PADDING;
+  if (bar.width >= needed) return "inside";
+  if (bar.left + bar.width + needed <= 100) return "after";
+  if (bar.left >= needed) return "before";
+  return "after";
+}
+
+/**
+ * The month a timeline of `months` opens on: this month, unless nothing
+ * shows from there and a campaign starts later, then that campaign's month,
+ * so the view never opens empty in front of an upcoming campaign.
+ */
+export function timelineStart(
+  windows: CampaignWindow[],
+  now: Date,
+  months: number,
+): Date {
+  const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const rangeEnd = new Date(now.getFullYear(), now.getMonth() + months, 1);
+  if (windows.some((w) => timelineBar(w, thisMonth, rangeEnd) !== null)) {
+    return thisMonth;
+  }
+  const upcoming = windows
+    .map((w) => bounds(w).start)
+    .filter(
+      (start): start is number =>
+        start !== null && !Number.isNaN(start) && start >= rangeEnd.getTime(),
+    )
+    .sort((a, b) => a - b)[0];
+  if (upcoming === undefined) return thisMonth;
+  const first = new Date(upcoming);
+  return new Date(first.getFullYear(), first.getMonth(), 1);
+}

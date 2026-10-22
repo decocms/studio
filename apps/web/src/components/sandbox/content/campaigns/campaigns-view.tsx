@@ -83,6 +83,8 @@ import {
   campaignRows,
   removedCampaigns,
   timelineBar,
+  timelineLabelPlacement,
+  timelineStart,
 } from "./campaigns-model";
 
 type ViewMode = "list" | "timeline";
@@ -444,7 +446,13 @@ function CampaignTimeline({
   onOpen: (name: string) => void;
 }) {
   const t = useT();
-  const [cursor, setCursor] = useState(() => startOfMonth(now));
+  const [cursor, setCursor] = useState(() =>
+    timelineStart(
+      rows.map((row) => row.window),
+      now,
+      TIMELINE_MONTHS,
+    ),
+  );
   const rangeEnd = addMonths(cursor, TIMELINE_MONTHS);
   const months = Array.from({ length: TIMELINE_MONTHS }, (_, i) =>
     addMonths(cursor, i),
@@ -515,44 +523,70 @@ function CampaignTimeline({
             {t("sandbox.dateCampaigns.nothingInRange")}
           </p>
         ) : (
-          shown.map(({ row, bar }) => (
-            <div
-              key={row.name}
-              className="flex h-9 items-center border-b last:border-b-0"
-            >
-              <div className="w-48 shrink-0 truncate border-r px-3 text-sm">
-                {row.name}
-              </div>
-              <div className="relative h-full flex-1">
-                {today && (
-                  <div
-                    className="pointer-events-none absolute top-0 bottom-0 w-px bg-primary/70"
-                    style={{ left: `${today.left}%` }}
-                  />
-                )}
-                <button
-                  type="button"
-                  onClick={() => onOpen(row.name)}
-                  title={windowText(
-                    row.window,
-                    t("sandbox.dateCampaigns.noDates"),
-                  )}
-                  className={cn(
-                    "absolute top-1/2 h-6 -translate-y-1/2 truncate rounded px-2 text-left text-[11px] font-medium",
-                    STATUS_BAR[row.status],
-                    bar!.openStart && "rounded-l-none",
-                    bar!.openEnd && "rounded-r-none",
-                  )}
-                  style={{
-                    left: `${bar!.left}%`,
-                    width: `max(calc(${bar!.width}% - 2px), 6px)`,
-                  }}
-                >
+          shown.map(({ row, bar }) => {
+            const label = timelineLabelPlacement(bar!, row.name);
+            return (
+              <div
+                key={row.name}
+                className="flex h-9 items-center border-b last:border-b-0"
+              >
+                <div className="w-48 shrink-0 truncate border-r px-3 text-sm">
                   {row.name}
-                </button>
+                </div>
+                <div className="relative h-full flex-1">
+                  {today && (
+                    <div
+                      className="pointer-events-none absolute top-0 bottom-0 w-px bg-primary/70"
+                      style={{ left: `${today.left}%` }}
+                    />
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => onOpen(row.name)}
+                    aria-label={row.name}
+                    title={windowText(
+                      row.window,
+                      t("sandbox.dateCampaigns.noDates"),
+                    )}
+                    className={cn(
+                      "absolute top-1/2 h-6 -translate-y-1/2 truncate rounded text-left text-[11px] font-medium",
+                      label === "inside" && "px-2",
+                      STATUS_BAR[row.status],
+                      bar!.openStart && "rounded-l-none",
+                      bar!.openEnd && "rounded-r-none",
+                    )}
+                    style={{
+                      left: `${bar!.left}%`,
+                      width: `max(calc(${bar!.width}% - 2px), 6px)`,
+                    }}
+                    data-label={label}
+                  >
+                    {label === "inside" ? row.name : null}
+                  </button>
+                  {label !== "inside" && (
+                    // A short campaign: its name beside the bar, readable.
+                    <button
+                      type="button"
+                      tabIndex={-1}
+                      aria-hidden="true"
+                      onClick={() => onOpen(row.name)}
+                      className="absolute top-1/2 -translate-y-1/2 whitespace-nowrap text-[11px] font-medium text-foreground hover:underline"
+                      style={
+                        label === "after"
+                          ? {
+                              left: `calc(${bar!.left + bar!.width}% + 6px)`,
+                            }
+                          : { right: `calc(${100 - bar!.left}% + 6px)` }
+                      }
+                      data-testid="campaign-bar-label"
+                    >
+                      {row.name}
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
     </div>

@@ -5,6 +5,8 @@ import {
   campaignStatus,
   removedCampaigns,
   timelineBar,
+  timelineLabelPlacement,
+  timelineStart,
 } from "./campaigns-model";
 
 const at = (iso: string) => new Date(iso);
@@ -152,5 +154,73 @@ describe("timelineBar", () => {
     expect(timelineBar({ end: "2026-10-01T00:00:00Z" }, from, to)).toBeNull();
     expect(timelineBar({ start: "2027-03-01T00:00:00Z" }, from, to)).toBeNull();
     expect(timelineBar({ start: "nope" }, from, to)).toBeNull();
+  });
+});
+
+describe("timelineLabelPlacement", () => {
+  const from = at("2026-11-01T00:00:00Z");
+  const to = at("2027-03-01T00:00:00Z");
+
+  it("a month-long campaign carries its name", () => {
+    const bar = timelineBar(
+      { start: "2026-11-27T00:00:00Z", end: "2026-12-27T00:00:00Z" },
+      from,
+      to,
+    )!;
+    expect(timelineLabelPlacement(bar, "Black Friday")).toBe("inside");
+  });
+
+  it("a short campaign's name goes beside its bar, never cut", () => {
+    // Two days on a four-month range: a few pixels.
+    const bar = timelineBar(
+      { start: "2026-11-27T00:00:00Z", end: "2026-11-29T00:00:00Z" },
+      from,
+      to,
+    )!;
+    expect(timelineLabelPlacement(bar, "b")).toBe("after");
+    expect(timelineLabelPlacement(bar, "Black Friday")).toBe("after");
+  });
+
+  it("before the bar when it ends near the right edge", () => {
+    const bar = timelineBar(
+      { start: "2027-02-25T00:00:00Z", end: "2027-02-27T00:00:00Z" },
+      from,
+      to,
+    )!;
+    expect(timelineLabelPlacement(bar, "Carnival sale")).toBe("before");
+  });
+
+  it("after it when there is room on neither side", () => {
+    expect(timelineLabelPlacement({ left: 0, width: 1 }, "x".repeat(80))).toBe(
+      "after",
+    );
+  });
+});
+
+describe("timelineStart", () => {
+  const now = new Date(2026, 9, 22, 12);
+  const month = (y: number, m: number) => new Date(y, m, 1).getTime();
+
+  it("opens on this month when something shows there", () => {
+    expect(
+      timelineStart(
+        [{ start: new Date(2026, 10, 27).toISOString() }],
+        now,
+        4,
+      ).getTime(),
+    ).toBe(month(2026, 9));
+    expect(timelineStart([], now, 4).getTime()).toBe(month(2026, 9));
+  });
+
+  it("opens on the next campaign's month when nothing shows before it", () => {
+    const windows = [
+      {
+        start: new Date(2027, 5, 10).toISOString(),
+        end: new Date(2027, 5, 12).toISOString(),
+      },
+      { start: new Date(2027, 2, 3).toISOString() },
+      { end: new Date(2026, 0, 1).toISOString() },
+    ];
+    expect(timelineStart(windows, now, 4).getTime()).toBe(month(2027, 2));
   });
 });
