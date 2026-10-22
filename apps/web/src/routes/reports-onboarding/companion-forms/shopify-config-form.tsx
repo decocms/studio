@@ -128,6 +128,10 @@ export function ShopifyConfigForm({
               </FormLabel>
               <FormControl>
                 <PasswordInput
+                  showLabel={t("common.show")}
+                  hideLabel={t("common.hide")}
+                  copyLabel={t("common.copy")}
+                  copiedLabel={t("common.copied")}
                   placeholder={t(
                     "reportsOnboarding.shopifyConfigForm.accessTokenPlaceholder",
                   )}

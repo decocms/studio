@@ -3,7 +3,7 @@ import { useState } from "react";
 import { DateTimeInput } from "./datetime-input.tsx";
 
 const meta = {
-  title: "Components/DateTimeInput",
+  title: "Molecules/DateTimeInput",
   component: DateTimeInput,
   args: {
     value: "now-24h",

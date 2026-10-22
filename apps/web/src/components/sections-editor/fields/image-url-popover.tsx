@@ -34,7 +34,7 @@ export function ImageUrlPopover({
   onCancel: () => void;
 }) {
   return (
-    <div className="absolute left-0 top-full z-20 mt-1.5 w-96 rounded-[var(--studio-surface-radius,var(--radius-md))] border bg-popover p-1 shadow-md">
+    <div className="absolute left-0 top-full z-20 mt-1.5 w-96 rounded-[var(--studio-surface-radius,var(--radius-md))] bg-popover p-1 shadow-soft">
       <Input
         // oxlint-disable-next-line no-autofocus -- the panel only opens on an explicit click; focus must land on the input to paste into
         autoFocus

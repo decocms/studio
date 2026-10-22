@@ -72,13 +72,16 @@ export const orgs = {
   "orgs.connections.openConnection": "Abrir conexão",
   "orgs.connections.connectionDisabled": "Conexão desativada",
   "orgs.connections.connectionEnabled": "Conexão ativada",
+  "orgs.connections.connectionDeleted": "Conexão deletada com sucesso",
+  "orgs.connections.failedToDeleteConnection":
+    "Falha ao deletar conexão: {error}",
   "orgs.connections.createConnection": "Criar Conexão",
   "orgs.connections.createConnectionDescription":
     "Crie uma conexão personalizada em sua organização. Preencha os detalhes abaixo.",
   "orgs.connections.createConnectionToGetStarted":
     "Crie uma conexão para começar.",
   "orgs.connections.customCommand": "Comando Personalizado",
-  "orgs.connections.customConnection": "Conexão Personalizada",
+  "orgs.connections.customConnection": "Conexão personalizada",
   "orgs.connections.deletedConnections": "Deletado {count} conexão(ões)",
   "orgs.connections.description": "Descrição",
   "orgs.connections.descriptionPlaceholder":
@@ -147,7 +150,7 @@ export const orgs = {
   "orgs.members.invitationRoleUpdatedSuccess":
     "A função do convite foi atualizada",
   "orgs.members.invitationSent": "Convite enviado",
-  "orgs.members.inviteMember": "Convidar Membro",
+  "orgs.members.inviteMember": "Convidar membro",
   "orgs.members.inviteMembersGetStarted": "Convide membros para começar.",
   "orgs.members.keepInvitation": "Manter Convite",
   "orgs.members.memberRemovedSuccess": "O membro foi removido da organização",

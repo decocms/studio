@@ -311,8 +311,8 @@ export function UnsupportedFileDialog({
 
         {/* Body */}
         <div className="px-8 pt-3 pb-6 space-y-3">
-          <div className="rounded-xl border border-border p-4">
-            <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
+          <div className="surface p-4">
+            <div className="text-xs font-medium text-muted-foreground mb-2">
               {t("chat.uploader.accepts", { modelName: info?.modelName ?? "" })}
             </div>
             <div className="flex items-center gap-2 text-sm text-foreground">

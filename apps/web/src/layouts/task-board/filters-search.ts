@@ -205,12 +205,10 @@ export function boardSearchParams(
 /**
  * The layout a reader is actually allowed to be in.
  *
- * Feed and Epics are flag-only views, so a reader without the flag falls back to Board.
+ * Feed is a flag-only view, so a reader without the flag falls back to Board.
  */
 export function enabledLayout(layout: Layout, feedEnabled: boolean): Layout {
-  return (layout === "feed" || layout === "epics") && !feedEnabled
-    ? "board"
-    : layout;
+  return layout === "feed" && !feedEnabled ? "board" : layout;
 }
 
 /**

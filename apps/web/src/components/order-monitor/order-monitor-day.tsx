@@ -330,10 +330,9 @@ function runningHour(day: OrderMonitorDay) {
   return { hour: minutes > 0 ? Math.floor(day.done / 4) : null, minutes };
 }
 
-/** The hour tooltip, minus the pace's point on the hour before (a repeat of the solid line's). */
+/** The hour tooltip, minus whichever entries `hide` drops (a repeated or redundant point). */
 function hourTooltip(
-  running: number | null,
-  isPace: (dataKey: unknown) => boolean,
+  hide: (item: { dataKey?: unknown; payload?: { x?: number } }) => boolean,
   label: (h: number) => React.ReactNode,
 ) {
   return (
@@ -342,9 +341,7 @@ function hourTooltip(
         <ChartTooltipContent
           active={active}
           label={hour}
-          payload={payload?.filter(
-            (item) => !isPace(item.dataKey) || item.payload?.x === running,
-          )}
+          payload={payload?.filter((item) => !hide(item))}
           labelFormatter={(_, payload) => {
             const h = datumHour(payload);
             return h === null ? null : label(h);
@@ -416,8 +413,9 @@ function OrdersChart({
         {xAxis}
         {yAxis}
         {hourTooltip(
-          running.hour,
-          (key) => key === "pace",
+          (item) =>
+            (item.dataKey === "pace" && item.payload?.x !== running.hour) ||
+            (item.dataKey === "projection" && item.payload?.x === current),
           (h) => {
             if (h === running.hour) {
               return t("orderMonitor.partialHour", {
@@ -585,8 +583,8 @@ export function CancellationsChart({
           {xAxis}
           {yAxis}
           {hourTooltip(
-            running.hour,
-            (key) => key === "pace",
+            (item) =>
+              item.dataKey === "pace" && item.payload?.x !== running.hour,
             (h) =>
               h === running.hour
                 ? t("orderMonitor.partialHour", {
@@ -734,8 +732,9 @@ function ChannelsChart({ day }: { day: OrderMonitorDay }) {
           {xAxis}
           {yAxis}
           {hourTooltip(
-            running.hour,
-            (key) => String(key).startsWith("p"),
+            (item) =>
+              String(item.dataKey).startsWith("p") &&
+              item.payload?.x !== running.hour,
             (h) =>
               h === running.hour
                 ? t("orderMonitor.partialHour", {
@@ -816,7 +815,7 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4">
+    <section className="flex flex-col gap-3 surface p-4">
       <h3 className="text-sm font-medium text-foreground">{title}</h3>
       {children}
     </section>

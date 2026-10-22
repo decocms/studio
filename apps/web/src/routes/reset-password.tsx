@@ -178,7 +178,7 @@ export default function ResetPasswordRoute() {
                 type="button"
                 variant="link"
                 onClick={() => navigate({ to: "/login" })}
-                className="text-sm text-muted-foreground hover:text-foreground"
+                className="text-muted-foreground hover:text-foreground"
               >
                 {t("routes.resetPassword.backToSignIn")}
               </Button>

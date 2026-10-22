@@ -14,7 +14,7 @@ import { Input } from "./input.tsx";
 import { Label } from "./label.tsx";
 
 const meta = {
-  title: "Components/Dialog",
+  title: "Organisms/Dialog",
   component: Dialog,
 } satisfies Meta<typeof Dialog>;
 

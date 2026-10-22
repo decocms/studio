@@ -729,7 +729,7 @@ function ModelSelectorInner({
               }
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="flex-1 min-w-0 border-0 !shadow-none focus-visible:ring-0 px-0 h-full text-sm placeholder:text-muted-foreground/50 bg-transparent"
+              className="flex-1 min-w-0 border-0 !shadow-none px-0 h-full text-sm placeholder:text-muted-foreground/50 bg-transparent"
             />
             {keys.length > 0 && (
               <Select

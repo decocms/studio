@@ -36,9 +36,10 @@ export function ConnectionCard({
   const t = useT();
   return (
     <Card
+      size="flush"
       className={cn(
         "transition-colors group overflow-hidden flex flex-col h-full",
-        onClick && "cursor-pointer hover:bg-muted/50",
+        onClick && "cursor-pointer hover:bg-accent",
         className,
       )}
       onClick={onClick}
@@ -67,7 +68,7 @@ export function ConnectionCard({
               icon={connection.icon}
               name={connection.title}
               size="sm"
-              className="shrink-0 shadow-sm"
+              className="shrink-0 shadow-edge"
               fallbackIcon={fallbackIcon}
             />
             {/* Header Actions container */}

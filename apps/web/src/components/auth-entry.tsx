@@ -44,8 +44,11 @@ class RetriableAutoLoginResponse {
   constructor(readonly response: Response) {}
 }
 
-function safeRelativeRedirect(redirectTo: string): string {
-  return redirectTo.startsWith("/") && !redirectTo.startsWith("//")
+export function safeRelativeRedirect(redirectTo: string): string {
+  // A leading "/\" resolves like "//" once a browser parses it as a URL.
+  return redirectTo.startsWith("/") &&
+    !redirectTo.startsWith("//") &&
+    !redirectTo.startsWith("/\\")
     ? redirectTo
     : "/";
 }

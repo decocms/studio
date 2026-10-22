@@ -243,7 +243,7 @@ export function ConnectionFields({
                   )}
                   {...field}
                   value={field.value || ""}
-                  className="h-10 rounded-lg"
+                  className="h-10"
                 />
               </FormControl>
               <FormMessage />
@@ -271,7 +271,7 @@ export function ConnectionFields({
                       )}
                       {...field}
                       value={field.value || ""}
-                      className="h-10 rounded-lg"
+                      className="h-10"
                     />
                   </FormControl>
                   <FormMessage />
@@ -294,7 +294,7 @@ export function ConnectionFields({
                       )}
                       {...field}
                       value={field.value || ""}
-                      className="h-10 rounded-lg"
+                      className="h-10"
                     />
                   </FormControl>
                   <p className="text-xs text-muted-foreground">
@@ -321,7 +321,7 @@ export function ConnectionFields({
                     )}
                     {...field}
                     value={field.value || ""}
-                    className="h-10 rounded-lg"
+                    className="h-10"
                   />
                 </FormControl>
                 <FormMessage />
@@ -404,7 +404,7 @@ export function ConnectionFields({
                   <button
                     type="button"
                     onClick={() => field.onChange("")}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-muted opacity-0 group-hover:opacity-100 transition-opacity rounded-lg"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-accent opacity-0 group-hover:opacity-100 transition-opacity rounded-lg"
                     title={t("details.connectionSidebar.clearAndReplaceToken")}
                     aria-label={t(
                       "details.connectionSidebar.clearAndReplaceToken",
@@ -425,7 +425,7 @@ export function ConnectionFields({
                       }
                       {...field}
                       value={field.value || ""}
-                      className="h-10 rounded-lg"
+                      className="h-10"
                     />
                   </FormControl>
                   {isGitHubCopilotMcp && (

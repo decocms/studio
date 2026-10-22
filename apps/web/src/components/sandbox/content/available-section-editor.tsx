@@ -147,7 +147,7 @@ export function AvailableSectionEditor({
               <TooltipTrigger asChild>
                 <Button
                   size="icon"
-                  className="size-8 shrink-0"
+                  className="shrink-0"
                   disabled={isCreating}
                   onClick={() => setSaveOpen(true)}
                   aria-label={t(
