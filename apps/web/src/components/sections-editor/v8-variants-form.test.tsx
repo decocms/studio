@@ -1,7 +1,7 @@
 import { setupComponentTest } from "../../../test/setup";
 setupComponentTest();
 import { describe, expect, mock, test } from "bun:test";
-import { render } from "@testing-library/react";
+import { fireEvent, render, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@decocms/ui/components/tooltip.tsx";
@@ -186,7 +186,7 @@ describe("a saved section opened on one of its variants", () => {
       },
     ],
   };
-  const renderOn = (focus: number | null) =>
+  const renderOn = (focus: number | null, remember?: (index: number) => void) =>
     render(
       <QueryClientProvider client={new QueryClient()}>
         <ProjectContextProvider
@@ -194,7 +194,7 @@ describe("a saved section opened on one of its variants", () => {
           project={{ id: "site", slug: "site" }}
         >
           <TooltipProvider delayDuration={0}>
-            <RootVariantFocusProvider value={focus}>
+            <RootVariantFocusProvider value={{ index: focus, remember }}>
               <Harness onValue={() => {}} saved={TWO} />
             </RootVariantFocusProvider>
           </TooltipProvider>
@@ -206,6 +206,17 @@ describe("a saved section opened on one of its variants", () => {
     const view = renderOn(1);
     const heading = (await view.findByLabelText("Heading")) as HTMLInputElement;
     expect(heading.value).toBe("Black Friday");
+  });
+
+  test("tells the editor which variant it shows, so a rebuilt form stays on it", async () => {
+    const shown: number[] = [];
+    const view = renderOn(1, (index) => shown.push(index));
+    await view.findByLabelText("Heading");
+    // The user moves to the first variant: that is the one remembered.
+    fireEvent.click(view.getAllByText(/Default/)[0]!);
+    const heading = (await view.findByLabelText("Heading")) as HTMLInputElement;
+    await waitFor(() => expect(heading.value).toBe("Everyday"));
+    expect(shown).toEqual([0]);
   });
 
   test("shows the first variant otherwise", async () => {

@@ -98,10 +98,17 @@ export interface MultivariateFieldWrapperProps extends FieldProps {
 }
 
 /**
- * The variant a form's root variants block opens on (a saved section opened
- * from a test's or campaign's "Used by"); `null`: the first.
+ * The variant a form's root variants block opens on: `index` (a saved section
+ * opened from a test's or campaign's "Used by", then the one last shown), or
+ * the first when `null`. `remember` hears each variant shown, so the form
+ * opens on it again when it is rebuilt (a save from elsewhere).
  */
-const RootVariantFocusContext = createContext<number | null>(null);
+export interface RootVariantFocus {
+  index: number | null;
+  remember?: (index: number) => void;
+}
+
+const RootVariantFocusContext = createContext<RootVariantFocus | null>(null);
 
 export const RootVariantFocusProvider = RootVariantFocusContext.Provider;
 
@@ -116,10 +123,16 @@ export function MultivariateFieldWrapper({
   const compact = useNewBlocksEditor();
   const VariantIcon = compact ? LayersThree01 : Flag01;
   const { value, onChange, meta, path, label, focused, decofile } = props;
-  const rootFocus = useContext(RootVariantFocusContext);
-  const [selectedIndex, setSelectedIndex] = useState(() =>
-    path === "" && rootFocus !== null ? rootFocus : 0,
+  const focusContext = useContext(RootVariantFocusContext);
+  const rootFocus = path === "" ? focusContext : null;
+  const [selectedIndex, setSelectedIndex] = useState(
+    () => rootFocus?.index ?? 0,
   );
+  // Every variant shown is told to the editor (see RootVariantFocus).
+  const showVariant = (index: number) => {
+    setSelectedIndex(index);
+    rootFocus?.remember?.(index);
+  };
   const [renameIndex, setRenameIndex] = useState<number | null>(null);
   const [renamePending, setRenamePending] = useState(false);
   const namedSupport = useNamedRuleFieldSupport();
@@ -142,7 +155,7 @@ export function MultivariateFieldWrapper({
                 onChange(
                   wrapAsMultivariate(value, multivariateResolveType, meta),
                 );
-                setSelectedIndex(0);
+                showVariant(0);
               }}
             >
               <VariantIcon size={14} />
@@ -210,33 +223,33 @@ export function MultivariateFieldWrapper({
 
   const handleFlatten = () => {
     onChange(flattenMultivariate(wrapper));
-    setSelectedIndex(0);
+    showVariant(0);
   };
 
   const handleAdd = () => {
     onChange(appendVariant(wrapper, meta));
-    setSelectedIndex(newVariantIndex(wrapper.variants));
+    showVariant(newVariantIndex(wrapper.variants));
   };
 
   const handleDelete = (index: number) => {
     const next = deleteVariant(wrapper, index);
     if (!next) return;
     onChange(next);
-    setSelectedIndex(
+    showVariant(
       selectedIndexAfterDelete(safeIndex, index, next.variants.length),
     );
   };
 
   const handleDuplicate = (index: number) => {
     onChange(duplicateVariant(wrapper, index));
-    setSelectedIndex(duplicateVariantIndex(wrapper.variants, index));
+    showVariant(duplicateVariantIndex(wrapper.variants, index));
   };
 
   const handleReorder = (from: number, to: number) => {
     const next = reorderVariant(wrapper, from, to);
     onChange(next);
     if (safeIndex === from) {
-      setSelectedIndex(to);
+      showVariant(to);
     }
   };
 
@@ -351,7 +364,7 @@ export function MultivariateFieldWrapper({
               variants={variantEntries}
               activeIndex={safeIndex}
               onSelect={(index) => {
-                setSelectedIndex(index);
+                showVariant(index);
                 closeManage();
               }}
               onManage={openManage}
@@ -366,7 +379,7 @@ export function MultivariateFieldWrapper({
               variants={variantEntries}
               selectedIndex={safeIndex}
               onSelect={(index) => {
-                setSelectedIndex(index);
+                showVariant(index);
                 closeManage();
               }}
               onDuplicate={handleDuplicate}
@@ -424,7 +437,7 @@ export function MultivariateFieldWrapper({
         listKey={listKey}
         variants={variantEntries}
         selectedIndex={safeIndex}
-        onSelect={setSelectedIndex}
+        onSelect={showVariant}
         onRename={onVariantMatcherOp ? setRenameIndex : undefined}
         onDuplicate={handleDuplicate}
         onDelete={handleDelete}

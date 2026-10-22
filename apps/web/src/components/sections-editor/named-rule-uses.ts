@@ -130,8 +130,9 @@ function computeNamedRuleUses(input: {
 /**
  * Where a use sits in the editor, 0-based: the page variant, the section in
  * it and that section's variant. Each is set only when the use is there, so
- * a rule inside a section's field opens the section, and a page variant's
- * rule opens that page variant.
+ * a rule inside a section's field opens the section (on the variant that
+ * field is in, when the section has variants), and a page variant's rule
+ * opens that page variant.
  */
 export interface VariantFocus {
   pageVariant?: number;
@@ -144,6 +145,27 @@ const isVariantsBlockHere = (rest: BlockPath) =>
   rest.length === 0 || (rest.length === 1 && rest[0] === "section");
 
 /**
+ * The section's own variant that `rest` (a path inside the section, past a
+ * lazy-render wrapper if any) lies in: a rule in a field of variant 2 opens
+ * the section on variant 2.
+ */
+function enclosingVariant(rest: BlockPath): number | undefined {
+  const inner = rest[0] === "section" ? rest.slice(1) : rest;
+  return inner[0] === "variants" && typeof inner[1] === "number"
+    ? inner[1]
+    : undefined;
+}
+
+/** The section variant to open for a rule whose variants block is at `rest`. */
+function sectionVariantAt(
+  rest: BlockPath,
+  variant?: Pick<RuleVariant, "index">,
+): number | undefined {
+  if (variant && isVariantsBlockHere(rest)) return variant.index;
+  return enclosingVariant(rest);
+}
+
+/**
  * The editor place of a rule at `rulePath` in a page (`blockKind` "page") or
  * a saved section, from the variants block it belongs to, if any.
  */
@@ -153,9 +175,8 @@ export function variantFocusOf(
   variant?: Pick<RuleVariant, "containerPath" | "index">,
 ): VariantFocus {
   if (blockKind === "section") {
-    return variant && isVariantsBlockHere(variant.containerPath)
-      ? { variant: variant.index }
-      : {};
+    const at = sectionVariantAt(variant?.containerPath ?? rulePath, variant);
+    return at === undefined ? {} : { variant: at };
   }
   const where = variant?.containerPath ?? rulePath;
   if (where[0] !== "sections") return {};
@@ -174,7 +195,8 @@ export function variantFocusOf(
   const [section, ...inSection] = rest;
   if (typeof section !== "number") return focus;
   focus.section = section;
-  if (variant && isVariantsBlockHere(inSection)) focus.variant = variant.index;
+  const at = sectionVariantAt(inSection, variant);
+  if (at !== undefined) focus.variant = at;
   return focus;
 }
 
@@ -238,7 +260,7 @@ export function namedRuleUseRows(
     const focus = variantFocusOf(label.blockKind, ref.path, ref.variant);
     const section =
       label.blockKind === "page"
-        ? sectionLabel(ref.blockKey, focus, uses, decofile)
+        ? sectionLabel(ref.blockKey, focus, ref.state, uses, decofile)
         : undefined;
     push({
       blockKey: ref.blockKey,
@@ -269,11 +291,16 @@ export function namedRuleUseRowKey(row: NamedRuleUseRow): string {
 function sectionLabel(
   blockKey: string,
   focus: VariantFocus,
+  state: ReferenceState,
   uses: NamedRuleUses,
   decofile: Record<string, unknown>,
 ): string | undefined {
   if (focus.section === undefined) return undefined;
-  const from = blockKey in decofile ? decofile : (uses.published ?? decofile);
+  // A use removed in the draft is a place in the published page.
+  const from =
+    state !== "removed-in-draft" && blockKey in decofile
+      ? decofile
+      : (uses.published ?? decofile);
   const sections = getPageVariantSectionsAt(
     from,
     blockKey,

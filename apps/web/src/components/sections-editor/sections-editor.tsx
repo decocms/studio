@@ -425,10 +425,15 @@ export function SectionsEditor({
     setSeenFocusSeq(focusVariant.seq);
     setPendingFocus(focusVariant);
   }
-  // A saved section's variant to open its form on (`focusVariant`).
+  // A saved section's variant to open its form on (`focusVariant`, then the
+  // one last shown, so a rebuilt form stays on it).
   const [globalVariantFocus, setGlobalVariantFocus] = useState<number | null>(
     null,
   );
+  const rootVariantFocus = {
+    index: globalVariantFocus,
+    remember: setGlobalVariantFocus,
+  };
   const [ruleFormValue, setRuleFormValue] = useState<Record<
     string,
     unknown
@@ -3265,10 +3270,10 @@ export function SectionsEditor({
   const handleAddPageVariant = () => {
     if (!activePageKey) return;
     // Cancel a pending rule-autosave timer — it writes into
-    // `variants[latestVariantIndex]` (read fresh via latestRef) when it fires,
-    // and appending a variant here doesn't change that index, but a stale save
-    // firing after this mutation would clobber the newly-saved data with an
-    // outdated variants array.
+    // `variants[latestVariantIndex]` (read fresh via latestRef) when it fires.
+    // The new variant goes above the Default one, so it shifts that index,
+    // and a stale save firing after this mutation would also clobber the
+    // newly-saved data with an outdated variants array.
     cancelPendingRuleSaves();
     // Also cancel a pending section-field autosave — it rebuilds
     // `variants[latestVariantIndex]` from a `decofile` snapshot read at fire
@@ -4790,7 +4795,7 @@ export function SectionsEditor({
               sectionVariantsPanel}
             <NamedRuleFieldProvider value={namedRuleFieldSupport}>
               <RootVariantFocusProvider
-                value={isGlobalBlockMode ? globalVariantFocus : null}
+                value={isGlobalBlockMode ? rootVariantFocus : null}
               >
                 <SchemaFormPanel
                   activeSchema={activeSchema}
@@ -4824,7 +4829,7 @@ export function SectionsEditor({
           >
             <NamedRuleFieldProvider value={namedRuleFieldSupport}>
               <RootVariantFocusProvider
-                value={isGlobalBlockMode ? globalVariantFocus : null}
+                value={isGlobalBlockMode ? rootVariantFocus : null}
               >
                 <SchemaFormPanel
                   activeSchema={activeSchema}

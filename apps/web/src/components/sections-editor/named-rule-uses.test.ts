@@ -293,6 +293,42 @@ describe("where Open lands", () => {
     ).toEqual({ section: 5 });
   });
 
+  it("a variant in a field of a section's variant opens the section on that variant", () => {
+    expect(
+      variantFocusOf(
+        "page",
+        [],
+        at(["sections", 2, "variants", 1, "value", "props", "image"], 0),
+      ),
+    ).toEqual({ section: 2, variant: 1 });
+    // Past a lazy-render wrapper, inside a page variant.
+    expect(
+      variantFocusOf(
+        "page",
+        [],
+        at(
+          [
+            "sections",
+            "variants",
+            0,
+            "value",
+            3,
+            "section",
+            "variants",
+            2,
+            "value",
+            "image",
+          ],
+          1,
+        ),
+      ),
+    ).toEqual({ pageVariant: 0, section: 3, variant: 2 });
+    // A saved section: its own variant the field is in.
+    expect(
+      variantFocusOf("section", [], at(["variants", 1, "value", "image"], 0)),
+    ).toEqual({ variant: 1 });
+  });
+
   it("a saved section's own variant, and nothing for a field's", () => {
     expect(variantFocusOf("section", [], at([], 2))).toEqual({ variant: 2 });
     expect(variantFocusOf("section", [], at(["section"], 1))).toEqual({
@@ -344,6 +380,50 @@ describe("where Open lands", () => {
     expect(rows.map((r) => [r.section, r.variant, r.focus])).toEqual([
       ["Hero", 1, { section: 1, variant: 0 }],
       ["Shelf", 1, { section: 2, variant: 0 }],
+    ]);
+  });
+});
+
+describe("a use removed in the draft", () => {
+  it("names the section it had in the published page", () => {
+    const hero = (rule: unknown) => ({
+      __resolveType: "multivariate",
+      variants: [
+        { rule, value: lazy({ __resolveType: "site/sections/Hero.tsx" }) },
+        {
+          rule: { __resolveType: "always" },
+          value: lazy({ __resolveType: "site/sections/Hero.tsx" }),
+        },
+      ],
+    });
+    const published = {
+      campaigns: { __resolveType: "calendar", bf: {} },
+      "pages-home-1": {
+        __resolveType: "page",
+        name: "Home",
+        path: "/",
+        sections: [
+          { __resolveType: "site/sections/Header.tsx" },
+          hero(campaign("bf")),
+        ],
+      },
+    };
+    // The draft dropped the Header and the campaign: index 1 is now gone,
+    // index 0 is the Hero, which no longer uses it.
+    const draftPage = {
+      ...published["pages-home-1"],
+      sections: [hero({ __resolveType: "always" })],
+    };
+    const draft = { ...published, "pages-home-1": draftPage };
+    const uses = namedRuleUses({
+      decofile: draft,
+      meta,
+      changeCount: 1,
+      sides: { "pages-home-1": side(published["pages-home-1"], draftPage) },
+    });
+    const rows = namedRuleUseRows(uses, "campaigns", "bf", draft, meta);
+    expect(rows.map((r) => [r.state, r.section, r.focus])).toEqual([
+      ["removed-in-draft", "Hero", { section: 1, variant: 0 }],
     ]);
   });
 });
