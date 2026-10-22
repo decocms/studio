@@ -157,7 +157,7 @@ export const sectionsEditor = {
   "sectionsEditor.namedRuleUses.emptyTests":
     "Ainda não usado. No editor do site, dê a uma variante a regra “Teste A/B” e escolha este teste.",
   "sectionsEditor.namedRuleUses.emptyCampaigns":
-    "Ainda não usado. No editor do site, dê a uma variante a regra “Campanha” e escolha esta campanha.",
+    "Ainda não usada. No editor do site, dê a uma variante a regra “Campanha” e escolha esta campanha.",
   "sectionsEditor.namedRuleUses.wholeTests": "Seções que leem todos os testes",
   "sectionsEditor.namedRuleUses.wholeTestsHint":
     "Estas seções decidem no próprio código quais testes consultam.",

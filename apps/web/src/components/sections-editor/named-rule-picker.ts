@@ -16,7 +16,7 @@ import {
 import type { LiveMeta } from "./resolve-schema";
 
 /**
- * The rule picker's "A/B test" and "Date" items on a Blocks (v8) site
+ * The rule picker's "A/B test" and "Campaign" items on a Blocks (v8) site
  * (named-rules.ts): pick a test or campaign by name, or create one right
  * there. Creating writes the `experiments`/`campaigns` block and the rule in
  * one guarded save to the draft (use-apply-named-rule.ts). Pure: the picker,
