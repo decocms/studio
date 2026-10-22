@@ -45,7 +45,7 @@ beforeAll(() => {
 const MATCHERS: MatcherEntry[] = [
   { resolveType: "never", title: "Never", iconName: "EyeOff" },
   { resolveType: "experiment", title: "A/B test", iconName: "flask" },
-  { resolveType: "date", title: "Date", iconName: "calendar-event" },
+  { resolveType: "campaign", title: "Campaign", iconName: "calendar-event" },
   { resolveType: "device", title: "Device", iconName: "Monitor01" },
 ];
 
@@ -103,9 +103,10 @@ describe("the rule picker on a v8 site", () => {
     expect(texts).toContainEqual(
       expect.stringContaining("Show this variant while a campaign is running"),
     );
-    // The raw `experiment` and `date` rules aren't listed a second time.
+    // The raw `experiment` and `campaign` rules aren't listed a second time.
     expect(texts.filter((t) => t.startsWith("A/B test"))).toHaveLength(1);
     expect(texts.filter((t) => t.startsWith("Date"))).toHaveLength(1);
+    expect(texts.some((t) => t.startsWith("Campaign"))).toBe(false);
     expect(texts.some((t) => t.startsWith("Device"))).toBe(true);
   });
 
@@ -351,7 +352,7 @@ describe("the locked row", () => {
   });
 
   test("a campaign in a block that holds something else gets the picker's explanation too", () => {
-    const rule = { __resolveType: "date", campaign: "gone" };
+    const rule = { __resolveType: "campaign", name: "gone" };
     const kinds: NamedRulePickerKind[] = [
       { kind: "campaigns", state: "conflict", entries: [] },
     ];

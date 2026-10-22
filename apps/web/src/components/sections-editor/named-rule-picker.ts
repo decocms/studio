@@ -369,7 +369,7 @@ export function namedRuleBlockFieldValue(value: unknown): NamedRuleKind | null {
 /**
  * The kinds a field can read as a whole: the schema lists the kind's
  * built-in type among the blocks that fit it (`split-traffic`,
- * `date-windows`), and the picker offers the kind. Empty when the field's
+ * `calendar`), and the picker offers the kind. Empty when the field's
  * value is something else (a plain map, another block), which keeps its
  * usual form.
  */

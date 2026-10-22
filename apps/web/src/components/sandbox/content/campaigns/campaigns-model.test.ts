@@ -43,7 +43,7 @@ describe("campaignRows", () => {
   const now = at("2026-11-28T12:00:00Z");
   const published = {
     campaigns: {
-      __resolveType: "date-windows",
+      __resolveType: "calendar",
       "black-friday": {
         start: "2026-11-27T00:00:00-03:00",
         end: "2026-12-01T00:00:00-03:00",
@@ -53,7 +53,7 @@ describe("campaignRows", () => {
   };
   const draft = {
     campaigns: {
-      __resolveType: "date-windows",
+      __resolveType: "calendar",
       summer: { start: "2025-01-01T00:00:00Z", end: "2025-03-01T00:00:00Z" },
       christmas: {
         start: "2026-12-20T00:00:00-03:00",
@@ -75,7 +75,7 @@ describe("campaignRows", () => {
         __resolveType: "multivariate",
         variants: [
           {
-            rule: { __resolveType: "date", campaign: "christmas" },
+            rule: { __resolveType: "campaign", name: "christmas" },
             value: { __resolveType: "lazy", value: [] },
           },
         ],

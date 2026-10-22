@@ -9,7 +9,7 @@ import {
 } from "./section-types";
 
 /** The built-in blocks a prop can read as a whole (`experiments`, `campaigns`). */
-const WHOLE_BLOCK_TYPES = new Set(["split-traffic", "date-windows"]);
+const WHOLE_BLOCK_TYPES = new Set(["split-traffic", "calendar"]);
 
 /** The `__resolveType` a block definition declares, or "". */
 function refBranchResolveType(def: Record<string, unknown>): string {
@@ -1074,7 +1074,7 @@ function buildSchema(
         const allRefs = nonNull.every((a) => typeof a.$ref === "string");
         // A prop typed as a map of names to true/false (`Record<string,
         // boolean>`) is written inline, next to the built-in blocks that fit
-        // it (`split-traffic`, `date-windows`): it reads a whole saved block
+        // it (`split-traffic`, `calendar`): it reads a whole saved block
         // (`experiments`, `campaigns`), as a prop typed `Assignments` does,
         // whose inline branch is a `$ref` and so takes the path below.
         const readsWholeNamedRuleBlock =

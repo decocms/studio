@@ -36,9 +36,9 @@ const builtIn = { $ref: "#/definitions/x", namespace: "deco" };
 const meta = {
   manifest: {
     blocks: {
-      matchers: { always: builtIn, date: builtIn, experiment: builtIn },
+      matchers: { always: builtIn, campaign: builtIn, experiment: builtIn },
       loaders: { multivariate: builtIn, lazy: builtIn },
-      content: { "split-traffic": builtIn, "date-windows": builtIn },
+      content: { "split-traffic": builtIn, calendar: builtIn },
       pages: { page: builtIn },
     },
   },
@@ -62,7 +62,7 @@ const page = (name: string, path: string, rule: unknown) => ({
 const decofile = {
   experiments: { __resolveType: "split-traffic", hero: 50, spare: 10 },
   campaigns: {
-    __resolveType: "date-windows",
+    __resolveType: "calendar",
     bf: { start: "2026-11-27T00:00:00-03:00" },
     spare: { end: "2026-01-01T00:00:00Z" },
   },
@@ -71,8 +71,8 @@ const decofile = {
     name: "hero",
   }),
   "pages-sale": page("Sale", "/sale", {
-    __resolveType: "date",
-    campaign: "bf",
+    __resolveType: "campaign",
+    name: "bf",
   }),
   // Reads every test and campaign in its own code: not counted as a use.
   Banner: {
@@ -318,7 +318,7 @@ describe("NamedRuleDeleteButton", () => {
         {
           ...decofile,
           campaigns: {
-            __resolveType: "date-windows",
+            __resolveType: "calendar",
             spare: decofile.campaigns.spare,
           },
         },
@@ -328,7 +328,7 @@ describe("NamedRuleDeleteButton", () => {
     expect(apply).toHaveBeenCalledWith({
       writes: {
         campaigns: {
-          __resolveType: "date-windows",
+          __resolveType: "calendar",
           spare: { end: "2026-01-01T00:00:00Z" },
         },
       },
@@ -343,7 +343,7 @@ describe("NamedRuleDeleteButton", () => {
     expect(onUndo).toHaveBeenCalledWith({
       writes: {
         campaigns: {
-          __resolveType: "date-windows",
+          __resolveType: "calendar",
           spare: decofile.campaigns.spare,
           bf: decofile.campaigns.bf,
         },

@@ -220,7 +220,7 @@ interface Hit {
 /**
  * Every block that uses an A/B test or a campaign:
  *
- * - By name: a rule `experiment { name }` or `date { campaign }` anywhere (a
+ * - By name: a rule `experiment { name }` or `campaign { name }` anywhere (a
  *   variant's rule in a v8 `multivariate` or a v7 variants flag, inside a
  *   `multi`, inside a `lazy` value). A name in a rule is listed even when the
  *   `experiments`/`campaigns` block doesn't have it. Content isn't meant to

@@ -154,11 +154,11 @@ describe("matcher-rules", () => {
     ).toBe("A/B test: hero (20%)");
   });
 
-  it("labels a date rule with its campaign from the content's campaigns", () => {
+  it("labels a campaign rule with its dates from the content's campaigns", () => {
     expect(
       resolveVariantRuleLabel(
-        { __resolveType: "date", campaign: "Launch" },
-        { campaigns: { __resolveType: "date-windows", Launch: {} } },
+        { __resolveType: "campaign", name: "Launch" },
+        { campaigns: { __resolveType: "calendar", Launch: {} } },
         formatMatcher,
       ),
     ).toBe("Campaign: Launch");

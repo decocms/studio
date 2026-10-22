@@ -68,7 +68,7 @@ const V8: LiveMeta = {
       matchers: {
         always: {},
         never: {},
-        date: {},
+        campaign: {},
         "website/matchers/always.ts": {},
         "website/matchers/never.ts": {},
       },
@@ -334,7 +334,7 @@ describe("readers take the v8 shape", () => {
     expect(underlyingSectionResolveType(V8, block)).toBe("hero");
   });
 
-  test("the variant calendar reads v8 date rules and lazy values", () => {
+  test("the variant calendar reads v8 inline date rules (from before campaigns) and lazy values", () => {
     const decofile = {
       Promo: {
         __resolveType: "multivariate",

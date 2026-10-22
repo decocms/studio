@@ -224,10 +224,10 @@ describe("planNamedRuleApply", () => {
   it("guards a campaign rename: the block and every page that names it", () => {
     const draft = {
       campaigns: {
-        __resolveType: "date-windows",
+        __resolveType: "calendar",
         "black-friday": { start: "2026-11-27T00:00:00-03:00" },
       },
-      home: page({ __resolveType: "date", campaign: "black-friday" }),
+      home: page({ __resolveType: "campaign", name: "black-friday" }),
       about: page({ __resolveType: "always" }),
     };
     const rename = planNamedRuleRename(
@@ -244,7 +244,7 @@ describe("planNamedRuleApply", () => {
       home: "home@3",
     });
     expect(plan.patch.set?.home).toEqual(
-      page({ __resolveType: "date", campaign: "Black Friday" }),
+      page({ __resolveType: "campaign", name: "Black Friday" }),
     );
   });
 

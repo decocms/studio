@@ -97,7 +97,7 @@ export interface PublishChange {
 }
 
 /**
- * The site's A/B tests (`split-traffic`) or campaigns (`date-windows`) block
+ * The site's A/B tests (`split-traffic`) or campaigns (`calendar`) block
  * behind a block card, from its content; null for any other block. They are
  * content, not sections, so the card names them as such.
  */
@@ -107,7 +107,7 @@ export function namedRuleBlockOfChange(
   if (change.kind !== "block") return null;
   const resolveType = (change.toJson ?? change.fromJson)?.__resolveType;
   if (resolveType === "split-traffic") return "experiments";
-  if (resolveType === "date-windows") return "campaigns";
+  if (resolveType === "calendar") return "campaigns";
   return null;
 }
 

@@ -25,7 +25,7 @@ import {
 const DATE_MATCHER_TYPES = new Set([
   "website/matchers/date.ts",
   "$live/matchers/MatchDate.ts",
-  // Blocks v8's built-in, with the same `start`/`end`.
+  // Blocks v8's `date` rule from before campaigns, with the same `start`/`end`.
   "date",
 ]);
 

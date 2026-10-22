@@ -816,9 +816,9 @@ describe("summarizeContentChanges (a v8 source's changes.list)", () => {
     const meta = {
       manifest: {
         blocks: {
-          matchers: { always: builtIn, experiment: builtIn, date: builtIn },
+          matchers: { always: builtIn, experiment: builtIn, campaign: builtIn },
           loaders: { multivariate: builtIn, lazy: builtIn },
-          content: { "split-traffic": builtIn, "date-windows": builtIn },
+          content: { "split-traffic": builtIn, calendar: builtIn },
           pages: { page: builtIn },
         },
       },
@@ -872,9 +872,9 @@ describe("summarizeContentChanges (a v8 source's changes.list)", () => {
     const meta = {
       manifest: {
         blocks: {
-          matchers: { always: builtIn, experiment: builtIn, date: builtIn },
+          matchers: { always: builtIn, experiment: builtIn, campaign: builtIn },
           loaders: { multivariate: builtIn, lazy: builtIn },
-          content: { "split-traffic": builtIn, "date-windows": builtIn },
+          content: { "split-traffic": builtIn, calendar: builtIn },
           pages: { page: builtIn },
         },
       },
@@ -969,12 +969,12 @@ describe("namedRuleBlockOfChange", () => {
     expect(
       namedRuleBlockOfChange(block({ __resolveType: "split-traffic", a: 50 })),
     ).toBe("experiments");
-    expect(
-      namedRuleBlockOfChange(block({ __resolveType: "date-windows" })),
-    ).toBe("campaigns");
+    expect(namedRuleBlockOfChange(block({ __resolveType: "calendar" }))).toBe(
+      "campaigns",
+    );
     // Deleted in the draft: the published side still says what it was.
     expect(
-      namedRuleBlockOfChange(block(null, { __resolveType: "date-windows" })),
+      namedRuleBlockOfChange(block(null, { __resolveType: "calendar" })),
     ).toBe("campaigns");
   });
   it("leaves every other block, and pages, as they were", () => {

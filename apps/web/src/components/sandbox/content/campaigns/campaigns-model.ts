@@ -1,10 +1,10 @@
 /**
  * The Campaigns view's model (a Blocks v8 site): every campaign of the saved
- * block `campaigns` (type `date-windows`, name → one `{ start?, end? }`
+ * block `campaigns` (type `calendar`, name → one `{ start?, end? }`
  * window) in the draft, with its status at a moment, its uses and how it
  * compares with the published site, plus where its bar falls on a timeline.
- * Every date rule names a campaign, so this is the whole calendar of a v8
- * site. Pure, for the view and its tests.
+ * Every dated variant names a campaign (`campaign { name }`), so these are
+ * all the dates of a v8 site. Pure, for the view and its tests.
  */
 
 import {

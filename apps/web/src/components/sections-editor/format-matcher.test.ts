@@ -420,33 +420,33 @@ describe("formatMatcher", () => {
     test("names a campaign with its dates; the end is exclusive", () => {
       expect(
         formatMatcher(
-          { __resolveType: "date", campaign: "Black Friday" },
+          { __resolveType: "campaign", name: "Black Friday" },
           named,
         ),
       ).toBe("Campaign: Black Friday (Nov 27 – Dec 1)");
       expect(
-        formatMatcher({ __resolveType: "date", campaign: "Launch" }, named),
+        formatMatcher({ __resolveType: "campaign", name: "Launch" }, named),
       ).toBe("Campaign: Launch (from Mar 1)");
       expect(
-        formatMatcher({ __resolveType: "date", campaign: "Clearance" }, named),
+        formatMatcher({ __resolveType: "campaign", name: "Clearance" }, named),
       ).toBe("Campaign: Clearance (until Jan 31)");
     });
 
     test("names a campaign with no dates, or unknown, by its name", () => {
       expect(
-        formatMatcher({ __resolveType: "date", campaign: "Forever" }, named),
+        formatMatcher({ __resolveType: "campaign", name: "Forever" }, named),
       ).toBe("Campaign: Forever");
       expect(
-        formatMatcher({ __resolveType: "date", campaign: "Black Friday" }),
+        formatMatcher({ __resolveType: "campaign", name: "Black Friday" }),
       ).toBe("Campaign: Black Friday");
-      expect(formatMatcher({ __resolveType: "date", campaign: " " })).toBe(
+      expect(formatMatcher({ __resolveType: "campaign", name: " " })).toBe(
         "Campaign",
       );
     });
 
     test("shows the year and times outside the current year or whole days", () => {
       const label = formatMatcher(
-        { __resolveType: "date", campaign: "Old" },
+        { __resolveType: "campaign", name: "Old" },
         {
           experiments: {},
           campaigns: {
@@ -483,7 +483,7 @@ describe("formatMatcher", () => {
             __resolveType: "website/matchers/multi.ts",
             op: "AND",
             matchers: [
-              { __resolveType: "date", campaign: "Launch" },
+              { __resolveType: "campaign", name: "Launch" },
               { __resolveType: "experiment", name: "hero-headline" },
             ],
           },

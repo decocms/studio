@@ -1,8 +1,9 @@
 /**
- * Campaigns (the content browser's view on a Blocks v8 site, in place of the
- * Calendar): every campaign of the saved block `campaigns` in the draft, with
- * its window, its status and "Used by". Every date rule names a campaign, so
- * this is the whole calendar of the site; nothing is left out.
+ * Campaigns (the content browser's view on a Blocks v8 site, in place of v7's
+ * Calendar view): every campaign of the saved block `campaigns` (type
+ * `calendar`) in the draft, with its window, its status and "Used by". Every
+ * dated variant names a campaign (`campaign { name }`), so these are all the
+ * dates of the site; nothing is left out.
  *
  * List → detail: change the window, rename (every rule that names it is
  * rewritten in the same change), delete (never blocked, with an Undo; pages

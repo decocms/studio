@@ -40,7 +40,7 @@ const V8: LiveMeta = {
       matchers: {
         always: {},
         never: {},
-        date: {},
+        campaign: {},
         "website/matchers/always.ts": {},
         "website/matchers/never.ts": {},
       },

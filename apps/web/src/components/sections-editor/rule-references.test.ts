@@ -20,13 +20,13 @@ const v8Meta = {
     blocks: {
       matchers: {
         always: builtIn,
-        date: builtIn,
+        campaign: builtIn,
         experiment: builtIn,
         and: { $ref: "#/definitions/and", namespace: "site" },
         device: { $ref: "#/definitions/device", namespace: "site" },
       },
       loaders: { multivariate: builtIn, lazy: builtIn },
-      content: { "split-traffic": builtIn, "date-windows": builtIn },
+      content: { "split-traffic": builtIn, calendar: builtIn },
       pages: { page: builtIn },
       sections: { hero: { $ref: "#/definitions/hero", namespace: "site" } },
     },
@@ -35,7 +35,7 @@ const v8Meta = {
 };
 
 const experiment = (name: string) => ({ __resolveType: "experiment", name });
-const campaign = (name: string) => ({ __resolveType: "date", campaign: name });
+const campaign = (name: string) => ({ __resolveType: "campaign", name: name });
 const lazy = (value: unknown) => ({ __resolveType: "lazy", value });
 const always = () => ({ __resolveType: "always" });
 
@@ -551,7 +551,7 @@ describe("planNamedRuleRename", () => {
   const window = { start: "2026-11-27T00:00:00-03:00" };
   const decofile = {
     campaigns: {
-      __resolveType: "date-windows",
+      __resolveType: "calendar",
       "black-friday": window,
       launch: {},
     },

@@ -9,9 +9,9 @@ import type { LiveMeta } from "./resolve-schema";
  * - `experiments` (type `split-traffic`): name → whole percentage of visitors
  *   in the test (0 off, 100 everyone, anything between running). Rule
  *   `experiment { name }`.
- * - `campaigns` (type `date-windows`): name → one window `{ start?, end? }`,
- *   ISO date-times with an offset, `end` exclusive. Rule `date { campaign }`.
- *   Every date of a site lives here: a `date` rule always names a campaign.
+ * - `campaigns` (type `calendar`): name → one window `{ start?, end? }`,
+ *   ISO date-times with an offset, `end` exclusive. Rule `campaign { name }`.
+ *   Every date of a site lives here: a dated variant always names a campaign.
  *
  * Resolving either block gives the site name → true/false, never a share or a
  * date; a section can take the whole map as a prop (`{ "__resolveType":
@@ -45,9 +45,9 @@ const NAMED_RULES: Readonly<Record<NamedRuleKind, NamedRuleKindInfo>> = {
   campaigns: {
     kind: "campaigns",
     blockKey: "campaigns",
-    resolveType: "date-windows",
-    matcher: "date",
-    field: "campaign",
+    resolveType: "calendar",
+    matcher: "campaign",
+    field: "name",
   },
 };
 
@@ -86,8 +86,8 @@ const BUILT_IN_NAMESPACE = "deco";
  *   `@decocms/blocks` that has them, `deco schema` run since).
  * - `missing`: it lists neither, or only one of them (an older
  *   `@decocms/blocks`, a schema not regenerated yet, or a v7 site). An older
- *   v8 schema lists `date` (with inline `start`/`end`) but no `date-windows`:
- *   that is `missing` too.
+ *   v8 schema lists `date` (with inline `start`/`end`) but no `calendar` or
+ *   `campaign`: that is `missing` too.
  * - `replaced`: the site's block map declares one of the names itself, so the
  *   site's code, not the built-in, decides what they mean.
  */
@@ -259,7 +259,7 @@ export function canRenameExperiment(share: number | undefined): boolean {
 
 /**
  * The name a rule refers to, when it is a kind's rule with a string name
- * (`experiment { name }`, `date { campaign }`; an empty name included, so an
+ * (`experiment { name }`, `campaign { name }`; an empty name included, so an
  * unfinished rule is still found). A `date` rule written inline (`{ start,
  * end }`, from before campaigns) names nothing: it is not a campaign's use.
  */
@@ -273,7 +273,7 @@ export function namedRuleOf(
   return typeof name === "string" ? { kind, name } : null;
 }
 
-/** The rule that names `name`: `experiment { name }` or `date { campaign }`. */
+/** The rule that names `name`: `experiment { name }` or `campaign { name }`. */
 export function namedRule(
   kind: NamedRuleKind,
   name: string,
@@ -283,6 +283,12 @@ export function namedRule(
 }
 
 /**
+ * The rule type v8 had before campaigns: `date { start, end }`, with its own
+ * dates. It is no built-in any more; Studio still recognises it to flag it.
+ */
+const INLINE_DATE_RULE = "date";
+
+/**
  * A `date` rule still written with its own dates (`{ start, end }`), from
  * before campaigns. The runtime no longer runs it (it is false) and `deco
  * check` warns; the migration turns each into a campaign.
@@ -290,8 +296,7 @@ export function namedRule(
 export function isInlineDateRule(rule: unknown): boolean {
   return (
     isPlainRecord(rule) &&
-    rule.__resolveType === NAMED_RULES.campaigns.matcher &&
-    typeof rule[NAMED_RULES.campaigns.field] !== "string" &&
+    rule.__resolveType === INLINE_DATE_RULE &&
     (Object.hasOwn(rule, "start") || Object.hasOwn(rule, "end"))
   );
 }

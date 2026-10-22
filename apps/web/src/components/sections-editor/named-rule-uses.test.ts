@@ -30,9 +30,9 @@ const builtIn = { $ref: "#/definitions/x", namespace: "deco" };
 const meta = {
   manifest: {
     blocks: {
-      matchers: { always: builtIn, date: builtIn, experiment: builtIn },
+      matchers: { always: builtIn, campaign: builtIn, experiment: builtIn },
       loaders: { multivariate: builtIn, lazy: builtIn },
-      content: { "split-traffic": builtIn, "date-windows": builtIn },
+      content: { "split-traffic": builtIn, calendar: builtIn },
       pages: { page: builtIn },
     },
   },
@@ -40,7 +40,7 @@ const meta = {
 };
 
 const experiment = (name: string) => ({ __resolveType: "experiment", name });
-const campaign = (name: string) => ({ __resolveType: "date", campaign: name });
+const campaign = (name: string) => ({ __resolveType: "campaign", name: name });
 const lazy = (value: unknown) => ({ __resolveType: "lazy", value });
 
 const page = (name: string, path: string, rule: unknown) => ({
@@ -183,7 +183,7 @@ describe("namedRuleUses", () => {
   it("lists sections that read the whole block apart", () => {
     const decofile = {
       campaigns: {
-        __resolveType: "date-windows",
+        __resolveType: "calendar",
         "black-friday": { start: "2026-11-27T00:00:00-03:00" },
       },
       hero: {
@@ -262,7 +262,7 @@ describe("named rule edits", () => {
     ).toEqual({
       writes: {
         campaigns: {
-          __resolveType: "date-windows",
+          __resolveType: "calendar",
           bf: { start: "2026-11-27T00:00:00Z" },
         },
       },
@@ -308,7 +308,7 @@ describe("named rule edits", () => {
     const published = {
       experiments: { __resolveType: "split-traffic", a: 50 },
       campaigns: {
-        __resolveType: "date-windows",
+        __resolveType: "calendar",
         bf: { start: "2026-11-27T03:00:00.000Z" },
       },
     };
@@ -352,7 +352,7 @@ describe("a test or campaign that isn't there", () => {
   const decofile = {
     experiments: { __resolveType: "split-traffic", used: 50, free: 10 },
     campaigns: {
-      __resolveType: "date-windows",
+      __resolveType: "calendar",
       bf: { start: "2026-11-27T00:00:00Z" },
       spare: {},
     },
@@ -422,7 +422,7 @@ describe("a test or campaign that isn't there", () => {
     const draft = {
       ...decofile,
       experiments: { __resolveType: "split-traffic", free: 10 },
-      campaigns: { __resolveType: "date-windows" },
+      campaigns: { __resolveType: "calendar" },
     };
     const flagged = blocksUsingMissingNamedRules(draft, meta);
     expect([...flagged]).toEqual([

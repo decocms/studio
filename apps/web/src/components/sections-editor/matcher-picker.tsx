@@ -139,7 +139,7 @@ export function extractMatchers(meta: LiveMeta): MatcherEntry[] {
       if (target && Object.hasOwn(blockMap, target)) continue;
 
       const metadata = resolveBlockSchemaMetadata(resolveType, meta);
-      // A built-in's generated title is its bare name (`never`, `date`).
+      // A built-in's generated title is its bare name (`never`, `campaign`).
       const title =
         metadata.title && metadata.title !== resolveType
           ? metadata.title
@@ -218,7 +218,7 @@ export function MatcherPicker({
   };
   const t = useT();
   const namedKinds = named?.kinds ?? EMPTY_ARRAY;
-  // The named items stand in for the raw `experiment` and `date` rules.
+  // The named items stand in for the raw `experiment` and `campaign` rules.
   const hiddenMatchers = namedRuleMatchers(namedKinds);
   const listedMatchers =
     hiddenMatchers.size > 0

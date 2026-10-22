@@ -76,7 +76,10 @@ describe("extractMatchers", () => {
           device: { title: "Device", description: "By device" },
           always: { title: "always", description: "Always true" },
           never: { title: "never", description: "Always false: hides a block" },
-          date: { title: "date", description: "True from start until end" },
+          campaign: {
+            title: "campaign",
+            description: "True while the named campaign runs",
+          },
           "website/matchers/always.ts": { title: "website/matchers/always.ts" },
           "website/matchers/never.ts": {
             title: "website/matchers/never.ts",
@@ -93,7 +96,7 @@ describe("extractMatchers", () => {
     expect(extractMatchers(meta).map((m) => [m.resolveType, m.title])).toEqual([
       ["device", "Device"],
       ["never", "Never"],
-      ["date", "Date"],
+      ["campaign", "Campaign"],
     ]);
   });
 

@@ -25,7 +25,7 @@ const NONE = "__none__";
 /**
  * A section prop that reads the site's A/B tests or campaigns as a whole
  * (`Assignments`, `Record<string, boolean>`): the schema says `split-traffic`
- * or `date-windows` fits it, and the field saves the reference to the saved
+ * or `calendar` fits it, and the field saves the reference to the saved
  * block, `{ "__resolveType": "experiments" }` or `"campaigns"`. The section
  * then gets each test as on/off for the visitor, or each campaign as running
  * or not. A block that doesn't exist yet is saved empty first.
@@ -127,7 +127,7 @@ function NamedRuleBlockField({
 }
 
 /** The built-in types whose saved block a field can read as a whole. */
-const NAMED_RULE_BLOCK_TYPES = new Set(["split-traffic", "date-windows"]);
+const NAMED_RULE_BLOCK_TYPES = new Set(["split-traffic", "calendar"]);
 
 /**
  * Whether the schema lists a built-in a field can take as a whole. Cheap and

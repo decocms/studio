@@ -177,12 +177,12 @@ function formatExperiment(
       });
 }
 
-/** `date { campaign }`: the campaign's name and, when known, its dates. */
+/** `campaign { name }`: the campaign's name and, when known, its dates. */
 function formatCampaign(
   rule: Record<string, unknown>,
   named: NamedRuleValues | undefined,
 ): string {
-  const name = typeof rule.campaign === "string" ? rule.campaign.trim() : "";
+  const name = typeof rule.name === "string" ? rule.name.trim() : "";
   if (!name) return translate("sectionsEditor.formatMatcher.campaign");
   const window =
     named && Object.hasOwn(named.campaigns, name)
@@ -218,7 +218,8 @@ function formatRule(
   const rt = (rule.__resolveType as string) ?? "";
 
   // Next-major names the built-in matchers with short keys (`always`, `never`,
-  // `date`); `device` is the usual name of a site's own device matcher.
+  // `experiment`, `campaign`); `device` is the usual name of a site's own
+  // device matcher.
   const alwaysTypes = [
     "website/matchers/always.ts",
     "$live/matchers/MatchAlways.ts",
@@ -258,12 +259,13 @@ function formatRule(
     case "$live/matchers/MatchDate.ts":
       return formatDateRange(rule) ?? labelFromResolveType(rt);
 
-    // v8: a campaign by name. A rule still written with its own dates
-    // (before campaigns) keeps showing them.
+    // v8: a campaign by name.
+    case "campaign":
+      return formatCampaign(rule, named);
+
+    // v8 before campaigns: a `date` rule with its own dates keeps showing them.
     case "date":
-      return typeof rule.campaign === "string"
-        ? formatCampaign(rule, named)
-        : (formatDateRange(rule) ?? labelFromResolveType(rt));
+      return formatDateRange(rule) ?? labelFromResolveType(rt);
 
     case "experiment":
       return formatExperiment(rule, named);

@@ -662,9 +662,9 @@ describe("useCmsPublishActions: a discard is never blocked", () => {
   const meta = {
     manifest: {
       blocks: {
-        matchers: { always: builtIn, date: builtIn, experiment: builtIn },
+        matchers: { always: builtIn, campaign: builtIn, experiment: builtIn },
         loaders: { multivariate: builtIn, lazy: builtIn },
-        content: { "split-traffic": builtIn, "date-windows": builtIn },
+        content: { "split-traffic": builtIn, calendar: builtIn },
         pages: { page: builtIn },
       },
     },

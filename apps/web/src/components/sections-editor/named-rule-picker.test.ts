@@ -27,15 +27,15 @@ const V8_META = {
           $ref: "#/definitions/ZXhwZXJpbWVudA==",
           namespace: "deco",
         },
-        date: { $ref: "#/definitions/ZGF0ZQ==", namespace: "deco" },
+        campaign: { $ref: "#/definitions/Y2FtcGFpZ24=", namespace: "deco" },
       },
       content: {
         "split-traffic": {
           $ref: "#/definitions/c3BsaXQtdHJhZmZpYw==",
           namespace: "deco",
         },
-        "date-windows": {
-          $ref: "#/definitions/ZGF0ZS13aW5kb3dz",
+        calendar: {
+          $ref: "#/definitions/Y2FsZW5kYXI=",
           namespace: "deco",
         },
       },
@@ -57,7 +57,7 @@ const V7_META = {
 
 const experiments = { __resolveType: "split-traffic", "hero-test": 50 };
 const campaigns = {
-  __resolveType: "date-windows",
+  __resolveType: "calendar",
   "black-friday": {
     start: "2026-11-27T00:00:00-03:00",
     end: "2026-12-01T00:00:00-03:00",
@@ -109,7 +109,7 @@ describe("namedRulePickerKinds", () => {
 
   it("names the raw rules the items stand in for", () => {
     const kinds = namedRulePickerKinds(V8_META, {});
-    expect([...namedRuleMatchers(kinds)]).toEqual(["experiment", "date"]);
+    expect([...namedRuleMatchers(kinds)]).toEqual(["experiment", "campaign"]);
   });
 });
 
@@ -170,7 +170,7 @@ describe("new names and values", () => {
         end: "",
       }),
     ).toEqual({ start: "2026-11-27T00:00:00-03:00" });
-    expect(inlineDateWindow({ __resolveType: "date", campaign: "x" })).toBe(
+    expect(inlineDateWindow({ __resolveType: "campaign", name: "x" })).toBe(
       null,
     );
     expect(inlineDateWindow({ __resolveType: "always" })).toBeNull();
@@ -193,7 +193,7 @@ describe("planNamedRulePick", () => {
       planNamedRulePick({}, { kind: "campaigns", name: " black-friday " }),
     ).toEqual({
       ok: true,
-      rule: { __resolveType: "date", campaign: "black-friday" },
+      rule: { __resolveType: "campaign", name: "black-friday" },
       blockWrite: null,
     });
   });
@@ -227,10 +227,10 @@ describe("planNamedRulePick", () => {
       ),
     ).toEqual({
       ok: true,
-      rule: { __resolveType: "date", campaign: "Black Friday" },
+      rule: { __resolveType: "campaign", name: "Black Friday" },
       blockWrite: {
         blockKey: "campaigns",
-        block: { __resolveType: "date-windows", "Black Friday": window },
+        block: { __resolveType: "calendar", "Black Friday": window },
       },
     });
   });
@@ -278,7 +278,7 @@ describe("the rule editor's row", () => {
 
   it("says when the name isn't in the block", () => {
     expect(
-      namedRuleRowState({ __resolveType: "date", campaign: "gone" }, kinds),
+      namedRuleRowState({ __resolveType: "campaign", name: "gone" }, kinds),
     ).toMatchObject({ kind: "campaigns", name: "gone", missing: true });
   });
 
@@ -339,7 +339,7 @@ describe("a test or campaign named inside a rule", () => {
       missingNamedRuleWithin(
         {
           __resolveType: "lazy",
-          value: { __resolveType: "date", campaign: "x" },
+          value: { __resolveType: "campaign", name: "x" },
         },
         kinds,
         {},
@@ -385,10 +385,7 @@ describe("a section prop that reads a whole block", () => {
   const kinds = namedRulePickerKinds(V8_META, { experiments });
   const schema = {
     type: "block-ref",
-    anyOfRefs: [
-      { resolveType: "split-traffic" },
-      { resolveType: "date-windows" },
-    ],
+    anyOfRefs: [{ resolveType: "split-traffic" }, { resolveType: "calendar" }],
   };
 
   it("offers the kinds whose type fits, while the value is empty or such a reference", () => {
@@ -458,8 +455,8 @@ const PROPS_META = {
           $ref: "#/definitions/c3BsaXQtdHJhZmZpYw==",
           namespace: "deco",
         },
-        "date-windows": {
-          $ref: "#/definitions/ZGF0ZS13aW5kb3dz",
+        calendar: {
+          $ref: "#/definitions/Y2FsZW5kYXI=",
           namespace: "deco",
         },
       },
@@ -506,8 +503,8 @@ const PROPS_META = {
           },
         },
       },
-      ZGF0ZS13aW5kb3dz: {
-        title: "date-windows",
+      "Y2FsZW5kYXI=": {
+        title: "calendar",
         description:
           "Campaigns: each name with its start and end; resolves to whether each is running now. The type of the saved block campaigns",
         icon: "calendar-event",
@@ -535,8 +532,8 @@ const PROPS_META = {
         properties: {
           __resolveType: {
             type: "string",
-            enum: ["date-windows"],
-            default: "date-windows",
+            enum: ["calendar"],
+            default: "calendar",
           },
         },
       },
@@ -563,7 +560,7 @@ const PROPS_META = {
                 $ref: "#/definitions/c3BsaXQtdHJhZmZpYw==",
               },
               {
-                $ref: "#/definitions/ZGF0ZS13aW5kb3dz",
+                $ref: "#/definitions/Y2FsZW5kYXI=",
               },
             ],
             nullable: true,
@@ -580,7 +577,7 @@ const PROPS_META = {
                 title: "Inline data",
               },
               { $ref: "#/definitions/c3BsaXQtdHJhZmZpYw==" },
-              { $ref: "#/definitions/ZGF0ZS13aW5kb3dz" },
+              { $ref: "#/definitions/Y2FsZW5kYXI=" },
             ],
             nullable: true,
             title: "Campaigns",
