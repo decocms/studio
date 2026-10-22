@@ -30,7 +30,7 @@ const NAMED_RULE_ICON: Record<NamedRuleKind, string> = {
 
 /**
  * Where the site's tests and campaigns are managed: the Experiments tab and
- * the Campaigns view. The content browser provides it; without it (another
+ * the Calendar (campaigns) view. The content browser provides it; without it (another
  * surface) the rows show no link.
  */
 export interface NamedRuleViews {
@@ -537,7 +537,7 @@ export function NamedRuleRow({
   );
 }
 
-/** "Open Experiments" / "Open Campaigns", where the surface can go there. */
+/** "Open Experiments" / "Open Calendar", where the surface can go there. */
 export function NamedRuleViewsLink({ kind }: { kind: NamedRuleKind }) {
   const t = useT();
   const views = useNamedRuleViews();
@@ -550,7 +550,7 @@ export function NamedRuleViewsLink({ kind }: { kind: NamedRuleKind }) {
     >
       {kind === "experiments"
         ? t("sectionsEditor.namedRulePicker.openExperiments")
-        : t("sectionsEditor.namedRulePicker.openCampaigns")}
+        : t("sectionsEditor.namedRulePicker.openCalendar")}
       <ArrowUpRight className="size-3" />
     </button>
   );

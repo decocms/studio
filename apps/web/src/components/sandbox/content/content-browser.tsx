@@ -475,7 +475,7 @@ function ContentBrowserReady({
   );
   const { openPanel } = usePanelNavigate();
   // Where a variant's test or campaign is managed: the Experiments tab, and
-  // the Campaigns view.
+  // the Calendar (campaigns) view.
   const namedRuleViews: NamedRuleViews = {
     open: (kind) => {
       if (kind === "campaigns") {

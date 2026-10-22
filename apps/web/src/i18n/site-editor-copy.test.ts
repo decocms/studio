@@ -306,3 +306,29 @@ describe("the publish panel's button (PO decision)", () => {
     }
   });
 });
+
+describe("the campaigns view is called Calendar (v8)", () => {
+  test("every pointer to it uses the sidebar's name", () => {
+    for (const dict of [en, ptBR] as Record<string, string>[]) {
+      const name = dict["common.mainPanelTabs.calendar"];
+      expect(dict["sandbox.collectionsSidebar.campaigns"]).toBe(name);
+      expect(dict["sandbox.dateCampaigns.title"]).toBe(name);
+      expect(dict["sectionsEditor.namedRulePicker.openCalendar"]).toContain(
+        name,
+      );
+      expect(dict["sectionsEditor.namedRulePicker.campaignRowHint"]).toContain(
+        name,
+      );
+      // No string sends anyone to a "Campaigns" view any more.
+      for (const value of Object.values(dict)) {
+        expect(value).not.toMatch(/\bopen Campaigns\b|\babr[ae] Campanhas\b/i);
+      }
+    }
+    expect(en["sectionsEditor.namedRulePicker.campaignRowHint"]).toBe(
+      "To change its dates, open Calendar.",
+    );
+    expect(ptBR["sectionsEditor.namedRulePicker.campaignRowHint"]).toBe(
+      "Para mudar as datas, abra o Calendário.",
+    );
+  });
+});

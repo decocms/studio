@@ -115,11 +115,11 @@ export const sectionsEditor = {
   "sectionsEditor.namedRulePicker.createdHint":
     "Está salvo no seu rascunho e vai ao ar quando você publicar.",
   "sectionsEditor.namedRulePicker.openExperiments": "Abrir Experimentos",
-  "sectionsEditor.namedRulePicker.openCampaigns": "Abrir Campanhas",
+  "sectionsEditor.namedRulePicker.openCalendar": "Abrir Calendário",
   "sectionsEditor.namedRulePicker.testRowHint":
     "Para mudar quem vê, abra Experimentos.",
   "sectionsEditor.namedRulePicker.campaignRowHint":
-    "Para mudar as datas, abra Campanhas.",
+    "Para mudar as datas, abra o Calendário.",
   "sectionsEditor.namedRulePicker.missingTest":
     "Este teste não está nos seus testes A/B. Escolha outro, crie-o ou remova esta variante.",
   "sectionsEditor.namedRulePicker.missingCampaign":

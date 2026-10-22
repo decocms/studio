@@ -110,11 +110,11 @@ export const sectionsEditor = {
   "sectionsEditor.namedRulePicker.createdHint":
     "It's saved in your draft and goes live when you publish.",
   "sectionsEditor.namedRulePicker.openExperiments": "Open Experiments",
-  "sectionsEditor.namedRulePicker.openCampaigns": "Open Campaigns",
+  "sectionsEditor.namedRulePicker.openCalendar": "Open Calendar",
   "sectionsEditor.namedRulePicker.testRowHint":
     "To change who sees it, open Experiments.",
   "sectionsEditor.namedRulePicker.campaignRowHint":
-    "To change its dates, open Campaigns.",
+    "To change its dates, open Calendar.",
   "sectionsEditor.namedRulePicker.missingTest":
     "This test isn't in your A/B tests. Pick another, create it, or remove this variant.",
   "sectionsEditor.namedRulePicker.missingCampaign":
