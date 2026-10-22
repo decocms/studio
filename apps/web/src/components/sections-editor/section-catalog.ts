@@ -5,6 +5,7 @@ import {
   isSavedBlockResolveType,
 } from "./block-type-utils";
 import { isLazyResolveType } from "./section-lazy";
+import { isLegacyPageResolveType, LEGACY_PAGE_RESOLVE_TYPES } from "./page-types";
 import {
   resolveBlockSchemaMetadata,
   resolveSchema,
@@ -25,15 +26,8 @@ export interface SectionCatalogEntry {
   isSavedBlock: boolean;
 }
 
-const LIVE_PAGE_RESOLVE_TYPES = [
-  "website/pages/Page.tsx",
-  "$live/pages/LivePage.tsx",
-] as const;
-
-const PAGE_BLOCK_RESOLVE_TYPES = new Set<string>(LIVE_PAGE_RESOLVE_TYPES);
-
 /** Page block of current deco runtimes — what {@link findLivePageResolveType} falls back to without a manifest. */
-export const DEFAULT_LIVE_PAGE_RESOLVE_TYPE = LIVE_PAGE_RESOLVE_TYPES[0];
+export const DEFAULT_LIVE_PAGE_RESOLVE_TYPE = LEGACY_PAGE_RESOLVE_TYPES[0];
 
 /** Theme sections belong in site settings, not the page section picker. */
 const EXCLUDED_SECTION_RESOLVE_TYPES = new Set([
@@ -70,7 +64,7 @@ export function findLivePageResolveType(meta: LiveMeta): string {
   const blocks = meta.manifest?.blocks ?? {};
   for (const blockMap of Object.values(blocks)) {
     for (const resolveType of Object.keys(blockMap)) {
-      if (PAGE_BLOCK_RESOLVE_TYPES.has(resolveType)) {
+      if (isLegacyPageResolveType(resolveType)) {
         return resolveType;
       }
     }
@@ -90,11 +84,6 @@ export function declaresBuiltInPage(meta: LiveMeta | undefined): boolean {
   // Only a Blocks v8 site's schema (`isV8Schema`) declares it.
   if (!isV8Schema(meta)) return false;
   return Object.hasOwn(meta?.manifest?.blocks?.pages ?? {}, "page");
-}
-
-/** Whether a page type is one of the v7 (Fresh/Deno) page file names. */
-export function isLegacyPageResolveType(resolveType: string): boolean {
-  return PAGE_BLOCK_RESOLVE_TYPES.has(resolveType);
 }
 
 /**
@@ -265,7 +254,7 @@ export function listSavedSectionBlocks(
     const obj = val as Record<string, unknown>;
     const rt = obj.__resolveType;
     if (typeof rt !== "string") continue;
-    if (PAGE_BLOCK_RESOLVE_TYPES.has(rt)) continue;
+    if (isLegacyPageResolveType(rt)) continue;
     if (typeof obj.path === "string") continue;
     if (shouldSkipSectionResolveType(rt, meta)) continue;
 

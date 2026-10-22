@@ -1,8 +1,6 @@
 import type { LiveMeta } from "./resolve-schema";
-import {
-  findNewPageResolveType,
-  isLegacyPageResolveType,
-} from "./section-catalog";
+import { isLegacyPageResolveType } from "./page-types";
+import { findNewPageResolveType } from "./section-catalog";
 import { isNoSchemaMeta } from "./schemaless";
 import { defaultPageSeoResolveType } from "./seo-schema";
 
