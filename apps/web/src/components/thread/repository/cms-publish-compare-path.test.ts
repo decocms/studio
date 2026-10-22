@@ -4,6 +4,7 @@ import {
   canRenderCompare,
   compareDraftUrl,
   comparePageUrl,
+  comparePlaceholder,
   compareSectionUrl,
   compareUrl,
   initialComparePath,
@@ -367,5 +368,34 @@ describe("compareUrl", () => {
         })?.href,
       ).toBe(`${SITE}/sale`);
     }
+  });
+});
+
+describe("comparePlaceholder", () => {
+  test("a new page has no before, a removed page no after", () => {
+    expect(comparePlaceholder({ kind: "page", status: "new" })).toEqual({
+      before: "new",
+      after: null,
+    });
+    expect(comparePlaceholder({ kind: "page", status: "removed" })).toEqual({
+      before: null,
+      after: "removed",
+    });
+  });
+
+  test("a new or removed block renders the page on both sides", () => {
+    for (const status of ["new", "removed", "edited"] as const) {
+      expect(comparePlaceholder({ kind: "block", status })).toEqual({
+        before: null,
+        after: null,
+      });
+    }
+  });
+
+  test("a new or removed code file renders the page on both sides", () => {
+    expect(comparePlaceholder({ kind: "other", status: "new" })).toEqual({
+      before: null,
+      after: null,
+    });
   });
 });

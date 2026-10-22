@@ -173,3 +173,19 @@ export function canRenderCompare(
   if (previewServerUrl === null) return false;
   return kind !== "other" || draft?.kind === "sandbox";
 }
+
+/**
+ * What stands in for a side that has no page to render: a new page has no
+ * "before" and a removed page no "after". Only a page: a new or removed block
+ * (a saved section, the A/B tests, the campaigns) or code file changes a page
+ * that is there on both sides, so both sides render it.
+ */
+export function comparePlaceholder(
+  change: Pick<PublishChange, "kind" | "status">,
+): { before: "new" | null; after: "removed" | null } {
+  const page = change.kind === "page";
+  return {
+    before: page && change.status === "new" ? "new" : null,
+    after: page && change.status === "removed" ? "removed" : null,
+  };
+}

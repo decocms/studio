@@ -32,6 +32,7 @@ import {
   blockComparePath,
   canRenderCompare,
   compareDraftUrl,
+  comparePlaceholder,
   compareUrl,
   initialComparePath,
   isComparePathEditable,
@@ -175,9 +176,9 @@ export function PublishCompare({
       : null;
   })();
 
-  // A new or removed code file says nothing about whether the page existed.
+  const placeholder = comparePlaceholder(change);
   const beforePane =
-    change.status === "new" && change.kind !== "other" ? (
+    placeholder.before === "new" ? (
       <ComparePlaceholder
         icon={<Plus className="size-5 text-brand" />}
         title={t("thread.publishCompare.newTitle")}
@@ -193,7 +194,7 @@ export function PublishCompare({
     );
 
   const afterPane =
-    change.status === "removed" && change.kind !== "other" ? (
+    placeholder.after === "removed" ? (
       <ComparePlaceholder
         icon={<Trash01 className="size-5 text-destructive" />}
         title={t("thread.publishCompare.removedTitle")}
