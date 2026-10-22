@@ -47,7 +47,7 @@ export function CollapsibleRow({
           type="button"
           onClick={onToggle}
           aria-expanded={open}
-          className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 px-3 py-2.5 text-left text-sm transition-colors hover:bg-muted/50"
+          className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 px-3 py-2.5 text-left text-sm transition-colors hover:bg-accent"
         >
           {open ? (
             <ChevronDown size={14} className="shrink-0" />

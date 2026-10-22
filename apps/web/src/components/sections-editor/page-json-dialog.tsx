@@ -83,7 +83,7 @@ export function PageJsonDialog({
               variant="ghost"
               size="sm"
               onClick={handleCopy}
-              className="h-7 gap-1.5 text-xs"
+              className="text-xs"
             >
               {copied ? <CheckCircle size={12} /> : <Copy01 size={12} />}
               {copied

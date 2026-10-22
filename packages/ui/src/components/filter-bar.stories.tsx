@@ -10,7 +10,7 @@ const teamMembers: FilterBarUser[] = [
 ];
 
 const meta = {
-  title: "Components/FilterBar",
+  title: "Molecules/FilterBar",
   component: FilterBar,
   parameters: { layout: "padded" },
   args: {
@@ -36,12 +36,10 @@ function ControlledDemo({ initialFilters }: { initialFilters: Filter[] }) {
   );
 }
 
-/** Click "Add filter" to walk the column → operator → value flow. */
 export const Default: Story = {
   render: () => <ControlledDemo initialFilters={[]} />,
 };
 
-/** A realistic composition: text, owner and date filters. Click a chip to edit it, hover to reveal remove. */
 export const WithFilters: Story = {
   render: () => (
     <ControlledDemo
@@ -99,7 +97,7 @@ function CustomUserDemo() {
   );
 }
 
-/** `renderUserItem` customizes how users appear in chips and the picker. */
+/** `renderUserItem` sets how users show in chips and the picker. */
 export const CustomUserRendering: Story = {
   render: () => <CustomUserDemo />,
 };

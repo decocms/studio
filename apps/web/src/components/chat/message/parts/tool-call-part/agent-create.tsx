@@ -133,7 +133,7 @@ export function AgentCreatePart({ part, latency }: AgentCreatePartProps) {
         state="idle"
         trailing={<LatencyLabel latency={latency} />}
       />
-      <div className="mt-2 overflow-hidden rounded-xl border-[0.5px] border-border bg-card p-2.5">
+      <div className="mt-2 overflow-hidden surface p-2.5">
         <div
           ref={cardRef}
           className="relative overflow-hidden rounded-lg bg-accent/25 p-2"

@@ -204,7 +204,7 @@ export function TriggerCard({
 
   return (
     <>
-      <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg border border-border bg-background group">
+      <div className="flex items-center gap-2.5 px-3 py-2.5 surface group">
         {isCron ? (
           <Clock size={14} className="text-muted-foreground shrink-0" />
         ) : isJiraTransition ? (
@@ -233,7 +233,7 @@ export function TriggerCard({
                 if (e.key === "Escape") setCount(interval.count);
               }}
               disabled={isSaving}
-              className="w-12 text-center text-sm h-7 border border-border rounded-md bg-background px-1 focus:outline-none focus:ring-1 focus:ring-ring"
+              className="w-12 text-center text-sm h-7 border border-border rounded-md bg-background px-1 focus-ring"
             />
             <span className="text-sm">{unitLabel(interval.unit, count)}</span>
           </>
@@ -304,8 +304,8 @@ export function TriggerCard({
           {isCron && !interval && !isEditing && (
             <Button
               variant="ghost"
-              size="sm"
-              className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+              size="icon-sm"
+              className="opacity-0 group-hover:opacity-100 transition-opacity"
               aria-label={t("automations.triggerCard.editSchedule")}
               onClick={() => {
                 setEditValue(trigger.cron_expression ?? "");
@@ -318,8 +318,8 @@ export function TriggerCard({
           {isWebhook && (
             <Button
               variant="ghost"
-              size="sm"
-              className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+              size="icon-sm"
+              className="opacity-0 group-hover:opacity-100 transition-opacity"
               title={t("automations.triggerCard.rotateToken")}
               aria-label={t("automations.triggerCard.rotateToken")}
               onClick={() => setConfirmRotate(true)}
@@ -330,8 +330,8 @@ export function TriggerCard({
           {!readOnly && (
             <Button
               variant="ghost"
-              size="sm"
-              className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+              size="icon-sm"
+              className="opacity-0 group-hover:opacity-100 transition-opacity"
               aria-label={t("automations.triggerCard.removeStarter")}
               onClick={() => setConfirmDelete(true)}
             >
@@ -355,10 +355,7 @@ export function TriggerCard({
             <AlertDialogCancel>
               {t("automations.triggerCard.cancel")}
             </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleRemove}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
+            <AlertDialogAction onClick={handleRemove} variant="destructive">
               {t("automations.triggerCard.remove")}
             </AlertDialogAction>
           </AlertDialogFooter>

@@ -47,7 +47,7 @@ Configure the retry policy in your client:
 Inline code like \`ctx.access.check()\` renders with a subtle border.`;
 
 const meta = {
-  title: "Components/Markdown",
+  title: "Molecules/Markdown",
   component: Markdown,
   parameters: { layout: "padded" },
   args: {
@@ -58,7 +58,6 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** Headings, lists, blockquotes, links and rules — typical release-notes content. */
 export const Default: Story = {
   render: (args) => (
     <div className="w-[640px]">
@@ -67,7 +66,7 @@ export const Default: Story = {
   ),
 };
 
-/** GFM tables and fenced code blocks (via remark-gfm, always included). */
+/** GFM tables and code blocks. */
 export const TableAndCode: Story = {
   args: { children: tableAndCode },
   render: (args) => (

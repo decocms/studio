@@ -400,7 +400,7 @@ export function OrgSsoPage() {
             <AlertDialogAction
               onClick={handleDelete}
               disabled={deleteMutation.isPending}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              variant="destructive"
             >
               {t("settings.orgSso.removeButton")}
             </AlertDialogAction>

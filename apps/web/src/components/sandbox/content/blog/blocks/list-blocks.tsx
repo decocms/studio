@@ -250,12 +250,12 @@ export function StepsBlock({
 
 type Col = { title?: string; items?: string[] };
 
-function parseCol(value: string, fallbackTitle: string): Col {
+export function parseCol(value: string, fallbackTitle: string): Col {
   try {
     const parsed = JSON.parse(value || "{}");
     return {
       title: typeof parsed?.title === "string" ? parsed.title : fallbackTitle,
-      items: Array.isArray(parsed?.items) ? parsed.items : [],
+      items: Array.isArray(parsed?.items) ? parsed.items.map(str) : [],
     };
   } catch {
     return { title: fallbackTitle, items: [] };

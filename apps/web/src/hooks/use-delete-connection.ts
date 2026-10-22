@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { clearHtmlResourceCacheForConnection } from "@/lib/html-resource-persist";
 import { useStudioTools } from "@/lib/studio-tools";
 import { invalidateConnectionsCollection } from "@/lib/query-keys";
+import { useT } from "@/i18n/use-t";
 
 export type DeleteConnectionState =
   | { mode: "idle" }
@@ -27,6 +28,7 @@ export function useDeleteConnection({
   const { org } = useProjectContext();
   const queryClient = useQueryClient();
   const studio = useStudioTools();
+  const t = useT();
 
   const [deleteState, setDeleteState] = useState<DeleteConnectionState>({
     mode: "idle",
@@ -48,7 +50,7 @@ export function useDeleteConnection({
   const handleSuccess = (connectionId: string) => {
     invalidateConnections();
     evictUiResourceCache(connectionId);
-    toast.success("Connection deleted successfully");
+    toast.success(t("orgs.connections.connectionDeleted"));
     setDeleteState({ mode: "idle" });
     onSuccess?.();
   };
@@ -94,7 +96,9 @@ export function useDeleteConnection({
         // Not JSON — fall through to generic error toast
       }
 
-      toast.error(`Failed to delete connection: ${message}`);
+      toast.error(
+        t("orgs.connections.failedToDeleteConnection", { error: message }),
+      );
     }
   };
 
@@ -110,7 +114,9 @@ export function useDeleteConnection({
       handleSuccess(id);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      toast.error(`Failed to delete connection: ${message}`);
+      toast.error(
+        t("orgs.connections.failedToDeleteConnection", { error: message }),
+      );
     }
   };
 

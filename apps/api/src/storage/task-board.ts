@@ -198,12 +198,23 @@ export const TERMINAL_THREAD_STATUSES = new Set([
  * `repo` its legacy `owner/name` label (migration 204), so a card carrying
  * only the id is repo-backed too — read as repo-less, its run went to QA,
  * past the sweeper that finds a PR opened inside the sandbox by its branch.
+ *
+ * A Super Agent card whose used thread has a repository bound counts too: the
+ * run can bind it on the thread alone (the org's only repo, or `TASK_ADD_REPO`),
+ * leaving both columns empty. Only the Super Agent's, because the sweeper
+ * settles no other card.
  */
 export function isRepoBacked(item: {
   repo?: string | null;
   repositoryId?: string | null;
+  assigneeId?: string | null;
+  threads?: { hasMessages: boolean; hasPreview?: boolean }[];
 }): boolean {
-  return item.repo != null || item.repositoryId != null;
+  if (item.repo != null || item.repositoryId != null) return true;
+  return (
+    item.assigneeId === SUPER_AGENT_ASSIGNEE_ID &&
+    (item.threads ?? []).some((t) => t.hasMessages && t.hasPreview)
+  );
 }
 
 /**
@@ -228,7 +239,12 @@ export function shouldAdvanceToReview(
     status: string;
     repo?: string | null;
     repositoryId?: string | null;
-    threads: { status: string | null; hasMessages: boolean }[];
+    assigneeId?: string | null;
+    threads: {
+      status: string | null;
+      hasMessages: boolean;
+      hasPreview?: boolean;
+    }[];
   },
   /** Whether a PR is linked — a repo-backed task needs one to advance on finish. */
   hasPr = false,
@@ -1428,26 +1444,30 @@ export class TaskBoardStorage {
    * Fail every task-linked thread that no run can still be behind, in ONE
    * statement, and say which cards they were on.
    *
-   * `run_started_at IS NULL` is the discriminator (same as `isNeverStartedRun`):
-   * the run never began, so no pod owns it and DBOS cannot resume it. A run that
-   * DID begin belongs to the idle reaper.
+   * Two shapes, told apart by `run_started_at`:
+   * - never started (null): the dispatch never landed, so no pod owns it and
+   *   DBOS cannot resume it. Recorded as `abandoned`.
+   * - started, then silent past `staleBefore`: a live run heartbeats
+   *   `last_progress_at` and its own pod fails it after `RUN_IDLE_TIMEOUT_MS`
+   *   of silence, so this one's pod is gone (SIGKILL, node loss) and the
+   *   per-pod idle reaper died with it. Recorded as `stall`, the kind that
+   *   reaper writes.
    *
    * This exists as SQL on the board storage because the sweeper has to do it
-   * headlessly and for BOTH lanes. `recoverStalledTasks` already reaped these,
-   * but only on `TASK_BOARD_ITEM_LIST` (a human opening the board) and only for
-   * cards parked In Progress — so a REVIEWER thread whose dispatch never landed
-   * sat `in_progress` forever, and `reviewerHandledThisCycle` read it as a live
-   * review and never retried that reviewer. Three of them did exactly that in
-   * one burst.
+   * headlessly and for every lane. `recoverStalledTasks` only runs on
+   * `TASK_BOARD_ITEM_LIST`, only for cards parked In Progress, and only for
+   * never-started runs — so a REVIEWER thread whose dispatch never landed sat
+   * `in_progress` forever and blocked that reviewer's retry, and a run orphaned
+   * mid-stream kept its card (archived or not) showing "agent running".
    *
-   * Marking them `failed`/`abandoned` is what hands them to the reactions that
-   * already exist: a Super Agent thread to `reactToFailedTaskRun` (retry), a
-   * reviewer thread to the reviewer retry (a failed attempt is not a review).
+   * Marking them `failed` is what hands them to the reactions that already
+   * exist: a Super Agent thread to `reactToFailedTaskRun` (retry), a reviewer
+   * thread to the reviewer retry (a failed attempt is not a review).
    */
-  async failNeverStartedLinkedThreads(
+  async failAbandonedLinkedThreads(
     limit: number,
     staleBefore: Date,
-    reason: string,
+    reasons: { neverStarted: string; stalled: string },
   ): Promise<{ threadId: string; itemId: string; organizationId: string }[]> {
     const candidates = await this.db
       .selectFrom("threads as t")
@@ -1458,7 +1478,6 @@ export class TaskBoardStorage {
         "l.organization_id as organizationId",
       ])
       .where("t.status", "=", "in_progress")
-      .where("t.run_started_at", "is", null)
       .where((eb) =>
         eb.and([
           eb("t.updated_at", "<", staleBefore),
@@ -1478,8 +1497,9 @@ export class TaskBoardStorage {
       .updateTable("threads")
       .set({
         status: "failed",
-        failure_reason: reason,
-        failure_kind: "abandoned",
+        // SET reads the pre-update row, so these see the `run_started_at` cleared below.
+        failure_reason: sql<string>`case when run_started_at is null then ${reasons.neverStarted} else ${reasons.stalled} end`,
+        failure_kind: sql<string>`case when run_started_at is null then 'abandoned' else 'stall' end`,
         run_owner_pod: null,
         run_config: null,
         run_started_at: null,

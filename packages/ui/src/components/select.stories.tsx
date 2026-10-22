@@ -10,9 +10,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./select.tsx";
+import { Matrix } from "../foundations/kit.tsx";
 
 const meta = {
-  title: "Components/Select",
+  title: "Molecules/Select",
   component: Select,
 } satisfies Meta<typeof Select>;
 
@@ -149,5 +150,66 @@ export const WithDisabledItem: Story = {
         </SelectItem>
       </SelectContent>
     </Select>
+  ),
+};
+
+export const Styles: Story = {
+  render: () => (
+    <div className="flex flex-col gap-2">
+      {(["outline", "filled"] as const).map((variant) => (
+        <div key={variant} className="flex items-center gap-2">
+          {(["default", "sm", "xs"] as const).map((size) => (
+            <Select key={size} defaultValue="all">
+              <SelectTrigger variant={variant} size={size}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All projects</SelectItem>
+                <SelectItem value="site">Site</SelectItem>
+              </SelectContent>
+            </Select>
+          ))}
+        </div>
+      ))}
+    </div>
+  ),
+};
+
+export const States: Story = {
+  parameters: {
+    controls: { disable: true },
+    layout: "padded",
+    pseudo: {
+      hover: [".is-hover"],
+      focusVisible: [".is-focus"],
+      active: [".is-active"],
+    },
+  },
+  render: () => (
+    <Matrix
+      columns={["Default", "Hover", "Focus", "Placeholder", "Disabled"]}
+      rows={(["outline", "filled"] as const).flatMap((variant) =>
+        (["default", "sm", "xs"] as const).map((size) => ({
+          label: `${variant} · ${size === "default" ? 36 : size === "sm" ? 32 : 28}`,
+          cells: ["", "is-hover", "is-focus", "placeholder", "disabled"].map(
+            (state) => (
+              <Select
+                key={state}
+                defaultValue={state === "placeholder" ? undefined : "all"}
+                disabled={state === "disabled"}
+              >
+                <SelectTrigger variant={variant} size={size} className={state}>
+                  <SelectValue placeholder="Pick a project" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All projects</SelectItem>
+                  <SelectItem value="site">Site</SelectItem>
+                </SelectContent>
+              </Select>
+            ),
+          ),
+        })),
+      )}
+    />
   ),
 };

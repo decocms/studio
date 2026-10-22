@@ -144,7 +144,7 @@ export function ScheduleMeetingVisual({
     <div className="relative flex h-full w-full items-center justify-center p-10">
       {/* Bigger footprint (wide card + generous padding); content stays at its
           normal scale. */}
-      <div className="w-full max-w-[440px] overflow-hidden rounded-3xl border border-border bg-card card-shadow">
+      <div className="w-full max-w-[440px] overflow-hidden rounded-3xl border border-border bg-card shadow-edge">
         {/* Solid brand-green header band */}
         <div className="h-20" style={{ backgroundColor: GREEN_DARK }} />
 

@@ -76,10 +76,7 @@ export function PublishPolicyField<T extends FieldValues>({
                 onCommit();
               }}
             >
-              <SelectTrigger
-                id="publish-policy"
-                className="w-44 shrink-0 text-sm"
-              >
+              <SelectTrigger id="publish-policy" className="w-44 shrink-0">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="max-w-80">

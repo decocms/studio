@@ -3,7 +3,7 @@ import { ScrollArea, ScrollBar } from "./scroll-area.tsx";
 import { Separator } from "./separator.tsx";
 
 const meta = {
-  title: "Components/ScrollArea",
+  title: "Molecules/ScrollArea",
   component: ScrollArea,
 } satisfies Meta<typeof ScrollArea>;
 

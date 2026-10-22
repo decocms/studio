@@ -1,3 +1,4 @@
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   getGatewayClientId,
   stripToolNamespace,
@@ -117,21 +118,20 @@ export function NextActionChip() {
 
   return (
     <>
-      <button
+      <Button
         type="button"
+        variant="outline"
+        size="sm"
         onClick={handleClick}
-        className="group mt-3 flex items-center gap-2 self-start rounded-lg border border-border bg-background px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-border hover:bg-accent/40 hover:text-foreground"
+        className="group mt-3 self-start text-muted-foreground"
       >
-        <Stars02 size={12} className="shrink-0 text-special" />
+        <Stars02 className="size-3 shrink-0 text-special" />
         <span className="font-medium text-foreground/80">
           {t("chat.nextActionChip.next")}
         </span>
         <span className="truncate">{next.title}</span>
-        <ArrowRight
-          size={12}
-          className="shrink-0 transition-transform duration-150 group-hover:translate-x-0.5"
-        />
-      </button>
+        <ArrowRight className="size-3 shrink-0 transition-transform duration-150 group-hover:translate-x-0.5" />
+      </Button>
       <PromptArgsDialog
         prompt={dialogPrompt}
         setPrompt={(p) => setDialogPrompt(p)}

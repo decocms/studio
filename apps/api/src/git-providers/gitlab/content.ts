@@ -424,11 +424,13 @@ export class GitlabContentClient implements RepoContentClient {
         ? [{ name: row.name, author: row.commit?.author_name ?? null }]
         : [],
     );
-    const total = Number(res.headers.get("x-total"));
+    const totalHeader = res.headers.get("x-total");
+    const total = totalHeader === null ? null : Number(totalHeader);
     const nextPage = res.headers.get("x-next-page");
     return {
       branches,
-      totalCount: Number.isFinite(total) ? total : branches.length,
+      totalCount:
+        total !== null && Number.isFinite(total) ? total : branches.length,
       nextCursor: nextPage ? nextPage : null,
     };
   }

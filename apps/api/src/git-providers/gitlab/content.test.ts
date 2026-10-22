@@ -508,6 +508,24 @@ describe("GitlabContentClient's malformed-body handling", () => {
     ).rejects.toBeInstanceOf(GitProviderError);
   });
 
+  test("falls back to the page length when GitLab omits x-total", async () => {
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify([{ name: "main", commit: {} }]), {
+        status: 200,
+      })) as unknown as typeof fetch;
+
+    const client = new GitlabContentClient({
+      repo: { provider: "gitlab", host: "gitlab.com", path: "acme/site" },
+      tokenSource: {
+        kind: "oauth",
+        get: async () => ({ token: "t", kind: "oauth", expiresAt: null }),
+      },
+    });
+
+    const page = await client.searchBranches({ query: "main", limit: 10 });
+    expect(page.totalCount).toBe(1);
+  });
+
   test("degrades a well-formed but non-array branch-search body into a GitProviderError", async () => {
     globalThis.fetch = (async () =>
       new Response(JSON.stringify({ message: "not found" }), {

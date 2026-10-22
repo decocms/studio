@@ -341,7 +341,7 @@ function PageVariantRowPreview({
         editorRowClassName({
           tone: compact ? "default" : "variant",
           selected: true,
-          className: "cursor-grabbing shadow-lg ring-1 ring-border/60",
+          className: "cursor-grabbing shadow-lift",
         }),
       )}
     >
@@ -473,11 +473,10 @@ export function PageVariantTabs({
               <Button
                 type="button"
                 variant="ghost"
-                size="icon"
+                size="icon-xs"
                 aria-label={t(
                   "sectionsEditor.pageVariantTabs.addVariantAriaLabel",
                 )}
-                className="size-6"
                 onClick={onAdd}
               >
                 <Plus size={14} />

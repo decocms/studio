@@ -62,7 +62,7 @@ export function LinkPopover({ editor }: { editor: Editor }) {
       </ToolbarButton>
       {open && (
         <div
-          className="absolute left-0 top-full z-20 mt-1.5 flex w-64 items-center gap-0.5 rounded-md border bg-popover p-1 shadow-md"
+          className="absolute left-0 top-full z-20 mt-1.5 flex w-64 items-center gap-0.5 rounded-md bg-popover p-1 shadow-soft"
           onBlur={(e) => {
             if (!e.currentTarget.contains(e.relatedTarget)) setOpen(false);
           }}

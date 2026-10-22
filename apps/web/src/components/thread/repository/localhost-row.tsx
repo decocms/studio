@@ -77,7 +77,7 @@ export function LocalhostRow({
       ref={rowRef}
       className={cn(
         "flex rounded-lg",
-        selected ? "bg-accent" : "hover:bg-accent/60",
+        selected ? "bg-accent" : "hover:bg-accent",
       )}
     >
       <button

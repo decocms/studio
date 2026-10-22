@@ -104,6 +104,10 @@ export function VtexConfigForm({
               </FormLabel>
               <FormControl>
                 <PasswordInput
+                  showLabel={t("common.show")}
+                  hideLabel={t("common.hide")}
+                  copyLabel={t("common.copy")}
+                  copiedLabel={t("common.copied")}
                   placeholder={t(
                     "reportsOnboarding.vtexConfigForm.appKeyPlaceholder",
                   )}
@@ -126,6 +130,10 @@ export function VtexConfigForm({
               </FormLabel>
               <FormControl>
                 <PasswordInput
+                  showLabel={t("common.show")}
+                  hideLabel={t("common.hide")}
+                  copyLabel={t("common.copy")}
+                  copiedLabel={t("common.copied")}
                   placeholder={t(
                     "reportsOnboarding.vtexConfigForm.appTokenPlaceholder",
                   )}

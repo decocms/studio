@@ -15,7 +15,7 @@ import { Switch } from "./switch.tsx";
 import { Textarea } from "./textarea.tsx";
 
 const meta = {
-  title: "Components/Form",
+  title: "Molecules/Form",
   component: Form,
 } satisfies Meta<typeof Form>;
 

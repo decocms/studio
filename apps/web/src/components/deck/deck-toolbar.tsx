@@ -71,12 +71,7 @@ export function DeckToolbar({
       {editor.agentUpdated && (
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 gap-1 text-xs"
-              onClick={editor.reload}
-            >
+            <Button variant="outline" size="sm" onClick={editor.reload}>
               <RefreshCw01 size={12} />
               {t("deck.deckToolbar.agentUpdatedReload")}
             </Button>
@@ -228,7 +223,7 @@ export function DeckToolbar({
       <button
         type="button"
         onClick={() => window.open(absoluteUrl, "_blank", "noopener")}
-        className="flex min-w-0 flex-1 items-center rounded-lg px-2 py-1 text-left text-sm font-medium text-foreground transition-colors hover:bg-muted"
+        className="flex min-w-0 flex-1 items-center rounded-lg px-2 py-1 text-left text-sm font-medium text-foreground transition-colors hover:bg-accent"
         title={absoluteUrl}
       >
         {/* The name; the API URL stays in the hover title. */}

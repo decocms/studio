@@ -184,22 +184,22 @@ function MonitoringLogsTableContent({
             <TableHeader className="border-b-0 z-20">
               <TableRow className="h-9 hover:bg-transparent border-b border-border">
                 <TableHead className="w-5" />
-                <TableHead className="pr-2 md:pr-4 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
+                <TableHead className="pr-2 md:pr-4 font-normal text-meta">
                   {t("orgs.audit.toolConnection")}
                 </TableHead>
-                <TableHead className="w-36 md:w-44 px-2 md:px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
+                <TableHead className="w-36 md:w-44 px-2 md:px-3 font-normal text-meta">
                   {t("orgs.audit.agent")}
                 </TableHead>
-                <TableHead className="w-28 md:w-36 px-2 md:px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
+                <TableHead className="w-28 md:w-36 px-2 md:px-3 font-normal text-meta">
                   {t("orgs.audit.user")}
                 </TableHead>
-                <TableHead className="w-32 md:w-40 px-2 md:px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
+                <TableHead className="w-32 md:w-40 px-2 md:px-3 font-normal text-meta">
                   {t("orgs.audit.date")}
                 </TableHead>
-                <TableHead className="w-16 md:w-20 px-2 md:px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
+                <TableHead className="w-16 md:w-20 px-2 md:px-3 font-normal text-meta">
                   {t("orgs.audit.latency")}
                 </TableHead>
-                <TableHead className="w-16 md:w-24 px-2 md:px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide text-right pr-3 md:pr-5">
+                <TableHead className="w-16 md:w-24 px-2 md:px-3 font-normal text-meta text-right pr-3 md:pr-5">
                   {t("orgs.audit.status")}
                 </TableHead>
               </TableRow>
@@ -259,21 +259,21 @@ function MonitoringLogsTableContent({
                   </div>
                   <div className="flex items-center gap-0.5 shrink-0">
                     <Button
-                      size="icon"
+                      size="icon-sm"
                       variant="ghost"
                       onClick={selection.prev}
                       disabled={selection.index === 0}
-                      className="h-7 w-7 text-muted-foreground"
+                      className="text-muted-foreground"
                       aria-label={t("orgs.audit.previousEntry")}
                     >
                       <ChevronUp size={14} />
                     </Button>
                     <Button
-                      size="icon"
+                      size="icon-sm"
                       variant="ghost"
                       onClick={selection.next}
                       disabled={selection.index === filteredLogs.length - 1}
-                      className="h-7 w-7 text-muted-foreground"
+                      className="text-muted-foreground"
                       aria-label={t("orgs.audit.nextEntry")}
                     >
                       <ChevronDown size={14} />
@@ -312,7 +312,7 @@ function MonitoringLogsTableContent({
 function MonitoringLogsTableSkeleton() {
   return (
     <div className="flex-1 flex flex-col overflow-auto min-w-0">
-      <div className="mx-auto w-full max-w-[1200px] px-4 md:px-10 flex flex-col flex-1 min-h-0">
+      <div className="mx-auto w-full max-w-[1200px] px-4 md:px-8 flex flex-col flex-1 min-h-0">
         <Table className="w-full border-collapse">
           <TableHeader className="border-b-0 z-20">
             <TableRow className="h-9 hover:bg-transparent border-b border-border">
@@ -462,7 +462,7 @@ export function AuditTabContent({
 
   return (
     <div className="flex-1 flex flex-col overflow-auto min-w-0">
-      <div className="mx-auto w-full max-w-[1200px] px-4 md:px-10 flex flex-col flex-1 min-h-0">
+      <div className="mx-auto w-full max-w-[1200px] px-4 md:px-8 flex flex-col flex-1 min-h-0">
         <div className="flex-1 flex flex-col min-w-0">
           <MonitoringLogsTable
             connectionIds={connectionIds}
