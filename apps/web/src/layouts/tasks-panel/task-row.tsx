@@ -1,4 +1,5 @@
 import { cn } from "@decocms/ui/lib/utils.ts";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Archive, Zap } from "@untitledui/icons";
 import {
@@ -83,7 +84,7 @@ export function TaskRow({
         // the same right edge as the toolbar's search / new buttons.
         indented ? "-ml-4 pl-6" : "pl-[9px]",
         "focus-visible:outline-none focus-visible:inset-ring-2 focus-visible:inset-ring-ring/50",
-        isActive ? "bg-accent text-accent-foreground" : "hover:bg-accent/60",
+        isActive ? "bg-accent text-accent-foreground" : "hover:bg-accent",
       )}
     >
       {showAgentIcon && !isToolCallRun && (
@@ -109,7 +110,7 @@ export function TaskRow({
         {task.updated_at && (
           <div
             className={cn(
-              "flex items-center gap-1 text-[11px] min-w-0",
+              "flex items-center gap-1 text-2xs min-w-0",
               isActive
                 ? "text-accent-foreground/70"
                 : "text-muted-foreground/60",
@@ -157,17 +158,18 @@ export function TaskRow({
         {onArchive && (
           <Tooltip>
             <TooltipTrigger asChild>
-              <button
-                type="button"
+              <Button
+                variant="ghost"
+                size="icon"
                 aria-label={t("tasksPanel.taskRow.archiveTask")}
                 onClick={(e) => {
                   e.stopPropagation();
                   onArchive();
                 }}
-                className="[grid-area:slot] opacity-0 pointer-events-none group-hover/row:opacity-100 group-hover/row:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto transition-opacity flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                className="[grid-area:slot] opacity-0 pointer-events-none group-hover/row:opacity-100 group-hover/row:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto text-muted-foreground"
               >
-                <Archive size={14} />
-              </button>
+                <Archive className="size-3.5" />
+              </Button>
             </TooltipTrigger>
             <TooltipContent side="right">
               {t("tasksPanel.taskRow.archive")}

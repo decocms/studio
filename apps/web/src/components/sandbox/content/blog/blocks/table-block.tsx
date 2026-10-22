@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Plus, Trash01 } from "@untitledui/icons";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { useT } from "@/i18n/use-t.ts";
 import type { PreviewProxyRef } from "@/components/sections-editor/preview-fetch-url";
 import { InlineRichCell } from "./inline-rich-cell";
@@ -188,16 +189,18 @@ export function TableBlock({
                 ))}
                 <td className="w-8 text-center align-middle">
                   {displayBody.length > 1 && (
-                    <button
+                    <Button
+                      variant="ghost-destructive"
+                      size="icon-xs"
                       type="button"
                       aria-label={t("sandbox.tableBlock.removeRow", {
                         n: r + 1,
                       })}
                       onClick={() => removeRow(r)}
-                      className="flex h-6 w-6 items-center justify-center text-muted-foreground/60 opacity-0 transition-opacity hover:text-destructive group-hover/item:opacity-100 cursor-pointer rounded-lg"
+                      className="opacity-0 transition-opacity group-hover/item:opacity-100"
                     >
-                      <Trash01 size={13} />
-                    </button>
+                      <Trash01 className="size-3.25" />
+                    </Button>
                   )}
                 </td>
               </tr>

@@ -151,13 +151,12 @@ function VirtualMCPPopoverContentInner({
             placeholder={t("chat.selectVirtualMcp.searchPlaceholder")}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="flex-1 h-8 text-sm border-0 focus-visible:ring-0 focus-visible:ring-offset-0 shadow-none p-0"
+            className="flex-1 h-8 text-sm border-0 shadow-none p-0"
           />
           <Button
             onClick={createVirtualMCP}
             variant="outline"
-            size="sm"
-            className="h-8 px-3 text-sm font-medium shrink-0"
+            className="shrink-0"
             disabled={isCreating}
           >
             {isCreating
@@ -183,7 +182,7 @@ function VirtualMCPPopoverContentInner({
                     handleSelect(virtualMcp.id);
                   }
                 }}
-                className="outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-xl"
+                className="focus-ring rounded-xl"
               >
                 <VirtualMCPItemContent
                   virtualMcp={virtualMcp}

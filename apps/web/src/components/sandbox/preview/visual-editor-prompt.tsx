@@ -122,7 +122,7 @@ export function VisualEditorPrompt({
       }}
     >
       <form
-        className="pointer-events-auto flex w-full items-center gap-1.5 rounded-xl border border-border bg-background/95 px-3 py-1.5 shadow-lg backdrop-blur"
+        className="pointer-events-auto flex w-full items-center gap-1.5 rounded-xl glass px-3 py-1.5"
         onSubmit={(e) => {
           e.preventDefault();
           void handleSend();

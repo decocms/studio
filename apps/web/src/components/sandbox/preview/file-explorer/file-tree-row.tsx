@@ -55,7 +55,7 @@ export function FileTreeRow({
         <button
           type="button"
           className={cn(
-            "flex w-full items-center gap-1.5 px-2 py-1.5 text-left text-[13px] hover:bg-accent transition-colors",
+            "flex w-full items-center gap-1.5 px-2 py-1.5 text-left text-sm hover:bg-accent transition-colors",
             isSelected && "bg-accent",
           )}
           style={{ paddingLeft: `${depth * 14 + 8}px` }}

@@ -2,6 +2,7 @@ import { Copy01, DotsGrid, Trash01 } from "@untitledui/icons";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { cn } from "@decocms/ui/lib/utils.ts";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
 import type { SandboxConfig } from "@/components/sections-editor/fields/field-props";
 import type { ReferencedBlockSaveFn } from "@/components/sections-editor/save-referenced-block";
@@ -59,36 +60,38 @@ export function BlockRow({
         transition,
       }}
       className={cn(
-        "group/row relative rounded-md py-1.5 pl-12 pr-2 transition-colors hover:bg-muted/40",
+        "group/row relative rounded-md py-1.5 pl-12 pr-2 transition-colors hover:bg-accent",
         isDragging && "opacity-50",
       )}
     >
       <button
         type="button"
         aria-label={t("sandbox.blockRow.dragToReorder")}
-        className="absolute left-1 top-1.5 flex h-6 w-6 cursor-grab items-center justify-center text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground active:cursor-grabbing group-hover/row:opacity-100 rounded-lg"
+        className="absolute left-1 top-1.5 flex h-6 w-6 cursor-grab items-center justify-center text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground active:cursor-grabbing group-hover/row:opacity-100 rounded-lg"
         {...attributes}
         {...listeners}
       >
         <DotsGrid size={14} />
       </button>
       <div className="absolute right-1 top-1 z-10 flex flex-row gap-0.5 rounded-md bg-background/80 opacity-0 backdrop-blur-sm transition-opacity group-hover/row:opacity-100">
-        <button
+        <Button
+          variant="ghost"
+          size="icon-xs"
           type="button"
           aria-label={t("sandbox.blockRow.duplicateBlock")}
           onClick={onDuplicate}
-          className="flex h-6 w-6 items-center justify-center text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer rounded-lg"
         >
-          <Copy01 size={14} />
-        </button>
-        <button
+          <Copy01 className="size-3.5" />
+        </Button>
+        <Button
+          variant="ghost-destructive"
+          size="icon-xs"
           type="button"
           aria-label={t("sandbox.blockRow.deleteBlock")}
           onClick={onDelete}
-          className="flex h-6 w-6 items-center justify-center text-muted-foreground hover:bg-muted hover:text-destructive cursor-pointer rounded-lg"
         >
-          <Trash01 size={14} />
-        </button>
+          <Trash01 className="size-3.5" />
+        </Button>
       </div>
       <BlockEditor
         block={block}

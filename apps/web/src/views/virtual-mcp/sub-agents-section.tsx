@@ -145,7 +145,7 @@ export function SubAgentsSection({
             selectedAgents.map((agent) => (
               <div
                 key={agent.id}
-                className="flex items-center gap-3 px-4 py-3 rounded-xl border bg-background"
+                className="flex items-center gap-3 px-4 py-3 surface"
               >
                 <IntegrationIcon
                   icon={agent.icon}
@@ -174,7 +174,7 @@ export function SubAgentsSection({
             <button
               type="button"
               onClick={() => setPickerOpen(true)}
-              className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-dashed border-border hover:bg-accent/50 transition-colors w-full text-left cursor-pointer"
+              className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-dashed border-border hover:bg-accent transition-colors w-full text-left cursor-pointer"
             >
               <div className="flex items-center justify-center size-8 rounded-md text-muted-foreground/75 border border-dashed border-border shrink-0">
                 <Plus size={16} />
@@ -242,7 +242,7 @@ function SubAgentsPickerDialog({
                 key={agent.id}
                 type="button"
                 onClick={() => onToggle(agent.id)}
-                className="flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-accent/50 transition-colors cursor-pointer w-full text-left"
+                className="flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-accent transition-colors cursor-pointer w-full text-left"
               >
                 <Checkbox
                   checked={selectedIds.includes(agent.id)}

@@ -431,7 +431,7 @@ function SetupForm({
           description={t("routes.onboarding.setupDescription")}
         />
 
-        <div className="rounded-xl card-shadow bg-background dark:bg-input/30 divide-y divide-border">
+        <div className="surface divide-y divide-border">
           <div className="flex items-center justify-between gap-4 p-4">
             <div className="space-y-0.5">
               <p className="text-sm font-medium">

@@ -73,7 +73,7 @@ export function RichTextColorControl({
       {open && (
         <div
           tabIndex={-1}
-          className="absolute left-0 top-full z-20 mt-1.5 flex w-56 flex-col gap-2 rounded-[var(--studio-surface-radius,var(--radius-md))] border bg-popover p-2 shadow-md"
+          className="absolute left-0 top-full z-20 mt-1.5 flex w-56 flex-col gap-2 rounded-[var(--studio-surface-radius,var(--radius-md))] bg-popover p-2 shadow-soft"
           onBlur={(e) => {
             // Close when focus leaves the popover entirely (toolbar buttons
             // preventDefault on mousedown, so they never steal focus).
@@ -115,7 +115,7 @@ export function RichTextColorControl({
               type="button"
               onMouseDown={(e) => e.preventDefault()}
               onClick={clearColor}
-              className="rounded-[var(--studio-control-radius,var(--radius))] px-2 py-1 text-xs text-muted-foreground transition-colors cursor-pointer hover:bg-muted hover:text-foreground"
+              className="rounded-[var(--studio-control-radius,var(--radius))] px-2 py-1 text-xs text-muted-foreground transition-colors cursor-pointer hover:bg-accent hover:text-foreground"
             >
               {t("sectionsEditor.richTextColorControl.defaultLabel")}
             </button>

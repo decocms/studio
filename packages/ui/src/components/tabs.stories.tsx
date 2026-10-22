@@ -1,9 +1,10 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { File02, Settings01 } from "@untitledui/icons";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./tabs.tsx";
+import { Matrix } from "../foundations/kit.tsx";
 
 const meta = {
-  title: "Components/Tabs",
+  title: "Molecules/Tabs",
   component: Tabs,
   args: {
     variant: "pill",
@@ -101,5 +102,38 @@ export const Disabled: Story = {
         Advanced settings require an admin role.
       </TabsContent>
     </Tabs>
+  ),
+};
+
+export const States: Story = {
+  parameters: {
+    controls: { disable: true },
+    layout: "padded",
+    pseudo: {
+      hover: [".is-hover"],
+      focusVisible: [".is-focus"],
+      active: [".is-active"],
+    },
+  },
+  render: () => (
+    <Matrix
+      columns={["Default", "Hover on Code", "Focus on Code"]}
+      rows={[
+        {
+          label: "Tabs",
+          cells: ["", "is-hover", "is-focus"].map((state) => (
+            <Tabs key={state} defaultValue="preview">
+              <TabsList>
+                <TabsTrigger value="preview">Preview</TabsTrigger>
+                <TabsTrigger value="code" className={state}>
+                  Code
+                </TabsTrigger>
+                <TabsTrigger value="content">Content</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          )),
+        },
+      ]}
+    />
   ),
 };

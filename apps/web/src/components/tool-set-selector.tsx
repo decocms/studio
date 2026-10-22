@@ -58,7 +58,7 @@ function ConnectionItem({
     <div
       className={cn(
         "flex items-center gap-3 p-2 rounded-lg transition-colors will-change-auto",
-        isSelected ? "bg-accent/50" : "hover:bg-muted/50",
+        isSelected ? "bg-accent/50" : "hover:bg-accent",
       )}
     >
       <div
@@ -102,7 +102,7 @@ interface ToolItemProps {
 function ToolItem({ connectionId, tool, isSelected, onToggle }: ToolItemProps) {
   return (
     <label
-      className="flex items-center gap-3 p-3 rounded-lg hover:bg-muted/50 cursor-pointer group will-change-auto"
+      className="flex items-center gap-3 p-3 rounded-lg hover:bg-accent cursor-pointer group will-change-auto"
       htmlFor={`tool-${connectionId}-${tool.name}`}
     >
       <div className="flex-1 min-w-0">
@@ -483,9 +483,9 @@ export function ToolSetSelector({
             <div className="md:hidden border-b border-border p-4 flex items-center gap-3">
               <Button
                 variant="ghost"
-                size="sm"
+                size="icon"
                 onClick={handleMobileBack}
-                className="h-8 w-8 p-0 shrink-0"
+                className="shrink-0"
               >
                 <ArrowLeft size={20} />
               </Button>

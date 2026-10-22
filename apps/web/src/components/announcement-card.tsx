@@ -38,7 +38,7 @@ export function AnnouncementCard({
       aria-label={ariaLabel}
       data-slot="announcement-card"
       data-tone={tone}
-      className="relative w-full overflow-hidden rounded-lg border border-border bg-background shadow-lg animate-in fade-in slide-in-from-bottom-2 duration-300"
+      className="relative w-full overflow-hidden rounded-lg bg-popover shadow-soft animate-in fade-in slide-in-from-bottom-2 duration-300"
     >
       {tone === "system" && <div className="h-0.5 bg-special" />}
 

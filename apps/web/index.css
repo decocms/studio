@@ -113,73 +113,6 @@
 }
 
 @layer utilities {
-  /* A card whose contents are cached and being revalidated in the background:
-     its border breathes instead of the whole card blanking to a skeleton.
-     Recolours the element's own border, so the resting card and the
-     revalidating one keep the same edge. */
-  .revalidating-ring {
-    animation: revalidating-ring-pulse 1.6s ease-in-out infinite;
-  }
-
-  @keyframes revalidating-ring-pulse {
-    0%,
-    100% {
-      border-color: var(--color-border);
-    }
-    50% {
-      border-color: var(--color-ring);
-    }
-  }
-
-  /* Motion is the whole signal here, so with it suppressed keep a static ring
-     rather than dropping the "still loading" cue entirely. */
-  @media (prefers-reduced-motion: reduce) {
-    .revalidating-ring {
-      animation: none;
-      border-color: var(--color-ring);
-    }
-  }
-
-  .shimmer {
-    background-image: linear-gradient(
-      90deg,
-      currentColor 0%,
-      currentColor 30%,
-      oklch(from currentColor calc(l + 0.2) c h / 0.5) 50%,
-      currentColor 70%,
-      currentColor 100%
-    ) !important;
-    background-size: 200% 100% !important;
-    background-clip: text !important;
-    -webkit-background-clip: text !important;
-    -webkit-text-fill-color: transparent !important;
-    animation: shimmer-animation 3s linear infinite !important;
-  }
-
-  @keyframes shimmer-animation {
-    0% {
-      background-position: 200% 0;
-    }
-    100% {
-      background-position: -200% 0;
-    }
-  }
-
-  @keyframes grid-ripple {
-    0% {
-      background-color: transparent;
-    }
-    10% {
-      background-color: var(--cell-color);
-    }
-    75% {
-      background-color: transparent;
-    }
-    100% {
-      background-color: transparent;
-    }
-  }
-
   @keyframes slideUpFade {
     0% {
       opacity: 0;
@@ -188,22 +121,6 @@
     100% {
       opacity: 1;
       transform: translateY(0);
-    }
-  }
-
-  /* Per-word fade-in for streamed assistant text (see markdown.tsx AnimatedText).
-     Opacity-only so layout never shifts; runs once on mount. Tune the duration
-     to taste (lower = snappier). */
-  .stream-word {
-    animation: streamWordIn 0.5s ease-out both;
-  }
-
-  @keyframes streamWordIn {
-    from {
-      opacity: 0;
-    }
-    to {
-      opacity: 1;
     }
   }
 }

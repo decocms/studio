@@ -29,6 +29,12 @@ describe("RegexRedactor.redactString (single-pass)", () => {
     expect(out).toBe("[REDACTED:email] and [REDACTED:ssn]");
   });
 
+  it("redacts an Authorization: Bearer header without a colon after the token keyword", () => {
+    expect(
+      r.redactString("Authorization: Bearer abcdefghijklmnopqrstuvwxyz012345"),
+    ).toBe("Authorization: [REDACTED:api_key]");
+  });
+
   it("leaves clean text untouched", () => {
     expect(r.redactString("nothing sensitive here")).toBe(
       "nothing sensitive here",

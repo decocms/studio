@@ -123,7 +123,7 @@ export function ConnectionCapabilities({
 
   if (totalItems === 0) {
     return (
-      <div className="rounded-xl border border-border bg-card p-5">
+      <div className="surface p-5">
         <h3 className="text-sm font-semibold text-foreground mb-1">
           {t("details.connectionCapabilities.capabilities")}
         </h3>
@@ -135,7 +135,7 @@ export function ConnectionCapabilities({
   }
 
   return (
-    <div className="rounded-xl border border-border bg-card overflow-hidden">
+    <div className="surface overflow-hidden">
       <Tabs defaultValue="tools" variant="underline">
         <div className="px-5 flex items-center justify-between border-b border-border">
           <TabsList variant="underline" className="gap-1">
@@ -165,7 +165,7 @@ export function ConnectionCapabilities({
                 <button
                   key={tool.name}
                   type="button"
-                  className="w-full flex items-start gap-3 px-5 py-3 text-left hover:bg-muted/40 transition-colors cursor-pointer"
+                  className="w-full flex items-start gap-3 px-5 py-3 text-left hover:bg-accent transition-colors cursor-pointer"
                   onClick={() => openTool(tool.name)}
                 >
                   <div className="mt-0.5 shrink-0 size-7 rounded-md bg-muted flex items-center justify-center">

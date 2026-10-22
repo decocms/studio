@@ -348,9 +348,9 @@ export function RepositoryPicker({
             <div className="flex items-center h-12 border-b border-border px-4 pr-12 gap-3 shrink-0">
               {account ? (
                 <Button
-                  size="icon"
+                  size="icon-xs"
                   variant="ghost"
-                  className="size-6 -ml-1"
+                  className="-ml-1"
                   disabled={pendingPath !== null}
                   onClick={() => setAccount(null)}
                   aria-label={t("common.repositoryPicker.back")}

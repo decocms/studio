@@ -1,78 +1,63 @@
-/* oxlint-disable no-explicit-any */
 import { useState } from "react";
-import { Button } from "./button.tsx";
-import { Input } from "./input.tsx";
-import { cn } from "../lib/utils.ts";
-import { Eye, EyeOff, Check, Copy01 } from "@untitledui/icons";
+import type * as React from "react";
+import { Check, Copy01, Eye, EyeOff } from "@untitledui/icons";
 
-interface PasswordInputProps {
-  value?: string;
-  onChange?: (e: any) => void;
-  placeholder?: string;
-  className?: string;
-  [key: string]: any;
-}
+import { IconButton } from "./icon-button.tsx";
+import { InputGroup, InputGroupInput } from "./input.tsx";
 
 function PasswordInput({
-  value,
-  onChange,
-  placeholder,
   className,
+  value,
+  showLabel = "Show",
+  hideLabel = "Hide",
+  copyLabel = "Copy",
+  copiedLabel = "Copied",
   ...props
-}: PasswordInputProps) {
-  const [showPassword, setShowPassword] = useState(false);
-  const [copySuccess, setCopySuccess] = useState(false);
+}: Omit<React.ComponentProps<"input">, "type"> & {
+  /** Button names, translated by the caller. */
+  showLabel?: string;
+  hideLabel?: string;
+  copyLabel?: string;
+  copiedLabel?: string;
+}) {
+  const [visible, setVisible] = useState(false);
+  const [copied, setCopied] = useState(false);
 
-  const handleCopy = async () => {
-    if (value) {
-      try {
-        await navigator.clipboard.writeText(value);
-        setCopySuccess(true);
-        setTimeout(() => setCopySuccess(false), 2000);
-      } catch (err) {
-        console.error("Failed to copy text: ", err);
-      }
-    }
-  };
-
-  const togglePasswordVisibility = () => {
-    setShowPassword(!showPassword);
+  const copy = async () => {
+    if (typeof value !== "string" || !value) return;
+    // Denied on insecure origins or without permission; the label just stays.
+    const ok = await navigator.clipboard.writeText(value).then(
+      () => true,
+      () => false,
+    );
+    if (!ok) return;
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   return (
-    <div className="relative">
-      <Input
-        type={showPassword ? "text" : "password"}
+    <InputGroup className={className}>
+      <InputGroupInput
+        type={visible ? "text" : "password"}
         value={value}
-        onChange={onChange}
-        placeholder={placeholder}
-        className={cn("pr-20", className)}
         {...props}
       />
-      <div className="absolute right-1 top-1 flex items-center gap-1 h-8">
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="h-8 w-8 p-0"
-          onClick={togglePasswordVisibility}
-          title={showPassword ? "Hide password" : "Show password"}
-        >
-          {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="h-8 w-8 p-0"
-          onClick={handleCopy}
-          disabled={!value}
-          title={copySuccess ? "Copied!" : "Copy token"}
-        >
-          {copySuccess ? <Check size={16} /> : <Copy01 size={16} />}
-        </Button>
-      </div>
-    </div>
+      <IconButton
+        type="button"
+        label={visible ? hideLabel : showLabel}
+        onClick={() => setVisible(!visible)}
+      >
+        {visible ? <EyeOff /> : <Eye />}
+      </IconButton>
+      <IconButton
+        type="button"
+        label={copied ? copiedLabel : copyLabel}
+        onClick={copy}
+        disabled={!value}
+      >
+        {copied ? <Check /> : <Copy01 />}
+      </IconButton>
+    </InputGroup>
   );
 }
 

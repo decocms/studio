@@ -501,7 +501,7 @@ function AssetCard({
             }}
           />
         </button>
-        <span className="pointer-events-none absolute left-1.5 top-1.5 rounded bg-background/80 px-1.5 py-0.5 text-[10px] font-medium uppercase text-foreground opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100">
+        <span className="pointer-events-none absolute left-1.5 top-1.5 rounded bg-background/80 px-1.5 py-0.5 text-2xs font-medium uppercase text-foreground opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100">
           {ext}
         </span>
         <div className="absolute right-1.5 top-1.5 opacity-0 transition-opacity group-hover:opacity-100">
@@ -515,7 +515,7 @@ function AssetCard({
   }
 
   return (
-    <div className="group flex items-center gap-3 px-3 py-2 transition hover:bg-muted/50">
+    <div className="group flex items-center gap-3 px-3 py-2 transition hover:bg-accent">
       <button
         type="button"
         onClick={() => onSelect(item.publicUrl)}
@@ -534,7 +534,7 @@ function AssetCard({
             {item.key}
           </p>
         </div>
-        <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase text-muted-foreground">
+        <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-2xs font-medium uppercase text-muted-foreground">
           {ext}
         </span>
         <span className="shrink-0 text-xs text-muted-foreground">
@@ -574,8 +574,8 @@ function AssetCardMenu({
         <Button
           type="button"
           variant="ghost"
-          size="icon"
-          className="size-7 bg-background/80 backdrop-blur-sm"
+          size="icon-sm"
+          className="bg-background/80 backdrop-blur-sm"
           onClick={(e) => e.stopPropagation()}
           aria-label={t("filePicker.filePickerDialog.assetActions")}
         >

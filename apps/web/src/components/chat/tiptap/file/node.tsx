@@ -86,7 +86,7 @@ function FileNodeView(props: NodeViewProps) {
         "cursor-default select-none",
         "text-xs font-light",
         "bg-muted text-muted-foreground",
-        isSelected && "outline-2 outline-blue-300 outline-offset-0",
+        isSelected && "outline-2 outline-ring outline-offset-0",
       )}
     >
       <Tooltip>

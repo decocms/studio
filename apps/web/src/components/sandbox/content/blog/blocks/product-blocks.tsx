@@ -213,7 +213,7 @@ function SortableProductCard({
               ? t("sandbox.productBlocks.loadingEllipsis")
               : t("sandbox.productBlocks.productWithId", { id }))}
         </p>
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-2xs text-muted-foreground">
           {t("sandbox.productBlocks.idLabel", { id })}
         </p>
       </div>
@@ -279,7 +279,7 @@ function EmptyProducts({ onBrowse }: { onBrowse: () => void }) {
     <button
       type="button"
       onClick={onBrowse}
-      className="flex w-full flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed py-8 text-center transition-colors hover:border-foreground/30 hover:bg-muted/40 cursor-pointer"
+      className="flex w-full flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed py-8 text-center transition-colors hover:border-foreground/30 hover:bg-accent cursor-pointer"
     >
       <span className="flex h-9 w-9 items-center justify-center rounded-full bg-muted text-muted-foreground">
         <Package size={16} />
@@ -476,7 +476,7 @@ export function ProductCardBlock({
 
   return (
     <div className="space-y-4 rounded-lg border bg-card p-4">
-      <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+      <div className="text-xs font-semibold text-muted-foreground">
         {t("sandbox.productBlocks.productCardLabel")}
       </div>
       <div className="space-y-2">

@@ -634,7 +634,7 @@ function NewOriginRule({
         value={kind}
         onValueChange={(v) => setKind(v as JiraRuleFrom["kind"])}
       >
-        <SelectTrigger className="h-8 w-fit min-w-56 text-xs">
+        <SelectTrigger size="sm" className="w-fit min-w-56">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -789,7 +789,8 @@ function TestRunRow() {
         ) : (
           <Select value={automationId ?? undefined} onValueChange={setPicked}>
             <SelectTrigger
-              className="h-8 w-fit min-w-56 text-xs"
+              size="sm"
+              className="w-fit min-w-56"
               aria-label={t("settings.jira.testRunAutomation")}
             >
               <SelectValue />

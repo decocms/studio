@@ -291,13 +291,15 @@ function FiltersPopover({
             <>
               <Badge
                 variant="default"
-                className="sm:hidden absolute -top-1.5 -right-1.5 h-4 min-w-4 px-1 text-[10px] leading-none"
+                size="sm"
+                className="sm:hidden absolute -top-1.5 -right-1.5 min-w-4 leading-none"
               >
                 {activeFiltersCount}
               </Badge>
               <Badge
                 variant="default"
-                className="hidden sm:flex ml-1 h-5 w-5 rounded-full p-0 items-center justify-center text-xs"
+                size="icon"
+                className="hidden sm:flex ml-1"
               >
                 {activeFiltersCount}
               </Badge>
@@ -342,7 +344,6 @@ function FiltersPopover({
                 }
                 onSearchChange={onConnectionSearchChange}
                 placeholder={t("orgs.monitoring.allServers")}
-                variant="secondary"
                 className="w-full"
                 maxCount={2}
               />
@@ -359,7 +360,6 @@ function FiltersPopover({
                   onUpdateFilters({ virtualMcpId: values })
                 }
                 placeholder={t("orgs.monitoring.allAgents")}
-                variant="secondary"
                 className="w-full"
                 maxCount={2}
               />
@@ -375,11 +375,10 @@ function FiltersPopover({
                   defaultValue={llmUserIds}
                   onValueChange={(values) => onLlmUserIdsChange?.(values)}
                   placeholder={t("orgs.monitoring.allMembers")}
-                  variant="secondary"
                   className="w-full"
                   maxCount={2}
                 />
-                <p className="text-[11px] text-muted-foreground mt-1">
+                <p className="text-2xs text-muted-foreground mt-1">
                   {t("orgs.monitoring.filtersAiUsageOnly")}
                 </p>
               </div>
@@ -446,12 +445,7 @@ function FiltersPopover({
                 </label>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6"
-                      onClick={toggleMode}
-                    >
+                    <Button variant="ghost" size="icon-xs" onClick={toggleMode}>
                       {propertyFilterMode === "raw" ? (
                         <Grid01 size={14} />
                       ) : (
@@ -509,9 +503,8 @@ function FiltersPopover({
                           })}
                         </span>
                         <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                          variant="ghost-destructive"
+                          size="icon-xs"
                           onClick={() => removePropertyFilter(index)}
                         >
                           <Trash01 size={12} />

@@ -31,7 +31,7 @@ const templates = [
 ];
 
 const meta = {
-  title: "Components/Carousel",
+  title: "Molecules/Carousel",
   component: Carousel,
 } satisfies Meta<typeof Carousel>;
 

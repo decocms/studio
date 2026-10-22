@@ -50,10 +50,7 @@ export function DeleteConnectionDialogs({
             <AlertDialogCancel>
               {t("common.deleteConnectionDialogs.cancel")}
             </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={confirmDelete}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
+            <AlertDialogAction onClick={confirmDelete} variant="destructive">
               {t("common.deleteConnectionDialogs.delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -99,7 +96,7 @@ export function DeleteConnectionDialogs({
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={confirmForceDelete}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              variant="destructive"
             >
               {t("common.deleteConnectionDialogs.deleteAnyway")}
             </AlertDialogAction>

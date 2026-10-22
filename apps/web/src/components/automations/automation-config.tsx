@@ -129,7 +129,7 @@ function TierDropdown({
                   setOpen(false);
                 }}
                 className={cn(
-                  "flex items-start gap-2 px-2 py-1.5 rounded-lg text-left hover:bg-muted",
+                  "flex items-start gap-2 px-2 py-1.5 rounded-lg text-left hover:bg-accent",
                 )}
               >
                 <Icon
@@ -548,7 +548,7 @@ function GroupHeading({
         {conn?.title ?? label ?? t("automations.automationConfig.otherTools")}
       </span>
       <span className="ml-auto flex items-center gap-2">
-        <span className="text-[11px] font-normal tabular-nums text-muted-foreground/70">
+        <span className="text-2xs font-normal tabular-nums text-muted-foreground/70">
           {on}/{total}
         </span>
         <button
@@ -557,7 +557,7 @@ function GroupHeading({
             e.stopPropagation();
             onToggle();
           }}
-          className="text-[11px] font-medium text-primary hover:underline"
+          className="text-2xs font-medium text-primary hover:underline"
         >
           {allOn
             ? t("automations.automationConfig.none")
@@ -654,10 +654,7 @@ function ToolsPicker({
             ? t("automations.automationConfig.allTools")
             : t("automations.automationConfig.tools")}
           {!allSelected && (
-            <Badge
-              variant="secondary"
-              className="ml-0.5 h-5 px-1.5 text-[11px] tabular-nums"
-            >
+            <Badge variant="secondary" className="ml-0.5 tabular-nums">
               {selected.size}/{allNames.length}
             </Badge>
           )}

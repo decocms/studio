@@ -6,7 +6,7 @@ import {
   emailOTPClient,
 } from "better-auth/client/plugins";
 import { ssoClient } from "@better-auth/sso/client";
-import { isOrgArchived } from "@decocms/shared/organization/org-archived";
+import { activeOrganizations } from "@decocms/shared/organization/org-archived";
 
 export const authClient = createAuthClient({
   plugins: [
@@ -42,15 +42,9 @@ export function listOrganizationsCached(): Promise<OrgListResult> {
   const inflight = authClient.organization
     .list()
     .then((raw: OrgListResult) => {
-      // Choke point: archived (soft-deleted) orgs are invisible to the UI, so
-      // strip them once here. Every caller of this helper gets active orgs only.
+      // Choke point: every caller of this helper gets active orgs, once each.
       const result: OrgListResult = raw.data
-        ? {
-            ...raw,
-            data: raw.data.filter(
-              (o: { metadata?: unknown }) => !isOrgArchived(o),
-            ),
-          }
+        ? { ...raw, data: activeOrganizations(raw.data) }
         : raw;
       if (result.data) {
         orgListCache = { result, expiresAt: Date.now() + ORG_LIST_TTL_MS };
@@ -65,15 +59,13 @@ export function listOrganizationsCached(): Promise<OrgListResult> {
 }
 
 /**
- * Reactive org list with archived (soft-deleted) orgs filtered out — the
+ * Reactive org list with archived orgs filtered out and each org once — the
  * blessed UI hook. Use this instead of `authClient.useListOrganizations()`
- * directly so archived orgs never leak into a list surface.
+ * directly so archived or duplicated orgs never leak into a list surface.
  */
 export function useActiveOrganizations() {
   const result = authClient.useListOrganizations();
-  const data = result.data?.filter(
-    (o: { metadata?: unknown }) => !isOrgArchived(o),
-  );
+  const data = result.data ? activeOrganizations(result.data) : undefined;
   return { ...result, data };
 }
 

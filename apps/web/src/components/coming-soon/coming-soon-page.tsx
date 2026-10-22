@@ -195,7 +195,7 @@ export function ComingSoonPage({ kind }: { kind: Kind }) {
         <div className="mx-auto flex w-full max-w-2xl flex-col items-center gap-10 px-4 pt-12 pb-16 md:pt-20">
           <div aria-hidden className="relative w-full max-w-md">
             <div className="absolute inset-x-10 -top-4 h-40 rounded-full bg-chart-2/20 blur-3xl" />
-            <div className="relative rounded-2xl bg-card p-6 card-shadow [mask-image:linear-gradient(to_bottom,black_65%,transparent)]">
+            <div className="relative surface p-6 [mask-image:linear-gradient(to_bottom,black_65%,transparent)]">
               <Sketch kind={kind} />
             </div>
           </div>
@@ -212,7 +212,7 @@ export function ComingSoonPage({ kind }: { kind: Kind }) {
             {copy.points.map(({ Icon, labelKey, tone }) => (
               <li
                 key={labelKey}
-                className="flex items-center gap-3 rounded-xl bg-card p-4 card-shadow sm:flex-col sm:items-start"
+                className="flex items-center gap-3 surface p-4 sm:flex-col sm:items-start"
               >
                 <span
                   className={cn(

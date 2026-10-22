@@ -8,7 +8,6 @@ import { InviteMemberDialog } from "@/components/invite-member-dialog";
 import { JoinRequestsSection } from "@/components/settings/join-requests-section";
 import { track } from "@/lib/posthog-client";
 import { formatDate } from "@/lib/format-time";
-import { getInitials } from "@/lib/get-initials";
 import { useT } from "@/i18n/use-t.ts";
 import { useMembers } from "@/hooks/use-members";
 import { useInvitations, useInvitationActions } from "@/hooks/use-invitations";
@@ -240,8 +239,7 @@ function MemberActionsDropdown({
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
-          size="sm"
-          className="h-8 w-8 p-0"
+          size="icon"
           disabled={isOwner}
           onClick={(e) => e.stopPropagation()}
         >
@@ -360,8 +358,7 @@ function InvitationActionsDropdown({
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
-          size="sm"
-          className="h-8 w-8 p-0"
+          size="icon"
           onClick={(e) => e.stopPropagation()}
         >
           <DotsVertical size={20} />
@@ -608,7 +605,7 @@ function OrgMembersContent() {
             <div className="flex items-center gap-3">
               <Avatar
                 url={row.data.user?.image ?? undefined}
-                fallback={getInitials(row.data.user?.name)}
+                fallback={row.data.user?.name ?? "?"}
                 shape="circle"
                 size="sm"
               />
@@ -626,11 +623,7 @@ function OrgMembersContent() {
         // Invitation row
         return (
           <div className="flex items-center gap-3">
-            <Avatar
-              fallback={getInitials(row.data.email)}
-              shape="circle"
-              size="sm"
-            />
+            <Avatar fallback={row.data.email ?? "?"} shape="circle" size="sm" />
             <div className="min-w-0">
               <div className="text-sm font-medium text-foreground truncate">
                 {row.data.email}
@@ -796,7 +789,7 @@ function OrgMembersContent() {
                 }
               }}
               disabled={invitationActions.cancel.isPending}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              variant="destructive"
             >
               {t("orgs.members.cancelInvitation")}
             </AlertDialogAction>
@@ -824,7 +817,7 @@ function OrgMembersContent() {
                 memberToRemove && removeMemberMutation.mutate(memberToRemove)
               }
               disabled={removeMemberMutation.isPending}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              variant="destructive"
             >
               {t("orgs.members.remove")}
             </AlertDialogAction>
@@ -881,6 +874,7 @@ function OrgMembersContent() {
                     // Invitation card
                     return (
                       <Card
+                        size="flush"
                         key={`inv-${row.data.id}`}
                         className="transition-colors relative opacity-75"
                       >
@@ -893,7 +887,7 @@ function OrgMembersContent() {
                         </div>
                         <div className="flex flex-col gap-4 p-6">
                           <Avatar
-                            fallback={getInitials(row.data.email)}
+                            fallback={row.data.email ?? "?"}
                             shape="circle"
                             size="lg"
                             className="shrink-0"
@@ -934,6 +928,7 @@ function OrgMembersContent() {
                   const member = row.data;
                   return (
                     <Card
+                      size="flush"
                       key={member.id}
                       className="transition-colors relative"
                     >
@@ -951,7 +946,7 @@ function OrgMembersContent() {
                       <div className="flex flex-col gap-4 p-6">
                         <Avatar
                           url={member.user?.image ?? undefined}
-                          fallback={getInitials(member.user?.name)}
+                          fallback={member.user?.name ?? "?"}
                           shape="circle"
                           size="lg"
                           className="shrink-0"

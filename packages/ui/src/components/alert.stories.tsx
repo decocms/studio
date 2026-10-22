@@ -8,7 +8,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "./alert.tsx";
 
 const meta = {
-  title: "Components/Alert",
+  title: "Molecules/Alert",
   component: Alert,
   args: {
     variant: "default",

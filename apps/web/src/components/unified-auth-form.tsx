@@ -667,10 +667,7 @@ export function UnifiedAuthForm({
               size={compact ? "lg" : "xl"}
               disabled={isLoading}
               onClick={() => void handleSocialSignIn(provider.name)}
-              className={cn(
-                "flex w-full items-center justify-center gap-3 bg-background px-3 text-sm font-medium text-foreground card-shadow transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50 dark:bg-input/30 dark:hover:bg-input/50 rounded-lg",
-                compact ? "h-11" : "h-12",
-              )}
+              className="w-full gap-3"
             >
               {provider.icon && (
                 <img
@@ -748,7 +745,7 @@ export function UnifiedAuthForm({
                   autoComplete="email"
                   aria-invalid={!!emailError}
                   aria-describedby={emailError ? emailErrorId : undefined}
-                  className="h-11 rounded-lg"
+                  className="h-11"
                 />
                 {emailError && (
                   <p
@@ -799,7 +796,7 @@ export function UnifiedAuthForm({
                   autoFocus
                   inputMode="numeric"
                   autoComplete="one-time-code"
-                  className="h-11 rounded-lg"
+                  className="h-11"
                 />
               </div>
 
@@ -855,7 +852,7 @@ export function UnifiedAuthForm({
               autoComplete="email"
               aria-invalid={!!emailError}
               aria-describedby={emailError ? emailErrorId : undefined}
-              className="h-11 rounded-lg"
+              className="h-11"
             />
             {emailError && (
               <p
@@ -899,7 +896,7 @@ export function UnifiedAuthForm({
                 required
                 disabled={isLoading}
                 autoComplete="name"
-                className="h-11 rounded-lg"
+                className="h-11"
               />
             </div>
           )}
@@ -922,7 +919,7 @@ export function UnifiedAuthForm({
               autoComplete="email"
               aria-invalid={!!emailError}
               aria-describedby={emailError ? emailErrorId : undefined}
-              className="h-11 rounded-lg"
+              className="h-11"
             />
             {emailError && (
               <p
@@ -961,7 +958,7 @@ export function UnifiedAuthForm({
               required
               disabled={isLoading}
               autoComplete={isSignUp ? "new-password" : "current-password"}
-              className="h-11 rounded-lg"
+              className="h-11"
             />
           </div>
 

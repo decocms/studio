@@ -382,7 +382,7 @@ export function RunnableBlocksBrowser({
                         key={folder.name}
                         type="button"
                         onClick={() => setPath([...path, folder.name])}
-                        className="flex items-center gap-2.5 rounded-lg border px-3 py-2.5 text-left transition-colors hover:bg-muted cursor-pointer"
+                        className="flex items-center gap-2.5 rounded-lg border px-3 py-2.5 text-left transition-colors hover:bg-accent cursor-pointer"
                       >
                         <FolderIcon
                           size={18}

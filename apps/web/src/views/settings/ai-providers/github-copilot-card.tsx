@@ -12,6 +12,11 @@ import { useProjectContext } from "@/sdk";
 import { KEYS } from "@/lib/query-keys";
 import { useStudioTools } from "@/lib/studio-tools";
 import { useT } from "@/i18n/use-t.ts";
+import {
+  SettingsCard,
+  SettingsCardItem,
+  SettingsSection,
+} from "@/components/settings/settings-section";
 
 const NEW_TOKEN_URL = "https://github.com/settings/personal-access-tokens/new";
 
@@ -60,79 +65,76 @@ export function GithubCopilotCard() {
   const orgShare = status.data?.orgShare ?? null;
 
   return (
-    <div className="rounded-xl border border-border px-6 py-5 flex flex-col gap-4">
-      <div className="flex items-center gap-4">
-        <div className="flex-1 min-w-0">
-          <p className="text-base font-semibold">
-            {t("settings.githubCopilot.title")}
-          </p>
-          <p className="text-sm text-muted-foreground">
-            {connected
-              ? t("settings.githubCopilot.active")
-              : t("settings.githubCopilot.description")}
-          </p>
-        </div>
-        {connected ? (
+    <SettingsSection
+      title={t("settings.githubCopilot.title")}
+      description={
+        connected
+          ? t("settings.githubCopilot.active")
+          : t("settings.githubCopilot.description")
+      }
+      actions={
+        connected ? (
           <Button
             variant="outline"
+            size="sm"
             disabled={disconnect.isPending}
             onClick={() => disconnect.mutate()}
           >
             {t("settings.githubCopilot.disconnect")}
           </Button>
-        ) : null}
-      </div>
-      {orgShare && !orgShare.sharedByMe ? (
-        <p className="text-sm text-muted-foreground">
-          {t("settings.githubCopilot.sharedBy", {
-            name: orgShare.sharedBy.name ?? "",
-          })}
-        </p>
-      ) : null}
-      {connected ? (
-        <label className="flex items-start gap-3">
-          <Switch
-            checked={orgShare?.sharedByMe === true}
-            disabled={share.isPending}
-            onCheckedChange={(checked) => share.mutate(checked)}
-          />
-          <span className="flex flex-col gap-0.5">
-            <span className="text-sm font-medium">
-              {t("settings.githubCopilot.shareTitle")}
-            </span>
-            <span className="text-sm text-muted-foreground">
-              {t("settings.githubCopilot.shareDescription")}
-            </span>
-          </span>
-        </label>
-      ) : (
-        <div className="flex flex-col gap-2">
-          <p className="text-sm text-muted-foreground">
-            <a
-              className="underline"
-              href={NEW_TOKEN_URL}
-              target="_blank"
-              rel="noreferrer"
-            >
-              {t("settings.githubCopilot.howTo")}
-            </a>
+        ) : null
+      }
+    >
+      <SettingsCard>
+        {orgShare && !orgShare.sharedByMe ? (
+          <p className="p-4 text-sm text-muted-foreground">
+            {t("settings.githubCopilot.sharedBy", {
+              name: orgShare.sharedBy.name ?? "",
+            })}
           </p>
-          <div className="flex items-center gap-2">
-            <Input
-              type="password"
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              placeholder={t("settings.githubCopilot.tokenPlaceholder")}
-            />
-            <Button
-              disabled={token.trim().length === 0 || connect.isPending}
-              onClick={() => connect.mutate()}
-            >
-              {t("settings.githubCopilot.connect")}
-            </Button>
+        ) : null}
+        {connected ? (
+          <SettingsCardItem
+            title={t("settings.githubCopilot.shareTitle")}
+            description={t("settings.githubCopilot.shareDescription")}
+            action={
+              <Switch
+                aria-label={t("settings.githubCopilot.shareTitle")}
+                checked={orgShare?.sharedByMe === true}
+                disabled={share.isPending}
+                onCheckedChange={(checked) => share.mutate(checked)}
+              />
+            }
+          />
+        ) : (
+          <div className="flex flex-col gap-2 p-4">
+            <p className="text-sm text-muted-foreground">
+              <a
+                className="underline"
+                href={NEW_TOKEN_URL}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {t("settings.githubCopilot.howTo")}
+              </a>
+            </p>
+            <div className="flex items-center gap-2">
+              <Input
+                type="password"
+                value={token}
+                onChange={(e) => setToken(e.target.value)}
+                placeholder={t("settings.githubCopilot.tokenPlaceholder")}
+              />
+              <Button
+                disabled={token.trim().length === 0 || connect.isPending}
+                onClick={() => connect.mutate()}
+              >
+                {t("settings.githubCopilot.connect")}
+              </Button>
+            </div>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+      </SettingsCard>
+    </SettingsSection>
   );
 }
