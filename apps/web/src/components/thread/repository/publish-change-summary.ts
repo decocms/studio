@@ -17,6 +17,8 @@ import {
 } from "@decocms/shared/decofile";
 import { SECRET_BLOCK_TYPE } from "@decocms/shared/secret-ciphertext";
 import { isLazyWrapper } from "@/components/sections-editor/lazy-value";
+import { isLazyResolveType } from "@/components/sections-editor/section-lazy";
+import { isMultivariateResolveType } from "@/components/sections-editor/variant-shape";
 import type { ContentChangeSides } from "@/components/sections-editor/content-changes";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 import {
@@ -58,6 +60,12 @@ export interface PublishSectionChange {
   kind: "section" | "settings";
   status: PublishChangeStatus;
   fields: PublishFieldChange[];
+  /**
+   * The section is a wrapper around the content (its variants, its lazy
+   * loading), so `name` is the wrapper's type ("Multivariate", "Lazy"), not
+   * a name the author knows. The version note leaves it out.
+   */
+  wrapper?: true;
 }
 
 export interface PublishChange {
@@ -173,6 +181,32 @@ export function sectionDisplayName(section: unknown, index: number): string {
     }
   }
   return `Section ${index + 1}`;
+}
+
+/** Types that wrap a section rather than being one: variants, lazy loading. */
+function isWrapperSection(section: Record<string, unknown>): boolean {
+  const resolveType = section.__resolveType;
+  return (
+    isMultivariateResolveType(resolveType) ||
+    resolveType === "lazy" ||
+    (typeof resolveType === "string" && isLazyResolveType(resolveType))
+  );
+}
+
+/** A changed section, flagged when its name is only its wrapper's type. */
+function sectionChange(
+  section: Record<string, unknown>,
+  index: number,
+  status: PublishChangeStatus,
+  fields: PublishFieldChange[],
+): PublishSectionChange {
+  return {
+    name: sectionDisplayName(section, index),
+    kind: "section",
+    status,
+    fields,
+    ...(isWrapperSection(section) ? { wrapper: true as const } : {}),
+  };
 }
 
 interface SectionWithPath {
@@ -292,30 +326,22 @@ function diffPageSections(
     const toEntry = toSections[i];
     if (fromEntry && toEntry) {
       if (sameValue(fromEntry.section, toEntry.section)) continue;
-      changes.push({
-        name: sectionDisplayName(toEntry.section, i),
-        kind: "section",
-        status: "edited",
-        fields: shallowFieldDiff(
-          fromEntry.section,
+      changes.push(
+        sectionChange(
           toEntry.section,
-          toEntry.basePath,
+          i,
+          "edited",
+          shallowFieldDiff(
+            fromEntry.section,
+            toEntry.section,
+            toEntry.basePath,
+          ),
         ),
-      });
+      );
     } else if (toEntry) {
-      changes.push({
-        name: sectionDisplayName(toEntry.section, i),
-        kind: "section",
-        status: "new",
-        fields: [],
-      });
+      changes.push(sectionChange(toEntry.section, i, "new", []));
     } else if (fromEntry) {
-      changes.push({
-        name: sectionDisplayName(fromEntry.section, i),
-        kind: "section",
-        status: "removed",
-        fields: [],
-      });
+      changes.push(sectionChange(fromEntry.section, i, "removed", []));
     }
   }
 
@@ -606,14 +632,30 @@ function listNames(names: string[]): string {
   return `${names.slice(0, MAX_NOTE_NAMES).join(", ")} and ${rest} more`;
 }
 
+/**
+ * "Home (Hero, Footer)": the page and the sections the author knows by name.
+ * A wrapper's type ("Multivariate", "Lazy") says nothing to them, so a page
+ * whose changes are all in variants reads "Home".
+ */
 function pageNoteName(change: PublishChange): string {
-  const sectionNames = change.sections
-    .filter((s) => s.kind === "section")
-    .map((s) => s.name)
-    .slice(0, 3);
+  const sectionNames = [
+    ...new Set(
+      change.sections
+        .filter((s) => s.kind === "section" && !s.wrapper)
+        .map((s) => s.name),
+    ),
+  ].slice(0, 3);
   return sectionNames.length > 0
     ? `${change.name} (${sectionNames.join(", ")})`
     : change.name;
+}
+
+/** The site's A/B tests and campaigns blocks by what they hold, as the cards call them. */
+function blockNoteName(change: PublishChange): string {
+  const named = namedRuleBlockOfChange(change);
+  if (named === "experiments") return "A/B tests";
+  if (named === "campaigns") return "Campaign dates";
+  return change.name;
 }
 
 /**
@@ -645,7 +687,7 @@ export function buildAutoNote(summary: PublishChangeSummary): string {
     );
   }
 
-  const blockNames = summary.blocks.map((b) => b.name);
+  const blockNames = summary.blocks.map(blockNoteName);
   if (blockNames.length > 0) {
     segments.push(`changed ${listNames(blockNames)}`);
   }
