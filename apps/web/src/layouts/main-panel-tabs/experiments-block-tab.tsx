@@ -140,7 +140,7 @@ function GuideState(props: {
   );
 }
 
-export function ExperimentsTabV8({ virtualMcpId }: { virtualMcpId: string }) {
+export function ExperimentsBlockTab({ virtualMcpId }: { virtualMcpId: string }) {
   const t = useT();
   return (
     <SiteDraftView
@@ -156,12 +156,12 @@ export function ExperimentsTabV8({ virtualMcpId }: { virtualMcpId: string }) {
       }}
       skeleton={<ExperimentsTabSkeleton />}
     >
-      {(ready) => <ExperimentsV8Ready {...ready} />}
+      {(ready) => <ExperimentsBlockReady {...ready} />}
     </SiteDraftView>
   );
 }
 
-function ExperimentsV8Ready({
+function ExperimentsBlockReady({
   orgSlug,
   virtualMcpId,
   branch,
@@ -248,7 +248,7 @@ function ExperimentsV8Ready({
   const opened = rows.find((row) => row.name === openName) ?? null;
   if (opened) {
     return (
-      <ExperimentDetailV8
+      <ExperimentBlockDetail
         key={opened.name}
         row={opened}
         decofile={decofile}
@@ -297,7 +297,7 @@ function ExperimentsV8Ready({
                 data-testid="experiments-v8-list"
               >
                 {rows.map((row) => (
-                  <ExperimentRowV8
+                  <ExperimentBlockRow
                     key={row.name}
                     row={row}
                     onOpen={() => setOpenName(row.name)}
@@ -372,7 +372,7 @@ function ExperimentsV8Ready({
   );
 }
 
-function ExperimentRowV8({
+function ExperimentBlockRow({
   row,
   onOpen,
 }: {
@@ -417,7 +417,7 @@ function ExperimentRowV8({
   );
 }
 
-function ExperimentDetailV8({
+function ExperimentBlockDetail({
   row,
   decofile,
   meta,

@@ -38,7 +38,7 @@ type SiteMeta = Pick<LiveMeta, "manifest"> | null | undefined;
  * Whether the site's schema lists the built-in `multivariate` (Blocks v8
  * lists it under `loaders`). Without a schema, the v7 names are written.
  */
-export function declaresV8Multivariate(meta: SiteMeta): boolean {
+export function declaresBuiltinMultivariate(meta: SiteMeta): boolean {
   const groups = meta?.manifest?.blocks ?? {};
   return Object.values(groups).some((group) =>
     Object.hasOwn(group ?? {}, V8_MULTIVARIATE_RESOLVE_TYPE),
@@ -47,7 +47,7 @@ export function declaresV8Multivariate(meta: SiteMeta): boolean {
 
 /** The type a NEW variants block around one section is saved with. */
 export function sectionMultivariateResolveType(meta: SiteMeta): string {
-  return declaresV8Multivariate(meta)
+  return declaresBuiltinMultivariate(meta)
     ? V8_MULTIVARIATE_RESOLVE_TYPE
     : SECTION_MULTIVARIATE_RESOLVE_TYPE;
 }
@@ -57,7 +57,7 @@ export function sectionMultivariateResolveType(meta: SiteMeta): string {
  * list, a hidden array item) is saved with.
  */
 export function valueMultivariateResolveType(meta: SiteMeta): string {
-  return declaresV8Multivariate(meta)
+  return declaresBuiltinMultivariate(meta)
     ? V8_MULTIVARIATE_RESOLVE_TYPE
     : PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE;
 }

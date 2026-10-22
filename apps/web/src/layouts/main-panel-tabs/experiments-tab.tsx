@@ -3,7 +3,7 @@ import { Link, useSearch } from "@tanstack/react-router";
 import { useOrgFlag } from "@/hooks/use-organization-settings";
 import { LegacyExperimentsTab } from "./experiments-tab-legacy";
 import { pickExperimentsTab } from "./experiments-tab-choice";
-import { ExperimentsTabSkeleton, ExperimentsTabV8 } from "./experiments-tab-v8";
+import { ExperimentsTabSkeleton, ExperimentsBlockTab } from "./experiments-block-tab";
 import { useMainSchemaV8 } from "@/hooks/use-main-schema-v8";
 
 import {
@@ -1867,7 +1867,7 @@ export function ExperimentsTab({ virtualMcpId }: { virtualMcpId: string }) {
   const siteMajor = useMainSchemaV8(virtualMcpId);
   switch (pickExperimentsTab({ flagEnabled, siteMajor, ui })) {
     case "v8":
-      return <ExperimentsTabV8 virtualMcpId={virtualMcpId} />;
+      return <ExperimentsBlockTab virtualMcpId={virtualMcpId} />;
     case "loading":
       return <ExperimentsTabSkeleton />;
     case "v2":

@@ -43,7 +43,7 @@ import {
 import { unwrapSection } from "./unwrap-section";
 import { buildSectionForcedVariants } from "./variant-draft-pointer";
 import {
-  declaresV8Multivariate,
+  declaresBuiltinMultivariate,
   sectionMultivariateResolveType,
   valueMultivariateResolveType,
 } from "./variant-shape";
@@ -115,12 +115,12 @@ const NEVER = { __resolveType: "never" };
 
 describe("which variants block a site gets", () => {
   test("the short multivariate in the schema means v8; otherwise the v7 names", () => {
-    expect(declaresV8Multivariate(V8)).toBe(true);
+    expect(declaresBuiltinMultivariate(V8)).toBe(true);
     expect(sectionMultivariateResolveType(V8)).toBe("multivariate");
     expect(valueMultivariateResolveType(V8)).toBe("multivariate");
 
-    expect(declaresV8Multivariate(V7)).toBe(false);
-    expect(declaresV8Multivariate(null)).toBe(false);
+    expect(declaresBuiltinMultivariate(V7)).toBe(false);
+    expect(declaresBuiltinMultivariate(null)).toBe(false);
     expect(sectionMultivariateResolveType(V7)).toBe(
       "website/flags/multivariate/section.ts",
     );
