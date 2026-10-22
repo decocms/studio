@@ -306,7 +306,8 @@ function sectionLabel(
     blockKey,
     focus.pageVariant ?? 0,
   );
-  const parsed = parseSections(sections, from)[focus.section];
+  // Tests and campaigns are a Blocks v8 site's.
+  const parsed = parseSections(sections, from, true)[focus.section];
   return parsed ? (parsed.variantOf ?? parsed.label) : undefined;
 }
 

@@ -9,7 +9,7 @@ import {
   labelFromResolveType,
 } from "./section-types";
 import { safeImageUrl } from "@/lib/safe-image-url";
-import { readVariantValue } from "./variant-shape";
+import { V8_MULTIVARIATE_RESOLVE_TYPE, variantValueOn } from "./variant-shape";
 
 function resolveResolvable(obj: Record<string, unknown>): unknown {
   if (Array.isArray(obj.variants)) {
@@ -17,13 +17,17 @@ function resolveResolvable(obj: Record<string, unknown>): unknown {
       rule?: { __resolveType?: string };
       value?: unknown;
     }>;
+    // A Blocks v8 `multivariate` (never a v7 variants block's type) also
+    // names "always" `always` and keeps each value in a `lazy` block.
+    const v8 = obj.__resolveType === V8_MULTIVARIATE_RESOLVE_TYPE;
     const always = variants.find((v) =>
-      isAlwaysMatcherResolveType(v.rule?.__resolveType),
+      isAlwaysMatcherResolveType(v.rule?.__resolveType, v8),
     );
     // Unwrap object-valued variants too (e.g. `{ desktop, mobile }`), not only
-    // strings, and past the `lazy` block v8's `multivariate` keeps them in.
-    const chosen = always ?? variants.find((v) => readVariantValue(v) != null);
-    const value = readVariantValue(chosen);
+    // strings.
+    const chosen =
+      always ?? variants.find((v) => variantValueOn(v, v8) != null);
+    const value = variantValueOn(chosen, v8);
     if (value != null) return value;
   }
   if (typeof obj.src === "string") return obj.src;

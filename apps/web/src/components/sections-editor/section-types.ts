@@ -25,25 +25,38 @@ export const PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE =
 export const SECTION_MULTIVARIATE_RESOLVE_TYPE =
   "website/flags/multivariate/section.ts";
 
-/** Every name the "always" matcher goes by: v7, Fresh/Deno and next-major. */
+/** The names the "always" matcher goes by on v7 and Fresh/Deno. */
 const ALWAYS_MATCHER_NAMES = new Set([
   ALWAYS_MATCHER_RESOLVE_TYPE,
   "$live/matchers/MatchAlways.ts",
-  "always",
 ]);
 
-/** Every name the "never" matcher goes by: v7 and next-major. */
-const NEVER_MATCHER_NAMES = new Set([NEVER_MATCHER_RESOLVE_TYPE, "never"]);
-
-export function isAlwaysMatcherResolveType(resolveType: unknown): boolean {
+/**
+ * Whether a rule type is the "always" matcher. A Blocks v8 site (`v8`) also
+ * names it `always`; on v7 that short name is a saved block, as before.
+ */
+export function isAlwaysMatcherResolveType(
+  resolveType: unknown,
+  v8 = false,
+): boolean {
   return (
-    typeof resolveType === "string" && ALWAYS_MATCHER_NAMES.has(resolveType)
+    typeof resolveType === "string" &&
+    (ALWAYS_MATCHER_NAMES.has(resolveType) || (v8 && resolveType === "always"))
   );
 }
 
-export function isNeverMatcherResolveType(resolveType: unknown): boolean {
+/**
+ * Whether a rule type is the "never" matcher. A Blocks v8 site (`v8`) also
+ * names it `never`; on v7 that short name is a saved block, as before.
+ */
+export function isNeverMatcherResolveType(
+  resolveType: unknown,
+  v8 = false,
+): boolean {
   return (
-    typeof resolveType === "string" && NEVER_MATCHER_NAMES.has(resolveType)
+    typeof resolveType === "string" &&
+    (resolveType === NEVER_MATCHER_RESOLVE_TYPE ||
+      (v8 && resolveType === "never"))
   );
 }
 

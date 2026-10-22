@@ -156,7 +156,7 @@ describe("v8 writers: multivariate, each value in a lazy block", () => {
 
     // A third one, seeded from the form (a plain section), is wrapped too,
     // and goes above the last variant, the catch-all.
-    const [mvParsed] = parseSections([result!.section], {});
+    const [mvParsed] = parseSections([result!.section], {}, true);
     const third = appendSectionVariant(
       result!.section,
       mvParsed!,
@@ -303,7 +303,7 @@ describe("readers take the v8 shape", () => {
   test("a section with variants and a hidden section", () => {
     const [withVariants, hidden] = v8Page().sections.variants[1]!.value
       .value as RawSection[];
-    const [p0, p1] = parseSections([withVariants!, hidden!], {});
+    const [p0, p1] = parseSections([withVariants!, hidden!], {}, true);
     expect(p0).toMatchObject({
       isMultivariate: true,
       label: "Variants of Hero",
@@ -320,17 +320,17 @@ describe("readers take the v8 shape", () => {
       ...HERO,
       title: "A",
     } as RawSection);
-    expect(showSection(hidden!)).toEqual(FOOTER);
+    expect(showSection(hidden!, true)).toEqual(FOOTER);
     expect(unwrapSection(hidden!, p1!, {})).toEqual({
       data: FOOTER,
       resolveType: "footer",
     });
-    expect(resolveSectionPreviewContext(hidden!)).toEqual({
+    expect(resolveSectionPreviewContext(hidden!, true)).toEqual({
       resolveType: "footer",
       data: FOOTER,
     });
-    expect(resolveSectionCandidates(withVariants!, {})).toEqual(["hero"]);
-    expect(resolveSectionCandidates(hidden!, {})).toBeNull();
+    expect(resolveSectionCandidates(withVariants!, {}, true)).toEqual(["hero"]);
+    expect(resolveSectionCandidates(hidden!, {}, true)).toBeNull();
   });
 
   test("a saved section block with v8 variants is offered as its section", () => {
@@ -341,7 +341,7 @@ describe("readers take the v8 shape", () => {
     expect(underlyingSectionResolveType(V8, block)).toBe("hero");
   });
 
-  test("the variant calendar reads v8 inline date rules (from before campaigns) and lazy values", () => {
+  test("v7's variant calendar reads v7's shapes only, as before (a v8 site gets Campaigns)", () => {
     const decofile = {
       Promo: {
         __resolveType: "multivariate",
@@ -358,14 +358,7 @@ describe("readers take the v8 shape", () => {
         ],
       },
     };
-    const [entry, ...rest] = extractScheduledVariants(decofile);
-    expect(rest).toEqual([]);
-    expect(entry).toMatchObject({
-      blockKey: "Promo",
-      variantIndex: 0,
-      label: "Black Friday",
-      flagResolveType: "multivariate",
-    });
+    expect(extractScheduledVariants(decofile)).toEqual([]);
   });
 });
 

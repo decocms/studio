@@ -14,6 +14,7 @@ import {
   sectionMultivariateResolveType,
   storeVariantValue,
   V8_MULTIVARIATE_RESOLVE_TYPE,
+  variantValueOn,
 } from "./variant-shape";
 
 export type { RawSection };
@@ -30,7 +31,10 @@ function unwrapLazySection(raw: RawSection): RawSection {
   return raw;
 }
 
-function readHiddenNeverVariantValue(raw: RawSection): RawSection | null {
+function readHiddenNeverVariantValue(
+  raw: RawSection,
+  v8: boolean,
+): RawSection | null {
   const outerLazy = isLazyResolveType(raw.__resolveType ?? "");
   const mvObj = (outerLazy ? raw.section : raw) as
     | Record<string, unknown>
@@ -40,8 +44,8 @@ function readHiddenNeverVariantValue(raw: RawSection): RawSection | null {
     | undefined;
   const first = variants?.[0];
   const rule = first?.rule as Record<string, unknown> | undefined;
-  if (!isNeverMatcherResolveType(rule?.__resolveType)) return null;
-  return (readVariantValue(first) as RawSection | undefined) ?? null;
+  if (!isNeverMatcherResolveType(rule?.__resolveType, v8)) return null;
+  return (variantValueOn(first, v8) as RawSection | undefined) ?? null;
 }
 
 /**
@@ -82,7 +86,8 @@ export function toggleSectionLazyRender(raw: RawSection): RawSection | null {
     return (raw.section as RawSection | undefined) ?? null;
   }
 
-  const hiddenInner = readHiddenNeverVariantValue(raw);
+  // Async rendering is v7's only (a v8 site has no Lazy section).
+  const hiddenInner = readHiddenNeverVariantValue(raw, false);
   if (hiddenInner) {
     // Legacy multivariate(never(lazy(core))) — drop hidden, keep existing lazy shell.
     if (isLazyResolveType(hiddenInner.__resolveType ?? "")) {
@@ -124,8 +129,10 @@ function resolveCoreSectionContent(
 /** Resolve inner section content for list thumbnails (lazy/hidden/legacy shapes). */
 export function resolveSectionPreviewContext(
   raw: RawSection,
+  /** A Blocks v8 site: also hidden by its short `never`. */
+  v8 = false,
 ): SectionPreviewContext | null {
-  const hiddenInner = readHiddenNeverVariantValue(raw);
+  const hiddenInner = readHiddenNeverVariantValue(raw, v8);
   if (hiddenInner) {
     return resolveCoreSectionContent(hiddenInner);
   }
@@ -135,7 +142,7 @@ export function resolveSectionPreviewContext(
     const inner = raw.section as RawSection | undefined;
     if (!inner) return null;
 
-    const hiddenInLazy = readHiddenNeverVariantValue(inner);
+    const hiddenInLazy = readHiddenNeverVariantValue(inner, v8);
     if (hiddenInLazy) {
       return resolveCoreSectionContent(hiddenInLazy);
     }
@@ -145,9 +152,12 @@ export function resolveSectionPreviewContext(
   return resolveCoreSectionContent(raw);
 }
 
-/** Unwrap a hidden section back to the section it was hiding, or null. */
-export function showSection(raw: RawSection): RawSection | null {
-  return readHiddenNeverVariantValue(raw);
+/**
+ * Unwrap a hidden section back to the section it was hiding, or null. A
+ * Blocks v8 site (`v8`) also hides with its short `never`.
+ */
+export function showSection(raw: RawSection, v8 = false): RawSection | null {
+  return readHiddenNeverVariantValue(raw, v8);
 }
 
 export interface SectionFlagVariant {

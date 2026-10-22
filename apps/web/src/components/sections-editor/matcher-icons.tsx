@@ -9,8 +9,6 @@ const KNOWN_MATCHER_ICON_BY_RESOLVE_TYPE: Array<[RegExp, string]> = [
   [/always|matchalways/i, "Users03"],
   [/device|matchdevice/i, "Phone02"],
   [/date|matchdate/i, "Calendar"],
-  // v8's built-in `campaign` rule (`campaign { name }`).
-  [/^campaign$/i, "Calendar"],
   [/random|matchrandom/i, "Shuffle01"],
   [/host|matchhost/i, "Globe02"],
   [/location|matchlocation/i, "MarkerPin01"],
@@ -60,7 +58,10 @@ function isUntitledIconName(name: string): boolean {
 export function resolveMatcherIconName(
   resolveType: string,
   schemaIcon?: string,
+  /** A Blocks v8 site: its built-in `campaign` rule wears the calendar. */
+  v8 = false,
 ): string {
+  if (v8 && /^campaign$/i.test(resolveType)) return "Calendar";
   if (schemaIcon) {
     if (isUntitledIconName(schemaIcon)) return schemaIcon;
 

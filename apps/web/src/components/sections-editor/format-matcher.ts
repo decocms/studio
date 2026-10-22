@@ -197,37 +197,61 @@ function formatCampaign(
 }
 
 /**
+ * Next-major names the built-in matchers with short keys (`always`, `never`,
+ * `experiment`, `campaign`, `date`); `device` is the usual name of a site's
+ * own device matcher. On v7 each of these is a saved block's key.
+ */
+const V8_SHORT_RULE_NAMES = new Set([
+  "always",
+  "never",
+  "device",
+  "date",
+  "campaign",
+  "experiment",
+]);
+
+/** Off v8, a short name takes the label of any other rule type. */
+const ANY_OTHER_RULE = "\u0000";
+
+/**
  * A rule as a short label. `named` (the site's A/B tests and campaigns,
  * `readNamedRuleValues`) adds a test's share and a campaign's dates to its
- * name.
+ * name. On a Blocks v8 site (`v8`) the short names are the built-ins; on any
+ * other site they are labelled like any other type, as before.
  */
 export function formatMatcher(
   rule: Record<string, unknown> | undefined,
   named?: NamedRuleValues,
+  v8 = false,
 ): string {
-  return formatRule(rule, 0, named);
+  return formatRule(rule, 0, named, v8);
+}
+
+/** {@link formatMatcher} for a Blocks v8 site (`v8`) or any other. */
+export function matcherFormatter(
+  v8: boolean,
+): (rule?: Record<string, unknown>, named?: NamedRuleValues) => string {
+  return (rule, named) => formatMatcher(rule, named, v8);
 }
 
 function formatRule(
   rule: Record<string, unknown> | undefined,
   depth: number,
   named: NamedRuleValues | undefined,
+  v8: boolean,
 ): string {
   if (!rule) return "Default";
   if (depth > MAX_FORMAT_DEPTH) return "...";
   const rt = (rule.__resolveType as string) ?? "";
 
-  // Next-major names the built-in matchers with short keys (`always`, `never`,
-  // `experiment`, `campaign`); `device` is the usual name of a site's own
-  // device matcher.
   const alwaysTypes = [
     "website/matchers/always.ts",
     "$live/matchers/MatchAlways.ts",
-    "always",
+    ...(v8 ? ["always"] : []),
   ];
   if (alwaysTypes.includes(rt) || rt === "") return "Default";
 
-  switch (rt) {
+  switch (!v8 && V8_SHORT_RULE_NAMES.has(rt) ? ANY_OTHER_RULE : rt) {
     case "website/matchers/never.ts":
     case "never":
       return "Hidden";
@@ -342,7 +366,7 @@ function formatRule(
         const safeOp = op === "OR" ? "OR" : "AND";
         return matchers
           .map((m) => {
-            const text = formatRule(m, depth + 1, named);
+            const text = formatRule(m, depth + 1, named, v8);
             return childNeedsParens(m, safeOp) ? `(${text})` : text;
           })
           .join(` ${safeOp} `);

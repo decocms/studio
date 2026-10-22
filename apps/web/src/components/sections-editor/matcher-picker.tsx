@@ -21,6 +21,8 @@ import {
 } from "./matcher-rules";
 import { globalSectionLabel } from "./page-list";
 import { formatMatcher } from "./format-matcher";
+import { useV8Editor } from "./v8-editor-context";
+import { isV8Schema } from "@decocms/shared/blocks-major";
 import {
   type CampaignWindow,
   type NamedRuleKind,
@@ -78,8 +80,16 @@ export function extractMatcherGlobals(
     return {
       blockKey: block.blockKey,
       title: globalSectionLabel(block.blockKey, raw),
-      description: formatMatcher(inlined, readNamedRuleValues(decofile)),
-      iconName: resolveMatcherIconName(block.matcherResolveType),
+      description: formatMatcher(
+        inlined,
+        readNamedRuleValues(decofile),
+        isV8Schema(meta),
+      ),
+      iconName: resolveMatcherIconName(
+        block.matcherResolveType,
+        undefined,
+        isV8Schema(meta),
+      ),
     };
   });
 }
@@ -149,7 +159,11 @@ export function extractMatchers(meta: LiveMeta): MatcherEntry[] {
         resolveType,
         title,
         description: metadata.description,
-        iconName: resolveMatcherIconName(resolveType, metadata.icon),
+        iconName: resolveMatcherIconName(
+          resolveType,
+          metadata.icon,
+          isV8Schema(meta),
+        ),
       });
     }
   }
@@ -160,13 +174,14 @@ export function extractMatchers(meta: LiveMeta): MatcherEntry[] {
 function resolveCurrentMatcherIcon(
   currentRt: string,
   matchers: MatcherEntry[],
+  v8: boolean,
 ): string {
   if (!currentRt) return ALWAYS_MATCHER_ICON;
 
   const match = matchers.find((matcher) => matcher.resolveType === currentRt);
   if (match) return match.iconName;
 
-  return resolveMatcherIconName(currentRt);
+  return resolveMatcherIconName(currentRt, undefined, v8);
 }
 
 /**
@@ -209,6 +224,7 @@ export function MatcherPicker({
   /** v8 only: tests and campaigns by name. Absent, the picker is as before. */
   named?: NamedRulePickerProps;
 }) {
+  const v8Editor = useV8Editor();
   const [open, setOpenState] = useState(false);
   const [step, setStep] = useState<PickerStep>({ view: "rules" });
   const [pending, setPending] = useState(false);
@@ -250,7 +266,8 @@ export function MatcherPicker({
     ? globals.find((g) => g.blockKey === currentGlobalKey)
     : undefined;
   const currentIconName =
-    currentGlobal?.iconName ?? resolveCurrentMatcherIcon(currentRt, matchers);
+    currentGlobal?.iconName ??
+    resolveCurrentMatcherIcon(currentRt, matchers, v8Editor);
   const CurrentIcon = getIconComponent(currentIconName);
 
   const handleSelect = (rt: string) => {

@@ -729,7 +729,11 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     decofile && currentPageKey
       ? getPageVariantSectionsAt(decofile, currentPageKey, 0)
       : [];
-  const cmsSections = decofile ? parseSections(cmsRawSections, decofile) : [];
+  // A Blocks v8 site's short names and lazy values; v7's shapes otherwise.
+  const contentV8 = isProtocolProject(contentBackend);
+  const cmsSections = decofile
+    ? parseSections(cmsRawSections, decofile, contentV8)
+    : [];
   const cmsSectionLabels = cmsSections.map((s) =>
     s.isSavedBlock ? s.label : "",
   );
@@ -740,7 +744,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // editable run within the DOM (handles framework sections deco injects around
   // OR between the editable ones) — no hardcoded list of sections to skip.
   const cmsSectionKeys = cmsRawSections.map((s) =>
-    resolveSectionCandidates(s, decofile ?? {}),
+    resolveSectionCandidates(s, decofile ?? {}, contentV8),
   );
 
   const iframeSrcRef = useRef<string | null>(null);

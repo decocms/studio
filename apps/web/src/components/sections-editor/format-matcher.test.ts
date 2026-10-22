@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { formatMatcher } from "./format-matcher";
+import { formatMatcher, matcherFormatter } from "./format-matcher";
+
+/** formatMatcher on a Blocks v8 site. */
+const v8Format = matcherFormatter(true);
 
 describe("formatMatcher", () => {
   test("returns 'Default' for undefined rule", () => {
@@ -19,22 +22,35 @@ describe("formatMatcher", () => {
     ).toBe("Default");
   });
 
-  test("labels next-major's short matcher names", () => {
-    expect(formatMatcher({ __resolveType: "always" })).toBe("Default");
-    expect(formatMatcher({ __resolveType: "never" })).toBe("Hidden");
+  test("v8: labels next-major's short matcher names", () => {
+    expect(v8Format({ __resolveType: "always" })).toBe("Default");
+    expect(v8Format({ __resolveType: "never" })).toBe("Hidden");
     expect(
-      formatMatcher({ __resolveType: "device", mobile: true, desktop: true }),
+      v8Format({ __resolveType: "device", mobile: true, desktop: true }),
     ).toBe("Mobile & Desktop");
-    expect(formatMatcher({ __resolveType: "device" })).toBe("Device");
-    expect(formatMatcher({ __resolveType: "date" })).toBe("Date");
+    expect(v8Format({ __resolveType: "device" })).toBe("Device");
+    expect(v8Format({ __resolveType: "date" })).toBe("Date");
     expect(
-      formatMatcher({
+      v8Format({
         __resolveType: "date",
         start: "2026-01-01T00:00:00",
         end: "2026-01-31T23:59:00",
       }),
     ).not.toBe("Date");
-    expect(formatMatcher({ __resolveType: "campaign" })).toBe("Campaign");
+    expect(v8Format({ __resolveType: "campaign" })).toBe("Campaign");
+  });
+  test("v7: a short name is a saved block's key, labelled as before", () => {
+    expect(formatMatcher({ __resolveType: "always" })).toBe("Always");
+    expect(formatMatcher({ __resolveType: "never" })).toBe("Never");
+    expect(
+      formatMatcher({ __resolveType: "device", mobile: true, desktop: true }),
+    ).toBe("Device");
+    expect(formatMatcher({ __resolveType: "campaign", name: "BF" })).toBe(
+      "Campaign",
+    );
+    expect(formatMatcher({ __resolveType: "experiment", name: "x" })).toBe(
+      "Experiment",
+    );
   });
 
   test("returns 'Hidden' for never matcher", () => {
@@ -397,55 +413,49 @@ describe("formatMatcher", () => {
 
     test("names an A/B test with its share", () => {
       expect(
-        formatMatcher(
-          { __resolveType: "experiment", name: "hero-headline" },
-          named,
-        ),
+        v8Format({ __resolveType: "experiment", name: "hero-headline" }, named),
       ).toBe("A/B test: hero-headline (50%)");
       expect(
-        formatMatcher({ __resolveType: "experiment", name: "off" }, named),
+        v8Format({ __resolveType: "experiment", name: "off" }, named),
       ).toBe("A/B test: off (0%)");
     });
 
     test("names an A/B test the content doesn't have, or with no values at hand", () => {
       expect(
-        formatMatcher({ __resolveType: "experiment", name: "gone" }, named),
+        v8Format({ __resolveType: "experiment", name: "gone" }, named),
       ).toBe("A/B test: gone");
       expect(
-        formatMatcher({ __resolveType: "experiment", name: "hero-headline" }),
+        v8Format({ __resolveType: "experiment", name: "hero-headline" }),
       ).toBe("A/B test: hero-headline");
-      expect(formatMatcher({ __resolveType: "experiment" })).toBe("A/B test");
+      expect(v8Format({ __resolveType: "experiment" })).toBe("A/B test");
     });
 
     test("names a campaign with its dates; the end is exclusive", () => {
       expect(
-        formatMatcher(
-          { __resolveType: "campaign", name: "Black Friday" },
-          named,
-        ),
+        v8Format({ __resolveType: "campaign", name: "Black Friday" }, named),
       ).toBe("Campaign: Black Friday (Nov 27 – Dec 1)");
       expect(
-        formatMatcher({ __resolveType: "campaign", name: "Launch" }, named),
+        v8Format({ __resolveType: "campaign", name: "Launch" }, named),
       ).toBe("Campaign: Launch (from Mar 1)");
       expect(
-        formatMatcher({ __resolveType: "campaign", name: "Clearance" }, named),
+        v8Format({ __resolveType: "campaign", name: "Clearance" }, named),
       ).toBe("Campaign: Clearance (until Jan 31)");
     });
 
     test("names a campaign with no dates, or unknown, by its name", () => {
       expect(
-        formatMatcher({ __resolveType: "campaign", name: "Forever" }, named),
+        v8Format({ __resolveType: "campaign", name: "Forever" }, named),
       ).toBe("Campaign: Forever");
       expect(
-        formatMatcher({ __resolveType: "campaign", name: "Black Friday" }),
+        v8Format({ __resolveType: "campaign", name: "Black Friday" }),
       ).toBe("Campaign: Black Friday");
-      expect(formatMatcher({ __resolveType: "campaign", name: " " })).toBe(
+      expect(v8Format({ __resolveType: "campaign", name: " " })).toBe(
         "Campaign",
       );
     });
 
     test("shows the year and times outside the current year or whole days", () => {
-      const label = formatMatcher(
+      const label = v8Format(
         { __resolveType: "campaign", name: "Old" },
         {
           experiments: {},
@@ -463,7 +473,7 @@ describe("formatMatcher", () => {
     });
 
     test("keeps showing a date rule written with its own dates", () => {
-      const label = formatMatcher(
+      const label = v8Format(
         {
           __resolveType: "date",
           start: new Date(2020, 10, 27).toISOString(),
@@ -473,12 +483,12 @@ describe("formatMatcher", () => {
       );
       expect(label).toStartWith("From ");
       expect(label).toContain("2020");
-      expect(formatMatcher({ __resolveType: "date" })).toBe("Date");
+      expect(v8Format({ __resolveType: "date" })).toBe("Date");
     });
 
     test("labels named rules inside a multi with their values", () => {
       expect(
-        formatMatcher(
+        v8Format(
           {
             __resolveType: "website/matchers/multi.ts",
             op: "AND",

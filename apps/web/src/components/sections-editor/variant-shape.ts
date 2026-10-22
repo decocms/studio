@@ -111,3 +111,29 @@ export function withVariantValue<T extends Record<string, unknown>>(
     value: storeVariantValue(containerResolveType, value, variant.value),
   };
 }
+
+/**
+ * {@link isMultivariateResolveType} on a Blocks v8 site (`v8`); any other site
+ * knows only v7's names, as before (a short `multivariate` there is a saved
+ * block's key).
+ */
+export function isVariantsBlockType(
+  resolveType: unknown,
+  v8: boolean,
+): boolean {
+  if (v8) return isMultivariateResolveType(resolveType);
+  return (
+    typeof resolveType === "string" &&
+    LEGACY_MULTIVARIATE_RESOLVE_TYPES.has(resolveType)
+  );
+}
+
+/**
+ * {@link readVariantValue} on a Blocks v8 site (`v8`); any other site reads
+ * the stored value as is, as before.
+ */
+export function variantValueOn(variant: unknown, v8: boolean): unknown {
+  if (v8) return readVariantValue(variant);
+  if (!variant || typeof variant !== "object") return undefined;
+  return (variant as { value?: unknown }).value;
+}

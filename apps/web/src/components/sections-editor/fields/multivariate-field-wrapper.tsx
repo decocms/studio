@@ -19,7 +19,7 @@ import {
   extractMatchers,
   type MatcherEntry,
 } from "../matcher-picker";
-import { formatMatcher } from "../format-matcher";
+import { matcherFormatter } from "../format-matcher";
 import { crumbLabel } from "../schema-form-breadcrumb";
 import {
   buildMatcherBlockData,
@@ -125,6 +125,8 @@ export function MultivariateFieldWrapper({
   const VariantIcon = compact ? LayersThree01 : Flag01;
   const { value, onChange, meta, path, label, focused, decofile } = props;
   const v8 = useV8Editor();
+  // Rule labels: a Blocks v8 site's short built-in names; v7's as before.
+  const formatMatcher = matcherFormatter(v8);
   const focusContext = useContext(RootVariantFocusContext);
   const rootFocus = path === "" ? focusContext : null;
   const [selectedIndex, setSelectedIndex] = useState(

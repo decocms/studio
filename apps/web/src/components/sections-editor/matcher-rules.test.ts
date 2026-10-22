@@ -12,7 +12,7 @@ import {
   seedMatcherRule,
   unwrapMatcherRule,
 } from "./matcher-rules";
-import { formatMatcher } from "./format-matcher";
+import { matcherFormatter } from "./format-matcher";
 import type { LiveMeta } from "./resolve-schema";
 
 describe("matcher-rules", () => {
@@ -149,7 +149,7 @@ describe("matcher-rules", () => {
       resolveVariantRuleLabel(
         { __resolveType: "experiment", name: "hero" },
         { experiments: { __resolveType: "split-traffic", hero: 20 } },
-        formatMatcher,
+        matcherFormatter(true),
       ),
     ).toBe("A/B test: hero (20%)");
   });
@@ -159,7 +159,7 @@ describe("matcher-rules", () => {
       resolveVariantRuleLabel(
         { __resolveType: "campaign", name: "Launch" },
         { campaigns: { __resolveType: "calendar", Launch: {} } },
-        formatMatcher,
+        matcherFormatter(true),
       ),
     ).toBe("Campaign: Launch");
   });

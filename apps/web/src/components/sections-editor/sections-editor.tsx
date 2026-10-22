@@ -187,7 +187,7 @@ import {
 } from "./variant-draft-pointer";
 import { PageJsonDialog } from "./page-json-dialog";
 import { createReferencedBlockSaver } from "./save-referenced-block";
-import { formatMatcher } from "./format-matcher";
+import { matcherFormatter } from "./format-matcher";
 import {
   AddVariantButton,
   PageHeaderInputs,
@@ -237,6 +237,8 @@ interface FormSaveTarget {
 function sectionsAtTarget(
   decofile: Record<string, unknown>,
   target: FormSaveTarget,
+  /** A Blocks v8 site (`parseSections`). */
+  v8: boolean,
 ) {
   const pageVariants: PageVariant[] =
     target.global && target.pageKey
@@ -252,6 +254,7 @@ function sectionsAtTarget(
                 ?.sections
             : undefined,
           decofile,
+          v8,
         );
   const variantIndex = Math.max(
     0,
@@ -262,7 +265,7 @@ function sectionsAtTarget(
     pageVariants,
     variantIndex,
     rawSections,
-    parsedSections: parseSections(rawSections, decofile),
+    parsedSections: parseSections(rawSections, decofile, v8),
   };
 }
 
@@ -402,6 +405,8 @@ export function SectionsEditor({
   // the schema's name, description and image) and no loader-backed pickers.
   const contentBackend = useContentBackend(virtualMcpId, branch);
   const protocolProject = isProtocolProject(contentBackend);
+  // Rule labels: a Blocks v8 site's short built-in names; v7's as before.
+  const formatMatcher = matcherFormatter(protocolProject);
   // v8 has no async rendering (migration strips Lazy wrappers): hidden once
   // the site is known to be v8, shown as before otherwise.
   const asyncRenderAvailable = !protocolProject;
@@ -777,7 +782,11 @@ export function SectionsEditor({
           sections: [{ __resolveType: activeGlobalBlockKey! } as RawSection],
         },
       ]
-    : parsePageVariantsForEditor(pageData?.sections, decofile ?? {});
+    : parsePageVariantsForEditor(
+        pageData?.sections,
+        decofile ?? {},
+        protocolProject,
+      );
   const hasMultipleVariants = pageVariants.length > 1;
   const safeVariantIndex = Math.min(
     activeVariantIndex,
@@ -785,7 +794,7 @@ export function SectionsEditor({
   );
   const activeVariant = pageVariants[safeVariantIndex];
   const rawSections: RawSection[] = activeVariant?.sections ?? [];
-  const parsedSections = parseSections(rawSections, decofile);
+  const parsedSections = parseSections(rawSections, decofile, protocolProject);
   // Page is page-level multivariate when `sections` is a multivariate wrapper.
   const pageIsMultivariate =
     !isGlobalBlockMode && isMultivariateArrayWrapper(pageData?.sections);
@@ -1172,7 +1181,7 @@ export function SectionsEditor({
   const waitingChoice = formConflicts[0];
   if (waitingChoice) {
     const { formBase: waitingBase, target: waitingTarget } = waitingChoice;
-    const at = sectionsAtTarget(decofile, waitingTarget);
+    const at = sectionsAtTarget(decofile, waitingTarget, protocolProject);
     const index = waitingBase.sectionIndex;
     const nowStored =
       at.rawSections.length === waitingBase.sectionCount
@@ -1574,7 +1583,7 @@ export function SectionsEditor({
         parsedSections: latestParsedSections,
         pageVariants: latestVariants,
         variantIndex: latestVariantIndex,
-      } = sectionsAtTarget(latestDecofile, target);
+      } = sectionsAtTarget(latestDecofile, target, protocolProject);
       const latestPageKey = target.pageKey;
       const rawSection = latestRawSections[sectionIndex];
       if (!rawSection) return;
@@ -2044,7 +2053,7 @@ export function SectionsEditor({
     if (!rawSection || !parsed) return;
 
     const next = parsed.isHidden
-      ? showSection(rawSection)
+      ? showSection(rawSection, protocolProject)
       : hideSection(rawSection, meta);
     if (!next) return;
 
@@ -2121,7 +2130,9 @@ export function SectionsEditor({
     setFormResetKey((key) => key + 1);
 
     const rawSection = updatedSections[newIndex];
-    const parsed = parseSections(updatedSections, decofile)[newIndex];
+    const parsed = parseSections(updatedSections, decofile, protocolProject)[
+      newIndex
+    ];
     if (!rawSection || !parsed) return;
 
     if (parsed.isMultivariate) {
@@ -2343,7 +2354,11 @@ export function SectionsEditor({
 
     const updatedSections = [...rawSections];
     updatedSections[sectionIndex] = result.section;
-    const nextParsed = parseSections(updatedSections, decofile)[sectionIndex];
+    const nextParsed = parseSections(
+      updatedSections,
+      decofile,
+      protocolProject,
+    )[sectionIndex];
     if (!nextParsed?.isMultivariate) {
       toast.error(t("sectionsEditor.sectionsEditor.couldNotAddVariant"));
       return;
@@ -2384,9 +2399,11 @@ export function SectionsEditor({
     const updatedSections = [...rawSections];
     updatedSections[selectedSectionIndex] = flattened;
 
-    const nextParsed = parseSections(updatedSections, decofile)[
-      selectedSectionIndex
-    ];
+    const nextParsed = parseSections(
+      updatedSections,
+      decofile,
+      protocolProject,
+    )[selectedSectionIndex];
     if (!nextParsed) return;
 
     setActiveSectionVariantIndex(0);

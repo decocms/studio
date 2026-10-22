@@ -29,6 +29,7 @@ import {
   appendSectionVariant,
   hideSection,
   isDefaultVariantRule,
+  showSection,
 } from "./section-variants";
 import {
   emptyPageBlock,
@@ -84,26 +85,47 @@ describe("always/never matcher names come from the schema", () => {
     expect(defaultVariantRule(V8)).toEqual({ __resolveType: "always" });
   });
 
-  test("every name reads as always/never", () => {
+  test("v8: every name reads as always/never", () => {
     for (const rt of [
       "always",
       "website/matchers/always.ts",
       "$live/matchers/MatchAlways.ts",
     ]) {
-      expect(isAlwaysMatcherResolveType(rt)).toBe(true);
+      expect(isAlwaysMatcherResolveType(rt, true)).toBe(true);
       expect(isDefaultVariantRule({ __resolveType: rt })).toBe(true);
     }
     for (const rt of ["never", "website/matchers/never.ts"]) {
-      expect(isNeverMatcherResolveType(rt)).toBe(true);
+      expect(isNeverMatcherResolveType(rt, true)).toBe(true);
     }
-    expect(isNeverMatcherResolveType("date")).toBe(false);
+    expect(isNeverMatcherResolveType("date", true)).toBe(false);
+  });
+
+  test("v7: only the file names, a short name is a saved block, as before", () => {
+    expect(isAlwaysMatcherResolveType("website/matchers/always.ts")).toBe(true);
+    expect(isAlwaysMatcherResolveType("$live/matchers/MatchAlways.ts")).toBe(
+      true,
+    );
+    expect(isAlwaysMatcherResolveType("always")).toBe(false);
+    expect(isNeverMatcherResolveType("website/matchers/never.ts")).toBe(true);
+    expect(isNeverMatcherResolveType("never")).toBe(false);
+    // A section ruled by a saved block keyed `never` is not hidden on v7.
+    const ruledByBlock = {
+      __resolveType: "website/flags/multivariate/section.ts",
+      variants: [{ rule: { __resolveType: "never" }, value: HERO }],
+    } as unknown as RawSection;
+    expect(parseSections([ruledByBlock], {})[0]?.isHidden).toBeUndefined();
+    expect(parseSections([ruledByBlock], {})[0]?.isMultivariate).toBe(true);
+    expect(showSection(ruledByBlock)).toBeNull();
+    expect(resolveSectionCandidates(ruledByBlock, {})).toEqual(["hero"]);
+    // The same on v8 is the built-in: hidden.
+    expect(parseSections([ruledByBlock], {}, true)[0]?.isHidden).toBe(true);
   });
 
   test("hiding a section writes `never` on next-major and parses back hidden", () => {
     const hidden = hideSection(HERO, V8);
     expect(hidden.variants?.[0]?.rule).toEqual({ __resolveType: "never" });
-    expect(parseSections([hidden], {})[0]?.isHidden).toBe(true);
-    expect(resolveSectionCandidates(hidden, {})).toBeNull();
+    expect(parseSections([hidden], {}, true)[0]?.isHidden).toBe(true);
+    expect(resolveSectionCandidates(hidden, {}, true)).toBeNull();
     // v7 keeps its file name.
     expect(hideSection(HERO, V7).variants?.[0]?.rule).toEqual({
       __resolveType: "website/matchers/never.ts",
@@ -113,8 +135,10 @@ describe("always/never matcher names come from the schema", () => {
   test("hiding an array item writes `never` on next-major", () => {
     const hidden = hideArrayItem({ src: "a.png" }, V8);
     expect(hidden.variants[0]?.rule).toEqual({ __resolveType: "never" });
-    expect(isArrayItemHidden(hidden)).toBe(true);
-    expect(showArrayItem(hidden)).toEqual({ src: "a.png" });
+    expect(isArrayItemHidden(hidden, true)).toBe(true);
+    expect(showArrayItem(hidden, true)).toEqual({ src: "a.png" });
+    // v7: an item ruled by a saved block keyed `never` is not hidden.
+    expect(isArrayItemHidden(hidden, false)).toBe(false);
     expect(hideArrayItem({}, V7).variants[0]?.rule).toEqual({
       __resolveType: "website/matchers/never.ts",
     });
