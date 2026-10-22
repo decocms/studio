@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   type SiteDraftBarInput,
+  type SiteDraftBarParts,
   siteDraftBarParts,
 } from "./site-draft-bar-parts";
 
@@ -64,7 +65,7 @@ describe("siteDraftBarParts", () => {
 
   test("every input gives main's site editor bar (v7 sites use this same bar)", () => {
     // Main's `SiteEditorActions`, written inline, as the reference.
-    const main = (i: SiteDraftBarInput) => {
+    const main = (i: SiteDraftBarInput): SiteDraftBarParts => {
       const hidden = !i.hasEntity && !i.servingLocally;
       return {
         hidden,
