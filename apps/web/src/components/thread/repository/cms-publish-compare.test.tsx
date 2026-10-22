@@ -1,7 +1,12 @@
 import { setupComponentTest } from "../../../../test/setup";
 setupComponentTest();
-import { beforeAll, describe, expect, test } from "bun:test";
-import { render as rtlRender, within } from "@testing-library/react";
+import { beforeAll, describe, expect, mock, test } from "bun:test";
+import {
+  act,
+  fireEvent,
+  render as rtlRender,
+  within,
+} from "@testing-library/react";
 import type { ReactElement } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { PublishCodeTab, PublishCompare } from "./cms-publish-compare.tsx";
@@ -154,6 +159,107 @@ describe("the publish panel's Code tab", () => {
     const body = within(view.container);
     expect(body.getByRole("tab", { name: "Code" })).toBeTruthy();
     expect(body.queryByText("Nothing to preview")).toBeNull();
+    view.unmount();
+  });
+});
+
+describe("the review frames (publish review)", () => {
+  const draft = { kind: "pointer", pointer: "drafts/x.json" } as const;
+  const pane = (props: { v8: boolean; onReady?: () => void }) => (
+    <PublishCompare
+      change={page}
+      diff={null}
+      bodyPending={false}
+      previewServerUrl="https://site.example"
+      draft={draft}
+      lastPage={null}
+      v8={props.v8 ? { blocks: {} } : undefined}
+      onReady={props.onReady}
+    />
+  );
+  const frames = (container: HTMLElement) => [
+    ...container.querySelectorAll<HTMLIFrameElement>("iframe"),
+  ];
+
+  test("v8: a frame not measured yet stays hidden instead of showing at full size", () => {
+    const view = render(pane({ v8: true }));
+    const [before, after] = frames(view.container);
+    expect(before!.style.visibility).toBe("hidden");
+    expect(after!.style.visibility).toBe("hidden");
+    expect(before!.style.transform).toBe("");
+    view.unmount();
+  });
+
+  test("v7 keeps main's frames (scale 1 until measured)", () => {
+    const view = render(pane({ v8: false }));
+    const [before] = frames(view.container);
+    expect(before!.style.visibility).toBe("");
+    expect(before!.style.transform).toBe("scale(1)");
+    view.unmount();
+  });
+
+  test("v8: another device keeps the page on screen until the new one loads", () => {
+    const view = render(pane({ v8: true }));
+    for (const frame of frames(view.container)) {
+      act(() => {
+        fireEvent.load(frame);
+      });
+    }
+    const loaded = frames(view.container);
+    expect(loaded).toHaveLength(2);
+    act(() => {
+      fireEvent.click(
+        within(view.container).getByRole("button", { name: "Mobile" }),
+      );
+    });
+    // Each side: the desktop page still there, the mobile one loading under it.
+    const both = frames(view.container);
+    expect(both).toHaveLength(4);
+    expect(both[0]).toBe(loaded[0]!);
+    expect(both[0]!.className).not.toContain("opacity-0");
+    expect(both[1]!.className).toContain("opacity-0");
+    expect(both[1]!.src).toContain("mobile");
+    act(() => {
+      fireEvent.load(both[1]!);
+    });
+    const [beforeNow] = frames(view.container);
+    expect(beforeNow).toBe(both[1]!);
+    expect(beforeNow!.className).not.toContain("opacity-0");
+    view.unmount();
+  });
+
+  test("v8: says it's ready once both sides have loaded", () => {
+    const onReady = mock(() => {});
+    const view = render(pane({ v8: true, onReady }));
+    const [before, after] = frames(view.container);
+    act(() => {
+      fireEvent.load(before!);
+    });
+    expect(onReady).not.toHaveBeenCalled();
+    act(() => {
+      fireEvent.load(after!);
+    });
+    expect(onReady).toHaveBeenCalled();
+    view.unmount();
+  });
+
+  test("v8: a pane with no page to load is ready at once", () => {
+    const onReady = mock(() => {});
+    const view = render(
+      <PublishCodeTab value={false}>
+        <PublishCompare
+          change={page}
+          diff={null}
+          bodyPending={false}
+          previewServerUrl={null}
+          draft={null}
+          lastPage={null}
+          v8={{ blocks: {} }}
+          onReady={onReady}
+        />
+      </PublishCodeTab>,
+    );
+    expect(onReady).toHaveBeenCalled();
     view.unmount();
   });
 });

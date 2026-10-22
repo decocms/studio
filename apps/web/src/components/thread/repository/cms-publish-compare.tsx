@@ -17,9 +17,15 @@ import {
   Plus,
   Trash01,
 } from "@untitledui/icons";
-import { createContext, use, useState, type ReactNode } from "react";
+import {
+  createContext,
+  use,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { useT } from "@/i18n/use-t.ts";
-import { useElementSize } from "@/hooks/use-element-size.ts";
+import { type ElementSize, useElementSize } from "@/hooks/use-element-size.ts";
 import {
   DRAFT_OFF,
   withDraftPointer,
@@ -81,6 +87,11 @@ interface PublishCompareProps {
    * isolated-section route. Absent on v7.
    */
   v8?: { blocks: Record<string, unknown> | null };
+  /**
+   * Called once the pages this pane shows have loaded (or it has none), so
+   * the panel can keep the previous pane on screen until then. v8 only.
+   */
+  onReady?: () => void;
 }
 
 /**
@@ -119,6 +130,7 @@ export function PublishCompare({
   draft,
   lastPage,
   v8,
+  onReady,
 }: PublishCompareProps) {
   const t = useT();
   const showsCode = use(PublishCodeTab);
@@ -186,6 +198,35 @@ export function PublishCompare({
   })();
 
   const placeholder = comparePlaceholder(change, !!v8);
+  const [loadedFrames, setLoadedFrames] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const frameLoaded = (src: string) =>
+    setLoadedFrames((current) =>
+      current.has(src) ? current : new Set(current).add(src),
+    );
+  /** v8: frames keep their last page until the next one loads. */
+  const frame = (props: CompareFrameProps) =>
+    v8 ? (
+      <SmoothCompareFrame {...props} onLoaded={frameLoaded} />
+    ) : (
+      <CompareFrame {...props} />
+    );
+  /** The pages this pane waits on: none on the code view or a placeholder. */
+  const frameSrcs = canRender
+    ? [
+        placeholder.before === "new" ? null : beforeUrl,
+        placeholder.after === "removed" ? null : afterUrl,
+      ].flatMap((u) => (u ? [withDeviceHint(u, device)] : []))
+    : [];
+  const ready = frameSrcs.every((src) => loadedFrames.has(src));
+  /** Attached once the pages are in (or there are none): tells the panel. */
+  const readyRef =
+    ready && onReady
+      ? (node: HTMLDivElement | null) => {
+          if (node) onReady();
+        }
+      : undefined;
   const beforePane =
     placeholder.before === "new" ? (
       <ComparePlaceholder
@@ -194,12 +235,12 @@ export function PublishCompare({
         description={t("thread.publishCompare.newDescription")}
       />
     ) : (
-      <CompareFrame
-        url={beforeUrl}
-        device={device}
-        title={t("thread.publishCompare.before")}
-        missing={t("thread.publishCompare.enterPath")}
-      />
+      frame({
+        url: beforeUrl,
+        device,
+        title: t("thread.publishCompare.before"),
+        missing: t("thread.publishCompare.enterPath"),
+      })
     );
 
   const afterPane =
@@ -210,20 +251,21 @@ export function PublishCompare({
         description={t("thread.publishCompare.removedDescription")}
       />
     ) : (
-      <CompareFrame
-        url={afterUrl}
-        device={device}
-        title={t("thread.publishCompare.after")}
-        missing={
-          url
-            ? t("thread.publishCompare.draftUnavailable")
-            : t("thread.publishCompare.enterPath")
-        }
-      />
+      frame({
+        url: afterUrl,
+        device,
+        title: t("thread.publishCompare.after"),
+        missing: url
+          ? t("thread.publishCompare.draftUnavailable")
+          : t("thread.publishCompare.enterPath"),
+      })
     );
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-muted/40">
+    <div
+      ref={readyRef}
+      className="flex min-h-0 min-w-0 flex-1 flex-col bg-muted/40"
+    >
       <div className="flex flex-wrap items-center gap-2 border-b bg-background px-4 py-2.5 max-md:pr-12">
         {canRender || showsCode ? (
           <Tabs
@@ -454,22 +496,36 @@ function ComparePlaceholder({
   );
 }
 
+/** Where a page of `logicalWidth` sits, scaled to fit a pane of `size`. */
+function frameLayout(
+  size: ElementSize | null,
+  logicalWidth: number,
+): CSSProperties {
+  // Not measured yet: hidden, never shown at full size (it reads as a zoom).
+  if (!size) return { visibility: "hidden", width: logicalWidth };
+  const scale = Math.min(size.width / logicalWidth, 1);
+  return {
+    left: Math.max((size.width - logicalWidth * scale) / 2, 0),
+    width: logicalWidth,
+    height: size.height / scale,
+    transform: `scale(${scale})`,
+    transformOrigin: "top left",
+  };
+}
+
 /**
  * The page at a fixed logical width, scaled to the pane — a faithful miniature
  * of the layout instead of a reflow into whatever breakpoint the half-width
  * pane happens to hit.
  */
-function CompareFrame({
-  url,
-  device,
-  title,
-  missing,
-}: {
+interface CompareFrameProps {
   url: string | null;
   device: CompareDevice;
   title: string;
   missing: string;
-}) {
+}
+
+function CompareFrame({ url, device, title, missing }: CompareFrameProps) {
   const [size, ref] = useElementSize();
   const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
 
@@ -512,6 +568,95 @@ function CompareFrame({
         <div className="absolute inset-0 flex items-center justify-center bg-background/60">
           <Spinner className="size-5 motion-reduce:animate-none" />
         </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** A frame on screen: its page and the width that page was laid out at. */
+interface ShownFrame {
+  src: string;
+  logicalWidth: number;
+}
+
+/**
+ * {@link CompareFrame} on a v8 site. A new address (another device, a typed
+ * path, a fresh draft pointer) loads in a second frame under the one on
+ * screen, which stays until the new page has loaded: no blank in between.
+ * A pane hidden for a while (another tab) measures 0: the frame keeps its
+ * last size, so it never comes back at full scale.
+ */
+function SmoothCompareFrame({
+  url,
+  device,
+  title,
+  missing,
+  onLoaded,
+}: CompareFrameProps & { onLoaded?: (src: string) => void }) {
+  const [size, ref] = useElementSize();
+  const [lastSize, setLastSize] = useState<ElementSize | null>(null);
+  const [shown, setShown] = useState<ShownFrame | null>(null);
+  const measuredNow = size.width > 0 && size.height > 0;
+  if (
+    measuredNow &&
+    (lastSize?.width !== size.width || lastSize?.height !== size.height)
+  ) {
+    setLastSize(size);
+  }
+  const box = measuredNow ? size : lastSize;
+
+  if (!url) {
+    return (
+      <p className="flex h-full items-center justify-center px-6 text-center text-xs text-muted-foreground">
+        {missing}
+      </p>
+    );
+  }
+
+  const src = withDeviceHint(url, device);
+  const logicalWidth = DEVICE_WIDTH[device];
+  const loading = shown?.src !== src;
+  // The one on screen first, the loading one after it: a frame already in
+  // the list never moves (moving an iframe reloads it).
+  const frames: ShownFrame[] = [
+    ...(shown && loading ? [shown] : []),
+    { src, logicalWidth },
+  ];
+
+  return (
+    <div ref={ref} className="absolute inset-0">
+      {frames.map((frame) => {
+        const pending = frame.src === src && loading;
+        return (
+          // Cross-origin site, so `allow-same-origin` keeps ITS origin, not ours.
+          <iframe
+            key={frame.src}
+            src={frame.src}
+            title={title}
+            aria-hidden={pending && shown ? true : undefined}
+            // oxlint-disable-next-line react/iframe-missing-sandbox
+            sandbox="allow-scripts allow-same-origin"
+            onLoad={() => {
+              if (frame.src !== src) return;
+              setShown(frame);
+              onLoaded?.(frame.src);
+            }}
+            className={cn(
+              "absolute top-0 border-0 bg-white",
+              pending && "pointer-events-none opacity-0",
+            )}
+            style={frameLayout(box, frame.logicalWidth)}
+          />
+        );
+      })}
+      {loading ? (
+        shown ? (
+          <Spinner className="absolute right-2 top-2 size-4 text-muted-foreground motion-reduce:animate-none" />
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center bg-background/60">
+            <Spinner className="size-5 motion-reduce:animate-none" />
+          </div>
+        )
       ) : null}
     </div>
   );

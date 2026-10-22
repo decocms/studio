@@ -91,6 +91,7 @@ import type { ProtocolBackend } from "@/components/sections-editor/content-backe
 import { useContentSyncState } from "@/components/sections-editor/content-sync.ts";
 import { ErrorDetails } from "@/components/sections-editor/site-editor-toast.tsx";
 import { publishTitle } from "./publish-title.ts";
+import { REVIEW_PANE_READY_MS, shownReviewPane } from "./review-pane-swap.ts";
 
 export type { CmsPublishMode };
 
@@ -687,6 +688,14 @@ function CmsPublishView({
    *  change list that lands after mount still describes itself. */
   const [editedNote, setEditedNote] = useState<string | null>(null);
   const [discardAllConfirm, setDiscardAllConfirm] = useState(false);
+  /** v8: review panes whose pages have loaded (review-pane-swap.ts). */
+  const [readyIds, setReadyIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const markReady = (id: string) =>
+    setReadyIds((current) =>
+      current.has(id) ? current : new Set(current).add(id),
+    );
   /** The card shown in the review pane. */
   const [activeId, setActiveId] = useState<string | null>(null);
   /** Cards visited, most recent first — their panes stay mounted. */
@@ -694,6 +703,8 @@ function CmsPublishView({
   const select = (id: string) => {
     setActiveId(id);
     setVisitedIds((current) => [id, ...current.filter((v) => v !== id)]);
+    // v8: a pane whose pages never say they loaded shows anyway.
+    if (source.v8) setTimeout(() => markReady(id), REVIEW_PANE_READY_MS);
   };
   /** Only one card may arm its discard at a time — it is a one-click destroy. */
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
@@ -717,6 +728,17 @@ function CmsPublishView({
   ]
     .filter((id) => changes.some((change) => changeId(change) === id))
     .slice(0, MAX_LIVE_PANES);
+  // A Blocks (v8) site: the panes stay laid out (invisible, not `hidden`), so
+  // a picked pane is already sized and painted, and the one on screen stays
+  // until the picked one's pages load (review-pane-swap.ts). v7 as before.
+  const smoothPanes = !!source.v8;
+  const [lastShownId, setLastShownId] = useState<string | null>(null);
+  const shownId = smoothPanes
+    ? shownReviewPane({ selectedId, readyIds, lastShownId, liveIds })
+    : selectedId;
+  if (smoothPanes && shownId === selectedId && shownId !== lastShownId) {
+    setLastShownId(shownId);
+  }
   // A hosted v8 draft has no pull request: review mode doesn't apply to it.
   const isReview = mode === "review" && !hosted;
   const surfaceState: PublishSurfaceState = cardsPending
@@ -969,8 +991,16 @@ function CmsPublishView({
             key={changeId(change)}
             className={cn(
               "absolute inset-0 flex",
-              changeId(change) !== selectedId && "hidden",
+              smoothPanes
+                ? changeId(change) === shownId
+                  ? "z-10"
+                  : "pointer-events-none opacity-0"
+                : changeId(change) !== selectedId && "hidden",
             )}
+            inert={smoothPanes && changeId(change) !== shownId}
+            aria-hidden={
+              smoothPanes && changeId(change) !== shownId ? true : undefined
+            }
           >
             <PublishCompare
               change={change}
@@ -980,6 +1010,9 @@ function CmsPublishView({
               draft={compareDraft}
               lastPage={lastPreviewPage}
               v8={source.v8}
+              onReady={
+                smoothPanes ? () => markReady(changeId(change)) : undefined
+              }
             />
           </div>
         ))}
