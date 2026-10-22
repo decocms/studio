@@ -94,6 +94,7 @@ import { GitProviderError } from "../../git-providers/types";
 import { credentialExpiresAt } from "@/sandbox/credential-push";
 import type { RepositoryRecord } from "../../storage/repositories";
 import {
+  decodeSandboxStartError,
   encodeSandboxStartError,
   SANDBOX_START_ERROR_CODES,
 } from "@decocms/shared/sandbox-start-errors";
@@ -346,25 +347,47 @@ export async function ensureSandbox(
       err instanceof Error ? err.message : String(err),
     );
   });
-  const { entry, warmPoolAdopted } = await provisionSandbox({
+  const threadRepos = await getThreadAdditionalRepositories(
     ctx,
-    userId,
-    sandboxUserId,
-    orgId: organization.id,
-    virtualMcpId: input.virtualMcpId,
-    branch: input.branch,
-    metadata,
-    repository,
-    threadRepos: await getThreadAdditionalRepositories(
+    provisioningThreadId,
+  );
+  const provision = (primary: RepositoryBinding | null) =>
+    provisionSandbox({
       ctx,
-      provisioningThreadId,
-    ),
-    existing: input.revalidate ? existing : null,
-    runner,
-    ...(input.purpose ? { purpose: input.purpose } : {}),
-  });
-  input.onBound?.({ warmPoolAdopted });
-  return entry;
+      userId,
+      sandboxUserId,
+      orgId: organization.id,
+      virtualMcpId: input.virtualMcpId,
+      branch: input.branch,
+      metadata,
+      repository: primary,
+      threadRepos,
+      existing: input.revalidate ? existing : null,
+      runner,
+      ...(input.purpose ? { purpose: input.purpose } : {}),
+    });
+  let provisioned: Awaited<ReturnType<typeof provision>>;
+  try {
+    provisioned = await provision(repository);
+  } catch (error) {
+    // A repo Studio can't clone must not cost the run: boot blank, the way a
+    // thread with no repo does. The credential is resolved before any pod is
+    // claimed, so this provisions from scratch.
+    if (
+      !repository ||
+      !(error instanceof Error) ||
+      !decodeSandboxStartError(error.message).code
+    )
+      throw error;
+    console.warn("[ensureSandbox] starting without the primary repository", {
+      virtualMcpId: input.virtualMcpId,
+      repo: `${repository.owner}/${repository.name}`,
+      error: error.message,
+    });
+    provisioned = await provision(null);
+  }
+  input.onBound?.({ warmPoolAdopted: provisioned.warmPoolAdopted });
+  return provisioned.entry;
 }
 
 type StartParams = {

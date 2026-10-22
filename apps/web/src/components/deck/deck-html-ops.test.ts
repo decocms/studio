@@ -193,6 +193,18 @@ describe("applyDeckOp", () => {
     expect(out).toContain("<a>click</a>");
   });
 
+  test("replace strips SVG SMIL animate elements that rewrite href", () => {
+    const out = applyDeckOp(DECK, {
+      kind: "replace",
+      at: 0,
+      html:
+        '<section class="a"><svg><a href="#safe">' +
+        '<animate attributeName="href" values="javascript:alert(1)" />click</a></svg></section>',
+    });
+    expect(out).not.toContain("<animate");
+    expect(out).not.toContain("javascript:");
+  });
+
   test("replace keeps pasted base64 images", () => {
     const out = applyDeckOp(DECK, {
       kind: "replace",
@@ -200,5 +212,15 @@ describe("applyDeckOp", () => {
       html: '<section class="a"><img src="data:image/png;base64,AAA="></section>',
     });
     expect(out).toContain("data:image/png;base64,AAA=");
+  });
+
+  test("replace strips a data:image/svg+xml href that can run script on click", () => {
+    const out = applyDeckOp(DECK, {
+      kind: "replace",
+      at: 0,
+      html: '<section class="a"><a href="data:image/svg+xml;base64,AAA=">click</a></section>',
+    });
+    expect(out).not.toContain("data:image/svg+xml");
+    expect(out).toContain("<a>click</a>");
   });
 });

@@ -15,7 +15,6 @@
 import { Avatar } from "@decocms/ui/components/avatar.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
-import { getInitials } from "@/lib/get-initials";
 import {
   SUPER_AGENT_ASSIGNEE_ID,
   type Member,
@@ -47,7 +46,7 @@ export function TaskAssigneeAvatar({
     ) : assignee ? (
       <Avatar
         url={assignee.user?.image ?? undefined}
-        fallback={getInitials(assignee.user?.name)}
+        fallback={assignee.user?.name ?? "?"}
         shape="circle"
         size="xs"
       />

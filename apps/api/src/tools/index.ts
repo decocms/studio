@@ -1,4 +1,3 @@
-import { SUBSCRIPTION_USAGE_GET } from "./subscription-usage";
 /**
  * Tool Registry
  *
@@ -34,6 +33,7 @@ import * as SecretsTools from "./secrets";
 import * as FileConfigTools from "./file-configs";
 import * as InfraBillingTools from "./infra-billing";
 import * as CustomerLakeTools from "./customer-lake";
+import * as SubscriptionUsageTools from "./subscription-usage";
 import { ORG_FS_PUBLIC_SETS_SYNC } from "./org-fs/sync-public-sets";
 import * as OrgRepoSyncTools from "./org-repo-sync";
 import * as JiraTools from "./jira";
@@ -260,7 +260,7 @@ export const CORE_TOOLS = [
   AiProvidersTools.AI_PLAN_INVOICE_UPGRADE,
   CodexSubscriptionTools.CODEX_SUBSCRIPTION_CONNECT,
   CodexSubscriptionTools.CODEX_SUBSCRIPTION_STATUS,
-  SUBSCRIPTION_USAGE_GET,
+  SubscriptionUsageTools.SUBSCRIPTION_USAGE_GET,
   CodexSubscriptionTools.CODEX_SUBSCRIPTION_DISCONNECT,
   CodexSubscriptionTools.CODEX_SUBSCRIPTION_SYNC,
   // Claude subscription (per-user OAuth credential for the claude-code harness)

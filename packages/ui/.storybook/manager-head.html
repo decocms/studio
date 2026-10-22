@@ -1,0 +1,85 @@
+<style>
+  @font-face {
+    font-family: "Inter var";
+    font-weight: 100 900;
+    font-display: swap;
+    src: url("./fonts/InterVariable.woff2") format("woff2");
+  }
+
+  :root {
+    --sb-ink: #0a0a0a;
+    --sb-muted: #666666;
+    --sb-hover: #ececec;
+    --sb-selected-bg: #eff6cc;
+    --sb-selected-fg: #07401a;
+  }
+  html.dark {
+    --sb-ink: #f1f1f1;
+    --sb-muted: #8c8c8c;
+    --sb-hover: #1c1c1c;
+    --sb-selected-bg: rgb(208 236 26 / 0.14);
+    --sb-selected-fg: #d0ec1a;
+  }
+
+  /* A docs sidebar: no type icons, the product's type, room to breathe. */
+  #storybook-explorer-tree,
+  .sidebar-header,
+  .sidebar-header + * {
+    font-family: "Inter var", Inter, system-ui, sans-serif;
+  }
+  .sidebar-header {
+    padding: 8px 4px 20px;
+  }
+  .sidebar-header img {
+    height: 22px;
+    width: auto;
+  }
+
+  .sidebar-subheading {
+    margin-top: 20px;
+  }
+  .sidebar-subheading button {
+    font-family: "Inter var", Inter, system-ui, sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: -0.005em;
+    text-transform: none;
+    color: var(--sb-ink);
+  }
+
+  .sidebar-item {
+    font-size: 13px;
+    line-height: 18px;
+    color: var(--sb-muted);
+    border-radius: 999px;
+  }
+  .sidebar-item a,
+  .sidebar-item button {
+    padding-top: 6px;
+    padding-bottom: 6px;
+  }
+  #storybook-explorer-tree svg[type] {
+    display: none;
+  }
+  #storybook-explorer-tree [data-testid="context-menu"],
+  #storybook-explorer-tree [data-testid="tree-change-status-button"] {
+    display: none !important;
+  }
+
+  .sidebar-item:hover {
+    background: var(--sb-hover);
+    color: var(--sb-ink);
+  }
+  .sidebar-item[data-selected="true"] {
+    background: var(--sb-selected-bg) !important;
+    color: var(--sb-selected-fg) !important;
+  }
+  .sidebar-item[data-selected="true"] a,
+  .sidebar-item[data-selected="true"] span {
+    color: var(--sb-selected-fg) !important;
+    font-weight: 500;
+  }
+  .sidebar-item[data-selected="true"] svg {
+    color: var(--sb-selected-fg) !important;
+  }
+</style>

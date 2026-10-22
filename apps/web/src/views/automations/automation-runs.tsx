@@ -163,7 +163,7 @@ function RunRow({
   return (
     <TableRow
       ref={lastRowRef}
-      className="h-14 cursor-pointer hover:bg-muted/40 transition-colors border-b-0"
+      className="h-14 cursor-pointer hover:bg-accent transition-colors border-b-0"
       onClick={onClick}
     >
       <TableCell className="min-w-0 pr-2 pl-4 md:pr-4">
@@ -315,19 +315,19 @@ export function AutomationRunsView({
         <Table className="w-full border-collapse">
           <TableHeader className="border-b-0">
             <TableRow className="h-9 hover:bg-transparent border-b border-border">
-              <TableHead className="pl-4 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
+              <TableHead className="pl-4 font-normal text-meta">
                 {t("automations.automationRuns.runHeader")}
               </TableHead>
-              <TableHead className="w-28 px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
+              <TableHead className="w-28 px-3 font-normal text-meta">
                 {t("automations.automationRuns.statusHeader")}
               </TableHead>
-              <TableHead className="w-24 px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide text-right">
+              <TableHead className="w-24 px-3 font-normal text-meta text-right">
                 {t("automations.automationRuns.tokensHeader")}
               </TableHead>
-              <TableHead className="w-24 px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide text-right">
+              <TableHead className="w-24 px-3 font-normal text-meta text-right">
                 {t("automations.automationRuns.costHeader")}
               </TableHead>
-              <TableHead className="w-32 px-3 pr-5 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
+              <TableHead className="w-32 px-3 pr-5 font-normal text-meta">
                 {t("automations.automationRuns.startedHeader")}
               </TableHead>
             </TableRow>

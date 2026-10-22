@@ -410,7 +410,7 @@ function BrandPreviewContent({
           ))}
         {variant === "dialog" ? (
           <DialogClose asChild>
-            <Button variant="ghost" size="icon" className="size-8 shrink-0">
+            <Button variant="ghost" size="icon" className="shrink-0">
               <X size={16} />
             </Button>
           </DialogClose>
@@ -418,7 +418,7 @@ function BrandPreviewContent({
           <Button
             variant="ghost"
             size="icon"
-            className="size-8 shrink-0"
+            className="shrink-0"
             onClick={onClose}
           >
             <X size={16} />
@@ -462,10 +462,10 @@ function BrandPreviewContent({
                       setDeckCollapsed((c) => !c);
                     }
                   }}
-                  className="flex cursor-pointer items-center justify-between gap-2 px-4 py-2.5 hover:bg-muted/40"
+                  className="flex cursor-pointer items-center justify-between gap-2 px-4 py-2.5 hover:bg-accent"
                 >
                   <div
-                    className="flex gap-0.5 rounded-lg bg-muted p-0.5 text-xs font-medium"
+                    className="surface-inset flex gap-0.5 p-0.5 text-xs font-medium"
                     onClick={(e) => e.stopPropagation()}
                   >
                     {themeExists && (
@@ -478,7 +478,7 @@ function BrandPreviewContent({
                         className={cn(
                           "rounded-lg px-2.5 py-1",
                           showDeck
-                            ? "bg-background text-foreground shadow-sm"
+                            ? "bg-background text-foreground shadow-edge"
                             : "text-muted-foreground hover:text-foreground",
                         )}
                       >
@@ -495,7 +495,7 @@ function BrandPreviewContent({
                         "rounded-lg px-2.5 py-1",
                         showDeck
                           ? "text-muted-foreground hover:text-foreground"
-                          : "bg-background text-foreground shadow-sm",
+                          : "bg-background text-foreground shadow-edge",
                       )}
                     >
                       {t("library.brandPreview.components")}

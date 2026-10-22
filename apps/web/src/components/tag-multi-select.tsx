@@ -129,7 +129,7 @@ export function TagMultiSelect({
           onClick={() => setIsOpen(!isOpen)}
           className={cn(
             "h-auto min-h-8 px-2 py-1 justify-start font-normal",
-            "hover:bg-accent/50",
+            "hover:bg-accent",
             className,
           )}
           disabled={disabled || isLoading}
@@ -139,16 +139,12 @@ export function TagMultiSelect({
           ) : memberTags.length > 0 ? (
             <div className="flex items-center gap-1 flex-wrap">
               {memberTags.slice(0, maxDisplay).map((tag) => (
-                <Badge
-                  key={tag.id}
-                  variant="secondary"
-                  className="text-xs px-1.5 py-0 h-5"
-                >
+                <Badge key={tag.id} variant="secondary">
                   {tag.name}
                 </Badge>
               ))}
               {memberTags.length > maxDisplay && (
-                <Badge variant="secondary" className="text-xs px-1.5 py-0 h-5">
+                <Badge variant="secondary">
                   +{memberTags.length - maxDisplay}
                 </Badge>
               )}

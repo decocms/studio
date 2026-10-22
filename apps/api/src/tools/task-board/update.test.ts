@@ -18,6 +18,8 @@ import {
 function item(overrides: Partial<TaskBoardItem> = {}): TaskBoardItem {
   return {
     harnessId: "claude-code",
+    parentId: null,
+    isEpic: false,
     id: "board_1",
     organizationId: "org_1",
     title: "Title",

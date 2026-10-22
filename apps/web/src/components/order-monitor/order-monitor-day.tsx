@@ -306,6 +306,52 @@ function datumHour(payload: unknown): number | null {
     : null;
 }
 
+/**
+ * A today series with the running hour out of the solid line: its first minutes
+ * next to the reference days' whole hours read as a crash. `pace` draws it as
+ * its hourly pace instead, dashed from the hour before.
+ */
+export function splitRunningHour(today: (number | null)[], done: number) {
+  const elapsed = done % 4;
+  const running = elapsed > 0 ? Math.floor(done / 4) : null;
+  return {
+    full: today.map((v, h) => (h === running ? null : v)),
+    pace: today.map((v, h) => {
+      if (running === null || v === null) return null;
+      if (h === running) return Math.round((v * 4) / elapsed);
+      return h === running - 1 ? v : null;
+    }),
+  };
+}
+
+/** The hour still running in `day`, and how many of its minutes are in. */
+function runningHour(day: OrderMonitorDay) {
+  const minutes = (day.done % 4) * 15;
+  return { hour: minutes > 0 ? Math.floor(day.done / 4) : null, minutes };
+}
+
+/** The hour tooltip, minus whichever entries `hide` drops (a repeated or redundant point). */
+function hourTooltip(
+  hide: (item: { dataKey?: unknown; payload?: { x?: number } }) => boolean,
+  label: (h: number) => React.ReactNode,
+) {
+  return (
+    <ChartTooltip
+      content={({ active, payload, label: hour }) => (
+        <ChartTooltipContent
+          active={active}
+          label={hour}
+          payload={payload?.filter((item) => !hide(item))}
+          labelFormatter={(_, payload) => {
+            const h = datumHour(payload);
+            return h === null ? null : label(h);
+          }}
+        />
+      )}
+    />
+  );
+}
+
 function OrdersChart({
   day,
   pushes,
@@ -316,13 +362,16 @@ function OrdersChart({
   const t = useT();
   const { orders } = day;
   const current = Math.floor(day.done / 4);
+  const running = runningHour(day);
   const drop = day.verdicts.orders_drop;
+  const today = splitRunningHour(orders.today, day.done);
   const data = HOURS.map((h) => {
     const warn = orders.warnAt[h];
     const alert = orders.alertAt[h];
     return {
       x: h,
-      today: orders.today[h],
+      today: today.full[h],
+      pace: today.pace[h],
       d1: orders.d1[h],
       w1: orders.w1[h],
       y1: orders.y1[h],
@@ -352,6 +401,7 @@ function OrdersChart({
           label: t("orderMonitor.series.projection"),
           color: COLOR_EXPECTED,
         },
+        pace: { label: t("orderMonitor.series.pace"), color: COLOR_TODAY },
       }}
       className="h-72 w-full"
     >
@@ -362,26 +412,29 @@ function OrdersChart({
         <CartesianGrid vertical={false} />
         {xAxis}
         {yAxis}
-        <ChartTooltip
-          content={
-            <ChartTooltipContent
-              labelFormatter={(_, payload) => {
-                const h = datumHour(payload);
-                if (h === null) return null;
-                if (h === Math.floor(drop.from / 4)) {
-                  return t("orderMonitor.verdictWindow", {
-                    hour: hourLabel(h),
-                    from: bucketTime(drop.from),
-                    to: bucketTime(drop.to),
-                    observed: drop.observed,
-                    expected: Math.round(drop.expected),
-                  });
-                }
-                return hourLabel(h);
-              }}
-            />
-          }
-        />
+        {hourTooltip(
+          (item) =>
+            (item.dataKey === "pace" && item.payload?.x !== running.hour) ||
+            (item.dataKey === "projection" && item.payload?.x === current),
+          (h) => {
+            if (h === running.hour) {
+              return t("orderMonitor.partialHour", {
+                hour: hourLabel(h),
+                minutes: running.minutes,
+              });
+            }
+            if (h === Math.floor(drop.from / 4)) {
+              return t("orderMonitor.verdictWindow", {
+                hour: hourLabel(h),
+                from: bucketTime(drop.from),
+                to: bucketTime(drop.to),
+                observed: drop.observed,
+                expected: Math.round(drop.expected),
+              });
+            }
+            return hourLabel(h);
+          },
+        )}
         <Area
           dataKey="band"
           stroke="none"
@@ -431,12 +484,19 @@ function OrdersChart({
           strokeWidth={2.5}
           dot={false}
         />
+        <Line
+          dataKey="pace"
+          stroke={COLOR_TODAY}
+          strokeWidth={2.5}
+          strokeDasharray="4 4"
+          dot={false}
+        />
       </ComposedChart>
     </ChartContainer>
   );
 }
 
-function CancellationsChart({
+export function CancellationsChart({
   day,
   pushes,
 }: {
@@ -447,6 +507,8 @@ function CancellationsChart({
   const [kind, setKind] = useState<"canceled" | "denied">("canceled");
   const { cancellations } = day;
   const series = cancellations[kind];
+  const today = splitRunningHour(series.today, day.done);
+  const running = runningHour(day);
   const approx = cancellations.approximate;
   const withApprox = (label: string, approximate: boolean) =>
     approximate ? `${label} (${t("orderMonitor.approximate")})` : label;
@@ -455,7 +517,8 @@ function CancellationsChart({
     const alert = cancellations.canceledAlertAt[h];
     return {
       x: h,
-      today: series.today[h],
+      today: today.full[h],
+      pace: today.pace[h],
       d1: series.d1[h],
       w1: series.w1[h],
       y1: series.y1[h],
@@ -480,6 +543,7 @@ function CancellationsChart({
           <button
             key={k.id}
             type="button"
+            aria-pressed={kind === k.id}
             onClick={() => setKind(k.id)}
             className={cn(
               "rounded-lg px-3 py-1 text-xs font-medium transition-colors",
@@ -495,6 +559,7 @@ function CancellationsChart({
       <ChartContainer
         config={{
           today: { label: t("orderMonitor.series.today"), color: COLOR_TODAY },
+          pace: { label: t("orderMonitor.series.pace"), color: COLOR_TODAY },
           d1: {
             label: withApprox(t("orderMonitor.series.d1"), approx.d1),
             color: COLOR_D1,
@@ -517,16 +582,17 @@ function CancellationsChart({
           <CartesianGrid vertical={false} />
           {xAxis}
           {yAxis}
-          <ChartTooltip
-            content={
-              <ChartTooltipContent
-                labelFormatter={(_, payload) => {
-                  const h = datumHour(payload);
-                  return h === null ? null : hourLabel(h);
-                }}
-              />
-            }
-          />
+          {hourTooltip(
+            (item) =>
+              item.dataKey === "pace" && item.payload?.x !== running.hour,
+            (h) =>
+              h === running.hour
+                ? t("orderMonitor.partialHour", {
+                    hour: hourLabel(h),
+                    minutes: running.minutes,
+                  })
+                : hourLabel(h),
+          )}
           <Area
             dataKey="band"
             stroke="none"
@@ -566,6 +632,13 @@ function CancellationsChart({
             strokeWidth={2.5}
             dot={false}
           />
+          <Line
+            dataKey="pace"
+            stroke={COLOR_TODAY}
+            strokeWidth={2.5}
+            strokeDasharray="4 4"
+            dot={false}
+          />
         </ComposedChart>
       </ChartContainer>
       {(approx.d1 || approx.w1 || approx.y1) && (
@@ -584,13 +657,21 @@ function channelLabel(c: OrderMonitorChannel, t: TFunction): string {
   return c.name ?? t("orderMonitor.channelFallback", { id: c.id || "—" });
 }
 
-/** Today's orders per sales channel, each with its count so far vs D-1 at the same time. */
+/** Orders per sales channel, today against D-1 (dashed), each with its count so far vs D-1 at the same time. */
 function ChannelsChart({ day }: { day: OrderMonitorDay }) {
   const t = useT();
   const { channels } = day;
+  const running = runningHour(day);
+  const todays = channels.map((c) => splitRunningHour(c.today, day.done));
   const data = HOURS.map((h) => ({
     x: h,
-    ...Object.fromEntries(channels.map((c, i) => [`c${i}`, c.today[h]])),
+    ...Object.fromEntries(
+      channels.flatMap((c, i) => [
+        [`c${i}`, todays[i]!.full[h]],
+        [`p${i}`, todays[i]!.pace[h]],
+        [`d${i}`, c.d1[h]],
+      ]),
+    ),
   }));
   return (
     <>
@@ -621,9 +702,24 @@ function ChannelsChart({ day }: { day: OrderMonitorDay }) {
       </div>
       <ChartContainer
         config={Object.fromEntries(
-          channels.map((c, i) => [
-            `c${i}`,
-            { label: channelLabel(c, t), color: channelColor(i) },
+          channels.flatMap((c, i) => [
+            [`c${i}`, { label: channelLabel(c, t), color: channelColor(i) }],
+            [
+              `p${i}`,
+              {
+                label: `${channelLabel(c, t)} · ${t("orderMonitor.series.pace")}`,
+                color: channelColor(i),
+              },
+            ],
+            [
+              `d${i}`,
+              {
+                label: t("orderMonitor.channelD1", {
+                  channel: channelLabel(c, t),
+                }),
+                color: channelColor(i),
+              },
+            ],
           ]),
         )}
         className="h-56 w-full"
@@ -635,22 +731,45 @@ function ChannelsChart({ day }: { day: OrderMonitorDay }) {
           <CartesianGrid vertical={false} />
           {xAxis}
           {yAxis}
-          <ChartTooltip
-            content={
-              <ChartTooltipContent
-                labelFormatter={(_, payload) => {
-                  const h = datumHour(payload);
-                  return h === null ? null : hourLabel(h);
-                }}
-              />
-            }
-          />
+          {hourTooltip(
+            (item) =>
+              String(item.dataKey).startsWith("p") &&
+              item.payload?.x !== running.hour,
+            (h) =>
+              h === running.hour
+                ? t("orderMonitor.partialHour", {
+                    hour: hourLabel(h),
+                    minutes: running.minutes,
+                  })
+                : hourLabel(h),
+          )}
+          {channels.map((c, i) => (
+            <Line
+              key={`d${c.id}`}
+              dataKey={`d${i}`}
+              stroke={channelColor(i)}
+              strokeWidth={1.5}
+              strokeOpacity={0.5}
+              strokeDasharray="4 4"
+              dot={false}
+            />
+          ))}
           {channels.map((c, i) => (
             <Line
               key={c.id}
               dataKey={`c${i}`}
               stroke={channelColor(i)}
               strokeWidth={2}
+              dot={false}
+            />
+          ))}
+          {channels.map((c, i) => (
+            <Line
+              key={`p${c.id}`}
+              dataKey={`p${i}`}
+              stroke={channelColor(i)}
+              strokeWidth={2}
+              strokeDasharray="4 4"
               dot={false}
             />
           ))}
@@ -696,7 +815,7 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4">
+    <section className="flex flex-col gap-3 surface p-4">
       <h3 className="text-sm font-medium text-foreground">{title}</h3>
       {children}
     </section>

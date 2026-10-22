@@ -1,6 +1,7 @@
 /** Report Routes — `/api/_reports/*`: proxy to the reports engine (`/api/v2`), master key server-side. Reading a report needs no login; see each route below. */
 
 import { Hono, type MiddlewareHandler } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import { auth } from "@/auth";
 import { resolveApiKey, resolveBaseUrl } from "@/tools/reports/auth-client";
 import { fetchPublicOnePager } from "@/tools/reports/public-report";
@@ -30,6 +31,10 @@ async function fetchReport(
 }
 
 const TERMINAL = new Set(["complete", "errored", "terminated", "unknown"]);
+
+/** `/run`'s body is just `{domain, distinctId}`; this caps it well above any
+ *  real domain/distinctId while still bounding an anonymous caller's body. */
+const MAX_RUN_BODY_BYTES = 8 * 1024;
 
 /** Pull `domain`/`distinctId` out of the POST /run body. `body` is whatever
  *  `JSON.parse` produced — including `null` for a literal `null` body, which
@@ -103,50 +108,57 @@ app.get("/site/:domain", async (c) => {
  *  one; anonymous runs send none and are followed in-tab instead. The optional
  *  `distinctId` is the visitor's PostHog id, so the engine's server-side funnel
  *  events attribute to the same person. */
-app.post("/run", async (c) => {
-  const user = c.get("reportUser");
-  let rawBody: unknown;
-  try {
-    rawBody = await c.req.json();
-  } catch {
-    return c.json({ error: "invalid JSON" }, 400);
-  }
-  const { domain, distinctId } = parseRunBody(rawBody);
-  if (!domain) return c.json({ error: "domain is required" }, 400);
-  const email = user?.email;
+app.post(
+  "/run",
+  bodyLimit({
+    maxSize: MAX_RUN_BODY_BYTES,
+    onError: (c) => c.json({ error: "request body too large" }, 413),
+  }),
+  async (c) => {
+    const user = c.get("reportUser");
+    let rawBody: unknown;
+    try {
+      rawBody = await c.req.json();
+    } catch {
+      return c.json({ error: "invalid JSON" }, 400);
+    }
+    const { domain, distinctId } = parseRunBody(rawBody);
+    if (!domain) return c.json({ error: "domain is required" }, 400);
+    const email = user?.email;
 
-  try {
-    const res = await engineFetch(`/api/v2/diagnostics/run`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${resolveApiKey({})}`,
-      },
-      body: JSON.stringify({
-        url: domain,
-        ...(email ? { email } : {}),
-        distinct_id: distinctId,
-      }),
-    });
-    if (!res.ok) return c.json({ error: `run HTTP ${res.status}` }, 502);
-    const j = (await res.json()) as {
-      id?: string;
-      status?: string;
-      blocked?: boolean;
-      mode?: string;
-    };
-    const trigger: ScanTrigger = j.blocked
-      ? { state: "blocked" }
-      : j.status === "fresh"
-        ? { state: "fresh" }
-        : j.mode === "sync"
-          ? { state: "sync" }
-          : { state: "running", id: j.id ?? null };
-    return c.json(trigger);
-  } catch {
-    return c.json({ error: "run failed" }, 502);
-  }
-});
+    try {
+      const res = await engineFetch(`/api/v2/diagnostics/run`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${resolveApiKey({})}`,
+        },
+        body: JSON.stringify({
+          url: domain,
+          ...(email ? { email } : {}),
+          distinct_id: distinctId,
+        }),
+      });
+      if (!res.ok) return c.json({ error: `run HTTP ${res.status}` }, 502);
+      const j = (await res.json()) as {
+        id?: string;
+        status?: string;
+        blocked?: boolean;
+        mode?: string;
+      };
+      const trigger: ScanTrigger = j.blocked
+        ? { state: "blocked" }
+        : j.status === "fresh"
+          ? { state: "fresh" }
+          : j.mode === "sync"
+            ? { state: "sync" }
+            : { state: "running", id: j.id ?? null };
+      return c.json(trigger);
+    } catch {
+      return c.json({ error: "run failed" }, 502);
+    }
+  },
+);
 
 /** GET /api/_reports/status?id= — poll a durable run (master-key, server-only). */
 app.get("/status", async (c) => {

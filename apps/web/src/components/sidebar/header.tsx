@@ -11,14 +11,12 @@ import { SidebarThreadButton } from "./thread-button";
 import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
 import { useProjectFirstNav } from "@/hooks/use-preferences";
 import { useT } from "@/i18n/use-t.ts";
-import { OrgLabel } from "./org-label";
 import { OrgProjectPicker } from "./org-project-picker";
+import { ProjectSwitcher } from "./project-switcher";
 
 const ICON_SIZE = 16;
 
-/** With project-first navigation on, the rail beside this header already
- *  names and switches the org, so the header only needs a label. Off, there
- *  is no rail, so it keeps the picker popover. */
+/** Project-first navigation names the org or the open project here; classic keeps the picker. */
 export function SidebarPickerHeader() {
   const collapsed = useSidebarCollapsed();
   const projectFirstNav = useProjectFirstNav();
@@ -26,7 +24,8 @@ export function SidebarPickerHeader() {
   if (projectFirstNav) {
     return (
       <>
-        <OrgLabel collapsed={collapsed} />
+        <ProjectSwitcher collapsed={collapsed} />
+        <CollapseToggle />
         <SidebarThreadButton />
       </>
     );
@@ -55,12 +54,15 @@ export function SidebarPickerHeaderMobile({
     <>
       {/* Picking closes the sheet, or the thing you just chose stays hidden
           behind it. */}
+      {/* The switcher grows to fill the row itself; the classic picker does not. */}
       {projectFirstNav ? (
-        <OrgLabel />
+        <ProjectSwitcher onNavigate={onClose} />
       ) : (
-        <OrgProjectPicker onNavigate={onClose} />
+        <>
+          <OrgProjectPicker onNavigate={onClose} />
+          <div className="flex-1" />
+        </>
       )}
-      <div className="flex-1" />
       <SidebarThreadButton />
       <ToolbarIconButton
         onClick={onClose}

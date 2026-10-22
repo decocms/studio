@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import type { StudioContext } from "../../core/studio-context";
-import { validateConfiguration } from "./credential-grants";
+import { CREDENTIAL_ACCESS_TOKEN_READ_SCOPE } from "../../storage/connection-credential-vault";
+import {
+  deriveCredentialGrants,
+  validateConfiguration,
+} from "./credential-grants";
 
 function fakeCtx(
   connections: Record<string, { organization_id: string }>,
@@ -46,5 +50,32 @@ describe("validateConfiguration", () => {
         ctx,
       ),
     ).resolves.toBeUndefined();
+  });
+});
+
+describe("deriveCredentialGrants", () => {
+  test("derives no grant for a SELF-targeted credential scope", () => {
+    const state = { SELF: { value: "caller-org_self" } };
+
+    const grants = deriveCredentialGrants(state, [
+      `SELF::${CREDENTIAL_ACCESS_TOKEN_READ_SCOPE}`,
+    ]);
+
+    expect(grants).toEqual([]);
+  });
+
+  test("derives a grant for a non-SELF credential scope target", () => {
+    const state = { OTHER: { value: "connection-123" } };
+
+    const grants = deriveCredentialGrants(state, [
+      `OTHER::${CREDENTIAL_ACCESS_TOKEN_READ_SCOPE}`,
+    ]);
+
+    expect(grants).toEqual([
+      {
+        targetConnectionId: "connection-123",
+        scope: CREDENTIAL_ACCESS_TOKEN_READ_SCOPE,
+      },
+    ]);
   });
 });

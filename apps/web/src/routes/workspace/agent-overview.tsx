@@ -1,22 +1,28 @@
-/**
- * A project's home: the board under project-first navigation, the project
- * overview with the flag off.
- *
- * Literally the Board destination's page, so a project cannot end up with two
- * boards that drift. Card deep-links keep `PROJECT_ROUTE.tasks`, which carries
- * the key this route has no segment for.
- */
+/** A project's home: the new Overview with project-first nav, the classic tab without. */
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { ChatLayout } from "@/components/chat-layout";
+import { ProjectOverview } from "@/components/projects/project-overview";
 import { OverviewTab } from "@/layouts/main-panel-tabs/overview-tab";
 import { useProjectFirstNav } from "@/hooks/use-preferences";
-import ProjectTasksRoute from "./project-tasks";
+import { useProjectScope } from "@/hooks/use-project-scope";
+
+function FlagOverview() {
+  const { project } = useProjectScope();
+  if (!project) {
+    return (
+      <div className="flex flex-1 items-center justify-center">
+        <Spinner className="size-5 text-muted-foreground" />
+      </div>
+    );
+  }
+  return <ProjectOverview project={project} />;
+}
 
 export default function AgentOverviewRoute() {
   const projectFirstNav = useProjectFirstNav();
-  if (projectFirstNav) return <ProjectTasksRoute />;
   return (
     <ChatLayout.Content>
-      <OverviewTab />
+      {projectFirstNav ? <FlagOverview /> : <OverviewTab />}
     </ChatLayout.Content>
   );
 }

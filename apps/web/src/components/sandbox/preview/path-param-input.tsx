@@ -30,7 +30,7 @@ export function PathParamInput({
           mirror the input's font size and horizontal padding. */}
         <span
           aria-hidden
-          className="invisible whitespace-pre px-1 py-0.5 text-[12px]"
+          className="invisible whitespace-pre px-1 py-0.5 text-xs"
         >
           {sizer}
         </span>
@@ -40,7 +40,7 @@ export function PathParamInput({
           placeholder={label}
           title={t("sandbox.preview.valueForParam", { label })}
           spellCheck={false}
-          className="absolute inset-0 rounded-sm bg-special/15 px-1 text-[12px] text-special outline-none placeholder:text-special/60 focus:bg-special/25"
+          className="absolute inset-0 rounded-sm bg-special/15 px-1 text-xs text-special outline-none placeholder:text-special/60 focus:bg-special/25"
           onClick={(e) => e.stopPropagation()}
           onChange={(e) => setDraft(e.target.value)}
           onFocus={() => setFocused(true)}
@@ -70,7 +70,7 @@ export function PathParamInput({
       </span>
       {/* Editing hint, outside the value box */}
       {focused && (
-        <span className="pointer-events-none ml-1.5 flex shrink-0 items-center gap-1 whitespace-nowrap rounded-sm border border-border bg-muted px-1 py-0.5 text-[10px] text-muted-foreground">
+        <span className="pointer-events-none ml-1.5 flex shrink-0 items-center gap-1 whitespace-nowrap rounded-sm border border-border bg-muted px-1 py-0.5 text-2xs text-muted-foreground">
           <CornerDownLeft size={10} />
           {t("sandbox.preview.enterToGo")}
         </span>

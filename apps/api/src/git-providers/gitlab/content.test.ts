@@ -1,15 +1,17 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import {
   isProtectedBranch,
   buildCommitActions,
   isBranchExistsConflict,
   isCommitConflict,
+  GitlabContentClient,
   mapCompareDiff,
   mapMergeRequest,
   mapMergeRequestState,
   pooledMap,
   type ResolvedChange,
 } from "./content";
+import { GitProviderError } from "../types";
 import { gitlabErrorMessage } from "./http";
 
 describe("buildCommitActions", () => {
@@ -440,5 +442,106 @@ describe("isProtectedBranch", () => {
       isProtectedBranch("The file has changed since you started editing it: a"),
     ).toBe(false);
     expect(isProtectedBranch("404 Project Not Found")).toBe(false);
+  });
+});
+
+describe("GitlabContentClient's malformed-body handling", () => {
+  const originalFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  test("degrades a malformed 2xx project body into a GitProviderError", async () => {
+    globalThis.fetch = (async () =>
+      new Response("<html>upstream error</html>", {
+        status: 200,
+      })) as unknown as typeof fetch;
+
+    const client = new GitlabContentClient({
+      repo: { provider: "gitlab", host: "gitlab.com", path: "acme/site" },
+      tokenSource: {
+        kind: "oauth",
+        get: async () => ({ token: "t", kind: "oauth", expiresAt: null }),
+      },
+    });
+
+    await expect(client.getDefaultBranch()).rejects.toBeInstanceOf(
+      GitProviderError,
+    );
+  });
+
+  test("degrades a malformed 2xx branch-search body into a GitProviderError", async () => {
+    globalThis.fetch = (async () =>
+      new Response("<html>upstream error</html>", {
+        status: 200,
+      })) as unknown as typeof fetch;
+
+    const client = new GitlabContentClient({
+      repo: { provider: "gitlab", host: "gitlab.com", path: "acme/site" },
+      tokenSource: {
+        kind: "oauth",
+        get: async () => ({ token: "t", kind: "oauth", expiresAt: null }),
+      },
+    });
+
+    await expect(
+      client.searchBranches({ query: "main", limit: 10 }),
+    ).rejects.toBeInstanceOf(GitProviderError);
+  });
+
+  test("degrades a malformed 2xx tree-listing body into a GitProviderError", async () => {
+    globalThis.fetch = (async () =>
+      new Response("<html>upstream error</html>", {
+        status: 200,
+      })) as unknown as typeof fetch;
+
+    const client = new GitlabContentClient({
+      repo: { provider: "gitlab", host: "gitlab.com", path: "acme/site" },
+      tokenSource: {
+        kind: "oauth",
+        get: async () => ({ token: "t", kind: "oauth", expiresAt: null }),
+      },
+    });
+
+    await expect(
+      client.listDecofileEntries("main", null),
+    ).rejects.toBeInstanceOf(GitProviderError);
+  });
+
+  test("falls back to the page length when GitLab omits x-total", async () => {
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify([{ name: "main", commit: {} }]), {
+        status: 200,
+      })) as unknown as typeof fetch;
+
+    const client = new GitlabContentClient({
+      repo: { provider: "gitlab", host: "gitlab.com", path: "acme/site" },
+      tokenSource: {
+        kind: "oauth",
+        get: async () => ({ token: "t", kind: "oauth", expiresAt: null }),
+      },
+    });
+
+    const page = await client.searchBranches({ query: "main", limit: 10 });
+    expect(page.totalCount).toBe(1);
+  });
+
+  test("degrades a well-formed but non-array branch-search body into a GitProviderError", async () => {
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ message: "not found" }), {
+        status: 200,
+      })) as unknown as typeof fetch;
+
+    const client = new GitlabContentClient({
+      repo: { provider: "gitlab", host: "gitlab.com", path: "acme/site" },
+      tokenSource: {
+        kind: "oauth",
+        get: async () => ({ token: "t", kind: "oauth", expiresAt: null }),
+      },
+    });
+
+    await expect(
+      client.searchBranches({ query: "main", limit: 10 }),
+    ).rejects.toBeInstanceOf(GitProviderError);
   });
 });

@@ -1,6 +1,7 @@
 import { createContext, use } from "react";
 import type { Locale } from "@/i18n/locale.ts";
 import type { TranslationKey } from "@/i18n/en/index.ts";
+import { authClient } from "@/lib/auth-client";
 import { useLocalStorage } from "./use-local-storage.ts";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys.ts";
 import { detectLocale, VALID_LOCALES } from "@/i18n/locale.ts";
@@ -14,16 +15,17 @@ interface Preferences {
   theme: ThemeMode;
   language: Locale;
   /**
-   * Task-board lanes hidden by default (`HIDDEN_STATUSES`) that this person has
-   * pulled back onto the board. Statuses, not lane indexes, so a reordered or
-   * renamed lane can't resurrect the wrong column.
+   * Task-board lanes this person showed (`true`) or hid (`false`), overriding
+   * the default (`HIDDEN_STATUSES`). Keyed by status, not lane index, so a
+   * reordered or renamed lane can't resurrect the wrong column.
    */
-  shownTaskBoardLanes: string[];
+  taskBoardLaneVisibility: Record<string, boolean>;
   /** Task-board lanes this person collapsed to a narrow strip. Statuses, for
-   *  the same reason as `shownTaskBoardLanes`. */
+   *  the same reason as `taskBoardLaneVisibility`. */
   collapsedTaskBoardLanes: string[];
-  /** Project-first navigation opt-in: the org rail, project launcher, project tree and Today/Agents home. */
-  projectFirstNav: boolean;
+  /** Project-first navigation: the org rail, project launcher, project tree and
+   *  Today/Agents home. Unset until the person picks; see `projectFirstNavEnabled`. */
+  projectFirstNav?: boolean;
 }
 
 const DEFAULT_PREFERENCES: Preferences = {
@@ -32,9 +34,8 @@ const DEFAULT_PREFERENCES: Preferences = {
   enableSounds: false,
   theme: "system",
   language: detectLocale(),
-  shownTaskBoardLanes: [],
+  taskBoardLaneVisibility: {},
   collapsedTaskBoardLanes: [],
-  projectFirstNav: false,
 };
 
 const VALID_TOOL_APPROVAL_LEVELS: ToolApprovalLevel[] = ["auto", "readonly"];
@@ -88,6 +89,26 @@ export function readLanguage(): Locale {
   return detectLocale();
 }
 
+/** The stored lane overrides, keeping only boolean entries. Folds in the
+ *  retired `shownTaskBoardLanes` list, whose lanes were all shown. */
+export function readLaneVisibility(
+  stored: Record<string, unknown>,
+): Record<string, boolean> {
+  const visibility: Record<string, boolean> = {};
+  if (Array.isArray(stored.shownTaskBoardLanes)) {
+    for (const status of stored.shownTaskBoardLanes) {
+      if (typeof status === "string") visibility[status] = true;
+    }
+  }
+  const current = stored.taskBoardLaneVisibility;
+  if (current && typeof current === "object" && !Array.isArray(current)) {
+    for (const [status, shown] of Object.entries(current)) {
+      if (typeof shown === "boolean") visibility[status] = shown;
+    }
+  }
+  return visibility;
+}
+
 export function usePreferences() {
   return useLocalStorage<Preferences>(
     LOCALSTORAGE_KEYS.preferences(),
@@ -109,13 +130,16 @@ export function usePreferences() {
       if (!VALID_LOCALES.includes(merged.language)) {
         merged.language = detectLocale();
       }
-      if (!Array.isArray(merged.shownTaskBoardLanes)) {
-        merged.shownTaskBoardLanes = [];
+      merged.taskBoardLaneVisibility = readLaneVisibility(merged);
+      if ("shownTaskBoardLanes" in merged) {
+        delete merged.shownTaskBoardLanes;
       }
       if (!Array.isArray(merged.collapsedTaskBoardLanes)) {
         merged.collapsedTaskBoardLanes = [];
       }
-      merged.projectFirstNav = merged.projectFirstNav === true;
+      if (typeof merged.projectFirstNav !== "boolean") {
+        delete merged.projectFirstNav;
+      }
       return merged;
     },
   );
@@ -125,8 +149,38 @@ export function usePreferences() {
  *  this person's preference says. Scoped to that route's tree. */
 export const ForceProjectFirstNav = createContext(false);
 
+/**
+ * Accounts created from this date start in project-first navigation. Older
+ * accounts keep the classic one until they opt in, on any browser.
+ */
+export const PROJECT_FIRST_NAV_DEFAULT_SINCE = Date.parse(
+  "2026-10-22T00:00:00Z",
+);
+
+/** A person's choice wins; without one, the account's age decides. */
+export function projectFirstNavEnabled(
+  stored: boolean | undefined,
+  userCreatedAt: unknown,
+): boolean {
+  if (stored !== undefined) return stored;
+  const created =
+    userCreatedAt instanceof Date
+      ? userCreatedAt.getTime()
+      : typeof userCreatedAt === "string" || typeof userCreatedAt === "number"
+        ? new Date(userCreatedAt).getTime()
+        : Number.NaN;
+  return Number.isFinite(created) && created >= PROJECT_FIRST_NAV_DEFAULT_SINCE;
+}
+
 export function useProjectFirstNav(): boolean {
   const forced = use(ForceProjectFirstNav);
   const [preferences] = usePreferences();
-  return forced || preferences.projectFirstNav;
+  const { data: session } = authClient.useSession();
+  return (
+    forced ||
+    projectFirstNavEnabled(
+      preferences.projectFirstNav,
+      session?.user?.createdAt,
+    )
+  );
 }

@@ -1,5 +1,7 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
+import { GitProviderError } from "../types";
 import {
+  BitbucketContentClient,
   branchAuthor,
   buildCommitForm,
   isBranchExistsConflict,
@@ -234,5 +236,31 @@ describe("branchAuthor", () => {
   test("null when nothing is known", () => {
     expect(branchAuthor({})).toBeNull();
     expect(branchAuthor({ target: { author: { raw: "  " } } })).toBeNull();
+  });
+});
+
+describe("BitbucketContentClient reading a malformed response body", () => {
+  const originalFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  test("a malformed 2xx JSON body degrades to a GitProviderError, not a raw SyntaxError", async () => {
+    globalThis.fetch = (async () =>
+      new Response("<html>not json</html>", {
+        status: 200,
+      })) as unknown as typeof fetch;
+
+    const client = new BitbucketContentClient({
+      repo: { provider: "bitbucket", host: "bitbucket.org", path: "acme/site" },
+      tokenSource: {
+        kind: "oauth",
+        get: async () => ({ token: "t", kind: "oauth", expiresAt: null }),
+      },
+    });
+
+    await expect(client.getBranch("main")).rejects.toBeInstanceOf(
+      GitProviderError,
+    );
   });
 });

@@ -37,6 +37,19 @@ export function pushRecentOrg(
   return [...new Set([slug, ...keep, ...list])].slice(0, limit);
 }
 
+/** The org list with the current org in it. Better Auth's list stops at its
+ *  first 500 memberships, so the org on screen can be missing from it. A
+ *  current org with no id is no org (`/site-editor`). */
+export function withCurrentOrg<T extends { id: string; slug: string }>(
+  listed: readonly T[],
+  current: T,
+): T[] {
+  if (!current.id || listed.some((org) => org.slug === current.slug)) {
+    return [...listed];
+  }
+  return [...listed, current];
+}
+
 /**
  * The orgs the rail draws, and the count it hides. The current org is always
  * in the set — a deep link landing outside the rail reads as a broken rail —

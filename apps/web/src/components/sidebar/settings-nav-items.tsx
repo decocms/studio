@@ -72,6 +72,9 @@ export interface SettingsNavGroup {
 
 /** Your account, then the three groups of org screens people work in, then
  *  everything rare behind a collapsed "Advanced". */
+/** Rows project-first nav moves out of Settings into Context. */
+const IN_CONTEXT = new Set(["repositories", "connections", "skills", "memory"]);
+
 export function useSettingsSidebarGroups(): SettingsNavGroup[] {
   const t = useT();
   const { capabilities, isPrivileged, loading, error } = useCapabilities();
@@ -237,6 +240,7 @@ export function useSettingsSidebarGroups(): SettingsNavGroup[] {
     .map((group) => ({
       ...group,
       items: group.items.flatMap((item) => {
+        if (projectFirstNav && IN_CONTEXT.has(item.key)) return [];
         if (item.group) {
           /** Route the row at the first tab this member can open. A tabless
            *  group (Connect) has nothing to pick, so the row keeps its own

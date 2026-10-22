@@ -18,6 +18,7 @@ import { useElementWidth } from "@/hooks/use-element-width";
 import {
   BreadcrumbContribution,
   BreadcrumbProvider,
+  DetachedBreadcrumbs,
   useBreadcrumbStore,
 } from "./breadcrumb-context";
 import {
@@ -41,8 +42,8 @@ function BreadcrumbMenu({ items }: { items: readonly BreadcrumbItem[] }) {
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
-          size="icon-sm"
-          className="size-6 shrink-0"
+          size="icon-xs"
+          className="shrink-0"
           aria-label={t("page.breadcrumbMenu")}
         >
           <DotsHorizontal aria-hidden="true" className="size-4" />
@@ -99,7 +100,7 @@ function BreadcrumbSegment({
     );
   }
   const className =
-    "block max-w-40 truncate rounded-lg hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+    "block max-w-48 truncate rounded-lg hover:text-foreground focus-ring";
   if (item.onSelect) {
     return (
       <button
@@ -120,7 +121,7 @@ function BreadcrumbSegment({
     );
   }
   return (
-    <span title={title} className="block max-w-40 truncate">
+    <span title={title} className="block max-w-48 truncate">
       {item.label}
     </span>
   );
@@ -139,7 +140,8 @@ function BreadcrumbTrail({ items }: { items: readonly BreadcrumbItem[] }) {
     <nav
       ref={ref}
       aria-label={t("page.breadcrumbs")}
-      className="min-w-0 flex-1"
+      // Leading the row, its text lines up with the view tabs' text below.
+      className="min-w-0 flex-1 first:pl-3"
     >
       <ol
         data-slot="page-breadcrumbs"
@@ -221,4 +223,5 @@ function PageBreadcrumbsRoot(extension: BreadcrumbExtension) {
 
 export const PageBreadcrumbs = Object.assign(PageBreadcrumbsRoot, {
   Provider: BreadcrumbProvider,
+  Detached: DetachedBreadcrumbs,
 });

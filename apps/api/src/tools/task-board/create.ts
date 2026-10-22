@@ -67,6 +67,23 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
           "that one out.",
       ),
     dueDate: z.string().datetime().nullable().optional(),
+    parentId: z
+      .string()
+      .nullable()
+      .optional()
+      .describe(
+        "File the card under this card (an id in this organization), or null " +
+          "for the top level. Under an epic the card stays on the board; under " +
+          "any other card it is that card's subtask. Nests three levels at " +
+          "most: an epic takes no parent and a subtask takes no subtasks.",
+      ),
+    isEpic: z
+      .boolean()
+      .optional()
+      .describe(
+        "Mark the card as an epic, which groups cards and takes no parent. " +
+          "Turning an epic back into a card moves its cards to the top level.",
+      ),
     tagIds: z.array(z.string()).max(1000).optional(),
     sprintId: z
       .string()
@@ -196,6 +213,8 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
       repositoryId: checkout.repositoryId ?? null,
       virtualMcpId: project?.id ?? null,
       sprintId: input.sprintId ?? null,
+      parentId: input.parentId ?? null,
+      isEpic: input.isEpic ?? false,
       dueDate: input.dueDate ?? null,
       by: getUserId(ctx)!,
     });

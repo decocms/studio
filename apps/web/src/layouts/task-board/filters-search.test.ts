@@ -294,10 +294,11 @@ describe("enabledLayout", () => {
     expect(enabledLayout("feed", false)).toBe("board");
   });
 
-  test("leaves the two unflagged layouts alone either way", () => {
+  test("leaves the unflagged layouts alone either way", () => {
     for (const enabled of [true, false]) {
       expect(enabledLayout("board", enabled)).toBe("board");
       expect(enabledLayout("list", enabled)).toBe("list");
+      expect(enabledLayout("epics", enabled)).toBe("epics");
     }
   });
 });

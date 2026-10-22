@@ -139,7 +139,7 @@ function MentionAnchor({ children }: PropsWithChildren) {
         ref={refs.setFloating}
         style={floatingStyles}
         {...getFloatingProps()}
-        className="z-50 w-auto min-w-[360px] max-w-[520px] rounded-lg border bg-popover p-0 text-popover-foreground shadow-md outline-hidden overflow-hidden"
+        className="z-50 w-auto min-w-[360px] max-w-[520px] rounded-lg border bg-popover p-0 text-popover-foreground shadow-soft outline-hidden overflow-hidden"
       >
         {children}
       </div>
@@ -193,7 +193,7 @@ const MentionItem = <T extends BaseItem>({
             )}
           </div>
           {item.drillable && (
-            <kbd className="shrink-0 ml-2 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground bg-muted border border-border rounded">
+            <kbd className="shrink-0 ml-2 px-1.5 py-0.5 text-2xs font-medium text-muted-foreground bg-muted border border-border rounded">
               ↵
             </kbd>
           )}
@@ -226,7 +226,7 @@ const MentionItemList = <T extends BaseItem>({
 
   if (!items.length) {
     return (
-      <div className="min-w-[360px] max-w-[520px] bg-popover text-popover-foreground rounded-md border shadow-md p-3 text-sm">
+      <div className="min-w-[360px] max-w-[520px] bg-popover text-popover-foreground rounded-md border shadow-soft p-3 text-sm">
         {emptyLabel ?? t("chat.mention.noItemsFound")}
       </div>
     );

@@ -221,7 +221,7 @@ function FeedCard({
       : (assignee?.user?.name ?? undefined);
 
   return (
-    <article className="card-shadow flex flex-col gap-4 rounded-xl bg-card p-6">
+    <article className="surface flex flex-col gap-4 p-6">
       {/* The identity line: who this belongs to, which card it is, when it
           moved. The key sits HERE and not beside the title — it is an address,
           not part of the sentence, and inline it split the one line a reader

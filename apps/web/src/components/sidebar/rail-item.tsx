@@ -28,7 +28,11 @@ export function RailItem({
 }) {
   return (
     <div className="group/rail relative flex w-full shrink-0 flex-col items-center gap-1">
-      <span aria-hidden className="absolute top-0 left-0 flex h-9 items-center">
+      {/* `-left-2.5` undoes the rail's padding, so the pill sits on the edge. */}
+      <span
+        aria-hidden
+        className="absolute top-0 -left-2.5 flex h-9 items-center"
+      >
         <span
           className={cn(
             "w-1 rounded-r-full bg-foreground",

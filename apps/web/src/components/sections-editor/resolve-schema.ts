@@ -106,6 +106,8 @@ export interface LiveMeta {
     >;
   };
   schema: Record<string, unknown>;
+  /** Content hash a deco runtime's `/live/_meta` sends with the schema. */
+  etag?: string;
 }
 
 type RawSchema = Record<string, unknown>;

@@ -1,18 +1,18 @@
 import type { ReactNode } from "react";
 import type { BreadcrumbItem } from "@/components/page/breadcrumb-model";
-import { Link, useRouterState } from "@tanstack/react-router";
-import { LayoutLeft, MessageCircle01, XClose } from "@untitledui/icons";
+import { useRouterState } from "@tanstack/react-router";
+import { LayoutLeft, MessageCircle01 } from "@untitledui/icons";
 import { useSidebar } from "@decocms/ui/components/sidebar.tsx";
-import { IconButton } from "@decocms/ui/components/icon-button.tsx";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { Page } from "@/components/page";
 
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
-import { useAppTakeover } from "@/hooks/use-app-takeover";
+import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
 import { useInSettings } from "@/hooks/use-in-settings";
 import { useOptionalChatLayout } from "@/components/chat-layout";
 import { useProjectFirstNav } from "@/hooks/use-preferences";
@@ -35,7 +35,7 @@ export function RoutePageHeader({
   const project = useVirtualMCPNonBlocking(scopeId);
   const inSettings = useInSettings();
   const { toggleSidebar } = useSidebar();
-  const takeover = useAppTakeover();
+  const collapsed = useSidebarCollapsed();
   const chatLayout = useOptionalChatLayout();
   const projectFirstNav = useProjectFirstNav();
   const page = useRouterState({
@@ -51,22 +51,15 @@ export function RoutePageHeader({
       scopeId
       ? projectTitle
       : t("sidebar.navDestinations.home")
-    : t(page?.pageTitle ?? "page.view");
-  /** Project-first navigation: the crumb is the way out of an app, so it lands
-   *  on the project as the reader knows it: its one screen. Sending them to
-   *  the scoped workspace instead is how someone loses the sidebar and cannot
-   *  get it back. With the flag off there is no flat project screen to land
-   *  on, so it goes back to the scoped workspace, as it always has. */
-  const projectLink = projectFirstNav
-    ? {
-        to: "/$org/projects" as const,
-        params: { org: org.slug },
-        search: { project: scopeId ?? undefined },
-      }
-    : {
-        to: "/$org/projects/$agentId" as const,
-        params: { org: org.slug, agentId: scopeId ?? "" },
-      };
+    : // Project-first nav calls the Library Context.
+      projectFirstNav && page?.mainView === "files"
+      ? t("sidebar.navDestinations.context")
+      : t(page?.pageTitle ?? "page.view");
+  /** The crumb leaves an app for the project's Overview. */
+  const projectLink = {
+    to: "/$org/projects/$agentId" as const,
+    params: { org: org.slug, agentId: scopeId ?? "" },
+  };
   const breadcrumbs: BreadcrumbItem[] = [];
   if (inSettings) {
     breadcrumbs.push({
@@ -82,21 +75,10 @@ export function RoutePageHeader({
     });
   }
   breadcrumbs.push({ key: "page", label: title });
-  /** An app took the whole screen (no nav sidebar beside it — see
-   *  `useAppTakeover`), so the breadcrumb crumb is its only way out. That is
-   *  one click too many to be the ONLY affordance: a launched app reads as a
-   *  window, and a window closes from its own corner. */
-  const closeAction = takeover && scopeId && (
-    <IconButton label={t("projects.flat.close")} asChild>
-      <Link {...projectLink}>
-        <XClose size={16} />
-      </Link>
-    </IconButton>
-  );
-  /** An app takes the sidebar's place, so its own thread toggle — normally in
-   *  the sidebar header — goes with it. Without this, an app with the chat
-   *  closed has no way back into it. */
-  const chatToggle = takeover && chatLayout && !chatLayout.threadless && (
+  /** Project-first collapses the sidebar away, and its toggles with it: they
+   *  move here, beside the breadcrumb. */
+  const sidebarHidden = projectFirstNav && collapsed;
+  const chatToggle = sidebarHidden && chatLayout && !chatLayout.threadless && (
     <Tooltip>
       <TooltipTrigger asChild>
         <ToolbarIconButton
@@ -119,20 +101,36 @@ export function RoutePageHeader({
     <Page.Header
       leading={
         <>
-          <ToolbarIconButton
-            className="md:hidden"
-            onClick={toggleSidebar}
-            aria-label={t("layouts.shellControls.toggleSidebar")}
-          >
-            <LayoutLeft size={16} />
-          </ToolbarIconButton>
+          {projectFirstNav ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <ToolbarIconButton
+                  className={cn(!sidebarHidden && "md:hidden")}
+                  onClick={toggleSidebar}
+                  aria-label={t("page.expandSidebar")}
+                >
+                  <LayoutLeft size={16} />
+                </ToolbarIconButton>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                {t("page.expandSidebar")}
+              </TooltipContent>
+            </Tooltip>
+          ) : (
+            <ToolbarIconButton
+              className="md:hidden"
+              onClick={toggleSidebar}
+              aria-label={t("layouts.shellControls.toggleSidebar")}
+            >
+              <LayoutLeft size={16} />
+            </ToolbarIconButton>
+          )}
           {chatToggle}
         </>
       }
       breadcrumbs={breadcrumbs}
       scope={org.name}
       actions={actions}
-      trailingActions={closeAction}
       navigation={navigation}
     />
   );

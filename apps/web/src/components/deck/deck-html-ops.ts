@@ -25,6 +25,11 @@ const UNSAFE_TAGS = new Set([
   "link",
   "meta",
   "base",
+  // SVG SMIL elements can rewrite a safe attribute to javascript: at render time.
+  "animate",
+  "animatetransform",
+  "animatemotion",
+  "set",
 ]);
 
 const URL_ATTRS = new Set([
@@ -45,7 +50,10 @@ function isSafeUrlAttrValue(value: string): boolean {
   } catch {
     return true;
   }
-  if (protocol === "data:") return /^data:image\//i.test(value.trim());
+  // svg+xml can embed a <script> that runs on direct navigation.
+  if (protocol === "data:") {
+    return /^data:image\/(?!svg\+xml)[^;,]+[;,]/i.test(value.trim());
+  }
   return !UNSAFE_URL_PROTOCOLS.has(protocol);
 }
 

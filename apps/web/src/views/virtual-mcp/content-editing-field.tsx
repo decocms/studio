@@ -85,7 +85,7 @@ export function ContentEditingField<T extends FieldValues>({
             >
               <SelectTrigger
                 id="content-editing-mode"
-                className="w-44 shrink-0 text-sm"
+                className="w-44 shrink-0"
               >
                 <SelectValue />
               </SelectTrigger>

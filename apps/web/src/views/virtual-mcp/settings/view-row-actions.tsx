@@ -101,8 +101,8 @@ export function ViewRowActions({
         <DropdownMenuTrigger asChild>
           <Button
             variant="ghost"
-            size="icon"
-            className="size-7 text-muted-foreground"
+            size="icon-sm"
+            className="text-muted-foreground"
             aria-label={t("virtualMcp.settings.views.rowActions")}
           >
             <DotsVertical size={16} />

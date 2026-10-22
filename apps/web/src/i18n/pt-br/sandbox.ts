@@ -463,6 +463,14 @@ export const sandbox = {
   "sandbox.collectionsSidebar.settings": "Configurações",
   "sandbox.collectionsSidebar.site": "Site",
   "sandbox.contentBrowser.createdSection": 'Seção "{name}" criada',
+  "sandbox.contentBrowser.deleteDialog.cancel": "Cancelar",
+  "sandbox.contentBrowser.deleteDialog.delete": "Excluir",
+  "sandbox.contentBrowser.deleteDialog.deleting": "Excluindo…",
+  "sandbox.contentBrowser.deleteDialog.descriptionPermanent":
+    '"{label}" será removido permanentemente. Isso não pode ser desfeito.',
+  "sandbox.contentBrowser.deleteDialog.descriptionSection":
+    '"{label}" será removida. Páginas que ainda a referenciam perderão esta seção.',
+  "sandbox.contentBrowser.deleteDialog.title": "Excluir {noun}?",
   "sandbox.contentBrowser.duplicateFailed": "Falha ao duplicar",
   "sandbox.contentBrowser.duplicatedSection": '"{name}" duplicada',
   "sandbox.contentBrowser.renameFailed": "Falha ao renomear",

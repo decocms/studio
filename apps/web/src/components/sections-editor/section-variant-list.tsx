@@ -389,11 +389,10 @@ export function SectionVariantList({
                 <Button
                   type="button"
                   variant="ghost"
-                  size="icon"
+                  size="icon-xs"
                   aria-label={t(
                     "sectionsEditor.sectionVariantList.addVariantAriaLabel",
                   )}
-                  className="size-6"
                   onClick={onAdd}
                 >
                   <Plus size={14} />
@@ -407,12 +406,11 @@ export function SectionVariantList({
               <TooltipTrigger asChild>
                 <Button
                   type="button"
-                  variant="ghost"
-                  size="icon"
+                  variant="ghost-destructive"
+                  size="icon-xs"
                   aria-label={t(
                     "sectionsEditor.sectionVariantList.removeAllVariantsAriaLabel",
                   )}
-                  className="size-6 text-muted-foreground hover:text-destructive"
                   onClick={onRemoveAll}
                 >
                   <Trash01 size={14} />
@@ -464,8 +462,7 @@ export function SectionVariantList({
                   editorRowClassName({
                     tone: "variant",
                     selected: true,
-                    className:
-                      "cursor-grabbing shadow-lg ring-1 ring-border/60",
+                    className: "cursor-grabbing shadow-lift",
                   }),
                 )}
               >

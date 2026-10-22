@@ -4,7 +4,7 @@ import type { DateRange } from "react-day-picker";
 import { Calendar } from "./calendar.tsx";
 
 const meta = {
-  title: "Components/Calendar",
+  title: "Molecules/Calendar",
   component: Calendar,
 } satisfies Meta<typeof Calendar>;
 

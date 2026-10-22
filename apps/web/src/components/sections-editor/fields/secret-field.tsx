@@ -192,7 +192,7 @@ export function EncryptedSecretInput({
         <Button
           type="button"
           variant="outline"
-          className="h-10"
+          size="lg"
           disabled={!draft || status === "encrypting"}
           onClick={() => void commit()}
         >
