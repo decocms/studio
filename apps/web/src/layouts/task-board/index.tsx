@@ -1490,7 +1490,7 @@ function TaskBoardBody({
     return <Navigate to="." {...taskAddress(canonicalKey)} replace />;
   }
 
-  /** Board / List, and Feed and Epics behind the flag. One definition for both
+  /** Board / List / Epics, and Feed behind the flag. One definition for both
    *  placements — see `inlineTabs`. */
   const layoutTabs = (
     <Page.Tabs>
@@ -1529,20 +1529,18 @@ function TaskBoardBody({
       >
         {t("common.taskBoard.listView")}
       </Page.Tab>
-      {feedEnabled && (
-        <Page.Tab
-          active={layout === "epics"}
-          aria-label={t("taskBoard.taskBoard.layoutViewAriaLabel", {
-            label: t("taskBoard.epics.tab"),
-          })}
-          onClick={() => {
-            setLayout("epics");
-            clearSelection();
-          }}
-        >
-          {t("taskBoard.epics.tab")}
-        </Page.Tab>
-      )}
+      <Page.Tab
+        active={layout === "epics"}
+        aria-label={t("taskBoard.taskBoard.layoutViewAriaLabel", {
+          label: t("taskBoard.epics.tab"),
+        })}
+        onClick={() => {
+          setLayout("epics");
+          clearSelection();
+        }}
+      >
+        {t("taskBoard.epics.tab")}
+      </Page.Tab>
     </Page.Tabs>
   );
 
@@ -1760,7 +1758,7 @@ function TaskBoardBody({
       ) : layout === "board" ? (
         <Lanes
           visible={!openItem}
-          items={feedEnabled ? laneCards(visibleItems, items) : visibleItems}
+          items={laneCards(visibleItems, items)}
           members={members}
           memberByUserId={memberByUserId}
           selectedIds={selectedIds}
@@ -2100,11 +2098,7 @@ function TaskBoardBody({
       )}
     </div>
   );
-  return (
-    <EpicBoardProvider value={feedEnabled ? epicBoard : null}>
-      {page}
-    </EpicBoardProvider>
-  );
+  return <EpicBoardProvider value={epicBoard}>{page}</EpicBoardProvider>;
 }
 
 /**
