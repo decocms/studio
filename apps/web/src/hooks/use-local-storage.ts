@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 function safeParse<T>(value: string): T | undefined {
   try {
@@ -60,21 +60,7 @@ export function useLocalStorage<T>(
     gcTime: Infinity, // Keep in cache indefinitely
   });
 
-  // Mutation to write to localStorage
-  const mutation = useMutation({
-    mutationFn: async (newValue: T) => {
-      if (typeof localStorage !== "undefined") {
-        localStorage.setItem(key, JSON.stringify(newValue));
-      }
-      return newValue;
-    },
-    onSuccess: (newValue) => {
-      // Update the query cache optimistically
-      queryClientInstance.setQueryData(queryKey, newValue);
-    },
-  });
-
-  // Setter that updates localStorage via mutation
+  // Writes synchronously so a second call in the same tick sees this one's update.
   const setLocalStorageValue = (updater: T | ((prev: T) => T)) => {
     const current = queryClientInstance.getQueryData<T>(queryKey);
     // If for some reason current is undefined (shouldn't happen due to initialData),
@@ -85,7 +71,10 @@ export function useLocalStorage<T>(
         ? (updater as (prev: T) => T)(current as T)
         : updater;
 
-    mutation.mutate(next);
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem(key, JSON.stringify(next));
+    }
+    queryClientInstance.setQueryData(queryKey, next);
   };
 
   // Return the value from query (guaranteed to be T due to initialData)
