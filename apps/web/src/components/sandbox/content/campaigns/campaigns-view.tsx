@@ -570,14 +570,19 @@ function CampaignTimeline({
                       tabIndex={-1}
                       aria-hidden="true"
                       onClick={() => onOpen(row.name)}
-                      className="absolute top-1/2 -translate-y-1/2 whitespace-nowrap text-[11px] font-medium text-foreground hover:underline"
+                      className="absolute top-1/2 -translate-y-1/2 truncate whitespace-nowrap text-left text-[11px] font-medium text-foreground hover:underline"
                       style={
                         label === "after"
                           ? {
                               left: `calc(${bar!.left + bar!.width}% + 6px)`,
+                              maxWidth: `calc(${100 - bar!.left - bar!.width}% - 6px)`,
                             }
-                          : { right: `calc(${100 - bar!.left}% + 6px)` }
+                          : {
+                              right: `calc(${100 - bar!.left}% + 6px)`,
+                              maxWidth: `calc(${bar!.left}% - 6px)`,
+                            }
                       }
+                      title={row.name}
                       data-testid="campaign-bar-label"
                     >
                       {row.name}

@@ -311,11 +311,23 @@ export function PublishCompare({
         </p>
       ) : null}
       {view === "code" && !showsCode ? (
-        <ComparePlaceholder
-          icon={<Eye className="size-5 text-muted-foreground" />}
-          title={t("thread.publishCompare.noPreviewTitle")}
-          description={t("thread.publishCompare.noPreviewDescription")}
-        />
+        // Without the Code tab, say why there is no page: still finding it,
+        // no site address to show it on yet, or the change is on no page.
+        v8Section !== null && v8SectionPath === undefined ? (
+          <PublishGhost className="m-4 h-64 rounded" />
+        ) : previewServerUrl === null ? (
+          <ComparePlaceholder
+            icon={<Eye className="size-5 text-muted-foreground" />}
+            title={t("thread.publishCompare.previewNotReadyTitle")}
+            description={t("thread.publishCompare.draftUnavailable")}
+          />
+        ) : (
+          <ComparePlaceholder
+            icon={<Eye className="size-5 text-muted-foreground" />}
+            title={t("thread.publishCompare.noPreviewTitle")}
+            description={t("thread.publishCompare.noPreviewDescription")}
+          />
+        )
       ) : null}
       {view === "code" && showsCode ? (
         <div className="min-h-0 flex-1 overflow-y-auto bg-background [scrollbar-width:thin]">

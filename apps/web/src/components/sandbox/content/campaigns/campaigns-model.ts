@@ -202,7 +202,8 @@ export function timelineLabelPlacement(
   if (bar.width >= needed) return "inside";
   if (bar.left + bar.width + needed <= 100) return "after";
   if (bar.left >= needed) return "before";
-  return "after";
+  // Fits on neither side whole: the side with more room, cut to fit there.
+  return bar.left > 100 - (bar.left + bar.width) ? "before" : "after";
 }
 
 /**

@@ -190,9 +190,12 @@ describe("timelineLabelPlacement", () => {
     expect(timelineLabelPlacement(bar, "Carnival sale")).toBe("before");
   });
 
-  it("after it when there is room on neither side", () => {
+  it("on the roomier side when it fits whole on neither (then cut there)", () => {
     expect(timelineLabelPlacement({ left: 0, width: 1 }, "x".repeat(80))).toBe(
       "after",
+    );
+    expect(timelineLabelPlacement({ left: 90, width: 2 }, "x".repeat(80))).toBe(
+      "before",
     );
   });
 });

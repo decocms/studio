@@ -246,6 +246,7 @@ export const thread = {
   "thread.publishCompare.enterPath": "Type a page address to compare.",
   "thread.publishCompare.draftUnavailable":
     "Your changes can't be shown yet. Use Preview to open them.",
+  "thread.publishCompare.previewNotReadyTitle": "Preview not ready yet",
   "thread.publishCompare.noPreviewTitle": "Nothing to preview",
   "thread.publishCompare.noPreviewDescription":
     "This change doesn't show on a page. It's published together with the others.",

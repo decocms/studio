@@ -88,15 +88,61 @@ describe("the publish panel's Code tab", () => {
   });
 
   test("a change with no page to show says so instead of showing code", () => {
+    const code: PublishChange = {
+      ...experiments,
+      kind: "other",
+      blockKey: null,
+      entry: undefined,
+      filepaths: ["src/sections/Hero.tsx"],
+    };
     const view = render(
       <PublishCodeTab value={false}>
-        {compare(experiments, null)}
+        {compare(code, "https://site.example")}
       </PublishCodeTab>,
     );
     const body = within(view.container);
     expect(body.queryByRole("tab")).toBeNull();
     expect(body.getByText("Nothing to preview")).toBeTruthy();
     expect(view.container.textContent).not.toContain("split-traffic");
+    view.unmount();
+  });
+
+  test("with no site address yet, it says the preview isn't ready, not that no page shows it", () => {
+    const view = render(
+      <PublishCodeTab value={false}>{compare(page, null)}</PublishCodeTab>,
+    );
+    const body = within(view.container);
+    expect(body.queryByRole("tab")).toBeNull();
+    expect(body.queryByText("Nothing to preview")).toBeNull();
+    expect(body.getByText("Preview not ready yet")).toBeTruthy();
+    view.unmount();
+  });
+
+  test("while the page that shows a saved section is found, it waits", () => {
+    const section: PublishChange = {
+      ...experiments,
+      blockKey: "Hero",
+      name: "Hero",
+      entry: { name: "Hero", version: "v1" },
+      fromJson: { __resolveType: "site/sections/Hero.tsx", title: "a" },
+      toJson: { __resolveType: "site/sections/Hero.tsx", title: "b" },
+    };
+    const view = render(
+      <PublishCodeTab value={false}>
+        <PublishCompare
+          change={section}
+          diff={null}
+          bodyPending={false}
+          previewServerUrl="https://site.example"
+          draft={null}
+          lastPage={null}
+          v8={{ blocks: null }}
+        />
+      </PublishCodeTab>,
+    );
+    const body = within(view.container);
+    expect(body.queryByText("Nothing to preview")).toBeNull();
+    expect(body.queryByText("Preview not ready yet")).toBeNull();
     view.unmount();
   });
 
