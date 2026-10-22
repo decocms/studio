@@ -2146,10 +2146,13 @@ export function SectionsEditor({
     setActiveSectionVariantIndex(nextIndex);
     setFieldBreadcrumbs([]);
     setFormResetKey((key) => key + 1);
+    // The copy is now the variant being edited: the preview shows it.
     applySectionVariant(
       updatedSections[selectedSectionIndex],
       parsed,
       nextIndex,
+      selectedSectionIndex,
+      true,
     );
     savePageSections(updatedSections);
   };
@@ -2194,10 +2197,13 @@ export function SectionsEditor({
     }
 
     setActiveSectionVariantIndex(nextIndex);
+    // The preview follows the edited variant to its new place in the list.
     applySectionVariant(
       updatedSections[selectedSectionIndex],
       parsed,
       nextIndex,
+      selectedSectionIndex,
+      true,
     );
     savePageSections(updatedSections);
   };
@@ -2228,11 +2234,14 @@ export function SectionsEditor({
     setActiveSectionVariantIndex(result.newVariantIndex);
     setFieldBreadcrumbs([]);
     setFormResetKey((key) => key + 1);
+    // The new variant is the one being edited: the preview shows it, so an
+    // edit to it shows there even while an earlier variant's rule matches.
     applySectionVariant(
       result.section,
       nextParsed,
       result.newVariantIndex,
       sectionIndex,
+      true,
     );
     savePageSections(updatedSections);
   };
