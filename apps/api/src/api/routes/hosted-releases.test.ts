@@ -132,7 +132,14 @@ describe("POST releases/:sha/reapply", () => {
     expect((await readLatest(delivery.store, "acme"))?.revision).toBe(sha);
     // Make current carries the site's preview hosts, in latest.json and in
     // the new version's companion release.
-    const hosts = ["acme.deco.site", "preview.acme.com", "www.acme.com"];
+    const hosts = [
+      "127.0.0.1",
+      "[::1]",
+      "acme.deco.site",
+      "localhost",
+      "preview.acme.com",
+      "www.acme.com",
+    ];
     expect((await readLatest(delivery.store, "acme"))?.previewHosts).toEqual(
       hosts,
     );
@@ -202,7 +209,14 @@ describe("POST releases/retry", () => {
     const { delivery, post } = setup();
     const retry = await post("releases/retry");
     expect(retry.status).toBe(200);
-    const hosts = ["acme.deco.site", "preview.acme.com", "www.acme.com"];
+    const hosts = [
+      "127.0.0.1",
+      "[::1]",
+      "acme.deco.site",
+      "localhost",
+      "preview.acme.com",
+      "www.acme.com",
+    ];
     expect(((await retry.json()) as { current: unknown }).current).toEqual(
       expect.objectContaining({ previewHosts: hosts }),
     );
@@ -211,12 +225,15 @@ describe("POST releases/retry", () => {
     );
   });
 
-  it("still releases when the site's domains can't be read: the preview server alone", async () => {
+  it("still releases when the site's domains can't be read: the preview server and this machine", async () => {
     const { delivery, post } = setup(async () => {
       throw new Error("supabase down");
     });
     expect((await post("releases/retry")).status).toBe(200);
     expect((await readLatest(delivery.store, "acme"))?.previewHosts).toEqual([
+      "127.0.0.1",
+      "[::1]",
+      "localhost",
       "preview.acme.com",
     ]);
   });

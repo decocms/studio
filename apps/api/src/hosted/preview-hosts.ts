@@ -10,13 +10,15 @@
  *   - the project's preview server (`metadata.previewServerUrl`, the address
  *     the site editor's frame and preview links open drafts on);
  *   - the site's deco.cx domains (the `{site}.deco.site` host and any custom
- *     domain), when this Studio is linked to deco.cx.
+ *     domain), when this Studio is linked to deco.cx;
+ *   - this machine (`localhost`, `127.0.0.1`, `[::1]`, on any port): local
+ *     editing loads the app a connected `deco serve` names, always on a
+ *     loopback address and on a port each person picks, and its variant tabs
+ *     and "Preview as" ride on a `?__draft=` link there. A deployed site
+ *     never answers on these hosts, and who may see a draft is still decided
+ *     by the signed grant inside each link.
  *
- * A v8 site never previews a hosted draft on a tunnel or on Localhost (a
- * connected `deco serve` reads and writes the files on disk), so neither is
- * listed unless it is the preview server itself.
- *
- * Each entry is a URL's `host`: the lowercase hostname (punycode), with the
+ * Each other entry is a URL's `host`: the lowercase hostname (punycode), with the
  * port only when the address names one, so it is an exact host pattern in
  * `@decocms/blocks`' format (no wildcards). The list is sorted and has no
  * duplicates, so the same addresses always write the same bytes.
@@ -27,6 +29,12 @@ import {
   resolvePreviewServerUrl,
 } from "@decocms/shared/deco-site-production-url";
 import { getDecoSupabaseConfig, supabaseGet } from "@/deco-legacy/supabase";
+
+/**
+ * Local editing's addresses, without a port (in `@decocms/blocks`' format a
+ * host without a port matches every port).
+ */
+export const LOOPBACK_PREVIEW_HOSTS = ["localhost", "127.0.0.1", "[::1]"];
 
 /** A hostname a host pattern can name: DNS labels, or an IPv6 address in brackets. */
 const HOSTNAME_RE =
@@ -105,6 +113,7 @@ export async function sitePreviewHosts(input: {
     return [] as string[];
   });
   return previewHostsOf([
+    ...LOOPBACK_PREVIEW_HOSTS,
     resolvePreviewServerUrl(
       input.metadata as Parameters<typeof resolvePreviewServerUrl>[0],
     ),

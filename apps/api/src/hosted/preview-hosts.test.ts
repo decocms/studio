@@ -1,5 +1,11 @@
 import { describe, expect, it } from "bun:test";
-import { previewHostsOf, sitePreviewHosts } from "./preview-hosts";
+import {
+  LOOPBACK_PREVIEW_HOSTS,
+  previewHostsOf,
+  sitePreviewHosts,
+} from "./preview-hosts";
+
+const LOCAL = ["127.0.0.1", "[::1]", "localhost"];
 
 describe("previewHostsOf", () => {
   it("is each address's host, lowercase, sorted, without duplicates", () => {
@@ -53,7 +59,10 @@ describe("sitePreviewHosts", () => {
         site === "acme" ? ["acme.deco.site", "www.acme.com"] : [],
     });
     expect(hosts).toEqual([
+      "127.0.0.1",
+      "[::1]",
       "acme.deco.site",
+      "localhost",
       "staging.acme.com",
       "www.acme.com",
     ]);
@@ -65,24 +74,28 @@ describe("sitePreviewHosts", () => {
       metadata: { productionUrl: "https://acme.deco.site" },
       domains: async () => [],
     });
-    expect(hosts).toEqual(["acme.deco.site"]);
+    expect(hosts).toEqual([
+      ...LOCAL.slice(0, 2),
+      "acme.deco.site",
+      "localhost",
+    ]);
   });
 
-  it("is the domains alone without a preview server, and empty with neither", async () => {
+  it("is the domains alone without a preview server, and this machine alone with neither", async () => {
     expect(
       await sitePreviewHosts({
         site: "acme",
         metadata: null,
         domains: async () => ["www.acme.com"],
       }),
-    ).toEqual(["www.acme.com"]);
+    ).toEqual([...LOCAL, "www.acme.com"]);
     expect(
       await sitePreviewHosts({
         site: "acme",
         metadata: {},
         domains: async () => [],
       }),
-    ).toEqual([]);
+    ).toEqual(LOCAL);
   });
 
   it("never fails when the domains can't be read", async () => {
@@ -93,6 +106,16 @@ describe("sitePreviewHosts", () => {
         throw new Error("supabase down");
       },
     });
-    expect(hosts).toEqual(["www.acme.com"]);
+    expect(hosts).toEqual([...LOCAL, "www.acme.com"]);
+  });
+
+  it("always lists this machine on any port, for local editing's previews", async () => {
+    const hosts = await sitePreviewHosts({
+      site: "acme",
+      metadata: { previewServerUrl: "http://localhost:3100" },
+      domains: async () => [],
+    });
+    expect(hosts).toEqual([...LOCAL, "localhost:3100"]);
+    expect(previewHostsOf(LOOPBACK_PREVIEW_HOSTS)).toEqual(LOCAL);
   });
 });
