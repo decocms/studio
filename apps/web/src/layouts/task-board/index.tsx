@@ -3032,7 +3032,7 @@ function Lane({
   const criticalWell = hasCriticalWell(status);
   const { setNodeRef: setCriticalRef } = useDroppable({
     id: `${CRITICAL_DROPPABLE_PREFIX}${status}`,
-    disabled: !criticalWell,
+    disabled: !criticalWell || !anyCritical,
   });
 
   const critical = items.filter(isCriticalTask);
@@ -3267,38 +3267,43 @@ function Lane({
       </div>
       {swimlanes ? (
         <>
-          {/* Done and Archived keep the row, so the wells below stay aligned. */}
+          {anyCritical ? (
+            /* Done and Archived keep the row, so the wells below stay aligned. */
+            <div
+              className={cn(
+                "flex min-h-0 min-w-0 flex-col gap-3 px-1 pt-4.5",
+                !criticalWell && "invisible",
+              )}
+            >
+              <SwimlaneLabel
+                visible={labelled}
+                icon={AlertOctagon}
+                iconClassName="text-destructive"
+                label={t("taskBoard.taskBoard.swimlaneCritical")}
+              />
+              <div
+                ref={setCriticalRef}
+                data-lane-scroll={criticalWell ? status : undefined}
+                className={SWIMLANE_PANEL}
+              >
+                <SortableContext
+                  items={critical.map((item) => item.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  {critical.map(renderCard)}
+                </SortableContext>
+              </div>
+            </div>
+          ) : (
+            // Holds the empty Critical row so Improvements keeps the 1fr row.
+            <div />
+          )}
           <div
             className={cn(
-              "flex min-h-0 min-w-0 flex-col gap-3 px-1 pt-4.5",
-              !criticalWell && "invisible",
+              "flex min-h-0 flex-col gap-3 px-1 pb-1",
+              anyCritical ? "pt-7" : "pt-4.5",
             )}
           >
-            <SwimlaneLabel
-              visible={labelled}
-              icon={AlertOctagon}
-              iconClassName="text-destructive"
-              label={t("taskBoard.taskBoard.swimlaneCritical")}
-            />
-            <div
-              ref={setCriticalRef}
-              data-lane-scroll={criticalWell ? status : undefined}
-              className={SWIMLANE_PANEL}
-            >
-              <SortableContext
-                items={critical.map((item) => item.id)}
-                strategy={verticalListSortingStrategy}
-              >
-                {critical.map(renderCard)}
-              </SortableContext>
-              {labelled && !anyCritical && (
-                <p className="px-1 py-2 text-sm text-muted-foreground">
-                  {t("taskBoard.taskBoard.attentionEmpty")}
-                </p>
-              )}
-            </div>
-          </div>
-          <div className="flex min-h-0 flex-col gap-3 px-1 pt-7 pb-1">
             <SwimlaneLabel
               visible={labelled}
               icon={Stars02}
