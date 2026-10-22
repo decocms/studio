@@ -277,38 +277,21 @@ export function appendPageVariantSections(
     };
   }
   const newType = pageMultivariateTypeFor(undefined, meta);
-  if (!v8) {
-    // v7: the current sections (none for an unknown shape), then the new one.
-    return {
-      sections: createMultivariatePageSections(
-        [
-          createPageVariantEntry(
-            Array.isArray(current) ? (current as RawSection[]) : [],
-            meta,
-            newType,
-          ),
-          createPageVariantEntry(seed, meta, newType),
-        ],
-        undefined,
-        meta,
-      ),
-      newVariantIndex: 1,
-    };
-  }
+  // The current sections (none for an unknown shape) and the new one: v7
+  // adds the new one last, v8 first (as `newVariantIndex` does for a list).
+  const currentEntry = createPageVariantEntry(
+    Array.isArray(current) ? (current as RawSection[]) : [],
+    meta,
+    newType,
+  );
+  const seedEntry = createPageVariantEntry(seed, meta, newType);
   return {
     sections: createMultivariatePageSections(
-      [
-        createPageVariantEntry(seed, meta, newType),
-        createPageVariantEntry(
-          Array.isArray(current) ? (current as RawSection[]) : [],
-          meta,
-          newType,
-        ),
-      ],
+      v8 ? [seedEntry, currentEntry] : [currentEntry, seedEntry],
       undefined,
       meta,
     ),
-    newVariantIndex: 0,
+    newVariantIndex: v8 ? 0 : 1,
   };
 }
 
