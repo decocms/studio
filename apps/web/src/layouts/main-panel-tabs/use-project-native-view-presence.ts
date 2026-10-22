@@ -78,9 +78,7 @@ export function useProjectNativeViewPresence(
       // last found v8, which the tab opens as v8 too (`monitorKind`).
       cdn:
         monitorEnabled &&
-        (mainSchema === "v8" || mainSchema === "error"
-          ? ownsSite
-          : ownsAnalyticsSite) &&
+        (editsBlocksDraft(mainSchema) ? ownsSite : ownsAnalyticsSite) &&
         controlPlaneViews.monitor,
       // Every v8 site: its A/B tests are content its editors own.
       experiments: experimentsTabVisible(

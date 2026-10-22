@@ -16,6 +16,8 @@ function AgentCalendarContent() {
     return <CalendarTab virtualMcpId={virtualMcpId} />;
   }
   // Whether the site is v8 (and so has a calendar) isn't known yet: wait.
+  // Unlike Experiments (`awaitsV8Answer`), there is no v7 form to show
+  // meanwhile, so every site waits, never flashing Settings first.
   if (siteMajor === "loading") return <CalendarTabSkeleton />;
   return <SettingsTab virtualMcpId={virtualMcpId} />;
 }

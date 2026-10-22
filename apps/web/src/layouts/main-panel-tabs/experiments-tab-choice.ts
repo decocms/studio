@@ -35,8 +35,8 @@ export function pickExperimentsTab(input: {
   /** The server last found this site v8 (`useLastFoundV8`): a hint only. */
   lastFoundV8?: boolean;
 }): "v8" | "v2" | "legacy" | "loading" {
-  if (input.siteMajor === "v8" || input.siteMajor === "error") return "v8";
-  if (input.siteMajor === "loading" && input.lastFoundV8) return "loading";
+  if (editsBlocksDraft(input.siteMajor)) return "v8";
+  if (awaitsV8Answer(input.siteMajor, input.lastFoundV8)) return "loading";
   return v7ExperimentsTab(input.flagEnabled, input.ui);
 }
 
@@ -52,8 +52,21 @@ export function experimentsRouteView(input: {
   lastFoundV8: boolean;
 }): "tab" | "loading" | "settings" {
   if (experimentsTabVisible(input.orgEnabled, input.siteMajor)) return "tab";
-  if (input.siteMajor === "loading" && input.lastFoundV8) return "loading";
+  if (awaitsV8Answer(input.siteMajor, input.lastFoundV8)) return "loading";
   return "settings";
+}
+
+/**
+ * Whether a view that has a v7 form waits for main's schema instead of
+ * showing it: only on a site the server last found v8 (`lastFoundV8`), so a
+ * v7 site shows its tab at once, as before. Calendar has no v7 form (a v7
+ * site gets Settings), so it waits on every site while main is read.
+ */
+export function awaitsV8Answer(
+  siteMajor: MainSchemaAnswer,
+  lastFoundV8: boolean | undefined,
+): boolean {
+  return siteMajor === "loading" && !!lastFoundV8;
 }
 
 /**

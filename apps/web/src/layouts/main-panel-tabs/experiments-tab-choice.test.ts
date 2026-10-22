@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
+  awaitsV8Answer,
   editsBlocksDraft,
   experimentsRouteView,
   experimentsTabVisible,
@@ -111,5 +112,17 @@ describe("editsBlocksDraft", () => {
   it("is no other site, and waits while main's schema is read", () => {
     expect(editsBlocksDraft("v7")).toBe(false);
     expect(editsBlocksDraft("loading")).toBe(false);
+  });
+});
+
+describe("awaitsV8Answer", () => {
+  it("waits only while main is read on a site last found v8", () => {
+    expect(awaitsV8Answer("loading", true)).toBe(true);
+    // A v7 site (never marked) shows its tab at once, as on main.
+    expect(awaitsV8Answer("loading", false)).toBe(false);
+    expect(awaitsV8Answer("loading", undefined)).toBe(false);
+    for (const answer of ["v8", "v7", "error"] as const) {
+      expect(awaitsV8Answer(answer, true)).toBe(false);
+    }
   });
 });
