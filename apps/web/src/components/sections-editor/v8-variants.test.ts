@@ -291,9 +291,9 @@ function v8Page() {
 describe("readers take the v8 shape", () => {
   test("page variants", () => {
     const page = v8Page();
-    expect(isMultivariateArrayWrapper(page.sections)).toBe(true);
-    expect(isSectionMultivariateWrapperValue(page.sections)).toBe(false);
-    expect(unwrapMultivariateArrayValue(page.sections)).toEqual([FOOTER]);
+    expect(isMultivariateArrayWrapper(page.sections, true)).toBe(true);
+    expect(isSectionMultivariateWrapperValue(page.sections, true)).toBe(false);
+    expect(unwrapMultivariateArrayValue(page.sections, true)).toEqual([FOOTER]);
     const decofile = { Home: page };
     expect(getPageVariantSectionsAt(decofile, "Home", 0)).toEqual([FOOTER]);
     const variants = parsePageVariants(page.sections, decofile, () => "");
@@ -311,7 +311,7 @@ describe("readers take the v8 shape", () => {
     expect(p1).toMatchObject({ isHidden: true, label: "Footer" });
 
     const mv = withVariants as Record<string, unknown>;
-    expect(isSectionMultivariateWrapperValue(mv)).toBe(true);
+    expect(isSectionMultivariateWrapperValue(mv, true)).toBe(true);
     expect(parseSectionFlagVariants(mv, () => "").map((v) => v.value)).toEqual([
       { ...HERO, title: "B" },
       { ...HERO, title: "A" },
@@ -321,7 +321,7 @@ describe("readers take the v8 shape", () => {
       title: "A",
     } as RawSection);
     expect(showSection(hidden!, true)).toEqual(FOOTER);
-    expect(unwrapSection(hidden!, p1!, {})).toEqual({
+    expect(unwrapSection(hidden!, p1!, {}, true)).toEqual({
       data: FOOTER,
       resolveType: "footer",
     });
@@ -431,9 +431,9 @@ describe("editing keeps each block's own shape", () => {
       (next.sections as { variants: Array<{ value: unknown }> }).variants[0]
         ?.value,
     ).toEqual(lazy([HERO]));
-    expect(wrapMultivariateArrayValue(page.sections, [HERO], V8)).toMatchObject(
-      { variants: [{ value: lazy([HERO]) }, {}] },
-    );
+    expect(
+      wrapMultivariateArrayValue(page.sections, [HERO], V8, true),
+    ).toMatchObject({ variants: [{ value: lazy([HERO]) }, {}] });
   });
 
   test("dropping to one default page variant leaves the plain list", () => {

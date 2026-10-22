@@ -6,6 +6,7 @@ import {
   countSavedMatcherBlockReferences,
   getPageVariantCount,
   getPageVariantSectionsAt,
+  isMultivariateArrayWrapper,
   isSectionMultivariateWrapperValue,
   parsePageVariants,
   unwrapMultivariateArrayValue,
@@ -20,40 +21,79 @@ import {
 describe("isSectionMultivariateWrapperValue", () => {
   it("matches a section-level multivariate flag wrapper", () => {
     expect(
-      isSectionMultivariateWrapperValue({
-        __resolveType: SECTION_MULTIVARIATE_RESOLVE_TYPE,
-        variants: [
-          { value: { __resolveType: "site/sections/Header.tsx" }, rule: {} },
-          { value: { __resolveType: "site/sections/Header.tsx" }, rule: {} },
-        ],
-      }),
+      isSectionMultivariateWrapperValue(
+        {
+          __resolveType: SECTION_MULTIVARIATE_RESOLVE_TYPE,
+          variants: [
+            { value: { __resolveType: "site/sections/Header.tsx" }, rule: {} },
+            { value: { __resolveType: "site/sections/Header.tsx" }, rule: {} },
+          ],
+        },
+        false,
+      ),
     ).toBe(true);
   });
 
   it("rejects the page-level multivariate flag wrapper", () => {
     expect(
-      isSectionMultivariateWrapperValue({
-        __resolveType: PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE,
-        variants: [{ value: [], rule: {} }],
-      }),
+      isSectionMultivariateWrapperValue(
+        {
+          __resolveType: PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE,
+          variants: [{ value: [], rule: {} }],
+        },
+        false,
+      ),
     ).toBe(false);
   });
 
   it("rejects plain arrays, primitives, and non-wrapper objects", () => {
-    expect(isSectionMultivariateWrapperValue([])).toBe(false);
-    expect(isSectionMultivariateWrapperValue(null)).toBe(false);
-    expect(isSectionMultivariateWrapperValue("x")).toBe(false);
+    expect(isSectionMultivariateWrapperValue([], false)).toBe(false);
+    expect(isSectionMultivariateWrapperValue(null, false)).toBe(false);
+    expect(isSectionMultivariateWrapperValue("x", false)).toBe(false);
     expect(
-      isSectionMultivariateWrapperValue({
-        __resolveType: SECTION_MULTIVARIATE_RESOLVE_TYPE,
-      }),
+      isSectionMultivariateWrapperValue(
+        {
+          __resolveType: SECTION_MULTIVARIATE_RESOLVE_TYPE,
+        },
+        false,
+      ),
     ).toBe(false);
     expect(
-      isSectionMultivariateWrapperValue({
-        __resolveType: "site/sections/Header.tsx",
-        variants: [],
-      }),
+      isSectionMultivariateWrapperValue(
+        {
+          __resolveType: "site/sections/Header.tsx",
+          variants: [],
+        },
+        false,
+      ),
     ).toBe(false);
+  });
+});
+
+describe("v7: a short `multivariate` is a saved block's key", () => {
+  const sectionWrapper = {
+    __resolveType: "multivariate",
+    variants: [{ value: { __resolveType: "Hero" }, rule: {} }],
+  };
+  const pageWrapper = {
+    __resolveType: "multivariate",
+    variants: [{ value: [{ __resolveType: "Hero" }], rule: {} }],
+  };
+
+  it("is no variants wrapper on v7, as on main", () => {
+    expect(isSectionMultivariateWrapperValue(sectionWrapper, false)).toBe(
+      false,
+    );
+    expect(isMultivariateArrayWrapper(pageWrapper, false)).toBe(false);
+    expect(unwrapMultivariateArrayValue(pageWrapper, false)).toBeNull();
+  });
+
+  it("is the variants block on v8", () => {
+    expect(isSectionMultivariateWrapperValue(sectionWrapper, true)).toBe(true);
+    expect(isMultivariateArrayWrapper(pageWrapper, true)).toBe(true);
+    expect(unwrapMultivariateArrayValue(pageWrapper, true)).toEqual([
+      { __resolveType: "Hero" },
+    ]);
   });
 });
 
@@ -63,18 +103,24 @@ describe("page-variants", () => {
       { __resolveType: "Analytics" },
       { __resolveType: "Minicart" },
     ];
-    expect(unwrapMultivariateArrayValue(sections)).toBeNull();
+    expect(unwrapMultivariateArrayValue(sections, false)).toBeNull();
     expect(
-      unwrapMultivariateArrayValue({
-        __resolveType: PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE,
-        variants: [{ value: sections }],
-      }),
+      unwrapMultivariateArrayValue(
+        {
+          __resolveType: PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE,
+          variants: [{ value: sections }],
+        },
+        false,
+      ),
     ).toEqual(sections);
     expect(
-      unwrapMultivariateArrayValue({
-        __resolveType: PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE,
-        variants: "not-an-array",
-      }),
+      unwrapMultivariateArrayValue(
+        {
+          __resolveType: PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE,
+          variants: "not-an-array",
+        },
+        false,
+      ),
     ).toBeNull();
   });
 
@@ -124,7 +170,9 @@ describe("page-variants", () => {
       { __resolveType: "Analytics" },
       { __resolveType: "Minicart" },
     ];
-    expect(wrapMultivariateArrayValue(original, next)).toEqual({
+    expect(
+      wrapMultivariateArrayValue(original, next, undefined, false),
+    ).toEqual({
       ...original,
       variants: [{ ...original.variants[0], value: next }],
     });

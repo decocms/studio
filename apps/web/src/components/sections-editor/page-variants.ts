@@ -15,6 +15,7 @@ import {
 import {
   readVariantValue,
   storeVariantValue,
+  variantValueOn,
   V8_MULTIVARIATE_RESOLVE_TYPE,
   valueMultivariateResolveType,
   withVariantValue,
@@ -67,7 +68,11 @@ export function isPageMultivariateSectionArrayField(
  * in variants (each `{ value: Section, rule: Matcher }`). It must render with
  * the variant editor, not the generic array editor.
  */
-export function isSectionMultivariateWrapperValue(value: unknown): value is {
+export function isSectionMultivariateWrapperValue(
+  value: unknown,
+  /** A Blocks v8 site; on v7 a short `multivariate` is a saved block's key. */
+  v8: boolean,
+): value is {
   __resolveType: string;
   variants: Array<Record<string, unknown>>;
 } {
@@ -76,12 +81,13 @@ export function isSectionMultivariateWrapperValue(value: unknown): value is {
   if (!Array.isArray(obj.variants)) return false;
   if (obj.__resolveType === SECTION_MULTIVARIATE_RESOLVE_TYPE) return true;
   return (
+    v8 &&
     obj.__resolveType === V8_MULTIVARIATE_RESOLVE_TYPE &&
     !holdsSectionLists(obj.variants)
   );
 }
 
-/** Whether a variants list holds lists (a page's sections), not single values. */
+/** Whether a v8 variants list holds lists (a page's sections), not single values. */
 function holdsSectionLists(variants: unknown[]): boolean {
   return variants.some((variant) => Array.isArray(readVariantValue(variant)));
 }
@@ -91,33 +97,42 @@ function holdsSectionLists(variants: unknown[]): boolean {
  * wrapper: v7's `website/flags/multivariate.ts`, or v8's `multivariate` whose
  * variants hold section lists.
  */
-export function isMultivariateArrayWrapper(value: unknown): boolean {
+export function isMultivariateArrayWrapper(
+  value: unknown,
+  /** A Blocks v8 site; on v7 a short `multivariate` is a saved block's key. */
+  v8: boolean,
+): boolean {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const obj = value as Record<string, unknown>;
   if (obj.__resolveType === PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE) return true;
   return (
+    v8 &&
     obj.__resolveType === V8_MULTIVARIATE_RESOLVE_TYPE &&
     Array.isArray(obj.variants) &&
     holdsSectionLists(obj.variants)
   );
 }
 
-export function unwrapMultivariateArrayValue(value: unknown): unknown[] | null {
-  if (!isMultivariateArrayWrapper(value)) return null;
+export function unwrapMultivariateArrayValue(
+  value: unknown,
+  v8: boolean,
+): unknown[] | null {
+  if (!isMultivariateArrayWrapper(value, v8)) return null;
   const variants = (value as Record<string, unknown>).variants as
     | Array<{ value?: unknown }>
     | undefined;
   if (!Array.isArray(variants)) return null;
-  const first = readVariantValue(variants[0]);
+  const first = variantValueOn(variants[0], v8);
   return Array.isArray(first) ? first : null;
 }
 
 export function wrapMultivariateArrayValue(
   original: unknown,
   nextArray: unknown[],
-  meta?: LiveMeta | null,
+  meta: LiveMeta | null | undefined,
+  v8: boolean,
 ): unknown {
-  if (!isMultivariateArrayWrapper(original)) return nextArray;
+  if (!isMultivariateArrayWrapper(original, v8)) return nextArray;
   const obj = structuredClone(original) as Record<string, unknown>;
   const variants = [
     ...((obj.variants as Array<Record<string, unknown>>) ?? []),

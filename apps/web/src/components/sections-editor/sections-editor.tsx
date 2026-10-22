@@ -797,7 +797,8 @@ export function SectionsEditor({
   const parsedSections = parseSections(rawSections, decofile, protocolProject);
   // Page is page-level multivariate when `sections` is a multivariate wrapper.
   const pageIsMultivariate =
-    !isGlobalBlockMode && isMultivariateArrayWrapper(pageData?.sections);
+    !isGlobalBlockMode &&
+    isMultivariateArrayWrapper(pageData?.sections, protocolProject);
 
   // Global blocks open directly into the section form (single saved block).
   if (
@@ -812,7 +813,12 @@ export function SectionsEditor({
       setSelectedSectionIndex(0);
       setActiveSectionVariantIndex(0);
       setFieldBreadcrumbs([]);
-      const unwrapped = unwrapSection(rawSection, parsed, decofile);
+      const unwrapped = unwrapSection(
+        rawSection,
+        parsed,
+        decofile,
+        protocolProject,
+      );
       if (unwrapped) {
         setFormValue(unwrapped.data);
         setActiveResolveType(unwrapped.resolveType);
@@ -1021,7 +1027,12 @@ export function SectionsEditor({
     if (parsed.isMultivariate) {
       applySectionVariant(rawSection, parsed, variant, sectionIndex);
     } else {
-      const unwrapped = unwrapSection(rawSection, parsed, decofile);
+      const unwrapped = unwrapSection(
+        rawSection,
+        parsed,
+        decofile,
+        protocolProject,
+      );
       if (!unwrapped) {
         setFormValue(null);
         setActiveResolveType(null);
@@ -1134,7 +1145,12 @@ export function SectionsEditor({
           selectedSectionIndex,
         );
       } else {
-        const unwrapped = unwrapSection(rawSection, parsed, decofile);
+        const unwrapped = unwrapSection(
+          rawSection,
+          parsed,
+          decofile,
+          protocolProject,
+        );
         setFormValue(unwrapped?.data ?? null);
         setActiveResolveType(unwrapped?.resolveType ?? null);
       }
@@ -1167,7 +1183,12 @@ export function SectionsEditor({
           selectedSectionIndex,
         );
       } else {
-        const unwrapped = unwrapSection(rawSection, parsed, decofile);
+        const unwrapped = unwrapSection(
+          rawSection,
+          parsed,
+          decofile,
+          protocolProject,
+        );
         setFormValue(unwrapped?.data ?? null);
         setActiveResolveType(unwrapped?.resolveType ?? null);
       }
@@ -1190,6 +1211,7 @@ export function SectionsEditor({
             at.parsedSections[index],
             waitingTarget.sectionVariantIndex,
             decofile,
+            protocolProject,
           )
         : null;
     const refreshed = refreshWaitingChoice(waitingChoice, nowStored, (stored) =>
@@ -1596,6 +1618,7 @@ export function SectionsEditor({
         parsed,
         targetSectionVariantIndex,
         latestDecofile,
+        protocolProject,
       );
       // An older version this form saved itself, read back while the
       // provider still served the previous head, is not someone else's
@@ -1626,6 +1649,7 @@ export function SectionsEditor({
                   latestParsedSections[j],
                   targetSectionVariantIndex,
                   latestDecofile,
+                  protocolProject,
                 ),
               ),
               sectionIndex,
@@ -1917,7 +1941,12 @@ export function SectionsEditor({
       return;
     }
 
-    const unwrapped = unwrapSection(rawSection, parsed, decofile);
+    const unwrapped = unwrapSection(
+      rawSection,
+      parsed,
+      decofile,
+      protocolProject,
+    );
     if (!unwrapped) {
       setFormValue(null);
       setActiveResolveType(null);
@@ -2084,7 +2113,12 @@ export function SectionsEditor({
     const parsed = parsedSections[index];
     if (!rawSection || !parsed?.isSavedBlock) return;
 
-    const unwrapped = unwrapSection(rawSection, parsed, decofile);
+    const unwrapped = unwrapSection(
+      rawSection,
+      parsed,
+      decofile,
+      protocolProject,
+    );
     if (!unwrapped?.data) return;
 
     // Remove the `name` field — it belongs to the saved block, not the inline copy
@@ -2140,7 +2174,12 @@ export function SectionsEditor({
       return;
     }
 
-    const unwrapped = unwrapSection(rawSection, parsed, decofile);
+    const unwrapped = unwrapSection(
+      rawSection,
+      parsed,
+      decofile,
+      protocolProject,
+    );
     if (!unwrapped) {
       setFormValue(null);
       setActiveResolveType(null);
@@ -2412,7 +2451,12 @@ export function SectionsEditor({
     setFieldBreadcrumbs([]);
     setFormResetKey((key) => key + 1);
 
-    const unwrapped = unwrapSection(flattened, nextParsed, decofile);
+    const unwrapped = unwrapSection(
+      flattened,
+      nextParsed,
+      decofile,
+      protocolProject,
+    );
     if (!unwrapped) {
       setFormValue(null);
       setActiveResolveType(null);
@@ -2438,7 +2482,12 @@ export function SectionsEditor({
     const parsed = parsedSections[makeReusableIndex];
     if (!rawSection || !parsed) return;
 
-    const unwrapped = unwrapSection(rawSection, parsed, decofile);
+    const unwrapped = unwrapSection(
+      rawSection,
+      parsed,
+      decofile,
+      protocolProject,
+    );
     if (!unwrapped) {
       toast.error(
         t("sectionsEditor.sectionsEditor.sectionCannotBeSavedAsGlobal"),

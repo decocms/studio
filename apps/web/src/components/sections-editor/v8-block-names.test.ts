@@ -185,6 +185,7 @@ describe("always/never matcher names come from the schema", () => {
       { __resolveType: "website/flags/multivariate.ts", variants: [] },
       [1],
       V8,
+      true,
     ) as { variants: Array<{ rule: unknown }> };
     expect(arr.variants[0]?.rule).toEqual({ __resolveType: "always" });
   });
