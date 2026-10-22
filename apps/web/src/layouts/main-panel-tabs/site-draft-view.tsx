@@ -17,6 +17,7 @@ import { useLiveMeta } from "@/components/sections-editor/use-live-meta";
 import { useProjectContext } from "@/sdk";
 import { isSiteNotOwned, SiteNotOwnedState } from "./blocks-tab-states";
 import { usePanelNavigate } from "./use-panel-navigate";
+import { preloadSiteEditorContentOnShow } from "./preload-site-editor-content";
 
 export interface SiteDraftGuideAction {
   label: string;
@@ -174,6 +175,9 @@ function SiteDraftLoaded({
     return <>{skeleton}</>;
   }
   return (
-    <>{children({ orgSlug, virtualMcpId, branch, threadId, decofile, meta })}</>
+    // Their "Used by" opens the site editor: its code is ready by the click.
+    <div className="contents" ref={preloadSiteEditorContentOnShow}>
+      {children({ orgSlug, virtualMcpId, branch, threadId, decofile, meta })}
+    </div>
   );
 }
