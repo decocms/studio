@@ -14,6 +14,7 @@ mock.module("@/hooks/use-new-blocks-editor", () => ({
 
 import { resolveSchema, type LiveMeta } from "./resolve-schema";
 import { SchemaForm } from "./schema-form";
+import { RootVariantFocusProvider } from "./fields/multivariate-field-wrapper";
 
 const b64 = (name: string) => btoa(name);
 
@@ -113,9 +114,15 @@ const SAVED = {
   ],
 };
 
-function Harness({ onValue }: { onValue: (value: unknown) => void }) {
+function Harness({
+  onValue,
+  saved = SAVED,
+}: {
+  onValue: (value: unknown) => void;
+  saved?: unknown;
+}) {
   const schema = resolveSchema("multivariate", META);
-  const [value, setValue] = useState<unknown>(SAVED);
+  const [value, setValue] = useState<unknown>(saved);
   if (!schema) return <div>no schema</div>;
   return (
     <SchemaForm
@@ -156,5 +163,54 @@ describe("a saved v8 multivariate block in the form", () => {
     // The hero's own field, read from inside the `lazy` block.
     const heading = (await view.findByLabelText("Heading")) as HTMLInputElement;
     expect(heading.value).toBe("Black Friday");
+  });
+});
+
+describe("a saved section opened on one of its variants", () => {
+  const TWO = {
+    __resolveType: "multivariate",
+    variants: [
+      {
+        rule: { __resolveType: "always" },
+        value: {
+          __resolveType: "lazy",
+          value: { __resolveType: "hero", title: "Everyday" },
+        },
+      },
+      {
+        rule: { __resolveType: "always" },
+        value: {
+          __resolveType: "lazy",
+          value: { __resolveType: "hero", title: "Black Friday" },
+        },
+      },
+    ],
+  };
+  const renderOn = (focus: number | null) =>
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ProjectContextProvider
+          org={{ id: "org", name: "Org", slug: "org", logo: null }}
+          project={{ id: "site", slug: "site" }}
+        >
+          <TooltipProvider delayDuration={0}>
+            <RootVariantFocusProvider value={focus}>
+              <Harness onValue={() => {}} saved={TWO} />
+            </RootVariantFocusProvider>
+          </TooltipProvider>
+        </ProjectContextProvider>
+      </QueryClientProvider>,
+    );
+
+  test("shows the variant Used by opened it on", async () => {
+    const view = renderOn(1);
+    const heading = (await view.findByLabelText("Heading")) as HTMLInputElement;
+    expect(heading.value).toBe("Black Friday");
+  });
+
+  test("shows the first variant otherwise", async () => {
+    const view = renderOn(null);
+    const heading = (await view.findByLabelText("Heading")) as HTMLInputElement;
+    expect(heading.value).toBe("Everyday");
   });
 });

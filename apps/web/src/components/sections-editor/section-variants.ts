@@ -163,6 +163,32 @@ export function isDefaultVariantRule(rule?: Record<string, unknown>): boolean {
   return isAlwaysMatcherResolveType(rt) || rt.includes("always");
 }
 
+/**
+ * Where a new variant goes: just above a trailing catch-all (a last variant
+ * that always matches), so the new one is checked before it; at the end when
+ * the list has no such catch-all.
+ */
+export function newVariantIndex(variants: ReadonlyArray<unknown>): number {
+  const last = variants[variants.length - 1] as
+    | Record<string, unknown>
+    | undefined;
+  return last &&
+    isDefaultVariantRule(last.rule as Record<string, unknown> | undefined)
+    ? variants.length - 1
+    : variants.length;
+}
+
+/**
+ * Where the copy of `sourceIndex` goes: right after it, unless that is below
+ * the trailing catch-all (copying the catch-all itself), then right above it.
+ */
+export function duplicateVariantIndex(
+  variants: ReadonlyArray<unknown>,
+  sourceIndex: number,
+): number {
+  return Math.min(sourceIndex + 1, newVariantIndex(variants));
+}
+
 export function pickVariantToKeepIndex(mvObj: Record<string, unknown>): number {
   const variants = (mvObj.variants as Array<Record<string, unknown>>) ?? [];
   if (variants.length === 0) return -1;
@@ -351,7 +377,11 @@ export function duplicateMultivariateSectionVariant(
   const source = variants[variantIndex];
   if (!source) return mvObj;
 
-  variants.splice(variantIndex + 1, 0, structuredClone(source));
+  variants.splice(
+    duplicateVariantIndex(variants, variantIndex),
+    0,
+    structuredClone(source),
+  );
   return { ...mvObj, variants };
 }
 
@@ -463,8 +493,9 @@ function extractSectionVariantSeed(
 }
 
 /**
- * Wrap a plain or lazy section in a multivariate block with two variants
- * (original + clone). Returns null for hidden or unsupported shapes.
+ * Wrap a plain or lazy section in a multivariate block with two variants:
+ * the new copy, then the original as the catch-all. Returns null for hidden
+ * or unsupported shapes.
  */
 function wrapSectionAsMultivariate(
   raw: RawSection,
@@ -497,8 +528,9 @@ function wrapSectionAsMultivariate(
 }
 
 /**
- * Append a section variant. Wraps plain/lazy sections on first use; extends
- * existing multivariate sections. Returns null when the shape cannot be extended.
+ * Add a section variant above the trailing catch-all (see `newVariantIndex`).
+ * Wraps plain/lazy sections on first use; extends existing multivariate
+ * sections. Returns null when the shape cannot be extended.
  */
 export function appendSectionVariant(
   raw: RawSection,
@@ -521,18 +553,25 @@ export function appendSectionVariant(
     if (!seed) return null;
 
     const resolveType = sectionMultivariateTypeFor(mvObj, meta);
+    const insertAt = newVariantIndex(variants);
+    const nextVariants = [...variants];
+    nextVariants.splice(
+      insertAt,
+      0,
+      createSectionVariantEntry(seed, meta, resolveType),
+    );
     const updatedMvObj = createMultivariateSectionObject(
-      [...variants, createSectionVariantEntry(seed, meta, resolveType)],
+      nextVariants,
       resolveType,
       mvObj,
     );
     return {
       section: rebuildSectionWithMultivariate(raw, parsed, updatedMvObj),
-      newVariantIndex: variants.length,
+      newVariantIndex: insertAt,
     };
   }
 
   const wrapped = wrapSectionAsMultivariate(raw, parsed, seedValue, meta);
   if (!wrapped) return null;
-  return { section: wrapped, newVariantIndex: 1 };
+  return { section: wrapped, newVariantIndex: 0 };
 }

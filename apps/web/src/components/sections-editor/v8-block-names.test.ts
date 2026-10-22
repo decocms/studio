@@ -124,7 +124,7 @@ describe("always/never matcher names come from the schema", () => {
       { __resolveType: "always" },
     ]);
 
-    const page = appendPageVariantSections([HERO], [HERO], V8) as {
+    const page = appendPageVariantSections([HERO], [HERO], V8)?.sections as {
       variants: Array<{ rule: unknown }>;
     };
     expect(page.variants.map((v) => v.rule)).toEqual([

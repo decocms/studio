@@ -420,6 +420,75 @@ describe("buildAutoNote", () => {
     );
   });
 
+  it("names a page, not the type of the variants or lazy wrapper changed in it", () => {
+    const variants = (title: string) => ({
+      __resolveType: "multivariate",
+      variants: [
+        {
+          rule: { __resolveType: "always" },
+          value: {
+            __resolveType: "lazy",
+            value: { __resolveType: "site/sections/Hero.tsx", title },
+          },
+        },
+      ],
+    });
+    const lazyLoaded = (title: string) => ({
+      __resolveType: "website/sections/Rendering/Lazy.tsx",
+      section: { __resolveType: "site/sections/Shelf.tsx", title },
+    });
+    const v7Flag = (title: string) => ({
+      __resolveType: "website/flags/multivariate/section.ts",
+      variants: [
+        {
+          rule: { __resolveType: "website/matchers/always.ts" },
+          value: { __resolveType: "site/sections/Hero.tsx", title },
+        },
+      ],
+    });
+    const page = (sections: unknown[]) =>
+      JSON.stringify({
+        __resolveType: "website/pages/Page.tsx",
+        name: "Home Page",
+        path: "/",
+        sections,
+      });
+    const note = (from: unknown[], to: unknown[]) =>
+      buildAutoNote(
+        summarizePublishChanges(
+          diffOf({ [HOME_PATH]: { from: page(from), to: page(to) } }),
+        ),
+      );
+    expect(note([variants("A")], [variants("B")])).toBe("Updated Home Page");
+    expect(note([lazyLoaded("A")], [lazyLoaded("B")])).toBe(
+      "Updated Home Page",
+    );
+    expect(note([v7Flag("A")], [v7Flag("B")])).toBe("Updated Home Page");
+    // A section the author knows by name is still named next to them.
+    expect(
+      note(
+        [variants("A"), { __resolveType: "site/sections/Footer.tsx", a: 1 }],
+        [variants("B"), { __resolveType: "site/sections/Footer.tsx", a: 2 }],
+      ),
+    ).toBe("Updated Home Page (Footer)");
+  });
+
+  it("calls the A/B tests and campaigns blocks by what they hold", () => {
+    const summary = summarizePublishChanges(
+      diffOf({
+        [".deco/blocks/experiments.json"]: {
+          from: JSON.stringify({ __resolveType: "split-traffic", a: 50 }),
+          to: JSON.stringify({ __resolveType: "split-traffic", a: 20 }),
+        },
+        [".deco/blocks/campaigns.json"]: {
+          from: null,
+          to: JSON.stringify({ __resolveType: "calendar", bf: {} }),
+        },
+      }),
+    );
+    expect(buildAutoNote(summary)).toBe("Changed Campaign dates and A/B tests");
+  });
+
   it("collapses long name lists and fits the note in a title", () => {
     const removed = Object.fromEntries(
       Array.from({ length: 93 }, (_, i) => [

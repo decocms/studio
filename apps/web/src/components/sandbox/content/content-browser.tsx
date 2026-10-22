@@ -123,7 +123,11 @@ import {
   scanBlogEntries,
   stampPostModified,
 } from "./blog/blog-data";
-import type { ContentSearchParams } from "./content-search-params";
+import {
+  type ContentSearchParams,
+  variantFocusFromSearch,
+} from "./content-search-params";
+import type { VariantFocus } from "@/components/sections-editor/named-rule-uses";
 import {
   rescheduleToDay,
   scheduledPostPayload,
@@ -483,6 +487,24 @@ function ContentBrowserReady({
       ? { collection: activeCollection, key: contentDeepLink.contentItem }
       : null,
   );
+  // The place in the open page or section to show: "Open" in a test's or
+  // campaign's "Used by" (here, or through the URL from the Experiments tab).
+  const [variantFocus, setVariantFocus] = useState<{
+    blockKey: string;
+    focus: VariantFocus;
+    seq: number;
+  } | null>(() => {
+    const focus = variantFocusFromSearch(contentDeepLink);
+    return focus && contentDeepLink.contentItem && selection
+      ? { blockKey: contentDeepLink.contentItem, focus, seq: 1 }
+      : null;
+  });
+  // It's for that one opening: once something else is open, it's done, so
+  // coming back to the page later opens it as usual.
+  const selectedKey = selection && "key" in selection ? selection.key : null;
+  if (variantFocus && variantFocus.blockKey !== selectedKey) {
+    setVariantFocus(null);
+  }
   // Page that should open with the inline SEO form in SectionsEditor.
   const [openPageSeoKey, setOpenPageSeoKey] = useState<string | null>(null);
   const {
@@ -552,6 +574,8 @@ function ContentBrowserReady({
     if (match) {
       setActiveCollection("pages");
       setSelection({ collection: "pages", key: match.key, path: match.path });
+      const focus = variantFocusFromSearch(contentDeepLink);
+      if (focus) setVariantFocus({ blockKey: match.key, focus, seq: 1 });
     }
   }
   const [searchQuery, setSearchQuery] = useState("");
@@ -756,16 +780,16 @@ function ContentBrowserReady({
       page.key,
       Math.max(0, variantCount - 1),
     );
-    const updatedSections = appendPageVariantSections(
+    const added = appendPageVariantSections(
       fullPageData.sections,
       seedSections,
       meta,
     );
-    if (!updatedSections) return;
+    if (!added) return;
     try {
       await saveBlock.mutateAsync({
         blockKey: page.key,
-        data: { ...fullPageData, sections: updatedSections },
+        data: { ...fullPageData, sections: added.sections },
       });
       toast.success(`Variant added to "${page.name}"`);
       setSelection({ collection: "pages", key: page.key, path: page.path });
@@ -1279,6 +1303,11 @@ function ContentBrowserReady({
                 decofile={decofile}
                 meta={meta}
                 onOpenUse={(use) => {
+                  setVariantFocus((prev) => ({
+                    blockKey: use.blockKey,
+                    focus: use.focus ?? {},
+                    seq: (prev?.seq ?? 0) + 1,
+                  }));
                   if (use.blockKind === "page" && use.path !== undefined) {
                     setActiveCollection("pages");
                     selectItem({
@@ -1501,6 +1530,11 @@ function ContentBrowserReady({
                       openPageSeoKey === selection.key
                     }
                     onExitSeo={() => setOpenPageSeoKey(null)}
+                    focusVariant={
+                      variantFocus?.blockKey === selection.key
+                        ? { ...variantFocus.focus, seq: variantFocus.seq }
+                        : null
+                    }
                     onSelectRoot={() => {
                       setSelection(null);
                       setOpenPageSeoKey(null);

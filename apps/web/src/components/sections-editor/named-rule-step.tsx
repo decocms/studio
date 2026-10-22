@@ -165,6 +165,8 @@ export function NamedRuleNameStep({
         </Button>
       </div>
       <CommandInput
+        // Choosing "A/B test" or "Campaign" moves straight to typing a name.
+        autoFocus
         value={search}
         onValueChange={setSearch}
         placeholder={
@@ -287,8 +289,15 @@ export function NamedRuleCreateForm({
   const [start, setStart] = useState(isoToLocalInput(prefill?.start));
   const [end, setEnd] = useState(isoToLocalInput(prefill?.end));
   const [tried, setTried] = useState(false);
+  // The name handed to `onSubmit`, checked then. Once it is saved it is one of
+  // `existingNames`; checking it again would call it taken while the form
+  // closes.
+  const [submittedName, setSubmittedName] = useState<string | null>(null);
 
-  const nameProblem = newNameProblem(name, existingNames);
+  const nameProblem =
+    submittedName !== null && submittedName === name.trim()
+      ? null
+      : newNameProblem(name, existingNames);
   const window = windowFromInputs(start, end);
   const valueProblem = tests
     ? null
@@ -308,6 +317,7 @@ export function NamedRuleCreateForm({
     setTried(true);
     if (nameProblem || valueProblem || pending) return;
     const trimmed = name.trim();
+    setSubmittedName(trimmed);
     if (tests) {
       onSubmit({
         kind: "experiments",

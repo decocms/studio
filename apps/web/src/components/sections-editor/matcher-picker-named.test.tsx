@@ -7,7 +7,7 @@ import {
   render as rtlRender,
   within,
 } from "@testing-library/react";
-import type { ReactElement } from "react";
+import { useState, type ReactElement } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@decocms/ui/components/tooltip.tsx";
 import { MatcherPicker, type MatcherEntry } from "./matcher-picker";
@@ -150,6 +150,108 @@ describe("the rule picker on a v8 site", () => {
       within(dialog).getByText(/isn't a list of A\/B tests/),
     ).toBeInTheDocument();
   });
+});
+
+/**
+ * Types into a controlled field. happy-dom doesn't deliver input events to
+ * React's change handling here, so this calls the field's own `onChange`.
+ */
+function typeInto(element: HTMLElement, value: string) {
+  const propsKey = Object.keys(element).find((k) =>
+    k.startsWith("__reactProps$"),
+  );
+  const props = (element as unknown as Record<string, { onChange?: unknown }>)[
+    propsKey ?? ""
+  ];
+  const onChange = props?.onChange as
+    | ((event: { target: { value: string } }) => void)
+    | undefined;
+  if (!onChange) throw new Error("not a controlled field");
+  act(() => onChange({ target: { value } }));
+}
+
+describe("the rule picker's name step", () => {
+  test.each([
+    ["A/B test", "Search your tests or type a new name…"],
+    ["Campaign", "Search your campaigns or type a new name…"],
+  ])("choosing %s puts the cursor in its search box", (item, placeholder) => {
+    const { dialog } = openPicker({
+      kinds: KINDS,
+      selected: null,
+      onPick: () => {},
+    });
+    fireEvent.click(within(dialog).getByText(item));
+    expect(document.activeElement).toBe(
+      within(dialog).getByPlaceholderText(placeholder),
+    );
+  });
+
+  test.each([
+    ["A/B test", "Create test “cta-test”", "cta-test"],
+    ["Campaign", "Create campaign “Black Friday”", "Black Friday"],
+  ] as const)(
+    "%s: Create and use closes without calling the new name taken",
+    async (item, createLabel, name) => {
+      let finishSave = () => {};
+      const seen: string[] = [];
+      function Harness() {
+        const [kinds, setKinds] = useState(KINDS);
+        return (
+          <MatcherPicker
+            currentRt=""
+            currentLabel="Always"
+            matchers={MATCHERS}
+            onSelect={() => {}}
+            named={{
+              kinds,
+              selected: null,
+              onPick: (pick) => {
+                // The save lands in the site's content before it resolves:
+                // the new name is now one of the kind's names.
+                setKinds((current) =>
+                  current.map((k) =>
+                    k.kind === pick.kind
+                      ? {
+                          ...k,
+                          state: "saved",
+                          entries: [...k.entries, { name, summary: "" }],
+                        }
+                      : k,
+                  ),
+                );
+                return new Promise<void>((resolve) => {
+                  finishSave = resolve;
+                });
+              },
+            }}
+          />
+        );
+      }
+      render(<Harness />);
+      const body = within(document.body);
+      fireEvent.click(body.getByRole("button", { name: /Always/ }));
+      fireEvent.click(body.getByText(item));
+      const search = document.activeElement as HTMLInputElement;
+      typeInto(search, name);
+      fireEvent.click(await body.findByText(createLabel));
+      fireEvent.click(body.getByRole("button", { name: "Create and use" }));
+      const record = () => seen.push(document.body.textContent ?? "");
+      await act(async () => {
+        await Promise.resolve();
+      });
+      record();
+      await act(async () => {
+        finishSave();
+        await Promise.resolve();
+      });
+      record();
+      for (const text of seen) {
+        expect(text).not.toContain("That name is already in use");
+        expect(text).not.toContain("No rules found");
+      }
+      expect(body.queryByRole("dialog")).toBeNull();
+    },
+  );
 });
 
 describe("the locked row", () => {

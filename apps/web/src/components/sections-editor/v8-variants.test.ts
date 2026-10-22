@@ -144,7 +144,7 @@ describe("v8 writers: multivariate, each value in a lazy block", () => {
   test("adding a section variant", () => {
     const [parsed] = parseSections([HERO], {});
     const result = appendSectionVariant(HERO, parsed!, undefined, V8);
-    expect(result?.newVariantIndex).toBe(1);
+    expect(result?.newVariantIndex).toBe(0);
     expect(result?.section).toEqual({
       __resolveType: "multivariate",
       variants: [
@@ -153,7 +153,8 @@ describe("v8 writers: multivariate, each value in a lazy block", () => {
       ],
     } as unknown as RawSection);
 
-    // A third one, seeded from the form (a plain section), is wrapped too.
+    // A third one, seeded from the form (a plain section), is wrapped too,
+    // and goes above the last variant, the catch-all.
     const [mvParsed] = parseSections([result!.section], {});
     const third = appendSectionVariant(
       result!.section,
@@ -161,7 +162,8 @@ describe("v8 writers: multivariate, each value in a lazy block", () => {
       { ...HERO, title: "Third" },
       V8,
     );
-    expect(third?.section.variants?.[2]).toEqual({
+    expect(third?.newVariantIndex).toBe(1);
+    expect(third?.section.variants?.[1]).toEqual({
       rule: ALWAYS,
       value: lazy({ ...HERO, title: "Third" }),
     });
@@ -169,11 +171,14 @@ describe("v8 writers: multivariate, each value in a lazy block", () => {
 
   test("adding a page variant", () => {
     expect(appendPageVariantSections([HERO], [FOOTER], V8)).toEqual({
-      __resolveType: "multivariate",
-      variants: [
-        { rule: ALWAYS, value: lazy([HERO]) },
-        { rule: ALWAYS, value: lazy([FOOTER]) },
-      ],
+      sections: {
+        __resolveType: "multivariate",
+        variants: [
+          { rule: ALWAYS, value: lazy([FOOTER]) },
+          { rule: ALWAYS, value: lazy([HERO]) },
+        ],
+      },
+      newVariantIndex: 0,
     });
   });
 
@@ -234,14 +239,14 @@ describe("v7 writers: exactly the old output", () => {
       ],
     } as unknown as RawSection);
 
-    expect(appendPageVariantSections([V7_HERO], [], V7)).toEqual({
+    expect(appendPageVariantSections([V7_HERO], [], V7)?.sections).toEqual({
       __resolveType: "website/flags/multivariate.ts",
       variants: [
+        { rule: { __resolveType: "website/matchers/always.ts" }, value: [] },
         {
           rule: { __resolveType: "website/matchers/always.ts" },
           value: [V7_HERO],
         },
-        { rule: { __resolveType: "website/matchers/always.ts" }, value: [] },
       ],
     });
 
@@ -459,7 +464,7 @@ describe("editing keeps each block's own shape", () => {
     expect(appended?.section.__resolveType).toBe(
       "website/flags/multivariate/section.ts",
     );
-    expect(appended?.section.variants?.[1]).toEqual({
+    expect(appended?.section.variants?.[0]).toEqual({
       rule: ALWAYS,
       value: HERO,
     });
@@ -484,11 +489,13 @@ describe("editing keeps each block's own shape", () => {
       __resolveType: "website/flags/multivariate.ts",
       variants: [{ rule: ALWAYS, value: [HERO] }],
     };
-    expect(appendPageVariantSections(legacyPage, [FOOTER], V8)).toEqual({
+    expect(
+      appendPageVariantSections(legacyPage, [FOOTER], V8)?.sections,
+    ).toEqual({
       __resolveType: "website/flags/multivariate.ts",
       variants: [
-        { rule: ALWAYS, value: [HERO] },
         { rule: ALWAYS, value: [FOOTER] },
+        { rule: ALWAYS, value: [HERO] },
       ],
     });
   });

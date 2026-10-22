@@ -1,7 +1,11 @@
 import type { LiveMeta, SchemaProperty } from "./resolve-schema";
 import { resolveVariantRuleLabel } from "./matcher-rules";
 import { findSavedMatcherReferences } from "./rule-references";
-import { isDefaultVariantRule } from "./section-variants";
+import {
+  duplicateVariantIndex,
+  isDefaultVariantRule,
+  newVariantIndex,
+} from "./section-variants";
 import type { RawSection } from "./section-types";
 import {
   defaultVariantRule,
@@ -243,60 +247,54 @@ function createMultivariatePageSections(
 }
 
 /**
- * Append a new page variant seeded from `seedSections`. Returns null when the
- * current sections shape cannot be extended.
+ * Add a page variant seeded from `seedSections`, above the trailing catch-all
+ * (see `newVariantIndex`): a page without variants becomes the new variant
+ * followed by the current sections. Returns null when the current sections
+ * shape cannot be extended.
  */
 export function appendPageVariantSections(
   current: unknown,
   seedSections: RawSection[],
   meta?: LiveMeta | null,
-): Record<string, unknown> | null {
+): { sections: Record<string, unknown>; newVariantIndex: number } | null {
   const seed = structuredClone(seedSections);
+  if (current && typeof current === "object" && !Array.isArray(current)) {
+    const obj = current as Record<string, unknown>;
+    if (!Array.isArray(obj.variants)) return null;
+    const variants = [...(obj.variants as Array<Record<string, unknown>>)];
+    const insertAt = newVariantIndex(variants);
+    variants.splice(
+      insertAt,
+      0,
+      createPageVariantEntry(seed, meta, pageMultivariateTypeFor(obj)),
+    );
+    return {
+      sections: createMultivariatePageSections(variants, obj),
+      newVariantIndex: insertAt,
+    };
+  }
   const newType = pageMultivariateTypeFor(undefined, meta);
-  if (Array.isArray(current)) {
-    return createMultivariatePageSections(
+  return {
+    sections: createMultivariatePageSections(
       [
-        createPageVariantEntry(current, meta, newType),
         createPageVariantEntry(seed, meta, newType),
+        createPageVariantEntry(
+          Array.isArray(current) ? (current as RawSection[]) : [],
+          meta,
+          newType,
+        ),
       ],
       undefined,
       meta,
-    );
-  }
-  if (current && typeof current === "object") {
-    const obj = current as Record<string, unknown>;
-    if (Array.isArray(obj.variants)) {
-      return createMultivariatePageSections(
-        [
-          ...(obj.variants as Array<Record<string, unknown>>),
-          createPageVariantEntry(seed, meta, pageMultivariateTypeFor(obj)),
-        ],
-        obj,
-      );
-    }
-    return null;
-  }
-  return createMultivariatePageSections(
-    [
-      createPageVariantEntry([], meta, newType),
-      createPageVariantEntry(seed, meta, newType),
-    ],
-    undefined,
-    meta,
-  );
-}
-
-export function getLastVariantIndex(
-  updatedSections: Record<string, unknown>,
-): number {
-  const variants = updatedSections.variants;
-  return Array.isArray(variants) ? variants.length - 1 : 1;
+    ),
+    newVariantIndex: 0,
+  };
 }
 
 /**
- * Insert a clone of the variant at `variantIndex` immediately after it (rule and
- * sections included). Returns the next variants array, or null when the source
- * variant is missing.
+ * Insert a clone of the variant at `variantIndex` (rule and sections included)
+ * at `duplicateVariantIndex`. Returns the next variants array, or null when
+ * the source variant is missing.
  */
 export function duplicatePageVariantEntry(
   variants: Array<Record<string, unknown>>,
@@ -305,7 +303,11 @@ export function duplicatePageVariantEntry(
   const source = variants[variantIndex];
   if (!source) return null;
   const next = [...variants];
-  next.splice(variantIndex + 1, 0, structuredClone(source));
+  next.splice(
+    duplicateVariantIndex(variants, variantIndex),
+    0,
+    structuredClone(source),
+  );
   return next;
 }
 
