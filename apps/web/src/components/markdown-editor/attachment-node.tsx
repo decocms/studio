@@ -11,6 +11,7 @@ import {
   ATTACHMENT_CHIP_CLASS,
   AttachmentChipContent,
 } from "./attachment-chip";
+import { isEditorFileUrl } from "./uploads";
 
 /** The chip inside the editor; inline, because in markdown it IS a link. */
 function AttachmentNodeView({
@@ -89,9 +90,15 @@ export const MarkdownAttachment = Node.create({
     };
   },
 
-  // Round-trips a chip copied inside the editor (the clipboard carries HTML).
+  // Round-trips a chip copied inside the editor; reject a pasted href that isn't our own upload URL.
   parseHTML() {
-    return [{ tag: "a[data-attachment]" }];
+    return [
+      {
+        tag: "a[data-attachment]",
+        getAttrs: (element) =>
+          isEditorFileUrl(element.getAttribute("href") ?? "") ? null : false,
+      },
+    ];
   },
 
   renderHTML({ HTMLAttributes, node }) {
