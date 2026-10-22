@@ -490,7 +490,7 @@ function InfraBillingContent() {
           <SettingsSection title={t("settings.infraBilling.invoicesTitle")}>
             <div className="flex flex-col gap-4 px-4">
               {!data ? (
-                <Card>
+                <Card size="flush">
                   <Skeleton className="m-4 h-24" />
                 </Card>
               ) : data.billingUnavailable ? (
@@ -550,7 +550,7 @@ function TeamInvoices({
   const billing = team.billing;
 
   return (
-    <Card className="gap-0 overflow-x-auto">
+    <Card size="flush" className="gap-0 overflow-x-auto">
       {showSites && (
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-4">
           <span className="text-sm font-medium">

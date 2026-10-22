@@ -606,7 +606,7 @@ export function CategoryEditor({
                       <button
                         type="button"
                         onClick={() => onOpenPost(p.key)}
-                        className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left transition-colors hover:bg-muted cursor-pointer"
+                        className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left transition-colors hover:bg-accent cursor-pointer"
                       >
                         <File02
                           size={14}

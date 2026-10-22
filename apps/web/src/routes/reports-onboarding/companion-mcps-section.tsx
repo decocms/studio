@@ -61,10 +61,7 @@ function CompanionMcpsSectionError({ onRetry }: { onRetry: () => void }) {
   return (
     <div className={SECTION_CONTAINER_CLASS}>
       <SectionIntro />
-      <div
-        role="alert"
-        className="rounded-2xl border border-border bg-card p-4"
-      >
+      <div role="alert" className="surface p-4">
         <p className="text-sm text-foreground">
           {t("routes.reportsOnboarding.companionSection.loadError")}
         </p>

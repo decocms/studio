@@ -31,6 +31,8 @@ const ORG_ID = /^[A-Za-z0-9_-]{1,64}$/;
 
 /** Org users this process already created; CREATE USER IF NOT EXISTS makes a repeat harmless. */
 const ensuredUsers = new Set<string>();
+/** In-flight `ensureTenantUser` calls, so concurrent queries for a cold org share one admin connection. */
+const ensuringUsers = new Map<string, Promise<void>>();
 
 export function isCustomerLakeConfigured(): boolean {
   const s = getSettings();
@@ -79,23 +81,34 @@ async function connect(
 
 async function ensureTenantUser(username: string, password: string) {
   if (ensuredUsers.has(username)) return;
-  const s = getSettings();
-  const admin = await connect(
-    s.customerLakeAdminUsername,
-    s.customerLakeAdminPassword ?? "",
-  );
-  try {
-    // Both values come from tenantCredentials: a validated id and hex.
-    await admin.command({
-      query: `CREATE USER IF NOT EXISTS \`${username}\` IDENTIFIED WITH sha256_password BY '${password}' SETTINGS PROFILE customer_lake_tenant_limits DEFAULT ROLE customer_lake_tenant`,
-    });
-    await admin.command({
-      query: `GRANT customer_lake_tenant TO \`${username}\``,
-    });
-  } finally {
-    await admin.close();
+  let promise = ensuringUsers.get(username);
+  if (!promise) {
+    promise = (async () => {
+      const s = getSettings();
+      const admin = await connect(
+        s.customerLakeAdminUsername,
+        s.customerLakeAdminPassword ?? "",
+      );
+      try {
+        // Both values come from tenantCredentials: a validated id and hex.
+        await admin.command({
+          query: `CREATE USER IF NOT EXISTS \`${username}\` IDENTIFIED WITH sha256_password BY '${password}' SETTINGS PROFILE customer_lake_tenant_limits DEFAULT ROLE customer_lake_tenant`,
+        });
+        await admin.command({
+          query: `GRANT customer_lake_tenant TO \`${username}\``,
+        });
+      } finally {
+        await admin.close();
+      }
+      ensuredUsers.add(username);
+    })();
+    promise
+      // Uncache on failure, so a bad attempt doesn't wedge every later query for the org.
+      .catch(() => {})
+      .finally(() => ensuringUsers.delete(username));
+    ensuringUsers.set(username, promise);
   }
-  ensuredUsers.add(username);
+  return promise;
 }
 
 /** Run one read-only statement as the organization's own lake user.

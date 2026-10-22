@@ -128,8 +128,8 @@ export function EntryActionsMenu({
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
-          size="icon"
-          className="size-6 shrink-0 opacity-0 transition-opacity group-hover/card:opacity-100 data-[state=open]:opacity-100"
+          size="icon-xs"
+          className="shrink-0 opacity-0 transition-opacity group-hover/card:opacity-100 data-[state=open]:opacity-100"
           onClick={(e) => e.stopPropagation()}
           aria-label={t("library.cards.actionsFor", { label })}
         >

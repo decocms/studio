@@ -23,7 +23,10 @@ import {
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { ScrollArea } from "@decocms/ui/components/scroll-area.tsx";
-import { ViewModeToggle } from "@decocms/ui/components/view-mode-toggle.tsx";
+import {
+  ToggleGroup,
+  ToggleGroupItem,
+} from "@decocms/ui/components/toggle-group.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import { SiteDraftViewHeader } from "@/components/site-draft-bar/view-header";
@@ -203,22 +206,24 @@ export function CampaignsView({
         title={title ?? t("sandbox.dateCampaigns.title")}
         actions={
           <>
-            <ViewModeToggle<ViewMode>
+            <ToggleGroup
+              type="single"
+              variant="segmented"
+              size="sm"
               value={mode}
-              onValueChange={setMode}
-              options={[
-                {
-                  value: "list",
-                  icon: <List />,
-                  label: t("sandbox.dateCampaigns.listMode"),
-                },
-                {
-                  value: "timeline",
-                  icon: <Calendar />,
-                  label: t("sandbox.dateCampaigns.timelineMode"),
-                },
-              ]}
-            />
+              onValueChange={(next) => {
+                if (next === "list" || next === "timeline") setMode(next);
+              }}
+            >
+              <ToggleGroupItem value="list">
+                <List />
+                {t("sandbox.dateCampaigns.listMode")}
+              </ToggleGroupItem>
+              <ToggleGroupItem value="timeline">
+                <Calendar />
+                {t("sandbox.dateCampaigns.timelineMode")}
+              </ToggleGroupItem>
+            </ToggleGroup>
             <Button size="sm" onClick={() => view.setCreating(true)}>
               <Plus size={16} />
               {t("sandbox.dateCampaigns.new")}
@@ -391,7 +396,7 @@ function CampaignTimeline({
             {months.map((month) => (
               <div
                 key={month.getTime()}
-                className="border-r px-2 py-1.5 text-xs uppercase tracking-wide text-muted-foreground last:border-r-0"
+                className="border-r px-2 py-1.5 text-xs text-muted-foreground last:border-r-0"
               >
                 {MONTHS[month.getMonth()]?.slice(0, 3)} {month.getFullYear()}
               </div>
@@ -429,7 +434,7 @@ function CampaignTimeline({
                       t("sectionsEditor.namedRulePicker.alwaysRunning"),
                     )}
                     className={cn(
-                      "absolute top-1/2 h-6 -translate-y-1/2 truncate rounded text-left text-[11px] font-medium",
+                      "absolute top-1/2 h-6 -translate-y-1/2 truncate rounded text-left text-2xs font-medium",
                       label === "inside" && "px-2",
                       STATUS_BAR[row.status],
                       bar!.openStart && "rounded-l-none",
@@ -450,7 +455,7 @@ function CampaignTimeline({
                       tabIndex={-1}
                       aria-hidden="true"
                       onClick={() => onOpen(row.name)}
-                      className="absolute top-1/2 -translate-y-1/2 truncate whitespace-nowrap text-left text-[11px] font-medium text-foreground hover:underline"
+                      className="absolute top-1/2 -translate-y-1/2 truncate whitespace-nowrap text-left text-2xs font-medium text-foreground hover:underline"
                       style={
                         label === "after"
                           ? {

@@ -22,10 +22,10 @@ describe("UserStorage.searchOrganizations", () => {
     `.execute(database.db);
   }
 
-  async function join(userId: string, orgId: string) {
+  async function join(userId: string, orgId: string, suffix = "") {
     await sql`
       INSERT INTO "member" (id, "organizationId", "userId", role, "createdAt")
-      VALUES (${`mem_${userId}_${orgId}`}, ${orgId}, ${userId}, 'user', ${NOW})
+      VALUES (${`mem_${userId}_${orgId}${suffix}`}, ${orgId}, ${userId}, 'user', ${NOW})
     `.execute(database.db);
   }
 
@@ -35,7 +35,7 @@ describe("UserStorage.searchOrganizations", () => {
     await seedCommonTestPgFixtures(database);
     storage = new UserStorage(database.db);
 
-    // Past Better Auth's 100-row page, with the searched-for org joined last.
+    // Past the first 100 rows, with the searched-for org joined last.
     for (let i = 0; i < 105; i++) {
       const id = `org_filler_${String(i).padStart(3, "0")}`;
       await addOrg(id, `Filler ${i}`, `filler-${i}`);
@@ -47,6 +47,9 @@ describe("UserStorage.searchOrganizations", () => {
     await join("user_123", "org_other");
     await addOrg("org_pct", "100% Off", "hundred-off");
     await join("user_1", "org_pct");
+    await addOrg("org_twice", "Twice Joined", "twice-joined");
+    await join("user_1", "org_twice");
+    await join("user_1", "org_twice", "_again");
   });
 
   afterAll(async () => {
@@ -76,6 +79,15 @@ describe("UserStorage.searchOrganizations", () => {
       limit: 20,
     });
     expect(hits.map((org) => org.slug)).toEqual(["deco-elsewhere"]);
+  });
+
+  it("lists an org once when the user holds two member rows in it", async () => {
+    const hits = await storage.searchOrganizations({
+      userId: "user_1",
+      term: "twice",
+      limit: 20,
+    });
+    expect(hits.map((org) => org.slug)).toEqual(["twice-joined"]);
   });
 
   it("treats LIKE wildcards in the term literally", async () => {
@@ -110,5 +122,57 @@ describe("UserStorage.searchOrganizations", () => {
       organizationId: "org_filler_007",
     });
     expect(fenced.map((org) => org.id)).toEqual(["org_filler_007"]);
+  });
+});
+
+describe("UserStorage.findById", () => {
+  let database: StudioDatabase;
+  let storage: UserStorage;
+
+  async function addOrg(id: string, name: string, slug: string) {
+    await sql`
+      INSERT INTO "organization" (id, name, slug, "createdAt")
+      VALUES (${id}, ${name}, ${slug}, ${NOW})
+    `.execute(database.db);
+  }
+
+  async function join(userId: string, orgId: string) {
+    await sql`
+      INSERT INTO "member" (id, "organizationId", "userId", role, "createdAt")
+      VALUES (${`mem_${userId}_${orgId}`}, ${orgId}, ${userId}, 'user', ${NOW})
+    `.execute(database.db);
+  }
+
+  beforeAll(async () => {
+    database = await connectTestPgDatabase();
+    await resetTestPgDatabase(database);
+    await seedCommonTestPgFixtures(database);
+    storage = new UserStorage(database.db);
+
+    await addOrg("org_shared", "Shared", "shared");
+    await join("user_1", "org_shared");
+    await join("user_123", "org_shared");
+
+    await addOrg("org_lonely", "Lonely", "lonely");
+    await join("user_test", "org_lonely");
+  });
+
+  afterAll(async () => {
+    await closeTestPgDatabase(database);
+  });
+
+  it("returns the target user when requester shares an organization with them", async () => {
+    const user = await storage.findById("user_123", "user_1");
+    expect(user?.id).toBe("user_123");
+  });
+
+  it("refuses to leak a user's data to a requester with no shared organization", async () => {
+    const user = await storage.findById("user_test", "user_1");
+    expect(user).toBeNull();
+  });
+
+  it("returns null for a user id that does not exist", async () => {
+    const user = await storage.findById("no_such_user", "user_1");
+    expect(user).toBeNull();
   });
 });

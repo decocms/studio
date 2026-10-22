@@ -131,7 +131,7 @@ const ROW = "flex shrink-0 items-center rounded-lg text-sm transition-colors";
 const rowState = (active: boolean) =>
   active
     ? "bg-accent font-medium text-foreground"
-    : "text-muted-foreground hover:bg-accent/50 hover:text-foreground";
+    : "text-muted-foreground hover:bg-accent hover:text-foreground";
 
 function ContextNav({
   groups,

@@ -5,6 +5,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
+import {
+  SettingsCard,
+  SettingsSection,
+} from "@/components/settings/settings-section";
 import { useProjectContext } from "@/sdk";
 import { KEYS } from "@/lib/query-keys";
 import { useStudioTools } from "@/lib/studio-tools";
@@ -60,63 +64,65 @@ export function CodexSubscriptionCard() {
   const connected = status.data?.connected === true;
 
   return (
-    <div className="rounded-xl border border-border px-6 py-5 flex flex-col gap-4">
-      <div className="flex items-center gap-4">
-        <div className="flex-1 min-w-0">
-          <p className="text-base font-semibold">
-            {t("settings.codexSubscription.title")}
-          </p>
-          <p className="text-sm text-muted-foreground">
-            {connected
-              ? t("settings.codexSubscription.active")
-              : t("settings.codexSubscription.description")}
-          </p>
-        </div>
-        {connected ? (
+    <SettingsSection
+      title={t("settings.codexSubscription.title")}
+      description={
+        connected
+          ? t("settings.codexSubscription.active")
+          : t("settings.codexSubscription.description")
+      }
+      actions={
+        connected ? (
           <Button
             variant="outline"
+            size="sm"
             disabled={disconnect.isPending}
             onClick={() => disconnect.mutate()}
           >
             {t("settings.codexSubscription.disconnect")}
           </Button>
-        ) : null}
-      </div>
+        ) : null
+      }
+    >
       {connected && (
-        <SubscriptionUsage
-          provider="codex"
-          orgId={org.id}
-          userId={userId}
-          linkedAt={status.data?.linkedAt ?? null}
-        />
+        <SettingsCard>
+          <SubscriptionUsage
+            provider="codex"
+            orgId={org.id}
+            userId={userId}
+            linkedAt={status.data?.linkedAt ?? null}
+          />
+        </SettingsCard>
       )}
       {connected ? null : (
-        <div className="flex flex-col gap-2">
-          <p className="text-sm text-muted-foreground">
-            {t("settings.codexSubscription.howTo")}{" "}
-            <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
-              codex login -c cli_auth_credentials_store='"file"'
-            </code>
-          </p>
-          <div className="flex items-center gap-2">
-            <Input
-              type="password"
-              autoComplete="off"
-              maxLength={131072}
-              aria-label={t("settings.codexSubscription.tokenPlaceholder")}
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              placeholder={t("settings.codexSubscription.tokenPlaceholder")}
-            />
-            <Button
-              disabled={token.trim().length === 0 || connect.isPending}
-              onClick={() => connect.mutate()}
-            >
-              {t("settings.codexSubscription.connect")}
-            </Button>
+        <SettingsCard>
+          <div className="flex flex-col gap-2 p-4">
+            <p className="text-sm text-muted-foreground">
+              {t("settings.codexSubscription.howTo")}{" "}
+              <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
+                codex login -c cli_auth_credentials_store='"file"'
+              </code>
+            </p>
+            <div className="flex items-center gap-2">
+              <Input
+                type="password"
+                autoComplete="off"
+                maxLength={131072}
+                aria-label={t("settings.codexSubscription.tokenPlaceholder")}
+                value={token}
+                onChange={(e) => setToken(e.target.value)}
+                placeholder={t("settings.codexSubscription.tokenPlaceholder")}
+              />
+              <Button
+                disabled={token.trim().length === 0 || connect.isPending}
+                onClick={() => connect.mutate()}
+              >
+                {t("settings.codexSubscription.connect")}
+              </Button>
+            </div>
           </div>
-        </div>
+        </SettingsCard>
       )}
-    </div>
+    </SettingsSection>
   );
 }

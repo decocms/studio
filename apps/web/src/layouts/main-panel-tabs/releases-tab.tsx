@@ -307,8 +307,7 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
                       <Button
                         type="button"
                         variant="ghost"
-                        size="icon"
-                        className="size-7"
+                        size="icon-sm"
                         aria-label={t("releases.actions")}
                       >
                         <DotsVertical size={14} />

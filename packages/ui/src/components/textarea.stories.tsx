@@ -3,7 +3,7 @@ import { Label } from "./label.tsx";
 import { Textarea } from "./textarea.tsx";
 
 const meta = {
-  title: "Components/Textarea",
+  title: "Atoms/Textarea",
   component: Textarea,
   args: {
     placeholder: "Describe what this connection is used for...",

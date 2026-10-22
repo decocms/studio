@@ -29,10 +29,44 @@ interface Fixtures {
   authedPage: AuthedPage;
   /** Turns the `new_blocks_editor` org flag on for `authedPage`'s org. */
   newBlocksEditor: boolean;
+  /** Seeds the navigation preference. Every test signs up a fresh account,
+   *  and accounts created after the web app's cutoff date default to
+   *  project-first navigation, so without a stored choice the suite's
+   *  navigation would change on a calendar date. */
+  projectFirstNav: boolean;
 }
+
+const PREFERENCES_KEY = "studio:user:preferences";
 
 export const test = base.extend<Fixtures>({
   newBlocksEditor: [false, { option: true }],
+  projectFirstNav: [false, { option: true }],
+  context: async ({ context, projectFirstNav }, use) => {
+    await context.addInitScript(
+      ({ key, enabled }) => {
+        try {
+          const parsed: unknown = JSON.parse(localStorage.getItem(key) ?? "{}");
+          const prefs =
+            typeof parsed === "object" && parsed !== null ? parsed : {};
+          // A choice made during the test wins on later navigations.
+          if (
+            "projectFirstNav" in prefs &&
+            typeof prefs.projectFirstNav === "boolean"
+          ) {
+            return;
+          }
+          localStorage.setItem(
+            key,
+            JSON.stringify({ ...prefs, projectFirstNav: enabled }),
+          );
+        } catch {
+          // Opaque origins (about:blank) have no localStorage.
+        }
+      },
+      { key: PREFERENCES_KEY, enabled: projectFirstNav },
+    );
+    await use(context);
+  },
   authedPage: async ({ page, newBlocksEditor }, use) => {
     // page.context().request shares cookies with the page, so the session
     // cookie set by sign-up is automatically applied to subsequent

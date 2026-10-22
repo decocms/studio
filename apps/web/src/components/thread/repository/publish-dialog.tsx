@@ -18,7 +18,7 @@ import {
   AlertDialogTitle,
 } from "@decocms/ui/components/alert-dialog.tsx";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
-import { Button } from "@decocms/ui/components/button.tsx";
+import { Button, buttonVariants } from "@decocms/ui/components/button.tsx";
 import {
   Dialog,
   DialogContent,
@@ -835,7 +835,7 @@ function CmsPublishView({
     if (changes.length === 0) return null;
     return (
       <div className="space-y-1.5">
-        <div className="px-0.5 text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
+        <div className="px-0.5 text-2xs font-medium text-muted-foreground">
           {label}
         </div>
         {changes.map((change) => {
@@ -893,7 +893,7 @@ function CmsPublishView({
       <>
         <button
           type="button"
-          className="ml-auto shrink-0 text-[11px] text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50"
+          className="ml-auto shrink-0 text-2xs text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50"
           onClick={() => setDiscardAllConfirm(true)}
           disabled={isPublishing || isDiscarding}
         >
@@ -919,7 +919,7 @@ function CmsPublishView({
               <AlertDialogAction
                 onClick={() => void discardAll()}
                 disabled={isDiscarding}
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                className={cn(buttonVariants({ variant: "destructive" }))}
               >
                 {t("thread.publishPopover.discardAll")}
               </AlertDialogAction>
@@ -957,7 +957,7 @@ function CmsPublishView({
   ) : (
     <PublishListRegion>
       {changedFilesTruncated ? (
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-2xs text-muted-foreground">
           {t("thread.publishPopover.showingFirst", {
             shown: summary.count,
             total: changedFilesTotal,
@@ -968,12 +968,12 @@ function CmsPublishView({
       {renderGroup(t("thread.publishPopover.blocksGroup"), summary.blocks)}
       {renderGroup(t("thread.publishPopover.otherGroup"), summary.other)}
       {bodiesFailed ? (
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-2xs text-muted-foreground">
           {t("thread.publishPopover.detailsUnavailable")}
         </p>
       ) : null}
       {otherWork ? (
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-2xs text-muted-foreground">
           {t("thread.publishPopover.alsoOtherWork")}
         </p>
       ) : null}
@@ -1039,7 +1039,7 @@ function CmsPublishView({
           note={
             summary.count === 0 ? null : (
               <>
-                <span className="text-[13px] font-medium">
+                <span className="text-sm font-medium">
                   {isReview
                     ? t("thread.publishPopover.reviewNote")
                     : t("thread.publishPopover.versionNote")}
@@ -1054,7 +1054,7 @@ function CmsPublishView({
                   }
                   rows={2}
                   maxLength={MAX_TITLE_LENGTH}
-                  className="resize-none text-[13px]"
+                  className="resize-none text-sm"
                   disabled={isPublishing}
                 />
               </>

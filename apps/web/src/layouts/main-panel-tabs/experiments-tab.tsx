@@ -355,7 +355,7 @@ function PercentField({
       type="button"
       onClick={() => setDraft(String(value))}
       aria-label={t("experiments.split.editPercent", { label })}
-      className="group/percent flex items-center gap-1.5 rounded-md text-xl font-medium tabular-nums focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+      className="group/percent flex items-center gap-1.5 rounded-md text-xl font-medium tabular-nums focus-ring"
     >
       <Pencil01
         size={14}
@@ -605,7 +605,7 @@ function PromptDialog({
         </DialogHeader>
 
         <div className="flex flex-col gap-4 px-6 pt-5 pb-6">
-          <div className="rounded-xl bg-[var(--studio-input-background)] card-shadow transition-shadow focus-within:ring-2 focus-within:ring-ring/20">
+          <div className="rounded-xl bg-[var(--studio-input-background)] shadow-edge focus-within-ring">
             <textarea
               ref={inputRef}
               value={prompt}
@@ -890,7 +890,7 @@ function CompareCard({
       <div
         ref={frameRef}
         className={cn(
-          "relative h-[min(720px,75vh)] overflow-hidden rounded-lg bg-background card-shadow transition-[width] duration-300 ease-out",
+          "relative h-[min(720px,75vh)] overflow-hidden rounded-lg bg-background shadow-edge transition-[width] duration-300 ease-out",
           device === "mobile" ? "mx-auto w-[390px] max-w-full" : "w-full",
         )}
         onPointerMove={dragging ? (e) => moveTo(e.clientX) : undefined}
@@ -934,7 +934,7 @@ function CompareCard({
                 </>
               );
               const chipClass = cn(
-                "absolute bottom-3 z-20 flex items-center gap-1.5 rounded-full bg-card px-2.5 py-1 text-xs font-medium card-shadow transition-opacity",
+                "absolute bottom-3 z-20 flex items-center gap-1.5 rounded-full bg-card px-2.5 py-1 text-xs font-medium shadow-edge transition-opacity",
                 i === 0 ? "left-3" : "right-3",
                 (i === 0 ? position < 15 : position > 85) &&
                   "pointer-events-none opacity-0",
@@ -984,7 +984,7 @@ function CompareCard({
                 setDragging(true);
               }}
             >
-              <div className="h-full w-0.5 bg-card card-shadow" />
+              <div className="h-full w-0.5 bg-card shadow-edge" />
               <button
                 type="button"
                 role="slider"
@@ -999,7 +999,7 @@ function CompareCard({
                     setPosition((p) => Math.min(100, p + 5));
                 }}
                 className={cn(
-                  "absolute top-1/2 left-1/2 flex size-9 -translate-x-1/2 -translate-y-1/2 cursor-ew-resize items-center justify-center rounded-full bg-card text-foreground card-shadow transition-transform hover:scale-110 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+                  "absolute top-1/2 left-1/2 flex size-9 -translate-x-1/2 -translate-y-1/2 cursor-ew-resize items-center justify-center rounded-full bg-card text-foreground shadow-edge transition-transform hover:scale-110 focus-ring",
                   dragging && "scale-110",
                 )}
               >
@@ -1206,11 +1206,7 @@ function ExperimentDetail({
       >
         {dirty ? (
           <>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => setArms(saved)}
-            >
+            <Button variant="outline" size="sm" onClick={() => setArms(saved)}>
               {t("experiments.split.reset")}
             </Button>
             <Button
@@ -1237,7 +1233,7 @@ function ExperimentDetail({
         <DropdownMenu modal={false}>
           <DropdownMenuTrigger asChild>
             <Button
-              variant="secondary"
+              variant="outline"
               size="icon-sm"
               aria-label={t("experiments.action.more")}
             >
@@ -1435,7 +1431,7 @@ function ReviewPanel({
       <Page.Actions
         secondary={
           <Button
-            variant="secondary"
+            variant="outline"
             size="sm"
             onClick={updatePreview}
             disabled={previewing || !key.trim()}
@@ -1560,7 +1556,7 @@ function ExperimentRow({
   const statusActions = useStatusActions()(experiment.status);
   const treatments = experiment.variants.filter((v) => v.role !== "control");
   return (
-    <div className="group relative flex items-center gap-4 px-5 py-4 transition-colors hover:bg-muted/50">
+    <div className="group relative flex items-center gap-4 px-5 py-4 transition-colors hover:bg-accent">
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         {/* Stretched over the row so the whole row opens the experiment. */}
         <button
@@ -1768,7 +1764,7 @@ function ExperimentsTabV2({ virtualMcpId }: { virtualMcpId: string }) {
                   <IconButton
                     label={t("experiments.filter.label")}
                     tooltipSide="bottom"
-                    variant="secondary"
+                    variant="outline"
                     aria-pressed={statusFilter.length > 0}
                   >
                     <FilterLines />
@@ -1830,7 +1826,10 @@ function ExperimentsTabV2({ virtualMcpId }: { virtualMcpId: string }) {
               {t("experiments.filter.empty")}
             </p>
           ) : (
-            <Card className="gap-0 divide-y divide-border overflow-hidden">
+            <Card
+              size="flush"
+              className="gap-0 divide-y divide-border overflow-hidden"
+            >
               {visible.map((e) => (
                 <ExperimentRow
                   key={e.key}

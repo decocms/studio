@@ -301,7 +301,7 @@ export function GenerateCampaignsDialog({
                           type="button"
                           onClick={() => loadSeed(seed)}
                           className={cn(
-                            "flex w-full cursor-pointer flex-col gap-0.5 px-3 py-2 text-left text-sm transition-colors hover:bg-muted/50",
+                            "flex w-full cursor-pointer flex-col gap-0.5 px-3 py-2 text-left text-sm transition-colors hover:bg-accent",
                             seedKey === seed.key && "bg-muted/60",
                           )}
                         >
@@ -449,7 +449,7 @@ export function GenerateCampaignsDialog({
                           "w-full cursor-pointer space-y-2 rounded-lg border p-3 text-left transition-colors",
                           chosen.has(index)
                             ? "border-primary bg-primary/5"
-                            : "bg-card hover:bg-muted/40",
+                            : "bg-card hover:bg-accent",
                         )}
                       >
                         <div className="flex items-start gap-2">

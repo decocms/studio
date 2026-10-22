@@ -107,7 +107,7 @@ function ThreadRow({
   return (
     <TableRow
       ref={lastRowRef}
-      className="h-14 md:h-16 cursor-pointer hover:bg-muted/40 transition-colors border-b-0"
+      className="h-14 md:h-16 cursor-pointer hover:bg-accent transition-colors border-b-0"
       onClick={onClick}
     >
       <TableCell className="min-w-0 pr-2 pl-4 md:pr-4">
@@ -385,7 +385,7 @@ export function ThreadsTabContent({
 
   return (
     <div className="flex-1 flex flex-col overflow-auto min-w-0">
-      <div className="mx-auto w-full max-w-[1200px] px-4 md:px-10 flex flex-col flex-1 min-h-0">
+      <div className="mx-auto w-full max-w-[1200px] px-4 md:px-8 flex flex-col flex-1 min-h-0">
         <div className="flex-1 flex flex-col min-w-0">
           <div className="flex-1 min-w-0 pt-1">
             <div className="min-w-0">
@@ -401,23 +401,23 @@ export function ThreadsTabContent({
                   <Table className="w-full border-collapse">
                     <TableHeader className="border-b-0 z-20">
                       <TableRow className="h-9 hover:bg-transparent border-b border-border">
-                        <TableHead className="pl-4 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
+                        <TableHead className="pl-4 font-normal text-meta">
                           {t("orgs.threads.title")}
                         </TableHead>
-                        <TableHead className="w-36 px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
+                        <TableHead className="w-36 px-3 font-normal text-meta">
                           {t("orgs.threads.agent")}
                         </TableHead>
-                        <TableHead className="w-28 px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
+                        <TableHead className="w-28 px-3 font-normal text-meta">
                           {t("orgs.threads.user")}
                         </TableHead>
-                        <TableHead className="w-24 px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
+                        <TableHead className="w-24 px-3 font-normal text-meta">
                           {t("orgs.threads.status")}
                         </TableHead>
-                        <TableHead className="w-24 px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide text-right">
+                        <TableHead className="w-24 px-3 font-normal text-meta text-right">
                           <button
                             type="button"
                             onClick={() => toggleSort("tokens")}
-                            className="inline-flex items-center gap-1 ml-auto hover:text-foreground transition-colors uppercase"
+                            className="inline-flex items-center gap-1 ml-auto hover:text-foreground transition-colors"
                           >
                             {t("orgs.threads.tokens")}
                             {sortKey === "tokens" &&
@@ -429,11 +429,11 @@ export function ThreadsTabContent({
                           </button>
                         </TableHead>
                         {showCost && (
-                          <TableHead className="w-24 px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide text-right">
+                          <TableHead className="w-24 px-3 font-normal text-meta text-right">
                             <button
                               type="button"
                               onClick={() => toggleSort("cost")}
-                              className="inline-flex items-center gap-1 ml-auto hover:text-foreground transition-colors uppercase"
+                              className="inline-flex items-center gap-1 ml-auto hover:text-foreground transition-colors"
                             >
                               {t("orgs.threads.cost")}
                               {sortKey === "cost" &&
@@ -445,7 +445,7 @@ export function ThreadsTabContent({
                             </button>
                           </TableHead>
                         )}
-                        <TableHead className="w-32 px-3 pr-5 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
+                        <TableHead className="w-32 px-3 pr-5 font-normal text-meta">
                           {t("orgs.threads.date")}
                         </TableHead>
                       </TableRow>

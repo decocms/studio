@@ -4335,9 +4335,9 @@ export function SectionsEditor({
             <Button
               type="button"
               variant="ghost"
-              size="icon"
+              size="icon-sm"
               aria-label={t("sectionsEditor.sectionsEditor.editSeo")}
-              className="size-7 shrink-0"
+              className="shrink-0"
               onClick={() => setEditingSeo(true)}
             >
               <CreditCardSearch size={14} />
@@ -4352,9 +4352,9 @@ export function SectionsEditor({
             <Button
               type="button"
               variant="ghost"
-              size="icon"
+              size="icon-sm"
               aria-label={t("sectionsEditor.sectionsEditor.viewJson")}
-              className="size-7 shrink-0"
+              className="shrink-0"
               onClick={() =>
                 onViewJsonFile && activePageKey
                   ? onViewJsonFile()
@@ -4632,7 +4632,7 @@ export function SectionsEditor({
           <button
             type="button"
             onClick={() => setIsVariantRuleOpen((v) => !v)}
-            className="flex w-full items-center justify-between gap-2 text-left cursor-pointer rounded-[var(--studio-control-radius,var(--radius-sm))] py-0.5 hover:bg-muted/40"
+            className="flex w-full items-center justify-between gap-2 text-left cursor-pointer rounded-[var(--studio-control-radius,var(--radius-sm))] py-0.5 hover:bg-accent"
             aria-expanded={isVariantRuleOpen}
           >
             <span className="text-xs font-medium text-muted-foreground">
@@ -4801,11 +4801,11 @@ export function SectionsEditor({
                         <Button
                           type="button"
                           variant="outline"
-                          size="icon"
+                          size="icon-sm"
                           aria-label={t(
                             "sectionsEditor.sectionsEditor.editSeo",
                           )}
-                          className="size-7 shrink-0"
+                          className="shrink-0"
                           onClick={openSeo}
                         >
                           <CreditCardSearch size={14} />
@@ -4823,11 +4823,11 @@ export function SectionsEditor({
                           <Button
                             type="button"
                             variant="outline"
-                            size="icon"
+                            size="icon-sm"
                             aria-label={t(
                               "sectionsEditor.sectionsEditor.viewJson",
                             )}
-                            className="size-7 shrink-0"
+                            className="shrink-0"
                             onClick={() => setJsonOpen(true)}
                           >
                             <Code01 size={14} />

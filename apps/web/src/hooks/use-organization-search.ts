@@ -1,6 +1,6 @@
 /** Server-side search over the user's organizations.
  *
- *  The in-memory org list comes from Better Auth, whose adapter stops at 100
+ *  The in-memory org list comes from Better Auth, whose adapter stops at 500
  *  rows, so filtering it locally cannot find an org past that page. */
 
 import { keepPreviousData, useQuery } from "@tanstack/react-query";

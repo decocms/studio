@@ -180,7 +180,7 @@ export function SavedSectionEditor({
                 <Button
                   variant={jsonOpen ? "default" : "ghost"}
                   size="icon"
-                  className="size-8 shrink-0"
+                  className="shrink-0"
                   onClick={toggleJson}
                   aria-label={
                     jsonOpen

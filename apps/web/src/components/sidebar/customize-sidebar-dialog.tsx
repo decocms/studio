@@ -75,7 +75,7 @@ export function CustomizeSidebarDialog({
     return (
       <li
         key={project.id}
-        className="group/row flex h-11 items-center gap-3 px-3 transition-colors hover:bg-accent/40"
+        className="group/row flex h-11 items-center gap-3 px-3 transition-colors hover:bg-accent"
       >
         <span
           className={cn(
@@ -191,7 +191,7 @@ export function CustomizeSidebarDialog({
             </DropdownMenu>
           )}
         </div>
-        <ul className="flex flex-col divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
+        <ul className="flex flex-col divide-y divide-border overflow-hidden surface">
           {list.length === 0 ? (
             <li className="flex h-11 items-center px-3 text-sm text-muted-foreground">
               {t("sidebar.customize.empty")}

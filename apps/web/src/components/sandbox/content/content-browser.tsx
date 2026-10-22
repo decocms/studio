@@ -34,7 +34,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@decocms/ui/components/alert-dialog.tsx";
-import { Button } from "@decocms/ui/components/button.tsx";
+import { Button, buttonVariants } from "@decocms/ui/components/button.tsx";
 import { ScrollArea } from "@decocms/ui/components/scroll-area.tsx";
 import {
   Tooltip,
@@ -1701,7 +1701,7 @@ function ContentBrowserReady({
                   void confirmDelete();
                 }}
                 disabled={isDeleting}
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                className={cn(buttonVariants({ variant: "destructive" }))}
               >
                 {isDeleting ? (
                   <>
@@ -1935,7 +1935,7 @@ function ItemList({
                     <GroupHeader icon={Globe01} label="Saved sections" />
                     {savedSectionGroups.map((group) => (
                       <div key={group.label} className="flex flex-col gap-1">
-                        <div className="px-2.5 pt-1 pb-0.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/60">
+                        <div className="px-2.5 pt-1 pb-0.5 text-2xs font-medium text-muted-foreground/60">
                           {group.label}
                         </div>
                         {group.sections.map((section) => {
@@ -2032,13 +2032,13 @@ function ItemList({
                     active={isActive}
                     trailing={
                       entry.installed ? (
-                        <span className="shrink-0 rounded-full bg-success/15 px-1.5 py-0.5 text-[10px] font-medium text-success">
+                        <span className="shrink-0 rounded-full bg-success/15 px-1.5 py-0.5 text-2xs font-medium text-success">
                           Installed
                         </span>
                       ) : isInstalling ? (
                         <Spinner className="size-3.5 shrink-0 text-muted-foreground" />
                       ) : entry.installable && canInstallApps ? (
-                        <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                        <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-2xs font-medium text-muted-foreground">
                           Install
                         </span>
                       ) : undefined

@@ -39,7 +39,6 @@ export const experiments = {
     "This project has no preview/production URL set, so variants can't be rendered here.",
   "experiments.preview.saveChanges": "Save changes",
   "experiments.preview.control": "Control",
-  "experiments.implementation.title": "Implementation",
   "experiments.implementation.notDelegated":
     "No code has been written for this experiment yet.",
   "experiments.implementation.delegate": "Write the code",

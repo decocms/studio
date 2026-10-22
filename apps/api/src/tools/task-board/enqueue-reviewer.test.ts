@@ -103,9 +103,9 @@ describe("reviewerHandledThisCycle", () => {
   });
 
   /**
-   * The deadlock. A reviewer whose pod dies mid-run keeps `in_progress`
-   * forever: the per-pod idle reaper can't see it and `failNeverStartedThreads`
-   * only covers runs that never started. Taking the status at face value made
+   * The deadlock. A reviewer whose pod dies mid-run keeps `in_progress` until
+   * a sweep fails it: the per-pod idle reaper died with the pod. Taking the
+   * status at face value made
    * the thread own the cycle permanently — nothing re-dispatched, and a merge
    * gate waiting on a verdict that was never coming. One card sat
    * that way while its co-reviewer had approved in 68 seconds.
