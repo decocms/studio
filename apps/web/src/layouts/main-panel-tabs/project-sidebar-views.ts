@@ -41,7 +41,7 @@ export const PROJECT_SIDEBAR_VIEWS_VERSION = 1 as const;
  * `sidebarViewsSeen`; from then on the saved list alone decides, so hiding
  * one sticks. A v7 site is never offered them.
  */
-export const BLOCKS_SITE_SIDEBAR_VIEWS = [
+const BLOCKS_SITE_SIDEBAR_VIEWS = [
   "experiments",
   "calendar",
 ] as const satisfies readonly ProjectSidebarViewId[];
