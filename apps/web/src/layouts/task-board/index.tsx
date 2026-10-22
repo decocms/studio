@@ -3037,7 +3037,7 @@ function Lane({
       {/* Sticky together, so the drop hint stays in view above the dragged card. */}
       <div
         className={cn(
-          "sticky top-0 z-10 flex flex-col transition-colors",
+          "sticky top-0 z-10 flex min-w-0 flex-col transition-colors",
           isTarget ? "bg-muted" : "bg-background",
         )}
       >
