@@ -5,8 +5,8 @@ import { join } from "node:path";
 /**
  * The site editor, Experiments and Calendar edit the same draft, so on a
  * Blocks v8 site they wear the same bar (environment and Publish): one
- * component, mounted as each route's `actions`. The site editor keeps main's
- * own bar on any other site (PO decision: gated to v8).
+ * component, mounted as each route's `actions`. On any other site the site
+ * editor's bar shows exactly main's parts (`siteDraftBarParts`).
  */
 describe("the site's draft bar", () => {
   const routes = join(import.meta.dir, "../../routes/workspace");
@@ -32,11 +32,14 @@ describe("the site's draft bar", () => {
     });
   }
 
-  test("the site editor shows the shared bar on v8 only, main's elsewhere", () => {
+  test("the site editor mounts the bar on every site, with no v7/v8 switch", () => {
+    // `siteDraftBarParts` holds main's rules (site-draft-bar-parts.test.ts),
+    // so a v7 site gets main's bar from the same component, and a v8 site's
+    // bar never remounts (closing an open Publish panel) when main answers.
     const source = readFileSync(join(routes, "agent-site-editor.tsx"), "utf8");
-    expect(source).toMatch(
-      /editsBlocksDraft\(useMainSchemaV8\(session\?\.virtualMcpId\)\) \? \(\s*<SiteDraftActions \/>\s*\) : \(\s*<V7SiteEditorActions \/>\s*\)/,
-    );
-    expect(source).toContain("actions={<SiteEditorActions />}");
+    expect(source).toContain("actions={<SiteDraftActions />}");
+    expect(source).not.toContain("useMainSchemaV8");
+    expect(source).not.toContain("<CmsHeaderActions");
+    expect(source).not.toContain("<ChatModeRow");
   });
 });

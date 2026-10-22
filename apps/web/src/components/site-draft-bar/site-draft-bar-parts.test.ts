@@ -61,4 +61,44 @@ describe("siteDraftBarParts", () => {
   test("nothing to show without a project or a served site", () => {
     expect(siteDraftBarParts({ ...base, hasEntity: false }).hidden).toBe(true);
   });
+
+  test("every input gives main's site editor bar (v7 sites use this same bar)", () => {
+    // Main's `SiteEditorActions`, written inline, as the reference.
+    const main = (i: SiteDraftBarInput) => {
+      const hidden = !i.hasEntity && !i.servingLocally;
+      return {
+        hidden,
+        localFiles: !hidden && i.servingLocally,
+        draftSelect: !hidden && i.hasEntity,
+        publish:
+          !hidden &&
+          i.hasEntity &&
+          !i.localPreview &&
+          !i.tunnelUndecided &&
+          !i.servingLocally &&
+          i.showsRepositoryActions
+            ? i.runtime === "cms"
+              ? "cms"
+              : "code"
+            : null,
+      };
+    };
+    const flags = [false, true];
+    for (const hasEntity of flags)
+      for (const servingLocally of flags)
+        for (const localPreview of flags)
+          for (const tunnelUndecided of flags)
+            for (const showsRepositoryActions of flags)
+              for (const runtime of ["cms", "sandbox", null]) {
+                const input = {
+                  hasEntity,
+                  servingLocally,
+                  localPreview,
+                  tunnelUndecided,
+                  showsRepositoryActions,
+                  runtime,
+                };
+                expect(siteDraftBarParts(input)).toEqual(main(input));
+              }
+  });
 });
