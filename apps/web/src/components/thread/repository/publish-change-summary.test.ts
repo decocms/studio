@@ -1176,7 +1176,13 @@ describe("the A/B tests and Campaign dates cards (v8)", () => {
       },
       sides: {
         entries: {
-          campaigns: { before: { __resolveType: "calendar" }, after: null },
+          campaigns: {
+            kind: "delete" as const,
+            version: null,
+            baseVersion: "v1",
+            before: { __resolveType: "calendar" },
+            after: null,
+          },
         },
         diagnostics: [],
       },
