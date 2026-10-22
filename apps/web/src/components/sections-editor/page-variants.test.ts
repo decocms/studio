@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import {
   appendPageVariantSections,
+  duplicatePageVariantEntry,
   buildPageSectionsFromVariants,
   countSavedMatcherBlockReferences,
   getPageVariantCount,
@@ -155,22 +156,83 @@ describe("page-variants", () => {
     expect(getPageVariantCount(decofile, "promo")).toBe(2);
   });
 
-  it("appends a variant seeded from provided sections", () => {
+  it("adds a variant seeded from provided sections above the current ones", () => {
     const seed = [{ __resolveType: "site/sections/Hero.tsx" }];
     const result = appendPageVariantSections([{ __resolveType: "A" }], seed);
     expect(result).toEqual({
-      __resolveType: "website/flags/multivariate.ts",
-      variants: [
-        {
-          rule: { __resolveType: "website/matchers/always.ts" },
-          value: [{ __resolveType: "A" }],
-        },
-        {
-          rule: { __resolveType: "website/matchers/always.ts" },
-          value: seed,
-        },
-      ],
+      sections: {
+        __resolveType: "website/flags/multivariate.ts",
+        variants: [
+          {
+            rule: { __resolveType: "website/matchers/always.ts" },
+            value: seed,
+          },
+          {
+            rule: { __resolveType: "website/matchers/always.ts" },
+            value: [{ __resolveType: "A" }],
+          },
+        ],
+      },
+      newVariantIndex: 0,
     });
+  });
+
+  it("adds a page variant above a trailing catch-all, keeping the order", () => {
+    const mobile = {
+      rule: { __resolveType: "website/matchers/device.ts", mobile: true },
+      value: [{ __resolveType: "Mobile" }],
+    };
+    const fallback = {
+      rule: { __resolveType: "website/matchers/always.ts" },
+      value: [{ __resolveType: "Default" }],
+    };
+    const seed = [{ __resolveType: "Seed" }];
+    const result = appendPageVariantSections(
+      {
+        __resolveType: "website/flags/multivariate.ts",
+        variants: [mobile, fallback],
+      },
+      seed,
+    );
+    expect(result?.newVariantIndex).toBe(1);
+    const variants = (result?.sections.variants ?? []) as Array<{
+      value: unknown;
+    }>;
+    expect(variants.map((variant) => variant.value)).toEqual([
+      mobile.value,
+      seed,
+      fallback.value,
+    ]);
+  });
+
+  it("appends a page variant at the end with no trailing catch-all", () => {
+    const mobile = {
+      rule: { __resolveType: "website/matchers/device.ts", mobile: true },
+      value: [{ __resolveType: "Mobile" }],
+    };
+    const result = appendPageVariantSections(
+      { __resolveType: "website/flags/multivariate.ts", variants: [mobile] },
+      [{ __resolveType: "Seed" }],
+    );
+    expect(result?.newVariantIndex).toBe(1);
+    expect(result?.sections.variants).toHaveLength(2);
+  });
+
+  it("duplicates the catch-all page variant above it", () => {
+    const mobile = {
+      rule: { __resolveType: "website/matchers/device.ts", mobile: true },
+      value: [{ __resolveType: "Mobile" }],
+    };
+    const fallback = {
+      rule: { __resolveType: "website/matchers/always.ts" },
+      value: [{ __resolveType: "Default" }],
+    };
+    const next = duplicatePageVariantEntry([mobile, fallback], 1);
+    expect(next?.[2]).toBe(fallback);
+    expect(next?.[1]).toEqual(fallback);
+    expect(duplicatePageVariantEntry([mobile, fallback], 0)?.[1]).toEqual(
+      mobile,
+    );
   });
 
   it("keeps multivariate shape when the last variant has a rule", () => {

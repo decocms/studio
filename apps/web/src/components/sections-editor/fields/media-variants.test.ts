@@ -133,20 +133,56 @@ describe("flattenMultivariate", () => {
 });
 
 describe("appendVariant", () => {
-  test("adds a variant cloned from last", () => {
+  test("adds a variant cloned from last, above the trailing always one", () => {
     const wrapper = makeWrapper(["a.png"]);
     const result = appendVariant(wrapper);
     expect(result.variants).toHaveLength(2);
-    expect(result.variants[1]!.value).toBe("a.png");
+    expect(result.variants[0]!.value).toBe("a.png");
+    expect(result.variants[1]).toBe(wrapper.variants[0]!);
+  });
+
+  test("keeps the existing order and adds right above the catch-all", () => {
+    const wrapper: MultivariateWrapper = {
+      __resolveType: RESOLVE_TYPE,
+      variants: [
+        {
+          rule: { __resolveType: "website/matchers/device.ts" },
+          value: "mobile.png",
+        },
+        { rule: { __resolveType: ALWAYS_RT }, value: "default.png" },
+      ],
+    };
+    const result = appendVariant(wrapper);
+    expect(result.variants.map((v) => v.value)).toEqual([
+      "mobile.png",
+      "default.png",
+      "default.png",
+    ]);
+    expect(result.variants[2]).toBe(wrapper.variants[1]!);
+  });
+
+  test("appends at the end when no variant always matches last", () => {
+    const wrapper: MultivariateWrapper = {
+      __resolveType: RESOLVE_TYPE,
+      variants: [
+        {
+          rule: { __resolveType: "website/matchers/device.ts" },
+          value: "mobile.png",
+        },
+      ],
+    };
+    const result = appendVariant(wrapper);
+    expect(result.variants[0]).toBe(wrapper.variants[0]!);
+    expect(result.variants[1]!.value).toBe("mobile.png");
   });
 
   test("deep clones object values", () => {
     const obj = { desktop: "a.png" };
     const wrapper = makeWrapper([obj]);
     const result = appendVariant(wrapper);
-    expect(result.variants[1]!.value).toEqual(obj);
+    expect(result.variants[0]!.value).toEqual(obj);
     // Must be a clone, not the same reference
-    expect(result.variants[1]!.value).not.toBe(obj);
+    expect(result.variants[0]!.value).not.toBe(obj);
   });
 });
 
@@ -188,6 +224,17 @@ describe("duplicateVariant", () => {
     expect(result.variants[0]!.value).toBe("a.png");
     expect(result.variants[1]!.value).toBe("a.png");
     expect(result.variants[2]!.value).toBe("b.png");
+  });
+
+  test("a copy of the trailing always variant goes above it", () => {
+    const wrapper = makeWrapper(["a.png", "b.png"]);
+    const result = duplicateVariant(wrapper, 1);
+    expect(result.variants.map((v) => v.value)).toEqual([
+      "a.png",
+      "b.png",
+      "b.png",
+    ]);
+    expect(result.variants[2]).toBe(wrapper.variants[1]!);
   });
 
   test("returns wrapper unchanged for out-of-bounds index", () => {

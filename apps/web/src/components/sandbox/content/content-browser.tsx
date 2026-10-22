@@ -756,16 +756,16 @@ function ContentBrowserReady({
       page.key,
       Math.max(0, variantCount - 1),
     );
-    const updatedSections = appendPageVariantSections(
+    const added = appendPageVariantSections(
       fullPageData.sections,
       seedSections,
       meta,
     );
-    if (!updatedSections) return;
+    if (!added) return;
     try {
       await saveBlock.mutateAsync({
         blockKey: page.key,
-        data: { ...fullPageData, sections: updatedSections },
+        data: { ...fullPageData, sections: added.sections },
       });
       toast.success(`Variant added to "${page.name}"`);
       setSelection({ collection: "pages", key: page.key, path: page.path });

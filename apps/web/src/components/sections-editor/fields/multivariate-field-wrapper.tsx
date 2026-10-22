@@ -74,6 +74,7 @@ import {
   wrapAsMultivariate,
   type MultivariateWrapper,
 } from "./media-variants";
+import { duplicateVariantIndex, newVariantIndex } from "../section-variants";
 import { EditorRowLink } from "../editor-list-row";
 import type { FieldProps } from "./field-props";
 
@@ -202,9 +203,8 @@ export function MultivariateFieldWrapper({
   };
 
   const handleAdd = () => {
-    const next = appendVariant(wrapper, meta);
-    onChange(next);
-    setSelectedIndex(next.variants.length - 1);
+    onChange(appendVariant(wrapper, meta));
+    setSelectedIndex(newVariantIndex(wrapper.variants));
   };
 
   const handleDelete = (index: number) => {
@@ -217,9 +217,8 @@ export function MultivariateFieldWrapper({
   };
 
   const handleDuplicate = (index: number) => {
-    const next = duplicateVariant(wrapper, index);
-    onChange(next);
-    setSelectedIndex(index + 1);
+    onChange(duplicateVariant(wrapper, index));
+    setSelectedIndex(duplicateVariantIndex(wrapper.variants, index));
   };
 
   const handleReorder = (from: number, to: number) => {

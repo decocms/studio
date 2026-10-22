@@ -4,10 +4,12 @@ import {
   canAddSectionVariant,
   deleteMultivariateSectionVariant,
   duplicateMultivariateSectionVariant,
+  duplicateVariantIndex,
   flattenMultivariateSection,
   getMultivariateSectionObject,
   hideSection,
   isDefaultVariantRule,
+  newVariantIndex,
   parseSectionFlagVariants,
   pickVariantToKeepIndex,
   reorderMultivariateSectionVariant,
@@ -451,7 +453,9 @@ describe("section-variants", () => {
       label: "Hero",
     });
 
-    expect(result?.newVariantIndex).toBe(1);
+    // Both entries are the same copy; the first is the new one, the second
+    // the original, kept last as the catch-all.
+    expect(result?.newVariantIndex).toBe(0);
     expect(result?.section).toEqual({
       __resolveType: "website/flags/multivariate/section.ts",
       variants: [
@@ -518,6 +522,113 @@ describe("section-variants", () => {
     expect(result?.newVariantIndex).toBe(2);
     const section = result?.section as { variants: unknown[] };
     expect(section.variants).toHaveLength(3);
+  });
+
+  it("appendSectionVariant adds the new variant above a trailing catch-all", () => {
+    const mvSection = {
+      __resolveType: "website/flags/multivariate/section.ts",
+      variants: [
+        {
+          rule: { __resolveType: "website/matchers/device.ts", mobile: true },
+          value: { __resolveType: "site/sections/Hero.tsx", title: "Mobile" },
+        },
+        {
+          rule: { __resolveType: "website/matchers/always.ts" },
+          value: { __resolveType: "site/sections/Hero.tsx", title: "Default" },
+        },
+      ],
+    } as never;
+
+    const result = appendSectionVariant(mvSection, {
+      index: 0,
+      resolveType: "website/flags/multivariate/section.ts",
+      label: "Variants of Hero",
+      isMultivariate: true,
+    });
+
+    expect(result?.newVariantIndex).toBe(1);
+    const variants = result?.section.variants ?? [];
+    // Existing order is kept; the new copy sits right above Default.
+    expect(variants.map((variant) => variant.value?.title)).toEqual([
+      "Mobile",
+      "Default",
+      "Default",
+    ]);
+    expect(variants[0]?.rule).toEqual({
+      __resolveType: "website/matchers/device.ts",
+      mobile: true,
+    });
+    expect(variants[2]?.rule).toEqual({
+      __resolveType: "website/matchers/always.ts",
+    });
+  });
+
+  it("appendSectionVariant appends at the end with no trailing catch-all", () => {
+    const mvSection = {
+      __resolveType: "website/flags/multivariate/section.ts",
+      variants: [
+        {
+          rule: { __resolveType: "website/matchers/device.ts", mobile: true },
+          value: { __resolveType: "site/sections/Hero.tsx", title: "Mobile" },
+        },
+      ],
+    } as never;
+
+    const result = appendSectionVariant(mvSection, {
+      index: 0,
+      resolveType: "website/flags/multivariate/section.ts",
+      label: "Variants of Hero",
+      isMultivariate: true,
+    });
+
+    expect(result?.newVariantIndex).toBe(1);
+    expect(result?.section.variants).toHaveLength(2);
+  });
+
+  it("newVariantIndex sits above a trailing always rule only", () => {
+    const always = { rule: { __resolveType: "website/matchers/always.ts" } };
+    const device = { rule: { __resolveType: "website/matchers/device.ts" } };
+    expect(newVariantIndex([])).toBe(0);
+    expect(newVariantIndex([device])).toBe(1);
+    expect(newVariantIndex([always])).toBe(0);
+    expect(newVariantIndex([device, always])).toBe(1);
+    expect(newVariantIndex([always, device])).toBe(2);
+    expect(newVariantIndex([device, {}])).toBe(2);
+  });
+
+  it("duplicateVariantIndex keeps a copy of the catch-all above it", () => {
+    const always = { rule: { __resolveType: "website/matchers/always.ts" } };
+    const device = { rule: { __resolveType: "website/matchers/device.ts" } };
+    expect(duplicateVariantIndex([device, always], 0)).toBe(1);
+    expect(duplicateVariantIndex([device, always], 1)).toBe(1);
+    expect(duplicateVariantIndex([device, device], 1)).toBe(2);
+    expect(duplicateVariantIndex([always], 0)).toBe(0);
+  });
+
+  it("duplicateMultivariateSectionVariant copies the catch-all above it", () => {
+    const mvObj = {
+      variants: [
+        {
+          rule: { __resolveType: "website/matchers/device.ts", mobile: true },
+          value: { title: "Mobile" },
+        },
+        {
+          rule: { __resolveType: "website/matchers/always.ts" },
+          value: { title: "Default" },
+        },
+      ],
+    };
+    const updated = duplicateMultivariateSectionVariant(mvObj, 1) as {
+      variants: Array<{ value: { title: string } }>;
+    };
+    expect(updated.variants.map((variant) => variant.value.title)).toEqual([
+      "Mobile",
+      "Default",
+      "Default",
+    ]);
+    // The original stays last: a later edit to the copy (index 1) is checked
+    // before it.
+    expect(updated.variants[2]).toBe(mvObj.variants[1]);
   });
 
   it("appendSectionVariant rejects hidden sections", () => {

@@ -140,7 +140,6 @@ import {
   buildPageSectionsFromVariants,
   countSavedMatcherBlockReferences,
   duplicatePageVariantEntry,
-  getLastVariantIndex,
   isMultivariateArrayWrapper,
   type PageVariant,
 } from "./page-variants";
@@ -161,6 +160,7 @@ import {
   isDefaultVariantRule,
   pickVariantToKeepIndex,
   duplicateMultivariateSectionVariant,
+  duplicateVariantIndex,
   flattenMultivariateSection,
   getMultivariateSectionObject,
   hideSection,
@@ -2142,7 +2142,10 @@ export function SectionsEditor({
       updatedMvObj,
     );
 
-    const nextIndex = variantIndex + 1;
+    const nextIndex = duplicateVariantIndex(
+      (mvObj.variants as unknown[]) ?? [],
+      variantIndex,
+    );
     setActiveSectionVariantIndex(nextIndex);
     setFieldBreadcrumbs([]);
     setFormResetKey((key) => key + 1);
@@ -3179,14 +3182,14 @@ export function SectionsEditor({
     }
     waitingFormSavesRef.current.clear();
     const fullPageData = decofile[activePageKey] as Record<string, unknown>;
-    const updatedSections = appendPageVariantSections(
+    const added = appendPageVariantSections(
       fullPageData.sections,
       rawSections,
       meta,
     );
-    if (!updatedSections) return;
+    if (!added) return;
 
-    const newVariantIndex = getLastVariantIndex(updatedSections);
+    const { sections: updatedSections, newVariantIndex } = added;
     saveBlock.mutate(
       {
         blockKey: activePageKey,
@@ -3394,11 +3397,15 @@ export function SectionsEditor({
   };
 
   const handleDuplicatePageVariant = (variantIndex: number) => {
+    let copyIndex = variantIndex + 1;
     mutatePageVariants(
-      (variants) => duplicatePageVariantEntry(variants, variantIndex),
+      (variants) => {
+        copyIndex = duplicateVariantIndex(variants, variantIndex);
+        return duplicatePageVariantEntry(variants, variantIndex);
+      },
       () => {
-        // Land the user on the freshly-created clone (inserted right after).
-        setActiveVariantIndex(variantIndex + 1);
+        // Land the user on the freshly-created clone.
+        setActiveVariantIndex(copyIndex);
         setSelectedSectionIndex(null);
         setFormValue(null);
         setActiveResolveType(null);
