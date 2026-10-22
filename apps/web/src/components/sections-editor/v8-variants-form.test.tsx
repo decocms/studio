@@ -25,7 +25,9 @@ const b64 = (name: string) => btoa(name);
  * whose own `value` is left open (`{ title: "Value" }`), so the form reads
  * the section from the value's `__resolveType`.
  */
-const META: LiveMeta = {
+const META = {
+  // What `deco schema` writes for a Blocks v8 site (isV8Schema).
+  blocksMajor: 8,
   manifest: {
     blocks: {
       sections: { hero: { $ref: `#/definitions/${b64("hero")}` } },
@@ -100,7 +102,7 @@ const META: LiveMeta = {
       matchers: { anyOf: [{ $ref: `#/definitions/${b64("always")}` }] },
     },
   },
-};
+} as LiveMeta;
 
 const SAVED = {
   __resolveType: "multivariate",
