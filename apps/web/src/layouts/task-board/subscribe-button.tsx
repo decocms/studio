@@ -10,7 +10,6 @@
 
 import { Avatar } from "@decocms/ui/components/avatar.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
-import { getInitials } from "@/lib/get-initials";
 import { useTaskSubscription } from "@/hooks/use-task-subscription";
 import { useT } from "@/i18n/use-t.ts";
 import { authClient } from "@/lib/auth-client";
@@ -53,7 +52,7 @@ export function SubscribeToggle({
         size="sm"
         disabled={!itemId || setSubscribed.isPending}
         onClick={() => setSubscribed.mutate(!subscribed)}
-        className="h-7 px-2 text-sm font-normal text-muted-foreground"
+        className="px-2 font-normal text-muted-foreground"
       >
         {subscribed
           ? t("taskBoard.taskDialog.unsubscribe")
@@ -70,14 +69,14 @@ export function SubscribeToggle({
             <Avatar
               key={member.userId}
               url={member.user?.image ?? undefined}
-              fallback={getInitials(member.user?.name)}
+              fallback={member.user?.name ?? "?"}
               shape="circle"
               size="xs"
               className="-ml-2 ring-2 ring-background first:ml-0"
             />
           ))}
           {overflow > 0 && (
-            <span className="-ml-2 inline-flex size-6 items-center justify-center rounded-full bg-muted text-[10px] font-medium text-muted-foreground ring-2 ring-background">
+            <span className="-ml-2 inline-flex size-6 items-center justify-center rounded-full bg-muted text-2xs font-medium text-muted-foreground ring-2 ring-background">
               +{overflow}
             </span>
           )}

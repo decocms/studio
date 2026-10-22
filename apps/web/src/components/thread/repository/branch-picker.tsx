@@ -575,10 +575,7 @@ export function BranchPicker({
             <AlertDialogCancel>
               {t("thread.branchPicker.cancel")}
             </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={confirmDelete}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
+            <AlertDialogAction onClick={confirmDelete} variant="destructive">
               {t("thread.branchPicker.delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -618,7 +615,7 @@ function RenameInput({
             onCancel();
           }
         }}
-        className="h-8 flex-1 rounded-md border bg-transparent px-2 text-sm outline-none focus:ring-1 focus:ring-ring"
+        className="h-8 flex-1 rounded-md border bg-transparent px-2 text-sm focus-ring"
       />
       <Button size="sm" onClick={onSave}>
         {t("thread.branchPicker.save")}
@@ -657,7 +654,7 @@ function ReleaseRow({
       ref={rowRef}
       className={cn(
         "group flex items-center rounded-lg",
-        selected ? "bg-accent" : "hover:bg-accent/60",
+        selected ? "bg-accent" : "hover:bg-accent",
       )}
     >
       <Tooltip>

@@ -263,7 +263,7 @@ export function ConnectionDialogContent({
           fallbackIcon={<Container />}
           headerActionsAlwaysVisible
           headerActions={
-            <Badge variant="secondary" className="text-xs gap-1 font-normal">
+            <Badge variant="secondary" className="gap-1 font-normal">
               <Check size={11} />{" "}
               {t("virtualMcp.connectionDialogContent.connected")}
             </Badge>
@@ -289,7 +289,7 @@ export function ConnectionDialogContent({
         headerActions={
           <div className="flex items-center gap-1.5">
             {added && (
-              <Badge variant="secondary" className="text-xs gap-1 font-normal">
+              <Badge variant="secondary" className="gap-1 font-normal">
                 <Check size={11} />{" "}
                 {t("virtualMcp.connectionDialogContent.added")}
               </Badge>
@@ -297,7 +297,6 @@ export function ConnectionDialogContent({
             <Button
               variant="outline"
               size="sm"
-              className="h-7 px-3 text-xs font-medium"
               disabled={connectingItemId !== null}
               onClick={(e) => {
                 e.stopPropagation();
@@ -406,7 +405,6 @@ export function ConnectionDialogContent({
             <Button
               variant="outline"
               size="sm"
-              className="h-7 px-3 text-xs font-medium"
               disabled={connectingItemId !== null}
               onClick={(e) => {
                 e.stopPropagation();
@@ -458,7 +456,6 @@ export function ConnectionDialogContent({
           <Button
             variant="outline"
             size="sm"
-            className="h-7 px-2 text-sm"
             onClick={() => {
               track("connections_dialog_custom_clicked");
               onCreateConnection();

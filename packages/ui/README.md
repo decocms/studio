@@ -105,9 +105,9 @@ and components do not need registration in a central barrel.
 Component variants use design-system tokens such as `primary`, `destructive`,
 `success`, and `muted` so theme changes remain centralized in `global.css`.
 
-Action buttons use `rounded-lg` across sizes and variants. Compose `Button` or
-`IconButton` and inherit that radius; custom button markup uses the same token.
-Joined controls keep square inner edges and `rounded-lg` outer corners.
+Action buttons are pills at every size and variant. Compose `Button` or
+`IconButton` and inherit that shape; custom button markup uses the same token.
+Joined controls keep square inner edges and pill outer corners.
 Pill navigation tabs, avatar and color swatch controls, and clickable cards keep
 the shapes of their respective components.
 

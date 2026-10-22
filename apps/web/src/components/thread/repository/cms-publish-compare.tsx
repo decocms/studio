@@ -286,13 +286,13 @@ export function PublishCompare({
         ) : null}
       </div>
       {pathHint && canRender && view !== "code" ? (
-        <p className="border-b bg-background px-4 py-1.5 text-[11px] text-muted-foreground">
+        <p className="border-b bg-background px-4 py-1.5 text-2xs text-muted-foreground">
           {pathHint}
         </p>
       ) : null}
 
       {onNoPage ? (
-        <p className="border-b bg-background px-4 py-1.5 text-[11px] text-muted-foreground">
+        <p className="border-b bg-background px-4 py-1.5 text-2xs text-muted-foreground">
           {t("thread.publishCompare.notOnAnyPage")}
         </p>
       ) : null}
@@ -382,7 +382,7 @@ function ComparePane({
         hidden && "hidden",
       )}
     >
-      <div className="flex items-center gap-1.5 px-0.5 text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
+      <div className="flex items-center gap-1.5 px-0.5 text-2xs font-medium text-muted-foreground">
         <span
           className={cn(
             "size-1.5 rounded-full bg-muted-foreground/50",

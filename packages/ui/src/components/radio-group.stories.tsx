@@ -1,9 +1,10 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { Matrix } from "../foundations/kit.tsx";
 import { Label } from "./label.tsx";
 import { RadioGroup, RadioGroupItem } from "./radio-group.tsx";
 
 const meta = {
-  title: "Components/RadioGroup",
+  title: "Atoms/RadioGroup",
   component: RadioGroup,
 } satisfies Meta<typeof RadioGroup>;
 
@@ -94,5 +95,31 @@ export const Horizontal: Story = {
         <Label htmlFor="theme-system">System</Label>
       </div>
     </RadioGroup>
+  ),
+};
+
+export const States: Story = {
+  parameters: {
+    controls: { disable: true },
+    layout: "padded",
+    pseudo: { hover: [".is-hover"], focusVisible: [".is-focus"] },
+  },
+  render: () => (
+    <Matrix
+      columns={["Default", "Hover", "Focus", "Disabled"]}
+      rows={(["Unselected", "Selected"] as const).map((label) => ({
+        label,
+        cells: ["", "is-hover", "is-focus", "disabled"].map((state) => (
+          <RadioGroup
+            key={state}
+            defaultValue={label === "Selected" ? "on" : undefined}
+            disabled={state === "disabled"}
+            aria-label={label}
+          >
+            <RadioGroupItem value="on" className={state} />
+          </RadioGroup>
+        )),
+      }))}
+    />
   ),
 };

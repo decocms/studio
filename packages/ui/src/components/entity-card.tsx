@@ -1,157 +1,105 @@
-import { Card } from "./card.tsx";
+import type * as React from "react";
+
 import { cn } from "../lib/utils.ts";
-import type { ReactNode } from "react";
-import { Avatar as AvatarComponent } from "./avatar.tsx";
-import type { AvatarProps } from "./avatar.tsx";
+import { Card } from "./card.tsx";
 
-interface EntityCardProps {
-  children: ReactNode;
-  className?: string;
-  onNavigate?: (e: React.MouseEvent) => void;
-  showHoverRing?: boolean;
-}
-
-interface EntityCardContentProps {
-  children: ReactNode;
-  className?: string;
-}
-
+/** One thing you open from a grid: a project, a connection, an app. */
 function EntityCardRoot({
-  children,
   className,
-  onNavigate,
-  showHoverRing = false,
-}: EntityCardProps) {
-  const handleClick = (e: React.MouseEvent) => {
-    if (onNavigate) {
-      onNavigate(e);
-    }
-  };
-
+  ...props
+}: Omit<React.ComponentProps<typeof Card>, "size" | "interactive">) {
   return (
     <Card
-      className={cn(
-        "group transition-all flex flex-col gap-0",
-        onNavigate && "cursor-pointer",
-        showHoverRing && "hover:ring-2 hover:ring-primary",
-        className,
-      )}
-      onClick={handleClick}
-    >
-      {children}
-    </Card>
-  );
-}
-
-function EntityCardAvatar({
-  url,
-  fallback,
-  shape = "square",
-  size = "lg",
-  objectFit = "contain",
-  className,
-}: AvatarProps) {
-  return (
-    <AvatarComponent
-      url={url}
-      fallback={fallback}
-      shape={shape}
-      size={size}
-      objectFit={objectFit}
-      className={className}
+      data-slot="entity-card"
+      size="tile"
+      interactive={Boolean(props.onClick) || props.asChild}
+      className={cn("min-w-0", className)}
+      {...props}
     />
   );
 }
 
-function EntityCardHeader({ children, className }: EntityCardContentProps) {
-  return (
-    <div className={cn("p-4 flex flex-col gap-4", className)}>{children}</div>
-  );
-}
-
-function EntityCardTitle({ children, className }: EntityCardContentProps) {
-  return <p className={cn("font-medium truncate", className)}>{children}</p>;
-}
-
-function EntityCardSubtitle({ children, className }: EntityCardContentProps) {
-  return (
-    <h3 className={cn("text-sm text-muted-foreground truncate", className)}>
-      {children}
-    </h3>
-  );
-}
-
-function EntityCardContent({ children, className }: EntityCardContentProps) {
-  return (
-    <div className={cn("flex flex-col gap-[2px]", className)}>{children}</div>
-  );
-}
-
-function EntityCardAvatarSection({
-  children,
+/** Its icon or avatar, with an optional status or menu on the right. */
+function EntityCardHeader({
+  icon,
+  trailing,
   className,
-}: EntityCardContentProps) {
+  ...props
+}: Omit<React.ComponentProps<"div">, "children"> & {
+  icon: React.ReactNode;
+  trailing?: React.ReactNode;
+}) {
   return (
-    <div className={cn("flex justify-between items-start", className)}>
-      {children}
+    <div
+      data-slot="entity-card-header"
+      className={cn("flex items-start justify-between gap-3", className)}
+      {...props}
+    >
+      {icon}
+      {trailing}
     </div>
   );
 }
 
-function EntityCardFooter({ children, className }: EntityCardContentProps) {
+function EntityCardTitle({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
-      className={cn(
-        "p-4 border-t border-border flex justify-between items-center",
-        className,
-      )}
-    >
-      {children}
-    </div>
+      data-slot="entity-card-title"
+      className={cn("truncate text-sm font-medium", className)}
+      {...props}
+    />
   );
 }
 
-function EntityCardBadge({ children, className }: EntityCardContentProps) {
+function EntityCardDescription({
+  className,
+  ...props
+}: React.ComponentProps<"div">) {
   return (
     <div
+      data-slot="entity-card-description"
+      className={cn("text-meta -mt-2 line-clamp-2", className)}
+      {...props}
+    />
+  );
+}
+
+/** Counts, people, a last update; set off by a hairline. */
+function EntityCardFooter({
+  className,
+  ...props
+}: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="entity-card-footer"
       className={cn(
-        "flex items-center text-xs text-muted-foreground",
+        "border-border text-meta flex items-center justify-between gap-2 border-t pt-3",
         className,
       )}
-    >
-      {children}
-    </div>
+      {...props}
+    />
   );
 }
 
 function EntityCardSkeleton() {
   return (
-    <Card className="group transition-colors flex flex-col">
-      <div className="p-4 flex flex-col gap-4">
-        <div className="flex justify-between items-start">
-          <div className="h-12 w-12 bg-muted rounded-lg animate-pulse" />
-        </div>
-        <div className="flex flex-col gap-[2px]">
-          <div className="h-4 w-32 bg-muted rounded-lg animate-pulse" />
-          <div className="h-4 w-40 bg-muted rounded-lg animate-pulse" />
-        </div>
+    <Card size="tile" aria-hidden>
+      <div className="bg-muted size-8 animate-pulse rounded-lg" />
+      <div className="flex flex-col gap-1.5">
+        <div className="bg-muted h-4 w-32 animate-pulse rounded-full" />
+        <div className="bg-muted h-3 w-44 animate-pulse rounded-full" />
       </div>
-      <div className="p-4 border-t border-border flex justify-between items-center">
-        <div className="h-6 w-6 bg-muted rounded-full animate-pulse" />
-        <div className="h-6 w-6 bg-muted rounded-full animate-pulse -ml-2" />
+      <div className="border-border flex justify-between border-t pt-3">
+        <div className="bg-muted h-3 w-16 animate-pulse rounded-full" />
       </div>
     </Card>
   );
 }
 
 export const EntityCard = Object.assign(EntityCardRoot, {
-  Avatar: EntityCardAvatar,
-  AvatarSection: EntityCardAvatarSection,
   Header: EntityCardHeader,
   Title: EntityCardTitle,
-  Subtitle: EntityCardSubtitle,
-  Content: EntityCardContent,
+  Description: EntityCardDescription,
   Footer: EntityCardFooter,
-  Badge: EntityCardBadge,
   Skeleton: EntityCardSkeleton,
 });

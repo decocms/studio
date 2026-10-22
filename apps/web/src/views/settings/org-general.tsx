@@ -3,9 +3,7 @@ import { OrganizationForm } from "@/components/settings/organization-form";
 import {
   BlocksEditorSettings,
   BlogSettings,
-  ChatRuntimeSettings,
-  CodeAgentsSettings,
-  VoiceModeSettings,
+  ChatSettings,
 } from "@/components/settings/review-settings";
 import { DomainSettings } from "@/components/settings/domain-settings";
 import { DeleteOrganizationSection } from "@/components/settings/delete-organization-section";
@@ -30,13 +28,11 @@ export function OrgGeneralPage() {
       <Page.Content>
         <Page.Container>
           <SettingsPage>
-            <Page.Title>{t("settings.orgGeneral.organization")}</Page.Title>
+            <Page.Title>{t("settings.nav.general")}</Page.Title>
             {granted && (
               <>
                 <OrganizationForm />
-                <ChatRuntimeSettings />
-                <CodeAgentsSettings />
-                <VoiceModeSettings />
+                <ChatSettings />
                 <BlogSettings />
               </>
             )}

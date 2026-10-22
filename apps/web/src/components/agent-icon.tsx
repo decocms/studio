@@ -288,6 +288,12 @@ const SIZES = {
     iconClass: "size-3",
     radius: "rounded-md",
   },
+  "2xs+": {
+    container: "size-4.5",
+    icon: 12,
+    iconClass: "size-3",
+    radius: "rounded-md",
+  },
   xs: {
     container: "w-6 h-6",
     icon: 14,

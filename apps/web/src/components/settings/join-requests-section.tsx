@@ -34,9 +34,7 @@ export function JoinRequestsSection() {
             icon={
               <Avatar
                 url={r.user?.image ?? undefined}
-                fallback={(r.user?.name ?? r.user?.email ?? "?")
-                  .charAt(0)
-                  .toUpperCase()}
+                fallback={r.user?.name ?? r.user?.email ?? "?"}
                 shape="circle"
                 size="sm"
               />

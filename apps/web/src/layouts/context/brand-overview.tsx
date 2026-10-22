@@ -31,7 +31,6 @@ import { Button } from "@decocms/ui/components/button.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
-import { cn } from "@decocms/ui/lib/utils.ts";
 import { EmptyState } from "@/components/empty-state";
 import { Page } from "@/components/page";
 import { useAskInChat } from "@/hooks/use-ask-in-chat";
@@ -165,20 +164,15 @@ export function BrandOverview() {
       {brands.length > 1 && (
         <div className="flex flex-wrap gap-1.5">
           {brands.map((brand) => (
-            <button
+            <Button
               key={brand.path}
-              type="button"
+              variant="outline"
+              size="sm"
               onClick={() => setSelectedPath(brand.path)}
               aria-pressed={brand.path === selected.path}
-              className={cn(
-                "rounded-full border px-3.5 py-1.5 text-sm transition-colors",
-                brand.path === selected.path
-                  ? "border-transparent bg-muted font-medium text-foreground"
-                  : "border-border text-muted-foreground hover:text-foreground",
-              )}
             >
               {basename(brand.path)}
-            </button>
+            </Button>
           ))}
         </div>
       )}
@@ -679,7 +673,7 @@ function Swatch({
           value={value}
           spellCheck={false}
           onChange={(e) => onChange(e.target.value)}
-          className="-mt-1 w-full rounded-md bg-transparent font-mono text-xs text-foreground outline-none focus:bg-background focus:ring-1 focus:ring-ring/40"
+          className="-mt-1 w-full rounded-md bg-transparent font-mono text-xs text-foreground focus:bg-background focus-ring"
         />
       )}
     </div>

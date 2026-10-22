@@ -34,7 +34,7 @@ const PLATFORM_META: Record<CommercePlatform, PlatformMeta> = {
 
 const SIZES = {
   /** Part of the size: a fixed inset is cramped small and adrift large. */
-  sm: "size-5 rounded-[5px] p-0.5 text-[10px]",
+  sm: "size-5 rounded-[5px] p-0.5 text-2xs",
   md: "size-8 rounded-lg p-1 text-xs",
   lg: "size-10 rounded-xl p-1.5 text-sm",
 } as const;

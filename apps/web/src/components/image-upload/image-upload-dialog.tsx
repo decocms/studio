@@ -294,7 +294,7 @@ export function ImageUploadDialog({
             <button
               type="button"
               onClick={() => inputRef.current?.click()}
-              className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border py-10 text-sm text-muted-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border py-10 text-sm text-muted-foreground transition-colors hover:bg-accent focus-ring"
             >
               <Upload01 className="size-5" />
               {t("imageUpload.choose")}
@@ -339,7 +339,7 @@ export function ImageUploadDialog({
                             void runGalleryAction(gallery.onDelete!(item.path))
                           }
                           aria-label={t("imageUpload.deletePicture")}
-                          className="absolute -right-1 -top-1 hidden rounded-lg bg-background p-1 text-muted-foreground shadow-sm hover:text-destructive group-hover:block"
+                          className="absolute -right-1 -top-1 hidden rounded-lg bg-card p-1 text-muted-foreground shadow-edge hover:text-destructive group-hover:block"
                         >
                           <Trash01 className="size-3" />
                         </button>

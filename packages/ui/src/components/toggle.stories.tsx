@@ -1,9 +1,10 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { Bold01, Italic01, Underline01 } from "@untitledui/icons";
 import { Toggle } from "./toggle.tsx";
+import { Matrix } from "../foundations/kit.tsx";
 
 const meta = {
-  title: "Components/Toggle",
+  title: "Atoms/Toggle",
   component: Toggle,
   args: {
     children: "Bold",
@@ -69,4 +70,38 @@ export const Pressed: Story = {
 
 export const Disabled: Story = {
   args: { disabled: true, children: "Unavailable" },
+};
+
+export const States: Story = {
+  parameters: {
+    controls: { disable: true },
+    layout: "padded",
+    pseudo: {
+      hover: [".is-hover"],
+      focusVisible: [".is-focus"],
+      active: [".is-active"],
+    },
+  },
+  render: () => (
+    <Matrix
+      columns={["Default", "Hover", "Focus", "Pressed", "Disabled"]}
+      rows={(["default", "outline"] as const).map((variant) => ({
+        label: variant,
+        cells: ["", "is-hover", "is-focus", "pressed", "disabled"].map(
+          (state) => (
+            <Toggle
+              key={state}
+              variant={variant}
+              className={state}
+              pressed={state === "pressed"}
+              disabled={state === "disabled"}
+              aria-label="Bold"
+            >
+              <Bold01 /> Bold
+            </Toggle>
+          ),
+        ),
+      }))}
+    />
+  ),
 };

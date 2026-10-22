@@ -2,7 +2,6 @@ import type { sidebar as sidebarEn } from "../en/sidebar.ts";
 
 export const sidebar = {
   "sidebar.projects.addProject": "Adicionar projeto",
-  "sidebar.agentsSection.codeAgents": "Projetos de Código",
   "sidebar.header.closeSidebar": "Fechar barra lateral",
   "sidebar.header.toggleSidebar": "Abrir ou fechar barra lateral",
   "sidebar.navDestinations.discover": "Descobrir",

@@ -61,7 +61,7 @@ function AttributePill({
                difference between set and unset is the label and the glyph. */
             isSet
               ? "bg-accent/60 text-foreground"
-              : "text-muted-foreground hover:bg-accent/40 hover:text-foreground",
+              : "text-muted-foreground hover:bg-accent hover:text-foreground",
           )}
         >
           {icon}
@@ -168,7 +168,7 @@ export function NewTaskComposer() {
         event.preventDefault();
         submit();
       }}
-      className="card-shadow flex flex-col rounded-xl bg-card px-4 pt-4 pb-3"
+      className="surface flex flex-col px-4 pt-4 pb-3"
     >
       {/* Three groups, spaced by what they are rather than evenly: the
           breadcrumb labels the form, the two fields are ONE thing you are
@@ -292,7 +292,7 @@ export function NewTaskComposer() {
           type="submit"
           size="sm"
           disabled={!canSubmit}
-          className="ml-auto h-7"
+          className="ml-auto"
         >
           {t("home.newTask.submit")}
         </Button>

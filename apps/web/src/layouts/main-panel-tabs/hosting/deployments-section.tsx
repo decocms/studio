@@ -341,7 +341,7 @@ function BuildLogsSheet({
             </div>
           ) : data?.text ? (
             <div className="flex flex-col gap-2">
-              <pre className="overflow-auto font-mono text-[11px] leading-relaxed text-foreground/80 whitespace-pre-wrap break-words">
+              <pre className="overflow-auto font-mono text-2xs leading-relaxed text-foreground/80 whitespace-pre-wrap break-words">
                 {data.text}
               </pre>
               {data.truncated && (
@@ -475,7 +475,7 @@ export function DeploymentsSection({
                   <Fragment key={d.id}>
                     <TableRow
                       className={cn(
-                        hasMessage && "cursor-pointer hover:bg-muted/40",
+                        hasMessage && "cursor-pointer hover:bg-accent",
                       )}
                       onClick={
                         hasMessage

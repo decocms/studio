@@ -103,7 +103,7 @@ function Table(props: React.HTMLAttributes<HTMLTableElement>) {
           variant="ghost"
           onClick={handleCopyCsv}
           aria-label={t("chat.markdown.copyAsCSV")}
-          className="text-muted-foreground hover:text-foreground h-6 text-[10px]"
+          className="text-muted-foreground hover:text-foreground h-6 text-2xs"
           type="button"
         >
           {t("chat.markdown.copyAsCSV")}
@@ -196,7 +196,7 @@ type MdProps = {
 
 // Inline-code styling, mirrored from the shared design-system `code` override.
 const INLINE_CODE_CLASS =
-  "px-1 py-0.5 bg-background border border-border rounded text-[14px] font-mono break-all";
+  "px-1 py-0.5 bg-background border border-border rounded text-sm font-mono break-all";
 
 // Inline code that names an org file becomes a clickable chip; everything else
 // keeps the plain code styling. Block code (rendered via `pre > code`, and the
@@ -298,7 +298,7 @@ function MarkdownAnchor({
 const animatedComponents = {
   ...markdownComponents,
   h1: ({ node: _n, children, ...p }: MdProps) => (
-    <h1 {...p} className="text-2xl font-bold mt-6 mb-3 first:mt-0">
+    <h1 {...p} className="text-2xl font-semibold mt-6 mb-3 first:mt-0">
       {animateText(children)}
     </h1>
   ),
@@ -318,12 +318,12 @@ const animatedComponents = {
     </h4>
   ),
   p: ({ node: _n, children, ...p }: MdProps) => (
-    <p {...p} className="leading-relaxed text-[14px] mb-2 last:mb-0">
+    <p {...p} className="leading-relaxed text-sm mb-2 last:mb-0">
       {animateText(children)}
     </p>
   ),
   strong: ({ node: _n, children, ...p }: MdProps) => (
-    <strong {...p} className="font-bold">
+    <strong {...p} className="font-semibold">
       {animateText(children)}
     </strong>
   ),
@@ -333,7 +333,7 @@ const animatedComponents = {
     </em>
   ),
   li: ({ node: _n, children, ...p }: MdProps) => (
-    <li {...p} className="leading-relaxed text-[14px]">
+    <li {...p} className="leading-relaxed text-sm">
       {animateText(children)}
     </li>
   ),
@@ -369,7 +369,7 @@ function CodeBlock({
   return (
     <div className="my-4 rounded-lg bg-muted overflow-hidden border border-border grid min-w-0">
       <div className="flex items-center justify-between p-1 pl-4 bg-muted border-b border-border">
-        <span className="text-xs font-mono uppercase text-muted-foreground tracking-widest select-none">
+        <span className="text-xs font-mono text-muted-foreground select-none">
           {language ? language : "text"}
         </span>
         <Button

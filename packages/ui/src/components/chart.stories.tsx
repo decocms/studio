@@ -25,7 +25,7 @@ const toolCallsConfig = {
 } satisfies ChartConfig;
 
 const meta = {
-  title: "Components/Chart",
+  title: "Molecules/Chart",
   component: ChartContainer,
   parameters: { layout: "padded" },
   args: {

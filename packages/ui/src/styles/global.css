@@ -41,6 +41,7 @@
 
 /* Explicitly scan @decocms/ui components for Tailwind classes */
 @source "../components/**/*.tsx";
+@source "../lib/**/*.ts";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -63,12 +64,17 @@
   box-shadow: var(--shadow-border);
 }
 
-@utility card-shadow {
-  box-shadow: var(--card-shadow);
+/* A 1px edge drawn inside the box: outline buttons, chips, outline badges. */
+@utility hairline {
+  box-shadow: inset 0 0 0 1px var(--hairline);
 }
 
-@utility card-shadow-raised {
-  box-shadow: var(--card-shadow-raised);
+@utility shadow-edge {
+  box-shadow: var(--shadow-edge);
+}
+
+@utility shadow-edge-raised {
+  box-shadow: var(--shadow-edge-raised);
 }
 
 /* The system's vocabulary: four utilities carrying nearly every surface and
@@ -80,22 +86,30 @@
   background-color: var(--card);
   color: var(--card-foreground);
   border-radius: var(--studio-surface-radius);
-  box-shadow: var(--card-shadow);
+  box-shadow: var(--shadow-edge);
 }
 
-/** A surface that can be picked up — raises on hover. Pair with `surface`. */
+/** A surface you open: tints on hover. Pair with `surface`. */
 @utility surface-interactive {
-  transition:
-    box-shadow 160ms var(--ease-out-cubic),
-    transform 160ms var(--ease-out-cubic);
+  transition: background-color 160ms var(--ease-out-cubic);
 
   &:hover {
-    box-shadow: var(--card-shadow-raised);
+    background-color: color-mix(in oklch, var(--card), var(--foreground) 3%);
   }
 }
 
 /** A surface drawn INSIDE another one — a well, a nested list, a code block.
  *  It recedes rather than lifts: no shadow, just the paper showing through. */
+/** A frosted panel for modals, popovers and search: translucent white over a
+ *  blurred page, with a light rim and a long soft shadow. */
+@utility glass {
+  background-color: var(--glass);
+  backdrop-filter: blur(32px);
+  box-shadow:
+    inset 0 0 0 1px var(--glass-rim),
+    var(--glass-shadow);
+}
+
 @utility surface-inset {
   background-color: var(--muted);
   border-radius: var(--radius-lg);
@@ -110,7 +124,7 @@
  */
 @utility text-meta {
   font-size: var(--text-xs);
-  line-height: 1.0625rem;
+  line-height: 1rem;
   font-variant-numeric: tabular-nums;
   color: var(--muted-foreground);
 }
@@ -119,14 +133,13 @@
  * Display type — the same typeface, set like a headline. There is no second
  * family; a headline earns its authority from weight, tracking and size.
  *
- * The optical tracking belongs to the role, not the call site: Switzer at 40px
+ * The optical tracking belongs to the role, not the call site: Inter at 32px
  * with default spacing reads loose.
  */
 @utility font-display {
-  font-weight: 640;
-  letter-spacing: -0.03em;
+  font-weight: 500;
+  letter-spacing: -0.02em;
   text-wrap: balance;
-  font-feature-settings: "ss01";
 }
 
 /** Numbers that have to line up down a column, or not jitter as they tick. */
@@ -136,12 +149,20 @@
 
 /**
  * The one focus state, drawn as an `outline` and never a ring: Tailwind's
- * `ring-*` composes into `box-shadow`, the same property `card-shadow` uses,
+ * `ring-*` composes into `box-shadow`, the same property `shadow-edge` uses,
  * so the two silently erased each other. An outline also follows
  * `border-radius` on its own.
  */
 @utility focus-ring {
   &:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+}
+
+/** The same halo for a field whose focus lands on an inner input. */
+@utility focus-within-ring {
+  &:has(:focus-visible) {
     outline: 2px solid var(--ring);
     outline-offset: 2px;
   }
@@ -167,14 +188,18 @@
   );
 }
 
-/* Recolour a card's ring, keeping the drop shadow under it — the ring IS the card's border, drawn as a shadow. */
-@utility card-ring-destructive {
-  --card-shadow:
-    0 0 0 var(--border-hairline) var(--destructive), var(--card-drop);
+/* Recolour a card's ring, keeping the drop shadow under it — the ring IS the card's border, drawn as a shadow.
+   Painted, not set via --shadow-edge: the variable would leak into every edged child (buttons, pills). */
+@utility shadow-edge-destructive {
+  box-shadow:
+    0 0 0 var(--border-hairline) var(--destructive),
+    var(--edge-drop);
 }
 
-@utility card-ring-warning {
-  --card-shadow: 0 0 0 var(--border-hairline) var(--warning), var(--card-drop);
+@utility shadow-edge-warning {
+  box-shadow:
+    0 0 0 var(--border-hairline) var(--warning),
+    var(--edge-drop);
 }
 
 /* ============================================================
@@ -186,61 +211,71 @@
    typography were the parts that needed work, and the colours did not.
    ============================================================ */
 :root {
-  --background: oklch(0.99 0.003 73);
-  --foreground: oklch(0.145 0.01 60);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0.01 60);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0.01 60);
-  --muted: oklch(0.955 0.006 80);
-  --muted-foreground: oklch(0.46 0.012 60);
-  --accent: oklch(0.955 0.008 80);
-  --accent-foreground: oklch(0.2 0.01 60);
-  --border: oklch(0.915 0.005 80);
-  --input: oklch(0.88 0.006 80);
-  --ring: oklch(0.205 0.012 60);
+  /* Neutrals: the Figma greys warmed to oklch chroma 0.003, hue 94. */
+  /* A hair off white, so white cards still lift off the panel. */
+  --background: #fefdfb;
+  --foreground: #0a0a09;
+  --card: #fffffd;
+  --card-foreground: #0a0a09;
+  --popover: #fffffd;
+  --popover-foreground: #0a0a09;
+  --muted: #f5f4f2;
+  --muted-foreground: #676664;
+  /* Meta and placeholder text: one step quieter than muted. */
+  --subtle-foreground: #a4a3a1;
+  --accent: #f5f4f2;
+  --accent-foreground: #0a0a09;
+  --border: #edecea;
+  /* The same edge as a translucent ink, so it reads on any fill. */
+  --hairline: #0000000f;
+  --input: #e4e3e1;
+  --ring: #0a0a09;
 
-  --primary: oklch(0.205 0.012 60);
-  --primary-foreground: oklch(0.98 0.005 60);
+  --primary: #0a0a09;
+  --primary-foreground: #ffffff;
+  --primary-hover: #2a2a28;
 
-  --secondary: oklch(0.955 0.006 80);
-  --secondary-foreground: oklch(0.2 0.01 60);
+  --secondary: #f5f4f2;
+  --secondary-foreground: #0a0a09;
+  --secondary-hover: #edecea;
 
   /* Layout-dependent defaults remain overridable by component className. */
-  --studio-input-background: var(--background);
-  --studio-outline-foreground: var(--foreground);
+  /* Inputs sit ON the card surface: white, edged by the card's hairline. */
+  --studio-input-background: var(--card);
+  --studio-outline-foreground: var(--card-foreground);
   --studio-outline-hover-background: var(--accent);
   --studio-secondary-background: var(--secondary);
   --studio-secondary-foreground: var(--secondary-foreground);
-  --studio-secondary-hover-background: color-mix(
-    in oklab,
-    var(--secondary) 80%,
-    transparent
-  );
+  --studio-secondary-hover-background: var(--secondary-hover);
   --studio-secondary-hover-foreground: var(--secondary-foreground);
   --studio-secondary-shadow: none;
 
-  --destructive: oklch(0.58 0.22 27);
-  --destructive-foreground: oklch(0.97 0.01 17);
-  --success: oklch(0.6 0.17 149);
-  --success-foreground: oklch(0.98 0.02 156);
-  --warning: oklch(0.62 0.17 70);
-  --warning-foreground: oklch(0.99 0.02 95);
-  --special: oklch(0.55 0.18 290);
-  --special-foreground: oklch(0.98 0.02 295);
-  --notice: oklch(0.65 0.13 245);
+  /* Status: the solid colour carries text, dots and icons; its 10% tint
+     (`bg-success/10`) is the fill behind them. */
+  --destructive: #df2225;
+  --destructive-foreground: #ffffff;
+  --success: #009a41;
+  --success-foreground: #ffffff;
+  --warning: #c56e00;
+  --warning-foreground: #ffffff;
+  --special: #6f5fe0;
+  --special-foreground: #ffffff;
+  --notice: #216bf2;
+  --link: #216bf2;
+  --highlight: #e6edfc;
 
   /* How much of a user-picked colour (org tags) survives against the surface. */
   --user-color-strength: 100%;
 
-  --sidebar: oklch(0.975 0.006 80);
-  --sidebar-foreground: oklch(0.2 0.01 60);
-  --sidebar-accent: oklch(0.94 0.012 80);
-  --sidebar-accent-foreground: oklch(0.2 0.01 60);
-  --sidebar-border: oklch(0.915 0.005 80);
-  --sidebar-ring: oklch(0.205 0.012 60);
-  --sidebar-primary: oklch(0.205 0.012 60);
-  --sidebar-primary-foreground: oklch(0.98 0.005 60);
+  /* The app canvas the panels float on. */
+  --sidebar: #faf9f7;
+  --sidebar-foreground: #0a0a09;
+  --sidebar-accent: #edecea;
+  --sidebar-accent-foreground: #0a0a0a;
+  --sidebar-border: #edecea;
+  --sidebar-ring: #0a0a09;
+  --sidebar-primary: #0a0a09;
+  --sidebar-primary-foreground: #ffffff;
 
   --chart-1: oklch(0.73 0.15 289);
   --chart-2: oklch(0.6 0.18 150);
@@ -248,8 +283,8 @@
   --chart-4: oklch(0.84 0.17 84.5);
   --chart-5: oklch(0.74 0.17 159);
 
-  --font-sans:
-    "Switzer", "Inter var", "Inter", ui-sans-serif, system-ui, sans-serif;
+  /* Inter only, at most Medium (500). */
+  --font-sans: "Inter var", "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-serif: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
   --font-mono:
     "CommitMono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
@@ -270,7 +305,7 @@
      ---------------------------------------------------------- */
   --studio-button-radius: 9999px;
   --studio-control-radius: 0.625rem;
-  --studio-surface-radius: 0.875rem;
+  --studio-surface-radius: 1rem;
   --studio-control-height: 2.25rem;
 
   --shadow-xs: oklch(0 0 0 / 0.03) 0px 1px 2px;
@@ -279,34 +314,58 @@
     oklch(0 0 0 / 0.06) 0px 4px 12px, oklch(0 0 0 / 0.04) 0px 2px 4px;
   --shadow-lg:
     oklch(0 0 0 / 0.08) 0px 8px 32px, oklch(0 0 0 / 0.06) 0px 4px 12px;
-  --card-drop: 0px 1px 2px -1px #1d1b1812, 0px 2px 4px 0px #1d1b180d;
-  --card-ring: 0px 0px 0px 1px #1d1b1814;
-  --card-shadow: var(--card-ring), var(--card-drop);
+  /* A card is edged by a 1px hairline (#e4e4e4 on white) and nothing else. */
+  --edge-drop: 0px 1px 2px 0px #0000000d;
+  --edge-ring: 0px 0px 0px 1px #0000001c;
+  --shadow-edge: var(--edge-ring), var(--edge-drop);
   /* A card you can pick up — hover and drag states raise it this far. */
-  --card-shadow-raised:
-    var(--card-ring), 0px 2px 4px -2px #1d1b1814, 0px 10px 24px -8px #1d1b181f;
+  --shadow-edge-raised:
+    var(--edge-ring), 0px 1px 2px 0px #0000000d, 0px 4px 12px 0px #0000000f;
+
+  /* A large card floating on the canvas: a document, a side panel. */
+  --shadow-soft:
+    0px 0px 0px 1px #00000008, 0px 1px 2px 0px #00000008, 0px 8px 24px 0px
+    #0000000f;
+  /* Small stacked cards: workflow steps, results. */
+  --shadow-lift:
+    0px 0px 0px 1px #0000000a, 0px 1px 2px 0px #0000000d, 0px 4px 12px 0px
+    #0000000f;
+
+  /* Glass: modals, popovers and search float as frosted panels over a light
+     scrim. */
+  --glass: #ffffffdb;
+  --glass-raised: #ffffffb3;
+  --glass-rim: #ffffffe6;
+  --glass-shadow:
+    0px 0px 0px 1px #0000000d, 0px 2px 6px 0px #00000008, 0px 24px 64px 0px
+    #0000001a;
+  --scrim: #0000002e;
 }
 
 .dark {
-  --background: oklch(0.175 0.005 60);
-  --foreground: oklch(0.96 0.005 60);
-  --card: oklch(0.21 0.005 60);
-  --card-foreground: oklch(0.96 0.005 60);
-  --popover: oklch(0.22 0.005 60);
-  --popover-foreground: oklch(0.96 0.005 60);
-  --muted: oklch(0.23 0.005 60);
-  --muted-foreground: oklch(0.62 0.008 60);
-  --accent: oklch(0.26 0.005 60);
-  --accent-foreground: oklch(0.96 0.005 60);
-  --border: oklch(0.26 0.005 60);
-  --input: oklch(0.28 0.005 60);
-  --ring: oklch(0.82 0.01 60);
+  --background: oklch(0.175 0 0);
+  --foreground: oklch(0.96 0 0);
+  --card: oklch(0.21 0 0);
+  --card-foreground: oklch(0.96 0 0);
+  --popover: oklch(0.22 0 0);
+  --popover-foreground: oklch(0.96 0 0);
+  --muted: oklch(0.23 0 0);
+  --muted-foreground: oklch(0.62 0 0);
+  --accent: oklch(0.26 0 0);
+  --accent-foreground: oklch(0.96 0 0);
+  --border: oklch(0.26 0 0);
+  --hairline: #ffffff1a;
+  --input: oklch(0.28 0 0);
+  --ring: oklch(0.82 0 0);
 
-  --primary: oklch(0.82 0.01 60);
-  --primary-foreground: oklch(0.14 0.01 60);
+  --primary: oklch(0.82 0 0);
+  --primary-foreground: oklch(0.14 0 0);
+  --primary-hover: oklch(0.74 0 0);
+  --subtle-foreground: oklch(0.5 0 0);
 
-  --secondary: oklch(0.21 0.005 60);
-  --secondary-foreground: oklch(0.96 0.005 60);
+  --secondary: oklch(0.26 0 0);
+  --secondary-foreground: oklch(0.96 0 0);
+  --secondary-hover: oklch(0.3 0 0);
   --studio-input-background: color-mix(in oklab, var(--input) 30%, transparent);
   --studio-outline-hover-background: color-mix(
     in oklab,
@@ -322,18 +381,20 @@
   --warning-foreground: oklch(0.98 0.02 95);
   --special: oklch(0.6 0.16 290);
   --special-foreground: oklch(0.97 0.02 295);
+  --link: #739eff;
+  --highlight: #263866;
 
   /* Saturated hex reads far louder on a dark surface than a light one. */
   --user-color-strength: 55%;
 
-  --sidebar: oklch(0.155 0.005 60);
-  --sidebar-foreground: oklch(0.96 0.005 60);
-  --sidebar-accent: oklch(0.23 0.005 60);
-  --sidebar-accent-foreground: oklch(0.96 0.005 60);
-  --sidebar-border: oklch(0.26 0.005 60);
-  --sidebar-ring: oklch(0.82 0.01 60);
-  --sidebar-primary: oklch(0.82 0.01 60);
-  --sidebar-primary-foreground: oklch(0.14 0.01 60);
+  --sidebar: oklch(0.155 0 0);
+  --sidebar-foreground: oklch(0.96 0 0);
+  --sidebar-accent: oklch(0.23 0 0);
+  --sidebar-accent-foreground: oklch(0.96 0 0);
+  --sidebar-border: oklch(0.26 0 0);
+  --sidebar-ring: oklch(0.82 0 0);
+  --sidebar-primary: oklch(0.82 0 0);
+  --sidebar-primary-foreground: oklch(0.14 0 0);
 
   --chart-1: oklch(0.73 0.15 289);
   --chart-2: oklch(0.6 0.18 150);
@@ -341,13 +402,21 @@
   --chart-4: oklch(0.84 0.17 84.5);
   --chart-5: oklch(0.74 0.17 159);
   --notice: oklch(0.72 0.11 245);
-  --card-drop:
+  --edge-drop:
     0 2px 2px 0 #0000001a, 0 4px 4px 0 #0000001a, 0 8px 8px 0 #0000001a;
-  --card-ring:
+  --edge-ring:
     inset 0 1px 0 0 #ffffff08, inset 0 0 0 1px #ffffff08, 0 0 0 1px #0000001a;
-  --card-shadow: var(--card-ring), var(--card-drop);
-  --card-shadow-raised:
-    var(--card-ring), 0 4px 8px 0 #00000026, 0 16px 32px -8px #00000040;
+  --shadow-edge: var(--edge-ring), var(--edge-drop);
+  --shadow-edge-raised:
+    var(--edge-ring), 0 4px 8px 0 #00000026, 0 16px 32px -8px #00000040;
+  --shadow-soft: var(--edge-ring), 0 8px 24px 0 #00000040;
+  --shadow-lift: var(--edge-ring), 0 4px 12px 0 #00000033;
+
+  --glass: #1c1c1cb8;
+  --glass-raised: #2a2a2a99;
+  --glass-rim: #ffffff14;
+  --glass-shadow: 0 0 0 1px #00000040, 0 24px 64px 0 #00000066;
+  --scrim: #00000066;
 }
 
 @theme inline {
@@ -363,6 +432,13 @@
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
+  --color-subtle-foreground: var(--subtle-foreground);
+  --color-link: var(--link);
+  --color-highlight: var(--highlight);
+  --color-primary-hover: var(--primary-hover);
+  --color-secondary-hover: var(--secondary-hover);
+  --color-glass: var(--glass);
+  --color-scrim: var(--scrim);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
@@ -374,6 +450,7 @@
   --color-special: var(--special);
   --color-special-foreground: var(--special-foreground);
   --color-border: var(--border);
+  --color-hairline: var(--hairline);
   --color-input: var(--input);
   --color-ring: var(--ring);
   --color-chart-1: var(--chart-1);
@@ -387,7 +464,20 @@
   --color-brand-lime-tint: var(--brand-lime-tint);
   --color-notice: var(--notice);
   --color-brand-purple: var(--brand-purple-light);
+  --color-brand-purple-dark: var(--brand-purple-dark);
+  --color-brand-purple-tint: var(--brand-purple-tint);
+  --color-brand-green-dark: var(--brand-green-dark);
+  --color-brand-yellow: var(--brand-yellow-light);
+  --color-brand-yellow-dark: var(--brand-yellow-dark);
+  --color-brand-yellow-tint: var(--brand-yellow-tint);
   --color-brand-blue: var(--brand-blue);
+  --color-brand-blue-dark: var(--brand-blue-dark);
+  --color-brand-blue-tint: var(--brand-blue-tint);
+  --color-project-blue: var(--project-blue);
+  --color-project-green: var(--project-green);
+  --color-project-purple: var(--project-purple);
+  --color-project-red: var(--project-red);
+  --color-project-amber: var(--project-amber);
 
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
@@ -406,14 +496,19 @@
   --font-weight-light: 300;
   --font-weight-normal: 400;
   --font-weight-medium: 500;
-  --font-weight-semibold: 600;
-  --font-weight-bold: 650;
+  /* The product never goes past Medium: semibold is an alias of it, and bold
+     is kept only for emphasis inside prose. */
+  --font-weight-semibold: 500;
+  --font-weight-bold: 600;
 
   /* Box Shadow Scale */
   --shadow-xs: var(--shadow-xs);
   --shadow-sm: var(--shadow-sm);
   --shadow-md: var(--shadow-md);
   --shadow-lg: var(--shadow-lg);
+  --shadow-soft: var(--shadow-soft);
+  --shadow-lift: var(--shadow-lift);
+  --shadow-glass: var(--glass-shadow);
 
   /* Border radius — an explicit scale, not multiples of a base.
      The steps are drawn to land on the three role radii above, so the loose
@@ -486,10 +581,11 @@
   --text-2xs--line-height: 1rem;
   --text-2xs--letter-spacing: 0.01em;
   --text-xs: 0.75rem;
-  --text-xs--line-height: 1.0625rem;
-  --text-xs--letter-spacing: 0.005em;
+  --text-xs--line-height: 1rem;
+  --text-xs--letter-spacing: -0.005em;
   --text-sm: 0.8125rem;
-  --text-sm--line-height: var(--studio-text-sm-line-height, 1.25rem);
+  --text-sm--line-height: var(--studio-text-sm-line-height, 1.125rem);
+  --text-sm--letter-spacing: -0.005em;
   --text-base: 0.9375rem;
   --text-base--line-height: 1.4375rem;
   --text-base--letter-spacing: -0.005em;
@@ -588,25 +684,9 @@
      them, so an input, a select and the button beside them line up. Nothing in
      the editor should hardcode either — these are the knobs. */
   --studio-control-height: 2.25rem;
-  --studio-control-radius: calc(var(--radius) * 2.667);
-  --studio-surface-radius: var(--radius-xl);
+  --studio-control-radius: 0.625rem;
+  --studio-surface-radius: 1rem;
   --studio-button-radius: 9999px;
-}
-
-/* Secondary and outline controls sit ON the card surface rather than being
-   tinted: a white pill with the card's own hairline and drop, so a toolbar
-   reads as a row of objects on the page instead of a row of holes in it.
-   Last write wins over the tinted defaults further up, which is the whole
-   reason this block sits down here. */
-:root {
-  --studio-input-background: var(--card);
-  --studio-outline-foreground: var(--card-foreground);
-  --studio-outline-hover-background: var(--accent);
-  --studio-secondary-background: var(--card);
-  --studio-secondary-foreground: var(--card-foreground);
-  --studio-secondary-hover-background: var(--accent);
-  --studio-secondary-hover-foreground: var(--accent-foreground);
-  --studio-secondary-shadow: var(--card-shadow);
 }
 
 /* A search field growing out of the icon button it replaces. `from` only, so
@@ -726,7 +806,145 @@
   }
 }
 
+/* ============================================================
+   Loading and streaming
+   ============================================================ */
+
+/* Text still in progress: dimmed to 40%, a full-colour band sweeps it. Put it on the text, not a row. */
+@utility shimmer {
+  background-image: linear-gradient(
+    90deg,
+    color-mix(in oklab, currentColor 40%, transparent) 38%,
+    currentColor 50%,
+    color-mix(in oklab, currentColor 40%, transparent) 62%
+  );
+  background-size: 250% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer-sweep 2s linear infinite;
+}
+
+@keyframes shimmer-sweep {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0% 0;
+  }
+}
+
+/* A cached card being refreshed: its border breathes instead of blanking. */
+@utility revalidating-ring {
+  animation: revalidating-ring-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes revalidating-ring-pulse {
+  0%,
+  100% {
+    border-color: var(--color-border);
+  }
+  50% {
+    border-color: var(--color-ring);
+  }
+}
+
+/* Each streamed word fades in once; opacity only, so layout never shifts. */
+@utility stream-word {
+  animation: stream-word-in 0.5s ease-out both;
+}
+
+@keyframes stream-word-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes grid-ripple {
+  0%,
+  75%,
+  100% {
+    background-color: transparent;
+  }
+  10% {
+    background-color: var(--cell-color);
+  }
+}
+
+/* The box's outline and the tick are one stroke (the chat's todo checkbox):
+   checking slides the dash off the outline onto the tick, then fills the box. */
+@layer components {
+  .checkbox-draw {
+    --checkbox-line: var(--input);
+    --checkbox-on: var(--primary);
+    box-shadow: inset 0 0 0 1.5px var(--checkbox-line);
+    transition:
+      box-shadow 150ms,
+      background-color 150ms;
+  }
+  .checkbox-draw:hover {
+    --checkbox-line: color-mix(in oklch, var(--foreground) 30%, var(--input));
+  }
+  .checkbox-draw > svg {
+    position: absolute;
+    inset: 0;
+    fill: none;
+    stroke: var(--checkbox-on);
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-dasharray: 86.12;
+    stroke-dashoffset: 86.12;
+    transition:
+      stroke-dasharray 300ms,
+      stroke-dashoffset 300ms;
+  }
+  .checkbox-draw[data-state="checked"],
+  .checkbox-draw[data-state="indeterminate"] {
+    --checkbox-line: var(--checkbox-on);
+    background-color: var(--checkbox-on);
+  }
+  .checkbox-draw[data-state="checked"] {
+    transition-delay: 200ms;
+  }
+  .checkbox-draw[data-state="checked"] > svg {
+    stroke-dasharray: 16 86.12;
+    stroke-dashoffset: 102.22;
+    animation: checkbox-draw-tick 300ms ease 150ms forwards;
+  }
+}
+
+@keyframes checkbox-draw-tick {
+  to {
+    stroke: var(--primary-foreground);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  /* Static cues: the text stays, the ring stays lit. */
+  .shimmer {
+    animation: none;
+    -webkit-text-fill-color: currentColor;
+  }
+  .revalidating-ring {
+    animation: none;
+    border-color: var(--color-ring);
+  }
+  .stream-word {
+    animation: none;
+  }
+
+  .checkbox-draw,
+  .checkbox-draw > svg {
+    transition-duration: 0s !important;
+    transition-delay: 0s !important;
+    animation-duration: 0s !important;
+    animation-delay: 0s !important;
+  }
+
   /* Open and close at full height — fade only, no slide. */
   @keyframes accordion-down {
     from {
@@ -831,7 +1049,7 @@
 
   body {
     @apply bg-background text-foreground font-sans antialiased;
-    font-weight: 450;
+    font-weight: 400;
     font-feature-settings:
       "cv01", "cv02", "cv03", "cv04", "cv08", "cv10", "ss08";
     /* Inter var carries an optical-size axis; letting the browser drive it is
@@ -912,10 +1130,21 @@
   --brand-lime-tint: #eff6cc;
   --brand-purple-light: #a595ff;
   --brand-purple-dark: #151042;
+  --brand-purple-tint: #efecff;
   --brand-yellow-light: #ffc116;
   --brand-yellow-dark: #392b02;
+  --brand-yellow-tint: #fff4d1;
   /* #69daec. One value, no dark pair — it is light enough for both themes. */
   --brand-blue: oklch(0.829 0.105 209.2);
+  --brand-blue-dark: #0b3b44;
+  --brand-blue-tint: #e0f7fb;
+
+  /* A project's colour: its icon, at 14% behind it for the tile. */
+  --project-blue: #3b82f6;
+  --project-green: #22c55e;
+  --project-purple: #a855f7;
+  --project-red: #ef4444;
+  --project-amber: #f59e0b;
 }
 
 @media only screen and (min-device-pixel-ratio: 2),

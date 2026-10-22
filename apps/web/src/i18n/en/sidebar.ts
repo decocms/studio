@@ -1,6 +1,5 @@
 export const sidebar = {
   "sidebar.projects.addProject": "Add project",
-  "sidebar.agentsSection.codeAgents": "Code Projects",
   "sidebar.header.closeSidebar": "Close sidebar",
   "sidebar.header.toggleSidebar": "Toggle sidebar",
   "sidebar.navDestinations.discover": "Discover",

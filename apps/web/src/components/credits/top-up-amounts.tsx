@@ -124,9 +124,8 @@ export function TopUpAmounts({
             disabled={isPending}
             onClick={() => buy(dollars * 100, TIER_SLUGS[labelKey] ?? "preset")}
             className={cn(
-              "relative flex flex-col items-center gap-1 py-5 rounded-xl border transition-all duration-150 cursor-pointer",
+              "relative flex flex-col items-center gap-1 py-5 surface surface-interactive cursor-pointer",
               "disabled:opacity-50 disabled:cursor-wait",
-              "border-border hover:border-foreground/20 hover:bg-muted/30",
             )}
           >
             <span className="text-2xl font-semibold tabular-nums text-foreground">
@@ -156,7 +155,7 @@ export function TopUpAmounts({
             />
           </div>
           <Button
-            className="h-10"
+            size="lg"
             disabled={!isCustomValid || isPending}
             onClick={() => buy(Math.round(customNum * 100), "custom")}
           >

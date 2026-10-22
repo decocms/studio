@@ -188,13 +188,9 @@ function RolesPageContent() {
       header: t("settings.roles.columnType"),
       render: (row) =>
         row.kind === "builtin" ? (
-          <Badge variant="secondary" className="text-xs">
-            {t("settings.roles.builtIn")}
-          </Badge>
+          <Badge variant="secondary">{t("settings.roles.builtIn")}</Badge>
         ) : (
-          <Badge variant="outline" className="text-xs">
-            {t("settings.roles.custom")}
-          </Badge>
+          <Badge variant="outline">{t("settings.roles.custom")}</Badge>
         ),
       cellClassName: "w-28 shrink-0",
     },
@@ -262,8 +258,7 @@ function RolesPageContent() {
             <DropdownMenuTrigger asChild>
               <Button
                 variant="ghost"
-                size="sm"
-                className="h-8 w-8 p-0"
+                size="icon"
                 onClick={(e) => e.stopPropagation()}
               >
                 <DotsVertical size={16} />
@@ -381,7 +376,7 @@ function RolesPageContent() {
                   deleteRoleMutation.mutate(roleToDelete.id);
                 setRoleToDelete(null);
               }}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              variant="destructive"
             >
               {t("settings.roles.delete")}
             </AlertDialogAction>

@@ -103,7 +103,7 @@ export function MessageUser<T extends Metadata>({
             onClick={handleClick}
             onFocus={() => setIsFocused(true)}
             onBlur={() => setIsFocused(false)}
-            className="w-full border border-border/60 min-w-0 shadow-xs rounded-lg text-[14px] wrap-break-word overflow-wrap-anywhere bg-background cursor-pointer transition-colors relative flex outline-none"
+            className="w-full border border-border/60 min-w-0 shadow-xs rounded-lg text-sm wrap-break-word overflow-wrap-anywhere bg-background cursor-pointer transition-colors relative flex outline-none"
           >
             <div className="absolute inset-0 bg-muted/75 rounded-lg pointer-events-none" />
             <div

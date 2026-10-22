@@ -264,7 +264,7 @@ export function DiscoverTab() {
               <li
                 key={step.key}
                 className={cn(
-                  "flex items-start gap-3 rounded-xl border border-border bg-card p-4",
+                  "surface flex items-start gap-3 p-4",
                   step.done && "opacity-60",
                 )}
               >
@@ -300,7 +300,7 @@ export function DiscoverTab() {
             {capabilities.map((capability) => (
               <li
                 key={capability.key}
-                className="flex items-start gap-3 rounded-xl border border-border bg-card p-4"
+                className="surface flex items-start gap-3 p-4"
               >
                 <span
                   className={cn(

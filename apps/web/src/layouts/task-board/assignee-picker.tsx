@@ -9,7 +9,6 @@ import {
 } from "@decocms/ui/components/command.tsx";
 import { User01 } from "@untitledui/icons";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
-import { getInitials } from "@/lib/get-initials";
 import { useT } from "@/i18n/use-t.ts";
 import { SUPER_AGENT_ASSIGNEE_ID, type Member } from "./config";
 
@@ -62,7 +61,7 @@ export function AssigneePickerContent({
             >
               <Avatar
                 url={m.user?.image ?? undefined}
-                fallback={getInitials(m.user?.name)}
+                fallback={m.user?.name ?? "?"}
                 shape="circle"
                 size="2xs"
               />
