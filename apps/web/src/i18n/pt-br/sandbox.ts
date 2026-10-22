@@ -415,7 +415,7 @@ export const sandbox = {
   "sandbox.cmsSettingsBlock.defaultsNotice":
     "Ainda não salvo: estes são os valores padrão. Sua primeira alteração cria o bloco CMS.",
   "sandbox.cmsSettingsBlock.description":
-    "Hosts de preview, telemetria e analytics. O site os lê da versão publicada: as alterações valem após publicar, nunca no preview de um rascunho.",
+    "Telemetria e analytics. O site os lê da versão publicada: as alterações valem após publicar, nunca no preview de um rascunho.",
   "sandbox.categoryEditor.renameActionButton": "Renomear e atualizar posts",
   "sandbox.categoryEditor.renameDialogDescription":
     'Alterar o slug de "{oldSlug}" para "{newSlug}" atualizará {count} post(s) que fazem referência a esta categoria.',
@@ -1148,7 +1148,7 @@ export const sandbox = {
   "sandbox.previewServerUrlField.description":
     "O endereço do seu servidor ativo, usado para pré-visualizar conteúdo. Necessário para o Preview Rápido.",
   "sandbox.previewServerUrlField.descriptionBlocksV8":
-    "O endereço do seu site no ar. O Studio mostra seus rascunhos nele antes de você publicar.",
+    "O endereço do seu site no ar. O Studio mostra seus rascunhos nele antes de você publicar. Um endereço novo mostra rascunhos após a próxima publicação.",
   "sandbox.previewServerUrlField.label": "Servidor de preview",
   "sandbox.previewServerUrlField.placeholder": "https://exemplo.com",
   "sandbox.fieldDescriptionTooltipsField.label": "Descrições compactas",

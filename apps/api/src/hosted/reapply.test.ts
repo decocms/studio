@@ -42,6 +42,7 @@ function setup(extra: Record<string, string> = {}) {
     store: delivery.store,
     purge: delivery.purge,
     site: "acme",
+    previewHosts: ["acme.deco.site", "www.acme.com"],
   };
   /** Main's head as a Publish leaves it: a companion release. */
   const release = async () => {

@@ -410,7 +410,7 @@ export const sandbox = {
   "sandbox.cmsSettingsBlock.defaultsNotice":
     "Not saved yet: these are the defaults. Your first change creates the CMS block.",
   "sandbox.cmsSettingsBlock.description":
-    "Preview hosts, telemetry and analytics. The site reads them from its published release: changes take effect once published, never in a draft preview.",
+    "Telemetry and analytics. The site reads them from its published release: changes take effect once published, never in a draft preview.",
   "sandbox.categoryEditor.renameActionButton": "Rename & update posts",
   "sandbox.categoryEditor.renameDialogDescription":
     'Changing the slug from "{oldSlug}" to "{newSlug}" will update {count} post(s) that reference this category.',
@@ -1122,7 +1122,7 @@ export const sandbox = {
   "sandbox.previewServerUrlField.description":
     "Your live server's address, used to preview content. Required for Fast Preview.",
   "sandbox.previewServerUrlField.descriptionBlocksV8":
-    "Your live site's address. Studio shows your drafts on it before you publish.",
+    "Your live site's address. Studio shows your drafts on it before you publish. A new address shows drafts after your next publish.",
   "sandbox.previewServerUrlField.label": "Preview server",
   "sandbox.previewServerUrlField.placeholder": "https://example.com",
   "sandbox.fieldDescriptionTooltipsField.label": "Compact descriptions",

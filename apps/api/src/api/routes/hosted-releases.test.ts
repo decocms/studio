@@ -31,7 +31,11 @@ function context(): StudioContext {
   const project = {
     id: "p1",
     organization_id: ORG,
-    metadata: { repository: { owner: "acme", name: "site" }, blocksMajor: 8 },
+    metadata: {
+      repository: { owner: "acme", name: "site" },
+      blocksMajor: 8,
+      previewServerUrl: "https://Preview.Acme.com/",
+    },
     connections: [],
   };
   return {
@@ -58,7 +62,12 @@ function context(): StudioContext {
   } as unknown as StudioContext;
 }
 
-function setup() {
+function setup(
+  siteDomains: (site: string) => Promise<string[]> = async (site) =>
+    site === "acme"
+      ? ["acme.deco.site", "www.acme.com", "preview.acme.com"]
+      : [],
+) {
   const git = fakeRepo({
     ".deco/schema.gen.json": SCHEMA_TEXT,
     ".deco/blocks/Home.json": serializeBlock({ path: "/", title: "v1" }),
@@ -76,6 +85,7 @@ function setup() {
       repoClientFor: async () => git.client,
       delivery: () => ({ store: delivery.store, purge: delivery.purge }),
       insightsFor: async () => fakeInsights(git.history).client,
+      siteDomains,
     }),
   );
   const release = async () => {
@@ -120,6 +130,14 @@ describe("POST releases/:sha/reapply", () => {
       serializeBlock({ path: "/", title: "v1" }),
     );
     expect((await readLatest(delivery.store, "acme"))?.revision).toBe(sha);
+    // Make current carries the site's preview hosts, in latest.json and in
+    // the new version's companion release.
+    const hosts = ["acme.deco.site", "preview.acme.com", "www.acme.com"];
+    expect((await readLatest(delivery.store, "acme"))?.previewHosts).toEqual(
+      hosts,
+    );
+    const companion = delivery.objects.get(deliveryKeys.revision("acme", sha));
+    expect(JSON.parse(companion?.text ?? "{}").previewHosts).toEqual(hosts);
   });
 
   it("is 404 for a commit without a release", async () => {
@@ -178,6 +196,29 @@ describe("POST releases/retry", () => {
     expect((await readLatest(delivery.store, "acme"))?.revision).toBe(
       git.head(),
     );
+  });
+
+  it("writes the site's addresses Studio knows as previewHosts: sorted, without duplicates", async () => {
+    const { delivery, post } = setup();
+    const retry = await post("releases/retry");
+    expect(retry.status).toBe(200);
+    const hosts = ["acme.deco.site", "preview.acme.com", "www.acme.com"];
+    expect(((await retry.json()) as { current: unknown }).current).toEqual(
+      expect.objectContaining({ previewHosts: hosts }),
+    );
+    expect((await readLatest(delivery.store, "acme"))?.previewHosts).toEqual(
+      hosts,
+    );
+  });
+
+  it("still releases when the site's domains can't be read: the preview server alone", async () => {
+    const { delivery, post } = setup(async () => {
+      throw new Error("supabase down");
+    });
+    expect((await post("releases/retry")).status).toBe(200);
+    expect((await readLatest(delivery.store, "acme"))?.previewHosts).toEqual([
+      "preview.acme.com",
+    ]);
   });
 });
 
