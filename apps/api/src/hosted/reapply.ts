@@ -45,6 +45,13 @@ import {
   releaseCommit,
 } from "./publish";
 import { NotV8Site, schemaHashAt } from "./release-objects";
+import {
+  datedReleaseNote,
+  LEGACY_MADE_CURRENT_PREFIX,
+  MADE_CURRENT_PREFIX,
+  NO_NOTE_TITLE,
+  UNKNOWN_RELEASE_NOTE,
+} from "@decocms/shared/release-notes";
 
 /** The commit has no companion release: there is nothing to reapply. */
 export class NotPublishedError extends Error {
@@ -54,12 +61,6 @@ export class NotPublishedError extends Error {
   }
 }
 
-/** The note's prefix: the Releases screen's "Make current" action. */
-const PREFIX = "Made current: ";
-/** The prefix notes had before the action was named "Make current". */
-const LEGACY_PREFIX = "Reapply: ";
-/** Publish's fallback title when there was no note (`decofileCommitMessage`). */
-const NO_NOTE = /^chore\(decofile\):/;
 const REAPPLIED_FROM = "Reapplied-From";
 const REAPPLIED_FROM_LINE = /^Reapplied-From:\s*([0-9a-f]{40})\s*$/im;
 
@@ -82,13 +83,21 @@ export function reapplyTitle(original: {
   date: string;
 }): string {
   const title = original.message.split("\n")[0]?.trim() ?? "";
-  if (title.startsWith(PREFIX) && title.length > PREFIX.length) return title;
-  if (title.startsWith(LEGACY_PREFIX) && title.length > LEGACY_PREFIX.length) {
-    return `${PREFIX}${title.slice(LEGACY_PREFIX.length)}`;
+  if (
+    title.startsWith(MADE_CURRENT_PREFIX) &&
+    title.length > MADE_CURRENT_PREFIX.length
+  )
+    return title;
+  if (
+    title.startsWith(LEGACY_MADE_CURRENT_PREFIX) &&
+    title.length > LEGACY_MADE_CURRENT_PREFIX.length
+  ) {
+    return `${MADE_CURRENT_PREFIX}${title.slice(LEGACY_MADE_CURRENT_PREFIX.length)}`;
   }
-  if (title && !NO_NOTE.test(title)) return `${PREFIX}${title}`;
+  if (title && !NO_NOTE_TITLE.test(title))
+    return `${MADE_CURRENT_PREFIX}${title}`;
   const when = utcMinute(original.date);
-  return when ? `${PREFIX}release from ${when}` : `${PREFIX}earlier release`;
+  return `${MADE_CURRENT_PREFIX}${when ? datedReleaseNote(when) : UNKNOWN_RELEASE_NOTE}`;
 }
 
 /** The full commit message: title, then the trailers (one block). */
