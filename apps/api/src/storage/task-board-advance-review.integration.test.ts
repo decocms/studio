@@ -37,6 +37,7 @@ import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 /** Studio's own board, which is what these fixtures run on. */
 const ORG = "org_advance_review";
 const USER = "user_advance_review";
+const REAP_REASONS = { neverStarted: "never started", stalled: "stalled" };
 
 describe("advanceFromProgress (real Postgres)", () => {
   let database: StudioDatabase;
@@ -854,32 +855,77 @@ describe("failed runs never reach In Review (real Postgres)", () => {
       .where("id", "=", task.id)
       .execute();
 
-    const reaped = await taskBoard.failNeverStartedLinkedThreads(
+    const reaped = await taskBoard.failAbandonedLinkedThreads(
       10,
       new Date(Date.now() - 30 * 60_000),
-      "never started",
+      REAP_REASONS,
     );
 
     expect(reaped.map((r) => r.threadId)).toContain(thread.id);
     expect(reaped.find((r) => r.threadId === thread.id)?.itemId).toBe(task.id);
+    const row = await database.db
+      .selectFrom("threads")
+      .select(["failure_kind", "failure_reason"])
+      .where("id", "=", thread.id)
+      .executeTakeFirstOrThrow();
+    expect(row).toEqual({
+      failure_kind: "abandoned",
+      failure_reason: REAP_REASONS.neverStarted,
+    });
   });
 
-  it("leaves a run that actually STARTED to the idle reaper", async () => {
-    const { thread } = await cardWithRun("started then quiet", "completed");
+  // The pod that owned it died mid-stream, taking its in-memory idle reaper
+  // with it; nothing else ever failed the row.
+  it("fails a run that STARTED and then went silent, as a stall", async () => {
+    const { thread } = await cardWithRun("started then orphaned", "completed");
     await database.db
       .updateTable("threads")
       .set({
         status: "in_progress",
         run_started_at: new Date(Date.now() - 60 * 60_000).toISOString(),
+        last_progress_at: new Date(Date.now() - 60 * 60_000).toISOString(),
         updated_at: new Date(Date.now() - 60 * 60_000).toISOString(),
       })
       .where("id", "=", thread.id)
       .execute();
 
-    const reaped = await taskBoard.failNeverStartedLinkedThreads(
+    const reaped = await taskBoard.failAbandonedLinkedThreads(
       10,
       new Date(Date.now() - 30 * 60_000),
-      "never started",
+      REAP_REASONS,
+    );
+
+    expect(reaped.map((r) => r.threadId)).toContain(thread.id);
+    const row = await database.db
+      .selectFrom("threads")
+      .select(["status", "failure_kind", "failure_reason", "run_started_at"])
+      .where("id", "=", thread.id)
+      .executeTakeFirstOrThrow();
+    expect(row).toEqual({
+      status: "failed",
+      failure_kind: "stall",
+      failure_reason: REAP_REASONS.stalled,
+      run_started_at: null,
+    });
+  });
+
+  it("leaves a started run that is still heartbeating", async () => {
+    const { thread } = await cardWithRun("long but alive", "completed");
+    await database.db
+      .updateTable("threads")
+      .set({
+        status: "in_progress",
+        run_started_at: new Date(Date.now() - 60 * 60_000).toISOString(),
+        last_progress_at: new Date().toISOString(),
+        updated_at: new Date(Date.now() - 60 * 60_000).toISOString(),
+      })
+      .where("id", "=", thread.id)
+      .execute();
+
+    const reaped = await taskBoard.failAbandonedLinkedThreads(
+      10,
+      new Date(Date.now() - 30 * 60_000),
+      REAP_REASONS,
     );
 
     expect(reaped.map((r) => r.threadId)).not.toContain(thread.id);
@@ -898,10 +944,10 @@ describe("failed runs never reach In Review (real Postgres)", () => {
       .where("id", "=", thread.id)
       .execute();
 
-    const reaped = await taskBoard.failNeverStartedLinkedThreads(
+    const reaped = await taskBoard.failAbandonedLinkedThreads(
       10,
       new Date(Date.now() - 30 * 60_000),
-      "never started",
+      REAP_REASONS,
     );
 
     expect(reaped.map((r) => r.threadId)).not.toContain(thread.id);

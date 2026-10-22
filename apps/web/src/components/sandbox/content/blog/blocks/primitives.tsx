@@ -1,5 +1,6 @@
 import { Edit02, Plus, Trash01 } from "@untitledui/icons";
 import { cn } from "@decocms/ui/lib/utils.ts";
+import { Button } from "@decocms/ui/components/button.tsx";
 
 export { ToolbarButton } from "@/components/sections-editor/toolbar-button";
 
@@ -72,7 +73,7 @@ export function EditableText({
   ...props
 }: React.ComponentProps<typeof InlineText>) {
   return (
-    <div className="group/editable relative -mx-2 rounded-md px-2 transition-colors hover:bg-muted/50 focus-within:bg-muted/50">
+    <div className="group/editable relative -mx-2 rounded-md px-2 transition-colors hover:bg-accent focus-within:bg-muted/50">
       <InlineText {...props} className={cn(className, "pr-9")} />
       <Edit02
         size={18}
@@ -115,21 +116,23 @@ export function RemoveButton({
   onClick: () => void;
 }) {
   return (
-    <button
+    <Button
+      variant="ghost-destructive"
+      size="icon-xs"
       type="button"
       aria-label={label}
       onClick={onClick}
-      className="flex h-6 w-6 shrink-0 items-center justify-center text-muted-foreground/60 opacity-0 transition-opacity hover:text-destructive group-hover/item:opacity-100 cursor-pointer rounded-lg"
+      className="opacity-0 transition-opacity group-hover/item:opacity-100"
     >
-      <Trash01 size={13} />
-    </button>
+      <Trash01 className="size-3.25" />
+    </Button>
   );
 }
 
 /** A floating segmented control shown above a focused block (variant/level). */
 export function FloatingToolbar({ children }: { children: React.ReactNode }) {
   return (
-    <div className="absolute -top-9 left-0 z-10 flex items-center gap-0.5 rounded-md border bg-popover p-0.5 shadow-md">
+    <div className="absolute -top-9 left-0 z-10 flex items-center gap-0.5 rounded-md bg-popover p-0.5 shadow-soft">
       {children}
     </div>
   );
@@ -197,7 +200,7 @@ function Chip({
         "cursor-pointer rounded-md border px-2.5 py-1 text-xs font-medium transition-colors",
         active
           ? "border-primary bg-primary text-primary-foreground"
-          : "bg-card hover:bg-muted",
+          : "bg-card hover:bg-accent",
       )}
     >
       {children}

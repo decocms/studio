@@ -6,7 +6,7 @@ import type { ChatMessage } from "../types.ts";
 import { getRunStatusCopy } from "../run-status.ts";
 import { useOptionalChatStream } from "../context.tsx";
 import { LiveTimer } from "../../live-timer.tsx";
-import { GridLoader } from "../../grid-loader.tsx";
+import { GridLoader } from "@decocms/ui/components/grid-loader.tsx";
 import { formatDuration } from "../../../lib/format-time.ts";
 import { useClockTick } from "../../../lib/use-clock-tick.ts";
 import { useT } from "@/i18n/use-t.ts";
@@ -160,7 +160,7 @@ export function ThinkingState({ startedAt }: { startedAt: number | null }) {
     <div className="flex flex-col gap-0.5">
       <RunStatusIndicator startedAt={startedAt} />
       {isSlow && stream?.stop && (
-        <div className="flex items-center gap-2 pb-1 text-[13px] text-muted-foreground/60">
+        <div className="flex items-center gap-2 pb-1 text-sm text-muted-foreground/60">
           <span>{t("chat.thinkingIndicator.takingLonger")}</span>
           <button
             type="button"

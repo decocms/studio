@@ -35,7 +35,7 @@ export class OnboardingPage {
    * buttons on the same screen.
    */
   async joinOrg(orgName: string): Promise<void> {
-    const card = this.page.locator(".card-shadow").filter({ hasText: orgName });
+    const card = this.page.locator(".surface").filter({ hasText: orgName });
     await card.getByRole("button", { name: /^Join$/ }).click();
   }
 }

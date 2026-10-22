@@ -134,7 +134,8 @@ export function QuickTopUp() {
                 placeholder={t("settings.decoCreditsHero.amountPlaceholder")}
                 value={customAmount}
                 onChange={(e) => setCustomAmount(e.target.value)}
-                className="h-8 text-sm pl-7"
+                size="sm"
+                className="pl-7"
                 autoFocus
               />
             </div>
@@ -214,15 +215,19 @@ function CreditsBalance({ enabled }: { enabled: boolean }) {
             {displayBalance}
           </span>
         )}
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="icon-xs"
           onClick={() => refetch()}
           disabled={isFetching}
-          className="text-muted-foreground hover:text-foreground disabled:opacity-50 transition-colors p-1 rounded-lg hover:bg-muted/50"
+          className="text-muted-foreground hover:text-foreground"
           aria-label={t("settings.decoCreditsHero.refreshBalance")}
         >
-          <RefreshCw01 size={14} className={cn(isFetching && "animate-spin")} />
-        </button>
+          <RefreshCw01
+            className={cn("size-3.5", isFetching && "animate-spin")}
+          />
+        </Button>
       </div>
       <p className="text-xs text-muted-foreground">
         {t("settings.decoCreditsHero.availableBalance")}
@@ -277,9 +282,8 @@ export function DecoCreditsHero() {
               />
             </div>
             <Button
-              variant="ghost"
+              variant="ghost-destructive"
               size="sm"
-              className="text-xs text-muted-foreground hover:text-destructive"
               onClick={() => setConfirmDisconnect(true)}
               disabled={isDisconnecting}
             >
@@ -306,7 +310,7 @@ export function DecoCreditsHero() {
                 </AlertDialogCancel>
                 <AlertDialogAction
                   onClick={() => disconnect()}
-                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  variant="destructive"
                 >
                   {t("settings.decoCreditsHero.disconnectButton")}
                 </AlertDialogAction>

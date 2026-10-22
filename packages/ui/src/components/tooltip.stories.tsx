@@ -4,7 +4,7 @@ import { Button } from "./button.tsx";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./tooltip.tsx";
 
 const meta = {
-  title: "Components/Tooltip",
+  title: "Atoms/Tooltip",
   component: Tooltip,
 } satisfies Meta<typeof Tooltip>;
 

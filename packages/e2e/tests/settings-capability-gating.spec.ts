@@ -96,7 +96,7 @@ test.describe("settings capability gating", () => {
     await expect(
       page.getByRole("switch", { name: "New blocks editor", exact: true }),
     ).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText("Danger Zone")).toHaveCount(0);
+    await expect(page.getByText("Danger zone")).toHaveCount(0);
 
     // The settings index redirects a no-management member to Profile — the
     // always-accessible fallback — rather than landing them on a denied tab.

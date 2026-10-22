@@ -3,81 +3,30 @@
  *  so a separate org list had nowhere left to open from. */
 import { useState } from "react";
 import { toast } from "sonner";
+import { Avatar } from "@decocms/ui/components/avatar.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { XClose } from "@untitledui/icons";
-import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import { authClient, invalidateOrganizationListCache } from "@/lib/auth-client";
 import type { Invitation } from "@/hooks/use-pending-invitations";
 
-function getOrgColorStyle(name: string): {
-  backgroundColor: string;
-  color: string;
-} {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) {
-    hash = name.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  const h = Math.abs(hash) % 360;
-  return {
-    backgroundColor: `hsl(${h} 55% 70%)`,
-    color: `hsl(${h} 55% 20%)`,
-  };
-}
+const ORG_ICON_SIZES = { xs: "xs", sm: "xs", lg: "md" } as const;
 
-const ORG_ICON_SIZES = {
-  xs: { box: "size-5", text: "text-[9px]" },
-  sm: { box: "size-6", text: "text-xs" },
-  md: { box: "size-8", text: "text-sm" },
-  lg: { box: "size-9", text: "text-sm" },
-} as const;
-
+/** An org's logo, or its initials on its colour: the DS avatar, square. */
 export function OrgIcon({
   org,
   size = "sm",
-  rounded = "rounded-md",
 }: {
   org: { name: string; logo?: string | null };
   size?: keyof typeof ORG_ICON_SIZES;
-  /** The rail wants a rounder mark than the picker's list rows. */
-  rounded?: "rounded-md" | "rounded-[10px]" | "rounded-xl";
 }) {
-  const { box: sizeClass, text: textClass } = ORG_ICON_SIZES[size];
-  /**
-   * The logo URL that failed to load, not a boolean.
-   *
-   * A missing logo already fell back to initials, but a logo that is PRESENT
-   * and fails — a dead CDN link, an asset the browser is not allowed to
-   * fetch from this origin — left the browser to draw its own broken-image
-   * glyph, which is how a rail of real organizations ends up looking like a
-   * rail of torn paper. Remembering the URL rather than a flag means an org
-   * whose logo is later fixed gets a fresh attempt on its own.
-   */
-  const [failedSrc, setFailedSrc] = useState<string | null>(null);
-  const logo = org.logo && org.logo !== failedSrc ? org.logo : null;
-
   return (
-    <div
-      className={cn(
-        sizeClass,
-        rounded,
-        "shrink-0 flex items-center justify-center border border-border/50 overflow-hidden",
-      )}
-      style={logo ? undefined : getOrgColorStyle(org.name)}
-    >
-      {logo ? (
-        <img
-          src={logo}
-          alt=""
-          className="size-full object-cover"
-          onError={() => setFailedSrc(logo)}
-        />
-      ) : (
-        <span className={cn("font-semibold leading-none", textClass)}>
-          {org.name.slice(0, 2).toUpperCase()}
-        </span>
-      )}
-    </div>
+    <Avatar
+      url={org.logo ?? undefined}
+      fallback={org.name}
+      size={ORG_ICON_SIZES[size]}
+      tone="solid"
+    />
   );
 }
 
@@ -168,19 +117,13 @@ export function InvitationRow({
         </p>
       </div>
       <div className="flex shrink-0 items-center gap-1">
-        <Button
-          size="sm"
-          variant="default"
-          className="h-7 text-xs"
-          onClick={accept}
-          disabled={busy}
-        >
+        <Button size="sm" variant="default" onClick={accept} disabled={busy}>
           {t("header.orgSwitcher.accept")}
         </Button>
         <Button
-          size="icon"
+          size="icon-sm"
           variant="ghost"
-          className="size-7 text-muted-foreground"
+          className="text-muted-foreground"
           onClick={decline}
           disabled={busy}
           aria-label={t("header.orgSwitcher.declineInvitationTo", { name })}

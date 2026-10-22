@@ -70,7 +70,7 @@ export function InlineMarksToolbar({
           appendTo={target}
           shouldShow={shouldShowMarks}
           options={MARKS_MENU_OPTIONS}
-          className="z-50 flex items-center gap-0.5 rounded-md border bg-popover p-0.5 shadow-md"
+          className="z-50 flex items-center gap-0.5 rounded-md bg-popover p-0.5 shadow-soft"
         >
           <ToolbarButton
             active={marks.bold}

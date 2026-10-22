@@ -117,10 +117,10 @@ export function PageJsonPanel({
           </div>
           <Button
             variant="ghost"
-            size="icon"
+            size="icon-sm"
             onClick={onClose}
             aria-label={t("sectionsEditor.pageJsonDialog.close")}
-            className="size-7 shrink-0"
+            className="shrink-0"
           >
             <X size={14} />
           </Button>

@@ -135,7 +135,7 @@ function RailOrgButton({
                     onSelect && "cursor-pointer",
                   )}
                 >
-                  <OrgIcon org={org} size="lg" rounded="rounded-xl" />
+                  <OrgIcon org={org} size="lg" />
                   {pinned && (
                     <span
                       aria-hidden
@@ -459,7 +459,7 @@ export function OrgRail({ onNavigate }: { onNavigate?: () => void } = {}) {
                 type="button"
                 aria-label={t("sidebar.picker.newOrganization")}
                 onClick={() => setCreatingOrg(true)}
-                className="flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                className="flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground focus-ring"
               >
                 <Plus size={18} />
               </button>

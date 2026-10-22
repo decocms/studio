@@ -114,7 +114,7 @@ function DownloadCard({
 }) {
   return (
     <div className="flex h-full w-full items-center justify-center">
-      <div className="flex flex-col items-center gap-3 rounded-xl border border-border bg-muted/30 px-10 py-8">
+      <div className="flex flex-col items-center gap-3 surface-inset px-10 py-8">
         <FileTypeIcon filename={file.filename} className="h-12 w-10" />
         <div className="flex flex-col items-center gap-0.5">
           <span className="text-sm font-medium text-foreground">

@@ -7,7 +7,7 @@ import {
 } from "./accordion.tsx";
 
 const meta = {
-  title: "Components/Accordion",
+  title: "Molecules/Accordion",
   component: Accordion,
   args: {
     type: "single",

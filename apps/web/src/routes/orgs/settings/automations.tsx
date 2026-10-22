@@ -94,7 +94,7 @@ function SettingsAutomationsPage() {
               />
             </div>
           ) : (
-            <div className="mt-6 rounded-xl border border-border overflow-hidden">
+            <div className="mt-6 flex flex-col divide-y divide-border overflow-hidden rounded-xl bg-card shadow-edge">
               {filtered.map((a) => (
                 <AutomationListRow
                   key={a.id}

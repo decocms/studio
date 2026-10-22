@@ -128,7 +128,7 @@ function ConnectionLeaderboardTable({
           <div
             key={connection.id}
             className={cn(
-              "flex items-center h-10 px-3 cursor-pointer hover:bg-accent/50 transition-colors",
+              "flex items-center h-10 px-3 cursor-pointer hover:bg-accent transition-colors",
               !isLast && "border-b border-border/50",
             )}
             onClick={() =>
@@ -339,7 +339,7 @@ function ToolAgentHeatmap({
           {topTools.map((tool) => (
             <Tooltip key={tool}>
               <TooltipTrigger asChild>
-                <div className="h-[80px] flex items-end justify-center pb-1 text-[10px] text-muted-foreground overflow-hidden [writing-mode:vertical-rl]">
+                <div className="h-[80px] flex items-end justify-center pb-1 text-2xs text-muted-foreground overflow-hidden [writing-mode:vertical-rl]">
                   {tool}
                 </div>
               </TooltipTrigger>
@@ -520,7 +520,7 @@ export function OverviewTabContent({
   const [heatmapMetric, setHeatmapMetric] = useState<HeatmapMetric>("calls");
 
   return (
-    <div className="flex flex-col gap-4 px-4 md:px-10 pt-2 pb-6 max-w-[1200px] mx-auto w-full overflow-auto">
+    <div className="flex flex-col gap-4 px-4 md:px-8 pt-2 pb-6 max-w-[1200px] mx-auto w-full overflow-auto">
       {hasError && (
         <Alert variant="destructive">
           <AlertTriangle />
@@ -574,7 +574,7 @@ export function OverviewTabContent({
             value={heatmapMetric}
             onValueChange={(v) => setHeatmapMetric(v as HeatmapMetric)}
           >
-            <SelectTrigger className="w-[140px]">
+            <SelectTrigger variant="pill" size="sm" className="w-[140px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -607,7 +607,7 @@ export function OverviewTabContent({
               value={latencyMetric}
               onValueChange={(v) => setLatencyMetric(v as "avg" | "p95")}
             >
-              <SelectTrigger className="w-[120px]">
+              <SelectTrigger variant="pill" size="sm" className="w-[120px]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -668,7 +668,7 @@ export function OverviewTabContent({
       {/* AI Usage section header */}
       <div className="flex items-center gap-3 pt-4">
         <div className="h-px flex-1 bg-border" />
-        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+        <span className="text-xs font-medium text-muted-foreground">
           {t("orgs.overview.aiUsage")}
         </span>
         <div className="h-px flex-1 bg-border" />
@@ -832,7 +832,7 @@ function SkeletonCard({ className }: { className?: string }) {
 
 export function OverviewTabSkeleton() {
   return (
-    <div className="flex flex-col gap-4 px-4 md:px-10 pt-8 md:pt-12 pb-6 max-w-[1200px] mx-auto w-full">
+    <div className="flex flex-col gap-4 px-4 md:px-8 pt-8 md:pt-12 pb-6 max-w-[1200px] mx-auto w-full">
       <SkeletonCard />
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <SkeletonCard />

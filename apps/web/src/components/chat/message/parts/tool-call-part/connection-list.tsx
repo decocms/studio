@@ -44,7 +44,7 @@ function ConnectionRow({ connection }: { connection: ConnectionEntity }) {
           params: { org: org.slug, appSlug: slug },
         })
       }
-      className="group flex w-full items-center gap-3 rounded-lg border border-border bg-card px-3 py-2.5 text-left transition-colors hover:bg-muted cursor-pointer aria-disabled:cursor-default aria-disabled:hover:bg-card"
+      className="group flex w-full items-center gap-3 rounded-lg border border-border bg-card px-3 py-2.5 text-left transition-colors hover:bg-accent cursor-pointer aria-disabled:cursor-default aria-disabled:hover:bg-card"
     >
       <IntegrationIcon
         icon={connection.icon}

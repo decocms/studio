@@ -62,6 +62,7 @@ import {
 } from "./sessionless-organization";
 import { buildWildcardPermission } from "./permission-wildcard";
 import {
+  activeOrganizations,
   isOrgArchived,
   ORG_ARCHIVED_ERROR,
 } from "@decocms/shared/organization/org-archived";
@@ -471,7 +472,7 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
             ? await listOrganizationsForUser(auth, userId)
             : []
           : await auth.api.listOrganizations({ headers });
-        return orgs.filter((org: (typeof orgs)[number]) => !isOrgArchived(org));
+        return activeOrganizations(orgs);
       },
 
       addMember: async (data) => {
