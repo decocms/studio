@@ -1126,6 +1126,16 @@ export class GitlabContentClient implements RepoContentClient {
         message: `GitLab cannot compare ${from}...${to} in ${this.repo.path}`,
       });
     }
+    if (
+      (json.commits !== undefined && !Array.isArray(json.commits)) ||
+      (json.diffs !== undefined && !Array.isArray(json.diffs))
+    ) {
+      throw new GitProviderError({
+        provider: "gitlab",
+        status: 502,
+        message: `GitLab /repository/compare returned a malformed payload for ${from}...${to}`,
+      });
+    }
     return { commits: json.commits ?? [], diffs: json.diffs ?? [] };
   }
 

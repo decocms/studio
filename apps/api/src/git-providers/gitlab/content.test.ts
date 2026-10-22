@@ -526,4 +526,23 @@ describe("GitlabContentClient's malformed-body handling", () => {
       client.searchBranches({ query: "main", limit: 10 }),
     ).rejects.toBeInstanceOf(GitProviderError);
   });
+
+  test("degrades a compare body whose diffs field is not an array into a GitProviderError", async () => {
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ commits: [], diffs: { error: true } }), {
+        status: 200,
+      })) as unknown as typeof fetch;
+
+    const client = new GitlabContentClient({
+      repo: { provider: "gitlab", host: "gitlab.com", path: "acme/site" },
+      tokenSource: {
+        kind: "oauth",
+        get: async () => ({ token: "t", kind: "oauth", expiresAt: null }),
+      },
+    });
+
+    await expect(client.compare("main", "feature")).rejects.toBeInstanceOf(
+      GitProviderError,
+    );
+  });
 });
