@@ -19,7 +19,7 @@ function Table({
       data-slot="table-container"
       className={cn(
         "w-full min-w-0",
-        variant === "card" && "bg-card rounded-xl card-shadow overflow-hidden",
+        variant === "card" && "bg-card rounded-xl shadow-edge overflow-hidden",
       )}
     >
       <table

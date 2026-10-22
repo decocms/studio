@@ -10,7 +10,7 @@ import {
 } from "./pagination.tsx";
 
 const meta = {
-  title: "Components/Pagination",
+  title: "Molecules/Pagination",
   component: Pagination,
 } satisfies Meta<typeof Pagination>;
 

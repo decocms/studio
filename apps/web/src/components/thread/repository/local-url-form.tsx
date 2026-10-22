@@ -35,7 +35,7 @@ export function LocalUrlForm({
         onKeyDown={(e) => {
           if (e.key === "Enter" && trimmed) submit();
         }}
-        className="h-8 w-full rounded-md border bg-transparent px-2 text-sm outline-none focus:ring-1 focus:ring-ring"
+        className="h-8 w-full rounded-md border bg-transparent px-2 text-sm focus-ring"
       />
       <div className="flex items-center justify-between gap-2">
         {url ? (

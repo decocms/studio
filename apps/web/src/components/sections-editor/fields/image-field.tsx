@@ -142,7 +142,7 @@ export function ImageField({
       <div
         {...dropProps}
         className={cn(
-          "group relative w-full overflow-hidden rounded-[var(--studio-surface-radius,var(--radius-xl))] border card-shadow border-border/60 bg-muted/30 transition",
+          "group relative w-full overflow-hidden rounded-[var(--studio-surface-radius,var(--radius-xl))] border shadow-edge border-border/60 bg-muted/30 transition",
           isDragging && "border-primary ring-2 ring-primary/30",
           isPending && "pointer-events-none opacity-60",
         )}
@@ -202,7 +202,7 @@ export function ImageField({
                   {fileName}
                 </span>
                 {ext && (
-                  <span className="shrink-0 rounded-[var(--studio-control-radius,var(--radius))] bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase text-muted-foreground">
+                  <span className="shrink-0 rounded-[var(--studio-control-radius,var(--radius))] bg-muted px-1.5 py-0.5 text-2xs font-medium uppercase text-muted-foreground">
                     {ext}
                   </span>
                 )}
@@ -214,7 +214,7 @@ export function ImageField({
             type="button"
             onClick={browse}
             className={cn(
-              "flex w-full flex-col items-center justify-center gap-2 text-sm text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+              "flex w-full flex-col items-center justify-center gap-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground",
               compact ? "h-28" : "h-40",
             )}
           >
@@ -234,7 +234,7 @@ export function ImageField({
 
         {isDragging && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-primary/10 backdrop-blur-[1px]">
-            <span className="rounded-md bg-background px-3 py-1.5 text-xs font-medium shadow">
+            <span className="rounded-md bg-background px-3 py-1.5 text-xs font-medium shadow-soft">
               {t("sectionsEditor.imageField.dropToUpload")}
             </span>
           </div>

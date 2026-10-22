@@ -86,7 +86,7 @@ function SkillPreviewContent({
         )}
         {variant === "dialog" ? (
           <DialogClose asChild>
-            <Button variant="ghost" size="icon" className="size-8 shrink-0">
+            <Button variant="ghost" size="icon" className="shrink-0">
               <X size={16} />
             </Button>
           </DialogClose>
@@ -94,7 +94,7 @@ function SkillPreviewContent({
           <Button
             variant="ghost"
             size="icon"
-            className="size-8 shrink-0"
+            className="shrink-0"
             onClick={onClose}
           >
             <X size={16} />
@@ -125,7 +125,7 @@ function SkillPreviewContent({
                   }
                   className={cn(
                     "flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-left",
-                    active ? "bg-background shadow-sm" : "hover:bg-muted/60",
+                    active ? "bg-background shadow-edge" : "hover:bg-accent",
                   )}
                 >
                   <FileTypeIcon

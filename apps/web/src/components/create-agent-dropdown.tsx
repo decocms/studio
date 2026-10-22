@@ -40,7 +40,7 @@ export function CreateAgentDropdownContent({
         <GitBranch01 className="size-3.5" />
         {t("common.createAgentDropdown.importFromGitHub")}
         {showBetaBadge && (
-          <span className="ml-auto text-[10px] font-medium text-muted-foreground bg-muted rounded px-1 py-0.5">
+          <span className="ml-auto text-2xs font-medium text-muted-foreground bg-muted rounded px-1 py-0.5">
             Beta
           </span>
         )}

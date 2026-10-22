@@ -73,7 +73,7 @@ export function SubscriptionUsage({
             : t("settings.subscriptionUsage.unavailable");
   return (
     <section
-      className="border-t border-border pt-4 space-y-4"
+      className="space-y-4 p-4"
       aria-label={t("settings.subscriptionUsage.title")}
     >
       <div className="flex items-center justify-between gap-3">

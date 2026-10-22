@@ -88,9 +88,9 @@ export function CreateSiteFlow({
     <>
       <div className="flex items-center h-12 border-b border-border px-4 pr-12 gap-3 shrink-0">
         <Button
-          size="icon"
+          size="icon-xs"
           variant="ghost"
-          className="size-6 -ml-1"
+          className="-ml-1"
           disabled={pending}
           onClick={back}
           aria-label={t("common.repositoryPicker.back")}

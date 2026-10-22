@@ -13,7 +13,6 @@ import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { adminFetch } from "@/lib/admin-fetch";
 import { authClient } from "@/lib/auth-client";
 import { formatDate } from "@/lib/format-time";
-import { getInitials } from "@/lib/get-initials";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t.ts";
 
@@ -74,7 +73,7 @@ export default function AdminUsersPage() {
         <div className="flex items-center gap-3">
           <Avatar
             url={user.image ?? undefined}
-            fallback={getInitials(user.name)}
+            fallback={user.name ?? "?"}
             shape="circle"
             size="sm"
           />

@@ -112,8 +112,8 @@ export function MultivariateFieldWrapper({
             <Button
               type="button"
               variant="ghost"
-              size="icon"
-              className="size-6 shrink-0 text-muted-foreground hover:text-foreground"
+              size="icon-xs"
+              className="shrink-0 text-muted-foreground hover:text-foreground"
               aria-label={t(
                 "sectionsEditor.multivariateFieldWrapper.addVariant",
               )}

@@ -77,9 +77,6 @@ export function DeleteOrganizationSection() {
     <>
       <SettingsSection
         title={t("settings.deleteOrganizationSection.dangerZone")}
-        description={t(
-          "settings.deleteOrganizationSection.irreversibleActionsDescription",
-        )}
       >
         <SettingsCard className="border-destructive/40">
           <SettingsCardItem
@@ -145,7 +142,7 @@ export function DeleteOrganizationSection() {
             <AlertDialogAction
               onClick={() => deleteMutation.mutate()}
               disabled={confirmName !== org.name || deleteMutation.isPending}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50"
+              variant="destructive"
             >
               {deleteMutation.isPending
                 ? t("settings.deleteOrganizationSection.deleting")

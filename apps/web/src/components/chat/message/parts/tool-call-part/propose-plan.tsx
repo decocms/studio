@@ -25,7 +25,7 @@ export function ProposePlanPart({ part }: ProposePlanPartProps) {
       {/* Header */}
       <div className="flex items-center gap-2">
         <BookOpen01 className="size-4 text-special shrink-0" />
-        <span className="text-[14px] font-medium text-foreground/80">
+        <span className="text-sm font-medium text-foreground/80">
           {t("chat.proposePlan.implementationPlan")}
         </span>
         {isApproved && (

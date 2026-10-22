@@ -414,7 +414,7 @@ function ToolDetailsAuthenticated({
 
   const instanceSelector = siblings.length > 1 && (
     <Select value={connectionId} onValueChange={onSelectInstance}>
-      <SelectTrigger className="h-8 w-auto min-w-[200px]">
+      <SelectTrigger size="sm" className="w-auto min-w-[200px]">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
@@ -438,7 +438,7 @@ function ToolDetailsAuthenticated({
   const parametersSection = (
     <div className="flex flex-col p-6 gap-4 overflow-auto">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-foreground uppercase tracking-wide">
+        <h2 className="text-sm font-semibold text-foreground">
           {t("details.tool.parameters")}
         </h2>
         {tool?.inputSchema?.required &&
@@ -538,22 +538,12 @@ function ToolDetailsAuthenticated({
       {/* Execute Button */}
       <div className="flex items-center gap-2 pt-2">
         {isExecuting ? (
-          <Button
-            size="sm"
-            variant="destructive"
-            className="h-8 gap-2"
-            onClick={handleClear}
-          >
+          <Button variant="destructive" className="gap-2" onClick={handleClear}>
             <StopCircle className="h-3.5 w-3.5" />
             {t("details.tool.cancel")}
           </Button>
         ) : (
-          <Button
-            size="sm"
-            variant="default"
-            className="h-8 gap-2"
-            onClick={handleExecute}
-          >
+          <Button variant="default" className="gap-2" onClick={handleExecute}>
             <Play className="h-3.5 w-3.5 fill-current" />
             {t("details.tool.executeTool")}
           </Button>
@@ -566,7 +556,7 @@ function ToolDetailsAuthenticated({
     <div className="flex flex-col @3xl:h-full @3xl:overflow-hidden">
       {/* Results Header */}
       <div className="flex items-center justify-between px-4 h-14 border-b border-border bg-background">
-        <h2 className="text-sm font-medium text-foreground uppercase tracking-wide">
+        <h2 className="text-sm font-medium text-foreground">
           {t("details.tool.result")}
         </h2>
 
@@ -614,7 +604,6 @@ function ToolDetailsAuthenticated({
                     <Button
                       size="icon"
                       variant={resultView === "ui" ? "secondary" : "ghost"}
-                      className="h-8 w-8"
                       onClick={() => setResultView("ui")}
                     >
                       <LayersTwo01 size={14} />
@@ -629,7 +618,6 @@ function ToolDetailsAuthenticated({
                     <Button
                       size="icon"
                       variant={resultView === "json" ? "secondary" : "ghost"}
-                      className="h-8 w-8"
                       onClick={() => setResultView("json")}
                     >
                       <Code01 size={14} />
@@ -710,8 +698,8 @@ function ToolDetailsAuthenticated({
             />
             <Button
               size="icon"
-              variant="ghost"
-              className="absolute top-4 right-4 h-8 w-8 bg-background/80 hover:bg-background border border-border shadow-sm"
+              variant="outline"
+              className="absolute top-4 right-4"
               onClick={() => {
                 navigator.clipboard.writeText(
                   JSON.stringify(executionResult, null, 2),
