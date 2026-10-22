@@ -161,7 +161,7 @@ import { extractDescriptionLinks } from "./description-links";
 import { TaskThreadSheet } from "./task-thread-sheet";
 import { taskKey } from "@decocms/shared/task-key";
 import { authClient } from "@/lib/auth-client";
-import { CommentThreadCard } from "./task-comments";
+import { CommentThreadCard, type CommentRun } from "./task-comments";
 import {
   humanFacing,
   type TaskBoardCommentThread,
@@ -2458,6 +2458,7 @@ function ActivitySection({
   const t = useT();
 
   const { data: activity } = useTaskBoardActivity(item.id);
+  const { org } = useProjectContext();
   const { data: session } = authClient.useSession();
   const memberByUserId = new Map(members.map((m) => [m.userId, m]));
 
@@ -2477,11 +2478,17 @@ function ActivitySection({
   );
   const messageCount = (threads: TaskBoardCommentThread[]) =>
     threads.reduce((sum, thread) => sum + 1 + thread.replies.length, 0);
+  // A run its comment thread shows is never listed on its own.
+  const unthreaded = (runs: TaskBoardItemThread[]) =>
+    runs.filter(
+      (run) =>
+        !comments.threads.some((thread) => thread.threadId === run.threadId),
+    ).length;
   const behindTheScenesCount =
     messageCount(comments.threads) -
     messageCount(humanThreads) +
-    liveRuns.length -
-    waitingRuns.length;
+    unthreaded(liveRuns) -
+    unthreaded(waitingRuns);
 
   /** A comment's author, resolved from the org's members; falls back to the id
    *  so a comment from a since-removed member still renders. The Super Agent
@@ -2520,10 +2527,50 @@ function ActivitySection({
     };
   };
   const shownThreads = behindTheScenes ? comments.threads : humanThreads;
+  /** The chat's own Stop: only the run's owner may, and a refusal says so. */
+  const stopRun = async (threadId: string) => {
+    const res = await fetch(`/api/${org.slug}/decopilot/cancel/${threadId}`, {
+      method: "POST",
+      credentials: "include",
+    });
+    if (res.ok) return;
+    const data = (await res.json().catch(() => ({}))) as { message?: string };
+    toast.error(data.message ?? t("taskBoard.agentThread.stopFailed"));
+    throw new Error(data.message ?? "stop failed");
+  };
+  // One run works a card at a time; this is it, if any.
+  const runningRun = liveRuns.find(
+    (run) => run.status === "in_progress" || run.status === "requires_action",
+  );
+  /** The run a thread's root comment started or was written by. */
+  const commentRun = (
+    threadId: string | null | undefined,
+  ): CommentRun | undefined => {
+    const run = sourceRun(threadId);
+    if (!run) return undefined;
+    return {
+      status:
+        run.status === "in_progress"
+          ? "running"
+          : run.status === "requires_action"
+            ? "waiting"
+            : run.failureKind === "cancelled"
+              ? "stopped"
+              : run.status === "failed" || run.status === "expired"
+                ? "failed"
+                : "done",
+      onOpen: openSourceRun(threadId),
+      onStop: () => stopRun(run.threadId),
+    };
+  };
   const threads: TaskComment[] = shownThreads.map((thread) => ({
     id: thread.id,
     author: authorOf(thread.authorId, thread.threadId),
-    onOpenThread: openSourceRun(thread.threadId),
+    run: commentRun(thread.threadId),
+    // The run's status opens it; no second button for the same thing.
+    onOpenThread: commentRun(thread.threadId)
+      ? undefined
+      : openSourceRun(thread.threadId),
     internal: thread.audience === "internal",
     body: thread.body,
     createdAt: thread.createdAt,
@@ -2551,13 +2598,19 @@ function ActivitySection({
         activity: a,
       }),
     ),
-    ...(behindTheScenes ? liveRuns : waitingRuns).map(
-      (thread): Ev => ({
-        kind: "thread",
-        at: new Date(thread.createdAt).getTime(),
-        thread,
-      }),
-    ),
+    // A run its comment thread already shows isn't listed again.
+    ...(behindTheScenes ? liveRuns : waitingRuns)
+      .filter(
+        (run) =>
+          !shownThreads.some((thread) => thread.threadId === run.threadId),
+      )
+      .map(
+        (thread): Ev => ({
+          kind: "thread",
+          at: new Date(thread.createdAt).getTime(),
+          thread,
+        }),
+      ),
     ...threads.map(
       (comment): Ev => ({
         kind: "comment",
@@ -2661,6 +2714,27 @@ function ActivitySection({
                     }
                   }}
                   onDelete={(commentId) => comments.remove.mutate(commentId)}
+                  onReply={async (body) => {
+                    try {
+                      await comments.post.mutateAsync({
+                        body,
+                        parentId: block.comment.id,
+                      });
+                      return true;
+                    } catch (error) {
+                      toast.error(
+                        error instanceof Error
+                          ? error.message
+                          : t("taskBoard.conversation.sendFailed"),
+                      );
+                      return false;
+                    }
+                  }}
+                  liveRunElsewhere={
+                    !!runningRun &&
+                    block.comment.run?.status !== "running" &&
+                    block.comment.run?.status !== "waiting"
+                  }
                 />
               );
             }
