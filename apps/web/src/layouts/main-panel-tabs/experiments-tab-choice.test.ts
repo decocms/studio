@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
-  awaitsV8Answer,
+  waitsForMainAnswer,
   editsBlocksDraft,
   experimentsRouteView,
   experimentsTabVisible,
@@ -115,14 +115,14 @@ describe("editsBlocksDraft", () => {
   });
 });
 
-describe("awaitsV8Answer", () => {
+describe("waitsForMainAnswer", () => {
   it("waits only while main is read on a site last found v8", () => {
-    expect(awaitsV8Answer("loading", true)).toBe(true);
+    expect(waitsForMainAnswer("loading", true)).toBe(true);
     // A v7 site (never marked) shows its tab at once, as on main.
-    expect(awaitsV8Answer("loading", false)).toBe(false);
-    expect(awaitsV8Answer("loading", undefined)).toBe(false);
+    expect(waitsForMainAnswer("loading", false)).toBe(false);
+    expect(waitsForMainAnswer("loading", undefined)).toBe(false);
     for (const answer of ["v8", "v7", "error"] as const) {
-      expect(awaitsV8Answer(answer, true)).toBe(false);
+      expect(waitsForMainAnswer(answer, true)).toBe(false);
     }
   });
 });

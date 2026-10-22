@@ -36,7 +36,7 @@ export function pickExperimentsTab(input: {
   lastFoundV8?: boolean;
 }): "v8" | "v2" | "legacy" | "loading" {
   if (editsBlocksDraft(input.siteMajor)) return "v8";
-  if (awaitsV8Answer(input.siteMajor, input.lastFoundV8)) return "loading";
+  if (waitsForMainAnswer(input.siteMajor, input.lastFoundV8)) return "loading";
   return v7ExperimentsTab(input.flagEnabled, input.ui);
 }
 
@@ -52,7 +52,7 @@ export function experimentsRouteView(input: {
   lastFoundV8: boolean;
 }): "tab" | "loading" | "settings" {
   if (experimentsTabVisible(input.orgEnabled, input.siteMajor)) return "tab";
-  if (awaitsV8Answer(input.siteMajor, input.lastFoundV8)) return "loading";
+  if (waitsForMainAnswer(input.siteMajor, input.lastFoundV8)) return "loading";
   return "settings";
 }
 
@@ -62,7 +62,7 @@ export function experimentsRouteView(input: {
  * v7 site shows its tab at once, as before. Calendar has no v7 form (a v7
  * site gets Settings), so it waits on every site while main is read.
  */
-export function awaitsV8Answer(
+export function waitsForMainAnswer(
   siteMajor: MainSchemaAnswer,
   lastFoundV8: boolean | undefined,
 ): boolean {
