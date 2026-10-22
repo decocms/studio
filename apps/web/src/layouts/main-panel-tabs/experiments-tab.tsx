@@ -3,7 +3,10 @@ import { Link, useSearch } from "@tanstack/react-router";
 import { useOrgFlag } from "@/hooks/use-organization-settings";
 import { LegacyExperimentsTab } from "./experiments-tab-legacy";
 import { pickExperimentsTab } from "./experiments-tab-choice";
-import { ExperimentsTabSkeleton, ExperimentsBlockTab } from "./experiments-block-tab";
+import {
+  ExperimentsTabSkeleton,
+  ExperimentsBlockTab,
+} from "./experiments-block-tab";
 import { useMainSchemaV8 } from "@/hooks/use-main-schema-v8";
 
 import {

@@ -134,6 +134,7 @@ export const experiments = {
   "experiments.v8.intro":
     "Your A/B tests are part of your site's content. Every change is saved in your draft and goes live when you publish.",
   "experiments.v8.new": "New A/B test",
+  "experiments.v8.allTests": "All A/B tests",
   "experiments.v8.empty.title": "No A/B tests yet",
   "experiments.v8.empty.desc":
     "Create one here, or from a variant in the site editor: choose the rule “A/B test” and type a name.",

@@ -1052,7 +1052,11 @@ export function summarizeContentChanges(
       continue;
     }
     const label = globalSectionLabel(name, nameShape ?? {});
-    const namedRule = namedRuleOfBlock(name, [headShape, toJson, fromJson], true);
+    const namedRule = namedRuleOfBlock(
+      name,
+      [headShape, toJson, fromJson],
+      true,
+    );
     blocks.push({
       ...common,
       kind: "block",

@@ -137,6 +137,7 @@ export const experiments = {
   "experiments.v8.intro":
     "Seus testes A/B fazem parte do conteúdo do site. Toda mudança fica salva no seu rascunho e vai ao ar quando você publica.",
   "experiments.v8.new": "Novo teste A/B",
+  "experiments.v8.allTests": "Todos os testes A/B",
   "experiments.v8.empty.title": "Nenhum teste A/B ainda",
   "experiments.v8.empty.desc":
     "Crie um aqui ou a partir de uma variante no editor do site: escolha a regra “Teste A/B” e digite um nome.",

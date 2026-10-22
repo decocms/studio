@@ -32,6 +32,7 @@ import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { ShareSplit } from "@/components/experiments/split-donut";
 import { Page } from "@/components/page";
+import { SiteDraftViewHeader } from "@/components/site-draft-bar/view-header";
 import {
   planNamedRuleCreate,
   planNamedRuleSet,
@@ -140,7 +141,11 @@ function GuideState(props: {
   );
 }
 
-export function ExperimentsBlockTab({ virtualMcpId }: { virtualMcpId: string }) {
+export function ExperimentsBlockTab({
+  virtualMcpId,
+}: {
+  virtualMcpId: string;
+}) {
   const t = useT();
   return (
     <SiteDraftView
@@ -270,12 +275,15 @@ function ExperimentsBlockReady({
 
   return (
     <Page>
-      <Page.Actions>
-        <Button size="sm" onClick={() => setCreating(true)}>
-          <Plus size={16} />
-          {t("experiments.v8.new")}
-        </Button>
-      </Page.Actions>
+      <SiteDraftViewHeader
+        title={t("experiments.title")}
+        actions={
+          <Button size="sm" onClick={() => setCreating(true)}>
+            <Plus size={16} />
+            {t("experiments.v8.new")}
+          </Button>
+        }
+      />
       <Page.Content>
         <Page.Container>
           <div className="flex flex-col gap-4">
@@ -504,18 +512,21 @@ function ExperimentBlockDetail({
         parent={{ label: t("experiments.title"), onSelect: onBack }}
         items={[{ key: "experiment", label: row.name }]}
       />
-      <Page.Actions>
-        <NamedRuleDeleteButton
-          kind="experiments"
-          name={row.name}
-          meta={meta}
-          pending={pending}
-          apply={apply}
-          reread={reread}
-          onDeleted={onDeleted}
-          onUndo={onUndo}
-        />
-      </Page.Actions>
+      <SiteDraftViewHeader
+        back={{ label: t("experiments.v8.allTests"), onClick: onBack }}
+        actions={
+          <NamedRuleDeleteButton
+            kind="experiments"
+            name={row.name}
+            meta={meta}
+            pending={pending}
+            apply={apply}
+            reread={reread}
+            onDeleted={onDeleted}
+            onUndo={onUndo}
+          />
+        }
+      />
       <Page.Content>
         <Page.Container>
           <div className="flex max-w-2xl flex-col gap-6">

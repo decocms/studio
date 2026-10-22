@@ -53,6 +53,7 @@ export function CalendarTab({ virtualMcpId }: { virtualMcpId: string }) {
             decofile={decofile}
             meta={meta}
             initialView="timeline"
+            title={t("common.mainPanelTabs.calendar")}
             onOpenUse={(row) =>
               openPanel("content", {
                 search: (prev) => ({ ...prev, ...contentSearchForUse(row) }),

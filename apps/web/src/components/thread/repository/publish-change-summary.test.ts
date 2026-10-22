@@ -491,9 +491,7 @@ describe("buildAutoNote", () => {
         [{ ...lazyLoaded("B"), section: variants("B") }],
       ),
     ).toBe("Updated Home Page (Hero)");
-    expect(note([v7Flag("A")], [v7Flag("B")])).toBe(
-      "Updated Home Page (Hero)",
-    );
+    expect(note([v7Flag("A")], [v7Flag("B")])).toBe("Updated Home Page (Hero)");
     // A section the author knows by name is still named next to them.
     expect(
       note(
@@ -539,7 +537,10 @@ describe("buildAutoNote", () => {
     ).toBe("Updated Home Page (Hero)");
     // A variant added to the list names its section.
     expect(
-      note([variant("Hero", "a")], [variant("Hero", "a"), variant("Promo", "x")]),
+      note(
+        [variant("Hero", "a")],
+        [variant("Hero", "a"), variant("Promo", "x")],
+      ),
     ).toBe("Updated Home Page (Promo, Hero)");
     // Variants that hold nothing by name leave the page alone.
     expect(
@@ -1167,10 +1168,16 @@ describe("the A/B tests and Campaign dates cards (v8)", () => {
   it("show on a removed block, from the side that was there", () => {
     const summary = summarizeContentChanges({
       changes: {
-        campaigns: { kind: "delete" as const, version: null, baseVersion: "v1" },
+        campaigns: {
+          kind: "delete" as const,
+          version: null,
+          baseVersion: "v1",
+        },
       },
       sides: {
-        entries: { campaigns: { before: { __resolveType: "calendar" }, after: null } },
+        entries: {
+          campaigns: { before: { __resolveType: "calendar" }, after: null },
+        },
         diagnostics: [],
       },
     });

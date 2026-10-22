@@ -15,7 +15,6 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import {
-  ArrowLeft,
   Calendar,
   ChevronLeft,
   ChevronRight,
@@ -35,6 +34,7 @@ import { ScrollArea } from "@decocms/ui/components/scroll-area.tsx";
 import { ViewModeToggle } from "@decocms/ui/components/view-mode-toggle.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
+import { SiteDraftViewHeader } from "@/components/site-draft-bar/view-header";
 import { formatCampaignWindow } from "@/components/sections-editor/format-matcher";
 import {
   planNamedRuleCreate,
@@ -155,6 +155,7 @@ export function CampaignsView({
   meta,
   onOpenUse,
   initialView = "list",
+  title,
 }: {
   orgSlug: string;
   virtualMcpId: string;
@@ -165,6 +166,11 @@ export function CampaignsView({
   onOpenUse: (row: NamedRuleUseRow) => void;
   /** The Calendar view opens on the timeline; the content browser, the list. */
   initialView?: ViewMode;
+  /**
+   * The heading: "Campaigns" in the content browser; the Calendar view names
+   * itself "Calendar", as its row and breadcrumb do.
+   */
+  title?: string;
 }) {
   const t = useT();
   const uses = useNamedRuleUses({
@@ -260,33 +266,33 @@ export function CampaignsView({
 
   return (
     <div className="flex h-full w-full flex-col">
-      <div className="flex h-12 shrink-0 items-center justify-between border-b px-4">
-        <h2 className="text-sm font-medium">
-          {t("sandbox.dateCampaigns.title")}
-        </h2>
-        <div className="flex items-center gap-2">
-          <ViewModeToggle<ViewMode>
-            value={view}
-            onValueChange={setView}
-            options={[
-              {
-                value: "list",
-                icon: <List />,
-                label: t("sandbox.dateCampaigns.listMode"),
-              },
-              {
-                value: "timeline",
-                icon: <Calendar />,
-                label: t("sandbox.dateCampaigns.timelineMode"),
-              },
-            ]}
-          />
-          <Button size="sm" onClick={() => setCreating(true)}>
-            <Plus size={16} />
-            {t("sandbox.dateCampaigns.new")}
-          </Button>
-        </div>
-      </div>
+      <SiteDraftViewHeader
+        title={title ?? t("sandbox.dateCampaigns.title")}
+        actions={
+          <>
+            <ViewModeToggle<ViewMode>
+              value={view}
+              onValueChange={setView}
+              options={[
+                {
+                  value: "list",
+                  icon: <List />,
+                  label: t("sandbox.dateCampaigns.listMode"),
+                },
+                {
+                  value: "timeline",
+                  icon: <Calendar />,
+                  label: t("sandbox.dateCampaigns.timelineMode"),
+                },
+              ]}
+            />
+            <Button size="sm" onClick={() => setCreating(true)}>
+              <Plus size={16} />
+              {t("sandbox.dateCampaigns.new")}
+            </Button>
+          </>
+        }
+      />
       <ScrollArea className="min-h-0 flex-1">
         <div className="flex flex-col gap-4 p-4">
           <p className="text-sm text-muted-foreground">
@@ -646,22 +652,24 @@ function CampaignDetail({
 
   return (
     <div className="flex h-full w-full flex-col">
-      <div className="flex h-12 shrink-0 items-center justify-between gap-2 border-b px-4">
-        <Button variant="ghost" size="sm" onClick={onBack}>
-          <ArrowLeft size={16} />
-          {t("sandbox.dateCampaigns.allCampaigns")}
-        </Button>
-        <NamedRuleDeleteButton
-          kind="campaigns"
-          name={row.name}
-          meta={meta}
-          pending={pending}
-          apply={apply}
-          reread={reread}
-          onDeleted={onDeleted}
-          onUndo={onUndo}
-        />
-      </div>
+      <SiteDraftViewHeader
+        back={{
+          label: t("sandbox.dateCampaigns.allCampaigns"),
+          onClick: onBack,
+        }}
+        actions={
+          <NamedRuleDeleteButton
+            kind="campaigns"
+            name={row.name}
+            meta={meta}
+            pending={pending}
+            apply={apply}
+            reread={reread}
+            onDeleted={onDeleted}
+            onUndo={onUndo}
+          />
+        }
+      />
       <ScrollArea className="min-h-0 flex-1">
         <div className="flex max-w-2xl flex-col gap-6 p-4">
           <div className="flex items-center gap-3">

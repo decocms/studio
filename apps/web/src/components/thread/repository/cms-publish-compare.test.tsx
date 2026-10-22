@@ -89,7 +89,9 @@ describe("the publish panel's Code tab", () => {
 
   test("a change with no page to show says so instead of showing code", () => {
     const view = render(
-      <PublishCodeTab value={false}>{compare(experiments, null)}</PublishCodeTab>,
+      <PublishCodeTab value={false}>
+        {compare(experiments, null)}
+      </PublishCodeTab>,
     );
     const body = within(view.container);
     expect(body.queryByRole("tab")).toBeNull();

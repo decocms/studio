@@ -226,33 +226,33 @@ export function PublishCompare({
     <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-muted/40">
       <div className="flex flex-wrap items-center gap-2 border-b bg-background px-4 py-2.5 max-md:pr-12">
         {canRender || showsCode ? (
-        <Tabs
-          value={view}
-          onValueChange={(next) => {
-            if (isCompareView(next)) setView(next);
-          }}
-        >
-          <TabsList className="h-8 w-auto" variant="pill">
-            {canRender ? (
-              <>
-                <TabsTrigger value="split" className="px-3 text-xs">
-                  {t("thread.publishCompare.sideBySide")}
+          <Tabs
+            value={view}
+            onValueChange={(next) => {
+              if (isCompareView(next)) setView(next);
+            }}
+          >
+            <TabsList className="h-8 w-auto" variant="pill">
+              {canRender ? (
+                <>
+                  <TabsTrigger value="split" className="px-3 text-xs">
+                    {t("thread.publishCompare.sideBySide")}
+                  </TabsTrigger>
+                  <TabsTrigger value="before" className="px-3 text-xs">
+                    {t("thread.publishCompare.before")}
+                  </TabsTrigger>
+                  <TabsTrigger value="after" className="px-3 text-xs">
+                    {t("thread.publishCompare.after")}
+                  </TabsTrigger>
+                </>
+              ) : null}
+              {showsCode ? (
+                <TabsTrigger value="code" className="px-3 text-xs">
+                  {t("thread.publishCompare.code")}
                 </TabsTrigger>
-                <TabsTrigger value="before" className="px-3 text-xs">
-                  {t("thread.publishCompare.before")}
-                </TabsTrigger>
-                <TabsTrigger value="after" className="px-3 text-xs">
-                  {t("thread.publishCompare.after")}
-                </TabsTrigger>
-              </>
-            ) : null}
-            {showsCode ? (
-              <TabsTrigger value="code" className="px-3 text-xs">
-                {t("thread.publishCompare.code")}
-              </TabsTrigger>
-            ) : null}
-          </TabsList>
-        </Tabs>
+              ) : null}
+            </TabsList>
+          </Tabs>
         ) : null}
         {canRender && view !== "code" ? (
           <>
