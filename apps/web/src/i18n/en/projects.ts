@@ -90,4 +90,6 @@ export const projects = {
   "projects.apps.automationsCaption": "Work that runs on a schedule",
   "projects.apps.experiments": "Experiments",
   "projects.apps.experimentsCaption": "A/B tests and their results",
+  "projects.apps.calendar": "Calendar",
+  "projects.apps.calendarCaption": "Campaigns and their dates",
 } as const;

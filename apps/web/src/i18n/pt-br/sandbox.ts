@@ -1312,6 +1312,16 @@ export const sandbox = {
   "sandbox.visualEditorPrompt.sendButton": "Enviar",
   "sandbox.collectionsSidebar.campaigns": "Campanhas",
   "sandbox.dateCampaigns.title": "Campanhas",
+  "sandbox.calendarView.noDraft.title":
+    "Escolha um rascunho para planejar suas campanhas",
+  "sandbox.calendarView.noDraft.desc":
+    "Suas campanhas ficam salvas em um rascunho, como qualquer outra edição. Escolha um rascunho na barra acima ou abra o editor do site para começar um.",
+  "sandbox.calendarView.openEditor": "Abrir o editor do site",
+  "sandbox.calendarView.loadFailed":
+    "Não foi possível carregar suas campanhas.",
+  "sandbox.calendarView.loadFailedHint":
+    "Nada foi alterado. Tente de novo em instantes.",
+  "sandbox.calendarView.tryAgain": "Tentar de novo",
   "sandbox.dateCampaigns.intro":
     "Toda data do seu site é uma campanha: uma variante com a regra “Campanha” aparece enquanto a campanha dela está rodando. As mudanças ficam salvas no seu rascunho e vão ao ar quando você publica.",
   "sandbox.dateCampaigns.new": "Nova campanha",

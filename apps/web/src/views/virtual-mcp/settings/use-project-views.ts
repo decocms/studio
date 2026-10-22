@@ -421,6 +421,7 @@ export function useProjectViews({
     cdn: t("common.mainPanelTabs.cdn"),
     automations: t("virtualMcp.layoutTabContent.automations"),
     experiments: t("experiments.title"),
+    calendar: t("common.mainPanelTabs.calendar"),
   };
 
   /**

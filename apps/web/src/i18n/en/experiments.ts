@@ -148,10 +148,14 @@ export const experiments = {
   "experiments.v8.removedTitle": "Removed in your draft",
   "experiments.v8.removedHint":
     "These tests stop when you publish. To keep one, create it again with the same name.",
-  "experiments.v8.shareLabel": "Visitors who see the test (%)",
+  "experiments.v8.shareLabel": "Visitors who see the test",
+  "experiments.v8.shareTitle": "Who sees the test",
+  "experiments.v8.split.inTest": "See the test",
+  "experiments.v8.split.rest": "See the page as it is",
+  "experiments.v8.split.center": "see the test",
+  "experiments.v8.split.reset": "Back to {share}%",
   "experiments.v8.shareHint":
-    "0 turns the test off, 100 shows it to everyone. Each visitor keeps the side they got.",
-  "experiments.v8.shareInvalid": "Use a whole number from 0 to 100.",
+    "Drag the slider, or use the arrow keys. 0 turns the test off, 100 shows it to everyone. Each visitor keeps the side they got.",
   "experiments.v8.publishedShare": "Published: {share}% of visitors",
   "experiments.v8.save": "Save",
   "experiments.v8.turnOff": "Turn off",
@@ -188,7 +192,7 @@ export const experiments = {
     "It isn't a list of A/B tests, so tests can't be added yet. Rename that block in the site editor, then come back here.",
   "experiments.v8.noDraft.title": "Open the site editor to start a draft",
   "experiments.v8.noDraft.desc":
-    "Your tests are saved in a draft, like any other edit. Open the site editor once, then come back here.",
+    "Your tests are saved in a draft, like any other edit. Pick a draft in the bar above, or open the site editor to start one.",
   "experiments.v8.openEditor": "Open the site editor",
   "experiments.v8.loadFailed": "Couldn't load your tests.",
   "experiments.v8.tryAgain": "Try again",

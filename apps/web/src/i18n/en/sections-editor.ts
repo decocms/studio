@@ -89,8 +89,8 @@ export const sectionsEditor = {
   "sectionsEditor.namedRulePicker.newTestTitle": "New A/B test",
   "sectionsEditor.namedRulePicker.newCampaignTitle": "New campaign",
   "sectionsEditor.namedRulePicker.nameLabel": "Name",
-  "sectionsEditor.namedRulePicker.shareLabel":
-    "Visitors who see this variant (%)",
+  "sectionsEditor.namedRulePicker.shareLabel": "Visitors who see this variant",
+  "sectionsEditor.namedRulePicker.shareTitle": "Who sees this variant",
   "sectionsEditor.namedRulePicker.shareHint":
     "0 keeps the test off, 100 shows it to everyone. You can change it later in Experiments.",
   "sectionsEditor.namedRulePicker.startLabel": "Starts",
@@ -102,8 +102,6 @@ export const sectionsEditor = {
     "That name is already in use. Pick it from the list instead.",
   "sectionsEditor.namedRulePicker.nameReserved":
     "Names can't start with two underscores.",
-  "sectionsEditor.namedRulePicker.shareInvalid":
-    "Use a whole number from 0 to 100.",
   "sectionsEditor.namedRulePicker.endBeforeStart":
     "The end needs to be after the start.",
   "sectionsEditor.namedRulePicker.createAndUse": "Create and use",

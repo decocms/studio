@@ -10,6 +10,7 @@ import {
 import { Input } from "@decocms/ui/components/input.tsx";
 import { Label } from "@decocms/ui/components/label.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
+import { ShareSplit } from "@/components/experiments/split-donut";
 import { useT } from "@/i18n/use-t.ts";
 import { MatcherIcon } from "./matcher-icons";
 import type { CampaignWindow, NamedRuleKind } from "./named-rules";
@@ -18,7 +19,6 @@ import {
   newNameProblem,
   type NamedRulePick,
   type NamedRulePickerKind,
-  parseShareInput,
   windowFromInputs,
 } from "./named-rule-picker";
 
@@ -283,18 +283,15 @@ export function NamedRuleCreateForm({
   const t = useT();
   const tests = kind === "experiments";
   const [name, setName] = useState(initialName);
-  const [share, setShare] = useState("50");
+  const [share, setShare] = useState(50);
   const [start, setStart] = useState(isoToLocalInput(prefill?.start));
   const [end, setEnd] = useState(isoToLocalInput(prefill?.end));
   const [tried, setTried] = useState(false);
 
   const nameProblem = newNameProblem(name, existingNames);
-  const shareValue = parseShareInput(share);
   const window = windowFromInputs(start, end);
   const valueProblem = tests
-    ? shareValue === null
-      ? t("sectionsEditor.namedRulePicker.shareInvalid")
-      : null
+    ? null
     : "problem" in window
       ? t("sectionsEditor.namedRulePicker.endBeforeStart")
       : null;
@@ -315,7 +312,7 @@ export function NamedRuleCreateForm({
       onSubmit({
         kind: "experiments",
         name: trimmed,
-        create: { share: shareValue! },
+        create: { share },
       });
     } else if ("window" in window) {
       onSubmit({
@@ -360,15 +357,17 @@ export function NamedRuleCreateForm({
       </div>
       {tests ? (
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="named-rule-share">
-            {t("sectionsEditor.namedRulePicker.shareLabel")}
-          </Label>
-          <Input
-            id="named-rule-share"
-            inputMode="numeric"
+          <span className="text-sm font-medium">
+            {t("sectionsEditor.namedRulePicker.shareTitle")}
+          </span>
+          <ShareSplit
+            compact
             value={share}
-            onChange={(e) => setShare(e.target.value)}
-            className="w-24"
+            onChange={setShare}
+            sliderLabel={t("sectionsEditor.namedRulePicker.shareLabel")}
+            inTestLabel={t("experiments.v8.split.inTest")}
+            restLabel={t("experiments.v8.split.rest")}
+            centerLabel={t("experiments.v8.split.center")}
           />
           <p className="text-xs text-muted-foreground">
             {t("sectionsEditor.namedRulePicker.shareHint")}

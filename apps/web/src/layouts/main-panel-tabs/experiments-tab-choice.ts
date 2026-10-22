@@ -39,3 +39,12 @@ export function experimentsTabVisible(
 ): boolean {
   return orgEnabled || siteMajor === "v8" || siteMajor === "error";
 }
+
+/**
+ * Whether the site's tests and campaigns are edits to a Blocks (v8) draft:
+ * the Calendar view exists, and Experiments and Calendar wear the site
+ * editor's draft bar. "error" is a site last found v8, as above.
+ */
+export function editsBlocksDraft(siteMajor: MainSchemaAnswer): boolean {
+  return siteMajor === "v8" || siteMajor === "error";
+}

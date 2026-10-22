@@ -11,6 +11,7 @@ import {
   ClockRewind,
   BarChartSquare02,
   Beaker02,
+  Calendar,
   CheckDone01,
   Globe02,
   Image01,
@@ -148,6 +149,10 @@ export function ProjectNav({
     experiments: {
       label: t("experiments.title"),
       icon: <Beaker02 size={16} />,
+    },
+    calendar: {
+      label: t("common.mainPanelTabs.calendar"),
+      icon: <Calendar size={16} />,
     },
   };
   for (const viewId of PROJECT_NATIVE_VIEW_IDS) {

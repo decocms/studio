@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
+  editsBlocksDraft,
   experimentsTabVisible,
   pickExperimentsTab,
 } from "./experiments-tab-choice";
@@ -61,5 +62,17 @@ describe("experimentsTabVisible", () => {
   it("shows the tab on every v8 site", () => {
     expect(experimentsTabVisible(false, "v8")).toBe(true);
     expect(experimentsTabVisible(false, "error")).toBe(true);
+  });
+});
+
+describe("editsBlocksDraft", () => {
+  it("is every Blocks (v8) site, including one last found v8", () => {
+    expect(editsBlocksDraft("v8")).toBe(true);
+    expect(editsBlocksDraft("error")).toBe(true);
+  });
+
+  it("is no other site, and waits while main's schema is read", () => {
+    expect(editsBlocksDraft("v7")).toBe(false);
+    expect(editsBlocksDraft("loading")).toBe(false);
   });
 });

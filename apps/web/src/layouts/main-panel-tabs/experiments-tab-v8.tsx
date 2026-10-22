@@ -29,8 +29,8 @@ import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { Label } from "@decocms/ui/components/label.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
-import { Slider } from "@decocms/ui/components/slider.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
+import { ShareSplit } from "@/components/experiments/split-donut";
 import { Page } from "@/components/page";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import {
@@ -38,10 +38,7 @@ import {
   planNamedRuleSet,
 } from "@/components/sections-editor/named-rule-edits";
 import { NamedRuleDeleteButton } from "@/components/sections-editor/named-rule-delete";
-import {
-  newNameProblem,
-  parseShareInput,
-} from "@/components/sections-editor/named-rule-picker";
+import { newNameProblem } from "@/components/sections-editor/named-rule-picker";
 import { NamedRuleCreateForm } from "@/components/sections-editor/named-rule-step";
 import {
   MissingNamedRuleUses,
@@ -518,10 +515,9 @@ function ExperimentDetailV8({
   onUndo: (change: NamedRuleChange) => void;
 }) {
   const t = useT();
-  const [share, setShare] = useState(String(row.share));
+  const [share, setShare] = useState(row.share);
   const [name, setName] = useState(row.name);
-  const shareValue = parseShareInput(share);
-  const shareDirty = shareValue !== null && shareValue !== row.share;
+  const shareDirty = share !== row.share;
   const renamable = canRenameExperiment(row.share);
   const block = readNamedRuleBlock(decofile, "experiments");
   const others =
@@ -544,7 +540,7 @@ function ExperimentDetailV8({
   const setTo = (value: number) =>
     void onSave(
       planNamedRuleSet(decofile, "experiments", row.name, value),
-    ).then((ok) => ok && setShare(String(value)));
+    ).then((ok) => ok && setShare(value));
 
   /** Planned from the draft as stored now, so every use gets the new name. */
   const rename = async () => {
@@ -594,39 +590,39 @@ function ExperimentDetailV8({
             </div>
 
             <section className="flex flex-col gap-2">
-              <Label htmlFor="experiment-share">
-                {t("experiments.v8.shareLabel")}
-              </Label>
-              <div className="flex items-center gap-3">
-                <Slider
-                  className="max-w-xs"
-                  min={0}
-                  max={100}
-                  step={1}
-                  value={[shareValue ?? row.share]}
-                  onValueChange={([value]) => setShare(String(value ?? 0))}
-                  aria-label={t("experiments.v8.shareLabel")}
-                />
-                <Input
-                  id="experiment-share"
-                  inputMode="numeric"
-                  className="w-20"
-                  value={share}
-                  onChange={(e) => setShare(e.target.value)}
-                />
+              <h3 className="text-sm font-medium">
+                {t("experiments.v8.shareTitle")}
+              </h3>
+              <ShareSplit
+                value={share}
+                onChange={setShare}
+                sliderLabel={t("experiments.v8.shareLabel")}
+                inTestLabel={t("experiments.v8.split.inTest")}
+                restLabel={t("experiments.v8.split.rest")}
+                centerLabel={t("experiments.v8.split.center")}
+                disabled={pending}
+              />
+              <div className="flex items-center gap-2">
                 <Button
                   size="sm"
                   disabled={!shareDirty || pending}
-                  onClick={() => shareValue !== null && setTo(shareValue)}
+                  onClick={() => setTo(share)}
                 >
                   {t("experiments.v8.save")}
                 </Button>
+                {shareDirty && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={pending}
+                    onClick={() => setShare(row.share)}
+                  >
+                    {t("experiments.v8.split.reset", {
+                      share: String(row.share),
+                    })}
+                  </Button>
+                )}
               </div>
-              {shareValue === null && (
-                <p className="text-xs text-destructive">
-                  {t("experiments.v8.shareInvalid")}
-                </p>
-              )}
               <p className="text-xs text-muted-foreground">
                 {t("experiments.v8.shareHint")}
               </p>

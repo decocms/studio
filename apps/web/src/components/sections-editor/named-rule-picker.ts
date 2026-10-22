@@ -105,14 +105,6 @@ export function newNameProblem(
   return null;
 }
 
-/** A share typed by the editor: a whole number from 0 to 100, or nothing. */
-export function parseShareInput(text: string): number | null {
-  const trimmed = text.trim();
-  if (!/^\d{1,3}$/.test(trimmed)) return null;
-  const value = Number(trimmed);
-  return value >= 0 && value <= 100 ? value : null;
-}
-
 const pad = (n: number) => String(Math.abs(n)).padStart(2, "0");
 
 /**

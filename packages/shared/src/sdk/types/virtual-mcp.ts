@@ -153,6 +153,7 @@ export const VirtualMcpSidebarViewSchema = z.enum([
   "cdn",
   "automations",
   "experiments",
+  "calendar",
 ]);
 
 export type VirtualMcpSidebarView = z.infer<typeof VirtualMcpSidebarViewSchema>;
@@ -227,7 +228,7 @@ export const VirtualMcpUILayoutSchema = z.object({
    *  top-level metadata field. */
   sidebarViews: z
     .array(VirtualMcpSidebarViewSchema)
-    .max(10)
+    .max(VirtualMcpSidebarViewSchema.options.length)
     .nullable()
     .optional()
     .describe(
@@ -813,7 +814,7 @@ const VirtualMcpMetadataFields = {
     .describe("UI customization settings"),
   sidebarViews: z
     .array(VirtualMcpSidebarViewSchema)
-    .max(10)
+    .max(VirtualMcpSidebarViewSchema.options.length)
     .nullable()
     .optional()
     .describe(

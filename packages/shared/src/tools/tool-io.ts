@@ -3704,6 +3704,7 @@ export interface StudioToolIO {
                             | "cdn"
                             | "automations"
                             | "experiments"
+                            | "calendar"
                           )[]
                         | null
                         | undefined;
@@ -3764,6 +3765,7 @@ export interface StudioToolIO {
                 | "cdn"
                 | "automations"
                 | "experiments"
+                | "calendar"
               )[]
             | null
             | undefined;
@@ -3973,6 +3975,7 @@ export interface StudioToolIO {
                                 | "cdn"
                                 | "automations"
                                 | "experiments"
+                                | "calendar"
                               )[]
                             | null
                             | undefined;
@@ -4033,6 +4036,7 @@ export interface StudioToolIO {
                     | "cdn"
                     | "automations"
                     | "experiments"
+                    | "calendar"
                   )[]
                 | null
                 | undefined;
@@ -4165,6 +4169,7 @@ export interface StudioToolIO {
                             | "cdn"
                             | "automations"
                             | "experiments"
+                            | "calendar"
                           )[]
                         | null
                         | undefined;
@@ -4225,6 +4230,7 @@ export interface StudioToolIO {
                 | "cdn"
                 | "automations"
                 | "experiments"
+                | "calendar"
               )[]
             | null
             | undefined;
@@ -4395,6 +4401,7 @@ export interface StudioToolIO {
                             | "cdn"
                             | "automations"
                             | "experiments"
+                            | "calendar"
                           )[]
                         | null
                         | undefined;
@@ -4455,6 +4462,7 @@ export interface StudioToolIO {
                 | "cdn"
                 | "automations"
                 | "experiments"
+                | "calendar"
               )[]
             | null
             | undefined;
@@ -4616,6 +4624,7 @@ export interface StudioToolIO {
                             | "cdn"
                             | "automations"
                             | "experiments"
+                            | "calendar"
                           )[]
                         | null
                         | undefined;
@@ -4676,6 +4685,7 @@ export interface StudioToolIO {
                 | "cdn"
                 | "automations"
                 | "experiments"
+                | "calendar"
               )[]
             | null
             | undefined;
@@ -4838,6 +4848,7 @@ export interface StudioToolIO {
                                 | "cdn"
                                 | "automations"
                                 | "experiments"
+                                | "calendar"
                               )[]
                             | null
                             | undefined;
@@ -4898,6 +4909,7 @@ export interface StudioToolIO {
                     | "cdn"
                     | "automations"
                     | "experiments"
+                    | "calendar"
                   )[]
                 | null
                 | undefined;
@@ -5038,6 +5050,7 @@ export interface StudioToolIO {
                             | "cdn"
                             | "automations"
                             | "experiments"
+                            | "calendar"
                           )[]
                         | null
                         | undefined;
@@ -5098,6 +5111,7 @@ export interface StudioToolIO {
                 | "cdn"
                 | "automations"
                 | "experiments"
+                | "calendar"
               )[]
             | null
             | undefined;
@@ -5257,6 +5271,7 @@ export interface StudioToolIO {
                             | "cdn"
                             | "automations"
                             | "experiments"
+                            | "calendar"
                           )[]
                         | null
                         | undefined;
@@ -5317,6 +5332,7 @@ export interface StudioToolIO {
                 | "cdn"
                 | "automations"
                 | "experiments"
+                | "calendar"
               )[]
             | null
             | undefined;
@@ -6892,6 +6908,7 @@ export interface StudioToolIO {
                             | "cdn"
                             | "automations"
                             | "experiments"
+                            | "calendar"
                           )[]
                         | null
                         | undefined;
@@ -6952,6 +6969,7 @@ export interface StudioToolIO {
                 | "cdn"
                 | "automations"
                 | "experiments"
+                | "calendar"
               )[]
             | null
             | undefined;

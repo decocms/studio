@@ -1282,6 +1282,14 @@ export const sandbox = {
   "sandbox.visualEditorPrompt.sendButton": "Send",
   "sandbox.collectionsSidebar.campaigns": "Campaigns",
   "sandbox.dateCampaigns.title": "Campaigns",
+  "sandbox.calendarView.noDraft.title": "Pick a draft to plan your campaigns",
+  "sandbox.calendarView.noDraft.desc":
+    "Your campaigns are saved in a draft, like any other edit. Pick a draft in the bar above, or open the site editor to start one.",
+  "sandbox.calendarView.openEditor": "Open the site editor",
+  "sandbox.calendarView.loadFailed": "Couldn't load your campaigns.",
+  "sandbox.calendarView.loadFailedHint":
+    "Nothing was changed. Try again in a moment.",
+  "sandbox.calendarView.tryAgain": "Try again",
   "sandbox.dateCampaigns.intro":
     "Every date on your site is a campaign: a variant with the rule “Campaign” shows while its campaign runs. Changes are saved in your draft and go live when you publish.",
   "sandbox.dateCampaigns.new": "New campaign",

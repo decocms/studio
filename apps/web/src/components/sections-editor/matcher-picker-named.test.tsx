@@ -405,18 +405,43 @@ describe("creating a name", () => {
       />,
     );
     const body = within(document.body);
-    expect(
-      (
-        body.getByLabelText(
-          "Visitors who see this variant (%)",
-        ) as HTMLInputElement
-      ).value,
-    ).toBe("50");
+    // Moved with a slider over the donut, never typed.
+    const slider = body.getByRole("slider", {
+      name: "Visitors who see this variant",
+    });
+    expect(slider.getAttribute("aria-valuenow")).toBe("50");
+    expect(body.queryByRole("spinbutton")).toBeNull();
     fireEvent.click(body.getByRole("button", { name: "Create and use" }));
     expect(onSubmit).toHaveBeenCalledWith({
       kind: "experiments",
       name: "cta-test",
       create: { share: 50 },
+    });
+  });
+
+  test("the slider sets the new test's share", () => {
+    const onSubmit = mock((_pick: NamedRulePick) => {});
+    render(
+      <NamedRuleCreateForm
+        kind="experiments"
+        initialName="cta-test"
+        existingNames={[]}
+        onBack={() => {}}
+        onSubmit={onSubmit}
+      />,
+    );
+    const body = within(document.body);
+    const slider = body.getByRole("slider", {
+      name: "Visitors who see this variant",
+    });
+    fireEvent.keyDown(slider, { key: "PageDown" });
+    fireEvent.keyDown(slider, { key: "ArrowLeft" });
+    expect(body.getByTestId("share-split-in").textContent).toBe("39%");
+    fireEvent.click(body.getByRole("button", { name: "Create and use" }));
+    expect(onSubmit).toHaveBeenCalledWith({
+      kind: "experiments",
+      name: "cta-test",
+      create: { share: 39 },
     });
   });
 

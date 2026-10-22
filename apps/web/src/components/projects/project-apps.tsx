@@ -9,6 +9,7 @@ import {
   ClockRewind,
   BarChartSquare02,
   BezierCurve02,
+  Calendar,
   FileSearch02,
   FlipBackward,
   Image01,
@@ -127,6 +128,13 @@ const APPS: Record<
     to: PROJECT_ROUTE.experiments,
     tone: "bg-chart-1/15 text-chart-1",
   },
+  calendar: {
+    labelKey: "projects.apps.calendar",
+    captionKey: "projects.apps.calendarCaption",
+    Icon: Calendar,
+    to: PROJECT_ROUTE.calendar,
+    tone: "bg-chart-5/15 text-chart-5",
+  },
 };
 
 /** Exported so the rail draws a recent app (`lib/recent-apps.ts`) with the same
@@ -242,7 +250,10 @@ function ProjectAppTilesBody({
   const apps = launchableApps(project, native ?? undefined).filter(
     (id) =>
       /* Both need a repo, as in the sidebar's presence rules. */
-      (id !== "site-editor" && id !== "experiments" && id !== "releases") ||
+      (id !== "site-editor" &&
+        id !== "experiments" &&
+        id !== "calendar" &&
+        id !== "releases") ||
       hasSource,
   );
   /** The project's pinned app views, the same ones the scoped sidebar lists. */
