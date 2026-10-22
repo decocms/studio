@@ -72,7 +72,7 @@ export function PendingInviteScreen({
       {orgLogo ? (
         <Avatar
           url={orgLogo}
-          fallback={orgName.charAt(0).toUpperCase()}
+          fallback={orgName}
           shape="square"
           size="base"
           className="h-12 w-12"

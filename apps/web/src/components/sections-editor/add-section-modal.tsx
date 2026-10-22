@@ -208,8 +208,8 @@ function SectionGalleryCard({
       type="button"
       onClick={onSelect}
       className={cn(
-        "group flex flex-col overflow-hidden rounded-[var(--studio-surface-radius,var(--radius-lg))] border bg-card text-left transition-colors card-shadow",
-        "hover:border-primary/40 hover:bg-accent/30",
+        "group flex flex-col overflow-hidden rounded-[var(--studio-surface-radius,var(--radius-lg))] border bg-card text-left transition-colors shadow-edge",
+        "hover:border-primary/40 hover:bg-accent",
         entry.isSavedBlock &&
           "border-global-section/35 hover:bg-global-section/8",
       )}

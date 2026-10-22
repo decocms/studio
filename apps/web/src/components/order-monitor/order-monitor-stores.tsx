@@ -43,7 +43,18 @@ function StoreRow({
   const t = useT();
   const openTasks = store.rules.flatMap((r) => (r.task ? [r.task] : []));
   return (
-    <TableRow className="cursor-pointer" onClick={onSelect}>
+    <TableRow
+      className="cursor-pointer"
+      role="button"
+      tabIndex={0}
+      onClick={onSelect}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onSelect();
+        }
+      }}
+    >
       <TableCell className="font-medium text-foreground">
         {store.title}
       </TableCell>

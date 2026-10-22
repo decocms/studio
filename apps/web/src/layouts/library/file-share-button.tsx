@@ -166,8 +166,8 @@ function ShareControls({
       </code>
       <Button
         variant="ghost"
-        size="icon"
-        className="size-6 shrink-0"
+        size="icon-xs"
+        className="shrink-0"
         onClick={handleCopy}
         aria-label={t("library.fileShareButton.copyLink")}
       >
@@ -209,7 +209,7 @@ function ShareControls({
 
   return (
     <div className="flex w-full min-w-0 flex-col gap-3">
-      <div className="grid grid-cols-3 gap-1 rounded-lg bg-muted p-1">
+      <div className="surface-inset grid grid-cols-3 gap-1 p-1">
         {MODES.map(({ mode, labelKey, Icon }) => (
           <button
             key={mode}
@@ -219,7 +219,7 @@ function ShareControls({
             className={cn(
               "flex flex-col items-center gap-1 rounded-lg px-2 py-2 text-xs font-medium transition-colors disabled:opacity-60",
               activeMode === mode
-                ? "bg-background text-foreground shadow-sm"
+                ? "bg-background text-foreground shadow-edge"
                 : "text-muted-foreground hover:text-foreground",
             )}
           >

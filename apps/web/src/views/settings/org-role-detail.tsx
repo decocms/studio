@@ -27,7 +27,6 @@ import { ToolSetSelector } from "@/components/tool-set-selector.tsx";
 import { useMembers } from "@/hooks/use-members";
 
 import { useOrgAuthClient } from "@/hooks/use-org-auth-client";
-import { getInitials } from "@/lib/get-initials";
 import { KEYS } from "@/lib/query-keys";
 import { track } from "@/lib/posthog-client";
 import { getRoleColor, getRoleDotColor } from "@/lib/role-color";
@@ -410,7 +409,7 @@ function SubProviderGroup({
   return (
     <div className="border border-border rounded-lg overflow-hidden bg-card">
       <div
-        className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-muted/50 cursor-pointer"
+        className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-accent cursor-pointer"
         onClick={() => setExpanded((e) => !e)}
       >
         <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -424,7 +423,7 @@ function SubProviderGroup({
           </span>
         </div>
         <div className="flex items-center gap-3 shrink-0">
-          <Badge variant="secondary" className="text-xs text-muted-foreground">
+          <Badge variant="muted">
             {t("settings.orgRoleDetail.enabledCount", {
               enabledCount,
               total: models.length,
@@ -457,7 +456,7 @@ function SubProviderGroup({
                 key={model.id}
                 className={cn(
                   "flex items-center justify-between gap-3 px-4 py-3 border-b border-border last:border-b-0",
-                  !readOnly && "hover:bg-muted/50 cursor-pointer",
+                  !readOnly && "hover:bg-accent cursor-pointer",
                 )}
                 onClick={handleToggle}
               >
@@ -499,7 +498,7 @@ function SubProviderGroup({
           {hasMore && (
             <button
               type="button"
-              className="w-full px-4 py-2 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+              className="w-full px-4 py-2 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
               onClick={() => setVisibleCount((c) => c + MODELS_PAGE_SIZE)}
             >
               {t("settings.orgRoleDetail.showMore", {
@@ -664,7 +663,7 @@ function ModelsPermissionsTab({
       <div
         className={cn(
           "flex items-center justify-between px-4 py-3 rounded-lg border border-border bg-card",
-          !readOnly && "hover:bg-muted/50 cursor-pointer",
+          !readOnly && "hover:bg-accent cursor-pointer",
         )}
         onClick={() => {
           if (readOnly) return;
@@ -799,7 +798,7 @@ function ProjectsPermissionsTab({
       <div
         className={cn(
           "flex items-center justify-between px-4 py-3 rounded-lg border border-border bg-card",
-          !readOnly && "hover:bg-muted/50 cursor-pointer",
+          !readOnly && "hover:bg-accent cursor-pointer",
         )}
         onClick={() => {
           if (readOnly) return;
@@ -863,7 +862,7 @@ function ProjectsPermissionsTab({
                   "flex items-center gap-3 px-3 py-2 rounded-lg border border-transparent",
                   readOnly
                     ? "cursor-default"
-                    : "hover:bg-muted/50 cursor-pointer",
+                    : "hover:bg-accent cursor-pointer",
                 )}
               >
                 <Checkbox
@@ -931,7 +930,7 @@ function ConnectionsPermissionsTab({
       <div
         className={cn(
           "flex items-center justify-between px-4 py-3 border-b border-border",
-          !readOnly && "hover:bg-muted/50 cursor-pointer",
+          !readOnly && "hover:bg-accent cursor-pointer",
         )}
         onClick={() => {
           if (readOnly) return;
@@ -960,9 +959,7 @@ function ConnectionsPermissionsTab({
               key={connection.id}
               className={cn(
                 "flex items-center gap-3 px-3 py-2 rounded-lg border border-transparent",
-                readOnly
-                  ? "cursor-default"
-                  : "hover:bg-muted/50 cursor-pointer",
+                readOnly ? "cursor-default" : "hover:bg-accent cursor-pointer",
               )}
             >
               <Checkbox
@@ -1069,7 +1066,7 @@ function AddMemberDialog({
                         "flex items-center gap-3 p-2 rounded-lg",
                         !eligible || alreadyInRole
                           ? "opacity-50 cursor-not-allowed"
-                          : "cursor-pointer hover:bg-muted/50",
+                          : "cursor-pointer hover:bg-accent",
                       )}
                     >
                       <Checkbox
@@ -1086,7 +1083,7 @@ function AddMemberDialog({
                       />
                       <Avatar
                         url={member.user?.image ?? undefined}
-                        fallback={getInitials(member.user?.name)}
+                        fallback={member.user?.name ?? "?"}
                         shape="circle"
                         size="sm"
                       />
@@ -1204,7 +1201,7 @@ function MembersTabContent({
               >
                 <Avatar
                   url={member.user?.image ?? undefined}
-                  fallback={getInitials(member.user?.name)}
+                  fallback={member.user?.name ?? "?"}
                   shape="circle"
                   size="sm"
                 />

@@ -160,7 +160,7 @@ export function ResponsiveImageField({
       {/* Over the image, not above it: a bar placed above is clipped when the
           field is the first thing in its panel. */}
       <div className="pointer-events-none absolute inset-x-0 top-2 z-10 flex justify-center">
-        <div className="pointer-events-none relative flex items-center gap-0.5 rounded-md border bg-popover p-0.5 opacity-0 shadow-md transition-opacity group-hover/image:pointer-events-auto group-hover/image:opacity-100 group-focus-within/image:pointer-events-auto group-focus-within/image:opacity-100">
+        <div className="pointer-events-none relative flex items-center gap-0.5 rounded-md bg-popover p-0.5 opacity-0 shadow-soft transition-opacity group-hover/image:pointer-events-auto group-hover/image:opacity-100 group-focus-within/image:pointer-events-auto group-focus-within/image:opacity-100">
           {toolbarExtras}
           {toolbarExtras && <ToolbarDivider />}
 
@@ -238,7 +238,7 @@ export function ResponsiveImageField({
         className={cn(
           "relative block w-full cursor-pointer overflow-hidden rounded-[var(--studio-surface-radius,var(--radius-xl))] transition",
           !active &&
-            "border border-dashed border-border/60 bg-muted/30 hover:bg-muted/50",
+            "border border-dashed border-border/60 bg-muted/30 hover:bg-accent",
           isDragging && "ring-2 ring-primary/40",
           isPending && "pointer-events-none opacity-60",
         )}
@@ -265,7 +265,7 @@ export function ResponsiveImageField({
 
         {isDragging && (
           <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-primary/10 backdrop-blur-[1px]">
-            <span className="rounded-md bg-background px-3 py-1.5 text-xs font-medium shadow">
+            <span className="rounded-md bg-background px-3 py-1.5 text-xs font-medium shadow-soft">
               {t("sectionsEditor.imageField.dropToUpload")}
             </span>
           </span>

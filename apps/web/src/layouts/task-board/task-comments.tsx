@@ -28,7 +28,6 @@ import {
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
 import { ReviewerIcon } from "@/components/reviewer-icon";
-import { getInitials } from "@/lib/get-initials";
 import { TaskMessage } from "./task-message";
 import { useT } from "@/i18n/use-t.ts";
 import { MarkdownEditor } from "@/components/markdown-editor";
@@ -256,13 +255,14 @@ function CommentActionsMenu({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="icon-sm"
           aria-label={t("taskBoard.taskDialog.commentActionsAriaLabel")}
-          className="ml-auto flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-colors hover:bg-muted hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 data-[state=open]:opacity-100"
+          className="ml-auto shrink-0 text-muted-foreground opacity-0 focus-visible:opacity-100 group-hover:opacity-100 data-[state=open]:opacity-100"
         >
           <DotsHorizontal size={16} />
-        </button>
+        </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-48">
         {onEdit && (
@@ -288,7 +288,7 @@ function AuthorGlyph({ author }: { author: CommentAuthor }) {
   return (
     <Avatar
       url={author.image ?? undefined}
-      fallback={getInitials(author.name)}
+      fallback={author.name ?? "?"}
       shape="circle"
       size="xs"
     />
@@ -340,17 +340,18 @@ function CommentComposer({ onSubmit }: { onSubmit: SubmitComment }) {
   );
 
   const actions = (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
+      size="icon-sm"
       disabled={empty || uploads.pending > 0}
       onClick={submit}
       aria-label={t("taskBoard.taskDialog.commentSubmitAriaLabel")}
       // cursor-pointer: the composer around it sets cursor-text, which would
       // otherwise inherit onto the button.
-      className="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+      className="shrink-0 cursor-pointer text-muted-foreground"
     >
       <ArrowUp size={16} />
-    </button>
+    </Button>
   );
 
   // The whole composer is the click target, not just the one-line input inside
@@ -397,7 +398,7 @@ function CommentComposer({ onSubmit }: { onSubmit: SubmitComment }) {
         e.stopPropagation();
         ref.current?.attach(Array.from(e.dataTransfer.files));
       }}
-      className="relative flex cursor-text flex-col gap-1 rounded-xl bg-card p-3 card-shadow"
+      className="surface relative flex cursor-text flex-col gap-1 p-3"
     >
       {textarea}
       <div className="flex items-center justify-between gap-2">

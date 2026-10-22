@@ -177,10 +177,10 @@ function ActivityChart({ connectionId, orgId, timeframe }: ActivityChartProps) {
             </BarChart>
           </ChartContainer>
           <div className="flex justify-between px-3 mt-1 pb-3">
-            <span className="text-[10px] text-muted-foreground">
+            <span className="text-2xs text-muted-foreground">
               {chartData[0]?.label}
             </span>
-            <span className="text-[10px] text-muted-foreground">
+            <span className="text-2xs text-muted-foreground">
               {chartData[chartData.length - 1]?.label}
             </span>
           </div>
@@ -248,7 +248,7 @@ export function ConnectionActivity({ connectionId }: ConnectionActivityProps) {
   const { org } = useProjectContext();
 
   return (
-    <div className="rounded-xl border border-border bg-card overflow-hidden">
+    <div className="surface overflow-hidden">
       <div className="px-5 py-4 flex items-center justify-between">
         <div>
           <h3 className="text-sm font-semibold text-foreground">
@@ -269,7 +269,7 @@ export function ConnectionActivity({ connectionId }: ConnectionActivityProps) {
               className={cn(
                 "px-2.5 py-1 text-xs font-medium rounded-lg transition-colors",
                 timeframe === tf.value
-                  ? "bg-background text-foreground shadow-sm"
+                  ? "bg-card text-foreground shadow-edge"
                   : "text-muted-foreground hover:text-foreground",
               )}
             >

@@ -416,14 +416,14 @@ export const TASK_TYPE_CONFIG: Record<
   spike: {
     labelKey: "taskBoard.config.typeSpike",
     icon: Lightbulb02,
-    iconClassName: "text-yellow-500",
+    iconClassName: "text-brand-yellow",
   },
   // Purple, vacated by spike: security can't take amber without reading as the
   // High priority arrow two glyphs to its right, and red is the bug's.
   security: {
     labelKey: "taskBoard.config.typeSecurity",
     icon: Shield01,
-    iconClassName: "text-purple-500",
+    iconClassName: "text-project-purple",
   },
 };
 
@@ -569,10 +569,10 @@ export const PRIORITY_CONFIG: Record<
   },
   medium: {
     labelKey: "taskBoard.config.priorityMedium",
-    flagClassName: "text-blue-500",
-    dotClassName: "bg-blue-500",
+    flagClassName: "text-project-blue",
+    dotClassName: "bg-project-blue",
     icon: Equal,
-    iconClassName: "text-blue-500",
+    iconClassName: "text-project-blue",
   },
   high: {
     labelKey: "taskBoard.config.priorityHigh",

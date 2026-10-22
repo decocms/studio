@@ -7,7 +7,7 @@ export function DecoNudgeCard() {
   const { mutate: connect, isPending } = useDecoConnect();
 
   return (
-    <div className="relative rounded-xl border border-border overflow-hidden">
+    <div className="relative surface overflow-hidden">
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
@@ -28,7 +28,7 @@ export function DecoNudgeCard() {
             <p className="text-base font-semibold">
               {t("settings.decoNudgeCard.decoAiGateway")}
             </p>
-            <span className="rounded-full border border-border/60 bg-background/60 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+            <span className="rounded-full border border-border/60 bg-background/60 px-2 py-0.5 text-2xs font-medium text-muted-foreground">
               {t("settings.decoNudgeCard.recommended")}
             </span>
           </div>

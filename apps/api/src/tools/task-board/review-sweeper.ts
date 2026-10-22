@@ -81,6 +81,7 @@ import {
 } from "./run-reactions";
 import { TaskQuotaError } from "@/billing/task-quota";
 import { ABANDONED_FAILURE_REASON } from "./stall-recovery";
+import { STALL_FAILURE_REASON } from "@/api/routes/decopilot/run-reactor";
 import { THREAD_EXPIRY_MS } from "@/tools/thread/helpers";
 import { previewMatchesHead, prReadyForReview } from "./prs-get";
 import { readPrStateThrottled } from "./dbos-github-read";
@@ -214,10 +215,10 @@ export class TaskBoardReviewSweeper {
           console.error(`[task-board-review-sweeper] ${id} failed`, err);
         }
       }
-      // Reap FIRST: a thread whose dispatch never landed reads as a live run to
-      // every pass below (and to `reviewerHandledThisCycle`), so it has to become
+      // Reap FIRST: a thread with no run behind it reads as a live run to every
+      // pass below (and to `reviewerHandledThisCycle`), so it has to become
       // `failed` before anything can react to it.
-      await this.reapNeverStartedThreads(batchSize);
+      await this.reapAbandonedThreads(batchSize);
       dispatched += await this.dispatchDueRetries(batchSize);
       await this.reactToUnhandledFailures(batchSize);
       dispatched += await this.settleFinishedRunsWithoutPr(
@@ -233,30 +234,34 @@ export class TaskBoardReviewSweeper {
   }
 
   /**
-   * Fail task-linked threads whose run never started, headlessly and in BOTH
-   * LANES.
+   * Fail task-linked threads with no run behind them, headlessly and in every
+   * lane: runs that never started, and runs whose pod died mid-stream (the
+   * per-pod idle reaper died with it).
    *
-   * `recoverStalledTasks` already did this, but only on `TASK_BOARD_ITEM_LIST`
+   * `recoverStalledTasks` covers only the first, only on `TASK_BOARD_ITEM_LIST`
    * (so never without a human opening the board) and only for cards parked In
    * Progress — which left a REVIEWER thread whose dispatch never landed sitting
    * `in_progress` forever, read as a live review, blocking that reviewer's retry
-   * for the rest of the cycle. Three of them did exactly that in one burst, on a
-   * card whose PR was sitting there waiting for a verdict.
+   * for the rest of the cycle, and left orphaned runs counted as "agents
+   * running" on the board for months.
    *
    * Marking them failed is the whole fix: from there the existing reactions take
    * over — `reactToFailedTaskRun` retries a Super Agent thread, and a failed
    * reviewer attempt no longer counts as handled.
    */
-  private async reapNeverStartedThreads(limit: number): Promise<void> {
+  private async reapAbandonedThreads(limit: number): Promise<void> {
     try {
-      const reaped = await this.taskBoard.failNeverStartedLinkedThreads(
+      const reaped = await this.taskBoard.failAbandonedLinkedThreads(
         limit,
         new Date(Date.now() - THREAD_EXPIRY_MS),
-        ABANDONED_FAILURE_REASON,
+        {
+          neverStarted: ABANDONED_FAILURE_REASON,
+          stalled: STALL_FAILURE_REASON,
+        },
       );
       for (const r of reaped) {
         console.warn(
-          `[task-board-review-sweeper] failed never-started thread ` +
+          `[task-board-review-sweeper] failed abandoned thread ` +
             `${r.threadId} on ${r.itemId}`,
         );
       }

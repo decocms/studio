@@ -115,7 +115,7 @@ export function CategoryTreeList({
                 key={option.path}
                 type="button"
                 onClick={() => onSelect(option)}
-                className="block w-full truncate px-2 py-1.5 text-left text-sm hover:bg-muted/60 rounded-lg"
+                className="block w-full truncate px-2 py-1.5 text-left text-sm hover:bg-accent rounded-lg"
               >
                 {option.label}
               </button>

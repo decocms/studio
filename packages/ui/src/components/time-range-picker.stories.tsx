@@ -4,7 +4,7 @@ import { QUICK_RANGES } from "../lib/time-expressions.ts";
 import { TimeRangePicker, type TimeRange } from "./time-range-picker.tsx";
 
 const meta = {
-  title: "Components/TimeRangePicker",
+  title: "Molecules/TimeRangePicker",
   component: TimeRangePicker,
   args: {
     value: { from: "now-24h", to: "now" },

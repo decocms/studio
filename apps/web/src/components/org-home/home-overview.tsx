@@ -37,7 +37,6 @@ import {
 } from "@/hooks/use-destination-route";
 import type { InboxTaskUpdate } from "@/hooks/use-inbox-feed";
 import { useT } from "@/i18n/use-t.ts";
-import { getInitials } from "@/lib/get-initials";
 import type { TranslationKey } from "@/i18n/use-t.ts";
 import { agentRunState, type TaskBoardItem } from "@/layouts/task-board/config";
 import { taskRouteSegment } from "@/layouts/task-board/task-route";
@@ -110,7 +109,7 @@ export function RecentApps({
           key={tile.key}
           to={tile.link.to}
           params={tile.link.params}
-          className="group flex shrink-0 flex-col items-center gap-2.5 rounded-xl p-3 text-center transition-[background-color,transform] duration-150 ease-out hover:bg-accent/50 active:scale-[0.97]"
+          className="group flex shrink-0 flex-col items-center gap-2.5 rounded-xl p-3 text-center transition-[background-color,transform] duration-150 ease-out hover:bg-accent active:scale-[0.97]"
         >
           {tile.glyph}
           <span className="flex w-full min-w-0 flex-col">
@@ -244,7 +243,7 @@ function MentionAvatar({ mention }: { mention: InboxTaskUpdate }) {
   return (
     <Avatar
       url={mention.actorImage ?? undefined}
-      fallback={getInitials(actor)}
+      fallback={actor}
       shape="circle"
       size="2xs"
     />
@@ -283,7 +282,7 @@ export function ForYou({
   const items = forYouItems(queueRows(waiting, tasks), mentions);
 
   return (
-    <section className="flex flex-col gap-2 rounded-2xl bg-card p-3 card-shadow">
+    <section className="flex flex-col gap-2 surface p-3">
       <h2 className="flex items-center gap-2 px-2 pt-1 pb-1 text-sm font-medium text-foreground">
         {t("home.overview.forYou")}
         {items.length > 0 && (
@@ -328,7 +327,7 @@ export function ForYou({
               <Link
                 key={target.id}
                 {...taskLink(orgSlug, target)}
-                className="group flex h-10 items-center gap-3 rounded-lg px-2 transition-colors hover:bg-accent/50"
+                className="group flex h-10 items-center gap-3 rounded-lg px-2 transition-colors hover:bg-accent"
               >
                 <span
                   className={cn(
@@ -502,7 +501,7 @@ function MetricCard({
   chart: ReactNode;
 }) {
   return (
-    <section className="flex flex-col gap-6 rounded-2xl bg-card p-5 card-shadow">
+    <section className="flex flex-col gap-6 surface p-5">
       <div className="flex flex-col gap-2.5">
         <span className="text-sm font-medium text-foreground">{label}</span>
         <span className="text-[32px] leading-none font-medium tracking-tight tabular-nums text-foreground">

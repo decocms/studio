@@ -192,7 +192,6 @@ function GitCredentialsEditor() {
         size="sm"
         disabled={rows.length >= GIT_CREDENTIALS_MAX}
         onClick={() => setDraft([...rows, { host: "", secretId: "" }])}
-        className="w-full"
       >
         <Plus className="size-3.5" />
         {t("settings.gitCredentials.addCredential")}
@@ -252,17 +251,14 @@ function GitCredentialRow({
             autoComplete="off"
             autoCapitalize="off"
             autoCorrect="off"
-            className={cn(
-              "font-mono",
-              invalid && "border-destructive focus-visible:ring-destructive",
-            )}
+            className="font-mono"
             aria-invalid={invalid}
             aria-label={t("settings.gitCredentials.hostAriaLabel", {
               index: index + 1,
             })}
           />
           {invalid ? (
-            <p className="text-[11px] text-destructive">
+            <p className="text-2xs text-destructive">
               {t("settings.gitCredentials.hostInvalidMessage")}
             </p>
           ) : null}
@@ -272,10 +268,7 @@ function GitCredentialRow({
       <div className="flex flex-[2] min-w-0 items-center gap-1">
         <Select value={row.secretId || ""} onValueChange={onPickSecret}>
           <SelectTrigger
-            className={cn(
-              "h-9 w-full",
-              !row.secretId && "text-muted-foreground",
-            )}
+            className={cn("w-full", !row.secretId && "text-muted-foreground")}
             aria-label={t("settings.gitCredentials.secretAriaLabel", {
               index: index + 1,
             })}

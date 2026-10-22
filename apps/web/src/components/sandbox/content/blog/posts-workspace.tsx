@@ -837,7 +837,7 @@ function PostRow({
           "flex w-full cursor-pointer flex-col gap-1.5 py-2.5 pl-10 pr-3 text-left text-sm transition-colors",
           selected
             ? "bg-accent text-accent-foreground"
-            : "bg-card hover:bg-muted/50",
+            : "bg-card hover:bg-accent",
         )}
       >
         <span className="min-w-0 truncate pr-6 font-medium">
@@ -898,7 +898,7 @@ function PostCard({
   return (
     <div
       className={cn(
-        "group/card relative rounded-lg border bg-card shadow-sm transition-colors hover:border-primary/40",
+        "group/card relative rounded-lg bg-card shadow-edge transition-shadow hover:shadow-lift",
         !draggable && "opacity-80",
       )}
     >
@@ -984,7 +984,9 @@ function ArchiveButton({
   const t = useT();
   const text = label ?? t("sandbox.postBoard.delete");
   return (
-    <button
+    <Button
+      variant="ghost-destructive"
+      size="icon-xs"
       type="button"
       disabled={disabled}
       aria-label={text}
@@ -994,11 +996,11 @@ function ArchiveButton({
         onArchive();
       }}
       className={cn(
-        "absolute right-2 z-10 flex size-6 cursor-pointer items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-destructive focus-visible:opacity-100 group-hover/card:opacity-100 group-hover/row:opacity-100",
+        "absolute right-2 z-10 opacity-0 transition-opacity focus-visible:opacity-100 group-hover/card:opacity-100 group-hover/row:opacity-100",
         className,
       )}
     >
-      <Trash01 size={13} />
-    </button>
+      <Trash01 className="size-3.25" />
+    </Button>
   );
 }

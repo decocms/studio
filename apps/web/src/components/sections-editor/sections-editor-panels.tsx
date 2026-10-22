@@ -475,9 +475,9 @@ export function AddVariantButton({ onClick }: { onClick: () => void }) {
           <Button
             type="button"
             variant="ghost"
-            size="icon"
+            size="icon-sm"
             aria-label={t("sectionsEditor.sectionsEditorPanels.addVariant")}
-            className="size-7 shrink-0 text-[oklch(0.65_0.15_160)]"
+            className="shrink-0 text-[oklch(0.65_0.15_160)]"
             onClick={onClick}
           >
             <Flag01 size={14} />
@@ -494,7 +494,8 @@ export function AddVariantButton({ onClick }: { onClick: () => void }) {
     <Button
       type="button"
       variant="outline"
-      className="h-7 shrink-0 gap-1 px-2 text-xs font-medium"
+      size="sm"
+      className="shrink-0 gap-1 px-2 text-xs"
       onClick={onClick}
     >
       <LayersThree01 className="size-3.5 shrink-0" />
@@ -518,7 +519,7 @@ export function AddVariantButton({ onClick }: { onClick: () => void }) {
  */
 export const HEADER_SELECT_TRIGGER_CLASS = cn(
   "inline-flex h-7 shrink-0 cursor-pointer items-center gap-1 px-2 text-xs font-medium transition-colors",
-  "rounded-[var(--studio-control-radius,var(--radius-lg))] bg-[var(--studio-input-background)] text-foreground card-shadow",
+  "rounded-[var(--studio-control-radius,var(--radius-lg))] bg-[var(--studio-input-background)] text-foreground shadow-edge",
   "hover:bg-[var(--studio-outline-hover-background)] hover:text-accent-foreground",
 );
 

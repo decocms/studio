@@ -125,7 +125,7 @@ function ThreadSheetHeader({
             name={agentName || thread.title || t("orgs.threads.untitledChat")}
             size="sm"
             fallbackIcon={<Container />}
-            className="shadow-sm shrink-0 rounded-md"
+            className="shadow-edge shrink-0 rounded-md"
           />
           <div className="min-w-0">
             <SheetTitle className="text-sm leading-snug truncate">
