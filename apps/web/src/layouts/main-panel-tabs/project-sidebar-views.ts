@@ -14,15 +14,20 @@ export const PROJECT_SIDEBAR_VIEW_IDS = [
   "cdn",
   "automations",
   "experiments",
+  "calendar",
 ] as const satisfies readonly VirtualMcpSidebarView[];
 
 /** Initial selection for projects that have not explicitly saved sidebar
- * preferences yet. */
+ * preferences yet. Experiments and Calendar are peers of the Site Editor on a
+ * Blocks (v8) site (their presence gates keep them off where they don't
+ * apply: Calendar is v8-only). */
 export const DEFAULT_PROJECT_SIDEBAR_VIEWS = [
   "overview",
   "reports",
   "board",
   "site-editor",
+  "experiments",
+  "calendar",
 ] as const satisfies readonly VirtualMcpSidebarView[];
 
 /** Unversioned values came from the first native-only rollout, in which core
@@ -40,6 +45,7 @@ export const PROJECT_NATIVE_VIEW_IDS = [
   "analytics",
   "cdn",
   "experiments",
+  "calendar",
 ] as const satisfies readonly ProjectSidebarViewId[];
 
 export type ProjectNativeViewId = (typeof PROJECT_NATIVE_VIEW_IDS)[number];
@@ -53,6 +59,9 @@ export interface ProjectNativeViewPending {
   /** Main's schema is not read yet (or can't be, on a site last found v8),
    *  so whether the site has Releases is not known. */
   releases?: boolean;
+  /** Main's schema is not read yet, so whether the site is v8 (and has a
+   *  Calendar) is not known. */
+  calendar?: boolean;
 }
 
 export interface ProjectSidebarViewsMetadata {
@@ -157,6 +166,8 @@ export function projectSidebarViewPresence(
     cdn: native.cdn,
     // Authored in the Site Editor decofile — only where a CMS source exists.
     experiments: hasClonableSource && native.experiments,
+    // A v8 site's campaigns block, edited in the same draft as the pages.
+    calendar: hasClonableSource && native.calendar,
     automations: true,
   };
 }
@@ -222,6 +233,7 @@ export function projectSidebarViewUnavailable(
   // Releases follows main's schema (`useMainSchemaV8`): a deep link waits
   // for that read instead of bouncing to Settings before it lands.
   if (viewId === "releases") return !pending.releases;
+  if (viewId === "calendar") return !pending.calendar;
   return !(viewId === "assets" ? pending.assets : pending.siteAccess);
 }
 

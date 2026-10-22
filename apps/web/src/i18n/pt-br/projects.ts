@@ -84,4 +84,6 @@ export const projects = {
   "projects.apps.automationsCaption": "Trabalho que roda em agenda",
   "projects.apps.experiments": "Experimentos",
   "projects.apps.experimentsCaption": "Testes A/B e seus resultados",
+  "projects.apps.calendar": "Calendário",
+  "projects.apps.calendarCaption": "Campanhas e suas datas",
 } as const satisfies Record<keyof typeof projectsEn, string>;

@@ -11,6 +11,31 @@ describe("launchableApps", () => {
     expect(launchableApps({ metadata: null })).toEqual([
       "reports",
       "site-editor",
+      "experiments",
+      "calendar",
+    ]);
+  });
+
+  test("Experiments and Calendar are default tiles only where the site has them", () => {
+    const native = (v8: boolean) => ({
+      assets: false,
+      hosting: false,
+      e2e: false,
+      analytics: false,
+      cdn: false,
+      experiments: v8,
+      calendar: v8,
+      releases: false,
+    });
+    expect(launchableApps({ metadata: null }, native(true))).toEqual([
+      "reports",
+      "site-editor",
+      "experiments",
+      "calendar",
+    ]);
+    expect(launchableApps({ metadata: null }, native(false))).toEqual([
+      "reports",
+      "site-editor",
     ]);
   });
 
@@ -78,6 +103,7 @@ describe("launchableApps", () => {
       analytics: false,
       cdn: false,
       experiments: false,
+      calendar: false,
       releases: false,
     };
     expect(

@@ -1,4 +1,5 @@
 import { ChatLayout } from "@/components/chat-layout";
+import { SiteDraftActions } from "@/components/site-draft-bar/site-draft-actions";
 import { ExperimentsTab } from "@/layouts/main-panel-tabs/experiments-tab";
 import { ExperimentsTabSkeleton } from "@/layouts/main-panel-tabs/experiments-tab-v8";
 import { SettingsTab } from "@/layouts/main-panel-tabs/settings-tab";
@@ -21,7 +22,7 @@ function AgentExperimentsContent() {
 
 export default function AgentExperimentsRoute() {
   return (
-    <ChatLayout.Content>
+    <ChatLayout.Content actions={<SiteDraftActions blocksOnly />}>
       <AgentExperimentsContent />
     </ChatLayout.Content>
   );

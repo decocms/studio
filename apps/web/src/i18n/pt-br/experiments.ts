@@ -151,10 +151,14 @@ export const experiments = {
   "experiments.v8.removedTitle": "Removidos no seu rascunho",
   "experiments.v8.removedHint":
     "Estes testes param quando você publicar. Para manter um, crie-o de novo com o mesmo nome.",
-  "experiments.v8.shareLabel": "Visitantes que veem o teste (%)",
+  "experiments.v8.shareLabel": "Visitantes que veem o teste",
+  "experiments.v8.shareTitle": "Quem vê o teste",
+  "experiments.v8.split.inTest": "Veem o teste",
+  "experiments.v8.split.rest": "Veem a página como está",
+  "experiments.v8.split.center": "veem o teste",
+  "experiments.v8.split.reset": "Voltar para {share}%",
   "experiments.v8.shareHint":
-    "0 desliga o teste, 100 mostra para todos. Cada visitante continua no lado que recebeu.",
-  "experiments.v8.shareInvalid": "Use um número inteiro de 0 a 100.",
+    "Arraste o controle ou use as setas do teclado. 0 desliga o teste, 100 mostra para todos. Cada visitante continua no lado que recebeu.",
   "experiments.v8.publishedShare": "Publicado: {share}% dos visitantes",
   "experiments.v8.save": "Salvar",
   "experiments.v8.turnOff": "Desligar",
@@ -191,10 +195,9 @@ export const experiments = {
     "Seu site já tem um bloco chamado “experiments”",
   "experiments.v8.conflict.desc":
     "Ele não é uma lista de testes A/B, então ainda não dá para adicionar testes. Renomeie esse bloco no editor do site e volte aqui.",
-  "experiments.v8.noDraft.title":
-    "Abra o editor do site para começar um rascunho",
+  "experiments.v8.noDraft.title": "Escolha um rascunho para editar seus testes",
   "experiments.v8.noDraft.desc":
-    "Seus testes ficam salvos em um rascunho, como qualquer outra edição. Abra o editor do site uma vez e volte aqui.",
+    "Seus testes ficam salvos em um rascunho, como qualquer outra edição. Escolha um rascunho na barra acima ou abra o editor do site para começar um.",
   "experiments.v8.openEditor": "Abrir o editor do site",
   "experiments.v8.loadFailed": "Não foi possível carregar seus testes.",
   "experiments.v8.tryAgain": "Tentar de novo",

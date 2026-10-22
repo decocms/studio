@@ -154,6 +154,7 @@ export function CampaignsView({
   decofile,
   meta,
   onOpenUse,
+  initialView = "list",
 }: {
   orgSlug: string;
   virtualMcpId: string;
@@ -162,6 +163,8 @@ export function CampaignsView({
   meta: LiveMeta | null | undefined;
   /** Open a page or section that uses a campaign. */
   onOpenUse: (row: NamedRuleUseRow) => void;
+  /** The Calendar view opens on the timeline; the content browser, the list. */
+  initialView?: ViewMode;
 }) {
   const t = useT();
   const uses = useNamedRuleUses({
@@ -176,7 +179,7 @@ export function CampaignsView({
     virtualMcpId,
     branch,
   });
-  const [view, setView] = useState<ViewMode>("list");
+  const [view, setView] = useState<ViewMode>(initialView);
   const [openName, setOpenName] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   // One moment for the whole view, so every status agrees.

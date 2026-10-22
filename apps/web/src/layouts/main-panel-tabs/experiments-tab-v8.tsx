@@ -29,19 +29,15 @@ import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { Label } from "@decocms/ui/components/label.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
-import { Slider } from "@decocms/ui/components/slider.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
+import { ShareSplit } from "@/components/experiments/split-donut";
 import { Page } from "@/components/page";
-import { useOptionalChatTask } from "@/components/chat/chat-context";
 import {
   planNamedRuleCreate,
   planNamedRuleSet,
 } from "@/components/sections-editor/named-rule-edits";
 import { NamedRuleDeleteButton } from "@/components/sections-editor/named-rule-delete";
-import {
-  newNameProblem,
-  parseShareInput,
-} from "@/components/sections-editor/named-rule-picker";
+import { newNameProblem } from "@/components/sections-editor/named-rule-picker";
 import { NamedRuleCreateForm } from "@/components/sections-editor/named-rule-step";
 import {
   MissingNamedRuleUses,
@@ -68,19 +64,20 @@ import {
   type NamedRuleChange,
   useApplyNamedRule,
 } from "@/components/sections-editor/use-apply-named-rule";
-import { useContentBackend } from "@/components/sections-editor/use-content-backend";
-import { useDecofile } from "@/components/sections-editor/use-decofile";
-import { useLiveMeta } from "@/components/sections-editor/use-live-meta";
 import { useNamedRuleUses } from "@/components/sections-editor/use-named-rule-uses";
 import { useT } from "@/i18n/use-t.ts";
-import { useProjectContext } from "@/sdk";
-import { isSiteNotOwned, SiteNotOwnedState } from "./blocks-tab-states";
 import {
   type ExperimentRowModel,
   experimentRows,
   removedExperiments,
   contentSearchForUse,
 } from "./experiments-v8-model";
+import {
+  SiteDraftGuide,
+  type SiteDraftGuideAction,
+  SiteDraftView,
+  type SiteDraftViewReady,
+} from "./site-draft-view";
 import { usePanelNavigate } from "./use-panel-navigate";
 
 /** While main's schema (or the site's content) is read: the tab's shape. */
@@ -130,72 +127,37 @@ function StatusPill({ status }: { status: ExperimentStatus }) {
   );
 }
 
-function GuideState({
-  title,
-  description,
-  action,
-}: {
+function GuideState(props: {
   title: string;
   description: string;
-  action?: { label: string; onClick: () => void };
+  action?: SiteDraftGuideAction;
 }) {
   return (
-    <Page>
-      <Page.Content>
-        <Page.Container>
-          <EmptyState
-            icon={<Beaker02 size={28} className="text-muted-foreground" />}
-            title={title}
-            description={description}
-            buttonProps={
-              action
-                ? { children: action.label, onClick: action.onClick }
-                : undefined
-            }
-          />
-        </Page.Container>
-      </Page.Content>
-    </Page>
+    <SiteDraftGuide
+      icon={<Beaker02 size={28} className="text-muted-foreground" />}
+      {...props}
+    />
   );
 }
 
 export function ExperimentsTabV8({ virtualMcpId }: { virtualMcpId: string }) {
   const t = useT();
-  const { org } = useProjectContext();
-  const task = useOptionalChatTask();
-  const branch = task?.currentBranch ?? null;
-  const backend = useContentBackend(virtualMcpId, branch);
-  const { openPanel } = usePanelNavigate();
-
-  if (!branch) {
-    return (
-      <GuideState
-        title={t("experiments.v8.noDraft.title")}
-        description={t("experiments.v8.noDraft.desc")}
-        action={{
-          label: t("experiments.v8.openEditor"),
-          onClick: () => openPanel("content"),
-        }}
-      />
-    );
-  }
-  if (isSiteNotOwned(backend)) return <SiteNotOwnedState />;
-  if (backend.kind === "pending") return <ExperimentsTabSkeleton />;
-  if (backend.kind !== "protocol") {
-    return (
-      <GuideState
-        title={t("experiments.v8.loadFailed")}
-        description={t("sectionsEditor.namedRules.unavailableHint")}
-      />
-    );
-  }
   return (
-    <ExperimentsV8Ready
-      orgSlug={org.slug}
+    <SiteDraftView
       virtualMcpId={virtualMcpId}
-      branch={branch}
-      threadId={task?.taskId ?? null}
-    />
+      icon={<Beaker02 size={28} className="text-muted-foreground" />}
+      copy={{
+        noDraftTitle: t("experiments.v8.noDraft.title"),
+        noDraftDesc: t("experiments.v8.noDraft.desc"),
+        openEditor: t("experiments.v8.openEditor"),
+        loadFailed: t("experiments.v8.loadFailed"),
+        loadFailedHint: t("sectionsEditor.namedRules.unavailableHint"),
+        tryAgain: t("experiments.v8.tryAgain"),
+      }}
+      skeleton={<ExperimentsTabSkeleton />}
+    >
+      {(ready) => <ExperimentsV8Ready {...ready} />}
+    </SiteDraftView>
   );
 }
 
@@ -203,20 +165,11 @@ function ExperimentsV8Ready({
   orgSlug,
   virtualMcpId,
   branch,
-  threadId,
-}: {
-  orgSlug: string;
-  virtualMcpId: string;
-  branch: string;
-  threadId: string | null;
-}) {
+  decofile,
+  meta,
+}: SiteDraftViewReady) {
   const t = useT();
   const { openPanel } = usePanelNavigate();
-  const params = { orgSlug, virtualMcpId, branch, threadId, previewUrl: null };
-  const decofileQuery = useDecofile(params);
-  const metaQuery = useLiveMeta(params);
-  const decofile = decofileQuery.data as Record<string, unknown> | undefined;
-  const meta = metaQuery.data;
   const uses = useNamedRuleUses({
     orgSlug,
     virtualMcpId,
@@ -231,25 +184,6 @@ function ExperimentsV8Ready({
   });
   const [openName, setOpenName] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
-
-  if (!decofile || !meta) {
-    if (decofileQuery.isError || metaQuery.isError) {
-      return (
-        <GuideState
-          title={t("experiments.v8.loadFailed")}
-          description={t("sectionsEditor.namedRules.unavailableHint")}
-          action={{
-            label: t("experiments.v8.tryAgain"),
-            onClick: () => {
-              void decofileQuery.refetch();
-              void metaQuery.refetch();
-            },
-          }}
-        />
-      );
-    }
-    return <ExperimentsTabSkeleton />;
-  }
 
   const support = namedRuleSupport(meta, "experiments");
   if (support === "missing") {
@@ -518,10 +452,9 @@ function ExperimentDetailV8({
   onUndo: (change: NamedRuleChange) => void;
 }) {
   const t = useT();
-  const [share, setShare] = useState(String(row.share));
+  const [share, setShare] = useState(row.share);
   const [name, setName] = useState(row.name);
-  const shareValue = parseShareInput(share);
-  const shareDirty = shareValue !== null && shareValue !== row.share;
+  const shareDirty = share !== row.share;
   const renamable = canRenameExperiment(row.share);
   const block = readNamedRuleBlock(decofile, "experiments");
   const others =
@@ -544,7 +477,7 @@ function ExperimentDetailV8({
   const setTo = (value: number) =>
     void onSave(
       planNamedRuleSet(decofile, "experiments", row.name, value),
-    ).then((ok) => ok && setShare(String(value)));
+    ).then((ok) => ok && setShare(value));
 
   /** Planned from the draft as stored now, so every use gets the new name. */
   const rename = async () => {
@@ -594,39 +527,39 @@ function ExperimentDetailV8({
             </div>
 
             <section className="flex flex-col gap-2">
-              <Label htmlFor="experiment-share">
-                {t("experiments.v8.shareLabel")}
-              </Label>
-              <div className="flex items-center gap-3">
-                <Slider
-                  className="max-w-xs"
-                  min={0}
-                  max={100}
-                  step={1}
-                  value={[shareValue ?? row.share]}
-                  onValueChange={([value]) => setShare(String(value ?? 0))}
-                  aria-label={t("experiments.v8.shareLabel")}
-                />
-                <Input
-                  id="experiment-share"
-                  inputMode="numeric"
-                  className="w-20"
-                  value={share}
-                  onChange={(e) => setShare(e.target.value)}
-                />
+              <h3 className="text-sm font-medium">
+                {t("experiments.v8.shareTitle")}
+              </h3>
+              <ShareSplit
+                value={share}
+                onChange={setShare}
+                sliderLabel={t("experiments.v8.shareLabel")}
+                inTestLabel={t("experiments.v8.split.inTest")}
+                restLabel={t("experiments.v8.split.rest")}
+                centerLabel={t("experiments.v8.split.center")}
+                disabled={pending}
+              />
+              <div className="flex items-center gap-2">
                 <Button
                   size="sm"
                   disabled={!shareDirty || pending}
-                  onClick={() => shareValue !== null && setTo(shareValue)}
+                  onClick={() => setTo(share)}
                 >
                   {t("experiments.v8.save")}
                 </Button>
+                {shareDirty && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={pending}
+                    onClick={() => setShare(row.share)}
+                  >
+                    {t("experiments.v8.split.reset", {
+                      share: String(row.share),
+                    })}
+                  </Button>
+                )}
               </div>
-              {shareValue === null && (
-                <p className="text-xs text-destructive">
-                  {t("experiments.v8.shareInvalid")}
-                </p>
-              )}
               <p className="text-xs text-muted-foreground">
                 {t("experiments.v8.shareHint")}
               </p>

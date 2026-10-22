@@ -11,7 +11,6 @@ import {
   namedRulePickerKinds,
   namedRuleRowState,
   newNameProblem,
-  parseShareInput,
   planNamedRulePick,
   windowFromInputs,
 } from "./named-rule-picker";
@@ -120,15 +119,6 @@ describe("new names and values", () => {
     expect(newNameProblem(" hero-test ", ["hero-test"])).toBe("taken");
     expect(newNameProblem("__resolveType", [])).toBe("reserved");
     expect(newNameProblem("Black Friday", ["hero-test"])).toBeNull();
-  });
-
-  it("takes a whole share from 0 to 100", () => {
-    expect(parseShareInput("50")).toBe(50);
-    expect(parseShareInput(" 0 ")).toBe(0);
-    expect(parseShareInput("100")).toBe(100);
-    for (const bad of ["101", "-1", "10.5", "", "fifty", "1e2"]) {
-      expect(parseShareInput(bad)).toBeNull();
-    }
   });
 
   it("saves a picked moment with the offset the editor's clock has that day", () => {

@@ -94,7 +94,8 @@ export const sectionsEditor = {
   "sectionsEditor.namedRulePicker.newCampaignTitle": "Nova campanha",
   "sectionsEditor.namedRulePicker.nameLabel": "Nome",
   "sectionsEditor.namedRulePicker.shareLabel":
-    "Visitantes que veem esta variante (%)",
+    "Visitantes que veem esta variante",
+  "sectionsEditor.namedRulePicker.shareTitle": "Quem vê esta variante",
   "sectionsEditor.namedRulePicker.shareHint":
     "0 deixa o teste desligado, 100 mostra para todos. Você pode mudar depois em Experimentos.",
   "sectionsEditor.namedRulePicker.startLabel": "Começa",
@@ -106,8 +107,6 @@ export const sectionsEditor = {
     "Esse nome já está em uso. Escolha-o na lista.",
   "sectionsEditor.namedRulePicker.nameReserved":
     "Nomes não podem começar com dois sublinhados.",
-  "sectionsEditor.namedRulePicker.shareInvalid":
-    "Use um número inteiro de 0 a 100.",
   "sectionsEditor.namedRulePicker.endBeforeStart":
     "O fim precisa ser depois do começo.",
   "sectionsEditor.namedRulePicker.createAndUse": "Criar e usar",

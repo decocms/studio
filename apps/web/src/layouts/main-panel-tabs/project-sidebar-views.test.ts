@@ -30,6 +30,7 @@ const nativePresence = (
   analytics: present.includes("analytics"),
   cdn: present.includes("cdn"),
   experiments: present.includes("experiments"),
+  calendar: present.includes("calendar"),
 });
 
 describe("project sidebar views", () => {
@@ -148,7 +149,7 @@ describe("project sidebar views", () => {
     ).toEqual({ project: null, resolvedScopeId: null });
   });
 
-  test("uses the four-view initial selection for unversioned projects", () => {
+  test("uses the initial selection for unversioned projects", () => {
     expect(effectiveProjectSidebarViews(undefined)).toEqual(
       DEFAULT_PROJECT_SIDEBAR_VIEWS,
     );
@@ -158,6 +159,8 @@ describe("project sidebar views", () => {
       "board",
       "site-editor",
       "assets",
+      "experiments",
+      "calendar",
     ]);
     expect(effectiveProjectSidebarViews(null)).toEqual(
       DEFAULT_PROJECT_SIDEBAR_VIEWS,
@@ -254,6 +257,8 @@ describe("project sidebar views", () => {
       "board",
       "site-editor",
       "assets",
+      "experiments",
+      "calendar",
     ]);
     expect(
       toggleProjectSidebarView(
@@ -359,5 +364,62 @@ describe("project sidebar views", () => {
     expect(
       projectDefaultViewUnavailable("ext-apps", absent, settled, [], true),
     ).toBe(false);
+  });
+});
+
+describe("Calendar and Experiments on a Blocks (v8) site", () => {
+  test("show by default as peers of the Site Editor where the site has them", () => {
+    const v8 = projectSidebarViewPresence(
+      true,
+      nativePresence(["experiments", "calendar"]),
+    );
+    expect(selectedProjectSidebarViews(undefined, v8)).toEqual([
+      "overview",
+      "reports",
+      "board",
+      "site-editor",
+      "experiments",
+      "calendar",
+    ]);
+  });
+
+  test("Calendar is absent where the site isn't v8, and needs a source", () => {
+    const v7 = projectSidebarViewPresence(true, nativePresence([]));
+    expect(selectedProjectSidebarViews(undefined, v7)).not.toContain(
+      "calendar",
+    );
+    const noSource = projectSidebarViewPresence(
+      false,
+      nativePresence(["calendar"]),
+    );
+    expect(noSource.calendar).toBe(false);
+  });
+
+  test("a saved choice is kept: a turned-off Calendar stays off", () => {
+    const v8 = projectSidebarViewPresence(
+      true,
+      nativePresence(["experiments", "calendar"]),
+    );
+    expect(
+      selectedProjectSidebarViews(["site-editor", "experiments"], v8, 1),
+    ).toEqual(["site-editor", "experiments"]);
+  });
+
+  test("a Calendar deep link waits while main's schema is read", () => {
+    const presence = projectSidebarViewPresence(true, nativePresence([]));
+    expect(
+      projectSidebarViewUnavailable("calendar", presence, {
+        assets: false,
+        siteAccess: false,
+        calendar: true,
+      }),
+    ).toBe(false);
+    expect(
+      projectSidebarViewUnavailable("calendar", presence, {
+        assets: false,
+        siteAccess: false,
+        calendar: false,
+      }),
+    ).toBe(true);
   });
 });

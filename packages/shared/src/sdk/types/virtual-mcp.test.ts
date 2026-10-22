@@ -331,15 +331,18 @@ describe("metadata.sidebarViews", () => {
     ).toBe(false);
   });
 
-  it("caps the array at 10 entries", () => {
+  it("takes every view at once (Experiments and Calendar included), no more", () => {
+    const every = [...VirtualMcpSidebarViewSchema.options];
+    expect(every).toContain("experiments");
+    expect(every).toContain("calendar");
     expect(
       VirtualMCPUpdateDataSchema.safeParse({
-        metadata: { sidebarViews: [...sidebarViews] },
+        metadata: { sidebarViews: every },
       }).success,
     ).toBe(true);
     expect(
       VirtualMCPUpdateDataSchema.safeParse({
-        metadata: { sidebarViews: [...sidebarViews, "overview"] },
+        metadata: { sidebarViews: [...every, "overview"] },
       }).success,
     ).toBe(false);
   });

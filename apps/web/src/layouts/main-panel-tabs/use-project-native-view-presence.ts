@@ -11,7 +11,10 @@ import {
   resolveAgentSiteSlug,
   resolveAnalyticsSiteSlug,
 } from "@decocms/shared/site-slug";
-import { experimentsTabVisible } from "./experiments-tab-choice";
+import {
+  editsBlocksDraft,
+  experimentsTabVisible,
+} from "./experiments-tab-choice";
 import type { ProjectNativeViewPresence } from "./project-sidebar-views";
 
 export interface ProjectNativeViewPresenceResult {
@@ -20,6 +23,8 @@ export interface ProjectNativeViewPresenceResult {
   siteAccessPending: boolean;
   /** Main's schema is still being read: Releases may yet be there. */
   releasesPending: boolean;
+  /** Main's schema is still being read: the site may be v8 (Calendar). */
+  calendarPending: boolean;
 }
 
 /**
@@ -82,6 +87,8 @@ export function useProjectNativeViewPresence(
         controlPlaneViews.experiments,
         mainSchema,
       ),
+      // Every v8 site: its campaigns are content its editors own.
+      calendar: editsBlocksDraft(mainSchema),
     },
     assetsPending: !!siteSlug && fileConfigs.isPending,
     // "error" is a site last found v8 whose main can't be read yet: the
@@ -89,6 +96,7 @@ export function useProjectNativeViewPresence(
     releasesPending:
       !!project?.metadata?.siteSlug &&
       (mainSchema === "loading" || mainSchema === "error"),
+    calendarPending: !!project && mainSchema === "loading",
     // A disabled TanStack query is still pending; it is only unresolved when a
     // probe can actually run.
     siteAccessPending:
