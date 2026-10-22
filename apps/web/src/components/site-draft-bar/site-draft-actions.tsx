@@ -10,6 +10,7 @@ import { Separator } from "@decocms/ui/components/separator.tsx";
 import { ChatModeRow } from "@/components/chat/pills/chat-mode-row";
 import { useOptionalChatTask } from "@/components/chat/context";
 import { CmsHeaderActions } from "@/components/thread/repository/cms-header-actions";
+import { PublishCodeTab } from "@/components/thread/repository/cms-publish-compare";
 import { HeaderActions } from "@/components/thread/repository/header-actions";
 import { LocalChangesButton } from "@/components/thread/repository/local-changes-dialog";
 import { ContentVersionBadge } from "@/components/sections-editor/content-version-badge";
@@ -27,7 +28,9 @@ import { siteDraftBarParts } from "./site-draft-bar-parts";
 /**
  * `blocksOnly`: Experiments and Calendar show the bar only on a Blocks (v8)
  * site, where a test or a campaign is an edit to its draft; a v7 site's
- * Experiments keeps its own page, with no bar.
+ * Experiments keeps its own page, with no bar. Their publish panel has no
+ * Code tab (PO decision); the site editor's keeps it. The bar itself is the
+ * same on all three views: a view's own actions sit in the view's header.
  */
 export function SiteDraftActions({ blocksOnly }: { blocksOnly?: boolean }) {
   return blocksOnly ? <BlocksSiteDraftActions /> : <SiteDraftBar />;
@@ -35,7 +38,11 @@ export function SiteDraftActions({ blocksOnly }: { blocksOnly?: boolean }) {
 
 function BlocksSiteDraftActions() {
   const siteMajor = useMainSchemaV8(useRouteVirtualMcpId());
-  return editsBlocksDraft(siteMajor) ? <SiteDraftBar /> : null;
+  return editsBlocksDraft(siteMajor) ? (
+    <PublishCodeTab value={false}>
+      <SiteDraftBar />
+    </PublishCodeTab>
+  ) : null;
 }
 
 function SiteDraftBar() {

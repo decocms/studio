@@ -11,12 +11,13 @@ import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Tabs, TabsList, TabsTrigger } from "@decocms/ui/components/tabs.tsx";
 import {
   LinkExternal01,
+  Eye,
   Monitor01,
   Phone01,
   Plus,
   Trash01,
 } from "@untitledui/icons";
-import { useState, type ReactNode } from "react";
+import { createContext, use, useState, type ReactNode } from "react";
 import { useT } from "@/i18n/use-t.ts";
 import { useElementSize } from "@/hooks/use-element-size.ts";
 import {
@@ -42,6 +43,13 @@ import {
 import { blockFileName } from "@decocms/blocks/protocol";
 import type { PublishChange } from "./publish-change-summary.ts";
 import type { GitDiffResult } from "./sandbox-git-api.ts";
+
+/**
+ * Whether the review pane offers the Code tab. The Experiments and Calendar
+ * views turn it off (PO decision): their publish panel shows pages only, and
+ * a change with no page to show says so instead. The site editor keeps it.
+ */
+export const PublishCodeTab = createContext(true);
 
 const COMPARE_VIEWS = ["split", "before", "after", "code"] as const;
 type CompareView = (typeof COMPARE_VIEWS)[number];
@@ -113,6 +121,7 @@ export function PublishCompare({
   v8,
 }: PublishCompareProps) {
   const t = useT();
+  const showsCode = use(PublishCodeTab);
   const savedSection = isolatedSectionKey(change);
   /** Renders on its own (v7); on v8 it shows on a page, like any change. */
   const sectionKey = v8 ? null : savedSection;
@@ -216,6 +225,7 @@ export function PublishCompare({
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-muted/40">
       <div className="flex flex-wrap items-center gap-2 border-b bg-background px-4 py-2.5 max-md:pr-12">
+        {canRender || showsCode ? (
         <Tabs
           value={view}
           onValueChange={(next) => {
@@ -236,11 +246,14 @@ export function PublishCompare({
                 </TabsTrigger>
               </>
             ) : null}
-            <TabsTrigger value="code" className="px-3 text-xs">
-              {t("thread.publishCompare.code")}
-            </TabsTrigger>
+            {showsCode ? (
+              <TabsTrigger value="code" className="px-3 text-xs">
+                {t("thread.publishCompare.code")}
+              </TabsTrigger>
+            ) : null}
           </TabsList>
         </Tabs>
+        ) : null}
         {canRender && view !== "code" ? (
           <>
             {sectionKey ? null : pathEditable ? (
@@ -292,12 +305,19 @@ export function PublishCompare({
         </p>
       ) : null}
 
-      {onNoPage ? (
+      {onNoPage && showsCode ? (
         <p className="border-b bg-background px-4 py-1.5 text-[11px] text-muted-foreground">
           {t("thread.publishCompare.notOnAnyPage")}
         </p>
       ) : null}
-      {view === "code" ? (
+      {view === "code" && !showsCode ? (
+        <ComparePlaceholder
+          icon={<Eye className="size-5 text-muted-foreground" />}
+          title={t("thread.publishCompare.noPreviewTitle")}
+          description={t("thread.publishCompare.noPreviewDescription")}
+        />
+      ) : null}
+      {view === "code" && showsCode ? (
         <div className="min-h-0 flex-1 overflow-y-auto bg-background [scrollbar-width:thin]">
           {hasBody ? (
             <GitDiffList diff={rawDiff} hideFileRows editorHeight="70vh" />

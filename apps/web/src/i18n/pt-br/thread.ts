@@ -259,6 +259,9 @@ export const thread = {
     "Digite o endereço de uma página para comparar.",
   "thread.publishCompare.draftUnavailable":
     "Ainda não é possível mostrar suas alterações. Use Visualizar para abri-las.",
+  "thread.publishCompare.noPreviewTitle": "Nada para visualizar",
+  "thread.publishCompare.noPreviewDescription":
+    "Esta alteração não aparece em nenhuma página. Ela é publicada junto com as outras.",
   "thread.publishCompare.newTitle": "Página nova",
   "thread.publishCompare.newDescription":
     "Esta página ainda não existe no site publicado.",

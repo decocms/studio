@@ -266,3 +266,26 @@ describe("site editor copy", () => {
     }
   });
 });
+
+describe("the publish panel's button (PO decision)", () => {
+  test('says "Publish N changes", never where they go', () => {
+    expect(en["thread.publishPopover.publishCount"]).toBe(
+      "Publish {count} changes",
+    );
+    expect(en["thread.publishPopover.publishOne"]).toBe("Publish 1 change");
+    expect(ptBR["thread.publishPopover.publishCount"]).toBe(
+      "Publicar {count} alterações",
+    );
+    expect(ptBR["thread.publishPopover.publishOne"]).toBe(
+      "Publicar 1 alteração",
+    );
+    for (const dict of [en, ptBR]) {
+      for (const [key, value] of Object.entries(
+        dict as Record<string, string>,
+      )) {
+        if (!key.startsWith("thread.publishPopover.")) continue;
+        expect(value).not.toMatch(/in production|em produção/i);
+      }
+    }
+  });
+});
