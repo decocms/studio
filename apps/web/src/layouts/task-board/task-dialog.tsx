@@ -100,7 +100,6 @@ import {
 import { MarkdownEditor } from "@/components/markdown-editor";
 import { useMembers } from "@/hooks/use-members";
 import { useCreateTag, useDeleteTag, useTags } from "@/hooks/use-tags";
-import { getInitials } from "@/lib/get-initials";
 import { useT } from "@/i18n/use-t.ts";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import {
@@ -234,7 +233,7 @@ const DUE_DATE_FMT = new Intl.DateTimeFormat(undefined, {
  * (wrapping row); a borderless ghost row in the desktop sidebar.
  */
 const PROPERTY_BUTTON =
-  "inline-flex h-9 items-center justify-start gap-2 rounded-lg border border-border px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted sm:border-transparent";
+  "inline-flex h-9 items-center justify-start gap-2 rounded-lg border border-border px-3 text-sm font-medium text-foreground transition-colors hover:bg-accent sm:border-transparent";
 
 /** A run of consecutive timeline entries longer than this folds; the fold
  *  keeps the newest `TIMELINE_FOLD_TO` visible and hides the rest behind a row
@@ -938,7 +937,7 @@ function TaskBoardItemEditor({
             aria-label={t("taskBoard.taskDialog.copyIdAriaLabel")}
             /* -ml-2 cancels the button's own padding so the glyph starts on
                  the pane's 32px gutter, as drawn. */
-            className="-ml-2 gap-2 px-2 text-[15px] text-muted-foreground hover:text-foreground"
+            className="-ml-2 gap-2 px-2 text-base text-muted-foreground hover:text-foreground"
             onClick={() => {
               copyId(key);
               toast.success(t("taskBoard.taskDialog.idCopied"));
@@ -952,7 +951,7 @@ function TaskBoardItemEditor({
                row from reading as broken. */
           <span
             aria-hidden
-            className="flex h-7 items-center gap-2 text-[15px] text-muted-foreground opacity-50"
+            className="flex h-7 items-center gap-2 text-base text-muted-foreground opacity-50"
           >
             <Bookmark size={16} />–
           </span>
@@ -994,7 +993,7 @@ function TaskBoardItemEditor({
                 <div className="mb-3 flex items-center gap-2 text-sm text-muted-foreground">
                   <Avatar
                     url={creator?.user?.image ?? undefined}
-                    fallback={getInitials(creator?.user?.name)}
+                    fallback={creator?.user?.name ?? "?"}
                     shape="circle"
                     size="xs"
                   />
@@ -1345,7 +1344,7 @@ function TaskBoardItemEditor({
                     <>
                       <Avatar
                         url={creator.user?.image ?? undefined}
-                        fallback={getInitials(creator.user?.name)}
+                        fallback={creator.user?.name ?? "?"}
                         shape="circle"
                         size="2xs"
                       />
@@ -1389,7 +1388,7 @@ function TaskBoardItemEditor({
                           <span className="hidden items-center gap-2 sm:flex">
                             <Avatar
                               url={assignedBy.user?.image ?? undefined}
-                              fallback={getInitials(assignedBy.user?.name)}
+                              fallback={assignedBy.user?.name ?? "?"}
                               shape="circle"
                               size="2xs"
                             />
@@ -1405,7 +1404,7 @@ function TaskBoardItemEditor({
                             <span className="inline-flex items-center">
                               <Avatar
                                 url={assignedBy.user?.image ?? undefined}
-                                fallback={getInitials(assignedBy.user?.name)}
+                                fallback={assignedBy.user?.name ?? "?"}
                                 shape="circle"
                                 size="2xs"
                                 className="-mr-1.5 ring-2 ring-background"
@@ -1427,7 +1426,7 @@ function TaskBoardItemEditor({
                         <>
                           <Avatar
                             url={assignee.user?.image ?? undefined}
-                            fallback={getInitials(assignee.user?.name)}
+                            fallback={assignee.user?.name ?? "?"}
                             shape="circle"
                             size="2xs"
                           />
@@ -1585,7 +1584,7 @@ function TaskBoardItemEditor({
                         // Two sibling buttons, not one nested in the other — a <button> can't validly contain another interactive element.
                         <div
                           key={tagId}
-                          className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+                          className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-sm font-medium text-foreground transition-colors hover:bg-accent"
                         >
                           <button
                             type="button"
@@ -1619,13 +1618,14 @@ function TaskBoardItemEditor({
                       );
                     })}
                     <PopoverTrigger asChild>
-                      <button
-                        type="button"
+                      <Button
+                        variant="outline"
+                        size="icon-sm"
                         aria-label={t("taskBoard.taskDialog.addTagButton")}
-                        className="flex size-7 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                        className="text-muted-foreground"
                       >
-                        <Plus size={14} />
-                      </button>
+                        <Plus className="size-3.5" />
+                      </Button>
                     </PopoverTrigger>
                   </div>
                 )}
@@ -2115,7 +2115,7 @@ function PrCard({
           target="_blank"
           rel="noreferrer"
           title={pr.url}
-          className="group flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted"
+          className="group flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent"
         >
           {changeRequestNumberLabel(provider, pr.number)}
           <LinkExternal01
@@ -2341,7 +2341,7 @@ function LinksSection({
     : undefined;
 
   const row =
-    "group flex items-center gap-2 rounded-md px-1 py-1.5 transition-colors hover:bg-muted";
+    "group flex items-center gap-2 rounded-md px-1 py-1.5 transition-colors hover:bg-accent";
 
   return (
     <RecordSection label={t("taskBoard.taskDialog.linksLabel")}>
@@ -2416,7 +2416,7 @@ function RunReviewerButton({ item }: { item: TaskBoardItem }) {
       size="sm"
       disabled={runReviewer.isPending}
       title={t("taskBoard.taskDialog.runReviewerTitle")}
-      className="h-7 gap-1.5 px-2 text-sm font-normal text-muted-foreground"
+      className="gap-1.5 px-2 font-normal text-muted-foreground"
       onClick={() =>
         runReviewer.mutate(undefined, {
           onSuccess: (res) =>
@@ -2612,7 +2612,7 @@ function ActivitySection({
               variant="ghost"
               size="sm"
               onClick={() => setBehindTheScenes(!behindTheScenes)}
-              className="h-7 px-2 text-sm font-normal text-muted-foreground"
+              className="px-2 font-normal text-muted-foreground"
             >
               {behindTheScenes
                 ? t("taskBoard.conversation.hideBehindTheScenes")
@@ -2840,7 +2840,7 @@ function describeActivity(
         icon={
           <Avatar
             url={member?.user?.image ?? undefined}
-            fallback={getInitials(member?.user?.name)}
+            fallback={member?.user?.name ?? "?"}
             shape="circle"
             size="2xs"
           />
@@ -3108,7 +3108,7 @@ function TimelineBlock({
       <span className="z-10 shrink-0 rounded-full bg-background">
         <Avatar
           url={member?.user?.image ?? undefined}
-          fallback={getInitials(member?.user?.name)}
+          fallback={member?.user?.name ?? "?"}
           shape="circle"
           size="2xs"
         />

@@ -124,3 +124,55 @@ describe("UserStorage.searchOrganizations", () => {
     expect(fenced.map((org) => org.id)).toEqual(["org_filler_007"]);
   });
 });
+
+describe("UserStorage.findById", () => {
+  let database: StudioDatabase;
+  let storage: UserStorage;
+
+  async function addOrg(id: string, name: string, slug: string) {
+    await sql`
+      INSERT INTO "organization" (id, name, slug, "createdAt")
+      VALUES (${id}, ${name}, ${slug}, ${NOW})
+    `.execute(database.db);
+  }
+
+  async function join(userId: string, orgId: string) {
+    await sql`
+      INSERT INTO "member" (id, "organizationId", "userId", role, "createdAt")
+      VALUES (${`mem_${userId}_${orgId}`}, ${orgId}, ${userId}, 'user', ${NOW})
+    `.execute(database.db);
+  }
+
+  beforeAll(async () => {
+    database = await connectTestPgDatabase();
+    await resetTestPgDatabase(database);
+    await seedCommonTestPgFixtures(database);
+    storage = new UserStorage(database.db);
+
+    await addOrg("org_shared", "Shared", "shared");
+    await join("user_1", "org_shared");
+    await join("user_123", "org_shared");
+
+    await addOrg("org_lonely", "Lonely", "lonely");
+    await join("user_test", "org_lonely");
+  });
+
+  afterAll(async () => {
+    await closeTestPgDatabase(database);
+  });
+
+  it("returns the target user when requester shares an organization with them", async () => {
+    const user = await storage.findById("user_123", "user_1");
+    expect(user?.id).toBe("user_123");
+  });
+
+  it("refuses to leak a user's data to a requester with no shared organization", async () => {
+    const user = await storage.findById("user_test", "user_1");
+    expect(user).toBeNull();
+  });
+
+  it("returns null for a user id that does not exist", async () => {
+    const user = await storage.findById("no_such_user", "user_1");
+    expect(user).toBeNull();
+  });
+});

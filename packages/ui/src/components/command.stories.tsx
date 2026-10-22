@@ -22,7 +22,7 @@ import {
 } from "./command.tsx";
 
 const meta = {
-  title: "Components/Command",
+  title: "Organisms/Command",
   component: Command,
 } satisfies Meta<typeof Command>;
 

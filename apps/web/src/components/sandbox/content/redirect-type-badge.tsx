@@ -11,7 +11,7 @@ export function RedirectTypeBadge({ redirect }: { redirect: RedirectPayload }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">
+        <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-2xs font-medium tabular-nums text-muted-foreground">
           {redirectStatus(redirect)}
         </span>
       </TooltipTrigger>

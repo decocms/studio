@@ -2,7 +2,7 @@
 
 import type * as React from "react";
 import * as CheckboxPrimitive from "@radix-ui/react-checkbox";
-import { Check } from "@untitledui/icons";
+import { Minus } from "@untitledui/icons";
 
 import { cn } from "../lib/utils.ts";
 
@@ -14,16 +14,20 @@ function Checkbox({
     <CheckboxPrimitive.Root
       data-slot="checkbox"
       className={cn(
-        "peer border-foreground dark:bg-input/30 data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground dark:data-[state=checked]:bg-primary data-[state=checked]:border-primary focus-visible:border-ring focus-visible:ring-ring/20 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive size-4 shrink-0 rounded-[4px] border shadow-xs transition-shadow outline-none focus-visible:ring-[2px] disabled:opacity-50",
+        "checkbox-draw peer relative size-4 shrink-0 rounded-[4px] text-primary-foreground outline-none focus-ring aria-invalid:[--checkbox-line:var(--destructive)] disabled:opacity-50",
         className,
       )}
       {...props}
     >
+      {/* Outside the Indicator so it stays mounted and can animate both ways. */}
+      <svg viewBox="0 0 21 21" aria-hidden className="size-full">
+        <path d="M5,10.75 L8.5,14.25 L19.4,2.3 C18.8333333,1.43333333 18.0333333,1 17,1 L4,1 C2.35,1 1,2.35 1,4 L1,17 C1,18.65 2.35,20 4,20 L17,20 C18.65,20 20,18.65 20,17 L20,7.99769186" />
+      </svg>
       <CheckboxPrimitive.Indicator
         data-slot="checkbox-indicator"
-        className="flex items-center justify-center text-primary-foreground transition-none"
+        className="absolute inset-0 hidden items-center justify-center data-[state=indeterminate]:flex"
       >
-        <Check className="size-3.5" />
+        <Minus className="size-3" />
       </CheckboxPrimitive.Indicator>
     </CheckboxPrimitive.Root>
   );

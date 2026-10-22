@@ -20,7 +20,10 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
-import { ViewModeToggle } from "@decocms/ui/components/view-mode-toggle.tsx";
+import {
+  ToggleGroup,
+  ToggleGroupItem,
+} from "@decocms/ui/components/toggle-group.tsx";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 
@@ -78,7 +81,8 @@ export function CollectionDisplayButton({
                 {activeFilterCount > 0 && (
                   <Badge
                     variant="default"
-                    className="absolute -top-1.5 -right-1.5 h-4 min-w-4 px-1 text-[10px] leading-none"
+                    size="sm"
+                    className="absolute -top-1.5 -right-1.5 min-w-4"
                   >
                     {activeFilterCount}
                   </Badge>
@@ -95,21 +99,38 @@ export function CollectionDisplayButton({
         {/* View Mode Toggle */}
         {onViewModeChange && viewMode && (
           <div className="p-2 border-b border-border">
-            <ViewModeToggle
+            <ToggleGroup
+              type="single"
+              variant="segmented"
+              size="sm"
+              className="w-full"
               value={viewMode}
-              onValueChange={onViewModeChange}
-              fullWidth
-              options={[
-                { value: "table", icon: <List /> },
-                { value: "cards", icon: <Grid01 /> },
-              ]}
-            />
+              onValueChange={(next) => {
+                if (next === "table" || next === "cards")
+                  onViewModeChange(next);
+              }}
+            >
+              <ToggleGroupItem
+                value="table"
+                tooltip={t("collections.collectionDisplayButton.tableView")}
+                className="flex-1"
+              >
+                <List />
+              </ToggleGroupItem>
+              <ToggleGroupItem
+                value="cards"
+                tooltip={t("collections.collectionDisplayButton.cardsView")}
+                className="flex-1"
+              >
+                <Grid01 />
+              </ToggleGroupItem>
+            </ToggleGroup>
           </div>
         )}
         {/* Sort Options */}
         {sortOptions.length > 0 && onSort && (
           <div className="p-1 flex flex-col gap-0.5 border-b border-border">
-            <div className="px-2 py-1.5 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
+            <div className="px-2 py-1.5 font-normal text-meta">
               {t("collections.collectionDisplayButton.sortBy")}
             </div>
             {sortOptions.map((option) => {
@@ -157,7 +178,7 @@ export function CollectionDisplayButton({
             key={filter.label}
             className="p-1 flex flex-col gap-0.5 border-b border-border last:border-b-0"
           >
-            <div className="px-2 py-1.5 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
+            <div className="px-2 py-1.5 font-normal text-meta">
               {filter.label}
             </div>
             {filter.options.map((option) => {

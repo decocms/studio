@@ -3,6 +3,7 @@ import { Suspense, useState } from "react";
 import { AlertCircle, Lock01, Plus, User01, Users01 } from "@untitledui/icons";
 import { toast } from "sonner";
 import { Button } from "@decocms/ui/components/button.tsx";
+import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import {
   Dialog,
   DialogContent,
@@ -24,7 +25,10 @@ import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { Page } from "@/components/page";
-import { SettingsPage } from "@/components/settings/settings-section";
+import {
+  SettingsCard,
+  SettingsPage,
+} from "@/components/settings/settings-section";
 import { useT } from "@/i18n/use-t.ts";
 import {
   type SecretScopeKind,
@@ -85,23 +89,19 @@ function SecretRow({ secret }: { secret: SecretInfo }) {
   );
 }
 
-function EmptyState({ action }: { action?: React.ReactNode }) {
+function NoSecrets({ action }: { action?: React.ReactNode }) {
   const t = useT();
   return (
-    <div className="rounded-2xl border border-dashed border-border/60 p-10 flex flex-col items-center justify-center text-center gap-3">
-      <div className="size-12 rounded-full bg-muted flex items-center justify-center">
-        <Lock01 size={20} className="text-muted-foreground" />
-      </div>
-      <div>
-        <p className="font-medium text-sm">
-          {t("settings.secrets.emptyTitle")}
-        </p>
-        <p className="text-xs text-muted-foreground mt-1 max-w-sm">
-          {t("settings.secrets.emptyDescription")}
-        </p>
-      </div>
-      {action}
-    </div>
+    <SettingsCard>
+      <EmptyState
+        size="inline"
+        icon={<Lock01 />}
+        title={t("settings.secrets.emptyTitle")}
+        description={t("settings.secrets.emptyDescription")}
+      >
+        {action}
+      </EmptyState>
+    </SettingsCard>
   );
 }
 
@@ -277,7 +277,7 @@ function SecretsContent() {
     return (
       <>
         {createAction}
-        <EmptyState action={false} />
+        <NoSecrets action={false} />
         <CreateSecretDialog open={createOpen} onOpenChange={setCreateOpen} />
       </>
     );
@@ -301,7 +301,7 @@ function SecretsContent() {
       </div>
 
       {orgSecrets.length > 0 ? (
-        <section className="rounded-2xl border border-border/60 bg-background p-5">
+        <section className="surface p-5">
           <h3 className="text-xs font-medium text-muted-foreground mb-2">
             {t("settings.secrets.sectionOrganization")}
           </h3>
@@ -314,7 +314,7 @@ function SecretsContent() {
       ) : null}
 
       {userSecrets.length > 0 ? (
-        <section className="rounded-2xl border border-border/60 bg-background p-5">
+        <section className="surface p-5">
           <h3 className="text-xs font-medium text-muted-foreground mb-2">
             {t("settings.secrets.sectionPrivate")}
           </h3>

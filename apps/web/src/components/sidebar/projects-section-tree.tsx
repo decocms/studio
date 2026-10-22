@@ -3,7 +3,6 @@
 
 import { useState, type MouseEvent, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useSearch } from "@tanstack/react-router";
 import {
   ChevronDown,
   ChevronRight,
@@ -38,7 +37,6 @@ import { openNewProjectDialog } from "@/components/projects/new-project-store";
 import { ProjectIcon } from "@/components/project-icon";
 import { useCapability } from "@/hooks/use-capability";
 import { useLocalStorage } from "@/hooks/use-local-storage";
-import { useLeafRoutePath } from "@/hooks/use-destination-route";
 import { useNavigateToAgent } from "@/hooks/use-navigate-to-agent";
 import {
   useProjectSidebar,
@@ -51,7 +49,6 @@ import { taskBoardItemsQueryOptions } from "@/hooks/use-task-board-items";
 import { useT } from "@/i18n/use-t.ts";
 import { authClient } from "@/lib/auth-client";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
-import { FLAT_PROJECT_ROUTE } from "@/lib/flat-projects";
 import { buildProjectIndex, projectForTask } from "@/lib/project-index";
 import {
   buildProjectSidebar,
@@ -123,14 +120,12 @@ function SectionLabel({
  *  an unread channel, in every section: the name a weight up and a dot. */
 function ProjectRow({
   project,
-  isActive,
   onNavigate,
   waiting = 0,
   trailing,
   children,
 }: {
   project: VirtualMCPEntity;
-  isActive: boolean;
   onNavigate?: () => void;
   waiting?: number;
   trailing?: ReactNode;
@@ -145,7 +140,6 @@ function ProjectRow({
     <SidebarNavRow
       icon={<ProjectIcon icon={project.icon} name={project.title} />}
       label={project.title}
-      isActive={isActive}
       contextId={`project:${project.id}`}
       trailing={
         waitingLabel ? (
@@ -180,7 +174,6 @@ function FolderSection({
   contextId,
   folderId,
   projects,
-  selectedId,
   onNavigate,
   actions,
   waitingByProject,
@@ -190,7 +183,6 @@ function FolderSection({
   /** Keys the persisted fold state; absent for the loose projects section. */
   folderId?: string;
   projects: VirtualMCPEntity[];
-  selectedId: string | null;
   onNavigate?: () => void;
   waitingByProject: ReadonlyMap<string, number>;
   /** The header's own "⋯" and "+", the same on every section. */
@@ -225,7 +217,6 @@ function FolderSection({
             <ProjectRow
               key={project.id}
               project={project}
-              isActive={project.id === selectedId}
               onNavigate={onNavigate}
               waiting={waitingByProject.get(project.id)}
             />
@@ -246,8 +237,6 @@ export function SidebarProjectsTree({
   const { granted: canManage } = useCapability("agents:manage");
   const { projects } = useProjectScope();
   const scopeId = useScopeId();
-  const leafPath = useLeafRoutePath();
-  const search = useSearch({ strict: false }) as { project?: string };
   const sidebar = useProjectSidebar();
   const waitingByProject = useWaitingByProject(projects);
   const updatePreferences = useUpdateSidebarPreferences();
@@ -268,10 +257,6 @@ export function SidebarProjectsTree({
   const hiddenCount =
     model.hidden.length +
     model.hiddenFolders.reduce((sum, f) => sum + f.projects.length, 0);
-  /** Keyed on the ROUTE as well as the param: neighbouring links spread the
-   *  search forward, so `?project=` outlives the screen that meant it. */
-  const selectedId =
-    leafPath === FLAT_PROJECT_ROUTE ? (search.project?.trim() ?? null) : null;
 
   const pin = (id: string, on: boolean) => {
     track(on ? "sidebar_project_pinned" : "sidebar_project_unpinned");
@@ -416,7 +401,6 @@ export function SidebarProjectsTree({
       <ProjectRow
         key={project.id}
         project={project}
-        isActive={project.id === selectedId}
         onNavigate={onNavigate}
         waiting={waitingByProject.get(project.id)}
       />
@@ -462,7 +446,6 @@ export function SidebarProjectsTree({
               <FolderSection
                 label={t("sidebar.projects.heading")}
                 projects={model.loose}
-                selectedId={selectedId}
                 onNavigate={onNavigate}
                 waitingByProject={waitingByProject}
                 actions={sectionActions(null)}
@@ -477,7 +460,6 @@ export function SidebarProjectsTree({
                   contextId={`folder:${folder.id}`}
                   folderId={folder.id}
                   projects={inside}
-                  selectedId={selectedId}
                   onNavigate={onNavigate}
                   waitingByProject={waitingByProject}
                   actions={sectionActions(folder)}

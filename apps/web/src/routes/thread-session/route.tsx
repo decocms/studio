@@ -298,7 +298,7 @@ function VmEventsBridge({
   if (!executionEnabled) {
     return (
       <div className="flex-1 min-h-0 pr-1.5 pb-1.5 overflow-hidden">
-        <div className="flex h-full rounded-[0.75rem] bg-background card-shadow">
+        <div className="flex h-full rounded-[0.75rem] bg-background shadow-edge">
           <EmptyState
             image={<AlertCircle size={48} className="text-muted-foreground" />}
             title={t(
@@ -623,7 +623,7 @@ function ThreadSessionProvider() {
           <div
             role="status"
             aria-live="polite"
-            className="flex h-full items-center justify-center bg-background card-shadow rounded-[0.75rem] text-sm text-muted-foreground"
+            className="flex h-full items-center justify-center bg-background shadow-edge rounded-[0.75rem] text-sm text-muted-foreground"
           >
             <Spinner className="size-4 mr-2" />
             {t("agentShellLayout.agentShellLayout.creatingTask")}
@@ -659,7 +659,7 @@ function ThreadSessionProvider() {
         <div
           role="status"
           aria-live="polite"
-          className="flex h-full items-center justify-center bg-background card-shadow rounded-[0.75rem] text-sm text-muted-foreground"
+          className="flex h-full items-center justify-center bg-background shadow-edge rounded-[0.75rem] text-sm text-muted-foreground"
         >
           <Spinner className="size-4 mr-2" />
           {t("agentShellLayout.agentShellLayout.creatingTask")}
@@ -673,7 +673,7 @@ function ThreadSessionProvider() {
       <div className="flex-1 min-h-0 pr-1.5 pb-1.5 overflow-hidden">
         <div
           role="alert"
-          className="flex flex-col h-full items-center justify-center gap-2 bg-background card-shadow rounded-[0.75rem] p-8 text-sm"
+          className="flex flex-col h-full items-center justify-center gap-2 bg-background shadow-edge rounded-[0.75rem] p-8 text-sm"
         >
           <div className="font-medium">
             {t("agentShellLayout.agentShellLayout.taskUnavailable")}
@@ -689,7 +689,7 @@ function ThreadSessionProvider() {
   if (!entity) {
     return (
       <div className="flex-1 min-h-0 pr-1.5 pb-1.5 overflow-hidden">
-        <div className="flex flex-col h-full bg-background overflow-hidden card-shadow rounded-[0.75rem]">
+        <div className="flex flex-col h-full bg-background overflow-hidden shadow-edge rounded-[0.75rem]">
           <EmptyState
             image={<AlertCircle size={48} className="text-muted-foreground" />}
             title={t("agentShellLayout.agentShellLayout.agentNotFound")}

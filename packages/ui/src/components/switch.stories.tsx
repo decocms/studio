@@ -1,9 +1,10 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { Label } from "./label.tsx";
 import { Switch } from "./switch.tsx";
+import { Matrix } from "../foundations/kit.tsx";
 
 const meta = {
-  title: "Components/Switch",
+  title: "Atoms/Switch",
   component: Switch,
 } satisfies Meta<typeof Switch>;
 
@@ -19,29 +20,6 @@ export const WithLabel: Story = {
     <div className="flex items-center gap-2">
       <Switch id="airplane" />
       <Label htmlFor="airplane">Enable notifications</Label>
-    </div>
-  ),
-};
-
-export const States: Story = {
-  render: () => (
-    <div className="grid gap-3">
-      <div className="flex items-center gap-2">
-        <Switch id="off" />
-        <Label htmlFor="off">Off</Label>
-      </div>
-      <div className="flex items-center gap-2">
-        <Switch id="on" defaultChecked />
-        <Label htmlFor="on">On</Label>
-      </div>
-      <div className="flex items-center gap-2">
-        <Switch id="disabled-off" disabled />
-        <Label htmlFor="disabled-off">Disabled off</Label>
-      </div>
-      <div className="flex items-center gap-2">
-        <Switch id="disabled-on" disabled defaultChecked />
-        <Label htmlFor="disabled-on">Disabled on</Label>
-      </div>
     </div>
   ),
 };
@@ -77,5 +55,39 @@ export const SettingsRow: Story = {
         <Switch id="beta" />
       </div>
     </div>
+  ),
+};
+
+export const States: Story = {
+  parameters: {
+    controls: { disable: true },
+    layout: "padded",
+    pseudo: {
+      hover: [".is-hover"],
+      focusVisible: [".is-focus"],
+      active: [".is-active"],
+    },
+  },
+  render: () => (
+    <Matrix
+      columns={["Default", "Focus", "Disabled"]}
+      rows={(
+        [
+          ["Off", false],
+          ["On", true],
+        ] as const
+      ).map(([label, checked]) => ({
+        label,
+        cells: ["", "is-focus", "disabled"].map((state) => (
+          <Switch
+            key={state}
+            checked={checked}
+            className={state}
+            disabled={state === "disabled"}
+            aria-label={label}
+          />
+        )),
+      }))}
+    />
   ),
 };

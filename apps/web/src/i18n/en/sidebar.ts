@@ -1,8 +1,6 @@
 export const sidebar = {
   "sidebar.projects.addProject": "Add project",
-  "sidebar.agentsSection.codeAgents": "Code Projects",
   "sidebar.header.closeSidebar": "Close sidebar",
-  "sidebar.header.toggleSidebar": "Toggle sidebar",
   "sidebar.navDestinations.discover": "Discover",
   "sidebar.navDestinations.overview": "Overview",
   "sidebar.navDestinations.home": "Home",
@@ -32,7 +30,6 @@ export const sidebar = {
   "sidebar.projects.renameFolder": "Rename folder",
   "sidebar.projects.deleteFolder": "Delete folder",
   "sidebar.projects.hideFolder": "Hide folder",
-  "sidebar.projects.showFolder": "Show folder",
   "sidebar.projects.customize": "Customize sidebar",
   "sidebar.projects.hiddenCount": "{count} hidden",
   "sidebar.projects.more": "Project options",

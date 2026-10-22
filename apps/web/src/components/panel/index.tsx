@@ -49,7 +49,7 @@ function PanelRoot({
         className={cn(
           "flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-background",
           variant === "card" &&
-            "rounded-xl card-shadow [transform:translateZ(0)]",
+            "rounded-xl shadow-edge [transform:translateZ(0)]",
           className,
         )}
       >

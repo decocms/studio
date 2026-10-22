@@ -185,7 +185,7 @@ function AdvancedGroup({
       <CollapsibleTrigger
         className={cn(
           "flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm transition-colors cursor-pointer",
-          "text-muted-foreground hover:bg-muted hover:text-foreground",
+          "text-muted-foreground hover:bg-accent hover:text-foreground",
         )}
       >
         <Sliders02 size={16} className="shrink-0" />
@@ -272,7 +272,7 @@ function CollectionRow({
         indent && "pl-6",
         active
           ? "bg-accent text-accent-foreground"
-          : "text-muted-foreground hover:bg-muted hover:text-foreground",
+          : "text-muted-foreground hover:bg-accent hover:text-foreground",
       )}
     >
       <Icon size={16} className="shrink-0" />

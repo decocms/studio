@@ -1,3 +1,4 @@
+import { Button } from "@decocms/ui/components/button.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import {
@@ -463,13 +464,19 @@ export function ChatContextPanel({
         <span className="text-sm font-medium text-foreground">
           {t("chat.contextPanel.title")}
         </span>
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="icon-sm"
           onClick={onClose}
-          className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          className="text-muted-foreground"
         >
-          {back ? <ChevronLeft size={14} /> : <XClose size={14} />}
-        </button>
+          {back ? (
+            <ChevronLeft className="size-3.5" />
+          ) : (
+            <XClose className="size-3.5" />
+          )}
+        </Button>
       </div>
 
       {/* Body */}
@@ -523,7 +530,7 @@ export function ChatContextPanel({
                     <button
                       type="button"
                       onClick={() => setSelectedMessage(isExpanded ? null : m)}
-                      className="flex items-center justify-between gap-2 px-3 py-2 text-xs hover:bg-accent/50 w-full text-left cursor-pointer"
+                      className="flex items-center justify-between gap-2 px-3 py-2 text-xs hover:bg-accent w-full text-left cursor-pointer"
                     >
                       <div className="flex items-center gap-2 min-w-0">
                         <span

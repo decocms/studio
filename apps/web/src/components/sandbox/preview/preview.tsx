@@ -1687,17 +1687,17 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                   ? pageName
                   : [pageName, currentPath].filter(Boolean).join(" · ")
             }
-            className="group/page-picker flex h-7 w-fit min-w-[320px] items-stretch overflow-hidden whitespace-nowrap rounded-[var(--studio-button-radius,calc(var(--radius)*1.333))] border border-border/60 bg-background text-left text-xs text-muted-foreground transition-colors hover:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="group/page-picker flex h-7 w-fit min-w-[320px] items-stretch overflow-hidden whitespace-nowrap rounded-[var(--studio-button-radius,calc(var(--radius)*1.333))] border border-border/60 bg-background text-left text-xs text-muted-foreground transition-colors hover:border-border focus-ring"
           >
             <span className="flex min-w-0 flex-1 items-center gap-1.5 px-2 transition-colors group-hover/page-picker:bg-accent/50 group-data-[state=open]/page-picker:bg-accent/50">
               {activeGlobalSection && (
-                <span className="inline-flex shrink-0 items-center gap-1 rounded bg-global-section/14 px-1.5 py-0.5 text-[11px] font-medium text-global-section-fg dark:text-global-section-fg-dark">
+                <span className="inline-flex shrink-0 items-center gap-1 rounded bg-global-section/14 px-1.5 py-0.5 text-2xs font-medium text-global-section-fg dark:text-global-section-fg-dark">
                   <Globe01 size={11} />
                   {t("sandbox.preview.globalBadge")}
                 </span>
               )}
               {activeLoader && (
-                <span className="inline-flex shrink-0 items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                <span className="inline-flex shrink-0 items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-2xs font-medium text-muted-foreground">
                   <Database01 size={11} />
                   {t("sandbox.preview.loaderBadge")}
                 </span>
@@ -2162,7 +2162,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                       )}
 
                     {display.showWakingPill && (
-                      <div className="absolute top-4 left-1/2 z-20 flex max-w-md -translate-x-1/2 items-start gap-3 rounded-xl border border-border bg-muted px-4 py-3 shadow-lg pointer-events-none select-none">
+                      <div className="absolute top-4 left-1/2 z-20 flex max-w-md -translate-x-1/2 items-start gap-3 rounded-xl bg-muted px-4 py-3 shadow-soft pointer-events-none select-none">
                         <Spinner className="size-4.5 mt-0.5 shrink-0 text-muted-foreground" />
                         <div className="flex flex-col gap-0.5">
                           <span className="text-sm font-medium text-foreground">
@@ -2176,7 +2176,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                     )}
 
                     {effectiveEditingMode === "visual" && !visualElement && (
-                      <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 rounded-full border border-violet-400/40 bg-violet-500/90 px-3 py-1 text-xs font-medium text-white shadow-md backdrop-blur-sm pointer-events-none select-none">
+                      <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 rounded-full border border-special/40 bg-special/90 px-3 py-1 text-xs font-medium text-special-foreground shadow-soft backdrop-blur-sm pointer-events-none select-none">
                         <CursorClick01 size={12} />
                         {t("sandbox.preview.clickElementToAsk")}
                       </div>
@@ -2192,8 +2192,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                       <div
                         className={cn(
                           "shrink-0",
-                          !previewFluid &&
-                            "border-x border-border bg-background shadow-sm",
+                          !previewFluid && "bg-background shadow-edge",
                         )}
                         style={previewFrameStyle}
                         onMouseLeave={clearEditorHover}

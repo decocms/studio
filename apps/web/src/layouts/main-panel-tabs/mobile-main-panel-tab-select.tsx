@@ -217,7 +217,7 @@ export function MobileMainPanelTabSelect({
         })}
         /* Sized and padded like the trigger it replaces, so swapping the
            control does not move the strip it sits in. */
-        className="flex h-10 min-w-0 max-w-[7.5rem] items-center gap-1.5 rounded-lg px-1.5 text-xs text-foreground transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+        className="flex h-10 min-w-0 max-w-[7.5rem] items-center gap-1.5 rounded-lg px-1.5 text-xs text-foreground transition-colors hover:bg-accent focus-ring"
       >
         <span className="flex size-5 shrink-0 items-center justify-center">
           <TabIconGlyph icon={other.icon} className="size-5" />
@@ -231,13 +231,13 @@ export function MobileMainPanelTabSelect({
     <Select value={MOBILE_SELECT_SENTINEL} onValueChange={handleSelect}>
       {/*
         Clean, borderless trigger: the SelectTrigger's default box-shadow
-        "border" is the `card-shadow` utility, which reads var(--card-shadow).
-        We null that variable on this element (`[--card-shadow:none]`) instead
-        of `card-shadow-none`, which is not a real utility.
+        "border" is the `shadow-edge` utility, which reads var(--shadow-edge).
+        We null that variable on this element (`[--shadow-edge:none]`) instead
+        of `shadow-edge-none`, which is not a real utility.
       */}
       <SelectTrigger
         aria-label={t("mainPanelTabs.mobileMainPanelTabSelect.view")}
-        className="h-10! w-full min-w-0 max-w-[7.5rem] rounded-lg border-0 bg-transparent px-1.5 text-xs shadow-none [--card-shadow:none]"
+        className="h-10! w-full min-w-0 max-w-[7.5rem] rounded-lg border-0 bg-transparent px-1.5 text-xs shadow-none [--shadow-edge:none]"
       >
         <span className="flex min-w-0 items-center gap-1.5">
           {selected && (

@@ -357,7 +357,7 @@ export function FilesSection({ form }: { form: VirtualMcpFormReturn }) {
           ? renderPicker(
               <button
                 type="button"
-                className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-dashed border-border hover:bg-accent/50 transition-colors w-full text-left cursor-pointer"
+                className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-dashed border-border hover:bg-accent transition-colors w-full text-left cursor-pointer"
               >
                 <div className="flex items-center justify-center size-8 rounded-md text-muted-foreground/75 border border-dashed border-border shrink-0">
                   <Plus size={16} />
@@ -370,7 +370,7 @@ export function FilesSection({ form }: { form: VirtualMcpFormReturn }) {
           : files.map((file) => (
               <div
                 key={file.id}
-                className="flex items-center gap-3 px-4 py-3 rounded-xl border bg-card"
+                className="flex items-center gap-3 px-4 py-3 surface"
               >
                 {file.kind === "skill" ? (
                   <div className="flex items-center justify-center h-8 w-6.5 shrink-0 rounded-md bg-muted text-muted-foreground">

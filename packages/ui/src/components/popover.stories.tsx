@@ -5,7 +5,7 @@ import { Label } from "./label.tsx";
 import { Popover, PopoverContent, PopoverTrigger } from "./popover.tsx";
 
 const meta = {
-  title: "Components/Popover",
+  title: "Molecules/Popover",
   component: Popover,
 } satisfies Meta<typeof Popover>;
 

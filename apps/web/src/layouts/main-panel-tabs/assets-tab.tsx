@@ -22,7 +22,7 @@ import {
   Upload01,
 } from "@untitledui/icons";
 import { toast } from "sonner";
-import { Button, buttonVariants } from "@decocms/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -377,7 +377,7 @@ function AssetCard({
           <p className="truncate text-xs font-medium" title={item.key}>
             {basename(item.key)}
           </p>
-          <p className="text-[10px] uppercase text-muted-foreground">
+          <p className="text-2xs uppercase text-muted-foreground">
             {ext} · {formatSize(item.size)}
           </p>
         </div>
@@ -413,8 +413,8 @@ function AssetCardMenu({
         <Button
           type="button"
           variant="ghost"
-          size="icon"
-          className="size-7 shrink-0"
+          size="icon-sm"
+          className="shrink-0"
           aria-label={t("filePicker.filePickerDialog.assetActions")}
         >
           <DotsVertical size={14} />
@@ -483,7 +483,7 @@ function DeleteAssetDialog({
             {t("assets.browser.deleteCancel")}
           </AlertDialogCancel>
           <AlertDialogAction
-            className={cn(buttonVariants({ variant: "destructive" }))}
+            variant="destructive"
             disabled={del.isPending}
             onClick={(e) => {
               e.preventDefault();

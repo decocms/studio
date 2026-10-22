@@ -86,7 +86,7 @@ function ReportLoadError({ retry }: { retry: () => void }) {
         <section
           role="alert"
           aria-label={t("routes.reports.failedToLoadReportAriaLabel")}
-          className="w-full max-w-[440px] rounded-3xl px-7 py-8 card-shadow"
+          className="w-full max-w-[440px] rounded-3xl px-7 py-8 shadow-edge"
           style={{ background: DECK.surface, color: DECK.ink }}
         >
           <h1 className="text-xl font-medium leading-7">

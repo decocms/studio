@@ -122,10 +122,11 @@ function SkillCard({
 
   return (
     <Card
+      size="flush"
       aria-busy={pending}
       className={cn(
         "relative transition-colors group overflow-hidden flex flex-col h-full",
-        pending ? "opacity-60" : "hover:bg-muted/50",
+        pending ? "opacity-60" : "hover:bg-accent",
       )}
     >
       {/* Overlay button — the whole card opens the preview. Absent while the
@@ -156,7 +157,7 @@ function SkillCard({
               <div className="relative z-10 pointer-events-auto transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                    <Button variant="ghost" size="icon">
                       <DotsVertical size={16} />
                     </Button>
                   </DropdownMenuTrigger>
@@ -552,10 +553,7 @@ export default function SettingsSkillsPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{t("settings.skills.cancel")}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={confirmDelete}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
+            <AlertDialogAction onClick={confirmDelete} variant="destructive">
               {t("settings.skills.deleteButton")}
             </AlertDialogAction>
           </AlertDialogFooter>

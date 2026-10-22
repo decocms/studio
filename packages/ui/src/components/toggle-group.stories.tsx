@@ -1,3 +1,4 @@
+import { Grid01, List } from "@untitledui/icons";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import {
   AlignCenter,
@@ -8,9 +9,10 @@ import {
   Underline01,
 } from "@untitledui/icons";
 import { ToggleGroup, ToggleGroupItem } from "./toggle-group.tsx";
+import { Matrix } from "../foundations/kit.tsx";
 
 const meta = {
-  title: "Components/ToggleGroup",
+  title: "Molecules/ToggleGroup",
   component: ToggleGroup,
   args: {
     type: "multiple",
@@ -98,6 +100,100 @@ export const Disabled: Story = {
     <ToggleGroup type="multiple" variant="outline" disabled>
       <ToggleGroupItem value="bold">Bold</ToggleGroupItem>
       <ToggleGroupItem value="italic">Italic</ToggleGroupItem>
+    </ToggleGroup>
+  ),
+};
+
+export const Segmented: Story = {
+  render: () => (
+    <div className="flex flex-col items-start gap-3">
+      <ToggleGroup type="single" variant="segmented" defaultValue="preview">
+        <ToggleGroupItem value="preview">Preview</ToggleGroupItem>
+        <ToggleGroupItem value="code">Code</ToggleGroupItem>
+      </ToggleGroup>
+      <ToggleGroup
+        type="single"
+        variant="segmented"
+        size="sm"
+        defaultValue="all"
+      >
+        <ToggleGroupItem value="all">All</ToggleGroupItem>
+        <ToggleGroupItem value="dev">Dev</ToggleGroupItem>
+        <ToggleGroupItem value="content">Content</ToggleGroupItem>
+        <ToggleGroupItem value="design">Design</ToggleGroupItem>
+      </ToggleGroup>
+    </div>
+  ),
+};
+
+export const States: Story = {
+  parameters: {
+    controls: { disable: true },
+    layout: "padded",
+    pseudo: {
+      hover: [".is-hover"],
+      focusVisible: [".is-focus"],
+      active: [".is-active"],
+    },
+  },
+  render: () => (
+    <Matrix
+      columns={["Default", "Hover on Code", "Focus on Code"]}
+      rows={(["default", "sm"] as const).map((size) => ({
+        label: `segmented · ${size === "sm" ? 28 : 32}`,
+        cells: ["", "is-hover", "is-focus"].map((state) => (
+          <ToggleGroup
+            key={state}
+            type="single"
+            variant="segmented"
+            size={size}
+            defaultValue="preview"
+          >
+            <ToggleGroupItem value="preview">Preview</ToggleGroupItem>
+            <ToggleGroupItem value="code" className={state}>
+              Code
+            </ToggleGroupItem>
+          </ToggleGroup>
+        )),
+      }))}
+    />
+  ),
+};
+
+/** Icon-only options, e.g. a view switch: the tooltip names each one. */
+export const Icons: Story = {
+  render: () => (
+    <ToggleGroup
+      type="single"
+      variant="segmented"
+      size="sm"
+      defaultValue="grid"
+    >
+      <ToggleGroupItem value="grid" tooltip="Grid view">
+        <Grid01 />
+      </ToggleGroupItem>
+      <ToggleGroupItem value="list" tooltip="List view">
+        <List />
+      </ToggleGroupItem>
+    </ToggleGroup>
+  ),
+};
+
+/** Icon and label together keep their padding, like a page's view switch. */
+export const IconAndLabel: Story = {
+  render: () => (
+    <ToggleGroup
+      type="single"
+      variant="segmented"
+      size="sm"
+      defaultValue="project"
+    >
+      <ToggleGroupItem value="project">
+        <Grid01 /> Project
+      </ToggleGroupItem>
+      <ToggleGroupItem value="files">
+        <List /> Files
+      </ToggleGroupItem>
     </ToggleGroup>
   ),
 };

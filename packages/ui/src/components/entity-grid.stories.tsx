@@ -1,9 +1,10 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { Avatar } from "./avatar.tsx";
 import { EntityCard } from "./entity-card.tsx";
 import { EntityGrid } from "./entity-grid.tsx";
 
 const meta = {
-  title: "Components/EntityGrid",
+  title: "Organisms/EntityGrid",
   component: EntityGrid,
   parameters: { layout: "padded" },
   // All stories use render(); children is only here to satisfy the required prop.
@@ -46,19 +47,11 @@ function ConnectionCard({
   tools,
 }: (typeof connections)[number]) {
   return (
-    <EntityCard onNavigate={() => {}} showHoverRing>
-      <EntityCard.Header>
-        <EntityCard.AvatarSection>
-          <EntityCard.Avatar fallback={name} />
-        </EntityCard.AvatarSection>
-        <EntityCard.Content>
-          <EntityCard.Title>{name}</EntityCard.Title>
-          <EntityCard.Subtitle>{description}</EntityCard.Subtitle>
-        </EntityCard.Content>
-      </EntityCard.Header>
-      <EntityCard.Footer>
-        <EntityCard.Badge>{tools} tools</EntityCard.Badge>
-      </EntityCard.Footer>
+    <EntityCard onClick={() => {}}>
+      <EntityCard.Header icon={<Avatar fallback={name} size="sm" />} />
+      <EntityCard.Title>{name}</EntityCard.Title>
+      <EntityCard.Description>{description}</EntityCard.Description>
+      <EntityCard.Footer>{tools} tools</EntityCard.Footer>
     </EntityCard>
   );
 }
