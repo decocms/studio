@@ -168,6 +168,9 @@ export const sectionsEditor = {
   "sectionsEditor.namedRules.unavailable": "Can't save this right now",
   "sectionsEditor.namedRules.unavailableHint":
     "The site's content isn't reachable at the moment. Nothing was changed; try again in a moment.",
+  "sectionsEditor.namedRules.alreadyBack": "It's back already",
+  "sectionsEditor.namedRules.alreadyBackHint":
+    "Nothing to undo: that name is in your draft again.",
   "sectionsEditor.namedRules.nameLabel": "Name",
   "sectionsEditor.namedRules.nameEmpty": "Give it a name.",
   "sectionsEditor.namedRules.nameTaken": "That name is already in use.",

@@ -69,7 +69,24 @@ export function NamedRuleDeleteButton({
     const fresh = await readNow();
     if (!fresh) return;
     const change = planNamedRuleRestore(fresh, kind, name, raw);
-    if (change) onUndo(change);
+    if (change) {
+      onUndo(change);
+      return;
+    }
+    // The name is back already (created again since, here or in another
+    // tab) or the block changed: say so, calmly, instead of doing nothing.
+    const conflict = readNamedRuleBlock(fresh, kind).kind === "conflict";
+    toast.info(
+      conflict
+        ? t("sectionsEditor.namedRules.changedMeanwhile")
+        : t("sectionsEditor.namedRules.alreadyBack"),
+      {
+        id: SITE_EDITOR_SAVE_TOAST,
+        description: conflict
+          ? t("sectionsEditor.namedRules.changedMeanwhileHint")
+          : t("sectionsEditor.namedRules.alreadyBackHint"),
+      },
+    );
   };
 
   const remove = async () => {

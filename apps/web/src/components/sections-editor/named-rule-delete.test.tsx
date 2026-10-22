@@ -302,13 +302,27 @@ describe("NamedRuleDeleteButton", () => {
     });
   });
 
-  test("Undo does nothing when the test is back already", async () => {
+  test("Undo writes nothing when the test is back already, and says so", async () => {
     const { onUndo, button } = setup("experiments", "spare", {
       stored: [decofile, decofile],
     });
     await act(async () => fireEvent.click(button));
     await act(async () => toastCalls[0]!.action!.onClick());
     expect(onUndo).not.toHaveBeenCalled();
+    expect(infoCalls).toEqual(["It's back already"]);
+  });
+
+  test("Undo says the block changed when it holds something else now", async () => {
+    const { onUndo, button } = setup("experiments", "spare", {
+      stored: [
+        decofile,
+        { ...decofile, experiments: { __resolveType: "site/loaders/x.ts" } },
+      ],
+    });
+    await act(async () => fireEvent.click(button));
+    await act(async () => toastCalls[0]!.action!.onClick());
+    expect(onUndo).not.toHaveBeenCalled();
+    expect(infoCalls).toEqual(["This changed while you were editing"]);
   });
 
   test("a campaign that pages use is deleted, with an Undo that brings its window back", async () => {
