@@ -10,16 +10,13 @@ import {
   type CampaignWindow,
   type NamedRuleKind,
   namedRuleKindInfo,
+  type NamedRuleValue,
   readNamedRuleBlock,
   withNamedRuleEntry,
   withoutNamedRuleEntry,
 } from "./named-rules";
 import { newNameProblem, type NewNameProblem } from "./named-rule-picker";
 import type { NamedRuleChange } from "./use-apply-named-rule";
-
-type ValueOf<K extends NamedRuleKind> = K extends "experiments"
-  ? number
-  : CampaignWindow;
 
 /**
  * The change that sets `name` to `value` (a new name is added last, every
@@ -30,7 +27,7 @@ export function planNamedRuleSet<K extends NamedRuleKind>(
   decofile: Record<string, unknown>,
   kind: K,
   name: string,
-  value: ValueOf<K>,
+  value: NamedRuleValue<K>,
 ): NamedRuleChange | null {
   const read = readNamedRuleBlock(decofile, kind);
   if (read.kind === "conflict") return null;
@@ -48,20 +45,21 @@ export function planNamedRuleSet<K extends NamedRuleKind>(
 
 /**
  * The change that adds a new name. `problem` when the name can't be used
- * (empty, taken, reserved) or the block holds something else.
+ * (empty, taken by a readable entry, reserved) or the block holds something
+ * else. An entry whose value can't be read is replaced.
  */
 export function planNamedRuleCreate<K extends NamedRuleKind>(
   decofile: Record<string, unknown>,
   kind: K,
   name: string,
-  value: ValueOf<K>,
+  value: NamedRuleValue<K>,
 ): { change: NamedRuleChange } | { problem: NewNameProblem | "conflict" } {
   const read = readNamedRuleBlock(decofile, kind);
   if (read.kind === "conflict") return { problem: "conflict" };
-  const existing = Object.keys(read.block).filter(
-    (key) => key !== "__resolveType",
-  );
-  const problem = newNameProblem(name, existing);
+  // Only a readable entry is taken (`namedRuleExists`): one Studio can't read
+  // isn't listed, so creating that name writes a readable value in its place,
+  // as the rule picker's create does.
+  const problem = newNameProblem(name, Object.keys(read.values));
   if (problem) return { problem };
   return { change: planNamedRuleSet(decofile, kind, name.trim(), value)! };
 }
@@ -144,11 +142,11 @@ export function publishedNamedRuleValue<K extends NamedRuleKind>(
   published: Record<string, unknown> | null,
   kind: K,
   name: string,
-): ValueOf<K> | undefined {
+): NamedRuleValue<K> | undefined {
   if (!published) return undefined;
   const read = readNamedRuleBlock(published, kind);
   if (read.kind !== "saved") return undefined;
-  return read.values[name] as ValueOf<K> | undefined;
+  return read.values[name] as NamedRuleValue<K> | undefined;
 }
 
 /**

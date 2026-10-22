@@ -485,6 +485,47 @@ describe("named rule edits", () => {
     });
   });
 
+  it("creates over an entry whose value can't be read, as the picker does", () => {
+    const unreadable = {
+      experiments: { __resolveType: "split-traffic", a: 50, promo: "50" },
+      campaigns: { __resolveType: "calendar", bf: { start: 123 } },
+    };
+    expect(planNamedRuleCreate(unreadable, "experiments", "promo", 20)).toEqual(
+      {
+        change: {
+          writes: {
+            experiments: { __resolveType: "split-traffic", a: 50, promo: 20 },
+          },
+        },
+      },
+    );
+    expect(
+      planNamedRuleCreate(unreadable, "campaigns", "bf", {
+        start: "2026-11-27T00:00:00-03:00",
+      }),
+    ).toEqual({
+      change: {
+        writes: {
+          campaigns: {
+            __resolveType: "calendar",
+            bf: { start: "2026-11-27T00:00:00-03:00" },
+          },
+        },
+      },
+    });
+    // The picker's create agrees.
+    const pick = planNamedRulePick(unreadable, {
+      kind: "experiments",
+      name: "promo",
+      create: { share: 20 },
+    });
+    expect(pick.ok && pick.blockWrite?.block).toEqual({
+      __resolveType: "split-traffic",
+      a: 50,
+      promo: 20,
+    });
+  });
+
   it("deletes only the entry", () => {
     expect(planNamedRuleDelete(decofile, "experiments", "a")).toEqual({
       writes: { experiments: { __resolveType: "split-traffic", b: 0 } },
