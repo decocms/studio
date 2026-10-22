@@ -212,9 +212,12 @@ export function MatcherPicker({
   const [open, setOpenState] = useState(false);
   const [step, setStep] = useState<PickerStep>({ view: "rules" });
   const [pending, setPending] = useState(false);
+  // The step resets when the dialog opens, not when it closes: the closing
+  // dialog keeps showing what was picked or created, not the rule list
+  // filtered by the name typed.
   const setOpen = (next: boolean) => {
+    if (next) setStep({ view: "rules" });
     setOpenState(next);
-    if (!next) setStep({ view: "rules" });
   };
   const t = useT();
   const namedKinds = named?.kinds ?? EMPTY_ARRAY;
