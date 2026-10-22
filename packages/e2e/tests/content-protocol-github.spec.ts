@@ -753,11 +753,16 @@ test.describe("content protocol on GitHub", () => {
       expect(revision.cacheControl).toBe("public, max-age=31536000, immutable");
       const latest = JSON.parse(objects[`sites/${site}/latest.json`]!.text);
       expect(Object.keys(latest).sort()).toEqual([
+        "previewHosts",
         "publishedAt",
         "revision",
         "schemaHash",
       ]);
       expect(latest.revision).toBe(first.sha);
+      // The hosts the site shows drafts on: always this machine's.
+      expect(latest.previewHosts).toEqual(
+        expect.arrayContaining(["localhost", "127.0.0.1", "[::1]"]),
+      );
       // The draft is gone; the next edit starts a new one.
       expect(Object.keys(objects).some((k) => k.includes("/drafts/"))).toBe(
         false,
@@ -1463,13 +1468,23 @@ test.describe("v8 editor: every content change refreshes the editor and the prev
       await expect(
         dialog.getByRole("tab", { name: "Side by side" }),
       ).toHaveCount(0);
-      // (The Header's pane stays mounted, hidden: only the shown one counts.)
+      // (The Header's pane stays mounted, hidden: only the shown one counts.
+      // On a v8 site a hidden pane stays laid out, transparent and
+      // aria-hidden, so "shown" is visible and outside an aria-hidden pane.)
       await expect(
-        dialog.getByLabel("Page address").filter({ visible: true }),
+        dialog.getByRole("textbox", { name: "Page address" }),
       ).toHaveCount(0);
-      await expect(
-        dialog.locator("iframe").filter({ visible: true }),
-      ).toHaveCount(0);
+      await expect
+        .poll(() =>
+          dialog
+            .locator("iframe")
+            .filter({ visible: true })
+            .evaluateAll(
+              (frames) =>
+                frames.filter((f) => !f.closest('[aria-hidden="true"]')).length,
+            ),
+        )
+        .toBe(0);
       await expect(dialog.getByText("Popup, changed").first()).toBeVisible({
         timeout: 30_000,
       });
