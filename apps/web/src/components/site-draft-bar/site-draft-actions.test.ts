@@ -19,7 +19,11 @@ describe("the site's draft bar", () => {
       expect(source).toContain(
         'import { SiteDraftActions } from "@/components/site-draft-bar/site-draft-actions";',
       );
-      expect(source).toContain("<SiteDraftActions />");
+      expect(source).toMatch(
+        file === "agent-site-editor.tsx"
+          ? /<SiteDraftActions \/>/
+          : /<SiteDraftActions blocksOnly \/>/,
+      );
       expect(source).not.toContain("<CmsHeaderActions");
       expect(source).not.toContain("<ChatModeRow");
     });

@@ -19,9 +19,26 @@ import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { agentShowsRepositoryHeaderActions } from "@/lib/agent-capabilities";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
+import { useMainSchemaV8 } from "@/hooks/use-main-schema-v8";
+import { editsBlocksDraft } from "@/layouts/main-panel-tabs/experiments-tab-choice";
+import { useRouteVirtualMcpId } from "@/layouts/thread-route";
 import { siteDraftBarParts } from "./site-draft-bar-parts";
 
-export function SiteDraftActions() {
+/**
+ * `blocksOnly`: Experiments and Calendar show the bar only on a Blocks (v8)
+ * site, where a test or a campaign is an edit to its draft; a v7 site's
+ * Experiments keeps its own page, with no bar.
+ */
+export function SiteDraftActions({ blocksOnly }: { blocksOnly?: boolean }) {
+  return blocksOnly ? <BlocksSiteDraftActions /> : <SiteDraftBar />;
+}
+
+function BlocksSiteDraftActions() {
+  const siteMajor = useMainSchemaV8(useRouteVirtualMcpId());
+  return editsBlocksDraft(siteMajor) ? <SiteDraftBar /> : null;
+}
+
+function SiteDraftBar() {
   const session = useOptionalChatTask();
   const { org } = useProjectContext();
   const entity = useVirtualMCP(session?.virtualMcpId);

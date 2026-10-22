@@ -195,8 +195,7 @@ export const experiments = {
     "Seu site já tem um bloco chamado “experiments”",
   "experiments.v8.conflict.desc":
     "Ele não é uma lista de testes A/B, então ainda não dá para adicionar testes. Renomeie esse bloco no editor do site e volte aqui.",
-  "experiments.v8.noDraft.title":
-    "Abra o editor do site para começar um rascunho",
+  "experiments.v8.noDraft.title": "Escolha um rascunho para editar seus testes",
   "experiments.v8.noDraft.desc":
     "Seus testes ficam salvos em um rascunho, como qualquer outra edição. Escolha um rascunho na barra acima ou abra o editor do site para começar um.",
   "experiments.v8.openEditor": "Abrir o editor do site",

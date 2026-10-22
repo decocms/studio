@@ -37,7 +37,7 @@ export function experimentsTabVisible(
   orgEnabled: boolean,
   siteMajor: MainSchemaAnswer,
 ): boolean {
-  return orgEnabled || siteMajor === "v8" || siteMajor === "error";
+  return orgEnabled || editsBlocksDraft(siteMajor);
 }
 
 /**

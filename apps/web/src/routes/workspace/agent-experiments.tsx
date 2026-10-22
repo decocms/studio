@@ -6,10 +6,7 @@ import { SettingsTab } from "@/layouts/main-panel-tabs/settings-tab";
 import { useControlPlaneViews } from "@/hooks/use-organization-settings";
 import { useRouteVirtualMcpId } from "@/layouts/thread-route";
 import { useMainSchemaV8 } from "@/hooks/use-main-schema-v8";
-import {
-  editsBlocksDraft,
-  experimentsTabVisible,
-} from "@/layouts/main-panel-tabs/experiments-tab-choice";
+import { experimentsTabVisible } from "@/layouts/main-panel-tabs/experiments-tab-choice";
 
 function AgentExperimentsContent() {
   const virtualMcpId = useRouteVirtualMcpId();
@@ -23,17 +20,9 @@ function AgentExperimentsContent() {
   return <SettingsTab virtualMcpId={virtualMcpId} />;
 }
 
-/** A Blocks (v8) site's tests are edits to its draft: the site editor's
- *  draft bar (environment and Publish) sits on top, as on Calendar. */
-function ExperimentsActions() {
-  const virtualMcpId = useRouteVirtualMcpId();
-  const siteMajor = useMainSchemaV8(virtualMcpId);
-  return editsBlocksDraft(siteMajor) ? <SiteDraftActions /> : null;
-}
-
 export default function AgentExperimentsRoute() {
   return (
-    <ChatLayout.Content actions={<ExperimentsActions />}>
+    <ChatLayout.Content actions={<SiteDraftActions blocksOnly />}>
       <AgentExperimentsContent />
     </ChatLayout.Content>
   );

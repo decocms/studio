@@ -190,7 +190,7 @@ export const experiments = {
     "Your site already has a block named “experiments”",
   "experiments.v8.conflict.desc":
     "It isn't a list of A/B tests, so tests can't be added yet. Rename that block in the site editor, then come back here.",
-  "experiments.v8.noDraft.title": "Open the site editor to start a draft",
+  "experiments.v8.noDraft.title": "Pick a draft to edit your tests",
   "experiments.v8.noDraft.desc":
     "Your tests are saved in a draft, like any other edit. Pick a draft in the bar above, or open the site editor to start one.",
   "experiments.v8.openEditor": "Open the site editor",

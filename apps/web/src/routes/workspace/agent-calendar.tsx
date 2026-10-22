@@ -20,16 +20,10 @@ function AgentCalendarContent() {
   return <SettingsTab virtualMcpId={virtualMcpId} />;
 }
 
-function CalendarActions() {
-  const virtualMcpId = useRouteVirtualMcpId();
-  const siteMajor = useMainSchemaV8(virtualMcpId);
-  return editsBlocksDraft(siteMajor) ? <SiteDraftActions /> : null;
-}
-
 /** The campaigns calendar, with the site editor's draft bar on top. */
 export default function AgentCalendarRoute() {
   return (
-    <ChatLayout.Content actions={<CalendarActions />}>
+    <ChatLayout.Content actions={<SiteDraftActions blocksOnly />}>
       <AgentCalendarContent />
     </ChatLayout.Content>
   );

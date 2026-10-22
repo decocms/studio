@@ -32,7 +32,6 @@ import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { ShareSplit } from "@/components/experiments/split-donut";
 import { Page } from "@/components/page";
-import { useOptionalChatTask } from "@/components/chat/chat-context";
 import {
   planNamedRuleCreate,
   planNamedRuleSet,
@@ -65,19 +64,20 @@ import {
   type NamedRuleChange,
   useApplyNamedRule,
 } from "@/components/sections-editor/use-apply-named-rule";
-import { useContentBackend } from "@/components/sections-editor/use-content-backend";
-import { useDecofile } from "@/components/sections-editor/use-decofile";
-import { useLiveMeta } from "@/components/sections-editor/use-live-meta";
 import { useNamedRuleUses } from "@/components/sections-editor/use-named-rule-uses";
 import { useT } from "@/i18n/use-t.ts";
-import { useProjectContext } from "@/sdk";
-import { isSiteNotOwned, SiteNotOwnedState } from "./blocks-tab-states";
 import {
   type ExperimentRowModel,
   experimentRows,
   removedExperiments,
   contentSearchForUse,
 } from "./experiments-v8-model";
+import {
+  SiteDraftGuide,
+  type SiteDraftGuideAction,
+  SiteDraftView,
+  type SiteDraftViewReady,
+} from "./site-draft-view";
 import { usePanelNavigate } from "./use-panel-navigate";
 
 /** While main's schema (or the site's content) is read: the tab's shape. */
@@ -127,72 +127,37 @@ function StatusPill({ status }: { status: ExperimentStatus }) {
   );
 }
 
-function GuideState({
-  title,
-  description,
-  action,
-}: {
+function GuideState(props: {
   title: string;
   description: string;
-  action?: { label: string; onClick: () => void };
+  action?: SiteDraftGuideAction;
 }) {
   return (
-    <Page>
-      <Page.Content>
-        <Page.Container>
-          <EmptyState
-            icon={<Beaker02 size={28} className="text-muted-foreground" />}
-            title={title}
-            description={description}
-            buttonProps={
-              action
-                ? { children: action.label, onClick: action.onClick }
-                : undefined
-            }
-          />
-        </Page.Container>
-      </Page.Content>
-    </Page>
+    <SiteDraftGuide
+      icon={<Beaker02 size={28} className="text-muted-foreground" />}
+      {...props}
+    />
   );
 }
 
 export function ExperimentsTabV8({ virtualMcpId }: { virtualMcpId: string }) {
   const t = useT();
-  const { org } = useProjectContext();
-  const task = useOptionalChatTask();
-  const branch = task?.currentBranch ?? null;
-  const backend = useContentBackend(virtualMcpId, branch);
-  const { openPanel } = usePanelNavigate();
-
-  if (!branch) {
-    return (
-      <GuideState
-        title={t("experiments.v8.noDraft.title")}
-        description={t("experiments.v8.noDraft.desc")}
-        action={{
-          label: t("experiments.v8.openEditor"),
-          onClick: () => openPanel("content"),
-        }}
-      />
-    );
-  }
-  if (isSiteNotOwned(backend)) return <SiteNotOwnedState />;
-  if (backend.kind === "pending") return <ExperimentsTabSkeleton />;
-  if (backend.kind !== "protocol") {
-    return (
-      <GuideState
-        title={t("experiments.v8.loadFailed")}
-        description={t("sectionsEditor.namedRules.unavailableHint")}
-      />
-    );
-  }
   return (
-    <ExperimentsV8Ready
-      orgSlug={org.slug}
+    <SiteDraftView
       virtualMcpId={virtualMcpId}
-      branch={branch}
-      threadId={task?.taskId ?? null}
-    />
+      icon={<Beaker02 size={28} className="text-muted-foreground" />}
+      copy={{
+        noDraftTitle: t("experiments.v8.noDraft.title"),
+        noDraftDesc: t("experiments.v8.noDraft.desc"),
+        openEditor: t("experiments.v8.openEditor"),
+        loadFailed: t("experiments.v8.loadFailed"),
+        loadFailedHint: t("sectionsEditor.namedRules.unavailableHint"),
+        tryAgain: t("experiments.v8.tryAgain"),
+      }}
+      skeleton={<ExperimentsTabSkeleton />}
+    >
+      {(ready) => <ExperimentsV8Ready {...ready} />}
+    </SiteDraftView>
   );
 }
 
@@ -200,20 +165,11 @@ function ExperimentsV8Ready({
   orgSlug,
   virtualMcpId,
   branch,
-  threadId,
-}: {
-  orgSlug: string;
-  virtualMcpId: string;
-  branch: string;
-  threadId: string | null;
-}) {
+  decofile,
+  meta,
+}: SiteDraftViewReady) {
   const t = useT();
   const { openPanel } = usePanelNavigate();
-  const params = { orgSlug, virtualMcpId, branch, threadId, previewUrl: null };
-  const decofileQuery = useDecofile(params);
-  const metaQuery = useLiveMeta(params);
-  const decofile = decofileQuery.data as Record<string, unknown> | undefined;
-  const meta = metaQuery.data;
   const uses = useNamedRuleUses({
     orgSlug,
     virtualMcpId,
@@ -228,25 +184,6 @@ function ExperimentsV8Ready({
   });
   const [openName, setOpenName] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
-
-  if (!decofile || !meta) {
-    if (decofileQuery.isError || metaQuery.isError) {
-      return (
-        <GuideState
-          title={t("experiments.v8.loadFailed")}
-          description={t("sectionsEditor.namedRules.unavailableHint")}
-          action={{
-            label: t("experiments.v8.tryAgain"),
-            onClick: () => {
-              void decofileQuery.refetch();
-              void metaQuery.refetch();
-            },
-          }}
-        />
-      );
-    }
-    return <ExperimentsTabSkeleton />;
-  }
 
   const support = namedRuleSupport(meta, "experiments");
   if (support === "missing") {
