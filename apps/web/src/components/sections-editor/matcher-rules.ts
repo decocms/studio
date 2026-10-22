@@ -5,7 +5,7 @@ import {
 } from "./block-type-utils";
 import { type NamedRuleValues, readNamedRuleValues } from "./named-rules";
 import { globalSectionLabel } from "./page-list";
-import { isPageResolveType } from "./page-types";
+import { isPageResolveTypeOnBlocksSite } from "./page-types";
 import { resolveSchema, type LiveMeta } from "./resolve-schema";
 
 export interface UnwrappedMatcherRule {
@@ -24,7 +24,7 @@ function isMatcherBlockData(
 ): boolean {
   const moduleRt = blockData.__resolveType;
   if (typeof moduleRt !== "string" || !moduleRt) return false;
-  if (isPageResolveType(moduleRt, meta)) return false;
+  if (isPageResolveTypeOnBlocksSite(moduleRt, meta)) return false;
 
   if (meta) {
     return isManifestMatcherResolveType(meta, moduleRt);

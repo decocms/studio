@@ -609,4 +609,11 @@ describe("the schema of a prop that reads a whole block", () => {
       namedRuleBlockFieldKinds(hero.properties!.labels!, undefined, kinds),
     ).toEqual([]);
   });
+
+  it("v7 (no Blocks v8 schema): an inline `Record<string, boolean>` keeps main's form", () => {
+    const v7 = { ...PROPS_META, blocksMajor: undefined };
+    const campaigns = resolveSchema("hero", v7 as LiveMeta)!.properties!
+      .campaigns!;
+    expect(campaigns.type).not.toBe("block-ref");
+  });
 });

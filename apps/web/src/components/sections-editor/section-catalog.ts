@@ -15,10 +15,7 @@ import {
   labelFromResolveType,
   SECTION_MULTIVARIATE_RESOLVE_TYPE,
 } from "./section-types";
-import {
-  readVariantValue,
-  V8_MULTIVARIATE_RESOLVE_TYPE,
-} from "./variant-shape";
+import { V8_MULTIVARIATE_RESOLVE_TYPE, variantValueOn } from "./variant-shape";
 
 export interface SectionCatalogEntry {
   resolveType: string;
@@ -202,13 +199,14 @@ export function underlyingSectionResolveType(
 ): string {
   const rt = block.__resolveType;
   if (typeof rt !== "string") return "";
-  if (!isSectionMultivariateBlockType(rt)) return rt;
+  const v8 = isV8Schema(meta);
+  if (!isSectionMultivariateBlockType(rt, v8)) return rt;
 
   const variants = block.variants;
   if (!Array.isArray(variants)) return rt;
 
   for (const variant of variants) {
-    const value = readVariantValue(variant) as
+    const value = variantValueOn(variant, v8) as
       | Record<string, unknown>
       | undefined;
     if (!value || typeof value !== "object") continue;
@@ -230,11 +228,14 @@ export function underlyingSectionResolveType(
   return rt;
 }
 
-/** The v7 section flag, or v8's `multivariate` (which wraps any value). */
-function isSectionMultivariateBlockType(rt: string): boolean {
+/**
+ * The v7 section flag, or on a Blocks v8 site (`v8`) its `multivariate`
+ * (which wraps any value). On v7 a short `multivariate` is a saved block.
+ */
+function isSectionMultivariateBlockType(rt: string, v8: boolean): boolean {
   return (
     rt === SECTION_MULTIVARIATE_RESOLVE_TYPE ||
-    rt === V8_MULTIVARIATE_RESOLVE_TYPE
+    (v8 && rt === V8_MULTIVARIATE_RESOLVE_TYPE)
   );
 }
 
@@ -270,7 +271,7 @@ export function listSavedSectionBlocks(
 
     const isSectionBlock =
       isManifestSectionResolveType(meta, rt) ||
-      (isSectionMultivariateBlockType(rt) &&
+      (isSectionMultivariateBlockType(rt, isV8Schema(meta)) &&
         multivariateWrapsManifestSection(meta, obj));
     if (!isSectionBlock) continue;
 

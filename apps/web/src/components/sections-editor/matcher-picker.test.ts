@@ -91,12 +91,29 @@ describe("extractMatchers", () => {
         "website/matchers/always.ts": "always",
         "website/matchers/never.ts": "never",
       },
+      blocksMajor: 8,
     } as LiveMeta;
 
     expect(extractMatchers(meta).map((m) => [m.resolveType, m.title])).toEqual([
       ["device", "Device"],
       ["never", "Never"],
       ["campaign", "Campaign"],
+    ]);
+  });
+
+  it("v7 (no Blocks v8 schema): titles and aliases as main read them", () => {
+    const meta = {
+      ...metaWithBlocks({
+        matchers: {
+          never: { title: "never" },
+          "website/matchers/never.ts": { title: "" },
+        },
+      }),
+      aliases: { "website/matchers/never.ts": "never" },
+    } as LiveMeta;
+    expect(extractMatchers(meta).map((m) => [m.resolveType, m.title])).toEqual([
+      ["never", "never"],
+      ["website/matchers/never.ts", ""],
     ]);
   });
 

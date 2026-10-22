@@ -3,6 +3,7 @@ import {
   isManifestAppResolveType,
   parseSavedBlockSchemaTitle,
 } from "./block-type-utils";
+import { isV8Schema } from "@decocms/shared/blocks-major";
 import {
   PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE,
   labelFromResolveType,
@@ -746,11 +747,12 @@ function buildSchema(
               | RawSchema
               | undefined
           )?.enum;
-          // v7's page flag, or v8's `multivariate` (its `page` lists both).
+          // v7's page flag, or a Blocks v8 schema's `multivariate` (its
+          // `page` lists both). On v7 a short `multivariate` is a saved block.
           return (
             Array.isArray(rtEnum) &&
             (rtEnum[0] === PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE ||
-              rtEnum[0] === "multivariate")
+              (isV8Schema(meta) && rtEnum[0] === "multivariate"))
           );
         });
         const buildLoaderBlockRef = (
@@ -1077,7 +1079,9 @@ function buildSchema(
         // it (`split-traffic`, `calendar`): it reads a whole saved block
         // (`experiments`, `campaigns`), as a prop typed `Assignments` does,
         // whose inline branch is a `$ref` and so takes the path below.
+        // Blocks v8 only: v7 schemas keep main's reading of such a union.
         const readsWholeNamedRuleBlock =
+          isV8Schema(meta) &&
           !allRefs &&
           nonNull.some(
             (b) =>

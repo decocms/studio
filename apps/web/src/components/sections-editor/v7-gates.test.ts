@@ -6,10 +6,12 @@ import { resolveMatcherIconName } from "./matcher-icons";
 import { namedRuleSupport } from "./named-rules";
 import { isPageResolveTypeOnBlocksSite } from "./page-types";
 import type { LiveMeta } from "./resolve-schema";
+import { blockRefLoaderConfigHasData } from "./block-ref-field-utils";
 import {
   declaresBuiltInPage,
   listAvailableSections,
   listSavedSectionBlocks,
+  underlyingSectionResolveType,
 } from "./section-catalog";
 import {
   alwaysMatcherResolveType,
@@ -105,6 +107,26 @@ describe("schema-driven names: v8 only", () => {
     const saved = (meta: LiveMeta) =>
       listSavedSectionBlocks(meta, decofile).map((e) => e.resolveType);
     expect(saved(NOT_V8)).toContain("Theme");
+  });
+
+  test("a short `multivariate` is a variants block on v8, a saved block's key on v7", () => {
+    const block = {
+      __resolveType: "multivariate",
+      variants: [
+        { value: { __resolveType: "lazy", value: { __resolveType: "hero" } } },
+      ],
+    };
+    expect(underlyingSectionResolveType(V8, block)).toBe("hero");
+    const plain = {
+      __resolveType: "multivariate",
+      variants: [{ value: { __resolveType: "hero" } }],
+    };
+    expect(underlyingSectionResolveType(NOT_V8, plain)).toBe("multivariate");
+    // An empty variants list: v8 reads it as variants with none, v7 as
+    // main did (a block with a prop).
+    const empty = { __resolveType: "multivariate", variants: [] };
+    expect(blockRefLoaderConfigHasData(empty, undefined, true)).toBe(false);
+    expect(blockRefLoaderConfigHasData(empty)).toBe(true);
   });
 
   test("the campaign icon", () => {

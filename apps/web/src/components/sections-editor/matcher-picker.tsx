@@ -125,8 +125,10 @@ export function extractMatchers(meta: LiveMeta): MatcherEntry[] {
   const seen = new Set<string>();
   // Next-major schemas list the v7 names of their built-ins (e.g.
   // `website/matchers/never.ts` for `never`) under `aliases`, so old content
-  // still resolves. They are the same matcher: offer only the real name.
-  const aliases = schemaAliases(meta);
+  // still resolves. They are the same matcher: offer only the real name. Any
+  // other site lists its matchers exactly as before.
+  const v8 = isV8Schema(meta);
+  const aliases = v8 ? schemaAliases(meta) : {};
 
   for (const [blockType, blockMap] of Object.entries(blocks)) {
     if (!blockType.includes("matchers")) continue;
@@ -149,21 +151,19 @@ export function extractMatchers(meta: LiveMeta): MatcherEntry[] {
       if (target && Object.hasOwn(blockMap, target)) continue;
 
       const metadata = resolveBlockSchemaMetadata(resolveType, meta);
-      // A built-in's generated title is its bare name (`never`, `campaign`).
-      const title =
-        metadata.title && metadata.title !== resolveType
+      // v8: a built-in's generated title is its bare name (`never`,
+      // `campaign`), so it gets a label instead. v7 keeps main's title.
+      const title = v8
+        ? metadata.title && metadata.title !== resolveType
           ? metadata.title
-          : labelFromResolveType(resolveType);
+          : labelFromResolveType(resolveType)
+        : (metadata.title ?? labelFromResolveType(resolveType));
 
       result.push({
         resolveType,
         title,
         description: metadata.description,
-        iconName: resolveMatcherIconName(
-          resolveType,
-          metadata.icon,
-          isV8Schema(meta),
-        ),
+        iconName: resolveMatcherIconName(resolveType, metadata.icon, v8),
       });
     }
   }
