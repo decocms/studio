@@ -10,6 +10,7 @@ import {
   type NamedRuleKind,
   NAMED_RULE_KINDS,
   namedRuleExists,
+  namedRuleKindOfBlock,
   readNamedRuleBlock,
   withNamedRuleEntry,
 } from "./named-rules";
@@ -350,12 +351,7 @@ export function namedRuleBlockFieldValue(value: unknown): NamedRuleKind | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const keys = Object.keys(value);
   if (keys.length !== 1 || keys[0] !== "__resolveType") return null;
-  const target = (value as { __resolveType?: unknown }).__resolveType;
-  return (
-    NAMED_RULE_KINDS.find(
-      (kind) => namedRuleKindInfo(kind).blockKey === target,
-    ) ?? null
-  );
+  return namedRuleKindOfBlock((value as { __resolveType?: unknown }).__resolveType);
 }
 
 /**

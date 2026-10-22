@@ -23,10 +23,9 @@ import { isMultivariateResolveType } from "@/components/sections-editor/variant-
 import type { ContentChangeSides } from "@/components/sections-editor/content-changes";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 import {
-  NAMED_RULE_KINDS,
   type NamedRuleKind,
-  namedRuleKindInfo,
   namedRuleKindOfBlock,
+  namedRuleKindOfType,
 } from "@/components/sections-editor/named-rules";
 import type { MissingNamedRuleUseCounts } from "@/components/sections-editor/named-rule-uses";
 import {
@@ -132,17 +131,6 @@ export function namedRuleBlockOfChange(
   return change.namedRule ?? null;
 }
 
-/** The named-rule block a block's content is, by its type. */
-function namedRuleKindOfShape(
-  shape: Record<string, unknown> | null | undefined,
-): NamedRuleKind | null {
-  const resolveType = shape?.__resolveType;
-  for (const kind of NAMED_RULE_KINDS) {
-    if (namedRuleKindInfo(kind).resolveType === resolveType) return kind;
-  }
-  return null;
-}
-
 /**
  * The named-rule block a v8 site's changed block is: by its content's type
  * when any side can be read (a block of that name with another type is not
@@ -154,7 +142,7 @@ function namedRuleOfBlock(
   shapes: Array<Record<string, unknown> | null | undefined>,
 ): NamedRuleKind | null {
   const shape = shapes.find((s) => s && typeof s === "object");
-  if (shape) return namedRuleKindOfShape(shape);
+  if (shape) return namedRuleKindOfType(shape.__resolveType);
   return namedRuleKindOfBlock(name);
 }
 
@@ -242,8 +230,8 @@ export function sectionDisplayName(
  * or `null` for a section that isn't one.
  */
 function lazyInner(section: Record<string, unknown>): unknown {
+  if (isLazyWrapper(section)) return section.value ?? null;
   const resolveType = section.__resolveType;
-  if (resolveType === "lazy") return section.value ?? null;
   if (typeof resolveType === "string" && isLazyResolveType(resolveType)) {
     return section.section ?? null;
   }

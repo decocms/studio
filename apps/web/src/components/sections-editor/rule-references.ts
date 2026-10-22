@@ -10,6 +10,7 @@ import type { ChangeDetail } from "@decocms/blocks/protocol";
 import { isSavedMatcherBlockReference } from "./matcher-rules";
 import {
   canRenameExperiment,
+  isPlainRecord,
   NAMED_RULE_KINDS,
   type NamedRuleKind,
   namedRule,
@@ -195,7 +196,7 @@ function variantOf(entry: WalkEntry): RuleVariant | undefined {
       at.key === "rule" &&
       typeof variant.key === "number" &&
       list.key === "variants" &&
-      isRecord(container.node) &&
+      isPlainRecord(container.node) &&
       isMultivariateResolveType(container.node.__resolveType)
     ) {
       const experiment = container.node.experiment;
@@ -447,7 +448,7 @@ export function planNamedRuleRename(
     // A use through a saved rule is rewritten where the rule itself is.
     if (use.via.length > 0) continue;
     const current = writes[use.blockKey] ?? decofile[use.blockKey];
-    if (!isRecord(current)) continue;
+    if (!isPlainRecord(current)) continue;
     writes[use.blockKey] = replaceAt(current, use.path, namedRule(kind, to));
   }
   return { writes };
@@ -464,7 +465,7 @@ function replaceAt(
 ): Record<string, unknown> {
   const merge = (node: unknown, depth: number): unknown => {
     if (depth === path.length) {
-      return isRecord(node) ? { ...node, ...value } : node;
+      return isPlainRecord(node) ? { ...node, ...value } : node;
     }
     const key = path[depth]!;
     if (Array.isArray(node) && typeof key === "number") {
@@ -472,7 +473,7 @@ function replaceAt(
       copy[key] = merge(node[key], depth + 1);
       return copy;
     }
-    if (isRecord(node) && typeof key === "string") {
+    if (isPlainRecord(node) && typeof key === "string") {
       return { ...node, [key]: merge(node[key], depth + 1) };
     }
     return node;
@@ -498,8 +499,4 @@ export function publishedDecofile(
     else if (side.baseVersion === null) delete out[blockKey];
   }
   return out;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === "object" && !Array.isArray(value);
 }

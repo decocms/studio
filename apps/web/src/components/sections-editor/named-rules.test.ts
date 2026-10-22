@@ -3,7 +3,11 @@ import {
   canRenameExperiment,
   experimentStatus,
   isInlineDateRule,
+  isPlainRecord,
   namedRule,
+  namedRuleKindOfBlock,
+  namedRuleKindOfType,
+  namedRuleNames,
   namedRuleOf,
   namedRuleSupport,
   readNamedRuleBlock,
@@ -328,5 +332,36 @@ describe("editing the block", () => {
     expect(withRenamedNamedRuleEntry(block, "a", "b")).toBe(block);
     expect(withRenamedNamedRuleEntry(block, "missing", "c")).toBe(block);
     expect(withRenamedNamedRuleEntry(block, "a", "__resolveType")).toBe(block);
+  });
+});
+
+describe("kind lookups", () => {
+  it("finds a kind by its block's type or its block's name", () => {
+    expect(namedRuleKindOfType("split-traffic")).toBe("experiments");
+    expect(namedRuleKindOfType("calendar")).toBe("campaigns");
+    expect(namedRuleKindOfType("experiments")).toBeNull();
+    expect(namedRuleKindOfBlock("campaigns")).toBe("campaigns");
+    expect(namedRuleKindOfBlock("calendar")).toBeNull();
+  });
+
+  it("lists every name the block holds, readable or not", () => {
+    const decofile = {
+      experiments: { __resolveType: "split-traffic", a: 50, bad: "x" },
+      campaigns: { __resolveType: "site/loaders/x.ts" },
+    };
+    expect(namedRuleNames(readNamedRuleBlock(decofile, "experiments"))).toEqual(
+      ["a", "bad"],
+    );
+    expect(namedRuleNames(readNamedRuleBlock(decofile, "campaigns"))).toEqual(
+      [],
+    );
+    expect(namedRuleNames(readNamedRuleBlock({}, "campaigns"))).toEqual([]);
+  });
+
+  it("isPlainRecord takes objects only", () => {
+    expect(isPlainRecord({})).toBe(true);
+    expect(isPlainRecord([])).toBe(false);
+    expect(isPlainRecord(null)).toBe(false);
+    expect(isPlainRecord("x")).toBe(false);
   });
 });

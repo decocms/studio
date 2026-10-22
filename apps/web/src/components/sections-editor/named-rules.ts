@@ -69,6 +69,14 @@ function namedRuleKindOfMatcher(resolveType: unknown): NamedRuleKind | null {
   return null;
 }
 
+/** The kind whose saved block has the built-in type `resolveType`, if any. */
+export function namedRuleKindOfType(resolveType: unknown): NamedRuleKind | null {
+  for (const kind of NAMED_RULE_KINDS) {
+    if (NAMED_RULES[kind].resolveType === resolveType) return kind;
+  }
+  return null;
+}
+
 /** The kind whose saved block is `blockKey`, if any. */
 export function namedRuleKindOfBlock(blockKey: unknown): NamedRuleKind | null {
   for (const kind of NAMED_RULE_KINDS) {
@@ -132,7 +140,8 @@ export interface NamedRuleValues {
   campaigns: Record<string, CampaignWindow>;
 }
 
-type ValueOf<K extends NamedRuleKind> = NamedRuleValues[K][string];
+/** One name's setting of a kind: a test's share or a campaign's window. */
+export type NamedRuleValue<K extends NamedRuleKind> = NamedRuleValues[K][string];
 
 /**
  * The well-known block of a kind in a decofile, for an editor to show:
@@ -150,13 +159,13 @@ export type NamedRuleBlock<K extends NamedRuleKind = NamedRuleKind> =
   | {
       kind: "absent";
       block: Record<string, unknown>;
-      values: Record<string, ValueOf<K>>;
+      values: Record<string, NamedRuleValue<K>>;
       invalid: string[];
     }
   | {
       kind: "saved";
       block: Record<string, unknown>;
-      values: Record<string, ValueOf<K>>;
+      values: Record<string, NamedRuleValue<K>>;
       invalid: string[];
     }
   | { kind: "conflict"; resolveType: string };
@@ -185,14 +194,14 @@ export function readNamedRuleBlock<K extends NamedRuleKind>(
     };
   }
   const block = value as Record<string, unknown>;
-  const values = Object.create(null) as Record<string, ValueOf<K>>;
+  const values = Object.create(null) as Record<string, NamedRuleValue<K>>;
   const invalid: string[] = [];
   for (const [name, entry] of Object.entries(block)) {
     if (name === "__resolveType") continue;
     const parsed =
       kind === "experiments" ? parseShare(entry) : parseWindow(entry);
     if (parsed === null) invalid.push(name);
-    else values[name] = parsed as ValueOf<K>;
+    else values[name] = parsed as NamedRuleValue<K>;
   }
   return { kind: "saved", block, values, invalid };
 }
@@ -206,6 +215,15 @@ export function readNamedRuleBlock<K extends NamedRuleKind>(
  */
 export function namedRuleExists(read: NamedRuleBlock, name: string): boolean {
   return read.kind !== "conflict" && Object.hasOwn(read.values, name);
+}
+
+/**
+ * Every name the block holds, readable or not (empty for a conflicting
+ * block): what a rename can't move onto, since the entry would be lost.
+ */
+export function namedRuleNames(read: NamedRuleBlock): string[] {
+  if (read.kind === "conflict") return [];
+  return Object.keys(read.block).filter((key) => key !== "__resolveType");
 }
 
 /** The usable names of both kinds (empty for an absent or conflicting block). */
@@ -312,7 +330,7 @@ export function withNamedRuleEntry<K extends NamedRuleKind>(
   block: Record<string, unknown>,
   kind: K,
   name: string,
-  value: ValueOf<K>,
+  value: NamedRuleValue<K>,
 ): Record<string, unknown> {
   return {
     ...block,
@@ -356,6 +374,8 @@ export function withRenamedNamedRuleEntry(
   return next;
 }
 
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
+export function isPlainRecord(
+  value: unknown,
+): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
