@@ -461,7 +461,8 @@ export function useNamedRuleRename(
   };
 
   return {
-    current,
+    /** The saved name, shown read-only while the name is locked. */
+    savedName: current,
     name,
     setName,
     message: problem ? nameProblemMessage(t, problem) : null,
@@ -503,7 +504,7 @@ export function NamedRuleRenameSection({
           <Input
             id={id}
             className="max-w-xs"
-            value={rename.current}
+            value={rename.savedName}
             readOnly
             disabled
           />
