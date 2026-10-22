@@ -15,6 +15,11 @@ import { type Kysely, sql } from "kysely";
  * cards gets one too. A card goes to the `development` board of its project,
  * or of its organization when it has none, so nothing reads differently yet.
  *
+ * The foreign keys carry the organization: a board's project and a card's
+ * board must belong to the same organization as the row pointing at them.
+ * A null project skips the check, which is what lets the organization's own
+ * board exist. `connections` gets a unique `(organization_id, id)` for that.
+ *
  * Deleting a project deletes its boards; the code that deletes a project
  * moves their cards to the organization's board of the same type first, and
  * the foreign key from the card refuses the delete otherwise.
@@ -25,15 +30,23 @@ import { type Kysely, sql } from "kysely";
  */
 export async function up(db: Kysely<unknown>): Promise<void> {
   await sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_connections_organization_id_id
+      ON connections (organization_id, id)
+  `.execute(db);
+  await sql`
     CREATE TABLE IF NOT EXISTS task_boards (
       id text PRIMARY KEY,
       organization_id text NOT NULL REFERENCES organization(id) ON DELETE CASCADE,
-      virtual_mcp_id text NULL REFERENCES connections(id) ON DELETE CASCADE,
+      virtual_mcp_id text NULL,
       type text NOT NULL,
       created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now(),
+      CONSTRAINT uq_task_boards_organization_id_id UNIQUE (organization_id, id),
       CONSTRAINT uq_task_boards_scope_type
-        UNIQUE NULLS NOT DISTINCT (organization_id, virtual_mcp_id, type)
+        UNIQUE NULLS NOT DISTINCT (organization_id, virtual_mcp_id, type),
+      CONSTRAINT fk_task_boards_project
+        FOREIGN KEY (organization_id, virtual_mcp_id)
+        REFERENCES connections (organization_id, id) ON DELETE CASCADE
     )
   `.execute(db);
   await sql`
@@ -43,8 +56,14 @@ export async function up(db: Kysely<unknown>): Promise<void> {
   `.execute(db);
 
   await sql`
+    ALTER TABLE task_board_items ADD COLUMN IF NOT EXISTS board_id text NULL
+  `.execute(db);
+  await sql`
     ALTER TABLE task_board_items
-      ADD COLUMN IF NOT EXISTS board_id text NULL REFERENCES task_boards(id)
+      DROP CONSTRAINT IF EXISTS fk_task_board_items_board,
+      ADD CONSTRAINT fk_task_board_items_board
+        FOREIGN KEY (organization_id, board_id)
+        REFERENCES task_boards (organization_id, id)
   `.execute(db);
   await sql`
     CREATE INDEX IF NOT EXISTS idx_task_board_items_board_id
@@ -86,4 +105,5 @@ export async function down(db: Kysely<unknown>): Promise<void> {
     db,
   );
   await sql`DROP TABLE IF EXISTS task_boards`.execute(db);
+  await sql`DROP INDEX IF EXISTS uq_connections_organization_id_id`.execute(db);
 }

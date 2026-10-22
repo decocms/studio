@@ -5,8 +5,8 @@ import type { Database } from "./types";
 
 /**
  * The board of `type` for a project, or for the organization itself when
- * `virtualMcpId` is null; created on first use. The caller checks the
- * project is the organization's.
+ * `virtualMcpId` is null; created on first use. A project of another
+ * organization fails the foreign key.
  */
 export async function ensureBoard(
   db: Kysely<Database>,

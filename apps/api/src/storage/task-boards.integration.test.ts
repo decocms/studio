@@ -155,6 +155,25 @@ describe("task boards", () => {
     expect(cleared.boardId).toBe(orgBoard);
   });
 
+  it("refuses a board for another organization's project", async () => {
+    await insertProject("vir_other", "org_123");
+
+    await expect(create(ORG, "vir_other")).rejects.toThrow(
+      /fk_task_boards_project/,
+    );
+  });
+
+  it("refuses to file a card under another organization's board", async () => {
+    const card = await create(ORG);
+    const otherBoard = (await create("org_123")).boardId;
+
+    await expect(
+      sql`update task_board_items set board_id = ${otherBoard} where id = ${card.id}`.execute(
+        database.db,
+      ),
+    ).rejects.toThrow(/fk_task_board_items_board/);
+  });
+
   it("leaves the board alone on an update that does not touch the project", async () => {
     await insertProject("vir_a");
     const card = await create(ORG, "vir_a");

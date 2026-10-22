@@ -10,10 +10,12 @@ import { COLLECTION_CONNECTIONS_DELETE } from "./delete";
 function makeCtx(options: {
   referencedByThread: boolean;
   referencingAutomations?: { id: string; name: string }[];
+  connectionType?: string;
 }) {
   const connection = {
     id: "conn_repo",
     organization_id: "org_123",
+    connection_type: options.connectionType ?? "HTTP",
     metadata: null,
   };
   const deleteConnection = mock(async () => {});
@@ -59,6 +61,19 @@ describe("COLLECTION_CONNECTIONS_DELETE", () => {
     await expect(
       COLLECTION_CONNECTIONS_DELETE.handler({ id: devAssetsId }, ctx),
     ).rejects.toThrow(/fixed system connection/);
+
+    expect(deleteConnection).not.toHaveBeenCalled();
+  });
+
+  it("refuses to delete a project, which has its own delete", async () => {
+    const { ctx, deleteConnection } = makeCtx({
+      referencedByThread: false,
+      connectionType: "VIRTUAL",
+    });
+
+    await expect(
+      COLLECTION_CONNECTIONS_DELETE.handler({ id: "conn_repo" }, ctx),
+    ).rejects.toThrow(/COLLECTION_VIRTUAL_MCP_DELETE/);
 
     expect(deleteConnection).not.toHaveBeenCalled();
   });
