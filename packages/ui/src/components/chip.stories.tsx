@@ -1,49 +1,68 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { Globe02, Target04 } from "@untitledui/icons";
+import { Matrix } from "../foundations/kit.tsx";
 import { Chip, ChipMeta } from "./chip.tsx";
 import { ProjectIcon } from "./project-icon.tsx";
-import { Stage, StageTracker } from "./stage-tracker.tsx";
 
 const meta = {
-  title: "Components/Chip",
+  title: "Atoms/Chip",
   component: Chip,
-  args: { children: "Mobile conversion" },
+  args: { size: "sm", children: "Mobile conversion" },
+  argTypes: {
+    size: { control: "inline-radio", options: ["sm", "lg"] },
+    children: { control: "text" },
+  },
 } satisfies Meta<typeof Chip>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const Sizes: Story = {
-  render: () => (
-    <div className="flex items-center gap-3">
-      <Chip>
-        <Target04 /> Mobile conversion
-      </Chip>
-      <Chip size="lg">
-        <ProjectIcon color="blue" className="size-[1.625rem] rounded-full">
-          <Globe02 className="size-3.5" />
-        </ProjectIcon>
-        Site Editor <ChipMeta>Site</ChipMeta>
-      </Chip>
-    </div>
+/** Rendered as a button, so hover and focus show here too. */
+export const Playground: Story = {
+  render: (args) => (
+    <Chip {...args} asChild>
+      <button type="button">{args.children}</button>
+    </Chip>
   ),
 };
 
-export const Stages: Story = {
+const goal = (
+  <>
+    <Target04 /> Mobile conversion
+  </>
+);
+const app = (
+  <>
+    <ProjectIcon color="blue" className="size-[1.625rem] rounded-full">
+      <Globe02 className="size-3.5" />
+    </ProjectIcon>
+    Site Editor <ChipMeta>Site</ChipMeta>
+  </>
+);
+
+export const States: Story = {
+  parameters: {
+    controls: { disable: true },
+    layout: "padded",
+    pseudo: { hover: [".is-hover"], focusVisible: [".is-focus"] },
+  },
   render: () => (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center gap-2">
-        <Stage state="done">Plan</Stage>
-        <Stage state="current">Plan</Stage>
-        <Stage state="upcoming">Plan</Stage>
-      </div>
-      {[0, 1, 2, 3].map((current) => (
-        <StageTracker
-          key={current}
-          stages={["Plan", "Execute", "Monitor"]}
-          current={current}
-        />
-      ))}
-    </div>
+    <Matrix
+      columns={["Default", "Hover", "Focus"]}
+      proposed={["Hover", "Focus"]}
+      rows={[
+        { label: "sm · goal", content: goal, size: "sm" as const },
+        { label: "lg · app", content: app, size: "lg" as const },
+      ].map((row) => ({
+        label: row.label,
+        cells: ["", "is-hover", "is-focus"].map((state) => (
+          <Chip key={state} size={row.size} asChild>
+            <button type="button" className={state}>
+              {row.content}
+            </button>
+          </Chip>
+        )),
+      }))}
+    />
   ),
 };

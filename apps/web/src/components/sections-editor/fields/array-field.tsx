@@ -19,7 +19,10 @@ import {
 } from "@dnd-kit/sortable";
 import { List, Plus, Rows01 } from "@untitledui/icons";
 import { toast } from "sonner";
-import { ViewModeToggle } from "@decocms/ui/components/view-mode-toggle.tsx";
+import {
+  ToggleGroup,
+  ToggleGroupItem,
+} from "@decocms/ui/components/toggle-group.tsx";
 import { useLocalStorage } from "@/hooks/use-local-storage";
 import { useNewBlocksEditor } from "@/hooks/use-new-blocks-editor";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
@@ -626,23 +629,30 @@ export function ArrayField({
           </span>
         )}
         {canEditInline && items.length > 0 && (
-          <ViewModeToggle<ArrayFieldLayout>
+          <ToggleGroup
+            type="single"
+            variant="segmented"
+            size="sm"
             className="ml-auto shrink-0"
             value={layoutPreference}
-            onValueChange={setLayoutPreference}
-            options={[
-              {
-                value: "drill",
-                icon: <List />,
-                tooltip: t("sectionsEditor.arrayField.layoutDrill"),
-              },
-              {
-                value: "inline",
-                icon: <Rows01 />,
-                tooltip: t("sectionsEditor.arrayField.layoutInline"),
-              },
-            ]}
-          />
+            onValueChange={(next) => {
+              if (next === "drill" || next === "inline")
+                setLayoutPreference(next);
+            }}
+          >
+            <ToggleGroupItem
+              value="drill"
+              aria-label={t("sectionsEditor.arrayField.layoutDrill")}
+            >
+              <List />
+            </ToggleGroupItem>
+            <ToggleGroupItem
+              value="inline"
+              aria-label={t("sectionsEditor.arrayField.layoutInline")}
+            >
+              <Rows01 />
+            </ToggleGroupItem>
+          </ToggleGroup>
         )}
       </div>
 
@@ -665,7 +675,7 @@ export function ArrayField({
               items={entryIds}
               strategy={verticalListSortingStrategy}
             >
-              <div className="min-w-0 overflow-hidden rounded-[var(--studio-surface-radius,var(--radius-xl))] border card-shadow border-border/50 p-1.5">
+              <div className="min-w-0 overflow-hidden rounded-[var(--studio-surface-radius,var(--radius-xl))] border shadow-edge border-border/50 p-1.5">
                 {items.length > 0 &&
                   (() => {
                     // Compute base labels once for the whole list rather than per
@@ -759,7 +769,7 @@ export function ArrayField({
             {createPortal(
               <DragOverlay dropAnimation={SORTABLE_DROP_ANIMATION}>
                 {activeLabel ? (
-                  <div className="flex min-w-0 items-center gap-2.5 rounded-lg border border-border/60 bg-background px-2 py-2.5 shadow-lg ring-1 ring-border/60">
+                  <div className="flex min-w-0 items-center gap-2.5 rounded-lg bg-background px-2 py-2.5 shadow-lift">
                     <ArrayRowContent
                       labelText={activeLabel}
                       imageSrc={activeImage}
@@ -777,7 +787,7 @@ export function ArrayField({
         <button
           type="button"
           onClick={handleAddClick}
-          className="flex w-full items-center justify-center gap-1.5 rounded-[var(--studio-surface-radius,var(--radius-xl))] border border-dashed border-border/60 py-2.5 text-sm text-muted-foreground transition-colors hover:border-border hover:bg-muted/30 disabled:pointer-events-none disabled:opacity-50"
+          className="flex w-full items-center justify-center gap-1.5 rounded-[var(--studio-surface-radius,var(--radius-xl))] border border-dashed border-border/60 py-2.5 text-sm text-muted-foreground transition-colors hover:border-border hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
         >
           <Plus size={14} />
           {usesSectionPicker

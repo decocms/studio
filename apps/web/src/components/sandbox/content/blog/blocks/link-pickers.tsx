@@ -70,7 +70,7 @@ function ResultRow({
       type="button"
       onMouseDown={(e) => e.preventDefault()}
       onClick={onPick}
-      className="flex w-full items-center gap-2 rounded px-1.5 py-1.5 text-left transition-colors hover:bg-muted"
+      className="flex w-full items-center gap-2 rounded px-1.5 py-1.5 text-left transition-colors hover:bg-accent"
     >
       {image !== undefined && (
         <img

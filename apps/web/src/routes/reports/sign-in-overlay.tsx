@@ -140,7 +140,7 @@ function ReportAuthCard({ domain }: { domain: string }) {
       role="dialog"
       aria-modal="true"
       aria-label={t("reports.authGate.accessYourReport")}
-      className="w-full max-w-[440px] rounded-2xl bg-white px-6 py-6 card-shadow sm:rounded-3xl sm:px-8 sm:py-8"
+      className="w-full max-w-[440px] rounded-2xl bg-white px-6 py-6 shadow-edge sm:rounded-3xl sm:px-8 sm:py-8"
       style={FORCE_LIGHT_AUTH_VARS}
     >
       <AuthEntry

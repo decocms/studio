@@ -32,9 +32,9 @@ function SelectTrigger({
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Trigger> & {
   size?: "xs" | "sm" | "default";
-  /** `outline` is a white pill on a hairline; `filled` a grey pill, for
-   *  toolbars and filters. */
-  variant?: "outline" | "filled";
+  /** `outline` is a form field, cornered like an input; `filled` a grey pill, for
+   *  toolbars and filters; `pill` a picker beside outline buttons in a toolbar. */
+  variant?: "outline" | "filled" | "pill";
 }) {
   return (
     <SelectPrimitive.Trigger
@@ -42,9 +42,10 @@ function SelectTrigger({
       data-size={size}
       data-variant={variant}
       className={cn(
-        "data-[placeholder]:text-subtle-foreground [&_svg:not([class*='text-'])]:text-muted-foreground focus-ring aria-invalid:bg-destructive/10 aria-invalid:shadow-[inset_0_0_0_1px_var(--destructive)] flex w-fit items-center justify-between gap-1.5 rounded-full px-3 text-sm whitespace-nowrap transition-[color,background-color,box-shadow] outline-none disabled:text-subtle-foreground disabled:pointer-events-none",
-        "data-[variant=outline]:bg-[var(--studio-input-background)] data-[variant=outline]:card-shadow data-[variant=outline]:hover:bg-sidebar",
-        "data-[variant=filled]:bg-muted data-[variant=filled]:hover:bg-secondary-hover",
+        "data-[placeholder]:text-subtle-foreground [&_svg:not([class*='text-'])]:text-muted-foreground focus-ring aria-invalid:bg-destructive/10 aria-invalid:shadow-[inset_0_0_0_1px_var(--destructive)] flex w-fit items-center justify-between gap-1.5 px-3 text-sm whitespace-nowrap transition-[color,background-color,box-shadow] outline-none disabled:text-subtle-foreground disabled:pointer-events-none",
+        "data-[variant=outline]:rounded-[var(--studio-control-radius,var(--radius-lg))] data-[variant=outline]:bg-[var(--studio-input-background)] data-[variant=outline]:shadow-edge data-[variant=outline]:hover:bg-sidebar",
+        "data-[variant=filled]:rounded-full data-[variant=filled]:bg-muted data-[variant=filled]:hover:bg-secondary-hover",
+        "data-[variant=pill]:rounded-full data-[variant=pill]:bg-card data-[variant=pill]:shadow-edge data-[variant=pill]:hover:bg-[var(--studio-outline-hover-background)]",
         "data-[size=default]:h-[var(--studio-control-height,2.25rem)] data-[size=default]:pl-4 data-[size=sm]:h-8 data-[size=xs]:h-7 data-[size=xs]:px-2.5 data-[size=xs]:text-xs data-[size=xs]:font-medium",
         "*:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-2 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5",
         className,

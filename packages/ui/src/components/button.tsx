@@ -31,21 +31,23 @@ const buttonVariants = cva(
           "bg-destructive text-destructive-foreground hover:bg-destructive/85 dark:bg-destructive/70",
         secondary: SECONDARY,
         outline:
-          "bg-transparent text-[color:var(--studio-outline-foreground)] hover:bg-[var(--studio-outline-hover-background)] hover:text-accent-foreground hairline",
+          "bg-card text-[color:var(--studio-outline-foreground)] shadow-edge hover:bg-[var(--studio-outline-hover-background)] hover:text-accent-foreground aria-pressed:bg-accent aria-pressed:text-accent-foreground data-[state=open]:bg-accent",
         success: "bg-success text-success-foreground hover:bg-success/90",
         warning: "bg-warning text-warning-foreground hover:bg-warning/90",
         /* Lime. Reserved for starting work — see the accent rule. */
         brand: "bg-brand text-brand-foreground hover:bg-brand/85",
         special: "bg-special text-special-foreground hover:bg-special/90",
-        ghost:
-          "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
+        ghost: "hover:bg-accent hover:text-accent-foreground",
+        /* A quiet remove or delete: muted until hovered, then destructive. */
+        "ghost-destructive":
+          "text-muted-foreground hover:bg-accent hover:text-destructive",
         /**
          * The agent's own button — "Ask" in the header. A white pill on a
          * hairline that leads with the agent avatar, which sits flush with
          * the pill's curve, so the padding on that side is the avatar's inset.
          */
         agent:
-          "bg-card text-card-foreground hairline hover:bg-accent has-[>[data-slot=agent-avatar]]:pl-[3px]",
+          "bg-card text-card-foreground shadow-edge hover:bg-accent has-[>[data-slot=agent-avatar]]:pl-[3px]",
         /**
          * An icon button living in the SIDEBAR, so it wears the sidebar's own
          * tokens and matches `SidebarMenuButton` beside it: a quiet glyph that
@@ -60,9 +62,9 @@ const buttonVariants = cva(
          * a link — the styling has to come from whichever attribute tells a
          * screen reader this one is on, never a class beside it. It lifts
          * the pill the way {@link SECONDARY} does, since "selected" here is a
-         * raised chip (see `ViewModeToggle`) rather than a filled one.
+         * raised chip (see a segmented `ToggleGroup`) rather than a filled one.
          */
-        tab: "text-muted-foreground hover:bg-accent hover:text-foreground aria-pressed:bg-card aria-pressed:text-card-foreground aria-pressed:card-shadow aria-[current=page]:bg-card aria-[current=page]:text-card-foreground aria-[current=page]:card-shadow",
+        tab: "text-muted-foreground hover:bg-accent hover:text-foreground aria-pressed:bg-card aria-pressed:text-card-foreground aria-pressed:shadow-edge aria-[current=page]:bg-card aria-[current=page]:text-card-foreground aria-[current=page]:shadow-edge",
         /**
          * A row in a popover menu — full width, text leading, regular weight.
          * Every caller was reaching for `ghost` and then re-adding
@@ -74,12 +76,13 @@ const buttonVariants = cva(
       /* A pill's curve eats the end pixels, so padding grows faster than height; an icon-led button gives some back. */
       size: {
         default: "h-8 px-3.5 has-[>svg]:px-3",
-        sm: "h-[1.625rem] gap-1.5 px-3 has-[>svg]:px-2.5",
+        sm: "h-7 gap-1.5 px-3 has-[>svg]:px-2.5",
         xs: "h-6 gap-1 px-2.5 text-xs has-[>svg]:px-2",
         lg: "h-10 px-4.5 has-[>svg]:px-4",
         xl: "h-12 px-6 text-base has-[>svg]:px-5",
         icon: "size-8",
         "icon-sm": "size-7",
+        "icon-xs": "size-6",
       },
     },
     defaultVariants: {

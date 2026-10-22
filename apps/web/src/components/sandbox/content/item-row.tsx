@@ -99,7 +99,7 @@ export function ItemRow({
             : "bg-accent text-accent-foreground"
           : isGlobal
             ? "hover:bg-global-section/10"
-            : "hover:bg-muted",
+            : "hover:bg-accent",
       )}
     >
       {selectable && (

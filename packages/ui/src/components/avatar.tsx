@@ -1,4 +1,3 @@
-/* eslint-disable ban-memoization/ban-memoization */
 "use client";
 
 import type * as React from "react";
@@ -6,7 +5,7 @@ import * as AvatarPrimitive from "@radix-ui/react-avatar";
 import { cn } from "../lib/utils.ts";
 import { User01 } from "@untitledui/icons";
 import { cva, type VariantProps } from "class-variance-authority";
-import { type HTMLAttributes, type ReactNode, useMemo } from "react";
+import type { HTMLAttributes, ReactNode } from "react";
 
 // Export basic primitives for backward compatibility
 function AvatarRoot({
@@ -54,71 +53,76 @@ function AvatarFallback({
   );
 }
 
-// Enhanced Avatar with color generation, shapes, sizes, and icon support
+// `solid` is for people and for marks that sit alone, like an org in the rail.
+const AVATAR_COLORS = {
+  tint: [
+    "bg-brand-lime-tint text-brand-green-dark dark:bg-brand/20 dark:text-brand",
+    "bg-brand-purple-tint text-brand-purple-dark dark:bg-brand-purple/20 dark:text-brand-purple",
+    "bg-brand-yellow-tint text-brand-yellow-dark dark:bg-brand-yellow/20 dark:text-brand-yellow",
+    "bg-brand-blue-tint text-brand-blue-dark dark:bg-brand-blue/20 dark:text-brand-blue",
+  ],
+  solid: [
+    "bg-brand text-brand-green-dark",
+    "bg-brand-purple text-brand-purple-dark",
+    "bg-brand-yellow text-brand-yellow-dark",
+    "bg-brand-blue text-brand-blue-dark",
+  ],
+} as const;
 
-// Predefined color palette for avatar backgrounds with gradients and shadows
-const AVATAR_COLORS = [
-  "drop-shadow-lg bg-gradient-to-br from-red-100 to-red-300 text-red-800 shadow-lg shadow-red-300/40 ring-1 ring-red-300/30",
-  "drop-shadow-lg bg-gradient-to-br from-lime-100 to-lime-300 text-lime-800 shadow-lg shadow-lime-300/40 ring-1 ring-lime-300/30",
-  "drop-shadow-lg bg-gradient-to-br from-emerald-100 to-emerald-300 text-emerald-800 shadow-lg shadow-emerald-300/40 ring-1 ring-emerald-300/30",
-  "drop-shadow-lg bg-gradient-to-br from-orange-100 to-orange-300 text-orange-800 shadow-lg shadow-orange-300/40 ring-1 ring-orange-300/30",
-  "drop-shadow-lg bg-gradient-to-br from-amber-100 to-amber-300 text-amber-800 shadow-lg shadow-amber-300/40 ring-1 ring-amber-300/30",
-  "drop-shadow-lg bg-gradient-to-br from-yellow-100 to-yellow-300 text-yellow-800 shadow-lg shadow-yellow-300/40 ring-1 ring-yellow-300/30",
-  "drop-shadow-lg bg-gradient-to-br from-green-100 to-green-300 text-green-800 shadow-lg shadow-green-300/40 ring-1 ring-green-300/30",
-  "drop-shadow-lg bg-gradient-to-br from-teal-100 to-teal-300 text-teal-800 shadow-lg shadow-teal-300/40 ring-1 ring-teal-300/30",
-  "drop-shadow-lg bg-gradient-to-br from-cyan-100 to-cyan-300 text-cyan-800 shadow-lg shadow-cyan-300/40 ring-1 ring-cyan-300/30",
-  "drop-shadow-lg bg-gradient-to-br from-sky-100 to-sky-300 text-sky-800 shadow-lg shadow-sky-300/40 ring-1 ring-sky-300/30",
-  "drop-shadow-lg bg-gradient-to-br from-blue-100 to-blue-300 text-blue-800 shadow-lg shadow-blue-300/40 ring-1 ring-blue-300/30",
-  "drop-shadow-lg bg-gradient-to-br from-indigo-100 to-indigo-300 text-indigo-800 shadow-lg shadow-indigo-300/40 ring-1 ring-indigo-300/30",
-  "drop-shadow-lg bg-gradient-to-br from-violet-100 to-violet-300 text-violet-800 shadow-lg shadow-violet-300/40 ring-1 ring-violet-300/30",
-  "drop-shadow-lg bg-gradient-to-br from-purple-100 to-purple-300 text-purple-800 shadow-lg shadow-purple-300/40 ring-1 ring-purple-300/30",
-  "drop-shadow-lg bg-gradient-to-br from-fuchsia-100 to-fuchsia-300 text-fuchsia-800 shadow-lg shadow-fuchsia-300/40 ring-1 ring-fuchsia-300/30",
-  "drop-shadow-lg bg-gradient-to-br from-pink-100 to-pink-300 text-pink-800 shadow-lg shadow-pink-300/40 ring-1 ring-pink-300/30",
-  "drop-shadow-lg bg-gradient-to-br from-rose-100 to-rose-300 text-rose-800 shadow-lg shadow-rose-300/40 ring-1 ring-rose-300/30",
-];
+const MUTED_COLOR = "bg-muted text-muted-foreground";
 
-const MUTED_COLOR = "drop-shadow-lg text-muted-foreground bg-muted shadow-lg";
-
-/**
- * Generate a deterministic color from a string
- */
-function getColorFromString(input: string): string {
+function getColorFromString(
+  input: string,
+  tone: keyof typeof AVATAR_COLORS,
+): string {
   let hash = 0;
   for (let i = 0; i < input.length; i++) {
     hash = input.charCodeAt(i) + ((hash << 5) - hash);
   }
-  const index = Math.abs(hash) % AVATAR_COLORS.length;
-  return AVATAR_COLORS[index]!;
+  const colors = AVATAR_COLORS[tone];
+  return colors[Math.abs(hash) % colors.length]!;
 }
 
-// Unified avatar variants with shape and size
-const avatarVariants = cva("border border-border", {
+/** "Ana Souza" → "AS", "Acme" → "A", "" → "?". */
+function getInitials(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  const first = words[0]?.charAt(0) ?? "";
+  const last = words.length > 1 ? (words.at(-1)?.charAt(0) ?? "") : "";
+  return (first + last).toUpperCase() || "?";
+}
+
+/* Initials at ~40% of the tile; a square's radius is ~30% of its side, as
+   the org rail's. */
+const avatarVariants = cva("font-medium", {
   variants: {
     shape: {
       circle: "rounded-full",
       square: "",
     },
     size: {
-      "3xs": "w-3 h-3 text-[7px] font-medium",
-      "2xs": "w-4 h-4 text-[9px] font-medium",
-      xs: "w-6 h-6 text-sm font-medium",
-      sm: "w-8 h-8 text-lg font-medium",
-      base: "w-10 h-10 text-2xl font-medium",
-      lg: "w-12 h-12 text-3xl font-medium",
-      xl: "w-16 h-16 text-4xl font-medium",
-      "2xl": "w-20 h-20 text-5xl font-medium",
-      "3xl": "w-32 h-32 text-7xl font-medium",
+      "3xs": "size-3 text-[0.4375rem]",
+      "2xs": "size-4 text-[0.5625rem]",
+      xs: "size-6 text-[0.625rem]",
+      sm: "size-8 text-xs",
+      md: "size-9 text-sm",
+      base: "size-10 text-sm",
+      lg: "size-12 text-lg",
+      xl: "size-16 text-2xl",
+      "2xl": "size-20 text-3xl",
+      "3xl": "size-32 text-5xl",
     },
   },
   compoundVariants: [
-    // Square avatar roundedness based on size
+    { shape: "square", size: "3xs", class: "rounded-[0.1875rem]" },
+    { shape: "square", size: "2xs", class: "rounded-sm" },
     { shape: "square", size: "xs", class: "rounded-lg" },
-    { shape: "square", size: "sm", class: "rounded-xl" },
+    { shape: "square", size: "sm", class: "rounded-[0.625rem]" },
+    { shape: "square", size: "md", class: "rounded-[0.6875rem]" },
     { shape: "square", size: "base", class: "rounded-xl" },
-    { shape: "square", size: "lg", class: "rounded-xl" },
-    { shape: "square", size: "xl", class: "rounded-2xl" },
-    { shape: "square", size: "2xl", class: "rounded-3xl" },
-    { shape: "square", size: "3xl", class: "rounded-[40px]" },
+    { shape: "square", size: "lg", class: "rounded-[0.875rem]" },
+    { shape: "square", size: "xl", class: "rounded-[1.125rem]" },
+    { shape: "square", size: "2xl", class: "rounded-[1.375rem]" },
+    { shape: "square", size: "3xl", class: "rounded-[2.25rem]" },
   ],
   defaultVariants: {
     shape: "square",
@@ -126,7 +130,6 @@ const avatarVariants = cva("border border-border", {
   },
 });
 
-// Image variants for object-fit
 const avatarImageVariants = cva("", {
   variants: {
     objectFit: {
@@ -139,138 +142,37 @@ const avatarImageVariants = cva("", {
   },
 });
 
-// Icon size mapping based on avatar size (in pixels)
-const getIconSize = (size: string): number => {
-  const iconSizes = {
-    "3xs": 8,
-    "2xs": 8,
-    xs: 12,
-    sm: 16,
-    base: 24,
-    lg: 28,
-    xl: 36,
-    "2xl": 48,
-    "3xl": 80,
+const ICON_SIZES = {
+  "3xs": 8,
+  "2xs": 8,
+  xs: 12,
+  sm: 16,
+  md: 18,
+  base: 20,
+  lg: 24,
+  xl: 32,
+  "2xl": 40,
+  "3xl": 64,
+} as const;
+
+export type AvatarProps = VariantProps<typeof avatarVariants> &
+  HTMLAttributes<HTMLDivElement> & {
+    /** Image URL, or `icon://…` for the generic person icon. */
+    url?: string;
+    /** A name, shown as its initials, or any element. Shown until the image loads. */
+    fallback: string | ReactNode;
+    objectFit?: "contain" | "cover";
+    /** Grey instead of the name's colour: a deleted user, an org in the rail. */
+    muted?: boolean;
+    /** `solid` fills the tile with the brand colour instead of its tint; circles default to it. */
+    tone?: keyof typeof AVATAR_COLORS;
+    /** An ink ring outside the tile: the current org in the rail. */
+    selected?: boolean;
+    shape?: "circle" | "square";
+    size?: keyof typeof ICON_SIZES;
   };
-  return iconSizes[size as keyof typeof iconSizes] || iconSizes.base;
-};
 
-interface BaseAvatarProps extends HTMLAttributes<HTMLDivElement> {
-  /**
-   * The URL of the avatar image
-   */
-  url?: string;
-  /**
-   * Fallback text or element to display when the image is not available
-   * If string is provided, it will use the first character (typically first initial)
-   */
-  fallback: string | ReactNode;
-  /**
-   * The object fit of the avatar image
-   */
-  objectFit?: "contain" | "cover";
-  /**
-   * Additional CSS classes to apply to the avatar
-   */
-  className?: string;
-  /**
-   * Whether to use the muted color palette
-   */
-  muted?: boolean;
-  /**
-   * The shape of the avatar
-   */
-  shape?: "circle" | "square";
-  /**
-   * The size of the avatar
-   */
-  size?: "3xs" | "2xs" | "xs" | "sm" | "base" | "lg" | "xl" | "2xl" | "3xl";
-}
-
-/**
- * UnifiedAvatar - Handles both circle and square avatars with variants
- * Internal component - use Avatar with shape prop instead
- */
-function UnifiedAvatar({
-  url,
-  fallback,
-  shape = "square",
-  size = "base",
-  objectFit = "cover",
-  className,
-  muted = false,
-  ...props
-}: BaseAvatarProps) {
-  const fallbackContent = useMemo(() => {
-    if (typeof fallback === "string") {
-      const trimmed = fallback.trim();
-      return trimmed.slice(0, 2).toUpperCase();
-    }
-    return fallback;
-  }, [fallback]);
-
-  const fallbackColor = useMemo(() => {
-    if (muted) {
-      return MUTED_COLOR;
-    }
-    if (typeof fallback === "string") {
-      return getColorFromString(fallback);
-    }
-    return AVATAR_COLORS[0];
-  }, [fallback, muted]);
-
-  const isIconUrl = url?.startsWith("icon://");
-  const iconName = isIconUrl ? url?.replace("icon://", "") : undefined;
-
-  return (
-    <AvatarRoot
-      className={cn(avatarVariants({ shape, size }), className)}
-      {...props}
-    >
-      {isIconUrl && iconName ? (
-        <div
-          className={cn(
-            "flex items-center justify-center w-full h-full",
-            fallbackColor,
-          )}
-        >
-          <User01 size={getIconSize(size)} />
-        </div>
-      ) : (
-        <>
-          {url && (
-            <AvatarImage
-              src={url}
-              loading="lazy"
-              alt="Avatar"
-              className={cn(avatarImageVariants({ objectFit }))}
-            />
-          )}
-          <AvatarFallback
-            className={cn(fallbackColor, "rounded-none")}
-            delayMs={url ? 600 : 0}
-          >
-            {fallbackContent}
-          </AvatarFallback>
-        </>
-      )}
-    </AvatarRoot>
-  );
-}
-
-export type AvatarProps = VariantProps<typeof avatarVariants> & BaseAvatarProps;
-
-/**
- * Avatar - Universal avatar component with shape variant
- *
- * @param shape - 'circle' for user profiles, 'square' for brands/agents (default: 'square')
- * @param size - Size variant (default: 'base')
- * @param url - Image URL or icon:// format
- * @param fallback - Fallback text or element when image fails to load
- * @param objectFit - How the image should fit within the container
- * @param className - Additional CSS classes
- * @param muted - Whether to use muted colors
- */
+/** The image, or the name's initials on its colour; circle for people, square otherwise. */
 export function Avatar({
   shape = "square",
   size = "base",
@@ -279,19 +181,49 @@ export function Avatar({
   objectFit = "cover",
   className,
   muted = false,
+  tone = shape === "circle" ? "solid" : "tint",
+  selected = false,
   ...props
 }: AvatarProps) {
+  const color = muted
+    ? MUTED_COLOR
+    : getColorFromString(typeof fallback === "string" ? fallback : "", tone);
+  const tile = cn("flex size-full items-center justify-center", color);
+
   return (
-    <UnifiedAvatar
-      shape={shape}
-      url={url}
-      fallback={fallback}
-      size={size ?? "base"}
-      objectFit={objectFit}
-      className={className}
-      muted={muted}
+    <AvatarRoot
+      className={cn(
+        avatarVariants({ shape, size }),
+        // A hairline keeps a white logo from dissolving into the page.
+        url && "outline-1 -outline-offset-1 outline-hairline",
+        selected && "outline-2 outline-offset-0 outline-foreground",
+        className,
+      )}
       {...props}
-    />
+    >
+      {url?.startsWith("icon://") ? (
+        <div className={tile}>
+          <User01 size={ICON_SIZES[size ?? "base"]} />
+        </div>
+      ) : (
+        <>
+          {url && (
+            <AvatarImage
+              src={url}
+              loading="lazy"
+              alt="Avatar"
+              className={avatarImageVariants({ objectFit })}
+            />
+          )}
+          <AvatarFallback
+            className={cn(tile, "rounded-none")}
+            delayMs={url ? 600 : 0}
+          >
+            {typeof fallback === "string" ? getInitials(fallback) : fallback}
+          </AvatarFallback>
+        </>
+      )}
+    </AvatarRoot>
   );
 }
 

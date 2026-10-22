@@ -9,7 +9,7 @@ interface ColumnConfig {
   "2xl"?: number;
 }
 
-interface EntityGridProps {
+export interface EntityGridProps {
   children: ReactNode;
   columns?: ColumnConfig;
   gap?: number;

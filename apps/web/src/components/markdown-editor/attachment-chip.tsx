@@ -37,7 +37,7 @@ export function AttachmentChipContent({
         aria-label={t("markdownEditor.downloadFile", { name: label })}
         // Keeps an editor's selection out of the chip; the click still fires.
         onMouseDown={(e) => e.preventDefault()}
-        className="shrink-0 rounded-md p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        className="shrink-0 rounded-md p-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
       >
         <Download01 size={14} />
       </a>

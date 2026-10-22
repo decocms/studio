@@ -1,5 +1,5 @@
 import type * as React from "react";
-import { CheckCircle } from "@untitledui/icons";
+import { Check, CheckCircle } from "@untitledui/icons";
 import { cva } from "class-variance-authority";
 
 import { cn } from "../lib/utils.ts";
@@ -11,9 +11,9 @@ const stageVariants = cva(
   {
     variants: {
       state: {
-        done: "hairline text-muted-foreground",
+        done: "bg-card shadow-edge text-muted-foreground",
         current: "bg-brand-lime-tint text-brand-green-dark",
-        upcoming: "hairline text-subtle-foreground",
+        upcoming: "bg-card shadow-edge text-subtle-foreground",
       },
     },
   },
@@ -61,42 +61,119 @@ function Stage({ state, className, children, ...props }: StageProps) {
   );
 }
 
+function stateAt(index: number, current: number): StageState {
+  return index < current ? "done" : index === current ? "current" : "upcoming";
+}
+
+const numberVariants = cva(
+  "tnum flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-medium transition-colors",
+  {
+    variants: {
+      state: {
+        done: "bg-primary text-primary-foreground",
+        current: "bg-brand-lime-tint text-brand-green-dark",
+        upcoming: "bg-muted text-muted-foreground",
+      },
+    },
+  },
+);
+
 type StageTrackerProps = Omit<React.ComponentProps<"ol">, "children"> & {
   /** Stage labels, in order. */
   stages: readonly string[];
   /** Index of the current stage; `stages.length` marks every stage done. */
   current: number;
+  /** `pill` for a flow's status (Plan, Execute, Monitor); `numbered` for a wizard. */
+  variant?: "pill" | "numbered";
+  /** Makes done and visited stages clickable. */
+  onStageClick?: (index: number) => void;
+  /** Stages past `current` the user already reached and may jump back to. */
+  visited?: ReadonlySet<number>;
 };
 
-/** Stages joined by hairline connectors — e.g. Plan → Execute → Monitor. */
+/** Stages joined by hairline connectors. */
 function StageTracker({
   stages,
   current,
+  variant = "pill",
+  onStageClick,
+  visited,
   className,
   ...props
 }: StageTrackerProps) {
   return (
     <ol
       data-slot="stage-tracker"
+      data-variant={variant}
       className={cn("flex items-center gap-2", className)}
       {...props}
     >
-      {stages.map((label, index) => (
-        <li key={label} className="flex items-center gap-2">
-          {index > 0 && <span aria-hidden className="bg-border h-px w-6" />}
-          <Stage
-            state={
-              index < current
-                ? "done"
-                : index === current
-                  ? "current"
-                  : "upcoming"
-            }
-          >
-            {label}
-          </Stage>
-        </li>
-      ))}
+      {stages.map((label, index) => {
+        const state = stateAt(index, current);
+        const clickable =
+          onStageClick !== undefined &&
+          index !== current &&
+          (index < current || (visited?.has(index) ?? false));
+        const content =
+          variant === "numbered" ? (
+            <span className="flex items-center gap-2">
+              <span className={numberVariants({ state })}>
+                {state === "done" ? (
+                  <Check aria-hidden className="size-3.5" />
+                ) : (
+                  index + 1
+                )}
+              </span>
+              <span
+                className={cn(
+                  "text-sm whitespace-nowrap",
+                  state === "upcoming"
+                    ? "text-muted-foreground"
+                    : "text-foreground font-medium",
+                )}
+              >
+                {label}
+              </span>
+            </span>
+          ) : (
+            <Stage state={state}>{label}</Stage>
+          );
+        return (
+          <li key={label} className="flex items-center gap-2">
+            {index > 0 && (
+              <span
+                aria-hidden
+                className={cn(
+                  "h-px",
+                  variant === "numbered" ? "mx-1 w-8" : "w-6",
+                  variant === "numbered" && index <= current
+                    ? "bg-foreground"
+                    : "bg-border",
+                )}
+              />
+            )}
+            {clickable ? (
+              <button
+                type="button"
+                onClick={() => onStageClick(index)}
+                className="focus-ring rounded-full transition-opacity hover:opacity-70"
+              >
+                {content}
+              </button>
+            ) : (
+              <span
+                aria-current={
+                  variant === "numbered" && state === "current"
+                    ? "step"
+                    : undefined
+                }
+              >
+                {content}
+              </span>
+            )}
+          </li>
+        );
+      })}
     </ol>
   );
 }

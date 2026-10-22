@@ -12,12 +12,12 @@ import { cn } from "../lib/utils.ts";
  * pill, leading with a 26px tile (a `ProjectIcon` or a logo).
  */
 const chipVariants = cva(
-  "bg-card hairline inline-flex w-fit shrink-0 items-center whitespace-nowrap rounded-full [&_svg]:pointer-events-none [&_svg]:shrink-0 [a&]:hover:bg-accent [button&]:hover:bg-accent transition-colors focus-ring",
+  "bg-card shadow-edge inline-flex w-fit shrink-0 items-center whitespace-nowrap rounded-full [&_svg]:pointer-events-none [&_svg]:shrink-0 [a&]:hover:bg-accent [button&]:hover:bg-accent transition-colors focus-ring",
   {
     variants: {
       size: {
         sm: "text-muted-foreground h-6 gap-1.5 px-2 text-xs [&>svg]:size-3",
-        lg: "text-foreground h-9 gap-2 py-1 pr-3.5 pl-1 text-sm font-medium",
+        lg: "text-foreground h-9 gap-2 px-3.5 py-1 text-sm font-medium [&>svg]:size-4 has-[>[data-slot=project-icon]]:pl-1 has-[>img]:pl-1",
       },
     },
     defaultVariants: { size: "sm" },

@@ -7,13 +7,13 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "../lib/utils.ts";
 
 const toggleVariants = cva(
-  "inline-flex items-center justify-center gap-2 rounded-full text-sm font-medium hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50 data-[state=on]:bg-muted data-[state=on]:text-foreground [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 [&_svg]:shrink-0 focus-ring outline-none transition-[color,background-color,box-shadow] whitespace-nowrap",
+  "inline-flex items-center justify-center gap-2 rounded-full text-sm font-medium hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-50 data-[state=on]:bg-muted data-[state=on]:hover:bg-secondary-hover data-[state=on]:text-foreground [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 [&_svg]:shrink-0 focus-ring outline-none transition-[color,background-color,box-shadow] whitespace-nowrap",
   {
     variants: {
       variant: {
         default: "bg-transparent",
         outline:
-          "hairline bg-transparent hover:bg-accent hover:text-accent-foreground",
+          "bg-card shadow-edge hover:bg-accent hover:text-accent-foreground",
         /** One option of a segmented control: quiet text on the grey track,
          *  the chosen one lifted onto a white pill. Use inside a
          *  `ToggleGroup variant="segmented"`. */

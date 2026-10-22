@@ -1,4 +1,5 @@
 import type * as React from "react";
+import { Slot, Slottable } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
 
 import { cn } from "../lib/utils.ts";
@@ -11,8 +12,16 @@ const listRowVariants = cva("flex w-full min-w-0 items-center gap-3", {
       /** A row in a list: hairline under it, a round lead, a medium title. */
       divided: "border-b py-2.5 last:border-b-0",
     },
+    /** Opens something: hover tint and the focus ring. Pair with `asChild`. */
+    interactive: {
+      true: "hover:bg-accent aria-[current=true]:bg-accent aria-[current=page]:bg-accent focus-ring cursor-pointer px-2 text-left transition-colors",
+      false: "",
+    },
   },
-  defaultVariants: { variant: "default" },
+  compoundVariants: [
+    { variant: "default", interactive: true, class: "rounded-[0.625rem]" },
+  ],
+  defaultVariants: { variant: "default", interactive: false },
 });
 
 const leadVariants = cva(
@@ -36,6 +45,10 @@ type ListRowProps = Omit<React.ComponentProps<"div">, "title"> &
     meta?: React.ReactNode;
     /** An action or a value at the end of the row. */
     trailing?: React.ReactNode;
+    /** The current item of a list, e.g. the open section. */
+    selected?: boolean;
+    /** Render as the given link or button; the row fills it. */
+    asChild?: boolean;
   };
 
 /** One thing in a list: lead, title over meta, and an optional trailing action. */
@@ -45,13 +58,22 @@ function ListRow({
   meta,
   trailing,
   variant,
+  interactive,
+  selected,
+  asChild = false,
   className,
+  children,
   ...props
 }: ListRowProps) {
+  const Comp = asChild ? Slot : "div";
   return (
-    <div
+    <Comp
       data-slot="list-row"
-      className={cn(listRowVariants({ variant }), className)}
+      aria-current={selected || undefined}
+      className={cn(
+        listRowVariants({ variant, interactive: interactive ?? asChild }),
+        className,
+      )}
       {...props}
     >
       {lead && <span className={leadVariants({ variant })}>{lead}</span>}
@@ -78,7 +100,8 @@ function ListRow({
         )}
       </div>
       {trailing}
-    </div>
+      {asChild && <Slottable>{children}</Slottable>}
+    </Comp>
   );
 }
 

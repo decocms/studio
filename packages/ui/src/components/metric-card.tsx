@@ -1,61 +1,80 @@
 import type * as React from "react";
 
 import { cn } from "../lib/utils.ts";
+import { Card } from "./card.tsx";
 
 type MetricStatus = "success" | "warning" | "error";
 
-const STATUS_DOT: Record<MetricStatus, string> = {
-  success: "bg-success",
-  warning: "bg-warning",
-  error: "bg-destructive",
+const STATUS_TEXT: Record<MetricStatus, string> = {
+  success: "text-success",
+  warning: "text-warning",
+  error: "text-destructive",
 };
 
-type MetricCardProps = Omit<React.ComponentProps<"div">, "children"> & {
+type MetricCardProps = Omit<
+  React.ComponentProps<typeof Card>,
+  "size" | "title"
+> & {
   label: React.ReactNode;
-  value: React.ReactNode;
-  /** The goal the value is measured against. */
+  /** A 16px icon before the label. */
+  icon?: React.ReactNode;
+  value?: React.ReactNode;
+  /** What the value is measured against: a goal, last week. */
   caption?: React.ReactNode;
-  /** How the metric is doing against its goal; shown as a dot by the label. */
+  /** How the metric is doing; colours the caption. */
   status?: MetricStatus;
   /** A trend beside the value, usually a `Sparkline`. */
   trend?: React.ReactNode;
+  /** Top right: a range or metric picker. */
+  action?: React.ReactNode;
 };
 
-/** A metric at a glance: what it is, where it stands, and against what. */
+/** A number, its label and what it compares to; children add a chart or a breakdown below. */
 function MetricCard({
   label,
+  icon,
   value,
   caption,
   status,
   trend,
+  action,
+  children,
   className,
   ...props
 }: MetricCardProps) {
   return (
-    <div
+    <Card
       data-slot="metric-card"
-      className={cn("surface flex flex-col gap-1.5 p-3", className)}
+      className={cn("@container/metric gap-6", className)}
       {...props}
     >
-      <div className="flex items-center gap-2">
-        <span className="min-w-0 flex-1 truncate text-sm font-medium">
-          {label}
-        </span>
-        {status && (
-          <span
-            aria-hidden
-            className={cn("size-1.5 shrink-0 rounded-full", STATUS_DOT[status])}
-          />
+      <div className="flex flex-col gap-2">
+        <div className="text-muted-foreground flex min-h-7 items-center gap-2 text-sm [&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:stroke-[1.33]">
+          {icon}
+          <span className="min-w-0 flex-1 truncate">{label}</span>
+          {action}
+        </div>
+        {value !== undefined && (
+          <div className="flex items-end gap-3">
+            <span className="font-display tnum min-w-0 flex-1 truncate text-[2rem] leading-[1.15]">
+              {value}
+            </span>
+            {trend}
+          </div>
+        )}
+        {caption && (
+          <p
+            className={cn(
+              "text-xs",
+              status ? STATUS_TEXT[status] : "text-muted-foreground",
+            )}
+          >
+            {caption}
+          </p>
         )}
       </div>
-      <div className="flex items-end gap-2">
-        <span className="font-display tnum min-w-0 flex-1 truncate text-[1.375rem] leading-tight">
-          {value}
-        </span>
-        {trend}
-      </div>
-      {caption && <p className="text-subtle-foreground text-xs">{caption}</p>}
-    </div>
+      {children}
+    </Card>
   );
 }
 

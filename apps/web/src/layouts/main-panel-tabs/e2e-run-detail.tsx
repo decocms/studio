@@ -315,7 +315,7 @@ function VitalsTiles({ vitals }: { vitals: E2eVitals }) {
             key={key}
             className="flex flex-col gap-1 rounded-lg border border-border bg-muted/30 px-3 py-2"
           >
-            <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            <span className="text-2xs font-medium text-muted-foreground">
               {label}
             </span>
             <span
@@ -351,7 +351,7 @@ function CollapsibleSection({
   const [open, setOpen] = useState(defaultOpen);
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
-      <CollapsibleTrigger className="flex w-full items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-left hover:bg-muted/40">
+      <CollapsibleTrigger className="flex w-full items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-left hover:bg-accent">
         {open ? (
           <ChevronDown className="size-4 text-muted-foreground" />
         ) : (
@@ -382,7 +382,7 @@ function StepRow({
     <li className="flex gap-3 py-2.5">
       <div className="flex flex-col items-center gap-1">
         <StepStatusIcon status={step.status} />
-        <span className="font-mono text-[10px] text-muted-foreground/60 tabular-nums">
+        <span className="font-mono text-2xs text-muted-foreground/60 tabular-nums">
           {step.step ?? index + 1}
         </span>
       </div>
@@ -398,7 +398,7 @@ function StepRow({
               </Badge>
             )}
           </span>
-          <span className="flex shrink-0 items-center gap-1 font-mono text-[11px] text-muted-foreground tabular-nums">
+          <span className="flex shrink-0 items-center gap-1 font-mono text-2xs text-muted-foreground tabular-nums">
             <Clock className="size-3" />
             {fmtMs(step.durationMs)}
           </span>
@@ -409,7 +409,7 @@ function StepRow({
           </p>
         )}
         {step.usedSelector && (
-          <code className="flex w-fit items-center gap-1 rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-foreground/70">
+          <code className="flex w-fit items-center gap-1 rounded bg-muted px-1.5 py-0.5 font-mono text-2xs text-foreground/70">
             <Cursor01 className="size-3 text-muted-foreground" />
             {step.usedSelector}
           </code>
@@ -490,7 +490,7 @@ function ConsoleList({
         return (
           <div
             key={i}
-            className="border-b border-border/60 px-2.5 py-1.5 font-mono text-[11px] last:border-b-0"
+            className="border-b border-border/60 px-2.5 py-1.5 font-mono text-2xs last:border-b-0"
           >
             <span className={cn("break-words", tone)}>{e.text}</span>
           </div>
@@ -521,7 +521,7 @@ function NetworkList({
         return (
           <div
             key={i}
-            className="flex items-center gap-2 border-b border-border/60 px-2.5 py-1.5 font-mono text-[11px] last:border-b-0"
+            className="flex items-center gap-2 border-b border-border/60 px-2.5 py-1.5 font-mono text-2xs last:border-b-0"
           >
             <span
               className={cn(
@@ -597,7 +597,7 @@ function ViewportPanel({
 
       {page?.vitals && (
         <section className="flex flex-col gap-2">
-          <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          <h4 className="text-xs font-medium text-muted-foreground">
             {t("mainPanelTabs.e2eTab.vitals")}
           </h4>
           <VitalsTiles vitals={page.vitals} />
@@ -715,7 +715,7 @@ function ArtifactsSection({
   const files = artifacts.filter((a) => !/\.png$/i.test(a.name ?? ""));
   return (
     <section className="flex flex-col gap-2">
-      <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+      <h4 className="text-xs font-medium text-muted-foreground">
         {t("mainPanelTabs.e2eTab.artifacts")}
       </h4>
       {artifacts.length === 0 ? (
@@ -754,7 +754,7 @@ function ArtifactsSection({
                   href={a.url}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 font-mono text-[11px] text-foreground/80 hover:bg-muted/40"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 font-mono text-2xs text-foreground/80 hover:bg-accent"
                 >
                   {a.name ?? t("mainPanelTabs.e2eTab.openArtifact")}
                   <LinkExternal01 className="size-3 text-muted-foreground" />
@@ -783,7 +783,7 @@ function ChecksFallback({
     <div className="flex flex-col gap-5">
       {checks.length > 0 ? (
         <section className="flex flex-col gap-2">
-          <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          <h4 className="text-xs font-medium text-muted-foreground">
             {t("mainPanelTabs.e2eTab.checksTitle")}
           </h4>
           <div className="rounded-lg border border-border">
@@ -902,7 +902,7 @@ function DetailBody({ data, t }: { data: E2eRunDetailData; t: Translate }) {
     <div className="flex flex-col gap-5">
       {firstVitals && (
         <section className="flex flex-col gap-2">
-          <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          <h4 className="text-xs font-medium text-muted-foreground">
             {t("mainPanelTabs.e2eTab.vitals")}
           </h4>
           <VitalsTiles vitals={firstVitals} />

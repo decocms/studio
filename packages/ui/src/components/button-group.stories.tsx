@@ -9,7 +9,7 @@ import {
 import { Input } from "./input.tsx";
 
 const meta = {
-  title: "Components/ButtonGroup",
+  title: "Molecules/ButtonGroup",
   component: ButtonGroup,
   args: {
     orientation: "horizontal",

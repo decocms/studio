@@ -10,11 +10,7 @@ type AgentAvatarProps = Omit<React.ComponentProps<"span">, "children"> & {
   alt?: string;
 };
 
-/**
- * The agent, wherever it acts: its face on a dark-green circle. Size it to the
- * row it sits in (20 in a small button, 26 in the header "Ask" button, 32 in
- * a chat header).
- */
+/** The agent's face on a dark-green circle: 20 in a small button, 26 in "Ask", 32 in a chat header. */
 function AgentAvatar({
   src,
   size = 24,

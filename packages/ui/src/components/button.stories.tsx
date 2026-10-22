@@ -2,9 +2,10 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { ArrowRight, Plus, Trash01 } from "@untitledui/icons";
 import { AgentAvatar } from "./agent-avatar.tsx";
 import { Button } from "./button.tsx";
+import { Matrix } from "../foundations/kit.tsx";
 
 const meta = {
-  title: "Components/Button",
+  title: "Atoms/Button",
   component: Button,
   args: {
     children: "Button",
@@ -105,5 +106,72 @@ export const Agent: Story = {
         <AgentAvatar src={AGENT_FACE} size={32} /> Ask
       </Button>
     </div>
+  ),
+};
+
+export const States: Story = {
+  parameters: {
+    controls: { disable: true },
+    layout: "padded",
+    pseudo: {
+      hover: [".is-hover"],
+      focusVisible: [".is-focus"],
+      active: [".is-active"],
+    },
+  },
+  render: () => (
+    <Matrix
+      columns={["Default", "Hover", "Focus", "Pressed", "Disabled"]}
+      proposed={["Pressed"]}
+      rows={(
+        [
+          "default",
+          "secondary",
+          "outline",
+          "ghost",
+          "destructive",
+          "brand",
+          "agent",
+        ] as const
+      ).map((variant) => ({
+        label: variant === "default" ? "primary" : variant,
+        cells: ["", "is-hover", "is-focus", "is-active", "disabled"].map(
+          (state) => (
+            <Button
+              key={state}
+              variant={variant}
+              className={state}
+              disabled={state === "disabled"}
+            >
+              {variant === "agent" ? (
+                <>
+                  <AgentAvatar src={AGENT_FACE} size={26} /> Ask
+                </>
+              ) : (
+                "New task"
+              )}
+            </Button>
+          ),
+        ),
+      }))}
+    />
+  ),
+};
+
+export const SizesMatrix: Story = {
+  name: "Sizes · 28 / 32 / 40",
+  parameters: { controls: { disable: true }, layout: "padded" },
+  render: () => (
+    <Matrix
+      columns={["sm · 28", "default · 32", "lg · 40"]}
+      rows={(["default", "secondary", "outline"] as const).map((variant) => ({
+        label: variant === "default" ? "primary" : variant,
+        cells: (["sm", "default", "lg"] as const).map((size) => (
+          <Button key={size} variant={variant} size={size}>
+            <Plus /> New task
+          </Button>
+        )),
+      }))}
+    />
   ),
 };

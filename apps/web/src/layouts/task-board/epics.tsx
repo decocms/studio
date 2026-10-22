@@ -260,7 +260,7 @@ export function EpicsView() {
 
   if (epics.length === 0) {
     return (
-      <div className="rounded-xl bg-card px-4 py-12 text-center text-sm text-muted-foreground card-shadow">
+      <div className="surface px-4 py-12 text-center text-sm text-muted-foreground">
         {t("taskBoard.epics.empty")}
       </div>
     );
@@ -309,12 +309,12 @@ function EpicCard({
     <button
       type="button"
       onClick={() => board.onOpen(epic)}
-      className="flex w-full flex-col gap-4 rounded-xl bg-card p-4 text-left transition-colors card-shadow hover:bg-accent/60"
+      className="surface flex w-full flex-col gap-4 p-4 text-left transition-colors hover:bg-accent"
     >
       <div className="flex items-start gap-3">
         <Lightning01 size={16} className="mt-0.5 shrink-0 text-chart-1" />
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className="truncate text-[14px] font-medium text-foreground">
+          <span className="truncate text-sm font-medium text-foreground">
             {epic.title}
           </span>
           <span className="text-xs text-muted-foreground">
@@ -432,7 +432,7 @@ function statusChipClass(done: boolean) {
     "inline-flex h-6 shrink-0 items-center gap-1 rounded-md px-2 text-xs font-medium transition-colors",
     done
       ? "bg-success/15 text-success hover:bg-success/25"
-      : "bg-muted text-foreground hover:bg-accent",
+      : "bg-muted text-foreground hover:bg-secondary-hover",
   );
 }
 
@@ -546,7 +546,7 @@ export function ChildrenSection({ item }: { item: TaskBoardItem }) {
   return (
     <div className="flex flex-col gap-3 pb-6">
       <div className="flex items-center gap-3">
-        <span className="text-[15px] font-semibold text-foreground">
+        <span className="text-base font-semibold text-foreground">
           {t(isEpic ? "taskBoard.epics.workItems" : "taskBoard.epics.subtasks")}
         </span>
         {progress.total > 0 && (
@@ -584,7 +584,7 @@ export function ChildrenSection({ item }: { item: TaskBoardItem }) {
         )}
       </div>
 
-      <div className="flex flex-col overflow-hidden rounded-xl bg-card card-shadow">
+      <div className="surface flex flex-col overflow-hidden">
         {children.map((child) => (
           <ChildRow key={child.id} child={child} board={board} />
         ))}
@@ -641,7 +641,7 @@ function ChildRow({
     : undefined;
 
   return (
-    <div className="flex min-w-0 items-center gap-3 border-b border-border px-3 py-2 transition-colors last:border-b-0 hover:bg-accent/60">
+    <div className="flex min-w-0 items-center gap-3 border-b border-border px-3 py-2 transition-colors last:border-b-0 hover:bg-accent">
       {isEpic ? (
         <Lightning01
           size={15}
@@ -743,10 +743,10 @@ export function ParentSection({ item }: { item: TaskBoardItem }) {
 
   return (
     <div className="flex flex-col gap-3 pb-6">
-      <span className="text-[15px] font-semibold text-foreground">
+      <span className="text-base font-semibold text-foreground">
         {t(isEpic ? "taskBoard.epics.epicBadge" : "taskBoard.epics.parentTask")}
       </span>
-      <div className="flex flex-col overflow-hidden rounded-xl bg-card card-shadow">
+      <div className="surface flex flex-col overflow-hidden">
         <ChildRow child={parent} board={board} />
       </div>
     </div>

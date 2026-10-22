@@ -34,7 +34,7 @@ export function SettingsSection({
         >
           <div className="flex flex-col gap-1 min-w-0">
             {title && (
-              <h2 className="text-[15px] font-medium leading-tight">{title}</h2>
+              <h2 className="text-base font-medium leading-tight">{title}</h2>
             )}
             {(description || docsHref) && (
               <p className="text-sm text-muted-foreground leading-snug">
@@ -104,7 +104,7 @@ export function SettingsCardItem({
         children
           ? "flex items-start gap-3 px-4 py-4"
           : "flex items-center gap-3 px-4 py-4",
-        onClick && "hover:bg-muted/50 cursor-pointer",
+        onClick && "hover:bg-accent cursor-pointer",
         className,
       )}
       onClick={onClick}

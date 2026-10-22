@@ -88,7 +88,7 @@ export function ConnectApiKeyForm({
         <Input
           placeholder={t("settings.connectForms.labelPlaceholder")}
           {...register("label")}
-          className="h-8 text-sm"
+          size="sm"
         />
       </div>
       <div className="space-y-1">
@@ -100,7 +100,8 @@ export function ConnectApiKeyForm({
             type={showKey ? "text" : "password"}
             placeholder="sk-..."
             {...register("apiKey")}
-            className="ph-no-capture h-8 text-sm pr-8"
+            size="sm"
+            className="ph-no-capture pr-8"
           />
           <button
             type="button"
@@ -232,7 +233,7 @@ export function ConnectOpenAICompatibleForm({
         <Input
           placeholder={labelPlaceholder}
           {...register("label")}
-          className="h-8 text-sm"
+          size="sm"
         />
       </div>
       {preset?.defaultBaseUrl ? (
@@ -246,7 +247,7 @@ export function ConnectOpenAICompatibleForm({
             type="url"
             placeholder={baseUrlPlaceholder}
             {...register("baseUrl")}
-            className="h-8 text-sm"
+            size="sm"
           />
           {errors.baseUrl && (
             <p className="text-xs text-destructive">{errors.baseUrl.message}</p>
@@ -269,7 +270,8 @@ export function ConnectOpenAICompatibleForm({
             type={showKey ? "text" : "password"}
             placeholder="sk-..."
             {...register("apiKey")}
-            className="ph-no-capture h-8 text-sm pr-8"
+            size="sm"
+            className="ph-no-capture pr-8"
           />
           <button
             type="button"

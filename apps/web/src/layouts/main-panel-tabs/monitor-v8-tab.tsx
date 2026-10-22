@@ -94,12 +94,7 @@ function Card({
   className?: string;
 }) {
   return (
-    <section
-      className={cn(
-        "min-w-0 overflow-hidden rounded-xl border border-border bg-card",
-        className,
-      )}
-    >
+    <section className={cn("surface min-w-0 overflow-hidden", className)}>
       <header className="border-b border-border px-4 py-3">
         <h3 className="text-sm font-medium text-foreground">{title}</h3>
         {subtitle && (
@@ -190,7 +185,7 @@ function Tile({
   delta?: React.ReactNode;
 }) {
   return (
-    <div className="min-w-0 rounded-xl border border-border bg-card px-4 py-3">
+    <div className="surface min-w-0 px-4 py-3">
       <div className="text-xs text-muted-foreground">{label}</div>
       <div className="mt-1 flex flex-wrap items-baseline gap-x-2">
         <span className="whitespace-nowrap text-2xl font-semibold tabular-nums text-foreground">

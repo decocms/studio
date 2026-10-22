@@ -9,7 +9,7 @@ import { cn } from "../lib/utils.ts";
  * colour. Entities (a goal, an app) are `Chip`s, not badges.
  */
 const badgeVariants = cva(
-  "inline-flex items-center justify-center rounded-full text-xs font-medium w-fit whitespace-nowrap shrink-0 [&>svg]:size-3 gap-1.5 [&>svg]:pointer-events-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring transition-[color,background-color] overflow-hidden",
+  "inline-flex items-center justify-center rounded-full text-xs font-medium w-fit whitespace-nowrap shrink-0 [&>svg]:size-3 gap-1.5 [&>svg]:pointer-events-none focus-ring transition-[color,background-color] overflow-hidden",
   {
     variants: {
       variant: {
@@ -28,7 +28,7 @@ const badgeVariants = cva(
         lime: "bg-brand-lime-tint text-brand-green-dark dark:bg-brand/20 dark:text-brand",
         info: "bg-brand-blue-tint text-brand-blue-dark dark:bg-brand-blue/20 dark:text-brand-blue",
         outline:
-          "hairline text-foreground [a&]:hover:bg-accent [a&]:hover:text-accent-foreground",
+          "bg-card shadow-edge text-foreground [a&]:hover:bg-accent [a&]:hover:text-accent-foreground",
         /** A quiet classifier — a kind, a platform, a count. It names what
          *  something IS rather than how it is doing, so it carries no status
          *  colour and never competes with the label beside it. */
@@ -40,10 +40,10 @@ const badgeVariants = cva(
       },
       size: {
         /** Counts. */
-        sm: "h-[1.125rem] px-1.5",
+        sm: "h-4 gap-1 px-1.5 text-[0.6875rem]",
         default: "h-5 px-2",
         /** Tags. */
-        lg: "h-[1.375rem] px-2",
+        lg: "h-6 px-2.5 text-sm [&>svg]:size-3.5",
         /** Sits in a toolbar beside buttons and tabs, so it takes their height. */
         control: "h-7 gap-1.5 pr-3 pl-1.5",
         icon: "size-5",
@@ -52,7 +52,7 @@ const badgeVariants = cva(
          *  badge only supplies the raised surface they sit on. Squared rather
          *  than the base's pill: a chip divided into segments needs ends that
          *  read as the same shape as the dividers between them. */
-        segmented: "h-7 gap-0 rounded-lg bg-card p-0 card-shadow",
+        segmented: "h-7 gap-0 rounded-lg bg-card p-0 shadow-edge",
       },
     },
     defaultVariants: {

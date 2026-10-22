@@ -1,5 +1,6 @@
 /** One changed page, block, or file in the publish list; the list owns selection and the armed discard. */
 
+import { Button } from "@decocms/ui/components/button.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { PublishCardFrame, PublishGhost } from "./cms-publish-frame.tsx";
 import {
@@ -141,8 +142,8 @@ export function PublishChangeCard({
   return (
     <PublishCardFrame
       className={cn(
-        "cursor-pointer transition-colors hover:bg-accent/50",
-        selected && "border-foreground/30 bg-accent hover:bg-accent",
+        "cursor-pointer transition-colors hover:bg-accent",
+        selected && "border-foreground/30 bg-accent hover:bg-secondary-hover",
       )}
       data-change-id={changeId(change)}
       onClick={onSelect}
@@ -190,10 +191,12 @@ export function PublishChangeCard({
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <button
+                <Button
                   type="button"
+                  variant="ghost-destructive"
+                  size="icon-xs"
                   aria-label={t("thread.publishPopover.discard")}
-                  className="flex size-6 shrink-0 items-center justify-center text-muted-foreground transition-colors hover:bg-accent hover:text-destructive disabled:opacity-50 rounded-lg"
+                  className="shrink-0"
                   onClick={(e) => {
                     e.stopPropagation();
                     onConfirmingChange(true);
@@ -201,7 +204,7 @@ export function PublishChangeCard({
                   disabled={isPublishing || isDiscarding}
                 >
                   <Trash01 className="size-3.5" />
-                </button>
+                </Button>
               </TooltipTrigger>
               <TooltipContent>
                 {t("thread.publishPopover.discard")}

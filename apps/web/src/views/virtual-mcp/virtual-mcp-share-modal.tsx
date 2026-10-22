@@ -308,8 +308,8 @@ function TypegenSectionInner({ virtualMcp }: { virtualMcp: VirtualMCPEntity }) {
           <Button
             type="button"
             variant="ghost"
-            size="icon"
-            className="size-6 shrink-0"
+            size="icon-xs"
+            className="shrink-0"
             onClick={handleCopy}
           >
             {copied ? (
@@ -367,8 +367,8 @@ function EnvVarsBlock({
         <Button
           type="button"
           variant="ghost"
-          size="icon"
-          className="size-6 shrink-0"
+          size="icon-xs"
+          className="shrink-0"
           onClick={handleCopy}
         >
           {copied ? (

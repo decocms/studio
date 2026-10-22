@@ -36,7 +36,7 @@ export function UserAskPart({ part }: UserAskPartProps) {
       {/* Question row */}
       <div className="flex items-start gap-2">
         <MessageQuestionCircle className="size-4 text-muted-foreground/50 shrink-0 mt-0.5" />
-        <span className="text-[14px] text-muted-foreground leading-snug">
+        <span className="text-sm text-muted-foreground leading-snug">
           {question}
         </span>
       </div>
@@ -46,7 +46,7 @@ export function UserAskPart({ part }: UserAskPartProps) {
         <div className="ml-6 pl-2 border-l border-border/50">
           <span
             className={cn(
-              "text-[14px] leading-snug",
+              "text-sm leading-snug",
               isError
                 ? "text-muted-foreground/50 italic"
                 : "text-foreground/70",

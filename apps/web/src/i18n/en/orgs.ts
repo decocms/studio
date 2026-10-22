@@ -75,7 +75,7 @@ export const orgs = {
   "orgs.connections.createConnectionToGetStarted":
     "Create a connection to get started.",
   "orgs.connections.customCommand": "Custom Command",
-  "orgs.connections.customConnection": "Custom Connection",
+  "orgs.connections.customConnection": "Custom connection",
   "orgs.connections.deletedConnections": "Deleted {count} connection(s)",
   "orgs.connections.description": "Description",
   "orgs.connections.descriptionPlaceholder":
@@ -142,7 +142,7 @@ export const orgs = {
   "orgs.members.invitationRoleUpdatedSuccess":
     "Invitation role has been updated",
   "orgs.members.invitationSent": "Invitation sent",
-  "orgs.members.inviteMember": "Invite Member",
+  "orgs.members.inviteMember": "Invite member",
   "orgs.members.inviteMembersGetStarted": "Invite members to get started.",
   "orgs.members.keepInvitation": "Keep Invitation",
   "orgs.members.memberRemovedSuccess":

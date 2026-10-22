@@ -1,9 +1,10 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { CheckCircle, Plus } from "@untitledui/icons";
 import { Badge, BadgeDot } from "./badge.tsx";
+import { Matrix } from "../foundations/kit.tsx";
 
 const meta = {
-  title: "Components/Badge",
+  title: "Atoms/Badge",
   component: Badge,
   args: {
     children: "Active",
@@ -96,5 +97,47 @@ export const StatusRow: Story = {
       <span className="text-foreground">legacy-api</span>
       <Badge variant="destructive">Offline</Badge>
     </div>
+  ),
+};
+
+export const Tones: Story = {
+  parameters: { controls: { disable: true }, layout: "padded" },
+  render: () => (
+    <Matrix
+      columns={[
+        "sm · 16 · counts",
+        "default · 20",
+        "lg · 24 · tags",
+        "With dot",
+      ]}
+      rows={(
+        [
+          ["neutral", "default"],
+          ["success", "success"],
+          ["warning", "warning"],
+          ["error", "destructive"],
+          ["agent", "agent"],
+          ["lime", "lime"],
+          ["info", "info"],
+          ["outline", "outline"],
+        ] as const
+      ).map(([label, variant]) => ({
+        label,
+        cells: [
+          <Badge key="sm" variant={variant} size="sm">
+            14
+          </Badge>,
+          <Badge key="md" variant={variant}>
+            On track
+          </Badge>,
+          <Badge key="lg" variant={variant} size="lg">
+            Checkout
+          </Badge>,
+          <Badge key="dot" variant={variant}>
+            <BadgeDot /> Working
+          </Badge>,
+        ],
+      }))}
+    />
   ),
 };

@@ -27,7 +27,7 @@ function VirtualMCPListItem({
           search: { thread: taskId },
         });
       }}
-      className="flex items-center gap-3 rounded-lg hover:bg-muted/50 transition-colors group text-left w-full"
+      className="flex items-center gap-3 rounded-lg hover:bg-accent transition-colors group text-left w-full"
     >
       <IntegrationIcon
         icon={virtualMcp.icon}

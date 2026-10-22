@@ -95,6 +95,7 @@ export function ConnectionUiTab({
               const resourceUri = getUIResourceUri(tool._meta)!;
               return (
                 <Card
+                  size="flush"
                   key={tool.name}
                   className="cursor-pointer transition-colors overflow-hidden gap-0"
                   onClick={() => handleToolClick(tool)}

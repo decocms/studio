@@ -4,7 +4,7 @@ import { Button } from "./button.tsx";
 import { Progress } from "./progress.tsx";
 
 const meta = {
-  title: "Components/Progress",
+  title: "Atoms/Progress",
   component: Progress,
   args: {
     value: 40,

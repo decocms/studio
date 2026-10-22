@@ -67,34 +67,40 @@ source extension: `@decocms/ui/components/button.tsx`.
    variants through the component's `cva` config rather than wrapping with
    custom styles.
 4. **Inter only, at most Medium.** Body is 13px Regular (`text-sm`), meta 12px
-   (`text-xs`), headlines use `font-display`. `font-semibold` renders at 500.
-   Buttons, inputs in toolbars, selects, tabs, badges and chips are pills;
-   form inputs are radius 10; cards and panels radius 16 (`surface`).
+   (`text-xs`), headlines use `font-display`. `font-normal` reads, `font-medium` labels
+   and titles; `font-semibold` is an alias of 500, `font-bold` (600) is prose
+   emphasis only.
+   Buttons, selects, tabs, badges and chips are pills; every input,
+   form or search, is radius 10; cards and panels radius 16 (`surface`).
    Modals and floating panels are frosted (`glass`, over `bg-scrim`).
+   In a page topbar every action is `variant="outline"` except the one
+   primary (e.g. "New task").
 5. **User-facing copy comes from the app**, passed as props — components ship
    only overridable English defaults.
 
 ## Component inventory
 
-- **Forms**: button, input, textarea, label, checkbox, radio-group, switch,
-  slider, select, form (react-hook-form), input-otp, password-input,
-  datetime-input, email-tags-input, multi-select, search-input, combobox,
-  time-range-picker
-- **Overlays**: dialog, alert-dialog, sheet, drawer, popover, hover-card,
-  tooltip, command (palette), context-menu, dropdown-menu, menubar,
-  responsive-dropdown, responsive-select (desktop/mobile adaptive)
-- **Feedback**: alert, badge (tones + dot), progress (tones), stage-tracker,
-  skeleton, spinner, sonner (toasts), empty-state, empty-state-illustrations
+- **Forms**: button, input (+ input-group for icons, prefixes and buttons
+  inside), textarea, label, checkbox, radio-group, switch, slider, select,
+  form (react-hook-form), password-input, datetime-input, tags-input,
+  multi-select, search-input, combobox, time-range-picker
+- **Overlays**: dialog, alert-dialog, sheet, drawer, popover, tooltip,
+  command (palette), context-menu, dropdown-menu
+- **Feedback**: alert, badge (tones + dot), progress (tones),
+  stage-tracker (pill or numbered), skeleton, spinner, sonner (toasts),
+  empty-state (page or inline, default or error)
 - **Layout & navigation**: card, separator, tabs, accordion, collapsible,
-  breadcrumb, navigation-menu, pagination, scroll-area, aspect-ratio, table,
-  sidebar (full app sidebar system), sidebar-footer-shell, app-topbar,
-  topbar-switcher, user-menu, step-indicator
-- **Agent & identity**: composer, agent-avatar, org-avatar, project-icon,
+  breadcrumb, pagination, scroll-area, aspect-ratio, table,
+  sidebar (full app sidebar system)
+- **Cards**: card (`size` default / tile / flush, `interactive`, CardInset),
+  entity-card (one thing in a grid), metric-card (a number and its trend),
+  entity-grid
+- **Agent & identity**: composer, agent-avatar, avatar, project-icon,
   chip (entities), button `variant="agent"`
-- **Data & content**: avatar, metric-card, sparkline, list-row, calendar,
-  carousel, chart (recharts + chart tokens),
-  markdown, entity-card, entity-grid, filter-bar, collection-search,
-  view-mode-toggle, button-group, toggle, toggle-group
+- **Data & content**: list-row (`interactive`, `selected`), sparkline,
+  calendar, carousel, chart (recharts + chart tokens), markdown, filter-bar,
+  button-group, toggle, toggle-group (segmented slides; icon items take
+  `tooltip`)
 
 Before using a component, read its source in `node_modules/@decocms/ui/src/components/<name>.tsx`
 (shipped in the package) to see its exact exports and props, or check its page

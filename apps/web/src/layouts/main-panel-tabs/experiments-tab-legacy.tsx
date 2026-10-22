@@ -69,7 +69,7 @@ function Variants({ variants }: { variants: Experiment["variants"] }) {
       {variants.map((v) => (
         <span
           key={v.id}
-          className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
+          className="rounded bg-muted px-1.5 py-0.5 font-mono text-2xs text-muted-foreground"
         >
           {v.id} {v.weight}%
         </span>
@@ -175,13 +175,15 @@ function CreateDialog({
                   value={v.id}
                   onChange={(e) => setVar(i, { id: e.target.value })}
                   placeholder="id"
-                  className="h-8 flex-1"
+                  size="sm"
+                  className="flex-1"
                 />
                 <Input
                   value={v.weight}
                   onChange={(e) => setVar(i, { weight: e.target.value })}
                   inputMode="numeric"
-                  className="h-8 w-16"
+                  size="sm"
+                  className="w-16"
                 />
                 <select
                   value={v.role}
@@ -480,7 +482,7 @@ export function LegacyExperimentsTab({
                         })
                       }
                     >
-                      <SelectTrigger className="h-8 w-28">
+                      <SelectTrigger size="sm" className="w-28">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>

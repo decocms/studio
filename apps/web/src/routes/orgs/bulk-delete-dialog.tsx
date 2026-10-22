@@ -46,10 +46,7 @@ export function BulkDeleteDialog({
           <AlertDialogCancel>
             {t("orgs.bulkDeleteDialog.cancelButton")}
           </AlertDialogCancel>
-          <AlertDialogAction
-            onClick={onConfirm}
-            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-          >
+          <AlertDialogAction onClick={onConfirm} variant="destructive">
             {t(
               count === 1
                 ? "orgs.bulkDeleteDialog.deleteButtonSingular"
