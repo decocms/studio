@@ -7,6 +7,8 @@
 
 import type { ChangeDetail } from "@decocms/blocks/protocol";
 import { pageEntryFromBlock, globalSectionLabel } from "./page-list";
+import { getPageVariantSectionsAt } from "./page-variants";
+import { parseSections } from "./parse-sections";
 import {
   NAMED_RULE_KINDS,
   namedRuleExists,
@@ -15,11 +17,13 @@ import {
   readNamedRuleBlock,
 } from "./named-rules";
 import {
+  type BlockPath,
   findRuleReferences,
   type MarkedRuleReferences,
   markReferenceStates,
   publishedDecofile,
   type ReferenceState,
+  type RuleVariant,
 } from "./rule-references";
 import type { LiveMeta } from "./resolve-schema";
 
@@ -123,6 +127,57 @@ function computeNamedRuleUses(input: {
   return { refs: markReferenceStates(draft, live), published };
 }
 
+/**
+ * Where a use sits in the editor, 0-based: the page variant, the section in
+ * it and that section's variant. Each is set only when the use is there, so
+ * a rule inside a section's field opens the section, and a page variant's
+ * rule opens that page variant.
+ */
+export interface VariantFocus {
+  pageVariant?: number;
+  section?: number;
+  variant?: number;
+}
+
+/** `[]`, or `["section"]` past a lazy-render wrapper: the variants block itself. */
+const isVariantsBlockHere = (rest: BlockPath) =>
+  rest.length === 0 || (rest.length === 1 && rest[0] === "section");
+
+/**
+ * The editor place of a rule at `rulePath` in a page (`blockKind` "page") or
+ * a saved section, from the variants block it belongs to, if any.
+ */
+export function variantFocusOf(
+  blockKind: "page" | "section",
+  rulePath: BlockPath,
+  variant?: Pick<RuleVariant, "containerPath" | "index">,
+): VariantFocus {
+  if (blockKind === "section") {
+    return variant && isVariantsBlockHere(variant.containerPath)
+      ? { variant: variant.index }
+      : {};
+  }
+  const where = variant?.containerPath ?? rulePath;
+  if (where[0] !== "sections") return {};
+  if (variant && where.length === 1) return { pageVariant: variant.index };
+  // `sections.variants[p].value` (past its `lazy` block, if any) is the list
+  // of a page variant; else `sections` is the list.
+  let rest = where.slice(1);
+  let pageVariant: number | undefined;
+  if (rest[0] === "variants" && typeof rest[1] === "number") {
+    pageVariant = rest[1];
+    rest = rest.slice(2);
+    if (rest[0] === "value") rest = rest.slice(1);
+    if (rest[0] === "value") rest = rest.slice(1);
+  }
+  const focus: VariantFocus = pageVariant === undefined ? {} : { pageVariant };
+  const [section, ...inSection] = rest;
+  if (typeof section !== "number") return focus;
+  focus.section = section;
+  if (variant && isVariantsBlockHere(inSection)) focus.variant = variant.index;
+  return focus;
+}
+
 /** One row of "Used by": a page or a saved section, and how it uses the name. */
 export interface NamedRuleUseRow {
   blockKey: string;
@@ -133,6 +188,10 @@ export interface NamedRuleUseRow {
   path?: string;
   /** The variant (1-based) whose rule names it, when it is a variant's rule. */
   variant?: number;
+  /** The section of the page the use is in, by its name in the editor. */
+  section?: string;
+  /** Where "Open" lands in the editor. */
+  focus?: VariantFocus;
   /** The block reads every test or campaign in its own code. */
   wholeBlock: boolean;
   state: ReferenceState;
@@ -156,7 +215,7 @@ export function namedRuleUseRows(
   const rows: NamedRuleUseRow[] = [];
   const seen = new Set<string>();
   const push = (row: NamedRuleUseRow) => {
-    const key = `${row.blockKey}#${row.variant ?? ""}#${row.wholeBlock}`;
+    const key = namedRuleUseRowKey(row);
     if (seen.has(key)) return;
     seen.add(key);
     rows.push(row);
@@ -175,15 +234,53 @@ export function namedRuleUseRows(
   for (const ref of uses.refs[kind].byName.get(name) ?? []) {
     // A saved rule is listed through the blocks that use it.
     if (ref.savedRule) continue;
+    const label = labelFrom(ref.blockKey);
+    const focus = variantFocusOf(label.blockKind, ref.path, ref.variant);
+    const section =
+      label.blockKind === "page"
+        ? sectionLabel(ref.blockKey, focus, uses, decofile)
+        : undefined;
     push({
       blockKey: ref.blockKey,
-      ...labelFrom(ref.blockKey),
+      ...label,
       ...(ref.variant ? { variant: ref.variant.index + 1 } : {}),
+      ...(section ? { section } : {}),
+      focus,
       wholeBlock: false,
       state: ref.state,
     });
   }
   return sortRows(rows);
+}
+
+/** One row per block and place in it. */
+export function namedRuleUseRowKey(row: NamedRuleUseRow): string {
+  const at = row.focus ?? {};
+  return [
+    row.blockKey,
+    at.pageVariant ?? "",
+    at.section ?? "",
+    row.variant ?? "",
+    row.wholeBlock,
+  ].join("#");
+}
+
+/** The name the editor gives the section a use is in. */
+function sectionLabel(
+  blockKey: string,
+  focus: VariantFocus,
+  uses: NamedRuleUses,
+  decofile: Record<string, unknown>,
+): string | undefined {
+  if (focus.section === undefined) return undefined;
+  const from = blockKey in decofile ? decofile : (uses.published ?? decofile);
+  const sections = getPageVariantSectionsAt(
+    from,
+    blockKey,
+    focus.pageVariant ?? 0,
+  );
+  const parsed = parseSections(sections, from)[focus.section];
+  return parsed ? (parsed.variantOf ?? parsed.label) : undefined;
 }
 
 /** A page by its name and path; anything else as a section. */
@@ -216,6 +313,8 @@ function sortRows(rows: NamedRuleUseRow[]): NamedRuleUseRow[] {
     (a, b) =>
       removed(a) - removed(b) ||
       a.title.localeCompare(b.title) ||
+      (a.focus?.pageVariant ?? 0) - (b.focus?.pageVariant ?? 0) ||
+      (a.focus?.section ?? 0) - (b.focus?.section ?? 0) ||
       (a.variant ?? 0) - (b.variant ?? 0),
   );
 }
@@ -288,7 +387,7 @@ function missingRowsAndNames(
       for (const row of namedRuleUseRows(uses, kind, name, decofile, meta)) {
         if (row.state === "removed-in-draft") continue;
         listed = true;
-        const key = `${row.blockKey}#${row.variant ?? ""}`;
+        const key = namedRuleUseRowKey(row);
         if (seen.has(key)) continue;
         seen.add(key);
         rows.push(row);

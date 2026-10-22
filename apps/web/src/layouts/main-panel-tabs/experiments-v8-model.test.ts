@@ -127,12 +127,65 @@ describe("contentSearchForUse", () => {
   it("opens a page by its key and anything else in Sections", () => {
     expect(
       contentSearchForUse({ blockKey: "pages-home-1", blockKind: "page" }),
-    ).toEqual({ contentPageId: "pages-home-1" });
+    ).toStrictEqual({
+      contentPageId: "pages-home-1",
+      contentCollection: undefined,
+      contentItem: undefined,
+      contentPageVariant: undefined,
+      contentSection: undefined,
+      contentVariant: undefined,
+    });
     expect(
       contentSearchForUse({ blockKey: "banner", blockKind: "section" }),
-    ).toEqual({
+    ).toStrictEqual({
+      contentPageId: undefined,
       contentCollection: "sections",
       contentItem: "banner",
+      contentPageVariant: undefined,
+      contentSection: undefined,
+      contentVariant: undefined,
+    });
+  });
+
+  it("opens on the variant that uses the name", () => {
+    expect(
+      contentSearchForUse({
+        blockKey: "pages-home-1",
+        blockKind: "page",
+        focus: { pageVariant: 1, section: 2, variant: 0 },
+      }),
+    ).toMatchObject({
+      contentPageId: "pages-home-1",
+      contentPageVariant: 1,
+      contentSection: 2,
+      contentVariant: 0,
+    });
+    expect(
+      contentSearchForUse({
+        blockKey: "banner",
+        blockKind: "section",
+        focus: { variant: 3 },
+      }),
+    ).toMatchObject({ contentItem: "banner", contentVariant: 3 });
+  });
+
+  it("clears a place an earlier Open left in the URL", () => {
+    const earlier = {
+      contentPageId: "pages-home-1",
+      contentSection: 4,
+      contentVariant: 2,
+    };
+    expect({
+      ...earlier,
+      ...contentSearchForUse({
+        blockKey: "pages-sale-1",
+        blockKind: "page",
+        focus: {},
+      }),
+    }).toMatchObject({
+      contentPageId: "pages-sale-1",
+      contentSection: undefined,
+      contentVariant: undefined,
     });
   });
 });

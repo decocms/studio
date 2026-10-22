@@ -24,6 +24,7 @@ import {
   namedRuleUseCounts,
   namedRuleUseRows,
   namedRuleUses,
+  variantFocusOf,
 } from "./named-rule-uses";
 
 const builtIn = { $ref: "#/definitions/x", namespace: "deco" };
@@ -118,6 +119,7 @@ describe("namedRuleUses", () => {
         blockKind: "section",
         title: "Banner",
         variant: 1,
+        focus: { variant: 0 },
         wholeBlock: false,
         state: "draft-only",
       },
@@ -238,6 +240,111 @@ describe("namedRuleUses", () => {
       ),
     ).toEqual([1, 2]);
     expect(namedRuleUseCount(uses, "experiments", "t")).toBe(1);
+  });
+});
+
+describe("where Open lands", () => {
+  const at = (containerPath: Array<string | number>, index: number) => ({
+    containerPath,
+    index,
+  });
+
+  it("a page variant's rule opens that page variant", () => {
+    expect(variantFocusOf("page", [], at(["sections"], 1))).toEqual({
+      pageVariant: 1,
+    });
+  });
+
+  it("a section variant's rule opens the section on that variant", () => {
+    expect(variantFocusOf("page", [], at(["sections", 2], 1))).toEqual({
+      section: 2,
+      variant: 1,
+    });
+    // Past a lazy-render wrapper.
+    expect(
+      variantFocusOf("page", [], at(["sections", 2, "section"], 0)),
+    ).toEqual({ section: 2, variant: 0 });
+  });
+
+  it("inside a page variant, both: v7 lists and v8 lazy blocks", () => {
+    expect(
+      variantFocusOf(
+        "page",
+        [],
+        at(["sections", "variants", 1, "value", 3], 2),
+      ),
+    ).toEqual({ pageVariant: 1, section: 3, variant: 2 });
+    expect(
+      variantFocusOf(
+        "page",
+        [],
+        at(["sections", "variants", 0, "value", "value", 4, "section"], 1),
+      ),
+    ).toEqual({ pageVariant: 0, section: 4, variant: 1 });
+  });
+
+  it("a variant inside a section's field opens the section", () => {
+    expect(
+      variantFocusOf("page", [], at(["sections", 2, "props", "image"], 1)),
+    ).toEqual({ section: 2 });
+    // A rule that is no variant's: where it is.
+    expect(
+      variantFocusOf("page", ["sections", 5, "matcher"], undefined),
+    ).toEqual({ section: 5 });
+  });
+
+  it("a saved section's own variant, and nothing for a field's", () => {
+    expect(variantFocusOf("section", [], at([], 2))).toEqual({ variant: 2 });
+    expect(variantFocusOf("section", [], at(["section"], 1))).toEqual({
+      variant: 1,
+    });
+    expect(variantFocusOf("section", [], at(["image"], 1))).toEqual({});
+  });
+
+  it("lists each section that uses the name, named, with its place", () => {
+    const decofile = {
+      "pages-home-1": {
+        __resolveType: "page",
+        name: "Home",
+        path: "/",
+        sections: [
+          { __resolveType: "site/sections/Header.tsx" },
+          {
+            __resolveType: "multivariate",
+            variants: [
+              {
+                rule: campaign("bf"),
+                value: lazy({ __resolveType: "site/sections/Hero.tsx" }),
+              },
+              {
+                rule: { __resolveType: "always" },
+                value: lazy({ __resolveType: "site/sections/Hero.tsx" }),
+              },
+            ],
+          },
+          {
+            __resolveType: "multivariate",
+            variants: [
+              {
+                rule: campaign("bf"),
+                value: lazy({ __resolveType: "site/sections/Shelf.tsx" }),
+              },
+            ],
+          },
+        ],
+      },
+    };
+    const uses = namedRuleUses({
+      decofile,
+      meta,
+      changeCount: 0,
+      sides: undefined,
+    });
+    const rows = namedRuleUseRows(uses, "campaigns", "bf", decofile, meta);
+    expect(rows.map((r) => [r.section, r.variant, r.focus])).toEqual([
+      ["Hero", 1, { section: 1, variant: 0 }],
+      ["Shelf", 1, { section: 2, variant: 0 }],
+    ]);
   });
 });
 

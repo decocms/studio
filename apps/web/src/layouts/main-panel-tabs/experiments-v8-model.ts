@@ -5,6 +5,7 @@
  * tests.
  */
 
+import type { ContentSearchParams } from "@/components/sandbox/content/content-search-params";
 import {
   type NamedRuleEntryState,
   namedRuleEntryState,
@@ -97,12 +98,29 @@ export function removedExperiments(
 
 /**
  * Where a "Used by" row opens in the site editor: a page by its key, any
- * other block in the Sections list.
+ * other block in the Sections list, each on the variant that uses the name.
+ * Every place key is written, unset ones as `undefined`, so a place left in
+ * the URL by an earlier "Open" never carries over.
  */
 export function contentSearchForUse(
-  row: Pick<NamedRuleUseRow, "blockKey" | "blockKind">,
-): Record<string, string> {
+  row: Pick<NamedRuleUseRow, "blockKey" | "blockKind" | "focus">,
+): Partial<ContentSearchParams> {
+  const place = {
+    contentPageVariant: row.focus?.pageVariant,
+    contentSection: row.focus?.section,
+    contentVariant: row.focus?.variant,
+  };
   return row.blockKind === "page"
-    ? { contentPageId: row.blockKey }
-    : { contentCollection: "sections", contentItem: row.blockKey };
+    ? {
+        contentPageId: row.blockKey,
+        contentCollection: undefined,
+        contentItem: undefined,
+        ...place,
+      }
+    : {
+        contentPageId: undefined,
+        contentCollection: "sections",
+        contentItem: row.blockKey,
+        ...place,
+      };
 }

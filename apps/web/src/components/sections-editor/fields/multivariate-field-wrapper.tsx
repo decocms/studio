@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { createContext, useContext, useState, type ReactNode } from "react";
 import { Flag01, LayersThree01 } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Label } from "@decocms/ui/components/label.tsx";
@@ -97,6 +97,14 @@ export interface MultivariateFieldWrapperProps extends FieldProps {
   onVariantMatcherOp?: VariantMatcherOps;
 }
 
+/**
+ * The variant a form's root variants block opens on (a saved section opened
+ * from a test's or campaign's "Used by"); `null`: the first.
+ */
+const RootVariantFocusContext = createContext<number | null>(null);
+
+export const RootVariantFocusProvider = RootVariantFocusContext.Provider;
+
 export function MultivariateFieldWrapper({
   multivariateResolveType,
   renderInnerField,
@@ -108,7 +116,10 @@ export function MultivariateFieldWrapper({
   const compact = useNewBlocksEditor();
   const VariantIcon = compact ? LayersThree01 : Flag01;
   const { value, onChange, meta, path, label, focused, decofile } = props;
-  const [selectedIndex, setSelectedIndex] = useState(0);
+  const rootFocus = useContext(RootVariantFocusContext);
+  const [selectedIndex, setSelectedIndex] = useState(() =>
+    path === "" && rootFocus !== null ? rootFocus : 0,
+  );
   const [renameIndex, setRenameIndex] = useState<number | null>(null);
   const [renamePending, setRenamePending] = useState(false);
   const namedSupport = useNamedRuleFieldSupport();

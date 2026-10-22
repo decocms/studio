@@ -4,13 +4,13 @@ import { Button } from "@decocms/ui/components/button.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import type { NamedRuleKind } from "./named-rules";
-import type { NamedRuleUseRow } from "./named-rule-uses";
+import { type NamedRuleUseRow, namedRuleUseRowKey } from "./named-rule-uses";
 
 /**
  * "Used by" for a test or a campaign: the pages and sections whose variants
  * name it in the draft, with the ones not published yet (or removed in the
  * draft) marked, and the sections that read every name in their own code.
- * Each opens in the site editor.
+ * Each opens in the site editor on the variant that uses it.
  */
 export function NamedRuleUsedBy({
   kind,
@@ -86,7 +86,7 @@ function NamedRuleUseList({
         const removed = row.state === "removed-in-draft";
         return (
           <li
-            key={`${row.blockKey}#${row.variant ?? ""}#${row.wholeBlock}`}
+            key={namedRuleUseRowKey(row)}
             className="flex items-center gap-3 px-3 py-2"
             data-use-state={row.state}
           >
@@ -103,6 +103,7 @@ function NamedRuleUseList({
               <p className="truncate text-xs text-muted-foreground">
                 {[
                   row.path,
+                  row.section,
                   row.variant
                     ? t("sectionsEditor.namedRuleUses.variant", {
                         index: String(row.variant),

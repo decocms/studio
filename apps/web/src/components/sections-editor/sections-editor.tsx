@@ -103,6 +103,8 @@ import {
   NamedRuleFieldProvider,
   type NamedRuleFieldSupport,
 } from "./named-rule-step";
+import { RootVariantFocusProvider } from "./fields/multivariate-field-wrapper";
+import type { VariantFocus } from "./named-rule-uses";
 import {
   namedRuleKindInfo,
   namedRuleOf,
@@ -311,6 +313,7 @@ export function SectionsEditor({
   onViewJsonFile,
   onFocusedBlockChange,
   onVariantPreviewOverride,
+  focusVariant,
 }: {
   orgSlug: string;
   virtualMcpId: string;
@@ -353,6 +356,12 @@ export function SectionsEditor({
    * nothing selected).
    */
   onVariantPreviewOverride?: (params: string[] | null) => void;
+  /**
+   * Opens the page (or saved section) on this place once its content is
+   * read: "Open" in a test's or campaign's "Used by". `seq` tells a new
+   * request from the same one seen again.
+   */
+  focusVariant?: (VariantFocus & { seq: number }) | null;
 }) {
   const t = useT();
   const task = useOptionalChatTask();
@@ -410,6 +419,16 @@ export function SectionsEditor({
   const [prevExternalSeq, setPrevExternalSeq] = useState<
     number | null | undefined
   >(undefined);
+  const [seenFocusSeq, setSeenFocusSeq] = useState<number | null>(null);
+  const [pendingFocus, setPendingFocus] = useState<VariantFocus | null>(null);
+  if (focusVariant && focusVariant.seq !== seenFocusSeq) {
+    setSeenFocusSeq(focusVariant.seq);
+    setPendingFocus(focusVariant);
+  }
+  // A saved section's variant to open its form on (`focusVariant`).
+  const [globalVariantFocus, setGlobalVariantFocus] = useState<number | null>(
+    null,
+  );
   const [ruleFormValue, setRuleFormValue] = useState<Record<
     string,
     unknown
@@ -940,6 +959,65 @@ export function SectionsEditor({
       syncVariantPreviewOverride(mvObj, sectionIndex, variantIndex);
   };
 
+  const selectPageVariant = (index: number) => {
+    setRenameVariantIndex(null);
+    setActiveVariantIndex(index);
+    setSelectedSectionIndex(null);
+    setFormValue(null);
+    setActiveResolveType(null);
+    setFieldBreadcrumbs([]);
+    const variantRule = pageVariants[index]?.rule;
+    const { resolveType, formValue } = readMatcherRuleFormState(
+      variantRule,
+      decofile ?? {},
+      meta ?? undefined,
+    );
+    setRuleResolveType(resolveType);
+    setRuleFormValue(formValue);
+    emitPageVariantOverride(
+      pageVariants.map((v) => ({ rule: v.rule })),
+      index,
+    );
+  };
+
+  /**
+   * Opens section `sectionIndex` of the current page variant on its variant
+   * `variantIndex` (the first when it has no such variant). `false` when the
+   * section isn't there.
+   */
+  const openSectionAt = (sectionIndex: number, variantIndex: number) => {
+    const rawSection = rawSections[sectionIndex];
+    const parsed = parsedSections[sectionIndex];
+    if (!rawSection || !parsed) return false;
+    const variantCount = parsed.isMultivariate
+      ? ((
+          getMultivariateSectionObject(rawSection, parsed)?.variants as
+            | unknown[]
+            | undefined
+        )?.length ?? 0)
+      : 0;
+    const variant = variantIndex < variantCount ? variantIndex : 0;
+    setSelectedSectionIndex(sectionIndex);
+    setActiveSectionVariantIndex(variant);
+    setFieldBreadcrumbs([]);
+    setFormResetKey((key) => key + 1);
+    if (parsed.isMultivariate) {
+      applySectionVariant(rawSection, parsed, variant, sectionIndex);
+    } else {
+      const unwrapped = unwrapSection(rawSection, parsed, decofile);
+      if (!unwrapped) {
+        setFormValue(null);
+        setActiveResolveType(null);
+      } else {
+        setFormValue(unwrapped.data);
+        setActiveResolveType(unwrapped.resolveType);
+      }
+      setSectionRuleResolveType(null);
+      setSectionRuleFormValue(null);
+    }
+    return true;
+  };
+
   // Auto-select on preview click-through, keyed on `seq` so repeat clicks count.
   const externalSelectedIndex = externalSelection?.index;
   if (
@@ -948,27 +1026,47 @@ export function SectionsEditor({
   ) {
     setPrevExternalSeq(externalSelection?.seq ?? null);
     if (typeof externalSelectedIndex === "number") {
-      const rawSection = rawSections[externalSelectedIndex];
-      const parsed = parsedSections[externalSelectedIndex];
-      if (rawSection && parsed) {
-        setSelectedSectionIndex(externalSelectedIndex);
-        setActiveSectionVariantIndex(0);
-        setFieldBreadcrumbs([]);
-        setFormResetKey((key) => key + 1);
-        if (parsed.isMultivariate) {
-          applySectionVariant(rawSection, parsed, 0, externalSelectedIndex);
-        } else {
-          const unwrapped = unwrapSection(rawSection, parsed, decofile);
-          if (!unwrapped) {
-            setFormValue(null);
-            setActiveResolveType(null);
-          } else {
-            setFormValue(unwrapped.data);
-            setActiveResolveType(unwrapped.resolveType);
-          }
-          setSectionRuleResolveType(null);
-          setSectionRuleFormValue(null);
+      openSectionAt(externalSelectedIndex, 0);
+    }
+  }
+
+  // "Open" from a test's or campaign's "Used by": once the content is read,
+  // go to the page variant first (its sections are another list), then open
+  // the section on its variant. A place that is gone opens the page as is.
+  if (pendingFocus && (isGlobalBlockMode ? globalBlockData : pageData)) {
+    const wantPage = pendingFocus.pageVariant;
+    const pageThere =
+      !isGlobalBlockMode &&
+      wantPage !== undefined &&
+      wantPage < pageVariants.length;
+    if (pageThere && wantPage !== safeVariantIndex) {
+      selectPageVariant(wantPage);
+    } else {
+      setPendingFocus(null);
+      const { section, variant } = pendingFocus;
+      if (isGlobalBlockMode) {
+        if (variant !== undefined) {
+          setGlobalVariantFocus(variant);
+          setFieldBreadcrumbs([]);
+          setFormResetKey((key) => key + 1);
         }
+      } else if (
+        section !== undefined &&
+        openSectionAt(section, variant ?? 0)
+      ) {
+        // The preview shows that variant too, once this render is done.
+        const rawSection = rawSections[section]!;
+        const parsed = parsedSections[section]!;
+        const mvObj = parsed.isMultivariate
+          ? getMultivariateSectionObject(rawSection, parsed)
+          : null;
+        if (mvObj && variant !== undefined) {
+          queueMicrotask(() =>
+            syncVariantPreviewOverride(mvObj, section, variant),
+          );
+        }
+      } else if (pageThere) {
+        selectPageVariant(wantPage);
       }
     }
   }
@@ -3276,27 +3374,6 @@ export function SectionsEditor({
     );
   };
 
-  const selectPageVariant = (index: number) => {
-    setRenameVariantIndex(null);
-    setActiveVariantIndex(index);
-    setSelectedSectionIndex(null);
-    setFormValue(null);
-    setActiveResolveType(null);
-    setFieldBreadcrumbs([]);
-    const variantRule = pageVariants[index]?.rule;
-    const { resolveType, formValue } = readMatcherRuleFormState(
-      variantRule,
-      decofile ?? {},
-      meta ?? undefined,
-    );
-    setRuleResolveType(resolveType);
-    setRuleFormValue(formValue);
-    emitPageVariantOverride(
-      pageVariants.map((v) => ({ rule: v.rule })),
-      index,
-    );
-  };
-
   const handleReorderPageVariants = (fromIndex: number, toIndex: number) => {
     if (fromIndex === toIndex) return;
 
@@ -4712,26 +4789,30 @@ export function SectionsEditor({
               fieldBreadcrumbs.length === 0 &&
               sectionVariantsPanel}
             <NamedRuleFieldProvider value={namedRuleFieldSupport}>
-              <SchemaFormPanel
-                activeSchema={activeSchema}
-                formValue={formValue}
-                formResetKey={formResetKey}
-                onFormChange={handleFormChange}
-                onBreadcrumbChange={setFieldBreadcrumbs}
-                breadcrumbPath={fieldBreadcrumbs}
-                emptyMessage={t(
-                  "sectionsEditor.sectionsEditor.noEditableFieldsForVariant",
-                )}
-                meta={meta}
-                decofile={decofile}
-                onSaveReferencedBlock={saveReferencedBlock}
-                sandbox={sandbox}
-                previewBaseUrl={sectionPreviewBase}
-                onRequestAddSection={handleRequestAddSection}
-                onVariantMatcherOp={
-                  isGlobalBlockMode ? fieldVariantMatcherOps : undefined
-                }
-              />
+              <RootVariantFocusProvider
+                value={isGlobalBlockMode ? globalVariantFocus : null}
+              >
+                <SchemaFormPanel
+                  activeSchema={activeSchema}
+                  formValue={formValue}
+                  formResetKey={formResetKey}
+                  onFormChange={handleFormChange}
+                  onBreadcrumbChange={setFieldBreadcrumbs}
+                  breadcrumbPath={fieldBreadcrumbs}
+                  emptyMessage={t(
+                    "sectionsEditor.sectionsEditor.noEditableFieldsForVariant",
+                  )}
+                  meta={meta}
+                  decofile={decofile}
+                  onSaveReferencedBlock={saveReferencedBlock}
+                  sandbox={sandbox}
+                  previewBaseUrl={sectionPreviewBase}
+                  onRequestAddSection={handleRequestAddSection}
+                  onVariantMatcherOp={
+                    isGlobalBlockMode ? fieldVariantMatcherOps : undefined
+                  }
+                />
+              </RootVariantFocusProvider>
             </NamedRuleFieldProvider>
           </ScrollArea>
         ) : isGlobalBlockMode ? (
@@ -4742,23 +4823,27 @@ export function SectionsEditor({
             className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block"
           >
             <NamedRuleFieldProvider value={namedRuleFieldSupport}>
-              <SchemaFormPanel
-                activeSchema={activeSchema}
-                formValue={formValue}
-                formResetKey={formResetKey}
-                onFormChange={handleFormChange}
-                onBreadcrumbChange={setFieldBreadcrumbs}
-                breadcrumbPath={fieldBreadcrumbs}
-                emptyMessage={t(
-                  "sectionsEditor.sectionsEditor.noEditableFieldsForGlobalBlock",
-                )}
-                meta={meta}
-                decofile={decofile}
-                onSaveReferencedBlock={saveReferencedBlock}
-                sandbox={sandbox}
-                previewBaseUrl={sectionPreviewBase}
-                onRequestAddSection={handleRequestAddSection}
-              />
+              <RootVariantFocusProvider
+                value={isGlobalBlockMode ? globalVariantFocus : null}
+              >
+                <SchemaFormPanel
+                  activeSchema={activeSchema}
+                  formValue={formValue}
+                  formResetKey={formResetKey}
+                  onFormChange={handleFormChange}
+                  onBreadcrumbChange={setFieldBreadcrumbs}
+                  breadcrumbPath={fieldBreadcrumbs}
+                  emptyMessage={t(
+                    "sectionsEditor.sectionsEditor.noEditableFieldsForGlobalBlock",
+                  )}
+                  meta={meta}
+                  decofile={decofile}
+                  onSaveReferencedBlock={saveReferencedBlock}
+                  sandbox={sandbox}
+                  previewBaseUrl={sectionPreviewBase}
+                  onRequestAddSection={handleRequestAddSection}
+                />
+              </RootVariantFocusProvider>
             </NamedRuleFieldProvider>
           </ScrollArea>
         ) : editingSeo ? (
