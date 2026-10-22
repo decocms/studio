@@ -114,7 +114,7 @@ function SelectionItem({
       className={cn(
         "flex items-start gap-3 p-4 rounded-lg transition-colors",
         disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer",
-        isSelected ? "bg-accent/25" : "hover:bg-muted/50",
+        isSelected ? "bg-accent/25" : "hover:bg-accent",
       )}
     >
       <div className="flex-1 min-w-0 space-y-2">

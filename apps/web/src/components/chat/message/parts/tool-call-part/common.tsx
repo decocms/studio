@@ -104,9 +104,8 @@ export function ToolCallShell({
         disabled={!isExpandable}
         className={cn(
           "group/tool flex items-center gap-2 w-full py-2.5 text-left transition-colors",
-          isExpandable && "[@media(hover:hover)]:hover:bg-accent/30",
+          isExpandable && "[@media(hover:hover)]:hover:bg-accent",
           !isExpandable && "cursor-default",
-          isLoading && "shimmer",
         )}
         aria-disabled={!isExpandable}
       >
@@ -163,8 +162,9 @@ export function ToolCallShell({
         {/* Label */}
         <span
           className={cn(
-            "shrink-0 text-[14px] font-normal",
+            "shrink-0 text-sm font-normal",
             isError ? "text-warning/80" : "text-foreground",
+            isLoading && "shimmer",
           )}
         >
           {title}
@@ -173,8 +173,9 @@ export function ToolCallShell({
         {/* Inline summary — pill with subtle bg */}
         {summary ? (
           <span className="min-w-0 flex-1 truncate">
-            <span className="text-[12px] text-muted-foreground/60 bg-muted/50 rounded-[3px] px-1 py-px leading-none">
-              {summary}
+            <span className="text-xs text-muted-foreground/60 bg-muted/50 rounded-[3px] px-1 py-px leading-none">
+              {/* Its own span: the shimmer clips its background to text, which would take the pill's fill with it. */}
+              <span className={cn(isLoading && "shimmer")}>{summary}</span>
             </span>
           </span>
         ) : (
@@ -226,7 +227,7 @@ export function ToolCallShell({
                   <button
                     type="button"
                     onClick={() => handleCopy(detail!)}
-                    className="shrink-0 p-1.5 rounded-lg text-muted-foreground/50 [@media(hover:hover)]:hover:text-foreground [@media(hover:hover)]:hover:bg-accent/50 transition-colors active:scale-[0.97]"
+                    className="shrink-0 p-1.5 rounded-lg text-muted-foreground/50 [@media(hover:hover)]:hover:text-foreground [@media(hover:hover)]:hover:bg-accent transition-colors active:scale-[0.97]"
                     aria-label={t("common.copy")}
                   >
                     {copied ? (
@@ -260,7 +261,7 @@ export type { ToolCallMetrics } from "./utils.tsx";
 export function LatencyLabel({ latency }: { latency?: number }) {
   if (latency == null || latency <= 0) return null;
   return (
-    <span className="text-[11px] font-mono tabular-nums text-muted-foreground">
+    <span className="text-2xs font-mono tabular-nums text-muted-foreground">
       {formatDuration(latency)}
     </span>
   );
@@ -284,7 +285,7 @@ export function SeeAllRow({
     <button
       type="button"
       onClick={onClick}
-      className="group flex w-full items-center justify-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground cursor-pointer"
+      className="group flex w-full items-center justify-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground cursor-pointer"
     >
       {t("common.seeAll", { count, noun })}
       <ArrowRight

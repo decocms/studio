@@ -14,7 +14,7 @@ import {
 } from "./sheet.tsx";
 
 const meta = {
-  title: "Components/Sheet",
+  title: "Organisms/Sheet",
   component: Sheet,
 } satisfies Meta<typeof Sheet>;
 

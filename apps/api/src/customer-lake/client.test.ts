@@ -1,5 +1,29 @@
-import { describe, expect, test } from "bun:test";
-import { normalizeQuery, tenantCredentials } from "./client";
+import { describe, expect, mock, test } from "bun:test";
+
+mock.module("../settings", () => ({
+  getSettings: () => ({
+    customerLakeUrl: "https://lake.example",
+    customerLakeAdminUsername: "admin",
+    customerLakeAdminPassword: "admin-pw",
+    customerLakeTenantSecret: "secret",
+  }),
+}));
+
+let adminConnects = 0;
+mock.module("@clickhouse/client", () => ({
+  createClient: (opts: { username: string }) => {
+    if (opts.username === "admin") adminConnects++;
+    return {
+      command: async () => {},
+      query: async () => ({ json: async () => [] }),
+      close: async () => {},
+    };
+  },
+}));
+
+const { normalizeQuery, tenantCredentials, queryCustomerLake } = await import(
+  "./client"
+);
 
 describe("tenantCredentials", () => {
   test("is stable per org and differs across orgs and secrets", () => {
@@ -29,4 +53,16 @@ describe("tenantCredentials", () => {
 test("normalizeQuery drops trailing semicolons only", () => {
   expect(normalizeQuery("  SELECT 1;; \n")).toBe("SELECT 1");
   expect(normalizeQuery("SELECT ';'")).toBe("SELECT ';'");
+});
+
+describe("ensureTenantUser", () => {
+  test("concurrent queries for a cold org share one admin connection", async () => {
+    adminConnects = 0;
+    await Promise.all([
+      queryCustomerLake("orgConcurrentA", "SELECT 1"),
+      queryCustomerLake("orgConcurrentA", "SELECT 1"),
+      queryCustomerLake("orgConcurrentA", "SELECT 1"),
+    ]);
+    expect(adminConnects).toBe(1);
+  });
 });

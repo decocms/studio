@@ -94,7 +94,7 @@ export function TiptapProvider({
         "aria-multiline": "true",
         "aria-label": placeholder ?? DEFAULT_PLACEHOLDER,
         class:
-          "prose prose-sm max-w-none focus:outline-none w-full h-full text-[15px] p-[18px]",
+          "prose prose-sm max-w-none focus:outline-none w-full h-full text-base p-[18px]",
       },
       handleKeyDown: (_view: EditorView, event: KeyboardEvent) => {
         if (

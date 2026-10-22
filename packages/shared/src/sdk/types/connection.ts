@@ -104,6 +104,15 @@ export type ConnectionParameters =
   | StdioConnectionParameters;
 
 /**
+ * connection_token has no other size limit on the write path (no MCP-endpoint
+ * body-size middleware bounds it), and it's encrypted and echoed as a Bearer
+ * header on every outbound call to the connection — an org member with
+ * ordinary connection-write permission could otherwise stash an arbitrarily
+ * large value in a connection row.
+ */
+const MAX_CONNECTION_TOKEN_LENGTH = 4096;
+
+/**
  * Connection entity schema - single source of truth.
  * Compliant with collections binding pattern.
  */
@@ -218,6 +227,7 @@ export const ConnectionCreateDataSchema = ConnectionEntitySchema.omit({
   })
   .extend({
     icon: z.string().nullish(),
+    connection_token: z.string().max(MAX_CONNECTION_TOKEN_LENGTH).nullish(),
   });
 
 export type ConnectionCreateData = z.infer<typeof ConnectionCreateDataSchema>;
@@ -229,6 +239,7 @@ export const ConnectionUpdateDataSchema =
   ConnectionEntitySchema.partial().extend({
     // null keeps the current slug, so a fetched entity can be sent back as is.
     url_slug: UrlSlugSchema.nullish(),
+    connection_token: z.string().max(MAX_CONNECTION_TOKEN_LENGTH).nullish(),
   });
 
 export type ConnectionUpdateData = z.infer<typeof ConnectionUpdateDataSchema>;

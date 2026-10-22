@@ -21,6 +21,7 @@ describe("AgentAvatar", () => {
    */
   it.each([
     ["2xs", "size-4", "size-3"],
+    ["2xs+", "size-4.5", "size-3"],
     ["xs", "w-6", "size-3.5"],
     ["sm", "w-8", "size-4"],
     ["sm+", "w-10", "size-5"],

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Plus } from "@untitledui/icons";
 import { toast } from "sonner";
 import { Button } from "@decocms/ui/components/button.tsx";
+import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   AlertDialog,
@@ -37,6 +38,10 @@ import {
 } from "@/hooks/use-org-repo-syncs";
 import { timeAgo } from "@/lib/format-time";
 import { SettingsGroupPage } from "@/components/settings/settings-group-page";
+import {
+  SettingsCard,
+  SettingsCardItem,
+} from "@/components/settings/settings-section";
 
 /** Suggest a volume name from the repo name (server re-validates). */
 function volumeNameFor(repoName: string): string {
@@ -79,66 +84,55 @@ function SyncRow({
     (r) => r.id === config.repositoryId,
   );
   return (
-    <div className="flex items-center justify-between gap-4 py-3 border-b border-border/60 last:border-b-0">
-      <div className="flex items-start gap-3 min-w-0">
-        <div className="size-9 rounded-md bg-muted flex items-center justify-center shrink-0">
-          {repository ? (
-            <GitProviderIcon
-              provider={repository.provider}
-              size={16}
-              className="text-muted-foreground"
-            />
-          ) : (
-            <GitBranch01 size={16} className="text-muted-foreground" />
-          )}
-        </div>
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="font-medium text-sm truncate">
-              {repository?.path ?? `${config.repoOwner}/${config.repoName}`}
-            </span>
-            <span className="text-xs text-muted-foreground shrink-0">
-              @{config.ref}
-            </span>
-          </div>
-          <p
-            className={cn(
-              "text-xs mt-0.5 truncate",
-              status.error ? "text-destructive" : "text-muted-foreground",
-            )}
-          >
-            {t("settings.syncedRepos.rowSubtitle", { volume: config.volume })} ·{" "}
-            {status.label}
-          </p>
-        </div>
-      </div>
-      <Button variant="outline" size="sm" onClick={onRemove}>
-        {t("settings.syncedRepos.remove")}
-      </Button>
-    </div>
+    <SettingsCardItem
+      icon={
+        repository ? (
+          <GitProviderIcon provider={repository.provider} size={16} />
+        ) : (
+          <GitBranch01 size={16} />
+        )
+      }
+      title={
+        <span className="flex items-center gap-2">
+          <span className="truncate">
+            {repository?.path ?? `${config.repoOwner}/${config.repoName}`}
+          </span>
+          <span className="text-xs font-normal text-muted-foreground shrink-0">
+            @{config.ref}
+          </span>
+        </span>
+      }
+      description={
+        <span className={cn(status.error && "text-destructive")}>
+          {t("settings.syncedRepos.rowSubtitle", { volume: config.volume })} ·{" "}
+          {status.label}
+        </span>
+      }
+      action={
+        <Button variant="outline" size="sm" onClick={onRemove}>
+          {t("settings.syncedRepos.remove")}
+        </Button>
+      }
+    />
   );
 }
 
-function EmptyState({ onAdd }: { onAdd: () => void }) {
+function NoSyncedRepos({ onAdd }: { onAdd: () => void }) {
   const t = useT();
   return (
-    <div className="rounded-2xl border border-dashed border-border/60 p-10 flex flex-col items-center justify-center text-center gap-3">
-      <div className="size-12 rounded-full bg-muted flex items-center justify-center">
-        <GitBranch01 size={20} className="text-muted-foreground" />
-      </div>
-      <div>
-        <p className="font-medium text-sm">
-          {t("settings.syncedRepos.emptyTitle")}
-        </p>
-        <p className="text-xs text-muted-foreground mt-1 max-w-sm">
-          {t("settings.syncedRepos.emptyDescription")}
-        </p>
-      </div>
-      <Button onClick={onAdd} size="sm" className="mt-2">
-        <Plus size={14} />
-        {t("settings.syncedRepos.addRepo")}
-      </Button>
-    </div>
+    <SettingsCard>
+      <EmptyState
+        size="inline"
+        icon={<GitBranch01 />}
+        title={t("settings.syncedRepos.emptyTitle")}
+        description={t("settings.syncedRepos.emptyDescription")}
+      >
+        <Button onClick={onAdd} size="sm">
+          <Plus size={14} />
+          {t("settings.syncedRepos.addRepo")}
+        </Button>
+      </EmptyState>
+    </SettingsCard>
   );
 }
 
@@ -197,12 +191,8 @@ function SyncedReposContent() {
 
   return (
     <>
-      <p className="text-sm text-muted-foreground">
-        {t("settings.syncedRepos.pageDescription")}
-      </p>
-
       {configs.length === 0 ? (
-        <EmptyState onAdd={() => setPickerOpen(true)} />
+        <NoSyncedRepos onAdd={() => setPickerOpen(true)} />
       ) : (
         <>
           <div className="flex items-center justify-end">
@@ -211,7 +201,7 @@ function SyncedReposContent() {
               {t("settings.syncedRepos.addRepo")}
             </Button>
           </div>
-          <section className="rounded-2xl border border-border/60 bg-background px-5 py-2">
+          <SettingsCard>
             {configs.map((c) => (
               <SyncRow
                 key={c.id}
@@ -219,7 +209,7 @@ function SyncedReposContent() {
                 onRemove={() => setPendingDelete(c)}
               />
             ))}
-          </section>
+          </SettingsCard>
         </>
       )}
 

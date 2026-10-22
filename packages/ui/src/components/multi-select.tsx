@@ -5,7 +5,6 @@ import * as React from "react";
 
 import { cn } from "../lib/utils.ts";
 import { Badge } from "./badge.tsx";
-import { Button } from "./button.tsx";
 import { Checkbox } from "./checkbox.tsx";
 import { ChevronDown } from "@untitledui/icons";
 import {
@@ -36,11 +35,9 @@ interface MultiSelectProps {
   onValueChange: (value: string[]) => void;
   defaultValue?: string[];
   placeholder?: string;
-  variant?: "default" | "secondary" | "destructive" | "outline";
   animation?: number;
   maxCount?: number;
   modalPopover?: boolean;
-  asChild?: boolean;
   className?: string;
   disabled?: boolean;
   /** When provided, disables client-side filtering and delegates search to the caller. */
@@ -52,11 +49,9 @@ export function MultiSelect({
   onValueChange,
   defaultValue = EMPTY_ARRAY,
   placeholder = "Select items",
-  variant = "default",
   animation = 0,
   maxCount = 3,
   modalPopover = false,
-  asChild = false,
   className,
   disabled = false,
   onSearchChange,
@@ -129,12 +124,11 @@ export function MultiSelect({
       modal={modalPopover}
     >
       <PopoverTrigger asChild>
-        <Button
-          ref={null}
-          {...(asChild ? {} : { variant: "outline" })}
+        <button
+          type="button"
           onClick={handleTogglePopover}
           className={cn(
-            "border-input data-[placeholder]:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/20 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:bg-input/30 dark:hover:bg-input/50 flex w-full max-w-xs items-center justify-between gap-2 border bg-transparent px-3 py-2 text-sm shadow-xs transition-[color,box-shadow] outline-none focus-visible:ring-[2px] disabled:cursor-not-allowed disabled:opacity-50 h-10 min-h-10",
+            "focus-ring aria-invalid:bg-destructive/10 aria-invalid:shadow-[inset_0_0_0_1px_var(--destructive)] flex h-[var(--studio-control-height,2.25rem)] w-full max-w-xs items-center justify-between gap-2 rounded-[var(--studio-control-radius,var(--radius-lg))] bg-[var(--studio-input-background)] pr-3 pl-1.5 text-sm shadow-edge transition-[background-color,box-shadow] hover:bg-sidebar disabled:pointer-events-none disabled:text-subtle-foreground",
             className,
           )}
           disabled={disabled}
@@ -148,8 +142,9 @@ export function MultiSelect({
                   return (
                     <Badge
                       key={value}
-                      variant={variant === "default" ? "default" : "secondary"}
-                      className="max-w-24"
+                      variant="outline"
+                      size="lg"
+                      className="bg-card max-w-28"
                       style={{ animationDuration: `${animation}s` }}
                     >
                       {IconComponent && (
@@ -161,8 +156,9 @@ export function MultiSelect({
                 })}
                 {selectedValues.length > maxCount && (
                   <Badge
-                    variant={variant === "default" ? "default" : "secondary"}
-                    className="flex-shrink-0"
+                    variant="outline"
+                    size="lg"
+                    className="bg-card flex-shrink-0"
                     style={{ animationDuration: `${animation}s` }}
                   >
                     +{selectedValues.length - maxCount}
@@ -170,18 +166,18 @@ export function MultiSelect({
                 )}
               </div>
               <div className="flex items-center shrink-0 ml-2">
-                <ChevronDown size={20} className="shrink-0 opacity-50" />
+                <ChevronDown className="text-muted-foreground size-3.5 shrink-0" />
               </div>
             </div>
           ) : (
-            <div className="flex items-center justify-between w-full">
-              <span className="text-sm text-muted-foreground">
+            <div className="flex w-full items-center justify-between gap-2">
+              <span className="text-subtle-foreground pl-1.5 text-sm">
                 {placeholder}
               </span>
-              <ChevronDown size={20} className="shrink-0 opacity-50" />
+              <ChevronDown className="text-muted-foreground size-3.5 shrink-0" />
             </div>
           )}
-        </Button>
+        </button>
       </PopoverTrigger>
       <PopoverContent
         className="w-auto p-0 max-w-xs rounded-xl"

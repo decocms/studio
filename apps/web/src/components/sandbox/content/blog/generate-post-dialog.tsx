@@ -337,7 +337,7 @@ function CampaignList({
               <p className="min-w-0 flex-1 truncate text-sm font-medium">
                 {campaign.name || t("sandbox.campaigns.untitled")}
               </p>
-              <Badge variant="outline" className="shrink-0 text-[10px]">
+              <Badge variant="outline" size="sm" className="shrink-0">
                 {campaign.intent.products.length > 0
                   ? t("sandbox.generatePost.campaignProducts", {
                       count: String(campaign.intent.products.length),

@@ -17,6 +17,10 @@ import { useProjectContext } from "@/sdk";
 import { KEYS } from "@/lib/query-keys";
 import { useStudioTools } from "@/lib/studio-tools";
 import { useT } from "@/i18n/use-t.ts";
+import {
+  SettingsCard,
+  SettingsSection,
+} from "@/components/settings/settings-section";
 
 export function ClaudeSubscriptionCard() {
   const t = useT();
@@ -70,62 +74,64 @@ export function ClaudeSubscriptionCard() {
   const expired = !connected && Boolean(status.data?.linkedAt);
 
   return (
-    <div className="rounded-xl border border-border px-6 py-5 flex flex-col gap-4">
-      <div className="flex items-center gap-4">
-        <div className="flex-1 min-w-0">
-          <p className="text-base font-semibold">
-            {t("settings.claudeSubscription.title")}
-          </p>
-          <p className="text-sm text-muted-foreground">
-            {connected
-              ? t("settings.claudeSubscription.active")
-              : expired
-                ? t("settings.claudeSubscription.expired")
-                : t("settings.claudeSubscription.description")}
-          </p>
-        </div>
-        {connected ? (
+    <SettingsSection
+      title={t("settings.claudeSubscription.title")}
+      description={
+        connected
+          ? t("settings.claudeSubscription.active")
+          : expired
+            ? t("settings.claudeSubscription.expired")
+            : t("settings.claudeSubscription.description")
+      }
+      actions={
+        connected ? (
           <Button
             variant="outline"
+            size="sm"
             disabled={disconnect.isPending}
             onClick={() => disconnect.mutate()}
           >
             {t("settings.claudeSubscription.disconnect")}
           </Button>
-        ) : null}
-      </div>
+        ) : null
+      }
+    >
       {connected && (
-        <SubscriptionUsage
-          provider="claude"
-          orgId={org.id}
-          userId={userId}
-          linkedAt={status.data?.linkedAt ?? null}
-        />
+        <SettingsCard>
+          <SubscriptionUsage
+            provider="claude"
+            orgId={org.id}
+            userId={userId}
+            linkedAt={status.data?.linkedAt ?? null}
+          />
+        </SettingsCard>
       )}
       {connected ? null : (
-        <div className="flex flex-col gap-2">
-          <p className="text-sm text-muted-foreground">
-            {t("settings.claudeSubscription.howTo")}{" "}
-            <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
-              claude setup-token
-            </code>
-          </p>
-          <div className="flex items-center gap-2">
-            <Input
-              type="password"
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              placeholder={t("settings.claudeSubscription.tokenPlaceholder")}
-            />
-            <Button
-              disabled={token.trim().length === 0 || connect.isPending}
-              onClick={() => connect.mutate()}
-            >
-              {t("settings.claudeSubscription.connect")}
-            </Button>
+        <SettingsCard>
+          <div className="flex flex-col gap-2 p-4">
+            <p className="text-sm text-muted-foreground">
+              {t("settings.claudeSubscription.howTo")}{" "}
+              <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
+                claude setup-token
+              </code>
+            </p>
+            <div className="flex items-center gap-2">
+              <Input
+                type="password"
+                value={token}
+                onChange={(e) => setToken(e.target.value)}
+                placeholder={t("settings.claudeSubscription.tokenPlaceholder")}
+              />
+              <Button
+                disabled={token.trim().length === 0 || connect.isPending}
+                onClick={() => connect.mutate()}
+              >
+                {t("settings.claudeSubscription.connect")}
+              </Button>
+            </div>
           </div>
-        </div>
+        </SettingsCard>
       )}
-    </div>
+    </SettingsSection>
   );
 }

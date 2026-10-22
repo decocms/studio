@@ -277,7 +277,7 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-xl border border-border bg-card overflow-hidden">
+    <section className="surface overflow-hidden">
       <header className="flex items-center gap-2 px-4 py-3 border-b border-border">
         <h3 className="text-sm font-medium text-foreground">{title}</h3>
         {typeof count === "number" && count > 0 && (
@@ -501,7 +501,7 @@ function E2eHelp() {
   const t = useT();
   const [open, setOpen] = useState(false);
   return (
-    <div className="rounded-xl border border-border bg-card">
+    <div className="surface">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -689,7 +689,7 @@ function ChecksSection({
               {t("mainPanelTabs.e2eTab.cancel")}
             </AlertDialogCancel>
             <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              variant="destructive"
               onClick={(e) => {
                 e.preventDefault();
                 deleteMutation.mutate();
@@ -916,7 +916,7 @@ export function E2eTab({ virtualMcpId }: { virtualMcpId: string }) {
               {t("mainPanelTabs.e2eTab.cancel")}
             </AlertDialogCancel>
             <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              variant="destructive"
               onClick={(e) => {
                 e.preventDefault();
                 if (deleteTarget) deleteMutation.mutate(deleteTarget.runId);
