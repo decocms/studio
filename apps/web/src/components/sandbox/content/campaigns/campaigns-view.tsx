@@ -343,6 +343,7 @@ export function CampaignsView({
             existingNames={rows.map((row) => row.name)}
             pending={isPending}
             submitLabel={t("sandbox.dateCampaigns.create")}
+            dismiss="cancel"
             onBack={() => setCreating(false)}
             onSubmit={(pick) => {
               if (pick.kind !== "campaigns" || !pick.create) return;

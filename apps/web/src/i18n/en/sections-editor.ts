@@ -89,8 +89,6 @@ export const sectionsEditor = {
   "sectionsEditor.namedRulePicker.newTestTitle": "New A/B test",
   "sectionsEditor.namedRulePicker.newCampaignTitle": "New campaign",
   "sectionsEditor.namedRulePicker.nameLabel": "Name",
-  "sectionsEditor.namedRulePicker.shareLabel": "Visitors who see this variant",
-  "sectionsEditor.namedRulePicker.shareTitle": "Who sees this variant",
   "sectionsEditor.namedRulePicker.shareHint":
     "0 keeps the test off, 100 shows it to everyone. You can change it later in Experiments.",
   "sectionsEditor.namedRulePicker.startLabel": "Starts",
@@ -106,6 +104,7 @@ export const sectionsEditor = {
     "The end needs to be after the start.",
   "sectionsEditor.namedRulePicker.createAndUse": "Create and use",
   "sectionsEditor.namedRulePicker.cancel": "Back",
+  "sectionsEditor.namedRulePicker.cancelCreate": "Cancel",
   "sectionsEditor.namedRulePicker.createdTest": "Test “{name}” added",
   "sectionsEditor.namedRulePicker.createdCampaign": "Campaign “{name}” added",
   "sectionsEditor.namedRulePicker.createdHint":

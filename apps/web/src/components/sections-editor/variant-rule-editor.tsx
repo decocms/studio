@@ -139,6 +139,7 @@ export function VariantRuleEditor({
                 submitLabel={t(
                   "sectionsEditor.namedRulePicker.createMissingSubmit",
                 )}
+                dismiss="cancel"
                 onBack={() => setCreatingFor(null)}
                 onSubmit={(pick) => void create(pick)}
               />

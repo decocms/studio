@@ -268,6 +268,7 @@ export function NamedRuleCreateForm({
   prefill,
   pending,
   submitLabel,
+  dismiss = "back",
   onBack,
   onSubmit,
 }: {
@@ -279,6 +280,12 @@ export function NamedRuleCreateForm({
   pending?: boolean;
   /** The button's words; "Create and use" in the rule picker. */
   submitLabel?: string;
+  /**
+   * What the dismiss button says: "Back" when the form is a step after
+   * another one (the rule picker), "Cancel" when nothing comes before it (a
+   * dialog of its own, a form opened from a row).
+   */
+  dismiss?: "back" | "cancel";
   onBack: () => void;
   onSubmit: (pick: NamedRulePick) => void;
 }) {
@@ -368,13 +375,13 @@ export function NamedRuleCreateForm({
       {tests ? (
         <div className="flex flex-col gap-1.5">
           <span className="text-sm font-medium">
-            {t("sectionsEditor.namedRulePicker.shareTitle")}
+            {t("experiments.v8.shareTitle")}
           </span>
           <ShareSplit
             compact
             value={share}
             onChange={setShare}
-            sliderLabel={t("sectionsEditor.namedRulePicker.shareLabel")}
+            sliderLabel={t("experiments.v8.shareLabel")}
             inTestLabel={t("experiments.v8.split.inTest")}
             restLabel={t("experiments.v8.split.rest")}
             centerLabel={t("experiments.v8.split.center")}
@@ -419,7 +426,9 @@ export function NamedRuleCreateForm({
       )}
       <div className="flex justify-end gap-2">
         <Button type="button" variant="ghost" size="sm" onClick={onBack}>
-          {t("sectionsEditor.namedRulePicker.cancel")}
+          {dismiss === "cancel"
+            ? t("sectionsEditor.namedRulePicker.cancelCreate")
+            : t("sectionsEditor.namedRulePicker.cancel")}
         </Button>
         <Button type="submit" size="sm" disabled={pending}>
           {submitLabel ?? t("sectionsEditor.namedRulePicker.createAndUse")}

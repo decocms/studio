@@ -159,11 +159,6 @@ export function PublishDialog(props: PublishDialogProps) {
   );
 }
 
-/** Only these bases are production; publishing elsewhere is not "in production". */
-function isProductionBranch(base: string): boolean {
-  return ["main", "master"].includes(base.trim().toLowerCase());
-}
-
 /** Review panes kept alive at once — each holds up to two full-page frames. */
 const MAX_LIVE_PANES = 4;
 
@@ -789,15 +784,9 @@ function CmsPublishView({
           })
     : summary.count === 0
       ? t("thread.publishPopover.publish")
-      : !isProductionBranch(baseBranch)
-        ? summary.count === 1
-          ? t("thread.publishPopover.publishOne")
-          : t("thread.publishPopover.publishCount", { count: summary.count })
-        : summary.count === 1
-          ? t("thread.publishPopover.publishOneInProduction")
-          : t("thread.publishPopover.publishCountInProduction", {
-              count: summary.count,
-            });
+      : summary.count === 1
+        ? t("thread.publishPopover.publishOne")
+        : t("thread.publishPopover.publishCount", { count: summary.count });
 
   /** Review mode names the PR it will update; publish mode, the last release. */
   const subLine = (() => {

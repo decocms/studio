@@ -216,10 +216,6 @@ export const thread = {
   "thread.publishPopover.preview": "Visualizar",
   "thread.publishPopover.publish": "Publicar",
   "thread.publishPopover.publishCount": "Publicar {count} alterações",
-  "thread.publishPopover.publishCountInProduction":
-    "Publicar {count} alterações em produção",
-  "thread.publishPopover.publishOneInProduction":
-    "Publicar 1 alteração em produção",
   "thread.publishPopover.publishOne": "Publicar 1 alteração",
   "thread.publishPopover.publishing": "Publicando…",
   "thread.publishPopover.requestApproval": "Pedir aprovação",

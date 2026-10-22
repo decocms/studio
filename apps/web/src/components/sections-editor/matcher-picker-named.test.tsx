@@ -509,7 +509,7 @@ describe("creating a name", () => {
     const body = within(document.body);
     // Moved with a slider over the donut, never typed.
     const slider = body.getByRole("slider", {
-      name: "Visitors who see this variant",
+      name: "Visitors who see the test",
     });
     expect(slider.getAttribute("aria-valuenow")).toBe("50");
     expect(body.queryByRole("spinbutton")).toBeNull();
@@ -534,7 +534,7 @@ describe("creating a name", () => {
     );
     const body = within(document.body);
     const slider = body.getByRole("slider", {
-      name: "Visitors who see this variant",
+      name: "Visitors who see the test",
     });
     fireEvent.keyDown(slider, { key: "PageDown" });
     fireEvent.keyDown(slider, { key: "ArrowLeft" });
@@ -545,6 +545,53 @@ describe("creating a name", () => {
       name: "cta-test",
       create: { share: 39 },
     });
+  });
+
+  test("a test is shared as on the test page: who sees the test", () => {
+    render(
+      <NamedRuleCreateForm
+        kind="experiments"
+        initialName=""
+        existingNames={[]}
+        onBack={() => {}}
+        onSubmit={() => {}}
+      />,
+    );
+    const body = within(document.body);
+    expect(body.getByText("Who sees the test")).toBeInTheDocument();
+    expect(body.queryByText(/this variant/)).toBeNull();
+  });
+
+  test("Back after a step, Cancel when nothing comes before it", () => {
+    const onBack = mock(() => {});
+    const { unmount } = render(
+      <NamedRuleCreateForm
+        kind="experiments"
+        initialName=""
+        existingNames={[]}
+        onBack={onBack}
+        onSubmit={() => {}}
+      />,
+    );
+    const body = within(document.body);
+    expect(body.getByRole("button", { name: "Back" })).toBeInTheDocument();
+    unmount();
+    for (const kind of ["experiments", "campaigns"] as const) {
+      const view = render(
+        <NamedRuleCreateForm
+          kind={kind}
+          initialName=""
+          existingNames={[]}
+          dismiss="cancel"
+          onBack={onBack}
+          onSubmit={() => {}}
+        />,
+      );
+      expect(body.queryByRole("button", { name: "Back" })).toBeNull();
+      fireEvent.click(body.getByRole("button", { name: "Cancel" }));
+      view.unmount();
+    }
+    expect(onBack).toHaveBeenCalledTimes(2);
   });
 
   test("guides instead of saving a name that is taken", () => {

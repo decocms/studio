@@ -345,6 +345,7 @@ function ExperimentsBlockReady({
             existingNames={rows.map((row) => row.name)}
             pending={isPending}
             submitLabel={t("experiments.v8.create")}
+            dismiss="cancel"
             onBack={() => setCreating(false)}
             onSubmit={(pick) => {
               if (pick.kind !== "experiments" || !pick.create) return;

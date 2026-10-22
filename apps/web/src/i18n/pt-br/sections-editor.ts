@@ -93,9 +93,6 @@ export const sectionsEditor = {
   "sectionsEditor.namedRulePicker.newTestTitle": "Novo teste A/B",
   "sectionsEditor.namedRulePicker.newCampaignTitle": "Nova campanha",
   "sectionsEditor.namedRulePicker.nameLabel": "Nome",
-  "sectionsEditor.namedRulePicker.shareLabel":
-    "Visitantes que veem esta variante",
-  "sectionsEditor.namedRulePicker.shareTitle": "Quem vê esta variante",
   "sectionsEditor.namedRulePicker.shareHint":
     "0 deixa o teste desligado, 100 mostra para todos. Você pode mudar depois em Experimentos.",
   "sectionsEditor.namedRulePicker.startLabel": "Começa",
@@ -111,6 +108,7 @@ export const sectionsEditor = {
     "O fim precisa ser depois do começo.",
   "sectionsEditor.namedRulePicker.createAndUse": "Criar e usar",
   "sectionsEditor.namedRulePicker.cancel": "Voltar",
+  "sectionsEditor.namedRulePicker.cancelCreate": "Cancelar",
   "sectionsEditor.namedRulePicker.createdTest": "Teste “{name}” adicionado",
   "sectionsEditor.namedRulePicker.createdCampaign":
     "Campanha “{name}” adicionada",
