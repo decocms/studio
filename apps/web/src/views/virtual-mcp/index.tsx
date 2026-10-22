@@ -128,6 +128,8 @@ interface AuthoritativeSidebarState {
   effectiveViews: VirtualMcpSidebarView[];
   rawViews: VirtualMcpSidebarView[] | null | undefined;
   version: typeof PROJECT_SIDEBAR_VIEWS_VERSION | undefined;
+  /** The views offered once that this project has seen (saved with its list). */
+  seen: VirtualMcpSidebarView[] | null | undefined;
 }
 
 function authoritativeSidebarState(
@@ -144,6 +146,7 @@ function authoritativeSidebarState(
     ],
     rawViews: rawViews === null ? null : rawViews ? [...rawViews] : undefined,
     version,
+    seen: virtualMcp.metadata?.sidebarViewsSeen ?? undefined,
   };
 }
 
@@ -502,6 +505,16 @@ function VirtualMcpDetailViewWithData({
           authoritative.version
         ) {
           form.setValue("metadata.sidebarViewsVersion", authoritative.version, {
+            shouldDirty: false,
+          });
+        }
+        if (
+          !sameRawSidebarViews(
+            form.getValues("metadata.sidebarViewsSeen"),
+            authoritative.seen,
+          )
+        ) {
+          form.setValue("metadata.sidebarViewsSeen", authoritative.seen, {
             shouldDirty: false,
           });
         }

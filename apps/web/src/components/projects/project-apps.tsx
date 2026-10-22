@@ -27,6 +27,7 @@ import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/use-t.ts";
 import {
   effectiveProjectSidebarViews,
+  offeredProjectSidebarViews,
   isProjectNativeViewId,
   resolveProjectSidebarViews,
   type ProjectNativeViewPresence,
@@ -161,6 +162,11 @@ export function launchableApps(
     effectiveProjectSidebarViews(
       resolveProjectSidebarViews(project.metadata),
       project.metadata?.sidebarViewsVersion,
+      // Calendar's presence is a Blocks (v8) site's.
+      offeredProjectSidebarViews(
+        project.metadata?.sidebarViewsSeen,
+        native?.calendar ?? false,
+      ),
     ),
   );
   /** Native panels exist only where the project has their resource, as in the

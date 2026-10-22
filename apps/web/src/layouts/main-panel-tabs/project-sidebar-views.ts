@@ -34,6 +34,50 @@ export const DEFAULT_PROJECT_SIDEBAR_VIEWS = [
  * rows were not configurable and therefore remained implicitly enabled. */
 export const PROJECT_SIDEBAR_VIEWS_VERSION = 1 as const;
 
+/**
+ * Views a Blocks (v8) site gets once on top of a list saved before they were
+ * defaults (PO decision): its A/B tests and campaigns are content its editors
+ * own. Offered until the project's next sidebar save records them in
+ * `sidebarViewsSeen`; from then on the saved list alone decides, so hiding
+ * one sticks. A v7 site is never offered them.
+ */
+export const BLOCKS_SITE_SIDEBAR_VIEWS = [
+  "experiments",
+  "calendar",
+] as const satisfies readonly ProjectSidebarViewId[];
+
+/**
+ * The views to add once to this project's saved list: the Blocks site views
+ * it hasn't seen yet, on a Blocks site; none elsewhere. Pass the result to
+ * {@link effectiveProjectSidebarViews} and friends.
+ */
+export function offeredProjectSidebarViews(
+  seen: readonly VirtualMcpSidebarView[] | null | undefined,
+  blocksSite: boolean,
+): ProjectSidebarViewId[] {
+  if (!blocksSite) return [];
+  const already = new Set(seen ?? []);
+  return BLOCKS_SITE_SIDEBAR_VIEWS.filter((view) => !already.has(view));
+}
+
+/**
+ * `sidebarViewsSeen` to save with a sidebar change: on a Blocks site, the
+ * offered views are seen now (the list the change was made on had them), so
+ * the saved list decides from then on. Elsewhere it stays as it was, so a
+ * site that becomes a Blocks site still gets them once.
+ */
+export function seenProjectSidebarViewsAfterSave(
+  seen: readonly VirtualMcpSidebarView[] | null | undefined,
+  blocksSite: boolean,
+): VirtualMcpSidebarView[] | null | undefined {
+  if (!blocksSite) return seen === null ? null : seen ? [...seen] : seen;
+  const next = new Set<VirtualMcpSidebarView>([
+    ...(seen ?? []),
+    ...BLOCKS_SITE_SIDEBAR_VIEWS,
+  ]);
+  return PROJECT_SIDEBAR_VIEW_IDS.filter((view) => next.has(view));
+}
+
 export type ProjectSidebarViewId = (typeof PROJECT_SIDEBAR_VIEW_IDS)[number];
 
 /** Native panels whose availability is discovered from project resources. */
@@ -68,6 +112,8 @@ export interface ProjectSidebarViewsMetadata {
   /** Canonical location. With version 1, null or [] disables every row. */
   sidebarViews?: readonly VirtualMcpSidebarView[] | null;
   sidebarViewsVersion?: typeof PROJECT_SIDEBAR_VIEWS_VERSION;
+  /** Views offered once on top of the saved list (see BLOCKS_SITE_SIDEBAR_VIEWS). */
+  sidebarViewsSeen?: readonly VirtualMcpSidebarView[] | null;
   /** Deprecated location, retained only while persisted agents migrate. */
   ui?: {
     layout?: {
@@ -122,15 +168,18 @@ export function resolveProjectSidebarViews(
 }
 
 /** Apply the compatibility default without conflating it with explicit null or
- * an empty selection. */
+ * an empty selection. `offered` (see {@link offeredProjectSidebarViews}) adds
+ * views once on top of an exact list. */
 export function effectiveProjectSidebarViews(
   sidebarViews: readonly VirtualMcpSidebarView[] | null | undefined,
   version?: number | null,
+  offered: readonly ProjectSidebarViewId[] = [],
 ): readonly VirtualMcpSidebarView[] {
   const selected = new Set(sidebarViews ?? []);
   if (version !== PROJECT_SIDEBAR_VIEWS_VERSION) {
     for (const viewId of DEFAULT_PROJECT_SIDEBAR_VIEWS) selected.add(viewId);
   }
+  for (const viewId of offered) selected.add(viewId);
   return PROJECT_SIDEBAR_VIEW_IDS.filter((viewId) => selected.has(viewId));
 }
 
@@ -190,8 +239,11 @@ export function selectedProjectSidebarViews(
   sidebarViews: readonly VirtualMcpSidebarView[] | null | undefined,
   presence: ProjectSidebarViewPresence,
   version?: number | null,
+  offered: readonly ProjectSidebarViewId[] = [],
 ): ProjectSidebarViewId[] {
-  const selected = new Set(effectiveProjectSidebarViews(sidebarViews, version));
+  const selected = new Set(
+    effectiveProjectSidebarViews(sidebarViews, version, offered),
+  );
   return PROJECT_SIDEBAR_VIEW_IDS.filter(
     (viewId) => presence[viewId] && selected.has(viewId),
   );

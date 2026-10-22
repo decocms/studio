@@ -48,6 +48,7 @@ import {
   PROJECT_NATIVE_VIEW_IDS,
   projectSidebarViewPresence,
   resolveProjectSidebarViews,
+  offeredProjectSidebarViews,
   selectedProjectSidebarViews,
   type ProjectNativeViewId,
 } from "@/layouts/main-panel-tabs/project-sidebar-views";
@@ -98,6 +99,13 @@ export function ProjectNav({
       optimisticSidebarViews !== undefined
         ? 1
         : project.metadata.sidebarViewsVersion,
+      // An edit in flight is the exact list the editor saw, offers included.
+      optimisticSidebarViews !== undefined
+        ? []
+        : offeredProjectSidebarViews(
+            project.metadata.sidebarViewsSeen,
+            nativeViews.presence.calendar,
+          ),
     ),
   );
 

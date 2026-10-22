@@ -308,6 +308,29 @@ describe("metadata.sidebarViews", () => {
     expect(updated.metadata?.sidebarViewsVersion).toBe(1);
   });
 
+  it("keeps the views offered once (sidebarViewsSeen), and only known views", () => {
+    const updated = VirtualMCPUpdateDataSchema.parse({
+      metadata: {
+        sidebarViews: ["site-editor"],
+        sidebarViewsVersion: 1,
+        sidebarViewsSeen: ["experiments", "calendar"],
+      },
+    });
+    expect(updated.metadata?.sidebarViewsSeen).toEqual([
+      "experiments",
+      "calendar",
+    ]);
+    expect(
+      VirtualMCPUpdateDataSchema.parse({ metadata: { sidebarViewsSeen: null } })
+        .metadata?.sidebarViewsSeen,
+    ).toBeNull();
+    expect(
+      VirtualMCPUpdateDataSchema.safeParse({
+        metadata: { sidebarViewsSeen: ["calendar", "unknown"] },
+      }).success,
+    ).toBe(false);
+  });
+
   it("accepts null and empty values but rejects unknown views", () => {
     expect(
       VirtualMCPUpdateDataSchema.parse({

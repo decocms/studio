@@ -9,6 +9,8 @@ import {
   effectiveProjectSidebarViews,
   isProjectNativeViewId,
   isProjectSidebarViewId,
+  offeredProjectSidebarViews,
+  seenProjectSidebarViewsAfterSave,
   projectMainViewPresence,
   projectDefaultViewUnavailable,
   projectSidebarViewPresence,
@@ -421,5 +423,90 @@ describe("Calendar and Experiments on a Blocks (v8) site", () => {
         calendar: false,
       }),
     ).toBe(true);
+  });
+});
+
+describe("Experiments and Calendar added once to a Blocks site's saved list", () => {
+  const v8 = projectSidebarViewPresence(
+    true,
+    nativePresence(["experiments", "calendar"]),
+  );
+  const saved = ["site-editor", "releases"] as const;
+
+  test("a list saved before they were defaults gets them on a Blocks site", () => {
+    const offered = offeredProjectSidebarViews(undefined, true);
+    expect(offered).toEqual(["experiments", "calendar"]);
+    expect(selectedProjectSidebarViews(saved, v8, 1, offered)).toEqual([
+      "site-editor",
+      "experiments",
+      "calendar",
+    ]);
+  });
+
+  test("never on a v7 site", () => {
+    expect(offeredProjectSidebarViews(undefined, false)).toEqual([]);
+    const v7 = projectSidebarViewPresence(
+      true,
+      nativePresence(["experiments"]),
+    );
+    expect(
+      selectedProjectSidebarViews(
+        saved,
+        v7,
+        1,
+        offeredProjectSidebarViews(undefined, false),
+      ),
+    ).toEqual(["site-editor"]);
+  });
+
+  test("once: after a save, hiding one sticks", () => {
+    // The editor sees both offered, and hides Calendar.
+    const shown = effectiveProjectSidebarViews(
+      saved,
+      1,
+      offeredProjectSidebarViews(undefined, true),
+    );
+    const next = toggleProjectSidebarView(shown, "calendar", false, 1);
+    const seen = seenProjectSidebarViewsAfterSave(undefined, true);
+    expect(seen).toEqual(["experiments", "calendar"]);
+    // Read back: nothing is offered again, the saved list decides.
+    const offered = offeredProjectSidebarViews(seen, true);
+    expect(offered).toEqual([]);
+    expect(selectedProjectSidebarViews(next, v8, 1, offered)).toEqual([
+      "site-editor",
+      "experiments",
+    ]);
+  });
+
+  test("a save on a v7 site leaves them to offer once it becomes a Blocks site", () => {
+    expect(seenProjectSidebarViewsAfterSave(undefined, false)).toBeUndefined();
+    expect(seenProjectSidebarViewsAfterSave(null, false)).toBeNull();
+    expect(seenProjectSidebarViewsAfterSave(["calendar"], false)).toEqual([
+      "calendar",
+    ]);
+    expect(offeredProjectSidebarViews(["calendar"], true)).toEqual([
+      "experiments",
+    ]);
+  });
+
+  test("unversioned projects keep the defaults, offers or not", () => {
+    expect(
+      selectedProjectSidebarViews(undefined, v8, undefined, []),
+    ).toContain("calendar");
+  });
+
+  test("Calendar is still only where it shows today", () => {
+    const noCalendar = projectSidebarViewPresence(
+      true,
+      nativePresence(["experiments"]),
+    );
+    expect(
+      selectedProjectSidebarViews(
+        saved,
+        noCalendar,
+        1,
+        offeredProjectSidebarViews(undefined, true),
+      ),
+    ).not.toContain("calendar");
   });
 });

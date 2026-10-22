@@ -118,4 +118,41 @@ describe("launchableApps", () => {
       ),
     ).toEqual(["hosting", "automations"]);
   });
+
+  test("a Blocks site's saved list gets Experiments and Calendar once", () => {
+    const native = (v8: boolean) => ({
+      assets: false,
+      hosting: false,
+      e2e: false,
+      analytics: false,
+      cdn: false,
+      experiments: v8,
+      calendar: v8,
+      releases: false,
+    });
+    const metadata = {
+      sidebarViews: ["site-editor"] as const,
+      sidebarViewsVersion: 1 as const,
+    };
+    expect(launchableApps({ metadata: { ...metadata } }, native(true))).toEqual(
+      ["site-editor", "experiments", "calendar"],
+    );
+    // Never on a v7 site.
+    expect(
+      launchableApps({ metadata: { ...metadata } }, native(false)),
+    ).toEqual(["site-editor"]);
+    // Seen: the saved list decides (Calendar was hidden).
+    expect(
+      launchableApps(
+        {
+          metadata: {
+            sidebarViews: ["site-editor", "experiments"],
+            sidebarViewsVersion: 1,
+            sidebarViewsSeen: ["experiments", "calendar"],
+          },
+        },
+        native(true),
+      ),
+    ).toEqual(["site-editor", "experiments"]);
+  });
 });
