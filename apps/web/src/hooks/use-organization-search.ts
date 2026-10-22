@@ -18,6 +18,16 @@ interface OrganizationSearchResponse {
   items: OrganizationSearchHit[];
 }
 
+function isOrganizationSearchResponse(
+  value: unknown,
+): value is OrganizationSearchResponse {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    Array.isArray((value as Record<string, unknown>).items)
+  );
+}
+
 export interface OrganizationSearchResult {
   hits: OrganizationSearchHit[];
   /** A request for the CURRENT term is in flight. */
@@ -47,7 +57,11 @@ export function useOrganizationSearch(term: string): OrganizationSearchResult {
         { signal },
       );
       if (!res.ok) throw new Error(`Organization search failed: ${res.status}`);
-      return (await res.json()) as OrganizationSearchResponse;
+      const data = await res.json();
+      if (!isOrganizationSearchResponse(data)) {
+        throw new Error("Invalid organization search response");
+      }
+      return data;
     },
     enabled,
     placeholderData: keepPreviousData,
