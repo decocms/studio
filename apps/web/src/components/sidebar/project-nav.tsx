@@ -68,14 +68,7 @@ interface ProjectView {
   dataTour?: string;
 }
 
-export function ProjectNav({
-  onNavigate,
-  heading,
-}: {
-  onNavigate?: () => void;
-  /** Titles the rows as their own section, under the new navigation. */
-  heading?: string;
-}) {
+export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
   const t = useT();
   const { project } = useProjectScope();
   const navigateToAgent = useNavigateToAgent();
@@ -215,10 +208,9 @@ export function ProjectNav({
 
   const onProject = leafPath.startsWith(DESTINATION_ROUTE.projects);
 
-  /** Under the new navigation each app wears its catalogue tile, as on the
-   *  rail and the home; a pinned app keeps its own mark on a neutral tile. */
+  /** Each app wears its catalogue tile, as on the rail and the home; a pinned
+   *  app keeps its own mark on a neutral tile. */
   const appIcon = (view: ProjectView) => {
-    if (!heading) return view.icon;
     const app = PROJECT_APPS[view.panel as keyof typeof PROJECT_APPS];
     return (
       <span
@@ -261,14 +253,13 @@ export function ProjectNav({
       ))}
     </SidebarMenu>
   );
-  if (!heading) return rows;
   if (views.length === 0) return null;
   return (
     <div className="flex flex-col gap-1">
       {/* Same heading as the projects tree's sections. */}
       <div className="flex h-6 items-center px-2 group-data-[state=collapsed]/sidebar:hidden">
         <span className="truncate font-medium text-xs text-muted-foreground">
-          {heading}
+          {t("sidebar.projectNav.apps")}
         </span>
       </div>
       {rows}

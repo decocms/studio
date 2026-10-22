@@ -377,49 +377,6 @@ export function collectionListQueryOptions<T extends CollectionEntity>(
   };
 }
 
-/**
- * The same query, keeping the page metadata instead of discarding it.
- *
- * `collectionListQueryOptions` selects `payload.items` and drops the
- * `totalCount` and `hasMore` the server already returns, which is why a
- * truncated list reads as a complete one everywhere it is used. Callers that
- * need to say "100 of 137" — or to page at all — take this one instead. Same
- * query key, so the two share a cache entry rather than double-fetching.
- */
-export function collectionListPageQueryOptions<T extends CollectionEntity>(
-  scopeKey: string,
-  collectionName: string,
-  client: Client | null | undefined,
-  options: UseCollectionListOptions<T> = {},
-) {
-  const base = collectionListQueryOptions<T>(
-    scopeKey,
-    collectionName,
-    client,
-    options,
-  );
-  return {
-    ...base,
-    select: (result: unknown): CollectionListPage<T> => {
-      const payload = extractPayload<CollectionListOutput<T>>(result ?? {});
-      return {
-        items: payload?.items ?? [],
-        totalCount: payload?.totalCount,
-        hasMore: payload?.hasMore,
-      };
-    },
-  };
-}
-
-/** One page of a collection, with the counts the list tool returns. */
-export interface CollectionListPage<T extends CollectionEntity> {
-  items: T[];
-  /** Rows matching the filter before the limit was applied. */
-  totalCount?: number;
-  /** Whether rows exist past this page. */
-  hasMore?: boolean;
-}
-
 export function useCollectionList<T extends CollectionEntity>(
   scopeKey: string,
   collectionName: string,

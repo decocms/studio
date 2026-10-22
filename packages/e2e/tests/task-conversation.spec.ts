@@ -46,7 +46,12 @@ test("task conversation keeps replies chronological and details accessible", asy
   await expect(posts).toHaveCount(3);
   await expect(posts.nth(0)).toContainText("First reply");
   await expect(posts.nth(1)).toContainText("Second reply");
-  await expect(detail.getByRole("textbox")).toHaveCount(1);
+  // The comment composer and the subtask field are the only inputs; the
+  // description stays read-only until Edit.
+  await expect(detail.getByRole("textbox")).toHaveCount(2);
+  await expect(
+    detail.getByRole("textbox", { name: "Leave a comment..." }),
+  ).toHaveCount(1);
   await expect(
     detail.getByRole("button", { name: "Edit", exact: true }),
   ).toBeVisible();

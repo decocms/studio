@@ -1,4 +1,4 @@
-/** A project's Overview under the new navigation: a task to start, what asks for you, its rhythms. */
+/** A project's Overview: a task to start, what asks for you, its rhythms. */
 
 import { Suspense } from "react";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";

@@ -149,7 +149,9 @@ test("org voice selection overrides and restores the deployment default", async 
   try {
     await configureModel(api, orgSlug, model.url);
     await page.goto(`/${orgSlug}/${threadId}`);
-    const input = page.locator('[data-chat-input="true"]');
+    const input = page
+      .getByTestId("chat-panel")
+      .locator('[data-chat-input="true"]');
     await expect(input).toBeVisible({ timeout: 60_000 });
     await input.fill("Reply to this ordinary text message");
     await input.press("Enter");
@@ -278,7 +280,9 @@ for (const flag of ["absent", "false"] as const) {
       await page.goto(
         `/${orgSlug}/${threadId}?virtualmcpid=${agentId}&sidepanel=true`,
       );
-      const input = page.locator('[data-chat-input="true"]');
+      const input = page
+        .getByTestId("chat-panel")
+        .locator('[data-chat-input="true"]');
       await expect(input).toBeVisible({ timeout: 60_000 });
       await expect(
         page.getByRole("button", { name: "Start voice mode" }),
@@ -356,7 +360,9 @@ for (const harnessId of ["decopilot", "claude-code"]) {
       await page.goto(
         `/${orgSlug}/${threadId}?virtualmcpid=${agentId}&sidepanel=true`,
       );
-      await expect(page.locator('[data-chat-input="true"]')).toBeVisible({
+      await expect(
+        page.getByTestId("chat-panel").locator('[data-chat-input="true"]'),
+      ).toBeVisible({
         timeout: 60_000,
       });
       await expect(
@@ -380,11 +386,17 @@ for (const harnessId of ["decopilot", "claude-code"]) {
       expect(
         await callSelfMcpTool(api, orgSlug, "ORGANIZATION_SETTINGS_GET", {}),
       ).toMatchObject({ flags: { voice_mode: true } });
-      const input = page.locator('[data-chat-input="true"]');
+      const input = page
+        .getByTestId("chat-panel")
+        .locator('[data-chat-input="true"]');
       await expect(input).toBeVisible({ timeout: 60_000 });
       await input.fill("Keep this draft");
       const url = page.url();
-      await page.getByRole("button", { name: "Start voice mode" }).click();
+      // The project's overview has a composer of its own; the chat's is the one.
+      await page
+        .getByTestId("chat-panel")
+        .getByRole("button", { name: "Start voice mode" })
+        .click();
       await expect(
         page.getByRole("region", { name: "Voice conversation" }),
       ).toBeVisible();
@@ -671,7 +683,9 @@ test.describe("Live voice provider", () => {
       if (process.env.E2E_VOICE_EXIT_EARLY === "1") {
         await page.getByRole("button", { name: "Back to chat" }).click();
         expect(model.completed).toBe(0);
-        await expect(page.locator('[data-chat-input="true"]')).toBeVisible();
+        await expect(
+          page.getByTestId("chat-panel").locator('[data-chat-input="true"]'),
+        ).toBeVisible();
         await expect(
           page.getByText(answer, { exact: true }).last(),
         ).toBeVisible({ timeout: 60_000 });
@@ -714,7 +728,9 @@ test.describe("Live voice provider", () => {
           })
         ).status(),
       ).toBe(403);
-      await expect(page.locator('[data-chat-input="true"]')).toBeVisible();
+      await expect(
+        page.getByTestId("chat-panel").locator('[data-chat-input="true"]'),
+      ).toBeVisible();
       await expect(
         page.getByText(answer, { exact: true }).last(),
       ).toBeVisible();
@@ -724,8 +740,14 @@ test.describe("Live voice provider", () => {
           request.method() === "POST" &&
           request.url().endsWith(`/threads/${threadId}/messages`),
       );
-      await page.locator('[data-chat-input="true"]').fill("Continue in text");
-      await page.locator('[data-chat-input="true"]').press("Enter");
+      await page
+        .getByTestId("chat-panel")
+        .locator('[data-chat-input="true"]')
+        .fill("Continue in text");
+      await page
+        .getByTestId("chat-panel")
+        .locator('[data-chat-input="true"]')
+        .press("Enter");
       expect((await nextTurn).postDataJSON().voiceMode).toBe(false);
       await expect(page.getByText(answer, { exact: true })).toHaveCount(
         replyCount + 1,

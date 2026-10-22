@@ -2,7 +2,6 @@
  * Context: what agents know, in one place. For the org, the Library's files
  * plus the brand, connections, repositories, skills and memory that used to
  * live in Settings; for a project, its folder plus what was its Settings.
- * Project-first nav only.
  */
 
 import type { ComponentType, ReactNode } from "react";

@@ -58,16 +58,16 @@ test.describe("tab error boundary recovers on tab switch", () => {
     const { page, orgSlug } = authedPage;
     const { agentId, threadId } = await setup({ page, orgSlug });
 
-    // Force the settings tab to throw on render. addInitScript runs before
-    // any script on every navigation in the page's context, so the hook
-    // survives the page.goto()s below.
+    // Force the project's Context (files) to throw on render. addInitScript
+    // runs before any script on every navigation in the page's context, so the
+    // hook survives the page.goto()s below.
     await page.addInitScript(() => {
       (window as unknown as { __forceTabError?: string }).__forceTabError =
-        "settings";
+        "files";
     });
 
     await page.goto(
-      `/${orgSlug}/${threadId}?virtualmcpid=${agentId}&main=settings`,
+      `/${orgSlug}/projects/${agentId}/library?thread=${threadId}`,
     );
 
     // Error boundary fallback is visible — matches the default fallback text
@@ -78,7 +78,7 @@ test.describe("tab error boundary recovers on tab switch", () => {
     await expect(
       page
         .getByTestId("page-header")
-        .getByRole("heading", { name: "Settings", exact: true }),
+        .getByRole("heading", { name: "Context", exact: true }),
     ).toBeVisible();
 
     // Switch to the preview tab — renders cleanly, no leftover error.
@@ -93,10 +93,10 @@ test.describe("tab error boundary recovers on tab switch", () => {
     });
     await expect(page.getByText(/something went wrong/i)).toBeHidden();
 
-    // Switch back to settings — error UI reappears (state was reset on
-    // remount via key={activeTab}, not memoized as healthy).
-    await page.getByRole("button", { name: "Settings", exact: true }).click();
-    await expect(page).toHaveURL(new RegExp(`/projects/${agentId}/settings`));
+    // Back to Context — error UI reappears (state was reset on remount via
+    // key={activeTab}, not memoized as healthy).
+    await page.goBack();
+    await expect(page).toHaveURL(new RegExp(`/projects/${agentId}/library`));
     await expect(page.getByText(/something went wrong/i)).toBeVisible({
       timeout: 15_000,
     });

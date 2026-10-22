@@ -108,7 +108,6 @@ export const orgs = {
   "orgs.connections.npxPackage": "Pacote NPX",
   "orgs.connections.openGitHubPatSettings":
     "Abrir configurações de PAT do GitHub",
-  "orgs.connections.pageTitle": "Conexões",
   "orgs.connections.saving": "Salvando...",
   "orgs.connections.searchPlaceholder": "Pesquisar uma conexão",
   "orgs.connections.sortDescription": "Descrição",

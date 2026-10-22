@@ -1,12 +1,10 @@
-/** A project's home: the new Overview with project-first nav, the classic tab without. */
+/** A project's home. */
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { ChatLayout } from "@/components/chat-layout";
 import { ProjectOverview } from "@/components/projects/project-overview";
-import { OverviewTab } from "@/layouts/main-panel-tabs/overview-tab";
-import { useProjectFirstNav } from "@/hooks/use-preferences";
 import { useProjectScope } from "@/hooks/use-project-scope";
 
-function FlagOverview() {
+function Overview() {
   const { project } = useProjectScope();
   if (!project) {
     return (
@@ -19,10 +17,9 @@ function FlagOverview() {
 }
 
 export default function AgentOverviewRoute() {
-  const projectFirstNav = useProjectFirstNav();
   return (
     <ChatLayout.Content>
-      {projectFirstNav ? <FlagOverview /> : <OverviewTab />}
+      <Overview />
     </ChatLayout.Content>
   );
 }

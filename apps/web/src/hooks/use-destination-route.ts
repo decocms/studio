@@ -62,49 +62,12 @@ export const PROJECT_ROUTE = {
   monitoring: "/$org/projects/$agentId/monitoring",
 } as const;
 
-export type DestinationRoutePath =
-  (typeof DESTINATION_ROUTE)[keyof typeof DESTINATION_ROUTE];
-
 /** The matched leaf route's full path, e.g. `"/$org/tasks/{-$taskKey}"`. */
 export function useLeafRoutePath(): string {
   return useRouterState({
     select: (state) => state.matches.at(-1)?.fullPath ?? "",
   });
 }
-
-/** Which side of the project scope a destination is bound to, for the two that
- *  are: `"project-only"` cannot be shown for the whole org, `"org-only"` cannot
- *  be narrowed to one project. Only the CLASSIC sidebar asks — see below. */
-type ScopeBinding = "project-only" | "org-only";
-
-const SCOPE_BOUND_ROUTES: ReadonlyMap<string, ScopeBinding> = new Map<
-  DestinationRoutePath,
-  ScopeBinding
->([
-  [DESTINATION_ROUTE.reports, "project-only"],
-  [DESTINATION_ROUTE.library, "org-only"],
-  [DESTINATION_ROUTE.threadAnalytics, "org-only"],
-]);
-
-/** Whether `path` names a page that exists under `scopeId` — `null` being the
- *  organization itself. Unbound destinations exist on both sides, so the answer
- *  is `true` for everything the map does not name. */
-export function routeExistsInScope(
-  path: string,
-  scopeId: string | null,
-): boolean {
-  const binding = SCOPE_BOUND_ROUTES.get(path);
-  if (binding === undefined) return true;
-  return binding === "project-only" ? scopeId !== null : scopeId === null;
-}
-
-/**
- * Under New Layout every destination exists on both sides of the scope, so
- * nothing above is consulted: Library was the last exception — the org's files
- * were one drive and a project had none — and a project owns its folder now
- * (`@decocms/shared/organization/project-folder`), so both readings are real pages.
- * Leaving a project un-narrows the page you are on rather than relocating you.
- */
 
 /** The semantic view owned by the current route, used by the existing sidebar. */
 export function useActivePanelSegment(): string | undefined {

@@ -26,7 +26,6 @@ import { Controller, useForm } from "react-hook-form";
 import { authClient } from "@/lib/auth-client";
 import {
   usePreferences,
-  useProjectFirstNav,
   type ThemeMode,
   type ToolApprovalLevel,
 } from "@/hooks/use-preferences.ts";
@@ -210,12 +209,6 @@ function PreferencesSection() {
     setPreferences((prev) => ({ ...prev, enableNotifications: checked }));
   };
 
-  const projectFirstNav = useProjectFirstNav();
-  const handleProjectFirstNavChange = (checked: boolean) => {
-    track("preferences_project_first_nav_toggled", { enabled: checked });
-    setPreferences((prev) => ({ ...prev, projectFirstNav: checked }));
-  };
-
   return (
     <SettingsSection title={t("settings.preferences.title")}>
       <SettingsCard>
@@ -353,18 +346,6 @@ function PreferencesSection() {
                 }}
               />
             </div>
-          }
-        />
-        <SettingsCardItem
-          title={t("settings.preferences.projectFirstNav")}
-          description={t("settings.preferences.projectFirstNavDescription")}
-          onClick={() => handleProjectFirstNavChange(!projectFirstNav)}
-          action={
-            <Switch
-              aria-label={t("settings.preferences.projectFirstNav")}
-              checked={projectFirstNav}
-              onCheckedChange={handleProjectFirstNavChange}
-            />
           }
         />
         <SettingsCardItem

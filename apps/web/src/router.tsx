@@ -314,7 +314,7 @@ const chooseEditorRoute = createRoute({
 // The site editor over `deco serve`, which prints
 // `/site-editor#endpoint=…&token=…`. No org, no project, no sign-in needed.
 // Its tabs carry the project Site Editor's `staticData` (plus `local`): the
-// same app. Always in the New Layout, whatever the preference says.
+// same app.
 // It wins over `/$org`, so an organization whose slug is `site-editor` would
 // lose its URL. PRE-DEPLOY CHECK (every environment, before this route first
 // ships): `SELECT id FROM organization WHERE slug = 'site-editor'` must return
@@ -1182,7 +1182,7 @@ const libraryRoute = createRoute({
   component: lazyRouteComponent(() => import("./routes/workspace/library.tsx")),
 });
 
-/** Plan and Monitoring: announced in the new navigation, a placeholder until built. */
+/** Plan and Monitoring: announced in the navigation, a placeholder until built. */
 const planRoute = createRoute({
   pendingComponent: ChatLayoutPending,
   errorComponent: ChatLayoutError,
@@ -1610,12 +1610,16 @@ const settingsProfileRoute = createRoute({
 // UNIFIED CHAT SUB-ROUTES
 // ============================================
 
-// Agents list (view all)
+// Redirects old /settings/agents links to the projects index that replaced it.
 const settingsAgentsRoute = createRoute({
-  staticData: { pageTitle: "settings.nav.agents" },
   getParentRoute: () => settingsRoute,
   path: "/agents",
-  component: lazyRouteComponent(() => import("./routes/agents-list.tsx")),
+  beforeLoad: ({ params }) => {
+    throw redirect({
+      to: "/$org/settings/projects",
+      params: { org: params.org },
+    });
+  },
 });
 
 const settingsAutomationsRoute = createRoute({

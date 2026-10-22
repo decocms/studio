@@ -9,31 +9,18 @@ import { ToolbarIconButton } from "@/components/toolbar-icon-button";
 import { SidebarThreadButton } from "./thread-button";
 
 import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
-import { useProjectFirstNav } from "@/hooks/use-preferences";
 import { useT } from "@/i18n/use-t.ts";
-import { OrgProjectPicker } from "./org-project-picker";
 import { ProjectSwitcher } from "./project-switcher";
 
 const ICON_SIZE = 16;
 
-/** Project-first navigation names the org or the open project here; classic keeps the picker. */
+/** Names the org or the open project. */
 export function SidebarPickerHeader() {
   const collapsed = useSidebarCollapsed();
-  const projectFirstNav = useProjectFirstNav();
-
-  if (projectFirstNav) {
-    return (
-      <>
-        <ProjectSwitcher collapsed={collapsed} />
-        <CollapseToggle />
-        <SidebarThreadButton />
-      </>
-    );
-  }
 
   return (
     <>
-      <OrgProjectPicker collapsed={collapsed} />
+      <ProjectSwitcher collapsed={collapsed} />
       <CollapseToggle />
       <SidebarThreadButton />
     </>
@@ -48,21 +35,12 @@ export function SidebarPickerHeaderMobile({
   onClose: () => void;
 }) {
   const t = useT();
-  const projectFirstNav = useProjectFirstNav();
 
   return (
     <>
       {/* Picking closes the sheet, or the thing you just chose stays hidden
           behind it. */}
-      {/* The switcher grows to fill the row itself; the classic picker does not. */}
-      {projectFirstNav ? (
-        <ProjectSwitcher onNavigate={onClose} />
-      ) : (
-        <>
-          <OrgProjectPicker onNavigate={onClose} />
-          <div className="flex-1" />
-        </>
-      )}
+      <ProjectSwitcher onNavigate={onClose} />
       <SidebarThreadButton />
       <ToolbarIconButton
         onClick={onClose}

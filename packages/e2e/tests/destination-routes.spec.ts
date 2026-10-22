@@ -317,8 +317,9 @@ test.describe("destination routes", () => {
     );
     await expect(chatPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
     await expect(mainPanel(page)).toBeHidden({ timeout: SHELL_TIMEOUT_MS });
+    // A project's settings live in its Context now.
     expect(new URL(page.url()).pathname).toBe(
-      `/${orgSlug}/projects/${projectId}/settings`,
+      `/${orgSlug}/projects/${projectId}/library`,
     );
 
     /* A bookmark from before the split lands on the same view, with `main`
@@ -328,7 +329,8 @@ test.describe("destination routes", () => {
     );
     await page.waitForURL(
       (url) =>
-        url.pathname === `/${orgSlug}/projects/${projectId}/settings` &&
+        url.pathname === `/${orgSlug}/projects/${projectId}/library` &&
+        url.searchParams.get("section") === "general" &&
         url.searchParams.get("virtualmcpid") === null &&
         url.searchParams.get("main") === null,
       { timeout: SHELL_TIMEOUT_MS },
@@ -349,7 +351,8 @@ test.describe("destination routes", () => {
     await page.goto(`/${orgSlug}/agents/${projectId}/settings`);
     await page.waitForURL(
       (url) =>
-        url.pathname === `/${orgSlug}/projects/${projectId}/settings` &&
+        url.pathname === `/${orgSlug}/projects/${projectId}/library` &&
+        url.searchParams.get("section") === "general" &&
         url.searchParams.get("virtualmcpid") === null,
       { timeout: SHELL_TIMEOUT_MS },
     );
@@ -429,7 +432,7 @@ test.describe("destination routes", () => {
       "org level e2e chat",
     );
 
-    await page.goto(`/${orgSlug}/reports?sidepanel=true`);
+    await page.goto(`/${orgSlug}/tasks?sidepanel=true`);
     await expect(chatPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
     expect(new URL(page.url()).searchParams.get("virtualmcpid")).toBeNull();
 
@@ -442,7 +445,7 @@ test.describe("destination routes", () => {
 
     /* Landing on the agents route, the scope is legitimate — that route is one
        of the two that resolve it. The assertion that matters for this test is
-       the one above, on `/reports`, where it must never appear. */
+       the one above, on `/tasks`, where it must never appear. */
     await page.waitForURL(
       (url) =>
         url.pathname === `/${orgSlug}/projects/${projectId}` &&

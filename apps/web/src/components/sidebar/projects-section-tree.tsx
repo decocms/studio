@@ -1,4 +1,4 @@
-/** The sidebar's project tree (project-first nav); `buildProjectSidebar`
+/** The sidebar's project tree; `buildProjectSidebar`
  *  decides placement, this draws it and wires the edits. */
 
 import { useState, type MouseEvent, type ReactNode } from "react";

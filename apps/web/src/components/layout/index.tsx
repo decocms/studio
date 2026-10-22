@@ -13,7 +13,6 @@ import {
 } from "@decocms/ui/components/sheet.tsx";
 import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import { Panel } from "@/components/panel";
-import { useProjectFirstNav } from "@/hooks/use-preferences";
 import { OpenAppRecorder, OrgRail } from "@/components/sidebar/org-rail";
 import { SidebarResizeHandle } from "@/components/sidebar/sidebar-resize-handle";
 import { SidebarThreadButtonProvider } from "@/components/sidebar/thread-button";
@@ -53,7 +52,6 @@ function LayoutRoot({
     true,
   );
   const resize = useSidebarResize();
-  const projectFirstNav = useProjectFirstNav();
 
   return (
     <LayoutContext value={{ isMobile, resize }}>
@@ -61,18 +59,16 @@ function LayoutRoot({
         <div className="app-shell-root flex flex-col h-dvh overflow-hidden">
           {notice}
           <div className="flex flex-1 flex-row min-h-0">
-            {projectFirstNav && !outsideOrg && <OpenAppRecorder />}
-            {!isMobile && projectFirstNav && (outsideOrg?.rail ?? true) && (
-              <OrgRail />
-            )}
+            {!outsideOrg && <OpenAppRecorder />}
+            {!isMobile && (outsideOrg?.rail ?? true) && <OrgRail />}
             <SidebarLayout
               ref={resize.wrapperRef}
               className="flex-1 bg-sidebar relative min-h-0"
               style={
                 {
                   "--sidebar-width": `${resize.width}px`,
-                  // Project-first collapses all the way: the org rail is the icon rail.
-                  "--sidebar-width-icon": projectFirstNav ? "0px" : "3.125rem",
+                  // Collapses all the way: the org rail is the icon rail.
+                  "--sidebar-width-icon": "0px",
                 } as Record<string, string>
               }
             >
@@ -98,14 +94,13 @@ function LayoutSidebar({
   const { isMobile, resize } = useLayout();
   const { openMobile, setOpenMobile } = useSidebar();
   const collapsed = useSidebarCollapsed();
-  const projectFirstNav = useProjectFirstNav();
   const close = () => setOpenMobile(false);
 
   if (!isMobile) {
     return (
       <>
-        {/* Project-first collapses to zero width: clipped, but still tabbable. */}
-        <div className="contents" inert={projectFirstNav && collapsed}>
+        {/* Collapsed to zero width: clipped, but still tabbable. */}
+        <div className="contents" inert={collapsed}>
           {children}
         </div>
         <SidebarResizeHandle
@@ -133,7 +128,7 @@ function LayoutSidebar({
           {t("layouts.shellControls.navigationTitle")}
         </SheetTitle>
         <div className="flex h-full min-h-0">
-          {projectFirstNav && <OrgRail onNavigate={close} />}
+          <OrgRail onNavigate={close} />
           <div className="min-w-0 flex-1">
             {renderMobile({ onClose: close })}
           </div>

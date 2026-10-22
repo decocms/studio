@@ -1,5 +1,5 @@
 /**
- * The sidebar's header inside a project, under the new navigation: which
+ * The sidebar's header inside a project: which
  * project this is, and a list to jump to another one or back out to the org.
  * Outside a project — or before the scoped one resolves — it is the org label.
  */

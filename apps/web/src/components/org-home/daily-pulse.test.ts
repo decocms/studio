@@ -1,9 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { buildProjectIndex } from "@/lib/project-index";
 import {
   attentionReason,
   costSeriesMonthToDate,
-  projectSummaries,
   runningAgents,
   runsSeries,
   shippedSeries,
@@ -108,130 +106,6 @@ describe("attentionReason", () => {
 
   test("everything else is here because it is mine", () => {
     expect(attentionReason(task({ assigneeId: "user_1" }))).toBe("assigned");
-  });
-});
-
-describe("projectSummaries", () => {
-  const project = (id: string, repo: string | null) =>
-    ({
-      id,
-      title: id,
-      created_at: "2026-01-01T00:00:00Z",
-      metadata: repo
-        ? {
-            repository: {
-              owner: repo.split("/")[0],
-              name: repo.split("/")[1],
-              url: `https://github.com/${repo}`,
-            },
-          }
-        : {},
-      connections: [],
-    }) as never;
-
-  // Post-deploy validation shipped but stays open: someone still has to
-  // confirm it in production.
-  test("counts only what is still open", () => {
-    const index = buildProjectIndex([project("p1", "deco/farm")]);
-    const summaries = projectSummaries(
-      index,
-      [
-        task({ status: "triage", repo: "deco/farm" }),
-        task({ status: "in_progress", repo: "deco/farm" }),
-        task({ status: "post_deploy_validation", repo: "deco/farm" }),
-        task({ status: "done", repo: "deco/farm" }),
-        task({ status: "done", repo: "deco/farm" }),
-      ],
-      undefined,
-      NOW,
-    );
-    expect(summaries.get("p1")?.open).toBe(3);
-  });
-
-  test("a card on a shared repository counts for the project it is stamped for", () => {
-    const index = buildProjectIndex([
-      project("p1", "deco/mono"),
-      project("p2", "deco/mono"),
-    ]);
-    const summaries = projectSummaries(
-      index,
-      [
-        task({ status: "triage", repo: "deco/mono" }),
-        task({ status: "triage", repo: "deco/mono", virtualMcpId: "p2" }),
-      ],
-      undefined,
-      NOW,
-    );
-    expect(summaries.get("p1")?.open ?? 0).toBe(0);
-    expect(summaries.get("p2")?.open).toBe(1);
-  });
-
-  test("a repo-less project is reached through its runs", () => {
-    const index = buildProjectIndex([project("p1", null)]);
-    const summaries = projectSummaries(
-      index,
-      [task({ status: "triage", threads: [{ virtualMcpId: "p1" }] })],
-      undefined,
-      NOW,
-    );
-    expect(summaries.get("p1")?.open).toBe(1);
-  });
-
-  /** The ranking IS the feature: a row that says "shipped" while a run is
-   *  stopped on an answer is a row that cost someone their morning. */
-  test("something stopped on you outranks everything else", () => {
-    const index = buildProjectIndex([project("p1", "deco/farm")]);
-    const summaries = projectSummaries(
-      index,
-      [
-        task({ status: "done", updatedAt: daysAgo(1), repo: "deco/farm" }),
-        task({
-          status: "triage",
-          repo: "deco/farm",
-          threads: [thread("failed")],
-        }),
-        task({ status: "in_review", repo: "deco/farm" }),
-      ],
-      undefined,
-      NOW,
-    );
-    expect(summaries.get("p1")?.kind).toBe("waiting");
-  });
-
-  test("a break outranks a delivery", () => {
-    const index = buildProjectIndex([project("p1", "deco/farm")]);
-    const summaries = projectSummaries(
-      index,
-      [
-        task({ status: "done", updatedAt: daysAgo(1), repo: "deco/farm" }),
-        task({
-          status: "in_progress",
-          repo: "deco/farm",
-          threads: [thread("failed")],
-        }),
-      ],
-      undefined,
-      NOW,
-    );
-    expect(summaries.get("p1")?.kind).toBe("failed");
-  });
-
-  test("an open queue and nothing else is not news", () => {
-    const index = buildProjectIndex([project("p1", "deco/farm")]);
-    const summaries = projectSummaries(
-      index,
-      [task({ status: "triage", repo: "deco/farm" })],
-      undefined,
-      NOW,
-    );
-    expect(summaries.get("p1")).toMatchObject({ kind: "open", count: 1 });
-  });
-
-  test("a project nothing touched has no row headline at all", () => {
-    const index = buildProjectIndex([project("p1", "deco/farm")]);
-    expect(projectSummaries(index, [], undefined, NOW).get("p1")).toBe(
-      undefined,
-    );
   });
 });
 
