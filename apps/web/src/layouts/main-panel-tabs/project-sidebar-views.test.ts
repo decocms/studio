@@ -490,9 +490,9 @@ describe("Experiments and Calendar added once to a Blocks site's saved list", ()
   });
 
   test("unversioned projects keep the defaults, offers or not", () => {
-    expect(
-      selectedProjectSidebarViews(undefined, v8, undefined, []),
-    ).toContain("calendar");
+    expect(selectedProjectSidebarViews(undefined, v8, undefined, [])).toContain(
+      "calendar",
+    );
   });
 
   test("Calendar is still only where it shows today", () => {
