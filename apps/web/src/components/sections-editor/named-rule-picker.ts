@@ -351,7 +351,9 @@ export function namedRuleBlockFieldValue(value: unknown): NamedRuleKind | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const keys = Object.keys(value);
   if (keys.length !== 1 || keys[0] !== "__resolveType") return null;
-  return namedRuleKindOfBlock((value as { __resolveType?: unknown }).__resolveType);
+  return namedRuleKindOfBlock(
+    (value as { __resolveType?: unknown }).__resolveType,
+  );
 }
 
 /**

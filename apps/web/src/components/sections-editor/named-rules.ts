@@ -70,7 +70,9 @@ function namedRuleKindOfMatcher(resolveType: unknown): NamedRuleKind | null {
 }
 
 /** The kind whose saved block has the built-in type `resolveType`, if any. */
-export function namedRuleKindOfType(resolveType: unknown): NamedRuleKind | null {
+export function namedRuleKindOfType(
+  resolveType: unknown,
+): NamedRuleKind | null {
   for (const kind of NAMED_RULE_KINDS) {
     if (NAMED_RULES[kind].resolveType === resolveType) return kind;
   }
@@ -141,7 +143,8 @@ export interface NamedRuleValues {
 }
 
 /** One name's setting of a kind: a test's share or a campaign's window. */
-export type NamedRuleValue<K extends NamedRuleKind> = NamedRuleValues[K][string];
+export type NamedRuleValue<K extends NamedRuleKind> =
+  NamedRuleValues[K][string];
 
 /**
  * The well-known block of a kind in a decofile, for an editor to show:

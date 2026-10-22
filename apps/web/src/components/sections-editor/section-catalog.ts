@@ -5,7 +5,10 @@ import {
   isSavedBlockResolveType,
 } from "./block-type-utils";
 import { isLazyResolveType } from "./section-lazy";
-import { isLegacyPageResolveType, LEGACY_PAGE_RESOLVE_TYPES } from "./page-types";
+import {
+  isLegacyPageResolveType,
+  LEGACY_PAGE_RESOLVE_TYPES,
+} from "./page-types";
 import {
   resolveBlockSchemaMetadata,
   resolveSchema,
