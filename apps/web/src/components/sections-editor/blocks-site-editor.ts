@@ -6,10 +6,10 @@ import { createContext, useContext } from "react";
  * provide it; anywhere else, and while that is still being decided, it is
  * `false` and the forms behave as they do on v7.
  */
-const V8EditorContext = createContext(false);
+const BlocksSiteEditorContext = createContext(false);
 
-export const V8EditorProvider = V8EditorContext.Provider;
+export const BlocksSiteEditorProvider = BlocksSiteEditorContext.Provider;
 
-export function useV8Editor(): boolean {
-  return useContext(V8EditorContext);
+export function useBlocksSiteEditor(): boolean {
+  return useContext(BlocksSiteEditorContext);
 }

@@ -27,7 +27,7 @@ export function isPageResolveType(
  * (`isV8Schema`) adds its own page types; any other site keeps the v7 names
  * alone, as before.
  */
-export function isPageResolveTypeOnV8(
+export function isPageResolveTypeOnBlocksSite(
   resolveType: string,
   meta?: Pick<LiveMeta, "manifest"> | null,
 ): boolean {

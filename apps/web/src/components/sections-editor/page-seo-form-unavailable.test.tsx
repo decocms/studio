@@ -10,7 +10,7 @@ mock.module("@/hooks/use-new-blocks-editor", () => ({
 }));
 
 import { PageSeoForm } from "./page-seo-form";
-import { V8EditorProvider } from "./v8-editor-context";
+import { BlocksSiteEditorProvider } from "./blocks-site-editor";
 
 /**
  * A next-major page schema can list no SEO type: SEO can't be turned on
@@ -26,7 +26,7 @@ function renderSeo(props: {
   const persisted: unknown[] = [];
   render(
     <QueryClientProvider client={new QueryClient()}>
-      <V8EditorProvider value={props.v8 ?? true}>
+      <BlocksSiteEditorProvider value={props.v8 ?? true}>
         <PageSeoForm
           rawSeo={props.rawSeo}
           innerSeo={{}}
@@ -41,7 +41,7 @@ function renderSeo(props: {
           onBumpFormKey={() => {}}
           asyncRenderAvailable={false}
         />
-      </V8EditorProvider>
+      </BlocksSiteEditorProvider>
     </QueryClientProvider>,
   );
   const toggle = document.querySelector("#seo-enable") as HTMLButtonElement;

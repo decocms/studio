@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { findBlogPageSlug } from "../sandbox/content/blog/blog-preview-url";
 import { resolveMatcherIconName } from "./matcher-icons";
 import { namedRuleSupport } from "./named-rules";
-import { isPageResolveTypeOnV8 } from "./page-types";
+import { isPageResolveTypeOnBlocksSite } from "./page-types";
 import type { LiveMeta } from "./resolve-schema";
 import {
   declaresBuiltInPage,
@@ -68,9 +68,11 @@ describe("schema-driven names: v8 only", () => {
   });
 
   test("page types for the site SEO lookup and the blog's templates", () => {
-    expect(isPageResolveTypeOnV8("post", V8)).toBe(true);
-    expect(isPageResolveTypeOnV8("post", NOT_V8)).toBe(false);
-    expect(isPageResolveTypeOnV8("website/pages/Page.tsx", NOT_V8)).toBe(true);
+    expect(isPageResolveTypeOnBlocksSite("post", V8)).toBe(true);
+    expect(isPageResolveTypeOnBlocksSite("post", NOT_V8)).toBe(false);
+    expect(
+      isPageResolveTypeOnBlocksSite("website/pages/Page.tsx", NOT_V8),
+    ).toBe(true);
     const blog = {
       "blog-post": {
         __resolveType: "post",

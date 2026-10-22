@@ -47,7 +47,7 @@ import {
 } from "../named-rule-picker";
 import { namedRuleOf } from "../named-rules";
 import { useNamedRuleFieldSupport } from "../named-rule-step";
-import { useV8Editor } from "../v8-editor-context";
+import { useBlocksSiteEditor } from "../blocks-site-editor";
 
 // `meta` changes only on page load; `resolveType` changes only on rule picker
 // selection — cache the matcher list per meta instance (WeakMap, so a stale
@@ -124,7 +124,7 @@ export function MultivariateFieldWrapper({
   const compact = useNewBlocksEditor();
   const VariantIcon = compact ? LayersThree01 : Flag01;
   const { value, onChange, meta, path, label, focused, decofile } = props;
-  const v8 = useV8Editor();
+  const v8 = useBlocksSiteEditor();
   // Rule labels: a Blocks v8 site's short built-in names; v7's as before.
   const formatMatcher = matcherFormatter(v8);
   const focusContext = useContext(RootVariantFocusContext);

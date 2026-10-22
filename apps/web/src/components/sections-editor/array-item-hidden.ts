@@ -39,13 +39,16 @@ function asWrap(item: unknown): HiddenItemWrap | null {
  * hides items in (`hideArrayItem`). A v7 variants block is never typed
  * `multivariate` (there it would be a saved block's key).
  */
-function wrapIsV8(wrap: HiddenItemWrap | null, v8: boolean | undefined) {
+function wrapIsBlocksSite(
+  wrap: HiddenItemWrap | null,
+  v8: boolean | undefined,
+) {
   return v8 ?? wrap?.__resolveType === V8_MULTIVARIATE_RESOLVE_TYPE;
 }
 
 /**
  * True when the item is wrapped in a multivariate + `never` matcher. The
- * short `never` counts only on a Blocks v8 site (see `wrapIsV8`): a v7 site
+ * short `never` counts only on a Blocks v8 site (see `wrapIsBlocksSite`): a v7 site
  * reads exactly v7's shape, as before.
  */
 export function isArrayItemHidden(item: unknown, v8?: boolean): boolean {
@@ -53,7 +56,7 @@ export function isArrayItemHidden(item: unknown, v8?: boolean): boolean {
   const first = wrap?.variants?.[0];
   return isNeverMatcherResolveType(
     first?.rule?.__resolveType,
-    wrapIsV8(wrap, v8),
+    wrapIsBlocksSite(wrap, v8),
   );
 }
 
@@ -78,7 +81,7 @@ export function hideArrayItem(
 export function showArrayItem(item: unknown, v8?: boolean): unknown {
   if (!isArrayItemHidden(item, v8)) return item;
   const wrap = asWrap(item);
-  return variantValueOn(wrap?.variants?.[0], wrapIsV8(wrap, v8));
+  return variantValueOn(wrap?.variants?.[0], wrapIsBlocksSite(wrap, v8));
 }
 
 /**

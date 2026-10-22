@@ -1,5 +1,5 @@
 import type { LiveMeta } from "./resolve-schema";
-import { isPageResolveTypeOnV8 } from "./page-types";
+import { isPageResolveTypeOnBlocksSite } from "./page-types";
 import { unwrapSeoConfig, wrapSeoPersistValue } from "./seo-lazy-render";
 import {
   isSeoSectionResolveType,
@@ -74,7 +74,8 @@ export function findSiteSeoEntry(
     if (!isPlainObject(val)) continue;
     const obj = val;
     const rt = obj.__resolveType;
-    if (typeof rt === "string" && isPageResolveTypeOnV8(rt, meta)) continue;
+    if (typeof rt === "string" && isPageResolveTypeOnBlocksSite(rt, meta))
+      continue;
     const seo = obj.seo;
     if (isPlainObject(seo)) {
       const seoObj = seo;

@@ -9,7 +9,7 @@ import {
   type NamedRuleViews,
   NamedRuleViewsProvider,
 } from "@/components/sections-editor/named-rule-step";
-import { V8EditorProvider } from "@/components/sections-editor/v8-editor-context";
+import { BlocksSiteEditorProvider } from "@/components/sections-editor/blocks-site-editor";
 import {
   AlertCircle,
   CornerUpRight,
@@ -1178,7 +1178,7 @@ function ContentBrowserReady({
       ? BLOG_SINGULAR[deleteTarget.blogKind]
       : (deleteTarget?.kind ?? "item");
   return (
-    <V8EditorProvider value={!runsSiteCode}>
+    <BlocksSiteEditorProvider value={!runsSiteCode}>
       <div className="flex h-full w-full">
         <CollectionsSidebar
           active={activeCollection}
@@ -1716,7 +1716,7 @@ function ContentBrowserReady({
           </AlertDialogContent>
         </AlertDialog>
       </div>
-    </V8EditorProvider>
+    </BlocksSiteEditorProvider>
   );
 }
 

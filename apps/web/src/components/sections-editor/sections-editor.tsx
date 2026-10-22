@@ -202,7 +202,7 @@ import { VariantRuleEditor } from "./variant-rule-editor";
 import { withVariantValue } from "./variant-shape";
 import { isLazyWrapper } from "./lazy-value";
 import { HeaderSlotProvider, HeaderSlotTarget } from "./header-slot";
-import { V8EditorProvider } from "./v8-editor-context";
+import { BlocksSiteEditorProvider } from "./blocks-site-editor";
 
 /** One toast for a section form's save outcome, however many saves it took. */
 const STALE_FORM_TOAST = "section-form-stale-save";
@@ -4649,7 +4649,7 @@ export function SectionsEditor({
   );
 
   return (
-    <V8EditorProvider value={protocolProject}>
+    <BlocksSiteEditorProvider value={protocolProject}>
       <HeaderSlotProvider>
         <div className="flex h-full min-w-0 w-full flex-col">
           {!compact && backButton && (
@@ -5051,6 +5051,6 @@ export function SectionsEditor({
           )}
         </div>
       </HeaderSlotProvider>
-    </V8EditorProvider>
+    </BlocksSiteEditorProvider>
   );
 }

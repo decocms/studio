@@ -15,7 +15,7 @@ mock.module("@/hooks/use-new-blocks-editor", () => ({
 import { resolveSchema, type LiveMeta } from "./resolve-schema";
 import { SchemaForm } from "./schema-form";
 import { RootVariantFocusProvider } from "./fields/multivariate-field-wrapper";
-import { V8EditorProvider } from "./v8-editor-context";
+import { BlocksSiteEditorProvider } from "./blocks-site-editor";
 
 const b64 = (name: string) => btoa(name);
 
@@ -152,9 +152,9 @@ describe("a saved v8 multivariate block in the form", () => {
           project={{ id: "site", slug: "site" }}
         >
           <TooltipProvider delayDuration={0}>
-            <V8EditorProvider value>
+            <BlocksSiteEditorProvider value>
               <Harness onValue={() => {}} />
-            </V8EditorProvider>
+            </BlocksSiteEditorProvider>
           </TooltipProvider>
         </ProjectContextProvider>
       </QueryClientProvider>,
@@ -197,11 +197,11 @@ describe("a saved section opened on one of its variants", () => {
           project={{ id: "site", slug: "site" }}
         >
           <TooltipProvider delayDuration={0}>
-            <V8EditorProvider value>
+            <BlocksSiteEditorProvider value>
               <RootVariantFocusProvider value={{ index: focus, remember }}>
                 <Harness onValue={() => {}} saved={TWO} />
               </RootVariantFocusProvider>
-            </V8EditorProvider>
+            </BlocksSiteEditorProvider>
           </TooltipProvider>
         </ProjectContextProvider>
       </QueryClientProvider>,

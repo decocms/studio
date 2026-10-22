@@ -21,7 +21,7 @@ import { List, Plus, Rows01 } from "@untitledui/icons";
 import { toast } from "sonner";
 import { ViewModeToggle } from "@decocms/ui/components/view-mode-toggle.tsx";
 import { useLocalStorage } from "@/hooks/use-local-storage";
-import { useV8Editor } from "../v8-editor-context";
+import { useBlocksSiteEditor } from "../blocks-site-editor";
 import { useNewBlocksEditor } from "@/hooks/use-new-blocks-editor";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import { useT } from "@/i18n/use-t.ts";
@@ -158,7 +158,7 @@ export function ArrayField({
   onRequestAddSection,
   sandbox,
 }: FieldProps) {
-  const v8 = useV8Editor();
+  const v8 = useBlocksSiteEditor();
   const t = useT();
   const compact = useNewBlocksEditor();
   const tooltipsEnabled = useFieldDescriptionTooltips(sandbox?.virtualMcpId);

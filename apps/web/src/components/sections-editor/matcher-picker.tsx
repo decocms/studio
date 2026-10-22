@@ -21,7 +21,7 @@ import {
 } from "./matcher-rules";
 import { globalSectionLabel } from "./page-list";
 import { formatMatcher } from "./format-matcher";
-import { useV8Editor } from "./v8-editor-context";
+import { useBlocksSiteEditor } from "./blocks-site-editor";
 import { isV8Schema } from "@decocms/shared/blocks-major";
 import {
   type CampaignWindow,
@@ -224,7 +224,7 @@ export function MatcherPicker({
   /** v8 only: tests and campaigns by name. Absent, the picker is as before. */
   named?: NamedRulePickerProps;
 }) {
-  const v8Editor = useV8Editor();
+  const v8Editor = useBlocksSiteEditor();
   const [open, setOpenState] = useState(false);
   const [step, setStep] = useState<PickerStep>({ view: "rules" });
   const [pending, setPending] = useState(false);
