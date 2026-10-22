@@ -172,7 +172,7 @@ function ChoiceInput({
                 className={cn(
                   "flex items-start gap-3 px-2 py-3 rounded-lg text-left transition-colors w-full",
                   isSelected && "bg-accent/50",
-                  !isSelected && "hover:bg-accent/30",
+                  !isSelected && "hover:bg-accent",
                 )}
                 aria-label={t("chat.userAskQuestion.selectOption", { option })}
               >
@@ -197,7 +197,7 @@ function ChoiceInput({
             className={cn(
               "flex items-center gap-3 px-2 py-3 rounded-lg transition-colors w-full cursor-text",
               isCustomActive && "bg-accent/50",
-              !isCustomActive && "hover:bg-accent/30",
+              !isCustomActive && "hover:bg-accent",
             )}
           >
             <span className="flex items-center justify-center size-6 rounded-md bg-muted shrink-0">
@@ -265,7 +265,7 @@ function ConfirmInput({ control, name }: FieldInputProps) {
                       className={cn(
                         "flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors flex-1",
                         isSelected && "bg-accent/50",
-                        !isSelected && "hover:bg-accent/30",
+                        !isSelected && "hover:bg-accent",
                       )}
                       aria-label={t("chat.userAskQuestion.confirmValue", {
                         value: t(
@@ -515,7 +515,7 @@ function UserAskLoadingUI() {
   const t = useT();
   return (
     <div className="flex items-center gap-2 p-4 border border-dashed rounded-lg bg-accent/50 w-[calc(100%-16px)] max-w-[640px] mx-auto mb-2">
-      <MessageQuestionCircle className="size-5 text-muted-foreground shimmer" />
+      <MessageQuestionCircle className="size-5 text-muted-foreground animate-pulse motion-reduce:animate-none" />
       <span className="text-sm text-muted-foreground shimmer">
         {t("chat.userAskQuestion.preparingQuestion")}
       </span>

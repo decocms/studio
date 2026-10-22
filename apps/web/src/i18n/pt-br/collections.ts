@@ -4,6 +4,8 @@ export const collections = {
   "collections.collectionDisplayButton.displayAndFilters": "Exibição & filtros",
   "collections.collectionTabs.tabList": "Visualizações da coleção",
   "collections.collectionDisplayButton.sortBy": "Ordenar por",
+  "collections.collectionDisplayButton.tableView": "Visualização em tabela",
+  "collections.collectionDisplayButton.cardsView": "Visualização em cards",
   "collections.collectionTableWrapper.loading": "Carregando...",
   "collections.collectionTableWrapper.noItemsFound": "Nenhum item encontrado",
   "collections.mutations.itemCreatedSuccessfully": "Item criado com sucesso",

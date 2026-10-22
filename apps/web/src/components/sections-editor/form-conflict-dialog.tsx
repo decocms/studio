@@ -86,13 +86,6 @@ export function FormConflictDialog({
         )}
         data-testid="form-conflict-dialog"
         onEscapeKeyDown={(event) => event.preventDefault()}
-        // An alert dialog focuses its Cancel button, and this one has none:
-        // focus the dialog itself, so what the user was typing stops at it
-        // (not the form behind, and not a button a space would press).
-        onOpenAutoFocus={(event) => {
-          event.preventDefault();
-          (event.currentTarget as HTMLElement | null)?.focus();
-        }}
       >
         <FormConflictChoices
           {...props}
@@ -327,7 +320,7 @@ export function FormConflictChoices(props: FormConflictChoicesProps) {
                     }
                     data-changed-again={ringed ? "" : undefined}
                     onClick={() => go(i)}
-                    className="group cursor-pointer rounded-full p-1 outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                    className="group cursor-pointer rounded-full p-1 focus-ring"
                   >
                     <span
                       className={cn(
@@ -474,7 +467,7 @@ function ConflictCards({
   const viewerAvatar = (
     <Avatar
       url={viewer?.image ?? undefined}
-      fallback={initials(viewer?.name) || t("sectionsEditor.formConflict.you")}
+      fallback={viewer?.name?.trim() || t("sectionsEditor.formConflict.you")}
       shape="circle"
       size="sm"
       className="text-xs"
@@ -485,7 +478,7 @@ function ConflictCards({
   ) : author?.name ? (
     <Avatar
       url={author.avatarUrl}
-      fallback={initials(author.name)}
+      fallback={author.name}
       shape="circle"
       size="sm"
       className="text-xs"
@@ -539,17 +532,6 @@ function ConflictCards({
 const exactTime = (date: Date, language: string) =>
   date.toLocaleString(language, { dateStyle: "medium", timeStyle: "short" });
 
-/** "Ana Souza" -> "AS". */
-export function initials(name: string | null | undefined): string {
-  return (name ?? "")
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((word) => word.charAt(0).toUpperCase())
-    .join("");
-}
-
 function ConflictCard({
   side,
   checked,
@@ -581,11 +563,10 @@ function ConflictCard({
       tabIndex={checked ? 0 : -1}
       onClick={onChoose}
       className={cn(
-        "grid w-full cursor-pointer grid-cols-[auto_minmax(0,1fr)] items-start gap-3 rounded-xl border bg-background p-3 text-left transition-[border-color,box-shadow,background-color] outline-none",
-        "focus-visible:ring-2 focus-visible:ring-ring/50",
+        "grid w-full cursor-pointer grid-cols-[auto_minmax(0,1fr)] items-start gap-3 rounded-xl border bg-background p-3 text-left transition-[border-color,box-shadow,background-color] focus-ring",
         checked
           ? "border-primary bg-primary/5 ring-1 ring-primary"
-          : "hover:bg-muted/50",
+          : "hover:bg-accent",
       )}
     >
       {avatar}

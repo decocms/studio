@@ -4,7 +4,7 @@ import { Input } from "./input.tsx";
 import { Label } from "./label.tsx";
 
 const meta = {
-  title: "Components/Label",
+  title: "Atoms/Label",
   component: Label,
   args: {
     children: "Email address",

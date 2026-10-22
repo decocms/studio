@@ -1,5 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { isOrgArchived, parseOrgMetadata } from "./org-archived";
+import {
+  activeOrganizations,
+  isOrgArchived,
+  parseOrgMetadata,
+} from "./org-archived";
 
 describe("parseOrgMetadata", () => {
   it("parses the JSON string Better Auth returns", () => {
@@ -46,5 +50,18 @@ describe("isOrgArchived", () => {
     expect(isOrgArchived({ metadata: '{"archived":false}' })).toBe(false);
     expect(isOrgArchived({ metadata: "{nope" })).toBe(false);
     expect(isOrgArchived(null)).toBe(false);
+  });
+});
+
+describe("activeOrganizations", () => {
+  it("drops archived orgs and keeps the first of a duplicated org", () => {
+    const a = { id: "a", metadata: null };
+    const b = { id: "b", metadata: '{"archived":true}' };
+    const c = { id: "c" };
+    expect(activeOrganizations([a, b, c, { ...a }])).toEqual([a, c]);
+  });
+
+  it("reads an empty list as empty", () => {
+    expect(activeOrganizations([])).toEqual([]);
   });
 });

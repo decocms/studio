@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import type { TokenOptions } from "../types";
+import { GitProviderError, type TokenOptions } from "../types";
 import {
   BitbucketChangeRequestClient,
   conflictFromDiffstat,
@@ -224,5 +224,26 @@ describe("BitbucketChangeRequestClient's 401 handling", () => {
     expect(pr?.number).toBe(7);
     expect(calls).toBe(2);
     expect(tokensRequested).toEqual([undefined, { forceRefresh: true }]);
+  });
+
+  test("degrades a well-formed but non-object body from opening a pull request", async () => {
+    globalThis.fetch = (async (url: string | URL | Request) => {
+      if (String(url).includes("/pullrequests?")) {
+        return new Response(JSON.stringify({ values: [] }), { status: 200 });
+      }
+      return new Response(JSON.stringify([]), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const client = new BitbucketChangeRequestClient({
+      repo: { provider: "bitbucket", host: "bitbucket.org", path: "acme/site" },
+      tokenSource: {
+        kind: "oauth",
+        get: async () => ({ token: "t", kind: "oauth", expiresAt: null }),
+      },
+    });
+
+    await expect(
+      client.open({ head: "feature", base: "main", title: "hi" }),
+    ).rejects.toBeInstanceOf(GitProviderError);
   });
 });

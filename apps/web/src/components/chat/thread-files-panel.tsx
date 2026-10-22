@@ -41,7 +41,7 @@ function FilesAccordion({
     <div
       className={cn(
         variant === "card"
-          ? "rounded-xl border border-border bg-muted/95 shadow-sm backdrop-blur-sm"
+          ? "rounded-xl bg-muted/95 shadow-edge backdrop-blur-sm"
           : "border-b border-border bg-background",
       )}
     >

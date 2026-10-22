@@ -2,6 +2,9 @@ import type { common as commonEn } from "../en/common.ts";
 
 export const common = {
   "common.copy": "Copiar",
+  "common.copied": "Copiado",
+  "common.show": "Mostrar",
+  "common.hide": "Ocultar",
   "common.seeAll": "Ver todos os {count} {noun}",
   "common.soon": "Em breve",
   "common.goBack": "Voltar",

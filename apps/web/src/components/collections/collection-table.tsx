@@ -61,8 +61,7 @@ export function CollectionTable<T = Record<string, unknown>>({
   }
 
   function getHeaderClass(idx: number, total: number) {
-    let base =
-      "px-4 py-2 text-left font-mono font-normal text-muted-foreground text-[11px] h-9 uppercase tracking-wider";
+    let base = "px-4 py-2 text-left font-normal text-meta h-9";
     if (idx === total - 1) base += " w-8";
     return base;
   }
@@ -125,7 +124,7 @@ export function CollectionTable<T = Record<string, unknown>>({
               key={i}
               data-row-index={i}
               className={cn(
-                "group/data-row transition-colors border-b-0 hover:bg-accent/50",
+                "group/data-row transition-colors border-b-0 hover:bg-accent",
                 onRowClick ? "cursor-pointer" : "",
                 extraClasses,
               )}
@@ -154,8 +153,10 @@ export function CollectionTable<T = Record<string, unknown>>({
                 >
                   <div
                     className={cn(
-                      col.wrap ? "w-full" : "min-w-0 w-full",
-                      !col.wrap && "truncate overflow-hidden whitespace-nowrap",
+                      col.wrap ? "w-full" : "min-w-0",
+                      // The inset keeps a control's outer edge ring inside the clip.
+                      !col.wrap &&
+                        "-m-0.5 truncate overflow-hidden whitespace-nowrap p-0.5",
                     )}
                   >
                     {col.render

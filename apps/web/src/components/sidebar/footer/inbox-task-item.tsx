@@ -3,7 +3,6 @@
 import { Avatar } from "@decocms/ui/components/avatar.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
-import { getInitials } from "@/lib/get-initials";
 import { formatTimeAgo } from "@/lib/format-time";
 import { taskKey } from "@decocms/shared/task-key";
 import { useT } from "@/i18n/use-t.ts";
@@ -79,7 +78,7 @@ export function InboxTaskItem({
     <button
       type="button"
       onClick={onSelect}
-      className="flex w-full items-start gap-3 border-b border-border px-4 py-3 text-left transition-colors last:border-0 hover:bg-muted/25"
+      className="flex w-full items-start gap-3 border-b border-border px-4 py-3 text-left transition-colors last:border-0 hover:bg-accent"
     >
       <span className="mt-0.5 shrink-0">
         {isAgent ? (
@@ -87,7 +86,7 @@ export function InboxTaskItem({
         ) : (
           <Avatar
             url={update.actorImage ?? undefined}
-            fallback={getInitials(update.actorName ?? undefined)}
+            fallback={update.actorName ?? "?"}
             shape="circle"
             // 24px, matching SuperAgentIcon above — `sm` is 32 and read bigger.
             size="xs"

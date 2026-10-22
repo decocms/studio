@@ -41,7 +41,10 @@ export function ProjectCard({
     : landingTabIdFor(project.metadata?.ui?.layout);
 
   return (
-    <Card className="relative transition-colors group overflow-hidden flex flex-col h-full hover:bg-muted/50">
+    <Card
+      size="flush"
+      className="relative transition-colors group overflow-hidden flex flex-col h-full hover:bg-accent"
+    >
       {/* Overlay button — pins agent to sidebar and navigates */}
       <button
         type="button"
@@ -58,13 +61,13 @@ export function ProjectCard({
               icon={project.icon}
               name={project.title}
               size="sm"
-              className="shrink-0 shadow-sm"
+              className="shrink-0 shadow-edge"
             />
             {/* pointer-events-auto re-enables the dropdown */}
             <div className="relative z-10 pointer-events-auto transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                  <Button variant="ghost" size="icon">
                     <DotsVertical size={20} />
                   </Button>
                 </DropdownMenuTrigger>

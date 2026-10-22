@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { Spinner } from "./spinner.tsx";
 
 const meta = {
-  title: "Components/Spinner",
+  title: "Atoms/Spinner",
   component: Spinner,
   args: {
     size: "default",
@@ -20,9 +20,7 @@ type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {};
 
-/** Colour is not a prop. The spinner inherits `currentColor`, so it takes the
- *  colour of whatever it sits in — which is what lets one component serve a
- *  muted row, a destructive action and a filled button alike. */
+/** Takes the colour of the text around it. */
 export const Colors: Story = {
   render: () => (
     <div className="flex items-center gap-4">
@@ -47,8 +45,7 @@ export const Sizes: Story = {
   ),
 };
 
-/** Inside a filled button — the case the old palette variants could not serve,
- *  because a `fill-primary` spinner on a primary button is invisible. */
+/** Inside a filled button. */
 export const OnFilledButton: Story = {
   render: () => (
     <button

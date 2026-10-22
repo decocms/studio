@@ -40,7 +40,6 @@ import { authClient } from "@/lib/auth-client";
 import { AgenticSetupButton } from "./agentic-setup";
 import { ColumnRulesSheet, useEntryAutomations } from "./column-rules";
 import { useTaskBoardRulesLive } from "@/hooks/use-task-board-prompts";
-import { getInitials } from "@/lib/get-initials";
 import { useLocalStorage } from "@/hooks/use-local-storage";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import { cn } from "@decocms/ui/lib/utils.ts";
@@ -219,10 +218,8 @@ import {
   visibleSelection,
 } from "./filters-search";
 import { feedEventKind, groupFeedByDay, type FeedEventKind } from "./feed";
-import { compactElapsed, feedRail } from "./feed-rail";
 import { useProjectIndex } from "@/hooks/use-project-index";
 import { useProjectScope } from "@/hooks/use-project-scope";
-import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { projectRepo } from "@/lib/repository-binding";
 import { scopedBoardItems } from "./board-scope";
 import {
@@ -238,12 +235,7 @@ import {
 } from "@/lib/project-index";
 import { ProjectEntryIcon, ProjectEntryRow } from "@/components/project-entry";
 import { usePanelActions } from "@/layouts/shell-layout";
-import {
-  Navigate,
-  useNavigate,
-  useParams,
-  useSearch,
-} from "@tanstack/react-router";
+import { Navigate, useNavigate, useParams } from "@tanstack/react-router";
 import {
   findTaskByKeyOrId,
   taskRouteSegment,
@@ -281,7 +273,7 @@ const META =
 /** Shown on lane hover, and on the lane a drag is over: the dragged card
  *  holds the pointer then, so the lane itself never reads as hovered. */
 const LANE_ACTION =
-  "flex size-6 shrink-0 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-[color,background-color,opacity] hover:bg-muted hover:text-foreground group-hover/lane:opacity-100 group-data-[drop-target]/lane:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100";
+  "flex size-6 shrink-0 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-[color,background-color,opacity] hover:bg-accent hover:text-foreground group-hover/lane:opacity-100 group-data-[drop-target]/lane:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100";
 
 /**
  * Footer glyph size. 12, not 14, because every icon here is drawn on a 24 grid:
@@ -553,7 +545,7 @@ function CardAction({
   return (
     <Button
       variant="outline"
-      size="sm"
+      size="xs"
       onClick={(e) => {
         e.stopPropagation();
         action.onClick();
@@ -566,7 +558,7 @@ function CardAction({
           `${node.offsetWidth}px`,
         )
       }
-      className="absolute -top-0.5 right-0 h-6 gap-1.5 px-2 text-xs font-medium shadow-sm pointer-events-none opacity-0 transition-opacity focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
+      className="absolute -top-0.5 right-0 gap-1.5 font-medium pointer-events-none opacity-0 transition-opacity focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
     >
       <action.icon className={PROPERTY_GLYPH_CLASS} />
       {action.label}
@@ -890,7 +882,7 @@ function AssigneeDisplay({
       return assignedBy ? (
         <Avatar
           url={assignedBy.user?.image ?? undefined}
-          fallback={getInitials(assignedBy.user?.name)}
+          fallback={assignedBy.user?.name ?? "?"}
           shape="circle"
           size="xs"
           title={title}
@@ -902,7 +894,7 @@ function AssigneeDisplay({
         {assignedBy && (
           <Avatar
             url={assignedBy.user?.image ?? undefined}
-            fallback={getInitials(assignedBy.user?.name)}
+            fallback={assignedBy.user?.name ?? "?"}
             shape="circle"
             size="xs"
             className="-mr-2 ring-2 ring-background"
@@ -916,7 +908,7 @@ function AssigneeDisplay({
     return (
       <Avatar
         url={assignee.user?.image ?? undefined}
-        fallback={getInitials(assignee.user?.name)}
+        fallback={assignee.user?.name ?? "?"}
         shape="circle"
         size="xs"
       />
@@ -966,57 +958,25 @@ function AssigneeDisplay({
 /** The board, pointed at whichever org `?boardOrg=` names (normally your own).
  *  The swap has to wrap the board rather than live inside it: every hook below
  *  reads the org off `ProjectContext`. */
-export function TaskBoardPage({
-  scopeProject,
-  inlineTabs = false,
-  taskInSearch = false,
-}: {
-  /** Narrow to this project explicitly, for a mount whose route carries no
-   *  `$agentId` (`/$org/projects?project=`). Must be the RESOLVED entity: it
-   *  skips the loading branch, so a stub id renders an empty board. */
-  scopeProject?: VirtualMCPEntity;
-  /** Draw the Board/List/Feed tabs inside the board instead of portalling them
-   *  into the panel toolbar, for a mount that is only part of its page. A
-   *  placement, not an escape hatch: switching views has to `clearSelection()`,
-   *  which only the board can do. */
-  inlineTabs?: boolean;
-  /** Address the open card in `?task=` rather than the route's `{-$taskKey}`,
-   *  for a route that has no such segment and cannot grow one — see
-   *  `projectsIndexRoute`. */
-  taskInSearch?: boolean;
-} = {}) {
+export function TaskBoardPage() {
   return (
     <BoardOrgProvider>
-      <TaskBoardBody
-        scopeProject={scopeProject}
-        inlineTabs={inlineTabs}
-        taskInSearch={taskInSearch}
-      />
+      <TaskBoardBody />
     </BoardOrgProvider>
   );
 }
 
-function TaskBoardBody({
-  scopeProject,
-  inlineTabs,
-  taskInSearch,
-}: {
-  scopeProject?: VirtualMCPEntity;
-  inlineTabs?: boolean;
-  taskInSearch?: boolean;
-}) {
+function TaskBoardBody() {
   const t = useT();
   const { org, locator } = useProjectContext();
   const { items: orgItems, isLoading: itemsLoading } = useTaskBoardItems();
   /** A project's home IS this board — see `board-scope.ts` for why scope is a
    *  narrowing of the input rather than a value in the `?repo=` filter. */
   const {
-    scopeId: routeScopeId,
-    project: routeProject,
+    scopeId,
+    project: scopedProject,
     projects: orgProjects,
   } = useProjectScope();
-  const scopeId = scopeProject?.id ?? routeScopeId;
-  const scopedProject = scopeProject ?? routeProject;
   const { items, isLoading } = scopedBoardItems({
     items: orgItems,
     scopeId,
@@ -1123,7 +1083,7 @@ function TaskBoardBody({
     setSortDirection,
   } = useBoardSearch(
     {
-      layout: inlineTabs && feedEnabled ? "feed" : "board",
+      layout: "board",
       assignee:
         viewerId === null
           ? null
@@ -1252,25 +1212,13 @@ function TaskBoardBody({
   const { taskKey: taskKeyParam } = useParams({ strict: false }) as {
     taskKey?: string;
   };
-  const { task: taskKeySearch } = useSearch({ strict: false }) as {
-    task?: string;
-  };
-  const openTaskKey = taskInSearch ? taskKeySearch : taskKeyParam;
+  const openTaskKey = taskKeyParam;
   /** Where this mount writes a card's address. Every open, close and
-   *  canonicalization goes through it, so the two spellings cannot drift. */
-  const taskAddress = (key: string | undefined) =>
-    taskInSearch
-      ? {
-          params: (prev: Record<string, unknown>) => prev,
-          search: (prev: Record<string, unknown>) => ({ ...prev, task: key }),
-        }
-      : {
-          params: (prev: Record<string, unknown>) => ({
-            ...prev,
-            taskKey: key,
-          }),
-          search: (prev: Record<string, unknown>) => prev,
-        };
+   *  canonicalization goes through it. */
+  const taskAddress = (key: string | undefined) => ({
+    params: (prev: Record<string, unknown>) => ({ ...prev, taskKey: key }),
+    search: (prev: Record<string, unknown>) => prev,
+  });
   /** Resolved against the ORG's cards, not the scoped slice: a link from
    *  outside the project must open rather than redirect away as stale. */
   const openItem = findTaskByKeyOrId(orgItems, openTaskKey) ?? null;
@@ -1490,8 +1438,7 @@ function TaskBoardBody({
     return <Navigate to="." {...taskAddress(canonicalKey)} replace />;
   }
 
-  /** Board / List, and Feed and Epics behind the flag. One definition for both
-   *  placements — see `inlineTabs`. */
+  /** Board / List / Epics, and Feed behind the flag. */
   const layoutTabs = (
     <Page.Tabs>
       {feedEnabled && (
@@ -1529,20 +1476,18 @@ function TaskBoardBody({
       >
         {t("common.taskBoard.listView")}
       </Page.Tab>
-      {feedEnabled && (
-        <Page.Tab
-          active={layout === "epics"}
-          aria-label={t("taskBoard.taskBoard.layoutViewAriaLabel", {
-            label: t("taskBoard.epics.tab"),
-          })}
-          onClick={() => {
-            setLayout("epics");
-            clearSelection();
-          }}
-        >
-          {t("taskBoard.epics.tab")}
-        </Page.Tab>
-      )}
+      <Page.Tab
+        active={layout === "epics"}
+        aria-label={t("taskBoard.taskBoard.layoutViewAriaLabel", {
+          label: t("taskBoard.epics.tab"),
+        })}
+        onClick={() => {
+          setLayout("epics");
+          clearSelection();
+        }}
+      >
+        {t("taskBoard.epics.tab")}
+      </Page.Tab>
     </Page.Tabs>
   );
 
@@ -1574,10 +1519,9 @@ function TaskBoardBody({
         <>
           {/* From the scope, so two overrides cannot disagree. */}
           <Page.Title>
-            {scopeProject?.title ??
-              (feedEnabled
-                ? t("sidebar.navDestinations.spineTasks")
-                : t("taskBoard.taskBoard.tasksTitle"))}
+            {feedEnabled
+              ? t("sidebar.navDestinations.spineTasks")
+              : t("taskBoard.taskBoard.tasksTitle")}
           </Page.Title>
           <Page.Actions
             secondary={
@@ -1659,37 +1603,16 @@ function TaskBoardBody({
               </Button>
             )}
           </Page.Actions>
-          {inlineTabs ? (
-            <div>
-              {/* Same page padding as the project overview header above it (`Page.Container`'s), not the org-wide board's. */}
-              <div className="mx-auto flex w-full max-w-[1680px] items-center justify-between gap-3 px-4 pt-4 pb-3 md:px-8">
-                {layoutTabs}
-                {feedEnabled && (
-                  <AgentsRunningBadge items={items} onOpen={openTask} />
-                )}
-              </div>
-            </div>
-          ) : (
-            <>
-              <Panel.Toolbar.Left.Portal>
-                {layoutTabs}
-              </Panel.Toolbar.Left.Portal>
-              <Panel.Toolbar.Right.Portal>
-                {feedEnabled && (
-                  <AgentsRunningBadge items={items} onOpen={openTask} />
-                )}
-              </Panel.Toolbar.Right.Portal>
-            </>
-          )}
+          <Panel.Toolbar.Left.Portal>{layoutTabs}</Panel.Toolbar.Left.Portal>
+          <Panel.Toolbar.Right.Portal>
+            {feedEnabled && (
+              <AgentsRunningBadge items={items} onOpen={openTask} />
+            )}
+          </Panel.Toolbar.Right.Portal>
         </>
       )}
 
-      <div
-        className={cn(
-          "mx-auto w-full max-w-[1680px]",
-          inlineTabs ? "px-4 md:px-8" : "px-4 sm:px-8",
-        )}
-      >
+      <div className="mx-auto w-full max-w-[1680px] px-4 sm:px-8">
         <TaskBoardAdminBanner />
       </div>
       <AppliedFiltersBar
@@ -1704,24 +1627,14 @@ function TaskBoardBody({
       />
 
       {items.length === 0 ? (
-        <div
-          className={cn(
-            "mx-auto w-full max-w-[1680px]",
-            inlineTabs ? "px-4 pt-4 md:px-8" : "px-4 pt-6 sm:px-8",
-          )}
-        >
-          <div className="rounded-xl bg-card px-4 py-12 text-center text-sm text-muted-foreground card-shadow">
+        <div className="mx-auto w-full max-w-[1680px] px-4 pt-6 sm:px-8">
+          <div className="surface px-4 py-12 text-center text-sm text-muted-foreground">
             {t("taskBoard.taskBoard.noTasksYet")}
           </div>
         </div>
       ) : visibleItems.length === 0 ? (
-        <div
-          className={cn(
-            "mx-auto w-full max-w-[1680px]",
-            inlineTabs ? "px-4 pt-4 md:px-8" : "px-4 pt-6 sm:px-8",
-          )}
-        >
-          <div className="flex flex-col items-center gap-3 rounded-xl bg-card px-4 py-12 text-center text-sm text-muted-foreground card-shadow">
+        <div className="mx-auto w-full max-w-[1680px] px-4 pt-6 sm:px-8">
+          <div className="flex flex-col items-center gap-3 surface px-4 py-12 text-center text-sm text-muted-foreground">
             {t("taskBoard.taskBoard.noTasksMatch")}
             <Button
               variant="outline"
@@ -1744,15 +1657,9 @@ function TaskBoardBody({
             })
           }
           onOpen={openTask}
-          project={inlineTabs ? (scopedProject ?? undefined) : undefined}
         />
       ) : layout === "epics" ? (
-        <div
-          className={cn(
-            "min-h-0 flex-1 overflow-y-auto pb-16",
-            inlineTabs ? "px-4 pt-4 md:px-8" : "px-4 pt-6 sm:px-8",
-          )}
-        >
+        <div className="min-h-0 flex-1 overflow-y-auto pb-16 px-4 pt-6 sm:px-8">
           <div className="mx-auto w-full max-w-[960px]">
             <EpicsView />
           </div>
@@ -1760,7 +1667,7 @@ function TaskBoardBody({
       ) : layout === "board" ? (
         <Lanes
           visible={!openItem}
-          items={feedEnabled ? laneCards(visibleItems, items) : visibleItems}
+          items={laneCards(visibleItems, items)}
           members={members}
           memberByUserId={memberByUserId}
           selectedIds={selectedIds}
@@ -1815,15 +1722,9 @@ function TaskBoardBody({
             );
           }}
           onRerun={(item) => setRerunTargets([item])}
-          inlineTabs={inlineTabs}
         />
       ) : (
-        <div
-          className={cn(
-            "min-h-0 flex-1 overflow-y-auto pb-16",
-            inlineTabs ? "px-4 pt-4 md:px-8" : "px-4 pt-6 sm:px-8",
-          )}
-        >
+        <div className="min-h-0 flex-1 overflow-y-auto pb-16 px-4 pt-6 sm:px-8">
           <div className="mx-auto flex w-full max-w-[1680px] flex-col gap-2">
             {groupBy === null ? (
               visibleListItems.map(listRow)
@@ -2100,11 +2001,7 @@ function TaskBoardBody({
       )}
     </div>
   );
-  return (
-    <EpicBoardProvider value={feedEnabled ? epicBoard : null}>
-      {page}
-    </EpicBoardProvider>
-  );
+  return <EpicBoardProvider value={epicBoard}>{page}</EpicBoardProvider>;
 }
 
 /**
@@ -2163,19 +2060,16 @@ function SelectionBar({
   );
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-6 z-20 flex justify-center">
-      <div className="pointer-events-auto flex items-center gap-2 rounded-full bg-background px-3 py-2 card-shadow">
+      <div className="pointer-events-auto flex items-center gap-2 rounded-full bg-background px-3 py-2 shadow-edge">
         <span className="pl-1 text-sm font-medium text-foreground">
           {t("taskBoard.taskBoard.selectedCount", { count })}
         </span>
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
-            >
+            <Button variant="outline" size="sm">
               {t("taskBoard.taskBoard.actionsButton")}
-            </button>
+            </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="center" side="top">
             <DropdownMenuSub>
@@ -2308,36 +2202,29 @@ function SelectionBar({
         </DropdownMenu>
 
         {onAutoFix && (
-          <button
-            type="button"
-            onClick={onAutoFix}
-            className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
-          >
-            <Lightning01 size={14} />
+          <Button variant="outline" size="sm" onClick={onAutoFix}>
+            <Lightning01 className="size-3.5" />
             {t("taskBoard.taskBoard.autoFix")}
-          </button>
+          </Button>
         )}
 
         {onRerun && (
-          <button
-            type="button"
-            onClick={onRerun}
-            className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
-          >
-            <RefreshCw01 size={14} />
+          <Button variant="outline" size="sm" onClick={onRerun}>
+            <RefreshCw01 className="size-3.5" />
             {t("taskBoard.taskBoard.rerun")}
-          </button>
+          </Button>
         )}
 
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="icon"
           aria-label={t("taskBoard.taskBoard.clearSelectionButton")}
           title={t("taskBoard.taskBoard.clearSelectionButton")}
           onClick={onClear}
-          className="flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          className="shrink-0 text-muted-foreground"
         >
           <X size={16} />
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -2411,7 +2298,6 @@ function Lanes({
   onTypeChange,
   onDueDateChange,
   visible,
-  inlineTabs,
 }: {
   items: TaskBoardItem[];
   members: Member[];
@@ -2439,8 +2325,6 @@ function Lanes({
   onDueDateChange?: (id: string, iso: string) => void;
   /** False while the task detail has the panel — see `useFlipLanes`. */
   visible: boolean;
-  /** See `TaskBoardPage`'s own doc comment. */
-  inlineTabs?: boolean;
 }) {
   const [activeId, setActiveId] = useState<string | null>(null);
   // Cards that just landed from a drop — they get the settle animation. Cleared
@@ -2777,7 +2661,7 @@ function Lanes({
             swimlanes
               ? "min-h-full grid-rows-[auto_auto_1fr] gap-x-3 pb-6"
               : "h-full gap-3",
-            inlineTabs ? "px-4 pt-4 md:px-8" : "px-4 pt-6 sm:px-8",
+            "px-4 pt-6 sm:px-8",
           )}
           style={{
             gridTemplateColumns: boardGridColumns({
@@ -2867,10 +2751,10 @@ function Lanes({
                 }
                 selected={selectedIds.has(activeItem.id)}
                 onOpen={() => {}}
-                className="w-full shadow-lg"
+                className="w-full shadow-lift"
               />
               {activeGroup.length > 1 && (
-                <span className="absolute -top-2 -right-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-foreground px-1.5 text-[11px] font-semibold text-background">
+                <span className="absolute -top-2 -right-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-foreground px-1.5 text-2xs font-semibold text-background">
                   {activeGroup.length}
                 </span>
               )}
@@ -2916,7 +2800,7 @@ function HiddenLanes({
             <div
               key={status}
               data-hidden-lane={status}
-              className="flex items-center gap-2 rounded-xl bg-background px-3 py-2.5 card-shadow"
+              className="surface flex items-center gap-2 px-3 py-2.5"
             >
               <LaneIcon
                 size={15}
@@ -2925,20 +2809,21 @@ function HiddenLanes({
               <span className="text-sm font-medium text-foreground">
                 {label}
               </span>
-              <span className="ml-auto text-[11px] font-medium text-muted-foreground">
+              <span className="ml-auto text-2xs font-medium text-muted-foreground">
                 {countOf(status)}
               </span>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
                     aria-label={t("taskBoard.taskBoard.laneMenuAriaLabel", {
                       lane: label,
                     })}
-                    className="flex size-6 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    className="shrink-0 text-muted-foreground"
                   >
-                    <DotsHorizontal size={15} />
-                  </button>
+                    <DotsHorizontal className="size-3.75" />
+                  </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
                   <DropdownMenuItem onClick={() => onShow(status)}>
@@ -3032,7 +2917,7 @@ function Lane({
   const criticalWell = hasCriticalWell(status);
   const { setNodeRef: setCriticalRef } = useDroppable({
     id: `${CRITICAL_DROPPABLE_PREFIX}${status}`,
-    disabled: !criticalWell,
+    disabled: !criticalWell || !anyCritical,
   });
 
   const critical = items.filter(isCriticalTask);
@@ -3100,7 +2985,7 @@ function Lane({
           <span className="text-sm font-medium text-foreground [writing-mode:vertical-rl]">
             {label}
           </span>
-          <span className="text-[11px] font-medium text-muted-foreground">
+          <span className="text-2xs font-medium text-muted-foreground">
             {items.length}
           </span>
           <Tooltip>
@@ -3174,7 +3059,7 @@ function Lane({
           >
             {label}
           </span>
-          <span className="rounded-md bg-muted px-1.5 text-[11px] font-medium text-muted-foreground">
+          <span className="rounded-md bg-muted px-1.5 text-2xs font-medium text-muted-foreground">
             {items.length}
           </span>
           <DropdownMenu>
@@ -3267,38 +3152,43 @@ function Lane({
       </div>
       {swimlanes ? (
         <>
-          {/* Done and Archived keep the row, so the wells below stay aligned. */}
+          {anyCritical ? (
+            /* Done and Archived keep the row, so the wells below stay aligned. */
+            <div
+              className={cn(
+                "flex min-h-0 min-w-0 flex-col gap-3 px-1 pt-4.5",
+                !criticalWell && "invisible",
+              )}
+            >
+              <SwimlaneLabel
+                visible={labelled}
+                icon={AlertOctagon}
+                iconClassName="text-destructive"
+                label={t("taskBoard.taskBoard.swimlaneCritical")}
+              />
+              <div
+                ref={setCriticalRef}
+                data-lane-scroll={criticalWell ? status : undefined}
+                className={SWIMLANE_PANEL}
+              >
+                <SortableContext
+                  items={critical.map((item) => item.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  {critical.map(renderCard)}
+                </SortableContext>
+              </div>
+            </div>
+          ) : (
+            // Holds the empty Critical row so Improvements keeps the 1fr row.
+            <div />
+          )}
           <div
             className={cn(
-              "flex min-h-0 min-w-0 flex-col gap-3 px-1 pt-4.5",
-              !criticalWell && "invisible",
+              "flex min-h-0 flex-col gap-3 px-1 pb-1",
+              anyCritical ? "pt-7" : "pt-4.5",
             )}
           >
-            <SwimlaneLabel
-              visible={labelled}
-              icon={AlertOctagon}
-              iconClassName="text-destructive"
-              label={t("taskBoard.taskBoard.swimlaneCritical")}
-            />
-            <div
-              ref={setCriticalRef}
-              data-lane-scroll={criticalWell ? status : undefined}
-              className={SWIMLANE_PANEL}
-            >
-              <SortableContext
-                items={critical.map((item) => item.id)}
-                strategy={verticalListSortingStrategy}
-              >
-                {critical.map(renderCard)}
-              </SortableContext>
-              {labelled && !anyCritical && (
-                <p className="px-1 py-2 text-sm text-muted-foreground">
-                  {t("taskBoard.taskBoard.attentionEmpty")}
-                </p>
-              )}
-            </div>
-          </div>
-          <div className="flex min-h-0 flex-col gap-3 px-1 pt-7 pb-1">
             <SwimlaneLabel
               visible={labelled}
               icon={Stars02}
@@ -3637,15 +3527,16 @@ function TaskCard({
         else onOpen();
       }}
       className={cn(
-        "group relative flex shrink-0 cursor-grab flex-col gap-3 rounded-xl px-3.5 pt-3.5 pb-2.5 text-left card-shadow active:cursor-grabbing",
-        attentionLabel
-          ? "bg-warning/10 hover:bg-warning/15"
-          : "bg-card hover:bg-accent/60",
+        "group relative flex shrink-0 cursor-grab flex-col gap-3 rounded-xl px-3.5 pt-3.5 pb-2.5 text-left shadow-edge active:cursor-grabbing",
+        selected
+          ? "bg-accent hover:bg-secondary-hover"
+          : attentionLabel
+            ? "bg-warning/10 hover:bg-warning/15"
+            : "bg-card surface-interactive",
         // A dead run outranks a question: both want a person, but only one is already broken.
         runState === "failed"
-          ? "card-ring-destructive"
-          : attentionLabel && "card-ring-warning",
-        selected && "bg-accent",
+          ? "shadow-edge-destructive"
+          : attentionLabel && "shadow-edge-warning",
         className,
       )}
     >
@@ -3792,7 +3683,7 @@ function FeedRow({
     <button
       type="button"
       onClick={onOpen}
-      className="flex w-full flex-col gap-3 rounded-[var(--studio-surface-radius,var(--radius-xl))] bg-card p-4 text-left card-shadow transition-colors hover:bg-accent/60"
+      className="surface surface-interactive flex w-full flex-col gap-3 p-4 text-left"
     >
       {/* Badges first, Discord-style: what kind of post this is, before what
           it says. */}
@@ -3813,7 +3704,7 @@ function FeedRow({
       )}
 
       <span className="flex min-w-0 flex-col gap-1">
-        <span className="text-[15px] leading-snug font-medium text-foreground">
+        <span className="text-base leading-snug font-medium text-foreground">
           {item.title}
         </span>
         {/* Discord's one-liner: who said it and what, truncated to a single
@@ -3935,7 +3826,7 @@ function FeedComposer({
   const TypeIconGlyph = typeConfig.icon;
 
   return (
-    <div className="flex flex-col rounded-[var(--studio-surface-radius,var(--radius-xl))] bg-card card-shadow focus-within:ring-[2px] focus-within:ring-ring/20">
+    <div className="surface focus-within-ring flex flex-col">
       <div className="flex flex-col gap-1 px-4 pt-4 pb-4">
         <input
           value={title}
@@ -4058,116 +3949,18 @@ function FeedComposer({
 
 /** Every visible card, newest first, under the day it last moved on. `now` is
  *  read once per render so rows cannot disagree across midnight. */
-/**
- * What is happening right now, beside the feed: which agents are working, and
- * what has stopped on a person. Derived from the cards already on screen.
- *
- * Inline feed only — the org-wide board would have to name a project on every
- * row, which is the feed's own job.
- */
-function FeedRail({
-  items,
-  now,
-  onOpen,
-}: {
-  items: TaskBoardItem[];
-  /** Handed down so the rail's ages and the day headers agree on "now". */
-  now: Date;
-  onOpen: (item: TaskBoardItem) => void;
-}) {
-  const t = useT();
-  const rail = feedRail(items);
-
-  return (
-    <aside className="flex w-full shrink-0 flex-col gap-5 self-start overflow-y-auto pt-3 @4xl:w-[260px]">
-      <section className="flex flex-col gap-1">
-        <h3 className="flex items-center gap-2 px-2 pb-1 text-xs font-medium text-muted-foreground">
-          <span
-            className={cn(
-              "size-1.5 rounded-full",
-              rail.runningTotal > 0 ? "animate-pulse bg-success" : "bg-border",
-            )}
-            aria-hidden
-          />
-          {t("taskBoard.feed.railRunning")}
-          {rail.runningTotal > 0 && (
-            <span className="tabular-nums">{rail.runningTotal}</span>
-          )}
-        </h3>
-        {rail.running.length === 0 ? (
-          <p className="px-2 text-xs text-muted-foreground">
-            {t("taskBoard.feed.railIdle")}
-          </p>
-        ) : (
-          rail.running.map(({ item, thread }) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => onOpen(item)}
-              className="flex w-full items-start gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-accent/60"
-            >
-              <SuperAgentIcon size={16} className="mt-0.5 shrink-0" />
-              <span className="flex min-w-0 flex-1 flex-col">
-                <span className="truncate text-sm text-foreground">
-                  {item.title}
-                </span>
-                {thread.lastMessage && (
-                  <span className="truncate text-xs text-muted-foreground">
-                    {thread.lastMessage}
-                  </span>
-                )}
-              </span>
-              <span className="shrink-0 pt-0.5 text-xs tabular-nums text-muted-foreground">
-                {compactElapsed(thread.createdAt, now.getTime())}
-              </span>
-            </button>
-          ))
-        )}
-      </section>
-
-      {rail.waiting.length > 0 && (
-        <section className="flex flex-col gap-1">
-          <h3 className="flex items-center gap-2 px-2 pb-1 text-xs font-medium text-muted-foreground">
-            <span className="size-1.5 rounded-full bg-warning" aria-hidden />
-            {t("taskBoard.feed.railWaiting")}
-            <span className="tabular-nums">{rail.waitingTotal}</span>
-          </h3>
-          {rail.waiting.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => onOpen(item)}
-              className="flex w-full items-start gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-accent/60"
-            >
-              <span className="min-w-0 flex-1 truncate text-sm text-foreground">
-                {item.title}
-              </span>
-              <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                {compactElapsed(item.updatedAt, now.getTime())}
-              </span>
-            </button>
-          ))}
-        </section>
-      )}
-    </aside>
-  );
-}
-
 function FeedView({
   items,
   index,
   memberByUserId,
   onCompose,
   onOpen,
-  project,
 }: {
   items: TaskBoardItem[];
   index: ProjectIndex;
   memberByUserId: Map<string, Member>;
   onCompose: (input: FeedComposeInput) => void;
   onOpen: (item: TaskBoardItem) => void;
-  /** Present only for the project overview's inline feed — see `FeedRail`. */
-  project?: VirtualMCPEntity;
 }) {
   const t = useT();
   const now = new Date();
@@ -4175,22 +3968,8 @@ function FeedView({
 
   return (
     /* Composer and rail sit OUTSIDE the scrolling region; only posts scroll. */
-    <div
-      className={cn(
-        "flex min-h-0 flex-1 flex-col",
-        project
-          ? "mx-auto w-full max-w-[1680px] px-4 pt-4 md:px-8"
-          : "px-4 pt-6 sm:px-8",
-      )}
-    >
-      <div
-        className={cn(
-          "flex min-h-0 flex-1 flex-col gap-6",
-          project
-            ? "w-full max-w-[1040px] @4xl:flex-row"
-            : "mx-auto w-full max-w-[760px]",
-        )}
-      >
+    <div className="flex min-h-0 flex-1 flex-col px-4 pt-6 sm:px-8">
+      <div className="mx-auto flex min-h-0 w-full max-w-[760px] flex-1 flex-col gap-6">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <FeedComposer onCreated={onCompose} />
           {/* A post leaving the top dissolves rather than being cut: the first
@@ -4217,8 +3996,7 @@ function FeedView({
                     <FeedRow
                       key={item.id}
                       item={item}
-                      /* Every card here IS `project`, so the chip would repeat the screen's own name. */
-                      bucket={project ? null : entryForTask(item, index)}
+                      bucket={entryForTask(item, index)}
                       assignee={
                         item.assigneeId
                           ? memberByUserId.get(item.assigneeId)
@@ -4233,7 +4011,6 @@ function FeedView({
             ))}
           </div>
         </div>
-        {project && <FeedRail items={items} now={now} onOpen={onOpen} />}
       </div>
     </div>
   );
@@ -4282,8 +4059,8 @@ function ListGroupTree({
               className={cn(
                 "flex items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium text-foreground transition-colors",
                 depth === 0
-                  ? "bg-muted/60 hover:bg-muted"
-                  : "bg-muted/30 hover:bg-muted/60",
+                  ? "bg-muted/60 hover:bg-accent"
+                  : "bg-muted/30 hover:bg-accent",
               )}
             >
               <ChevronRight
@@ -4381,7 +4158,7 @@ function listGroupHeading(
         glyph: (
           <Avatar
             url={member?.user?.image ?? undefined}
-            fallback={getInitials(member?.user?.name)}
+            fallback={member?.user?.name ?? "?"}
             shape="circle"
             size="2xs"
           />
@@ -4496,7 +4273,7 @@ function ListRow({
   const key = taskKey(org.slug, item.keySeq);
   const runState = agentRunState(item);
   return (
-    <div className="flex h-11 items-center gap-3 px-3 transition-colors hover:bg-accent/40">
+    <div className="flex h-11 items-center gap-3 px-3 transition-colors hover:bg-accent">
       <ListRowStatusMenu item={item} onStatusChange={onStatusChange} />
       <span className="flex size-4 shrink-0 items-center justify-center">
         {item.priority !== "none" && <PriorityIcon priority={item.priority} />}

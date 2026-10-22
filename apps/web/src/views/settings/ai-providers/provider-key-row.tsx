@@ -119,19 +119,18 @@ export function ProviderKeyRow({ providerKey, provider }: ProviderKeyRowProps) {
             {provider ? (
               <Button
                 variant="ghost"
-                size="icon"
+                size="icon-sm"
                 aria-label={t("settings.providerKeyRow.editProviderKey")}
-                className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                className="text-muted-foreground hover:text-foreground"
                 onClick={() => setEditOpen(true)}
               >
                 <Edit01 size={14} />
               </Button>
             ) : null}
             <Button
-              variant="ghost"
-              size="icon"
+              variant="ghost-destructive"
+              size="icon-sm"
               aria-label={t("settings.providerKeyRow.deleteProviderKey")}
-              className="h-7 w-7 text-muted-foreground hover:text-destructive"
               disabled={isDeleting}
               onClick={() => setConfirmDelete(true)}
             >
@@ -171,7 +170,7 @@ export function ProviderKeyRow({ providerKey, provider }: ProviderKeyRowProps) {
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={() => deleteKey()}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              variant="destructive"
             >
               {t("settings.providerKeyRow.delete")}
             </AlertDialogAction>

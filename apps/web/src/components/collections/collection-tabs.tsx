@@ -39,7 +39,7 @@ export function CollectionTabs({
               <Badge
                 variant="secondary"
                 className={cn(
-                  "h-5 min-w-5 px-1 rounded-full text-[10px] font-mono inline-flex items-center justify-center",
+                  "h-5 min-w-5 px-1 rounded-full text-2xs font-mono inline-flex items-center justify-center",
                   isActive
                     ? "bg-background text-foreground"
                     : "bg-muted-foreground/10 text-muted-foreground",

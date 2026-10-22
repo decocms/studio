@@ -41,10 +41,8 @@ export function LibraryTab({
    * How a clicked file opens.
    *
    * `panel` hands it to the main-panel tab system, which is only correct on a
-   * surface that HAS one. The flat project screen does not: opening a tab from
-   * there swapped the whole shell for the scoped one — a sidebar that jumped
-   * into the project and a breadcrumb naming the agent instead of the file's
-   * project. `dialog` previews the file in place, over the files it came from.
+   * surface that HAS one. `dialog` previews the file in place, over the files
+   * it came from.
    * `side` leaves it to the Library, which opens it beside the list.
    */
   filePreview?: FilePreviewMode;

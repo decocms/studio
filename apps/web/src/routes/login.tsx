@@ -59,9 +59,13 @@ export default function LoginRoute() {
   // safe to call on every render — no effect needed.
   captureSignupAttribution({ src, ref });
 
-  // Prevent open redirect — only allow relative paths
+  // Prevent open redirect — a leading "/\" resolves like "//" in a browser.
   const next =
-    rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/";
+    rawNext.startsWith("/") &&
+    !rawNext.startsWith("//") &&
+    !rawNext.startsWith("/\\")
+      ? rawNext
+      : "/";
 
   // Build OAuth authorize URL if this is an OAuth flow
   const oauthAuthorizeUrl = buildOAuthAuthorizeUrl({
