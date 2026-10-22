@@ -126,7 +126,7 @@ describe("VirtualMCPStorage.searchAcrossMemberships", () => {
         app_id: null,
         slug: null,
         connection_type: "VIRTUAL",
-        connection_url: null,
+        connection_url: "virtual://conn_search_twice",
         connection_token: null,
         connection_headers: null,
         oauth_config: null,
