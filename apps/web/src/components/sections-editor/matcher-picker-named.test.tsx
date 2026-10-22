@@ -90,7 +90,7 @@ describe("the rule picker on a v7 site", () => {
 });
 
 describe("the rule picker on a v8 site", () => {
-  test("offers A/B test and Date in place of the raw rules", () => {
+  test("offers A/B test and Campaign in place of the raw rules", () => {
     const { dialog } = openPicker({
       kinds: KINDS,
       selected: null,
@@ -105,8 +105,8 @@ describe("the rule picker on a v8 site", () => {
     );
     // The raw `experiment` and `campaign` rules aren't listed a second time.
     expect(texts.filter((t) => t.startsWith("A/B test"))).toHaveLength(1);
-    expect(texts.filter((t) => t.startsWith("Date"))).toHaveLength(1);
-    expect(texts.some((t) => t.startsWith("Campaign"))).toBe(false);
+    expect(texts.filter((t) => t.startsWith("Campaign"))).toHaveLength(1);
+    expect(texts.some((t) => t.startsWith("Date"))).toBe(false);
     expect(texts.some((t) => t.startsWith("Device"))).toBe(true);
   });
 
@@ -128,7 +128,7 @@ describe("the rule picker on a v8 site", () => {
       selected: null,
       onPick: () => {},
     });
-    fireEvent.click(within(dialog).getByText("Date"));
+    fireEvent.click(within(dialog).getByText("Campaign"));
     expect(
       within(dialog).getByText("No campaigns yet. Type a name to create one."),
     ).toBeInTheDocument();
@@ -364,7 +364,7 @@ describe("the locked row", () => {
     );
   });
 
-  test('an inline date rule gets the clash explanation, not "Choose Date above"', () => {
+  test('an inline date rule gets the clash explanation, not "Choose Campaign above"', () => {
     const rule = { __resolveType: "date", start: "2026-01-01T00:00:00Z" };
     const kinds: NamedRulePickerKind[] = [
       { kind: "campaigns", state: "conflict", entries: [] },
@@ -377,6 +377,9 @@ describe("the locked row", () => {
   });
 
   test("says it in pt-br too", () => {
+    expect(ptBR["sectionsEditor.namedRulePicker.campaignTitle"]).toBe(
+      "Campanha",
+    );
     expect(ptBR["sectionsEditor.namedRulePicker.missingTest"]).toBe(
       "Este teste não está nos seus testes A/B. Escolha outro, crie-o ou remova esta variante.",
     );

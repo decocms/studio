@@ -64,8 +64,8 @@ export const sectionsEditor = {
   "sectionsEditor.namedRulePicker.abTestTitle": "A/B test",
   "sectionsEditor.namedRulePicker.abTestDescription":
     "Show this variant to a share of visitors",
-  "sectionsEditor.namedRulePicker.dateTitle": "Date",
-  "sectionsEditor.namedRulePicker.dateDescription":
+  "sectionsEditor.namedRulePicker.campaignTitle": "Campaign",
+  "sectionsEditor.namedRulePicker.campaignDescription":
     "Show this variant while a campaign is running",
   "sectionsEditor.namedRulePicker.back": "All rules",
   "sectionsEditor.namedRulePicker.searchTests":
@@ -133,7 +133,7 @@ export const sectionsEditor = {
   "sectionsEditor.namedRulePicker.missingCampaignWithin":
     "This rule uses a campaign that isn't in your campaigns. Change the rule or remove this variant.",
   "sectionsEditor.namedRulePicker.inlineDate":
-    "These dates aren't a campaign yet, so this variant doesn't show. Choose Date above to pick a campaign, or create one with these dates.",
+    "These dates aren't a campaign yet, so this variant doesn't show. Choose Campaign above to pick a campaign, or create one with these dates.",
   "sectionsEditor.namedRulePicker.fieldTests": "Your A/B tests",
   "sectionsEditor.namedRulePicker.fieldTestsHint":
     "The section gets each test as on or off for the visitor.",
@@ -152,7 +152,7 @@ export const sectionsEditor = {
   "sectionsEditor.namedRuleUses.emptyTests":
     "Not used yet. In the site editor, give a variant the rule “A/B test” and pick this test.",
   "sectionsEditor.namedRuleUses.emptyCampaigns":
-    "Not used yet. In the site editor, give a variant the rule “Date” and pick this campaign.",
+    "Not used yet. In the site editor, give a variant the rule “Campaign” and pick this campaign.",
   "sectionsEditor.namedRuleUses.wholeTests": "Sections that read every test",
   "sectionsEditor.namedRuleUses.wholeTestsHint":
     "These sections decide in their own code which tests they look at.",

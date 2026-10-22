@@ -172,7 +172,7 @@ function resolveCurrentMatcherIcon(
 /**
  * A button + CommandDialog that lets users pick a matcher type for a variant rule.
  */
-/** The picker's v8 "A/B test" and "Date" items (named-rule-picker.ts). */
+/** The picker's v8 "A/B test" and "Campaign" items (named-rule-picker.ts). */
 export interface NamedRulePickerProps {
   kinds: NamedRulePickerKind[];
   /** The test or campaign the variant's rule names now, if any. */

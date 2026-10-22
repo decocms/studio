@@ -1283,11 +1283,11 @@ export const sandbox = {
   "sandbox.collectionsSidebar.campaigns": "Campaigns",
   "sandbox.dateCampaigns.title": "Campaigns",
   "sandbox.dateCampaigns.intro":
-    "Every date on your site is a campaign: a variant with the rule “Date” shows while its campaign runs. Changes are saved in your draft and go live when you publish.",
+    "Every date on your site is a campaign: a variant with the rule “Campaign” shows while its campaign runs. Changes are saved in your draft and go live when you publish.",
   "sandbox.dateCampaigns.new": "New campaign",
   "sandbox.dateCampaigns.empty.title": "No campaigns yet",
   "sandbox.dateCampaigns.empty.desc":
-    "Create one here, or from a variant in the site editor: choose the rule “Date” and type a name.",
+    "Create one here, or from a variant in the site editor: choose the rule “Campaign” and type a name.",
   "sandbox.dateCampaigns.listMode": "List",
   "sandbox.dateCampaigns.timelineMode": "Timeline",
   "sandbox.dateCampaigns.status.running": "Running",

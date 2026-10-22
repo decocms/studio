@@ -2359,7 +2359,7 @@ export function SectionsEditor({
   const availableMatchers = meta ? extractMatchers(meta) : [];
   const availableMatcherGlobals =
     meta && decofile ? extractMatcherGlobals(meta, decofile) : [];
-  // v8: the picker's "A/B test" and "Date" (none on v7 or an older schema).
+  // v8: the picker's "A/B test" and "Campaign" (none on v7 or an older schema).
   const namedRuleKinds =
     meta && decofile ? namedRulePickerKinds(meta, decofile) : [];
   const namedRulePropsFor = (
@@ -2503,7 +2503,7 @@ export function SectionsEditor({
   };
 
   /**
-   * Writes a pick from the rule picker's "A/B test" or "Date": the block that
+   * Writes a pick from the rule picker's "A/B test" or "Campaign": the block that
    * carries the variant (built by `withRule`) and, for a new name, the
    * `experiments`/`campaigns` block, in ONE guarded save to the draft. A
    * refused save says so in one toast and changes nothing.

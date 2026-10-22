@@ -1313,11 +1313,11 @@ export const sandbox = {
   "sandbox.collectionsSidebar.campaigns": "Campanhas",
   "sandbox.dateCampaigns.title": "Campanhas",
   "sandbox.dateCampaigns.intro":
-    "Toda data do seu site é uma campanha: uma variante com a regra “Data” aparece enquanto a campanha dela está rodando. As mudanças ficam salvas no seu rascunho e vão ao ar quando você publica.",
+    "Toda data do seu site é uma campanha: uma variante com a regra “Campanha” aparece enquanto a campanha dela está rodando. As mudanças ficam salvas no seu rascunho e vão ao ar quando você publica.",
   "sandbox.dateCampaigns.new": "Nova campanha",
   "sandbox.dateCampaigns.empty.title": "Nenhuma campanha ainda",
   "sandbox.dateCampaigns.empty.desc":
-    "Crie uma aqui ou a partir de uma variante no editor do site: escolha a regra “Data” e digite um nome.",
+    "Crie uma aqui ou a partir de uma variante no editor do site: escolha a regra “Campanha” e digite um nome.",
   "sandbox.dateCampaigns.listMode": "Lista",
   "sandbox.dateCampaigns.timelineMode": "Linha do tempo",
   "sandbox.dateCampaigns.status.running": "Rodando",

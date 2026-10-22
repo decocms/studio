@@ -82,7 +82,7 @@ export function useNamedRuleFieldSupport(): NamedRuleFieldSupport | null {
   return useContext(NamedRuleFieldContext);
 }
 
-/** The picker's first list: "A/B test" and "Date", one item per kind. */
+/** The picker's first list: "A/B test" and "Campaign", one item per kind. */
 export function NamedRuleKindItems({
   kinds,
   currentKind,
@@ -99,11 +99,11 @@ export function NamedRuleKindItems({
         const title =
           kind === "experiments"
             ? t("sectionsEditor.namedRulePicker.abTestTitle")
-            : t("sectionsEditor.namedRulePicker.dateTitle");
+            : t("sectionsEditor.namedRulePicker.campaignTitle");
         const description =
           kind === "experiments"
             ? t("sectionsEditor.namedRulePicker.abTestDescription")
-            : t("sectionsEditor.namedRulePicker.dateDescription");
+            : t("sectionsEditor.namedRulePicker.campaignDescription");
         return (
           <CommandItem
             key={kind}

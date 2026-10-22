@@ -68,8 +68,8 @@ export const sectionsEditor = {
   "sectionsEditor.namedRulePicker.abTestTitle": "Teste A/B",
   "sectionsEditor.namedRulePicker.abTestDescription":
     "Mostre esta variante para uma parte dos visitantes",
-  "sectionsEditor.namedRulePicker.dateTitle": "Data",
-  "sectionsEditor.namedRulePicker.dateDescription":
+  "sectionsEditor.namedRulePicker.campaignTitle": "Campanha",
+  "sectionsEditor.namedRulePicker.campaignDescription":
     "Mostre esta variante enquanto uma campanha estiver no ar",
   "sectionsEditor.namedRulePicker.back": "Todas as regras",
   "sectionsEditor.namedRulePicker.searchTests":
@@ -138,7 +138,7 @@ export const sectionsEditor = {
   "sectionsEditor.namedRulePicker.missingCampaignWithin":
     "Esta regra usa uma campanha que não está nas suas campanhas. Altere a regra ou remova esta variante.",
   "sectionsEditor.namedRulePicker.inlineDate":
-    "Estas datas ainda não são uma campanha, então esta variante não aparece. Escolha Data acima para usar uma campanha ou criar uma com estas datas.",
+    "Estas datas ainda não são uma campanha, então esta variante não aparece. Escolha Campanha acima para usar uma campanha ou criar uma com estas datas.",
   "sectionsEditor.namedRulePicker.fieldTests": "Seus testes A/B",
   "sectionsEditor.namedRulePicker.fieldTestsHint":
     "A seção recebe cada teste como ligado ou desligado para o visitante.",
@@ -157,7 +157,7 @@ export const sectionsEditor = {
   "sectionsEditor.namedRuleUses.emptyTests":
     "Ainda não usado. No editor do site, dê a uma variante a regra “Teste A/B” e escolha este teste.",
   "sectionsEditor.namedRuleUses.emptyCampaigns":
-    "Ainda não usado. No editor do site, dê a uma variante a regra “Data” e escolha esta campanha.",
+    "Ainda não usado. No editor do site, dê a uma variante a regra “Campanha” e escolha esta campanha.",
   "sectionsEditor.namedRuleUses.wholeTests": "Seções que leem todos os testes",
   "sectionsEditor.namedRuleUses.wholeTestsHint":
     "Estas seções decidem no próprio código quais testes consultam.",

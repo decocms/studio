@@ -98,7 +98,7 @@ describe("NamedRuleUsedBy", () => {
       />,
     );
     expect(
-      within(document.body).getByText(/give a variant the rule “Date”/),
+      within(document.body).getByText(/give a variant the rule “Campaign”/),
     ).toBeTruthy();
     expect(
       within(document.body).getByText("Sections that read every campaign"),
