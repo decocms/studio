@@ -1006,7 +1006,7 @@ func (o *Orchestrator) fillApplicationDefaults() {
 		slog.Error("ignoring malformed .decocms/daemon.json", "error", err)
 	}
 
-	o.deps.Store.ApplyInternal(func(current *config.TenantConfig) *config.Patch {
+	result := o.deps.Store.ApplyInternal(func(current *config.TenantConfig) *config.Patch {
 		var cur *config.Application
 		if current != nil {
 			cur = current.Application
@@ -1054,6 +1054,15 @@ func (o *Orchestrator) fillApplicationDefaults() {
 		}
 		return &config.Patch{Application: patchApp}
 	})
+	// diskCfg comes from .decocms/daemon.json, committed inside the cloned
+	// repo — any contributor to that repo controls it. Store.apply() does
+	// reject an out-of-range port or an escaping packageManager.path, but
+	// silently: without this, a rejected fill leaves the sandbox running on
+	// Autodetect's guess with no trace of why the repo's own config was
+	// ignored.
+	if result.Reason == config.RejectInvalid {
+		slog.Error("ignoring invalid .decocms/daemon.json application defaults", "reason", result.Detail)
+	}
 }
 
 func (o *Orchestrator) markInstallSucceeded(cfg *config.Enriched) {
