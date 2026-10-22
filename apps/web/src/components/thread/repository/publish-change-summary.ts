@@ -22,7 +22,9 @@ import { isMultivariateResolveType } from "@/components/sections-editor/variant-
 import type { ContentChangeSides } from "@/components/sections-editor/content-changes";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 import {
+  NAMED_RULE_KINDS,
   type NamedRuleKind,
+  namedRuleKindInfo,
   namedRuleKindOfBlock,
 } from "@/components/sections-editor/named-rules";
 import type { MissingNamedRuleUseCounts } from "@/components/sections-editor/named-rule-uses";
@@ -66,6 +68,12 @@ export interface PublishSectionChange {
    * leaves it out. A lazy-loaded section is named by the section it loads.
    */
   wrapper?: true;
+  /**
+   * On a `wrapper`: the sections its variants hold (through lazy blocks), by
+   * name, those of the variants that changed first. The version note names
+   * these instead of the wrapper.
+   */
+  held?: string[];
 }
 
 export interface PublishChange {
@@ -102,6 +110,12 @@ export interface PublishChange {
    * their own; nothing is blocked.
    */
   missingRuleUses?: { kind: NamedRuleKind } & MissingNamedRuleUseCounts;
+  /**
+   * The site's A/B tests or campaigns block, known when the card is built
+   * (from the current blocks, either side, or its name when no content can be
+   * read), so the card says so before and whether or not its sides load.
+   */
+  namedRule?: NamedRuleKind;
 }
 
 /**
@@ -110,13 +124,39 @@ export interface PublishChange {
  * content, not sections, so the card names them as such.
  */
 export function namedRuleBlockOfChange(
-  change: Pick<PublishChange, "kind" | "toJson" | "fromJson">,
-): "experiments" | "campaigns" | null {
+  change: Pick<PublishChange, "kind" | "toJson" | "fromJson" | "namedRule">,
+): NamedRuleKind | null {
   if (change.kind !== "block") return null;
-  const resolveType = (change.toJson ?? change.fromJson)?.__resolveType;
-  if (resolveType === "split-traffic") return "experiments";
-  if (resolveType === "calendar") return "campaigns";
+  return (
+    change.namedRule ?? namedRuleKindOfShape(change.toJson ?? change.fromJson)
+  );
+}
+
+/** The named-rule block a block's content is, by its type. */
+function namedRuleKindOfShape(
+  shape: Record<string, unknown> | null | undefined,
+): NamedRuleKind | null {
+  const resolveType = shape?.__resolveType;
+  for (const kind of NAMED_RULE_KINDS) {
+    if (namedRuleKindInfo(kind).resolveType === resolveType) return kind;
+  }
   return null;
+}
+
+/**
+ * The named-rule block a changed block is: by its content's type when any
+ * side can be read (a block of that name with another type is not one). On
+ * a v8 site (`byName`), by its name when none can, since the sides load
+ * after the list and may not load at all.
+ */
+function namedRuleOfBlock(
+  name: string,
+  shapes: Array<Record<string, unknown> | null | undefined>,
+  byName: boolean,
+): NamedRuleKind | null {
+  const shape = shapes.find((s) => s && typeof s === "object");
+  if (shape) return namedRuleKindOfShape(shape);
+  return byName ? namedRuleKindOfBlock(name) : null;
 }
 
 export interface PublishChangeSummary {
@@ -196,16 +236,96 @@ function lazyInner(section: Record<string, unknown>): unknown {
   return null;
 }
 
+/** How deep variants and lazy blocks are followed to the sections they hold. */
+const MAX_HELD_DEPTH = 6;
+
+/**
+ * The sections a value holds: itself, or through lazy blocks and into every
+ * variant of a variants block (a variant's value may be one section or a list).
+ */
+function heldSections(value: unknown, depth = 0): Record<string, unknown>[] {
+  if (depth > MAX_HELD_DEPTH || !value || typeof value !== "object") return [];
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => heldSections(item, depth + 1));
+  }
+  const record = value as Record<string, unknown>;
+  if (isMultivariateResolveType(record.__resolveType)) {
+    return variantsOf(record).flatMap((variant) =>
+      heldSections(variant?.value, depth + 1),
+    );
+  }
+  const inner = lazyInner(record);
+  if (inner !== null) return heldSections(inner, depth + 1);
+  return [record];
+}
+
+function variantsOf(
+  record: Record<string, unknown> | null | undefined,
+): Array<Record<string, unknown> | null> {
+  const variants = record?.variants;
+  if (!Array.isArray(variants)) return [];
+  return variants.map((variant) =>
+    variant && typeof variant === "object" && !Array.isArray(variant)
+      ? (variant as Record<string, unknown>)
+      : null,
+  );
+}
+
+/** Unwraps lazy blocks down to the variants block they hold, if any. */
+function variantsBlock(value: unknown): Record<string, unknown> | null {
+  let current: unknown = value;
+  for (let depth = 0; depth < MAX_HELD_DEPTH; depth++) {
+    if (!current || typeof current !== "object" || Array.isArray(current)) {
+      return null;
+    }
+    const record = current as Record<string, unknown>;
+    if (isMultivariateResolveType(record.__resolveType)) return record;
+    const inner = lazyInner(record);
+    if (inner === null) return null;
+    current = inner;
+  }
+  return null;
+}
+
+/**
+ * The names of the sections a variants block holds: those of the variants
+ * that changed from `previous` (when given) first, then the rest, each once.
+ */
+function heldNames(
+  section: Record<string, unknown>,
+  previous: Record<string, unknown> | undefined,
+  index: number,
+): string[] {
+  const now = variantsOf(variantsBlock(section));
+  const before = previous ? variantsOf(variantsBlock(previous)) : [];
+  const changed = previous
+    ? Array.from(
+        { length: Math.max(now.length, before.length) },
+        (_, i) => i,
+      ).filter((i) => !sameValue(now[i], before[i]))
+    : [];
+  const ordered = [
+    ...changed.map((i) => now[i] ?? before[i]),
+    ...now.filter((_, i) => !changed.includes(i)),
+  ];
+  const names = ordered
+    .flatMap((variant) => heldSections(variant?.value))
+    .map((held) => sectionDisplayName(held, index));
+  return [...new Set(names)];
+}
+
 /**
  * A changed section, by the name of the section it is: a lazy-loaded one by
  * the section it loads, and flagged `wrapper` when it is variants (or a lazy
- * wrapper around them), whose type is no name the author knows.
+ * wrapper around them), whose type is no name the author knows; a wrapper
+ * carries the names of the sections its variants hold.
  */
 function sectionChange(
   section: Record<string, unknown>,
   index: number,
   status: PublishChangeStatus,
   fields: PublishFieldChange[],
+  previous?: Record<string, unknown>,
 ): PublishSectionChange {
   let named: unknown = section;
   let wrapper = false;
@@ -223,6 +343,7 @@ function sectionChange(
     if (inner === null) break;
     named = inner;
   }
+  const held = wrapper ? heldNames(section, previous, index) : [];
   return {
     name: wrapper
       ? sectionDisplayName(section, index)
@@ -231,6 +352,7 @@ function sectionChange(
     status,
     fields,
     ...(wrapper ? { wrapper: true as const } : {}),
+    ...(held.length > 0 ? { held } : {}),
   };
 }
 
@@ -361,6 +483,7 @@ function diffPageSections(
             toEntry.section,
             toEntry.basePath,
           ),
+          fromEntry.section,
         ),
       );
     } else if (toEntry) {
@@ -591,10 +714,16 @@ export function summarizePublishManifest(
     }
 
     const label = globalSectionLabel(blockKey, nameShape ?? {});
+    const namedRule = namedRuleOfBlock(
+      blockKey,
+      [headShape, toJson, fromJson],
+      false,
+    );
     blocks.push({
       kind: "block",
       blockKey,
       name: label,
+      ...(namedRule ? { namedRule } : {}),
       pagePath: null,
       isSiteApp: isSiteAppBlock(blockKey, headShape ?? {}),
       status,
@@ -659,15 +788,16 @@ function listNames(names: string[]): string {
 
 /**
  * "Home (Hero, Footer)": the page and the sections the author knows by name.
- * A wrapper's type ("Multivariate", "Lazy") says nothing to them, so a page
- * whose changes are all in variants reads "Home".
+ * A wrapper's type ("Multivariate", "Lazy") says nothing to them, so variants
+ * are named by the sections they hold ("Home (Hero)"); variants that hold no
+ * section by name leave the page alone: "Home".
  */
 function pageNoteName(change: PublishChange): string {
   const sectionNames = [
     ...new Set(
       change.sections
-        .filter((s) => s.kind === "section" && !s.wrapper)
-        .map((s) => s.name),
+        .filter((s) => s.kind === "section")
+        .flatMap((s) => (s.wrapper ? (s.held ?? []) : [s.name])),
     ),
   ].slice(0, 3);
   return sectionNames.length > 0
@@ -922,10 +1052,12 @@ export function summarizeContentChanges(
       continue;
     }
     const label = globalSectionLabel(name, nameShape ?? {});
+    const namedRule = namedRuleOfBlock(name, [headShape, toJson, fromJson], true);
     blocks.push({
       ...common,
       kind: "block",
       name: label,
+      ...(namedRule ? { namedRule } : {}),
       pagePath: null,
       isSiteApp: isSiteAppBlock(name, headShape ?? nameShape ?? {}),
       sections:
