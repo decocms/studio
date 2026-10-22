@@ -28,7 +28,7 @@ function card(
     isEpic: false,
     id,
     organizationId: "preview",
-    boardId: null,
+    boardId: "preview",
     title,
     description: null,
     repositoryId: null,
