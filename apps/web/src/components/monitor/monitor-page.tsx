@@ -1,0 +1,423 @@
+/**
+ * The Monitor destination, org or project: is today a normal day, and if
+ * not, why and what to do. Top to bottom: the pulse (KPIs against
+ * yesterday), today's orders with every deploy marked on them beside what
+ * needs attention, the deploys and their effect, the projects side by side
+ * (org only), experiments, and the sources feeding it all. A store opens its
+ * full day (the order monitor's own view) in place.
+ */
+
+import { type ReactNode, useState } from "react";
+import { Link } from "@tanstack/react-router";
+import { Activity, Plus } from "@untitledui/icons";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
+import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
+import { Switch } from "@decocms/ui/components/switch.tsx";
+import { DayInput } from "@/components/order-monitor/order-monitor-day";
+import { Page } from "@/components/page";
+import {
+  DESTINATION_ROUTE,
+  PROJECT_ROUTE,
+} from "@/hooks/use-destination-route";
+import { useT } from "@/i18n/use-t.ts";
+import {
+  type Kpi,
+  type KpiId,
+  type MonitorBoard,
+  scopeBoard,
+  type SourceId,
+  sortSignals,
+} from "./board";
+import { ChannelsChart } from "./channels-chart";
+import { ChangeFocusProvider, MetricChart } from "./metric-chart";
+import {
+  AnalyticsView,
+  DeploysView,
+  ExperimentsView,
+  MonitorTabs,
+  type MonitorView,
+} from "./monitor-views";
+import { connectLink } from "./parts";
+import { Locked } from "./locked";
+import { ProjectsTable } from "./projects-table";
+import { SignalsPanel } from "./signals-panel";
+import { monitorPreview } from "./preview";
+import { StoreDay } from "./store-day";
+import { sourceName } from "./sources-panel";
+import { useSourceIcons } from "./use-source-icons";
+
+export interface MonitorSelection {
+  view?: MonitorView;
+  /** A past local day, `YYYY-MM-DD`; today when absent. */
+  date?: string;
+  store?: string;
+  at?: string;
+}
+
+/** Local `YYYY-MM-DD` of a moment. */
+const localDay = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+/** What the board's controls change: which day, and whether deploys are drawn. */
+interface BoardControls {
+  date: string;
+  onDate: (date: string) => void;
+  showChanges: boolean;
+  onShowChanges: (show: boolean) => void;
+  hasChanges: boolean;
+}
+
+/**
+ * Every page control in the panel's top bar, where the board analytics keep
+ * theirs: the day and the deploys toggle (on the board only), then the way
+ * to connect a source. Each chart picks its own reference days.
+ */
+function Actions({
+  orgSlug,
+  scopeId,
+  controls,
+}: {
+  orgSlug: string;
+  scopeId: string | null;
+  controls: BoardControls | null;
+}) {
+  const t = useT();
+  return (
+    <Page.Actions>
+      {controls && (
+        <>
+          <DayInput
+            value={controls.date}
+            max={localDay(new Date())}
+            onChange={controls.onDate}
+          />
+          {controls.hasChanges && (
+            <label className="text-meta flex cursor-pointer items-center gap-2 px-1">
+              <Switch
+                checked={controls.showChanges}
+                onCheckedChange={controls.onShowChanges}
+              />
+              {t("monitor.chart.changes")}
+            </label>
+          )}
+        </>
+      )}
+      <Button asChild variant="outline" size="sm" className="gap-1">
+        <Link {...connectLink(orgSlug, scopeId)}>
+          <Plus size={14} />
+          {t("monitor.connectSource")}
+        </Link>
+      </Button>
+    </Page.Actions>
+  );
+}
+
+const CARD_ORDER: readonly KpiId[] = [
+  "orders",
+  "cancellations",
+  "conversion",
+  "audience",
+  "errors",
+  "latency",
+];
+
+/** Where each card's numbers come from once the org is live. */
+const LIVE_SOURCE: Record<KpiId, SourceId> = {
+  orders: "orders",
+  cancellations: "orders",
+  conversion: "analytics",
+  audience: "site",
+  latency: "site",
+  errors: "site",
+};
+
+function Board({
+  board,
+  orgSlug,
+  scopeId,
+  selection,
+  onSelect,
+  showChanges,
+  preview,
+  bare = false,
+}: {
+  board: MonitorBoard;
+  orgSlug: string;
+  scopeId: string | null;
+  selection: MonitorSelection;
+  onSelect: (selection: MonitorSelection) => void;
+  showChanges: boolean;
+  /** Every card the page can show, with preview numbers, for the ones not fed yet. */
+  preview: readonly Kpi[] | null;
+  /** Drawn under the page's connect card: no buttons of its own. */
+  bare?: boolean;
+}) {
+  const t = useT();
+  const signals = sortSignals(board.signals);
+  const connect = connectLink(orgSlug, scopeId);
+  const iconOf = useSourceIcons(orgSlug, board.sources);
+  const changes = board.deploys ?? [];
+  // The whole page is laid out from the start: a card whose source isn't
+  // connected shows what it would draw, faded, under the button to connect it.
+  const kpis: Kpi[] = preview
+    ? preview.map(
+        (sample) =>
+          board.kpis.find((k) => k.id === sample.id) ?? {
+            ...sample,
+            source: LIVE_SOURCE[sample.id],
+            value: null,
+            points: null,
+          },
+      )
+    : board.kpis;
+  // Orders, then what happens to them, then the site behind them.
+  const [orders, ...rest] = [...kpis].sort(
+    (a, b) => CARD_ORDER.indexOf(a.id) - CARD_ORDER.indexOf(b.id),
+  );
+  const chart = (kpi: Kpi, className?: string) => (
+    <MetricChart
+      key={kpi.id}
+      kpi={kpi}
+      preview={preview?.find((p) => p.id === kpi.id)}
+      waiting={board.sources.find((s) => s.id === kpi.source)?.state !== "off"}
+      changes={changes}
+      showChanges={showChanges}
+      dayStart={board.dayStart}
+      sourceName={sourceName(kpi.source, t)}
+      icon={iconOf(kpi.source)}
+      connect={connect}
+      bare={bare}
+      className={className}
+    />
+  );
+
+  return (
+    <div className="flex flex-col gap-4">
+      {signals.length > 0 && (
+        <SignalsPanel
+          signals={signals}
+          orgSlug={orgSlug}
+          scopeId={scopeId}
+          onOpenStore={(store) => onSelect({ ...selection, store })}
+          iconOf={iconOf}
+        />
+      )}
+      <ChangeFocusProvider>
+        {orders && chart(orders)}
+        <div className="grid gap-4 md:grid-cols-2">
+          {/* Cancellations beside the channels: both are about the orders. */}
+          {rest.slice(0, 1).map((kpi) => chart(kpi))}
+          {board.channels && board.channels.length > 1 && (
+            <ChannelsChart channels={board.channels} />
+          )}
+          {rest.slice(1).map((kpi) => chart(kpi))}
+        </div>
+      </ChangeFocusProvider>
+      {!scopeId && board.projects.length > 1 && (
+        <div className="mt-6">
+          <ProjectsTable projects={board.projects} orgSlug={orgSlug} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function MonitorPage({
+  board: orgBoard,
+  loading,
+  error,
+  orgSlug,
+  scopeId,
+  selection,
+  onSelect,
+}: {
+  board: MonitorBoard;
+  loading: boolean;
+  error: Error | null;
+  orgSlug: string;
+  scopeId: string | null;
+  selection: MonitorSelection;
+  onSelect: (selection: MonitorSelection) => void;
+}) {
+  const t = useT();
+  const board = scopeBoard(orgBoard, scopeId);
+  const stateOf = (id: SourceId) =>
+    board.sources.find((s) => s.id === id)?.state ?? "off";
+  const view = selection.view ?? "metrics";
+  // Everything the page can show is laid out from the start; what no source
+  // feeds yet is drawn from the preview, faded, under its connect button.
+  const shown = monitorPreview(scopeId, selection.date);
+  const preview = shown.kpis;
+  const [showChanges, setShowChanges] = useState(true);
+  const tabs = (
+    <MonitorTabs
+      view={view}
+      onView={(next) =>
+        onSelect({ view: next === "metrics" ? undefined : next })
+      }
+    />
+  );
+  // Experiments and Analytics are a project's own screens, with their frame.
+  if (view === "experiments") {
+    return (
+      <>
+        {tabs}
+        <ExperimentsView scopeId={scopeId} />
+      </>
+    );
+  }
+  if (view === "analytics") {
+    return (
+      <>
+        {tabs}
+        <AnalyticsView scopeId={scopeId} />
+      </>
+    );
+  }
+  // Nothing to draw, whatever is connected: a site alone has no numbers yet.
+  const nothing =
+    board.stores.length === 0 &&
+    !board.deploys?.length &&
+    !board.experiments?.length &&
+    board.kpis.every((k) => k.value === null);
+
+  // The connect card covers the page only while nothing at all is connected;
+  // once one source is in, the page shows and each card still missing its
+  // source carries its own button.
+  const unconnected = board.sources.every((s) => s.state === "off");
+
+  let body: ReactNode;
+  if (view === "deploys") {
+    body = board.deploys ? (
+      <DeploysView
+        deploys={board.deploys}
+        history={board.deployHistory}
+        orgSlug={orgSlug}
+        scopeId={scopeId}
+      />
+    ) : (
+      <Locked
+        kind="deploys"
+        title={t("monitor.locked.deploys.title")}
+        steps={[{ source: "deploys", state: stateOf("deploys") }]}
+        link={connectLink(orgSlug, scopeId)}
+      >
+        <DeploysView
+          deploys={shown.deploys}
+          history={shown.deployHistory}
+          orgSlug={orgSlug}
+          scopeId={scopeId}
+        />
+      </Locked>
+    );
+  } else if (selection.store) {
+    body = (
+      <StoreDay
+        store={board.stores.find(
+          (s) => s.store.connectionId === selection.store,
+        )}
+        storeId={selection.store}
+        orgSlug={orgSlug}
+        scopeId={scopeId}
+        at={
+          selection.at ??
+          (selection.date
+            ? new Date(`${selection.date}T23:59:59`).toISOString()
+            : undefined)
+        }
+        monitorLink={
+          scopeId
+            ? {
+                to: PROJECT_ROUTE.monitoring,
+                params: { org: orgSlug, agentId: scopeId },
+              }
+            : {
+                to: DESTINATION_ROUTE.monitoring,
+                params: { org: orgSlug },
+              }
+        }
+        onBackToNow={() => onSelect({ store: selection.store })}
+      />
+    );
+  } else if (loading) {
+    body = (
+      <div className="flex flex-col gap-6">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+          {[0, 1, 2, 3, 4, 5].map((i) => (
+            <Skeleton key={i} className="h-32" />
+          ))}
+        </div>
+        <Skeleton className="h-96" />
+      </div>
+    );
+  } else if (error) {
+    body = (
+      <EmptyState
+        icon={<Activity size={20} />}
+        title={t("monitor.loadError")}
+        description={error.message}
+      />
+    );
+  } else if (unconnected) {
+    body = (
+      <Locked
+        kind="metrics"
+        title={t("monitor.locked.metrics.title")}
+        steps={(["orders", "analytics", "site", "deploys"] as const).map(
+          (source) => ({ source, state: stateOf(source) }),
+        )}
+        link={connectLink(orgSlug, scopeId)}
+      >
+        <Board
+          board={board}
+          selection={selection}
+          orgSlug={orgSlug}
+          scopeId={scopeId}
+          onSelect={onSelect}
+          showChanges={showChanges}
+          preview={preview}
+          bare
+        />
+      </Locked>
+    );
+  } else {
+    body = (
+      <Board
+        board={board}
+        selection={selection}
+        orgSlug={orgSlug}
+        scopeId={scopeId}
+        onSelect={onSelect}
+        showChanges={showChanges}
+        preview={preview}
+      />
+    );
+  }
+  const onBoard =
+    view === "metrics" && !selection.store && !loading && !error && !nothing;
+  const controls: BoardControls | null = onBoard
+    ? {
+        date: selection.date ?? localDay(new Date()),
+        onDate: (date) =>
+          onSelect({
+            ...selection,
+            date: date === localDay(new Date()) ? undefined : date,
+          }),
+        showChanges,
+        onShowChanges: setShowChanges,
+        hasChanges: (board.deploys?.length ?? 0) > 0,
+      }
+    : null;
+
+  // The board analytics' frame: same width, gutters and rhythm.
+  return (
+    <div className="flex h-full min-h-0 flex-col overflow-auto">
+      {tabs}
+      <Actions orgSlug={orgSlug} scopeId={scopeId} controls={controls} />
+      <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-4 px-4 pt-6 pb-10 md:px-10">
+        {body}
+      </div>
+    </div>
+  );
+}

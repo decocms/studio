@@ -1187,7 +1187,17 @@ const planRoute = createRoute({
   },
   component: lazyRouteComponent(() => import("./routes/workspace/plan.tsx")),
 });
-const orgMonitoringPlaceholderRoute = createRoute({
+/** Monitor: the tab, the store (ingest connection id) and instant under
+ *  review, and `sample` for the page over sample data where nothing is wired. */
+const monitoringSearch = z.object({
+  view: z.enum(["metrics", "deploys", "experiments", "analytics"]).optional(),
+  date: z.string().optional(),
+  compare: z.enum(["d1", "w1", "y1"]).optional(),
+  store: z.string().optional(),
+  at: z.string().optional(),
+  sample: z.boolean().optional(),
+});
+const orgMonitoringRoute = createRoute({
   pendingComponent: ChatLayoutPending,
   errorComponent: ChatLayoutError,
   getParentRoute: () => threadSessionRoute,
@@ -1197,6 +1207,7 @@ const orgMonitoringPlaceholderRoute = createRoute({
     defaultMain: "monitoring",
     mainView: "monitoring",
   },
+  validateSearch: monitoringSearch,
   component: lazyRouteComponent(
     () => import("./routes/workspace/monitoring.tsx"),
   ),
@@ -1223,6 +1234,7 @@ const projectMonitoringRoute = createRoute({
     defaultMain: "monitoring",
     mainView: "monitoring",
   },
+  validateSearch: monitoringSearch,
   component: lazyRouteComponent(
     () => import("./routes/workspace/monitoring.tsx"),
   ),
@@ -1721,7 +1733,7 @@ const threadSessionWithChildren = threadSessionRoute.addChildren([
   libraryRoute,
   discoverRoute,
   planRoute,
-  orgMonitoringPlaceholderRoute,
+  orgMonitoringRoute,
 ]);
 
 const threadRouteWithChildren = threadRoute.addChildren([

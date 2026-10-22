@@ -6,6 +6,7 @@
 
 import {
   type QueryClient,
+  useQueries,
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
@@ -100,6 +101,26 @@ export function useOrderMonitorStores(orgSlug: string, enabled: boolean) {
   });
 }
 
+/** One store's day; `at` undefined = now. Shared so a page can read many at once. */
+export function orderMonitorDayQuery(
+  orgSlug: string,
+  connectionId: string,
+  at: string | undefined,
+) {
+  const query = at ? `?at=${encodeURIComponent(at)}` : "";
+  return {
+    queryKey: KEYS.orderMonitorDay(orgSlug, connectionId, at ?? "now"),
+    queryFn: ({ signal }: { signal: AbortSignal }) =>
+      fetchJson<OrderMonitorDay>(
+        `${base(orgSlug)}/${encodeURIComponent(connectionId)}/day${query}`,
+        signal,
+      ),
+    // A past instant doesn't change; "now" moves with the sweep.
+    refetchInterval: at ? (false as const) : FALLBACK_REFETCH_MS,
+    retry: false,
+  };
+}
+
 /** `at` undefined = now. */
 export function useOrderMonitorDay(
   orgSlug: string,
@@ -107,20 +128,23 @@ export function useOrderMonitorDay(
   at: string | undefined,
 ) {
   useOrderMonitorLive(orgSlug, true);
-  const query = at ? `?at=${encodeURIComponent(at)}` : "";
   return useQuery({
-    queryKey: KEYS.orderMonitorDay(orgSlug, connectionId, at ?? "now"),
-    queryFn: ({ signal }) =>
-      fetchJson<OrderMonitorDay>(
-        `${base(orgSlug)}/${encodeURIComponent(connectionId)}/day${query}`,
-        signal,
-      ),
-    // A past instant doesn't change; "now" moves with the sweep.
-    refetchInterval: at ? false : FALLBACK_REFETCH_MS,
+    ...orderMonitorDayQuery(orgSlug, connectionId, at),
     // Another day of the same store, not another store's chart.
     placeholderData: (previous, previousQuery) =>
       previousQuery?.queryKey[3] === connectionId ? previous : undefined,
-    retry: false,
+  });
+}
+
+/** One day of every store at once, for totals across them; `at` undefined = now. */
+export function useOrderMonitorDays(
+  orgSlug: string,
+  connectionIds: string[],
+  at?: string,
+) {
+  useOrderMonitorLive(orgSlug, connectionIds.length > 0);
+  return useQueries({
+    queries: connectionIds.map((id) => orderMonitorDayQuery(orgSlug, id, at)),
   });
 }
 
