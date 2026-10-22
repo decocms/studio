@@ -9,6 +9,7 @@ import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import { isModKey } from "@/lib/keyboard-shortcuts";
 import { calculateUsageStats } from "@/lib/usage-utils.ts";
 import { writeStoredAutosend } from "@/lib/autosend";
+import { clearThreadIntent, writeThreadIntent } from "@/lib/thread-intent";
 import { homeSubmitSearch } from "./home-submit-search";
 import {
   HOME_DRAFT_KEY,
@@ -350,12 +351,20 @@ function useHomeSubmit() {
     const newId = crypto.randomUUID();
     const targetVmcp =
       virtualMcp?.id ?? getWellKnownDecopilotVirtualMCP(org.id).id;
+    // A CMS session (Fast Preview's default) can't take messages.
+    const runtime = taskIntake ? undefined : "sandbox";
     writeStoredAutosend(sessionStorage, locator, newId, {
       tiptapDoc:
         taskIntake && tiptapDoc ? withTaskIntake(tiptapDoc) : tiptapDoc,
     });
+    writeThreadIntent(sessionStorage, locator, newId, { runtime });
     try {
-      await create({ id: newId, virtual_mcp_id: targetVmcp });
+      await create({
+        id: newId,
+        virtual_mcp_id: targetVmcp,
+        ...(runtime ? { runtime } : {}),
+      });
+      clearThreadIntent(sessionStorage, locator, newId);
     } catch {
       // Toast already surfaced by the store; navigate anyway — the route's
       // ensure-fallback will retry if the row is missing.
@@ -695,15 +704,8 @@ export function ChatInput({
     );
   }
 
-  // Sandbox-less composer slot: offer a coding session, else a plain notice.
-  if (fastPreviewActive) {
-    if (!taskCtx) {
-      return (
-        <ChatInputDisabledState
-          message={t("chat.input.fastPreviewUnavailable")}
-        />
-      );
-    }
+  // A CMS session takes no messages: offer a coding session instead.
+  if (fastPreviewActive && taskCtx) {
     const startCodingSession = () => {
       const newTaskId = taskCtx.createTask({ runtime: "sandbox" });
       track("coding_session_started", { thread_id: newTaskId });

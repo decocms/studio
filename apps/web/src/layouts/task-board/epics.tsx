@@ -168,8 +168,7 @@ export function EpicBoardProvider({
   value,
   children,
 }: {
-  /** Null keeps the hierarchy off: no pills, no sheet sections. */
-  value: EpicBoard | null;
+  value: EpicBoard;
   children: ReactNode;
 }) {
   return <EpicBoardContext value={value}>{children}</EpicBoardContext>;

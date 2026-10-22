@@ -93,7 +93,6 @@ export const taskBoard = {
   "taskBoard.epics.segmentTodo": "a fazer",
   "taskBoard.taskBoard.swimlaneCritical": "Crítico",
   "taskBoard.taskBoard.swimlaneImprovements": "Melhorias",
-  "taskBoard.taskBoard.attentionEmpty": "Nada crítico agora.",
   "taskBoard.taskBoard.statusAgeDays": "{count}d",
   "taskBoard.taskBoard.statusAgeToday": "Hoje",
   "taskBoard.taskBoard.statusAgeDaysHint": "Em {status} há {count} dias",

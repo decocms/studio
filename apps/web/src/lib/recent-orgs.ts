@@ -38,7 +38,7 @@ export function pushRecentOrg(
 }
 
 /** The org list with the current org in it. Better Auth's list stops at its
- *  first 100 memberships, so the org on screen can be missing from it. A
+ *  first 500 memberships, so the org on screen can be missing from it. A
  *  current org with no id is no org (`/site-editor`). */
 export function withCurrentOrg<T extends { id: string; slug: string }>(
   listed: readonly T[],

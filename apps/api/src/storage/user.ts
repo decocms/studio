@@ -94,7 +94,7 @@ export class UserStorage implements UserStoragePort {
 
   /**
    * Organizations the user belongs to whose name or slug contains `term`.
-   * Better Auth's own list stops at its adapter's default page of 100, so a
+   * Better Auth's own list stops at its adapter's page of 500, so a
    * search over it cannot reach the rest of a large membership.
    */
   async searchOrganizations(options: {
@@ -112,10 +112,15 @@ export class UserStorage implements UserStoragePort {
 
     let query = this.db
       .selectFrom("organization")
-      .innerJoin("member", (join) =>
-        join
-          .onRef("member.organizationId", "=", "organization.id")
-          .on("member.userId", "=", userId),
+      // EXISTS, not a join: a user can hold two member rows in one org.
+      .where((eb) =>
+        eb.exists(
+          eb
+            .selectFrom("member")
+            .select("member.id")
+            .whereRef("member.organizationId", "=", "organization.id")
+            .where("member.userId", "=", userId),
+        ),
       )
       .where((eb) =>
         eb.or([
