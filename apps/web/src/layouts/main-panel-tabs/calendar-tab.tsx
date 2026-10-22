@@ -37,10 +37,8 @@ export function CalendarTab({ virtualMcpId }: { virtualMcpId: string }) {
       copy={{
         noDraftTitle: t("sandbox.calendarView.noDraft.title"),
         noDraftDesc: t("sandbox.calendarView.noDraft.desc"),
-        openEditor: t("sandbox.calendarView.openEditor"),
         loadFailed: t("sandbox.calendarView.loadFailed"),
         loadFailedHint: t("sandbox.calendarView.loadFailedHint"),
-        tryAgain: t("sandbox.calendarView.tryAgain"),
       }}
       skeleton={<CalendarTabSkeleton />}
     >

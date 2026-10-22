@@ -1015,7 +1015,6 @@ export const sandbox = {
     "Metadados de visualização não estão prontos ainda",
   "sandbox.preview.pageSchemaNotReady":
     "O site ainda está carregando. Tente de novo em instantes.",
-  "sandbox.preview.refresh": "Atualizar",
   "sandbox.preview.searchPagesAndComponents":
     "Procurar páginas e componentes...",
   "sandbox.preview.startingPreview": "Iniciando seu preview",
@@ -1316,12 +1315,10 @@ export const sandbox = {
     "Escolha um rascunho para planejar suas campanhas",
   "sandbox.calendarView.noDraft.desc":
     "Suas campanhas ficam salvas em um rascunho, como qualquer outra edição. Escolha um rascunho na barra acima ou abra o editor do site para começar um.",
-  "sandbox.calendarView.openEditor": "Abrir o editor do site",
   "sandbox.calendarView.loadFailed":
     "Não foi possível carregar suas campanhas.",
   "sandbox.calendarView.loadFailedHint":
     "Nada foi alterado. Tente de novo em instantes.",
-  "sandbox.calendarView.tryAgain": "Tentar de novo",
   "sandbox.dateCampaigns.intro":
     "Toda data do seu site é uma campanha: uma variante com a regra “Campanha” aparece enquanto a campanha dela está rodando. As mudanças ficam salvas no seu rascunho e vão ao ar quando você publica.",
   "sandbox.dateCampaigns.new": "Nova campanha",
@@ -1335,7 +1332,6 @@ export const sandbox = {
   "sandbox.dateCampaigns.status.ended": "Encerrada",
   "sandbox.dateCampaigns.status.always": "Sempre ativa",
   "sandbox.dateCampaigns.status.unreadable": "Datas ilegíveis",
-  "sandbox.dateCampaigns.noDates": "Sem datas: sempre rodando",
   "sandbox.dateCampaigns.usedBy": "Usada em {count}",
   "sandbox.dateCampaigns.notUsed": "Ainda não usada",
   "sandbox.dateCampaigns.state.new": "Ainda não publicada",
@@ -1343,35 +1339,19 @@ export const sandbox = {
   "sandbox.dateCampaigns.removedTitle": "Removidas no seu rascunho",
   "sandbox.dateCampaigns.removedHint":
     "Estas campanhas param quando você publicar. Para manter uma, crie-a de novo com o mesmo nome.",
-  "sandbox.dateCampaigns.startLabel": "Começa",
-  "sandbox.dateCampaigns.endLabel": "Termina",
-  "sandbox.dateCampaigns.windowHint":
-    "Deixe uma data vazia para manter aquele lado aberto. Os horários estão no fuso do seu computador.",
-  "sandbox.dateCampaigns.endBeforeStart": "O fim precisa ser depois do início.",
   "sandbox.dateCampaigns.unreadableHint":
     "Uma das datas não pode ser lida, então as variantes dela não aparecem. Escolha novas datas e salve.",
   "sandbox.dateCampaigns.publishedWindow": "Publicado: {window}",
   "sandbox.dateCampaigns.saveDates": "Salvar datas",
-  "sandbox.dateCampaigns.nameLabel": "Nome",
-  "sandbox.dateCampaigns.rename": "Renomear",
   "sandbox.dateCampaigns.renameHint":
     "Toda variante que usa esta campanha é atualizada na mesma mudança.",
   "sandbox.dateCampaigns.renameWholeHint":
     "Seções que leem todas as campanhas no próprio código continuam procurando o nome antigo. Atualize-as no editor do site.",
-  "sandbox.dateCampaigns.nameEmpty": "Dê um nome.",
-  "sandbox.dateCampaigns.nameTaken": "Esse nome já está em uso.",
-  "sandbox.dateCampaigns.nameReserved":
-    "Nomes não podem começar com dois sublinhados.",
   "sandbox.dateCampaigns.delete": "Excluir campanha",
   "sandbox.dateCampaigns.deleted": "Campanha “{name}” excluída do seu rascunho",
   "sandbox.dateCampaigns.deletedHint":
     "Ela sai do site quando você publicar. Desfazer traz ela de volta.",
-  "sandbox.dateCampaigns.undo": "Desfazer",
-  "sandbox.dateCampaigns.saved": "Salvo no seu rascunho",
-  "sandbox.dateCampaigns.savedHint": "Vai ao ar quando você publicar.",
   "sandbox.dateCampaigns.renamed": "Campanha renomeada para “{name}”",
-  "sandbox.dateCampaigns.created": "Campanha “{name}” adicionada",
-  "sandbox.dateCampaigns.create": "Criar",
   "sandbox.dateCampaigns.allCampaigns": "Todas as campanhas",
   "sandbox.dateCampaigns.today": "Hoje",
   "sandbox.dateCampaigns.previous": "Antes",

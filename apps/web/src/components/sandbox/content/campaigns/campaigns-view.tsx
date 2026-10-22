@@ -13,7 +13,6 @@
  */
 
 import { useState } from "react";
-import { toast } from "sonner";
 import {
   Calendar,
   ChevronLeft,
@@ -23,55 +22,36 @@ import {
 } from "@untitledui/icons";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
-import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-} from "@decocms/ui/components/dialog.tsx";
-import { Input } from "@decocms/ui/components/input.tsx";
-import { Label } from "@decocms/ui/components/label.tsx";
 import { ScrollArea } from "@decocms/ui/components/scroll-area.tsx";
 import { ViewModeToggle } from "@decocms/ui/components/view-mode-toggle.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import { SiteDraftViewHeader } from "@/components/site-draft-bar/view-header";
 import { formatCampaignWindow } from "@/components/sections-editor/format-matcher";
-import {
-  planNamedRuleCreate,
-  planNamedRuleSet,
-} from "@/components/sections-editor/named-rule-edits";
-import { NamedRuleDeleteButton } from "@/components/sections-editor/named-rule-delete";
+import { planNamedRuleSet } from "@/components/sections-editor/named-rule-edits";
 import {
   isoToLocalInput,
-  newNameProblem,
   windowFromInputs,
 } from "@/components/sections-editor/named-rule-picker";
-import { NamedRuleCreateForm } from "@/components/sections-editor/named-rule-step";
+import { CampaignWindowInputs } from "@/components/sections-editor/named-rule-step";
+import { NamedRuleUsedBy } from "@/components/sections-editor/named-rule-used-by";
+import type { NamedRuleUseRow } from "@/components/sections-editor/named-rule-uses";
 import {
-  MissingNamedRuleUses,
-  NamedRuleUsedBy,
-} from "@/components/sections-editor/named-rule-used-by";
-import {
-  missingNamedRuleRowNames,
-  missingNamedRuleRows,
-  type NamedRuleUseRow,
-  type NamedRuleUses,
-  namedRuleUseRows,
-} from "@/components/sections-editor/named-rule-uses";
-import {
-  type CampaignWindow,
-  namedRuleSupport,
-  readNamedRuleBlock,
-} from "@/components/sections-editor/named-rules";
+  NamedRuleCreateDialog,
+  NamedRuleDetailDelete,
+  type NamedRuleDetailProps,
+  NamedRuleDetailTitle,
+  NamedRuleDraftNotes,
+  NamedRuleEntryBadge,
+  NamedRuleRenameSection,
+  namedRuleDetailProps,
+  namedRuleDetailUses,
+  namedRuleUsesLabel,
+  useNamedRuleRename,
+  useNamedRuleView,
+} from "@/components/sections-editor/named-rule-view";
+import type { CampaignWindow } from "@/components/sections-editor/named-rules";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
-import { planNamedRuleRename } from "@/components/sections-editor/rule-references";
-import { SITE_EDITOR_SAVE_TOAST } from "@/components/sections-editor/site-editor-toast";
-import {
-  type NamedRuleApplyOutcome,
-  type NamedRuleChange,
-  useApplyNamedRule,
-} from "@/components/sections-editor/use-apply-named-rule";
-import { useNamedRuleUses } from "@/components/sections-editor/use-named-rule-uses";
 import {
   addMonths,
   MONTHS,
@@ -175,93 +155,44 @@ export function CampaignsView({
   title?: string;
 }) {
   const t = useT();
-  const uses = useNamedRuleUses({
+  const view = useNamedRuleView("campaigns", {
     orgSlug,
     virtualMcpId,
     branch,
     decofile,
     meta,
   });
-  const { apply, reread, planStored, isPending } = useApplyNamedRule({
-    orgSlug,
-    virtualMcpId,
-    branch,
-  });
-  const [view, setView] = useState<ViewMode>(initialView);
-  const [openName, setOpenName] = useState<string | null>(null);
-  const [creating, setCreating] = useState(false);
+  const [mode, setMode] = useState<ViewMode>(initialView);
   // One moment for the whole view, so every status agrees.
   const [now] = useState(() => new Date());
 
-  const support = namedRuleSupport(meta, "campaigns");
-  if (support === "missing") {
-    return (
-      <Guide
-        title={t("sandbox.dateCampaigns.missing.title")}
-        description={t("sandbox.dateCampaigns.missing.desc")}
-      />
-    );
-  }
-  if (support === "replaced") {
-    return (
-      <Guide
-        title={t("sandbox.dateCampaigns.replaced.title")}
-        description={t("sandbox.dateCampaigns.replaced.desc")}
-      />
-    );
-  }
-  if (readNamedRuleBlock(decofile, "campaigns").kind === "conflict") {
-    return (
-      <Guide
-        title={t("sandbox.dateCampaigns.conflict.title")}
-        description={t("sandbox.dateCampaigns.conflict.desc")}
-      />
-    );
+  if (view.blocked) {
+    const guide = {
+      missing: {
+        title: t("sandbox.dateCampaigns.missing.title"),
+        description: t("sandbox.dateCampaigns.missing.desc"),
+      },
+      replaced: {
+        title: t("sandbox.dateCampaigns.replaced.title"),
+        description: t("sandbox.dateCampaigns.replaced.desc"),
+      },
+      conflict: {
+        title: t("sandbox.dateCampaigns.conflict.title"),
+        description: t("sandbox.dateCampaigns.conflict.desc"),
+      },
+    }[view.blocked];
+    return <Guide {...guide} />;
   }
 
-  const rows = campaignRows(decofile, uses, now);
-  const removed = removedCampaigns(decofile, uses);
-  const missing = uses
-    ? missingNamedRuleRows(uses, "campaigns", decofile, meta)
-    : [];
-  const missingNames = uses
-    ? missingNamedRuleRowNames(uses, "campaigns", decofile, meta)
-    : 0;
+  const rows = campaignRows(decofile, view.uses, now);
+  const removed = removedCampaigns(decofile, view.uses);
 
-  const save = async (
-    change: NamedRuleChange | null,
-    title = t("sandbox.dateCampaigns.saved"),
-  ) => {
-    if (!change) return false;
-    const outcome = await apply(change);
-    if (outcome.ok) {
-      toast.success(title, {
-        id: SITE_EDITOR_SAVE_TOAST,
-        description: t("sandbox.dateCampaigns.savedHint"),
-      });
-    }
-    return outcome.ok;
-  };
-
-  const opened = rows.find((row) => row.name === openName) ?? null;
+  const opened = rows.find((row) => row.name === view.openName) ?? null;
   if (opened) {
     return (
       <CampaignDetail
         key={opened.name}
-        row={opened}
-        decofile={decofile}
-        meta={meta}
-        uses={uses}
-        pending={isPending}
-        onBack={() => setOpenName(null)}
-        onOpenUse={onOpenUse}
-        onSave={save}
-        onRenamed={setOpenName}
-        apply={apply}
-        reread={reread}
-        planStored={planStored}
-        onDeleted={() => setOpenName(null)}
-        onUndo={(change) => void save(change)}
+        {...namedRuleDetailProps(view, opened, { decofile, meta, onOpenUse })}
       />
     );
   }
@@ -273,8 +204,8 @@ export function CampaignsView({
         actions={
           <>
             <ViewModeToggle<ViewMode>
-              value={view}
-              onValueChange={setView}
+              value={mode}
+              onValueChange={setMode}
               options={[
                 {
                   value: "list",
@@ -288,7 +219,7 @@ export function CampaignsView({
                 },
               ]}
             />
-            <Button size="sm" onClick={() => setCreating(true)}>
+            <Button size="sm" onClick={() => view.setCreating(true)}>
               <Plus size={16} />
               {t("sandbox.dateCampaigns.new")}
             </Button>
@@ -310,71 +241,28 @@ export function CampaignsView({
                 {t("sandbox.dateCampaigns.empty.desc")}
               </p>
             </div>
-          ) : view === "list" ? (
-            <CampaignList rows={rows} onOpen={setOpenName} />
+          ) : mode === "list" ? (
+            <CampaignList rows={rows} onOpen={view.setOpenName} />
           ) : (
-            <CampaignTimeline rows={rows} now={now} onOpen={setOpenName} />
+            <CampaignTimeline rows={rows} now={now} onOpen={view.setOpenName} />
           )}
-          <MissingNamedRuleUses
+          <NamedRuleDraftNotes
             kind="campaigns"
-            rows={missing}
-            names={missingNames}
-            onOpen={onOpenUse}
+            missing={view.missing}
+            missingNames={view.missingNames}
+            removed={removed}
+            onOpenUse={onOpenUse}
           />
-          {removed.length > 0 && (
-            <div className="flex flex-col gap-1">
-              <h3 className="text-sm font-medium">
-                {t("sandbox.dateCampaigns.removedTitle")}
-              </h3>
-              <p className="text-xs text-muted-foreground">
-                {t("sandbox.dateCampaigns.removedHint")}
-              </p>
-              <ul className="text-sm text-muted-foreground">
-                {removed.map((name) => (
-                  <li key={name} className="line-through">
-                    {name}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
         </div>
       </ScrollArea>
-      <Dialog open={creating} onOpenChange={setCreating}>
-        <DialogContent className="p-0 sm:max-w-md">
-          <DialogTitle className="sr-only">
-            {t("sandbox.dateCampaigns.new")}
-          </DialogTitle>
-          <NamedRuleCreateForm
-            kind="campaigns"
-            initialName=""
-            existingNames={rows.map((row) => row.name)}
-            pending={isPending}
-            submitLabel={t("sandbox.dateCampaigns.create")}
-            dismiss="cancel"
-            onBack={() => setCreating(false)}
-            onSubmit={(pick) => {
-              if (pick.kind !== "campaigns" || !pick.create) return;
-              const plan = planNamedRuleCreate(
-                decofile,
-                "campaigns",
-                pick.name,
-                pick.create.window,
-              );
-              if (!("change" in plan)) return;
-              void save(
-                plan.change,
-                t("sandbox.dateCampaigns.created", { name: pick.name }),
-              ).then((ok) => {
-                if (ok) {
-                  setCreating(false);
-                  setOpenName(pick.name);
-                }
-              });
-            }}
-          />
-        </DialogContent>
-      </Dialog>
+      <NamedRuleCreateDialog
+        kind="campaigns"
+        open={view.creating}
+        onOpenChange={view.setCreating}
+        existingNames={rows.map((row) => row.name)}
+        pending={view.isPending}
+        onCreate={view.create}
+      />
     </div>
   );
 }
@@ -407,24 +295,16 @@ function CampaignList({
               {row.name}
             </button>
             <span className="truncate text-xs text-muted-foreground">
-              {windowText(row.window, t("sandbox.dateCampaigns.noDates"))}
+              {windowText(
+                row.window,
+                t("sectionsEditor.namedRulePicker.alwaysRunning"),
+              )}
               {" · "}
-              {row.uses > 0
-                ? t("sandbox.dateCampaigns.usedBy", { count: String(row.uses) })
-                : t("sandbox.dateCampaigns.notUsed")}
+              {namedRuleUsesLabel(t, "campaigns", row.uses)}
             </span>
           </div>
           <div className="hidden w-40 shrink-0 md:flex">
-            {row.entryState === "new" && (
-              <Badge variant="muted">
-                {t("sandbox.dateCampaigns.state.new")}
-              </Badge>
-            )}
-            {row.entryState === "changed" && (
-              <Badge variant="muted">
-                {t("sandbox.dateCampaigns.state.changed")}
-              </Badge>
-            )}
+            <NamedRuleEntryBadge kind="campaigns" state={row.entryState} />
           </div>
           <div className="flex w-32 shrink-0">
             <CampaignStatusPill status={row.status} />
@@ -546,7 +426,7 @@ function CampaignTimeline({
                     aria-label={row.name}
                     title={windowText(
                       row.window,
-                      t("sandbox.dateCampaigns.noDates"),
+                      t("sectionsEditor.namedRulePicker.alwaysRunning"),
                     )}
                     className={cn(
                       "absolute top-1/2 h-6 -translate-y-1/2 truncate rounded text-left text-[11px] font-medium",
@@ -598,95 +478,32 @@ function CampaignTimeline({
   );
 }
 
-function CampaignDetail({
-  row,
-  decofile,
-  meta,
-  uses,
-  pending,
-  onBack,
-  onOpenUse,
-  onSave,
-  onRenamed,
-  apply,
-  reread,
-  planStored,
-  onDeleted,
-  onUndo,
-}: {
-  row: CampaignRowModel;
-  decofile: Record<string, unknown>;
-  meta: LiveMeta | null | undefined;
-  uses: NamedRuleUses | null;
-  pending: boolean;
-  onBack: () => void;
-  onOpenUse: (row: NamedRuleUseRow) => void;
-  onSave: (change: NamedRuleChange | null, title?: string) => Promise<boolean>;
-  onRenamed: (name: string) => void;
-  apply: (change: NamedRuleChange) => Promise<NamedRuleApplyOutcome>;
-  reread: () => Promise<Record<string, unknown> | null>;
-  /** Plans a rename from the draft as stored now (use-apply-named-rule.ts). */
-  planStored: (
-    plan: (decofile: Record<string, unknown>) => NamedRuleChange | null,
-  ) => Promise<NamedRuleChange | null>;
-  onDeleted: () => void;
-  onUndo: (change: NamedRuleChange) => void;
-}) {
+function CampaignDetail(props: NamedRuleDetailProps<CampaignRowModel>) {
+  const { row, decofile, meta, uses, pending, onBack, onOpenUse, onSave } =
+    props;
   const t = useT();
   const [start, setStart] = useState(isoToLocalInput(row.window.start));
   const [end, setEnd] = useState(isoToLocalInput(row.window.end));
-  const [name, setName] = useState(row.name);
+  const rename = useNamedRuleRename("campaigns", props);
   const window = windowFromInputs(start, end);
   const windowChanged =
     "window" in window &&
     (start !== isoToLocalInput(row.window.start) ||
       end !== isoToLocalInput(row.window.end));
 
-  const block = readNamedRuleBlock(decofile, "campaigns");
-  const others =
-    block.kind === "conflict"
-      ? []
-      : Object.keys(block.block).filter(
-          (key) => key !== "__resolveType" && key !== row.name,
-        );
-  const nameProblem =
-    name.trim() === row.name ? null : newNameProblem(name, others);
-  const nameMessage =
-    nameProblem === "empty"
-      ? t("sandbox.dateCampaigns.nameEmpty")
-      : nameProblem === "taken"
-        ? t("sandbox.dateCampaigns.nameTaken")
-        : nameProblem === "reserved"
-          ? t("sandbox.dateCampaigns.nameReserved")
-          : null;
-
-  const useRows = uses
-    ? namedRuleUseRows(uses, "campaigns", row.name, decofile, meta)
-    : [];
-  const wholeRows = uses
-    ? namedRuleUseRows(uses, "campaigns", null, decofile, meta)
-    : [];
+  const { useRows, wholeRows } = namedRuleDetailUses(
+    "campaigns",
+    row.name,
+    uses,
+    decofile,
+    meta,
+  );
 
   const saveWindow = () => {
     if (!("window" in window)) return;
     void onSave(
       planNamedRuleSet(decofile, "campaigns", row.name, window.window),
     );
-  };
-
-  /** Planned from the draft as stored now, so every use gets the new name. */
-  const rename = async () => {
-    const next = name.trim();
-    if (nameProblem || next === row.name) return;
-    const plan = await planStored((stored) =>
-      planNamedRuleRename(stored, "campaigns", row.name, next, meta),
-    );
-    if (
-      plan &&
-      (await onSave(plan, t("sandbox.dateCampaigns.renamed", { name: next })))
-    ) {
-      onRenamed(next);
-    }
   };
 
   return (
@@ -696,59 +513,29 @@ function CampaignDetail({
           label: t("sandbox.dateCampaigns.allCampaigns"),
           onClick: onBack,
         }}
-        actions={
-          <NamedRuleDeleteButton
-            kind="campaigns"
-            name={row.name}
-            meta={meta}
-            pending={pending}
-            apply={apply}
-            reread={reread}
-            onDeleted={onDeleted}
-            onUndo={onUndo}
-          />
-        }
+        actions={<NamedRuleDetailDelete kind="campaigns" detail={props} />}
       />
       <ScrollArea className="min-h-0 flex-1">
         <div className="flex max-w-2xl flex-col gap-6 p-4">
-          <div className="flex items-center gap-3">
-            <h2 className="text-lg font-semibold">{row.name}</h2>
-            <CampaignStatusPill status={row.status} />
-            {row.entryState === "new" && (
-              <Badge variant="muted">
-                {t("sandbox.dateCampaigns.state.new")}
-              </Badge>
-            )}
-          </div>
+          <NamedRuleDetailTitle
+            kind="campaigns"
+            name={row.name}
+            status={<CampaignStatusPill status={row.status} />}
+            entryState={row.entryState}
+          />
 
           <section className="flex flex-col gap-2">
-            <div className="grid max-w-md grid-cols-2 gap-3">
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="campaign-start">
-                  {t("sandbox.dateCampaigns.startLabel")}
-                </Label>
-                <Input
-                  id="campaign-start"
-                  type="datetime-local"
-                  value={start}
-                  onChange={(e) => setStart(e.target.value)}
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="campaign-end">
-                  {t("sandbox.dateCampaigns.endLabel")}
-                </Label>
-                <Input
-                  id="campaign-end"
-                  type="datetime-local"
-                  value={end}
-                  onChange={(e) => setEnd(e.target.value)}
-                />
-              </div>
-            </div>
+            <CampaignWindowInputs
+              idPrefix="campaign"
+              className="max-w-md"
+              start={start}
+              end={end}
+              onStartChange={setStart}
+              onEndChange={setEnd}
+            />
             {"problem" in window && (
               <p className="text-xs text-destructive">
-                {t("sandbox.dateCampaigns.endBeforeStart")}
+                {t("sectionsEditor.namedRules.endBeforeStart")}
               </p>
             )}
             {row.status === "unreadable" && (
@@ -757,14 +544,14 @@ function CampaignDetail({
               </p>
             )}
             <p className="text-xs text-muted-foreground">
-              {t("sandbox.dateCampaigns.windowHint")}
+              {t("sectionsEditor.namedRules.windowHint")}
             </p>
             {row.publishedWindow && (
               <p className="text-xs text-muted-foreground">
                 {t("sandbox.dateCampaigns.publishedWindow", {
                   window: windowText(
                     row.publishedWindow,
-                    t("sandbox.dateCampaigns.noDates"),
+                    t("sectionsEditor.namedRulePicker.alwaysRunning"),
                   ),
                 })}
               </p>
@@ -780,38 +567,13 @@ function CampaignDetail({
             </div>
           </section>
 
-          <section className="flex flex-col gap-2">
-            <Label htmlFor="campaign-name">
-              {t("sandbox.dateCampaigns.nameLabel")}
-            </Label>
-            <div className="flex items-center gap-2">
-              <Input
-                id="campaign-name"
-                className="max-w-xs"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={pending || !!nameProblem || name.trim() === row.name}
-                onClick={() => void rename()}
-              >
-                {t("sandbox.dateCampaigns.rename")}
-              </Button>
-            </div>
-            {nameMessage && (
-              <p className="text-xs text-destructive">{nameMessage}</p>
-            )}
-            <p className="text-xs text-muted-foreground">
-              {t("sandbox.dateCampaigns.renameHint")}
-            </p>
-            {wholeRows.length > 0 && (
-              <p className="text-xs text-muted-foreground">
-                {t("sandbox.dateCampaigns.renameWholeHint")}
-              </p>
-            )}
-          </section>
+          <NamedRuleRenameSection
+            kind="campaigns"
+            id="campaign-name"
+            rename={rename}
+            pending={pending}
+            wholeUses={wholeRows.length}
+          />
 
           <NamedRuleUsedBy
             kind="campaigns"

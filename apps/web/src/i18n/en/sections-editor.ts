@@ -88,20 +88,8 @@ export const sectionsEditor = {
     "Your site has a block named “campaigns” that isn't a list of campaigns, so campaigns can't be added yet. Rename that block, then come back here.",
   "sectionsEditor.namedRulePicker.newTestTitle": "New A/B test",
   "sectionsEditor.namedRulePicker.newCampaignTitle": "New campaign",
-  "sectionsEditor.namedRulePicker.nameLabel": "Name",
   "sectionsEditor.namedRulePicker.shareHint":
     "0 keeps the test off, 100 shows it to everyone. You can change it later in Experiments.",
-  "sectionsEditor.namedRulePicker.startLabel": "Starts",
-  "sectionsEditor.namedRulePicker.endLabel": "Ends",
-  "sectionsEditor.namedRulePicker.windowHint":
-    "Leave a date empty to keep that side open. Times are in your computer's time zone.",
-  "sectionsEditor.namedRulePicker.nameEmpty": "Give it a name.",
-  "sectionsEditor.namedRulePicker.nameTaken":
-    "That name is already in use. Pick it from the list instead.",
-  "sectionsEditor.namedRulePicker.nameReserved":
-    "Names can't start with two underscores.",
-  "sectionsEditor.namedRulePicker.endBeforeStart":
-    "The end needs to be after the start.",
   "sectionsEditor.namedRulePicker.createAndUse": "Create and use",
   "sectionsEditor.namedRulePicker.cancel": "Back",
   "sectionsEditor.namedRulePicker.cancelCreate": "Cancel",
@@ -124,7 +112,6 @@ export const sectionsEditor = {
   "sectionsEditor.namedRulePicker.missingCampaignNoCreate":
     "This campaign isn't in your campaigns. Pick another or remove this variant.",
   "sectionsEditor.namedRulePicker.createMissing": "Create it",
-  "sectionsEditor.namedRulePicker.createMissingSubmit": "Create",
   "sectionsEditor.namedRulePicker.missingTestWithin":
     "This rule uses a test that isn't in your A/B tests. Change the rule or remove this variant.",
   "sectionsEditor.namedRulePicker.missingCampaignWithin":
@@ -181,6 +168,26 @@ export const sectionsEditor = {
   "sectionsEditor.namedRules.unavailable": "Can't save this right now",
   "sectionsEditor.namedRules.unavailableHint":
     "The site's content isn't reachable at the moment. Nothing was changed; try again in a moment.",
+  "sectionsEditor.namedRules.nameLabel": "Name",
+  "sectionsEditor.namedRules.nameEmpty": "Give it a name.",
+  "sectionsEditor.namedRules.nameTaken": "That name is already in use.",
+  "sectionsEditor.namedRules.nameTakenPick":
+    "That name is already in use. Pick it from the list instead.",
+  "sectionsEditor.namedRules.nameReserved":
+    "Names can't start with two underscores.",
+  "sectionsEditor.namedRules.startLabel": "Starts",
+  "sectionsEditor.namedRules.endLabel": "Ends",
+  "sectionsEditor.namedRules.windowHint":
+    "Leave a date empty to keep that side open. Times are in your computer's time zone.",
+  "sectionsEditor.namedRules.endBeforeStart":
+    "The end needs to be after the start.",
+  "sectionsEditor.namedRules.rename": "Rename",
+  "sectionsEditor.namedRules.saved": "Saved in your draft",
+  "sectionsEditor.namedRules.savedHint": "It goes live when you publish.",
+  "sectionsEditor.namedRules.undo": "Undo",
+  "sectionsEditor.namedRules.create": "Create",
+  "sectionsEditor.namedRules.openEditor": "Open the site editor",
+  "sectionsEditor.namedRules.tryAgain": "Try again",
   "sectionsEditor.field.missingRequired": "Missing a required field",
   "sectionsEditor.field.missingRequiredTooltip":
     "Required field not filled in.",

@@ -110,9 +110,7 @@ export function NamedRuleDeleteButton({
               ? t("experiments.v8.deletedHint")
               : t("sandbox.dateCampaigns.deletedHint"),
         action: {
-          label: tests
-            ? t("experiments.v8.undo")
-            : t("sandbox.dateCampaigns.undo"),
+          label: t("sectionsEditor.namedRules.undo"),
           onClick: () => void undo(raw),
         },
       },

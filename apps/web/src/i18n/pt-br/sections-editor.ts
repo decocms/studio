@@ -92,20 +92,8 @@ export const sectionsEditor = {
     "Seu site tem um bloco chamado “campaigns” que não é uma lista de campanhas, então ainda não dá para adicionar campanhas. Renomeie esse bloco e volte aqui.",
   "sectionsEditor.namedRulePicker.newTestTitle": "Novo teste A/B",
   "sectionsEditor.namedRulePicker.newCampaignTitle": "Nova campanha",
-  "sectionsEditor.namedRulePicker.nameLabel": "Nome",
   "sectionsEditor.namedRulePicker.shareHint":
     "0 deixa o teste desligado, 100 mostra para todos. Você pode mudar depois em Experimentos.",
-  "sectionsEditor.namedRulePicker.startLabel": "Começa",
-  "sectionsEditor.namedRulePicker.endLabel": "Termina",
-  "sectionsEditor.namedRulePicker.windowHint":
-    "Deixe uma data vazia para manter aquele lado aberto. Os horários estão no fuso do seu computador.",
-  "sectionsEditor.namedRulePicker.nameEmpty": "Dê um nome.",
-  "sectionsEditor.namedRulePicker.nameTaken":
-    "Esse nome já está em uso. Escolha-o na lista.",
-  "sectionsEditor.namedRulePicker.nameReserved":
-    "Nomes não podem começar com dois sublinhados.",
-  "sectionsEditor.namedRulePicker.endBeforeStart":
-    "O fim precisa ser depois do começo.",
   "sectionsEditor.namedRulePicker.createAndUse": "Criar e usar",
   "sectionsEditor.namedRulePicker.cancel": "Voltar",
   "sectionsEditor.namedRulePicker.cancelCreate": "Cancelar",
@@ -129,7 +117,6 @@ export const sectionsEditor = {
   "sectionsEditor.namedRulePicker.missingCampaignNoCreate":
     "Esta campanha não está nas suas campanhas. Escolha outra ou remova esta variante.",
   "sectionsEditor.namedRulePicker.createMissing": "Criar",
-  "sectionsEditor.namedRulePicker.createMissingSubmit": "Criar",
   "sectionsEditor.namedRulePicker.missingTestWithin":
     "Esta regra usa um teste que não está nos seus testes A/B. Altere a regra ou remova esta variante.",
   "sectionsEditor.namedRulePicker.missingCampaignWithin":
@@ -186,6 +173,26 @@ export const sectionsEditor = {
   "sectionsEditor.namedRules.unavailable": "Não foi possível salvar agora",
   "sectionsEditor.namedRules.unavailableHint":
     "O conteúdo do site não está acessível no momento. Nada foi alterado; tente de novo em instantes.",
+  "sectionsEditor.namedRules.nameLabel": "Nome",
+  "sectionsEditor.namedRules.nameEmpty": "Dê um nome.",
+  "sectionsEditor.namedRules.nameTaken": "Esse nome já está em uso.",
+  "sectionsEditor.namedRules.nameTakenPick":
+    "Esse nome já está em uso. Escolha-o na lista.",
+  "sectionsEditor.namedRules.nameReserved":
+    "Nomes não podem começar com dois sublinhados.",
+  "sectionsEditor.namedRules.startLabel": "Começa",
+  "sectionsEditor.namedRules.endLabel": "Termina",
+  "sectionsEditor.namedRules.windowHint":
+    "Deixe uma data vazia para manter aquele lado aberto. Os horários estão no fuso do seu computador.",
+  "sectionsEditor.namedRules.endBeforeStart":
+    "O fim precisa ser depois do início.",
+  "sectionsEditor.namedRules.rename": "Renomear",
+  "sectionsEditor.namedRules.saved": "Salvo no seu rascunho",
+  "sectionsEditor.namedRules.savedHint": "Vai ao ar quando você publicar.",
+  "sectionsEditor.namedRules.undo": "Desfazer",
+  "sectionsEditor.namedRules.create": "Criar",
+  "sectionsEditor.namedRules.openEditor": "Abrir o editor do site",
+  "sectionsEditor.namedRules.tryAgain": "Tentar de novo",
   "sectionsEditor.field.missingRequired": "Falta um campo obrigatório",
   "sectionsEditor.field.missingRequiredTooltip":
     "Campo obrigatório não preenchido.",

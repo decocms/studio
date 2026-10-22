@@ -15,57 +15,37 @@
  */
 
 import { useState } from "react";
-import { toast } from "sonner";
 import { Beaker02, Plus } from "@untitledui/icons";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Card } from "@decocms/ui/components/card.tsx";
-import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-} from "@decocms/ui/components/dialog.tsx";
 import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
-import { Input } from "@decocms/ui/components/input.tsx";
-import { Label } from "@decocms/ui/components/label.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { ShareSplit } from "@/components/experiments/split-donut";
 import { Page } from "@/components/page";
 import { SiteDraftViewHeader } from "@/components/site-draft-bar/view-header";
+import { planNamedRuleSet } from "@/components/sections-editor/named-rule-edits";
+import { NamedRuleUsedBy } from "@/components/sections-editor/named-rule-used-by";
+import type { NamedRuleUseRow } from "@/components/sections-editor/named-rule-uses";
 import {
-  planNamedRuleCreate,
-  planNamedRuleSet,
-} from "@/components/sections-editor/named-rule-edits";
-import { NamedRuleDeleteButton } from "@/components/sections-editor/named-rule-delete";
-import { newNameProblem } from "@/components/sections-editor/named-rule-picker";
-import { NamedRuleCreateForm } from "@/components/sections-editor/named-rule-step";
-import {
-  MissingNamedRuleUses,
-  NamedRuleUsedBy,
-} from "@/components/sections-editor/named-rule-used-by";
-import {
-  missingNamedRuleRowNames,
-  missingNamedRuleRows,
-  type NamedRuleUseRow,
-  type NamedRuleUses,
-  namedRuleUseRows,
-} from "@/components/sections-editor/named-rule-uses";
+  NamedRuleCreateDialog,
+  NamedRuleDetailDelete,
+  type NamedRuleDetailProps,
+  NamedRuleDetailTitle,
+  NamedRuleDraftNotes,
+  NamedRuleEntryBadge,
+  NamedRuleRenameSection,
+  namedRuleDetailProps,
+  namedRuleDetailUses,
+  namedRuleUsesLabel,
+  useNamedRuleRename,
+  useNamedRuleView,
+} from "@/components/sections-editor/named-rule-view";
 import {
   canRenameExperiment,
   type ExperimentStatus,
-  namedRuleSupport,
-  readNamedRuleBlock,
 } from "@/components/sections-editor/named-rules";
-import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
-import { planNamedRuleRename } from "@/components/sections-editor/rule-references";
-import { SITE_EDITOR_SAVE_TOAST } from "@/components/sections-editor/site-editor-toast";
-import {
-  type NamedRuleApplyOutcome,
-  type NamedRuleChange,
-  useApplyNamedRule,
-} from "@/components/sections-editor/use-apply-named-rule";
-import { useNamedRuleUses } from "@/components/sections-editor/use-named-rule-uses";
 import { useT } from "@/i18n/use-t.ts";
 import {
   type ExperimentRowModel,
@@ -154,10 +134,9 @@ export function ExperimentsBlockTab({
       copy={{
         noDraftTitle: t("experiments.v8.noDraft.title"),
         noDraftDesc: t("experiments.v8.noDraft.desc"),
-        openEditor: t("experiments.v8.openEditor"),
+
         loadFailed: t("experiments.v8.loadFailed"),
         loadFailedHint: t("sectionsEditor.namedRules.unavailableHint"),
-        tryAgain: t("experiments.v8.tryAgain"),
       }}
       skeleton={<ExperimentsTabSkeleton />}
     >
@@ -175,23 +154,15 @@ function ExperimentsBlockReady({
 }: SiteDraftViewReady) {
   const t = useT();
   const { openPanel } = usePanelNavigate();
-  const uses = useNamedRuleUses({
+  const view = useNamedRuleView("experiments", {
     orgSlug,
     virtualMcpId,
     branch,
     decofile,
     meta,
   });
-  const { apply, reread, planStored, isPending } = useApplyNamedRule({
-    orgSlug,
-    virtualMcpId,
-    branch,
-  });
-  const [openName, setOpenName] = useState<string | null>(null);
-  const [creating, setCreating] = useState(false);
 
-  const support = namedRuleSupport(meta, "experiments");
-  if (support === "missing") {
+  if (view.blocked === "missing") {
     return (
       <GuideState
         title={t("experiments.v8.missing.title")}
@@ -199,7 +170,7 @@ function ExperimentsBlockReady({
       />
     );
   }
-  if (support === "replaced") {
+  if (view.blocked === "replaced") {
     return (
       <GuideState
         title={t("experiments.v8.replaced.title")}
@@ -207,68 +178,37 @@ function ExperimentsBlockReady({
       />
     );
   }
-  if (readNamedRuleBlock(decofile, "experiments").kind === "conflict") {
+  if (view.blocked === "conflict") {
     return (
       <GuideState
         title={t("experiments.v8.conflict.title")}
         description={t("experiments.v8.conflict.desc")}
         action={{
-          label: t("experiments.v8.openEditor"),
+          label: t("sectionsEditor.namedRules.openEditor"),
           onClick: () => openPanel("content"),
         }}
       />
     );
   }
 
-  const rows = experimentRows(decofile, uses);
-  const removed = removedExperiments(decofile, uses);
-  const missing = uses
-    ? missingNamedRuleRows(uses, "experiments", decofile, meta)
-    : [];
-  const missingNames = uses
-    ? missingNamedRuleRowNames(uses, "experiments", decofile, meta)
-    : 0;
-
-  /** One change into the draft, with one toast for it. */
-  const save = async (
-    change: NamedRuleChange | null,
-    toastTitle = t("experiments.v8.saved"),
-  ) => {
-    if (!change) return false;
-    const outcome = await apply(change);
-    if (outcome.ok) {
-      toast.success(toastTitle, {
-        id: SITE_EDITOR_SAVE_TOAST,
-        description: t("experiments.v8.savedHint"),
-      });
-    }
-    return outcome.ok;
-  };
+  const rows = experimentRows(decofile, view.uses);
+  const removed = removedExperiments(decofile, view.uses);
 
   const openUse = (row: NamedRuleUseRow) =>
     openPanel("content", {
       search: (prev) => ({ ...prev, ...contentSearchForUse(row) }),
     });
 
-  const opened = rows.find((row) => row.name === openName) ?? null;
+  const opened = rows.find((row) => row.name === view.openName) ?? null;
   if (opened) {
     return (
       <ExperimentBlockDetail
         key={opened.name}
-        row={opened}
-        decofile={decofile}
-        meta={meta}
-        uses={uses}
-        pending={isPending}
-        onBack={() => setOpenName(null)}
-        onOpenUse={openUse}
-        onSave={save}
-        onRenamed={setOpenName}
-        apply={apply}
-        reread={reread}
-        planStored={planStored}
-        onDeleted={() => setOpenName(null)}
-        onUndo={(change) => void save(change)}
+        {...namedRuleDetailProps(view, opened, {
+          decofile,
+          meta,
+          onOpenUse: openUse,
+        })}
       />
     );
   }
@@ -278,7 +218,7 @@ function ExperimentsBlockReady({
       <SiteDraftViewHeader
         title={t("experiments.title")}
         actions={
-          <Button size="sm" onClick={() => setCreating(true)}>
+          <Button size="sm" onClick={() => view.setCreating(true)}>
             <Plus size={16} />
             {t("experiments.v8.new")}
           </Button>
@@ -296,7 +236,7 @@ function ExperimentsBlockReady({
                 description={t("experiments.v8.empty.desc")}
                 buttonProps={{
                   children: t("experiments.v8.new"),
-                  onClick: () => setCreating(true),
+                  onClick: () => view.setCreating(true),
                 }}
               />
             ) : (
@@ -308,75 +248,32 @@ function ExperimentsBlockReady({
                   <ExperimentBlockRow
                     key={row.name}
                     row={row}
-                    onOpen={() => setOpenName(row.name)}
+                    onOpen={() => view.setOpenName(row.name)}
                   />
                 ))}
               </Card>
             )}
-            <MissingNamedRuleUses
+            <NamedRuleDraftNotes
               kind="experiments"
-              rows={missing}
-              names={missingNames}
-              onOpen={openUse}
+              missing={view.missing}
+              missingNames={view.missingNames}
+              removed={removed}
+              onOpenUse={openUse}
             />
-            {removed.length > 0 && (
-              <div className="flex flex-col gap-1">
-                <h3 className="text-sm font-medium">
-                  {t("experiments.v8.removedTitle")}
-                </h3>
-                <p className="text-xs text-muted-foreground">
-                  {t("experiments.v8.removedHint")}
-                </p>
-                <ul className="text-sm text-muted-foreground">
-                  {removed.map((name) => (
-                    <li key={name} className="line-through">
-                      {name}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
             <p className="text-xs text-muted-foreground">
               {t("experiments.v8.previewHint")}
             </p>
           </div>
         </Page.Container>
       </Page.Content>
-      <Dialog open={creating} onOpenChange={setCreating}>
-        <DialogContent className="p-0 sm:max-w-md">
-          <DialogTitle className="sr-only">
-            {t("experiments.v8.new")}
-          </DialogTitle>
-          <NamedRuleCreateForm
-            kind="experiments"
-            initialName=""
-            existingNames={rows.map((row) => row.name)}
-            pending={isPending}
-            submitLabel={t("experiments.v8.create")}
-            dismiss="cancel"
-            onBack={() => setCreating(false)}
-            onSubmit={(pick) => {
-              if (pick.kind !== "experiments" || !pick.create) return;
-              const plan = planNamedRuleCreate(
-                decofile,
-                "experiments",
-                pick.name,
-                pick.create.share,
-              );
-              if (!("change" in plan)) return;
-              void save(
-                plan.change,
-                t("experiments.v8.created", { name: pick.name }),
-              ).then((ok) => {
-                if (ok) {
-                  setCreating(false);
-                  setOpenName(pick.name);
-                }
-              });
-            }}
-          />
-        </DialogContent>
-      </Dialog>
+      <NamedRuleCreateDialog
+        kind="experiments"
+        open={view.creating}
+        onOpenChange={view.setCreating}
+        existingNames={rows.map((row) => row.name)}
+        pending={view.isPending}
+        onCreate={view.create}
+      />
     </Page>
   );
 }
@@ -403,21 +300,16 @@ function ExperimentBlockRow({
           {row.name}
         </button>
         <span className="truncate text-xs text-muted-foreground">
-          {row.uses > 0
-            ? t("experiments.v8.usedBy", { count: String(row.uses) })
-            : t("experiments.v8.notUsed")}
+          {namedRuleUsesLabel(t, "experiments", row.uses)}
         </span>
       </div>
       <span className="w-32 shrink-0 text-xs tabular-nums text-muted-foreground">
-        {t("experiments.v8.share", { share: String(row.share) })}
+        {t("sectionsEditor.namedRulePicker.shareOfVisitors", {
+          share: String(row.share),
+        })}
       </span>
       <div className="hidden w-40 shrink-0 md:flex">
-        {row.entryState === "new" && (
-          <Badge variant="muted">{t("experiments.v8.state.new")}</Badge>
-        )}
-        {row.entryState === "changed" && (
-          <Badge variant="muted">{t("experiments.v8.state.changed")}</Badge>
-        )}
+        <NamedRuleEntryBadge kind="experiments" state={row.entryState} />
       </div>
       <div className="flex w-24 shrink-0">
         <StatusPill status={row.status} />
@@ -426,84 +318,28 @@ function ExperimentBlockRow({
   );
 }
 
-function ExperimentBlockDetail({
-  row,
-  decofile,
-  meta,
-  uses,
-  pending,
-  onBack,
-  onOpenUse,
-  onSave,
-  onRenamed,
-  apply,
-  reread,
-  planStored,
-  onDeleted,
-  onUndo,
-}: {
-  row: ExperimentRowModel;
-  decofile: Record<string, unknown>;
-  meta: LiveMeta;
-  uses: NamedRuleUses | null;
-  pending: boolean;
-  onBack: () => void;
-  onOpenUse: (row: NamedRuleUseRow) => void;
-  onSave: (change: NamedRuleChange | null) => Promise<boolean>;
-  onRenamed: (name: string) => void;
-  apply: (change: NamedRuleChange) => Promise<NamedRuleApplyOutcome>;
-  reread: () => Promise<Record<string, unknown> | null>;
-  /** Plans a rename from the draft as stored now (use-apply-named-rule.ts). */
-  planStored: (
-    plan: (decofile: Record<string, unknown>) => NamedRuleChange | null,
-  ) => Promise<NamedRuleChange | null>;
-  onDeleted: () => void;
-  onUndo: (change: NamedRuleChange) => void;
-}) {
+function ExperimentBlockDetail(
+  props: NamedRuleDetailProps<ExperimentRowModel>,
+) {
+  const { row, decofile, meta, uses, pending, onBack, onOpenUse, onSave } =
+    props;
   const t = useT();
   const [share, setShare] = useState(row.share);
-  const [name, setName] = useState(row.name);
   const shareDirty = share !== row.share;
-  const renamable = canRenameExperiment(row.share);
-  const block = readNamedRuleBlock(decofile, "experiments");
-  const others =
-    block.kind === "conflict"
-      ? []
-      : Object.keys(block.block).filter(
-          (key) => key !== "__resolveType" && key !== row.name,
-        );
-  const nameProblem =
-    name.trim() === row.name ? null : newNameProblem(name, others);
-  const nameMessage =
-    nameProblem === "empty"
-      ? t("experiments.v8.nameEmpty")
-      : nameProblem === "taken"
-        ? t("experiments.v8.nameTaken")
-        : nameProblem === "reserved"
-          ? t("experiments.v8.nameReserved")
-          : null;
+  const rename = useNamedRuleRename("experiments", props);
 
   const setTo = (value: number) =>
     void onSave(
       planNamedRuleSet(decofile, "experiments", row.name, value),
     ).then((ok) => ok && setShare(value));
 
-  /** Planned from the draft as stored now, so every use gets the new name. */
-  const rename = async () => {
-    const next = name.trim();
-    if (nameProblem || next === row.name) return;
-    const plan = await planStored((stored) =>
-      planNamedRuleRename(stored, "experiments", row.name, next, meta),
-    );
-    if (plan && (await onSave(plan))) onRenamed(next);
-  };
-
-  const useRows = uses
-    ? namedRuleUseRows(uses, "experiments", row.name, decofile, meta)
-    : [];
-  const wholeRows = uses
-    ? namedRuleUseRows(uses, "experiments", null, decofile, meta)
-    : [];
+  const { useRows, wholeRows } = namedRuleDetailUses(
+    "experiments",
+    row.name,
+    uses,
+    decofile,
+    meta,
+  );
 
   return (
     <Page>
@@ -514,29 +350,17 @@ function ExperimentBlockDetail({
       />
       <SiteDraftViewHeader
         back={{ label: t("experiments.v8.allTests"), onClick: onBack }}
-        actions={
-          <NamedRuleDeleteButton
-            kind="experiments"
-            name={row.name}
-            meta={meta}
-            pending={pending}
-            apply={apply}
-            reread={reread}
-            onDeleted={onDeleted}
-            onUndo={onUndo}
-          />
-        }
+        actions={<NamedRuleDetailDelete kind="experiments" detail={props} />}
       />
       <Page.Content>
         <Page.Container>
           <div className="flex max-w-2xl flex-col gap-6">
-            <div className="flex items-center gap-3">
-              <h2 className="text-lg font-semibold">{row.name}</h2>
-              <StatusPill status={row.status} />
-              {row.entryState === "new" && (
-                <Badge variant="muted">{t("experiments.v8.state.new")}</Badge>
-              )}
-            </div>
+            <NamedRuleDetailTitle
+              kind="experiments"
+              name={row.name}
+              status={<StatusPill status={row.status} />}
+              entryState={row.entryState}
+            />
 
             <section className="flex flex-col gap-2">
               <h3 className="text-sm font-medium">
@@ -602,55 +426,23 @@ function ExperimentBlockDetail({
               </div>
             </section>
 
-            <section className="flex flex-col gap-2">
-              <Label htmlFor="experiment-name">
-                {t("experiments.v8.nameLabel")}
-              </Label>
-              {renamable ? (
-                <>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      id="experiment-name"
-                      className="max-w-xs"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                    />
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={
-                        pending || !!nameProblem || name.trim() === row.name
-                      }
-                      onClick={() => void rename()}
-                    >
-                      {t("experiments.v8.rename")}
-                    </Button>
-                  </div>
-                  {nameMessage && (
-                    <p className="text-xs text-destructive">{nameMessage}</p>
-                  )}
-                  <p className="text-xs text-muted-foreground">
-                    {t("experiments.v8.renameHint")}
-                  </p>
-                </>
-              ) : (
-                <>
-                  <Input
-                    id="experiment-name"
-                    className="max-w-xs"
-                    value={row.name}
-                    readOnly
-                    disabled
-                  />
+            <NamedRuleRenameSection
+              kind="experiments"
+              id="experiment-name"
+              rename={rename}
+              pending={pending}
+              wholeUses={wholeRows.length}
+              locked={
+                canRenameExperiment(row.share) ? undefined : (
                   <p
                     className="text-xs text-muted-foreground"
                     data-testid="experiment-name-locked"
                   >
                     {t("experiments.v8.nameLocked")}
                   </p>
-                </>
-              )}
-            </section>
+                )
+              }
+            />
 
             <NamedRuleUsedBy
               kind="experiments"

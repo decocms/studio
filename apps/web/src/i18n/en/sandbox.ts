@@ -991,7 +991,6 @@ export const sandbox = {
   "sandbox.preview.previewMetadataNotReady": "Preview metadata not ready yet",
   "sandbox.preview.pageSchemaNotReady":
     "The site is still loading. Try again in a moment.",
-  "sandbox.preview.refresh": "Refresh",
   "sandbox.preview.searchPagesAndComponents": "Search pages and components...",
   "sandbox.preview.startingPreview": "Starting your preview",
   "sandbox.preview.startingPreviewHint":
@@ -1285,11 +1284,9 @@ export const sandbox = {
   "sandbox.calendarView.noDraft.title": "Pick a draft to plan your campaigns",
   "sandbox.calendarView.noDraft.desc":
     "Your campaigns are saved in a draft, like any other edit. Pick a draft in the bar above, or open the site editor to start one.",
-  "sandbox.calendarView.openEditor": "Open the site editor",
   "sandbox.calendarView.loadFailed": "Couldn't load your campaigns.",
   "sandbox.calendarView.loadFailedHint":
     "Nothing was changed. Try again in a moment.",
-  "sandbox.calendarView.tryAgain": "Try again",
   "sandbox.dateCampaigns.intro":
     "Every date on your site is a campaign: a variant with the rule “Campaign” shows while its campaign runs. Changes are saved in your draft and go live when you publish.",
   "sandbox.dateCampaigns.new": "New campaign",
@@ -1303,7 +1300,6 @@ export const sandbox = {
   "sandbox.dateCampaigns.status.ended": "Ended",
   "sandbox.dateCampaigns.status.always": "Always on",
   "sandbox.dateCampaigns.status.unreadable": "Dates can't be read",
-  "sandbox.dateCampaigns.noDates": "No dates: always running",
   "sandbox.dateCampaigns.usedBy": "Used by {count}",
   "sandbox.dateCampaigns.notUsed": "Not used yet",
   "sandbox.dateCampaigns.state.new": "Not published yet",
@@ -1311,36 +1307,19 @@ export const sandbox = {
   "sandbox.dateCampaigns.removedTitle": "Removed in your draft",
   "sandbox.dateCampaigns.removedHint":
     "These campaigns stop when you publish. To keep one, create it again with the same name.",
-  "sandbox.dateCampaigns.startLabel": "Starts",
-  "sandbox.dateCampaigns.endLabel": "Ends",
-  "sandbox.dateCampaigns.windowHint":
-    "Leave a date empty to keep that side open. Times are in your computer's time zone.",
-  "sandbox.dateCampaigns.endBeforeStart":
-    "The end needs to be after the start.",
   "sandbox.dateCampaigns.unreadableHint":
     "One of its dates can't be read, so its variants don't show. Pick new dates and save.",
   "sandbox.dateCampaigns.publishedWindow": "Published: {window}",
   "sandbox.dateCampaigns.saveDates": "Save dates",
-  "sandbox.dateCampaigns.nameLabel": "Name",
-  "sandbox.dateCampaigns.rename": "Rename",
   "sandbox.dateCampaigns.renameHint":
     "Every variant that uses this campaign is updated in the same change.",
   "sandbox.dateCampaigns.renameWholeHint":
     "Sections that read every campaign in their own code still look for the old name. Update them in the site editor.",
-  "sandbox.dateCampaigns.nameEmpty": "Give it a name.",
-  "sandbox.dateCampaigns.nameTaken": "That name is already in use.",
-  "sandbox.dateCampaigns.nameReserved":
-    "Names can't start with two underscores.",
   "sandbox.dateCampaigns.delete": "Delete campaign",
   "sandbox.dateCampaigns.deleted": "Campaign “{name}” deleted from your draft",
   "sandbox.dateCampaigns.deletedHint":
     "It leaves the site when you publish. Undo brings it back.",
-  "sandbox.dateCampaigns.undo": "Undo",
-  "sandbox.dateCampaigns.saved": "Saved in your draft",
-  "sandbox.dateCampaigns.savedHint": "It goes live when you publish.",
   "sandbox.dateCampaigns.renamed": "Campaign renamed to “{name}”",
-  "sandbox.dateCampaigns.created": "Campaign “{name}” added",
-  "sandbox.dateCampaigns.create": "Create",
   "sandbox.dateCampaigns.allCampaigns": "All campaigns",
   "sandbox.dateCampaigns.today": "Today",
   "sandbox.dateCampaigns.previous": "Earlier",

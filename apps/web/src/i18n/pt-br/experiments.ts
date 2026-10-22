@@ -144,7 +144,6 @@ export const experiments = {
   "experiments.v8.status.off": "Desligado",
   "experiments.v8.status.running": "Rodando",
   "experiments.v8.status.everyone": "Todos",
-  "experiments.v8.share": "{share}% dos visitantes",
   "experiments.v8.usedBy": "Usado em {count}",
   "experiments.v8.notUsed": "Ainda não usado",
   "experiments.v8.state.new": "Ainda não publicado",
@@ -164,26 +163,17 @@ export const experiments = {
   "experiments.v8.save": "Salvar",
   "experiments.v8.turnOff": "Desligar",
   "experiments.v8.showEveryone": "Mostrar para todos",
-  "experiments.v8.nameLabel": "Nome",
-  "experiments.v8.rename": "Renomear",
   "experiments.v8.renameHint":
     "Toda variante que usa este teste é atualizada na mesma mudança.",
+  "experiments.v8.renamed": "Teste renomeado para “{name}”",
+  "experiments.v8.renameWholeHint":
+    "Seções que leem todos os testes no próprio código continuam procurando o nome antigo. Atualize-as no editor do site.",
   "experiments.v8.nameLocked":
     "O nome não pode mudar enquanto o teste roda: os visitantes são agrupados por ele. Desligue o teste para renomeá-lo.",
-  "experiments.v8.nameTaken": "Esse nome já está em uso.",
-  "experiments.v8.nameEmpty": "Dê um nome.",
-  "experiments.v8.nameReserved":
-    "Nomes não podem começar com dois sublinhados.",
-  "experiments.v8.cancel": "Cancelar",
   "experiments.v8.delete": "Excluir teste",
   "experiments.v8.deleted": "Teste “{name}” excluído do seu rascunho",
   "experiments.v8.deletedHint":
     "Ele sai do site quando você publicar. Desfazer traz ele de volta.",
-  "experiments.v8.undo": "Desfazer",
-  "experiments.v8.saved": "Salvo no seu rascunho",
-  "experiments.v8.savedHint": "Vai ao ar quando você publicar.",
-  "experiments.v8.created": "Teste “{name}” adicionado",
-  "experiments.v8.create": "Criar",
   "experiments.v8.missing.title":
     "Seu site precisa de uma atualização para testes A/B",
   "experiments.v8.missing.desc":
@@ -199,9 +189,7 @@ export const experiments = {
   "experiments.v8.noDraft.title": "Escolha um rascunho para editar seus testes",
   "experiments.v8.noDraft.desc":
     "Seus testes ficam salvos em um rascunho, como qualquer outra edição. Escolha um rascunho na barra acima ou abra o editor do site para começar um.",
-  "experiments.v8.openEditor": "Abrir o editor do site",
   "experiments.v8.loadFailed": "Não foi possível carregar seus testes.",
-  "experiments.v8.tryAgain": "Tentar de novo",
   "experiments.v8.previewHint":
     "Para ver um teste ligado ou desligado antes de publicar, use “Visualizar como” na pré-visualização do editor do site.",
 } satisfies Record<keyof typeof enExperiments, string>;

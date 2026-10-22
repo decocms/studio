@@ -136,9 +136,7 @@ export function VariantRuleEditor({
                 initialName={namedRow.name}
                 existingNames={existingNames}
                 pending={createPending}
-                submitLabel={t(
-                  "sectionsEditor.namedRulePicker.createMissingSubmit",
-                )}
+                submitLabel={t("sectionsEditor.namedRules.create")}
                 dismiss="cancel"
                 onBack={() => setCreatingFor(null)}
                 onSubmit={(pick) => void create(pick)}

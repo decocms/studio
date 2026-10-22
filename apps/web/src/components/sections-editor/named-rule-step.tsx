@@ -11,11 +11,12 @@ import { Input } from "@decocms/ui/components/input.tsx";
 import { Label } from "@decocms/ui/components/label.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { ShareSplit } from "@/components/experiments/split-donut";
-import { useT } from "@/i18n/use-t.ts";
+import { type TFunction, useT } from "@/i18n/use-t.ts";
 import { MatcherIcon } from "./matcher-icons";
 import type { CampaignWindow, NamedRuleKind } from "./named-rules";
 import {
   isoToLocalInput,
+  type NewNameProblem,
   newNameProblem,
   type NamedRulePick,
   type NamedRulePickerKind,
@@ -257,6 +258,75 @@ export function NamedRuleNameStep({
 }
 
 /**
+ * Why a name can't be used, in words. `pickFromList` where the name is in a
+ * list just before (the rule picker), so "taken" says to pick it there.
+ */
+export function nameProblemMessage(
+  t: TFunction,
+  problem: NewNameProblem,
+  options?: { pickFromList?: boolean },
+): string {
+  switch (problem) {
+    case "empty":
+      return t("sectionsEditor.namedRules.nameEmpty");
+    case "reserved":
+      return t("sectionsEditor.namedRules.nameReserved");
+    case "taken":
+      return options?.pickFromList
+        ? t("sectionsEditor.namedRules.nameTakenPick")
+        : t("sectionsEditor.namedRules.nameTaken");
+  }
+}
+
+/**
+ * A campaign's start and end, as two `datetime-local` inputs side by side:
+ * the create form and the Calendar view's detail.
+ */
+export function CampaignWindowInputs({
+  idPrefix,
+  start,
+  end,
+  onStartChange,
+  onEndChange,
+  className,
+}: {
+  idPrefix: string;
+  start: string;
+  end: string;
+  onStartChange: (value: string) => void;
+  onEndChange: (value: string) => void;
+  className?: string;
+}) {
+  const t = useT();
+  return (
+    <div className={cn("grid grid-cols-2 gap-3", className)}>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor={`${idPrefix}-start`}>
+          {t("sectionsEditor.namedRules.startLabel")}
+        </Label>
+        <Input
+          id={`${idPrefix}-start`}
+          type="datetime-local"
+          value={start}
+          onChange={(e) => onStartChange(e.target.value)}
+        />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor={`${idPrefix}-end`}>
+          {t("sectionsEditor.namedRules.endLabel")}
+        </Label>
+        <Input
+          id={`${idPrefix}-end`}
+          type="datetime-local"
+          value={end}
+          onChange={(e) => onEndChange(e.target.value)}
+        />
+      </div>
+    </div>
+  );
+}
+
+/**
  * Third step, for a new name: a test's share (50 to start) or a campaign's
  * dates. Kept out of the command list's keyboard handling, so the inputs
  * behave as inputs.
@@ -269,6 +339,7 @@ export function NamedRuleCreateForm({
   pending,
   submitLabel,
   dismiss = "back",
+  standalone = false,
   onBack,
   onSubmit,
 }: {
@@ -286,6 +357,11 @@ export function NamedRuleCreateForm({
    * dialog of its own, a form opened from a row).
    */
   dismiss?: "back" | "cancel";
+  /**
+   * A dialog of its own (Experiments, Calendar), with no list of names
+   * beside it to pick a taken one from.
+   */
+  standalone?: boolean;
   onBack: () => void;
   onSubmit: (pick: NamedRulePick) => void;
 }) {
@@ -309,16 +385,12 @@ export function NamedRuleCreateForm({
   const valueProblem = tests
     ? null
     : "problem" in window
-      ? t("sectionsEditor.namedRulePicker.endBeforeStart")
+      ? t("sectionsEditor.namedRules.endBeforeStart")
       : null;
-  const nameMessage =
-    nameProblem === "empty"
-      ? t("sectionsEditor.namedRulePicker.nameEmpty")
-      : nameProblem === "taken"
-        ? t("sectionsEditor.namedRulePicker.nameTaken")
-        : nameProblem === "reserved"
-          ? t("sectionsEditor.namedRulePicker.nameReserved")
-          : null;
+  // In the rule picker a taken name is in the list, to pick there.
+  const nameMessage = nameProblem
+    ? nameProblemMessage(t, nameProblem, { pickFromList: !standalone })
+    : null;
 
   const submit = () => {
     setTried(true);
@@ -360,7 +432,7 @@ export function NamedRuleCreateForm({
       </div>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="named-rule-name">
-          {t("sectionsEditor.namedRulePicker.nameLabel")}
+          {t("sectionsEditor.namedRules.nameLabel")}
         </Label>
         <Input
           id="named-rule-name"
@@ -392,32 +464,15 @@ export function NamedRuleCreateForm({
         </div>
       ) : (
         <div className="flex flex-col gap-1.5">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="named-rule-start">
-                {t("sectionsEditor.namedRulePicker.startLabel")}
-              </Label>
-              <Input
-                id="named-rule-start"
-                type="datetime-local"
-                value={start}
-                onChange={(e) => setStart(e.target.value)}
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="named-rule-end">
-                {t("sectionsEditor.namedRulePicker.endLabel")}
-              </Label>
-              <Input
-                id="named-rule-end"
-                type="datetime-local"
-                value={end}
-                onChange={(e) => setEnd(e.target.value)}
-              />
-            </div>
-          </div>
+          <CampaignWindowInputs
+            idPrefix="named-rule"
+            start={start}
+            end={end}
+            onStartChange={setStart}
+            onEndChange={setEnd}
+          />
           <p className="text-xs text-muted-foreground">
-            {t("sectionsEditor.namedRulePicker.windowHint")}
+            {t("sectionsEditor.namedRules.windowHint")}
           </p>
         </div>
       )}

@@ -14,6 +14,7 @@ import { useContentBackend } from "@/components/sections-editor/use-content-back
 import { useDecofile } from "@/components/sections-editor/use-decofile";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 import { useLiveMeta } from "@/components/sections-editor/use-live-meta";
+import { useT } from "@/i18n/use-t.ts";
 import { useProjectContext } from "@/sdk";
 import { isSiteNotOwned, SiteNotOwnedState } from "./blocks-tab-states";
 import { usePanelNavigate } from "./use-panel-navigate";
@@ -68,10 +69,8 @@ export interface SiteDraftViewReady {
 export interface SiteDraftViewCopy {
   noDraftTitle: string;
   noDraftDesc: string;
-  openEditor: string;
   loadFailed: string;
   loadFailedHint: string;
-  tryAgain: string;
 }
 
 export function SiteDraftView({
@@ -87,6 +86,7 @@ export function SiteDraftView({
   skeleton: ReactNode;
   children: (ready: SiteDraftViewReady) => ReactNode;
 }) {
+  const t = useT();
   const { org } = useProjectContext();
   const task = useOptionalChatTask();
   const branch = task?.currentBranch ?? null;
@@ -99,7 +99,10 @@ export function SiteDraftView({
         icon={icon}
         title={copy.noDraftTitle}
         description={copy.noDraftDesc}
-        action={{ label: copy.openEditor, onClick: () => openPanel("content") }}
+        action={{
+          label: t("sectionsEditor.namedRules.openEditor"),
+          onClick: () => openPanel("content"),
+        }}
       />
     );
   }
@@ -149,6 +152,7 @@ function SiteDraftLoaded({
   skeleton: ReactNode;
   children: (ready: SiteDraftViewReady) => ReactNode;
 }) {
+  const t = useT();
   const params = { orgSlug, virtualMcpId, branch, threadId, previewUrl: null };
   const decofileQuery = useDecofile(params);
   const metaQuery = useLiveMeta(params);
@@ -163,7 +167,7 @@ function SiteDraftLoaded({
           title={copy.loadFailed}
           description={copy.loadFailedHint}
           action={{
-            label: copy.tryAgain,
+            label: t("sectionsEditor.namedRules.tryAgain"),
             onClick: () => {
               void decofileQuery.refetch();
               void metaQuery.refetch();
