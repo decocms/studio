@@ -188,14 +188,18 @@
   );
 }
 
-/* Recolour a card's ring, keeping the drop shadow under it — the ring IS the card's border, drawn as a shadow. */
+/* Recolour a card's ring, keeping the drop shadow under it — the ring IS the card's border, drawn as a shadow.
+   Painted, not set via --shadow-edge: the variable would leak into every edged child (buttons, pills). */
 @utility shadow-edge-destructive {
-  --shadow-edge:
-    0 0 0 var(--border-hairline) var(--destructive), var(--edge-drop);
+  box-shadow:
+    0 0 0 var(--border-hairline) var(--destructive),
+    var(--edge-drop);
 }
 
 @utility shadow-edge-warning {
-  --shadow-edge: 0 0 0 var(--border-hairline) var(--warning), var(--edge-drop);
+  box-shadow:
+    0 0 0 var(--border-hairline) var(--warning),
+    var(--edge-drop);
 }
 
 /* ============================================================

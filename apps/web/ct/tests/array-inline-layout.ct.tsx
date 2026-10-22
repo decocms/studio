@@ -53,7 +53,7 @@ test("the inline layout edits items without leaving the list", async ({
   );
 
   await component
-    .getByRole("button", { name: "Edit items in the list" })
+    .getByRole("radio", { name: "Edit items in the list" })
     .click();
   await component.getByTitle("black", { exact: true }).click();
   await component.getByTitle("green", { exact: true }).click();
@@ -93,7 +93,7 @@ test("clicking an expanded row collapses it", async ({ mount }) => {
   );
 
   await component
-    .getByRole("button", { name: "Edit items in the list" })
+    .getByRole("radio", { name: "Edit items in the list" })
     .click();
   const row = component.getByTitle("white", { exact: true });
   await row.click();
@@ -116,7 +116,7 @@ test("adding an item in the inline layout expands it in place", async ({
   );
 
   await component
-    .getByRole("button", { name: "Edit items in the list" })
+    .getByRole("radio", { name: "Edit items in the list" })
     .click();
   await component.getByRole("button", { name: "Add item" }).click();
 
@@ -139,7 +139,7 @@ test("the layout choice persists across mounts", async ({ mount, page }) => {
       initialValue={initialColors}
     />,
   );
-  await first.getByRole("button", { name: "Edit items in the list" }).click();
+  await first.getByRole("radio", { name: "Edit items in the list" }).click();
   await first.unmount();
 
   await page.reload();
@@ -173,6 +173,6 @@ test("section lists keep opening one section at a time", async ({ mount }) => {
   );
 
   await expect(
-    component.getByRole("button", { name: "Edit items in the list" }),
+    component.getByRole("radio", { name: "Edit items in the list" }),
   ).toHaveCount(0);
 });

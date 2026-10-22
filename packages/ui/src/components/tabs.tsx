@@ -46,7 +46,7 @@ function TabsList({ className, variant, children, ...props }: TabsListProps) {
           ? "flex h-[52px] items-center border-b border-border"
           : parentVariant === "canvas"
             ? "flex h-10 items-center bg-background"
-            : "bg-muted text-subtle-foreground inline-flex h-9 w-fit items-center justify-center gap-1 rounded-full p-1",
+            : "bg-muted text-muted-foreground inline-flex h-9 w-fit items-center justify-center gap-1 rounded-full p-1",
         className,
       )}
       {...props}
@@ -87,7 +87,7 @@ function TabsTrigger({ className, variant, ...props }: TabsTriggerProps) {
           ? "relative z-10 flex items-center h-full px-3 text-sm whitespace-nowrap transition-colors text-muted-foreground hover:text-foreground data-[state=active]:text-foreground focus-ring disabled:pointer-events-none disabled:opacity-50"
           : parentVariant === "canvas"
             ? "flex items-center h-full px-3 gap-2.5 text-sm whitespace-nowrap transition-all border-r border-b border-border [&>*]:opacity-50 data-[state=active]:[&>*]:opacity-100 data-[state=active]:border-b-0 last:border-r-0 disabled:pointer-events-none max-w-2xs"
-            : "relative z-10 data-[state=active]:text-foreground hover:text-foreground focus-ring text-subtle-foreground inline-flex h-7 flex-1 items-center justify-center gap-1.5 rounded-full px-3 text-sm font-medium whitespace-nowrap transition-colors disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+            : "relative z-10 data-[state=active]:text-foreground hover:text-foreground focus-ring text-muted-foreground inline-flex h-7 flex-1 items-center justify-center gap-1.5 rounded-full px-3 text-sm font-medium whitespace-nowrap transition-colors disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className,
       )}
       {...props}

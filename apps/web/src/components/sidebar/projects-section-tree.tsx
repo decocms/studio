@@ -140,7 +140,6 @@ function ProjectRow({
     <SidebarNavRow
       icon={<ProjectIcon icon={project.icon} name={project.title} />}
       label={project.title}
-      isActive={false}
       contextId={`project:${project.id}`}
       trailing={
         waitingLabel ? (

@@ -851,7 +851,7 @@ function DetailBody({ data, t }: { data: E2eRunDetailData; t: Translate }) {
     return (
       <div className="flex flex-col gap-5">
         <Tabs variant="underline" defaultValue={viewportValue(firstRun, 0)}>
-          <TabsList variant="underline" className="flex-wrap">
+          <TabsList variant="underline">
             {runs.map((run, i) => {
               const value = viewportValue(run, i);
               return (

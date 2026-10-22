@@ -613,7 +613,8 @@ function DeleteButton({
         e.stopPropagation();
         onDelete();
       }}
-      className="absolute right-2 top-2 z-10 opacity-0 transition-opacity focus-visible:opacity-100 group-hover/card:opacity-100 group-hover/row:opacity-100"
+      // Swallow the click while disabled, or it opens the card underneath.
+      className="absolute right-2 top-2 z-10 opacity-0 transition-opacity disabled:pointer-events-auto focus-visible:opacity-100 group-hover/card:opacity-100 group-hover/row:opacity-100"
     >
       <Trash01 className="size-3.25" />
     </Button>

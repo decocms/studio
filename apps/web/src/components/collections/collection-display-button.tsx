@@ -110,10 +110,18 @@ export function CollectionDisplayButton({
                   onViewModeChange(next);
               }}
             >
-              <ToggleGroupItem value="table" className="flex-1">
+              <ToggleGroupItem
+                value="table"
+                tooltip={t("collections.collectionDisplayButton.tableView")}
+                className="flex-1"
+              >
                 <List />
               </ToggleGroupItem>
-              <ToggleGroupItem value="cards" className="flex-1">
+              <ToggleGroupItem
+                value="cards"
+                tooltip={t("collections.collectionDisplayButton.cardsView")}
+                className="flex-1"
+              >
                 <Grid01 />
               </ToggleGroupItem>
             </ToggleGroup>

@@ -196,7 +196,8 @@ export function PublishChangeCard({
                   variant="ghost-destructive"
                   size="icon-xs"
                   aria-label={t("thread.publishPopover.discard")}
-                  className="shrink-0"
+                  // Swallow the click while disabled, or it selects the card underneath.
+                  className="shrink-0 disabled:pointer-events-auto"
                   onClick={(e) => {
                     e.stopPropagation();
                     onConfirmingChange(true);

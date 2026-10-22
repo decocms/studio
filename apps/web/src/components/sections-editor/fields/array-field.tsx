@@ -642,13 +642,13 @@ export function ArrayField({
           >
             <ToggleGroupItem
               value="drill"
-              aria-label={t("sectionsEditor.arrayField.layoutDrill")}
+              tooltip={t("sectionsEditor.arrayField.layoutDrill")}
             >
               <List />
             </ToggleGroupItem>
             <ToggleGroupItem
               value="inline"
-              aria-label={t("sectionsEditor.arrayField.layoutInline")}
+              tooltip={t("sectionsEditor.arrayField.layoutInline")}
             >
               <Rows01 />
             </ToggleGroupItem>

@@ -3529,14 +3529,15 @@ function TaskCard({
       }}
       className={cn(
         "group relative flex shrink-0 cursor-grab flex-col gap-3 rounded-xl px-3.5 pt-3.5 pb-2.5 text-left shadow-edge active:cursor-grabbing",
-        attentionLabel
-          ? "bg-warning/10 hover:bg-warning/15"
-          : "bg-card hover:bg-accent",
+        selected
+          ? "bg-accent hover:bg-secondary-hover"
+          : attentionLabel
+            ? "bg-warning/10 hover:bg-warning/15"
+            : "bg-card surface-interactive",
         // A dead run outranks a question: both want a person, but only one is already broken.
         runState === "failed"
           ? "shadow-edge-destructive"
           : attentionLabel && "shadow-edge-warning",
-        selected && "bg-accent hover:bg-secondary-hover",
         className,
       )}
     >
@@ -3683,7 +3684,7 @@ function FeedRow({
     <button
       type="button"
       onClick={onOpen}
-      className="surface flex w-full flex-col gap-3 p-4 text-left transition-colors hover:bg-accent"
+      className="surface surface-interactive flex w-full flex-col gap-3 p-4 text-left"
     >
       {/* Badges first, Discord-style: what kind of post this is, before what
           it says. */}
