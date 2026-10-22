@@ -386,16 +386,19 @@ export function useProjectViews({
       shouldDirty: true,
     });
     form.setValue("metadata.sidebarViewsVersion", 1, { shouldDirty: true });
-    // The list this change was made on showed the offered views: from now
-    // on the saved list alone decides, so hiding one sticks.
-    form.setValue(
-      "metadata.sidebarViewsSeen",
-      seenProjectSidebarViewsAfterSave(
-        virtualMcp?.metadata.sidebarViewsSeen ?? formSidebarViewsSeen,
-        blocksSite,
-      ),
-      { shouldDirty: true },
-    );
+    // A Blocks (v8) site: the list this change was made on showed the
+    // offered views, so from now on the saved list alone decides and hiding
+    // one sticks. Any other site saves exactly what it did before.
+    if (blocksSite) {
+      form.setValue(
+        "metadata.sidebarViewsSeen",
+        seenProjectSidebarViewsAfterSave(
+          virtualMcp?.metadata.sidebarViewsSeen ?? formSidebarViewsSeen,
+          blocksSite,
+        ),
+        { shouldDirty: true },
+      );
+    }
     optimisticSidebarViews.stage(nextSidebarViews, sidebarViews);
     const nextDefaultMain = defaultMainViewAfterSidebarToggle(
       currentDefaultMain,
