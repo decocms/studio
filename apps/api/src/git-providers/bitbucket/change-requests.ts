@@ -38,6 +38,7 @@ import {
   bbqString,
   bitbucketFailure,
   bitbucketFetch,
+  bitbucketJson,
   type BitbucketPage,
 } from "./http";
 
@@ -442,7 +443,17 @@ export class BitbucketChangeRequestClient implements ChangeRequestClient {
         },
       },
     );
-    if (res.ok) return this.map((await res.json()) as RawPullRequest);
+    if (res.ok) {
+      const pr = await bitbucketJson<unknown>(res, "open pull request");
+      if (pr === null || typeof pr !== "object" || Array.isArray(pr)) {
+        throw new GitProviderError({
+          provider: "bitbucket",
+          status: 502,
+          message: "Bitbucket open pull request returned a non-object payload",
+        });
+      }
+      return this.map(pr as RawPullRequest);
+    }
     throw await bitbucketFailure(res);
   }
 

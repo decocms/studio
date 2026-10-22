@@ -84,7 +84,6 @@ function InstanceItem({
           <Button
             variant="outline"
             size="sm"
-            className="h-7 text-xs"
             onClick={() => onAuthenticate(instance)}
           >
             {t("details.connectionInstancesPanel.authorize")}
@@ -94,7 +93,7 @@ function InstanceItem({
           <Button
             variant="outline"
             size="sm"
-            className="h-7 text-xs gap-1.5"
+            className="gap-1.5"
             onClick={() => onToggleStatus(instance, "active")}
           >
             <Power01 size={13} />
@@ -103,8 +102,8 @@ function InstanceItem({
         ) : (
           <Button
             variant="ghost"
-            size="icon"
-            className="h-7 w-7 text-muted-foreground"
+            size="icon-sm"
+            className="text-muted-foreground"
             onClick={() => onToggleStatus(instance, "inactive")}
             title={t("details.connectionInstancesPanel.disable")}
             aria-label={t("details.connectionInstancesPanel.disable")}
@@ -114,8 +113,7 @@ function InstanceItem({
         )}
         <Button
           variant="ghost"
-          size="icon"
-          className="h-7 w-7"
+          size="icon-sm"
           onClick={() => onConfigure(instance)}
           title={t("details.connectionInstancesPanel.configure")}
           aria-label={t("details.connectionInstancesPanel.configure")}
@@ -123,9 +121,8 @@ function InstanceItem({
           <Settings02 size={13} />
         </Button>
         <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7 text-muted-foreground hover:text-destructive"
+          variant="ghost-destructive"
+          size="icon-sm"
           onClick={() => onDelete(instance)}
           title={t("details.connectionInstancesPanel.delete")}
           aria-label={t("details.connectionInstancesPanel.delete")}
@@ -159,8 +156,7 @@ function InstanceItemFallback({
       <div className="flex items-center gap-1 shrink-0">
         <Button
           variant="ghost"
-          size="icon"
-          className="h-7 w-7"
+          size="icon-sm"
           onClick={() => onConfigure(instance)}
           title={t("details.connectionInstancesPanel.configure")}
           aria-label={t("details.connectionInstancesPanel.configure")}
@@ -184,7 +180,7 @@ export function ConnectionInstancesPanel({
   const t = useT();
   if (instances.length === 0) return null;
   return (
-    <div className="rounded-xl border border-border bg-card overflow-hidden">
+    <div className="surface overflow-hidden">
       <div className="px-5 py-4 border-b border-border flex items-center justify-between">
         <h3 className="text-sm font-semibold text-foreground">
           {instances.length === 1
@@ -194,7 +190,7 @@ export function ConnectionInstancesPanel({
         <Button
           variant="default"
           size="sm"
-          className="h-7 gap-1.5 text-xs"
+          className="gap-1.5"
           onClick={onAdd}
           disabled={isAdding}
         >

@@ -211,7 +211,7 @@ export function BlockDocument({
       >
         <button
           type="button"
-          className="mt-1 flex w-full items-center gap-2 rounded-md py-2 pl-14 pr-2 text-sm text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground cursor-pointer"
+          className="mt-1 flex w-full items-center gap-2 rounded-md py-2 pl-14 pr-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground cursor-pointer"
         >
           <Plus size={16} />
           {t("sandbox.blockDocument.addBlock")}

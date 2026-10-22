@@ -43,7 +43,7 @@ export function ToolbarButton({
         "flex h-7 w-7 items-center justify-center rounded-[var(--studio-control-radius,var(--radius))] transition-colors cursor-pointer",
         active
           ? "bg-accent text-accent-foreground"
-          : "text-muted-foreground hover:bg-muted hover:text-foreground",
+          : "text-muted-foreground hover:bg-accent hover:text-foreground",
       )}
     >
       {children}
@@ -71,7 +71,7 @@ function TabChoice({
         "flex-1 rounded-[var(--studio-control-radius,var(--radius))] px-2 py-1 text-xs transition-colors cursor-pointer",
         active
           ? "bg-accent text-accent-foreground"
-          : "text-muted-foreground hover:bg-muted hover:text-foreground",
+          : "text-muted-foreground hover:bg-accent hover:text-foreground",
       )}
     >
       {label}
@@ -101,7 +101,7 @@ function ModeTab({
         "flex flex-1 items-center justify-center gap-1 rounded-[var(--studio-control-radius,var(--radius))] px-2 py-1 text-xs transition-colors cursor-pointer",
         active
           ? "bg-accent text-accent-foreground"
-          : "text-muted-foreground hover:bg-muted hover:text-foreground",
+          : "text-muted-foreground hover:bg-accent hover:text-foreground",
       )}
     >
       {icon}
@@ -204,7 +204,7 @@ export function RichTextLinkControl({
         <div
           ref={popoverRef}
           className={cn(
-            "absolute left-0 top-full z-20 mt-1.5 flex flex-col gap-1 rounded-[var(--studio-surface-radius,var(--radius-md))] border bg-popover p-1 shadow-md",
+            "absolute left-0 top-full z-20 mt-1.5 flex flex-col gap-1 rounded-[var(--studio-surface-radius,var(--radius-md))] bg-popover p-1 shadow-soft",
             hasSources ? "w-80" : "w-64",
           )}
           onBlur={() => {

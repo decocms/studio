@@ -19,7 +19,7 @@ export function HomeCard({
   children: ReactNode;
 }) {
   return (
-    <section className="@container flex flex-col overflow-hidden rounded-2xl bg-card card-shadow">
+    <section className="@container flex flex-col overflow-hidden surface">
       <div className="flex h-12 items-center justify-between gap-3 border-b border-border/70 px-5">
         <h2 className="flex items-baseline gap-2 text-[0.9rem] font-medium tracking-tight text-foreground">
           {label}
@@ -47,10 +47,7 @@ export function HomeCardRow({
 }) {
   return (
     <li
-      className={cn(
-        "px-5 py-3.5 transition-colors hover:bg-accent/30",
-        className,
-      )}
+      className={cn("px-5 py-3.5 transition-colors hover:bg-accent", className)}
     >
       {children}
     </li>

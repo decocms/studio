@@ -24,7 +24,7 @@ export function ConnectionAgentsPanel({
   }
 
   return (
-    <div className="rounded-xl border border-border bg-card overflow-hidden">
+    <div className="surface overflow-hidden">
       <div className="px-5 py-4 border-b border-border">
         <h3 className="text-sm font-semibold text-foreground">
           {t("details.connectionAgentsPanel.usedByAgents")}

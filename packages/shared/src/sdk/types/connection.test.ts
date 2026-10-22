@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
   ConnectionCreateDataSchema,
   ConnectionEntitySchema,
+  ConnectionUpdateDataSchema,
 } from "./connection";
 
 function baseEntity(overrides: Record<string, unknown> = {}) {
@@ -63,5 +64,35 @@ describe("ConnectionEntitySchema JSON field caps", () => {
       metadata: huge,
     });
     expect(result.success).toBe(false);
+  });
+
+  it("rejects an oversized connection_token on the create schema", () => {
+    const result = ConnectionCreateDataSchema.safeParse({
+      title: "Test",
+      connection_type: "HTTP",
+      connection_token: "x".repeat(4097),
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects an oversized connection_token on the update schema", () => {
+    const result = ConnectionUpdateDataSchema.safeParse({
+      connection_token: "x".repeat(4097),
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts a connection_token within the size cap on both schemas", () => {
+    const token = "x".repeat(4096);
+    expect(
+      ConnectionCreateDataSchema.safeParse({
+        title: "Test",
+        connection_type: "HTTP",
+        connection_token: token,
+      }).success,
+    ).toBe(true);
+    expect(
+      ConnectionUpdateDataSchema.safeParse({ connection_token: token }).success,
+    ).toBe(true);
   });
 });

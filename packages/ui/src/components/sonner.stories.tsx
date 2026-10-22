@@ -4,7 +4,7 @@ import { Button } from "./button.tsx";
 import { Toaster } from "./sonner.tsx";
 
 const meta = {
-  title: "Components/Sonner",
+  title: "Molecules/Sonner",
   component: Toaster,
 } satisfies Meta<typeof Toaster>;
 

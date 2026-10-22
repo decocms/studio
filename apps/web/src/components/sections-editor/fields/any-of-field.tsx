@@ -89,7 +89,7 @@ function GlobalLoaderBadge({ blockKey }: { blockKey: string }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className="inline-flex shrink-0 items-center gap-1 rounded-[var(--studio-control-radius,var(--radius))] bg-global-section/14 px-1.5 py-0.5 text-[11px] font-medium text-global-section-fg dark:text-global-section-fg-dark">
+        <span className="inline-flex shrink-0 items-center gap-1 rounded-[var(--studio-control-radius,var(--radius))] bg-global-section/14 px-1.5 py-0.5 text-2xs font-medium text-global-section-fg dark:text-global-section-fg-dark">
           <Globe01 size={11} />
           {t("sectionsEditor.anyOfField.global")}
         </span>
@@ -133,7 +133,7 @@ function CollapsibleLoaderConfig({
         nestedBlockRef && "ml-1",
       )}
     >
-      <div className="group flex w-full min-w-0 items-center gap-1 rounded-lg pr-2 transition-colors hover:bg-accent/50">
+      <div className="group flex w-full min-w-0 items-center gap-1 rounded-lg pr-2 transition-colors hover:bg-accent">
         <button
           type="button"
           aria-expanded={open}
@@ -145,7 +145,7 @@ function CollapsibleLoaderConfig({
             {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
           </span>
           <span className="flex min-w-0 items-center gap-2">
-            <span className="truncate text-xs font-medium tracking-wide text-muted-foreground uppercase">
+            <span className="truncate text-xs font-medium text-muted-foreground">
               {title}
             </span>
             {globalBlockKey && <GlobalLoaderBadge blockKey={globalBlockKey} />}
@@ -157,9 +157,9 @@ function CollapsibleLoaderConfig({
               <Button
                 type="button"
                 variant="ghost"
-                size="icon"
+                size="icon-sm"
                 aria-label={t("sectionsEditor.anyOfField.loaderActions")}
-                className="h-7 w-7 shrink-0 text-muted-foreground"
+                className="shrink-0 text-muted-foreground"
               >
                 <DotsHorizontal size={16} />
               </Button>
@@ -437,8 +437,8 @@ export function AnyOfField({
                               <Button
                                 type="button"
                                 variant="ghost"
-                                size="icon"
-                                className="size-7 shrink-0 text-muted-foreground"
+                                size="icon-sm"
+                                className="shrink-0 text-muted-foreground"
                                 aria-label={t(
                                   "sectionsEditor.anyOfField.browseSections",
                                 )}

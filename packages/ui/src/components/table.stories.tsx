@@ -11,7 +11,7 @@ import {
 } from "./table.tsx";
 
 const meta = {
-  title: "Components/Table",
+  title: "Organisms/Table",
   component: Table,
   parameters: { layout: "padded" },
 } satisfies Meta<typeof Table>;

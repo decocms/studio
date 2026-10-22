@@ -15,7 +15,7 @@ const items: SplitButtonMenuItem[] = [
 ];
 
 const meta = {
-  title: "Components/SplitButton",
+  title: "Molecules/SplitButton",
   component: SplitButton,
   args: {
     label: "Publish to main",
@@ -51,12 +51,11 @@ type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {};
 
-/** No `items` — the chevron half is not rendered, leaving a plain button. */
+/** Without `items`, a plain button. */
 export const WithoutMenu: Story = {
   args: { items: [] },
 };
 
-/** The primary action is unavailable, but the menu still offers alternatives. */
 export const DisabledPrimaryWithMenu: Story = {
   args: {
     label: "Up to date",
@@ -65,9 +64,7 @@ export const DisabledPrimaryWithMenu: Story = {
   },
 };
 
-/** A disabled item with a tooltip stays reachable and explainable by keyboard.
- *  Test: Tab to the menu button, press Enter/Space to open, then arrow to the disabled item.
- */
+/** A disabled item keeps its tooltip and stays reachable by keyboard. */
 export const DisabledMenuItemTooltip: Story = {
   args: {
     items: [
@@ -86,7 +83,6 @@ export const Loading: Story = {
   args: { label: "Publishing", loading: true },
 };
 
-/** Brightness breathes; under `prefers-reduced-motion` it dims statically. */
 export const Pulse: Story = {
   args: { pulse: true, variant: "brand" },
 };
@@ -117,10 +113,6 @@ export const Sizes: Story = {
   ),
 };
 
-/** Keyboard navigation test: Tab reaches both button halves, Escape closes menu.
- *  Primary: Tab focuses → Space/Enter triggers onClick.
- *  Menu: Tab focuses → Space/Enter opens → Arrows navigate → Enter/Space selects.
- */
 export const KeyboardNavigation: Story = {
   render: (args) => (
     <div className="space-y-4">

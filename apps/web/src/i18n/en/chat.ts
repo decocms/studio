@@ -245,8 +245,6 @@ export const chat = {
   "chat.liveMessage.readByAgent": "Read by the agent while it worked",
   "chat.input.codingAgentUnavailable":
     "This coding-agent chat can't be continued here.",
-  "chat.input.fastPreviewUnavailable":
-    "Chat isn't available on Fast Preview projects. Use the CMS to edit content.",
   "chat.fastPreview.chatNeedsSession":
     "Chat needs a coding sandbox behind it. The session continues on this branch and the CMS keeps working as is.",
   "chat.fastPreview.startCodingSession": "Start coding session",

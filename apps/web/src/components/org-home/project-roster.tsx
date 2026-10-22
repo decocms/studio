@@ -87,7 +87,7 @@ function ProjectRosterItem({
   const current = series.slice(half).reduce((sum, day) => sum + day, 0);
 
   return (
-    <HomeCardRow className="transition-colors hover:bg-accent/40">
+    <HomeCardRow className="transition-colors hover:bg-accent">
       <button
         type="button"
         /** The row's name is the project, not everything printed in it: the

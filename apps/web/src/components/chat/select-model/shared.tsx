@@ -343,7 +343,7 @@ export function ModelDetailsPanel({
                         <span
                           key={i}
                           className={cn(
-                            "text-sm font-bold leading-none",
+                            "text-sm font-semibold leading-none",
                             i <= level
                               ? COST_DOLLAR_COLORS[level - 1]
                               : "text-muted-foreground/20",

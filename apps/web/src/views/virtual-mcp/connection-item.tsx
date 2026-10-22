@@ -123,10 +123,7 @@ function SiblingInstanceSelector({
         }
       }}
     >
-      <SelectTrigger
-        size="sm"
-        className="w-auto text-xs gap-1 px-2 shadow-none"
-      >
+      <SelectTrigger size="xs" className="w-auto gap-1 shadow-none">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
@@ -214,10 +211,8 @@ function ConnectionItemWithAuth({
   return (
     <div
       className={cn(
-        "rounded-xl border overflow-hidden transition-colors",
-        needsAuth || isDisabled
-          ? "border-destructive/50 bg-destructive/5"
-          : "border-border bg-card",
+        "surface overflow-hidden transition-colors",
+        (needsAuth || isDisabled) && "shadow-edge-destructive bg-destructive/5",
       )}
     >
       {/* Body — clickable, navigates to connection detail */}
@@ -227,7 +222,7 @@ function ConnectionItemWithAuth({
           org: orgSlug,
           appSlug: slug,
         }}
-        className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-muted/50 transition-colors"
+        className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-accent transition-colors"
       >
         <IntegrationIcon
           icon={connectionIcon}
@@ -259,7 +254,7 @@ function ConnectionItemWithAuth({
           <Button
             variant="outline"
             size="sm"
-            className="h-7 text-xs shrink-0"
+            className="shrink-0"
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
@@ -272,7 +267,7 @@ function ConnectionItemWithAuth({
           <Button
             variant="outline"
             size="sm"
-            className="h-7 text-xs gap-1.5 shrink-0"
+            className="gap-1.5 shrink-0"
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
@@ -314,8 +309,7 @@ function ConnectionItemWithAuth({
             <TooltipTrigger asChild>
               <Button
                 variant="ghost"
-                size="icon"
-                className="h-7 w-7"
+                size="icon-sm"
                 onClick={onOpenSettings}
                 aria-label={t("virtualMcp.connectionItem.configureResources")}
               >
@@ -331,8 +325,8 @@ function ConnectionItemWithAuth({
               <TooltipTrigger asChild>
                 <Button
                   variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 text-muted-foreground"
+                  size="icon-sm"
+                  className="text-muted-foreground"
                   onClick={() => toggleStatus("inactive")}
                   aria-label={t("virtualMcp.connectionItem.disableConnection")}
                 >
@@ -347,9 +341,8 @@ function ConnectionItemWithAuth({
           <Tooltip delayDuration={0}>
             <TooltipTrigger asChild>
               <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                variant="ghost-destructive"
+                size="icon-sm"
                 onClick={onRemove}
                 aria-label={t("virtualMcp.connectionItem.removeConnection")}
               >
@@ -375,7 +368,7 @@ function ConnectionItemAuthFallback({
   if (!connection) return <ConnectionItemSkeleton />;
 
   return (
-    <div className="rounded-xl border border-border overflow-hidden">
+    <div className="surface overflow-hidden">
       <div className="flex items-center gap-3 px-4 py-3">
         <IntegrationIcon
           icon={connection.icon}
@@ -412,9 +405,9 @@ function MissingConnectionItem({ onRemove }: { onRemove: () => void }) {
       <Tooltip delayDuration={0}>
         <TooltipTrigger asChild>
           <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 text-muted-foreground hover:text-destructive shrink-0"
+            variant="ghost-destructive"
+            size="icon-sm"
+            className="shrink-0"
             onClick={onRemove}
             aria-label={t("virtualMcp.connectionItem.removeConnection")}
           >
@@ -431,7 +424,7 @@ function MissingConnectionItem({ onRemove }: { onRemove: () => void }) {
 
 export function ConnectionItemSkeleton() {
   return (
-    <div className="rounded-xl border border-border overflow-hidden">
+    <div className="surface overflow-hidden">
       <div className="flex items-center gap-3 px-4 py-3">
         <div className="size-8 rounded-md bg-muted animate-pulse shrink-0" />
         <div className="flex-1 space-y-1.5">

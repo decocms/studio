@@ -64,7 +64,7 @@ export function TaskMessage({
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 text-xs text-muted-foreground"
+              className="text-xs text-muted-foreground"
               onClick={onOpenThread}
             >
               {t("taskBoard.conversation.openChat")}

@@ -123,13 +123,13 @@ export function cardNeedsAttention(item: TaskBoardItem): boolean {
 
 /**
  * Whether a card rides the board's critical swimlane: work that can't wait, so
- * it never sits among polish. Settled cards never qualify.
+ * it never sits among polish. High priority is not enough; that well is for
+ * urgent work. Settled cards never qualify.
  */
 export function isCriticalTask(item: TaskBoardItem): boolean {
   if (item.status === "done" || item.status === "archived") return false;
   return (
     item.priority === "urgent" ||
-    item.priority === "high" ||
     item.type === "security" ||
     isTaskBlocked(item) ||
     agentRunState(item) === "failed"
@@ -184,9 +184,9 @@ export function swimlanePriority(
   swimlane: "critical" | "improvements",
 ): TaskBoardItemPriority | null {
   const critical = isCriticalTask(item);
-  if (swimlane === "critical") return critical ? null : "high";
+  if (swimlane === "critical") return critical ? null : "urgent";
   if (!critical) return null;
-  return isCriticalTask({ ...item, priority: "medium" }) ? null : "medium";
+  return isCriticalTask({ ...item, priority: "high" }) ? null : "high";
 }
 
 /**
@@ -416,14 +416,14 @@ export const TASK_TYPE_CONFIG: Record<
   spike: {
     labelKey: "taskBoard.config.typeSpike",
     icon: Lightbulb02,
-    iconClassName: "text-yellow-500",
+    iconClassName: "text-brand-yellow",
   },
   // Purple, vacated by spike: security can't take amber without reading as the
   // High priority arrow two glyphs to its right, and red is the bug's.
   security: {
     labelKey: "taskBoard.config.typeSecurity",
     icon: Shield01,
-    iconClassName: "text-purple-500",
+    iconClassName: "text-project-purple",
   },
 };
 
@@ -569,10 +569,10 @@ export const PRIORITY_CONFIG: Record<
   },
   medium: {
     labelKey: "taskBoard.config.priorityMedium",
-    flagClassName: "text-blue-500",
-    dotClassName: "bg-blue-500",
+    flagClassName: "text-project-blue",
+    dotClassName: "bg-project-blue",
     icon: Equal,
-    iconClassName: "text-blue-500",
+    iconClassName: "text-project-blue",
   },
   high: {
     labelKey: "taskBoard.config.priorityHigh",

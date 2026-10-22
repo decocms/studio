@@ -3,7 +3,7 @@ export const routes = {
   "routes.agentsList.askAdminToCreate":
     "Ask an organization admin to create one.",
   "routes.agentsList.cancelButton": "Cancel",
-  "routes.agentsList.createAgent": "Create Project",
+  "routes.agentsList.createAgent": "New project",
   "routes.agentsList.createAgentToGetStarted":
     "Create a project to get started.",
   "routes.agentsList.deleteAgentDescription":

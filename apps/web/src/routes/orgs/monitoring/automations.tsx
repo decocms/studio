@@ -32,7 +32,7 @@ export function AutomationsTabContent({ dateRange }: { dateRange: DateRange }) {
 
   return (
     <div className="flex-1 flex flex-col overflow-auto min-w-0">
-      <div className="mx-auto w-full max-w-[1200px] px-4 md:px-10 flex flex-col flex-1 min-h-0 gap-5 pt-1">
+      <div className="mx-auto w-full max-w-[1200px] px-4 md:px-8 flex flex-col flex-1 min-h-0 gap-5 pt-1">
         {isLoading ? (
           <div className="py-16 text-center text-sm text-muted-foreground">
             {t("orgs.automations.loading")}
@@ -51,7 +51,7 @@ export function AutomationsTabContent({ dateRange }: { dateRange: DateRange }) {
                 value={effectiveId ?? ""}
                 onValueChange={(v) => setSelectedId(v)}
               >
-                <SelectTrigger className="w-72">
+                <SelectTrigger variant="pill" size="sm" className="w-72">
                   <SelectValue
                     placeholder={t("orgs.automations.selectPlaceholder")}
                   />

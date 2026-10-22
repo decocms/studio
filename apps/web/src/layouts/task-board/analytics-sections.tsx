@@ -30,7 +30,10 @@ import {
   Tag01,
   User01,
 } from "@untitledui/icons";
-import { ViewModeToggle } from "@decocms/ui/components/view-mode-toggle.tsx";
+import {
+  ToggleGroup,
+  ToggleGroupItem,
+} from "@decocms/ui/components/toggle-group.tsx";
 import { type ComponentType, type ReactNode, useState } from "react";
 import {
   Area,
@@ -102,7 +105,7 @@ const drillHandler = (
 
 /** Hover and focus for a card or row that opens the cards behind it. */
 const CLICKABLE =
-  "cursor-pointer text-left transition-colors hover:bg-accent/50 focus-ring";
+  "cursor-pointer text-left transition-colors hover:bg-accent focus-ring";
 
 /** Fixed order, never cycled — a series keeps its hue as the set changes. */
 const SERIES_COLORS = [
@@ -393,7 +396,7 @@ function SeriesTooltip({
   const row = payload[0]?.payload;
   const t = row?.t;
   return (
-    <div className="rounded-lg border bg-background px-3 py-2 shadow-md">
+    <div className="rounded-lg bg-popover px-3 py-2 shadow-soft">
       <div className="mb-1 text-xs text-muted-foreground">
         {typeof t === "string"
           ? new Date(t).toLocaleDateString(undefined, {
@@ -1104,18 +1107,23 @@ function BreakdownCard({
       title={section.title}
       aside={
         section.dimensions.length > 1 && (
-          <ViewModeToggle
+          <ToggleGroup
+            type="single"
+            variant="segmented"
+            size="sm"
             value={current?.label ?? ""}
-            onValueChange={setCut}
-            options={section.dimensions.map((d) => {
+            onValueChange={(next) => next && setCut(next)}
+          >
+            {section.dimensions.map((d) => {
               const Icon = DIMENSION_ICONS[d.label];
-              return {
-                value: d.label,
-                label: d.label,
-                icon: Icon ? <Icon /> : undefined,
-              };
+              return (
+                <ToggleGroupItem key={d.label} value={d.label}>
+                  {Icon && <Icon />}
+                  {d.label}
+                </ToggleGroupItem>
+              );
             })}
-          />
+          </ToggleGroup>
         )
       }
     >
@@ -1211,14 +1219,19 @@ function MatrixCard({
       }
       aside={
         section.metrics.length > 1 && (
-          <ViewModeToggle
+          <ToggleGroup
+            type="single"
+            variant="segmented"
+            size="sm"
             value={metric.key}
-            onValueChange={setMetricKey}
-            options={section.metrics.map((m) => ({
-              value: m.key,
-              label: m.label,
-            }))}
-          />
+            onValueChange={(next) => next && setMetricKey(next)}
+          >
+            {section.metrics.map((m) => (
+              <ToggleGroupItem key={m.key} value={m.key}>
+                {m.label}
+              </ToggleGroupItem>
+            ))}
+          </ToggleGroup>
         )
       }
     >

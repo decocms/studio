@@ -1,0 +1,40 @@
+import { Meta, Unstyled } from "@storybook/addon-docs/blocks";
+import { Intro } from "./kit.tsx";
+
+<Meta title="Foundations/Overview" />
+
+<Unstyled>
+  <Intro
+    hero={
+      <>
+        <div className="flex items-center justify-between">
+          <img src="./brand/deco-logo.svg" alt="deco" height={28} />
+          <span className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-medium">
+            @decocms/ui
+          </span>
+        </div>
+        <div className="flex items-center gap-6">
+          <img src="./brand/deco-mark-negative.svg" alt="" width={72} height={72} />
+          <div>
+            <h1 className="font-display m-0 text-5xl leading-none">Design System</h1>
+            <p className="mt-3 max-w-2xl text-lg leading-snug text-white/60">
+              The components behind deco Studio.
+            </p>
+          </div>
+        </div>
+      </>
+    }
+    layers={[
+      { title: "Foundations", description: "Tokens, type, spacing, icons and rules" },
+      { title: "Atoms", description: "Controls and basic elements" },
+      { title: "Molecules", description: "Fields, cards, menus and rows" },
+      { title: "Organisms", description: "Dialogs, navigation and whole sections" },
+    ]}
+    countLayers={["Atoms", "Molecules", "Organisms"]}
+    notes={[
+      { title: "From Figma", text: "Tokens and variants come from Design-System-2." },
+      { title: "Proposed here", text: "States Figma does not draw are marked proposed." },
+      { title: "States", text: "Variants in rows, states in columns." },
+    ]}
+  />
+</Unstyled>

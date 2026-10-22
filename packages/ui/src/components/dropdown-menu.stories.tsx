@@ -29,7 +29,7 @@ import {
 } from "./dropdown-menu.tsx";
 
 const meta = {
-  title: "Components/DropdownMenu",
+  title: "Molecules/DropdownMenu",
   component: DropdownMenu,
 } satisfies Meta<typeof DropdownMenu>;
 

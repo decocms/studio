@@ -50,7 +50,7 @@ export function QueueTray({ taskId }: { taskId: string }) {
   if (queued.length === 0) return null;
 
   return (
-    <div className="mb-1 overflow-hidden rounded-2xl border border-border bg-card dark:bg-muted">
+    <div className="mb-1 overflow-hidden surface dark:bg-muted">
       <div className="flex items-center justify-between gap-2 border-b border-border py-1.5 pr-2 pl-3 text-xs text-muted-foreground">
         <span>
           {t(
@@ -85,7 +85,7 @@ export function QueueTray({ taskId }: { taskId: string }) {
           {/* Chip surface must differ from the tray surface in BOTH modes —
               the tray is bg-card light / bg-muted dark, so bg-muted would
               vanish in dark mode. */}
-          <span className="flex size-[18px] shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-semibold text-muted-foreground dark:bg-background">
+          <span className="flex size-[18px] shrink-0 items-center justify-center rounded-full bg-muted text-2xs font-semibold text-muted-foreground dark:bg-background">
             {index + 1}
           </span>
           <span className="min-w-0 flex-1 truncate text-sm text-foreground">

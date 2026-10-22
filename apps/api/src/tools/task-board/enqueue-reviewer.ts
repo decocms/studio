@@ -28,11 +28,10 @@ const TERMINAL_THREAD_STATUSES = new Set(["completed", "failed", "expired"]);
  * heartbeat inside the stall window.
  *
  * Status alone is not liveness. A reviewer whose pod died mid-run stays
- * `in_progress` forever — the in-memory idle reaper is per-pod, and
- * `failNeverStartedThreads` only covers runs that never started
- * (`run_started_at IS NULL`), so a run that started and then went silent is
- * reaped by nobody. Uses the same heartbeat and window as the rest of the
- * codebase (`isThreadRunStale`), so "how long is too long" has one definition.
+ * `in_progress` until the review sweeper's `failAbandonedLinkedThreads` fails
+ * it, which happens after the stall window passes; this check doesn't wait for
+ * that write. Uses the same heartbeat and window as the rest of the codebase
+ * (`isThreadRunStale`), so "how long is too long" has one definition.
  */
 function isThreadRunLive(
   thr: TaskBoardItem["threads"][number],

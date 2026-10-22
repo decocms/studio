@@ -100,7 +100,7 @@ export function RichTextBlock({
   return (
     <div className="relative">
       {(marks.isFocused || linkOpen) && (
-        <div className="absolute -top-9 left-0 z-10 flex items-center gap-0.5 rounded-md border bg-popover p-0.5 shadow-md">
+        <div className="absolute -top-9 left-0 z-10 flex items-center gap-0.5 rounded-md bg-popover p-0.5 shadow-soft">
           <ToolbarButton
             active={marks.bold}
             label="Bold"

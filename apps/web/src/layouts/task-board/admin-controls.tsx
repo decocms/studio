@@ -77,13 +77,11 @@ export function TaskBoardAnalyticsButton({
   const t = useT();
   const params = useParams({ strict: false });
   const org = params.org ?? "";
-  // `/projects?project=` carries Analytics in its own Project/Files toggle.
-  if (project && !params.agentId) return null;
   // Off on phones: the header has no room left for New task beside it.
   return (
     <Button
       size="sm"
-      variant="secondary"
+      variant="outline"
       className="hidden sm:inline-flex"
       asChild
     >

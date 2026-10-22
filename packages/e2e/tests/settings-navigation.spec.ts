@@ -77,7 +77,7 @@ test.describe("settings tabs", () => {
     const { page, orgSlug } = authedPage;
     await page.goto(`/${orgSlug}/settings/connect`);
 
-    await expect(page.locator(HEADING)).toContainText("Connect to clients");
+    await expect(page.locator(HEADING)).toContainText("Connect");
     await expect(page.locator(SUBNAV)).toHaveCount(0);
     await expect(
       page.getByRole("heading", { name: "Connect your agent" }),

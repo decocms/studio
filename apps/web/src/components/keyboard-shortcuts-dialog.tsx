@@ -24,7 +24,7 @@ export function KeyboardShortcutsDialog({
         <div className="flex flex-col gap-4">
           {SHORTCUT_GROUPS.map((group) => (
             <div key={group.label}>
-              <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
+              <h3 className="text-xs font-medium text-muted-foreground mb-2">
                 {group.label}
               </h3>
               <div className="flex flex-col gap-1.5">
