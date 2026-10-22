@@ -194,10 +194,11 @@ describe("activeSeoResolveType", () => {
 });
 
 describe("withPageSeo", () => {
-  const v8Meta: LiveMeta = {
+  const v8Meta = {
+    blocksMajor: 8,
     manifest: { blocks: { pages: { page: { $ref: "#/definitions/page" } } } },
     schema: { definitions: { page: { type: "object" } } },
-  };
+  } as LiveMeta;
   const v7Meta: LiveMeta = {
     manifest: {
       blocks: {

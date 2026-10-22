@@ -90,6 +90,8 @@ export function findLivePageResolveType(meta: LiveMeta): string {
  * type use {@link findNewPageResolveType} instead.
  */
 export function declaresBuiltInPage(meta: LiveMeta | undefined): boolean {
+  // Only a Blocks v8 site's schema (`isV8Schema`) declares it.
+  if (!isV8Schema(meta)) return false;
   return Object.hasOwn(meta?.manifest?.blocks?.pages ?? {}, "page");
 }
 

@@ -1,3 +1,4 @@
+import { isV8Schema } from "@decocms/shared/blocks-major";
 import type { LiveMeta } from "./resolve-schema";
 import { isLazyWrapper, unwrapLazy, wrapLazy } from "./lazy-value";
 import {
@@ -36,9 +37,11 @@ type SiteMeta = Pick<LiveMeta, "manifest"> | null | undefined;
 
 /**
  * Whether the site's schema lists the built-in `multivariate` (Blocks v8
- * lists it under `loaders`). Without a schema, the v7 names are written.
+ * lists it under `loaders`). Without a schema, or on any site that isn't
+ * Blocks v8 (`isV8Schema`), the v7 names are written.
  */
 export function declaresBuiltinMultivariate(meta: SiteMeta): boolean {
+  if (!isV8Schema(meta)) return false;
   const groups = meta?.manifest?.blocks ?? {};
   return Object.values(groups).some((group) =>
     Object.hasOwn(group ?? {}, V8_MULTIVARIATE_RESOLVE_TYPE),

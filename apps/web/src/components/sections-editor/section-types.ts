@@ -1,3 +1,4 @@
+import { isV8Schema } from "@decocms/shared/blocks-major";
 import type { LiveMeta } from "./resolve-schema";
 
 export interface RawSection {
@@ -46,8 +47,12 @@ export function isNeverMatcherResolveType(resolveType: unknown): boolean {
   );
 }
 
-/** Whether the site's schema lists a matcher under this name. */
+/**
+ * Whether a Blocks v8 site's schema (`isV8Schema`) lists a matcher under this
+ * name. Any other site writes the v7 names.
+ */
 function declaresMatcher(meta: SiteMeta, name: string): boolean {
+  if (!isV8Schema(meta)) return false;
   return Object.hasOwn(meta?.manifest?.blocks?.matchers ?? {}, name);
 }
 

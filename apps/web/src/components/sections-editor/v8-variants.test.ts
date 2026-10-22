@@ -53,7 +53,8 @@ import {
  * short name, each legacy name listed next to them as an alias (the demo
  * storefront's `.deco/schema.gen.json` lists exactly these).
  */
-const V8: LiveMeta = {
+const V8 = {
+  blocksMajor: 8,
   manifest: {
     blocks: {
       sections: { hero: {}, footer: {} },
@@ -80,7 +81,7 @@ const V8: LiveMeta = {
     },
   },
   schema: {},
-};
+} as LiveMeta;
 
 /** A v7 manifest: file names only, no `multivariate`. */
 const V7: LiveMeta = {

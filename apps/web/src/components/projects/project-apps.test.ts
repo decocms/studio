@@ -7,12 +7,10 @@ import { launchableApps } from "./project-apps";
  * view the project lacks is a dead end; a missing tile hides a whole surface.
  */
 describe("launchableApps", () => {
-  test("a project with no saved preferences offers its defaults", () => {
+  test("v7: a project with no saved preferences offers main's defaults", () => {
     expect(launchableApps({ metadata: null })).toEqual([
       "reports",
       "site-editor",
-      "experiments",
-      "calendar",
     ]);
   });
 

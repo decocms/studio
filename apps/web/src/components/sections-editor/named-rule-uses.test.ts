@@ -29,6 +29,7 @@ import {
 
 const builtIn = { $ref: "#/definitions/x", namespace: "deco" };
 const meta = {
+  blocksMajor: 8,
   manifest: {
     blocks: {
       matchers: { always: builtIn, campaign: builtIn, experiment: builtIn },

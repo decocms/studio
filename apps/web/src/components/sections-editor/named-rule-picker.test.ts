@@ -18,6 +18,7 @@ import { type LiveMeta, resolveSchema } from "./resolve-schema";
 
 /** The four built-ins as `deco schema` (the blocks stack) lists them. */
 const V8_META = {
+  blocksMajor: 8,
   manifest: {
     blocks: {
       matchers: {
@@ -432,6 +433,7 @@ describe("a section prop that reads a whole block", () => {
  * string>`, its definitions as the blocks stack's `deco schema` writes them.
  */
 const PROPS_META = {
+  blocksMajor: 8,
   manifest: {
     blocks: {
       sections: {

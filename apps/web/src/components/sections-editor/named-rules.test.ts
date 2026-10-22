@@ -22,6 +22,7 @@ const builtIn = (key: string, namespace = "deco") => ({
   namespace,
 });
 const v8Meta = {
+  blocksMajor: 8,
   manifest: {
     blocks: {
       matchers: {
@@ -47,6 +48,7 @@ describe("namedRuleSupport", () => {
   it("is missing on a schema from before the built-ins, a v7 schema or none", () => {
     // Before campaigns, v8 had a `date` rule with its own dates.
     const older = {
+      blocksMajor: 8,
       manifest: {
         blocks: {
           matchers: { always: builtIn("always"), date: builtIn("date") },

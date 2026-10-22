@@ -37,7 +37,7 @@ import {
 } from "./use-create-page";
 
 /** The manifest `deco schema` writes for a next-major site (short names). */
-const V8: LiveMeta = {
+const V8 = {
   blocksMajor: 8,
   manifest: {
     blocks: {
@@ -53,7 +53,7 @@ const V8: LiveMeta = {
     },
   },
   schema: {},
-};
+} as LiveMeta;
 
 /** A v7 manifest: file names only. */
 const V7: LiveMeta = {

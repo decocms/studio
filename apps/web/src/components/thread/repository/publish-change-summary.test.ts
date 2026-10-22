@@ -1083,6 +1083,7 @@ describe("summarizeContentChanges (a v8 source's changes.list)", () => {
 
   it("reads a v8 page (the built-in `page`, named by the schema) as a page, through its lazy page variants", () => {
     const meta = {
+      blocksMajor: 8,
       manifest: { blocks: { pages: { page: {} } } },
     } as unknown as LiveMeta;
     const lazy = (value: unknown) => ({ __resolveType: "lazy", value });
@@ -1142,6 +1143,7 @@ describe("summarizeContentChanges (a v8 source's changes.list)", () => {
   it("flags a page whose rule names a test the draft no longer has (a discard went through)", () => {
     const builtIn = { $ref: "#/definitions/x", namespace: "deco" };
     const meta = {
+      blocksMajor: 8,
       manifest: {
         blocks: {
           matchers: { always: builtIn, experiment: builtIn, campaign: builtIn },
@@ -1198,6 +1200,7 @@ describe("summarizeContentChanges (a v8 source's changes.list)", () => {
   it("says on the A/B tests card how many pages and sections use a test it deleted", () => {
     const builtIn = { $ref: "#/definitions/x", namespace: "deco" };
     const meta = {
+      blocksMajor: 8,
       manifest: {
         blocks: {
           matchers: { always: builtIn, experiment: builtIn, campaign: builtIn },

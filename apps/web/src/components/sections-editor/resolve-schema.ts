@@ -109,11 +109,6 @@ export type SchemaAnyOfRef = NonNullable<SchemaProperty["anyOfRefs"]>[number];
 export interface LiveMeta {
   /** The stack the site was built with; absent on Fresh/Deno, which predates it. */
   framework?: string;
-  /**
-   * `8` on a Blocks v8 site's schema (`deco schema` writes it), which is what
-   * `isV8Schema` reads; absent on v7's `/live/_meta`.
-   */
-  blocksMajor?: number;
   manifest: {
     blocks: Record<
       string,

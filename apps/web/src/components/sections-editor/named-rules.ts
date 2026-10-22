@@ -1,3 +1,4 @@
+import { isV8Schema } from "@decocms/shared/blocks-major";
 import type { LiveMeta } from "./resolve-schema";
 
 /**
@@ -97,6 +98,8 @@ export function namedRuleSupport(
   meta: Pick<LiveMeta, "manifest"> | null | undefined,
   kind: NamedRuleKind,
 ): NamedRuleSupport {
+  // Only a Blocks v8 site's schema (`isV8Schema`) has them.
+  if (!isV8Schema(meta)) return "missing";
   const info = NAMED_RULES[kind];
   const type = findManifestEntry(meta, info.resolveType);
   const matcher = findManifestEntry(meta, info.matcher);

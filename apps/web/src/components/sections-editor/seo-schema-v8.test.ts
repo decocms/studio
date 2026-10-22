@@ -69,6 +69,7 @@ function v8Meta({
     });
   }
   return {
+    blocksMajor: 8,
     manifest: {
       blocks: {
         // The alias comes first, as a lookup by insertion order would see it.
@@ -89,7 +90,7 @@ function v8Meta({
       definitions,
       root: { sections: { anyOf: [ref("hero"), ref("theme")] } },
     },
-  };
+  } as LiveMeta;
 }
 
 describe("next-major page and SEO types", () => {

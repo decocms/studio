@@ -268,7 +268,22 @@ describe("site editor copy", () => {
 });
 
 describe("the publish panel's button (PO decision)", () => {
-  test('says "Publish N changes", never where they go', () => {
+  test('v7 keeps main\'s "in production" labels', () => {
+    expect(en["thread.publishPopover.publishCountInProduction"]).toBe(
+      "Publish {count} changes in production",
+    );
+    expect(en["thread.publishPopover.publishOneInProduction"]).toBe(
+      "Publish 1 change in production",
+    );
+    expect(ptBR["thread.publishPopover.publishCountInProduction"]).toBe(
+      "Publicar {count} alterações em produção",
+    );
+    expect(ptBR["thread.publishPopover.publishOneInProduction"]).toBe(
+      "Publicar 1 alteração em produção",
+    );
+  });
+
+  test('v8 says "Publish N changes", never where they go', () => {
     expect(en["thread.publishPopover.publishCount"]).toBe(
       "Publish {count} changes",
     );
@@ -284,6 +299,8 @@ describe("the publish panel's button (PO decision)", () => {
         dict as Record<string, string>,
       )) {
         if (!key.startsWith("thread.publishPopover.")) continue;
+        // v7's own labels (publish-title.ts picks them only off v8).
+        if (key.endsWith("InProduction")) continue;
         expect(value).not.toMatch(/in production|em produção/i);
       }
     }
