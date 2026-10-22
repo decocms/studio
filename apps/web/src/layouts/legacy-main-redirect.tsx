@@ -71,6 +71,26 @@ export function LegacyCanonicalNavigate({
           replace
         />
       );
+    case DESTINATION_ROUTE.plan:
+      return (
+        <Navigate
+          to={DESTINATION_ROUTE.plan}
+          params={route.params}
+          search={search}
+          hash={true}
+          replace
+        />
+      );
+    case DESTINATION_ROUTE.monitoring:
+      return (
+        <Navigate
+          to={DESTINATION_ROUTE.monitoring}
+          params={route.params}
+          search={search}
+          hash={true}
+          replace
+        />
+      );
     case DESTINATION_ROUTE.library:
       return (
         <Navigate
@@ -105,6 +125,26 @@ export function LegacyCanonicalNavigate({
       return (
         <Navigate
           to={PROJECT_ROUTE.reports}
+          params={route.params}
+          search={search}
+          hash={true}
+          replace
+        />
+      );
+    case PROJECT_ROUTE.plan:
+      return (
+        <Navigate
+          to={PROJECT_ROUTE.plan}
+          params={route.params}
+          search={search}
+          hash={true}
+          replace
+        />
+      );
+    case PROJECT_ROUTE.monitoring:
+      return (
+        <Navigate
+          to={PROJECT_ROUTE.monitoring}
           params={route.params}
           search={search}
           hash={true}
