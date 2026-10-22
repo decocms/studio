@@ -61,9 +61,9 @@ export interface PublishSectionChange {
   status: PublishChangeStatus;
   fields: PublishFieldChange[];
   /**
-   * The section is a wrapper around the content (its variants, its lazy
-   * loading), so `name` is the wrapper's type ("Multivariate", "Lazy"), not
-   * a name the author knows. The version note leaves it out.
+   * The section is variants (lazy-loaded or not), so `name` is the wrapper's
+   * type ("Multivariate"), not a name the author knows. The version note
+   * leaves it out. A lazy-loaded section is named by the section it loads.
    */
   wrapper?: true;
 }
@@ -183,29 +183,54 @@ export function sectionDisplayName(section: unknown, index: number): string {
   return `Section ${index + 1}`;
 }
 
-/** Types that wrap a section rather than being one: variants, lazy loading. */
-function isWrapperSection(section: Record<string, unknown>): boolean {
+/**
+ * The section a lazy-loading wrapper holds (v8 `lazy` block, v7 Lazy section),
+ * or `null` for a section that isn't one.
+ */
+function lazyInner(section: Record<string, unknown>): unknown {
   const resolveType = section.__resolveType;
-  return (
-    isMultivariateResolveType(resolveType) ||
-    resolveType === "lazy" ||
-    (typeof resolveType === "string" && isLazyResolveType(resolveType))
-  );
+  if (resolveType === "lazy") return section.value ?? null;
+  if (typeof resolveType === "string" && isLazyResolveType(resolveType)) {
+    return section.section ?? null;
+  }
+  return null;
 }
 
-/** A changed section, flagged when its name is only its wrapper's type. */
+/**
+ * A changed section, by the name of the section it is: a lazy-loaded one by
+ * the section it loads, and flagged `wrapper` when it is variants (or a lazy
+ * wrapper around them), whose type is no name the author knows.
+ */
 function sectionChange(
   section: Record<string, unknown>,
   index: number,
   status: PublishChangeStatus,
   fields: PublishFieldChange[],
 ): PublishSectionChange {
+  let named: unknown = section;
+  let wrapper = false;
+  for (let depth = 0; depth < 4; depth++) {
+    if (!named || typeof named !== "object" || Array.isArray(named)) {
+      wrapper = true;
+      break;
+    }
+    const record = named as Record<string, unknown>;
+    if (isMultivariateResolveType(record.__resolveType)) {
+      wrapper = true;
+      break;
+    }
+    const inner = lazyInner(record);
+    if (inner === null) break;
+    named = inner;
+  }
   return {
-    name: sectionDisplayName(section, index),
+    name: wrapper
+      ? sectionDisplayName(section, index)
+      : sectionDisplayName(named, index),
     kind: "section",
     status,
     fields,
-    ...(isWrapperSection(section) ? { wrapper: true as const } : {}),
+    ...(wrapper ? { wrapper: true as const } : {}),
   };
 }
 

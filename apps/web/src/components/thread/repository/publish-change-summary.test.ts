@@ -460,9 +460,33 @@ describe("buildAutoNote", () => {
         ),
       );
     expect(note([variants("A")], [variants("B")])).toBe("Updated Home Page");
+    // A lazy-loaded section is named by the section it loads.
     expect(note([lazyLoaded("A")], [lazyLoaded("B")])).toBe(
-      "Updated Home Page",
+      "Updated Home Page (Shelf)",
     );
+    expect(
+      note(
+        [
+          {
+            __resolveType: "lazy",
+            value: { __resolveType: "site/sections/Shelf.tsx", t: 1 },
+          },
+        ],
+        [
+          {
+            __resolveType: "lazy",
+            value: { __resolveType: "site/sections/Shelf.tsx", t: 2 },
+          },
+        ],
+      ),
+    ).toBe("Updated Home Page (Shelf)");
+    // Lazy-loaded variants are still variants.
+    expect(
+      note(
+        [{ ...lazyLoaded("A"), section: variants("A") }],
+        [{ ...lazyLoaded("B"), section: variants("B") }],
+      ),
+    ).toBe("Updated Home Page");
     expect(note([v7Flag("A")], [v7Flag("B")])).toBe("Updated Home Page");
     // A section the author knows by name is still named next to them.
     expect(
