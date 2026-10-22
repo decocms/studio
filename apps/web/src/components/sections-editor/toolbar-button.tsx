@@ -29,7 +29,7 @@ export function ToolbarButton({
         "flex h-7 min-w-7 items-center justify-center px-1.5 text-sm transition-colors cursor-pointer rounded-[var(--studio-control-radius,var(--radius))]",
         active
           ? "bg-accent text-accent-foreground"
-          : "text-muted-foreground hover:bg-muted hover:text-foreground",
+          : "text-muted-foreground hover:bg-accent hover:text-foreground",
       )}
     >
       {children}

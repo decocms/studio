@@ -195,20 +195,20 @@ export function EnvVarsEditor({
               placeholder={keyPlaceholder}
               value={envVar.key}
               onChange={(e) => handleKeyChange(index, e.target.value)}
-              className="h-10 rounded-lg flex-1 font-mono text-sm"
+              className="h-10 flex-1 font-mono"
             />
             <Input
               type={isSensitiveKey(envVar.key) ? "password" : "text"}
               placeholder={valuePlaceholder}
               value={envVar.value}
               onChange={(e) => handleValueChange(index, e.target.value)}
-              className="h-10 rounded-lg flex-1"
+              className="h-10 flex-1"
             />
             <Button
               type="button"
-              variant="ghost"
+              variant="ghost-destructive"
               size="icon"
-              className="h-10 w-10 shrink-0 text-muted-foreground hover:text-destructive"
+              className="size-10 shrink-0"
               onClick={() => handleRemove(index)}
             >
               <Trash01 size={16} />

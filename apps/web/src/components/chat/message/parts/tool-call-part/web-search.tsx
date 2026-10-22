@@ -107,7 +107,7 @@ function SourceChip({
       href={citation.url}
       target="_blank"
       rel="noopener noreferrer"
-      className="group/src inline-flex items-center gap-1.5 rounded-md border border-border/50 bg-muted/30 px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted/60 hover:border-border hover:text-foreground"
+      className="group/src inline-flex items-center gap-1.5 rounded-md border border-border/50 bg-muted/30 px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:border-border hover:text-foreground"
     >
       <img
         src={faviconUrl}
@@ -118,7 +118,7 @@ function SourceChip({
         }}
       />
       <span className="truncate max-w-[180px]">{label}</span>
-      <span className="text-[10px] text-muted-foreground/50 tabular-nums shrink-0">
+      <span className="text-2xs text-muted-foreground/50 tabular-nums shrink-0">
         [{index + 1}]
       </span>
       <LinkExternal01
@@ -158,7 +158,7 @@ function SourcesList({ citations }: { citations: Citation[] }) {
         <button
           type="button"
           onClick={() => setExpanded((v) => !v)}
-          className="inline-flex items-center rounded-lg border border-border/50 bg-muted/30 px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted/60 hover:border-border hover:text-foreground"
+          className="inline-flex items-center rounded-lg border border-border/50 bg-muted/30 px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:border-border hover:text-foreground"
         >
           {expanded
             ? t("chat.webSearch.showLess")
@@ -213,7 +213,7 @@ export function WebSearchPart({
 
   const latencyLabel =
     latency != null && latency > 0 ? (
-      <span className="text-[11px] font-mono tabular-nums text-muted-foreground/60">
+      <span className="text-2xs font-mono tabular-nums text-muted-foreground/60">
         {formatDuration(latency)}
       </span>
     ) : null;
@@ -236,7 +236,7 @@ export function WebSearchPart({
       icon={
         <Globe02
           size={14}
-          className={cn(isLoading ? "animate-pulse" : "text-blue-500")}
+          className={cn(isLoading ? "animate-pulse" : "text-brand-blue")}
         />
       }
       title={
@@ -268,7 +268,7 @@ export function WebSearchPart({
         {/* Research content */}
         {displayContent ? (
           <div className="max-h-96 overflow-y-auto overflow-x-hidden rounded-lg border border-border/40 bg-muted/20 px-4 py-3 min-w-0">
-            <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none text-[13px] leading-relaxed break-words">
+            <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none text-sm leading-relaxed break-words">
               <MemoizedMarkdown id={part.toolCallId} text={displayContent} />
             </div>
           </div>

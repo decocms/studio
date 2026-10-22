@@ -58,13 +58,15 @@ export function ThreadsFiltersPopover({
             <>
               <Badge
                 variant="default"
-                className="sm:hidden absolute -top-1.5 -right-1.5 h-4 min-w-4 px-1 text-[10px] leading-none"
+                size="sm"
+                className="sm:hidden absolute -top-1.5 -right-1.5 min-w-4 leading-none"
               >
                 {activeFiltersCount}
               </Badge>
               <Badge
                 variant="default"
-                className="hidden sm:flex ml-1 h-5 w-5 rounded-full p-0 items-center justify-center text-xs"
+                size="icon"
+                className="hidden sm:flex ml-1"
               >
                 {activeFiltersCount}
               </Badge>
@@ -90,7 +92,6 @@ export function ThreadsFiltersPopover({
                   onUpdateFilters({ filterAgentIds: values.slice(0, 1) })
                 }
                 placeholder={t("orgs.threadsFiltersPopover.allAgents")}
-                variant="secondary"
                 className="w-full"
                 maxCount={1}
               />
@@ -107,7 +108,6 @@ export function ThreadsFiltersPopover({
                   onUpdateFilters({ filterUserIds: values.slice(0, 1) })
                 }
                 placeholder={t("orgs.threadsFiltersPopover.allUsers")}
-                variant="secondary"
                 className="w-full"
                 maxCount={1}
               />

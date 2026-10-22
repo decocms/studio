@@ -17,7 +17,7 @@ import {
 } from "./context-menu.tsx";
 
 const meta = {
-  title: "Components/ContextMenu",
+  title: "Molecules/ContextMenu",
   component: ContextMenu,
 } satisfies Meta<typeof ContextMenu>;
 

@@ -55,21 +55,11 @@ export function RoutePageHeader({
       projectFirstNav && page?.mainView === "files"
       ? t("sidebar.navDestinations.context")
       : t(page?.pageTitle ?? "page.view");
-  /** Project-first navigation: the crumb is the way out of an app, so it lands
-   *  on the project as the reader knows it: its one screen. Sending them to
-   *  the scoped workspace instead is how someone loses the sidebar and cannot
-   *  get it back. With the flag off there is no flat project screen to land
-   *  on, so it goes back to the scoped workspace, as it always has. */
-  const projectLink = projectFirstNav
-    ? {
-        to: "/$org/projects" as const,
-        params: { org: org.slug },
-        search: { project: scopeId ?? undefined },
-      }
-    : {
-        to: "/$org/projects/$agentId" as const,
-        params: { org: org.slug, agentId: scopeId ?? "" },
-      };
+  /** The crumb leaves an app for the project's Overview. */
+  const projectLink = {
+    to: "/$org/projects/$agentId" as const,
+    params: { org: org.slug, agentId: scopeId ?? "" },
+  };
   const breadcrumbs: BreadcrumbItem[] = [];
   if (inSettings) {
     breadcrumbs.push({

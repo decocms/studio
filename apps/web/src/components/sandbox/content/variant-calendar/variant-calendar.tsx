@@ -22,7 +22,10 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
-import { ViewModeToggle } from "@decocms/ui/components/view-mode-toggle.tsx";
+import {
+  ToggleGroup,
+  ToggleGroupItem,
+} from "@decocms/ui/components/toggle-group.tsx";
 import { useT } from "@/i18n/use-t.ts";
 import {
   type BlockColor,
@@ -127,7 +130,7 @@ function VariantBar({
     <Tooltip>
       <TooltipTrigger asChild>
         <div
-          className="absolute flex items-center px-2 text-[11px] font-medium truncate cursor-default"
+          className="absolute flex items-center px-2 text-2xs font-medium truncate cursor-default"
           style={{
             background: color.bg,
             color: color.text,
@@ -189,7 +192,6 @@ export function VariantCalendar({
           <Button
             variant="ghost"
             size="icon"
-            className="size-8"
             onClick={goPrev}
             aria-label={t("sandbox.variantCalendar.previous")}
           >
@@ -198,7 +200,6 @@ export function VariantCalendar({
           <Button
             variant="ghost"
             size="icon"
-            className="size-8"
             onClick={goNext}
             aria-label={t("sandbox.variantCalendar.next")}
           >
@@ -226,22 +227,24 @@ export function VariantCalendar({
               </Label>
             </div>
           )}
-          <ViewModeToggle<ViewMode>
+          <ToggleGroup
+            type="single"
+            variant="segmented"
+            size="sm"
             value={view}
-            onValueChange={setView}
-            options={[
-              {
-                value: "calendar",
-                icon: <Calendar />,
-                label: t("sandbox.variantCalendar.calendarMode"),
-              },
-              {
-                value: "timeline",
-                icon: <Activity />,
-                label: t("sandbox.variantCalendar.timelineMode"),
-              },
-            ]}
-          />
+            onValueChange={(next) => {
+              if (next === "calendar" || next === "timeline") setView(next);
+            }}
+          >
+            <ToggleGroupItem value="calendar">
+              <Calendar />
+              {t("sandbox.variantCalendar.calendarMode")}
+            </ToggleGroupItem>
+            <ToggleGroupItem value="timeline">
+              <Activity />
+              {t("sandbox.variantCalendar.timelineMode")}
+            </ToggleGroupItem>
+          </ToggleGroup>
         </div>
       </div>
 
@@ -314,10 +317,7 @@ function CalendarView({
       <div className="min-w-[840px]">
         <div className="grid grid-cols-7 border-b text-xs text-muted-foreground sticky top-0 bg-background z-10">
           {WEEKDAYS.map((wd) => (
-            <div
-              key={wd}
-              className="px-2 py-2 text-center uppercase tracking-wide"
-            >
+            <div key={wd} className="px-2 py-2 text-center">
               {wd}
             </div>
           ))}
@@ -459,7 +459,7 @@ function TimelineView({
       <div className="min-w-[900px] relative">
         <div className="flex border-b sticky top-0 bg-background z-10">
           <div
-            className="shrink-0 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground border-r"
+            className="shrink-0 px-3 py-2 text-xs font-semibold text-muted-foreground border-r"
             style={{ width: ROW_LABEL_WIDTH }}
           >
             {t("sandbox.variantCalendar.variantBlock")}
@@ -473,7 +473,7 @@ function TimelineView({
             {monthHeaders.map((m, i) => (
               <div
                 key={i}
-                className="px-2 py-2 text-xs uppercase tracking-wide text-muted-foreground border-r last:border-r-0"
+                className="px-2 py-2 text-xs text-muted-foreground border-r last:border-r-0"
               >
                 {MONTHS[m.getMonth()]?.slice(0, 3)} {m.getFullYear()}
               </div>
@@ -487,7 +487,7 @@ function TimelineView({
               left: `calc(${ROW_LABEL_WIDTH}px + (100% - ${ROW_LABEL_WIDTH}px) * ${todayPct} / 100)`,
             }}
           >
-            <span className="absolute -top-0.5 -translate-x-1/2 rounded-sm bg-primary px-1.5 py-px text-[10px] font-medium text-primary-foreground">
+            <span className="absolute -top-0.5 -translate-x-1/2 rounded-sm bg-primary px-1.5 py-px text-2xs font-medium text-primary-foreground">
               {t("sandbox.variantCalendar.todayLabel")}
             </span>
           </div>
@@ -498,7 +498,7 @@ function TimelineView({
           return (
             <div key={blockKey}>
               <div
-                className="flex items-center bg-muted/40 border-b text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+                className="flex items-center bg-muted/40 border-b text-xs font-semibold text-muted-foreground"
                 style={{ height: 28 }}
               >
                 <div

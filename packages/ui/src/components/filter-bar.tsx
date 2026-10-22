@@ -405,7 +405,7 @@ export function FilterBar({
           >
             <DropdownMenuTrigger asChild>
               <div
-                className="group flex items-center gap-1 px-3 h-8 bg-accent rounded-lg text-sm cursor-pointer hover:bg-accent/80 transition-colors"
+                className="group flex items-center gap-1 px-3 h-8 bg-accent rounded-lg text-sm cursor-pointer hover:bg-secondary-hover transition-colors"
                 onClick={() => {
                   setEditingFilterId(filter.id);
                   setSelectedColumn(filter.column);

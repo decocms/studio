@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { Skeleton } from "./skeleton.tsx";
 
 const meta = {
-  title: "Components/Skeleton",
+  title: "Atoms/Skeleton",
   component: Skeleton,
 } satisfies Meta<typeof Skeleton>;
 

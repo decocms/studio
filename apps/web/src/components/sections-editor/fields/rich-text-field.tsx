@@ -167,7 +167,7 @@ export function RichTextField({
         description={schema.description}
         virtualMcpId={sandbox?.virtualMcpId}
       />
-      <div className="overflow-hidden rounded-[var(--studio-surface-radius,var(--radius-md))] border card-shadow border-input">
+      <div className="overflow-hidden rounded-[var(--studio-surface-radius,var(--radius-md))] border shadow-edge border-input">
         <div className="flex flex-wrap items-center gap-0.5 border-b border-border/60 bg-muted/30 px-1.5 py-1">
           <ToolbarButton
             active={marks.bold}
@@ -210,7 +210,7 @@ export function RichTextField({
                   onMouseDown={(e) => e.preventDefault()}
                   // Flatten the design-system trigger so it blends with the
                   // ghost-style toolbar instead of reading as a raised card.
-                  className="w-[116px] gap-1 bg-transparent px-2 text-muted-foreground shadow-none! hover:bg-muted hover:text-foreground"
+                  className="w-[116px] gap-1 bg-transparent px-2 text-muted-foreground shadow-none! hover:bg-accent hover:text-foreground"
                 >
                   <SelectValue />
                 </SelectTrigger>
@@ -277,9 +277,7 @@ export function RichTextField({
                 label={t("sectionsEditor.richTextField.orderedList")}
                 onClick={() => editor.chain().focus().toggleOrderedList().run()}
               >
-                <span className="text-[11px] font-semibold leading-none">
-                  1.
-                </span>
+                <span className="text-2xs font-semibold leading-none">1.</span>
               </ToolbarButton>
             </>
           )}

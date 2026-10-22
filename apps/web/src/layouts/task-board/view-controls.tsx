@@ -68,7 +68,6 @@ import { Button } from "@decocms/ui/components/button.tsx";
 import { IconButton } from "@decocms/ui/components/icon-button.tsx";
 import { Separator } from "@decocms/ui/components/separator.tsx";
 import { useT, type TranslationKey } from "@/i18n/use-t.ts";
-import { getInitials } from "@/lib/get-initials";
 import {
   entryForFilter,
   NO_PROJECT_FILTER,
@@ -198,7 +197,7 @@ function useFilterFields({
           glyph: (
             <Avatar
               url={member.user?.image ?? undefined}
-              fallback={getInitials(member.user?.name)}
+              fallback={member.user?.name ?? "?"}
               shape="circle"
               size="2xs"
             />
@@ -223,7 +222,7 @@ function useFilterFields({
       return member ? (
         <Avatar
           url={member.user?.image ?? undefined}
-          fallback={getInitials(member.user?.name)}
+          fallback={member.user?.name ?? "?"}
           shape="circle"
           size="2xs"
         />
@@ -660,7 +659,7 @@ export function TaskFilterButton({
         <IconButton
           label={t("taskBoard.viewControls.filterLabel")}
           tooltipSide="bottom"
-          variant="secondary"
+          variant="outline"
           aria-pressed={active}
         >
           <FilterLines />
@@ -846,7 +845,7 @@ export function GroupByButton(props: GroupingProps) {
         <IconButton
           label={t("taskBoard.viewControls.groupByLabel")}
           tooltipSide="bottom"
-          variant="secondary"
+          variant="outline"
           aria-pressed={props.groupBy !== null}
         >
           <Rows01 />
@@ -913,7 +912,7 @@ export function SortByButton(props: SortingProps) {
         <IconButton
           label={t("taskBoard.viewControls.sortLabel")}
           tooltipSide="bottom"
-          variant="secondary"
+          variant="outline"
           aria-pressed={props.sortBy !== null}
         >
           <SwitchVertical01 />
@@ -1281,7 +1280,7 @@ export function BoardSettingsButton({
     <IconButton
       label={label}
       tooltipSide="bottom"
-      variant="secondary"
+      variant="outline"
       onClick={onClick}
     >
       <Settings02 />

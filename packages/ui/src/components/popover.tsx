@@ -22,8 +22,12 @@ function PopoverContent({
   align = "center",
   sideOffset = 4,
   container,
+  variant = "default",
   ...props
 }: React.ComponentProps<typeof PopoverPrimitive.Content> & {
+  /** `glass` is the frosted panel for comment threads, confirmations and
+   *  annotations floating over content. */
+  variant?: "default" | "glass";
   /** Portal target. Pass a dialog's content to keep wheel-scroll working when the popover lives inside a scroll-locked dialog. Defaults to document.body. */
   container?: React.ComponentProps<typeof PopoverPrimitive.Portal>["container"];
 }) {
@@ -34,8 +38,12 @@ function PopoverContent({
         align={align}
         sideOffset={sideOffset}
         translate="no"
+        data-variant={variant}
         className={cn(
-          "notranslate bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 w-72 origin-(--radix-popover-content-transform-origin) rounded-[var(--studio-surface-radius,var(--radius-lg))] overflow-hidden border p-4 shadow-md outline-hidden",
+          "notranslate text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 w-72 origin-(--radix-popover-content-transform-origin) rounded-[var(--studio-surface-radius,var(--radius-lg))] overflow-hidden outline-hidden",
+          variant === "glass"
+            ? "glass rounded-[0.875rem] px-3.5 py-3"
+            : "bg-popover border p-4 shadow-md",
           className,
         )}
         {...props}

@@ -62,7 +62,7 @@ function ProjectRow({
   const connections = project.connections?.length ?? 0;
 
   return (
-    <li className="flex flex-wrap items-center gap-3 rounded-xl bg-card p-4 card-shadow">
+    <li className="flex flex-wrap items-center gap-3 p-4">
       <AgentAvatar icon={project.icon} name={project.title} size="sm" />
       <div className="flex min-w-0 flex-1 basis-48 flex-col gap-0.5">
         <span className="truncate text-sm font-medium text-foreground">
@@ -146,21 +146,15 @@ export default function SettingsProjectsPage() {
     <Page>
       <Page.Content>
         <Page.Container className="flex flex-col gap-6">
-          <div className="flex flex-col gap-2">
-            <Page.Title
-              actions={
-                canManageProjects && (
-                  <NewProjectButton source="settings_projects" />
-                )
-              }
-            >
-              {t("projects.settings.title")}
-            </Page.Title>
-            <p className="max-w-2xl text-sm text-muted-foreground">
-              {t("projects.settings.description")}{" "}
-              {t("projects.settings.orgScopeNote")}
-            </p>
-          </div>
+          <Page.Title
+            actions={
+              canManageProjects && (
+                <NewProjectButton source="settings_projects" />
+              )
+            }
+          >
+            {t("projects.settings.title")}
+          </Page.Title>
 
           {projects.length === 0 ? (
             <ProjectsEmptyState canCreate={canManageProjects} />
@@ -177,7 +171,7 @@ export default function SettingsProjectsPage() {
                   {t("projects.settings.noResults", { search })}
                 </p>
               ) : (
-                <ul className="flex flex-col gap-2">
+                <ul className="flex flex-col divide-y divide-border overflow-hidden rounded-xl bg-card shadow-edge">
                   {shown.map((project) => (
                     <ProjectRow
                       key={project.id}

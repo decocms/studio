@@ -81,7 +81,7 @@ export function DrawerToolbar(props: DrawerToolbarProps) {
         <TooltipTrigger asChild>
           <Button
             variant="ghost"
-            size="icon-sm"
+            size="icon-xs"
             onClick={props.onToggle}
             aria-label={
               props.open
@@ -89,7 +89,7 @@ export function DrawerToolbar(props: DrawerToolbarProps) {
                 : t("sandbox.preview.expandTerminal")
             }
             aria-expanded={props.open}
-            className="size-6 shrink-0"
+            className="shrink-0"
           >
             {props.open ? (
               <ChevronDown className="size-4" />
@@ -175,7 +175,7 @@ function SetupTab({
       className={cn(
         "flex h-6 items-center gap-1.5 rounded-lg border px-2 text-xs",
         active
-          ? "border-border bg-background font-medium text-foreground shadow-sm"
+          ? "border-transparent bg-background font-medium text-foreground shadow-edge"
           : "border-transparent text-muted-foreground hover:bg-background/50 hover:text-foreground",
       )}
     >
@@ -299,7 +299,7 @@ function TabButton({
       className={cn(
         "flex h-6 items-center rounded-lg border text-xs",
         active
-          ? "border-border bg-background shadow-sm"
+          ? "border-transparent bg-background shadow-edge"
           : "border-transparent hover:bg-background/50",
       )}
     >
@@ -356,7 +356,7 @@ function AddScriptButton({
         <TooltipContent>{t("sandbox.toolbar.runScript")}</TooltipContent>
       </Tooltip>
       <PopoverContent align="start" className="p-1 w-56">
-        <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+        <div className="px-2 py-1 text-2xs text-muted-foreground">
           {t("sandbox.toolbar.runAScript")}
         </div>
         {scripts.length === 0 ? (

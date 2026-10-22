@@ -99,7 +99,7 @@ export function CreditsExhaustedBanner({
         {/* Amount selection */}
         {decoKeyId && (
           <div className="px-8 pt-5 pb-6">
-            <div className="rounded-xl border border-border p-5">
+            <div className="surface p-5">
               <TopUpAmounts source="exhausted_banner" onDone={onDismiss} />
             </div>
 

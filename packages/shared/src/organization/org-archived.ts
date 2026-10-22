@@ -25,6 +25,19 @@ export function isOrgArchived(
   return parseOrgMetadata(org?.metadata).archived === true;
 }
 
+/** The orgs a list surface shows: archived ones dropped, each org once. Better
+ *  Auth lists one org per membership row and does not stop duplicate rows. */
+export function activeOrganizations<
+  T extends { id: string; metadata?: unknown },
+>(orgs: readonly T[]): T[] {
+  const seen = new Set<string>();
+  return orgs.filter((org) => {
+    if (isOrgArchived(org) || seen.has(org.id)) return false;
+    seen.add(org.id);
+    return true;
+  });
+}
+
 /** Thrown when a request explicitly targets a soft-deleted org; the web shell
  *  matches on it to show the archived screen. */
 export const ORG_ARCHIVED_ERROR = "Organization is archived";

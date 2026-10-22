@@ -6,11 +6,13 @@
  * rules were earned while GitHub was reached through MCP. They are unchanged;
  * only their home moved, next to the implementation that owns the vocabulary.
  */
-import { describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
 import type { RepoRef } from "@decocms/shared/git-providers";
+import { GitProviderError } from "../types";
 import {
   checksFromMergeableState,
   conflictFromPullRequest,
+  GithubChangeRequestClient,
   isMergeMethodNotAllowed,
   mapChecks,
   mapDetail,
@@ -441,5 +443,29 @@ describe("isMergeMethodNotAllowed", () => {
       ),
     ).toBe(false);
     expect(isMergeMethodNotAllowed("")).toBe(false);
+  });
+});
+
+describe("GithubChangeRequestClient's malformed-body handling", () => {
+  const originalFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("degrades a well-formed but non-array list body into a GitProviderError", async () => {
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ message: "not found" }), {
+        status: 200,
+      })) as unknown as typeof fetch;
+
+    const client = new GithubChangeRequestClient({
+      repo: REPO,
+      tokenSource: {
+        kind: "oauth",
+        get: async () => ({ token: "t", kind: "oauth", expiresAt: null }),
+      },
+    });
+
+    await expect(client.listOpen(10)).rejects.toBeInstanceOf(GitProviderError);
   });
 });
