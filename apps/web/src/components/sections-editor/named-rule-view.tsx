@@ -54,7 +54,7 @@ import { useNamedRuleUses } from "./use-named-rule-uses";
  * The copy that names the kind. In pt-br a test is masculine and a campaign
  * feminine, so these stay one key per kind.
  */
-export function namedRuleKindCopy(t: TFunction, kind: NamedRuleKind) {
+function namedRuleKindCopy(t: TFunction, kind: NamedRuleKind) {
   if (kind === "experiments") {
     return {
       new: t("experiments.v8.new"),
