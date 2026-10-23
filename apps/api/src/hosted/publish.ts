@@ -18,6 +18,9 @@
  * Reapply version (reapply.ts).
  * Every latest.json write stamps `publishedAt` now: the SDK prefers the CDN
  * only when it is later than its bundle's build time.
+ * Every latest.json write, and each companion release when it is written,
+ * carries `previewHosts`: the site's addresses Studio knows
+ * (preview-hosts.ts), the only hosts the site shows drafts on.
  */
 
 import {
@@ -92,6 +95,17 @@ export interface LatestPointer {
   revision: string;
   schemaHash: string;
   publishedAt: string;
+  /**
+   * The hosts the site shows drafts on (preview-hosts.ts). Absent only in a
+   * latest.json written before Studio wrote it.
+   */
+  previewHosts?: string[];
+}
+
+function isStringList(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) && value.every((item) => typeof item === "string")
+  );
 }
 
 function parseLatest(value: unknown): LatestPointer | null {
@@ -105,6 +119,9 @@ function parseLatest(value: unknown): LatestPointer | null {
         revision: v.revision,
         schemaHash: v.schemaHash,
         publishedAt: v.publishedAt,
+        ...(isStringList(v.previewHosts)
+          ? { previewHosts: v.previewHosts }
+          : {}),
       }
     : null;
 }
@@ -135,6 +152,11 @@ export interface HostedRepo {
   /** Purges latest.json from the edge after each write of it. */
   purge: DeliveryPurge;
   site: string;
+  /**
+   * The site's preview hosts (preview-hosts.ts), written into latest.json
+   * and into each companion release this repo writes.
+   */
+  previewHosts: readonly string[];
 }
 
 /**
@@ -281,29 +303,36 @@ export async function ensureRevision(
   const revision = await buildRevision(repo.client, repo.packagePath, sha);
   await repo.store.putJson(
     deliveryKeys.revision(repo.site, sha),
-    revision,
+    { ...revision, previewHosts: [...repo.previewHosts] },
     CACHE_REVISION,
   );
   return revision.schemaHash;
 }
 
 /**
- * Writes latest.json, then purges its URL from the edge (5 s per attempt,
- * exactly one retry). Either failing throws {@link LatestUpdateError}: no
- * restore of the previous pointer, no other recovery (a failed write skips
- * the purge).
+ * Writes latest.json, with the repo's `previewHosts`, then purges its URL from
+ * the edge (5 s per attempt, exactly one retry). Either failing throws
+ * {@link LatestUpdateError}: no restore of the previous pointer, no other
+ * recovery (a failed write skips the purge). Returns what was written.
  */
 export async function writeLatest(
-  repo: Pick<HostedRepo, "store" | "purge" | "site">,
-  pointer: LatestPointer,
-): Promise<void> {
+  repo: Pick<HostedRepo, "store" | "purge" | "site" | "previewHosts">,
+  pointer: Omit<LatestPointer, "previewHosts">,
+): Promise<LatestPointer> {
   const key = deliveryKeys.latest(repo.site);
+  const written: LatestPointer = {
+    revision: pointer.revision,
+    schemaHash: pointer.schemaHash,
+    publishedAt: pointer.publishedAt,
+    previewHosts: [...repo.previewHosts],
+  };
   try {
-    await repo.store.putJson(key, pointer, CACHE_LATEST);
+    await repo.store.putJson(key, written, CACHE_LATEST);
     await repo.purge.purge(key);
   } catch (error) {
     throw new LatestUpdateError(error);
   }
+  return written;
 }
 
 /**

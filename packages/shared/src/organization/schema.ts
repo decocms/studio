@@ -244,6 +244,12 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "Run every chat with the claude-code harness in its own sandbox instead of hosted Decopilot. On by default (see DEFAULT_ON_FLAGS); a deployment without hosted sandboxes keeps Decopilot regardless.",
     ),
+  sandbox_run_metadata: z
+    .boolean()
+    .optional()
+    .describe(
+      "Forward a sandbox run's metadata (such as a webhook trigger's run_metadata) to the MCP tools it calls, as hosted Decopilot runs do. Off by default.",
+    ),
   sandbox_repo_snapshots: z
     .boolean()
     .optional()

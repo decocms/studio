@@ -1,9 +1,14 @@
+import { isV8Schema } from "@decocms/shared/blocks-major";
 import {
   isAutoPreviewBlockKey,
   isManifestSectionResolveType,
   isSavedBlockResolveType,
 } from "./block-type-utils";
 import { isLazyResolveType } from "./section-lazy";
+import {
+  isLegacyPageResolveType,
+  LEGACY_PAGE_RESOLVE_TYPES,
+} from "./page-types";
 import {
   resolveBlockSchemaMetadata,
   resolveSchema,
@@ -14,6 +19,7 @@ import {
   labelFromResolveType,
   SECTION_MULTIVARIATE_RESOLVE_TYPE,
 } from "./section-types";
+import { V8_MULTIVARIATE_RESOLVE_TYPE, variantValueOn } from "./variant-shape";
 
 export interface SectionCatalogEntry {
   resolveType: string;
@@ -23,23 +29,35 @@ export interface SectionCatalogEntry {
   isSavedBlock: boolean;
 }
 
-const LIVE_PAGE_RESOLVE_TYPES = [
-  "website/pages/Page.tsx",
-  "$live/pages/LivePage.tsx",
-] as const;
-
-const PAGE_BLOCK_RESOLVE_TYPES = new Set<string>(LIVE_PAGE_RESOLVE_TYPES);
-
 /** Page block of current deco runtimes — what {@link findLivePageResolveType} falls back to without a manifest. */
-export const DEFAULT_LIVE_PAGE_RESOLVE_TYPE = LIVE_PAGE_RESOLVE_TYPES[0];
+export const DEFAULT_LIVE_PAGE_RESOLVE_TYPE = LEGACY_PAGE_RESOLVE_TYPES[0];
 
 /** Theme sections belong in site settings, not the page section picker. */
 const EXCLUDED_SECTION_RESOLVE_TYPES = new Set([
   "site/sections/Theme/Theme.tsx",
 ]);
 
-function shouldSkipSectionResolveType(resolveType: string): boolean {
+/**
+ * Next-major Blocks names block types with short keys (`theme`, `hero`), not
+ * file paths, so the v7 path above never matches there: on a Blocks v8 site
+ * (`v8`) a short key named `theme` (any case) is the site's theme too. On v7
+ * such a key is a saved block like any other, as before.
+ */
+function isExcludedSectionResolveType(
+  resolveType: string,
+  v8: boolean,
+): boolean {
   if (EXCLUDED_SECTION_RESOLVE_TYPES.has(resolveType)) return true;
+  return (
+    v8 && !resolveType.includes("/") && resolveType.toLowerCase() === "theme"
+  );
+}
+
+function shouldSkipSectionResolveType(
+  resolveType: string,
+  meta: LiveMeta,
+): boolean {
+  if (isExcludedSectionResolveType(resolveType, isV8Schema(meta))) return true;
   if (isLazyResolveType(resolveType)) return true;
   if (resolveType.toLowerCase().includes("preview")) return true;
   return false;
@@ -49,7 +67,7 @@ export function findLivePageResolveType(meta: LiveMeta): string {
   const blocks = meta.manifest?.blocks ?? {};
   for (const blockMap of Object.values(blocks)) {
     for (const resolveType of Object.keys(blockMap)) {
-      if (PAGE_BLOCK_RESOLVE_TYPES.has(resolveType)) {
+      if (isLegacyPageResolveType(resolveType)) {
         return resolveType;
       }
     }
@@ -57,6 +75,28 @@ export function findLivePageResolveType(meta: LiveMeta): string {
   // Next-major sites: the built-in `page` (or the site's override of it).
   if (Object.hasOwn(blocks.pages ?? {}, "page")) return "page";
   return DEFAULT_LIVE_PAGE_RESOLVE_TYPE;
+}
+
+/**
+ * Whether the site declares the next-major built-in `page` (or its own
+ * override of it). Its schema then also lists the v7 page names as aliases,
+ * which {@link findLivePageResolveType} may pick, so callers that WRITE a page
+ * type use {@link findNewPageResolveType} instead.
+ */
+export function declaresBuiltInPage(meta: LiveMeta | undefined): boolean {
+  // Only a Blocks v8 site's schema (`isV8Schema`) declares it.
+  if (!isV8Schema(meta)) return false;
+  return Object.hasOwn(meta?.manifest?.blocks?.pages ?? {}, "page");
+}
+
+/**
+ * The page type a NEW page is saved with: the one the site declares — `page`
+ * on next-major sites, the v7 file name otherwise (and without a manifest).
+ */
+export function findNewPageResolveType(meta: LiveMeta | undefined): string {
+  if (!meta) return DEFAULT_LIVE_PAGE_RESOLVE_TYPE;
+  if (declaresBuiltInPage(meta)) return "page";
+  return findLivePageResolveType(meta);
 }
 
 /** Collects block-ref variants from a resolved schema subtree (e.g. page `seo` or `sections`). */
@@ -88,7 +128,7 @@ function listManifestSections(meta: LiveMeta): SectionCatalogEntry[] {
     if (!blockType.includes("sections")) continue;
 
     for (const resolveType of Object.keys(blockMap)) {
-      if (shouldSkipSectionResolveType(resolveType)) continue;
+      if (shouldSkipSectionResolveType(resolveType, meta)) continue;
 
       const metadata = resolveBlockSchemaMetadata(resolveType, meta);
       entries.push({
@@ -123,7 +163,7 @@ export function listAvailableSections(
   for (const [blockType, blockMap] of Object.entries(blocks)) {
     if (!blockType.includes("sections")) continue;
     for (const resolveType of Object.keys(blockMap)) {
-      if (shouldSkipSectionResolveType(resolveType)) continue;
+      if (shouldSkipSectionResolveType(resolveType, meta)) continue;
       if (byResolveType.has(resolveType)) continue;
       byResolveType.set(resolveType, {
         resolveType,
@@ -151,16 +191,17 @@ export function underlyingSectionResolveType(
 ): string {
   const rt = block.__resolveType;
   if (typeof rt !== "string") return "";
-  if (rt !== SECTION_MULTIVARIATE_RESOLVE_TYPE) return rt;
+  const v8 = isV8Schema(meta);
+  if (!isSectionMultivariateBlockType(rt, v8)) return rt;
 
   const variants = block.variants;
   if (!Array.isArray(variants)) return rt;
 
   for (const variant of variants) {
-    const value = (variant as Record<string, unknown>)?.value as
+    const value = variantValueOn(variant, v8) as
       | Record<string, unknown>
       | undefined;
-    if (!value) continue;
+    if (!value || typeof value !== "object") continue;
 
     // Lazy-wrapped section values nest the real section under `.section`.
     let variantRt = value.__resolveType;
@@ -177,6 +218,17 @@ export function underlyingSectionResolveType(
   }
 
   return rt;
+}
+
+/**
+ * The v7 section flag, or on a Blocks v8 site (`v8`) its `multivariate`
+ * (which wraps any value). On v7 a short `multivariate` is a saved block.
+ */
+function isSectionMultivariateBlockType(rt: string, v8: boolean): boolean {
+  return (
+    rt === SECTION_MULTIVARIATE_RESOLVE_TYPE ||
+    (v8 && rt === V8_MULTIVARIATE_RESOLVE_TYPE)
+  );
 }
 
 /**
@@ -205,13 +257,13 @@ export function listSavedSectionBlocks(
     const obj = val as Record<string, unknown>;
     const rt = obj.__resolveType;
     if (typeof rt !== "string") continue;
-    if (PAGE_BLOCK_RESOLVE_TYPES.has(rt)) continue;
+    if (isLegacyPageResolveType(rt)) continue;
     if (typeof obj.path === "string") continue;
-    if (shouldSkipSectionResolveType(rt)) continue;
+    if (shouldSkipSectionResolveType(rt, meta)) continue;
 
     const isSectionBlock =
       isManifestSectionResolveType(meta, rt) ||
-      (rt === SECTION_MULTIVARIATE_RESOLVE_TYPE &&
+      (isSectionMultivariateBlockType(rt, isV8Schema(meta)) &&
         multivariateWrapsManifestSection(meta, obj));
     if (!isSectionBlock) continue;
 
@@ -261,7 +313,7 @@ export function extractSectionCatalog(
   const byResolveType = new Map<string, SectionCatalogEntry>();
 
   const addEntry = (entry: SectionCatalogEntry) => {
-    if (shouldSkipSectionResolveType(entry.resolveType)) return;
+    if (shouldSkipSectionResolveType(entry.resolveType, meta)) return;
     if (isSavedBlockResolveType(entry.resolveType, meta)) {
       if (!isAutoPreviewBlockKey(entry.resolveType)) {
         byResolveType.set(entry.resolveType, entry);

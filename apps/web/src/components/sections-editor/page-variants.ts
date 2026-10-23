@@ -1,15 +1,25 @@
 import type { LiveMeta, SchemaProperty } from "./resolve-schema";
+import { resolveVariantRuleLabel } from "./matcher-rules";
+import { findSavedMatcherReferences } from "./rule-references";
 import {
-  isSavedMatcherBlockReference,
-  resolveVariantRuleLabel,
-} from "./matcher-rules";
-import { isDefaultVariantRule } from "./section-variants";
+  duplicateVariantIndex,
+  isDefaultVariantRule,
+  newVariantIndex,
+} from "./section-variants";
 import type { RawSection } from "./section-types";
 import {
   defaultVariantRule,
   PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE,
   SECTION_MULTIVARIATE_RESOLVE_TYPE,
 } from "./section-types";
+import {
+  readVariantValue,
+  storeVariantValue,
+  variantValueOn,
+  V8_MULTIVARIATE_RESOLVE_TYPE,
+  valueMultivariateResolveType,
+  withVariantValue,
+} from "./variant-shape";
 
 export interface PageVariant {
   label: string;
@@ -17,71 +27,123 @@ export interface PageVariant {
   rule?: Record<string, unknown>;
 }
 
+/**
+ * The section-list schema of a page-variants field: the list each variant's
+ * `value` holds, under v7's page flag or v8's `multivariate` (where the value
+ * is a `lazy` block around the list). `undefined` for any other field.
+ */
+export function pageMultivariateSectionListSchema(
+  schema: SchemaProperty,
+): SchemaProperty | undefined {
+  for (const ref of schema.anyOfRefs ?? []) {
+    if (
+      ref.resolveType !== PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE &&
+      ref.resolveType !== V8_MULTIVARIATE_RESOLVE_TYPE
+    ) {
+      continue;
+    }
+    const valueField =
+      ref.schema?.properties?.variants?.items?.properties?.value;
+    // Under `multivariate` the value is a `lazy` block around the list.
+    const listField = valueField?.lazy
+      ? valueField.properties?.value
+      : valueField;
+    if (listField?.type === "array") return listField;
+  }
+  return undefined;
+}
+
 export function isPageMultivariateSectionArrayField(
   schema: SchemaProperty,
 ): boolean {
-  return (
-    schema.anyOfRefs?.some((ref) => {
-      if (ref.resolveType !== PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE) return false;
-      const valueField =
-        ref.schema?.properties?.variants?.items?.properties?.value;
-      return valueField?.type === "array";
-    }) ?? false
-  );
+  return pageMultivariateSectionListSchema(schema) !== undefined;
 }
 
 /**
  * True when a value is a section-level multivariate flag wrapper —
- * `{ __resolveType: "website/flags/multivariate/section.ts", variants: [...] }`.
+ * `{ __resolveType: "website/flags/multivariate/section.ts", variants: [...] }`,
+ * or v8's `multivariate` around single values (not a page's section lists).
  *
  * This is the shape a saved/global block takes when it wraps a single section
  * in variants (each `{ value: Section, rule: Matcher }`). It must render with
  * the variant editor, not the generic array editor.
  */
-export function isSectionMultivariateWrapperValue(value: unknown): value is {
+export function isSectionMultivariateWrapperValue(
+  value: unknown,
+  /** A Blocks v8 site; on v7 a short `multivariate` is a saved block's key. */
+  v8: boolean,
+): value is {
   __resolveType: string;
   variants: Array<Record<string, unknown>>;
 } {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const obj = value as Record<string, unknown>;
+  if (!Array.isArray(obj.variants)) return false;
+  if (obj.__resolveType === SECTION_MULTIVARIATE_RESOLVE_TYPE) return true;
   return (
-    obj.__resolveType === SECTION_MULTIVARIATE_RESOLVE_TYPE &&
-    Array.isArray(obj.variants)
+    v8 &&
+    obj.__resolveType === V8_MULTIVARIATE_RESOLVE_TYPE &&
+    !holdsSectionLists(obj.variants)
   );
 }
 
-/** Site `global` and page `sections` can be a plain array or page multivariate wrapper. */
-export function isMultivariateArrayWrapper(value: unknown): boolean {
+/** Whether a v8 variants list holds lists (a page's sections), not single values. */
+function holdsSectionLists(variants: unknown[]): boolean {
+  return variants.some((variant) => Array.isArray(readVariantValue(variant)));
+}
+
+/**
+ * Site `global` and page `sections` can be a plain array or page multivariate
+ * wrapper: v7's `website/flags/multivariate.ts`, or v8's `multivariate` whose
+ * variants hold section lists.
+ */
+export function isMultivariateArrayWrapper(
+  value: unknown,
+  /** A Blocks v8 site; on v7 a short `multivariate` is a saved block's key. */
+  v8: boolean,
+): boolean {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const obj = value as Record<string, unknown>;
+  if (obj.__resolveType === PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE) return true;
   return (
-    (value as Record<string, unknown>).__resolveType ===
-    PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE
+    v8 &&
+    obj.__resolveType === V8_MULTIVARIATE_RESOLVE_TYPE &&
+    Array.isArray(obj.variants) &&
+    holdsSectionLists(obj.variants)
   );
 }
 
-export function unwrapMultivariateArrayValue(value: unknown): unknown[] | null {
-  if (!isMultivariateArrayWrapper(value)) return null;
+export function unwrapMultivariateArrayValue(
+  value: unknown,
+  v8: boolean,
+): unknown[] | null {
+  if (!isMultivariateArrayWrapper(value, v8)) return null;
   const variants = (value as Record<string, unknown>).variants as
     | Array<{ value?: unknown }>
     | undefined;
   if (!Array.isArray(variants)) return null;
-  const first = variants[0]?.value;
+  const first = variantValueOn(variants[0], v8);
   return Array.isArray(first) ? first : null;
 }
 
 export function wrapMultivariateArrayValue(
   original: unknown,
   nextArray: unknown[],
+  meta: LiveMeta | null | undefined,
+  v8: boolean,
 ): unknown {
-  if (!isMultivariateArrayWrapper(original)) return nextArray;
+  if (!isMultivariateArrayWrapper(original, v8)) return nextArray;
   const obj = structuredClone(original) as Record<string, unknown>;
   const variants = [
     ...((obj.variants as Array<Record<string, unknown>>) ?? []),
   ];
   if (variants.length === 0) {
-    variants.push({ rule: defaultVariantRule(), value: nextArray });
+    variants.push({
+      rule: defaultVariantRule(meta),
+      value: storeVariantValue(obj.__resolveType, nextArray),
+    });
   } else {
-    variants[0] = { ...variants[0], value: nextArray };
+    variants[0] = withVariantValue(obj.__resolveType, variants[0]!, nextArray);
   }
   return { ...obj, variants };
 }
@@ -111,10 +173,8 @@ export function getPageVariantSectionsAt(
   if (sections && typeof sections === "object") {
     const variants = (sections as Record<string, unknown>).variants;
     if (Array.isArray(variants)) {
-      const entry = variants[variantIndex] as
-        | Record<string, unknown>
-        | undefined;
-      return Array.isArray(entry?.value) ? (entry.value as RawSection[]) : [];
+      const value = readVariantValue(variants[variantIndex]);
+      return Array.isArray(value) ? (value as RawSection[]) : [];
     }
   }
   return [];
@@ -151,9 +211,10 @@ export function parsePageVariants(
           seen[baseLabel] = (seen[baseLabel] ?? 0) + 1;
           label = `${baseLabel} ${seen[baseLabel]}`;
         }
+        const value = readVariantValue(v);
         return {
           label: label || `Variant ${i + 1}`,
-          sections: Array.isArray(v.value) ? (v.value as RawSection[]) : [],
+          sections: Array.isArray(value) ? (value as RawSection[]) : [],
           rule: v.rule,
         };
       });
@@ -162,78 +223,112 @@ export function parsePageVariants(
   return [];
 }
 
-function createPageVariantEntry(value: RawSection[]): Record<string, unknown> {
+function createPageVariantEntry(
+  value: RawSection[],
+  meta: LiveMeta | null | undefined,
+  resolveType: string,
+): Record<string, unknown> {
   return {
-    rule: defaultVariantRule(),
-    value,
+    rule: defaultVariantRule(meta),
+    value: storeVariantValue(resolveType, value),
   };
+}
+
+/**
+ * The type a page's variants block is saved with: a new one takes the
+ * site's (`multivariate` on v8), an existing `multivariate` keeps its name,
+ * and any other is saved as the v7 page flag, as before.
+ */
+function pageMultivariateTypeFor(
+  existing: Record<string, unknown> | undefined,
+  meta?: LiveMeta | null,
+): string {
+  if (!existing) return valueMultivariateResolveType(meta);
+  return existing.__resolveType === V8_MULTIVARIATE_RESOLVE_TYPE
+    ? V8_MULTIVARIATE_RESOLVE_TYPE
+    : PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE;
 }
 
 function createMultivariatePageSections(
   variants: Array<Record<string, unknown>>,
   existing?: Record<string, unknown>,
+  meta?: LiveMeta | null,
 ): Record<string, unknown> {
   return {
     ...existing,
-    __resolveType: PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE,
+    __resolveType: pageMultivariateTypeFor(existing, meta),
     variants,
   };
 }
 
 /**
- * Append a new page variant seeded from `seedSections`. Returns null when the
- * current sections shape cannot be extended.
+ * Add a page variant seeded from `seedSections`. On a Blocks v8 site it goes
+ * above the trailing catch-all (see `newVariantIndex`), and a page without
+ * variants becomes the new variant followed by the current sections. Any
+ * other site keeps v7's order: the new variant last, after the current
+ * sections. Returns null when the current sections shape cannot be extended.
  */
 export function appendPageVariantSections(
   current: unknown,
   seedSections: RawSection[],
-): Record<string, unknown> | null {
+  meta?: LiveMeta | null,
+  /** A Blocks v8 site. */
+  v8 = false,
+): { sections: Record<string, unknown>; newVariantIndex: number } | null {
   const seed = structuredClone(seedSections);
-  if (Array.isArray(current)) {
-    return createMultivariatePageSections([
-      createPageVariantEntry(current),
-      createPageVariantEntry(seed),
-    ]);
-  }
-  if (current && typeof current === "object") {
+  if (current && typeof current === "object" && !Array.isArray(current)) {
     const obj = current as Record<string, unknown>;
-    if (Array.isArray(obj.variants)) {
-      return createMultivariatePageSections(
-        [
-          ...(obj.variants as Array<Record<string, unknown>>),
-          createPageVariantEntry(seed),
-        ],
-        obj,
-      );
-    }
-    return null;
+    if (!Array.isArray(obj.variants)) return null;
+    const variants = [...(obj.variants as Array<Record<string, unknown>>)];
+    const insertAt = newVariantIndex(variants, v8);
+    variants.splice(
+      insertAt,
+      0,
+      createPageVariantEntry(seed, meta, pageMultivariateTypeFor(obj)),
+    );
+    return {
+      sections: createMultivariatePageSections(variants, obj),
+      newVariantIndex: insertAt,
+    };
   }
-  return createMultivariatePageSections([
-    createPageVariantEntry([]),
-    createPageVariantEntry(seed),
-  ]);
-}
-
-export function getLastVariantIndex(
-  updatedSections: Record<string, unknown>,
-): number {
-  const variants = updatedSections.variants;
-  return Array.isArray(variants) ? variants.length - 1 : 1;
+  const newType = pageMultivariateTypeFor(undefined, meta);
+  // The current sections (none for an unknown shape) and the new one: v7
+  // adds the new one last, v8 first (as `newVariantIndex` does for a list).
+  const currentEntry = createPageVariantEntry(
+    Array.isArray(current) ? (current as RawSection[]) : [],
+    meta,
+    newType,
+  );
+  const seedEntry = createPageVariantEntry(seed, meta, newType);
+  return {
+    sections: createMultivariatePageSections(
+      v8 ? [seedEntry, currentEntry] : [currentEntry, seedEntry],
+      undefined,
+      meta,
+    ),
+    newVariantIndex: v8 ? 0 : 1,
+  };
 }
 
 /**
- * Insert a clone of the variant at `variantIndex` immediately after it (rule and
- * sections included). Returns the next variants array, or null when the source
- * variant is missing.
+ * Insert a clone of the variant at `variantIndex` (rule and sections included)
+ * at `duplicateVariantIndex`. Returns the next variants array, or null when
+ * the source variant is missing.
  */
 export function duplicatePageVariantEntry(
   variants: Array<Record<string, unknown>>,
   variantIndex: number,
+  /** A Blocks v8 site (see `duplicateVariantIndex`). */
+  v8 = false,
 ): Array<Record<string, unknown>> | null {
   const source = variants[variantIndex];
   if (!source) return null;
   const next = [...variants];
-  next.splice(variantIndex + 1, 0, structuredClone(source));
+  next.splice(
+    duplicateVariantIndex(variants, variantIndex, v8),
+    0,
+    structuredClone(source),
+  );
   return next;
 }
 
@@ -262,69 +357,25 @@ export function buildPageSectionsFromVariants(
     if (!isDefaultVariantRule(rule)) {
       return createMultivariatePageSections(variants, obj);
     }
-    if (Array.isArray(only?.value)) {
-      return only.value as unknown[];
+    const value = readVariantValue(only);
+    if (Array.isArray(value)) {
+      return value as unknown[];
     }
   }
   return createMultivariatePageSections(variants, obj);
 }
 
 /**
- * Visit every object reachable from the decofile, skipping the subtree stored
- * under `skipKey`. The walk is iterative so a deep block cannot overflow the
- * stack, and it memoizes object identity so malformed or cyclic user data
- * terminates. A consequence of the memo: an object reachable from two
- * positions is visited once.
- */
-function forEachDecofileObject(
-  decofile: Record<string, unknown>,
-  skipKey: string | null,
-  visit: (node: Record<string, unknown>) => void,
-): void {
-  const stack: unknown[] = [];
-  for (const [key, value] of Object.entries(decofile)) {
-    if (key === skipKey) continue;
-    stack.push(value);
-  }
-  const seen = new Set<object>();
-  while (stack.length > 0) {
-    const node = stack.pop();
-    if (!node || typeof node !== "object") continue;
-    if (seen.has(node)) continue;
-    seen.add(node);
-    if (Array.isArray(node)) {
-      for (const item of node) stack.push(item);
-      continue;
-    }
-    visit(node as Record<string, unknown>);
-    for (const value of Object.values(node)) stack.push(value);
-  }
-}
-
-/**
  * How many places still reference the saved matcher block `blockKey`. The
  * caller deletes the block when this is 0, so a missed reference deletes live
- * user data — hence the walk is shape-blind: every object in the decofile is
- * inspected, not just page variant rules. A reference reaches a matcher from a
- * page variant's `rule`, from inside a `website/matchers/multi.ts` `matchers`
- * array at any depth, from a section- or field-level
- * `<scope>/flags/multivariate/<kind>.ts` container nested anywhere, or from any
- * non-page block (a saved global section wrapper, another saved matcher).
- *
- * Over-counting merely keeps an unused block around; under-counting destroys
- * data, so unknown shapes count as references. The block's own body is skipped:
- * a self-reference in malformed data would otherwise pin the orphan forever.
+ * user data: the search (`findSavedMatcherReferences`) inspects every object
+ * in the decofile, not just page variant rules. Over-counting merely keeps an
+ * unused block around; under-counting destroys data.
  */
 export function countSavedMatcherBlockReferences(
   decofile: Record<string, unknown>,
   blockKey: string,
   meta?: LiveMeta | null,
 ): number {
-  if (!blockKey) return 0;
-  let count = 0;
-  forEachDecofileObject(decofile, blockKey, (node) => {
-    if (node.__resolveType !== blockKey) return;
-    if (isSavedMatcherBlockReference(node, decofile, meta)) count++;
-  });
-  return count;
+  return findSavedMatcherReferences(decofile, blockKey, meta).length;
 }

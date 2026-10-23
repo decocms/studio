@@ -18,9 +18,10 @@
  *     tell the user how to go back. Reapplying the previous version undoes it.
  *   - Content already equal to main's commits nothing ("up-to-date").
  *
- * The commit message follows git's revert convention: `Reapply: <note>`,
- * never chained, plus a `Reapplied-From: <sha>` trailer that Releases reads
- * to link the new version to the one it reapplied.
+ * The commit message names the Releases action: `Made current: <note>`
+ * (older ones say `Reapply: <note>`), never chained, plus a
+ * `Reapplied-From: <sha>` trailer that Releases reads to link the new
+ * version to the one it reapplied.
  */
 
 import {
@@ -44,6 +45,13 @@ import {
   releaseCommit,
 } from "./publish";
 import { NotV8Site, schemaHashAt } from "./release-objects";
+import {
+  datedReleaseNote,
+  LEGACY_MADE_CURRENT_PREFIX,
+  MADE_CURRENT_PREFIX,
+  NO_NOTE_TITLE,
+  UNKNOWN_RELEASE_NOTE,
+} from "@decocms/shared/release-notes";
 
 /** The commit has no companion release: there is nothing to reapply. */
 export class NotPublishedError extends Error {
@@ -53,9 +61,6 @@ export class NotPublishedError extends Error {
   }
 }
 
-const PREFIX = "Reapply: ";
-/** Publish's fallback title when there was no note (`decofileCommitMessage`). */
-const NO_NOTE = /^chore\(decofile\):/;
 const REAPPLIED_FROM = "Reapplied-From";
 const REAPPLIED_FROM_LINE = /^Reapplied-From:\s*([0-9a-f]{40})\s*$/im;
 
@@ -68,9 +73,9 @@ function utcMinute(date: string): string | null {
 
 /**
  * The new version's title for reapplying a version whose commit has
- * `message` and `date`: `Reapply: <its note>`. Reapplying a reapplied
- * version keeps the one prefix (it names the same content); a version
- * without a note is named by its date, in the Releases screen's words
+ * `message` and `date`: `Made current: <its note>`. Reapplying a reapplied
+ * version keeps the one prefix (it names the same content; an older
+ * `Reapply: ` becomes `Made current: `); a version without a note is named by its date, in the Releases screen's words
  * (`release from <date>`; older notes say `version from <date>`).
  */
 export function reapplyTitle(original: {
@@ -78,10 +83,21 @@ export function reapplyTitle(original: {
   date: string;
 }): string {
   const title = original.message.split("\n")[0]?.trim() ?? "";
-  if (title.startsWith(PREFIX) && title.length > PREFIX.length) return title;
-  if (title && !NO_NOTE.test(title)) return `${PREFIX}${title}`;
+  if (
+    title.startsWith(MADE_CURRENT_PREFIX) &&
+    title.length > MADE_CURRENT_PREFIX.length
+  )
+    return title;
+  if (
+    title.startsWith(LEGACY_MADE_CURRENT_PREFIX) &&
+    title.length > LEGACY_MADE_CURRENT_PREFIX.length
+  ) {
+    return `${MADE_CURRENT_PREFIX}${title.slice(LEGACY_MADE_CURRENT_PREFIX.length)}`;
+  }
+  if (title && !NO_NOTE_TITLE.test(title))
+    return `${MADE_CURRENT_PREFIX}${title}`;
   const when = utcMinute(original.date);
-  return when ? `${PREFIX}release from ${when}` : `${PREFIX}earlier release`;
+  return `${MADE_CURRENT_PREFIX}${when ? datedReleaseNote(when) : UNKNOWN_RELEASE_NOTE}`;
 }
 
 /** The full commit message: title, then the trailers (one block). */

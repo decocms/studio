@@ -3,6 +3,7 @@ import type { PageVariant } from "./page-variants";
 import { translate } from "@/i18n/use-t";
 import { isSavedBlockResolveType } from "./block-type-utils";
 import type { LiveMeta } from "./resolve-schema";
+import { withVariantValue } from "./variant-shape";
 
 export type { PageVariant };
 
@@ -23,10 +24,11 @@ export function buildPageDataWithSections(
       ...((currentSections?.variants as Array<Record<string, unknown>>) ?? []),
     ];
     if (variants[variantIndex]) {
-      variants[variantIndex] = {
-        ...variants[variantIndex],
-        value: updatedSections,
-      };
+      variants[variantIndex] = withVariantValue(
+        currentSections?.__resolveType,
+        variants[variantIndex]!,
+        updatedSections,
+      );
     }
     fullPageData.sections = { ...currentSections, variants };
   } else {

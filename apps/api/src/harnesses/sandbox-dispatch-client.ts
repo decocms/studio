@@ -73,7 +73,7 @@ import type { VirtualMCPEntity } from "@decocms/shared/sdk/types/virtual-mcp";
 import type { ConnectionEntity } from "@/tools/connection/schema";
 import { hasAdminRole, rolesOf } from "@decocms/shared/auth/roles";
 import { fetchRolePermissions } from "@/core/context-factory";
-import type { Permission } from "@/storage/types";
+import type { OrganizationSettings, Permission } from "@/storage/types";
 import {
   connectionGrantsFor,
   selfToolGrantsFor,
@@ -371,12 +371,17 @@ export class SandboxDispatchClient {
     dispatcherUserId: string,
     agent: Promise<VirtualMCPEntity | null>,
   ): Promise<Pick<HarnessStreamInputWire, "mcp" | "orgMcps">> {
-    const [candidates, authority, thread, ownAgent] = await Promise.all([
-      this.orgMcpConnections(organization, agent),
-      this.dispatcherAuthority(organization.id, dispatcherUserId),
-      this.ctx.storage.threads.get(threadId),
-      agent,
-    ]);
+    const settingsRead = this.ctx.storage.organizationSettings.get(
+      organization.id,
+    );
+    const [candidates, authority, thread, ownAgent, settings] =
+      await Promise.all([
+        this.orgMcpConnections(organization, agent, settingsRead),
+        this.dispatcherAuthority(organization.id, dispatcherUserId),
+        this.ctx.storage.threads.get(threadId),
+        agent,
+        settingsRead,
+      ]);
     const grants = connectionGrantsFor({
       ...authority,
       connectionIds: candidates.map((connection) => connection.id),
@@ -409,6 +414,9 @@ export class SandboxDispatchClient {
         }),
         grants,
       }),
+      orgFlagEnabled(settings?.flags, "sandbox_run_metadata")
+        ? this.ctx.metadata?.runMetadata
+        : undefined,
     );
     const ownIds = new Set(
       (ownAgent?.connections ?? []).map(
@@ -525,12 +533,10 @@ export class SandboxDispatchClient {
   private async orgMcpConnections(
     organization: { id: string; slug?: string },
     agentRead: Promise<VirtualMCPEntity | null>,
+    settingsRead: Promise<OrganizationSettings | null>,
   ): Promise<ConnectionEntity[]> {
     if (!organization.slug) return [];
-    const [settings, agent] = await Promise.all([
-      this.ctx.storage.organizationSettings.get(organization.id),
-      agentRead,
-    ]);
+    const [settings, agent] = await Promise.all([settingsRead, agentRead]);
     const orgWide = orgFlagEnabled(settings?.flags, "coding_agent_org_mcps");
     const ownIds = new Set(
       (agent?.connections ?? []).map(

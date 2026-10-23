@@ -417,6 +417,33 @@ describe("getArrayItemImageSrc", () => {
     );
   });
 
+  test("unwraps a v8 multivariate image whose variant value is in a lazy block", () => {
+    const item = {
+      image: {
+        __resolveType: "multivariate",
+        variants: [
+          {
+            rule: { __resolveType: "always" },
+            value: {
+              __resolveType: "lazy",
+              value: {
+                desktop: "https://example.com/desktop.jpg",
+                mobile: "https://example.com/mobile.jpg",
+              },
+            },
+          },
+        ],
+      },
+    };
+    const schema: SchemaProperty = {
+      type: "object",
+      image: "{{{image.mobile}}}",
+    };
+    expect(getArrayItemImageSrc(item, schema)).toBe(
+      "https://example.com/mobile.jpg",
+    );
+  });
+
   test("prefers the always variant over an earlier targeted-rule variant", () => {
     const item = {
       matcher: ["/produtos/cheirinho"],
