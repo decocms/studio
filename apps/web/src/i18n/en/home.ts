@@ -60,12 +60,6 @@ export const home = {
   "home.comingSoon.planGoals": "Goals with a metric and a target",
   "home.comingSoon.planTasks": "Tasks proposed from each goal",
   "home.comingSoon.planProgress": "Progress you can read at a glance",
-  "home.comingSoon.monitorHeading": "Know the moment a number moves",
-  "home.comingSoon.monitorDescription":
-    "Monitors watch the metrics you care about, raise a signal when one drifts and open a task to fix it.",
-  "home.comingSoon.monitorWatch": "Monitors on your key metrics",
-  "home.comingSoon.monitorSignal": "A signal when something drifts",
-  "home.comingSoon.monitorVerdict": "A task per signal, closed with a verdict",
   "home.brief.changeOne": "1 change",
   "home.brief.changeMany": "{count} changes",
   "home.brief.waitingOne": "1 thing needs you.",

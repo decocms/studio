@@ -14,8 +14,16 @@ function Slider({
   max = 100,
   onPointerDown,
   onKeyDown,
+  thumbLabel,
+  thumbValueText,
   ...props
-}: React.ComponentProps<typeof SliderPrimitive.Root>) {
+}: React.ComponentProps<typeof SliderPrimitive.Root> & {
+  /** Each thumb's accessible name (the root's `aria-label` doesn't reach the
+   *  focusable `role="slider"` thumb). */
+  thumbLabel?: string;
+  /** What a screen reader says for the value, e.g. "40%". */
+  thumbValueText?: string;
+}) {
   const _values = React.useMemo(
     () =>
       Array.isArray(value)
@@ -66,6 +74,12 @@ function Slider({
         <SliderPrimitive.Thumb
           data-slot="slider-thumb"
           key={index}
+          // Only when given: Radix names each thumb of a range ("Minimum",
+          // "Maximum") unless an `aria-label` key is passed, even undefined.
+          {...(thumbLabel !== undefined ? { "aria-label": thumbLabel } : {})}
+          {...(thumbValueText !== undefined
+            ? { "aria-valuetext": thumbValueText }
+            : {})}
           className="relative block size-4 shrink-0 cursor-grab rounded-full bg-white shadow-edge transition-transform duration-150 after:absolute after:-inset-3 after:rounded-full after:content-[''] hover:scale-110 focus-ring in-data-pointer:outline-none! active:scale-110 active:cursor-grabbing disabled:pointer-events-none motion-reduce:transition-none"
         />
       ))}

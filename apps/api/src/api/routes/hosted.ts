@@ -40,6 +40,10 @@ import {
   LatestUpdateError,
   MainMovedError,
 } from "@/hosted/publish";
+import {
+  type SiteDomainsReader,
+  sitePreviewHosts,
+} from "@/hosted/preview-hosts";
 import { NotV8Site } from "@/hosted/release-objects";
 import { listReleases, releaseMainHead } from "@/hosted/releases";
 import {
@@ -78,6 +82,7 @@ type HostedEnv = Env & {
     hostedProject: HostedProject;
     repoClientFor: RepoClientFor;
     delivery: () => Delivery | null;
+    siteDomains: SiteDomainsReader | undefined;
   };
 };
 
@@ -175,6 +180,11 @@ async function hostedRepo(c: Context<HostedEnv>): Promise<HostedRepo | null> {
     store: delivery.store,
     purge: delivery.purge,
     site: project.site,
+    previewHosts: await sitePreviewHosts({
+      site: project.site,
+      metadata: project.metadata,
+      domains: c.var.siteDomains,
+    }),
   };
 }
 
@@ -211,6 +221,8 @@ export function createHostedRoutes(
     delivery?: () => Delivery | null;
     /** The project repository's history (tests pass a fake). */
     insightsFor?: typeof insightsClientForProjectRepo;
+    /** The site's deco.cx domains, for its preview hosts (tests pass a fake). */
+    siteDomains?: SiteDomainsReader;
   } = {},
 ) {
   const app = new Hono<HostedEnv>();
@@ -220,6 +232,7 @@ export function createHostedRoutes(
   app.use("*", async (c, next) => {
     c.set("repoClientFor", repoClientFor);
     c.set("delivery", delivery);
+    c.set("siteDomains", options.siteDomains);
     await next();
   });
   app.use("/:virtualMcpId/*", resolveHostedProject);

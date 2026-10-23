@@ -43,6 +43,7 @@ function setup() {
     store: delivery.store,
     purge: delivery.purge,
     site: "acme",
+    previewHosts: ["acme.deco.site", "www.acme.com"],
   };
   return { git, delivery, drafts, repo };
 }
@@ -105,13 +106,20 @@ describe("publishDraft", () => {
       revision: sha,
       schemaHash: SCHEMA_HASH,
       blocks: { Home: { path: "/", title: "v2" } },
+      previewHosts: ["acme.deco.site", "www.acme.com"],
     });
     expect(revision.cacheControl).toBe("public, max-age=31536000, immutable");
     const latest = delivery.objects.get(deliveryKeys.latest("acme"))!;
     expect(Object.keys(JSON.parse(latest.text)).sort()).toEqual([
+      "previewHosts",
       "publishedAt",
       "revision",
       "schemaHash",
+    ]);
+    // The site shows drafts only on the hosts Studio knows for it.
+    expect(JSON.parse(latest.text).previewHosts).toEqual([
+      "acme.deco.site",
+      "www.acme.com",
     ]);
     expect(latest.cacheControl).toBe(
       "public, max-age=0, s-maxage=3600, must-revalidate",

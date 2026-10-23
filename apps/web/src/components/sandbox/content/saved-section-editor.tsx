@@ -1,3 +1,4 @@
+import { isV8Schema } from "@decocms/shared/blocks-major";
 import { BlockBreadcrumbs } from "@/components/sections-editor/block-breadcrumbs";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { useState } from "react";
@@ -35,11 +36,12 @@ import { useT } from "@/i18n/use-t.ts";
 function seedFromBlock(
   blockKey: string,
   decofile: Record<string, unknown>,
+  v8: boolean,
 ): { data: Record<string, unknown>; resolveType: string } | null {
   const rawSection = { __resolveType: blockKey } as RawSection;
   const parsed = parseSections([rawSection], decofile)[0];
   if (!parsed) return null;
-  return unwrapSection(rawSection, parsed, decofile);
+  return unwrapSection(rawSection, parsed, decofile, v8);
 }
 
 /**
@@ -78,7 +80,9 @@ export function SavedSectionEditor({
   const agentSiteSlug = agent?.metadata?.siteSlug ?? null;
 
   // Seed once: this component is remounted (via `key`) when blockKey changes.
-  const [seed] = useState(() => seedFromBlock(blockKey, decofile));
+  const [seed] = useState(() =>
+    seedFromBlock(blockKey, decofile, isV8Schema(meta)),
+  );
   const [formValue, setFormValue] = useState<Record<string, unknown>>(
     seed?.data ?? {},
   );

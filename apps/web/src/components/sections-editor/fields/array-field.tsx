@@ -24,6 +24,7 @@ import {
   ToggleGroupItem,
 } from "@decocms/ui/components/toggle-group.tsx";
 import { useLocalStorage } from "@/hooks/use-local-storage";
+import { useBlocksSiteEditor } from "../blocks-site-editor";
 import { useNewBlocksEditor } from "@/hooks/use-new-blocks-editor";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import { useT } from "@/i18n/use-t.ts";
@@ -160,6 +161,7 @@ export function ArrayField({
   onRequestAddSection,
   sandbox,
 }: FieldProps) {
+  const v8 = useBlocksSiteEditor();
   const t = useT();
   const compact = useNewBlocksEditor();
   const tooltipsEnabled = useFieldDescriptionTooltips(sandbox?.virtualMcpId);
@@ -180,7 +182,7 @@ export function ArrayField({
   };
   const usesSectionPicker = isSectionArrayField(schema, arrayFieldKey);
   const hasThumbnails = items.some((item) =>
-    Boolean(getArrayItemImageSrc(arrayItemDisplayValue(item), itemSchema)),
+    Boolean(getArrayItemImageSrc(arrayItemDisplayValue(item, v8), itemSchema)),
   );
   // Only plain object arrays (banners, links, …) get the hide toggle. Section
   // pickers have their own hide flow, and primitive arrays can't be wrapped.
@@ -265,7 +267,7 @@ export function ArrayField({
   // The item's base (un-suffixed) label — the crumb carries the index for
   // addressing, so the label is display-only and must stay clean.
   const itemLabel = (item: unknown, index: number) =>
-    getArrayItemLabel(arrayItemDisplayValue(item), index, itemSchema);
+    getArrayItemLabel(arrayItemDisplayValue(item, v8), index, itemSchema);
 
   const openItem = (index: number) => {
     if (suppressClickRef.current) return;
@@ -390,9 +392,9 @@ export function ArrayField({
   const toggleItemHidden = (index: number) => {
     const item = items[index];
     const next = [...items];
-    next[index] = isArrayItemHidden(item)
-      ? showArrayItem(item)
-      : hideArrayItem(item);
+    next[index] = isArrayItemHidden(item, v8)
+      ? showArrayItem(item, v8)
+      : hideArrayItem(item, meta);
     onChange(next);
   };
 
@@ -404,7 +406,9 @@ export function ArrayField({
   const updateItem = (index: number, val: unknown) => {
     const next = [...items];
     // Preserve the hidden wrapper when editing a hidden item's inner value.
-    next[index] = isArrayItemHidden(items[index]) ? hideArrayItem(val) : val;
+    next[index] = isArrayItemHidden(items[index], v8)
+      ? hideArrayItem(val, meta)
+      : val;
     onChange(next);
 
     // When editing the currently selected item, its display label may change
@@ -479,7 +483,7 @@ export function ArrayField({
       : null;
   const activeImage =
     activeEntry != null && activeItem !== undefined
-      ? getArrayItemImageSrc(arrayItemDisplayValue(activeItem), itemSchema)
+      ? getArrayItemImageSrc(arrayItemDisplayValue(activeItem, v8), itemSchema)
       : undefined;
 
   /**
@@ -492,7 +496,7 @@ export function ArrayField({
     innerPath: Crumb[],
     itemPrefix: () => Crumb[],
   ) => {
-    const item = arrayItemDisplayValue(items[index]);
+    const item = arrayItemDisplayValue(items[index], v8);
     const editorSchema = itemEditorSchema(
       item,
       itemSchema,
@@ -554,7 +558,7 @@ export function ArrayField({
   };
 
   if (selectedIndex !== null && selectedIndex < items.length) {
-    const item = arrayItemDisplayValue(items[selectedIndex]);
+    const item = arrayItemDisplayValue(items[selectedIndex], v8);
     /**
      * Trail prefix through the open item's own crumb — the base that nested
      * fields prepend their breadcrumb changes onto.
@@ -692,7 +696,7 @@ export function ArrayField({
                       if (item === undefined) return null;
                       const labelText =
                         itemLabels[entry.index] ?? itemLabel(item, entry.index);
-                      const displayValue = arrayItemDisplayValue(item);
+                      const displayValue = arrayItemDisplayValue(item, v8);
                       const imageSrc = getArrayItemImageSrc(
                         displayValue,
                         itemSchema,
@@ -714,7 +718,7 @@ export function ArrayField({
                           labelText={labelText}
                           imageSrc={imageSrc}
                           missingRequired={missingRequired}
-                          hidden={isArrayItemHidden(item)}
+                          hidden={isArrayItemHidden(item, v8)}
                           onToggleHidden={
                             canHideItems
                               ? () => toggleItemHidden(entry.index)

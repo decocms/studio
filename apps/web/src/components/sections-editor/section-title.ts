@@ -1,3 +1,4 @@
+import { isV8Schema } from "@decocms/shared/blocks-major";
 import Mustache from "mustache";
 import { formatMustacheValue } from "./array-item-display";
 import type { LiveMeta } from "./resolve-schema";
@@ -39,7 +40,7 @@ export function getSectionDisplayTitle(
 ): string | undefined {
   if (!meta) return undefined;
 
-  const ctx = resolveSectionPreviewContext(formData);
+  const ctx = resolveSectionPreviewContext(formData, isV8Schema(meta));
   if (!ctx) return undefined;
 
   try {

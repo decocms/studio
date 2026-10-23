@@ -127,7 +127,6 @@ function useNavDestinations(): NavDestination[] {
         leafPath === DESTINATION_ROUTE.monitoring ||
         leafPath === PROJECT_ROUTE.monitoring,
       trackAs: "monitor",
-      soon: true,
       link: scopeId
         ? {
             to: PROJECT_ROUTE.monitoring,

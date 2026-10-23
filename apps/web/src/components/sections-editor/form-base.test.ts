@@ -135,19 +135,20 @@ describe("sectionFormSource", () => {
         parsed({ isSavedBlock: true }),
         0,
         decofile,
+        false,
       ),
     ).toEqual({ __resolveType: "site/Header.tsx", x: 1 });
   });
 
   it("reads an inline section as stored on the page", () => {
     const raw = { __resolveType: "site/sections/Hero.tsx", title: "a" };
-    expect(sectionFormSource(raw as RawSection, parsed({}), 0, {})).toEqual(
-      raw,
-    );
+    expect(
+      sectionFormSource(raw as RawSection, parsed({}), 0, {}, false),
+    ).toEqual(raw);
   });
 
   it("returns null for a section that is not there", () => {
-    expect(sectionFormSource(undefined, undefined, 0, {})).toBeNull();
+    expect(sectionFormSource(undefined, undefined, 0, {}, false)).toBeNull();
   });
 });
 
