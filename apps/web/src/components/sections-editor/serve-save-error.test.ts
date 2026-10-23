@@ -162,7 +162,7 @@ describe("one toast per publish", () => {
       "Published. Your site will show it shortly.",
     );
   });
-  test("Releases: a failed reapply says so, and its retry says Reapplying…", () => {
+  test("Releases: a failed Make current says so, and its retry says Making current…", () => {
     toastPublishFailed(t, {
       headline: t("releases.reapplyFailed"),
       pending: t("releases.reapplying"),
@@ -172,7 +172,7 @@ describe("one toast per publish", () => {
       .getToasts()
       .filter((item) => item.id === SITE_EDITOR_PUBLISH_TOAST);
     expect((failed as { title?: unknown }).title).toBe(
-      "Couldn't reapply this release.",
+      "Couldn't make this release current.",
     );
     (
       failed as { action?: { onClick: (event: unknown) => void } }
@@ -180,6 +180,6 @@ describe("one toast per publish", () => {
     const [pending] = toast
       .getToasts()
       .filter((item) => item.id === SITE_EDITOR_PUBLISH_TOAST);
-    expect((pending as { title?: unknown }).title).toBe("Reapplying…");
+    expect((pending as { title?: unknown }).title).toBe("Making current…");
   });
 });

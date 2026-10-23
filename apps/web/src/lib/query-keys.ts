@@ -602,6 +602,9 @@ export const KEYS = {
     (accountId
       ? ["repositories", orgId, accountId]
       : ["repositories", orgId]) as readonly [string, string, string?],
+  /** Keyed by the monitored repositories, so flagging one reads again. */
+  repositoryDeploys: (orgId: string, repositoryIds: readonly string[]) =>
+    ["repository-deploys", orgId, ...repositoryIds] as const,
   /** Provider-side repo search — hits the provider's API, so the query text is
    *  part of the key and results are kept while the next page loads. */
   providerRepoSearch: (orgId: string, accountId: string, query: string) =>
@@ -785,6 +788,9 @@ export const KEYS = {
   // Order monitor: every key starts with this prefix, so one invalidation
   // (the `order-monitor.store.evaluated` SSE event) refreshes them all.
   orderMonitor: (org: string) => ["order-monitor", org] as const,
+  /** Monitor: the registry icons of the sources it reads. */
+  monitorSourceIcons: (org: string) =>
+    ["monitor", org, "source-icons"] as const,
   orderMonitorStores: (org: string) =>
     ["order-monitor", org, "stores"] as const,
   orderMonitorDay: (org: string, connectionId: string, at: string) =>

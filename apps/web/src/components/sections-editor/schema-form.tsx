@@ -1,3 +1,4 @@
+import { isV8Schema } from "@decocms/shared/blocks-major";
 import { type ReactNode, useEffect } from "react";
 import { useNewBlocksEditor } from "@/hooks/use-new-blocks-editor";
 import { useT } from "@/i18n/use-t.ts";
@@ -12,6 +13,10 @@ import { EnumField } from "./fields/enum-field";
 import { ArrayField } from "./fields/array-field";
 import { ObjectField } from "./fields/object-field";
 import { AnyOfField } from "./fields/any-of-field";
+import {
+  fitsNamedRuleBlock,
+  NamedRuleBlockFieldGate,
+} from "./fields/named-rule-block-field";
 import { DynamicOptionsField } from "./fields/dynamic-options-field";
 import { FileField } from "./fields/file-field";
 import { ImageField } from "./fields/image-field";
@@ -32,6 +37,7 @@ import {
   isMultivariateArrayWrapper,
   isPageMultivariateSectionArrayField,
   isSectionMultivariateWrapperValue,
+  pageMultivariateSectionListSchema,
   unwrapMultivariateArrayValue,
   wrapMultivariateArrayValue,
 } from "./page-variants";
@@ -95,16 +101,7 @@ function isMultivariateBlockRef(schema: SchemaProperty): boolean {
 function inferArrayItemsFromBlockRefSchema(
   schema: SchemaProperty,
 ): SchemaProperty | undefined {
-  if (!isPageMultivariateSectionArrayField(schema)) return undefined;
-  for (const ref of schema.anyOfRefs ?? []) {
-    const variants = ref.schema?.properties?.variants;
-    const variantItem = variants?.items;
-    const valueField = variantItem?.properties?.value;
-    if (valueField?.type === "array" && valueField.items) {
-      return valueField.items;
-    }
-  }
-  return undefined;
+  return pageMultivariateSectionListSchema(schema)?.items;
 }
 
 function arraySchemaForValue(schema: SchemaProperty): SchemaProperty | null {
@@ -172,7 +169,22 @@ function renderResolvedBlockRefValue(props: FieldProps): ReactNode | null {
   );
 }
 
-export function renderField(fieldProps: FieldProps) {
+export function renderField(fieldProps: FieldProps): ReactNode {
+  // A prop that can read the site's tests or campaigns as a whole: the
+  // editor's named-rule support decides (NamedRuleBlockFieldGate).
+  if (fitsNamedRuleBlock(fieldProps.schema)) {
+    return (
+      <NamedRuleBlockFieldGate
+        key={fieldProps.path}
+        {...fieldProps}
+        fallback={renderFieldBody}
+      />
+    );
+  }
+  return renderFieldBody(fieldProps);
+}
+
+function renderFieldBody(fieldProps: FieldProps): ReactNode {
   const props = {
     ...fieldProps,
     schema: expandRecursiveSchema(fieldProps.schema, fieldProps.meta),
@@ -194,8 +206,10 @@ export function renderField(fieldProps: FieldProps) {
     });
   }
 
-  if (isMultivariateArrayWrapper(value)) {
-    const multivariateArray = unwrapMultivariateArrayValue(value);
+  // On v7 a short `multivariate` is a saved block's key, not variants.
+  const v8 = isV8Schema(props.meta);
+  if (isMultivariateArrayWrapper(value, v8)) {
+    const multivariateArray = unwrapMultivariateArrayValue(value, v8);
     const arraySchema = arraySchemaForValue(schema);
     if (multivariateArray !== null && arraySchema) {
       return (
@@ -205,7 +219,14 @@ export function renderField(fieldProps: FieldProps) {
           schema={arraySchema}
           value={multivariateArray}
           onChange={(next) =>
-            props.onChange(wrapMultivariateArrayValue(value, next as unknown[]))
+            props.onChange(
+              wrapMultivariateArrayValue(
+                value,
+                next as unknown[],
+                props.meta,
+                v8,
+              ),
+            )
           }
         />
       );
@@ -237,7 +258,7 @@ export function renderField(fieldProps: FieldProps) {
   // them directly (e.g. menuItems [{target,href,label}]).
   if (
     Array.isArray(value) &&
-    !isMultivariateArrayWrapper(value) &&
+    !isMultivariateArrayWrapper(value, v8) &&
     schema.type === "block-ref"
   ) {
     // Prefer the real item schema from the block-ref's loader/section branches
@@ -598,12 +619,16 @@ function SchemaFormBody({
     return null;
   }
 
-  // A section-level multivariate flag (`website/flags/multivariate/section.ts`)
-  // opened directly — e.g. a saved/global block that wraps a section in
-  // variants. Its schema is `{ variants: Variant<Section>[] }`, so the generic
+  // A section-level multivariate flag (`website/flags/multivariate/section.ts`,
+  // or v8's `multivariate` around one value, each in a `lazy` block that
+  // renderField unwraps) opened directly — e.g. a saved/global block that
+  // wraps a section in variants. Its schema is `{ variants: Variant<Section>[] }`, so the generic
   // object form would render `variants` as a plain "Item 1 / Item 2" array.
   // Render the variant editor (rule matcher + per-variant section form) instead.
-  if (isSectionMultivariateWrapperValue(value) && properties.variants) {
+  if (
+    isSectionMultivariateWrapperValue(value, isV8Schema(meta)) &&
+    properties.variants
+  ) {
     const variantValueSchema = properties.variants.items?.properties?.value;
     return (
       <MultivariateFieldWrapper

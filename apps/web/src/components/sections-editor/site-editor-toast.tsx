@@ -13,6 +13,25 @@ import { saveErrorDetail, saveErrorMessage } from "./serve-save-error";
 
 /** Every save failure in the site editor shares this toast. */
 export const SITE_EDITOR_SAVE_TOAST = "site-editor-save";
+/**
+ * The options every save toast starts from (`{ ...SAVE_TOAST, … }`). Sonner
+ * merges a toast into the one with the same id, even one already closed, so
+ * each toast resets what it doesn't set: a description, an action, a cancel
+ * never carry over from the toast before it.
+ */
+export const SAVE_TOAST = {
+  id: SITE_EDITOR_SAVE_TOAST,
+  description: undefined,
+  action: undefined,
+  cancel: undefined,
+} as const;
+/**
+ * A toast with an Undo (deleting a test or a campaign) has its own id.
+ * Sonner merges a toast into the one with the same id, even one already
+ * closed, so sharing the save id would leave its Undo on every later save
+ * toast ("Saved in your draft", "Test added", a save failure).
+ */
+export const SITE_EDITOR_UNDO_TOAST = "site-editor-undo";
 /** Publishing from the editor or reapplying a version from the Releases
  *  screen, its outcome and a retry of it share this toast. */
 export const SITE_EDITOR_PUBLISH_TOAST = "site-editor-publish";
@@ -51,7 +70,7 @@ export function toastSaveError(
   source: ContentSource | null,
 ) {
   toast.error(saveErrorMessage(t, error, source), {
-    id: SITE_EDITOR_SAVE_TOAST,
+    ...SAVE_TOAST,
     description: errorDetailsDescription(t, saveErrorDetail(error, source)),
   });
 }

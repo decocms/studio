@@ -344,6 +344,9 @@ export const settings = {
   "settings.repositories.sandboxImageAndroid": "Android emulator",
   "settings.repositories.sandboxImageError":
     "Could not change the sandbox image",
+  "settings.repositories.monitorDeploys": "Show deploys on Monitor",
+  "settings.repositories.monitorDeploysError":
+    "Could not change whether Monitor shows this repository",
   "settings.repositories.addDialogTitle": "Add repository",
   "settings.repositories.cancel": "Cancel",
   "settings.repositories.failed": "Something went wrong",
