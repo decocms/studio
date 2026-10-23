@@ -16,6 +16,7 @@ import {
   publishDraft,
   readLatest,
 } from "./publish";
+import { releaseMainHead } from "./releases";
 
 beforeAll(() => {
   process.env.FAST_PREVIEW_CACHE_DIR = "";
@@ -147,7 +148,7 @@ describe("publishDraft", () => {
     await expectEmptied(drafts, saved);
   });
 
-  it("is Merged · release created, not current, when main moved after the commit: no latest.json, draft emptied", async () => {
+  it("is Merged · release created, not current, when main moved after the commit: no latest.json, draft kept for Try again", async () => {
     const { git, delivery, drafts, repo } = setup();
     const saved = await drafts.update(REF, () => ({
       set: { New: { a: 1 } },
@@ -164,10 +165,14 @@ describe("publishDraft", () => {
         },
       },
     );
-    expect(result).toMatchObject({ result: "merged", release: "created" });
+    expect(result).toMatchObject({
+      result: "merged",
+      release: "created",
+      draftEtag: saved.etag ?? undefined,
+    });
     expect(await readLatest(delivery.store, "acme")).toBeNull();
-    // Publish is done once the commit is on main.
-    await expectEmptied(drafts, saved);
+    // Not live yet: the preview keeps showing the changes.
+    expect(await drafts.load(REF)).toEqual(saved);
   });
 
   it("fails and keeps the draft when main moved under the commit", async () => {
@@ -188,7 +193,7 @@ describe("publishDraft", () => {
     expect(await readLatest(delivery.store, "acme")).toBeNull();
   });
 
-  it("is Merged · no release created when the companion write fails: latest.json untouched, draft emptied", async () => {
+  it("is Merged · no release created when the companion write fails: latest.json untouched, draft kept", async () => {
     const { drafts, repo, delivery } = setup();
     const saved = await drafts.update(REF, () => ({
       set: { New: { a: 1 } },
@@ -203,12 +208,16 @@ describe("publishDraft", () => {
       message: "",
       coAuthor: null,
     });
-    expect(result).toMatchObject({ result: "merged", release: "none" });
+    expect(result).toMatchObject({
+      result: "merged",
+      release: "none",
+      draftEtag: saved.etag,
+    });
     expect(delivery.log.some((l) => l.includes("latest.json"))).toBe(false);
-    await expectEmptied(drafts, saved);
+    expect(await drafts.load(REF)).toEqual(saved);
   });
 
-  it("fails fast when the purge fails: one purge call, no restore, Merged · release created, draft emptied", async () => {
+  it("fails fast when the purge fails: one purge call, no restore, Merged · release created, draft kept", async () => {
     const { git, delivery, drafts, repo } = setup();
     const saved = await drafts.update(REF, () => ({
       set: { New: { a: 1 } },
@@ -224,6 +233,7 @@ describe("publishDraft", () => {
       result: "merged",
       sha: git.head(),
       release: "created",
+      draftEtag: saved.etag ?? undefined,
     });
     // One purge call (its single retry is inside it) and one pointer write:
     // no restore.
@@ -231,12 +241,11 @@ describe("publishDraft", () => {
       `put ${deliveryKeys.revision("acme", git.head())}`,
       `put ${deliveryKeys.latest("acme")}`,
       `purge ${deliveryKeys.latest("acme")}`,
-      `put ${deliveryKeys.draft("acme", saved.slug)}`,
     ]);
     expect((await readLatest(delivery.store, "acme"))?.revision).toBe(
       git.head(),
     );
-    await expectEmptied(drafts, saved);
+    expect(await drafts.load(REF)).toEqual(saved);
   });
 
   it("is Merged · release created when both purge attempts fail (exactly two calls)", async () => {
@@ -265,18 +274,18 @@ describe("publishDraft", () => {
       result: "merged",
       sha: git.head(),
       release: "created",
+      draftEtag: saved.etag ?? undefined,
     });
     expect(calls).toBe(2);
     // No restore: the pointer written once stays.
     expect(delivery.log).toEqual([
       `put ${deliveryKeys.revision("acme", git.head())}`,
       `put ${deliveryKeys.latest("acme")}`,
-      `put ${deliveryKeys.draft("acme", saved.slug)}`,
     ]);
     expect((await readLatest(delivery.store, "acme"))?.revision).toBe(
       git.head(),
     );
-    await expectEmptied(drafts, saved);
+    expect(await drafts.load(REF)).toEqual(saved);
   });
 
   it("publishes and empties the draft when the purge retry succeeds", async () => {
@@ -309,7 +318,7 @@ describe("publishDraft", () => {
     await expectEmptied(drafts, saved);
   });
 
-  it("does not purge when the latest.json write fails (Merged · release created)", async () => {
+  it("does not purge when the latest.json write fails (Merged · release created, draft kept)", async () => {
     const { git, delivery, drafts, repo } = setup();
     const saved = await drafts.update(REF, () => ({
       set: { New: { a: 1 } },
@@ -329,12 +338,12 @@ describe("publishDraft", () => {
       result: "merged",
       sha: git.head(),
       release: "created",
+      draftEtag: saved.etag ?? undefined,
     });
     expect(delivery.log).toEqual([
       `put ${deliveryKeys.revision("acme", git.head())}`,
-      `put ${deliveryKeys.draft("acme", saved.slug)}`,
     ]);
-    await expectEmptied(drafts, saved);
+    expect(await drafts.load(REF)).toEqual(saved);
   });
 
   it("still succeeds when emptying the draft fails: the draft then equals main", async () => {
@@ -379,8 +388,9 @@ describe("publishDraft", () => {
     expect(delivery.log).toEqual([]);
   });
 
-  it("leaves latest.json alone and empties the draft (same slug) when the draft commits nothing", async () => {
+  it("leaves latest.json alone and empties the draft (same slug) when the draft commits nothing and main's head is current", async () => {
     const { git, delivery, drafts, repo } = setup();
+    await releaseMainHead(repo);
     // Same content as main: nothing to commit.
     const saved = await drafts.update(REF, () => ({
       set: { Home: { path: "/", title: "v1" } },
@@ -396,6 +406,31 @@ describe("publishDraft", () => {
       `put ${deliveryKeys.draft("acme", saved.slug)}`,
     ]);
     await expectEmptied(drafts, saved);
+  });
+
+  it("keeps a draft that commits nothing while main's head isn't current (its release failed): emptied once released", async () => {
+    const { git, delivery, drafts, repo } = setup();
+    const saved = await drafts.update(REF, () => ({
+      set: { New: { a: 1 } },
+      delete: [],
+    }));
+    const put = delivery.store.putJson;
+    delivery.store.putJson = async (key, value, cache, metadata) => {
+      if (key === deliveryKeys.latest("acme")) throw new Error("R2 down");
+      return put(key, value, cache, metadata);
+    };
+    expect(
+      await publishDraft(repo, drafts, REF, { message: "", coAuthor: null }),
+    ).toMatchObject({ result: "merged", release: "created" });
+    // Publish again: its changes are on main already, but not live.
+    const head = git.head();
+    delivery.log.length = 0;
+    expect(
+      await publishDraft(repo, drafts, REF, { message: "", coAuthor: null }),
+    ).toEqual({ result: "up-to-date" });
+    expect(git.head()).toBe(head);
+    expect(delivery.log).toEqual([]);
+    expect(await drafts.load(REF)).toEqual(saved);
   });
 
   it("answers up-to-date for an empty draft and keeps it as it is (same slug, same etag)", async () => {

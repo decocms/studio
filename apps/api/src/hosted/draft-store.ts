@@ -2,8 +2,9 @@
  * A v8 project's editor draft, kept on the delivery bucket at
  * `sites/<site>/drafts/<slug>.json` as `{ set, delete }`: the changed blocks
  * (whole), and the names the draft deletes. Saving is a whole-object PUT with
- * no git commit; the last writer wins. Publish commits it to main and then
- * empties it (`{ set: {}, delete: [] }`, same slug, new ETag), so the
+ * no git commit; the last writer wins. Publish commits it to main and, once
+ * that release is current, empties it (`{ set: {}, delete: [] }`, same slug,
+ * new ETag; a failed release keeps it for "Try again"), so the
  * preview's `?__draft=` pointer keeps its address: the slug lives as long as
  * the (project, branch) does. An editor session creates the empty draft when
  * it opens ({@link DraftStore.ensure}), so a hosted v8 preview always has a

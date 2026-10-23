@@ -7,19 +7,23 @@
  *   3. make it current: write latest.json and purge its URL from Cloudflare's
  *      edge (5 s per attempt, one retry), only while the commit is still
  *      main's head, so an older Publish never replaces a newer one;
- *   4. empty the draft: `{ set: {}, delete: [] }` at the same slug, so the
- *      preview keeps sending the same `?__draft=` pointer (a new version),
- *      and a render of it, made after the release, layers nothing over the
- *      new release. A save made during the Publish is kept.
+ *   4. empty the draft, once the release is current: `{ set: {}, delete: [] }`
+ *      at the same slug, so the preview keeps sending the same `?__draft=`
+ *      pointer (a new version), and a render of it, made after the release,
+ *      layers nothing over the new release. A save made during the Publish
+ *      is kept.
  *
  * Git is the source of truth for content; latest.json alone says what the CDN
  * serves ("Current"). A failed commit fails Publish and keeps the draft. A
  * failure in step 2 or 3 doesn't undo the merge: the result says which step
- * failed, nothing is restored, and Publish's "Try again" (`releaseMainHead`)
- * retries them for main's head; the draft is emptied all the same (the
- * merge is done). A draft that commits nothing leaves latest.json alone and
- * is emptied too. Steps 2–3 are {@link releaseCommit}, shared with
- * Reapply version (reapply.ts).
+ * failed, nothing is restored, and the draft is kept (the preview keeps
+ * showing the changes until they are live). The result then carries the
+ * published save's `draftEtag`: Publish's "Try again" (`releaseMainHead`)
+ * retries the release for main's head and, once it is current, empties the
+ * draft with that ETag (`emptyDraftAfterRelease`), so a save made in between
+ * is kept. A draft that commits nothing leaves latest.json alone, and is
+ * emptied only when latest.json already names main's head. Steps 2–3 are
+ * {@link releaseCommit}, shared with Reapply version (reapply.ts).
  * Every latest.json write stamps `publishedAt` now: the SDK prefers the CDN
  * only when it is later than its bundle's build time.
  * Every latest.json write, and each companion release when it is written,
@@ -172,7 +176,17 @@ export type ReleaseOutcome = "current" | "created" | "none";
 
 /** "merged": the draft is on main (Publish is done); `release` says the rest. */
 export type PublishResult =
-  | { result: "merged"; sha: string; release: ReleaseOutcome }
+  | {
+      result: "merged";
+      sha: string;
+      release: ReleaseOutcome;
+      /**
+       * The published save of the draft, kept because the release isn't
+       * current (`release` is not `current`): "Try again" empties it with
+       * this ETag once its release is.
+       */
+      draftEtag?: string;
+    }
   | { result: "up-to-date" };
 
 /**
@@ -395,13 +409,7 @@ export async function publishDraft(
   // publish keeps the draft (its ETag changed). Same slug, so the preview's
   // pointer keeps its address. A failure here leaves content equal to main,
   // which renders the same over the new release: Publish still succeeds.
-  const emptyDraft = () =>
-    drafts.empty(ref, draft.etag).catch((error) => {
-      console.error("hosted publish: emptying the draft failed", {
-        site: repo.site,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    });
+  const emptyDraft = () => emptyPublishedDraft(repo, drafts, ref, draft.etag);
   const sha = isEmptyDraft(draft.body)
     ? null
     : await commitDraftToMain(
@@ -417,15 +425,59 @@ export async function publishDraft(
       );
   // Nothing committed: latest.json is left alone.
   if (sha === null) {
-    // An empty draft stays as it is (nothing to write).
-    if (!isEmptyDraft(draft.body)) await emptyDraft();
+    // An empty draft stays as it is (nothing to write). A draft whose
+    // changes are all on main already (a Publish whose release failed) is
+    // emptied only when they are live: latest.json names main's head.
+    if (!isEmptyDraft(draft.body) && (await mainHeadIsCurrent(repo))) {
+      await emptyDraft();
+    }
     return { result: "up-to-date" };
   }
   // The release first, then the draft: any render of the emptied draft
-  // happens after latest.json names the new release.
+  // happens after latest.json names the new release. A release that isn't
+  // current keeps the draft for "Try again".
   const release = await releaseCommit(repo, sha, hooks);
+  if (release !== "current") {
+    return draft.etag
+      ? { result: "merged", sha, release, draftEtag: draft.etag }
+      : { result: "merged", sha, release };
+  }
   await emptyDraft();
   return { result: "merged", sha, release };
+}
+
+/** Whether latest.json names main's head (a failed read answers no). */
+async function mainHeadIsCurrent(repo: HostedRepo): Promise<boolean> {
+  try {
+    const [head, latest] = await Promise.all([
+      requireBranchHead(repo.client, repo.mainBranch),
+      readLatest(repo.store, repo.site),
+    ]);
+    return latest?.revision === head;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Empties the draft only while it is still the save `etag` names (a save
+ * made since is kept). Never throws: a failure leaves content equal to main,
+ * which renders the same over the new release.
+ */
+export async function emptyPublishedDraft(
+  repo: Pick<HostedRepo, "site">,
+  drafts: DraftStore,
+  ref: HostedDraftRef,
+  etag: string | null,
+): Promise<void> {
+  try {
+    await drafts.empty(ref, etag);
+  } catch (error) {
+    console.error("hosted publish: emptying the draft failed", {
+      site: repo.site,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 /**
