@@ -114,6 +114,7 @@ export const virtualMcp = {
   "virtualMcp.layoutTabContent.mainViewDescription":
     "What users see when they first open this project.",
   "virtualMcp.layoutTabContent.settings": "Settings",
+  "virtualMcp.layoutTabContent.opensFullScreen": "Opens full screen",
   "virtualMcp.layoutTabContent.showChat": "Show chat",
   "virtualMcp.layoutTabContent.showChatDescription":
     "Display Chat in the side panel alongside the main view.",
