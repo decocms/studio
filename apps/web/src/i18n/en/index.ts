@@ -14,6 +14,7 @@ import { releaseChannel } from "./release-channel.ts";
 import { orgs } from "./orgs.ts";
 import { monitoring } from "./monitoring.ts";
 import { orderMonitor } from "./order-monitor.ts";
+import { monitor } from "./monitor.ts";
 import { mainPanelTabs } from "./main-panel-tabs.ts";
 import { markdownEditor } from "./markdown-editor.ts";
 import { library } from "./library.ts";
@@ -65,6 +66,7 @@ export const en = {
   ...orgs,
   ...monitoring,
   ...orderMonitor,
+  ...monitor,
   ...mainPanelTabs,
   ...experiments,
   ...releases,

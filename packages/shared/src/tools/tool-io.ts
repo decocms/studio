@@ -8902,6 +8902,7 @@ export interface StudioToolIO {
         webUrl: string;
         visibility: "public" | "private" | "internal" | null;
         sandboxImage: string;
+        monitorDeploys: boolean;
         createdAt: string;
         updatedAt: string;
         usable: boolean;
@@ -8947,6 +8948,7 @@ export interface StudioToolIO {
         webUrl: string;
         visibility: "public" | "private" | "internal" | null;
         sandboxImage: string;
+        monitorDeploys: boolean;
         createdAt: string;
         updatedAt: string;
       };
@@ -8967,13 +8969,18 @@ export interface StudioToolIO {
         webUrl: string;
         visibility: "public" | "private" | "internal" | null;
         sandboxImage: string;
+        monitorDeploys: boolean;
         createdAt: string;
         updatedAt: string;
       };
     };
   };
   REPOSITORY_UPDATE: {
-    input: { id: string; sandboxImage: string };
+    input: {
+      id: string;
+      sandboxImage?: string | undefined;
+      monitorDeploys?: boolean | undefined;
+    };
     output: {
       repository: {
         id: string;
@@ -8987,9 +8994,21 @@ export interface StudioToolIO {
         webUrl: string;
         visibility: "public" | "private" | "internal" | null;
         sandboxImage: string;
+        monitorDeploys: boolean;
         createdAt: string;
         updatedAt: string;
       };
+    };
+  };
+  REPOSITORY_DEPLOYS_LIST: {
+    input: { [x: string]: never };
+    output: {
+      deploys: {
+        repositoryId: string;
+        repositoryPath: string;
+        at: string;
+        commits: { sha: string; message: string; author: string }[];
+      }[];
     };
   };
   REPOSITORY_DELETE: { input: { id: string }; output: { deleted: boolean } };
