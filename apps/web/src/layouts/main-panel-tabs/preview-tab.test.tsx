@@ -19,6 +19,12 @@ const refs = {
 mock.module("@/components/sandbox/preview/preview", () => ({
   PreviewContent: () => <div data-testid="preview-frame" />,
 }));
+mock.module("@/components/sandbox/preview/multi-app-preview", () => ({
+  ProjectMultiAppPreview: ({ children }: { children: ReactNode }) => children,
+}));
+mock.module("@/hooks/use-organization-settings", () => ({
+  useOrgFlag: () => false,
+}));
 mock.module("@/hooks/use-new-blocks-editor", () => ({
   NewBlocksEditorProvider: ({ children }: { children: ReactNode }) => children,
 }));
