@@ -151,7 +151,7 @@ export function useLiveBoard(
       lakeRows: null,
     },
     {
-      // Imported repositories, none of them monitored yet, are half way there.
+      // Imported repositories, every one of them switched off, are half way there.
       id: "deploys",
       state:
         monitored.length > 0

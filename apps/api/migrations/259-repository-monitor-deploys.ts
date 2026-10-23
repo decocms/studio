@@ -1,10 +1,13 @@
 import { type Kysely, sql } from "kysely";
 
-/** Which repositories' default-branch pushes the Monitor's Deploys tab reads. */
+/**
+ * Which repositories' default-branch pushes the Monitor's Deploys tab reads:
+ * every one, existing rows included, until the org switches it off.
+ */
 export async function up(db: Kysely<unknown>): Promise<void> {
   await sql`
     ALTER TABLE repositories
-      ADD COLUMN IF NOT EXISTS monitor_deploys boolean NOT NULL DEFAULT false
+      ADD COLUMN IF NOT EXISTS monitor_deploys boolean NOT NULL DEFAULT true
   `.execute(db);
 }
 

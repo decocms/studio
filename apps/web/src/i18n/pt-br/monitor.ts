@@ -121,7 +121,8 @@ export const monitor = {
   "monitor.locked.metrics.title": "Conecte suas fontes",
   "monitor.connect.short": "Conectar",
   "monitor.repos.button": "Repositórios",
-  "monitor.repos.hint": "Escolha os repositórios cujos deploys acompanhar.",
+  "monitor.repos.hint":
+    "Todo repositório é acompanhado até você desligá-lo. Ligue um de novo para ver seus deploys.",
   "monitor.repos.toggle": "Acompanhar deploys de {repo}",
   "monitor.connect.done": "Conectado",
   "monitor.platform.orders": "VTEX",
