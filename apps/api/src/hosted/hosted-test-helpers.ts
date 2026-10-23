@@ -4,6 +4,7 @@
  */
 
 import { createHash } from "node:crypto";
+import type { GitAuthor } from "@decocms/sandbox/shared";
 import type { RepoRef } from "@decocms/shared/git-providers";
 import {
   type FileChange,
@@ -108,16 +109,25 @@ export function fakeRepo(files: Record<string, string>) {
   const blobs = new Map<string, string>();
   const commits = new Map<string, Map<string, string>>();
   // Each commit is dated now (tests move the clock with setSystemTime).
-  const history: Array<{ sha: string; message: string; date: string }> = [];
+  const history: Array<{
+    sha: string;
+    message: string;
+    date: string;
+    author?: GitAuthor | null;
+  }> = [];
   let head = "";
   let n = 0;
-  const commit = (tree: Map<string, string>, message: string) => {
+  const commit = (
+    tree: Map<string, string>,
+    message: string,
+    author?: GitAuthor | null,
+  ) => {
     const sha = createHash("sha1")
       .update(`repo ${repoId} commit ${++n}`)
       .digest("hex");
     for (const content of tree.values()) blobs.set(blobSha(content), content);
     commits.set(sha, tree);
-    history.unshift({ sha, message, date: new Date().toISOString() });
+    history.unshift({ sha, message, date: new Date().toISOString(), author });
     head = sha;
     return sha;
   };
@@ -184,7 +194,7 @@ export function fakeRepo(files: Record<string, string>) {
       const row = history.find((c) => c.sha === sha);
       return row ? { message: row.message, date: row.date } : null;
     },
-    commitFiles: async ({ branch, message, expectedHead, changes }) => {
+    commitFiles: async ({ branch, message, expectedHead, changes, author }) => {
       if (branch !== "main") throw new Error("only main");
       if (expectedHead !== null && expectedHead !== head) {
         throw new RepoWriteConflict("head moved");
@@ -199,7 +209,7 @@ export function fakeRepo(files: Record<string, string>) {
           tree.set(change.path, content);
         }
       }
-      return { sha: commit(tree, message) };
+      return { sha: commit(tree, message, author) };
     },
     createBranch: async () => {},
     forceBranchHead: async () => {},

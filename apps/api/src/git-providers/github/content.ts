@@ -12,7 +12,9 @@
  * local stub — tests must never reach api.github.com.
  */
 
+import type { GitAuthor } from "@decocms/sandbox/shared";
 import { type RepoRef, splitOwnerName } from "@decocms/shared/git-providers";
+import { DECOBOT_GIT_IDENTITY } from "@/shared/git-bot-identity";
 import {
   countGithubRateLimited,
   githubRetryAfterMs,
@@ -834,8 +836,10 @@ export class GithubContentClient implements RepoContentClient {
     expectedHead: string | null;
     rewriteFrom?: string;
     changes: FileChange[];
+    author?: GitAuthor | null;
   }): Promise<{ sha: string }> {
-    const { branch, message, changes, rewriteFrom, expectedHead } = params;
+    const { branch, message, changes, rewriteFrom, expectedHead, author } =
+      params;
     const parent =
       rewriteFrom ?? expectedHead ?? (await this.requireBranchSha(branch));
     const baseTreeSha = await this.treeShaFor(parent);
@@ -860,7 +864,13 @@ export class GithubContentClient implements RepoContentClient {
     const { json: commit } = await this.call<{ sha: string }>(
       "POST",
       `${this.repoBase}/git/commits`,
-      { message, tree: tree.sha, parents: [parent] },
+      {
+        message,
+        tree: tree.sha,
+        parents: [parent],
+        // Both halves: GitHub copies the author into an absent committer.
+        ...(author ? { author, committer: DECOBOT_GIT_IDENTITY } : {}),
+      },
     );
     if (rewriteFrom !== undefined) {
       /** A forced ref update takes no `If-Match`, so the guard is a re-read

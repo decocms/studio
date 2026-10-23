@@ -214,6 +214,12 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "Run the Reviewer on a cheaper model than the Super Agent that wrote the code. On by default — turning it off trades cost for some review depth.",
     ),
+  commits_authored_by_editor: z
+    .boolean()
+    .optional()
+    .describe(
+      "Attribute a content commit to the person who made the edit: they become the git author and the shared bot identity commits it. Off by default, the account behind the git token authors it and the editor is a `Co-authored-by:` trailer instead. An author e-mail that matches no account on the provider shows as plain text, and CI that matches a commit's author against a collaborator can reject it.",
+    ),
   coding_agent_org_mcps: z
     .boolean()
     .optional()

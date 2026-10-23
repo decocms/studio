@@ -72,6 +72,62 @@ describe("publishDraft", () => {
     expect(Object.keys(kept!.body.set).sort()).toEqual(["Home", "Late"]);
   });
 
+  it("attributes the commit to the publisher, bot as committer", async () => {
+    const { git, drafts, repo } = setup();
+    await drafts.update(REF, () => ({
+      set: { Home: { path: "/", title: "v2" } },
+      delete: [],
+    }));
+    await publishDraft(repo, drafts, REF, {
+      message: "Update home",
+      coAuthor: {
+        userName: "Ana",
+        userEmail: "ana@acme.com",
+        authorsCommit: true,
+      },
+    });
+    expect(git.history[0]).toMatchObject({
+      message: "Update home",
+      author: { name: "Ana", email: "ana@acme.com" },
+    });
+  });
+
+  it("leaves the commit to the bot when the flag is off", async () => {
+    const { git, drafts, repo } = setup();
+    await drafts.update(REF, () => ({
+      set: { Home: { path: "/", title: "v2" } },
+      delete: [],
+    }));
+    await publishDraft(repo, drafts, REF, {
+      message: "Update home",
+      coAuthor: {
+        userName: "Ana",
+        userEmail: "ana@acme.com",
+        authorsCommit: false,
+      },
+    });
+    expect(git.history[0]).toMatchObject({
+      message: "Update home\n\nCo-authored-by: Ana <ana@acme.com>",
+      author: null,
+    });
+  });
+
+  it("keeps the co-author trailer when the publisher has no usable email", async () => {
+    const { git, drafts, repo } = setup();
+    await drafts.update(REF, () => ({
+      set: { Home: { path: "/", title: "v2" } },
+      delete: [],
+    }));
+    await publishDraft(repo, drafts, REF, {
+      message: "Update home",
+      coAuthor: { userName: "Ana", authorsCommit: true },
+    });
+    expect(git.history[0]).toMatchObject({
+      message: "Update home\n\nCo-authored-by: Ana",
+      author: null,
+    });
+  });
+
   it("commits to main, deletes the draft, then writes the revision and latest.json (Merged · Current on the CDN)", async () => {
     const { git, delivery, drafts, repo } = setup();
     const { slug } = await drafts.update(REF, () => ({

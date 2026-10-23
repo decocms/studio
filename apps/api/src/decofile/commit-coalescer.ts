@@ -1,4 +1,7 @@
-import type { CoAuthorIdentity } from "@decocms/sandbox/shared";
+import {
+  commitAttribution,
+  type CommitOperator,
+} from "@decocms/sandbox/shared";
 import {
   blockKeyToFileStem,
   decoBlockFingerprint,
@@ -62,12 +65,19 @@ export interface CommitDeps {
   client: RepoContentClient;
   branch: string;
   packagePath: string | null;
-  /** Acting user, appended as a `Co-authored-by:` trailer when present. */
-  coAuthor?: CoAuthorIdentity | null;
+  /**
+   * Acting user of the request being enqueued. Becomes the commit's git author
+   * when they have a usable name + email and the flag allows it, and a
+   * `Co-authored-by:` trailer when they do not — or when the batch they land
+   * in collapses more than one editor's saves.
+   */
+  coAuthor?: CommitOperator | null;
 }
 
 interface QueuedPatch {
   patch: DecofilePatch;
+  /** Who saved THIS patch. A batch can mix editors; `deps` cannot say which. */
+  coAuthor?: CommitOperator | null;
   resolve: (sha: string) => void;
   reject: (err: unknown) => void;
 }
@@ -111,9 +121,11 @@ export function enqueueDecofilePatch(
     state.pending = { patches: [], deps };
   }
   const batch = state.pending;
-  batch.deps = deps; // freshest token/identity wins for the whole batch
+  batch.deps = deps; // freshest client (and so token) wins for the whole batch
   const done = new Promise<string>((resolve, reject) => {
-    batch.patches.push({ patch, resolve, reject });
+    // The author is per patch, never from `deps`: those are overwritten above,
+    // so a batch would otherwise land as whoever saved last.
+    batch.patches.push({ patch, coAuthor: deps.coAuthor, resolve, reject });
   });
   if (!state.running) void runQueue(queueKey, state);
   return done;
@@ -296,14 +308,18 @@ async function commitBatch(batch: Batch): Promise<BatchOutcome> {
     });
     if (gen) writes.push(gen);
 
+    // The editor authors the commit; the account behind the token commits it.
+    // Built from `accepted` INSIDE the CAS loop: a retry re-screens, and a
+    // patch that drops out must take its author with it.
+    const attribution = commitAttribution(
+      decofileCommitMessage([...set.keys()], [...del]),
+      accepted.map((queued) => queued.coAuthor),
+    );
     try {
       const { sha } = await client.commitFiles({
         branch,
-        message: decofileCommitMessage(
-          [...set.keys()],
-          [...del],
-          batch.deps.coAuthor,
-        ),
+        message: attribution.message,
+        author: attribution.author,
         expectedHead: headSha,
         changes: writes,
       });

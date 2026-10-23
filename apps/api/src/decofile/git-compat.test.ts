@@ -1,10 +1,12 @@
 import { describe, expect, it } from "bun:test";
+import type { CommitOperator } from "@decocms/sandbox/shared";
 import type { TreeEntry } from "@/git-providers";
 import {
   buildDiscardPlan,
   buildMergeReplayPlan,
   buildPublishStatus,
   normalizeCompareStatus,
+  squashAttribution,
 } from "./git-compat";
 
 describe("buildMergeReplayPlan", () => {
@@ -206,5 +208,78 @@ describe("buildPublishStatus", () => {
     expect(status.staged).toEqual([]);
     expect(status.files).toEqual([]);
     expect(status.unpushed).toBe(0);
+  });
+});
+
+describe("squashAttribution", () => {
+  const ANA = {
+    userName: "Ana",
+    userEmail: "ana@acme.com",
+    authorsCommit: true,
+  };
+  const BOB_TRAILER = "Co-authored-by: Bob <bob@acme.com>";
+  const sync = (collapsed: string[], operator?: CommitOperator) =>
+    squashAttribution("draft", "main", false, collapsed, operator);
+
+  it("makes whoever synced the author, with no trailer repeating them", () => {
+    const { message, author } = sync([], ANA);
+    expect(author).toEqual({ name: "Ana", email: "ana@acme.com" });
+    expect(message).toBe("chore(decofile): sync draft with main");
+  });
+
+  it("falls back to a trailer when the operator has no usable email", () => {
+    const { message, author } = sync([], {
+      userName: "Ana",
+      authorsCommit: true,
+    });
+    expect(author).toBeNull();
+    expect(message).toBe(
+      "chore(decofile): sync draft with main\n\nCo-authored-by: Ana",
+    );
+  });
+
+  it("keeps the collapsed commits' co-authors alongside the author", () => {
+    const { message, author } = sync([`chore: x\n\n${BOB_TRAILER}`], ANA);
+    expect(author).toEqual({ name: "Ana", email: "ana@acme.com" });
+    expect(message).toContain(BOB_TRAILER);
+  });
+
+  it("never names the operator twice", () => {
+    const ownTrailer = "Co-authored-by: Ana <ana@acme.com>";
+    // Authored by Ana: her own trailer from older history is redundant.
+    expect(sync([`chore: x\n\n${ownTrailer}`], ANA).message).not.toContain(
+      "Co-authored-by: Ana",
+    );
+    // Trailer-only Ana: exactly one line, even when the history repeats it.
+    const fallback = sync(["chore: x\n\nCo-authored-by: Ana"], {
+      userName: "Ana",
+      authorsCommit: true,
+    });
+    expect(fallback.message.match(/Co-authored-by: Ana/g)).toHaveLength(1);
+  });
+
+  it("without an operator, de-duplicates the trailers it collects", () => {
+    const { message, author } = sync([
+      `chore: a\n\n${BOB_TRAILER}`,
+      `chore: b\n\n${BOB_TRAILER}`,
+    ]);
+    expect(author).toBeNull();
+    expect(message).toBe(
+      `chore(decofile): sync draft with main\n\n${BOB_TRAILER}`,
+    );
+  });
+
+  it("does not author when the flag withholds it", () => {
+    const { message, author } = sync([], { ...ANA, authorsCommit: false });
+    expect(author).toBeNull();
+    expect(message).toBe(
+      "chore(decofile): sync draft with main\n\nCo-authored-by: Ana <ana@acme.com>",
+    );
+  });
+
+  it("says so when the branch won a conflicted sync", () => {
+    expect(squashAttribution("draft", "main", true, [], ANA).message).toBe(
+      "chore(decofile): sync draft with main (branch content wins)",
+    );
   });
 });

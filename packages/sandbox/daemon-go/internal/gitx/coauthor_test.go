@@ -49,3 +49,21 @@ func TestCommitAttributionNoOperator(t *testing.T) {
 		t.Fatalf("CommitAttribution(nil) = (%q, %v), want (\"Update\", nil)", msg, args)
 	}
 }
+
+func TestNormalizeCoAuthorIdentityEmailShape(t *testing.T) {
+	for _, email := range []string{
+		"jane@example.com",
+		"jane@mail.example.co.uk",
+		"1+jane@users.noreply.github.com",
+	} {
+		if got := NormalizeCoAuthorIdentity("Jane", email); got == nil || got.UserEmail != email {
+			t.Fatalf("NormalizeCoAuthorIdentity(%q) = %+v, want it kept", email, got)
+		}
+	}
+	for _, email := range []string{"jane@example..com", "jane@example.com.", "a@b"} {
+		got := NormalizeCoAuthorIdentity("Jane", email)
+		if got == nil || got.UserEmail != "" {
+			t.Fatalf("NormalizeCoAuthorIdentity(%q) = %+v, want the email dropped", email, got)
+		}
+	}
+}

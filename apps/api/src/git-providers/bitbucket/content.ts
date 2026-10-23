@@ -24,6 +24,7 @@
  * (`mergeBranches`). Bitbucket Cloud only — see `http.ts`.
  */
 
+import type { GitAuthor } from "@decocms/sandbox/shared";
 import type { RepoRef } from "@decocms/shared/git-providers";
 import { mapBounded, retry, RetryError } from "@decocms/shared/std";
 import {
@@ -132,6 +133,7 @@ export function buildCommitForm(params: {
   message: string;
   changes: readonly ResolvedChange[];
   existsAtParent: (path: string) => boolean;
+  author?: GitAuthor | null;
 }): FormData | null {
   const collapsed = new Map<string, ResolvedChange>();
   for (const change of params.changes) collapsed.set(change.path, change);
@@ -151,6 +153,10 @@ export function buildCommitForm(params: {
   form.append("message", params.message);
   form.append("branch", params.branch);
   form.append("parents", params.parent);
+  // One raw git line; Bitbucket has no committer field at all.
+  if (params.author) {
+    form.append("author", `${params.author.name} <${params.author.email}>`);
+  }
   return form;
 }
 
@@ -479,8 +485,9 @@ export class BitbucketContentClient implements RepoContentClient {
     expectedHead: string | null;
     rewriteFrom?: string;
     changes: FileChange[];
+    author?: GitAuthor | null;
   }): Promise<{ sha: string }> {
-    const { branch, message, expectedHead, rewriteFrom } = params;
+    const { branch, message, expectedHead, rewriteFrom, author } = params;
     const head = await this.getBranch(branch);
     if (expectedHead !== null && head?.sha !== expectedHead) {
       throw new RepoWriteConflict(
@@ -495,6 +502,7 @@ export class BitbucketContentClient implements RepoContentClient {
         expectedHead,
         rewriteFrom,
         changes,
+        author,
       });
     }
     if (head === null) {
@@ -509,6 +517,7 @@ export class BitbucketContentClient implements RepoContentClient {
       parent: head.sha,
       message,
       changes,
+      author,
     });
     return { sha: sha ?? head.sha };
   }
@@ -529,8 +538,10 @@ export class BitbucketContentClient implements RepoContentClient {
     expectedHead: string | null;
     rewriteFrom: string;
     changes: readonly ResolvedChange[];
+    author?: GitAuthor | null;
   }): Promise<{ sha: string }> {
-    const { branch, message, expectedHead, rewriteFrom, changes } = params;
+    const { branch, message, expectedHead, rewriteFrom, changes, author } =
+      params;
 
     await this.assertHeadIs(branch, expectedHead);
     const direct = await this.commitOnto({
@@ -538,6 +549,7 @@ export class BitbucketContentClient implements RepoContentClient {
       parent: rewriteFrom,
       message,
       changes,
+      author,
     }).catch((cause: unknown) => {
       if (
         cause instanceof GitProviderError &&
@@ -566,6 +578,7 @@ export class BitbucketContentClient implements RepoContentClient {
           parent: rewriteFrom,
           message,
           changes,
+          author,
         })) ?? rewriteFrom;
       /** Re-read as late as possible: the guard has to hold when the target is
        * replaced, not when this call started. */
@@ -610,8 +623,9 @@ export class BitbucketContentClient implements RepoContentClient {
     parent: string;
     message: string;
     changes: readonly ResolvedChange[];
+    author?: GitAuthor | null;
   }): Promise<string | null> {
-    const { branch, parent, message, changes } = params;
+    const { branch, parent, message, changes, author } = params;
     const deletions = changes.flatMap((change) =>
       "deleted" in change ? [change.path] : [],
     );
@@ -628,6 +642,7 @@ export class BitbucketContentClient implements RepoContentClient {
       message,
       changes,
       existsAtParent: (path) => present.has(path),
+      author,
     });
     if (form === null) return null;
 

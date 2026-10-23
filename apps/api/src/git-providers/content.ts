@@ -14,6 +14,7 @@
  * asked for.
  */
 
+import type { GitAuthor } from "@decocms/sandbox/shared";
 import type { RepoRef } from "@decocms/shared/git-providers";
 import { GitProviderError } from "./types";
 
@@ -187,6 +188,8 @@ export interface RepoContentClient {
    * taken as late as possible (neither provider offers a compare-and-swap on
    * a non-fast-forward ref move), and on GitLab the move is unavoidably a
    * delete-and-recreate; see that implementation for the residual window.
+   * `author` is who it is attributed to; the shared bot identity commits it,
+   * not the token's own, which would cost a `/user` call per commit.
    */
   commitFiles(params: {
     branch: string;
@@ -194,6 +197,7 @@ export interface RepoContentClient {
     expectedHead: string | null;
     rewriteFrom?: string;
     changes: FileChange[];
+    author?: GitAuthor | null;
   }): Promise<{ sha: string }>;
 
   /** Create `branch` at `sha`; `RepoWriteConflict` when it already exists. */

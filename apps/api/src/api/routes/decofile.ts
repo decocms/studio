@@ -50,7 +50,10 @@ import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { createMiddleware } from "hono/factory";
 import { z } from "zod";
-import { coAuthorFromStudioContext } from "@/lib/co-author-identity";
+import {
+  authoringOperator,
+  commitOperatorFromStudioContext,
+} from "@/lib/co-author-identity";
 import { parseRepositoryBinding } from "@/tools/sandbox/sync-git-credentials";
 import {
   RepoWriteConflict,
@@ -684,7 +687,7 @@ export function createDecofileRoutes(
           client,
           branch: scope.branch,
           packagePath: scope.packagePath,
-          coAuthor: coAuthorFromStudioContext(ctx),
+          coAuthor: await commitOperatorFromStudioContext(ctx),
         },
         patch,
       );
@@ -730,7 +733,9 @@ export function createDecofileRoutes(
             hosted.ref,
             {
               message: typeof body.note === "string" ? body.note : "",
-              coAuthor: coAuthorFromStudioContext(c.var.studioContext),
+              coAuthor: await commitOperatorFromStudioContext(
+                c.var.studioContext,
+              ),
             },
           );
           return c.json(result);
@@ -752,7 +757,14 @@ export function createDecofileRoutes(
         } catch (err) {
           if (repoErrorStatus(err) !== 409) throw err;
           // Sync branch-wins first; the branch then sits on base and this FFs.
-          await repoGitRebase(client, scope.branch, baseBranch);
+          await repoGitRebase(
+            client,
+            scope.branch,
+            baseBranch,
+            authoringOperator(
+              await commitOperatorFromStudioContext(c.var.studioContext),
+            ),
+          );
           sha = await client.mergeBranches(baseBranch, scope.branch, message);
         }
         return sha

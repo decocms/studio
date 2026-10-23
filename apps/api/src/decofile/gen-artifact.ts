@@ -1,7 +1,3 @@
-import {
-  appendCoAuthorTrailer,
-  type CoAuthorIdentity,
-} from "@decocms/sandbox/shared";
 import { mergeBlocks } from "@decocms/shared/decofile";
 import { repoIdentityKey } from "@decocms/shared/git-providers";
 import type { FileChange, RepoContentClient, TreeEntry } from "@/git-providers";
@@ -51,11 +47,13 @@ export async function regenerateGenArtifact(params: {
   return { path: genPath, content: decofile };
 }
 
-/** The commit message of a decofile write: what changed, plus the co-author. */
+/**
+ * The commit message of a decofile write: what changed. Attribution is not
+ * its business — `commitAttribution` owns the author and the trailer.
+ */
 export function decofileCommitMessage(
   setKeys: string[],
   deleteKeys: string[],
-  coAuthor: CoAuthorIdentity | null | undefined,
 ): string {
   const summarize = (keys: string[]): string => {
     const shown = keys.slice(0, 3).join(", ");
@@ -64,8 +62,5 @@ export function decofileCommitMessage(
   const parts: string[] = [];
   if (setKeys.length > 0) parts.push(`update ${summarize(setKeys)}`);
   if (deleteKeys.length > 0) parts.push(`delete ${summarize(deleteKeys)}`);
-  return appendCoAuthorTrailer(
-    `chore(decofile): ${parts.join("; ")}`,
-    coAuthor,
-  );
+  return `chore(decofile): ${parts.join("; ")}`;
 }

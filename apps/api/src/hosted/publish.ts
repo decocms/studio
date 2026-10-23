@@ -21,8 +21,8 @@
  */
 
 import {
-  appendCoAuthorTrailer,
-  type CoAuthorIdentity,
+  commitAttribution,
+  type CommitOperator,
 } from "@decocms/sandbox/shared";
 import {
   blockFileName,
@@ -210,6 +210,7 @@ async function draftFileChanges(
  * with `.deco/blocks.gen.json` regenerated from `next` when the repo tracks
  * it. Main having moved is {@link MainMovedError}: nothing is committed, no
  * retry. Shared by Publish and Reapply version.
+ * `coAuthor` is resolved into attribution here, once, for both callers.
  */
 export async function commitBlocksToMain(
   repo: HostedRepo,
@@ -220,6 +221,7 @@ export async function commitBlocksToMain(
     next: Iterable<BlockSource>;
   },
   message: string,
+  coAuthor?: CommitOperator | null,
 ): Promise<string> {
   const changes = [...files.changes];
   const gen = await regenerateGenArtifact({
@@ -231,11 +233,13 @@ export async function commitBlocksToMain(
     memo: new Map(),
   });
   if (gen) changes.push(gen);
+  const attribution = commitAttribution(message, coAuthor);
   try {
     // No `rewriteFrom`: the ref only moves by fast-forward from `headSha`.
     const { sha } = await repo.client.commitFiles({
       branch: repo.mainBranch,
-      message,
+      message: attribution.message,
+      author: attribution.author,
       expectedHead: headSha,
       changes,
     });
@@ -255,6 +259,7 @@ async function commitDraftToMain(
   repo: HostedRepo,
   draft: DraftBody,
   message: string,
+  coAuthor?: CommitOperator | null,
 ): Promise<string | null> {
   const headSha = await requireBranchHead(repo.client, repo.mainBranch);
   const { changes, tree, next } = await draftFileChanges(repo, headSha, draft);
@@ -264,6 +269,7 @@ async function commitDraftToMain(
     headSha,
     { changes, tree, next: next.values() },
     message,
+    coAuthor,
   );
 }
 
@@ -352,7 +358,7 @@ export async function publishDraft(
   repo: HostedRepo,
   drafts: DraftStore,
   ref: HostedDraftRef,
-  note: { message: string; coAuthor?: CoAuthorIdentity | null },
+  note: { message: string; coAuthor?: CommitOperator | null },
   hooks: PublishHooks = {},
 ): Promise<PublishResult> {
   const draft = await drafts.load(ref);
@@ -374,13 +380,9 @@ export async function publishDraft(
     : await commitDraftToMain(
         repo,
         draft.body,
-        note.message.trim()
-          ? appendCoAuthorTrailer(note.message.trim(), note.coAuthor)
-          : decofileCommitMessage(
-              Object.keys(draft.body.set),
-              draft.body.delete,
-              note.coAuthor,
-            ),
+        note.message.trim() ||
+          decofileCommitMessage(Object.keys(draft.body.set), draft.body.delete),
+        note.coAuthor,
       );
   // The draft goes once it is merged, or when it commits nothing.
   await removeDraft();

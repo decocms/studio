@@ -43,6 +43,10 @@ import {
 } from "../../core/studio-context";
 import type { Env } from "../hono-env";
 import { patchSandboxOperator } from "../../tools/sandbox/patch-sandbox-operator";
+import {
+  authoringOperator,
+  commitOperatorFromStudioContext,
+} from "@/lib/co-author-identity";
 import { handleVmEvents } from "./sandbox-events-handler";
 import { resolveAndPushEnv } from "../../tools/sandbox/resolve-env";
 import { readValidatedRuntimeEnv } from "../../tools/sandbox/helpers";
@@ -1107,7 +1111,14 @@ export const createSandboxRoutes = () => {
         }
         try {
           const client = await fastPreviewGitClient(c);
-          await repoGitDiscard(client, claim.branch, filepaths);
+          await repoGitDiscard(
+            client,
+            claim.branch,
+            filepaths,
+            authoringOperator(
+              await commitOperatorFromStudioContext(c.var.studioContext),
+            ),
+          );
           return c.json({ ok: true }, 200, SANDBOX_PROXY_CACHE_HEADERS);
         } catch (err) {
           const status =
@@ -1140,7 +1151,14 @@ export const createSandboxRoutes = () => {
           };
           const client = await fastPreviewGitClient(c);
           const base = body.base ?? (await client.getDefaultBranch());
-          await repoGitRebase(client, claim.branch, base);
+          await repoGitRebase(
+            client,
+            claim.branch,
+            base,
+            authoringOperator(
+              await commitOperatorFromStudioContext(c.var.studioContext),
+            ),
+          );
           return c.json({ ok: true }, 200, SANDBOX_PROXY_CACHE_HEADERS);
         } catch (err) {
           return fastPreviewGitError(c, err);

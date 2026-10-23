@@ -47,7 +47,7 @@ import {
   reapplySchemaChanged,
   reapplyVersion,
 } from "@/hosted/reapply";
-import { coAuthorFromStudioContext } from "@/lib/co-author-identity";
+import { commitOperatorFromStudioContext } from "@/lib/co-author-identity";
 import {
   projectMainIsV8,
   projectPackagePath,
@@ -281,7 +281,7 @@ export function createHostedRoutes(
       const repo = await hostedRepo(c);
       if (!repo) return c.json(NOT_CONFIGURED, 503);
       const result = await reapplyVersion(repo, c.req.param("sha"), {
-        coAuthor: coAuthorFromStudioContext(c.var.studioContext),
+        coAuthor: await commitOperatorFromStudioContext(c.var.studioContext),
       });
       return c.json(result);
     } catch (err) {

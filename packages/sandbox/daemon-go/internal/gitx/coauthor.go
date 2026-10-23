@@ -11,7 +11,8 @@ type CoAuthorIdentity struct {
 }
 
 var coAuthorInvalidChars = regexp.MustCompile(`[\r\n<>]`)
-var coAuthorEmailRe = regexp.MustCompile(`^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$`)
+// Kept identical to the TypeScript twin's EMAIL_RE.
+var coAuthorEmailRe = regexp.MustCompile(`^[^\s@<>]+@[^\s@<>.]+(\.[^\s@<>.]+)+$`)
 var coAuthorTrailerRe = regexp.MustCompile(`(?i)^Co-authored-by:\s`)
 
 func NormalizeCoAuthorIdentity(userName, userEmail string) *CoAuthorIdentity {

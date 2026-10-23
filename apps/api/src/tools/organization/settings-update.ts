@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
+import { invalidateOrgFlagsCache } from "../../core/org-flags-cache";
 import {
   SidebarItemSchema,
   SimpleModeConfigSchema,
@@ -104,6 +105,8 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
         submodule_credentials: input.submodule_credentials,
       },
     );
+
+    invalidateOrgFlagsCache(input.organizationId);
 
     // Convert dates to ISO strings for JSON Schema compatibility
     return {
