@@ -8,6 +8,7 @@ export const orderMonitor = {
   "orderMonitor.allStores": "Todas as lojas",
   "orderMonitor.pickStore": "Loja",
   "orderMonitor.pickDay": "Dia",
+  "orderMonitor.today": "Hoje",
   "orderMonitor.backToNow": "Voltar para agora",
   "orderMonitor.reviewingAt": "Revendo o dia em {at} ({timezone})",
   "orderMonitor.projected": "Projeção de hoje",

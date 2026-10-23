@@ -21,6 +21,11 @@ export interface PageVariantInfo {
   index: number;
   /** Page variant entries — only each entry's `rule` is read. */
   variants: Array<{ rule?: Record<string, unknown> }>;
+  /**
+   * The active page variant's sections sit in a `lazy` block (v8's
+   * `multivariate`), one `value` deeper than in v7's page flag.
+   */
+  lazyValues?: boolean;
 }
 
 interface OverrideParamsArgs {
@@ -135,7 +140,7 @@ export function buildSectionVariantOverrideParams({
   if (sectionIndex < 0) return [];
 
   const sectionBase = page.multivariate
-    ? `sections.variants.${page.index}.value`
+    ? `sections.variants.${page.index}.value${page.lazyValues ? ".value" : ""}`
     : "sections";
   const prefix = `${sectionBase}.${sectionIndex}${
     sectionLazy ? ".section" : ""

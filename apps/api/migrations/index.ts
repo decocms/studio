@@ -1,5 +1,6 @@
 import * as migration256taskboardharness from "./256-task-board-harness";
 import * as migration257taskboarditemhierarchy from "./257-task-board-item-hierarchy";
+import * as migration259repositorymonitordeploys from "./259-repository-monitor-deploys";
 import * as migration254codexsubscriptions from "./254-codex-subscriptions";
 import * as migration255ordermonitor from "./255-order-monitor";
 import * as migration228orgvoiceconfig from "./228-org-voice-config";
@@ -554,6 +555,7 @@ const migrations: Record<string, Migration> = {
   "255-order-monitor": migration255ordermonitor,
   "256-task-board-harness": migration256taskboardharness,
   "257-task-board-item-hierarchy": migration257taskboarditemhierarchy,
+  "259-repository-monitor-deploys": migration259repositorymonitordeploys,
 };
 
 export default migrations;

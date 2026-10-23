@@ -153,6 +153,7 @@ export const VirtualMcpSidebarViewSchema = z.enum([
   "cdn",
   "automations",
   "experiments",
+  "calendar",
 ]);
 
 export type VirtualMcpSidebarView = z.infer<typeof VirtualMcpSidebarViewSchema>;
@@ -227,7 +228,7 @@ export const VirtualMcpUILayoutSchema = z.object({
    *  top-level metadata field. */
   sidebarViews: z
     .array(VirtualMcpSidebarViewSchema)
-    .max(10)
+    .max(VirtualMcpSidebarViewSchema.options.length)
     .nullable()
     .optional()
     .describe(
@@ -813,7 +814,7 @@ const VirtualMcpMetadataFields = {
     .describe("UI customization settings"),
   sidebarViews: z
     .array(VirtualMcpSidebarViewSchema)
-    .max(10)
+    .max(VirtualMcpSidebarViewSchema.options.length)
     .nullable()
     .optional()
     .describe(
@@ -824,6 +825,14 @@ const VirtualMcpMetadataFields = {
     .optional()
     .describe(
       "Version 1 marks metadata.sidebarViews as an exact list that can disable legacy default rows.",
+    ),
+  sidebarViewsSeen: z
+    .array(VirtualMcpSidebarViewSchema)
+    .max(VirtualMcpSidebarViewSchema.options.length)
+    .nullable()
+    .optional()
+    .describe(
+      "Views Studio offered this project once on top of an exact sidebarViews list (Experiments and Calendar on a Blocks site). A view listed here shows only when sidebarViews selects it, so hiding it sticks.",
     ),
   repository: RepositoryBindingSchema.nullable()
     .optional()

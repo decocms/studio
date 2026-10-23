@@ -902,6 +902,21 @@ const agentExperimentsRoute = createRoute({
   ),
 });
 
+const agentCalendarRoute = createRoute({
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
+  getParentRoute: () => agentWorkspaceRoute,
+  path: "/calendar",
+  staticData: {
+    pageTitle: "common.mainPanelTabs.calendar",
+    defaultMain: "calendar",
+    mainView: "calendar",
+  },
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/agent-calendar.tsx"),
+  ),
+});
+
 const agentMonitorRoute = createRoute({
   pendingComponent: ChatLayoutPending,
   errorComponent: ChatLayoutError,
@@ -1187,7 +1202,15 @@ const planRoute = createRoute({
   },
   component: lazyRouteComponent(() => import("./routes/workspace/plan.tsx")),
 });
-const orgMonitoringPlaceholderRoute = createRoute({
+/** Monitor: the tab, the past day, and the store (ingest connection id) and
+ *  instant under review. A malformed day is dropped, not a broken page. */
+const monitoringSearch = z.object({
+  view: z.enum(["metrics", "deploys", "experiments", "analytics"]).optional(),
+  date: z.iso.date().optional().catch(undefined),
+  store: z.string().optional(),
+  at: z.string().optional(),
+});
+const orgMonitoringRoute = createRoute({
   pendingComponent: ChatLayoutPending,
   errorComponent: ChatLayoutError,
   getParentRoute: () => threadSessionRoute,
@@ -1197,6 +1220,7 @@ const orgMonitoringPlaceholderRoute = createRoute({
     defaultMain: "monitoring",
     mainView: "monitoring",
   },
+  validateSearch: monitoringSearch,
   component: lazyRouteComponent(
     () => import("./routes/workspace/monitoring.tsx"),
   ),
@@ -1223,6 +1247,7 @@ const projectMonitoringRoute = createRoute({
     defaultMain: "monitoring",
     mainView: "monitoring",
   },
+  validateSearch: monitoringSearch,
   component: lazyRouteComponent(
     () => import("./routes/workspace/monitoring.tsx"),
   ),
@@ -1695,6 +1720,7 @@ const agentWorkspaceWithChildren = agentWorkspaceRoute.addChildren([
   agentAnalyticsRoute,
   projectTaskBoardAnalyticsRoute,
   agentExperimentsRoute,
+  agentCalendarRoute,
   agentMonitorRoute,
   agentAppRoute,
   agentViewRoute,
@@ -1721,7 +1747,7 @@ const threadSessionWithChildren = threadSessionRoute.addChildren([
   libraryRoute,
   discoverRoute,
   planRoute,
-  orgMonitoringPlaceholderRoute,
+  orgMonitoringRoute,
 ]);
 
 const threadRouteWithChildren = threadRoute.addChildren([

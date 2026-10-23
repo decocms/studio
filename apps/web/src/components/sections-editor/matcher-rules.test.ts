@@ -12,6 +12,7 @@ import {
   seedMatcherRule,
   unwrapMatcherRule,
 } from "./matcher-rules";
+import { matcherFormatter } from "./format-matcher";
 import type { LiveMeta } from "./resolve-schema";
 
 describe("matcher-rules", () => {
@@ -141,6 +142,26 @@ describe("matcher-rules", () => {
         () => "Fallback",
       ),
     ).toBe("Mobile Promo");
+  });
+
+  it("labels an A/B test rule with its share from the content's experiments", () => {
+    expect(
+      resolveVariantRuleLabel(
+        { __resolveType: "experiment", name: "hero" },
+        { experiments: { __resolveType: "split-traffic", hero: 20 } },
+        matcherFormatter(true),
+      ),
+    ).toBe("A/B test: hero (20%)");
+  });
+
+  it("labels a campaign rule with its dates from the content's campaigns", () => {
+    expect(
+      resolveVariantRuleLabel(
+        { __resolveType: "campaign", name: "Launch" },
+        { campaigns: { __resolveType: "calendar", Launch: {} } },
+        matcherFormatter(true),
+      ),
+    ).toBe("Campaign: Launch");
   });
 
   it("builds matcher block payloads and references", () => {
