@@ -6,6 +6,7 @@ export const orderMonitor = {
   "orderMonitor.allStores": "All stores",
   "orderMonitor.pickStore": "Store",
   "orderMonitor.pickDay": "Day",
+  "orderMonitor.today": "Today",
   "orderMonitor.backToNow": "Back to now",
   "orderMonitor.reviewingAt": "Reviewing the day as of {at} ({timezone})",
   "orderMonitor.projected": "Projected today",

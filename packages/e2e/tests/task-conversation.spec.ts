@@ -46,7 +46,9 @@ test("task conversation keeps replies chronological and details accessible", asy
   await expect(posts).toHaveCount(3);
   await expect(posts.nth(0)).toContainText("First reply");
   await expect(posts.nth(1)).toContainText("Second reply");
-  await expect(detail.getByRole("textbox")).toHaveCount(1);
+  // The comment composer and the add-subtask field are the only textboxes.
+  await expect(detail.getByRole("textbox")).toHaveCount(2);
+  await expect(detail.getByPlaceholder("Add a subtask")).toBeVisible();
   await expect(
     detail.getByRole("button", { name: "Edit", exact: true }),
   ).toBeVisible();

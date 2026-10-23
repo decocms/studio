@@ -67,6 +67,19 @@ export function useRepositories(accountId?: string) {
   });
 }
 
+/** Recent pushes to the repositories monitored for deploys. */
+export function useRepositoryDeploys(repositoryIds: readonly string[]) {
+  const { org } = useProjectContext();
+  const studio = useStudioTools();
+  return useQuery({
+    queryKey: KEYS.repositoryDeploys(org.id, repositoryIds),
+    enabled: repositoryIds.length > 0,
+    staleTime: 60_000,
+    queryFn: async () =>
+      (await studio.call("REPOSITORY_DEPLOYS_LIST", {})).deploys,
+  });
+}
+
 /**
  * Search an account's repositories on the provider. Disabled until an account
  * is picked; Pages are fetched on demand, with an independent cache per account and query.

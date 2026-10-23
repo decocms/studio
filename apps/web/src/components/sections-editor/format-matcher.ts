@@ -1,6 +1,7 @@
 import { readLanguage } from "@/hooks/use-preferences.ts";
 import type { Locale } from "@/i18n/locale.ts";
 import { translate } from "@/i18n/use-t.ts";
+import type { CampaignWindow, NamedRuleValues } from "./named-rules";
 import { labelFromResolveType } from "./section-types";
 
 const capitalize = (s: string) =>
@@ -116,9 +117,128 @@ function formatDateRange(rule: Record<string, unknown>): string | null {
   });
 }
 
+/**
+ * The year is left out when every bound falls in the current one, as a
+ * campaign usually does ("Nov 27 – Dec 1").
+ */
+export function formatCampaignWindow(window: CampaignWindow): string | null {
+  const startDate = parseDate(window.start ?? "");
+  const endDate = parseDate(window.end ?? "");
+  if (!startDate && !endDate) return null;
+  const present = [startDate, endDate].filter((d): d is Date => d !== null);
+  const wholeDay = present.every(isDayBoundary);
+  // `end` is exclusive: a window ending at midnight ends the day before.
+  const lastDay =
+    endDate &&
+    wholeDay &&
+    endDate.getHours() === 0 &&
+    endDate.getMinutes() === 0
+      ? new Date(endDate.getTime() - 1)
+      : endDate;
+  const thisYear = new Date().getFullYear();
+  const dropYear = present.every((d) => d.getFullYear() === thisYear);
+  const formatters = dateFormatters(readLanguage());
+  const fmt = (d: Date) =>
+    wholeDay
+      ? (dropYear ? formatters.day : formatters.date).format(d)
+      : formatters.dateTime.format(d);
+  if (startDate && lastDay) {
+    return translate("sectionsEditor.formatMatcher.windowRange", {
+      start: fmt(startDate),
+      end: fmt(lastDay),
+    });
+  }
+  if (startDate) {
+    return translate("sectionsEditor.formatMatcher.windowFrom", {
+      date: fmt(startDate),
+    });
+  }
+  return translate("sectionsEditor.formatMatcher.windowUntil", {
+    date: fmt(lastDay!),
+  });
+}
+
+/** `experiment { name }`: the test's name and, when known, its share. */
+function formatExperiment(
+  rule: Record<string, unknown>,
+  named: NamedRuleValues | undefined,
+): string {
+  const name = typeof rule.name === "string" ? rule.name.trim() : "";
+  if (!name) return translate("sectionsEditor.formatMatcher.experiment");
+  const share =
+    named && Object.hasOwn(named.experiments, name)
+      ? named.experiments[name]
+      : undefined;
+  return share === undefined
+    ? translate("sectionsEditor.formatMatcher.experimentNamed", { name })
+    : translate("sectionsEditor.formatMatcher.experimentShare", {
+        name,
+        share: String(share),
+      });
+}
+
+/** `campaign { name }`: the campaign's name and, when known, its dates. */
+function formatCampaign(
+  rule: Record<string, unknown>,
+  named: NamedRuleValues | undefined,
+): string {
+  const name = typeof rule.name === "string" ? rule.name.trim() : "";
+  if (!name) return translate("sectionsEditor.formatMatcher.campaign");
+  const window =
+    named && Object.hasOwn(named.campaigns, name)
+      ? formatCampaignWindow(named.campaigns[name]!)
+      : null;
+  return window === null
+    ? translate("sectionsEditor.formatMatcher.campaignNamed", { name })
+    : translate("sectionsEditor.formatMatcher.campaignWindow", {
+        name,
+        window,
+      });
+}
+
+/**
+ * Next-major names the built-in matchers with short keys (`always`, `never`,
+ * `experiment`, `campaign`, `date`); `device` is the usual name of a site's
+ * own device matcher. On v7 each of these is a saved block's key.
+ */
+const V8_SHORT_RULE_NAMES = new Set([
+  "always",
+  "never",
+  "device",
+  "date",
+  "campaign",
+  "experiment",
+]);
+
+/** Off v8, a short name takes the label of any other rule type. */
+const ANY_OTHER_RULE = "\u0000";
+
+/**
+ * A rule as a short label. `named` (the site's A/B tests and campaigns,
+ * `readNamedRuleValues`) adds a test's share and a campaign's dates to its
+ * name. On a Blocks v8 site (`v8`) the short names are the built-ins; on any
+ * other site they are labelled like any other type, as before.
+ */
 export function formatMatcher(
   rule: Record<string, unknown> | undefined,
-  depth = 0,
+  named?: NamedRuleValues,
+  v8 = false,
+): string {
+  return formatRule(rule, 0, named, v8);
+}
+
+/** {@link formatMatcher} for a Blocks v8 site (`v8`) or any other. */
+export function matcherFormatter(
+  v8: boolean,
+): (rule?: Record<string, unknown>, named?: NamedRuleValues) => string {
+  return (rule, named) => formatMatcher(rule, named, v8);
+}
+
+function formatRule(
+  rule: Record<string, unknown> | undefined,
+  depth: number,
+  named: NamedRuleValues | undefined,
+  v8: boolean,
 ): string {
   if (!rule) return "Default";
   if (depth > MAX_FORMAT_DEPTH) return "...";
@@ -127,15 +247,18 @@ export function formatMatcher(
   const alwaysTypes = [
     "website/matchers/always.ts",
     "$live/matchers/MatchAlways.ts",
+    ...(v8 ? ["always"] : []),
   ];
   if (alwaysTypes.includes(rt) || rt === "") return "Default";
 
-  switch (rt) {
+  switch (!v8 && V8_SHORT_RULE_NAMES.has(rt) ? ANY_OTHER_RULE : rt) {
     case "website/matchers/never.ts":
+    case "never":
       return "Hidden";
 
     case "website/matchers/device.ts":
-    case "$live/matchers/MatchDevice.ts": {
+    case "$live/matchers/MatchDevice.ts":
+    case "device": {
       const {
         mobile,
         tablet,
@@ -159,6 +282,17 @@ export function formatMatcher(
     case "website/matchers/date.ts":
     case "$live/matchers/MatchDate.ts":
       return formatDateRange(rule) ?? labelFromResolveType(rt);
+
+    // v8: a campaign by name.
+    case "campaign":
+      return formatCampaign(rule, named);
+
+    // v8 before campaigns: a `date` rule with its own dates keeps showing them.
+    case "date":
+      return formatDateRange(rule) ?? labelFromResolveType(rt);
+
+    case "experiment":
+      return formatExperiment(rule, named);
 
     case "website/matchers/random.ts":
     case "$live/matchers/MatchRandom.ts": {
@@ -232,7 +366,7 @@ export function formatMatcher(
         const safeOp = op === "OR" ? "OR" : "AND";
         return matchers
           .map((m) => {
-            const text = formatMatcher(m, depth + 1);
+            const text = formatRule(m, depth + 1, named, v8);
             return childNeedsParens(m, safeOp) ? `(${text})` : text;
           })
           .join(` ${safeOp} `);
