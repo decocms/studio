@@ -1280,7 +1280,6 @@ export const sandbox = {
   "sandbox.visualEditorPrompt.inputPlaceholder": "Ask the AI...",
   "sandbox.visualEditorPrompt.sendButton": "Send",
   "sandbox.collectionsSidebar.campaigns": "Calendar",
-  "sandbox.dateCampaigns.title": "Calendar",
   "sandbox.calendarView.noDraft.title": "Pick a draft to plan your campaigns",
   "sandbox.calendarView.noDraft.desc":
     "Your campaigns are saved in a draft, like any other edit. Pick a draft in the bar above, or open the site editor to start one.",

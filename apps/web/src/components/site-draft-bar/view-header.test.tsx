@@ -4,18 +4,22 @@ import { describe, expect, mock, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fireEvent, render, within } from "@testing-library/react";
-import { SiteDraftViewHeader } from "./view-header";
+import { SITE_DRAFT_VIEW_INSET, SiteDraftViewHeader } from "./view-header";
 
 describe("SiteDraftViewHeader", () => {
-  test("a list: the view's name, its actions on the right", () => {
+  test("a list: the intro sentence, no title row, its actions on the right", () => {
     const view = render(
       <SiteDraftViewHeader
-        title="Calendar"
+        intro="Every date on your site is a campaign."
         actions={<button type="button">New campaign</button>}
       />,
     );
     const body = within(view.container);
-    expect(body.getByRole("heading", { name: "Calendar" })).toBeTruthy();
+    // The breadcrumb names the view: the list does not repeat it.
+    expect(body.queryByRole("heading")).toBeNull();
+    expect(
+      body.getByText("Every date on your site is a campaign."),
+    ).toBeTruthy();
     const actions = view.container.querySelector('[data-slot="view-actions"]');
     expect(actions?.textContent).toBe("New campaign");
   });
@@ -57,11 +61,43 @@ describe("Experiments and Calendar keep their actions in the view", () => {
     });
   }
 
-  test("the Calendar view is headed Calendar, as its row and breadcrumb", () => {
-    const source = readFileSync(
-      join(src, "layouts/main-panel-tabs/calendar-tab.tsx"),
+  /**
+   * The breadcrumb names the view, so a list opens with its intro sentence
+   * in the header row, not a title, and says it once.
+   */
+  for (const [file, intro] of [
+    [
+      "layouts/main-panel-tabs/experiments-block-tab.tsx",
+      "experiments.v8.intro",
+    ],
+    [
+      "components/sandbox/content/campaigns/campaigns-view.tsx",
+      "sandbox.dateCampaigns.intro",
+    ],
+  ] as const) {
+    test(`${file} heads its list with the intro, not a title`, () => {
+      const source = readFileSync(join(src, file), "utf8");
+      expect(source).not.toMatch(/<SiteDraftViewHeader\s+title=/);
+      expect(source).toContain(`intro={t("${intro}")}`);
+      expect(source.split(`t("${intro}")`).length - 1).toBe(1);
+    });
+  }
+
+  /** One side inset for both views, as main's Releases view (16 px). */
+  for (const file of views) {
+    test(`${file} insets its content as Releases does`, () => {
+      const source = readFileSync(join(src, file), "utf8");
+      expect(source).not.toContain("<Page.Container");
+      expect(source).toContain("SITE_DRAFT_VIEW_INSET");
+    });
+  }
+
+  test("the inset is Releases' p-4", () => {
+    const releases = readFileSync(
+      join(src, "layouts/main-panel-tabs/releases-tab.tsx"),
       "utf8",
     );
-    expect(source).toContain('title={t("common.mainPanelTabs.calendar")}');
+    expect(SITE_DRAFT_VIEW_INSET).toBe("p-4");
+    expect(releases).toMatch(/className="[^"]*\bp-4\b[^"]*"/);
   });
 });

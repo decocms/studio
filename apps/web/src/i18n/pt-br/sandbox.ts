@@ -1310,7 +1310,6 @@ export const sandbox = {
   "sandbox.visualEditorPrompt.inputPlaceholder": "Pergunte à IA...",
   "sandbox.visualEditorPrompt.sendButton": "Enviar",
   "sandbox.collectionsSidebar.campaigns": "Calendário",
-  "sandbox.dateCampaigns.title": "Calendário",
   "sandbox.calendarView.noDraft.title":
     "Escolha um rascunho para planejar suas campanhas",
   "sandbox.calendarView.noDraft.desc":

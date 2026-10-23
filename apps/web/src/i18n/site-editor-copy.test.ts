@@ -312,7 +312,6 @@ describe("the campaigns view is called Calendar (v8)", () => {
     for (const dict of [en, ptBR] as Record<string, string>[]) {
       const name = dict["common.mainPanelTabs.calendar"];
       expect(dict["sandbox.collectionsSidebar.campaigns"]).toBe(name);
-      expect(dict["sandbox.dateCampaigns.title"]).toBe(name);
       expect(dict["sectionsEditor.namedRulePicker.openCalendar"]).toContain(
         name,
       );

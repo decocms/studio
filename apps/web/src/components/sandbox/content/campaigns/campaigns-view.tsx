@@ -29,7 +29,10 @@ import {
 } from "@decocms/ui/components/toggle-group.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
-import { SiteDraftViewHeader } from "@/components/site-draft-bar/view-header";
+import {
+  SITE_DRAFT_VIEW_INSET,
+  SiteDraftViewHeader,
+} from "@/components/site-draft-bar/view-header";
 import { formatCampaignWindow } from "@/components/sections-editor/format-matcher";
 import { planNamedRuleSet } from "@/components/sections-editor/named-rule-edits";
 import {
@@ -140,7 +143,6 @@ export function CampaignsView({
   meta,
   onOpenUse,
   initialView = "list",
-  title,
 }: {
   orgSlug: string;
   virtualMcpId: string;
@@ -151,11 +153,6 @@ export function CampaignsView({
   onOpenUse: (row: NamedRuleUseRow) => void;
   /** The Calendar view opens on the timeline; the content browser, the list. */
   initialView?: ViewMode;
-  /**
-   * The heading: "Campaigns" in the content browser; the Calendar view names
-   * itself "Calendar", as its row and breadcrumb do.
-   */
-  title?: string;
 }) {
   const t = useT();
   const view = useNamedRuleView("campaigns", {
@@ -203,7 +200,7 @@ export function CampaignsView({
   return (
     <div className="flex h-full w-full flex-col">
       <SiteDraftViewHeader
-        title={title ?? t("sandbox.dateCampaigns.title")}
+        intro={t("sandbox.dateCampaigns.intro")}
         actions={
           <>
             <ToggleGroup
@@ -232,10 +229,7 @@ export function CampaignsView({
         }
       />
       <ScrollArea className="min-h-0 flex-1">
-        <div className="flex flex-col gap-4 p-4">
-          <p className="text-sm text-muted-foreground">
-            {t("sandbox.dateCampaigns.intro")}
-          </p>
+        <div className={cn("flex flex-col gap-4", SITE_DRAFT_VIEW_INSET)}>
           {rows.length === 0 ? (
             <div className="flex flex-col items-center gap-2 py-10 text-center">
               <Calendar size={24} className="text-muted-foreground/60" />
@@ -521,7 +515,9 @@ function CampaignDetail(props: NamedRuleDetailProps<CampaignRowModel>) {
         actions={<NamedRuleDetailDelete kind="campaigns" detail={props} />}
       />
       <ScrollArea className="min-h-0 flex-1">
-        <div className="flex max-w-2xl flex-col gap-6 p-4">
+        <div
+          className={cn("flex max-w-2xl flex-col gap-6", SITE_DRAFT_VIEW_INSET)}
+        >
           <NamedRuleDetailTitle
             kind="campaigns"
             name={row.name}

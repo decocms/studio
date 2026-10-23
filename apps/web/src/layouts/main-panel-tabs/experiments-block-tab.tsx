@@ -24,7 +24,10 @@ import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { ShareSplit } from "@/components/experiments/split-donut";
 import { Page } from "@/components/page";
-import { SiteDraftViewHeader } from "@/components/site-draft-bar/view-header";
+import {
+  SITE_DRAFT_VIEW_INSET,
+  SiteDraftViewHeader,
+} from "@/components/site-draft-bar/view-header";
 import { planNamedRuleSet } from "@/components/sections-editor/named-rule-edits";
 import { NamedRuleUsedBy } from "@/components/sections-editor/named-rule-used-by";
 import type { NamedRuleUseRow } from "@/components/sections-editor/named-rule-uses";
@@ -66,17 +69,15 @@ export function ExperimentsTabSkeleton() {
   return (
     <Page>
       <Page.Content>
-        <Page.Container>
-          <div
-            className="flex flex-col gap-3 py-2"
-            data-testid="experiments-skeleton"
-            aria-busy="true"
-          >
-            <Skeleton className="h-6 w-40" />
-            <Skeleton className="h-16 w-full" />
-            <Skeleton className="h-16 w-full" />
-          </div>
-        </Page.Container>
+        <div
+          className={cn("flex flex-col gap-3", SITE_DRAFT_VIEW_INSET)}
+          data-testid="experiments-skeleton"
+          aria-busy="true"
+        >
+          <Skeleton className="h-6 w-40" />
+          <Skeleton className="h-16 w-full" />
+          <Skeleton className="h-16 w-full" />
+        </div>
       </Page.Content>
     </Page>
   );
@@ -216,7 +217,7 @@ function ExperimentsBlockReady({
   return (
     <Page>
       <SiteDraftViewHeader
-        title={t("experiments.title")}
+        intro={t("experiments.v8.intro")}
         actions={
           <Button size="sm" onClick={() => view.setCreating(true)}>
             <Plus size={16} />
@@ -225,47 +226,42 @@ function ExperimentsBlockReady({
         }
       />
       <Page.Content>
-        <Page.Container>
-          <div className="flex flex-col gap-4">
-            <p className="text-sm text-muted-foreground">
-              {t("experiments.v8.intro")}
-            </p>
-            {rows.length === 0 ? (
-              <EmptyState
-                title={t("experiments.v8.empty.title")}
-                description={t("experiments.v8.empty.desc")}
-                buttonProps={{
-                  children: t("experiments.v8.new"),
-                  onClick: () => view.setCreating(true),
-                }}
-              />
-            ) : (
-              <Card
-                size="flush"
-                className="gap-0 divide-y divide-border overflow-hidden"
-                data-testid="experiments-v8-list"
-              >
-                {rows.map((row) => (
-                  <ExperimentBlockRow
-                    key={row.name}
-                    row={row}
-                    onOpen={() => view.setOpenName(row.name)}
-                  />
-                ))}
-              </Card>
-            )}
-            <NamedRuleDraftNotes
-              kind="experiments"
-              missing={view.missing}
-              missingNames={view.missingNames}
-              removed={removed}
-              onOpenUse={openUse}
+        <div className={cn("flex flex-col gap-4", SITE_DRAFT_VIEW_INSET)}>
+          {rows.length === 0 ? (
+            <EmptyState
+              title={t("experiments.v8.empty.title")}
+              description={t("experiments.v8.empty.desc")}
+              buttonProps={{
+                children: t("experiments.v8.new"),
+                onClick: () => view.setCreating(true),
+              }}
             />
-            <p className="text-xs text-muted-foreground">
-              {t("experiments.v8.previewHint")}
-            </p>
-          </div>
-        </Page.Container>
+          ) : (
+            <Card
+              size="flush"
+              className="gap-0 divide-y divide-border overflow-hidden"
+              data-testid="experiments-v8-list"
+            >
+              {rows.map((row) => (
+                <ExperimentBlockRow
+                  key={row.name}
+                  row={row}
+                  onOpen={() => view.setOpenName(row.name)}
+                />
+              ))}
+            </Card>
+          )}
+          <NamedRuleDraftNotes
+            kind="experiments"
+            missing={view.missing}
+            missingNames={view.missingNames}
+            removed={removed}
+            onOpenUse={openUse}
+          />
+          <p className="text-xs text-muted-foreground">
+            {t("experiments.v8.previewHint")}
+          </p>
+        </div>
       </Page.Content>
       <NamedRuleCreateDialog
         kind="experiments"
@@ -354,107 +350,107 @@ function ExperimentBlockDetail(
         actions={<NamedRuleDetailDelete kind="experiments" detail={props} />}
       />
       <Page.Content>
-        <Page.Container>
-          <div className="flex max-w-2xl flex-col gap-6">
-            <NamedRuleDetailTitle
-              kind="experiments"
-              name={row.name}
-              status={<StatusPill status={row.status} />}
-              entryState={row.entryState}
-            />
+        <div
+          className={cn("flex max-w-2xl flex-col gap-6", SITE_DRAFT_VIEW_INSET)}
+        >
+          <NamedRuleDetailTitle
+            kind="experiments"
+            name={row.name}
+            status={<StatusPill status={row.status} />}
+            entryState={row.entryState}
+          />
 
-            <section className="flex flex-col gap-2">
-              <h3 className="text-sm font-medium">
-                {t("experiments.v8.shareTitle")}
-              </h3>
-              <ShareSplit
-                value={share}
-                onChange={setShare}
-                sliderLabel={t("experiments.v8.shareLabel")}
-                inTestLabel={t("experiments.v8.split.inTest")}
-                restLabel={t("experiments.v8.split.rest")}
-                centerLabel={t("experiments.v8.split.center")}
-                disabled={pending}
-              />
-              <div className="flex items-center gap-2">
+          <section className="flex flex-col gap-2">
+            <h3 className="text-sm font-medium">
+              {t("experiments.v8.shareTitle")}
+            </h3>
+            <ShareSplit
+              value={share}
+              onChange={setShare}
+              sliderLabel={t("experiments.v8.shareLabel")}
+              inTestLabel={t("experiments.v8.split.inTest")}
+              restLabel={t("experiments.v8.split.rest")}
+              centerLabel={t("experiments.v8.split.center")}
+              disabled={pending}
+            />
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                disabled={!shareDirty || pending}
+                onClick={() => setTo(share)}
+              >
+                {t("experiments.v8.save")}
+              </Button>
+              {shareDirty && (
                 <Button
                   size="sm"
-                  disabled={!shareDirty || pending}
-                  onClick={() => setTo(share)}
+                  variant="ghost"
+                  disabled={pending}
+                  onClick={() => setShare(row.share)}
                 >
-                  {t("experiments.v8.save")}
-                </Button>
-                {shareDirty && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    disabled={pending}
-                    onClick={() => setShare(row.share)}
-                  >
-                    {t("experiments.v8.split.reset", {
-                      share: String(row.share),
-                    })}
-                  </Button>
-                )}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {t("experiments.v8.shareHint")}
-              </p>
-              {row.publishedShare !== undefined && (
-                <p className="text-xs text-muted-foreground">
-                  {t("experiments.v8.publishedShare", {
-                    share: String(row.publishedShare),
+                  {t("experiments.v8.split.reset", {
+                    share: String(row.share),
                   })}
-                </p>
+                </Button>
               )}
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={pending || row.share === 0}
-                  onClick={() => setTo(0)}
-                >
-                  {t("experiments.v8.turnOff")}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={pending || row.share === 100}
-                  onClick={() => setTo(100)}
-                >
-                  {t("experiments.v8.showEveryone")}
-                </Button>
-              </div>
-            </section>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {t("experiments.v8.shareHint")}
+            </p>
+            {row.publishedShare !== undefined && (
+              <p className="text-xs text-muted-foreground">
+                {t("experiments.v8.publishedShare", {
+                  share: String(row.publishedShare),
+                })}
+              </p>
+            )}
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={pending || row.share === 0}
+                onClick={() => setTo(0)}
+              >
+                {t("experiments.v8.turnOff")}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={pending || row.share === 100}
+                onClick={() => setTo(100)}
+              >
+                {t("experiments.v8.showEveryone")}
+              </Button>
+            </div>
+          </section>
 
-            <NamedRuleRenameSection
-              kind="experiments"
-              id="experiment-name"
-              rename={rename}
-              pending={pending}
-              wholeUses={wholeRows.length}
-              locked={
-                canRenameExperiment(row.share) ? undefined : (
-                  <p
-                    className="text-xs text-muted-foreground"
-                    data-testid="experiment-name-locked"
-                  >
-                    {t("experiments.v8.nameLocked")}
-                  </p>
-                )
-              }
-            />
+          <NamedRuleRenameSection
+            kind="experiments"
+            id="experiment-name"
+            rename={rename}
+            pending={pending}
+            wholeUses={wholeRows.length}
+            locked={
+              canRenameExperiment(row.share) ? undefined : (
+                <p
+                  className="text-xs text-muted-foreground"
+                  data-testid="experiment-name-locked"
+                >
+                  {t("experiments.v8.nameLocked")}
+                </p>
+              )
+            }
+          />
 
-            <NamedRuleUsedBy
-              kind="experiments"
-              rows={useRows}
-              wholeRows={wholeRows}
-              loading={!uses}
-              marked={!!uses?.published}
-              onOpen={onOpenUse}
-            />
-          </div>
-        </Page.Container>
+          <NamedRuleUsedBy
+            kind="experiments"
+            rows={useRows}
+            wholeRows={wholeRows}
+            loading={!uses}
+            marked={!!uses?.published}
+            onOpen={onOpenUse}
+          />
+        </div>
       </Page.Content>
     </Page>
   );
