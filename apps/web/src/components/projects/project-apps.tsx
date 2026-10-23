@@ -4,6 +4,7 @@ import {
   ClockRewind,
   BarChartSquare02,
   BezierCurve02,
+  Calendar,
   FileSearch02,
   FlipBackward,
   Image01,
@@ -93,6 +94,12 @@ const APPS: Record<
     Icon: BezierCurve02,
     to: PROJECT_ROUTE.experiments,
     tone: "bg-chart-1/15 text-chart-1",
+  },
+  calendar: {
+    labelKey: "projects.apps.calendar",
+    Icon: Calendar,
+    to: PROJECT_ROUTE.calendar,
+    tone: "bg-chart-5/15 text-chart-5",
   },
 };
 

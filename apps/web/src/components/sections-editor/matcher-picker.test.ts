@@ -69,6 +69,68 @@ describe("extractMatchers", () => {
     );
   });
 
+  it("lists a next-major site's matchers once, by readable names", () => {
+    const meta = {
+      ...metaWithBlocks({
+        matchers: {
+          device: { title: "Device", description: "By device" },
+          always: { title: "always", description: "Always true" },
+          never: { title: "never", description: "Always false: hides a block" },
+          campaign: {
+            title: "campaign",
+            description: "True while the named campaign runs",
+          },
+          "website/matchers/always.ts": { title: "website/matchers/always.ts" },
+          "website/matchers/never.ts": {
+            title: "website/matchers/never.ts",
+            description: "Always false: hides a block",
+          },
+        },
+      }),
+      aliases: {
+        "website/matchers/always.ts": "always",
+        "website/matchers/never.ts": "never",
+      },
+      blocksMajor: 8,
+    } as LiveMeta;
+
+    expect(extractMatchers(meta).map((m) => [m.resolveType, m.title])).toEqual([
+      ["device", "Device"],
+      ["never", "Never"],
+      ["campaign", "Campaign"],
+    ]);
+  });
+
+  it("v7 (no Blocks v8 schema): titles and aliases as main read them", () => {
+    const meta = {
+      ...metaWithBlocks({
+        matchers: {
+          never: { title: "never" },
+          "website/matchers/never.ts": { title: "" },
+        },
+      }),
+      aliases: { "website/matchers/never.ts": "never" },
+    } as LiveMeta;
+    expect(extractMatchers(meta).map((m) => [m.resolveType, m.title])).toEqual([
+      ["never", "never"],
+      ["website/matchers/never.ts", ""],
+    ]);
+  });
+
+  it("keeps a v7 matcher name when the schema has no short name for it", () => {
+    const meta = {
+      ...metaWithBlocks({
+        "website/matchers": {
+          "website/matchers/never.ts": { title: "Never" },
+        },
+      }),
+      aliases: { "website/matchers/never.ts": "never" },
+    } as LiveMeta;
+    expect(extractMatchers(meta).map((m) => m.resolveType)).toEqual([
+      "website/matchers/never.ts",
+    ]);
+  });
+
   it("dedupes a matcher registered under more than one block-type group", () => {
     const meta = metaWithBlocks({
       matchers: {
