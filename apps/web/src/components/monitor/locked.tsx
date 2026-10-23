@@ -570,18 +570,17 @@ export function ExperimentsPreview({
   );
 }
 
-/** A week of gently rising traffic, made up for the faded background. */
+/** A day of traffic by the hour, quiet at night, made up for the faded background. */
 function previewTimeline(scale: number, lift: number): TimelinePoint[] {
-  return Array.from({ length: 7 }, (_, i) => {
-    const requests = Math.round(
-      scale * (1 + lift * i + (i % 2) * 0.05 + (i === 5 ? 0.12 : 0)),
-    );
+  return Array.from({ length: 24 }, (_, hour) => {
+    const daylight = Math.max(0.15, Math.sin(((hour - 5) / 24) * Math.PI * 2));
+    const requests = Math.round(scale * daylight * (1 + lift * (hour % 3)));
     return {
-      bucket: `2026-01-0${i + 1}`,
+      bucket: `2026-01-01 ${String(hour).padStart(2, "0")}:00:00`,
       requests,
       pageviews: Math.round(requests / 26),
       bandwidth_bytes: requests * 28_000,
-      cache_hit_ratio: 0.84 + i * 0.006,
+      cache_hit_ratio: 0.82 + daylight * 0.06,
     };
   });
 }
@@ -623,12 +622,12 @@ function previewSite(
 }
 
 const PREVIEW_SITES = [
-  previewSite("Site", 690_000, 0.04),
-  previewSite("App", 245_000, 0.02),
-  previewSite("Blog", 60_000, 0.01),
+  previewSite("Site", 42_000, 0.06),
+  previewSite("App", 15_000, 0.04),
+  previewSite("Blog", 3_800, 0.02),
 ];
 
-const PREVIEW_ANALYTICS: SitesMonitorData = {
+const PREVIEW_ANALYTICS: Omit<SitesMonitorData, "currentLabel"> = {
   summary: sumSummaries(PREVIEW_SITES.map((s) => s.summary)),
   previous: sumSummaries(
     PREVIEW_SITES.flatMap((s) => (s.previous ? [s.previous] : [])),
@@ -639,5 +638,10 @@ const PREVIEW_ANALYTICS: SitesMonitorData = {
 };
 
 export function AnalyticsPreview() {
-  return <SitesMonitor data={PREVIEW_ANALYTICS} />;
+  const t = useT();
+  return (
+    <SitesMonitor
+      data={{ ...PREVIEW_ANALYTICS, currentLabel: t("monitor.chart.today") }}
+    />
+  );
 }

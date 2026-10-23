@@ -232,7 +232,16 @@ export function ExperimentsView({ scopeId }: { scopeId: string | null }) {
 }
 
 /** A site's Monitor (CDN traffic and audience), gated as its own route is. */
-export function AnalyticsView({ scopeId }: { scopeId: string | null }) {
+export function AnalyticsView({
+  scopeId,
+  date,
+  onDate,
+}: {
+  scopeId: string | null;
+  /** The org view's day, shared with Metrics' picker (`YYYY-MM-DD`). */
+  date: string;
+  onDate: (date: string) => void;
+}) {
   const views = useControlPlaneViews();
   const config = usePublicConfig();
   return (
@@ -244,7 +253,9 @@ export function AnalyticsView({ scopeId }: { scopeId: string | null }) {
       }
       empty="analytics"
       render={(id) => <CdnTab virtualMcpId={id} />}
-      org={(projects) => <OrgAnalytics projects={projects} />}
+      org={(projects) => (
+        <OrgAnalytics projects={projects} date={date} onDate={onDate} />
+      )}
     />
   );
 }

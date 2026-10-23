@@ -1,7 +1,7 @@
 /**
- * Site traffic across the org, laid out like the Metrics board: pageviews as
- * the headline chart, then requests, bandwidth and cache hits, each against
- * the period before, then one row per site. The org's Analytics draws it from
+ * Site traffic across the org, laid out like the Metrics board: one day's
+ * pageviews as the headline chart, then requests, bandwidth and cache hits,
+ * each against the same day a week before, then one row per site. The org's Analytics draws it from
  * every site's Monitor numbers; the locked tab draws it from preview numbers,
  * faded.
  */
@@ -50,13 +50,15 @@ export interface SiteUsage {
   name: ReactNode;
   summary: CdnSummary;
   previous: CdnSummary | null;
-  /** Pageviews per bucket, this period and the one before. */
+  /** Pageviews per bucket, this day and the same day a week before. */
   series: readonly number[];
   previousSeries: readonly number[];
   link?: LinkProps;
 }
 
 export interface SitesMonitorData {
+  /** What the plotted day is called, e.g. "Today" or "Oct 21". */
+  currentLabel: string;
   summary: CdnSummary;
   previous: CdnSummary | null;
   timeline: readonly TimelinePoint[];
@@ -250,11 +252,13 @@ function TrendPlot({
   id,
   timeline,
   previousTimeline,
+  currentLabel,
   tall,
 }: {
   id: CardId;
   timeline: readonly TimelinePoint[];
   previousTimeline: readonly TimelinePoint[];
+  currentLabel: string;
   tall: boolean;
 }) {
   const t = useT();
@@ -276,11 +280,11 @@ function TrendPlot({
       className={cn("w-full", tall ? "h-[150px] md:h-[170px]" : "h-[110px]")}
       config={{
         value: {
-          label: t("monitor.orgAnalytics.current"),
+          label: currentLabel,
           color: COLOR_CURRENT,
         },
         reference: {
-          label: t("monitor.orgAnalytics.previous"),
+          label: t("monitor.compare.w1"),
           color: COLOR_PREVIOUS,
         },
       }}
@@ -323,8 +327,8 @@ function TrendPlot({
                 <span className="flex w-full items-center justify-between gap-3">
                   <span className="text-muted-foreground">
                     {name === "reference"
-                      ? t("monitor.orgAnalytics.previous")
-                      : t("monitor.orgAnalytics.current")}
+                      ? t("monitor.compare.w1")
+                      : currentLabel}
                   </span>
                   <span className="tnum text-foreground">
                     {formatCard(id, Number(value))}
@@ -360,6 +364,26 @@ function TrendPlot({
   );
 }
 
+/**
+ * The card's figure for the week before, over the hours the day on screen has
+ * so far: a day still running is held against the same hours, not a whole day.
+ */
+function previousValue(id: CardId, data: SitesMonitorData): number | null {
+  if (data.timeline.length === 0) {
+    return data.previous ? cardValue(id, data.previous) : null;
+  }
+  const hours = data.previousTimeline.slice(0, data.timeline.length);
+  if (hours.length === 0) return null;
+  if (id === "cache") {
+    const requests = hours.reduce((n, p) => n + p.requests, 0);
+    return requests === 0
+      ? null
+      : hours.reduce((n, p) => n + p.cache_hit_ratio * p.requests, 0) /
+          requests;
+  }
+  return hours.reduce((n, p) => n + pointValue(id, p), 0);
+}
+
 function TrafficCard({
   id,
   data,
@@ -378,13 +402,10 @@ function TrafficCard({
       value={formatCard(id, value)}
       caption={
         <Trend
-          change={relativeChange(
-            value,
-            data.previous ? cardValue(id, data.previous) : null,
-          )}
+          change={relativeChange(value, previousValue(id, data))}
           better={BETTER[id]}
           reference={t("monitor.compare.vs", {
-            ref: t("monitor.orgAnalytics.previousShort"),
+            ref: t("monitor.compare.w1"),
           })}
         />
       }
@@ -394,6 +415,7 @@ function TrafficCard({
           id={id}
           timeline={data.timeline}
           previousTimeline={data.previousTimeline}
+          currentLabel={data.currentLabel}
           tall={tall}
         />
       )}
@@ -444,7 +466,12 @@ function SitesTable({ sites }: { sites: readonly SiteUsage[] }) {
                     <Change
                       change={relativeChange(
                         site.summary.pageviews,
-                        site.previous?.pageviews ?? null,
+                        // Over the same hours, as the cards compare.
+                        site.previousSeries.length > 0
+                          ? site.previousSeries
+                              .slice(0, site.series.length)
+                              .reduce((n, v) => n + v, 0)
+                          : (site.previous?.pageviews ?? null),
                       )}
                       better="up"
                     />

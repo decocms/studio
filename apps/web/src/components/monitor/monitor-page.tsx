@@ -47,7 +47,7 @@ import {
   MonitorTabs,
   type MonitorView,
 } from "./monitor-views";
-import { connectLink } from "./parts";
+import { connectLink, localDay } from "./parts";
 import { Locked } from "./locked";
 import { MonitoredRepos } from "./monitored-repos";
 import { ProjectsTable } from "./projects-table";
@@ -65,10 +65,6 @@ export interface MonitorSelection {
   store?: string;
   at?: string;
 }
-
-/** Local `YYYY-MM-DD` of a moment. */
-const localDay = (d: Date) =>
-  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
 /** What the board's controls change: which day, and whether deploys are drawn. */
 interface BoardControls {
@@ -317,7 +313,16 @@ export function MonitorPage({
     return (
       <>
         {tabs}
-        <AnalyticsView scopeId={scopeId} />
+        <AnalyticsView
+          scopeId={scopeId}
+          date={selection.date ?? localDay(new Date())}
+          onDate={(date) =>
+            onSelect({
+              ...selection,
+              date: date === localDay(new Date()) ? undefined : date,
+            })
+          }
+        />
       </>
     );
   }

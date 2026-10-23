@@ -5,11 +5,11 @@
  * the org's view of them.
  */
 
-import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQueries } from "@tanstack/react-query";
 import { Card } from "@decocms/ui/components/card.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
+import { DayInput } from "@/components/order-monitor/order-monitor-day";
 import { Page } from "@/components/page";
 import { ProjectIcon } from "@/components/project-icon";
 import { type Experiment, experimentsQuery } from "@/hooks/use-experiments";
@@ -17,20 +17,13 @@ import { useT } from "@/i18n/use-t.ts";
 import { KEYS } from "@/lib/query-keys";
 import { useStudioTools } from "@/lib/studio-tools";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@decocms/ui/components/select.tsx";
-import {
   type CdnSummary,
   fetchJson,
   type TimelinePoint,
 } from "@/layouts/main-panel-tabs/cdn-tab";
 import { ExperimentRow } from "@/layouts/main-panel-tabs/experiments-tab";
 import { useProjectContext } from "@/sdk";
-import { connectLink, projectLink } from "./parts";
+import { connectLink, localDay, projectLink } from "./parts";
 import {
   AnalyticsGuide,
   AnalyticsPreview,
@@ -169,34 +162,16 @@ export function OrgExperiments({
 
 // --- analytics ---------------------------------------------------------------
 
-/** The presets the org reads, as the site Monitor names them. */
-const RANGES = ["today", "yesterday", "7d", "14d", "30d", "90d"] as const;
-type Range = (typeof RANGES)[number];
+const DAY_MS = 86_400_000;
 
-/** Calendar days each preset spans, and how far its last day sits before today. */
-const WINDOW: Record<Range, { days: number; endOffset: number }> = {
-  today: { days: 1, endOffset: 0 },
-  yesterday: { days: 1, endOffset: 1 },
-  "7d": { days: 7, endOffset: 0 },
-  "14d": { days: 14, endOffset: 0 },
-  "30d": { days: 30, endOffset: 0 },
-  "90d": { days: 90, endOffset: 0 },
-};
+/** The same weekday a week before, as Metrics compares against. */
+const weekBefore = (date: string) =>
+  new Date(Date.parse(`${date}T00:00:00Z`) - 7 * DAY_MS)
+    .toISOString()
+    .slice(0, 10);
 
-const isoDay = (d: Date) => d.toISOString().slice(0, 10);
-
-/**
- * The same number of days just before the preset's window, as a custom range.
- * Dates are UTC, as the Monitor's own windows are.
- */
-function previousWindow(range: Range): string {
-  const { days, endOffset } = WINDOW[range];
-  const until = new Date();
-  until.setUTCDate(until.getUTCDate() - endOffset - days);
-  const since = new Date(until);
-  since.setUTCDate(since.getUTCDate() - (days - 1));
-  return `&since=${isoDay(since)}&until=${isoDay(until)}`;
-}
+/** One calendar day, read hourly. */
+const oneDay = (date: string) => `&since=${date}&until=${date}`;
 
 /** One site's Performance read, as the project's Monitor reads it. */
 function monitorQuery(
@@ -219,77 +194,40 @@ function monitorQuery(
   };
 }
 
-function RangeSelect({
-  value,
-  onChange,
-}: {
-  value: Range;
-  onChange: (range: Range) => void;
-}) {
-  const t = useT();
-  const label = (range: Range) => {
-    switch (range) {
-      case "today":
-        return t("mainPanelTabs.cdnTab.today");
-      case "yesterday":
-        return t("mainPanelTabs.cdnTab.yesterday");
-      case "7d":
-        return t("mainPanelTabs.cdnTab.last7d");
-      case "14d":
-        return t("mainPanelTabs.cdnTab.last14d");
-      case "30d":
-        return t("mainPanelTabs.cdnTab.last30d");
-      case "90d":
-        return t("mainPanelTabs.cdnTab.last90d");
-      default: {
-        const unhandled: never = range;
-        return unhandled;
-      }
-    }
-  };
-  return (
-    <Select value={value} onValueChange={(next) => onChange(next as Range)}>
-      <SelectTrigger size="sm" className="w-[140px]">
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        {RANGES.map((range) => (
-          <SelectItem key={range} value={range}>
-            {label(range)}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  );
-}
-
 const asSummary = (data: unknown) => (data ?? null) as CdnSummary | null;
 const asTimeline = (data: unknown) =>
   Array.isArray(data) ? (data as TimelinePoint[]) : [];
 
 /**
  * Every site's Monitor at once, laid out like the Metrics board: the same
- * Performance numbers summed, against the period before. Only sites the CDN
+ * Performance numbers summed, for the day Metrics is on, against the same
+ * day a week before. Only sites the CDN
  * reports for count; a project that is not a deco site simply has none, so it
  * never shows as a gap.
  */
 export function OrgAnalytics({
   projects,
+  date,
+  onDate,
 }: {
   projects: readonly SiteProject[];
+  date: string;
+  onDate: (date: string) => void;
 }) {
   const t = useT();
   const { org } = useProjectContext();
-  const [range, setRange] = useState<Range>("7d");
-  const before = previousWindow(range);
+  const today = localDay(new Date());
   const bases = projects.map(
     (p) => `/api/${org.slug}/monitor/${encodeURIComponent(p.analyticsSite)}`,
   );
   const read = (view: "summary" | "timeline", previous: boolean) =>
     bases.map((base) =>
-      previous
-        ? monitorQuery(base, view, "custom", before)
-        : monitorQuery(base, view, range, ""),
+      monitorQuery(
+        base,
+        view,
+        "custom",
+        oneDay(previous ? weekBefore(date) : date),
+      ),
     );
   const summaries = useQueries({ queries: read("summary", false) });
   const timelines = useQueries({ queries: read("timeline", false) });
@@ -315,7 +253,7 @@ export function OrgAnalytics({
 
   const actions = (
     <Page.Actions>
-      <RangeSelect value={range} onChange={setRange} />
+      <DayInput value={date} max={today} onChange={onDate} />
     </Page.Actions>
   );
 
@@ -349,6 +287,13 @@ export function OrgAnalytics({
       {actions}
       <SitesMonitor
         data={{
+          currentLabel:
+            date === today
+              ? t("monitor.chart.today")
+              : new Date(`${date}T00:00:00`).toLocaleDateString(undefined, {
+                  day: "numeric",
+                  month: "short",
+                }),
           summary: sumSummaries(sites.map((s) => s.summary)),
           previous,
           timeline: sumTimelines(sites.map((s) => s.timeline)),

@@ -127,6 +127,10 @@ export function projectLink(
 }
 
 /** Sources connect from the project's connect flow, or from Context at org scope. */
+/** Local `YYYY-MM-DD` of a moment. */
+export const localDay = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
 export function connectLink(
   orgSlug: string,
   scopeId: string | null,
