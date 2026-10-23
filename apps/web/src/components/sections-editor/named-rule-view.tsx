@@ -42,7 +42,7 @@ import {
 } from "./named-rules";
 import type { LiveMeta } from "./resolve-schema";
 import { planNamedRuleRename } from "./rule-references";
-import { SITE_EDITOR_SAVE_TOAST } from "./site-editor-toast";
+import { SAVE_TOAST } from "./site-editor-toast";
 import {
   type NamedRuleApplyOutcome,
   type NamedRuleChange,
@@ -149,7 +149,7 @@ export function useNamedRuleView(
     const outcome = await apply(change);
     if (outcome.ok) {
       toast.success(title, {
-        id: SITE_EDITOR_SAVE_TOAST,
+        ...SAVE_TOAST,
         description: t("sectionsEditor.namedRules.savedHint"),
       });
     }
@@ -169,7 +169,7 @@ export function useNamedRuleView(
         plan.problem === "conflict"
           ? t("sectionsEditor.namedRules.changedMeanwhile")
           : nameProblemMessage(t, plan.problem),
-        { id: SITE_EDITOR_SAVE_TOAST },
+        SAVE_TOAST,
       );
       return;
     }

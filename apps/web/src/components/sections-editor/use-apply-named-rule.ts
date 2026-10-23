@@ -15,7 +15,7 @@ import {
   decofileWriteScope,
 } from "./decofile-api";
 import { isSaveConflict } from "./serve-save-error";
-import { SITE_EDITOR_SAVE_TOAST, toastSaveError } from "./site-editor-toast";
+import { SAVE_TOAST, toastSaveError } from "./site-editor-toast";
 import { useContentBackend } from "./use-content-backend";
 import { useDecofileCacheKey } from "./use-decofile";
 import { applyMoveToDecofile } from "./use-move-blocks";
@@ -132,7 +132,7 @@ export function useApplyNamedRule({
       );
     }
     toast.info(t("sectionsEditor.namedRules.changedMeanwhile"), {
-      id: SITE_EDITOR_SAVE_TOAST,
+      ...SAVE_TOAST,
       description: t("sectionsEditor.namedRules.changedMeanwhileHint"),
     });
     return { ok: false, reason: "changed" } as const;
@@ -143,7 +143,7 @@ export function useApplyNamedRule({
   ): Promise<NamedRuleApplyOutcome> => {
     if (!protocol) {
       toast.info(t("sectionsEditor.namedRules.unavailable"), {
-        id: SITE_EDITOR_SAVE_TOAST,
+        ...SAVE_TOAST,
         description: t("sectionsEditor.namedRules.unavailableHint"),
       });
       return { ok: false, reason: "unavailable" };
@@ -230,7 +230,7 @@ export function useApplyNamedRule({
     const fresh = await reread();
     if (!fresh) {
       toast.info(t("sectionsEditor.namedRules.unavailable"), {
-        id: SITE_EDITOR_SAVE_TOAST,
+        ...SAVE_TOAST,
         description: t("sectionsEditor.namedRules.unavailableHint"),
       });
       return null;
@@ -238,7 +238,7 @@ export function useApplyNamedRule({
     const change = plan(fresh);
     if (!change) {
       toast.info(t("sectionsEditor.namedRules.changedMeanwhile"), {
-        id: SITE_EDITOR_SAVE_TOAST,
+        ...SAVE_TOAST,
         description: t("sectionsEditor.namedRules.changedMeanwhileHint"),
       });
     }

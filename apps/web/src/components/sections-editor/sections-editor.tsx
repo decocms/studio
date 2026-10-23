@@ -89,7 +89,7 @@ import { MakeReusableModal } from "./make-reusable-modal";
 import {
   errorDetail,
   errorDetailsDescription,
-  SITE_EDITOR_SAVE_TOAST,
+  SAVE_TOAST,
 } from "./site-editor-toast";
 import {
   inlineDateWindow,
@@ -2725,7 +2725,7 @@ export function SectionsEditor({
           pick.kind === "experiments"
             ? t("sectionsEditor.namedRulePicker.conflictTests")
             : t("sectionsEditor.namedRulePicker.conflictCampaigns"),
-          { id: SITE_EDITOR_SAVE_TOAST },
+          SAVE_TOAST,
         );
       }
       return null;
@@ -2753,7 +2753,7 @@ export function SectionsEditor({
               name: pick.name.trim(),
             }),
         {
-          id: SITE_EDITOR_SAVE_TOAST,
+          ...SAVE_TOAST,
           description: t("sectionsEditor.namedRulePicker.createdHint"),
         },
       );

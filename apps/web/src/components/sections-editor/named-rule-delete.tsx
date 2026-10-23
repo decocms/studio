@@ -20,10 +20,7 @@ import { namedRuleUseCounts } from "./named-rule-uses";
 import { namedRuleUsePlaces } from "./named-rule-use-copy";
 import { type NamedRuleKind, readNamedRuleBlock } from "./named-rules";
 import type { LiveMeta } from "./resolve-schema";
-import {
-  SITE_EDITOR_SAVE_TOAST,
-  SITE_EDITOR_UNDO_TOAST,
-} from "./site-editor-toast";
+import { SAVE_TOAST, SITE_EDITOR_UNDO_TOAST } from "./site-editor-toast";
 import type {
   NamedRuleApplyOutcome,
   NamedRuleChange,
@@ -61,7 +58,7 @@ export function NamedRuleDeleteButton({
     const fresh = await reread();
     if (!fresh) {
       toast.info(t("sectionsEditor.namedRules.unavailable"), {
-        id: SITE_EDITOR_SAVE_TOAST,
+        ...SAVE_TOAST,
         description: t("sectionsEditor.namedRules.unavailableHint"),
       });
     }
@@ -84,7 +81,7 @@ export function NamedRuleDeleteButton({
         ? t("sectionsEditor.namedRules.changedMeanwhile")
         : t("sectionsEditor.namedRules.alreadyBack"),
       {
-        id: SITE_EDITOR_SAVE_TOAST,
+        ...SAVE_TOAST,
         description: conflict
           ? t("sectionsEditor.namedRules.changedMeanwhileHint")
           : t("sectionsEditor.namedRules.alreadyBackHint"),
