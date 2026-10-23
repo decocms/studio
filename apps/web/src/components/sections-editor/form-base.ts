@@ -20,10 +20,12 @@ export function sectionFormSource(
   parsed: ParsedSection | undefined,
   variantIndex: number,
   decofile: Record<string, unknown>,
+  /** A Blocks v8 site (unwrapSection). */
+  v8: boolean,
 ): Record<string, unknown> | null {
   if (!raw || !parsed) return null;
   if (!parsed.isMultivariate) {
-    return unwrapSection(raw, parsed, decofile)?.data ?? null;
+    return unwrapSection(raw, parsed, decofile, v8)?.data ?? null;
   }
   const mvObj = getMultivariateSectionObject(raw, parsed);
   const variant = mvObj

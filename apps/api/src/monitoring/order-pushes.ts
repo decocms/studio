@@ -13,6 +13,7 @@ import {
   evictExpiredTtlCacheEntries,
   refreshTtlCacheEntry,
 } from "@/core/ttl-lru-cache";
+import { mapBounded } from "@decocms/shared/std";
 import type { StudioContext } from "@/core/studio-context";
 import { insightsClientForRepository } from "@/git-providers/clients";
 import { MAX_COMMIT_PAGE, type RepoCommit } from "@/git-providers/insights";
@@ -136,4 +137,78 @@ export async function listPushes(
     }),
   );
   return { repos: repos.filter((r) => r !== null) };
+}
+
+/** How far back the Monitor's Deploys tab reads, and how many repos it reads at once. */
+const DEPLOY_WINDOW_MS = 14 * DAY_MS;
+const DEPLOY_REPO_CONCURRENCY = 4;
+
+export interface RepositoryPush {
+  repositoryId: string;
+  repositoryPath: string;
+  push: OrderMonitorPush;
+}
+
+/**
+ * The org's monitored repositories' pushes over the last two weeks, newest
+ * first. A push is the commits of one 15-minute bucket, as on the order charts.
+ */
+// ponytail: a merge commit brings its branch's commits at their own dates, so they land as earlier pushes; read merged change requests instead if that misleads.
+export async function listRecentPushes(
+  ctx: StudioContext,
+  organizationId: string,
+): Promise<RepositoryPush[]> {
+  const repositories = (
+    await ctx.storage.repositories.listByOrg(organizationId)
+  ).filter((r) => r.monitorDeploys);
+  const since = new Date(Date.now() - DEPLOY_WINDOW_MS);
+  const perRepo = await mapBounded(
+    repositories,
+    DEPLOY_REPO_CONCURRENCY,
+    async (repository) => {
+      try {
+        const commits = await recentCommits(ctx, repository, since);
+        return toMarkers(commits, "UTC").map((push) => ({
+          repositoryId: repository.id,
+          repositoryPath: repository.path,
+          push,
+        }));
+      } catch (err) {
+        console.warn(
+          `[monitor] commits of repository ${repository.id} unavailable: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        return [];
+      }
+    },
+  );
+  return perRepo.flat().sort((a, b) => b.push.time.localeCompare(a.push.time));
+}
+
+const recentCache = new Map<string, { value: RepoCommit[]; at: number }>();
+
+async function recentCommits(
+  ctx: StudioContext,
+  repository: RepositoryRecord,
+  since: Date,
+): Promise<RepoCommit[]> {
+  const key = `${repository.organizationId}:${repository.id}`;
+  const hit = recentCache.get(key);
+  if (hit && Date.now() - hit.at < TODAY_TTL_MS) return hit.value;
+  const client = await insightsClientForRepository(ctx, repository);
+  const commits: RepoCommit[] = [];
+  let cursor: string | null = null;
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const result = await client.listCommits({
+      ref: repository.defaultBranch ?? undefined,
+      since: since.toISOString(),
+      cursor,
+      limit: MAX_COMMIT_PAGE,
+    });
+    commits.push(...result.items);
+    cursor = result.nextCursor;
+    if (!cursor) break;
+  }
+  refreshTtlCacheEntry(recentCache, key, commits);
+  evictExpiredTtlCacheEntries(recentCache, CACHE_MAX_SIZE, TODAY_TTL_MS);
+  return commits;
 }

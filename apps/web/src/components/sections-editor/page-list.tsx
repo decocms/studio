@@ -4,6 +4,7 @@ import {
   resolveBlockSchemaMetadata,
   type LiveMeta,
 } from "./resolve-schema";
+import { isPageResolveType } from "./page-types";
 import { normalizePagePath } from "./page-path-utils";
 import {
   listSavedSectionBlocks,
@@ -110,25 +111,6 @@ export function findPageForPath(
 
   if (matches.length === 1) return matches[0] ?? null;
   return [...matches].sort((a, b) => a.key.localeCompare(b.key))[0] ?? null;
-}
-
-const PAGE_RESOLVE_TYPES = new Set([
-  "website/pages/Page.tsx",
-  "$live/pages/LivePage.tsx",
-]);
-
-/**
- * A page block type: one in the manifest's `pages` group (the built-in `page`
- * and route blocks like `post`), or a legacy page type when there's no schema.
- */
-function isPageResolveType(
-  resolveType: string,
-  meta: LiveMeta | null | undefined,
-): boolean {
-  return (
-    PAGE_RESOLVE_TYPES.has(resolveType) ||
-    Object.hasOwn(meta?.manifest?.blocks?.pages ?? {}, resolveType)
-  );
 }
 
 /** Canonical decofile block id for the site app (matches admin `SITE_APP_ID`). */

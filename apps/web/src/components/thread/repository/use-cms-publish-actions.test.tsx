@@ -43,6 +43,8 @@ import {
   pollProtocolContent,
 } from "@/components/sections-editor/content-protocol-api";
 import { decofileWriteScope } from "@/components/sections-editor/decofile-api";
+import { blocksUsingMissingNamedRules } from "@/components/sections-editor/named-rule-uses";
+import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 import {
   blockKeyFromDiffPath,
   type PublishChange,
@@ -652,6 +654,77 @@ describe("useCmsPublishActions on a hosted v8 site", () => {
       phase: "idle",
       inFlight: 0,
     });
+  });
+});
+
+describe("useCmsPublishActions: a discard is never blocked", () => {
+  const builtIn = { $ref: "#/definitions/x", namespace: "deco" };
+  const meta = {
+    blocksMajor: 8,
+    manifest: {
+      blocks: {
+        matchers: { always: builtIn, campaign: builtIn, experiment: builtIn },
+        loaders: { multivariate: builtIn, lazy: builtIn },
+        content: { "split-traffic": builtIn, calendar: builtIn },
+        pages: { page: builtIn },
+      },
+    },
+    schema: {},
+  } as unknown as LiveMeta;
+  const promoPage = {
+    __resolveType: "page",
+    name: "Promo",
+    path: "/promo",
+    sections: {
+      __resolveType: "multivariate",
+      variants: [
+        {
+          rule: { __resolveType: "always" },
+          value: { __resolveType: "lazy", value: [] },
+        },
+        {
+          rule: { __resolveType: "experiment", name: "promo" },
+          value: { __resolveType: "lazy", value: [] },
+        },
+      ],
+    },
+  };
+  const testsEntry = { name: "experiments", version: "v-experiments" };
+  const testsChange = {
+    name: "A/B tests",
+    filepaths: [],
+    entry: testsEntry,
+  } as unknown as PublishChange;
+
+  it("discarding only the A/B tests change a page uses goes through, and the page is flagged", async () => {
+    const { backend } = hostedBackend();
+    server.main = {
+      experiments: { __resolveType: "split-traffic", hero: 50 },
+    };
+    server.draft.set = {
+      experiments: { __resolveType: "split-traffic", hero: 50, promo: 20 },
+      "pages-promo": promoPage,
+    };
+    await mountPolledBlocks(backend);
+    expect(blocksUsingMissingNamedRules(editorBlocks()!, meta).size).toBe(0);
+    const { result } = render(backend, {
+      hosted: true,
+      entries: [testsEntry, { name: "pages-promo", version: "v-pages-promo" }],
+    });
+    await act(() => result.current.discardChange(testsChange));
+    await act(settle);
+    expect(server.discardCalls).toEqual([
+      { names: ["experiments"], ifMatch: { experiments: "v-experiments" } },
+    ]);
+    expect(toasts).toEqual([{ kind: "success", message: expect.any(String) }]);
+    // The page still names "promo", which the draft no longer has.
+    expect(editorBlocks()).toEqual({
+      experiments: { __resolveType: "split-traffic", hero: 50 },
+      "pages-promo": promoPage,
+    });
+    expect([...blocksUsingMissingNamedRules(editorBlocks()!, meta)]).toEqual([
+      ["pages-promo", ["experiments"]],
+    ]);
   });
 });
 
