@@ -128,6 +128,12 @@ export interface PublishDialogProps {
   openPullRequest?: PrSummary | null;
   onPullRequestChanged?: () => void | Promise<void>;
   onPublished?: () => void | Promise<void>;
+  /**
+   * A hosted v8 site whose visitors see an older release than main's (a
+   * Publish whose release failed): with nothing listed, Publish still makes
+   * the saved changes live.
+   */
+  notLive?: boolean;
 }
 
 export function PublishDialog(props: PublishDialogProps) {
@@ -657,6 +663,7 @@ function CmsPublishView({
   openPullRequest = null,
   onPullRequestChanged,
   onPublished,
+  notLive: releaseBehind = false,
 }: CmsPublishContentProps & { source: PublishSource }) {
   const t = useT();
   const [{ language }] = usePreferences();
@@ -793,8 +800,11 @@ function CmsPublishView({
   const isDiscarding =
     useContentSyncState(orgSlug, virtualMcpId).phase === "saving";
 
-  /** Changes to publish: the listed ones, or a v8 sandbox's other work. */
-  const hasWork = summary.count > 0 || otherWork;
+  /** Saved, nothing listed, but not live yet: Publish makes main live. */
+  const notLive = hosted && releaseBehind && summary.count === 0;
+  /** Changes to publish: the listed ones, a v8 sandbox's other work, or a
+   *  hosted site's saved changes that aren't live yet. */
+  const hasWork = summary.count > 0 || otherWork || notLive;
   const canSubmit = !isPublishing && hasWork && (isReview || gate.allowed);
 
   const headerTitle = isReview
@@ -805,7 +815,9 @@ function CmsPublishView({
         : t("thread.publishPopover.submitCountForReview", {
             count: summary.count,
           })
-    : publishTitle(summary.count, baseBranch, !!source.v8, t);
+    : notLive
+      ? t("thread.publishPopover.notLive")
+      : publishTitle(summary.count, baseBranch, !!source.v8, t);
 
   /** Review mode names the PR it will update; publish mode, the last release. */
   const subLine = (() => {
@@ -940,6 +952,16 @@ function CmsPublishView({
     <p className="px-4 py-6 text-xs text-muted-foreground">
       {t("thread.publishPopover.onlyOtherWork")}
     </p>
+  ) : notLive ? (
+    <div className="flex flex-col items-center gap-1 py-10 text-center">
+      <Globe01 className="mb-1 size-5 text-muted-foreground" />
+      <p className="text-sm font-medium">
+        {t("thread.publishPopover.notLiveBody")}
+      </p>
+      <p className="text-xs text-muted-foreground">
+        {t("thread.publishPopover.notLiveHint")}
+      </p>
+    </div>
   ) : summary.count === 0 ? (
     <div className="flex flex-col items-center gap-1 py-10 text-center">
       <CheckCircle className="mb-1 size-5 text-success" />

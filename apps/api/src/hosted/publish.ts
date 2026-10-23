@@ -24,7 +24,10 @@
  * is kept. A draft that commits nothing (its changes are on main already)
  * is emptied when latest.json names main's head; when it doesn't (a failed
  * release whose "Try again" was lost), Publish releases main's head as "Try
- * again" would, and empties the draft once that is current. Steps 2–3 are
+ * again" would, and empties the draft once that is current. An empty draft
+ * (or none) does the same without a draft to empty, but only when
+ * latest.json exists and names an older commit (the editor shows "Not live
+ * yet" then). Steps 2–3 are
  * {@link releaseCommit}, shared with Reapply version (reapply.ts).
  * Every latest.json write stamps `publishedAt` now: the SDK prefers the CDN
  * only when it is later than its bundle's build time.
@@ -406,7 +409,15 @@ export async function publishDraft(
 ): Promise<PublishResult> {
   const draft = await drafts.load(ref);
   // OPEN: O-26 — nothing to publish answers the popover's existing no-changes state.
-  if (!draft) return { result: "up-to-date" };
+  // No draft, or an empty one, has nothing of its own: Publish only makes
+  // main's head live when latest.json names an older release (the editor's
+  // "Not live yet"), and leaves the draft as it is.
+  if (!draft || isEmptyDraft(draft.body)) {
+    const behind = await unreleasedMainHead(repo, { requireLatest: true });
+    if (!behind) return { result: "up-to-date" };
+    const release = await releaseCommit(repo, behind, hooks);
+    return { result: "merged", sha: behind, release };
+  }
   // Only the save that was published is emptied: a save made during the
   // publish keeps the draft (its ETag changed). Same slug, so the preview's
   // pointer keeps its address. A failure here leaves content equal to main,
@@ -425,23 +436,19 @@ export async function publishDraft(
     await emptyDraft();
     return { result: "merged", sha, release };
   };
-  const sha = isEmptyDraft(draft.body)
-    ? null
-    : await commitDraftToMain(
-        repo,
-        draft.body,
-        note.message.trim()
-          ? appendCoAuthorTrailer(note.message.trim(), note.coAuthor)
-          : decofileCommitMessage(
-              Object.keys(draft.body.set),
-              draft.body.delete,
-              note.coAuthor,
-            ),
-      );
+  const sha = await commitDraftToMain(
+    repo,
+    draft.body,
+    note.message.trim()
+      ? appendCoAuthorTrailer(note.message.trim(), note.coAuthor)
+      : decofileCommitMessage(
+          Object.keys(draft.body.set),
+          draft.body.delete,
+          note.coAuthor,
+        ),
+  );
   // Nothing committed.
   if (sha === null) {
-    // An empty draft stays as it is (nothing to write).
-    if (isEmptyDraft(draft.body)) return { result: "up-to-date" };
     // The draft's changes are all on main already. Live (latest.json names
     // main's head): the draft is emptied, latest.json left alone. Not live (a
     // Publish whose release failed, its "Try again" gone with the tab, or
@@ -461,15 +468,19 @@ export async function publishDraft(
 /**
  * Main's head when latest.json doesn't name it (not released yet), `null`
  * when it does, `undefined` when either can't be read (nothing is decided).
+ * With `requireLatest`, a site without latest.json (never published from
+ * Studio: its own build is what visitors see) is `null` too.
  */
 async function unreleasedMainHead(
   repo: HostedRepo,
+  options: { requireLatest?: boolean } = {},
 ): Promise<string | null | undefined> {
   try {
     const [head, latest] = await Promise.all([
       requireBranchHead(repo.client, repo.mainBranch),
       readLatest(repo.store, repo.site),
     ]);
+    if (!latest && options.requireLatest) return null;
     return latest?.revision === head ? null : head;
   } catch {
     return undefined;

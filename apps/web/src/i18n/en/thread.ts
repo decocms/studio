@@ -62,6 +62,9 @@ export const thread = {
   "thread.cmsActions.getLatest": "Get latest",
   "thread.cmsActions.getLatestTooltip": "Bring in new changes from production",
   "thread.cmsActions.moreActionsAriaLabel": "More actions",
+  "thread.cmsActions.notLive": "Not live yet",
+  "thread.cmsActions.notLiveTooltip":
+    "Your last changes are saved but not live yet. Publish to make them live.",
   "thread.cmsActions.publishing": "Publishing…",
   "thread.cmsActions.gettingLatest": "Getting latest…",
   "thread.cmsActions.retry": "Retry",
@@ -165,6 +168,10 @@ export const thread = {
   "thread.publishPopover.chipRemoved": "Removed",
   "thread.publishPopover.emptyHint": "Your latest changes are already live.",
   "thread.publishPopover.everythingLive": "Everything is published",
+  "thread.publishPopover.notLive": "Not live yet",
+  "thread.publishPopover.notLiveBody":
+    "Your last changes are saved but not live yet.",
+  "thread.publishPopover.notLiveHint": "Publish to make them live.",
   "thread.publishPopover.abTests": "A/B tests",
   "thread.publishPopover.campaignDates": "Campaign dates",
   "thread.publishPopover.globalSection": "Global section",

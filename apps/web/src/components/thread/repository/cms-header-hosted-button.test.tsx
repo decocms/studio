@@ -13,6 +13,7 @@ import type { TFunction } from "@/i18n/use-t.ts";
 import {
   hostedCmsHeaderButton,
   hostedHeaderState,
+  hostedReleaseBehindMain,
   selectCmsHeaderButton,
   type SelectCmsHeaderButtonInput,
 } from "./cms-panel-state";
@@ -217,5 +218,86 @@ describe("hosted v8 header state (changes.list, never git)", () => {
       branchMeta: { kind: "unknown" },
       publishableChangeCount: null,
     });
+  });
+});
+
+/**
+ * A Publish whose release failed, its "Try again" toast gone (a reload,
+ * another editor): the draft lists nothing (its changes are on main), but
+ * visitors still see an older release. The header says so calmly and offers
+ * Publish, which makes main live; v7 and a v8 sandbox never read it.
+ */
+describe("hosted v8 header: saved but not live yet", () => {
+  const page = (current: string | null, commits: string[]) => ({
+    current: current
+      ? { revision: current, schemaHash: "h", publishedAt: "t" }
+      : null,
+    commits: commits.map((sha) => ({ sha })),
+  });
+
+  test("behind only when latest.json names a commit other than main's newest", () => {
+    expect(hostedReleaseBehindMain(page("m1", ["m2", "m1"]))).toBe(true);
+    expect(hostedReleaseBehindMain(page("m2", ["m2", "m1"]))).toBe(false);
+    // Never published from Studio: its own build is what visitors see.
+    expect(hostedReleaseBehindMain(page(null, ["m2"]))).toBe(false);
+    expect(hostedReleaseBehindMain(page("m1", []))).toBe(false);
+    // Not read yet: nothing is said.
+    expect(hostedReleaseBehindMain(undefined)).toBe(false);
+  });
+
+  const hostedEmpty = (notLive: boolean, over = {}) =>
+    hostedCmsHeaderButton(
+      select({ branch: ready(), publishableChangeCount: 0, ...over }),
+      { notLive, t },
+    );
+
+  test("nothing listed and behind: Not live yet, with Publish", () => {
+    const button = hostedEmpty(true);
+    expect(button).toEqual({
+      label: en["thread.publishPopover.publish"],
+      action: "publish",
+      variant: "brand",
+      tooltip: en["thread.cmsActions.notLiveTooltip"],
+      status: en["thread.cmsActions.notLive"],
+      menu: [],
+    });
+    expect(en["thread.cmsActions.notLive"]).toBe("Not live yet");
+    const view = renderHeaderButton(button);
+    expect(
+      view.getByRole("button", { name: en["thread.publishPopover.publish"] }),
+    ).not.toBeDisabled();
+  });
+
+  test("live: Up to date, as before", () => {
+    const button = hostedEmpty(false);
+    expect(button.label).toBe(en["thread.headerActions.upToDate"]);
+    expect(button.action).toBeUndefined();
+    expect(button.status).toBeUndefined();
+  });
+
+  test("a busy state or listed changes win over Not live yet", () => {
+    expect(hostedEmpty(true, { saving: true }).label).toBe(
+      en["thread.headerActions.saving"],
+    );
+    expect(hostedEmpty(true, { publishing: true }).label).toBe(
+      en["thread.cmsActions.publishing"],
+    );
+    expect(hostedEmpty(true, { loading: true }).status).toBeUndefined();
+    const listed = hostedCmsHeaderButton(
+      select({ branch: ready({ aheadOfBase: 1 }), publishableChangeCount: 1 }),
+      { notLive: true, t },
+    );
+    expect(listed.label).toBe(en["thread.cmsActions.reviewAndPublish"]);
+    expect(listed.status).toBeUndefined();
+  });
+
+  test("v7 and a v8 sandbox (not hosted) keep main's Up to date", () => {
+    // Their header never wraps the selector's answer: it is main's.
+    const upToDate = select({ branch: ready(), publishableChangeCount: 0 });
+    expect(upToDate.label).toBe(en["thread.headerActions.upToDate"]);
+    expect(upToDate.status).toBeUndefined();
+    expect(hostedCmsHeaderButton(upToDate).label).toBe(
+      en["thread.headerActions.upToDate"],
+    );
   });
 });

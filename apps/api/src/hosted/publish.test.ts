@@ -496,6 +496,67 @@ describe("publishDraft", () => {
     expect(await drafts.load(REF)).toEqual(saved);
   });
 
+  it("with an empty draft, makes main's head live when latest.json names an older release (Not live yet), and keeps the draft as it is", async () => {
+    const { git, delivery, drafts, repo } = setup();
+    await releaseMainHead(repo);
+    const released = git.head();
+    // Another editor published, and its release failed: main moved past
+    // latest.json, and this editor's draft is empty.
+    await drafts.update({ ...REF, branch: "thread-2" }, () => ({
+      set: { New: { a: 1 } },
+      delete: [],
+    }));
+    const put = delivery.store.putJson;
+    let down = true;
+    delivery.store.putJson = async (key, value, cache, metadata) => {
+      if (down && key === deliveryKeys.latest("acme")) {
+        throw new Error("R2 down");
+      }
+      return put(key, value, cache, metadata);
+    };
+    await publishDraft(
+      repo,
+      drafts,
+      { ...REF, branch: "thread-2" },
+      { message: "", coAuthor: null },
+    );
+    down = false;
+    const head = git.head();
+    expect(head).not.toBe(released);
+    expect((await readLatest(delivery.store, "acme"))?.revision).toBe(released);
+    const saved = await drafts.update(REF, () => ({ set: {}, delete: [] }));
+    expect(
+      await publishDraft(repo, drafts, REF, { message: "", coAuthor: null }),
+    ).toEqual({ result: "merged", sha: head, release: "current" });
+    expect(git.head()).toBe(head);
+    expect((await readLatest(delivery.store, "acme"))?.revision).toBe(head);
+    expect(await drafts.load(REF)).toEqual(saved);
+    // Live now: Publish again has nothing to do.
+    delivery.log.length = 0;
+    expect(
+      await publishDraft(repo, drafts, REF, { message: "", coAuthor: null }),
+    ).toEqual({ result: "up-to-date" });
+    expect(delivery.log).toEqual([]);
+  });
+
+  it("without a draft, makes main's head live when latest.json names an older release", async () => {
+    const { git, delivery, drafts, repo } = setup();
+    await releaseMainHead(repo);
+    const released = git.head();
+    await git.client.commitFiles({
+      branch: "main",
+      message: "Saved, release failed",
+      expectedHead: released,
+      changes: [{ path: ".deco/blocks/New.json", content: serializeBlock({}) }],
+    });
+    const head = git.head();
+    expect(head).not.toBe(released);
+    expect(
+      await publishDraft(repo, drafts, REF, { message: "", coAuthor: null }),
+    ).toEqual({ result: "merged", sha: head, release: "current" });
+    expect((await readLatest(delivery.store, "acme"))?.revision).toBe(head);
+  });
+
   it("answers up-to-date without a draft", async () => {
     const { drafts, repo } = setup();
     expect(
