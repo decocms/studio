@@ -96,6 +96,8 @@ import { EnvVarsField } from "@/components/sandbox/runtime-card/env-vars-field";
 import { omitSandboxMap } from "@/lib/omit-sandbox-map";
 import { RepoRow } from "@/components/sandbox/runtime-card/repo-row";
 import { RuntimeFields } from "@/components/sandbox/runtime-card/runtime-fields";
+import { RuntimeAppsField } from "@/components/sandbox/runtime-card/runtime-apps-field";
+import { useOrgFlag } from "@/hooks/use-organization-settings";
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
 import { FieldDescriptionTooltipsField } from "@/components/sandbox/runtime-card/field-description-tooltips-field";
 import { PublishPolicyField } from "./publish-policy-field";
@@ -374,6 +376,7 @@ function VirtualMcpDetailViewWithData({
 
   // Watch connections for reactive UI
   const connections = form.watch("connections");
+  const multiAppPreview = useOrgFlag("multi_app_preview");
 
   // GitHub repo connected (real auth) — instructions become read-only
   const hasRepository = agentHasConnectedRepository(virtualMcp);
@@ -1224,6 +1227,11 @@ function VirtualMcpDetailViewWithData({
                     <SettingsCardRow>
                       <RuntimeFields control={form.control} />
                     </SettingsCardRow>
+                    {multiAppPreview && (
+                      <SettingsCardRow>
+                        <RuntimeAppsField control={form.control} />
+                      </SettingsCardRow>
+                    )}
                     <SettingsCardRow>
                       <EnvVarsField
                         control={form.control}

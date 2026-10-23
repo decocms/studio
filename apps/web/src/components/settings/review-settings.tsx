@@ -6,6 +6,7 @@ import { Input } from "@decocms/ui/components/input.tsx";
 import { Switch } from "@decocms/ui/components/switch.tsx";
 import {
   Coins01,
+  Columns02,
   Cube01,
   FileSearch02,
   GitBranch01,
@@ -466,6 +467,12 @@ export function BlocksEditorSettings() {
               }}
             />
           }
+        />
+        <FlagToggle
+          flag="multi_app_preview"
+          icon={<Columns02 size={16} />}
+          titleKey="settings.multiAppPreview.title"
+          descriptionKey="settings.multiAppPreview.description"
         />
       </SettingsCard>
     </SettingsSection>

@@ -2,6 +2,9 @@ import { useState } from "react";
 import { NewBlocksEditorProvider } from "@/hooks/use-new-blocks-editor";
 import { useChatTask } from "@/components/chat/chat-context";
 import { PreviewContent } from "@/components/sandbox/preview/preview";
+import { ProjectMultiAppPreview } from "@/components/sandbox/preview/multi-app-preview";
+import { RUNTIME_APPS_MAX } from "@decocms/shared/sdk/types";
+import { useOrgFlag } from "@/hooks/use-organization-settings";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
 import { useVirtualMCP } from "@/sdk";
 import { useDecoServeConnection } from "@/hooks/use-deco-serve-connection";
@@ -44,6 +47,7 @@ export function PreviewTab({ virtualMcpId }: { virtualMcpId: string }) {
   const localAppUrl = serveConnection ? servePreviewUrl(backend) : null;
   const localAppUp = useLocalAppReachable(localAppUrl);
   const access = useLocalNetworkAccess();
+  const multiAppPreview = useOrgFlag("multi_app_preview");
   // Resolved exactly like the tab bar (see preview-source) off the same thread
   // metadata, so a visible Preview tab can never render "no source to preview"
   // — and a repo-less sandbox task run, whose tab is hidden, still renders the
@@ -126,9 +130,17 @@ export function PreviewTab({ virtualMcpId }: { virtualMcpId: string }) {
     );
   }
 
+  const preview = <PreviewContent virtualMcpId={virtualMcpId} />;
   return (
     <NewBlocksEditorProvider>
-      <PreviewContent virtualMcpId={virtualMcpId} />
+      {/* A hosted project's monorepo apps; Localhost runs one app. */}
+      {multiAppPreview && entity && !serveConnection ? (
+        <ProjectMultiAppPreview project={entity} maxApps={RUNTIME_APPS_MAX}>
+          {preview}
+        </ProjectMultiAppPreview>
+      ) : (
+        preview
+      )}
     </NewBlocksEditorProvider>
   );
 }
