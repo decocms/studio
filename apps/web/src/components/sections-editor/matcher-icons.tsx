@@ -58,10 +58,14 @@ function isUntitledIconName(name: string): boolean {
 export function resolveMatcherIconName(
   resolveType: string,
   schemaIcon?: string,
-  /** A Blocks v8 site: its built-in `campaign` rule wears the calendar. */
+  /**
+   * A Blocks v8 site: its built-in `campaign` rule wears the calendar and
+   * its `experiment` rule the beaker, as the Experiments view does.
+   */
   v8 = false,
 ): string {
   if (v8 && /^campaign$/i.test(resolveType)) return "Calendar";
+  if (v8 && /^experiment$/i.test(resolveType)) return "Beaker02";
   if (schemaIcon) {
     if (isUntitledIconName(schemaIcon)) return schemaIcon;
 

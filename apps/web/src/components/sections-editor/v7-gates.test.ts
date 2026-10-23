@@ -135,6 +135,13 @@ describe("schema-driven names: v8 only", () => {
     );
     expect(resolveMatcherIconName("campaign")).toBe("FilterLines");
   });
+
+  test("the A/B test icon", () => {
+    expect(resolveMatcherIconName("experiment", undefined, true)).toBe(
+      "Beaker02",
+    );
+    expect(resolveMatcherIconName("experiment")).toBe("FilterLines");
+  });
 });
 
 /**

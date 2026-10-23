@@ -381,3 +381,10 @@ export function namedRuleBlockFieldKinds(
     .map((k) => k.kind)
     .filter((kind) => fits.has(namedRuleKindInfo(kind).resolveType));
 }
+
+/**
+ * A native date input draws its calendar icon in the page's color scheme,
+ * which stays light: in dark mode the icon is dark on dark. `scheme-dark`
+ * draws it light there.
+ */
+export const DATE_INPUT_SCHEME = "dark:scheme-dark";

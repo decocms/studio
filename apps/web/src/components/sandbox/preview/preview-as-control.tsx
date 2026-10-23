@@ -18,6 +18,7 @@ import {
 } from "@decocms/ui/components/tooltip.tsx";
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
 import {
+  DATE_INPUT_SCHEME,
   isoToLocalInput,
   localInputToIso,
 } from "@/components/sections-editor/named-rule-picker";
@@ -105,6 +106,7 @@ export function PreviewAsControl({
             <Input
               id="preview-as-moment"
               type="datetime-local"
+              className={DATE_INPUT_SCHEME}
               value={isoToLocalInput(options.at)}
               onChange={(e) => setAt(e.target.value)}
             />

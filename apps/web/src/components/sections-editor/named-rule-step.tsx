@@ -12,9 +12,14 @@ import { Label } from "@decocms/ui/components/label.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { ShareSplit } from "@/components/experiments/split-donut";
 import { type TFunction, useT } from "@/i18n/use-t.ts";
-import { MatcherIcon } from "./matcher-icons";
-import type { CampaignWindow, NamedRuleKind } from "./named-rules";
+import { MatcherIcon, resolveMatcherIconName } from "./matcher-icons";
 import {
+  type CampaignWindow,
+  type NamedRuleKind,
+  namedRuleKindInfo,
+} from "./named-rules";
+import {
+  DATE_INPUT_SCHEME,
   isoToLocalInput,
   type NewNameProblem,
   newNameProblem,
@@ -23,11 +28,17 @@ import {
   windowFromInputs,
 } from "./named-rule-picker";
 
-/** Icons the built-ins declare in their schema (`flask`, `calendar-event`). */
-const NAMED_RULE_ICON: Record<NamedRuleKind, string> = {
-  experiments: "flask",
-  campaigns: "calendar-event",
-};
+/**
+ * The icon a chosen `experiment` or `campaign` rule shows on the picker's
+ * trigger (the beaker, the calendar), so the picker's rows match it.
+ */
+export function namedRuleIconName(kind: NamedRuleKind): string {
+  return resolveMatcherIconName(
+    namedRuleKindInfo(kind).matcher,
+    undefined,
+    true,
+  );
+}
 
 /**
  * Where the site's tests and campaigns are managed: the Experiments tab and
@@ -112,7 +123,7 @@ export function NamedRuleKindItems({
             onSelect={() => onOpen(kind)}
             className={cn("gap-2.5", currentKind === kind && "bg-accent/60")}
           >
-            <MatcherIcon iconName={NAMED_RULE_ICON[kind]} size="sm" />
+            <MatcherIcon iconName={namedRuleIconName(kind)} size="sm" />
             <div className="flex min-w-0 flex-1 flex-col">
               <span className="text-sm">{title}</span>
               <span className="truncate text-xs text-muted-foreground">
@@ -211,7 +222,7 @@ export function NamedRuleNameStep({
                     )}
                   >
                     <MatcherIcon
-                      iconName={NAMED_RULE_ICON[kind.kind]}
+                      iconName={namedRuleIconName(kind.kind)}
                       size="sm"
                     />
                     <div className="flex min-w-0 flex-1 flex-col">
@@ -307,6 +318,7 @@ export function CampaignWindowInputs({
         <Input
           id={`${idPrefix}-start`}
           type="datetime-local"
+          className={DATE_INPUT_SCHEME}
           value={start}
           onChange={(e) => onStartChange(e.target.value)}
         />
@@ -318,6 +330,7 @@ export function CampaignWindowInputs({
         <Input
           id={`${idPrefix}-end`}
           type="datetime-local"
+          className={DATE_INPUT_SCHEME}
           value={end}
           onChange={(e) => onEndChange(e.target.value)}
         />
@@ -423,7 +436,7 @@ export function NamedRuleCreateForm({
       }}
     >
       <div className="flex items-center gap-2">
-        <MatcherIcon iconName={NAMED_RULE_ICON[kind]} size="sm" />
+        <MatcherIcon iconName={namedRuleIconName(kind)} size="sm" />
         <h3 className="text-sm font-medium">
           {tests
             ? t("sectionsEditor.namedRulePicker.newTestTitle")
@@ -549,7 +562,7 @@ export function NamedRuleRow({
     >
       {!inlineDate && (
         <div className="flex min-w-0 items-center gap-2">
-          <MatcherIcon iconName={NAMED_RULE_ICON[kind]} size="sm" />
+          <MatcherIcon iconName={namedRuleIconName(kind)} size="sm" />
           <span className="truncate text-sm font-medium">{name}</span>
           {summary && (
             <span className="truncate text-xs text-muted-foreground">

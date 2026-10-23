@@ -22,8 +22,12 @@ import { ptBR } from "@/i18n/pt-br/index.ts";
 import {
   NamedRuleCreateForm,
   NamedRuleRow,
+  CampaignWindowInputs,
   NamedRuleViewsProvider,
+  namedRuleIconName,
 } from "./named-rule-step";
+import { resolveMatcherIconName } from "./matcher-icons";
+import { getIconComponent } from "../agent-icon";
 
 const render = (ui: ReactElement) =>
   rtlRender(
@@ -643,5 +647,42 @@ describe("creating a name", () => {
     expect(new Date(pick.create!.window.start!).getTime()).toBe(
       new Date("2026-11-27T00:00:00-03:00").getTime(),
     );
+  });
+});
+
+describe("the picker's A/B test and Campaign rows", () => {
+  test("wear the icons a chosen rule shows on the trigger, not the filter", () => {
+    expect(namedRuleIconName("experiments")).toBe(
+      resolveMatcherIconName("experiment", undefined, true),
+    );
+    expect(namedRuleIconName("campaigns")).toBe(
+      resolveMatcherIconName("campaign", undefined, true),
+    );
+    expect(namedRuleIconName("experiments")).toBe("Beaker02");
+    expect(namedRuleIconName("campaigns")).toBe("Calendar");
+    for (const kind of ["experiments", "campaigns"] as const) {
+      expect(getIconComponent(namedRuleIconName(kind))).toBeDefined();
+    }
+  });
+});
+
+describe("a campaign's date inputs", () => {
+  test("draw their calendar icon light in dark mode", () => {
+    const view = render(
+      <CampaignWindowInputs
+        idPrefix="c"
+        start=""
+        end=""
+        onStartChange={() => {}}
+        onEndChange={() => {}}
+      />,
+    );
+    const inputs = view.container.querySelectorAll(
+      'input[type="datetime-local"]',
+    );
+    expect(inputs.length).toBe(2);
+    for (const input of inputs) {
+      expect(input.className).toContain("dark:scheme-dark");
+    }
   });
 });
