@@ -12,7 +12,14 @@ import { PROJECT_SCOPE_KEY } from "@decocms/shared/auth/project-scope";
 import { Hono } from "hono";
 import type { StudioContext } from "@/core/studio-context";
 import type { RepoContentClient } from "@/git-providers";
-import { fakeRepo, memoryKv, SCHEMA_TEXT } from "@/hosted/hosted-test-helpers";
+import { signDraftToken } from "@/decofile/draft-token";
+import { createDraftStore } from "@/hosted/draft-store";
+import {
+  fakeRepo,
+  memoryDeliveryStore,
+  memoryKv,
+  SCHEMA_TEXT,
+} from "@/hosted/hosted-test-helpers";
 import { getSettings, setGlobalSettings } from "@/settings";
 import type { Env } from "../hono-env";
 import { createDecofileRoutes } from "./decofile";
@@ -455,19 +462,65 @@ describe("decofile routes", () => {
       sites,
     });
     const repo = recordedRepo(files);
+    const delivery = memoryDeliveryStore();
     const app = mount(w.ctx, (a) =>
       a.route(
         "/decofile",
-        createDecofileRoutes({ repoClientFor: repo.repoClientFor }),
+        createDecofileRoutes({
+          repoClientFor: repo.repoClientFor,
+          hostedDrafts: (kv) => createDraftStore({ kv, store: delivery.store }),
+        }),
       ),
     );
-    return { ...w, repo, app };
+    return { ...w, repo, app, delivery };
   }
 
   const v8Files = {
     ".deco/schema.gen.json": SCHEMA_TEXT,
     ".deco/blocks/pages-home.json": '{"__resolveType":"page"}',
   };
+
+  it("an editor session's GET creates the empty draft and answers its pointer; the next GET answers the same one", async () => {
+    const { app, delivery } = setup({ blocksMajor: 8 }, v8Files, { p1: ORG });
+    const res = await app.request("/decofile/p1/main", {
+      headers: { "x-deco-main-schema": "v8" },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { draft: string; version: string };
+    expect(body.draft).toMatch(/\/sites\/acme\/drafts\/[^/]+\.json$/);
+    expect(body.version).toBeTruthy();
+    const keys = [...delivery.objects.keys()];
+    expect(keys).toHaveLength(1);
+    expect(JSON.parse(delivery.objects.get(keys[0]!)!.text)).toEqual({
+      set: {},
+      delete: [],
+    });
+    expect(body.draft.endsWith(keys[0]!)).toBe(true);
+    const again = await app.request("/decofile/p1/main", {
+      headers: { "x-deco-main-schema": "v8" },
+    });
+    expect(await again.json()).toMatchObject(body);
+    expect(delivery.log).toEqual([`put ${keys[0]}`]);
+  });
+
+  it("an anonymous (draft-token) GET creates no draft", async () => {
+    const { app, ctx, delivery } = setup({ blocksMajor: 8 }, v8Files, {
+      p1: ORG,
+    });
+    (ctx as unknown as { auth: unknown }).auth = { user: null };
+    const token = signDraftToken({
+      organizationId: ORG,
+      virtualMcpId: "p1",
+      branch: "main",
+    });
+    const res = await app.request(
+      `/decofile/p1/main?token=${encodeURIComponent(token)}`,
+    );
+    // The runtime's bare decofile read: served, and nothing written.
+    expect(res.status).toBe(200);
+    expect(delivery.log).toEqual([]);
+    expect(delivery.objects.size).toBe(0);
+  });
 
   it("a v7 project reads main's schema once for every route, writes nothing, has no v8 rpc", async () => {
     const { app, repo, patches } = setup(

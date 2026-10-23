@@ -78,6 +78,7 @@ import {
 } from "@/hosted/draft-content-storage";
 import type { DraftEditors } from "@/hosted/draft-editors";
 import type { DraftStore, HostedDraftRef } from "@/hosted/draft-store";
+import type { KVStorage } from "@/storage/kv";
 import {
   type SiteDomainsReader,
   sitePreviewHosts,
@@ -119,6 +120,7 @@ type DecofileEnv = Env & {
     decofileScope: DecofileScope;
     repoClientFor: RepoClientFor;
     siteDomains: SiteDomainsReader | undefined;
+    hostedDrafts: (kv: KVStorage) => DraftStore | null;
   };
 };
 
@@ -330,7 +332,7 @@ function hostedScope(
 ): { drafts: DraftStore; ref: HostedDraftRef } | null {
   const scope = c.get("decofileScope");
   if (!scope.userId || !scope.site) return null;
-  const drafts = hostedDrafts(c.var.studioContext.storage.kv);
+  const drafts = c.var.hostedDrafts(c.var.studioContext.storage.kv);
   if (!drafts) return null;
   return {
     drafts,
@@ -514,6 +516,8 @@ export function createDecofileRoutes(
     repoClientFor?: RepoClientFor;
     /** The site's deco.cx domains, for its preview hosts (tests pass a fake). */
     siteDomains?: SiteDomainsReader;
+    /** The draft store over the delivery bucket (tests pass one in memory). */
+    hostedDrafts?: (kv: KVStorage) => DraftStore | null;
   } = {},
 ) {
   const app = new Hono<DecofileEnv>();
@@ -521,6 +525,7 @@ export function createDecofileRoutes(
   app.use("*", async (c, next) => {
     c.set("repoClientFor", repoClientFor);
     c.set("siteDomains", options.siteDomains);
+    c.set("hostedDrafts", options.hostedDrafts ?? hostedDrafts);
     await next();
   });
 
@@ -543,19 +548,21 @@ export function createDecofileRoutes(
       // The editor acts on another main answer: never the other shape.
       if (mainChanged(c, mainV8)) return c.json(MAIN_CHANGED_BODY, 409);
       if (hosted && mainV8) {
-        const draft = await hosted.drafts.load(hosted.ref);
-        const version = bareEtag(draft?.etag);
+        // An editor session always has a draft (created empty on open), so
+        // the preview always sends its pointer, never the bare site: the
+        // same address before and after a Publish, which empties it.
+        const draft = await hosted.drafts.ensure(hosted.ref);
+        const version = bareEtag(draft.etag);
         return c.json(
           {
-            draft:
-              draft && version
-                ? draftPointerTarget(hosted.ref.site, draft.slug)
-                : null,
+            draft: version
+              ? draftPointerTarget(hosted.ref.site, draft.slug)
+              : null,
             version,
             // Who last changed each block the draft holds, from the draft
             // object's metadata (no extra request): Studio user ids; the
             // editor resolves the people from the org's members.
-            changedBy: draftChangedBy(draft?.editors ?? {}),
+            changedBy: draftChangedBy(draft.editors),
           },
           200,
           { "Cache-Control": "no-store" },
