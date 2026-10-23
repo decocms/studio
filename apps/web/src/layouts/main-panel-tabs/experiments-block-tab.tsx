@@ -241,6 +241,7 @@ function ExperimentsBlockReady({
               />
             ) : (
               <Card
+                size="flush"
                 className="gap-0 divide-y divide-border overflow-hidden"
                 data-testid="experiments-v8-list"
               >
