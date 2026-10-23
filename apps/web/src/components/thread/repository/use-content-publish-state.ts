@@ -11,6 +11,13 @@ import { skipToken, useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { useQueryClient } from "@tanstack/react-query";
 import { KEYS } from "@/lib/query-keys.ts";
 import type { ProtocolBackend } from "@/components/sections-editor/content-backend.ts";
+import { protocolMetaQueryKey } from "@/components/sections-editor/content-protocol-api.ts";
+import type { DecofileScopeParams } from "@/components/sections-editor/decofile-api.ts";
+import type { LiveMeta } from "@/components/sections-editor/resolve-schema.ts";
+import {
+  blocksUsingMissingNamedRules,
+  missingNamedRuleUseCounts,
+} from "@/components/sections-editor/named-rule-uses.ts";
 import {
   type ContentChanges,
   readContentChanges,
@@ -51,12 +58,32 @@ function useCurrentBlocks(
   return data as Record<string, unknown> | undefined;
 }
 
+/**
+ * The site schema the editor read over the protocol (`useLiveMeta`'s cache,
+ * no request of its own): it names the page types, the built-in `page` among
+ * them, so a v8 page's card is a page with its sections.
+ */
+function useCachedSchema(
+  backend: ProtocolBackend,
+  scope: DecofileScopeParams | undefined,
+): LiveMeta | undefined {
+  const { data } = useQuery({
+    queryKey: scope
+      ? protocolMetaQueryKey(scope, backend)
+      : KEYS.liveMeta("", "no-scope"),
+    queryFn: skipToken,
+  });
+  return data as LiveMeta | undefined;
+}
+
 export function useContentPublishState(args: {
   backend: ProtocolBackend;
   /** The editor's decofile cache key (`useDecofileCacheKey`). */
   cacheKey: string;
+  /** The editor's scope: where its schema is cached. */
+  scope?: DecofileScopeParams;
 }): ContentPublishState {
-  const { backend, cacheKey } = args;
+  const { backend, cacheKey, scope } = args;
   const queryClient = useQueryClient();
   const list = useSuspenseQuery({
     queryKey: KEYS.contentChanges(cacheKey),
@@ -66,10 +93,23 @@ export function useContentPublishState(args: {
   const changes = list.data;
   const sides = useContentChangeSides(backend, cacheKey, changes);
   const lookup = useCurrentBlocks(cacheKey);
+  const meta = useCachedSchema(backend, scope);
+  // Pages and sections whose rules name a test or campaign the draft doesn't
+  // have. Both helpers keep their result for the same blocks and schema
+  // (the query cache's objects), so a render that changed neither reads it
+  // instead of walking the whole draft again.
+  const missingRules =
+    lookup && meta ? blocksUsingMissingNamedRules(lookup, meta) : null;
+  // How many pages and sections use one, said on the A/B tests or Campaigns card.
+  const missingRuleUses =
+    lookup && meta ? missingNamedRuleUseCounts(lookup, meta) : null;
   const summary = summarizeContentChanges({
     changes: changes.changes,
     sides: sides.data ?? null,
     lookup,
+    meta,
+    ...(missingRules ? { missingRules } : {}),
+    ...(missingRuleUses ? { missingRuleUses } : {}),
   });
   return {
     changes,

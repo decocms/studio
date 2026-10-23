@@ -3,7 +3,12 @@
  * studio-tools client (EXPERIMENT_* built-in tools).
  */
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  queryOptions,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import type { StudioToolOutput } from "@decocms/shared/tools/tool-io";
@@ -15,6 +20,7 @@ export type Experiment =
   StudioToolOutput<"EXPERIMENT_LIST">["experiments"][number];
 export type ExperimentStatus = Experiment["status"];
 export type ExperimentVariant = Experiment["variants"][number];
+type StudioTools = ReturnType<typeof useStudioTools>;
 
 export interface CreateExperimentInput {
   key: string;
@@ -31,10 +37,14 @@ export interface UpdateExperimentInput {
   variants?: ExperimentVariant[];
 }
 
-export function useExperiments(site: string) {
-  const { locator } = useProjectContext();
-  const studio = useStudioTools();
-  return useQuery({
+/** One site's experiment list as a query, so a view reading many sites at once
+ *  (the org Monitor) shares the cache with {@link useExperiments}. */
+export function experimentsQuery(
+  locator: Parameters<typeof KEYS.experiments>[0],
+  studio: StudioTools,
+  site: string,
+) {
+  return queryOptions({
     queryKey: KEYS.experiments(locator, site),
     queryFn: async () => {
       const { experiments } = await studio.call("EXPERIMENT_LIST", { site });
@@ -43,6 +53,12 @@ export function useExperiments(site: string) {
     enabled: !!site,
     staleTime: 30_000,
   });
+}
+
+export function useExperiments(site: string) {
+  const { locator } = useProjectContext();
+  const studio = useStudioTools();
+  return useQuery(experimentsQuery(locator, studio, site));
 }
 
 /** LOCAL DEV ONLY — writes a draft's manifest entry to a local site's

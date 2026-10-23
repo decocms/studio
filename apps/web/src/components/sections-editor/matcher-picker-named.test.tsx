@@ -1,0 +1,688 @@
+import { setupComponentTest } from "../../../test/setup";
+setupComponentTest();
+import { beforeAll, describe, expect, mock, test } from "bun:test";
+import {
+  act,
+  fireEvent,
+  render as rtlRender,
+  within,
+} from "@testing-library/react";
+import { useState, type ReactElement } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { TooltipProvider } from "@decocms/ui/components/tooltip.tsx";
+import { MatcherPicker, type MatcherEntry } from "./matcher-picker";
+import {
+  type NamedRulePick,
+  type NamedRulePickerKind,
+  namedRuleRowState,
+} from "./named-rule-picker";
+import { namedRuleOf } from "./named-rules";
+import { VariantRuleEditor } from "./variant-rule-editor";
+import { ptBR } from "@/i18n/pt-br/index.ts";
+import {
+  NamedRuleCreateForm,
+  NamedRuleRow,
+  CampaignWindowInputs,
+  NamedRuleViewsProvider,
+  namedRuleIconName,
+} from "./named-rule-step";
+import { resolveMatcherIconName } from "./matcher-icons";
+import { getIconComponent } from "../agent-icon";
+
+const render = (ui: ReactElement) =>
+  rtlRender(
+    <QueryClientProvider client={new QueryClient()}>
+      <TooltipProvider>{ui}</TooltipProvider>
+    </QueryClientProvider>,
+  );
+
+beforeAll(() => {
+  // cmdk measures and scrolls its list; happy-dom has neither.
+  globalThis.ResizeObserver ??= class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver;
+  Element.prototype.scrollIntoView ??= () => {};
+});
+
+const MATCHERS: MatcherEntry[] = [
+  { resolveType: "never", title: "Never", iconName: "EyeOff" },
+  { resolveType: "experiment", title: "A/B test", iconName: "flask" },
+  { resolveType: "campaign", title: "Campaign", iconName: "calendar-event" },
+  { resolveType: "device", title: "Device", iconName: "Monitor01" },
+];
+
+const KINDS: NamedRulePickerKind[] = [
+  {
+    kind: "experiments",
+    state: "saved",
+    entries: [{ name: "hero-test", summary: "50% of visitors" }],
+  },
+  { kind: "campaigns", state: "absent", entries: [] },
+];
+
+function openPicker(named?: Parameters<typeof MatcherPicker>[0]["named"]) {
+  const onSelect = mock((_rt: string) => {});
+  render(
+    <MatcherPicker
+      currentRt=""
+      currentLabel="Always"
+      matchers={MATCHERS}
+      onSelect={onSelect}
+      named={named}
+    />,
+  );
+  fireEvent.click(
+    within(document.body).getByRole("button", { name: /Always/ }),
+  );
+  return { onSelect, dialog: within(document.body).getByRole("dialog") };
+}
+
+const optionTexts = (dialog: HTMLElement) =>
+  within(dialog)
+    .queryAllByRole("option")
+    .map((o) => o.textContent ?? "");
+
+describe("the rule picker on a v7 site", () => {
+  test("lists the matchers as before, with no named items", () => {
+    const { dialog } = openPicker();
+    const texts = optionTexts(dialog);
+    expect(texts.some((t) => t.startsWith("A/B test"))).toBe(true);
+    expect(texts.some((t) => t.includes("Show this variant"))).toBe(false);
+  });
+});
+
+describe("the rule picker on a v8 site", () => {
+  test("offers A/B test and Campaign in place of the raw rules", () => {
+    const { dialog } = openPicker({
+      kinds: KINDS,
+      selected: null,
+      onPick: () => {},
+    });
+    const texts = optionTexts(dialog);
+    expect(texts).toContainEqual(
+      expect.stringContaining("Show this variant to a share of visitors"),
+    );
+    expect(texts).toContainEqual(
+      expect.stringContaining("Show this variant while a campaign is running"),
+    );
+    // The raw `experiment` and `campaign` rules aren't listed a second time.
+    expect(texts.filter((t) => t.startsWith("A/B test"))).toHaveLength(1);
+    expect(texts.filter((t) => t.startsWith("Campaign"))).toHaveLength(1);
+    expect(texts.some((t) => t.startsWith("Date"))).toBe(false);
+    expect(texts.some((t) => t.startsWith("Device"))).toBe(true);
+  });
+
+  test("picks an existing test by name", async () => {
+    const onPick = mock((_pick: NamedRulePick) => {});
+    const { dialog } = openPicker({ kinds: KINDS, selected: null, onPick });
+    fireEvent.click(within(dialog).getByText("A/B test"));
+    fireEvent.click(await within(dialog).findByText("hero-test"));
+    await Promise.resolve();
+    expect(onPick).toHaveBeenCalledWith({
+      kind: "experiments",
+      name: "hero-test",
+    });
+  });
+
+  test("an empty list says how to start", () => {
+    const { dialog } = openPicker({
+      kinds: KINDS,
+      selected: null,
+      onPick: () => {},
+    });
+    fireEvent.click(within(dialog).getByText("Campaign"));
+    expect(
+      within(dialog).getByText("No campaigns yet. Type a name to create one."),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByPlaceholderText(
+        "Search your campaigns or type a new name…",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  test("explains a block of that name that holds something else", () => {
+    const { dialog } = openPicker({
+      kinds: [{ kind: "experiments", state: "conflict", entries: [] }],
+      selected: null,
+      onPick: () => {},
+    });
+    fireEvent.click(within(dialog).getByText("A/B test"));
+    expect(
+      within(dialog).getByText(/isn't a list of A\/B tests/),
+    ).toBeInTheDocument();
+  });
+});
+
+/**
+ * Types into a controlled field. happy-dom doesn't deliver input events to
+ * React's change handling here, so this calls the field's own `onChange`.
+ */
+function typeInto(element: HTMLElement, value: string) {
+  const propsKey = Object.keys(element).find((k) =>
+    k.startsWith("__reactProps$"),
+  );
+  const props = (element as unknown as Record<string, { onChange?: unknown }>)[
+    propsKey ?? ""
+  ];
+  const onChange = props?.onChange as
+    | ((event: { target: { value: string } }) => void)
+    | undefined;
+  if (!onChange) throw new Error("not a controlled field");
+  act(() => onChange({ target: { value } }));
+}
+
+describe("the rule picker's name step", () => {
+  test.each([
+    ["A/B test", "Search your tests or type a new name…"],
+    ["Campaign", "Search your campaigns or type a new name…"],
+  ])("choosing %s puts the cursor in its search box", (item, placeholder) => {
+    const { dialog } = openPicker({
+      kinds: KINDS,
+      selected: null,
+      onPick: () => {},
+    });
+    fireEvent.click(within(dialog).getByText(item));
+    expect(document.activeElement).toBe(
+      within(dialog).getByPlaceholderText(placeholder),
+    );
+  });
+
+  test.each([
+    ["A/B test", "Create test “cta-test”", "cta-test"],
+    ["Campaign", "Create campaign “Black Friday”", "Black Friday"],
+  ] as const)(
+    "%s: Create and use closes without calling the new name taken",
+    async (item, createLabel, name) => {
+      let finishSave = () => {};
+      const seen: string[] = [];
+      function Harness() {
+        const [kinds, setKinds] = useState(KINDS);
+        return (
+          <MatcherPicker
+            currentRt=""
+            currentLabel="Always"
+            matchers={MATCHERS}
+            onSelect={() => {}}
+            named={{
+              kinds,
+              selected: null,
+              onPick: (pick) => {
+                // The save lands in the site's content before it resolves:
+                // the new name is now one of the kind's names.
+                setKinds((current) =>
+                  current.map((k) =>
+                    k.kind === pick.kind
+                      ? {
+                          ...k,
+                          state: "saved",
+                          entries: [...k.entries, { name, summary: "" }],
+                        }
+                      : k,
+                  ),
+                );
+                return new Promise<void>((resolve) => {
+                  finishSave = resolve;
+                });
+              },
+            }}
+          />
+        );
+      }
+      render(<Harness />);
+      const body = within(document.body);
+      fireEvent.click(body.getByRole("button", { name: /Always/ }));
+      fireEvent.click(body.getByText(item));
+      const search = document.activeElement as HTMLInputElement;
+      typeInto(search, name);
+      fireEvent.click(await body.findByText(createLabel));
+      fireEvent.click(body.getByRole("button", { name: "Create and use" }));
+      const record = () => seen.push(document.body.textContent ?? "");
+      await act(async () => {
+        await Promise.resolve();
+      });
+      record();
+      await act(async () => {
+        finishSave();
+        await Promise.resolve();
+      });
+      record();
+      for (const text of seen) {
+        expect(text).not.toContain("That name is already in use");
+        expect(text).not.toContain("No rules found");
+      }
+      expect(body.queryByRole("dialog")).toBeNull();
+    },
+  );
+});
+
+describe("the locked row", () => {
+  test("shows the name and leads to Experiments", () => {
+    const open = mock((_kind: string) => {});
+    render(
+      <NamedRuleViewsProvider value={{ open }}>
+        <NamedRuleRow
+          kind="experiments"
+          name="hero-test"
+          summary="50% of visitors"
+          missing={false}
+        />
+      </NamedRuleViewsProvider>,
+    );
+    expect(within(document.body).getByText("hero-test")).toBeInTheDocument();
+    expect(within(document.body).queryByRole("textbox")).toBeNull();
+    fireEvent.click(
+      within(document.body).getByRole("button", { name: /Open Experiments/ }),
+    );
+    expect(open).toHaveBeenCalledWith("experiments");
+  });
+
+  test("says a missing campaign isn't there, and shows no link or Create without a way there", () => {
+    render(<NamedRuleRow kind="campaigns" name="gone" summary="" missing />);
+    expect(
+      within(document.body).getByTestId("named-rule-missing").textContent,
+    ).toBe(
+      "This campaign isn't in your campaigns. Pick another or remove this variant.",
+    );
+    expect(within(document.body).queryByRole("button")).toBeNull();
+  });
+
+  test("a deleted or never-created test: the variant says so, with the picker one click away", () => {
+    const rule = { __resolveType: "experiment", name: "gone" };
+    render(
+      <VariantRuleEditor
+        currentRt="experiment"
+        currentLabel="A/B test"
+        matchers={MATCHERS}
+        globals={[]}
+        onSelect={() => {}}
+        onSelectGlobal={() => {}}
+        schema={null}
+        formValue={null}
+        onChange={() => {}}
+        formKey="rule"
+        formWrapperClassName=""
+        named={{ kinds: KINDS, selected: namedRuleOf(rule), onPick: () => {} }}
+        namedRow={namedRuleRowState(rule, KINDS)}
+      />,
+    );
+    const body = within(document.body);
+    expect(body.getByTestId("named-rule-missing").textContent).toBe(
+      "This test isn't in your A/B tests. Pick another, create it, or remove this variant.",
+    );
+    fireEvent.click(body.getByRole("button", { name: /A\/B test/ }));
+    expect(
+      within(body.getByRole("dialog")).queryAllByRole("option").length,
+    ).toBeGreaterThan(0);
+  });
+
+  test("a deleted test inside a combined rule: the variant says so under its form", () => {
+    const rule = {
+      __resolveType: "multi",
+      op: "and",
+      matchers: [{ __resolveType: "experiment", name: "gone" }],
+    };
+    render(
+      <VariantRuleEditor
+        currentRt="multi"
+        currentLabel="Multi"
+        matchers={MATCHERS}
+        globals={[]}
+        onSelect={() => {}}
+        onSelectGlobal={() => {}}
+        schema={null}
+        formValue={null}
+        onChange={() => {}}
+        formKey="rule"
+        formWrapperClassName=""
+        named={{ kinds: KINDS, selected: namedRuleOf(rule), onPick: () => {} }}
+        namedRow={namedRuleRowState(rule, KINDS)}
+        rule={rule}
+        decofile={{}}
+      />,
+    );
+    expect(
+      within(document.body).getByTestId("named-rule-missing-within")
+        .textContent,
+    ).toBe(
+      "This rule uses a test that isn't in your A/B tests. Change the rule or remove this variant.",
+    );
+  });
+
+  test("Create it makes the missing test under the same name, in one pick", async () => {
+    const rule = { __resolveType: "experiment", name: "typed-by-hand" };
+    const onPick = mock((_pick: NamedRulePick) => Promise.resolve());
+    render(
+      <VariantRuleEditor
+        currentRt="experiment"
+        currentLabel="A/B test"
+        matchers={MATCHERS}
+        globals={[]}
+        onSelect={() => {}}
+        onSelectGlobal={() => {}}
+        schema={null}
+        formValue={null}
+        onChange={() => {}}
+        formKey="rule"
+        formWrapperClassName=""
+        named={{ kinds: KINDS, selected: namedRuleOf(rule), onPick }}
+        namedRow={namedRuleRowState(rule, KINDS)}
+      />,
+    );
+    const body = within(document.body);
+    fireEvent.click(body.getByRole("button", { name: "Create it" }));
+    expect(body.getByLabelText("Name")).toHaveValue("typed-by-hand");
+    await act(async () => {
+      fireEvent.click(body.getByRole("button", { name: "Create" }));
+    });
+    expect(onPick).toHaveBeenCalledWith({
+      kind: "experiments",
+      name: "typed-by-hand",
+      create: { share: 50 },
+    });
+    // Back to the row once saved.
+    expect(body.getByTestId("named-rule-row")).toBeInTheDocument();
+  });
+
+  test("switching to another variant closes the create form, so it never creates for the wrong one", () => {
+    const onPick = mock((_pick: NamedRulePick) => Promise.resolve());
+    const editor = (index: number, name: string) => {
+      const rule = { __resolveType: "experiment", name };
+      return (
+        <QueryClientProvider client={client}>
+          <TooltipProvider>
+            <VariantRuleEditor
+              currentRt="experiment"
+              currentLabel="A/B test"
+              matchers={MATCHERS}
+              globals={[]}
+              onSelect={() => {}}
+              onSelectGlobal={() => {}}
+              schema={null}
+              formValue={null}
+              onChange={() => {}}
+              formKey={`${index}:experiment`}
+              formWrapperClassName=""
+              named={{ kinds: KINDS, selected: namedRuleOf(rule), onPick }}
+              namedRow={namedRuleRowState(rule, KINDS)}
+            />
+          </TooltipProvider>
+        </QueryClientProvider>
+      );
+    };
+    const client = new QueryClient();
+    const view = rtlRender(editor(0, "summer"));
+    const body = within(document.body);
+    fireEvent.click(body.getByRole("button", { name: "Create it" }));
+    expect(body.getByLabelText("Name")).toHaveValue("summer");
+    view.rerender(editor(1, "winter"));
+    expect(body.queryByLabelText("Name")).toBeNull();
+    expect(body.getByTestId("named-rule-row")).toBeInTheDocument();
+    fireEvent.click(body.getByRole("button", { name: "Create it" }));
+    expect(body.getByLabelText("Name")).toHaveValue("winter");
+    expect(onPick).not.toHaveBeenCalled();
+  });
+
+  test("no Create it where the picker can't create (a block that holds something else)", () => {
+    const rule = { __resolveType: "experiment", name: "gone" };
+    const kinds: NamedRulePickerKind[] = [
+      { kind: "experiments", state: "conflict", entries: [] },
+    ];
+    render(
+      <VariantRuleEditor
+        currentRt="experiment"
+        currentLabel="A/B test"
+        matchers={MATCHERS}
+        globals={[]}
+        onSelect={() => {}}
+        onSelectGlobal={() => {}}
+        schema={null}
+        formValue={null}
+        onChange={() => {}}
+        formKey="rule"
+        formWrapperClassName=""
+        named={{ kinds, selected: namedRuleOf(rule), onPick: () => {} }}
+        namedRow={namedRuleRowState(rule, kinds)}
+      />,
+    );
+    const body = within(document.body);
+    expect(body.queryByRole("button", { name: "Create it" })).toBeNull();
+    // The picker's own explanation, not "isn't in your A/B tests": there is
+    // nothing to pick until that block is renamed.
+    expect(body.queryByTestId("named-rule-missing")).toBeNull();
+    expect(body.getByTestId("named-rule-conflict").textContent).toBe(
+      "Your site has a block named “experiments” that isn't a list of A/B tests, so tests can't be added yet. Rename that block, then come back here.",
+    );
+  });
+
+  test("a campaign in a block that holds something else gets the picker's explanation too", () => {
+    const rule = { __resolveType: "campaign", name: "gone" };
+    const kinds: NamedRulePickerKind[] = [
+      { kind: "campaigns", state: "conflict", entries: [] },
+    ];
+    render(<NamedRuleRow {...namedRuleRowState(rule, kinds)!} />);
+    const body = within(document.body);
+    expect(body.queryByTestId("named-rule-missing")).toBeNull();
+    expect(body.getByTestId("named-rule-conflict").textContent).toBe(
+      "Your site has a block named “campaigns” that isn't a list of campaigns, so campaigns can't be added yet. Rename that block, then come back here.",
+    );
+  });
+
+  test('an inline date rule gets the clash explanation, not "Choose Campaign above"', () => {
+    const rule = { __resolveType: "date", start: "2026-01-01T00:00:00Z" };
+    const kinds: NamedRulePickerKind[] = [
+      { kind: "campaigns", state: "conflict", entries: [] },
+    ];
+    render(<NamedRuleRow {...namedRuleRowState(rule, kinds)!} />);
+    const body = within(document.body);
+    expect(body.getByTestId("named-rule-conflict").textContent).toBe(
+      "Your site has a block named “campaigns” that isn't a list of campaigns, so campaigns can't be added yet. Rename that block, then come back here.",
+    );
+  });
+
+  test("says it in pt-br too", () => {
+    expect(ptBR["sectionsEditor.namedRulePicker.campaignTitle"]).toBe(
+      "Campanha",
+    );
+    expect(ptBR["sectionsEditor.namedRulePicker.missingTest"]).toBe(
+      "Este teste não está nos seus testes A/B. Escolha outro, crie-o ou remova esta variante.",
+    );
+    expect(ptBR["sectionsEditor.namedRulePicker.missingCampaign"]).toBe(
+      "Esta campanha não está nas suas campanhas. Escolha outra, crie-a ou remova esta variante.",
+    );
+    expect(ptBR["sectionsEditor.namedRulePicker.missingTestWithin"]).toBe(
+      "Esta regra usa um teste que não está nos seus testes A/B. Altere a regra ou remova esta variante.",
+    );
+  });
+});
+
+describe("creating a name", () => {
+  test("a test starts at 50% of visitors", () => {
+    const onSubmit = mock((_pick: NamedRulePick) => {});
+    render(
+      <NamedRuleCreateForm
+        kind="experiments"
+        initialName="cta-test"
+        existingNames={["hero-test"]}
+        onBack={() => {}}
+        onSubmit={onSubmit}
+      />,
+    );
+    const body = within(document.body);
+    // Moved with a slider over the donut, never typed.
+    const slider = body.getByRole("slider", {
+      name: "Visitors who see the test",
+    });
+    expect(slider.getAttribute("aria-valuenow")).toBe("50");
+    expect(body.queryByRole("spinbutton")).toBeNull();
+    fireEvent.click(body.getByRole("button", { name: "Create and use" }));
+    expect(onSubmit).toHaveBeenCalledWith({
+      kind: "experiments",
+      name: "cta-test",
+      create: { share: 50 },
+    });
+  });
+
+  test("the slider sets the new test's share", () => {
+    const onSubmit = mock((_pick: NamedRulePick) => {});
+    render(
+      <NamedRuleCreateForm
+        kind="experiments"
+        initialName="cta-test"
+        existingNames={[]}
+        onBack={() => {}}
+        onSubmit={onSubmit}
+      />,
+    );
+    const body = within(document.body);
+    const slider = body.getByRole("slider", {
+      name: "Visitors who see the test",
+    });
+    fireEvent.keyDown(slider, { key: "PageDown" });
+    fireEvent.keyDown(slider, { key: "ArrowLeft" });
+    expect(body.getByTestId("share-split-in").textContent).toBe("39%");
+    fireEvent.click(body.getByRole("button", { name: "Create and use" }));
+    expect(onSubmit).toHaveBeenCalledWith({
+      kind: "experiments",
+      name: "cta-test",
+      create: { share: 39 },
+    });
+  });
+
+  test("a test is shared as on the test page: who sees the test", () => {
+    render(
+      <NamedRuleCreateForm
+        kind="experiments"
+        initialName=""
+        existingNames={[]}
+        onBack={() => {}}
+        onSubmit={() => {}}
+      />,
+    );
+    const body = within(document.body);
+    expect(body.getByText("Who sees the test")).toBeInTheDocument();
+    expect(body.queryByText(/this variant/)).toBeNull();
+  });
+
+  test("Back after a step, Cancel when nothing comes before it", () => {
+    const onBack = mock(() => {});
+    const { unmount } = render(
+      <NamedRuleCreateForm
+        kind="experiments"
+        initialName=""
+        existingNames={[]}
+        onBack={onBack}
+        onSubmit={() => {}}
+      />,
+    );
+    const body = within(document.body);
+    expect(body.getByRole("button", { name: "Back" })).toBeInTheDocument();
+    unmount();
+    for (const kind of ["experiments", "campaigns"] as const) {
+      const view = render(
+        <NamedRuleCreateForm
+          kind={kind}
+          initialName=""
+          existingNames={[]}
+          dismiss="cancel"
+          onBack={onBack}
+          onSubmit={() => {}}
+        />,
+      );
+      expect(body.queryByRole("button", { name: "Back" })).toBeNull();
+      fireEvent.click(body.getByRole("button", { name: "Cancel" }));
+      view.unmount();
+    }
+    expect(onBack).toHaveBeenCalledTimes(2);
+  });
+
+  test("guides instead of saving a name that is taken", () => {
+    const onSubmit = mock((_pick: NamedRulePick) => {});
+    render(
+      <NamedRuleCreateForm
+        kind="experiments"
+        initialName="hero-test"
+        existingNames={["hero-test"]}
+        onBack={() => {}}
+        onSubmit={onSubmit}
+      />,
+    );
+    const body = within(document.body);
+    fireEvent.click(body.getByRole("button", { name: "Create and use" }));
+    expect(
+      body.getByText(
+        "That name is already in use. Pick it from the list instead.",
+      ),
+    ).toBeInTheDocument();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  test("a campaign starts with an inline date rule's dates", () => {
+    const onSubmit = mock((_pick: NamedRulePick) => {});
+    render(
+      <NamedRuleCreateForm
+        kind="campaigns"
+        initialName="Black Friday"
+        existingNames={[]}
+        prefill={{ start: "2026-11-27T00:00:00-03:00" }}
+        onBack={() => {}}
+        onSubmit={onSubmit}
+      />,
+    );
+    const body = within(document.body);
+    expect((body.getByLabelText("Starts") as HTMLInputElement).value).not.toBe(
+      "",
+    );
+    expect((body.getByLabelText("Ends") as HTMLInputElement).value).toBe("");
+    fireEvent.click(body.getByRole("button", { name: "Create and use" }));
+    const pick = onSubmit.mock.calls[0]![0] as Extract<
+      NamedRulePick,
+      { kind: "campaigns" }
+    >;
+    expect(pick.name).toBe("Black Friday");
+    // The same moment, in the editor's offset; no end, so it stays open.
+    expect(Object.keys(pick.create!.window)).toEqual(["start"]);
+    expect(new Date(pick.create!.window.start!).getTime()).toBe(
+      new Date("2026-11-27T00:00:00-03:00").getTime(),
+    );
+  });
+});
+
+describe("the picker's A/B test and Campaign rows", () => {
+  test("wear the icons a chosen rule shows on the trigger, not the filter", () => {
+    expect(namedRuleIconName("experiments")).toBe(
+      resolveMatcherIconName("experiment", undefined, true),
+    );
+    expect(namedRuleIconName("campaigns")).toBe(
+      resolveMatcherIconName("campaign", undefined, true),
+    );
+    expect(namedRuleIconName("experiments")).toBe("Beaker02");
+    expect(namedRuleIconName("campaigns")).toBe("Calendar");
+    for (const kind of ["experiments", "campaigns"] as const) {
+      expect(getIconComponent(namedRuleIconName(kind))).toBeDefined();
+    }
+  });
+});
+
+describe("a campaign's date inputs", () => {
+  test("draw their calendar icon light in dark mode", () => {
+    const view = render(
+      <CampaignWindowInputs
+        idPrefix="c"
+        start=""
+        end=""
+        onStartChange={() => {}}
+        onEndChange={() => {}}
+      />,
+    );
+    const inputs = view.container.querySelectorAll(
+      'input[type="datetime-local"]',
+    );
+    expect(inputs.length).toBe(2);
+    for (const input of inputs) {
+      expect(input.className).toContain("dark:scheme-dark");
+    }
+  });
+});
