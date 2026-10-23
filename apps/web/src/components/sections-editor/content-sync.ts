@@ -17,7 +17,8 @@
  * rethrows to the caller's own error UI.
  *
  * One store per project (org + project), not per draft: a publish ends on a
- * new draft, and its reload is still the publish's.
+ * new version of the same draft (emptied, same pointer address), and its
+ * reload is still the publish's.
  *
  * A discard ({@link runContentDiscard}) runs in the editor's own write queue:
  * the autosaves armed for the discarded blocks are dropped, and the discard

@@ -85,11 +85,17 @@ export interface PreviewDisplayInput {
   /**
    * The session's draft lives on the hosted Deco CMS (a Blocks v8 site edited
    * through Studio's GitHub backend; see `hostedDraftSession`). Nothing boots
-   * there, and no draft exists until the first edit, so a Fast Preview that
-   * isn't `fastPreviewReady` simply has no changes to show: the published site
-   * IS the preview, with no "waking" pill.
+   * there, and a draft always exists while the editor is open (the server
+   * creates it empty on open), so the frame renders its pointer once
+   * `fastPreviewReady`. Without a pointer once the read has answered (no
+   * draft store), the published site is the preview, with no "waking" pill.
    */
   hostedDraft?: boolean;
+  /**
+   * A hosted draft whose pointer is still being read: a neutral loader, never
+   * the published site first (it would show content the draft has changed).
+   */
+  hostedPointerPending?: boolean;
   /**
    * Not known yet whether this is a v7 or a v8 site (GitHub mode while
    * main's answer loads or is retried, or a saved Local tunnel waiting for
@@ -144,6 +150,12 @@ export function resolvePreviewDisplay(
     return NONE;
   }
 
+  // A hosted draft's pointer is on its way: the loader, until the frame can
+  // render the draft itself.
+  if (hostedDraft && input.hostedPointerPending && !fastPreviewReady) {
+    return { ...NONE, showDecidingLoader: true };
+  }
+
   // Fast Preview's draft render, the moment it's renderable. It needs only the
   // daemon (up shortly after the clone), so this deliberately ignores
   // `progressStatus` — waiting for the dev server is the whole cost it exists to
@@ -159,8 +171,8 @@ export function resolvePreviewDisplay(
     };
   }
 
-  // A hosted v8 draft with no edits yet: the published site is exactly what
-  // the draft would render, and nothing is starting — no pill.
+  // A hosted v8 session whose draft has no pointer (no draft store): the
+  // published site, and nothing is starting — no pill.
   if (fastPreviewActive && hostedDraft && previewServerUrl) {
     return {
       mode: "production",

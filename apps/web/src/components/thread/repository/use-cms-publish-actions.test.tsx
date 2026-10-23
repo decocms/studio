@@ -51,6 +51,7 @@ import {
 } from "./publish-change-summary";
 import type { PublishTarget } from "./publish-flow";
 import * as realGit from "./sandbox-git-api";
+import { hostedPreviewUrls } from "@/components/sandbox/preview/hosted-preview-urls";
 
 const ORG = "acme";
 const VM = "vm-1";
@@ -637,6 +638,54 @@ describe("useCmsPublishActions on a hosted v8 site", () => {
     expect(reads.releases).toBe(before.releases + 1);
     expect(reads.pointer).toBe(before.pointer + 1);
     expect(onPublished).toHaveBeenCalledTimes(1);
+    expect(getContentSyncState(SCOPE).phase).toBe("idle");
+  });
+
+  it("after a publish the frame keeps the same draft pointer, emptied: same address, a new version, never off or the bare site", async () => {
+    const { backend } = hostedBackend();
+    server.draft = { set: { "pages-home": { title: "draft" } }, delete: [] };
+    server.etag++;
+    // The server publishes, then empties the draft at the same slug (a new
+    // ETag): the pointer the editor reads keeps its address.
+    globalThis.fetch = (async () => {
+      server.main = layered();
+      server.head++;
+      server.draft = { set: {}, delete: [] };
+      server.etag++;
+      return new Response(
+        JSON.stringify({ result: "merged", sha: "abc", release: "current" }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }) as unknown as typeof fetch;
+    await queryClient.invalidateQueries({
+      queryKey: KEYS.protocolDraftRead(ORG, VM, BRANCH),
+    });
+    const frameDraft = () => {
+      const data = queryClient.getQueryData<{
+        draft: string;
+        version: string;
+      }>(KEYS.protocolDraftRead(ORG, VM, BRANCH))!;
+      const urls = hostedPreviewUrls({
+        display: { mode: "production", iframeBase: "https://acme.example" },
+        path: "/",
+        pointer: `${data.draft}@${data.version}`,
+        device: "desktop",
+        forcedVariants: ["pages-home@sections=1"],
+        previewOptions: { at: "2026-10-23T10:00:00-03:00" },
+      });
+      const frame = new URL(urls.frame!).searchParams.get("__draft");
+      expect(new URL(urls.newTab!).searchParams.get("__draft")).toBe(frame);
+      return frame!;
+    };
+    const before = frameDraft();
+    const { result } = render(backend, { hosted: true });
+    await act(() => result.current.submit());
+    const after = frameDraft();
+    expect(after).not.toBe(before);
+    expect(after).not.toBe("off");
+    const address = (value: string) => value.slice(0, value.lastIndexOf("@"));
+    expect(address(after)).toBe(address(before));
+    expect(after.endsWith(`@e${server.etag}`)).toBe(true);
     expect(getContentSyncState(SCOPE).phase).toBe("idle");
   });
 

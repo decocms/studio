@@ -145,8 +145,31 @@ export function comparePageUrl(
 /** Where the unpublished side renders: Fast Preview's `?__draft=` pointer on
  *  the live site, or a coding session's sandbox dev server. */
 export type CompareDraft =
-  | { kind: "pointer"; pointer: string }
+  | {
+      kind: "pointer";
+      pointer: string;
+      /**
+       * The `__draft` the "Open draft" link sends (a hosted draft: the preview
+       * frame's, with its forced variants and "Preview as" options); the
+       * pointer when absent. The compare's panes render the bare pointer.
+       */
+      link?: string;
+    }
   | { kind: "sandbox"; previewUrl: string };
+
+/**
+ * The "Open draft" link for `url`: what {@link compareDraftUrl} renders, with
+ * a pointer draft's `link` value when it has one.
+ */
+export function compareDraftLink(
+  url: URL,
+  draft: CompareDraft | null,
+): string | null {
+  if (draft?.kind === "pointer" && draft.link) {
+    return withDraftPointer(url.toString(), draft.link);
+  }
+  return compareDraftUrl(url, draft);
+}
 
 /** The live-site `url` rendered with the unpublished changes, or null without a draft. */
 export function compareDraftUrl(

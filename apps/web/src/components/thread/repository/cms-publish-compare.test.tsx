@@ -243,6 +243,30 @@ describe("the review frames (publish review)", () => {
     view.unmount();
   });
 
+  test("v8: Open draft carries the frame's __draft; the panes the bare pointer, the before side off", () => {
+    const pointer = "delivery.decocms.com/sites/acme/drafts/s1.json@e3";
+    const link =
+      "delivery.decocms.com/sites/acme/drafts/s1.json?__variant=pages-home%40sections%3D1@e3";
+    const view = render(
+      <PublishCompare
+        change={page}
+        diff={null}
+        bodyPending={false}
+        previewServerUrl="https://site.example"
+        draft={{ kind: "pointer", pointer, link }}
+        lastPage={null}
+        v8={{ blocks: {} }}
+      />,
+    );
+    const open =
+      document.querySelector<HTMLAnchorElement>('a[target="_blank"]')!;
+    expect(new URL(open.href).searchParams.get("__draft")).toBe(link);
+    const [before, after] = frames(view.container);
+    expect(new URL(before!.src).searchParams.get("__draft")).toBe("off");
+    expect(new URL(after!.src).searchParams.get("__draft")).toBe(pointer);
+    view.unmount();
+  });
+
   test("v8: a pane with no page to load is ready at once", () => {
     const onReady = mock(() => {});
     const view = render(

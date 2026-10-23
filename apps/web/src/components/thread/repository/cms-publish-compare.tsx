@@ -38,6 +38,7 @@ import { PublishGhost } from "./cms-publish-frame.tsx";
 import {
   blockComparePath,
   canRenderCompare,
+  compareDraftLink,
   compareDraftUrl,
   comparePlaceholder,
   compareUrl,
@@ -169,6 +170,8 @@ export function PublishCompare({
       });
   const beforeUrl = url ? withDraftPointer(url.toString(), DRAFT_OFF) : null;
   const afterUrl = url ? compareDraftUrl(url, draft) : null;
+  /** "Open draft": the preview frame's `__draft` (compareDraftLink). */
+  const afterLink = url ? compareDraftLink(url, draft) : null;
 
   const rawDiff: GitDiffResult = change.entry
     ? entryDiff(change, t("thread.publishCompare.sideUnreadable"))
@@ -327,9 +330,9 @@ export function PublishCompare({
                 <Phone01 className="size-3.5" />
               </DeviceButton>
             </div>
-            {afterUrl ? (
+            {afterLink ? (
               <a
-                href={afterUrl}
+                href={afterLink}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"

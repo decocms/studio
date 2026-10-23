@@ -175,13 +175,17 @@ import {
 } from "@/components/sections-editor/content-backend";
 import { useContentBackend } from "@/components/sections-editor/use-content-backend";
 import { useMainSchemaV8 } from "@/hooks/use-main-schema-v8";
-import { useContentRevision } from "@/components/sections-editor/content-protocol-api";
+import {
+  useContentRevision,
+  useProtocolDraftRead,
+} from "@/components/sections-editor/content-protocol-api";
+import { publishPreviewDraft } from "@/components/sections-editor/preview-draft-link";
+import { hostedPreviewUrls } from "./hosted-preview-urls";
 import { isContentEditingEnabled } from "@/layouts/main-panel-tabs/content-editing-gate";
 import { type PreviewDeviceSize, withDeviceHint } from "./device-hint";
 import { PreviewAsControl } from "./preview-as-control";
 import {
   hasPreviewOptions,
-  isReleaseSha,
   type PreviewOptions,
   withPreviewOptions,
   withPreviewOptionsInDraftUrl,
@@ -191,7 +195,6 @@ import {
   namedRuleSupport,
   readNamedRuleValues,
 } from "@/components/sections-editor/named-rules";
-import { useReleases } from "@/layouts/main-panel-tabs/releases-api";
 import {
   frameNavigationLoaded,
   HELD_NAVIGATION_RELEASE_MS,
@@ -804,12 +807,24 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // (no production URL) the blocking booting overlay.
   // Coding sessions boot visibly: no production fallback → the boot console.
   const codingSession = projectDefaultsToCms && session.runtime === "sandbox";
-  // A v8 site's hosted draft: nothing boots, and no draft until the first edit.
+  // A v8 site's hosted draft: nothing boots, and a draft always exists while
+  // the editor is open (created empty on open; Publish empties it in place).
   const hostedDraft = hostedDraftSession(
     contentBackend,
     previewMode,
     mainSchema,
   );
+  // Its pointer, from the same read `useFastPreviewDraftUrl` makes.
+  const hostedPointerRead = useProtocolDraftRead(
+    hostedDraft &&
+      fastPreviewEnabled &&
+      contentBackend.kind === "protocol" &&
+      virtualMcpId &&
+      branch
+      ? { orgSlug: org.slug, virtualMcpId, branch }
+      : null,
+  );
+  const hostedPointer = hostedDraft ? hostedPointerRead.pointer : null;
   const display = resolvePreviewDisplay({
     previewState,
     progressStatus: progress.status,
@@ -819,12 +834,19 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     codingSession,
     localPreviewUrl,
     hostedDraft,
+    hostedPointerPending:
+      hostedDraft &&
+      (contentBackend.kind === "pending" || hostedPointerRead.pending),
     deciding,
   });
-  /** The frame shows the published site: nothing to draft-render yet. */
+  /**
+   * The frame shows the published site: nothing to draft-render yet. A
+   * hosted draft is never in this state once its pointer is read; without
+   * one (no draft store) it shows the published site.
+   */
   const showsPublished =
     display.showWakingPill ||
-    (hostedDraft && display.mode === "production" && !draftPreviewUrl);
+    (hostedDraft && display.mode === "production" && !hostedPointer);
   const previewSurfaceActive = display.mode !== "none";
 
   // Origin of the "production" mode's base — an external, org-owned domain
@@ -893,18 +915,43 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     previewAsAvailable && decofile
       ? Object.keys(readNamedRuleValues(decofile).experiments)
       : [];
-  // With no draft yet, the frame shows the published site: the moment and
-  // tests then apply to the current release, by its commit SHA.
-  const hostedSite =
-    contentBackend.kind === "protocol" && contentBackend.source === "github";
-  const releases = useReleases(org.slug, virtualMcpId ?? "", {
-    enabled:
-      previewOptionsActive && hostedSite && showsPublished && !!virtualMcpId,
-  });
-  const { current: liveRelease } = releases.data?.pages[0] ?? {
-    current: null,
-  };
-  const currentRelease = liveRelease?.revision ?? null;
+  // A hosted draft's `__draft`: its pointer with the forced variants and the
+  // "Preview as" options. The frame and every link (new tab, publish dialog,
+  // compare) send exactly this value (preview-draft-link.ts).
+  const hostedUrls = hostedDraft
+    ? hostedPreviewUrls({
+        display,
+        path: resolvedPath,
+        pointer: hostedPointer,
+        device: previewDeviceSize,
+        forcedVariants,
+        previewOptions: appliedPreviewOptions,
+      })
+    : null;
+  const previewDraftScope = virtualMcpId
+    ? contentSyncScope(org.slug, virtualMcpId)
+    : null;
+  const previewDraftModifiersKey = JSON.stringify([
+    forcedVariants,
+    appliedPreviewOptions,
+  ]);
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- publishes the frame's variants and "Preview as" to the links outside this component
+  useEffect(() => {
+    if (!hostedDraft || !previewDraftScope) return;
+    const [forced, options] = JSON.parse(previewDraftModifiersKey) as [
+      string[],
+      PreviewOptions,
+    ];
+    publishPreviewDraft(previewDraftScope, {
+      forcedVariants: forced,
+      previewOptions: options,
+    });
+  }, [hostedDraft, previewDraftScope, previewDraftModifiersKey]);
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- the links fall back to the bare pointer once the frame is gone
+  useEffect(() => {
+    if (!hostedDraft || !previewDraftScope) return;
+    return () => publishPreviewDraft(previewDraftScope, null);
+  }, [hostedDraft, previewDraftScope]);
   // A connected `deco serve` has no drafts: a pointer to it carries only the
   // forced variants (and the preview's moment and tests). With none, `off`
   // drops a pointer the draft cookie kept.
@@ -937,30 +984,32 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
           ),
           matcherOverride,
         )
-      : display.mode === "production"
-        ? // Fast Preview's draft route honours the variant matcher override like the sandbox dev server, so append it here too.
-          withVariantMatcherOverride(
-            withDeviceHint(
-              withPreviewOptionsInDraftUrl(
-                withForcedVariantsInDraftUrl(
-                  // No draft renderable yet (waking, or a hosted draft with no edits), so ask for published.
-                  withDraftPointer(
-                    directPreviewUrl ??
-                      effectiveDraftPreviewUrl ??
-                      resolvePreviewUrl(resolvedPath, display.iframeBase!) ??
-                      display.iframeBase!,
-                    showsPublished ? DRAFT_OFF : null,
+      : display.mode === "production" && hostedUrls?.frame
+        ? // A hosted draft: exactly the links' `__draft`, plus the frame's device hint.
+          hostedUrls.frame
+        : display.mode === "production"
+          ? // Fast Preview's draft route honours the variant matcher override like the sandbox dev server, so append it here too.
+            withVariantMatcherOverride(
+              withDeviceHint(
+                withPreviewOptionsInDraftUrl(
+                  withForcedVariantsInDraftUrl(
+                    // No draft renderable yet (waking, or a hosted draft without a pointer), so ask for published.
+                    withDraftPointer(
+                      directPreviewUrl ??
+                        effectiveDraftPreviewUrl ??
+                        resolvePreviewUrl(resolvedPath, display.iframeBase!) ??
+                        display.iframeBase!,
+                      showsPublished ? DRAFT_OFF : null,
+                    ),
+                    forcedVariants,
                   ),
-                  forcedVariants,
+                  appliedPreviewOptions,
                 ),
-                appliedPreviewOptions,
-                currentRelease,
+                previewDeviceSize,
               ),
-              previewDeviceSize,
-            ),
-            matcherOverride,
-          )
-        : null,
+              matcherOverride,
+            )
+          : null,
   );
 
   /**
@@ -977,21 +1026,23 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       ? resolvePreviewUrl(resolvedPath, display.iframeBase)
       : null);
   const openInNewTabUrl =
-    display.mode === "production"
-      ? productionOpenTabBase
-        ? withVariantMatcherOverride(
-            withPreviewOptionsInDraftUrl(
-              withForcedVariantsInDraftUrl(
-                productionOpenTabBase,
-                forcedVariants,
+    display.mode === "production" && hostedUrls
+      ? // The frame's `__draft`, exactly; none until the pointer is read.
+        hostedUrls.newTab
+      : display.mode === "production"
+        ? productionOpenTabBase
+          ? withVariantMatcherOverride(
+              withPreviewOptionsInDraftUrl(
+                withForcedVariantsInDraftUrl(
+                  productionOpenTabBase,
+                  forcedVariants,
+                ),
+                appliedPreviewOptions,
               ),
-              appliedPreviewOptions,
-              showsPublished ? currentRelease : null,
-            ),
-            matcherOverride,
-          )
-        : null
-      : (iframeSrc ?? display.iframeBase);
+              matcherOverride,
+            )
+          : null
+        : (iframeSrc ?? display.iframeBase);
 
   const handleOpenPreview = () => {
     const url = openInNewTabUrl;
@@ -1981,15 +2032,14 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
               options={previewOptions}
               onChange={setPreviewOptions}
               available={
-                !!servePointerBase ||
-                !showsPublished ||
-                isReleaseSha(currentRelease) ||
-                !previewOptionsActive
+                !!servePointerBase || !showsPublished || !previewOptionsActive
               }
             />
           )}
           <ToolbarIconButton
             onClick={handleOpenPreview}
+            // A hosted draft's link waits for its pointer; v7 is as on main.
+            disabled={hostedDraft && !openInNewTabUrl}
             aria-label={t("sandbox.preview.openInNewTab")}
           >
             <LinkExternal01 size={16} />

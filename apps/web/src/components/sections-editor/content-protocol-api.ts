@@ -491,13 +491,18 @@ interface HostedDraftPointer {
  * the delivery CDN, `<draft>@<etag>`, which the site's SDK revalidates on
  * every render. Read from the session's decofile GET, on load and again
  * after each content change (content-sync.ts). `params` is `null` for any
- * other backend; the pointer is null while there is no draft.
+ * other backend. An editor session's read creates the draft (empty) when
+ * there is none, and Publish empties it at the same address, so the pointer
+ * is null only before the first answer (`pending`) or when the server has
+ * no draft store.
  */
-export function useProtocolDraft(
-  params: DecofileScopeParams | null,
-): string | null {
+export function useProtocolDraftRead(params: DecofileScopeParams | null): {
+  pointer: string | null;
+  /** The first read hasn't answered yet (no data, no error). */
+  pending: boolean;
+} {
   const queryClient = useQueryClient();
-  const { data } = useQuery({
+  const { data, isPending, isError } = useQuery({
     queryKey: KEYS.protocolDraftRead(
       params?.orgSlug ?? "",
       params?.virtualMcpId ?? "",
@@ -523,8 +528,18 @@ export function useProtocolDraft(
     enabled: !!params,
     staleTime: Number.POSITIVE_INFINITY,
   });
-  if (!params || !data?.draft || !data.version) return null;
-  return `${data.draft}@${data.version}`;
+  const pending = !!params && isPending && !isError;
+  if (!params || !data?.draft || !data.version) {
+    return { pointer: null, pending };
+  }
+  return { pointer: `${data.draft}@${data.version}`, pending: false };
+}
+
+/** {@link useProtocolDraftRead}'s pointer alone. */
+export function useProtocolDraft(
+  params: DecofileScopeParams | null,
+): string | null {
+  return useProtocolDraftRead(params).pointer;
 }
 
 /**

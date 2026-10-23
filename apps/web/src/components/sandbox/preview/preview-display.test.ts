@@ -247,9 +247,53 @@ describe("resolvePreviewDisplay", () => {
   });
 
   describe("hosted draft (Blocks v8, no sandbox)", () => {
-    it("shows the published site with no pill before the first edit", () => {
-      // Nothing boots on a hosted v8 session: "not ready" only means no
-      // draft exists yet, so the published site is the preview.
+    it("hosted v8 without a pointer shows the loader, never the published site first", () => {
+      for (const progressStatus of ["doing", "done", "failed"] as const) {
+        expect(
+          run({
+            previewState: STARTING,
+            progressStatus,
+            fastPreviewActive: true,
+            fastPreviewReady: false,
+            hostedDraft: true,
+            hostedPointerPending: true,
+          }),
+        ).toEqual({
+          mode: "none",
+          iframeBase: null,
+          showBlockingOverlay: false,
+          showWakingPill: false,
+          showDecidingLoader: true,
+        });
+      }
+    });
+
+    it("a pending pointer read never holds a v7 Fast Preview or a ready draft", () => {
+      expect(
+        run({
+          previewState: STARTING,
+          progressStatus: "doing",
+          fastPreviewActive: true,
+          fastPreviewReady: false,
+          hostedDraft: false,
+          hostedPointerPending: true,
+        }).showWakingPill,
+      ).toBe(true);
+      expect(
+        run({
+          previewState: STARTING,
+          progressStatus: "doing",
+          fastPreviewActive: true,
+          fastPreviewReady: true,
+          hostedDraft: true,
+          hostedPointerPending: true,
+        }).mode,
+      ).toBe("production");
+    });
+
+    it("shows the published site with no pill when the read answered with no pointer (no draft store)", () => {
+      // Nothing boots on a hosted v8 session: an answered read with no
+      // pointer leaves the published site as the preview.
       expect(
         run({
           previewState: STARTING,
@@ -266,7 +310,7 @@ describe("resolvePreviewDisplay", () => {
       });
     });
 
-    it("shows the draft once the first edit creates one, as before", () => {
+    it("shows the draft once its pointer is read", () => {
       expect(
         run({
           previewState: STARTING,

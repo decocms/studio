@@ -41,7 +41,14 @@ import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useContentBackend } from "../../sections-editor/use-content-backend.ts";
 import { useContentChanges } from "../../sections-editor/content-changes.ts";
 import { useDecofileCacheKey } from "../../sections-editor/use-decofile.ts";
-import { useContentSyncBusy } from "../../sections-editor/content-sync.ts";
+import {
+  contentSyncScope,
+  useContentSyncBusy,
+} from "../../sections-editor/content-sync.ts";
+import {
+  previewDraftPageLink,
+  usePreviewDraftValue,
+} from "../../sections-editor/preview-draft-link.ts";
 import {
   useDraftPointer,
   useFastPreviewDraftUrl,
@@ -154,6 +161,15 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
     branch ? { orgSlug: org.slug, virtualMcpId, branch } : null,
   );
   const changesQuery = useContentChanges(hosted ? backend : null, cacheKey);
+  // A hosted draft's links send the preview frame's `__draft` exactly: its
+  // pointer with the frame's forced variants and "Preview as" options.
+  const hostedDraftValue = usePreviewDraftValue(
+    contentSyncScope(org.slug, virtualMcpId),
+    hosted ? draftPointer : null,
+  );
+  const draftPreviewUrl = hosted
+    ? previewDraftPageLink(previewServerUrl, draftPath, hostedDraftValue)
+    : draftPreview.url;
 
   /** Poll-free on purpose: every call forwards to the provider; save hooks invalidate
    *  this key. Shared verbatim with the publish popover, which reads the
@@ -497,11 +513,17 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
           owner={repository.owner}
           repo={repository.name}
           publishPolicy={normalizePublishPolicy(vm?.metadata?.publishPolicy)}
-          draftPreviewUrl={draftPreview.url}
+          draftPreviewUrl={draftPreviewUrl}
           destinationHost={draftPreview.host}
           previewServerUrl={previewServerUrl}
           compareDraft={
-            draftPointer ? { kind: "pointer", pointer: draftPointer } : null
+            draftPointer
+              ? {
+                  kind: "pointer",
+                  pointer: draftPointer,
+                  ...(hostedDraftValue ? { link: hostedDraftValue } : {}),
+                }
+              : null
           }
           lastPublishedPr={lastPublishedQuery.data ?? null}
           onRequestApproval={() => openSurface("review")}
