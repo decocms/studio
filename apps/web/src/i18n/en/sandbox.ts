@@ -410,7 +410,7 @@ export const sandbox = {
   "sandbox.cmsSettingsBlock.defaultsNotice":
     "Not saved yet: these are the defaults. Your first change creates the CMS block.",
   "sandbox.cmsSettingsBlock.description":
-    "Preview hosts, telemetry and analytics. The site reads them from its published release: changes take effect once published, never in a draft preview.",
+    "Telemetry and analytics. The site reads them from its published release: changes take effect once published, never in a draft preview.",
   "sandbox.categoryEditor.renameActionButton": "Rename & update posts",
   "sandbox.categoryEditor.renameDialogDescription":
     'Changing the slug from "{oldSlug}" to "{newSlug}" will update {count} post(s) that reference this category.',
@@ -989,6 +989,8 @@ export const sandbox = {
   "sandbox.preview.blockOnNoPage":
     "This block isn't used on any page, so there's nothing to preview.",
   "sandbox.preview.previewMetadataNotReady": "Preview metadata not ready yet",
+  "sandbox.preview.pageSchemaNotReady":
+    "The site is still loading. Try again in a moment.",
   "sandbox.preview.searchPagesAndComponents": "Search pages and components...",
   "sandbox.preview.startingPreview": "Starting your preview",
   "sandbox.preview.startingPreviewHint":
@@ -1119,7 +1121,7 @@ export const sandbox = {
   "sandbox.previewServerUrlField.description":
     "Your live server's address, used to preview content. Required for Fast Preview.",
   "sandbox.previewServerUrlField.descriptionBlocksV8":
-    "Your live site's address. Studio shows your drafts on it before you publish.",
+    "Your live site's address. Studio shows your drafts on it before you publish. A new address shows drafts after your next publish.",
   "sandbox.previewServerUrlField.label": "Preview server",
   "sandbox.previewServerUrlField.placeholder": "https://example.com",
   "sandbox.fieldDescriptionTooltipsField.label": "Compact descriptions",
@@ -1277,4 +1279,77 @@ export const sandbox = {
   "sandbox.variantCalendar.variantBlock": "Variant / Block",
   "sandbox.visualEditorPrompt.inputPlaceholder": "Ask the AI...",
   "sandbox.visualEditorPrompt.sendButton": "Send",
+  "sandbox.collectionsSidebar.campaigns": "Calendar",
+  "sandbox.calendarView.noDraft.title": "Pick a draft to plan your campaigns",
+  "sandbox.calendarView.noDraft.desc":
+    "Your campaigns are saved in a draft, like any other edit. Pick a draft in the bar above, or open the site editor to start one.",
+  "sandbox.calendarView.loadFailed": "Couldn't load your campaigns.",
+  "sandbox.calendarView.loadFailedHint":
+    "Nothing was changed. Try again in a moment.",
+  "sandbox.dateCampaigns.intro":
+    "Every date on your site is a campaign: a variant with the rule “Campaign” shows while its campaign runs. Changes are saved in your draft and go live when you publish.",
+  "sandbox.dateCampaigns.new": "New campaign",
+  "sandbox.dateCampaigns.empty.title": "No campaigns yet",
+  "sandbox.dateCampaigns.empty.desc":
+    "Create one here, or from a variant in the site editor: choose the rule “Campaign” and type a name.",
+  "sandbox.dateCampaigns.listMode": "List",
+  "sandbox.dateCampaigns.timelineMode": "Timeline",
+  "sandbox.dateCampaigns.status.running": "Running",
+  "sandbox.dateCampaigns.status.upcoming": "Upcoming",
+  "sandbox.dateCampaigns.status.ended": "Ended",
+  "sandbox.dateCampaigns.status.always": "Always on",
+  "sandbox.dateCampaigns.status.unreadable": "Dates can't be read",
+  "sandbox.dateCampaigns.usedBy": "Used by {count}",
+  "sandbox.dateCampaigns.notUsed": "Not used yet",
+  "sandbox.dateCampaigns.state.new": "Not published yet",
+  "sandbox.dateCampaigns.state.changed": "Changed in your draft",
+  "sandbox.dateCampaigns.removedTitle": "Removed in your draft",
+  "sandbox.dateCampaigns.removedHint":
+    "These campaigns stop when you publish. To keep one, create it again with the same name.",
+  "sandbox.dateCampaigns.unreadableHint":
+    "One of its dates can't be read, so its variants don't show. Pick new dates and save.",
+  "sandbox.dateCampaigns.publishedWindow": "Published: {window}",
+  "sandbox.dateCampaigns.saveDates": "Save dates",
+  "sandbox.dateCampaigns.renameHint":
+    "Every variant that uses this campaign is updated in the same change.",
+  "sandbox.dateCampaigns.renameWholeHint":
+    "Sections that read every campaign in their own code still look for the old name. Update them in the site editor.",
+  "sandbox.dateCampaigns.delete": "Delete campaign",
+  "sandbox.dateCampaigns.deleted": "Campaign “{name}” deleted from your draft",
+  "sandbox.dateCampaigns.deletedHint":
+    "It leaves the site when you publish. Undo brings it back.",
+  "sandbox.dateCampaigns.renamed": "Campaign renamed to “{name}”",
+  "sandbox.dateCampaigns.allCampaigns": "All campaigns",
+  "sandbox.dateCampaigns.today": "Today",
+  "sandbox.dateCampaigns.previous": "Earlier",
+  "sandbox.dateCampaigns.next": "Later",
+  "sandbox.dateCampaigns.nothingInRange": "No campaign runs in these months.",
+  "sandbox.dateCampaigns.missing.title":
+    "Your site needs an update for campaigns",
+  "sandbox.dateCampaigns.missing.desc":
+    "Ask your developer to update the site to the latest version of Blocks and publish it. Your campaigns will show up here.",
+  "sandbox.dateCampaigns.replaced.title":
+    "Your site handles campaigns in its own code",
+  "sandbox.dateCampaigns.replaced.desc":
+    "Its developers defined their own campaigns, so they can't be changed here. Ask them how to change one.",
+  "sandbox.dateCampaigns.conflict.title":
+    "Your site already has a block named “campaigns”",
+  "sandbox.dateCampaigns.conflict.desc":
+    "It isn't a list of campaigns, so campaigns can't be added yet. Rename that block, then come back here.",
+  "sandbox.previewAs.label": "Preview as",
+  "sandbox.previewAs.intro":
+    "Only this preview changes. Your visitors keep seeing the site as it is.",
+  "sandbox.previewAs.unavailable":
+    "Make a change or publish your site first; then the preview can show another moment or force a test.",
+  "sandbox.previewAs.momentLabel": "Preview as of",
+  "sandbox.previewAs.momentHint":
+    "Campaigns show as they will at this moment. Times are in your computer's time zone.",
+  "sandbox.previewAs.now": "Now",
+  "sandbox.previewAs.testsLabel": "A/B tests",
+  "sandbox.previewAs.testsHint":
+    "Not set: you see the side your own visit got.",
+  "sandbox.previewAs.noTests": "No A/B tests yet.",
+  "sandbox.previewAs.off": "Off",
+  "sandbox.previewAs.on": "On",
+  "sandbox.previewAs.reset": "Show as it is now",
 } as const;

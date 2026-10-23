@@ -1,5 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { KEYS } from "@/lib/query-keys";
+import type { LiveMeta } from "./resolve-schema";
+import { declaresBuiltInPage } from "./section-catalog";
 import type { ResolvedSeo, SeoTarget } from "./seo-block";
 import { wrapSeoPersistValue } from "./seo-lazy-render";
 import { useDebouncedSaveBlock } from "./use-save-block";
@@ -32,6 +34,24 @@ export function buildSeoSavePayload(
   return { ...latestBlock, seo: seoValue };
 }
 
+/**
+ * The page block with its `seo` set to `rawSeo` (`null`: SEO turned off). On a
+ * next-major site turning SEO off drops the field instead: its page schema may
+ * list no `seo` at all, and there even `seo: null` is an unknown field that
+ * `deco check` (and so the site's build) rejects. v7 pages keep `seo: null`.
+ */
+export function withPageSeo(
+  block: Record<string, unknown>,
+  rawSeo: Record<string, unknown> | null,
+  meta: LiveMeta | null | undefined,
+): Record<string, unknown> {
+  if (rawSeo === null && declaresBuiltInPage(meta ?? undefined)) {
+    const { seo: _dropped, ...rest } = block;
+    return rest;
+  }
+  return { ...block, seo: rawSeo };
+}
+
 export function activeSeoResolveType(
   effectiveSeo: Record<string, unknown>,
   resolved: ResolvedSeo,
@@ -46,6 +66,8 @@ interface UseSeoFormSaveParams {
   branch: string;
   target: SeoTarget;
   resolved: ResolvedSeo | null;
+  /** The site's schema: decides how turning SEO off is saved. */
+  meta?: LiveMeta | null;
   onSaved?: () => void;
 }
 
@@ -56,6 +78,7 @@ export function useSeoFormSave({
   branch,
   target,
   resolved,
+  meta,
   onSaved,
 }: UseSeoFormSaveParams) {
   const queryClient = useQueryClient();
@@ -85,7 +108,7 @@ export function useSeoFormSave({
       );
       const latest = decofile?.[resolved.blockKey];
       if (!isPlainObject(latest)) return null;
-      return { ...latest, seo: rawSeo };
+      return withPageSeo(latest, rawSeo, meta);
     });
   };
 

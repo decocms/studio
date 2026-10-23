@@ -3037,7 +3037,7 @@ function Lane({
       {/* Sticky together, so the drop hint stays in view above the dragged card. */}
       <div
         className={cn(
-          "sticky top-0 z-10 flex flex-col transition-colors",
+          "sticky top-0 z-10 flex min-w-0 flex-col transition-colors",
           isTarget ? "bg-muted" : "bg-background",
         )}
       >
@@ -3185,7 +3185,7 @@ function Lane({
           )}
           <div
             className={cn(
-              "flex min-h-0 flex-col gap-3 px-1 pb-1",
+              "flex min-h-0 min-w-0 flex-col gap-3 px-1 pb-1",
               anyCritical ? "pt-7" : "pt-4.5",
             )}
           >
@@ -3545,7 +3545,7 @@ function TaskCard({
         <div className="relative min-w-0 flex-1 text-[14px] font-[450] leading-snug">
           <span
             className={cn(
-              "block text-foreground line-clamp-2",
+              "block text-foreground line-clamp-2 wrap-anywhere",
               action && "group-hover:fade-text-end",
             )}
           >

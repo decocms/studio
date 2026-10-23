@@ -116,7 +116,7 @@ const SERIES_COLORS = [
   "var(--chart-5)",
 ];
 
-const AXIS_TICK = {
+export const AXIS_TICK = {
   fontSize: 11,
   fill: "var(--muted-foreground)",
   opacity: 0.7,
@@ -162,7 +162,7 @@ function formatCell(value: string | number, unit?: string): string {
 }
 
 /** The Monitor's metric card: a quiet title, one figure, then the detail. */
-function MetricCard({
+export function MetricCard({
   title,
   value,
   caption,

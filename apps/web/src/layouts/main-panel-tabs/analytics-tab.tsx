@@ -183,7 +183,15 @@ const DATA_VIEWS: ReadonlyArray<{ view: string; labelKey: TranslationKey }> = [
 ];
 
 // Range pills, shortest first — the admin's 5m…30d selector.
-const RANGE_PILLS = ["5m", "15m", "30m", "1h", "24h", "7d", "30d"] as const;
+export const RANGE_PILLS = [
+  "5m",
+  "15m",
+  "30m",
+  "1h",
+  "24h",
+  "7d",
+  "30d",
+] as const;
 
 // Keys in a view payload that are context, not panels — never rendered as data.
 const META_KEYS = new Set([
@@ -278,7 +286,7 @@ function isScalar(value: unknown): boolean {
   );
 }
 
-async function fetchJson(url: string): Promise<unknown> {
+export async function fetchJson(url: string): Promise<unknown> {
   const res = await fetch(url);
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -338,7 +346,7 @@ function Card({
 
 /** Format a metric value for display, keyed on its column name: percentages,
  *  durations (seconds → `10m 7s`), and plain counts each read differently. */
-function fmtMetric(key: string, value: unknown): string {
+export function fmtMetric(key: string, value: unknown): string {
   if (value === null || value === undefined) return "—";
   const n = Number(value);
   if (!Number.isFinite(n)) return formatCell(value);
@@ -1275,7 +1283,7 @@ function InstallPanel({ status }: { status: AnalyticsStatus }) {
 // --- register (not yet registered) ------------------------------------------
 
 /** Copy-to-clipboard button for the one-time snippet/token. */
-function CopyButton({ text }: { text: string }) {
+export function CopyButton({ text }: { text: string }) {
   const t = useT();
   const [copied, setCopied] = useState(false);
   return (

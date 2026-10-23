@@ -205,6 +205,24 @@ export function pollProtocolContent(
   return poll.finally(() => inFlight.delete(cacheKey));
 }
 
+/**
+ * A read that starts now, for a check that must see what is stored at the
+ * moment of a click (another tab may have changed the draft): a poll already
+ * running may have listed before, so it is waited out and the source asked
+ * again. Conditional on the revision held, so an unchanged draft costs no
+ * body; either way the cache then holds the stored blocks and versions.
+ */
+export async function rereadProtocolContent(
+  queryClient: QueryClient,
+  backend: ProtocolBackend,
+  params: DecofileScopeParams,
+  cacheKey: string,
+): Promise<ProtocolContent> {
+  const running = inFlight.get(cacheKey);
+  if (running) await running.catch(() => {});
+  return pollProtocolContent(queryClient, backend, params, cacheKey);
+}
+
 async function readContent(
   queryClient: QueryClient,
   backend: ProtocolBackend,

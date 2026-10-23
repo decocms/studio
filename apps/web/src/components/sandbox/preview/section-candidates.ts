@@ -1,5 +1,9 @@
 import { isLazyResolveType } from "@/components/sections-editor/section-lazy";
-import { NEVER_MATCHER_RESOLVE_TYPE } from "@/components/sections-editor/section-types";
+import { isNeverMatcherResolveType } from "@/components/sections-editor/section-types";
+import {
+  isVariantsBlockType,
+  variantValueOn,
+} from "@/components/sections-editor/variant-shape";
 
 /**
  * Candidate top-level `data-manifest-key`s a page section can render as, used
@@ -15,6 +19,8 @@ import { NEVER_MATCHER_RESOLVE_TYPE } from "@/components/sections-editor/section
 export function resolveSectionCandidates(
   section: { __resolveType?: unknown; section?: unknown; variants?: unknown },
   decofile: Record<string, unknown>,
+  /** A Blocks v8 site: its short `multivariate` and `never`, lazy values. */
+  v8 = false,
 ): string[] | null {
   let obj: { __resolveType?: unknown; section?: unknown; variants?: unknown } =
     section;
@@ -38,22 +44,26 @@ export function resolveSectionCandidates(
   // gated by a `never` matcher (the hidden-section shape) the flag renders
   // nothing → null. A partially-never multivariate keeps all variants' keys:
   // a never variant can still render under a matcher override.
-  if (rt.includes("flags/multivariate")) {
+  if (
+    rt.includes("flags/multivariate") ||
+    (v8 && isVariantsBlockType(rt, v8))
+  ) {
     const variants = Array.isArray(obj.variants) ? obj.variants : [];
     const allNever =
       variants.length === 0 ||
       variants.every((v) => {
         const rule = (v as { rule?: { __resolveType?: unknown } })?.rule;
-        return rule?.__resolveType === NEVER_MATCHER_RESOLVE_TYPE;
+        return isNeverMatcherResolveType(rule?.__resolveType, v8);
       });
     if (allNever) return null;
     const keys: string[] = [];
     for (const v of variants) {
-      const value = (v as { value?: unknown })?.value;
+      const value = variantValueOn(v, v8);
       if (value && typeof value === "object") {
         for (const k of resolveSectionCandidates(
           value as { __resolveType?: unknown },
           decofile,
+          v8,
         ) ?? []) {
           if (!keys.includes(k)) keys.push(k);
         }
@@ -68,6 +78,7 @@ export function resolveSectionCandidates(
         ? resolveSectionCandidates(
             obj.section as { __resolveType?: unknown },
             decofile,
+            v8,
           )
         : [];
     if (inner === null) return null;

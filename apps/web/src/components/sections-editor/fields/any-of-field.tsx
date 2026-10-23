@@ -59,6 +59,7 @@ import {
   HeaderSelectTrigger,
 } from "../sections-editor-panels";
 import { HeaderSlotPortal } from "../header-slot";
+import { useBlocksSiteEditor } from "../blocks-site-editor";
 import { useT } from "@/i18n/use-t.ts";
 import { MakeReusableModal } from "../make-reusable-modal";
 import { SchemaForm } from "../schema-form";
@@ -293,6 +294,7 @@ export function AnyOfField({
         }
       : onBreadcrumbChange;
 
+  const v8 = useBlocksSiteEditor();
   const [selectedRt, setSelectedRt] = useState(inferredRt);
   const [prevInferredRt, setPrevInferredRt] = useState(inferredRt);
   if (prevInferredRt !== inferredRt) {
@@ -300,7 +302,7 @@ export function AnyOfField({
     setSelectedRt(inferredRt);
   }
   const [loaderConfigOpen, setLoaderConfigOpen] = useState(() =>
-    blockRefLoaderConfigHasData(editorValue, savedRef?.blockKey),
+    blockRefLoaderConfigHasData(editorValue, savedRef?.blockKey, v8),
   );
   const [makeGlobalOpen, setMakeGlobalOpen] = useState(false);
 

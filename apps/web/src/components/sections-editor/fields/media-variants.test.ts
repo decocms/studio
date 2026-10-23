@@ -133,11 +133,74 @@ describe("flattenMultivariate", () => {
 });
 
 describe("appendVariant", () => {
-  test("adds a variant cloned from last", () => {
+  test("v7: adds a variant cloned from last, at the end", () => {
     const wrapper = makeWrapper(["a.png"]);
     const result = appendVariant(wrapper);
     expect(result.variants).toHaveLength(2);
+    expect(result.variants[0]).toBe(wrapper.variants[0]!);
     expect(result.variants[1]!.value).toBe("a.png");
+  });
+
+  test("v7: adds at the end after a trailing always one", () => {
+    const wrapper: MultivariateWrapper = {
+      __resolveType: RESOLVE_TYPE,
+      variants: [
+        {
+          rule: { __resolveType: "website/matchers/device.ts" },
+          value: "mobile.png",
+        },
+        { rule: { __resolveType: ALWAYS_RT }, value: "default.png" },
+      ],
+    };
+    const result = appendVariant(wrapper, undefined, false);
+    expect(result.variants[0]).toBe(wrapper.variants[0]!);
+    expect(result.variants[1]).toBe(wrapper.variants[1]!);
+    expect(result.variants[2]!.value).toBe("default.png");
+  });
+
+  test("v8: adds a variant cloned from last, above the trailing always one", () => {
+    const wrapper = makeWrapper(["a.png"]);
+    const result = appendVariant(wrapper, undefined, true);
+    expect(result.variants).toHaveLength(2);
+    expect(result.variants[0]!.value).toBe("a.png");
+    expect(result.variants[1]).toBe(wrapper.variants[0]!);
+  });
+
+  test("v8: keeps the existing order and adds right above the catch-all", () => {
+    const wrapper: MultivariateWrapper = {
+      __resolveType: RESOLVE_TYPE,
+      variants: [
+        {
+          rule: { __resolveType: "website/matchers/device.ts" },
+          value: "mobile.png",
+        },
+        { rule: { __resolveType: ALWAYS_RT }, value: "default.png" },
+      ],
+    };
+    const result = appendVariant(wrapper, undefined, true);
+    expect(result.variants.map((v) => v.value)).toEqual([
+      "mobile.png",
+      "default.png",
+      "default.png",
+    ]);
+    expect(result.variants[2]).toBe(wrapper.variants[1]!);
+  });
+
+  test("appends at the end when no variant always matches last", () => {
+    const wrapper: MultivariateWrapper = {
+      __resolveType: RESOLVE_TYPE,
+      variants: [
+        {
+          rule: { __resolveType: "website/matchers/device.ts" },
+          value: "mobile.png",
+        },
+      ],
+    };
+    for (const v8 of [true, false]) {
+      const result = appendVariant(wrapper, undefined, v8);
+      expect(result.variants[0]).toBe(wrapper.variants[0]!);
+      expect(result.variants[1]!.value).toBe("mobile.png");
+    }
   });
 
   test("deep clones object values", () => {
@@ -147,6 +210,9 @@ describe("appendVariant", () => {
     expect(result.variants[1]!.value).toEqual(obj);
     // Must be a clone, not the same reference
     expect(result.variants[1]!.value).not.toBe(obj);
+    const v8 = appendVariant(wrapper, undefined, true);
+    expect(v8.variants[0]!.value).toEqual(obj);
+    expect(v8.variants[0]!.value).not.toBe(obj);
   });
 });
 
@@ -188,6 +254,25 @@ describe("duplicateVariant", () => {
     expect(result.variants[0]!.value).toBe("a.png");
     expect(result.variants[1]!.value).toBe("a.png");
     expect(result.variants[2]!.value).toBe("b.png");
+  });
+
+  test("v7: a copy of the trailing always variant goes after it", () => {
+    const wrapper = makeWrapper(["a.png", "b.png"]);
+    const result = duplicateVariant(wrapper, 1);
+    expect(result.variants[1]).toBe(wrapper.variants[1]!);
+    expect(result.variants[2]!.value).toBe("b.png");
+    expect(result.variants[2]).not.toBe(wrapper.variants[1]!);
+  });
+
+  test("v8: a copy of the trailing always variant goes above it", () => {
+    const wrapper = makeWrapper(["a.png", "b.png"]);
+    const result = duplicateVariant(wrapper, 1, true);
+    expect(result.variants.map((v) => v.value)).toEqual([
+      "a.png",
+      "b.png",
+      "b.png",
+    ]);
+    expect(result.variants[2]).toBe(wrapper.variants[1]!);
   });
 
   test("returns wrapper unchanged for out-of-bounds index", () => {
