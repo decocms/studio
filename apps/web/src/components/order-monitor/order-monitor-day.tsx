@@ -152,9 +152,9 @@ function tzOffsetMs(instant: Date, tz: string): number {
   return asUtc - Math.floor(instant.getTime() / 1000) * 1000;
 }
 
-/** The last second of a local day in `tz`, as an ISO instant. */
-function endOfLocalDay(date: string, tz: string): string {
-  const guess = Date.parse(`${date}T23:59:59Z`);
+/** `time` (`HH:MM:SS`) of the local day `date` in `tz`, as an ISO instant. */
+export function localInstant(date: string, time: string, tz: string): string {
+  const guess = Date.parse(`${date}T${time}Z`);
   // Second pass: the offset at the guess differs when a DST change falls between it and the answer.
   const first = guess - tzOffsetMs(new Date(guess), tz);
   return new Date(guess - tzOffsetMs(new Date(first), tz)).toISOString();
@@ -941,7 +941,9 @@ export function OrderMonitorDayView({
             onChange={(date) =>
               // Today is "now", so it stays live instead of freezing at 23:59:59.
               onAtChange(
-                date >= today ? undefined : endOfLocalDay(date, day.timezone),
+                date >= today
+                  ? undefined
+                  : localInstant(date, "23:59:59", day.timezone),
               )
             }
           />

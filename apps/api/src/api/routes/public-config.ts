@@ -67,9 +67,6 @@ app.get("/", (c) => {
     // and the customer lake configured.
     orderMonitorEnabled:
       !!getSettings().orderMonitorIngestUrl && isCustomerLakeConfigured(),
-    orderMonitorIngestUrl: isCustomerLakeConfigured()
-      ? (getSettings().orderMonitorIngestUrl ?? null)
-      : null,
     plansEnabled: getSettings().plansEnabled,
     auth: buildAuthConfig(),
     posthog: buildPosthogConfig(),

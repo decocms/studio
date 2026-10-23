@@ -264,5 +264,10 @@ export function scopeBoard(
   };
 }
 
+/** The store's timezone, from its rules' last verdict; the browser's until it has one. */
+export const storeTimezone = (store: OrderMonitorStore) =>
+  store.rules[0]?.verdict.timezone ??
+  Intl.DateTimeFormat().resolvedOptions().timeZone;
+
 export const sum = (values: readonly (number | null)[]) =>
   values.reduce<number>((total, value) => total + (value ?? 0), 0);

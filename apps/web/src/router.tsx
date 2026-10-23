@@ -1187,15 +1187,13 @@ const planRoute = createRoute({
   },
   component: lazyRouteComponent(() => import("./routes/workspace/plan.tsx")),
 });
-/** Monitor: the tab, the store (ingest connection id) and instant under
- *  review, and `sample` for the page over sample data where nothing is wired. */
+/** Monitor: the tab, the past day, and the store (ingest connection id) and
+ *  instant under review. A malformed day is dropped, not a broken page. */
 const monitoringSearch = z.object({
   view: z.enum(["metrics", "deploys", "experiments", "analytics"]).optional(),
-  date: z.string().optional(),
-  compare: z.enum(["d1", "w1", "y1"]).optional(),
+  date: z.iso.date().optional().catch(undefined),
   store: z.string().optional(),
   at: z.string().optional(),
-  sample: z.boolean().optional(),
 });
 const orgMonitoringRoute = createRoute({
   pendingComponent: ChatLayoutPending,

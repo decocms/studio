@@ -14,7 +14,10 @@ import { Button } from "@decocms/ui/components/button.tsx";
 import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { Switch } from "@decocms/ui/components/switch.tsx";
-import { DayInput } from "@/components/order-monitor/order-monitor-day";
+import {
+  DayInput,
+  localInstant,
+} from "@/components/order-monitor/order-monitor-day";
 import { Page } from "@/components/page";
 import {
   DESTINATION_ROUTE,
@@ -28,6 +31,7 @@ import {
   scopeBoard,
   type SourceId,
   sortSignals,
+  storeTimezone,
 } from "./board";
 import { ChannelsChart } from "./channels-chart";
 import { ChangeFocusProvider, MetricChart } from "./metric-chart";
@@ -252,6 +256,15 @@ export function MonitorPage({
 }) {
   const t = useT();
   const board = scopeBoard(orgBoard, scopeId);
+  /** A past day's last second in the store's own timezone. */
+  const storeDayEnd = (connectionId: string, date: string | undefined) => {
+    const store = board.stores.find(
+      (s) => s.store.connectionId === connectionId,
+    );
+    return date && store
+      ? localInstant(date, "23:59:59", storeTimezone(store.store))
+      : undefined;
+  };
   const stateOf = (id: SourceId) =>
     board.sources.find((s) => s.id === id)?.state ?? "off";
   const view = selection.view ?? "metrics";
@@ -330,12 +343,7 @@ export function MonitorPage({
         storeId={selection.store}
         orgSlug={orgSlug}
         scopeId={scopeId}
-        at={
-          selection.at ??
-          (selection.date
-            ? new Date(`${selection.date}T23:59:59`).toISOString()
-            : undefined)
-        }
+        at={selection.at ?? storeDayEnd(selection.store, selection.date)}
         monitorLink={
           scopeId
             ? {

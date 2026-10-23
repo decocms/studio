@@ -674,6 +674,7 @@ function PointTooltip({
   dayStart,
   comparison,
   shown,
+  hourly,
 }: {
   active?: boolean;
   payload?: { payload?: PlotPoint }[];
@@ -683,20 +684,25 @@ function PointTooltip({
   dayStart: number;
   comparison: Comparison;
   shown: readonly Comparison[];
+  /** Each point is an hour's total, so the window it covers is the hour. */
+  hourly: boolean;
 }) {
   const t = useT();
   const point = payload?.[0]?.payload;
   if (!active || !point) return null;
+  const size = shape === "lines" && hourly ? HOUR_BUCKETS : windowOf(shape);
+  const from = Math.floor(point.bucket / size) * size;
   const near = changes.filter(
     (c) =>
-      Math.abs(changeBucket(c, dayStart) - point.bucket) <=
-      (perQuarter(shape) ? windowOf(shape) / 2 + 0.5 : 1),
+      Math.abs(
+        changeBucket(c, dayStart) -
+          (perQuarter(shape) ? from + (size - 1) / 2 : point.bucket),
+      ) <= (perQuarter(shape) ? size / 2 + 0.5 : 1),
   );
-  const size = windowOf(shape);
   const span = perQuarter(shape)
     ? t("monitor.chart.range", {
-        from: bucketTime(point.bucket - (size - 1) / 2),
-        to: bucketTime(point.bucket + (size + 1) / 2),
+        from: bucketTime(from),
+        to: bucketTime(from + size),
       })
     : bucketTime(point.bucket);
   return (
@@ -1038,6 +1044,7 @@ function Plot({
                 dayStart={dayStart}
                 comparison={comparison}
                 shown={shown}
+                hourly={!dense}
               />
             )}
           />

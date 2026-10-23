@@ -21,7 +21,7 @@ import { orderMonitorWatchView } from "./watch-sse-pool";
 
 const FALLBACK_REFETCH_MS = 5 * 60_000;
 
-async function fetchJson<T>(url: string, signal: AbortSignal): Promise<T> {
+async function fetchJson<T>(url: string, signal?: AbortSignal): Promise<T> {
   const res = await fetch(url, { signal });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -32,6 +32,19 @@ async function fetchJson<T>(url: string, signal: AbortSignal): Promise<T> {
     throw new Error(error);
   }
   return body as T;
+}
+
+const EVENT_BATCH_MS = 1_000;
+
+/** The store an evaluated event names; "" when it names none, which refreshes every store. */
+function subjectOf(event: MessageEvent | undefined): string {
+  if (!event) return "";
+  try {
+    const { subject } = JSON.parse(event.data) as { subject?: unknown };
+    return typeof subject === "string" ? subject : "";
+  } catch {
+    return "";
+  }
 }
 
 const base = (orgSlug: string) =>
@@ -50,16 +63,41 @@ function subscribeFor(orgSlug: string, queryClient: QueryClient) {
     subscribe = () => {
       let listener = listeners.get(orgSlug);
       if (!listener) {
-        const refresh = () =>
-          queryClient.invalidateQueries({
-            queryKey: KEYS.orderMonitor(orgSlug),
+        // A sweep emits one event per store; they are gathered so the list is
+        // read once and each store's own reads once, not every read per event.
+        let changed: Set<string> | null = null;
+        const flush = () => {
+          const stores = changed;
+          changed = null;
+          if (!stores || stores.has("")) {
+            void queryClient.invalidateQueries({
+              queryKey: KEYS.orderMonitor(orgSlug),
+            });
+            return;
+          }
+          void queryClient.invalidateQueries({
+            queryKey: KEYS.orderMonitorStores(orgSlug),
           });
+          void queryClient.invalidateQueries({
+            queryKey: KEYS.orderMonitor(orgSlug),
+            // `["order-monitor", org, "day" | "pushes", connectionId, ...]`
+            predicate: (q) => stores.has(String(q.queryKey[3])),
+          });
+        };
+        const refresh = (event?: MessageEvent) => {
+          if (!changed) {
+            changed = new Set();
+            setTimeout(flush, EVENT_BATCH_MS);
+          }
+          changed.add(subjectOf(event));
+        };
         listener = {
           count: 0,
           unsubscribe: orderMonitorWatchView.subscribe(
             orgSlug,
             refresh,
-            refresh,
+            // A dropped stream may have missed any store's change.
+            () => refresh(),
           ),
         };
         listeners.set(orgSlug, listener);
@@ -139,13 +177,23 @@ export function useOrderMonitorDay(
 /** One day of every store at once, for totals across them; `at` undefined = now. */
 export function useOrderMonitorDays(
   orgSlug: string,
-  connectionIds: string[],
-  at?: string,
+  days: { connectionId: string; at: string | undefined }[],
 ) {
-  useOrderMonitorLive(orgSlug, connectionIds.length > 0);
+  useOrderMonitorLive(orgSlug, days.length > 0);
   return useQueries({
-    queries: connectionIds.map((id) => orderMonitorDayQuery(orgSlug, id, at)),
+    queries: days.map((d) =>
+      orderMonitorDayQuery(orgSlug, d.connectionId, d.at),
+    ),
   });
+}
+
+/** The order ingest a store installs to be monitored; null when the monitor is off here. */
+export function fetchOrderMonitorIngestUrl(
+  orgSlug: string,
+): Promise<string | null> {
+  return fetchJson<{ ingestUrl: string | null }>(
+    `/api/${encodeURIComponent(orgSlug)}/order-monitor/ingest`,
+  ).then((body) => body.ingestUrl);
 }
 
 export function useOrderMonitorPushes(

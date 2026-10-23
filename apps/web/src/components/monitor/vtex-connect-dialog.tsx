@@ -31,7 +31,7 @@ import {
 } from "@decocms/ui/components/select.tsx";
 import type { ConnectionEntity } from "@decocms/shared/sdk/types/connection";
 import type { RegistryItem } from "@/components/store/types";
-import { usePublicConfig } from "@/hooks/use-public-config";
+import { fetchOrderMonitorIngestUrl } from "@/hooks/use-order-monitor";
 import { useT } from "@/i18n/use-t.ts";
 import { authClient } from "@/lib/auth-client";
 import { KEYS } from "@/lib/query-keys";
@@ -85,7 +85,6 @@ function useVtexInstall() {
   const t = useT();
   const { org } = useProjectContext();
   const { data: session } = authClient.useSession();
-  const ingestUrl = usePublicConfig().orderMonitorIngestUrl ?? null;
   const connections = useConnections();
   const actions = useCollectionActions<ConnectionEntity>(
     org.id,
@@ -108,6 +107,7 @@ function useVtexInstall() {
       vtexId?: string;
       keys?: Keys;
     }) => {
+      const ingestUrl = await fetchOrderMonitorIngestUrl(org.slug);
       if (!ingestUrl) throw new Error(t("monitor.vtex.unavailable"));
       let vtexId = reuse;
       if (!vtexId) {
@@ -311,7 +311,18 @@ function VtexConnectDialog({
           {vtex.length > 1 && (
             <Select
               value={current?.id}
-              onValueChange={setPicked}
+              onValueChange={(id) => {
+                setPicked(id);
+                // Another connection's keys, not the last one's account.
+                setKeys({
+                  accountName: String(
+                    vtex.find((c) => c.id === id)?.configuration_state
+                      ?.accountName ?? "",
+                  ),
+                  appKey: "",
+                  appToken: "",
+                });
+              }}
               disabled={connect.isPending}
             >
               <SelectTrigger>

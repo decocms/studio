@@ -52,20 +52,21 @@ export function ChannelsChart({
   const t = useT();
   const pointer = usePointer();
   const color = (i: number) => COLORS[i % COLORS.length] ?? COLORS[0];
+  // The board leaves out the hour under way, so every hour in is a full one.
   const hoursIn = Math.max(
     0,
     ...channels.map((c) => c.today.filter((v) => v !== null).length),
   );
-  // The hour under way would dive to its few orders so far; like the orders
-  // line, the area stops at the last full hour.
-  const done = Math.max(0, hoursIn - 1);
   const data = Array.from({ length: 24 }, (_, h) => ({
     bucket: h * HOUR + HOUR / 2,
     ...Object.fromEntries(
-      channels.map((c) => [`t${c.id}`, h < done ? (c.today[h] ?? null) : null]),
+      channels.map((c) => [
+        `t${c.id}`,
+        h < hoursIn ? (c.today[h] ?? null) : null,
+      ]),
     ),
     yesterday:
-      h < done ? channels.reduce((n, c) => n + (c.d1[h] ?? 0), 0) : null,
+      h < hoursIn ? channels.reduce((n, c) => n + (c.d1[h] ?? 0), 0) : null,
   }));
   const end = domainEnd(Math.max(0, hoursIn * HOUR - 1));
   return (

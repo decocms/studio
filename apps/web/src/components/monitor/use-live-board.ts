@@ -7,6 +7,8 @@
 
 import type { OrderMonitorChannel } from "@decocms/shared/order-monitor";
 import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
+import { localInstant } from "@/components/order-monitor/order-monitor-day";
+import { useFeature } from "@/hooks/use-entitlements";
 import {
   useOrderMonitorDays,
   useOrderMonitorStores,
@@ -22,6 +24,7 @@ import {
   type Signal,
   type SourceRow,
   storeStatus,
+  storeTimezone,
   sum,
   worstStatus,
 } from "./board";
@@ -40,18 +43,23 @@ export function useLiveBoard(
   date?: string,
 ): { board: MonitorBoard; loading: boolean; error: Error | null } {
   const config = usePublicConfig();
+  // Off the plan, the order monitor answers 403: no stores, not a broken page.
+  const monitoring = useFeature("monitoring");
   const storesQuery = useOrderMonitorStores(
     orgSlug,
-    config.orderMonitorEnabled === true,
+    config.orderMonitorEnabled === true && monitoring,
   );
-  const allStores = storesQuery.data ?? [];
+  const allStores = monitoring ? (storesQuery.data ?? []) : [];
   const stores = scopeId
     ? allStores.filter((s) => s.agentIds.includes(scopeId))
     : allStores;
+  // A past day ends at midnight in each store's own timezone.
   const dayQueries = useOrderMonitorDays(
     orgSlug,
-    stores.map((s) => s.connectionId),
-    date ? new Date(`${date}T23:59:59`).toISOString() : undefined,
+    stores.map((s) => ({
+      connectionId: s.connectionId,
+      at: date ? localInstant(date, "23:59:59", storeTimezone(s)) : undefined,
+    })),
   );
   const dayOf = new Map(
     stores.flatMap((store, i) => {
@@ -64,8 +72,11 @@ export function useLiveBoard(
   const connections = useConnections();
 
   const daysReady = days.length === stores.length && stores.length > 0;
+  // A store whose day failed would leave every total waiting on it.
+  const dayError = dayQueries.find((q) => q.error)?.error ?? null;
 
-  const signals: Signal[] = stores.flatMap((store) =>
+  // The rules' states are now's; a past day has no verdicts of its own.
+  const signals: Signal[] = (date ? [] : stores).flatMap((store) =>
     store.rules.flatMap((r): Signal[] =>
       r.status === "warning" || r.status === "alert"
         ? [
@@ -74,7 +85,7 @@ export function useLiveBoard(
               id: `${store.connectionId}:${r.rule}`,
               severity: r.status,
               since: r.since,
-              projectId: store.agentIds[0] ?? null,
+              projectId: scopeId ?? store.agentIds[0] ?? null,
               storeId: store.connectionId,
               storeTitle: store.title,
               rule: r.rule,
@@ -159,18 +170,19 @@ export function useLiveBoard(
     },
   ];
 
+  // The hour under way belongs to the projection, so the line of what has
+  // happened ends at the last full hour and the dashed one carries on.
+  const running =
+    days.length === 0
+      ? 0
+      : Math.min(...days.map((d) => Math.floor(d.done / 4)));
+
   // Orders and cancellations are the metrics wired today, in the order
   // monitor's hours: each hour sits at its middle 5-minute bucket.
   const kpis: Kpi[] = [];
   if (stores.length > 0) {
     const hourly = (key: "today" | Comparison, h: number) =>
       days.length === 0 ? null : sum(days.map((d) => d.orders[key][h] ?? null));
-    // The hour under way belongs to the projection, so the line of what has
-    // happened ends at the last full hour and the dashed one carries on.
-    const running =
-      days.length === 0
-        ? 0
-        : Math.min(...days.map((d) => Math.floor(d.done / 4)));
     const hours = Array.from({ length: 24 }, (_, h) => h);
     const points: MetricPoint[] = hours
       .filter((h) => h < running)
@@ -290,7 +302,12 @@ export function useLiveBoard(
         conversion: null,
         errorRate: null,
         lastDeploy: null,
-        signals: signals.filter((s) => s.projectId === project.id).length,
+        // By store: a store several projects aggregate alerts in each of them.
+        signals: signals.filter(
+          (s) =>
+            s.kind === "orders" &&
+            own.some((store) => store.connectionId === s.storeId),
+        ).length,
       },
     ];
   });
@@ -299,10 +316,16 @@ export function useLiveBoard(
     board: {
       checkedAt: lastEvaluated ?? null,
       dayStart: days[0]
-        ? new Date(`${days[0].date}T00:00:00`).toISOString()
+        ? localInstant(days[0].date, "00:00:00", days[0].timezone)
         : new Date(new Date().setHours(0, 0, 0, 0)).toISOString(),
       kpis,
-      channels: daysReady ? [...byChannel.values()] : null,
+      // Only full hours, like the orders line.
+      channels: daysReady
+        ? [...byChannel.values()].map((c) => ({
+            ...c,
+            today: c.today.map((v, h) => (h < running ? v : null)),
+          }))
+        : null,
       stores: stores.map((store) => ({ store })),
       deploys: null,
       deployHistory: null,
@@ -313,6 +336,6 @@ export function useLiveBoard(
     },
     // A store's day still on its way is loading, not a source with no data.
     loading: storesQuery.isLoading || dayQueries.some((q) => q.isLoading),
-    error: storesQuery.error,
+    error: (monitoring ? storesQuery.error : null) ?? dayError,
   };
 }
