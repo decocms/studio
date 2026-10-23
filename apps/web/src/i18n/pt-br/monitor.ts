@@ -4,6 +4,7 @@ export const monitor = {
   "monitor.connectSource": "Conectar fonte",
   "monitor.statusOk": "OK",
   "monitor.waiting": "Aguardando os primeiros dados",
+  "monitor.comingSoon": "Em breve",
   "monitor.kpi.orders": "Pedidos hoje",
   "monitor.kpi.conversion": "Conversão",
   "monitor.kpi.errors": "Erros hoje",

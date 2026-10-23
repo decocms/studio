@@ -1308,6 +1308,7 @@ export function MetricChart({
   connect,
   preview,
   waiting = false,
+  comingSoon = false,
   bare = false,
   className,
 }: {
@@ -1327,6 +1328,8 @@ export function MetricChart({
   preview?: Kpi;
   /** The source is connected but nothing has arrived yet. */
   waiting?: boolean;
+  /** Connected, but nothing reads this metric from the source yet. */
+  comingSoon?: boolean;
   /** Under the page's own connect card: the faded preview, no button. */
   bare?: boolean;
   className?: string;
@@ -1367,7 +1370,7 @@ export function MetricChart({
             >
               {waiting ? (
                 <span className="text-meta glass rounded-full px-3 py-1.5">
-                  {t("monitor.waiting")}
+                  {comingSoon ? t("monitor.comingSoon") : t("monitor.waiting")}
                 </span>
               ) : (
                 <ConnectButton

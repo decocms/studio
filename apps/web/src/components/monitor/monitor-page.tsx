@@ -186,6 +186,7 @@ function Board({
       kpi={kpi}
       preview={preview?.find((p) => p.id === kpi.id)}
       waiting={board.sources.find((s) => s.id === kpi.source)?.state === "live"}
+      comingSoon={!board.kpis.some((k) => k.id === kpi.id)}
       changes={changes}
       showChanges={showChanges}
       dayStart={board.dayStart}
