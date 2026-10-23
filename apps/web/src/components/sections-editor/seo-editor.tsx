@@ -77,6 +77,7 @@ export function SeoEditor({
     branch,
     target,
     resolved,
+    meta,
     onSaved,
   });
 
