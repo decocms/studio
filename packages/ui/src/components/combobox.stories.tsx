@@ -18,7 +18,7 @@ const members: ComboboxOption[] = [
 ];
 
 const meta = {
-  title: "Components/Combobox",
+  title: "Molecules/Combobox",
   component: Combobox,
   args: {
     options: frameworks,

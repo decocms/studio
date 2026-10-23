@@ -48,7 +48,7 @@ const REDACTION_TYPES = [
 const COMBINED_PII_REGEX = new RegExp(
   [
     `(?<jwt>eyJ[A-Za-z0-9-_]+\\.eyJ[A-Za-z0-9-_]+\\.[A-Za-z0-9-_.+/=]*)`,
-    `(?<api_key>(?:api[_-]?key|token|secret|password|bearer)\\s*[:=]\\s*['"]?[\\w-]{16,}['"]?)`,
+    `(?<api_key>(?:api[_-]?key|token|secret|password)\\s*[:=]\\s*['"]?[\\w-]{16,}['"]?|bearer\\s+['"]?[\\w-]{16,}['"]?)`,
     `(?<email>(?<![a-zA-Z0-9._%+-])[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,})`,
     `(?<credit_card>\\b\\d{4}[- ]?\\d{4}[- ]?\\d{4}[- ]?\\d{4}\\b)`,
     `(?<ssn>\\b\\d{3}-\\d{2}-\\d{4}\\b)`,

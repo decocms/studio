@@ -183,7 +183,15 @@ const DATA_VIEWS: ReadonlyArray<{ view: string; labelKey: TranslationKey }> = [
 ];
 
 // Range pills, shortest first — the admin's 5m…30d selector.
-const RANGE_PILLS = ["5m", "15m", "30m", "1h", "24h", "7d", "30d"] as const;
+export const RANGE_PILLS = [
+  "5m",
+  "15m",
+  "30m",
+  "1h",
+  "24h",
+  "7d",
+  "30d",
+] as const;
 
 // Keys in a view payload that are context, not panels — never rendered as data.
 const META_KEYS = new Set([
@@ -278,7 +286,7 @@ function isScalar(value: unknown): boolean {
   );
 }
 
-async function fetchJson(url: string): Promise<unknown> {
+export async function fetchJson(url: string): Promise<unknown> {
   const res = await fetch(url);
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -324,7 +332,7 @@ function Card({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-xl border border-border bg-card overflow-hidden">
+    <section className="surface overflow-hidden">
       <header className="flex items-center gap-2 px-4 py-3 border-b border-border">
         <h3 className="text-sm font-medium text-foreground">{title}</h3>
         {action && <div className="ml-auto">{action}</div>}
@@ -338,7 +346,7 @@ function Card({
 
 /** Format a metric value for display, keyed on its column name: percentages,
  *  durations (seconds → `10m 7s`), and plain counts each read differently. */
-function fmtMetric(key: string, value: unknown): string {
+export function fmtMetric(key: string, value: unknown): string {
   if (value === null || value === undefined) return "—";
   const n = Number(value);
   if (!Number.isFinite(n)) return formatCell(value);
@@ -439,7 +447,7 @@ function Delta({ pct, goodDown }: { pct: number; goodDown?: boolean }) {
     <span
       className={cn(
         "text-xs font-medium tabular-nums",
-        good ? "text-[var(--chart-2,#16a34a)]" : "text-destructive",
+        good ? "text-success" : "text-destructive",
       )}
     >
       {up ? "↑" : "↓"}
@@ -459,11 +467,8 @@ function KpiTiles({ row }: { row: Record<string, unknown> }) {
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
       {entries.map(([k, v]) => (
-        <div
-          key={k}
-          className="flex flex-col gap-1.5 rounded-xl border border-border bg-card p-4"
-        >
-          <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+        <div key={k} className="surface flex flex-col gap-1.5 p-4">
+          <span className="text-2xs font-medium text-muted-foreground">
             {humanize(k)}
           </span>
           <span className="text-3xl font-semibold leading-none text-foreground tabular-nums">
@@ -596,7 +601,7 @@ function BarList({
     rows.reduce((sum, r) => sum + (Number(r[valueKey]) || 0), 0) || 1;
   return (
     <div className="flex flex-col">
-      <div className="flex items-center justify-between px-2.5 pb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+      <div className="flex items-center justify-between px-2.5 pb-2 text-2xs font-medium text-muted-foreground">
         <span>{humanize(labelKey)}</span>
         <span>{humanize(valueKey)}</span>
       </div>
@@ -700,7 +705,7 @@ function DataTable({ rows }: { rows: Array<Record<string, unknown>> }) {
               <TableHead
                 key={c}
                 className={cn(
-                  "h-8 whitespace-nowrap text-[11px] font-medium uppercase tracking-wide text-muted-foreground",
+                  "h-8 whitespace-nowrap text-2xs font-medium text-muted-foreground",
                   numeric.has(c) && "text-right",
                 )}
               >
@@ -958,7 +963,7 @@ function OverviewDashboard({ payload }: { payload: Record<string, unknown> }) {
                   : "cursor-default",
               )}
             >
-              <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              <span className="text-2xs font-medium text-muted-foreground">
                 {label}
               </span>
               <span className="flex items-baseline gap-2">
@@ -1027,11 +1032,8 @@ function RealtimeDashboard({ payload }: { payload: Record<string, unknown> }) {
       </div>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {cards.map(([k, label]) => (
-          <div
-            key={k}
-            className="flex flex-col gap-1.5 rounded-xl border border-border bg-card p-4"
-          >
-            <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+          <div key={k} className="surface flex flex-col gap-1.5 p-4">
+            <span className="text-2xs font-medium text-muted-foreground">
               {label}
             </span>
             <span className="text-3xl font-semibold leading-none text-foreground tabular-nums">
@@ -1176,9 +1178,9 @@ function QuotaBanner({
   const fmt = (n: number) => n.toLocaleString();
 
   return (
-    <div className="flex flex-col gap-2 rounded-xl border border-border bg-card p-4">
+    <div className="surface flex flex-col gap-2 p-4">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+        <span className="text-2xs font-medium text-muted-foreground">
           {t("mainPanelTabs.analyticsTab.monthlyQuota")}
         </span>
         <span className="font-mono text-sm tabular-nums text-foreground">
@@ -1226,7 +1228,7 @@ function InstallPanel({ status }: { status: AnalyticsStatus }) {
         </p>
 
         <div className="flex flex-col gap-1.5">
-          <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+          <span className="text-2xs font-medium text-muted-foreground">
             {t("mainPanelTabs.analyticsTab.installHostTitle")}
           </span>
           <p className="text-xs text-muted-foreground">
@@ -1235,7 +1237,7 @@ function InstallPanel({ status }: { status: AnalyticsStatus }) {
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+          <span className="text-2xs font-medium text-muted-foreground">
             {t("mainPanelTabs.analyticsTab.installKeyTitle")}
           </span>
           {token && (
@@ -1281,7 +1283,7 @@ function InstallPanel({ status }: { status: AnalyticsStatus }) {
 // --- register (not yet registered) ------------------------------------------
 
 /** Copy-to-clipboard button for the one-time snippet/token. */
-function CopyButton({ text }: { text: string }) {
+export function CopyButton({ text }: { text: string }) {
   const t = useT();
   const [copied, setCopied] = useState(false);
   return (
@@ -1848,9 +1850,8 @@ function ConfigurationPanel({
             )}
             <Button
               size="icon-sm"
-              variant="ghost"
+              variant="ghost-destructive"
               aria-label={t("mainPanelTabs.analyticsTab.unregister")}
-              className="text-muted-foreground hover:text-destructive"
               onClick={() => setDeleteOpen(true)}
             >
               <Trash01 className="size-4" />
@@ -1921,7 +1922,7 @@ function ConfigurationPanel({
               {t("mainPanelTabs.analyticsTab.cancel")}
             </AlertDialogCancel>
             <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              variant="destructive"
               onClick={(e) => {
                 e.preventDefault();
                 deleteMutation.mutate();
@@ -2068,8 +2069,8 @@ function RegisteredView({
 
       {/* A naturally-closed row documenting the client API, mirroring the admin
           UI's install text — collapsed by default so it doesn't crowd the data. */}
-      <details className="group rounded-xl border border-border bg-card">
-        <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-medium text-foreground hover:bg-muted/40">
+      <details className="group surface">
+        <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-medium text-foreground hover:bg-accent">
           <ChevronRight className="size-4 text-muted-foreground transition-transform group-open:rotate-90" />
           Send custom events from your code
         </summary>

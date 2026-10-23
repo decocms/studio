@@ -10,7 +10,7 @@ import {
 } from "./breadcrumb.tsx";
 
 const meta = {
-  title: "Components/Breadcrumb",
+  title: "Molecules/Breadcrumb",
   component: Breadcrumb,
 } satisfies Meta<typeof Breadcrumb>;
 

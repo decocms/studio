@@ -27,7 +27,7 @@ import { resolveTargetConfigId } from "./resolve-target-config-id";
 function ExtBadge({ ext }: { ext: string }) {
   if (!ext) return null;
   return (
-    <span className="shrink-0 rounded-[var(--studio-control-radius,var(--radius))] bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase text-muted-foreground">
+    <span className="shrink-0 rounded-[var(--studio-control-radius,var(--radius))] bg-muted px-1.5 py-0.5 text-2xs font-medium uppercase text-muted-foreground">
       {ext}
     </span>
   );
@@ -161,7 +161,7 @@ export function FileField({
         onDragLeave={onDragLeave}
         onDrop={onDrop}
         className={cn(
-          "group relative w-full overflow-hidden rounded-[var(--studio-surface-radius,var(--radius-xl))] border card-shadow border-border/60 bg-muted/30 transition",
+          "group relative w-full overflow-hidden rounded-[var(--studio-surface-radius,var(--radius-xl))] border shadow-edge border-border/60 bg-muted/30 transition",
           isDragging && "border-primary ring-2 ring-primary/30",
           upload.isPending && "pointer-events-none opacity-60",
         )}
@@ -196,7 +196,7 @@ export function FileField({
               type="button"
               onClick={browse}
               aria-label={t("sectionsEditor.fileField.replaceFileLabel")}
-              className="flex w-full cursor-pointer items-center gap-3 px-3 py-2.5 text-left hover:bg-muted/60"
+              className="flex w-full cursor-pointer items-center gap-3 px-3 py-2.5 text-left hover:bg-accent"
             >
               <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-background">
                 <File02 size={18} className="text-muted-foreground" />
@@ -214,7 +214,7 @@ export function FileField({
           <button
             type="button"
             onClick={browse}
-            className="flex w-full flex-col items-center justify-center gap-2 py-8 text-sm text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+            className="flex w-full flex-col items-center justify-center gap-2 py-8 text-sm text-muted-foreground hover:bg-accent hover:text-foreground"
           >
             {isVideo ? <Film01 size={20} /> : <File02 size={20} />}
             <span className="text-sm font-medium">
@@ -232,7 +232,7 @@ export function FileField({
 
         {isDragging && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-primary/10 backdrop-blur-[1px]">
-            <span className="rounded-md bg-background px-3 py-1.5 text-xs font-medium shadow">
+            <span className="rounded-md bg-background px-3 py-1.5 text-xs font-medium shadow-soft">
               {t("sectionsEditor.fileField.dropToUpload")}
             </span>
           </div>

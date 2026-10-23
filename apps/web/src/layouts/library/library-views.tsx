@@ -23,7 +23,10 @@ import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { useChatNavigation } from "@/components/chat/hooks/use-chat-navigation";
 import { FolderIcon } from "@/components/folder-icon";
-import { ViewModeToggle } from "@decocms/ui/components/view-mode-toggle.tsx";
+import {
+  ToggleGroup,
+  ToggleGroupItem,
+} from "@decocms/ui/components/toggle-group.tsx";
 import { describeFileType } from "@/components/file-type-icon";
 import { timeAgo } from "@/lib/format-time";
 import {
@@ -213,22 +216,22 @@ export function LayoutToggle({
 }) {
   const t = useT();
   return (
-    <ViewModeToggle
+    <ToggleGroup
+      type="single"
+      variant="segmented"
+      size="sm"
       value={layout}
-      onValueChange={onChange}
-      options={[
-        {
-          value: "list",
-          icon: <List />,
-          tooltip: t("library.entries.listView"),
-        },
-        {
-          value: "grid",
-          icon: <Grid01 />,
-          tooltip: t("library.entries.gridView"),
-        },
-      ]}
-    />
+      onValueChange={(next) => {
+        if (next === "list" || next === "grid") onChange(next);
+      }}
+    >
+      <ToggleGroupItem value="list" tooltip={t("library.entries.listView")}>
+        <List />
+      </ToggleGroupItem>
+      <ToggleGroupItem value="grid" tooltip={t("library.entries.gridView")}>
+        <Grid01 />
+      </ToggleGroupItem>
+    </ToggleGroup>
   );
 }
 

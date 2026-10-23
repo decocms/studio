@@ -101,11 +101,9 @@ export async function releaseMainHead(
 ): Promise<LatestPointer> {
   const head = await requireBranchHead(repo.client, repo.mainBranch);
   const schemaHash = await ensureRevision(repo, head);
-  const pointer: LatestPointer = {
+  return writeLatest(repo, {
     revision: head,
     schemaHash,
     publishedAt: new Date().toISOString(),
-  };
-  await writeLatest(repo, pointer);
-  return pointer;
+  });
 }

@@ -3,13 +3,10 @@ import {
   isManifestMatcherResolveType,
   isSavedBlockResolveType,
 } from "./block-type-utils";
+import { type NamedRuleValues, readNamedRuleValues } from "./named-rules";
 import { globalSectionLabel } from "./page-list";
+import { isPageResolveTypeOnBlocksSite } from "./page-types";
 import { resolveSchema, type LiveMeta } from "./resolve-schema";
-
-const PAGE_RESOLVE_TYPES = new Set([
-  "website/pages/Page.tsx",
-  "$live/pages/LivePage.tsx",
-]);
 
 export interface UnwrappedMatcherRule {
   resolveType: string;
@@ -27,7 +24,7 @@ function isMatcherBlockData(
 ): boolean {
   const moduleRt = blockData.__resolveType;
   if (typeof moduleRt !== "string" || !moduleRt) return false;
-  if (PAGE_RESOLVE_TYPES.has(moduleRt)) return false;
+  if (isPageResolveTypeOnBlocksSite(moduleRt, meta)) return false;
 
   if (meta) {
     return isManifestMatcherResolveType(meta, moduleRt);
@@ -152,7 +149,10 @@ export function resolveEffectiveMatcherRule(
 export function resolveVariantRuleLabel(
   rule: Record<string, unknown> | undefined,
   decofile: Record<string, unknown>,
-  formatMatcher: (rule?: Record<string, unknown>) => string,
+  formatMatcher: (
+    rule?: Record<string, unknown>,
+    named?: NamedRuleValues,
+  ) => string,
   meta?: LiveMeta | null,
 ): string {
   if (!rule) return "Default";
@@ -161,7 +161,7 @@ export function resolveVariantRuleLabel(
     const block = decofile[blockKey] as Record<string, unknown>;
     return globalSectionLabel(blockKey, block);
   }
-  return formatMatcher(rule);
+  return formatMatcher(rule, readNamedRuleValues(decofile));
 }
 
 export function buildMatcherBlockData(

@@ -118,8 +118,18 @@ func validateGit(git *GitConfig) string {
 		if git.Identity.UserName == nil || *git.Identity.UserName == "" {
 			return "git.identity.userName is required"
 		}
+		// Written verbatim into `git config user.name` (ConfigureGitIdentity)
+		// and from there into every commit's author metadata, so a value
+		// carrying a newline or angle bracket can smuggle a second config
+		// line or spoof the author field downstream commit parsers rely on.
+		if invalidCoAuthorChars.MatchString(*git.Identity.UserName) {
+			return "git.identity.userName is invalid"
+		}
 		if git.Identity.UserEmail == nil || *git.Identity.UserEmail == "" {
 			return "git.identity.userEmail is required"
+		}
+		if invalidCoAuthorChars.MatchString(*git.Identity.UserEmail) || !emailRe.MatchString(*git.Identity.UserEmail) {
+			return "git.identity.userEmail is invalid"
 		}
 	}
 	return ""

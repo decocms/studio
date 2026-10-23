@@ -338,7 +338,7 @@ function MemoryDocument({
             saver.change(e.target.value, shown);
           }}
           className={cn(
-            "field-sizing-content w-full resize-none bg-transparent font-mono text-[13px] leading-6 text-foreground outline-none placeholder:text-muted-foreground",
+            "field-sizing-content w-full resize-none bg-transparent font-mono text-sm leading-6 text-foreground outline-none placeholder:text-muted-foreground",
             compact ? "min-h-[60vh]" : "min-h-[320px]",
           )}
         />

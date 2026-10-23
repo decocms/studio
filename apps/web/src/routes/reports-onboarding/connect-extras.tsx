@@ -75,7 +75,7 @@ export function ConnectTrustSignals() {
         {items.map(({ Icon, label }) => (
           <li
             key={label}
-            className="flex items-center gap-2.5 text-[13px] leading-tight text-white/70"
+            className="flex items-center gap-2.5 text-sm leading-tight text-white/70"
           >
             <Icon className="size-4 shrink-0 opacity-85" />
             {label}

@@ -64,6 +64,27 @@ describe("shouldAdvanceToReview", () => {
     ).toBe(true);
   });
 
+  // The PR was opened inside the sandbox, so only the sweeper can link it.
+  it("does NOT advance a Super Agent task whose run bound a repo, with no PR", () => {
+    expect(
+      shouldAdvanceToReview({
+        status: "in_progress",
+        assigneeId: "super-agent",
+        threads: [{ ...thread("completed"), hasPreview: true }],
+      }),
+    ).toBe(false);
+  });
+
+  it("advances a person's task whose chat bound a repo, with no PR", () => {
+    expect(
+      shouldAdvanceToReview({
+        status: "in_progress",
+        assigneeId: "user_1",
+        threads: [{ ...thread("completed"), hasPreview: true }],
+      }),
+    ).toBe(true);
+  });
+
   // Backstop for missed PR-open detection: a PR exists, so finishing means there is one to review.
   it("advances a repo-backed task on finish once a PR is linked", () => {
     expect(

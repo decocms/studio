@@ -27,6 +27,7 @@ import {
   Container,
   ChevronRight,
   DotsHorizontal,
+  FolderCode,
   GitBranch01,
   LinkBroken01,
   LinkExternal01,
@@ -44,12 +45,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@decocms/ui/components/alert-dialog.tsx";
+import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import { Avatar } from "@decocms/ui/components/avatar.tsx";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Alert, AlertDescription } from "@decocms/ui/components/alert.tsx";
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuRadioGroup,
@@ -398,6 +401,29 @@ function SandboxImageMenu({ repository }: { repository: Repository }) {
   );
 }
 
+/** Whether this repo's pushes show on the Monitor's Deploys tab. */
+function MonitorDeploysItem({ repository }: { repository: Repository }) {
+  const t = useT();
+  const update = useUpdateRepository();
+  return (
+    <DropdownMenuCheckboxItem
+      checked={repository.monitorDeploys}
+      disabled={update.isPending}
+      onCheckedChange={(monitorDeploys) =>
+        update.mutate(
+          { id: repository.id, monitorDeploys },
+          {
+            onError: () =>
+              toast.error(t("settings.repositories.monitorDeploysError")),
+          },
+        )
+      }
+    >
+      {t("settings.repositories.monitorDeploys")}
+    </DropdownMenuCheckboxItem>
+  );
+}
+
 function sandboxImageLabel(
   image: string,
   t: ReturnType<typeof useT>,
@@ -466,6 +492,7 @@ function RepositoryRow({
             </a>
           </DropdownMenuItem>
           <SandboxImageMenu repository={repository} />
+          <MonitorDeploysItem repository={repository} />
           <DropdownMenuSeparator />
           <DropdownMenuItem variant="destructive" onSelect={onUnlink}>
             <LinkBroken01 />
@@ -504,35 +531,30 @@ function AccountsSection({
       {accounts.isPending ? (
         <Skeleton className="h-24 w-full" />
       ) : !anyProviderConfigured && rows.length === 0 ? (
-        <div
-          data-testid="git-accounts-list"
-          className="rounded-2xl border border-dashed border-border/60 p-10 flex flex-col items-center justify-center text-center gap-3"
-        >
-          <p className="font-medium text-sm">
-            {t("settings.repositories.noProvidersTitle")}
-          </p>
-          <p className="text-xs text-muted-foreground max-w-sm">
-            {t("settings.repositories.noProvidersDescription")}
-          </p>
-          <GitAccountConnect />
+        <div data-testid="git-accounts-list">
+          <SettingsCard>
+            <EmptyState
+              size="inline"
+              icon={<GitBranch01 />}
+              title={t("settings.repositories.noProvidersTitle")}
+              description={t("settings.repositories.noProvidersDescription")}
+            >
+              <GitAccountConnect />
+            </EmptyState>
+          </SettingsCard>
         </div>
       ) : rows.length === 0 ? (
-        <div
-          data-testid="git-accounts-list"
-          className="rounded-2xl border border-dashed border-border/60 p-10 flex flex-col items-center justify-center text-center gap-3"
-        >
-          <div className="size-12 rounded-full bg-muted flex items-center justify-center">
-            <GitBranch01 size={20} className="text-muted-foreground" />
-          </div>
-          <div>
-            <p className="font-medium text-sm">
-              {t("settings.repositories.accountsEmptyTitle")}
-            </p>
-            <p className="text-xs text-muted-foreground mt-1 max-w-sm">
-              {t("settings.repositories.accountsEmptyDescription")}
-            </p>
-          </div>
-          <GitAccountConnect />
+        <div data-testid="git-accounts-list">
+          <SettingsCard>
+            <EmptyState
+              size="inline"
+              icon={<GitBranch01 />}
+              title={t("settings.repositories.accountsEmptyTitle")}
+              description={t("settings.repositories.accountsEmptyDescription")}
+            >
+              <GitAccountConnect />
+            </EmptyState>
+          </SettingsCard>
         </div>
       ) : (
         <div data-testid="git-accounts-list">
@@ -586,31 +608,29 @@ function RepositoriesSection({
       {repositories.isPending ? (
         <Skeleton className="h-24 w-full" />
       ) : rows.length === 0 ? (
-        <div
-          data-testid="repositories-list"
-          className="rounded-2xl border border-dashed border-border/60 p-10 flex flex-col items-center justify-center text-center gap-3"
-        >
-          <div>
-            <p className="font-medium text-sm">
-              {t("settings.repositories.reposEmptyTitle")}
-            </p>
-            <p className="text-xs text-muted-foreground mt-1 max-w-sm">
-              {t("settings.repositories.reposEmptyDescription")}
-            </p>
-          </div>
-          {guided ? (
-            <Button variant="outline" size="sm" onClick={onAdd}>
-              <Plus size={16} />
-              {t("settings.repositories.addRepository")}
-            </Button>
-          ) : (
-            <Page.Actions>
-              <Button size="sm" onClick={onAdd}>
-                <Plus size={14} />
-                {t("settings.repositories.addRepository")}
-              </Button>
-            </Page.Actions>
-          )}
+        <div data-testid="repositories-list">
+          <SettingsCard>
+            <EmptyState
+              size="inline"
+              icon={<FolderCode />}
+              title={t("settings.repositories.reposEmptyTitle")}
+              description={t("settings.repositories.reposEmptyDescription")}
+            >
+              {guided ? (
+                <Button variant="outline" size="sm" onClick={onAdd}>
+                  <Plus size={16} />
+                  {t("settings.repositories.addRepository")}
+                </Button>
+              ) : (
+                <Page.Actions>
+                  <Button size="sm" onClick={onAdd}>
+                    <Plus size={14} />
+                    {t("settings.repositories.addRepository")}
+                  </Button>
+                </Page.Actions>
+              )}
+            </EmptyState>
+          </SettingsCard>
         </div>
       ) : (
         <div data-testid="repositories-list">

@@ -63,7 +63,7 @@ export function EventTriggerForm({
   };
 
   return (
-    <div className="flex flex-col gap-3 px-3 py-3 rounded-lg border border-border bg-background">
+    <div className="flex flex-col gap-3 px-3 py-3 surface">
       <div className="flex items-center gap-2">
         <Zap size={14} className="text-muted-foreground shrink-0" />
         <span className="text-sm font-medium">
@@ -197,7 +197,7 @@ export function EventTriggerForm({
                         setParams((p) => ({ ...p, [key]: e.target.value }))
                       }
                       placeholder={schema.description ?? key}
-                      className="text-sm border border-border rounded-md bg-background px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-ring"
+                      className="text-sm border border-border rounded-md bg-background px-2 py-1.5 focus-ring"
                     />
                   )}
                 </div>

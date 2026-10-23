@@ -128,6 +128,8 @@ interface AuthoritativeSidebarState {
   effectiveViews: VirtualMcpSidebarView[];
   rawViews: VirtualMcpSidebarView[] | null | undefined;
   version: typeof PROJECT_SIDEBAR_VIEWS_VERSION | undefined;
+  /** The views offered once that this project has seen (saved with its list). */
+  seen: VirtualMcpSidebarView[] | null | undefined;
 }
 
 function authoritativeSidebarState(
@@ -144,6 +146,7 @@ function authoritativeSidebarState(
     ],
     rawViews: rawViews === null ? null : rawViews ? [...rawViews] : undefined,
     version,
+    seen: virtualMcp.metadata?.sidebarViewsSeen ?? undefined,
   };
 }
 
@@ -502,6 +505,16 @@ function VirtualMcpDetailViewWithData({
           authoritative.version
         ) {
           form.setValue("metadata.sidebarViewsVersion", authoritative.version, {
+            shouldDirty: false,
+          });
+        }
+        if (
+          !sameRawSidebarViews(
+            form.getValues("metadata.sidebarViewsSeen"),
+            authoritative.seen,
+          )
+        ) {
+          form.setValue("metadata.sidebarViewsSeen", authoritative.seen, {
             shouldDirty: false,
           });
         }
@@ -1027,7 +1040,7 @@ function VirtualMcpDetailViewWithData({
                       <button
                         type="button"
                         onClick={handleOpenAddDialog}
-                        className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-dashed border-border hover:bg-accent/50 transition-colors w-full text-left cursor-pointer"
+                        className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-dashed border-border hover:bg-accent transition-colors w-full text-left cursor-pointer"
                       >
                         <div className="flex items-center justify-center size-8 rounded-md text-muted-foreground/75 border border-dashed border-border shrink-0">
                           <Plus size={16} />
@@ -1079,7 +1092,7 @@ function VirtualMcpDetailViewWithData({
                     name="metadata.instructions"
                     control={form.control}
                     render={({ field }) => (
-                      <div className="relative rounded-xl card-shadow bg-card focus-within:ring-1 focus-within:ring-ring">
+                      <div className="relative rounded-xl shadow-edge bg-card focus-within-ring">
                         <Textarea
                           {...field}
                           value={field.value ?? ""}
@@ -1101,8 +1114,8 @@ function VirtualMcpDetailViewWithData({
                             <Button
                               type="button"
                               variant="ghost"
-                              size="icon"
-                              className="absolute top-2 right-2 h-7 w-7 text-muted-foreground"
+                              size="icon-sm"
+                              className="absolute top-2 right-2 text-muted-foreground"
                               onClick={() => setInstructionsFullscreen(true)}
                               aria-label={t(
                                 "virtualMcp.virtualMcp.openFullscreenEditor",
@@ -1270,10 +1283,7 @@ function VirtualMcpDetailViewWithData({
             <AlertDialogCancel>
               {t("virtualMcp.virtualMcp.cancel")}
             </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDelete}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
+            <AlertDialogAction onClick={handleDelete} variant="destructive">
               {t("virtualMcp.virtualMcp.delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -1337,7 +1347,7 @@ function VirtualMcpDetailViewWithData({
                   placeholder={t(
                     "virtualMcp.virtualMcp.instructionsPlaceholder",
                   )}
-                  className="w-full h-full resize-none text-base text-muted-foreground placeholder:text-muted-foreground/40 leading-relaxed rounded-xl card-shadow px-4 py-3 focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0 bg-card border-0"
+                  className="w-full h-full resize-none text-base text-muted-foreground placeholder:text-muted-foreground/40 leading-relaxed rounded-xl shadow-edge px-4 py-3 focus-ring bg-card border-0"
                   style={{ boxShadow: "none" }}
                 />
               )}

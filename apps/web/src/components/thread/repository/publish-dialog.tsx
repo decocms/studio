@@ -18,7 +18,7 @@ import {
   AlertDialogTitle,
 } from "@decocms/ui/components/alert-dialog.tsx";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
-import { Button } from "@decocms/ui/components/button.tsx";
+import { Button, buttonVariants } from "@decocms/ui/components/button.tsx";
 import {
   Dialog,
   DialogContent,
@@ -90,6 +90,8 @@ import { useDecofileCacheKey } from "@/components/sections-editor/use-decofile.t
 import type { ProtocolBackend } from "@/components/sections-editor/content-backend.ts";
 import { useContentSyncState } from "@/components/sections-editor/content-sync.ts";
 import { ErrorDetails } from "@/components/sections-editor/site-editor-toast.tsx";
+import { publishTitle } from "./publish-title.ts";
+import { REVIEW_PANE_READY_MS, shownReviewPane } from "./review-pane-swap.ts";
 
 export type { CmsPublishMode };
 
@@ -157,11 +159,6 @@ export function PublishDialog(props: PublishDialogProps) {
       </DialogContent>
     </Dialog>
   );
-}
-
-/** Only these bases are production; publishing elsewhere is not "in production". */
-function isProductionBranch(base: string): boolean {
-  return ["main", "master"].includes(base.trim().toLowerCase());
 }
 
 /** Review panes kept alive at once — each holds up to two full-page frames. */
@@ -545,7 +542,15 @@ function ContentPublish({
   cacheKey,
   ...props
 }: CmsPublishContentProps & { backend: ProtocolBackend; cacheKey: string }) {
-  const state = useContentPublishState({ backend, cacheKey });
+  const state = useContentPublishState({
+    backend,
+    cacheKey,
+    scope: {
+      orgSlug: props.orgSlug,
+      virtualMcpId: props.virtualMcpId,
+      branch: props.branch,
+    },
+  });
   return (
     <CmsPublishView
       {...props}
@@ -574,7 +579,15 @@ function SandboxContentPublish({
   ...props
 }: CmsPublishContentProps & { backend: ProtocolBackend; cacheKey: string }) {
   const threadId = useOptionalChatTask()?.taskId ?? null;
-  const state = useContentPublishState({ backend, cacheKey });
+  const state = useContentPublishState({
+    backend,
+    cacheKey,
+    scope: {
+      orgSlug: props.orgSlug,
+      virtualMcpId: props.virtualMcpId,
+      branch: props.branch,
+    },
+  });
   const git = useCmsPublishState({
     orgSlug: props.orgSlug,
     virtualMcpId: props.virtualMcpId,
@@ -675,6 +688,14 @@ function CmsPublishView({
    *  change list that lands after mount still describes itself. */
   const [editedNote, setEditedNote] = useState<string | null>(null);
   const [discardAllConfirm, setDiscardAllConfirm] = useState(false);
+  /** v8: review panes whose pages have loaded (review-pane-swap.ts). */
+  const [readyIds, setReadyIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const markReady = (id: string) =>
+    setReadyIds((current) =>
+      current.has(id) ? current : new Set(current).add(id),
+    );
   /** The card shown in the review pane. */
   const [activeId, setActiveId] = useState<string | null>(null);
   /** Cards visited, most recent first — their panes stay mounted. */
@@ -682,6 +703,8 @@ function CmsPublishView({
   const select = (id: string) => {
     setActiveId(id);
     setVisitedIds((current) => [id, ...current.filter((v) => v !== id)]);
+    // v8: a pane whose pages never say they loaded shows anyway.
+    if (source.v8) setTimeout(() => markReady(id), REVIEW_PANE_READY_MS);
   };
   /** Only one card may arm its discard at a time — it is a one-click destroy. */
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
@@ -705,6 +728,17 @@ function CmsPublishView({
   ]
     .filter((id) => changes.some((change) => changeId(change) === id))
     .slice(0, MAX_LIVE_PANES);
+  // A Blocks (v8) site: the panes stay laid out (invisible, not `hidden`), so
+  // a picked pane is already sized and painted, and the one on screen stays
+  // until the picked one's pages load (review-pane-swap.ts). v7 as before.
+  const smoothPanes = !!source.v8;
+  const [lastShownId, setLastShownId] = useState<string | null>(null);
+  const shownId = smoothPanes
+    ? shownReviewPane({ selectedId, readyIds, lastShownId, liveIds })
+    : selectedId;
+  if (smoothPanes && shownId === selectedId && shownId !== lastShownId) {
+    setLastShownId(shownId);
+  }
   // A hosted v8 draft has no pull request: review mode doesn't apply to it.
   const isReview = mode === "review" && !hosted;
   const surfaceState: PublishSurfaceState = cardsPending
@@ -771,17 +805,7 @@ function CmsPublishView({
         : t("thread.publishPopover.submitCountForReview", {
             count: summary.count,
           })
-    : summary.count === 0
-      ? t("thread.publishPopover.publish")
-      : !isProductionBranch(baseBranch)
-        ? summary.count === 1
-          ? t("thread.publishPopover.publishOne")
-          : t("thread.publishPopover.publishCount", { count: summary.count })
-        : summary.count === 1
-          ? t("thread.publishPopover.publishOneInProduction")
-          : t("thread.publishPopover.publishCountInProduction", {
-              count: summary.count,
-            });
+    : publishTitle(summary.count, baseBranch, !!source.v8, t);
 
   /** Review mode names the PR it will update; publish mode, the last release. */
   const subLine = (() => {
@@ -811,7 +835,7 @@ function CmsPublishView({
     if (changes.length === 0) return null;
     return (
       <div className="space-y-1.5">
-        <div className="px-0.5 text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
+        <div className="px-0.5 text-2xs font-medium text-muted-foreground">
           {label}
         </div>
         {changes.map((change) => {
@@ -834,6 +858,7 @@ function CmsPublishView({
               }
               isPublishing={isPublishing}
               isDiscarding={isDiscarding}
+              v8={!!source.v8}
             />
           );
         })}
@@ -868,7 +893,7 @@ function CmsPublishView({
       <>
         <button
           type="button"
-          className="ml-auto shrink-0 text-[11px] text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50"
+          className="ml-auto shrink-0 text-2xs text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50"
           onClick={() => setDiscardAllConfirm(true)}
           disabled={isPublishing || isDiscarding}
         >
@@ -894,7 +919,7 @@ function CmsPublishView({
               <AlertDialogAction
                 onClick={() => void discardAll()}
                 disabled={isDiscarding}
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                className={cn(buttonVariants({ variant: "destructive" }))}
               >
                 {t("thread.publishPopover.discardAll")}
               </AlertDialogAction>
@@ -932,7 +957,7 @@ function CmsPublishView({
   ) : (
     <PublishListRegion>
       {changedFilesTruncated ? (
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-2xs text-muted-foreground">
           {t("thread.publishPopover.showingFirst", {
             shown: summary.count,
             total: changedFilesTotal,
@@ -943,12 +968,12 @@ function CmsPublishView({
       {renderGroup(t("thread.publishPopover.blocksGroup"), summary.blocks)}
       {renderGroup(t("thread.publishPopover.otherGroup"), summary.other)}
       {bodiesFailed ? (
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-2xs text-muted-foreground">
           {t("thread.publishPopover.detailsUnavailable")}
         </p>
       ) : null}
       {otherWork ? (
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-2xs text-muted-foreground">
           {t("thread.publishPopover.alsoOtherWork")}
         </p>
       ) : null}
@@ -966,8 +991,16 @@ function CmsPublishView({
             key={changeId(change)}
             className={cn(
               "absolute inset-0 flex",
-              changeId(change) !== selectedId && "hidden",
+              smoothPanes
+                ? changeId(change) === shownId
+                  ? "z-10"
+                  : "pointer-events-none opacity-0"
+                : changeId(change) !== selectedId && "hidden",
             )}
+            inert={smoothPanes && changeId(change) !== shownId}
+            aria-hidden={
+              smoothPanes && changeId(change) !== shownId ? true : undefined
+            }
           >
             <PublishCompare
               change={change}
@@ -977,6 +1010,9 @@ function CmsPublishView({
               draft={compareDraft}
               lastPage={lastPreviewPage}
               v8={source.v8}
+              onReady={
+                smoothPanes ? () => markReady(changeId(change)) : undefined
+              }
             />
           </div>
         ))}
@@ -1003,7 +1039,7 @@ function CmsPublishView({
           note={
             summary.count === 0 ? null : (
               <>
-                <span className="text-[13px] font-medium">
+                <span className="text-sm font-medium">
                   {isReview
                     ? t("thread.publishPopover.reviewNote")
                     : t("thread.publishPopover.versionNote")}
@@ -1018,7 +1054,7 @@ function CmsPublishView({
                   }
                   rows={2}
                   maxLength={MAX_TITLE_LENGTH}
-                  className="resize-none text-[13px]"
+                  className="resize-none text-sm"
                   disabled={isPublishing}
                 />
               </>

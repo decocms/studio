@@ -53,41 +53,24 @@ export const projects = {
   "projects.connections.usedBy": "{count} projects",
   // Settings › Projects
   "projects.settings.title": "Projects",
-  "projects.settings.description":
-    "Everything scoped to a project lives here: its repositories, connections, report and board.",
   "projects.settings.searchPlaceholder": "Search projects…",
   "projects.settings.open": "Open",
   "projects.settings.openSettings": "Settings",
-  "projects.settings.orgScopeNote":
-    "Members, billing, security and AI providers stay organization-wide.",
   "projects.settings.noResults": "No projects match “{search}”",
 
   // Project settings › identity
   "projects.identity.storeUrlLabel": "Store URL",
   "projects.identity.storeUrlDescription":
     "The live storefront. Reports run against this address.",
-  "projects.flat.viewProject": "Project",
-  "projects.flat.viewFiles": "Files",
-  "projects.flat.viewAnalytics": "Analytics",
-  "projects.apps.heading": "Apps",
   "projects.apps.reports": "Report",
-  "projects.apps.reportsCaption": "What is wrong with the storefront",
   "projects.apps.siteEditor": "Site editor",
-  "projects.apps.siteEditorCaption": "Pages, sections and content",
   "projects.apps.assets": "Assets",
-  "projects.apps.assetsCaption": "Images and files the site uses",
   "projects.apps.releases": "Releases",
-  "projects.apps.releasesCaption": "What's live, and earlier releases",
   "projects.apps.hosting": "Hosting",
-  "projects.apps.hostingCaption": "Deploys, domains and environments",
   "projects.apps.e2e": "End-to-end tests",
-  "projects.apps.e2eCaption": "Flows checked on every change",
   "projects.apps.analytics": "Analytics",
-  "projects.apps.analyticsCaption": "Traffic, conversion and revenue",
   "projects.apps.cdn": "Monitor",
-  "projects.apps.cdnCaption": "Cache, latency and errors",
   "projects.apps.automations": "Automations",
-  "projects.apps.automationsCaption": "Work that runs on a schedule",
   "projects.apps.experiments": "Experiments",
-  "projects.apps.experimentsCaption": "A/B tests and their results",
+  "projects.apps.calendar": "Calendar",
 } as const;

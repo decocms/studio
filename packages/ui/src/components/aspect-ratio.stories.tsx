@@ -3,7 +3,7 @@ import { Image01 } from "@untitledui/icons";
 import { AspectRatio } from "./aspect-ratio.tsx";
 
 const meta = {
-  title: "Components/AspectRatio",
+  title: "Atoms/AspectRatio",
   component: AspectRatio,
   args: {
     ratio: 16 / 9,

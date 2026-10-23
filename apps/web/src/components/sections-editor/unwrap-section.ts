@@ -1,18 +1,12 @@
 import { isSavedBlockResolveType } from "./block-type-utils";
 import { isLazyResolveType } from "./section-lazy";
 import type { ParsedSection } from "./parse-sections";
+import type { RawSection } from "./section-types";
 import {
-  PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE,
-  SECTION_MULTIVARIATE_RESOLVE_TYPE,
-  type RawSection,
-} from "./section-types";
-
-function isMultivariateResolveType(rt: string): boolean {
-  return (
-    rt === SECTION_MULTIVARIATE_RESOLVE_TYPE ||
-    rt === PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE
-  );
-}
+  isVariantsBlockType,
+  readVariantValue,
+  variantValueOn,
+} from "./variant-shape";
 
 function resolveSavedBlockData(
   blockKey: string,
@@ -28,15 +22,19 @@ function unwrapResolvedValue(
   rt: string,
   value: Record<string, unknown>,
   decofile: Record<string, unknown>,
+  v8: boolean,
 ): { data: Record<string, unknown>; resolveType: string } | null {
   if (!rt) return null;
 
-  if (isMultivariateResolveType(rt)) {
-    const firstVariant = (
-      value.variants as Array<{ value?: Record<string, unknown> }> | undefined
-    )?.[0]?.value;
+  // v7 knows only its own variants names: a short `multivariate` there is a
+  // saved block's key (isVariantsBlockType).
+  if (isVariantsBlockType(rt, v8)) {
+    const firstVariant = variantValueOn(
+      (value.variants as unknown[] | undefined)?.[0],
+      v8,
+    ) as Record<string, unknown> | undefined;
     if (!firstVariant) return null;
-    return unwrapSectionValue(firstVariant, decofile);
+    return unwrapSectionValue(firstVariant, decofile, v8);
   }
 
   if (!isSavedBlockResolveType(rt) || !Object.hasOwn(decofile, rt)) {
@@ -48,24 +46,26 @@ function unwrapResolvedValue(
 function unwrapSectionValue(
   value: Record<string, unknown>,
   decofile: Record<string, unknown>,
+  v8: boolean,
 ): { data: Record<string, unknown>; resolveType: string } | null {
   const rt = (value.__resolveType as string) ?? "";
   if (!rt) return null;
 
   if (isLazyResolveType(rt)) {
     const inner = (value.section as Record<string, unknown>) ?? {};
-    return unwrapLazyInner(inner, decofile);
+    return unwrapLazyInner(inner, decofile, v8);
   }
 
-  return unwrapResolvedValue(rt, value, decofile);
+  return unwrapResolvedValue(rt, value, decofile, v8);
 }
 
 function unwrapLazyInner(
   inner: Record<string, unknown>,
   decofile: Record<string, unknown>,
+  v8: boolean,
 ): { data: Record<string, unknown>; resolveType: string } | null {
   const innerRt = (inner.__resolveType as string) ?? "";
-  return unwrapResolvedValue(innerRt, inner, decofile);
+  return unwrapResolvedValue(innerRt, inner, decofile, v8);
 }
 
 /**
@@ -106,7 +106,7 @@ export function savedBlockKey(
   if (parsed.isHidden) {
     const wrapperIsLazy = isLazyResolveType(raw.__resolveType);
     const mvObj = wrapperIsLazy ? (raw.section as RawSection | undefined) : raw;
-    const innerValue = mvObj?.variants?.[0]?.value as
+    const innerValue = readVariantValue(mvObj?.variants?.[0]) as
       | Record<string, unknown>
       | undefined;
     if (!innerValue) return null;
@@ -135,6 +135,11 @@ export function unwrapSection(
   raw: RawSection,
   parsed: ParsedSection,
   decofile: Record<string, unknown>,
+  /**
+   * A Blocks v8 site: its short `multivariate` and values in a `lazy` block,
+   * as `parseSections` reads them. Any other site reads v7's shapes only.
+   */
+  v8: boolean,
 ): { data: Record<string, unknown>; resolveType: string } | null {
   if (parsed.isMultivariate) {
     return null;
@@ -152,24 +157,25 @@ export function unwrapSection(
     const isLazy = isLazyResolveType(raw.__resolveType);
     const mvObj = isLazy ? (raw.section as RawSection | undefined) : raw;
     const innerValue =
-      (mvObj?.variants?.[0]?.value as Record<string, unknown>) ??
-      (raw as Record<string, unknown>);
+      (variantValueOn(mvObj?.variants?.[0], v8) as
+        | Record<string, unknown>
+        | undefined) ?? (raw as Record<string, unknown>);
     const innerRt = (innerValue.__resolveType as string) ?? "";
     const effectiveInnerRt = isLazyResolveType(innerRt)
       ? (((innerValue.section as Record<string, unknown> | undefined)
           ?.__resolveType as string) ?? innerRt)
       : innerRt;
     // Hidden variant section wraps a multivariate block; editing it as one section would flatten the variants.
-    if (isMultivariateResolveType(effectiveInnerRt)) {
+    if (isVariantsBlockType(effectiveInnerRt, v8)) {
       return null;
     }
-    return unwrapSectionValue(innerValue, decofile);
+    return unwrapSectionValue(innerValue, decofile, v8);
   }
 
   if (parsed.isLazy || isLazyResolveType(raw.__resolveType)) {
     const inner = (raw.section as Record<string, unknown>) ?? {};
-    return unwrapLazyInner(inner, decofile);
+    return unwrapLazyInner(inner, decofile, v8);
   }
 
-  return unwrapSectionValue(raw as Record<string, unknown>, decofile);
+  return unwrapSectionValue(raw as Record<string, unknown>, decofile, v8);
 }

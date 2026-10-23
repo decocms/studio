@@ -1,4 +1,5 @@
 import type { LiveMeta } from "./resolve-schema";
+import { isPageResolveTypeOnBlocksSite } from "./page-types";
 import { unwrapSeoConfig, wrapSeoPersistValue } from "./seo-lazy-render";
 import {
   isSeoSectionResolveType,
@@ -8,11 +9,6 @@ import {
   resolveSiteSeoResolveType,
   type SeoTypeOption,
 } from "./seo-schema";
-
-const PAGE_RESOLVE_TYPES = new Set([
-  "website/pages/Page.tsx",
-  "$live/pages/LivePage.tsx",
-]);
 
 /** Default deco SEO section type when manifest schemas are unavailable. */
 export const DEFAULT_SEO_RESOLVE_TYPE = "website/sections/Seo/SeoV2.tsx";
@@ -49,10 +45,10 @@ function isPlainObject(val: unknown): val is Record<string, unknown> {
   return typeof val === "object" && val !== null && !Array.isArray(val);
 }
 
-function looksLikeSeo(obj: Record<string, unknown>): boolean {
+function looksLikeSeo(obj: Record<string, unknown>, meta?: LiveMeta): boolean {
   if (
     typeof obj.__resolveType === "string" &&
-    isSeoSectionResolveType(obj.__resolveType)
+    isSeoSectionResolveType(obj.__resolveType, meta)
   ) {
     return true;
   }
@@ -78,11 +74,12 @@ export function findSiteSeoEntry(
     if (!isPlainObject(val)) continue;
     const obj = val;
     const rt = obj.__resolveType;
-    if (typeof rt === "string" && PAGE_RESOLVE_TYPES.has(rt)) continue;
+    if (typeof rt === "string" && isPageResolveTypeOnBlocksSite(rt, meta))
+      continue;
     const seo = obj.seo;
     if (isPlainObject(seo)) {
       const seoObj = seo;
-      if (looksLikeSeo(seoObj)) {
+      if (looksLikeSeo(seoObj, meta)) {
         return {
           blockKey: key,
           kind: "nested",
@@ -105,7 +102,7 @@ export function findSiteSeoEntry(
     const obj = val;
     if (
       typeof obj.__resolveType === "string" &&
-      isSeoSectionResolveType(obj.__resolveType)
+      isSeoSectionResolveType(obj.__resolveType, meta)
     ) {
       return {
         blockKey: key,

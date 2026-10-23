@@ -4,8 +4,8 @@ import { cva, type VariantProps } from "class-variance-authority";
 
 import { cn } from "../lib/utils.ts";
 
-/** Compact layout raises secondary controls onto the card surface. Variables
- *  keep both layouts compatible with the caller's className overrides. */
+/** A grey fill that darkens a step on hover. Variables keep it overridable
+ *  per layout. */
 const SECONDARY =
   "bg-[var(--studio-secondary-background)] text-[color:var(--studio-secondary-foreground)] shadow-[var(--studio-secondary-shadow)] hover:bg-[var(--studio-secondary-hover-background)] hover:text-[color:var(--studio-secondary-hover-foreground)]";
 
@@ -16,9 +16,9 @@ const buttonVariants = cva(
     "rounded-[var(--studio-button-radius)] text-sm font-medium",
     /* Colour and shadow ease; the press is instant (`active:transition-none`). */
     "transition-[background-color,box-shadow,color,opacity] duration-150 ease-[var(--ease-out-cubic)]",
-    "active:scale-[0.98] active:transition-none motion-reduce:active:scale-100",
+    "active:translate-y-px active:transition-none motion-reduce:active:translate-y-0",
     "focus-ring",
-    "disabled:pointer-events-none disabled:opacity-45",
+    "disabled:pointer-events-none disabled:opacity-40",
     "[&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
     "aria-invalid:outline-destructive",
   ],
@@ -26,19 +26,28 @@ const buttonVariants = cva(
     variants: {
       variant: {
         /* The one filled button on a screen: ink, and nothing else is this dark. */
-        default: "bg-primary text-primary-foreground hover:bg-primary/85",
+        default: "bg-primary text-primary-foreground hover:bg-primary-hover",
         destructive:
-          "bg-destructive text-destructive-foreground hover:bg-destructive/90 dark:bg-destructive/70",
+          "bg-destructive text-destructive-foreground hover:bg-destructive/85 dark:bg-destructive/70",
         secondary: SECONDARY,
         outline:
-          "bg-[var(--studio-input-background)] text-[color:var(--studio-outline-foreground)] hover:bg-[var(--studio-outline-hover-background)] hover:text-accent-foreground card-shadow",
+          "bg-card text-[color:var(--studio-outline-foreground)] shadow-edge hover:bg-[var(--studio-outline-hover-background)] hover:text-accent-foreground aria-pressed:bg-accent aria-pressed:text-accent-foreground data-[state=open]:bg-accent",
         success: "bg-success text-success-foreground hover:bg-success/90",
         warning: "bg-warning text-warning-foreground hover:bg-warning/90",
         /* Lime. Reserved for starting work — see the accent rule. */
         brand: "bg-brand text-brand-foreground hover:bg-brand/85",
         special: "bg-special text-special-foreground hover:bg-special/90",
-        ghost:
-          "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
+        ghost: "hover:bg-accent hover:text-accent-foreground",
+        /* A quiet remove or delete: muted until hovered, then destructive. */
+        "ghost-destructive":
+          "text-muted-foreground hover:bg-accent hover:text-destructive",
+        /**
+         * The agent's own button — "Ask" in the header. A white pill on a
+         * hairline that leads with the agent avatar, which sits flush with
+         * the pill's curve, so the padding on that side is the avatar's inset.
+         */
+        agent:
+          "bg-card text-card-foreground shadow-edge hover:bg-accent has-[>[data-slot=agent-avatar]]:pl-[3px]",
         /**
          * An icon button living in the SIDEBAR, so it wears the sidebar's own
          * tokens and matches `SidebarMenuButton` beside it: a quiet glyph that
@@ -53,9 +62,9 @@ const buttonVariants = cva(
          * a link — the styling has to come from whichever attribute tells a
          * screen reader this one is on, never a class beside it. It lifts
          * the pill the way {@link SECONDARY} does, since "selected" here is a
-         * raised chip (see `ViewModeToggle`) rather than a filled one.
+         * raised chip (see a segmented `ToggleGroup`) rather than a filled one.
          */
-        tab: "text-muted-foreground hover:bg-accent hover:text-foreground aria-pressed:bg-card aria-pressed:text-card-foreground aria-pressed:card-shadow aria-[current=page]:bg-card aria-[current=page]:text-card-foreground aria-[current=page]:card-shadow",
+        tab: "text-muted-foreground hover:bg-accent hover:text-foreground aria-pressed:bg-card aria-pressed:text-card-foreground aria-pressed:shadow-edge aria-[current=page]:bg-card aria-[current=page]:text-card-foreground aria-[current=page]:shadow-edge",
         /**
          * A row in a popover menu — full width, text leading, regular weight.
          * Every caller was reaching for `ghost` and then re-adding
@@ -73,6 +82,7 @@ const buttonVariants = cva(
         xl: "h-12 px-6 text-base has-[>svg]:px-5",
         icon: "size-8",
         "icon-sm": "size-7",
+        "icon-xs": "size-6",
       },
     },
     defaultVariants: {

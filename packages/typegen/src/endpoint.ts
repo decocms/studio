@@ -18,6 +18,20 @@ export interface DiscoveredEndpoint {
   expiresAt?: number;
 }
 
+function isDiscoveredEndpoint(value: unknown): value is DiscoveredEndpoint {
+  if (!value || typeof value !== "object") return false;
+  const obj = value as Record<string, unknown>;
+  if (typeof obj.url !== "string") return false;
+  if (
+    obj.headers !== undefined &&
+    (typeof obj.headers !== "object" || obj.headers === null)
+  )
+    return false;
+  if (obj.expiresAt !== undefined && typeof obj.expiresAt !== "number")
+    return false;
+  return true;
+}
+
 /**
  * Walk up from `startDir` looking for `.deco/tools/.endpoint.json`. Returns
  * null when not inside a sandbox workspace or the file is malformed. Sync fs
@@ -32,8 +46,8 @@ export function discoverEndpoint(
     if (existsSync(file)) {
       try {
         const parsed = JSON.parse(readFileSync(file, "utf-8"));
-        if (parsed && typeof parsed.url === "string") {
-          return parsed as DiscoveredEndpoint;
+        if (isDiscoveredEndpoint(parsed)) {
+          return parsed;
         }
       } catch {
         // fall through — a malformed file is the same as no file

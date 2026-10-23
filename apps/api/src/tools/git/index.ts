@@ -38,6 +38,7 @@ import {
   providerCapabilities,
 } from "@/git-providers";
 import type { GitProviderAccountRecord } from "@/storage/git-provider-accounts";
+import { listRecentPushes } from "@/monitoring/order-pushes";
 import type { RepositoryRecord } from "@/storage/repositories";
 
 const RepoSummarySchema = z.object({
@@ -503,7 +504,7 @@ export const REPOSITORY_CREATE_FROM_TEMPLATE = defineTool({
 export const REPOSITORY_UPDATE = defineTool({
   name: "REPOSITORY_UPDATE",
   description:
-    "Change a linked repository's settings. Currently the sandbox image its sandboxes boot from: `default`, or the name of a variant the cluster renders (e.g. `android`, for mobile apps an agent should run on an Android emulator). A variant the cluster lacks degrades to `default`.",
+    "Change a linked repository's settings: whether its pushes show on the Monitor's Deploys tab, and the sandbox image its sandboxes boot from: `default`, or the name of a variant the cluster renders (e.g. `android`, for mobile apps an agent should run on an Android emulator). A variant the cluster lacks degrades to `default`.",
   annotations: {
     title: "Update repository",
     readOnlyHint: false,
@@ -514,23 +515,85 @@ export const REPOSITORY_UPDATE = defineTool({
   _meta: { ui: { visibility: "app" } },
   inputSchema: z.object({
     id: z.string(),
-    sandboxImage: SandboxImageSchema,
+    sandboxImage: SandboxImageSchema.optional(),
+    monitorDeploys: z
+      .boolean()
+      .optional()
+      .describe("Show this repository's pushes on the Monitor's Deploys tab."),
   }),
   outputSchema: z.object({ repository: RepositorySchema }),
   handler: async (input, ctx) => {
     requireAuth(ctx);
     await ctx.access.check();
     const organization = requireOrganization(ctx);
-    const repository = await ctx.storage.repositories.setSandboxImage(
+    let repository = await ctx.storage.repositories.get(
       input.id,
       organization.id,
-      input.sandboxImage,
     );
+    if (repository && input.sandboxImage !== undefined) {
+      repository = await ctx.storage.repositories.setSandboxImage(
+        input.id,
+        organization.id,
+        input.sandboxImage,
+      );
+    }
+    if (repository && input.monitorDeploys !== undefined) {
+      repository = await ctx.storage.repositories.setMonitorDeploys(
+        input.id,
+        organization.id,
+        input.monitorDeploys,
+      );
+    }
     if (!repository) throw new Error("Repository not found");
     // Existing sandboxes keep the image they booted with — a SandboxClaim
     // names its template once and the pod cannot be re-imaged under it. The
     // next sandbox for this repo picks the new one up.
     return { repository: toRepositoryOutput(repository) };
+  },
+});
+
+export const REPOSITORY_DEPLOYS_LIST = defineTool({
+  name: "REPOSITORY_DEPLOYS_LIST",
+  description:
+    "Pushes to the default branch of the repositories monitored for deploys, over the last two weeks, newest first. Commits within the same 15 minutes are one push.",
+  annotations: {
+    title: "List deploys",
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+  },
+  _meta: { ui: { visibility: "app" } },
+  inputSchema: z.object({}),
+  outputSchema: z.object({
+    deploys: z.array(
+      z.object({
+        repositoryId: z.string(),
+        repositoryPath: z.string(),
+        at: z.string(),
+        commits: z.array(
+          z.object({
+            sha: z.string(),
+            message: z.string(),
+            author: z.string(),
+          }),
+        ),
+      }),
+    ),
+  }),
+  handler: async (_input, ctx) => {
+    requireAuth(ctx);
+    await ctx.access.check();
+    const organization = requireOrganization(ctx);
+    const pushes = await listRecentPushes(ctx, organization.id);
+    return {
+      deploys: pushes.map(({ repositoryId, repositoryPath, push }) => ({
+        repositoryId,
+        repositoryPath,
+        at: push.time,
+        commits: push.commits,
+      })),
+    };
   },
 });
 

@@ -1,0 +1,625 @@
+import { createContext, useContext, useState, type ReactNode } from "react";
+import { ArrowLeft, ArrowUpRight, Plus } from "@untitledui/icons";
+import { Button } from "@decocms/ui/components/button.tsx";
+import {
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@decocms/ui/components/command.tsx";
+import { Input } from "@decocms/ui/components/input.tsx";
+import { Label } from "@decocms/ui/components/label.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
+import { ShareSplit } from "@/components/experiments/split-donut";
+import { type TFunction, useT } from "@/i18n/use-t.ts";
+import { MatcherIcon, resolveMatcherIconName } from "./matcher-icons";
+import {
+  type CampaignWindow,
+  type NamedRuleKind,
+  namedRuleKindInfo,
+} from "./named-rules";
+import {
+  DATE_INPUT_SCHEME,
+  isoToLocalInput,
+  type NewNameProblem,
+  newNameProblem,
+  type NamedRulePick,
+  type NamedRulePickerKind,
+  windowFromInputs,
+} from "./named-rule-picker";
+
+/**
+ * The icon a chosen `experiment` or `campaign` rule shows on the picker's
+ * trigger (the beaker, the calendar), so the picker's rows match it.
+ */
+export function namedRuleIconName(kind: NamedRuleKind): string {
+  return resolveMatcherIconName(
+    namedRuleKindInfo(kind).matcher,
+    undefined,
+    true,
+  );
+}
+
+/**
+ * Where the site's tests and campaigns are managed: the Experiments tab and
+ * the Calendar (campaigns) view. The content browser provides it; without it (another
+ * surface) the rows show no link.
+ */
+export interface NamedRuleViews {
+  open: (kind: NamedRuleKind) => void;
+}
+
+const NamedRuleViewsContext = createContext<NamedRuleViews | null>(null);
+
+export function NamedRuleViewsProvider({
+  value,
+  children,
+}: {
+  value: NamedRuleViews;
+  children: ReactNode;
+}) {
+  return (
+    <NamedRuleViewsContext.Provider value={value}>
+      {children}
+    </NamedRuleViewsContext.Provider>
+  );
+}
+
+function useNamedRuleViews(): NamedRuleViews | null {
+  return useContext(NamedRuleViewsContext);
+}
+
+/**
+ * What a variant inside a form field needs for named rules: the kinds the
+ * picker offers, and `prepare`, which saves a new name's block (guarded) and
+ * gives the rule to put in the field, or `null` when nothing should change.
+ * The sections editor provides it; without it the field's picker is as
+ * before.
+ */
+export interface NamedRuleFieldSupport {
+  kinds: NamedRulePickerKind[];
+  prepare: (pick: NamedRulePick) => Promise<Record<string, unknown> | null>;
+  /**
+   * Makes sure the kind's block exists before a field points at it (an empty
+   * one is saved, guarded, when there is none). `false`: nothing to point at.
+   */
+  ensureBlock: (kind: NamedRuleKind) => Promise<boolean>;
+}
+
+const NamedRuleFieldContext = createContext<NamedRuleFieldSupport | null>(null);
+
+export const NamedRuleFieldProvider = NamedRuleFieldContext.Provider;
+
+export function useNamedRuleFieldSupport(): NamedRuleFieldSupport | null {
+  return useContext(NamedRuleFieldContext);
+}
+
+/** The picker's first list: "A/B test" and "Campaign", one item per kind. */
+export function NamedRuleKindItems({
+  kinds,
+  currentKind,
+  onOpen,
+}: {
+  kinds: NamedRulePickerKind[];
+  currentKind: NamedRuleKind | null;
+  onOpen: (kind: NamedRuleKind) => void;
+}) {
+  const t = useT();
+  return (
+    <>
+      {kinds.map(({ kind }) => {
+        const title =
+          kind === "experiments"
+            ? t("sectionsEditor.namedRulePicker.abTestTitle")
+            : t("sectionsEditor.namedRulePicker.campaignTitle");
+        const description =
+          kind === "experiments"
+            ? t("sectionsEditor.namedRulePicker.abTestDescription")
+            : t("sectionsEditor.namedRulePicker.campaignDescription");
+        return (
+          <CommandItem
+            key={kind}
+            value={`${title} ${description}`}
+            onSelect={() => onOpen(kind)}
+            className={cn("gap-2.5", currentKind === kind && "bg-accent/60")}
+          >
+            <MatcherIcon iconName={namedRuleIconName(kind)} size="sm" />
+            <div className="flex min-w-0 flex-1 flex-col">
+              <span className="text-sm">{title}</span>
+              <span className="truncate text-xs text-muted-foreground">
+                {description}
+              </span>
+            </div>
+          </CommandItem>
+        );
+      })}
+    </>
+  );
+}
+
+/**
+ * Second step: the kind's names, and "+ Create" for what's typed. Lives in
+ * the same command dialog as the rule list.
+ */
+export function NamedRuleNameStep({
+  kind,
+  currentName,
+  onBack,
+  onPick,
+  onCreate,
+}: {
+  kind: NamedRulePickerKind;
+  currentName: string | null;
+  onBack: () => void;
+  onPick: (name: string) => void;
+  onCreate: (name: string) => void;
+}) {
+  const t = useT();
+  const [search, setSearch] = useState("");
+  const tests = kind.kind === "experiments";
+  const typed = search.trim();
+  const names = kind.entries.map((e) => e.name);
+  const canCreate =
+    kind.state !== "conflict" && newNameProblem(typed, names) === null;
+
+  return (
+    <>
+      <div className="flex items-center gap-1 border-b border-border px-2 py-1.5">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-7 gap-1 px-2 text-xs text-muted-foreground"
+          onClick={onBack}
+        >
+          <ArrowLeft className="size-3.5" />
+          {t("sectionsEditor.namedRulePicker.back")}
+        </Button>
+      </div>
+      <CommandInput
+        // Choosing "A/B test" or "Campaign" moves straight to typing a name.
+        autoFocus
+        value={search}
+        onValueChange={setSearch}
+        placeholder={
+          tests
+            ? t("sectionsEditor.namedRulePicker.searchTests")
+            : t("sectionsEditor.namedRulePicker.searchCampaigns")
+        }
+      />
+      <CommandList>
+        {kind.state === "conflict" ? (
+          <p className="px-4 py-6 text-sm text-muted-foreground">
+            {tests
+              ? t("sectionsEditor.namedRulePicker.conflictTests")
+              : t("sectionsEditor.namedRulePicker.conflictCampaigns")}
+          </p>
+        ) : (
+          <>
+            {kind.entries.length === 0 && !typed && (
+              <p className="px-4 py-6 text-sm text-muted-foreground">
+                {tests
+                  ? t("sectionsEditor.namedRulePicker.noTests")
+                  : t("sectionsEditor.namedRulePicker.noCampaigns")}
+              </p>
+            )}
+            {kind.entries.length > 0 && (
+              <CommandGroup
+                heading={
+                  tests
+                    ? t("sectionsEditor.namedRulePicker.testsHeading")
+                    : t("sectionsEditor.namedRulePicker.campaignsHeading")
+                }
+              >
+                {kind.entries.map((entry) => (
+                  <CommandItem
+                    key={entry.name}
+                    value={`${entry.name} ${entry.summary}`}
+                    onSelect={() => onPick(entry.name)}
+                    className={cn(
+                      "gap-2.5",
+                      currentName === entry.name && "bg-accent/60",
+                    )}
+                  >
+                    <MatcherIcon
+                      iconName={namedRuleIconName(kind.kind)}
+                      size="sm"
+                    />
+                    <div className="flex min-w-0 flex-1 flex-col">
+                      <span className="truncate text-sm">{entry.name}</span>
+                      <span className="truncate text-xs text-muted-foreground">
+                        {entry.summary ||
+                          (tests
+                            ? ""
+                            : t(
+                                "sectionsEditor.namedRulePicker.alwaysRunning",
+                              ))}
+                      </span>
+                    </div>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            )}
+            {canCreate && (
+              <CommandGroup forceMount>
+                <CommandItem
+                  forceMount
+                  value={`__create__ ${typed}`}
+                  onSelect={() => onCreate(typed)}
+                  className="gap-2.5"
+                >
+                  <Plus className="size-4 text-muted-foreground" />
+                  <span className="truncate text-sm">
+                    {tests
+                      ? t("sectionsEditor.namedRulePicker.createTest", {
+                          name: typed,
+                        })
+                      : t("sectionsEditor.namedRulePicker.createCampaign", {
+                          name: typed,
+                        })}
+                  </span>
+                </CommandItem>
+              </CommandGroup>
+            )}
+          </>
+        )}
+      </CommandList>
+    </>
+  );
+}
+
+/**
+ * Why a name can't be used, in words. `pickFromList` where the name is in a
+ * list just before (the rule picker), so "taken" says to pick it there.
+ */
+export function nameProblemMessage(
+  t: TFunction,
+  problem: NewNameProblem,
+  options?: { pickFromList?: boolean },
+): string {
+  switch (problem) {
+    case "empty":
+      return t("sectionsEditor.namedRules.nameEmpty");
+    case "reserved":
+      return t("sectionsEditor.namedRules.nameReserved");
+    case "taken":
+      return options?.pickFromList
+        ? t("sectionsEditor.namedRules.nameTakenPick")
+        : t("sectionsEditor.namedRules.nameTaken");
+  }
+}
+
+/**
+ * A campaign's start and end, as two `datetime-local` inputs side by side:
+ * the create form and the Calendar view's detail.
+ */
+export function CampaignWindowInputs({
+  idPrefix,
+  start,
+  end,
+  onStartChange,
+  onEndChange,
+  className,
+}: {
+  idPrefix: string;
+  start: string;
+  end: string;
+  onStartChange: (value: string) => void;
+  onEndChange: (value: string) => void;
+  className?: string;
+}) {
+  const t = useT();
+  return (
+    <div className={cn("grid grid-cols-2 gap-3", className)}>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor={`${idPrefix}-start`}>
+          {t("sectionsEditor.namedRules.startLabel")}
+        </Label>
+        <Input
+          id={`${idPrefix}-start`}
+          type="datetime-local"
+          className={DATE_INPUT_SCHEME}
+          value={start}
+          onChange={(e) => onStartChange(e.target.value)}
+        />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor={`${idPrefix}-end`}>
+          {t("sectionsEditor.namedRules.endLabel")}
+        </Label>
+        <Input
+          id={`${idPrefix}-end`}
+          type="datetime-local"
+          className={DATE_INPUT_SCHEME}
+          value={end}
+          onChange={(e) => onEndChange(e.target.value)}
+        />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Third step, for a new name: a test's share (50 to start) or a campaign's
+ * dates. Kept out of the command list's keyboard handling, so the inputs
+ * behave as inputs.
+ */
+export function NamedRuleCreateForm({
+  kind,
+  initialName,
+  existingNames,
+  prefill,
+  pending,
+  submitLabel,
+  dismiss = "back",
+  standalone = false,
+  onBack,
+  onSubmit,
+}: {
+  kind: NamedRuleKind;
+  initialName: string;
+  existingNames: string[];
+  /** A campaign's starting dates (an inline date rule being moved). */
+  prefill?: CampaignWindow | null;
+  pending?: boolean;
+  /** The button's words; "Create and use" in the rule picker. */
+  submitLabel?: string;
+  /**
+   * What the dismiss button says: "Back" when the form is a step after
+   * another one (the rule picker), "Cancel" when nothing comes before it (a
+   * dialog of its own, a form opened from a row).
+   */
+  dismiss?: "back" | "cancel";
+  /**
+   * A dialog of its own (Experiments, Calendar), with no list of names
+   * beside it to pick a taken one from.
+   */
+  standalone?: boolean;
+  onBack: () => void;
+  onSubmit: (pick: NamedRulePick) => void;
+}) {
+  const t = useT();
+  const tests = kind === "experiments";
+  const [name, setName] = useState(initialName);
+  const [share, setShare] = useState(50);
+  const [start, setStart] = useState(isoToLocalInput(prefill?.start));
+  const [end, setEnd] = useState(isoToLocalInput(prefill?.end));
+  const [tried, setTried] = useState(false);
+  // The name handed to `onSubmit`, checked then. Once it is saved it is one of
+  // `existingNames`; checking it again would call it taken while the form
+  // closes.
+  const [submittedName, setSubmittedName] = useState<string | null>(null);
+
+  const nameProblem =
+    submittedName !== null && submittedName === name.trim()
+      ? null
+      : newNameProblem(name, existingNames);
+  const window = windowFromInputs(start, end);
+  const valueProblem = tests
+    ? null
+    : "problem" in window
+      ? t("sectionsEditor.namedRules.endBeforeStart")
+      : null;
+  // In the rule picker a taken name is in the list, to pick there.
+  const nameMessage = nameProblem
+    ? nameProblemMessage(t, nameProblem, { pickFromList: !standalone })
+    : null;
+
+  const submit = () => {
+    setTried(true);
+    if (nameProblem || valueProblem || pending) return;
+    const trimmed = name.trim();
+    setSubmittedName(trimmed);
+    if (tests) {
+      onSubmit({
+        kind: "experiments",
+        name: trimmed,
+        create: { share },
+      });
+    } else if ("window" in window) {
+      onSubmit({
+        kind: "campaigns",
+        name: trimmed,
+        create: { window: window.window },
+      });
+    }
+  };
+
+  return (
+    // cmdk handles arrows and Enter on the whole dialog; the form keeps them.
+    <form
+      className="flex flex-col gap-4 p-4"
+      onKeyDown={(e) => e.stopPropagation()}
+      onSubmit={(e) => {
+        e.preventDefault();
+        submit();
+      }}
+    >
+      <div className="flex items-center gap-2">
+        <MatcherIcon iconName={namedRuleIconName(kind)} size="sm" />
+        <h3 className="text-sm font-medium">
+          {tests
+            ? t("sectionsEditor.namedRulePicker.newTestTitle")
+            : t("sectionsEditor.namedRulePicker.newCampaignTitle")}
+        </h3>
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="named-rule-name">
+          {t("sectionsEditor.namedRules.nameLabel")}
+        </Label>
+        <Input
+          id="named-rule-name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          autoFocus
+        />
+        {tried && nameMessage && (
+          <p className="text-xs text-destructive">{nameMessage}</p>
+        )}
+      </div>
+      {tests ? (
+        <div className="flex flex-col gap-1.5">
+          <span className="text-sm font-medium">
+            {t("experiments.v8.shareTitle")}
+          </span>
+          <ShareSplit
+            compact
+            value={share}
+            onChange={setShare}
+            sliderLabel={t("experiments.v8.shareLabel")}
+            inTestLabel={t("experiments.v8.split.inTest")}
+            restLabel={t("experiments.v8.split.rest")}
+            centerLabel={t("experiments.v8.split.center")}
+          />
+          <p className="text-xs text-muted-foreground">
+            {t("sectionsEditor.namedRulePicker.shareHint")}
+          </p>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-1.5">
+          <CampaignWindowInputs
+            idPrefix="named-rule"
+            start={start}
+            end={end}
+            onStartChange={setStart}
+            onEndChange={setEnd}
+          />
+          <p className="text-xs text-muted-foreground">
+            {t("sectionsEditor.namedRules.windowHint")}
+          </p>
+        </div>
+      )}
+      {tried && valueProblem && (
+        <p className="text-xs text-destructive">{valueProblem}</p>
+      )}
+      <div className="flex justify-end gap-2">
+        <Button type="button" variant="ghost" size="sm" onClick={onBack}>
+          {dismiss === "cancel"
+            ? t("sectionsEditor.namedRulePicker.cancelCreate")
+            : t("sectionsEditor.namedRulePicker.cancel")}
+        </Button>
+        <Button type="submit" size="sm" disabled={pending}>
+          {submitLabel ?? t("sectionsEditor.namedRulePicker.createAndUse")}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+/**
+ * Where a variant's rule names a test or campaign: the name, locked (it is
+ * changed by picking another above), what it does now, and the way to the
+ * Experiments tab or Campaigns view. A name that isn't there (deleted,
+ * discarded, never created, typed by hand) says so, with the picker right
+ * above and, when the picker can create it (`onCreate`), "Create it"; a date
+ * rule still written with its own dates says what to do. When the kind's
+ * block holds something else (`conflict`), the row says what the picker
+ * says, inline-date rule included, since nothing can be picked or created
+ * until that block is renamed.
+ */
+export function NamedRuleRow({
+  kind,
+  name,
+  summary,
+  missing,
+  conflict,
+  inlineDate,
+  onCreate,
+}: {
+  kind: NamedRuleKind;
+  name: string;
+  summary: string;
+  missing: boolean;
+  /** The kind's block holds something else (the picker's `conflict`). */
+  conflict?: boolean;
+  inlineDate?: boolean;
+  /** Opens the form that creates the missing name. */
+  onCreate?: () => void;
+}) {
+  const t = useT();
+  const tests = kind === "experiments";
+  const note = conflict
+    ? tests
+      ? t("sectionsEditor.namedRulePicker.conflictTests")
+      : t("sectionsEditor.namedRulePicker.conflictCampaigns")
+    : inlineDate
+      ? t("sectionsEditor.namedRulePicker.inlineDate")
+      : missing
+        ? onCreate
+          ? tests
+            ? t("sectionsEditor.namedRulePicker.missingTest")
+            : t("sectionsEditor.namedRulePicker.missingCampaign")
+          : tests
+            ? t("sectionsEditor.namedRulePicker.missingTestNoCreate")
+            : t("sectionsEditor.namedRulePicker.missingCampaignNoCreate")
+        : tests
+          ? t("sectionsEditor.namedRulePicker.testRowHint")
+          : t("sectionsEditor.namedRulePicker.campaignRowHint");
+  return (
+    <div
+      className="flex flex-col gap-1.5 rounded-[var(--studio-control-radius,var(--radius-md))] border border-border/80 bg-muted/30 px-3 py-2"
+      data-testid="named-rule-row"
+    >
+      {!inlineDate && (
+        <div className="flex min-w-0 items-center gap-2">
+          <MatcherIcon iconName={namedRuleIconName(kind)} size="sm" />
+          <span className="truncate text-sm font-medium">{name}</span>
+          {summary && (
+            <span className="truncate text-xs text-muted-foreground">
+              {summary}
+            </span>
+          )}
+        </div>
+      )}
+      <p
+        className={cn(
+          "text-xs",
+          conflict || (missing && !inlineDate)
+            ? "text-foreground"
+            : "text-muted-foreground",
+        )}
+        data-testid={
+          conflict
+            ? "named-rule-conflict"
+            : missing && !inlineDate
+              ? "named-rule-missing"
+              : undefined
+        }
+      >
+        {note}
+      </p>
+      {missing && !inlineDate && onCreate && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="w-fit"
+          onClick={onCreate}
+        >
+          <Plus className="size-4" />
+          {t("sectionsEditor.namedRulePicker.createMissing")}
+        </Button>
+      )}
+      {!inlineDate && <NamedRuleViewsLink kind={kind} />}
+    </div>
+  );
+}
+
+/** "Open Experiments" / "Open Calendar", where the surface can go there. */
+export function NamedRuleViewsLink({ kind }: { kind: NamedRuleKind }) {
+  const t = useT();
+  const views = useNamedRuleViews();
+  if (!views) return null;
+  return (
+    <button
+      type="button"
+      onClick={() => views.open(kind)}
+      className="inline-flex w-fit items-center gap-1 text-xs font-medium text-foreground underline-offset-2 hover:underline cursor-pointer"
+    >
+      {kind === "experiments"
+        ? t("sectionsEditor.namedRulePicker.openExperiments")
+        : t("sectionsEditor.namedRulePicker.openCalendar")}
+      <ArrowUpRight className="size-3" />
+    </button>
+  );
+}

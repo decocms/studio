@@ -13,7 +13,7 @@ import {
 import { Button } from "./button.tsx";
 
 const meta = {
-  title: "Components/AlertDialog",
+  title: "Organisms/AlertDialog",
   component: AlertDialog,
 } satisfies Meta<typeof AlertDialog>;
 
