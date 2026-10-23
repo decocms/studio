@@ -408,29 +408,81 @@ describe("publishDraft", () => {
     await expectEmptied(drafts, saved);
   });
 
-  it("keeps a draft that commits nothing while main's head isn't current (its release failed): emptied once released", async () => {
+  it("Publish again after a failed release (Try again lost) releases main's head and only then empties the draft", async () => {
     const { git, delivery, drafts, repo } = setup();
     const saved = await drafts.update(REF, () => ({
       set: { New: { a: 1 } },
       delete: [],
     }));
     const put = delivery.store.putJson;
+    let down = true;
     delivery.store.putJson = async (key, value, cache, metadata) => {
-      if (key === deliveryKeys.latest("acme")) throw new Error("R2 down");
+      if (down && key === deliveryKeys.latest("acme")) {
+        throw new Error("R2 down");
+      }
       return put(key, value, cache, metadata);
     };
     expect(
       await publishDraft(repo, drafts, REF, { message: "", coAuthor: null }),
     ).toMatchObject({ result: "merged", release: "created" });
-    // Publish again: its changes are on main already, but not live.
     const head = git.head();
-    delivery.log.length = 0;
+    // Publish again while the CDN is still down: nothing new to commit, main's
+    // head released again, which fails again: the draft is kept for Try again.
     expect(
       await publishDraft(repo, drafts, REF, { message: "", coAuthor: null }),
-    ).toEqual({ result: "up-to-date" });
+    ).toEqual({
+      result: "merged",
+      sha: head,
+      release: "created",
+      draftEtag: saved.etag ?? undefined,
+    });
     expect(git.head()).toBe(head);
-    expect(delivery.log).toEqual([]);
     expect(await drafts.load(REF)).toEqual(saved);
+    expect(await readLatest(delivery.store, "acme")).toBeNull();
+    // Publish again once the CDN is back: main's head goes live, then the
+    // draft is emptied (same slug).
+    down = false;
+    expect(
+      await publishDraft(repo, drafts, REF, { message: "", coAuthor: null }),
+    ).toEqual({ result: "merged", sha: head, release: "current" });
+    expect(git.head()).toBe(head);
+    expect((await readLatest(delivery.store, "acme"))?.revision).toBe(head);
+    await expectEmptied(drafts, saved);
+  });
+
+  it("Publish again after a failed release keeps a save made during it", async () => {
+    const { git, delivery, drafts, repo } = setup();
+    await drafts.update(REF, () => ({ set: { New: { a: 1 } }, delete: [] }));
+    const put = delivery.store.putJson;
+    let down = true;
+    delivery.store.putJson = async (key, value, cache, metadata) => {
+      if (down && key === deliveryKeys.latest("acme")) {
+        throw new Error("R2 down");
+      }
+      return put(key, value, cache, metadata);
+    };
+    await publishDraft(repo, drafts, REF, { message: "", coAuthor: null });
+    down = false;
+    let later: Awaited<ReturnType<typeof drafts.update>> | null = null;
+    const result = await publishDraft(
+      repo,
+      drafts,
+      REF,
+      { message: "", coAuthor: null },
+      {
+        beforePointerWrite: async () => {
+          later = await drafts.update(REF, (d) => ({
+            set: { ...d.set, Other: { b: 2 } },
+            delete: d.delete,
+          }));
+        },
+      },
+    );
+    expect(result).toMatchObject({ result: "merged", release: "current" });
+    expect((await readLatest(delivery.store, "acme"))?.revision).toBe(
+      git.head(),
+    );
+    expect(await drafts.load(REF)).toEqual(later);
   });
 
   it("answers up-to-date for an empty draft and keeps it as it is (same slug, same etag)", async () => {

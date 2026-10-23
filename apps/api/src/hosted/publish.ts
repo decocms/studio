@@ -21,8 +21,10 @@
  * published save's `draftEtag`: Publish's "Try again" (`releaseMainHead`)
  * retries the release for main's head and, once it is current, empties the
  * draft with that ETag (`emptyDraftAfterRelease`), so a save made in between
- * is kept. A draft that commits nothing leaves latest.json alone, and is
- * emptied only when latest.json already names main's head. Steps 2–3 are
+ * is kept. A draft that commits nothing (its changes are on main already)
+ * is emptied when latest.json names main's head; when it doesn't (a failed
+ * release whose "Try again" was lost), Publish releases main's head as "Try
+ * again" would, and empties the draft once that is current. Steps 2–3 are
  * {@link releaseCommit}, shared with Reapply version (reapply.ts).
  * Every latest.json write stamps `publishedAt` now: the SDK prefers the CDN
  * only when it is later than its bundle's build time.
@@ -410,6 +412,19 @@ export async function publishDraft(
   // pointer keeps its address. A failure here leaves content equal to main,
   // which renders the same over the new release: Publish still succeeds.
   const emptyDraft = () => emptyPublishedDraft(repo, drafts, ref, draft.etag);
+  // The release first, then the draft: any render of the emptied draft
+  // happens after latest.json names the new release. A release that isn't
+  // current keeps the draft for "Try again".
+  const releaseThenEmpty = async (sha: string): Promise<PublishResult> => {
+    const release = await releaseCommit(repo, sha, hooks);
+    if (release !== "current") {
+      return draft.etag
+        ? { result: "merged", sha, release, draftEtag: draft.etag }
+        : { result: "merged", sha, release };
+    }
+    await emptyDraft();
+    return { result: "merged", sha, release };
+  };
   const sha = isEmptyDraft(draft.body)
     ? null
     : await commitDraftToMain(
@@ -423,39 +438,41 @@ export async function publishDraft(
               note.coAuthor,
             ),
       );
-  // Nothing committed: latest.json is left alone.
+  // Nothing committed.
   if (sha === null) {
-    // An empty draft stays as it is (nothing to write). A draft whose
-    // changes are all on main already (a Publish whose release failed) is
-    // emptied only when they are live: latest.json names main's head.
-    if (!isEmptyDraft(draft.body) && (await mainHeadIsCurrent(repo))) {
+    // An empty draft stays as it is (nothing to write).
+    if (isEmptyDraft(draft.body)) return { result: "up-to-date" };
+    // The draft's changes are all on main already. Live (latest.json names
+    // main's head): the draft is emptied, latest.json left alone. Not live (a
+    // Publish whose release failed, its "Try again" gone with the tab, or
+    // run by another editor): Publish releases main's head now, as "Try
+    // again" does, and empties the draft once that release is current.
+    const unreleased = await unreleasedMainHead(repo);
+    if (unreleased === undefined) return { result: "up-to-date" };
+    if (unreleased === null) {
       await emptyDraft();
+      return { result: "up-to-date" };
     }
-    return { result: "up-to-date" };
+    return releaseThenEmpty(unreleased);
   }
-  // The release first, then the draft: any render of the emptied draft
-  // happens after latest.json names the new release. A release that isn't
-  // current keeps the draft for "Try again".
-  const release = await releaseCommit(repo, sha, hooks);
-  if (release !== "current") {
-    return draft.etag
-      ? { result: "merged", sha, release, draftEtag: draft.etag }
-      : { result: "merged", sha, release };
-  }
-  await emptyDraft();
-  return { result: "merged", sha, release };
+  return releaseThenEmpty(sha);
 }
 
-/** Whether latest.json names main's head (a failed read answers no). */
-async function mainHeadIsCurrent(repo: HostedRepo): Promise<boolean> {
+/**
+ * Main's head when latest.json doesn't name it (not released yet), `null`
+ * when it does, `undefined` when either can't be read (nothing is decided).
+ */
+async function unreleasedMainHead(
+  repo: HostedRepo,
+): Promise<string | null | undefined> {
   try {
     const [head, latest] = await Promise.all([
       requireBranchHead(repo.client, repo.mainBranch),
       readLatest(repo.store, repo.site),
     ]);
-    return latest?.revision === head;
+    return latest?.revision === head ? null : head;
   } catch {
-    return false;
+    return undefined;
   }
 }
 
