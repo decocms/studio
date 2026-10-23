@@ -15,7 +15,7 @@ describe("unwrapSection", () => {
   it("unwraps a normal inline section", () => {
     const raw = { __resolveType: HERO, title: "Hello" };
     const parsed = parseSections([raw], {})[0]!;
-    expect(unwrapSection(raw, parsed, {})).toEqual({
+    expect(unwrapSection(raw, parsed, {}, false)).toEqual({
       data: { __resolveType: HERO, title: "Hello" },
       resolveType: HERO,
     });
@@ -27,7 +27,7 @@ describe("unwrapSection", () => {
       section: { __resolveType: HERO, title: "Lazy hero" },
     };
     const parsed = parseSections([raw], {})[0]!;
-    expect(unwrapSection(raw, parsed, {})).toEqual({
+    expect(unwrapSection(raw, parsed, {}, false)).toEqual({
       data: { __resolveType: HERO, title: "Lazy hero" },
       resolveType: HERO,
     });
@@ -44,7 +44,7 @@ describe("unwrapSection", () => {
       ],
     };
     const parsed = parseSections([raw], {})[0]!;
-    expect(unwrapSection(raw, parsed, {})).toEqual({
+    expect(unwrapSection(raw, parsed, {}, false)).toEqual({
       data: { __resolveType: HERO, title: "Hidden" },
       resolveType: HERO,
     });
@@ -64,7 +64,7 @@ describe("unwrapSection", () => {
       },
     };
     const parsed = parseSections([raw], {})[0]!;
-    expect(unwrapSection(raw, parsed, {})).toEqual({
+    expect(unwrapSection(raw, parsed, {}, false)).toEqual({
       data: { __resolveType: HERO, title: "Inner" },
       resolveType: HERO,
     });
@@ -84,7 +84,7 @@ describe("unwrapSection", () => {
       ],
     };
     const parsed = parseSections([raw], {})[0]!;
-    expect(unwrapSection(raw, parsed, {})).toEqual({
+    expect(unwrapSection(raw, parsed, {}, false)).toEqual({
       data: { __resolveType: HERO, title: "Nested" },
       resolveType: HERO,
     });
@@ -96,9 +96,12 @@ describe("unwrapSection", () => {
       Header: { __resolveType: HERO, title: "Site Header" },
     })[0]!;
     expect(
-      unwrapSection(raw, parsed, {
-        Header: { __resolveType: HERO, title: "Site Header" },
-      }),
+      unwrapSection(
+        raw,
+        parsed,
+        { Header: { __resolveType: HERO, title: "Site Header" } },
+        false,
+      ),
     ).toEqual({
       data: { __resolveType: HERO, title: "Site Header" },
       resolveType: HERO,
@@ -110,7 +113,7 @@ describe("unwrapSection", () => {
     const parsed = parseSections([raw], {
       Header: { __resolveType: HERO, title: "Header block" },
     })[0]!;
-    expect(unwrapSection(raw, parsed, {})).toBeNull();
+    expect(unwrapSection(raw, parsed, {}, false)).toBeNull();
   });
 
   it("unwraps a hidden saved-block section to its resolved data", () => {
@@ -123,7 +126,7 @@ describe("unwrapSection", () => {
     const decofile = { Header: { __resolveType: HERO, title: "Site Header" } };
     const parsed = parseSections([raw], decofile)[0]!;
     expect(parsed.isSavedBlock).toBe(true);
-    expect(unwrapSection(raw, parsed, decofile)).toEqual({
+    expect(unwrapSection(raw, parsed, decofile, false)).toEqual({
       data: { __resolveType: HERO, title: "Site Header" },
       resolveType: HERO,
     });
@@ -171,7 +174,7 @@ describe("unwrapSection", () => {
     };
     const parsed = parseSections([raw], {})[0]!;
     expect(parsed.isHidden).toBe(true);
-    expect(unwrapSection(raw, parsed, {})).toBeNull();
+    expect(unwrapSection(raw, parsed, {}, false)).toBeNull();
   });
 
   it("returns null for multivariate sections", () => {
@@ -185,7 +188,55 @@ describe("unwrapSection", () => {
       ],
     };
     const parsed = parseSections([raw], {})[0]!;
-    expect(unwrapSection(raw, parsed, {})).toBeNull();
+    expect(unwrapSection(raw, parsed, {}, false)).toBeNull();
+  });
+});
+
+describe("unwrapSection on v7 keeps main's names", () => {
+  // A saved block keyed `multivariate`: on v7 that's a block like any other.
+  const decofile = {
+    multivariate: { __resolveType: HERO, title: "Saved" },
+  };
+  const hidden = {
+    __resolveType: MV,
+    variants: [
+      {
+        rule: { __resolveType: NEVER },
+        value: { __resolveType: "multivariate" },
+      },
+    ],
+  };
+
+  it("a hidden section that names it opens the saved block's form", () => {
+    const parsed = parseSections([hidden], decofile, false)[0]!;
+    expect(parsed.isHidden).toBe(true);
+    expect(unwrapSection(hidden, parsed, decofile, false)).toEqual({
+      data: { __resolveType: HERO, title: "Saved" },
+      resolveType: HERO,
+    });
+  });
+
+  it("a v8 site reads the short name as its variants block, as before", () => {
+    const v8Hidden = {
+      __resolveType: "multivariate",
+      variants: [
+        {
+          rule: { __resolveType: "never" },
+          value: {
+            __resolveType: "lazy",
+            value: {
+              __resolveType: "multivariate",
+              variants: [
+                { rule: { __resolveType: "always" }, value: { title: "A" } },
+              ],
+            },
+          },
+        },
+      ],
+    };
+    const parsed = parseSections([v8Hidden], {}, true)[0]!;
+    expect(parsed.isHidden).toBe(true);
+    expect(unwrapSection(v8Hidden, parsed, {}, true)).toBeNull();
   });
 });
 

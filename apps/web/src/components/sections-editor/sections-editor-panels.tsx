@@ -43,7 +43,7 @@ import { type LiveMeta, type SchemaProperty } from "./resolve-schema";
 import type { FieldProps, SandboxConfig } from "./fields/field-props";
 import { SeoFormFields } from "./seo-form-fields";
 import { parsePageVariants, type PageVariant } from "./page-variants";
-import { formatMatcher } from "./format-matcher";
+import { matcherFormatter } from "./format-matcher";
 import { validatePagePath } from "./page-path-utils";
 import { useNewBlocksEditor } from "@/hooks/use-new-blocks-editor";
 import { useT } from "@/i18n/use-t.ts";
@@ -250,8 +250,10 @@ export function VariantsManagerScreen({
 export function parsePageVariantsForEditor(
   sections: unknown,
   decofile: Record<string, unknown>,
+  /** A Blocks v8 site: its short built-in rule names (`formatMatcher`). */
+  v8 = false,
 ): PageVariant[] {
-  return parsePageVariants(sections, decofile, formatMatcher);
+  return parsePageVariants(sections, decofile, matcherFormatter(v8));
 }
 
 /**

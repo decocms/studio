@@ -78,6 +78,10 @@ import {
 } from "@/hosted/draft-content-storage";
 import type { DraftEditors } from "@/hosted/draft-editors";
 import type { DraftStore, HostedDraftRef } from "@/hosted/draft-store";
+import {
+  type SiteDomainsReader,
+  sitePreviewHosts,
+} from "@/hosted/preview-hosts";
 import { MainMovedError, publishDraft } from "@/hosted/publish";
 import { projectMainIsV8, projectPackagePath } from "@/hosted/blocks-major";
 import { hostedDrafts, ownedProjectSite, SITE_NOT_OWNED } from "@/hosted/scope";
@@ -114,6 +118,7 @@ type DecofileEnv = Env & {
   Variables: Env["Variables"] & {
     decofileScope: DecofileScope;
     repoClientFor: RepoClientFor;
+    siteDomains: SiteDomainsReader | undefined;
   };
 };
 
@@ -505,12 +510,17 @@ function errorResponse(c: Context<DecofileEnv>, err: unknown) {
 }
 
 export function createDecofileRoutes(
-  options: { repoClientFor?: RepoClientFor } = {},
+  options: {
+    repoClientFor?: RepoClientFor;
+    /** The site's deco.cx domains, for its preview hosts (tests pass a fake). */
+    siteDomains?: SiteDomainsReader;
+  } = {},
 ) {
   const app = new Hono<DecofileEnv>();
   const repoClientFor = options.repoClientFor ?? contentClientForProjectRepo;
   app.use("*", async (c, next) => {
     c.set("repoClientFor", repoClientFor);
+    c.set("siteDomains", options.siteDomains);
     await next();
   });
 
@@ -725,6 +735,11 @@ export function createDecofileRoutes(
               store,
               purge: deliveryPurge(),
               site: hosted.ref.site,
+              previewHosts: await sitePreviewHosts({
+                site: hosted.ref.site,
+                metadata: scope.metadata,
+                domains: c.var.siteDomains,
+              }),
             },
             hosted.drafts,
             hosted.ref,

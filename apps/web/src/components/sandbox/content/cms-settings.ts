@@ -1,8 +1,9 @@
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 
 /**
- * The CMS settings of a Blocks (v8) site: preview hosts, telemetry and
- * analytics, in one optional saved block. Its name and type are the only two
+ * The CMS settings of a Blocks (v8) site: telemetry and analytics, in one
+ * optional saved block (the hosts a site shows drafts on are Studio's: it
+ * writes them into each release, hosted/preview-hosts.ts in apps/api). Its name and type are the only two
  * things the editor knows about it; the form comes from the schema, which
  * describes the type. A site whose framework has no such type (published
  * `@decocms/blocks` before it existed, or a v7 site) gets no Settings entry.

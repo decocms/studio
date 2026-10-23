@@ -211,7 +211,11 @@ function LocalChangesContent({
   onClose: () => void;
 }) {
   const t = useT();
-  const state = useContentPublishState({ backend, cacheKey });
+  const state = useContentPublishState({
+    backend,
+    cacheKey,
+    scope: { orgSlug, virtualMcpId, branch },
+  });
   const discard = useContentDiscard({
     orgSlug,
     virtualMcpId,
@@ -252,6 +256,7 @@ function LocalChangesContent({
               key={id}
               change={change}
               bodyPending={state.sidesPending}
+              v8
               selected={selected !== null && changeId(selected) === id}
               onSelect={() => setActiveId(id)}
               confirming={confirmingId === id}
