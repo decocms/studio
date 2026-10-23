@@ -31,6 +31,7 @@ import type {
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
 import {
   type TaskBoardHarnessId,
+  DEFAULT_BOARD_TYPE,
   DEFAULT_TASK_TYPE,
   isReviewerThreadTitle,
   LANES,
@@ -47,6 +48,7 @@ import { RESOLVED_RUN_FAILURE_KINDS } from "@decocms/shared/entities";
 import { NOTIFICATION_TYPES } from "@decocms/shared/notification-types";
 import type { NotificationType } from "@decocms/shared/notification-types";
 import { notify } from "../notifications/notify";
+import { ensureBoard } from "./task-boards";
 import { escapeLikePattern } from "./threads";
 
 /** Activity actions that also earn an inbox row and an email. */
@@ -462,12 +464,13 @@ export class TaskBoardStorage {
     // same lane race for, at most, a single round trip instead of two — the
     // previous SELECT-then-INSERT left a full network round trip open for
     // another create to land on the same sort_order.
-    const insert = (db: Kysely<Database>) =>
+    const insert = (db: Kysely<Database>, boardId: string) =>
       db
         .insertInto("task_board_items")
         .values({
           id,
           organization_id: params.organizationId,
+          board_id: boardId,
           title: params.title,
           description: params.description ?? null,
           status,
@@ -519,7 +522,12 @@ export class TaskBoardStorage {
           parentId: params.parentId,
         });
       }
-      return insert(trx);
+      const boardId = await ensureBoard(trx, {
+        organizationId: params.organizationId,
+        virtualMcpId: params.virtualMcpId ?? null,
+        type: DEFAULT_BOARD_TYPE,
+      });
+      return insert(trx, boardId);
     });
 
     // Freshly created — no linked threads yet, and in its first lane since now.
@@ -555,15 +563,30 @@ export class TaskBoardStorage {
   ): Promise<TaskBoardItem> {
     const hierarchyChange =
       data.parentId !== undefined || data.isEpic !== undefined;
-    const row = hierarchyChange
-      ? await this.inTransaction(async (trx) => {
-          const hierarchy = await applyHierarchy(trx, id, organizationId, {
-            parentId: data.parentId,
-            isEpic: data.isEpic,
-          });
-          return this.writeUpdate(trx, id, organizationId, data, hierarchy, by);
-        })
-      : await this.writeUpdate(this.db, id, organizationId, data, {}, by);
+    const project = data.virtualMcpId;
+    const row =
+      hierarchyChange || project !== undefined
+        ? await this.inTransaction(async (trx) => {
+            const hierarchy = hierarchyChange
+              ? await applyHierarchy(trx, id, organizationId, {
+                  parentId: data.parentId,
+                  isEpic: data.isEpic,
+                })
+              : {};
+            const board =
+              project !== undefined
+                ? await boardForProject(trx, id, organizationId, project)
+                : {};
+            return this.writeUpdate(
+              trx,
+              id,
+              organizationId,
+              data,
+              { ...hierarchy, ...board },
+              by,
+            );
+          })
+        : await this.writeUpdate(this.db, id, organizationId, data, {}, by);
 
     const item = this.itemFromDbRow(row);
     await this.attachRefs([item], organizationId);
@@ -575,13 +598,17 @@ export class TaskBoardStorage {
     id: string,
     organizationId: string,
     data: Parameters<TaskBoardStorage["update"]>[2],
-    hierarchy: { parent_id?: string | null; is_epic?: boolean },
+    derived: {
+      parent_id?: string | null;
+      is_epic?: boolean;
+      board_id?: string;
+    },
     by: string,
   ) {
     return db
       .updateTable("task_board_items")
       .set({
-        ...hierarchy,
+        ...derived,
         ...(data.harnessId !== undefined ? { harness_id: data.harnessId } : {}),
         ...(data.title !== undefined ? { title: data.title } : {}),
         ...(data.description !== undefined
@@ -3124,6 +3151,7 @@ export class TaskBoardStorage {
     harness_id?: TaskBoardHarnessId;
     id: string;
     organization_id: string;
+    board_id: string | null;
     title: string;
     description: string | null;
     status: string;
@@ -3153,6 +3181,7 @@ export class TaskBoardStorage {
     return {
       id: row.id,
       organizationId: row.organization_id,
+      boardId: row.board_id,
       title: row.title,
       description: row.description,
       status: row.status as TaskBoardItemStatus,
@@ -3199,6 +3228,34 @@ export class TaskBoardStorage {
     };
   }
 }
+/**
+ * The board a card moves to when its project changes: the new project's board
+ * of the type it is on now (the organization's when the project is cleared).
+ * Empty when the card is not in this organization, which the update itself
+ * then reports.
+ */
+async function boardForProject(
+  db: Kysely<Database>,
+  id: string,
+  organizationId: string,
+  virtualMcpId: string | null,
+): Promise<{ board_id?: string }> {
+  const current = await db
+    .selectFrom("task_board_items as i")
+    .leftJoin("task_boards as b", "b.id", "i.board_id")
+    .select("b.type")
+    .where("i.id", "=", id)
+    .where("i.organization_id", "=", organizationId)
+    .executeTakeFirst();
+  if (!current) return {};
+  const boardId = await ensureBoard(db, {
+    organizationId,
+    virtualMcpId,
+    type: current.type ?? DEFAULT_BOARD_TYPE,
+  });
+  return { board_id: boardId };
+}
+
 /** A rejected epic or subtask change; the message is for the caller. */
 export class TaskBoardHierarchyError extends Error {
   override name = "TaskBoardHierarchyError";

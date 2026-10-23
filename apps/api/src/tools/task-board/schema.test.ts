@@ -41,6 +41,7 @@ describe("TaskBoardItemSchema – proxy round-trip validation", () => {
     repo: null,
     repositoryId: null,
     virtualMcpId: null,
+    boardId: "tboard_1",
     sprintId: null,
     dueDate: null,
     sortOrder: 0,

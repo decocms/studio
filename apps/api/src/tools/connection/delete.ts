@@ -86,6 +86,15 @@ export const COLLECTION_CONNECTIONS_DELETE = defineTool({
       );
     }
 
+    // A VIRTUAL row is a project. Deleting one hands its cards to the
+    // organization's board and checks the caller's project scope, which only
+    // the project delete does.
+    if (connection.connection_type === "VIRTUAL") {
+      throw new Error(
+        "This connection is a project; delete it with COLLECTION_VIRTUAL_MCP_DELETE",
+      );
+    }
+
     // Check if connection is used by any Virtual MCPs (FK RESTRICT would block deletion)
     const referencingVirtualMcps =
       await ctx.storage.virtualMcps.listByConnectionId(

@@ -22,6 +22,7 @@ function item(overrides: Partial<TaskBoardItem> = {}): TaskBoardItem {
     isEpic: false,
     id: "board_1",
     organizationId: "org_1",
+    boardId: "tboard_1",
     title: "Title",
     description: null,
     status: "triage",

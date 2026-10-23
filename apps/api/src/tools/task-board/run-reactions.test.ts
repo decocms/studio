@@ -264,6 +264,7 @@ function makeItem(overrides: Partial<TaskBoardItem> = {}): TaskBoardItem {
     isEpic: false,
     id: "item-1",
     organizationId: "org-1",
+    boardId: "tboard-1",
     title: "t",
     description: null,
     status: "in_review",
