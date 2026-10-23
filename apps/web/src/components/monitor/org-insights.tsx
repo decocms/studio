@@ -10,7 +10,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useQueries } from "@tanstack/react-query";
 import { Card } from "@decocms/ui/components/card.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
-import { Panel } from "@/components/panel";
+import { Page } from "@/components/page";
 import { ProjectIcon } from "@/components/project-icon";
 import { type Experiment, experimentsQuery } from "@/hooks/use-experiments";
 import { useT } from "@/i18n/use-t.ts";
@@ -237,9 +237,7 @@ export function OrgAnalytics({
 
   return (
     <>
-      <Panel.Toolbar.Right.Portal fallback={picker}>
-        {picker}
-      </Panel.Toolbar.Right.Portal>
+      <Page.Actions>{picker}</Page.Actions>
       <SitesMonitor
         loading={loading}
         summary={
