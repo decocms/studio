@@ -99,14 +99,14 @@ import {
 
 const STATUSES: ExperimentStatus[] = ["running", "paused", "draft", "ended"];
 
-export const STATUS_DOT: Record<ExperimentStatus, string> = {
+const STATUS_DOT: Record<ExperimentStatus, string> = {
   running: "bg-success",
   paused: "bg-warning",
   draft: "bg-muted-foreground/60",
   ended: "bg-muted-foreground/40",
 };
 
-export function useStatusLabel() {
+function useStatusLabel() {
   const t = useT();
   return (status: ExperimentStatus) => {
     switch (status) {
@@ -184,7 +184,7 @@ function daysSince(iso: string): number {
 }
 
 /** "Started 14d ago" / "Created today": the most relevant date for a row. */
-export function useLifecycleLabel() {
+function useLifecycleLabel() {
   const t = useT();
   const when = (iso: string) => {
     const days = daysSince(iso);

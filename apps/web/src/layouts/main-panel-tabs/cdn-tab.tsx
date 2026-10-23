@@ -87,7 +87,7 @@ export interface RangeSel {
 }
 
 /** The date-range dropdown: presets + a custom range + a Compare toggle. */
-export function RangePicker({
+function RangePicker({
   value,
   onChange,
 }: {
@@ -371,7 +371,7 @@ function formatCountry(code: string): string {
   }
 }
 
-export function Card({
+function Card({
   title,
   subtitle,
   action,
@@ -413,7 +413,7 @@ function ChartLegendItem({ color, label }: { color: string; label: string }) {
   );
 }
 
-export function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="surface px-4 py-3">
       <div className="text-xs text-muted-foreground">{label}</div>
@@ -800,7 +800,7 @@ function FilterBar({
 }
 
 /** Requests and pageviews over the range, with bandwidth on its own axis. */
-export function UsageChart({
+function UsageChart({
   points,
   loading,
 }: {

@@ -183,7 +183,7 @@ const DATA_VIEWS: ReadonlyArray<{ view: string; labelKey: TranslationKey }> = [
 ];
 
 // Range pills, shortest first — the admin's 5m…30d selector.
-export const RANGE_PILLS = [
+const RANGE_PILLS = [
   "5m",
   "15m",
   "30m",
@@ -286,7 +286,7 @@ function isScalar(value: unknown): boolean {
   );
 }
 
-export async function fetchJson(url: string): Promise<unknown> {
+async function fetchJson(url: string): Promise<unknown> {
   const res = await fetch(url);
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -346,7 +346,7 @@ function Card({
 
 /** Format a metric value for display, keyed on its column name: percentages,
  *  durations (seconds → `10m 7s`), and plain counts each read differently. */
-export function fmtMetric(key: string, value: unknown): string {
+function fmtMetric(key: string, value: unknown): string {
   if (value === null || value === undefined) return "—";
   const n = Number(value);
   if (!Number.isFinite(n)) return formatCell(value);
