@@ -311,7 +311,8 @@ export function useLiveBoard(
       experiments: null,
       sources,
     },
-    loading: storesQuery.isLoading,
+    // A store's day still on its way is loading, not a source with no data.
+    loading: storesQuery.isLoading || dayQueries.some((q) => q.isLoading),
     error: storesQuery.error,
   };
 }

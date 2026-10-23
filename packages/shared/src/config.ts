@@ -71,6 +71,8 @@ export interface PublicConfig {
   monitorGa?: boolean;
   /** The order monitor runs here: the Orders sub-tab and the Stores tab show. */
   orderMonitorEnabled?: boolean;
+  /** The order ingest MCP a store installs to be monitored; set when `orderMonitorEnabled`. */
+  orderMonitorIngestUrl?: string | null;
   /**
    * Master switch for the tiered-plans feature (env `STUDIO_PLANS_ENABLED`,
    * default OFF). Off → the client asks the gateway for nothing, every feature

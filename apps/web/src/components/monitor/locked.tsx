@@ -23,6 +23,7 @@ import { CopyButton } from "@/layouts/main-panel-tabs/analytics-tab";
 import { useT } from "@/i18n/use-t.ts";
 import { openNewProjectDialog } from "@/components/projects/new-project-store";
 import { ConnectSourceDialog } from "@/routes/reports-onboarding/connect-source-dialog";
+import { VtexConnectButton } from "./vtex-connect-dialog";
 import type { ExperimentRow, SourceId, SourceState } from "./board";
 import { connectPowers, platformName } from "./sources-panel";
 import { useSourceIcons } from "./use-source-icons";
@@ -37,7 +38,6 @@ export const FADED =
  * A site opens the New project dialog; the rest go to where they are set up.
  */
 const CONNECT_FIELD: Partial<Record<SourceId, string>> = {
-  orders: "vtex",
   deploys: "github",
   analytics: "ga4",
   search: "gsc",
@@ -75,6 +75,10 @@ export function ConnectButton({
         {label}
       </Button>
     );
+  }
+  // Orders come from the order ingest, not the VTEX connection alone.
+  if (source === "orders") {
+    return <VtexConnectButton label={label} {...look} />;
   }
   if (!field) {
     return (

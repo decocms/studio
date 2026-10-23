@@ -138,4 +138,15 @@ export const monitor = {
   "monitor.powers.search": "Cliques e buscas no Google",
   "monitor.powers.siteExperiments": "Testes A/B com tráfego real",
   "monitor.loadError": "Não deu para ler os monitores",
+  "monitor.vtex.description":
+    "Sua conta VTEX e uma app key com leitura de OMS e Feed v3 and Hook Admin. Use uma key só deste monitor.",
+  "monitor.vtex.existing":
+    "Acompanha os pedidos desta conexão VTEX. A key dela precisa ser usada só por este monitor.",
+  "monitor.vtex.account": "Nome da conta",
+  "monitor.vtex.appKey": "App key",
+  "monitor.vtex.appToken": "App token",
+  "monitor.vtex.rejected":
+    "A VTEX recusou essa key. Confira o nome da conta, a app key e o app token.",
+  "monitor.vtex.connecting": "Conectando…",
+  "monitor.vtex.unavailable": "O monitor de pedidos não está disponível aqui",
 } satisfies Record<keyof typeof monitorEn, string>;

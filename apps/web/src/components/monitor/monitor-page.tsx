@@ -44,6 +44,7 @@ import { ProjectsTable } from "./projects-table";
 import { SignalsPanel } from "./signals-panel";
 import { monitorPreview } from "./preview";
 import { StoreDay } from "./store-day";
+import { StoresTable } from "./stores-table";
 import { sourceName } from "./sources-panel";
 import { useSourceIcons } from "./use-source-icons";
 
@@ -180,7 +181,7 @@ function Board({
       key={kpi.id}
       kpi={kpi}
       preview={preview?.find((p) => p.id === kpi.id)}
-      waiting={board.sources.find((s) => s.id === kpi.source)?.state !== "off"}
+      waiting={board.sources.find((s) => s.id === kpi.source)?.state === "live"}
       changes={changes}
       showChanges={showChanges}
       dayStart={board.dayStart}
@@ -214,6 +215,15 @@ function Board({
           {rest.slice(1).map((kpi) => chart(kpi))}
         </div>
       </ChangeFocusProvider>
+      {!bare && board.stores.length > 0 && (
+        <div className="mt-6">
+          <StoresTable
+            stores={board.stores}
+            orgSlug={orgSlug}
+            onOpen={(store) => onSelect({ ...selection, store })}
+          />
+        </div>
+      )}
       {!scopeId && board.projects.length > 1 && (
         <div className="mt-6">
           <ProjectsTable projects={board.projects} orgSlug={orgSlug} />
@@ -394,8 +404,9 @@ export function MonitorPage({
       />
     );
   }
+  // A store's day keeps the day picker; the deploys toggle is the board's.
   const onBoard =
-    view === "metrics" && !selection.store && !loading && !error && !nothing;
+    view === "metrics" && !loading && !error && (!!selection.store || !nothing);
   const controls: BoardControls | null = onBoard
     ? {
         date: selection.date ?? localDay(new Date()),
@@ -403,10 +414,11 @@ export function MonitorPage({
           onSelect({
             ...selection,
             date: date === localDay(new Date()) ? undefined : date,
+            at: undefined,
           }),
         showChanges,
         onShowChanges: setShowChanges,
-        hasChanges: (board.deploys?.length ?? 0) > 0,
+        hasChanges: !selection.store && (board.deploys?.length ?? 0) > 0,
       }
     : null;
 
