@@ -2,8 +2,12 @@
  * A v8 project's editor draft, kept on the delivery bucket at
  * `sites/<site>/drafts/<slug>.json` as `{ set, delete }`: the changed blocks
  * (whole), and the names the draft deletes. Saving is a whole-object PUT with
- * no git commit; the last writer wins. Publish commits it to main and deletes
- * it, so the next edit starts a new slug.
+ * no git commit; the last writer wins. Publish commits it to main and then
+ * empties it (`{ set: {}, delete: [] }`, same slug, new ETag), so the
+ * preview's `?__draft=` pointer keeps its address: the slug lives as long as
+ * the (project, branch) does. An editor session creates the empty draft when
+ * it opens ({@link DraftStore.ensure}), so a hosted v8 preview always has a
+ * pointer to send.
  *
  * The slug is random (holding the URL is the permission to read the draft).
  *
@@ -110,12 +114,21 @@ export interface DraftStore {
     change: (body: DraftBody) => DraftBody,
   ): Promise<LoadedDraft>;
   /**
-   * Deletes the draft object and forgets its slug. With `expectedEtag`, it
-   * deletes only while the draft is still that save: a save that landed
-   * since (e.g. during a publish) keeps the draft for the next publish.
-   * Returns whether it deleted.
+   * Empties the draft: writes `{ set: {}, delete: [] }` to the same slug,
+   * with no editors, and returns it (same slug, new ETag). Only while the
+   * draft is still the save `expectedEtag` names: a save that landed since
+   * (e.g. during a publish) is kept, and returned as it is. `null` when there
+   * is no draft.
    */
-  remove(ref: HostedDraftRef, expectedEtag?: string | null): Promise<boolean>;
+  empty(
+    ref: HostedDraftRef,
+    expectedEtag: string | null,
+  ): Promise<LoadedDraft | null>;
+  /**
+   * The draft, created empty when this (project, branch) has none yet (or its
+   * object is missing). Never changes an existing draft.
+   */
+  ensure(ref: HostedDraftRef): Promise<LoadedDraft>;
 }
 
 export function createDraftStore(deps: {
@@ -170,16 +183,34 @@ export function createDraftStore(deps: {
         // What was kept: the oldest may not have fit.
         return { slug, body, etag, editors: decodeDraftEditors(encoded) };
       }),
-    remove: (ref, expectedEtag) =>
+    empty: (ref, expectedEtag) =>
       withDraftLock(`${ref.organizationId}\0${slugKey(ref)}`, async () => {
         const current = await load(ref);
-        if (!current) return false;
-        if (expectedEtag !== undefined && current.etag !== expectedEtag) {
-          return false;
+        if (!current) return null;
+        if (current.etag !== expectedEtag) return current;
+        const body = emptyDraft();
+        const { etag } = await store.putJson(
+          deliveryKeys.draft(ref.site, current.slug),
+          body,
+          CACHE_DRAFT,
+        );
+        return { slug: current.slug, body, etag, editors: {} };
+      }),
+    ensure: (ref) =>
+      withDraftLock(`${ref.organizationId}\0${slugKey(ref)}`, async () => {
+        const current = await load(ref);
+        if (current?.etag) return current;
+        const slug = current?.slug ?? newDraftSlug();
+        if (!current) {
+          await kv.set(ref.organizationId, slugKey(ref), { slug });
         }
-        await store.delete(deliveryKeys.draft(ref.site, current.slug));
-        await kv.delete(ref.organizationId, slugKey(ref));
-        return true;
+        const body = emptyDraft();
+        const { etag } = await store.putJson(
+          deliveryKeys.draft(ref.site, slug),
+          body,
+          CACHE_DRAFT,
+        );
+        return { slug, body, etag, editors: {} };
       }),
   };
 }

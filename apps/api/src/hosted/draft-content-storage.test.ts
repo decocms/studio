@@ -253,7 +253,7 @@ describe("createDraftContentStorage", () => {
 });
 
 describe("createDraftStore", () => {
-  it("keeps one slug per (project, branch) until the draft is removed", async () => {
+  it("keeps one slug per (project, branch), emptied or not", async () => {
     const delivery = memoryDeliveryStore();
     const drafts = createDraftStore({ kv: memoryKv(), store: delivery.store });
     expect(await drafts.load(REF)).toBeNull();
@@ -269,10 +269,11 @@ describe("createDraftStore", () => {
     });
     const other = await drafts.update({ ...REF, branch: "thread-2" }, (b) => b);
     expect(other.slug).not.toBe(first.slug);
-    await drafts.remove(REF);
-    expect(await drafts.load(REF)).toBeNull();
+    const emptied = await drafts.empty(REF, second.etag);
+    expect(emptied?.slug).toBe(first.slug);
+    expect((await drafts.load(REF))?.body).toEqual({ set: {}, delete: [] });
     expect(delivery.objects.has(deliveryKeys.draft("acme", first.slug))).toBe(
-      false,
+      true,
     );
   });
 
@@ -421,6 +422,23 @@ describe("hosted draft storage: changes against main", () => {
     expect((await call(storage, "changes.list")).result.changes).toEqual({});
     const listed = await call(storage, "blocks.list");
     expect(listed.result.versions.Home).toBe(discarded.result.versions.Home);
+  });
+
+  it("Discard all empties the draft and keeps its slug (the preview's pointer keeps its address)", async () => {
+    const { storage, drafts } = setup();
+    await call(storage, "blocks.apply", {
+      set: { Home: { path: "/", title: "draft" }, New: { v: 1 } },
+      delete: ["Footer"],
+    });
+    const before = (await drafts.load(REF))!;
+    const discarded = await call(storage, "changes.discard", {
+      names: ["Home", "New", "Footer"],
+    });
+    expect(discarded.error).toBeUndefined();
+    const after = (await drafts.load(REF))!;
+    expect(after.slug).toBe(before.slug);
+    expect(after.etag).not.toBe(before.etag);
+    expect(after.body).toEqual({ set: {}, delete: [] });
   });
 
   it("restores a main file that isn't valid JSON, byte for byte", async () => {

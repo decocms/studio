@@ -2,19 +2,23 @@
  * Publish for a hosted v8 site:
  *
  *   1. commit the draft directly to main (fast-forward only, no PR);
- *   2. delete the draft: the merge is done;
- *   3. write the commit's companion release, the immutable
+ *   2. write the commit's companion release, the immutable
  *      sites/<site>/revisions/<commit>.json;
- *   4. make it current: write latest.json and purge its URL from Cloudflare's
+ *   3. make it current: write latest.json and purge its URL from Cloudflare's
  *      edge (5 s per attempt, one retry), only while the commit is still
- *      main's head, so an older Publish never replaces a newer one.
+ *      main's head, so an older Publish never replaces a newer one;
+ *   4. empty the draft: `{ set: {}, delete: [] }` at the same slug, so the
+ *      preview keeps sending the same `?__draft=` pointer (a new version),
+ *      and a render of it, made after the release, layers nothing over the
+ *      new release. A save made during the Publish is kept.
  *
  * Git is the source of truth for content; latest.json alone says what the CDN
  * serves ("Current"). A failed commit fails Publish and keeps the draft. A
- * failure in step 3 or 4 doesn't undo the merge: the result says which step
+ * failure in step 2 or 3 doesn't undo the merge: the result says which step
  * failed, nothing is restored, and Publish's "Try again" (`releaseMainHead`)
- * retries them for main's head. A draft that commits nothing leaves
- * latest.json alone. Steps 3–4 are {@link releaseCommit}, shared with
+ * retries them for main's head; the draft is emptied all the same (the
+ * merge is done). A draft that commits nothing leaves latest.json alone and
+ * is emptied too. Steps 2–3 are {@link releaseCommit}, shared with
  * Reapply version (reapply.ts).
  * Every latest.json write stamps `publishedAt` now: the SDK prefers the CDN
  * only when it is later than its bundle's build time.
@@ -290,7 +294,7 @@ async function commitDraftToMain(
 }
 
 /**
- * Step 3 for commit `sha`: its companion release, written only when missing
+ * Step 2 for commit `sha`: its companion release, written only when missing
  * (it is immutable). Returns its schemaHash.
  */
 export async function ensureRevision(
@@ -336,7 +340,7 @@ export async function writeLatest(
 }
 
 /**
- * Step 4 for commit `sha`, whose companion has `schemaHash`: make it current,
+ * Step 3 for commit `sha`, whose companion has `schemaHash`: make it current,
  * only while `sha` is still main's head. Returns whether latest.json was
  * written; a failed write or purge throws {@link LatestUpdateError}.
  */
@@ -387,17 +391,17 @@ export async function publishDraft(
   const draft = await drafts.load(ref);
   // OPEN: O-26 — nothing to publish answers the popover's existing no-changes state.
   if (!draft) return { result: "up-to-date" };
-  const removeDraft = () =>
-    // Only the save that was published goes: a save made during the publish
-    // keeps the draft (its ETag changed).
-    drafts
-      .remove(ref, draft.etag)
-      .catch((error) =>
-        console.error("hosted publish: draft delete failed", {
-          site: repo.site,
-          error: error instanceof Error ? error.message : String(error),
-        }),
-      );
+  // Only the save that was published is emptied: a save made during the
+  // publish keeps the draft (its ETag changed). Same slug, so the preview's
+  // pointer keeps its address. A failure here leaves content equal to main,
+  // which renders the same over the new release: Publish still succeeds.
+  const emptyDraft = () =>
+    drafts.empty(ref, draft.etag).catch((error) => {
+      console.error("hosted publish: emptying the draft failed", {
+        site: repo.site,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
   const sha = isEmptyDraft(draft.body)
     ? null
     : await commitDraftToMain(
@@ -411,19 +415,21 @@ export async function publishDraft(
               note.coAuthor,
             ),
       );
-  // The draft goes once it is merged, or when it commits nothing.
-  await removeDraft();
   // Nothing committed: latest.json is left alone.
-  if (sha === null) return { result: "up-to-date" };
-  return {
-    result: "merged",
-    sha,
-    release: await releaseCommit(repo, sha, hooks),
-  };
+  if (sha === null) {
+    // An empty draft stays as it is (nothing to write).
+    if (!isEmptyDraft(draft.body)) await emptyDraft();
+    return { result: "up-to-date" };
+  }
+  // The release first, then the draft: any render of the emptied draft
+  // happens after latest.json names the new release.
+  const release = await releaseCommit(repo, sha, hooks);
+  await emptyDraft();
+  return { result: "merged", sha, release };
 }
 
 /**
- * Steps 3–4 for a commit just made on main: write its companion release,
+ * Steps 2–3 for a commit just made on main: write its companion release,
  * then make it current while it is still main's head. Never throws: the
  * outcome says which step failed (logged), and nothing is undone.
  */

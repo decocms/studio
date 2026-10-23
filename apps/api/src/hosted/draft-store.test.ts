@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { deliveryKeys } from "./delivery-store";
 import { DRAFT_EDITORS_META } from "./draft-editors";
 import { createDraftStore } from "./draft-store";
+import { CACHE_DRAFT } from "./delivery-store";
 import { memoryDeliveryStore, memoryKv } from "./hosted-test-helpers";
 
 const ref = {
@@ -48,7 +49,7 @@ describe("createDraftStore: who changed what, in the object's metadata", () => {
     ]);
   });
 
-  test("a discard drops the discarded name's editor; publishing removes the object", async () => {
+  test("a discard drops the discarded name's editor; publishing empties the object", async () => {
     const delivery = memoryDeliveryStore();
     const drafts = createDraftStore({ kv: memoryKv(), store: delivery.store });
     await drafts.update({ ...ref, editor: "ana" }, () => ({
@@ -61,8 +62,14 @@ describe("createDraftStore: who changed what, in the object's metadata", () => {
     }));
     expect(Object.keys((await drafts.load(ref))!.editors)).toEqual(["home"]);
     expect((await drafts.load(ref))!.editors.home?.userId).toBe("ana");
-    await drafts.remove(ref);
-    expect(delivery.objects.size).toBe(0);
+    const loaded = (await drafts.load(ref))!;
+    await drafts.empty(ref, loaded.etag);
+    expect(delivery.objects.size).toBe(1);
+    const object = delivery.objects.get(
+      deliveryKeys.draft("acme", loaded.slug),
+    )!;
+    expect(JSON.parse(object.text)).toEqual({ set: {}, delete: [] });
+    expect(object.metadata ?? {}).toEqual({});
   });
 
   test("a draft written without metadata loads with no editors", async () => {
@@ -79,5 +86,78 @@ describe("createDraftStore: who changed what, in the object's metadata", () => {
       "no-cache",
     );
     expect((await drafts.load(ref))?.editors).toEqual({});
+  });
+});
+
+describe("createDraftStore: empty and ensure keep the draft's address", () => {
+  test("empty keeps the slug, writes { set: {}, delete: [] } with a new etag and no editors", async () => {
+    const delivery = memoryDeliveryStore();
+    const kv = memoryKv();
+    const drafts = createDraftStore({ kv, store: delivery.store });
+    const saved = await drafts.update({ ...ref, editor: "ana" }, () => ({
+      set: { home: { a: 1 } },
+      delete: ["old"],
+    }));
+    const emptied = await drafts.empty(ref, saved.etag);
+    expect(emptied).toEqual({
+      slug: saved.slug,
+      body: { set: {}, delete: [] },
+      etag: emptied!.etag,
+      editors: {},
+    });
+    expect(emptied!.etag).not.toBe(saved.etag);
+    expect(await drafts.load(ref)).toEqual(emptied);
+    const object = delivery.objects.get(
+      deliveryKeys.draft("acme", saved.slug),
+    )!;
+    expect(object.cacheControl).toBe(CACHE_DRAFT);
+    expect(object.metadata ?? {}).toEqual({});
+  });
+
+  test("empty with a stale etag keeps a save made meanwhile", async () => {
+    const delivery = memoryDeliveryStore();
+    const drafts = createDraftStore({ kv: memoryKv(), store: delivery.store });
+    const published = await drafts.update(ref, () => ({
+      set: { home: { a: 1 } },
+      delete: [],
+    }));
+    const late = await drafts.update(ref, (body) => ({
+      ...body,
+      set: { ...body.set, late: { b: 2 } },
+    }));
+    expect(await drafts.empty(ref, published.etag)).toEqual(late);
+    expect(await drafts.load(ref)).toEqual(late);
+  });
+
+  test("empty without a draft is null and writes nothing", async () => {
+    const delivery = memoryDeliveryStore();
+    const drafts = createDraftStore({ kv: memoryKv(), store: delivery.store });
+    expect(await drafts.empty(ref, null)).toBeNull();
+    expect(delivery.log).toEqual([]);
+  });
+
+  test("ensure creates an empty draft once; no-op when present; rewrites a missing object", async () => {
+    const delivery = memoryDeliveryStore();
+    const drafts = createDraftStore({ kv: memoryKv(), store: delivery.store });
+    const created = await drafts.ensure(ref);
+    expect(created.body).toEqual({ set: {}, delete: [] });
+    expect(created.etag).not.toBeNull();
+    expect(await drafts.load(ref)).toEqual(created);
+    // Present: nothing is written, the draft stays as it is.
+    const saved = await drafts.update(ref, () => ({
+      set: { home: { a: 1 } },
+      delete: [],
+    }));
+    delivery.log.length = 0;
+    expect(await drafts.ensure(ref)).toEqual(saved);
+    expect(delivery.log).toEqual([]);
+    // The slug is known but its object is gone: written again, same slug.
+    delivery.objects.delete(deliveryKeys.draft("acme", saved.slug));
+    const rewritten = await drafts.ensure(ref);
+    expect(rewritten.slug).toBe(saved.slug);
+    expect(rewritten.body).toEqual({ set: {}, delete: [] });
+    expect(delivery.objects.has(deliveryKeys.draft("acme", saved.slug))).toBe(
+      true,
+    );
   });
 });
