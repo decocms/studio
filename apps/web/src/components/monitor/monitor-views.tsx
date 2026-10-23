@@ -200,7 +200,16 @@ function ProjectScreen({
       </div>
     );
   }
-  if (!scopeId) return org(projects);
+  if (!scopeId) {
+    // The board's frame: same width, gutters and rhythm as Metrics.
+    return (
+      <div className="flex h-full min-h-0 flex-col overflow-auto">
+        <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-4 px-4 pt-6 pb-10 md:px-10">
+          {org(projects)}
+        </div>
+      </div>
+    );
+  }
   return (
     <div key={scopeId} className="flex h-full min-h-0 flex-col">
       {render(scopeId)}
