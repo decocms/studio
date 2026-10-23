@@ -39,6 +39,7 @@ import { KEYS } from "@/lib/query-keys";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useContentBackend } from "../../sections-editor/use-content-backend.ts";
+import { settleAfterPublish } from "./publish-completion.ts";
 import { useContentChanges } from "../../sections-editor/content-changes.ts";
 import { useDecofileCacheKey } from "../../sections-editor/use-decofile.ts";
 import {
@@ -275,19 +276,19 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
     await prQuery.refetch();
   };
 
-  /** Publish done: land on a fresh editable draft and discard the merged draft
-   *  (switcher entry + branch); a mutation so `isPending` signals the publish is
-   *  still settling. */
+  /** Publish done: `settleAfterPublish` (v7 moves to a fresh draft; a hosted
+   *  v8 editor stays on its emptied draft); a mutation so `isPending` signals
+   *  the publish is still settling. */
   const publishCompletion = useMutation({
-    mutationFn: async () => {
-      const published = branch;
-      await setCurrentTaskBranch(
-        generateBranchName(branchUserLabel(session?.user)),
-      );
-      if (published && published !== baseBranch) {
-        await deleteRelease(published);
-      }
-    },
+    mutationFn: () =>
+      settleAfterPublish({
+        hosted,
+        branch,
+        baseBranch,
+        nextBranch: () => generateBranchName(branchUserLabel(session?.user)),
+        setCurrentTaskBranch,
+        deleteRelease,
+      }),
     /** The publish already succeeded and showed its one toast; this clean-up
      *  is nothing the user can act on, so it is logged, not toasted. */
     onError: (err: unknown) => {

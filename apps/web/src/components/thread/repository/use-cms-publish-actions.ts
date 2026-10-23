@@ -44,6 +44,7 @@ import { discardGitFiles } from "./sandbox-git-api.ts";
 import {
   HostedPublishError,
   type HostedPublishResult,
+  keptDraftOf,
   publishHostedDraft,
   retryRelease,
 } from "./hosted-publish-api.ts";
@@ -220,23 +221,30 @@ export function useCmsPublishActions(
     branch: target.branch,
   });
 
-  /** "Try again": release the saved changes (main's head), same toast. */
-  const retryPublish = async () => {
+  /**
+   * "Try again": release the saved changes (main's head), same toast. The
+   * draft Publish kept is emptied once they are live.
+   */
+  const retryPublish = async (
+    keptDraft: { branch: string; draftEtag: string } | null,
+  ) => {
     try {
       await runContentChange(content, {
         kind: "publish",
+        reread: !!keptDraft,
         refreshOnError: true,
-        write: () => retryRelease(target),
+        write: () => retryRelease(target, keptDraft),
       });
       toastPublished(t);
     } catch (error) {
-      notifySavedNotPublished(t, error, () => void retryPublish());
+      notifySavedNotPublished(t, error, () => void retryPublish(keptDraft));
     }
   };
 
   /** Saved on main is done: the popover closes with one toast. */
   const settleHosted = async (result: HostedPublishResult) => {
-    notifyHostedPublish(t, result, () => void retryPublish());
+    const keptDraft = keptDraftOf(result, target.branch);
+    notifyHostedPublish(t, result, () => void retryPublish(keptDraft));
     onOpenChange(false);
     await quietly(onPublished);
   };
