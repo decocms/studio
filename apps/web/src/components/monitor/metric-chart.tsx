@@ -179,7 +179,7 @@ const BETTER: Record<KpiId, "up" | "down"> = {
   cancellations: "down",
 };
 
-export function kpiLabel(id: KpiId, t: TFunction): string {
+function kpiLabel(id: KpiId, t: TFunction): string {
   switch (id) {
     case "orders":
       return t("monitor.kpi.orders");
@@ -200,7 +200,7 @@ export function kpiLabel(id: KpiId, t: TFunction): string {
   }
 }
 
-export function comparisonLabel(c: Comparison, t: TFunction): string {
+function comparisonLabel(c: Comparison, t: TFunction): string {
   switch (c) {
     case "d1":
       return t("monitor.compare.d1");

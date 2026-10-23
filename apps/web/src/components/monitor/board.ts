@@ -18,13 +18,6 @@ export type MonitorStatus = OrderMonitorStatus;
 
 /** Where a number comes from, and what must be connected for it to exist. */
 export type SourceId = "orders" | "site" | "deploys" | "analytics" | "search";
-export const SOURCE_IDS: readonly SourceId[] = [
-  "orders",
-  "site",
-  "deploys",
-  "analytics",
-  "search",
-];
 
 export type KpiId =
   | "orders"

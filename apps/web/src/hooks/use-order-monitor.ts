@@ -102,7 +102,7 @@ export function useOrderMonitorStores(orgSlug: string, enabled: boolean) {
 }
 
 /** One store's day; `at` undefined = now. Shared so a page can read many at once. */
-export function orderMonitorDayQuery(
+function orderMonitorDayQuery(
   orgSlug: string,
   connectionId: string,
   at: string | undefined,

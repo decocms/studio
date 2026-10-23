@@ -63,7 +63,7 @@ const STATUS_DOT: Record<MonitorStatus, string> = {
   "low-volume": "bg-muted-foreground/50",
 };
 
-export const TONE_TEXT = {
+const TONE_TEXT = {
   good: "text-success",
   bad: "text-destructive",
   neutral: "text-muted-foreground",
@@ -92,33 +92,6 @@ export function Change({
     <span className="text-meta tnum">
       <span className={TONE_TEXT[tone]}>{children ? children(pct) : pct}</span>
     </span>
-  );
-}
-
-export function SectionHeader({
-  title,
-  caption,
-  count,
-  action,
-}: {
-  title: string;
-  caption?: string;
-  count?: number;
-  action?: ReactNode;
-}) {
-  return (
-    <div className="flex items-start justify-between gap-3">
-      <div className="flex min-w-0 flex-col gap-0.5">
-        <div className="flex items-baseline gap-2">
-          <h3 className="text-sm font-medium text-foreground">{title}</h3>
-          {count !== undefined && count > 0 && (
-            <span className="text-meta tnum">{count}</span>
-          )}
-        </div>
-        {caption && <p className="text-meta">{caption}</p>}
-      </div>
-      {action}
-    </div>
   );
 }
 
@@ -210,9 +183,6 @@ export function Trend({
     </span>
   );
 }
-
-/** A list row inside a metric card, hairline between rows like the board's. */
-export const ROW = "border-b border-border/50 last:border-b-0";
 
 export function verdictName(verdict: DeployVerdict, t: TFunction): string {
   switch (verdict) {
