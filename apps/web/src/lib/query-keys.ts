@@ -602,6 +602,9 @@ export const KEYS = {
     (accountId
       ? ["repositories", orgId, accountId]
       : ["repositories", orgId]) as readonly [string, string, string?],
+  /** Keyed by the monitored repositories, so flagging one reads again. */
+  repositoryDeploys: (orgId: string, repositoryIds: readonly string[]) =>
+    ["repository-deploys", orgId, ...repositoryIds] as const,
   /** Provider-side repo search — hits the provider's API, so the query text is
    *  part of the key and results are kept while the next page loads. */
   providerRepoSearch: (orgId: string, accountId: string, query: string) =>

@@ -145,6 +145,9 @@ export const fmtTime = (iso: string) =>
 export const minutesSince = (iso: string) =>
   Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60_000));
 
+export const minutesUntil = (iso: string) =>
+  Math.round((Date.parse(iso) - Date.now()) / 60_000);
+
 /**
  * Up or down against a reference, the board analytics way: an arrow and the
  * size of the change, coloured by whether that is good, then what it is
@@ -194,6 +197,8 @@ export function verdictName(verdict: DeployVerdict, t: TFunction): string {
       return t("monitor.verdict.regression");
     case "settling":
       return t("monitor.verdict.settling");
+    case "unmeasured":
+      return t("monitor.verdict.unmeasured");
     default: {
       const unhandled: never = verdict;
       return unhandled;

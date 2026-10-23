@@ -441,6 +441,7 @@ const VERDICT_RANK: Record<DeployVerdict, number> = {
   improvement: 2,
   settling: 1,
   neutral: 0,
+  unmeasured: 0,
 };
 
 const VERDICT_TINT: Record<DeployVerdict, string> = {
@@ -448,6 +449,7 @@ const VERDICT_TINT: Record<DeployVerdict, string> = {
   improvement: "var(--success)",
   settling: "var(--muted-foreground)",
   neutral: "var(--muted-foreground)",
+  unmeasured: "var(--muted-foreground)",
 };
 
 const VERDICT_BADGE: Record<DeployVerdict, string> = {
@@ -455,6 +457,7 @@ const VERDICT_BADGE: Record<DeployVerdict, string> = {
   improvement: "bg-success/10 text-success",
   settling: "bg-muted text-muted-foreground",
   neutral: "bg-muted text-muted-foreground",
+  unmeasured: "bg-muted text-muted-foreground",
 };
 
 interface ChangeGroup {

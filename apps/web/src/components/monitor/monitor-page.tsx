@@ -9,9 +9,14 @@
 
 import { type ReactNode, useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { Activity, Plus } from "@untitledui/icons";
+import { Activity, GitBranch01, Plus } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@decocms/ui/components/popover.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { Switch } from "@decocms/ui/components/switch.tsx";
 import {
@@ -44,6 +49,7 @@ import {
 } from "./monitor-views";
 import { connectLink } from "./parts";
 import { Locked } from "./locked";
+import { MonitoredRepos } from "./monitored-repos";
 import { ProjectsTable } from "./projects-table";
 import { SignalsPanel } from "./signals-panel";
 import { monitorPreview } from "./preview";
@@ -82,14 +88,30 @@ function Actions({
   orgSlug,
   scopeId,
   controls,
+  repos,
 }: {
   orgSlug: string;
   scopeId: string | null;
   controls: BoardControls | null;
+  /** Which repositories the Deploys tab follows, once it follows any. */
+  repos: boolean;
 }) {
   const t = useT();
   return (
     <Page.Actions>
+      {repos && (
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline" size="sm" className="gap-1">
+              <GitBranch01 size={14} />
+              {t("monitor.repos.button")}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-80 p-3">
+            <MonitoredRepos />
+          </PopoverContent>
+        </Popover>
+      )}
       {controls && (
         <>
           <DayInput
@@ -324,7 +346,18 @@ export function MonitorPage({
       <Locked
         kind="deploys"
         title={t("monitor.locked.deploys.title")}
-        steps={[{ source: "deploys", state: stateOf("deploys") }]}
+        {...(stateOf("deploys") === "partial"
+          ? {
+              guide: (
+                <div className="flex flex-col gap-2">
+                  <p className="text-sm text-muted-foreground">
+                    {t("monitor.repos.hint")}
+                  </p>
+                  <MonitoredRepos />
+                </div>
+              ),
+            }
+          : { steps: [{ source: "deploys", state: stateOf("deploys") }] })}
         link={connectLink(orgSlug, scopeId)}
       >
         <DeploysView
@@ -435,7 +468,12 @@ export function MonitorPage({
   return (
     <div className="flex h-full min-h-0 flex-col overflow-auto">
       {tabs}
-      <Actions orgSlug={orgSlug} scopeId={scopeId} controls={controls} />
+      <Actions
+        orgSlug={orgSlug}
+        scopeId={scopeId}
+        controls={controls}
+        repos={view === "deploys" && board.deploys !== null}
+      />
       <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-4 px-4 pt-6 pb-10 md:px-10">
         {body}
       </div>

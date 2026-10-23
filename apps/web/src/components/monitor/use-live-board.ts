@@ -6,9 +6,14 @@
  */
 
 import type { OrderMonitorChannel } from "@decocms/shared/order-monitor";
+import { sameRepositoryBinding } from "@decocms/shared/repository-binding";
 import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
 import { localInstant } from "@/components/order-monitor/order-monitor-day";
 import { useFeature } from "@/hooks/use-entitlements";
+import {
+  useRepositories,
+  useRepositoryDeploys,
+} from "@/hooks/use-git-providers";
 import {
   useOrderMonitorDays,
   useOrderMonitorStores,
@@ -17,12 +22,15 @@ import { usePublicConfig } from "@/hooks/use-public-config";
 import { useConnections, useVirtualMCPsNonBlocking } from "@/sdk";
 import {
   type Comparison,
+  type Deploy,
   type Kpi,
   type MetricPoint,
   type MonitorBoard,
   type ProjectRow,
+  measureDeploy,
   type Signal,
   type SourceRow,
+  type StoreHours,
   storeStatus,
   storeTimezone,
   sum,
@@ -70,6 +78,9 @@ export function useLiveBoard(
   const days = [...dayOf.values()];
   const projects = useVirtualMCPsNonBlocking();
   const connections = useConnections();
+  const repositories = useRepositories().data ?? [];
+  const monitored = repositories.filter((r) => r.monitorDeploys);
+  const pushes = useRepositoryDeploys(monitored.map((r) => r.id)).data ?? [];
 
   const daysReady = days.length === stores.length && stores.length > 0;
   // A store whose day failed would leave every total waiting on it.
@@ -101,7 +112,6 @@ export function useLiveBoard(
 
   const scoped = scopeId ? projects.filter((p) => p.id === scopeId) : projects;
   const sites = scoped.filter((p) => resolveAgentSiteSlug(p));
-  const repos = scoped.filter((p) => p.metadata?.repository);
   const analytics = connections.filter((c) => matches(c, "google-analytics"));
   const search = connections.filter((c) => matches(c, "search-console"));
   const vtex = connections.filter(
@@ -141,10 +151,18 @@ export function useLiveBoard(
       lakeRows: null,
     },
     {
+      // Imported repositories, none of them monitored yet, are half way there.
       id: "deploys",
-      state: repos.length > 0 ? "live" : "off",
+      state:
+        monitored.length > 0
+          ? "live"
+          : repositories.length > 0
+            ? "partial"
+            : "off",
       detail:
-        repos.length > 0 ? { provider: "GitHub", count: repos.length } : null,
+        monitored.length > 0
+          ? { provider: "GitHub", count: monitored.length }
+          : null,
       lastEventAt: null,
       lakeRows: null,
     },
@@ -312,12 +330,67 @@ export function useLiveBoard(
     ];
   });
 
+  const storeHours = (connectionId: string): StoreHours[] => {
+    const day = dayOf.get(connectionId);
+    return day
+      ? [
+          {
+            start: Date.parse(localInstant(day.date, "00:00:00", day.timezone)),
+            done: day.done,
+            today: day.orders.today,
+            w1: day.orders.w1,
+          },
+        ]
+      : [];
+  };
+  const repositoryOf = new Map(monitored.map((r) => [r.id, r]));
+  // Each push is measured on the orders of the stores its projects sell through.
+  const deployHistory: Deploy[] | null =
+    monitored.length === 0
+      ? null
+      : pushes.flatMap((push): Deploy[] => {
+          const repository = repositoryOf.get(push.repositoryId);
+          const last = push.commits.at(-1);
+          if (!repository || !last) return [];
+          const target = {
+            repositoryId: repository.id,
+            url: repository.webUrl,
+          };
+          const bound = scoped.filter((p) => {
+            const binding = p.metadata?.repository;
+            return !!binding && sameRepositoryBinding(binding, target);
+          });
+          if (scopeId && bound.length === 0) return [];
+          const own = stores.filter((s) =>
+            bound.some((p) => s.agentIds.includes(p.id)),
+          );
+          return [
+            {
+              id: `${push.repositoryId}:${last.sha}`,
+              kind: "deploy",
+              projectId: scopeId ?? bound[0]?.id ?? null,
+              projectTitle: bound[0]?.title ?? repository.path,
+              at: push.at,
+              message: last.message,
+              author: last.author,
+              task: null,
+              around: null,
+              ...measureDeploy(
+                Date.parse(push.at),
+                own.flatMap((s) => storeHours(s.connectionId)),
+              ),
+            },
+          ];
+        });
+  const dayStart = days[0]
+    ? localInstant(days[0].date, "00:00:00", days[0].timezone)
+    : new Date(new Date().setHours(0, 0, 0, 0)).toISOString();
+  const dayStartMs = Date.parse(dayStart);
+
   return {
     board: {
       checkedAt: lastEvaluated ?? null,
-      dayStart: days[0]
-        ? localInstant(days[0].date, "00:00:00", days[0].timezone)
-        : new Date(new Date().setHours(0, 0, 0, 0)).toISOString(),
+      dayStart,
       kpis,
       // Only full hours, like the orders line.
       channels: daysReady
@@ -327,8 +400,12 @@ export function useLiveBoard(
           }))
         : null,
       stores: stores.map((store) => ({ store })),
-      deploys: null,
-      deployHistory: null,
+      deploys:
+        deployHistory?.filter((d) => {
+          const at = Date.parse(d.at);
+          return at >= dayStartMs && at < dayStartMs + 86_400_000;
+        }) ?? null,
+      deployHistory,
       signals,
       projects: projectRows,
       experiments: null,

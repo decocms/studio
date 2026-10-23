@@ -79,7 +79,9 @@ export type DeployVerdict =
   | "regression"
   | "improvement"
   | "neutral"
-  | "settling";
+  | "settling"
+  /** Nothing to measure it against: no store behind it, or not on the day shown. */
+  | "unmeasured";
 
 /** A deploy ships a version; a rollout moves traffic between versions. */
 export type ChangeKind = "deploy" | "rollout";
@@ -87,7 +89,8 @@ export type ChangeKind = "deploy" | "rollout";
 export interface Deploy {
   id: string;
   kind: ChangeKind;
-  projectId: string;
+  /** Null for a repository no project works in. */
+  projectId: string | null;
   projectTitle: string;
   at: string;
   message: string;
@@ -97,6 +100,8 @@ export interface Deploy {
   task: { keySeq: number } | null;
   /** Orders per 5 minutes from an hour before to an hour after. */
   around: number[] | null;
+  /** When a settling deploy's hour after is in, when that isn't an hour after `at`. */
+  settlesAt?: string;
 }
 
 export type Signal =
@@ -271,3 +276,72 @@ export const storeTimezone = (store: OrderMonitorStore) =>
 
 export const sum = (values: readonly (number | null)[]) =>
   values.reduce<number>((total, value) => total + (value ?? 0), 0);
+
+const HOUR_MS = 3_600_000;
+/** Fewer orders than this in an hour and a change in the next is noise. */
+const MIN_ORDERS = 10;
+/** How far orders move, against the same hours a week earlier, to count. */
+const VERDICT_THRESHOLD = 0.2;
+
+/** One store's day of hourly orders, as the order monitor gives it. */
+export interface StoreHours {
+  /** The store's local midnight, epoch ms. */
+  start: number;
+  /** Fully elapsed 15-minute buckets. */
+  done: number;
+  today: readonly (number | null)[];
+  w1: readonly number[];
+}
+
+/**
+ * What a deploy did to orders: the full hour after it against the full hour
+ * before, over the same two hours a week earlier, so the day's own curve
+ * doesn't read as the deploy's doing.
+ */
+// ponytail: hourly buckets and one reference week; 15-minute buckets and more reference days if verdicts read noisy.
+export function measureDeploy(
+  at: number,
+  stores: readonly StoreHours[],
+): Pick<Deploy, "verdict" | "impact" | "settlesAt"> {
+  const unmeasured: Pick<Deploy, "verdict" | "impact"> = {
+    verdict: "unmeasured",
+    impact: [],
+  };
+  if (stores.length === 0) return unmeasured;
+  let before = 0;
+  let after = 0;
+  let weekBefore = 0;
+  let weekAfter = 0;
+  let settlesAt = 0;
+  for (const s of stores) {
+    const h = Math.floor((at - s.start) / HOUR_MS);
+    if (h < 1 || h > 22) return unmeasured;
+    if (h + 1 >= Math.floor(s.done / 4)) {
+      settlesAt = Math.max(settlesAt, s.start + (h + 2) * HOUR_MS);
+    }
+    before += s.today[h - 1] ?? 0;
+    after += s.today[h + 1] ?? 0;
+    weekBefore += s.w1[h - 1] ?? 0;
+    weekAfter += s.w1[h + 1] ?? 0;
+  }
+  if (settlesAt > 0) {
+    return {
+      verdict: "settling",
+      impact: [],
+      settlesAt: new Date(settlesAt).toISOString(),
+    };
+  }
+  if (before < MIN_ORDERS || weekBefore < MIN_ORDERS || weekAfter === 0) {
+    return unmeasured;
+  }
+  const change = after / before / (weekAfter / weekBefore) - 1;
+  return {
+    verdict:
+      change <= -VERDICT_THRESHOLD
+        ? "regression"
+        : change >= VERDICT_THRESHOLD
+          ? "improvement"
+          : "neutral",
+    impact: [{ metric: "orders", change }],
+  };
+}

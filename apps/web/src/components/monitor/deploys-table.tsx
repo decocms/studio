@@ -21,7 +21,13 @@ import { SettingsSection } from "@/components/settings/settings-section";
 import { useT } from "@/i18n/use-t.ts";
 import { formatTimeAgo } from "@/lib/format-time";
 import type { Deploy, DeployVerdict, ImpactMetric } from "./board";
-import { Change, fmtTime, minutesSince, projectLink } from "./parts";
+import {
+  Change,
+  fmtTime,
+  minutesSince,
+  minutesUntil,
+  projectLink,
+} from "./parts";
 import { metricLabel } from "./signals-panel";
 import { Sparkline } from "./sparkline";
 
@@ -46,6 +52,8 @@ function VerdictBadge({ verdict }: { verdict: DeployVerdict }) {
       return <Badge variant="muted">{t("monitor.verdict.neutral")}</Badge>;
     case "settling":
       return <Badge variant="muted">{t("monitor.verdict.settling")}</Badge>;
+    case "unmeasured":
+      return <Badge variant="muted">{t("monitor.verdict.unmeasured")}</Badge>;
     default: {
       const unhandled: never = verdict;
       return unhandled;
@@ -65,7 +73,7 @@ function Action({ deploy, orgSlug }: { deploy: Deploy; orgSlug: string }) {
       </Button>
     );
   }
-  if (deploy.verdict === "regression") {
+  if (deploy.verdict === "regression" && deploy.projectId) {
     return (
       <Button asChild variant="secondary" size="sm">
         <Link {...projectLink(orgSlug, deploy.projectId, "releases")}>
@@ -142,7 +150,12 @@ export function DeploysTable({
                     {deploy.verdict === "settling" ? (
                       <span className="text-meta">
                         {t("monitor.deploys.measuring", {
-                          minutes: Math.max(1, 60 - minutesSince(deploy.at)),
+                          minutes: Math.max(
+                            1,
+                            deploy.settlesAt
+                              ? minutesUntil(deploy.settlesAt)
+                              : 60 - minutesSince(deploy.at),
+                          ),
                         })}
                       </span>
                     ) : (

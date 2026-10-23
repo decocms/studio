@@ -25,6 +25,7 @@ const VERDICTS: readonly DeployVerdict[] = [
   "neutral",
   "regression",
   "settling",
+  "unmeasured",
 ];
 
 const DOT: Record<DeployVerdict, string> = {
@@ -32,6 +33,7 @@ const DOT: Record<DeployVerdict, string> = {
   neutral: "bg-chart-1",
   regression: "bg-destructive",
   settling: "bg-muted-foreground",
+  unmeasured: "bg-muted-foreground/40",
 };
 
 const startOfDay = (ms: number) => {
