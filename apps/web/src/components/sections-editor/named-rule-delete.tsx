@@ -20,7 +20,10 @@ import { namedRuleUseCounts } from "./named-rule-uses";
 import { namedRuleUsePlaces } from "./named-rule-use-copy";
 import { type NamedRuleKind, readNamedRuleBlock } from "./named-rules";
 import type { LiveMeta } from "./resolve-schema";
-import { SITE_EDITOR_SAVE_TOAST } from "./site-editor-toast";
+import {
+  SITE_EDITOR_SAVE_TOAST,
+  SITE_EDITOR_UNDO_TOAST,
+} from "./site-editor-toast";
 import type {
   NamedRuleApplyOutcome,
   NamedRuleChange,
@@ -114,7 +117,7 @@ export function NamedRuleDeleteButton({
         ? t("experiments.v8.deleted", { name })
         : t("sandbox.dateCampaigns.deleted", { name }),
       {
-        id: SITE_EDITOR_SAVE_TOAST,
+        id: SITE_EDITOR_UNDO_TOAST,
         description: used?.one
           ? t("sectionsEditor.namedRuleDelete.stillUsedOne", {
               places: used.places,
