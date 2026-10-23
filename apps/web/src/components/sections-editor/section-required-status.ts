@@ -1,3 +1,4 @@
+import { isV8Schema } from "@decocms/shared/blocks-major";
 import { arrayItemDisplayValue } from "./array-item-hidden";
 import { cachedResolveSchema } from "./fields/resolved-schema-cache";
 import { isEmptyFieldValue } from "./fields/required-field-context";
@@ -101,7 +102,7 @@ export function sectionHasMissingRequiredField(
 ): boolean {
   if (!raw || !parsed || !meta) return false;
   try {
-    const unwrapped = unwrapSection(raw, parsed, decofile);
+    const unwrapped = unwrapSection(raw, parsed, decofile, isV8Schema(meta));
     if (!unwrapped) return false;
     const schema = cachedResolveSchema(unwrapped.resolveType, meta);
     return hasMissingRequiredField(schema, unwrapped.data);

@@ -3,7 +3,18 @@ import { Link, useSearch } from "@tanstack/react-router";
 import { useOrgFlag } from "@/hooks/use-organization-settings";
 import { LegacyExperimentsTab } from "./experiments-tab-legacy";
 import { pickExperimentsTab } from "./experiments-tab-choice";
-import { Cell, Pie, PieChart } from "recharts";
+import {
+  ExperimentsTabSkeleton,
+  ExperimentsBlockTab,
+} from "./experiments-block-tab";
+import { useLastFoundV8, useMainSchemaV8 } from "@/hooks/use-main-schema-v8";
+
+import {
+  armColors,
+  CONTROL_COLOR,
+  PRIMARY_COLOR,
+  SplitDonut,
+} from "@/components/experiments/split-donut";
 import {
   ArrowUpRight,
   ChevronDown,
@@ -88,14 +99,14 @@ import {
 
 const STATUSES: ExperimentStatus[] = ["running", "paused", "draft", "ended"];
 
-const STATUS_DOT: Record<ExperimentStatus, string> = {
+export const STATUS_DOT: Record<ExperimentStatus, string> = {
   running: "bg-success",
   paused: "bg-warning",
   draft: "bg-muted-foreground/60",
   ended: "bg-muted-foreground/40",
 };
 
-function useStatusLabel() {
+export function useStatusLabel() {
   const t = useT();
   return (status: ExperimentStatus) => {
     switch (status) {
@@ -173,7 +184,7 @@ function daysSince(iso: string): number {
 }
 
 /** "Started 14d ago" / "Created today": the most relevant date for a row. */
-function useLifecycleLabel() {
+export function useLifecycleLabel() {
   const t = useT();
   const when = (iso: string) => {
     const days = daysSince(iso);
@@ -222,26 +233,6 @@ const BLANK_ARMS: ArmDraft[] = [
   { id: "control", role: "control", description: "", weight: 50 },
   { id: "variant-b", role: "treatment", description: "", weight: 50 },
 ];
-
-/** Control is a quiet neutral; each treatment gets its own hue. */
-const PRIMARY_COLOR = "var(--color-primary)";
-const TREATMENT_COLORS = [
-  PRIMARY_COLOR,
-  "var(--color-chart-1)",
-  "var(--color-chart-3)",
-  "var(--color-chart-4)",
-];
-const CONTROL_COLOR =
-  "color-mix(in oklch, var(--color-muted-foreground) 45%, transparent)";
-
-function armColors(arms: { role?: string | null }[]): string[] {
-  let treatment = 0;
-  return arms.map((a) =>
-    a.role === "control"
-      ? CONTROL_COLOR
-      : (TREATMENT_COLORS[treatment++ % TREATMENT_COLORS.length] as string),
-  );
-}
 
 function armLabel(
   t: ReturnType<typeof useT>,
@@ -379,40 +370,6 @@ function evenSplit(n: number): number[] {
   const base = Math.floor(100 / n);
   return Array.from({ length: n }, (_, i) =>
     i === 0 ? 100 - base * (n - 1) : base,
-  );
-}
-
-function SplitDonut({
-  arms,
-  size,
-  thickness,
-}: {
-  arms: { id: string; role?: string | null; weight: number }[];
-  size: number;
-  thickness: number;
-}) {
-  const colors = armColors(arms);
-  const outer = size / 2;
-  return (
-    <PieChart width={size} height={size}>
-      <Pie
-        data={arms.map((a) => ({ id: a.id, value: a.weight }))}
-        dataKey="value"
-        nameKey="id"
-        innerRadius={outer - thickness}
-        outerRadius={outer}
-        startAngle={90}
-        endAngle={450}
-        paddingAngle={arms.filter((a) => a.weight > 0).length > 1 ? 2 : 0}
-        cornerRadius={thickness / 4}
-        stroke="none"
-        isAnimationActive={false}
-      >
-        {arms.map((a, i) => (
-          <Cell key={a.id} fill={colors[i]} />
-        ))}
-      </Pie>
-    </PieChart>
   );
 }
 
@@ -1901,16 +1858,24 @@ function ExperimentsTabV2({ virtualMcpId }: { virtualMcpId: string }) {
 }
 
 /**
- * Picks which Experiments tab an org gets. `experiments_enabled` already
- * decided the tab is reachable; this only chooses between the rebuilt
- * experience and the one main shipped. See {@link pickExperimentsTab}.
+ * Picks which Experiments tab a site gets. The route already decided the tab
+ * is reachable; this chooses between the v8 tab (the site's `experiments`
+ * block, in the draft), the rebuilt experience and the one main shipped. See
+ * {@link pickExperimentsTab}.
  */
 export function ExperimentsTab({ virtualMcpId }: { virtualMcpId: string }) {
   const { ui } = useSearch({ strict: false }) as { ui?: string };
   const flagEnabled = useOrgFlag("experiments_v2_enabled");
-  return pickExperimentsTab(flagEnabled, ui) === "v2" ? (
-    <ExperimentsTabV2 virtualMcpId={virtualMcpId} />
-  ) : (
-    <LegacyExperimentsTab virtualMcpId={virtualMcpId} />
-  );
+  const siteMajor = useMainSchemaV8(virtualMcpId);
+  const lastFoundV8 = useLastFoundV8(virtualMcpId);
+  switch (pickExperimentsTab({ flagEnabled, siteMajor, ui, lastFoundV8 })) {
+    case "v8":
+      return <ExperimentsBlockTab virtualMcpId={virtualMcpId} />;
+    case "loading":
+      return <ExperimentsTabSkeleton />;
+    case "v2":
+      return <ExperimentsTabV2 virtualMcpId={virtualMcpId} />;
+    case "legacy":
+      return <LegacyExperimentsTab virtualMcpId={virtualMcpId} />;
+  }
 }

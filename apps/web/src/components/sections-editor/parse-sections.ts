@@ -2,11 +2,10 @@ import { isSavedBlockResolveType } from "./block-type-utils";
 import { isLazyResolveType } from "./section-lazy";
 import {
   labelFromResolveType,
-  NEVER_MATCHER_RESOLVE_TYPE,
-  PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE,
-  SECTION_MULTIVARIATE_RESOLVE_TYPE,
+  isNeverMatcherResolveType,
   type RawSection,
 } from "./section-types";
+import { isVariantsBlockType, variantValueOn } from "./variant-shape";
 
 export interface ParsedSection {
   index: number;
@@ -48,6 +47,11 @@ function resolvedBlockLabel(
 export function parseSections(
   rawSections: RawSection[],
   decofile: Record<string, unknown>,
+  /**
+   * A Blocks v8 site: its short `multivariate` and `never`, and values in a
+   * `lazy` block. Any other site reads v7's shapes only, as before.
+   */
+  v8 = false,
 ): ParsedSection[] {
   return rawSections.map((s, idx) => {
     const rt = s.__resolveType ?? "";
@@ -68,19 +72,15 @@ export function parseSections(
       : undefined;
     const mvRt = isLazy ? (innerSection?.__resolveType ?? "") : rt;
 
-    if (
-      mvRt === PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE ||
-      mvRt === SECTION_MULTIVARIATE_RESOLVE_TYPE
-    ) {
+    if (isVariantsBlockType(mvRt, v8)) {
       const mvObj = (isLazy ? innerSection : s) as RawSection;
       const rawVariants = Array.isArray(mvObj?.variants) ? mvObj.variants : [];
 
       if (
         rawVariants.length === 1 &&
-        ((rawVariants[0]?.rule?.__resolveType as string) ?? "") ===
-          NEVER_MATCHER_RESOLVE_TYPE
+        isNeverMatcherResolveType(rawVariants[0]?.rule?.__resolveType, v8)
       ) {
-        const innerValue = (rawVariants[0]?.value ?? {}) as Record<
+        const innerValue = (variantValueOn(rawVariants[0], v8) ?? {}) as Record<
           string,
           unknown
         >;
@@ -96,15 +96,14 @@ export function parseSections(
         }
 
         // Hidden variant section: keep the "Variants of X" label from the wrapped multivariate block.
-        if (
-          innerRt === PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE ||
-          innerRt === SECTION_MULTIVARIATE_RESOLVE_TYPE
-        ) {
+        if (isVariantsBlockType(innerRt, v8)) {
           const innerVariants = Array.isArray(mvInner.variants)
             ? (mvInner.variants as Array<Record<string, unknown>>)
             : [];
           const firstValueRt = (
-            innerVariants[0]?.value as Record<string, unknown> | undefined
+            variantValueOn(innerVariants[0], v8) as
+              | Record<string, unknown>
+              | undefined
           )?.__resolveType as string | undefined;
           const sectionLabel = firstValueRt
             ? labelFromResolveType(firstValueRt)
@@ -144,7 +143,9 @@ export function parseSections(
       }
 
       const firstValueRt = (
-        rawVariants[0]?.value as Record<string, unknown> | undefined
+        variantValueOn(rawVariants[0], v8) as
+          | Record<string, unknown>
+          | undefined
       )?.__resolveType as string | undefined;
       const sectionLabel = firstValueRt
         ? labelFromResolveType(firstValueRt)

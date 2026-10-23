@@ -1,3 +1,4 @@
+import { isV8Schema } from "@decocms/shared/blocks-major";
 import { renderMustacheTemplate } from "./array-item-display";
 import type { LiveMeta } from "./resolve-schema";
 import { safeImageUrl } from "@/lib/safe-image-url";
@@ -31,7 +32,7 @@ export function getSectionPreviewImageSrc(
 ): string | undefined {
   if (!meta) return undefined;
 
-  const ctx = resolveSectionPreviewContext(formData);
+  const ctx = resolveSectionPreviewContext(formData, isV8Schema(meta));
   if (!ctx) return undefined;
 
   const imageTpl = resolveSectionImageTemplate(ctx.resolveType, meta);

@@ -64,13 +64,6 @@ export const home = {
   "home.comingSoon.planGoals": "Metas com métrica e alvo",
   "home.comingSoon.planTasks": "Tarefas propostas a partir de cada meta",
   "home.comingSoon.planProgress": "Progresso que se lê de relance",
-  "home.comingSoon.monitorHeading": "Saiba na hora em que um número mudar",
-  "home.comingSoon.monitorDescription":
-    "Monitores acompanham as métricas que importam, avisam quando uma sai do lugar e abrem uma tarefa para corrigir.",
-  "home.comingSoon.monitorWatch": "Monitores nas suas métricas principais",
-  "home.comingSoon.monitorSignal": "Um aviso quando algo sai do lugar",
-  "home.comingSoon.monitorVerdict":
-    "Uma tarefa por aviso, fechada com veredito",
   "home.brief.changeOne": "1 mudança",
   "home.brief.changeMany": "{count} mudanças",
   "home.brief.waitingOne": "1 coisa espera por você.",

@@ -402,3 +402,19 @@ describe("tabIdForRoute", () => {
     expect(tabIdForRoute({ mainView: "view" })).toBeUndefined();
   });
 });
+
+describe("the Calendar view", () => {
+  test("is its own project section with its own route", () => {
+    expect(tabRouteLocation("calendar")).toEqual({
+      kind: "agent-section",
+      section: "calendar",
+    });
+    expect(
+      tabRouteTarget({ tabId: "calendar", org: "acme", agentId: "agent-1" }),
+    ).toEqual({
+      to: "/$org/projects/$agentId/calendar",
+      params: { org: "acme", agentId: "agent-1" },
+      search: {},
+    });
+  });
+});

@@ -98,13 +98,24 @@ export function CollectionsSidebar({
             onSelect={onSelect}
           />
         )}
-        <CollectionRow
-          id="calendar"
-          icon={Calendar}
-          label={t("sandbox.collectionsSidebar.calendar")}
-          active={active === "calendar"}
-          onSelect={onSelect}
-        />
+        {shown("calendar") && (
+          <CollectionRow
+            id="calendar"
+            icon={Calendar}
+            label={t("sandbox.collectionsSidebar.calendar")}
+            active={active === "calendar"}
+            onSelect={onSelect}
+          />
+        )}
+        {shown("campaigns") && (
+          <CollectionRow
+            id="campaigns"
+            icon={Calendar}
+            label={t("sandbox.collectionsSidebar.campaigns")}
+            active={active === "campaigns"}
+            onSelect={onSelect}
+          />
+        )}
         <AdvancedGroup
           active={active}
           counts={counts}

@@ -7,6 +7,7 @@
  */
 
 import { useState } from "react";
+import { Calendar } from "@untitledui/icons";
 import {
   Area,
   CartesianGrid,
@@ -23,7 +24,13 @@ import {
 } from "@decocms/ui/components/chart.tsx";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
+import { Calendar as DayPickerCalendar } from "@decocms/ui/components/calendar.tsx";
 import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@decocms/ui/components/popover.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import {
   Tooltip,
@@ -145,9 +152,9 @@ function tzOffsetMs(instant: Date, tz: string): number {
   return asUtc - Math.floor(instant.getTime() / 1000) * 1000;
 }
 
-/** The last second of a local day in `tz`, as an ISO instant. */
-function endOfLocalDay(date: string, tz: string): string {
-  const guess = Date.parse(`${date}T23:59:59Z`);
+/** `time` (`HH:MM:SS`) of the local day `date` in `tz`, as an ISO instant. */
+export function localInstant(date: string, time: string, tz: string): string {
+  const guess = Date.parse(`${date}T${time}Z`);
   // Second pass: the offset at the guess differs when a DST change falls between it and the answer.
   const first = guess - tzOffsetMs(new Date(guess), tz);
   return new Date(guess - tzOffsetMs(new Date(first), tz)).toISOString();
@@ -822,6 +829,61 @@ function Section({
   );
 }
 
+/** A local `YYYY-MM-DD` as a date at noon, clear of any DST edge. */
+const dayDate = (day: string) => new Date(`${day}T12:00:00`);
+const dayKey = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+/** The day picker of the order monitor, shared with the Monitor page. */
+export function DayInput({
+  value,
+  max,
+  onChange,
+}: {
+  /** `YYYY-MM-DD`. */
+  value: string;
+  max: string;
+  onChange: (date: string) => void;
+}) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const date = dayDate(value);
+  const label = date.toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          aria-label={t("orderMonitor.pickDay")}
+          className="tnum font-normal"
+        >
+          <Calendar size={14} />
+          {value === max ? `${t("orderMonitor.today")} · ${label}` : label}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-auto p-0">
+        <DayPickerCalendar
+          mode="single"
+          selected={date}
+          defaultMonth={date}
+          disabled={{ before: dayDate(MIN_DATE), after: dayDate(max) }}
+          onSelect={(picked) => {
+            if (!picked) return;
+            onChange(dayKey(picked));
+            setOpen(false);
+          }}
+          initialFocus
+        />
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 export function OrderMonitorDayView({
   orgSlug,
   connectionId,
@@ -873,22 +935,17 @@ export function OrderMonitorDayView({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Headline day={day} />
         <div className="flex items-center gap-2">
-          <input
-            type="date"
-            aria-label={t("orderMonitor.pickDay")}
+          <DayInput
             value={day.date}
-            min={MIN_DATE}
             max={today}
-            onChange={(e) => {
-              const date = e.target.value;
-              // Typing a year digit by digit passes through 0002, 0020, 0202.
-              if (!date || date < MIN_DATE) return;
+            onChange={(date) =>
               // Today is "now", so it stays live instead of freezing at 23:59:59.
               onAtChange(
-                date >= today ? undefined : endOfLocalDay(date, day.timezone),
-              );
-            }}
-            className="rounded-md border border-border bg-card px-2 py-1 text-xs"
+                date >= today
+                  ? undefined
+                  : localInstant(date, "23:59:59", day.timezone),
+              )
+            }
           />
           {at && (
             <Button

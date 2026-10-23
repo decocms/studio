@@ -2425,6 +2425,7 @@ export interface RepositoryTable {
   sandbox_image: string | null;
   /** Repo-scoped `mcp-github` child whose token still clones this repo. */
   legacy_connection_id: string | null;
+  monitor_deploys: ColumnType<boolean, boolean | undefined, boolean>;
   created_by: string | null;
   created_at: ColumnType<Date, Date | string | undefined, never>;
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
