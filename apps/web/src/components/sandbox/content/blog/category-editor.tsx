@@ -65,7 +65,7 @@ import {
 import { buildBlogCategoryPreviewUrl } from "./blog-preview-url";
 import { useSaveBlock } from "@/components/sections-editor/use-save-block";
 import { useMoveBlocks } from "@/components/sections-editor/use-move-blocks";
-import { useDraftPointer } from "@/components/sections-editor/use-fast-preview-draft-url";
+import { usePreviewLinkDraftPointer } from "@/components/sections-editor/use-fast-preview-draft-url";
 import { useAutosave } from "./use-autosave";
 import { SaveStatus } from "./save-status";
 import { asBlocks, BlockDocument } from "./block-document";
@@ -125,7 +125,13 @@ export function CategoryEditor({
   const threadId = useOptionalChatTask()?.taskId ?? null;
   const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
   const move = useMoveBlocks({ orgSlug, virtualMcpId, branch });
-  const draftPointer = useDraftPointer({ orgSlug, virtualMcpId, branch });
+  // The preview frame's `__draft` (a hosted draft's carries its forced
+  // variants and "Preview as" options), so this link opens what it shows.
+  const draftPointer = usePreviewLinkDraftPointer({
+    orgSlug,
+    virtualMcpId,
+    branch,
+  });
   const initial = getBlogPayload(block, "categories");
 
   const [category, setCategory, syncCategory] = useAutosave(

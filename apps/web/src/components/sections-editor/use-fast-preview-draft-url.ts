@@ -2,6 +2,8 @@ import { buildDraftPointer, withDraftPointer } from "./section-preview-url";
 import { useDecofileDraft } from "./decofile-api";
 import { useProtocolDraft } from "./content-protocol-api";
 import { useContentBackend } from "./use-content-backend";
+import { contentSyncScope } from "./content-sync";
+import { usePreviewDraftValue } from "./preview-draft-link";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 
 interface DraftParams {
@@ -34,6 +36,23 @@ export function useDraftPointer(params: DraftParams | null): string | null {
   if (!params || !fastPreviewActive) return null;
   if (github) return protocolPointer;
   return draft ? buildDraftPointer({ ...params, ...draft }) : null;
+}
+
+/**
+ * The `?__draft=` a page's "Preview" link sends (a blog post's, a category's):
+ * a hosted v8 draft's is exactly the preview frame's (its pointer with the
+ * frame's forced variants and "Preview as" options, preview-draft-link.ts);
+ * any other backend's is {@link useDraftPointer}'s, as before.
+ */
+export function usePreviewLinkDraftPointer(params: DraftParams): string | null {
+  const pointer = useDraftPointer(params);
+  const backend = useContentBackend(params.virtualMcpId, params.branch);
+  const hosted = backend.kind === "protocol" && backend.source === "github";
+  const value = usePreviewDraftValue(
+    contentSyncScope(params.orgSlug, params.virtualMcpId),
+    hosted ? pointer : null,
+  );
+  return hosted ? value : pointer;
 }
 
 export interface FastPreviewDraftUrl {

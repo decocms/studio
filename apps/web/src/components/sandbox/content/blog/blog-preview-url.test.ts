@@ -9,6 +9,8 @@ import {
   findBlogPageSlug,
   firstCategorySlug,
 } from "./blog-preview-url";
+import { hostedPreviewUrls } from "@/components/sandbox/preview/hosted-preview-urls";
+import { previewDraftValue } from "@/components/sections-editor/preview-draft-link";
 
 const DRAFT_POINTER = "api.deco.cx/api/acme/decofile/vm-1/main?token=t@abc123";
 
@@ -371,6 +373,36 @@ describe("buildBlogPostPreviewUrl", () => {
     );
     expect(url.pathname).toBe("/blogteste/news/my-post");
     expect(url.searchParams.get("__draft")).toBe(DRAFT_POINTER);
+  });
+
+  it("a hosted draft's link sends exactly the preview frame's __draft (usePreviewLinkDraftPointer)", () => {
+    const modifiers = {
+      forcedVariants: ["pages-home@sections=1"],
+      previewOptions: { at: "2026-10-23T10:00:00-03:00" },
+    };
+    const pointer = "delivery.decocms.com/sites/acme/drafts/s1.json@e2";
+    const frame = hostedPreviewUrls({
+      display: {
+        mode: "production",
+        iframeBase: "https://abc.preview.example.com",
+      },
+      path: "/",
+      pointer,
+      device: "desktop",
+      ...modifiers,
+    });
+    const url = new URL(
+      buildBlogPostPreviewUrl({
+        decofile,
+        post: { slug: "my-post", categories: [{ slug: "news" }] },
+        previewBaseUrl: "https://abc.preview.example.com",
+        draftPointer: previewDraftValue({ pointer, ...modifiers }),
+      })!,
+    );
+    expect(url.searchParams.get("__draft")).toBe(
+      new URL(frame.frame!).searchParams.get("__draft"),
+    );
+    expect(url.searchParams.get("__draft")).toBe(frame.value);
   });
 
   it("leaves the url alone when there is no draft grant (sandbox session)", () => {

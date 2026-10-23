@@ -76,7 +76,7 @@ import { useBlogAi } from "@/hooks/use-blog-ai";
 import { useHostedAiProviderKeys } from "@/hooks/collections/use-ai-providers";
 import { useDeleteBlock } from "@/components/sections-editor/use-delete-block";
 import { useSaveBlock } from "@/components/sections-editor/use-save-block";
-import { useDraftPointer } from "@/components/sections-editor/use-fast-preview-draft-url";
+import { usePreviewLinkDraftPointer } from "@/components/sections-editor/use-fast-preview-draft-url";
 import { useAutosave } from "./use-autosave";
 import { SaveStatus } from "./save-status";
 import { asBlocks, BlockDocument } from "./block-document";
@@ -142,7 +142,13 @@ export function PostEditor({
   const remove = useDeleteBlock({ orgSlug, virtualMcpId, branch });
   const hasAi = useHostedAiProviderKeys().length > 0;
   const blogAi = useBlogAi();
-  const draftPointer = useDraftPointer({ orgSlug, virtualMcpId, branch });
+  // The preview frame's `__draft` (a hosted draft's carries its forced
+  // variants and "Preview as" options), so this link opens what it shows.
+  const draftPointer = usePreviewLinkDraftPointer({
+    orgSlug,
+    virtualMcpId,
+    branch,
+  });
   const initial = getBlogPayload(block, "posts");
 
   const [post, setPost, syncPost, saveScheduled] = useAutosave(
