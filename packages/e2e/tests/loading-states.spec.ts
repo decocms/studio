@@ -32,6 +32,7 @@
  */
 
 import type { Page } from "@playwright/test";
+import { callSelfMcpTool } from "../fixtures/mcp-tools";
 import { expect, test } from "../fixtures/test";
 
 /** Cold-Vite route compiles can take a minute+ on a loaded box, and reaching
@@ -77,7 +78,12 @@ async function armLoadingWatch(page: Page): Promise<void> {
     const sample = () => {
       state.samples += 1;
       const splashUp = !!document.querySelector(".deco-splash");
-      const shellUp = !!document.querySelector('[data-slot="sidebar"]');
+      /* VISIBLE, not merely mounted: a suspended boundary keeps its old tree
+         in the DOM under `display: none` while its fallback paints, so a
+         presence check read an app collapsed to a loader as a painted shell. */
+      const shellUp = !!document
+        .querySelector('[data-slot="sidebar"]')
+        ?.checkVisibility();
       /* Rising and falling EDGES only: one entry per appearance/disappearance,
          not one per frame it stayed that way. */
       if (splashUp && !splashUpBefore) state.splashHits.push(location.pathname);
@@ -285,5 +291,91 @@ test.describe("loading states", () => {
        pinned the mount count, and `prefers-reduced-motion` legitimately runs
        no animations at all. */
     expect(boot.animations).toEqual([...new Set(boot.animations)]);
+  });
+});
+
+/** The new navigation switches org from the always-visible rail and project
+ *  from the sidebar's project tree: neither goes through the picker above, and
+ *  both used to take the whole app down to a loader strip for an org or
+ *  project the cache had not seen. */
+test.describe("loading states — project-first navigation", () => {
+  test.use({ projectFirstNav: true });
+  test.describe.configure({ timeout: 240_000 });
+
+  test("switching organization from the rail keeps the shell painted", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    await bootShell(page, `/${orgSlug}/home`);
+
+    const suffix = `${Date.now()}${Math.random().toString(36).slice(2, 8)}`;
+    const secondSlug = `e2e-rail-${suffix}`;
+    const created = await page.evaluate(async (slug) => {
+      const res = await fetch("/api/auth/organization/create", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: slug, slug }),
+      });
+      return res.status;
+    }, secondSlug);
+    expect(created).toBeLessThan(400);
+
+    /* Reload so the rail lists the new org; the org itself stays unread. */
+    await bootShell(page, `/${orgSlug}/home`);
+    await armLoadingWatch(page);
+
+    await page.getByRole("button", { name: secondSlug, exact: true }).click();
+
+    await page.waitForURL((url) => url.pathname.startsWith(`/${secondSlug}`), {
+      timeout: SHELL_TIMEOUT_MS,
+    });
+    await expect(
+      page.locator('[data-slot="sidebar"]').getByText(secondSlug).first(),
+    ).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+
+    const watch = await readLoadingWatch(page);
+    expect(watch.samples).toBeGreaterThan(0);
+    expect(watch.splashHits).toEqual([]);
+    expect(watch.splashMounts).toEqual([]);
+    expect(watch.shellLosses).toEqual([]);
+  });
+
+  test("opening a project from the sidebar keeps the shell painted", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    const title = `Unvisited ${Date.now()}`;
+    const project = await callSelfMcpTool<{ item: { id: string } }>(
+      page.context().request,
+      orgSlug,
+      "COLLECTION_VIRTUAL_MCP_CREATE",
+      { data: { title, status: "active", connections: [] } },
+    );
+
+    await bootShell(page, `/${orgSlug}/home`);
+    await armLoadingWatch(page);
+
+    /* From the keyboard: a mouse click hovers first, and hovering a row
+       prefetches the project, which hides a read that suspends whenever the
+       click beats that prefetch. */
+    await page
+      .locator('[data-slot="sidebar"]')
+      .getByRole("button", { name: title, exact: true })
+      .focus();
+    await page.keyboard.press("Enter");
+
+    await page.waitForURL(
+      (url) =>
+        url.pathname.startsWith(`/${orgSlug}/projects/${project.item.id}`),
+      { timeout: SHELL_TIMEOUT_MS },
+    );
+    await expect(page.getByTestId("main-panel")).toBeVisible({
+      timeout: SHELL_TIMEOUT_MS,
+    });
+
+    const watch = await readLoadingWatch(page);
+    expect(watch.samples).toBeGreaterThan(0);
+    expect(watch.splashHits).toEqual([]);
+    expect(watch.splashMounts).toEqual([]);
+    expect(watch.shellLosses).toEqual([]);
   });
 });

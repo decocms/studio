@@ -41,6 +41,7 @@ import {
   isBlocksV8Project,
   isV8Schema,
 } from "@decocms/shared/blocks-major";
+import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
 import type { MainSchemaRead } from "@/hooks/main-schema-changed";
 import { KEYS } from "@/lib/query-keys";
@@ -137,9 +138,17 @@ export function mainSchemaAnswer(input: {
 export function useMainSchemaV8(
   virtualMcpId: string | null | undefined,
 ): MainSchemaAnswer {
+  return useProjectMainSchemaV8(useVirtualMCP(virtualMcpId));
+}
+
+/** {@link useMainSchemaV8} for a caller that already holds the project. Never
+ *  suspends, so the sidebar can use it: reading the row by id there suspended
+ *  the whole org frame on the first visit to a project. */
+export function useProjectMainSchemaV8(
+  project: VirtualMCPEntity | null | undefined,
+): MainSchemaAnswer {
   const { org } = useProjectContext();
   const queryClient = useQueryClient();
-  const project = useVirtualMCP(virtualMcpId);
   const projectId = project?.id ?? "";
   const marked = isBlocksV8Project(project?.metadata);
   const asks =

@@ -44,46 +44,8 @@
  */
 
 import { use, type ReactNode } from "react";
-import { authClient } from "@/lib/auth-client";
+import { sessionSettled } from "@/lib/auth-client";
 import { router } from "@/router";
-
-/**
- * Resolve once better-auth's session store has settled, signed in or out.
- *
- * `authClient.getSession()` is deliberately NOT used: it issues its own request
- * and leaves the `useSession` store untouched, so the store would still report
- * `isPending` on the shell's first render — the state that used to paint a
- * second splash. Subscribing is what starts the store's fetch, so this settles
- * it and brings it forward at the same time. The subscription is never torn
- * down: it is one listener for the life of the page, and dropping it would let
- * nanostores unmount the atom and take better-auth's session refresh manager
- * with it.
- *
- * It also FAILS OPEN. `isPending` only clears from better-auth's own
- * success/error paths, and its fetch carries no timeout — so a request that
- * opens a socket and is never answered (a captive portal, a black-holed proxy)
- * left this promise unresolved forever. That mattered more here than at the
- * five boundaries this replaced: they each failed open with the router already
- * mounted, whereas this gate sits ABOVE `<RouterProvider>`, so the same hang
- * meant an infinite splash with no route tree, no error boundary and `/login`
- * unreachable. After the deadline the app mounts with the session still
- * pending, which `RequiredAuthLayout` renders as a loader rather than a blank.
- */
-const SESSION_SETTLE_TIMEOUT_MS = 8_000;
-
-function sessionSettled(): Promise<void> {
-  return new Promise<void>((resolve) => {
-    const timer = setTimeout(resolve, SESSION_SETTLE_TIMEOUT_MS);
-    authClient.$store.listen("session", (state: unknown) => {
-      if (state && typeof state === "object" && "isPending" in state) {
-        if (!state.isPending) {
-          clearTimeout(timer);
-          resolve();
-        }
-      }
-    });
-  });
-}
 
 let bootPromise: Promise<void> | undefined;
 

@@ -69,7 +69,7 @@ import {
 import { useEnsureTask } from "@/hooks/use-ensure-task";
 import { useAgentEntryThreads } from "@/hooks/use-agent-entry-threads";
 import type { Task } from "@/components/chat/task/types";
-import { MainPanelBoundary } from "@/layouts/main-panel-boundary";
+import { MainPanelBoundary, PanelLoading } from "@/layouts/main-panel-boundary";
 import { LegacyAgentWorkspaceRedirect } from "@/layouts/legacy-agent-workspace-redirect";
 import { canonicalThreadRouteTarget } from "@/layouts/main-panel-tabs/tab-route";
 import { getWellKnownDecopilotVirtualMCP } from "@/sdk";
@@ -618,15 +618,11 @@ function ThreadSessionProvider() {
       threadsStatus.kind === "loading" ||
       scopedEntryThreads.status === "loading"
     ) {
+      // Reading, not creating: the panel's one loader, not "Creating task…".
       return (
         <div className="flex-1 min-h-0 pr-1.5 pb-1.5 overflow-hidden">
-          <div
-            role="status"
-            aria-live="polite"
-            className="flex h-full items-center justify-center bg-background shadow-edge rounded-[0.75rem] text-sm text-muted-foreground"
-          >
-            <Spinner className="size-4 mr-2" />
-            {t("agentShellLayout.agentShellLayout.creatingTask")}
+          <div className="flex h-full bg-background shadow-edge rounded-[0.75rem]">
+            <PanelLoading />
           </div>
         </div>
       );

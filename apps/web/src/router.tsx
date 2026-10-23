@@ -18,6 +18,7 @@ import { useT } from "@/i18n/use-t";
 import * as z from "zod";
 
 import { listOrganizationsCached } from "@/lib/auth-client";
+import { preloadActiveOrganization } from "@/lib/active-organization";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import { readLastLocation, saveLastLocation } from "@/lib/last-location";
 import {
@@ -370,12 +371,17 @@ const orgRoute = createRoute({
   beforeLoad: ({ params }) => {
     saveLastLocation({ org: params.org });
   },
-  /** The last route above the sidebar, and the one that mounts it. `boot-gate.tsx`
-   *  resolves this match before the router mounts, so it shows no loader during
-   *  boot; after boot `beforeLoad` is synchronous and the chunk is cached, so an
-   *  org switch resolves it well inside `defaultPendingMs`. Keep it that way —
-   *  an async loader here, or anything under `OrgRoute` that suspends, would
-   *  put a loading state back on top of a painted shell. */
+  /** The org the shell reads, cached before the URL commits — see
+   *  `preloadActiveOrganization`. During boot `boot-gate.tsx` waits on it under
+   *  the splash. */
+  loader: ({ params }) => preloadActiveOrganization(params.org),
+  /** The last route above the sidebar, and the one that mounts it, so it has
+   *  no loader of its own to show: its pending component would replace the
+   *  rail, the sidebar and the panel together. A switch keeps the org on
+   *  screen until the next one is ready instead. Anything under `OrgRoute`
+   *  that suspends lands on the same boundary — read with non-suspending
+   *  queries there. */
+  pendingMs: Infinity,
   component: lazyRouteComponent(() => import("./routes/orgs/route.tsx")),
 });
 
@@ -577,6 +583,10 @@ const projectsIndexRoute = createRoute({
 /** Canonical identity boundary for one project. Every feature is a real child
  *  route and therefore owns both its composition and its URL. */
 const agentWorkspaceRoute = createRoute({
+  /** Its match goes pending on its own when the project changes, and the
+   *  default `PanelLoading` is not laid out for the chat layout's panel row —
+   *  it collapsed into a sliver at the panel's right edge. */
+  pendingComponent: ChatLayoutPending,
   errorComponent: ChatLayoutError,
   getParentRoute: () => threadSessionRoute,
   path: "/projects/$agentId",

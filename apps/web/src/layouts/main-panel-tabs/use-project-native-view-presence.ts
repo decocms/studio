@@ -5,7 +5,7 @@ import { useFileConfigsQuery } from "@/hooks/use-file-configs";
 import { useControlPlaneViews } from "@/hooks/use-organization-settings";
 import { usePublicConfig } from "@/hooks/use-public-config";
 import { KEYS } from "@/lib/query-keys";
-import { useMainSchemaV8 } from "@/hooks/use-main-schema-v8";
+import { useProjectMainSchemaV8 } from "@/hooks/use-main-schema-v8";
 import { useProjectContext } from "@/sdk";
 import {
   resolveAgentSiteSlug,
@@ -36,7 +36,7 @@ export function useProjectNativeViewPresence(
   const fileConfigs = useFileConfigsQuery();
   // The hosted Deco CMS: Blocks v8 sites (main's schema, `isV8Schema`). A v7
   // site never gets Releases.
-  const mainSchema = useMainSchemaV8(project?.id);
+  const mainSchema = useProjectMainSchemaV8(project);
   const hostedCms = mainSchema === "v8";
   const siteSlug = resolveAgentSiteSlug(project);
   const hostingEnabled = config.hostingEnabled === true;

@@ -17,7 +17,12 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { EyeOff, Pin01, Plus, Settings01, XClose } from "@untitledui/icons";
-import { Link, useNavigate } from "@tanstack/react-router";
+import {
+  Link,
+  useMatchRoute,
+  useNavigate,
+  useRouterState,
+} from "@tanstack/react-router";
 import {
   Tooltip,
   TooltipContent,
@@ -301,6 +306,15 @@ export function OrgRail({ onNavigate }: { onNavigate?: () => void } = {}) {
   const t = useT();
   const navigate = useNavigate();
   const { org: currentOrg } = useProjectContext();
+  /** A switch keeps the current org painted until the next one has loaded
+   *  (the `$org` route's loader), so the rail marks where you are going from
+   *  the click on — otherwise a slow org reads as a click that did nothing. */
+  const matchRoute = useMatchRoute();
+  const loading = useRouterState({ select: (s) => s.isLoading });
+  const travelling = loading
+    ? matchRoute({ to: "/$org", fuzzy: true, pending: true })
+    : false;
+  const activeSlug = travelling ? travelling.org : currentOrg.slug;
   const { data: organizations } = useActiveOrganizations();
   const [creatingOrg, setCreatingOrg] = useState(false);
   /** The border separates the rail from the sidebar; collapsed, there is none. */
@@ -392,7 +406,7 @@ export function OrgRail({ onNavigate }: { onNavigate?: () => void } = {}) {
               <Fragment key={candidate.id}>
                 <RailOrgButton
                   org={candidate}
-                  active={candidate.slug === currentOrg.slug}
+                  active={candidate.slug === activeSlug}
                   pinned={prefs.pinned.includes(candidate.slug)}
                   onSelect={
                     candidate.slug !== currentOrg.slug
