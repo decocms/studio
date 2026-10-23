@@ -650,12 +650,22 @@ test.describe("content protocol on GitHub", () => {
       });
       expect(await refreshV8(ctx, project)).toBe(true);
 
-      // Nothing saved yet: no draft, so no pointer.
-      expect(await draftPointer(ctx, project, "draft-1")).toEqual({
-        draft: null,
-        version: null,
-        changedBy: {},
-      });
+      // Nothing saved yet: the editor's read creates the empty draft, so the
+      // pointer exists before the first save.
+      const host = new URL(DELIVERY_STUB_ORIGIN).host;
+      const empty = await draftPointer(ctx, project, "draft-1");
+      expect(empty.draft).toMatch(
+        new RegExp(
+          `^${host}/sites/${project.owner}/drafts/[A-Za-z0-9_-]{22}\\.json$`,
+        ),
+      );
+      expect(empty.version).toEqual(expect.any(String));
+      expect(empty.changedBy).toEqual({});
+      expect(
+        await (
+          await site.get(`http://${empty.draft}?v=${empty.version}`)
+        ).json(),
+      ).toEqual({ set: {}, delete: [] });
 
       const hero = { __resolveType: "hero", title: "Summer" };
       await rpc<BlocksApplyResult>(
@@ -667,13 +677,10 @@ test.describe("content protocol on GitHub", () => {
         },
       );
       const pointer = await draftPointer(ctx, project, "draft-1");
-      const host = new URL(DELIVERY_STUB_ORIGIN).host;
-      expect(pointer.draft).toMatch(
-        new RegExp(
-          `^${host}/sites/${project.owner}/drafts/[A-Za-z0-9_-]{22}\\.json$`,
-        ),
-      );
+      // The save lands in that same draft: same address, a new version.
+      expect(pointer.draft).toBe(empty.draft);
       expect(pointer.version).toEqual(expect.any(String));
+      expect(pointer.version).not.toBe(empty.version);
       // The save recorded its editor next to the draft, not in it.
       expect(pointer.changedBy).toEqual({
         "hero-home": { userId: expect.any(String), at: expect.any(String) },
@@ -763,10 +770,13 @@ test.describe("content protocol on GitHub", () => {
       expect(latest.previewHosts).toEqual(
         expect.arrayContaining(["localhost", "127.0.0.1", "[::1]"]),
       );
-      // The draft is gone; the next edit starts a new one.
-      expect(Object.keys(objects).some((k) => k.includes("/drafts/"))).toBe(
-        false,
+      // The draft is emptied in place, once the release is live: same
+      // address, nothing of its own left.
+      const drafts = Object.entries(objects).filter(([k]) =>
+        k.includes("/drafts/"),
       );
+      expect(drafts).toHaveLength(1);
+      expect(JSON.parse(drafts[0]![1].text)).toEqual({ set: {}, delete: [] });
 
       const second = await publish("Two");
       let releases = await (await ctx.get(`${hosted}/releases`)).json();
