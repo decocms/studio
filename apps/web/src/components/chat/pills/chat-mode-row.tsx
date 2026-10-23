@@ -74,6 +74,13 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
   // The Localhost item is for Blocks v8 sites (main's schema); v7 keeps
   // main's Advanced → Local.
   const mainSchema = useMainSchemaV8(virtualMcp?.id);
+  // A CMS session on a Blocks v8 main edits a hosted draft even on the base
+  // branch: the switcher shows it as that draft, not as "Production". v7 (and
+  // a coding session) keeps main's labels.
+  const baseIsDraft =
+    mainSchema === "v8" &&
+    readThreadRuntime(taskCtx?.activeTask?.metadata, virtualMcp?.metadata) ===
+      "cms";
 
   // Locked chat's branch is fixed: open a new chat on the picked branch.
   const onChange = (next: string) => {
@@ -101,6 +108,7 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
         isV8={mainSchema === "v8"}
         value={currentBranch}
         baseBranch={baseBranch}
+        baseIsDraft={baseIsDraft}
         orgId={org.id}
         orgSlug={org.slug}
         userId={userId}
