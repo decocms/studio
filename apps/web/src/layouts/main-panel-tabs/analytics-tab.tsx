@@ -183,15 +183,7 @@ const DATA_VIEWS: ReadonlyArray<{ view: string; labelKey: TranslationKey }> = [
 ];
 
 // Range pills, shortest first — the admin's 5m…30d selector.
-const RANGE_PILLS = [
-  "5m",
-  "15m",
-  "30m",
-  "1h",
-  "24h",
-  "7d",
-  "30d",
-] as const;
+const RANGE_PILLS = ["5m", "15m", "30m", "1h", "24h", "7d", "30d"] as const;
 
 // Keys in a view payload that are context, not panels — never rendered as data.
 const META_KEYS = new Set([
