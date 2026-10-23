@@ -30,6 +30,11 @@ interface AtMentionProps {
 
 type AtMode = "categories" | "agents" | "resources";
 
+/** A resource's `name` is server-supplied and may be present but empty. */
+export function resourceDisplayName(uri: string, name: string | undefined) {
+  return name || uri;
+}
+
 interface AtItem extends BaseItem {
   /** Discriminator for item type */
   kind: "category" | "agent" | "resource";
@@ -185,7 +190,7 @@ export const AtMention = ({
               r.description?.toLowerCase().includes(lq),
           )
           .map((r) => ({
-            name: r.name ?? r.uri,
+            name: resourceDisplayName(r.uri, r.name),
             title: r.name,
             description: r.description,
             kind: "resource" as const,
@@ -254,7 +259,7 @@ export const AtMention = ({
     }
 
     return resources.map((r) => ({
-      name: r.name ?? r.uri,
+      name: resourceDisplayName(r.uri, r.name),
       title: r.name,
       description: r.description,
       kind: "resource" as const,

@@ -30,7 +30,6 @@ import {
   CommandList,
 } from "@decocms/ui/components/command.tsx";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
-import { getInitials } from "@/lib/get-initials";
 import { useT } from "@/i18n/use-t.ts";
 import {
   useMentionMembers,
@@ -327,7 +326,7 @@ function OpenMentionMenu({
     <div
       style={style}
       data-testid="mention-menu"
-      className="z-50 overflow-hidden rounded-lg border border-border bg-popover shadow-md"
+      className="z-50 overflow-hidden rounded-lg bg-popover shadow-soft"
     >
       <Command
         // cmdk filters, selects and scrolls; `members` is just the source.
@@ -383,7 +382,7 @@ function OpenMentionMenu({
             >
               <Avatar
                 url={member.image ?? undefined}
-                fallback={getInitials(member.name)}
+                fallback={member.name ?? "?"}
                 shape="circle"
                 size="xs"
               />

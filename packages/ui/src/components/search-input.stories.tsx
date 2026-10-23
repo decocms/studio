@@ -3,7 +3,7 @@ import { useState } from "react";
 import { SearchInput } from "./search-input.tsx";
 
 const meta = {
-  title: "Components/SearchInput",
+  title: "Molecules/SearchInput",
   component: SearchInput,
   args: {
     value: "",

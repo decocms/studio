@@ -2,6 +2,9 @@ import type { common as commonEn } from "../en/common.ts";
 
 export const common = {
   "common.copy": "Copiar",
+  "common.copied": "Copiado",
+  "common.show": "Mostrar",
+  "common.hide": "Ocultar",
   "common.seeAll": "Ver todos os {count} {noun}",
   "common.soon": "Em breve",
   "common.goBack": "Voltar",
@@ -268,6 +271,7 @@ export const common = {
   "common.mainPanelTabs.e2e": "E2E",
   "common.mainPanelTabs.analytics": "Deco Analytics",
   "common.mainPanelTabs.experiments": "Experimentos",
+  "common.mainPanelTabs.calendar": "Calendário",
   "common.mainPanelTabs.cdn": "Monitor",
   "common.taskBoard.listView": "Lista",
   "common.taskBoard.boardView": "Quadro",

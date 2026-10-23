@@ -333,18 +333,21 @@ function IconsTab({
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder={t("common.iconPicker.filterPlaceholder")}
-            className="h-8 text-xs pl-7"
+            size="sm"
+            className="text-xs pl-7"
           />
         </div>
-        <button
+        <Button
           type="button"
+          variant="outline"
+          size="icon"
           onClick={onRandom}
-          className="h-8 w-8 flex items-center justify-center rounded-lg border border-border hover:bg-accent transition-colors shrink-0"
+          className="shrink-0"
           title={t("common.iconPicker.randomIcon")}
           aria-label={t("common.iconPicker.randomIcon")}
         >
-          <Shuffle01 size={14} className="text-muted-foreground" />
-        </button>
+          <Shuffle01 className="size-3.5 text-muted-foreground" />
+        </Button>
         <ColorPickerDropdown
           selectedColor={selectedColor}
           onColorChange={onColorChange}
@@ -442,7 +445,7 @@ function UploadTab({ onUpload }: { onUpload: (dataUrl: string) => void }) {
       <button
         type="button"
         onClick={() => fileInputRef.current?.click()}
-        className="h-24 rounded-lg border-2 border-dashed border-border hover:border-foreground/50 hover:bg-accent/50 transition-colors flex flex-col items-center justify-center gap-2 text-muted-foreground hover:text-foreground"
+        className="h-24 rounded-lg border-2 border-dashed border-border hover:border-foreground/50 hover:bg-accent transition-colors flex flex-col items-center justify-center gap-2 text-muted-foreground hover:text-foreground"
       >
         <Upload01 size={20} />
         <span className="text-xs">{t("common.iconPicker.uploadHint")}</span>
@@ -470,8 +473,7 @@ function UploadTab({ onUpload }: { onUpload: (dataUrl: string) => void }) {
         />
         <Button
           variant="outline"
-          size="sm"
-          className="h-8 px-3 text-xs shrink-0"
+          className="shrink-0"
           onClick={handleApplyUrl}
           disabled={!pasteUrl.trim()}
         >

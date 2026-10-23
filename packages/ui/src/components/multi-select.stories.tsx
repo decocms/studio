@@ -19,7 +19,7 @@ const roleOptions: Option[] = [
 ];
 
 const meta = {
-  title: "Components/MultiSelect",
+  title: "Molecules/MultiSelect",
   component: MultiSelect,
   args: {
     options: projectOptions,

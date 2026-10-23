@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { pushRecentOrg, railOrgLimit, railOrgs } from "./recent-orgs";
+import {
+  pushRecentOrg,
+  railOrgLimit,
+  railOrgs,
+  withCurrentOrg,
+} from "./recent-orgs";
 
 const orgs = (...slugs: string[]) => slugs.map((slug) => ({ slug }));
 const slugs = (list: { slug: string }[]) => list.map((o) => o.slug);
@@ -94,5 +99,25 @@ describe("railOrgLimit", () => {
     expect(railOrgLimit(0)).toBe(3);
     expect(railOrgLimit(500)).toBe(3);
     expect(railOrgLimit(1440)).toBe(10);
+  });
+});
+
+describe("withCurrentOrg", () => {
+  const listed = [
+    { id: "1", slug: "a" },
+    { id: "2", slug: "b" },
+  ];
+
+  test("adds the current org when the capped list left it out", () => {
+    const current = { id: "101", slug: "past-the-page" };
+    expect(withCurrentOrg(listed, current)).toEqual([...listed, current]);
+  });
+
+  test("does not duplicate a current org already listed", () => {
+    expect(withCurrentOrg(listed, { id: "2", slug: "b" })).toEqual(listed);
+  });
+
+  test("adds nothing outside an org", () => {
+    expect(withCurrentOrg(listed, { id: "", slug: "" })).toEqual(listed);
   });
 });

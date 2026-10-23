@@ -151,6 +151,9 @@ export interface TaskBoardItemTagRef {
 
 export interface TaskBoardItem {
   harnessId: TaskBoardHarnessId;
+  /** The epic or card this one sits under; null at the top level. */
+  parentId: string | null;
+  isEpic: boolean;
   id: string;
   organizationId: string;
   title: string;

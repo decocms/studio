@@ -1,6 +1,8 @@
 import { SearchMd } from "@untitledui/icons";
+import type * as React from "react";
+
+import { InputGroup, InputGroupAddon, InputGroupInput } from "./input.tsx";
 import { Spinner } from "./spinner.tsx";
-import { cn } from "../lib/utils.ts";
 
 interface SearchInputProps {
   value: string;
@@ -12,13 +14,7 @@ interface SearchInputProps {
   disabled?: boolean;
 }
 
-/**
- * SearchInput — bordered search field with icon.
- *
- * Uses the same base styling as the design-system Input (rounded-lg, border,
- * focus ring) but composes the search icon inline so consumers don't have to
- * wrap it themselves.
- */
+/** A search field: the glass, or a spinner while results load. */
 function SearchInput({
   value,
   onChange,
@@ -29,30 +25,19 @@ function SearchInput({
   disabled,
 }: SearchInputProps) {
   return (
-    <label
-      className={cn(
-        "flex items-center gap-4 rounded-lg bg-[var(--studio-input-background)] px-3 h-8 card-shadow",
-        "focus-within:border-ring focus-within:ring-ring/20 focus-within:ring-[2px]",
-        "transition-[color,box-shadow]",
-        disabled && "pointer-events-none opacity-50",
-        className,
-      )}
-    >
-      {isSearching ? (
-        <Spinner className="size-4 text-muted-foreground/75 shrink-0" />
-      ) : (
-        <SearchMd size={16} className="text-muted-foreground/75 shrink-0" />
-      )}
-      <input
+    <InputGroup size="sm" className={className}>
+      <InputGroupAddon className="pr-0">
+        {isSearching ? <Spinner className="size-4" /> : <SearchMd />}
+      </InputGroupAddon>
+      <InputGroupInput
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={onKeyDown}
         placeholder={placeholder}
         disabled={disabled}
-        className="flex-1 min-w-0 bg-transparent text-sm text-foreground placeholder:text-muted-foreground/50 outline-none"
       />
-    </label>
+    </InputGroup>
   );
 }
 

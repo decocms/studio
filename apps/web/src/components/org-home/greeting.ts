@@ -21,6 +21,15 @@ export function firstName(name: string | null | undefined): string | null {
   return first ? first : null;
 }
 
+/** Today, spelled out: a brief is dated, a dashboard is not. */
+export function briefDate(locale: string, now: Date): string {
+  return now.toLocaleDateString(locale, {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  });
+}
+
 /** What the brief's sentence calls its window. */
 export type PulseWindow = "overnight" | "today";
 
@@ -29,11 +38,7 @@ export function pulseWindow(slot: GreetingSlot): PulseWindow {
   return slot === "morning" ? "overnight" : "today";
 }
 
-/**
- * Where the brief's "what shipped" count starts. A morning reads the night
- * (from 18:00 yesterday); later in the day it reads today (from midnight).
- * Never a week: the sentence says "overnight" or "today" and must mean it.
- */
+/** Where "what shipped" starts: 18:00 yesterday for a morning, midnight otherwise. */
 export function pulseWindowStart(slot: GreetingSlot, now: Date): number {
   const start = new Date(now);
   start.setHours(0, 0, 0, 0);

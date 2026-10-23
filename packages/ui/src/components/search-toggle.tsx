@@ -55,7 +55,7 @@ function SearchToggle({
       <IconButton
         label={label}
         tooltipSide="bottom"
-        variant="secondary"
+        variant="outline"
         onClick={() => setOpen(true)}
       >
         <SearchMd />
@@ -66,7 +66,7 @@ function SearchToggle({
   return (
     <div
       className={cn(
-        "inline-flex shrink-0 items-center gap-1.5 overflow-hidden rounded-full bg-card text-card-foreground card-shadow",
+        "inline-flex shrink-0 items-center gap-1.5 overflow-hidden rounded-full bg-card text-card-foreground shadow-edge",
         expanded
           ? "h-10 w-full px-3"
           : "h-7 w-32 animate-search-expand px-2.5 sm:w-44",

@@ -328,6 +328,8 @@ export const KEYS = {
    *  signs in and types the same term in the same tab. */
   projectSearch: (userId: string, term: string) =>
     ["project-search", userId, term] as const,
+  organizationSearch: (userId: string, term: string) =>
+    ["organization-search", userId, term] as const,
 
   // Tool call results (generic caching for MCP tool calls)
   // scope is required - scopes the cache (connectionId for connection-scoped, locator for org/project-scoped)
@@ -600,6 +602,9 @@ export const KEYS = {
     (accountId
       ? ["repositories", orgId, accountId]
       : ["repositories", orgId]) as readonly [string, string, string?],
+  /** Keyed by the monitored repositories, so flagging one reads again. */
+  repositoryDeploys: (orgId: string, repositoryIds: readonly string[]) =>
+    ["repository-deploys", orgId, ...repositoryIds] as const,
   /** Provider-side repo search — hits the provider's API, so the query text is
    *  part of the key and results are kept while the next page loads. */
   providerRepoSearch: (orgId: string, accountId: string, query: string) =>
@@ -783,6 +788,9 @@ export const KEYS = {
   // Order monitor: every key starts with this prefix, so one invalidation
   // (the `order-monitor.store.evaluated` SSE event) refreshes them all.
   orderMonitor: (org: string) => ["order-monitor", org] as const,
+  /** Monitor: the registry icons of the sources it reads. */
+  monitorSourceIcons: (org: string) =>
+    ["monitor", org, "source-icons"] as const,
   orderMonitorStores: (org: string) =>
     ["order-monitor", org, "stores"] as const,
   orderMonitorDay: (org: string, connectionId: string, at: string) =>
@@ -864,6 +872,23 @@ export const KEYS = {
   sandboxSprite: (sandboxKey: string) =>
     ["sandbox-sprite", sandboxKey] as const,
 } as const;
+
+/** Invalidates every CONNECTIONS collection cache entry for an org
+ *  (collectionItem/collectionList/collectionListInfinite, all keyed
+ *  [client, orgId, scopeKey, "collection", "CONNECTIONS", ...]). */
+export function invalidateConnectionsCollection(
+  queryClient: import("@tanstack/react-query").QueryClient,
+  orgId: string,
+) {
+  queryClient.invalidateQueries({
+    predicate: (query) => {
+      const key = query.queryKey;
+      return (
+        key[1] === orgId && key[3] === "collection" && key[4] === "CONNECTIONS"
+      );
+    },
+  });
+}
 
 export function invalidateVirtualMcpQueries(
   queryClient: import("@tanstack/react-query").QueryClient,

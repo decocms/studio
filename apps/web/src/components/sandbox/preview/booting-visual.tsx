@@ -1,6 +1,6 @@
 import { cn } from "@decocms/ui/lib/utils.ts";
 import type { ReactNode } from "react";
-import { GridLoader } from "@/components/grid-loader";
+import { GridLoader } from "@decocms/ui/components/grid-loader.tsx";
 import { useT } from "@/i18n/use-t.ts";
 import type { ClaimPhase } from "../hooks/sandbox-events-context";
 import { CLAIM_PHASE_COPY } from "../claim-phase-copy";
@@ -82,7 +82,7 @@ export function BootingVisual({ progress, claimPhase }: BootingVisualProps) {
         <GridLoader />
         <span
           key={`${progress.step}-${headline}`}
-          className="animate-in fade-in text-[13px] font-medium text-foreground/85 duration-500"
+          className="animate-in fade-in text-sm font-medium text-foreground/85 duration-500"
         >
           {headline}…
         </span>

@@ -16,6 +16,7 @@ import { verifyStudioToken } from "../auth/jwt";
 import { CredentialVault } from "../encryption/credential-vault";
 import { getSettings } from "../settings";
 import { getBaseUrl } from "./server-constants";
+import { z } from "zod";
 import { ConnectionStorage } from "../storage/connection";
 import { ConnectionCredentialVaultStorage } from "../storage/connection-credential-vault";
 import {
@@ -62,6 +63,7 @@ import {
 } from "./sessionless-organization";
 import { buildWildcardPermission } from "./permission-wildcard";
 import {
+  activeOrganizations,
   isOrgArchived,
   ORG_ARCHIVED_ERROR,
 } from "@decocms/shared/organization/org-archived";
@@ -131,6 +133,23 @@ export function parsePropertiesHeader(
   } catch {
     return undefined;
   }
+}
+
+const RunMetadataSchema = z.record(z.string(), z.string());
+
+/**
+ * The run metadata a sandbox run's key carries (see `mintMcpEndpoint`), so
+ * its tool calls forward the same run context a hosted run's do. Only Studio
+ * writes key metadata; anything that is not a flat string map is dropped.
+ */
+export function runMetadataFromApiKey(
+  metadata: Record<string, unknown> | undefined,
+): Record<string, string> | undefined {
+  const parsed = RunMetadataSchema.safeParse(metadata?.runMetadata);
+  if (!parsed.success || Object.keys(parsed.data).length === 0) {
+    return undefined;
+  }
+  return parsed.data;
 }
 
 export interface StudioContextConfig {
@@ -471,7 +490,7 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
             ? await listOrganizationsForUser(auth, userId)
             : []
           : await auth.api.listOrganizations({ headers });
-        return orgs.filter((org: (typeof orgs)[number]) => !isOrgArchived(org));
+        return activeOrganizations(orgs);
       },
 
       addMember: async (data) => {
@@ -1733,6 +1752,7 @@ export async function createStudioContextFactory(
         properties: parsePropertiesHeader(
           req ? readStudioHeader(req.headers, "properties") : null,
         ),
+        runMetadata: runMetadataFromApiKey(authResult.apiKey?.metadata),
       },
       aiProviders: aiProviderFactory,
       createMCPProxy: async (conn: string | ConnectionEntity) => {

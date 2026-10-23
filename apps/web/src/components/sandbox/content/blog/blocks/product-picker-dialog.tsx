@@ -104,7 +104,7 @@ function ProductRow({
         "flex w-full items-center gap-3 rounded-lg border px-2 py-2 text-left transition-colors",
         selected
           ? "border-primary/40 bg-primary/5"
-          : "border-transparent hover:bg-muted/60",
+          : "border-transparent hover:bg-accent",
       )}
     >
       <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-muted">
@@ -158,7 +158,7 @@ function CategoryPane({
       <button
         type="button"
         onClick={() => onSelect(null)}
-        className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+        className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-foreground"
       >
         <ChevronLeft size={14} />
         <span className="truncate">

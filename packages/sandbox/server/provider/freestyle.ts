@@ -1031,41 +1031,21 @@ export class FreestyleSandboxProvider implements SandboxProvider {
     if (this.sweeping) return [];
     this.sweeping = true;
     try {
-      const running = [];
-      for (let offset = 0; ; offset += IDLE_SWEEP_PAGE) {
+      const paused: (string | null)[] = [];
+      // One page's idle checks in flight at a time; offset accounts for VMs this sweep already paused out of the "running" filter.
+      for (let offset = 0; ; ) {
         const { vms } = await this.freestyle.vms.list({
           state: "running",
           limit: IDLE_SWEEP_PAGE,
           offset,
         });
-        running.push(...vms);
+        const results = await Promise.all(
+          vms.map((data) => this.pauseIfOverIdle(data)),
+        );
+        paused.push(...results);
         if (vms.length < IDLE_SWEEP_PAGE) break;
+        offset += vms.length - results.filter((h) => h !== null).length;
       }
-      const paused = await Promise.all(
-        running.map(async (data) => {
-          const handle = data.slug;
-          if (!handle || !data.metadata[TOKEN_KEY]) return null;
-          // A fork's daemon keeps the snapshot's clock until its first config.
-          if (Date.now() - Date.parse(data.createdAt) < this.idlePauseMs) {
-            return null;
-          }
-          const idleMs = await daemonIdleMs(this.daemonUrl(handle));
-          if (idleMs === null || idleMs < this.idlePauseMs) return null;
-          try {
-            await this.freestyle.vms.ref(data.id).pause();
-          } catch (err) {
-            console.warn(
-              `[${LOG_LABEL}] pause ${handle} failed: ${errMsg(err)}`,
-            );
-            return null;
-          }
-          this.cancelRelease(handle);
-          console.log(
-            `[${LOG_LABEL}] paused ${handle}, daemon idle ${Math.round(idleMs / 60_000)}m`,
-          );
-          return handle;
-        }),
-      );
       return paused.filter((h) => h !== null);
     } catch (err) {
       console.warn(`[${LOG_LABEL}] idle sweep failed: ${errMsg(err)}`);
@@ -1073,6 +1053,30 @@ export class FreestyleSandboxProvider implements SandboxProvider {
     } finally {
       this.sweeping = false;
     }
+  }
+
+  private async pauseIfOverIdle(
+    data: Awaited<ReturnType<Freestyle["vms"]["list"]>>["vms"][number],
+  ): Promise<string | null> {
+    const handle = data.slug;
+    if (!handle || !data.metadata[TOKEN_KEY]) return null;
+    // A fork's daemon keeps the snapshot's clock until its first config.
+    if (Date.now() - Date.parse(data.createdAt) < this.idlePauseMs) {
+      return null;
+    }
+    const idleMs = await daemonIdleMs(this.daemonUrl(handle));
+    if (idleMs === null || idleMs < this.idlePauseMs) return null;
+    try {
+      await this.freestyle.vms.ref(data.id).pause();
+    } catch (err) {
+      console.warn(`[${LOG_LABEL}] pause ${handle} failed: ${errMsg(err)}`);
+      return null;
+    }
+    this.cancelRelease(handle);
+    console.log(
+      `[${LOG_LABEL}] paused ${handle}, daemon idle ${Math.round(idleMs / 60_000)}m`,
+    );
+    return handle;
   }
 
   private cancelRelease(handle: string): void {

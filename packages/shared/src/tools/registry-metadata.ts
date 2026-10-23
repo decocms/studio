@@ -281,6 +281,7 @@ const ALL_TOOL_NAMES = [
   "REPOSITORY_LINK",
   "REPOSITORY_CREATE_FROM_TEMPLATE",
   "REPOSITORY_UPDATE",
+  "REPOSITORY_DEPLOYS_LIST",
   "REPOSITORY_DELETE",
   "REPOSITORY_SEARCH_BRANCHES",
 
@@ -1415,7 +1416,12 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "REPOSITORY_UPDATE",
     description:
-      "Change a linked repository's settings, such as its sandbox image",
+      "Change a linked repository's settings, such as its sandbox image or whether the Monitor shows its deploys",
+    category: "Git",
+  },
+  {
+    name: "REPOSITORY_DEPLOYS_LIST",
+    description: "List recent pushes to the monitored repositories",
     category: "Git",
   },
   {
@@ -2272,13 +2278,11 @@ export function toggleCapabilityInTools(
   currentTools: string[],
   enable: boolean,
 ): string[] {
-  if (enable) {
-    const toolSet = new Set(currentTools);
-    for (const tool of cap.tools) toolSet.add(tool);
-    return Array.from(toolSet);
-  }
   const toolSet = new Set(currentTools);
-  for (const tool of cap.tools) toolSet.delete(tool);
+  for (const tool of cap.tools) {
+    if (enable) toolSet.add(tool);
+    else toolSet.delete(tool);
+  }
   return Array.from(toolSet);
 }
 

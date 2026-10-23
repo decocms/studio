@@ -5,7 +5,7 @@ export const routes = {
   "routes.agentsList.askAdminToCreate":
     "Peça a um administrador da organização para criar um.",
   "routes.agentsList.cancelButton": "Cancelar",
-  "routes.agentsList.createAgent": "Criar Projeto",
+  "routes.agentsList.createAgent": "Novo projeto",
   "routes.agentsList.createAgentToGetStarted": "Crie um projeto para começar.",
   "routes.agentsList.deleteAgentDescription":
     "Esta ação não pode ser desfeita. Isto deletará permanentemente",

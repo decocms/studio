@@ -2,3 +2,32 @@
 
 /* Storybook-only sources: foundation pages live outside src/components */
 @source "../src/foundations";
+
+/* Docs pages read in the product's type, at the product's scale. */
+.sbdocs-wrapper {
+  font-family: var(--font-sans);
+  padding: 4rem 3rem !important;
+}
+.dark .sbdocs-wrapper,
+.dark .docs-story {
+  background: var(--background) !important;
+  color: var(--foreground);
+}
+.sbdocs-content {
+  max-width: 64rem !important;
+}
+
+/* The "On this page" index in ink, the active entry marked in brand green. */
+.toc-list .toc-link {
+  color: var(--muted-foreground) !important;
+}
+.toc-list .toc-link.is-active-link {
+  color: var(--foreground) !important;
+  font-weight: 500 !important;
+}
+.toc-list .toc-link::before {
+  background-color: var(--border) !important;
+}
+.toc-list .toc-link.is-active-link::before {
+  background-color: var(--brand-green-dark) !important;
+}

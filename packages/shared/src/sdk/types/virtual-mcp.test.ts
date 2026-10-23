@@ -308,6 +308,29 @@ describe("metadata.sidebarViews", () => {
     expect(updated.metadata?.sidebarViewsVersion).toBe(1);
   });
 
+  it("keeps the views offered once (sidebarViewsSeen), and only known views", () => {
+    const updated = VirtualMCPUpdateDataSchema.parse({
+      metadata: {
+        sidebarViews: ["site-editor"],
+        sidebarViewsVersion: 1,
+        sidebarViewsSeen: ["experiments", "calendar"],
+      },
+    });
+    expect(updated.metadata?.sidebarViewsSeen).toEqual([
+      "experiments",
+      "calendar",
+    ]);
+    expect(
+      VirtualMCPUpdateDataSchema.parse({ metadata: { sidebarViewsSeen: null } })
+        .metadata?.sidebarViewsSeen,
+    ).toBeNull();
+    expect(
+      VirtualMCPUpdateDataSchema.safeParse({
+        metadata: { sidebarViewsSeen: ["calendar", "unknown"] },
+      }).success,
+    ).toBe(false);
+  });
+
   it("accepts null and empty values but rejects unknown views", () => {
     expect(
       VirtualMCPUpdateDataSchema.parse({
@@ -331,15 +354,18 @@ describe("metadata.sidebarViews", () => {
     ).toBe(false);
   });
 
-  it("caps the array at 10 entries", () => {
+  it("takes every view at once (Experiments and Calendar included), no more", () => {
+    const every = [...VirtualMcpSidebarViewSchema.options];
+    expect(every).toContain("experiments");
+    expect(every).toContain("calendar");
     expect(
       VirtualMCPUpdateDataSchema.safeParse({
-        metadata: { sidebarViews: [...sidebarViews] },
+        metadata: { sidebarViews: every },
       }).success,
     ).toBe(true);
     expect(
       VirtualMCPUpdateDataSchema.safeParse({
-        metadata: { sidebarViews: [...sidebarViews, "overview"] },
+        metadata: { sidebarViews: [...every, "overview"] },
       }).success,
     ).toBe(false);
   });

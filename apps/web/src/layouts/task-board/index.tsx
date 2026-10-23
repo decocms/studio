@@ -40,7 +40,6 @@ import { authClient } from "@/lib/auth-client";
 import { AgenticSetupButton } from "./agentic-setup";
 import { ColumnRulesSheet, useEntryAutomations } from "./column-rules";
 import { useTaskBoardRulesLive } from "@/hooks/use-task-board-prompts";
-import { getInitials } from "@/lib/get-initials";
 import { useLocalStorage } from "@/hooks/use-local-storage";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import { cn } from "@decocms/ui/lib/utils.ts";
@@ -57,6 +56,7 @@ import {
   AlertTriangle,
   Calendar,
   Check,
+  AlertOctagon,
   CheckCircle,
   Clock,
   ChevronRight,
@@ -89,6 +89,8 @@ import {
   DropdownMenuTrigger,
 } from "@decocms/ui/components/dropdown-menu.tsx";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
+import { Badge } from "@decocms/ui/components/badge.tsx";
+import { runningAgents } from "@/components/org-home/daily-pulse";
 import { ReviewerIcon } from "@/components/reviewer-icon";
 import { getWellKnownDecopilotVirtualMCP, useProjectContext } from "@/sdk";
 
@@ -109,6 +111,7 @@ import { formatTimeAgo } from "@/lib/format-time";
 import {
   agentRunState,
   cardNeedsAttention,
+  isCriticalTask,
   isLiveAttempt,
   TASK_TYPE_CONFIG,
   type TaskBoardItemType,
@@ -119,6 +122,7 @@ import {
   isTaskHandedToHuman,
   HIDDEN_STATUSES,
   boardGridColumns,
+  isLaneShown,
   laneVisibility,
   PRIORITIES,
   PRIORITY_CONFIG,
@@ -126,6 +130,10 @@ import {
   boardCollisions,
   dropLane,
   LANE_DROPPABLE_PREFIX,
+  CRITICAL_DROPPABLE_PREFIX,
+  dropSwimlane,
+  hasCriticalWell,
+  swimlanePriority,
   laneHeader,
   laneVisual,
   statusIconClassName,
@@ -139,6 +147,15 @@ import {
   type Member,
   type OrgTag,
 } from "./config";
+import {
+  EpicBoardProvider,
+  EpicPill,
+  EpicProgressPill,
+  EpicsView,
+  SubtaskPill,
+  laneCards,
+  useEpicBoard,
+} from "./epics";
 import { useTags } from "@/hooks/use-tags";
 import { useReviewerEnabled } from "@/hooks/use-organization-settings";
 import { usePreferences, useProjectFirstNav } from "@/hooks/use-preferences";
@@ -179,6 +196,7 @@ import {
 import {
   AppliedFiltersBar,
   BoardSettingsButton,
+  ColumnsButton,
   GroupByButton,
   SortByButton,
   TaskFilterButton,
@@ -200,10 +218,8 @@ import {
   visibleSelection,
 } from "./filters-search";
 import { feedEventKind, groupFeedByDay, type FeedEventKind } from "./feed";
-import { compactElapsed, feedRail } from "./feed-rail";
 import { useProjectIndex } from "@/hooks/use-project-index";
 import { useProjectScope } from "@/hooks/use-project-scope";
-import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { projectRepo } from "@/lib/repository-binding";
 import { scopedBoardItems } from "./board-scope";
 import {
@@ -219,12 +235,7 @@ import {
 } from "@/lib/project-index";
 import { ProjectEntryIcon, ProjectEntryRow } from "@/components/project-entry";
 import { usePanelActions } from "@/layouts/shell-layout";
-import {
-  Navigate,
-  useNavigate,
-  useParams,
-  useSearch,
-} from "@tanstack/react-router";
+import { Navigate, useNavigate, useParams } from "@tanstack/react-router";
 import {
   findTaskByKeyOrId,
   taskRouteSegment,
@@ -262,7 +273,7 @@ const META =
 /** Shown on lane hover, and on the lane a drag is over: the dragged card
  *  holds the pointer then, so the lane itself never reads as hovered. */
 const LANE_ACTION =
-  "flex size-6 shrink-0 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-[color,background-color,opacity] hover:bg-muted hover:text-foreground group-hover/lane:opacity-100 group-data-[drop-target]/lane:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100";
+  "flex size-6 shrink-0 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-[color,background-color,opacity] hover:bg-accent hover:text-foreground group-hover/lane:opacity-100 group-data-[drop-target]/lane:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100";
 
 /**
  * Footer glyph size. 12, not 14, because every icon here is drawn on a 24 grid:
@@ -471,12 +482,13 @@ function FooterDueDate({
   const { label } = formatDueDate(iso);
   const content = (
     <>
-      <Calendar className={PROPERTY_GLYPH_CLASS} />
-      {label}
+      <Calendar className={cn(PROPERTY_GLYPH_CLASS, "shrink-0")} />
+      <span className="truncate">{label}</span>
     </>
   );
+  // The footer item that gives way, so a full footer never overlaps.
   const tone = cn(
-    "shrink-0 items-center gap-1.5 text-xs font-medium tabular-nums text-muted-foreground/70",
+    "min-w-0 shrink items-center gap-1.5 text-xs font-medium tabular-nums text-muted-foreground/70",
     urgency === "overdue" && "text-destructive",
     urgency === "soon" && "text-warning",
   );
@@ -533,7 +545,7 @@ function CardAction({
   return (
     <Button
       variant="outline"
-      size="sm"
+      size="xs"
       onClick={(e) => {
         e.stopPropagation();
         action.onClick();
@@ -546,7 +558,7 @@ function CardAction({
           `${node.offsetWidth}px`,
         )
       }
-      className="absolute -top-0.5 right-0 h-6 gap-1.5 px-2 text-xs font-medium shadow-sm pointer-events-none opacity-0 transition-opacity focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
+      className="absolute -top-0.5 right-0 gap-1.5 font-medium pointer-events-none opacity-0 transition-opacity focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
     >
       <action.icon className={PROPERTY_GLYPH_CLASS} />
       {action.label}
@@ -856,6 +868,7 @@ function AssigneeDisplay({
   onAssign?: (userId: string | null) => void;
   showDelegation?: boolean;
 }) {
+  const collapseWhenHidden = useProjectFirstNav();
   const t = useT();
   const [open, setOpen] = useState(false);
 
@@ -869,7 +882,7 @@ function AssigneeDisplay({
       return assignedBy ? (
         <Avatar
           url={assignedBy.user?.image ?? undefined}
-          fallback={getInitials(assignedBy.user?.name)}
+          fallback={assignedBy.user?.name ?? "?"}
           shape="circle"
           size="xs"
           title={title}
@@ -881,7 +894,7 @@ function AssigneeDisplay({
         {assignedBy && (
           <Avatar
             url={assignedBy.user?.image ?? undefined}
-            fallback={getInitials(assignedBy.user?.name)}
+            fallback={assignedBy.user?.name ?? "?"}
             shape="circle"
             size="xs"
             className="-mr-2 ring-2 ring-background"
@@ -895,7 +908,7 @@ function AssigneeDisplay({
     return (
       <Avatar
         url={assignee.user?.image ?? undefined}
-        fallback={getInitials(assignee.user?.name)}
+        fallback={assignee.user?.name ?? "?"}
         shape="circle"
         size="xs"
       />
@@ -914,7 +927,12 @@ function AssigneeDisplay({
             setOpen(true);
           }}
           // Hover-only: a dashed circle on every unassigned card is a row of holes.
-          className="flex size-6 shrink-0 items-center justify-center rounded-full border border-dashed border-muted-foreground/40 text-muted-foreground/40 opacity-0 transition-[color,border-color,opacity] group-hover:opacity-100 hover:border-muted-foreground hover:text-muted-foreground focus-visible:opacity-100 data-[state=open]:opacity-100"
+          className={cn(
+            "flex size-6 shrink-0 items-center justify-center rounded-full border border-dashed border-muted-foreground/40 text-muted-foreground/40 opacity-0 transition-[color,border-color,opacity] group-hover:opacity-100 hover:border-muted-foreground hover:text-muted-foreground focus-visible:opacity-100 data-[state=open]:opacity-100",
+            // Takes no room until shown, so the glyphs beside it sit flush right.
+            collapseWhenHidden &&
+              "-ml-2 w-0 scale-75 overflow-hidden border-0 transition-[color,border-color,opacity,width,margin,scale] duration-150 ease-out group-hover:ml-0 group-hover:w-6 group-hover:scale-100 group-hover:border focus-visible:ml-0 focus-visible:w-6 focus-visible:scale-100 focus-visible:border data-[state=open]:ml-0 data-[state=open]:w-6 data-[state=open]:scale-100 data-[state=open]:border motion-reduce:transition-none",
+          )}
         >
           <UserPlus01 size={13} />
         </button>
@@ -940,57 +958,25 @@ function AssigneeDisplay({
 /** The board, pointed at whichever org `?boardOrg=` names (normally your own).
  *  The swap has to wrap the board rather than live inside it: every hook below
  *  reads the org off `ProjectContext`. */
-export function TaskBoardPage({
-  scopeProject,
-  inlineTabs = false,
-  taskInSearch = false,
-}: {
-  /** Narrow to this project explicitly, for a mount whose route carries no
-   *  `$agentId` (`/$org/projects?project=`). Must be the RESOLVED entity: it
-   *  skips the loading branch, so a stub id renders an empty board. */
-  scopeProject?: VirtualMCPEntity;
-  /** Draw the Board/List/Feed tabs inside the board instead of portalling them
-   *  into the panel toolbar, for a mount that is only part of its page. A
-   *  placement, not an escape hatch: switching views has to `clearSelection()`,
-   *  which only the board can do. */
-  inlineTabs?: boolean;
-  /** Address the open card in `?task=` rather than the route's `{-$taskKey}`,
-   *  for a route that has no such segment and cannot grow one — see
-   *  `projectsIndexRoute`. */
-  taskInSearch?: boolean;
-} = {}) {
+export function TaskBoardPage() {
   return (
     <BoardOrgProvider>
-      <TaskBoardBody
-        scopeProject={scopeProject}
-        inlineTabs={inlineTabs}
-        taskInSearch={taskInSearch}
-      />
+      <TaskBoardBody />
     </BoardOrgProvider>
   );
 }
 
-function TaskBoardBody({
-  scopeProject,
-  inlineTabs,
-  taskInSearch,
-}: {
-  scopeProject?: VirtualMCPEntity;
-  inlineTabs?: boolean;
-  taskInSearch?: boolean;
-}) {
+function TaskBoardBody() {
   const t = useT();
   const { org, locator } = useProjectContext();
   const { items: orgItems, isLoading: itemsLoading } = useTaskBoardItems();
   /** A project's home IS this board — see `board-scope.ts` for why scope is a
    *  narrowing of the input rather than a value in the `?repo=` filter. */
   const {
-    scopeId: routeScopeId,
-    project: routeProject,
+    scopeId,
+    project: scopedProject,
     projects: orgProjects,
   } = useProjectScope();
-  const scopeId = scopeProject?.id ?? routeScopeId;
-  const scopedProject = scopeProject ?? routeProject;
   const { items, isLoading } = scopedBoardItems({
     items: orgItems,
     scopeId,
@@ -1097,7 +1083,7 @@ function TaskBoardBody({
     setSortDirection,
   } = useBoardSearch(
     {
-      layout: inlineTabs && feedEnabled ? "feed" : "board",
+      layout: "board",
       assignee:
         viewerId === null
           ? null
@@ -1158,6 +1144,7 @@ function TaskBoardBody({
           : null,
       );
   const [preferences] = usePreferences();
+  const columnVisibility = useLaneVisibility();
   const [selection, setSelection] = useState<Set<string>>(new Set());
   const toggleSelect = (id: string) =>
     setSelection((prev) => {
@@ -1225,25 +1212,13 @@ function TaskBoardBody({
   const { taskKey: taskKeyParam } = useParams({ strict: false }) as {
     taskKey?: string;
   };
-  const { task: taskKeySearch } = useSearch({ strict: false }) as {
-    task?: string;
-  };
-  const openTaskKey = taskInSearch ? taskKeySearch : taskKeyParam;
+  const openTaskKey = taskKeyParam;
   /** Where this mount writes a card's address. Every open, close and
-   *  canonicalization goes through it, so the two spellings cannot drift. */
-  const taskAddress = (key: string | undefined) =>
-    taskInSearch
-      ? {
-          params: (prev: Record<string, unknown>) => prev,
-          search: (prev: Record<string, unknown>) => ({ ...prev, task: key }),
-        }
-      : {
-          params: (prev: Record<string, unknown>) => ({
-            ...prev,
-            taskKey: key,
-          }),
-          search: (prev: Record<string, unknown>) => prev,
-        };
+   *  canonicalization goes through it. */
+  const taskAddress = (key: string | undefined) => ({
+    params: (prev: Record<string, unknown>) => ({ ...prev, taskKey: key }),
+    search: (prev: Record<string, unknown>) => prev,
+  });
   /** Resolved against the ORG's cards, not the scoped slice: a link from
    *  outside the project must open rather than redirect away as stale. */
   const openItem = findTaskByKeyOrId(orgItems, openTaskKey) ?? null;
@@ -1335,7 +1310,7 @@ function TaskBoardBody({
     : visibleItems.filter(
         (item) =>
           !HIDDEN_STATUSES.includes(item.status) ||
-          preferences.shownTaskBoardLanes.includes(item.status),
+          isLaneShown(item.status, preferences.taskBoardLaneVisibility),
       );
   // Sorted before grouping, so every group reads in the chosen order too.
   const visibleListItems =
@@ -1391,6 +1366,57 @@ function TaskBoardBody({
     navigate({ to: ".", ...taskAddress(taskRouteSegment(org.slug, item)) });
   };
 
+  // The API refuses shapes the board can't show (a subtask's subtask, an
+  // epic under a card), so its reason is worth showing as-is.
+  const onHierarchyError = (err: unknown) =>
+    toast.error(
+      err instanceof Error && err.message
+        ? err.message
+        : t("taskBoard.taskBoard.actionError"),
+    );
+  const epicBoard = {
+    items,
+    memberByUserId,
+    onSetStatus: (id: string, status: TaskBoardItemStatus) =>
+      actions.update.mutate({ id, status }),
+    orgSlug: org.slug,
+    setParent: (id: string, parentId: string | null) =>
+      actions.update.mutate({ id, parentId }, { onError: onHierarchyError }),
+    setEpic: (id: string, isEpic: boolean) =>
+      actions.update.mutate({ id, isEpic }, { onError: onHierarchyError }),
+    onOpen: openTask,
+    onShowEpics: () => {
+      const address = taskAddress(undefined);
+      navigate({
+        to: ".",
+        params: address.params,
+        search: (prev: Record<string, unknown>) => ({
+          ...address.search(prev),
+          view: "epics",
+        }),
+      });
+    },
+    onCreateChild: (parent: TaskBoardItem, title: string) =>
+      actions.create
+        .mutateAsync({
+          title,
+          status: "todo",
+          repo: parent.repo,
+          virtualMcpId: parent.virtualMcpId,
+          parentId: parent.id,
+        })
+        .catch(onHierarchyError),
+  };
+  const createEpic = () =>
+    actions.create
+      .mutateAsync({
+        title: t("taskBoard.epics.newEpicTitle"),
+        status: "todo",
+        isEpic: true,
+        ...activeProjectStamp,
+      })
+      .then(({ item }) => openTask(item), onHierarchyError);
+
   const closeCreate = () => {
     setDialogOpen(false);
     setCreateStatus(null);
@@ -1412,8 +1438,7 @@ function TaskBoardBody({
     return <Navigate to="." {...taskAddress(canonicalKey)} replace />;
   }
 
-  /** Board / List, and Feed behind the flag. One definition for both
-   *  placements — see `inlineTabs`. */
+  /** Board / List / Epics, and Feed behind the flag. */
   const layoutTabs = (
     <Page.Tabs>
       {feedEnabled && (
@@ -1451,6 +1476,18 @@ function TaskBoardBody({
       >
         {t("common.taskBoard.listView")}
       </Page.Tab>
+      <Page.Tab
+        active={layout === "epics"}
+        aria-label={t("taskBoard.taskBoard.layoutViewAriaLabel", {
+          label: t("taskBoard.epics.tab"),
+        })}
+        onClick={() => {
+          setLayout("epics");
+          clearSelection();
+        }}
+      >
+        {t("taskBoard.epics.tab")}
+      </Page.Tab>
     </Page.Tabs>
   );
 
@@ -1482,7 +1519,9 @@ function TaskBoardBody({
         <>
           {/* From the scope, so two overrides cannot disagree. */}
           <Page.Title>
-            {scopeProject?.title ?? t("taskBoard.taskBoard.tasksTitle")}
+            {feedEnabled
+              ? t("sidebar.navDestinations.spineTasks")
+              : t("taskBoard.taskBoard.tasksTitle")}
           </Page.Title>
           <Page.Actions
             secondary={
@@ -1494,7 +1533,8 @@ function TaskBoardBody({
                     handleFiltersChange({ ...filters, sprint })
                   }
                 />
-                {items.length > 0 && (
+                {/* Epics lists every epic; the board's filters don't apply to it. */}
+                {items.length > 0 && layout !== "epics" && (
                   <>
                     {/* No width swap: these three are ~100px together, so there
                       is no panel narrow enough to be worth trading them for a
@@ -1521,12 +1561,21 @@ function TaskBoardBody({
                         scoped={scopeId !== null}
                         onChange={handleFiltersChange}
                       />
-                      {layout === "list" && (
-                        <>
-                          <GroupByButton {...grouping} />
-                          <SortByButton {...sorting} />
-                        </>
-                      )}
+                      {/* A phone's header fits search, filter and settings; view tuning stays on wider screens. */}
+                      <div className="contents max-md:hidden">
+                        {layout === "list" ? (
+                          <>
+                            <GroupByButton {...grouping} />
+                            <SortByButton {...sorting} />
+                          </>
+                        ) : (
+                          <ColumnsButton
+                            all={CANONICAL_COLUMN_KEYS}
+                            hidden={columnVisibility.hidden}
+                            onToggle={columnVisibility.setLaneShown}
+                          />
+                        )}
+                      </div>
                     </div>
                   </>
                 )}
@@ -1539,31 +1588,31 @@ function TaskBoardBody({
           >
             <TaskBoardAdminControls />
             <TaskBoardAnalyticsButton project={scopeId} />
-            <AgenticSetupButton />
-            <Button size="sm" onClick={openCreate}>
-              <Plus size={16} />
-              {t("taskBoard.taskBoard.newTask")}
-            </Button>
+            {!feedEnabled && <AgenticSetupButton />}
+            {layout === "epics" ? (
+              <Button size="sm" onClick={createEpic}>
+                <Plus size={16} />
+                {t("taskBoard.epics.newEpic")}
+              </Button>
+            ) : (
+              <Button size="sm" onClick={openCreate}>
+                <Plus size={16} />
+                <span className="max-md:sr-only">
+                  {t("taskBoard.taskBoard.newTask")}
+                </span>
+              </Button>
+            )}
           </Page.Actions>
-          {inlineTabs ? (
-            <div>
-              {/* Same page padding as the project overview header above it (`Page.Container`'s), not the org-wide board's. */}
-              <div className="mx-auto w-full max-w-[1680px] px-4 pt-4 pb-3 md:px-8">
-                {layoutTabs}
-              </div>
-            </div>
-          ) : (
-            <Panel.Toolbar.Left.Portal>{layoutTabs}</Panel.Toolbar.Left.Portal>
-          )}
+          <Panel.Toolbar.Left.Portal>{layoutTabs}</Panel.Toolbar.Left.Portal>
+          <Panel.Toolbar.Right.Portal>
+            {feedEnabled && (
+              <AgentsRunningBadge items={items} onOpen={openTask} />
+            )}
+          </Panel.Toolbar.Right.Portal>
         </>
       )}
 
-      <div
-        className={cn(
-          "mx-auto w-full max-w-[1680px]",
-          inlineTabs ? "px-4 md:px-8" : "px-4 sm:px-8",
-        )}
-      >
+      <div className="mx-auto w-full max-w-[1680px] px-4 sm:px-8">
         <TaskBoardAdminBanner />
       </div>
       <AppliedFiltersBar
@@ -1578,24 +1627,14 @@ function TaskBoardBody({
       />
 
       {items.length === 0 ? (
-        <div
-          className={cn(
-            "mx-auto w-full max-w-[1680px]",
-            inlineTabs ? "px-4 pt-4 md:px-8" : "px-4 pt-6 sm:px-8",
-          )}
-        >
-          <div className="rounded-xl bg-card px-4 py-12 text-center text-sm text-muted-foreground card-shadow">
+        <div className="mx-auto w-full max-w-[1680px] px-4 pt-6 sm:px-8">
+          <div className="surface px-4 py-12 text-center text-sm text-muted-foreground">
             {t("taskBoard.taskBoard.noTasksYet")}
           </div>
         </div>
       ) : visibleItems.length === 0 ? (
-        <div
-          className={cn(
-            "mx-auto w-full max-w-[1680px]",
-            inlineTabs ? "px-4 pt-4 md:px-8" : "px-4 pt-6 sm:px-8",
-          )}
-        >
-          <div className="flex flex-col items-center gap-3 rounded-xl bg-card px-4 py-12 text-center text-sm text-muted-foreground card-shadow">
+        <div className="mx-auto w-full max-w-[1680px] px-4 pt-6 sm:px-8">
+          <div className="flex flex-col items-center gap-3 surface px-4 py-12 text-center text-sm text-muted-foreground">
             {t("taskBoard.taskBoard.noTasksMatch")}
             <Button
               variant="outline"
@@ -1618,12 +1657,17 @@ function TaskBoardBody({
             })
           }
           onOpen={openTask}
-          project={inlineTabs ? (scopedProject ?? undefined) : undefined}
         />
+      ) : layout === "epics" ? (
+        <div className="min-h-0 flex-1 overflow-y-auto pb-16 px-4 pt-6 sm:px-8">
+          <div className="mx-auto w-full max-w-[960px]">
+            <EpicsView />
+          </div>
+        </div>
       ) : layout === "board" ? (
         <Lanes
           visible={!openItem}
-          items={visibleItems}
+          items={laneCards(visibleItems, items)}
           members={members}
           memberByUserId={memberByUserId}
           selectedIds={selectedIds}
@@ -1631,16 +1675,20 @@ function TaskBoardBody({
           onSelectAllInLane={selectAllInLane}
           onOpen={openTask}
           onCreate={openCreateInLane}
-          onMove={(ids, status, sortOrder) => {
+          onMove={(ids, status, sortOrder, priorities, onSettled) => {
             // Cards dragged together land as a consecutive run ending at the
             // drop point, keeping `ids` order.
             const orders = runSortOrders(sortOrder, ids.length);
             ids.forEach((id, i) =>
-              actions.update.mutate({
-                id,
-                status,
-                sortOrder: orders[i]!,
-              }),
+              actions.update.mutate(
+                {
+                  id,
+                  status,
+                  sortOrder: orders[i]!,
+                  ...(priorities.has(id) && { priority: priorities.get(id) }),
+                },
+                { onSettled: () => onSettled(id) },
+              ),
             );
           }}
           onAssign={(id, userId) => {
@@ -1674,15 +1722,9 @@ function TaskBoardBody({
             );
           }}
           onRerun={(item) => setRerunTargets([item])}
-          inlineTabs={inlineTabs}
         />
       ) : (
-        <div
-          className={cn(
-            "min-h-0 flex-1 overflow-y-auto pb-16",
-            inlineTabs ? "px-4 pt-4 md:px-8" : "px-4 pt-6 sm:px-8",
-          )}
-        >
+        <div className="min-h-0 flex-1 overflow-y-auto pb-16 px-4 pt-6 sm:px-8">
           <div className="mx-auto flex w-full max-w-[1680px] flex-col gap-2">
             {groupBy === null ? (
               visibleListItems.map(listRow)
@@ -1713,7 +1755,7 @@ function TaskBoardBody({
   /** Full-width so each region's scroll container spans the whole panel — the
    *  max-width lives on the *content* inside (header + lanes), so the mouse can
    *  sit in the empty margins on wide monitors and still scroll the board. */
-  return (
+  const page = (
     <div
       ref={trackBoardOpenRef}
       className="relative flex min-h-0 flex-1 flex-col"
@@ -1959,6 +2001,7 @@ function TaskBoardBody({
       )}
     </div>
   );
+  return <EpicBoardProvider value={epicBoard}>{page}</EpicBoardProvider>;
 }
 
 /**
@@ -2017,19 +2060,16 @@ function SelectionBar({
   );
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-6 z-20 flex justify-center">
-      <div className="pointer-events-auto flex items-center gap-2 rounded-full bg-background px-3 py-2 card-shadow">
+      <div className="pointer-events-auto flex items-center gap-2 rounded-full bg-background px-3 py-2 shadow-edge">
         <span className="pl-1 text-sm font-medium text-foreground">
           {t("taskBoard.taskBoard.selectedCount", { count })}
         </span>
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
-            >
+            <Button variant="outline" size="sm">
               {t("taskBoard.taskBoard.actionsButton")}
-            </button>
+            </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="center" side="top">
             <DropdownMenuSub>
@@ -2162,36 +2202,29 @@ function SelectionBar({
         </DropdownMenu>
 
         {onAutoFix && (
-          <button
-            type="button"
-            onClick={onAutoFix}
-            className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
-          >
-            <Lightning01 size={14} />
+          <Button variant="outline" size="sm" onClick={onAutoFix}>
+            <Lightning01 className="size-3.5" />
             {t("taskBoard.taskBoard.autoFix")}
-          </button>
+          </Button>
         )}
 
         {onRerun && (
-          <button
-            type="button"
-            onClick={onRerun}
-            className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
-          >
-            <RefreshCw01 size={14} />
+          <Button variant="outline" size="sm" onClick={onRerun}>
+            <RefreshCw01 className="size-3.5" />
             {t("taskBoard.taskBoard.rerun")}
-          </button>
+          </Button>
         )}
 
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="icon"
           aria-label={t("taskBoard.taskBoard.clearSelectionButton")}
           title={t("taskBoard.taskBoard.clearSelectionButton")}
           onClick={onClear}
-          className="flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          className="shrink-0 text-muted-foreground"
         >
           <X size={16} />
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -2202,6 +2235,8 @@ function SelectionBar({
 interface Placement {
   status: TaskBoardItemStatus;
   sortOrder: number;
+  /** Set when the drag crossed swimlanes, so the card previews in its new well. */
+  priority?: TaskBoardItemPriority;
 }
 
 /** Bits `useSortable` hands back that have to land on the card's own element
@@ -2213,6 +2248,37 @@ type SortableBindings = Pick<
 
 function bySortOrder(a: TaskBoardItem, b: TaskBoardItem) {
   return a.sortOrder - b.sortOrder;
+}
+
+/** Lane visibility persists per person, so the choice survives a reload. The
+ *  toolbar menu and the board read the same preference. */
+function useLaneVisibility() {
+  const [preferences, setPreferences] = usePreferences();
+  const { lanes, hidden } = laneVisibility(preferences.taskBoardLaneVisibility);
+  const setLaneShown = (status: string, shown: boolean) =>
+    setPreferences((prev) => ({
+      ...prev,
+      taskBoardLaneVisibility: {
+        ...prev.taskBoardLaneVisibility,
+        [status]: shown,
+      },
+    }));
+  return { lanes, hidden, setLaneShown };
+}
+
+/** A lane's order on screen: its critical well first, then the rest. */
+function byLaneOrder(a: TaskBoardItem, b: TaskBoardItem) {
+  return (
+    Number(isCriticalTask(b)) - Number(isCriticalTask(a)) || bySortOrder(a, b)
+  );
+}
+
+/** A lane's own droppable or its critical well's, rather than a card. */
+function isWellId(id: string) {
+  return (
+    id.startsWith(LANE_DROPPABLE_PREFIX) ||
+    id.startsWith(CRITICAL_DROPPABLE_PREFIX)
+  );
 }
 
 function Lanes({
@@ -2232,7 +2298,6 @@ function Lanes({
   onTypeChange,
   onDueDateChange,
   visible,
-  inlineTabs,
 }: {
   items: TaskBoardItem[];
   members: Member[];
@@ -2246,6 +2311,11 @@ function Lanes({
     ids: string[],
     status: TaskBoardItemStatus,
     sortOrder: number,
+    /** Cards whose drop crossed swimlanes, with the priority that puts them there. */
+    priorities: Map<string, TaskBoardItemPriority>,
+    /** A card's write settled: drop its override so the card shows what the
+     *  server has, and a later edit (say, its priority) isn't masked by it. */
+    onSettled: (id: string) => void,
   ) => void;
   onAutoFix?: (item: TaskBoardItem) => void;
   onRerun?: (item: TaskBoardItem) => void;
@@ -2255,8 +2325,6 @@ function Lanes({
   onDueDateChange?: (id: string, iso: string) => void;
   /** False while the task detail has the panel — see `useFlipLanes`. */
   visible: boolean;
-  /** See `TaskBoardPage`'s own doc comment. */
-  inlineTabs?: boolean;
 }) {
   const [activeId, setActiveId] = useState<string | null>(null);
   // Cards that just landed from a drop — they get the settle animation. Cleared
@@ -2283,6 +2351,8 @@ function Lanes({
       // Trackpad / Shift+wheel already produce a horizontal delta.
       if (event.deltaX !== 0 || event.deltaY === 0) return;
       if (node.scrollWidth <= node.clientWidth) return;
+      // A board that scrolls vertically keeps the wheel for that.
+      if (node.scrollHeight > node.clientHeight) return;
       for (
         let el = event.target as HTMLElement | null;
         el && el !== node;
@@ -2322,7 +2392,8 @@ function Lanes({
       const server = items.find((item) => item.id === id);
       return (
         server?.status === placement.status &&
-        server.sortOrder === placement.sortOrder
+        server.sortOrder === placement.sortOrder &&
+        (!placement.priority || server.priority === placement.priority)
       );
     });
     if (settled.length > 0) {
@@ -2344,26 +2415,21 @@ function Lanes({
     visible,
   );
 
+  const swimlanes = useProjectFirstNav();
+  const laneOrder = swimlanes ? byLaneOrder : bySortOrder;
   const laneItems = (status: string) =>
-    placed.filter((item) => item.status === status).sort(bySortOrder);
+    placed.filter((item) => item.status === status).sort(laneOrder);
 
-  /** Shown-again lanes persist per person, so pulling one onto the board
-   *  survives a reload. */
   const {
     lanes: boardLanes,
     hidden: hiddenLanes,
-    hideable: hideableLanes,
-  } = laneVisibility({
-    shownLanes: preferences.shownTaskBoardLanes,
-  });
-  const setLaneShown = (status: string, shown: boolean) =>
-    setPreferences((prev) => ({
-      ...prev,
-      shownTaskBoardLanes: shown
-        ? [...prev.shownTaskBoardLanes, status]
-        : prev.shownTaskBoardLanes.filter((s) => s !== status),
-    }));
+    setLaneShown,
+  } = useLaneVisibility();
   const collapsedLanes = preferences.collapsedTaskBoardLanes;
+  const anyCritical = placed.some(isCriticalTask);
+  const labelledLane = boardLanes.find(
+    (status) => !collapsedLanes.includes(status),
+  );
   const toggleLaneCollapsed = (status: string) =>
     setPreferences((prev) => ({
       ...prev,
@@ -2387,11 +2453,24 @@ function Lanes({
       ? [id, ...Array.from(selectedIds).filter((other) => other !== id)]
       : [id];
 
-  const place = (ids: string[], status: TaskBoardItemStatus, slot: number) => {
+  const place = (
+    ids: string[],
+    status: TaskBoardItemStatus,
+    slot: number,
+    swimlane: "critical" | "improvements" | null = null,
+  ) => {
     const orders = runSortOrders(slot, ids.length);
     setOverrides((prev) => {
       const next = new Map(prev);
-      ids.forEach((id, i) => next.set(id, { status, sortOrder: orders[i]! }));
+      ids.forEach((id, i) => {
+        const saved = items.find((item) => item.id === id);
+        const priority = saved && swimlane && swimlanePriority(saved, swimlane);
+        next.set(id, {
+          status,
+          sortOrder: orders[i]!,
+          ...(priority && { priority }),
+        });
+      });
       return next;
     });
   };
@@ -2406,25 +2485,43 @@ function Lanes({
     }),
   );
 
+  const swimlaneUnder = (
+    overId: string | number | undefined,
+    draggedId: string,
+    lane: string,
+  ) => {
+    const saved = items.find((item) => item.id === draggedId);
+    return swimlanes && saved
+      ? dropSwimlane({
+          overId,
+          itemOf: (cardId) => placed.find((item) => item.id === cardId),
+          fromStatus: saved.status,
+          toStatus: lane,
+        })
+      : null;
+  };
+
   const handleDragOver = (event: DragOverEvent) => {
     const id = String(event.active.id);
     const lane = laneOf(event.over?.id);
     const current = placed.find((item) => item.id === id);
-    if (!lane || !current || current.status === lane) return;
-    // Crossed into a different lane: preview the group there so the gap opens
-    // under the cursor. Reordering *within* a lane needs no override — the
-    // sortable strategy already shifts the neighbours.
+    const saved = items.find((item) => item.id === id);
+    if (!lane || !current || !saved) return;
+    const swimlane = swimlaneUnder(event.over?.id, id, lane);
+    const priority =
+      (swimlane && swimlanePriority(saved, swimlane)) || undefined;
+    if (current.status === lane && overrides.get(id)?.priority === priority) {
+      return;
+    }
+    // Preview the group in the lane or well under the cursor so the gap opens there.
     const ids = groupOf(id);
     const overId = String(event.over?.id ?? "");
     const target = laneItems(lane).filter((item) => !ids.includes(item.id));
     place(
       ids,
       lane,
-      insertSortOrder(
-        target,
-        overId.startsWith(LANE_DROPPABLE_PREFIX) ? null : overId,
-        id,
-      ),
+      insertSortOrder(target, isWellId(overId) ? null : overId, id),
+      swimlane,
     );
   };
 
@@ -2444,19 +2541,35 @@ function Lanes({
     const laneNow = laneItems(lane);
     const overId = String(event.over?.id ?? "");
     const from = laneNow.findIndex((item) => item.id === id);
-    const to = overId.startsWith(LANE_DROPPABLE_PREFIX)
-      ? laneNow.length - 1
-      : laneNow.findIndex((item) => item.id === overId);
+    const to = overId.startsWith(CRITICAL_DROPPABLE_PREFIX)
+      ? laneNow.filter((item) => isCriticalTask(item) && item.id !== id).length
+      : overId.startsWith(LANE_DROPPABLE_PREFIX)
+        ? laneNow.length - 1
+        : laneNow.findIndex((item) => item.id === overId);
     const reordered =
-      from === -1 || to === -1 ? laneNow : arrayMove(laneNow, from, to);
+      from === -1 || to === -1
+        ? laneNow
+        : arrayMove(laneNow, from, Math.min(to, laneNow.length - 1));
+
+    // Crossing between Critical and Improvements is a priority change.
+    const swimlane = swimlaneUnder(event.over?.id, id, lane);
+    const priorities = new Map<string, TaskBoardItemPriority>();
+    for (const groupId of ids) {
+      const saved = items.find((item) => item.id === groupId);
+      const priority = saved && swimlane && swimlanePriority(saved, swimlane);
+      if (priority) priorities.set(groupId, priority);
+    }
 
     // Dropped back exactly where it started — skip the write entirely.
     const serverOrder = items
       .filter((item) => item.status === lane)
-      .sort(bySortOrder)
+      .sort(laneOrder)
       .map((item) => item.id)
       .join();
-    if (serverOrder === reordered.map((item) => item.id).join()) {
+    if (
+      priorities.size === 0 &&
+      serverOrder === reordered.map((item) => item.id).join()
+    ) {
       setOverrides(new Map());
       return;
     }
@@ -2471,9 +2584,27 @@ function Lanes({
       after?.id ?? null,
       id,
     );
-    place(ids, lane, slot);
+    place(ids, lane, slot, swimlane);
     setLandedIds(ids);
-    onMove(ids, lane, slot);
+    const written = new Map(
+      runSortOrders(slot, ids.length).map((order, i) => [ids[i]!, order]),
+    );
+    onMove(ids, lane, slot, priorities, (settledId) =>
+      setOverrides((prev) => {
+        // A newer drag of the same card owns its override now.
+        const current = prev.get(settledId);
+        if (
+          !current ||
+          current.status !== lane ||
+          current.sortOrder !== written.get(settledId)
+        ) {
+          return prev;
+        }
+        const next = new Map(prev);
+        next.delete(settledId);
+        return next;
+      }),
+    );
   };
 
   const activeItem = activeId
@@ -2508,7 +2639,14 @@ function Lanes({
     >
       {/* Scroll container spans the full panel width so the wheel works even
           when the pointer is in the empty margins on wide monitors. */}
-      <div ref={attachBoard} className="min-h-0 flex-1 overflow-x-auto">
+      {/* With swimlanes the whole board scrolls as one, so its rows stay aligned. */}
+      <div
+        ref={attachBoard}
+        className={cn(
+          "min-h-0 flex-1 overflow-x-auto",
+          swimlanes && "overflow-y-auto",
+        )}
+      >
         {/* Padding lives on the capped row (not the scroll container) so its
             left edge matches the header's max-w + px exactly. Bottom breathing
             room is handled per-lane by each column's own scrollable div — a pb
@@ -2518,8 +2656,12 @@ function Lanes({
             `boardGridColumns`. */}
         <div
           className={cn(
-            "mx-auto grid h-full w-full max-w-[1680px] gap-3",
-            inlineTabs ? "px-4 pt-4 md:px-8" : "px-4 pt-6 sm:px-8",
+            "mx-auto grid w-full max-w-[1680px]",
+            // Lanes subgrid these rows so the swimlanes align across columns.
+            swimlanes
+              ? "min-h-full grid-rows-[auto_auto_1fr] gap-x-3 pb-6"
+              : "h-full gap-3",
+            "px-4 pt-6 sm:px-8",
           )}
           style={{
             gridTemplateColumns: boardGridColumns({
@@ -2559,12 +2701,15 @@ function Lanes({
               onTypeChange={onTypeChange}
               onDueDateChange={onDueDateChange}
               onHide={
-                hideableLanes.includes(status)
+                boardLanes.length > 1
                   ? () => setLaneShown(status, false)
                   : undefined
               }
               collapsed={collapsedLanes.includes(status)}
               onToggleCollapsed={() => toggleLaneCollapsed(status)}
+              labelled={status === labelledLane}
+              anyCritical={anyCritical}
+              swimlanes={swimlanes}
             />
           ))}
           {hiddenLanes.length > 0 && (
@@ -2572,6 +2717,7 @@ function Lanes({
               statuses={hiddenLanes}
               countOf={(status) => laneItems(status).length}
               onShow={(status) => setLaneShown(status, true)}
+              swimlanes={swimlanes}
             />
           )}
         </div>
@@ -2605,10 +2751,10 @@ function Lanes({
                 }
                 selected={selectedIds.has(activeItem.id)}
                 onOpen={() => {}}
-                className="w-full shadow-lg"
+                className="w-full shadow-lift"
               />
               {activeGroup.length > 1 && (
-                <span className="absolute -top-2 -right-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-foreground px-1.5 text-[11px] font-semibold text-background">
+                <span className="absolute -top-2 -right-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-foreground px-1.5 text-2xs font-semibold text-background">
                   {activeGroup.length}
                 </span>
               )}
@@ -2627,14 +2773,18 @@ function HiddenLanes({
   statuses,
   countOf,
   onShow,
+  swimlanes,
 }: {
+  swimlanes: boolean;
   statuses: string[];
   countOf: (status: string) => number;
   onShow: (status: string) => void;
 }) {
   const t = useT();
   return (
-    <details className="group h-full min-w-0 py-1">
+    <details
+      className={cn("group h-full min-w-0 py-1", swimlanes && "row-span-3")}
+    >
       <summary className="flex cursor-pointer list-none items-center gap-1.5 px-2 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground [&::-webkit-details-marker]:hidden">
         <ChevronRight
           size={14}
@@ -2650,7 +2800,7 @@ function HiddenLanes({
             <div
               key={status}
               data-hidden-lane={status}
-              className="flex items-center gap-2 rounded-xl bg-background px-3 py-2.5 card-shadow"
+              className="surface flex items-center gap-2 px-3 py-2.5"
             >
               <LaneIcon
                 size={15}
@@ -2659,20 +2809,21 @@ function HiddenLanes({
               <span className="text-sm font-medium text-foreground">
                 {label}
               </span>
-              <span className="ml-auto text-[11px] font-medium text-muted-foreground">
+              <span className="ml-auto text-2xs font-medium text-muted-foreground">
                 {countOf(status)}
               </span>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
                     aria-label={t("taskBoard.taskBoard.laneMenuAriaLabel", {
                       lane: label,
                     })}
-                    className="flex size-6 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    className="shrink-0 text-muted-foreground"
                   >
-                    <DotsHorizontal size={15} />
-                  </button>
+                    <DotsHorizontal className="size-3.75" />
+                  </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
                   <DropdownMenuItem onClick={() => onShow(status)}>
@@ -2712,6 +2863,9 @@ function Lane({
   onHide,
   collapsed,
   onToggleCollapsed,
+  labelled,
+  anyCritical,
+  swimlanes,
 }: {
   status: TaskBoardItemStatus;
   items: TaskBoardItem[];
@@ -2741,6 +2895,11 @@ function Lane({
   /** Drawn as a narrow strip with its label and count, cards out of view. */
   collapsed: boolean;
   onToggleCollapsed: () => void;
+  /** The one lane that prints the swimlane names; the rest keep their height. */
+  labelled: boolean;
+  anyCritical: boolean;
+  /** Critical / Improvements wells, behind the new navigation. */
+  swimlanes: boolean;
 }) {
   const t = useT();
   const { label, visual } = laneHeader(status, t);
@@ -2755,6 +2914,46 @@ function Lane({
   const { setNodeRef } = useDroppable({
     id: `${LANE_DROPPABLE_PREFIX}${status}`,
   });
+  const criticalWell = hasCriticalWell(status);
+  const { setNodeRef: setCriticalRef } = useDroppable({
+    id: `${CRITICAL_DROPPABLE_PREFIX}${status}`,
+    disabled: !criticalWell || !anyCritical,
+  });
+
+  const critical = items.filter(isCriticalTask);
+  const rest = items.filter((item) => !isCriticalTask(item));
+  const renderCard = (item: TaskBoardItem) => (
+    <SortableTaskCard
+      key={item.id}
+      item={item}
+      assignee={
+        item.assigneeId ? memberByUserId.get(item.assigneeId) : undefined
+      }
+      assignedBy={
+        item.assignedBy ? memberByUserId.get(item.assignedBy) : undefined
+      }
+      members={members}
+      selected={selectedIds.has(item.id)}
+      hidden={hiddenIds.includes(item.id)}
+      landed={landedIds.includes(item.id)}
+      onToggleSelect={() => onToggleSelect(item.id)}
+      onOpen={() => onOpen(item)}
+      onAutoFix={onAutoFix ? () => onAutoFix(item) : undefined}
+      onRerun={onRerun ? () => onRerun(item) : undefined}
+      onAssign={onAssign ? (userId) => onAssign(item.id, userId) : undefined}
+      onPriorityChange={
+        onPriorityChange
+          ? (priority) => onPriorityChange(item.id, priority)
+          : undefined
+      }
+      onTypeChange={
+        onTypeChange ? (type) => onTypeChange(item.id, type) : undefined
+      }
+      onDueDateChange={
+        onDueDateChange ? (iso) => onDueDateChange(item.id, iso) : undefined
+      }
+    />
+  );
 
   if (collapsed) {
     return (
@@ -2765,7 +2964,10 @@ function Lane({
         data-lane={status}
         data-lane-collapsed=""
         data-drop-target={isTarget || undefined}
-        className="group/lane flex h-full min-h-0 min-w-0 flex-col items-center py-1"
+        className={cn(
+          "group/lane flex h-full min-h-0 min-w-0 flex-col items-center py-1",
+          swimlanes && "row-span-3",
+        )}
       >
         <div
           className={cn(
@@ -2783,7 +2985,7 @@ function Lane({
           <span className="text-sm font-medium text-foreground [writing-mode:vertical-rl]">
             {label}
           </span>
-          <span className="text-[11px] font-medium text-muted-foreground">
+          <span className="text-2xs font-medium text-muted-foreground">
             {items.length}
           </span>
           <Tooltip>
@@ -2817,18 +3019,16 @@ function Lane({
       className={cn(
         // min-h-0: a grid item's minimum height is its content, so without it
         // every lane grows to the longest one instead of scrolling on its own.
-        "group/lane flex h-full min-h-0 min-w-0 flex-col rounded-xl py-1 transition-colors",
+        "group/lane min-h-0 min-w-0 rounded-xl py-1 transition-colors",
+        // A phone shows one lane at a time, so aligning wells across lanes only pads them.
+        swimlanes
+          ? "row-span-3 grid grid-rows-subgrid max-md:flex max-md:flex-col"
+          : "flex h-full flex-col",
         announce
           ? "bg-special/15 ring-1 ring-inset ring-special/30"
           : isTarget && "bg-muted/50",
       )}
     >
-      <ColumnRulesSheet
-        columnKey={status}
-        label={label}
-        open={rulesOpen}
-        onOpenChange={setRulesOpen}
-      />
       {/* Sticky so the column header stays visible while the cards scroll
           vertically under it — needs an opaque bg for that to hide scrolled-
           under cards, so it tracks the lane's own highlight color (solid,
@@ -2837,7 +3037,7 @@ function Lane({
       {/* Sticky together, so the drop hint stays in view above the dragged card. */}
       <div
         className={cn(
-          "sticky top-0 z-10 flex flex-col transition-colors",
+          "sticky top-0 z-10 flex min-w-0 flex-col transition-colors",
           isTarget ? "bg-muted" : "bg-background",
         )}
       >
@@ -2852,8 +3052,14 @@ function Lane({
               visual.iconClassName.replace(/\banimate-\S+\b/g, "").trim(),
             )}
           />
-          <span className="text-sm font-medium text-foreground">{label}</span>
-          <span className="rounded-md bg-muted px-1.5 text-[11px] font-medium text-muted-foreground">
+          {/* A wrapped name would push every lane's swimlanes down. */}
+          <span
+            title={label}
+            className="min-w-0 truncate text-sm font-medium text-foreground"
+          >
+            {label}
+          </span>
+          <span className="rounded-md bg-muted px-1.5 text-2xs font-medium text-muted-foreground">
             {items.length}
           </span>
           <DropdownMenu>
@@ -2936,68 +3142,227 @@ function Lane({
                 draggedCount > 1
                   ? "taskBoard.dropHint.pickUpMany"
                   : "taskBoard.dropHint.pickUp",
-                { names: takers.join(", ") },
+                {
+                  names: takers.join(", "),
+                },
               )}
             </span>
           </div>
         )}
       </div>
-      {/* px-1 so each card's shadow has room inside the scrollport — an
-          overflow-y container clips the x-axis too, which would clip a FLIP-
-          animated card mid-flight between lanes (see `use-flip-lanes`,
-          keyed off `data-lane-scroll`). */}
-      <div
-        ref={setNodeRef}
-        data-lane-scroll={status}
-        className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-1 pt-1 pb-16 [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1"
-      >
-        <SortableContext
-          items={items.map((item) => item.id)}
-          strategy={verticalListSortingStrategy}
-        >
-          {items.map((item) => (
-            <SortableTaskCard
-              key={item.id}
-              item={item}
-              assignee={
-                item.assigneeId
-                  ? memberByUserId.get(item.assigneeId)
-                  : undefined
-              }
-              assignedBy={
-                item.assignedBy
-                  ? memberByUserId.get(item.assignedBy)
-                  : undefined
-              }
-              members={members}
-              selected={selectedIds.has(item.id)}
-              hidden={hiddenIds.includes(item.id)}
-              landed={landedIds.includes(item.id)}
-              onToggleSelect={() => onToggleSelect(item.id)}
-              onOpen={() => onOpen(item)}
-              onAutoFix={onAutoFix ? () => onAutoFix(item) : undefined}
-              onRerun={onRerun ? () => onRerun(item) : undefined}
-              onAssign={
-                onAssign ? (userId) => onAssign(item.id, userId) : undefined
-              }
-              onPriorityChange={
-                onPriorityChange
-                  ? (priority) => onPriorityChange(item.id, priority)
-                  : undefined
-              }
-              onTypeChange={
-                onTypeChange ? (type) => onTypeChange(item.id, type) : undefined
-              }
-              onDueDateChange={
-                onDueDateChange
-                  ? (iso) => onDueDateChange(item.id, iso)
-                  : undefined
-              }
+      {swimlanes ? (
+        <>
+          {anyCritical ? (
+            /* Done and Archived keep the row, so the wells below stay aligned. */
+            <div
+              className={cn(
+                "flex min-h-0 min-w-0 flex-col gap-3 px-1 pt-4.5",
+                !criticalWell && "invisible",
+              )}
+            >
+              <SwimlaneLabel
+                visible={labelled}
+                icon={AlertOctagon}
+                iconClassName="text-destructive"
+                label={t("taskBoard.taskBoard.swimlaneCritical")}
+              />
+              <div
+                ref={setCriticalRef}
+                data-lane-scroll={criticalWell ? status : undefined}
+                className={SWIMLANE_PANEL}
+              >
+                <SortableContext
+                  items={critical.map((item) => item.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  {critical.map(renderCard)}
+                </SortableContext>
+              </div>
+            </div>
+          ) : (
+            // Holds the empty Critical row so Improvements keeps the 1fr row.
+            <div />
+          )}
+          <div
+            className={cn(
+              "flex min-h-0 min-w-0 flex-col gap-3 px-1 pb-1",
+              anyCritical ? "pt-7" : "pt-4.5",
+            )}
+          >
+            <SwimlaneLabel
+              visible={labelled}
+              icon={Stars02}
+              iconClassName="text-muted-foreground"
+              label={t("taskBoard.taskBoard.swimlaneImprovements")}
             />
-          ))}
-        </SortableContext>
-      </div>
+            <div
+              ref={setNodeRef}
+              data-lane-scroll={status}
+              className={cn(SWIMLANE_PANEL, "pb-16")}
+            >
+              <SortableContext
+                items={rest.map((item) => item.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                {rest.map(renderCard)}
+              </SortableContext>
+            </div>
+          </div>
+        </>
+      ) : (
+        /* px-1 so each card's shadow has room inside the scrollport — an
+           overflow-y container clips the x-axis too, which would clip a FLIP-
+           animated card mid-flight between lanes (see `use-flip-lanes`,
+           keyed off `data-lane-scroll`). */
+        <div
+          ref={setNodeRef}
+          data-lane-scroll={status}
+          className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-1 pt-1 pb-16 [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1"
+        >
+          <SortableContext
+            items={items.map((item) => item.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            {items.map(renderCard)}
+          </SortableContext>
+        </div>
+      )}
+      <ColumnRulesSheet
+        columnKey={status}
+        label={label}
+        open={rulesOpen}
+        onOpenChange={setRulesOpen}
+      />
     </div>
+  );
+}
+
+/** The tinted well a swimlane's cards sit in; it fills its row so wells align. */
+const SWIMLANE_PANEL = "flex flex-1 flex-col gap-3 rounded-xl bg-muted/50 p-2";
+
+/** `6m`, `2h`: elapsed, not a clock time. Read at render; it does not tick. */
+function elapsed(startedAt: string): string {
+  const at = Date.parse(startedAt);
+  if (Number.isNaN(at)) return "";
+  const minutes = Math.max(0, Math.floor((Date.now() - at) / 60_000));
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  return hours < 24 ? `${hours}h` : `${Math.floor(hours / 24)}d`;
+}
+
+/** How many agent runs are live on the board, opening onto the runs and their
+ *  cards; absent when none are. */
+function AgentsRunningBadge({
+  items,
+  onOpen,
+}: {
+  items: TaskBoardItem[];
+  onOpen: (item: TaskBoardItem) => void;
+}) {
+  const t = useT();
+  const { org } = useProjectContext();
+  const [open, setOpen] = useState(false);
+  const runs = runningAgents(items);
+  if (runs.length === 0) return null;
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Badge asChild variant="brand" size="control">
+          <button type="button">
+            <SuperAgentIcon size={18} />
+            {runs.length === 1
+              ? t("taskBoard.taskBoard.agentsRunningOne")
+              : t("taskBoard.taskBoard.agentsRunningMany", {
+                  count: runs.length,
+                })}
+          </button>
+        </Badge>
+      </PopoverTrigger>
+      <PopoverContent
+        className="w-[400px] p-0"
+        align="end"
+        side="bottom"
+        onOpenAutoFocus={(e) => e.preventDefault()}
+      >
+        <div className="flex items-center gap-2 px-4 pt-3.5 pb-1.5">
+          <span className="text-sm font-medium text-foreground">
+            {t("taskBoard.taskBoard.agentsRunningHeading")}
+          </span>
+          <span className="text-sm tabular-nums text-muted-foreground">
+            {runs.length}
+          </span>
+        </div>
+        <div className="flex max-h-[420px] flex-col overflow-y-auto p-1.5">
+          {runs.map((run) => {
+            const item = items.find((i) => i.id === run.taskId);
+            if (!item) return null;
+            const { label, visual } = laneHeader(item.status, t);
+            const LaneIcon = visual.icon;
+            return (
+              <button
+                key={run.threadId}
+                type="button"
+                onClick={() => {
+                  setOpen(false);
+                  onOpen(item);
+                }}
+                className="flex w-full min-w-0 items-center gap-3 rounded-xl px-3 py-2.5 text-left outline-none transition-colors hover:bg-accent focus-visible:bg-accent"
+              >
+                <Spinner className="size-4 shrink-0 text-muted-foreground" />
+                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span className="truncate text-sm font-medium text-foreground">
+                    {run.runTitle ?? run.taskTitle}
+                  </span>
+                  <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+                    <LaneIcon
+                      size={13}
+                      className={cn("shrink-0", visual.iconClassName)}
+                    />
+                    <span className="shrink-0">{label}</span>
+                    <span aria-hidden>·</span>
+                    <span className="truncate">
+                      {run.runTitle && run.runTitle !== run.taskTitle
+                        ? run.taskTitle
+                        : taskKey(org.slug, item.keySeq)}
+                    </span>
+                  </span>
+                </span>
+                <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                  {elapsed(run.startedAt)}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/** A swimlane's name. Every lane renders it so the rows keep one height; only
+ *  the first expanded lane shows it. */
+function SwimlaneLabel({
+  visible,
+  icon: Icon,
+  iconClassName,
+  label,
+}: {
+  visible: boolean;
+  icon: typeof Stars02;
+  iconClassName: string;
+  label: string;
+}) {
+  return (
+    <span
+      aria-hidden={!visible || undefined}
+      className={cn(
+        "flex items-center gap-2 px-1 py-0.5 text-sm font-medium text-muted-foreground",
+        !visible && "invisible",
+      )}
+    >
+      <Icon size={15} className={cn("shrink-0", iconClassName)} />
+      {label}
+    </span>
   );
 }
 
@@ -3025,6 +3390,7 @@ function SortableTaskCard({
   onTypeChange?: (type: TaskBoardItemType) => void;
   onDueDateChange?: (iso: string) => void;
 }) {
+  const isEpic = !!useEpicBoard() && item.isEpic;
   const {
     attributes,
     listeners,
@@ -3034,6 +3400,8 @@ function SortableTaskCard({
     isDragging,
   } = useSortable({
     id: item.id,
+    // An epic's lane is its cards' to decide, so it never moves by hand.
+    disabled: isEpic,
   });
 
   return (
@@ -3101,6 +3469,12 @@ function TaskCard({
 }) {
   const t = useT();
   const checks = useCardChecks(item);
+  const epicBoard = useEpicBoard();
+  const inHierarchy =
+    !!epicBoard &&
+    (item.isEpic ||
+      !!item.parentId ||
+      epicBoard.items.some((other) => other.parentId === item.id));
   const runState = agentRunState(item);
   // A state of the card, not a label on it — hence the colour, not a chip.
   const attentionLabel = cardNeedsAttention(item)
@@ -3153,15 +3527,16 @@ function TaskCard({
         else onOpen();
       }}
       className={cn(
-        "group relative flex shrink-0 cursor-grab flex-col gap-3 rounded-xl px-3.5 pt-3.5 pb-2.5 text-left card-shadow active:cursor-grabbing",
-        attentionLabel
-          ? "bg-warning/10 hover:bg-warning/15"
-          : "bg-card hover:bg-accent/60",
+        "group relative flex shrink-0 cursor-grab flex-col gap-3 rounded-xl px-3.5 pt-3.5 pb-2.5 text-left shadow-edge active:cursor-grabbing",
+        selected
+          ? "bg-accent hover:bg-secondary-hover"
+          : attentionLabel
+            ? "bg-warning/10 hover:bg-warning/15"
+            : "bg-card surface-interactive",
         // A dead run outranks a question: both want a person, but only one is already broken.
         runState === "failed"
-          ? "card-ring-destructive"
-          : attentionLabel && "card-ring-warning",
-        selected && "bg-accent",
+          ? "shadow-edge-destructive"
+          : attentionLabel && "shadow-edge-warning",
         className,
       )}
     >
@@ -3170,7 +3545,7 @@ function TaskCard({
         <div className="relative min-w-0 flex-1 text-[14px] font-[450] leading-snug">
           <span
             className={cn(
-              "block text-foreground line-clamp-2",
+              "block text-foreground line-clamp-2 wrap-anywhere",
               action && "group-hover:fade-text-end",
             )}
           >
@@ -3182,8 +3557,11 @@ function TaskCard({
         {runState && <AgentRunIndicator state={runState} />}
       </div>
 
-      {(item.tags.length > 0 || item.sprintId) && (
+      {(item.tags.length > 0 || item.sprintId || inHierarchy) && (
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+          <EpicProgressPill item={item} />
+          <EpicPill item={item} />
+          <SubtaskPill item={item} />
           <SprintPill sprintId={item.sprintId} />
           {item.tags.slice(0, CARD_TAG_LIMIT).map((tag) => (
             <TagPill key={tag.id} tag={tag} />
@@ -3305,7 +3683,7 @@ function FeedRow({
     <button
       type="button"
       onClick={onOpen}
-      className="flex w-full flex-col gap-3 rounded-[var(--studio-surface-radius,var(--radius-xl))] bg-card p-4 text-left card-shadow transition-colors hover:bg-accent/60"
+      className="surface surface-interactive flex w-full flex-col gap-3 p-4 text-left"
     >
       {/* Badges first, Discord-style: what kind of post this is, before what
           it says. */}
@@ -3326,7 +3704,7 @@ function FeedRow({
       )}
 
       <span className="flex min-w-0 flex-col gap-1">
-        <span className="text-[15px] leading-snug font-medium text-foreground">
+        <span className="text-base leading-snug font-medium text-foreground">
           {item.title}
         </span>
         {/* Discord's one-liner: who said it and what, truncated to a single
@@ -3448,7 +3826,7 @@ function FeedComposer({
   const TypeIconGlyph = typeConfig.icon;
 
   return (
-    <div className="flex flex-col rounded-[var(--studio-surface-radius,var(--radius-xl))] bg-card card-shadow focus-within:ring-[2px] focus-within:ring-ring/20">
+    <div className="surface focus-within-ring flex flex-col">
       <div className="flex flex-col gap-1 px-4 pt-4 pb-4">
         <input
           value={title}
@@ -3571,116 +3949,18 @@ function FeedComposer({
 
 /** Every visible card, newest first, under the day it last moved on. `now` is
  *  read once per render so rows cannot disagree across midnight. */
-/**
- * What is happening right now, beside the feed: which agents are working, and
- * what has stopped on a person. Derived from the cards already on screen.
- *
- * Inline feed only — the org-wide board would have to name a project on every
- * row, which is the feed's own job.
- */
-function FeedRail({
-  items,
-  now,
-  onOpen,
-}: {
-  items: TaskBoardItem[];
-  /** Handed down so the rail's ages and the day headers agree on "now". */
-  now: Date;
-  onOpen: (item: TaskBoardItem) => void;
-}) {
-  const t = useT();
-  const rail = feedRail(items);
-
-  return (
-    <aside className="flex w-full shrink-0 flex-col gap-5 self-start overflow-y-auto pt-3 @4xl:w-[260px]">
-      <section className="flex flex-col gap-1">
-        <h3 className="flex items-center gap-2 px-2 pb-1 text-xs font-medium text-muted-foreground">
-          <span
-            className={cn(
-              "size-1.5 rounded-full",
-              rail.runningTotal > 0 ? "animate-pulse bg-success" : "bg-border",
-            )}
-            aria-hidden
-          />
-          {t("taskBoard.feed.railRunning")}
-          {rail.runningTotal > 0 && (
-            <span className="tabular-nums">{rail.runningTotal}</span>
-          )}
-        </h3>
-        {rail.running.length === 0 ? (
-          <p className="px-2 text-xs text-muted-foreground">
-            {t("taskBoard.feed.railIdle")}
-          </p>
-        ) : (
-          rail.running.map(({ item, thread }) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => onOpen(item)}
-              className="flex w-full items-start gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-accent/60"
-            >
-              <SuperAgentIcon size={16} className="mt-0.5 shrink-0" />
-              <span className="flex min-w-0 flex-1 flex-col">
-                <span className="truncate text-sm text-foreground">
-                  {item.title}
-                </span>
-                {thread.lastMessage && (
-                  <span className="truncate text-xs text-muted-foreground">
-                    {thread.lastMessage}
-                  </span>
-                )}
-              </span>
-              <span className="shrink-0 pt-0.5 text-xs tabular-nums text-muted-foreground">
-                {compactElapsed(thread.createdAt, now.getTime())}
-              </span>
-            </button>
-          ))
-        )}
-      </section>
-
-      {rail.waiting.length > 0 && (
-        <section className="flex flex-col gap-1">
-          <h3 className="flex items-center gap-2 px-2 pb-1 text-xs font-medium text-muted-foreground">
-            <span className="size-1.5 rounded-full bg-warning" aria-hidden />
-            {t("taskBoard.feed.railWaiting")}
-            <span className="tabular-nums">{rail.waitingTotal}</span>
-          </h3>
-          {rail.waiting.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => onOpen(item)}
-              className="flex w-full items-start gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-accent/60"
-            >
-              <span className="min-w-0 flex-1 truncate text-sm text-foreground">
-                {item.title}
-              </span>
-              <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                {compactElapsed(item.updatedAt, now.getTime())}
-              </span>
-            </button>
-          ))}
-        </section>
-      )}
-    </aside>
-  );
-}
-
 function FeedView({
   items,
   index,
   memberByUserId,
   onCompose,
   onOpen,
-  project,
 }: {
   items: TaskBoardItem[];
   index: ProjectIndex;
   memberByUserId: Map<string, Member>;
   onCompose: (input: FeedComposeInput) => void;
   onOpen: (item: TaskBoardItem) => void;
-  /** Present only for the project overview's inline feed — see `FeedRail`. */
-  project?: VirtualMCPEntity;
 }) {
   const t = useT();
   const now = new Date();
@@ -3688,22 +3968,8 @@ function FeedView({
 
   return (
     /* Composer and rail sit OUTSIDE the scrolling region; only posts scroll. */
-    <div
-      className={cn(
-        "flex min-h-0 flex-1 flex-col",
-        project
-          ? "mx-auto w-full max-w-[1680px] px-4 pt-4 md:px-8"
-          : "px-4 pt-6 sm:px-8",
-      )}
-    >
-      <div
-        className={cn(
-          "flex min-h-0 flex-1 flex-col gap-6",
-          project
-            ? "w-full max-w-[1040px] @4xl:flex-row"
-            : "mx-auto w-full max-w-[760px]",
-        )}
-      >
+    <div className="flex min-h-0 flex-1 flex-col px-4 pt-6 sm:px-8">
+      <div className="mx-auto flex min-h-0 w-full max-w-[760px] flex-1 flex-col gap-6">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <FeedComposer onCreated={onCompose} />
           {/* A post leaving the top dissolves rather than being cut: the first
@@ -3730,8 +3996,7 @@ function FeedView({
                     <FeedRow
                       key={item.id}
                       item={item}
-                      /* Every card here IS `project`, so the chip would repeat the screen's own name. */
-                      bucket={project ? null : entryForTask(item, index)}
+                      bucket={entryForTask(item, index)}
                       assignee={
                         item.assigneeId
                           ? memberByUserId.get(item.assigneeId)
@@ -3746,7 +4011,6 @@ function FeedView({
             ))}
           </div>
         </div>
-        {project && <FeedRail items={items} now={now} onOpen={onOpen} />}
       </div>
     </div>
   );
@@ -3795,8 +4059,8 @@ function ListGroupTree({
               className={cn(
                 "flex items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium text-foreground transition-colors",
                 depth === 0
-                  ? "bg-muted/60 hover:bg-muted"
-                  : "bg-muted/30 hover:bg-muted/60",
+                  ? "bg-muted/60 hover:bg-accent"
+                  : "bg-muted/30 hover:bg-accent",
               )}
             >
               <ChevronRight
@@ -3894,7 +4158,7 @@ function listGroupHeading(
         glyph: (
           <Avatar
             url={member?.user?.image ?? undefined}
-            fallback={getInitials(member?.user?.name)}
+            fallback={member?.user?.name ?? "?"}
             shape="circle"
             size="2xs"
           />
@@ -4009,7 +4273,7 @@ function ListRow({
   const key = taskKey(org.slug, item.keySeq);
   const runState = agentRunState(item);
   return (
-    <div className="flex h-11 items-center gap-3 px-3 transition-colors hover:bg-accent/40">
+    <div className="flex h-11 items-center gap-3 px-3 transition-colors hover:bg-accent">
       <ListRowStatusMenu item={item} onStatusChange={onStatusChange} />
       <span className="flex size-4 shrink-0 items-center justify-center">
         {item.priority !== "none" && <PriorityIcon priority={item.priority} />}

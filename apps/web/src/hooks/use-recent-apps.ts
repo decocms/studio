@@ -14,35 +14,15 @@ import { PROJECT_APPS } from "@/components/projects/project-apps";
 import { pinnedViewsOf } from "@/layouts/main-panel-tabs/attached-pinned-views";
 import { formatPinnedViewTabId } from "@/layouts/main-panel-tabs/tab-id";
 import {
-  appOpenKey,
   dropRecentApp,
   openAppOf,
   type OpenApp,
-  pushAppOpen,
   pushRecentApp,
   type RecentApp,
 } from "@/lib/recent-apps";
 import { useVirtualMCPNonBlocking } from "@/sdk";
 
 const EMPTY: RecentApp[] = [];
-const NO_OPENS: string[] = [];
-
-/** Every app opened in the org, newest first, as `appOpenKey`s. */
-export function useAppOpens(orgSlug: string): {
-  opens: string[];
-  remember: (key: string) => void;
-} {
-  const [opens, setOpens] = useLocalStorage<string[]>(
-    LOCALSTORAGE_KEYS.appOpens(orgSlug),
-    NO_OPENS,
-  );
-  return {
-    /** A value from an older build must not crash the home. */
-    opens: Array.isArray(opens) ? opens : NO_OPENS,
-    remember: (key) =>
-      setOpens((prev) => pushAppOpen(Array.isArray(prev) ? prev : [], key)),
-  };
-}
 
 export function useRecentApps(orgSlug: string): {
   recent: RecentApp[];
@@ -89,7 +69,6 @@ export function useOpenApp(): OpenApp | null {
 export function useRememberOpenApp(orgSlug: string): void {
   const { remember } = useRecentApps(orgSlug);
   const open = useOpenApp();
-  const opens = useAppOpens(orgSlug);
   /** By id, not the project scope: the scope drops projects its picker does
    *  not offer, and an app opened in one of those never reached the rail.
    *  No project, no entry: the account-less `/site-editor` is never
@@ -114,9 +93,7 @@ export function useRememberOpenApp(orgSlug: string): void {
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- the event is the navigation itself; a deep link has no click to record on
   useEffect(() => {
-    if (!open?.projectId) return;
-    opens.remember(appOpenKey(open.projectId, open.app));
-    if (!title) return;
+    if (!open?.projectId || !title) return;
     remember({
       app: open.app,
       projectId: open.projectId,

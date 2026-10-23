@@ -6,9 +6,7 @@
  * different one, and the mark ended up 14px here, 16px there and 20px in the
  * command palette, all around a glyph whose size no `className` can reach —
  * so "the size of a project mark" was a decision made five times. It is made
- * once, here, at the step the sidebar already used: a 16px box around a 12px
- * glyph. `shrink-0` is already baked into `AgentAvatar`, so there is nothing
- * left for a caller to pass.
+ * once, here: an 18px box around a 12px glyph.
  *
  * NOT portable, and deliberately not reproduced: the sidebar paints its glyphs
  * at 60% opacity until hover (`[&_svg]:opacity-60` on `SidebarMenuButton`,
@@ -26,5 +24,5 @@ export function ProjectIcon({
   icon: string | null | undefined;
   name: string;
 }) {
-  return <AgentAvatar icon={icon} name={name} size="2xs" />;
+  return <AgentAvatar icon={icon} name={name} size="2xs+" />;
 }

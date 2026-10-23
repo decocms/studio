@@ -62,7 +62,11 @@ export function deriveCredentialGrants(
     }
 
     const targetConnectionId = (stateValue as { value: unknown }).value;
-    if (typeof targetConnectionId !== "string") {
+    // SELF sentinel has no `connections` row — no grant to derive.
+    if (
+      typeof targetConnectionId !== "string" ||
+      targetConnectionId.endsWith("_self")
+    ) {
       continue;
     }
 

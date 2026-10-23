@@ -1,9 +1,10 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { Checkbox } from "./checkbox.tsx";
 import { Label } from "./label.tsx";
+import { Matrix } from "../foundations/kit.tsx";
 
 const meta = {
-  title: "Components/Checkbox",
+  title: "Atoms/Checkbox",
   component: Checkbox,
 } satisfies Meta<typeof Checkbox>;
 
@@ -19,29 +20,6 @@ export const WithLabel: Story = {
     <div className="flex items-center gap-2">
       <Checkbox id="terms" />
       <Label htmlFor="terms">Accept terms and conditions</Label>
-    </div>
-  ),
-};
-
-export const States: Story = {
-  render: () => (
-    <div className="grid gap-3">
-      <div className="flex items-center gap-2">
-        <Checkbox id="unchecked" />
-        <Label htmlFor="unchecked">Unchecked</Label>
-      </div>
-      <div className="flex items-center gap-2">
-        <Checkbox id="checked" defaultChecked />
-        <Label htmlFor="checked">Checked</Label>
-      </div>
-      <div className="flex items-center gap-2">
-        <Checkbox id="disabled" disabled />
-        <Label htmlFor="disabled">Disabled</Label>
-      </div>
-      <div className="flex items-center gap-2">
-        <Checkbox id="disabled-checked" disabled defaultChecked />
-        <Label htmlFor="disabled-checked">Disabled checked</Label>
-      </div>
     </div>
   ),
 };
@@ -78,5 +56,40 @@ export const SettingsGroup: Story = {
         </div>
       </div>
     </div>
+  ),
+};
+
+export const States: Story = {
+  parameters: {
+    controls: { disable: true },
+    layout: "padded",
+    pseudo: {
+      hover: [".is-hover"],
+      focusVisible: [".is-focus"],
+      active: [".is-active"],
+    },
+  },
+  render: () => (
+    <Matrix
+      columns={["Default", "Hover", "Focus", "Disabled"]}
+      rows={(
+        [
+          ["Unchecked", false],
+          ["Checked", true],
+          ["Indeterminate", "indeterminate"],
+        ] as const
+      ).map(([label, checked]) => ({
+        label,
+        cells: ["", "is-hover", "is-focus", "disabled"].map((state) => (
+          <Checkbox
+            key={state}
+            checked={checked}
+            className={state}
+            disabled={state === "disabled"}
+            aria-label={label}
+          />
+        )),
+      }))}
+    />
   ),
 };

@@ -26,6 +26,7 @@ import { Controller, useForm } from "react-hook-form";
 import { authClient } from "@/lib/auth-client";
 import {
   usePreferences,
+  useProjectFirstNav,
   type ThemeMode,
   type ToolApprovalLevel,
 } from "@/hooks/use-preferences.ts";
@@ -79,7 +80,7 @@ function AvatarUpload({ url, fallback }: { url?: string; fallback: string }) {
         onClick={() => setOpen(true)}
         aria-label={t("settings.profile.avatarUpload")}
         title={t("settings.profile.avatarUpload")}
-        className="rounded-full transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="rounded-full transition-opacity hover:opacity-80 focus-ring"
       >
         <Avatar url={url} fallback={fallback} shape="circle" size="base" />
       </button>
@@ -209,6 +210,7 @@ function PreferencesSection() {
     setPreferences((prev) => ({ ...prev, enableNotifications: checked }));
   };
 
+  const projectFirstNav = useProjectFirstNav();
   const handleProjectFirstNavChange = (checked: boolean) => {
     track("preferences_project_first_nav_toggled", { enabled: checked });
     setPreferences((prev) => ({ ...prev, projectFirstNav: checked }));
@@ -219,13 +221,11 @@ function PreferencesSection() {
       <SettingsCard>
         <SettingsCardItem
           title={t("settings.preferences.theme")}
-          description={t("settings.preferences.themeDescription")}
           action={
             <ToggleGroup
               type="single"
               size="sm"
-              variant="outline"
-              className="gap-2 data-[variant=outline]:shadow-none"
+              variant="segmented"
               value={preferences.theme}
               onValueChange={(value) => {
                 if (value) {
@@ -239,22 +239,19 @@ function PreferencesSection() {
             >
               <ToggleGroupItem
                 value="light"
-                className="rounded-lg data-[variant=outline]:border-l"
-                aria-label={t("settings.preferences.themeLight")}
+                tooltip={t("settings.preferences.themeLight")}
               >
                 <Sun size={14} />
               </ToggleGroupItem>
               <ToggleGroupItem
                 value="dark"
-                className="rounded-lg data-[variant=outline]:border-l"
-                aria-label={t("settings.preferences.themeDark")}
+                tooltip={t("settings.preferences.themeDark")}
               >
                 <Moon01 size={14} />
               </ToggleGroupItem>
               <ToggleGroupItem
                 value="system"
-                className="rounded-lg data-[variant=outline]:border-l"
-                aria-label={t("settings.preferences.themeSystem")}
+                tooltip={t("settings.preferences.themeSystem")}
               >
                 <Monitor01 size={14} />
               </ToggleGroupItem>
@@ -263,7 +260,6 @@ function PreferencesSection() {
         />
         <SettingsCardItem
           title={t("settings.preferences.language")}
-          description={t("settings.preferences.languageDescription")}
           action={
             <Select
               value={preferences.language}
@@ -275,7 +271,7 @@ function PreferencesSection() {
                 }));
               }}
             >
-              <SelectTrigger className="w-44 h-7 text-xs">
+              <SelectTrigger className="w-44">
                 <span>
                   {
                     LANGUAGE_OPTIONS.find(
@@ -329,17 +325,19 @@ function PreferencesSection() {
           }}
           action={
             <div className="flex items-center gap-2">
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="icon-xs"
                 aria-label={t("settings.preferences.soundsPreview")}
                 onClick={() => {
                   track("preferences_sounds_previewed");
                   playSound(question004Sound.dataUri).catch(() => {});
                 }}
-                className="size-6 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors cursor-pointer rounded-lg"
+                className="text-muted-foreground hover:text-foreground"
               >
-                <Play size={11} />
-              </button>
+                <Play className="size-2.75" />
+              </Button>
               <Switch
                 checked={preferences.enableSounds}
                 onCheckedChange={(checked) => {
@@ -356,13 +354,11 @@ function PreferencesSection() {
         <SettingsCardItem
           title={t("settings.preferences.projectFirstNav")}
           description={t("settings.preferences.projectFirstNavDescription")}
-          onClick={() =>
-            handleProjectFirstNavChange(!preferences.projectFirstNav)
-          }
+          onClick={() => handleProjectFirstNavChange(!projectFirstNav)}
           action={
             <Switch
               aria-label={t("settings.preferences.projectFirstNav")}
-              checked={preferences.projectFirstNav}
+              checked={projectFirstNav}
               onCheckedChange={handleProjectFirstNavChange}
             />
           }
@@ -383,7 +379,7 @@ function PreferencesSection() {
                 }));
               }}
             >
-              <SelectTrigger className="w-36 h-7 text-xs">
+              <SelectTrigger className="w-fit min-w-36">
                 <span>
                   {{
                     readonly: t("settings.preferences.toolApprovalAsk"),

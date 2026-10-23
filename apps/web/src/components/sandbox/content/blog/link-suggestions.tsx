@@ -20,6 +20,7 @@ import {
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import { useStudioTools } from "@/lib/studio-tools";
+import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 import { applyBlogPageSlug, findBlogPageSlug } from "./blog-preview-url";
 import { listPostsWithMeta } from "./blog-data";
 import { applyLinksToBlocks, postBodyText } from "./link-enrich";
@@ -35,6 +36,7 @@ export function SuggestLinksButton({
   decofile,
   sections,
   currentKey,
+  meta,
   hasAi,
   onApply,
 }: {
@@ -44,6 +46,8 @@ export function SuggestLinksButton({
   sections: Array<Record<string, unknown>>;
   /** The post being edited — excluded from its own link targets. */
   currentKey: string;
+  /** The site's schema, so its own page types count when finding the post route. */
+  meta?: LiveMeta | null;
   hasAi: boolean;
   onApply: (nextSections: Array<Record<string, unknown>>) => void;
 }) {
@@ -54,7 +58,7 @@ export function SuggestLinksButton({
   const [items, setItems] = useState<ResolvedSuggestion[]>([]);
   const [accepted, setAccepted] = useState<Set<number>>(new Set());
 
-  const template = findBlogPageSlug(decofile);
+  const template = findBlogPageSlug(decofile, meta);
   const candidates = listPostsWithMeta(decofile).filter(
     (p) => p.key !== currentKey && p.slug,
   );
@@ -173,7 +177,7 @@ export function SuggestLinksButton({
                       type="button"
                       onClick={() => toggle(index)}
                       aria-pressed={on}
-                      className="flex w-full items-start gap-2.5 rounded-lg border p-2.5 text-left transition-colors hover:bg-muted/50"
+                      className="flex w-full items-start gap-2.5 rounded-lg border p-2.5 text-left transition-colors hover:bg-accent"
                     >
                       <span
                         className={cn(

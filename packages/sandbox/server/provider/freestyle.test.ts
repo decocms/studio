@@ -225,6 +225,38 @@ describe("pauseIdle", () => {
     provider.close();
   });
 
+  test("doesn't skip a VM that shifts into the next page after an earlier page is paused", async () => {
+    globalThis.fetch = Object.assign(
+      async () => Response.json({ idleMs: 60 * 60_000 }),
+      { preconnect: realFetch.preconnect },
+    );
+    const all = Array.from({ length: 150 }, (_, i) => vm(`v${i}`));
+    const pauses: string[] = [];
+    const client = {
+      vms: {
+        list: async ({ limit, offset }: { limit: number; offset: number }) => ({
+          vms: all.slice(offset, offset + limit),
+        }),
+        ref: (id: string) => ({
+          pause: async () => {
+            pauses.push(id);
+            const idx = all.findIndex((v) => v.id === id);
+            all.splice(idx, 1);
+          },
+        }),
+      },
+    } as unknown as Freestyle;
+    const provider = new FreestyleSandboxProvider({
+      apiKey: "k",
+      client,
+      idlePauseMs: 10 * 60_000,
+    });
+    const result = await provider.pauseIdle();
+    expect(result).toHaveLength(150);
+    expect(pauses).toHaveLength(150);
+    provider.close();
+  });
+
   test("swallows a failed listing", async () => {
     const client = {
       vms: {

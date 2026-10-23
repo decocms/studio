@@ -31,7 +31,6 @@ export function ConnectedProvidersSection({
   return (
     <SettingsSection
       title={t("settings.connectedProvidersSection.sectionTitle")}
-      headerClassName="px-0"
       actions={
         <Button size="sm" onClick={onConnectClick}>
           <Plus size={14} />
@@ -40,7 +39,7 @@ export function ConnectedProvidersSection({
       }
     >
       {rows.length === 0 ? (
-        <p className="text-sm text-muted-foreground px-1">
+        <p className="text-sm text-muted-foreground px-4">
           {t("settings.connectedProvidersSection.emptyState")}
         </p>
       ) : (

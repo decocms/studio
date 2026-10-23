@@ -14,6 +14,7 @@ import { releaseChannel } from "./release-channel.ts";
 import { orgs } from "./orgs.ts";
 import { monitoring } from "./monitoring.ts";
 import { orderMonitor } from "./order-monitor.ts";
+import { monitor } from "./monitor.ts";
 import { mainPanelTabs } from "./main-panel-tabs.ts";
 import { markdownEditor } from "./markdown-editor.ts";
 import { library } from "./library.ts";
@@ -40,7 +41,6 @@ import { siteEditor } from "./site-editor.ts";
 import { chat } from "./chat.ts";
 import { credits } from "./credits.ts";
 import { automations } from "./automations.ts";
-import { agents } from "./agents.ts";
 import { agentShellLayout } from "./agent-shell-layout.ts";
 import { admin } from "./admin.ts";
 import { sandbox } from "./sandbox.ts";
@@ -66,6 +66,7 @@ export const en = {
   ...orgs,
   ...monitoring,
   ...orderMonitor,
+  ...monitor,
   ...mainPanelTabs,
   ...experiments,
   ...releases,
@@ -92,7 +93,6 @@ export const en = {
   ...chat,
   ...credits,
   ...automations,
-  ...agents,
   ...agentShellLayout,
   ...admin,
   ...sandbox,

@@ -75,3 +75,32 @@ func TestValidateGitRejectsDuplicateSecondaryRepoNames(t *testing.T) {
 		t.Fatal("validateGit accepted two secondary repositories sharing a repoName")
 	}
 }
+
+func TestValidateGitRejectsIdentityWithControlChars(t *testing.T) {
+	cases := []struct {
+		name string
+		git  *GitConfig
+	}{
+		{
+			"newline in userName",
+			&GitConfig{
+				Repository: &GitRepository{CloneUrl: Str("https://example.com/primary.git")},
+				Identity:   &GitIdentity{UserName: Str("a\nconfig injected=1"), UserEmail: Str("a@example.com")},
+			},
+		},
+		{
+			"malformed userEmail",
+			&GitConfig{
+				Repository: &GitRepository{CloneUrl: Str("https://example.com/primary.git")},
+				Identity:   &GitIdentity{UserName: Str("a"), UserEmail: Str("not-an-email")},
+			},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if reason := validateGit(c.git); reason == "" {
+				t.Fatalf("validateGit accepted an invalid git.identity: %+v", c.git.Identity)
+			}
+		})
+	}
+}

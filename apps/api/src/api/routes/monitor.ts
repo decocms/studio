@@ -172,16 +172,29 @@ export interface MonitorFilter {
   value: string;
 }
 
+/** The "Add filter" builder has no practical use for more rows, or for a
+ *  value longer than this — bounds an attacker-controlled `filters` query
+ *  param from building an unbounded WHERE clause or an oversized ILIKE scan. */
+const MAX_FILTERS = 20;
+const MAX_FILTER_VALUE_LENGTH = 500;
+
 /** Parse the `filters` query param (URL-encoded JSON array). Silently drops
  *  malformed entries — a bad filter must never 500 the dashboard. */
-function parseFilters(raw: string | undefined): MonitorFilter[] {
+export function parseFilters(raw: string | undefined): MonitorFilter[] {
   if (!raw) return [];
   try {
     const arr = JSON.parse(raw);
     if (!Array.isArray(arr)) return [];
-    return arr.filter(
-      (f) => f && typeof f.field === "string" && typeof f.op === "string",
-    );
+    return arr
+      .filter(
+        (f) =>
+          f &&
+          typeof f.field === "string" &&
+          typeof f.op === "string" &&
+          typeof f.value === "string" &&
+          f.value.length <= MAX_FILTER_VALUE_LENGTH,
+      )
+      .slice(0, MAX_FILTERS);
   } catch {
     return [];
   }

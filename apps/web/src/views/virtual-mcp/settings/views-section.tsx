@@ -72,7 +72,8 @@ export function ProjectViewsSection({ views }: { views: ProjectViews }) {
               >
                 <SelectTrigger
                   aria-label={t("virtualMcp.layoutTabContent.mainView")}
-                  className="w-36 h-8 text-sm shrink-0 @min-xl/project-settings:w-44"
+                  size="sm"
+                  className="w-36 shrink-0 @min-xl/project-settings:w-44"
                 >
                   <SelectValue
                     placeholder={t("virtualMcp.layoutTabContent.noMainView")}
@@ -120,7 +121,12 @@ export function ProjectViewsSection({ views }: { views: ProjectViews }) {
             return (
               <SettingsCardItem
                 key={viewId}
-                icon={<SidebarViewIcon viewId={viewId} />}
+                icon={
+                  <SidebarViewIcon
+                    viewId={viewId}
+                    blocksSite={views.blocksSite}
+                  />
+                }
                 title={views.labels[viewId]}
                 onClick={() => views.openView(viewId)}
                 action={

@@ -1834,6 +1834,14 @@ export interface TaskBoardItemTable {
     string | null | undefined,
     string | null
   >;
+  /** The card this one sits under: an epic, or a card it is a subtask of
+   *  (migration 257). */
+  parent_id: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
+  is_epic: ColumnType<boolean, boolean | undefined, boolean>;
   /** The sprint the card is planned into (`task_board_sprints.id`); null =
    *  backlog. */
   sprint_id: ColumnType<
@@ -2132,6 +2140,9 @@ export interface TaskBoardItemThreadRef {
 
 export interface TaskBoardItem {
   harnessId: TaskBoardHarnessId;
+  /** The epic or card this one sits under; null at the top level. */
+  parentId: string | null;
+  isEpic: boolean;
   id: string;
   organizationId: string;
   title: string;
@@ -2414,6 +2425,7 @@ export interface RepositoryTable {
   sandbox_image: string | null;
   /** Repo-scoped `mcp-github` child whose token still clones this repo. */
   legacy_connection_id: string | null;
+  monitor_deploys: ColumnType<boolean, boolean | undefined, boolean>;
   created_by: string | null;
   created_at: ColumnType<Date, Date | string | undefined, never>;
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;

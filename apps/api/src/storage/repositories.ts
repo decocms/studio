@@ -33,6 +33,7 @@ type Row = {
   visibility: "public" | "private" | "internal" | null;
   sandbox_image: string | null;
   legacy_connection_id: string | null;
+  monitor_deploys: boolean;
   created_by: string | null;
   created_at: Date | string;
   updated_at: Date | string;
@@ -59,6 +60,7 @@ function toEntity(row: Row): RepositoryRecord {
     // default", which is exactly what `default` selects.
     sandboxImage: SandboxImageSchema.catch("default").parse(row.sandbox_image),
     legacyConnectionId: row.legacy_connection_id,
+    monitorDeploys: row.monitor_deploys,
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.updated_at),
   };
@@ -206,6 +208,23 @@ export class RepositoryStorage {
     const row = await this.db
       .updateTable("repositories")
       .set({ sandbox_image: sandboxImage, updated_at: new Date() })
+      .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
+      .returningAll()
+      .executeTakeFirst();
+    return row ? toEntity(row as Row) : null;
+  }
+
+  /** Put one repository on the Monitor's Deploys tab, or take it off.
+   *  Returns null when it is not this org's. */
+  async setMonitorDeploys(
+    id: string,
+    organizationId: string,
+    monitorDeploys: boolean,
+  ): Promise<RepositoryRecord | null> {
+    const row = await this.db
+      .updateTable("repositories")
+      .set({ monitor_deploys: monitorDeploys, updated_at: new Date() })
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
       .returningAll()

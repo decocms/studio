@@ -288,6 +288,12 @@ const SIZES = {
     iconClass: "size-3",
     radius: "rounded-md",
   },
+  "2xs+": {
+    container: "size-4.5",
+    icon: 12,
+    iconClass: "size-3",
+    radius: "rounded-md",
+  },
   xs: {
     container: "w-6 h-6",
     icon: 14,
@@ -411,6 +417,17 @@ function IconAvatar({
       />
     </div>
   );
+}
+
+/** The tint a project's avatar draws in, for chrome that has to match it. */
+export function agentIconColor(
+  icon: string | null | undefined,
+  name: string,
+): AgentIconColor {
+  const parsed = parseIconString(icon);
+  if (parsed.type !== "fallback" && parsed.color)
+    return getIconColor(parsed.color);
+  return getDeterministicIcon(name).color;
 }
 
 export function AgentAvatar({

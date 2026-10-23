@@ -24,6 +24,8 @@ function card(
 ): BoardItem {
   return {
     harnessId: "claude-code",
+    parentId: null,
+    isEpic: false,
     id,
     organizationId: "preview",
     title,

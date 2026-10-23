@@ -4,6 +4,8 @@ import {
   DEFAULT_PAGE_BLOCK,
   generatePageBlockKey,
 } from "./page-block-template";
+import type { LiveMeta } from "./resolve-schema";
+import { noSchemaMeta } from "./schemaless";
 
 describe("page-block-template", () => {
   it("createEmptyPageBlock uses default resolve types", () => {
@@ -13,6 +15,32 @@ describe("page-block-template", () => {
       sections: [],
       seo: { __resolveType: DEFAULT_PAGE_BLOCK.seoResolveType },
       __resolveType: DEFAULT_PAGE_BLOCK.resolveType,
+    });
+  });
+
+  it("keeps the v7 page and SEO types for a v7 schema", () => {
+    const meta: LiveMeta = {
+      manifest: {
+        blocks: {
+          pages: { "website/pages/Page.tsx": { $ref: "#/definitions/Page" } },
+          sections: {
+            "website/sections/Seo/SeoV2.tsx": { $ref: "#/definitions/S" },
+          },
+        },
+      },
+      schema: { definitions: { Page: { type: "object" }, S: {} } },
+    };
+    expect(createEmptyPageBlock("About", "/about", meta)).toEqual(
+      createEmptyPageBlock("About", "/about"),
+    );
+  });
+
+  it("gives a next-major site with no schema yet the built-in page, no SEO", () => {
+    expect(createEmptyPageBlock("About", "/about", noSchemaMeta())).toEqual({
+      name: "About",
+      path: "/about",
+      sections: [],
+      __resolveType: "page",
     });
   });
 

@@ -229,7 +229,9 @@ export class AutomationEventDispatcher {
     data: unknown;
   }): ContextMessage[] {
     let serialized = JSON.stringify(event.data, null, 2) ?? "null";
-    if (serialized.length > AutomationEventDispatcher.MAX_EVENT_PAYLOAD_BYTES) {
+    const truncated =
+      serialized.length > AutomationEventDispatcher.MAX_EVENT_PAYLOAD_BYTES;
+    if (truncated) {
       serialized =
         serialized.slice(0, AutomationEventDispatcher.MAX_EVENT_PAYLOAD_BYTES) +
         "\n[TRUNCATED]";
@@ -240,7 +242,12 @@ export class AutomationEventDispatcher {
         parts: [
           {
             type: "data-trigger-event",
-            data: { source: event.source, type: event.type, data: event.data },
+            data: {
+              source: event.source,
+              type: event.type,
+              // This part is persisted, so bound it like the text part below.
+              data: truncated ? { truncated: true } : event.data,
+            },
           },
           {
             type: "text",

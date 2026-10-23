@@ -7,6 +7,8 @@ import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { CollectionDisplayButton } from "@/components/collections/collection-display-button.tsx";
 import { SearchInput } from "@decocms/ui/components/search-input.tsx";
+import { SearchToggle } from "@decocms/ui/components/search-toggle.tsx";
+import { useProjectFirstNav } from "@/hooks/use-preferences";
 import { useT } from "@/i18n/use-t";
 import { CollectionTabs } from "@/components/collections/collection-tabs.tsx";
 import { ConnectionCard } from "@/components/connections/connection-card.tsx";
@@ -98,7 +100,11 @@ import {
   getRegistryItemAppName,
 } from "@/utils/extract-connection-data";
 import { authenticateAndPersistOAuth } from "@/lib/authenticate-and-persist-oauth";
-import { KEYS, invalidateVirtualMcpQueries } from "@/lib/query-keys";
+import {
+  KEYS,
+  invalidateConnectionsCollection,
+  invalidateVirtualMcpQueries,
+} from "@/lib/query-keys";
 import {
   buildCustomStdioParameters,
   buildNpxParameters,
@@ -375,16 +381,7 @@ function ConnectionResults({
   const studio = useStudioTools();
 
   const invalidateConnections = () => {
-    queryClient.invalidateQueries({
-      predicate: (query) => {
-        const key = query.queryKey;
-        return (
-          key[1] === org.id &&
-          key[3] === "collection" &&
-          key[4] === "CONNECTIONS"
-        );
-      },
-    });
+    invalidateConnectionsCollection(queryClient, org.id);
   };
 
   // Bulk action handlers
@@ -701,6 +698,8 @@ function OrgMcpsContent() {
 
   const actions = useConnectionActions();
 
+  const projectFirstNav = useProjectFirstNav();
+
   // Tab state
   type ConnectionTab = "connected" | "all";
   const [activeTab, setActiveTab] = useLocalStorage<ConnectionTab>(
@@ -767,17 +766,21 @@ function OrgMcpsContent() {
       source: "connections_page",
     });
     navigate({
-      to: "/$org/settings/connections",
-      params: { org: org.slug },
-      search: { action: "create" },
+      to: ".",
+      search: (prev: Record<string, unknown>) => ({
+        ...prev,
+        action: "create" as const,
+      }),
     });
   };
 
   const closeCreateDialog = () => {
     navigate({
-      to: "/$org/settings/connections",
-      params: { org: org.slug },
-      search: {},
+      to: ".",
+      search: (prev: Record<string, unknown>) => ({
+        ...prev,
+        action: undefined,
+      }),
     });
   };
 
@@ -965,6 +968,68 @@ function OrgMcpsContent() {
       </Button>
     </div>
   ) : null;
+
+  const displayButton = (
+    <CollectionDisplayButton
+      sortKey={listState.sortKey}
+      sortDirection={listState.sortDirection}
+      onSort={listState.handleSort}
+      sortOptions={[
+        { id: "title", label: t("orgs.connections.sortName") },
+        {
+          id: "description",
+          label: t("orgs.connections.sortDescription"),
+        },
+        {
+          id: "connection_type",
+          label: t("orgs.connections.sortType"),
+        },
+        {
+          id: "updated_by",
+          label: t("orgs.connections.sortUpdatedBy"),
+        },
+        {
+          id: "updated_at",
+          label: t("orgs.connections.sortUpdated"),
+        },
+      ]}
+      filters={[
+        {
+          label: t("orgs.connections.filterType"),
+          value: typeFilter,
+          onChange: (v) => setTypeFilter((v as ConnectionTypeFilter) || "ALL"),
+          options: [
+            { id: "ALL", label: t("orgs.connections.filterAll") },
+            { id: "HTTP", label: "HTTP" },
+            { id: "SSE", label: "SSE" },
+            { id: "Websocket", label: "WebSocket" },
+            { id: "STDIO", label: "STDIO" },
+          ],
+        },
+        {
+          label: t("orgs.connections.filterStatus"),
+          value: statusFilter,
+          onChange: (v) =>
+            setStatusFilter((v as ConnectionStatusFilter) || "ALL"),
+          options: [
+            { id: "ALL", label: t("orgs.connections.filterAll") },
+            {
+              id: "active",
+              label: t("orgs.connections.filterActive"),
+            },
+            {
+              id: "inactive",
+              label: t("orgs.connections.filterInactive"),
+            },
+            {
+              id: "error",
+              label: t("orgs.connections.filterError"),
+            },
+          ],
+        },
+      ]}
+    />
+  );
 
   return (
     <>
@@ -1368,89 +1433,50 @@ function OrgMcpsContent() {
         })()}
 
         <Page.Content>
-          {/* Title + Toolbar */}
+          {/* Title + Toolbar. Project-first nav hosts this page in Context,
+              where search and display sit in the bars like the files'. */}
           <Page.Container>
             <div className="flex flex-col gap-6">
-              <Page.Title actions={ctaButton}>
-                {t("orgs.connections.pageTitle")}
-              </Page.Title>
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <SearchInput
-                    value={listState.search}
-                    onChange={listState.setSearch}
-                    placeholder={t("orgs.connections.searchPlaceholder")}
-                    className="w-full md:w-[375px]"
-                    onKeyDown={(event) => {
-                      if (event.key === "Escape") {
-                        listState.setSearch("");
-                        (event.target as HTMLInputElement).blur();
-                      }
-                    }}
-                  />
-                  <CollectionDisplayButton
-                    sortKey={listState.sortKey}
-                    sortDirection={listState.sortDirection}
-                    onSort={listState.handleSort}
-                    sortOptions={[
-                      { id: "title", label: t("orgs.connections.sortName") },
-                      {
-                        id: "description",
-                        label: t("orgs.connections.sortDescription"),
-                      },
-                      {
-                        id: "connection_type",
-                        label: t("orgs.connections.sortType"),
-                      },
-                      {
-                        id: "updated_by",
-                        label: t("orgs.connections.sortUpdatedBy"),
-                      },
-                      {
-                        id: "updated_at",
-                        label: t("orgs.connections.sortUpdated"),
-                      },
-                    ]}
-                    filters={[
-                      {
-                        label: t("orgs.connections.filterType"),
-                        value: typeFilter,
-                        onChange: (v) =>
-                          setTypeFilter((v as ConnectionTypeFilter) || "ALL"),
-                        options: [
-                          { id: "ALL", label: t("orgs.connections.filterAll") },
-                          { id: "HTTP", label: "HTTP" },
-                          { id: "SSE", label: "SSE" },
-                          { id: "Websocket", label: "WebSocket" },
-                          { id: "STDIO", label: "STDIO" },
-                        ],
-                      },
-                      {
-                        label: t("orgs.connections.filterStatus"),
-                        value: statusFilter,
-                        onChange: (v) =>
-                          setStatusFilter(
-                            (v as ConnectionStatusFilter) || "ALL",
-                          ),
-                        options: [
-                          { id: "ALL", label: t("orgs.connections.filterAll") },
-                          {
-                            id: "active",
-                            label: t("orgs.connections.filterActive"),
-                          },
-                          {
-                            id: "inactive",
-                            label: t("orgs.connections.filterInactive"),
-                          },
-                          {
-                            id: "error",
-                            label: t("orgs.connections.filterError"),
-                          },
-                        ],
-                      },
-                    ]}
-                  />
-                </div>
+              {projectFirstNav ? (
+                <Page.Actions
+                  secondary={
+                    <>
+                      <SearchToggle
+                        value={listState.search}
+                        onChange={listState.setSearch}
+                        label={t("library.context.search")}
+                        placeholder={t("orgs.connections.searchPlaceholder")}
+                        clearLabel={t("library.library.clearSearch")}
+                      />
+                      {displayButton}
+                    </>
+                  }
+                >
+                  {ctaButton}
+                </Page.Actions>
+              ) : (
+                <Page.Title actions={ctaButton}>
+                  {t("orgs.connections.pageTitle")}
+                </Page.Title>
+              )}
+              <div className="flex flex-wrap items-center justify-between gap-3 empty:hidden">
+                {!projectFirstNav && (
+                  <div className="flex items-center gap-2">
+                    <SearchInput
+                      value={listState.search}
+                      onChange={listState.setSearch}
+                      placeholder={t("orgs.connections.searchPlaceholder")}
+                      className="w-full md:w-[375px]"
+                      onKeyDown={(event) => {
+                        if (event.key === "Escape") {
+                          listState.setSearch("");
+                          (event.target as HTMLInputElement).blur();
+                        }
+                      }}
+                    />
+                    {displayButton}
+                  </div>
+                )}
               </div>
               <CollectionTabs
                 placement="page"

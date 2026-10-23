@@ -72,7 +72,7 @@ export function TaskConversationFrame({
               <Button
                 variant="secondary"
                 size="sm"
-                className="pointer-events-auto rounded-full border border-border shadow-md"
+                className="pointer-events-auto shadow-soft"
                 onClick={() => void stick.scrollToBottom()}
               >
                 {unreadCount

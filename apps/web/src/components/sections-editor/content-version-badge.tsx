@@ -29,7 +29,7 @@ export function ContentVersionBadge({
       <TooltipTrigger asChild>
         <span
           data-testid="content-version-badge"
-          className="shrink-0 rounded border border-border px-1.5 py-px font-mono text-[11px] leading-4 text-muted-foreground"
+          className="shrink-0 rounded border border-border px-1.5 py-px font-mono text-2xs leading-4 text-muted-foreground"
         >
           v8
         </span>

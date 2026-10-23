@@ -4,7 +4,7 @@ import { Label } from "./label.tsx";
 import { PasswordInput } from "./password-input.tsx";
 
 const meta = {
-  title: "Components/PasswordInput",
+  title: "Molecules/PasswordInput",
   component: PasswordInput,
   args: {
     placeholder: "Enter your API key",

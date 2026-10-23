@@ -77,7 +77,7 @@ function ApprovalLevelSelect({
     >
       <SelectTrigger
         size="xs"
-        className="text-xs text-muted-foreground border-border/60 bg-transparent hover:bg-accent/60 h-7 gap-1"
+        className="text-xs text-muted-foreground border-border/60 bg-transparent hover:bg-accent h-7 gap-1"
         onClick={(e) => e.stopPropagation()}
       >
         <SelectValue>{t(currentOption.shortKey)}</SelectValue>
@@ -392,7 +392,7 @@ function ApprovalLoadingUI() {
   const t = useT();
   return (
     <div className="flex items-center gap-2 p-4 border border-dashed rounded-lg bg-accent/50 w-[calc(100%-16px)] max-w-[640px] mx-auto mb-2">
-      <ShieldTick className="size-5 text-muted-foreground shimmer" />
+      <ShieldTick className="size-5 text-muted-foreground animate-pulse motion-reduce:animate-none" />
       <span className="text-sm text-muted-foreground shimmer">
         {t("chat.approval.preparingRequest")}
       </span>

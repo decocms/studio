@@ -527,61 +527,50 @@ const orgHomeRoute = createRoute({
     /** Reports onboarding hand-off, forwarded verbatim by the `/$org` resolver. */
     connect: z.coerce.string().optional(),
     siteUrl: z.string().optional(),
-    /** The org's OTHER destination, on this route rather than `/$org/agents`
-     *  for the reason `projectsIndexRoute` documents below. */
-    view: z.enum(["agents"]).optional(),
   }),
   component: lazyRouteComponent(() => import("./routes/workspace/home.tsx")),
 });
 
-/**
- * Bare `/projects` promotes a legacy identity or lands on the org Home; it is
- * an entry point, never a second project list.
- *
- * `?project=` names a project WITHOUT narrowing the shell, since `useScopeId`
- * reads `$agentId` and `?virtualmcpid=` and this is neither. It rides here
- * because one more child pushes TanStack's `to: "."` search inference past its
- * limit, turning `prev` into `any` at every caller in the app.
- */
+/** Redirect only: retired `?project=` links land on that project, bare `/projects` on Home. */
 const projectsIndexRoute = createRoute({
   getParentRoute: () => threadSessionRoute,
   path: "/projects",
-  staticData: { pageTitle: "projects.settings.title", defaultMain: "board" },
-  /** `files` is this screen's own — the topbar toggle between a project and
-   *  its files. Extended here rather than added to the shared payload, since no
-   *  other route owns it. */
-  validateSearch: legacyWorkspaceCompatibilitySearchSchema.extend({
-    files: z.coerce.boolean().optional().catch(undefined),
-    analytics: z.coerce.boolean().optional().catch(undefined),
-  }),
-  component: lazyRouteComponent(
-    () => import("./routes/workspace/flat-project.tsx"),
-  ),
+  validateSearch: legacyWorkspaceCompatibilitySearchSchema,
   beforeLoad: ({ params, search }) => {
-    if (search.project?.trim()) return;
-    const agentId = search.virtualmcpid?.trim();
+    const agentId = (search.project ?? search.virtualmcpid)?.trim();
+    const clear = (prev: Record<string, unknown>) => ({
+      ...prev,
+      virtualmcpid: undefined,
+      project: undefined,
+      task: undefined,
+    });
     if (!agentId) {
       throw redirect({
         to: "/$org/home",
         params: { org: params.org },
-        search: (prev: Record<string, unknown>) => ({
-          ...prev,
-          virtualmcpid: undefined,
-        }),
+        search: clear,
         hash: true,
         replace: true,
       });
     }
-    throw redirect({
-      to: "/$org/projects/$agentId",
-      params: { org: params.org, agentId },
-      search: (prev: Record<string, unknown>) => ({
-        ...prev,
-        virtualmcpid: undefined,
-      }),
-      hash: true,
-      replace: true,
-    });
+    const taskKey = search.task?.trim();
+    throw redirect(
+      taskKey
+        ? {
+            to: "/$org/projects/$agentId/tasks/{-$taskKey}",
+            params: { org: params.org, agentId, taskKey },
+            search: clear,
+            hash: true,
+            replace: true,
+          }
+        : {
+            to: "/$org/projects/$agentId",
+            params: { org: params.org, agentId },
+            search: clear,
+            hash: true,
+            replace: true,
+          },
+    );
   },
 });
 
@@ -913,6 +902,21 @@ const agentExperimentsRoute = createRoute({
   ),
 });
 
+const agentCalendarRoute = createRoute({
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
+  getParentRoute: () => agentWorkspaceRoute,
+  path: "/calendar",
+  staticData: {
+    pageTitle: "common.mainPanelTabs.calendar",
+    defaultMain: "calendar",
+    mainView: "calendar",
+  },
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/agent-calendar.tsx"),
+  ),
+});
+
 const agentMonitorRoute = createRoute({
   pendingComponent: ChatLayoutPending,
   errorComponent: ChatLayoutError,
@@ -1183,6 +1187,70 @@ const libraryRoute = createRoute({
   },
   validateSearch: z.object(librarySearchShape),
   component: lazyRouteComponent(() => import("./routes/workspace/library.tsx")),
+});
+
+/** Plan and Monitoring: announced in the new navigation, a placeholder until built. */
+const planRoute = createRoute({
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
+  getParentRoute: () => threadSessionRoute,
+  path: "/plan",
+  staticData: {
+    pageTitle: "sidebar.navDestinations.plan",
+    defaultMain: "plan",
+    mainView: "plan",
+  },
+  component: lazyRouteComponent(() => import("./routes/workspace/plan.tsx")),
+});
+/** Monitor: the tab, the past day, and the store (ingest connection id) and
+ *  instant under review. A malformed day is dropped, not a broken page. */
+const monitoringSearch = z.object({
+  view: z.enum(["metrics", "deploys", "experiments", "analytics"]).optional(),
+  date: z.iso.date().optional().catch(undefined),
+  store: z.string().optional(),
+  at: z.string().optional(),
+});
+const orgMonitoringRoute = createRoute({
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
+  getParentRoute: () => threadSessionRoute,
+  path: "/monitoring",
+  staticData: {
+    pageTitle: "sidebar.navDestinations.monitor",
+    defaultMain: "monitoring",
+    mainView: "monitoring",
+  },
+  validateSearch: monitoringSearch,
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/monitoring.tsx"),
+  ),
+});
+const projectPlanRoute = createRoute({
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
+  getParentRoute: () => agentWorkspaceRoute,
+  path: "/plan",
+  staticData: {
+    pageTitle: "sidebar.navDestinations.plan",
+    defaultMain: "plan",
+    mainView: "plan",
+  },
+  component: lazyRouteComponent(() => import("./routes/workspace/plan.tsx")),
+});
+const projectMonitoringRoute = createRoute({
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
+  getParentRoute: () => agentWorkspaceRoute,
+  path: "/monitoring",
+  staticData: {
+    pageTitle: "sidebar.navDestinations.monitor",
+    defaultMain: "monitoring",
+    mainView: "monitoring",
+  },
+  validateSearch: monitoringSearch,
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/monitoring.tsx"),
+  ),
 });
 
 /** Discover remains an existing destination; this layer only changes routing. */
@@ -1652,6 +1720,7 @@ const agentWorkspaceWithChildren = agentWorkspaceRoute.addChildren([
   agentAnalyticsRoute,
   projectTaskBoardAnalyticsRoute,
   agentExperimentsRoute,
+  agentCalendarRoute,
   agentMonitorRoute,
   agentAppRoute,
   agentViewRoute,
@@ -1660,6 +1729,8 @@ const agentWorkspaceWithChildren = agentWorkspaceRoute.addChildren([
   agentLibraryFileRoute,
   agentConnectSourcesRoute,
   agentLegacyProjectViewRoute,
+  projectPlanRoute,
+  projectMonitoringRoute,
 ]);
 
 const threadSessionWithChildren = threadSessionRoute.addChildren([
@@ -1675,6 +1746,8 @@ const threadSessionWithChildren = threadSessionRoute.addChildren([
   reportsRoute,
   libraryRoute,
   discoverRoute,
+  planRoute,
+  orgMonitoringRoute,
 ]);
 
 const threadRouteWithChildren = threadRoute.addChildren([

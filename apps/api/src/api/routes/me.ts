@@ -81,6 +81,13 @@ interface ProjectSearchHit {
   orgSlug: string;
 }
 
+interface OrganizationSearchHit {
+  id: string;
+  name: string;
+  slug: string;
+  logo: string | null;
+}
+
 /** The picker shows a short list; a bigger page would only widen the scan. */
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 50;
@@ -166,6 +173,74 @@ export const createMeRoutes = () => {
       hits.push(...(await dropSsoBlockedOrgs(visible)));
 
       // Short page: the query is exhausted, so paging on reads nothing.
+      if (matches.length < pageSize) break;
+    }
+
+    return c.json({ items: hits.slice(0, limit) });
+  });
+
+  /**
+   * `GET /api/_me/organizations/search?q=<term>&limit=<n>` Organizations the
+   * caller belongs to whose name or slug matches `q`, across the whole
+   * membership rather than the first page Better Auth's list returns.
+   */
+  app.get("/organizations/search", async (c) => {
+    const ctx = c.get("studioContext");
+    c.header("Cache-Control", "private, no-store");
+
+    const userId = getUserId(ctx);
+    if (!userId) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+
+    const fence = credentialOrganizationFence(ctx);
+    if (fence === DENY) {
+      return c.json(
+        { error: "forbidden: credential is scoped to another organization" },
+        403,
+      );
+    }
+
+    const term = (c.req.query("q") ?? "").trim();
+    if (!term) {
+      return c.json({ items: [] as OrganizationSearchHit[] });
+    }
+    if (term.length > MAX_TERM_LENGTH) {
+      return c.json({ error: "query too long" }, 400);
+    }
+
+    const requested = Number.parseInt(c.req.query("limit") ?? "", 10);
+    const limit =
+      Number.isFinite(requested) && requested > 0
+        ? Math.min(requested, MAX_LIMIT)
+        : DEFAULT_LIMIT;
+
+    const dropSsoBlockedOrgs = createSsoGate(ctx, userId);
+    const pageSize = limit + FILTER_HEADROOM;
+    const hits: OrganizationSearchHit[] = [];
+
+    for (let page = 0; page < MAX_PAGES && hits.length < limit; page++) {
+      const matches = await ctx.storage.users.searchOrganizations({
+        userId,
+        term,
+        limit: pageSize,
+        offset: page * pageSize,
+        organizationId: fence,
+      });
+
+      const visible = matches
+        .filter((org) => !isOrgArchived(org))
+        .map((org) => ({
+          orgId: org.id,
+          name: org.name,
+          slug: org.slug,
+          logo: org.logo,
+        }));
+
+      for (const { orgId, ...org } of await dropSsoBlockedOrgs(visible)) {
+        hits.push({ id: orgId, ...org });
+      }
+
       if (matches.length < pageSize) break;
     }
 

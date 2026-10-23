@@ -75,7 +75,7 @@ function PathCard({
     <button
       type="button"
       onClick={onSelect}
-      className="group flex flex-col gap-3 rounded-xl bg-card p-3 text-left card-shadow outline-none transition-[transform,background-color] duration-200 hover:-translate-y-0.5 hover:bg-accent/40 focus-visible:border-ring focus-visible:ring-[2px] focus-visible:ring-ring/20 motion-reduce:transition-none motion-reduce:hover:translate-y-0"
+      className="group flex flex-col gap-3 surface p-3 text-left focus-ring transition-[transform,background-color] duration-200 hover:-translate-y-0.5 hover:bg-accent motion-reduce:transition-none motion-reduce:hover:translate-y-0"
     >
       {/* The scene sits on its own tinted plate, in the card's own hue, so the
           two intents are told apart before a word is read. */}

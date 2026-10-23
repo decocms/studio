@@ -32,6 +32,7 @@ export function LibraryTab({
   root,
   rootLabel,
   filePreview = "panel",
+  context,
 }: {
   /** Top of the tree — one project's folder, or the org's drive by default. */
   root?: string;
@@ -40,13 +41,13 @@ export function LibraryTab({
    * How a clicked file opens.
    *
    * `panel` hands it to the main-panel tab system, which is only correct on a
-   * surface that HAS one. The flat project screen does not: opening a tab from
-   * there swapped the whole shell for the scoped one — a sidebar that jumped
-   * into the project and a breadcrumb naming the agent instead of the file's
-   * project. `dialog` previews the file in place, over the files it came from.
+   * surface that HAS one. `dialog` previews the file in place, over the files
+   * it came from.
    * `side` leaves it to the Library, which opens it beside the list.
    */
   filePreview?: FilePreviewMode;
+  /** Drawn inside Context. */
+  context?: boolean;
 } = {}) {
   const { openPanel } = usePanelNavigate();
   const [openFile, setOpenFile] = useState<string | null>(null);
@@ -58,6 +59,7 @@ export function LibraryTab({
       <LibraryPage
         root={root}
         rootLabel={rootLabel}
+        context={context}
         onOpenFile={fileOpener(filePreview, setOpenFile, (path) =>
           openPanel(formatLibraryFileTabId(path)),
         )}

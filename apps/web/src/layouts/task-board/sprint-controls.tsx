@@ -111,7 +111,7 @@ export function SprintSwitcher({
         <IconButton
           label={t("taskBoard.sprints.manage")}
           tooltipSide="bottom"
-          variant="secondary"
+          variant="outline"
           onClick={() => setManaging(true)}
         >
           <Zap />
@@ -120,7 +120,7 @@ export function SprintSwitcher({
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
-              variant="secondary"
+              variant="outline"
               size="sm"
               aria-label={t("taskBoard.sprints.label")}
             >
@@ -356,7 +356,7 @@ function SprintRow({
   const t = useT();
   const days = formatSprintDays(sprint);
   return (
-    <div className="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-accent/40">
+    <div className="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-accent">
       <Zap
         size={16}
         className={cn(
