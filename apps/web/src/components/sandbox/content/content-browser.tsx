@@ -42,7 +42,11 @@ import { useProjectContext } from "@/sdk";
 import { useChatTask } from "@/components/chat/context";
 import { useDecofile } from "@/components/sections-editor/use-decofile";
 import { useLiveMeta } from "@/components/sections-editor/use-live-meta";
-import { hasEditableAppEditorSchema } from "./app-editor-schema";
+import {
+  hasEditableAppEditorSchema,
+  isTanstackMeta,
+} from "./app-editor-schema";
+import { useSectionPreviewBase } from "@/components/sections-editor/use-section-preview-base";
 import { hasCmsSettingsType } from "./cms-settings";
 import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
 import { useSaveBlock } from "@/components/sections-editor/use-save-block";
@@ -484,6 +488,13 @@ function ContentBrowserReady({
       return false;
     },
   });
+  const appPreviewBase = useSectionPreviewBase({
+    virtualMcpId,
+    branch,
+    sandboxUrl: previewUrl,
+  });
+  // TanStack runtimes can't render an app's `preview` export.
+  const showAppPreview = !!appPreviewBase && !!meta && !isTanstackMeta(meta);
   // Storefront "." deep-link: open the visited page once the decofile loads. One-shot, so a later manual selection is never clobbered.
   const hasDeepLink = !!(
     deepLinkPage?.pageId ||
@@ -1112,7 +1123,9 @@ function ContentBrowserReady({
         activeCollection !== "post-schedule" &&
         activeCollection !== "posts" &&
         activeCollection !== "loaders" &&
-        activeCollection !== "actions" && (
+        activeCollection !== "actions" &&
+        // An open app's preview takes the list's space; its back button returns here.
+        !(selection?.collection === "apps" && showAppPreview) && (
           <ItemList
             activeCollection={activeCollection}
             pages={pages}
@@ -1354,6 +1367,8 @@ function ContentBrowserReady({
                   decofile={decofile}
                   meta={meta}
                   previewBaseUrl={previewUrl}
+                  showAppPreview={showAppPreview}
+                  onBack={showAppPreview ? () => setSelection(null) : undefined}
                   schemaPending={isAppSchemaLoading(
                     typeof (decofile[selection.key] as Record<string, unknown>)
                       ?.__resolveType === "string"

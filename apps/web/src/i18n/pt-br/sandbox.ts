@@ -1,6 +1,7 @@
 import type { sandbox as sandboxEn } from "../en/sandbox.ts";
 
 export const sandbox = {
+  "sandbox.appEditor.backToApps": "Voltar para apps",
   "sandbox.appEditor.createdSection": 'Seção "{name}" criada',
   "sandbox.appEditor.editingBreadcrumb": "Trilha de navegação de edição",
   "sandbox.appEditor.failedAddSection": "Não foi possível adicionar a seção",
@@ -11,6 +12,9 @@ export const sandbox = {
   "sandbox.appEditor.loadingSchema": "Carregando schema do app…",
   "sandbox.appEditor.noEditableSchema":
     "Nenhum schema editável foi encontrado para este app.",
+  "sandbox.appEditor.previewFailed":
+    "Não foi possível atualizar a visualização. Exibindo a última renderização.",
+  "sandbox.appEditor.previewFrameTitle": "Visualização de {name}",
   "sandbox.availableSectionEditor.editingBreadcrumb":
     "Trilha de navegação de edição",
   "sandbox.availableSectionEditor.localEditsHint":

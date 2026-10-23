@@ -46,3 +46,16 @@ export function hasEditableAppEditorSchema(
   const schema = resolveAppEditorSchema(resolveType, meta, excludeFields);
   return !!schema && Object.keys(schema.properties ?? {}).length > 0;
 }
+
+/**
+ * Whether the schema comes from a TanStack storefront (`@decocms/start` v6
+ * tags it `framework: "tanstack-start"`; v8 declares `blocksMajor: 8`). Neither
+ * renders an app module's `preview` export: v6 answers "Unknown section" and
+ * v8's worker 404s `/live/*`.
+ */
+export function isTanstackMeta(meta: LiveMeta): boolean {
+  return (
+    ("framework" in meta && meta.framework === "tanstack-start") ||
+    ("blocksMajor" in meta && meta.blocksMajor === 8)
+  );
+}
