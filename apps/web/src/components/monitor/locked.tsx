@@ -18,7 +18,7 @@ import { cn } from "@decocms/ui/lib/utils.ts";
 import { IntegrationIcon } from "@/components/integration-icon";
 import { useProjectContext } from "@/sdk";
 import { formatCount } from "@/layouts/main-panel-tabs/monitor-v8";
-import { MetricCard } from "@/layouts/task-board/analytics-sections";
+import type { TimelinePoint } from "@/layouts/main-panel-tabs/cdn-tab";
 import { CopyButton } from "@/layouts/main-panel-tabs/analytics-tab";
 import { useT } from "@/i18n/use-t.ts";
 import { openNewProjectDialog } from "@/components/projects/new-project-store";
@@ -26,6 +26,7 @@ import { ConnectSourceDialog } from "@/routes/reports-onboarding/connect-source-
 import { VtexConnectButton } from "./vtex-connect-dialog";
 import type { ExperimentRow, SourceId, SourceState } from "./board";
 import { connectPowers, platformName } from "./sources-panel";
+import { type SiteUsage, SitesMonitor, sumSummaries } from "./sites-monitor";
 import { useSourceIcons } from "./use-source-icons";
 
 /** How far back the preview sits behind the button. */
@@ -564,43 +565,55 @@ export function ExperimentsPreview({
 }
 
 /** Site traffic across projects, made up for the faded background. */
-const SITES = [
-  { name: "Site", visitors: 48_200, pageviews: 182_400, sessions: 61_900 },
-  { name: "App", visitors: 21_700, pageviews: 64_100, sessions: 27_300 },
-  { name: "Blog", visitors: 9_400, pageviews: 15_800, sessions: 10_200 },
+function previewSite(
+  name: string,
+  requests: number,
+  pageviews: number,
+): SiteUsage {
+  return {
+    id: name,
+    name,
+    summary: {
+      total_requests: requests,
+      total_bandwidth_bytes: requests * 28_000,
+      cache_hit_ratio: 0.86,
+      avg_latency_ms: 42,
+      status_2xx_count: requests * 0.97,
+      status_4xx_count: requests * 0.025,
+      status_5xx_count: requests * 0.001,
+      unique_countries: 12,
+      pageviews,
+    },
+  };
+}
+
+const PREVIEW_SITES = [
+  previewSite("Site", 4_820_000, 182_400),
+  previewSite("App", 1_710_000, 64_100),
+  previewSite("Blog", 420_000, 15_800),
 ];
 
+/** A week of gently rising traffic, for the faded usage chart. */
+const PREVIEW_TIMELINE: TimelinePoint[] = Array.from({ length: 7 }, (_, i) => {
+  const requests = 820_000 + i * 38_000 + (i % 2) * 24_000;
+  return {
+    bucket: `2026-01-0${i + 1}`,
+    requests,
+    pageviews: Math.round(requests / 26),
+    bandwidth_bytes: requests * 28_000,
+    cache_hit_ratio: 0.86,
+  };
+});
+
+const PREVIEW_SUMMARY = sumSummaries(PREVIEW_SITES.map((s) => s.summary));
+
 export function AnalyticsPreview() {
-  const t = useT();
-  const total = (k: "visitors" | "pageviews" | "sessions") =>
-    formatCount(SITES.reduce((n, s) => n + s[k], 0));
   return (
-    <>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <MetricCard
-          title={t("monitor.orgAnalytics.visitors")}
-          value={total("visitors")}
-        />
-        <MetricCard
-          title={t("monitor.orgAnalytics.pageviews")}
-          value={total("pageviews")}
-        />
-        <MetricCard
-          title={t("monitor.orgAnalytics.sessions")}
-          value={total("sessions")}
-        />
-      </div>
-      <section className={CARD}>
-        {SITES.map((s) => (
-          <div key={s.name} className={cn(LINE, "justify-between")}>
-            <span className="text-foreground">{s.name}</span>
-            <span className="tnum text-muted-foreground">
-              {formatCount(s.visitors)} · {formatCount(s.pageviews)} ·{" "}
-              {formatCount(s.sessions)}
-            </span>
-          </div>
-        ))}
-      </section>
-    </>
+    <SitesMonitor
+      loading={false}
+      summary={PREVIEW_SUMMARY}
+      timeline={PREVIEW_TIMELINE}
+      sites={PREVIEW_SITES}
+    />
   );
 }

@@ -79,7 +79,7 @@ const RANGE_PRESETS = [
   { key: "1y", label: "lastYear" },
 ] as const;
 
-interface RangeSel {
+export interface RangeSel {
   range: string;
   since: string;
   until: string;
@@ -87,7 +87,7 @@ interface RangeSel {
 }
 
 /** The date-range dropdown: presets + a custom range + a Compare toggle. */
-function RangePicker({
+export function RangePicker({
   value,
   onChange,
 }: {
@@ -191,7 +191,7 @@ const COLOR_REQUESTS = "var(--chart-1)";
 const COLOR_PAGEVIEWS = "var(--chart-2)";
 const COLOR_BANDWIDTH = "var(--chart-4)";
 
-function formatNumber(value: unknown): string {
+export function formatNumber(value: unknown): string {
   const n = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(n)) return "—";
   return new Intl.NumberFormat().format(n);
@@ -208,7 +208,7 @@ function formatCompact(value: unknown): string {
 }
 
 /** Bytes → a compact human unit (B / KB / MB / GB / TB). */
-function formatBytes(value: unknown): string {
+export function formatBytes(value: unknown): string {
   const n = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(n) || n <= 0) return "0 B";
   const units = ["B", "KB", "MB", "GB", "TB", "PB"];
@@ -219,7 +219,7 @@ function formatBytes(value: unknown): string {
   return `${(n / 1024 ** i).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
-function formatPct(value: unknown): string {
+export function formatPct(value: unknown): string {
   const n = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(n)) return "—";
   return `${n.toFixed(1)}%`;
@@ -291,7 +291,7 @@ const PALETTE = [
   "bg-subtle-foreground",
 ];
 
-async function fetchJson(url: string): Promise<unknown> {
+export async function fetchJson(url: string): Promise<unknown> {
   const res = await fetch(url);
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -304,7 +304,7 @@ async function fetchJson(url: string): Promise<unknown> {
   return body;
 }
 
-interface CdnSummary {
+export interface CdnSummary {
   total_requests: number;
   total_bandwidth_bytes: number;
   cache_hit_ratio: number;
@@ -315,7 +315,7 @@ interface CdnSummary {
   unique_countries: number;
   pageviews: number;
 }
-interface TimelinePoint {
+export interface TimelinePoint {
   bucket: string;
   requests: number;
   bandwidth_bytes: number;
@@ -371,7 +371,7 @@ function formatCountry(code: string): string {
   }
 }
 
-function Card({
+export function Card({
   title,
   subtitle,
   action,
@@ -413,7 +413,7 @@ function ChartLegendItem({ color, label }: { color: string; label: string }) {
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+export function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="surface px-4 py-3">
       <div className="text-xs text-muted-foreground">{label}</div>
@@ -799,6 +799,122 @@ function FilterBar({
   );
 }
 
+/** Requests and pageviews over the range, with bandwidth on its own axis. */
+export function UsageChart({
+  points,
+  loading,
+}: {
+  points: readonly TimelinePoint[] | null | undefined;
+  loading: boolean;
+}) {
+  const t = useT();
+  return (
+    <Card
+      title={t("mainPanelTabs.cdnTab.usageOverTime")}
+      subtitle={t("mainPanelTabs.cdnTab.usageSubtitle")}
+    >
+      {loading ? (
+        <Skeleton className="h-72 w-full" />
+      ) : (points ?? []).length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          {t("mainPanelTabs.cdnTab.emptyRange")}
+        </p>
+      ) : (
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            <ChartLegendItem
+              color={COLOR_REQUESTS}
+              label={t("mainPanelTabs.cdnTab.requests")}
+            />
+            <ChartLegendItem
+              color={COLOR_PAGEVIEWS}
+              label={t("mainPanelTabs.cdnTab.pageviews")}
+            />
+            <ChartLegendItem
+              color={COLOR_BANDWIDTH}
+              label={t("mainPanelTabs.cdnTab.bandwidth")}
+            />
+          </div>
+          <ChartContainer
+            config={{
+              requests: {
+                label: t("mainPanelTabs.cdnTab.requests"),
+                color: COLOR_REQUESTS,
+              },
+              pageviews: {
+                label: t("mainPanelTabs.cdnTab.pageviews"),
+                color: COLOR_PAGEVIEWS,
+              },
+              bandwidth_bytes: {
+                label: t("mainPanelTabs.cdnTab.bandwidth"),
+                color: COLOR_BANDWIDTH,
+              },
+            }}
+            className="h-72 w-full"
+          >
+            <AreaChart
+              data={points ?? []}
+              margin={{ top: 8, right: 8, bottom: 8, left: 0 }}
+            >
+              <CartesianGrid vertical={false} />
+              <XAxis
+                dataKey="bucket"
+                tickLine={false}
+                axisLine={false}
+                tickMargin={8}
+                minTickGap={32}
+                tickFormatter={(v: string) => String(v).slice(5, 16)}
+              />
+              <YAxis
+                yAxisId="left"
+                tickLine={false}
+                axisLine={false}
+                width={48}
+                tickFormatter={(v: number) => formatCompact(v)}
+              />
+              <YAxis
+                yAxisId="right"
+                orientation="right"
+                tickLine={false}
+                axisLine={false}
+                width={56}
+                tickFormatter={(v: number) => formatBytes(v)}
+              />
+              <ChartTooltip content={<ChartTooltipContent />} />
+              <Area
+                yAxisId="left"
+                dataKey="requests"
+                type="monotone"
+                fill={COLOR_REQUESTS}
+                fillOpacity={0.15}
+                stroke={COLOR_REQUESTS}
+                strokeWidth={2}
+              />
+              <Area
+                yAxisId="left"
+                dataKey="pageviews"
+                type="monotone"
+                fill={COLOR_PAGEVIEWS}
+                fillOpacity={0.12}
+                stroke={COLOR_PAGEVIEWS}
+                strokeWidth={2}
+              />
+              <Line
+                yAxisId="right"
+                dataKey="bandwidth_bytes"
+                type="monotone"
+                dot={false}
+                stroke={COLOR_BANDWIDTH}
+                strokeWidth={2}
+              />
+            </AreaChart>
+          </ChartContainer>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 /** Performance (CDN / edge) sub-tab. */
 function PerformanceSection({
   base,
@@ -979,109 +1095,7 @@ function PerformanceSection({
         </div>
       )}
 
-      <Card
-        title={t("mainPanelTabs.cdnTab.usageOverTime")}
-        subtitle={t("mainPanelTabs.cdnTab.usageSubtitle")}
-      >
-        {timeline.isLoading ? (
-          <Skeleton className="h-72 w-full" />
-        ) : (timeline.data ?? []).length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            {t("mainPanelTabs.cdnTab.emptyRange")}
-          </p>
-        ) : (
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-              <ChartLegendItem
-                color={COLOR_REQUESTS}
-                label={t("mainPanelTabs.cdnTab.requests")}
-              />
-              <ChartLegendItem
-                color={COLOR_PAGEVIEWS}
-                label={t("mainPanelTabs.cdnTab.pageviews")}
-              />
-              <ChartLegendItem
-                color={COLOR_BANDWIDTH}
-                label={t("mainPanelTabs.cdnTab.bandwidth")}
-              />
-            </div>
-            <ChartContainer
-              config={{
-                requests: {
-                  label: t("mainPanelTabs.cdnTab.requests"),
-                  color: COLOR_REQUESTS,
-                },
-                pageviews: {
-                  label: t("mainPanelTabs.cdnTab.pageviews"),
-                  color: COLOR_PAGEVIEWS,
-                },
-                bandwidth_bytes: {
-                  label: t("mainPanelTabs.cdnTab.bandwidth"),
-                  color: COLOR_BANDWIDTH,
-                },
-              }}
-              className="h-72 w-full"
-            >
-              <AreaChart
-                data={timeline.data ?? []}
-                margin={{ top: 8, right: 8, bottom: 8, left: 0 }}
-              >
-                <CartesianGrid vertical={false} />
-                <XAxis
-                  dataKey="bucket"
-                  tickLine={false}
-                  axisLine={false}
-                  tickMargin={8}
-                  minTickGap={32}
-                  tickFormatter={(v: string) => String(v).slice(5, 16)}
-                />
-                <YAxis
-                  yAxisId="left"
-                  tickLine={false}
-                  axisLine={false}
-                  width={48}
-                  tickFormatter={(v: number) => formatCompact(v)}
-                />
-                <YAxis
-                  yAxisId="right"
-                  orientation="right"
-                  tickLine={false}
-                  axisLine={false}
-                  width={56}
-                  tickFormatter={(v: number) => formatBytes(v)}
-                />
-                <ChartTooltip content={<ChartTooltipContent />} />
-                <Area
-                  yAxisId="left"
-                  dataKey="requests"
-                  type="monotone"
-                  fill={COLOR_REQUESTS}
-                  fillOpacity={0.15}
-                  stroke={COLOR_REQUESTS}
-                  strokeWidth={2}
-                />
-                <Area
-                  yAxisId="left"
-                  dataKey="pageviews"
-                  type="monotone"
-                  fill={COLOR_PAGEVIEWS}
-                  fillOpacity={0.12}
-                  stroke={COLOR_PAGEVIEWS}
-                  strokeWidth={2}
-                />
-                <Line
-                  yAxisId="right"
-                  dataKey="bandwidth_bytes"
-                  type="monotone"
-                  dot={false}
-                  stroke={COLOR_BANDWIDTH}
-                  strokeWidth={2}
-                />
-              </AreaChart>
-            </ChartContainer>
-          </div>
-        )}
-      </Card>
+      <UsageChart points={timeline.data} loading={timeline.isLoading} />
 
       {/* Shared metric control for ALL breakdown lists below (cache status,
           status codes, top paths, top countries) — placed above the grid so it
