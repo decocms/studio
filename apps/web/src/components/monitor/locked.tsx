@@ -26,7 +26,13 @@ import { ConnectSourceDialog } from "@/routes/reports-onboarding/connect-source-
 import { VtexConnectButton } from "./vtex-connect-dialog";
 import type { ExperimentRow, SourceId, SourceState } from "./board";
 import { connectPowers, platformName } from "./sources-panel";
-import { type SiteUsage, SitesMonitor, sumSummaries } from "./sites-monitor";
+import {
+  type SiteUsage,
+  SitesMonitor,
+  type SitesMonitorData,
+  sumSummaries,
+  sumTimelines,
+} from "./sites-monitor";
 import { useSourceIcons } from "./use-source-icons";
 
 /** How far back the preview sits behind the button. */
@@ -564,56 +570,74 @@ export function ExperimentsPreview({
   );
 }
 
-/** Site traffic across projects, made up for the faded background. */
+/** A week of gently rising traffic, made up for the faded background. */
+function previewTimeline(scale: number, lift: number): TimelinePoint[] {
+  return Array.from({ length: 7 }, (_, i) => {
+    const requests = Math.round(
+      scale * (1 + lift * i + (i % 2) * 0.05 + (i === 5 ? 0.12 : 0)),
+    );
+    return {
+      bucket: `2026-01-0${i + 1}`,
+      requests,
+      pageviews: Math.round(requests / 26),
+      bandwidth_bytes: requests * 28_000,
+      cache_hit_ratio: 0.84 + i * 0.006,
+    };
+  });
+}
+
 function previewSite(
   name: string,
-  requests: number,
-  pageviews: number,
-): SiteUsage {
+  scale: number,
+  lift: number,
+): SiteUsage & {
+  timeline: TimelinePoint[];
+  previousTimeline: TimelinePoint[];
+} {
+  const timeline = previewTimeline(scale, lift);
+  const previousTimeline = previewTimeline(scale * 0.9, lift / 2);
+  const summary = (points: TimelinePoint[]) =>
+    sumSummaries(
+      points.map((p) => ({
+        total_requests: p.requests,
+        total_bandwidth_bytes: p.bandwidth_bytes,
+        cache_hit_ratio: p.cache_hit_ratio,
+        avg_latency_ms: 42,
+        status_2xx_count: p.requests,
+        status_4xx_count: 0,
+        status_5xx_count: 0,
+        unique_countries: 12,
+        pageviews: p.pageviews,
+      })),
+    );
   return {
     id: name,
     name,
-    summary: {
-      total_requests: requests,
-      total_bandwidth_bytes: requests * 28_000,
-      cache_hit_ratio: 0.86,
-      avg_latency_ms: 42,
-      status_2xx_count: requests * 0.97,
-      status_4xx_count: requests * 0.025,
-      status_5xx_count: requests * 0.001,
-      unique_countries: 12,
-      pageviews,
-    },
+    summary: summary(timeline),
+    previous: summary(previousTimeline),
+    series: timeline.map((p) => p.pageviews),
+    previousSeries: previousTimeline.map((p) => p.pageviews),
+    timeline,
+    previousTimeline,
   };
 }
 
 const PREVIEW_SITES = [
-  previewSite("Site", 4_820_000, 182_400),
-  previewSite("App", 1_710_000, 64_100),
-  previewSite("Blog", 420_000, 15_800),
+  previewSite("Site", 690_000, 0.04),
+  previewSite("App", 245_000, 0.02),
+  previewSite("Blog", 60_000, 0.01),
 ];
 
-/** A week of gently rising traffic, for the faded usage chart. */
-const PREVIEW_TIMELINE: TimelinePoint[] = Array.from({ length: 7 }, (_, i) => {
-  const requests = 820_000 + i * 38_000 + (i % 2) * 24_000;
-  return {
-    bucket: `2026-01-0${i + 1}`,
-    requests,
-    pageviews: Math.round(requests / 26),
-    bandwidth_bytes: requests * 28_000,
-    cache_hit_ratio: 0.86,
-  };
-});
-
-const PREVIEW_SUMMARY = sumSummaries(PREVIEW_SITES.map((s) => s.summary));
+const PREVIEW_ANALYTICS: SitesMonitorData = {
+  summary: sumSummaries(PREVIEW_SITES.map((s) => s.summary)),
+  previous: sumSummaries(
+    PREVIEW_SITES.flatMap((s) => (s.previous ? [s.previous] : [])),
+  ),
+  timeline: sumTimelines(PREVIEW_SITES.map((s) => s.timeline)),
+  previousTimeline: sumTimelines(PREVIEW_SITES.map((s) => s.previousTimeline)),
+  sites: PREVIEW_SITES,
+};
 
 export function AnalyticsPreview() {
-  return (
-    <SitesMonitor
-      loading={false}
-      summary={PREVIEW_SUMMARY}
-      timeline={PREVIEW_TIMELINE}
-      sites={PREVIEW_SITES}
-    />
-  );
+  return <SitesMonitor data={PREVIEW_ANALYTICS} />;
 }

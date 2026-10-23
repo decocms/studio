@@ -1,31 +1,67 @@
 /**
- * The site Monitor's Performance view, summed across sites: the same stats and
- * usage chart a project's Monitor shows, then one line per site. The org's
- * Analytics draws it from every site's numbers; the locked tab draws it from
- * preview numbers, faded.
+ * Site traffic across the org, laid out like the Metrics board: pageviews as
+ * the headline chart, then requests, bandwidth and cache hits, each against
+ * the period before, then one row per site. The org's Analytics draws it from
+ * every site's Monitor numbers; the locked tab draws it from preview numbers,
+ * faded.
  */
 
 import type { ReactNode } from "react";
-import { Link, type LinkProps } from "@tanstack/react-router";
-import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
-import { cn } from "@decocms/ui/lib/utils.ts";
+import { type LinkProps, useNavigate } from "@tanstack/react-router";
 import {
-  Card,
+  Area,
+  CartesianGrid,
+  ComposedChart,
+  Line,
+  XAxis,
+  YAxis,
+} from "recharts";
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+} from "@decocms/ui/components/chart.tsx";
+import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@decocms/ui/components/table.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
+import { SettingsSection } from "@/components/settings/settings-section";
+import { useT } from "@/i18n/use-t.ts";
+import {
   type CdnSummary,
   formatBytes,
   formatNumber,
   formatPct,
-  Stat,
   type TimelinePoint,
-  UsageChart,
 } from "@/layouts/main-panel-tabs/cdn-tab";
-import { useT } from "@/i18n/use-t.ts";
+import { relativeChange } from "@/layouts/main-panel-tabs/monitor-v8";
+import { MetricCard } from "@/layouts/task-board/analytics-sections";
+import { Change, Trend } from "./parts";
+import { Sparkline } from "./sparkline";
 
 export interface SiteUsage {
   id: string;
   name: ReactNode;
   summary: CdnSummary;
+  previous: CdnSummary | null;
+  /** Pageviews per bucket, this period and the one before. */
+  series: readonly number[];
+  previousSeries: readonly number[];
   link?: LinkProps;
+}
+
+export interface SitesMonitorData {
+  summary: CdnSummary;
+  previous: CdnSummary | null;
+  timeline: readonly TimelinePoint[];
+  previousTimeline: readonly TimelinePoint[];
+  sites: readonly SiteUsage[];
 }
 
 const EMPTY_SUMMARY: CdnSummary = {
@@ -73,156 +109,403 @@ export function sumTimelines(
   const byBucket = new Map<string, TimelinePoint>();
   for (const point of list.flat()) {
     const prev = byBucket.get(point.bucket);
-    byBucket.set(
-      point.bucket,
-      prev
-        ? {
-            bucket: point.bucket,
-            requests: prev.requests + point.requests,
-            bandwidth_bytes: prev.bandwidth_bytes + point.bandwidth_bytes,
-            pageviews: prev.pageviews + point.pageviews,
-            cache_hit_ratio: prev.cache_hit_ratio,
-          }
-        : { ...point },
-    );
+    if (!prev) {
+      byBucket.set(point.bucket, { ...point });
+      continue;
+    }
+    const requests = prev.requests + point.requests;
+    byBucket.set(point.bucket, {
+      bucket: point.bucket,
+      requests,
+      bandwidth_bytes: prev.bandwidth_bytes + point.bandwidth_bytes,
+      pageviews: prev.pageviews + point.pageviews,
+      // Weighted by requests, as the summary's is.
+      cache_hit_ratio:
+        requests === 0
+          ? 0
+          : (prev.cache_hit_ratio * prev.requests +
+              point.cache_hit_ratio * point.requests) /
+            requests,
+    });
   }
   return [...byBucket.values()].sort((a, b) =>
     a.bucket.localeCompare(b.bucket),
   );
 }
 
-const COLS =
-  "grid grid-cols-[minmax(0,1fr)_repeat(3,6rem)] md:grid-cols-[minmax(0,1fr)_repeat(4,7rem)] items-center gap-3";
+// --- cards ---------------------------------------------------------------------
 
-function SiteCells({ summary }: { summary: CdnSummary }) {
+type CardId = "pageviews" | "requests" | "bandwidth" | "cache";
+
+const SIDE_CARDS: readonly CardId[] = ["requests", "bandwidth", "cache"];
+
+const COLOR_CURRENT = "var(--chart-1)";
+const COLOR_PREVIOUS = "var(--muted-foreground)";
+const AXIS_TICK = { fontSize: 11, fill: "var(--muted-foreground)" };
+
+/** Traffic going up is good; cache hits are too. Nothing here is bad going up. */
+const BETTER: Record<CardId, "up" | "none"> = {
+  pageviews: "up",
+  requests: "none",
+  bandwidth: "none",
+  cache: "up",
+};
+
+function cardValue(id: CardId, s: CdnSummary): number {
+  switch (id) {
+    case "pageviews":
+      return s.pageviews;
+    case "requests":
+      return s.total_requests;
+    case "bandwidth":
+      return s.total_bandwidth_bytes;
+    case "cache":
+      return s.cache_hit_ratio;
+    default: {
+      const unhandled: never = id;
+      return unhandled;
+    }
+  }
+}
+
+function pointValue(id: CardId, p: TimelinePoint): number {
+  switch (id) {
+    case "pageviews":
+      return p.pageviews;
+    case "requests":
+      return p.requests;
+    case "bandwidth":
+      return p.bandwidth_bytes;
+    case "cache":
+      return p.cache_hit_ratio;
+    default: {
+      const unhandled: never = id;
+      return unhandled;
+    }
+  }
+}
+
+function formatCard(id: CardId, value: number): string {
+  switch (id) {
+    case "pageviews":
+    case "requests":
+      return formatNumber(value);
+    case "bandwidth":
+      return formatBytes(value);
+    case "cache":
+      return formatPct(value);
+    default: {
+      const unhandled: never = id;
+      return unhandled;
+    }
+  }
+}
+
+const compact = new Intl.NumberFormat(undefined, {
+  notation: "compact",
+  maximumFractionDigits: 1,
+});
+
+function formatTick(id: CardId, value: number): string {
+  switch (id) {
+    case "pageviews":
+    case "requests":
+      return compact.format(value);
+    case "bandwidth":
+      return formatBytes(value);
+    case "cache":
+      return `${Math.round(value * 100)}%`;
+    default: {
+      const unhandled: never = id;
+      return unhandled;
+    }
+  }
+}
+
+/** A day reads as "10-21"; an hour of a single day as "14:00". */
+const bucketLabel = (bucket: string) =>
+  bucket.length > 10 ? bucket.slice(11, 16) : bucket.slice(5, 10);
+
+function useCardLabel() {
+  const t = useT();
+  return (id: CardId) => {
+    switch (id) {
+      case "pageviews":
+        return t("mainPanelTabs.cdnTab.pageviews");
+      case "requests":
+        return t("mainPanelTabs.cdnTab.requests");
+      case "bandwidth":
+        return t("mainPanelTabs.cdnTab.bandwidth");
+      case "cache":
+        return t("mainPanelTabs.cdnTab.cacheHit");
+      default: {
+        const unhandled: never = id;
+        return unhandled;
+      }
+    }
+  };
+}
+
+function TrendPlot({
+  id,
+  timeline,
+  previousTimeline,
+  tall,
+}: {
+  id: CardId;
+  timeline: readonly TimelinePoint[];
+  previousTimeline: readonly TimelinePoint[];
+  tall: boolean;
+}) {
+  const t = useT();
+  const label = useCardLabel();
+  const gradient = `sites-${id}`;
+  // The period before, laid over this one bucket by bucket.
+  const data = timeline.map((p, i) => {
+    const before = previousTimeline[i];
+    return {
+      bucket: bucketLabel(p.bucket),
+      value: pointValue(id, p),
+      reference: before ? pointValue(id, before) : null,
+    };
+  });
   return (
-    <>
-      <span className="tnum text-right text-foreground">
-        {formatNumber(summary.total_requests)}
-      </span>
-      <span className="tnum text-right text-muted-foreground">
-        {formatNumber(summary.pageviews)}
-      </span>
-      <span className="tnum text-right text-muted-foreground">
-        {formatBytes(summary.total_bandwidth_bytes)}
-      </span>
-      <span className="tnum hidden text-right text-muted-foreground md:block">
-        {formatPct(summary.cache_hit_ratio)}
-      </span>
-    </>
+    <ChartContainer
+      role="img"
+      aria-label={label(id)}
+      className={cn("w-full", tall ? "h-[150px] md:h-[170px]" : "h-[110px]")}
+      config={{
+        value: {
+          label: t("monitor.orgAnalytics.current"),
+          color: COLOR_CURRENT,
+        },
+        reference: {
+          label: t("monitor.orgAnalytics.previous"),
+          color: COLOR_PREVIOUS,
+        },
+      }}
+    >
+      <ComposedChart data={data} margin={{ left: 0, right: 0, top: 4 }}>
+        <defs>
+          <linearGradient id={gradient} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={COLOR_CURRENT} stopOpacity={0.18} />
+            <stop offset="100%" stopColor={COLOR_CURRENT} stopOpacity={0} />
+          </linearGradient>
+        </defs>
+        <CartesianGrid
+          strokeDasharray="4 4"
+          stroke="var(--border)"
+          strokeOpacity={0.5}
+          vertical={false}
+        />
+        <XAxis
+          dataKey="bucket"
+          axisLine={false}
+          tickLine={false}
+          tick={AXIS_TICK}
+          tickMargin={8}
+          minTickGap={24}
+        />
+        <YAxis
+          orientation="right"
+          axisLine={false}
+          tickLine={false}
+          tick={AXIS_TICK}
+          width={52}
+          tickCount={4}
+          tickFormatter={(v: number) => formatTick(id, v)}
+        />
+        <ChartTooltip
+          cursor={{ stroke: "var(--border)", strokeDasharray: "4 4" }}
+          content={
+            <ChartTooltipContent
+              formatter={(value, name) => (
+                <span className="flex w-full items-center justify-between gap-3">
+                  <span className="text-muted-foreground">
+                    {name === "reference"
+                      ? t("monitor.orgAnalytics.previous")
+                      : t("monitor.orgAnalytics.current")}
+                  </span>
+                  <span className="tnum text-foreground">
+                    {formatCard(id, Number(value))}
+                  </span>
+                </span>
+              )}
+            />
+          }
+        />
+        <Line
+          type="monotone"
+          dataKey="reference"
+          stroke={COLOR_PREVIOUS}
+          strokeOpacity={0.55}
+          strokeWidth={1.25}
+          strokeDasharray="4 4"
+          dot={false}
+          activeDot={false}
+          isAnimationActive={false}
+        />
+        <Area
+          type="monotone"
+          dataKey="value"
+          stroke={COLOR_CURRENT}
+          strokeWidth={2}
+          fill={`url(#${gradient})`}
+          dot={false}
+          activeDot={{ r: 3, stroke: "var(--background)", strokeWidth: 2 }}
+          isAnimationActive={false}
+        />
+      </ComposedChart>
+    </ChartContainer>
   );
 }
 
-export function SitesMonitor({
-  summary,
-  timeline,
-  sites,
-  loading,
+function TrafficCard({
+  id,
+  data,
+  tall = false,
 }: {
-  summary: CdnSummary | null;
-  timeline: readonly TimelinePoint[];
-  sites: readonly SiteUsage[];
-  loading: boolean;
+  id: CardId;
+  data: SitesMonitorData;
+  tall?: boolean;
 }) {
   const t = useT();
-  const s = summary;
-  const reqPerPv = s && s.pageviews > 0 ? s.total_requests / s.pageviews : null;
-  const bwPer10kPv =
-    s && s.pageviews > 0
-      ? s.total_bandwidth_bytes / (s.pageviews / 10000)
-      : null;
-  const row = "h-10 rounded-lg px-2 text-sm";
+  const label = useCardLabel();
+  const value = cardValue(id, data.summary);
+  return (
+    <MetricCard
+      title={label(id)}
+      value={formatCard(id, value)}
+      caption={
+        <Trend
+          change={relativeChange(
+            value,
+            data.previous ? cardValue(id, data.previous) : null,
+          )}
+          better={BETTER[id]}
+          reference={t("monitor.compare.vs", {
+            ref: t("monitor.orgAnalytics.previousShort"),
+          })}
+        />
+      }
+    >
+      {data.timeline.length > 0 && (
+        <TrendPlot
+          id={id}
+          timeline={data.timeline}
+          previousTimeline={data.previousTimeline}
+          tall={tall}
+        />
+      )}
+    </MetricCard>
+  );
+}
 
+// --- sites ---------------------------------------------------------------------
+
+const DASH = <span className="text-meta">–</span>;
+
+function SitesTable({ sites }: { sites: readonly SiteUsage[] }) {
+  const t = useT();
+  const navigate = useNavigate();
+  return (
+    <SettingsSection title={t("monitor.orgAnalytics.sites")}>
+      <div className="surface overflow-x-auto">
+        <Table variant="flush">
+          <TableHeader>
+            <TableRow>
+              <TableHead className="pl-4">
+                {t("monitor.filter.project")}
+              </TableHead>
+              <TableHead>{t("mainPanelTabs.cdnTab.pageviews")}</TableHead>
+              <TableHead className="w-28" />
+              <TableHead>{t("mainPanelTabs.cdnTab.requests")}</TableHead>
+              <TableHead>{t("mainPanelTabs.cdnTab.bandwidth")}</TableHead>
+              <TableHead className="pr-4 text-right">
+                {t("mainPanelTabs.cdnTab.cacheHit")}
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {sites.map((site) => (
+              <TableRow
+                key={site.id}
+                className={cn(site.link && "cursor-pointer")}
+                onClick={() => site.link && void navigate(site.link)}
+              >
+                <TableCell className="pl-4 text-sm font-medium text-foreground">
+                  {site.name}
+                </TableCell>
+                <TableCell>
+                  <span className="flex items-baseline gap-2">
+                    <span className="text-sm tnum text-foreground">
+                      {formatNumber(site.summary.pageviews)}
+                    </span>
+                    <Change
+                      change={relativeChange(
+                        site.summary.pageviews,
+                        site.previous?.pageviews ?? null,
+                      )}
+                      better="up"
+                    />
+                  </span>
+                </TableCell>
+                <TableCell>
+                  {site.series.length > 1 ? (
+                    <Sparkline
+                      values={site.series}
+                      reference={site.previousSeries}
+                      className="h-6 w-24"
+                    />
+                  ) : (
+                    DASH
+                  )}
+                </TableCell>
+                <TableCell className="text-sm tnum text-foreground">
+                  {formatNumber(site.summary.total_requests)}
+                </TableCell>
+                <TableCell className="text-sm tnum text-foreground">
+                  {formatBytes(site.summary.total_bandwidth_bytes)}
+                </TableCell>
+                <TableCell className="pr-4 text-right text-sm tnum text-foreground">
+                  {formatPct(site.summary.cache_hit_ratio)}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </SettingsSection>
+  );
+}
+
+export function SitesMonitorSkeleton() {
   return (
     <div className="flex flex-col gap-4">
-      {loading || !s ? (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {Array.from({ length: 8 }).map((_, i) => (
-            <Skeleton key={i} className="h-20 w-full" />
-          ))}
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Stat
-            label={t("mainPanelTabs.cdnTab.requests")}
-            value={formatNumber(s.total_requests)}
-          />
-          <Stat
-            label={t("mainPanelTabs.cdnTab.pageviews")}
-            value={formatNumber(s.pageviews)}
-          />
-          <Stat
-            label={t("mainPanelTabs.cdnTab.bandwidth")}
-            value={formatBytes(s.total_bandwidth_bytes)}
-          />
-          <Stat
-            label={t("mainPanelTabs.cdnTab.cacheHit")}
-            value={formatPct(s.cache_hit_ratio)}
-          />
-          <Stat
-            label={t("mainPanelTabs.cdnTab.requestsPerPageview")}
-            value={reqPerPv === null ? "—" : reqPerPv.toFixed(1)}
-          />
-          <Stat
-            label={t("mainPanelTabs.cdnTab.bandwidthPer10k")}
-            value={bwPer10kPv === null ? "—" : formatBytes(bwPer10kPv)}
-          />
-          <Stat
-            label={t("mainPanelTabs.cdnTab.avgLatency")}
-            value={`${Math.round(s.avg_latency_ms)} ms`}
-          />
-          <Stat
-            label={t("mainPanelTabs.cdnTab.errors5xx")}
-            value={formatNumber(s.status_5xx_count)}
-          />
+      <Skeleton className="h-[290px] w-full rounded-xl" />
+      <div className="grid gap-4 md:grid-cols-3">
+        {SIDE_CARDS.map((id) => (
+          <Skeleton key={id} className="h-[230px] w-full rounded-xl" />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function SitesMonitor({ data }: { data: SitesMonitorData }) {
+  return (
+    <div className="flex flex-col gap-4">
+      <TrafficCard id="pageviews" data={data} tall />
+      <div className="grid gap-4 md:grid-cols-3">
+        {SIDE_CARDS.map((id) => (
+          <TrafficCard key={id} id={id} data={data} />
+        ))}
+      </div>
+      {data.sites.length > 0 && (
+        <div className="mt-6">
+          <SitesTable sites={data.sites} />
         </div>
       )}
-
-      <UsageChart points={timeline} loading={loading} />
-
-      <Card title={t("monitor.orgAnalytics.sites")}>
-        <div className="-mx-2 -my-1 flex flex-col">
-          <div className={cn(COLS, "px-2 pb-1 text-meta")}>
-            <span>{t("monitor.filter.project")}</span>
-            <span className="text-right">
-              {t("mainPanelTabs.cdnTab.requests")}
-            </span>
-            <span className="text-right">
-              {t("mainPanelTabs.cdnTab.pageviews")}
-            </span>
-            <span className="text-right">
-              {t("mainPanelTabs.cdnTab.bandwidth")}
-            </span>
-            <span className="hidden text-right md:block">
-              {t("mainPanelTabs.cdnTab.cacheHit")}
-            </span>
-          </div>
-          {loading && sites.length === 0 && (
-            <Skeleton className="mx-2 my-3 h-4" />
-          )}
-          {sites.map((site) =>
-            site.link ? (
-              <Link
-                key={site.id}
-                {...site.link}
-                className={cn(
-                  COLS,
-                  row,
-                  "transition-colors hover:bg-accent/50",
-                )}
-              >
-                <span className="min-w-0 text-foreground">{site.name}</span>
-                <SiteCells summary={site.summary} />
-              </Link>
-            ) : (
-              <div key={site.id} className={cn(COLS, row)}>
-                <span className="min-w-0 text-foreground">{site.name}</span>
-                <SiteCells summary={site.summary} />
-              </div>
-            ),
-          )}
-        </div>
-      </Card>
     </div>
   );
 }

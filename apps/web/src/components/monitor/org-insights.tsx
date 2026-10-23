@@ -17,10 +17,15 @@ import { useT } from "@/i18n/use-t.ts";
 import { KEYS } from "@/lib/query-keys";
 import { useStudioTools } from "@/lib/studio-tools";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@decocms/ui/components/select.tsx";
+import {
   type CdnSummary,
   fetchJson,
-  RangePicker,
-  type RangeSel,
   type TimelinePoint,
 } from "@/layouts/main-panel-tabs/cdn-tab";
 import { ExperimentRow } from "@/layouts/main-panel-tabs/experiments-tab";
@@ -33,7 +38,12 @@ import {
   Locked,
 } from "./locked";
 import { monitorPreview } from "./preview";
-import { SitesMonitor, sumSummaries, sumTimelines } from "./sites-monitor";
+import {
+  SitesMonitor,
+  SitesMonitorSkeleton,
+  sumSummaries,
+  sumTimelines,
+} from "./sites-monitor";
 
 /** A project with a site, as the org views read it. */
 export interface SiteProject {
@@ -159,20 +169,48 @@ export function OrgExperiments({
 
 // --- analytics ---------------------------------------------------------------
 
+/** The presets the org reads, as the site Monitor names them. */
+const RANGES = ["today", "yesterday", "7d", "14d", "30d", "90d"] as const;
+type Range = (typeof RANGES)[number];
+
+/** Calendar days each preset spans, and how far its last day sits before today. */
+const WINDOW: Record<Range, { days: number; endOffset: number }> = {
+  today: { days: 1, endOffset: 0 },
+  yesterday: { days: 1, endOffset: 1 },
+  "7d": { days: 7, endOffset: 0 },
+  "14d": { days: 14, endOffset: 0 },
+  "30d": { days: 30, endOffset: 0 },
+  "90d": { days: 90, endOffset: 0 },
+};
+
+const isoDay = (d: Date) => d.toISOString().slice(0, 10);
+
+/**
+ * The same number of days just before the preset's window, as a custom range.
+ * Dates are UTC, as the Monitor's own windows are.
+ */
+function previousWindow(range: Range): string {
+  const { days, endOffset } = WINDOW[range];
+  const until = new Date();
+  until.setUTCDate(until.getUTCDate() - endOffset - days);
+  const since = new Date(until);
+  since.setUTCDate(since.getUTCDate() - (days - 1));
+  return `&since=${isoDay(since)}&until=${isoDay(until)}`;
+}
+
 /** One site's Performance read, as the project's Monitor reads it. */
 function monitorQuery(
   base: string,
   view: "summary" | "timeline",
-  sel: RangeSel,
+  range: string,
+  extra: string,
 ) {
-  const extra =
-    sel.range === "custom" ? `&since=${sel.since}&until=${sel.until}` : "";
   return {
     // The project's own Monitor reads this same key, so they share a cache.
-    queryKey: KEYS.cdnData(base, `cdn:${view}${extra}`, sel.range),
+    queryKey: KEYS.cdnData(base, `cdn:${view}${extra}`, range),
     queryFn: async () => {
       const body = (await fetchJson(
-        `${base}/cdn/data?view=${view}&range=${sel.range}${extra}`,
+        `${base}/cdn/data?view=${view}&range=${range}${extra}`,
       )) as { available?: boolean; data?: unknown };
       return body.available === false ? null : (body.data ?? null);
     },
@@ -181,17 +219,59 @@ function monitorQuery(
   };
 }
 
-const DEFAULT_RANGE: RangeSel = {
-  range: "7d",
-  since: "",
-  until: "",
-  compare: false,
-};
+function RangeSelect({
+  value,
+  onChange,
+}: {
+  value: Range;
+  onChange: (range: Range) => void;
+}) {
+  const t = useT();
+  const label = (range: Range) => {
+    switch (range) {
+      case "today":
+        return t("mainPanelTabs.cdnTab.today");
+      case "yesterday":
+        return t("mainPanelTabs.cdnTab.yesterday");
+      case "7d":
+        return t("mainPanelTabs.cdnTab.last7d");
+      case "14d":
+        return t("mainPanelTabs.cdnTab.last14d");
+      case "30d":
+        return t("mainPanelTabs.cdnTab.last30d");
+      case "90d":
+        return t("mainPanelTabs.cdnTab.last90d");
+      default: {
+        const unhandled: never = range;
+        return unhandled;
+      }
+    }
+  };
+  return (
+    <Select value={value} onValueChange={(next) => onChange(next as Range)}>
+      <SelectTrigger size="sm" className="w-[140px]">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {RANGES.map((range) => (
+          <SelectItem key={range} value={range}>
+            {label(range)}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+const asSummary = (data: unknown) => (data ?? null) as CdnSummary | null;
+const asTimeline = (data: unknown) =>
+  Array.isArray(data) ? (data as TimelinePoint[]) : [];
 
 /**
- * Every site's Monitor at once: the same Performance numbers, summed. Only
- * sites the CDN reports for count; a project that is not a deco site simply
- * has none, so it never shows as a gap.
+ * Every site's Monitor at once, laid out like the Metrics board: the same
+ * Performance numbers summed, against the period before. Only sites the CDN
+ * reports for count; a project that is not a deco site simply has none, so it
+ * never shows as a gap.
  */
 export function OrgAnalytics({
   projects,
@@ -200,29 +280,54 @@ export function OrgAnalytics({
 }) {
   const t = useT();
   const { org } = useProjectContext();
-  const [sel, setSel] = useState<RangeSel>(DEFAULT_RANGE);
+  const [range, setRange] = useState<Range>("7d");
+  const before = previousWindow(range);
   const bases = projects.map(
     (p) => `/api/${org.slug}/monitor/${encodeURIComponent(p.analyticsSite)}`,
   );
-  const summaries = useQueries({
-    queries: bases.map((base) => monitorQuery(base, "summary", sel)),
-  });
-  const timelines = useQueries({
-    queries: bases.map((base) => monitorQuery(base, "timeline", sel)),
-  });
+  const read = (view: "summary" | "timeline", previous: boolean) =>
+    bases.map((base) =>
+      previous
+        ? monitorQuery(base, view, "custom", before)
+        : monitorQuery(base, view, range, ""),
+    );
+  const summaries = useQueries({ queries: read("summary", false) });
+  const timelines = useQueries({ queries: read("timeline", false) });
+  const previousSummaries = useQueries({ queries: read("summary", true) });
+  const previousTimelines = useQueries({ queries: read("timeline", true) });
 
   const loading = summaries.some((r) => r.isLoading);
-  const sites = projects.flatMap((project, i) => {
-    const summary = summaries[i]?.data as CdnSummary | null | undefined;
-    return summary && summary.total_requests > 0
-      ? [{ project, summary, timeline: timelines[i]?.data }]
-      : [];
-  });
-  sites.sort((a, b) => b.summary.total_requests - a.summary.total_requests);
+  const sites = projects
+    .flatMap((project, i) => {
+      const summary = asSummary(summaries[i]?.data);
+      if (!summary || summary.total_requests <= 0) return [];
+      return [
+        {
+          project,
+          summary,
+          previous: asSummary(previousSummaries[i]?.data),
+          timeline: asTimeline(timelines[i]?.data),
+          previousTimeline: asTimeline(previousTimelines[i]?.data),
+        },
+      ];
+    })
+    .sort((a, b) => b.summary.pageviews - a.summary.pageviews);
 
-  const picker = <RangePicker value={sel} onChange={setSel} />;
+  const actions = (
+    <Page.Actions>
+      <RangeSelect value={range} onChange={setRange} />
+    </Page.Actions>
+  );
 
-  if (!loading && sites.length === 0) {
+  if (loading) {
+    return (
+      <>
+        {actions}
+        <SitesMonitorSkeleton />
+      </>
+    );
+  }
+  if (sites.length === 0) {
     return (
       <Locked
         kind="analytics"
@@ -235,23 +340,29 @@ export function OrgAnalytics({
     );
   }
 
+  // The period before only counts where every site answered for it.
+  const previous = sites.every((s) => s.previous)
+    ? sumSummaries(sites.flatMap((s) => (s.previous ? [s.previous] : [])))
+    : null;
   return (
     <>
-      <Page.Actions>{picker}</Page.Actions>
+      {actions}
       <SitesMonitor
-        loading={loading}
-        summary={
-          sites.length > 0 ? sumSummaries(sites.map((s) => s.summary)) : null
-        }
-        timeline={sumTimelines(
-          sites.map((s) => (s.timeline as TimelinePoint[] | null) ?? []),
-        )}
-        sites={sites.map(({ project, summary }) => ({
-          id: project.id,
-          name: <ProjectName project={project} />,
-          summary,
-          link: projectLink(org.slug, project.id, "analytics"),
-        }))}
+        data={{
+          summary: sumSummaries(sites.map((s) => s.summary)),
+          previous,
+          timeline: sumTimelines(sites.map((s) => s.timeline)),
+          previousTimeline: sumTimelines(sites.map((s) => s.previousTimeline)),
+          sites: sites.map((s) => ({
+            id: s.project.id,
+            name: <ProjectName project={s.project} />,
+            summary: s.summary,
+            previous: s.previous,
+            series: s.timeline.map((p) => p.pageviews),
+            previousSeries: s.previousTimeline.map((p) => p.pageviews),
+            link: projectLink(org.slug, s.project.id, "analytics"),
+          })),
+        }}
       />
     </>
   );
