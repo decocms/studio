@@ -337,11 +337,8 @@ export function SimpleModeSection() {
   };
 
   return (
-    <SettingsSection
-      title={t("settings.simpleModeSection.defaultModels")}
-      headerClassName="pl-0"
-    >
-      <div className="flex items-center justify-between -mt-2 mb-2">
+    <SettingsSection title={t("settings.simpleModeSection.defaultModels")}>
+      <div className="flex items-center justify-between -mt-2 mb-2 px-4">
         <p className="text-sm text-muted-foreground">
           {t("settings.simpleModeSection.modelsPowerDescription")}
         </p>

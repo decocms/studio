@@ -581,6 +581,23 @@ export class GithubChangeRequestClient implements ChangeRequestClient {
     return githubJson<T>(res, init.operation);
   }
 
+  /** Like `rest`, but a well-formed non-array body degrades to a GitProviderError instead of crashing the caller's array ops. */
+  private async restArray<T>(
+    path: string,
+    init: { method?: "GET" | "POST" | "PATCH" | "PUT"; operation: string },
+  ): Promise<T[] | null> {
+    const rows = await this.rest<unknown>(path, init);
+    if (rows === null) return null;
+    if (!Array.isArray(rows)) {
+      throw new GitProviderError({
+        provider: "github",
+        status: 502,
+        message: `GitHub ${init.operation} returned a non-array payload`,
+      });
+    }
+    return rows as T[];
+  }
+
   private graphql<T>(args: {
     query: string;
     variables: Record<string, unknown>;
@@ -639,7 +656,7 @@ export class GithubChangeRequestClient implements ChangeRequestClient {
   }
 
   async listOpen(limit: number): Promise<ChangeRequest[]> {
-    const rows = await this.rest<RawPullRequest[]>(
+    const rows = await this.restArray<RawPullRequest>(
       `/pulls?state=open&sort=updated&direction=desc&per_page=${Math.min(limit, 100)}`,
       { operation: "change_request_list" },
     );
@@ -802,15 +819,16 @@ export class GithubChangeRequestClient implements ChangeRequestClient {
   }
 
   async readDeployedUrl(sha: string): Promise<string | null> {
-    const deployments = await this.rest<Array<{ id?: number }>>(
+    const deployments = await this.restArray<{ id?: number }>(
       `/deployments?sha=${encodeURIComponent(sha)}&per_page=${DEPLOYMENTS_SCANNED}`,
       { operation: "change_request_deployments" },
     );
     for (const deployment of deployments ?? []) {
       if (typeof deployment.id !== "number") continue;
-      const statuses = await this.rest<
-        Array<{ state?: string; environment_url?: string | null }>
-      >(`/deployments/${deployment.id}/statuses?per_page=10`, {
+      const statuses = await this.restArray<{
+        state?: string;
+        environment_url?: string | null;
+      }>(`/deployments/${deployment.id}/statuses?per_page=10`, {
         operation: "change_request_deployment_statuses",
       });
       const published = (statuses ?? []).find(

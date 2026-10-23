@@ -14,6 +14,7 @@
  * tool output to scan for them.
  */
 
+import { Button } from "@decocms/ui/components/button.tsx";
 import { Globe01, Monitor01 } from "@untitledui/icons";
 import { formatDeckTabId } from "@/layouts/main-panel-tabs/tab-id";
 import { usePanelNavigate } from "@/layouts/main-panel-tabs/use-panel-navigate";
@@ -78,24 +79,25 @@ export function ThreadHtmlPreviews() {
 
   return (
     <div className="flex flex-col gap-1.5 py-2">
-      <div className="text-[12px] text-muted-foreground/70 uppercase tracking-wide">
-        {heading}
-      </div>
+      <div className="text-xs text-muted-foreground/70">{heading}</div>
       <div className="flex flex-wrap gap-2">
         {chips.map((chip) => (
-          <button
+          <Button
             type="button"
             key={chip.tabId}
+            variant="outline"
+            className="max-w-full"
             onClick={() => openPanel(chip.tabId)}
-            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border bg-muted/30 hover:bg-muted/60 text-[13px] transition-colors"
           >
             {chip.kind === "deck" ? (
               <Monitor01 className="size-3.5 shrink-0 text-muted-foreground" />
             ) : (
               <Globe01 className="size-3.5 shrink-0 text-muted-foreground" />
             )}
-            <span className="font-medium text-foreground">{chip.label}</span>
-          </button>
+            <span className="truncate font-medium text-foreground">
+              {chip.label}
+            </span>
+          </Button>
         ))}
       </div>
     </div>

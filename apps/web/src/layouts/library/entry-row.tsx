@@ -198,7 +198,7 @@ export function EntryRow({
     <TableRow
       data-state={selected ? "selected" : undefined}
       aria-selected={selected}
-      className="group/card cursor-pointer hover:bg-accent/40"
+      className="group/card cursor-pointer hover:bg-accent"
       draggable={actions.draggable}
       onClick={actions.onOpen}
       onDragStart={actions.onDragStart}

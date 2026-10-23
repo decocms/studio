@@ -39,8 +39,8 @@ export function MessageUsageStats({ usage }: UsageStatsProps) {
           </span>
         </span>
       </TooltipTrigger>
-      <TooltipContent side="top" className="font-mono text-[11px]">
-        <p className="text-muted text-[10px] mb-1">tokens</p>
+      <TooltipContent side="top" className="font-mono text-2xs">
+        <p className="text-muted text-2xs mb-1">tokens</p>
         <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
           <span className="text-muted">in</span>
           <span className="text-right tabular-nums">
@@ -96,8 +96,8 @@ export function MessageStatsBar({ usage, duration }: MessageStatsBarProps) {
               {durationLabel}
             </span>
           </TooltipTrigger>
-          <TooltipContent side="top" className="font-mono text-[11px]">
-            <p className="opacity-60 text-[10px] mb-1">thinking</p>
+          <TooltipContent side="top" className="font-mono text-2xs">
+            <p className="opacity-60 text-2xs mb-1">thinking</p>
             <span className="tabular-nums">
               {formatDuration(duration! / 1000)}
             </span>
@@ -121,8 +121,8 @@ export function MessageStatsBar({ usage, duration }: MessageStatsBarProps) {
                 : `${usage!.totalTokens.toLocaleString()} tok`}
             </span>
           </TooltipTrigger>
-          <TooltipContent side="top" className="font-mono text-[11px]">
-            <p className="opacity-60 text-[10px] mb-1">tokens</p>
+          <TooltipContent side="top" className="font-mono text-2xs">
+            <p className="opacity-60 text-2xs mb-1">tokens</p>
             <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
               <span className="opacity-60">in</span>
               <span className="text-right tabular-nums">
@@ -229,12 +229,12 @@ export function SessionStats({
               )}
             />
           </svg>
-          <span className="inline-block overflow-hidden whitespace-nowrap max-w-0 opacity-0 transition-[max-width,opacity] duration-200 ease-out @[320px]/chat-bottom:max-w-32 @[320px]/chat-bottom:opacity-100 text-[11px] font-mono tabular-nums">
+          <span className="inline-block overflow-hidden whitespace-nowrap max-w-0 opacity-0 transition-[max-width,opacity] duration-200 ease-out @[320px]/chat-bottom:max-w-32 @[320px]/chat-bottom:opacity-100 text-2xs font-mono tabular-nums">
             {pct.toFixed(0)}%{cost > 0 ? ` · $${cost.toFixed(2)}` : ""}
           </span>
         </button>
       </TooltipTrigger>
-      <TooltipContent side="top" className="font-mono text-[11px]">
+      <TooltipContent side="top" className="font-mono text-2xs">
         <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
           <span className="text-muted">context</span>
           <span className="text-right tabular-nums">

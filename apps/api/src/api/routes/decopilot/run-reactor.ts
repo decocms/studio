@@ -24,7 +24,7 @@ import {
 import type { RunEvent, RunFailedReason, RunTransition } from "./run-state";
 
 /** Recorded on a run the idle reaper force-fails for lack of progress. */
-const STALL_FAILURE_REASON =
+export const STALL_FAILURE_REASON =
   "Run stalled — no progress within the idle timeout window";
 
 /**

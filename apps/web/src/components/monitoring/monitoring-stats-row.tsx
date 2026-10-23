@@ -263,8 +263,8 @@ function KPITooltipContent({
       : value.toLocaleString();
 
   return (
-    <div className="rounded-lg border bg-background px-3 py-2 shadow-md">
-      <div className="text-[11px] text-muted-foreground mb-1">{label}</div>
+    <div className="rounded-lg bg-popover px-3 py-2 shadow-soft">
+      <div className="text-2xs text-muted-foreground mb-1">{label}</div>
       <div className="flex items-center gap-1.5">
         <div
           className="size-2 shrink-0 rounded-full"

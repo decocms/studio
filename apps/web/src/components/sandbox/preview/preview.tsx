@@ -136,7 +136,10 @@ import {
 import { PathParamInput } from "./path-param-input";
 import { buildPreviewLabel } from "./preview-label";
 import { showCmsPageSelector, showPreviewToolbarFor } from "./cms-controls";
-import { useCreatePage } from "@/components/sections-editor/use-create-page";
+import {
+  PageSchemaNotReadyError,
+  useCreatePage,
+} from "@/components/sections-editor/use-create-page";
 import { CreatePageModal } from "@/components/sections-editor/create-page-modal";
 import { sleep } from "@decocms/shared/std";
 import {
@@ -175,6 +178,20 @@ import { useMainSchemaV8 } from "@/hooks/use-main-schema-v8";
 import { useContentRevision } from "@/components/sections-editor/content-protocol-api";
 import { isContentEditingEnabled } from "@/layouts/main-panel-tabs/content-editing-gate";
 import { type PreviewDeviceSize, withDeviceHint } from "./device-hint";
+import { PreviewAsControl } from "./preview-as-control";
+import {
+  hasPreviewOptions,
+  isReleaseSha,
+  type PreviewOptions,
+  withPreviewOptions,
+  withPreviewOptionsInDraftUrl,
+} from "@/components/sections-editor/preview-link";
+import {
+  NAMED_RULE_KINDS,
+  namedRuleSupport,
+  readNamedRuleValues,
+} from "@/components/sections-editor/named-rules";
+import { useReleases } from "@/layouts/main-panel-tabs/releases-api";
 import {
   frameNavigationLoaded,
   HELD_NAVIGATION_RELEASE_MS,
@@ -452,6 +469,8 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
 
   // Pages dropdown in URL bar
   const [pagesOpen, setPagesOpen] = useState(false);
+  // "Preview as": a moment and forced A/B tests, for this preview only.
+  const [previewOptions, setPreviewOptions] = useState<PreviewOptions>({});
   const [pagesSearch, setPagesSearch] = useState("");
   const pagesListRef = useRef<HTMLDivElement>(null);
   const [createPageDialogOpen, setCreatePageDialogOpen] = useState(false);
@@ -710,7 +729,11 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     decofile && currentPageKey
       ? getPageVariantSectionsAt(decofile, currentPageKey, 0)
       : [];
-  const cmsSections = decofile ? parseSections(cmsRawSections, decofile) : [];
+  // A Blocks v8 site's short names and lazy values; v7's shapes otherwise.
+  const contentV8 = isProtocolProject(contentBackend);
+  const cmsSections = decofile
+    ? parseSections(cmsRawSections, decofile, contentV8)
+    : [];
   const cmsSectionLabels = cmsSections.map((s) =>
     s.isSavedBlock ? s.label : "",
   );
@@ -721,7 +744,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // editable run within the DOM (handles framework sections deco injects around
   // OR between the editable ones) — no hardcoded list of sections to skip.
   const cmsSectionKeys = cmsRawSections.map((s) =>
-    resolveSectionCandidates(s, decofile ?? {}),
+    resolveSectionCandidates(s, decofile ?? {}, contentV8),
   );
 
   const iframeSrcRef = useRef<string | null>(null);
@@ -857,12 +880,47 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const variantOverride = workspace.state.variantOverride ?? [];
   const matcherOverride = runsSiteCode ? variantOverride : [];
   const forcedVariants = runsSiteCode ? [] : variantOverride;
+  // "Preview as" (a Blocks v8 site): the moment and forced tests ride on the
+  // same link, never on the published site (preview-link.ts).
+  const previewAsAvailable =
+    isProtocolProject(contentBackend) &&
+    NAMED_RULE_KINDS.some(
+      (kind) => namedRuleSupport(meta, kind) === "available",
+    );
+  const appliedPreviewOptions = previewAsAvailable ? previewOptions : {};
+  const previewOptionsActive = hasPreviewOptions(appliedPreviewOptions);
+  const previewTests =
+    previewAsAvailable && decofile
+      ? Object.keys(readNamedRuleValues(decofile).experiments)
+      : [];
+  // With no draft yet, the frame shows the published site: the moment and
+  // tests then apply to the current release, by its commit SHA.
+  const hostedSite =
+    contentBackend.kind === "protocol" && contentBackend.source === "github";
+  const releases = useReleases(org.slug, virtualMcpId ?? "", {
+    enabled:
+      previewOptionsActive && hostedSite && showsPublished && !!virtualMcpId,
+  });
+  const { current: liveRelease } = releases.data?.pages[0] ?? {
+    current: null,
+  };
+  const currentRelease = liveRelease?.revision ?? null;
   // A connected `deco serve` has no drafts: a pointer to it carries only the
-  // forced variants. With none, `off` drops a pointer the draft cookie kept.
+  // forced variants (and the preview's moment and tests). With none, `off`
+  // drops a pointer the draft cookie kept.
+  const servePointerBase =
+    serveConnection && servePreviewUrl(contentBackend)
+      ? buildServeDraftPointer(
+          serveConnection.endpoint,
+          forcedVariants,
+          previewOptionsActive,
+        )
+      : null;
   const servePointer =
     serveConnection && servePreviewUrl(contentBackend)
-      ? (buildServeDraftPointer(serveConnection.endpoint, forcedVariants) ??
-        DRAFT_OFF)
+      ? servePointerBase
+        ? withPreviewOptions(servePointerBase, appliedPreviewOptions)
+        : DRAFT_OFF
       : null;
 
   const iframeSrc = withDecoFBT(
@@ -883,16 +941,20 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
         ? // Fast Preview's draft route honours the variant matcher override like the sandbox dev server, so append it here too.
           withVariantMatcherOverride(
             withDeviceHint(
-              withForcedVariantsInDraftUrl(
-                // No draft renderable yet (waking, or a hosted draft with no edits), so ask for published.
-                withDraftPointer(
-                  directPreviewUrl ??
-                    effectiveDraftPreviewUrl ??
-                    resolvePreviewUrl(resolvedPath, display.iframeBase!) ??
-                    display.iframeBase!,
-                  showsPublished ? DRAFT_OFF : null,
+              withPreviewOptionsInDraftUrl(
+                withForcedVariantsInDraftUrl(
+                  // No draft renderable yet (waking, or a hosted draft with no edits), so ask for published.
+                  withDraftPointer(
+                    directPreviewUrl ??
+                      effectiveDraftPreviewUrl ??
+                      resolvePreviewUrl(resolvedPath, display.iframeBase!) ??
+                      display.iframeBase!,
+                    showsPublished ? DRAFT_OFF : null,
+                  ),
+                  forcedVariants,
                 ),
-                forcedVariants,
+                appliedPreviewOptions,
+                currentRelease,
               ),
               previewDeviceSize,
             ),
@@ -918,7 +980,14 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     display.mode === "production"
       ? productionOpenTabBase
         ? withVariantMatcherOverride(
-            withForcedVariantsInDraftUrl(productionOpenTabBase, forcedVariants),
+            withPreviewOptionsInDraftUrl(
+              withForcedVariantsInDraftUrl(
+                productionOpenTabBase,
+                forcedVariants,
+              ),
+              appliedPreviewOptions,
+              showsPublished ? currentRelease : null,
+            ),
             matcherOverride,
           )
         : null
@@ -1615,6 +1684,14 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
         name,
         path: trimmedPath,
         template,
+        // A Blocks v8 site's page is typed from its schema, which may not
+        // have arrived yet: read it rather than guess. v7 needs none.
+        schema: isProtocolProject(contentBackend)
+          ? {
+              meta,
+              loadMeta: async () => (await metaQuery.refetch()).data,
+            }
+          : undefined,
       });
       setCreatePageDialogOpen(false);
       toast.success(t("sandbox.preview.pageCreated", { name }));
@@ -1627,9 +1704,11 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       activateEditingMode("blocks");
     } catch (error) {
       setCreatePageError(
-        error instanceof Error
-          ? error.message
-          : t("sandbox.preview.failedToCreatePage"),
+        error instanceof PageSchemaNotReadyError
+          ? t("sandbox.preview.pageSchemaNotReady")
+          : error instanceof Error
+            ? error.message
+            : t("sandbox.preview.failedToCreatePage"),
       );
     }
   };
@@ -1687,17 +1766,17 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                   ? pageName
                   : [pageName, currentPath].filter(Boolean).join(" · ")
             }
-            className="group/page-picker flex h-7 w-fit min-w-[320px] items-stretch overflow-hidden whitespace-nowrap rounded-[var(--studio-button-radius,calc(var(--radius)*1.333))] border border-border/60 bg-background text-left text-xs text-muted-foreground transition-colors hover:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="group/page-picker flex h-7 w-fit min-w-[320px] items-stretch overflow-hidden whitespace-nowrap rounded-[var(--studio-button-radius,calc(var(--radius)*1.333))] border border-border/60 bg-background text-left text-xs text-muted-foreground transition-colors hover:border-border focus-ring"
           >
             <span className="flex min-w-0 flex-1 items-center gap-1.5 px-2 transition-colors group-hover/page-picker:bg-accent/50 group-data-[state=open]/page-picker:bg-accent/50">
               {activeGlobalSection && (
-                <span className="inline-flex shrink-0 items-center gap-1 rounded bg-global-section/14 px-1.5 py-0.5 text-[11px] font-medium text-global-section-fg dark:text-global-section-fg-dark">
+                <span className="inline-flex shrink-0 items-center gap-1 rounded bg-global-section/14 px-1.5 py-0.5 text-2xs font-medium text-global-section-fg dark:text-global-section-fg-dark">
                   <Globe01 size={11} />
                   {t("sandbox.preview.globalBadge")}
                 </span>
               )}
               {activeLoader && (
-                <span className="inline-flex shrink-0 items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                <span className="inline-flex shrink-0 items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-2xs font-medium text-muted-foreground">
                   <Database01 size={11} />
                   {t("sandbox.preview.loaderBadge")}
                 </span>
@@ -1896,6 +1975,19 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
         </Tooltip>
         {urlControls}
         <div className="flex shrink-0 items-center gap-1">
+          {previewAsAvailable && (
+            <PreviewAsControl
+              tests={previewTests}
+              options={previewOptions}
+              onChange={setPreviewOptions}
+              available={
+                !!servePointerBase ||
+                !showsPublished ||
+                isReleaseSha(currentRelease) ||
+                !previewOptionsActive
+              }
+            />
+          )}
           <ToolbarIconButton
             onClick={handleOpenPreview}
             aria-label={t("sandbox.preview.openInNewTab")}
@@ -2162,7 +2254,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                       )}
 
                     {display.showWakingPill && (
-                      <div className="absolute top-4 left-1/2 z-20 flex max-w-md -translate-x-1/2 items-start gap-3 rounded-xl border border-border bg-muted px-4 py-3 shadow-lg pointer-events-none select-none">
+                      <div className="absolute top-4 left-1/2 z-20 flex max-w-md -translate-x-1/2 items-start gap-3 rounded-xl bg-muted px-4 py-3 shadow-soft pointer-events-none select-none">
                         <Spinner className="size-4.5 mt-0.5 shrink-0 text-muted-foreground" />
                         <div className="flex flex-col gap-0.5">
                           <span className="text-sm font-medium text-foreground">
@@ -2176,7 +2268,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                     )}
 
                     {effectiveEditingMode === "visual" && !visualElement && (
-                      <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 rounded-full border border-violet-400/40 bg-violet-500/90 px-3 py-1 text-xs font-medium text-white shadow-md backdrop-blur-sm pointer-events-none select-none">
+                      <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 rounded-full border border-special/40 bg-special/90 px-3 py-1 text-xs font-medium text-special-foreground shadow-soft backdrop-blur-sm pointer-events-none select-none">
                         <CursorClick01 size={12} />
                         {t("sandbox.preview.clickElementToAsk")}
                       </div>
@@ -2192,8 +2284,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                       <div
                         className={cn(
                           "shrink-0",
-                          !previewFluid &&
-                            "border-x border-border bg-background shadow-sm",
+                          !previewFluid && "bg-background shadow-edge",
                         )}
                         style={previewFrameStyle}
                         onMouseLeave={clearEditorHover}

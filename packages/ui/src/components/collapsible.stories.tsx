@@ -8,7 +8,7 @@ import {
 } from "./collapsible.tsx";
 
 const meta = {
-  title: "Components/Collapsible",
+  title: "Molecules/Collapsible",
   component: Collapsible,
 } satisfies Meta<typeof Collapsible>;
 

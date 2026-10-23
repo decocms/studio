@@ -12,7 +12,7 @@ import {
 } from "./drawer.tsx";
 
 const meta = {
-  title: "Components/Drawer",
+  title: "Organisms/Drawer",
   component: Drawer,
 } satisfies Meta<typeof Drawer>;
 

@@ -1,9 +1,11 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { ArrowRight, Plus, Trash01 } from "@untitledui/icons";
+import { AgentAvatar } from "./agent-avatar.tsx";
 import { Button } from "./button.tsx";
+import { Matrix } from "../foundations/kit.tsx";
 
 const meta = {
-  title: "Components/Button",
+  title: "Atoms/Button",
   component: Button,
   args: {
     children: "Button",
@@ -47,6 +49,7 @@ export const Variants: Story = {
       <Button variant="destructive">Destructive</Button>
       <Button variant="success">Success</Button>
       <Button variant="warning">Warning</Button>
+      <Button variant="brand">Brand</Button>
       <Button variant="special">Special</Button>
       <Button variant="link">Link</Button>
     </div>
@@ -85,4 +88,90 @@ export const WithIcon: Story = {
 
 export const Disabled: Story = {
   args: { disabled: true },
+};
+
+const AGENT_FACE =
+  "https://assets.decocache.com/decocms/fd07a578-6b1c-40f1-bc05-88a3b981695d/f7fc4ffa81aec04e37ae670c3cd4936643a7b269.png";
+
+export const Agent: Story = {
+  render: () => (
+    <div className="flex items-center gap-2">
+      <Button variant="agent" size="sm">
+        <AgentAvatar src={AGENT_FACE} size={20} /> Ask
+      </Button>
+      <Button variant="agent">
+        <AgentAvatar src={AGENT_FACE} size={26} /> Ask
+      </Button>
+      <Button variant="agent" size="lg">
+        <AgentAvatar src={AGENT_FACE} size={32} /> Ask
+      </Button>
+    </div>
+  ),
+};
+
+export const States: Story = {
+  parameters: {
+    controls: { disable: true },
+    layout: "padded",
+    pseudo: {
+      hover: [".is-hover"],
+      focusVisible: [".is-focus"],
+      active: [".is-active"],
+    },
+  },
+  render: () => (
+    <Matrix
+      columns={["Default", "Hover", "Focus", "Pressed", "Disabled"]}
+      proposed={["Pressed"]}
+      rows={(
+        [
+          "default",
+          "secondary",
+          "outline",
+          "ghost",
+          "destructive",
+          "brand",
+          "agent",
+        ] as const
+      ).map((variant) => ({
+        label: variant === "default" ? "primary" : variant,
+        cells: ["", "is-hover", "is-focus", "is-active", "disabled"].map(
+          (state) => (
+            <Button
+              key={state}
+              variant={variant}
+              className={state}
+              disabled={state === "disabled"}
+            >
+              {variant === "agent" ? (
+                <>
+                  <AgentAvatar src={AGENT_FACE} size={26} /> Ask
+                </>
+              ) : (
+                "New task"
+              )}
+            </Button>
+          ),
+        ),
+      }))}
+    />
+  ),
+};
+
+export const SizesMatrix: Story = {
+  name: "Sizes · 28 / 32 / 40",
+  parameters: { controls: { disable: true }, layout: "padded" },
+  render: () => (
+    <Matrix
+      columns={["sm · 28", "default · 32", "lg · 40"]}
+      rows={(["default", "secondary", "outline"] as const).map((variant) => ({
+        label: variant === "default" ? "primary" : variant,
+        cells: (["sm", "default", "lg"] as const).map((size) => (
+          <Button key={size} variant={variant} size={size}>
+            <Plus /> New task
+          </Button>
+        )),
+      }))}
+    />
+  ),
 };

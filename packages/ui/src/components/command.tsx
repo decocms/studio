@@ -111,7 +111,7 @@ function CommandInput({
         "flex items-center gap-2 px-3",
         height,
         boxed
-          ? "rounded-xl border border-input bg-transparent focus-within:border-ring"
+          ? "rounded-xl border border-input bg-transparent focus-within-ring"
           : "border-b",
       )}
     >

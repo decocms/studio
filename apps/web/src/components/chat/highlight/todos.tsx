@@ -35,7 +35,7 @@ function TodoRow({ todo }: { todo: Todo }) {
   const label = isInProgress ? todo.activeForm : todo.content;
 
   return (
-    <li className="flex items-start gap-2.5 px-2 py-1.5 rounded-lg hover:bg-accent/50 transition-colors">
+    <li className="flex items-start gap-2.5 px-2 py-1.5 rounded-lg hover:bg-accent transition-colors">
       <TodoCheckbox status={todo.status} />
       <span
         className={cn(

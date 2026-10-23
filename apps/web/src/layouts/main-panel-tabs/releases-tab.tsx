@@ -16,7 +16,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { DotsVertical, RefreshCcw01 } from "@untitledui/icons";
+import { DotsVertical, Eye, RefreshCcw01 } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
   AlertDialog,
@@ -56,7 +56,10 @@ import {
   useReleases,
   useRetryRelease,
 } from "./releases-api";
+import { releasePreviewUrl } from "@/components/sections-editor/preview-link";
+import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import {
+  canPreviewRelease,
   canReapply,
   formatWhen,
   isLatest,
@@ -86,6 +89,9 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
   const releases = useReleases(org.slug, virtualMcpId);
   const reapply = useReapply(org.slug, virtualMcpId);
   const retryRelease = useRetryRelease(org.slug, virtualMcpId);
+  // "Preview this version": the site's own page reading that release, from
+  // the same address Studio's preview uses (its preview hosts honour it).
+  const { previewServerUrl } = useSessionRuntime(virtualMcpId);
   const [confirm, setConfirm] = useState<ReleaseCommit | null>(null);
   const [highlight, setHighlight] = useState<string | null>(null);
   // Whether the version in the dialog was made for another design: only
@@ -293,27 +299,46 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
                   ) : null}
                 </div>
                 {latest ? <LatestPill /> : null}
-                {canReapply(commit, current) ? (
+                {canReapply(commit, current) ||
+                (canPreviewRelease(commit) &&
+                  releasePreviewUrl(previewServerUrl, commit.sha)) ? (
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button
                         type="button"
                         variant="ghost"
-                        size="icon"
-                        className="size-7"
+                        size="icon-sm"
                         aria-label={t("releases.actions")}
                       >
                         <DotsVertical size={14} />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem
-                        disabled={reapply.isPending}
-                        onSelect={() => setConfirm(commit)}
-                      >
-                        <RefreshCcw01 size={14} />
-                        {t("releases.reapply")}
-                      </DropdownMenuItem>
+                      {canPreviewRelease(commit) &&
+                      releasePreviewUrl(previewServerUrl, commit.sha) ? (
+                        <DropdownMenuItem
+                          data-testid="release-preview"
+                          onSelect={() => {
+                            const url = releasePreviewUrl(
+                              previewServerUrl,
+                              commit.sha,
+                            );
+                            if (url) window.open(url, "_blank", "noopener");
+                          }}
+                        >
+                          <Eye size={14} />
+                          {t("releases.preview")}
+                        </DropdownMenuItem>
+                      ) : null}
+                      {canReapply(commit, current) ? (
+                        <DropdownMenuItem
+                          disabled={reapply.isPending}
+                          onSelect={() => setConfirm(commit)}
+                        >
+                          <RefreshCcw01 size={14} />
+                          {t("releases.reapply")}
+                        </DropdownMenuItem>
+                      ) : null}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 ) : null}

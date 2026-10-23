@@ -39,7 +39,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@decocms/ui/components/select.tsx";
-import { cn } from "@decocms/ui/lib/utils.ts";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t.ts";
 import {
@@ -79,7 +78,7 @@ function ScopeSelect({
       onValueChange={(v) => onChange(v === "build" ? "build" : "runtime")}
       disabled={disabled}
     >
-      <SelectTrigger className={cn("h-8", className)}>
+      <SelectTrigger size="sm" className={className}>
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
@@ -250,7 +249,8 @@ export function EnvSection({
                           if (ev.key === "Escape") setEditingKey(null);
                         }}
                         autoFocus
-                        className="h-8 font-mono text-xs"
+                        size="sm"
+                        className="font-mono text-xs"
                       />
                       <Button
                         size="sm"
@@ -289,7 +289,7 @@ export function EnvSection({
                             setEditValue(e.value);
                           }}
                           title={t("mainPanelTabs.hostingTab.editValue")}
-                          className="min-w-0 truncate px-1.5 py-0.5 text-right font-mono text-xs text-muted-foreground hover:bg-muted hover:text-foreground rounded-lg"
+                          className="min-w-0 truncate px-1.5 py-0.5 text-right font-mono text-xs text-muted-foreground hover:bg-accent hover:text-foreground rounded-lg"
                         >
                           {e.value || "—"}
                         </button>
@@ -318,7 +318,7 @@ export function EnvSection({
               <CollapsibleTrigger asChild>
                 <button
                   type="button"
-                  className="group flex w-full items-center gap-2 px-4 py-2.5 text-left text-xs text-muted-foreground hover:bg-muted/40"
+                  className="group flex w-full items-center gap-2 px-4 py-2.5 text-left text-xs text-muted-foreground hover:bg-accent"
                 >
                   <ChevronRight className="size-4 transition-transform duration-200 group-data-[state=open]:rotate-90 motion-reduce:transition-none" />
                   <Code02 className="size-4" />

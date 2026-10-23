@@ -28,6 +28,7 @@ function setup() {
     store: delivery.store,
     purge: delivery.purge,
     site: "acme",
+    previewHosts: ["acme.deco.site", "www.acme.com"],
   };
   const insights = fakeInsights(git.history);
   /** Writes main head's companion release, as a Publish does. */

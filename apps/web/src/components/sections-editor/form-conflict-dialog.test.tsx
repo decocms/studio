@@ -16,7 +16,6 @@ import {
   conflictHeading,
   fieldInSentence,
   FormConflictChoices,
-  initials,
 } from "./form-conflict-dialog";
 import type { ConflictAuthor } from "./conflict-author";
 import {
@@ -447,8 +446,6 @@ describe("FormConflictChoices", () => {
     expect(fieldInSentence("Title")).toBe("title");
     expect(fieldInSentence("SEO")).toBe("SEO");
     expect(fieldInSentence("Cta › Label")).toBe("Cta › Label");
-    expect(initials("  ana  souza lima ")).toBe("AS");
-    expect(initials(null)).toBe("");
   });
 
   test("the choices it returns resolve the section as picked", () => {

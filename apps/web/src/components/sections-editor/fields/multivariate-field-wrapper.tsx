@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { createContext, useContext, useState, type ReactNode } from "react";
 import { Flag01, LayersThree01 } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Label } from "@decocms/ui/components/label.tsx";
@@ -19,7 +19,7 @@ import {
   extractMatchers,
   type MatcherEntry,
 } from "../matcher-picker";
-import { formatMatcher } from "../format-matcher";
+import { matcherFormatter } from "../format-matcher";
 import { crumbLabel } from "../schema-form-breadcrumb";
 import {
   buildMatcherBlockData,
@@ -36,9 +36,18 @@ import { VariantRuleEditor } from "../variant-rule-editor";
 import { VariantRenameDialog } from "../variant-rename-dialog";
 import { VariantRuleSection, VariantSelect } from "../sections-editor-panels";
 import { HeaderSlotPortal } from "../header-slot";
-import { ALWAYS_MATCHER_RESOLVE_TYPE } from "../section-types";
+import { alwaysMatcherResolveType } from "../section-types";
 import { cachedResolveSchema } from "./resolved-schema-cache";
 import type { VariantMatcherOps } from "../variant-matcher-rename";
+import type { NamedRulePickerProps } from "../matcher-picker";
+import {
+  inlineDateWindow,
+  type NamedRulePick,
+  namedRuleRowState,
+} from "../named-rule-picker";
+import { namedRuleOf } from "../named-rules";
+import { useNamedRuleFieldSupport } from "../named-rule-step";
+import { useBlocksSiteEditor } from "../blocks-site-editor";
 
 // `meta` changes only on page load; `resolveType` changes only on rule picker
 // selection — cache the matcher list per meta instance (WeakMap, so a stale
@@ -66,6 +75,7 @@ import {
   wrapAsMultivariate,
   type MultivariateWrapper,
 } from "./media-variants";
+import { duplicateVariantIndex, newVariantIndex } from "../section-variants";
 import { EditorRowLink } from "../editor-list-row";
 import type { FieldProps } from "./field-props";
 
@@ -88,6 +98,21 @@ export interface MultivariateFieldWrapperProps extends FieldProps {
   onVariantMatcherOp?: VariantMatcherOps;
 }
 
+/**
+ * The variant a form's root variants block opens on: `index` (a saved section
+ * opened from a test's or campaign's "Used by", then the one last shown), or
+ * the first when `null`. `remember` hears each variant shown, so the form
+ * opens on it again when it is rebuilt (a save from elsewhere).
+ */
+export interface RootVariantFocus {
+  index: number | null;
+  remember?: (index: number) => void;
+}
+
+const RootVariantFocusContext = createContext<RootVariantFocus | null>(null);
+
+export const RootVariantFocusProvider = RootVariantFocusContext.Provider;
+
 export function MultivariateFieldWrapper({
   multivariateResolveType,
   renderInnerField,
@@ -99,9 +124,22 @@ export function MultivariateFieldWrapper({
   const compact = useNewBlocksEditor();
   const VariantIcon = compact ? LayersThree01 : Flag01;
   const { value, onChange, meta, path, label, focused, decofile } = props;
-  const [selectedIndex, setSelectedIndex] = useState(0);
+  const v8 = useBlocksSiteEditor();
+  // Rule labels: a Blocks v8 site's short built-in names; v7's as before.
+  const formatMatcher = matcherFormatter(v8);
+  const focusContext = useContext(RootVariantFocusContext);
+  const rootFocus = path === "" ? focusContext : null;
+  const [selectedIndex, setSelectedIndex] = useState(
+    () => rootFocus?.index ?? 0,
+  );
+  // Every variant shown is told to the editor (see RootVariantFocus).
+  const showVariant = (index: number) => {
+    setSelectedIndex(index);
+    rootFocus?.remember?.(index);
+  };
   const [renameIndex, setRenameIndex] = useState<number | null>(null);
   const [renamePending, setRenamePending] = useState(false);
+  const namedSupport = useNamedRuleFieldSupport();
 
   if (!isMultivariateWrapper(value)) {
     return (
@@ -112,14 +150,16 @@ export function MultivariateFieldWrapper({
             <Button
               type="button"
               variant="ghost"
-              size="icon"
-              className="size-6 shrink-0 text-muted-foreground hover:text-foreground"
+              size="icon-xs"
+              className="shrink-0 text-muted-foreground hover:text-foreground"
               aria-label={t(
                 "sectionsEditor.multivariateFieldWrapper.addVariant",
               )}
               onClick={() => {
-                onChange(wrapAsMultivariate(value, multivariateResolveType));
-                setSelectedIndex(0);
+                onChange(
+                  wrapAsMultivariate(value, multivariateResolveType, meta),
+                );
+                showVariant(0);
               }}
             >
               <VariantIcon size={14} />
@@ -187,35 +227,33 @@ export function MultivariateFieldWrapper({
 
   const handleFlatten = () => {
     onChange(flattenMultivariate(wrapper));
-    setSelectedIndex(0);
+    showVariant(0);
   };
 
   const handleAdd = () => {
-    const next = appendVariant(wrapper);
-    onChange(next);
-    setSelectedIndex(next.variants.length - 1);
+    onChange(appendVariant(wrapper, meta, v8));
+    showVariant(newVariantIndex(wrapper.variants, v8));
   };
 
   const handleDelete = (index: number) => {
     const next = deleteVariant(wrapper, index);
     if (!next) return;
     onChange(next);
-    setSelectedIndex(
+    showVariant(
       selectedIndexAfterDelete(safeIndex, index, next.variants.length),
     );
   };
 
   const handleDuplicate = (index: number) => {
-    const next = duplicateVariant(wrapper, index);
-    onChange(next);
-    setSelectedIndex(index + 1);
+    onChange(duplicateVariant(wrapper, index, v8));
+    showVariant(duplicateVariantIndex(wrapper.variants, index, v8));
   };
 
   const handleReorder = (from: number, to: number) => {
     const next = reorderVariant(wrapper, from, to);
     onChange(next);
     if (safeIndex === from) {
-      setSelectedIndex(to);
+      showVariant(to);
     }
   };
 
@@ -224,7 +262,7 @@ export function MultivariateFieldWrapper({
     // persists a valid rule (see seedMatcherRule).
     const rule = resolveType
       ? seedMatcherRule(resolveType, meta)
-      : { __resolveType: ALWAYS_MATCHER_RESOLVE_TYPE };
+      : { __resolveType: alwaysMatcherResolveType(meta) };
     onChange(updateVariantRule(wrapper, safeIndex, rule));
   };
 
@@ -267,6 +305,30 @@ export function MultivariateFieldWrapper({
     );
   };
 
+  // v8: tests and campaigns by name. Directly-opened flags save the whole
+  // block with a new name's block at once (onVariantMatcherOp); a variant
+  // inside a section's field saves the new name first, then the field.
+  const handlePickNamedRule = async (pick: NamedRulePick) => {
+    if (onVariantMatcherOp?.selectNamedRule) {
+      await onVariantMatcherOp.selectNamedRule(wrapperRecord, safeIndex, pick);
+      return;
+    }
+    const rule = await namedSupport?.prepare(pick);
+    if (rule) onChange(updateVariantRule(wrapper, safeIndex, rule));
+  };
+  const named: NamedRulePickerProps | undefined =
+    namedSupport && namedSupport.kinds.length > 0
+      ? {
+          kinds: namedSupport.kinds,
+          selected: namedRuleOf(currentRule),
+          campaignPrefill: inlineDateWindow(currentRule),
+          onPick: handlePickNamedRule,
+        }
+      : undefined;
+  const namedRow = namedSupport
+    ? namedRuleRowState(currentRule, namedSupport.kinds)
+    : null;
+
   const handleRename = async (index: number, nextName: string) => {
     if (!onVariantMatcherOp) return;
     setRenamePending(true);
@@ -306,7 +368,7 @@ export function MultivariateFieldWrapper({
               variants={variantEntries}
               activeIndex={safeIndex}
               onSelect={(index) => {
-                setSelectedIndex(index);
+                showVariant(index);
                 closeManage();
               }}
               onManage={openManage}
@@ -321,7 +383,7 @@ export function MultivariateFieldWrapper({
               variants={variantEntries}
               selectedIndex={safeIndex}
               onSelect={(index) => {
-                setSelectedIndex(index);
+                showVariant(index);
                 closeManage();
               }}
               onDuplicate={handleDuplicate}
@@ -344,6 +406,9 @@ export function MultivariateFieldWrapper({
                 globals={globals}
                 onSelect={handleRuleChange}
                 onSelectGlobal={handleSelectGlobal}
+                named={named}
+                namedRow={namedRow}
+                rule={currentRule}
                 schema={ruleSchema}
                 formValue={ruleFormValue}
                 onChange={handleRuleFormChange}
@@ -376,7 +441,7 @@ export function MultivariateFieldWrapper({
         listKey={listKey}
         variants={variantEntries}
         selectedIndex={safeIndex}
-        onSelect={setSelectedIndex}
+        onSelect={showVariant}
         onRename={onVariantMatcherOp ? setRenameIndex : undefined}
         onDuplicate={handleDuplicate}
         onDelete={handleDelete}
@@ -403,6 +468,9 @@ export function MultivariateFieldWrapper({
             globals={globals}
             onSelect={handleRuleChange}
             onSelectGlobal={handleSelectGlobal}
+            named={named}
+            namedRow={namedRow}
+            rule={currentRule}
             schema={ruleSchema}
             formValue={ruleFormValue}
             onChange={handleRuleFormChange}

@@ -100,9 +100,7 @@ export const legacyWorkspaceCompatibilitySearchShape = {
   ...legacyAgentViewSearchShape,
   /** A retired board link carried the selected card in search. */
   task: z.string().optional(),
-  /** The flat shape's project pointer (`lib/flat-projects.ts`). On the shared
-   *  payload rather than its own route: it has to survive the workspace's
-   *  navigations, and one more route breaks search inference. */
+  /** A retired `/projects?project=` link, redirected to that project. */
   project: z.string().optional(),
   ...taskBoardSearchShape,
   /** `path` and `preview` already come from the agent-view payload above. */

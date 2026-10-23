@@ -10,6 +10,7 @@ import {
 } from "@/components/sections-editor/page-block-template";
 import { normalizePagePath } from "@/components/sections-editor/page-path-utils";
 import type { PageEntry } from "@/components/sections-editor/page-list";
+import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 
 /**
  * Append " (copy)", " (copy 2)", … until the result doesn't collide.
@@ -89,10 +90,15 @@ export function buildDuplicatePage(args: {
 
 /**
  * Build an empty page block — thin wrapper so callers don't import
- * `page-block-template` directly (lets us swap defaults centrally).
+ * `page-block-template` directly (lets us swap defaults centrally). Its page
+ * and SEO types come from the site's schema (`meta`).
  */
-export function buildEmptyPage(name: string, path: string) {
-  return createEmptyPageBlock(name, path);
+export function buildEmptyPage(
+  name: string,
+  path: string,
+  meta?: LiveMeta | null,
+) {
+  return createEmptyPageBlock(name, path, meta);
 }
 
 const MAX_UNIQUE_KEY_ATTEMPTS = 1000;

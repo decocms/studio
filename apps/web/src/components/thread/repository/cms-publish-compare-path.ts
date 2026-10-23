@@ -173,3 +173,22 @@ export function canRenderCompare(
   if (previewServerUrl === null) return false;
   return kind !== "other" || draft?.kind === "sandbox";
 }
+
+/**
+ * What stands in for a side that has no page to render: a new page has no
+ * "before" and a removed page no "after". On a Blocks v8 site (`v8`), only a
+ * page: a new or removed block (a saved section, the A/B tests, the
+ * campaigns) or code file changes a page that is there on both sides, so both
+ * sides render it. On v7, any new or removed change but a code file, as
+ * before (a new code file says nothing about whether the page existed).
+ */
+export function comparePlaceholder(
+  change: Pick<PublishChange, "kind" | "status">,
+  v8: boolean,
+): { before: "new" | null; after: "removed" | null } {
+  const page = v8 ? change.kind === "page" : change.kind !== "other";
+  return {
+    before: page && change.status === "new" ? "new" : null,
+    after: page && change.status === "removed" ? "removed" : null,
+  };
+}

@@ -115,6 +115,9 @@ export const RepositorySchema = z.object({
   sandboxImage: SandboxImageSchema.describe(
     "Sandbox image this repository's sandboxes boot from.",
   ),
+  monitorDeploys: z
+    .boolean()
+    .describe("Its default-branch pushes show on the Monitor's Deploys tab."),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

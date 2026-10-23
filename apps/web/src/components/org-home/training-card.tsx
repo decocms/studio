@@ -42,7 +42,7 @@ export function TrainingCard() {
       target="_blank"
       rel="noreferrer"
       onClick={() => track("cms_training_opened", { source: "org_home" })}
-      className="group card-shadow flex w-full items-center gap-4 rounded-2xl bg-card p-4 text-left transition-colors hover:bg-accent/30"
+      className="group shadow-edge flex w-full items-center gap-4 rounded-2xl bg-card p-4 text-left transition-colors hover:bg-accent"
     >
       <div className="relative aspect-video w-40 shrink-0 overflow-hidden rounded-lg">
         <img

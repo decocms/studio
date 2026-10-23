@@ -24,7 +24,7 @@ export function OutputFileRow({ file }: { file: ThreadOutput }) {
       <button
         type="button"
         onClick={open}
-        className="min-w-0 flex-1 truncate text-left text-[13px] font-medium text-foreground hover:underline"
+        className="min-w-0 flex-1 truncate text-left text-sm font-medium text-foreground hover:underline"
         title={file.filename}
       >
         {file.filename}
