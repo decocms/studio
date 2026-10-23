@@ -12,6 +12,7 @@ import {
   type LiveMeta,
   type SchemaProperty,
 } from "./resolve-schema";
+import { V8_MULTIVARIATE_RESOLVE_TYPE } from "./variant-shape";
 
 export type BlockRefOption = {
   resolveType: string;
@@ -35,8 +36,15 @@ export function moduleResolveTypeFromBlockData(
   return rt;
 }
 
-function isMultivariateFlagResolveType(resolveType: string): boolean {
-  return resolveType.includes("flags/multivariate");
+/** v7's flags, or on a Blocks v8 site (`v8`) its `multivariate`. */
+function isMultivariateFlagResolveType(
+  resolveType: string,
+  v8: boolean,
+): boolean {
+  return (
+    resolveType.includes("flags/multivariate") ||
+    (v8 && resolveType === V8_MULTIVARIATE_RESOLVE_TYPE)
+  );
 }
 
 function titleFromResolveType(resolveType: string): string {
@@ -266,6 +274,8 @@ export function lazyWrappedInner(
 export function blockRefLoaderConfigHasData(
   editorValue: unknown,
   savedBlockKey?: string,
+  /** A Blocks v8 site (`useBlocksSiteEditor`). */
+  v8 = false,
 ): boolean {
   if (savedBlockKey) return true;
   if (
@@ -277,7 +287,7 @@ export function blockRefLoaderConfigHasData(
   }
   const obj = editorValue as Record<string, unknown>;
   const moduleRt = moduleResolveTypeFromBlockData(obj);
-  if (moduleRt && isMultivariateFlagResolveType(moduleRt)) {
+  if (moduleRt && isMultivariateFlagResolveType(moduleRt, v8)) {
     return Array.isArray(obj.variants) && obj.variants.length > 0;
   }
   return Object.keys(obj).some((k) => !k.startsWith("__") && k !== "@type");

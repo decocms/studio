@@ -52,6 +52,7 @@ import { Button } from "@decocms/ui/components/button.tsx";
 import { Alert, AlertDescription } from "@decocms/ui/components/alert.tsx";
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuRadioGroup,
@@ -400,6 +401,29 @@ function SandboxImageMenu({ repository }: { repository: Repository }) {
   );
 }
 
+/** Whether this repo's pushes show on the Monitor's Deploys tab. */
+function MonitorDeploysItem({ repository }: { repository: Repository }) {
+  const t = useT();
+  const update = useUpdateRepository();
+  return (
+    <DropdownMenuCheckboxItem
+      checked={repository.monitorDeploys}
+      disabled={update.isPending}
+      onCheckedChange={(monitorDeploys) =>
+        update.mutate(
+          { id: repository.id, monitorDeploys },
+          {
+            onError: () =>
+              toast.error(t("settings.repositories.monitorDeploysError")),
+          },
+        )
+      }
+    >
+      {t("settings.repositories.monitorDeploys")}
+    </DropdownMenuCheckboxItem>
+  );
+}
+
 function sandboxImageLabel(
   image: string,
   t: ReturnType<typeof useT>,
@@ -468,6 +492,7 @@ function RepositoryRow({
             </a>
           </DropdownMenuItem>
           <SandboxImageMenu repository={repository} />
+          <MonitorDeploysItem repository={repository} />
           <DropdownMenuSeparator />
           <DropdownMenuItem variant="destructive" onSelect={onUnlink}>
             <LinkBroken01 />

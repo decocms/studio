@@ -1,7 +1,7 @@
 /**
  * The Releases screen's reads and writes (`/api/:org/hosted/:vmcp/*`): the
  * timeline of main's commits with the ones that have a companion release,
- * what latest.json names ("Latest"), and Reapply release (a new version with
+ * what latest.json names ("Latest"), and "Make current" (a new version with
  * an earlier one's content).
  */
 
@@ -66,9 +66,14 @@ async function readJson<T>(res: Response): Promise<T> {
   return json as T;
 }
 
-export function useReleases(orgSlug: string, virtualMcpId: string) {
+export function useReleases(
+  orgSlug: string,
+  virtualMcpId: string,
+  options: { enabled?: boolean } = {},
+) {
   return useInfiniteQuery({
     queryKey: KEYS.hostedReleases(orgSlug, virtualMcpId),
+    enabled: options.enabled ?? true,
     queryFn: async ({ pageParam }) => {
       const query = pageParam ? `?cursor=${encodeURIComponent(pageParam)}` : "";
       return readJson<ReleasesPage>(
@@ -82,11 +87,11 @@ export function useReleases(orgSlug: string, virtualMcpId: string) {
   });
 }
 
-/** Reapply release's answer: Publish's, plus whether the schema differed. */
+/** "Make current"'s answer: Publish's, plus whether the schema differed. */
 export type ReapplyResult = HostedPublishResult & { schemaChanged?: boolean };
 
 /**
- * Before Reapply release: whether that version was made for another design
+ * Before "Make current": whether that version was made for another design
  * of the site (the dialog then adds how to go back). Read while the dialog
  * is open; the dialog never waits for it, and a failed read says nothing.
  */
@@ -116,7 +121,7 @@ export function useReapplyCheck(
 }
 
 /**
- * Reapply release: a new version with the content of the version of `sha`
+ * "Make current": a new version with the content of the version of `sha`
  * (the API commits it and runs Publish's release path). A content change
  * (content-sync.ts): the releases, the editor's blocks, the publish status
  * and the preview refresh as after a Publish, on a failure too.

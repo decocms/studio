@@ -195,6 +195,7 @@ export function PostEditor({
     post,
     previewBaseUrl,
     draftPointer,
+    meta,
   });
 
   // Two posts sharing a title is legal but bad for search; warn, never block.
@@ -353,6 +354,7 @@ export function PostEditor({
                     virtualMcpId={virtualMcpId}
                     sections={asBlocks(post.sections)}
                     currentKey={blockKey}
+                    meta={meta}
                     hasAi={hasAi}
                     onApply={(next) => {
                       setField("sections", next);

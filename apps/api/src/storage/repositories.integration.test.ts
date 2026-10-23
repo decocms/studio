@@ -90,4 +90,22 @@ describe("RepositoryStorage — sandbox image", () => {
     ).toBeNull();
     expect((await storage.get(repo.id, "org_1"))?.sandboxImage).toBe("default");
   });
+
+  it("starts on the Deploys tab and toggles only within its org", async () => {
+    const repo = await storage.upsert({ organizationId: "org_1", ref });
+    expect(repo.monitorDeploys).toBe(true);
+    expect(
+      await storage.setMonitorDeploys(repo.id, "org_123", false),
+    ).toBeNull();
+    expect(
+      (await storage.setMonitorDeploys(repo.id, "org_1", false))
+        ?.monitorDeploys,
+    ).toBe(false);
+    await storage.upsert({
+      organizationId: "org_1",
+      ref,
+      defaultBranch: "main",
+    });
+    expect((await storage.get(repo.id, "org_1"))?.monitorDeploys).toBe(false);
+  });
 });

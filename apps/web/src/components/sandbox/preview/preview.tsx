@@ -136,7 +136,10 @@ import {
 import { PathParamInput } from "./path-param-input";
 import { buildPreviewLabel } from "./preview-label";
 import { showCmsPageSelector, showPreviewToolbarFor } from "./cms-controls";
-import { useCreatePage } from "@/components/sections-editor/use-create-page";
+import {
+  PageSchemaNotReadyError,
+  useCreatePage,
+} from "@/components/sections-editor/use-create-page";
 import { CreatePageModal } from "@/components/sections-editor/create-page-modal";
 import { sleep } from "@decocms/shared/std";
 import {
@@ -175,6 +178,20 @@ import { useMainSchemaV8 } from "@/hooks/use-main-schema-v8";
 import { useContentRevision } from "@/components/sections-editor/content-protocol-api";
 import { isContentEditingEnabled } from "@/layouts/main-panel-tabs/content-editing-gate";
 import { type PreviewDeviceSize, withDeviceHint } from "./device-hint";
+import { PreviewAsControl } from "./preview-as-control";
+import {
+  hasPreviewOptions,
+  isReleaseSha,
+  type PreviewOptions,
+  withPreviewOptions,
+  withPreviewOptionsInDraftUrl,
+} from "@/components/sections-editor/preview-link";
+import {
+  NAMED_RULE_KINDS,
+  namedRuleSupport,
+  readNamedRuleValues,
+} from "@/components/sections-editor/named-rules";
+import { useReleases } from "@/layouts/main-panel-tabs/releases-api";
 import {
   frameNavigationLoaded,
   HELD_NAVIGATION_RELEASE_MS,
@@ -452,6 +469,8 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
 
   // Pages dropdown in URL bar
   const [pagesOpen, setPagesOpen] = useState(false);
+  // "Preview as": a moment and forced A/B tests, for this preview only.
+  const [previewOptions, setPreviewOptions] = useState<PreviewOptions>({});
   const [pagesSearch, setPagesSearch] = useState("");
   const pagesListRef = useRef<HTMLDivElement>(null);
   const [createPageDialogOpen, setCreatePageDialogOpen] = useState(false);
@@ -710,7 +729,11 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     decofile && currentPageKey
       ? getPageVariantSectionsAt(decofile, currentPageKey, 0)
       : [];
-  const cmsSections = decofile ? parseSections(cmsRawSections, decofile) : [];
+  // A Blocks v8 site's short names and lazy values; v7's shapes otherwise.
+  const contentV8 = isProtocolProject(contentBackend);
+  const cmsSections = decofile
+    ? parseSections(cmsRawSections, decofile, contentV8)
+    : [];
   const cmsSectionLabels = cmsSections.map((s) =>
     s.isSavedBlock ? s.label : "",
   );
@@ -721,7 +744,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // editable run within the DOM (handles framework sections deco injects around
   // OR between the editable ones) — no hardcoded list of sections to skip.
   const cmsSectionKeys = cmsRawSections.map((s) =>
-    resolveSectionCandidates(s, decofile ?? {}),
+    resolveSectionCandidates(s, decofile ?? {}, contentV8),
   );
 
   const iframeSrcRef = useRef<string | null>(null);
@@ -857,12 +880,47 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const variantOverride = workspace.state.variantOverride ?? [];
   const matcherOverride = runsSiteCode ? variantOverride : [];
   const forcedVariants = runsSiteCode ? [] : variantOverride;
+  // "Preview as" (a Blocks v8 site): the moment and forced tests ride on the
+  // same link, never on the published site (preview-link.ts).
+  const previewAsAvailable =
+    isProtocolProject(contentBackend) &&
+    NAMED_RULE_KINDS.some(
+      (kind) => namedRuleSupport(meta, kind) === "available",
+    );
+  const appliedPreviewOptions = previewAsAvailable ? previewOptions : {};
+  const previewOptionsActive = hasPreviewOptions(appliedPreviewOptions);
+  const previewTests =
+    previewAsAvailable && decofile
+      ? Object.keys(readNamedRuleValues(decofile).experiments)
+      : [];
+  // With no draft yet, the frame shows the published site: the moment and
+  // tests then apply to the current release, by its commit SHA.
+  const hostedSite =
+    contentBackend.kind === "protocol" && contentBackend.source === "github";
+  const releases = useReleases(org.slug, virtualMcpId ?? "", {
+    enabled:
+      previewOptionsActive && hostedSite && showsPublished && !!virtualMcpId,
+  });
+  const { current: liveRelease } = releases.data?.pages[0] ?? {
+    current: null,
+  };
+  const currentRelease = liveRelease?.revision ?? null;
   // A connected `deco serve` has no drafts: a pointer to it carries only the
-  // forced variants. With none, `off` drops a pointer the draft cookie kept.
+  // forced variants (and the preview's moment and tests). With none, `off`
+  // drops a pointer the draft cookie kept.
+  const servePointerBase =
+    serveConnection && servePreviewUrl(contentBackend)
+      ? buildServeDraftPointer(
+          serveConnection.endpoint,
+          forcedVariants,
+          previewOptionsActive,
+        )
+      : null;
   const servePointer =
     serveConnection && servePreviewUrl(contentBackend)
-      ? (buildServeDraftPointer(serveConnection.endpoint, forcedVariants) ??
-        DRAFT_OFF)
+      ? servePointerBase
+        ? withPreviewOptions(servePointerBase, appliedPreviewOptions)
+        : DRAFT_OFF
       : null;
 
   const iframeSrc = withDecoFBT(
@@ -883,16 +941,20 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
         ? // Fast Preview's draft route honours the variant matcher override like the sandbox dev server, so append it here too.
           withVariantMatcherOverride(
             withDeviceHint(
-              withForcedVariantsInDraftUrl(
-                // No draft renderable yet (waking, or a hosted draft with no edits), so ask for published.
-                withDraftPointer(
-                  directPreviewUrl ??
-                    effectiveDraftPreviewUrl ??
-                    resolvePreviewUrl(resolvedPath, display.iframeBase!) ??
-                    display.iframeBase!,
-                  showsPublished ? DRAFT_OFF : null,
+              withPreviewOptionsInDraftUrl(
+                withForcedVariantsInDraftUrl(
+                  // No draft renderable yet (waking, or a hosted draft with no edits), so ask for published.
+                  withDraftPointer(
+                    directPreviewUrl ??
+                      effectiveDraftPreviewUrl ??
+                      resolvePreviewUrl(resolvedPath, display.iframeBase!) ??
+                      display.iframeBase!,
+                    showsPublished ? DRAFT_OFF : null,
+                  ),
+                  forcedVariants,
                 ),
-                forcedVariants,
+                appliedPreviewOptions,
+                currentRelease,
               ),
               previewDeviceSize,
             ),
@@ -918,7 +980,14 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     display.mode === "production"
       ? productionOpenTabBase
         ? withVariantMatcherOverride(
-            withForcedVariantsInDraftUrl(productionOpenTabBase, forcedVariants),
+            withPreviewOptionsInDraftUrl(
+              withForcedVariantsInDraftUrl(
+                productionOpenTabBase,
+                forcedVariants,
+              ),
+              appliedPreviewOptions,
+              showsPublished ? currentRelease : null,
+            ),
             matcherOverride,
           )
         : null
@@ -1615,6 +1684,14 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
         name,
         path: trimmedPath,
         template,
+        // A Blocks v8 site's page is typed from its schema, which may not
+        // have arrived yet: read it rather than guess. v7 needs none.
+        schema: isProtocolProject(contentBackend)
+          ? {
+              meta,
+              loadMeta: async () => (await metaQuery.refetch()).data,
+            }
+          : undefined,
       });
       setCreatePageDialogOpen(false);
       toast.success(t("sandbox.preview.pageCreated", { name }));
@@ -1627,9 +1704,11 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       activateEditingMode("blocks");
     } catch (error) {
       setCreatePageError(
-        error instanceof Error
-          ? error.message
-          : t("sandbox.preview.failedToCreatePage"),
+        error instanceof PageSchemaNotReadyError
+          ? t("sandbox.preview.pageSchemaNotReady")
+          : error instanceof Error
+            ? error.message
+            : t("sandbox.preview.failedToCreatePage"),
       );
     }
   };
@@ -1896,6 +1975,19 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
         </Tooltip>
         {urlControls}
         <div className="flex shrink-0 items-center gap-1">
+          {previewAsAvailable && (
+            <PreviewAsControl
+              tests={previewTests}
+              options={previewOptions}
+              onChange={setPreviewOptions}
+              available={
+                !!servePointerBase ||
+                !showsPublished ||
+                isReleaseSha(currentRelease) ||
+                !previewOptionsActive
+              }
+            />
+          )}
           <ToolbarIconButton
             onClick={handleOpenPreview}
             aria-label={t("sandbox.preview.openInNewTab")}

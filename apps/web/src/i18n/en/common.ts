@@ -260,6 +260,7 @@ export const common = {
   "common.mainPanelTabs.e2e": "E2E",
   "common.mainPanelTabs.analytics": "Deco Analytics",
   "common.mainPanelTabs.experiments": "Experiments",
+  "common.mainPanelTabs.calendar": "Calendar",
   "common.mainPanelTabs.cdn": "Monitor",
   "common.taskBoard.listView": "List",
   "common.taskBoard.boardView": "Board",

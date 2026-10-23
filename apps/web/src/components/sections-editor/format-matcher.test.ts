@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { formatMatcher } from "./format-matcher";
+import { formatMatcher, matcherFormatter } from "./format-matcher";
+
+/** formatMatcher on a Blocks v8 site. */
+const v8Format = matcherFormatter(true);
 
 describe("formatMatcher", () => {
   test("returns 'Default' for undefined rule", () => {
@@ -17,6 +20,37 @@ describe("formatMatcher", () => {
     expect(
       formatMatcher({ __resolveType: "$live/matchers/MatchAlways.ts" }),
     ).toBe("Default");
+  });
+
+  test("v8: labels next-major's short matcher names", () => {
+    expect(v8Format({ __resolveType: "always" })).toBe("Default");
+    expect(v8Format({ __resolveType: "never" })).toBe("Hidden");
+    expect(
+      v8Format({ __resolveType: "device", mobile: true, desktop: true }),
+    ).toBe("Mobile & Desktop");
+    expect(v8Format({ __resolveType: "device" })).toBe("Device");
+    expect(v8Format({ __resolveType: "date" })).toBe("Date");
+    expect(
+      v8Format({
+        __resolveType: "date",
+        start: "2026-01-01T00:00:00",
+        end: "2026-01-31T23:59:00",
+      }),
+    ).not.toBe("Date");
+    expect(v8Format({ __resolveType: "campaign" })).toBe("Campaign");
+  });
+  test("v7: a short name is a saved block's key, labelled as before", () => {
+    expect(formatMatcher({ __resolveType: "always" })).toBe("Always");
+    expect(formatMatcher({ __resolveType: "never" })).toBe("Never");
+    expect(
+      formatMatcher({ __resolveType: "device", mobile: true, desktop: true }),
+    ).toBe("Device");
+    expect(formatMatcher({ __resolveType: "campaign", name: "BF" })).toBe(
+      "Campaign",
+    );
+    expect(formatMatcher({ __resolveType: "experiment", name: "x" })).toBe(
+      "Experiment",
+    );
   });
 
   test("returns 'Hidden' for never matcher", () => {
@@ -363,11 +397,122 @@ describe("formatMatcher", () => {
     });
   });
 
-  describe("depth guard", () => {
-    test("returns '...' when depth exceeds limit", () => {
+  describe("A/B tests and campaigns", () => {
+    const year = new Date().getFullYear();
+    const local = (month: number, day: number, hour = 0, minute = 0) =>
+      new Date(year, month, day, hour, minute).toISOString();
+    const named = {
+      experiments: { "hero-headline": 50, off: 0 },
+      campaigns: {
+        "Black Friday": { start: local(10, 27), end: local(11, 2) },
+        Launch: { start: local(2, 1) },
+        Clearance: { end: local(0, 31, 23, 59) },
+        Forever: {},
+      },
+    };
+
+    test("names an A/B test with its share", () => {
       expect(
-        formatMatcher({ __resolveType: "website/matchers/device.ts" }, 6),
-      ).toBe("...");
+        v8Format({ __resolveType: "experiment", name: "hero-headline" }, named),
+      ).toBe("A/B test: hero-headline (50%)");
+      expect(
+        v8Format({ __resolveType: "experiment", name: "off" }, named),
+      ).toBe("A/B test: off (0%)");
+    });
+
+    test("names an A/B test the content doesn't have, or with no values at hand", () => {
+      expect(
+        v8Format({ __resolveType: "experiment", name: "gone" }, named),
+      ).toBe("A/B test: gone");
+      expect(
+        v8Format({ __resolveType: "experiment", name: "hero-headline" }),
+      ).toBe("A/B test: hero-headline");
+      expect(v8Format({ __resolveType: "experiment" })).toBe("A/B test");
+    });
+
+    test("names a campaign with its dates; the end is exclusive", () => {
+      expect(
+        v8Format({ __resolveType: "campaign", name: "Black Friday" }, named),
+      ).toBe("Campaign: Black Friday (Nov 27 – Dec 1)");
+      expect(
+        v8Format({ __resolveType: "campaign", name: "Launch" }, named),
+      ).toBe("Campaign: Launch (from Mar 1)");
+      expect(
+        v8Format({ __resolveType: "campaign", name: "Clearance" }, named),
+      ).toBe("Campaign: Clearance (until Jan 31)");
+    });
+
+    test("names a campaign with no dates, or unknown, by its name", () => {
+      expect(
+        v8Format({ __resolveType: "campaign", name: "Forever" }, named),
+      ).toBe("Campaign: Forever");
+      expect(
+        v8Format({ __resolveType: "campaign", name: "Black Friday" }),
+      ).toBe("Campaign: Black Friday");
+      expect(v8Format({ __resolveType: "campaign", name: " " })).toBe(
+        "Campaign",
+      );
+    });
+
+    test("shows the year and times outside the current year or whole days", () => {
+      const label = v8Format(
+        { __resolveType: "campaign", name: "Old" },
+        {
+          experiments: {},
+          campaigns: {
+            Old: {
+              start: new Date(2020, 10, 27, 10, 30).toISOString(),
+              end: new Date(2020, 11, 1, 18, 0).toISOString(),
+            },
+          },
+        },
+      );
+      expect(label).toStartWith("Campaign: Old (");
+      expect(label).toContain("2020");
+      expect(label).toContain(" – ");
+    });
+
+    test("keeps showing a date rule written with its own dates", () => {
+      const label = v8Format(
+        {
+          __resolveType: "date",
+          start: new Date(2020, 10, 27).toISOString(),
+          end: new Date(2020, 11, 1).toISOString(),
+        },
+        named,
+      );
+      expect(label).toStartWith("From ");
+      expect(label).toContain("2020");
+      expect(v8Format({ __resolveType: "date" })).toBe("Date");
+    });
+
+    test("labels named rules inside a multi with their values", () => {
+      expect(
+        v8Format(
+          {
+            __resolveType: "website/matchers/multi.ts",
+            op: "AND",
+            matchers: [
+              { __resolveType: "campaign", name: "Launch" },
+              { __resolveType: "experiment", name: "hero-headline" },
+            ],
+          },
+          named,
+        ),
+      ).toBe("Campaign: Launch (from Mar 1) AND A/B test: hero-headline (50%)");
+    });
+  });
+
+  describe("depth guard", () => {
+    test("returns '...' for a rule nested past the limit", () => {
+      let rule: Record<string, unknown> = {
+        __resolveType: "website/matchers/device.ts",
+        mobile: true,
+      };
+      for (let i = 0; i < 6; i++) {
+        rule = { __resolveType: "website/matchers/multi.ts", matchers: [rule] };
+      }
+      expect(formatMatcher(rule)).toBe("...");
     });
 
     test("deeply nested multi matchers stop at depth limit", () => {

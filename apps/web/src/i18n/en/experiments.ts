@@ -130,4 +130,61 @@ export const experiments = {
   "experiments.results.sampleSize": "Target sample size",
   "experiments.results.probBest": "Probability variant best",
   "experiments.results.goal": "Goal",
+  "experiments.v8.intro":
+    "Your A/B tests are part of your site's content. Every change is saved in your draft and goes live when you publish.",
+  "experiments.v8.new": "New A/B test",
+  "experiments.v8.allTests": "All A/B tests",
+  "experiments.v8.empty.title": "No A/B tests yet",
+  "experiments.v8.empty.desc":
+    "Create one here, or from a variant in the site editor: choose the rule “A/B test” and type a name.",
+  "experiments.v8.status.off": "Off",
+  "experiments.v8.status.running": "Running",
+  "experiments.v8.status.everyone": "Everyone",
+  "experiments.v8.usedBy": "Used by {count}",
+  "experiments.v8.notUsed": "Not used yet",
+  "experiments.v8.state.new": "Not published yet",
+  "experiments.v8.state.changed": "Changed in your draft",
+  "experiments.v8.removedTitle": "Removed in your draft",
+  "experiments.v8.removedHint":
+    "These tests stop when you publish. To keep one, create it again with the same name.",
+  "experiments.v8.shareLabel": "Visitors who see the test",
+  "experiments.v8.shareTitle": "Who sees the test",
+  "experiments.v8.split.inTest": "See the test",
+  "experiments.v8.split.rest": "See the page as it is",
+  "experiments.v8.split.center": "see the test",
+  "experiments.v8.split.reset": "Back to {share}%",
+  "experiments.v8.shareHint":
+    "Drag the slider, or use the arrow keys. 0 turns the test off, 100 shows it to everyone. Each visitor keeps the side they got.",
+  "experiments.v8.publishedShare": "Published: {share}% of visitors",
+  "experiments.v8.save": "Save",
+  "experiments.v8.turnOff": "Turn off",
+  "experiments.v8.showEveryone": "Show to everyone",
+  "experiments.v8.renameHint":
+    "Every variant that uses this test is updated in the same change.",
+  "experiments.v8.renamed": "Test renamed to “{name}”",
+  "experiments.v8.renameWholeHint":
+    "Sections that read every test in their own code still look for the old name. Update them in the site editor.",
+  "experiments.v8.nameLocked":
+    "The name can't change while the test runs: visitors are grouped by it. Turn the test off to rename it.",
+  "experiments.v8.delete": "Delete test",
+  "experiments.v8.deleted": "Test “{name}” deleted from your draft",
+  "experiments.v8.deletedHint":
+    "It leaves the site when you publish. Undo brings it back.",
+  "experiments.v8.missing.title": "Your site needs an update for A/B tests",
+  "experiments.v8.missing.desc":
+    "Ask your developer to update the site to the latest version of Blocks and publish it. Your tests will show up here.",
+  "experiments.v8.replaced.title":
+    "Your site handles A/B tests in its own code",
+  "experiments.v8.replaced.desc":
+    "Its developers defined their own tests, so they can't be changed here. Ask them how to change one.",
+  "experiments.v8.conflict.title":
+    "Your site already has a block named “experiments”",
+  "experiments.v8.conflict.desc":
+    "It isn't a list of A/B tests, so tests can't be added yet. Rename that block in the site editor, then come back here.",
+  "experiments.v8.noDraft.title": "Pick a draft to edit your tests",
+  "experiments.v8.noDraft.desc":
+    "Your tests are saved in a draft, like any other edit. Pick a draft in the bar above, or open the site editor to start one.",
+  "experiments.v8.loadFailed": "Couldn't load your tests.",
+  "experiments.v8.previewHint":
+    "To see a test on or off before publishing, use “Preview as” in the site editor's preview.",
 } as const;

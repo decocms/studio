@@ -98,6 +98,12 @@ export async function mintMcpEndpoint(
    * not a scope anyone chose, it is one nobody narrowed.
    */
   permissions: Record<string, string[]> = { "*": ["*"] },
+  /**
+   * The run's metadata, stored on the key so the run's tool calls carry it.
+   * An out-of-process run reaches Studio only through this key, so without it
+   * every downstream MCP saw a run with no context.
+   */
+  runMetadata?: Record<string, string>,
 ): Promise<{
   url: string;
   headers: Record<string, string>;
@@ -125,6 +131,7 @@ export async function mintMcpEndpoint(
         slug: organization.slug,
         name: organization.name,
       },
+      ...(runMetadata ? { runMetadata } : {}),
     },
   });
   return {
