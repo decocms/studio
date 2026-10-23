@@ -294,10 +294,13 @@ export function hostedCmsHeaderButton(
 }
 
 /**
- * Whether visitors see an older release than main's: latest.json names a
- * commit other than main's newest (the first page of the Releases screen's
- * read). A site without latest.json (never published from Studio) is not
- * behind: its own build is what visitors see. Unknown until read: false.
+ * Whether visitors see an older release than main's: latest.json names one
+ * of main's earlier commits (on the first page of the Releases screen's
+ * read), not its newest. A site without latest.json (never published from
+ * Studio) is not behind: its own build is what visitors see. A release the
+ * page doesn't list (a commit listing that lags a Publish that just made a
+ * newer commit live) is not behind either, so a successful Publish never
+ * shows "Not live yet". Unknown until read: false.
  */
 export function hostedReleaseBehindMain(
   page:
@@ -307,8 +310,8 @@ export function hostedReleaseBehindMain(
   if (!page) return false;
   // Destructured: a `.current` read looks like a React ref to the linter.
   const { current: live, commits } = page;
-  const head = commits[0]?.sha;
-  return !!live && !!head && live.revision !== head;
+  if (!live) return false;
+  return commits.findIndex((commit) => commit.sha === live.revision) > 0;
 }
 
 /** Picks the Fast Preview header button; first match wins, so order is behavior. */

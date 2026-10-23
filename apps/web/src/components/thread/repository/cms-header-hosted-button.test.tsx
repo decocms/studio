@@ -235,12 +235,15 @@ describe("hosted v8 header: saved but not live yet", () => {
     commits: commits.map((sha) => ({ sha })),
   });
 
-  test("behind only when latest.json names a commit other than main's newest", () => {
+  test("behind only when latest.json names one of main's earlier commits", () => {
     expect(hostedReleaseBehindMain(page("m1", ["m2", "m1"]))).toBe(true);
     expect(hostedReleaseBehindMain(page("m2", ["m2", "m1"]))).toBe(false);
     // Never published from Studio: its own build is what visitors see.
     expect(hostedReleaseBehindMain(page(null, ["m2"]))).toBe(false);
     expect(hostedReleaseBehindMain(page("m1", []))).toBe(false);
+    // The commit listing lags a Publish that just made m3 live: not behind,
+    // so a successful Publish never flashes "Not live yet".
+    expect(hostedReleaseBehindMain(page("m3", ["m2", "m1"]))).toBe(false);
     // Not read yet: nothing is said.
     expect(hostedReleaseBehindMain(undefined)).toBe(false);
   });
