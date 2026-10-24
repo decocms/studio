@@ -19,6 +19,7 @@ import { useContentSyncTarget } from "@/components/sections-editor/use-content-s
 import { usePackagePath } from "@/components/sections-editor/use-package-path";
 import { readCommittedText } from "@/components/sections-editor/read-committed-file";
 import { sandboxGitStatusQueryKey } from "@/components/thread/repository/sandbox-git-api";
+import { dependencyInstallFor } from "@/hooks/dependency-install";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { KEYS } from "@/lib/query-keys";
@@ -77,19 +78,36 @@ async function writeFile(
 }
 
 /**
- * Run the package manager (`install`) or restart the dev script (`start`).
- * Pod-addressed — `setup/:step` acts on whatever is running at this ref and
+ * Ask the pod to install the dependency this install needs.
+ *
+ * `force` is for the case the daemon cannot see: its install fingerprint is
+ * the package manager, the runtime and the branch HEAD, so a `package.json`
+ * we just rewrote in the working tree leaves it unchanged and the step would
+ * skip. Forced only when we actually rewrote it — forcing otherwise tears
+ * down a healthy dev server to reinstall a tree that did not move.
+ *
+ * Unforced is still worth sending when the dependency is already declared: it
+ * no-ops when the fingerprint matches, and it is what recovers an earlier
+ * attempt whose install failed (a failure marks the fingerprint bad, so the
+ * step runs).
+ *
+ * Returns once the step is QUEUED, not once it is done — the orchestrator runs
+ * it on its own goroutine. A failure surfaces in the setup stream, not here.
+ *
+ * Pod-addressed: `setup/:step` acts on whatever is running at this ref and
  * takes no thread.
  */
-async function runSetupStep(
+async function requestDependencyInstall(
   ref: SandboxRef,
-  step: "install" | "start",
+  force: boolean,
 ): Promise<void> {
   const res = await fetch(
-    buildSandboxUrl({ ...ref, threadId: null }, `setup/${step}`),
+    buildSandboxUrl({ ...ref, threadId: null }, "setup/install", {
+      force: force ? "1" : "0",
+    }),
     { method: "POST" },
   );
-  if (!res.ok) await throwResponseError(res, `Dependency ${step}`);
+  if (!res.ok) await throwResponseError(res, "Dependency install");
 }
 
 /**
@@ -170,25 +188,26 @@ export function useInstallApp({
       return runContentChange(content, {
         kind: "edit",
         write: async () => {
-          const manifest = patches.files.filter(
+          // package.json first, so the install that follows reads it. Only an
+          // ordering: the step is queued, not awaited, so the writes below can
+          // land while it runs and a failed install surfaces in the setup
+          // stream rather than here.
+          const manifest = patches.files.find(
             (file) => file.path === "package.json",
           );
-          const code = patches.files.filter(
-            (file) => file.path !== "package.json",
-          );
-          // The module and the registry entry import the package, so it has to
-          // be in node_modules before they exist. In this order a failure
-          // leaves at most an unused dependency, never a site that won't build.
-          for (const file of manifest) await writeFile(ref, packagePath, file);
-          // Deno needs none of this: the `apps/` import-map alias covers it.
-          if (patches.dependency) await runSetupStep(ref, "install");
-          for (const file of code) await writeFile(ref, packagePath, file);
+          if (manifest) await writeFile(ref, packagePath, manifest);
+          const install = dependencyInstallFor(patches);
+          if (install) await requestDependencyInstall(ref, install.force);
+          for (const file of patches.files) {
+            if (file.path !== "package.json") {
+              await writeFile(ref, packagePath, file);
+            }
+          }
           // Block last: never leave a resolveType with no module behind it.
           await writeFile(ref, packagePath, {
             path: decoBlockFilePath(patches.block.key),
             content: `${JSON.stringify(patches.block.value, null, 2)}\n`,
           });
-          if (patches.dependency) await runSetupStep(ref, "start");
           // The working tree moved by more than one block: the header's change
           // count reads git status, as it does after every other write.
           await queryClient.invalidateQueries({

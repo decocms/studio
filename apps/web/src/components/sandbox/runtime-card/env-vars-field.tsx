@@ -176,9 +176,12 @@ function RunningSandboxNotice<T extends FieldValues>({
     const results = await Promise.allSettled(
       userBranches.map(async (branch) => {
         // Project settings, no thread: `/setup/:step` is pod-addressed and ignores runtime.
+        // Forced, or the start short-circuits on "dev already running" and the
+        // env the route just pushed never reaches a process.
         const url = buildSandboxUrl(
           { orgSlug, virtualMcpId, branch, threadId: null },
           "setup/start",
+          { force: "1" },
         );
         const res = await fetch(url, { method: "POST" });
         if (!res.ok) {

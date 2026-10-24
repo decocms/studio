@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
@@ -55,10 +56,40 @@ func Scripts(getScripts func() []string) http.HandlerFunc {
 	}
 }
 
-func Setup(step string, resumeFrom func(step string)) http.HandlerFunc {
+// maxSetupBodyBytes bounds the POST /_sandbox/setup/:step request body. The
+// body is one optional boolean; anything larger is not a request we serve.
+const maxSetupBodyBytes = 1024
+
+// Setup enqueues a setup step. `force` (an optional `{"force":true}` body) is
+// passed to the resumer, which decides what it means for its step — for
+// install it drops the cached install fingerprint, so the step installs
+// instead of short-circuiting.
+//
+// The response says `enqueued` and means it: the orchestrator runs the step on
+// its own goroutine, so a caller that needs the result has to watch the setup
+// stream rather than this status.
+func Setup(step string, resumeFrom func(force bool)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		resumeFrom(step)
-		httpx.JSON(w, 200, map[string]any{"enqueued": step})
+		force := false
+		if r.Body != nil {
+			raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxSetupBodyBytes))
+			if err != nil {
+				httpx.Error(w, 400, "invalid setup body")
+				return
+			}
+			if len(raw) > 0 {
+				var body struct {
+					Force bool `json:"force"`
+				}
+				if err := json.Unmarshal(raw, &body); err != nil {
+					httpx.Error(w, 400, "invalid setup body")
+					return
+				}
+				force = body.Force
+			}
+		}
+		resumeFrom(force)
+		httpx.JSON(w, 200, map[string]any{"enqueued": step, "force": force})
 	}
 }
 
