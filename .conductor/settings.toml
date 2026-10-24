@@ -1,6 +1,12 @@
 "$schema" = "https://conductor.build/schemas/settings.repo.schema.json"
 
 [scripts]
-archive = "rm -rf node_modules"
-run = "bun run dev:conductor"
+archive = "command -v docker >/dev/null && docker compose -p \"$CONDUCTOR_WORKSPACE_NAME\" down --volumes && docker image rm -f \"studio-dev:$CONDUCTOR_WORKSPACE_NAME\"; rm -rf node_modules"
+run_mode = "concurrent"
 setup = "bun install"
+
+[scripts.run.dev]
+available_in = ["local"]
+command = "COMPOSE_PROJECT_NAME=\"$CONDUCTOR_WORKSPACE_NAME\" WEB_PORT=\"$CONDUCTOR_PORT\" docker compose up --build --watch"
+default = true
+icon = "play"
