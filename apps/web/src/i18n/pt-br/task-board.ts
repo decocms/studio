@@ -51,6 +51,7 @@ export const taskBoard = {
   "taskBoard.taskBoard.checksUnverified": "aprovado (não verificado)",
   "taskBoard.taskBoard.autoFix": "Executar",
   "taskBoard.taskBoard.rerun": "Executar de novo",
+  "taskBoard.taskBoard.openInNewTab": "Abrir em nova aba",
   "taskBoard.taskBoard.blockedBadgeTitle":
     "O agente está aguardando sua entrada",
   "taskBoard.taskBoard.clearFilters": "Limpar filtros",

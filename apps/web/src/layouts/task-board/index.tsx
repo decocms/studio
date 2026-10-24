@@ -64,6 +64,7 @@ import {
   HelpCircle,
   Inbox01,
   Lightning01,
+  LinkExternal01,
   Plus,
   RefreshCw01,
   Stars02,
@@ -88,6 +89,12 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@decocms/ui/components/dropdown-menu.tsx";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@decocms/ui/components/context-menu.tsx";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { runningAgents } from "@/components/org-home/daily-pulse";
@@ -235,7 +242,12 @@ import {
 } from "@/lib/project-index";
 import { ProjectEntryIcon, ProjectEntryRow } from "@/components/project-entry";
 import { usePanelActions } from "@/layouts/shell-layout";
-import { Navigate, useNavigate, useParams } from "@tanstack/react-router";
+import {
+  Navigate,
+  useNavigate,
+  useParams,
+  useRouter,
+} from "@tanstack/react-router";
 import {
   findTaskByKeyOrId,
   taskRouteSegment,
@@ -3410,22 +3422,62 @@ function SortableTaskCard({
     // itself, since dnd-kit's own transform/transition below is applied to the
     // card and gets reset on every render, which would cancel FLIP's animation
     // as soon as any unrelated re-render landed mid-flight.
-    <div className="flex" data-flip-id={item.id} data-flip-lane={item.status}>
-      <TaskCard
-        {...props}
-        item={item}
-        dragRef={setNodeRef}
-        bindings={{ attributes, listeners }}
-        className={cn("w-full", landed && "animate-card-land")}
-        style={{
-          transform: CSS.Translate.toString(transform),
-          transition,
-          // The dragged card (and the rest of its group, riding along in the
-          // overlay) leaves a gap rather than a ghost.
-          opacity: isDragging || hidden ? 0 : undefined,
-        }}
-      />
-    </div>
+    <TaskContextMenu item={item}>
+      <div className="flex" data-flip-id={item.id} data-flip-lane={item.status}>
+        <TaskCard
+          {...props}
+          item={item}
+          dragRef={setNodeRef}
+          bindings={{ attributes, listeners }}
+          className={cn("w-full", landed && "animate-card-land")}
+          style={{
+            transform: CSS.Translate.toString(transform),
+            transition,
+            // The dragged card and its group leave a gap, not a ghost.
+            opacity: isDragging || hidden ? 0 : undefined,
+          }}
+        />
+      </div>
+    </TaskContextMenu>
+  );
+}
+
+/**
+ * A card's right-click menu. The card is a button, not a link, so the
+ * browser's own "Open link in new tab" never appears on it. The URL is the one
+ * `openTask` navigates to, so the new tab keeps this board's scope and filters.
+ */
+function TaskContextMenu({
+  item,
+  children,
+}: {
+  item: TaskBoardItem;
+  children: ReactNode;
+}) {
+  const t = useT();
+  const router = useRouter();
+  const { org } = useProjectContext();
+  const openInNewTab = () => {
+    const { href } = router.buildLocation({
+      to: ".",
+      params: (prev: Record<string, unknown>) => ({
+        ...prev,
+        taskKey: taskRouteSegment(org.slug, item),
+      }),
+      search: (prev: Record<string, unknown>) => prev,
+    });
+    window.open(href, "_blank", "noopener");
+  };
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
+      <ContextMenuContent>
+        <ContextMenuItem onSelect={openInNewTab}>
+          <LinkExternal01 />
+          {t("taskBoard.taskBoard.openInNewTab")}
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }
 
@@ -4273,61 +4325,65 @@ function ListRow({
   const key = taskKey(org.slug, item.keySeq);
   const runState = agentRunState(item);
   return (
-    <div className="flex h-11 items-center gap-3 px-3 transition-colors hover:bg-accent">
-      <ListRowStatusMenu item={item} onStatusChange={onStatusChange} />
-      <span className="flex size-4 shrink-0 items-center justify-center">
-        {item.priority !== "none" && <PriorityIcon priority={item.priority} />}
-      </span>
-      {key && (
-        <span className="hidden w-16 shrink-0 font-mono text-xs text-muted-foreground sm:inline">
-          {key}
-        </span>
-      )}
-      <button
-        type="button"
-        onClick={onOpen}
-        className="min-w-0 flex-1 truncate text-left text-sm text-foreground"
-      >
-        {item.title}
-      </button>
-      {runState && <AgentRunIndicator state={runState} />}
-      {isTaskBlocked(item) && <BlockedBadge />}
-      {isTaskHandedToHuman(item) && <HandedToHumanBadge />}
-      {item.sprintId && (
-        <span className="hidden sm:inline-flex">
-          <SprintPill sprintId={item.sprintId} />
-        </span>
-      )}
-      {item.tags.length > 0 && (
-        <span className="hidden items-center gap-1.5 sm:inline-flex">
-          {item.tags.slice(0, 2).map((tag) => (
-            <TagPill key={tag.id} tag={tag} />
-          ))}
-          {item.tags.length > 2 && (
-            <span className={PILL}>+{item.tags.length - 2}</span>
+    <TaskContextMenu item={item}>
+      <div className="flex h-11 items-center gap-3 px-3 transition-colors hover:bg-accent">
+        <ListRowStatusMenu item={item} onStatusChange={onStatusChange} />
+        <span className="flex size-4 shrink-0 items-center justify-center">
+          {item.priority !== "none" && (
+            <PriorityIcon priority={item.priority} />
           )}
         </span>
-      )}
-      {item.statusSince && (
-        <span className="hidden sm:inline-flex">
-          <StatusAgePill status={item.status} since={item.statusSince} />
+        {key && (
+          <span className="hidden w-16 shrink-0 font-mono text-xs text-muted-foreground sm:inline">
+            {key}
+          </span>
+        )}
+        <button
+          type="button"
+          onClick={onOpen}
+          className="min-w-0 flex-1 truncate text-left text-sm text-foreground"
+        >
+          {item.title}
+        </button>
+        {runState && <AgentRunIndicator state={runState} />}
+        {isTaskBlocked(item) && <BlockedBadge />}
+        {isTaskHandedToHuman(item) && <HandedToHumanBadge />}
+        {item.sprintId && (
+          <span className="hidden sm:inline-flex">
+            <SprintPill sprintId={item.sprintId} />
+          </span>
+        )}
+        {item.tags.length > 0 && (
+          <span className="hidden items-center gap-1.5 sm:inline-flex">
+            {item.tags.slice(0, 2).map((tag) => (
+              <TagPill key={tag.id} tag={tag} />
+            ))}
+            {item.tags.length > 2 && (
+              <span className={PILL}>+{item.tags.length - 2}</span>
+            )}
+          </span>
+        )}
+        {item.statusSince && (
+          <span className="hidden sm:inline-flex">
+            <StatusAgePill status={item.status} since={item.statusSince} />
+          </span>
+        )}
+        {item.dueDate && (
+          <span className="hidden sm:inline-flex">
+            <DueDatePill iso={item.dueDate} />
+          </span>
+        )}
+        <span className="flex w-5 shrink-0 justify-center">
+          <AssigneeDisplay
+            item={item}
+            assignee={assignee}
+            assignedBy={assignedBy}
+          />
         </span>
-      )}
-      {item.dueDate && (
-        <span className="hidden sm:inline-flex">
-          <DueDatePill iso={item.dueDate} />
+        <span className="hidden w-12 shrink-0 text-right text-xs tabular-nums text-muted-foreground sm:inline">
+          {formatTimeAgo(new Date(item.createdAt))}
         </span>
-      )}
-      <span className="flex w-5 shrink-0 justify-center">
-        <AssigneeDisplay
-          item={item}
-          assignee={assignee}
-          assignedBy={assignedBy}
-        />
-      </span>
-      <span className="hidden w-12 shrink-0 text-right text-xs tabular-nums text-muted-foreground sm:inline">
-        {formatTimeAgo(new Date(item.createdAt))}
-      </span>
-    </div>
+      </div>
+    </TaskContextMenu>
   );
 }

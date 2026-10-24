@@ -50,6 +50,7 @@ export const taskBoard = {
   // people read was renamed. Same split as thread-vs-chat.
   "taskBoard.taskBoard.autoFix": "Run",
   "taskBoard.taskBoard.rerun": "Re-run",
+  "taskBoard.taskBoard.openInNewTab": "Open in new tab",
   "taskBoard.taskBoard.blockedBadgeTitle":
     "The agent is waiting for your input",
   "taskBoard.taskBoard.clearFilters": "Clear filters",
