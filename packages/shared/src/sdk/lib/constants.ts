@@ -115,7 +115,7 @@ export function getWellKnownDevAssetsConnection(
     connection_type: "HTTP",
     connection_url: `${baseUrl}/mcp/${DEV_ASSETS_MCP_ALIAS_ID}`,
     // Folder icon
-    icon: "https://api.iconify.design/lucide:folder.svg?color=%23888",
+    icon: "https://api.iconify.design/lucide/folder.svg?color=%23888",
     app_name: "@deco/dev-assets-mcp",
     app_id: null,
     connection_token: null,
@@ -235,7 +235,7 @@ export const REVIEWER_COLOR = "#6366f1";
  *  thread from the Super Agent capybara on the task card. Deliberately NOT a
  *  checkmark/shield-check: that glyph read as "already verified" even while the
  *  review was still in progress or had failed. */
-export const REVIEWER_ICON_URL = `https://api.iconify.design/lucide:file-search.svg?color=${encodeURIComponent(REVIEWER_COLOR)}`;
+export const REVIEWER_ICON_URL = `https://api.iconify.design/lucide/file-search.svg?color=${encodeURIComponent(REVIEWER_COLOR)}`;
 
 export function getWellKnownDecopilotVirtualMCP(
   organizationId: string,
