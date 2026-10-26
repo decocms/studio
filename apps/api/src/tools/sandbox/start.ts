@@ -887,6 +887,7 @@ async function provisionSandbox(params: StartParams): Promise<{
       packageManager: runtimeSelected,
       port: runtimePort,
       path: runtimePath,
+      apps: workload?.apps ?? null,
     },
   };
 

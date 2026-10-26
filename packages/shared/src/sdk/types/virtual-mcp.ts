@@ -567,10 +567,17 @@ const SandboxRecordShape = {
         .nullable()
         .optional()
         .describe("metadata.runtime.path at the time of SANDBOX_START"),
+      apps: z
+        .array(z.string())
+        .nullable()
+        .optional()
+        .describe(
+          "Extra app paths the sandbox was given at SANDBOX_START; null when none were sent.",
+        ),
     })
     .optional()
     .describe(
-      "Snapshot of metadata.runtime fields (selected/port/path) used at SANDBOX_START. The Preview tab compares the live metadata.runtime against this to decide if a restart is required to apply changes.",
+      "Snapshot of metadata.runtime fields (selected/port/path/apps) used at SANDBOX_START. The Preview tab compares the live metadata.runtime against this to decide if a restart is required to apply changes.",
     ),
 } satisfies z.ZodRawShape;
 

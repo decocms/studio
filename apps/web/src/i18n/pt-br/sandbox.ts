@@ -1245,6 +1245,9 @@ export const sandbox = {
     "A sandbox não conseguiu iniciar. Tente de novo em {app}.",
   "sandbox.appPane.waiting": "Iniciando a sandbox…",
   "sandbox.appPane.noUrl": "Este app não tem endereço de preview.",
+  "sandbox.appPane.notStarted":
+    "{app} ainda não está rodando: a sandbox subiu antes de ele ser adicionado.",
+  "sandbox.appPane.start": "Iniciar {app}",
   "sandbox.savedSectionEditor.closeJsonEditor": "Fechar editor JSON",
   "sandbox.saveStatus.failed": "Não foi possível salvar",
   "sandbox.saveStatus.saved": "Salvo",

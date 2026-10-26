@@ -3870,6 +3870,7 @@ export interface StudioToolIO {
                               packageManager?: string | null | undefined;
                               port?: string | null | undefined;
                               path?: string | null | undefined;
+                              apps?: string[] | null | undefined;
                             }
                           | undefined;
                       }
@@ -4373,6 +4374,7 @@ export interface StudioToolIO {
                               packageManager?: string | null | undefined;
                               port?: string | null | undefined;
                               path?: string | null | undefined;
+                              apps?: string[] | null | undefined;
                             }
                           | undefined;
                       }
@@ -4624,6 +4626,7 @@ export interface StudioToolIO {
                               packageManager?: string | null | undefined;
                               port?: string | null | undefined;
                               path?: string | null | undefined;
+                              apps?: string[] | null | undefined;
                             }
                           | undefined;
                       }
@@ -4866,6 +4869,7 @@ export interface StudioToolIO {
                               packageManager?: string | null | undefined;
                               port?: string | null | undefined;
                               path?: string | null | undefined;
+                              apps?: string[] | null | undefined;
                             }
                           | undefined;
                       }
@@ -5330,6 +5334,7 @@ export interface StudioToolIO {
                               packageManager?: string | null | undefined;
                               port?: string | null | undefined;
                               path?: string | null | undefined;
+                              apps?: string[] | null | undefined;
                             }
                           | undefined;
                       }
@@ -5570,6 +5575,7 @@ export interface StudioToolIO {
                               packageManager?: string | null | undefined;
                               port?: string | null | undefined;
                               path?: string | null | undefined;
+                              apps?: string[] | null | undefined;
                             }
                           | undefined;
                       }
@@ -7226,6 +7232,7 @@ export interface StudioToolIO {
                               packageManager?: string | null | undefined;
                               port?: string | null | undefined;
                               path?: string | null | undefined;
+                              apps?: string[] | null | undefined;
                             }
                           | undefined;
                       }

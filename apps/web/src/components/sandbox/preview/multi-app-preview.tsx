@@ -26,6 +26,8 @@ import { Panel } from "@/components/panel";
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
 import { useLocalStorage } from "@/hooks/use-local-storage";
+import { omitSandboxMap } from "@/lib/omit-sandbox-map";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { useT } from "@/i18n/use-t.ts";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import { useSandboxEvents } from "../hooks/use-sandbox-events";
@@ -60,6 +62,7 @@ export function ProjectMultiAppPreview({
   const t = useT();
   // The new tab is the feedback; only a failed save needs a toast.
   const actions = useVirtualMCPActions({ silent: true });
+  const lifecycle = useSandboxLifecycle();
   const runtime = project.metadata.runtime ?? {};
   const apps = runtime.apps ?? [];
   const saveApps = (next: RuntimeApp[]) =>
@@ -68,12 +71,16 @@ export function ProjectMultiAppPreview({
         id: project.id,
         data: {
           metadata: {
-            ...project.metadata,
+            ...omitSandboxMap(project.metadata),
             runtime: { ...runtime, apps: next.length ? next : null },
           },
         },
       },
-      { onError: () => toast.error(t("sandbox.appTabs.saveError")) },
+      {
+        // A sandbox learns its apps on SANDBOX_START, which resumes a running one.
+        onSuccess: () => lifecycle.start(),
+        onError: () => toast.error(t("sandbox.appTabs.saveError")),
+      },
     );
   return (
     <MultiAppPreview
@@ -124,6 +131,8 @@ function MultiAppPreview({
   const mainUrl = localUrl ?? lifecycle.previewUrl;
   const ready = !!localUrl || phase === "running";
   const failed = !ready && lifecycle.status === "errored";
+  // Apps saved after this sandbox started (e.g. in Settings) aren't running yet.
+  const startedApps = lifecycle.vmEntry?.startedWith?.apps ?? [];
 
   const [storedLayout, setLayout] = useLocalStorage<AppLayout>(
     LOCALSTORAGE_KEYS.previewAppLayout(virtualMcpId),
@@ -279,6 +288,8 @@ function MultiAppPreview({
             appUrl={mainUrl ? appPreviewUrl(mainUrl, extra) : null}
             ready={ready}
             failed={failed}
+            notStarted={!localUrl && !startedApps.includes(extra)}
+            onStart={lifecycle.start}
             className={cn(split && "border-l border-border")}
             onClose={
               split ? () => setLayout({ app: extra, split: false }) : undefined
@@ -369,6 +380,8 @@ function AppPane({
   appUrl,
   ready,
   failed,
+  notStarted,
+  onStart,
   className,
   onClose,
 }: {
@@ -377,6 +390,9 @@ function AppPane({
   appUrl: string | null;
   ready: boolean;
   failed: boolean;
+  /** The sandbox runs, but was started without this app. */
+  notStarted: boolean;
+  onStart: () => void;
   className?: string;
   /** Present in split view: shows the main app alone again. */
   onClose?: () => void;
@@ -448,7 +464,16 @@ function AppPane({
         {t("sandbox.appPane.previewOnly", { app: mainName })}
       </p>
       <div className="flex min-h-0 flex-1 justify-center overflow-auto bg-muted/40">
-        {!ready || !src ? (
+        {ready && notStarted ? (
+          <div className="flex flex-col items-center gap-3 self-center px-6 text-center">
+            <p className="text-sm text-muted-foreground">
+              {t("sandbox.appPane.notStarted", { app: name })}
+            </p>
+            <Button size="sm" variant="outline" onClick={onStart}>
+              {t("sandbox.appPane.start", { app: name })}
+            </Button>
+          </div>
+        ) : !ready || !src ? (
           <p className="self-center px-6 text-center text-sm text-muted-foreground">
             {ready
               ? t("sandbox.appPane.noUrl")
