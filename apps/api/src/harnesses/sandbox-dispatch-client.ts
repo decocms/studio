@@ -598,6 +598,16 @@ export class SandboxDispatchClient {
           `to mint its MCP endpoint; this run has none`,
       );
     }
+    if (
+      this.harnessId !== "codex" &&
+      orgFlagEnabled(
+        (await this.ctx.storage.organizationSettings.get(organization.id))
+          ?.flags,
+        "coding_agent_background_tasks",
+      )
+    ) {
+      modelEnv.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS = null;
+    }
 
     // Resolved before the pod exists; model credential wins — see `mergeRunEnv`.
     const runEnv = mergeRunEnv(await resolveOrgRunEnv(this.ctx), modelEnv);

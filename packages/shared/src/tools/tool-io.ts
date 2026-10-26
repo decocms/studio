@@ -123,6 +123,7 @@ export interface StudioToolIO {
             auto_resolve_conflicts?: boolean | undefined;
             cheap_reviewer_model?: boolean | undefined;
             coding_agent_org_mcps?: boolean | undefined;
+            coding_agent_background_tasks?: boolean | undefined;
             coding_agents_claude_code?: boolean | undefined;
             task_board_codex?: boolean | undefined;
             chat_harness_codex?: boolean | undefined;
@@ -209,6 +210,7 @@ export interface StudioToolIO {
             auto_resolve_conflicts?: boolean | undefined;
             cheap_reviewer_model?: boolean | undefined;
             coding_agent_org_mcps?: boolean | undefined;
+            coding_agent_background_tasks?: boolean | undefined;
             coding_agents_claude_code?: boolean | undefined;
             task_board_codex?: boolean | undefined;
             chat_harness_codex?: boolean | undefined;
@@ -291,6 +293,7 @@ export interface StudioToolIO {
             auto_resolve_conflicts?: boolean | undefined;
             cheap_reviewer_model?: boolean | undefined;
             coding_agent_org_mcps?: boolean | undefined;
+            coding_agent_background_tasks?: boolean | undefined;
             coding_agents_claude_code?: boolean | undefined;
             task_board_codex?: boolean | undefined;
             chat_harness_codex?: boolean | undefined;
@@ -2909,7 +2912,6 @@ export interface StudioToolIO {
         app_id?: string | null | undefined;
         url_slug?: string | null | undefined;
         connection_url?: string | null | undefined;
-        connection_token?: string | null | undefined;
         connection_headers?:
           | {
               command: string;
@@ -2935,6 +2937,7 @@ export interface StudioToolIO {
         configuration_state?: Record<string, unknown> | null | undefined;
         configuration_scopes?: string[] | null | undefined;
         icon?: string | null | undefined;
+        connection_token?: string | null | undefined;
       };
     };
     output: {
@@ -3261,7 +3264,6 @@ export interface StudioToolIO {
           | "VIRTUAL"
           | undefined;
         connection_url?: string | null | undefined;
-        connection_token?: string | null | undefined;
         connection_headers?:
           | {
               command: string;
@@ -3339,6 +3341,7 @@ export interface StudioToolIO {
         bindings?: string[] | null | undefined;
         status?: "error" | "active" | "inactive" | undefined;
         url_slug?: string | null | undefined;
+        connection_token?: string | null | undefined;
       };
     };
     output: {

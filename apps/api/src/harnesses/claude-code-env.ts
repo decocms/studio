@@ -277,6 +277,8 @@ export function claudeCodeEnvFromCredential(
     CLAUDE_CODE_MAX_OUTPUT_TOKENS: `${CLAUDE_CODE_MAX_OUTPUT_TOKENS}`,
     CLAUDE_CODE_MAX_TURNS: maxTurns === null ? null : `${maxTurns}`,
     ENABLE_TOOL_SEARCH: TOOL_SEARCH,
+    // The runner exits at turn end, so backgrounded work never reports back.
+    CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1",
     FORCE_PROMPT_CACHING_5M: PROMPT_CACHE_5M,
     // Only Copilot sets it; null clears a previous Copilot run's header.
     ANTHROPIC_CUSTOM_HEADERS: null,

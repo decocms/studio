@@ -230,8 +230,18 @@ describe("buildOptions", () => {
       options({ agent: { id: "a", disallowedTools: ["Monitor"] } })
         .disallowedTools,
     ).toEqual(["Monitor", "ScheduleWakeup"]);
+    process.env.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS = "1";
+    try {
+      const { append } = options().systemPrompt as { append: string };
+      expect(append).toContain("This run ends when your turn ends");
+    } finally {
+      delete process.env.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS;
+    }
+  });
+
+  test("lets background work report back when the org enables it", () => {
     const { append } = options().systemPrompt as { append: string };
-    expect(append).toContain("This run ends when your turn ends");
+    expect(append).not.toContain("This run ends when your turn ends");
   });
 
   test("names the absolute org-fs root", () => {
