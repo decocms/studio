@@ -385,8 +385,13 @@ export function useSaveBlock({
     const backend = protocol!;
     const ctx = { queryClient, backend, params, cacheKey };
     let value = data;
-    /** What both sides changed from: the copy the edit was built on. */
-    let ancestor: unknown = create ? {} : base?.value;
+    /**
+     * What both sides changed from: the copy the edit was built on. A create
+     * starts from none, so a name the draft deletes is created over the
+     * deletion with no question (nothing it edited was deleted), and a name
+     * someone else created first is reconciled value by value from `{}`.
+     */
+    let ancestor: unknown = create ? undefined : base?.value;
     let ifMatch: Record<string, string | null> = create
       ? { [blockKey]: null }
       : await hostedIfMatch(ctx, [blockKey]);

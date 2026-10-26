@@ -402,7 +402,8 @@ describe("saved JSON carries no editor metadata", () => {
     });
 
     it("a name the draft deletes is created over the deletion, guarded by its tombstone", async () => {
-      const { result } = setupCreate("mine");
+      // Whatever the reconcile flow would answer, nothing is asked.
+      const { result } = setupCreate("theirs");
       server.draftInRefusal = true;
       server.blocks = {};
       server.versions = { Promo: "tombstone" };
@@ -420,6 +421,9 @@ describe("saved JSON carries no editor metadata", () => {
       ]);
       expect(server.blocks.Promo).toEqual({ title: "mine" });
       expect(asked.fields).toEqual([]);
+      // A create starts from no copy: nobody deleted anything it edited, so
+      // there is no "Keep my version" / "Leave it deleted" question.
+      expect(asked.deleted).toEqual([]);
     });
 
     it("a name nobody holds is written once, guarded", async () => {
