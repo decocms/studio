@@ -831,5 +831,24 @@ describe("decofile routes", () => {
       });
       expect(noHeader.repo.opened()).toBeGreaterThan(0);
     });
+
+    it("an unmarked v8 project's save is still checked against the draft alone", async () => {
+      // A block only main has, saved with "not in the draft yet": the
+      // editor's own first save of it, never refused as someone else's.
+      const { app } = setup({}, v8Files, { p1: ORG });
+      const res = await rpc(
+        app,
+        apply({
+          set: { "pages-home": { __resolveType: "page", title: "draft" } },
+          ifMatch: { "pages-home": null },
+        }),
+      );
+      const body = (await res.json()) as {
+        result?: { versions: Record<string, unknown> };
+        error?: unknown;
+      };
+      expect(body.error).toBeUndefined();
+      expect(body.result?.versions["pages-home"]).toEqual(expect.any(String));
+    });
   });
 });

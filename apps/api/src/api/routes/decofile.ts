@@ -489,9 +489,7 @@ async function serveDraftSave(
   c: Context<DecofileEnv>,
 ): Promise<Response | null> {
   const scope = c.get("decofileScope");
-  if (expectedMain(c) !== "v8" || !isBlocksV8Project(scope.metadata)) {
-    return null;
-  }
+  if (expectedMain(c) !== "v8") return null;
   const hosted = hostedScope(c);
   if (!hosted) return null;
   let body: unknown;
@@ -502,6 +500,16 @@ async function serveDraftSave(
   }
   const calls = applyOnlyCalls(body);
   if (!calls) return null;
+  // No marker (a best-effort write that failed, or not written yet): ask
+  // main once, which writes it. Never the layered save: its guards compare
+  // with main under the draft, so an editor's "not in the draft yet" would
+  // be refused for a block only main has.
+  if (!isBlocksV8Project(scope.metadata)) {
+    const client = await contentClientForScope(c);
+    if (!(await scopeIsV8(c, client, await client.getDefaultBranch()))) {
+      return null;
+    }
+  }
   const loaded = await hosted.drafts.load(hosted.ref);
   const plan = planDraftSave(
     body,
