@@ -363,6 +363,7 @@ export function useSaveBlock({
           params,
           cacheKey,
           blockKey,
+          error,
         );
         const stored = queryClient.getQueryData<Record<string, unknown>>(
           KEYS.decofile(cacheKey),
@@ -387,8 +388,9 @@ export function useSaveBlock({
           );
         }
         if (!isRecord(stored)) {
-          // Gone again meanwhile: create it as first meant.
-          ifMatch = { [blockKey]: null };
+          // Gone again meanwhile (or deleted in the draft: its tombstone's
+          // version): create it as first meant.
+          ifMatch = { [blockKey]: version };
           continue;
         }
         const plan = planFormConflict({ ancestor: {}, mine, theirs: stored });
@@ -456,6 +458,7 @@ export function useSaveBlock({
               params,
               cacheKey,
               blockKey,
+              error,
             );
             throw new BlockConflictError(
               [blockKey],

@@ -56,6 +56,10 @@ const server = {
   unreachable: false,
   /** Holds the next `blocks.apply` until resolved (a slow write). */
   gate: null as Promise<void> | null,
+  /** A refusal carries the draft's copies, as Studio's hosted route answers. */
+  draftInRefusal: false,
+  /** Reads of the content (polls and `changes.get`). */
+  reads: 0,
 };
 
 const client = {
@@ -75,6 +79,15 @@ const client = {
       if (actual !== expected) {
         throw new ContentProtocolError(ErrorCode.Conflict, "changed", {
           entries: { [name]: { expected, actual } },
+          ...(server.draftInRefusal
+            ? {
+                draft: {
+                  [name]: server.blocks[name]
+                    ? { block: server.blocks[name], version: actual }
+                    : { block: null, version: "tombstone" },
+                },
+              }
+            : {}),
         });
       }
     }
@@ -92,6 +105,7 @@ const client = {
     return { revision: `r${server.applied.length}`, versions };
   },
   changesGet: async ({ names }: { names: string[] }) => ({
+    _read: server.reads++,
     base: { revision: "main", resolvedRef: "main" },
     entries: Object.fromEntries(
       names
@@ -111,6 +125,7 @@ const client = {
   }),
   // The content poll (`blocks.list`, `schema.get`, `changes.list`).
   batch: async (calls: Array<{ method: string }>) => {
+    server.reads++;
     if (server.unreachable) throw new Error("offline");
     return calls.map((call) =>
       call.method === "blocks.list"
@@ -208,6 +223,8 @@ function setup() {
   server.applied = [];
   server.unreachable = false;
   server.gate = null;
+  server.draftInRefusal = false;
+  server.reads = 0;
   conflictHost.answer = null;
   conflictHost.asked = [];
   const queryClient = new QueryClient();
@@ -710,6 +727,48 @@ describe("useApplyNamedRule: reconcile (someone else saved first)", () => {
     expect(server.applied.at(-1)?.ifMatch).toEqual({
       experiments: "theirs@1",
     });
+  });
+
+  it("on the hosted draft, asks from the copy the refusal carries: nothing is read", async () => {
+    const { result } = setup();
+    server.draftInRefusal = true;
+    server.blocks.experiments = { __resolveType: "split-traffic", hero: 10 };
+    server.versions.experiments = "theirs@1";
+    conflictHost.answer = (plan) =>
+      Object.fromEntries(plan.pointers.map((p) => [p, "mine" as const]));
+    let outcome: unknown;
+    await act(async () => {
+      outcome = await result.current.apply({ writes: { experiments } });
+    });
+    expect(outcome).toEqual({ ok: true });
+    expect(conflictHost.asked.map((plan) => plan.pointers)).toEqual([
+      ["/experiments/hero"],
+    ]);
+    expect(server.reads).toBe(0);
+    expect(server.blocks.experiments).toEqual(experiments);
+    expect(server.applied.at(-1)?.ifMatch).toEqual({
+      experiments: "theirs@1",
+    });
+  });
+
+  it("on the hosted draft, a test deleted in the draft is a whole-block choice, guarded by its tombstone", async () => {
+    const { result } = setup();
+    server.draftInRefusal = true;
+    // The draft holds the deletion: "must not exist" no longer holds.
+    server.versions.experiments = "tombstone";
+    conflictHost.answer = (plan) =>
+      Object.fromEntries(plan.pointers.map((p) => [p, "mine" as const]));
+    let outcome: unknown;
+    await act(async () => {
+      outcome = await result.current.apply({ writes: { experiments } });
+    });
+    expect(outcome).toEqual({ ok: true });
+    expect(server.reads).toBe(0);
+    expect(server.applied.map((p) => p.ifMatch)).toEqual([
+      { experiments: null },
+      { experiments: "tombstone" },
+    ]);
+    expect(server.blocks.experiments).toEqual(experiments);
   });
 
   it("keeps theirs when picked: their test stays as they saved it", async () => {

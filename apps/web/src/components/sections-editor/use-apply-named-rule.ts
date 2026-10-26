@@ -10,6 +10,7 @@ import { KEYS } from "@/lib/query-keys";
 import {
   applyProtocolPatch,
   protocolBlockVersion,
+  adoptRefusedDraft,
   reloadProtocolBlock,
   rereadProtocolContent,
   savingBlockKeys,
@@ -236,7 +237,7 @@ export function useApplyNamedRule({
     },
   });
 
-  const changedMeanwhile = async (blockKeys: string[]) => {
+  const changedMeanwhile = async (blockKeys: string[], refusal?: unknown) => {
     for (const blockKey of blockKeys) {
       await reloadProtocolBlock(
         queryClient,
@@ -244,6 +245,7 @@ export function useApplyNamedRule({
         params,
         cacheKey,
         blockKey,
+        refusal,
       );
     }
     toast.info(t("sectionsEditor.namedRules.changedMeanwhile"), {
@@ -256,18 +258,24 @@ export function useApplyNamedRule({
   /**
    * Someone else saved one of the change's blocks first: read what is
    * stored, merge what only one side changed, ask about the rest, and save
-   * the result over the copies just read.
+   * the result over the copies just read. On Studio's hosted backend the
+   * refusal (`refusal`, the save's error) carries the draft's copies of the
+   * refused blocks, so the question opens with nothing read.
    */
   const reconcile = async (
     change: Required<NamedRuleChange>,
     copies: Record<string, unknown> | undefined,
     round: number,
+    refusal?: unknown,
   ): Promise<NamedRuleApplyOutcome> => {
     const touched = [...Object.keys(change.writes), ...change.deletes];
     if (round >= RECONCILE_ROUNDS || !canAskNamedRuleConflict()) {
-      return changedMeanwhile(touched);
+      return changedMeanwhile(touched, refusal);
     }
-    const stored = await reread();
+    const stored =
+      protocol && adoptRefusedDraft(queryClient, protocol, cacheKey, refusal)
+        ? (queryClient.getQueryData<Record<string, unknown>>(queryKey) ?? {})
+        : await reread();
     if (!stored) {
       toast.info(t("sectionsEditor.namedRules.unavailable"), {
         ...SAVE_TOAST,
@@ -350,7 +358,7 @@ export function useApplyNamedRule({
         },
       );
       if (isSaveConflict(error)) {
-        return reconcile({ writes, deletes }, previous, round);
+        return reconcile({ writes, deletes }, previous, round, error);
       }
       toastSaveError(
         t,

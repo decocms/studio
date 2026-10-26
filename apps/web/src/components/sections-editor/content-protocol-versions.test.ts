@@ -304,40 +304,72 @@ describe("hosted draft guards (Studio's GitHub backend)", () => {
         { value: Record<string, unknown>; version: string }
       >,
       mainBlocks: { Hero: { title: "main" } } as Record<string, unknown>,
+      /** Names the draft deletes (tombstones). */
+      deleted: new Set<string>(),
       reads: 0,
       applied: [] as Array<{ ifMatch?: Record<string, string | null> }>,
     };
+    /** A block's version in the draft: a deletion's is its tombstone's. */
+    const draftVersion = (name: string) =>
+      state.deleted.has(name)
+        ? "tombstone"
+        : (state.draft[name]?.version ?? null);
     const revision = () => `${state.main}~${state.etag}`;
     const changes = () => ({
       notModified: false as const,
       revision: `c-${revision()}`,
       base: { revision: state.main, resolvedRef: "main" },
-      changes: Object.fromEntries(
-        Object.entries(state.draft).map(([name, entry]) => [
+      changes: Object.fromEntries([
+        ...Object.entries(state.draft).map(([name, entry]) => [
           name,
           { kind: "set", version: entry.version, baseVersion: "main-v" },
         ]),
-      ),
+        // A deletion of a block main has (one main lacks hides nothing).
+        ...[...state.deleted]
+          .filter((name) => name in state.mainBlocks)
+          .map((name) => [
+            name,
+            { kind: "delete", version: null, baseVersion: "main-v" },
+          ]),
+      ]),
     });
     const client = {
       blocksApply: async (patch: {
         set?: Record<string, Record<string, unknown>>;
+        delete?: string[];
         ifMatch?: Record<string, string | null>;
       }) => {
         state.applied.push(patch);
         for (const [name, expected] of Object.entries(patch.ifMatch ?? {})) {
-          const actual = state.draft[name]?.version ?? null;
+          const actual = draftVersion(name);
           if (actual !== expected) {
+            // As Studio's route answers it: the draft's copy rides along.
             throw new ContentProtocolError(ErrorCode.Conflict, "changed", {
               entries: { [name]: { expected, actual } },
+              draft: {
+                [name]: state.deleted.has(name)
+                  ? { block: null, version: "tombstone" }
+                  : state.draft[name]
+                    ? {
+                        block: state.draft[name]!.value,
+                        version: state.draft[name]!.version,
+                      }
+                    : null,
+              },
             });
           }
         }
         state.etag = `e${state.applied.length + 1}`;
-        const versions: Record<string, string> = {};
+        const versions: Record<string, string | null> = {};
         for (const [name, value] of Object.entries(patch.set ?? {})) {
           versions[name] = `d${state.applied.length}`;
           state.draft[name] = { value, version: versions[name]! };
+          state.deleted.delete(name);
+        }
+        for (const name of patch.delete ?? []) {
+          versions[name] = null;
+          delete state.draft[name];
+          state.deleted.add(name);
         }
         // A save never reads main: no main part.
         return { revision: `~${state.etag}`, versions };
@@ -359,6 +391,10 @@ describe("hosted draft guards (Studio's GitHub backend)", () => {
             for (const [name, entry] of Object.entries(state.draft)) {
               blocks[name] = entry.value;
               versions[name] = entry.version;
+            }
+            for (const name of state.deleted) {
+              delete blocks[name];
+              delete versions[name];
             }
             return {
               ok: true,
@@ -386,6 +422,14 @@ describe("hosted draft guards (Studio's GitHub backend)", () => {
           };
         });
       },
+      changesGet: async () => {
+        state.reads++;
+        throw new Error("read through GitHub");
+      },
+      blocksList: async () => {
+        state.reads++;
+        throw new Error("read through GitHub");
+      },
     } as unknown as ContentClient;
     const backend: ProtocolBackend = {
       kind: "protocol",
@@ -396,6 +440,149 @@ describe("hosted draft guards (Studio's GitHub backend)", () => {
     };
     return { state, backend };
   }
+
+  /** Another editor's save, straight into the draft. */
+  const saveElsewhere = (
+    state: ReturnType<typeof hostedBackend>["state"],
+    name: string,
+    value: Record<string, unknown> | null,
+  ) => {
+    state.etag = `x${state.etag}`;
+    if (value === null) {
+      delete state.draft[name];
+      state.deleted.add(name);
+    } else {
+      state.draft[name] = { value, version: `other-${state.etag}` };
+      state.deleted.delete(name);
+    }
+  };
+
+  const refusalOf = async (write: Promise<unknown>) => {
+    try {
+      await write;
+    } catch (error) {
+      return error;
+    }
+    throw new Error("the save was not refused");
+  };
+
+  it("a refused save opens from the draft's copy it carries: nothing is read", async () => {
+    const queryClient = new QueryClient();
+    const { state, backend } = hostedBackend();
+    await pollProtocolContent(queryClient, backend, params, CACHE_KEY);
+    saveElsewhere(state, "Hero", { title: "theirs" });
+    const refusal = await refusalOf(
+      applyProtocolPatch(
+        queryClient,
+        backend,
+        params,
+        CACHE_KEY,
+        { set: { Hero: { title: "mine" } } },
+        { Hero: null },
+      ),
+    );
+    const reads = state.reads;
+    await reloadProtocolBlock(
+      queryClient,
+      backend,
+      params,
+      CACHE_KEY,
+      "Hero",
+      refusal,
+    );
+    expect(state.reads).toBe(reads);
+    expect(cachedBlocks(queryClient)?.Hero).toEqual({ title: "theirs" });
+    // The next guard is the draft's version: choosing mine now lands.
+    const version = protocolBlockVersion(
+      queryClient,
+      CACHE_KEY,
+      "Hero",
+      backend,
+    );
+    expect(version).toBe(`other-${state.etag}`);
+    await applyProtocolPatch(
+      queryClient,
+      backend,
+      params,
+      CACHE_KEY,
+      { set: { Hero: { title: "mine" } } },
+      { Hero: version! },
+    );
+    expect(state.draft.Hero?.value).toEqual({ title: "mine" });
+  });
+
+  it("a block deleted in the draft is guarded by its tombstone, main's or not", async () => {
+    const queryClient = new QueryClient();
+    const { state, backend } = hostedBackend();
+    await pollProtocolContent(queryClient, backend, params, CACHE_KEY);
+    // A block only the draft has, deleted here: main lacks it.
+    await applyProtocolPatch(
+      queryClient,
+      backend,
+      params,
+      CACHE_KEY,
+      { set: { Promo: { v: 1 } } },
+      { Promo: null },
+    );
+    await applyProtocolPatch(
+      queryClient,
+      backend,
+      params,
+      CACHE_KEY,
+      { delete: ["Promo"] },
+      {
+        Promo: protocolBlockVersion(queryClient, CACHE_KEY, "Promo", backend)!,
+      },
+    );
+    expect(protocolBlockVersion(queryClient, CACHE_KEY, "Promo", backend)).toBe(
+      "tombstone",
+    );
+    // Undo lands, guarded by the tombstone.
+    await applyProtocolPatch(
+      queryClient,
+      backend,
+      params,
+      CACHE_KEY,
+      { set: { Promo: { v: 1 } } },
+      {
+        Promo: protocolBlockVersion(queryClient, CACHE_KEY, "Promo", backend)!,
+      },
+    );
+    expect(state.draft.Promo?.value).toEqual({ v: 1 });
+
+    // Main's Hero, deleted by another editor: a stale "must not exist" save
+    // is refused and shows the deletion, read from the refusal alone.
+    saveElsewhere(state, "Hero", null);
+    const refusal = await refusalOf(
+      applyProtocolPatch(
+        queryClient,
+        backend,
+        params,
+        CACHE_KEY,
+        { set: { Hero: { title: "mine" } } },
+        { Hero: null },
+      ),
+    );
+    const reads = state.reads;
+    await reloadProtocolBlock(
+      queryClient,
+      backend,
+      params,
+      CACHE_KEY,
+      "Hero",
+      refusal,
+    );
+    expect(state.reads).toBe(reads);
+    expect(cachedBlocks(queryClient)).not.toHaveProperty("Hero");
+    expect(protocolBlockVersion(queryClient, CACHE_KEY, "Hero", backend)).toBe(
+      "tombstone",
+    );
+    // After a poll too: the draft's changes list the deletion.
+    await pollProtocolContent(queryClient, backend, params, CACHE_KEY);
+    expect(protocolBlockVersion(queryClient, CACHE_KEY, "Hero", backend)).toBe(
+      "tombstone",
+    );
+  });
 
   it("a block only main has is guarded by null; once saved, by the draft's version", async () => {
     const queryClient = new QueryClient();

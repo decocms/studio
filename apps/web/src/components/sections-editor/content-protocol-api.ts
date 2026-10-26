@@ -35,6 +35,8 @@ import {
   spellingKey,
 } from "@decocms/blocks/protocol";
 import {
+  DRAFT_TOMBSTONE_VERSION,
+  type DraftConflictBlocks,
   hostedRevision,
   hostedRevisionParts,
 } from "@decocms/shared/blocks-major";
@@ -99,8 +101,10 @@ export function protocolMetaQueryKey(
  *
  * - Studio's hosted backend (`backend.source === "github"`) checks a save
  *   against the draft alone: a block's version in the draft, as the draft's
- *   changes list it (`changes.list`, which is the draft's own blocks), or
- *   `null` when the draft doesn't hold it (main's copy is not the draft's).
+ *   changes list it (`changes.list`, which is the draft's own blocks), the
+ *   tombstone's (`DRAFT_TOMBSTONE_VERSION`) for a block the draft deletes,
+ *   or `null` when the draft doesn't hold it (main's copy is not the
+ *   draft's).
  * - Every other backend: the version (`blocks.list`'s, opaque) of the copy
  *   in the editor's blocks cache, as last read or written. A block an
  *   in-flight write holds keeps the version of its last landed copy.
@@ -145,7 +149,45 @@ function draftBlockVersion(
     KEYS.contentChanges(cacheKey),
   );
   if (!listed) return undefined;
-  return draftChangeOf(listed, blockKey)?.version ?? null;
+  const change = draftChangeOf(listed, blockKey);
+  // A deletion is in the draft: its tombstone is its version.
+  if (change?.kind === "delete") {
+    return change.version ?? DRAFT_TOMBSTONE_VERSION;
+  }
+  if (change) return change.version;
+  return draftTombstones(queryClient, cacheKey).has(spellingKey(blockKey))
+    ? DRAFT_TOMBSTONE_VERSION
+    : null;
+}
+
+function draftTombstones(
+  queryClient: QueryClient,
+  cacheKey: string,
+): Set<string> {
+  return new Set(
+    queryClient.getQueryData<string[]>(KEYS.contentDraftTombstones(cacheKey)),
+  );
+}
+
+/**
+ * Records whether the draft deletes `name`, a block main doesn't have (the
+ * draft's changes don't list it), for {@link draftBlockVersion}.
+ */
+function markDraftTombstone(
+  queryClient: QueryClient,
+  cacheKey: string,
+  name: string,
+  deleted: boolean,
+) {
+  const key = spellingKey(name);
+  const known = draftTombstones(queryClient, cacheKey);
+  if (known.has(key) === deleted) return;
+  if (deleted) known.add(key);
+  else known.delete(key);
+  keepContentBookkeeping(queryClient);
+  queryClient.setQueryData<string[]>(KEYS.contentDraftTombstones(cacheKey), [
+    ...known,
+  ]);
 }
 
 /**
@@ -163,24 +205,42 @@ function adoptHostedSave(
   cacheKey: string,
   result: BlocksApplyResult,
 ): string {
-  const answered = hostedRevisionParts(result.revision);
+  const revisionParts = hostedRevisionParts(result.revision);
   const seen = queryClient.getQueryData<ContentRevisions>(
     KEYS.contentRevision(cacheKey),
   )?.revision;
   const read = seen ? hostedRevisionParts(seen) : null;
   const revision =
-    answered && !answered.main && read
-      ? hostedRevision(read.main, answered.draft)
+    revisionParts && !revisionParts.main && read
+      ? hostedRevision(read.main, revisionParts.draft)
       : result.revision;
   const versions = queryClient.getQueryData<Record<string, string>>(
     KEYS.contentVersions(cacheKey),
+  );
+  const answered = Object.entries(result.versions ?? {});
+  const listedBefore = queryClient.getQueryData<ContentChanges>(
+    KEYS.contentChanges(cacheKey),
+  );
+  /** Names the save answers whose "before" is no block (main lacks them). */
+  const mainLess = new Set(
+    answered.flatMap(([name]) => {
+      const had = listedBefore ? draftChangeOf(listedBefore, name) : undefined;
+      const baseVersion = had ? had.baseVersion : (versions?.[name] ?? null);
+      return baseVersion === null ? [name] : [];
+    }),
+  );
+  // Spellings the save wrote: another spelling's `null` is no deletion.
+  const written = new Set(
+    answered.flatMap(([name, version]) =>
+      version === null ? [] : [spellingKey(name)],
+    ),
   );
   queryClient.setQueryData<ContentChanges>(
     KEYS.contentChanges(cacheKey),
     (listed) => {
       if (!listed) return listed;
       const changes = { ...listed.changes };
-      for (const [name, version] of Object.entries(result.versions ?? {})) {
+      for (const [name, version] of answered) {
         const had = draftChangeOf(listed, name);
         const baseVersion = had ? had.baseVersion : (versions?.[name] ?? null);
         if (version !== null) {
@@ -194,7 +254,15 @@ function adoptHostedSave(
       return { ...listed, changes };
     },
   );
-  if (answered && answered.draft !== "none") {
+  for (const [name, version] of answered) {
+    if (version !== null) {
+      markDraftTombstone(queryClient, cacheKey, name, false);
+    } else if (!written.has(spellingKey(name)) && mainLess.has(name)) {
+      // A block main doesn't have, deleted: the draft holds its tombstone.
+      markDraftTombstone(queryClient, cacheKey, name, true);
+    }
+  }
+  if (revisionParts && revisionParts.draft !== "none") {
     queryClient.setQueryData<HostedDraftPointer>(
       KEYS.protocolDraftRead(
         params.orgSlug,
@@ -202,7 +270,7 @@ function adoptHostedSave(
         params.branch,
       ),
       (pointer) =>
-        pointer ? { ...pointer, version: answered.draft } : pointer,
+        pointer ? { ...pointer, version: revisionParts.draft } : pointer,
     );
   }
   return revision;
@@ -578,11 +646,114 @@ export async function applyProtocolPatch(
 }
 
 /**
- * After a save refused for an outdated `ifMatch`: reads the content again and
- * puts the block's stored copy (and its version) in the cache, in place of
- * the refused edit. The poll keeps a block that is being saved as the editor
- * holds it, so the block itself comes from `changes.get` (or, on a server
- * without it, an unconditional `blocks.list`).
+ * The draft's copy of `blockKey` that a refused hosted save carries
+ * (`DraftConflictBlocks`). Undefined when it carries none, or when the
+ * draft doesn't hold the block (main's copy shows, which is read).
+ */
+function refusedDraftBlock(
+  refusal: unknown,
+  blockKey: string,
+): { block: unknown; version: string } | undefined {
+  if (!(refusal instanceof ContentProtocolError)) return undefined;
+  const draft = (refusal.data as Partial<DraftConflictBlocks> | null)?.draft;
+  if (!draft || typeof draft !== "object" || !Object.hasOwn(draft, blockKey)) {
+    return undefined;
+  }
+  const entry = draft[blockKey];
+  return entry && typeof entry.version === "string" ? entry : undefined;
+}
+
+/**
+ * Puts the draft's copy of `blockKey`, as a refused hosted save carried it,
+ * in the cache in place of the refused edit: the block (or its absence, for
+ * a block the draft deletes), its version, and its entry in the draft's
+ * changes, which the next guard reads (`protocolBlockVersion`).
+ */
+function adoptRefusedDraftBlock(
+  queryClient: QueryClient,
+  cacheKey: string,
+  blockKey: string,
+  stored: { block: unknown; version: string },
+) {
+  keepContentBookkeeping(queryClient);
+  const deleted = stored.block === null;
+  const versions = queryClient.getQueryData<Record<string, string>>(
+    KEYS.contentVersions(cacheKey),
+  );
+  const listed = queryClient.getQueryData<ContentChanges>(
+    KEYS.contentChanges(cacheKey),
+  );
+  const had = listed ? draftChangeOf(listed, blockKey) : undefined;
+  const baseVersion = had ? had.baseVersion : (versions?.[blockKey] ?? null);
+  if (listed) {
+    const key = spellingKey(blockKey);
+    const changes = Object.fromEntries(
+      Object.entries(listed.changes).filter(([n]) => spellingKey(n) !== key),
+    );
+    if (!deleted) {
+      changes[blockKey] = { kind: "set", version: stored.version, baseVersion };
+    } else if (baseVersion !== null) {
+      changes[blockKey] = { kind: "delete", version: null, baseVersion };
+    }
+    queryClient.setQueryData<ContentChanges>(KEYS.contentChanges(cacheKey), {
+      ...listed,
+      changes,
+    });
+  }
+  markDraftTombstone(
+    queryClient,
+    cacheKey,
+    blockKey,
+    deleted && baseVersion === null,
+  );
+  queryClient.setQueryData(
+    KEYS.decofile(cacheKey),
+    (current: Record<string, unknown> | undefined) => {
+      const next = { ...current };
+      if (deleted) delete next[blockKey];
+      else next[blockKey] = stored.block;
+      return next;
+    },
+  );
+  adoptBlockVersions(queryClient, cacheKey, {
+    [blockKey]: deleted ? null : stored.version,
+  });
+}
+
+/**
+ * A refused hosted save's blocks, as the draft holds them (the refusal
+ * carries them), put in the cache in place of the refused edits. False,
+ * adopting nothing, when the refusal doesn't carry every one of them (one
+ * the draft doesn't hold shows main's copy: the caller reads it).
+ */
+export function adoptRefusedDraft(
+  queryClient: QueryClient,
+  backend: Pick<ProtocolBackend, "source">,
+  cacheKey: string,
+  refusal: unknown,
+): boolean {
+  if (backend.source !== "github" || !(refusal instanceof ContentProtocolError))
+    return false;
+  const draft = (refusal.data as Partial<DraftConflictBlocks> | null)?.draft;
+  if (!draft || typeof draft !== "object") return false;
+  const names = Object.keys(draft);
+  const stored = names.map((name) => refusedDraftBlock(refusal, name));
+  if (names.length === 0 || stored.some((s) => s === undefined)) return false;
+  void queryClient.cancelQueries({ queryKey: KEYS.decofile(cacheKey) });
+  names.forEach((name, i) => {
+    adoptRefusedDraftBlock(queryClient, cacheKey, name, stored[i]!);
+  });
+  return true;
+}
+
+/**
+ * After a save refused for an outdated `ifMatch`: puts the block's stored
+ * copy (and its version) in the cache, in place of the refused edit. On
+ * Studio's hosted backend the refusal (`refusal`, the save's error) carries
+ * the draft's copy, so nothing is read. Otherwise the content is read again;
+ * the poll keeps a block that is being saved as the editor holds it, so the
+ * block itself comes from `changes.get` (or, on a server without it, an
+ * unconditional `blocks.list`).
  */
 export async function reloadProtocolBlock(
   queryClient: QueryClient,
@@ -590,7 +761,17 @@ export async function reloadProtocolBlock(
   params: DecofileScopeParams,
   cacheKey: string,
   blockKey: string,
+  refusal?: unknown,
 ): Promise<void> {
+  const fromDraft =
+    backend.source === "github"
+      ? refusedDraftBlock(refusal, blockKey)
+      : undefined;
+  if (fromDraft) {
+    void queryClient.cancelQueries({ queryKey: KEYS.decofile(cacheKey) });
+    adoptRefusedDraftBlock(queryClient, cacheKey, blockKey, fromDraft);
+    return;
+  }
   await queryClient.invalidateQueries({ queryKey: KEYS.decofile(cacheKey) });
   let stored: { value: Record<string, unknown> | null; version: string | null };
   try {

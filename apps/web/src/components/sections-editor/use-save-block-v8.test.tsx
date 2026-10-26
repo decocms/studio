@@ -34,6 +34,10 @@ const server = {
     set?: Record<string, unknown>;
     ifMatch?: Record<string, string | null>;
   }>,
+  /** A refusal carries the draft's copies, as Studio's hosted route answers. */
+  draftInRefusal: false,
+  /** `changes.get` reads. */
+  reads: 0,
 };
 
 const client = {
@@ -47,6 +51,15 @@ const client = {
       if (actual !== expected) {
         throw new ContentProtocolError(ErrorCode.Conflict, "changed", {
           entries: { [name]: { expected, actual } },
+          ...(server.draftInRefusal
+            ? {
+                draft: {
+                  [name]: server.blocks[name]
+                    ? { block: server.blocks[name], version: actual }
+                    : { block: null, version: "tombstone" },
+                },
+              }
+            : {}),
         });
       }
     }
@@ -58,6 +71,7 @@ const client = {
     return { revision: "r2", versions };
   },
   changesGet: async ({ names }: { names: string[] }) => ({
+    _read: server.reads++,
     base: { revision: "main", resolvedRef: "main" },
     entries: Object.fromEntries(
       names.map((name) => [
@@ -133,6 +147,8 @@ function setup() {
   server.blocks = { Hero: { title: "theirs" } };
   server.versions = { Hero: "h2" };
   server.applied = [];
+  server.draftInRefusal = false;
+  server.reads = 0;
   const queryClient = new QueryClient();
   queryClient.setQueryData(KEYS.decofile(CACHE_KEY), {
     Hero: { title: "loaded" },
@@ -184,6 +200,37 @@ describe("useSaveBlock on the content protocol (v8)", () => {
       en["sectionsEditor.sectionsEditor.blockChangedElsewhere"],
     );
     expect(rejected).toHaveLength(1);
+  });
+
+  it("on the hosted draft, a refused form save takes the draft's copy from the refusal: nothing is read", async () => {
+    const { queryClient, result } = setup();
+    server.draftInRefusal = true;
+    queryClient.setQueryData(KEYS.contentChanges(CACHE_KEY), {
+      revision: "c1",
+      base: { revision: "main", resolvedRef: "main" },
+      changes: { Hero: { kind: "set", version: "h1", baseVersion: "m1" } },
+    });
+    const guard: SaveGuard = {
+      ifMatch: (key) => ({ [key]: "h1" }),
+      reloadOnConflict: true,
+    };
+    let failure: unknown;
+    await act(async () => {
+      await result.current
+        .mutateAsync({ blockKey: "Hero", data: { title: "mine" }, guard })
+        .catch((error: unknown) => {
+          failure = error;
+        });
+    });
+    expect(failure).toBeInstanceOf(BlockConflictError);
+    expect(server.reads).toBe(0);
+    expect(heroInCache(queryClient)).toEqual({ title: "theirs" });
+    // The next guard is the draft's version, "before" kept.
+    expect(
+      queryClient.getQueryData<{ changes: Record<string, unknown> }>(
+        KEYS.contentChanges(CACHE_KEY),
+      )?.changes.Hero,
+    ).toEqual({ kind: "set", version: "h2", baseVersion: "m1" });
   });
 
   it("a guarded save that lands reports the block's new version", async () => {
@@ -282,6 +329,45 @@ describe("saved JSON carries no editor metadata", () => {
         ).toEqual({ title, note: "same" });
       });
     }
+
+    it("a name taken meanwhile opens the reconcile flow from the refusal alone", async () => {
+      const { result } = setupCreate("mine");
+      server.draftInRefusal = true;
+      await act(() =>
+        result.current.mutateAsync({
+          blockKey: "Promo",
+          data: { title: "mine", note: "same" },
+          create: true,
+        }),
+      );
+      expect(server.reads).toBe(0);
+      expect(server.applied.map((p) => p.ifMatch)).toEqual([
+        { Promo: null },
+        { Promo: "p1" },
+      ]);
+      expect(asked.fields.map((f) => f.pointer)).toEqual(["/title"]);
+    });
+
+    it("a name the draft deletes is created over the deletion, guarded by its tombstone", async () => {
+      const { result } = setupCreate("mine");
+      server.draftInRefusal = true;
+      server.blocks = {};
+      server.versions = { Promo: "tombstone" };
+      await act(() =>
+        result.current.mutateAsync({
+          blockKey: "Promo",
+          data: { title: "mine" },
+          create: true,
+        }),
+      );
+      expect(server.reads).toBe(0);
+      expect(server.applied.map((p) => p.ifMatch)).toEqual([
+        { Promo: null },
+        { Promo: "tombstone" },
+      ]);
+      expect(server.blocks.Promo).toEqual({ title: "mine" });
+      expect(asked.fields).toEqual([]);
+    });
 
     it("a name nobody holds is written once, guarded", async () => {
       const { result } = setupCreate("mine");
