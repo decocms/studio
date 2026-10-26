@@ -49,7 +49,10 @@ import {
   spellingKey,
   unsupported,
 } from "@decocms/blocks/protocol";
-import { hostedRevision } from "@decocms/shared/blocks-major";
+import {
+  DRAFT_TOMBSTONE_VERSION,
+  hostedRevision,
+} from "@decocms/shared/blocks-major";
 import type { RepoContentClient } from "@/git-providers";
 import { gitBlobSha } from "@/decofile/read-decofile";
 import { createRepoContentReader } from "@/decofile/repo-content-storage";
@@ -90,6 +93,26 @@ function draftFiles(draft: DraftBody): {
     });
   }
   return { files, texts };
+}
+
+/**
+ * The draft as a save sees it: its own block files and, for each name it
+ * deletes, a tombstone at {@link DRAFT_TOMBSTONE_VERSION} (no body). A
+ * deleted block is in the draft: "must not exist in the draft" fails on it.
+ */
+function draftOverlayFiles(draft: DraftBody): {
+  files: StorageFile[];
+  texts: Map<string, string>;
+} {
+  const own = draftFiles(draft);
+  const held = new Set(Object.keys(draft.set).map(spellingKey));
+  const tombstones = draft.delete
+    .filter((name) => !held.has(spellingKey(name)))
+    .map((name) => ({
+      file: blockFileName(name),
+      version: DRAFT_TOMBSTONE_VERSION,
+    }));
+  return { files: [...own.files, ...tombstones], texts: own.texts };
 }
 
 /** Main's files with the draft layered on; returns the draft files' texts too. */
@@ -212,20 +235,46 @@ function putVersions(put: Record<string, string>): Record<string, string> {
 /**
  * A version no draft file has: what a name the draft doesn't hold shows as
  * in the write storage's listing while a save deletes it (see
- * {@link createDraftWriteStorage}'s `deletes`).
+ * {@link createDraftWriteStorage}'s `deletes`). The request's "must not
+ * exist" guard on it is sent as this version (`planDraftSave`), and a
+ * commit checks it as "still not in the draft"; a Conflict answers it as
+ * `null` again.
  */
-const NOT_IN_DRAFT = "not-in-draft";
+export const NOT_IN_DRAFT = "not-in-draft";
+
+/**
+ * Throws {@link STALE_DRAFT} unless every `expected` file is in the draft's
+ * overlay at the version expected (`null` or {@link NOT_IN_DRAFT}: absent).
+ */
+function checkOverlayExpected(
+  draft: DraftBody,
+  expected: Record<string, string | null>,
+) {
+  const absent = (version: string | null) =>
+    version === NOT_IN_DRAFT ? null : version;
+  checkExpected(
+    draftOverlayFiles(draft).files,
+    Object.fromEntries(
+      Object.entries(expected).map(([file, v]) => [file, absent(v)]),
+    ),
+  );
+}
 
 /**
  * The storage a hosted save (`blocks.apply`) runs on: the draft alone (see
  * the module note). It never reads GitHub or a schema, so a save costs one
  * read and one conditional write of the draft object.
  *
+ * Its listing is the draft's overlay: its blocks, and a tombstone for each
+ * name it deletes ({@link DRAFT_TOMBSTONE_VERSION}), so a deleted block is
+ * in the draft for a guard.
+ *
  * `deletes`: names the save deletes that the draft doesn't hold (blocks
  * only main has, as the caller found the draft in `loaded`). The protocol's
  * core only deletes a name its listing has, so the listing shows each of
- * them as a file at {@link NOT_IN_DRAFT}; the caller drops their
- * "must not exist" guard, which the draft meets (`hostedApplyRequest`).
+ * them as a file at {@link NOT_IN_DRAFT}; the caller sends their "must not
+ * exist" guard as that version (`planDraftSave`), and the commit checks it
+ * as "still not in the draft".
  */
 export function createDraftWriteStorage(options: {
   packagePath: string | null;
@@ -256,8 +305,10 @@ export function createDraftWriteStorage(options: {
     snapshot: async (): Promise<StorageSnapshot> => {
       const draft = await load();
       const body = draft?.body ?? EMPTY_DRAFT;
-      const own = draftFiles(body);
-      const held = new Set(Object.keys(body.set).map(spellingKey));
+      const own = draftOverlayFiles(body);
+      const held = new Set(
+        [...Object.keys(body.set), ...body.delete].map(spellingKey),
+      );
       const absent = (options.deletes ?? [])
         .filter((name) => !held.has(spellingKey(name)))
         .map((name) => ({ file: blockFileName(name), version: NOT_IN_DRAFT }));
@@ -289,7 +340,7 @@ export function createDraftWriteStorage(options: {
       const versions = putVersions(attempt.put);
       try {
         const saved = await drafts.update(ref, (body) => {
-          checkExpected(draftFiles(body).files, attempt.expected);
+          checkOverlayExpected(body, attempt.expected);
           return applyAttemptToDraft(body, attempt);
         });
         return {

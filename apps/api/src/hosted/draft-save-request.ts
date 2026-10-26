@@ -5,7 +5,13 @@
  * GitHub read; any other request takes the layered storage.
  */
 
-import { spellingKey } from "@decocms/blocks/protocol";
+import { serializeBlock, spellingKey } from "@decocms/blocks/protocol";
+import {
+  DRAFT_TOMBSTONE_VERSION,
+  type DraftConflictBlocks,
+} from "@decocms/shared/blocks-major";
+import { gitBlobSha } from "@/decofile/read-decofile";
+import { NOT_IN_DRAFT } from "./draft-content-storage";
 import type { DraftBody } from "./draft-store";
 
 interface ApplyCall {
@@ -37,19 +43,24 @@ export function applyOnlyCalls(body: unknown): ApplyCall[] | null {
 }
 
 /**
- * The names the save deletes that `draft` doesn't hold, unguarded or
- * guarded "must not exist" (which the draft meets), and the request with
- * those guards dropped: the write storage lists each of them so the core
- * writes its delete (see `createDraftWriteStorage`). A delete guarded by a
- * version the draft doesn't hold is left as sent: the core answers a
- * Conflict. Malformed params are left for the core to report.
+ * The names the save deletes that `draft` doesn't hold (neither a block nor
+ * a deletion of it: a block only main has), and the request with their
+ * "must not exist" guards sent as {@link NOT_IN_DRAFT}: the write storage
+ * lists each of them at that version so the core writes its delete (see
+ * `createDraftWriteStorage`), and its commit checks the guard as "still not
+ * in the draft", so a save that lands meanwhile is not deleted over. A
+ * delete guarded by a version is left as sent: the core answers a Conflict
+ * when the draft doesn't hold it. Malformed params are left for the core to
+ * report.
  */
 export function planDraftSave(
   body: unknown,
   calls: ApplyCall[],
   draft: DraftBody,
 ): { body: unknown; deletes: string[] } {
-  const held = new Set(Object.keys(draft.set).map(spellingKey));
+  const held = new Set(
+    [...Object.keys(draft.set), ...draft.delete].map(spellingKey),
+  );
   const deletes = new Set<string>();
   const rewritten = calls.map((call) => {
     const params = call.params;
@@ -62,7 +73,7 @@ export function planDraftSave(
       if (held.has(spellingKey(name))) continue;
       if (guards && Object.hasOwn(guards, name)) {
         if (guards[name] !== null) continue;
-        delete guards[name];
+        guards[name] = NOT_IN_DRAFT;
         changed = true;
       }
       deletes.add(name);
@@ -74,4 +85,90 @@ export function planDraftSave(
     body: Array.isArray(body) ? rewritten : rewritten[0],
     deletes: [...deletes],
   };
+}
+
+interface RpcAnswer {
+  error?: { code?: unknown; data?: unknown };
+}
+
+/** The protocol's Conflict (`ErrorCode.Conflict`). */
+const CONFLICT = -32002;
+
+function conflictEntries(
+  answer: unknown,
+): Record<string, { expected?: unknown; actual?: unknown }> | null {
+  if (!isRecord(answer)) return null;
+  const error = (answer as RpcAnswer).error;
+  if (!isRecord(error) || error.code !== CONFLICT) return null;
+  const data = error.data;
+  if (!isRecord(data) || !isRecord(data.entries)) return null;
+  return data.entries as Record<
+    string,
+    { expected?: unknown; actual?: unknown }
+  >;
+}
+
+/** Each name of `names` as `draft` holds it now (see `DraftConflictBlocks`). */
+export function draftBlocksOf(
+  draft: DraftBody,
+  names: readonly string[],
+): DraftConflictBlocks["draft"] {
+  const out: DraftConflictBlocks["draft"] = {};
+  for (const name of names) {
+    const key = spellingKey(name);
+    const setName = Object.keys(draft.set).find((n) => spellingKey(n) === key);
+    if (setName !== undefined) {
+      const block = draft.set[setName];
+      out[name] = { block, version: gitBlobSha(serializeBlock(block)) };
+    } else if (draft.delete.some((n) => spellingKey(n) === key)) {
+      out[name] = { block: null, version: DRAFT_TOMBSTONE_VERSION };
+    } else {
+      out[name] = null;
+    }
+  }
+  return out;
+}
+
+/**
+ * A hosted save's answer as the editor gets it: a Conflict says what the
+ * draft holds now for each refused block (`DraftConflictBlocks`, one read
+ * of the draft object, never GitHub), so the editor opens its reconcile
+ * flow from it, and a {@link NOT_IN_DRAFT} guard reads `null` again, as the
+ * editor sent it. Any other answer is returned as it is.
+ */
+export async function withDraftConflicts(
+  response: Response,
+  loadDraft: () => Promise<DraftBody>,
+): Promise<Response> {
+  const text = await response.clone().text();
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return response;
+  }
+  const answers = Array.isArray(parsed) ? parsed : [parsed];
+  const refused = answers.map(conflictEntries);
+  if (refused.every((entries) => entries === null)) return response;
+  const draft = await loadDraft();
+  const shown = (version: unknown) =>
+    version === NOT_IN_DRAFT ? null : version;
+  for (const [i, entries] of refused.entries()) {
+    if (!entries) continue;
+    for (const entry of Object.values(entries)) {
+      if (!isRecord(entry)) continue;
+      entry.expected = shown(entry.expected);
+      entry.actual = shown(entry.actual);
+    }
+    const data = (answers[i] as { error: { data: Record<string, unknown> } })
+      .error.data;
+    data.draft = draftBlocksOf(draft, Object.keys(entries));
+  }
+  const headers = new Headers(response.headers);
+  headers.delete("content-length");
+  return new Response(JSON.stringify(parsed), {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
 }

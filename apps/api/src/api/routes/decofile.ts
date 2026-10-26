@@ -79,7 +79,11 @@ import {
   createDraftWriteStorage,
   createV7MainStorage,
 } from "@/hosted/draft-content-storage";
-import { applyOnlyCalls, planDraftSave } from "@/hosted/draft-save-request";
+import {
+  applyOnlyCalls,
+  planDraftSave,
+  withDraftConflicts,
+} from "@/hosted/draft-save-request";
 import type { DraftEditors } from "@/hosted/draft-editors";
 import type { DraftStore, HostedDraftRef } from "@/hosted/draft-store";
 import type { KVStorage } from "@/storage/kv";
@@ -532,12 +536,18 @@ async function serveDraftSave(
       onError: protocolErrorLogger(scope),
     },
   );
-  return handler(
-    new Request(c.req.raw.url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(plan.body),
-    }),
+  // A refused save carries the draft's copy of each refused block: the
+  // editor's reconcile flow opens from it, with no other read.
+  return withDraftConflicts(
+    await handler(
+      new Request(c.req.raw.url, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(plan.body),
+      }),
+    ),
+    async () =>
+      (await hosted.drafts.load(hosted.ref))?.body ?? { set: {}, delete: [] },
   );
 }
 

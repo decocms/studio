@@ -9,7 +9,11 @@ import {
   createDraftContentStorage,
   createDraftWriteStorage,
 } from "./draft-content-storage";
-import { applyOnlyCalls, planDraftSave } from "./draft-save-request";
+import {
+  applyOnlyCalls,
+  planDraftSave,
+  withDraftConflicts,
+} from "./draft-save-request";
 import {
   createDraftStore,
   type DraftStore,
@@ -580,29 +584,34 @@ async function save(
   drafts: DraftStore,
   params: Record<string, unknown>,
   ref: HostedDraftRef = REF,
+  /** The draft as the route read it, when not read now (a race). */
+  read?: Awaited<ReturnType<DraftStore["load"]>>,
 ) {
   const body = { jsonrpc: "2.0", id: 1, method: "blocks.apply", params };
-  const loaded = await drafts.load(ref);
+  const loaded = read !== undefined ? read : await drafts.load(ref);
   const plan = planDraftSave(
     body,
     applyOnlyCalls(body)!,
     loaded?.body ?? { set: {}, delete: [] },
   );
-  const res = await createContentHandler(
-    createDraftWriteStorage({
-      packagePath: null,
-      drafts,
-      ref,
-      loaded,
-      deletes: plan.deletes,
-    }),
-    { server: { name: "studio-github", version: "1" }, bodyCacheBytes: 0 },
-  )(
-    new Request("http://studio.test/rpc", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(plan.body),
-    }),
+  const res = await withDraftConflicts(
+    await createContentHandler(
+      createDraftWriteStorage({
+        packagePath: null,
+        drafts,
+        ref,
+        loaded,
+        deletes: plan.deletes,
+      }),
+      { server: { name: "studio-github", version: "1" }, bodyCacheBytes: 0 },
+    )(
+      new Request("http://studio.test/rpc", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(plan.body),
+      }),
+    ),
+    async () => (await drafts.load(ref))?.body ?? { set: {}, delete: [] },
   );
   // biome-ignore lint/suspicious/noExplicitAny: protocol results are asserted per test
   return (await res.json()) as { result?: any; error?: any };
@@ -647,6 +656,14 @@ describe("hosted draft saves: the draft alone", () => {
         entries: {
           Home: { expected: null, actual: first.result.versions.Home },
         },
+        // The draft's copy rides with the refusal: the editor's reconcile
+        // flow opens from it, with no other read.
+        draft: {
+          Home: {
+            block: { path: "/", title: "draft" },
+            version: first.result.versions.Home,
+          },
+        },
       },
     });
     // ...and the draft's version is the guard that holds.
@@ -670,6 +687,8 @@ describe("hosted draft saves: the draft alone", () => {
     expect(saved.error).toMatchObject({
       data: {
         entries: { Footer: { expected: "an-old-version", actual: null } },
+        // Not in the draft: main's copy shows, which the editor reads.
+        draft: { Footer: null },
       },
     });
     expect(await drafts.load(REF)).toBeNull();
@@ -699,6 +718,82 @@ describe("hosted draft saves: the draft alone", () => {
       actual: null,
     });
     expect((await drafts.load(REF))?.body.delete).toEqual(["Footer", "Home"]);
+  });
+
+  it('a block deleted in the draft is in it: a stale "must not exist" save is refused, showing the deletion', async () => {
+    const { drafts } = setup();
+    // Ana deletes the Footer (only main has it).
+    const deleted = await save(drafts, {
+      delete: ["Footer"],
+      ifMatch: { Footer: null },
+    });
+    expect(deleted.error).toBeUndefined();
+    // Bruno still has it open, not in the draft when he read it: refused.
+    const stale = await save(drafts, {
+      set: { Footer: { links: ["bruno"] } },
+      ifMatch: { Footer: null },
+    });
+    expect(stale.error).toMatchObject({
+      code: -32002,
+      data: {
+        entries: { Footer: { expected: null, actual: "tombstone" } },
+        draft: { Footer: { block: null, version: "tombstone" } },
+      },
+    });
+    expect((await drafts.load(REF))?.body).toEqual({
+      set: {},
+      delete: ["Footer"],
+    });
+    // Deleting it again with "must not exist" is refused the same way.
+    const again = await save(drafts, {
+      delete: ["Footer"],
+      ifMatch: { Footer: null },
+    });
+    expect(again.error?.data?.entries?.Footer).toEqual({
+      expected: null,
+      actual: "tombstone",
+    });
+    // Guarded by the deletion's version, his choice lands over it.
+    const mine = await save(drafts, {
+      set: { Footer: { links: ["bruno"] } },
+      ifMatch: { Footer: "tombstone" },
+    });
+    expect(mine.error).toBeUndefined();
+    expect((await drafts.load(REF))?.body).toEqual({
+      set: { Footer: { links: ["bruno"] } },
+      delete: [],
+    });
+  });
+
+  it("a guarded delete of a block only main has is refused when the block landed in the draft meanwhile", async () => {
+    const { drafts } = setup();
+    // The route read the draft (empty), then another editor's save landed.
+    const read = await drafts.load(REF);
+    const theirs = await save(drafts, { set: { Footer: { links: ["x"] } } });
+    const stale = await save(
+      drafts,
+      { delete: ["Footer"], ifMatch: { Footer: null } },
+      REF,
+      read,
+    );
+    expect(stale.error).toMatchObject({
+      code: -32002,
+      data: {
+        entries: {
+          Footer: { expected: null, actual: theirs.result.versions.Footer },
+        },
+        draft: {
+          Footer: {
+            block: { links: ["x"] },
+            version: theirs.result.versions.Footer,
+          },
+        },
+      },
+    });
+    expect((await drafts.load(REF))?.body).toEqual({
+      set: { Footer: { links: ["x"] } },
+      delete: [],
+    });
   });
 
   it("a rename (set the new name, delete the old) lands in one write", async () => {

@@ -113,3 +113,24 @@ export function hostedRevisionParts(
   if (at < 0) return null;
   return { main: revision.slice(0, at), draft: revision.slice(at + 1) };
 }
+
+/**
+ * The version a hosted v8 draft gives a block it deletes (a tombstone): the
+ * deleted block is in the draft, so a save guarded "must not exist in the
+ * draft" (`ifMatch: null`) is refused, and one guarded by this version
+ * passes. The same value as @decocms/blocks' `TOMBSTONE_VERSION` (protocol
+ * 1.2), so a client shared with that protocol reads it the same way.
+ */
+export const DRAFT_TOMBSTONE_VERSION = "tombstone";
+
+/**
+ * What a refused hosted v8 save (a Conflict) carries besides the protocol's
+ * `entries`: each refused block as the draft holds it now, so the editor
+ * opens its reconcile flow without reading anything else. A block deleted
+ * in the draft is `{ block: null, version: DRAFT_TOMBSTONE_VERSION }`; a
+ * block the draft doesn't hold is `null` (main's copy shows: the editor
+ * reads it).
+ */
+export interface DraftConflictBlocks {
+  draft: Record<string, { block: unknown; version: string } | null>;
+}

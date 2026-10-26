@@ -794,9 +794,28 @@ describe("decofile routes", () => {
           ifMatch: { "pages-home": null },
         }),
       );
-      const body = (await res.json()) as { error?: { code: number } };
-      // The protocol's Conflict.
+      const body = (await res.json()) as {
+        error?: { code: number; data?: { draft?: unknown } };
+      };
+      // The protocol's Conflict, with the draft's copy: the editor opens
+      // its reconcile flow from it, with no other read.
       expect(body.error?.code).toBe(-32002);
+      expect(body.error?.data?.draft).toEqual({
+        "pages-home": { block: { v: 1 }, version: expect.any(String) },
+      });
+      expect(repo.calls).toEqual([]);
+      // A block deleted in the draft is in it: "must not exist" is refused.
+      await rpc(app, apply({ delete: ["Gone"] }));
+      const deleted = await rpc(
+        app,
+        apply({ set: { Gone: { v: 1 } }, ifMatch: { Gone: null } }),
+      );
+      expect(
+        ((await deleted.json()) as { error?: { data?: unknown } }).error?.data,
+      ).toMatchObject({
+        entries: { Gone: { expected: null, actual: "tombstone" } },
+        draft: { Gone: { block: null, version: "tombstone" } },
+      });
       expect(repo.calls).toEqual([]);
     });
 
