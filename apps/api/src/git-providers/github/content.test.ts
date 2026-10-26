@@ -121,6 +121,31 @@ describe("treeWriteEntries", () => {
     ]);
   });
 
+  it("sends a write's text inline when no blob was uploaded for it (hosted Publish)", () => {
+    const entries = treeWriteEntries(
+      [
+        { path: ".deco/blocks/Hero.json", content: "{}\n" },
+        { path: ".deco/blocks/Old.json", deleted: true },
+      ],
+      { ...uploads, blobSha: () => null },
+    );
+
+    expect(entries).toEqual([
+      {
+        path: ".deco/blocks/Hero.json",
+        mode: "100644",
+        type: "blob",
+        content: "{}\n",
+      },
+      {
+        path: ".deco/blocks/Old.json",
+        mode: "100644",
+        type: "blob",
+        sha: null,
+      },
+    ]);
+  });
+
   it("keeps the caller's order, since the last entry for a path wins", () => {
     const entries = treeWriteEntries(
       [

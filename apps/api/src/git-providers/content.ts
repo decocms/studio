@@ -194,6 +194,12 @@ export interface RepoContentClient {
     expectedHead: string | null;
     rewriteFrom?: string;
     changes: FileChange[];
+    /**
+     * Send each file's text with the tree write instead of uploading its
+     * blob first, where the provider can (GitHub): one call for all files.
+     * Text only (UTF-8). Others ignore it.
+     */
+    inlineContent?: boolean;
   }): Promise<{ sha: string }>;
 
   /** Create `branch` at `sha`; `RepoWriteConflict` when it already exists. */

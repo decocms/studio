@@ -81,7 +81,13 @@ import {
   type HostedDraftRef,
   isEmptyDraft,
 } from "./draft-store";
-import { buildRevision, schemaHashAt } from "./release-objects";
+import {
+  buildRevision,
+  buildRevisionFrom,
+  type SavedBlockFile,
+  schemaHashAt,
+  schemaHashInTree,
+} from "./release-objects";
 
 /** Main moved while the draft was being committed: nothing was published. */
 export class MainMovedError extends Error {
@@ -268,6 +274,7 @@ export async function commitBlocksToMain(
     next: Iterable<BlockSource>;
   },
   message: string,
+  memo: Map<string, string> = new Map(),
 ): Promise<string> {
   const changes = [...files.changes];
   const gen = await regenerateGenArtifact({
@@ -276,16 +283,18 @@ export async function commitBlocksToMain(
     packagePath: repo.packagePath,
     branch: repo.mainBranch,
     nextBlocks: files.next,
-    memo: new Map(),
+    memo,
   });
   if (gen) changes.push(gen);
   try {
     // No `rewriteFrom`: the ref only moves by fast-forward from `headSha`.
+    // The files' texts ride in the tree write: no blob upload per block.
     const { sha } = await repo.client.commitFiles({
       branch: repo.mainBranch,
       message,
       expectedHead: headSha,
       changes,
+      inlineContent: true,
     });
     return sha;
   } catch (error) {
@@ -299,17 +308,34 @@ export async function commitBlocksToMain(
 const PUBLISH_COMMIT_ATTEMPTS = 3;
 
 /**
- * Step 1: one fast-forward commit on main's head. Returns the commit sha, or
+ * What a commit Publish just made is made of, so its release is built
+ * without reading the commit back: its schemaHash (read lazily, only when
+ * the release is written) and its `.deco/blocks` files.
+ */
+export interface KnownRevision {
+  schemaHash: () => Promise<string>;
+  files: SavedBlockFile[];
+  memo?: Map<string, string>;
+}
+
+/**
+ * Step 1: one fast-forward commit on main's head. Returns the commit, or
  * null when the draft changes nothing on main. The whole draft block wins
  * over main's copy, whoever changed it there. When main moves while the
  * commit is built (a developer's push), it is built again on the new head,
  * a few times, so Publish isn't refused for it.
+ *
+ * Its GitHub cost doesn't grow with the draft: main's head and one listing
+ * of its `.deco/blocks`, then one tree write (the texts inline), the commit
+ * and the ref. The release is built from the same listing and texts
+ * ({@link KnownRevision}), never by listing and reading the new commit.
  */
 async function commitDraftToMain(
   repo: HostedRepo,
   draft: DraftBody,
   message: string,
-): Promise<string | null> {
+): Promise<{ sha: string; known: KnownRevision } | null> {
+  const memo = new Map<string, string>();
   for (let attempt = 1; ; attempt++) {
     const headSha = await requireBranchHead(repo.client, repo.mainBranch);
     const { changes, tree, next } = await draftFileChanges(
@@ -319,12 +345,28 @@ async function commitDraftToMain(
     );
     if (changes.length === 0) return null;
     try {
-      return await commitBlocksToMain(
+      const sha = await commitBlocksToMain(
         repo,
         headSha,
         { changes, tree, next: next.values() },
         message,
+        memo,
       );
+      const prefix = `${blocksDirPath(repo.packagePath)}/`;
+      return {
+        sha,
+        known: {
+          // The commit changes block files (and blocks.gen.json) only: its
+          // schema is its parent's, whose `.deco` was just listed.
+          schemaHash: () =>
+            schemaHashInTree(repo.client, repo.packagePath, headSha),
+          files: [...next].map(([path, source]) => ({
+            file: path.slice(prefix.length),
+            source,
+          })),
+          memo,
+        },
+      };
     } catch (error) {
       if (
         !(error instanceof MainMovedError) ||
@@ -393,11 +435,20 @@ export async function draftNamesChangedOnMain(
 export async function ensureRevision(
   repo: HostedRepo,
   sha: string,
+  known?: KnownRevision,
 ): Promise<string> {
   if (await hasRevision(repo.store, repo.site, sha)) {
-    return schemaHashAt(repo.client, repo.packagePath, sha);
+    return known
+      ? known.schemaHash()
+      : schemaHashAt(repo.client, repo.packagePath, sha);
   }
-  const revision = await buildRevision(repo.client, repo.packagePath, sha);
+  const revision = known
+    ? await buildRevisionFrom(repo.client, sha, {
+        schemaHash: await known.schemaHash(),
+        files: known.files,
+        memo: known.memo,
+      })
+    : await buildRevision(repo.client, repo.packagePath, sha);
   await repo.store.putJson(
     deliveryKeys.revision(repo.site, sha),
     { ...revision, previewHosts: [...repo.previewHosts] },
@@ -500,8 +551,11 @@ export async function publishDraft(
   // The release first, then the draft: any render of the emptied draft
   // happens after latest.json names the new release. A release that isn't
   // current keeps the draft for "Try again".
-  const releaseThenEmpty = async (sha: string): Promise<PublishResult> => {
-    const release = await releaseCommit(repo, sha, hooks);
+  const releaseThenEmpty = async (
+    sha: string,
+    known?: KnownRevision,
+  ): Promise<PublishResult> => {
+    const release = await releaseCommit(repo, sha, hooks, known);
     if (release !== "current") {
       return draft.etag
         ? { result: "merged", sha, release, draftEtag: draft.etag }
@@ -510,7 +564,7 @@ export async function publishDraft(
     await emptyDraft();
     return { result: "merged", sha, release };
   };
-  const sha = await commitDraftToMain(
+  const committed = await commitDraftToMain(
     repo,
     draft.body,
     note.message.trim()
@@ -522,7 +576,7 @@ export async function publishDraft(
         ),
   );
   // Nothing committed.
-  if (sha === null) {
+  if (committed === null) {
     // The draft's changes are all on main already. Live (latest.json names
     // main's head): the draft is emptied, latest.json left alone. Not live (a
     // Publish whose release failed, its "Try again" gone with the tab, or
@@ -536,7 +590,7 @@ export async function publishDraft(
     }
     return releaseThenEmpty(unreleased);
   }
-  return releaseThenEmpty(sha);
+  return releaseThenEmpty(committed.sha, committed.known);
 }
 
 /**
@@ -591,10 +645,11 @@ export async function releaseCommit(
   repo: HostedRepo,
   sha: string,
   hooks: PublishHooks = {},
+  known?: KnownRevision,
 ): Promise<ReleaseOutcome> {
   let schemaHash: string;
   try {
-    schemaHash = await ensureRevision(repo, sha);
+    schemaHash = await ensureRevision(repo, sha, known);
   } catch (error) {
     logCdnFailure(repo, sha, "release write", error);
     return "none";

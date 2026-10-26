@@ -149,6 +149,70 @@ describe("publishDraft", () => {
     await expectEmptied(drafts, saved);
   });
 
+  it("costs the same GitHub calls for a draft of 1 block or 8: one listing of main, one inline-content commit, no read of the new commit", async () => {
+    const callsFor = async (blocks: number) => {
+      const { git, drafts, repo, delivery } = setup();
+      const calls: string[] = [];
+      const inline: unknown[] = [];
+      const client = git.client;
+      repo.client = new Proxy(client, {
+        get(target, key, receiver) {
+          const value = Reflect.get(target, key, receiver);
+          if (typeof value !== "function") return value;
+          return (...args: unknown[]) => {
+            const [first] = args;
+            calls.push(
+              `${String(key)} ${typeof first === "string" ? first : ""}`.trim(),
+            );
+            if (key === "commitFiles") {
+              inline.push((first as { inlineContent?: boolean }).inlineContent);
+            }
+            return value.apply(target, args);
+          };
+        },
+      });
+      const set: Record<string, unknown> = {
+        Home: { path: "/", title: "draft" },
+      };
+      for (let i = 1; i < blocks; i++) set[`Block${i}`] = { n: i };
+      await drafts.update(REF, () => ({ set, delete: ["Old"] }));
+      const parent = git.head();
+      const result = await publishDraft(repo, drafts, REF, {
+        message: "",
+        coAuthor: null,
+      });
+      const sha = git.head();
+      expect(result).toEqual({ result: "merged", sha, release: "current" });
+      const revision = JSON.parse(
+        delivery.objects.get(deliveryKeys.revision("acme", sha))!.text,
+      );
+      expect(revision.schemaHash).toBe(SCHEMA_HASH);
+      expect(Object.keys(revision.blocks).sort()).toEqual(
+        Object.keys(set).sort(),
+      );
+      expect(inline).toEqual([true]);
+      // The new commit is never listed or read back.
+      expect(calls.filter((c) => c.includes(sha))).toEqual([]);
+      // Blob reads go through the blob cache (which some test files turn
+      // off): at most the schema's, which the editor's open already read.
+      const reads = calls.filter((c) => c.startsWith("readBlob"));
+      expect(reads.length).toBeLessThanOrEqual(1);
+      return calls
+        .filter((c) => !c.startsWith("readBlob"))
+        .map((c) => c.replace(parent, "<parent>"));
+    };
+    const one = await callsFor(1);
+    const eight = await callsFor(8);
+    expect(eight).toEqual(one);
+    expect(one).toEqual([
+      "getBranch main",
+      "listDecofileEntries <parent>",
+      "commitFiles",
+      "getEntriesAtPaths <parent>",
+      "getBranch main",
+    ]);
+  });
+
   it("is Merged · release created, not current, when main moved after the commit: no latest.json, draft kept for Try again", async () => {
     const { git, delivery, drafts, repo } = setup();
     const saved = await drafts.update(REF, () => ({
