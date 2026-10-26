@@ -945,11 +945,14 @@ const agentMonitorRoute = createRoute({
   ),
 });
 
+const appArgsSearchSchema = z.object({ args: z.string().optional() });
+
 const agentAppRoute = createRoute({
   pendingComponent: ChatLayoutPending,
   errorComponent: ChatLayoutError,
   getParentRoute: () => agentWorkspaceRoute,
   path: "/apps/$connectionId/$toolName",
+  validateSearch: appArgsSearchSchema,
   staticData: { pageTitle: "page.app", defaultMain: "app", mainView: "app" },
   component: lazyRouteComponent(
     () => import("./routes/workspace/agent-app.tsx"),
@@ -961,6 +964,7 @@ const agentViewRoute = createRoute({
   errorComponent: ChatLayoutError,
   getParentRoute: () => agentWorkspaceRoute,
   path: "/views/$viewId",
+  validateSearch: appArgsSearchSchema,
   staticData: { pageTitle: "page.view", defaultMain: "view", mainView: "view" },
   component: lazyRouteComponent(
     () => import("./routes/workspace/agent-view.tsx"),
