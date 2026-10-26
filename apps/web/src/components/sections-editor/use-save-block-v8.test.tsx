@@ -1,6 +1,6 @@
 import { setupComponentTest } from "../../../test/setup";
 setupComponentTest();
-import { afterEach, describe, expect, it, mock } from "bun:test";
+import { afterAll, afterEach, describe, expect, it, mock } from "bun:test";
 import { act, renderHook } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
@@ -18,6 +18,7 @@ import { BlockConflictError } from "./decofile-api";
 import * as realBackend from "./use-content-backend";
 import * as realDecofile from "./use-decofile";
 import * as realSessionRuntime from "@/hooks/use-session-runtime";
+import * as realNamedRuleConflict from "./named-rule-conflict";
 import * as realLocalPreview from "@/hooks/use-local-preview-url";
 import type { SaveGuard } from "./use-save-block";
 
@@ -136,6 +137,12 @@ const asked = {
   /** "Keep my version" / "Leave it deleted" questions asked. */
   deleted: [] as Array<{ kind: string; label: string }>,
 };
+// The real dialog module, restored for the test files that run after this
+// one in the same process (named-rule-conflict.test.tsx renders it).
+const namedRuleConflict = { ...realNamedRuleConflict };
+afterAll(() => {
+  mock.module("./named-rule-conflict", () => namedRuleConflict);
+});
 mock.module("./named-rule-conflict", () => ({
   canAskNamedRuleConflict: () => true,
   askDeletedConflict: async (conflict: { kind: string; label: string }) => {
@@ -299,22 +306,29 @@ describe("useSaveBlock on the content protocol (v8)", () => {
     ).toMatchObject({ Hero: "h2+" });
   });
 
-  it("a guard without reloadOnConflict keeps the protocol's Conflict and rolls back", async () => {
-    const { queryClient, result } = setup();
-    let failure: unknown;
-    await act(async () => {
-      await result.current
-        .mutateAsync({
-          blockKey: "Hero",
-          data: { title: "mine" },
-          guard: { ifMatch: (key) => ({ [key]: null }) },
-        })
-        .catch((error: unknown) => {
-          failure = error;
-        });
-    });
-    expect(failure).toBeInstanceOf(ContentProtocolError);
-    expect(heroInCache(queryClient)).toEqual({ title: "loaded" });
+  it("a guard without reloadOnConflict keeps the protocol's Conflict and rolls back (a local deco serve)", async () => {
+    // Hosted v8 reconciles instead (see "an editor's own create-only guard").
+    const source = backend.source;
+    (backend as { source: string }).source = "local";
+    try {
+      const { queryClient, result } = setup();
+      let failure: unknown;
+      await act(async () => {
+        await result.current
+          .mutateAsync({
+            blockKey: "Hero",
+            data: { title: "mine" },
+            guard: { ifMatch: (key) => ({ [key]: null }) },
+          })
+          .catch((error: unknown) => {
+            failure = error;
+          });
+      });
+      expect(failure).toBeInstanceOf(ContentProtocolError);
+      expect(heroInCache(queryClient)).toEqual({ title: "loaded" });
+    } finally {
+      (backend as { source: string }).source = source;
+    }
   });
 });
 
@@ -557,6 +571,64 @@ describe("every hosted v8 save is guarded by the draft (no guard of its own)", (
     ]);
     expect(applied).toEqual([{ Hero: "tombstone+" }]);
     expect(heroInCache(queryClient)).toEqual({ title: "mine" });
+  });
+
+  describe("an editor's own create-only guard (Settings' CMS block)", () => {
+    /** "create" until a save lands, then no guard of its own (`undefined`). */
+    function createOnlyGuard() {
+      const state = { mode: "create" as "create" | "off", rejected: 0 };
+      const guard: SaveGuard = {
+        ifMatch: (key) =>
+          state.mode === "create" ? { [key]: null } : undefined,
+        onApplied: () => {
+          state.mode = "off";
+        },
+        onRejected: () => {
+          state.rejected++;
+        },
+      };
+      return { state, guard };
+    }
+
+    it("once the block exists, each save is guarded by the draft's version (never refused unread)", async () => {
+      const { queryClient, result } = setup();
+      server.versions = { Hero: "h2" };
+      draftHolds(queryClient, { Hero: "h2" });
+      const { state, guard } = createOnlyGuard();
+      state.mode = "off";
+      await act(async () => {
+        await result.current.mutateAsync({
+          blockKey: "Hero",
+          data: { title: "mine" },
+          guard,
+        });
+      });
+      expect(server.applied.map((p) => p.ifMatch)).toEqual([{ Hero: "h2" }]);
+      expect(server.blocks.Hero).toEqual({ title: "mine" });
+    });
+
+    it("a block someone created first opens the reconcile flow, not a failure", async () => {
+      const { queryClient, result } = setup();
+      server.draftInRefusal = true;
+      draftHolds(queryClient, { Hero: "h2" });
+      const { state, guard } = createOnlyGuard();
+      await act(async () => {
+        await result.current.mutateAsync({
+          blockKey: "Hero",
+          data: { title: "mine" },
+          guard,
+        });
+      });
+      expect(asked.fields.map((f) => [f.pointer, f.mine, f.theirs])).toEqual([
+        ["/title", "mine", "theirs"],
+      ]);
+      expect(server.applied.map((p) => p.ifMatch)).toEqual([
+        { Hero: null },
+        { Hero: "h2" },
+      ]);
+      expect(server.blocks.Hero).toEqual({ title: "mine" });
+      expect(state).toEqual({ mode: "off", rejected: 0 });
+    });
   });
 
   it("a refused form save says whether the refusal carried the draft's copy (no pause before the dialog)", async () => {

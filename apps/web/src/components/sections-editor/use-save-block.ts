@@ -547,6 +547,27 @@ export function useSaveBlock({
         if (hosted && !guard) {
           return saveHostedBlock(params, blockKey, data, base, create);
         }
+        // An editor's own guard that isn't a form's (Settings' create-only
+        // `CMS` guard): its "must not exist" makes the save a create, and no
+        // guard of its own means the draft's version. Either way a refusal
+        // opens the reconcile flow rather than failing.
+        if (hosted && guard && !guard.reloadOnConflict) {
+          const own = guard.ifMatch(blockKey);
+          try {
+            const result = await saveHostedBlock(
+              params,
+              blockKey,
+              data,
+              base,
+              create || (!!own && own[blockKey] === null),
+            );
+            guard.onApplied?.(keptTheirVersion(result) ? {} : result.versions);
+            return result;
+          } catch (error) {
+            guard.onRejected?.(error);
+            throw error;
+          }
+        }
         let ifMatch = guard?.ifMatch(blockKey);
         if (guard && !ifMatch && hosted) {
           // Every hosted save carries its precondition: an unknown version
