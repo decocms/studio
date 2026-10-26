@@ -66,6 +66,7 @@ import {
   blocksDirPath,
   gitBlobSha,
   primeBlobCache,
+  uncachedBlockShas,
 } from "@/decofile/read-decofile";
 import {
   CACHE_LATEST,
@@ -446,7 +447,7 @@ export async function ensureRevision(
     ? await buildRevisionFrom(repo.client, sha, {
         schemaHash: await known.schemaHash(),
         files: known.files,
-        memo: known.memo,
+        memo: await primeFromLiveRelease(repo, known),
       })
     : await buildRevision(repo.client, repo.packagePath, sha);
   await repo.store.putJson(
@@ -455,6 +456,49 @@ export async function ensureRevision(
     CACHE_REVISION,
   );
   return revision.schemaHash;
+}
+
+/**
+ * The texts a release built from `known` needs, as far as the blob cache and
+ * the live release hold them, so its unchanged blocks aren't read from
+ * GitHub one by one (a replica whose cache is cold). The live release
+ * (latest.json's revision object, two bucket reads) holds every block it
+ * released; each one whose serialized text has a blob sha the commit lists
+ * is that file's text. Read only when the cache misses some; best effort.
+ */
+async function primeFromLiveRelease(
+  repo: HostedRepo,
+  known: KnownRevision,
+): Promise<Map<string, string>> {
+  const memo = known.memo ?? new Map<string, string>();
+  const missing = await uncachedBlockShas(
+    repo.client,
+    known.files.map((f) => f.source),
+    memo,
+  );
+  if (missing.length === 0) return memo;
+  try {
+    const latest = await readLatest(repo.store, repo.site);
+    if (!latest) return memo;
+    const released = await getJson(
+      repo.store,
+      deliveryKeys.revision(repo.site, latest.revision),
+    );
+    const blocks = (released?.value as { blocks?: unknown } | null)?.blocks;
+    if (!blocks || typeof blocks !== "object") return memo;
+    const wanted = new Set(missing);
+    for (const entry of Object.values(blocks)) {
+      const text = serializeBlock(entry);
+      const blobSha = gitBlobSha(text);
+      if (wanted.has(blobSha)) memo.set(blobSha, text);
+    }
+  } catch (error) {
+    console.warn("hosted publish: the live release couldn't prime the build", {
+      site: repo.site,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+  return memo;
 }
 
 /**

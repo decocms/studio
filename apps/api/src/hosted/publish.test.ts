@@ -213,6 +213,42 @@ describe("publishDraft", () => {
     ]);
   });
 
+  it("builds the release's unchanged blocks from the live release, not from GitHub one by one (a cold blob cache)", async () => {
+    const { git, drafts, repo, delivery } = setup();
+    for (let i = 0; i < 6; i++) {
+      git.pushDirect({ [`.deco/blocks/B${i}.json`]: serializeBlock({ i }) });
+    }
+    await drafts.update(REF, () => ({
+      set: { B0: { i: "first" } },
+      delete: [],
+    }));
+    await publishDraft(repo, drafts, REF, { message: "", coAuthor: null });
+    const reads: string[] = [];
+    const readBlob = git.client.readBlob;
+    git.client.readBlob = async (sha) => {
+      reads.push(sha);
+      return readBlob(sha);
+    };
+    await drafts.update(REF, () => ({
+      set: { B1: { i: "second" } },
+      delete: [],
+    }));
+    const result = await publishDraft(repo, drafts, REF, {
+      message: "",
+      coAuthor: null,
+    });
+    expect(result).toMatchObject({ result: "merged", release: "current" });
+    // At most the schema's blob: every unchanged block came from the release.
+    expect(reads.length).toBeLessThanOrEqual(1);
+    const revision = JSON.parse(
+      delivery.objects.get(deliveryKeys.revision("acme", git.head()))!.text,
+    );
+    expect(revision.blocks.B0).toEqual({ i: "first" });
+    expect(revision.blocks.B1).toEqual({ i: "second" });
+    expect(revision.blocks.B5).toEqual({ i: 5 });
+    expect(revision.blocks.Home).toEqual({ path: "/", title: "v1" });
+  });
+
   it("is Merged · release created, not current, when main moved after the commit: no latest.json, draft kept for Try again", async () => {
     const { git, delivery, drafts, repo } = setup();
     const saved = await drafts.update(REF, () => ({
