@@ -657,6 +657,38 @@ describe("every hosted v8 save is guarded by the draft (no guard of its own)", (
   });
 });
 
+describe("every hosted blocks.apply carries a precondition per block", () => {
+  it("a patch missing one is refused before it is sent", async () => {
+    const { applyProtocolPatch } = await import("./content-protocol-api");
+    const { queryClient } = setup();
+    const params = { orgSlug: ORG, virtualMcpId: VM, branch: BRANCH };
+    for (const ifMatch of [undefined, { Hero: "h2" }]) {
+      let failure: unknown;
+      await applyProtocolPatch(
+        queryClient,
+        backend,
+        params,
+        CACHE_KEY,
+        { set: { Hero: { a: 1 } }, delete: ["Gone"] },
+        ifMatch,
+      ).catch((error: unknown) => {
+        failure = error;
+      });
+      expect(failure).toBeInstanceOf(Error);
+    }
+    expect(server.applied).toEqual([]);
+    await applyProtocolPatch(
+      queryClient,
+      backend,
+      params,
+      CACHE_KEY,
+      { set: { Hero: { a: 1 } }, delete: ["Gone"] },
+      { Hero: "h2", Gone: null },
+    );
+    expect(server.applied).toHaveLength(1);
+  });
+});
+
 describe("hosted v8 deletes and moves are guarded by the draft too", () => {
   function setupHook<T>(hook: () => T) {
     const { queryClient } = setup();
@@ -740,6 +772,57 @@ describe("hosted v8 deletes and moves are guarded by the draft too", () => {
         expect(cached?.Banner).toBeUndefined();
       }
     });
+  }
+
+  for (const choice of ["mine", "theirs"] as const) {
+    for (const when of ["refused", "already read"] as const) {
+      it(`a move of a block someone deleted meanwhile asks "Keep my version" / "Leave it deleted" (${choice}, ${when})`, async () => {
+        const { queryClient, result } = setupHook(() => useMoveBlocks(params));
+        server.draftInRefusal = true;
+        server.blocks = {};
+        server.versions = { Hero: "tombstone" };
+        asked.choice = choice;
+        // Refused: the editor read Hero at h1. Already read: a poll brought
+        // the deletion, but the editor's copy (a form) still shows Hero.
+        if (when === "refused") draftHolds(queryClient, { Hero: "h1" });
+        else draftHolds(queryClient, {}, ["Hero"]);
+        let failure: unknown;
+        await act(async () => {
+          await result.current
+            .move({
+              writes: { Banner: { title: "loaded", name: "Hero banner" } },
+              deletes: ["Hero"],
+            })
+            .catch((error: unknown) => {
+              failure = error;
+            });
+        });
+        expect(asked.deleted).toEqual([
+          { kind: "theyDeleted", label: "Hero banner" },
+        ]);
+        const cached = queryClient.getQueryData<Record<string, unknown>>(
+          KEYS.decofile(CACHE_KEY),
+        );
+        if (choice === "mine") {
+          expect(failure).toBeUndefined();
+          expect(server.blocks).toEqual({
+            Banner: { title: "loaded", name: "Hero banner" },
+          });
+          expect(cached?.Banner).toEqual({
+            title: "loaded",
+            name: "Hero banner",
+          });
+        } else {
+          // Never brought back under its new name.
+          expect(failure).toBeDefined();
+          expect(server.blocks).toEqual({});
+          // Only the refused attempt (nothing written), or nothing at all.
+          expect(server.applied).toHaveLength(when === "refused" ? 1 : 0);
+          expect(cached?.Banner).toBeUndefined();
+          expect(cached?.Hero).toBeUndefined();
+        }
+      });
+    }
   }
 
   it("a move is one blocks.apply guarded by the draft's versions", async () => {

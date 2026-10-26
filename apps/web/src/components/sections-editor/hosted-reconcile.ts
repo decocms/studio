@@ -15,6 +15,7 @@
 
 import type { QueryClient } from "@tanstack/react-query";
 import { canonicalBlockJson } from "@decocms/shared/decofile";
+import { DRAFT_TOMBSTONE_VERSION } from "@decocms/shared/blocks-major";
 import { KEYS } from "@/lib/query-keys";
 import type { ProtocolBackend } from "./content-backend";
 import {
@@ -126,6 +127,52 @@ export function blockLabel(blockKey: string, ...copies: unknown[]): string {
     }
   }
   return blockKey;
+}
+
+/**
+ * The blocks a move takes its copy from that are deleted now (`deleted`):
+ * a change that creates blocks (written, absent from the copies it was
+ * built on) and deletes others is a move or a rename, and writing it would
+ * bring a block someone deleted back under its new name. Empty for a change
+ * that creates nothing (a delete, a save of existing blocks).
+ */
+export function deletedMoveSources(
+  change: HostedChange,
+  copies: Record<string, unknown> | undefined,
+  deleted: (blockKey: string) => boolean,
+): string[] {
+  const creates = Object.keys(change.writes).some(
+    (key) => !copies || !Object.hasOwn(copies, key),
+  );
+  if (!creates) return [];
+  return change.deletes.filter(
+    (key) => !Object.hasOwn(change.writes, key) && deleted(key),
+  );
+}
+
+/**
+ * A move of blocks someone deleted meanwhile: "Keep my version" (the move
+ * is written, its deleted sources left as they are) or "Leave it deleted"
+ * (nothing is written: {@link HostedKeptTheirsError}).
+ */
+async function askMovedDeleted(
+  change: HostedChange,
+  copies: Record<string, unknown> | undefined,
+  sources: string[],
+): Promise<HostedChange> {
+  const created = Object.keys(change.writes)
+    .filter((key) => !copies || !Object.hasOwn(copies, key))
+    .map((key) => change.writes[key]);
+  const source = sources[0]!;
+  const choice = await askDeletedConflict({
+    kind: "theyDeleted",
+    label: blockLabel(source, ...created, copies?.[source]),
+  });
+  if (choice === "theirs") throw new HostedKeptTheirsError(true);
+  return {
+    writes: change.writes,
+    deletes: change.deletes.filter((key) => !sources.includes(key)),
+  };
 }
 
 /**
@@ -269,6 +316,30 @@ export async function applyHostedChange(
     );
     const touched = [...Object.keys(current.writes), ...deletes];
     const ifMatch = await hostedIfMatch(ctx, touched);
+    // A move whose source the draft deletes already (a poll brought the
+    // deletion; the editor still showed the block): its guard would pass,
+    // and the move would bring the block back. Asked first, as a refusal.
+    const moved = deletedMoveSources(
+      current,
+      base,
+      (key) => ifMatch[key] === DRAFT_TOMBSTONE_VERSION,
+    );
+    if (moved.length > 0) {
+      try {
+        if (!canAskNamedRuleConflict()) throw new HostedKeptTheirsError(true);
+        current = await askMovedDeleted(current, base, moved);
+      } catch (error) {
+        // Left deleted: the editor shows the draft, which has the block
+        // under neither name.
+        setCachedBlocks(ctx, touched, (key) =>
+          moved.includes(key) || !base || !Object.hasOwn(base, key)
+            ? null
+            : { value: base[key] },
+        );
+        throw error;
+      }
+      continue;
+    }
     try {
       const result = await applyProtocolPatch(
         ctx.queryClient,
@@ -294,6 +365,24 @@ export async function applyHostedChange(
       const stored = await adoptRefusal(ctx, touched, error, base);
       if (round + 1 >= HOSTED_RECONCILE_ROUNDS || !canAskNamedRuleConflict()) {
         throw error;
+      }
+      // A move of a block someone deleted meanwhile: the plan would see
+      // nothing in conflict (both sides dropped the source) and write the
+      // move, bringing the block back. Their deletion is asked about first.
+      const movedAway = deletedMoveSources(
+        current,
+        base,
+        (key) =>
+          !!base && Object.hasOwn(base, key) && !Object.hasOwn(stored, key),
+      );
+      if (movedAway.length > 0) {
+        current = await askMovedDeleted(current, base, movedAway);
+        base = Object.fromEntries(
+          touched
+            .filter((key) => Object.hasOwn(stored, key))
+            .map((key) => [key, stored[key]]),
+        );
+        continue;
       }
       const plan = planHostedConflict(touched, base, current, stored);
       const choices =

@@ -613,6 +613,20 @@ export async function applyProtocolPatch(
   patch: DecofilePatchBody,
   ifMatch?: Record<string, string | null>,
 ): Promise<{ revision: string; versions: Record<string, string | null> }> {
+  // A hosted save is checked against the draft alone, block by block: one
+  // without a precondition for each block it touches is never sent (the
+  // server refuses it too).
+  if (backend.source === "github") {
+    const touched = [...Object.keys(patch.set ?? {}), ...(patch.delete ?? [])];
+    const unguarded = touched.filter(
+      (key) => !ifMatch || !Object.hasOwn(ifMatch, key),
+    );
+    if (unguarded.length > 0) {
+      throw new Error(
+        `A hosted save needs a precondition for every block it touches (missing: ${unguarded.join(", ")})`,
+      );
+    }
+  }
   return runContentChange(
     {
       queryClient,
