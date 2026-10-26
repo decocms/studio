@@ -217,7 +217,14 @@ function adoptHostedSave(
   const versions = queryClient.getQueryData<Record<string, string>>(
     KEYS.contentVersions(cacheKey),
   );
-  const answered = Object.entries(result.versions ?? {});
+  // A deletion answers `null` (a server on protocol 1.2 answers the
+  // tombstone's version): either way the block is gone from the draft.
+  const answered = Object.entries(result.versions ?? {}).map(
+    ([name, version]): [string, string | null] => [
+      name,
+      version === DRAFT_TOMBSTONE_VERSION ? null : version,
+    ],
+  );
   const listedBefore = queryClient.getQueryData<ContentChanges>(
     KEYS.contentChanges(cacheKey),
   );
