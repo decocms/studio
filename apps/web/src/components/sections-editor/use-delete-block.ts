@@ -27,6 +27,7 @@ import {
   isSaveConflict,
 } from "./serve-save-error";
 import { useDecofileCacheKey } from "./use-decofile";
+import type { HeldCopy } from "./held-copy";
 import { buildSandboxUrl } from "@/sdk/sandbox-url";
 
 interface UseDeleteBlockParams {
@@ -111,6 +112,7 @@ export function useDeleteBlock({
     mutationFn: async ({
       blockKey,
       base,
+      shown,
     }: DeleteBlockVariables): Promise<
       { ok: true; existed: boolean } | KeptTheirVersion
     > => {
@@ -118,6 +120,7 @@ export function useDeleteBlock({
       // else's change meanwhile asks "Delete anyway" / "Keep their version"
       // (hosted-reconcile.ts). A block the draft already deletes is done.
       if (protocol?.source === "github") {
+        const own = shown?.();
         try {
           await applyHostedChange(
             {
@@ -130,6 +133,7 @@ export function useDeleteBlock({
             base && base.value !== undefined
               ? { [blockKey]: base.value }
               : undefined,
+            own && own.value !== undefined ? { [blockKey]: own } : undefined,
           );
         } catch (error) {
           if (error instanceof HostedKeptTheirsError) {
@@ -235,4 +239,10 @@ interface DeleteBlockVariables {
   blockKey: string;
   /** The block as the editor showed it when deleted (taken from the cache). */
   base?: { value: unknown };
+  /**
+   * An editor's own copy of the block (hosted v8, `useSaveBlock`'s
+   * `shown`), read when the delete runs: the delete is guarded by it, so a
+   * change the form never showed is asked about, never deleted unseen.
+   */
+  shown?: () => HeldCopy | undefined;
 }

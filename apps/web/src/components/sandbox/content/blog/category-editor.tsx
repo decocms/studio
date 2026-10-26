@@ -1,3 +1,4 @@
+import type { HeldCopy } from "@/components/sections-editor/held-copy";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { useState } from "react";
@@ -139,6 +140,11 @@ function CategoryEditorForm({
     branch,
   });
   const initial = getBlogPayload(block, "categories");
+  /** The form's own copy of `key` (hosted v8), for a write built from it. */
+  const shownCopy = (key: string): Record<string, HeldCopy> => {
+    const copy = save.shown(key);
+    return copy ? { [key]: copy } : {};
+  };
 
   const [category, setCategory, syncCategory] = useAutosave(
     initial,
@@ -310,7 +316,11 @@ function CategoryEditorForm({
       // Cancels the pending debounce, which would otherwise fire mid-write
       // and persist the same payload a second time.
       syncCategory(nextCategory);
-      await move.move({ writes, deletes: [] });
+      await move.move(
+        { writes, deletes: [] },
+        // The category is written from the form's own copy (hosted v8).
+        { shown: () => shownCopy(blockKey) },
+      );
       if (posts > 0) {
         toast.success(
           t("sandbox.categoryEditor.renameNameSuccess", {
@@ -347,7 +357,11 @@ function CategoryEditorForm({
     setIsRenaming(true);
     try {
       syncCategory(nextCategory);
-      await move.move({ writes, deletes: [] });
+      await move.move(
+        { writes, deletes: [] },
+        // The category is written from the form's own copy (hosted v8).
+        { shown: () => shownCopy(blockKey) },
+      );
       toast.success(
         posts > 0
           ? t("sandbox.categoryEditor.renameSuccessWithPosts", {

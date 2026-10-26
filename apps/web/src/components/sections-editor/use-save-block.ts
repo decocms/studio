@@ -843,6 +843,12 @@ export function useSaveBlock(
     hold: (blockKey: string) => heldCopies?.hold(blockKey),
     /** True while saves are guarded by the editor's own copy (hosted v8). */
     holdsCopy: held !== null,
+    /**
+     * The editor's own copy of `blockKey` (hosted v8, holdsCopy), for a move
+     * or rename built from it (`useMoveBlocks`' `shown`); undefined
+     * otherwise.
+     */
+    shown: (blockKey: string) => held?.get(blockKey),
   };
 }
 

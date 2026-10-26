@@ -1063,6 +1063,28 @@ describe("hosted v8 deletes and moves are guarded by the draft too", () => {
     });
   }
 
+  it("a delete from an editor's own copy is guarded by that copy: a change it never showed is asked about", async () => {
+    const { queryClient, result } = setupHook(() => useDeleteBlock(params));
+    server.draftInRefusal = true;
+    asked.choice = "theirs";
+    // A poll read someone else's change (h2); the form still shows h1.
+    draftHolds(queryClient, { Hero: "h2" });
+    queryClient.setQueryData(KEYS.decofile(CACHE_KEY), {
+      Hero: { title: "theirs" },
+    });
+    let outcome: unknown;
+    await act(async () => {
+      outcome = await result.current.mutateAsync({
+        blockKey: "Hero",
+        shown: () => ({ value: { title: "loaded" }, version: "h1" }),
+      });
+    });
+    expect(server.applied.map((p) => p.ifMatch)).toEqual([{ Hero: "h1" }]);
+    expect(asked.deleted.map((q) => q.kind)).toEqual(["youDeleted"]);
+    expect(outcome).toEqual({ keptTheirs: true, deleted: false });
+    expect(server.blocks.Hero).toEqual({ title: "theirs" });
+  });
+
   for (const choice of ["mine", "theirs"] as const) {
     it(`a refused move leaves the editor's copy as the draft holds it (${choice})`, async () => {
       const { queryClient, result } = setupHook(() => useMoveBlocks(params));
@@ -1148,6 +1170,71 @@ describe("hosted v8 deletes and moves are guarded by the draft too", () => {
       });
     }
   }
+
+  for (const choice of ["mine", "theirs"] as const) {
+    it(`a move built from an editor's own copy is guarded by that copy, so a change it never showed is asked about (${choice})`, async () => {
+      const { queryClient, result } = setupHook(() => useMoveBlocks(params));
+      server.draftInRefusal = true;
+      asked.choice = choice;
+      // The editor's form shows Hero as loaded (h1); a poll already read
+      // someone else's change (h2), which the form never showed.
+      draftHolds(queryClient, { Hero: "h2" });
+      queryClient.setQueryData(KEYS.decofile(CACHE_KEY), {
+        Hero: { title: "theirs" },
+      });
+      let failure: unknown;
+      await act(async () => {
+        await result.current
+          .move(
+            { writes: { Banner: { title: "loaded" } }, deletes: ["Hero"] },
+            {
+              shown: () => ({
+                Hero: { value: { title: "loaded" }, version: "h1" },
+              }),
+            },
+          )
+          .catch((error: unknown) => {
+            failure = error;
+          });
+      });
+      expect(server.applied[0]?.ifMatch).toEqual({ Banner: null, Hero: "h1" });
+      expect(asked.deleted.map((q) => q.kind)).toEqual(["youDeleted"]);
+      if (choice === "theirs") {
+        expect(failure).toBeDefined();
+        expect(server.blocks).toEqual({ Hero: { title: "theirs" } });
+      } else {
+        expect(failure).toBeUndefined();
+        expect(server.blocks).toEqual({ Banner: { title: "loaded" } });
+      }
+    });
+  }
+
+  it("a save of several blocks built from an editor's own copy merges what only the other side changed", async () => {
+    const { queryClient, result } = setupHook(() => useMoveBlocks(params));
+    server.draftInRefusal = true;
+    server.blocks = { Hero: { title: "loaded", body: "theirs" } };
+    server.versions = { Hero: "h2" };
+    draftHolds(queryClient, { Hero: "h2" });
+    queryClient.setQueryData(KEYS.decofile(CACHE_KEY), {
+      Hero: { title: "loaded", body: "theirs" },
+    });
+    await act(async () => {
+      await result.current.move(
+        { writes: { Hero: { title: "mine", body: "same" } }, deletes: [] },
+        {
+          shown: () => ({
+            Hero: { value: { title: "loaded", body: "same" }, version: "h1" },
+          }),
+        },
+      );
+    });
+    expect(server.applied.map((p) => p.ifMatch)).toEqual([
+      { Hero: "h1" },
+      { Hero: "h2" },
+    ]);
+    expect(asked.fields).toEqual([]);
+    expect(server.blocks.Hero).toEqual({ title: "mine", body: "theirs" });
+  });
 
   it("a move is one blocks.apply guarded by the draft's versions", async () => {
     const { queryClient, result } = setupHook(() => useMoveBlocks(params));

@@ -39,6 +39,8 @@ import {
   canAskNamedRuleConflict,
   type DeletedConflict,
 } from "./named-rule-conflict";
+import type { HeldCopy } from "./held-copy";
+import { parsePageName } from "./page-list";
 import type { SchemaProperty } from "./resolve-schema";
 import {
   HostedDraftUnreadError,
@@ -123,14 +125,51 @@ export function changeKeepsStored(
   return change.deletes.every((key) => !Object.hasOwn(stored, key));
 }
 
-/** How the reconcile dialog names a block: its `name`, else its key. */
-export function blockLabel(blockKey: string, ...copies: unknown[]): string {
-  for (const copy of copies) {
-    if (isRecord(copy) && typeof copy.name === "string" && copy.name.trim()) {
-      return copy.name.trim();
+/** A blog block's payload, under its wrapper (blog-data.ts' `WRAPPER_KEY`). */
+const BLOG_WRAPPERS = ["post", "category", "author"] as const;
+
+/** A blog block's kind in words, when it has no title yet. */
+const BLOG_KINDS: Record<string, string> = {
+  posts: "Post",
+  categories: "Category",
+  authors: "Author",
+};
+
+/** A copy's own words for itself: its name (never its key), or its payload's. */
+function copyLabel(blockKey: string, copy: unknown): string | null {
+  if (!isRecord(copy)) return null;
+  const name = typeof copy.name === "string" ? copy.name.trim() : "";
+  // A blog block's `name` is its key: never shown.
+  if (name && name !== blockKey) return name;
+  for (const wrapper of BLOG_WRAPPERS) {
+    const payload = copy[wrapper];
+    if (!isRecord(payload)) continue;
+    for (const field of ["title", "name"]) {
+      const value = payload[field];
+      if (typeof value === "string" && value.trim()) return value.trim();
     }
   }
-  return blockKey;
+  return null;
+}
+
+/** A block's key in words: no folder, no id suffix. */
+function keyInWords(blockKey: string): string {
+  const blog = /^collections\/blog\/([^/]+)\//.exec(blockKey);
+  if (blog) return BLOG_KINDS[blog[1]!] ?? "Post";
+  const last = blockKey.split("/").pop() ?? blockKey;
+  return parsePageName(last).trim() || last;
+}
+
+/**
+ * How the reconcile dialog names a block: its `name`, a blog block's title
+ * (or name), else its key in words (never a raw key or path).
+ */
+export function blockLabel(blockKey: string, ...copies: unknown[]): string {
+  for (const copy of copies) {
+    const label = copyLabel(blockKey, copy);
+    if (label) return label;
+  }
+  return keyInWords(blockKey);
 }
 
 /**
@@ -309,19 +348,40 @@ export async function applyHostedChange(
   ctx: HostedWriteContext,
   change: HostedChange,
   copies: Record<string, unknown> | undefined,
+  /**
+   * Blocks the change was built from an editor's own copy of (a form that
+   * keeps its copy, `useSaveBlock`'s `shown`): their first attempt is
+   * guarded by that copy's version, with that copy as the ancestor, so a
+   * change the form never showed is reconciled, never written over.
+   */
+  shown?: Readonly<Record<string, HeldCopy>>,
 ): Promise<{
   revision: string;
   versions: Record<string, string | null>;
   change: HostedChange;
 }> {
   let current = change;
-  let base = copies;
+  const own = shown ? Object.keys(shown) : [];
+  let base =
+    own.length === 0
+      ? copies
+      : {
+          ...copies,
+          ...Object.fromEntries(own.map((key) => [key, shown![key]!.value])),
+        };
   for (let round = 0; ; round++) {
     const deletes = current.deletes.filter(
       (key) => !Object.hasOwn(current.writes, key),
     );
     const touched = [...Object.keys(current.writes), ...deletes];
     const ifMatch = await hostedIfMatch(ctx, touched);
+    // First attempt: a block built from the editor's own copy is guarded by
+    // that copy (later rounds by the draft's copy the refusal brought).
+    if (round === 0) {
+      for (const key of own) {
+        if (Object.hasOwn(ifMatch, key)) ifMatch[key] = shown![key]!.version;
+      }
+    }
     // A move whose source the draft deletes already (a poll brought the
     // deletion; the editor still showed the block): its guard would pass,
     // and the move would bring the block back. Asked first, as a refusal.

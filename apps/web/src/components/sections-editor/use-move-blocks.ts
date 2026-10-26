@@ -27,6 +27,7 @@ import { toastKeptTheirs } from "./site-editor-toast";
 import { useT } from "@/i18n/use-t";
 import { runContentChange } from "./content-sync";
 import { useDecofileCacheKey } from "./use-decofile";
+import type { HeldCopy } from "./held-copy";
 import { buildSandboxUrl } from "@/sdk/sandbox-url";
 
 interface UseMoveBlocksParams {
@@ -138,7 +139,11 @@ export function useMoveBlocks({
       writes: rawWrites,
       deletes,
       copies,
-    }: BlockMove & { copies?: Record<string, unknown> }) => {
+      shown,
+    }: BlockMove & {
+      copies?: Record<string, unknown>;
+      shown?: () => Record<string, HeldCopy>;
+    }) => {
       // A hosted save checks nothing (the site's CI runs `deco check`).
       const writes =
         protocol?.source === "github"
@@ -159,6 +164,9 @@ export function useMoveBlocks({
             deletes: deletes.filter((key) => !(key in writes)),
           },
           copies,
+          // Read when the move runs: an own save queued before it has
+          // moved the copy by then.
+          shown?.(),
         );
       }
       if (protocol) {
@@ -190,9 +198,14 @@ export function useMoveBlocks({
   /**
    * Apply `plan` to the cache now, then persist it. Rejects — after restoring
    * the cache — when the write fails, so a caller that re-pointed itself in the
-   * same tick can undo that too.
+   * same tick can undo that too. `opts.shown`: the blocks the plan writes
+   * from an editor's own copy, read when the move runs (hosted v8: its first
+   * attempt is guarded by that copy, see `applyHostedChange`).
    */
-  const move = async (plan: BlockMove) => {
+  const move = async (
+    plan: BlockMove,
+    opts?: { shown?: () => Record<string, HeldCopy> },
+  ) => {
     // Snapshot only the touched keys, so a rollback can't revert a sibling write.
     const touched = [...Object.keys(plan.writes), ...plan.deletes];
     const previous =
@@ -207,7 +220,11 @@ export function useMoveBlocks({
     // Unawaited: awaiting would put the patch a tick after the caller's own state change.
     void queryClient.cancelQueries({ queryKey });
     try {
-      return await mutation.mutateAsync({ ...plan, copies: previous });
+      return await mutation.mutateAsync({
+        ...plan,
+        copies: previous,
+        shown: opts?.shown,
+      });
     } catch (error) {
       // A refused hosted move put the draft's copies in the cache already;
       // the user kept their version: one calm toast, and the caller undoes

@@ -1,3 +1,4 @@
+import type { HeldCopy } from "@/components/sections-editor/held-copy";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
@@ -164,6 +165,11 @@ function PostEditorForm({
     branch,
   });
   const initial = getBlogPayload(block, "posts");
+  /** The form's own copy of `key` (hosted v8), for a write built from it. */
+  const shownCopy = (key: string): Record<string, HeldCopy> => {
+    const copy = save.shown(key);
+    return copy ? { [key]: copy } : {};
+  };
 
   const [post, setPost, syncPost, saveScheduled] = useAutosave(
     initial,
@@ -192,7 +198,8 @@ function PostEditorForm({
    */
   const moveStatus = (next: PostStatus) => {
     syncPost(post);
-    void move.apply(blockKey, next, post);
+    // Built from the form's own copy: a change it never showed is asked.
+    void move.apply(blockKey, next, post, () => shownCopy(blockKey));
   };
 
   // Key typed from `KNOWN_POST_KEYS`, so a bespoke field absent from it fails to compile.
@@ -234,7 +241,11 @@ function PostEditorForm({
     // the block straight back.
     syncPost(post);
     try {
-      const removed = await remove.mutateAsync({ blockKey });
+      const removed = await remove.mutateAsync({
+        blockKey,
+        // The form's own copy: a change it never showed is asked about.
+        shown: () => save.shown(blockKey),
+      });
       setConfirmingDelete(false);
       // The user kept their version (the hook said so in its own toast).
       if (keptTheirVersion(removed)) return;

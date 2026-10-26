@@ -1,3 +1,4 @@
+import type { HeldCopy } from "@/components/sections-editor/held-copy";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useT } from "@/i18n/use-t.ts";
@@ -102,6 +103,8 @@ export function usePostStatusMove({
     next: PostStatus,
     /** The editor's live draft, when it has unsaved edits the move must carry. */
     draft?: Record<string, unknown>,
+    /** The editor's own copy `draft` was built on (hosted v8 guards by it). */
+    shown?: () => Record<string, HeldCopy>,
   ) => {
     const payload = draft ?? payloadOf(key);
     if (postStatus(payload) === next) return null;
@@ -122,7 +125,7 @@ export function usePostStatusMove({
      */
     if (targetKey !== key) onMoved?.(key, targetKey);
     try {
-      await move.move(plan);
+      await move.move(plan, { shown });
       return targetKey;
     } catch (err) {
       // `move` already restored the cache; put the caller back on the old key.
@@ -156,6 +159,8 @@ export interface PostStatusMove {
     key: string,
     next: PostStatus,
     draft?: Record<string, unknown>,
+    /** The editor's own copy the draft was built on (see `useMoveBlocks`). */
+    shown?: () => Record<string, HeldCopy>,
   ) => Promise<string | null>;
   /** Why this target is unavailable, or null when it's offerable. */
   refuse: (
