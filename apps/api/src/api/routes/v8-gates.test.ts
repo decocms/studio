@@ -777,8 +777,8 @@ describe("decofile routes", () => {
       });
       // A batch of saves is a save too.
       const batch = await rpc(app, [
-        apply({ set: { a: { v: 1 } } }, 1),
-        apply({ set: { b: { v: 2 } } }, 2),
+        apply({ set: { a: { v: 1 } }, ifMatch: { a: null } }, 1),
+        apply({ set: { b: { v: 2 } }, ifMatch: { b: null } }, 2),
       ]);
       expect(batch.status).toBe(200);
       expect(repo.calls).toEqual([]);
@@ -786,7 +786,13 @@ describe("decofile routes", () => {
 
     it("a guard the draft no longer meets is a Conflict, still with no GitHub call", async () => {
       const { app, repo } = setup({ blocksMajor: 8 }, v8Files, { p1: ORG });
-      await rpc(app, apply({ set: { "pages-home": { v: 1 } } }));
+      await rpc(
+        app,
+        apply({
+          set: { "pages-home": { v: 1 } },
+          ifMatch: { "pages-home": null },
+        }),
+      );
       const res = await rpc(
         app,
         apply({
@@ -805,7 +811,7 @@ describe("decofile routes", () => {
       });
       expect(repo.calls).toEqual([]);
       // A block deleted in the draft is in it: "must not exist" is refused.
-      await rpc(app, apply({ delete: ["Gone"] }));
+      await rpc(app, apply({ delete: ["Gone"], ifMatch: { Gone: null } }));
       const deleted = await rpc(
         app,
         apply({ set: { Gone: { v: 1 } }, ifMatch: { Gone: null } }),
@@ -821,7 +827,7 @@ describe("decofile routes", () => {
 
     it("reads go on through main with the draft on top", async () => {
       const { app, repo } = setup({ blocksMajor: 8 }, v8Files, { p1: ORG });
-      await rpc(app, apply({ set: { New: { v: 1 } } }));
+      await rpc(app, apply({ set: { New: { v: 1 } }, ifMatch: { New: null } }));
       expect(repo.calls).toEqual([]);
       const res = await rpc(app, {
         jsonrpc: "2.0",
@@ -840,7 +846,13 @@ describe("decofile routes", () => {
 
     it("the editor's poll lists the draft's changes with no GitHub call of their own", async () => {
       const { app, repo } = setup({ blocksMajor: 8 }, v8Files, { p1: ORG });
-      await rpc(app, apply({ set: { New: { v: 1 }, "pages-home": { v: 2 } } }));
+      await rpc(
+        app,
+        apply({
+          set: { New: { v: 1 }, "pages-home": { v: 2 } },
+          ifMatch: { New: null, "pages-home": null },
+        }),
+      );
       const call = (method: string, params = {}) => ({
         jsonrpc: "2.0",
         id: method,
@@ -881,15 +893,74 @@ describe("decofile routes", () => {
 
     it("an unmarked project, or a request without the editor's main answer, reads main first", async () => {
       const unmarked = setup({}, v8Files, { p1: ORG });
-      await rpc(unmarked.app, apply({ set: { New: { v: 1 } } }));
+      await rpc(
+        unmarked.app,
+        apply({ set: { New: { v: 1 } }, ifMatch: { New: null } }),
+      );
       expect(unmarked.repo.opened()).toBeGreaterThan(0);
       const noHeader = setup({ blocksMajor: 8 }, v8Files, { p1: ORG });
       await noHeader.app.request("/decofile/p1/main/rpc", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(apply({ set: { New: { v: 1 } } })),
+        body: JSON.stringify(
+          apply({ set: { New: { v: 1 } }, ifMatch: { New: null } }),
+        ),
       });
       expect(noHeader.repo.opened()).toBeGreaterThan(0);
+    });
+
+    it("a save without a precondition for every block it touches is refused, writing nothing", async () => {
+      const { app, repo, delivery } = setup({ blocksMajor: 8 }, v8Files, {
+        p1: ORG,
+      });
+      const refused = async (body: unknown, headers = {}) => {
+        const res = await rpc(app, body, headers);
+        const answers = (await res.json()) as unknown;
+        return (Array.isArray(answers) ? answers : [answers]) as Array<{
+          id?: unknown;
+          result?: unknown;
+          error?: { code: number; message: string; data?: unknown };
+        }>;
+      };
+      // No ifMatch at all, one name missing, and a malformed entry.
+      for (const params of [
+        { set: { a: { v: 1 } } },
+        { set: { a: { v: 1 }, b: { v: 2 } }, ifMatch: { a: null } },
+        { delete: ["c"], ifMatch: { c: 7 } },
+      ]) {
+        const [answer] = await refused(apply(params));
+        expect(answer?.result).toBeUndefined();
+        expect(answer?.error?.code).toBe(-32602);
+        expect(answer?.error?.message).toMatch(/precondition/i);
+      }
+      // A batch with one unguarded call is refused whole, each call answered.
+      const batch = await refused([
+        apply({ set: { a: { v: 1 } }, ifMatch: { a: null } }, 1),
+        apply({ set: { b: { v: 2 } } }, 2),
+      ]);
+      expect(batch.map((a) => [a.id, a.error?.code])).toEqual([
+        [1, -32602],
+        [2, -32602],
+      ]);
+      expect(batch[1]?.error?.data).toEqual({ missing: ["b"] });
+      // Through main too (a request without the editor's main answer).
+      const [layered] = await refused(apply({ set: { a: { v: 1 } } }), {
+        "x-deco-main-schema": "",
+      });
+      expect(layered?.error?.code).toBe(-32602);
+      expect(await delivery.store.listKeys("sites/acme/drafts/")).toEqual([]);
+      expect(repo.calls.some((c) => /^(commit|put|write)/i.test(c))).toBe(
+        false,
+      );
+      // Guarded (a version, null or the tombstone's), it lands.
+      const [ok] = await refused(
+        apply({
+          set: { a: { v: 1 } },
+          delete: ["Gone"],
+          ifMatch: { a: null, Gone: null },
+        }),
+      );
+      expect(ok?.error).toBeUndefined();
     });
 
     it("an unmarked v8 project's save is still checked against the draft alone", async () => {

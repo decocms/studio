@@ -42,6 +42,62 @@ export function applyOnlyCalls(body: unknown): ApplyCall[] | null {
   return calls as ApplyCall[];
 }
 
+/** The protocol's InvalidParams (`ErrorCode.InvalidParams`). */
+const INVALID_PARAMS = -32602;
+
+/** A precondition entry: a version, `null` ("not in the draft") or the tombstone's. */
+function isPrecondition(value: unknown): boolean {
+  return value === null || (typeof value === "string" && value.length > 0);
+}
+
+/**
+ * The names a `blocks.apply` call writes or deletes with no precondition
+ * of its own (`ifMatch` lacks them, or holds something else than a version,
+ * `null` or the tombstone's). Malformed params are left for the core.
+ */
+export function unguardedNames(call: ApplyCall): string[] {
+  const params = call.params ?? {};
+  const guards = isRecord(params.ifMatch) ? params.ifMatch : {};
+  const names = [
+    ...(isRecord(params.set) ? Object.keys(params.set) : []),
+    ...(Array.isArray(params.delete)
+      ? params.delete.filter((n): n is string => typeof n === "string")
+      : []),
+  ];
+  return [...new Set(names)].filter(
+    (name) => !Object.hasOwn(guards, name) || !isPrecondition(guards[name]),
+  );
+}
+
+/**
+ * A hosted v8 save must say, for every block it writes or deletes, which
+ * version of the draft it was built on: a save without one could land over
+ * someone else's change unseen. A request holding a `blocks.apply` that
+ * misses one is refused whole (a batch answers each of its calls), with the
+ * protocol's InvalidParams naming the blocks; nothing is written. Null when
+ * every `blocks.apply` of the request is guarded (or there is none).
+ */
+export function refuseUnguardedSave(body: unknown): Response | null {
+  const calls = Array.isArray(body) ? body : [body];
+  const missing = calls.map((call) =>
+    isApplyCall(call) ? unguardedNames(call) : [],
+  );
+  if (missing.every((names) => names.length === 0)) return null;
+  const answers = calls.map((call, i) => ({
+    jsonrpc: "2.0",
+    id: isRecord(call) && "id" in call ? call.id : null,
+    error: {
+      code: INVALID_PARAMS,
+      message:
+        missing[i]!.length > 0
+          ? "A hosted save needs a precondition (ifMatch) for every block it writes or deletes: its version in the draft, null when the draft doesn't hold it, or \"tombstone\" when the draft deletes it"
+          : "Not applied: another call of this batch has no precondition (ifMatch) for a block it touches",
+      data: { missing: missing[i] },
+    },
+  }));
+  return Response.json(Array.isArray(body) ? answers : answers[0]);
+}
+
 /**
  * The names the save deletes that `draft` doesn't hold (neither a block nor
  * a deletion of it: a block only main has), and the request with their

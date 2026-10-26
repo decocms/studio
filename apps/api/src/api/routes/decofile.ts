@@ -81,6 +81,7 @@ import {
 } from "@/hosted/draft-content-storage";
 import {
   applyOnlyCalls,
+  refuseUnguardedSave,
   planDraftSave,
   withDraftConflicts,
 } from "@/hosted/draft-save-request";
@@ -514,6 +515,9 @@ async function serveDraftSave(
       return null;
     }
   }
+  // Every block a hosted save touches carries its precondition.
+  const unguarded = refuseUnguardedSave(body);
+  if (unguarded) return unguarded;
   const loaded = await hosted.drafts.load(hosted.ref);
   const plan = planDraftSave(
     body,
@@ -549,6 +553,15 @@ async function serveDraftSave(
     async () =>
       (await hosted.drafts.load(hosted.ref))?.body ?? { set: {}, delete: [] },
   );
+}
+
+/** The rpc request's JSON body, or undefined when it isn't JSON. */
+async function rpcBody(c: Context<DecofileEnv>): Promise<unknown> {
+  try {
+    return JSON.parse(await c.req.raw.clone().text());
+  } catch {
+    return undefined;
+  }
 }
 
 function signScopeDraftToken(scope: DecofileScope): string {
@@ -1008,6 +1021,9 @@ export function createDecofileRoutes(
         503,
       );
     }
+    // A save through main (no main answer) needs its preconditions too.
+    const unguarded = refuseUnguardedSave(await rpcBody(c));
+    if (unguarded) return unguarded;
     // Per request: the storage carries this caller's repository credential.
     // The body cache is off for the same reason, and the blob cache under
     // the storage already makes repeated reads cheap.
