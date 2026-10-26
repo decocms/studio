@@ -321,14 +321,18 @@ function ExperimentBlockDetail(
   const { row, decofile, meta, uses, pending, onBack, onOpenUse, onSave } =
     props;
   const t = useT();
-  const [share, setShare] = useState(row.share);
+  // The share being edited; `null` shows the share as stored. A save hands
+  // the slider back to what is stored, which after a reconcile ("take
+  // theirs") is their share, not the one typed here.
+  const [editing, setShare] = useState<number | null>(null);
+  const share = editing ?? row.share;
   const shareDirty = share !== row.share;
   const rename = useNamedRuleRename("experiments", props);
 
   const setTo = (value: number) =>
     void onSave(
       planNamedRuleSet(decofile, "experiments", row.name, value),
-    ).then((ok) => ok && setShare(value));
+    ).then((ok) => ok && setShare(null));
 
   const { useRows, wholeRows } = namedRuleDetailUses(
     "experiments",
@@ -386,7 +390,7 @@ function ExperimentBlockDetail(
                   size="sm"
                   variant="ghost"
                   disabled={pending}
-                  onClick={() => setShare(row.share)}
+                  onClick={() => setShare(null)}
                 >
                   {t("experiments.v8.split.reset", {
                     share: String(row.share),
