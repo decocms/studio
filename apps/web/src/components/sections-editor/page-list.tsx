@@ -42,6 +42,8 @@ export function parsePageName(key: string): string {
     "",
   );
   name = name.replace(/-[0-9a-f]{8,}$/i, "");
+  // A numeric id ("Search Page-514254"); a short number (a year) is kept.
+  name = name.replace(/-\d{5,}$/, "");
   try {
     return decodeURIComponent(name);
   } catch {
