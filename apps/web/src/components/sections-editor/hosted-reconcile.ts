@@ -215,7 +215,16 @@ async function adoptRefusal(
   ctx: HostedWriteContext,
   blockKeys: readonly string[],
   refusal: unknown,
+  copies: Record<string, unknown> | undefined,
 ): Promise<Record<string, unknown>> {
+  // The cache holds the change itself (written ahead of the save): its
+  // blocks go back to the copies it was built on, which the draft still
+  // holds unless the refusal says otherwise (its copies replace them next).
+  if (copies) {
+    setCachedBlocks(ctx, blockKeys, (key) =>
+      Object.hasOwn(copies, key) ? { value: copies[key] } : null,
+    );
+  }
   if (!adoptRefusedDraft(ctx.queryClient, ctx.backend, ctx.cacheKey, refusal)) {
     for (const key of blockKeys) {
       await reloadProtocolBlock(
@@ -272,16 +281,32 @@ export async function applyHostedChange(
         },
         ifMatch,
       );
+      // The editor shows what was written (a reconciled change differs
+      // from the one put in the cache ahead of the save).
+      setCachedBlocks(ctx, touched, (key) =>
+        Object.hasOwn(current.writes, key)
+          ? { value: current.writes[key] }
+          : null,
+      );
       return { ...result, change: current };
     } catch (error) {
       if (!isSaveConflict(error)) throw error;
-      const stored = await adoptRefusal(ctx, touched, error);
+      const stored = await adoptRefusal(ctx, touched, error, base);
       if (round + 1 >= HOSTED_RECONCILE_ROUNDS || !canAskNamedRuleConflict()) {
         throw error;
       }
       const plan = planHostedConflict(touched, base, current, stored);
       const choices =
         plan.pointers.length === 0 ? {} : await askHostedConflict(plan);
+      // A block one side deleted, kept as the draft holds it: the change is
+      // one move or delete, so none of it is written (a move's other half
+      // alone would copy the block instead of moving it).
+      const deleted = deletedBlockQuestion(plan);
+      if (deleted && choices[deleted.pointer] === "theirs") {
+        throw new HostedKeptTheirsError(
+          deleted.conflict.kind === "theyDeleted",
+        );
+      }
       const resolved =
         plan.pointers.length === 0
           ? plan.merged
@@ -309,6 +334,27 @@ export async function applyHostedChange(
       );
     }
   }
+}
+
+/** Puts `blockKeys` in the decofile cache as `next` says (null: absent). */
+function setCachedBlocks(
+  ctx: HostedWriteContext,
+  blockKeys: readonly string[],
+  next: (key: string) => { value: unknown } | null,
+) {
+  ctx.queryClient.setQueryData<Record<string, unknown>>(
+    KEYS.decofile(ctx.cacheKey),
+    (current) => {
+      if (!current) return current;
+      const blocks = { ...current };
+      for (const key of blockKeys) {
+        const entry = next(key);
+        if (entry) blocks[key] = entry.value;
+        else delete blocks[key];
+      }
+      return blocks;
+    },
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

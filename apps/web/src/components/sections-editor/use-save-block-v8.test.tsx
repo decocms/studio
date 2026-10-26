@@ -696,11 +696,48 @@ describe("hosted v8 deletes and moves are guarded by the draft too", () => {
           { Hero: "h2" },
         ]);
         expect(server.blocks.Hero).toBeUndefined();
+        // The editor shows what the draft holds: the block is gone.
+        expect(heroInCache(queryClient)).toBeUndefined();
       } else {
         expect(server.applied).toHaveLength(1);
         expect(outcome).toEqual({ keptTheirs: true, deleted: false });
         expect(server.blocks.Hero).toEqual({ title: "theirs" });
         expect(heroInCache(queryClient)).toEqual({ title: "theirs" });
+      }
+    });
+  }
+
+  for (const choice of ["mine", "theirs"] as const) {
+    it(`a refused move leaves the editor's copy as the draft holds it (${choice})`, async () => {
+      const { queryClient, result } = setupHook(() => useMoveBlocks(params));
+      server.draftInRefusal = true;
+      asked.choice = choice;
+      // The editor read Hero at h1; someone changed it to "theirs" (h2).
+      draftHolds(queryClient, { Hero: "h1" });
+      let failure: unknown;
+      await act(async () => {
+        await result.current
+          .move({ writes: { Banner: { title: "loaded" } }, deletes: ["Hero"] })
+          .catch((error: unknown) => {
+            failure = error;
+          });
+      });
+      expect(asked.deleted.map((q) => q.kind)).toEqual(["youDeleted"]);
+      const cached = queryClient.getQueryData<Record<string, unknown>>(
+        KEYS.decofile(CACHE_KEY),
+      );
+      if (choice === "mine") {
+        expect(failure).toBeUndefined();
+        expect(server.blocks).toEqual({ Banner: { title: "loaded" } });
+        expect(cached?.Hero).toBeUndefined();
+        expect(cached?.Banner).toEqual({ title: "loaded" });
+      } else {
+        // Nothing moved: no Banner the draft doesn't have, and the caller
+        // undoes its own state.
+        expect(failure).toBeDefined();
+        expect(server.blocks).toEqual({ Hero: { title: "theirs" } });
+        expect(cached?.Hero).toEqual({ title: "theirs" });
+        expect(cached?.Banner).toBeUndefined();
       }
     });
   }
