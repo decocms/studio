@@ -23,6 +23,7 @@ import { useContentBackend } from "./use-content-backend";
 import {
   pollProtocolContent,
   protocolUnavailableError,
+  useRereadOnWriteElsewhere,
 } from "./content-protocol-api";
 
 interface UseDecofileParams {
@@ -129,6 +130,7 @@ export function useDecofile(
     useSessionRuntime(params?.virtualMcpId).runtime === "cms";
   const queryClient = useQueryClient();
   const queryKey = KEYS.decofile(key);
+  useRereadOnWriteElsewhere(protocol, protocol && params ? params : null, key);
   useConflictDialogPoll(!!options?.pollWhile && !!params, {
     // A write's own re-read is on its way; a read running or just landed
     // already answers this tick.

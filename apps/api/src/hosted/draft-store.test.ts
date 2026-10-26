@@ -3,7 +3,12 @@ import { deliveryKeys } from "./delivery-store";
 import { DRAFT_EDITORS_META } from "./draft-editors";
 import { createDraftStore } from "./draft-store";
 import { CACHE_DRAFT } from "./delivery-store";
-import { memoryDeliveryStore, memoryKv } from "./hosted-test-helpers";
+import {
+  heldPuts,
+  memoryDeliveryStore,
+  memoryKv,
+  otherApiProcess,
+} from "./hosted-test-helpers";
 
 const ref = {
   organizationId: "org",
@@ -159,5 +164,85 @@ describe("createDraftStore: empty and ensure keep the draft's address", () => {
     expect(delivery.objects.has(deliveryKeys.draft("acme", saved.slug))).toBe(
       true,
     );
+  });
+});
+
+describe("createDraftStore: saves from several API processes", () => {
+  test("two processes saving one draft at once both land", async () => {
+    const delivery = memoryDeliveryStore();
+    const kv = memoryKv();
+    const first = createDraftStore({ kv, store: delivery.store });
+    await first.update(ref, () => ({ set: { home: { a: 1 } }, delete: [] }));
+    const held = heldPuts(delivery.store);
+    const { createDraftStore: createOther } = await otherApiProcess();
+    const second = createOther({ kv, store: held.store });
+
+    held.hold();
+    const campaigns = second.update(ref, (body) => ({
+      ...body,
+      set: { ...body.set, campaigns: { start: "2027" } },
+    }));
+    await held.atPut;
+    await first.update(ref, (body) => ({
+      ...body,
+      set: { ...body.set, experiments: { hero: 30 } },
+    }));
+    held.release();
+    await campaigns;
+
+    expect((await first.load(ref))!.body.set).toEqual({
+      home: { a: 1 },
+      experiments: { hero: 30 },
+      campaigns: { start: "2027" },
+    });
+  });
+
+  test("a Publish emptying the draft on one process keeps a save another process just made", async () => {
+    const delivery = memoryDeliveryStore();
+    const kv = memoryKv();
+    const held = heldPuts(delivery.store);
+    const { createDraftStore: createOther } = await otherApiProcess();
+    const publisher = createOther({ kv, store: held.store });
+    const editor = createDraftStore({ kv, store: delivery.store });
+    const published = await editor.update(ref, () => ({
+      set: { home: { a: 1 } },
+      delete: [],
+    }));
+
+    held.hold();
+    const emptied = publisher.empty(ref, published.etag);
+    await held.atPut;
+    const late = await editor.update(ref, (body) => ({
+      ...body,
+      set: { ...body.set, late: { b: 2 } },
+    }));
+    held.release();
+
+    expect(await emptied).toEqual(late);
+    expect(await editor.load(ref)).toEqual(late);
+  });
+
+  test("ensure on one process never empties a draft another process saved", async () => {
+    const delivery = memoryDeliveryStore();
+    const kv = memoryKv();
+    const editor = createDraftStore({ kv, store: delivery.store });
+    // The session read created the draft's slug, its object isn't there yet.
+    const { slug } = await editor.ensure(ref);
+    delivery.objects.delete(deliveryKeys.draft("acme", slug));
+    const held = heldPuts(delivery.store);
+    const { createDraftStore: createOther } = await otherApiProcess();
+    const opener = createOther({ kv, store: held.store });
+
+    held.hold();
+    const ensured = opener.ensure(ref);
+    await held.atPut;
+    const saved = await editor.update(ref, () => ({
+      set: { home: { a: 1 } },
+      delete: [],
+    }));
+    held.release();
+
+    expect(await ensured).toEqual(saved);
+    expect((await editor.load(ref))!.body.set).toEqual({ home: { a: 1 } });
   });
 });

@@ -16,6 +16,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { useEffect } from "react";
 import {
   isMainSchemaChangedResponse,
   MainSchemaChangedError,
@@ -32,12 +33,14 @@ import {
   type SchemaGetResult,
 } from "@decocms/blocks/protocol";
 import { KEYS } from "@/lib/query-keys";
+import { keepContentBookkeeping } from "./content-bookkeeping";
 import {
   adoptChangesList,
   type ContentChanges,
   isOutdatedServerError,
 } from "./content-changes";
 import { externalContentChange, runContentChange } from "./content-sync";
+import { onContentWrittenElsewhere } from "./content-writes-channel";
 import {
   blockKeysOfWrite,
   mergePolledBlocks,
@@ -113,6 +116,7 @@ function adoptBlockVersions(
   cacheKey: string,
   versions: Record<string, string | null>,
 ) {
+  keepContentBookkeeping(queryClient);
   queryClient.setQueryData<Record<string, string>>(
     KEYS.contentVersions(cacheKey),
     (current) => {
@@ -127,7 +131,7 @@ function adoptBlockVersions(
 }
 
 /** The block names the project's in-flight writes touch. */
-function savingBlockKeys(
+export function savingBlockKeys(
   queryClient: QueryClient,
   params: DecofileScopeParams,
 ): Set<string> {
@@ -205,6 +209,38 @@ export function pollProtocolContent(
   return poll.finally(() => inFlight.delete(cacheKey));
 }
 
+const rereading = new Set<string>();
+
+/**
+ * Reads the content again as soon as another view of this draft in the
+ * browser (a tab or window) saved it, so this view's next change is built on
+ * that save rather than refused as "changed while you were editing".
+ */
+export function useRereadOnWriteElsewhere(
+  backend: ProtocolBackend | null,
+  params: DecofileScopeParams | null,
+  cacheKey: string,
+) {
+  const queryClient = useQueryClient();
+  const orgSlug = params?.orgSlug;
+  const virtualMcpId = params?.virtualMcpId;
+  const branch = params?.branch;
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- subscribes to the browser's other views for the component's lifetime
+  useEffect(() => {
+    if (!backend || !orgSlug || !virtualMcpId || !branch) return;
+    const scope = { orgSlug, virtualMcpId, branch };
+    return onContentWrittenElsewhere((written) => {
+      if (written !== cacheKey) return;
+      // Every view of the draft in this page shares one read.
+      if (rereading.has(cacheKey)) return;
+      rereading.add(cacheKey);
+      void rereadProtocolContent(queryClient, backend, scope, cacheKey)
+        .catch(() => {})
+        .finally(() => rereading.delete(cacheKey));
+    });
+  }, [queryClient, backend, orgSlug, virtualMcpId, branch, cacheKey]);
+}
+
 /**
  * A read that starts now, for a check that must see what is stored at the
  * moment of a click (another tab may have changed the draft): a poll already
@@ -230,11 +266,16 @@ async function readContent(
   cacheKey: string,
   conditional: boolean,
 ): Promise<ProtocolContent> {
+  keepContentBookkeeping(queryClient);
   const blocksKey = KEYS.decofile(cacheKey);
   const metaKey = protocolMetaQueryKey(params, backend);
   const revisionsKey = KEYS.contentRevision(cacheKey);
+  const versionsKey = KEYS.contentVersions(cacheKey);
   const currentBlocks =
     queryClient.getQueryData<Record<string, unknown>>(blocksKey);
+  // The blocks' versions go with them: without both, read them whole.
+  const currentVersions =
+    queryClient.getQueryData<Record<string, string>>(versionsKey);
   const cachedMeta = queryClient.getQueryData<LiveMeta>(metaKey);
   const cachedRevisions =
     queryClient.getQueryData<ContentRevisions>(revisionsKey) ?? undefined;
@@ -251,7 +292,9 @@ async function readContent(
     ? { ...cachedRevisions, schemaVersion: seeded.version! }
     : cachedRevisions;
   const blocksIfNoneMatch =
-    conditional && currentBlocks ? seen?.revision : undefined;
+    conditional && currentBlocks && currentVersions
+      ? seen?.revision
+      : undefined;
   const schemaIfNoneMatch =
     conditional && currentMeta ? seen?.schemaVersion : undefined;
   const changesKey = KEYS.contentChanges(cacheKey);
@@ -302,7 +345,7 @@ async function readContent(
   const read = schema.ok && !absent ? (schema.result as SchemaGetResult) : null;
   // A version outlived the entry it described: read both whole.
   if (
-    (list.notModified && !currentBlocks) ||
+    (list.notModified && (!currentBlocks || !currentVersions)) ||
     (read?.notModified && !currentMeta)
   ) {
     return readContent(queryClient, backend, params, cacheKey, false);
@@ -343,7 +386,6 @@ async function readContent(
   if (!list.notModified) {
     // Versions follow the copies kept: a block being saved keeps the
     // version of its last landed copy until its write answers.
-    const versionsKey = KEYS.contentVersions(cacheKey);
     const previous =
       queryClient.getQueryData<Record<string, string>>(versionsKey);
     const versions: Record<string, string> = { ...list.versions };
@@ -417,6 +459,7 @@ export async function applyProtocolPatch(
             ...(ifMatch ? { ifMatch } : {}),
           }),
         );
+        keepContentBookkeeping(queryClient);
         queryClient.setQueryData<ContentRevisions>(
           KEYS.contentRevision(cacheKey),
           (seen) => ({ ...seen, revision: result.revision }),

@@ -36,6 +36,8 @@ const server = {
   }>,
   /** The content can't be read. */
   unreachable: false,
+  /** Holds the next `blocks.apply` until resolved (a slow write). */
+  gate: null as Promise<void> | null,
 };
 
 const client = {
@@ -44,6 +46,11 @@ const client = {
     delete?: string[];
     ifMatch?: Record<string, string | null>;
   }) => {
+    if (server.gate) {
+      const gate = server.gate;
+      server.gate = null;
+      await gate;
+    }
     server.applied.push(patch);
     for (const [name, expected] of Object.entries(patch.ifMatch ?? {})) {
       const actual = server.versions[name] ?? null;
@@ -151,6 +158,9 @@ mock.module("@/hooks/use-local-preview-url", () => ({
 const { planNamedRuleApply, useApplyNamedRule } = await import(
   "./use-apply-named-rule"
 );
+const { pollProtocolContent, useRereadOnWriteElsewhere } = await import(
+  "./content-protocol-api"
+);
 
 afterEach(() => resetContentSync());
 
@@ -178,6 +188,7 @@ function setup() {
   server.versions = { home: "home@0" };
   server.applied = [];
   server.unreachable = false;
+  server.gate = null;
   const queryClient = new QueryClient();
   queryClient.setQueryData(KEYS.decofile(CACHE_KEY), { home });
   queryClient.setQueryData(KEYS.contentVersions(CACHE_KEY), {
@@ -341,18 +352,119 @@ describe("useApplyNamedRule", () => {
     expect(cached(queryClient)).toEqual({ home: edited });
   });
 
-  it("reads first when the editor hasn't seen a block's version", async () => {
+  it("reads first when the editor hasn't seen a block's version, then saves the block it still holds as stored", async () => {
     const { queryClient, result } = setup();
     queryClient.removeQueries({ queryKey: KEYS.contentVersions(CACHE_KEY) });
     let outcome: unknown;
     await act(async () => {
       outcome = await result.current.apply({ writes: { home: homeWithTest } });
     });
+    expect(outcome).toEqual({ ok: true });
+    expect(server.applied).toEqual([
+      { set: { home: homeWithTest }, ifMatch: { home: "home@0" } },
+    ]);
+  });
+
+  it("reads first when the editor hasn't seen a block's version, and writes nothing when someone changed it", async () => {
+    const { queryClient, result } = setup();
+    queryClient.removeQueries({ queryKey: KEYS.contentVersions(CACHE_KEY) });
+    const edited = { ...home, path: "/new" };
+    server.blocks.home = edited;
+    server.versions.home = "home@9";
+    let outcome: unknown;
+    await act(async () => {
+      outcome = await result.current.apply({ writes: { home: homeWithTest } });
+    });
     expect(outcome).toEqual({ ok: false, reason: "changed" });
     expect(server.applied).toEqual([]);
+    expect(cached(queryClient)).toEqual({ home: edited });
     expect(
       queryClient.getQueryData(KEYS.contentVersions(CACHE_KEY)),
-    ).toMatchObject({ home: "home@0" });
+    ).toMatchObject({ home: "home@9" });
+  });
+
+  it("a rule picked while the editor's earlier save of the page is on its way expects that save's version", async () => {
+    const { queryClient, result } = setup();
+    // "Add variant": a save of the page, slow to answer.
+    const withVariant = {
+      ...home,
+      sections: {
+        ...home.sections,
+        variants: [...home.sections.variants, home.sections.variants[1]],
+      },
+    };
+    let release!: () => void;
+    server.gate = new Promise<void>((resolve) => (release = resolve));
+    let first!: Promise<unknown>;
+    let second!: Promise<unknown>;
+    await act(async () => {
+      first = result.current.apply({ writes: { home: withVariant } });
+      await Promise.resolve();
+    });
+    // The rule is picked on the page as the editor shows it, variant included.
+    const ruled = {
+      ...withVariant,
+      sections: {
+        ...withVariant.sections,
+        variants: [
+          {
+            ...withVariant.sections.variants[0],
+            rule: { __resolveType: "experiment", name: "hero" },
+          },
+          ...withVariant.sections.variants.slice(1),
+        ],
+      },
+    };
+    expect(cached(queryClient)?.home).toEqual(withVariant);
+    await act(async () => {
+      second = result.current.apply({ writes: { home: ruled, experiments } });
+      await Promise.resolve();
+      release();
+    });
+    await act(async () => {
+      expect(await first).toEqual({ ok: true });
+      expect(await second).toEqual({ ok: true });
+    });
+    expect(server.applied.map((p) => p.ifMatch)).toEqual([
+      { home: "home@0" },
+      { home: "home@1", experiments: null },
+    ]);
+    expect(server.blocks.home).toEqual(ruled);
+  });
+
+  it("a rule waiting behind the editor's earlier save is still refused when someone else changed the page meanwhile", async () => {
+    const { queryClient, result } = setup();
+    let release!: () => void;
+    server.gate = new Promise<void>((resolve) => (release = resolve));
+    let first!: Promise<unknown>;
+    let second!: Promise<unknown>;
+    await act(async () => {
+      first = result.current.apply({ writes: { experiments } });
+      await Promise.resolve();
+    });
+    await act(async () => {
+      second = result.current.apply({ writes: { home: homeWithTest } });
+      await Promise.resolve();
+    });
+    // Someone else saves the page, and a poll lists it while the rule waits.
+    const theirs = { ...home, path: "/theirs" };
+    server.blocks.home = theirs;
+    server.versions.home = "home@theirs";
+    await act(async () => {
+      await pollProtocolContent(
+        queryClient,
+        backend,
+        { orgSlug: ORG, virtualMcpId: VM, branch: BRANCH },
+        CACHE_KEY,
+      );
+      release();
+    });
+    await act(async () => {
+      expect(await first).toEqual({ ok: true });
+      expect(await second).toEqual({ ok: false, reason: "changed" });
+    });
+    expect(server.blocks.home).toEqual(theirs);
+    expect(cached(queryClient)?.home).toEqual(theirs);
   });
 
   it("removes a test a page still uses: the page then shows it isn't there", async () => {
@@ -466,5 +578,55 @@ describe("useApplyNamedRule", () => {
     expect(change).toBeNull();
     expect(plan).not.toHaveBeenCalled();
     expect(server.applied).toEqual([]);
+  });
+});
+
+describe("two views of one draft (tabs or windows)", () => {
+  it("a test created in one view right after another view saved the tests lands, keeping that save", async () => {
+    server.blocks = { home, experiments };
+    server.versions = { home: "home@0", experiments: "experiments@0" };
+    server.applied = [];
+    server.unreachable = false;
+    server.gate = null;
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(KEYS.decofile(CACHE_KEY), { home, experiments });
+    queryClient.setQueryData(KEYS.contentVersions(CACHE_KEY), {
+      home: "home@0",
+      experiments: "experiments@0",
+    });
+    const params = { orgSlug: ORG, virtualMcpId: VM, branch: BRANCH };
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    const { result } = renderHook(
+      () => {
+        useRereadOnWriteElsewhere(backend, params, CACHE_KEY);
+        return useApplyNamedRule(params);
+      },
+      { wrapper },
+    );
+    // The other view moves the share slider and saves; it tells the others.
+    server.blocks.experiments = { ...experiments, hero: 30 };
+    server.versions.experiments = "experiments@other";
+    const otherView = new BroadcastChannel("decocms:content-writes");
+    otherView.postMessage({ cacheKey: CACHE_KEY });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    });
+    otherView.close();
+    // This view then creates a test from what it holds.
+    const held = cached(queryClient)?.experiments as Record<string, unknown>;
+    let outcome: unknown;
+    await act(async () => {
+      outcome = await result.current.apply({
+        writes: { experiments: { ...held, promo: 50 } },
+      });
+    });
+    expect(outcome).toEqual({ ok: true });
+    expect(server.blocks.experiments).toEqual({
+      __resolveType: "split-traffic",
+      hero: 30,
+      promo: 50,
+    });
   });
 });

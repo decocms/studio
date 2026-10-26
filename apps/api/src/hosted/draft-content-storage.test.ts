@@ -10,8 +10,10 @@ import {
 import { createDraftStore, type HostedDraftRef } from "./draft-store";
 import {
   fakeRepo,
+  heldPuts,
   memoryDeliveryStore,
   memoryKv,
+  otherApiProcess,
   SCHEMA_TEXT,
 } from "./hosted-test-helpers";
 
@@ -537,5 +539,84 @@ describe("hosted draft storage: changes against main", () => {
     expect(
       Object.keys((await call(storage, "changes.list")).result.changes),
     ).toEqual(["Home"]);
+  });
+});
+
+describe("hosted draft storage: saves from several API processes", () => {
+  /** One project's draft served by two API processes, as in production. */
+  async function twoProcesses() {
+    const { repo, delivery } = setup();
+    const kv = memoryKv();
+    const one = createDraftContentStorage({
+      client: repo.client,
+      packagePath: null,
+      mainBranch: "main",
+      drafts: createDraftStore({ kv, store: delivery.store }),
+      ref: REF,
+    });
+    const held = heldPuts(delivery.store);
+    const { createDraftStore: createOther } = await otherApiProcess();
+    const two = createDraftContentStorage({
+      client: repo.client,
+      packagePath: null,
+      mainBranch: "main",
+      drafts: createOther({ kv, store: held.store }),
+      ref: REF,
+    });
+    // The draft exists, as an editor session creates it.
+    await call(one, "blocks.apply", { set: { Home: { path: "/", t: 0 } } });
+    const listed = await call(one, "blocks.list");
+    return { one, two, held, versions: listed.result.versions };
+  }
+
+  it("two guarded saves of different blocks at once both land", async () => {
+    const { one, two, held, versions } = await twoProcesses();
+    held.hold();
+    const campaigns = call(two, "blocks.apply", {
+      set: { campaigns: { start: "2027" } },
+      ifMatch: { campaigns: null },
+    });
+    await held.atPut;
+    const experiments = await call(one, "blocks.apply", {
+      set: { Home: { path: "/", t: 1 } },
+      ifMatch: { Home: versions.Home },
+    });
+    held.release();
+    expect(experiments.error).toBeUndefined();
+    expect((await campaigns).error).toBeUndefined();
+    const after = (await call(one, "blocks.list")).result;
+    expect(after.blocks.Home).toEqual({ path: "/", t: 1 });
+    expect(after.blocks.campaigns).toEqual({ start: "2027" });
+    expect(after.versions.campaigns).toBe(
+      (await campaigns).result.versions.campaigns,
+    );
+  });
+
+  it("a guarded save that raced a save of the same block on another process is a Conflict, never an overwrite", async () => {
+    const { one, two, held, versions } = await twoProcesses();
+    held.hold();
+    const stale = call(two, "blocks.apply", {
+      set: { Home: { path: "/", t: "mine" } },
+      ifMatch: { Home: versions.Home },
+    });
+    await held.atPut;
+    const theirs = await call(one, "blocks.apply", {
+      set: { Home: { path: "/", t: "theirs" } },
+      ifMatch: { Home: versions.Home },
+    });
+    held.release();
+    expect(theirs.error).toBeUndefined();
+    expect((await stale).error).toMatchObject({
+      data: {
+        entries: {
+          Home: {
+            expected: versions.Home,
+            actual: theirs.result.versions.Home,
+          },
+        },
+      },
+    });
+    const after = (await call(one, "blocks.list")).result;
+    expect(after.blocks.Home).toEqual({ path: "/", t: "theirs" });
   });
 });
