@@ -671,6 +671,25 @@ function refusedDraftBlock(
 }
 
 /**
+ * A refused hosted save says which of its blocks the draft doesn't hold at
+ * all (`null` in `DraftConflictBlocks`): a tombstone this editor recorded
+ * for one of them is gone (a Publish or discard emptied it), so the block
+ * is guarded "must not exist in the draft" again.
+ */
+function forgetRefusedTombstones(
+  queryClient: QueryClient,
+  cacheKey: string,
+  refusal: unknown,
+) {
+  if (!(refusal instanceof ContentProtocolError)) return;
+  const draft = (refusal.data as Partial<DraftConflictBlocks> | null)?.draft;
+  if (!draft || typeof draft !== "object") return;
+  for (const [name, entry] of Object.entries(draft)) {
+    if (entry === null) markDraftTombstone(queryClient, cacheKey, name, false);
+  }
+}
+
+/**
  * Puts the draft's copy of `blockKey`, as a refused hosted save carried it,
  * in the cache in place of the refused edit: the block (or its absence, for
  * a block the draft deletes), its version, and its entry in the draft's
@@ -741,6 +760,7 @@ export function adoptRefusedDraft(
 ): boolean {
   if (backend.source !== "github" || !(refusal instanceof ContentProtocolError))
     return false;
+  forgetRefusedTombstones(queryClient, cacheKey, refusal);
   const draft = (refusal.data as Partial<DraftConflictBlocks> | null)?.draft;
   if (!draft || typeof draft !== "object") return false;
   const names = Object.keys(draft);
@@ -770,6 +790,9 @@ export async function reloadProtocolBlock(
   blockKey: string,
   refusal?: unknown,
 ): Promise<void> {
+  if (backend.source === "github") {
+    forgetRefusedTombstones(queryClient, cacheKey, refusal);
+  }
   const fromDraft =
     backend.source === "github"
       ? refusedDraftBlock(refusal, blockKey)

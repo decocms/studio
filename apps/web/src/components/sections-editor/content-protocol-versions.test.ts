@@ -584,6 +584,81 @@ describe("hosted draft guards (Studio's GitHub backend)", () => {
     );
   });
 
+  it("a tombstone the draft no longer holds (published meanwhile) stops guarding", async () => {
+    const queryClient = new QueryClient();
+    const { state, backend } = hostedBackend();
+    await pollProtocolContent(queryClient, backend, params, CACHE_KEY);
+    // A block only the draft has, created and deleted here: its tombstone.
+    await applyProtocolPatch(
+      queryClient,
+      backend,
+      params,
+      CACHE_KEY,
+      { set: { Promo: { v: 1 } } },
+      { Promo: null },
+    );
+    await applyProtocolPatch(
+      queryClient,
+      backend,
+      params,
+      CACHE_KEY,
+      { delete: ["Promo"] },
+      {
+        Promo: protocolBlockVersion(queryClient, CACHE_KEY, "Promo", backend)!,
+      },
+    );
+    // Publish elsewhere empties the draft: the tombstone is gone.
+    state.draft = {};
+    state.deleted.clear();
+    state.etag = "published";
+    (backend.client as unknown as { changesGet: unknown }).changesGet =
+      async () => {
+        state.reads++;
+        return {
+          base: { revision: state.main, resolvedRef: "main" },
+          entries: {},
+        };
+      };
+    const refusal = await refusalOf(
+      applyProtocolPatch(
+        queryClient,
+        backend,
+        params,
+        CACHE_KEY,
+        { set: { Promo: { v: 2 } } },
+        {
+          Promo: protocolBlockVersion(
+            queryClient,
+            CACHE_KEY,
+            "Promo",
+            backend,
+          )!,
+        },
+      ),
+    );
+    await reloadProtocolBlock(
+      queryClient,
+      backend,
+      params,
+      CACHE_KEY,
+      "Promo",
+      refusal,
+    );
+    // The refusal says the draft doesn't hold it: "must not exist" again.
+    expect(
+      protocolBlockVersion(queryClient, CACHE_KEY, "Promo", backend),
+    ).toBeNull();
+    await applyProtocolPatch(
+      queryClient,
+      backend,
+      params,
+      CACHE_KEY,
+      { set: { Promo: { v: 2 } } },
+      { Promo: null },
+    );
+    expect(state.draft.Promo?.value).toEqual({ v: 2 });
+  });
+
   it("a block only main has is guarded by null; once saved, by the draft's version", async () => {
     const queryClient = new QueryClient();
     const { state, backend } = hostedBackend();
