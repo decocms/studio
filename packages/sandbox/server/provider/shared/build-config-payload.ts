@@ -1,4 +1,5 @@
 import type {
+  ConfigPatch,
   PackageManagerConfig,
   TenantConfig,
 } from "../../../daemon-protocol";
@@ -20,6 +21,8 @@ export function buildConfigPayload(args: {
   tenant?: EnsureOptions["tenant"];
   /** Checkout only — the daemon skips install + dev server. */
   cloneOnly?: boolean;
+  /** Extra monorepo apps by path; an empty list stops the ones running. */
+  apps?: string[];
 }): Partial<TenantConfig> | null {
   const repo = args.repo;
   const git = repo
@@ -82,6 +85,7 @@ export function buildConfigPayload(args: {
         packageManager,
         runtime: args.runtime,
         ...(args.port !== undefined ? { port: args.port } : {}),
+        ...(args.apps ? { apps: args.apps.map((path) => ({ path })) } : {}),
       }
     : undefined;
 
@@ -112,6 +116,14 @@ export function buildConfigPayload(args: {
     ...(args.cloneOnly !== undefined ? { cloneOnly: args.cloneOnly } : {}),
     ...(application ? { application } : {}),
   };
+}
+
+/**
+ * The `/config` patch that sets a running sandbox's extra apps. Resumes send
+ * only what changed, so without it an app added later never starts.
+ */
+export function extraAppsPatch(apps: string[]): ConfigPatch {
+  return { application: { apps: apps.map((path) => ({ path })) } };
 }
 
 function deriveRepoLabel(cloneUrl: string): string {

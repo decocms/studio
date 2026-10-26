@@ -557,7 +557,7 @@ async function provisionSandbox(params: StartParams): Promise<{
       })
     : null;
 
-  let { runtime, packageManager, port, packageManagerPath } =
+  let { runtime, packageManager, port, packageManagerPath, apps } =
     resolveRuntimeConfig(metadata);
 
   // Submodules and private package deps live in repos a per-repo clone token
@@ -748,6 +748,9 @@ async function provisionSandbox(params: StartParams): Promise<{
           packageManager,
           ...(port !== null ? { devPort: Number(port) } : {}),
           ...(packageManagerPath ? { packageManagerPath } : {}),
+          ...(orgFlagEnabled(orgSettings?.flags, "multi_app_preview")
+            ? { apps }
+            : {}),
         }
       : undefined;
 

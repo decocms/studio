@@ -8,15 +8,9 @@
  * `<app>.localhost`, which browsers resolve to loopback without DNS.
  */
 
-const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+import { appHostLabel, appSlug } from "@decocms/shared/app-preview-host";
 
-/** DNS-safe label for an app path: `apps/checkout` → `apps-checkout`. */
-export function appSlug(path: string): string {
-  return path
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
 /** Short display name: the last path segment, `apps/checkout` → `checkout`. */
 export function appLabel(path: string): string {
@@ -45,7 +39,7 @@ export function appPreviewUrl(baseUrl: string, path: string): string | null {
   } else {
     const [label, ...rest] = host.split(".");
     if (!label || rest.length === 0) return null;
-    url.hostname = [`${label}--${slug}`, ...rest].join(".");
+    url.hostname = [appHostLabel(label, path), ...rest].join(".");
   }
   url.pathname = "/";
   url.search = "";

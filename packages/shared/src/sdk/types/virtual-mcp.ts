@@ -467,7 +467,7 @@ const RuntimeMetadataSchema = z.object({
     .nullable()
     .optional()
     .describe(
-      "Additional monorepo apps previewed beside the one at `path`. Read by the site editor only (behind the `multi_app_preview` flag); the daemon does not start them yet.",
+      "Additional monorepo apps previewed beside the one at `path`, each run by its own dev server on the main app's install. Started only when the organization's `multi_app_preview` flag is on.",
     ),
   env: z
     .array(RuntimeEnvEntrySchema)

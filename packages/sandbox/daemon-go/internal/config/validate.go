@@ -174,6 +174,29 @@ func validateApplication(app *Application) string {
 			return fmt.Sprintf("port invalid: %v", p)
 		}
 	}
+	if app.Apps != nil {
+		return validateExtraApps(*app.Apps)
+	}
+	return ""
+}
+
+const maxExtraApps = 8
+
+func validateExtraApps(apps []ExtraApp) string {
+	if len(apps) > maxExtraApps {
+		return fmt.Sprintf("apps: at most %d allowed", maxExtraApps)
+	}
+	seen := map[string]bool{}
+	for _, a := range apps {
+		if reason := validateRepoPath("apps[].path", a.Path); reason != "" {
+			return reason
+		}
+		slug := AppSlug(a.Path)
+		if slug == "" || seen[slug] {
+			return fmt.Sprintf("apps[].path must name a distinct app: %s", a.Path)
+		}
+		seen[slug] = true
+	}
 	return ""
 }
 
@@ -183,12 +206,16 @@ func validateApplication(app *Application) string {
 // relative path is joined onto the repo dir without a containment check, so
 // "../.." segments walk out of it.
 func validatePmPath(p string) string {
+	return validateRepoPath("packageManager.path", p)
+}
+
+func validateRepoPath(field, p string) string {
 	if p == "" {
-		return "packageManager.path must be non-empty"
+		return field + " must be non-empty"
 	}
 	clean := filepath.Clean(p)
 	if filepath.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
-		return fmt.Sprintf("packageManager.path must be a relative path within the repo: %s", p)
+		return fmt.Sprintf("%s must be a relative path within the repo: %s", field, p)
 	}
 	return ""
 }

@@ -326,7 +326,7 @@ export const OrgFlagsSchema = z.object({
     .boolean()
     .optional()
     .describe(
-      "Site editor UI for previewing more than one app of a monorepo: an Apps list in project settings, and app tabs with a split view in the preview. Off by default. UI only: extra apps resolve to their own preview host, which the sandbox does not route yet.",
+      "Previewing more than one app of a monorepo: an Apps list in project settings, app tabs with a split view in the preview, and a dev server per extra app in the sandbox, served at its own preview host. Off by default.",
     ),
   hide_default_blog_blocks: z
     .boolean()

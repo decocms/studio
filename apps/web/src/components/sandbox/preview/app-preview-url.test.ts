@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { appSlug } from "@decocms/shared/app-preview-host";
 import {
   appLabel,
   appPreviewUrl,
-  appSlug,
   normalizeAppPath,
   withPagePath,
 } from "./app-preview-url";
