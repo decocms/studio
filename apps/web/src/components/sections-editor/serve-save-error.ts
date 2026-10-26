@@ -43,11 +43,57 @@ function violationsDetail(error: ContentProtocolError): string {
     .join("; ");
 }
 
+/**
+ * A hosted v8 save that couldn't read the draft's changes (it needs them
+ * for its precondition): nothing was sent. The user is told to check their
+ * connection and edit again; their change is still in the form.
+ */
+export class HostedDraftUnreadError extends Error {
+  constructor() {
+    super("The draft's changes couldn't be read");
+    this.name = "HostedDraftUnreadError";
+  }
+}
+
+/**
+ * A hosted v8 change refused round after round (someone kept changing the
+ * same blocks): the reconcile flow stopped asking. The draft's latest copy
+ * is shown; the user is told to check it and make the change again.
+ */
+export class HostedKeptChangingError extends Error {
+  constructor() {
+    super("The blocks kept changing while the change was saved");
+    this.name = "HostedKeptChangingError";
+  }
+}
+
+/**
+ * A hosted dead end ({@link HostedDraftUnreadError},
+ * {@link HostedKeptChangingError}) with its message in the editor's words,
+ * so any toast that shows an error's message guides the user too. Other
+ * errors are left as they are.
+ */
+export function inPlainWords(t: TFunction, error: unknown): unknown {
+  if (
+    error instanceof HostedDraftUnreadError ||
+    error instanceof HostedKeptChangingError
+  ) {
+    error.message = saveErrorMessage(t, error, "github");
+  }
+  return error;
+}
+
 export function saveErrorMessage(
   t: TFunction,
   error: Error,
   source: ContentSource | null,
 ): string {
+  if (error instanceof HostedDraftUnreadError) {
+    return t("siteEditor.save.draftUnread");
+  }
+  if (error instanceof HostedKeptChangingError) {
+    return t("siteEditor.save.keptChanging");
+  }
   // An outdated copy, already replaced by the stored one: its message says
   // so in the editor's words, on every backend.
   if (error instanceof BlockConflictError) return error.message;
@@ -77,7 +123,14 @@ export function saveErrorDetail(
   error: Error,
   source: ContentSource | null,
 ): string | null {
-  if (source === "local" || error instanceof BlockConflictError) return null;
+  if (
+    source === "local" ||
+    error instanceof BlockConflictError ||
+    error instanceof HostedDraftUnreadError ||
+    error instanceof HostedKeptChangingError
+  ) {
+    return null;
+  }
   if (error instanceof ContentProtocolError) {
     // A refused block: which fields to fix, in the server's own words.
     const message =

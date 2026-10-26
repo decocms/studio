@@ -59,7 +59,11 @@ import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { buildSandboxUrl } from "@/sdk/sandbox-url";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t";
-import { isSaveConflict } from "./serve-save-error";
+import {
+  HostedDraftUnreadError,
+  inPlainWords,
+  isSaveConflict,
+} from "./serve-save-error";
 import { toastKeptTheirs, toastSaveError } from "./site-editor-toast";
 import { describeConflictFields } from "./conflict-fields";
 import {
@@ -478,9 +482,12 @@ export function useSaveBlock(
           !isRecord(mine) ||
           (stored !== undefined && !isRecord(stored))
         ) {
+          // The draft's copy is in the cache: the message says what to do.
           throw new BlockConflictError(
             [blockKey],
-            t("sectionsEditor.sectionsEditor.blockChangedElsewhere"),
+            round + 1 >= HOSTED_RECONCILE_ROUNDS
+              ? t("siteEditor.save.keptChanging")
+              : t("siteEditor.save.conflict"),
             [],
             carried,
           );
@@ -663,10 +670,17 @@ export function useSaveBlock(
         if (guard && !ifMatch && hosted) {
           // Every hosted save carries its precondition: an unknown version
           // is read first (the draft's changes come with the content).
-          await rereadProtocolContent(queryClient, protocol, params, cacheKey);
+          await rereadProtocolContent(
+            queryClient,
+            protocol,
+            params,
+            cacheKey,
+          ).catch(() => {
+            throw new HostedDraftUnreadError();
+          });
           ifMatch = guard.ifMatch(blockKey);
           // Still unknown: fail rather than write unguarded.
-          if (!ifMatch) throw new Error("The draft's changes couldn't be read");
+          if (!ifMatch) throw new HostedDraftUnreadError();
         }
         try {
           const result = await applyProtocolPatch(
@@ -744,6 +758,8 @@ export function useSaveBlock(
     // Restore only this mutation's own key so a concurrent sibling save isn't clobbered.
     // A stale-copy refusal already re-read the block; restoring would put the stale copy back.
     onError: (error, _variables, context) => {
+      // A hosted dead end says what to do, wherever its message shows.
+      inPlainWords(t, error);
       if (!context || error instanceof BlockConflictError) return;
       // Refused because the content changed on disk: load what is there now.
       if (isSaveConflict(error)) {

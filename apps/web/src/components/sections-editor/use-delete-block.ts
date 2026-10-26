@@ -21,7 +21,11 @@ import { toastKeptTheirs } from "./site-editor-toast";
 import { type KeptTheirVersion, keptTheirVersion } from "./use-save-block";
 import { useT } from "@/i18n/use-t";
 import { runContentChange } from "./content-sync";
-import { isSaveConflict } from "./serve-save-error";
+import {
+  HostedKeptChangingError,
+  inPlainWords,
+  isSaveConflict,
+} from "./serve-save-error";
 import { useDecofileCacheKey } from "./use-decofile";
 import { buildSandboxUrl } from "@/sdk/sandbox-url";
 
@@ -170,9 +174,16 @@ export function useDeleteBlock({
     },
     // Restore only this mutation's own key so a concurrent sibling save isn't clobbered.
     onError: (error, _variables, context) => {
+      // A hosted dead end says what to do, wherever its message shows.
+      inPlainWords(t, error);
       if (!context) return;
       // A refused hosted delete put the draft's copy in the cache already.
-      if (protocol?.source === "github" && isSaveConflict(error)) return;
+      if (
+        protocol?.source === "github" &&
+        (isSaveConflict(error) || error instanceof HostedKeptChangingError)
+      ) {
+        return;
+      }
       queryClient.setQueryData(
         context.queryKey,
         (current: Record<string, unknown> | undefined) => {

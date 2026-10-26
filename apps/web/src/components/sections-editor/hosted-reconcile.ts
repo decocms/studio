@@ -40,7 +40,11 @@ import {
   type DeletedConflict,
 } from "./named-rule-conflict";
 import type { SchemaProperty } from "./resolve-schema";
-import { isSaveConflict } from "./serve-save-error";
+import {
+  HostedDraftUnreadError,
+  HostedKeptChangingError,
+  isSaveConflict,
+} from "./serve-save-error";
 
 /** Blocks written whole, and blocks removed. */
 export interface HostedChange {
@@ -236,19 +240,21 @@ export async function hostedIfMatch(
   const versionOf = (key: string) =>
     protocolBlockVersion(ctx.queryClient, ctx.cacheKey, key, ctx.backend);
   if (blockKeys.some((key) => versionOf(key) === undefined)) {
-    await rereadProtocolContent(
-      ctx.queryClient,
-      ctx.backend,
-      ctx.params,
-      ctx.cacheKey,
-    );
+    try {
+      await rereadProtocolContent(
+        ctx.queryClient,
+        ctx.backend,
+        ctx.params,
+        ctx.cacheKey,
+      );
+    } catch {
+      throw new HostedDraftUnreadError();
+    }
   }
   const ifMatch: Record<string, string | null> = {};
   for (const key of blockKeys) {
     const version = versionOf(key);
-    if (version === undefined) {
-      throw new Error("The draft's changes couldn't be read");
-    }
+    if (version === undefined) throw new HostedDraftUnreadError();
     ifMatch[key] = version;
   }
   return ifMatch;
@@ -363,9 +369,10 @@ export async function applyHostedChange(
     } catch (error) {
       if (!isSaveConflict(error)) throw error;
       const stored = await adoptRefusal(ctx, touched, error, base);
-      if (round + 1 >= HOSTED_RECONCILE_ROUNDS || !canAskNamedRuleConflict()) {
-        throw error;
+      if (round + 1 >= HOSTED_RECONCILE_ROUNDS) {
+        throw new HostedKeptChangingError();
       }
+      if (!canAskNamedRuleConflict()) throw error;
       // A move of a block someone deleted meanwhile: the plan would see
       // nothing in conflict (both sides dropped the source) and write the
       // move, bringing the block back. Their deletion is asked about first.

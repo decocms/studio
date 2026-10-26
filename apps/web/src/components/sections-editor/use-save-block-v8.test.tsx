@@ -882,6 +882,105 @@ describe("the reconcile question of a block save names it as the editor does", (
   });
 });
 
+describe("a hosted save that can't go on guides the user, never a dead end", () => {
+  const t = (key: string, vars?: Record<string, string>) =>
+    Object.entries(vars ?? {}).reduce(
+      (text, [name, value]) => text.replaceAll(`{${name}}`, value),
+      (en as Record<string, string>)[key] ?? key,
+    );
+
+  it("when the draft's changes can't be read: nothing is sent, and it says what to do", async () => {
+    const { saveErrorMessage } = await import("./serve-save-error");
+    const { result } = setup();
+    const changesList = client.changesList;
+    (client as { changesList: unknown }).changesList = async () => {
+      throw new Error("network down");
+    };
+    let failure: unknown;
+    try {
+      await act(async () => {
+        await result.current
+          .mutateAsync({ blockKey: "Hero", data: { title: "mine" } })
+          .catch((error: unknown) => {
+            failure = error;
+          });
+      });
+    } finally {
+      (client as { changesList: unknown }).changesList = changesList;
+    }
+    expect(server.applied).toEqual([]);
+    expect(saveErrorMessage(t as never, failure as Error, "github")).toBe(
+      en["siteEditor.save.draftUnread"],
+    );
+  });
+
+  it("after three rounds it stops asking and says, calmly, what to do", async () => {
+    const { saveErrorMessage } = await import("./serve-save-error");
+    const { queryClient, result } = setup();
+    server.draftInRefusal = true;
+    draftHolds(queryClient, { Hero: "h1" });
+    // Someone keeps saving Hero: every guarded save finds a newer version.
+    const blocksApply = client.blocksApply;
+    let n = 0;
+    (client as { blocksApply: unknown }).blocksApply = (patch: never) => {
+      server.versions.Hero = `busy${++n}`;
+      server.blocks.Hero = { title: `theirs ${n}` };
+      return blocksApply(patch);
+    };
+    let failure: unknown;
+    try {
+      await act(async () => {
+        await result.current
+          .mutateAsync({ blockKey: "Hero", data: { title: "mine" } })
+          .catch((error: unknown) => {
+            failure = error;
+          });
+      });
+    } finally {
+      (client as { blocksApply: unknown }).blocksApply = blocksApply;
+    }
+    expect(server.applied.length).toBe(3);
+    expect(saveErrorMessage(t as never, failure as Error, "github")).toBe(
+      en["siteEditor.save.keptChanging"],
+    );
+  });
+});
+
+describe("a hosted move refused until it gave up", () => {
+  it("says, in the editor's words, to check the latest and make the change again", async () => {
+    const { queryClient } = setup();
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    const { result } = renderHook(() => useMoveBlocks(params), { wrapper });
+    server.draftInRefusal = true;
+    draftHolds(queryClient, { Hero: "h1" });
+    asked.choice = "mine";
+    const blocksApply = client.blocksApply;
+    let n = 0;
+    (client as { blocksApply: unknown }).blocksApply = (patch: never) => {
+      server.versions.Hero = `busy${++n}`;
+      server.blocks.Hero = { title: `theirs ${n}` };
+      return blocksApply(patch);
+    };
+    let failure: unknown;
+    try {
+      await act(async () => {
+        await result.current
+          .move({ writes: { Banner: { title: "loaded" } }, deletes: ["Hero"] })
+          .catch((error: unknown) => {
+            failure = error;
+          });
+      });
+    } finally {
+      (client as { blocksApply: unknown }).blocksApply = blocksApply;
+    }
+    expect((failure as Error).message).toBe(en["siteEditor.save.keptChanging"]);
+    // The editor shows the draft's latest, not the copy the move started on.
+    expect(heroInCache(queryClient)).toEqual({ title: `theirs ${n}` });
+  });
+});
+
 describe("every hosted blocks.apply carries a precondition per block", () => {
   it("a patch missing one is refused before it is sent", async () => {
     const { applyProtocolPatch } = await import("./content-protocol-api");

@@ -18,7 +18,11 @@ import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { useContentBackend } from "./use-content-backend";
 import { applyProtocolPatch } from "./content-protocol-api";
 import { applyHostedChange, HostedKeptTheirsError } from "./hosted-reconcile";
-import { isSaveConflict } from "./serve-save-error";
+import {
+  HostedKeptChangingError,
+  inPlainWords,
+  isSaveConflict,
+} from "./serve-save-error";
 import { toastKeptTheirs } from "./site-editor-toast";
 import { useT } from "@/i18n/use-t";
 import { runContentChange } from "./content-sync";
@@ -212,7 +216,15 @@ export function useMoveBlocks({
         toastKeptTheirs(t, error.deleted);
         throw error;
       }
-      if (protocol?.source === "github" && isSaveConflict(error)) throw error;
+      // A hosted dead end says what to do, wherever its message shows.
+      inPlainWords(t, error);
+      // Refused (or refused until it gave up): the cache holds the draft's.
+      if (
+        protocol?.source === "github" &&
+        (isSaveConflict(error) || error instanceof HostedKeptChangingError)
+      ) {
+        throw error;
+      }
       queryClient.setQueryData(
         queryKey,
         (current: Record<string, unknown> | undefined) => {
