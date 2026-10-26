@@ -491,6 +491,18 @@ export const sectionsEditor = {
     "{name} também mudou o campo “{label}”",
   "sectionsEditor.formConflict.titleStepYou":
     "Você também mudou o campo “{label}” em outra aba ou janela",
+  "sectionsEditor.formConflict.titleOneIn":
+    "Outra pessoa mudou o campo “{label}” de “{block}” enquanto você editava",
+  "sectionsEditor.formConflict.titleOneInNamed":
+    "{name} mudou o campo “{label}” de “{block}” enquanto você editava",
+  "sectionsEditor.formConflict.titleOneInYou":
+    "Você mudou o campo “{label}” de “{block}” em outra aba ou janela",
+  "sectionsEditor.formConflict.titleStepIn":
+    "Outra pessoa também mudou o campo “{label}” de “{block}”",
+  "sectionsEditor.formConflict.titleStepInNamed":
+    "{name} também mudou o campo “{label}” de “{block}”",
+  "sectionsEditor.formConflict.titleStepInYou":
+    "Você também mudou o campo “{label}” de “{block}” em outra aba ou janela",
   "sectionsEditor.formConflict.summaryTheirsNamed": "a de {name}",
   "sectionsEditor.formConflict.youElsewhere": "Você, em outra aba ou janela",
   "sectionsEditor.formConflict.savedAt": "salva {when}",

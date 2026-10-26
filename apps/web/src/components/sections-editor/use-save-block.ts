@@ -11,6 +11,7 @@ import { useContentBackend } from "./use-content-backend";
 import {
   applyProtocolPatch,
   draftCopiesNow,
+  protocolMetaQueryKey,
   protocolBlockVersion,
   reloadProtocolBlock,
   rereadProtocolContent,
@@ -40,6 +41,8 @@ import {
   sanitizeSecretsForPersistence,
 } from "@decocms/shared/decofile";
 import { sleep } from "@decocms/shared/std";
+import { globalSectionLabel } from "./page-list";
+import { type LiveMeta, resolveSchema } from "./resolve-schema";
 import { decoBlockFilePath } from "./deco-block-key";
 import { decoRepoPath } from "./deco-repo-path";
 import {
@@ -501,10 +504,19 @@ export function useSaveBlock(
           mine,
           theirs: stored,
         });
+        // Asked as the block's own editor would: the block by its title,
+        // each value by the form's label, and who changed it when known.
         const choices =
           plan.pointers.length === 0
             ? {}
-            : await askNamedRuleConflict(plan, conflictFields(plan, null));
+            : await askNamedRuleConflict(
+                plan,
+                conflictFields(plan, blockSchema(params, stored)),
+                {
+                  block: globalSectionLabel(blockKey, stored),
+                  author: { draft: params, blockKey },
+                },
+              );
         value =
           plan.pointers.length === 0
             ? plan.merged
@@ -517,6 +529,23 @@ export function useSaveBlock(
         }
         ancestor = stored;
       }
+    }
+  };
+
+  /** The form schema of `block` (its `__resolveType`'s), from the cache. */
+  const blockSchema = (
+    params: { orgSlug: string; virtualMcpId: string; branch: string },
+    block: Record<string, unknown>,
+  ) => {
+    const resolveType = block.__resolveType;
+    const meta = queryClient.getQueryData<LiveMeta>(
+      protocolMetaQueryKey(params, protocol!),
+    );
+    if (typeof resolveType !== "string" || !meta?.manifest) return null;
+    try {
+      return resolveSchema(resolveType, meta);
+    } catch {
+      return null;
     }
   };
 

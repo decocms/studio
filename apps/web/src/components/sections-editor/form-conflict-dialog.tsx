@@ -58,6 +58,11 @@ interface FormConflictChoicesProps {
   viewer?: ConflictViewer | null;
   /** Who made their change, and when; null while unknown. */
   author?: ConflictAuthor | null;
+  /**
+   * The block the fields belong to, by its title, when the dialog isn't
+   * opened from the block's own form (a global section's editor, a loader's…).
+   */
+  block?: string;
   onChoose: (pointer: string, choice: ConflictChoice) => void;
   onApply: () => void;
   /**
@@ -123,6 +128,7 @@ export function conflictHeading(
   step = 0,
   choices: ConflictChoices = {},
   author: ConflictAuthor | null = null,
+  block?: string,
 ): { title: string; description: ReactNode } {
   const field = fields[Math.min(step, fields.length - 1)];
   const name = author?.you ? undefined : author?.name?.split(/\s+/)[0];
@@ -130,26 +136,39 @@ export function conflictHeading(
     field: field ? fieldInSentence(field.label) : "",
     label: field?.label ?? "",
     name: name ?? "",
+    block: block ?? "",
   };
   type Key = Parameters<TFunction>[0];
   const pick = (one: Key, named: Key, you: Key) =>
     t(author?.you ? you : name ? named : one, vars);
   if (fields.length <= 1) {
     return {
-      title: pick(
-        "sectionsEditor.formConflict.titleOne",
-        "sectionsEditor.formConflict.titleOneNamed",
-        "sectionsEditor.formConflict.titleOneYou",
-      ),
+      title: block
+        ? pick(
+            "sectionsEditor.formConflict.titleOneIn",
+            "sectionsEditor.formConflict.titleOneInNamed",
+            "sectionsEditor.formConflict.titleOneInYou",
+          )
+        : pick(
+            "sectionsEditor.formConflict.titleOne",
+            "sectionsEditor.formConflict.titleOneNamed",
+            "sectionsEditor.formConflict.titleOneYou",
+          ),
       description: t("sectionsEditor.formConflict.descriptionOne"),
     };
   }
   return {
-    title: pick(
-      "sectionsEditor.formConflict.titleStep",
-      "sectionsEditor.formConflict.titleStepNamed",
-      "sectionsEditor.formConflict.titleStepYou",
-    ),
+    title: block
+      ? pick(
+          "sectionsEditor.formConflict.titleStepIn",
+          "sectionsEditor.formConflict.titleStepInNamed",
+          "sectionsEditor.formConflict.titleStepInYou",
+        )
+      : pick(
+          "sectionsEditor.formConflict.titleStep",
+          "sectionsEditor.formConflict.titleStepNamed",
+          "sectionsEditor.formConflict.titleStepYou",
+        ),
     description:
       step >= fields.length - 1 ? (
         <ConflictSummary t={t} fields={fields} choices={choices} name={name} />
@@ -278,6 +297,7 @@ export function FormConflictChoices(props: FormConflictChoicesProps) {
     at,
     choices,
     props.author ?? null,
+    props.block,
   );
   // The second click of a double click on Next would land on the button that
   // saves, in the same place on the last step: only a click of its own saves.

@@ -26,7 +26,10 @@ import {
   AlertDialogTitle,
 } from "@decocms/ui/components/alert-dialog.tsx";
 import { useEffect, useState, useSyncExternalStore } from "react";
+import { canonicalBlockJson } from "@decocms/shared/decofile";
 import { useT } from "@/i18n/use-t.ts";
+import { useConflictAuthorFromCache, versionTag } from "./conflict-author";
+import type { DecofileScopeParams } from "./decofile-api";
 import { FormConflictDialog } from "./form-conflict-dialog";
 import {
   type ConflictChoice,
@@ -46,12 +49,24 @@ export interface DeletedConflict {
   label: string;
 }
 
+/**
+ * What a values question says about the block: its title, as the editor
+ * shows it, and where to read who made the other change (a hosted v8
+ * draft's metadata, conflict-author.ts). Without it: "Someone else", and
+ * no block named.
+ */
+export interface ConflictAbout {
+  block?: string;
+  author?: { draft: DecofileScopeParams; blockKey: string } | null;
+}
+
 type Question =
   | {
       id: number;
       kind: "values";
       plan: FormConflictPlan;
       fields: ConflictField[];
+      about?: ConflictAbout;
       answer: (choices: ConflictChoices) => void;
     }
   | {
@@ -96,6 +111,7 @@ function answered(id: number) {
 export function askNamedRuleConflict(
   plan: FormConflictPlan,
   fields: ConflictField[],
+  about?: ConflictAbout,
 ): Promise<ConflictChoices> {
   return new Promise((resolve) => {
     const id = ++asked;
@@ -104,6 +120,7 @@ export function askNamedRuleConflict(
       kind: "values",
       plan,
       fields,
+      about,
       answer: (choices) => {
         answered(id);
         resolve(choices);
@@ -214,10 +231,17 @@ function Choice({
   const [choices, setChoices] = useState(() =>
     defaultConflictChoices(question.plan),
   );
+  const author = useConflictAuthorFromCache(
+    question.about?.author?.draft ?? null,
+    question.about?.author?.blockKey ?? null,
+    versionTag(canonicalBlockJson(question.plan.theirs)),
+  );
   return (
     <FormConflictDialog
       open
       fields={question.fields}
+      author={author}
+      block={question.about?.block}
       choices={choices}
       onChoose={(pointer, choice) =>
         setChoices((now) => ({ ...now, [pointer]: choice }))

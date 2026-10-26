@@ -477,6 +477,18 @@ export const sectionsEditor = {
     "{name} also changed the {field}",
   "sectionsEditor.formConflict.titleStepYou":
     "You also changed the {field} in another tab or window",
+  "sectionsEditor.formConflict.titleOneIn":
+    'Someone else changed the {field} of "{block}" while you were editing',
+  "sectionsEditor.formConflict.titleOneInNamed":
+    '{name} changed the {field} of "{block}" while you were editing',
+  "sectionsEditor.formConflict.titleOneInYou":
+    'You changed the {field} of "{block}" in another tab or window',
+  "sectionsEditor.formConflict.titleStepIn":
+    'Someone else also changed the {field} of "{block}"',
+  "sectionsEditor.formConflict.titleStepInNamed":
+    '{name} also changed the {field} of "{block}"',
+  "sectionsEditor.formConflict.titleStepInYou":
+    'You also changed the {field} of "{block}" in another tab or window',
   "sectionsEditor.formConflict.summaryTheirsNamed": "{name}'s",
   "sectionsEditor.formConflict.youElsewhere": "You, in another tab or window",
   "sectionsEditor.formConflict.savedAt": "saved {when}",

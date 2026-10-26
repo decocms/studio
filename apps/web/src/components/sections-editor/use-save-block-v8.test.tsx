@@ -136,6 +136,10 @@ const asked = {
   fields: [] as Array<{ pointer: string; mine: unknown; theirs: unknown }>,
   /** "Keep my version" / "Leave it deleted" questions asked. */
   deleted: [] as Array<{ kind: string; label: string }>,
+  /** What the values question says about the block and who changed it. */
+  about: undefined as
+    | { block?: string; author?: { blockKey: string } | null }
+    | undefined,
 };
 // The real dialog module, restored for the test files that run after this
 // one in the same process (named-rule-conflict.test.tsx renders it).
@@ -152,8 +156,10 @@ mock.module("./named-rule-conflict", () => ({
   askNamedRuleConflict: async (
     plan: { pointers: string[] },
     fields: Array<{ pointer: string; mine: unknown; theirs: unknown }>,
+    about?: { block?: string; author?: { blockKey: string } | null },
   ) => {
     asked.fields = fields;
+    asked.about = about;
     return Object.fromEntries(plan.pointers.map((p) => [p, asked.choice]));
   },
 }));
@@ -162,6 +168,8 @@ const { useSaveBlock, useDebouncedSaveBlock } = await import(
   "./use-save-block"
 );
 const { useCopyEpochs } = await import("./held-copy");
+const { protocolMetaQueryKey } = await import("./content-protocol-api");
+const params = { orgSlug: ORG, virtualMcpId: VM, branch: BRANCH };
 const { useDeleteBlock } = await import("./use-delete-block");
 const { useMoveBlocks } = await import("./use-move-blocks");
 
@@ -177,6 +185,7 @@ function setup() {
   asked.choice = "mine";
   asked.fields = [];
   asked.deleted = [];
+  asked.about = undefined;
   const queryClient = new QueryClient();
   queryClient.setQueryData(KEYS.decofile(CACHE_KEY), {
     Hero: { title: "loaded" },
@@ -829,6 +838,48 @@ describe("a debounced editor keeping its own copy (hosted v8)", () => {
       );
     });
   }
+});
+
+describe("the reconcile question of a block save names it as the editor does", () => {
+  it("the block by its title, its fields by the form's labels, and who changed it (when known)", async () => {
+    const { queryClient, result } = setup();
+    server.draftInRefusal = true;
+    const footer = (about: string) => ({
+      __resolveType: "site/sections/Footer.tsx",
+      name: "Footer",
+      about,
+    });
+    server.blocks = { "footer-1": footer("theirs") };
+    server.versions = { "footer-1": "f2" };
+    queryClient.setQueryData(KEYS.decofile(CACHE_KEY), {
+      "footer-1": footer("loaded"),
+    });
+    draftHolds(queryClient, { "footer-1": "f1" });
+    queryClient.setQueryData(protocolMetaQueryKey(params, backend), {
+      manifest: {
+        blocks: {
+          sections: {
+            "site/sections/Footer.tsx": {
+              type: "object",
+              properties: { about: { type: "string", title: "About us" } },
+            },
+          },
+        },
+      },
+      schema: {},
+    });
+    await act(async () => {
+      await result.current.mutateAsync({
+        blockKey: "footer-1",
+        data: footer("mine"),
+      });
+    });
+    expect(asked.fields.map((f) => (f as { label?: string }).label)).toEqual([
+      "About us",
+    ]);
+    expect(asked.about?.block).toBe("Footer");
+    expect(asked.about?.author?.blockKey).toBe("footer-1");
+  });
 });
 
 describe("every hosted blocks.apply carries a precondition per block", () => {

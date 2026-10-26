@@ -15,7 +15,7 @@
  */
 
 import { spellingKey } from "@decocms/blocks/protocol";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { mainSchemaHeaders } from "@/hooks/main-schema-changed";
 import { useMembersQuery } from "@/hooks/use-members";
 import { authClient } from "@/lib/auth-client";
@@ -133,6 +133,43 @@ export function useConflictAuthor(
   blockKey: string | null,
   theirs: string | null,
 ): ConflictAuthor | null {
+  const change = useDraftChange(draft, blockKey, theirs);
+  const { data: membersData } = useMembersQuery({ enabled: !!change });
+  const members =
+    (membersData as { data?: { members?: OrgMemberRow[] } } | undefined)?.data
+      ?.members ?? [];
+  const { data: session } = authClient.useSession();
+  if (!change) return null;
+  return resolveDraftChange(change, members, session?.user?.id ?? null);
+}
+
+/**
+ * {@link useConflictAuthor} for a dialog shown outside a project's screens
+ * (the reconcile host, mounted with the app's providers): the member is
+ * found in the org's member lists already read (none read: only the time).
+ */
+export function useConflictAuthorFromCache(
+  draft: DecofileScopeParams | null,
+  blockKey: string | null,
+  theirs: string | null,
+): ConflictAuthor | null {
+  const change = useDraftChange(draft, blockKey, theirs);
+  const queryClient = useQueryClient();
+  const { data: session } = authClient.useSession();
+  if (!change) return null;
+  const members = queryClient
+    .getQueriesData<{ data?: { members?: OrgMemberRow[] } }>({
+      predicate: (query) => query.queryKey[1] === "members",
+    })
+    .flatMap(([, data]) => data?.data?.members ?? []);
+  return resolveDraftChange(change, members, session?.user?.id ?? null);
+}
+
+function useDraftChange(
+  draft: DecofileScopeParams | null,
+  blockKey: string | null,
+  theirs: string | null,
+): DraftChange | null {
   const enabled = !!draft && !!blockKey && theirs !== null;
   const { data } = useQuery({
     queryKey: KEYS.conflictAuthor(
@@ -147,12 +184,5 @@ export function useConflictAuthor(
     retry: false,
     refetchOnWindowFocus: false,
   });
-  const change = enabled ? (data ?? null) : null;
-  const { data: membersData } = useMembersQuery({ enabled: !!change });
-  const members =
-    (membersData as { data?: { members?: OrgMemberRow[] } } | undefined)?.data
-      ?.members ?? [];
-  const { data: session } = authClient.useSession();
-  if (!change) return null;
-  return resolveDraftChange(change, members, session?.user?.id ?? null);
+  return enabled ? (data ?? null) : null;
 }

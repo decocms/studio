@@ -102,11 +102,13 @@ function Harness({
 function Heading({
   only,
   author = null,
+  block,
 }: {
   only: ConflictField[];
   author?: ConflictAuthor | null;
+  block?: string;
 }) {
-  const heading = conflictHeading(useT(), only, 0, {}, author);
+  const heading = conflictHeading(useT(), only, 0, {}, author, block);
   return (
     <>
       <h2>{heading.title}</h2>
@@ -494,6 +496,20 @@ describe("who made the other change (hosted v8)", () => {
     // The button is OK whoever the card names.
     fireEvent.click(theirs);
     expect(view.getByRole("button", { name: "OK" })).toBeVisible();
+  });
+
+  test("opened outside the block's form, the title names the block and the member", () => {
+    const named = render(
+      <Heading only={headline} author={ana(minutesAgo(1))} block="Footer" />,
+    );
+    expect(named.getByRole("heading")).toHaveTextContent(
+      'Ana changed the headline of "Footer" while you were editing',
+    );
+    named.unmount();
+    const unknown = render(<Heading only={headline} block="Footer" />);
+    expect(unknown.getByRole("heading")).toHaveTextContent(
+      'Someone else changed the headline of "Footer" while you were editing',
+    );
   });
 
   test("one field: the viewer's own change from another tab or window", () => {
