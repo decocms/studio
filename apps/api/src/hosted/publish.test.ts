@@ -149,6 +149,28 @@ describe("publishDraft", () => {
     await expectEmptied(drafts, saved);
   });
 
+  it('the default commit message lists only deletions main had: a tombstone of a name main never had is no "delete"', async () => {
+    const { git, drafts, repo } = setup();
+    // The save path never reads main, so the draft records a deletion of
+    // `Gone` (never on main) as it does for `Old` (on main).
+    await drafts.update(REF, () => ({
+      set: { Home: { path: "/", title: "v2" } },
+      delete: ["Gone", "Old"],
+    }));
+    await publishDraft(repo, drafts, REF, { message: "", coAuthor: null });
+    expect(git.history[0]!.message).toBe(
+      "chore(decofile): update Home; delete Old",
+    );
+  });
+
+  it("a draft of tombstones main never had alone commits nothing", async () => {
+    const { git, drafts, repo } = setup();
+    const before = git.head();
+    await drafts.update(REF, () => ({ set: {}, delete: ["Gone"] }));
+    await publishDraft(repo, drafts, REF, { message: "", coAuthor: null });
+    expect(git.head()).toBe(before);
+  });
+
   it("costs the same GitHub calls for a draft of 1 block or 8: one listing of main, one inline-content commit, no read of the new commit", async () => {
     const callsFor = async (blocks: number) => {
       const { git, drafts, repo, delivery } = setup();

@@ -217,6 +217,12 @@ async function draftFileChanges(
   changes: FileChange[];
   tree: TreeEntry[];
   next: Map<string, BlockSource>;
+  /**
+   * The draft's deletions main has a file for. A save never reads main, so
+   * the draft also records deletions of names main never had (tombstones):
+   * those change nothing here.
+   */
+  deleted: string[];
 }> {
   const prefix = `${blocksDirPath(repo.packagePath)}/`;
   const tree = await repo.client.listDecofileEntries(headSha, repo.packagePath);
@@ -253,10 +259,13 @@ async function draftFileChanges(
     });
     await primeBlobCache(repo.client.repo, content);
   }
+  const deleted: string[] = [];
   for (const name of draft.delete) {
-    for (const path of groups.get(spellingKey(name)) ?? []) remove(path);
+    const paths = groups.get(spellingKey(name)) ?? [];
+    if (paths.length > 0) deleted.push(name);
+    for (const path of paths) remove(path);
   }
-  return { changes, tree, next };
+  return { changes, tree, next, deleted };
 }
 
 /**
@@ -334,12 +343,13 @@ export interface KnownRevision {
 async function commitDraftToMain(
   repo: HostedRepo,
   draft: DraftBody,
-  message: string,
+  /** The message, or built from the deletions main had (see draftFileChanges). */
+  message: string | ((deleted: string[]) => string),
 ): Promise<{ sha: string; known: KnownRevision } | null> {
   const memo = new Map<string, string>();
   for (let attempt = 1; ; attempt++) {
     const headSha = await requireBranchHead(repo.client, repo.mainBranch);
-    const { changes, tree, next } = await draftFileChanges(
+    const { changes, tree, next, deleted } = await draftFileChanges(
       repo,
       headSha,
       draft,
@@ -350,7 +360,7 @@ async function commitDraftToMain(
         repo,
         headSha,
         { changes, tree, next: next.values() },
-        message,
+        typeof message === "string" ? message : message(deleted),
         memo,
       );
       const prefix = `${blocksDirPath(repo.packagePath)}/`;
@@ -613,11 +623,14 @@ export async function publishDraft(
     draft.body,
     note.message.trim()
       ? appendCoAuthorTrailer(note.message.trim(), note.coAuthor)
-      : decofileCommitMessage(
-          Object.keys(draft.body.set),
-          draft.body.delete,
-          note.coAuthor,
-        ),
+      : // Deletions of names main never had (the save path can't see
+        // main) are no "delete …" in the commit.
+        (deleted) =>
+          decofileCommitMessage(
+            Object.keys(draft.body.set),
+            deleted,
+            note.coAuthor,
+          ),
   );
   // Nothing committed.
   if (committed === null) {
