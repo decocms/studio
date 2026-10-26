@@ -121,6 +121,34 @@ function contextFetch(ctx: APIRequestContext) {
   };
 }
 
+/**
+ * A hosted save's preconditions (`ifMatch`), as the editor sends them: each
+ * name's version in the draft (`changes.list`), the tombstone's for one the
+ * draft deletes, `null` for one it doesn't hold. The hosted route refuses a
+ * save without them.
+ */
+async function draftIfMatch(
+  ctx: APIRequestContext,
+  path: string,
+  names: string[],
+): Promise<Record<string, string | null>> {
+  const listed = await rpc<{
+    changes: Record<string, { kind: string; version: string | null }>;
+  }>(ctx, path, "changes.list", {});
+  return Object.fromEntries(
+    names.map((name) => {
+      const change = listed.result?.changes[name];
+      if (!change) return [name, null];
+      return [
+        name,
+        change.kind === "delete"
+          ? (change.version ?? "tombstone")
+          : change.version,
+      ];
+    }),
+  );
+}
+
 async function rpc<T>(
   ctx: APIRequestContext,
   path: string,
@@ -288,6 +316,7 @@ test.describe("content protocol on GitHub", () => {
       const applied = await rpc<BlocksApplyResult>(ctx, path, "blocks.apply", {
         set: { "hero-home": hero },
         delete: ["promo"],
+        ifMatch: await draftIfMatch(ctx, path, ["hero-home", "promo"]),
       });
       expect(applied.result?.revision).toMatch(/^[0-9a-f]{40}~/);
 
@@ -407,6 +436,7 @@ test.describe("content protocol on GitHub", () => {
               },
             },
           },
+          ifMatch: await draftIfMatch(ctx, rpcPath(project, "main"), ["site"]),
         },
       );
       expect(applied.error).toBeUndefined();
@@ -510,6 +540,7 @@ test.describe("content protocol on GitHub", () => {
           method: "blocks.apply",
           params: {
             set: { "hero-home": { __resolveType: "hero", title: "x" } },
+            ifMatch: { "hero-home": null },
           },
         },
       });
@@ -662,6 +693,9 @@ test.describe("content protocol on GitHub", () => {
         "blocks.apply",
         {
           set: { "hero-home": hero },
+          ifMatch: await draftIfMatch(ctx, rpcPath(project, "draft-1"), [
+            "hero-home",
+          ]),
         },
       );
       const pointer = await draftPointer(ctx, project, "draft-1");
@@ -689,6 +723,9 @@ test.describe("content protocol on GitHub", () => {
       // Another save is a new ETag, so a new pointer version.
       await rpc(ctx, rpcPath(project, "draft-1"), "blocks.apply", {
         set: { "hero-home": { ...hero, title: "Winter" } },
+        ifMatch: await draftIfMatch(ctx, rpcPath(project, "draft-1"), [
+          "hero-home",
+        ]),
       });
       const next = await draftPointer(ctx, project, "draft-1");
       expect(next.draft).toBe(pointer.draft);
@@ -719,6 +756,9 @@ test.describe("content protocol on GitHub", () => {
       const publish = async (title: string) => {
         await rpc(ctx, rpcPath(project, "draft-1"), "blocks.apply", {
           set: { "hero-home": { __resolveType: "hero", title } },
+          ifMatch: await draftIfMatch(ctx, rpcPath(project, "draft-1"), [
+            "hero-home",
+          ]),
         });
         const res = await ctx.post(`${decofile}/draft-1/publish`, {
           data: { note: `Publish ${title}` },
@@ -857,6 +897,9 @@ test.describe("content protocol on GitHub", () => {
       // A Publish that commits nothing leaves latest.json alone.
       await rpc(ctx, rpcPath(project, "draft-1"), "blocks.apply", {
         set: { "hero-home": { __resolveType: "hero", title: "One" } },
+        ifMatch: await draftIfMatch(ctx, rpcPath(project, "draft-1"), [
+          "hero-home",
+        ]),
       });
       const noop = await ctx.post(`${decofile}/draft-1/publish`, {
         data: { note: "" },
@@ -1413,6 +1456,10 @@ test.describe("v8 editor: every content change refreshes the editor and the prev
             Header: { ...header, title: "Top, changed" },
             Popup: { ...header, title: "Popup, changed" },
           },
+          ifMatch: await draftIfMatch(page.request, rpcPath(project, "main"), [
+            "Header",
+            "Popup",
+          ]),
         },
       );
       expect(applied.result?.revision).toBeTruthy();
@@ -1530,7 +1577,12 @@ test.describe("v8 editor: every content change refreshes the editor and the prev
         page.request,
         rpcPath(project, "main"),
         "blocks.apply",
-        { set: { home: theirs } },
+        {
+          set: { home: theirs },
+          ifMatch: await draftIfMatch(page.request, rpcPath(project, "main"), [
+            "home",
+          ]),
+        },
       );
       expect(applied.status).toBe(200);
       expect(applied.error).toBeUndefined();
