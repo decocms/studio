@@ -220,12 +220,6 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "Give a coding-agent run (the claude-code harness in a sandbox) every MCP connection in the org as its own MCP server, on top of the narrow Studio surface it always gets. Off by default: each connection is one more server the agent connects to at session start, and all of their tools land in its context.",
     ),
-  coding_agent_background_tasks: z
-    .boolean()
-    .optional()
-    .describe(
-      "Let a coding-agent run (the claude-code harness in a sandbox) start Bash commands and subagents in the background. The run stays open until they report back, so the agent acts on their results. Off by default: everything runs in the foreground.",
-    ),
   coding_agents_claude_code: z
     .boolean()
     .optional()

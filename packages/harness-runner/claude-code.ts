@@ -85,11 +85,6 @@ const ORG_FS_INSTRUCTION =
   "The organization filesystem is mounted at `/app/org/`; an `org/...` path " +
   "in older messages or skills means `/app/org/...`.";
 
-const WAIT_IN_TURN_INSTRUCTION =
-  "This run ends when your turn ends. Nothing you start in the background can " +
-  "report back afterwards, so wait for every command you start, in the " +
-  "foreground, before you finish.";
-
 /**
  * One frame of a turn's output. `error` accompanies whatever the turn managed
  * to produce and only ever appears on the last frame.
@@ -117,9 +112,6 @@ interface LiveSession {
 }
 
 const persistent = () => process.env.HARNESS_RUNNER_PERSISTENT === "1";
-/** Studio sets the CLI's own switch; unset means the org opted in. */
-const backgroundTasksEnabled = () =>
-  process.env.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS !== "1";
 let live: LiveSession | null = null;
 
 /** The streaming prompt a kept session reads its turns from. */
@@ -384,7 +376,6 @@ export function buildOptions(args: {
     instructions,
     skillsInstruction(),
     ORG_FS_INSTRUCTION,
-    backgroundTasksEnabled() ? undefined : WAIT_IN_TURN_INSTRUCTION,
     maxTurns === undefined ? undefined : turnBudgetInstruction(maxTurns),
   ]
     .filter(Boolean)

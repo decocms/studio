@@ -230,16 +230,9 @@ describe("buildOptions", () => {
       options({ agent: { id: "a", disallowedTools: ["Monitor"] } })
         .disallowedTools,
     ).toEqual(["Monitor", "ScheduleWakeup"]);
-    process.env.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS = "1";
-    try {
-      const { append } = options().systemPrompt as { append: string };
-      expect(append).toContain("This run ends when your turn ends");
-    } finally {
-      delete process.env.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS;
-    }
   });
 
-  test("lets background work report back when the org enables it", () => {
+  test("does not tell the model to avoid background work", () => {
     const { append } = options().systemPrompt as { append: string };
     expect(append).not.toContain("This run ends when your turn ends");
   });
