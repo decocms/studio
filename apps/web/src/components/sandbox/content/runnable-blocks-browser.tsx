@@ -235,7 +235,7 @@ export function RunnableBlocksBrowser({
     blockId: string,
     data: Record<string, unknown>,
   ) => {
-    await saveBlock.mutateAsync({ blockKey: blockId, data });
+    await saveBlock.mutateAsync({ blockKey: blockId, data, create: true });
     toast.success(
       t("sandbox.runnableBlocksBrowser.savedBlockToast", { singular, blockId }),
     );

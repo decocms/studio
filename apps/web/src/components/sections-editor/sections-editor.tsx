@@ -2506,7 +2506,11 @@ export function SectionsEditor({
     };
 
     try {
-      await saveBlock.mutateAsync({ blockKey: blockId, data: blockData });
+      await saveBlock.mutateAsync({
+        blockKey: blockId,
+        data: blockData,
+        create: true,
+      });
 
       const updatedSections = [...rawSections];
       updatedSections[makeReusableIndex] = { __resolveType: blockId };
@@ -3697,7 +3701,11 @@ export function SectionsEditor({
 
       let createdBlockId: string | null = null;
       try {
-        await saveBlock.mutateAsync({ blockKey: blockId, data: blockData });
+        await saveBlock.mutateAsync({
+          blockKey: blockId,
+          data: blockData,
+          create: true,
+        });
         createdBlockId = blockId;
         variants[variantIndex] = {
           ...target,
@@ -3863,7 +3871,11 @@ export function SectionsEditor({
 
       let createdBlockId: string | null = null;
       try {
-        await saveBlock.mutateAsync({ blockKey: blockId, data: blockData });
+        await saveBlock.mutateAsync({
+          blockKey: blockId,
+          data: blockData,
+          create: true,
+        });
         createdBlockId = blockId;
         const nextVariants = [...variants];
         nextVariants[variantIndex] = {

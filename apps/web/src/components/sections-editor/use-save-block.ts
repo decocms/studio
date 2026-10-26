@@ -6,9 +6,19 @@ import { useDecofileCacheKey } from "./use-decofile";
 import { useContentBackend } from "./use-content-backend";
 import {
   applyProtocolPatch,
+  protocolBlockVersion,
   reloadProtocolBlock,
   rereadProtocolContent,
 } from "./content-protocol-api";
+import {
+  conflictFields,
+  planFormConflict,
+  resolveFormConflict,
+} from "./form-conflict";
+import {
+  askNamedRuleConflict,
+  canAskNamedRuleConflict,
+} from "./named-rule-conflict";
 import { runContentChange, useContentDiscardListener } from "./content-sync";
 import { usePackagePath } from "./use-package-path";
 import {
@@ -97,7 +107,18 @@ interface SaveBlockVariables {
   rebaseOnConflict?: boolean;
   /** The content protocol's version guard (Studio's v8 backends only). */
   guard?: SaveGuard;
+  /**
+   * A block this save creates (a section saved under a new name, a copy).
+   * On a hosted v8 site it is saved with "must not exist in the draft yet":
+   * when someone else created a block of that name first, the reconcile
+   * flow asks, value by value, whose version to keep, and the choice is
+   * saved over theirs (guarded by their version). Other backends: ignored.
+   */
+  create?: boolean;
 }
+
+/** How many times one create is reconciled before the save gives up. */
+const CREATE_RECONCILE_ROUNDS = 3;
 
 /**
  * Versions of each block this tab saved, as canonical JSON, per decofile cache
@@ -308,6 +329,81 @@ export function useSaveBlock({
     return res.json();
   };
 
+  /**
+   * A hosted v8 create (see {@link SaveBlockVariables.create}): written with
+   * "must not exist in the draft yet". Refused because the draft holds a
+   * block of that name: what is stored is read, values both set differently
+   * are the user's choice (the same reconcile flow as an A/B test's), and
+   * the result is saved guarded by the stored version.
+   */
+  const createProtocolBlock = async (
+    params: { orgSlug: string; virtualMcpId: string; branch: string },
+    blockKey: string,
+    data: unknown,
+  ) => {
+    const backend = protocol!;
+    let value = data;
+    let ifMatch: Record<string, string | null> = { [blockKey]: null };
+    for (let round = 0; ; round++) {
+      try {
+        const result = await applyProtocolPatch(
+          queryClient,
+          backend,
+          params,
+          cacheKey,
+          { set: { [blockKey]: value } },
+          ifMatch,
+        );
+        return { ...result, written: value };
+      } catch (error) {
+        if (!isSaveConflict(error)) throw error;
+        await reloadProtocolBlock(
+          queryClient,
+          backend,
+          params,
+          cacheKey,
+          blockKey,
+        );
+        const stored = queryClient.getQueryData<Record<string, unknown>>(
+          KEYS.decofile(cacheKey),
+        )?.[blockKey];
+        const version = protocolBlockVersion(
+          queryClient,
+          cacheKey,
+          blockKey,
+          backend,
+        );
+        const mine = value;
+        if (
+          round + 1 >= CREATE_RECONCILE_ROUNDS ||
+          !canAskNamedRuleConflict() ||
+          version === undefined ||
+          !isRecord(mine) ||
+          (stored !== undefined && !isRecord(stored))
+        ) {
+          throw new BlockConflictError(
+            [blockKey],
+            t("sectionsEditor.sectionsEditor.blockChangedElsewhere"),
+          );
+        }
+        if (!isRecord(stored)) {
+          // Gone again meanwhile: create it as first meant.
+          ifMatch = { [blockKey]: null };
+          continue;
+        }
+        const plan = planFormConflict({ ancestor: {}, mine, theirs: stored });
+        value =
+          plan.pointers.length === 0
+            ? plan.merged
+            : resolveFormConflict(
+                plan,
+                await askNamedRuleConflict(plan, conflictFields(plan, null)),
+              );
+        ifMatch = { [blockKey]: version };
+      }
+    }
+  };
+
   const mutation = useMutation({
     mutationKey: decofileWriteMutationKey(orgSlug, virtualMcpId, branch),
     // Serialize a branch's writes so overlapping autosaves can't land an older payload last, dropping a newer edit.
@@ -318,6 +414,7 @@ export function useSaveBlock({
       base,
       rebaseOnConflict = true,
       guard,
+      create = false,
     }: SaveBlockVariables) => {
       // Fail closed before any write path: a raw secret must never be
       // persisted. A hosted save checks nothing (the site's CI runs `deco
@@ -327,6 +424,9 @@ export function useSaveBlock({
       }
       if (protocol) {
         const params = { orgSlug, virtualMcpId, branch };
+        if (create && !guard && protocol.source === "github") {
+          return createProtocolBlock(params, blockKey, data);
+        }
         let ifMatch = guard?.ifMatch(blockKey);
         if (guard && !ifMatch && protocol.source === "github") {
           // Every hosted save carries its precondition: an unknown version
@@ -548,4 +648,8 @@ export function useDebouncedSaveBlock(
   };
 
   return { save, flush, isPending: saveBlock.isPending };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
 }

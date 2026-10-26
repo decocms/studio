@@ -108,6 +108,22 @@ mock.module("@/hooks/use-local-preview-url", () => ({
   useLocalPreviewUrl: () => ({ url: null }),
 }));
 
+/** The reconcile flow's answers: every value in conflict on `asked.choice`. */
+const asked = {
+  choice: "mine" as "mine" | "theirs",
+  fields: [] as Array<{ pointer: string; mine: unknown; theirs: unknown }>,
+};
+mock.module("./named-rule-conflict", () => ({
+  canAskNamedRuleConflict: () => true,
+  askNamedRuleConflict: async (
+    plan: { pointers: string[] },
+    fields: Array<{ pointer: string; mine: unknown; theirs: unknown }>,
+  ) => {
+    asked.fields = fields;
+    return Object.fromEntries(plan.pointers.map((p) => [p, asked.choice]));
+  },
+}));
+
 const { useSaveBlock } = await import("./use-save-block");
 
 afterEach(() => resetContentSync());
@@ -222,5 +238,64 @@ describe("saved JSON carries no editor metadata", () => {
     });
     expect(server.applied).toEqual([{ set: { Hero: { title: "mine" } } }]);
     expect(JSON.stringify(server.blocks)).not.toMatch(/__meta|lastEdited/);
+  });
+
+  describe("a hosted create (`create: true`)", () => {
+    /** Someone else already created Promo in the draft (version p1). */
+    function setupCreate(choice: "mine" | "theirs") {
+      const { queryClient, result } = setup();
+      server.blocks = { Promo: { title: "theirs", note: "same" } };
+      server.versions = { Promo: "p1" };
+      asked.choice = choice;
+      asked.fields = [];
+      queryClient.setQueryData(KEYS.contentChanges(CACHE_KEY), {
+        revision: "c1",
+        base: { revision: "main", resolvedRef: "main" },
+        changes: {},
+      });
+      return { queryClient, result };
+    }
+
+    for (const choice of ["mine", "theirs"] as const) {
+      it(`is saved with "must not exist yet", and a name taken meanwhile opens the reconcile flow (${choice})`, async () => {
+        const { queryClient, result } = setupCreate(choice);
+        await act(() =>
+          result.current.mutateAsync({
+            blockKey: "Promo",
+            data: { title: "mine", note: "same" },
+            create: true,
+          }),
+        );
+        expect(server.applied.map((p) => p.ifMatch)).toEqual([
+          { Promo: null },
+          { Promo: "p1" },
+        ]);
+        expect(asked.fields.map((f) => [f.pointer, f.mine, f.theirs])).toEqual([
+          ["/title", "mine", "theirs"],
+        ]);
+        const title = choice === "mine" ? "mine" : "theirs";
+        expect(server.blocks.Promo).toEqual({ title, note: "same" });
+        expect(
+          queryClient.getQueryData<Record<string, unknown>>(
+            KEYS.decofile(CACHE_KEY),
+          )?.Promo,
+        ).toEqual({ title, note: "same" });
+      });
+    }
+
+    it("a name nobody holds is written once, guarded", async () => {
+      const { result } = setupCreate("mine");
+      server.blocks = {};
+      server.versions = {};
+      await act(() =>
+        result.current.mutateAsync({
+          blockKey: "Promo",
+          data: { title: "mine" },
+          create: true,
+        }),
+      );
+      expect(server.applied.map((p) => p.ifMatch)).toEqual([{ Promo: null }]);
+      expect(asked.fields).toEqual([]);
+    });
   });
 });

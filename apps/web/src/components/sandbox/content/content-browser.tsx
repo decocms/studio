@@ -938,6 +938,7 @@ function ContentBrowserReady({
     await saveBlock.mutateAsync({
       blockKey: blockId,
       data: { ...formValue, name: blockId, __resolveType: resolveType },
+      create: true,
     });
     toast.success(
       t("sandbox.contentBrowser.createdSection", { name: blockId }),
@@ -960,7 +961,7 @@ function ContentBrowserReady({
     const newName = nextUniqueName(takenSectionNames, section.name);
     const data: Record<string, unknown> = { ...source, name: newName };
     try {
-      await saveBlock.mutateAsync({ blockKey: newKey, data });
+      await saveBlock.mutateAsync({ blockKey: newKey, data, create: true });
       toast.success(
         t("sandbox.contentBrowser.duplicatedSection", { name: section.name }),
       );
