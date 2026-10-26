@@ -1,6 +1,6 @@
 import { setupComponentTest } from "../../../test/setup";
 setupComponentTest();
-import { afterEach, describe, expect, it, mock } from "bun:test";
+import { afterAll, afterEach, describe, expect, it, mock } from "bun:test";
 import { act, renderHook } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
@@ -18,6 +18,7 @@ import { resetContentSync } from "./content-sync";
 import * as realBackend from "./use-content-backend";
 import * as realDecofile from "./use-decofile";
 import * as realSessionRuntime from "@/hooks/use-session-runtime";
+import * as realNamedRuleConflict from "./named-rule-conflict";
 import * as realLocalPreview from "@/hooks/use-local-preview-url";
 
 const ORG = "acme";
@@ -176,6 +177,12 @@ const conflictHost = {
   /** The pointer a deleted-block question stands for. */
   deletedPointer: "",
 };
+// The real dialog module, restored for the test files that run after this
+// one in the same process (named-rule-conflict.test.tsx renders it).
+const namedRuleConflict = { ...realNamedRuleConflict };
+afterAll(() => {
+  mock.module("./named-rule-conflict", () => namedRuleConflict);
+});
 mock.module("./named-rule-conflict", () => ({
   canAskNamedRuleConflict: () => conflictHost.answer !== null,
   askNamedRuleConflict: async (plan: { pointers: string[] }) => {
