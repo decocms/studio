@@ -819,6 +819,47 @@ describe("decofile routes", () => {
       expect(repo.opened()).toBeGreaterThan(0);
     });
 
+    it("the editor's poll lists the draft's changes with no GitHub call of their own", async () => {
+      const { app, repo } = setup({ blocksMajor: 8 }, v8Files, { p1: ORG });
+      await rpc(app, apply({ set: { New: { v: 1 }, "pages-home": { v: 2 } } }));
+      const call = (method: string, params = {}) => ({
+        jsonrpc: "2.0",
+        id: method,
+        method,
+        params,
+      });
+      const callsOf = async (batch: unknown[]) => {
+        repo.calls.length = 0;
+        const res = await rpc(app, batch);
+        expect(res.status).toBe(200);
+        return [...repo.calls];
+      };
+      // Warm: main's answer is cached as on a running server.
+      await callsOf([call("schema.get")]);
+      const content = await callsOf([call("blocks.list"), call("schema.get")]);
+      const poll = await callsOf([
+        call("blocks.list"),
+        call("schema.get"),
+        call("changes.list"),
+      ]);
+      // One read of main's head, listing and schema serves the whole poll
+      // (it was 8 calls, 3 of them for changes.list).
+      expect(poll).toEqual(content);
+      expect(poll.map((c) => c.split(" ")[0])).toEqual([
+        "getDefaultBranch",
+        "getBranch",
+        "listDecofileEntries",
+        "getEntriesAtPaths",
+      ]);
+      // On its own, changes.list reads main's head and listing once.
+      const alone = await callsOf([call("changes.list")]);
+      expect(alone.map((c) => c.split(" ")[0])).toEqual([
+        "getDefaultBranch",
+        "getBranch",
+        "listDecofileEntries",
+      ]);
+    });
+
     it("an unmarked project, or a request without the editor's main answer, reads main first", async () => {
       const unmarked = setup({}, v8Files, { p1: ORG });
       await rpc(unmarked.app, apply({ set: { New: { v: 1 } } }));

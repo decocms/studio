@@ -37,6 +37,11 @@ export type RepoContentReader = Pick<
   head(): Promise<{ sha: string; ref: string }>;
   /** The saved-block files at one commit; `readFiles` reads them as usual. */
   snapshotAt(sha: string, ref: string): Promise<StorageSnapshot>;
+  /** `readSchema` for a head already read (`head()` or a snapshot's). */
+  readSchemaAt(head: {
+    sha: string;
+    ref: string;
+  }): Promise<StoredSchema | null>;
 };
 
 interface RepoContentStorageOptions {
@@ -104,6 +109,18 @@ export function createRepoContentReader(
     return file!.content;
   };
 
+  const schemaOf = async (head: {
+    sha: string;
+    ref: string;
+  }): Promise<StoredSchema | null> => {
+    const schema = await resolveSchema(head);
+    if (!schema) return null;
+    const text = await readBlobText(schema.entry.path, schema.entry.sha);
+    // A v7 site reads as schemaless, so the editor stays on the classic one.
+    if (!isV8SchemaText(text)) return null;
+    return { version: schema.entry.sha, text, resolvedRef: schema.ref };
+  };
+
   /** The saved-block files of one commit's tree. */
   const filesAt = async (sha: string) => {
     const tree = await client.listDecofileEntries(sha, packagePath);
@@ -152,14 +169,8 @@ export function createRepoContentReader(
         return out;
       }),
 
-    readSchema: () =>
-      guarded(async (): Promise<StoredSchema | null> => {
-        const schema = await resolveSchema(await readHead());
-        if (!schema) return null;
-        const text = await readBlobText(schema.entry.path, schema.entry.sha);
-        // A v7 site reads as schemaless, so the editor stays on the classic one.
-        if (!isV8SchemaText(text)) return null;
-        return { version: schema.entry.sha, text, resolvedRef: schema.ref };
-      }),
+    readSchema: () => guarded(async () => schemaOf(await readHead())),
+
+    readSchemaAt: (head) => guarded(() => schemaOf(head)),
   };
 }

@@ -11,7 +11,9 @@
  *   site's SDK layers a draft for a preview. A draft `set` name replaces
  *   every spelling of that name with one file, `blockFileName(name)`; a
  *   `delete` name hides every spelling. The changes (`changes.*`) are the
- *   draft's own names, against main's head.
+ *   draft's own names, against main's head. One instance serves one
+ *   request and reads main once for it (head, listing, schema), so the
+ *   poll's `changes.list` adds no GitHub call to its `blocks.list`.
  * - {@link createDraftWriteStorage}, what a save (`blocks.apply`) goes
  *   through: the draft alone, never GitHub, never a schema. A save writes
  *   the whole block into the draft, over whatever the draft had for it; a
@@ -328,6 +330,25 @@ export function createDraftContentStorage(options: {
   >();
   /** Main's listings by commit sha (immutable), from this storage's reads. */
   const mainListings = new Map<string, StorageSnapshot>();
+  /**
+   * Main as this storage first read it: one storage serves one request (the
+   * editor's poll batches `blocks.list`, `schema.get` and `changes.list`),
+   * and every call of it reads main's head, listing and schema from this
+   * one read, so `changes.list` costs no GitHub call of its own. A commit
+   * (a discard) reads main again and replaces it.
+   */
+  let mainRead: Promise<StorageSnapshot> | null = null;
+  const readMain = (fresh = false): Promise<StorageSnapshot> => {
+    if (!mainRead || fresh) {
+      const read = main.snapshot();
+      mainRead = read;
+      // A failed read isn't kept: the next call reads again.
+      read.catch(() => {
+        if (mainRead === read) mainRead = null;
+      });
+    }
+    return mainRead;
+  };
   const mainAt = async (base: StorageBase): Promise<StorageSnapshot> => {
     const known = mainListings.get(base.revision);
     if (known) return known;
@@ -340,10 +361,7 @@ export function createDraftContentStorage(options: {
   };
 
   const snapshot = async (): Promise<StorageSnapshot> => {
-    const [base, draft] = await Promise.all([
-      main.snapshot(),
-      drafts.load(ref),
-    ]);
+    const [base, draft] = await Promise.all([readMain(), drafts.load(ref)]);
     mainListings.set(base.revision, base);
     const body = draft?.body ?? EMPTY_DRAFT;
     const { files, texts } = layerDraftFiles(base.files, body);
@@ -411,13 +429,19 @@ export function createDraftContentStorage(options: {
       return out;
     },
 
-    readSchema: () => main.readSchema(),
+    readSchema: async () => {
+      const head = await readMain();
+      return main.readSchemaAt({
+        sha: head.revision,
+        ref: head.resolvedRef ?? options.mainBranch,
+      });
+    },
     // Secrets live in the deploy platform, never in a v8 site's content.
     readSecretsPublicKey: async () => null,
 
     base: async (): Promise<StorageBase> => {
-      const head = await main.head();
-      return { revision: head.sha, resolvedRef: head.ref };
+      const head = await readMain();
+      return { revision: head.revision, resolvedRef: head.resolvedRef };
     },
 
     /**
@@ -453,7 +477,7 @@ export function createDraftContentStorage(options: {
      * same draft write, its guards checked on main with the draft on top.
      */
     commit: async (attempt): Promise<CommitResult> => {
-      const base = await main.snapshot();
+      const base = await readMain(true);
       mainListings.set(base.revision, base);
       if (
         attempt.expectedBase !== undefined &&

@@ -43,14 +43,16 @@ function setup() {
   });
   const delivery = memoryDeliveryStore();
   const drafts = createDraftStore({ kv: memoryKv(), store: delivery.store });
-  const storage = createDraftContentStorage({
-    client: repo.client,
-    packagePath: null,
-    mainBranch: "main",
-    drafts,
-    ref: REF,
-  });
-  return { repo, delivery, drafts, storage };
+  /** The storage of one request (the route makes one per request). */
+  const request = () =>
+    createDraftContentStorage({
+      client: repo.client,
+      packagePath: null,
+      mainBranch: "main",
+      drafts,
+      ref: REF,
+    });
+  return { repo, delivery, drafts, storage: request(), request };
 }
 
 describe("applyAttemptToDraft", () => {
@@ -106,7 +108,7 @@ describe("createDraftContentStorage", () => {
   });
 
   it("a discard (changes.discard) removes the entry: the read is main as it is now, and follows main when it moves", async () => {
-    const { repo, drafts, storage } = setup();
+    const { repo, drafts, storage, request } = setup();
     await storage.commit({
       base: await storage.snapshot(),
       put: { "Home.json": serializeBlock({ path: "/", title: "draft" }) },
@@ -127,19 +129,20 @@ describe("createDraftContentStorage", () => {
     const after = await storage.snapshot();
     expect(after.revision).not.toBe(edited.revision);
     expect(discarded.result.revision).toBe(after.revision);
-    const read = async () =>
+    const read = async (from = storage) =>
       JSON.parse(
-        (await storage.readFiles(await storage.snapshot(), ["Home.json"]))[
+        (await from.readFiles(await from.snapshot(), ["Home.json"]))[
           "Home.json"
         ]!.text,
       );
     expect(await read()).toEqual({ path: "/", title: "main" });
 
-    // main moves after the discard (a publish from elsewhere).
+    // main moves after the discard (a publish from elsewhere): the next
+    // request reads it.
     repo.pushDirect({
       ".deco/blocks/Home.json": serializeBlock({ path: "/", title: "main v2" }),
     });
-    expect(await read()).toEqual({ path: "/", title: "main v2" });
+    expect(await read(request())).toEqual({ path: "/", title: "main v2" });
     expect((await drafts.load(REF))?.body).toEqual({ set: {}, delete: [] });
   });
 
