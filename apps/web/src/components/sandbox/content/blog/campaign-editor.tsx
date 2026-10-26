@@ -205,6 +205,7 @@ export function CampaignEditor({
   onRemove,
   onClose,
   isSaving,
+  onSeed,
   sandboxRef,
   storeUrl,
 }: {
@@ -218,6 +219,8 @@ export function CampaignEditor({
    *  follows a save can still carry the pre-rebuild block, and re-seeding from
    *  it reverts the edit that caused the save. */
   isSaving?: boolean;
+  /** The form was seeded from `block` (see `useAutosave`'s `onSeed`). */
+  onSeed?: () => void;
   /** Absent outside a sandbox session — the store pickers hide, typing stays. */
   sandboxRef?: PreviewProxyRef;
   /** The brand's storefront domain, so picked links are the public ones. */
@@ -230,7 +233,7 @@ export function CampaignEditor({
   const [draft, setDraft, syncDraft] = useAutosave(
     block ?? EMPTY_BLOCK,
     (next) => onSave(next),
-    { isSaving },
+    { isSaving, onSeed },
   );
 
   const campaign = readCampaign(blockKey, draft);

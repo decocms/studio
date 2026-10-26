@@ -99,3 +99,27 @@ describe("useAutosave re-seed guard", () => {
     expect(result.current[0]).toEqual(b);
   });
 });
+
+describe("useAutosave onSeed (the copy an editor shows)", () => {
+  it("is told on mount and on each settled re-seed, never while an edit is pending", () => {
+    const seeds: number[] = [];
+    let n = 0;
+    const { result, rerender } = renderHook(
+      ({ initial }: { initial: Doc }) =>
+        useAutosave<Doc>(initial, () => {}, {
+          delay: 10_000,
+          onSeed: () => seeds.push(++n),
+        }),
+      { initialProps: { initial: { v: "a" } } },
+    );
+    expect(seeds.length).toBeGreaterThanOrEqual(1);
+    const mounted = seeds.length;
+    rerender({ initial: { v: "b" } });
+    expect(seeds.length).toBe(mounted + 1);
+    act(() => result.current[1]({ v: "typing" }));
+    rerender({ initial: { v: "c" } });
+    // Pending: the form keeps the user's copy, so no new copy is shown.
+    expect(seeds.length).toBe(mounted + 1);
+    expect(result.current[0]).toEqual({ v: "typing" });
+  });
+});

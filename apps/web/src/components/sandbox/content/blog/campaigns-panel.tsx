@@ -124,7 +124,11 @@ export function CampaignsPanel({
   decofile: Record<string, unknown>;
 }) {
   const t = useT();
-  const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
+  // A campaign's form keeps its own copy: hosted saves are guarded by it.
+  const save = useSaveBlock(
+    { orgSlug, virtualMcpId, branch },
+    { holdsCopy: true },
+  );
   const deleteBlock = useDeleteBlock({ orgSlug, virtualMcpId, branch });
 
   /** The store pickers address the site by these coordinates; campaigns are a
@@ -440,6 +444,7 @@ export function CampaignsPanel({
                 blockKey={detailKey}
                 block={decofile[detailKey] as Record<string, unknown>}
                 onSave={(data) => save.mutate({ blockKey: detailKey, data })}
+                onSeed={() => save.hold(detailKey)}
                 onRemove={() => {
                   const campaign = campaigns.find((c) => c.key === detailKey);
                   if (campaign) setPendingDelete(campaign);
@@ -520,6 +525,7 @@ export function CampaignsPanel({
               blockKey={boardKey}
               block={decofile[boardKey] as Record<string, unknown>}
               onSave={(data) => save.mutate({ blockKey: boardKey, data })}
+              onSeed={() => save.hold(boardKey)}
               onRemove={() => {
                 const campaign = campaigns.find((c) => c.key === boardKey);
                 if (campaign) setPendingDelete(campaign);

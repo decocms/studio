@@ -90,6 +90,7 @@ import {
   str,
 } from "./blocks/primitives";
 import { useT } from "@/i18n/use-t.ts";
+import { HeldBlockView } from "../held-block-view";
 
 type ExtraProp = { key: string; value: string };
 
@@ -108,7 +109,7 @@ function asExtraProps(value: unknown): ExtraProp[] {
  * content type (paragraph, heading, list, …); a ⊕ between blocks inserts, and
  * a drag handle reorders. Not a schema form.
  */
-export function PostEditor({
+function PostEditorForm({
   orgSlug,
   virtualMcpId,
   branch,
@@ -141,7 +142,11 @@ export function PostEditor({
 }) {
   const t = useT();
   const threadId = useOptionalChatTask()?.taskId ?? null;
-  const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
+  // The form keeps its own copy: hosted saves are guarded by it.
+  const save = useSaveBlock(
+    { orgSlug, virtualMcpId, branch },
+    { holdsCopy: true },
+  );
   const remove = useDeleteBlock({ orgSlug, virtualMcpId, branch });
   const hasAi = useHostedAiProviderKeys().length > 0;
   const blogAi = useBlogAi();
@@ -162,7 +167,7 @@ export function PostEditor({
         data: buildPostBlock(blockKey, stampPostModified(next)),
       });
     },
-    { isSaving: save.isPending },
+    { isSaving: save.isPending, onSeed: () => save.hold(blockKey) },
   );
 
   // A move renamed the block, so drop a pending write aimed at the retired key.
@@ -927,5 +932,24 @@ function RelationSelect({
         />
       )}
     </div>
+  );
+}
+
+/**
+ * The form keeps its own copy of the block (see `HeldBlockView`): on a
+ * hosted v8 draft a block the draft no longer has shows as deleted.
+ */
+export function PostEditor(props: Parameters<typeof PostEditorForm>[0]) {
+  return (
+    <HeldBlockView
+      orgSlug={props.orgSlug}
+      virtualMcpId={props.virtualMcpId}
+      branch={props.branch}
+      blockKey={props.blockKey}
+      present={props.block !== undefined}
+      remount={false}
+    >
+      <PostEditorForm {...props} />
+    </HeldBlockView>
   );
 }

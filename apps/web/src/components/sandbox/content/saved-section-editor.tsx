@@ -96,11 +96,11 @@ export function SavedSectionEditor({
   const [jsonCode, setJsonCode] = useState<string | null>(null);
   const jsonOpen = jsonCode !== null;
 
-  const { save, flush } = useDebouncedSaveBlock({
-    orgSlug,
-    virtualMcpId,
-    branch,
-  });
+  // The form keeps its own copy: hosted saves are guarded by it.
+  const { save, flush } = useDebouncedSaveBlock(
+    { orgSlug, virtualMcpId, branch },
+    { holdsCopy: true },
+  );
 
   const schema = seed?.resolveType
     ? resolveSchema(seed.resolveType, meta)

@@ -209,6 +209,9 @@ export const sectionsEditor = {
   "sectionsEditor.reconcile.leftDeleted": "Ficou excluído",
   "sectionsEditor.reconcile.keptTheirsHint":
     "Sua alteração não foi salva. Você pode fazê-la de novo quando quiser.",
+  "sectionsEditor.reconcile.deletedTitle": "Isto foi excluído",
+  "sectionsEditor.reconcile.deletedDescription":
+    "Não está mais no seu rascunho, então não há nada para editar aqui. Para trazer de volta, descarte a exclusão em Publicar. Nada vai ao ar até você publicar.",
   "sectionsEditor.namedRules.undo": "Desfazer",
   "sectionsEditor.namedRules.create": "Criar",
   "sectionsEditor.namedRules.openEditor": "Abrir o editor do site",

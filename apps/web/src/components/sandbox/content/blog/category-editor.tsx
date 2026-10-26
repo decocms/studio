@@ -77,6 +77,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
+import { HeldBlockView } from "../held-block-view";
 
 /** Radix Select rejects "" as an item value, so "no parent" needs a sentinel. */
 const NO_PARENT = "__none__";
@@ -95,7 +96,7 @@ const NO_PARENT = "__none__";
  * every keystroke: it matches posts against the last *persisted* slug, so a
  * half-typed slug never leaks into posts and the match key never drifts.
  */
-export function CategoryEditor({
+function CategoryEditorForm({
   orgSlug,
   virtualMcpId,
   branch,
@@ -124,7 +125,11 @@ export function CategoryEditor({
 }) {
   const t = useT();
   const threadId = useOptionalChatTask()?.taskId ?? null;
-  const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
+  // The form keeps its own copy: hosted saves are guarded by it.
+  const save = useSaveBlock(
+    { orgSlug, virtualMcpId, branch },
+    { holdsCopy: true },
+  );
   const move = useMoveBlocks({ orgSlug, virtualMcpId, branch });
   // The preview frame's `__draft` (a hosted draft's carries its forced
   // variants and "Preview as" options), so this link opens what it shows.
@@ -143,7 +148,10 @@ export function CategoryEditor({
         data: buildBlogBlock(blockKey, "categories", next),
       });
     },
-    { isSaving: save.isPending || move.isPending },
+    {
+      isSaving: save.isPending || move.isPending,
+      onSeed: () => save.hold(blockKey),
+    },
   );
 
   // Key typed from `KNOWN_CATEGORY_KEYS`, so a bespoke field absent from it fails to compile.
@@ -700,5 +708,26 @@ export function CategoryEditor({
         </AlertDialogContent>
       </AlertDialog>
     </>
+  );
+}
+
+/**
+ * The form keeps its own copy of the block (see `HeldBlockView`): on a
+ * hosted v8 draft a block the draft no longer has shows as deleted.
+ */
+export function CategoryEditor(
+  props: Parameters<typeof CategoryEditorForm>[0],
+) {
+  return (
+    <HeldBlockView
+      orgSlug={props.orgSlug}
+      virtualMcpId={props.virtualMcpId}
+      branch={props.branch}
+      blockKey={props.blockKey}
+      present={props.block !== undefined}
+      remount={false}
+    >
+      <CategoryEditorForm {...props} />
+    </HeldBlockView>
   );
 }

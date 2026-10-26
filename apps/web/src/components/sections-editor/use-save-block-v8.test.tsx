@@ -158,7 +158,10 @@ mock.module("./named-rule-conflict", () => ({
   },
 }));
 
-const { useSaveBlock } = await import("./use-save-block");
+const { useSaveBlock, useDebouncedSaveBlock } = await import(
+  "./use-save-block"
+);
+const { useCopyEpochs } = await import("./held-copy");
 const { useDeleteBlock } = await import("./use-delete-block");
 const { useMoveBlocks } = await import("./use-move-blocks");
 
@@ -655,6 +658,177 @@ describe("every hosted v8 save is guarded by the draft (no guard of its own)", (
       expect((failure as BlockConflictError).carriedStored).toBe(carried);
     }
   });
+});
+
+describe("an editor that keeps its own copy (holdsCopy) is guarded by the copy it shows", () => {
+  /**
+   * The editor opened Hero at h1 ("loaded"); its hook is mounted then, as
+   * an editor keyed by its block is.
+   */
+  function setupHeld() {
+    const { queryClient } = setup();
+    server.versions = { Hero: "h1" };
+    server.blocks = { Hero: { title: "loaded", body: "same" } };
+    queryClient.setQueryData(KEYS.decofile(CACHE_KEY), {
+      Hero: { title: "loaded", body: "same" },
+    });
+    draftHolds(queryClient, { Hero: "h1" });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    const { result } = renderHook(
+      () => ({
+        save: useSaveBlock(
+          { orgSlug: ORG, virtualMcpId: VM, branch: BRANCH },
+          { holdsCopy: true },
+        ),
+        epochOf: useCopyEpochs(`${ORG}/${VM}/${BRANCH}`),
+      }),
+      { wrapper },
+    );
+    return { queryClient, result };
+  }
+
+  /** Someone else saved Hero (h2) and the editor's poll read it. */
+  function theyChangedIt(queryClient: QueryClient, title = "theirs") {
+    server.blocks = { Hero: { title, body: "same" } };
+    server.versions = { Hero: "h2" };
+    queryClient.setQueryData(KEYS.decofile(CACHE_KEY), {
+      Hero: { title, body: "same" },
+    });
+    draftHolds(queryClient, { Hero: "h2" });
+  }
+
+  it("a poll that read someone else's change never lets the next keystroke overwrite it", async () => {
+    const { queryClient, result } = setupHeld();
+    server.draftInRefusal = true;
+    theyChangedIt(queryClient);
+    await act(async () => {
+      // The form still shows "loaded": the user edits the body.
+      await result.current.save.mutateAsync({
+        blockKey: "Hero",
+        data: { title: "loaded", body: "mine" },
+      });
+    });
+    // Guarded by the copy the form shows, refused, and merged: their title
+    // and the user's body, with nothing to ask.
+    expect(server.applied.map((p) => p.ifMatch)).toEqual([
+      { Hero: "h1" },
+      { Hero: "h2" },
+    ]);
+    expect(asked.fields).toEqual([]);
+    expect(server.blocks.Hero).toEqual({ title: "theirs", body: "mine" });
+  });
+
+  it("a value both changed asks, with the copy the form loaded as the ancestor", async () => {
+    const { queryClient, result } = setupHeld();
+    server.draftInRefusal = true;
+    theyChangedIt(queryClient);
+    await act(async () => {
+      await result.current.save.mutateAsync({
+        blockKey: "Hero",
+        data: { title: "mine", body: "same" },
+      });
+    });
+    expect(asked.fields.map((f) => [f.pointer, f.mine, f.theirs])).toEqual([
+      ["/title", "mine", "theirs"],
+    ]);
+    expect(server.blocks.Hero).toEqual({ title: "mine", body: "same" });
+  });
+
+  it("its own confirmed saves move the version it holds", async () => {
+    const { result } = setupHeld();
+    await act(async () => {
+      await result.current.save.mutateAsync({
+        blockKey: "Hero",
+        data: { title: "one", body: "same" },
+      });
+      await result.current.save.mutateAsync({
+        blockKey: "Hero",
+        data: { title: "two", body: "same" },
+      });
+    });
+    expect(server.applied.map((p) => p.ifMatch)).toEqual([
+      { Hero: "h1" },
+      { Hero: "h1+" },
+    ]);
+  });
+
+  for (const outcome of ["theirs", "deleted", "merged"] as const) {
+    it(`the editor is told to show what the draft holds after the reconcile (${outcome}), and its old copy can't overwrite it`, async () => {
+      const { queryClient, result } = setupHeld();
+      server.draftInRefusal = true;
+      if (outcome === "deleted") {
+        server.blocks = {};
+        server.versions = { Hero: "tombstone" };
+        draftHolds(queryClient, {}, ["Hero"]);
+      } else {
+        theyChangedIt(queryClient);
+      }
+      asked.choice = "theirs";
+      const before = result.current.epochOf("Hero");
+      await act(async () => {
+        await result.current.save.mutateAsync({
+          blockKey: "Hero",
+          data:
+            outcome === "merged"
+              ? { title: "loaded", body: "mine" }
+              : { title: "mine", body: "same" },
+        });
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      });
+      // The form remounts from the draft's copy (or its deleted state).
+      expect(result.current.epochOf("Hero")).toBe(before + 1);
+      const applied = server.applied.length;
+      // A keystroke still pending in the old form is refused, never written
+      // over the result unasked.
+      asked.choice = "theirs";
+      await act(async () => {
+        await result.current.save.mutateAsync({
+          blockKey: "Hero",
+          data: { title: "stale", body: "same" },
+        });
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      });
+      expect(server.applied[applied]?.ifMatch).toEqual({ Hero: "h1" });
+      expect(server.blocks.Hero).toEqual(
+        outcome === "deleted"
+          ? undefined
+          : outcome === "merged"
+            ? { title: "theirs", body: "mine" }
+            : { title: "theirs", body: "same" },
+      );
+    });
+  }
+});
+
+describe("a debounced editor keeping its own copy (hosted v8)", () => {
+  for (const holdsCopy of [true, false]) {
+    it(`an edit still pending when the form unmounts is ${holdsCopy ? "saved (and reconciled), never dropped" : "dropped, as before"}`, async () => {
+      const { queryClient } = setup();
+      server.versions = { Hero: "h1" };
+      draftHolds(queryClient, { Hero: "h1" });
+      const wrapper = ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={queryClient}>
+          {children}
+        </QueryClientProvider>
+      );
+      const { result, unmount } = renderHook(
+        () =>
+          useDebouncedSaveBlock(
+            { orgSlug: ORG, virtualMcpId: VM, branch: BRANCH },
+            { holdsCopy },
+          ),
+        { wrapper },
+      );
+      act(() => result.current.save("Hero", { title: "pending" }));
+      unmount();
+      await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+      expect(server.applied.map((p) => p.ifMatch)).toEqual(
+        holdsCopy ? [{ Hero: "h1" }] : [],
+      );
+    });
+  }
 });
 
 describe("every hosted blocks.apply carries a precondition per block", () => {

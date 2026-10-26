@@ -21,11 +21,23 @@ const AUTOSAVE_DELAY = 700;
 export function useAutosave<T>(
   initial: T,
   save: (value: T) => void,
-  opts?: { delay?: number; isSaving?: boolean },
+  opts?: {
+    delay?: number;
+    isSaving?: boolean;
+    /**
+     * The draft was seeded from `initial` (on mount, and on each re-seed):
+     * an editor keeping its own copy records which copy it now shows
+     * (`useSaveBlock`'s `hold`).
+     */
+    onSeed?: () => void;
+  },
 ): readonly [T, (next: T) => void, (next: T) => void, boolean] {
   const delay = opts?.delay ?? AUTOSAVE_DELAY;
   const isSaving = opts?.isSaving ?? false;
-  const [draft, setDraft] = useState<T>(initial);
+  const [draft, setDraft] = useState<T>(() => {
+    opts?.onSeed?.();
+    return initial;
+  });
   const [seeded, setSeeded] = useState<T>(initial);
   // `pending` mirrors "a debounced save is scheduled" as state so the re-seed
   // below can read it during render — the timer id itself stays in a ref
@@ -36,7 +48,10 @@ export function useAutosave<T>(
   // Re-seed from external `initial` only once edits settle — not while a save is in flight, whose older echo would revert a newer edit.
   if (initial !== seeded) {
     setSeeded(initial);
-    if (!pending && !isSaving) setDraft(initial);
+    if (!pending && !isSaving) {
+      setDraft(initial);
+      opts?.onSeed?.();
+    }
   }
 
   const update = (next: T) => {

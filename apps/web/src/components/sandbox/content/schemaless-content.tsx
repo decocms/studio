@@ -459,6 +459,8 @@ export function SchemalessContent({
   decofile,
   onChange,
   onLeaveBlock,
+  onOpenBlock,
+  copyEpochOf,
   initialKey = null,
   compact = false,
 }: {
@@ -467,6 +469,13 @@ export function SchemalessContent({
   onChange: (blockKey: string, next: JsonRecord) => void;
   /** Leaving a block: the caller saves what's pending. */
   onLeaveBlock?: () => void;
+  /** Opening another block: its form is seeded from `decofile` now. */
+  onOpenBlock?: (blockKey: string) => void;
+  /**
+   * How many times a block's copy was replaced under the form (a reconcile):
+   * the open block's form is seeded again from `decofile` when it changes.
+   */
+  copyEpochOf?: (blockKey: string) => number;
   initialKey?: string | null;
   compact?: boolean;
 }) {
@@ -478,6 +487,7 @@ export function SchemalessContent({
   const select = (key: string | null) => {
     if (key === selected) return;
     onLeaveBlock?.();
+    if (key !== null) onOpenBlock?.(key);
     setSelected(key);
   };
   const block = selected ? decofile[selected] : undefined;
@@ -578,7 +588,7 @@ export function SchemalessContent({
   const editor =
     selected && isRecord(block) ? (
       <SchemalessBlockEditor
-        key={selected}
+        key={`${selected}:${copyEpochOf?.(selected) ?? 0}`}
         blockKey={selected}
         block={block}
         onChange={onChange}

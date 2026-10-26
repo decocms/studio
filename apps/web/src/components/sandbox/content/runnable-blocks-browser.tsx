@@ -29,6 +29,7 @@ import {
   RunnableBlockEditor,
   type RunnableTarget,
 } from "./runnable-block-editor";
+import { HeldBlockView } from "./held-block-view";
 import {
   listAvailableRunnables,
   listSavedRunnables,
@@ -258,23 +259,33 @@ export function RunnableBlocksBrowser({
   const target = buildTarget(selection, decofile);
 
   if (target) {
+    const editorKey = `${target.mode}:${target.mode === "saved" ? target.blockKey : target.resolveType}`;
     return (
-      <RunnableBlockEditor
-        key={`${target.mode}:${target.mode === "saved" ? target.blockKey : target.resolveType}`}
+      <HeldBlockView
+        key={editorKey}
         orgSlug={orgSlug}
         virtualMcpId={virtualMcpId}
         branch={branch}
-        previewUrl={previewUrl}
-        meta={meta}
-        decofile={decofile}
-        kind={kind}
-        target={target.editorTarget}
-        initialValue={target.initialValue}
-        isCreating={saveBlock.isPending}
-        onCreate={handleCreate}
-        onSaveReferencedBlock={saveReferencedBlock}
-        onBack={() => setSelection(null)}
-      />
+        blockKey={(target.mode === "saved" && target.blockKey) || ""}
+        present={undefined}
+      >
+        <RunnableBlockEditor
+          key={editorKey}
+          orgSlug={orgSlug}
+          virtualMcpId={virtualMcpId}
+          branch={branch}
+          previewUrl={previewUrl}
+          meta={meta}
+          decofile={decofile}
+          kind={kind}
+          target={target.editorTarget}
+          initialValue={target.initialValue}
+          isCreating={saveBlock.isPending}
+          onCreate={handleCreate}
+          onSaveReferencedBlock={saveReferencedBlock}
+          onBack={() => setSelection(null)}
+        />
+      </HeldBlockView>
     );
   }
 

@@ -149,15 +149,56 @@ function draftBlockVersion(
     KEYS.contentChanges(cacheKey),
   );
   if (!listed) return undefined;
+  return draftVersionIn(
+    listed,
+    draftTombstones(queryClient, cacheKey),
+    blockKey,
+  );
+}
+
+/** `blockKey`'s version in a hosted draft as `listed` and `tombstones` say. */
+function draftVersionIn(
+  listed: ContentChanges,
+  tombstones: Set<string>,
+  blockKey: string,
+): string | null {
   const change = draftChangeOf(listed, blockKey);
   // A deletion is in the draft: its tombstone is its version.
   if (change?.kind === "delete") {
     return change.version ?? DRAFT_TOMBSTONE_VERSION;
   }
   if (change) return change.version;
-  return draftTombstones(queryClient, cacheKey).has(spellingKey(blockKey))
-    ? DRAFT_TOMBSTONE_VERSION
-    : null;
+  return tombstones.has(spellingKey(blockKey)) ? DRAFT_TOMBSTONE_VERSION : null;
+}
+
+/** The blocks an editor shows, and each one's version in the hosted draft. */
+export interface DraftCopies {
+  blocks: Record<string, unknown>;
+  versionOf: (blockKey: string) => string | null;
+}
+
+/**
+ * The hosted draft's blocks and versions as the editor holds them now, kept
+ * as they are (the cache's entries are replaced, never changed, by later
+ * reads and writes). Null before both the content and the draft's changes
+ * were read.
+ */
+export function draftCopiesNow(
+  queryClient: QueryClient,
+  cacheKey: string,
+): DraftCopies | null {
+  const blocks = queryClient.getQueryData<Record<string, unknown>>(
+    KEYS.decofile(cacheKey),
+  );
+  const listed = queryClient.getQueryData<ContentChanges>(
+    KEYS.contentChanges(cacheKey),
+  );
+  if (!blocks || !listed) return null;
+  const tombstones = draftTombstones(queryClient, cacheKey);
+  return {
+    blocks,
+    versionOf: (blockKey) => draftVersionIn(listed, tombstones, blockKey),
+  };
 }
 
 function draftTombstones(

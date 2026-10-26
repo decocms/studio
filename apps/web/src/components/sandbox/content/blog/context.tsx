@@ -155,7 +155,11 @@ export function BlogContext({
   const storedContext = asBlock(decofile[CONTEXT_BLOCK_KEY]);
   const t = useT();
   const studio = useStudioTools();
-  const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
+  // The forms keep their own copies: hosted saves are guarded by them.
+  const save = useSaveBlock(
+    { orgSlug, virtualMcpId, branch },
+    { holdsCopy: true },
+  );
   /** Every button here spends org credits, so none of them work without a provider. */
   const hasAi = useHostedAiProviderKeys().length > 0;
   const hideDefaultBlocks = useHideDefaultBlogBlocks();
@@ -167,12 +171,16 @@ export function BlogContext({
    * the fields the block owns happens on the way out instead, which is also
    * what makes a legacy brand block shed the rules it no longer owns.
    */
-  const [brand, setBrand] = useAutosave(storedBrand, (next) => {
-    save.mutate({
-      blockKey: BRAND_BLOCK_KEY,
-      data: brandBlockToSave(next, storedBrand, decofile[CONTEXT_BLOCK_KEY]),
-    });
-  });
+  const [brand, setBrand] = useAutosave(
+    storedBrand,
+    (next) => {
+      save.mutate({
+        blockKey: BRAND_BLOCK_KEY,
+        data: brandBlockToSave(next, storedBrand, decofile[CONTEXT_BLOCK_KEY]),
+      });
+    },
+    { onSeed: () => save.hold(BRAND_BLOCK_KEY) },
+  );
 
   /**
    * The writing rules. Before the split they lived in the brand block, so that
@@ -186,6 +194,7 @@ export function BlogContext({
         data: pickBlogFields(next, CONTEXT_FIELDS),
       });
     },
+    { onSeed: () => save.hold(CONTEXT_BLOCK_KEY) },
   );
 
   const setField = (key: string, value: unknown) =>
@@ -200,6 +209,7 @@ export function BlogContext({
   const [formatsData, setFormatsData] = useAutosave(
     formatsBlock ?? EMPTY_FORMATS,
     (next) => save.mutate({ blockKey: FORMATS_BLOCK_KEY, data: next }),
+    { onSeed: () => save.hold(FORMATS_BLOCK_KEY) },
   );
   const formats = normalizeBrandRules(formatsData.formats);
   const setFormats = (rules: BrandRule[]) =>

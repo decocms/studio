@@ -1,4 +1,4 @@
-import { type Ref, useImperativeHandle } from "react";
+import { type Ref, useImperativeHandle, useState } from "react";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { X } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -8,6 +8,10 @@ import { useChatTask } from "@/components/chat/context";
 import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
 import { useDecofile } from "@/components/sections-editor/use-decofile";
 import { useDebouncedSaveBlock } from "@/components/sections-editor/use-save-block";
+import {
+  copyScope,
+  useCopyEpochs,
+} from "@/components/sections-editor/held-copy";
 import { usePackagePath } from "@/components/sections-editor/use-package-path";
 import { decoBlockFilePath } from "@/components/sections-editor/deco-block-key";
 import { decoRepoPath } from "@/components/sections-editor/deco-repo-path";
@@ -60,11 +64,25 @@ export function PageJsonPanel({
     : null;
 
   const decofile = useDecofile(fetchParams);
-  const { save, flush } = useDebouncedSaveBlock({
-    orgSlug: org.slug,
-    virtualMcpId,
-    branch: currentBranch ?? "",
-  });
+  // The JSON is the editor's own copy: hosted saves are guarded by it, and
+  // a reconcile seeds it again from the draft's copy.
+  const { save, flush, hold } = useDebouncedSaveBlock(
+    { orgSlug: org.slug, virtualMcpId, branch: currentBranch ?? "" },
+    { holdsCopy: true },
+  );
+  const copyEpoch = useCopyEpochs(
+    copyScope({
+      orgSlug: org.slug,
+      virtualMcpId,
+      branch: currentBranch ?? "",
+    }),
+  )(pageKey);
+  // Another page opened: its JSON is seeded from the draft's copy now.
+  const [heldPage, setHeldPage] = useState(pageKey);
+  if (heldPage !== pageKey) {
+    setHeldPage(pageKey);
+    hold(pageKey);
+  }
 
   const pageData = decofile.data?.[pageKey];
   // Waits for which editor this site gets too, so its header doesn't swap.
@@ -139,7 +157,7 @@ export function PageJsonPanel({
         <div className="min-h-0 flex-1">
           <MonacoCodeEditor
             // Remount from the freshest snapshot once the decofile read lands.
-            key={`${pageKey}:${decofile.data === undefined ? "loading" : "ready"}`}
+            key={`${pageKey}:${decofile.data === undefined ? "loading" : "ready"}:${copyEpoch}`}
             code={initialJson}
             language="json"
             readOnly={readOnly}
