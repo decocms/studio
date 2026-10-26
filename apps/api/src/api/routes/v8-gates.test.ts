@@ -728,4 +728,108 @@ describe("decofile routes", () => {
       projects.get("p1")?.metadata?.[BLOCKS_MAJOR_METADATA_KEY],
     ).toBeUndefined();
   });
+
+  describe("a hosted v8 save (blocks.apply alone)", () => {
+    const rpc = (app: Hono<Env>, body: unknown, headers = {}) =>
+      app.request("/decofile/p1/main/rpc", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-deco-main-schema": "v8",
+          ...headers,
+        },
+        body: JSON.stringify(body),
+      });
+    const apply = (params: Record<string, unknown>, id = 1) => ({
+      jsonrpc: "2.0",
+      id,
+      method: "blocks.apply",
+      params,
+    });
+
+    it("makes no GitHub call: no repository client, no default branch, no schema", async () => {
+      const { app, repo, delivery } = setup({ blocksMajor: 8 }, v8Files, {
+        p1: ORG,
+      });
+      const res = await rpc(
+        app,
+        apply({
+          set: { "pages-home": { __resolveType: "page", title: "draft" } },
+          delete: ["Gone"],
+          ifMatch: { "pages-home": null, Gone: null },
+        }),
+      );
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        result?: { revision: string; versions: Record<string, unknown> };
+      };
+      expect(body.result?.versions).toEqual({
+        "pages-home": expect.any(String),
+        Gone: null,
+      });
+      expect(body.result?.revision).toMatch(/^~/);
+      expect(repo.opened()).toBe(0);
+      expect(repo.calls).toEqual([]);
+      const [key] = await delivery.store.listKeys("sites/acme/drafts/");
+      expect(JSON.parse(delivery.objects.get(key!)!.text)).toEqual({
+        set: { "pages-home": { __resolveType: "page", title: "draft" } },
+        delete: ["Gone"],
+      });
+      // A batch of saves is a save too.
+      const batch = await rpc(app, [
+        apply({ set: { a: { v: 1 } } }, 1),
+        apply({ set: { b: { v: 2 } } }, 2),
+      ]);
+      expect(batch.status).toBe(200);
+      expect(repo.calls).toEqual([]);
+    });
+
+    it("a guard the draft no longer meets is a Conflict, still with no GitHub call", async () => {
+      const { app, repo } = setup({ blocksMajor: 8 }, v8Files, { p1: ORG });
+      await rpc(app, apply({ set: { "pages-home": { v: 1 } } }));
+      const res = await rpc(
+        app,
+        apply({
+          set: { "pages-home": { v: 2 } },
+          ifMatch: { "pages-home": null },
+        }),
+      );
+      const body = (await res.json()) as { error?: { code: number } };
+      // The protocol's Conflict.
+      expect(body.error?.code).toBe(-32002);
+      expect(repo.calls).toEqual([]);
+    });
+
+    it("reads go on through main with the draft on top", async () => {
+      const { app, repo } = setup({ blocksMajor: 8 }, v8Files, { p1: ORG });
+      await rpc(app, apply({ set: { New: { v: 1 } } }));
+      expect(repo.calls).toEqual([]);
+      const res = await rpc(app, {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "blocks.list",
+      });
+      const body = (await res.json()) as {
+        result: { blocks: Record<string, unknown> };
+      };
+      expect(Object.keys(body.result.blocks).sort()).toEqual([
+        "New",
+        "pages-home",
+      ]);
+      expect(repo.opened()).toBeGreaterThan(0);
+    });
+
+    it("an unmarked project, or a request without the editor's main answer, reads main first", async () => {
+      const unmarked = setup({}, v8Files, { p1: ORG });
+      await rpc(unmarked.app, apply({ set: { New: { v: 1 } } }));
+      expect(unmarked.repo.opened()).toBeGreaterThan(0);
+      const noHeader = setup({ blocksMajor: 8 }, v8Files, { p1: ORG });
+      await noHeader.app.request("/decofile/p1/main/rpc", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(apply({ set: { New: { v: 1 } } })),
+      });
+      expect(noHeader.repo.opened()).toBeGreaterThan(0);
+    });
+  });
 });

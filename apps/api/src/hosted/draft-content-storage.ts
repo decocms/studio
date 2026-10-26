@@ -1,29 +1,33 @@
 /**
- * The site editor's content-protocol storage for a hosted v8 project on
- * GitHub: the default branch's saved blocks with the project's CDN draft
- * layered on top, the way the site's SDK layers it for a preview.
+ * The site editor's content-protocol storages for a hosted v8 project on
+ * GitHub. The draft is one object on the delivery bucket, `{ set, delete }`:
+ * whole blocks, and the names it deletes.
  *
- * - A draft `set` name replaces every spelling of that name with one file,
- *   `blockFileName(name)`; a `delete` name hides every spelling.
- * - The revision is `<main head>~<draft ETag>` (`~none` without a draft), so
- *   a save or a new main commit is a new revision.
- * - A commit edits the draft, never git: put X sets `set[X]` and drops X from
- *   `delete`; deleting X that exists on main moves it to `delete`; deleting a
- *   draft-only X just drops it from `set`. Putting X back to exactly main's
- *   content drops X from the draft instead of keeping a copy, which would
- *   hide a later change on main and never let the draft be empty. A save
- *   honours `expected` against the draft it lands on (inside the draft
- *   store's conditional write, so across API processes too): a guarded
- *   block someone saved meanwhile makes the attempt `stale`, and the core
- *   reads again and answers a Conflict only if the guard really fails. The
- *   schema is still checked against main's.
- * - The base (`changes.*`) is main's head: the changes are the files the
- *   draft makes differ from main, which are the draft's own names (a `set`
- *   byte-equal to main's one file isn't a change). A discard
- *   (`reason: "discard"`) drops the discarded names from the draft
- *   altogether, so main's files show through again, whatever their bytes
- *   (main may hold a file that isn't valid JSON) or spellings. It honours
- *   `expected` inside the draft lock and `expectedBase` against main's head.
+ * Two storages over it:
+ *
+ * - {@link createDraftContentStorage}, what the editor reads (the form, the
+ *   poll, the changes, a discard): the default branch's saved blocks read
+ *   through the GitHub API, with the draft layered on top, the way the
+ *   site's SDK layers a draft for a preview. A draft `set` name replaces
+ *   every spelling of that name with one file, `blockFileName(name)`; a
+ *   `delete` name hides every spelling. The changes (`changes.*`) are the
+ *   draft's own names, against main's head.
+ * - {@link createDraftWriteStorage}, what a save (`blocks.apply`) goes
+ *   through: the draft alone, never GitHub, never a schema. A save writes
+ *   the whole block into the draft, over whatever the draft had for it; a
+ *   delete writes the name into `delete`. Its guards (`ifMatch`) compare
+ *   with the draft: a block's version is its version in the draft, `null`
+ *   when the draft doesn't hold it (main's copy is not the draft's).
+ *
+ * The revision is `<main head>~<draft ETag>` (`hostedRevision`), so a save
+ * or a new main commit is a new revision. A save, which never reads main,
+ * answers an empty main part.
+ *
+ * Every draft write is conditional on the draft as read (the draft store's
+ * If-Match), and the guards are checked on the draft it lands on, so two
+ * saves of different blocks landing together on different API processes
+ * are both kept, and two of the same block: the last writer wins unless it
+ * is guarded.
  */
 
 import {
@@ -43,48 +47,35 @@ import {
   spellingKey,
   unsupported,
 } from "@decocms/blocks/protocol";
+import { hostedRevision } from "@decocms/shared/blocks-major";
 import type { RepoContentClient } from "@/git-providers";
 import { gitBlobSha } from "@/decofile/read-decofile";
 import { createRepoContentReader } from "@/decofile/repo-content-storage";
 import { bareEtag, ObjectChangedError } from "./delivery-store";
-import type { DraftBody, DraftStore, HostedDraftRef } from "./draft-store";
+import type {
+  DraftBody,
+  DraftStore,
+  HostedDraftRef,
+  LoadedDraft,
+} from "./draft-store";
 
 /** The spelling group (fully decoded name) a saved-block file belongs to. */
 function groupOf(file: string): string {
   return fullyDecodeFileName(file).name;
 }
 
-/** Equal JSON values, whatever the key order. */
-function sameJson(a: unknown, b: unknown): boolean {
-  if (a === b) return true;
-  if (typeof a !== "object" || typeof b !== "object" || !a || !b) return false;
-  if (Array.isArray(a) !== Array.isArray(b)) return false;
-  const ka = Object.keys(a);
-  const kb = Object.keys(b);
-  if (ka.length !== kb.length) return false;
-  return ka.every(
-    (k) =>
-      Object.hasOwn(b, k) &&
-      sameJson(
-        (a as Record<string, unknown>)[k],
-        (b as Record<string, unknown>)[k],
-      ),
-  );
-}
-
 function draftRevision(mainSha: string, etag: string | null): string {
-  return `${mainSha}~${bareEtag(etag) ?? "none"}`;
+  return hostedRevision(mainSha, bareEtag(etag));
 }
 
-/** Main's files with the draft layered on; returns the draft files' texts too. */
-function layerDraftFiles(
-  mainFiles: StorageFile[],
-  draft: DraftBody,
-): { files: StorageFile[]; texts: Map<string, string> } {
-  const touched = new Set(
-    [...Object.keys(draft.set), ...draft.delete].map(spellingKey),
-  );
-  const files = mainFiles.filter((f) => !touched.has(groupOf(f.file)));
+const EMPTY_DRAFT: DraftBody = { set: {}, delete: [] };
+
+/** The draft's own block files (its `set`), with their texts. */
+function draftFiles(draft: DraftBody): {
+  files: StorageFile[];
+  texts: Map<string, string>;
+} {
+  const files: StorageFile[] = [];
   const texts = new Map<string, string>();
   for (const [name, entry] of Object.entries(draft.set)) {
     const file = blockFileName(name);
@@ -99,16 +90,34 @@ function layerDraftFiles(
   return { files, texts };
 }
 
+/** Main's files with the draft layered on; returns the draft files' texts too. */
+function layerDraftFiles(
+  mainFiles: StorageFile[],
+  draft: DraftBody,
+): { files: StorageFile[]; texts: Map<string, string> } {
+  const touched = new Set(
+    [...Object.keys(draft.set), ...draft.delete].map(spellingKey),
+  );
+  const own = draftFiles(draft);
+  return {
+    files: [
+      ...mainFiles.filter((f) => !touched.has(groupOf(f.file))),
+      ...own.files,
+    ],
+    texts: own.texts,
+  };
+}
+
 /**
- * The draft after one commit attempt (see the module note). `mainGroups` are
- * the spelling groups that exist on main; `sameAsMain`, the put groups whose
- * content is exactly main's.
+ * The draft after one save (see the module note): a put sets the block,
+ * whole, under the name written, dropping every other spelling of it and a
+ * pending delete; a delete drops the name from `set` and records it in
+ * `delete` (a name main doesn't have is harmless there: nothing to hide,
+ * nothing to publish).
  */
 export function applyAttemptToDraft(
   draft: DraftBody,
   attempt: { put: Record<string, string>; delete: string[] },
-  mainGroups: ReadonlySet<string>,
-  sameAsMain: ReadonlySet<string> = new Set(),
 ): DraftBody {
   const set = { ...draft.set };
   const deleted = new Set(draft.delete);
@@ -125,7 +134,6 @@ export function applyAttemptToDraft(
     const group = groupOf(file);
     putGroups.add(group);
     dropGroup(group);
-    if (sameAsMain.has(group)) continue;
     set[blockNameFromFile(file)] = JSON.parse(content) as unknown;
   }
   for (const file of attempt.delete) {
@@ -133,7 +141,7 @@ export function applyAttemptToDraft(
     // The core deletes a written name's other spellings in the same attempt.
     if (putGroups.has(group)) continue;
     dropGroup(group);
-    if (mainGroups.has(group)) deleted.add(blockNameFromFile(file));
+    deleted.add(blockNameFromFile(file));
   }
   return {
     set: Object.fromEntries(Object.entries(set)),
@@ -156,39 +164,20 @@ function dropGroupsFromDraft(
   };
 }
 
-/** The files of `snapshot` that differ from `base`, by version (git blob sha). */
-function filesChangedFrom(
-  base: StorageSnapshot,
-  snapshot: StorageSnapshot,
-): string[] {
-  const inBase = new Map(base.files.map((f) => [f.file, f.version]));
-  const inSnapshot = new Set(snapshot.files.map((f) => f.file));
-  const files = snapshot.files
-    .filter((f) => inBase.get(f.file) !== f.version)
-    .map((f) => f.file);
-  for (const file of inBase.keys()) {
-    if (!inSnapshot.has(file)) files.push(file);
-  }
-  return files.sort();
-}
-
 /** Thrown inside the draft lock when an attempt's `expected` versions moved. */
 const STALE_DRAFT = Symbol("stale draft");
 
 /**
- * Throws {@link STALE_DRAFT} unless every `expected` file is, in `body`
- * layered on main's `baseFiles`, at the version expected (`null`: absent).
+ * Throws {@link STALE_DRAFT} unless every `expected` file is in `files` at
+ * the version expected (`null`: absent).
  */
 function checkExpected(
-  baseFiles: StorageFile[],
-  body: DraftBody,
+  files: StorageFile[],
   expected: Record<string, string | null>,
 ) {
   const entries = Object.entries(expected);
   if (entries.length === 0) return;
-  const now = new Map(
-    layerDraftFiles(baseFiles, body).files.map((f) => [f.file, f.version]),
-  );
+  const now = new Map(files.map((f) => [f.file, f.version]));
   for (const [file, version] of entries) {
     if ((now.get(file) ?? null) !== version) throw STALE_DRAFT;
   }
@@ -197,6 +186,125 @@ function checkExpected(
 /** A draft write that lost a race: the core reads again and retries. */
 function isStaleWrite(error: unknown): boolean {
   return error === STALE_DRAFT || error instanceof ObjectChangedError;
+}
+
+function describeGit(packagePath: string | null): StorageDescription {
+  return {
+    kind: "git",
+    root: packagePath ?? ".",
+    readOnly: false,
+    // Uploads go to Studio's own file storage, never into the repository.
+    assets: null,
+  };
+}
+
+/** The versions a save answers: each written block's, as the draft holds it. */
+function putVersions(put: Record<string, string>): Record<string, string> {
+  const versions: Record<string, string> = {};
+  for (const [file, content] of Object.entries(put)) {
+    versions[file] = gitBlobSha(serializeBlock(JSON.parse(content)));
+  }
+  return versions;
+}
+
+/**
+ * A version no draft file has: what a name the draft doesn't hold shows as
+ * in the write storage's listing while a save deletes it (see
+ * {@link createDraftWriteStorage}'s `deletes`).
+ */
+const NOT_IN_DRAFT = "not-in-draft";
+
+/**
+ * The storage a hosted save (`blocks.apply`) runs on: the draft alone (see
+ * the module note). It never reads GitHub or a schema, so a save costs one
+ * read and one conditional write of the draft object.
+ *
+ * `deletes`: names the save deletes that the draft doesn't hold (blocks
+ * only main has, as the caller found the draft in `loaded`). The protocol's
+ * core only deletes a name its listing has, so the listing shows each of
+ * them as a file at {@link NOT_IN_DRAFT}; the caller drops their
+ * "must not exist" guard, which the draft meets (`hostedApplyRequest`).
+ */
+export function createDraftWriteStorage(options: {
+  packagePath: string | null;
+  drafts: DraftStore;
+  ref: HostedDraftRef;
+  /** The draft as the caller read it, for the first listing. */
+  loaded?: LoadedDraft | null;
+  deletes?: readonly string[];
+}): ContentStorage {
+  const { drafts, ref } = options;
+  let preloaded = options.loaded;
+  const texts = new Map<string, Map<string, string>>();
+  const load = async () => {
+    if (preloaded !== undefined) {
+      const draft = preloaded;
+      preloaded = undefined;
+      return draft;
+    }
+    return drafts.load(ref);
+  };
+  const notMain = (): never => {
+    throw unsupported("a save reads the draft only");
+  };
+
+  return {
+    describe: () => describeGit(options.packagePath),
+
+    snapshot: async (): Promise<StorageSnapshot> => {
+      const draft = await load();
+      const body = draft?.body ?? EMPTY_DRAFT;
+      const own = draftFiles(body);
+      const held = new Set(Object.keys(body.set).map(spellingKey));
+      const absent = (options.deletes ?? [])
+        .filter((name) => !held.has(spellingKey(name)))
+        .map((name) => ({ file: blockFileName(name), version: NOT_IN_DRAFT }));
+      const revision = draftRevision("", draft?.etag ?? null);
+      texts.set(revision, own.texts);
+      return {
+        revision,
+        resolvedRef: null,
+        files: [...own.files, ...absent],
+      };
+    },
+
+    readFiles: async (snap, files) => {
+      const own = texts.get(snap.revision) ?? new Map<string, string>();
+      const out: Record<string, StoredFileBody> = {};
+      for (const file of files) {
+        const text = own.get(file);
+        if (text !== undefined) out[file] = { text, version: gitBlobSha(text) };
+      }
+      return out;
+    },
+
+    // No schema: nothing about a save depends on one.
+    readSchema: async () => null,
+    readSecretsPublicKey: async () => null,
+
+    commit: async (attempt): Promise<CommitResult> => {
+      if (attempt.reason === "discard") notMain();
+      const versions = putVersions(attempt.put);
+      try {
+        const saved = await drafts.update(ref, (body) => {
+          checkExpected(draftFiles(body).files, attempt.expected);
+          return applyAttemptToDraft(body, attempt);
+        });
+        return {
+          status: "committed",
+          revision: draftRevision("", saved.etag),
+          versions,
+        };
+      } catch (error) {
+        if (isStaleWrite(error)) return { status: "stale" };
+        throw error;
+      }
+    },
+
+    base: async () => notMain(),
+    changes: async () => notMain(),
+    readBaseFiles: async () => notMain(),
+  };
 }
 
 export function createDraftContentStorage(options: {
@@ -213,8 +321,11 @@ export function createDraftContentStorage(options: {
     packagePath: options.packagePath,
     branch: options.mainBranch,
   });
-  /** Draft file texts of the snapshots this storage handed out. */
-  const draftTexts = new Map<string, Map<string, string>>();
+  /** The drafts (and their files' texts) of the snapshots handed out. */
+  const layered = new Map<
+    string,
+    { body: DraftBody; texts: Map<string, string> }
+  >();
   /** Main's listings by commit sha (immutable), from this storage's reads. */
   const mainListings = new Map<string, StorageSnapshot>();
   const mainAt = async (base: StorageBase): Promise<StorageSnapshot> => {
@@ -234,52 +345,11 @@ export function createDraftContentStorage(options: {
       drafts.load(ref),
     ]);
     mainListings.set(base.revision, base);
-    const { files, texts } = layerDraftFiles(
-      base.files,
-      draft?.body ?? { set: {}, delete: [] },
-    );
+    const body = draft?.body ?? EMPTY_DRAFT;
+    const { files, texts } = layerDraftFiles(base.files, body);
     const revision = draftRevision(base.revision, draft?.etag ?? null);
-    draftTexts.set(revision, texts);
+    layered.set(revision, { body, texts });
     return { revision, resolvedRef: base.resolvedRef, files };
-  };
-
-  /**
-   * The put groups whose content equals main's one file for that name: byte
-   * for byte by blob sha (as the Publish compares them), else as JSON values
-   * (main's file may be formatted or ordered otherwise).
-   */
-  const groupsSameAsMain = async (
-    base: StorageSnapshot,
-    put: Record<string, string>,
-  ): Promise<Map<string, StorageFile>> => {
-    const same = new Map<string, StorageFile>();
-    const toRead: Array<{ group: string; main: StorageFile; value: unknown }> =
-      [];
-    for (const [file, content] of Object.entries(put)) {
-      const group = groupOf(file);
-      const onMain = base.files.filter((f) => groupOf(f.file) === group);
-      if (onMain.length !== 1) continue;
-      const value: unknown = JSON.parse(content);
-      const mainFile = onMain[0]!;
-      if (mainFile.version === gitBlobSha(serializeBlock(value))) {
-        same.set(group, mainFile);
-      } else toRead.push({ group, main: mainFile, value });
-    }
-    if (toRead.length === 0) return same;
-    const bodies = await main.readFiles(
-      base,
-      toRead.map((r) => r.main.file),
-    );
-    for (const { group, main: mainFile, value } of toRead) {
-      const body = bodies[mainFile.file]?.text;
-      if (body === undefined) continue;
-      try {
-        if (sameJson(JSON.parse(body), value)) same.set(group, mainFile);
-      } catch {
-        // Main's file isn't JSON: never equal to a block.
-      }
-    }
-    return same;
   };
 
   /**
@@ -303,7 +373,10 @@ export function createDraftContentStorage(options: {
     );
     try {
       const saved = await drafts.update(ref, (body) => {
-        checkExpected(base.files, body, attempt.expected);
+        checkExpected(
+          layerDraftFiles(base.files, body).files,
+          attempt.expected,
+        );
         return dropGroupsFromDraft(body, groups);
       });
       return {
@@ -318,21 +391,13 @@ export function createDraftContentStorage(options: {
   };
 
   return {
-    describe(): StorageDescription {
-      const description = {
-        kind: "git" as const,
-        root: options.packagePath ?? ".",
-        readOnly: false,
-        // Uploads go to Studio's own file storage, never into the repository.
-        assets: null,
-      };
-      return description;
-    },
+    describe: () => describeGit(options.packagePath),
 
     snapshot,
 
     readFiles: async (snap, files) => {
-      const texts = draftTexts.get(snap.revision) ?? new Map<string, string>();
+      const texts =
+        layered.get(snap.revision)?.texts ?? new Map<string, string>();
       const out: Record<string, StoredFileBody> = {};
       const fromMain: string[] = [];
       for (const file of files) {
@@ -347,34 +412,47 @@ export function createDraftContentStorage(options: {
     },
 
     readSchema: () => main.readSchema(),
-    readSecretsPublicKey: () => main.readSecretsPublicKey(),
+    // Secrets live in the deploy platform, never in a v8 site's content.
+    readSecretsPublicKey: async () => null,
 
     base: async (): Promise<StorageBase> => {
       const head = await main.head();
       return { revision: head.sha, resolvedRef: head.ref };
     },
 
+    /**
+     * The draft's own names, each one a change even when it holds main's
+     * content (the list is the draft, decision of the hosted editor), and
+     * main's files of the names it touches. A delete of a name main doesn't
+     * have hides nothing: not a change.
+     */
     changes: async (base, snap): Promise<StorageChanges> => {
       const onMain = await mainAt(base);
-      return {
-        files: filesChangedFrom(onMain, snap),
-        baseFiles: onMain.files,
-      };
+      const body =
+        layered.get(snap.revision)?.body ??
+        (await drafts.load(ref))?.body ??
+        EMPTY_DRAFT;
+      const mainGroups = new Set(onMain.files.map((f) => groupOf(f.file)));
+      const touched = new Set([
+        ...Object.keys(body.set).map(spellingKey),
+        ...body.delete.map(spellingKey).filter((g) => mainGroups.has(g)),
+      ]);
+      const files = new Set(Object.keys(body.set).map(blockFileName));
+      for (const f of onMain.files) {
+        if (touched.has(groupOf(f.file))) files.add(f.file);
+      }
+      return { files: [...files].sort(), baseFiles: onMain.files };
     },
 
     readBaseFiles: async (base, files) =>
       main.readFiles(await mainAt(base), files),
 
+    /**
+     * A discard (`changes.discard`), or a save batched with reads (an editor
+     * sends its saves alone, through {@link createDraftWriteStorage}): the
+     * same draft write, its guards checked on main with the draft on top.
+     */
     commit: async (attempt): Promise<CommitResult> => {
-      // Never write a v7 site through the protocol, even by a direct call.
-      const schema = await main.readSchema();
-      if (!schema) throw unsupported("not a Blocks v8 site");
-      if (
-        attempt.expectedSchemaVersion !== undefined &&
-        schema.version !== attempt.expectedSchemaVersion
-      ) {
-        return { status: "stale" };
-      }
       const base = await main.snapshot();
       mainListings.set(base.revision, base);
       if (
@@ -384,45 +462,24 @@ export function createDraftContentStorage(options: {
         return { status: "stale" };
       }
       if (attempt.reason === "discard") return discard(base, attempt);
-      const mainGroups = new Set(base.files.map((f) => groupOf(f.file)));
-      const versions: Record<string, string> = {};
-      for (const [file, content] of Object.entries(attempt.put)) {
-        versions[file] = gitBlobSha(serializeBlock(JSON.parse(content)));
-      }
-      if (Object.keys(attempt.put).length + attempt.delete.length === 0) {
-        const current = await drafts.load(ref);
+      const versions = putVersions(attempt.put);
+      try {
+        const saved = await drafts.update(ref, (body) => {
+          checkExpected(
+            layerDraftFiles(base.files, body).files,
+            attempt.expected,
+          );
+          return applyAttemptToDraft(body, attempt);
+        });
         return {
           status: "committed",
-          revision: draftRevision(base.revision, current?.etag ?? null),
+          revision: draftRevision(base.revision, saved.etag),
           versions,
         };
-      }
-      const sameAsMain = await groupsSameAsMain(base, attempt.put);
-      // What the layered read now serves for those names is main's file.
-      for (const file of Object.keys(attempt.put)) {
-        const mainFile = sameAsMain.get(groupOf(file));
-        if (mainFile?.file === file) versions[file] = mainFile.version;
-      }
-      let saved: Awaited<ReturnType<DraftStore["update"]>>;
-      try {
-        saved = await drafts.update(ref, (body) => {
-          checkExpected(base.files, body, attempt.expected);
-          return applyAttemptToDraft(
-            body,
-            attempt,
-            mainGroups,
-            new Set(sameAsMain.keys()),
-          );
-        });
       } catch (error) {
         if (isStaleWrite(error)) return { status: "stale" };
         throw error;
       }
-      return {
-        status: "committed",
-        revision: draftRevision(base.revision, saved.etag),
-        versions,
-      };
     },
   };
 }

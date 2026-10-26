@@ -12,8 +12,8 @@
  * with the repository on the local GitHub stub (see fixtures/fast-preview.ts)
  * and the delivery bucket on its stub (fixtures/delivery-stub-server.ts). The
  * cases below it cover what's specific to this backend: v8 detection, auth,
- * saves into the CDN draft (never git), v7 secret blocks left in a migrated
- * site, the `?__draft=` pointer the site revalidates with ETags, publish and
+ * saves into the CDN draft (never git; an editor's save, with its main-answer
+ * header, reads the draft alone), v7 secret blocks left in a migrated site, the `?__draft=` pointer the site revalidates with ETags, publish and
  * releases, site tokens, and the editor's v7/v8 detection: only a committed
  * schema with `"blocksMajor": 8` is a v8 site, in any org (no flag).
  */
@@ -27,7 +27,6 @@ import type {
 import { createServer } from "node:http";
 import { runConformance } from "@decocms/blocks/protocol/conformance";
 import { isV8Schema } from "@decocms/shared/blocks-major";
-import { publicKeyPemFromDer } from "@decocms/shared/secret-ciphertext";
 import { signUpViaApi } from "../fixtures/auth-api";
 import {
   createFastPreviewProject,
@@ -73,20 +72,13 @@ async function deliveryObjects(
   >;
 }
 
-const SECRET_BLOCK = "newsletter";
-const SECRET_FIELD = "apiKey";
-
-/**
- * A small v8 schema (deco-meta@1, `"blocksMajor": 8` as `deco schema` writes
- * it) with a block type that has a Secret field.
- */
+/** A small v8 schema (deco-meta@1, `"blocksMajor": 8` as `deco schema` writes it). */
 const schema = {
   blocksMajor: 8,
   manifest: {
     blocks: {
       sections: {
         hero: { $ref: "#/definitions/aGVybw==" },
-        [SECRET_BLOCK]: { $ref: "#/definitions/bmV3c2xldHRlcg==" },
       },
     },
   },
@@ -96,32 +88,9 @@ const schema = {
         type: "object",
         properties: { title: { type: "string" } },
       },
-      "bmV3c2xldHRlcg==": {
-        type: "object",
-        properties: {
-          listId: { type: "string" },
-          [SECRET_FIELD]: { type: "string", format: "secret" },
-        },
-      },
     },
   },
 };
-
-async function generatePublicKeyPem(): Promise<string> {
-  const pair = (await crypto.subtle.generateKey(
-    {
-      name: "RSA-OAEP",
-      modulusLength: 2048,
-      publicExponent: new Uint8Array([1, 0, 1]),
-      hash: "SHA-256",
-    },
-    true,
-    ["encrypt", "decrypt"],
-  )) as CryptoKeyPair;
-  return publicKeyPemFromDer(
-    new Uint8Array(await crypto.subtle.exportKey("spki", pair.publicKey)),
-  );
-}
 
 const rpcPath = (p: FastPreviewProject, branch: string) =>
   `/api/${p.org}/decofile/${p.vmcpId}/${branch}/rpc`;
@@ -242,10 +211,8 @@ test.describe("content protocol on GitHub", () => {
     test.setTimeout(10 * 60_000);
     const ctx = await newApiContext(playwright);
     try {
-      const publicKey = await generatePublicKeyPem();
       const project = await setUp(ctx, {
         ".deco/schema.gen.json": JSON.stringify(schema),
-        ".deco/secrets.pub": publicKey,
         ".deco/blocks/hero-home.json": '{"__resolveType":"hero"}\n',
       });
       expect(await refreshV8(ctx, project)).toBe(true);
@@ -253,8 +220,6 @@ test.describe("content protocol on GitHub", () => {
       const report = await runConformance({
         endpoint: `${getE2EAppOrigin()}${rpcPath(project, "main")}`,
         fetch: contextFetch(ctx),
-        secretField: { blockType: SECRET_BLOCK, field: SECRET_FIELD },
-        secretsPublicKey: publicKey,
         // On main and untouched: the changes.* cases modify and restore it.
         baseEntry: { name: "hero-home" },
       });
@@ -360,6 +325,30 @@ test.describe("content protocol on GitHub", () => {
       expect(
         (after.result as { blocks?: Record<string, unknown> }).blocks,
       ).not.toHaveProperty("promo");
+
+      // The editor's own save (its main-answer header) reads the draft
+      // alone: guarded by the draft's version, answered with no main part.
+      const retitled = { __resolveType: "hero", title: "Again" };
+      const saved = await ctx.post(path, {
+        headers: { "x-deco-main-schema": "v8" },
+        data: {
+          jsonrpc: "2.0",
+          id: 1,
+          method: "blocks.apply",
+          params: {
+            set: { "hero-home": retitled },
+            ifMatch: { "hero-home": applied.result?.versions["hero-home"] },
+          },
+        },
+      });
+      const savedBody = (await saved.json()) as {
+        result?: BlocksApplyResult;
+      };
+      expect(savedBody.result?.revision).toMatch(/^~/);
+      const again = await rpc<BlocksListResult>(ctx, path, "blocks.list");
+      expect(again.result).toMatchObject({
+        blocks: { "hero-home": retitled },
+      });
     } finally {
       await ctx.dispose();
     }
@@ -509,8 +498,10 @@ test.describe("content protocol on GitHub", () => {
       const headBefore = (await inspectStubRepo(ctx, project.owner, "site"))
         .refs;
 
-      // An open editor (acting on v8) saves within the gate's minute: the
-      // storage checks main's schema itself, so nothing is saved or committed.
+      // An open editor (acting on v8) saves within the gate's minute: a save
+      // reads the draft alone (never main), so it lands in the draft, which
+      // a v7 site never reads, and nothing is committed. Its next read of
+      // main is told main changed.
       const saved = await ctx.post(path, {
         headers: { "x-deco-main-schema": "v8" },
         data: {
@@ -523,9 +514,6 @@ test.describe("content protocol on GitHub", () => {
         },
       });
       expect(saved.status()).toBe(200);
-      expect(
-        ((await saved.json()) as { error?: { code: number } }).error?.code,
-      ).toBe(-32006);
       expect((await inspectStubRepo(ctx, project.owner, "site")).refs).toEqual(
         headBefore,
       );

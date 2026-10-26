@@ -3,11 +3,18 @@ import { serializeBlock } from "@decocms/blocks/protocol";
 import { defineConformanceSuite } from "@decocms/blocks/protocol/conformance";
 import { createContentHandler } from "@decocms/blocks/protocol/server";
 import { deliveryKeys } from "./delivery-store";
+import { gitBlobSha } from "@/decofile/read-decofile";
 import {
   applyAttemptToDraft,
   createDraftContentStorage,
+  createDraftWriteStorage,
 } from "./draft-content-storage";
-import { createDraftStore, type HostedDraftRef } from "./draft-store";
+import { applyOnlyCalls, planDraftSave } from "./draft-save-request";
+import {
+  createDraftStore,
+  type DraftStore,
+  type HostedDraftRef,
+} from "./draft-store";
 import {
   fakeRepo,
   heldPuts,
@@ -47,78 +54,55 @@ function setup() {
 }
 
 describe("applyAttemptToDraft", () => {
-  const main = new Set(["Home", "Footer"]);
-
   it("puts set the block and lift a pending delete", () => {
     const next = applyAttemptToDraft(
       { set: {}, delete: ["Home"] },
       { put: { "Home.json": '{"a":1}' }, delete: [] },
-      main,
     );
     expect(next).toEqual({ set: { Home: { a: 1 } }, delete: [] });
   });
 
-  it("deleting a main block moves it to delete; a draft-only one just goes", () => {
+  it("a delete drops the name from set and records it in delete", () => {
     const next = applyAttemptToDraft(
       { set: { Home: { a: 1 }, New: { b: 2 } }, delete: [] },
       { put: {}, delete: ["Home.json", "New.json"] },
-      main,
     );
-    expect(next).toEqual({ set: {}, delete: ["Home"] });
+    expect(next).toEqual({ set: {}, delete: ["Home", "New"] });
   });
 
-  it("a put of main's own content drops the name from the draft", () => {
+  it("a put keeps the whole block, even main's own content", () => {
     const next = applyAttemptToDraft(
       { set: { Home: { a: 1 }, Footer: { b: 2 } }, delete: [] },
       { put: { "Home.json": '{"a":0}' }, delete: [] },
-      main,
-      new Set(["Home"]),
     );
-    expect(next).toEqual({ set: { Footer: { b: 2 } }, delete: [] });
+    expect(next).toEqual({
+      set: { Home: { a: 0 }, Footer: { b: 2 } },
+      delete: [],
+    });
   });
 
   it("ignores the shadow-spelling deletes of a written name", () => {
     const next = applyAttemptToDraft(
       { set: {}, delete: [] },
       { put: { "a%20b.json": '{"x":1}' }, delete: ["a%2520b.json"] },
-      new Set(["a b"]),
     );
     expect(next).toEqual({ set: { "a b": { x: 1 } }, delete: [] });
   });
 });
 
 describe("createDraftContentStorage", () => {
-  it("a save of main's own content leaves no draft entry", async () => {
+  it("a save of main's own content stays in the draft: the save is the block, whole", async () => {
     const { storage, drafts } = setup();
-    const snap = await storage.snapshot();
     await storage.commit({
-      base: snap,
-      put: {
-        "Home.json": serializeBlock({ path: "/", title: "draft" }),
-        "Footer.json": serializeBlock({ links: ["x"] }),
-      },
-      delete: [],
-      expected: {},
-    });
-    const edited = await storage.snapshot();
-    // Key order differs from main's file: still main's content.
-    await storage.commit({
-      base: edited,
+      base: await storage.snapshot(),
       put: { "Home.json": JSON.stringify({ title: "main", path: "/" }) },
       delete: [],
       expected: {},
     });
     expect((await drafts.load(REF))?.body).toEqual({
-      set: { Footer: { links: ["x"] } },
+      set: { Home: { path: "/", title: "main" } },
       delete: [],
     });
-    await storage.commit({
-      base: await storage.snapshot(),
-      put: { "Footer.json": serializeBlock({ links: [] }) },
-      delete: [],
-      expected: {},
-    });
-    expect((await drafts.load(REF))?.body).toEqual({ set: {}, delete: [] });
   });
 
   it("a discard (changes.discard) removes the entry: the read is main as it is now, and follows main when it moves", async () => {
@@ -218,39 +202,6 @@ describe("createDraftContentStorage", () => {
     expect(result.status).toBe("committed");
     const files = (await storage.snapshot()).files.map((f) => f.file).sort();
     expect(files).toEqual(["A.json", "B.json", "Footer.json", "Home.json"]);
-  });
-
-  it("is stale when main's schema changed under the save", async () => {
-    const { storage } = setup();
-    const result = await storage.commit({
-      base: await storage.snapshot(),
-      put: { "A.json": "{}" },
-      delete: [],
-      expected: {},
-      expectedSchemaVersion: "another",
-    });
-    expect(result).toEqual({ status: "stale" });
-  });
-
-  it("refuses to write a site whose main isn't v8", async () => {
-    const repo = fakeRepo({ ".deco/blocks/Home.json": "{}" });
-    const delivery = memoryDeliveryStore();
-    const storage = createDraftContentStorage({
-      client: repo.client,
-      packagePath: null,
-      mainBranch: "main",
-      drafts: createDraftStore({ kv: memoryKv(), store: delivery.store }),
-      ref: REF,
-    });
-    await expect(
-      storage.commit({
-        base: await storage.snapshot(),
-        put: { "A.json": "{}" },
-        delete: [],
-        expected: {},
-      }),
-    ).rejects.toThrow();
-    expect(delivery.objects.size).toBe(0);
   });
 });
 
@@ -360,7 +311,7 @@ describe("hosted draft storage: conformance, main as the base", () => {
 });
 
 describe("hosted draft storage: changes against main", () => {
-  it("lists the draft's names: sets, deletes, and a set equal to main is no change", async () => {
+  it("lists the draft's names: sets, deletes, and a set equal to main too", async () => {
     const { repo, storage } = setup();
     await call(storage, "blocks.apply", {
       set: { Home: { path: "/", title: "draft" }, New: { v: 1 } },
@@ -395,13 +346,13 @@ describe("hosted draft storage: changes against main", () => {
       before: { links: [] },
       after: null,
     });
-    // Main's own content back: not a change, and gone from the draft.
+    // Main's own content back: still the draft's, so still listed.
     await call(storage, "blocks.apply", {
       set: { Home: { path: "/", title: "main" } },
     });
     expect(
       Object.keys((await call(storage, "changes.list")).result.changes),
-    ).toEqual(["Footer", "New"]);
+    ).toEqual(["Footer", "Home", "New"]);
   });
 
   it("discards back to main, dropping the names from the draft", async () => {
@@ -618,5 +569,228 @@ describe("hosted draft storage: saves from several API processes", () => {
     });
     const after = (await call(one, "blocks.list")).result;
     expect(after.blocks.Home).toEqual({ path: "/", t: "theirs" });
+  });
+});
+
+/** A save as the route serves it: the draft alone (`serveDraftSave`). */
+async function save(
+  drafts: DraftStore,
+  params: Record<string, unknown>,
+  ref: HostedDraftRef = REF,
+) {
+  const body = { jsonrpc: "2.0", id: 1, method: "blocks.apply", params };
+  const loaded = await drafts.load(ref);
+  const plan = planDraftSave(
+    body,
+    applyOnlyCalls(body)!,
+    loaded?.body ?? { set: {}, delete: [] },
+  );
+  const res = await createContentHandler(
+    createDraftWriteStorage({
+      packagePath: null,
+      drafts,
+      ref,
+      loaded,
+      deletes: plan.deletes,
+    }),
+    { server: { name: "studio-github", version: "1" }, bodyCacheBytes: 0 },
+  )(
+    new Request("http://studio.test/rpc", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(plan.body),
+    }),
+  );
+  // biome-ignore lint/suspicious/noExplicitAny: protocol results are asserted per test
+  return (await res.json()) as { result?: any; error?: any };
+}
+
+describe("hosted draft saves: the draft alone", () => {
+  it("writes the whole block into the draft, over what the draft had", async () => {
+    const { drafts } = setup();
+    await save(drafts, { set: { Home: { path: "/", title: "a", x: 1 } } });
+    const saved = await save(drafts, {
+      set: { Home: { path: "/", title: "b" } },
+    });
+    expect(saved.error).toBeUndefined();
+    expect((await drafts.load(REF))?.body).toEqual({
+      set: { Home: { path: "/", title: "b" } },
+      delete: [],
+    });
+    // The version is the block's as the draft holds it; the revision's main
+    // part is empty: a save never reads main.
+    expect(saved.result.versions.Home).toBe(
+      gitBlobSha(serializeBlock({ path: "/", title: "b" })),
+    );
+    const etag = (await drafts.load(REF))!.etag!.replaceAll('"', "");
+    expect(saved.result.revision).toBe(`~${etag}`);
+  });
+
+  it("a block the draft doesn't hold is guarded by null, even when main has it", async () => {
+    const { drafts } = setup();
+    // Home is on main, not in the draft: "must not exist in the draft yet".
+    const first = await save(drafts, {
+      set: { Home: { path: "/", title: "draft" } },
+      ifMatch: { Home: null },
+    });
+    expect(first.error).toBeUndefined();
+    // Now it is in the draft: a second "must not exist" is a Conflict...
+    const stale = await save(drafts, {
+      set: { Home: { path: "/", title: "other" } },
+      ifMatch: { Home: null },
+    });
+    expect(stale.error).toMatchObject({
+      data: {
+        entries: {
+          Home: { expected: null, actual: first.result.versions.Home },
+        },
+      },
+    });
+    // ...and the draft's version is the guard that holds.
+    const next = await save(drafts, {
+      set: { Home: { path: "/", title: "mine" } },
+      ifMatch: { Home: first.result.versions.Home },
+    });
+    expect(next.error).toBeUndefined();
+    expect((await drafts.load(REF))?.body.set.Home).toEqual({
+      path: "/",
+      title: "mine",
+    });
+  });
+
+  it("a version the draft doesn't hold is a Conflict (someone published or discarded it)", async () => {
+    const { drafts } = setup();
+    const saved = await save(drafts, {
+      set: { Footer: { links: [] } },
+      ifMatch: { Footer: "an-old-version" },
+    });
+    expect(saved.error).toMatchObject({
+      data: {
+        entries: { Footer: { expected: "an-old-version", actual: null } },
+      },
+    });
+    expect(await drafts.load(REF)).toBeNull();
+  });
+
+  it("deletes a block only main has, guarded or not, into the draft's delete", async () => {
+    const { drafts } = setup();
+    const guarded = await save(drafts, {
+      delete: ["Footer"],
+      ifMatch: { Footer: null },
+    });
+    expect(guarded.error).toBeUndefined();
+    expect(guarded.result.versions).toEqual({ Footer: null });
+    expect((await drafts.load(REF))?.body).toEqual({
+      set: {},
+      delete: ["Footer"],
+    });
+    await save(drafts, { delete: ["Home"] });
+    expect((await drafts.load(REF))?.body.delete).toEqual(["Footer", "Home"]);
+    // A delete guarded by a version the draft doesn't hold writes nothing.
+    const stale = await save(drafts, {
+      delete: ["Other"],
+      ifMatch: { Other: "v1" },
+    });
+    expect(stale.error?.data?.entries?.Other).toEqual({
+      expected: "v1",
+      actual: null,
+    });
+    expect((await drafts.load(REF))?.body.delete).toEqual(["Footer", "Home"]);
+  });
+
+  it("a rename (set the new name, delete the old) lands in one write", async () => {
+    const { drafts } = setup();
+    const saved = await save(drafts, {
+      set: { Bottom: { links: [] } },
+      delete: ["Footer"],
+      ifMatch: { Bottom: null, Footer: null },
+    });
+    expect(saved.error).toBeUndefined();
+    expect((await drafts.load(REF))?.body).toEqual({
+      set: { Bottom: { links: [] } },
+      delete: ["Footer"],
+    });
+  });
+
+  it("reads nothing but the draft: no repository at all", async () => {
+    const delivery = memoryDeliveryStore();
+    const drafts = createDraftStore({ kv: memoryKv(), store: delivery.store });
+    const saved = await save(drafts, { set: { A: { v: 1 } } });
+    expect(saved.error).toBeUndefined();
+    expect(delivery.log).toEqual([
+      expect.stringMatching(/^put sites\/acme\/drafts\//),
+    ]);
+  });
+
+  it("two saves of different blocks on two API processes at once both land", async () => {
+    const { delivery } = setup();
+    const kv = memoryKv();
+    const one = createDraftStore({ kv, store: delivery.store });
+    await save(one, { set: { Home: { path: "/", t: 0 } } });
+    const held = heldPuts(delivery.store);
+    const { createDraftStore: createOther } = await otherApiProcess();
+    const two = createOther({ kv, store: held.store });
+    held.hold();
+    const campaigns = save(two, {
+      set: { campaigns: { start: "2027" } },
+      ifMatch: { campaigns: null },
+    });
+    await held.atPut;
+    const home = await save(one, { set: { Home: { path: "/", t: 1 } } });
+    held.release();
+    expect(home.error).toBeUndefined();
+    expect((await campaigns).error).toBeUndefined();
+    expect((await one.load(REF))?.body.set).toEqual({
+      Home: { path: "/", t: 1 },
+      campaigns: { start: "2027" },
+    });
+  });
+
+  it("the same block from two processes at once: a guarded one is a Conflict, never an overwrite", async () => {
+    const { delivery } = setup();
+    const kv = memoryKv();
+    const one = createDraftStore({ kv, store: delivery.store });
+    const first = await save(one, { set: { Home: { path: "/", t: 0 } } });
+    const held = heldPuts(delivery.store);
+    const { createDraftStore: createOther } = await otherApiProcess();
+    const two = createOther({ kv, store: held.store });
+    held.hold();
+    const mine = save(two, {
+      set: { Home: { path: "/", t: "mine" } },
+      ifMatch: { Home: first.result.versions.Home },
+    });
+    await held.atPut;
+    const theirs = await save(one, {
+      set: { Home: { path: "/", t: "theirs" } },
+      ifMatch: { Home: first.result.versions.Home },
+    });
+    held.release();
+    expect(theirs.error).toBeUndefined();
+    expect((await mine).error?.data?.entries?.Home).toEqual({
+      expected: first.result.versions.Home,
+      actual: theirs.result.versions.Home,
+    });
+    expect((await one.load(REF))?.body.set.Home).toEqual({
+      path: "/",
+      t: "theirs",
+    });
+  });
+
+  it("the layered read lists every draft name, main's content or not", async () => {
+    const { drafts, storage } = setup();
+    await save(drafts, {
+      set: { Home: { path: "/", title: "main" }, New: { v: 1 } },
+      delete: ["Footer", "Gone"],
+    });
+    const listed = await call(storage, "changes.list");
+    // Gone isn't on main: its delete hides nothing.
+    expect(Object.keys(listed.result.changes)).toEqual([
+      "Footer",
+      "Home",
+      "New",
+    ]);
+    expect(listed.result.changes.Home.version).toBe(
+      listed.result.changes.Home.baseVersion,
+    );
   });
 });

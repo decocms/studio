@@ -11,6 +11,7 @@ import {
   SCHEMA_TEXT,
 } from "./hosted-test-helpers";
 import {
+  draftNamesChangedOnMain,
   type HostedRepo,
   MainMovedError,
   publishDraft,
@@ -175,20 +176,54 @@ describe("publishDraft", () => {
     expect(await drafts.load(REF)).toEqual(saved);
   });
 
-  it("fails and keeps the draft when main moved under the commit", async () => {
+  it("builds the commit again when main moved under it: the draft block wins over the developer's change", async () => {
+    const { git, drafts, repo } = setup();
+    await drafts.update(REF, () => ({
+      set: { Home: { path: "/", title: "draft" } },
+      delete: [],
+    }));
+    const commitFiles = git.client.commitFiles;
+    let pushed = false;
+    git.client.commitFiles = async (params) => {
+      if (!pushed) {
+        pushed = true;
+        git.pushDirect({
+          ".deco/blocks/Home.json": serializeBlock({ path: "/", title: "dev" }),
+          ".deco/blocks/Race.json": "{}\n",
+        });
+      }
+      return commitFiles(params);
+    };
+    const result = await publishDraft(repo, drafts, REF, {
+      message: "",
+      coAuthor: null,
+    });
+    expect(result).toMatchObject({ result: "merged", release: "current" });
+    const files = git.filesAt("main");
+    expect(JSON.parse(files[".deco/blocks/Home.json"]!)).toEqual({
+      path: "/",
+      title: "draft",
+    });
+    // The developer's other change is kept.
+    expect(files[".deco/blocks/Race.json"]).toBe("{}\n");
+  });
+
+  it("fails and keeps the draft when main keeps moving under every attempt", async () => {
     const { git, delivery, drafts, repo } = setup();
     const saved = await drafts.update(REF, () => ({
       set: { New: { a: 1 } },
       delete: [],
     }));
     const commitFiles = git.client.commitFiles;
+    let n = 0;
     git.client.commitFiles = async (params) => {
-      git.pushDirect({ ".deco/blocks/Race.json": "{}\n" });
+      git.pushDirect({ [`.deco/blocks/Race${++n}.json`]: "{}\n" });
       return commitFiles(params);
     };
     await expect(
       publishDraft(repo, drafts, REF, { message: "", coAuthor: null }),
     ).rejects.toThrow(MainMovedError);
+    expect(n).toBe(3);
     expect(await drafts.load(REF)).toEqual(saved);
     expect(await readLatest(delivery.store, "acme")).toBeNull();
   });
@@ -562,5 +597,28 @@ describe("publishDraft", () => {
     expect(
       await publishDraft(repo, drafts, REF, { message: "", coAuthor: null }),
     ).toEqual({ result: "up-to-date" });
+  });
+});
+
+describe('draftNamesChangedOnMain (the review\'s "your developer also changed")', () => {
+  it("names the draft's blocks main changed since the live release, nothing else", async () => {
+    const { git, drafts, repo } = setup();
+    const draft = {
+      set: { Home: { path: "/", title: "draft" }, New: { v: 1 } },
+      delete: ["Old"],
+    };
+    // No live release yet: nothing to compare with.
+    expect(await draftNamesChangedOnMain(repo, draft)).toEqual([]);
+    await drafts.update(REF, () => ({ set: { Seed: { v: 0 } }, delete: [] }));
+    await publishDraft(repo, drafts, REF, { message: "", coAuthor: null });
+    // Main is the live release.
+    expect(await draftNamesChangedOnMain(repo, draft)).toEqual([]);
+    git.pushDirect({
+      ".deco/blocks/Home.json": serializeBlock({ path: "/", title: "dev" }),
+      ".deco/blocks/Other.json": serializeBlock({ v: 2 }),
+    });
+    expect(await draftNamesChangedOnMain(repo, draft)).toEqual(["Home"]);
+    git.pushDirect({ ".deco/blocks/Old.json": null });
+    expect(await draftNamesChangedOnMain(repo, draft)).toEqual(["Home", "Old"]);
   });
 });

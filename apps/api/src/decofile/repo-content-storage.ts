@@ -1,6 +1,6 @@
 /**
  * The read side of the content protocol over a project's Git repository: the
- * file list, file bodies, schema and secrets key of one branch. The hosted v8
+ * file list, file bodies and schema of one branch. The hosted v8
  * editor (`hosted/draft-content-storage.ts`) reads the default branch through
  * it and layers the CDN draft on top; nothing here writes.
  *
@@ -31,7 +31,7 @@ import {
 /** What the hosted draft storage reads from the repository. */
 export type RepoContentReader = Pick<
   ContentStorage,
-  "snapshot" | "readFiles" | "readSchema" | "readSecretsPublicKey"
+  "snapshot" | "readFiles" | "readSchema"
 > & {
   /** The branch head (`snapshot`'s revision) and the branch actually read. */
   head(): Promise<{ sha: string; ref: string }>;
@@ -45,10 +45,6 @@ interface RepoContentStorageOptions {
   packagePath: string | null;
   /** The one branch this storage reads. */
   branch: string;
-}
-
-function decoPath(packagePath: string | null, file: string): string {
-  return packagePath ? `${packagePath}/.deco/${file}` : `.deco/${file}`;
 }
 
 /** Turns provider failures into the storage errors the core understands. */
@@ -164,18 +160,6 @@ export function createRepoContentReader(
         // A v7 site reads as schemaless, so the editor stays on the classic one.
         if (!isV8SchemaText(text)) return null;
         return { version: schema.entry.sha, text, resolvedRef: schema.ref };
-      }),
-
-    readSecretsPublicKey: () =>
-      guarded(async () => {
-        const head = await readHead();
-        const path = decoPath(packagePath, "secrets.pub");
-        const entry = (await client.getEntriesAtPaths(head.sha, [path])).get(
-          path,
-        );
-        return entry?.type === "blob"
-          ? readBlobText(entry.path, entry.sha)
-          : null;
       }),
   };
 }

@@ -1,7 +1,9 @@
 /**
  * Publish for a hosted v8 site:
  *
- *   1. commit the draft directly to main (fast-forward only, no PR);
+ *   1. commit the draft directly on main's head (fast-forward only, no PR),
+ *      every draft block whole, over whatever main has for it (built again
+ *      when main moves meanwhile);
  *   2. write the commit's companion release, the immutable
  *      sites/<site>/revisions/<commit>.json;
  *   3. make it current: write latest.json and purge its URL from Cloudflare's
@@ -253,8 +255,9 @@ async function draftFileChanges(
 /**
  * One fast-forward commit of `changes` (block files) on main from `headSha`,
  * with `.deco/blocks.gen.json` regenerated from `next` when the repo tracks
- * it. Main having moved is {@link MainMovedError}: nothing is committed, no
- * retry. Shared by Publish and Reapply version.
+ * it. Main having moved is {@link MainMovedError}: nothing is committed.
+ * Shared by Publish (which builds it again on the new head) and Reapply
+ * version.
  */
 export async function commitBlocksToMain(
   repo: HostedRepo,
@@ -286,30 +289,101 @@ export async function commitBlocksToMain(
     });
     return sha;
   } catch (error) {
-    // OPEN: O-9 — a non-fast-forward stops with "main moved", no retry.
+    // Main moved: the caller decides whether to build the commit again.
     if (error instanceof RepoWriteConflict) throw new MainMovedError();
     throw error;
   }
 }
 
+/** How often Publish rebuilds its commit on a main that moved meanwhile. */
+const PUBLISH_COMMIT_ATTEMPTS = 3;
+
 /**
- * Step 1: one fast-forward commit on main. Returns the commit sha, or null
- * when the draft changes nothing on main.
+ * Step 1: one fast-forward commit on main's head. Returns the commit sha, or
+ * null when the draft changes nothing on main. The whole draft block wins
+ * over main's copy, whoever changed it there. When main moves while the
+ * commit is built (a developer's push), it is built again on the new head,
+ * a few times, so Publish isn't refused for it.
  */
 async function commitDraftToMain(
   repo: HostedRepo,
   draft: DraftBody,
   message: string,
 ): Promise<string | null> {
-  const headSha = await requireBranchHead(repo.client, repo.mainBranch);
-  const { changes, tree, next } = await draftFileChanges(repo, headSha, draft);
-  if (changes.length === 0) return null;
-  return commitBlocksToMain(
-    repo,
-    headSha,
-    { changes, tree, next: next.values() },
-    message,
-  );
+  for (let attempt = 1; ; attempt++) {
+    const headSha = await requireBranchHead(repo.client, repo.mainBranch);
+    const { changes, tree, next } = await draftFileChanges(
+      repo,
+      headSha,
+      draft,
+    );
+    if (changes.length === 0) return null;
+    try {
+      return await commitBlocksToMain(
+        repo,
+        headSha,
+        { changes, tree, next: next.values() },
+        message,
+      );
+    } catch (error) {
+      if (
+        !(error instanceof MainMovedError) ||
+        attempt >= PUBLISH_COMMIT_ATTEMPTS
+      ) {
+        throw error;
+      }
+    }
+  }
+}
+
+/**
+ * The draft's names that main changed since the live release (latest.json's
+ * commit): a developer's commit touched their files. Publish keeps the
+ * draft's version of each (the review says so). Two tree listings, compared
+ * by blob sha; read for the review, never on a save. Empty without a live
+ * release, or when main's head is the live release.
+ */
+export async function draftNamesChangedOnMain(
+  repo: Pick<
+    HostedRepo,
+    "client" | "packagePath" | "mainBranch" | "store" | "site"
+  >,
+  draft: DraftBody,
+): Promise<string[]> {
+  const names = [...Object.keys(draft.set), ...draft.delete];
+  if (names.length === 0) return [];
+  const [head, latest] = await Promise.all([
+    requireBranchHead(repo.client, repo.mainBranch),
+    readLatest(repo.store, repo.site),
+  ]);
+  if (!latest || latest.revision === head) return [];
+  const prefix = `${blocksDirPath(repo.packagePath)}/`;
+  const groupsAt = async (sha: string) => {
+    const tree = await repo.client.listDecofileEntries(sha, repo.packagePath);
+    const groups = new Map<string, string[]>();
+    for (const entry of blockEntriesInTree(tree, repo.packagePath)) {
+      const group = fullyDecodeFileName(entry.path.slice(prefix.length)).name;
+      groups.set(group, [
+        ...(groups.get(group) ?? []),
+        `${entry.path}@${entry.sha}`,
+      ]);
+    }
+    return groups;
+  };
+  const [released, now] = await Promise.all([
+    groupsAt(latest.revision),
+    groupsAt(head),
+  ]);
+  const same = (a: string[] = [], b: string[] = []) =>
+    a.length === b.length && [...a].sort().join() === [...b].sort().join();
+  return [
+    ...new Set(
+      names.filter((name) => {
+        const group = spellingKey(name);
+        return !same(released.get(group), now.get(group));
+      }),
+    ),
+  ].sort();
 }
 
 /**

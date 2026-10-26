@@ -90,3 +90,26 @@ export const MAIN_SCHEMA_CHANGED = "main_schema_changed";
  * can't open here.
  */
 export const HOSTED_DELIVERY_UNCONFIGURED = "hosted_delivery_unconfigured";
+
+/**
+ * The content revision of a hosted v8 editor (Studio's content protocol on
+ * GitHub): `<main head sha>~<draft ETag>` (`none` without a draft), so a save
+ * or a new commit on main is a new revision. A save reads only the draft,
+ * never main: it answers an empty main part, and the editor keeps the main
+ * part of the revision it last read ({@link hostedRevisionParts}).
+ */
+export function hostedRevision(
+  mainSha: string,
+  draftEtag: string | null,
+): string {
+  return `${mainSha}~${draftEtag ?? "none"}`;
+}
+
+/** The two parts of a {@link hostedRevision}; null for any other revision. */
+export function hostedRevisionParts(
+  revision: string,
+): { main: string; draft: string } | null {
+  const at = revision.indexOf("~");
+  if (at < 0) return null;
+  return { main: revision.slice(0, at), draft: revision.slice(at + 1) };
+}
