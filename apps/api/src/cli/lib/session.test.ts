@@ -96,6 +96,20 @@ describe("per-studio session keying", () => {
 });
 
 describe("readSession", () => {
+  it("prefers the default studio's session when no target is given", async () => {
+    // "a.localhost" sorts before "studio.decocms.com" in the directory.
+    const local = { ...sample, target: "http://a.localhost" };
+    await writeSession(dir, local);
+    await writeSession(dir, sample);
+    expect(await readSession(dir)).toEqual(sample);
+  });
+
+  it("falls back to another studio's session when the default has none", async () => {
+    const local = { ...sample, target: "http://a.localhost" };
+    await writeSession(dir, local);
+    expect(await readSession(dir)).toEqual(local);
+  });
+
   it("returns null when the file does not exist", async () => {
     expect(await readSession(dir)).toBeNull();
   });
