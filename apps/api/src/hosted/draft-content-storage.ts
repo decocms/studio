@@ -49,6 +49,7 @@ import {
   spellingKey,
   unsupported,
 } from "@decocms/blocks/protocol";
+import * as blocksProtocol from "@decocms/blocks/protocol";
 import {
   DRAFT_TOMBSTONE_VERSION,
   hostedRevision,
@@ -75,6 +76,23 @@ function draftRevision(mainSha: string, etag: string | null): string {
 
 const EMPTY_DRAFT: DraftBody = { set: {}, delete: [] };
 
+/**
+ * `@decocms/blocks`' `TOMBSTONE_VERSION`, when the installed release has it
+ * (decocms/blocks#761, 767a3849: an overlay's recorded deletion is held,
+ * listed `deleted: true` at that version, and a commit answers it for each
+ * deletion it records). Null on a release without it (8.5): the write
+ * storage then lists a tombstone by its version alone and a delete answers
+ * none, as that core expects.
+ *
+ * TODO(decocms/blocks#761): once Studio depends on a blocks release with
+ * TOMBSTONE_VERSION, import it directly, drop this check and the
+ * `tombstoneVersion: null` path (and its test).
+ */
+const BLOCKS_TOMBSTONE_VERSION: string | null = (() => {
+  const version = (blocksProtocol as Record<string, unknown>).TOMBSTONE_VERSION;
+  return typeof version === "string" ? version : null;
+})();
+
 /** The draft's own block files (its `set`), with their texts. */
 function draftFiles(draft: DraftBody): {
   files: StorageFile[];
@@ -100,7 +118,11 @@ function draftFiles(draft: DraftBody): {
  * deletes, a tombstone at {@link DRAFT_TOMBSTONE_VERSION} (no body). A
  * deleted block is in the draft: "must not exist in the draft" fails on it.
  */
-function draftOverlayFiles(draft: DraftBody): {
+function draftOverlayFiles(
+  draft: DraftBody,
+  /** Lists tombstones `deleted: true` (see {@link BLOCKS_TOMBSTONE_VERSION}). */
+  markDeleted = false,
+): {
   files: StorageFile[];
   texts: Map<string, string>;
 } {
@@ -108,10 +130,13 @@ function draftOverlayFiles(draft: DraftBody): {
   const held = new Set(Object.keys(draft.set).map(spellingKey));
   const tombstones = draft.delete
     .filter((name) => !held.has(spellingKey(name)))
-    .map((name) => ({
-      file: blockFileName(name),
-      version: DRAFT_TOMBSTONE_VERSION,
-    }));
+    .map(
+      (name): StorageFile =>
+        Object.assign(
+          { file: blockFileName(name), version: DRAFT_TOMBSTONE_VERSION },
+          markDeleted ? { deleted: true as const } : {},
+        ),
+    );
   return { files: [...own.files, ...tombstones], texts: own.texts };
 }
 
@@ -283,8 +308,17 @@ export function createDraftWriteStorage(options: {
   /** The draft as the caller read it, for the first listing. */
   loaded?: LoadedDraft | null;
   deletes?: readonly string[];
+  /**
+   * The tombstone version the installed `@decocms/blocks` core knows, or
+   * null when it has none; {@link BLOCKS_TOMBSTONE_VERSION} by default.
+   */
+  tombstoneVersion?: string | null;
 }): ContentStorage {
   const { drafts, ref } = options;
+  const tombstoneVersion =
+    options.tombstoneVersion === undefined
+      ? BLOCKS_TOMBSTONE_VERSION
+      : options.tombstoneVersion;
   let preloaded = options.loaded;
   const texts = new Map<string, Map<string, string>>();
   const load = async () => {
@@ -305,7 +339,7 @@ export function createDraftWriteStorage(options: {
     snapshot: async (): Promise<StorageSnapshot> => {
       const draft = await load();
       const body = draft?.body ?? EMPTY_DRAFT;
-      const own = draftOverlayFiles(body);
+      const own = draftOverlayFiles(body, tombstoneVersion !== null);
       const held = new Set(
         [...Object.keys(body.set), ...body.delete].map(spellingKey),
       );
@@ -341,7 +375,18 @@ export function createDraftWriteStorage(options: {
       try {
         const saved = await drafts.update(ref, (body) => {
           checkOverlayExpected(body, attempt.expected);
-          return applyAttemptToDraft(body, attempt);
+          const next = applyAttemptToDraft(body, attempt);
+          // Each deletion the draft records answers the tombstone's version
+          // (Studio records one for every delete: a save can't see main).
+          if (tombstoneVersion !== null) {
+            const recorded = new Set(next.delete.map(spellingKey));
+            for (const file of attempt.delete) {
+              if (recorded.has(groupOf(file))) {
+                versions[file] = tombstoneVersion;
+              }
+            }
+          }
+          return next;
         });
         return {
           status: "committed",

@@ -892,3 +892,44 @@ describe("hosted draft saves: the draft alone", () => {
     );
   });
 });
+
+describe("the write storage's tombstones (blocks #761: TOMBSTONE_VERSION)", () => {
+  const TOMBSTONE = "tombstone";
+
+  async function deleteOnce(tombstoneVersion: string | null) {
+    const { drafts } = setup();
+    await drafts.update(REF, () => ({ set: {}, delete: ["Old"] }));
+    const storage = createDraftWriteStorage({
+      packagePath: null,
+      drafts,
+      ref: REF,
+      tombstoneVersion,
+    });
+    const listed = await storage.snapshot();
+    const committed = await storage.commit({
+      reason: "apply",
+      put: {},
+      delete: ["Gone.json"],
+      expected: {},
+    } as unknown as Parameters<typeof storage.commit>[0]);
+    return { listed, committed };
+  }
+
+  it("with a blocks release that has TOMBSTONE_VERSION: a tombstone is listed deleted, and a recorded delete answers its version", async () => {
+    const { listed, committed } = await deleteOnce(TOMBSTONE);
+    // `deleted` is blocks #761's StorageFile field (not in blocks 8.5's type).
+    expect(listed.files as unknown[]).toEqual([
+      { file: "Old.json", version: TOMBSTONE, deleted: true },
+    ]);
+    expect(committed).toMatchObject({
+      status: "committed",
+      versions: { "Gone.json": TOMBSTONE },
+    });
+  });
+
+  it("without it (blocks 8.5): the tombstone carries its version alone, and a delete answers none", async () => {
+    const { listed, committed } = await deleteOnce(null);
+    expect(listed.files).toEqual([{ file: "Old.json", version: TOMBSTONE }]);
+    expect(committed).toMatchObject({ status: "committed", versions: {} });
+  });
+});
