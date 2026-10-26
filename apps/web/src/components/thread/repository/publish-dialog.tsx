@@ -38,7 +38,7 @@ import { Suspense, useRef, useState, type ReactNode } from "react";
 import { QueryErrorResetBoundary, useQuery } from "@tanstack/react-query";
 import { KEYS } from "@/lib/query-keys";
 import { readHostedPublishReview } from "./hosted-publish-api";
-import { shownPublishList } from "./publish-hold";
+import { usePublishHold } from "./publish-hold";
 import { ErrorBoundary } from "@/components/error-boundary.tsx";
 import { useT, type TFunction } from "@/i18n/use-t.ts";
 import { authClient } from "@/lib/auth-client.ts";
@@ -715,23 +715,20 @@ function CmsPublishView({
   /**
    * A hosted Publish keeps showing the list it publishes until the dialog
    * closes on the published state; its end re-reads the emptied draft
-   * (publish-hold.ts). Taken when Publish is clicked, dropped when it ends.
+   * (publish-hold.ts). Taken when Publish is clicked, kept through the
+   * dialog's fade, released only when the Publish failed.
    */
   type ShownList = Pick<
     PublishSource,
     "summary" | "cardsPending" | "bodiesPending"
   >;
-  const [heldList, setHeldList] = useState<ShownList | null>(null);
   const liveList: ShownList = {
     summary: source.summary,
     cardsPending: source.cardsPending,
     bodiesPending: source.bodiesPending,
   };
-  const { summary, cardsPending, bodiesPending } = shownPublishList(
-    heldList,
-    liveList,
-    { hosted, publishing: heldList !== null },
-  );
+  const publishHold = usePublishHold(liveList, { hosted });
+  const { summary, cardsPending, bodiesPending } = publishHold.shown;
 
   /** The author's text once they type — until then the note is derived, so a
    *  change list that lands after mount still describes itself. */
@@ -1154,8 +1151,12 @@ function CmsPublishView({
                     variant={isReview ? "default" : "brand"}
                     className="flex-1"
                     onClick={() => {
-                      if (hosted) setHeldList(liveList);
-                      void submit().finally(() => setHeldList(null));
+                      publishHold.hold();
+                      // Kept through the close: released only when the
+                      // Publish failed and the dialog stays.
+                      void submit().then((published) => {
+                        if (published === false) publishHold.release();
+                      });
                     }}
                     disabled={!canSubmit}
                   >

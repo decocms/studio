@@ -1,15 +1,36 @@
+import { useState } from "react";
+
 /**
  * A hosted v8 Publish ends with a re-read of the content (the draft it just
- * emptied) before the dialog closes on the published state. Meanwhile the
- * dialog keeps showing the list it publishes, as it was when Publish
- * started, rather than going blank for the re-read. Every other Publish
- * renders the live list, as before.
+ * emptied), and the dialog then closes on the published state with a fade.
+ * Through all of it the dialog keeps showing the list it publishes, as it
+ * was when Publish was clicked, rather than an empty review: the held list
+ * is never dropped when the Publish ends, only released when it failed
+ * (the dialog stays open with what the draft holds now). The dialog's
+ * content unmounts once closed, so the next opening starts from the live
+ * list. Every other Publish renders the live list, as before.
  */
 export function shownPublishList<T>(
-  /** The list as it was when Publish started; null before any. */
+  /** The list as it was when Publish was clicked; null before any. */
   held: T | null,
   live: T,
-  { hosted, publishing }: { hosted: boolean; publishing: boolean },
+  { hosted }: { hosted: boolean },
 ): T {
-  return hosted && publishing && held !== null ? held : live;
+  return hosted && held !== null ? held : live;
+}
+
+/**
+ * {@link shownPublishList} with its state: `hold` when Publish is clicked,
+ * `release` when it failed.
+ */
+export function usePublishHold<T>(
+  live: T,
+  options: { hosted: boolean },
+): { shown: T; hold: () => void; release: () => void } {
+  const [held, setHeld] = useState<T | null>(null);
+  return {
+    shown: shownPublishList(held, live, options),
+    hold: () => setHeld(options.hosted ? live : null),
+    release: () => setHeld(null),
+  };
 }

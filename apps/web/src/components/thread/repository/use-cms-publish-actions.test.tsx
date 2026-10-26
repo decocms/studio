@@ -639,12 +639,14 @@ describe("useCmsPublishActions on a hosted v8 site", () => {
     const onPublished = mock(() => {});
     const { result } = render(backend, { hosted: true, onPublished });
     const before = { ...reads };
-    let done!: Promise<void>;
+    let done!: Promise<boolean | void>;
     act(() => {
       done = result.current.submit();
     });
     expect(getContentSyncState(SCOPE).phase).toBe("saving");
     await act(() => done);
+    // Published: the dialog keeps its list through the close (publish-hold.ts).
+    expect(await done).toBe(true);
     expect(calls).toEqual([`/api/${ORG}/decofile/${VM}/${BRANCH}/publish`]);
     expect(reads.releases).toBe(before.releases + 1);
     expect(reads.pointer).toBe(before.pointer + 1);
