@@ -400,10 +400,12 @@ function ThreadTopbar() {
 
 function ThreadSessionContent({
   layout,
+  takeoverThreadOpenIn: [threadOpenIn, setThreadOpenIn],
   onNewTaskRef,
   createNewTask,
 }: {
   layout: ReturnType<typeof useChatLayoutState>;
+  takeoverThreadOpenIn: [string | null, (view: string | null) => void];
   onNewTaskRef: React.MutableRefObject<(() => void) | null>;
   createNewTask: () => void;
 }) {
@@ -414,7 +416,6 @@ function ThreadSessionContent({
    *  `?sidepanel` cannot reopen it on arrival. Keyed on the view, so opening
    *  the chat in one app does not carry into the next one launched. */
   const takeover = useAppTakeover();
-  const [threadOpenIn, setThreadOpenIn] = useState<string | null>(null);
   const takeoverThreadOpen = threadOpenIn === contentKey;
   const threadOpen = takeover ? takeoverThreadOpen : layout.threadOpen;
   const toggleThread = takeover
@@ -546,6 +547,9 @@ function ThreadSessionProvider() {
     : null;
 
   const layout = useChatLayoutState(entityMetadata);
+  /** Above the `providerKey` remount: a threadless composer's first send mints
+   *  the thread and changes that key, which would close a takeover's chat. */
+  const takeoverThreadOpenIn = useState<string | null>(null);
   const { threadId, providerKey } = resolveThreadSessionIdentity({
     routeThreadId,
     fallbackKey: generatedThreadId,
@@ -726,6 +730,7 @@ function ThreadSessionProvider() {
               <MainPanelBoundary>
                 <ThreadSessionContent
                   layout={layout}
+                  takeoverThreadOpenIn={takeoverThreadOpenIn}
                   onNewTaskRef={onNewTask}
                   createNewTask={createNewTask}
                 />
