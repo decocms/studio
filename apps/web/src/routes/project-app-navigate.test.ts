@@ -204,5 +204,8 @@ describe("parseAppArgs", () => {
     expect(parseAppArgs("[]")).toBeUndefined();
     expect(parseAppArgs("nope")).toBeUndefined();
     expect(parseAppArgs(undefined)).toBeUndefined();
+    expect(
+      parseAppArgs(JSON.stringify({ q: "x".repeat(2000) })),
+    ).toBeUndefined();
   });
 });

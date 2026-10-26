@@ -93,15 +93,13 @@ export function resolveAppArgs(content: ContentBlock[]): string | null {
   } catch {
     return null;
   }
-  return args && args.length <= MAX_APP_ARGS_LENGTH && parseAppArgs(args)
-    ? args
-    : null;
+  return args && parseAppArgs(args) ? args : null;
 }
 
 export function parseAppArgs(
   raw: string | undefined,
 ): Record<string, unknown> | undefined {
-  if (!raw) return undefined;
+  if (!raw || raw.length > MAX_APP_ARGS_LENGTH) return undefined;
   try {
     const parsed = appArgsSchema.safeParse(JSON.parse(raw));
     return parsed.success ? parsed.data : undefined;

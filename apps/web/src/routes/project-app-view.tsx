@@ -46,6 +46,7 @@ function AppRenderer({
     name: string;
     description?: string;
     inputSchema?: Record<string, unknown>;
+    annotations?: { readOnlyHint?: boolean };
     _meta?: Record<string, unknown>;
   };
   connectionId: string;
@@ -75,7 +76,10 @@ function AppRenderer({
     return "fullscreen";
   };
   const [initialSearchArgs] = useState(searchArgs);
-  const toolInput = { ...args, ...parseAppArgs(initialSearchArgs) };
+  const toolInput = {
+    ...args,
+    ...(tool.annotations?.readOnlyHint && parseAppArgs(initialSearchArgs)),
+  };
   const { data: toolResult } = useMCPToolCall({
     client,
     toolName: tool.name,
