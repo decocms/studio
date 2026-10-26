@@ -91,6 +91,8 @@ import {
 } from "./blocks/primitives";
 import { useT } from "@/i18n/use-t.ts";
 import { HeldBlockView } from "../held-block-view";
+import { deleteConfirmKey } from "../delete-copy";
+import { useContentBackend } from "@/components/sections-editor/use-content-backend";
 
 type ExtraProp = { key: string; value: string };
 
@@ -148,6 +150,10 @@ function PostEditorForm({
     { holdsCopy: true },
   );
   const remove = useDeleteBlock({ orgSlug, virtualMcpId, branch });
+  const contentBackend = useContentBackend(virtualMcpId, branch);
+  /** A hosted v8 draft: a delete is a draft change, undone by discarding it. */
+  const hostedDraft =
+    contentBackend.kind === "protocol" && contentBackend.source === "github";
   const hasAi = useHostedAiProviderKeys().length > 0;
   const blogAi = useBlogAi();
   // The preview frame's `__draft` (a hosted draft's carries its forced
@@ -454,7 +460,7 @@ function PostEditorForm({
               {t("sandbox.postEditor.deletePostConfirmTitle")}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              {t("sandbox.postEditor.deletePostConfirmBody", {
+              {t(deleteConfirmKey("post", hostedDraft), {
                 title: str(post.title) || t("sandbox.postBoard.untitled"),
               })}
             </AlertDialogDescription>

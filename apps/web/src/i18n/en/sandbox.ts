@@ -463,6 +463,8 @@ export const sandbox = {
   "sandbox.contentBrowser.deleteDialog.deleting": "Deleting…",
   "sandbox.contentBrowser.deleteDialog.descriptionPermanent":
     '"{label}" will be removed permanently. This can\'t be undone.',
+  "sandbox.contentBrowser.deleteDialog.descriptionDraft":
+    '"{label}" will be removed from your draft. Nothing goes live until you publish, and until then you can bring it back by discarding this change in Publish.',
   "sandbox.contentBrowser.deleteDialog.descriptionSection":
     '"{label}" will be removed. Pages that still reference it will lose this section.',
   "sandbox.contentBrowser.deleteDialog.title": "Delete {noun}?",
@@ -885,6 +887,8 @@ export const sandbox = {
   "sandbox.postEditor.deletePostCancel": "Cancel",
   "sandbox.postEditor.deletePostConfirmBody":
     '"{title}" will be removed permanently. This can\'t be undone.',
+  "sandbox.postEditor.deletePostConfirmBodyDraft":
+    '"{title}" will be removed from your draft. Nothing goes live until you publish, and until then you can bring it back by discarding this change in Publish.',
   "sandbox.postEditor.deletePostConfirmTitle": "Delete this post?",
   "sandbox.postEditor.deletePostFailed": "Delete failed",
   "sandbox.postEditor.deletePostSuccess": 'Deleted "{title}"',

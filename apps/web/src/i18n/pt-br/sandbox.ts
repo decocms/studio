@@ -468,6 +468,8 @@ export const sandbox = {
   "sandbox.contentBrowser.deleteDialog.deleting": "Excluindo…",
   "sandbox.contentBrowser.deleteDialog.descriptionPermanent":
     '"{label}" será removido permanentemente. Isso não pode ser desfeito.',
+  "sandbox.contentBrowser.deleteDialog.descriptionDraft":
+    '"{label}" será removido do seu rascunho. Nada vai ao ar até você publicar, e até lá você pode trazê-lo de volta descartando esta alteração em Publicar.',
   "sandbox.contentBrowser.deleteDialog.descriptionSection":
     '"{label}" será removida. Páginas que ainda a referenciam perderão esta seção.',
   "sandbox.contentBrowser.deleteDialog.title": "Excluir {noun}?",
@@ -900,6 +902,8 @@ export const sandbox = {
   "sandbox.postEditor.deletePostCancel": "Cancelar",
   "sandbox.postEditor.deletePostConfirmBody":
     '"{title}" será removido permanentemente. Isso não pode ser desfeito.',
+  "sandbox.postEditor.deletePostConfirmBodyDraft":
+    '"{title}" será removido do seu rascunho. Nada vai ao ar até você publicar, e até lá você pode trazê-lo de volta descartando esta alteração em Publicar.',
   "sandbox.postEditor.deletePostConfirmTitle": "Excluir este post?",
   "sandbox.postEditor.deletePostFailed": "Falha ao excluir",
   "sandbox.postEditor.deletePostSuccess": '"{title}" excluído',

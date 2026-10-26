@@ -150,6 +150,7 @@ import {
   isSiteNotOwned,
   SiteNotOwnedState,
 } from "@/layouts/main-panel-tabs/blocks-tab-states";
+import { deleteConfirmKey } from "./delete-copy";
 import { useContentBackend } from "@/components/sections-editor/use-content-backend";
 import {
   isProtocolProject,
@@ -447,10 +448,12 @@ function ContentBrowserReady({
   const t = useT();
   const threadId = useOptionalChatTask()?.taskId ?? null;
   const fetchParams = { orgSlug, virtualMcpId, branch, threadId, previewUrl };
+  const contentBackend = useContentBackend(virtualMcpId, branch);
   // The protocol never runs site code: no app install, no Run.
-  const runsSiteCode = !isProtocolProject(
-    useContentBackend(virtualMcpId, branch),
-  );
+  const runsSiteCode = !isProtocolProject(contentBackend);
+  /** A hosted v8 draft: a delete is a draft change, undone by discarding it. */
+  const hostedDraft =
+    contentBackend.kind === "protocol" && contentBackend.source === "github";
   // Which editor this site gets (v8: the new one): waited on with the data,
   // so neither editor shows and then swaps to the other.
   const editorUndecided = useNewBlocksEditorState() === undefined;
@@ -1701,10 +1704,9 @@ function ContentBrowserReady({
                       },
                     )
                   : deleteTarget
-                    ? t(
-                        "sandbox.contentBrowser.deleteDialog.descriptionPermanent",
-                        { label: deleteTarget.label },
-                      )
+                    ? t(deleteConfirmKey("block", hostedDraft), {
+                        label: deleteTarget.label,
+                      })
                     : null}
               </AlertDialogDescription>
             </AlertDialogHeader>
