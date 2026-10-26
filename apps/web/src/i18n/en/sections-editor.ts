@@ -348,6 +348,8 @@ export const sectionsEditor = {
     "This secret was saved by an older Deco site and can't be edited here. It's re-encrypted when the site migrates.",
   "sectionsEditor.secretField.noPublicKeyMessage":
     "Add the site's public key, .deco/secrets.pub, to edit secret fields. Values are encrypted in your browser with it.",
+  "sectionsEditor.secretField.platformSecretMessage":
+    "Secrets live in your site's hosting settings, where its code reads them, so there's nothing to edit here.",
   "sectionsEditor.secretField.pendingMessage":
     "Not saved yet. Press Enter to encrypt and save.",
   "sectionsEditor.secretField.plaintextStoredMessage":

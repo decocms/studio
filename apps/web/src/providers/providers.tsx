@@ -11,6 +11,7 @@ import { SplashScreen } from "@/components/splash-screen";
 import { ThemeProvider } from "@/providers/theme-provider";
 import { Toaster } from "sonner";
 import { SandboxSignInDialog } from "@/components/connections/sandbox-sign-in-dialog";
+import { NamedRuleConflictHost } from "@/components/sections-editor/named-rule-conflict";
 import { useT } from "@/i18n/use-t";
 
 function SdkTranslationInitializer({
@@ -53,6 +54,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
                 <SdkTranslationInitializer>
                   <BootGate>{children}</BootGate>
                   <SandboxSignInDialog />
+                  <NamedRuleConflictHost />
                 </SdkTranslationInitializer>
               </PostHogIdentitySync>
             </BetterAuthUIProvider>

@@ -175,6 +175,8 @@ export const thread = {
   "thread.publishPopover.abTests": "A/B tests",
   "thread.publishPopover.campaignDates": "Campaign dates",
   "thread.publishPopover.globalSection": "Global section",
+  "thread.publishPopover.alsoChangedOnMain":
+    "Your developer also changed {name}. Publishing keeps your version.",
   "thread.publishPopover.missingTest":
     "Uses a test that isn't in your A/B tests",
   "thread.publishPopover.missingCampaign":

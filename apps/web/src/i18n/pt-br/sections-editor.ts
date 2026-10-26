@@ -356,6 +356,8 @@ export const sectionsEditor = {
     "Este segredo foi salvo por um site Deco mais antigo e não pode ser editado aqui. Ele é recriptografado quando o site migra.",
   "sectionsEditor.secretField.noPublicKeyMessage":
     "Adicione a chave pública do site, .deco/secrets.pub, para editar campos secretos. Os valores são criptografados no seu navegador com ela.",
+  "sectionsEditor.secretField.platformSecretMessage":
+    "Os segredos ficam nas configurações de hospedagem do site, onde o código os lê, então não há nada para editar aqui.",
   "sectionsEditor.secretField.pendingMessage":
     "Ainda não salvo. Pressione Enter para criptografar e salvar.",
   "sectionsEditor.secretField.plaintextStoredMessage":

@@ -1357,7 +1357,12 @@ export function SectionsEditor({
 
   /** A block's content-protocol version in the cache (v8 saves' `ifMatch`). */
   const protocolVersionOf = (blockKey: string) =>
-    protocolBlockVersion(queryClient, decofileCacheKey, blockKey);
+    protocolBlockVersion(
+      queryClient,
+      decofileCacheKey,
+      blockKey,
+      contentBackend.kind === "protocol" ? contentBackend : null,
+    );
 
   /** Run the form saves that waited for the one on the wire, after `delay`. */
   const runWaitingFormSaves = (delay: number) => {

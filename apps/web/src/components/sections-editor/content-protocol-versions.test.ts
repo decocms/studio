@@ -292,3 +292,177 @@ describe("reloadProtocolBlock", () => {
     expect(protocolBlockVersion(queryClient, CACHE_KEY, "Hero")).toBe(null);
   });
 });
+
+describe("hosted draft guards (Studio's GitHub backend)", () => {
+  /** A hosted server: main's blocks with the draft on top; saves read the draft alone. */
+  function hostedBackend() {
+    const state = {
+      main: "m1",
+      etag: "e1",
+      draft: {} as Record<
+        string,
+        { value: Record<string, unknown>; version: string }
+      >,
+      mainBlocks: { Hero: { title: "main" } } as Record<string, unknown>,
+      reads: 0,
+      applied: [] as Array<{ ifMatch?: Record<string, string | null> }>,
+    };
+    const revision = () => `${state.main}~${state.etag}`;
+    const changes = () => ({
+      notModified: false as const,
+      revision: `c-${revision()}`,
+      base: { revision: state.main, resolvedRef: "main" },
+      changes: Object.fromEntries(
+        Object.entries(state.draft).map(([name, entry]) => [
+          name,
+          { kind: "set", version: entry.version, baseVersion: "main-v" },
+        ]),
+      ),
+    });
+    const client = {
+      blocksApply: async (patch: {
+        set?: Record<string, Record<string, unknown>>;
+        ifMatch?: Record<string, string | null>;
+      }) => {
+        state.applied.push(patch);
+        for (const [name, expected] of Object.entries(patch.ifMatch ?? {})) {
+          const actual = state.draft[name]?.version ?? null;
+          if (actual !== expected) {
+            throw new ContentProtocolError(ErrorCode.Conflict, "changed", {
+              entries: { [name]: { expected, actual } },
+            });
+          }
+        }
+        state.etag = `e${state.applied.length + 1}`;
+        const versions: Record<string, string> = {};
+        for (const [name, value] of Object.entries(patch.set ?? {})) {
+          versions[name] = `d${state.applied.length}`;
+          state.draft[name] = { value, version: versions[name]! };
+        }
+        // A save never reads main: no main part.
+        return { revision: `~${state.etag}`, versions };
+      },
+      batch: async (calls: BatchCall[]) => {
+        state.reads++;
+        return calls.map((call): BatchOutcome => {
+          const ifNoneMatch = (call.params as { ifNoneMatch?: string })
+            ?.ifNoneMatch;
+          if (call.method === "blocks.list") {
+            if (ifNoneMatch === revision()) {
+              return {
+                ok: true,
+                result: { notModified: true, revision: revision() },
+              };
+            }
+            const blocks: Record<string, unknown> = { ...state.mainBlocks };
+            const versions: Record<string, string> = { Hero: "main-v" };
+            for (const [name, entry] of Object.entries(state.draft)) {
+              blocks[name] = entry.value;
+              versions[name] = entry.version;
+            }
+            return {
+              ok: true,
+              result: {
+                notModified: false,
+                revision: revision(),
+                resolvedRef: "main",
+                blocks,
+                versions,
+                diagnostics: [],
+              },
+            };
+          }
+          if (call.method === "changes.list") {
+            return { ok: true, result: changes() };
+          }
+          return {
+            ok: true,
+            result: {
+              notModified: false,
+              version: null,
+              resolvedRef: null,
+              schema: null,
+            },
+          };
+        });
+      },
+    } as unknown as ContentClient;
+    const backend: ProtocolBackend = {
+      kind: "protocol",
+      source: "github",
+      client,
+      describe: {} as DescribeResult,
+      cacheKeySuffix: "",
+    };
+    return { state, backend };
+  }
+
+  it("a block only main has is guarded by null; once saved, by the draft's version", async () => {
+    const queryClient = new QueryClient();
+    const { state, backend } = hostedBackend();
+    expect(protocolBlockVersion(queryClient, CACHE_KEY, "Hero", backend)).toBe(
+      undefined,
+    );
+    await pollProtocolContent(queryClient, backend, params, CACHE_KEY);
+    expect(protocolBlockVersion(queryClient, CACHE_KEY, "Hero", backend)).toBe(
+      null,
+    );
+    await applyProtocolPatch(
+      queryClient,
+      backend,
+      params,
+      CACHE_KEY,
+      { set: { Hero: { title: "mine" } } },
+      { Hero: null },
+    );
+    expect(protocolBlockVersion(queryClient, CACHE_KEY, "Hero", backend)).toBe(
+      "d1",
+    );
+    // The next save, guarded by the first one's answer, lands.
+    await applyProtocolPatch(
+      queryClient,
+      backend,
+      params,
+      CACHE_KEY,
+      { set: { Hero: { title: "mine again" } } },
+      { Hero: protocolBlockVersion(queryClient, CACHE_KEY, "Hero", backend)! },
+    );
+    expect(state.applied.map((p) => p.ifMatch)).toEqual([
+      { Hero: null },
+      { Hero: "d1" },
+    ]);
+    // The changes list holds the saved block, its "before" main's version.
+    expect(
+      queryClient.getQueryData<{ changes: Record<string, unknown> }>(
+        KEYS.contentChanges(CACHE_KEY),
+      )?.changes.Hero,
+    ).toEqual({ kind: "set", version: "d2", baseVersion: "main-v" });
+  });
+
+  it("a save keeps the main part of the revision read, so the next poll is not modified", async () => {
+    const queryClient = new QueryClient();
+    const { state, backend } = hostedBackend();
+    await pollProtocolContent(queryClient, backend, params, CACHE_KEY);
+    const reads = state.reads;
+    const result = await applyProtocolPatch(
+      queryClient,
+      backend,
+      params,
+      CACHE_KEY,
+      { set: { Hero: { title: "mine" } } },
+      { Hero: null },
+    );
+    // Saving read nothing.
+    expect(state.reads).toBe(reads);
+    expect(result.revision).toBe("m1~e2");
+    expect(
+      queryClient.getQueryData<{ revision?: string }>(
+        KEYS.contentRevision(CACHE_KEY),
+      )?.revision,
+    ).toBe("m1~e2");
+    const before = cachedBlocks(queryClient);
+    await pollProtocolContent(queryClient, backend, params, CACHE_KEY);
+    // "Not modified": the blocks the editor holds stay as they are.
+    expect(cachedBlocks(queryClient)).toBe(before);
+  });
+});

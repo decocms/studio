@@ -5,7 +5,7 @@ import {
   canonicalBlockJson,
   sanitizeSecretsForPersistence,
 } from "@decocms/shared/decofile";
-import { useT } from "@/i18n/use-t.ts";
+import { type TFunction, useT } from "@/i18n/use-t.ts";
 import { KEYS } from "@/lib/query-keys";
 import {
   applyProtocolPatch,
@@ -19,6 +19,17 @@ import {
   decofileWriteMutationKey,
   decofileWriteScope,
 } from "./decofile-api";
+import {
+  conflictFields,
+  type FormConflictPlan,
+  planFormConflict,
+  resolveFormConflict,
+} from "./form-conflict";
+import {
+  askNamedRuleConflict,
+  canAskNamedRuleConflict,
+} from "./named-rule-conflict";
+import type { SchemaProperty } from "./resolve-schema";
 import { isSaveConflict } from "./serve-save-error";
 import { SAVE_TOAST, toastSaveError } from "./site-editor-toast";
 import { useContentBackend } from "./use-content-backend";
@@ -78,6 +89,67 @@ export function planNamedRuleApply(
   };
 }
 
+/**
+ * A change someone else's save got to first, as one record keyed by block
+ * name: the copies the change was built on (`copies`), the change, and what
+ * is stored now. Values only one side changed merge on their own; a value
+ * both changed, or a block one side removed and the other changed, is the
+ * user's choice (named-rule-conflict.tsx).
+ */
+function planNamedRuleConflict(
+  blockKeys: readonly string[],
+  copies: Record<string, unknown> | undefined,
+  change: Required<NamedRuleChange>,
+  stored: Record<string, unknown>,
+): FormConflictPlan {
+  const ancestor: Record<string, unknown> = {};
+  const mine: Record<string, unknown> = {};
+  const theirs: Record<string, unknown> = {};
+  for (const key of blockKeys) {
+    if (copies && Object.hasOwn(copies, key)) ancestor[key] = copies[key];
+    if (Object.hasOwn(change.writes, key)) mine[key] = change.writes[key];
+    if (Object.hasOwn(stored, key)) theirs[key] = stored[key];
+  }
+  return planFormConflict({ ancestor, mine, theirs });
+}
+
+/** The change to save once the user chose (see {@link planNamedRuleConflict}). */
+function namedRuleChangeFromResolved(
+  blockKeys: readonly string[],
+  resolved: Record<string, unknown>,
+  stored: Record<string, unknown>,
+): Required<NamedRuleChange> {
+  const writes: Record<string, Record<string, unknown>> = {};
+  const deletes: string[] = [];
+  for (const key of blockKeys) {
+    const value = resolved[key];
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      writes[key] = value as Record<string, unknown>;
+    } else if (Object.hasOwn(stored, key)) deletes.push(key);
+  }
+  return { writes, deletes };
+}
+
+/** The dialog's labels: the A/B tests and campaigns blocks by their names. */
+function conflictLabels(t: TFunction): SchemaProperty {
+  return {
+    type: "object",
+    properties: {
+      experiments: {
+        type: "object",
+        title: t("thread.publishPopover.abTests"),
+      },
+      campaigns: {
+        type: "object",
+        title: t("thread.publishPopover.campaignDates"),
+      },
+    },
+  };
+}
+
+/** How many times one change is reconciled before the editor stops asking. */
+const RECONCILE_ROUNDS = 3;
+
 export type NamedRuleApplyOutcome =
   | { ok: true }
   /**
@@ -113,8 +185,10 @@ function unreadConflict(blockKeys: string[]): ContentProtocolError {
  * Writes a {@link NamedRuleChange} into the editor's draft as ONE guarded
  * `blocks.apply`; it goes live with the next Publish, like any other edit.
  * The editor's copy changes at once and comes back if the write fails. A
- * refused write reads the stored blocks again and says so in one calm toast;
- * nothing is retried over someone else's change.
+ * write refused because someone else saved one of its blocks first reads
+ * the stored blocks again and opens the reconcile flow (theirs or yours,
+ * named-rule-conflict.tsx); the user's picks are saved, guarded again.
+ * Nothing is written over someone else's change without that choice.
  *
  * The guard is the version of the copy the change was built on. The cache
  * already holds the editor's earlier saves still on their way, so a block
@@ -148,7 +222,7 @@ export function useApplyNamedRule({
       const plan = planNamedRuleApply(write, (blockKey) =>
         Object.hasOwn(write.pinned, blockKey)
           ? write.pinned[blockKey]
-          : protocolBlockVersion(queryClient, cacheKey, blockKey),
+          : protocolBlockVersion(queryClient, cacheKey, blockKey, protocol),
       );
       if (plan.kind === "unread") throw unreadConflict(plan.blockKeys);
       return applyProtocolPatch(
@@ -179,8 +253,51 @@ export function useApplyNamedRule({
     return { ok: false, reason: "changed" } as const;
   };
 
-  const apply = async (
+  /**
+   * Someone else saved one of the change's blocks first: read what is
+   * stored, merge what only one side changed, ask about the rest, and save
+   * the result over the copies just read.
+   */
+  const reconcile = async (
+    change: Required<NamedRuleChange>,
+    copies: Record<string, unknown> | undefined,
+    round: number,
+  ): Promise<NamedRuleApplyOutcome> => {
+    const touched = [...Object.keys(change.writes), ...change.deletes];
+    if (round >= RECONCILE_ROUNDS || !canAskNamedRuleConflict()) {
+      return changedMeanwhile(touched);
+    }
+    const stored = await reread();
+    if (!stored) {
+      toast.info(t("sectionsEditor.namedRules.unavailable"), {
+        ...SAVE_TOAST,
+        description: t("sectionsEditor.namedRules.unavailableHint"),
+      });
+      return { ok: false, reason: "unavailable" };
+    }
+    const plan = planNamedRuleConflict(touched, copies, change, stored);
+    const resolved =
+      plan.pointers.length === 0
+        ? plan.merged
+        : resolveFormConflict(
+            plan,
+            await askNamedRuleConflict(
+              plan,
+              conflictFields(plan, conflictLabels(t)),
+            ),
+          );
+    return write(
+      namedRuleChangeFromResolved(touched, resolved, stored),
+      round + 1,
+    );
+  };
+
+  const apply = (change: NamedRuleChange): Promise<NamedRuleApplyOutcome> =>
+    write(change, 0);
+
+  const write = async (
     change: NamedRuleChange,
+    round: number,
   ): Promise<NamedRuleApplyOutcome> => {
     if (!protocol) {
       toast.info(t("sectionsEditor.namedRules.unavailable"), {
@@ -189,15 +306,20 @@ export function useApplyNamedRule({
       });
       return { ok: false, reason: "unavailable" };
     }
-    const writes = sanitizeSecretsForPersistence(change.writes);
+    // Studio checks nothing on a hosted save: the site's CI runs `deco check`.
+    const writes =
+      protocol.source === "github"
+        ? change.writes
+        : sanitizeSecretsForPersistence(change.writes);
     const deletes = (change.deletes ?? []).filter(
       (key) => !Object.hasOwn(writes, key),
     );
     const touched = [...Object.keys(writes), ...deletes];
+    if (touched.length === 0) return { ok: true };
     const previous =
       queryClient.getQueryData<Record<string, unknown>>(queryKey);
     const pinned = await pinVersions(touched, previous);
-    if (!pinned) return changedMeanwhile(touched);
+    if (!pinned) return reconcile({ writes, deletes }, previous, round);
     const before = new Map<string, unknown>();
     for (const key of touched) {
       if (previous && Object.hasOwn(previous, key)) {
@@ -227,7 +349,9 @@ export function useApplyNamedRule({
           return next;
         },
       );
-      if (isSaveConflict(error)) return changedMeanwhile(touched);
+      if (isSaveConflict(error)) {
+        return reconcile({ writes, deletes }, previous, round);
+      }
       toastSaveError(
         t,
         error instanceof Error ? error : new Error(String(error)),
@@ -255,7 +379,12 @@ export function useApplyNamedRule({
     const unread: string[] = [];
     for (const key of touched) {
       if (saving.has(key)) continue;
-      const version = protocolBlockVersion(queryClient, cacheKey, key);
+      const version = protocolBlockVersion(
+        queryClient,
+        cacheKey,
+        key,
+        protocol,
+      );
       if (version === undefined) unread.push(key);
       else pinned[key] = version;
     }
@@ -271,7 +400,12 @@ export function useApplyNamedRule({
       ) {
         return null;
       }
-      const version = protocolBlockVersion(queryClient, cacheKey, key);
+      const version = protocolBlockVersion(
+        queryClient,
+        cacheKey,
+        key,
+        protocol,
+      );
       if (version === undefined) return null;
       pinned[key] = version;
     }

@@ -27,11 +27,17 @@ import {
 import { ServeLostError } from "./serve-save-error";
 import {
   ContentProtocolError,
+  type BlocksApplyResult,
   type BlocksListResult,
   type ChangesGetResult,
   type ChangesListResult,
   type SchemaGetResult,
+  spellingKey,
 } from "@decocms/blocks/protocol";
+import {
+  hostedRevision,
+  hostedRevisionParts,
+} from "@decocms/shared/blocks-major";
 import { KEYS } from "@/lib/query-keys";
 import { keepContentBookkeeping } from "./content-bookkeeping";
 import {
@@ -86,17 +92,28 @@ export function protocolMetaQueryKey(
 }
 
 /**
- * Per block, the version (`blocks.list`'s, opaque) of the copy in the
- * editor's blocks cache, as last read or written: what a `blocks.apply`
- * guard (`ifMatch`) built on that copy expects. A block an in-flight write
- * holds keeps the version of its last landed copy. `null`: the content has
- * no such block. Undefined when unknown (before the first full read).
+ * Per block, the version a `blocks.apply` guard (`ifMatch`) built on the
+ * editor's copy expects. `null`: the guard is "must not exist yet".
+ * Undefined when unknown (before the first full read): the caller reads
+ * first.
+ *
+ * - Studio's hosted backend (`backend.source === "github"`) checks a save
+ *   against the draft alone: a block's version in the draft, as the draft's
+ *   changes list it (`changes.list`, which is the draft's own blocks), or
+ *   `null` when the draft doesn't hold it (main's copy is not the draft's).
+ * - Every other backend: the version (`blocks.list`'s, opaque) of the copy
+ *   in the editor's blocks cache, as last read or written. A block an
+ *   in-flight write holds keeps the version of its last landed copy.
  */
 export function protocolBlockVersion(
   queryClient: QueryClient,
   cacheKey: string,
   blockKey: string,
+  backend?: Pick<ProtocolBackend, "source"> | null,
 ): string | null | undefined {
+  if (backend?.source === "github") {
+    return draftBlockVersion(queryClient, cacheKey, blockKey);
+  }
   const versions = queryClient.getQueryData<Record<string, string>>(
     KEYS.contentVersions(cacheKey),
   );
@@ -108,6 +125,87 @@ export function protocolBlockVersion(
     KEYS.decofile(cacheKey),
   );
   return blocks && Object.hasOwn(blocks, blockKey) ? undefined : null;
+}
+
+/** A hosted draft's change of `blockKey`, under any spelling of its name. */
+function draftChangeOf(listed: ContentChanges, blockKey: string) {
+  if (Object.hasOwn(listed.changes, blockKey)) return listed.changes[blockKey];
+  const key = spellingKey(blockKey);
+  const name = Object.keys(listed.changes).find((n) => spellingKey(n) === key);
+  return name === undefined ? undefined : listed.changes[name];
+}
+
+/** `blockKey`'s version in the hosted draft (see {@link protocolBlockVersion}). */
+function draftBlockVersion(
+  queryClient: QueryClient,
+  cacheKey: string,
+  blockKey: string,
+): string | null | undefined {
+  const listed = queryClient.getQueryData<ContentChanges>(
+    KEYS.contentChanges(cacheKey),
+  );
+  if (!listed) return undefined;
+  return draftChangeOf(listed, blockKey)?.version ?? null;
+}
+
+/**
+ * A hosted save's answer, kept with no read: its revision takes the main
+ * part of the revision last read (a save never reads main, so it answers an
+ * empty one: `hostedRevision`), so the next poll is "not modified" unless
+ * someone else wrote; the draft's changes list gets the saved blocks (each
+ * one's "before" is the copy the editor read from main, its version in
+ * `KEYS.contentVersions` until now); and the preview's pointer moves to the
+ * draft's new version, so the preview reloads.
+ */
+function adoptHostedSave(
+  queryClient: QueryClient,
+  params: DecofileScopeParams,
+  cacheKey: string,
+  result: BlocksApplyResult,
+): string {
+  const answered = hostedRevisionParts(result.revision);
+  const seen = queryClient.getQueryData<ContentRevisions>(
+    KEYS.contentRevision(cacheKey),
+  )?.revision;
+  const read = seen ? hostedRevisionParts(seen) : null;
+  const revision =
+    answered && !answered.main && read
+      ? hostedRevision(read.main, answered.draft)
+      : result.revision;
+  const versions = queryClient.getQueryData<Record<string, string>>(
+    KEYS.contentVersions(cacheKey),
+  );
+  queryClient.setQueryData<ContentChanges>(
+    KEYS.contentChanges(cacheKey),
+    (listed) => {
+      if (!listed) return listed;
+      const changes = { ...listed.changes };
+      for (const [name, version] of Object.entries(result.versions ?? {})) {
+        const had = draftChangeOf(listed, name);
+        const baseVersion = had ? had.baseVersion : (versions?.[name] ?? null);
+        if (version !== null) {
+          changes[name] = { kind: "set", version, baseVersion };
+        } else if (baseVersion !== null) {
+          changes[name] = { kind: "delete", version: null, baseVersion };
+        } else delete changes[name];
+      }
+      // Same revision: the next poll lists the changes whole (the server's
+      // moved), and in the meantime this is the draft.
+      return { ...listed, changes };
+    },
+  );
+  if (answered && answered.draft !== "none") {
+    queryClient.setQueryData<HostedDraftPointer>(
+      KEYS.protocolDraftRead(
+        params.orgSlug,
+        params.virtualMcpId,
+        params.branch,
+      ),
+      (pointer) =>
+        pointer ? { ...pointer, version: answered.draft } : pointer,
+    );
+  }
+  return revision;
 }
 
 /** Records versions a write or read answered (`null`: the block is gone). */
@@ -320,15 +418,20 @@ async function readContent(
         },
       ]),
   );
+  // This editor wrote while the poll ran (a write adopts its revision): the
+  // poll may have listed before that write, so its lists are older than
+  // what the write left in the cache.
+  const adopted =
+    queryClient.getQueryData<ContentRevisions>(revisionsKey)?.revision;
+  const raced = adopted !== undefined && adopted !== seen?.revision;
   // The changes ride along: a failure there never fails the content read
   // (the list says so where it's shown), except an older `deco serve`,
   // which the editor explains.
   if (changed?.ok) {
-    const adopted = adoptChangesList(
-      seenChanges,
-      changed.result as ChangesListResult,
-    );
-    if (adopted) queryClient.setQueryData(changesKey, adopted);
+    const listedChanges = raced
+      ? null
+      : adoptChangesList(seenChanges, changed.result as ChangesListResult);
+    if (listedChanges) queryClient.setQueryData(changesKey, listedChanges);
   } else if (
     changed &&
     backend.source === "local" &&
@@ -364,12 +467,8 @@ async function readContent(
       : read.notModified
         ? currentMeta!
         : (read.schema as LiveMeta);
-  // This editor wrote while the poll ran (a write adopts its revision): the
-  // poll may have listed before that write, so it neither moves the revision
-  // back nor reads the write as someone else's change.
-  const adopted =
-    queryClient.getQueryData<ContentRevisions>(revisionsKey)?.revision;
-  const raced = adopted !== undefined && adopted !== seen?.revision;
+  // A raced poll neither moves the revision back nor reads the write as
+  // someone else's change.
   queryClient.setQueryData<ContentRevisions>(revisionsKey, {
     revision: raced
       ? adopted
@@ -422,11 +521,12 @@ async function readContent(
 
 /**
  * One `blocks.apply` (an edit), run as a content change (content-sync.ts): it
- * adopts the returned revision, and the shared refresh re-reads what the
- * write moved: on GitHub the CDN draft (the draft pointer, `useProtocolDraft`,
- * whose version is the draft's ETag, so the preview reloads) and the publish
- * status; in a sandbox the header's status. The form's own save hook updates
- * the blocks cache.
+ * adopts the returned revision. On GitHub (Studio's hosted draft) the answer
+ * alone updates the draft pointer (`useProtocolDraft`, whose version is the
+ * draft's ETag, so the preview reloads) and the changes list, with no read
+ * ({@link adoptHostedSave}); in a sandbox or on Localhost the shared refresh
+ * re-reads the changes and the header's status. The form's own save hook
+ * updates the blocks cache.
  * `ifMatch` guards entries by version (`null`: only if it doesn't exist yet);
  * a failed guard rejects the whole patch with a Conflict.
  */
@@ -449,6 +549,7 @@ export async function applyProtocolPatch(
     },
     {
       kind: "edit",
+      adopted: backend.source === "github",
       write: async () => {
         const result = await guarded(queryClient, backend, params, () =>
           backend.client.blocksApply({
@@ -460,13 +561,17 @@ export async function applyProtocolPatch(
           }),
         );
         keepContentBookkeeping(queryClient);
+        const revision =
+          backend.source === "github"
+            ? adoptHostedSave(queryClient, params, cacheKey, result)
+            : result.revision;
         queryClient.setQueryData<ContentRevisions>(
           KEYS.contentRevision(cacheKey),
-          (seen) => ({ ...seen, revision: result.revision }),
+          (seen) => ({ ...seen, revision }),
         );
         const versions = result.versions ?? {};
         adoptBlockVersions(queryClient, cacheKey, versions);
-        return { revision: result.revision, versions };
+        return { revision, versions };
       },
     },
   );
@@ -499,6 +604,25 @@ export async function reloadProtocolBlock(
     // Present but unreadable now: nothing better to show than the cache.
     if (entry && entry.after === null && entry.version !== null) return;
     stored = { value: entry?.after ?? null, version: entry?.version ?? null };
+    // The hosted guards are the draft's versions (`protocolBlockVersion`):
+    // the draft's changes follow what was just read.
+    if (backend.source === "github") {
+      queryClient.setQueryData<ContentChanges>(
+        KEYS.contentChanges(cacheKey),
+        (listed) => {
+          if (!listed) return listed;
+          const changes = { ...listed.changes };
+          if (entry?.kind) {
+            changes[blockKey] = {
+              kind: entry.kind,
+              version: entry.version,
+              baseVersion: entry.baseVersion,
+            };
+          } else delete changes[blockKey];
+          return { ...listed, changes };
+        },
+      );
+    }
   } catch {
     const list = await guarded(queryClient, backend, params, () =>
       backend.client.blocksList({}),

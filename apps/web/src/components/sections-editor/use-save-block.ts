@@ -7,6 +7,7 @@ import { useContentBackend } from "./use-content-backend";
 import {
   applyProtocolPatch,
   reloadProtocolBlock,
+  rereadProtocolContent,
 } from "./content-protocol-api";
 import { runContentChange, useContentDiscardListener } from "./content-sync";
 import { usePackagePath } from "./use-package-path";
@@ -318,11 +319,21 @@ export function useSaveBlock({
       rebaseOnConflict = true,
       guard,
     }: SaveBlockVariables) => {
-      // Fail closed before any write path: a raw secret must never be persisted.
-      data = sanitizeSecretsForPersistence(data);
+      // Fail closed before any write path: a raw secret must never be
+      // persisted. A hosted save checks nothing (the site's CI runs `deco
+      // check`); secrets live in the deploy platform there.
+      if (protocol?.source !== "github") {
+        data = sanitizeSecretsForPersistence(data);
+      }
       if (protocol) {
         const params = { orgSlug, virtualMcpId, branch };
-        const ifMatch = guard?.ifMatch(blockKey);
+        let ifMatch = guard?.ifMatch(blockKey);
+        if (guard && !ifMatch && protocol.source === "github") {
+          // Every hosted save carries its precondition: an unknown version
+          // is read first (the draft's changes come with the content).
+          await rereadProtocolContent(queryClient, protocol, params, cacheKey);
+          ifMatch = guard.ifMatch(blockKey);
+        }
         try {
           const result = await applyProtocolPatch(
             queryClient,

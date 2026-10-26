@@ -10,7 +10,9 @@
  * The list is polled with the content (content-protocol-api.ts adds
  * `changes.list` to the poll's batch, conditional on its revision), so it
  * follows edits made elsewhere with no extra request; every content change
- * re-reads it (content-sync.ts).
+ * re-reads it (content-sync.ts), except a hosted save, whose answer updates
+ * it. On Studio's hosted backend the list is the draft's own blocks, and
+ * their versions are what a save is guarded by (`protocolBlockVersion`).
  */
 
 import {

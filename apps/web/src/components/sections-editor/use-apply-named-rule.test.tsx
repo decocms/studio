@@ -25,6 +25,24 @@ const VM = "vm-1";
 const BRANCH = "draft-1";
 const CACHE_KEY = `${ORG}/${VM}/${BRANCH}`;
 
+/**
+ * The hosted draft's changes (`changes.list`): every stored entry is the
+ * draft's here, so a guard is its stored version, as on any backend.
+ */
+function listedChanges() {
+  return {
+    notModified: false,
+    revision: `c-${server.applied.length}`,
+    base: { revision: "main", resolvedRef: "main" },
+    changes: Object.fromEntries(
+      Object.entries(server.versions).map(([name, version]) => [
+        name,
+        { kind: "set", version, baseVersion: null },
+      ]),
+    ),
+  };
+}
+
 /** A content server whose entries carry versions; a stale `ifMatch` is a Conflict. */
 const server = {
   blocks: {} as Record<string, Record<string, unknown>>,
@@ -111,23 +129,10 @@ const client = {
               ok: true,
               result: { notModified: false, version: "s1", schema: {} },
             }
-          : {
-              ok: true,
-              result: {
-                notModified: false,
-                revision: "c1",
-                base: { revision: "main", resolvedRef: "main" },
-                changes: {},
-              },
-            },
+          : { ok: true, result: listedChanges() },
     );
   },
-  changesList: async () => ({
-    notModified: false,
-    revision: "c1",
-    base: { revision: "main", resolvedRef: "main" },
-    changes: {},
-  }),
+  changesList: async () => listedChanges(),
 } as unknown as ContentClient;
 
 const backend: ProtocolBackend = {
@@ -145,6 +150,20 @@ mock.module("./use-content-backend", () => ({
 mock.module("./use-decofile", () => ({
   ...realDecofile,
   useDecofileCacheKey: () => CACHE_KEY,
+}));
+/** The reconcile dialog's answer, as the user would pick; null: no dialog. */
+const conflictHost = {
+  answer: null as
+    | ((plan: { pointers: string[] }) => Record<string, "mine" | "theirs">)
+    | null,
+  asked: [] as Array<{ pointers: string[] }>,
+};
+mock.module("./named-rule-conflict", () => ({
+  canAskNamedRuleConflict: () => conflictHost.answer !== null,
+  askNamedRuleConflict: async (plan: { pointers: string[] }) => {
+    conflictHost.asked.push(plan);
+    return conflictHost.answer!(plan);
+  },
 }));
 mock.module("@/hooks/use-session-runtime", () => ({
   ...realSessionRuntime,
@@ -189,11 +208,14 @@ function setup() {
   server.applied = [];
   server.unreachable = false;
   server.gate = null;
+  conflictHost.answer = null;
+  conflictHost.asked = [];
   const queryClient = new QueryClient();
   queryClient.setQueryData(KEYS.decofile(CACHE_KEY), { home });
   queryClient.setQueryData(KEYS.contentVersions(CACHE_KEY), {
     home: "home@0",
   });
+  queryClient.setQueryData(KEYS.contentChanges(CACHE_KEY), listedChanges());
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   );
@@ -355,6 +377,7 @@ describe("useApplyNamedRule", () => {
   it("reads first when the editor hasn't seen a block's version, then saves the block it still holds as stored", async () => {
     const { queryClient, result } = setup();
     queryClient.removeQueries({ queryKey: KEYS.contentVersions(CACHE_KEY) });
+    queryClient.removeQueries({ queryKey: KEYS.contentChanges(CACHE_KEY) });
     let outcome: unknown;
     await act(async () => {
       outcome = await result.current.apply({ writes: { home: homeWithTest } });
@@ -368,6 +391,7 @@ describe("useApplyNamedRule", () => {
   it("reads first when the editor hasn't seen a block's version, and writes nothing when someone changed it", async () => {
     const { queryClient, result } = setup();
     queryClient.removeQueries({ queryKey: KEYS.contentVersions(CACHE_KEY) });
+    queryClient.removeQueries({ queryKey: KEYS.contentChanges(CACHE_KEY) });
     const edited = { ...home, path: "/new" };
     server.blocks.home = edited;
     server.versions.home = "home@9";
@@ -477,6 +501,7 @@ describe("useApplyNamedRule", () => {
       home: "home@0",
       experiments: "experiments@0",
     });
+    queryClient.setQueryData(KEYS.contentChanges(CACHE_KEY), listedChanges());
     let outcome: unknown;
     await act(async () => {
       outcome = await result.current.apply({
@@ -628,5 +653,93 @@ describe("two views of one draft (tabs or windows)", () => {
       hero: 30,
       promo: 50,
     });
+  });
+});
+
+describe("useApplyNamedRule: reconcile (someone else saved first)", () => {
+  it("guards a block the hosted draft doesn't hold with null, whatever main has", async () => {
+    const { queryClient, result } = setup();
+    // The editor read `home` from main: the draft holds nothing yet.
+    server.versions = {};
+    queryClient.setQueryData(KEYS.contentChanges(CACHE_KEY), listedChanges());
+    await act(async () => {
+      await result.current.apply({ writes: { home: homeWithTest } });
+    });
+    expect(server.applied.map((p) => p.ifMatch)).toEqual([{ home: null }]);
+  });
+
+  it("merges a change to other values on its own and saves it, guarded by what was read", async () => {
+    const { queryClient, result } = setup();
+    conflictHost.answer = () => ({});
+    const theirs = { ...home, path: "/theirs" };
+    server.blocks.home = theirs;
+    server.versions.home = "home@9";
+    let outcome: unknown;
+    await act(async () => {
+      outcome = await result.current.apply({ writes: { home: homeWithTest } });
+    });
+    expect(outcome).toEqual({ ok: true });
+    expect(conflictHost.asked).toEqual([]);
+    expect(server.applied.map((p) => p.ifMatch)).toEqual([
+      { home: "home@0" },
+      { home: "home@9" },
+    ]);
+    // Their path and this change's rule, both.
+    expect(server.blocks.home).toEqual({ ...homeWithTest, path: "/theirs" });
+    expect(cached(queryClient)?.home).toEqual({
+      ...homeWithTest,
+      path: "/theirs",
+    });
+  });
+
+  it("asks about a test both changed, and saves the version picked", async () => {
+    const { result } = setup();
+    server.blocks.experiments = { __resolveType: "split-traffic", hero: 10 };
+    server.versions.experiments = "theirs@1";
+    conflictHost.answer = (plan) =>
+      Object.fromEntries(plan.pointers.map((p) => [p, "mine" as const]));
+    let outcome: unknown;
+    await act(async () => {
+      outcome = await result.current.apply({ writes: { experiments } });
+    });
+    expect(outcome).toEqual({ ok: true });
+    expect(conflictHost.asked.map((plan) => plan.pointers)).toEqual([
+      ["/experiments/hero"],
+    ]);
+    expect(server.blocks.experiments).toEqual(experiments);
+    expect(server.applied.at(-1)?.ifMatch).toEqual({
+      experiments: "theirs@1",
+    });
+  });
+
+  it("keeps theirs when picked: their test stays as they saved it", async () => {
+    const { result } = setup();
+    const theirs = { __resolveType: "split-traffic", hero: 10 };
+    server.blocks.experiments = theirs;
+    server.versions.experiments = "theirs@1";
+    conflictHost.answer = (plan) =>
+      Object.fromEntries(plan.pointers.map((p) => [p, "theirs" as const]));
+    await act(async () => {
+      await result.current.apply({ writes: { experiments } });
+    });
+    expect(server.blocks.experiments).toEqual(theirs);
+  });
+
+  it("a block they removed while it was changed here is a whole-block choice", async () => {
+    const { result } = setup();
+    delete server.blocks.home;
+    delete server.versions.home;
+    conflictHost.answer = (plan) =>
+      Object.fromEntries(plan.pointers.map((p) => [p, "theirs" as const]));
+    let outcome: unknown;
+    await act(async () => {
+      outcome = await result.current.apply({ writes: { home: homeWithTest } });
+    });
+    expect(conflictHost.asked.map((plan) => plan.pointers)).toEqual([
+      ["/home"],
+    ]);
+    // Theirs: the page stays removed, nothing more is written.
+    expect(outcome).toEqual({ ok: true });
+    expect(server.blocks.home).toBeUndefined();
   });
 });

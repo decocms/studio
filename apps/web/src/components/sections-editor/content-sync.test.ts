@@ -176,15 +176,20 @@ function target(
 }
 
 describe("content-sync pending state", () => {
-  it("an edit is saving while it writes, reloading until the preview loads, then idle", async () => {
+  it("a hosted save is saving while it writes, reloading once confirmed (its answer moved the pointer, nothing read), then idle", async () => {
     const queryClient = new QueryClient();
     const { state, backend } = fakeBackend();
-    const { pointer } = editorQueries(queryClient);
+    const { reads } = editorQueries(queryClient);
     await settle();
     registerContentPreview(SCOPE);
+    const before = { ...reads };
     const gate = deferred<void>();
-    state.gate = gate.promise;
-    pointer.version = "e2";
+    // As Studio's hosted save answers: the draft's new ETag, no main part.
+    backend.client.blocksApply = async (patch) => {
+      state.applied.push(patch);
+      await gate.promise;
+      return { revision: "~e2", versions: { Home: "v2" } };
+    };
 
     const saving = applyProtocolPatch(queryClient, backend, params, CACHE_KEY, {
       set: { Home: { title: "edited" } },
@@ -201,6 +206,12 @@ describe("content-sync pending state", () => {
       inFlight: 0,
       reload: { seq: 1, navigates: true },
     });
+    expect(
+      queryClient.getQueryData(KEYS.protocolDraftRead(ORG, VM, BRANCH)),
+    ).toMatchObject({ version: "e2" });
+    // Nothing was read again: not the pointer, not the changes.
+    await settle();
+    expect(reads).toEqual(before);
     confirmPreviewReloaded(SCOPE);
     expect(getContentSyncState(SCOPE).phase).toBe("idle");
     // The form made this change: it doesn't re-read its block.
@@ -210,15 +221,10 @@ describe("content-sync pending state", () => {
   it("asks the preview to reload only after its observers saw the moved pointer", async () => {
     const queryClient = new QueryClient();
     const { backend } = fakeBackend();
-    // The pointer read is the refresh's last to land.
-    let version = "e1";
     let seen = "e1";
     new QueryObserver(queryClient, {
       queryKey: KEYS.protocolDraftRead(ORG, VM, BRANCH),
-      queryFn: async () => {
-        await new Promise((resolve) => setTimeout(resolve, 5));
-        return { draft: "d", version };
-      },
+      queryFn: async () => ({ draft: "d", version: "e1" }),
       staleTime: Number.POSITIVE_INFINITY,
       // What the preview renders its frame URL from: the pointer's observer,
       // subscribed the way `useQuery` subscribes (batched, deferred).
@@ -230,7 +236,10 @@ describe("content-sync pending state", () => {
     );
     await new Promise((resolve) => setTimeout(resolve, 20));
     registerContentPreview(SCOPE);
-    version = "e2";
+    backend.client.blocksApply = async () => ({
+      revision: "~e2",
+      versions: {},
+    });
     await applyProtocolPatch(queryClient, backend, params, CACHE_KEY, {
       set: { Home: { title: "edited" } },
     });
@@ -241,6 +250,18 @@ describe("content-sync pending state", () => {
       reload: { navigates: true },
     });
     expect(seen).toBe("e2");
+  });
+
+  it("a sandbox save still refreshes the changes before it ends", async () => {
+    const queryClient = new QueryClient();
+    const { backend } = fakeBackend("sandbox");
+    const { reads } = editorQueries(queryClient);
+    await settle();
+    const before = { ...reads };
+    await applyProtocolPatch(queryClient, backend, params, CACHE_KEY, {
+      set: { Home: { title: "edited" } },
+    });
+    expect(reads.changes).toBe(before.changes + 1);
   });
 
   it("counts overlapping writes and hands over to the preview after the last", async () => {

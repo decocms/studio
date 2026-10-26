@@ -35,7 +35,9 @@ import {
   RefreshCw01,
 } from "@untitledui/icons";
 import { Suspense, useRef, useState, type ReactNode } from "react";
-import { QueryErrorResetBoundary } from "@tanstack/react-query";
+import { QueryErrorResetBoundary, useQuery } from "@tanstack/react-query";
+import { KEYS } from "@/lib/query-keys";
+import { readHostedPublishReview } from "./hosted-publish-api";
 import { ErrorBoundary } from "@/components/error-boundary.tsx";
 import { useT, type TFunction } from "@/i18n/use-t.ts";
 import { authClient } from "@/lib/auth-client.ts";
@@ -415,6 +417,11 @@ interface PublishSource {
   expectedDiffSignature?: string;
   /** A hosted v8 draft: no pull request, Publish goes through the CDN draft. */
   hosted: boolean;
+  /**
+   * Hosted v8: the draft's blocks a developer also changed on main since the
+   * live release. Publish keeps the draft's version; the cards say so.
+   */
+  alsoChanged?: ReadonlySet<string>;
   /** v8: discards go through `changes.discard` on this backend. */
   protocol?: {
     backend: ProtocolBackend;
@@ -557,6 +564,22 @@ function ContentPublish({
       branch: props.branch,
     },
   });
+  const hosted = backend.source === "github";
+  const review = useQuery({
+    queryKey: KEYS.hostedPublishReview(
+      props.orgSlug,
+      props.virtualMcpId,
+      props.branch,
+    ),
+    queryFn: () =>
+      readHostedPublishReview({
+        orgSlug: props.orgSlug,
+        virtualMcpId: props.virtualMcpId,
+        branch: props.branch,
+      }),
+    enabled: hosted,
+    staleTime: 0,
+  });
   return (
     <CmsPublishView
       {...props}
@@ -564,7 +587,8 @@ function ContentPublish({
         ...contentListSource(state, backend),
         gate: { allowed: true, reason: null },
         headBranch: props.branch,
-        hosted: backend.source === "github",
+        hosted,
+        alsoChanged: new Set(review.data?.alsoChanged ?? []),
         otherWork: false,
       }}
     />
@@ -871,6 +895,12 @@ function CmsPublishView({
               isPublishing={isPublishing}
               isDiscarding={isDiscarding}
               v8={!!source.v8}
+              alsoChangedOnMain={
+                !!source.alsoChanged &&
+                source.alsoChanged.has(
+                  change.entry?.name ?? change.blockKey ?? "",
+                )
+              }
             />
           );
         })}

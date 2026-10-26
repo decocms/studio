@@ -126,7 +126,11 @@ export function useMoveBlocks({
     mutationKey: decofileWriteMutationKey(orgSlug, virtualMcpId, branch),
     scope: decofileWriteScope(orgSlug, virtualMcpId, branch),
     mutationFn: async ({ writes: rawWrites, deletes }: BlockMove) => {
-      const writes = sanitizeSecretsForPersistence(rawWrites);
+      // A hosted save checks nothing (the site's CI runs `deco check`).
+      const writes =
+        protocol?.source === "github"
+          ? rawWrites
+          : sanitizeSecretsForPersistence(rawWrites);
       if (protocol) {
         // One `blocks.apply`: the write and the delete land together.
         return applyProtocolPatch(
@@ -144,7 +148,9 @@ export function useMoveBlocks({
       );
     },
     onSuccess: () => {
-      // The move changed which blocks resolve, so the schema must be re-read.
+      // The move changed which blocks resolve, so the schema must be re-read
+      // (a hosted draft never changes main's schema: nothing to read).
+      if (protocol?.source === "github") return;
       void queryClient.invalidateQueries({
         queryKey: KEYS.liveMeta(orgSlug, virtualMcpId, branch),
       });

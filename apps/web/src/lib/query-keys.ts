@@ -849,6 +849,12 @@ export const KEYS = {
   // Hosted Deco CMS (v8): a project's releases and site tokens.
   hostedReleases: (orgSlug: string, virtualMcpId: string) =>
     ["hosted-releases", orgSlug, virtualMcpId] as const,
+  /** A hosted v8 Publish's review: the draft's blocks main also changed. */
+  hostedPublishReview: (
+    orgSlug: string,
+    virtualMcpId: string,
+    branch: string,
+  ) => ["hosted-publish-review", orgSlug, virtualMcpId, branch] as const,
   /** Under `hostedReleases`: a publish or reapply refreshes it too. */
   hostedReapplyCheck: (
     orgSlug: string,
