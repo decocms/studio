@@ -192,6 +192,23 @@ export const sectionsEditor = {
   "sectionsEditor.namedRules.rename": "Renomear",
   "sectionsEditor.namedRules.saved": "Salvo no seu rascunho",
   "sectionsEditor.namedRules.savedHint": "Vai ao ar quando você publicar.",
+  "sectionsEditor.deletedConflict.theyDeletedTitle":
+    '"{name}" foi excluído enquanto você editava',
+  "sectionsEditor.deletedConflict.theyDeletedDescription":
+    "Mantenha sua versão para trazê-lo de volta com suas alterações, ou deixe-o excluído. Nada vai ao ar até você publicar.",
+  "sectionsEditor.deletedConflict.youDeletedTitle":
+    '"{name}" foi alterado enquanto você o excluía',
+  "sectionsEditor.deletedConflict.youDeletedDescription":
+    "Exclua mesmo assim, ou mantenha a versão da outra pessoa. Nada vai ao ar até você publicar.",
+  "sectionsEditor.deletedConflict.keepMine": "Manter minha versão",
+  "sectionsEditor.deletedConflict.leaveDeleted": "Deixar excluído",
+  "sectionsEditor.deletedConflict.deleteAnyway": "Excluir mesmo assim",
+  "sectionsEditor.deletedConflict.keepTheirs":
+    "Manter a versão da outra pessoa",
+  "sectionsEditor.reconcile.keptTheirs": "Mantivemos a versão da outra pessoa",
+  "sectionsEditor.reconcile.leftDeleted": "Ficou excluído",
+  "sectionsEditor.reconcile.keptTheirsHint":
+    "Sua alteração não foi salva. Você pode fazê-la de novo quando quiser.",
   "sectionsEditor.namedRules.undo": "Desfazer",
   "sectionsEditor.namedRules.create": "Criar",
   "sectionsEditor.namedRules.openEditor": "Abrir o editor do site",

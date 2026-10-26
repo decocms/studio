@@ -42,7 +42,7 @@ import {
 } from "./named-rules";
 import type { LiveMeta } from "./resolve-schema";
 import { planNamedRuleRename } from "./rule-references";
-import { SAVE_TOAST } from "./site-editor-toast";
+import { SAVE_TOAST, toastKeptTheirs } from "./site-editor-toast";
 import {
   type NamedRuleApplyOutcome,
   type NamedRuleChange,
@@ -147,7 +147,9 @@ export function useNamedRuleView(
   ) => {
     if (!change) return false;
     const outcome = await apply(change);
-    if (outcome.ok) {
+    // The user took their version: say that, not "Saved".
+    if (outcome.ok && outcome.keptTheirs) toastKeptTheirs(t, false);
+    else if (outcome.ok) {
       toast.success(title, {
         ...SAVE_TOAST,
         description: t("sectionsEditor.namedRules.savedHint"),

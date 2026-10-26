@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/use-t.ts";
 import { useMoveBlocks } from "@/components/sections-editor/use-move-blocks";
+import { HostedKeptTheirsError } from "@/components/sections-editor/hosted-reconcile";
 import {
   blocksPostStatus,
   getBlogPayload,
@@ -126,6 +127,8 @@ export function usePostStatusMove({
     } catch (err) {
       // `move` already restored the cache; put the caller back on the old key.
       if (targetKey !== key) onMoved?.(targetKey, key);
+      // The user kept their version: `move` said so in its own toast.
+      if (err instanceof HostedKeptTheirsError) return null;
       toast.error(
         err instanceof Error ? err.message : t("sandbox.postBoard.moveFailed"),
       );

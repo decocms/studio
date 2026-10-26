@@ -780,7 +780,7 @@ export function adoptRefusedDraft(
  * the draft's copy, so nothing is read. Otherwise the content is read again;
  * the poll keeps a block that is being saved as the editor holds it, so the
  * block itself comes from `changes.get` (or, on a server without it, an
- * unconditional `blocks.list`).
+ * unconditional `blocks.list`). True when the refusal carried the copy.
  */
 export async function reloadProtocolBlock(
   queryClient: QueryClient,
@@ -789,7 +789,7 @@ export async function reloadProtocolBlock(
   cacheKey: string,
   blockKey: string,
   refusal?: unknown,
-): Promise<void> {
+): Promise<boolean> {
   if (backend.source === "github") {
     forgetRefusedTombstones(queryClient, cacheKey, refusal);
   }
@@ -800,7 +800,7 @@ export async function reloadProtocolBlock(
   if (fromDraft) {
     void queryClient.cancelQueries({ queryKey: KEYS.decofile(cacheKey) });
     adoptRefusedDraftBlock(queryClient, cacheKey, blockKey, fromDraft);
-    return;
+    return true;
   }
   await queryClient.invalidateQueries({ queryKey: KEYS.decofile(cacheKey) });
   let stored: { value: Record<string, unknown> | null; version: string | null };
@@ -813,7 +813,9 @@ export async function reloadProtocolBlock(
     );
     const entry = read.entries[blockKey];
     // Present but unreadable now: nothing better to show than the cache.
-    if (entry && entry.after === null && entry.version !== null) return;
+    if (entry && entry.after === null && entry.version !== null) {
+      return false;
+    }
     stored = { value: entry?.after ?? null, version: entry?.version ?? null };
     // The hosted guards are the draft's versions (`protocolBlockVersion`):
     // the draft's changes follow what was just read.
@@ -838,7 +840,7 @@ export async function reloadProtocolBlock(
     const list = await guarded(queryClient, backend, params, () =>
       backend.client.blocksList({}),
     );
-    if (list.notModified) return;
+    if (list.notModified) return false;
     stored = {
       value: list.blocks[blockKey] ?? null,
       version: list.versions[blockKey] ?? null,
@@ -854,6 +856,7 @@ export async function reloadProtocolBlock(
     },
   );
   adoptBlockVersions(queryClient, cacheKey, { [blockKey]: stored.version });
+  return false;
 }
 
 /** What the session read answers for a hosted v8 project. */

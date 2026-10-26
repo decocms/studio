@@ -187,6 +187,22 @@ export const sectionsEditor = {
   "sectionsEditor.namedRules.rename": "Rename",
   "sectionsEditor.namedRules.saved": "Saved in your draft",
   "sectionsEditor.namedRules.savedHint": "It goes live when you publish.",
+  "sectionsEditor.deletedConflict.theyDeletedTitle":
+    '"{name}" was deleted while you were editing',
+  "sectionsEditor.deletedConflict.theyDeletedDescription":
+    "Keep your version to bring it back with your changes, or leave it deleted. Nothing goes live until you publish.",
+  "sectionsEditor.deletedConflict.youDeletedTitle":
+    '"{name}" was changed while you were deleting it',
+  "sectionsEditor.deletedConflict.youDeletedDescription":
+    "Delete it anyway, or keep their version. Nothing goes live until you publish.",
+  "sectionsEditor.deletedConflict.keepMine": "Keep my version",
+  "sectionsEditor.deletedConflict.leaveDeleted": "Leave it deleted",
+  "sectionsEditor.deletedConflict.deleteAnyway": "Delete anyway",
+  "sectionsEditor.deletedConflict.keepTheirs": "Keep their version",
+  "sectionsEditor.reconcile.keptTheirs": "Kept their version",
+  "sectionsEditor.reconcile.leftDeleted": "Left it deleted",
+  "sectionsEditor.reconcile.keptTheirsHint":
+    "Your change wasn't saved. You can make it again any time.",
   "sectionsEditor.namedRules.undo": "Undo",
   "sectionsEditor.namedRules.create": "Create",
   "sectionsEditor.namedRules.openEditor": "Open the site editor",

@@ -20,7 +20,11 @@ import { namedRuleUseCounts } from "./named-rule-uses";
 import { namedRuleUsePlaces } from "./named-rule-use-copy";
 import { type NamedRuleKind, readNamedRuleBlock } from "./named-rules";
 import type { LiveMeta } from "./resolve-schema";
-import { SAVE_TOAST, SITE_EDITOR_UNDO_TOAST } from "./site-editor-toast";
+import {
+  SAVE_TOAST,
+  SITE_EDITOR_UNDO_TOAST,
+  toastKeptTheirs,
+} from "./site-editor-toast";
 import type {
   NamedRuleApplyOutcome,
   NamedRuleChange,
@@ -108,6 +112,11 @@ export function NamedRuleDeleteButton({
     );
     const outcome = await apply(change);
     if (!outcome.ok) return;
+    // They changed it meanwhile and the user kept their version.
+    if (outcome.keptTheirs) {
+      toastKeptTheirs(t, false);
+      return;
+    }
     onDeleted();
     toast.success(
       tests

@@ -50,7 +50,10 @@ import { useLiveMeta } from "@/components/sections-editor/use-live-meta";
 import { hasEditableAppEditorSchema } from "./app-editor-schema";
 import { hasCmsSettingsType } from "./cms-settings";
 import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
-import { useSaveBlock } from "@/components/sections-editor/use-save-block";
+import {
+  keptTheirVersion,
+  useSaveBlock,
+} from "@/components/sections-editor/use-save-block";
 import { useDeleteBlock } from "@/components/sections-editor/use-delete-block";
 import {
   extractGlobalSections,
@@ -935,14 +938,17 @@ function ContentBrowserReady({
     blockId: string,
     formValue: Record<string, unknown>,
   ) => {
-    await saveBlock.mutateAsync({
+    const created = await saveBlock.mutateAsync({
       blockKey: blockId,
       data: { ...formValue, name: blockId, __resolveType: resolveType },
       create: true,
     });
-    toast.success(
-      t("sandbox.contentBrowser.createdSection", { name: blockId }),
-    );
+    // Kept the version someone else created first: the hook's toast says so.
+    if (!keptTheirVersion(created)) {
+      toast.success(
+        t("sandbox.contentBrowser.createdSection", { name: blockId }),
+      );
+    }
     setSelection({ collection: "sections", key: blockId });
   };
 
@@ -961,10 +967,16 @@ function ContentBrowserReady({
     const newName = nextUniqueName(takenSectionNames, section.name);
     const data: Record<string, unknown> = { ...source, name: newName };
     try {
-      await saveBlock.mutateAsync({ blockKey: newKey, data, create: true });
-      toast.success(
-        t("sandbox.contentBrowser.duplicatedSection", { name: section.name }),
-      );
+      const copied = await saveBlock.mutateAsync({
+        blockKey: newKey,
+        data,
+        create: true,
+      });
+      if (!keptTheirVersion(copied)) {
+        toast.success(
+          t("sandbox.contentBrowser.duplicatedSection", { name: section.name }),
+        );
+      }
       setSelection({ collection: "sections", key: newKey });
     } catch (err) {
       toast.error(
@@ -1125,6 +1137,7 @@ function ContentBrowserReady({
   // ------------------ Delete ------------------
   const confirmDelete = async () => {
     if (!deleteTarget) return;
+    let deleted: unknown;
     try {
       const { kind, key, label } = deleteTarget;
       if (kind === "blog") {
@@ -1153,10 +1166,13 @@ function ContentBrowserReady({
             }
           }
         }
-        await deleteBlock.mutateAsync({ blockKey: key });
+        deleted = await deleteBlock.mutateAsync({ blockKey: key });
       } else {
-        await deleteBlock.mutateAsync({ blockKey: key });
+        deleted = await deleteBlock.mutateAsync({ blockKey: key });
       }
+      setDeleteTarget(null);
+      // The user kept their version (the hook said so in its own toast).
+      if (keptTheirVersion(deleted)) return;
       toast.success(`Deleted "${label}"`);
       if (
         selection &&

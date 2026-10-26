@@ -30,6 +30,7 @@ import { useLiveMeta } from "./use-live-meta";
 import { useDeleteBlock } from "./use-delete-block";
 import {
   AUTOSAVE_DELAY,
+  keptTheirVersion,
   useDebouncedSaveBlock,
   useSaveBlock,
 } from "./use-save-block";
@@ -2506,7 +2507,7 @@ export function SectionsEditor({
     };
 
     try {
-      await saveBlock.mutateAsync({
+      const created = await saveBlock.mutateAsync({
         blockKey: blockId,
         data: blockData,
         create: true,
@@ -2531,9 +2532,12 @@ export function SectionsEditor({
       }
 
       setMakeReusableIndex(null);
-      toast.success(
-        t("sectionsEditor.sectionsEditor.savedGlobalBlock", { blockId }),
-      );
+      // Kept the block someone else created first: the save's toast says so.
+      if (!keptTheirVersion(created)) {
+        toast.success(
+          t("sectionsEditor.sectionsEditor.savedGlobalBlock", { blockId }),
+        );
+      }
       onSaved?.();
     } catch (err) {
       toast.error(t("sectionsEditor.sectionsEditor.failedToSaveGlobalBlock"), {
@@ -3700,13 +3704,16 @@ export function SectionsEditor({
       );
 
       let createdBlockId: string | null = null;
+      let keptTheirs = false;
       try {
-        await saveBlock.mutateAsync({
+        const created = await saveBlock.mutateAsync({
           blockKey: blockId,
           data: blockData,
           create: true,
         });
-        createdBlockId = blockId;
+        // Their block, kept in the reconcile flow, is never rolled back.
+        keptTheirs = keptTheirVersion(created);
+        createdBlockId = keptTheirs ? null : blockId;
         variants[variantIndex] = {
           ...target,
           rule: buildMatcherBlockReference(blockId),
@@ -3729,11 +3736,14 @@ export function SectionsEditor({
       }
 
       setRenameVariantIndex(null);
-      toast.success(
-        t("sectionsEditor.sectionsEditor.savedMatcherAsGlobalBlock", {
-          trimmed,
-        }),
-      );
+      // Kept the block someone else created first: the save's toast says so.
+      if (!keptTheirs) {
+        toast.success(
+          t("sectionsEditor.sectionsEditor.savedMatcherAsGlobalBlock", {
+            trimmed,
+          }),
+        );
+      }
       onSaved?.();
     } catch (err) {
       toast.error(t("sectionsEditor.sectionsEditor.failedToRenameVariant"), {
@@ -3870,13 +3880,16 @@ export function SectionsEditor({
       );
 
       let createdBlockId: string | null = null;
+      let keptTheirs = false;
       try {
-        await saveBlock.mutateAsync({
+        const created = await saveBlock.mutateAsync({
           blockKey: blockId,
           data: blockData,
           create: true,
         });
-        createdBlockId = blockId;
+        // Their block, kept in the reconcile flow, is never rolled back.
+        keptTheirs = keptTheirVersion(created);
+        createdBlockId = keptTheirs ? null : blockId;
         const nextVariants = [...variants];
         nextVariants[variantIndex] = {
           ...target,
@@ -3894,11 +3907,14 @@ export function SectionsEditor({
       }
 
       setRenameSectionVariantIndex(null);
-      toast.success(
-        t("sectionsEditor.sectionsEditor.savedMatcherAsGlobalBlock", {
-          trimmed,
-        }),
-      );
+      // Kept the block someone else created first: the save's toast says so.
+      if (!keptTheirs) {
+        toast.success(
+          t("sectionsEditor.sectionsEditor.savedMatcherAsGlobalBlock", {
+            trimmed,
+          }),
+        );
+      }
       onSaved?.();
     } catch (err) {
       toast.error(t("sectionsEditor.sectionsEditor.failedToRenameVariant"), {
@@ -4008,12 +4024,16 @@ export function SectionsEditor({
 
       // Persist the block before its reference; roll back if the second fails.
       let createdBlockId: string | null = null;
+      let keptTheirs = false;
       try {
-        await saveBlock.mutateAsync({
+        const created = await saveBlock.mutateAsync({
           blockKey: action.blockId,
           data: action.blockData,
+          create: true,
         });
-        createdBlockId = action.blockId;
+        // Their block, kept in the reconcile flow, is never rolled back.
+        keptTheirs = keptTheirVersion(created);
+        createdBlockId = keptTheirs ? null : action.blockId;
         const nextVariants = [...variants];
         nextVariants[variantIndex] = { ...target, rule: action.reference };
         await persistWrapper(nextVariants);
@@ -4026,11 +4046,14 @@ export function SectionsEditor({
         }
         throw err;
       }
-      toast.success(
-        t("sectionsEditor.sectionsEditor.savedMatcherAsGlobalBlock", {
-          trimmed: nextName.trim(),
-        }),
-      );
+      // Kept the block someone else created first: the save's toast says so.
+      if (!keptTheirs) {
+        toast.success(
+          t("sectionsEditor.sectionsEditor.savedMatcherAsGlobalBlock", {
+            trimmed: nextName.trim(),
+          }),
+        );
+      }
       onSaved?.();
     } catch (err) {
       toast.error(t("sectionsEditor.sectionsEditor.failedToRenameVariant"), {

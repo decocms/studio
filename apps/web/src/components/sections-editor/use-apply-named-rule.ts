@@ -20,16 +20,16 @@ import {
   decofileWriteMutationKey,
   decofileWriteScope,
 } from "./decofile-api";
+import { resolveFormConflict } from "./form-conflict";
 import {
-  conflictFields,
-  type FormConflictPlan,
-  planFormConflict,
-  resolveFormConflict,
-} from "./form-conflict";
-import {
-  askNamedRuleConflict,
-  canAskNamedRuleConflict,
-} from "./named-rule-conflict";
+  askHostedConflict,
+  changeKeepsStored,
+  choseTheirs,
+  HOSTED_RECONCILE_ROUNDS,
+  hostedChangeFromResolved,
+  planHostedConflict,
+} from "./hosted-reconcile";
+import { canAskNamedRuleConflict } from "./named-rule-conflict";
 import type { SchemaProperty } from "./resolve-schema";
 import { isSaveConflict } from "./serve-save-error";
 import { SAVE_TOAST, toastSaveError } from "./site-editor-toast";
@@ -90,47 +90,6 @@ export function planNamedRuleApply(
   };
 }
 
-/**
- * A change someone else's save got to first, as one record keyed by block
- * name: the copies the change was built on (`copies`), the change, and what
- * is stored now. Values only one side changed merge on their own; a value
- * both changed, or a block one side removed and the other changed, is the
- * user's choice (named-rule-conflict.tsx).
- */
-function planNamedRuleConflict(
-  blockKeys: readonly string[],
-  copies: Record<string, unknown> | undefined,
-  change: Required<NamedRuleChange>,
-  stored: Record<string, unknown>,
-): FormConflictPlan {
-  const ancestor: Record<string, unknown> = {};
-  const mine: Record<string, unknown> = {};
-  const theirs: Record<string, unknown> = {};
-  for (const key of blockKeys) {
-    if (copies && Object.hasOwn(copies, key)) ancestor[key] = copies[key];
-    if (Object.hasOwn(change.writes, key)) mine[key] = change.writes[key];
-    if (Object.hasOwn(stored, key)) theirs[key] = stored[key];
-  }
-  return planFormConflict({ ancestor, mine, theirs });
-}
-
-/** The change to save once the user chose (see {@link planNamedRuleConflict}). */
-function namedRuleChangeFromResolved(
-  blockKeys: readonly string[],
-  resolved: Record<string, unknown>,
-  stored: Record<string, unknown>,
-): Required<NamedRuleChange> {
-  const writes: Record<string, Record<string, unknown>> = {};
-  const deletes: string[] = [];
-  for (const key of blockKeys) {
-    const value = resolved[key];
-    if (value && typeof value === "object" && !Array.isArray(value)) {
-      writes[key] = value as Record<string, unknown>;
-    } else if (Object.hasOwn(stored, key)) deletes.push(key);
-  }
-  return { writes, deletes };
-}
-
 /** The dialog's labels: the A/B tests and campaigns blocks by their names. */
 function conflictLabels(t: TFunction): SchemaProperty {
   return {
@@ -148,11 +107,12 @@ function conflictLabels(t: TFunction): SchemaProperty {
   };
 }
 
-/** How many times one change is reconciled before the editor stops asking. */
-const RECONCILE_ROUNDS = 3;
-
 export type NamedRuleApplyOutcome =
-  | { ok: true }
+  /**
+   * `keptTheirs`: the reconcile flow ended on the draft's version (the user
+   * took theirs), so nothing more was written; the toast says so.
+   */
+  | { ok: true; keptTheirs?: boolean }
   /**
    * Not written. `changed`: a block changed meanwhile (or wasn't read yet);
    * the editor now holds the stored copies, so the user can look and redo.
@@ -269,7 +229,7 @@ export function useApplyNamedRule({
     refusal?: unknown,
   ): Promise<NamedRuleApplyOutcome> => {
     const touched = [...Object.keys(change.writes), ...change.deletes];
-    if (round >= RECONCILE_ROUNDS || !canAskNamedRuleConflict()) {
+    if (round >= HOSTED_RECONCILE_ROUNDS || !canAskNamedRuleConflict()) {
       return changedMeanwhile(touched, refusal);
     }
     const stored =
@@ -283,21 +243,21 @@ export function useApplyNamedRule({
       });
       return { ok: false, reason: "unavailable" };
     }
-    const plan = planNamedRuleConflict(touched, copies, change, stored);
+    const plan = planHostedConflict(touched, copies, change, stored);
+    const choices =
+      plan.pointers.length === 0
+        ? {}
+        : await askHostedConflict(plan, conflictLabels(t));
     const resolved =
       plan.pointers.length === 0
         ? plan.merged
-        : resolveFormConflict(
-            plan,
-            await askNamedRuleConflict(
-              plan,
-              conflictFields(plan, conflictLabels(t)),
-            ),
-          );
-    return write(
-      namedRuleChangeFromResolved(touched, resolved, stored),
-      round + 1,
-    );
+        : resolveFormConflict(plan, choices);
+    const next = hostedChangeFromResolved(touched, resolved, stored);
+    // Their version, picked: the draft holds it already, nothing to write.
+    if (choseTheirs(choices) && changeKeepsStored(next, stored)) {
+      return { ok: true, keptTheirs: true };
+    }
+    return write(next, round + 1);
   };
 
   const apply = (change: NamedRuleChange): Promise<NamedRuleApplyOutcome> =>

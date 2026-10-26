@@ -54,6 +54,11 @@ export class BlockConflictError extends Error {
     message: string,
     /** JSON pointers of the values the edit and the stored block both changed, when known. */
     readonly fields: string[] = [],
+    /**
+     * The refusal carried the stored copy, which is in the cache already:
+     * a retry can build on it at once, with no pause for a re-read.
+     */
+    readonly carriedStored = false,
   ) {
     super(message);
     this.name = "BlockConflictError";

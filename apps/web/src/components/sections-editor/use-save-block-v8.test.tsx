@@ -32,6 +32,7 @@ const server = {
   versions: {} as Record<string, string>,
   applied: [] as Array<{
     set?: Record<string, unknown>;
+    delete?: string[];
     ifMatch?: Record<string, string | null>;
   }>,
   /** A refusal carries the draft's copies, as Studio's hosted route answers. */
@@ -43,6 +44,7 @@ const server = {
 const client = {
   blocksApply: async (patch: {
     set?: Record<string, Record<string, unknown>>;
+    delete?: string[];
     ifMatch?: Record<string, string | null>;
   }) => {
     server.applied.push(patch);
@@ -63,7 +65,12 @@ const client = {
         });
       }
     }
-    const versions: Record<string, string> = {};
+    const versions: Record<string, string | null> = {};
+    for (const name of patch.delete ?? []) {
+      delete server.blocks[name];
+      server.versions[name] = "tombstone";
+      versions[name] = null;
+    }
     for (const [name, value] of Object.entries(patch.set ?? {})) {
       server.blocks[name] = value;
       versions[name] = server.versions[name] = `${server.versions[name]}+`;
@@ -126,9 +133,15 @@ mock.module("@/hooks/use-local-preview-url", () => ({
 const asked = {
   choice: "mine" as "mine" | "theirs",
   fields: [] as Array<{ pointer: string; mine: unknown; theirs: unknown }>,
+  /** "Keep my version" / "Leave it deleted" questions asked. */
+  deleted: [] as Array<{ kind: string; label: string }>,
 };
 mock.module("./named-rule-conflict", () => ({
   canAskNamedRuleConflict: () => true,
+  askDeletedConflict: async (conflict: { kind: string; label: string }) => {
+    asked.deleted.push(conflict);
+    return asked.choice;
+  },
   askNamedRuleConflict: async (
     plan: { pointers: string[] },
     fields: Array<{ pointer: string; mine: unknown; theirs: unknown }>,
@@ -139,6 +152,8 @@ mock.module("./named-rule-conflict", () => ({
 }));
 
 const { useSaveBlock } = await import("./use-save-block");
+const { useDeleteBlock } = await import("./use-delete-block");
+const { useMoveBlocks } = await import("./use-move-blocks");
 
 afterEach(() => resetContentSync());
 
@@ -149,6 +164,9 @@ function setup() {
   server.applied = [];
   server.draftInRefusal = false;
   server.reads = 0;
+  asked.choice = "mine";
+  asked.fields = [];
+  asked.deleted = [];
   const queryClient = new QueryClient();
   queryClient.setQueryData(KEYS.decofile(CACHE_KEY), {
     Hero: { title: "loaded" },
@@ -162,6 +180,32 @@ function setup() {
     { wrapper },
   );
   return { queryClient, result };
+}
+
+/** The draft's changes as the editor last read them: each name's version. */
+function draftHolds(
+  queryClient: QueryClient,
+  versions: Record<string, string>,
+  deleted: string[] = [],
+) {
+  queryClient.setQueryData(KEYS.contentChanges(CACHE_KEY), {
+    revision: "c1",
+    base: { revision: "main", resolvedRef: "main" },
+    changes: {
+      ...Object.fromEntries(
+        Object.entries(versions).map(([name, version]) => [
+          name,
+          { kind: "set", version, baseVersion: "m1" },
+        ]),
+      ),
+      ...Object.fromEntries(
+        deleted.map((name) => [
+          name,
+          { kind: "delete", version: "tombstone", baseVersion: "m1" },
+        ]),
+      ),
+    },
+  });
 }
 
 const heroInCache = (queryClient: QueryClient) =>
@@ -276,14 +320,17 @@ describe("useSaveBlock on the content protocol (v8)", () => {
 
 describe("saved JSON carries no editor metadata", () => {
   it("a save sends the block exactly as the form holds it: no __meta, no user id", async () => {
-    const { result } = setup();
+    const { queryClient, result } = setup();
+    draftHolds(queryClient, { Hero: "h2" });
     await act(async () => {
       await result.current.mutateAsync({
         blockKey: "Hero",
         data: { title: "mine" },
       });
     });
-    expect(server.applied).toEqual([{ set: { Hero: { title: "mine" } } }]);
+    expect(server.applied).toEqual([
+      { set: { Hero: { title: "mine" } }, ifMatch: { Hero: "h2" } },
+    ]);
     expect(JSON.stringify(server.blocks)).not.toMatch(/__meta|lastEdited/);
   });
 
@@ -306,17 +353,23 @@ describe("saved JSON carries no editor metadata", () => {
     for (const choice of ["mine", "theirs"] as const) {
       it(`is saved with "must not exist yet", and a name taken meanwhile opens the reconcile flow (${choice})`, async () => {
         const { queryClient, result } = setupCreate(choice);
-        await act(() =>
-          result.current.mutateAsync({
+        let outcome: unknown;
+        await act(async () => {
+          outcome = await result.current.mutateAsync({
             blockKey: "Promo",
             data: { title: "mine", note: "same" },
             create: true,
-          }),
+          });
+        });
+        // Taking theirs is what the draft holds already: nothing is written.
+        expect(server.applied.map((p) => p.ifMatch)).toEqual(
+          choice === "mine"
+            ? [{ Promo: null }, { Promo: "p1" }]
+            : [{ Promo: null }],
         );
-        expect(server.applied.map((p) => p.ifMatch)).toEqual([
-          { Promo: null },
-          { Promo: "p1" },
-        ]);
+        if (choice === "theirs") {
+          expect(outcome).toEqual({ keptTheirs: true, deleted: false });
+        }
         expect(asked.fields.map((f) => [f.pointer, f.mine, f.theirs])).toEqual([
           ["/title", "mine", "theirs"],
         ]);
@@ -383,5 +436,214 @@ describe("saved JSON carries no editor metadata", () => {
       expect(server.applied.map((p) => p.ifMatch)).toEqual([{ Promo: null }]);
       expect(asked.fields).toEqual([]);
     });
+  });
+});
+
+describe("every hosted v8 save is guarded by the draft (no guard of its own)", () => {
+  it("carries the draft's version, or null when the draft doesn't hold the block", async () => {
+    const { queryClient, result } = setup();
+    server.versions = { Hero: "h2" };
+    draftHolds(queryClient, { Hero: "h2" });
+    await act(async () => {
+      await result.current.mutateAsync({ blockKey: "Hero", data: { a: 1 } });
+      await result.current.mutateAsync({ blockKey: "Footer", data: { b: 1 } });
+    });
+    expect(server.applied.map((p) => p.ifMatch)).toEqual([
+      { Hero: "h2" },
+      { Footer: null },
+    ]);
+  });
+
+  it("a stale save never overwrites someone else's edit: the reconcile flow asks first", async () => {
+    const { queryClient, result } = setup();
+    server.draftInRefusal = true;
+    draftHolds(queryClient, { Hero: "h1" });
+    await act(async () => {
+      await result.current.mutateAsync({
+        blockKey: "Hero",
+        data: { title: "mine" },
+      });
+    });
+    expect(asked.fields.map((f) => [f.pointer, f.mine, f.theirs])).toEqual([
+      ["/title", "mine", "theirs"],
+    ]);
+    expect(server.applied.map((p) => p.ifMatch)).toEqual([
+      { Hero: "h1" },
+      { Hero: "h2" },
+    ]);
+    expect(server.blocks.Hero).toEqual({ title: "mine" });
+  });
+
+  it("taking theirs writes nothing more and says so", async () => {
+    const { queryClient, result } = setup();
+    server.draftInRefusal = true;
+    asked.choice = "theirs";
+    draftHolds(queryClient, { Hero: "h1" });
+    let outcome: unknown;
+    await act(async () => {
+      outcome = await result.current.mutateAsync({
+        blockKey: "Hero",
+        data: { title: "mine" },
+      });
+    });
+    expect(server.applied).toHaveLength(1);
+    expect(outcome).toEqual({ keptTheirs: true, deleted: false });
+    expect(heroInCache(queryClient)).toEqual({ title: "theirs" });
+  });
+
+  for (const choice of ["mine", "theirs"] as const) {
+    it(`a stale save of a block the draft deleted asks "Keep my version" / "Leave it deleted" (${choice})`, async () => {
+      const { queryClient, result } = setup();
+      server.draftInRefusal = true;
+      server.blocks = {};
+      server.versions = { Hero: "tombstone" };
+      asked.choice = choice;
+      draftHolds(queryClient, { Hero: "h1" });
+      let outcome: unknown;
+      await act(async () => {
+        outcome = await result.current.mutateAsync({
+          blockKey: "Hero",
+          data: { title: "mine", name: "Hero banner" },
+        });
+      });
+      expect(asked.deleted).toEqual([
+        { kind: "theyDeleted", label: "Hero banner" },
+      ]);
+      if (choice === "mine") {
+        expect(server.applied.map((p) => p.ifMatch)).toEqual([
+          { Hero: "h1" },
+          { Hero: "tombstone" },
+        ]);
+        expect(server.blocks.Hero).toEqual({
+          title: "mine",
+          name: "Hero banner",
+        });
+      } else {
+        expect(server.applied).toHaveLength(1);
+        expect(outcome).toEqual({ keptTheirs: true, deleted: true });
+        expect(server.blocks.Hero).toBeUndefined();
+        expect(heroInCache(queryClient)).toBeUndefined();
+      }
+    });
+  }
+
+  it("a section form's save of a page the draft deleted asks too, and keeps the edit over the tombstone", async () => {
+    const { queryClient, result } = setup();
+    server.draftInRefusal = true;
+    server.blocks = {};
+    server.versions = { Hero: "tombstone" };
+    draftHolds(queryClient, { Hero: "h1" });
+    const applied: Array<Record<string, string | null>> = [];
+    const guard: SaveGuard = {
+      ifMatch: (key) => ({ [key]: "h1" }),
+      onApplied: (versions) => applied.push(versions),
+      reloadOnConflict: true,
+    };
+    await act(async () => {
+      await result.current.mutateAsync({
+        blockKey: "Hero",
+        data: { title: "mine" },
+        guard,
+      });
+    });
+    expect(asked.deleted.map((q) => q.kind)).toEqual(["theyDeleted"]);
+    expect(server.applied.map((p) => p.ifMatch)).toEqual([
+      { Hero: "h1" },
+      { Hero: "tombstone" },
+    ]);
+    expect(applied).toEqual([{ Hero: "tombstone+" }]);
+    expect(heroInCache(queryClient)).toEqual({ title: "mine" });
+  });
+
+  it("a refused form save says whether the refusal carried the draft's copy (no pause before the dialog)", async () => {
+    for (const carried of [true, false]) {
+      const { queryClient, result } = setup();
+      server.draftInRefusal = carried;
+      draftHolds(queryClient, { Hero: "h1" });
+      let failure: unknown;
+      await act(async () => {
+        await result.current
+          .mutateAsync({
+            blockKey: "Hero",
+            data: { title: "mine" },
+            guard: {
+              ifMatch: (key) => ({ [key]: "h1" }),
+              reloadOnConflict: true,
+            },
+          })
+          .catch((error: unknown) => {
+            failure = error;
+          });
+      });
+      expect(failure).toBeInstanceOf(BlockConflictError);
+      expect((failure as BlockConflictError).carriedStored).toBe(carried);
+    }
+  });
+});
+
+describe("hosted v8 deletes and moves are guarded by the draft too", () => {
+  function setupHook<T>(hook: () => T) {
+    const { queryClient } = setup();
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    const { result } = renderHook(hook, { wrapper });
+    return { queryClient, result };
+  }
+  const params = { orgSlug: ORG, virtualMcpId: VM, branch: BRANCH };
+
+  it("a delete carries the draft's version", async () => {
+    const { queryClient, result } = setupHook(() => useDeleteBlock(params));
+    draftHolds(queryClient, { Hero: "h2" });
+    await act(async () => {
+      await result.current.mutateAsync({ blockKey: "Hero" });
+    });
+    expect(server.applied).toEqual([
+      { set: {}, delete: ["Hero"], ifMatch: { Hero: "h2" } },
+    ]);
+  });
+
+  for (const choice of ["mine", "theirs"] as const) {
+    it(`a delete of a block someone changed meanwhile asks "Delete anyway" / "Keep their version" (${choice})`, async () => {
+      const { queryClient, result } = setupHook(() => useDeleteBlock(params));
+      server.draftInRefusal = true;
+      asked.choice = choice;
+      draftHolds(queryClient, { Hero: "h1" });
+      let outcome: unknown;
+      await act(async () => {
+        outcome = await result.current.mutateAsync({ blockKey: "Hero" });
+      });
+      expect(asked.deleted.map((q) => q.kind)).toEqual(["youDeleted"]);
+      if (choice === "mine") {
+        expect(server.applied.map((p) => p.ifMatch)).toEqual([
+          { Hero: "h1" },
+          { Hero: "h2" },
+        ]);
+        expect(server.blocks.Hero).toBeUndefined();
+      } else {
+        expect(server.applied).toHaveLength(1);
+        expect(outcome).toEqual({ keptTheirs: true, deleted: false });
+        expect(server.blocks.Hero).toEqual({ title: "theirs" });
+        expect(heroInCache(queryClient)).toEqual({ title: "theirs" });
+      }
+    });
+  }
+
+  it("a move is one blocks.apply guarded by the draft's versions", async () => {
+    const { queryClient, result } = setupHook(() => useMoveBlocks(params));
+    draftHolds(queryClient, { Hero: "h2" });
+    await act(async () => {
+      await result.current.move({
+        writes: { Banner: { title: "loaded" } },
+        deletes: ["Hero"],
+      });
+    });
+    expect(server.applied).toEqual([
+      {
+        set: { Banner: { title: "loaded" } },
+        delete: ["Hero"],
+        ifMatch: { Banner: null, Hero: "h2" },
+      },
+    ]);
   });
 });

@@ -75,7 +75,10 @@ import { SuggestLinksButton } from "./link-suggestions";
 import { useBlogAi } from "@/hooks/use-blog-ai";
 import { useHostedAiProviderKeys } from "@/hooks/collections/use-ai-providers";
 import { useDeleteBlock } from "@/components/sections-editor/use-delete-block";
-import { useSaveBlock } from "@/components/sections-editor/use-save-block";
+import {
+  keptTheirVersion,
+  useSaveBlock,
+} from "@/components/sections-editor/use-save-block";
 import { usePreviewLinkDraftPointer } from "@/components/sections-editor/use-fast-preview-draft-url";
 import { useAutosave } from "./use-autosave";
 import { SaveStatus } from "./save-status";
@@ -220,11 +223,13 @@ export function PostEditor({
     // the block straight back.
     syncPost(post);
     try {
-      await remove.mutateAsync({ blockKey });
+      const removed = await remove.mutateAsync({ blockKey });
+      setConfirmingDelete(false);
+      // The user kept their version (the hook said so in its own toast).
+      if (keptTheirVersion(removed)) return;
       toast.success(
         t("sandbox.postEditor.deletePostSuccess", { title: str(post.title) }),
       );
-      setConfirmingDelete(false);
       onClose?.();
     } catch (err) {
       toast.error(

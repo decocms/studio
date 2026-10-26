@@ -172,12 +172,22 @@ const conflictHost = {
     | ((plan: { pointers: string[] }) => Record<string, "mine" | "theirs">)
     | null,
   asked: [] as Array<{ pointers: string[] }>,
+  deleted: [] as Array<{ kind: string; label: string }>,
+  /** The pointer a deleted-block question stands for. */
+  deletedPointer: "",
 };
 mock.module("./named-rule-conflict", () => ({
   canAskNamedRuleConflict: () => conflictHost.answer !== null,
   askNamedRuleConflict: async (plan: { pointers: string[] }) => {
     conflictHost.asked.push(plan);
     return conflictHost.answer!(plan);
+  },
+  // A whole block one side deleted: the same answer, for its one value.
+  askDeletedConflict: async (conflict: { kind: string; label: string }) => {
+    conflictHost.deleted.push(conflict);
+    const plan = { pointers: [conflictHost.deletedPointer] };
+    conflictHost.asked.push(plan);
+    return conflictHost.answer!(plan)[conflictHost.deletedPointer];
   },
 }));
 mock.module("@/hooks/use-session-runtime", () => ({
@@ -227,6 +237,8 @@ function setup() {
   server.reads = 0;
   conflictHost.answer = null;
   conflictHost.asked = [];
+  conflictHost.deleted = [];
+  conflictHost.deletedPointer = "";
   const queryClient = new QueryClient();
   queryClient.setQueryData(KEYS.decofile(CACHE_KEY), { home });
   queryClient.setQueryData(KEYS.contentVersions(CACHE_KEY), {
@@ -778,16 +790,21 @@ describe("useApplyNamedRule: reconcile (someone else saved first)", () => {
     server.versions.experiments = "theirs@1";
     conflictHost.answer = (plan) =>
       Object.fromEntries(plan.pointers.map((p) => [p, "theirs" as const]));
+    let outcome: unknown;
     await act(async () => {
-      await result.current.apply({ writes: { experiments } });
+      outcome = await result.current.apply({ writes: { experiments } });
     });
     expect(server.blocks.experiments).toEqual(theirs);
+    // Nothing more is written, and the outcome says their version was kept.
+    expect(server.applied).toHaveLength(1);
+    expect(outcome).toEqual({ ok: true, keptTheirs: true });
   });
 
-  it("a block they removed while it was changed here is a whole-block choice", async () => {
+  it('a block they removed while it was changed here asks "Keep my version" / "Leave it deleted"', async () => {
     const { result } = setup();
     delete server.blocks.home;
     delete server.versions.home;
+    conflictHost.deletedPointer = "/home";
     conflictHost.answer = (plan) =>
       Object.fromEntries(plan.pointers.map((p) => [p, "theirs" as const]));
     let outcome: unknown;
@@ -797,8 +814,9 @@ describe("useApplyNamedRule: reconcile (someone else saved first)", () => {
     expect(conflictHost.asked.map((plan) => plan.pointers)).toEqual([
       ["/home"],
     ]);
+    expect(conflictHost.deleted.map((q) => q.kind)).toEqual(["theyDeleted"]);
     // Theirs: the page stays removed, nothing more is written.
-    expect(outcome).toEqual({ ok: true });
+    expect(outcome).toEqual({ ok: true, keptTheirs: true });
     expect(server.blocks.home).toBeUndefined();
   });
 });

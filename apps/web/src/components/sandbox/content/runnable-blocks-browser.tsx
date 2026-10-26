@@ -18,7 +18,10 @@ import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 import { GLOBAL_SECTION_ICON_COLOR } from "@/components/sections-editor/section-types";
-import { useSaveBlock } from "@/components/sections-editor/use-save-block";
+import {
+  keptTheirVersion,
+  useSaveBlock,
+} from "@/components/sections-editor/use-save-block";
 import { createReferencedBlockSaver } from "@/components/sections-editor/save-referenced-block";
 import { ItemRow } from "./item-row";
 import { EmptyMessage } from "./empty-message";
@@ -235,10 +238,20 @@ export function RunnableBlocksBrowser({
     blockId: string,
     data: Record<string, unknown>,
   ) => {
-    await saveBlock.mutateAsync({ blockKey: blockId, data, create: true });
-    toast.success(
-      t("sandbox.runnableBlocksBrowser.savedBlockToast", { singular, blockId }),
-    );
+    const created = await saveBlock.mutateAsync({
+      blockKey: blockId,
+      data,
+      create: true,
+    });
+    // Kept the version someone else created first: the hook's toast says so.
+    if (!keptTheirVersion(created)) {
+      toast.success(
+        t("sandbox.runnableBlocksBrowser.savedBlockToast", {
+          singular,
+          blockId,
+        }),
+      );
+    }
     setSelection({ mode: "saved", key: blockId });
   };
 

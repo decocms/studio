@@ -65,6 +65,7 @@ import {
 import { buildBlogCategoryPreviewUrl } from "./blog-preview-url";
 import { useSaveBlock } from "@/components/sections-editor/use-save-block";
 import { useMoveBlocks } from "@/components/sections-editor/use-move-blocks";
+import { HostedKeptTheirsError } from "@/components/sections-editor/hosted-reconcile";
 import { usePreviewLinkDraftPointer } from "@/components/sections-editor/use-fast-preview-draft-url";
 import { useAutosave } from "./use-autosave";
 import { SaveStatus } from "./save-status";
@@ -310,6 +311,8 @@ export function CategoryEditor({
         );
       }
     } catch (err) {
+      // The user kept their version: `move` said so in its own toast.
+      if (err instanceof HostedKeptTheirsError) return;
       toast.error(
         err instanceof Error
           ? err.message
@@ -351,6 +354,8 @@ export function CategoryEditor({
       setSlugDraft(oldSlug);
       setSlugNotice(null);
       setPendingRename(null);
+      // The user kept their version: `move` said so in its own toast.
+      if (err instanceof HostedKeptTheirsError) return;
       toast.error(
         err instanceof Error
           ? err.message
