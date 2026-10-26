@@ -1,5 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import {
+  CONFLICT_RETRY_BASE_MS,
+  conflictRetry,
   type FormBase,
   formSaveGuard,
   formSourceMovedOn,
@@ -359,5 +361,23 @@ describe("focusInside", () => {
     expect(focusInside(form as Element, {} as Element)).toBe(false);
     expect(focusInside(null, input as Element)).toBe(false);
     expect(focusInside(form as Element, null)).toBe(false);
+  });
+});
+
+describe("conflictRetry", () => {
+  it("a refusal that carried the stored copy is rebuilt at once: no retry pause, no typing pause", () => {
+    expect(conflictRetry(0, true)).toEqual({ delay: 0, immediate: true });
+    expect(conflictRetry(2, true)).toEqual({ delay: 0, immediate: true });
+  });
+
+  it("without the copy, the retry waits for the re-read, backing off", () => {
+    expect(conflictRetry(0, false)).toEqual({
+      delay: CONFLICT_RETRY_BASE_MS,
+      immediate: false,
+    });
+    expect(conflictRetry(2, false)).toEqual({
+      delay: CONFLICT_RETRY_BASE_MS * 4,
+      immediate: false,
+    });
   });
 });

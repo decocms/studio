@@ -42,6 +42,7 @@ import { protocolBlockVersion } from "./content-protocol-api";
 import {
   findSectionMovedTo,
   focusInside,
+  conflictRetry,
   formSaveGuard,
   formSourceMovedOn,
   isOwnVersion,
@@ -216,7 +217,6 @@ const STALE_FORM_TOAST = "section-form-stale-save";
  */
 /** Refused saves the form rebuilds and retries before reloading. */
 const CONFLICT_RETRIES = 3;
-const CONFLICT_RETRY_BASE_MS = 1_000;
 
 /**
  * Where a section form's save goes, fixed when the save is scheduled: the
@@ -1573,6 +1573,8 @@ export function SectionsEditor({
     conflicts = 0,
     /** Where it goes; by default the open form's section. */
     given?: FormSaveTarget,
+    /** Run now, with no typing pause (a retry built on a copy in hand). */
+    immediate = false,
   ) => {
     const target: FormSaveTarget = given ?? openFormTarget(sectionIndex);
     const targetSectionVariantIndex = target.sectionVariantIndex;
@@ -1752,27 +1754,28 @@ export function SectionsEditor({
             if (conflicts < CONFLICT_RETRIES) {
               waitingFormSavesRef.current.delete(waitingKey);
               formSaveRetryPendingRef.current = true;
-              setTimeout(
-                () => {
-                  formSaveRetryPendingRef.current = false;
-                  scheduleAutoSave(
-                    () => {
-                      const latest = formBase?.emitted;
-                      return latest && typeof latest === "object"
-                        ? (latest as Record<string, unknown>)
-                        : nextValue;
-                    },
-                    sectionIndex,
-                    conflicts + 1,
-                    target,
-                  );
-                  // Saves of this form made meanwhile are in the retry; the
-                  // others run behind it (or now, when it sends nothing).
-                  waitingFormSavesRef.current.delete(waitingKey);
-                  runWaitingFormSaves(AUTOSAVE_DELAY);
-                },
-                CONFLICT_RETRY_BASE_MS * 2 ** conflicts,
-              );
+              // The refusal carried the stored copy (hosted v8): rebuilt at
+              // once, so the reconcile dialog opens with no pause.
+              const retry = conflictRetry(conflicts, err.carriedStored);
+              setTimeout(() => {
+                formSaveRetryPendingRef.current = false;
+                scheduleAutoSave(
+                  () => {
+                    const latest = formBase?.emitted;
+                    return latest && typeof latest === "object"
+                      ? (latest as Record<string, unknown>)
+                      : nextValue;
+                  },
+                  sectionIndex,
+                  conflicts + 1,
+                  target,
+                  retry.immediate,
+                );
+                // Saves of this form made meanwhile are in the retry; the
+                // others run behind it (or now, when it sends nothing).
+                waitingFormSavesRef.current.delete(waitingKey);
+                runWaitingFormSaves(AUTOSAVE_DELAY);
+              }, retry.delay);
             } else {
               reloadStaleForm();
             }
@@ -1922,6 +1925,11 @@ export function SectionsEditor({
       sectionVariantIndex: targetSectionVariantIndex,
       write,
     };
+    if (immediate) {
+      pendingSectionSaveRef.current = null;
+      write();
+      return;
+    }
     debounceRef.current = setTimeout(() => {
       debounceRef.current = null;
       write();
