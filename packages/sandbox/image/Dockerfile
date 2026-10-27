@@ -253,7 +253,8 @@ RUN npm install -g /opt/sandbox-daemon/harness-runner.tgz \
   && npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_CLI_VERSION}" \
   && npm install -g "@openai/codex@${CODEX_CLI_VERSION}" \
   && codex --version \
-  && claude --version
+  && claude --version \
+  && echo '{"harnessId":"none","input":{}}' | decocms-harness-runner | grep -q unknown_harness
 
 # Claude Code discovers skills as `<config-dir>/skills/<name>/SKILL.md`, so the
 # image's shared skills are symlinked in rather than copied. CLAUDE_CONFIG_DIR
