@@ -1,6 +1,6 @@
 {
   "name": "decocms",
-  "version": "4.524.0",
+  "version": "4.526.1",
   "description": "Deco CMS — Self-hostable MCP Gateway for managing AI connections and tools",
   "author": "Deco team",
   "repository": {
@@ -62,7 +62,7 @@
     "@better-auth/sso": "1.4.1",
     "@decocms/better-auth": "1.5.17",
     "@decocms/bindings": "workspace:*",
-    "@decocms/blocks": "8.5.1",
+    "@decocms/blocks": "8.8.0",
     "@decocms/mcp-utils": "workspace:*",
     "@decocms/runtime": "workspace:*",
     "@decocms/sandbox": "workspace:*",

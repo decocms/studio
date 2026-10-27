@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import { serializeBlock } from "@decocms/blocks/protocol";
+import { serializeBlock, TOMBSTONE_VERSION } from "@decocms/blocks/protocol";
+import { DRAFT_TOMBSTONE_VERSION } from "@decocms/shared/blocks-major";
 import { defineConformanceSuite } from "@decocms/blocks/protocol/conformance";
 import { createContentHandler } from "@decocms/blocks/protocol/server";
 import { deliveryKeys } from "./delivery-store";
@@ -9,11 +10,7 @@ import {
   createDraftContentStorage,
   createDraftWriteStorage,
 } from "./draft-content-storage";
-import {
-  applyOnlyCalls,
-  planDraftSave,
-  withDraftConflicts,
-} from "./draft-save-request";
+import { withDraftConflicts } from "./draft-save-request";
 import {
   createDraftStore,
   type DraftStore,
@@ -584,31 +581,28 @@ async function save(
   drafts: DraftStore,
   params: Record<string, unknown>,
   ref: HostedDraftRef = REF,
-  /** The draft as the route read it, when not read now (a race). */
+  /** What the save's first read of the draft finds, when not the draft now (a race). */
   read?: Awaited<ReturnType<DraftStore["load"]>>,
 ) {
   const body = { jsonrpc: "2.0", id: 1, method: "blocks.apply", params };
-  const loaded = read !== undefined ? read : await drafts.load(ref);
-  const plan = planDraftSave(
-    body,
-    applyOnlyCalls(body)!,
-    loaded?.body ?? { set: {}, delete: [] },
-  );
+  let firstRead = read !== undefined;
+  const reading: DraftStore = {
+    ...drafts,
+    load: async (r) => {
+      if (!firstRead) return drafts.load(r);
+      firstRead = false;
+      return read!;
+    },
+  };
   const res = await withDraftConflicts(
     await createContentHandler(
-      createDraftWriteStorage({
-        packagePath: null,
-        drafts,
-        ref,
-        loaded,
-        deletes: plan.deletes,
-      }),
+      createDraftWriteStorage({ packagePath: null, drafts: reading, ref }),
       { server: { name: "studio-github", version: "1" }, bodyCacheBytes: 0 },
     )(
       new Request("http://studio.test/rpc", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(plan.body),
+        body: JSON.stringify(body),
       }),
     ),
     async () => (await drafts.load(ref))?.body ?? { set: {}, delete: [] },
@@ -701,7 +695,9 @@ describe("hosted draft saves: the draft alone", () => {
       ifMatch: { Footer: null },
     });
     expect(guarded.error).toBeUndefined();
-    expect(guarded.result.versions).toEqual({ Footer: null });
+    // The draft holds the deletion: its version is the tombstone's, what
+    // the next guard on it names.
+    expect(guarded.result.versions).toEqual({ Footer: TOMBSTONE_VERSION });
     expect((await drafts.load(REF))?.body).toEqual({
       set: {},
       delete: ["Footer"],
@@ -893,43 +889,61 @@ describe("hosted draft saves: the draft alone", () => {
   });
 });
 
-describe("the write storage's tombstones (blocks #761: TOMBSTONE_VERSION)", () => {
-  const TOMBSTONE = "tombstone";
-
-  async function deleteOnce(tombstoneVersion: string | null) {
+describe("the write storage is an overlay (protocol 1.2)", () => {
+  it("describes itself as one", async () => {
     const { drafts } = setup();
-    await drafts.update(REF, () => ({ set: {}, delete: ["Old"] }));
+    const handler = createContentHandler(
+      createDraftWriteStorage({ packagePath: null, drafts, ref: REF }),
+      { server: { name: "studio-github", version: "1" }, bodyCacheBytes: 0 },
+    );
+    const res = await handler(
+      new Request("http://studio.test/rpc", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "describe" }),
+      }),
+    );
+    expect((await res.json()).result).toMatchObject({
+      overlay: true,
+      secrets: null,
+    });
+  });
+
+  it("lists a tombstone deleted at TOMBSTONE_VERSION, and a recorded delete answers it", async () => {
+    const { drafts } = setup();
+    await drafts.update(REF, () => ({
+      set: { Kept: { v: 1 } },
+      delete: ["Old"],
+    }));
     const storage = createDraftWriteStorage({
       packagePath: null,
       drafts,
       ref: REF,
-      tombstoneVersion,
     });
-    const listed = await storage.snapshot();
+    const overlay = await storage.writeSnapshot!();
+    expect(overlay.files).toEqual([
+      expect.objectContaining({ file: "Kept.json" }),
+      { file: "Old.json", version: TOMBSTONE_VERSION, deleted: true },
+    ]);
+    // `snapshot()` lists what exists: no tombstone.
+    expect((await storage.snapshot()).files).toEqual([
+      expect.objectContaining({ file: "Kept.json" }),
+    ]);
     const committed = await storage.commit({
       reason: "apply",
+      base: overlay,
       put: {},
       delete: ["Gone.json"],
-      expected: {},
-    } as unknown as Parameters<typeof storage.commit>[0]);
-    return { listed, committed };
-  }
-
-  it("with a blocks release that has TOMBSTONE_VERSION: a tombstone is listed deleted, and a recorded delete answers its version", async () => {
-    const { listed, committed } = await deleteOnce(TOMBSTONE);
-    // `deleted` is blocks #761's StorageFile field (not in blocks 8.5's type).
-    expect(listed.files as unknown[]).toEqual([
-      { file: "Old.json", version: TOMBSTONE, deleted: true },
-    ]);
+      expected: { "Old.json": TOMBSTONE_VERSION, "Gone.json": null },
+    });
     expect(committed).toMatchObject({
       status: "committed",
-      versions: { "Gone.json": TOMBSTONE },
+      versions: { "Gone.json": TOMBSTONE_VERSION },
     });
   });
 
-  it("without it (blocks 8.5): the tombstone carries its version alone, and a delete answers none", async () => {
-    const { listed, committed } = await deleteOnce(null);
-    expect(listed.files).toEqual([{ file: "Old.json", version: TOMBSTONE }]);
-    expect(committed).toMatchObject({ status: "committed", versions: {} });
+  it("the draft's tombstone version is the protocol's", () => {
+    // The editor reads a hosted draft's deletions by the shared constant.
+    expect(DRAFT_TOMBSTONE_VERSION).toBe(TOMBSTONE_VERSION);
   });
 });

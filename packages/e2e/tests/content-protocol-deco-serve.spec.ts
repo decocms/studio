@@ -14,7 +14,6 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import type { APIRequestContext, Page } from "@playwright/test";
 import { isV8Schema } from "@decocms/shared/blocks-major";
-import { publicKeyPemFromDer } from "@decocms/shared/secret-ciphertext";
 import {
   type DecoServeStub,
   startDecoServeStub,
@@ -179,44 +178,6 @@ const schemaWithPages = {
 const HERO = "home-hero";
 const heroFile = (value: object) => `${JSON.stringify(value, null, 2)}\n`;
 
-async function generateKeyPair() {
-  const pair = (await crypto.subtle.generateKey(
-    {
-      name: "RSA-OAEP",
-      modulusLength: 2048,
-      publicExponent: new Uint8Array([1, 0, 1]),
-      hash: "SHA-256",
-    },
-    true,
-    ["encrypt", "decrypt"],
-  )) as CryptoKeyPair;
-  const spki = new Uint8Array(
-    await crypto.subtle.exportKey("spki", pair.publicKey),
-  );
-  return { privateKey: pair.privateKey, publicKey: publicKeyPemFromDer(spki) };
-}
-
-async function decryptSecret(privateKey: CryptoKey, ciphertext: string) {
-  const [, key, iv, body] = ciphertext.split(".");
-  const bytes = (part: string) =>
-    new Uint8Array(Buffer.from(part, "base64url"));
-  const raw = await crypto.subtle.decrypt(
-    { name: "RSA-OAEP" },
-    privateKey,
-    bytes(key!),
-  );
-  const aes = await crypto.subtle.importKey("raw", raw, "AES-GCM", false, [
-    "decrypt",
-  ]);
-  return new TextDecoder().decode(
-    await crypto.subtle.decrypt(
-      { name: "AES-GCM", iv: bytes(iv!) },
-      aes,
-      bytes(body!),
-    ),
-  );
-}
-
 /**
  * A Blocks v8 site project: its repository's main has a `"blocksMajor": 8`
  * schema (any org; there is no flag). The page decides from main's schema,
@@ -262,12 +223,11 @@ async function heroOf(stub: DecoServeStub): Promise<Record<string, unknown>> {
   return JSON.parse(text ?? "{}") as Record<string, unknown>;
 }
 
-/** Edits a field, a Lazy<T> field and a secret of the hero section. */
-async function editHero(
-  page: Page,
-  stub: DecoServeStub,
-  privateKey: CryptoKey,
-): Promise<void> {
+/**
+ * Edits a field and a Lazy<T> field of the hero section; its Secret field
+ * has nothing to edit (a v8 site's secrets live in its deploy platform).
+ */
+async function editHero(page: Page, stub: DecoServeStub): Promise<void> {
   // A v8 site always gets the new blocks editor: with no org, and in an org
   // that never turned on `new_blocks_editor`.
   await expect(page.locator("[data-blocks-editor]").first()).toHaveAttribute(
@@ -289,18 +249,12 @@ async function editHero(
     .poll(async () => (await heroOf(stub)).teaser, { timeout: 15_000 })
     .toEqual({ __resolveType: "lazy", value: "Next week" });
 
-  // Secret: encrypted in the browser; the plaintext never leaves it.
-  const secret = "sk_live_e2e_do_not_leak";
-  const apiKey = page.getByLabel("API key", { exact: true });
-  await apiKey.fill(secret);
-  await apiKey.press("Enter");
-  await expect
-    .poll(async () => (await heroOf(stub)).apiKey, { timeout: 15_000 })
-    .toMatchObject({ __resolveType: "secret" });
-  const stored = (await heroOf(stub)).apiKey as { ciphertext: string };
-  expect(await decryptSecret(privateKey, stored.ciphertext)).toBe(secret);
-  expect(JSON.stringify(await stub.readFiles())).not.toContain(secret);
-  expect(stub.requestBodies.join("\n")).not.toContain(secret);
+  // Secret: content holds none (protocol 1.2), so no input, only where
+  // the site's secrets live.
+  await expect(
+    page.getByText(/Secrets live in your site's hosting settings/),
+  ).toBeVisible();
+  await expect(page.getByLabel("API key", { exact: true })).toHaveCount(0);
 }
 
 /**
@@ -330,7 +284,6 @@ async function startPreviewApp(): Promise<{
 }
 
 async function startStub(
-  publicKey: string,
   port?: number,
   siteSchema: object = schema,
   /** More saved block files, by file name. */
@@ -340,7 +293,6 @@ async function startStub(
   const stub = await startDecoServeStub({
     port,
     schema: siteSchema,
-    secretsPublicKey: publicKey,
     previewUrl: app.url,
     files: {
       [`${HERO}.json`]: heroFile({
@@ -367,11 +319,10 @@ const linkOf = (stub: DecoServeStub, path = "/site-editor") =>
 test.describe("site editor over deco serve", () => {
   test.setTimeout(120_000);
 
-  test("account-less /site-editor edits a field, a Lazy<T> field and a secret", async ({
+  test("account-less /site-editor edits a field and a Lazy<T> field", async ({
     page,
   }) => {
-    const { privateKey, publicKey } = await generateKeyPair();
-    const stub = await startStub(publicKey);
+    const stub = await startStub();
     try {
       await page.goto(linkOf(stub));
       await expect(page).toHaveURL("/site-editor", { timeout: 30_000 });
@@ -399,7 +350,7 @@ test.describe("site editor over deco serve", () => {
       await content.getByRole("button", { name: "Advanced" }).click();
       await content.getByRole("button", { name: /^Sections/ }).click();
       await page.getByText("Home Hero", { exact: true }).click();
-      await editHero(page, stub, privateKey);
+      await editHero(page, stub);
 
       // The browser remembers the endpoint: `/site-editor` with no link
       // reconnects to it.
@@ -420,8 +371,7 @@ test.describe("site editor over deco serve", () => {
     // Only a Blocks v8 site (main's schema) connects to deco serve: a v7 one
     // keeps main's Local tunnel.
     const project = await createV8Project(api, orgSlug);
-    const { privateKey, publicKey } = await generateKeyPair();
-    const stub = await startStub(publicKey);
+    const stub = await startStub();
     const session = await api.get("/api/auth/get-session");
     const { user } = (await session.json()) as { user: { id: string } };
     await page.addInitScript(
@@ -461,7 +411,7 @@ test.describe("site editor over deco serve", () => {
       await content.getByRole("button", { name: "Advanced" }).click();
       await content.getByRole("button", { name: /^Sections/ }).click();
       await page.getByText("Home Hero", { exact: true }).click();
-      await editHero(page, stub, privateKey);
+      await editHero(page, stub);
     } finally {
       await stub.close();
     }
@@ -470,11 +420,7 @@ test.describe("site editor over deco serve", () => {
   test("Settings opens the CMS block's form with its defaults and creates CMS.json on the first save", async ({
     page,
   }) => {
-    const stub = await startStub(
-      (await generateKeyPair()).publicKey,
-      undefined,
-      schemaWithSettings,
-    );
+    const stub = await startStub(undefined, schemaWithSettings);
     const cmsOf = async () => {
       const text = (await stub.readFiles())["CMS.json"];
       return text ? (JSON.parse(text) as Record<string, unknown>) : null;
@@ -530,11 +476,7 @@ test.describe("site editor over deco serve", () => {
   test("Settings' first save never replaces a CMS block created meanwhile", async ({
     page,
   }) => {
-    const stub = await startStub(
-      (await generateKeyPair()).publicKey,
-      undefined,
-      schemaWithSettings,
-    );
+    const stub = await startStub(undefined, schemaWithSettings);
     // Holds the editor's polls once armed, until its save goes out, so the
     // editor can't read the other writer's block first: only the guard
     // (`ifMatch: { CMS: null }`) can tell. Under load a poll used to land
@@ -579,19 +521,14 @@ test.describe("site editor over deco serve", () => {
   test("a section form saved over another writer's change keeps that change", async ({
     page,
   }) => {
-    const stub = await startStub(
-      (await generateKeyPair()).publicKey,
-      undefined,
-      schemaWithPages,
-      {
-        "pages-home.json": heroFile({
-          __resolveType: "page",
-          name: "Home",
-          path: "/",
-          sections: [{ __resolveType: HERO }],
-        }),
-      },
-    );
+    const stub = await startStub(undefined, schemaWithPages, {
+      "pages-home.json": heroFile({
+        __resolveType: "page",
+        name: "Home",
+        path: "/",
+        sections: [{ __resolveType: HERO }],
+      }),
+    });
     // Holds the editor's polls once armed, until its next save goes out, so
     // that save is made from the copy the form loaded: only the version
     // guard (`ifMatch`) can tell it is outdated.
@@ -669,19 +606,14 @@ test.describe("site editor over deco serve", () => {
   test("a field another writer also changed asks whose version to keep, and saves the choice with the version guard", async ({
     page,
   }) => {
-    const stub = await startStub(
-      (await generateKeyPair()).publicKey,
-      undefined,
-      schemaWithPages,
-      {
-        "pages-home.json": heroFile({
-          __resolveType: "page",
-          name: "Home",
-          path: "/",
-          sections: [{ __resolveType: HERO }],
-        }),
-      },
-    );
+    const stub = await startStub(undefined, schemaWithPages, {
+      "pages-home.json": heroFile({
+        __resolveType: "page",
+        name: "Home",
+        path: "/",
+        sections: [{ __resolveType: HERO }],
+      }),
+    });
     // As above: the editor's polls wait for its next save, so only the
     // version guard (`ifMatch`) can tell the form's copy is outdated.
     let holdPolls = false;
@@ -775,9 +707,8 @@ test.describe("site editor over deco serve", () => {
   test("waits for a stopped deco serve and reconnects when it starts", async ({
     page,
   }) => {
-    const { publicKey } = await generateKeyPair();
     // A port nothing listens on yet.
-    const probe = await startStub(publicKey);
+    const probe = await startStub();
     const port = Number(new URL(probe.endpoint).port);
     await probe.close();
     // An older link, on 127.0.0.1: it opens, shown as localhost.
@@ -788,7 +719,7 @@ test.describe("site editor over deco serve", () => {
     await expect(
       page.getByText(`Looking for deco serve on localhost:${port}…`),
     ).toBeVisible({ timeout: 30_000 });
-    const stub = await startStub(publicKey, port);
+    const stub = await startStub(port);
     try {
       await expect(page.getByTestId("content-version-badge")).toBeVisible({
         timeout: 30_000,
@@ -804,8 +735,7 @@ test.describe("site editor over deco serve", () => {
   test("Changes lists what changed since the last commit, shows both sides, and discards it", async ({
     page,
   }) => {
-    const { publicKey } = await generateKeyPair();
-    const stub = await startStub(publicKey);
+    const stub = await startStub();
     try {
       const committed = (await stub.readFiles())[`${HERO}.json`]!;
       await page.goto(linkOf(stub));
@@ -867,11 +797,9 @@ test.describe("site editor over deco serve", () => {
   test("an older deco serve (8.1.x) says it's out of date and how to update", async ({
     page,
   }) => {
-    const { publicKey } = await generateKeyPair();
     const app = await startPreviewApp();
     const stub = await startDecoServeStub({
       schema,
-      secretsPublicKey: publicKey,
       previewUrl: app.url,
       outdated: true,
     });
@@ -908,7 +836,7 @@ test.describe("site editor over deco serve", () => {
     // The New Layout preference is off (the default): this route uses the
     // New Layout anyway.
     const { page, orgSlug } = authedPage;
-    const stub = await startStub((await generateKeyPair()).publicKey);
+    const stub = await startStub();
     try {
       await page.goto(linkOf(stub));
       await expect(page).toHaveURL("/site-editor", { timeout: 30_000 });

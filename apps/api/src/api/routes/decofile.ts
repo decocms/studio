@@ -83,7 +83,6 @@ import {
   applyOnlyCalls,
   refuseUnguardedSave,
   saveRequestBody,
-  planDraftSave,
   withDraftConflicts,
 } from "@/hosted/draft-save-request";
 import type { DraftEditors } from "@/hosted/draft-editors";
@@ -500,8 +499,7 @@ async function serveDraftSave(
   if (!hosted) return null;
   const body = await saveRequestBody(c.req.raw);
   if (body === undefined) return null;
-  const calls = applyOnlyCalls(body);
-  if (!calls) return null;
+  if (!applyOnlyCalls(body)) return null;
   // No marker (a best-effort write that failed, or not written yet): ask
   // main once, which writes it. Never the layered save: its guards compare
   // with main under the draft, so an editor's "not in the draft yet" would
@@ -515,21 +513,11 @@ async function serveDraftSave(
   // Every block a hosted save touches carries its precondition.
   const unguarded = refuseUnguardedSave(body, "draft");
   if (unguarded) return unguarded;
-  const loaded = await hosted.drafts.load(hosted.ref);
-  const plan = planDraftSave(
-    body,
-    calls,
-    loaded?.body ?? { set: {}, delete: [] },
-  );
-  const headers = new Headers(c.req.raw.headers);
-  headers.delete("content-length");
   const handler = createContentHandler(
     createDraftWriteStorage({
       packagePath: scope.packagePath,
       drafts: hosted.drafts,
       ref: hosted.ref,
-      loaded,
-      deletes: plan.deletes,
     }),
     {
       server: { name: "studio-github", version: "1" },
@@ -540,13 +528,7 @@ async function serveDraftSave(
   // A refused save carries the draft's copy of each refused block: the
   // editor's reconcile flow opens from it, with no other read.
   return withDraftConflicts(
-    await handler(
-      new Request(c.req.raw.url, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(plan.body),
-      }),
-    ),
+    await handler(c.req.raw),
     async () =>
       (await hosted.drafts.load(hosted.ref))?.body ?? { set: {}, delete: [] },
   );

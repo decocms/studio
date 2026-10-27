@@ -228,7 +228,28 @@ const ANALYTICS_VIEWS = new Set([
   "quality",
   "usage",
   "install",
+  "heatmap",
 ]);
+
+const HEATMAP_DEVICES = new Set(["mobile", "tablet", "desktop"]);
+
+/** The heatmap view's own filters, validated before they reach the read
+ *  surface (which falls back to `/` and `mobile` on anything else — answering
+ *  for a page nobody asked about). Absent values keep the read surface's
+ *  defaults. Returns `null` when a value is present but invalid. */
+export function heatmapParams(
+  page: string | undefined,
+  device: string | undefined,
+): { page?: string; device?: string } | null {
+  if (page !== undefined && (!page.startsWith("/") || page.length > 512)) {
+    return null;
+  }
+  if (device !== undefined && !HEATMAP_DEVICES.has(device)) return null;
+  return {
+    ...(page !== undefined ? { page } : {}),
+    ...(device !== undefined ? { device } : {}),
+  };
+}
 
 /** The ranges the read surface understands (queries.mjs RANGES). */
 const ANALYTICS_RANGES = new Set([
@@ -582,7 +603,8 @@ export const createHostingRoutes = () => {
     proxyControlplane(c, "analytics", { method: "DELETE" }),
   );
 
-  // GET /api/:org/hosting/:site/analytics/data?view=&range= — the tenant-scoped
+  // GET /api/:org/hosting/:site/analytics/data?view=&range= (+ page, device for
+  // view=heatmap) — the tenant-scoped
   // dashboard views, read straight from the Analytics read surface (NOT the
   // control-plane). Answers `{ registered, siteId, view, range, data }` where
   // `data` is the read surface's per-view payload with delivery/bundle internals
@@ -628,6 +650,13 @@ export const createHostingRoutes = () => {
     if (!ANALYTICS_RANGES.has(range)) {
       return c.json({ error: `unknown range: ${range}` }, 400);
     }
+    const heatmap =
+      view === "heatmap"
+        ? heatmapParams(c.req.query("page"), c.req.query("device"))
+        : {};
+    if (!heatmap) {
+      return c.json({ error: "invalid heatmap page or device" }, 400);
+    }
 
     // Resolve the warehouse site_id from a slug the org owns — never trust a
     // client-supplied id. `unregistered` ⇒ the tab shows Configuration; a
@@ -651,6 +680,9 @@ export const createHostingRoutes = () => {
     upstream.searchParams.set("view", view);
     upstream.searchParams.set("range", range);
     upstream.searchParams.set("site", siteId);
+    for (const [key, value] of Object.entries(heatmap)) {
+      upstream.searchParams.set(key, value);
+    }
 
     let payload: Record<string, unknown> | null;
     try {

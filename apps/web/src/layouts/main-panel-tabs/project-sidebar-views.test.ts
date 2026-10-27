@@ -90,8 +90,8 @@ describe("project sidebar views", () => {
       "reports",
       "board",
       "site-editor",
-      "automations",
       "experiments",
+      "automations",
       "context",
     ]);
   });
@@ -217,8 +217,8 @@ describe("project sidebar views", () => {
       "reports",
       "board",
       "site-editor",
-      "experiments",
       "calendar",
+      "experiments",
     ]);
   });
 
@@ -435,8 +435,8 @@ describe("Calendar and Experiments on a Blocks (v8) site", () => {
       "reports",
       "board",
       "site-editor",
-      "experiments",
       "calendar",
+      "experiments",
     ]);
   });
 
@@ -462,23 +462,26 @@ describe("Calendar and Experiments on a Blocks (v8) site", () => {
     ).toEqual(["site-editor", "experiments"]);
   });
 
-  test("a Calendar deep link waits while main's schema is read", () => {
-    const presence = projectSidebarViewPresence(true, nativePresence([]));
-    expect(
-      projectSidebarViewUnavailable("calendar", presence, {
-        assets: false,
-        siteAccess: false,
-        calendar: true,
-      }),
-    ).toBe(false);
-    expect(
-      projectSidebarViewUnavailable("calendar", presence, {
-        assets: false,
-        siteAccess: false,
-        calendar: false,
-      }),
-    ).toBe(true);
-  });
+  test.each(["calendar", "experiments"])(
+    "a %s deep link waits while main's schema is read",
+    (view) => {
+      const presence = projectSidebarViewPresence(true, nativePresence([]));
+      expect(
+        projectSidebarViewUnavailable(view, presence, {
+          assets: false,
+          siteAccess: true,
+          calendar: true,
+        }),
+      ).toBe(false);
+      expect(
+        projectSidebarViewUnavailable(view, presence, {
+          assets: false,
+          siteAccess: true,
+          calendar: false,
+        }),
+      ).toBe(true);
+    },
+  );
 });
 
 describe("Experiments and Calendar added once to a Blocks site's saved list", () => {
@@ -490,11 +493,11 @@ describe("Experiments and Calendar added once to a Blocks site's saved list", ()
 
   test("a list saved before they were defaults gets them on a Blocks site", () => {
     const offered = offeredProjectSidebarViews(undefined, true);
-    expect(offered).toEqual(["experiments", "calendar"]);
+    expect(offered).toEqual(["calendar", "experiments"]);
     expect(selectedProjectSidebarViews(saved, v8, 1, offered)).toEqual([
       "site-editor",
-      "experiments",
       "calendar",
+      "experiments",
     ]);
   });
 
@@ -523,7 +526,7 @@ describe("Experiments and Calendar added once to a Blocks site's saved list", ()
     );
     const next = toggleProjectSidebarView(shown, "calendar", false, 1);
     const seen = seenProjectSidebarViewsAfterSave(undefined, true);
-    expect(seen).toEqual(["experiments", "calendar"]);
+    expect(seen).toEqual(["calendar", "experiments"]);
     // Read back: nothing is offered again, the saved list decides.
     const offered = offeredProjectSidebarViews(seen, true);
     expect(offered).toEqual([]);

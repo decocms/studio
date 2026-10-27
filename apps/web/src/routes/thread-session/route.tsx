@@ -114,24 +114,31 @@ function ActiveTaskBoundary({ children }: { children?: React.ReactNode }) {
 
 function ActiveTaskRuntimeProvider({
   threadId,
+  providerKey,
   children,
 }: {
   threadId: string | null;
+  providerKey: string;
   children: ReactNode;
 }) {
   /**
    * No thread means no runtime to own: nothing to stream. The threadless
-   * provider installs the same stream shape the panel consumes and mints the
-   * thread on the first send.
+   * source installs the same stream shape the panel consumes and mints the
+   * thread on the first send. Only the source is keyed: a thread switch (or
+   * that first send) must not remount the open app or close its chat.
    */
-  if (threadId === null) {
-    return <Chat.ThreadlessProvider>{children}</Chat.ThreadlessProvider>;
-  }
-
   return (
-    <Chat.ActiveTaskProvider taskId={threadId}>
+    <Chat.StreamHost
+      source={
+        threadId === null ? (
+          <Chat.ThreadlessStreamSource key={providerKey} />
+        ) : (
+          <Chat.ActiveTaskStreamSource key={providerKey} taskId={threadId} />
+        )
+      }
+    >
       {children}
-    </Chat.ActiveTaskProvider>
+    </Chat.StreamHost>
   );
 }
 
@@ -329,7 +336,7 @@ function VmEventsBridge({
   if (sessionRuntime === "cms") {
     return (
       <BlocksPreviewWorkspaceProvider
-        key={`${virtualMcpId}:${currentBranch ?? "no-branch"}:${activeTask?.id ?? ""}`}
+        resetKey={`${virtualMcpId}:${currentBranch ?? "no-branch"}:${activeTask?.id ?? ""}`}
       >
         {children}
       </BlocksPreviewWorkspaceProvider>
@@ -341,14 +348,16 @@ function VmEventsBridge({
       // Keyed by the THREAD, not the branch: a coding session shares the CMS
       // draft's branch, so two sessions differ only by thread id. Without it
       // React keeps one provider instance across the switch and the previous
-      // session's boot error stays on screen in the next one.
-      key={activeTask?.id ?? "no-thread"}
+      // session's boot error stays on screen in the next one. A reset key,
+      // not a `key`: remounting would also reload the open app.
+      resetKey={activeTask?.id ?? "no-thread"}
       virtualMcpId={virtualMcpId}
       branch={currentBranch ?? null}
       previewUrl={previewUrl}
       enabled={shouldConnect}
     >
       <SandboxLifecycleProvider
+        resetKey={activeTask?.id ?? "no-thread"}
         executionEnabled={executionEnabled}
         virtualMcpId={virtualMcpId}
         branch={currentBranch ?? null}
@@ -358,7 +367,7 @@ function VmEventsBridge({
         threadId={activeTask?.id ?? null}
       >
         <BlocksPreviewWorkspaceProvider
-          key={`${virtualMcpId}:${currentBranch ?? "no-branch"}:${activeTask?.id ?? ""}`}
+          resetKey={`${virtualMcpId}:${currentBranch ?? "no-branch"}:${activeTask?.id ?? ""}`}
         >
           {children}
         </BlocksPreviewWorkspaceProvider>
@@ -437,7 +446,8 @@ function ThreadSessionContent({
         }
       >
         <ChatLayout.Thread topbar={<ThreadTopbar />}>
-          <ActiveTaskBoundary />
+          {/* The conversation is per thread; the app beside it is not. */}
+          <ActiveTaskBoundary key={taskId ?? "threadless"} />
         </ChatLayout.Thread>
         <Outlet />
       </ChatLayout>
@@ -496,7 +506,20 @@ function ThreadSessionProvider() {
   const hasActiveRepository = !!(entity && getActiveRepository(entity));
   const baseBranch = useBaseBranch(entity, null);
 
-  const resolvingEntry = routeThreadId === null && !!routeAgentId && !!entity;
+  /** Set once an arrival lands on the empty composer. A thread minted from that
+   *  composer reaches the store before the URL names it; resolving the entry
+   *  again then swapped the open app and the chat for a redirect. */
+  const [composerSettledFor, setComposerSettledFor] = useState<string | null>(
+    null,
+  );
+  if (routeThreadId !== null && composerSettledFor !== null) {
+    setComposerSettledFor(null);
+  }
+  const resolvingEntry =
+    routeThreadId === null &&
+    !!routeAgentId &&
+    !!entity &&
+    composerSettledFor !== virtualMcpId;
   const findEntry = (candidates: Task[]) =>
     findAgentEntryThread(
       candidates,
@@ -647,6 +670,7 @@ function ThreadSessionProvider() {
         />
       );
     }
+    setComposerSettledFor(virtualMcpId);
   }
 
   if (ensureState.status === "creating" || ensureState.status === "loading") {
@@ -722,7 +746,10 @@ function ThreadSessionProvider() {
             hasActiveRepository={hasActiveRepository}
             sandboxMap={entity.metadata?.sandboxMap}
           >
-            <ActiveTaskRuntimeProvider key={providerKey} threadId={threadId}>
+            <ActiveTaskRuntimeProvider
+              threadId={threadId}
+              providerKey={providerKey}
+            >
               <MainPanelBoundary>
                 <ThreadSessionContent
                   layout={layout}

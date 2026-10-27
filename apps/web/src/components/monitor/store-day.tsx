@@ -389,11 +389,19 @@ function Body({
           title={t("monitor.store.projected")}
           value={formatCount(Math.round(day.headline.projected))}
           caption={
-            <Trend
-              change={relativeChange(day.headline.projected, day.headline.d1)}
-              better="up"
-              reference={t("monitor.ref.yesterday")}
-            />
+            day.backfill ? (
+              <span className="text-meta">
+                {t("monitor.chart.historyLoading", {
+                  pct: `${Math.floor((1 - day.backfill.pending / day.backfill.total) * 100)}%`,
+                })}
+              </span>
+            ) : (
+              <Trend
+                change={relativeChange(day.headline.projected, day.headline.d1)}
+                better="up"
+                reference={t("monitor.ref.yesterday")}
+              />
+            )
           }
         />
         <MetricCard

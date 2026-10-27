@@ -777,6 +777,24 @@ export const KEYS = {
   // collapsible section caches independently and refetches on range change.
   analyticsData: (org: string, site: string, view: string, range: string) =>
     ["hosting", org, site, "analytics-data", view, range] as const,
+  // Deco Analytics → Heatmap: one page × device bucket of `view=heatmap`.
+  analyticsHeatmap: (
+    org: string,
+    site: string,
+    range: string,
+    page: string,
+    device: string,
+  ) =>
+    [
+      "hosting",
+      org,
+      site,
+      "analytics-data",
+      "heatmap",
+      range,
+      page,
+      device,
+    ] as const,
   // CDN Monitor tab — one native CDN view (summary, timeline, cache-status, …)
   // for a range, read straight from the stats-lake warehouse through the BFF at
   // /api/:org/monitor/:site/cdn/data. Keyed by the request base + view + range

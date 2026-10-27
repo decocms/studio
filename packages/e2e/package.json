@@ -1,6 +1,6 @@
 {
   "name": "@decocms/e2e",
-  "version": "1.127.0",
+  "version": "1.127.2",
   "private": true,
   "description": "Black-box e2e suite (HTTP + DB) for Studio, isolated from app source.",
   "type": "module",
@@ -13,7 +13,7 @@
     "test:e2e:ui": "playwright test --ui"
   },
   "dependencies": {
-    "@decocms/blocks": "8.5.1",
+    "@decocms/blocks": "8.8.0",
     "@decocms/shared": "workspace:*",
     "@modelcontextprotocol/sdk": "1.29.0",
     "@playwright/test": "^1.58.2",

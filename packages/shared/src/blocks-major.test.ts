@@ -265,6 +265,8 @@ describe("one v8 detector", () => {
         "isV8Schema on main's schema (rpc schema.get)",
       "apps/web/src/hooks/use-main-schema-v8.ts#useLastFoundV8":
         "the marker (the server's cached mainIsV8): a hint for a failed read, never v8",
+      "apps/web/src/hooks/use-main-schema-v8.ts#lastFoundV8":
+        "useLastFoundV8 for a project in hand: the sidebar's hint while main is read, never v8",
       "apps/web/src/components/sections-editor/content-version-badge.tsx#showsV8Badge":
         "UI: reads the backend the probe chose",
       "apps/web/src/components/thread/repository/localhost-row.tsx#V8LocalhostRow":

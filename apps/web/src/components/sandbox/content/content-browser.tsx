@@ -216,12 +216,6 @@ const VariantCalendar = lazy(() =>
   })),
 );
 
-const CampaignsView = lazy(() =>
-  import("./campaigns/campaigns-view").then((m) => ({
-    default: m.CampaignsView,
-  })),
-);
-
 const PostCalendar = lazy(() =>
   import("./blog/post-calendar").then((m) => ({ default: m.PostCalendar })),
 );
@@ -238,7 +232,6 @@ export type CollectionId =
   | "seo"
   | "settings"
   | "calendar"
-  | "campaigns"
   | "post-schedule"
   | "loaders"
   | "actions"
@@ -258,20 +251,18 @@ export type CollectionId =
 export function visibleCollection(
   active: CollectionId,
   blogAi: boolean,
-  /** A Blocks (v8) site: Campaigns stands where v7's Calendar is. */
+  /** A Blocks (v8) site: its campaigns are the Calendar view, not a tab here. */
   blocksV8 = false,
 ): CollectionId {
   if (active === "context" && !blogAi) return "posts";
-  if (blocksV8 && active === "calendar") return "campaigns";
-  if (!blocksV8 && active === "campaigns") return "calendar";
+  if (blocksV8 && active === "calendar") return "pages";
   return active;
 }
 
 /**
  * A `?contentCollection=` deep link's collection: a blog collection (the Blog
- * Manager's "Editar no Studio") and, on a Blocks v8 site, Sections or
- * Campaigns (the Experiments tab's and the rule picker's links). Anything
- * else opens Pages.
+ * Manager's "Editar no Studio") and, on a Blocks v8 site, Sections (the
+ * Experiments tab's links). Anything else opens Pages.
  */
 export function deepLinkCollection(
   param: string | undefined,
@@ -280,7 +271,7 @@ export function deepLinkCollection(
   if (!param) return null;
   if (isBlogKind(param as CollectionId)) return param as CollectionId;
   if (!blocksV8) return null;
-  return param === "sections" || param === "campaigns" ? param : null;
+  return param === "sections" ? param : null;
 }
 
 export type CollectionCounts = Record<
@@ -512,17 +503,11 @@ function ContentBrowserReady({
     ? { ...withoutBlogState(rawDecofile), ...blogState.blocks }
     : rawDecofile;
   const { openPanel } = usePanelNavigate();
-  // Where a variant's test or campaign is managed: the Experiments tab, and
-  // the Calendar (campaigns) view.
+  // Where a variant's test or campaign is managed: the Experiments and
+  // Calendar views. Both keep the open thread, so they work in this same draft.
   const namedRuleViews: NamedRuleViews = {
     open: (kind) => {
-      if (kind === "campaigns") {
-        setSelection(null);
-        setActiveCollection("campaigns");
-        return;
-      }
-      // Keeps the open thread, so the tab works in this same draft.
-      openPanel("experiments");
+      openPanel(kind === "campaigns" ? "calendar" : "experiments");
     },
   };
   const [selection, setSelection] = useState<Selection>(() =>
@@ -805,9 +790,9 @@ function ContentBrowserReady({
   const actionsCount = countAvailableRunnables(meta, "actions");
   // What a content-protocol site has no use for: app installs (no site code
   // runs), v7's site app block, and an empty Actions folder.
-  // v7 keeps its Calendar; a v8 site's dates are its Campaigns.
+  // v7 keeps its Calendar; a v8 site's campaigns are the Calendar view.
   const hiddenCollections: CollectionId[] = runsSiteCode
-    ? ["settings", "campaigns"]
+    ? ["settings"]
     : [
         "calendar",
         "apps",
@@ -1297,7 +1282,6 @@ function ContentBrowserReady({
           activeCollection !== "settings" &&
           activeCollection !== "context" &&
           activeCollection !== "calendar" &&
-          activeCollection !== "campaigns" &&
           activeCollection !== "post-schedule" &&
           activeCollection !== "posts" &&
           activeCollection !== "loaders" &&
@@ -1418,32 +1402,6 @@ function ContentBrowserReady({
             >
               {activeCollection === "calendar" ? (
                 <VariantCalendar decofile={decofile} />
-              ) : activeCollection === "campaigns" ? (
-                <CampaignsView
-                  orgSlug={orgSlug}
-                  virtualMcpId={virtualMcpId}
-                  branch={branch}
-                  decofile={decofile}
-                  meta={meta}
-                  onOpenUse={(use) => {
-                    setVariantFocus((prev) => ({
-                      blockKey: use.blockKey,
-                      focus: use.focus ?? {},
-                      seq: (prev?.seq ?? 0) + 1,
-                    }));
-                    if (use.blockKind === "page" && use.path !== undefined) {
-                      setActiveCollection("pages");
-                      selectItem({
-                        collection: "pages",
-                        key: use.blockKey,
-                        path: use.path,
-                      });
-                    } else {
-                      setActiveCollection("sections");
-                      selectItem({ collection: "sections", key: use.blockKey });
-                    }
-                  }}
-                />
               ) : activeCollection === "post-schedule" ? (
                 <PostCalendar
                   decofile={decofile}
