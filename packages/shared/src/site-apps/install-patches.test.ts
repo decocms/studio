@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { findSiteApp } from "./index";
-import { makeInstallAppPatches, SiteAppInstallError } from "./install-patches";
+import { makeInstallAppPatches } from "./install-patches";
 import type { SiteAppRegistryEntry } from "./types";
 
 const vtexDeno = findSiteApp("deno", "deco-vtex")!;
@@ -392,12 +392,15 @@ autoconfigApps(generatedBlocks, APP_REGISTRY);
     ).toThrow(/monolithic `@decocms\/apps` registry/);
   });
 
-  it("refuses a setup.ts with no APP_REGISTRY", () => {
+  it("refuses a setup.ts with no APP_REGISTRY, naming the real shape", () => {
+    // A site may wire each app by hand and never call `autoconfigApps` — the
+    // registry array is a template convention, not a runtime contract. Saying
+    // "setup.ts is missing a const" sends that author to fix the wrong thing.
     expect(() =>
       makeInstallAppPatches(
         tanstackInput({ setupTs: 'import "./cache-config";\n' }),
       ),
-    ).toThrow(SiteAppInstallError);
+    ).toThrow(/does not register apps through `autoconfigApps`/);
   });
 
   it("refuses a package.json with no dependencies object", () => {

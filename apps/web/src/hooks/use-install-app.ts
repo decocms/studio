@@ -38,11 +38,19 @@ interface SandboxRef {
   threadId: string | null;
 }
 
+/** The sandbox is there but not answering yet, as a read reports it. */
+function notAnsweringYet(relativePath: string): SiteAppInstallError {
+  return new SiteAppInstallError(
+    `Could not read ${relativePath} — the sandbox is not answering yet. Try again in a moment.`,
+  );
+}
+
 /**
  * A source file's text, or null when it is genuinely not in the checkout.
  * A daemon that is not up yet reads as `unavailable`, which is a different
  * answer — reporting it as absent would make a booting TanStack site look
  * like a repository with no manifests at all.
+ * A 5xx is that too: a paused VM wakes slower than the proxy waits.
  */
 async function readSource(
   ref: SandboxRef,
@@ -52,12 +60,13 @@ async function readSource(
   const read = await readCommittedText(
     ref,
     decoRepoPath(packagePath, relativePath),
-  );
-  if (read.kind === "unavailable") {
-    throw new SiteAppInstallError(
-      `Could not read ${relativePath} — the sandbox is still starting up`,
-    );
-  }
+  ).catch((error: unknown) => {
+    const status = (error as { status?: number } | null)?.status;
+    if (status !== undefined && status >= 500)
+      throw notAnsweringYet(relativePath);
+    throw error;
+  });
+  if (read.kind === "unavailable") throw notAnsweringYet(relativePath);
   return read.kind === "data" ? read.data : null;
 }
 

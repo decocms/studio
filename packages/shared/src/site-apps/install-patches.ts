@@ -228,7 +228,7 @@ function addRegistryEntry(
   const arrayMatch = APP_REGISTRY_ARRAY.exec(setupTs);
   if (!arrayMatch) {
     throw new SiteAppInstallError(
-      "src/setup.ts has no `const APP_REGISTRY = [...]` to register the app in — wire it by hand, then reinstall",
+      "This site does not register apps through `autoconfigApps`: src/setup.ts declares no `APP_REGISTRY` array for the entry. Add one and call `autoconfigApps(blocks, APP_REGISTRY)`, then reinstall — or wire this app by hand.",
     );
   }
   const lastImport = [...setupTs.matchAll(IMPORT_END)]
