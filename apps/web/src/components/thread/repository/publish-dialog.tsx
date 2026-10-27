@@ -35,7 +35,10 @@ import {
   RefreshCw01,
 } from "@untitledui/icons";
 import { Suspense, useRef, useState, type ReactNode } from "react";
-import { QueryErrorResetBoundary } from "@tanstack/react-query";
+import { QueryErrorResetBoundary, useQuery } from "@tanstack/react-query";
+import { KEYS } from "@/lib/query-keys";
+import { readHostedPublishReview } from "./hosted-publish-api";
+import { publishBodyShown, usePublishHold } from "./publish-hold";
 import { ErrorBoundary } from "@/components/error-boundary.tsx";
 import { useT, type TFunction } from "@/i18n/use-t.ts";
 import { authClient } from "@/lib/auth-client.ts";
@@ -159,12 +162,27 @@ export function PublishDialog(props: PublishDialogProps) {
             ? t("thread.publishPopover.submitForReview")
             : t("thread.publishPopover.publish")}
         </DialogTitle>
-        {props.open ? (
-          <CmsPublishBody {...props} publishLockRef={publishLockRef} />
-        ) : null}
+        <PublishDialogBody {...props} publishLockRef={publishLockRef} />
       </DialogContent>
     </Dialog>
   );
+}
+
+/**
+ * The dialog's body, mounted only with its content (open, or fading out once
+ * closed), so a closed dialog asks nothing about the site's content: the
+ * backend is read here, never by the header that renders the dialog.
+ */
+function PublishDialogBody(
+  props: PublishDialogProps & {
+    publishLockRef: React.MutableRefObject<boolean>;
+  },
+) {
+  const backend = useContentBackend(props.virtualMcpId, props.branch);
+  const hosted = backend.kind === "protocol" && backend.source === "github";
+  return publishBodyShown({ open: props.open, hosted }) ? (
+    <CmsPublishBody {...props} />
+  ) : null;
 }
 
 /** Review panes kept alive at once — each holds up to two full-page frames. */
@@ -415,6 +433,11 @@ interface PublishSource {
   expectedDiffSignature?: string;
   /** A hosted v8 draft: no pull request, Publish goes through the CDN draft. */
   hosted: boolean;
+  /**
+   * Hosted v8: the draft's blocks a developer also changed on main since the
+   * live release. Publish keeps the draft's version; the cards say so.
+   */
+  alsoChanged?: ReadonlySet<string>;
   /** v8: discards go through `changes.discard` on this backend. */
   protocol?: {
     backend: ProtocolBackend;
@@ -557,6 +580,22 @@ function ContentPublish({
       branch: props.branch,
     },
   });
+  const hosted = backend.source === "github";
+  const review = useQuery({
+    queryKey: KEYS.hostedPublishReview(
+      props.orgSlug,
+      props.virtualMcpId,
+      props.branch,
+    ),
+    queryFn: () =>
+      readHostedPublishReview({
+        orgSlug: props.orgSlug,
+        virtualMcpId: props.virtualMcpId,
+        branch: props.branch,
+      }),
+    enabled: hosted,
+    staleTime: 0,
+  });
   return (
     <CmsPublishView
       {...props}
@@ -564,7 +603,8 @@ function ContentPublish({
         ...contentListSource(state, backend),
         gate: { allowed: true, reason: null },
         headBranch: props.branch,
-        hosted: backend.source === "github",
+        hosted,
+        alsoChanged: new Set(review.data?.alsoChanged ?? []),
         otherWork: false,
       }}
     />
@@ -657,7 +697,7 @@ function CmsPublishView({
   draftPreviewUrl,
   destinationHost,
   previewServerUrl,
-  compareDraft,
+  compareDraft: liveCompareDraft,
   lastPublishedPr = null,
   onRequestApproval,
   openPullRequest = null,
@@ -677,19 +717,37 @@ function CmsPublishView({
   );
 
   const {
-    summary,
     allPaths,
     changedFilesTotal,
     changedFilesTruncated,
     diff: gitDiff,
-    bodiesPending,
     bodiesFailed,
-    cardsPending,
     refresh,
     gate,
     hosted,
     otherWork,
   } = source;
+  /**
+   * A hosted Publish keeps showing the list it publishes until the dialog
+   * closes on the published state; its end re-reads the emptied draft
+   * (publish-hold.ts). Taken when Publish is clicked, kept through the
+   * dialog's fade, released only when the Publish failed.
+   */
+  type ShownList = Pick<
+    PublishSource,
+    "summary" | "cardsPending" | "bodiesPending"
+  > & { compareDraft: CompareDraft | null };
+  const liveList: ShownList = {
+    summary: source.summary,
+    cardsPending: source.cardsPending,
+    bodiesPending: source.bodiesPending,
+    compareDraft: liveCompareDraft,
+  };
+  const publishHold = usePublishHold(liveList, { hosted });
+  // The review panes keep the draft they showed too: the emptied draft's
+  // new pointer would reload every pane while the dialog closes.
+  const { summary, cardsPending, bodiesPending, compareDraft } =
+    publishHold.shown;
 
   /** The author's text once they type — until then the note is derived, so a
    *  change list that lands after mount still describes itself. */
@@ -871,6 +929,12 @@ function CmsPublishView({
               isPublishing={isPublishing}
               isDiscarding={isDiscarding}
               v8={!!source.v8}
+              alsoChangedOnMain={
+                !!source.alsoChanged &&
+                source.alsoChanged.has(
+                  change.entry?.name ?? change.blockKey ?? "",
+                )
+              }
             />
           );
         })}
@@ -1105,7 +1169,14 @@ function CmsPublishView({
                     type="button"
                     variant={isReview ? "default" : "brand"}
                     className="flex-1"
-                    onClick={() => void submit()}
+                    onClick={() => {
+                      publishHold.hold();
+                      // Kept through the close: released only when the
+                      // Publish failed and the dialog stays.
+                      void submit().then((published) => {
+                        if (published === false) publishHold.release();
+                      });
+                    }}
                     disabled={!canSubmit}
                   >
                     {isPublishing ? (

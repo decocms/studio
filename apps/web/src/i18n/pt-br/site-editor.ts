@@ -29,6 +29,10 @@ export const siteEditor = {
     "Não foi salvo: outra pessoa alterou isto ao mesmo tempo. Estamos carregando a versão dela, então refaça sua alteração.",
   "siteEditor.save.readOnly":
     "Não foi salvo: esta versão não pode ser editada.",
+  "siteEditor.save.keptChanging":
+    "Não foi salvo: isto continuou mudando enquanto você salvava. A versão mais recente já aparece, então confira e refaça sua alteração.",
+  "siteEditor.save.draftUnread":
+    "Ainda não foi salvo: não conseguimos acessar seu rascunho agora. Sua alteração continua aqui. Confira sua conexão e edite de novo para salvar.",
   "siteEditor.save.invalid":
     "Não foi salvo: alguns campos não estão preenchidos corretamente. Corrija e tente de novo.",
   "siteEditor.save.tooLarge":

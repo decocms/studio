@@ -15,6 +15,7 @@ import {
 import type { SectionCatalogEntry } from "@/components/sections-editor/section-catalog";
 import { createReferencedBlockSaver } from "@/components/sections-editor/save-referenced-block";
 import {
+  keptTheirVersion,
   type SaveGuard,
   useDebouncedSaveBlock,
   useSaveBlock,
@@ -29,8 +30,32 @@ import {
 } from "@/components/sections-editor/schema-form-breadcrumb";
 import { SaveStatus } from "./blog/save-status";
 import { useT } from "@/i18n/use-t.ts";
+import { HeldBlockView } from "./held-block-view";
 
-export function AppEditor({
+type AppEditorProps = Parameters<typeof AppEditorForm>[0];
+
+/**
+ * An app block's settings form. The form keeps its own copy of the block:
+ * on a hosted v8 draft its saves are guarded by that copy, it shows the
+ * draft's copy again after a reconcile, and a block deleted from the draft
+ * shows as deleted (except Settings', whose absence means "not created").
+ */
+export function AppEditor(props: AppEditorProps) {
+  return (
+    <HeldBlockView
+      orgSlug={props.orgSlug}
+      virtualMcpId={props.virtualMcpId}
+      branch={props.branch}
+      blockKey={props.blockKey}
+      // Settings' block may be absent: not created yet, never "deleted".
+      present={props.saveGuard ? undefined : props.block !== undefined}
+    >
+      <AppEditorForm {...props} />
+    </HeldBlockView>
+  );
+}
+
+function AppEditorForm({
   orgSlug,
   virtualMcpId,
   branch,
@@ -84,7 +109,7 @@ export function AppEditor({
 
   const { save, flush, isPending } = useDebouncedSaveBlock(
     { orgSlug, virtualMcpId, branch },
-    { guard: saveGuard },
+    { guard: saveGuard, holdsCopy: true },
   );
   const saveBlock = useSaveBlock({ orgSlug, virtualMcpId, branch });
   // Not debounced: the saved block's form reads its value from the decofile cache, which a delay leaves stale.
@@ -146,8 +171,12 @@ export function AppEditor({
         entry,
         decofile,
       );
-      await saveBlock.mutateAsync({ blockKey: newKey, data });
-      toast.success(t("sandbox.appEditor.createdSection", { name: newKey }));
+      const created = await saveBlock.mutateAsync({ blockKey: newKey, data });
+      // Kept the version someone else created first (hosted v8): the hook's
+      // own toast said so.
+      if (!keptTheirVersion(created)) {
+        toast.success(t("sandbox.appEditor.createdSection", { name: newKey }));
+      }
       append({ __resolveType: newKey });
       flush();
     } catch (err) {

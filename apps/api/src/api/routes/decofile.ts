@@ -7,6 +7,7 @@
  *   GET    /api/:org/decofile/:virtualMcpId/:branch           read (session OR ?token=)
  *   PATCH  /api/:org/decofile/:virtualMcpId/:branch           write blocks (session; 409 block-conflict on a stale `expect`)
  *   POST   /api/:org/decofile/:virtualMcpId/:branch/publish   merge into default (session)
+ *   GET    /api/:org/decofile/:virtualMcpId/:branch/publish/review   hosted v8: draft names main also changed (session)
  *   GET    /api/:org/decofile/:virtualMcpId/:branch/status    drift vs default (session)
  *   POST   /api/:org/decofile/:virtualMcpId/:branch/rpc       content protocol (session; main's schema for any site)
  *
@@ -23,7 +24,8 @@
  * → `schema: null`, read only), which is how the editor learns, for any
  * site, whether main is v8 (no route of its own). The editor's draft is an object on the delivery CDN
  * (`hosted/draft-content-storage.ts`), never a git branch: `rpc` reads main
- * with the draft layered on and saves into the draft; the session GET answers
+ * with the draft layered on, and a save (`blocks.apply` alone) writes the
+ * draft with no GitHub read (`serveDraftSave`); the session GET answers
  * a v8 project's `?__draft=` pointer (`{ draft, version, changedBy }`) instead of the
  * decofile; publish commits the draft to main and releases it. `rpc` doesn't
  * need a preview server: the protocol never renders.
@@ -74,8 +76,16 @@ import {
 import { deliveryPurge } from "@/hosted/delivery-purge";
 import {
   createDraftContentStorage,
+  createDraftWriteStorage,
   createV7MainStorage,
 } from "@/hosted/draft-content-storage";
+import {
+  applyOnlyCalls,
+  refuseUnguardedSave,
+  saveRequestBody,
+  planDraftSave,
+  withDraftConflicts,
+} from "@/hosted/draft-save-request";
 import type { DraftEditors } from "@/hosted/draft-editors";
 import type { DraftStore, HostedDraftRef } from "@/hosted/draft-store";
 import type { KVStorage } from "@/storage/kv";
@@ -83,7 +93,11 @@ import {
   type SiteDomainsReader,
   sitePreviewHosts,
 } from "@/hosted/preview-hosts";
-import { MainMovedError, publishDraft } from "@/hosted/publish";
+import {
+  draftNamesChangedOnMain,
+  MainMovedError,
+  publishDraft,
+} from "@/hosted/publish";
 import { projectMainIsV8, projectPackagePath } from "@/hosted/blocks-major";
 import { hostedDrafts, ownedProjectSite, SITE_NOT_OWNED } from "@/hosted/scope";
 import {
@@ -232,7 +246,8 @@ const resolveDecofileScope = createMiddleware<DecofileEnv>(async (c, next) => {
     // Anonymous: only the plain GET is reachable, and only with a valid token.
     const token = c.req.query("token");
     const isPlainGet =
-      c.req.method === "GET" && !c.req.path.match(/\/(publish|status)$/);
+      c.req.method === "GET" &&
+      !c.req.path.match(/\/(publish|publish\/review|status)$/);
     if (!isPlainGet) return c.json({ error: "Unauthorized" }, 401);
     if (
       !token ||
@@ -457,6 +472,84 @@ async function mainAnswerFor(
 function mainChanged(c: Context<DecofileEnv>, mainV8: boolean | null): boolean {
   const expected = expectedMain(c);
   return expected !== null && mainV8 !== null && (expected === "v8") !== mainV8;
+}
+
+function protocolErrorLogger(scope: DecofileScope) {
+  return (error: unknown) =>
+    console.error("content protocol: internal error", {
+      organizationId: scope.organizationId,
+      virtualMcpId: scope.virtualMcpId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+}
+
+/**
+ * A hosted v8 editor's save (`blocks.apply` calls only), served from the
+ * draft alone: no GitHub read (no repository client, default branch or
+ * main's schema), only the draft object (`createDraftWriteStorage`). For an
+ * editor acting on a v8 main (`MAIN_SCHEMA_HEADER`) of a project the server
+ * last found v8 (its marker; the editor's open and poll read main itself and
+ * keep it current). Null for any other request: the caller serves it.
+ */
+async function serveDraftSave(
+  c: Context<DecofileEnv>,
+): Promise<Response | null> {
+  const scope = c.get("decofileScope");
+  if (expectedMain(c) !== "v8") return null;
+  const hosted = hostedScope(c);
+  if (!hosted) return null;
+  const body = await saveRequestBody(c.req.raw);
+  if (body === undefined) return null;
+  const calls = applyOnlyCalls(body);
+  if (!calls) return null;
+  // No marker (a best-effort write that failed, or not written yet): ask
+  // main once, which writes it. Never the layered save: its guards compare
+  // with main under the draft, so an editor's "not in the draft yet" would
+  // be refused for a block only main has.
+  if (!isBlocksV8Project(scope.metadata)) {
+    const client = await contentClientForScope(c);
+    if (!(await scopeIsV8(c, client, await client.getDefaultBranch()))) {
+      return null;
+    }
+  }
+  // Every block a hosted save touches carries its precondition.
+  const unguarded = refuseUnguardedSave(body, "draft");
+  if (unguarded) return unguarded;
+  const loaded = await hosted.drafts.load(hosted.ref);
+  const plan = planDraftSave(
+    body,
+    calls,
+    loaded?.body ?? { set: {}, delete: [] },
+  );
+  const headers = new Headers(c.req.raw.headers);
+  headers.delete("content-length");
+  const handler = createContentHandler(
+    createDraftWriteStorage({
+      packagePath: scope.packagePath,
+      drafts: hosted.drafts,
+      ref: hosted.ref,
+      loaded,
+      deletes: plan.deletes,
+    }),
+    {
+      server: { name: "studio-github", version: "1" },
+      bodyCacheBytes: 0,
+      onError: protocolErrorLogger(scope),
+    },
+  );
+  // A refused save carries the draft's copy of each refused block: the
+  // editor's reconcile flow opens from it, with no other read.
+  return withDraftConflicts(
+    await handler(
+      new Request(c.req.raw.url, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(plan.body),
+      }),
+    ),
+    async () =>
+      (await hosted.drafts.load(hosted.ref))?.body ?? { set: {}, delete: [] },
+  );
 }
 
 function signScopeDraftToken(scope: DecofileScope): string {
@@ -810,6 +903,39 @@ export function createDecofileRoutes(
     }
   });
 
+  /**
+   * A hosted v8 Publish's review: the draft's names a developer changed on
+   * main since the live release (`alsoChanged`). Publish keeps the draft's
+   * version of each; the review says so. Read when the review opens, never
+   * on a save. Empty for any other project.
+   */
+  app.get("/:virtualMcpId/:branch/publish/review", async (c) => {
+    const scope = c.get("decofileScope");
+    const hosted = hostedScope(c);
+    const store = deliveryStore();
+    if (!hosted || !store || !isBlocksV8Project(scope.metadata)) {
+      return c.json({ alsoChanged: [] });
+    }
+    try {
+      const draft = await hosted.drafts.load(hosted.ref);
+      if (!draft) return c.json({ alsoChanged: [] });
+      const client = await contentClientForScope(c);
+      const alsoChanged = await draftNamesChangedOnMain(
+        {
+          client,
+          packagePath: scope.packagePath,
+          mainBranch: await client.getDefaultBranch(),
+          store,
+          site: hosted.ref.site,
+        },
+        draft.body,
+      );
+      return c.json({ alsoChanged }, 200, { "Cache-Control": "no-store" });
+    } catch (err) {
+      return errorResponse(c, err);
+    }
+  });
+
   app.get("/:virtualMcpId/:branch/status", async (c) => {
     const scope = c.get("decofileScope");
     try {
@@ -838,6 +964,12 @@ export function createDecofileRoutes(
 
   app.post("/:virtualMcpId/:branch/rpc", async (c) => {
     const scope = c.get("decofileScope");
+    try {
+      const saved = await serveDraftSave(c);
+      if (saved) return saved;
+    } catch (err) {
+      return errorResponse(c, err);
+    }
     let client: RepoContentClient;
     let mainBranch: string;
     let mainV8: boolean;
@@ -877,6 +1009,12 @@ export function createDecofileRoutes(
         503,
       );
     }
+    // A save through main (no main answer) needs its preconditions too.
+    const unguarded = refuseUnguardedSave(
+      await saveRequestBody(c.req.raw),
+      "site",
+    );
+    if (unguarded) return unguarded;
     // Per request: the storage carries this caller's repository credential.
     // The body cache is off for the same reason, and the blob cache under
     // the storage already makes repeated reads cheap.
@@ -894,12 +1032,7 @@ export function createDecofileRoutes(
           ? { url: new URL(scope.previewServerUrl).origin }
           : null,
         bodyCacheBytes: 0,
-        onError: (error) =>
-          console.error("content protocol: internal error", {
-            organizationId: scope.organizationId,
-            virtualMcpId: scope.virtualMcpId,
-            error: error instanceof Error ? error.message : String(error),
-          }),
+        onError: protocolErrorLogger(scope),
       },
     );
     return handler(c.req.raw);

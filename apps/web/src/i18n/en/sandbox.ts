@@ -463,8 +463,14 @@ export const sandbox = {
   "sandbox.contentBrowser.deleteDialog.deleting": "Deleting…",
   "sandbox.contentBrowser.deleteDialog.descriptionPermanent":
     '"{label}" will be removed permanently. This can\'t be undone.',
+  "sandbox.contentBrowser.deleteDialog.descriptionDraft":
+    '"{label}" will be removed from your draft. Nothing goes live until you publish, and until then you can bring it back by discarding this change in Publish.',
   "sandbox.contentBrowser.deleteDialog.descriptionSection":
     '"{label}" will be removed. Pages that still reference it will lose this section.',
+  "sandbox.contentBrowser.deleteDialog.descriptionNeverPublished":
+    '"{label}" will be removed from your draft. It was never published, so nothing changes on the live site, and once removed it can\'t be brought back.',
+  "sandbox.contentBrowser.deleteDialog.descriptionSectionDraft":
+    '"{label}" will be removed from your draft. Nothing goes live until you publish: only then do pages that still use it lose this section, and until then you can bring it back by discarding this change in Publish.',
   "sandbox.contentBrowser.deleteDialog.title": "Delete {noun}?",
   "sandbox.contentBrowser.duplicateFailed": "Duplicate failed",
   "sandbox.contentBrowser.duplicatedSection": 'Duplicated "{name}"',
@@ -885,6 +891,10 @@ export const sandbox = {
   "sandbox.postEditor.deletePostCancel": "Cancel",
   "sandbox.postEditor.deletePostConfirmBody":
     '"{title}" will be removed permanently. This can\'t be undone.',
+  "sandbox.postEditor.deletePostConfirmBodyDraft":
+    '"{title}" will be removed from your draft. Nothing goes live until you publish, and until then you can bring it back by discarding this change in Publish.',
+  "sandbox.postEditor.deletePostConfirmBodyNeverPublished":
+    '"{title}" will be removed from your draft. It was never published, so nothing changes on the live site, and once removed it can\'t be brought back.',
   "sandbox.postEditor.deletePostConfirmTitle": "Delete this post?",
   "sandbox.postEditor.deletePostFailed": "Delete failed",
   "sandbox.postEditor.deletePostSuccess": 'Deleted "{title}"',

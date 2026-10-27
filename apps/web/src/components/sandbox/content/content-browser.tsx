@@ -50,7 +50,10 @@ import { useLiveMeta } from "@/components/sections-editor/use-live-meta";
 import { hasEditableAppEditorSchema } from "./app-editor-schema";
 import { hasCmsSettingsType } from "./cms-settings";
 import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
-import { useSaveBlock } from "@/components/sections-editor/use-save-block";
+import {
+  keptTheirVersion,
+  useSaveBlock,
+} from "@/components/sections-editor/use-save-block";
 import { useDeleteBlock } from "@/components/sections-editor/use-delete-block";
 import {
   extractGlobalSections,
@@ -97,6 +100,7 @@ import {
 import { PageFormDialog, type PageFormMode } from "./page-form-dialog";
 import { RedirectFormDialog } from "./redirect-form-dialog";
 import { SectionRenameDialog } from "./section-rename-dialog";
+import { useShownWhileClosing } from "./closing-dialog";
 import {
   buildRedirectBlock,
   extractRedirects,
@@ -135,11 +139,13 @@ import {
 } from "./blog/post-calendar-data";
 import { usePostStatusMove } from "./blog/use-post-status-move";
 import { PostsWorkspace, type PostsView } from "./blog/posts-workspace";
-import { PageJsonDialog } from "@/components/sections-editor/page-json-dialog";
+import { SavedPageJsonDialog } from "@/components/sections-editor/page-json-dialog";
 import { RunnableBlocksBrowser } from "./runnable-blocks-browser";
 import { countAvailableRunnables } from "./runnable-catalog";
 import { EmptyMessage } from "./empty-message";
 import { SectionsRightPane } from "./sections-right-pane";
+import { useConflictMembers } from "@/components/sections-editor/conflict-author";
+import { useNeverPublished } from "@/components/sections-editor/use-never-published";
 import { ItemActions } from "./item-actions";
 import { ItemRow } from "./item-row";
 import {
@@ -147,6 +153,7 @@ import {
   isSiteNotOwned,
   SiteNotOwnedState,
 } from "@/layouts/main-panel-tabs/blocks-tab-states";
+import { deleteConfirmKey } from "./delete-copy";
 import { useContentBackend } from "@/components/sections-editor/use-content-backend";
 import {
   isProtocolProject,
@@ -444,10 +451,16 @@ function ContentBrowserReady({
   const t = useT();
   const threadId = useOptionalChatTask()?.taskId ?? null;
   const fetchParams = { orgSlug, virtualMcpId, branch, threadId, previewUrl };
+  const contentBackend = useContentBackend(virtualMcpId, branch);
   // The protocol never runs site code: no app install, no Run.
-  const runsSiteCode = !isProtocolProject(
-    useContentBackend(virtualMcpId, branch),
-  );
+  const runsSiteCode = !isProtocolProject(contentBackend);
+  /** A hosted v8 draft: a delete is a draft change, undone by discarding it. */
+  const hostedDraft =
+    contentBackend.kind === "protocol" && contentBackend.source === "github";
+  // The reconcile window names who made the other change (hosted v8).
+  useConflictMembers(hostedDraft);
+  // A block the draft created: deleting it is no change Publish lists.
+  const neverPublished = useNeverPublished({ orgSlug, virtualMcpId, branch });
   // Which editor this site gets (v8: the new one): waited on with the data,
   // so neither editor shows and then swaps to the other.
   const editorUndecided = useNewBlocksEditorState() === undefined;
@@ -673,6 +686,37 @@ function ContentBrowserReady({
   >();
   const [renameSectionKey, setRenameSectionKey] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget>(null);
+  const deleteNoun =
+    deleteTarget?.kind === "blog"
+      ? BLOG_SINGULAR[deleteTarget.blogKind]
+      : (deleteTarget?.kind ?? "item");
+  const deleteDescription =
+    deleteTarget?.kind === "section"
+      ? t(
+          deleteConfirmKey("section", hostedDraft, {
+            neverPublished: neverPublished(deleteTarget.key),
+          }),
+          { label: deleteTarget.label },
+        )
+      : deleteTarget
+        ? t(
+            deleteConfirmKey("block", hostedDraft, {
+              neverPublished: neverPublished(deleteTarget.key),
+            }),
+            { label: deleteTarget.label },
+          )
+        : null;
+  const deleteTitle = t("sandbox.contentBrowser.deleteDialog.title", {
+    noun: deleteNoun,
+  });
+  // Hosted v8: the dialog keeps its words through its fade (never "Delete
+  // item?"); elsewhere exactly as before.
+  const deleteWords = useShownWhileClosing(
+    deleteDescription === null
+      ? null
+      : { title: deleteTitle, description: deleteDescription },
+    hostedDraft,
+  );
   const [jsonPageKey, setJsonPageKey] = useState<string | null>(null);
 
   // Prefer any data we already have: the committed `.deco/*.gen.json` snapshot
@@ -797,11 +841,14 @@ function ContentBrowserReady({
     );
     if (!added) return;
     try {
-      await saveBlock.mutateAsync({
+      const saved = await saveBlock.mutateAsync({
         blockKey: page.key,
         data: { ...fullPageData, sections: added.sections },
       });
-      toast.success(`Variant added to "${page.name}"`);
+      // Kept as the draft holds it (hosted v8): its own toast said so.
+      if (!keptTheirVersion(saved)) {
+        toast.success(`Variant added to "${page.name}"`);
+      }
       setSelection({ collection: "pages", key: page.key, path: page.path });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not add variant");
@@ -865,8 +912,11 @@ function ContentBrowserReady({
           );
         }
         const key = generateUniquePageBlockKey(decofile, values.name);
-        await saveBlock.mutateAsync({ blockKey: key, data });
-        toast.success(`Created "${values.name}"`);
+        const created = await saveBlock.mutateAsync({ blockKey: key, data });
+        // Kept as the draft holds it (hosted v8): its own toast said so.
+        if (!keptTheirVersion(created)) {
+          toast.success(`Created "${values.name}"`);
+        }
         setSelection({ collection: "pages", key, path: values.path });
       } else if (mode === "duplicate" && sourceKey) {
         const source = decofile[sourceKey] as
@@ -879,8 +929,10 @@ function ContentBrowserReady({
           newName: values.name,
           newPath: values.path,
         });
-        await saveBlock.mutateAsync({ blockKey: key, data });
-        toast.success(`Duplicated as "${values.name}"`);
+        const duplicated = await saveBlock.mutateAsync({ blockKey: key, data });
+        if (!keptTheirVersion(duplicated)) {
+          toast.success(`Duplicated as "${values.name}"`);
+        }
         setSelection({ collection: "pages", key, path: values.path });
       } else if (mode === "rename" && sourceKey) {
         const source = decofile[sourceKey] as
@@ -892,8 +944,11 @@ function ContentBrowserReady({
           name: values.name,
           path: values.path,
         };
-        await saveBlock.mutateAsync({ blockKey: sourceKey, data });
-        toast.success("Page updated");
+        const updated = await saveBlock.mutateAsync({
+          blockKey: sourceKey,
+          data,
+        });
+        if (!keptTheirVersion(updated)) toast.success("Page updated");
         if (selection?.collection === "pages" && selection.key === sourceKey) {
           setSelection({
             collection: "pages",
@@ -935,13 +990,17 @@ function ContentBrowserReady({
     blockId: string,
     formValue: Record<string, unknown>,
   ) => {
-    await saveBlock.mutateAsync({
+    const created = await saveBlock.mutateAsync({
       blockKey: blockId,
       data: { ...formValue, name: blockId, __resolveType: resolveType },
+      create: true,
     });
-    toast.success(
-      t("sandbox.contentBrowser.createdSection", { name: blockId }),
-    );
+    // Kept the version someone else created first: the hook's toast says so.
+    if (!keptTheirVersion(created)) {
+      toast.success(
+        t("sandbox.contentBrowser.createdSection", { name: blockId }),
+      );
+    }
     setSelection({ collection: "sections", key: blockId });
   };
 
@@ -960,10 +1019,16 @@ function ContentBrowserReady({
     const newName = nextUniqueName(takenSectionNames, section.name);
     const data: Record<string, unknown> = { ...source, name: newName };
     try {
-      await saveBlock.mutateAsync({ blockKey: newKey, data });
-      toast.success(
-        t("sandbox.contentBrowser.duplicatedSection", { name: section.name }),
-      );
+      const copied = await saveBlock.mutateAsync({
+        blockKey: newKey,
+        data,
+        create: true,
+      });
+      if (!keptTheirVersion(copied)) {
+        toast.success(
+          t("sandbox.contentBrowser.duplicatedSection", { name: section.name }),
+        );
+      }
       setSelection({ collection: "sections", key: newKey });
     } catch (err) {
       toast.error(
@@ -984,11 +1049,14 @@ function ContentBrowserReady({
       return;
     }
     try {
-      await saveBlock.mutateAsync({
+      const renamed = await saveBlock.mutateAsync({
         blockKey: renameSectionKey,
         data: { ...source, name: newName },
       });
-      toast.success(t("sandbox.contentBrowser.sectionRenamed"));
+      // Left as the draft holds it (hosted v8): its own toast said so.
+      if (!keptTheirVersion(renamed)) {
+        toast.success(t("sandbox.contentBrowser.sectionRenamed"));
+      }
       setRenameSectionKey(null);
     } catch (err) {
       toast.error(
@@ -1012,8 +1080,8 @@ function ContentBrowserReady({
     const key = generateRedirectBlockKey(decofile, values.from);
     const data = buildRedirectBlock(values);
     try {
-      await saveBlock.mutateAsync({ blockKey: key, data });
-      toast.success("Created redirect");
+      const created = await saveBlock.mutateAsync({ blockKey: key, data });
+      if (!keptTheirVersion(created)) toast.success("Created redirect");
       setRedirectDialogOpen(false);
       setSelection({ collection: "redirects", key });
     } catch (err) {
@@ -1028,8 +1096,10 @@ function ContentBrowserReady({
     const key = generateBlogKey(decofile, kind);
     const data = buildBlogBlock(key, kind, emptyBlogPayload(kind));
     try {
-      await saveBlock.mutateAsync({ blockKey: key, data });
-      toast.success(`Created ${BLOG_SINGULAR[kind]}`);
+      const created = await saveBlock.mutateAsync({ blockKey: key, data });
+      if (!keptTheirVersion(created)) {
+        toast.success(`Created ${BLOG_SINGULAR[kind]}`);
+      }
       setSelection({ collection: kind, key });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not create");
@@ -1041,8 +1111,10 @@ function ContentBrowserReady({
     const key = generateBlogKey(decofile, "posts");
     const data = buildBlogBlock(key, "posts", scheduledPostPayload(day));
     try {
-      await saveBlock.mutateAsync({ blockKey: key, data });
-      toast.success(t("sandbox.postCalendar.createdScheduledPost"));
+      const created = await saveBlock.mutateAsync({ blockKey: key, data });
+      if (!keptTheirVersion(created)) {
+        toast.success(t("sandbox.postCalendar.createdScheduledPost"));
+      }
       setActiveCollection("posts");
       setPrevCollection("posts");
       setSelection({ collection: "posts", key });
@@ -1101,11 +1173,13 @@ function ContentBrowserReady({
       payload.slug = uniqueCategorySlug(String(payload.slug ?? ""), taken);
     }
     try {
-      await saveBlock.mutateAsync({
+      const duplicated = await saveBlock.mutateAsync({
         blockKey: key,
         data: buildBlogBlock(key, entry.kind, payload),
       });
-      toast.success(`Duplicated "${entry.label}"`);
+      if (!keptTheirVersion(duplicated)) {
+        toast.success(`Duplicated "${entry.label}"`);
+      }
       setSelection({ collection: entry.kind, key });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Duplicate failed");
@@ -1124,6 +1198,7 @@ function ContentBrowserReady({
   // ------------------ Delete ------------------
   const confirmDelete = async () => {
     if (!deleteTarget) return;
+    let deleted: unknown;
     try {
       const { kind, key, label } = deleteTarget;
       if (kind === "blog") {
@@ -1152,10 +1227,13 @@ function ContentBrowserReady({
             }
           }
         }
-        await deleteBlock.mutateAsync({ blockKey: key });
+        deleted = await deleteBlock.mutateAsync({ blockKey: key });
       } else {
-        await deleteBlock.mutateAsync({ blockKey: key });
+        deleted = await deleteBlock.mutateAsync({ blockKey: key });
       }
+      setDeleteTarget(null);
+      // The user kept their version (the hook said so in its own toast).
+      if (keptTheirVersion(deleted)) return;
       toast.success(`Deleted "${label}"`);
       if (
         selection &&
@@ -1173,10 +1251,6 @@ function ContentBrowserReady({
   // ------------------ Render ------------------
   // `saveBlock` too: a category delete rewrites its posts before unlinking it.
   const isDeleting = deleteBlock.isPending || saveBlock.isPending;
-  const deleteNoun =
-    deleteTarget?.kind === "blog"
-      ? BLOG_SINGULAR[deleteTarget.blogKind]
-      : (deleteTarget?.kind ?? "item");
   return (
     <BlocksSiteEditorProvider value={!runsSiteCode}>
       <div className="flex h-full w-full">
@@ -1648,16 +1722,14 @@ function ContentBrowserReady({
 
         {/* Page JSON dialog */}
         {jsonPageKey && (
-          <PageJsonDialog
+          <SavedPageJsonDialog
             open={!!jsonPageKey}
             onOpenChange={(open) => {
               if (!open) setJsonPageKey(null);
             }}
             pageKey={jsonPageKey}
             decofile={decofile}
-            onSave={(data) =>
-              saveBlock.mutateAsync({ blockKey: jsonPageKey, data })
-            }
+            params={fetchParams}
           />
         )}
 
@@ -1671,24 +1743,10 @@ function ContentBrowserReady({
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>
-                {t("sandbox.contentBrowser.deleteDialog.title", {
-                  noun: deleteNoun,
-                })}
+                {deleteWords?.title ?? deleteTitle}
               </AlertDialogTitle>
               <AlertDialogDescription>
-                {deleteTarget?.kind === "section"
-                  ? t(
-                      "sandbox.contentBrowser.deleteDialog.descriptionSection",
-                      {
-                        label: deleteTarget.label,
-                      },
-                    )
-                  : deleteTarget
-                    ? t(
-                        "sandbox.contentBrowser.deleteDialog.descriptionPermanent",
-                        { label: deleteTarget.label },
-                      )
-                    : null}
+                {deleteWords?.description ?? null}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>

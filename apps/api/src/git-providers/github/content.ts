@@ -225,7 +225,9 @@ export interface TreeWriteEntry {
    */
   mode: string;
   type: "blob";
-  sha: string | null;
+  /** The blob; absent when `content` carries it (GitHub writes the blob). */
+  sha?: string | null;
+  content?: string;
 }
 
 const BLOB_MODE = "100644";
@@ -248,8 +250,11 @@ const MAX_PATH_LENGTH = 1024;
 
 /** What one change points the tree at: a blob sha, or null to delete. */
 export interface ChangeSources {
-  /** Sha of the blob uploaded for a change that carries content. */
-  blobSha: (change: { path: string; content: string }) => string;
+  /**
+   * Sha of the blob uploaded for a change that carries content, or `null`
+   * to send the content inline in the tree write (no blob upload).
+   */
+  blobSha: (change: { path: string; content: string }) => string | null;
   /** The entry `path` has at `ref`, or null when it is absent there. */
   copySource: (
     ref: string,
@@ -327,12 +332,20 @@ export function treeWriteEntries(
         sha: source.sha,
       };
     }
-    return {
-      path: change.path,
-      mode: change.mode ?? BLOB_MODE,
-      type: "blob",
-      sha: sources.blobSha(change),
-    };
+    const sha = sources.blobSha(change);
+    return sha === null
+      ? {
+          path: change.path,
+          mode: change.mode ?? BLOB_MODE,
+          type: "blob",
+          content: change.content,
+        }
+      : {
+          path: change.path,
+          mode: change.mode ?? BLOB_MODE,
+          type: "blob",
+          sha,
+        };
   });
 }
 
@@ -834,6 +847,7 @@ export class GithubContentClient implements RepoContentClient {
     expectedHead: string | null;
     rewriteFrom?: string;
     changes: FileChange[];
+    inlineContent?: boolean;
   }): Promise<{ sha: string }> {
     const { branch, message, changes, rewriteFrom, expectedHead } = params;
     const parent =
@@ -842,13 +856,18 @@ export class GithubContentClient implements RepoContentClient {
 
     const copySources = await this.resolveCopySources(changes);
     const blobShas = new Map<string, string>();
-    for (const change of changes) {
-      if ("content" in change) {
-        blobShas.set(change.path, await this.createBlob(change.content));
+    // Inline: the tree write carries each file's text and GitHub writes its
+    // blob, one call for every file instead of one upload per file.
+    if (!params.inlineContent) {
+      for (const change of changes) {
+        if ("content" in change) {
+          blobShas.set(change.path, await this.createBlob(change.content));
+        }
       }
     }
     const entries = treeWriteEntries(changes, {
-      blobSha: (change) => blobShas.get(change.path) as string,
+      blobSha: (change) =>
+        params.inlineContent ? null : (blobShas.get(change.path) as string),
       copySource: (ref, path) => copySources.get(ref)?.get(path) ?? null,
     });
 

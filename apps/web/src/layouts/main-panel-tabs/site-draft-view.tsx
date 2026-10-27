@@ -10,6 +10,7 @@ import type { ReactNode } from "react";
 import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import { Page } from "@/components/page";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
+import { useConflictMembers } from "@/components/sections-editor/conflict-author";
 import { useContentBackend } from "@/components/sections-editor/use-content-backend";
 import { useDecofile } from "@/components/sections-editor/use-decofile";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
@@ -91,6 +92,11 @@ export function SiteDraftView({
   const task = useOptionalChatTask();
   const branch = task?.currentBranch ?? null;
   const backend = useContentBackend(virtualMcpId, branch);
+  // An A/B test or campaign save's reconcile window names who made the
+  // other change from the members read here (hosted v8 only).
+  useConflictMembers(
+    backend.kind === "protocol" && backend.source === "github",
+  );
   const { openPanel } = usePanelNavigate();
 
   if (!branch) {

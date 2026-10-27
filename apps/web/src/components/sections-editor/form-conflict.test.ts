@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
+  keptOnlyTheirs,
   carryConflictChoices,
   chooseAll,
   conflictFields,
@@ -148,6 +149,31 @@ describe("resolveFormConflict", () => {
     expect(Object.keys(choices)).toEqual(plan.pointers);
     expect(Object.values(choices).every((c) => c === "mine")).toBe(true);
     expect(resolveFormConflict(plan, choices)).toEqual(plan.mine);
+  });
+});
+
+describe("keptOnlyTheirs", () => {
+  const plan = planFormConflict({
+    ancestor: { title: "a", note: "a" },
+    mine: { title: "mine", note: "a" },
+    theirs: { title: "theirs", note: "a" },
+  });
+
+  it("every value theirs and nothing else of the user's: their version kept", () => {
+    expect(keptOnlyTheirs(plan, { "/title": "theirs" })).toBe(true);
+  });
+
+  it("a value kept as the user's is saved: not their version alone", () => {
+    expect(keptOnlyTheirs(plan, { "/title": "mine" })).toBe(false);
+  });
+
+  it("another value only the user changed is saved too: not their version alone", () => {
+    const merged = planFormConflict({
+      ancestor: { title: "a", note: "a" },
+      mine: { title: "mine", note: "mine" },
+      theirs: { title: "theirs", note: "a" },
+    });
+    expect(keptOnlyTheirs(merged, { "/title": "theirs" })).toBe(false);
   });
 });
 

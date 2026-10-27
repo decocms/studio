@@ -29,6 +29,11 @@ import {
 } from "@/components/sections-editor/named-rules";
 import type { MissingNamedRuleUseCounts } from "@/components/sections-editor/named-rule-uses";
 import {
+  type BlogBlockKind,
+  blogBlockKind,
+  blogBlockName,
+} from "@/components/sections-editor/blog-block-name.ts";
+import {
   globalSectionLabel,
   isSiteAppBlock,
   pageEntryFromBlock,
@@ -93,6 +98,8 @@ export interface PublishChange {
    * the list showed, which its discard is guarded by. `filepaths` is empty.
    */
   entry?: { name: string; version: string | null };
+  /** A hosted draft's blog record (a post, a category, an author): its kind. */
+  blogKind?: BlogBlockKind;
   /** v8: the sides that exist but couldn't be read (invalid JSON, too large). */
   unreadable?: Array<"before" | "after">;
   sections: PublishSectionChange[];
@@ -1031,6 +1038,11 @@ interface ContentChangesInput {
    * doesn't have (named-rule-uses.ts `missingNamedRuleUseCounts`).
    */
   missingRuleUses?: ReadonlyMap<NamedRuleKind, MissingNamedRuleUseCounts>;
+  /**
+   * Studio's hosted draft: a blog record is named by its title and kind
+   * (its block `name` is its key). Other sources name it as before.
+   */
+  hosted?: boolean;
 }
 
 /**
@@ -1043,7 +1055,15 @@ interface ContentChangesInput {
 export function summarizeContentChanges(
   input: ContentChangesInput,
 ): PublishChangeSummary {
-  const { changes, sides, lookup, meta, missingRules, missingRuleUses } = input;
+  const {
+    changes,
+    sides,
+    lookup,
+    meta,
+    missingRules,
+    missingRuleUses,
+    hosted,
+  } = input;
   const pages: PublishChange[] = [];
   const blocks: PublishChange[] = [];
   /** The sides of `name` the server couldn't read (any spelling's file). */
@@ -1117,12 +1137,18 @@ export function summarizeContentChanges(
       });
       continue;
     }
-    const label = globalSectionLabel(name, nameShape ?? {});
+    const blogKind = hosted
+      ? blogBlockKind(name, nameShape, headShape, toJson, fromJson)
+      : null;
+    const label = blogKind
+      ? blogBlockName(blogKind, [nameShape, headShape, toJson, fromJson])
+      : globalSectionLabel(name, nameShape ?? {});
     const namedRule = namedRuleOfBlock(name, [headShape, toJson, fromJson]);
     blocks.push({
       ...common,
       kind: "block",
       name: label,
+      ...(blogKind ? { blogKind } : {}),
       ...(namedRule ? { namedRule } : {}),
       pagePath: null,
       isSiteApp: isSiteAppBlock(name, headShape ?? nameShape ?? {}),

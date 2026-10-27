@@ -28,6 +28,7 @@ import {
   ToggleGroupItem,
 } from "@decocms/ui/components/toggle-group.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
+import { canonicalBlockJson } from "@decocms/shared/decofile";
 import { useT } from "@/i18n/use-t.ts";
 import {
   SITE_DRAFT_VIEW_INSET,
@@ -56,7 +57,14 @@ import {
   useNamedRuleRename,
   useNamedRuleView,
 } from "@/components/sections-editor/named-rule-view";
-import type { CampaignWindow } from "@/components/sections-editor/named-rules";
+import {
+  copyScope,
+  useCopyEpochs,
+} from "@/components/sections-editor/held-copy";
+import {
+  type CampaignWindow,
+  namedRuleKindInfo,
+} from "@/components/sections-editor/named-rules";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 import {
   addMonths,
@@ -92,6 +100,12 @@ const STATUS_BAR: Record<CampaignStatus, string> = {
 };
 
 const TIMELINE_MONTHS = 4;
+
+const CAMPAIGNS_BLOCK = namedRuleKindInfo("campaigns").blockKey;
+
+/** Whether two copies of a block differ. */
+const differs = (a: unknown, b: unknown) =>
+  canonicalBlockJson(a ?? null) !== canonicalBlockJson(b ?? null);
 
 function useStatusLabel() {
   const t = useT();
@@ -163,6 +177,11 @@ export function CampaignsView({
     meta,
   });
   const [mode, setMode] = useState<ViewMode>(initialView);
+  // A reconcile of the campaigns (hosted v8) replaced the copy the detail
+  // shows: it is seeded again from the draft's copy.
+  const copyEpoch = useCopyEpochs(copyScope({ orgSlug, virtualMcpId, branch }))(
+    CAMPAIGNS_BLOCK,
+  );
   // One moment for the whole view, so every status agrees.
   const [now] = useState(() => new Date());
 
@@ -191,7 +210,7 @@ export function CampaignsView({
   if (opened) {
     return (
       <CampaignDetail
-        key={opened.name}
+        key={`${opened.name}:${copyEpoch}`}
         {...namedRuleDetailProps(view, opened, { decofile, meta, onOpenUse })}
       />
     );
@@ -478,17 +497,45 @@ function CampaignTimeline({
 }
 
 function CampaignDetail(props: NamedRuleDetailProps<CampaignRowModel>) {
-  const { row, decofile, meta, uses, pending, onBack, onOpenUse, onSave } =
-    props;
+  const {
+    row,
+    decofile,
+    meta,
+    uses,
+    pending,
+    holdsCopy,
+    onBack,
+    onOpenUse,
+    onSave,
+  } = props;
   const t = useT();
-  const [start, setStart] = useState(isoToLocalInput(row.window.start));
-  const [end, setEnd] = useState(isoToLocalInput(row.window.end));
+  const stored = {
+    block: decofile[CAMPAIGNS_BLOCK],
+    start: isoToLocalInput(row.window.start),
+    end: isoToLocalInput(row.window.end),
+  };
+  // The copy the form shows (hosted v8): the campaigns as it was seeded
+  // from them, or as its own last save left them. Its saves are built on it.
+  const [shown, setShown] = useState(stored);
+  const [start, setStart] = useState(stored.start);
+  const [end, setEnd] = useState(stored.end);
+  // Untouched, the form follows the draft (a poll brought someone else's
+  // dates); a typed date stays the user's, and its save asks about theirs.
+  if (
+    holdsCopy &&
+    start === shown.start &&
+    end === shown.end &&
+    differs(stored.block, shown.block)
+  ) {
+    setShown(stored);
+    setStart(stored.start);
+    setEnd(stored.end);
+  }
   const rename = useNamedRuleRename("campaigns", props);
   const window = windowFromInputs(start, end);
+  const seeded = holdsCopy ? shown : stored;
   const windowChanged =
-    "window" in window &&
-    (start !== isoToLocalInput(row.window.start) ||
-      end !== isoToLocalInput(row.window.end));
+    "window" in window && (start !== seeded.start || end !== seeded.end);
 
   const { useRows, wholeRows } = namedRuleDetailUses(
     "campaigns",
@@ -500,9 +547,24 @@ function CampaignDetail(props: NamedRuleDetailProps<CampaignRowModel>) {
 
   const saveWindow = () => {
     if (!("window" in window)) return;
-    void onSave(
-      planNamedRuleSet(decofile, "campaigns", row.name, window.window),
+    const change = planNamedRuleSet(
+      decofile,
+      "campaigns",
+      row.name,
+      window.window,
     );
+    if (!change || !holdsCopy) {
+      void onSave(change);
+      return;
+    }
+    void onSave({
+      ...change,
+      basis: { [CAMPAIGNS_BLOCK]: shown.block },
+    }).then((ok) => {
+      // Saved as typed: the next save is built on it. A reconcile that
+      // ended elsewhere seeds the form again (the view's key).
+      if (ok) setShown({ block: change.writes[CAMPAIGNS_BLOCK], start, end });
+    });
   };
 
   return (

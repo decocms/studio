@@ -126,11 +126,11 @@ export function RunnableBlockEditor({
     save,
     flush,
     isPending: isSaving,
-  } = useDebouncedSaveBlock({
-    orgSlug,
-    virtualMcpId,
-    branch,
-  });
+  } = useDebouncedSaveBlock(
+    { orgSlug, virtualMcpId, branch },
+    // A saved block's form keeps its own copy: hosted saves are guarded by it.
+    { holdsCopy: target.mode === "saved" },
+  );
   const run = useRunBlock({ orgSlug, virtualMcpId, branch, threadId });
 
   // useDebouncedSaveBlock CANCELS pending saves on unmount (its documented

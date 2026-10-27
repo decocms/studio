@@ -16,8 +16,18 @@ import { sandboxGitStatusQueryKey } from "../thread/repository/sandbox-git-api";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { useContentBackend } from "./use-content-backend";
 import { applyProtocolPatch } from "./content-protocol-api";
+import { applyHostedChange, HostedKeptTheirsError } from "./hosted-reconcile";
+import { toastKeptTheirs } from "./site-editor-toast";
+import { type KeptTheirVersion, keptTheirVersion } from "./use-save-block";
+import { useT } from "@/i18n/use-t";
 import { runContentChange } from "./content-sync";
+import {
+  HostedKeptChangingError,
+  inPlainWords,
+  isSaveConflict,
+} from "./serve-save-error";
 import { useDecofileCacheKey } from "./use-decofile";
+import type { HeldCopy } from "./held-copy";
 import { buildSandboxUrl } from "@/sdk/sandbox-url";
 
 interface UseDeleteBlockParams {
@@ -95,10 +105,44 @@ export function useDeleteBlock({
     return res.json() as Promise<{ ok: true; existed: boolean }>;
   };
 
-  return useMutation({
+  const t = useT();
+  const mutation = useMutation({
     mutationKey: decofileWriteMutationKey(orgSlug, virtualMcpId, branch),
     scope: decofileWriteScope(orgSlug, virtualMcpId, branch),
-    mutationFn: async ({ blockKey }: { blockKey: string }) => {
+    mutationFn: async ({
+      blockKey,
+      base,
+      shown,
+    }: DeleteBlockVariables): Promise<
+      { ok: true; existed: boolean } | KeptTheirVersion
+    > => {
+      // Hosted v8: guarded by the draft's version of the block; someone
+      // else's change meanwhile asks "Delete anyway" / "Keep their version"
+      // (hosted-reconcile.ts). A block the draft already deletes is done.
+      if (protocol?.source === "github") {
+        const own = shown?.();
+        try {
+          await applyHostedChange(
+            {
+              queryClient,
+              backend: protocol,
+              params: { orgSlug, virtualMcpId, branch },
+              cacheKey,
+            },
+            { writes: {}, deletes: [blockKey] },
+            base && base.value !== undefined
+              ? { [blockKey]: base.value }
+              : undefined,
+            own && own.value !== undefined ? { [blockKey]: own } : undefined,
+          );
+        } catch (error) {
+          if (error instanceof HostedKeptTheirsError) {
+            return { keptTheirs: true, deleted: false };
+          }
+          throw error;
+        }
+        return { ok: true as const, existed: true };
+      }
       if (protocol) {
         await applyProtocolPatch(
           queryClient,
@@ -133,8 +177,17 @@ export function useDeleteBlock({
       return { queryKey, blockKey, hadKey, previousValue };
     },
     // Restore only this mutation's own key so a concurrent sibling save isn't clobbered.
-    onError: (_error, _variables, context) => {
+    onError: (error, _variables, context) => {
+      // A hosted dead end says what to do, wherever its message shows.
+      inPlainWords(t, error);
       if (!context) return;
+      // A refused hosted delete put the draft's copy in the cache already.
+      if (
+        protocol?.source === "github" &&
+        (isSaveConflict(error) || error instanceof HostedKeptChangingError)
+      ) {
+        return;
+      }
       queryClient.setQueryData(
         context.queryKey,
         (current: Record<string, unknown> | undefined) => {
@@ -146,10 +199,50 @@ export function useDeleteBlock({
         },
       );
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
+      // The user kept their version (the cache holds it): one calm toast.
+      if (keptTheirVersion(result)) {
+        toastKeptTheirs(t, false);
+        return;
+      }
       void queryClient.invalidateQueries({
         queryKey: KEYS.liveMeta(orgSlug, virtualMcpId, branch),
       });
     },
   });
+
+  /** The copy the delete was asked on, for the reconcile flow's question. */
+  const withBase = (variables: DeleteBlockVariables): DeleteBlockVariables => {
+    if (variables.base) return variables;
+    const cached = queryClient.getQueryData<Record<string, unknown>>(
+      KEYS.decofile(cacheKey),
+    );
+    return cached
+      ? { ...variables, base: { value: cached[variables.blockKey] } }
+      : variables;
+  };
+
+  return {
+    ...mutation,
+    mutate: (
+      variables: DeleteBlockVariables,
+      options?: Parameters<typeof mutation.mutate>[1],
+    ) => mutation.mutate(withBase(variables), options),
+    mutateAsync: (
+      variables: DeleteBlockVariables,
+      options?: Parameters<typeof mutation.mutateAsync>[1],
+    ) => mutation.mutateAsync(withBase(variables), options),
+  };
+}
+
+interface DeleteBlockVariables {
+  blockKey: string;
+  /** The block as the editor showed it when deleted (taken from the cache). */
+  base?: { value: unknown };
+  /**
+   * An editor's own copy of the block (hosted v8, `useSaveBlock`'s
+   * `shown`), read when the delete runs: the delete is guarded by it, so a
+   * change the form never showed is asked about, never deleted unseen.
+   */
+  shown?: () => HeldCopy | undefined;
 }

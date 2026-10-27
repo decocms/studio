@@ -30,6 +30,7 @@ import { useLiveMeta } from "./use-live-meta";
 import { useDeleteBlock } from "./use-delete-block";
 import {
   AUTOSAVE_DELAY,
+  keptTheirVersion,
   useDebouncedSaveBlock,
   useSaveBlock,
 } from "./use-save-block";
@@ -41,6 +42,7 @@ import { protocolBlockVersion } from "./content-protocol-api";
 import {
   findSectionMovedTo,
   focusInside,
+  conflictRetry,
   formSaveGuard,
   formSourceMovedOn,
   isOwnVersion,
@@ -61,6 +63,7 @@ import {
   markTheirsChanged,
   planFormConflict,
   refreshWaitingChoice,
+  keptOnlyTheirs,
   resolveFormConflict,
 } from "./form-conflict";
 import { FormConflictDialog } from "./form-conflict-dialog";
@@ -90,6 +93,7 @@ import {
   errorDetail,
   errorDetailsDescription,
   SAVE_TOAST,
+  toastKeptTheirs,
 } from "./site-editor-toast";
 import {
   inlineDateWindow,
@@ -215,7 +219,6 @@ const STALE_FORM_TOAST = "section-form-stale-save";
  */
 /** Refused saves the form rebuilds and retries before reloading. */
 const CONFLICT_RETRIES = 3;
-const CONFLICT_RETRY_BASE_MS = 1_000;
 
 /**
  * Where a section form's save goes, fixed when the save is scheduled: the
@@ -677,8 +680,13 @@ export function SectionsEditor({
   const [formReloadHandled, setFormReloadHandled] = useState(0);
   // Who made the change the dialog shows (hosted v8 drafts only): read
   // again when theirs changes.
+  const hostedConflictDraft = conflictAuthorDraft(contentBackend, {
+    orgSlug,
+    virtualMcpId,
+    branch,
+  });
   const conflictAuthor = useConflictAuthor(
-    conflictAuthorDraft(contentBackend, { orgSlug, virtualMcpId, branch }),
+    hostedConflictDraft,
     formConflicts[0]?.blockKey ?? null,
     formConflicts[0]
       ? versionTag(canonicalBlockJson(formConflicts[0].plan.theirs))
@@ -1357,7 +1365,12 @@ export function SectionsEditor({
 
   /** A block's content-protocol version in the cache (v8 saves' `ifMatch`). */
   const protocolVersionOf = (blockKey: string) =>
-    protocolBlockVersion(queryClient, decofileCacheKey, blockKey);
+    protocolBlockVersion(
+      queryClient,
+      decofileCacheKey,
+      blockKey,
+      contentBackend.kind === "protocol" ? contentBackend : null,
+    );
 
   /** Run the form saves that waited for the one on the wire, after `delay`. */
   const runWaitingFormSaves = (delay: number) => {
@@ -1540,6 +1553,15 @@ export function SectionsEditor({
       return;
     }
     const resolved = resolveFormConflict(conflict.plan, conflict.choices);
+    // Their version kept as it is (hosted v8): the one calm toast every
+    // other reconcile window shows.
+    if (
+      contentBackend.kind === "protocol" &&
+      contentBackend.source === "github" &&
+      keptOnlyTheirs(conflict.plan, conflict.choices)
+    ) {
+      toastKeptTheirs(t, false);
+    }
     setFormConflicts(formConflictsRef.current.slice(1));
     const { formBase, target } = conflict;
     formBase.base = conflict.plan.theirs;
@@ -1567,6 +1589,8 @@ export function SectionsEditor({
     conflicts = 0,
     /** Where it goes; by default the open form's section. */
     given?: FormSaveTarget,
+    /** Run now, with no typing pause (a retry built on a copy in hand). */
+    immediate = false,
   ) => {
     const target: FormSaveTarget = given ?? openFormTarget(sectionIndex);
     const targetSectionVariantIndex = target.sectionVariantIndex;
@@ -1746,27 +1770,28 @@ export function SectionsEditor({
             if (conflicts < CONFLICT_RETRIES) {
               waitingFormSavesRef.current.delete(waitingKey);
               formSaveRetryPendingRef.current = true;
-              setTimeout(
-                () => {
-                  formSaveRetryPendingRef.current = false;
-                  scheduleAutoSave(
-                    () => {
-                      const latest = formBase?.emitted;
-                      return latest && typeof latest === "object"
-                        ? (latest as Record<string, unknown>)
-                        : nextValue;
-                    },
-                    sectionIndex,
-                    conflicts + 1,
-                    target,
-                  );
-                  // Saves of this form made meanwhile are in the retry; the
-                  // others run behind it (or now, when it sends nothing).
-                  waitingFormSavesRef.current.delete(waitingKey);
-                  runWaitingFormSaves(AUTOSAVE_DELAY);
-                },
-                CONFLICT_RETRY_BASE_MS * 2 ** conflicts,
-              );
+              // The refusal carried the stored copy (hosted v8): rebuilt at
+              // once, so the reconcile dialog opens with no pause.
+              const retry = conflictRetry(conflicts, err.carriedStored);
+              setTimeout(() => {
+                formSaveRetryPendingRef.current = false;
+                scheduleAutoSave(
+                  () => {
+                    const latest = formBase?.emitted;
+                    return latest && typeof latest === "object"
+                      ? (latest as Record<string, unknown>)
+                      : nextValue;
+                  },
+                  sectionIndex,
+                  conflicts + 1,
+                  target,
+                  retry.immediate,
+                );
+                // Saves of this form made meanwhile are in the retry; the
+                // others run behind it (or now, when it sends nothing).
+                waitingFormSavesRef.current.delete(waitingKey);
+                runWaitingFormSaves(AUTOSAVE_DELAY);
+              }, retry.delay);
             } else {
               reloadStaleForm();
             }
@@ -1916,6 +1941,11 @@ export function SectionsEditor({
       sectionVariantIndex: targetSectionVariantIndex,
       write,
     };
+    if (immediate) {
+      pendingSectionSaveRef.current = null;
+      write();
+      return;
+    }
     debounceRef.current = setTimeout(() => {
       debounceRef.current = null;
       write();
@@ -2501,7 +2531,11 @@ export function SectionsEditor({
     };
 
     try {
-      await saveBlock.mutateAsync({ blockKey: blockId, data: blockData });
+      const created = await saveBlock.mutateAsync({
+        blockKey: blockId,
+        data: blockData,
+        create: true,
+      });
 
       const updatedSections = [...rawSections];
       updatedSections[makeReusableIndex] = { __resolveType: blockId };
@@ -2522,9 +2556,12 @@ export function SectionsEditor({
       }
 
       setMakeReusableIndex(null);
-      toast.success(
-        t("sectionsEditor.sectionsEditor.savedGlobalBlock", { blockId }),
-      );
+      // Kept the block someone else created first: the save's toast says so.
+      if (!keptTheirVersion(created)) {
+        toast.success(
+          t("sectionsEditor.sectionsEditor.savedGlobalBlock", { blockId }),
+        );
+      }
       onSaved?.();
     } catch (err) {
       toast.error(t("sectionsEditor.sectionsEditor.failedToSaveGlobalBlock"), {
@@ -3691,9 +3728,16 @@ export function SectionsEditor({
       );
 
       let createdBlockId: string | null = null;
+      let keptTheirs = false;
       try {
-        await saveBlock.mutateAsync({ blockKey: blockId, data: blockData });
-        createdBlockId = blockId;
+        const created = await saveBlock.mutateAsync({
+          blockKey: blockId,
+          data: blockData,
+          create: true,
+        });
+        // Their block, kept in the reconcile flow, is never rolled back.
+        keptTheirs = keptTheirVersion(created);
+        createdBlockId = keptTheirs ? null : blockId;
         variants[variantIndex] = {
           ...target,
           rule: buildMatcherBlockReference(blockId),
@@ -3716,11 +3760,14 @@ export function SectionsEditor({
       }
 
       setRenameVariantIndex(null);
-      toast.success(
-        t("sectionsEditor.sectionsEditor.savedMatcherAsGlobalBlock", {
-          trimmed,
-        }),
-      );
+      // Kept the block someone else created first: the save's toast says so.
+      if (!keptTheirs) {
+        toast.success(
+          t("sectionsEditor.sectionsEditor.savedMatcherAsGlobalBlock", {
+            trimmed,
+          }),
+        );
+      }
       onSaved?.();
     } catch (err) {
       toast.error(t("sectionsEditor.sectionsEditor.failedToRenameVariant"), {
@@ -3857,9 +3904,16 @@ export function SectionsEditor({
       );
 
       let createdBlockId: string | null = null;
+      let keptTheirs = false;
       try {
-        await saveBlock.mutateAsync({ blockKey: blockId, data: blockData });
-        createdBlockId = blockId;
+        const created = await saveBlock.mutateAsync({
+          blockKey: blockId,
+          data: blockData,
+          create: true,
+        });
+        // Their block, kept in the reconcile flow, is never rolled back.
+        keptTheirs = keptTheirVersion(created);
+        createdBlockId = keptTheirs ? null : blockId;
         const nextVariants = [...variants];
         nextVariants[variantIndex] = {
           ...target,
@@ -3877,11 +3931,14 @@ export function SectionsEditor({
       }
 
       setRenameSectionVariantIndex(null);
-      toast.success(
-        t("sectionsEditor.sectionsEditor.savedMatcherAsGlobalBlock", {
-          trimmed,
-        }),
-      );
+      // Kept the block someone else created first: the save's toast says so.
+      if (!keptTheirs) {
+        toast.success(
+          t("sectionsEditor.sectionsEditor.savedMatcherAsGlobalBlock", {
+            trimmed,
+          }),
+        );
+      }
       onSaved?.();
     } catch (err) {
       toast.error(t("sectionsEditor.sectionsEditor.failedToRenameVariant"), {
@@ -3991,12 +4048,16 @@ export function SectionsEditor({
 
       // Persist the block before its reference; roll back if the second fails.
       let createdBlockId: string | null = null;
+      let keptTheirs = false;
       try {
-        await saveBlock.mutateAsync({
+        const created = await saveBlock.mutateAsync({
           blockKey: action.blockId,
           data: action.blockData,
+          create: true,
         });
-        createdBlockId = action.blockId;
+        // Their block, kept in the reconcile flow, is never rolled back.
+        keptTheirs = keptTheirVersion(created);
+        createdBlockId = keptTheirs ? null : action.blockId;
         const nextVariants = [...variants];
         nextVariants[variantIndex] = { ...target, rule: action.reference };
         await persistWrapper(nextVariants);
@@ -4009,11 +4070,14 @@ export function SectionsEditor({
         }
         throw err;
       }
-      toast.success(
-        t("sectionsEditor.sectionsEditor.savedMatcherAsGlobalBlock", {
-          trimmed: nextName.trim(),
-        }),
-      );
+      // Kept the block someone else created first: the save's toast says so.
+      if (!keptTheirs) {
+        toast.success(
+          t("sectionsEditor.sectionsEditor.savedMatcherAsGlobalBlock", {
+            trimmed: nextName.trim(),
+          }),
+        );
+      }
       onSaved?.();
     } catch (err) {
       toast.error(t("sectionsEditor.sectionsEditor.failedToRenameVariant"), {
@@ -4854,7 +4918,11 @@ export function SectionsEditor({
               )}
               choices={waitingChoice.choices}
               changedAgain={waitingChoice.changedAgain}
-              author={conflictAuthor}
+              author={conflictAuthor ?? null}
+              authorPending={conflictAuthor === undefined}
+              // Hosted v8: "Demo 2 changed the Headline", as the block
+              // windows name a field; elsewhere as before.
+              fieldsAsLabeled={hostedConflictDraft !== null}
               fresh={waitingChoice.fresh}
               onChoose={(pointer, choice) =>
                 setConflictChoices({

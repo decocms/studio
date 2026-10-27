@@ -58,6 +58,21 @@ function decofileCacheKey(input: {
 }
 
 /**
+ * The decofile cache key of a content-protocol backend's project (what
+ * {@link useDecofileCacheKey} answers for it), for a reader that already
+ * holds the backend.
+ */
+export function protocolDecofileCacheKey(
+  params: { orgSlug: string; virtualMcpId: string; branch: string },
+  backend: { cacheKeySuffix: string },
+): string {
+  return decofileCacheKey({
+    ...params,
+    protocolSuffix: backend.cacheKeySuffix,
+  });
+}
+
+/**
  * The decofile cache key for a project, given its content backend. Pass
  * `tunnel: false` for writers that never target the Local tunnel's entry.
  */

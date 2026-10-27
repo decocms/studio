@@ -3,6 +3,7 @@ import { suggestBlockId } from "@/components/sections-editor/page-sections";
 import { AvailableSectionEditor } from "./available-section-editor";
 import { SavedSectionEditor } from "./saved-section-editor";
 import { EmptyMessage } from "./empty-message";
+import { HeldBlockView } from "./held-block-view";
 import { useT } from "@/i18n/use-t.ts";
 
 export function SectionsRightPane({
@@ -76,16 +77,24 @@ export function SectionsRightPane({
   }
 
   return (
-    <SavedSectionEditor
+    <HeldBlockView
       key={`saved:${selection.key}`}
       orgSlug={orgSlug}
       virtualMcpId={virtualMcpId}
       branch={branch}
-      previewUrl={previewUrl}
-      meta={meta}
-      decofile={decofile}
       blockKey={selection.key}
-      onSaveReferencedBlock={onSaveReferencedBlock}
-    />
+      present={Object.hasOwn(decofile, selection.key)}
+    >
+      <SavedSectionEditor
+        orgSlug={orgSlug}
+        virtualMcpId={virtualMcpId}
+        branch={branch}
+        previewUrl={previewUrl}
+        meta={meta}
+        decofile={decofile}
+        blockKey={selection.key}
+        onSaveReferencedBlock={onSaveReferencedBlock}
+      />
+    </HeldBlockView>
   );
 }

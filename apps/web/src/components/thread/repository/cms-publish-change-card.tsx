@@ -12,6 +12,7 @@ import {
 import { File06, LayoutAlt01, Trash01 } from "@untitledui/icons";
 import { useT, type TFunction, type TranslationKey } from "@/i18n/use-t.ts";
 import { namedRuleUsePlaces } from "@/components/sections-editor/named-rule-use-copy.ts";
+import { blogKindWord } from "@/components/sections-editor/blog-block-name.ts";
 import {
   namedRuleBlockOfChange,
   publishChangeDigest,
@@ -86,6 +87,7 @@ function changeIcon(change: PublishChange, t: TFunction) {
 function changeDetail(change: PublishChange, t: TFunction) {
   if (change.kind === "page") return change.pagePath;
   if (change.kind !== "block") return null;
+  if (change.blogKind) return blogKindWord(change.blogKind, t);
   const named = namedRuleBlockOfChange(change);
   if (named === "experiments") return t("thread.publishPopover.abTests");
   if (named === "campaigns") return t("thread.publishPopover.campaignDates");
@@ -153,6 +155,8 @@ interface PublishChangeCardProps {
   isDiscarding: boolean;
   /** A Blocks v8 site's change (`publishChangeDigest`). Absent on v7. */
   v8?: boolean;
+  /** Hosted v8: a developer also changed it on main; Publish keeps this one. */
+  alsoChangedOnMain?: boolean;
 }
 
 export function PublishChangeCard({
@@ -166,6 +170,7 @@ export function PublishChangeCard({
   isPublishing,
   isDiscarding,
   v8 = false,
+  alsoChangedOnMain = false,
 }: PublishChangeCardProps) {
   const t = useT();
 
@@ -290,6 +295,14 @@ export function PublishChangeCard({
           data-testid="publish-change-missing-rule-uses"
         >
           {t(missingUsesKey(missingUses), { places: missingPlaces.places })}
+        </div>
+      ) : null}
+      {alsoChangedOnMain ? (
+        <div
+          className="mt-1 pl-[26px] text-xs text-muted-foreground"
+          data-testid="publish-change-also-changed"
+        >
+          {t("thread.publishPopover.alsoChangedOnMain", { name: change.name })}
         </div>
       ) : null}
     </PublishCardFrame>

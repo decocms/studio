@@ -30,6 +30,10 @@ export const siteEditor = {
   "siteEditor.save.conflict":
     "Not saved: someone else changed this at the same time. We're loading their version, so make your change again.",
   "siteEditor.save.readOnly": "Not saved: this version can't be edited.",
+  "siteEditor.save.keptChanging":
+    "Not saved: this kept changing while you saved. The latest version is shown now, so check it and make your change again.",
+  "siteEditor.save.draftUnread":
+    "Not saved yet: we couldn't reach your draft just now. Your change is still here. Check your connection, then edit again to save it.",
   "siteEditor.save.invalid":
     "Not saved: some fields aren't filled in correctly. Fix them and try again.",
   "siteEditor.save.tooLarge":

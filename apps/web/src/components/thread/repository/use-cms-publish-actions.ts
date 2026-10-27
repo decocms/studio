@@ -100,8 +100,12 @@ interface CmsPublishActions {
   publishError: string | undefined;
   /** The developer detail behind `publishError`, for a Details disclosure. */
   publishErrorDetail: string | null;
-  /** Publish or submit for review, per mode — the button never branches. */
-  submit: () => Promise<void>;
+  /**
+   * Publish or submit for review, per mode — the button never branches. A
+   * hosted Publish resolves whether it published (the dialog closes) or
+   * failed (it stays, saying why).
+   */
+  submit: () => Promise<boolean | void>;
   discardChange: (change: PublishChange) => Promise<void>;
   discardAll: () => Promise<void>;
 }
@@ -249,7 +253,7 @@ export function useCmsPublishActions(
     await quietly(onPublished);
   };
 
-  const publishHosted = async () => {
+  const publishHosted = async (): Promise<boolean> => {
     publishLockRef.current = true;
     setIsPublishing(true);
     setPublishError(undefined);
@@ -264,6 +268,7 @@ export function useCmsPublishActions(
         write: () => publishHostedDraft(target, noteParts().message),
       });
       await settleHosted(result);
+      return true;
     } catch (error) {
       // Main is no longer v8: the editor goes back to waiting and decides
       // again on main's new answer.
@@ -276,6 +281,7 @@ export function useCmsPublishActions(
       const failure = hostedPublishFailure(t, error);
       setPublishError(failure.message);
       setPublishErrorDetail(failure.detail);
+      return false;
     } finally {
       publishLockRef.current = false;
       setIsPublishing(false);
