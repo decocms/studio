@@ -1,5 +1,24 @@
 import { describe, expect, test, afterEach } from "bun:test";
-import { isConnectionAuthenticated } from "./mcp-oauth";
+import {
+  isConnectionAuthenticated,
+  buildAuthorizationHeaderValue,
+} from "./mcp-oauth";
+
+describe("buildAuthorizationHeaderValue", () => {
+  test("defaults to Bearer for a plain token", () => {
+    expect(buildAuthorizationHeaderValue("abc123")).toBe("Bearer abc123");
+  });
+
+  test("sends a full scheme verbatim when the token already has one", () => {
+    expect(buildAuthorizationHeaderValue("Token token=abc123")).toBe(
+      "Token token=abc123",
+    );
+  });
+
+  test("trims surrounding whitespace", () => {
+    expect(buildAuthorizationHeaderValue("  abc123  ")).toBe("Bearer abc123");
+  });
+});
 
 describe("isConnectionAuthenticated", () => {
   const originalFetch = global.fetch;

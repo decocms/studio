@@ -23,6 +23,18 @@ import type {
 } from "@modelcontextprotocol/sdk/shared/auth.js";
 import { resolveStudioUrl } from "./studio-url";
 
+/**
+ * Build the Authorization header value for a stored connection token.
+ * Most MCP servers expect a Bearer token, but some (e.g. PagerDuty's API-key
+ * auth, which requires `Token token=<key>`) need a different scheme. If the
+ * token already looks like a full "<scheme> <value>" pair, send it verbatim;
+ * otherwise default to Bearer for backward compatibility.
+ */
+export function buildAuthorizationHeaderValue(token: string): string {
+  const trimmed = token.trim();
+  return /\s/.test(trimmed) ? trimmed : `Bearer ${trimmed}`;
+}
+
 function getOAuthRedirectOrigin(): string {
   return window.location.origin;
 }
@@ -803,7 +815,7 @@ export async function isConnectionAuthenticated({
     headers.set("Content-Type", "application/json");
     headers.set("Accept", "application/json, text/event-stream");
     if (token) {
-      headers.set("Authorization", `Bearer ${token}`);
+      headers.set("Authorization", buildAuthorizationHeaderValue(token));
     }
 
     const response = await fetch(url, {

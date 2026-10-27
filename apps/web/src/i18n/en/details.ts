@@ -77,6 +77,8 @@ export const details = {
     "Space-separated arguments",
   "details.connectionSidebar.sse": "SSE",
   "details.connectionSidebar.token": "Token",
+  "details.connectionSidebar.tokenSchemeHint":
+    "Sent as \"Authorization: Bearer <token>\". If your server needs a different scheme (e.g. \"Token token=<key>\"), paste the full header value instead.",
   "details.connectionSidebar.type": "Type",
   "details.connectionSidebar.urlPlaceholder": "https://example.com/mcp",
   "details.connectionSidebar.virtualMcp": "Virtual MCP",
