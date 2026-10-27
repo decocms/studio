@@ -15,7 +15,11 @@
  */
 
 import { spellingKey } from "@decocms/blocks/protocol";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useIsFetching,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { mainSchemaHeaders } from "@/hooks/main-schema-changed";
 import { useMembersQuery } from "@/hooks/use-members";
 import { authClient } from "@/lib/auth-client";
@@ -26,6 +30,11 @@ import type { DecofileScopeParams } from "./decofile-api";
 /** What the dialog shows: a member's name and avatar, or only the time. */
 export interface ConflictAuthor {
   name?: string;
+  /**
+   * How a title names them: their first name, or their whole name when
+   * another member shares that first name ("Demo" and "Demo 2").
+   */
+  shortName?: string;
   avatarUrl?: string;
   at: string;
   /** The viewer made it (in another tab or window). */
@@ -67,7 +76,12 @@ async function readDraftChange(
   try {
     const res = await fetch(
       `/api/${params.orgSlug}/decofile/${encodeURIComponent(params.virtualMcpId)}/${encodeURIComponent(params.branch)}`,
-      { cache: "no-store", headers: mainSchemaHeaders("v8") },
+      {
+        cache: "no-store",
+        headers: mainSchemaHeaders("v8"),
+        // The dialog waits for this read before it opens: never for long.
+        signal: AbortSignal.timeout(AUTHOR_READ_TIMEOUT_MS),
+      },
     );
     if (!res.ok) return null;
     const body = (await res.json().catch(() => ({}))) as {
@@ -83,6 +97,11 @@ async function readDraftChange(
     return null;
   }
 }
+
+/** How long a dialog waits to name who made the other change. */
+const AUTHOR_READ_TIMEOUT_MS = 2500;
+
+const firstName = (name: string) => name.split(/\s+/)[0] ?? name;
 
 /** An org member, as the members list answers. */
 export interface OrgMemberRow {
@@ -102,8 +121,17 @@ export function resolveDraftChange(
   const member = members.find((m) => m.userId === change.userId);
   const name = member?.user?.name?.trim();
   const avatarUrl = member?.user?.image ?? undefined;
+  const first = name ? firstName(name) : undefined;
+  const shared =
+    !!first &&
+    members.some(
+      (m) =>
+        m.userId !== change.userId &&
+        firstName(m.user?.name?.trim() ?? "").toLocaleLowerCase() ===
+          first.toLocaleLowerCase(),
+    );
   return {
-    ...(name ? { name } : {}),
+    ...(name ? { name, shortName: shared ? name : first } : {}),
     ...(avatarUrl ? { avatarUrl } : {}),
     at: change.at,
     you: !!viewerId && change.userId === viewerId,
@@ -125,21 +153,28 @@ export function versionTag(text: string): string {
 /**
  * Who made the change a conflict dialog shows, on a hosted v8 draft (`draft`
  * null: nothing to show). `theirs` identifies the version shown: when it
- * changes ("Their version changed again") the record is read again. Null
- * while unknown.
+ * changes ("Their version changed again") the record is read again, the
+ * last answer for the block shown meanwhile. Undefined while the first
+ * answer is read (the dialog waits for it rather than switching from
+ * "Someone else" to a name); null when unknown.
  */
 export function useConflictAuthor(
   draft: DecofileScopeParams | null,
   blockKey: string | null,
   theirs: string | null,
-): ConflictAuthor | null {
-  const change = useDraftChange(draft, blockKey, theirs);
-  const { data: membersData } = useMembersQuery({ enabled: !!change });
+): ConflictAuthor | null | undefined {
+  const { change, pending } = useDraftChange(draft, blockKey, theirs);
+  const membersQuery = useMembersQuery({ enabled: !!change });
   const members =
-    (membersData as { data?: { members?: OrgMemberRow[] } } | undefined)?.data
-      ?.members ?? [];
+    (membersQuery.data as { data?: { members?: OrgMemberRow[] } } | undefined)
+      ?.data?.members ?? [];
   const { data: session } = authClient.useSession();
+  if (pending) return undefined;
   if (!change) return null;
+  // The members' first read: a failed one shows only the time.
+  if (membersQuery.isLoading && membersQuery.failureCount === 0) {
+    return undefined;
+  }
   return resolveDraftChange(change, members, session?.user?.id ?? null);
 }
 
@@ -152,26 +187,33 @@ export function useConflictAuthorFromCache(
   draft: DecofileScopeParams | null,
   blockKey: string | null,
   theirs: string | null,
-): ConflictAuthor | null {
-  const change = useDraftChange(draft, blockKey, theirs);
+): ConflictAuthor | null | undefined {
+  const { change, pending } = useDraftChange(draft, blockKey, theirs);
   const queryClient = useQueryClient();
   const { data: session } = authClient.useSession();
+  // A members list still on its first read (rendered again once it lands).
+  const membersReading = useIsFetching({ predicate: isMembersQuery }) > 0;
+  if (pending) return undefined;
   if (!change) return null;
   const members = queryClient
     .getQueriesData<{ data?: { members?: OrgMemberRow[] } }>({
-      predicate: (query) => query.queryKey[1] === "members",
+      predicate: isMembersQuery,
     })
     .flatMap(([, data]) => data?.data?.members ?? []);
+  if (members.length === 0 && membersReading) return undefined;
   return resolveDraftChange(change, members, session?.user?.id ?? null);
 }
+
+const isMembersQuery = (query: { queryKey: readonly unknown[] }) =>
+  query.queryKey[1] === "members";
 
 function useDraftChange(
   draft: DecofileScopeParams | null,
   blockKey: string | null,
   theirs: string | null,
-): DraftChange | null {
+): { change: DraftChange | null; pending: boolean } {
   const enabled = !!draft && !!blockKey && theirs !== null;
-  const { data } = useQuery({
+  const { data, isPending } = useQuery({
     queryKey: KEYS.conflictAuthor(
       draft ? `${draft.orgSlug}/${draft.virtualMcpId}/${draft.branch}` : "",
       blockKey ?? "",
@@ -179,12 +221,18 @@ function useDraftChange(
     ),
     queryFn: () => readDraftChange(draft!, blockKey!),
     enabled,
+    // Their version changed again: the block's last answer stays shown
+    // while the new one is read (never "Someone else" in between).
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey[2] === (blockKey ?? "") ? previous : undefined,
     staleTime: Number.POSITIVE_INFINITY,
     gcTime: 10 * 60_000,
     retry: false,
     refetchOnWindowFocus: false,
   });
-  return enabled ? (data ?? null) : null;
+  return enabled
+    ? { change: data ?? null, pending: isPending }
+    : { change: null, pending: false };
 }
 
 /**

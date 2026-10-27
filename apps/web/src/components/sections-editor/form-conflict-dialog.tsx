@@ -79,12 +79,21 @@ export interface ConflictViewer {
 
 export function FormConflictDialog({
   open,
+  authorPending = false,
   ...props
-}: FormConflictChoicesProps & { open: boolean }) {
+}: FormConflictChoicesProps & {
+  open: boolean;
+  /**
+   * Who made the other change is still being read (conflict-author.ts):
+   * the dialog opens once it is known, so its title names them from the
+   * start rather than switching from "Someone else".
+   */
+  authorPending?: boolean;
+}) {
   const { data: session } = authClient.useSession();
   return (
     // Controlled with no onOpenChange: only saving a choice closes it.
-    <AlertDialog open={open}>
+    <AlertDialog open={open && !authorPending}>
       <AlertDialogContent
         className={cn(
           "max-h-[85vh] grid-rows-[auto_minmax(0,1fr)_auto] sm:max-w-lg",
@@ -131,7 +140,9 @@ export function conflictHeading(
   block?: string,
 ): { title: string; description: ReactNode } {
   const field = fields[Math.min(step, fields.length - 1)];
-  const name = author?.you ? undefined : author?.name?.split(/\s+/)[0];
+  const name = author?.you
+    ? undefined
+    : (author?.shortName ?? author?.name?.split(/\s+/)[0]);
   const vars = {
     field: field ? fieldInSentence(field.label) : "",
     label: field?.label ?? "",
@@ -141,6 +152,41 @@ export function conflictHeading(
   type Key = Parameters<TFunction>[0];
   const pick = (one: Key, named: Key, you: Key) =>
     t(author?.you ? you : name ? named : one, vars);
+  const phrase = field?.phrase;
+  const phraseTitle = (one: Key, named: Key, you: Key) =>
+    t(author?.you ? you : name ? named : one, {
+      thing: phrase ?? "",
+      name: name ?? "",
+    });
+  if (phrase) {
+    return fields.length <= 1
+      ? {
+          title: phraseTitle(
+            "sectionsEditor.formConflict.titlePhraseOne",
+            "sectionsEditor.formConflict.titlePhraseOneNamed",
+            "sectionsEditor.formConflict.titlePhraseOneYou",
+          ),
+          description: t("sectionsEditor.formConflict.descriptionOne"),
+        }
+      : {
+          title: phraseTitle(
+            "sectionsEditor.formConflict.titlePhraseStep",
+            "sectionsEditor.formConflict.titlePhraseStepNamed",
+            "sectionsEditor.formConflict.titlePhraseStepYou",
+          ),
+          description:
+            step >= fields.length - 1 ? (
+              <ConflictSummary
+                t={t}
+                fields={fields}
+                choices={choices}
+                name={name}
+              />
+            ) : (
+              t("sectionsEditor.formConflict.descriptionStep")
+            ),
+        };
+  }
   if (fields.length <= 1) {
     return {
       title: block

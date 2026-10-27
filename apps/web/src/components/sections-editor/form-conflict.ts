@@ -237,6 +237,12 @@ export interface ConflictField {
   theirs: unknown;
   /** The field's schema, when the section's schema describes it. */
   schema: SchemaProperty | null;
+  /**
+   * The value as a whole phrase in the dialog's title, article included
+   * ('the A/B test "hero"'), for a value that isn't a form's field: the
+   * title then names it alone (no "of {block}").
+   */
+  phrase?: string;
 }
 
 export function conflictFields(

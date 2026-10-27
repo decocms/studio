@@ -499,6 +499,23 @@ export const sectionsEditor = {
   "sectionsEditor.formConflict.titleStepInYou":
     'You also changed the {field} of "{block}" in another tab or window',
   "sectionsEditor.formConflict.summaryTheirsNamed": "{name}'s",
+  "sectionsEditor.formConflict.ruleExperiment": 'A/B test "{name}"',
+  "sectionsEditor.formConflict.ruleExperimentPhrase": 'the A/B test "{name}"',
+  "sectionsEditor.formConflict.ruleCampaign": 'Campaign "{name}"',
+  "sectionsEditor.formConflict.ruleCampaignPhrase":
+    'the dates of the campaign "{name}"',
+  "sectionsEditor.formConflict.titlePhraseOne":
+    "Someone else changed {thing} while you were editing",
+  "sectionsEditor.formConflict.titlePhraseOneNamed":
+    "{name} changed {thing} while you were editing",
+  "sectionsEditor.formConflict.titlePhraseOneYou":
+    "You changed {thing} in another tab or window",
+  "sectionsEditor.formConflict.titlePhraseStep":
+    "Someone else also changed {thing}",
+  "sectionsEditor.formConflict.titlePhraseStepNamed":
+    "{name} also changed {thing}",
+  "sectionsEditor.formConflict.titlePhraseStepYou":
+    "You also changed {thing} in another tab or window",
   "sectionsEditor.formConflict.youElsewhere": "You, in another tab or window",
   "sectionsEditor.formConflict.savedAt": "saved {when}",
   "sectionsEditor.formConflict.empty": "Empty",

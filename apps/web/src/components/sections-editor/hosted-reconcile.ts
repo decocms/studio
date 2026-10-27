@@ -28,6 +28,7 @@ import {
 import type { DecofileScopeParams } from "./decofile-api";
 import {
   type ConflictChoices,
+  type ConflictField,
   conflictFields,
   type FormConflictPlan,
   planFormConflict,
@@ -37,6 +38,7 @@ import {
   askDeletedConflict,
   askNamedRuleConflict,
   canAskNamedRuleConflict,
+  type ConflictAbout,
   type DeletedConflict,
 } from "./named-rule-conflict";
 import { type HeldCopy, heldCopyVersion } from "./held-copy";
@@ -232,16 +234,33 @@ function deletedBlockQuestion(
   };
 }
 
-/** Asks the plan's question: the deleted-block one, or value by value. */
+/**
+ * Asks the plan's question: the deleted-block one, or value by value, each
+ * value labeled by `labels` (then `relabel`, for values that aren't a form's
+ * fields), and who made the other change read as `about` says.
+ */
 export async function askHostedConflict(
   plan: FormConflictPlan,
   labels?: SchemaProperty | null,
+  about?: ConflictAbout,
+  relabel?: (field: ConflictField) => ConflictField,
 ): Promise<ConflictChoices> {
   const deleted = deletedBlockQuestion(plan);
   if (deleted) {
     return { [deleted.pointer]: await askDeletedConflict(deleted.conflict) };
   }
-  return askNamedRuleConflict(plan, conflictFields(plan, labels));
+  const fields = conflictFields(plan, labels);
+  return askNamedRuleConflict(
+    plan,
+    relabel ? fields.map(relabel) : fields,
+    about,
+  );
+}
+
+/** The block a plan's pointer is in (the record is keyed by block name). */
+export function pointerBlockKey(pointer: string): string | null {
+  const step = pointer.split("/")[1];
+  return step ? step.replaceAll("~1", "/").replaceAll("~0", "~") : null;
 }
 
 /** True when every choice made keeps their version. */

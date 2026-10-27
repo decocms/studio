@@ -7,8 +7,10 @@ import { act, fireEvent, render as renderBare } from "@testing-library/react";
 import type { ReactNode } from "react";
 import "@testing-library/jest-dom";
 import { en } from "@/i18n/en/index.ts";
+import { conflictFields, planFormConflict } from "./form-conflict";
 import {
   askDeletedConflict,
+  askNamedRuleConflict,
   NamedRuleConflictHost,
 } from "./named-rule-conflict";
 
@@ -54,5 +56,79 @@ describe("askDeletedConflict", () => {
       }),
     );
     expect(await asked).toBe("theirs");
+  });
+});
+
+describe("askNamedRuleConflict on a hosted v8 draft", () => {
+  test("opens once it knows who changed it: their name from the start, never \"Someone else\" first", async () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(["acme", "members"], {
+      data: {
+        members: [
+          { userId: "u-demo", user: { name: "Demo" } },
+          { userId: "u-demo2", user: { name: "Demo 2" } },
+        ],
+      },
+    });
+    let answer!: (res: Response) => void;
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (() =>
+      new Promise<Response>((resolve) => {
+        answer = resolve;
+      })) as unknown as typeof fetch;
+    try {
+      const screen = renderBare(<NamedRuleConflictHost />, {
+        wrapper: ({ children }: { children: ReactNode }) => (
+          <QueryClientProvider client={queryClient}>
+            {children}
+          </QueryClientProvider>
+        ),
+      });
+      const plan = planFormConflict({
+        ancestor: { experiments: { hero: 50 } },
+        mine: { experiments: { hero: 60 } },
+        theirs: { experiments: { hero: 10 } },
+      });
+      act(() => {
+        void askNamedRuleConflict(
+          plan,
+          conflictFields(plan).map((field) => ({
+            ...field,
+            phrase: 'the A/B test "hero"',
+          })),
+          {
+            author: {
+              draft: { orgSlug: "acme", virtualMcpId: "p1", branch: "main" },
+              blockKey: "experiments",
+            },
+          },
+        );
+      });
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      });
+      // Still reading who changed it: nothing shown yet.
+      expect(screen.queryByTestId("form-conflict-dialog")).toBeNull();
+      expect(screen.queryByText(/Someone else/)).toBeNull();
+      await act(async () => {
+        answer(
+          new Response(
+            JSON.stringify({
+              changedBy: {
+                experiments: { userId: "u-demo2", at: new Date().toISOString() },
+              },
+            }),
+            { headers: { "content-type": "application/json" } },
+          ),
+        );
+      });
+      expect(
+        await screen.findByText(
+          'Demo 2 changed the A/B test "hero" while you were editing',
+        ),
+      ).toBeInTheDocument();
+    } finally {
+      globalThis.fetch = realFetch;
+    }
   });
 });

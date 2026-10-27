@@ -240,7 +240,8 @@ function Choice({
     <FormConflictDialog
       open
       fields={question.fields}
-      author={author}
+      author={author ?? null}
+      authorPending={author === undefined}
       block={question.about?.block}
       choices={choices}
       onChoose={(pointer, choice) =>

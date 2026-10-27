@@ -20,7 +20,8 @@ import {
   decofileWriteMutationKey,
   decofileWriteScope,
 } from "./decofile-api";
-import { resolveFormConflict } from "./form-conflict";
+import { conflictAuthorDraft } from "./conflict-author";
+import { type ConflictField, resolveFormConflict } from "./form-conflict";
 import {
   askHostedConflict,
   changeKeepsStored,
@@ -28,7 +29,9 @@ import {
   HOSTED_RECONCILE_ROUNDS,
   hostedChangeFromResolved,
   planHostedConflict,
+  pointerBlockKey,
 } from "./hosted-reconcile";
+import { namedRuleKindOfBlock } from "./named-rules";
 import { canAskNamedRuleConflict } from "./named-rule-conflict";
 import type { SchemaProperty } from "./resolve-schema";
 import { isSaveConflict } from "./serve-save-error";
@@ -91,6 +94,37 @@ export function planNamedRuleApply(
 }
 
 /** The dialog's labels: the A/B tests and campaigns blocks by their names. */
+/**
+ * A test's or campaign's value as the reconcile dialog names it: by its own
+ * name ('A/B test "hero"'), never a path ("A/B tests › hero"). Other values
+ * (a page's rule) keep their labels.
+ */
+export function namedRuleConflictField(
+  t: TFunction,
+  field: ConflictField,
+): ConflictField {
+  const steps = field.pointer
+    .split("/")
+    .slice(1)
+    .map((part) => part.replaceAll("~1", "/").replaceAll("~0", "~"));
+  const kind = namedRuleKindOfBlock(steps[0]);
+  const name = steps[1];
+  if (!kind || name === undefined) return field;
+  return kind === "experiments"
+    ? {
+        ...field,
+        label: t("sectionsEditor.formConflict.ruleExperiment", { name }),
+        phrase: t("sectionsEditor.formConflict.ruleExperimentPhrase", {
+          name,
+        }),
+      }
+    : {
+        ...field,
+        label: t("sectionsEditor.formConflict.ruleCampaign", { name }),
+        phrase: t("sectionsEditor.formConflict.ruleCampaignPhrase", { name }),
+      };
+}
+
 function conflictLabels(t: TFunction): SchemaProperty {
   return {
     type: "object",
@@ -247,7 +281,22 @@ export function useApplyNamedRule({
     const choices =
       plan.pointers.length === 0
         ? {}
-        : await askHostedConflict(plan, conflictLabels(t));
+        : await askHostedConflict(
+            plan,
+            conflictLabels(t),
+            {
+              // Who made the other change: the draft's metadata of the
+              // block the first value is in (hosted v8 only).
+              author: (() => {
+                const draft = protocol
+                  ? conflictAuthorDraft(protocol, params)
+                  : null;
+                const blockKey = pointerBlockKey(plan.pointers[0] ?? "");
+                return draft && blockKey ? { draft, blockKey } : null;
+              })(),
+            },
+            (field) => namedRuleConflictField(t, field),
+          );
     const resolved =
       plan.pointers.length === 0
         ? plan.merged

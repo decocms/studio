@@ -512,6 +512,38 @@ describe("who made the other change (hosted v8)", () => {
     );
   });
 
+  test("a member who shares the viewer's first name is named in full", () => {
+    const view = render(
+      <Heading
+        only={headline}
+        author={{
+          name: "Demo 2",
+          shortName: "Demo 2",
+          at: minutesAgo(1),
+          you: false,
+        }}
+      />,
+    );
+    expect(view.getByRole("heading")).toHaveTextContent(
+      /^Demo 2 changed the /,
+    );
+  });
+
+  test("a value that isn't a form's field (an A/B test) is named by its phrase alone", () => {
+    const test = [
+      { ...headline[0]!, label: 'A/B test "hero"', phrase: 'the A/B test "hero"' },
+    ];
+    const named = render(<Heading only={test} author={ana(minutesAgo(1))} />);
+    expect(named.getByRole("heading")).toHaveTextContent(
+      'Ana changed the A/B test "hero" while you were editing',
+    );
+    named.unmount();
+    const unknown = render(<Heading only={test} />);
+    expect(unknown.getByRole("heading")).toHaveTextContent(
+      'Someone else changed the A/B test "hero" while you were editing',
+    );
+  });
+
   test("one field: the viewer's own change from another tab or window", () => {
     const author = { name: "Ana", at: minutesAgo(2), you: true };
     const heading = render(<Heading only={headline} author={author} />);

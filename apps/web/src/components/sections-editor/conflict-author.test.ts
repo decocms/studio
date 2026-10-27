@@ -63,10 +63,28 @@ describe("resolveDraftChange", () => {
       resolveDraftChange({ userId: "u-ana", at }, members, "u-bob"),
     ).toEqual({
       name: "Ana Souza",
+      shortName: "Ana",
       avatarUrl: "https://img/ana.png",
       at,
       you: false,
     });
+  });
+
+  test("two members who share a first name are named in full", () => {
+    const demos = [
+      { userId: "u-demo", user: { name: "Demo" } },
+      { userId: "u-demo2", user: { name: "Demo 2" } },
+      { userId: "u-ana", user: { name: "Ana Souza" } },
+    ];
+    expect(
+      resolveDraftChange({ userId: "u-demo2", at }, demos, "u-demo").shortName,
+    ).toBe("Demo 2");
+    expect(
+      resolveDraftChange({ userId: "u-demo", at }, demos, "u-demo2").shortName,
+    ).toBe("Demo");
+    expect(
+      resolveDraftChange({ userId: "u-ana", at }, demos, "u-demo").shortName,
+    ).toBe("Ana");
   });
 
   test("the viewer's own change is `you`", () => {

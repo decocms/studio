@@ -173,6 +173,11 @@ const conflictHost = {
     | ((plan: { pointers: string[] }) => Record<string, "mine" | "theirs">)
     | null,
   asked: [] as Array<{ pointers: string[] }>,
+  /** The fields and the block each values question was asked with. */
+  shown: [] as Array<{
+    fields: Array<{ label: string; phrase?: string }>;
+    about?: { author?: { blockKey: string } | null };
+  }>,
   deleted: [] as Array<{ kind: string; label: string }>,
   /** The pointer a deleted-block question stands for. */
   deletedPointer: "",
@@ -185,8 +190,13 @@ afterAll(() => {
 });
 mock.module("./named-rule-conflict", () => ({
   canAskNamedRuleConflict: () => conflictHost.answer !== null,
-  askNamedRuleConflict: async (plan: { pointers: string[] }) => {
+  askNamedRuleConflict: async (
+    plan: { pointers: string[] },
+    fields: Array<{ label: string; phrase?: string }>,
+    about?: { author?: { blockKey: string } | null },
+  ) => {
     conflictHost.asked.push(plan);
+    conflictHost.shown.push({ fields, about });
     return conflictHost.answer!(plan);
   },
   // A whole block one side deleted: the same answer, for its one value.
@@ -244,6 +254,7 @@ function setup() {
   server.reads = 0;
   conflictHost.answer = null;
   conflictHost.asked = [];
+  conflictHost.shown = [];
   conflictHost.deleted = [];
   conflictHost.deletedPointer = "";
   const queryClient = new QueryClient();
@@ -746,6 +757,22 @@ describe("useApplyNamedRule: reconcile (someone else saved first)", () => {
     expect(server.applied.at(-1)?.ifMatch).toEqual({
       experiments: "theirs@1",
     });
+  });
+
+  it("names the test by its name and asks who changed the tests, never a path", async () => {
+    const { result } = setup();
+    server.blocks.experiments = { __resolveType: "split-traffic", hero: 10 };
+    server.versions.experiments = "theirs@1";
+    conflictHost.answer = (plan) =>
+      Object.fromEntries(plan.pointers.map((p) => [p, "mine" as const]));
+    await act(async () => {
+      await result.current.apply({ writes: { experiments } });
+    });
+    const [shown] = conflictHost.shown;
+    expect(shown?.fields.map((f) => [f.label, f.phrase])).toEqual([
+      ['A/B test "hero"', 'the A/B test "hero"'],
+    ]);
+    expect(shown?.about?.author?.blockKey).toBe("experiments");
   });
 
   it("on the hosted draft, asks from the copy the refusal carries: nothing is read", async () => {

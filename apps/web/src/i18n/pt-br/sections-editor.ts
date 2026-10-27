@@ -513,6 +513,23 @@ export const sectionsEditor = {
   "sectionsEditor.formConflict.titleStepInYou":
     "Você também mudou o campo “{label}” de “{block}” em outra aba ou janela",
   "sectionsEditor.formConflict.summaryTheirsNamed": "a de {name}",
+  "sectionsEditor.formConflict.ruleExperiment": "Teste A/B “{name}”",
+  "sectionsEditor.formConflict.ruleExperimentPhrase": "o teste A/B “{name}”",
+  "sectionsEditor.formConflict.ruleCampaign": "Campanha “{name}”",
+  "sectionsEditor.formConflict.ruleCampaignPhrase":
+    "as datas da campanha “{name}”",
+  "sectionsEditor.formConflict.titlePhraseOne":
+    "Outra pessoa mudou {thing} enquanto você editava",
+  "sectionsEditor.formConflict.titlePhraseOneNamed":
+    "{name} mudou {thing} enquanto você editava",
+  "sectionsEditor.formConflict.titlePhraseOneYou":
+    "Você mudou {thing} em outra aba ou janela",
+  "sectionsEditor.formConflict.titlePhraseStep":
+    "Outra pessoa também mudou {thing}",
+  "sectionsEditor.formConflict.titlePhraseStepNamed":
+    "{name} também mudou {thing}",
+  "sectionsEditor.formConflict.titlePhraseStepYou":
+    "Você também mudou {thing} em outra aba ou janela",
   "sectionsEditor.formConflict.youElsewhere": "Você, em outra aba ou janela",
   "sectionsEditor.formConflict.savedAt": "salva {when}",
   "sectionsEditor.formConflict.empty": "Vazio",

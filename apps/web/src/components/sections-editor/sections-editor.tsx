@@ -4902,7 +4902,8 @@ export function SectionsEditor({
               )}
               choices={waitingChoice.choices}
               changedAgain={waitingChoice.changedAgain}
-              author={conflictAuthor}
+              author={conflictAuthor ?? null}
+              authorPending={conflictAuthor === undefined}
               fresh={waitingChoice.fresh}
               onChoose={(pointer, choice) =>
                 setConflictChoices({
