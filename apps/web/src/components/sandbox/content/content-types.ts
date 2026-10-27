@@ -1,9 +1,10 @@
 /**
  * The Content tab of a hosted Blocks v8 site, as content types: every saved
  * block is filed under its type (the schema's manifest key, aliases folded
- * into their target) and each type under the manifest group it belongs to,
- * so the sidebar lists only the types the site HAS content of, never the
- * whole block map. Each entry carries its status in the draft, from the
+ * into their target), so the sidebar lists only the types the site HAS
+ * content of, never the whole block map: the site's own (pages, redirects),
+ * the one-entry types every page shows, then one flat list of the rest. The
+ * manifest group only says which editor opens an entry. Each entry carries its status in the draft, from the
  * draft's changes (`changes.list`): published, changed, new, or deleted (a
  * deletion's content is the published copy, from `changes.get`'s `before`).
  *
@@ -21,7 +22,10 @@ import { getRedirectPayload, type RedirectType } from "./redirect-data";
 
 export type EntryStatus = "published" | "changed" | "new" | "deleted";
 
-/** The schema's manifest groups (`schema.gen.json` → `manifest.blocks`). */
+/**
+ * The schema's manifest groups (`schema.gen.json` → `manifest.blocks`): which
+ * editor opens a type's entries, never how the sidebar groups them.
+ */
 export type ManifestGroup =
   | "pages"
   | "redirects"
@@ -44,19 +48,12 @@ export interface ContentEntry {
 export interface ContentType {
   /** The manifest key, aliases folded (`page`, `site-header`, …). */
   id: string;
+  /** Which editor opens its entries. */
   group: ManifestGroup;
   title: string;
-  /** Loaders: the app the type belongs to ("Shopify"); `""`: the site's own. */
-  app?: string;
   entries: ContentEntry[];
   /** Entries with a change in the draft (any status but published). */
   changed: number;
-}
-
-export interface AppGroup {
-  /** The app's name; `""` for the site's own data loaders. */
-  label: string;
-  types: ContentType[];
 }
 
 export interface ContentTypeTree {
@@ -64,12 +61,11 @@ export interface ContentTypeTree {
   redirects: ContentType | null;
   /** Section and content types with exactly one entry (Header, Settings). */
   everywhere: ContentType[];
-  /** Other section types, most entries first. */
-  sections: ContentType[];
-  apps: AppGroup[];
-  rules: ContentType[];
-  /** Types the schema doesn't declare (the editor still opens them). */
-  other: ContentType[];
+  /**
+   * Every other type with saved entries, whatever its manifest group (a
+   * device rule is a type like any other), most entries first, then by name.
+   */
+  types: ContentType[];
   /** Every type above, for lookups by id. */
   all: ContentType[];
   /**
@@ -85,8 +81,8 @@ export interface ContentTypeTree {
   statusKnown: boolean;
 }
 
-/** How many section types the sidebar shows before "Show all". */
-export const TOP_SECTION_TYPES = 5;
+/** How many types the sidebar's list shows before "Show all". */
+export const TOP_TYPES = 8;
 
 /** Built-ins whose schema title is their raw key get Studio's names. */
 const BUILT_IN_TITLES: Record<string, string> = {
@@ -115,10 +111,7 @@ const WRAPPER_TYPES: ReadonlySet<string> = new Set([
 /** How deep a saved block may point at another before we give up. */
 const MAX_REF_HOPS = 8;
 
-type Manifest = Record<
-  string,
-  Record<string, { $ref?: string; namespace?: string }>
->;
+type Manifest = Record<string, Record<string, { $ref?: string }>>;
 
 function manifestOf(meta: LiveMeta | null | undefined): Manifest {
   return (meta?.manifest?.blocks ?? {}) as Manifest;
@@ -260,42 +253,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * The app a loader type belongs to: its namespace, or for the site's own
- * loaders the vendor word several of them start with ("Shopify Product
- * List" → Shopify), else `""`: the site's own data. Also returns the title
- * without the vendor word.
- */
-function loaderApp(
-  meta: LiveMeta | null | undefined,
-  key: string,
-  title: string,
-  sharedPrefixes: ReadonlySet<string>,
-): { app: string; title: string } {
-  const namespace = manifestEntry(meta, key)?.entry.namespace;
-  if (namespace && namespace !== "site" && namespace !== "deco") {
-    return { app: humanizeTypeKey(namespace), title };
-  }
-  const [first, ...rest] = title.split(" ");
-  if (first && rest.length > 0 && sharedPrefixes.has(first.toLowerCase())) {
-    return { app: first, title: rest.join(" ") };
-  }
-  return { app: "", title };
-}
-
-/** First words two or more loader titles share (vendor prefixes). */
-function sharedFirstWords(titles: string[]): Set<string> {
-  const counts = new Map<string, number>();
-  for (const title of titles) {
-    const [first, ...rest] = title.split(" ");
-    if (!first || rest.length === 0) continue;
-    const word = first.toLowerCase();
-    counts.set(word, (counts.get(word) ?? 0) + 1);
-  }
-  return new Set([...counts].filter(([, n]) => n > 1).map(([w]) => w));
-}
-
-/**
- * Every saved block filed under its type and group. `deleted` holds the
+ * Every saved block filed under its type. `deleted` holds the
  * published copy of each block the draft deletes, by name (from
  * `changes.get`), so a deleted entry still shows under its type; without it
  * a deletion is listed only in the draft's changes.
@@ -344,28 +302,17 @@ export function buildContentTypes(input: {
     add(type, entry);
   }
 
-  const loaderTitles = [...byType.keys()]
-    .filter((type) => manifestGroupOf(meta, type) === "loaders")
-    .map((type) => typeTitle(meta, type));
-  const prefixes = sharedFirstWords(loaderTitles);
-
   const all: ContentType[] = [];
   for (const [id, entries] of byType) {
     // The named rules (tests, campaigns) keep their own views.
     if (namedRuleKindOfType(id)) continue;
     if (WRAPPER_TYPES.has(id)) continue;
     const group = manifestGroupOf(meta, id) ?? "other";
-    let title = typeTitle(meta, id);
-    let app: string | undefined;
-    if (group === "loaders") {
-      ({ app, title } = loaderApp(meta, id, title, prefixes));
-    }
     entries.sort(entryOrder(group));
     all.push({
       id,
       group,
-      title,
-      ...(app !== undefined ? { app } : {}),
+      title: typeTitle(meta, id),
       entries,
       changed: entries.filter((e) => e.status !== "published").length,
     });
@@ -373,39 +320,18 @@ export function buildContentTypes(input: {
   all.sort((a, b) => a.title.localeCompare(b.title));
 
   const of = (group: ManifestGroup) => all.filter((t) => t.group === group);
-  const singleton = (t: ContentType) => t.entries.length === 1;
-  const sectionTypes = of("sections");
-  const contentTypes = of("content");
-  const everywhere = [...sectionTypes, ...contentTypes]
-    .filter(singleton)
-    .sort((a, b) => a.title.localeCompare(b.title));
-  const sections = sectionTypes
-    .filter((t) => !singleton(t))
+  const pages = of("pages")[0] ?? null;
+  const redirects = of("redirects")[0] ?? null;
+  // Header, Footer, Settings: one entry every page shows.
+  const isEverywhere = (t: ContentType) =>
+    t.entries.length === 1 && (t.group === "sections" || t.group === "content");
+  const everywhere = all.filter(isEverywhere);
+  const types = all
+    .filter((t) => t !== pages && t !== redirects && !isEverywhere(t))
     .sort(
       (a, b) =>
         b.entries.length - a.entries.length || a.title.localeCompare(b.title),
     );
-  const appsByLabel = new Map<string, ContentType[]>();
-  for (const type of of("loaders")) {
-    const label = type.app ?? "";
-    appsByLabel.set(label, [...(appsByLabel.get(label) ?? []), type]);
-  }
-  const apps = [...appsByLabel]
-    .map(([label, types]) => ({ label, types }))
-    // The site's own data last.
-    .sort((a, b) =>
-      !a.label || !b.label
-        ? Number(!a.label) - Number(!b.label)
-        : a.label.localeCompare(b.label),
-    );
-  const pages = of("pages")[0] ?? null;
-  const redirects = of("redirects")[0] ?? null;
-  const other = [
-    ...contentTypes.filter((t) => !singleton(t)),
-    ...of("pages").slice(1),
-    ...of("redirects").slice(1),
-    ...of("other"),
-  ];
 
   // The draft's changes, from its own list: also those no type lists.
   const byId = new Map(all.map((type) => [type.id, type]));
@@ -452,10 +378,7 @@ export function buildContentTypes(input: {
     pages,
     redirects,
     everywhere,
-    sections,
-    apps,
-    rules: of("matchers"),
-    other,
+    types,
     all,
     changed,
     statusKnown: !!input.changes,
@@ -480,23 +403,18 @@ function entryOrder(group: ManifestGroup) {
     rank(a) - rank(b) || entryName(a).localeCompare(entryName(b));
 }
 
-/** The section types the sidebar shows: the top few, or all of them. */
-export function visibleSectionTypes(
-  sections: ContentType[],
+/** The types the sidebar's list shows: the top few, or all of them. */
+export function visibleTypes(
+  types: ContentType[],
   showAll: boolean,
 ): { shown: ContentType[]; hidden: number } {
-  if (showAll || sections.length <= TOP_SECTION_TYPES) {
-    return { shown: sections, hidden: 0 };
+  if (showAll || types.length <= TOP_TYPES) {
+    return { shown: types, hidden: 0 };
   }
   return {
-    shown: sections.slice(0, TOP_SECTION_TYPES),
-    hidden: sections.length - TOP_SECTION_TYPES,
+    shown: types.slice(0, TOP_TYPES),
+    hidden: types.length - TOP_TYPES,
   };
-}
-
-/** Whether an app group starts collapsed: when it lists many types. */
-export function appGroupCollapsedByDefault(group: AppGroup): boolean {
-  return group.types.length > 3;
 }
 
 function decodeName(key: string): string {

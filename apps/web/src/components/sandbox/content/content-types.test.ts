@@ -3,7 +3,6 @@ import type { Change } from "@decocms/blocks/protocol";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 import {
   aliasTarget,
-  appGroupCollapsedByDefault,
   buildContentTypes,
   entryName,
   entryStatus,
@@ -19,8 +18,8 @@ import {
   summaryFieldsOf,
   typeOfBlock,
   typeTitle,
-  visibleSectionTypes,
-  TOP_SECTION_TYPES,
+  TOP_TYPES,
+  visibleTypes,
 } from "./content-types";
 
 const ref = (key: string) => ({
@@ -211,23 +210,24 @@ describe("buildContentTypes", () => {
       "Header",
       "Settings",
     ]);
-    expect(tree.sections.map((t) => t.title)).toEqual(["Product Shelf"]);
   });
-  test("loaders under their app; the site's own by vendor word", () => {
-    expect(
-      tree.apps.map((a) => [a.label, a.types.map((t) => t.title)]),
-    ).toEqual([
-      ["Shopify", ["Product Details Page", "Product List"]],
-      ["Vtex", ["Search"]],
-      // The site's own data loaders, last ("Site data").
-      ["", ["Product by Handle"]],
-    ]);
-  });
-  test("rules, and no named rules (they keep their own views)", () => {
-    expect(tree.rules.map((t) => [t.title, t.entries.length])).toEqual([
+  test("every other type in one flat list, most entries first, then by name", () => {
+    // No manifest groups and no apps: a rule or a loader is a type like any
+    // other, titled by the schema and never split by a vendor word.
+    expect(tree.types.map((t) => [t.title, t.entries.length])).toEqual([
       ["Device", 2],
+      ["Product Shelf", 2],
+      ["Product by Handle", 1],
+      ["Search", 1],
+      ["Shopify Product Details Page", 1],
+      ["Shopify Product List", 1],
     ]);
+    expect(tree.types.some((t) => t.id === "page")).toBe(false);
+    expect(tree.types.some((t) => t.id === "site-header")).toBe(false);
+  });
+  test("no named rules (they keep their own views)", () => {
     expect(tree.all.some((t) => t.id === "split-traffic")).toBe(false);
+    expect(tree.types.some((t) => t.id === "split-traffic")).toBe(false);
   });
   test("statuses, deletions included, and the draft's changes", () => {
     const status = Object.fromEntries(
@@ -359,20 +359,16 @@ describe("sidebar sizing", () => {
     })),
     changed: 0,
   });
-  test("top five section types, then Show all", () => {
-    const many = [9, 8, 7, 6, 5, 4, 3].map((n, i) => type(`t${i}`, n));
-    const top = visibleSectionTypes(many, false);
-    expect(top.shown.length).toBe(TOP_SECTION_TYPES);
+  test("top eight types, then Show all", () => {
+    const many = [12, 11, 10, 9, 8, 7, 6, 5, 4, 3].map((n, i) =>
+      type(`t${i}`, n),
+    );
+    const top = visibleTypes(many, false);
+    expect(TOP_TYPES).toBe(8);
+    expect(top.shown.length).toBe(TOP_TYPES);
     expect(top.hidden).toBe(2);
-    expect(visibleSectionTypes(many, true).shown.length).toBe(7);
-    expect(visibleSectionTypes(many.slice(0, 3), false).hidden).toBe(0);
-  });
-  test("an app with many types starts collapsed", () => {
-    const four = [1, 2, 3, 4].map((n) => type(`a${n}`, 1));
-    expect(appGroupCollapsedByDefault({ label: "A", types: four })).toBe(true);
-    expect(
-      appGroupCollapsedByDefault({ label: "A", types: four.slice(0, 2) }),
-    ).toBe(false);
+    expect(visibleTypes(many, true).shown.length).toBe(10);
+    expect(visibleTypes(many.slice(0, 8), false).hidden).toBe(0);
   });
 });
 
@@ -417,7 +413,7 @@ describe("table columns", () => {
       },
       meta,
       changes: {},
-    }).sections[0]!;
+    }).types[0]!;
     expect(summaryFieldsOf(shelf)).toEqual(["title"]);
   });
 });

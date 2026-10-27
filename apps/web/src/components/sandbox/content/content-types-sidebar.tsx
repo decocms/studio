@@ -1,17 +1,13 @@
-import { ChevronDown } from "@untitledui/icons";
 import { useState } from "react";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import {
-  appGroupCollapsedByDefault,
-  type AppGroup,
   type ContentEntry,
   type ContentType,
   type ContentTypeTree,
   entryMatches,
   summaryFieldsOf,
-  TOP_SECTION_TYPES,
-  visibleSectionTypes,
+  visibleTypes,
 } from "./content-types";
 
 /** What the Content tab of a hosted v8 site shows beside its sidebar. */
@@ -29,10 +25,8 @@ const GROUP_DOT = {
   pages: "oklch(0.62 0.17 289)",
   redirects: "oklch(0.64 0.13 245)",
   everywhere: "oklch(0.66 0.09 75)",
-  sections: "oklch(0.6 0.1 270)",
-  apps: "oklch(0.6 0.13 150)",
-  rules: "oklch(0.62 0.15 0)",
-  other: "oklch(0.65 0 0)",
+  content: "oklch(0.6 0.1 270)",
+  settings: "oklch(0.65 0 0)",
   seo: "oklch(0.65 0 0)",
 } as const;
 
@@ -54,10 +48,10 @@ export function useTypeLabel(): (
 }
 
 /**
- * The content types of a hosted Blocks v8 site, grouped as the schema's
- * manifest groups them: only the types the site has saved blocks of. A
- * type with one entry that shows everywhere (Header, Footer, Settings)
- * opens that entry directly.
+ * The content types of a hosted Blocks v8 site: only the types the site has
+ * saved blocks of. The site's own (Pages, Redirects, SEO), then the types
+ * with one entry every page shows (Header, Footer, Settings), which open
+ * that entry directly, then one flat list of the rest, busiest first.
  */
 export function ContentTypesSidebar({
   tree,
@@ -77,7 +71,7 @@ export function ContentTypesSidebar({
   const t = useT();
   const label = useTypeLabel();
   const [query, setQuery] = useState("");
-  const [showAllSections, setShowAllSections] = useState(false);
+  const [showAllTypes, setShowAllTypes] = useState(false);
   const q = query.trim().toLowerCase();
   // A type is found by its name or by any of its entries.
   const matches = (type: ContentType) =>
@@ -94,7 +88,7 @@ export function ContentTypesSidebar({
       key={type.id}
       label={label(type)}
       // Settings is the site's, not a part of its pages.
-      dot={type.id === "cms-settings" ? "other" : dot}
+      dot={type.id === "cms-settings" ? "settings" : dot}
       count={singleton ? undefined : type.entries.length}
       changed={type.changed > 0}
       active={isActive(type)}
@@ -112,16 +106,11 @@ export function ContentTypesSidebar({
     (type): type is ContentType => !!type && matches(type),
   );
   const everywhere = tree.everywhere.filter(matches);
-  const sectionsFound = tree.sections.filter(matches);
+  const typesFound = tree.types.filter(matches);
   // Searching lists every match; otherwise the busiest few, then "Show all".
-  const sections = q
-    ? { shown: sectionsFound, hidden: 0 }
-    : visibleSectionTypes(sectionsFound, showAllSections);
-  const apps = tree.apps
-    .map((app) => ({ ...app, types: app.types.filter(matches) }))
-    .filter((app) => app.types.length > 0);
-  const rules = tree.rules.filter(matches);
-  const other = tree.other.filter(matches);
+  const types = q
+    ? { shown: typesFound, hidden: 0 }
+    : visibleTypes(typesFound, showAllTypes);
   const showSeo =
     !q || t("siteEditor.contentTypes.seo").toLowerCase().includes(q);
 
@@ -181,69 +170,23 @@ export function ContentTypesSidebar({
           </>
         )}
 
-        {sections.shown.length > 0 && (
+        {types.shown.length > 0 && (
           <>
-            <GroupLabel
-              label={t("siteEditor.contentTypes.group.sections")}
-              aside={
-                tree.sections.length > TOP_SECTION_TYPES
-                  ? t("siteEditor.contentTypes.typesCount", {
-                      count: tree.sections.length,
-                    })
-                  : undefined
-              }
-            />
-            {sections.shown.map((type) => row(type, "sections"))}
-            {!q && (sections.hidden > 0 || showAllSections) && (
+            <GroupLabel label={t("siteEditor.contentTypes.group.content")} />
+            {types.shown.map((type) => row(type, "content"))}
+            {!q && (types.hidden > 0 || showAllTypes) && (
               <button
                 type="button"
-                onClick={() => setShowAllSections((v) => !v)}
+                onClick={() => setShowAllTypes((v) => !v)}
                 className="px-2.5 py-1 text-left text-xs text-muted-foreground hover:text-foreground cursor-pointer"
               >
-                {showAllSections
+                {showAllTypes
                   ? t("siteEditor.contentTypes.showFewer")
                   : t("siteEditor.contentTypes.showAll", {
-                      count: tree.sections.length,
+                      count: tree.types.length,
                     })}
               </button>
             )}
-          </>
-        )}
-
-        {apps.length === 1 && apps[0] ? (
-          // One app: its name heads its types.
-          <>
-            <GroupLabel
-              label={apps[0].label || t("siteEditor.contentTypes.siteData")}
-            />
-            {apps[0].types.map((type) => row(type, "apps"))}
-          </>
-        ) : apps.length > 1 ? (
-          <>
-            <GroupLabel label={t("siteEditor.contentTypes.group.apps")} />
-            {apps.map((app) => (
-              <AppRows
-                key={app.label}
-                app={app}
-                // Searching opens every app with a match.
-                forceOpen={!!q || app.types.some(isActive)}
-                renderRow={(type) => row(type, "apps")}
-              />
-            ))}
-          </>
-        ) : null}
-
-        {rules.length > 0 && (
-          <>
-            <GroupLabel label={t("siteEditor.contentTypes.group.rules")} />
-            {rules.map((type) => row(type, "rules"))}
-          </>
-        )}
-
-        {other.length > 0 && (
-          <>
-            <GroupLabel label={t("siteEditor.contentTypes.group.other")} />
-            {other.map((type) => row(type, "other"))}
           </>
         )}
       </div>
@@ -251,65 +194,11 @@ export function ContentTypesSidebar({
   );
 }
 
-function GroupLabel({ label, aside }: { label: string; aside?: string }) {
+function GroupLabel({ label }: { label: string }) {
   return (
-    <div className="flex justify-between px-2.5 pt-4 pb-1 text-xs text-muted-foreground/70">
-      <span>{label}</span>
-      {aside && <span>{aside}</span>}
+    <div className="px-2.5 pt-4 pb-1 text-xs text-muted-foreground/70">
+      {label}
     </div>
-  );
-}
-
-/** An app's types under its name; collapsed at first when it has many. */
-function AppRows({
-  app,
-  forceOpen,
-  renderRow,
-}: {
-  app: AppGroup;
-  forceOpen: boolean;
-  renderRow: (type: ContentType) => React.ReactNode;
-}) {
-  const t = useT();
-  const [open, setOpen] = useState(() => !appGroupCollapsedByDefault(app));
-  const shown = open || forceOpen;
-  return (
-    <>
-      <button
-        type="button"
-        aria-expanded={shown}
-        onClick={() => setOpen(!shown)}
-        className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-sm text-muted-foreground hover:bg-accent hover:text-foreground cursor-pointer"
-      >
-        <span
-          className="size-2 shrink-0 rounded-full"
-          style={{ background: GROUP_DOT[app.label ? "apps" : "other"] }}
-        />
-        <span className="flex-1 truncate">
-          {app.label || t("siteEditor.contentTypes.siteData")}
-        </span>
-        {!shown && (
-          <span className="text-xs text-muted-foreground/70">
-            {app.types.length === 1
-              ? t("siteEditor.contentTypes.typeCountOne")
-              : t("siteEditor.contentTypes.typesCount", {
-                  count: app.types.length,
-                })}
-          </span>
-        )}
-        {shown && (
-          <ChevronDown
-            size={14}
-            className="shrink-0 rotate-180 text-muted-foreground/70"
-          />
-        )}
-      </button>
-      {shown && (
-        <div className="flex flex-col gap-px pl-2">
-          {app.types.map(renderRow)}
-        </div>
-      )}
-    </>
   );
 }
 
