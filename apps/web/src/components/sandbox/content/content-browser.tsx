@@ -143,6 +143,7 @@ import { RunnableBlocksBrowser } from "./runnable-blocks-browser";
 import { countAvailableRunnables } from "./runnable-catalog";
 import { EmptyMessage } from "./empty-message";
 import { SectionsRightPane } from "./sections-right-pane";
+import { useConflictMembers } from "@/components/sections-editor/conflict-author";
 import { ItemActions } from "./item-actions";
 import { ItemRow } from "./item-row";
 import {
@@ -454,6 +455,8 @@ function ContentBrowserReady({
   /** A hosted v8 draft: a delete is a draft change, undone by discarding it. */
   const hostedDraft =
     contentBackend.kind === "protocol" && contentBackend.source === "github";
+  // The reconcile window names who made the other change (hosted v8).
+  useConflictMembers(hostedDraft);
   // Which editor this site gets (v8: the new one): waited on with the data,
   // so neither editor shows and then swaps to the other.
   const editorUndecided = useNewBlocksEditorState() === undefined;

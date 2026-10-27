@@ -186,3 +186,13 @@ function useDraftChange(
   });
   return enabled ? (data ?? null) : null;
 }
+
+/**
+ * Reads the org's members on a screen whose hosted v8 saves may be asked
+ * about (`hosted`), so the reconcile window, shown outside the project's
+ * screens ({@link useConflictAuthorFromCache}), names who made the other
+ * change rather than "Someone else". Nothing is read elsewhere.
+ */
+export function useConflictMembers(hosted: boolean): void {
+  useMembersQuery({ enabled: hosted });
+}
