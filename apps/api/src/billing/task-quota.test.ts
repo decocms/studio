@@ -4,6 +4,7 @@ import {
   SUBSCRIPTION_REQUIRED_PREFIX,
   subscriptionInGoodStanding,
   TaskQuotaError,
+  taskQuotaExemption,
   taskQuotaState,
 } from "./task-quota";
 
@@ -162,5 +163,18 @@ describe("TaskQuotaError", () => {
         SUBSCRIPTION_REQUIRED_PREFIX,
       ),
     ).toBe(true);
+  });
+});
+
+describe("taskQuotaExemption", () => {
+  test("kanban skips every run; other paid plans skip personal-plan runs; Free and an unconfirmed plan skip none", () => {
+    const free = { planId: "free", features: {} };
+    const starter = { planId: "starter", features: {} };
+    const custom = { planId: "custom", features: { kanban: true } };
+    expect(taskQuotaExemption(custom, false)).toBe("plan_kanban");
+    expect(taskQuotaExemption(starter, true)).toBe("personal_plan");
+    expect(taskQuotaExemption(starter, false)).toBeNull();
+    expect(taskQuotaExemption(free, true)).toBeNull();
+    expect(taskQuotaExemption(null, true)).toBeNull();
   });
 });

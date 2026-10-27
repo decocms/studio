@@ -26,6 +26,7 @@ const ORG = "org_quota_1";
 
 const CONFIG: TaskQuotaConfig = {
   enforced: true,
+  planExempt: false,
   freeTaskExecutions: 2,
   monthlyTaskExecutions: 3,
   maxRunsPerTask: 2,

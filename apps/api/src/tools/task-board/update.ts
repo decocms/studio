@@ -384,9 +384,10 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
       // after the assignee already persisted).
       if (becameSuperAgent) {
         // A human is delegating this card manually — the per-task run cap must not block it, only the period bucket.
+        // Checked as it will dispatch: the write below stamps this user as the delegator.
         await ensureTaskExecutionAllowed(
           ctx,
-          previous,
+          { ...previous, assignedBy: getUserId(ctx) ?? null },
           userInitiatedTaskQuotaConfig(),
         );
       }

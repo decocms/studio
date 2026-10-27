@@ -80,6 +80,8 @@ const MAX_STALE_MS = 10 * 60_000;
  * costs no extra round trip on top of the feature gate.
  */
 interface OrgPlanState {
+  /** The gateway's plan id ("free" is no plan), or null when it did not say. */
+  planId: string | null;
   features: Record<string, boolean>;
   /**
    * The deco-admin model pin per tier, or null when the gateway declined to
@@ -196,7 +198,7 @@ async function fetchOrgPlanState(
 
   try {
     const jwt = await mintGatewayJwt(userId);
-    const { features, usage, modelPins, credits } =
+    const { plan, features, usage, modelPins, credits } =
       await adapter.getEntitlements(jwt, organizationId);
     // The wire body is an unchecked cast, so a 200 whose `features` is absent
     // or not an object used to become `undefined` here — which
@@ -208,6 +210,7 @@ async function fetchOrgPlanState(
       throw new EntitlementsFetchError(502);
     }
     const state: OrgPlanState = {
+      planId: plan?.id ?? null,
       features,
       modelPins,
       usageState: usage?.state ?? null,
@@ -303,7 +306,20 @@ export async function orgHasFeatureAsUser(
   return isFeatureAllowed(state?.features ?? null, feature);
 }
 
-function requestUserId(ctx: StudioContext): string | undefined {
+/**
+ * The org's plan as the gateway last CONFIRMED it, or null without an answer.
+ *
+ * For exemptions from a limit, where `orgHasFeature`'s fail-open would lift
+ * the limit for every org whenever plans are off or the gateway is down.
+ */
+export async function confirmedOrgPlan(
+  userId: string | undefined,
+  organizationId: string,
+): Promise<Pick<OrgPlanState, "planId" | "features"> | null> {
+  return await getOrgPlanState(userId, organizationId);
+}
+
+export function requestUserId(ctx: StudioContext): string | undefined {
   return ctx.auth.user?.id ?? ctx.auth.apiKey?.userId;
 }
 

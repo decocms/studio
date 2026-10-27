@@ -33,6 +33,8 @@
 
 import type { StudioContext } from "@/core/studio-context";
 import { isReportsTask } from "@decocms/shared/task-board";
+import { confirmedOrgPlan, requestUserId } from "@/core/plan-feature-gate";
+import { resolvePlanCredential } from "@/harnesses/plan-credential";
 import { captureOrgEvent } from "@/posthog";
 import { getSettings } from "../settings";
 import type {
@@ -82,7 +84,7 @@ function billingMode(periodKey: string): "trial" | "subscription" {
  *  identity. Fire-and-forget; no-op without POSTHOG_KEY. */
 function captureQuotaEvent(
   ctx: StudioContext,
-  event: "task_quota_claimed" | "task_quota_blocked",
+  event: "task_quota_claimed" | "task_quota_blocked" | "task_quota_exempt",
   task: { id: string; organizationId: string },
   properties: Record<string, unknown> = {},
 ): void {
@@ -158,6 +160,8 @@ export function taskQuotaState(
  *  defaults come from settings — global, frozen at boot). */
 export interface TaskQuotaConfig {
   enforced: boolean;
+  /** Skip the quota for runs the org's plan covers (`taskQuotaExemption`). */
+  planExempt: boolean;
   freeTaskExecutions: number;
   monthlyTaskExecutions: number;
   maxRunsPerTask: number;
@@ -167,6 +171,7 @@ export function taskQuotaConfig(): TaskQuotaConfig {
   const settings = getSettings();
   return {
     enforced: settings.taskQuotaEnforced,
+    planExempt: settings.taskQuotaPlanExempt,
     freeTaskExecutions: settings.freeTaskExecutions,
     monthlyTaskExecutions: settings.monthlyTaskExecutions,
     maxRunsPerTask: settings.maxRunsPerTask,
@@ -196,6 +201,53 @@ interface GatedTask {
   id: string;
   createdBy: string;
   organizationId: string;
+  /** Whose credentials the run bills (`enqueueTaskRun`). */
+  assignedBy?: string | null;
+  updatedBy?: string | null;
+  harnessId?: string;
+}
+
+export type TaskQuotaExemption = "plan_kanban" | "personal_plan";
+
+/**
+ * Whether the org's plan covers a run, so it spends no quota.
+ *
+ * `plan` must be the gateway's confirmed answer: without one nothing is
+ * exempt. A plan with `kanban` has no task limit. Other paid plans skip runs
+ * billed to the delegator's own Claude/Copilot plan, since there the quota
+ * bounds deco-subsidized spend. Free counts every run: its trial is part of
+ * the offer, whoever pays.
+ */
+export function taskQuotaExemption(
+  plan: { planId: string | null; features: Record<string, boolean> } | null,
+  billsPersonalPlan: boolean,
+): TaskQuotaExemption | null {
+  if (!plan) return null;
+  if (plan.features.kanban === true) return "plan_kanban";
+  const paidPlan = plan.planId !== null && plan.planId !== "free";
+  return paidPlan && billsPersonalPlan ? "personal_plan" : null;
+}
+
+async function resolveTaskQuotaExemption(
+  ctx: StudioContext,
+  task: GatedTask,
+  config: TaskQuotaConfig,
+): Promise<TaskQuotaExemption | null> {
+  if (!config.planExempt) return null;
+  // Any member can read the org's plan; system dispatches have no request user.
+  const reader = task.assignedBy ?? requestUserId(ctx) ?? task.updatedBy;
+  const plan = await confirmedOrgPlan(reader ?? undefined, task.organizationId);
+  if (!plan) return null;
+  const billsPersonalPlan =
+    !plan.features.kanban &&
+    !!task.assignedBy &&
+    (await resolvePlanCredential(
+      ctx,
+      task.organizationId,
+      task.assignedBy,
+      task.harnessId,
+    )) !== null;
+  return taskQuotaExemption(plan, billsPersonalPlan);
 }
 
 /**
@@ -211,6 +263,7 @@ export async function ensureTaskExecutionAllowed(
   config: TaskQuotaConfig = taskQuotaConfig(),
 ): Promise<void> {
   if (!config.enforced || !isReportsTask(task)) return;
+  if (await resolveTaskQuotaExemption(ctx, task, config)) return;
   const claim = await ctx.storage.organizationBilling.taskClaim(task.id);
   if (claim && claim.runCount >= config.maxRunsPerTask) {
     captureQuotaEvent(ctx, "task_quota_blocked", task, {
@@ -261,6 +314,11 @@ export async function claimTaskExecution(
   config: TaskQuotaConfig = taskQuotaConfig(),
 ): Promise<"claimed" | "rerun" | "skipped"> {
   if (!config.enforced || !isReportsTask(task)) return "skipped";
+  const exemption = await resolveTaskQuotaExemption(ctx, task, config);
+  if (exemption) {
+    captureQuotaEvent(ctx, "task_quota_exempt", task, { reason: exemption });
+    return "skipped";
+  }
   const billing = await ctx.storage.organizationBilling.getBilling(
     task.organizationId,
   );

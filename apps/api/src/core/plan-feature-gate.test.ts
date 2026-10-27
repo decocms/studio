@@ -71,6 +71,7 @@ describe("isUsageBlocked", () => {
 
 describe("planStateCache bounds", () => {
   const state = {
+    planId: null,
     features: {},
     modelPins: null,
     usageState: null,

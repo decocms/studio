@@ -31,6 +31,7 @@ const USER = "user_refund_wiring";
 
 const CONFIG: TaskQuotaConfig = {
   enforced: true,
+  planExempt: false,
   freeTaskExecutions: 10,
   monthlyTaskExecutions: 10,
   maxRunsPerTask: 5,
