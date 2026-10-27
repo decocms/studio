@@ -71,6 +71,8 @@ import {
   copyScope,
   type HeldCopy,
   HeldCopies,
+  type HeldEdit,
+  heldCopyVersion,
 } from "./held-copy";
 
 /** Debounce window for form-driven block autosaves (ms). */
@@ -153,6 +155,14 @@ interface SaveBlockVariables {
    * saved over theirs (guarded by their version). Other backends: ignored.
    */
   create?: boolean;
+  /**
+   * An editor keeping its own copy (holdsCopy): the copy the edit was made
+   * on, taken when it was made (`useSaveBlock`'s `edited`). A save of an
+   * edit made before the editor's copy was replaced (a keystroke still
+   * pending in the old form) is guarded by that copy. Default: the copy the
+   * editor shows when the save runs.
+   */
+  edit?: HeldEdit;
 }
 
 /**
@@ -442,7 +452,7 @@ export function useSaveBlock(
     let ifMatch: Record<string, string | null> = create
       ? { [blockKey]: null }
       : shown
-        ? { [blockKey]: shown.version }
+        ? { [blockKey]: await heldCopyVersion(shown) }
         : await hostedIfMatch(ctx, [blockKey]);
     for (let round = 0; ; round++) {
       try {
@@ -611,6 +621,7 @@ export function useSaveBlock(
       rebaseOnConflict = true,
       guard,
       create = false,
+      edit,
     }: SaveBlockVariables) => {
       // Fail closed before any write path: a raw secret must never be
       // persisted. A hosted save checks nothing (the site's CI runs `deco
@@ -626,8 +637,7 @@ export function useSaveBlock(
           if (canonicalBlockJson(result.written) !== canonicalBlockJson(data)) {
             return;
           }
-          const version = result.versions[blockKey];
-          if (version !== undefined) held.saved(blockKey, data, version);
+          if (result.versions[blockKey]) held.saved(blockKey, data);
         };
         // Every hosted save is guarded by the draft (see saveHostedBlock).
         if (hosted && !guard) {
@@ -637,7 +647,7 @@ export function useSaveBlock(
             data,
             base,
             create,
-            create ? undefined : held?.get(blockKey),
+            create ? undefined : held?.guardOf(blockKey, edit),
           );
           keepShown(result);
           return result;
@@ -656,7 +666,7 @@ export function useSaveBlock(
               data,
               base,
               creates,
-              creates ? undefined : held?.get(blockKey),
+              creates ? undefined : held?.guardOf(blockKey, edit),
             );
             keepShown(result);
             guard.onApplied?.(keptTheirVersion(result) ? {} : result.versions);
@@ -844,6 +854,12 @@ export function useSaveBlock(
     /** True while saves are guarded by the editor's own copy (hosted v8). */
     holdsCopy: held !== null,
     /**
+     * An edit of `blockKey` is made now (holdsCopy): the copy it is built
+     * on, for its save's `edit`. Undefined when saves aren't guarded by the
+     * editor's own copy.
+     */
+    edited: (blockKey: string) => held?.edited(blockKey),
+    /**
      * The editor's own copy of `blockKey` (hosted v8, holdsCopy), for a move
      * or rename built from it (`useMoveBlocks`' `shown`); undefined
      * otherwise.
@@ -878,6 +894,9 @@ export function useDebouncedSaveBlock(
 ) {
   const saveBlock = useSaveBlock(params, { holdsCopy: opts?.holdsCopy });
   const pendingRef = useRef<Map<string, SaveData>>(new Map());
+  // The copy each pending edit was made on (holdsCopy): the first edit of
+  // the window, so one made before the form was reseeded keeps its guard.
+  const editsRef = useRef<Map<string, HeldEdit>>(new Map());
   const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
     new Map(),
   );
@@ -887,9 +906,11 @@ export function useDebouncedSaveBlock(
     if (!pending) return;
     const resolved = typeof pending === "function" ? pending() : pending;
     pendingRef.current.delete(blockKey);
+    const edit = editsRef.current.get(blockKey);
+    editsRef.current.delete(blockKey);
     if (!resolved) return;
     saveBlock.mutate(
-      { blockKey, data: resolved, guard: opts?.guard },
+      { blockKey, data: resolved, guard: opts?.guard, edit },
       {
         onSuccess: () => opts?.onSaved?.(),
         onError: saveBlock.reportError,
@@ -915,6 +936,7 @@ export function useDebouncedSaveBlock(
       if (timer) clearTimeout(timer);
       timersRef.current.delete(blockKey);
       pendingRef.current.delete(blockKey);
+      editsRef.current.delete(blockKey);
     }
   });
 
@@ -940,6 +962,10 @@ export function useDebouncedSaveBlock(
   }, []);
 
   const save = (blockKey: string, data: SaveData) => {
+    if (!editsRef.current.has(blockKey)) {
+      const edit = saveBlock.edited(blockKey);
+      if (edit) editsRef.current.set(blockKey, edit);
+    }
     pendingRef.current.set(blockKey, data);
     const existing = timersRef.current.get(blockKey);
     if (existing) clearTimeout(existing);

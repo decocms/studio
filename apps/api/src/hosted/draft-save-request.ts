@@ -90,7 +90,7 @@ export function refuseUnguardedSave(body: unknown): Response | null {
       code: INVALID_PARAMS,
       message:
         missing[i]!.length > 0
-          ? "A hosted save needs a precondition (ifMatch) for every block it writes or deletes: its version in the draft, null when the draft doesn't hold it, or \"tombstone\" when the draft deletes it"
+          ? 'A hosted save needs a precondition (ifMatch) for every block it writes or deletes: its version in the draft, null when the draft doesn\'t hold it, or "tombstone" when the draft deletes it'
           : "Not applied: another call of this batch has no precondition (ifMatch) for a block it touches",
       data: { missing: missing[i] },
     },

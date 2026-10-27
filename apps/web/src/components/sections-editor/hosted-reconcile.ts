@@ -39,7 +39,7 @@ import {
   canAskNamedRuleConflict,
   type DeletedConflict,
 } from "./named-rule-conflict";
-import type { HeldCopy } from "./held-copy";
+import { type HeldCopy, heldCopyVersion } from "./held-copy";
 import { parsePageName } from "./page-list";
 import type { SchemaProperty } from "./resolve-schema";
 import {
@@ -379,7 +379,9 @@ export async function applyHostedChange(
     // that copy (later rounds by the draft's copy the refusal brought).
     if (round === 0) {
       for (const key of own) {
-        if (Object.hasOwn(ifMatch, key)) ifMatch[key] = shown![key]!.version;
+        if (Object.hasOwn(ifMatch, key)) {
+          ifMatch[key] = await heldCopyVersion(shown![key]!);
+        }
       }
     }
     // A move whose source the draft deletes already (a poll brought the

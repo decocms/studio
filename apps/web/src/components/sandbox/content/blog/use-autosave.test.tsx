@@ -123,3 +123,29 @@ describe("useAutosave onSeed (the copy an editor shows)", () => {
     expect(result.current[0]).toEqual({ v: "typing" });
   });
 });
+
+describe("useAutosave's edit capture (onEdit)", () => {
+  it("hands each save what its window's first edit was built on", async () => {
+    let copy = "first";
+    const saved: Array<[string, string | undefined]> = [];
+    const initial = { v: "a" };
+    const { result } = renderHook(() =>
+      useAutosave<Doc, string>(
+        initial,
+        (value, edit) => saved.push([value.v, edit]),
+        { delay: 5, onEdit: () => copy },
+      ),
+    );
+    act(() => result.current[1]({ v: "b" }));
+    // The copy moves under the pending edit (the form was reseeded).
+    copy = "second";
+    act(() => result.current[1]({ v: "c" }));
+    await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+    act(() => result.current[1]({ v: "d" }));
+    await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+    expect(saved).toEqual([
+      ["c", "first"],
+      ["d", "second"],
+    ]);
+  });
+});

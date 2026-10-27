@@ -216,7 +216,6 @@ export function RedirectEditor(
       branch={props.branch}
       blockKey={props.blockKey}
       present={props.block !== undefined}
-      remount={false}
     >
       <RedirectEditorForm {...props} />
     </HeldBlockView>

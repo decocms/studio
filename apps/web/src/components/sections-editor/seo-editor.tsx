@@ -81,7 +81,9 @@ export function SeoEditor({
   );
   const [prevCopyEpoch, setPrevCopyEpoch] = useState(copyEpoch);
   if (prevTargetId !== targetId || prevCopyEpoch !== copyEpoch) {
-    if (prevTargetId !== targetId && resolved) hold(resolved.blockKey);
+    // The form is seeded from the draft's copy now (an edit still pending
+    // keeps the copy it was made on).
+    if (resolved) hold(resolved.blockKey);
     setPrevTargetId(targetId);
     setPrevCopyEpoch(copyEpoch);
     setFormValue(null);

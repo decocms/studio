@@ -21,6 +21,7 @@ import * as realSessionRuntime from "@/hooks/use-session-runtime";
 import * as realNamedRuleConflict from "./named-rule-conflict";
 import * as realLocalPreview from "@/hooks/use-local-preview-url";
 import type { SaveGuard } from "./use-save-block";
+import { draftVersionOf } from "./draft-version";
 
 const ORG = "acme";
 const VM = "vm-1";
@@ -40,6 +41,8 @@ const server = {
   draftInRefusal: false,
   /** `changes.get` reads. */
   reads: 0,
+  /** Versions are the blocks' content hashes, as Studio's hosted draft's. */
+  hashed: false,
 };
 
 const client = {
@@ -74,7 +77,9 @@ const client = {
     }
     for (const [name, value] of Object.entries(patch.set ?? {})) {
       server.blocks[name] = value;
-      versions[name] = server.versions[name] = `${server.versions[name]}+`;
+      versions[name] = server.versions[name] = server.hashed
+        ? await draftVersionOf(value)
+        : `${server.versions[name]}+`;
     }
     return { revision: "r2", versions };
   },
@@ -182,6 +187,7 @@ function setup() {
   server.applied = [];
   server.draftInRefusal = false;
   server.reads = 0;
+  server.hashed = false;
   asked.choice = "mine";
   asked.fields = [];
   asked.deleted = [];
@@ -670,24 +676,35 @@ describe("every hosted v8 save is guarded by the draft (no guard of its own)", (
 });
 
 describe("an editor that keeps its own copy (holdsCopy) is guarded by the copy it shows", () => {
+  const LOADED = { title: "loaded", body: "same" };
+  const v = (block: unknown) => draftVersionOf(block);
+
   /**
-   * The editor opened Hero at h1 ("loaded"); its hook is mounted then, as
-   * an editor keyed by its block is.
+   * The editor opened Hero as the draft holds it ("loaded"); its hook is
+   * mounted then, as an editor keyed by its block is. Versions are content
+   * hashes, as the hosted draft's.
    */
-  function setupHeld() {
+  async function setupHeld(
+    opts: { debounced?: boolean; listed?: Record<string, string> } = {},
+  ) {
     const { queryClient } = setup();
-    server.versions = { Hero: "h1" };
-    server.blocks = { Hero: { title: "loaded", body: "same" } };
+    server.hashed = true;
+    server.blocks = { Hero: { ...LOADED } };
+    server.versions = { Hero: await v(LOADED) };
     queryClient.setQueryData(KEYS.decofile(CACHE_KEY), {
-      Hero: { title: "loaded", body: "same" },
+      Hero: { ...LOADED },
     });
-    draftHolds(queryClient, { Hero: "h1" });
+    draftHolds(queryClient, opts.listed ?? { Hero: await v(LOADED) });
     const wrapper = ({ children }: { children: ReactNode }) => (
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     );
     const { result } = renderHook(
       () => ({
         save: useSaveBlock(
+          { orgSlug: ORG, virtualMcpId: VM, branch: BRANCH },
+          { holdsCopy: true },
+        ),
+        debounced: useDebouncedSaveBlock(
           { orgSlug: ORG, virtualMcpId: VM, branch: BRANCH },
           { holdsCopy: true },
         ),
@@ -698,20 +715,20 @@ describe("an editor that keeps its own copy (holdsCopy) is guarded by the copy i
     return { queryClient, result };
   }
 
-  /** Someone else saved Hero (h2) and the editor's poll read it. */
-  function theyChangedIt(queryClient: QueryClient, title = "theirs") {
-    server.blocks = { Hero: { title, body: "same" } };
-    server.versions = { Hero: "h2" };
-    queryClient.setQueryData(KEYS.decofile(CACHE_KEY), {
-      Hero: { title, body: "same" },
-    });
-    draftHolds(queryClient, { Hero: "h2" });
+  /** Someone else saved Hero and the editor's poll read it. */
+  async function theyChangedIt(queryClient: QueryClient, title = "theirs") {
+    const theirs = { title, body: "same" };
+    server.blocks = { Hero: theirs };
+    server.versions = { Hero: await v(theirs) };
+    queryClient.setQueryData(KEYS.decofile(CACHE_KEY), { Hero: theirs });
+    draftHolds(queryClient, { Hero: await v(theirs) });
+    return theirs;
   }
 
   it("a poll that read someone else's change never lets the next keystroke overwrite it", async () => {
-    const { queryClient, result } = setupHeld();
+    const { queryClient, result } = await setupHeld();
     server.draftInRefusal = true;
-    theyChangedIt(queryClient);
+    const theirs = await theyChangedIt(queryClient);
     await act(async () => {
       // The form still shows "loaded": the user edits the body.
       await result.current.save.mutateAsync({
@@ -722,17 +739,54 @@ describe("an editor that keeps its own copy (holdsCopy) is guarded by the copy i
     // Guarded by the copy the form shows, refused, and merged: their title
     // and the user's body, with nothing to ask.
     expect(server.applied.map((p) => p.ifMatch)).toEqual([
-      { Hero: "h1" },
-      { Hero: "h2" },
+      { Hero: await v(LOADED) },
+      { Hero: await v(theirs) },
     ]);
     expect(asked.fields).toEqual([]);
     expect(server.blocks.Hero).toEqual({ title: "theirs", body: "mine" });
   });
 
-  it("a value both changed asks, with the copy the form loaded as the ancestor", async () => {
-    const { queryClient, result } = setupHeld();
+  it("the guard is the hash of the copy the form shows, even when the draft's changes were read ahead of the blocks", async () => {
+    // The changes list already has someone else's version; the blocks (and
+    // the form seeded from them) are still the copy the editor loaded. A
+    // guard paired from the two caches would be their version: the save
+    // would land over their change unasked.
+    const theirs = { title: "theirs", body: "same" };
+    const { queryClient, result } = await setupHeld({
+      listed: { Hero: await v(theirs) },
+    });
     server.draftInRefusal = true;
-    theyChangedIt(queryClient);
+    server.blocks = { Hero: theirs };
+    server.versions = { Hero: await v(theirs) };
+    await act(async () => {
+      await result.current.save.mutateAsync({
+        blockKey: "Hero",
+        data: { title: "mine", body: "same" },
+      });
+    });
+    expect(server.applied[0]?.ifMatch).toEqual({ Hero: await v(LOADED) });
+    expect(asked.fields.map((f) => [f.pointer, f.mine, f.theirs])).toEqual([
+      ["/title", "mine", "theirs"],
+    ]);
+    expect(queryClient).toBeDefined();
+  });
+
+  it('a block the draft doesn\'t hold is guarded "must not exist in the draft"', async () => {
+    const { result } = await setupHeld({ listed: {} });
+    server.versions = {};
+    await act(async () => {
+      await result.current.save.mutateAsync({
+        blockKey: "Hero",
+        data: { title: "mine", body: "same" },
+      });
+    });
+    expect(server.applied[0]?.ifMatch).toEqual({ Hero: null });
+  });
+
+  it("a value both changed asks, with the copy the form loaded as the ancestor", async () => {
+    const { queryClient, result } = await setupHeld();
+    server.draftInRefusal = true;
+    await theyChangedIt(queryClient);
     await act(async () => {
       await result.current.save.mutateAsync({
         blockKey: "Hero",
@@ -745,34 +799,32 @@ describe("an editor that keeps its own copy (holdsCopy) is guarded by the copy i
     expect(server.blocks.Hero).toEqual({ title: "mine", body: "same" });
   });
 
-  it("its own confirmed saves move the version it holds", async () => {
-    const { result } = setupHeld();
+  it("its own confirmed saves move the copy it holds", async () => {
+    const { result } = await setupHeld();
+    const one = { title: "one", body: "same" };
     await act(async () => {
-      await result.current.save.mutateAsync({
-        blockKey: "Hero",
-        data: { title: "one", body: "same" },
-      });
+      await result.current.save.mutateAsync({ blockKey: "Hero", data: one });
       await result.current.save.mutateAsync({
         blockKey: "Hero",
         data: { title: "two", body: "same" },
       });
     });
     expect(server.applied.map((p) => p.ifMatch)).toEqual([
-      { Hero: "h1" },
-      { Hero: "h1+" },
+      { Hero: await v(LOADED) },
+      { Hero: await v(one) },
     ]);
   });
 
   for (const outcome of ["theirs", "deleted", "merged"] as const) {
     it(`the editor is told to show what the draft holds after the reconcile (${outcome}), and its old copy can't overwrite it`, async () => {
-      const { queryClient, result } = setupHeld();
+      const { queryClient, result } = await setupHeld();
       server.draftInRefusal = true;
       if (outcome === "deleted") {
         server.blocks = {};
         server.versions = { Hero: "tombstone" };
         draftHolds(queryClient, {}, ["Hero"]);
       } else {
-        theyChangedIt(queryClient);
+        await theyChangedIt(queryClient);
       }
       asked.choice = "theirs";
       const before = result.current.epochOf("Hero");
@@ -799,7 +851,9 @@ describe("an editor that keeps its own copy (holdsCopy) is guarded by the copy i
         });
         await new Promise((resolve) => setTimeout(resolve, 10));
       });
-      expect(server.applied[applied]?.ifMatch).toEqual({ Hero: "h1" });
+      expect(server.applied[applied]?.ifMatch).toEqual({
+        Hero: await v(LOADED),
+      });
       expect(server.blocks.Hero).toEqual(
         outcome === "deleted"
           ? undefined
@@ -809,14 +863,53 @@ describe("an editor that keeps its own copy (holdsCopy) is guarded by the copy i
       );
     });
   }
+
+  it("an edit made before the form was reseeded keeps the copy it was made on: refused and asked, never written over what the form shows now", async () => {
+    const { queryClient, result } = await setupHeld();
+    server.draftInRefusal = true;
+    asked.choice = "theirs";
+    // The user types in the form showing "loaded"; the save is pending.
+    act(() =>
+      result.current.debounced.save("Hero", { title: "mine", body: "same" }),
+    );
+    // Meanwhile someone else's change arrives and the form is reseeded
+    // with it (another block opened and back, a reconcile elsewhere…).
+    const theirs = await theyChangedIt(queryClient);
+    act(() => result.current.debounced.hold("Hero"));
+    // The pending edit was made on "loaded": guarded by it, refused, and
+    // asked about; nothing is written over their title.
+    await act(async () => {
+      result.current.debounced.flush();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    expect(server.applied[0]?.ifMatch).toEqual({ Hero: await v(LOADED) });
+    expect(asked.fields.map((f) => [f.pointer, f.mine, f.theirs])).toEqual([
+      ["/title", "mine", "theirs"],
+    ]);
+    expect(server.blocks.Hero).toEqual(theirs);
+    // An edit made on the reseeded form is guarded by what it shows.
+    const applied = server.applied.length;
+    act(() =>
+      result.current.debounced.save("Hero", { title: "theirs", body: "next" }),
+    );
+    await act(async () => {
+      result.current.debounced.flush();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    expect(server.applied[applied]?.ifMatch).toEqual({ Hero: await v(theirs) });
+    expect(server.blocks.Hero).toEqual({ title: "theirs", body: "next" });
+  });
 });
 
 describe("a debounced editor keeping its own copy (hosted v8)", () => {
   for (const holdsCopy of [true, false]) {
     it(`an edit still pending when the form unmounts is ${holdsCopy ? "saved (and reconciled), never dropped" : "dropped, as before"}`, async () => {
       const { queryClient } = setup();
-      server.versions = { Hero: "h1" };
-      draftHolds(queryClient, { Hero: "h1" });
+      const loaded = await draftVersionOf({ title: "loaded" });
+      server.hashed = true;
+      server.blocks = { Hero: { title: "loaded" } };
+      server.versions = { Hero: loaded };
+      draftHolds(queryClient, { Hero: loaded });
       const wrapper = ({ children }: { children: ReactNode }) => (
         <QueryClientProvider client={queryClient}>
           {children}
@@ -834,7 +927,7 @@ describe("a debounced editor keeping its own copy (hosted v8)", () => {
       unmount();
       await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
       expect(server.applied.map((p) => p.ifMatch)).toEqual(
-        holdsCopy ? [{ Hero: "h1" }] : [],
+        holdsCopy ? [{ Hero: loaded }] : [],
       );
     });
   }
@@ -1076,10 +1169,12 @@ describe("hosted v8 deletes and moves are guarded by the draft too", () => {
     await act(async () => {
       outcome = await result.current.mutateAsync({
         blockKey: "Hero",
-        shown: () => ({ value: { title: "loaded" }, version: "h1" }),
+        shown: () => ({ value: { title: "loaded" }, inDraft: true }),
       });
     });
-    expect(server.applied.map((p) => p.ifMatch)).toEqual([{ Hero: "h1" }]);
+    expect(server.applied.map((p) => p.ifMatch)).toEqual([
+      { Hero: await draftVersionOf({ title: "loaded" }) },
+    ]);
     expect(asked.deleted.map((q) => q.kind)).toEqual(["youDeleted"]);
     expect(outcome).toEqual({ keptTheirs: true, deleted: false });
     expect(server.blocks.Hero).toEqual({ title: "theirs" });
@@ -1189,7 +1284,7 @@ describe("hosted v8 deletes and moves are guarded by the draft too", () => {
             { writes: { Banner: { title: "loaded" } }, deletes: ["Hero"] },
             {
               shown: () => ({
-                Hero: { value: { title: "loaded" }, version: "h1" },
+                Hero: { value: { title: "loaded" }, inDraft: true },
               }),
             },
           )
@@ -1197,7 +1292,10 @@ describe("hosted v8 deletes and moves are guarded by the draft too", () => {
             failure = error;
           });
       });
-      expect(server.applied[0]?.ifMatch).toEqual({ Banner: null, Hero: "h1" });
+      expect(server.applied[0]?.ifMatch).toEqual({
+        Banner: null,
+        Hero: await draftVersionOf({ title: "loaded" }),
+      });
       expect(asked.deleted.map((q) => q.kind)).toEqual(["youDeleted"]);
       if (choice === "theirs") {
         expect(failure).toBeDefined();
@@ -1223,13 +1321,13 @@ describe("hosted v8 deletes and moves are guarded by the draft too", () => {
         { writes: { Hero: { title: "mine", body: "same" } }, deletes: [] },
         {
           shown: () => ({
-            Hero: { value: { title: "loaded", body: "same" }, version: "h1" },
+            Hero: { value: { title: "loaded", body: "same" }, inDraft: true },
           }),
         },
       );
     });
     expect(server.applied.map((p) => p.ifMatch)).toEqual([
-      { Hero: "h1" },
+      { Hero: await draftVersionOf({ title: "loaded", body: "same" }) },
       { Hero: "h2" },
     ]);
     expect(asked.fields).toEqual([]);

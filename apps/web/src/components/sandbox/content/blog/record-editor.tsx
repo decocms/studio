@@ -234,7 +234,6 @@ export function RecordEditor(props: Parameters<typeof RecordEditorForm>[0]) {
       branch={props.branch}
       blockKey={props.blockKey}
       present={props.block !== undefined}
-      remount={false}
     >
       <RecordEditorForm {...props} />
     </HeldBlockView>

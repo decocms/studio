@@ -77,10 +77,12 @@ export function PageJsonPanel({
       branch: currentBranch ?? "",
     }),
   )(pageKey);
-  // Another page opened: its JSON is seeded from the draft's copy now.
-  const [heldPage, setHeldPage] = useState(pageKey);
-  if (heldPage !== pageKey) {
-    setHeldPage(pageKey);
+  // Another page opened, or a reconcile replaced the copy: the JSON is
+  // seeded from the draft's copy now (an edit still pending keeps the copy
+  // it was made on).
+  const [heldPage, setHeldPage] = useState({ pageKey, copyEpoch });
+  if (heldPage.pageKey !== pageKey || heldPage.copyEpoch !== copyEpoch) {
+    setHeldPage({ pageKey, copyEpoch });
     hold(pageKey);
   }
 

@@ -8,27 +8,56 @@
  *
  * {@link HeldCopies} is that bookkeeping for one save hook (`useSaveBlock`
  * with `holdsCopy`): each block's copy as the editor loaded it (the cache
- * and the draft's versions when the hook mounted, which is when an editor
- * keyed by its block seeds its form), moved only by the editor's own
- * confirmed saves. A save the reconcile flow ended on anything else than
- * the editor's own value (their version, their deletion, a merge) leaves
- * it where it was, and tells the editor to show the draft's copy again
- * ({@link bumpCopyEpoch}): the editor remounts from it, and a keystroke
- * still pending in the old form is refused and reconciled, never written
- * over the result.
+ * when the hook mounted, which is when an editor keyed by its block seeds
+ * its form), moved by the editor's own confirmed saves, and replaced when
+ * the editor shows the draft's copy again (it reseeded, or a reconcile
+ * ended on something else than its own value). The guard is computed from
+ * the copy itself ({@link heldCopyVersion}, the server's own content hash),
+ * never paired with a version read separately.
+ *
+ * Each replacement starts a new generation: an edit takes the generation it
+ * was made in ({@link HeldCopies.edited}), and an edit made before a
+ * replacement (a keystroke still pending in the old form) is guarded by the
+ * copy it was made on, so it is refused and reconciled, never written over
+ * the result.
  */
 
 import { useSyncExternalStore } from "react";
+import { DRAFT_TOMBSTONE_VERSION } from "@decocms/shared/blocks-major";
 import type { DraftCopies } from "./content-protocol-api";
+import { draftVersionOf } from "./draft-version";
 
-/** A block's copy as an editor shows it, and its version in the draft. */
+/** A block's copy as an editor shows it. */
 export interface HeldCopy {
+  /** The copy; undefined when the editor holds none of it. */
   value: unknown;
-  version: string | null;
+  /**
+   * Whether the draft held this copy when the editor took it. False: the
+   * copy is main's, guarded "must not exist in the draft" (`null`).
+   */
+  inDraft: boolean;
+}
+
+/**
+ * The `ifMatch` of a save built on `copy`: the draft's version of exactly
+ * that copy (its content hash), `null` for main's copy, the tombstone's for
+ * a block the draft deleted before the editor held any copy of it.
+ */
+export async function heldCopyVersion(copy: HeldCopy): Promise<string | null> {
+  if (!copy.inDraft) return null;
+  if (copy.value === undefined) return DRAFT_TOMBSTONE_VERSION;
+  return draftVersionOf(copy.value);
+}
+
+/** The copy an edit was made on: see {@link HeldCopies.edited}. */
+export interface HeldEdit {
+  generation: number;
+  copy: HeldCopy | undefined;
 }
 
 export class HeldCopies {
   private readonly copies = new Map<string, HeldCopy>();
+  private readonly generations = new Map<string, number>();
   private loaded: DraftCopies | null;
 
   constructor(private readonly now: () => DraftCopies | null) {
@@ -50,40 +79,63 @@ export class HeldCopies {
     if (!this.loaded) return undefined;
     return {
       value: this.loaded.blocks[blockKey],
-      version: this.loaded.versionOf(blockKey),
+      inDraft: this.loaded.versionOf(blockKey) !== null,
     };
   }
 
+  /** How many times `blockKey`'s copy was replaced under the editor. */
+  generation(blockKey: string): number {
+    return this.generations.get(blockKey) ?? 0;
+  }
+
+  /** The copy an edit of `blockKey` made now is built on. */
+  edited(blockKey: string): HeldEdit {
+    return { generation: this.generation(blockKey), copy: this.get(blockKey) };
+  }
+
   /**
-   * The editor (re)seeded its form from the draft's copy of `blockKey` as
-   * the cache holds it now (it opened another block, or showed the result
-   * of a reconcile).
+   * The copy a save of an edit guards by: the editor's current copy, unless
+   * it was replaced after the edit was made (then the copy the edit was
+   * made on, so the save is refused and reconciled).
+   */
+  guardOf(blockKey: string, edit: HeldEdit | undefined): HeldCopy | undefined {
+    if (edit && edit.generation !== this.generation(blockKey)) return edit.copy;
+    return this.get(blockKey);
+  }
+
+  /**
+   * The editor shows the draft's copy of `blockKey` as the cache holds it
+   * now (it opened another block, reseeded its form, or a reconcile ended
+   * on the draft's copy or a merge): a new generation.
    */
   hold(blockKey: string): void {
+    this.generations.set(blockKey, this.generation(blockKey) + 1);
     const now = this.now();
     // A block the draft deletes is never adopted: typing into a form left
     // on it is refused and asked about, never a silent comeback.
     if (!now || !Object.hasOwn(now.blocks, blockKey)) return;
     this.copies.set(blockKey, {
       value: now.blocks[blockKey],
-      version: now.versionOf(blockKey),
+      inDraft: now.versionOf(blockKey) !== null,
     });
   }
 
-  /** The editor's own save of `value` landed at `version`. */
-  saved(blockKey: string, value: unknown, version: string | null): void {
-    this.copies.set(blockKey, { value, version });
+  /** The editor's own save of `value` landed in the draft. */
+  saved(blockKey: string, value: unknown): void {
+    this.copies.set(blockKey, { value, inDraft: true });
   }
 }
 
 /**
  * How many times each block's copy was replaced under its editors (per
  * editor scope: org, project and branch). An editor that keeps its own
- * copy keys its form by it, so it remounts from the draft's copy.
+ * copy keys its form by it, so it remounts from the draft's copy. Each
+ * scope's map is replaced, never changed, so a reader handed out keeps its
+ * answers and a new one is handed out after each bump.
  */
-const epochs = new Map<string, Map<string, number>>();
-const scopeVersions = new Map<string, number>();
+const epochs = new Map<string, ReadonlyMap<string, number>>();
 const listeners = new Set<() => void>();
+const EMPTY: ReadonlyMap<string, number> = new Map();
 
 /** The scope of {@link bumpCopyEpoch} / {@link useCopyEpochs}. */
 export function copyScope(params: {
@@ -96,10 +148,9 @@ export function copyScope(params: {
 
 /** Tells `blockKey`'s editors in `scope` to show the draft's copy again. */
 export function bumpCopyEpoch(scope: string, blockKey: string): void {
-  const blocks = epochs.get(scope) ?? new Map<string, number>();
+  const blocks = new Map(epochs.get(scope) ?? EMPTY);
   blocks.set(blockKey, (blocks.get(blockKey) ?? 0) + 1);
   epochs.set(scope, blocks);
-  scopeVersions.set(scope, (scopeVersions.get(scope) ?? 0) + 1);
   for (const listener of listeners) listener();
 }
 
@@ -108,15 +159,34 @@ function subscribe(listener: () => void): () => void {
   return () => listeners.delete(listener);
 }
 
+const readers = new WeakMap<
+  ReadonlyMap<string, number>,
+  (blockKey: string) => number
+>();
+
+/** One reader per snapshot: stable until the next bump, new after it. */
+function readerOf(
+  snapshot: ReadonlyMap<string, number>,
+): (blockKey: string) => number {
+  let reader = readers.get(snapshot);
+  if (!reader) {
+    reader = (blockKey) => snapshot.get(blockKey) ?? 0;
+    readers.set(snapshot, reader);
+  }
+  return reader;
+}
+
 /**
  * Each block's copy epoch in `scope` (see {@link bumpCopyEpoch}): an editor
- * that keeps its own copy puts it in its form's key.
+ * that keeps its own copy puts it in its form's key. The reader changes
+ * with each bump, so a render memoized on it (the React Compiler) reads the
+ * new epoch.
  */
 export function useCopyEpochs(scope: string): (blockKey: string) => number {
-  useSyncExternalStore(
+  const snapshot = useSyncExternalStore(
     subscribe,
-    () => scopeVersions.get(scope) ?? 0,
-    () => scopeVersions.get(scope) ?? 0,
+    () => epochs.get(scope) ?? EMPTY,
+    () => epochs.get(scope) ?? EMPTY,
   );
-  return (blockKey) => epochs.get(scope)?.get(blockKey) ?? 0;
+  return readerOf(snapshot);
 }

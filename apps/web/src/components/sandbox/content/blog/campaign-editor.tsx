@@ -1,3 +1,4 @@
+import type { HeldEdit } from "@/components/sections-editor/held-copy";
 /**
  * One campaign's form, autosaved like every other Context editor.
  *
@@ -206,12 +207,14 @@ export function CampaignEditor({
   onClose,
   isSaving,
   onSeed,
+  onEdit,
   sandboxRef,
   storeUrl,
 }: {
   blockKey: string;
   block: Record<string, unknown> | undefined;
-  onSave: (data: Record<string, unknown>) => void;
+  /** `edit`: what the edit was built on (`onEdit`'s answer). */
+  onSave: (data: Record<string, unknown>, edit?: HeldEdit) => void;
   onRemove: () => void;
   /** Only the board shows a close affordance; the list pane is always open. */
   onClose?: () => void;
@@ -221,6 +224,8 @@ export function CampaignEditor({
   isSaving?: boolean;
   /** The form was seeded from `block` (see `useAutosave`'s `onSeed`). */
   onSeed?: () => void;
+  /** An edit is made (see `useAutosave`'s `onEdit`). */
+  onEdit?: () => HeldEdit | undefined;
   /** Absent outside a sandbox session — the store pickers hide, typing stays. */
   sandboxRef?: PreviewProxyRef;
   /** The brand's storefront domain, so picked links are the public ones. */
@@ -232,8 +237,8 @@ export function CampaignEditor({
   const [openProduct, setOpenProduct] = useState<number | null>(null);
   const [draft, setDraft, syncDraft] = useAutosave(
     block ?? EMPTY_BLOCK,
-    (next) => onSave(next),
-    { isSaving, onSeed },
+    (next, edit) => onSave(next, edit),
+    { isSaving, onSeed, onEdit },
   );
 
   const campaign = readCampaign(blockKey, draft);

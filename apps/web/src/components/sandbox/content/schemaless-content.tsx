@@ -490,6 +490,14 @@ export function SchemalessContent({
     if (key !== null) onOpenBlock?.(key);
     setSelected(key);
   };
+  // A reconcile replaced the open block's copy: its form is seeded again
+  // (keyed by the epoch below), from `decofile` now.
+  const selectedEpoch = selected ? (copyEpochOf?.(selected) ?? 0) : 0;
+  const [seededEpoch, setSeededEpoch] = useState(selectedEpoch);
+  if (seededEpoch !== selectedEpoch) {
+    setSeededEpoch(selectedEpoch);
+    if (selected !== null) onOpenBlock?.(selected);
+  }
   const block = selected ? decofile[selected] : undefined;
   const q = query.trim().toLowerCase();
   const groups = groupBlocksByType(decofile)

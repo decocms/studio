@@ -1,3 +1,7 @@
+import {
+  copyScope,
+  useCopyEpochs,
+} from "@/components/sections-editor/held-copy";
 /**
  * Campaigns: the board and the list, behind one view toggle.
  *
@@ -128,6 +132,10 @@ export function CampaignsPanel({
   const save = useSaveBlock(
     { orgSlug, virtualMcpId, branch },
     { holdsCopy: true },
+  );
+  // A reconcile replaced a campaign's copy: its form shows the draft's.
+  const copyEpochOf = useCopyEpochs(
+    copyScope({ orgSlug, virtualMcpId, branch }),
   );
   const deleteBlock = useDeleteBlock({ orgSlug, virtualMcpId, branch });
 
@@ -440,11 +448,14 @@ export function CampaignsPanel({
           <div className="min-w-0 flex-1 overflow-y-auto">
             {detailKey ? (
               <CampaignEditor
-                key={detailKey}
+                key={`${detailKey}:${copyEpochOf(detailKey)}`}
                 blockKey={detailKey}
                 block={decofile[detailKey] as Record<string, unknown>}
-                onSave={(data) => save.mutate({ blockKey: detailKey, data })}
+                onSave={(data, edit) =>
+                  save.mutate({ blockKey: detailKey, data, edit })
+                }
                 onSeed={() => save.hold(detailKey)}
+                onEdit={() => save.edited(detailKey)}
                 onRemove={() => {
                   const campaign = campaigns.find((c) => c.key === detailKey);
                   if (campaign) setPendingDelete(campaign);
@@ -521,11 +532,14 @@ export function CampaignsPanel({
           </DialogTitle>
           {boardKey && (
             <CampaignEditor
-              key={boardKey}
+              key={`${boardKey}:${copyEpochOf(boardKey)}`}
               blockKey={boardKey}
               block={decofile[boardKey] as Record<string, unknown>}
-              onSave={(data) => save.mutate({ blockKey: boardKey, data })}
+              onSave={(data, edit) =>
+                save.mutate({ blockKey: boardKey, data, edit })
+              }
               onSeed={() => save.hold(boardKey)}
+              onEdit={() => save.edited(boardKey)}
               onRemove={() => {
                 const campaign = campaigns.find((c) => c.key === boardKey);
                 if (campaign) setPendingDelete(campaign);

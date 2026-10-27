@@ -41,14 +41,9 @@ function Form({ seed }: { seed: string }) {
   return <p data-testid="form">{value}</p>;
 }
 
-function view(seed: string, present: boolean | undefined, remount = true) {
+function view(seed: string, present: boolean | undefined, blockKey = "Footer") {
   return (
-    <HeldBlockView
-      {...scope}
-      blockKey="Footer"
-      present={present}
-      remount={remount}
-    >
+    <HeldBlockView {...scope} blockKey={blockKey} present={present}>
       <Form seed={seed} />
     </HeldBlockView>
   );
@@ -75,11 +70,11 @@ describe("HeldBlockView (an editor keeping its own copy)", () => {
     ).toBeTruthy();
   });
 
-  test("an editor that reseeds itself is not remounted", () => {
+  test("another block in the same view (a move renamed it) is no remount", () => {
     project.backend = { kind: "protocol", source: "github" };
-    const { getByTestId, rerender } = render(view("mine", true, false));
-    rerender(view("theirs", true, false));
     act(() => bumpCopyEpoch(copyScope(scope), "Footer"));
+    const { getByTestId, rerender } = render(view("mine", true));
+    rerender(view("theirs", true, "Footer-renamed"));
     expect(getByTestId("form").textContent).toBe("mine");
   });
 

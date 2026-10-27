@@ -18,9 +18,9 @@ const AUTOSAVE_DELAY = 700;
  * navigation. TanStack's `mutate` is fire-and-forget so the call is safe
  * after the component unmounts.
  */
-export function useAutosave<T>(
+export function useAutosave<T, E = never>(
   initial: T,
-  save: (value: T) => void,
+  save: (value: T, edit?: E) => void,
   opts?: {
     delay?: number;
     isSaving?: boolean;
@@ -30,6 +30,14 @@ export function useAutosave<T>(
      * (`useSaveBlock`'s `hold`).
      */
     onSeed?: () => void;
+    /**
+     * The first edit since the last save is made: what it is built on
+     * (`useSaveBlock`'s `edited`), handed to `save` with the value. An editor
+     * whose save hook outlives this form (it is remounted from the draft's
+     * copy while an edit is pending) guards that edit by the copy it was
+     * made on.
+     */
+    onEdit?: () => E | undefined;
   },
 ): readonly [T, (next: T) => void, (next: T) => void, boolean] {
   const delay = opts?.delay ?? AUTOSAVE_DELAY;
@@ -44,6 +52,7 @@ export function useAutosave<T>(
   // (imperative, never read during render).
   const [pending, setPending] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const edit = useRef<{ made: E | undefined } | null>(null);
 
   // Re-seed from external `initial` only once edits settle — not while a save is in flight, whose older echo would revert a newer edit.
   if (initial !== seeded) {
@@ -57,11 +66,14 @@ export function useAutosave<T>(
   const update = (next: T) => {
     setDraft(next);
     setPending(true);
+    if (!edit.current) edit.current = { made: opts?.onEdit?.() };
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => {
       timer.current = null;
       setPending(false);
-      save(next);
+      const made = edit.current?.made;
+      edit.current = null;
+      save(next, made);
     }, delay);
   };
 
@@ -74,6 +86,7 @@ export function useAutosave<T>(
     setDraft(next);
     if (timer.current) clearTimeout(timer.current);
     timer.current = null;
+    edit.current = null;
     setPending(false);
   };
 

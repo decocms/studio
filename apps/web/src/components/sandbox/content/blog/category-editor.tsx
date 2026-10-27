@@ -739,7 +739,6 @@ export function CategoryEditor(
       branch={props.branch}
       blockKey={props.blockKey}
       present={props.block !== undefined}
-      remount={false}
     >
       <CategoryEditorForm {...props} />
     </HeldBlockView>
