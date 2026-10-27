@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { startOAuthCallbackServer } from "../../lib/oauth-callback";
 import { generatePkcePair } from "../../lib/pkce";
 import { MAX_EXPIRES_IN_SECONDS } from "../../lib/refresh-session";
-import { type Session, writeSession } from "../../lib/session";
+import { DEFAULT_TARGET, type Session, writeSession } from "../../lib/session";
 
 export interface LoginOptions {
   dataDir: string;
@@ -19,8 +19,6 @@ interface PerformInteractiveLoginOptions {
   openBrowser?: (url: string) => Promise<void>;
   fetch?: (input: string, init?: RequestInit) => Promise<Response>;
 }
-
-const DEFAULT_TARGET = "https://studio.decocms.com";
 
 const SCOPES = "openid profile email offline_access";
 
