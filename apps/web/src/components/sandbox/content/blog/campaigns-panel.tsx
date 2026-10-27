@@ -1,3 +1,7 @@
+import {
+  copyScope,
+  useCopyEpochs,
+} from "@/components/sections-editor/held-copy";
 /**
  * Campaigns: the board and the list, behind one view toggle.
  *
@@ -125,7 +129,15 @@ export function CampaignsPanel({
   blog: BlogState;
 }) {
   const t = useT();
+  /**
+   * A campaign is a library record now, not a decofile block, so its writes go
+   * through the blog state rather than through `useSaveBlock`'s copy guard.
+   */
   const { save, remove: deleteBlock } = blog;
+  // A reconcile replaced a campaign's copy: its form shows the draft's.
+  const copyEpochOf = useCopyEpochs(
+    copyScope({ orgSlug, virtualMcpId, branch }),
+  );
 
   /** The store pickers address the site by these coordinates; campaigns are a
    *  thread-less surface, which the contract allows. */
@@ -436,7 +448,7 @@ export function CampaignsPanel({
           <div className="min-w-0 flex-1 overflow-y-auto">
             {detailKey ? (
               <CampaignEditor
-                key={detailKey}
+                key={`${detailKey}:${copyEpochOf(detailKey)}`}
                 blockKey={detailKey}
                 block={decofile[detailKey] as Record<string, unknown>}
                 onSave={(data) => save.mutate({ blockKey: detailKey, data })}
@@ -516,7 +528,7 @@ export function CampaignsPanel({
           </DialogTitle>
           {boardKey && (
             <CampaignEditor
-              key={boardKey}
+              key={`${boardKey}:${copyEpochOf(boardKey)}`}
               blockKey={boardKey}
               block={decofile[boardKey] as Record<string, unknown>}
               onSave={(data) => save.mutate({ blockKey: boardKey, data })}

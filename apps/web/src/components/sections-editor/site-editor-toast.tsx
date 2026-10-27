@@ -76,6 +76,36 @@ export function toastSaveError(
 }
 
 /**
+ * The reconcile flow's answer was to keep what the draft holds (their
+ * version, or their deletion): one calm toast in place of the save's own,
+ * saying how to get the change back.
+ */
+export function toastKeptTheirs(
+  t: TFunction,
+  deleted: boolean,
+  /**
+   * The block left deleted was never published (`neverPublishedBlock`):
+   * Publish lists no deletion of it, so none is offered as the way back.
+   */
+  neverPublished = false,
+) {
+  toast.info(
+    deleted
+      ? t("sectionsEditor.reconcile.leftDeleted")
+      : t("sectionsEditor.reconcile.keptTheirs"),
+    {
+      ...SAVE_TOAST,
+      // Left deleted: undone the one way the deleted panel says too.
+      description: deleted
+        ? neverPublished
+          ? t("sectionsEditor.reconcile.leftDeletedNeverPublishedHint")
+          : t("sectionsEditor.reconcile.leftDeletedHint")
+        : t("sectionsEditor.reconcile.keptTheirsHint"),
+    },
+  );
+}
+
+/**
  * Sonner merges an update into the toast with the same id, so an outcome
  * clears what an earlier one set (a failure's "Try again", its stay-open).
  */

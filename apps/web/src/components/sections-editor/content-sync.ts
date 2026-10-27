@@ -10,6 +10,11 @@
  * change lists) and, after a publish or a reapply, the releases. The open section form re-reads its block when someone other than
  * its own autosave changed it (the store's `epoch`).
  *
+ * A hosted save (Studio's draft) is the exception: its answer already moved
+ * the draft pointer and the changes list (content-protocol-api.ts
+ * `adoptHostedSave`), so it reads neither and ends as soon as the server
+ * confirms it (`adopted`).
+ *
  * It also owns the pending state both indicators show, the preview's progress
  * bar and the header's "Saving…": `saving` while a write and its refresh run
  * (`inFlight` counts them), `reloading` until the hosted preview has loaded
@@ -33,6 +38,7 @@ import { useEffect, useSyncExternalStore } from "react";
 import { useMinimumDuration } from "@/hooks/use-minimum-duration";
 import { KEYS } from "@/lib/query-keys";
 import type { ContentBackend } from "./content-backend";
+import { announceContentWrite } from "./content-writes-channel";
 import { decofileWriteMutationKey, decofileWriteScope } from "./decofile-api";
 import { sandboxGitStatusQueryPrefix } from "../thread/repository/sandbox-git-api";
 
@@ -210,6 +216,12 @@ export interface ContentChange {
   kind: ContentChangeKind;
   /** Re-read the blocks: the write changed them (not the form's own save). */
   reread?: boolean;
+  /**
+   * The write's answer already updated the changes and the draft pointer (a
+   * hosted save, content-protocol-api.ts `adoptHostedSave`): the refresh
+   * reads neither, and the change ends as soon as the write is confirmed.
+   */
+  adopted?: boolean;
 }
 
 type ContentWrite<T> = ContentChange & {
@@ -255,7 +267,7 @@ async function contentChanged(
       queryClient.invalidateQueries({ queryKey: KEYS.decofile(cacheKey) }),
     );
   }
-  if (cacheKey) {
+  if (cacheKey && !change.adopted) {
     // The changes against the base and their sides: the header's count and
     // every change list.
     work.push(
@@ -273,7 +285,7 @@ async function contentChanged(
       }),
     );
   }
-  if (isHosted(backend) && pointerKey) {
+  if (isHosted(backend) && pointerKey && !change.adopted) {
     work.push(queryClient.invalidateQueries({ queryKey: pointerKey }));
   }
   await Promise.all(work);
@@ -307,12 +319,27 @@ export async function runContentChange<T>(
   return runBegun(target, change);
 }
 
+/** The draft pointer the editor holds now (hosted), as a comparable string. */
+function pointerNow(target: ContentSyncTarget): string | null {
+  if (!target.branch) return null;
+  return JSON.stringify(
+    target.queryClient.getQueryData(
+      KEYS.protocolDraftRead(
+        target.orgSlug,
+        target.virtualMcpId,
+        target.branch,
+      ),
+    ) ?? null,
+  );
+}
+
 /** {@link runContentChange} once its pending state has begun. */
 async function runBegun<T>(
   target: ContentSyncTarget,
   change: ContentWrite<T>,
 ): Promise<T> {
   const scope = contentSyncScope(target.orgSlug, target.virtualMcpId);
+  const pointerBefore = change.adopted ? pointerNow(target) : null;
   let result: T;
   try {
     result = await change.write();
@@ -324,6 +351,21 @@ async function runBegun<T>(
       );
     }
     throw error;
+  }
+  // The editor's other views on this draft read it again now.
+  if (target.backend?.kind === "protocol" && target.cacheKey) {
+    announceContentWrite(target.cacheKey);
+  }
+  if (change.adopted) {
+    // Saved once the server confirmed: the answer moved the pointer and the
+    // changes already; whatever else the change re-reads runs on its own,
+    // outside the write queue.
+    const navigates = pointerNow(target) !== pointerBefore;
+    // As in `contentChanged`: the preview renders the new frame URL first.
+    if (navigates) await new Promise<void>((r) => notifyManager.schedule(r));
+    end(scope, { ok: true, navigates });
+    if (change.reread) void contentChanged(target, change).catch(() => {});
+    return result;
   }
   let navigates = false;
   try {

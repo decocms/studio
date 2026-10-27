@@ -21,6 +21,7 @@ import { str } from "./blocks/primitives";
 import { useSaveBlock } from "@/components/sections-editor/use-save-block";
 import { useAutosave } from "./use-autosave";
 import { SaveStatus } from "./save-status";
+import { HeldBlockView } from "../held-block-view";
 
 type RecordKind = Extract<BlogKind, "authors">;
 
@@ -92,7 +93,7 @@ const TITLE: Record<RecordKind, TranslationKey> = {
   authors: "sandbox.recordEditor.titleAuthor",
 };
 
-export function RecordEditor({
+function RecordEditorForm({
   orgSlug,
   virtualMcpId,
   branch,
@@ -113,7 +114,11 @@ export function RecordEditor({
 }) {
   const t = useT();
   const threadId = useOptionalChatTask()?.taskId ?? null;
-  const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
+  // The form keeps its own copy: hosted saves are guarded by it.
+  const save = useSaveBlock(
+    { orgSlug, virtualMcpId, branch },
+    { holdsCopy: true },
+  );
   const initial = getBlogPayload(block, kind);
   const customFields = blogCustomFieldsSchema(kind, meta, KNOWN_FIELDS[kind]);
   // Edits to a field pointing at a saved block belong to that block's own
@@ -127,7 +132,7 @@ export function RecordEditor({
     (next) => {
       save.mutate({ blockKey, data: buildBlogBlock(blockKey, kind, next) });
     },
-    { isSaving: save.isPending },
+    { isSaving: save.isPending, onSeed: () => save.hold(blockKey) },
   );
 
   const setField = (key: string, value: unknown) =>
@@ -214,5 +219,23 @@ export function RecordEditor({
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * The form keeps its own copy of the block (see `HeldBlockView`): on a
+ * hosted v8 draft a block the draft no longer has shows as deleted.
+ */
+export function RecordEditor(props: Parameters<typeof RecordEditorForm>[0]) {
+  return (
+    <HeldBlockView
+      orgSlug={props.orgSlug}
+      virtualMcpId={props.virtualMcpId}
+      branch={props.branch}
+      blockKey={props.blockKey}
+      present={props.block !== undefined}
+    >
+      <RecordEditorForm {...props} />
+    </HeldBlockView>
   );
 }

@@ -68,6 +68,28 @@ export function publishHostedDraft(
 }
 
 /**
+ * A hosted Publish's review: the draft's blocks a developer changed on main
+ * since the live release. Publish keeps the draft's version of each.
+ */
+export async function readHostedPublishReview(params: {
+  orgSlug: string;
+  virtualMcpId: string;
+  branch: string;
+}): Promise<{ alsoChanged: string[] }> {
+  const res = await fetch(
+    `/api/${params.orgSlug}/decofile/${encodeURIComponent(params.virtualMcpId)}/${encodeURIComponent(params.branch)}/publish/review`,
+    { cache: "no-store", headers: mainSchemaHeaders("v8") },
+  );
+  if (!res.ok) throw new Error(`publish review read failed: ${res.status}`);
+  const body = (await res.json()) as { alsoChanged?: unknown };
+  return {
+    alsoChanged: Array.isArray(body.alsoChanged)
+      ? body.alsoChanged.filter((n): n is string => typeof n === "string")
+      : [],
+  };
+}
+
+/**
  * "Try again" after a Publish that saved the changes but didn't release
  * them: writes the companion release of main's head when it is missing and
  * makes it current. Main's head holds every published change, this one's

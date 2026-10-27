@@ -13,7 +13,8 @@ import { protocolSecretState } from "./protocol-secret";
  * write-only: what an editor types is encrypted in the browser with the
  * site's public key (`describe.secrets`) and only the `secret` block with its
  * ciphertext is ever saved. v7 secrets need the site's own encrypt action,
- * which the protocol never runs, so they can't be edited there.
+ * which the protocol never runs, so they can't be edited there. A hosted
+ * v8 site has none: its secrets live in its deploy platform.
  */
 export function SecretFieldForBackend(props: FieldProps) {
   const backend = useContentBackend(
@@ -37,6 +38,16 @@ export function SecretFieldForBackend(props: FieldProps) {
             ? "sectionsEditor.secretField.backendUnavailableMessage"
             : null
         }
+      />
+    );
+  }
+  // A hosted v8 site keeps its secrets in its deploy platform: the site's
+  // code reads them there, so the editor has nothing to edit.
+  if (backend.source === "github") {
+    return (
+      <SecretMessage
+        {...props}
+        message="sectionsEditor.secretField.platformSecretMessage"
       />
     );
   }
@@ -104,6 +115,7 @@ function SecretMessage({
   message:
     | "sectionsEditor.secretField.backendUnavailableMessage"
     | "sectionsEditor.secretField.legacySecretUnavailableMessage"
+    | "sectionsEditor.secretField.platformSecretMessage"
     | null;
 }) {
   const t = useT();

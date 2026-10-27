@@ -22,6 +22,7 @@ import {
   type RedirectType,
   redirectStatus,
 } from "./redirect-data";
+import { HeldBlockView } from "./held-block-view";
 
 /** The status select's value for "no explicit status". */
 const STATUS_FROM_TYPE = "type";
@@ -36,7 +37,7 @@ const TYPE_OPTIONS: Array<{ value: RedirectType; labelKey: TranslationKey }> = [
  * (write-through the shared decofile cache via `useSaveBlock`), mirroring the
  * blog record editor. Create/delete happen upstream in the Content browser.
  */
-export function RedirectEditor({
+function RedirectEditorForm({
   orgSlug,
   virtualMcpId,
   branch,
@@ -50,7 +51,11 @@ export function RedirectEditor({
   block: Record<string, unknown> | undefined;
 }) {
   const t = useT();
-  const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
+  // The form keeps its own copy: hosted saves are guarded by it.
+  const save = useSaveBlock(
+    { orgSlug, virtualMcpId, branch },
+    { holdsCopy: true },
+  );
   const initial = getRedirectPayload(block);
 
   const [payload, setPayload] = useAutosave(
@@ -58,7 +63,7 @@ export function RedirectEditor({
     (next) => {
       save.mutate({ blockKey, data: buildRedirectBlock(next, block) });
     },
-    { isSaving: save.isPending },
+    { isSaving: save.isPending, onSeed: () => save.hold(blockKey) },
   );
 
   const setField = (patch: Partial<RedirectPayload>) =>
@@ -194,5 +199,25 @@ export function RedirectEditor({
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * The form keeps its own copy of the block (see `HeldBlockView`): on a
+ * hosted v8 draft a block the draft no longer has shows as deleted.
+ */
+export function RedirectEditor(
+  props: Parameters<typeof RedirectEditorForm>[0],
+) {
+  return (
+    <HeldBlockView
+      orgSlug={props.orgSlug}
+      virtualMcpId={props.virtualMcpId}
+      branch={props.branch}
+      blockKey={props.blockKey}
+      present={props.block !== undefined}
+    >
+      <RedirectEditorForm {...props} />
+    </HeldBlockView>
   );
 }

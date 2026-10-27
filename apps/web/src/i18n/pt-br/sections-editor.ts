@@ -192,6 +192,35 @@ export const sectionsEditor = {
   "sectionsEditor.namedRules.rename": "Renomear",
   "sectionsEditor.namedRules.saved": "Salvo no seu rascunho",
   "sectionsEditor.namedRules.savedHint": "Vai ao ar quando você publicar.",
+  "sectionsEditor.deletedConflict.theyDeletedTitle":
+    '"{name}" foi excluído enquanto você editava',
+  "sectionsEditor.deletedConflict.theyDeletedDescription":
+    "Mantenha sua versão para trazê-lo de volta com suas alterações, ou deixe-o excluído. Nada vai ao ar até você publicar.",
+  "sectionsEditor.deletedConflict.youDeletedTitle":
+    '"{name}" foi alterado enquanto você o excluía',
+  "sectionsEditor.deletedConflict.youDeletedDescription":
+    "Exclua mesmo assim, ou mantenha a versão da outra pessoa. Nada vai ao ar até você publicar.",
+  "sectionsEditor.deletedConflict.keepMine": "Manter minha versão",
+  "sectionsEditor.deletedConflict.leaveDeleted": "Deixar excluído",
+  "sectionsEditor.deletedConflict.deleteAnyway": "Excluir mesmo assim",
+  "sectionsEditor.deletedConflict.keepTheirs":
+    "Manter a versão da outra pessoa",
+  "sectionsEditor.reconcile.keptTheirs": "Mantivemos a versão da outra pessoa",
+  "sectionsEditor.reconcile.leftDeleted": "Ficou excluído",
+  "sectionsEditor.reconcile.keptTheirsHint":
+    "Sua alteração não foi salva. Você pode fazê-la de novo quando quiser.",
+  "sectionsEditor.reconcile.leftDeletedHint":
+    "Sua alteração não foi salva. Para trazer de volta, descarte a exclusão em Publicar. Nada vai ao ar até você publicar.",
+  "sectionsEditor.reconcile.leftDeletedNeverPublishedHint":
+    "Sua alteração não foi salva. Isto nunca foi publicado, então nada muda no site no ar.",
+  "sectionsEditor.blogKind.post": "Post",
+  "sectionsEditor.blogKind.category": "Categoria",
+  "sectionsEditor.blogKind.author": "Autor",
+  "sectionsEditor.reconcile.deletedTitle": "Isto foi excluído",
+  "sectionsEditor.reconcile.deletedNeverPublishedDescription":
+    "Não está mais no seu rascunho, então não há nada para editar aqui. Isto nunca foi publicado, então nada muda no site no ar.",
+  "sectionsEditor.reconcile.deletedDescription":
+    "Não está mais no seu rascunho, então não há nada para editar aqui. Para trazer de volta, descarte a exclusão em Publicar. Nada vai ao ar até você publicar.",
   "sectionsEditor.namedRules.undo": "Desfazer",
   "sectionsEditor.namedRules.create": "Criar",
   "sectionsEditor.namedRules.openEditor": "Abrir o editor do site",
@@ -356,6 +385,8 @@ export const sectionsEditor = {
     "Este segredo foi salvo por um site Deco mais antigo e não pode ser editado aqui. Ele é recriptografado quando o site migra.",
   "sectionsEditor.secretField.noPublicKeyMessage":
     "Adicione a chave pública do site, .deco/secrets.pub, para editar campos secretos. Os valores são criptografados no seu navegador com ela.",
+  "sectionsEditor.secretField.platformSecretMessage":
+    "Os segredos ficam nas configurações de hospedagem do site, onde o código os lê, então não há nada para editar aqui.",
   "sectionsEditor.secretField.pendingMessage":
     "Ainda não salvo. Pressione Enter para criptografar e salvar.",
   "sectionsEditor.secretField.plaintextStoredMessage":
@@ -458,6 +489,8 @@ export const sectionsEditor = {
     "A versão deles mudou de novo enquanto isto estava aberto. Cada etapa já mostra a mais nova.",
   "sectionsEditor.formConflict.you": "Você",
   "sectionsEditor.formConflict.someoneElse": "Outra pessoa",
+  "sectionsEditor.formConflict.theirVersion": "Versão deles",
+  "sectionsEditor.formConflict.alreadySaved": "já salva",
   "sectionsEditor.formConflict.yourVersionNotSaved":
     "Sua versão · ainda não salva",
   "sectionsEditor.formConflict.theirVersionSaved": "Versão deles · já salva",
@@ -469,7 +502,48 @@ export const sectionsEditor = {
     "{name} também mudou o campo “{label}”",
   "sectionsEditor.formConflict.titleStepYou":
     "Você também mudou o campo “{label}” em outra aba ou janela",
+  "sectionsEditor.formConflict.titleOneIn":
+    "Outra pessoa mudou o campo “{label}” de “{block}” enquanto você editava",
+  "sectionsEditor.formConflict.titleOneInNamed":
+    "{name} mudou o campo “{label}” de “{block}” enquanto você editava",
+  "sectionsEditor.formConflict.titleOneInYou":
+    "Você mudou o campo “{label}” de “{block}” em outra aba ou janela",
+  "sectionsEditor.formConflict.titleStepIn":
+    "Outra pessoa também mudou o campo “{label}” de “{block}”",
+  "sectionsEditor.formConflict.titleStepInNamed":
+    "{name} também mudou o campo “{label}” de “{block}”",
+  "sectionsEditor.formConflict.titleStepInYou":
+    "Você também mudou o campo “{label}” de “{block}” em outra aba ou janela",
   "sectionsEditor.formConflict.summaryTheirsNamed": "a de {name}",
+  "sectionsEditor.formConflict.ruleExperiment": "Teste A/B “{name}”",
+  "sectionsEditor.formConflict.ruleExperimentPhrase": "o teste A/B “{name}”",
+  "sectionsEditor.formConflict.ruleCampaign": "Campanha “{name}”",
+  "sectionsEditor.formConflict.ruleCampaignPhrase":
+    "as datas da campanha “{name}”",
+  "sectionsEditor.formConflict.titlePhraseOne":
+    "Outra pessoa mudou {thing} enquanto você editava",
+  "sectionsEditor.formConflict.titlePhraseOneNamed":
+    "{name} mudou {thing} enquanto você editava",
+  "sectionsEditor.formConflict.titlePhraseOneYou":
+    "Você mudou {thing} em outra aba ou janela",
+  "sectionsEditor.formConflict.titlePhraseStep":
+    "Outra pessoa também mudou {thing}",
+  "sectionsEditor.formConflict.titlePhraseStepNamed":
+    "{name} também mudou {thing}",
+  "sectionsEditor.formConflict.titlePhraseStepYou":
+    "Você também mudou {thing} em outra aba ou janela",
+  "sectionsEditor.formConflict.titleOneAnonymous":
+    "O campo “{label}” mudou enquanto você editava",
+  "sectionsEditor.formConflict.titleStepAnonymous":
+    "O campo “{label}” também mudou",
+  "sectionsEditor.formConflict.titleOneInAnonymous":
+    "O campo “{label}” de “{block}” mudou enquanto você editava",
+  "sectionsEditor.formConflict.titleStepInAnonymous":
+    "O campo “{label}” de “{block}” também mudou",
+  "sectionsEditor.formConflict.titlePhraseOneAnonymous":
+    "{label} mudou enquanto você editava",
+  "sectionsEditor.formConflict.titlePhraseStepAnonymous":
+    "{label} também mudou",
   "sectionsEditor.formConflict.youElsewhere": "Você, em outra aba ou janela",
   "sectionsEditor.formConflict.savedAt": "salva {when}",
   "sectionsEditor.formConflict.empty": "Vazio",

@@ -951,6 +951,40 @@ describe("summarizeContentChanges (a v8 source's changes.list)", () => {
     "pages-old-2": { kind: "delete", version: null, baseVersion: "b4" },
   } as const;
 
+  it("a hosted draft's blog records are named by their title and kind, never their key", () => {
+    const postKey = "blog-manager/posts/b10900000002";
+    const categoryKey = "collections/blog/categories/c0ffee000001";
+    const blog = {
+      changes: {
+        [postKey]: { kind: "set", version: "v1", baseVersion: null },
+        [categoryKey]: { kind: "set", version: "v2", baseVersion: null },
+      },
+      lookup: {
+        [postKey]: {
+          name: postKey,
+          __resolveType: "blog/loaders/Blogpost.ts",
+          post: { title: "Raincoats for wide backs" },
+        },
+        [categoryKey]: {
+          name: categoryKey,
+          __resolveType: "blog/loaders/Category.ts",
+          category: {},
+        },
+      },
+    } as const;
+    const hosted = summarizeContentChanges({ ...blog, hosted: true });
+    expect(hosted.blocks.map((b) => [b.name, b.blogKind])).toEqual([
+      ["Raincoats for wide backs", "post"],
+      ["Category", "category"],
+    ]);
+    // Gated to hosted v8: every other source names them as before.
+    const other = summarizeContentChanges(blog);
+    expect(other.blocks.map((b) => [b.name, b.blogKind])).toEqual([
+      [postKey, undefined],
+      [categoryKey, undefined],
+    ]);
+  });
+
   it("lists every change by entry name, with the version its discard is guarded by", () => {
     const summary = summarizeContentChanges({
       changes,

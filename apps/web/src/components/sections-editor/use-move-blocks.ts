@@ -16,9 +16,21 @@ import {
 import { sandboxGitStatusQueryKey } from "../thread/repository/sandbox-git-api";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { useContentBackend } from "./use-content-backend";
-import { applyProtocolPatch } from "./content-protocol-api";
+import {
+  applyProtocolPatch,
+  neverPublishedBlock,
+} from "./content-protocol-api";
+import { applyHostedChange, HostedKeptTheirsError } from "./hosted-reconcile";
+import {
+  HostedKeptChangingError,
+  inPlainWords,
+  isSaveConflict,
+} from "./serve-save-error";
+import { toastKeptTheirs } from "./site-editor-toast";
+import { useT } from "@/i18n/use-t";
 import { runContentChange } from "./content-sync";
 import { useDecofileCacheKey } from "./use-decofile";
+import type { HeldCopy } from "./held-copy";
 import { buildSandboxUrl } from "@/sdk/sandbox-url";
 
 interface UseMoveBlocksParams {
@@ -70,6 +82,7 @@ export function useMoveBlocks({
   const protocol = backend.kind === "protocol" ? backend : null;
   const cacheKey = useDecofileCacheKey({ orgSlug, virtualMcpId, branch });
   const queryKey = KEYS.decofile(cacheKey);
+  const t = useT();
 
   /** A move on any backend but the content protocol. */
   const moveLegacy = async (
@@ -125,8 +138,40 @@ export function useMoveBlocks({
   const mutation = useMutation({
     mutationKey: decofileWriteMutationKey(orgSlug, virtualMcpId, branch),
     scope: decofileWriteScope(orgSlug, virtualMcpId, branch),
-    mutationFn: async ({ writes: rawWrites, deletes }: BlockMove) => {
-      const writes = sanitizeSecretsForPersistence(rawWrites);
+    mutationFn: async ({
+      writes: rawWrites,
+      deletes,
+      copies,
+      shown,
+    }: BlockMove & {
+      copies?: Record<string, unknown>;
+      shown?: () => Record<string, HeldCopy>;
+    }) => {
+      // A hosted save checks nothing (the site's CI runs `deco check`).
+      const writes =
+        protocol?.source === "github"
+          ? rawWrites
+          : sanitizeSecretsForPersistence(rawWrites);
+      // Hosted v8: one `blocks.apply` guarded by the draft's versions; a
+      // refusal opens the reconcile flow (hosted-reconcile.ts).
+      if (protocol?.source === "github") {
+        return applyHostedChange(
+          {
+            queryClient,
+            backend: protocol,
+            params: { orgSlug, virtualMcpId, branch },
+            cacheKey,
+          },
+          {
+            writes: writes as Record<string, Record<string, unknown>>,
+            deletes: deletes.filter((key) => !(key in writes)),
+          },
+          copies,
+          // Read when the move runs: an own save queued before it has
+          // moved the copy by then.
+          shown?.(),
+        );
+      }
       if (protocol) {
         // One `blocks.apply`: the write and the delete land together.
         return applyProtocolPatch(
@@ -144,7 +189,9 @@ export function useMoveBlocks({
       );
     },
     onSuccess: () => {
-      // The move changed which blocks resolve, so the schema must be re-read.
+      // The move changed which blocks resolve, so the schema must be re-read
+      // (a hosted draft never changes main's schema: nothing to read).
+      if (protocol?.source === "github") return;
       void queryClient.invalidateQueries({
         queryKey: KEYS.liveMeta(orgSlug, virtualMcpId, branch),
       });
@@ -154,9 +201,14 @@ export function useMoveBlocks({
   /**
    * Apply `plan` to the cache now, then persist it. Rejects — after restoring
    * the cache — when the write fails, so a caller that re-pointed itself in the
-   * same tick can undo that too.
+   * same tick can undo that too. `opts.shown`: the blocks the plan writes
+   * from an editor's own copy, read when the move runs (hosted v8: its first
+   * attempt is guarded by that copy, see `applyHostedChange`).
    */
-  const move = async (plan: BlockMove) => {
+  const move = async (
+    plan: BlockMove,
+    opts?: { shown?: () => Record<string, HeldCopy> },
+  ) => {
     // Snapshot only the touched keys, so a rollback can't revert a sibling write.
     const touched = [...Object.keys(plan.writes), ...plan.deletes];
     const previous =
@@ -171,8 +223,37 @@ export function useMoveBlocks({
     // Unawaited: awaiting would put the patch a tick after the caller's own state change.
     void queryClient.cancelQueries({ queryKey });
     try {
-      return await mutation.mutateAsync(plan);
+      return await mutation.mutateAsync({
+        ...plan,
+        copies: previous,
+        shown: opts?.shown,
+      });
     } catch (error) {
+      // A refused hosted move put the draft's copies in the cache already;
+      // the user kept their version: one calm toast, and the caller undoes
+      // its own state (it rejects).
+      if (error instanceof HostedKeptTheirsError) {
+        // Left deleted: Publish brings it back only if it was published.
+        toastKeptTheirs(
+          t,
+          error.deleted,
+          error.deleted &&
+            plan.deletes.length > 0 &&
+            plan.deletes.every((key) =>
+              neverPublishedBlock(queryClient, cacheKey, key),
+            ),
+        );
+        throw error;
+      }
+      // A hosted dead end says what to do, wherever its message shows.
+      inPlainWords(t, error);
+      // Refused (or refused until it gave up): the cache holds the draft's.
+      if (
+        protocol?.source === "github" &&
+        (isSaveConflict(error) || error instanceof HostedKeptChangingError)
+      ) {
+        throw error;
+      }
       queryClient.setQueryData(
         queryKey,
         (current: Record<string, unknown> | undefined) => {

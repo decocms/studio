@@ -554,9 +554,14 @@ describe("useCmsPublishActions on a hosted v8 site", () => {
     // The form's next autosave, armed (debounced) but not sent.
     let armed: ReturnType<typeof setTimeout> | null = setTimeout(() => {
       order.push("armed save");
-      void applyProtocolPatch(queryClient, backend, publishTarget, CACHE_KEY, {
-        set: { "pages-home": { title: "edited again" } },
-      });
+      void applyProtocolPatch(
+        queryClient,
+        backend,
+        publishTarget,
+        CACHE_KEY,
+        { set: { "pages-home": { title: "edited again" } } },
+        { "pages-home": null },
+      );
     }, 5);
     renderHook(
       () =>
@@ -579,6 +584,7 @@ describe("useCmsPublishActions on a hosted v8 site", () => {
             publishTarget,
             CACHE_KEY,
             { set: { "pages-home": { title: "edited" } } },
+            { "pages-home": null },
           );
           order.push("save");
         },
@@ -598,7 +604,12 @@ describe("useCmsPublishActions on a hosted v8 site", () => {
     await act(() => Promise.all([save, done]).then(() => {}));
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(order).toEqual(["save", "discard"]);
-    expect(applied).toEqual([{ set: { "pages-home": { title: "edited" } } }]);
+    expect(applied).toEqual([
+      expect.objectContaining({
+        set: { "pages-home": { title: "edited" } },
+        ifMatch: { "pages-home": null },
+      }),
+    ]);
     expect(server.draft).toEqual({ set: {}, delete: [] });
     expect(editorBlocks()).toEqual({ "pages-home": { title: "main" } });
   });
@@ -628,12 +639,14 @@ describe("useCmsPublishActions on a hosted v8 site", () => {
     const onPublished = mock(() => {});
     const { result } = render(backend, { hosted: true, onPublished });
     const before = { ...reads };
-    let done!: Promise<void>;
+    let done!: Promise<boolean | void>;
     act(() => {
       done = result.current.submit();
     });
     expect(getContentSyncState(SCOPE).phase).toBe("saving");
     await act(() => done);
+    // Published: the dialog keeps its list through the close (publish-hold.ts).
+    expect(await done).toBe(true);
     expect(calls).toEqual([`/api/${ORG}/decofile/${VM}/${BRANCH}/publish`]);
     expect(reads.releases).toBe(before.releases + 1);
     expect(reads.pointer).toBe(before.pointer + 1);

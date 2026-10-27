@@ -21,6 +21,7 @@ import {
 import { isV8SchemaText, schemaGenPath } from "@decocms/shared/blocks-major";
 import type { RepoContentClient } from "@/git-providers";
 import {
+  type BlockSource,
   blockEntriesInTree,
   blocksDirPath,
   resolveBlockContents,
@@ -70,6 +71,34 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/**
+ * The schemaHash at `sha` read through the tree (`getEntriesAtPaths`) and the
+ * blob cache: free when the same client just listed that commit's `.deco`
+ * (its tree reads are memoized) and the schema's blob is cached.
+ */
+export async function schemaHashInTree(
+  client: RepoContentClient,
+  packagePath: string | null,
+  sha: string,
+): Promise<string> {
+  const path = schemaGenPath(packagePath);
+  const entry = (await client.getEntriesAtPaths(sha, [path])).get(path);
+  if (entry?.type !== "blob") throw new NotV8Site();
+  const [schema] = await resolveBlockContents(client, [
+    { stem: path, sha: entry.sha },
+  ]);
+  const hash = await schemaHashOfText(schema!.content);
+  if (!hash) throw new NotV8Site();
+  return hash;
+}
+
+/** One `.deco/blocks` file of a commit: its name there and its content. */
+export interface SavedBlockFile {
+  /** The file name inside `.deco/blocks`, such as `pages-Home.json`. */
+  file: string;
+  source: BlockSource;
+}
+
 /** The saved blocks at `sha`, keyed by entry name. */
 async function savedBlocksAt(
   client: RepoContentClient,
@@ -78,12 +107,26 @@ async function savedBlocksAt(
 ): Promise<Record<string, Record<string, unknown>>> {
   const prefix = `${blocksDirPath(packagePath)}/`;
   const tree = await client.listDecofileEntries(sha, packagePath);
-  const files = blockEntriesInTree(tree, packagePath)
-    .map((entry) => ({ file: entry.path.slice(prefix.length), sha: entry.sha }))
-    .filter((f) => isBlockFileName(f.file));
+  return savedBlocksOf(
+    client,
+    blockEntriesInTree(tree, packagePath).map((entry) => ({
+      file: entry.path.slice(prefix.length),
+      source: { stem: entry.stem, sha: entry.sha },
+    })),
+  );
+}
+
+/** The saved blocks of a commit's `.deco/blocks` files, keyed by entry name. */
+async function savedBlocksOf(
+  client: RepoContentClient,
+  all: SavedBlockFile[],
+  memo?: Map<string, string>,
+): Promise<Record<string, Record<string, unknown>>> {
+  const files = all.filter((f) => isBlockFileName(f.file));
   const contents = await resolveBlockContents(
     client,
-    files.map((f) => ({ stem: f.file, sha: f.sha })),
+    files.map((f) => f.source),
+    memo,
   );
   const candidates = files.map((f, i) => {
     const [invalid] = checkBlockName(blockNameFromFile(f.file));
@@ -109,6 +152,27 @@ async function savedBlocksAt(
     blocks[name] = winner.entry;
   }
   return blocks;
+}
+
+/**
+ * The revision object for commit `sha` from what its committer already
+ * holds: the commit's block files (texts in hand, or blob shas read through
+ * the blob cache) and its schemaHash. No tree read.
+ */
+export async function buildRevisionFrom(
+  client: RepoContentClient,
+  sha: string,
+  known: {
+    schemaHash: string;
+    files: SavedBlockFile[];
+    memo?: Map<string, string>;
+  },
+): Promise<RevisionObject> {
+  return {
+    revision: sha,
+    schemaHash: known.schemaHash,
+    blocks: await savedBlocksOf(client, known.files, known.memo),
+  };
 }
 
 /** The revision object for commit `sha`. */

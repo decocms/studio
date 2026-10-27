@@ -1,3 +1,7 @@
+import {
+  copyScope,
+  useCopyEpochs,
+} from "@/components/sections-editor/held-copy";
 /**
  * Autonomous content: Generate, Themes and Library behind one collection row.
  * Library holds the brand, the writing rules and the post formats, each persisted to the site's own `.deco/blocks/blog-manager-*.json` as plain JSON. The brand and the writing rules are two blocks behind one seamless screen, and the fill button runs both passes.
@@ -142,13 +146,48 @@ function starterFormat(
  * the site's own `.deco/blocks/`. Replaces the old "Autonomous content" shell;
  * generation lives on the Posts board.
  */
-export function BlogContext({
+export function BlogContext(props: {
+  orgSlug: string;
+  virtualMcpId: string;
+  branch: string;
+  decofile: Record<string, unknown>;
+  meta: LiveMeta;
+}) {
+  const [tab, setTab] = useState<ContextTab>("brand");
+  const [section, setSection] = useState<ContextSection>("basics");
+  // The forms keep their own copies (hosted v8): a reconcile that replaced
+  // one shows the draft's again, on the same tab.
+  const epochOf = useCopyEpochs(copyScope(props));
+  const epochs = [BRAND_BLOCK_KEY, CONTEXT_BLOCK_KEY, FORMATS_BLOCK_KEY]
+    .map(epochOf)
+    .join(":");
+  return (
+    <BlogContextForm
+      key={epochs}
+      {...props}
+      tab={tab}
+      setTab={setTab}
+      section={section}
+      setSection={setSection}
+    />
+  );
+}
+
+function BlogContextForm({
   orgSlug,
   virtualMcpId,
   branch,
   decofile,
   meta,
+  tab,
+  setTab,
+  section,
+  setSection,
 }: {
+  tab: ContextTab;
+  setTab: (tab: ContextTab) => void;
+  section: ContextSection;
+  setSection: (section: ContextSection) => void;
   orgSlug: string;
   virtualMcpId: string;
   branch: string;
@@ -244,8 +283,6 @@ export function BlogContext({
   const [phase, setPhase] = useState<ExtractPhase>(PHASE_READING);
   /** Bumped to remount the markdown editors: they read `defaultValue` once. */
   const [editorRevision, setEditorRevision] = useState(0);
-  const [tab, setTab] = useState<ContextTab>("brand");
-  const [section, setSection] = useState<ContextSection>("basics");
 
   /** The site's own content, ranked by how much it reveals about the voice. */
   const evidence = selectBrandEvidence(decofile, extractPages(decofile));

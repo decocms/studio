@@ -187,6 +187,34 @@ export const sectionsEditor = {
   "sectionsEditor.namedRules.rename": "Rename",
   "sectionsEditor.namedRules.saved": "Saved in your draft",
   "sectionsEditor.namedRules.savedHint": "It goes live when you publish.",
+  "sectionsEditor.deletedConflict.theyDeletedTitle":
+    '"{name}" was deleted while you were editing',
+  "sectionsEditor.deletedConflict.theyDeletedDescription":
+    "Keep your version to bring it back with your changes, or leave it deleted. Nothing goes live until you publish.",
+  "sectionsEditor.deletedConflict.youDeletedTitle":
+    '"{name}" was changed while you were deleting it',
+  "sectionsEditor.deletedConflict.youDeletedDescription":
+    "Delete it anyway, or keep their version. Nothing goes live until you publish.",
+  "sectionsEditor.deletedConflict.keepMine": "Keep my version",
+  "sectionsEditor.deletedConflict.leaveDeleted": "Leave it deleted",
+  "sectionsEditor.deletedConflict.deleteAnyway": "Delete anyway",
+  "sectionsEditor.deletedConflict.keepTheirs": "Keep their version",
+  "sectionsEditor.reconcile.keptTheirs": "Kept their version",
+  "sectionsEditor.reconcile.leftDeleted": "Left it deleted",
+  "sectionsEditor.reconcile.keptTheirsHint":
+    "Your change wasn't saved. You can make it again any time.",
+  "sectionsEditor.reconcile.leftDeletedHint":
+    "Your change wasn't saved. To bring it back, discard its deletion in Publish. Nothing goes live until you publish.",
+  "sectionsEditor.reconcile.leftDeletedNeverPublishedHint":
+    "Your change wasn't saved. It was never published, so nothing changes on the live site.",
+  "sectionsEditor.blogKind.post": "Post",
+  "sectionsEditor.blogKind.category": "Category",
+  "sectionsEditor.blogKind.author": "Author",
+  "sectionsEditor.reconcile.deletedTitle": "This was deleted",
+  "sectionsEditor.reconcile.deletedNeverPublishedDescription":
+    "It's no longer in your draft, so there's nothing to edit here. It was never published, so nothing changes on the live site.",
+  "sectionsEditor.reconcile.deletedDescription":
+    "It's no longer in your draft, so there's nothing to edit here. To bring it back, discard its deletion in Publish. Nothing goes live until you publish.",
   "sectionsEditor.namedRules.undo": "Undo",
   "sectionsEditor.namedRules.create": "Create",
   "sectionsEditor.namedRules.openEditor": "Open the site editor",
@@ -348,6 +376,8 @@ export const sectionsEditor = {
     "This secret was saved by an older Deco site and can't be edited here. It's re-encrypted when the site migrates.",
   "sectionsEditor.secretField.noPublicKeyMessage":
     "Add the site's public key, .deco/secrets.pub, to edit secret fields. Values are encrypted in your browser with it.",
+  "sectionsEditor.secretField.platformSecretMessage":
+    "Secrets live in your site's hosting settings, where its code reads them, so there's nothing to edit here.",
   "sectionsEditor.secretField.pendingMessage":
     "Not saved yet. Press Enter to encrypt and save.",
   "sectionsEditor.secretField.plaintextStoredMessage":
@@ -444,6 +474,8 @@ export const sectionsEditor = {
     "Their version changed again while this was open. Each step now shows the newer one.",
   "sectionsEditor.formConflict.you": "You",
   "sectionsEditor.formConflict.someoneElse": "Someone else",
+  "sectionsEditor.formConflict.theirVersion": "Their version",
+  "sectionsEditor.formConflict.alreadySaved": "already saved",
   "sectionsEditor.formConflict.yourVersionNotSaved":
     "Your version · not saved yet",
   "sectionsEditor.formConflict.theirVersionSaved":
@@ -456,7 +488,48 @@ export const sectionsEditor = {
     "{name} also changed the {field}",
   "sectionsEditor.formConflict.titleStepYou":
     "You also changed the {field} in another tab or window",
+  "sectionsEditor.formConflict.titleOneIn":
+    'Someone else changed the {field} of "{block}" while you were editing',
+  "sectionsEditor.formConflict.titleOneInNamed":
+    '{name} changed the {field} of "{block}" while you were editing',
+  "sectionsEditor.formConflict.titleOneInYou":
+    'You changed the {field} of "{block}" in another tab or window',
+  "sectionsEditor.formConflict.titleStepIn":
+    'Someone else also changed the {field} of "{block}"',
+  "sectionsEditor.formConflict.titleStepInNamed":
+    '{name} also changed the {field} of "{block}"',
+  "sectionsEditor.formConflict.titleStepInYou":
+    'You also changed the {field} of "{block}" in another tab or window',
   "sectionsEditor.formConflict.summaryTheirsNamed": "{name}'s",
+  "sectionsEditor.formConflict.ruleExperiment": 'A/B test "{name}"',
+  "sectionsEditor.formConflict.ruleExperimentPhrase": 'the A/B test "{name}"',
+  "sectionsEditor.formConflict.ruleCampaign": 'Campaign "{name}"',
+  "sectionsEditor.formConflict.ruleCampaignPhrase":
+    'the dates of the campaign "{name}"',
+  "sectionsEditor.formConflict.titlePhraseOne":
+    "Someone else changed {thing} while you were editing",
+  "sectionsEditor.formConflict.titlePhraseOneNamed":
+    "{name} changed {thing} while you were editing",
+  "sectionsEditor.formConflict.titlePhraseOneYou":
+    "You changed {thing} in another tab or window",
+  "sectionsEditor.formConflict.titlePhraseStep":
+    "Someone else also changed {thing}",
+  "sectionsEditor.formConflict.titlePhraseStepNamed":
+    "{name} also changed {thing}",
+  "sectionsEditor.formConflict.titlePhraseStepYou":
+    "You also changed {thing} in another tab or window",
+  "sectionsEditor.formConflict.titleOneAnonymous":
+    "The {field} was changed while you were editing",
+  "sectionsEditor.formConflict.titleStepAnonymous":
+    "The {field} was also changed",
+  "sectionsEditor.formConflict.titleOneInAnonymous":
+    'The {field} of "{block}" was changed while you were editing',
+  "sectionsEditor.formConflict.titleStepInAnonymous":
+    'The {field} of "{block}" was also changed',
+  "sectionsEditor.formConflict.titlePhraseOneAnonymous":
+    "{Thing} was changed while you were editing",
+  "sectionsEditor.formConflict.titlePhraseStepAnonymous":
+    "{Thing} was also changed",
   "sectionsEditor.formConflict.youElsewhere": "You, in another tab or window",
   "sectionsEditor.formConflict.savedAt": "saved {when}",
   "sectionsEditor.formConflict.empty": "Empty",

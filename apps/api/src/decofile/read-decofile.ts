@@ -195,6 +195,32 @@ export type BlockSource = { stem: string } & (
 );
 
 /**
+ * The shas of `blocks` that neither `memo` nor the disk cache holds: what
+ * {@link resolveBlockContents} would read from the provider.
+ */
+export async function uncachedBlockShas(
+  client: RepoContentClient,
+  blocks: Iterable<BlockSource>,
+  memo: Map<string, string>,
+): Promise<string[]> {
+  const [owner, repo] = cacheScope(client.repo);
+  const shas = [
+    ...new Set(
+      [...blocks].flatMap((b) =>
+        "content" in b || memo.has(b.sha) ? [] : [b.sha],
+      ),
+    ),
+  ];
+  const missing: string[] = [];
+  for (const sha of shas) {
+    const hit = await getBlob(owner, repo, sha);
+    if (hit === null) missing.push(sha);
+    else memo.set(sha, hit);
+  }
+  return missing;
+}
+
+/**
  * Resolve every block's text, reading only what the disk cache is missing and
  * bounding the fetches — the same two protections {@link resolveSnapshot} has.
  *

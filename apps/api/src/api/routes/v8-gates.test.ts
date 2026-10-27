@@ -728,4 +728,280 @@ describe("decofile routes", () => {
       projects.get("p1")?.metadata?.[BLOCKS_MAJOR_METADATA_KEY],
     ).toBeUndefined();
   });
+
+  describe("a hosted v8 save (blocks.apply alone)", () => {
+    const rpc = (app: Hono<Env>, body: unknown, headers = {}) =>
+      app.request("/decofile/p1/main/rpc", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-deco-main-schema": "v8",
+          ...headers,
+        },
+        body: JSON.stringify(body),
+      });
+    const apply = (params: Record<string, unknown>, id = 1) => ({
+      jsonrpc: "2.0",
+      id,
+      method: "blocks.apply",
+      params,
+    });
+
+    it("makes no GitHub call: no repository client, no default branch, no schema", async () => {
+      const { app, repo, delivery } = setup({ blocksMajor: 8 }, v8Files, {
+        p1: ORG,
+      });
+      const res = await rpc(
+        app,
+        apply({
+          set: { "pages-home": { __resolveType: "page", title: "draft" } },
+          delete: ["Gone"],
+          ifMatch: { "pages-home": null, Gone: null },
+        }),
+      );
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        result?: { revision: string; versions: Record<string, unknown> };
+      };
+      expect(body.result?.versions).toEqual({
+        "pages-home": expect.any(String),
+        Gone: null,
+      });
+      expect(body.result?.revision).toMatch(/^~/);
+      expect(repo.opened()).toBe(0);
+      expect(repo.calls).toEqual([]);
+      const [key] = await delivery.store.listKeys("sites/acme/drafts/");
+      expect(JSON.parse(delivery.objects.get(key!)!.text)).toEqual({
+        set: { "pages-home": { __resolveType: "page", title: "draft" } },
+        delete: ["Gone"],
+      });
+      // A batch of saves is a save too.
+      const batch = await rpc(app, [
+        apply({ set: { a: { v: 1 } }, ifMatch: { a: null } }, 1),
+        apply({ set: { b: { v: 2 } }, ifMatch: { b: null } }, 2),
+      ]);
+      expect(batch.status).toBe(200);
+      expect(repo.calls).toEqual([]);
+    });
+
+    it("a guard the draft no longer meets is a Conflict, still with no GitHub call", async () => {
+      const { app, repo } = setup({ blocksMajor: 8 }, v8Files, { p1: ORG });
+      await rpc(
+        app,
+        apply({
+          set: { "pages-home": { v: 1 } },
+          ifMatch: { "pages-home": null },
+        }),
+      );
+      const res = await rpc(
+        app,
+        apply({
+          set: { "pages-home": { v: 2 } },
+          ifMatch: { "pages-home": null },
+        }),
+      );
+      const body = (await res.json()) as {
+        error?: { code: number; data?: { draft?: unknown } };
+      };
+      // The protocol's Conflict, with the draft's copy: the editor opens
+      // its reconcile flow from it, with no other read.
+      expect(body.error?.code).toBe(-32002);
+      expect(body.error?.data?.draft).toEqual({
+        "pages-home": { block: { v: 1 }, version: expect.any(String) },
+      });
+      expect(repo.calls).toEqual([]);
+      // A block deleted in the draft is in it: "must not exist" is refused.
+      await rpc(app, apply({ delete: ["Gone"], ifMatch: { Gone: null } }));
+      const deleted = await rpc(
+        app,
+        apply({ set: { Gone: { v: 1 } }, ifMatch: { Gone: null } }),
+      );
+      expect(
+        ((await deleted.json()) as { error?: { data?: unknown } }).error?.data,
+      ).toMatchObject({
+        entries: { Gone: { expected: null, actual: "tombstone" } },
+        draft: { Gone: { block: null, version: "tombstone" } },
+      });
+      expect(repo.calls).toEqual([]);
+    });
+
+    it("reads go on through main with the draft on top", async () => {
+      const { app, repo } = setup({ blocksMajor: 8 }, v8Files, { p1: ORG });
+      await rpc(app, apply({ set: { New: { v: 1 } }, ifMatch: { New: null } }));
+      expect(repo.calls).toEqual([]);
+      const res = await rpc(app, {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "blocks.list",
+      });
+      const body = (await res.json()) as {
+        result: { blocks: Record<string, unknown> };
+      };
+      expect(Object.keys(body.result.blocks).sort()).toEqual([
+        "New",
+        "pages-home",
+      ]);
+      expect(repo.opened()).toBeGreaterThan(0);
+    });
+
+    it("the editor's poll lists the draft's changes with no GitHub call of their own", async () => {
+      const { app, repo } = setup({ blocksMajor: 8 }, v8Files, { p1: ORG });
+      await rpc(
+        app,
+        apply({
+          set: { New: { v: 1 }, "pages-home": { v: 2 } },
+          ifMatch: { New: null, "pages-home": null },
+        }),
+      );
+      const call = (method: string, params = {}) => ({
+        jsonrpc: "2.0",
+        id: method,
+        method,
+        params,
+      });
+      const callsOf = async (batch: unknown[]) => {
+        repo.calls.length = 0;
+        const res = await rpc(app, batch);
+        expect(res.status).toBe(200);
+        return [...repo.calls];
+      };
+      // Warm: main's answer is cached as on a running server.
+      await callsOf([call("schema.get")]);
+      const content = await callsOf([call("blocks.list"), call("schema.get")]);
+      const poll = await callsOf([
+        call("blocks.list"),
+        call("schema.get"),
+        call("changes.list"),
+      ]);
+      // One read of main's head, listing and schema serves the whole poll
+      // (it was 8 calls, 3 of them for changes.list).
+      expect(poll).toEqual(content);
+      expect(poll.map((c) => c.split(" ")[0])).toEqual([
+        "getDefaultBranch",
+        "getBranch",
+        "listDecofileEntries",
+        "getEntriesAtPaths",
+      ]);
+      // On its own, changes.list reads main's head and listing once.
+      const alone = await callsOf([call("changes.list")]);
+      expect(alone.map((c) => c.split(" ")[0])).toEqual([
+        "getDefaultBranch",
+        "getBranch",
+        "listDecofileEntries",
+      ]);
+    });
+
+    it("an unmarked project, or a request without the editor's main answer, reads main first", async () => {
+      const unmarked = setup({}, v8Files, { p1: ORG });
+      await rpc(
+        unmarked.app,
+        apply({ set: { New: { v: 1 } }, ifMatch: { New: null } }),
+      );
+      expect(unmarked.repo.opened()).toBeGreaterThan(0);
+      const noHeader = setup({ blocksMajor: 8 }, v8Files, { p1: ORG });
+      await noHeader.app.request("/decofile/p1/main/rpc", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(
+          apply({ set: { New: { v: 1 } }, ifMatch: { New: null } }),
+        ),
+      });
+      expect(noHeader.repo.opened()).toBeGreaterThan(0);
+    });
+
+    it("a save without a precondition for every block it touches is refused, writing nothing", async () => {
+      const { app, repo, delivery } = setup({ blocksMajor: 8 }, v8Files, {
+        p1: ORG,
+      });
+      const refused = async (body: unknown, headers = {}) => {
+        const res = await rpc(app, body, headers);
+        const answers = (await res.json()) as unknown;
+        return (Array.isArray(answers) ? answers : [answers]) as Array<{
+          id?: unknown;
+          result?: unknown;
+          error?: { code: number; message: string; data?: unknown };
+        }>;
+      };
+      // No ifMatch at all, one name missing, and a malformed entry.
+      for (const params of [
+        { set: { a: { v: 1 } } },
+        { set: { a: { v: 1 }, b: { v: 2 } }, ifMatch: { a: null } },
+        { delete: ["c"], ifMatch: { c: 7 } },
+      ]) {
+        const [answer] = await refused(apply(params));
+        expect(answer?.result).toBeUndefined();
+        expect(answer?.error?.code).toBe(-32602);
+        expect(answer?.error?.message).toMatch(/precondition/i);
+      }
+      // A batch with one unguarded call is refused whole, each call answered.
+      const batch = await refused([
+        apply({ set: { a: { v: 1 } }, ifMatch: { a: null } }, 1),
+        apply({ set: { b: { v: 2 } } }, 2),
+      ]);
+      expect(batch.map((a) => [a.id, a.error?.code])).toEqual([
+        [1, -32602],
+        [2, -32602],
+      ]);
+      expect(batch[1]?.error?.data).toEqual({ missing: ["b"] });
+      // Through main too (a request without the editor's main answer).
+      const [layered] = await refused(apply({ set: { a: { v: 1 } } }), {
+        "x-deco-main-schema": "",
+      });
+      expect(layered?.error?.code).toBe(-32602);
+      // Each path states its own rule: the editor's save guards by the
+      // draft, a save through main by what blocks.list reports.
+      const [drafted] = await refused(apply({ set: { a: { v: 1 } } }));
+      expect(drafted?.error?.message).toMatch(/version in the draft/);
+      expect(layered?.error?.message).toMatch(/as blocks\.list reports it/);
+      expect(layered?.error?.message).not.toMatch(/draft/);
+      expect(await delivery.store.listKeys("sites/acme/drafts/")).toEqual([]);
+      expect(repo.calls.some((c) => /^(commit|put|write)/i.test(c))).toBe(
+        false,
+      );
+      // Guarded (a version, null or the tombstone's), it lands.
+      const [ok] = await refused(
+        apply({
+          set: { a: { v: 1 } },
+          delete: ["Gone"],
+          ifMatch: { a: null, Gone: null },
+        }),
+      );
+      expect(ok?.error).toBeUndefined();
+    });
+
+    it("a save over the protocol's size limit is its 413, before any precondition check", async () => {
+      const { app, delivery } = setup({ blocksMajor: 8 }, v8Files, {
+        p1: ORG,
+      });
+      const huge = apply({
+        set: { huge: { text: "x".repeat(8 * 1024 * 1024) } },
+      });
+      for (const headers of [{}, { "x-deco-main-schema": "" }]) {
+        const res = await rpc(app, huge, headers);
+        expect(res.status).toBe(413);
+        const body = (await res.json()) as { error?: { code: number } };
+        expect(body.error?.code).toBe(-32007);
+      }
+      expect(await delivery.store.listKeys("sites/acme/drafts/")).toEqual([]);
+    });
+
+    it("an unmarked v8 project's save is still checked against the draft alone", async () => {
+      // A block only main has, saved with "not in the draft yet": the
+      // editor's own first save of it, never refused as someone else's.
+      const { app } = setup({}, v8Files, { p1: ORG });
+      const res = await rpc(
+        app,
+        apply({
+          set: { "pages-home": { __resolveType: "page", title: "draft" } },
+          ifMatch: { "pages-home": null },
+        }),
+      );
+      const body = (await res.json()) as {
+        result?: { versions: Record<string, unknown> };
+        error?: unknown;
+      };
+      expect(body.error).toBeUndefined();
+      expect(body.result?.versions["pages-home"]).toEqual(expect.any(String));
+    });
+  });
 });

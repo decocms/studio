@@ -1,3 +1,4 @@
+import type { HeldCopy } from "@/components/sections-editor/held-copy";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
@@ -75,7 +76,11 @@ import { SuggestLinksButton } from "./link-suggestions";
 import { useBlogAi } from "@/hooks/use-blog-ai";
 import { useHostedAiProviderKeys } from "@/hooks/collections/use-ai-providers";
 import { useDeleteBlock } from "@/components/sections-editor/use-delete-block";
-import { useSaveBlock } from "@/components/sections-editor/use-save-block";
+import { useNeverPublished } from "@/components/sections-editor/use-never-published";
+import {
+  keptTheirVersion,
+  useSaveBlock,
+} from "@/components/sections-editor/use-save-block";
 import { usePreviewLinkDraftPointer } from "@/components/sections-editor/use-fast-preview-draft-url";
 import { useAutosave } from "./use-autosave";
 import { SaveStatus } from "./save-status";
@@ -87,6 +92,9 @@ import {
   str,
 } from "./blocks/primitives";
 import { useT } from "@/i18n/use-t.ts";
+import { HeldBlockView } from "../held-block-view";
+import { deleteConfirmKey } from "../delete-copy";
+import { useContentBackend } from "@/components/sections-editor/use-content-backend";
 
 type ExtraProp = { key: string; value: string };
 
@@ -105,7 +113,7 @@ function asExtraProps(value: unknown): ExtraProp[] {
  * content type (paragraph, heading, list, …); a ⊕ between blocks inserts, and
  * a drag handle reorders. Not a schema form.
  */
-export function PostEditor({
+function PostEditorForm({
   orgSlug,
   virtualMcpId,
   branch,
@@ -138,8 +146,18 @@ export function PostEditor({
 }) {
   const t = useT();
   const threadId = useOptionalChatTask()?.taskId ?? null;
-  const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
+  // The form keeps its own copy: hosted saves are guarded by it.
+  const save = useSaveBlock(
+    { orgSlug, virtualMcpId, branch },
+    { holdsCopy: true },
+  );
   const remove = useDeleteBlock({ orgSlug, virtualMcpId, branch });
+  const contentBackend = useContentBackend(virtualMcpId, branch);
+  /** A hosted v8 draft: a delete is a draft change, undone by discarding it. */
+  const hostedDraft =
+    contentBackend.kind === "protocol" && contentBackend.source === "github";
+  // A post the draft created: deleting it is no change Publish lists.
+  const neverPublished = useNeverPublished({ orgSlug, virtualMcpId, branch });
   const hasAi = useHostedAiProviderKeys().length > 0;
   const blogAi = useBlogAi();
   // The preview frame's `__draft` (a hosted draft's carries its forced
@@ -150,6 +168,11 @@ export function PostEditor({
     branch,
   });
   const initial = getBlogPayload(block, "posts");
+  /** The form's own copy of `key` (hosted v8), for a write built from it. */
+  const shownCopy = (key: string): Record<string, HeldCopy> => {
+    const copy = save.shown(key);
+    return copy ? { [key]: copy } : {};
+  };
 
   const [post, setPost, syncPost, saveScheduled] = useAutosave(
     initial,
@@ -159,7 +182,7 @@ export function PostEditor({
         data: buildPostBlock(blockKey, stampPostModified(next)),
       });
     },
-    { isSaving: save.isPending },
+    { isSaving: save.isPending, onSeed: () => save.hold(blockKey) },
   );
 
   // A move renamed the block, so drop a pending write aimed at the retired key.
@@ -178,7 +201,8 @@ export function PostEditor({
    */
   const moveStatus = (next: PostStatus) => {
     syncPost(post);
-    void move.apply(blockKey, next, post);
+    // Built from the form's own copy: a change it never showed is asked.
+    void move.apply(blockKey, next, post, () => shownCopy(blockKey));
   };
 
   // Key typed from `KNOWN_POST_KEYS`, so a bespoke field absent from it fails to compile.
@@ -220,11 +244,17 @@ export function PostEditor({
     // the block straight back.
     syncPost(post);
     try {
-      await remove.mutateAsync({ blockKey });
+      const removed = await remove.mutateAsync({
+        blockKey,
+        // The form's own copy: a change it never showed is asked about.
+        shown: () => save.shown(blockKey),
+      });
+      setConfirmingDelete(false);
+      // The user kept their version (the hook said so in its own toast).
+      if (keptTheirVersion(removed)) return;
       toast.success(
         t("sandbox.postEditor.deletePostSuccess", { title: str(post.title) }),
       );
-      setConfirmingDelete(false);
       onClose?.();
     } catch (err) {
       toast.error(
@@ -444,9 +474,14 @@ export function PostEditor({
               {t("sandbox.postEditor.deletePostConfirmTitle")}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              {t("sandbox.postEditor.deletePostConfirmBody", {
-                title: str(post.title) || t("sandbox.postBoard.untitled"),
-              })}
+              {t(
+                deleteConfirmKey("post", hostedDraft, {
+                  neverPublished: neverPublished(blockKey),
+                }),
+                {
+                  title: str(post.title) || t("sandbox.postBoard.untitled"),
+                },
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -922,5 +957,23 @@ function RelationSelect({
         />
       )}
     </div>
+  );
+}
+
+/**
+ * The form keeps its own copy of the block (see `HeldBlockView`): on a
+ * hosted v8 draft a block the draft no longer has shows as deleted.
+ */
+export function PostEditor(props: Parameters<typeof PostEditorForm>[0]) {
+  return (
+    <HeldBlockView
+      orgSlug={props.orgSlug}
+      virtualMcpId={props.virtualMcpId}
+      branch={props.branch}
+      blockKey={props.blockKey}
+      present={props.block !== undefined}
+    >
+      <PostEditorForm {...props} />
+    </HeldBlockView>
   );
 }

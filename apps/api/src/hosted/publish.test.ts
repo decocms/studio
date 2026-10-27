@@ -11,6 +11,7 @@ import {
   SCHEMA_TEXT,
 } from "./hosted-test-helpers";
 import {
+  draftNamesChangedOnMain,
   type HostedRepo,
   MainMovedError,
   publishDraft,
@@ -148,6 +149,128 @@ describe("publishDraft", () => {
     await expectEmptied(drafts, saved);
   });
 
+  it('the default commit message lists only deletions main had: a tombstone of a name main never had is no "delete"', async () => {
+    const { git, drafts, repo } = setup();
+    // The save path never reads main, so the draft records a deletion of
+    // `Gone` (never on main) as it does for `Old` (on main).
+    await drafts.update(REF, () => ({
+      set: { Home: { path: "/", title: "v2" } },
+      delete: ["Gone", "Old"],
+    }));
+    await publishDraft(repo, drafts, REF, { message: "", coAuthor: null });
+    expect(git.history[0]!.message).toBe(
+      "chore(decofile): update Home; delete Old",
+    );
+  });
+
+  it("a draft of tombstones main never had alone commits nothing", async () => {
+    const { git, drafts, repo } = setup();
+    const before = git.head();
+    await drafts.update(REF, () => ({ set: {}, delete: ["Gone"] }));
+    await publishDraft(repo, drafts, REF, { message: "", coAuthor: null });
+    expect(git.head()).toBe(before);
+  });
+
+  it("costs the same GitHub calls for a draft of 1 block or 8: one listing of main, one inline-content commit, no read of the new commit", async () => {
+    const callsFor = async (blocks: number) => {
+      const { git, drafts, repo, delivery } = setup();
+      const calls: string[] = [];
+      const inline: unknown[] = [];
+      const client = git.client;
+      repo.client = new Proxy(client, {
+        get(target, key, receiver) {
+          const value = Reflect.get(target, key, receiver);
+          if (typeof value !== "function") return value;
+          return (...args: unknown[]) => {
+            const [first] = args;
+            calls.push(
+              `${String(key)} ${typeof first === "string" ? first : ""}`.trim(),
+            );
+            if (key === "commitFiles") {
+              inline.push((first as { inlineContent?: boolean }).inlineContent);
+            }
+            return value.apply(target, args);
+          };
+        },
+      });
+      const set: Record<string, unknown> = {
+        Home: { path: "/", title: "draft" },
+      };
+      for (let i = 1; i < blocks; i++) set[`Block${i}`] = { n: i };
+      await drafts.update(REF, () => ({ set, delete: ["Old"] }));
+      const parent = git.head();
+      const result = await publishDraft(repo, drafts, REF, {
+        message: "",
+        coAuthor: null,
+      });
+      const sha = git.head();
+      expect(result).toEqual({ result: "merged", sha, release: "current" });
+      const revision = JSON.parse(
+        delivery.objects.get(deliveryKeys.revision("acme", sha))!.text,
+      );
+      expect(revision.schemaHash).toBe(SCHEMA_HASH);
+      expect(Object.keys(revision.blocks).sort()).toEqual(
+        Object.keys(set).sort(),
+      );
+      expect(inline).toEqual([true]);
+      // The new commit is never listed or read back.
+      expect(calls.filter((c) => c.includes(sha))).toEqual([]);
+      // Blob reads go through the blob cache (which some test files turn
+      // off): at most the schema's, which the editor's open already read.
+      const reads = calls.filter((c) => c.startsWith("readBlob"));
+      expect(reads.length).toBeLessThanOrEqual(1);
+      return calls
+        .filter((c) => !c.startsWith("readBlob"))
+        .map((c) => c.replace(parent, "<parent>"));
+    };
+    const one = await callsFor(1);
+    const eight = await callsFor(8);
+    expect(eight).toEqual(one);
+    expect(one).toEqual([
+      "getBranch main",
+      "listDecofileEntries <parent>",
+      "commitFiles",
+      "getEntriesAtPaths <parent>",
+      "getBranch main",
+    ]);
+  });
+
+  it("builds the release's unchanged blocks from the live release, not from GitHub one by one (a cold blob cache)", async () => {
+    const { git, drafts, repo, delivery } = setup();
+    for (let i = 0; i < 6; i++) {
+      git.pushDirect({ [`.deco/blocks/B${i}.json`]: serializeBlock({ i }) });
+    }
+    await drafts.update(REF, () => ({
+      set: { B0: { i: "first" } },
+      delete: [],
+    }));
+    await publishDraft(repo, drafts, REF, { message: "", coAuthor: null });
+    const reads: string[] = [];
+    const readBlob = git.client.readBlob;
+    git.client.readBlob = async (sha) => {
+      reads.push(sha);
+      return readBlob(sha);
+    };
+    await drafts.update(REF, () => ({
+      set: { B1: { i: "second" } },
+      delete: [],
+    }));
+    const result = await publishDraft(repo, drafts, REF, {
+      message: "",
+      coAuthor: null,
+    });
+    expect(result).toMatchObject({ result: "merged", release: "current" });
+    // At most the schema's blob: every unchanged block came from the release.
+    expect(reads.length).toBeLessThanOrEqual(1);
+    const revision = JSON.parse(
+      delivery.objects.get(deliveryKeys.revision("acme", git.head()))!.text,
+    );
+    expect(revision.blocks.B0).toEqual({ i: "first" });
+    expect(revision.blocks.B1).toEqual({ i: "second" });
+    expect(revision.blocks.B5).toEqual({ i: 5 });
+    expect(revision.blocks.Home).toEqual({ path: "/", title: "v1" });
+  });
+
   it("is Merged · release created, not current, when main moved after the commit: no latest.json, draft kept for Try again", async () => {
     const { git, delivery, drafts, repo } = setup();
     const saved = await drafts.update(REF, () => ({
@@ -175,20 +298,54 @@ describe("publishDraft", () => {
     expect(await drafts.load(REF)).toEqual(saved);
   });
 
-  it("fails and keeps the draft when main moved under the commit", async () => {
+  it("builds the commit again when main moved under it: the draft block wins over the developer's change", async () => {
+    const { git, drafts, repo } = setup();
+    await drafts.update(REF, () => ({
+      set: { Home: { path: "/", title: "draft" } },
+      delete: [],
+    }));
+    const commitFiles = git.client.commitFiles;
+    let pushed = false;
+    git.client.commitFiles = async (params) => {
+      if (!pushed) {
+        pushed = true;
+        git.pushDirect({
+          ".deco/blocks/Home.json": serializeBlock({ path: "/", title: "dev" }),
+          ".deco/blocks/Race.json": "{}\n",
+        });
+      }
+      return commitFiles(params);
+    };
+    const result = await publishDraft(repo, drafts, REF, {
+      message: "",
+      coAuthor: null,
+    });
+    expect(result).toMatchObject({ result: "merged", release: "current" });
+    const files = git.filesAt("main");
+    expect(JSON.parse(files[".deco/blocks/Home.json"]!)).toEqual({
+      path: "/",
+      title: "draft",
+    });
+    // The developer's other change is kept.
+    expect(files[".deco/blocks/Race.json"]).toBe("{}\n");
+  });
+
+  it("fails and keeps the draft when main keeps moving under every attempt", async () => {
     const { git, delivery, drafts, repo } = setup();
     const saved = await drafts.update(REF, () => ({
       set: { New: { a: 1 } },
       delete: [],
     }));
     const commitFiles = git.client.commitFiles;
+    let n = 0;
     git.client.commitFiles = async (params) => {
-      git.pushDirect({ ".deco/blocks/Race.json": "{}\n" });
+      git.pushDirect({ [`.deco/blocks/Race${++n}.json`]: "{}\n" });
       return commitFiles(params);
     };
     await expect(
       publishDraft(repo, drafts, REF, { message: "", coAuthor: null }),
     ).rejects.toThrow(MainMovedError);
+    expect(n).toBe(3);
     expect(await drafts.load(REF)).toEqual(saved);
     expect(await readLatest(delivery.store, "acme")).toBeNull();
   });
@@ -562,5 +719,28 @@ describe("publishDraft", () => {
     expect(
       await publishDraft(repo, drafts, REF, { message: "", coAuthor: null }),
     ).toEqual({ result: "up-to-date" });
+  });
+});
+
+describe('draftNamesChangedOnMain (the review\'s "your developer also changed")', () => {
+  it("names the draft's blocks main changed since the live release, nothing else", async () => {
+    const { git, drafts, repo } = setup();
+    const draft = {
+      set: { Home: { path: "/", title: "draft" }, New: { v: 1 } },
+      delete: ["Old"],
+    };
+    // No live release yet: nothing to compare with.
+    expect(await draftNamesChangedOnMain(repo, draft)).toEqual([]);
+    await drafts.update(REF, () => ({ set: { Seed: { v: 0 } }, delete: [] }));
+    await publishDraft(repo, drafts, REF, { message: "", coAuthor: null });
+    // Main is the live release.
+    expect(await draftNamesChangedOnMain(repo, draft)).toEqual([]);
+    git.pushDirect({
+      ".deco/blocks/Home.json": serializeBlock({ path: "/", title: "dev" }),
+      ".deco/blocks/Other.json": serializeBlock({ v: 2 }),
+    });
+    expect(await draftNamesChangedOnMain(repo, draft)).toEqual(["Home"]);
+    git.pushDirect({ ".deco/blocks/Old.json": null });
+    expect(await draftNamesChangedOnMain(repo, draft)).toEqual(["Home", "Old"]);
   });
 });

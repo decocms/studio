@@ -77,6 +77,24 @@ export interface StoredObject {
   metadata?: Record<string, string>;
 }
 
+/**
+ * A write that lands only while the object is as the writer last read it:
+ * still at `ifMatch` (its ETag), or, with `ifNoneMatch: "*"`, still absent.
+ */
+export type PutCondition = { ifMatch: string } | { ifNoneMatch: "*" };
+
+/**
+ * A conditional write found the object changed since it was read (S3 412
+ * `PreconditionFailed`, or 409 `ConditionalRequestConflict` while another
+ * write of it lands): nothing was written; read it again and retry.
+ */
+export class ObjectChangedError extends Error {
+  constructor(key: string) {
+    super(`${key} changed while it was being written`);
+    this.name = "ObjectChangedError";
+  }
+}
+
 /** The four object operations the hosted features need. */
 export interface DeliveryStore {
   putJson(
@@ -85,6 +103,8 @@ export interface DeliveryStore {
     cacheControl: string,
     /** User-defined metadata (`x-amz-meta-*`): ASCII values, 2 KB in all. */
     metadata?: Record<string, string>,
+    /** Write only if the object is still as read; else {@link ObjectChangedError}. */
+    condition?: PutCondition,
   ): Promise<{ etag: string | null }>;
   /** The object, or null when there is none. */
   get(key: string): Promise<StoredObject | null>;
@@ -116,12 +136,21 @@ export async function getJson(
   return { value: JSON.parse(object.text) as unknown, etag: object.etag };
 }
 
+function isConditionFailed(error: unknown): boolean {
+  const e = error as { name?: string; $metadata?: { httpStatusCode?: number } };
+  return (
+    e?.name === "PreconditionFailed" ||
+    e?.name === "ConditionalRequestConflict" ||
+    e?.$metadata?.httpStatusCode === 412
+  );
+}
+
 function isNotFound(error: unknown): boolean {
   const e = error as { name?: string; $metadata?: { httpStatusCode?: number } };
   return e?.name === "NoSuchKey" || e?.$metadata?.httpStatusCode === 404;
 }
 
-function createS3DeliveryStore(config: {
+export function createS3DeliveryStore(config: {
   endpoint: string;
   bucket: string;
   accessKeyId: string;
@@ -138,20 +167,33 @@ function createS3DeliveryStore(config: {
   });
   const Bucket = config.bucket;
   return {
-    async putJson(key, value, cacheControl, metadata) {
-      const res = await client.send(
-        new PutObjectCommand({
-          Bucket,
-          Key: key,
-          Body: Buffer.from(JSON.stringify(value), "utf-8"),
-          ContentType: "application/json; charset=utf-8",
-          CacheControl: cacheControl,
-          ...(metadata && Object.keys(metadata).length > 0
-            ? { Metadata: metadata }
-            : {}),
-        }),
-      );
-      return { etag: res.ETag ?? null };
+    async putJson(key, value, cacheControl, metadata, condition) {
+      try {
+        const res = await client.send(
+          new PutObjectCommand({
+            Bucket,
+            Key: key,
+            Body: Buffer.from(JSON.stringify(value), "utf-8"),
+            ContentType: "application/json; charset=utf-8",
+            CacheControl: cacheControl,
+            ...(metadata && Object.keys(metadata).length > 0
+              ? { Metadata: metadata }
+              : {}),
+            ...(condition && "ifMatch" in condition
+              ? { IfMatch: condition.ifMatch }
+              : {}),
+            ...(condition && "ifNoneMatch" in condition
+              ? { IfNoneMatch: condition.ifNoneMatch }
+              : {}),
+          }),
+        );
+        return { etag: res.ETag ?? null };
+      } catch (error) {
+        if (condition && isConditionFailed(error)) {
+          throw new ObjectChangedError(key);
+        }
+        throw error;
+      }
     },
     async get(key) {
       try {

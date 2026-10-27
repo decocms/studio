@@ -158,6 +158,17 @@ export function formatCampaignWindow(window: CampaignWindow): string | null {
   });
 }
 
+/**
+ * One bound of a campaign's window (an ISO date) as Studio shows dates, in
+ * the reader's language and timezone ("Dec 16, 2026, 6:00 PM"); null when it
+ * isn't a date.
+ */
+export function formatCampaignDate(iso: unknown): string | null {
+  if (typeof iso !== "string") return null;
+  const date = parseDate(iso);
+  return date ? dateFormatters(readLanguage()).dateTime.format(date) : null;
+}
+
 /** `experiment { name }`: the test's name and, when known, its share. */
 function formatExperiment(
   rule: Record<string, unknown>,

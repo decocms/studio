@@ -4,6 +4,7 @@
 import { MutationCache, QueryCache, QueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { PLAN_REFUSAL_CODES, planRefusalOf } from "@/lib/studio-tools";
+import { keepContentBookkeeping } from "@/components/sections-editor/content-bookkeeping";
 import { hydrateQueryClient, persistQueryClient } from "@/lib/query-persist";
 import {
   persistHtmlResourceCache,
@@ -61,6 +62,7 @@ export const queryClient = new QueryClient({
   },
 });
 
+keepContentBookkeeping(queryClient);
 hydrateQueryClient(queryClient);
 persistQueryClient(queryClient);
 // Large UI-resource HTML warm-starts from IndexedDB, not the localStorage cache.

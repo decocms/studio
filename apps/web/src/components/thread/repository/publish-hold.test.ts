@@ -1,0 +1,88 @@
+import { setupComponentTest } from "../../../../test/setup";
+setupComponentTest();
+import { describe, expect, it } from "bun:test";
+import { act, renderHook } from "@testing-library/react";
+import {
+  publishBodyShown,
+  shownPublishList,
+  usePublishHold,
+} from "./publish-hold";
+
+const listed = {
+  summary: { count: 2 },
+  cardsPending: false,
+  bodiesPending: false,
+};
+const emptied = {
+  summary: { count: 0 },
+  cardsPending: true,
+  bodiesPending: false,
+};
+
+describe("shownPublishList", () => {
+  it("a hosted Publish keeps showing the list it publishes through the dialog's close, never the emptied draft's re-read", () => {
+    // While it runs, and once it ended and the dialog closes (fades out).
+    expect(shownPublishList(listed, emptied, { hosted: true })).toBe(listed);
+  });
+
+  it("shows the live list otherwise", () => {
+    // Gated to hosted v8: every other Publish renders as before.
+    expect(shownPublishList(listed, emptied, { hosted: false })).toBe(emptied);
+    expect(shownPublishList(null, emptied, { hosted: true })).toBe(emptied);
+  });
+});
+
+describe("usePublishHold (the Publish dialog's list)", () => {
+  it("never shows the emptied draft between the Publish's end and the dialog's fade", () => {
+    type Props = { live: typeof listed };
+    const { result, rerender } = renderHook(
+      ({ live }: Props) => usePublishHold(live, { hosted: true }),
+      { initialProps: { live: listed } as Props },
+    );
+    act(() => result.current.hold());
+    // The Publish ended (it emptied the draft) and the dialog fades out.
+    rerender({ live: emptied });
+    expect(result.current.shown).toBe(listed);
+    // A failed one shows what the draft holds now.
+    act(() => result.current.release());
+    expect(result.current.shown).toBe(emptied);
+  });
+});
+
+describe("publishBodyShown (the Publish dialog's body)", () => {
+  it("a hosted Publish dialog keeps its whole body through the close's fade", () => {
+    // Closed: the dialog's content is only still mounted while it fades out
+    // (Radix unmounts it after); the body stays as it was, never empty.
+    expect(publishBodyShown({ open: false, hosted: true })).toBe(true);
+    expect(publishBodyShown({ open: true, hosted: true })).toBe(true);
+  });
+
+  it("every other Publish dialog drops its body on close, as before", () => {
+    expect(publishBodyShown({ open: false, hosted: false })).toBe(false);
+    expect(publishBodyShown({ open: true, hosted: false })).toBe(true);
+  });
+});
+
+describe("the review panes through a hosted Publish's close", () => {
+  it("keep the draft pointer they showed: the emptied draft's new one never reloads them", () => {
+    type Shown = {
+      summary: { count: number };
+      compareDraft: { pointer: string };
+    };
+    const before: Shown = {
+      summary: { count: 2 },
+      compareDraft: { pointer: "d@1" },
+    };
+    const after: Shown = {
+      summary: { count: 0 },
+      compareDraft: { pointer: "d@2" },
+    };
+    const { result, rerender } = renderHook(
+      ({ live }: { live: Shown }) => usePublishHold(live, { hosted: true }),
+      { initialProps: { live: before } },
+    );
+    act(() => result.current.hold());
+    rerender({ live: after });
+    expect(result.current.shown.compareDraft.pointer).toBe("d@1");
+  });
+});

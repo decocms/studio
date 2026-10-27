@@ -14,7 +14,7 @@ import {
 } from "@/git-providers";
 import type { KVStorage } from "@/storage/kv";
 import type { DeliveryPurge } from "./delivery-purge";
-import type { DeliveryStore } from "./delivery-store";
+import { type DeliveryStore, ObjectChangedError } from "./delivery-store";
 
 export function memoryDeliveryStore() {
   const objects = new Map<
@@ -29,7 +29,18 @@ export function memoryDeliveryStore() {
   const log: string[] = [];
   let n = 0;
   const store: DeliveryStore = {
-    async putJson(key, value, cacheControl, metadata) {
+    async putJson(key, value, cacheControl, metadata, condition) {
+      // Conditional writes as R2 checks them: against the object right now.
+      const current = objects.get(key);
+      if (
+        condition &&
+        ("ifMatch" in condition
+          ? current?.etag !== condition.ifMatch
+          : current !== undefined)
+      ) {
+        log.push(`refused ${key}`);
+        throw new ObjectChangedError(key);
+      }
       const etag = `"etag${++n}"`;
       objects.set(key, {
         text: JSON.stringify(value),
@@ -275,3 +286,47 @@ export const SCHEMA_TEXT =
   '{\n  "version": "8.1.0-next.7",\n  "blocksMajor": 8,\n  "definitions": { "seo": { "type": "object", "title": "Seo" } },\n  "root": {}\n}\n';
 export const SCHEMA_HASH =
   "00b083655ee7af02aa92dbff85e402857bb1e50c253a579dbab23498a7842c98";
+
+/**
+ * The draft store as another API process has it: Studio runs several (pods,
+ * and two per pod), each with its own in-process draft lock, and a second
+ * instance of the module is one of them.
+ */
+export async function otherApiProcess(): Promise<
+  typeof import("./draft-store")
+> {
+  const specifier = "./draft-store";
+  return import(`${specifier}?process=2`);
+}
+
+/**
+ * A delivery store whose next PUT, once `hold()` is called, waits for
+ * `release()`: the writer has read the object, and another process's whole
+ * save can land before it writes. `atPut` resolves when the PUT is waiting.
+ */
+export function heldPuts(store: DeliveryStore) {
+  let gate: Promise<void> | null = null;
+  let open = () => {};
+  let reached = () => {};
+  const atPut = new Promise<void>((r) => (reached = r));
+  const held: DeliveryStore = {
+    ...store,
+    async putJson(...args) {
+      if (gate) {
+        const wait = gate;
+        gate = null;
+        reached();
+        await wait;
+      }
+      return store.putJson(...args);
+    },
+  };
+  return {
+    store: held,
+    hold: () => {
+      gate = new Promise<void>((r) => (open = r));
+    },
+    atPut,
+    release: () => open(),
+  };
+}

@@ -108,6 +108,7 @@ export function useContentPublishState(args: {
     sides: sides.data ?? null,
     lookup,
     meta,
+    hosted: backend.source === "github",
     ...(missingRules ? { missingRules } : {}),
     ...(missingRuleUses ? { missingRuleUses } : {}),
   });

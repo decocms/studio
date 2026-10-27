@@ -4,6 +4,7 @@ import { createReferencedBlockSaver } from "@/components/sections-editor/save-re
 import { useSaveBlock } from "@/components/sections-editor/use-save-block";
 import { RunnableBlockEditor } from "@/components/sandbox/content/runnable-block-editor";
 import { readSavedRunnableBlock } from "@/components/sandbox/content/runnable-catalog";
+import { HeldBlockView } from "@/components/sandbox/content/held-block-view";
 
 /**
  * Renders the loader editor (form + JSON) for a saved global loader, inline in
@@ -48,21 +49,30 @@ export function GlobalLoaderEditor({
   }
 
   return (
-    <RunnableBlockEditor
+    <HeldBlockView
       key={`loader:${blockKey}`}
       orgSlug={orgSlug}
       virtualMcpId={virtualMcpId}
       branch={branch}
-      previewUrl={previewUrl}
-      meta={meta}
-      decofile={decofile}
-      kind="loaders"
-      target={{ mode: "saved", blockKey, resolveType, title }}
-      initialValue={props}
-      isCreating={saveBlock.isPending}
-      onCreate={async () => {}}
-      onSaveReferencedBlock={saveReferencedBlock}
-      showRun={false}
-    />
+      blockKey={blockKey}
+      present={undefined}
+    >
+      <RunnableBlockEditor
+        key={`loader:${blockKey}`}
+        orgSlug={orgSlug}
+        virtualMcpId={virtualMcpId}
+        branch={branch}
+        previewUrl={previewUrl}
+        meta={meta}
+        decofile={decofile}
+        kind="loaders"
+        target={{ mode: "saved", blockKey, resolveType, title }}
+        initialValue={props}
+        isCreating={saveBlock.isPending}
+        onCreate={async () => {}}
+        onSaveReferencedBlock={saveReferencedBlock}
+        showRun={false}
+      />
+    </HeldBlockView>
   );
 }

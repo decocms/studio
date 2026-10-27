@@ -1,7 +1,9 @@
 /**
  * Publish for a hosted v8 site:
  *
- *   1. commit the draft directly to main (fast-forward only, no PR);
+ *   1. commit the draft directly on main's head (fast-forward only, no PR),
+ *      every draft block whole, over whatever main has for it (built again
+ *      when main moves meanwhile);
  *   2. write the commit's companion release, the immutable
  *      sites/<site>/revisions/<commit>.json;
  *   3. make it current: write latest.json and purge its URL from Cloudflare's
@@ -64,6 +66,7 @@ import {
   blocksDirPath,
   gitBlobSha,
   primeBlobCache,
+  uncachedBlockShas,
 } from "@/decofile/read-decofile";
 import {
   CACHE_LATEST,
@@ -79,7 +82,13 @@ import {
   type HostedDraftRef,
   isEmptyDraft,
 } from "./draft-store";
-import { buildRevision, schemaHashAt } from "./release-objects";
+import {
+  buildRevision,
+  buildRevisionFrom,
+  type SavedBlockFile,
+  schemaHashAt,
+  schemaHashInTree,
+} from "./release-objects";
 
 /** Main moved while the draft was being committed: nothing was published. */
 export class MainMovedError extends Error {
@@ -208,6 +217,12 @@ async function draftFileChanges(
   changes: FileChange[];
   tree: TreeEntry[];
   next: Map<string, BlockSource>;
+  /**
+   * The draft's deletions main has a file for. A save never reads main, so
+   * the draft also records deletions of names main never had (tombstones):
+   * those change nothing here.
+   */
+  deleted: string[];
 }> {
   const prefix = `${blocksDirPath(repo.packagePath)}/`;
   const tree = await repo.client.listDecofileEntries(headSha, repo.packagePath);
@@ -244,17 +259,21 @@ async function draftFileChanges(
     });
     await primeBlobCache(repo.client.repo, content);
   }
+  const deleted: string[] = [];
   for (const name of draft.delete) {
-    for (const path of groups.get(spellingKey(name)) ?? []) remove(path);
+    const paths = groups.get(spellingKey(name)) ?? [];
+    if (paths.length > 0) deleted.push(name);
+    for (const path of paths) remove(path);
   }
-  return { changes, tree, next };
+  return { changes, tree, next, deleted };
 }
 
 /**
  * One fast-forward commit of `changes` (block files) on main from `headSha`,
  * with `.deco/blocks.gen.json` regenerated from `next` when the repo tracks
- * it. Main having moved is {@link MainMovedError}: nothing is committed, no
- * retry. Shared by Publish and Reapply version.
+ * it. Main having moved is {@link MainMovedError}: nothing is committed.
+ * Shared by Publish (which builds it again on the new head) and Reapply
+ * version.
  */
 export async function commitBlocksToMain(
   repo: HostedRepo,
@@ -265,6 +284,7 @@ export async function commitBlocksToMain(
     next: Iterable<BlockSource>;
   },
   message: string,
+  memo: Map<string, string> = new Map(),
 ): Promise<string> {
   const changes = [...files.changes];
   const gen = await regenerateGenArtifact({
@@ -273,43 +293,150 @@ export async function commitBlocksToMain(
     packagePath: repo.packagePath,
     branch: repo.mainBranch,
     nextBlocks: files.next,
-    memo: new Map(),
+    memo,
   });
   if (gen) changes.push(gen);
   try {
     // No `rewriteFrom`: the ref only moves by fast-forward from `headSha`.
+    // The files' texts ride in the tree write: no blob upload per block.
     const { sha } = await repo.client.commitFiles({
       branch: repo.mainBranch,
       message,
       expectedHead: headSha,
       changes,
+      inlineContent: true,
     });
     return sha;
   } catch (error) {
-    // OPEN: O-9 — a non-fast-forward stops with "main moved", no retry.
+    // Main moved: the caller decides whether to build the commit again.
     if (error instanceof RepoWriteConflict) throw new MainMovedError();
     throw error;
   }
 }
 
+/** How often Publish rebuilds its commit on a main that moved meanwhile. */
+const PUBLISH_COMMIT_ATTEMPTS = 3;
+
 /**
- * Step 1: one fast-forward commit on main. Returns the commit sha, or null
- * when the draft changes nothing on main.
+ * What a commit Publish just made is made of, so its release is built
+ * without reading the commit back: its schemaHash (read lazily, only when
+ * the release is written) and its `.deco/blocks` files.
+ */
+export interface KnownRevision {
+  schemaHash: () => Promise<string>;
+  files: SavedBlockFile[];
+  memo?: Map<string, string>;
+}
+
+/**
+ * Step 1: one fast-forward commit on main's head. Returns the commit, or
+ * null when the draft changes nothing on main. The whole draft block wins
+ * over main's copy, whoever changed it there. When main moves while the
+ * commit is built (a developer's push), it is built again on the new head,
+ * a few times, so Publish isn't refused for it.
+ *
+ * Its GitHub cost doesn't grow with the draft: main's head and one listing
+ * of its `.deco/blocks`, then one tree write (the texts inline), the commit
+ * and the ref. The release is built from the same listing and texts
+ * ({@link KnownRevision}), never by listing and reading the new commit.
  */
 async function commitDraftToMain(
   repo: HostedRepo,
   draft: DraftBody,
-  message: string,
-): Promise<string | null> {
-  const headSha = await requireBranchHead(repo.client, repo.mainBranch);
-  const { changes, tree, next } = await draftFileChanges(repo, headSha, draft);
-  if (changes.length === 0) return null;
-  return commitBlocksToMain(
-    repo,
-    headSha,
-    { changes, tree, next: next.values() },
-    message,
-  );
+  /** The message, or built from the deletions main had (see draftFileChanges). */
+  message: string | ((deleted: string[]) => string),
+): Promise<{ sha: string; known: KnownRevision } | null> {
+  const memo = new Map<string, string>();
+  for (let attempt = 1; ; attempt++) {
+    const headSha = await requireBranchHead(repo.client, repo.mainBranch);
+    const { changes, tree, next, deleted } = await draftFileChanges(
+      repo,
+      headSha,
+      draft,
+    );
+    if (changes.length === 0) return null;
+    try {
+      const sha = await commitBlocksToMain(
+        repo,
+        headSha,
+        { changes, tree, next: next.values() },
+        typeof message === "string" ? message : message(deleted),
+        memo,
+      );
+      const prefix = `${blocksDirPath(repo.packagePath)}/`;
+      return {
+        sha,
+        known: {
+          // The commit changes block files (and blocks.gen.json) only: its
+          // schema is its parent's, whose `.deco` was just listed.
+          schemaHash: () =>
+            schemaHashInTree(repo.client, repo.packagePath, headSha),
+          files: [...next].map(([path, source]) => ({
+            file: path.slice(prefix.length),
+            source,
+          })),
+          memo,
+        },
+      };
+    } catch (error) {
+      if (
+        !(error instanceof MainMovedError) ||
+        attempt >= PUBLISH_COMMIT_ATTEMPTS
+      ) {
+        throw error;
+      }
+    }
+  }
+}
+
+/**
+ * The draft's names that main changed since the live release (latest.json's
+ * commit): a developer's commit touched their files. Publish keeps the
+ * draft's version of each (the review says so). Two tree listings, compared
+ * by blob sha; read for the review, never on a save. Empty without a live
+ * release, or when main's head is the live release.
+ */
+export async function draftNamesChangedOnMain(
+  repo: Pick<
+    HostedRepo,
+    "client" | "packagePath" | "mainBranch" | "store" | "site"
+  >,
+  draft: DraftBody,
+): Promise<string[]> {
+  const names = [...Object.keys(draft.set), ...draft.delete];
+  if (names.length === 0) return [];
+  const [head, latest] = await Promise.all([
+    requireBranchHead(repo.client, repo.mainBranch),
+    readLatest(repo.store, repo.site),
+  ]);
+  if (!latest || latest.revision === head) return [];
+  const prefix = `${blocksDirPath(repo.packagePath)}/`;
+  const groupsAt = async (sha: string) => {
+    const tree = await repo.client.listDecofileEntries(sha, repo.packagePath);
+    const groups = new Map<string, string[]>();
+    for (const entry of blockEntriesInTree(tree, repo.packagePath)) {
+      const group = fullyDecodeFileName(entry.path.slice(prefix.length)).name;
+      groups.set(group, [
+        ...(groups.get(group) ?? []),
+        `${entry.path}@${entry.sha}`,
+      ]);
+    }
+    return groups;
+  };
+  const [released, now] = await Promise.all([
+    groupsAt(latest.revision),
+    groupsAt(head),
+  ]);
+  const same = (a: string[] = [], b: string[] = []) =>
+    a.length === b.length && [...a].sort().join() === [...b].sort().join();
+  return [
+    ...new Set(
+      names.filter((name) => {
+        const group = spellingKey(name);
+        return !same(released.get(group), now.get(group));
+      }),
+    ),
+  ].sort();
 }
 
 /**
@@ -319,17 +446,69 @@ async function commitDraftToMain(
 export async function ensureRevision(
   repo: HostedRepo,
   sha: string,
+  known?: KnownRevision,
 ): Promise<string> {
   if (await hasRevision(repo.store, repo.site, sha)) {
-    return schemaHashAt(repo.client, repo.packagePath, sha);
+    return known
+      ? known.schemaHash()
+      : schemaHashAt(repo.client, repo.packagePath, sha);
   }
-  const revision = await buildRevision(repo.client, repo.packagePath, sha);
+  const revision = known
+    ? await buildRevisionFrom(repo.client, sha, {
+        schemaHash: await known.schemaHash(),
+        files: known.files,
+        memo: await primeFromLiveRelease(repo, known),
+      })
+    : await buildRevision(repo.client, repo.packagePath, sha);
   await repo.store.putJson(
     deliveryKeys.revision(repo.site, sha),
     { ...revision, previewHosts: [...repo.previewHosts] },
     CACHE_REVISION,
   );
   return revision.schemaHash;
+}
+
+/**
+ * The texts a release built from `known` needs, as far as the blob cache and
+ * the live release hold them, so its unchanged blocks aren't read from
+ * GitHub one by one (a replica whose cache is cold). The live release
+ * (latest.json's revision object, two bucket reads) holds every block it
+ * released; each one whose serialized text has a blob sha the commit lists
+ * is that file's text. Read only when the cache misses some; best effort.
+ */
+async function primeFromLiveRelease(
+  repo: HostedRepo,
+  known: KnownRevision,
+): Promise<Map<string, string>> {
+  const memo = known.memo ?? new Map<string, string>();
+  const missing = await uncachedBlockShas(
+    repo.client,
+    known.files.map((f) => f.source),
+    memo,
+  );
+  if (missing.length === 0) return memo;
+  try {
+    const latest = await readLatest(repo.store, repo.site);
+    if (!latest) return memo;
+    const released = await getJson(
+      repo.store,
+      deliveryKeys.revision(repo.site, latest.revision),
+    );
+    const blocks = (released?.value as { blocks?: unknown } | null)?.blocks;
+    if (!blocks || typeof blocks !== "object") return memo;
+    const wanted = new Set(missing);
+    for (const entry of Object.values(blocks)) {
+      const text = serializeBlock(entry);
+      const blobSha = gitBlobSha(text);
+      if (wanted.has(blobSha)) memo.set(blobSha, text);
+    }
+  } catch (error) {
+    console.warn("hosted publish: the live release couldn't prime the build", {
+      site: repo.site,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+  return memo;
 }
 
 /**
@@ -426,8 +605,11 @@ export async function publishDraft(
   // The release first, then the draft: any render of the emptied draft
   // happens after latest.json names the new release. A release that isn't
   // current keeps the draft for "Try again".
-  const releaseThenEmpty = async (sha: string): Promise<PublishResult> => {
-    const release = await releaseCommit(repo, sha, hooks);
+  const releaseThenEmpty = async (
+    sha: string,
+    known?: KnownRevision,
+  ): Promise<PublishResult> => {
+    const release = await releaseCommit(repo, sha, hooks, known);
     if (release !== "current") {
       return draft.etag
         ? { result: "merged", sha, release, draftEtag: draft.etag }
@@ -436,19 +618,22 @@ export async function publishDraft(
     await emptyDraft();
     return { result: "merged", sha, release };
   };
-  const sha = await commitDraftToMain(
+  const committed = await commitDraftToMain(
     repo,
     draft.body,
     note.message.trim()
       ? appendCoAuthorTrailer(note.message.trim(), note.coAuthor)
-      : decofileCommitMessage(
-          Object.keys(draft.body.set),
-          draft.body.delete,
-          note.coAuthor,
-        ),
+      : // Deletions of names main never had (the save path can't see
+        // main) are no "delete …" in the commit.
+        (deleted) =>
+          decofileCommitMessage(
+            Object.keys(draft.body.set),
+            deleted,
+            note.coAuthor,
+          ),
   );
   // Nothing committed.
-  if (sha === null) {
+  if (committed === null) {
     // The draft's changes are all on main already. Live (latest.json names
     // main's head): the draft is emptied, latest.json left alone. Not live (a
     // Publish whose release failed, its "Try again" gone with the tab, or
@@ -462,7 +647,7 @@ export async function publishDraft(
     }
     return releaseThenEmpty(unreleased);
   }
-  return releaseThenEmpty(sha);
+  return releaseThenEmpty(committed.sha, committed.known);
 }
 
 /**
@@ -517,10 +702,11 @@ export async function releaseCommit(
   repo: HostedRepo,
   sha: string,
   hooks: PublishHooks = {},
+  known?: KnownRevision,
 ): Promise<ReleaseOutcome> {
   let schemaHash: string;
   try {
-    schemaHash = await ensureRevision(repo, sha);
+    schemaHash = await ensureRevision(repo, sha, known);
   } catch (error) {
     logCdnFailure(repo, sha, "release write", error);
     return "none";

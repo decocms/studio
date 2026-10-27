@@ -8015,6 +8015,19 @@ export interface StudioToolIO {
     input: { configId: string; key: string };
     output: { success: true };
   };
+  FILE_OBJECT_UPLOAD: {
+    input: { configId: string; files: { url: string; filename: string }[] };
+    output: {
+      files: {
+        url: string;
+        publicUrl?: string | undefined;
+        key?: string | undefined;
+        contentType?: string | undefined;
+        size?: number | undefined;
+        error?: string | undefined;
+      }[];
+    };
+  };
   ORG_FS_PUBLIC_SETS_SYNC: {
     input: { [x: string]: never };
     output: {

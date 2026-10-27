@@ -83,9 +83,11 @@ export function useSeoFormSave({
 }: UseSeoFormSaveParams) {
   const queryClient = useQueryClient();
   const cacheKey = `${orgSlug}/${virtualMcpId}/${branch}`;
-  const { save, flush, isPending } = useDebouncedSaveBlock(
+  // The form keeps its own copy of the SEO values: hosted saves are
+  // guarded by the copy the editor shows.
+  const { save, flush, isPending, hold } = useDebouncedSaveBlock(
     { orgSlug, virtualMcpId, branch },
-    { onSaved },
+    { onSaved, holdsCopy: true },
   );
 
   const persistSeo = (seoValue: Record<string, unknown> | null) => {
@@ -112,5 +114,5 @@ export function useSeoFormSave({
     });
   };
 
-  return { persistSeo, persistRawSeo, flush, isPending };
+  return { persistSeo, persistRawSeo, flush, isPending, hold };
 }

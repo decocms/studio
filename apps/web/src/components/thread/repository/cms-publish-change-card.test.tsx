@@ -51,6 +51,22 @@ describe("PublishChangeCard", () => {
     expect(body.getByRole("button", { name: "Discard" })).not.toBeDisabled();
   });
 
+  test("a hosted blog record reads as a Post, not a Global section", () => {
+    cleanup();
+    const body = renderCard({
+      ...promo(),
+      kind: "block",
+      blockKey: "blog-manager/posts/b10900000002",
+      name: "Raincoats for wide backs",
+      pagePath: null,
+      blogKind: "post",
+    });
+    expect(body.getByText("Raincoats for wide backs")).toBeTruthy();
+    expect(body.getByText("Post")).toBeTruthy();
+    expect(body.queryByText("Global section")).toBeNull();
+    expect(body.queryByText(/blog-manager/)).toBeNull();
+  });
+
   test("says nothing when every test and campaign exists", () => {
     const body = renderCard(promo());
     expect(body.queryByTestId("publish-change-missing-rule")).toBeNull();
