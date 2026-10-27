@@ -144,7 +144,9 @@ export function conflictHeading(
     ? undefined
     : (author?.shortName ?? author?.name?.split(/\s+/)[0]);
   const vars = {
-    field: field ? fieldInSentence(field.label) : "",
+    // A window that names the block (hosted v8 only) names the field as
+    // its form labels it: "the About of", never "the about of".
+    field: field ? (block ? field.label : fieldInSentence(field.label)) : "",
     label: field?.label ?? "",
     name: name ?? "",
     block: block ?? "",

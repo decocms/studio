@@ -267,10 +267,12 @@ export interface ConflictField {
 export function conflictFields(
   plan: FormConflictPlan,
   schema?: SchemaProperty | null,
+  /** A key the schema doesn't title reads as the form titles it (hosted v8). */
+  titleUntitled = false,
 ): ConflictField[] {
   return plan.pointers.map((pointer) => ({
     pointer,
-    label: conflictFieldLabel(pointer, schema),
+    label: conflictFieldLabel(pointer, schema, titleUntitled),
     mine: valueAtPointer(plan.mine, pointer),
     theirs: valueAtPointer(plan.theirs, pointer),
     schema: schemaAtPointer(schema ?? null, pointer),

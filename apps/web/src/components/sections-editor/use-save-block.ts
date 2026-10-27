@@ -530,7 +530,7 @@ export function useSaveBlock(
             ? {}
             : await askNamedRuleConflict(
                 plan,
-                conflictFields(plan, blockSchema(params, stored)),
+                conflictFields(plan, blockSchema(params, stored), true),
                 {
                   block: globalSectionLabel(blockKey, stored),
                   author: { draft: params, blockKey },

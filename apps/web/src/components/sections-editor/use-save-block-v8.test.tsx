@@ -160,7 +160,12 @@ mock.module("./named-rule-conflict", () => ({
   },
   askNamedRuleConflict: async (
     plan: { pointers: string[] },
-    fields: Array<{ pointer: string; mine: unknown; theirs: unknown }>,
+    fields: Array<{
+      pointer: string;
+      label?: string;
+      mine: unknown;
+      theirs: unknown;
+    }>,
     about?: { block?: string; author?: { blockKey: string } | null },
   ) => {
     asked.fields = fields;
@@ -508,6 +513,23 @@ describe("every hosted v8 save is guarded by the draft (no guard of its own)", (
       { Hero: "h2" },
     ]);
     expect(server.blocks.Hero).toEqual({ title: "mine" });
+  });
+
+  it("a value the block's schema doesn't title is labeled as the form labels it", async () => {
+    const { queryClient, result } = setup();
+    server.draftInRefusal = true;
+    server.blocks = { Hero: { aboutText: "theirs" } };
+    queryClient.setQueryData(KEYS.decofile(CACHE_KEY), {
+      Hero: { aboutText: "loaded" },
+    });
+    draftHolds(queryClient, { Hero: "h1" });
+    await act(async () => {
+      await result.current.mutateAsync({
+        blockKey: "Hero",
+        data: { aboutText: "mine" },
+      });
+    });
+    expect(asked.fields.map((f) => f.label)).toEqual(["About Text"]);
   });
 
   it("taking theirs writes nothing more and says so", async () => {

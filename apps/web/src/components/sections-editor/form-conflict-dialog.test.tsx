@@ -502,13 +502,16 @@ describe("who made the other change (hosted v8)", () => {
     const named = render(
       <Heading only={headline} author={ana(minutesAgo(1))} block="Footer" />,
     );
+    // Named as the block's form labels it (only hosted v8 windows name the
+    // block), never lowercased into the sentence: "the About of", not "the
+    // about of".
     expect(named.getByRole("heading")).toHaveTextContent(
-      'Ana changed the headline of "Footer" while you were editing',
+      'Ana changed the Headline of "Footer" while you were editing',
     );
     named.unmount();
     const unknown = render(<Heading only={headline} block="Footer" />);
     expect(unknown.getByRole("heading")).toHaveTextContent(
-      'Someone else changed the headline of "Footer" while you were editing',
+      'Someone else changed the Headline of "Footer" while you were editing',
     );
   });
 
