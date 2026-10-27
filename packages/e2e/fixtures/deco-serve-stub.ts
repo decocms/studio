@@ -170,7 +170,6 @@ export interface DecoServeStub {
 export async function startDecoServeStub(params: {
   schema: object;
   files?: Record<string, string>;
-  secretsPublicKey?: string;
   /** What `describe.preview` points at (the dev app, `deco serve --preview`). */
   previewUrl?: string;
   /** The port to listen on; any free one by default. */
@@ -185,12 +184,6 @@ export async function startDecoServeStub(params: {
     join(root, ".deco", "schema.gen.json"),
     JSON.stringify(params.schema),
   );
-  if (params.secretsPublicKey) {
-    await writeFile(
-      join(root, ".deco", "secrets.pub"),
-      params.secretsPublicKey,
-    );
-  }
   for (const [file, text] of Object.entries(params.files ?? {})) {
     await writeFile(join(blocksDir, file), text);
   }

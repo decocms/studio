@@ -763,9 +763,10 @@ describe("decofile routes", () => {
       const body = (await res.json()) as {
         result?: { revision: string; versions: Record<string, unknown> };
       };
+      // The draft records the deletion: it answers the tombstone's version.
       expect(body.result?.versions).toEqual({
         "pages-home": expect.any(String),
-        Gone: null,
+        Gone: "tombstone",
       });
       expect(body.result?.revision).toMatch(/^~/);
       expect(repo.opened()).toBe(0);
