@@ -287,6 +287,10 @@ const fileChangedDebounce = 300 * time.Millisecond
 // answering the wrong question, so the ceiling is generous and loud when hit.
 const skillLinkWait = 40 * time.Second
 
+// How long a dispatch waits on a clone that shows no progress. Generous: the
+// wait ends when the clone does, so this only bounds a wedged one.
+const checkoutStall = 2 * time.Minute
+
 func (d *daemon) emitFileChanged(path string) {
 	d.fileChangedMu.Lock()
 	defer d.fileChangedMu.Unlock()
@@ -1145,6 +1149,7 @@ func main() {
 		ConfigPath: os.Getenv("ORGFS_SIDECAR_CONFIG_PATH"),
 		// Default off: a repoint runs on every dispatch.
 		PruneEmptyThreadDirs: os.Getenv("ORGFS_PRUNE_EMPTY_THREAD_DIRS") == "1",
+		CheckoutBusy:         d.orchestrator.CheckoutInFlight,
 	}
 	// Beside the status file: that is where the sidecar looks for it.
 	if p := d.orgFsLinks.StatusPath; p != "" {
@@ -1208,6 +1213,8 @@ func main() {
 		})
 		d.autosave.Start()
 	}
+	// Default off: it holds back every dispatch that lands mid-clone.
+	waitForCheckout := os.Getenv("DISPATCH_WAIT_FOR_CHECKOUT") == "1"
 	d.dispatchDeps = dispatch.Deps{
 		DaemonToken:      d.getToken,
 		AppRoot:          appRoot,
@@ -1267,6 +1274,15 @@ func main() {
 			// token rotates.
 			writeGlabConfig(d.store.Read())
 			step("glab")
+			// A run dispatched right after the config push otherwise starts on
+			// a checkout the clone is still writing, and sees an empty repo.
+			if waitForCheckout {
+				if !d.orchestrator.WaitCheckout(checkoutStall) {
+					slog.Warn("checkout stalled; running on a partial checkout",
+						"run_id", info.ThreadId)
+				}
+				step("checkout")
+			}
 			// Two different waits, in dependency order. This one is for the org
 			// HOME volume to be attached at all: it is what the thread's saved
 			// Claude Code session is restored from, and what the user-scope skills
