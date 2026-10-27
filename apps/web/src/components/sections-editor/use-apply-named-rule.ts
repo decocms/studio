@@ -99,7 +99,7 @@ export function planNamedRuleApply(
  * name ('A/B test "hero"'), never a path ("A/B tests › hero"). Other values
  * (a page's rule) keep their labels.
  */
-export function namedRuleConflictField(
+function namedRuleConflictField(
   t: TFunction,
   field: ConflictField,
 ): ConflictField {
