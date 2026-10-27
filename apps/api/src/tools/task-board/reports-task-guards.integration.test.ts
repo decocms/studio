@@ -156,6 +156,7 @@ describe("reports-task guards", () => {
   it("the paywall fires BEFORE the delegation write (no delegated-but-idle task)", async () => {
     const config = {
       enforced: true,
+      kanbanExempt: false,
       freeTaskExecutions: 1,
       monthlyTaskExecutions: 1,
       maxRunsPerTask: 5,
@@ -186,6 +187,7 @@ describe("reports-task guards", () => {
   it("a HUMAN re-delegating a runs-exhausted task is not blocked by the per-task cap", async () => {
     const config = {
       enforced: true,
+      kanbanExempt: false,
       freeTaskExecutions: 5,
       monthlyTaskExecutions: 5,
       maxRunsPerTask: 1,

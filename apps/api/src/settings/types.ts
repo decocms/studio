@@ -173,6 +173,9 @@ export interface Settings {
   // Task-execution quota (billing/task-quota.ts). Dormant unless enforced —
   // self-hosted deployments never turn it on.
   taskQuotaEnforced: boolean;
+  /** Skip the quota for orgs whose gateway plan has `kanban` — unlimited
+   *  tasks there (STUDIO_TASK_QUOTA_KANBAN_EXEMPT, default off). */
+  taskQuotaKanbanExempt: boolean;
   /** Lifetime free executions of reports-pushed tasks per org (default 3). */
   freeTaskExecutions: number;
   /** Executions per billing cycle while subscribed (default 10). */
