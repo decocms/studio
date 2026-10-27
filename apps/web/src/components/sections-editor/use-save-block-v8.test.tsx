@@ -138,7 +138,12 @@ mock.module("@/hooks/use-local-preview-url", () => ({
 /** The reconcile flow's answers: every value in conflict on `asked.choice`. */
 const asked = {
   choice: "mine" as "mine" | "theirs",
-  fields: [] as Array<{ pointer: string; mine: unknown; theirs: unknown }>,
+  fields: [] as Array<{
+    pointer: string;
+    label?: string;
+    mine: unknown;
+    theirs: unknown;
+  }>,
   /** "Keep my version" / "Leave it deleted" questions asked. */
   deleted: [] as Array<{ kind: string; label: string }>,
   /** Runs as a question opens (what the editor shows meanwhile). */
@@ -569,9 +574,7 @@ describe("every hosted v8 save is guarded by the draft (no guard of its own)", (
           data: { title: "mine", name: "Hero banner" },
         });
       });
-      expect(asked.deleted).toEqual([
-        { kind: "theyDeleted", label: "Hero" },
-      ]);
+      expect(asked.deleted).toEqual([{ kind: "theyDeleted", label: "Hero" }]);
       if (choice === "mine") {
         expect(server.applied.map((p) => p.ifMatch)).toEqual([
           { Hero: "h1" },
@@ -1324,9 +1327,7 @@ describe("hosted v8 deletes and moves are guarded by the draft too", () => {
               failure = error;
             });
         });
-        expect(asked.deleted).toEqual([
-          { kind: "theyDeleted", label: "Hero" },
-        ]);
+        expect(asked.deleted).toEqual([{ kind: "theyDeleted", label: "Hero" }]);
         expect(shownWhileAsked).toEqual({
           title: "loaded",
           name: "Hero banner",

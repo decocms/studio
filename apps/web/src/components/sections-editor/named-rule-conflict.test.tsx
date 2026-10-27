@@ -60,7 +60,7 @@ describe("askDeletedConflict", () => {
 });
 
 describe("askNamedRuleConflict on a hosted v8 draft", () => {
-  test("opens once it knows who changed it: their name from the start, never \"Someone else\" first", async () => {
+  test('opens once it knows who changed it: their name from the start, never "Someone else" first', async () => {
     const queryClient = new QueryClient();
     queryClient.setQueryData(["acme", "members"], {
       data: {
@@ -115,7 +115,10 @@ describe("askNamedRuleConflict on a hosted v8 draft", () => {
           new Response(
             JSON.stringify({
               changedBy: {
-                experiments: { userId: "u-demo2", at: new Date().toISOString() },
+                experiments: {
+                  userId: "u-demo2",
+                  at: new Date().toISOString(),
+                },
               },
             }),
             { headers: { "content-type": "application/json" } },

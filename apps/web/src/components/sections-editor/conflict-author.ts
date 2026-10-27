@@ -15,11 +15,7 @@
  */
 
 import { spellingKey } from "@decocms/blocks/protocol";
-import {
-  useIsFetching,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { useIsFetching, useQuery, useQueryClient } from "@tanstack/react-query";
 import { mainSchemaHeaders } from "@/hooks/main-schema-changed";
 import { useMembersQuery } from "@/hooks/use-members";
 import { authClient } from "@/lib/auth-client";

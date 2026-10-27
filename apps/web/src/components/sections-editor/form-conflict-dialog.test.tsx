@@ -527,14 +527,16 @@ describe("who made the other change (hosted v8)", () => {
         }}
       />,
     );
-    expect(view.getByRole("heading")).toHaveTextContent(
-      /^Demo 2 changed the /,
-    );
+    expect(view.getByRole("heading")).toHaveTextContent(/^Demo 2 changed the /);
   });
 
   test("a value that isn't a form's field (an A/B test) is named by its phrase alone", () => {
     const test = [
-      { ...headline[0]!, label: 'A/B test "hero"', phrase: 'the A/B test "hero"' },
+      {
+        ...headline[0]!,
+        label: 'A/B test "hero"',
+        phrase: 'the A/B test "hero"',
+      },
     ];
     const named = render(<Heading only={test} author={ana(minutesAgo(1))} />);
     expect(named.getByRole("heading")).toHaveTextContent(
