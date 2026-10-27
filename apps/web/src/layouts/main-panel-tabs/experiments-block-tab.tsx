@@ -46,8 +46,13 @@ import {
   useNamedRuleView,
 } from "@/components/sections-editor/named-rule-view";
 import {
+  copyScope,
+  useCopyEpochs,
+} from "@/components/sections-editor/held-copy";
+import {
   canRenameExperiment,
   type ExperimentStatus,
+  namedRuleKindInfo,
 } from "@/components/sections-editor/named-rules";
 import { useT } from "@/i18n/use-t.ts";
 import {
@@ -146,7 +151,7 @@ export function ExperimentsBlockTab({
   );
 }
 
-function ExperimentsBlockReady({
+export function ExperimentsBlockReady({
   orgSlug,
   virtualMcpId,
   branch,
@@ -162,6 +167,11 @@ function ExperimentsBlockReady({
     decofile,
     meta,
   });
+  // A reconcile of the tests (hosted v8) replaced the copy the detail
+  // shows: it shows the draft's copy again.
+  const copyEpoch = useCopyEpochs(copyScope({ orgSlug, virtualMcpId, branch }))(
+    EXPERIMENTS_BLOCK,
+  );
 
   if (view.blocked === "missing") {
     return (
@@ -204,7 +214,7 @@ function ExperimentsBlockReady({
   if (opened) {
     return (
       <ExperimentBlockDetail
-        key={opened.name}
+        key={`${opened.name}:${copyEpoch}`}
         {...namedRuleDetailProps(view, opened, {
           decofile,
           meta,
@@ -315,24 +325,51 @@ function ExperimentBlockRow({
   );
 }
 
+const EXPERIMENTS_BLOCK = namedRuleKindInfo("experiments").blockKey;
+
 function ExperimentBlockDetail(
   props: NamedRuleDetailProps<ExperimentRowModel>,
 ) {
-  const { row, decofile, meta, uses, pending, onBack, onOpenUse, onSave } =
-    props;
+  const {
+    row,
+    decofile,
+    meta,
+    uses,
+    pending,
+    holdsCopy,
+    onBack,
+    onOpenUse,
+    onSave,
+  } = props;
   const t = useT();
-  // The share being edited; `null` shows the share as stored. A save hands
-  // the slider back to what is stored, which after a reconcile ("take
-  // theirs") is their share, not the one typed here.
-  const [editing, setShare] = useState<number | null>(null);
-  const share = editing ?? row.share;
+  // The share being edited, and the tests as they were when it was first
+  // moved (the copy it is built on); `null` shows the share as stored. A
+  // save hands the slider back to what is stored, which after a reconcile
+  // ("take theirs") is their share, not the one typed here.
+  const [editing, setEditing] = useState<{
+    share: number;
+    basis: unknown;
+  } | null>(null);
+  const setShare = (value: number) =>
+    setEditing((now) => ({
+      share: value,
+      basis: now ? now.basis : decofile[EXPERIMENTS_BLOCK],
+    }));
+  const share = editing?.share ?? row.share;
   const shareDirty = share !== row.share;
   const rename = useNamedRuleRename("experiments", props);
 
-  const setTo = (value: number) =>
+  const setTo = (value: number) => {
+    const change = planNamedRuleSet(decofile, "experiments", row.name, value);
+    // Hosted v8: guarded by the tests as the share was moved on, or as
+    // shown now for a share set by a button.
+    const basis = editing ? editing.basis : decofile[EXPERIMENTS_BLOCK];
     void onSave(
-      planNamedRuleSet(decofile, "experiments", row.name, value),
-    ).then((ok) => ok && setShare(null));
+      change && holdsCopy
+        ? { ...change, basis: { [EXPERIMENTS_BLOCK]: basis } }
+        : change,
+    ).then((ok) => ok && setEditing(null));
+  };
 
   const { useRows, wholeRows } = namedRuleDetailUses(
     "experiments",
@@ -390,7 +427,7 @@ function ExperimentBlockDetail(
                   size="sm"
                   variant="ghost"
                   disabled={pending}
-                  onClick={() => setShare(null)}
+                  onClick={() => setEditing(null)}
                 >
                   {t("experiments.v8.split.reset", {
                     share: String(row.share),

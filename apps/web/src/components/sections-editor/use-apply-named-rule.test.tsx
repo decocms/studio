@@ -175,7 +175,12 @@ const conflictHost = {
   asked: [] as Array<{ pointers: string[] }>,
   /** The fields and the block each values question was asked with. */
   shown: [] as Array<{
-    fields: Array<{ label: string; phrase?: string }>;
+    fields: Array<{
+      label: string;
+      phrase?: string;
+      mine?: unknown;
+      theirs?: unknown;
+    }>;
     about?: { author?: { blockKey: string } | null };
   }>,
   deleted: [] as Array<{ kind: string; label: string }>,
@@ -219,6 +224,7 @@ mock.module("@/hooks/use-local-preview-url", () => ({
 const { planNamedRuleApply, useApplyNamedRule } = await import(
   "./use-apply-named-rule"
 );
+const { copyScope, useCopyEpochs } = await import("./held-copy");
 const { pollProtocolContent, useRereadOnWriteElsewhere } = await import(
   "./content-protocol-api"
 );
@@ -852,5 +858,105 @@ describe("useApplyNamedRule: reconcile (someone else saved first)", () => {
     // Theirs: the page stays removed, nothing more is written.
     expect(outcome).toEqual({ ok: true, keptTheirs: true });
     expect(server.blocks.home).toBeUndefined();
+  });
+});
+
+describe("useApplyNamedRule: a change built on the copy an editor shows (hosted v8)", () => {
+  const seed = {
+    __resolveType: "calendar",
+    bf: {
+      start: "2026-11-27T00:00:00-03:00",
+      end: "2026-12-01T00:00:00-03:00",
+    },
+  };
+  const bruno = {
+    __resolveType: "calendar",
+    bf: { ...seed.bf, end: "2026-12-16T18:00:00-03:00" },
+  };
+  const ana = {
+    __resolveType: "calendar",
+    bf: { ...seed.bf, end: "2026-12-10T18:00:00-03:00" },
+  };
+
+  /** A poll already brought Bruno's dates; the form still shows the seed. */
+  function setupPolled() {
+    const setup$ = setup();
+    server.blocks.campaigns = bruno;
+    server.versions.campaigns = "campaigns@bruno";
+    setup$.queryClient.setQueryData(KEYS.decofile(CACHE_KEY), {
+      home,
+      campaigns: bruno,
+    });
+    setup$.queryClient.setQueryData(KEYS.contentVersions(CACHE_KEY), {
+      home: "home@0",
+      campaigns: "campaigns@bruno",
+    });
+    setup$.queryClient.setQueryData(
+      KEYS.contentChanges(CACHE_KEY),
+      listedChanges(),
+    );
+    return setup$;
+  }
+
+  it("asks about a value the draft changed since the copy was shown, never writes over it", async () => {
+    const { result } = setupPolled();
+    conflictHost.answer = (plan) =>
+      Object.fromEntries(plan.pointers.map((p) => [p, "theirs" as const]));
+    let outcome: unknown;
+    await act(async () => {
+      outcome = await result.current.apply({
+        writes: { campaigns: ana },
+        basis: { campaigns: seed },
+      });
+    });
+    expect(conflictHost.asked.map((plan) => plan.pointers)).toEqual([
+      ["/campaigns/bf/end"],
+    ]);
+    expect(server.applied).toHaveLength(0);
+    expect(server.blocks.campaigns).toEqual(bruno);
+    expect(outcome).toEqual({ ok: true, keptTheirs: true });
+  });
+
+  it("saves as before when the draft still holds the copy shown", async () => {
+    const { result } = setupPolled();
+    let outcome: unknown;
+    await act(async () => {
+      outcome = await result.current.apply({
+        writes: { campaigns: ana },
+        basis: { campaigns: bruno },
+      });
+    });
+    expect(outcome).toEqual({ ok: true });
+    expect(conflictHost.asked).toHaveLength(0);
+    expect(server.blocks.campaigns).toEqual(ana);
+    expect(server.applied.at(-1)?.ifMatch).toEqual({
+      campaigns: "campaigns@bruno",
+    });
+  });
+
+  it("after any reconcile, the editors of the blocks it touched show the draft's copy again", async () => {
+    const { result, queryClient } = setupPolled();
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    const epochs = renderHook(
+      () =>
+        useCopyEpochs(
+          copyScope({ orgSlug: ORG, virtualMcpId: VM, branch: BRANCH }),
+        ),
+      { wrapper },
+    );
+    const before = epochs.result.current("campaigns");
+    conflictHost.answer = (plan) =>
+      Object.fromEntries(plan.pointers.map((p) => [p, "theirs" as const]));
+    await act(async () => {
+      await result.current.apply({
+        writes: { campaigns: ana },
+        basis: { campaigns: seed },
+      });
+      // Bumped once the cache's readers rendered (the next tick).
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(epochs.result.current("campaigns")).toBe(before + 1);
   });
 });

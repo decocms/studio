@@ -10,6 +10,7 @@ import {
 } from "@decocms/ui/components/dialog.tsx";
 import { MonacoCodeEditor } from "@/components/monaco-editor";
 import { useT } from "@/i18n/use-t.ts";
+import { keptTheirVersion, useSaveBlock } from "./use-save-block";
 
 interface PageJsonDialogProps {
   open: boolean;
@@ -57,8 +58,11 @@ export function PageJsonDialog({
     }
     setSaving(true);
     try {
-      await onSave(parsed);
-      toast.success(t("sectionsEditor.pageJsonDialog.saveSuccess"));
+      const result = await onSave(parsed);
+      // The user kept their version: the save's own toast says so.
+      if (!keptTheirVersion(result)) {
+        toast.success(t("sectionsEditor.pageJsonDialog.saveSuccess"));
+      }
       onOpenChange(false);
     } catch (err) {
       toast.error(
@@ -123,5 +127,26 @@ export function PageJsonDialog({
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * The page's JSON, saved: the dialog keeps the copy it opened with, so on a
+ * hosted v8 draft its save is guarded by that copy (`holdsCopy`) and a page
+ * someone else changed meanwhile is reconciled, never written over. Other
+ * backends save as before.
+ */
+export function SavedPageJsonDialog({
+  params,
+  ...props
+}: Omit<PageJsonDialogProps, "onSave"> & {
+  params: { orgSlug: string; virtualMcpId: string; branch: string };
+}) {
+  const save = useSaveBlock(params, { holdsCopy: true });
+  return (
+    <PageJsonDialog
+      {...props}
+      onSave={(data) => save.mutateAsync({ blockKey: props.pageKey, data })}
+    />
   );
 }

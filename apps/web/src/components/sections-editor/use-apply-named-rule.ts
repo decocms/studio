@@ -1,4 +1,8 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  notifyManager,
+  useMutation,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ContentProtocolError, ErrorCode } from "@decocms/blocks/protocol";
 import {
@@ -21,6 +25,7 @@ import {
   decofileWriteScope,
 } from "./decofile-api";
 import { conflictAuthorDraft } from "./conflict-author";
+import { bumpCopyEpoch, copyScope } from "./held-copy";
 import { type ConflictField, resolveFormConflict } from "./form-conflict";
 import {
   askHostedConflict,
@@ -50,6 +55,14 @@ export interface NamedRuleChange {
   writes: Record<string, Record<string, unknown>>;
   /** Blocks removed. */
   deletes?: string[];
+  /**
+   * The copies an editor shows and built the change on (a campaign's dates
+   * typed into a form seeded from `campaigns`), by block; `undefined` for a
+   * block it holds none of. On a hosted v8 draft a block whose copy the
+   * draft no longer holds is reconciled from that copy, never written over
+   * what the editor didn't show. Other backends: ignored.
+   */
+  basis?: Record<string, unknown>;
 }
 
 export type NamedRuleApplyPlan =
@@ -206,6 +219,7 @@ export function useApplyNamedRule({
   const queryClient = useQueryClient();
   const backend = useContentBackend(virtualMcpId, branch);
   const protocol = backend.kind === "protocol" ? backend : null;
+  const hosted = protocol?.source === "github";
   const cacheKey = useDecofileCacheKey({ orgSlug, virtualMcpId, branch });
   const params = { orgSlug, virtualMcpId, branch };
   const queryKey = KEYS.decofile(cacheKey);
@@ -257,7 +271,27 @@ export function useApplyNamedRule({
    * refused blocks, so the question opens with nothing read.
    */
   const reconcile = async (
-    change: Required<NamedRuleChange>,
+    change: Required<Omit<NamedRuleChange, "basis">>,
+    copies: Record<string, unknown> | undefined,
+    round: number,
+    refusal?: unknown,
+  ): Promise<NamedRuleApplyOutcome> => {
+    const outcome = await reconcileOnce(change, copies, round, refusal);
+    // Whatever it ended on (theirs, a merge, the stored copies to look at),
+    // the editors of these blocks (hosted v8) show the draft's copy again,
+    // once the cache's readers rendered it.
+    if (hosted && !(!outcome.ok && outcome.reason === "unavailable")) {
+      const scope = copyScope(params);
+      const touched = [...Object.keys(change.writes), ...change.deletes];
+      notifyManager.schedule(() => {
+        for (const blockKey of touched) bumpCopyEpoch(scope, blockKey);
+      });
+    }
+    return outcome;
+  };
+
+  const reconcileOnce = async (
+    change: Required<Omit<NamedRuleChange, "basis">>,
     copies: Record<string, unknown> | undefined,
     round: number,
     refusal?: unknown,
@@ -335,6 +369,11 @@ export function useApplyNamedRule({
     if (touched.length === 0) return { ok: true };
     const previous =
       queryClient.getQueryData<Record<string, unknown>>(queryKey);
+    // Built on a copy the draft no longer holds (a poll brought someone
+    // else's change while the form showed the older one): reconciled from
+    // the copy shown, so nothing it didn't show is written over.
+    const shown = hosted ? staleBasis(change.basis, previous) : null;
+    if (shown) return reconcile({ writes, deletes }, shown, round);
     const pinned = await pinVersions(touched, previous);
     if (!pinned) return reconcile({ writes, deletes }, previous, round);
     const before = new Map<string, unknown>();
@@ -376,6 +415,29 @@ export function useApplyNamedRule({
       );
       return { ok: false, reason: "failed" };
     }
+  };
+
+  /**
+   * The copies a change was built on (`basis`) over the cache, when one of
+   * them isn't the draft's copy any more; null when the cache holds them all.
+   */
+  const staleBasis = (
+    basis: Record<string, unknown> | undefined,
+    cache: Record<string, unknown> | undefined,
+  ): Record<string, unknown> | null => {
+    if (!basis) return null;
+    const stale = Object.keys(basis).some(
+      (key) =>
+        canonicalBlockJson(basis[key] ?? null) !==
+        canonicalBlockJson(cache?.[key] ?? null),
+    );
+    if (!stale) return null;
+    const copies: Record<string, unknown> = { ...cache };
+    for (const [key, value] of Object.entries(basis)) {
+      if (value === undefined) delete copies[key];
+      else copies[key] = value;
+    }
+    return copies;
   };
 
   /**
@@ -478,5 +540,15 @@ export function useApplyNamedRule({
     return change;
   };
 
-  return { apply, reread, planStored, isPending: mutation.isPending };
+  return {
+    apply,
+    reread,
+    planStored,
+    isPending: mutation.isPending,
+    /**
+     * A change's `basis` guards it (hosted v8): an editor keeps the copy it
+     * shows and builds its changes on it.
+     */
+    holdsCopy: hosted,
+  };
 }

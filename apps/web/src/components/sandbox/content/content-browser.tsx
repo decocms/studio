@@ -139,7 +139,7 @@ import {
 } from "./blog/post-calendar-data";
 import { usePostStatusMove } from "./blog/use-post-status-move";
 import { PostsWorkspace, type PostsView } from "./blog/posts-workspace";
-import { PageJsonDialog } from "@/components/sections-editor/page-json-dialog";
+import { SavedPageJsonDialog } from "@/components/sections-editor/page-json-dialog";
 import { RunnableBlocksBrowser } from "./runnable-blocks-browser";
 import { countAvailableRunnables } from "./runnable-catalog";
 import { EmptyMessage } from "./empty-message";
@@ -1722,16 +1722,14 @@ function ContentBrowserReady({
 
         {/* Page JSON dialog */}
         {jsonPageKey && (
-          <PageJsonDialog
+          <SavedPageJsonDialog
             open={!!jsonPageKey}
             onOpenChange={(open) => {
               if (!open) setJsonPageKey(null);
             }}
             pageKey={jsonPageKey}
             decofile={decofile}
-            onSave={(data) =>
-              saveBlock.mutateAsync({ blockKey: jsonPageKey, data })
-            }
+            params={fetchParams}
           />
         )}
 

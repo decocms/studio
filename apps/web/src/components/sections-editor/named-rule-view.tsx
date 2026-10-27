@@ -133,11 +133,13 @@ export function useNamedRuleView(
     decofile,
     meta,
   });
-  const { apply, reread, planStored, isPending } = useApplyNamedRule({
-    orgSlug,
-    virtualMcpId,
-    branch,
-  });
+  const { apply, reread, planStored, isPending, holdsCopy } = useApplyNamedRule(
+    {
+      orgSlug,
+      virtualMcpId,
+      branch,
+    },
+  );
   const [openName, setOpenName] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
 
@@ -192,6 +194,7 @@ export function useNamedRuleView(
     reread,
     planStored,
     isPending,
+    holdsCopy,
     openName,
     setOpenName,
     creating,
@@ -327,6 +330,12 @@ export interface NamedRuleDetailProps<Row extends { name: string }> {
   meta: LiveMeta | null | undefined;
   uses: NamedRuleUses | null;
   pending: boolean;
+  /**
+   * The detail keeps the copy it shows and builds its changes on it
+   * (`NamedRuleChange.basis`, hosted v8): an untouched form follows the
+   * draft, and a save of an older copy is reconciled, never written over.
+   */
+  holdsCopy: boolean;
   onBack: () => void;
   onOpenUse: (row: NamedRuleUseRow) => void;
   onSave: NamedRuleSave;
@@ -400,6 +409,7 @@ export function namedRuleDetailProps<Row extends { name: string }>(
     meta: input.meta,
     uses: view.uses,
     pending: view.isPending,
+    holdsCopy: view.holdsCopy,
     onBack: () => view.setOpenName(null),
     onOpenUse: input.onOpenUse,
     onSave: view.save,
