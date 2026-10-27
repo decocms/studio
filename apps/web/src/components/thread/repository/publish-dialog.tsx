@@ -144,8 +144,6 @@ export function PublishDialog(props: PublishDialogProps) {
    *  must not dismiss the only surface showing that progress. */
   const publishLockRef = useRef(false);
   const t = useT();
-  const backend = useContentBackend(props.virtualMcpId, props.branch);
-  const hosted = backend.kind === "protocol" && backend.source === "github";
 
   const handleOpenChange = (next: boolean) => {
     if (!next && publishLockRef.current) return;
@@ -164,12 +162,27 @@ export function PublishDialog(props: PublishDialogProps) {
             ? t("thread.publishPopover.submitForReview")
             : t("thread.publishPopover.publish")}
         </DialogTitle>
-        {publishBodyShown({ open: props.open, hosted }) ? (
-          <CmsPublishBody {...props} publishLockRef={publishLockRef} />
-        ) : null}
+        <PublishDialogBody {...props} publishLockRef={publishLockRef} />
       </DialogContent>
     </Dialog>
   );
+}
+
+/**
+ * The dialog's body, mounted only with its content (open, or fading out once
+ * closed), so a closed dialog asks nothing about the site's content: the
+ * backend is read here, never by the header that renders the dialog.
+ */
+function PublishDialogBody(
+  props: PublishDialogProps & {
+    publishLockRef: React.MutableRefObject<boolean>;
+  },
+) {
+  const backend = useContentBackend(props.virtualMcpId, props.branch);
+  const hosted = backend.kind === "protocol" && backend.source === "github";
+  return publishBodyShown({ open: props.open, hosted }) ? (
+    <CmsPublishBody {...props} />
+  ) : null;
 }
 
 /** Review panes kept alive at once — each holds up to two full-page frames. */
