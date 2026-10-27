@@ -959,4 +959,34 @@ describe("useApplyNamedRule: a change built on the copy an editor shows (hosted 
     });
     expect(epochs.result.current("campaigns")).toBe(before + 1);
   });
+
+  for (const language of ["en", "pt-BR"] as const) {
+    it(`shows the campaign's dates as dates, never raw ISO (${language})`, async () => {
+      localStorage.setItem(
+        "studio:user:preferences",
+        JSON.stringify({ language }),
+      );
+      try {
+        const { result } = setupPolled();
+        conflictHost.answer = (plan) =>
+          Object.fromEntries(plan.pointers.map((p) => [p, "theirs" as const]));
+        await act(async () => {
+          await result.current.apply({
+            writes: { campaigns: ana },
+            basis: { campaigns: seed },
+          });
+        });
+        const format = new Intl.DateTimeFormat(language, {
+          dateStyle: "medium",
+          timeStyle: "short",
+        });
+        const [field] = conflictHost.shown[0]!.fields;
+        expect(field?.mine).toBe(format.format(new Date(ana.bf.end)));
+        expect(field?.theirs).toBe(format.format(new Date(bruno.bf.end)));
+        expect(String(field?.theirs)).not.toContain("T18:00");
+      } finally {
+        localStorage.removeItem("studio:user:preferences");
+      }
+    });
+  }
 });

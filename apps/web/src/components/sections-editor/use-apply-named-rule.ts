@@ -25,6 +25,7 @@ import {
   decofileWriteScope,
 } from "./decofile-api";
 import { conflictAuthorDraft } from "./conflict-author";
+import { formatCampaignDate, formatCampaignWindow } from "./format-matcher";
 import { bumpCopyEpoch, copyScope } from "./held-copy";
 import { type ConflictField, resolveFormConflict } from "./form-conflict";
 import {
@@ -36,7 +37,7 @@ import {
   planHostedConflict,
   pointerBlockKey,
 } from "./hosted-reconcile";
-import { namedRuleKindOfBlock } from "./named-rules";
+import { type CampaignWindow, namedRuleKindOfBlock } from "./named-rules";
 import { canAskNamedRuleConflict } from "./named-rule-conflict";
 import type { SchemaProperty } from "./resolve-schema";
 import { isSaveConflict } from "./serve-save-error";
@@ -135,7 +136,21 @@ function namedRuleConflictField(
         ...field,
         label: t("sectionsEditor.formConflict.ruleCampaign", { name }),
         phrase: t("sectionsEditor.formConflict.ruleCampaignPhrase", { name }),
+        mine: campaignValue(field.mine, steps.length),
+        theirs: campaignValue(field.theirs, steps.length),
       };
+}
+
+/**
+ * A campaign's value as its form shows it: its dates in the reader's
+ * language, never raw ISO. `depth` 2 is a whole window, 3 one of its dates.
+ */
+function campaignValue(value: unknown, depth: number): unknown {
+  if (depth === 3) return formatCampaignDate(value) ?? value;
+  if (depth === 2 && value && typeof value === "object") {
+    return formatCampaignWindow(value as CampaignWindow) ?? value;
+  }
+  return value;
 }
 
 function conflictLabels(t: TFunction): SchemaProperty {
