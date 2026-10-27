@@ -1,7 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import {
   frameUrl,
+  gateViews,
   parseHeatmap,
+  pickView,
   rampCss,
   reachAt,
   readViewMessage,
@@ -227,5 +229,32 @@ describe("rootName / rampCss", () => {
     expect(rampCss("thermal", 0)).toBe("rgba(0,40,255,0)");
     expect(rampCss("thermal", 1)).toBe("rgba(225,18,30,0.9)");
     expect(rampCss("inferno", 2, 1)).toBe("rgba(252,255,164,1)");
+  });
+});
+
+describe("heatmap tab gating", () => {
+  const views = [
+    { view: "overview" },
+    { view: "vitals" },
+    { view: "heatmap" },
+    { view: "quality" },
+  ];
+
+  it("offers the Heatmap tab only to a site with the heatmap module", () => {
+    expect(gateViews(views, ["core", "vitals"]).map((v) => v.view)).toEqual([
+      "overview",
+      "vitals",
+      "quality",
+    ]);
+    expect(gateViews(views, ["core", "heatmap"])).toEqual(views);
+  });
+
+  it("lands a view the site isn't offered on Overview", () => {
+    const without = gateViews(views, ["core"]);
+    expect(pickView("heatmap", without)).toBe("overview");
+    expect(pickView("bogus", without)).toBe("overview");
+    expect(pickView(undefined, without)).toBe("overview");
+    expect(pickView("vitals", without)).toBe("vitals");
+    expect(pickView("heatmap", gateViews(views, ["heatmap"]))).toBe("heatmap");
   });
 });

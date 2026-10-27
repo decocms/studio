@@ -399,3 +399,26 @@ export function rootName(root: string): string | null {
     : (path.split("/").pop() ?? path).replace(/\.tsx?$/, "");
   return ord > 0 ? `${base} ${ord + 1}` : base;
 }
+
+/** The dashboard tabs a site gets: Heatmap only when its analytics modules
+ *  include `heatmap`, so a site that never enabled it sees no tab and fires no
+ *  heatmap request. */
+export function gateViews<T extends { view: string }>(
+  views: readonly T[],
+  modules: readonly string[],
+): T[] {
+  return views.filter(
+    (v) => v.view !== "heatmap" || modules.includes("heatmap"),
+  );
+}
+
+/** The tab to show: the requested one (tab state or a `?view=` deep-link) when
+ *  the site is offered it, otherwise Overview. */
+export function pickView(
+  requested: string | undefined,
+  views: readonly { view: string }[],
+): string {
+  return requested && views.some((v) => v.view === requested)
+    ? requested
+    : "overview";
+}

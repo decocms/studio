@@ -87,6 +87,7 @@ import { KEYS } from "@/lib/query-keys";
 import { useT, type TFunction } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/use-t.ts";
 import { HeatmapView } from "./analytics-heatmap-tab.tsx";
+import { gateViews, pickView } from "./analytics-heatmap-model.ts";
 
 // --- control-plane REST DTOs (client-safe fields only) ---------------------
 
@@ -1959,11 +1960,15 @@ function RegisteredView({
     view?: string;
   };
   const [range, setRange] = useState("24h");
-  const [active, setActive] = useState(initialView ?? "overview");
+  const [requested, setRequested] = useState(initialView ?? "overview");
   const [configOpen, setConfigOpen] = useState(false);
   const cfg = status.config ?? {};
   const enabled = cfg.enabled !== false;
   const modules = cfg.modules ?? ["core"];
+  // Heatmap is offered only to a site with the `heatmap` module; a view the
+  // site isn't offered (e.g. `?view=heatmap` without it) lands on Overview.
+  const views = gateViews(DATA_VIEWS, modules);
+  const active = pickView(requested, views);
   const isLive = active === "live";
   // Heatmap reads daily facts with its own 24h/7d/30d choice.
   const ownRange = isLive || active === "heatmap";
@@ -2042,11 +2047,11 @@ function RegisteredView({
 
       {/* Horizontal view tab bar — one view at a time, like the admin monitor. */}
       <div className="flex items-center gap-1 overflow-x-auto border-b border-border">
-        {DATA_VIEWS.map((v) => (
+        {views.map((v) => (
           <button
             key={v.view}
             type="button"
-            onClick={() => setActive(v.view)}
+            onClick={() => setRequested(v.view)}
             className={cn(
               "shrink-0 border-b-2 px-3 py-2 text-sm font-medium transition-colors",
               active === v.view
