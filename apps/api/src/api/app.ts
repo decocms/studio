@@ -27,6 +27,10 @@ import {
   setTaskBoardArchiveSweepRuntime,
 } from "@/tools/task-board/dbos-archive-sweep";
 import {
+  registerDemoBoardResetWorkflow,
+  setDemoBoardResetRuntime,
+} from "@/tools/demo-board/dbos-demo-board-reset";
+import {
   registerOrderMonitorWorkflow,
   setOrderMonitorRuntime,
 } from "@/monitoring/dbos-order-monitor";
@@ -1655,6 +1659,9 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Hourly auto-archive of settled Done cards, one org leg per candidate org.
   setTaskBoardArchiveSweepRuntime({ db: database.db });
 
+  // Daily: demo orgs' boards back to their capture.
+  setDemoBoardResetRuntime({ db: database.db });
+
   // Every 5 minutes: each ingest-installed store's order flow vs its baseline.
   setOrderMonitorRuntime({ db: database.db });
 
@@ -1962,6 +1969,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   registerPublicSetsSyncWorkflow();
   registerOrgRepoSyncWorkflow();
   registerTaskBoardArchiveSweepWorkflow();
+  registerDemoBoardResetWorkflow();
   registerOrderMonitorWorkflow();
   registerSubscriptionSweepWorkflow();
   registerJiraTriggerSweepWorkflow();

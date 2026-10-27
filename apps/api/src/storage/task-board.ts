@@ -47,6 +47,7 @@ import { RESOLVED_RUN_FAILURE_KINDS } from "@decocms/shared/entities";
 import { NOTIFICATION_TYPES } from "@decocms/shared/notification-types";
 import type { NotificationType } from "@decocms/shared/notification-types";
 import { notify } from "../notifications/notify";
+import { isFrozenDemoCard } from "./demo-board";
 import { escapeLikePattern } from "./threads";
 
 /** Activity actions that also earn an inbox row and an email. */
@@ -1091,7 +1092,8 @@ export class TaskBoardStorage {
           eb("status", "=", LANES.review),
         ]),
       )
-      .where("dismissed_at", "is", null);
+      .where("dismissed_at", "is", null)
+      .where(sql<boolean>`NOT ${isFrozenDemoCard("task_board_items.id")}`);
     if (dueBefore) {
       // A never-swept card (NULL) is always due — `<` alone would exclude it.
       query = query.where((eb) =>
@@ -1180,6 +1182,7 @@ export class TaskBoardStorage {
       .where(moved)
       .where("i.organization_id", "in", params.organizationIds)
       .where("i.dismissed_at", "is", null)
+      .where(sql<boolean>`NOT ${isFrozenDemoCard("i.id")}`)
       .where("i.source", "is", null)
       .where(sql<boolean>`i.status = a.data->>'to'`)
       .where((eb) =>
@@ -1232,6 +1235,7 @@ export class TaskBoardStorage {
       .select(["i.id", "i.organization_id as organizationId"])
       .where("i.status", "=", "done")
       .where("i.dismissed_at", "is", null)
+      .where(sql<boolean>`NOT ${isFrozenDemoCard("i.id")}`)
       .where("i.updated_at", "<", settledBefore)
       .where((eb) =>
         eb.exists(
@@ -1277,6 +1281,7 @@ export class TaskBoardStorage {
       // which is the whole reason this sweep is not the archive's.
       .where("i.status", "in", TAGGABLE_MERGED_STATUSES)
       .where("i.dismissed_at", "is", null)
+      .where(sql<boolean>`NOT ${isFrozenDemoCard("i.id")}`)
       .where((eb) =>
         eb.exists(
           eb
@@ -1624,6 +1629,7 @@ export class TaskBoardStorage {
       .where("i.status", "=", "in_progress")
       .where("i.assignee_id", "=", SUPER_AGENT_ASSIGNEE_ID)
       .where("i.dismissed_at", "is", null)
+      .where(sql<boolean>`NOT ${isFrozenDemoCard("i.id")}`)
       .where("i.retry_at", "is", null)
       .where("t.status", "=", "failed")
       // Settled history: reacting would park a card whose retry is mid-dispatch.
@@ -1690,6 +1696,7 @@ export class TaskBoardStorage {
       .where("i.assignee_id", "=", SUPER_AGENT_ASSIGNEE_ID)
       .where("i.review_cycle_started_at", "is", null)
       .where("i.dismissed_at", "is", null)
+      .where(sql<boolean>`NOT ${isFrozenDemoCard("i.id")}`)
       .where("i.retry_at", "is", null)
       .where("i.source", "is", null)
       .where((eb) =>
@@ -1758,6 +1765,7 @@ export class TaskBoardStorage {
       .where("retry_at", "<=", now)
       .where("status", "=", "in_progress")
       .where("dismissed_at", "is", null)
+      .where(sql<boolean>`NOT ${isFrozenDemoCard("task_board_items.id")}`)
       .orderBy("retry_at", "asc")
       .limit(limit)
       .execute();

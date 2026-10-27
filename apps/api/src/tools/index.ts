@@ -18,6 +18,7 @@ import * as VirtualMCPTools from "./virtual";
 import * as MonitoringTools from "./monitoring";
 import * as OrganizationTools from "./organization";
 import * as TaskBoardTools from "./task-board";
+import * as DemoBoardTools from "./demo-board";
 import * as NotificationTools from "./notifications";
 import * as TagTools from "./tags";
 import * as ExperimentTools from "./experiments";
@@ -99,6 +100,9 @@ export const CORE_TOOLS = [
   TaskBoardTools.TASK_BOARD_SPRINT_COMPLETE,
   TaskBoardTools.TASK_BOARD_SPRINT_DELETE,
   TaskBoardTools.TASK_ADD_REPO,
+  DemoBoardTools.DEMO_BOARD_CAPTURE,
+  DemoBoardTools.DEMO_BOARD_RESET,
+  DemoBoardTools.DEMO_BOARD_STATUS,
   // Decopilot's chat built-ins, for sandbox-hosted runs (thread-mcp.ts)
   ChatTools.GENERATE_IMAGE,
   ChatTools.WEB_SEARCH,

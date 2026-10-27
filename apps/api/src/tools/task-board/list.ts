@@ -38,6 +38,8 @@ const TASK_BOARD_ITEM_LIST_TOOL = defineTool({
     repos: z.array(z.string()),
     // The board's columns, left to right — its whole vocabulary.
     columns: z.array(BoardColumnSchema),
+    // Cards a demo org froze: past work to show, never to run or preview live.
+    demoFrozenItemIds: z.array(z.string()),
   }),
   handler: async (_input, ctx) => {
     requireAuth(ctx);
@@ -50,13 +52,19 @@ const TASK_BOARD_ITEM_LIST_TOOL = defineTool({
       );
     }
 
-    const [allItems, { items: githubConnections }, repositories, hidden] =
-      await Promise.all([
-        ctx.storage.taskBoard.list(organizationId),
-        ctx.storage.connections.list(organizationId, { slug: "mcp-github" }),
-        ctx.storage.repositories.listByOrg(organizationId),
-        resolveHiddenProjectIds(ctx),
-      ]);
+    const [
+      allItems,
+      { items: githubConnections },
+      repositories,
+      hidden,
+      frozen,
+    ] = await Promise.all([
+      ctx.storage.taskBoard.list(organizationId),
+      ctx.storage.connections.list(organizationId, { slug: "mcp-github" }),
+      ctx.storage.repositories.listByOrg(organizationId),
+      resolveHiddenProjectIds(ctx),
+      ctx.storage.demoBoard.frozenItemIds(organizationId),
+    ]);
     const items = allItems.filter((item) =>
       isCardInVisibleProject(hidden, item),
     );
@@ -77,9 +85,17 @@ const TASK_BOARD_ITEM_LIST_TOOL = defineTool({
     // missed. Fire-and-forget — a stuck card must not slow down or break the
     // read, and the returned list is deliberately the pre-recovery one (the
     // moves broadcast over SSE, which is how the board already learns them).
-    void recoverStalledTasks(ctx, allItems);
+    void recoverStalledTasks(
+      ctx,
+      allItems.filter((item) => !frozen.has(item.id)),
+    );
 
-    return { items, repos, columns: CANONICAL_COLUMNS };
+    return {
+      items,
+      repos,
+      columns: CANONICAL_COLUMNS,
+      demoFrozenItemIds: [...frozen],
+    };
   },
 });
 

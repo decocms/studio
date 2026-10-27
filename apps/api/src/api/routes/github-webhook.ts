@@ -223,6 +223,11 @@ async function refreshPrCardsForRefs(
             )
           : null;
         if (!ctx) continue;
+        // A demo's frozen card keeps the pull request it was captured with.
+        const frozen = await ctx.storage.demoBoard.frozenItemIds(
+          link.organizationId,
+        );
+        if (frozen.has(link.taskBoardItemId)) continue;
         const cards = await refreshItemPrCards(
           ctx,
           link.organizationId,

@@ -739,6 +739,32 @@ export class GithubChangeRequestClient implements ChangeRequestClient {
     });
   }
 
+  async close(number: number): Promise<void> {
+    const pr = await this.read(number);
+    if (!pr || pr.state === "merged") return;
+    if (pr.state === "open") {
+      await this.rest(`/pulls/${number}`, {
+        method: "PATCH",
+        body: { state: "closed" },
+        operation: "change_request_close",
+      });
+    }
+    if (pr.headRepoPath?.toLowerCase() !== this.repo.path.toLowerCase()) {
+      return;
+    }
+    const ref = pr.head.split("/").map(encodeURIComponent).join("/");
+    const res = await githubFetch(`${this.base}/git/refs/heads/${ref}`, {
+      method: "DELETE",
+      token: await this.requireToken(),
+      operation: "change_request_delete_branch",
+    });
+    await res.body?.cancel().catch(() => {});
+    // GitHub answers 422 "Reference does not exist" for a branch already gone.
+    if (!res.ok && res.status !== 404 && res.status !== 422) {
+      throw await githubFailure(res, "change_request_delete_branch");
+    }
+  }
+
   async merge(number: number, params: MergeParams = {}): Promise<MergeOutcome> {
     const methods = MERGE_LADDER[params.strategy ?? "any"];
     let lastRefusal = "";

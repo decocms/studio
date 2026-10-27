@@ -1983,6 +1983,27 @@ export interface TaskBoardImportRunTable {
   created_at: ColumnType<Date, Date | string | undefined, never>;
 }
 
+/** One per demo org; see `tools/demo-board/snapshot.ts` for `snapshot`. */
+export interface DemoBoardSnapshotTable {
+  organization_id: string;
+  snapshot: ColumnType<unknown, string, string>;
+  frozen_item_ids: ColumnType<unknown, string, string>;
+  pr_cards: ColumnType<unknown, string, string>;
+  captured_at: ColumnType<Date, Date | string, Date | string>;
+  captured_by: string;
+  last_reset_at: ColumnType<
+    Date | null,
+    Date | string | null | undefined,
+    Date | string | null
+  >;
+  last_reset_error: string | null;
+  dead_preview_urls: ColumnType<
+    unknown,
+    string | null | undefined,
+    string | null
+  >;
+}
+
 /** Join row: a task board item ↔ an agent thread (many-to-many). */
 export interface TaskBoardItemThreadTable {
   task_board_item_id: string;
@@ -2611,6 +2632,7 @@ export interface Database {
   task_board_comments: TaskBoardCommentTable;
   task_board_item_tags: TaskBoardItemTagTable;
   task_board_import_runs: TaskBoardImportRunTable;
+  demo_board_snapshots: DemoBoardSnapshotTable;
 
   // Jira integration
   org_jira_integrations: OrgJiraIntegrationTable;

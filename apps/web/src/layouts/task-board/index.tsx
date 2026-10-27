@@ -35,6 +35,7 @@ import {
   TaskBoardAdminControls,
   TaskBoardAnalyticsButton,
 } from "./admin-controls";
+import { DemoBoardResetButton } from "./demo-reset-button";
 import { BoardOrgProvider } from "./board-org";
 import { authClient } from "@/lib/auth-client";
 import { AgenticSetupButton } from "./agentic-setup";
@@ -981,7 +982,11 @@ export function TaskBoardPage() {
 function TaskBoardBody() {
   const t = useT();
   const { org, locator } = useProjectContext();
-  const { items: orgItems, isLoading: itemsLoading } = useTaskBoardItems();
+  const {
+    items: orgItems,
+    demoFrozenItemIds,
+    isLoading: itemsLoading,
+  } = useTaskBoardItems();
   /** A project's home IS this board — see `board-scope.ts` for why scope is a
    *  narrowing of the input rather than a value in the `?repo=` filter. */
   const {
@@ -1599,6 +1604,7 @@ function TaskBoardBody() {
             }
           >
             <TaskBoardAdminControls />
+            <DemoBoardResetButton isDemoBoard={demoFrozenItemIds.length > 0} />
             <TaskBoardAnalyticsButton project={scopeId} />
             {!feedEnabled && <AgenticSetupButton />}
             {layout === "epics" ? (
@@ -1866,12 +1872,18 @@ function TaskBoardBody() {
              live dev server, which is a place. A run's transcript opens in a
              sheet on the page instead. `setTaskId` builds a fresh search, so
              `task` falls away with it. */
-          onOpenPreview={(thread) => {
-            if (!thread.virtualMcpId) return;
-            setTaskId(thread.threadId, thread.virtualMcpId, {
-              panel: "site-editor",
-            });
-          }}
+          /* A demo's frozen card has no live branch to open — its pull
+             request's own preview still does. */
+          onOpenPreview={
+            demoFrozenItemIds.includes(openItem.id)
+              ? undefined
+              : (thread) => {
+                  if (!thread.virtualMcpId) return;
+                  setTaskId(thread.threadId, thread.virtualMcpId, {
+                    panel: "site-editor",
+                  });
+                }
+          }
         />
       )}
 
