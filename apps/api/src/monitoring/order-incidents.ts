@@ -14,7 +14,9 @@ import { z } from "zod";
 import {
   type OrderIncidentNotice,
   orderMonitorChartPath,
+  orderStoreLabel,
   type OrderMonitorVerdict,
+  vtexAccountOf,
 } from "@decocms/shared/order-monitor";
 import { LANES, SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import { getBaseUrl } from "@/core/server-constants";
@@ -67,12 +69,13 @@ export function incidentAction(
 
 /** The store as the board and the UI name it. */
 export interface StoreInfo {
+  /** The VTEX account it watches, else the install's title. */
   title: string;
   vtexConnectionId: string | null;
   agentIds: string[];
 }
 
-/** The ingest install's title, the VTEX connection it is bound to (`state.VTEX`), and the agents that aggregate that one. */
+/** The store's name (its VTEX account, else the ingest install's title), the VTEX connection the install is bound to (`state.VTEX`), and the agents that aggregate that one. */
 export async function loadStoreInfo(
   ctx: StudioContext,
   storage: OrderMonitorStorage,
@@ -91,8 +94,14 @@ export async function loadStoreInfo(
   const agents = vtexConnectionId
     ? await storage.listAggregatingAgents(organizationId, [vtexConnectionId])
     : [];
+  const vtex = vtexConnectionId
+    ? await ctx.storage.connections.findById(vtexConnectionId, organizationId)
+    : null;
   return {
-    title: install.title,
+    title: orderStoreLabel(
+      install.title,
+      vtexAccountOf(vtex?.configuration_state),
+    ),
     vtexConnectionId,
     agentIds: [...new Set(agents.map((a) => a.agentId))],
   };
