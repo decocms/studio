@@ -444,61 +444,81 @@ export async function applyHostedChange(
         throw new HostedKeptChangingError();
       }
       if (!canAskNamedRuleConflict()) throw error;
-      // A move of a block someone deleted meanwhile: the plan would see
-      // nothing in conflict (both sides dropped the source) and write the
-      // move, bringing the block back. Their deletion is asked about first.
-      const movedAway = deletedMoveSources(
-        current,
-        base,
-        (key) =>
-          !!base && Object.hasOwn(base, key) && !Object.hasOwn(stored, key),
+      // While the question is open the editor keeps showing the change's
+      // new blocks (a moved post, a renamed page): the refusal put the
+      // copies it was built on back, which have none of them, and an editor
+      // pointed at one would show the next block in its list meanwhile.
+      // Whatever ends the question without writing puts the draft's back.
+      const created = Object.keys(current.writes).filter(
+        (key) => !base || !Object.hasOwn(base, key),
       );
-      if (movedAway.length > 0) {
-        current = await askMovedDeleted(current, base, movedAway);
+      const asking = current;
+      setCachedBlocks(ctx, created, (key) => ({ value: asking.writes[key] }));
+      const showStored = () =>
+        setCachedBlocks(ctx, created, (key) =>
+          Object.hasOwn(stored, key) ? { value: stored[key] } : null,
+        );
+      try {
+        // A move of a block someone deleted meanwhile: the plan would see
+        // nothing in conflict (both sides dropped the source) and write the
+        // move, bringing the block back. Their deletion is asked about first.
+        const movedAway = deletedMoveSources(
+          current,
+          base,
+          (key) =>
+            !!base && Object.hasOwn(base, key) && !Object.hasOwn(stored, key),
+        );
+        if (movedAway.length > 0) {
+          current = await askMovedDeleted(current, base, movedAway);
+          base = Object.fromEntries(
+            touched
+              .filter((key) => Object.hasOwn(stored, key))
+              .map((key) => [key, stored[key]]),
+          );
+          continue;
+        }
+        const plan = planHostedConflict(touched, base, current, stored);
+        const choices =
+          plan.pointers.length === 0 ? {} : await askHostedConflict(plan);
+        // A block one side deleted, kept as the draft holds it: the change is
+        // one move or delete, so none of it is written (a move's other half
+        // alone would copy the block instead of moving it).
+        const deleted = deletedBlockQuestion(plan);
+        if (deleted && choices[deleted.pointer] === "theirs") {
+          throw new HostedKeptTheirsError(
+            deleted.conflict.kind === "theyDeleted",
+          );
+        }
+        const resolved =
+          plan.pointers.length === 0
+            ? plan.merged
+            : resolveFormConflict(plan, choices);
+        const next = hostedChangeFromResolved(touched, resolved, stored);
+        if (changeKeepsStored(next, stored)) {
+          // The draft already is what the user wants: a deletion it already
+          // holds, or their version kept.
+          if (choseTheirs(choices)) {
+            throw new HostedKeptTheirsError(
+              touched.some((key) => !Object.hasOwn(stored, key)),
+            );
+          }
+          showStored();
+          return {
+            revision: "",
+            versions: {},
+            change: next,
+          };
+        }
+        current = next;
         base = Object.fromEntries(
           touched
             .filter((key) => Object.hasOwn(stored, key))
             .map((key) => [key, stored[key]]),
         );
-        continue;
+      } catch (asked) {
+        showStored();
+        throw asked;
       }
-      const plan = planHostedConflict(touched, base, current, stored);
-      const choices =
-        plan.pointers.length === 0 ? {} : await askHostedConflict(plan);
-      // A block one side deleted, kept as the draft holds it: the change is
-      // one move or delete, so none of it is written (a move's other half
-      // alone would copy the block instead of moving it).
-      const deleted = deletedBlockQuestion(plan);
-      if (deleted && choices[deleted.pointer] === "theirs") {
-        throw new HostedKeptTheirsError(
-          deleted.conflict.kind === "theyDeleted",
-        );
-      }
-      const resolved =
-        plan.pointers.length === 0
-          ? plan.merged
-          : resolveFormConflict(plan, choices);
-      const next = hostedChangeFromResolved(touched, resolved, stored);
-      if (changeKeepsStored(next, stored)) {
-        // The draft already is what the user wants: a deletion it already
-        // holds, or their version kept.
-        if (choseTheirs(choices)) {
-          throw new HostedKeptTheirsError(
-            touched.some((key) => !Object.hasOwn(stored, key)),
-          );
-        }
-        return {
-          revision: "",
-          versions: {},
-          change: next,
-        };
-      }
-      current = next;
-      base = Object.fromEntries(
-        touched
-          .filter((key) => Object.hasOwn(stored, key))
-          .map((key) => [key, stored[key]]),
-      );
     }
   }
 }

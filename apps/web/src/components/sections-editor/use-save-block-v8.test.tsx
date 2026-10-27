@@ -141,6 +141,8 @@ const asked = {
   fields: [] as Array<{ pointer: string; mine: unknown; theirs: unknown }>,
   /** "Keep my version" / "Leave it deleted" questions asked. */
   deleted: [] as Array<{ kind: string; label: string }>,
+  /** Runs as a question opens (what the editor shows meanwhile). */
+  onAsk: null as (() => void) | null,
   /** What the values question says about the block and who changed it. */
   about: undefined as
     | { block?: string; author?: { blockKey: string } | null }
@@ -156,6 +158,7 @@ mock.module("./named-rule-conflict", () => ({
   canAskNamedRuleConflict: () => true,
   askDeletedConflict: async (conflict: { kind: string; label: string }) => {
     asked.deleted.push(conflict);
+    asked.onAsk?.();
     return asked.choice;
   },
   askNamedRuleConflict: async (
@@ -170,6 +173,7 @@ mock.module("./named-rule-conflict", () => ({
   ) => {
     asked.fields = fields;
     asked.about = about;
+    asked.onAsk?.();
     return Object.fromEntries(plan.pointers.map((p) => [p, asked.choice]));
   },
 }));
@@ -197,6 +201,7 @@ function setup() {
   asked.fields = [];
   asked.deleted = [];
   asked.about = undefined;
+  asked.onAsk = null;
   const queryClient = new QueryClient();
   queryClient.setQueryData(KEYS.decofile(CACHE_KEY), {
     Hero: { title: "loaded" },
@@ -1252,6 +1257,12 @@ describe("hosted v8 deletes and moves are guarded by the draft too", () => {
       asked.choice = choice;
       // The editor read Hero at h1; someone changed it to "theirs" (h2).
       draftHolds(queryClient, { Hero: "h1" });
+      let shownWhileAsked: unknown;
+      asked.onAsk = () => {
+        shownWhileAsked = queryClient.getQueryData<Record<string, unknown>>(
+          KEYS.decofile(CACHE_KEY),
+        )?.Banner;
+      };
       let failure: unknown;
       await act(async () => {
         await result.current
@@ -1261,6 +1272,8 @@ describe("hosted v8 deletes and moves are guarded by the draft too", () => {
           });
       });
       expect(asked.deleted.map((q) => q.kind)).toEqual(["youDeleted"]);
+      // The moved copy stays shown until the question is answered.
+      expect(shownWhileAsked).toEqual({ title: "loaded" });
       const cached = queryClient.getQueryData<Record<string, unknown>>(
         KEYS.decofile(CACHE_KEY),
       );
@@ -1292,6 +1305,14 @@ describe("hosted v8 deletes and moves are guarded by the draft too", () => {
         // the deletion, but the editor's copy (a form) still shows Hero.
         if (when === "refused") draftHolds(queryClient, { Hero: "h1" });
         else draftHolds(queryClient, {}, ["Hero"]);
+        // The post editor shows the moved copy while the question is open
+        // (never the next post in the list).
+        let shownWhileAsked: unknown;
+        asked.onAsk = () => {
+          shownWhileAsked = queryClient.getQueryData<Record<string, unknown>>(
+            KEYS.decofile(CACHE_KEY),
+          )?.Banner;
+        };
         let failure: unknown;
         await act(async () => {
           await result.current
@@ -1306,6 +1327,10 @@ describe("hosted v8 deletes and moves are guarded by the draft too", () => {
         expect(asked.deleted).toEqual([
           { kind: "theyDeleted", label: "Hero" },
         ]);
+        expect(shownWhileAsked).toEqual({
+          title: "loaded",
+          name: "Hero banner",
+        });
         const cached = queryClient.getQueryData<Record<string, unknown>>(
           KEYS.decofile(CACHE_KEY),
         );
