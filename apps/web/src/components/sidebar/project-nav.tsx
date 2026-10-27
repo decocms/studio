@@ -29,6 +29,7 @@ import { DESTINATION_ROUTE } from "@/hooks/use-destination-route";
 import { useActivePanelTabId } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { useProjectScope } from "@/hooks/use-project-scope";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
+import { isBlocksV8Project } from "@decocms/shared/blocks-major";
 import {
   keepAttachedPinnedViews,
   pinnedViewsOf,
@@ -90,12 +91,22 @@ export function ProjectNav({
   if (!project) return null;
 
   const hasClonableSource = agentHasClonableSource(project.metadata);
+  /** While main's schema is read (a GitHub round trip), a site the server last
+   *  found v8 already shows its Calendar and Experiments rows, so they don't
+   *  pop in late. The views themselves still wait for the answer. */
+  const lastFoundV8 =
+    nativeViews.calendarPending && isBlocksV8Project(project.metadata);
+  const presence = {
+    ...nativeViews.presence,
+    calendar: nativeViews.presence.calendar || lastFoundV8,
+    experiments: nativeViews.presence.experiments || lastFoundV8,
+  };
   const sidebarViews =
     optimisticSidebarViews ?? resolveProjectSidebarViews(project.metadata);
   const selectedViews = new Set(
     selectedProjectSidebarViews(
       sidebarViews,
-      projectSidebarViewPresence(hasClonableSource, nativeViews.presence),
+      projectSidebarViewPresence(hasClonableSource, presence),
       optimisticSidebarViews !== undefined
         ? 1
         : project.metadata.sidebarViewsVersion,
@@ -104,7 +115,7 @@ export function ProjectNav({
         ? []
         : offeredProjectSidebarViews(
             project.metadata.sidebarViewsSeen,
-            nativeViews.presence.calendar,
+            presence.calendar,
           ),
     ),
   );

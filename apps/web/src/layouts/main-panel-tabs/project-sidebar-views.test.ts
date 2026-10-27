@@ -453,23 +453,26 @@ describe("Calendar and Experiments on a Blocks (v8) site", () => {
     ).toEqual(["site-editor", "experiments"]);
   });
 
-  test("a Calendar deep link waits while main's schema is read", () => {
-    const presence = projectSidebarViewPresence(true, nativePresence([]));
-    expect(
-      projectSidebarViewUnavailable("calendar", presence, {
-        assets: false,
-        siteAccess: false,
-        calendar: true,
-      }),
-    ).toBe(false);
-    expect(
-      projectSidebarViewUnavailable("calendar", presence, {
-        assets: false,
-        siteAccess: false,
-        calendar: false,
-      }),
-    ).toBe(true);
-  });
+  test.each(["calendar", "experiments"])(
+    "a %s deep link waits while main's schema is read",
+    (view) => {
+      const presence = projectSidebarViewPresence(true, nativePresence([]));
+      expect(
+        projectSidebarViewUnavailable(view, presence, {
+          assets: false,
+          siteAccess: true,
+          calendar: true,
+        }),
+      ).toBe(false);
+      expect(
+        projectSidebarViewUnavailable(view, presence, {
+          assets: false,
+          siteAccess: true,
+          calendar: false,
+        }),
+      ).toBe(true);
+    },
+  );
 });
 
 describe("Experiments and Calendar added once to a Blocks site's saved list", () => {

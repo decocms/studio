@@ -282,7 +282,10 @@ export function projectSidebarViewUnavailable(
   // Releases follows main's schema (`useMainSchemaV8`): a deep link waits
   // for that read instead of bouncing to Settings before it lands.
   if (viewId === "releases") return !pending.releases;
-  if (viewId === "calendar") return !pending.calendar;
+  // Calendar and Experiments are a v8 site's: they wait for the same read.
+  if (viewId === "calendar" || viewId === "experiments") {
+    return !pending.calendar;
+  }
   return !(viewId === "assets" ? pending.assets : pending.siteAccess);
 }
 
