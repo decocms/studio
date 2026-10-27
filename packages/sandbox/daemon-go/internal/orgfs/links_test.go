@@ -670,6 +670,143 @@ func TestAdoptStrayRepoSkills(t *testing.T) {
 	}
 }
 
+// Mid-checkout the repo's committed files list as untracked. Each state below
+// is what a daemon clone path leaves on disk before it finishes; moving the
+// repo's own skills out of it lets the next checkpoint commit their deletion.
+func TestAdoptStrayRepoSkillsLeavesTheRepoOwnSkillsMidCheckout(t *testing.T) {
+	setup := func(t *testing.T) (repoDir, homeSkills string, l *Links) {
+		appRoot := t.TempDir()
+		repoDir = filepath.Join(appRoot, "repo")
+		homeMount := filepath.Join(appRoot, "org", "home")
+		homeSkills = filepath.Join(homeMount, "skills")
+		statusPath := filepath.Join(t.TempDir(), "status.json")
+		if err := os.MkdirAll(homeSkills, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		raw, _ := json.Marshal(sidecarStatus{Mounts: []Mount{{Volume: "home", MountPath: homeMount}}})
+		if err := os.WriteFile(statusPath, raw, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		for _, f := range []string{"repo-own/SKILL.md", "repo-own/ref.md"} {
+			p := filepath.Join(repoDir, ".claude", "skills", f)
+			if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(p, []byte("committed"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return repoDir, homeSkills, &Links{AppRoot: appRoot, RepoDir: repoDir, StatusPath: statusPath, ConfigPath: "unused"}
+	}
+	git := func(t *testing.T, dir string, args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-c", "user.email=t@t.t", "-c", "user.name=t"}, args...)...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	assertKept := func(t *testing.T, repoDir, homeSkills string) {
+		t.Helper()
+		if _, err := os.Stat(filepath.Join(homeSkills, "repo-own")); err == nil {
+			t.Error("adopted a skill the repo commits")
+		}
+		for _, f := range []string{"SKILL.md", "ref.md"} {
+			if _, err := os.Stat(filepath.Join(repoDir, ".claude", "skills", "repo-own", f)); err != nil {
+				t.Errorf("removed the repo's own %s from the checkout: %v", f, err)
+			}
+		}
+	}
+
+	// `git clone`: HEAD and objects are in place, the index is written last.
+	t.Run("clone before the index is written", func(t *testing.T) {
+		repoDir, homeSkills, l := setup(t)
+		git(t, repoDir, "init", "-q")
+		git(t, repoDir, "add", "-A")
+		git(t, repoDir, "commit", "-qm", "init")
+		if err := os.Remove(filepath.Join(repoDir, ".git", "index")); err != nil {
+			t.Fatal(err)
+		}
+		l.AdoptStrayRepoSkills()
+		assertKept(t, repoDir, homeSkills)
+	})
+
+	// `init` + `fetch` + `checkout -f FETCH_HEAD`: HEAD stays unborn until the
+	// checkout ends.
+	t.Run("init and fetch before HEAD is born", func(t *testing.T) {
+		repoDir, homeSkills, l := setup(t)
+		git(t, repoDir, "init", "-q")
+		l.AdoptStrayRepoSkills()
+		assertKept(t, repoDir, homeSkills)
+	})
+
+	// Settled checkout, and the model added a file to a committed skill: the
+	// dir is the repo's, so none of it moves.
+	t.Run("untracked file inside a committed skill", func(t *testing.T) {
+		repoDir, homeSkills, l := setup(t)
+		git(t, repoDir, "init", "-q")
+		git(t, repoDir, "add", "-A")
+		git(t, repoDir, "commit", "-qm", "init")
+		if err := os.WriteFile(filepath.Join(repoDir, ".claude", "skills", "repo-own", "new.md"), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		l.AdoptStrayRepoSkills()
+		assertKept(t, repoDir, homeSkills)
+	})
+}
+
+// A branch checkout keeps HEAD and the index valid while it rewrites the tree,
+// so git alone cannot tell; the orchestrator can.
+func TestAdoptStrayRepoSkillsWaitsForTheCheckout(t *testing.T) {
+	appRoot := t.TempDir()
+	repoDir := filepath.Join(appRoot, "repo")
+	homeMount := filepath.Join(appRoot, "org", "home")
+	statusPath := filepath.Join(t.TempDir(), "status.json")
+	if err := os.MkdirAll(filepath.Join(homeMount, "skills"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(sidecarStatus{Mounts: []Mount{{Volume: "home", MountPath: homeMount}}})
+	if err := os.WriteFile(statusPath, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(repoDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{
+		{"init", "-q"},
+		{"-c", "user.email=t@t.t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "init"},
+	} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repoDir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	stray := filepath.Join(repoDir, ".claude", "skills", "rubber-duck")
+	if err := os.MkdirAll(stray, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stray, "SKILL.md"), []byte("quack"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	busy := true
+	l := &Links{
+		AppRoot: appRoot, RepoDir: repoDir, StatusPath: statusPath, ConfigPath: "unused",
+		CheckoutBusy: func() bool { return busy },
+	}
+	l.AdoptStrayRepoSkills()
+	if _, err := os.Stat(filepath.Join(stray, "SKILL.md")); err != nil {
+		t.Fatal("moved a skill while the checkout was in progress")
+	}
+
+	busy = false
+	l.AdoptStrayRepoSkills()
+	if _, err := os.Stat(filepath.Join(homeMount, "skills", "rubber-duck", "SKILL.md")); err != nil {
+		t.Fatalf("stray skill not adopted once the checkout settled: %v", err)
+	}
+}
+
 // A repoint creates the thread's subtree before anything is written. With the
 // flag on, moving to another thread removes the previous one's empty subtree
 // and keeps one that holds files; with it off, nothing is removed.
