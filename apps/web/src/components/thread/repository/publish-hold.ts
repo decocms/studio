@@ -34,3 +34,20 @@ export function usePublishHold<T>(
     release: () => setHeld(null),
   };
 }
+
+/**
+ * Whether the Publish dialog renders its body. A hosted v8 dialog keeps it
+ * while it closes: its content stays mounted only through the close's fade
+ * (Radix unmounts it after), so the body shows as it was, with the list it
+ * published, never an empty dialog. Every other dialog drops its body as
+ * soon as it closes, as before.
+ */
+export function publishBodyShown({
+  open,
+  hosted,
+}: {
+  open: boolean;
+  hosted: boolean;
+}): boolean {
+  return open || hosted;
+}

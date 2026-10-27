@@ -2,7 +2,11 @@ import { setupComponentTest } from "../../../../test/setup";
 setupComponentTest();
 import { describe, expect, it } from "bun:test";
 import { act, renderHook } from "@testing-library/react";
-import { shownPublishList, usePublishHold } from "./publish-hold";
+import {
+  publishBodyShown,
+  shownPublishList,
+  usePublishHold,
+} from "./publish-hold";
 
 const listed = {
   summary: { count: 2 },
@@ -42,5 +46,19 @@ describe("usePublishHold (the Publish dialog's list)", () => {
     // A failed one shows what the draft holds now.
     act(() => result.current.release());
     expect(result.current.shown).toBe(emptied);
+  });
+});
+
+describe("publishBodyShown (the Publish dialog's body)", () => {
+  it("a hosted Publish dialog keeps its whole body through the close's fade", () => {
+    // Closed: the dialog's content is only still mounted while it fades out
+    // (Radix unmounts it after); the body stays as it was, never empty.
+    expect(publishBodyShown({ open: false, hosted: true })).toBe(true);
+    expect(publishBodyShown({ open: true, hosted: true })).toBe(true);
+  });
+
+  it("every other Publish dialog drops its body on close, as before", () => {
+    expect(publishBodyShown({ open: false, hosted: false })).toBe(false);
+    expect(publishBodyShown({ open: true, hosted: false })).toBe(true);
   });
 });

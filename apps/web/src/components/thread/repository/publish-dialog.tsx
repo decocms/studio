@@ -38,7 +38,7 @@ import { Suspense, useRef, useState, type ReactNode } from "react";
 import { QueryErrorResetBoundary, useQuery } from "@tanstack/react-query";
 import { KEYS } from "@/lib/query-keys";
 import { readHostedPublishReview } from "./hosted-publish-api";
-import { usePublishHold } from "./publish-hold";
+import { publishBodyShown, usePublishHold } from "./publish-hold";
 import { ErrorBoundary } from "@/components/error-boundary.tsx";
 import { useT, type TFunction } from "@/i18n/use-t.ts";
 import { authClient } from "@/lib/auth-client.ts";
@@ -144,6 +144,8 @@ export function PublishDialog(props: PublishDialogProps) {
    *  must not dismiss the only surface showing that progress. */
   const publishLockRef = useRef(false);
   const t = useT();
+  const backend = useContentBackend(props.virtualMcpId, props.branch);
+  const hosted = backend.kind === "protocol" && backend.source === "github";
 
   const handleOpenChange = (next: boolean) => {
     if (!next && publishLockRef.current) return;
@@ -162,7 +164,7 @@ export function PublishDialog(props: PublishDialogProps) {
             ? t("thread.publishPopover.submitForReview")
             : t("thread.publishPopover.publish")}
         </DialogTitle>
-        {props.open ? (
+        {publishBodyShown({ open: props.open, hosted }) ? (
           <CmsPublishBody {...props} publishLockRef={publishLockRef} />
         ) : null}
       </DialogContent>
