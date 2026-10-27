@@ -12,6 +12,7 @@ import {
 import { BlocksSiteEditorProvider } from "@/components/sections-editor/blocks-site-editor";
 import {
   AlertCircle,
+  ArrowLeft,
   CornerUpRight,
   Cube01,
   File02,
@@ -168,6 +169,25 @@ import {
   GroupHeader,
   groupSavedSectionsByResolveType,
 } from "./section-group-header";
+import { protocolDecofileCacheKey } from "@/components/sections-editor/use-decofile";
+import {
+  useContentChanges,
+  useContentChangeSides,
+} from "@/components/sections-editor/content-changes";
+import { useContentDiscard } from "@/components/thread/repository/use-cms-publish-actions";
+import {
+  buildContentTypes,
+  type ContentEntry,
+  type ContentType,
+  type ContentTypeTree,
+  entryName,
+} from "./content-types";
+import {
+  ContentTypesSidebar,
+  type ContentTypesView,
+  useTypeLabel,
+} from "./content-types-sidebar";
+import { ContentTypesTable } from "./content-types-table";
 
 const AppEditor = lazy(() =>
   import("./app-editor").then((m) => ({ default: m.AppEditor })),
@@ -452,6 +472,38 @@ function ContentBrowserReady({
   useConflictMembers(hostedDraft);
   // A block the draft created: deleting it is no change Publish lists.
   const neverPublished = useNeverPublished({ orgSlug, virtualMcpId, branch });
+  // Hosted v8: the tab lists the site's content types, each entry with its
+  // status in the draft (the draft's changes, which the header's Publish
+  // already polls; a deletion's published copy from the changes' sides).
+  const typesMode = hostedDraft;
+  const typesBackend =
+    hostedDraft && contentBackend.kind === "protocol" ? contentBackend : null;
+  const typesCacheKey = typesBackend
+    ? protocolDecofileCacheKey({ orgSlug, virtualMcpId, branch }, typesBackend)
+    : null;
+  const draftChanges = useContentChanges(typesBackend, typesCacheKey);
+  const draftDeletes = Object.values(draftChanges.data?.changes ?? {}).some(
+    (change) => change.kind === "delete",
+  );
+  const draftSides = useContentChangeSides(
+    typesBackend,
+    typesCacheKey,
+    draftDeletes ? draftChanges.data : undefined,
+  );
+  const discardChanges = useContentDiscard({
+    orgSlug,
+    virtualMcpId,
+    branch,
+    refresh: () => draftChanges.refetch(),
+  });
+  const typeLabel = useTypeLabel();
+  const [typesView, setTypesView] = useState<ContentTypesView | null>(null);
+  // The entry a content type's row opened (its editor shows, with a way back).
+  const [openEntry, setOpenEntry] = useState<{
+    typeId: string;
+    key: string;
+  } | null>(null);
+  const [restoring, setRestoring] = useState<string | null>(null);
   // Which editor this site gets (v8: the new one): waited on with the data,
   // so neither editor shows and then swaps to the other.
   const editorUndecided = useNewBlocksEditorState() === undefined;
@@ -807,6 +859,174 @@ function ContentBrowserReady({
   const takenPaths = new Set(pages.map((p) => normalizePagePath(p.path)));
   const takenPageNames = new Set(pages.map((p) => p.name));
   const takenSectionNames = new Set(globalSections.map((s) => s.name));
+
+  // ------------------ Content types (hosted v8) ------------------
+  const deletedCopies: Record<string, Record<string, unknown> | null> = {};
+  for (const [name, detail] of Object.entries(draftSides.data?.entries ?? {})) {
+    if (detail.kind === "delete") deletedCopies[name] = detail.before;
+  }
+  const typeTree: ContentTypeTree | null = typesMode
+    ? buildContentTypes({
+        blocks: decofile,
+        meta,
+        changes: draftChanges.data?.changes,
+        deleted: deletedCopies,
+      })
+    : null;
+  // Pages first; a site without pages opens on whatever it has.
+  const firstType = typeTree?.pages ?? typeTree?.all[0] ?? null;
+  const shownTypesView: ContentTypesView =
+    typesView ??
+    (firstType ? { kind: "type", id: firstType.id } : { kind: "seo" });
+  const viewType =
+    shownTypesView.kind === "type"
+      ? (typeTree?.all.find((type) => type.id === shownTypesView.id) ?? null)
+      : null;
+  // Whatever opened an editor here (a row, a create, the storefront's "."
+  // link) shows it under the collection it belongs to.
+  if (typesMode && selection) {
+    const wanted: CollectionId =
+      selection.collection === "available-section"
+        ? "sections"
+        : selection.collection;
+    if (storedCollection !== wanted) setActiveCollection(wanted);
+  }
+  const typesEditorOpen =
+    typesMode &&
+    (selection !== null ||
+      (openEntry !== null &&
+        (activeCollection === "loaders" || activeCollection === "settings")));
+
+  const closeTypeEntry = () => {
+    setOpenEntry(null);
+    setSelection(null);
+    setOpenPageSeoKey(null);
+  };
+
+  /** A row's editor: the one the old collections open for it. */
+  const openTypeEntry = (type: ContentType, entry: ContentEntry) => {
+    setOpenPageSeoKey(null);
+    setOpenEntry({ typeId: type.id, key: entry.key });
+    if (type.group === "pages") {
+      setSelection({
+        collection: "pages",
+        key: entry.key,
+        path: typeof entry.block.path === "string" ? entry.block.path : "/",
+      });
+    } else if (type.group === "redirects") {
+      setSelection({ collection: "redirects", key: entry.key });
+    } else if (type.group === "sections") {
+      setSelection({ collection: "sections", key: entry.key });
+    } else if (type.group === "loaders") {
+      setSelection(null);
+      setActiveCollection("loaders");
+    } else if (type.id === "cms-settings") {
+      setSelection(null);
+      setActiveCollection("settings");
+    } else {
+      // Any other saved block: its schema's form.
+      setSelection({ collection: "apps", key: entry.key });
+    }
+  };
+
+  /** A deleted entry back as published: its deletion is discarded. */
+  const restoreTypeEntry = async (entry: ContentEntry) => {
+    const change = draftChanges.data?.changes[entry.key];
+    if (!typesBackend || !change) return;
+    setRestoring(entry.key);
+    try {
+      await discardChanges(
+        typesBackend,
+        [{ name: entry.key, version: change.version }],
+        t("siteEditor.contentTypes.restored", { name: entryName(entry) }),
+      );
+    } finally {
+      setRestoring(null);
+    }
+  };
+
+  const createForType = (
+    type: ContentType | null,
+  ): { label: string; onCreate: () => void } | null => {
+    if (!type) return null;
+    if (type.group === "pages") {
+      return {
+        label: t("siteEditor.contentTypes.new.page"),
+        onCreate: openCreatePage,
+      };
+    }
+    if (type.group === "redirects") {
+      return {
+        label: t("siteEditor.contentTypes.new.redirect"),
+        onCreate: openCreateRedirect,
+      };
+    }
+    if (type.group === "sections") {
+      const title = typeLabel(type);
+      return {
+        label: t("siteEditor.contentTypes.new.other", {
+          type: title.toLowerCase(),
+        }),
+        // Today's flow: fill the section's form, then save it with a name.
+        onCreate: () =>
+          setSelection({
+            collection: "available-section",
+            resolveType: type.id,
+            title,
+          }),
+      };
+    }
+    return null;
+  };
+
+  const typeRowMenu = (type: ContentType, entry: ContentEntry) => {
+    if (type.group === "pages") {
+      const page: PageEntry = {
+        key: entry.key,
+        name: entryName(entry),
+        path: typeof entry.block.path === "string" ? entry.block.path : "",
+      };
+      return (
+        <ItemActions
+          onDuplicate={() => openDuplicatePage(page)}
+          onRename={() => openRenamePage(page)}
+          onDelete={() =>
+            setDeleteTarget({ kind: "page", key: page.key, label: page.name })
+          }
+        />
+      );
+    }
+    if (type.group === "redirects") {
+      return (
+        <ItemActions
+          onDelete={() =>
+            setDeleteTarget({
+              kind: "redirect",
+              key: entry.key,
+              label:
+                typeof entry.block.from === "string"
+                  ? entry.block.from
+                  : entry.key,
+            })
+          }
+        />
+      );
+    }
+    if (type.group === "sections") {
+      return (
+        <ItemActions
+          onDelete={() =>
+            setDeleteTarget({
+              kind: "section",
+              key: entry.key,
+              label: entryName(entry),
+            })
+          }
+        />
+      );
+    }
+    return null;
+  };
 
   // ------------------ Variant ------------------
   const handleAddPageVariant = async (page: PageEntry) => {
@@ -1233,25 +1453,310 @@ function ContentBrowserReady({
     }
   };
 
+  // The editor side, as every collection shows it.
+  const editorPane = (
+    <>
+      {activeCollection === "loaders" || activeCollection === "actions" ? (
+        <RunnableBlocksBrowser
+          key={typesMode ? `types:${openEntry?.key ?? ""}` : undefined}
+          initialSavedKey={typesMode ? openEntry?.key : undefined}
+          onBack={typesMode ? closeTypeEntry : undefined}
+          orgSlug={orgSlug}
+          virtualMcpId={virtualMcpId}
+          branch={branch}
+          previewUrl={previewUrl}
+          meta={meta}
+          decofile={decofile}
+          kind={activeCollection}
+        />
+      ) : (
+        <Suspense
+          fallback={
+            <div className="h-full flex items-center justify-center">
+              <Spinner className="size-5 text-muted-foreground" />
+            </div>
+          }
+        >
+          {activeCollection === "calendar" ? (
+            <VariantCalendar decofile={decofile} />
+          ) : activeCollection === "post-schedule" ? (
+            <PostCalendar
+              decofile={decofile}
+              isCreating={saveBlock.isPending}
+              onCreate={(day) => void handleCreateScheduledPost(day)}
+              onReschedule={(key, day) => void handleReschedulePost(key, day)}
+              onSelect={(key) => {
+                setActiveCollection("posts");
+                setPrevCollection("posts");
+                setSelection({ collection: "posts", key });
+                setOpenPageSeoKey(null);
+              }}
+            />
+          ) : activeCollection === "site" ? (
+            siteApp ? (
+              <AppEditor
+                key={`site:${siteApp.key}`}
+                orgSlug={orgSlug}
+                virtualMcpId={virtualMcpId}
+                branch={branch}
+                blockKey={siteApp.key}
+                block={decofile[siteApp.key] as Record<string, unknown>}
+                decofile={decofile}
+                meta={meta}
+                title="Site"
+                excludeFields={["seo"]}
+                schemaPending={isAppSchemaLoading(siteApp.resolveType, ["seo"])}
+                previewBaseUrl={previewUrl}
+              />
+            ) : (
+              <EmptyMessage
+                title="Site settings not found"
+                description="This project doesn't have a site app block (site/apps/site.ts)."
+              />
+            )
+          ) : activeCollection === "settings" ? (
+            <CmsSettingsEditor
+              orgSlug={orgSlug}
+              virtualMcpId={virtualMcpId}
+              branch={branch}
+              decofile={decofile}
+              meta={meta}
+            />
+          ) : activeCollection === "context" ? (
+            <BlogContext
+              orgSlug={orgSlug}
+              virtualMcpId={virtualMcpId}
+              branch={branch}
+              decofile={decofile}
+              meta={meta}
+            />
+          ) : activeCollection === "seo" ? (
+            <SeoEditor
+              orgSlug={orgSlug}
+              virtualMcpId={virtualMcpId}
+              branch={branch}
+              decofile={decofile}
+              meta={meta}
+              target={{ kind: "site" }}
+              previewBaseUrl={sitePreviewUrl}
+            />
+          ) : activeCollection === "sections" ? (
+            <SectionsRightPane
+              selection={
+                selection?.collection === "sections" ||
+                selection?.collection === "available-section"
+                  ? selection
+                  : null
+              }
+              orgSlug={orgSlug}
+              virtualMcpId={virtualMcpId}
+              branch={branch}
+              previewUrl={previewUrl}
+              meta={meta}
+              decofile={decofile}
+              isCreating={saveBlock.isPending}
+              onCreateAvailable={handleCreateAvailableSection}
+              onSaveReferencedBlock={saveReferencedBlock}
+            />
+          ) : activeCollection === "posts" ? (
+            <PostsWorkspace
+              orgSlug={orgSlug}
+              virtualMcpId={virtualMcpId}
+              branch={branch}
+              decofile={decofile}
+              view={postsView}
+              selectedKey={
+                selection?.collection === "posts" ? selection.key : null
+              }
+              onViewChange={(next) => {
+                setPostsView(next);
+                setSelection(null);
+              }}
+              onClose={() => setSelection(null)}
+              onOpen={(key) => {
+                setSelection({ collection: "posts", key });
+                setOpenPageSeoKey(null);
+              }}
+              move={postMove}
+              meta={meta}
+              renderDetail={(key, controls) => (
+                <PostEditor
+                  key={`post:${postIdOfKey(key)}`}
+                  orgSlug={orgSlug}
+                  virtualMcpId={virtualMcpId}
+                  branch={branch}
+                  blockKey={key}
+                  block={decofile[key] as Record<string, unknown>}
+                  decofile={decofile}
+                  meta={meta}
+                  previewBaseUrl={sitePreviewUrl}
+                  move={postMove}
+                  onClose={controls?.onClose}
+                  expanded={controls?.expanded}
+                  onToggleExpand={controls?.onToggleExpand}
+                />
+              )}
+            />
+          ) : selection && selection.collection !== "available-section" ? (
+            selection.collection === "apps" ? (
+              <AppEditor
+                key={`app:${selection.key}`}
+                orgSlug={orgSlug}
+                virtualMcpId={virtualMcpId}
+                branch={branch}
+                blockKey={selection.key}
+                block={decofile[selection.key] as Record<string, unknown>}
+                decofile={decofile}
+                meta={meta}
+                previewBaseUrl={previewUrl}
+                schemaPending={isAppSchemaLoading(
+                  typeof (decofile[selection.key] as Record<string, unknown>)
+                    ?.__resolveType === "string"
+                    ? String(
+                        (decofile[selection.key] as Record<string, unknown>)
+                          .__resolveType,
+                      )
+                    : undefined,
+                )}
+              />
+            ) : selection.collection === "categories" ? (
+              <CategoryEditor
+                key={`category:${selection.key}`}
+                orgSlug={orgSlug}
+                virtualMcpId={virtualMcpId}
+                branch={branch}
+                blockKey={selection.key}
+                block={decofile[selection.key] as Record<string, unknown>}
+                decofile={decofile}
+                meta={meta}
+                onManagePosts={() => handleManagePosts()}
+                onOpenPost={(key) => {
+                  setActiveCollection("posts");
+                  setPrevCollection("posts");
+                  setSelection({ collection: "posts", key });
+                  setOpenPageSeoKey(null);
+                }}
+                previewBaseUrl={sitePreviewUrl}
+              />
+            ) : selection.collection === "authors" ? (
+              <RecordEditor
+                key={`authors:${selection.key}`}
+                orgSlug={orgSlug}
+                virtualMcpId={virtualMcpId}
+                branch={branch}
+                kind="authors"
+                blockKey={selection.key}
+                block={decofile[selection.key] as Record<string, unknown>}
+                meta={meta}
+                decofile={decofile}
+              />
+            ) : selection.collection === "redirects" ? (
+              <RedirectEditor
+                key={`redirect:${selection.key}`}
+                orgSlug={orgSlug}
+                virtualMcpId={virtualMcpId}
+                branch={branch}
+                blockKey={selection.key}
+                block={decofile[selection.key] as Record<string, unknown>}
+              />
+            ) : (
+              <NamedRuleViewsProvider value={namedRuleViews}>
+                <SectionsEditor
+                  key={
+                    selection.collection === "pages"
+                      ? `page:${selection.key}`
+                      : `section:${selection.key}`
+                  }
+                  orgSlug={orgSlug}
+                  virtualMcpId={virtualMcpId}
+                  branch={branch}
+                  previewReady
+                  previewUrl={previewUrl ?? undefined}
+                  currentPath={
+                    selection.collection === "pages" ? selection.path : "/"
+                  }
+                  activePageBlockKey={
+                    selection.collection === "pages" ? selection.key : null
+                  }
+                  activeGlobalBlockKey={
+                    selection.collection === "sections" ? selection.key : null
+                  }
+                  initialEditSeo={
+                    selection.collection === "pages" &&
+                    openPageSeoKey === selection.key
+                  }
+                  onExitSeo={() => setOpenPageSeoKey(null)}
+                  focusVariant={
+                    variantFocus?.blockKey === selection.key
+                      ? { ...variantFocus.focus, seq: variantFocus.seq }
+                      : null
+                  }
+                  onSelectRoot={() => {
+                    setSelection(null);
+                    setOpenPageSeoKey(null);
+                  }}
+                />
+              </NamedRuleViewsProvider>
+            )
+          ) : (
+            <EmptyMessage
+              title={`Select ${
+                isBlogKind(activeCollection)
+                  ? `a ${BLOG_SINGULAR[activeCollection]}`
+                  : activeCollection === "pages"
+                    ? "a page"
+                    : activeCollection === "apps"
+                      ? "an app"
+                      : activeCollection === "redirects"
+                        ? "a redirect"
+                        : "a section"
+              } to edit`}
+              description={
+                activeCollection === "apps"
+                  ? "Browse all apps and select an installed one to edit its settings."
+                  : 'Pick an item from the list, or click "+" to create one.'
+              }
+            />
+          )}
+        </Suspense>
+      )}
+    </>
+  );
+
   // ------------------ Render ------------------
   // `saveBlock` too: a category delete rewrites its posts before unlinking it.
   const isDeleting = deleteBlock.isPending || saveBlock.isPending;
   return (
     <BlocksSiteEditorProvider value={!runsSiteCode}>
       <div className="flex h-full w-full">
-        <CollectionsSidebar
-          active={activeCollection}
-          counts={counts}
-          hidden={hiddenCollections}
-          showBlog={showBlog}
-          showContext={blogAi}
-          onSelect={(id) => {
-            setActiveCollection(id);
-            setSelection(null);
-            setOpenPageSeoKey(null);
-          }}
-        />
-        {activeCollection !== "seo" &&
+        {typeTree ? (
+          <ContentTypesSidebar
+            tree={typeTree}
+            view={shownTypesView}
+            openTypeId={typesEditorOpen ? (openEntry?.typeId ?? null) : null}
+            onSelect={(view) => {
+              setTypesView(view);
+              closeTypeEntry();
+              if (view.kind === "seo") setActiveCollection("seo");
+            }}
+            onOpenEntry={openTypeEntry}
+          />
+        ) : (
+          <CollectionsSidebar
+            active={activeCollection}
+            counts={counts}
+            hidden={hiddenCollections}
+            showBlog={showBlog}
+            showContext={blogAi}
+            onSelect={(id) => {
+              setActiveCollection(id);
+              setSelection(null);
+              setOpenPageSeoKey(null);
+            }}
+          />
+        )}
+        {!typeTree &&
+          activeCollection !== "seo" &&
           activeCollection !== "site" &&
           activeCollection !== "settings" &&
           activeCollection !== "context" &&
@@ -1355,276 +1860,46 @@ function ContentBrowserReady({
               }
             />
           )}
-        <div className="flex-1 min-w-0">
-          {activeCollection === "loaders" || activeCollection === "actions" ? (
-            <RunnableBlocksBrowser
-              orgSlug={orgSlug}
-              virtualMcpId={virtualMcpId}
-              branch={branch}
-              previewUrl={previewUrl}
-              meta={meta}
-              decofile={decofile}
-              kind={activeCollection}
-            />
-          ) : (
-            <Suspense
-              fallback={
-                <div className="h-full flex items-center justify-center">
-                  <Spinner className="size-5 text-muted-foreground" />
-                </div>
+        {typeTree && shownTypesView.kind !== "seo" && !typesEditorOpen ? (
+          <div className="flex-1 min-w-0">
+            <ContentTypesTable
+              key={
+                shownTypesView.kind === "type" ? shownTypesView.id : "changes"
               }
-            >
-              {activeCollection === "calendar" ? (
-                <VariantCalendar decofile={decofile} />
-              ) : activeCollection === "post-schedule" ? (
-                <PostCalendar
-                  decofile={decofile}
-                  isCreating={saveBlock.isPending}
-                  onCreate={(day) => void handleCreateScheduledPost(day)}
-                  onReschedule={(key, day) =>
-                    void handleReschedulePost(key, day)
-                  }
-                  onSelect={(key) => {
-                    setActiveCollection("posts");
-                    setPrevCollection("posts");
-                    setSelection({ collection: "posts", key });
-                    setOpenPageSeoKey(null);
-                  }}
-                />
-              ) : activeCollection === "site" ? (
-                siteApp ? (
-                  <AppEditor
-                    key={`site:${siteApp.key}`}
-                    orgSlug={orgSlug}
-                    virtualMcpId={virtualMcpId}
-                    branch={branch}
-                    blockKey={siteApp.key}
-                    block={decofile[siteApp.key] as Record<string, unknown>}
-                    decofile={decofile}
-                    meta={meta}
-                    title="Site"
-                    excludeFields={["seo"]}
-                    schemaPending={isAppSchemaLoading(siteApp.resolveType, [
-                      "seo",
-                    ])}
-                    previewBaseUrl={previewUrl}
-                  />
-                ) : (
-                  <EmptyMessage
-                    title="Site settings not found"
-                    description="This project doesn't have a site app block (site/apps/site.ts)."
-                  />
-                )
-              ) : activeCollection === "settings" ? (
-                <CmsSettingsEditor
-                  orgSlug={orgSlug}
-                  virtualMcpId={virtualMcpId}
-                  branch={branch}
-                  decofile={decofile}
-                  meta={meta}
-                />
-              ) : activeCollection === "context" ? (
-                <BlogContext
-                  orgSlug={orgSlug}
-                  virtualMcpId={virtualMcpId}
-                  branch={branch}
-                  decofile={decofile}
-                  meta={meta}
-                />
-              ) : activeCollection === "seo" ? (
-                <SeoEditor
-                  orgSlug={orgSlug}
-                  virtualMcpId={virtualMcpId}
-                  branch={branch}
-                  decofile={decofile}
-                  meta={meta}
-                  target={{ kind: "site" }}
-                  previewBaseUrl={sitePreviewUrl}
-                />
-              ) : activeCollection === "sections" ? (
-                <SectionsRightPane
-                  selection={
-                    selection?.collection === "sections" ||
-                    selection?.collection === "available-section"
-                      ? selection
-                      : null
-                  }
-                  orgSlug={orgSlug}
-                  virtualMcpId={virtualMcpId}
-                  branch={branch}
-                  previewUrl={previewUrl}
-                  meta={meta}
-                  decofile={decofile}
-                  isCreating={saveBlock.isPending}
-                  onCreateAvailable={handleCreateAvailableSection}
-                  onSaveReferencedBlock={saveReferencedBlock}
-                />
-              ) : activeCollection === "posts" ? (
-                <PostsWorkspace
-                  orgSlug={orgSlug}
-                  virtualMcpId={virtualMcpId}
-                  branch={branch}
-                  decofile={decofile}
-                  view={postsView}
-                  selectedKey={
-                    selection?.collection === "posts" ? selection.key : null
-                  }
-                  onViewChange={(next) => {
-                    setPostsView(next);
-                    setSelection(null);
-                  }}
-                  onClose={() => setSelection(null)}
-                  onOpen={(key) => {
-                    setSelection({ collection: "posts", key });
-                    setOpenPageSeoKey(null);
-                  }}
-                  move={postMove}
-                  meta={meta}
-                  renderDetail={(key, controls) => (
-                    <PostEditor
-                      key={`post:${postIdOfKey(key)}`}
-                      orgSlug={orgSlug}
-                      virtualMcpId={virtualMcpId}
-                      branch={branch}
-                      blockKey={key}
-                      block={decofile[key] as Record<string, unknown>}
-                      decofile={decofile}
-                      meta={meta}
-                      previewBaseUrl={sitePreviewUrl}
-                      move={postMove}
-                      onClose={controls?.onClose}
-                      expanded={controls?.expanded}
-                      onToggleExpand={controls?.onToggleExpand}
-                    />
-                  )}
-                />
-              ) : selection && selection.collection !== "available-section" ? (
-                selection.collection === "apps" ? (
-                  <AppEditor
-                    key={`app:${selection.key}`}
-                    orgSlug={orgSlug}
-                    virtualMcpId={virtualMcpId}
-                    branch={branch}
-                    blockKey={selection.key}
-                    block={decofile[selection.key] as Record<string, unknown>}
-                    decofile={decofile}
-                    meta={meta}
-                    previewBaseUrl={previewUrl}
-                    schemaPending={isAppSchemaLoading(
-                      typeof (
-                        decofile[selection.key] as Record<string, unknown>
-                      )?.__resolveType === "string"
-                        ? String(
-                            (decofile[selection.key] as Record<string, unknown>)
-                              .__resolveType,
-                          )
-                        : undefined,
-                    )}
-                  />
-                ) : selection.collection === "categories" ? (
-                  <CategoryEditor
-                    key={`category:${selection.key}`}
-                    orgSlug={orgSlug}
-                    virtualMcpId={virtualMcpId}
-                    branch={branch}
-                    blockKey={selection.key}
-                    block={decofile[selection.key] as Record<string, unknown>}
-                    decofile={decofile}
-                    meta={meta}
-                    onManagePosts={() => handleManagePosts()}
-                    onOpenPost={(key) => {
-                      setActiveCollection("posts");
-                      setPrevCollection("posts");
-                      setSelection({ collection: "posts", key });
-                      setOpenPageSeoKey(null);
-                    }}
-                    previewBaseUrl={sitePreviewUrl}
-                  />
-                ) : selection.collection === "authors" ? (
-                  <RecordEditor
-                    key={`authors:${selection.key}`}
-                    orgSlug={orgSlug}
-                    virtualMcpId={virtualMcpId}
-                    branch={branch}
-                    kind="authors"
-                    blockKey={selection.key}
-                    block={decofile[selection.key] as Record<string, unknown>}
-                    meta={meta}
-                    decofile={decofile}
-                  />
-                ) : selection.collection === "redirects" ? (
-                  <RedirectEditor
-                    key={`redirect:${selection.key}`}
-                    orgSlug={orgSlug}
-                    virtualMcpId={virtualMcpId}
-                    branch={branch}
-                    blockKey={selection.key}
-                    block={decofile[selection.key] as Record<string, unknown>}
-                  />
-                ) : (
-                  <NamedRuleViewsProvider value={namedRuleViews}>
-                    <SectionsEditor
-                      key={
-                        selection.collection === "pages"
-                          ? `page:${selection.key}`
-                          : `section:${selection.key}`
-                      }
-                      orgSlug={orgSlug}
-                      virtualMcpId={virtualMcpId}
-                      branch={branch}
-                      previewReady
-                      previewUrl={previewUrl ?? undefined}
-                      currentPath={
-                        selection.collection === "pages" ? selection.path : "/"
-                      }
-                      activePageBlockKey={
-                        selection.collection === "pages" ? selection.key : null
-                      }
-                      activeGlobalBlockKey={
-                        selection.collection === "sections"
-                          ? selection.key
-                          : null
-                      }
-                      initialEditSeo={
-                        selection.collection === "pages" &&
-                        openPageSeoKey === selection.key
-                      }
-                      onExitSeo={() => setOpenPageSeoKey(null)}
-                      focusVariant={
-                        variantFocus?.blockKey === selection.key
-                          ? { ...variantFocus.focus, seq: variantFocus.seq }
-                          : null
-                      }
-                      onSelectRoot={() => {
-                        setSelection(null);
-                        setOpenPageSeoKey(null);
-                      }}
-                    />
-                  </NamedRuleViewsProvider>
-                )
-              ) : (
-                <EmptyMessage
-                  title={`Select ${
-                    isBlogKind(activeCollection)
-                      ? `a ${BLOG_SINGULAR[activeCollection]}`
-                      : activeCollection === "pages"
-                        ? "a page"
-                        : activeCollection === "apps"
-                          ? "an app"
-                          : activeCollection === "redirects"
-                            ? "a redirect"
-                            : "a section"
-                  } to edit`}
-                  description={
-                    activeCollection === "apps"
-                      ? "Browse all apps and select an installed one to edit its settings."
-                      : 'Pick an item from the list, or click "+" to create one.'
-                  }
-                />
-              )}
-            </Suspense>
-          )}
-        </div>
+              tree={typeTree}
+              type={viewType}
+              onOpen={openTypeEntry}
+              onRestore={(entry) => void restoreTypeEntry(entry)}
+              restoring={restoring}
+              createLabel={createForType(viewType)?.label}
+              onCreate={createForType(viewType)?.onCreate}
+              rowMenu={typeRowMenu}
+            />
+          </div>
+        ) : typesEditorOpen ? (
+          <div className="flex-1 min-w-0 flex flex-col">
+            <div className="flex h-9 shrink-0 items-center border-b px-2">
+              <button
+                type="button"
+                onClick={closeTypeEntry}
+                className="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-muted-foreground hover:bg-accent hover:text-foreground cursor-pointer"
+              >
+                <ArrowLeft size={14} />
+                {t("siteEditor.contentTypes.back", {
+                  type:
+                    shownTypesView.kind === "seo"
+                      ? t("siteEditor.contentTypes.seo")
+                      : viewType
+                        ? typeLabel(viewType)
+                        : t("siteEditor.contentTypes.changesInDraft"),
+                })}
+              </button>
+            </div>
+            <div className="flex-1 min-h-0">{editorPane}</div>
+          </div>
+        ) : (
+          <div className="flex-1 min-w-0">{editorPane}</div>
+        )}
 
         {/* Page create/duplicate/rename dialog */}
         {pageDialog && (
