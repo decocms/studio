@@ -80,6 +80,8 @@ export const details = {
     "Argumentos separados por espaço",
   "details.connectionSidebar.sse": "SSE",
   "details.connectionSidebar.token": "Token",
+  "details.connectionSidebar.tokenSchemeHint":
+    'Enviado como "Authorization: Bearer <token>". Se seu servidor exigir um esquema diferente (ex: "Token token=<chave>"), cole o valor completo do header.',
   "details.connectionSidebar.type": "Tipo",
   "details.connectionSidebar.urlPlaceholder": "https://example.com/mcp",
   "details.connectionSidebar.virtualMcp": "MCP Virtual",

@@ -7,8 +7,7 @@
  * pasted into the draft selector's "Local" option connects a project to it.
  *
  * Only loopback endpoints are accepted: a link pointing anywhere else would
- * send the editor's edits, uploads and secrets (encrypted to that server's
- * key) to whoever wrote the link. `deco serve` listens on 127.0.0.1 and ::1
+ * send the editor's edits and uploads to whoever wrote the link. `deco serve` listens on 127.0.0.1 and ::1
  * and prints `localhost`; an endpoint on 127.0.0.1 or [::1] (an older link,
  * or one remembered by an older Studio) is read as `localhost`, so it shows
  * and compares the same.

@@ -428,7 +428,7 @@ export function ConnectionFields({
                       className="h-10"
                     />
                   </FormControl>
-                  {isGitHubCopilotMcp && (
+                  {isGitHubCopilotMcp ? (
                     <FormDescription>
                       {t("details.connectionSidebar.createAPatAt")}{" "}
                       <a
@@ -439,6 +439,10 @@ export function ConnectionFields({
                       >
                         github.com/settings/personal-access-tokens
                       </a>
+                    </FormDescription>
+                  ) : (
+                    <FormDescription>
+                      {t("details.connectionSidebar.tokenSchemeHint")}
                     </FormDescription>
                   )}
                 </>

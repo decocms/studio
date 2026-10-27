@@ -15,11 +15,13 @@
  *   request and reads main once for it (head, listing, schema), so the
  *   poll's `changes.list` adds no GitHub call to its `blocks.list`.
  * - {@link createDraftWriteStorage}, what a save (`blocks.apply`) goes
- *   through: the draft alone, never GitHub, never a schema. A save writes
- *   the whole block into the draft, over whatever the draft had for it; a
- *   delete writes the name into `delete`. Its guards (`ifMatch`) compare
- *   with the draft: a block's version is its version in the draft, `null`
- *   when the draft doesn't hold it (main's copy is not the draft's).
+ *   through: the draft alone, never GitHub, never a schema. It is an
+ *   overlay storage (`writeSnapshot()`, protocol 1.2's `describe.overlay`):
+ *   a save writes the whole block into the draft, over whatever the draft
+ *   had for it; a delete writes the name into `delete`, a tombstone. Its
+ *   guards (`ifMatch`) compare with the draft: a block's version is its
+ *   version in the draft, `TOMBSTONE_VERSION` when the draft deletes it,
+ *   `null` when the draft doesn't hold it (main's copy is not the draft's).
  *
  * The revision is `<main head>~<draft ETag>` (`hostedRevision`), so a save
  * or a new main commit is a new revision. A save, which never reads main,
@@ -47,23 +49,15 @@ import {
   fullyDecodeFileName,
   serializeBlock,
   spellingKey,
+  TOMBSTONE_VERSION,
   unsupported,
 } from "@decocms/blocks/protocol";
-import * as blocksProtocol from "@decocms/blocks/protocol";
-import {
-  DRAFT_TOMBSTONE_VERSION,
-  hostedRevision,
-} from "@decocms/shared/blocks-major";
+import { hostedRevision } from "@decocms/shared/blocks-major";
 import type { RepoContentClient } from "@/git-providers";
 import { gitBlobSha } from "@/decofile/read-decofile";
 import { createRepoContentReader } from "@/decofile/repo-content-storage";
 import { bareEtag, ObjectChangedError } from "./delivery-store";
-import type {
-  DraftBody,
-  DraftStore,
-  HostedDraftRef,
-  LoadedDraft,
-} from "./draft-store";
+import type { DraftBody, DraftStore, HostedDraftRef } from "./draft-store";
 
 /** The spelling group (fully decoded name) a saved-block file belongs to. */
 function groupOf(file: string): string {
@@ -75,23 +69,6 @@ function draftRevision(mainSha: string, etag: string | null): string {
 }
 
 const EMPTY_DRAFT: DraftBody = { set: {}, delete: [] };
-
-/**
- * `@decocms/blocks`' `TOMBSTONE_VERSION`, when the installed release has it
- * (decocms/blocks#761, 767a3849: an overlay's recorded deletion is held,
- * listed `deleted: true` at that version, and a commit answers it for each
- * deletion it records). Null on a release without it (8.5): the write
- * storage then lists a tombstone by its version alone and a delete answers
- * none, as that core expects.
- *
- * TODO(decocms/blocks#761): once Studio depends on a blocks release with
- * TOMBSTONE_VERSION, import it directly, drop this check and the
- * `tombstoneVersion: null` path (and its test).
- */
-const BLOCKS_TOMBSTONE_VERSION: string | null = (() => {
-  const version = (blocksProtocol as Record<string, unknown>).TOMBSTONE_VERSION;
-  return typeof version === "string" ? version : null;
-})();
 
 /** The draft's own block files (its `set`), with their texts. */
 function draftFiles(draft: DraftBody): {
@@ -114,15 +91,12 @@ function draftFiles(draft: DraftBody): {
 }
 
 /**
- * The draft as a save sees it: its own block files and, for each name it
- * deletes, a tombstone at {@link DRAFT_TOMBSTONE_VERSION} (no body). A
- * deleted block is in the draft: "must not exist in the draft" fails on it.
+ * The draft as a save sees it (the write storage's `writeSnapshot()`): its
+ * own block files and, for each name it deletes, a tombstone listed
+ * `deleted: true` at `TOMBSTONE_VERSION` (no body). A deleted block is in
+ * the draft: "must not exist in the draft" fails on it.
  */
-function draftOverlayFiles(
-  draft: DraftBody,
-  /** Lists tombstones `deleted: true` (see {@link BLOCKS_TOMBSTONE_VERSION}). */
-  markDeleted = false,
-): {
+function draftOverlayFiles(draft: DraftBody): {
   files: StorageFile[];
   texts: Map<string, string>;
 } {
@@ -131,11 +105,11 @@ function draftOverlayFiles(
   const tombstones = draft.delete
     .filter((name) => !held.has(spellingKey(name)))
     .map(
-      (name): StorageFile =>
-        Object.assign(
-          { file: blockFileName(name), version: DRAFT_TOMBSTONE_VERSION },
-          markDeleted ? { deleted: true as const } : {},
-        ),
+      (name): StorageFile => ({
+        file: blockFileName(name),
+        version: TOMBSTONE_VERSION,
+        deleted: true,
+      }),
     );
   return { files: [...own.files, ...tombstones], texts: own.texts };
 }
@@ -258,102 +232,47 @@ function putVersions(put: Record<string, string>): Record<string, string> {
 }
 
 /**
- * A version no draft file has: what a name the draft doesn't hold shows as
- * in the write storage's listing while a save deletes it (see
- * {@link createDraftWriteStorage}'s `deletes`). The request's "must not
- * exist" guard on it is sent as this version (`planDraftSave`), and a
- * commit checks it as "still not in the draft"; a Conflict answers it as
- * `null` again.
- */
-export const NOT_IN_DRAFT = "not-in-draft";
-
-/**
- * Throws {@link STALE_DRAFT} unless every `expected` file is in the draft's
- * overlay at the version expected (`null` or {@link NOT_IN_DRAFT}: absent).
- */
-function checkOverlayExpected(
-  draft: DraftBody,
-  expected: Record<string, string | null>,
-) {
-  const absent = (version: string | null) =>
-    version === NOT_IN_DRAFT ? null : version;
-  checkExpected(
-    draftOverlayFiles(draft).files,
-    Object.fromEntries(
-      Object.entries(expected).map(([file, v]) => [file, absent(v)]),
-    ),
-  );
-}
-
-/**
  * The storage a hosted save (`blocks.apply`) runs on: the draft alone (see
  * the module note). It never reads GitHub or a schema, so a save costs one
  * read and one conditional write of the draft object.
  *
- * Its listing is the draft's overlay: its blocks, and a tombstone for each
- * name it deletes ({@link DRAFT_TOMBSTONE_VERSION}), so a deleted block is
- * in the draft for a guard.
- *
- * `deletes`: names the save deletes that the draft doesn't hold (blocks
- * only main has, as the caller found the draft in `loaded`). The protocol's
- * core only deletes a name its listing has, so the listing shows each of
- * them as a file at {@link NOT_IN_DRAFT}; the caller sends their "must not
- * exist" guard as that version (`planDraftSave`), and the commit checks it
- * as "still not in the draft".
+ * An overlay storage: `writeSnapshot()` is the draft, its blocks and a
+ * tombstone for each name it deletes, so a deleted block is in the draft
+ * for a guard, and the core names every delete's file even when the draft
+ * doesn't hold it (a block only main has). A commit checks its guards on
+ * the draft it lands on, and answers `TOMBSTONE_VERSION` for each deletion
+ * it records: every delete, since a save can't see main.
  */
 export function createDraftWriteStorage(options: {
   packagePath: string | null;
   drafts: DraftStore;
   ref: HostedDraftRef;
-  /** The draft as the caller read it, for the first listing. */
-  loaded?: LoadedDraft | null;
-  deletes?: readonly string[];
-  /**
-   * The tombstone version the installed `@decocms/blocks` core knows, or
-   * null when it has none; {@link BLOCKS_TOMBSTONE_VERSION} by default.
-   */
-  tombstoneVersion?: string | null;
 }): ContentStorage {
   const { drafts, ref } = options;
-  const tombstoneVersion =
-    options.tombstoneVersion === undefined
-      ? BLOCKS_TOMBSTONE_VERSION
-      : options.tombstoneVersion;
-  let preloaded = options.loaded;
+  /** Each listing's block texts, by revision, for `readFiles`. */
   const texts = new Map<string, Map<string, string>>();
-  const load = async () => {
-    if (preloaded !== undefined) {
-      const draft = preloaded;
-      preloaded = undefined;
-      return draft;
-    }
-    return drafts.load(ref);
-  };
   const notMain = (): never => {
     throw unsupported("a save reads the draft only");
+  };
+
+  /** The draft's overlay; `snapshot()` (no main part) leaves the tombstones out. */
+  const listDraft = async (withTombstones: boolean) => {
+    const draft = await drafts.load(ref);
+    const own = draftOverlayFiles(draft?.body ?? EMPTY_DRAFT);
+    const revision = draftRevision("", draft?.etag ?? null);
+    texts.set(revision, own.texts);
+    return {
+      revision,
+      resolvedRef: null,
+      files: withTombstones ? own.files : own.files.filter((f) => !f.deleted),
+    } satisfies StorageSnapshot;
   };
 
   return {
     describe: () => describeGit(options.packagePath),
 
-    snapshot: async (): Promise<StorageSnapshot> => {
-      const draft = await load();
-      const body = draft?.body ?? EMPTY_DRAFT;
-      const own = draftOverlayFiles(body, tombstoneVersion !== null);
-      const held = new Set(
-        [...Object.keys(body.set), ...body.delete].map(spellingKey),
-      );
-      const absent = (options.deletes ?? [])
-        .filter((name) => !held.has(spellingKey(name)))
-        .map((name) => ({ file: blockFileName(name), version: NOT_IN_DRAFT }));
-      const revision = draftRevision("", draft?.etag ?? null);
-      texts.set(revision, own.texts);
-      return {
-        revision,
-        resolvedRef: null,
-        files: [...own.files, ...absent],
-      };
-    },
+    snapshot: () => listDraft(false),
+    writeSnapshot: () => listDraft(true),
 
     readFiles: async (snap, files) => {
       const own = texts.get(snap.revision) ?? new Map<string, string>();
@@ -367,24 +286,17 @@ export function createDraftWriteStorage(options: {
 
     // No schema: nothing about a save depends on one.
     readSchema: async () => null,
-    readSecretsPublicKey: async () => null,
 
     commit: async (attempt): Promise<CommitResult> => {
       if (attempt.reason === "discard") notMain();
       const versions = putVersions(attempt.put);
       try {
         const saved = await drafts.update(ref, (body) => {
-          checkOverlayExpected(body, attempt.expected);
+          checkExpected(draftOverlayFiles(body).files, attempt.expected);
           const next = applyAttemptToDraft(body, attempt);
-          // Each deletion the draft records answers the tombstone's version
-          // (Studio records one for every delete: a save can't see main).
-          if (tombstoneVersion !== null) {
-            const recorded = new Set(next.delete.map(spellingKey));
-            for (const file of attempt.delete) {
-              if (recorded.has(groupOf(file))) {
-                versions[file] = tombstoneVersion;
-              }
-            }
+          const recorded = new Set(next.delete.map(spellingKey));
+          for (const file of attempt.delete) {
+            if (recorded.has(groupOf(file))) versions[file] = TOMBSTONE_VERSION;
           }
           return next;
         });
@@ -532,8 +444,6 @@ export function createDraftContentStorage(options: {
         ref: head.resolvedRef ?? options.mainBranch,
       });
     },
-    // Secrets live in the deploy platform, never in a v8 site's content.
-    readSecretsPublicKey: async () => null,
 
     base: async (): Promise<StorageBase> => {
       const head = await readMain();
@@ -630,7 +540,6 @@ export function createV7MainStorage(options: {
     }),
     readFiles: async () => ({}),
     readSchema: async () => null,
-    readSecretsPublicKey: async () => null,
     commit: async () => {
       throw unsupported("not a Blocks v8 site");
     },
