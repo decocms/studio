@@ -1478,7 +1478,8 @@ export function linkifyCitations(
   markdown: string,
   byName: Record<string, string>,
 ): string {
-  const linked = /\[@[^\]]+\]\([^)\s]+\)/g;
+  // Bounded like `CITATION` in @decocms/shared/blog: unbounded, `[@[@[@…` is quadratic.
+  const linked = /\[@[^\]]{1,200}\]\([^)\s]{1,500}\)/g;
   const parts: string[] = [];
   let last = 0;
   for (const match of markdown.matchAll(linked)) {

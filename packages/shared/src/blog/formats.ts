@@ -63,12 +63,25 @@ export function mentionableSections(
  * component, and is returned as-is when it does not, so an unknown citation
  * stays visible as one.
  */
+/**
+ * A `[@Name](resolveType)` citation.
+ *
+ * Both repetitions are bounded, which is the whole reason this is a constant
+ * rather than a literal beside each use. Unbounded, a format of `[@[@[@…`
+ * costs time quadratic in its length: every `[@` starts a scan to the end of
+ * the string looking for a `]` that never comes. A block name and a
+ * resolveType are both far shorter than these caps, so nothing real is
+ * excluded — and a format is written by a person or a model, which is exactly
+ * the input a bound belongs on.
+ */
+const CITATION = /\[@[^\]]{1,200}\]\(([^)\s]{1,500})\)/g;
+
 export function citedSections(
   markdown: string,
   byName: Record<string, string> = {},
 ): string[] {
   const cited = new Set<string>();
-  const linked = /\[@[^\]]+\]\(([^)\s]+)\)/g;
+  const linked = CITATION;
   for (const match of markdown.matchAll(linked)) {
     if (match[1]) cited.add(match[1]);
   }
