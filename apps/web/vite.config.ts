@@ -393,7 +393,15 @@ export default defineConfig({
     ...(process.env.HOST === "0.0.0.0"
       ? {
           host: true,
-          allowedHosts: ["localhost", ".preview-studio.decocms.com"],
+          allowedHosts: [
+            "localhost",
+            ".preview-studio.decocms.com",
+            // A tunnel's host (see .claude/skills/run-local-freestyle).
+            ...(process.env.__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS ?? "")
+              .split(",")
+              .map((host) => host.trim())
+              .filter(Boolean),
+          ],
         }
       : {}),
     hmr: {
