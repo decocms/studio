@@ -568,6 +568,7 @@ function ConflictCards({
   choices,
   viewer,
   author = null,
+  anonymousTitle = false,
   onChoose,
   arrows,
 }: FormConflictChoicesProps & {
@@ -601,6 +602,10 @@ function ConflictCards({
     <Avatar url="icon://user" fallback="" muted shape="circle" size="sm" />
   );
   const savedAt = author ? new Date(author.at) : null;
+  // Opened before who made it was known (hosted v8): until the name lands,
+  // their card names no one and claims no one ("Their version · already
+  // saved"), and keeps that if it never does.
+  const neutral = anonymousTitle && !author;
   return (
     <div
       role="radiogroup"
@@ -624,16 +629,20 @@ function ConflictCards({
         onChoose={() => onChoose(field.pointer, "theirs")}
         avatar={theirAvatar}
         who={
-          author?.you
-            ? t("sectionsEditor.formConflict.youElsewhere")
-            : author?.name || t("sectionsEditor.formConflict.someoneElse")
+          neutral
+            ? t("sectionsEditor.formConflict.theirVersion")
+            : author?.you
+              ? t("sectionsEditor.formConflict.youElsewhere")
+              : author?.name || t("sectionsEditor.formConflict.someoneElse")
         }
         meta={
-          savedAt
-            ? t("sectionsEditor.formConflict.savedAt", {
-                when: formatRelativeTime(savedAt, language),
-              })
-            : t("sectionsEditor.formConflict.theirVersionSaved")
+          neutral
+            ? t("sectionsEditor.formConflict.alreadySaved")
+            : savedAt
+              ? t("sectionsEditor.formConflict.savedAt", {
+                  when: formatRelativeTime(savedAt, language),
+                })
+              : t("sectionsEditor.formConflict.theirVersionSaved")
         }
         metaTitle={savedAt ? exactTime(savedAt, language) : undefined}
       >

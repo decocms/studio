@@ -474,6 +474,8 @@ export const sectionsEditor = {
     "Their version changed again while this was open. Each step now shows the newer one.",
   "sectionsEditor.formConflict.you": "You",
   "sectionsEditor.formConflict.someoneElse": "Someone else",
+  "sectionsEditor.formConflict.theirVersion": "Their version",
+  "sectionsEditor.formConflict.alreadySaved": "already saved",
   "sectionsEditor.formConflict.yourVersionNotSaved":
     "Your version · not saved yet",
   "sectionsEditor.formConflict.theirVersionSaved":

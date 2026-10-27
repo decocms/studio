@@ -489,6 +489,8 @@ export const sectionsEditor = {
     "A versão deles mudou de novo enquanto isto estava aberto. Cada etapa já mostra a mais nova.",
   "sectionsEditor.formConflict.you": "Você",
   "sectionsEditor.formConflict.someoneElse": "Outra pessoa",
+  "sectionsEditor.formConflict.theirVersion": "Versão deles",
+  "sectionsEditor.formConflict.alreadySaved": "já salva",
   "sectionsEditor.formConflict.yourVersionNotSaved":
     "Sua versão · ainda não salva",
   "sectionsEditor.formConflict.theirVersionSaved": "Versão deles · já salva",

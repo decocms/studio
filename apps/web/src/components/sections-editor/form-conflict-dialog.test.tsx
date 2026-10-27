@@ -736,3 +736,55 @@ describe("hosted v8: the window opens at once", () => {
     );
   });
 });
+
+describe("hosted v8: their card while who made it is being read", () => {
+  const bruno: ConflictAuthor = {
+    name: "Bruno Lima",
+    at: new Date().toISOString(),
+    you: false,
+  };
+
+  test("names no one and claims no one: their version, already saved; then the name", () => {
+    const view = render(
+      <Harness onApply={() => {}} only={headline} anonymousTitle />,
+    );
+    expect(view.queryByText("Someone else")).toBeNull();
+    const theirs = view.getByRole("radio", { name: "Their version" });
+    expect(theirs).toHaveTextContent("already saved");
+    view.rerender(
+      <Harness
+        onApply={() => {}}
+        only={headline}
+        anonymousTitle
+        author={bruno}
+      />,
+    );
+    expect(view.getByRole("radio", { name: "Bruno Lima" })).toBeInTheDocument();
+    expect(view.queryByText("Someone else")).toBeNull();
+  });
+
+  test("who made it couldn't be read: the card stays as it opened", () => {
+    const view = render(
+      <Harness onApply={() => {}} only={headline} anonymousTitle />,
+    );
+    view.rerender(
+      <Harness
+        onApply={() => {}}
+        only={headline}
+        anonymousTitle
+        author={null}
+      />,
+    );
+    expect(
+      view.getByRole("radio", { name: "Their version" }),
+    ).toBeInTheDocument();
+    expect(view.queryByText("Someone else")).toBeNull();
+  });
+
+  test("elsewhere (no one to read), their card says Someone else, as before", () => {
+    const view = render(<Harness onApply={() => {}} only={headline} />);
+    expect(view.getByRole("radio", { name: "Someone else" })).toHaveTextContent(
+      "Their version · already saved",
+    );
+  });
+});
