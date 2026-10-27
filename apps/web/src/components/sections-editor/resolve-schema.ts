@@ -205,10 +205,19 @@ function asStringArray(value: unknown): string[] {
     : [];
 }
 
-/** Base64 encode resolveType keys — browser-safe (btoa), Node fallback in tests. */
+/**
+ * Base64 encode resolveType keys — browser-safe (btoa), Node fallback in tests.
+ * `btoa` throws on code points outside Latin1 (e.g. a vendor/app name with
+ * accented or non-Latin characters), which would otherwise crash schema
+ * resolution for the whole block; fall back to a key that matches nothing.
+ */
 function toBase64(str: string): string {
-  if (typeof btoa === "function") return btoa(str);
-  return Buffer.from(str).toString("base64");
+  try {
+    if (typeof btoa === "function") return btoa(str);
+    return Buffer.from(str).toString("base64");
+  } catch {
+    return "";
+  }
 }
 
 function parseSiteAppResolveType(
