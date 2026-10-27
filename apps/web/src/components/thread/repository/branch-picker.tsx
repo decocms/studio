@@ -62,6 +62,7 @@ import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
 import { useDecoServeConnection } from "@/hooks/use-deco-serve-connection";
 import { useT } from "@/i18n/use-t.ts";
 import { toast } from "sonner";
+import { pickerCurrent } from "./branch-picker-current.ts";
 import { decodeHtmlEntities } from "./decode-html-entities.ts";
 import { LocalUrlForm } from "./local-url-form.tsx";
 import { V8LocalhostRow } from "./localhost-row.tsx";
@@ -86,6 +87,9 @@ interface Props {
   /** The project's production branch. Not listed (read-only); used only for the
    *  current-version label and as the fallback when the active draft is deleted. */
   baseBranch?: string | null;
+  /** The base branch holds an editor draft (a hosted Blocks v8 CMS session):
+   *  shown as that draft, not as "Production". v7 never sets it. */
+  baseIsDraft?: boolean;
   /** Repo scope for the "Advanced" flow (adopt an existing branch/PR as a draft). */
   orgId: string;
   orgSlug: string;
@@ -124,6 +128,7 @@ export function BranchPicker({
   userLabel,
   value,
   baseBranch,
+  baseIsDraft = false,
   orgId,
   orgSlug,
   userId,
@@ -187,10 +192,12 @@ export function BranchPicker({
     max: RELEASES_MAX,
   });
 
-  const isBase = !!value && value === baseBranch;
-  const current = releases.find((r) => r.branch === value);
-  // Current branch that is neither base nor a stored release: show as a draft.
-  const unlisted = !isBase && !current && !!value;
+  const { isBase, current, unlisted } = pickerCurrent({
+    value,
+    baseBranch,
+    releases,
+    baseIsDraft,
+  });
 
   const currentLabel = isBase
     ? t("thread.branchPicker.live")
@@ -575,10 +582,7 @@ export function BranchPicker({
             <AlertDialogCancel>
               {t("thread.branchPicker.cancel")}
             </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={confirmDelete}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
+            <AlertDialogAction onClick={confirmDelete} variant="destructive">
               {t("thread.branchPicker.delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -618,7 +622,7 @@ function RenameInput({
             onCancel();
           }
         }}
-        className="h-8 flex-1 rounded-md border bg-transparent px-2 text-sm outline-none focus:ring-1 focus:ring-ring"
+        className="h-8 flex-1 rounded-md border bg-transparent px-2 text-sm focus-ring"
       />
       <Button size="sm" onClick={onSave}>
         {t("thread.branchPicker.save")}
@@ -657,7 +661,7 @@ function ReleaseRow({
       ref={rowRef}
       className={cn(
         "group flex items-center rounded-lg",
-        selected ? "bg-accent" : "hover:bg-accent/60",
+        selected ? "bg-accent" : "hover:bg-accent",
       )}
     >
       <Tooltip>

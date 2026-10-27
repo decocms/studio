@@ -166,31 +166,6 @@ export async function fetchVirtualMCPs(
   return listOptions.select(await queryClient.fetchQuery(listOptions));
 }
 
-/** Warms one virtual MCP's item entry before navigating to it, so the
- *  destination's suspending {@link useVirtualMCP} read is a cache hit instead
- *  of a fallback over the whole session. */
-export async function prefetchVirtualMCP(
-  queryClient: QueryClient,
-  org: { id: string; slug: string },
-  virtualMcpId: string,
-): Promise<void> {
-  const client = await queryClient.fetchQuery(
-    mcpClientQueryOptions({
-      connectionId: SELF_MCP_ALIAS_ID,
-      orgId: org.id,
-      orgSlug: org.slug,
-    }),
-  );
-  await queryClient.ensureQueryData(
-    collectionItemQueryOptions<VirtualMCPEntity>(
-      org.id,
-      "VIRTUAL_MCP",
-      virtualMcpId,
-      client,
-    ),
-  );
-}
-
 /**
  * The same list, keeping the page counts the server returns.
  *

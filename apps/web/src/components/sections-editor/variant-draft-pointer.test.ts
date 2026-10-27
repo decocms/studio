@@ -3,6 +3,7 @@ import {
   buildPageForcedVariants,
   buildSectionForcedVariants,
   buildServeDraftPointer,
+  combineForcedVariants,
   withForcedVariants,
   withForcedVariantsInDraftUrl,
 } from "./variant-draft-pointer";
@@ -54,6 +55,98 @@ describe("buildSectionForcedVariants", () => {
     expect(buildSectionForcedVariants({ ...base, sectionIndex: -1 })).toEqual(
       [],
     );
+  });
+});
+
+describe("combineForcedVariants", () => {
+  // The site's forceVariants (@decocms/blocks src/v8/variants.ts) applies each
+  // `<block>@<path>=<index>` in turn and leaves only the forced variant in the
+  // addressed multivariate; an address that no longer resolves is ignored.
+  function applyForced(block: unknown, forced: string[]): unknown {
+    let root = structuredClone(block);
+    for (const entry of forced) {
+      const [, path = "", index] = entry.match(/^[^@]*@(.*)=(\d+)$/) ?? [];
+      const keys = path === "" ? [] : path.split(".");
+      let parent: Record<string, unknown> | null = null;
+      let node: unknown = root;
+      let last = "";
+      for (const key of keys) {
+        if (node === null || typeof node !== "object" || !(key in node)) {
+          node = undefined;
+          break;
+        }
+        parent = node as Record<string, unknown>;
+        last = key;
+        node = parent[key];
+      }
+      const variants = (node as { variants?: unknown[] } | undefined)?.variants;
+      const picked = variants?.[Number(index)] as object | undefined;
+      if (!picked) continue;
+      const forcedNode = {
+        ...(node as object),
+        variants: [{ ...picked, rule: true }],
+      };
+      if (parent) parent[last] = forcedNode;
+      else root = forcedNode;
+    }
+    return root;
+  }
+  type ForcedMv = { variants: unknown[] };
+  type Forced = {
+    sections: { variants: Array<{ value: { value: unknown[] } }> };
+  };
+  const lazy = (value: unknown) => ({ __resolveType: "lazy", value });
+  const intro = (text: string) => ({ __resolveType: "intro", text });
+  const sectionMv = {
+    __resolveType: "multivariate",
+    variants: [
+      { rule, value: lazy(intro("mobile")) },
+      { rule, value: lazy(intro("default")) },
+    ],
+  };
+  const home = {
+    sections: {
+      __resolveType: "multivariate",
+      variants: [
+        { rule, value: lazy([intro("page 1")]) },
+        { rule, value: lazy([intro("hero"), sectionMv]) },
+      ],
+    },
+  };
+
+  it("puts the section inside a page variant before the page, so the site applies both", () => {
+    const page = buildPageForcedVariants("Home", {
+      multivariate: true,
+      index: 1,
+      lazyValues: true,
+      variants: [{ rule }, { rule }],
+    });
+    const section = buildSectionForcedVariants({
+      pageKey: "Home",
+      page: {
+        multivariate: true,
+        index: 1,
+        lazyValues: true,
+        variants: [{ rule }, { rule }],
+      },
+      sectionIndex: 1,
+      sectionLazy: false,
+      mvObj: sectionMv,
+      selectedVariantIndex: 0,
+    });
+    const forced = combineForcedVariants(page, section);
+    expect(forced).toEqual([
+      "Home@sections.variants.1.value.value.1=0",
+      "Home@sections=1",
+    ]);
+    const out = applyForced(home, forced) as Forced;
+    expect(out.sections.variants).toHaveLength(1);
+    const mv = out.sections.variants[0]?.value.value[1] as ForcedMv;
+    expect(mv.variants).toEqual([{ rule: true, value: lazy(intro("mobile")) }]);
+    // The page first would drop the section's address: what the preview did before.
+    const wrong = applyForced(home, [...page, ...section]) as Forced;
+    const kept = wrong.sections.variants[0]?.value.value[1] as ForcedMv;
+    expect(kept.variants).toHaveLength(2);
   });
 });
 

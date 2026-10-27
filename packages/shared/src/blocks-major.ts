@@ -90,3 +90,47 @@ export const MAIN_SCHEMA_CHANGED = "main_schema_changed";
  * can't open here.
  */
 export const HOSTED_DELIVERY_UNCONFIGURED = "hosted_delivery_unconfigured";
+
+/**
+ * The content revision of a hosted v8 editor (Studio's content protocol on
+ * GitHub): `<main head sha>~<draft ETag>` (`none` without a draft), so a save
+ * or a new commit on main is a new revision. A save reads only the draft,
+ * never main: it answers an empty main part, and the editor keeps the main
+ * part of the revision it last read ({@link hostedRevisionParts}).
+ */
+export function hostedRevision(
+  mainSha: string,
+  draftEtag: string | null,
+): string {
+  return `${mainSha}~${draftEtag ?? "none"}`;
+}
+
+/** The two parts of a {@link hostedRevision}; null for any other revision. */
+export function hostedRevisionParts(
+  revision: string,
+): { main: string; draft: string } | null {
+  const at = revision.indexOf("~");
+  if (at < 0) return null;
+  return { main: revision.slice(0, at), draft: revision.slice(at + 1) };
+}
+
+/**
+ * The version a hosted v8 draft gives a block it deletes (a tombstone): the
+ * deleted block is in the draft, so a save guarded "must not exist in the
+ * draft" (`ifMatch: null`) is refused, and one guarded by this version
+ * passes. The same value as @decocms/blocks' `TOMBSTONE_VERSION` (protocol
+ * 1.2), so a client shared with that protocol reads it the same way.
+ */
+export const DRAFT_TOMBSTONE_VERSION = "tombstone";
+
+/**
+ * What a refused hosted v8 save (a Conflict) carries besides the protocol's
+ * `entries`: each refused block as the draft holds it now, so the editor
+ * opens its reconcile flow without reading anything else. A block deleted
+ * in the draft is `{ block: null, version: DRAFT_TOMBSTONE_VERSION }`; a
+ * block the draft doesn't hold is `null` (main's copy shows: the editor
+ * reads it).
+ */
+export interface DraftConflictBlocks {
+  draft: Record<string, { block: unknown; version: string } | null>;
+}

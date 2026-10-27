@@ -180,7 +180,7 @@ function EditForm({
         <Input
           placeholder={t("settings.editProviderDialog.labelPlaceholder")}
           {...register("label")}
-          className="h-8 text-sm"
+          size="sm"
         />
         {errors.label && (
           <p className="text-xs text-destructive">{errors.label.message}</p>
@@ -199,7 +199,7 @@ function EditForm({
               t("settings.editProviderDialog.baseUrlPlaceholder")
             }
             {...register("baseUrl")}
-            className="h-8 text-sm"
+            size="sm"
           />
         </div>
       )}
@@ -217,7 +217,8 @@ function EditForm({
               type={showKey && typedApiKey ? "text" : "password"}
               placeholder={maskedKey}
               {...register("apiKey")}
-              className="ph-no-capture h-8 text-sm pr-8"
+              size="sm"
+              className="ph-no-capture pr-8"
             />
             {typedApiKey && (
               <button

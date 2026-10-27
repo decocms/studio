@@ -18,6 +18,10 @@
  */
 
 import {
+  APP_SLUG_HEADER,
+  parseAppHostLabel,
+} from "@decocms/shared/app-preview-host";
+import {
   PREVIEW_NOT_READY_HEADER,
   type SandboxProvider,
 } from "@decocms/sandbox/provider/agent-sandbox";
@@ -135,17 +139,21 @@ export async function tryHandlePreviewHttp(
   request: Request,
   deps: PreviewProxyDeps,
 ): Promise<Response | null> {
-  const handle = extractHandleFromHost(
+  const label = extractHandleFromHost(
     request.headers.get("host"),
     deps.baseDomain,
   );
-  if (!handle) return null;
+  if (!label) return null;
+  const { handle, slug } = parseAppHostLabel(label);
 
   const runner = await deps.getRunner();
   if (!runner) {
     return errorResponse(503, "preview proxy not configured");
   }
-  const response = await runner.proxyPreviewRequest(handle, request);
+  const response = await runner.proxyPreviewRequest(
+    handle,
+    slug ? withAppSlug(request, slug) : request,
+  );
   // Unspawned / unreachable sandbox: serve an auto-reloading "connecting" page
   // for top-level document navigations so the iframe shows a friendly reloading
   // page instead of raw JSON. The app's own
@@ -160,6 +168,26 @@ export async function tryHandlePreviewHttp(
   // reaches the browser on the passthrough (non-document) path.
   response.headers.delete(PREVIEW_NOT_READY_HEADER);
   return response;
+}
+
+// The DOM lib's WebSocket type shadows Bun's, which also takes headers.
+const BunWebSocket = WebSocket as unknown as new (
+  url: string,
+  options: Bun.WebSocketOptions,
+) => WebSocket;
+
+function appSocketOptions(data: PreviewWsData): Bun.WebSocketOptions {
+  return {
+    protocols: data.upstreamProtocols,
+    headers: { [APP_SLUG_HEADER]: data.appSlug },
+  };
+}
+
+// The proxy drops Host, which is how the daemon tells a monorepo's apps apart.
+function withAppSlug(request: Request, slug: string): Request {
+  const headers = new Headers(request.headers);
+  headers.set(APP_SLUG_HEADER, slug);
+  return new Request(request, { headers });
 }
 
 // Cross-origin error envelope. Studio runs under its own origin and reads
@@ -184,6 +212,8 @@ export interface PreviewWsData {
   kind: "preview";
   upstreamUrl: string;
   upstreamProtocols: string[];
+  /** The monorepo app the host names, absent for the main app. */
+  appSlug?: string;
   /** Buffer messages received before the upstream WS finishes opening. */
   pending: Array<string | Uint8Array<ArrayBuffer> | ArrayBuffer>;
   upstream: WebSocket | null;
@@ -218,11 +248,12 @@ export async function tryUpgradePreviewWs(
   if ((request.headers.get("upgrade") ?? "").toLowerCase() !== "websocket") {
     return null;
   }
-  const handle = extractHandleFromHost(
+  const label = extractHandleFromHost(
     request.headers.get("host"),
     deps.baseDomain,
   );
-  if (!handle) return null;
+  if (!label) return null;
+  const { handle, slug } = parseAppHostLabel(label);
 
   const runner = await deps.getRunner();
   if (!runner) {
@@ -252,6 +283,7 @@ export async function tryUpgradePreviewWs(
     kind: "preview",
     upstreamUrl,
     upstreamProtocols,
+    ...(slug ? { appSlug: slug } : {}),
     pending: [],
     upstream: null,
     closed: false,
@@ -299,8 +331,9 @@ export const previewWebSocketHandler = {
     if (!isPreviewWsData(data)) return;
     let upstream: WebSocket;
     try {
-      upstream =
-        data.upstreamProtocols.length > 0
+      upstream = data.appSlug
+        ? new BunWebSocket(data.upstreamUrl, appSocketOptions(data))
+        : data.upstreamProtocols.length > 0
           ? new WebSocket(data.upstreamUrl, data.upstreamProtocols)
           : new WebSocket(data.upstreamUrl);
     } catch (err) {

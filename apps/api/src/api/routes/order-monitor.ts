@@ -3,6 +3,7 @@
  * (not under `/monitor`, whose next segment is a site slug a store list would
  * collide with).
  *
+ *   GET /ingest                          → the order ingest MCP a store installs
  *   GET /stores                          → each store's verdict per rule
  *   GET /stores/:connectionId/day?at=    → the chart's day, read from the lake
  *   GET /stores/:connectionId/pushes?at=&virtualMcpId= → push markers per repo
@@ -80,6 +81,12 @@ function parseAt(raw: string | undefined): Date | null {
 export const createOrderMonitorRoutes = () => {
   const app = new Hono<{ Variables: Variables }>();
 
+  app.get("/ingest", async (c) => {
+    const g = await gate(c);
+    if (g instanceof Response) return g;
+    return c.json({ ingestUrl: g.ingestUrl });
+  });
+
   app.get("/stores", async (c) => {
     const g = await gate(c);
     if (g instanceof Response) return g;
@@ -132,6 +139,7 @@ export const createOrderMonitorRoutes = () => {
     try {
       const day = await loadStoreDay(g.organizationId, connectionId, at, {
         approximate: true,
+        channels: true,
       });
       if (!day) {
         return c.json(

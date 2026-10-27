@@ -16,6 +16,7 @@ const (
 	KindRuntimeChange        = "runtime-change"
 	KindPortChange           = "port-change"
 	KindEnvChange            = "env-change"
+	KindAppsChange           = "apps-change"
 	KindGitCredentialRefresh = "git-credential-refresh"
 	KindIdentityConflict     = "identity-conflict"
 	KindNoOp                 = "no-op"
@@ -99,6 +100,10 @@ func Classify(before, after *TenantConfig) Transition {
 		return Transition{Kind: KindEnvChange, EnvChanged: diff}
 	}
 
+	if extraAppsKey(before) != extraAppsKey(after) {
+		return Transition{Kind: KindAppsChange}
+	}
+
 	if beforeHasUrl && afterHasUrl && beforeUrl != afterUrl &&
 		StripCredentials(beforeUrl) == StripCredentials(afterUrl) {
 		return Transition{Kind: KindGitCredentialRefresh, CloneUrl: afterUrl}
@@ -145,6 +150,15 @@ func submoduleCredentialFingerprint(c *TenantConfig) string {
 // primary's install or dev server), but it MUST reach subscribers: a no-op
 // classification is not delivered at all, and the sweep that clones the new
 // checkout hangs off that delivery.
+func extraAppsKey(c *TenantConfig) string {
+	apps := c.ExtraApps()
+	keys := make([]string, 0, len(apps))
+	for _, a := range apps {
+		keys = append(keys, a.Path)
+	}
+	return strings.Join(keys, "\x00")
+}
+
 func secondaryRepoKeys(c *TenantConfig) string {
 	if c == nil {
 		return ""

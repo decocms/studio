@@ -534,7 +534,7 @@ function EnvRow<T extends FieldValues>({
                   }}
                 />
                 {invalid ? (
-                  <p className="text-[11px] text-destructive">
+                  <p className="text-2xs text-destructive">
                     {t("sandbox.envVarsField.invalidKeyMessage")}
                   </p>
                 ) : null}

@@ -1,13 +1,38 @@
-import { useEffect, useRef } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
+import {
+  notifyManager,
+  useMutation,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
 import { useDecofileCacheKey } from "./use-decofile";
 import { useContentBackend } from "./use-content-backend";
 import {
   applyProtocolPatch,
+  draftCopiesNow,
+  neverPublishedBlock,
+  protocolMetaQueryKey,
+  protocolBlockVersion,
   reloadProtocolBlock,
+  rereadProtocolContent,
 } from "./content-protocol-api";
+import {
+  conflictFields,
+  planFormConflict,
+  resolveFormConflict,
+} from "./form-conflict";
+import {
+  askDeletedConflict,
+  askNamedRuleConflict,
+  canAskNamedRuleConflict,
+} from "./named-rule-conflict";
+import {
+  blockLabel,
+  choseTheirs,
+  HOSTED_RECONCILE_ROUNDS,
+  hostedIfMatch,
+} from "./hosted-reconcile";
 import { runContentChange, useContentDiscardListener } from "./content-sync";
 import { usePackagePath } from "./use-package-path";
 import {
@@ -17,6 +42,8 @@ import {
   sanitizeSecretsForPersistence,
 } from "@decocms/shared/decofile";
 import { sleep } from "@decocms/shared/std";
+import { globalSectionLabel } from "./page-list";
+import { type LiveMeta, resolveSchema } from "./resolve-schema";
 import { decoBlockFilePath } from "./deco-block-key";
 import { decoRepoPath } from "./deco-repo-path";
 import {
@@ -33,9 +60,21 @@ import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { buildSandboxUrl } from "@/sdk/sandbox-url";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t";
-import { isSaveConflict } from "./serve-save-error";
-import { toastSaveError } from "./site-editor-toast";
+import {
+  HostedDraftUnreadError,
+  inPlainWords,
+  isSaveConflict,
+} from "./serve-save-error";
+import { toastKeptTheirs, toastSaveError } from "./site-editor-toast";
 import { describeConflictFields } from "./conflict-fields";
+import {
+  bumpCopyEpoch,
+  copyScope,
+  type HeldCopy,
+  HeldCopies,
+  type HeldEdit,
+  heldCopyVersion,
+} from "./held-copy";
 
 /** Debounce window for form-driven block autosaves (ms). */
 export const AUTOSAVE_DELAY = 700;
@@ -44,6 +83,19 @@ interface UseSaveBlockParams {
   orgSlug: string;
   virtualMcpId: string;
   branch: string;
+}
+
+interface UseSaveBlockOptions {
+  /**
+   * The editor keeps its own copy of the blocks it saves (a form seeded
+   * once, not rebuilt from the cache on each save). On a hosted v8 draft
+   * each save is then guarded by the version of the copy the editor shows,
+   * the one it loaded, moved only by its own confirmed saves (held-copy.ts),
+   * so a change someone else made meanwhile is reconciled, never written
+   * over. After a reconcile the editor is told to show the draft's copy
+   * (`useCopyEpochs`). Other backends: ignored.
+   */
+  holdsCopy?: boolean;
 }
 
 /**
@@ -96,6 +148,51 @@ interface SaveBlockVariables {
   rebaseOnConflict?: boolean;
   /** The content protocol's version guard (Studio's v8 backends only). */
   guard?: SaveGuard;
+  /**
+   * A block this save creates (a section saved under a new name, a copy).
+   * On a hosted v8 site it is saved with "must not exist in the draft yet":
+   * when someone else created a block of that name first, the reconcile
+   * flow asks, value by value, whose version to keep, and the choice is
+   * saved over theirs (guarded by their version). Other backends: ignored.
+   */
+  create?: boolean;
+  /**
+   * An editor keeping its own copy (holdsCopy): the copy the edit was made
+   * on, taken when it was made (`useSaveBlock`'s `edited`). A save of an
+   * edit made before the editor's copy was replaced (a keystroke still
+   * pending in the old form) is guarded by that copy. Default: the copy the
+   * editor shows when the save runs.
+   */
+  edit?: HeldEdit;
+}
+
+/**
+ * A hosted save the reconcile flow ended by keeping the draft's copy (their
+ * version, or their deletion): nothing was written, and the cache holds the
+ * draft's copy. The save's own success toast gives way to
+ * {@link toastKeptTheirs}'s.
+ */
+export interface KeptTheirVersion {
+  keptTheirs: true;
+  /** The block stays deleted. */
+  deleted: boolean;
+}
+
+type HostedSaveResult =
+  | {
+      revision: string;
+      versions: Record<string, string | null>;
+      written: unknown;
+    }
+  | KeptTheirVersion;
+
+/** True for a save that kept the draft's copy (see {@link KeptTheirVersion}). */
+export function keptTheirVersion(result: unknown): result is KeptTheirVersion {
+  return (
+    !!result &&
+    typeof result === "object" &&
+    (result as Partial<KeptTheirVersion>).keptTheirs === true
+  );
 }
 
 /**
@@ -154,11 +251,10 @@ async function blockExpectation(
   }
 }
 
-export function useSaveBlock({
-  orgSlug,
-  virtualMcpId,
-  branch,
-}: UseSaveBlockParams) {
+export function useSaveBlock(
+  { orgSlug, virtualMcpId, branch }: UseSaveBlockParams,
+  options?: UseSaveBlockOptions,
+) {
   const queryClient = useQueryClient();
   const threadId = useOptionalChatTask()?.taskId ?? null;
   // Prefixes the daemon path: the daemon resolves against the repo root.
@@ -178,6 +274,16 @@ export function useSaveBlock({
   const protocol = backend.kind === "protocol" ? backend : null;
   const cacheKey = useDecofileCacheKey({ orgSlug, virtualMcpId, branch });
   const t = useT();
+  const hosted = protocol?.source === "github";
+  // The copies the editor shows (holdsCopy), taken when it mounted, or on
+  // the first render after the draft was read.
+  const [heldCopies] = useState(() =>
+    options?.holdsCopy
+      ? new HeldCopies(() => draftCopiesNow(queryClient, cacheKey))
+      : null,
+  );
+  heldCopies?.settle();
+  const held = hosted ? heldCopies : null;
 
   /**
    * A save on any backend but the content protocol. On Fast Preview it sends
@@ -307,6 +413,205 @@ export function useSaveBlock({
     return res.json();
   };
 
+  /**
+   * A hosted v8 save with no guard of its own (every block editor but the
+   * section form): checked against the draft alone, `ifMatch` the draft's
+   * version of the block (`null` when the draft doesn't hold it, the
+   * tombstone's when the draft deletes it), or "must not exist in the
+   * draft" for a create (see {@link SaveBlockVariables.create}). Refused:
+   * the draft's copy (the refusal carries it) is put in the cache, values
+   * only one side changed merge on their own, the rest is the user's choice
+   * (the reconcile flow), and a block the draft deleted asks "Keep my
+   * version" or "Leave it deleted". The result is saved guarded by the
+   * draft's version again. Nothing is written over someone else's change,
+   * and no edit is dropped, without that choice.
+   */
+  const saveHostedBlock = async (
+    params: { orgSlug: string; virtualMcpId: string; branch: string },
+    blockKey: string,
+    data: unknown,
+    base: SaveBlockBase | undefined,
+    create: boolean,
+    /** The copy the editor shows (holdsCopy): its version guards the save. */
+    shown?: HeldCopy,
+  ): Promise<HostedSaveResult> => {
+    const backend = protocol!;
+    const ctx = { queryClient, backend, params, cacheKey };
+    let value = data;
+    /**
+     * What both sides changed from: the copy the edit was built on. A create
+     * starts from none, so a name the draft deletes is created over the
+     * deletion with no question (nothing it edited was deleted), and a name
+     * someone else created first is reconciled value by value from `{}`.
+     * An editor that keeps its own copy built the edit on that copy.
+     */
+    let ancestor: unknown = create
+      ? undefined
+      : shown
+        ? shown.value
+        : base?.value;
+    let ifMatch: Record<string, string | null> = create
+      ? { [blockKey]: null }
+      : shown
+        ? { [blockKey]: await heldCopyVersion(shown) }
+        : await hostedIfMatch(ctx, [blockKey]);
+    for (let round = 0; ; round++) {
+      try {
+        const result = await applyProtocolPatch(
+          queryClient,
+          backend,
+          params,
+          cacheKey,
+          { set: { [blockKey]: value } },
+          ifMatch,
+        );
+        return { ...result, written: value };
+      } catch (error) {
+        if (!isSaveConflict(error)) throw error;
+        const carried = await reloadProtocolBlock(
+          queryClient,
+          backend,
+          params,
+          cacheKey,
+          blockKey,
+          error,
+        );
+        const stored = queryClient.getQueryData<Record<string, unknown>>(
+          KEYS.decofile(cacheKey),
+        )?.[blockKey];
+        const version = protocolBlockVersion(
+          queryClient,
+          cacheKey,
+          blockKey,
+          backend,
+        );
+        const mine = value;
+        if (
+          round + 1 >= HOSTED_RECONCILE_ROUNDS ||
+          !canAskNamedRuleConflict() ||
+          version === undefined ||
+          !isRecord(mine) ||
+          (stored !== undefined && !isRecord(stored))
+        ) {
+          // The draft's copy is in the cache: the message says what to do.
+          throw new BlockConflictError(
+            [blockKey],
+            round + 1 >= HOSTED_RECONCILE_ROUNDS
+              ? t("siteEditor.save.keptChanging")
+              : t("siteEditor.save.conflict"),
+            [],
+            carried,
+          );
+        }
+        ifMatch = { [blockKey]: version };
+        if (!isRecord(stored)) {
+          // A block the edit didn't start from (a create): gone again
+          // meanwhile, or deleted in the draft, it is created as first meant.
+          if (!isRecord(ancestor)) continue;
+          // Deleted in the draft while the user edited it: their choice.
+          const choice = await askDeletedConflict({
+            kind: "theyDeleted",
+            // Named as it was deleted (a rename's new name never was).
+            label: blockLabel(blockKey, ancestor, mine),
+          });
+          if (choice === "theirs") return { keptTheirs: true, deleted: true };
+          ancestor = undefined;
+          continue;
+        }
+        const plan = planFormConflict({
+          ancestor: isRecord(ancestor) ? ancestor : {},
+          mine,
+          theirs: stored,
+        });
+        // Asked as the block's own editor would: the block by its title,
+        // each value by the form's label, and who changed it when known.
+        const choices =
+          plan.pointers.length === 0
+            ? {}
+            : await askNamedRuleConflict(
+                plan,
+                conflictFields(plan, blockSchema(params, stored), true),
+                {
+                  block: globalSectionLabel(blockKey, stored),
+                  author: { draft: params, blockKey },
+                },
+              );
+        value =
+          plan.pointers.length === 0
+            ? plan.merged
+            : resolveFormConflict(plan, choices);
+        if (
+          choseTheirs(choices) &&
+          canonicalBlockJson(value) === canonicalBlockJson(stored)
+        ) {
+          return { keptTheirs: true, deleted: false };
+        }
+        ancestor = stored;
+      }
+    }
+  };
+
+  /** The form schema of `block` (its `__resolveType`'s), from the cache. */
+  const blockSchema = (
+    params: { orgSlug: string; virtualMcpId: string; branch: string },
+    block: Record<string, unknown>,
+  ) => {
+    const resolveType = block.__resolveType;
+    const meta = queryClient.getQueryData<LiveMeta>(
+      protocolMetaQueryKey(params, protocol!),
+    );
+    if (typeof resolveType !== "string" || !meta?.manifest) return null;
+    try {
+      return resolveSchema(resolveType, meta);
+    } catch {
+      return null;
+    }
+  };
+
+  /**
+   * A section form's hosted save (its own guard) refused because the draft
+   * deleted the block: the user's edit never vanishes silently. Asked "Keep
+   * my version" (saved over the deletion, guarded by its tombstone) or
+   * "Leave it deleted". Undefined when the draft holds the block (the form
+   * reconciles values itself) or nobody can be asked.
+   */
+  const keepOverDeletion = async (
+    params: { orgSlug: string; virtualMcpId: string; branch: string },
+    blockKey: string,
+    data: unknown,
+    guard: SaveGuard,
+    base: SaveBlockBase | undefined,
+  ): Promise<HostedSaveResult | undefined> => {
+    const backend = protocol!;
+    const cached = queryClient.getQueryData<Record<string, unknown>>(
+      KEYS.decofile(cacheKey),
+    );
+    if (cached && Object.hasOwn(cached, blockKey)) return undefined;
+    if (!canAskNamedRuleConflict() || !isRecord(data)) return undefined;
+    const choice = await askDeletedConflict({
+      kind: "theyDeleted",
+      label: blockLabel(blockKey, base?.value, data),
+    });
+    if (choice === "theirs") return { keptTheirs: true, deleted: true };
+    const version = protocolBlockVersion(
+      queryClient,
+      cacheKey,
+      blockKey,
+      backend,
+    );
+    if (version === undefined) return undefined;
+    const result = await applyProtocolPatch(
+      queryClient,
+      backend,
+      params,
+      cacheKey,
+      { set: { [blockKey]: data } },
+      { [blockKey]: version },
+    );
+    guard.onApplied?.(result.versions);
+    return { ...result, written: data };
+  };
+
   const mutation = useMutation({
     mutationKey: decofileWriteMutationKey(orgSlug, virtualMcpId, branch),
     // Serialize a branch's writes so overlapping autosaves can't land an older payload last, dropping a newer edit.
@@ -317,12 +622,78 @@ export function useSaveBlock({
       base,
       rebaseOnConflict = true,
       guard,
+      create = false,
+      edit,
     }: SaveBlockVariables) => {
-      // Fail closed before any write path: a raw secret must never be persisted.
-      data = sanitizeSecretsForPersistence(data);
+      // Fail closed before any write path: a raw secret must never be
+      // persisted. A hosted save checks nothing (the site's CI runs `deco
+      // check`); secrets live in the deploy platform there.
+      if (protocol?.source !== "github") {
+        data = sanitizeSecretsForPersistence(data);
+      }
       if (protocol) {
         const params = { orgSlug, virtualMcpId, branch };
-        const ifMatch = guard?.ifMatch(blockKey);
+        /** An editor's own confirmed save moves the copy it holds. */
+        const keepShown = (result: HostedSaveResult) => {
+          if (!held || keptTheirVersion(result)) return;
+          if (canonicalBlockJson(result.written) !== canonicalBlockJson(data)) {
+            return;
+          }
+          if (result.versions[blockKey]) held.saved(blockKey, data);
+        };
+        // Every hosted save is guarded by the draft (see saveHostedBlock).
+        if (hosted && !guard) {
+          const result = await saveHostedBlock(
+            params,
+            blockKey,
+            data,
+            base,
+            create,
+            create ? undefined : held?.guardOf(blockKey, edit),
+          );
+          keepShown(result);
+          return result;
+        }
+        // An editor's own guard that isn't a form's (Settings' create-only
+        // `CMS` guard): its "must not exist" makes the save a create, and no
+        // guard of its own means the draft's version. Either way a refusal
+        // opens the reconcile flow rather than failing.
+        if (hosted && guard && !guard.reloadOnConflict) {
+          const own = guard.ifMatch(blockKey);
+          const creates = create || (!!own && own[blockKey] === null);
+          try {
+            const result = await saveHostedBlock(
+              params,
+              blockKey,
+              data,
+              base,
+              creates,
+              creates ? undefined : held?.guardOf(blockKey, edit),
+            );
+            keepShown(result);
+            guard.onApplied?.(keptTheirVersion(result) ? {} : result.versions);
+            return result;
+          } catch (error) {
+            guard.onRejected?.(error);
+            throw error;
+          }
+        }
+        let ifMatch = guard?.ifMatch(blockKey);
+        if (guard && !ifMatch && hosted) {
+          // Every hosted save carries its precondition: an unknown version
+          // is read first (the draft's changes come with the content).
+          await rereadProtocolContent(
+            queryClient,
+            protocol,
+            params,
+            cacheKey,
+          ).catch(() => {
+            throw new HostedDraftUnreadError();
+          });
+          ifMatch = guard.ifMatch(blockKey);
+          // Still unknown: fail rather than write unguarded.
+          if (!ifMatch) throw new HostedDraftUnreadError();
+        }
         try {
           const result = await applyProtocolPatch(
             queryClient,
@@ -339,16 +710,33 @@ export function useSaveBlock({
           if (ifMatch && guard?.reloadOnConflict && isSaveConflict(error)) {
             // As a legacy 409: what is stored now replaces the outdated copy
             // before anything reacts to the refusal.
-            await reloadProtocolBlock(
+            const carried = await reloadProtocolBlock(
               queryClient,
               protocol,
               params,
               cacheKey,
               blockKey,
+              error,
             );
+            if (hosted) {
+              try {
+                const kept = await keepOverDeletion(
+                  params,
+                  blockKey,
+                  data,
+                  guard,
+                  base,
+                );
+                if (kept) return kept;
+              } catch (retryError) {
+                if (!isSaveConflict(retryError)) throw retryError;
+              }
+            }
             throw new BlockConflictError(
               [blockKey],
               t("sectionsEditor.sectionsEditor.blockChangedElsewhere"),
+              [],
+              carried,
             );
           }
           throw error;
@@ -382,6 +770,8 @@ export function useSaveBlock({
     // Restore only this mutation's own key so a concurrent sibling save isn't clobbered.
     // A stale-copy refusal already re-read the block; restoring would put the stale copy back.
     onError: (error, _variables, context) => {
+      // A hosted dead end says what to do, wherever its message shows.
+      inPlainWords(t, error);
       if (!context || error instanceof BlockConflictError) return;
       // Refused because the content changed on disk: load what is there now.
       if (isSaveConflict(error)) {
@@ -400,6 +790,27 @@ export function useSaveBlock({
       );
     },
     onSuccess: (result, { blockKey, data }) => {
+      /**
+       * The draft now holds something else than the editor's copy (their
+       * version, their deletion, a merge): an editor keeping its own copy
+       * shows the draft's, once the cache's readers rendered it.
+       */
+      const showDraft = () => {
+        if (!held) return;
+        const scope = copyScope({ orgSlug, virtualMcpId, branch });
+        notifyManager.schedule(() => bumpCopyEpoch(scope, blockKey));
+      };
+      // The user kept the draft's copy (the cache holds it): one calm toast.
+      if (keptTheirVersion(result)) {
+        toastKeptTheirs(
+          t,
+          result.deleted,
+          result.deleted &&
+            neverPublishedBlock(queryClient, cacheKey, blockKey),
+        );
+        showDraft();
+        return;
+      }
       // A save replayed on a newer copy stored more than this edit's `data`.
       const stored =
         result && typeof result === "object" && "written" in result
@@ -412,6 +823,7 @@ export function useSaveBlock({
           [blockKey]: stored,
         }),
       );
+      if (canonicalBlockJson(stored) !== canonicalBlockJson(data)) showDraft();
     },
   });
 
@@ -441,6 +853,25 @@ export function useSaveBlock({
     /** One toast for a failed save, worded for this backend's editor. */
     reportError: (error: Error) =>
       toastSaveError(t, error, protocol?.source ?? null),
+    /**
+     * The editor (holdsCopy) seeded its form again from the draft's copy of
+     * `blockKey` as the cache holds it now: later saves are guarded by it.
+     */
+    hold: (blockKey: string) => heldCopies?.hold(blockKey),
+    /** True while saves are guarded by the editor's own copy (hosted v8). */
+    holdsCopy: held !== null,
+    /**
+     * An edit of `blockKey` is made now (holdsCopy): the copy it is built
+     * on, for its save's `edit`. Undefined when saves aren't guarded by the
+     * editor's own copy.
+     */
+    edited: (blockKey: string) => held?.edited(blockKey),
+    /**
+     * The editor's own copy of `blockKey` (hosted v8, holdsCopy), for a move
+     * or rename built from it (`useMoveBlocks`' `shown`); undefined
+     * otherwise.
+     */
+    shown: (blockKey: string) => held?.get(blockKey),
   };
 }
 
@@ -466,10 +897,13 @@ type SaveData =
  */
 export function useDebouncedSaveBlock(
   params: UseSaveBlockParams,
-  opts?: { onSaved?: () => void; guard?: SaveGuard },
+  opts?: { onSaved?: () => void; guard?: SaveGuard; holdsCopy?: boolean },
 ) {
-  const saveBlock = useSaveBlock(params);
+  const saveBlock = useSaveBlock(params, { holdsCopy: opts?.holdsCopy });
   const pendingRef = useRef<Map<string, SaveData>>(new Map());
+  // The copy each pending edit was made on (holdsCopy): the first edit of
+  // the window, so one made before the form was reseeded keeps its guard.
+  const editsRef = useRef<Map<string, HeldEdit>>(new Map());
   const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
     new Map(),
   );
@@ -479,9 +913,11 @@ export function useDebouncedSaveBlock(
     if (!pending) return;
     const resolved = typeof pending === "function" ? pending() : pending;
     pendingRef.current.delete(blockKey);
+    const edit = editsRef.current.get(blockKey);
+    editsRef.current.delete(blockKey);
     if (!resolved) return;
     saveBlock.mutate(
-      { blockKey, data: resolved, guard: opts?.guard },
+      { blockKey, data: resolved, guard: opts?.guard, edit },
       {
         onSuccess: () => opts?.onSaved?.(),
         onError: saveBlock.reportError,
@@ -507,16 +943,25 @@ export function useDebouncedSaveBlock(
       if (timer) clearTimeout(timer);
       timersRef.current.delete(blockKey);
       pendingRef.current.delete(blockKey);
+      editsRef.current.delete(blockKey);
     }
   });
 
   // Cancel pending debounced saves on unmount so they can't fire against a torn
   // -down editor after navigation. Call `flush()` explicitly when closing a sheet
   // or leaving an editor so edits inside the debounce window still persist.
+  // An editor keeping its own copy on a hosted v8 draft saves them instead:
+  // it unmounts when the draft's copy replaces its form (a reconcile, a
+  // deletion), and a pending edit is reconciled against it, never dropped.
+  const flushHeldOnUnmount = useEffectEvent(() => {
+    if (saveBlock.holdsCopy) flush();
+    return saveBlock.holdsCopy;
+  });
   // oxlint-disable-next-line ban-use-effect/ban-use-effect — timer lifecycle cleanup on unmount
   useEffect(() => {
     const timers = timersRef.current;
     return () => {
+      if (flushHeldOnUnmount()) return;
       for (const timer of timers.values()) {
         clearTimeout(timer);
       }
@@ -524,6 +969,10 @@ export function useDebouncedSaveBlock(
   }, []);
 
   const save = (blockKey: string, data: SaveData) => {
+    if (!editsRef.current.has(blockKey)) {
+      const edit = saveBlock.edited(blockKey);
+      if (edit) editsRef.current.set(blockKey, edit);
+    }
     pendingRef.current.set(blockKey, data);
     const existing = timersRef.current.get(blockKey);
     if (existing) clearTimeout(existing);
@@ -536,5 +985,14 @@ export function useDebouncedSaveBlock(
     );
   };
 
-  return { save, flush, isPending: saveBlock.isPending };
+  return {
+    save,
+    flush,
+    isPending: saveBlock.isPending,
+    hold: saveBlock.hold,
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
 }

@@ -1,3 +1,7 @@
+import {
+  copyScope,
+  useCopyEpochs,
+} from "@/components/sections-editor/held-copy";
 /**
  * Campaigns: the board and the list, behind one view toggle.
  *
@@ -124,7 +128,15 @@ export function CampaignsPanel({
   decofile: Record<string, unknown>;
 }) {
   const t = useT();
-  const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
+  // A campaign's form keeps its own copy: hosted saves are guarded by it.
+  const save = useSaveBlock(
+    { orgSlug, virtualMcpId, branch },
+    { holdsCopy: true },
+  );
+  // A reconcile replaced a campaign's copy: its form shows the draft's.
+  const copyEpochOf = useCopyEpochs(
+    copyScope({ orgSlug, virtualMcpId, branch }),
+  );
   const deleteBlock = useDeleteBlock({ orgSlug, virtualMcpId, branch });
 
   /** The store pickers address the site by these coordinates; campaigns are a
@@ -410,8 +422,9 @@ export function CampaignsPanel({
                         onClick={() => setOpenKey(campaign.key)}
                         aria-current={campaign.key === detailKey}
                         className={cn(
-                          "w-full cursor-pointer px-4 py-3 text-left transition-colors hover:bg-muted/50",
-                          campaign.key === detailKey && "bg-muted",
+                          "w-full cursor-pointer px-4 py-3 text-left transition-colors hover:bg-accent",
+                          campaign.key === detailKey &&
+                            "bg-muted hover:bg-secondary-hover",
                         )}
                       >
                         <p className="truncate pr-6 text-sm font-medium">
@@ -435,10 +448,14 @@ export function CampaignsPanel({
           <div className="min-w-0 flex-1 overflow-y-auto">
             {detailKey ? (
               <CampaignEditor
-                key={detailKey}
+                key={`${detailKey}:${copyEpochOf(detailKey)}`}
                 blockKey={detailKey}
                 block={decofile[detailKey] as Record<string, unknown>}
-                onSave={(data) => save.mutate({ blockKey: detailKey, data })}
+                onSave={(data, edit) =>
+                  save.mutate({ blockKey: detailKey, data, edit })
+                }
+                onSeed={() => save.hold(detailKey)}
+                onEdit={() => save.edited(detailKey)}
                 onRemove={() => {
                   const campaign = campaigns.find((c) => c.key === detailKey);
                   if (campaign) setPendingDelete(campaign);
@@ -478,7 +495,7 @@ export function CampaignsPanel({
               {t("sandbox.campaigns.deleteCancel")}
             </AlertDialogCancel>
             <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              variant="destructive"
               onClick={() => {
                 if (pendingDelete) removeCampaign(pendingDelete.key);
                 setPendingDelete(null);
@@ -515,10 +532,14 @@ export function CampaignsPanel({
           </DialogTitle>
           {boardKey && (
             <CampaignEditor
-              key={boardKey}
+              key={`${boardKey}:${copyEpochOf(boardKey)}`}
               blockKey={boardKey}
               block={decofile[boardKey] as Record<string, unknown>}
-              onSave={(data) => save.mutate({ blockKey: boardKey, data })}
+              onSave={(data, edit) =>
+                save.mutate({ blockKey: boardKey, data, edit })
+              }
+              onSeed={() => save.hold(boardKey)}
+              onEdit={() => save.edited(boardKey)}
               onRemove={() => {
                 const campaign = campaigns.find((c) => c.key === boardKey);
                 if (campaign) setPendingDelete(campaign);
@@ -553,7 +574,7 @@ function CampaignCard({
   return (
     <div
       className={cn(
-        "group/card relative rounded-lg border bg-card shadow-sm transition-colors hover:border-primary/40",
+        "group/card relative rounded-lg bg-card shadow-edge transition-shadow hover:shadow-lift",
         moving && "opacity-80",
       )}
     >
@@ -601,7 +622,9 @@ function DeleteButton({
   disabled?: boolean;
 }) {
   return (
-    <button
+    <Button
+      variant="ghost-destructive"
+      size="icon-xs"
       type="button"
       disabled={disabled}
       aria-label={label}
@@ -610,10 +633,11 @@ function DeleteButton({
         e.stopPropagation();
         onDelete();
       }}
-      className="absolute right-2 top-2 z-10 flex size-6 cursor-pointer items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-destructive focus-visible:opacity-100 group-hover/card:opacity-100 group-hover/row:opacity-100"
+      // Swallow the click while disabled, or it opens the card underneath.
+      className="absolute right-2 top-2 z-10 opacity-0 transition-opacity disabled:pointer-events-auto focus-visible:opacity-100 group-hover/card:opacity-100 group-hover/row:opacity-100"
     >
-      <Trash01 size={13} />
-    </button>
+      <Trash01 className="size-3.25" />
+    </Button>
   );
 }
 

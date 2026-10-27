@@ -42,7 +42,9 @@ export function mentionMarkdown(userId: string, name: string): string {
   // `]` would end the link text early and `[` would nest a link — neither can
   // appear in the output, so strip rather than escape (a name is a label here,
   // not content to preserve byte-for-byte).
-  return `[@${name.replace(/[[\]]/g, "")}](${MENTION_HREF_PREFIX}${userId})`;
+  const safeName = name.replace(/[[\]]/g, "");
+  // A bracket-only name strips to "", which MENTION_RE can't match; fall back to the id.
+  return `[@${safeName || userId}](${MENTION_HREF_PREFIX}${userId})`;
 }
 
 /** The user id in a `mention:` href, or null for any other link. */

@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import {
+  hostedRevision,
+  hostedRevisionParts,
   isBlocksV8Project,
   isV8Schema,
   isV8SchemaText,
@@ -257,6 +259,8 @@ describe("one v8 detector", () => {
       "apps/api/src/api/routes/decofile.ts#unownedV8": "scopeIsV8",
       "apps/web/src/hooks/use-main-schema-v8.ts#useMainSchemaV8":
         "fetchMainSchemaV8",
+      "apps/web/src/hooks/use-main-schema-v8.ts#useProjectMainSchemaV8":
+        "fetchMainSchemaV8, for a project already in hand",
       "apps/web/src/hooks/use-main-schema-v8.ts#fetchMainSchemaV8":
         "isV8Schema on main's schema (rpc schema.get)",
       "apps/web/src/hooks/use-main-schema-v8.ts#useLastFoundV8":
@@ -363,5 +367,16 @@ describe("one v8 detector", () => {
       .filter((f) => f.rel !== GUARD && f.text.includes(flag))
       .map((f) => f.rel);
     expect(offenders).toEqual([]);
+  });
+});
+
+describe("hosted revisions", () => {
+  test("are <main>~<draft>, and split back at the first ~", () => {
+    expect(hostedRevision("abc", "e1")).toBe("abc~e1");
+    expect(hostedRevision("abc", null)).toBe("abc~none");
+    // A save never reads main: an empty main part.
+    expect(hostedRevisionParts("~e2")).toEqual({ main: "", draft: "e2" });
+    expect(hostedRevisionParts("abc~e1")).toEqual({ main: "abc", draft: "e1" });
+    expect(hostedRevisionParts("r1")).toBeNull();
   });
 });

@@ -63,6 +63,16 @@ describe("markdown editor schema", () => {
     expect(markdown).toBe(`[q3 \\[final\\].pdf](${FILE_URL})`);
   });
 
+  test("a pasted attachment chip with a javascript: href is not recognized", () => {
+    const editor = new Editor({
+      extensions: markdownEditorExtensions(),
+      content: '<a data-attachment href="javascript:alert(1)">evil</a>',
+      contentType: "html",
+    });
+    expect(JSON.stringify(editor.getJSON())).not.toContain("attachment");
+    expect(JSON.stringify(editor.getJSON())).not.toContain("javascript:");
+  });
+
   // The parser drops a list item's wrapped tail; the normalizer is the guard.
   test("a hard-wrapped list item keeps all of its text", () => {
     const { markdown } = roundTrip(`1. um item que passa da margem

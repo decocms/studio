@@ -1,6 +1,6 @@
 {
   "name": "@decocms/shared",
-  "version": "0.173.0",
+  "version": "0.183.1",
   "description": "Private isomorphic code shared by Studio workspaces",
   "private": true,
   "type": "module",

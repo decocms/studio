@@ -1,9 +1,41 @@
 import type { settings as settingsEn } from "../en/settings.ts";
 
 export const settings = {
+  "settings.subscriptionUsage.title": "Uso do plano",
+  "settings.subscriptionUsage.refresh": "Atualizar",
+  "settings.subscriptionUsage.loading": "Carregando limites de uso…",
+  "settings.subscriptionUsage.fiveHour": "Janela de 5 horas",
+  "settings.subscriptionUsage.weekly": "Limite semanal",
+  "settings.subscriptionUsage.sonnet": "Sonnet · semanal",
+  "settings.subscriptionUsage.opus": "Opus · semanal",
+  "settings.subscriptionUsage.codeReview": "Revisão de código",
+  "settings.subscriptionUsage.hours": "Janela de {hours} horas",
+  "settings.subscriptionUsage.primary": "Limite principal",
+  "settings.subscriptionUsage.secondary": "Limite secundário",
+  "settings.subscriptionUsage.used": "{percent}% usado",
+  "settings.subscriptionUsage.resets": "Renova em {date}",
+  "settings.subscriptionUsage.resetUnknown":
+    "Horário de renovação não informado",
+  "settings.subscriptionUsage.limitReached": "Limite atingido",
+  "settings.subscriptionUsage.permission":
+    "Este token não permite consultar limites. Veja o uso no site do provedor.",
+  "settings.subscriptionUsage.authorization":
+    "O provedor não autorizou a consulta. Vincule seu plano novamente para atualizar as credenciais.",
+  "settings.subscriptionUsage.rateLimited":
+    "O provedor está limitando as consultas. Tente novamente após o horário abaixo.",
+  "settings.subscriptionUsage.disconnected":
+    "Vincule seu plano para consultar os limites.",
+  "settings.subscriptionUsage.unavailable":
+    "Os limites estão indisponíveis agora. Consulte o provedor para ver o status atual.",
+  "settings.subscriptionUsage.retryAt": "Tente novamente em {date}",
+  "settings.subscriptionUsage.checkedAt": "Consultado em {date}",
+  "settings.subscriptionUsage.sharedUsage":
+    "Inclui uso fora do Studio. Estes limites pertencem ao seu plano pessoal.",
+  "settings.subscriptionUsage.openProvider": "Ver no provedor",
+
   "settings.voice.title": "Modo voz",
   "settings.voice.description":
-    "Permite conversar por voz com os agentes nos chats. Requer a configuração da ElevenLabs nesta instalação do Studio.",
+    "Permite falar com os agentes por voz. Requer a ElevenLabs configurada nesta instalação.",
   "settings.title": "Perfil e preferências",
   "settings.nav.organization": "Organização",
   "settings.nav.build": "Construir",
@@ -21,7 +53,7 @@ export const settings = {
   "settings.subnav.ariaLabel": "Seções de configurações",
   "settings.subnav.infrastructure": "Infraestrutura",
   "settings.nav.tasks": "Quadro",
-  "settings.jira.sectionTitle": "Integração com o Jira",
+  "settings.jira.sectionTitle": "Jira",
   "settings.jira.connectTitle": "Conectar Jira",
   "settings.jira.connectDescription":
     "Use um site do Jira Cloud e um API token, de preferência de uma conta de serviço com acesso ao projeto.",
@@ -39,11 +71,11 @@ export const settings = {
   "settings.jira.disconnected": "Jira desconectado",
   "settings.jira.disconnectTitle": "Desconectar o Jira?",
   "settings.jira.disconnectDescription":
-    "A sincronização para e as credenciais são apagadas. Os cards que já estão no quadro são mantidos — só deixam de atualizar.",
+    "A sincronização para e as credenciais são apagadas. Os cards que já estão no quadro ficam, mas deixam de atualizar.",
   "settings.jira.cancel": "Cancelar",
   "settings.jira.boardLabel": "Board do Jira",
   "settings.jira.boardDescription":
-    "O board que o Studio acompanha — um card entrando em uma de suas colunas é o que dispara a integração.",
+    "O Studio age quando um card entra numa coluna deste board.",
   "settings.jira.boardPlaceholder": "Selecione um board",
   "settings.jira.boardSearchPlaceholder": "Buscar boards…",
   "settings.jira.noBoardsMatch": "Nenhum board corresponde à busca",
@@ -92,9 +124,9 @@ export const settings = {
     "Não foi possível carregar as colunas do board",
   "settings.jira.testRunLabel": "Rodar na mão",
   "settings.jira.testRunDescription":
-    "Rode uma das automações acima em uma issue ou num lote agora, sem habilitar a integração \u2014 assim você vê o que o prompt dela faz antes que ele rode em toda issue que entra em um status.",
+    "Rode uma automação numa issue ou num lote agora, sem ativar a integração, para ver o que o prompt faz.",
   "settings.jira.issueKeysPlaceholder":
-    "ABC-123, ou um link — um por linha, ou separados por vírgula",
+    "ABC-123 ou um link, um por linha ou separados por vírgula",
   "settings.jira.issueKeysCount": "{count} issue(s)",
   "settings.jira.issueKeysUnreadable": "não consegui ler: {items}",
   "settings.jira.testRunIssueAriaLabel": "Chave ou link da issue do Jira",
@@ -108,11 +140,9 @@ export const settings = {
   "settings.jira.testRunNoAutomations":
     "Adicione uma automação acima primeiro: rodar à mão dispara uma delas.",
   "settings.jira.together":
-    "Um run só pra todas — o agente vê todas as issues e trabalha nelas como um lote, em vez de um run por issue",
+    "Um run só para todas, e o agente trabalha nas issues como um lote",
   "settings.jira.togetherStarted": "Iniciado um run em",
   "settings.jira.testRunWatch": "Ver os runs no Monitor",
-  "settings.syncedRepos.pageDescription":
-    "Repositórios Git espelhados em pastas somente leitura da biblioteca, sincronizados a cada poucos minutos. Ótimo para um repo de skills compartilhado.",
   "settings.syncedRepos.addRepo": "Adicionar repo",
   "settings.syncedRepos.cancel": "Cancelar",
   "settings.syncedRepos.create": "Criar",
@@ -324,6 +354,9 @@ export const settings = {
   "settings.repositories.sandboxImageAndroid": "Emulador Android",
   "settings.repositories.sandboxImageError":
     "Não foi possível alterar a imagem do sandbox",
+  "settings.repositories.monitorDeploys": "Mostrar deploys no Monitor",
+  "settings.repositories.monitorDeploysError":
+    "Não foi possível alterar se o Monitor mostra este repositório",
   "settings.repositories.addDialogTitle": "Adicionar repositório",
   "settings.repositories.cancel": "Cancelar",
   "settings.repositories.failed": "Algo deu errado",
@@ -357,35 +390,36 @@ export const settings = {
   "settings.blog.sectionTitle": "Blog",
   "settings.blog.aiTitle": "Blog com IA",
   "settings.blog.aiDescription":
-    "Contexto da marca, campanhas e geração de posts. Sem isso, o blog é editado à mão.",
+    "Contexto da marca, campanhas e geração de posts. Desligado, os posts são escritos à mão.",
   "settings.blogBlocks.title": "Esconder os blocos de blog padrão",
   "settings.blogBlocks.description":
-    "Só os blocos de post do próprio site ficam disponíveis ao escrever, gerar ou importar um post. Blocos já presentes em um post continuam sendo renderizados.",
+    "Só os blocos de post do próprio site aparecem ao escrever ou importar um post. Posts existentes não mudam.",
   "settings.blocksEditor.title": "Novo editor de blocos",
   "settings.blocksEditor.description":
     "Vale para todos desta organização. O restante do Studio sempre usa o novo layout.",
+  "settings.multiAppPreview.title": "Ver vários apps de um monorepo",
+  "settings.multiAppPreview.description":
+    "Adicione outros apps do repositório de um projeto e veja lado a lado no preview. Cada um roda o próprio servidor de desenvolvimento na sandbox.",
   "settings.preferences.projectFirstNav": "Navegação centrada em projetos",
   "settings.preferences.projectFirstNavDescription":
     "Experimente o trilho de organizações, o launcher de projetos e a home Hoje/Agentes.",
   "settings.preferences.theme": "Tema",
-  "settings.preferences.themeDescription": "Seu esquema de cores preferido.",
   "settings.preferences.themeLight": "Tema claro",
   "settings.preferences.themeDark": "Tema escuro",
   "settings.preferences.themeSystem": "Tema do sistema",
   "settings.preferences.language": "Idioma",
-  "settings.preferences.languageDescription": "O idioma da interface.",
   "settings.preferences.notifications": "Notificações",
   "settings.preferences.notificationsDescription":
-    "Receba notificações do navegador para eventos importantes.",
+    "Notificações do navegador para eventos importantes.",
   "settings.preferences.notificationsDenied":
     "Notificações negadas. Habilite-as nas configurações do seu navegador.",
   "settings.preferences.sounds": "Sons",
   "settings.preferences.soundsDescription":
-    "Reproduza sons para ações de agentes e notificações.",
+    "Sons para ações dos agentes e notificações.",
   "settings.preferences.soundsPreview": "Ouvir som de notificação",
   "settings.preferences.toolApproval": "Aprovação de ferramentas",
   "settings.preferences.toolApprovalDescription":
-    "Controle como as ferramentas são aprovadas antes da execução.",
+    "Quais ferramentas precisam da sua aprovação antes de rodar.",
   "settings.preferences.toolApprovalAsk": "Perguntar antes de editar",
   "settings.preferences.toolApprovalAskShort": "Perguntar",
   "settings.preferences.toolApprovalAskDescription":
@@ -511,7 +545,7 @@ export const settings = {
     "Letras, d\u00edgitos, underscore, ponto, h\u00edfen. \u00danico dentro da organiza\u00e7\u00e3o.",
   "settings.buckets.nameLabel": "Nome",
   "settings.buckets.namePlaceholder": "production-uploads",
-  "settings.buckets.noBucketsConfigured": "Nenhum bucket configurado",
+  "settings.buckets.noBucketsConfigured": "Nenhum bucket ainda",
   "settings.buckets.pathStyle": "path-style",
   "settings.buckets.prefix": "prefixo: {prefix}",
   "settings.buckets.prefixHelperText":
@@ -563,18 +597,18 @@ export const settings = {
   "settings.connectClients.oauthDiscoveryDetails":
     "Detalhes de descoberta OAuth",
   "settings.connectClients.oauthKeyHint":
-    "Recomendado para seu laptop. O navegador abrirá no primeiro uso para você entrar — sem token para gerenciar.",
+    "Recomendado para o seu laptop. Um navegador abre no primeiro uso para você entrar, sem token para gerenciar.",
   "settings.connectClients.oauthMetadataHint":
     "Os metadados do OAuth 2.1 Protected Resource são anunciados no 401:",
   "settings.connectClients.oauthOption": "OAuth",
   "settings.connectClients.otherClient": "Outro",
-  "settings.connectClients.pageTitle": "Conectar a clientes",
+  "settings.connectClients.pageTitle": "Conectar",
   "settings.connectClients.recommended": "Recomendado",
   "settings.connectClients.skillDescription":
-    "Instale a skill do Studio e faça login uma vez. Depois disso, seu agente trabalha com os chats, agentes, tarefas e arquivos da Library desta org pela CLI decocms.",
+    "Instale a skill do Studio e faça login uma vez. Depois, seu agente usa os chats, agentes, tarefas e arquivos da Library desta org pela CLI decocms.",
   "settings.connectClients.skillInstallStep": "1. Instale a skill",
   "settings.connectClients.skillLoginHint":
-    "Um navegador abre para você aprovar o login. A sessão se renova sozinha, então só faça login de novo quando o agente pedir.",
+    "Um navegador abre para aprovar o login. A sessão se renova sozinha.",
   "settings.connectClients.skillLoginStep": "2. Faça login",
   "settings.connectClients.skillNeedsBun": "Precisa do Bun.",
   "settings.connectClients.skillOtherAgentsHint":
@@ -582,7 +616,7 @@ export const settings = {
   "settings.connectClients.skillTab": "CLI + skill",
   "settings.connectClients.skillTitle": "Conectar seu agente",
   "settings.connectClients.snippetOneTimeWarning":
-    "Copie este snippet agora — a chave não será exibida novamente. Você pode revogá-la mais tarde na lista abaixo.",
+    "Copie este snippet agora. A chave não será exibida de novo, e você pode revogá-la na lista abaixo.",
   "settings.connectForms.apiKeyField": "Chave API",
   "settings.connectForms.apiKeyRequired": "A chave API é obrigatória",
   "settings.connectForms.baseUrlField": "URL Base",
@@ -785,14 +819,14 @@ export const settings = {
     "100+ modelos, uma conex\u00e3o \u2014 pague conforme usa, sem APIs para gerenciar.",
   "settings.decoNudgeCard.recommended": "Recomendado",
   "settings.deleteOrganizationSection.cancel": "Cancelar",
-  "settings.deleteOrganizationSection.dangerZone": "Zona de Risco",
+  "settings.deleteOrganizationSection.dangerZone": "Zona de risco",
   "settings.deleteOrganizationSection.deleteButton": "Deletar",
   "settings.deleteOrganizationSection.deleteOrganizationAction":
     "Deletar organiza\u00e7\u00e3o",
   "settings.deleteOrganizationSection.deleteOrganizationDescription":
-    "Delete permanentemente esta organiza\u00e7\u00e3o e todos os seus dados. Esta a\u00e7\u00e3o n\u00e3o pode ser desfeita.",
+    "Apaga esta organização e todos os seus dados, para sempre.",
   "settings.deleteOrganizationSection.deleteOrganizationQuestion":
-    "Deletar Organiza\u00e7\u00e3o?",
+    "Deletar organização?",
   "settings.deleteOrganizationSection.deleteOrganizationTitle":
     "Deletar organiza\u00e7\u00e3o",
   "settings.deleteOrganizationSection.deleteWarning":
@@ -800,8 +834,6 @@ export const settings = {
   "settings.deleteOrganizationSection.deleting": "Deletando\u2026",
   "settings.deleteOrganizationSection.failedToDeleteOrganization":
     "Falha ao deletar organiza\u00e7\u00e3o",
-  "settings.deleteOrganizationSection.irreversibleActionsDescription":
-    "A\u00e7\u00f5es irrevers\u00edveis que afetam toda a sua organiza\u00e7\u00e3o.",
   "settings.deleteOrganizationSection.organizationDeleted":
     "Organiza\u00e7\u00e3o deletada",
   "settings.deleteOrganizationSection.typeToConfirm":
@@ -871,28 +903,27 @@ export const settings = {
   "settings.joinRequestsSection.description":
     "Pessoas que solicitaram entrada por um dom\u00ednio em modo de aprova\u00e7\u00e3o.",
   "settings.joinRequestsSection.title": "Solicita\u00e7\u00f5es de entrada",
-  "settings.orgGeneral.organization": "Organiza\u00e7\u00e3o",
   "settings.review.title": "Revisores e merge",
   "settings.review.description":
-    "O Reviewer automático roda no pull request de uma tarefa quando o card chega na coluna Em Revisão (checks passando ou inexistentes). Ele aparece como uma sessão no card da tarefa.",
-  "settings.review.reviewerTitle": "Ativar Reviewer",
+    "O Reviewer roda no pull request de uma tarefa quando o card chega em Em Revisão.",
+  "settings.review.reviewerTitle": "Reviewer",
   "settings.review.reviewerDescription":
-    "Quando o card chega na coluna Em Revisão, revisa o código com as skills de review do próprio repositório, corrige o que encontra na branch do pull request e depois testa a mudança no preview do deploy. Uma aprovação move o card para QA; quando não consegue resolver algo, passa a tarefa para você.",
+    "Revisa o código com as skills de review do repositório, corrige o que encontra e testa a mudança no preview do deploy. Uma aprovação move o card para QA; o que não conseguir resolver volta para você.",
   "settings.review.cheapReviewerModelTitle":
     "Rodar os revisores em um modelo mais barato",
   "settings.review.cheapReviewerModelDescription":
-    "O Reviewer roda em um modelo menor que o Super Agent que escreveu a mudança. Reduz o custo da revisão; pode reduzir a profundidade.",
-  "settings.review.autoMergeTitle": "Ativar Auto-merge",
+    "Usa um modelo menor que o do Super Agent. Mais barato, talvez menos profundo.",
+  "settings.review.autoMergeTitle": "Auto-merge",
   "settings.review.autoMergeDescription":
-    "Quando um card chega em Pronto para Deploy, mescla o pull request automaticamente em vez de esperar alguém clicar em Subir para produção.",
+    "Mescla o pull request quando o card chega em Pronto para Deploy, sem esperar alguém clicar em Subir para produção.",
   "settings.review.autoResolveConflictsTitle":
     "Resolver conflitos de merge automaticamente",
   "settings.review.autoResolveConflictsDescription":
-    "Quando um pull request em Pronto para Deploy conflita com a branch base, devolve para o Super Agent fazer checkout da branch, mesclar a base e dar push. Segue o Auto-merge, a menos que você ajuste aqui.",
+    "Quando um pull request em Pronto para Deploy conflita com a base, o Super Agent mescla a base e dá push. Segue o Auto-merge, a menos que você ajuste aqui.",
   "settings.review.autoAssignReportTasksTitle":
-    "Atribuir tarefas do Deco Score ao Super Agent automaticamente",
+    "Atribuir tarefas do Deco Score ao Super Agent",
   "settings.review.autoAssignReportTasksDescription":
-    "Tarefas criadas a partir do Deco Score são delegadas ao Super Agent automaticamente, em vez de ficarem sem responsável.",
+    "Tarefas criadas pelo Deco Score vão para o Super Agent em vez de ficarem sem responsável.",
   "settings.review.updateError":
     "N\u00e3o foi poss\u00edvel atualizar a configura\u00e7\u00e3o",
   "settings.taskPrompt.title": "System prompt",
@@ -906,15 +937,15 @@ export const settings = {
   "settings.taskPrompt.skillsLabel": "Skills em todas as colunas",
   "settings.agentTools.title": "Ferramentas do agente",
   "settings.agentTools.description":
-    "O que um run de agente de c\u00f3digo alcan\u00e7a al\u00e9m do reposit\u00f3rio em que est\u00e1 trabalhando.",
+    "O que os runs de agente de código alcançam além do repositório.",
   "settings.agentTools.orgMcpsTitle":
-    "Dar aos runs as conex\u00f5es MCP desta organiza\u00e7\u00e3o",
+    "Dar aos runs as conexões MCP desta organização",
   "settings.agentTools.orgMcpsDescription":
-    "Cada MCP conectado fica dispon\u00edvel para o Super Agent e para os revisores, al\u00e9m das ferramentas de tarefa que eles sempre recebem. As ferramentas carregam s\u00f3 quando o agente procura por uma, ent\u00e3o conectar mais n\u00e3o ocupa o contexto dele.",
+    "O Super Agent e os revisores recebem todo MCP conectado. As ferramentas só carregam quando necessário, então mais conexões não ocupam o contexto.",
   "settings.agentTools.orgMcpsPickTitle":
     "Conex\u00f5es que os runs alcan\u00e7am",
   "settings.agentTools.orgMcpsPickDescription":
-    "Desligue uma para mant\u00ea-la fora dos runs de coding agent. \u00datil para uma conex\u00e3o que duplica uma ferramenta que o run j\u00e1 tem \u2014 um MCP do mesmo tracker em que o run reporta, por exemplo. Um MCP conectado depois come\u00e7a ligado.",
+    "Desligue uma para deixá-la fora dos runs, por exemplo um MCP do tracker em que o run já reporta. Conexões novas começam ligadas.",
   "settings.agentTools.orgMcpsPickAriaLabel":
     "Deixar os runs alcan\u00e7arem {name}",
   "settings.agentTools.orgMcpsPickEmpty":
@@ -935,13 +966,13 @@ export const settings = {
     "Conex\u00f5es que os runs alcan\u00e7am salvas",
   "settings.agentTools.chatRuntimeSection": "Chats",
   "settings.agentTools.chatHarnessSandboxOnlyTitle":
-    "Rodar todo chat com o Claude Code no seu pr\u00f3prio sandbox",
+    "Rodar chats com o Claude Code em um sandbox",
   "settings.agentTools.chatHarnessSandboxOnlyDescription":
-    "Todo chat novo roda o Claude Code em um sandbox s\u00f3 dele em vez de rodar no Decopilot, e chats existentes do Decopilot mudam na pr\u00f3xima mensagem. A primeira mensagem de um chat espera o sandbox iniciar. Requer uma chave da Anthropic, OpenRouter ou do gateway de IA da deco, ou uma assinatura do Claude.",
+    "Cada chat ganha um sandbox próprio em vez de rodar no Decopilot. A primeira mensagem espera o sandbox iniciar. Requer uma chave da Anthropic, OpenRouter ou do gateway de IA da deco, ou uma assinatura do Claude.",
   "settings.agentTools.codingAgentsClaudeCodeTitle":
     "Rodar chats de Code Agent com o Claude Code",
   "settings.agentTools.codingAgentsClaudeCodeDescription":
-    "Chats em um agente importado de um reposit\u00f3rio do GitHub rodam dentro do sandbox desse agente, ao lado do checkout, em vez de rodarem no Decopilot. As respostas chegam de turno inteiro, e n\u00e3o palavra por palavra. S\u00f3 vale para chats novos \u2014 um chat existente mant\u00e9m o runtime em que come\u00e7ou.",
+    "Chats em um agente importado do GitHub rodam no sandbox desse agente, junto do código. As respostas chegam de turno inteiro. Vale só para chats novos.",
   "settings.orgRoleDetail.addMember": "Adicionar Membro",
   "settings.orgRoleDetail.addMembersToGrantPermissions":
     "Adicione membros para conceder as permiss\u00f5es configuradas.",
@@ -960,7 +991,7 @@ export const settings = {
   "settings.orgRoleDetail.builtinRolePermissionsCannotBeChanged":
     "Permiss\u00f5es de papel integrado n\u00e3o podem ser alteradas",
   "settings.orgRoleDetail.cancel": "Cancelar",
-  "settings.orgRoleDetail.createRole": "Criar Papel",
+  "settings.orgRoleDetail.createRole": "Criar função",
   "settings.orgRoleDetail.enabledCount": "{enabledCount}/{total} ativados",
   "settings.orgRoleDetail.failedToSaveRole": "Falha ao salvar papel",
   "settings.orgRoleDetail.general": "Geral",
@@ -1013,29 +1044,29 @@ export const settings = {
   "settings.orgRoleDetail.userIsDefaultRoleMessage":
     "Usu\u00e1rio \u00e9 o papel padr\u00e3o \u2014 membros n\u00e3o podem ser removidos dele; atribua outro papel para alterar seu acesso",
   "settings.orgSso.cancelButton": "Cancelar",
-  "settings.orgSso.clientIdLabel": "ID do Cliente",
+  "settings.orgSso.clientIdLabel": "ID do cliente",
   "settings.orgSso.clientIdPlaceholder": "seu-id-cliente",
   "settings.orgSso.clientSecretEditDescription":
     "Deixe em branco para manter atual",
-  "settings.orgSso.clientSecretLabel": "Senha do Cliente",
-  "settings.orgSso.clientSecretPlaceholder": "sua-senha-cliente",
+  "settings.orgSso.clientSecretLabel": "Segredo do cliente",
+  "settings.orgSso.clientSecretPlaceholder": "seu-segredo-cliente",
   "settings.orgSso.clientSecretRequiredError":
-    "Senha do Cliente \u00e9 obrigat\u00f3ria para a configura\u00e7\u00e3o inicial",
+    "O segredo do cliente é obrigatório na primeira configuração",
   "settings.orgSso.configurationRemovedSuccess":
     "Configura\u00e7\u00e3o SSO removida",
   "settings.orgSso.configurationSavedSuccess":
     "Configura\u00e7\u00e3o SSO salva",
   "settings.orgSso.configureSsoButton": "Configurar SSO",
   "settings.orgSso.discoveryEndpointDescription":
-    "Opcional \u2014 detectado automaticamente do issuer se omitido.",
-  "settings.orgSso.discoveryEndpointLabel": "Endpoint de Descoberta",
+    "Opcional. Detectado pelo issuer quando vazio.",
+  "settings.orgSso.discoveryEndpointLabel": "Endpoint de descoberta",
   "settings.orgSso.discoveryEndpointPlaceholder":
     "Detectado automaticamente do issuer",
   "settings.orgSso.domainLabel": "Dom\u00ednio",
   "settings.orgSso.editConfigButton": "Editar configura\u00e7\u00e3o",
   "settings.orgSso.emailDomainDescription":
-    "O dom\u00ednio de e-mail que este provedor SSO cobre.",
-  "settings.orgSso.emailDomainLabel": "Dom\u00ednio de E-mail",
+    "O domínio de e-mail que este provedor cobre.",
+  "settings.orgSso.emailDomainLabel": "Domínio de e-mail",
   "settings.orgSso.emailDomainPlaceholder": "empresa.com",
   "settings.orgSso.enforceSsoDescription":
     "Exigir que todos os membros se autentiquem via SSO",
@@ -1046,7 +1077,7 @@ export const settings = {
     "Aplica\u00e7\u00e3o de SSO ativada",
   "settings.orgSso.issuerUrlDescription":
     "A URL do issuer OIDC do seu provedor de identidade.",
-  "settings.orgSso.issuerUrlLabel": "URL do Issuer",
+  "settings.orgSso.issuerUrlLabel": "URL do issuer",
   "settings.orgSso.issuerUrlPlaceholder":
     "https://login.microsoftonline.com/{tenant}/v2.0",
   "settings.orgSso.loading": "Carregando...",
@@ -1063,7 +1094,7 @@ export const settings = {
   "settings.orgSso.savingButton": "Salvando...",
   "settings.orgSso.scopesLabel": "Escopos",
   "settings.orgSso.scopesPlaceholder": "openid email profile",
-  "settings.orgSso.sectionTitle": "Single Sign-On",
+  "settings.orgSso.sectionTitle": "Single sign-on",
   "settings.orgSso.securityTitle": "Seguran\u00e7a",
   "settings.orgSso.testSsoButton": "Testar SSO",
   "settings.orgSso.toggleEnforcementError":
@@ -1073,8 +1104,7 @@ export const settings = {
   "settings.organizationForm.failedToUpdateOrg":
     "Falha ao atualizar organiza\u00e7\u00e3o",
   "settings.organizationForm.imageTooLarge": "Imagem deve ser menor que 2MB",
-  "settings.organizationForm.logoDescription":
-    "Tamanho recomendado \u00e9 256x256px",
+  "settings.organizationForm.logoDescription": "Recomendado: 256×256px.",
   "settings.organizationForm.logoTitle": "Logo",
   "settings.organizationForm.namePlaceholder": "Nome da organiza\u00e7\u00e3o",
   "settings.organizationForm.nameRequired": "O nome \u00e9 obrigat\u00f3rio",
@@ -1085,7 +1115,7 @@ export const settings = {
   "settings.organizationForm.uploadLogoLabel":
     "Enviar logo da organiza\u00e7\u00e3o",
   "settings.organizationForm.urlDescription":
-    "N\u00e3o pode ser alterada \u2014 \u00e9 usada em URLs e integra\u00e7\u00f5es de API.",
+    "Usada em links e integrações de API, por isso não pode ser alterada.",
   "settings.organizationForm.urlTitle": "URL",
   "settings.providerKeyRow.addedTimeAgo": "{label} · adicionada há {time}",
   "settings.providerKeyRow.cancel": "Cancelar",
@@ -1107,7 +1137,7 @@ export const settings = {
   "settings.roles.columnRole": "Fun\u00e7\u00e3o",
   "settings.roles.columnType": "Tipo",
   "settings.roles.connectionCount": "{count} conex\u00e3o(\u00f5es)",
-  "settings.roles.createRole": "Criar Fun\u00e7\u00e3o",
+  "settings.roles.createRole": "Nova função",
   "settings.roles.createRoleGetStarted":
     "Crie uma fun\u00e7\u00e3o para come\u00e7ar.",
   "settings.roles.custom": "Personalizada",
@@ -1161,7 +1191,7 @@ export const settings = {
     "Dê um nome à chave para reconhecê-la depois.",
   "settings.apiKeys.newKeyTitle": "Nova chave de API",
   "settings.apiKeys.sectionDescription":
-    "Chaves de longa duração para scripts e clientes que não conseguem entrar por um navegador.",
+    "Para scripts e clientes que não conseguem entrar pelo navegador.",
   "settings.apiKeys.sectionTitle": "Chaves de API",
   "settings.secrets.cancelButton": "Cancelar",
   "settings.secrets.createButton": "Criar segredo",
@@ -1287,13 +1317,13 @@ export const settings = {
   "settings.infraBilling.statusPending": "Pendente",
   "settings.gitCredentials.title": "Credenciais git",
   "settings.gitCredentials.description":
-    "Tokens de acesso pessoal para repositórios git privados dos quais seus projetos dependem mas que o sandbox não alcança sozinho — submódulos e dependências privadas resolvidas por pub, go, npm ou cargo. Usados por todos os sandboxes desta organização. Referencie um segredo de org/usuário por host; URLs SSH são reescritas para HTTPS para que o token se aplique.",
-  "settings.gitCredentials.addCredential": "Adicionar credencial git",
+    "Tokens que deixam os sandboxes baixarem repositórios e dependências privadas, como submódulos ou pacotes privados de npm, go, pub ou cargo. Escolha um segredo por host.",
+  "settings.gitCredentials.addCredential": "Adicionar credencial",
   "settings.gitCredentials.cancel": "Cancelar",
   "settings.gitCredentials.createNewSecret": "Criar novo segredo",
   "settings.gitCredentials.createNewSecretAriaLabel": "Criar novo segredo",
   "settings.gitCredentials.createNewSecretDescription":
-    "Armazenado criptografado no cofre de credenciais. A credencial git fará referência ao novo segredo pelo id — seu valor nunca sai do servidor.",
+    "Armazenado criptografado. A credencial referencia o segredo pelo id, e o valor nunca sai do servidor.",
   "settings.gitCredentials.createNewSecretTitle": "Criar novo segredo",
   "settings.gitCredentials.descriptionLabel": "Descrição (opcional)",
   "settings.gitCredentials.descriptionPlaceholder":
@@ -1322,8 +1352,8 @@ export const settings = {
     "Segredo da credencial git {index}",
   "settings.gitCredentials.scopeLabel": "Escopo",
   "settings.gitCredentials.scopeOrganization":
-    "Organização — visível para todos os membros",
-  "settings.gitCredentials.scopePrivate": "Privado — visível apenas para mim",
+    "Organização, visível para todos os membros",
+  "settings.gitCredentials.scopePrivate": "Privado, visível só para mim",
   "settings.gitCredentials.secretSaved": 'Segredo "{name}" salvo',
   "settings.gitCredentials.tokenExposureWarning":
     "O token é instalado na configuração git do sandbox durante a sessão, então comandos e agentes executados lá podem usá-lo. Restrinja-o aos repositórios necessários.",

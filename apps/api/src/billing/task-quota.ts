@@ -33,6 +33,7 @@
 
 import type { StudioContext } from "@/core/studio-context";
 import { isReportsTask } from "@decocms/shared/task-board";
+import { orgPlanConfirmsFeature } from "@/core/plan-feature-gate";
 import { captureOrgEvent } from "@/posthog";
 import { getSettings } from "../settings";
 import type {
@@ -82,7 +83,7 @@ function billingMode(periodKey: string): "trial" | "subscription" {
  *  identity. Fire-and-forget; no-op without POSTHOG_KEY. */
 function captureQuotaEvent(
   ctx: StudioContext,
-  event: "task_quota_claimed" | "task_quota_blocked",
+  event: "task_quota_claimed" | "task_quota_blocked" | "task_quota_exempt",
   task: { id: string; organizationId: string },
   properties: Record<string, unknown> = {},
 ): void {
@@ -196,6 +197,22 @@ interface GatedTask {
   id: string;
   createdBy: string;
   organizationId: string;
+  /** Read the plan as one of these when the request has no user. */
+  assignedBy?: string | null;
+  updatedBy?: string | null;
+}
+
+/** The gateway gives a plan with `kanban` unlimited tasks; so does the quota. */
+async function kanbanPlanExempts(
+  ctx: StudioContext,
+  task: GatedTask,
+): Promise<boolean> {
+  const reader = task.assignedBy ?? ctx.auth?.user?.id ?? task.updatedBy;
+  return await orgPlanConfirmsFeature(
+    reader ?? undefined,
+    task.organizationId,
+    "kanban",
+  );
 }
 
 /**
@@ -211,6 +228,7 @@ export async function ensureTaskExecutionAllowed(
   config: TaskQuotaConfig = taskQuotaConfig(),
 ): Promise<void> {
   if (!config.enforced || !isReportsTask(task)) return;
+  if (await kanbanPlanExempts(ctx, task)) return;
   const claim = await ctx.storage.organizationBilling.taskClaim(task.id);
   if (claim && claim.runCount >= config.maxRunsPerTask) {
     captureQuotaEvent(ctx, "task_quota_blocked", task, {
@@ -261,6 +279,12 @@ export async function claimTaskExecution(
   config: TaskQuotaConfig = taskQuotaConfig(),
 ): Promise<"claimed" | "rerun" | "skipped"> {
   if (!config.enforced || !isReportsTask(task)) return "skipped";
+  if (await kanbanPlanExempts(ctx, task)) {
+    captureQuotaEvent(ctx, "task_quota_exempt", task, {
+      reason: "plan_kanban",
+    });
+    return "skipped";
+  }
   const billing = await ctx.storage.organizationBilling.getBilling(
     task.organizationId,
   );

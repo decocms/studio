@@ -16,7 +16,23 @@ import {
   isSecretBlock as isLegacySecretBlock,
 } from "@decocms/shared/decofile";
 import { SECRET_BLOCK_TYPE } from "@decocms/shared/secret-ciphertext";
+import { isLazyWrapper } from "@/components/sections-editor/lazy-value";
+import { isLazyResolveType } from "@/components/sections-editor/section-lazy";
+import { labelFromResolveType } from "@/components/sections-editor/section-types";
+import { isMultivariateResolveType } from "@/components/sections-editor/variant-shape";
 import type { ContentChangeSides } from "@/components/sections-editor/content-changes";
+import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
+import {
+  type NamedRuleKind,
+  namedRuleKindOfBlock,
+  namedRuleKindOfType,
+} from "@/components/sections-editor/named-rules";
+import type { MissingNamedRuleUseCounts } from "@/components/sections-editor/named-rule-uses";
+import {
+  type BlogBlockKind,
+  blogBlockKind,
+  blogBlockName,
+} from "@/components/sections-editor/blog-block-name.ts";
 import {
   globalSectionLabel,
   isSiteAppBlock,
@@ -51,6 +67,18 @@ export interface PublishSectionChange {
   kind: "section" | "settings";
   status: PublishChangeStatus;
   fields: PublishFieldChange[];
+  /**
+   * The section is variants (lazy-loaded or not), so `name` is the wrapper's
+   * type ("Multivariate"), not a name the author knows. The version note
+   * leaves it out. A lazy-loaded section is named by the section it loads.
+   */
+  wrapper?: true;
+  /**
+   * On a `wrapper`: the sections its variants hold (through lazy blocks), by
+   * name, those of the variants that changed first. The version note names
+   * these instead of the wrapper.
+   */
+  held?: string[];
 }
 
 export interface PublishChange {
@@ -70,11 +98,59 @@ export interface PublishChange {
    * the list showed, which its discard is guarded by. `filepaths` is empty.
    */
   entry?: { name: string; version: string | null };
+  /** A hosted draft's blog record (a post, a category, an author): its kind. */
+  blogKind?: BlogBlockKind;
   /** v8: the sides that exist but couldn't be read (invalid JSON, too large). */
   unreadable?: Array<"before" | "after">;
   sections: PublishSectionChange[];
   fromJson: Record<string, unknown> | null;
   toJson: Record<string, unknown> | null;
+  /**
+   * v8: its rules name a test or campaign of these kinds that the draft
+   * doesn't have (deleted, discarded, never created). The card says so;
+   * nothing is blocked.
+   */
+  missingRules?: NamedRuleKind[];
+  /**
+   * v8, on the A/B tests or Campaigns card: how many pages and how many
+   * sections use a name the draft doesn't have. Those may have no card of
+   * their own; nothing is blocked.
+   */
+  missingRuleUses?: { kind: NamedRuleKind } & MissingNamedRuleUseCounts;
+  /**
+   * The site's A/B tests or campaigns block, known when the card is built
+   * (from the current blocks, either side, or its name when no content can be
+   * read), so the card says so before and whether or not its sides load.
+   */
+  namedRule?: NamedRuleKind;
+}
+
+/**
+ * A Blocks v8 site's A/B tests (`split-traffic`) or campaigns (`calendar`)
+ * block behind a block card (`namedRule`, which only a v8 summary sets);
+ * null for any other block and on v7. They are content, not sections, so the
+ * card names them as such.
+ */
+export function namedRuleBlockOfChange(
+  change: Pick<PublishChange, "kind" | "namedRule">,
+): NamedRuleKind | null {
+  if (change.kind !== "block") return null;
+  return change.namedRule ?? null;
+}
+
+/**
+ * The named-rule block a v8 site's changed block is: by its content's type
+ * when any side can be read (a block of that name with another type is not
+ * one), else by its name, since the sides load after the list and may not
+ * load at all.
+ */
+function namedRuleOfBlock(
+  name: string,
+  shapes: Array<Record<string, unknown> | null | undefined>,
+): NamedRuleKind | null {
+  const shape = shapes.find((s) => s && typeof s === "object");
+  if (shape) return namedRuleKindOfType(shape.__resolveType);
+  return namedRuleKindOfBlock(name);
 }
 
 export interface PublishChangeSummary {
@@ -85,6 +161,11 @@ export interface PublishChangeSummary {
   generated: string[];
   /** Cards shown to the user: pages + blocks + other. */
   count: number;
+  /**
+   * A Blocks v8 site's content changes (`summarizeContentChanges`): the
+   * version note names sections as the v8 editor does. Absent on v7.
+   */
+  v8?: true;
 }
 
 const BLOCK_FILE_RE = /(?:^|\/)\.deco\/blocks\/([^/]+)\.json$/;
@@ -127,11 +208,21 @@ export function humanizeFieldName(key: string): string {
   );
 }
 
-/** Display name for a section entry ("site/sections/Hero.tsx" → "Hero"). */
-export function sectionDisplayName(section: unknown, index: number): string {
+/**
+ * Display name for a section entry ("site/sections/Hero.tsx" → "Hero"). On a
+ * Blocks v8 site (`v8`), as the site editor's section list and "Used by" name
+ * it (`labelFromResolveType`), so the release title says "Hero Scene" where
+ * the editor does; on v7, the file name humanized, as before.
+ */
+export function sectionDisplayName(
+  section: unknown,
+  index: number,
+  v8 = false,
+): string {
   if (section && typeof section === "object" && !Array.isArray(section)) {
     const resolveType = (section as Record<string, unknown>).__resolveType;
     if (typeof resolveType === "string" && resolveType.trim()) {
+      if (v8) return labelFromResolveType(resolveType);
       const basename = resolveType.split("/").pop() ?? resolveType;
       const stem = basename.replace(/\.[jt]sx?$/, "");
       // A saved-block reference resolves to the block key itself — humanize it.
@@ -139,6 +230,139 @@ export function sectionDisplayName(section: unknown, index: number): string {
     }
   }
   return `Section ${index + 1}`;
+}
+
+/**
+ * The section a lazy-loading wrapper holds (v8 `lazy` block, v7 Lazy section),
+ * or `null` for a section that isn't one.
+ */
+function lazyInner(section: Record<string, unknown>): unknown {
+  if (isLazyWrapper(section)) return section.value ?? null;
+  const resolveType = section.__resolveType;
+  if (typeof resolveType === "string" && isLazyResolveType(resolveType)) {
+    return section.section ?? null;
+  }
+  return null;
+}
+
+/** How deep variants and lazy blocks are followed to the sections they hold. */
+const MAX_HELD_DEPTH = 6;
+
+/**
+ * The sections a value holds: itself, or through lazy blocks and into every
+ * variant of a variants block (a variant's value may be one section or a list).
+ */
+function heldSections(value: unknown, depth = 0): Record<string, unknown>[] {
+  if (depth > MAX_HELD_DEPTH || !value || typeof value !== "object") return [];
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => heldSections(item, depth + 1));
+  }
+  const record = value as Record<string, unknown>;
+  if (isMultivariateResolveType(record.__resolveType)) {
+    return variantsOf(record).flatMap((variant) =>
+      heldSections(variant?.value, depth + 1),
+    );
+  }
+  const inner = lazyInner(record);
+  if (inner !== null) return heldSections(inner, depth + 1);
+  return [record];
+}
+
+function variantsOf(
+  record: Record<string, unknown> | null | undefined,
+): Array<Record<string, unknown> | null> {
+  const variants = record?.variants;
+  if (!Array.isArray(variants)) return [];
+  return variants.map((variant) =>
+    variant && typeof variant === "object" && !Array.isArray(variant)
+      ? (variant as Record<string, unknown>)
+      : null,
+  );
+}
+
+/** Unwraps lazy blocks down to the variants block they hold, if any. */
+function variantsBlock(value: unknown): Record<string, unknown> | null {
+  let current: unknown = value;
+  for (let depth = 0; depth < MAX_HELD_DEPTH; depth++) {
+    if (!current || typeof current !== "object" || Array.isArray(current)) {
+      return null;
+    }
+    const record = current as Record<string, unknown>;
+    if (isMultivariateResolveType(record.__resolveType)) return record;
+    const inner = lazyInner(record);
+    if (inner === null) return null;
+    current = inner;
+  }
+  return null;
+}
+
+/**
+ * The names of the sections a variants block holds: those of the variants
+ * that changed from `previous` (when given) first, then the rest, each once.
+ */
+function heldNames(
+  section: Record<string, unknown>,
+  previous: Record<string, unknown> | undefined,
+  index: number,
+): string[] {
+  const now = variantsOf(variantsBlock(section));
+  const before = previous ? variantsOf(variantsBlock(previous)) : [];
+  const changed = previous
+    ? Array.from(
+        { length: Math.max(now.length, before.length) },
+        (_, i) => i,
+      ).filter((i) => !sameValue(now[i], before[i]))
+    : [];
+  const ordered = [
+    ...changed.map((i) => now[i] ?? before[i]),
+    ...now.filter((_, i) => !changed.includes(i)),
+  ];
+  const names = ordered
+    .flatMap((variant) => heldSections(variant?.value))
+    .map((held) => sectionDisplayName(held, index, true));
+  return [...new Set(names)];
+}
+
+/**
+ * A v8 site's changed section, by the name of the section it is: a lazy-loaded one by
+ * the section it loads, and flagged `wrapper` when it is variants (or a lazy
+ * wrapper around them), whose type is no name the author knows; a wrapper
+ * carries the names of the sections its variants hold.
+ */
+function sectionChange(
+  section: Record<string, unknown>,
+  index: number,
+  status: PublishChangeStatus,
+  fields: PublishFieldChange[],
+  previous?: Record<string, unknown>,
+): PublishSectionChange {
+  let named: unknown = section;
+  let wrapper = false;
+  for (let depth = 0; depth < 4; depth++) {
+    if (!named || typeof named !== "object" || Array.isArray(named)) {
+      wrapper = true;
+      break;
+    }
+    const record = named as Record<string, unknown>;
+    if (isMultivariateResolveType(record.__resolveType)) {
+      wrapper = true;
+      break;
+    }
+    const inner = lazyInner(record);
+    if (inner === null) break;
+    named = inner;
+  }
+  const held = wrapper ? heldNames(section, previous, index) : [];
+  return {
+    name: wrapper
+      ? sectionDisplayName(section, index, true)
+      : sectionDisplayName(named, index, true),
+    kind: "section",
+    status,
+    fields,
+    ...(wrapper ? { wrapper: true as const } : {}),
+    ...(held.length > 0 ? { held } : {}),
+  };
 }
 
 interface SectionWithPath {
@@ -152,7 +376,11 @@ interface SectionWithPath {
  * per variant under `sections.variants[i].value` (multivariate pages). Returns
  * each section with the JSON path that reaches it, valid in both shapes.
  */
-function sectionsWithPaths(block: Record<string, unknown>): SectionWithPath[] {
+function sectionsWithPaths(
+  block: Record<string, unknown>,
+  /** A Blocks v8 site: a page variant's list may sit in a `lazy` block. */
+  v8: boolean,
+): SectionWithPath[] {
   const sections = block.sections;
   if (Array.isArray(sections)) {
     return sections.flatMap((section, i) =>
@@ -170,17 +398,23 @@ function sectionsWithPaths(block: Record<string, unknown>): SectionWithPath[] {
     const variants = (sections as Record<string, unknown>).variants;
     if (Array.isArray(variants)) {
       return variants.flatMap((variant, vi) => {
-        const value =
+        const stored =
           variant && typeof variant === "object" && !Array.isArray(variant)
             ? (variant as Record<string, unknown>).value
             : null;
+        // v8's `multivariate` keeps the list in a `lazy` block, one `value` deeper.
+        const lazy = v8 && isLazyWrapper(stored);
+        const value = lazy ? stored.value : stored;
         if (!Array.isArray(value)) return [];
+        const listPath: (string | number)[] = lazy
+          ? ["sections", "variants", vi, "value", "value"]
+          : ["sections", "variants", vi, "value"];
         return value.flatMap((section, i) =>
           section && typeof section === "object" && !Array.isArray(section)
             ? [
                 {
                   section: section as Record<string, unknown>,
-                  basePath: ["sections", "variants", vi, "value", i],
+                  basePath: [...listPath, i],
                 },
               ]
             : [],
@@ -237,45 +471,48 @@ function shallowFieldDiff(
 
 const PAGE_TOP_LEVEL_SKIP = new Set(["sections"]);
 
-/** Section-level changes between two parsed page blocks. */
+/**
+ * Section-level changes between two parsed page blocks. A Blocks v8 site's
+ * (`v8`) name each section as the v8 editor does (`sectionChange`); v7's
+ * keep the plain section entries, as before.
+ */
 function diffPageSections(
   from: Record<string, unknown> | null,
   to: Record<string, unknown> | null,
+  v8 = false,
 ): PublishSectionChange[] {
-  const fromSections = from ? sectionsWithPaths(from) : [];
-  const toSections = to ? sectionsWithPaths(to) : [];
+  const fromSections = from ? sectionsWithPaths(from, v8) : [];
+  const toSections = to ? sectionsWithPaths(to, v8) : [];
   const changes: PublishSectionChange[] = [];
 
   const max = Math.max(fromSections.length, toSections.length);
   for (let i = 0; i < max; i++) {
     const fromEntry = fromSections[i];
     const toEntry = toSections[i];
+    if (!v8) {
+      const legacy = legacySectionChange(fromEntry, toEntry, i);
+      if (legacy) changes.push(legacy);
+      continue;
+    }
     if (fromEntry && toEntry) {
       if (sameValue(fromEntry.section, toEntry.section)) continue;
-      changes.push({
-        name: sectionDisplayName(toEntry.section, i),
-        kind: "section",
-        status: "edited",
-        fields: shallowFieldDiff(
-          fromEntry.section,
+      changes.push(
+        sectionChange(
           toEntry.section,
-          toEntry.basePath,
+          i,
+          "edited",
+          shallowFieldDiff(
+            fromEntry.section,
+            toEntry.section,
+            toEntry.basePath,
+          ),
+          fromEntry.section,
         ),
-      });
+      );
     } else if (toEntry) {
-      changes.push({
-        name: sectionDisplayName(toEntry.section, i),
-        kind: "section",
-        status: "new",
-        fields: [],
-      });
+      changes.push(sectionChange(toEntry.section, i, "new", []));
     } else if (fromEntry) {
-      changes.push({
-        name: sectionDisplayName(fromEntry.section, i),
-        kind: "section",
-        status: "removed",
-        fields: [],
-      });
+      changes.push(sectionChange(fromEntry.section, i, "removed", []));
     }
   }
 
@@ -289,6 +526,44 @@ function diffPageSections(
     });
   }
   return changes;
+}
+
+/** v7's entry for one section position: `{ name, kind, status, fields }`. */
+function legacySectionChange(
+  fromEntry: SectionWithPath | undefined,
+  toEntry: SectionWithPath | undefined,
+  i: number,
+): PublishSectionChange | null {
+  if (fromEntry && toEntry) {
+    if (sameValue(fromEntry.section, toEntry.section)) return null;
+    return {
+      name: sectionDisplayName(toEntry.section, i),
+      kind: "section",
+      status: "edited",
+      fields: shallowFieldDiff(
+        fromEntry.section,
+        toEntry.section,
+        toEntry.basePath,
+      ),
+    };
+  }
+  if (toEntry) {
+    return {
+      name: sectionDisplayName(toEntry.section, i),
+      kind: "section",
+      status: "new",
+      fields: [],
+    };
+  }
+  if (fromEntry) {
+    return {
+      name: sectionDisplayName(fromEntry.section, i),
+      kind: "section",
+      status: "removed",
+      fields: [],
+    };
+  }
+  return null;
 }
 
 function otherChange(path: string, status: PublishChangeStatus): PublishChange {
@@ -566,14 +841,42 @@ function listNames(names: string[]): string {
   return `${names.slice(0, MAX_NOTE_NAMES).join(", ")} and ${rest} more`;
 }
 
-function pageNoteName(change: PublishChange): string {
-  const sectionNames = change.sections
-    .filter((s) => s.kind === "section")
-    .map((s) => s.name)
-    .slice(0, 3);
+/**
+ * "Home (Hero, Footer)": the page and its first changed sections, by name.
+ * On v8 (`v8`), only the sections the author knows by name: a wrapper's type
+ * ("Multivariate", "Lazy") says nothing to them, so variants are named by the
+ * sections they hold ("Home (Hero)"), each name once; variants that hold no
+ * section by name leave the page alone: "Home". v7 lists the first three
+ * section entries, as before.
+ */
+function pageNoteName(change: PublishChange, v8: boolean): string {
+  if (!v8) {
+    const legacyNames = change.sections
+      .filter((s) => s.kind === "section")
+      .map((s) => s.name)
+      .slice(0, 3);
+    return legacyNames.length > 0
+      ? `${change.name} (${legacyNames.join(", ")})`
+      : change.name;
+  }
+  const sectionNames = [
+    ...new Set(
+      change.sections
+        .filter((s) => s.kind === "section")
+        .flatMap((s) => (s.wrapper ? (s.held ?? []) : [s.name])),
+    ),
+  ].slice(0, 3);
   return sectionNames.length > 0
     ? `${change.name} (${sectionNames.join(", ")})`
     : change.name;
+}
+
+/** The site's A/B tests and campaigns blocks by what they hold, as the cards call them. */
+function blockNoteName(change: PublishChange): string {
+  const named = namedRuleBlockOfChange(change);
+  if (named === "experiments") return "A/B tests";
+  if (named === "campaigns") return "Campaign dates";
+  return change.name;
 }
 
 /**
@@ -590,7 +893,9 @@ export function buildAutoNote(summary: PublishChangeSummary): string {
   const removedPages = summary.pages.filter((p) => p.status === "removed");
 
   if (editedPages.length > 0) {
-    segments.push(`updated ${listNames(editedPages.map(pageNoteName))}`);
+    segments.push(
+      `updated ${listNames(editedPages.map((page) => pageNoteName(page, !!summary.v8)))}`,
+    );
   }
   if (newPages.length > 0) {
     const label = newPages.length === 1 ? "page" : "pages";
@@ -605,7 +910,7 @@ export function buildAutoNote(summary: PublishChangeSummary): string {
     );
   }
 
-  const blockNames = summary.blocks.map((b) => b.name);
+  const blockNames = summary.blocks.map(blockNoteName);
   if (blockNames.length > 0) {
     segments.push(`changed ${listNames(blockNames)}`);
   }
@@ -620,8 +925,11 @@ export function buildAutoNote(summary: PublishChangeSummary): string {
 }
 
 /** Section count of a parsed page block, across both section shapes. */
-function countPageSections(block: Record<string, unknown> | null): number {
-  return block ? sectionsWithPaths(block).length : 0;
+function countPageSections(
+  block: Record<string, unknown> | null,
+  v8: boolean,
+): number {
+  return block ? sectionsWithPaths(block, v8).length : 0;
 }
 
 /**
@@ -647,11 +955,13 @@ export interface PublishChangeDigest {
 
 export function publishChangeDigest(
   change: PublishChange,
+  /** A Blocks v8 site's change (see `sectionsWithPaths`). */
+  v8 = false,
 ): PublishChangeDigest {
   const digest: PublishChangeDigest = {
     newPageSections:
       change.kind === "page" && change.status === "new"
-        ? countPageSections(change.toJson)
+        ? countPageSections(change.toJson, v8)
         : null,
     sections: 0,
     settings: false,
@@ -712,6 +1022,27 @@ interface ContentChangesInput {
   sides?: ContentChangeSides | null;
   /** The current blocks (the editor's decofile), for names and kinds. */
   lookup?: Record<string, unknown> | null;
+  /**
+   * The site schema, when the editor has read it: its page types. A v8 page
+   * is the built-in `page`, which only the schema names as a page; without
+   * it the page reads as a global section with one changed field.
+   */
+  meta?: LiveMeta | null;
+  /**
+   * Per block, the kinds of test or campaign its rules name that the draft
+   * doesn't have (named-rule-uses.ts `blocksUsingMissingNamedRules`).
+   */
+  missingRules?: ReadonlyMap<string, NamedRuleKind[]>;
+  /**
+   * Per kind, how many pages and how many sections use a name the draft
+   * doesn't have (named-rule-uses.ts `missingNamedRuleUseCounts`).
+   */
+  missingRuleUses?: ReadonlyMap<NamedRuleKind, MissingNamedRuleUseCounts>;
+  /**
+   * Studio's hosted draft: a blog record is named by its title and kind
+   * (its block `name` is its key). Other sources name it as before.
+   */
+  hosted?: boolean;
 }
 
 /**
@@ -724,7 +1055,15 @@ interface ContentChangesInput {
 export function summarizeContentChanges(
   input: ContentChangesInput,
 ): PublishChangeSummary {
-  const { changes, sides, lookup } = input;
+  const {
+    changes,
+    sides,
+    lookup,
+    meta,
+    missingRules,
+    missingRuleUses,
+    hosted,
+  } = input;
   const pages: PublishChange[] = [];
   const blocks: PublishChange[] = [];
   /** The sides of `name` the server couldn't read (any spelling's file). */
@@ -754,21 +1093,34 @@ export function summarizeContentChanges(
     const headShape = readBlockShape(lookup, name);
     const nameShape = headShape ?? toJson ?? fromJson;
     const unreadable = unreadableOf(name);
+    const missing = missingRules?.get(name);
+    const ruleKind = namedRuleKindOfBlock(name);
+    const usesCounts = ruleKind ? missingRuleUses?.get(ruleKind) : undefined;
     const common = {
       blockKey: name,
       status,
       filepaths: [],
       entry: { name, version: change.version },
       ...(unreadable.length > 0 ? { unreadable } : {}),
+      ...(missing && missing.length > 0 ? { missingRules: missing } : {}),
+      ...(ruleKind && usesCounts && usesCounts.pages + usesCounts.sections > 0
+        ? { missingRuleUses: { kind: ruleKind, ...usesCounts } }
+        : {}),
       fromJson: maskSecrets(fromJson),
       toJson: maskSecrets(toJson ?? (status === "new" ? headShape : null)),
     };
 
-    const headPage = headShape ? pageEntryFromBlock(name, headShape) : null;
+    const headPage = headShape
+      ? pageEntryFromBlock(name, headShape, meta)
+      : null;
     const shapePage =
-      !headShape && nameShape ? pageEntryFromBlock(name, nameShape) : null;
+      !headShape && nameShape
+        ? pageEntryFromBlock(name, nameShape, meta)
+        : null;
     if (headPage ?? shapePage ?? (!nameShape && looksLikePageKey(name))) {
-      const namePage = nameShape ? pageEntryFromBlock(name, nameShape) : null;
+      const namePage = nameShape
+        ? pageEntryFromBlock(name, nameShape, meta)
+        : null;
       pages.push({
         ...common,
         kind: "page",
@@ -777,7 +1129,7 @@ export function summarizeContentChanges(
         isSiteApp: false,
         sections:
           status === "edited"
-            ? diffPageSections(fromJson, toJson).map((section) => ({
+            ? diffPageSections(fromJson, toJson, true).map((section) => ({
                 ...section,
                 fields: maskFields(section.fields),
               }))
@@ -785,11 +1137,19 @@ export function summarizeContentChanges(
       });
       continue;
     }
-    const label = globalSectionLabel(name, nameShape ?? {});
+    const blogKind = hosted
+      ? blogBlockKind(name, nameShape, headShape, toJson, fromJson)
+      : null;
+    const label = blogKind
+      ? blogBlockName(blogKind, [nameShape, headShape, toJson, fromJson])
+      : globalSectionLabel(name, nameShape ?? {});
+    const namedRule = namedRuleOfBlock(name, [headShape, toJson, fromJson]);
     blocks.push({
       ...common,
       kind: "block",
       name: label,
+      ...(blogKind ? { blogKind } : {}),
+      ...(namedRule ? { namedRule } : {}),
       pagePath: null,
       isSiteApp: isSiteAppBlock(name, headShape ?? nameShape ?? {}),
       sections:
@@ -812,5 +1172,6 @@ export function summarizeContentChanges(
     other: [],
     generated: [],
     count: pages.length + blocks.length,
+    v8: true,
   };
 }

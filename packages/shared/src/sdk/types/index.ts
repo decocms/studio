@@ -49,6 +49,8 @@ export {
   type Release,
   type RuntimeMetadata,
   type RuntimeEnvEntry,
+  type RuntimeApp,
+  RUNTIME_APPS_MAX,
   ENV_VAR_KEY_RE,
   parseBranchMap,
   normalizeSandboxMap,

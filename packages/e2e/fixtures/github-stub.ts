@@ -26,7 +26,7 @@
  *   GET   /repos/{o}/{r}/git/blobs/{sha}              -> { content, encoding }
  *   GET   /repos/{o}/{r}/contents/{path}?ref={sha}    -> { sha, content, encoding }
  *   POST  /repos/{o}/{r}/git/blobs                    -> { sha }
- *   POST  /repos/{o}/{r}/git/trees                    -> { sha } (entry sha:null deletes)
+ *   POST  /repos/{o}/{r}/git/trees                    -> { sha } (entry sha:null deletes; content writes a blob)
  *   POST  /repos/{o}/{r}/git/commits                  -> { sha }
  *   PATCH /repos/{o}/{r}/git/refs/heads/{branch}      -> 200 (422 non-fast-forward)
  *   POST  /repos/{o}/{r}/merges                       -> 201 {sha} / 204 / 409 / 405
@@ -756,7 +756,7 @@ async function handleRepos(
   ) {
     const body = JSON.parse((await readBody(req)) || "{}") as {
       base_tree?: string;
-      tree?: Array<{ path: string; sha: string | null }>;
+      tree?: Array<{ path: string; sha?: string | null; content?: string }>;
     };
     const base = body.base_tree
       ? repo.trees.get(body.base_tree)
@@ -767,9 +767,20 @@ async function handleRepos(
     }
     const files = new Map(base);
     for (const entry of body.tree ?? []) {
+      // As GitHub: an entry's `content` writes its blob in the same call.
+      if (typeof entry.content === "string") {
+        files.set(entry.path, putBlob(repo, entry.content));
+        continue;
+      }
       if (entry.sha === null) {
         files.delete(entry.path);
         continue;
+      }
+      if (typeof entry.sha !== "string") {
+        json(res, 422, {
+          message: `${entry.path}: sha or content is required`,
+        });
+        return;
       }
       if (!repo.blobs.has(entry.sha)) {
         json(res, 404, { message: `blob ${entry.sha} not found` });

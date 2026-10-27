@@ -22,11 +22,14 @@ import {
 } from "@decocms/shared/mcp-apps/types";
 import { useChatStream, useChatPrefs } from "@/components/chat/context.tsx";
 import { usePanelActions } from "@/layouts/shell-layout";
-import { resolveAppNavigateTarget } from "@/routes/project-app-navigate.ts";
+import {
+  parseAppArgs,
+  resolveAppArgs,
+  resolveAppNavigateTarget,
+} from "@/routes/project-app-navigate.ts";
 import { ConnectSourceDialog } from "@/routes/reports-onboarding/connect-source-dialog.tsx";
+import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-
-const EMPTY_TOOL_INPUT: Record<string, unknown> = {};
 
 function AppRenderer({
   client,
@@ -35,6 +38,7 @@ function AppRenderer({
   connectionId,
   orgId,
   args,
+  searchArgs,
 }: {
   client: ReturnType<typeof useMCPClient>;
   resourceURI: string;
@@ -42,12 +46,15 @@ function AppRenderer({
     name: string;
     description?: string;
     inputSchema?: Record<string, unknown>;
+    annotations?: { readOnlyHint?: boolean };
     _meta?: Record<string, unknown>;
   };
   connectionId: string;
   orgId?: string;
   args?: Record<string, unknown>;
+  searchArgs?: string;
 }) {
+  const navigate = useNavigate();
   const { sendMessage } = useChatStream();
   const { setAppContext, clearAppContext } = useChatPrefs();
   const { openSidePanel, openTab, closeTab } = usePanelActions();
@@ -68,7 +75,11 @@ function AppRenderer({
     }
     return "fullscreen";
   };
-  const toolInput = args ?? EMPTY_TOOL_INPUT;
+  const [initialSearchArgs] = useState(searchArgs);
+  const toolInput = {
+    ...args,
+    ...(tool.annotations?.readOnlyHint && parseAppArgs(initialSearchArgs)),
+  };
   const { data: toolResult } = useMCPToolCall({
     client,
     toolName: tool.name,
@@ -86,6 +97,15 @@ function AppRenderer({
   };
 
   const handleAppMessage = (params: McpUiMessageRequest["params"]) => {
+    const appArgs = resolveAppArgs(params.content);
+    if (appArgs) {
+      navigate({
+        to: ".",
+        search: (prev) => ({ ...prev, args: appArgs }),
+        replace: true,
+      });
+      return;
+    }
     // Intercept a navigate request and drive the router instead of inserting
     // it into chat; any other message falls through to the normal path.
     const navigateResult = resolveAppNavigateTarget(params.content);
@@ -145,10 +165,12 @@ export function AppViewContent({
   connectionId,
   toolName,
   args,
+  searchArgs,
 }: {
   connectionId: string;
   toolName: string;
   args?: Record<string, unknown>;
+  searchArgs?: string;
 }) {
   const { org } = useProjectContext();
   const client = useMCPClient({
@@ -199,6 +221,7 @@ export function AppViewContent({
       connectionId={connectionId}
       orgId={org.id}
       args={args}
+      searchArgs={searchArgs}
     />
   );
 }

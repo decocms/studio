@@ -2,8 +2,16 @@
  * A v8 project's editor draft, kept on the delivery bucket at
  * `sites/<site>/drafts/<slug>.json` as `{ set, delete }`: the changed blocks
  * (whole), and the names the draft deletes. Saving is a whole-object PUT with
- * no git commit; the last writer wins. Publish commits it to main and deletes
- * it, so the next edit starts a new slug.
+ * no git commit, conditional on the ETag the save read (`If-Match`, or
+ * `If-None-Match: *` for a new object): Studio runs several API processes,
+ * and a save that raced another one reads the draft again and re-applies its
+ * change, so neither is lost. Publish commits it to main and, once
+ * that release is current, empties it (`{ set: {}, delete: [] }`, same slug,
+ * new ETag; a failed release keeps it for "Try again"), so the
+ * preview's `?__draft=` pointer keeps its address: the slug lives as long as
+ * the (project, branch) does. An editor session creates the empty draft when
+ * it opens ({@link DraftStore.ensure}), so a hosted v8 preview always has a
+ * pointer to send.
  *
  * The slug is random (holding the URL is the permission to read the draft).
  *
@@ -25,6 +33,8 @@ import {
   type DeliveryStore,
   deliveryKeys,
   newDraftSlug,
+  ObjectChangedError,
+  type PutCondition,
 } from "./delivery-store";
 
 export interface DraftBody {
@@ -86,7 +96,35 @@ function slugKey(ref: HostedDraftRef): string {
 
 const locks = new Map<string, Promise<unknown>>();
 
-/** Serializes this process's read-modify-writes of one draft. */
+/** How often a save re-reads and re-applies after another process's save won. */
+const DRAFT_WRITE_ATTEMPTS = 8;
+
+/** The condition that makes a write land only on the draft object as read. */
+function asRead(etag: string | null): PutCondition {
+  return etag ? { ifMatch: etag } : { ifNoneMatch: "*" };
+}
+
+/**
+ * Runs a read-modify-write until its conditional PUT lands: another API
+ * process saved the same draft in between, so it reads it again. Gives up
+ * with {@link ObjectChangedError} after {@link DRAFT_WRITE_ATTEMPTS}.
+ */
+async function untilLanded<T>(attempt: () => Promise<T>): Promise<T> {
+  for (let n = 1; ; n++) {
+    try {
+      return await attempt();
+    } catch (error) {
+      if (!(error instanceof ObjectChangedError)) throw error;
+      if (n >= DRAFT_WRITE_ATTEMPTS) throw error;
+      await new Promise((r) => setTimeout(r, Math.random() * 20 * n));
+    }
+  }
+}
+
+/**
+ * Serializes this process's read-modify-writes of one draft (fewer retries);
+ * across processes the conditional PUTs keep them from overwriting each other.
+ */
 function withDraftLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
   const prior = locks.get(key) ?? Promise.resolve();
   const next = prior.catch(() => {}).then(fn);
@@ -103,19 +141,31 @@ export interface DraftStore {
   load(ref: HostedDraftRef): Promise<LoadedDraft | null>;
   /**
    * Applies `change` to the current draft (empty when none) and PUTs it,
-   * creating the slug on the first write.
+   * creating the slug on the first write. The PUT lands only on the draft
+   * `change` saw: when another process saved first, the draft is read again
+   * and `change` runs again on it (so it must only depend on its argument;
+   * it may throw to give up).
    */
   update(
     ref: HostedDraftRef,
     change: (body: DraftBody) => DraftBody,
   ): Promise<LoadedDraft>;
   /**
-   * Deletes the draft object and forgets its slug. With `expectedEtag`, it
-   * deletes only while the draft is still that save: a save that landed
-   * since (e.g. during a publish) keeps the draft for the next publish.
-   * Returns whether it deleted.
+   * Empties the draft: writes `{ set: {}, delete: [] }` to the same slug,
+   * with no editors, and returns it (same slug, new ETag). Only while the
+   * draft is still the save `expectedEtag` names: a save that landed since
+   * (e.g. during a publish) is kept, and returned as it is. `null` when there
+   * is no draft.
    */
-  remove(ref: HostedDraftRef, expectedEtag?: string | null): Promise<boolean>;
+  empty(
+    ref: HostedDraftRef,
+    expectedEtag: string | null,
+  ): Promise<LoadedDraft | null>;
+  /**
+   * The draft, created empty when this (project, branch) has none yet (or its
+   * object is missing). Never changes an existing draft.
+   */
+  ensure(ref: HostedDraftRef): Promise<LoadedDraft>;
 }
 
 export function createDraftStore(deps: {
@@ -145,41 +195,75 @@ export function createDraftStore(deps: {
   return {
     load,
     update: (ref, change) =>
+      withDraftLock(`${ref.organizationId}\0${slugKey(ref)}`, () =>
+        untilLanded(async () => {
+          const current = await load(ref);
+          const slug = current?.slug ?? newDraftSlug();
+          if (!current) {
+            await kv.set(ref.organizationId, slugKey(ref), { slug });
+          }
+          const before = current?.body ?? emptyDraft();
+          const body = change(before);
+          const editors = stampDraftEditors(
+            current?.editors ?? {},
+            before,
+            body,
+            ref.editor,
+            Math.floor(Date.now() / 1000),
+          );
+          const encoded = encodeDraftEditors(editors);
+          const { etag } = await store.putJson(
+            deliveryKeys.draft(ref.site, slug),
+            body,
+            CACHE_DRAFT,
+            encoded ? { [DRAFT_EDITORS_META]: encoded } : undefined,
+            asRead(current?.etag ?? null),
+          );
+          // What was kept: the oldest may not have fit.
+          return { slug, body, etag, editors: decodeDraftEditors(encoded) };
+        }),
+      ),
+    empty: (ref, expectedEtag) =>
       withDraftLock(`${ref.organizationId}\0${slugKey(ref)}`, async () => {
         const current = await load(ref);
-        const slug = current?.slug ?? newDraftSlug();
-        if (!current) {
-          await kv.set(ref.organizationId, slugKey(ref), { slug });
+        if (!current) return null;
+        if (current.etag !== expectedEtag) return current;
+        const body = emptyDraft();
+        try {
+          const { etag } = await store.putJson(
+            deliveryKeys.draft(ref.site, current.slug),
+            body,
+            CACHE_DRAFT,
+            undefined,
+            asRead(expectedEtag),
+          );
+          return { slug: current.slug, body, etag, editors: {} };
+        } catch (error) {
+          // A save landed meanwhile (another process): it is kept.
+          if (!(error instanceof ObjectChangedError)) throw error;
+          return (await load(ref)) ?? current;
         }
-        const before = current?.body ?? emptyDraft();
-        const body = change(before);
-        const editors = stampDraftEditors(
-          current?.editors ?? {},
-          before,
-          body,
-          ref.editor,
-          Math.floor(Date.now() / 1000),
-        );
-        const encoded = encodeDraftEditors(editors);
-        const { etag } = await store.putJson(
-          deliveryKeys.draft(ref.site, slug),
-          body,
-          CACHE_DRAFT,
-          encoded ? { [DRAFT_EDITORS_META]: encoded } : undefined,
-        );
-        // What was kept: the oldest may not have fit.
-        return { slug, body, etag, editors: decodeDraftEditors(encoded) };
       }),
-    remove: (ref, expectedEtag) =>
-      withDraftLock(`${ref.organizationId}\0${slugKey(ref)}`, async () => {
-        const current = await load(ref);
-        if (!current) return false;
-        if (expectedEtag !== undefined && current.etag !== expectedEtag) {
-          return false;
-        }
-        await store.delete(deliveryKeys.draft(ref.site, current.slug));
-        await kv.delete(ref.organizationId, slugKey(ref));
-        return true;
-      }),
+    ensure: (ref) =>
+      withDraftLock(`${ref.organizationId}\0${slugKey(ref)}`, () =>
+        untilLanded(async () => {
+          const current = await load(ref);
+          if (current?.etag) return current;
+          const slug = current?.slug ?? newDraftSlug();
+          if (!current) {
+            await kv.set(ref.organizationId, slugKey(ref), { slug });
+          }
+          const body = emptyDraft();
+          // Never over a draft another process created or saved meanwhile.
+          const { etag } = await store.putJson(
+            deliveryKeys.draft(ref.site, slug),
+            body,
+            CACHE_DRAFT,
+            undefined,
+            asRead(null),
+          );
+          return { slug, body, etag, editors: {} };
+        }),
+      ),
   };
 }

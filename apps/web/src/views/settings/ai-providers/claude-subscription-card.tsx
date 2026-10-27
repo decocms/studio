@@ -1,3 +1,5 @@
+import { authClient } from "@/lib/auth-client";
+import { SubscriptionUsage } from "./subscription-usage";
 /**
  * Link your own Claude subscription, so sandbox-hosted claude-code runs bill
  * against your plan instead of the org's AI credit.
@@ -15,23 +17,37 @@ import { useProjectContext } from "@/sdk";
 import { KEYS } from "@/lib/query-keys";
 import { useStudioTools } from "@/lib/studio-tools";
 import { useT } from "@/i18n/use-t.ts";
+import {
+  SettingsCard,
+  SettingsSection,
+} from "@/components/settings/settings-section";
 
 export function ClaudeSubscriptionCard() {
   const t = useT();
   const { org } = useProjectContext();
+  const { data: session } = authClient.useSession();
+  const userId = session?.user.id ?? "";
   const studio = useStudioTools();
   const queryClient = useQueryClient();
   const [token, setToken] = useState("");
 
   const status = useQuery({
-    queryKey: KEYS.claudeSubscription(org.id),
+    queryKey: KEYS.claudeSubscription(org.id, userId),
     queryFn: () => studio.call("CLAUDE_SUBSCRIPTION_STATUS", {}),
+    enabled: Boolean(userId),
   });
 
-  const invalidate = () =>
-    queryClient.invalidateQueries({
-      queryKey: KEYS.claudeSubscription(org.id),
+  const invalidate = async () => {
+    await queryClient.cancelQueries({
+      queryKey: KEYS.subscriptionUsage(org.id, userId, "claude"),
     });
+    queryClient.removeQueries({
+      queryKey: KEYS.subscriptionUsage(org.id, userId, "claude"),
+    });
+    await queryClient.invalidateQueries({
+      queryKey: KEYS.claudeSubscription(org.id, userId),
+    });
+  };
 
   const connect = useMutation({
     mutationFn: () => studio.call("CLAUDE_SUBSCRIPTION_CONNECT", { token }),
@@ -58,54 +74,64 @@ export function ClaudeSubscriptionCard() {
   const expired = !connected && Boolean(status.data?.linkedAt);
 
   return (
-    <div className="rounded-xl border border-border px-6 py-5 flex flex-col gap-4">
-      <div className="flex items-center gap-4">
-        <div className="flex-1 min-w-0">
-          <p className="text-base font-semibold">
-            {t("settings.claudeSubscription.title")}
-          </p>
-          <p className="text-sm text-muted-foreground">
-            {connected
-              ? t("settings.claudeSubscription.active")
-              : expired
-                ? t("settings.claudeSubscription.expired")
-                : t("settings.claudeSubscription.description")}
-          </p>
-        </div>
-        {connected ? (
+    <SettingsSection
+      title={t("settings.claudeSubscription.title")}
+      description={
+        connected
+          ? t("settings.claudeSubscription.active")
+          : expired
+            ? t("settings.claudeSubscription.expired")
+            : t("settings.claudeSubscription.description")
+      }
+      actions={
+        connected ? (
           <Button
             variant="outline"
+            size="sm"
             disabled={disconnect.isPending}
             onClick={() => disconnect.mutate()}
           >
             {t("settings.claudeSubscription.disconnect")}
           </Button>
-        ) : null}
-      </div>
-      {connected ? null : (
-        <div className="flex flex-col gap-2">
-          <p className="text-sm text-muted-foreground">
-            {t("settings.claudeSubscription.howTo")}{" "}
-            <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
-              claude setup-token
-            </code>
-          </p>
-          <div className="flex items-center gap-2">
-            <Input
-              type="password"
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              placeholder={t("settings.claudeSubscription.tokenPlaceholder")}
-            />
-            <Button
-              disabled={token.trim().length === 0 || connect.isPending}
-              onClick={() => connect.mutate()}
-            >
-              {t("settings.claudeSubscription.connect")}
-            </Button>
-          </div>
-        </div>
+        ) : null
+      }
+    >
+      {connected && (
+        <SettingsCard>
+          <SubscriptionUsage
+            provider="claude"
+            orgId={org.id}
+            userId={userId}
+            linkedAt={status.data?.linkedAt ?? null}
+          />
+        </SettingsCard>
       )}
-    </div>
+      {connected ? null : (
+        <SettingsCard>
+          <div className="flex flex-col gap-2 p-4">
+            <p className="text-sm text-muted-foreground">
+              {t("settings.claudeSubscription.howTo")}{" "}
+              <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
+                claude setup-token
+              </code>
+            </p>
+            <div className="flex items-center gap-2">
+              <Input
+                type="password"
+                value={token}
+                onChange={(e) => setToken(e.target.value)}
+                placeholder={t("settings.claudeSubscription.tokenPlaceholder")}
+              />
+              <Button
+                disabled={token.trim().length === 0 || connect.isPending}
+                onClick={() => connect.mutate()}
+              >
+                {t("settings.claudeSubscription.connect")}
+              </Button>
+            </div>
+          </div>
+        </SettingsCard>
+      )}
+    </SettingsSection>
   );
 }

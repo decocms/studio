@@ -49,7 +49,7 @@ function PanelRoot({
         className={cn(
           "flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-background",
           variant === "card" &&
-            "rounded-xl card-shadow [transform:translateZ(0)]",
+            "rounded-xl shadow-edge [transform:translateZ(0)]",
           className,
         )}
       >
@@ -157,6 +157,29 @@ function createPanelRegion(region: Region, regionClassName: string) {
   return Object.assign(TopbarRegion, { Target, Portal });
 }
 
+/** Gives a region of the panel its own toolbar; topbar portals still reach the panel's. */
+function PanelToolbarScope({ children }: { children: ReactNode }) {
+  const outer = use(PanelSlotsContext);
+  if (!outer) throw new Error("A toolbar scope requires a Panel");
+  const [targets, setTargets] = useState<Targets>({
+    ...outer.targets,
+    "toolbar-left": null,
+    "toolbar-center": null,
+    "toolbar-right": null,
+  });
+  const merged: Targets = {
+    ...outer.targets,
+    "toolbar-left": targets["toolbar-left"],
+    "toolbar-center": targets["toolbar-center"],
+    "toolbar-right": targets["toolbar-right"],
+  };
+  return (
+    <PanelSlotsContext value={{ targets: merged, setTargets }}>
+      {children}
+    </PanelSlotsContext>
+  );
+}
+
 /** Empty toolbars disappear when their last route-owned portal unmounts. */
 function PanelToolbar({
   className,
@@ -200,6 +223,7 @@ export const Panel = Object.assign(PanelRoot, {
     Right: createPanelRegion("right", "shrink justify-end"),
   }),
   Toolbar: Object.assign(PanelToolbar, {
+    Scope: PanelToolbarScope,
     Left: createPanelRegion("toolbar-left", "shrink"),
     Center: createPanelRegion("toolbar-center", "flex-1 justify-center"),
     Right: createPanelRegion("toolbar-right", "ml-auto shrink-0 justify-end"),

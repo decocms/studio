@@ -15,7 +15,10 @@ import {
   createNoRedirectFetch,
   guardAgainstPrivateUrl,
 } from "../../mcp-clients/url-security";
-import { sanitizeCustomHeaders } from "@/mcp-clients/outbound/headers";
+import {
+  buildAuthorizationHeaderValue,
+  sanitizeCustomHeaders,
+} from "@/mcp-clients/outbound/headers";
 import type { ConnectionParameters, ToolDefinition } from "./schema";
 import { isStdioParameters } from "./schema";
 
@@ -101,7 +104,9 @@ export function buildConnectionRequestHeaders(
   };
 
   if (connection.connection_token) {
-    headers.Authorization = `Bearer ${connection.connection_token}`;
+    headers.Authorization = buildAuthorizationHeaderValue(
+      connection.connection_token,
+    );
   }
 
   const params = connection.connection_headers;
@@ -186,13 +191,22 @@ export async function fetchScopesFromMCP(
 }
 
 /**
- * Fetch tools from an HTTP-based MCP connection
+ * Shared connect/listTools/scopes/close flow for the HTTP and SSE
+ * transports, which differ only in transport class, label, and timeout.
  */
-async function fetchToolsFromHttpMCP(
+async function fetchToolsFromRemoteMCP(
   connection: ConnectionForToolFetch,
+  options: {
+    label: string;
+    timeoutMs: number;
+    createTransport: (
+      url: URL,
+      headers: Record<string, string>,
+    ) => StreamableHTTPClientTransport | SSEClientTransport;
+  },
 ): Promise<FetchedMCPData | null> {
   if (!connection.connection_url) {
-    console.error(`HTTP connection ${connection.id} missing URL`);
+    console.error(`${options.label} connection ${connection.id} missing URL`);
     return null;
   }
 
@@ -201,7 +215,9 @@ async function fetchToolsFromHttpMCP(
   // registry discovery flow already blocks for the same URL.
   const guardError = await guardAgainstPrivateUrl(connection.connection_url);
   if (guardError) {
-    console.error(`Blocked HTTP connection ${connection.id}: ${guardError}`);
+    console.error(
+      `Blocked ${options.label} connection ${connection.id}: ${guardError}`,
+    );
     return null;
   }
 
@@ -209,25 +225,26 @@ async function fetchToolsFromHttpMCP(
 
   try {
     const headers = buildConnectionRequestHeaders(connection);
-
-    const transport = new StreamableHTTPClientTransport(
+    const transport = options.createTransport(
       new URL(connection.connection_url),
-      { requestInit: { headers }, fetch: createNoRedirectFetch() },
+      headers,
     );
 
     client = new Client(
-      {
-        name: "mcp-cms-tool-fetcher",
-        version: "1.0.0",
-      },
+      { name: "mcp-cms-tool-fetcher", version: "1.0.0" },
       { jsonSchemaValidator: sharedJsonSchemaValidator },
     );
 
-    await withTimeout(client.connect(transport), 10_000, "Connection timeout");
+    const timeoutMessage = `${options.label} connection timeout`;
+    await withTimeout(
+      client.connect(transport),
+      options.timeoutMs,
+      timeoutMessage,
+    );
     const result = await withTimeout(
       client.listTools(),
-      10_000,
-      "Connection timeout",
+      options.timeoutMs,
+      timeoutMessage,
     );
 
     const tools = mapListedTools(result.tools ?? [], {
@@ -239,7 +256,7 @@ async function fetchToolsFromHttpMCP(
     return { tools, scopes };
   } catch (error) {
     console.error(
-      `Failed to fetch tools from HTTP connection ${connection.id}:`,
+      `Failed to fetch tools from ${options.label} connection ${connection.id}:`,
       error,
     );
     return null;
@@ -249,74 +266,46 @@ async function fetchToolsFromHttpMCP(
         await client.close();
       }
     } catch (error) {
-      console.warn(`Failed to close HTTP client for ${connection.id}:`, error);
+      console.warn(
+        `Failed to close ${options.label} client for ${connection.id}:`,
+        error,
+      );
     }
   }
 }
 
 /**
- * Fetch tools from an SSE-based MCP connection
+ * Fetch tools from an HTTP-based MCP connection
  */
-async function fetchToolsFromSSEMCP(
+function fetchToolsFromHttpMCP(
   connection: ConnectionForToolFetch,
 ): Promise<FetchedMCPData | null> {
-  if (!connection.connection_url) {
-    console.error(`SSE connection ${connection.id} missing URL`);
-    return null;
-  }
+  return fetchToolsFromRemoteMCP(connection, {
+    label: "HTTP",
+    timeoutMs: 10_000,
+    createTransport: (url, headers) =>
+      new StreamableHTTPClientTransport(url, {
+        requestInit: { headers },
+        fetch: createNoRedirectFetch(),
+      }),
+  });
+}
 
-  const guardError = await guardAgainstPrivateUrl(connection.connection_url);
-  if (guardError) {
-    console.error(`Blocked SSE connection ${connection.id}: ${guardError}`);
-    return null;
-  }
-
-  let client: Client | null = null;
-
-  try {
-    const headers = buildConnectionRequestHeaders(connection);
-
-    const transport = new SSEClientTransport(
-      new URL(connection.connection_url),
-      { requestInit: { headers }, fetch: createNoRedirectFetch() },
-    );
-
-    client = new Client(
-      { name: "mcp-cms-tool-fetcher", version: "1.0.0" },
-      { jsonSchemaValidator: sharedJsonSchemaValidator },
-    );
-
-    await withTimeout(
-      client.connect(transport),
-      15_000,
-      "SSE connection timeout",
-    );
-    const result = await withTimeout(
-      client.listTools(),
-      15_000,
-      "SSE connection timeout",
-    );
-
-    const tools = mapListedTools(result.tools ?? [], {
-      relaxOutputSchema: true,
-    });
-
-    const scopes = await fetchScopesFromMCP(client);
-
-    return { tools, scopes };
-  } catch (error) {
-    console.error(
-      `Failed to fetch tools from SSE connection ${connection.id}:`,
-      error,
-    );
-    return null;
-  } finally {
-    try {
-      await client?.close();
-    } catch (error) {
-      console.warn(`Failed to close SSE client for ${connection.id}:`, error);
-    }
-  }
+/**
+ * Fetch tools from an SSE-based MCP connection
+ */
+function fetchToolsFromSSEMCP(
+  connection: ConnectionForToolFetch,
+): Promise<FetchedMCPData | null> {
+  return fetchToolsFromRemoteMCP(connection, {
+    label: "SSE",
+    timeoutMs: 15_000,
+    createTransport: (url, headers) =>
+      new SSEClientTransport(url, {
+        requestInit: { headers },
+        fetch: createNoRedirectFetch(),
+      }),
+  });
 }
 
 /**

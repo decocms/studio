@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   type GitlabMergeRequestRow,
+  hasMergeRequestIid,
   mapCommit,
   mapMergeRequest,
   mapMergeRequestState,
@@ -107,6 +108,17 @@ describe("mapMergeRequest", () => {
       mapMergeRequest(mergeRequestRow({ updated_at: undefined }), fallbackUrl)
         .updatedAt,
     ).toBe("2026-02-01T10:00:00Z");
+  });
+});
+
+describe("hasMergeRequestIid", () => {
+  test("a row with a positive iid passes", () => {
+    expect(hasMergeRequestIid(mergeRequestRow())).toBe(true);
+  });
+
+  test("a row missing iid, or with a non-positive one, is dropped", () => {
+    expect(hasMergeRequestIid(mergeRequestRow({ iid: undefined }))).toBe(false);
+    expect(hasMergeRequestIid(mergeRequestRow({ iid: 0 }))).toBe(false);
   });
 });
 

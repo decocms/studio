@@ -12,8 +12,9 @@
  * with the repository on the local GitHub stub (see fixtures/fast-preview.ts)
  * and the delivery bucket on its stub (fixtures/delivery-stub-server.ts). The
  * cases below it cover what's specific to this backend: v8 detection, auth,
- * saves into the CDN draft (never git), v7 secret blocks left in a migrated
- * site, the `?__draft=` pointer the site revalidates with ETags, publish and
+ * saves into the CDN draft (never git; an editor's save, with its main-answer
+ * header, reads the draft alone), v7 secret loader blocks saved as plain
+ * blocks, the `?__draft=` pointer the site revalidates with ETags, publish and
  * releases, site tokens, and the editor's v7/v8 detection: only a committed
  * schema with `"blocksMajor": 8` is a v8 site, in any org (no flag).
  */
@@ -25,9 +26,9 @@ import type {
   DescribeResult,
 } from "@decocms/blocks/protocol";
 import { createServer } from "node:http";
+import { spellingKey } from "@decocms/blocks/protocol";
 import { runConformance } from "@decocms/blocks/protocol/conformance";
 import { isV8Schema } from "@decocms/shared/blocks-major";
-import { publicKeyPemFromDer } from "@decocms/shared/secret-ciphertext";
 import { signUpViaApi } from "../fixtures/auth-api";
 import {
   createFastPreviewProject,
@@ -73,20 +74,13 @@ async function deliveryObjects(
   >;
 }
 
-const SECRET_BLOCK = "newsletter";
-const SECRET_FIELD = "apiKey";
-
-/**
- * A small v8 schema (deco-meta@1, `"blocksMajor": 8` as `deco schema` writes
- * it) with a block type that has a Secret field.
- */
+/** A small v8 schema (deco-meta@1, `"blocksMajor": 8` as `deco schema` writes it). */
 const schema = {
   blocksMajor: 8,
   manifest: {
     blocks: {
       sections: {
         hero: { $ref: "#/definitions/aGVybw==" },
-        [SECRET_BLOCK]: { $ref: "#/definitions/bmV3c2xldHRlcg==" },
       },
     },
   },
@@ -96,32 +90,9 @@ const schema = {
         type: "object",
         properties: { title: { type: "string" } },
       },
-      "bmV3c2xldHRlcg==": {
-        type: "object",
-        properties: {
-          listId: { type: "string" },
-          [SECRET_FIELD]: { type: "string", format: "secret" },
-        },
-      },
     },
   },
 };
-
-async function generatePublicKeyPem(): Promise<string> {
-  const pair = (await crypto.subtle.generateKey(
-    {
-      name: "RSA-OAEP",
-      modulusLength: 2048,
-      publicExponent: new Uint8Array([1, 0, 1]),
-      hash: "SHA-256",
-    },
-    true,
-    ["encrypt", "decrypt"],
-  )) as CryptoKeyPair;
-  return publicKeyPemFromDer(
-    new Uint8Array(await crypto.subtle.exportKey("spki", pair.publicKey)),
-  );
-}
 
 const rpcPath = (p: FastPreviewProject, branch: string) =>
   `/api/${p.org}/decofile/${p.vmcpId}/${branch}/rpc`;
@@ -149,6 +120,114 @@ function contextFetch(ctx: APIRequestContext) {
       status: res.status(),
       headers,
     });
+  };
+}
+
+/**
+ * A save through main's preconditions (`ifMatch`), as a protocol client
+ * reads them: each name's version as `blocks.list` reports it (main's under
+ * the draft), `null` for one the site doesn't have. The hosted route refuses
+ * a save without them. (The editor's own save, with its main-answer header,
+ * is guarded by the draft alone instead; see "saves into the CDN draft".)
+ */
+async function listedIfMatch(
+  ctx: APIRequestContext,
+  path: string,
+  names: string[],
+): Promise<Record<string, string | null>> {
+  const listed = await rpc<BlocksListResult>(ctx, path, "blocks.list");
+  const versions = listed.result?.notModified
+    ? {}
+    : (listed.result?.versions ?? {});
+  return Object.fromEntries(
+    names.map((name) => [name, guardOf(versions, name)]),
+  );
+}
+
+/** `name`'s listed version under any of its spellings, or null. */
+function guardOf(
+  versions: Record<string, string>,
+  name: string,
+): string | null {
+  const key = spellingKey(name);
+  const listed = Object.keys(versions).find((n) => spellingKey(n) === key);
+  return listed === undefined ? null : versions[listed]!;
+}
+
+/** The protocol's request size limit: a body over it is answered 413 first. */
+const MAX_REQUEST_BYTES = 8 * 1024 * 1024;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+/**
+ * The conformance suite's fetch on the hosted route, as a client that reads
+ * before it writes: every name a `blocks.apply` leaves unguarded gets the
+ * version `blocks.list` reports just before ({@link listedIfMatch}). The
+ * hosted route refuses an unguarded save (asserted next to the suite), so
+ * that is the only client it serves; the guards a case sends itself (a
+ * stale version, create-only `null`) go as sent, and a body over the size
+ * limit goes untouched (its 413 comes before any precondition).
+ */
+function guardingFetch(
+  ctx: APIRequestContext,
+  send: (request: Request) => Promise<Response>,
+) {
+  return async (request: Request): Promise<Response> => {
+    if (request.method !== "POST") return send(request);
+    const text = await request.clone().text();
+    if (Buffer.byteLength(text) > MAX_REQUEST_BYTES) return send(request);
+    let body: unknown;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      return send(request);
+    }
+    const calls = (Array.isArray(body) ? body : [body]).filter(
+      (call): call is { method: string; params: Record<string, unknown> } =>
+        isRecord(call) &&
+        call.method === "blocks.apply" &&
+        isRecord(call.params),
+    );
+    if (calls.length === 0) return send(request);
+    const listed = await ctx.post(request.url, {
+      data: { jsonrpc: "2.0", id: 1, method: "blocks.list", params: {} },
+    });
+    const versions =
+      (
+        (await listed.json()) as {
+          result?: { versions?: Record<string, string> };
+        }
+      ).result?.versions ?? {};
+    for (const call of calls) {
+      const { set, delete: deletes, ifMatch } = call.params;
+      const guards = isRecord(ifMatch) ? { ...ifMatch } : {};
+      const names = [
+        ...(isRecord(set) ? Object.keys(set) : []),
+        ...(Array.isArray(deletes)
+          ? deletes.filter((n): n is string => typeof n === "string")
+          : []),
+      ];
+      for (const name of names) {
+        if (Object.hasOwn(guards, name)) continue;
+        // Defined, not assigned: a case's `__proto__` is a name like any other.
+        Object.defineProperty(guards, name, {
+          value: guardOf(versions, name),
+          enumerable: true,
+          writable: true,
+          configurable: true,
+        });
+      }
+      call.params = { ...call.params, ifMatch: guards };
+    }
+    return send(
+      new Request(request.url, {
+        method: "POST",
+        headers: request.headers,
+        body: JSON.stringify(body),
+      }),
+    );
   };
 }
 
@@ -242,25 +321,58 @@ test.describe("content protocol on GitHub", () => {
     test.setTimeout(10 * 60_000);
     const ctx = await newApiContext(playwright);
     try {
-      const publicKey = await generatePublicKeyPem();
       const project = await setUp(ctx, {
         ".deco/schema.gen.json": JSON.stringify(schema),
-        ".deco/secrets.pub": publicKey,
         ".deco/blocks/hero-home.json": '{"__resolveType":"hero"}\n',
       });
       expect(await refreshV8(ctx, project)).toBe(true);
 
-      const report = await runConformance({
-        endpoint: `${getE2EAppOrigin()}${rpcPath(project, "main")}`,
-        fetch: contextFetch(ctx),
-        secretField: { blockType: SECRET_BLOCK, field: SECRET_FIELD },
-        secretsPublicKey: publicKey,
-        // On main and untouched: the changes.* cases modify and restore it.
-        baseEntry: { name: "hero-home" },
-      });
+      const report = await runConformance(
+        {
+          endpoint: `${getE2EAppOrigin()}${rpcPath(project, "main")}`,
+          fetch: guardingFetch(ctx, contextFetch(ctx)),
+          // On main and untouched: the changes.* cases modify and restore it.
+          baseEntry: { name: "hero-home" },
+        },
+        // "Without guards, the later of two writes wins" can't hold here:
+        // the hosted route has no unguarded writes, so of two concurrent
+        // writes built on the same version one is refused (asserted below).
+        (testCase) => testCase.id !== "apply/last-writer-wins",
+      );
       const failures = report.outcomes.filter((o) => o.status === "failed");
       expect(failures, JSON.stringify(failures, null, 2)).toEqual([]);
       expect(report.passed).toBeGreaterThan(20);
+
+      // What the guarding fetch stands in for: an unguarded save is refused
+      // (InvalidParams, naming the block), and nothing is written.
+      const path = rpcPath(project, "main");
+      const unguarded = await rpc(ctx, path, "blocks.apply", {
+        set: { "hero-home": { __resolveType: "hero", title: "Unguarded" } },
+      });
+      expect(unguarded.error).toMatchObject({
+        code: -32602,
+        data: { missing: ["hero-home"] },
+      });
+      const listed = await rpc<BlocksListResult>(ctx, path, "blocks.list");
+      expect(listed.result).toMatchObject({
+        blocks: { "hero-home": { __resolveType: "hero" } },
+      });
+      expect(JSON.stringify(listed.result)).not.toContain("Unguarded");
+
+      // Two concurrent writes built on the same version: one lands, the
+      // other is a Conflict, never written over unseen.
+      const raced = await Promise.all(
+        ["a", "b"].map((from) =>
+          rpc<BlocksApplyResult>(ctx, path, "blocks.apply", {
+            set: { raced: { __resolveType: "hero", title: from } },
+            ifMatch: { raced: null },
+          }),
+        ),
+      );
+      expect(raced.map((r) => r.error?.code ?? "ok").sort()).toEqual([
+        -32002,
+        "ok",
+      ]);
     } finally {
       await ctx.dispose();
     }
@@ -323,6 +435,7 @@ test.describe("content protocol on GitHub", () => {
       const applied = await rpc<BlocksApplyResult>(ctx, path, "blocks.apply", {
         set: { "hero-home": hero },
         delete: ["promo"],
+        ifMatch: await listedIfMatch(ctx, path, ["hero-home", "promo"]),
       });
       expect(applied.result?.revision).toMatch(/^[0-9a-f]{40}~/);
 
@@ -360,12 +473,39 @@ test.describe("content protocol on GitHub", () => {
       expect(
         (after.result as { blocks?: Record<string, unknown> }).blocks,
       ).not.toHaveProperty("promo");
+
+      // The editor's own save (its main-answer header) reads the draft
+      // alone: guarded by the draft's version, answered with no main part.
+      const retitled = { __resolveType: "hero", title: "Again" };
+      const saved = await ctx.post(path, {
+        headers: { "x-deco-main-schema": "v8" },
+        data: {
+          jsonrpc: "2.0",
+          id: 1,
+          method: "blocks.apply",
+          params: {
+            set: { "hero-home": retitled },
+            ifMatch: { "hero-home": applied.result?.versions["hero-home"] },
+          },
+        },
+      });
+      const savedBody = (await saved.json()) as {
+        result?: BlocksApplyResult;
+      };
+      expect(savedBody.result?.revision).toMatch(/^~/);
+      const again = await rpc<BlocksListResult>(ctx, path, "blocks.list");
+      expect(again.result).toMatchObject({
+        blocks: { "hero-home": retitled },
+      });
     } finally {
       await ctx.dispose();
     }
   });
 
-  test("saves the v7 secret loader blocks a migrated site still has", async ({
+  // Secrets are no longer the content framework's (the deploy platform owns
+  // them): a v7 secret loader block left in a migrated site is a plain
+  // block, saved exactly as written, with no secret check or encryption.
+  test("saves a v7 secret loader block a migrated site still has as a plain block", async ({
     playwright,
   }) => {
     const ctx = await newApiContext(playwright);
@@ -403,25 +543,33 @@ test.describe("content protocol on GitHub", () => {
       });
       expect(await refreshV8(ctx, project)).toBe(true);
 
+      const site = {
+        __resolveType: "site/apps/site.ts",
+        apiKey: {
+          __resolveType: loader,
+          name: "API_KEY",
+          encrypted: "0a1b2c3d",
+        },
+      };
       const applied = await rpc<BlocksApplyResult>(
         ctx,
         rpcPath(project, "main"),
         "blocks.apply",
         {
-          set: {
-            site: {
-              __resolveType: "site/apps/site.ts",
-              apiKey: {
-                __resolveType: loader,
-                name: "API_KEY",
-                encrypted: "0a1b2c3d",
-              },
-            },
-          },
+          set: { site },
+          ifMatch: await listedIfMatch(ctx, rpcPath(project, "main"), ["site"]),
         },
       );
       expect(applied.error).toBeUndefined();
       expect(applied.result?.revision).toEqual(expect.any(String));
+      const listed = await rpc<BlocksListResult>(
+        ctx,
+        rpcPath(project, "main"),
+        "blocks.list",
+      );
+      expect(
+        (listed.result as { blocks?: Record<string, unknown> }).blocks?.site,
+      ).toEqual(site);
     } finally {
       await ctx.dispose();
     }
@@ -509,8 +657,10 @@ test.describe("content protocol on GitHub", () => {
       const headBefore = (await inspectStubRepo(ctx, project.owner, "site"))
         .refs;
 
-      // An open editor (acting on v8) saves within the gate's minute: the
-      // storage checks main's schema itself, so nothing is saved or committed.
+      // An open editor (acting on v8) saves within the gate's minute: a save
+      // reads the draft alone (never main), so it lands in the draft, which
+      // a v7 site never reads, and nothing is committed. Its next read of
+      // main is told main changed.
       const saved = await ctx.post(path, {
         headers: { "x-deco-main-schema": "v8" },
         data: {
@@ -519,13 +669,11 @@ test.describe("content protocol on GitHub", () => {
           method: "blocks.apply",
           params: {
             set: { "hero-home": { __resolveType: "hero", title: "x" } },
+            ifMatch: { "hero-home": null },
           },
         },
       });
       expect(saved.status()).toBe(200);
-      expect(
-        ((await saved.json()) as { error?: { code: number } }).error?.code,
-      ).toBe(-32006);
       expect((await inspectStubRepo(ctx, project.owner, "site")).refs).toEqual(
         headBefore,
       );
@@ -650,12 +798,22 @@ test.describe("content protocol on GitHub", () => {
       });
       expect(await refreshV8(ctx, project)).toBe(true);
 
-      // Nothing saved yet: no draft, so no pointer.
-      expect(await draftPointer(ctx, project, "draft-1")).toEqual({
-        draft: null,
-        version: null,
-        changedBy: {},
-      });
+      // Nothing saved yet: the editor's read creates the empty draft, so the
+      // pointer exists before the first save.
+      const host = new URL(DELIVERY_STUB_ORIGIN).host;
+      const empty = await draftPointer(ctx, project, "draft-1");
+      expect(empty.draft).toMatch(
+        new RegExp(
+          `^${host}/sites/${project.owner}/drafts/[A-Za-z0-9_-]{22}\\.json$`,
+        ),
+      );
+      expect(empty.version).toEqual(expect.any(String));
+      expect(empty.changedBy).toEqual({});
+      expect(
+        await (
+          await site.get(`http://${empty.draft}?v=${empty.version}`)
+        ).json(),
+      ).toEqual({ set: {}, delete: [] });
 
       const hero = { __resolveType: "hero", title: "Summer" };
       await rpc<BlocksApplyResult>(
@@ -664,16 +822,16 @@ test.describe("content protocol on GitHub", () => {
         "blocks.apply",
         {
           set: { "hero-home": hero },
+          ifMatch: await listedIfMatch(ctx, rpcPath(project, "draft-1"), [
+            "hero-home",
+          ]),
         },
       );
       const pointer = await draftPointer(ctx, project, "draft-1");
-      const host = new URL(DELIVERY_STUB_ORIGIN).host;
-      expect(pointer.draft).toMatch(
-        new RegExp(
-          `^${host}/sites/${project.owner}/drafts/[A-Za-z0-9_-]{22}\\.json$`,
-        ),
-      );
+      // The save lands in that same draft: same address, a new version.
+      expect(pointer.draft).toBe(empty.draft);
       expect(pointer.version).toEqual(expect.any(String));
+      expect(pointer.version).not.toBe(empty.version);
       // The save recorded its editor next to the draft, not in it.
       expect(pointer.changedBy).toEqual({
         "hero-home": { userId: expect.any(String), at: expect.any(String) },
@@ -694,6 +852,9 @@ test.describe("content protocol on GitHub", () => {
       // Another save is a new ETag, so a new pointer version.
       await rpc(ctx, rpcPath(project, "draft-1"), "blocks.apply", {
         set: { "hero-home": { ...hero, title: "Winter" } },
+        ifMatch: await listedIfMatch(ctx, rpcPath(project, "draft-1"), [
+          "hero-home",
+        ]),
       });
       const next = await draftPointer(ctx, project, "draft-1");
       expect(next.draft).toBe(pointer.draft);
@@ -724,6 +885,9 @@ test.describe("content protocol on GitHub", () => {
       const publish = async (title: string) => {
         await rpc(ctx, rpcPath(project, "draft-1"), "blocks.apply", {
           set: { "hero-home": { __resolveType: "hero", title } },
+          ifMatch: await listedIfMatch(ctx, rpcPath(project, "draft-1"), [
+            "hero-home",
+          ]),
         });
         const res = await ctx.post(`${decofile}/draft-1/publish`, {
           data: { note: `Publish ${title}` },
@@ -753,15 +917,23 @@ test.describe("content protocol on GitHub", () => {
       expect(revision.cacheControl).toBe("public, max-age=31536000, immutable");
       const latest = JSON.parse(objects[`sites/${site}/latest.json`]!.text);
       expect(Object.keys(latest).sort()).toEqual([
+        "previewHosts",
         "publishedAt",
         "revision",
         "schemaHash",
       ]);
       expect(latest.revision).toBe(first.sha);
-      // The draft is gone; the next edit starts a new one.
-      expect(Object.keys(objects).some((k) => k.includes("/drafts/"))).toBe(
-        false,
+      // The hosts the site shows drafts on: always this machine's.
+      expect(latest.previewHosts).toEqual(
+        expect.arrayContaining(["localhost", "127.0.0.1", "[::1]"]),
       );
+      // The draft is emptied in place, once the release is live: same
+      // address, nothing of its own left.
+      const drafts = Object.entries(objects).filter(([k]) =>
+        k.includes("/drafts/"),
+      );
+      expect(drafts).toHaveLength(1);
+      expect(JSON.parse(drafts[0]![1].text)).toEqual({ set: {}, delete: [] });
 
       const second = await publish("Two");
       let releases = await (await ctx.get(`${hosted}/releases`)).json();
@@ -827,7 +999,7 @@ test.describe("content protocol on GitHub", () => {
       expect(releases.serving).toBeUndefined();
       expect(releases.commits[0]).toMatchObject({
         sha: third.sha,
-        message: "Reapply: Publish One",
+        message: "Made current: Publish One",
         hasRelease: true,
         reapplyOf: { sha: first.sha },
       });
@@ -854,6 +1026,9 @@ test.describe("content protocol on GitHub", () => {
       // A Publish that commits nothing leaves latest.json alone.
       await rpc(ctx, rpcPath(project, "draft-1"), "blocks.apply", {
         set: { "hero-home": { __resolveType: "hero", title: "One" } },
+        ifMatch: await listedIfMatch(ctx, rpcPath(project, "draft-1"), [
+          "hero-home",
+        ]),
       });
       const noop = await ctx.post(`${decofile}/draft-1/publish`, {
         data: { note: "" },
@@ -1410,6 +1585,10 @@ test.describe("v8 editor: every content change refreshes the editor and the prev
             Header: { ...header, title: "Top, changed" },
             Popup: { ...header, title: "Popup, changed" },
           },
+          ifMatch: await listedIfMatch(page.request, rpcPath(project, "main"), [
+            "Header",
+            "Popup",
+          ]),
         },
       );
       expect(applied.result?.revision).toBeTruthy();
@@ -1463,13 +1642,23 @@ test.describe("v8 editor: every content change refreshes the editor and the prev
       await expect(
         dialog.getByRole("tab", { name: "Side by side" }),
       ).toHaveCount(0);
-      // (The Header's pane stays mounted, hidden: only the shown one counts.)
+      // (The Header's pane stays mounted, hidden: only the shown one counts.
+      // On a v8 site a hidden pane stays laid out, transparent and
+      // aria-hidden, so "shown" is visible and outside an aria-hidden pane.)
       await expect(
-        dialog.getByLabel("Page address").filter({ visible: true }),
+        dialog.getByRole("textbox", { name: "Page address" }),
       ).toHaveCount(0);
-      await expect(
-        dialog.locator("iframe").filter({ visible: true }),
-      ).toHaveCount(0);
+      await expect
+        .poll(() =>
+          dialog
+            .locator("iframe")
+            .filter({ visible: true })
+            .evaluateAll(
+              (frames) =>
+                frames.filter((f) => !f.closest('[aria-hidden="true"]')).length,
+            ),
+        )
+        .toBe(0);
       await expect(dialog.getByText("Popup, changed").first()).toBeVisible({
         timeout: 30_000,
       });
@@ -1517,7 +1706,12 @@ test.describe("v8 editor: every content change refreshes the editor and the prev
         page.request,
         rpcPath(project, "main"),
         "blocks.apply",
-        { set: { home: theirs } },
+        {
+          set: { home: theirs },
+          ifMatch: await listedIfMatch(page.request, rpcPath(project, "main"), [
+            "home",
+          ]),
+        },
       );
       expect(applied.status).toBe(200);
       expect(applied.error).toBeUndefined();
@@ -1528,15 +1722,18 @@ test.describe("v8 editor: every content change refreshes the editor and the prev
       const field = dialog.getByRole("radiogroup", { name: "Title" });
       await expect(field.getByTestId("conflict-mine")).toHaveText("Mine");
       await expect(field.getByTestId("conflict-theirs")).toHaveText("Theirs");
-      // The draft's metadata says who and when: here the viewer, from the
-      // RPC above. One field: the title and their card say so.
+      // The window opens at once, its title naming the field as the form
+      // labels it: it names who only when that was already known as it
+      // opened, and names no one for as long as it is open otherwise.
       await expect(dialog).toHaveAccessibleName(
-        "You changed the title in another tab or window",
-        { timeout: 15_000 },
+        /^(You changed the Title in another tab or window|The Title was changed while you were editing)$/,
       );
+      // The draft's metadata says who and when: here the viewer, from the
+      // RPC above. Their card says so once it is read.
       const theirCard = field.getByRole("radio", {
         name: "You, in another tab or window",
       });
+      await expect(theirCard).toBeVisible({ timeout: 15_000 });
       await expect(theirCard).toHaveAccessibleDescription(/^saved .+ Theirs$/);
 
       // Yours is chosen: one click on OK saves the user's version.

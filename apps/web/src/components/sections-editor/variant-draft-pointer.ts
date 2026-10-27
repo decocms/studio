@@ -50,10 +50,24 @@ export function buildSectionForcedVariants(args: {
     return [];
   }
   const base = args.page.multivariate
-    ? `sections.variants.${args.page.index}.value`
+    ? `sections.variants.${args.page.index}.value${args.page.lazyValues ? ".value" : ""}`
     : "sections";
   const path = `${base}.${args.sectionIndex}${args.sectionLazy ? ".section" : ""}`;
   return [forcedVariant(args.pageKey, path, args.selectedVariantIndex)];
+}
+
+/**
+ * The forced variants for a section variant inside a page variant, in the
+ * order the site applies them. `forceVariants` applies each address in turn,
+ * and forcing the page's `sections` keeps only the active page variant, so
+ * `sections.variants.<i>…` would no longer exist afterwards: the section's
+ * address (the deeper one) goes first, while the page variants are all there.
+ */
+export function combineForcedVariants(
+  pageForced: string[],
+  sectionForced: string[],
+): string[] {
+  return [...sectionForced, ...pageForced];
 }
 
 /** encodeURIComponent, plus the characters it leaves that a pointer's path doesn't allow. */
@@ -92,13 +106,15 @@ export function withForcedVariants(pointer: string, forced: string[]): string {
 /**
  * A pointer to a connected `deco serve` that forces these variants. The site
  * reads its content module, which ignores the rest of the pointer; the token
- * never goes in it. `null` when nothing is forced or the endpoint is no URL.
+ * never goes in it. `null` when nothing is forced (unless `always`, for a
+ * pointer that carries a preview's moment or tests) or the endpoint is no URL.
  */
 export function buildServeDraftPointer(
   endpoint: string,
   forced: string[],
+  always = false,
 ): string | null {
-  if (forced.length === 0) return null;
+  if (forced.length === 0 && !always) return null;
   try {
     const url = new URL(endpoint);
     // A pointer's host is a DNS name; `[::1]` is the same machine.

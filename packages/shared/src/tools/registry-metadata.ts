@@ -193,6 +193,7 @@ const ALL_TOOL_NAMES = [
   // Claude subscription (per-user OAuth credential for the claude-code harness)
   "CODEX_SUBSCRIPTION_CONNECT",
   "CODEX_SUBSCRIPTION_STATUS",
+  "SUBSCRIPTION_USAGE_GET",
   "CODEX_SUBSCRIPTION_DISCONNECT",
   "CODEX_SUBSCRIPTION_SYNC",
   "CLAUDE_SUBSCRIPTION_CONNECT",
@@ -216,6 +217,7 @@ const ALL_TOOL_NAMES = [
   "FILE_CONFIG_DELETE",
   "FILE_OBJECTS_LIST",
   "FILE_OBJECT_DELETE",
+  "FILE_OBJECT_UPLOAD",
 
   // Org filesystem (shared public skill sets)
   "ORG_FS_PUBLIC_SETS_SYNC",
@@ -280,6 +282,7 @@ const ALL_TOOL_NAMES = [
   "REPOSITORY_LINK",
   "REPOSITORY_CREATE_FROM_TEMPLATE",
   "REPOSITORY_UPDATE",
+  "REPOSITORY_DEPLOYS_LIST",
   "REPOSITORY_DELETE",
   "REPOSITORY_SEARCH_BRANCHES",
 
@@ -1005,6 +1008,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "AI Providers",
   },
   {
+    name: "SUBSCRIPTION_USAGE_GET",
+    description: "Read your personal subscription usage and reset times",
+    category: "AI Providers",
+  },
+  {
     name: "CODEX_SUBSCRIPTION_STATUS",
     description: "Whether your ChatGPT subscription is linked for Codex",
     category: "AI Providers",
@@ -1230,6 +1238,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     description: "Delete an object from a configured bucket",
     category: "File Configs",
   },
+  {
+    name: "FILE_OBJECT_UPLOAD",
+    description: "Upload images or videos from URLs into a configured bucket",
+    category: "File Configs",
+  },
 
   // Object Storage tools
   {
@@ -1409,7 +1422,12 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "REPOSITORY_UPDATE",
     description:
-      "Change a linked repository's settings, such as its sandbox image",
+      "Change a linked repository's settings, such as its sandbox image or whether the Monitor shows its deploys",
+    category: "Git",
+  },
+  {
+    name: "REPOSITORY_DEPLOYS_LIST",
+    description: "List recent pushes to the monitored repositories",
     category: "Git",
   },
   {
@@ -1758,6 +1776,7 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       // Personal credentials never grant access to another member's plan.
       "CODEX_SUBSCRIPTION_CONNECT",
       "CODEX_SUBSCRIPTION_STATUS",
+      "SUBSCRIPTION_USAGE_GET",
       "CODEX_SUBSCRIPTION_DISCONNECT",
       "CODEX_SUBSCRIPTION_SYNC",
       // View connections
@@ -2046,6 +2065,7 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "FILE_CONFIG_DELETE",
       "FILE_OBJECTS_LIST",
       "FILE_OBJECT_DELETE",
+      "FILE_OBJECT_UPLOAD",
       "ORG_REPO_SYNC_CREATE",
       "ORG_REPO_SYNC_LIST",
       "ORG_REPO_SYNC_UPDATE",
@@ -2265,13 +2285,11 @@ export function toggleCapabilityInTools(
   currentTools: string[],
   enable: boolean,
 ): string[] {
-  if (enable) {
-    const toolSet = new Set(currentTools);
-    for (const tool of cap.tools) toolSet.add(tool);
-    return Array.from(toolSet);
-  }
   const toolSet = new Set(currentTools);
-  for (const tool of cap.tools) toolSet.delete(tool);
+  for (const tool of cap.tools) {
+    if (enable) toolSet.add(tool);
+    else toolSet.delete(tool);
+  }
   return Array.from(toolSet);
 }
 

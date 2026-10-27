@@ -39,6 +39,15 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@decocms/ui/components/popover.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { Input } from "@decocms/ui/components/input.tsx";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@decocms/ui/components/select.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
 import {
@@ -70,7 +79,7 @@ const RANGE_PRESETS = [
   { key: "1y", label: "lastYear" },
 ] as const;
 
-interface RangeSel {
+export interface RangeSel {
   range: string;
   since: string;
   until: string;
@@ -100,10 +109,7 @@ function RangePicker({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <button
-          type="button"
-          className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1 text-xs font-medium text-foreground"
-        >
+        <Button variant="outline" size="sm">
           {label}
           {value.compare && (
             <span className="text-muted-foreground">
@@ -111,7 +117,7 @@ function RangePicker({
             </span>
           )}
           <span className="text-muted-foreground">▾</span>
-        </button>
+        </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-72 p-2">
         <div className="grid grid-cols-2 gap-1">
@@ -185,7 +191,7 @@ const COLOR_REQUESTS = "var(--chart-1)";
 const COLOR_PAGEVIEWS = "var(--chart-2)";
 const COLOR_BANDWIDTH = "var(--chart-4)";
 
-function formatNumber(value: unknown): string {
+export function formatNumber(value: unknown): string {
   const n = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(n)) return "—";
   return new Intl.NumberFormat().format(n);
@@ -202,7 +208,7 @@ function formatCompact(value: unknown): string {
 }
 
 /** Bytes → a compact human unit (B / KB / MB / GB / TB). */
-function formatBytes(value: unknown): string {
+export function formatBytes(value: unknown): string {
   const n = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(n) || n <= 0) return "0 B";
   const units = ["B", "KB", "MB", "GB", "TB", "PB"];
@@ -213,7 +219,7 @@ function formatBytes(value: unknown): string {
   return `${(n / 1024 ** i).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
-function formatPct(value: unknown): string {
+export function formatPct(value: unknown): string {
   const n = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(n)) return "—";
   return `${n.toFixed(1)}%`;
@@ -227,14 +233,14 @@ function gmtLabel(): string {
 
 // Cache-status and HTTP status dot colors, plus friendly status-code names.
 const CACHE_COLORS: Record<string, string> = {
-  hit: "bg-emerald-500",
-  dynamic: "bg-blue-500",
-  bypass: "bg-violet-500",
-  miss: "bg-amber-500",
-  expired: "bg-orange-500",
-  stale: "bg-yellow-500",
-  revalidated: "bg-teal-500",
-  updating: "bg-slate-400",
+  hit: "bg-success",
+  dynamic: "bg-notice",
+  bypass: "bg-project-purple",
+  miss: "bg-warning",
+  expired: "bg-project-red",
+  stale: "bg-project-amber",
+  revalidated: "bg-chart-5",
+  updating: "bg-subtle-foreground",
   none: "bg-muted-foreground",
 };
 function cacheColor(k: string): string {
@@ -242,10 +248,10 @@ function cacheColor(k: string): string {
 }
 function statusColor(code: string): string {
   const n = Number(code);
-  if (n >= 200 && n < 300) return "bg-emerald-500";
-  if (n >= 300 && n < 400) return "bg-blue-500";
-  if (n >= 400 && n < 500) return "bg-amber-500";
-  if (n >= 500) return "bg-red-500";
+  if (n >= 200 && n < 300) return "bg-success";
+  if (n >= 300 && n < 400) return "bg-notice";
+  if (n >= 400 && n < 500) return "bg-warning";
+  if (n >= 500) return "bg-destructive";
   return "bg-muted-foreground";
 }
 const STATUS_NAMES: Record<string, string> = {
@@ -275,17 +281,17 @@ function statusName(code: string): string {
 }
 // A stable palette for dimensionless breakdowns (sources / devices).
 const PALETTE = [
-  "bg-blue-500",
-  "bg-emerald-500",
-  "bg-violet-500",
-  "bg-amber-500",
-  "bg-rose-500",
-  "bg-teal-500",
-  "bg-orange-500",
-  "bg-slate-400",
+  "bg-project-blue",
+  "bg-project-green",
+  "bg-project-purple",
+  "bg-project-amber",
+  "bg-chart-3",
+  "bg-chart-5",
+  "bg-project-red",
+  "bg-subtle-foreground",
 ];
 
-async function fetchJson(url: string): Promise<unknown> {
+export async function fetchJson(url: string): Promise<unknown> {
   const res = await fetch(url);
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -298,7 +304,7 @@ async function fetchJson(url: string): Promise<unknown> {
   return body;
 }
 
-interface CdnSummary {
+export interface CdnSummary {
   total_requests: number;
   total_bandwidth_bytes: number;
   cache_hit_ratio: number;
@@ -309,7 +315,7 @@ interface CdnSummary {
   unique_countries: number;
   pageviews: number;
 }
-interface TimelinePoint {
+export interface TimelinePoint {
   bucket: string;
   requests: number;
   bandwidth_bytes: number;
@@ -377,7 +383,7 @@ function Card({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-xl border border-border bg-card overflow-hidden">
+    <section className="surface overflow-hidden">
       <header className="flex items-start gap-2 px-4 py-3 border-b border-border">
         <div className="min-w-0">
           <h3 className="text-sm font-medium text-foreground">{title}</h3>
@@ -409,7 +415,7 @@ function ChartLegendItem({ color, label }: { color: string; label: string }) {
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-border bg-card px-4 py-3">
+    <div className="surface px-4 py-3">
       <div className="text-xs text-muted-foreground">{label}</div>
       <div className="mt-1 text-2xl font-semibold tabular-nums text-foreground">
         {value}
@@ -587,7 +593,7 @@ function CountryMap({ rows }: { rows: { key: string; value: number }[] }) {
       </svg>
       {tip && (
         <div
-          className="pointer-events-none absolute z-10 rounded-md border border-border bg-popover px-2 py-1 text-xs shadow-md"
+          className="pointer-events-none absolute z-10 rounded-md border border-border bg-popover px-2 py-1 text-xs shadow-soft"
           style={{ left: tip.x + 10, top: tip.y + 10 }}
         >
           <span className="text-foreground">{tip.name}</span>
@@ -675,8 +681,6 @@ function FilterBar({
 }) {
   const t = useT();
   const [draft, setDraft] = useState<MonitorFilter | null>(null);
-  const selectCls =
-    "rounded-lg border border-border bg-card px-2 py-1 text-xs text-foreground";
   const opLabel = (op: string) => t(`mainPanelTabs.cdnTab.op_${op}` as never);
   const fieldLabel = (v: string) =>
     t(
@@ -707,82 +711,207 @@ function FilterBar({
 
       {draft ? (
         <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-border bg-card p-1">
-          <select
+          <Select
             value={draft.field}
-            onChange={(e) => setDraft({ ...draft, field: e.target.value })}
-            className={selectCls}
+            onValueChange={(v) => setDraft({ ...draft, field: v })}
           >
-            {fields.map((f) => (
-              <option key={f.value} value={f.value}>
-                {fieldLabel(f.value)}
-              </option>
-            ))}
-          </select>
-          <select
-            value={draft.op}
-            onChange={(e) =>
-              setDraft({ ...draft, op: e.target.value as MonitorFilter["op"] })
-            }
-            className={selectCls}
-          >
-            {FILTER_OPS.map((op) => (
-              <option key={op} value={op}>
-                {opLabel(op)}
-              </option>
-            ))}
-          </select>
-          {FIELD_OPTIONS[draft.field] ? (
-            <select
-              value={draft.value}
-              onChange={(e) => setDraft({ ...draft, value: e.target.value })}
-              className={selectCls}
-            >
-              <option value="">{t("mainPanelTabs.cdnTab.filterValue")}</option>
-              {FIELD_OPTIONS[draft.field]!.map((v) => (
-                <option key={v} value={v}>
-                  {v}
-                </option>
+            <SelectTrigger size="sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {fields.map((f) => (
+                <SelectItem key={f.value} value={f.value}>
+                  {fieldLabel(f.value)}
+                </SelectItem>
               ))}
-            </select>
+            </SelectContent>
+          </Select>
+          <Select
+            value={draft.op}
+            onValueChange={(v) =>
+              setDraft({ ...draft, op: v as MonitorFilter["op"] })
+            }
+          >
+            <SelectTrigger size="sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {FILTER_OPS.map((op) => (
+                <SelectItem key={op} value={op}>
+                  {opLabel(op)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {FIELD_OPTIONS[draft.field] ? (
+            <Select
+              value={draft.value}
+              onValueChange={(v) => setDraft({ ...draft, value: v })}
+            >
+              <SelectTrigger size="sm">
+                <SelectValue
+                  placeholder={t("mainPanelTabs.cdnTab.filterValue")}
+                />
+              </SelectTrigger>
+              <SelectContent>
+                {FIELD_OPTIONS[draft.field]!.map((v) => (
+                  <SelectItem key={v} value={v}>
+                    {v}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           ) : (
-            <input
+            <Input
+              size="sm"
               value={draft.value}
               onChange={(e) => setDraft({ ...draft, value: e.target.value })}
               placeholder={t("mainPanelTabs.cdnTab.filterValue")}
-              className="rounded-lg border border-border bg-card px-2 py-1 text-xs text-foreground"
+              className="w-40"
             />
           )}
-          <button
-            type="button"
-            onClick={() => setDraft(null)}
-            className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground"
-          >
+          <Button variant="ghost" size="sm" onClick={() => setDraft(null)}>
             {t("mainPanelTabs.cdnTab.cancel")}
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            size="sm"
             disabled={!draft.value.trim()}
             onClick={() => {
               onChange([...filters, { ...draft, value: draft.value.trim() }]);
               setDraft(null);
             }}
-            className="rounded-lg bg-foreground px-2 py-1 text-xs font-medium text-background disabled:opacity-40"
           >
             {t("mainPanelTabs.cdnTab.apply")}
-          </button>
+          </Button>
         </div>
       ) : (
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={() =>
             setDraft({ field: fields[0]!.value, op: "equals", value: "" })
           }
-          className="rounded-lg border border-dashed border-border px-2 py-1 text-xs text-muted-foreground hover:text-foreground"
         >
           + {t("mainPanelTabs.cdnTab.addFilter")}
-        </button>
+        </Button>
       )}
     </div>
+  );
+}
+
+/** Requests and pageviews over the range, with bandwidth on its own axis. */
+function UsageChart({
+  points,
+  loading,
+}: {
+  points: readonly TimelinePoint[] | null | undefined;
+  loading: boolean;
+}) {
+  const t = useT();
+  return (
+    <Card
+      title={t("mainPanelTabs.cdnTab.usageOverTime")}
+      subtitle={t("mainPanelTabs.cdnTab.usageSubtitle")}
+    >
+      {loading ? (
+        <Skeleton className="h-72 w-full" />
+      ) : (points ?? []).length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          {t("mainPanelTabs.cdnTab.emptyRange")}
+        </p>
+      ) : (
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            <ChartLegendItem
+              color={COLOR_REQUESTS}
+              label={t("mainPanelTabs.cdnTab.requests")}
+            />
+            <ChartLegendItem
+              color={COLOR_PAGEVIEWS}
+              label={t("mainPanelTabs.cdnTab.pageviews")}
+            />
+            <ChartLegendItem
+              color={COLOR_BANDWIDTH}
+              label={t("mainPanelTabs.cdnTab.bandwidth")}
+            />
+          </div>
+          <ChartContainer
+            config={{
+              requests: {
+                label: t("mainPanelTabs.cdnTab.requests"),
+                color: COLOR_REQUESTS,
+              },
+              pageviews: {
+                label: t("mainPanelTabs.cdnTab.pageviews"),
+                color: COLOR_PAGEVIEWS,
+              },
+              bandwidth_bytes: {
+                label: t("mainPanelTabs.cdnTab.bandwidth"),
+                color: COLOR_BANDWIDTH,
+              },
+            }}
+            className="h-72 w-full"
+          >
+            <AreaChart
+              data={points ?? []}
+              margin={{ top: 8, right: 8, bottom: 8, left: 0 }}
+            >
+              <CartesianGrid vertical={false} />
+              <XAxis
+                dataKey="bucket"
+                tickLine={false}
+                axisLine={false}
+                tickMargin={8}
+                minTickGap={32}
+                tickFormatter={(v: string) => String(v).slice(5, 16)}
+              />
+              <YAxis
+                yAxisId="left"
+                tickLine={false}
+                axisLine={false}
+                width={48}
+                tickFormatter={(v: number) => formatCompact(v)}
+              />
+              <YAxis
+                yAxisId="right"
+                orientation="right"
+                tickLine={false}
+                axisLine={false}
+                width={56}
+                tickFormatter={(v: number) => formatBytes(v)}
+              />
+              <ChartTooltip content={<ChartTooltipContent />} />
+              <Area
+                yAxisId="left"
+                dataKey="requests"
+                type="monotone"
+                fill={COLOR_REQUESTS}
+                fillOpacity={0.15}
+                stroke={COLOR_REQUESTS}
+                strokeWidth={2}
+              />
+              <Area
+                yAxisId="left"
+                dataKey="pageviews"
+                type="monotone"
+                fill={COLOR_PAGEVIEWS}
+                fillOpacity={0.12}
+                stroke={COLOR_PAGEVIEWS}
+                strokeWidth={2}
+              />
+              <Line
+                yAxisId="right"
+                dataKey="bandwidth_bytes"
+                type="monotone"
+                dot={false}
+                stroke={COLOR_BANDWIDTH}
+                strokeWidth={2}
+              />
+            </AreaChart>
+          </ChartContainer>
+        </div>
+      )}
+    </Card>
   );
 }
 
@@ -966,109 +1095,7 @@ function PerformanceSection({
         </div>
       )}
 
-      <Card
-        title={t("mainPanelTabs.cdnTab.usageOverTime")}
-        subtitle={t("mainPanelTabs.cdnTab.usageSubtitle")}
-      >
-        {timeline.isLoading ? (
-          <Skeleton className="h-72 w-full" />
-        ) : (timeline.data ?? []).length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            {t("mainPanelTabs.cdnTab.emptyRange")}
-          </p>
-        ) : (
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-              <ChartLegendItem
-                color={COLOR_REQUESTS}
-                label={t("mainPanelTabs.cdnTab.requests")}
-              />
-              <ChartLegendItem
-                color={COLOR_PAGEVIEWS}
-                label={t("mainPanelTabs.cdnTab.pageviews")}
-              />
-              <ChartLegendItem
-                color={COLOR_BANDWIDTH}
-                label={t("mainPanelTabs.cdnTab.bandwidth")}
-              />
-            </div>
-            <ChartContainer
-              config={{
-                requests: {
-                  label: t("mainPanelTabs.cdnTab.requests"),
-                  color: COLOR_REQUESTS,
-                },
-                pageviews: {
-                  label: t("mainPanelTabs.cdnTab.pageviews"),
-                  color: COLOR_PAGEVIEWS,
-                },
-                bandwidth_bytes: {
-                  label: t("mainPanelTabs.cdnTab.bandwidth"),
-                  color: COLOR_BANDWIDTH,
-                },
-              }}
-              className="h-72 w-full"
-            >
-              <AreaChart
-                data={timeline.data ?? []}
-                margin={{ top: 8, right: 8, bottom: 8, left: 0 }}
-              >
-                <CartesianGrid vertical={false} />
-                <XAxis
-                  dataKey="bucket"
-                  tickLine={false}
-                  axisLine={false}
-                  tickMargin={8}
-                  minTickGap={32}
-                  tickFormatter={(v: string) => String(v).slice(5, 16)}
-                />
-                <YAxis
-                  yAxisId="left"
-                  tickLine={false}
-                  axisLine={false}
-                  width={48}
-                  tickFormatter={(v: number) => formatCompact(v)}
-                />
-                <YAxis
-                  yAxisId="right"
-                  orientation="right"
-                  tickLine={false}
-                  axisLine={false}
-                  width={56}
-                  tickFormatter={(v: number) => formatBytes(v)}
-                />
-                <ChartTooltip content={<ChartTooltipContent />} />
-                <Area
-                  yAxisId="left"
-                  dataKey="requests"
-                  type="monotone"
-                  fill={COLOR_REQUESTS}
-                  fillOpacity={0.15}
-                  stroke={COLOR_REQUESTS}
-                  strokeWidth={2}
-                />
-                <Area
-                  yAxisId="left"
-                  dataKey="pageviews"
-                  type="monotone"
-                  fill={COLOR_PAGEVIEWS}
-                  fillOpacity={0.12}
-                  stroke={COLOR_PAGEVIEWS}
-                  strokeWidth={2}
-                />
-                <Line
-                  yAxisId="right"
-                  dataKey="bandwidth_bytes"
-                  type="monotone"
-                  dot={false}
-                  stroke={COLOR_BANDWIDTH}
-                  strokeWidth={2}
-                />
-              </AreaChart>
-            </ChartContainer>
-          </div>
-        )}
-      </Card>
+      <UsageChart points={timeline.data} loading={timeline.isLoading} />
 
       {/* Shared metric control for ALL breakdown lists below (cache status,
           status codes, top paths, top countries) — placed above the grid so it
@@ -1511,17 +1538,18 @@ function AudienceSection({
           onChange={setFilters}
         />
         {hosts.length > 1 && (
-          <select
-            value={host}
-            onChange={(e) => setSelectedHost(e.target.value)}
-            className="max-w-full truncate rounded-lg border border-border bg-card px-2 py-1 text-xs text-foreground"
-          >
-            {hosts.map((h) => (
-              <option key={h} value={h}>
-                {h}
-              </option>
-            ))}
-          </select>
+          <Select value={host} onValueChange={setSelectedHost}>
+            <SelectTrigger size="sm" className="max-w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {hosts.map((h) => (
+                <SelectItem key={h} value={h}>
+                  {h}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         )}
       </div>
 
@@ -1563,7 +1591,7 @@ function AudienceSection({
                     <span
                       className={cn(
                         "text-xs font-medium tabular-nums",
-                        good ? "text-emerald-600" : "text-rose-600",
+                        good ? "text-success" : "text-destructive",
                       )}
                     >
                       {delta >= 0 ? "↑" : "↓"}
@@ -1774,21 +1802,28 @@ function OrdersSection({
   return (
     <div className="flex flex-col gap-3">
       {stores.length > 1 && (
-        <select
-          aria-label={t("orderMonitor.pickStore")}
+        <Select
           value={current.connectionId}
-          onChange={(e) => {
-            setPicked(e.target.value);
+          onValueChange={(v) => {
+            setPicked(v);
             setAt(undefined);
           }}
-          className="self-start rounded-lg border border-border bg-card px-2.5 py-1 text-xs"
         >
-          {stores.map((s) => (
-            <option key={s.connectionId} value={s.connectionId}>
-              {s.title}
-            </option>
-          ))}
-        </select>
+          <SelectTrigger
+            size="sm"
+            aria-label={t("orderMonitor.pickStore")}
+            className="self-start"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {stores.map((s) => (
+              <SelectItem key={s.connectionId} value={s.connectionId}>
+                {s.title}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       )}
       <OrderMonitorDayView
         orgSlug={orgSlug}

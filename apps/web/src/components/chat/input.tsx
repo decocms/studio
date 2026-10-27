@@ -8,7 +8,9 @@ import { useLocalStorage } from "@/hooks/use-local-storage";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import { isModKey } from "@/lib/keyboard-shortcuts";
 import { calculateUsageStats } from "@/lib/usage-utils.ts";
-import { AUTOSEND_QUERY_VALUE, writeStoredAutosend } from "@/lib/autosend";
+import { writeStoredAutosend } from "@/lib/autosend";
+import { clearThreadIntent, writeThreadIntent } from "@/lib/thread-intent";
+import { homeSubmitSearch } from "./home-submit-search";
 import {
   HOME_DRAFT_KEY,
   clearChatDraft,
@@ -349,27 +351,25 @@ function useHomeSubmit() {
     const newId = crypto.randomUUID();
     const targetVmcp =
       virtualMcp?.id ?? getWellKnownDecopilotVirtualMCP(org.id).id;
+    // A CMS session (Fast Preview's default) can't take messages.
+    const runtime = taskIntake ? undefined : "sandbox";
     writeStoredAutosend(sessionStorage, locator, newId, {
       tiptapDoc:
         taskIntake && tiptapDoc ? withTaskIntake(tiptapDoc) : tiptapDoc,
     });
+    writeThreadIntent(sessionStorage, locator, newId, { runtime });
     try {
-      await create({ id: newId, virtual_mcp_id: targetVmcp });
+      await create({
+        id: newId,
+        virtual_mcp_id: targetVmcp,
+        ...(runtime ? { runtime } : {}),
+      });
+      clearThreadIntent(sessionStorage, locator, newId);
     } catch {
       // Toast already surfaced by the store; navigate anyway — the route's
       // ensure-fallback will retry if the row is missing.
     }
-    const search: Record<string, string | boolean> = {
-      autosend: AUTOSEND_QUERY_VALUE,
-    };
-    // `sidepanel` is retained across navigation, so submitting from a Home
-    // whose chat panel is collapsed would land on the new thread with the
-    // report invisible behind "Show chat". Task mode is a hand-off — show the
-    // work, and only the work.
-    if (taskIntake) {
-      search.sidepanel = true;
-      search.mainpanel = false;
-    }
+    const search = homeSubmitSearch(taskIntake);
     navigateToTabRouteTarget(
       navigate,
       canonicalThreadRouteTarget({
@@ -386,10 +386,13 @@ export function ChatInput({
   onOpenContextPanel,
   showConnectionsBanner = false,
   homeTaskComposer = false,
+  taskHint = true,
 }: {
   onOpenContextPanel?: () => void;
   showConnectionsBanner?: boolean;
   homeTaskComposer?: boolean;
+  /** The PR-review promise under the composer; off where the work is not code. */
+  taskHint?: boolean;
 }) {
   const t = useT();
   const stream = useOptionalChatStream();
@@ -548,6 +551,8 @@ export function ChatInput({
       : undefined);
 
   const tiptapRef = useRef<TiptapInputHandle | null>(null);
+  // Latches the home composer's submit against a double-Enter/key-repeat race, since it has no server request to probe like `stream.isSendInFlight()`.
+  const homeSubmitInFlightRef = useRef(false);
   // True while the @/ suggestion dropdown is open — read by TiptapProvider's
   // Enter-to-submit handler so selecting a suggestion doesn't also send the
   // still-unresolved draft (ProseMirror's keydown listener runs before the
@@ -646,6 +651,11 @@ export function ChatInput({
         }
         void stream.sendMessage(tiptapDoc);
       } else {
+        if (homeSubmitInFlightRef.current) {
+          toast.info(t("chat.input.stillSendingPreviousMessage"));
+          return;
+        }
+        homeSubmitInFlightRef.current = true;
         if (taskIntake) track("task_report_submitted", { source: "home" });
         // Task mode needs Decopilot's task-board tools, whatever the
         // composer's selector says.
@@ -653,6 +663,8 @@ export function ChatInput({
           tiptapDoc,
           virtualMcp: taskIntake ? null : selectedVirtualMcp,
           taskIntake,
+        }).finally(() => {
+          homeSubmitInFlightRef.current = false;
         });
       }
       clearChatDraft(sessionStorage, locator, draftKey);
@@ -677,7 +689,7 @@ export function ChatInput({
               shape="circle"
               size="2xs"
               url={owner?.user?.image ?? undefined}
-              fallback={ownerName.slice(0, 2).toUpperCase()}
+              fallback={ownerName}
             />
           ) : undefined
         }
@@ -701,15 +713,8 @@ export function ChatInput({
     );
   }
 
-  // Sandbox-less composer slot: offer a coding session, else a plain notice.
-  if (fastPreviewActive) {
-    if (!taskCtx) {
-      return (
-        <ChatInputDisabledState
-          message={t("chat.input.fastPreviewUnavailable")}
-        />
-      );
-    }
+  // A CMS session takes no messages: offer a coding session instead.
+  if (fastPreviewActive && taskCtx) {
     const startCodingSession = () => {
       const newTaskId = taskCtx.createTask({ runtime: "sandbox" });
       track("coding_session_started", { thread_id: newTaskId });
@@ -718,7 +723,7 @@ export function ChatInput({
       <button
         type="button"
         onClick={startCodingSession}
-        className="group flex w-full items-center gap-3 rounded-2xl border border-border bg-background/60 px-4 py-3.5 text-left shadow-sm backdrop-blur-sm transition-colors hover:bg-background/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="group flex w-full items-center gap-3 rounded-2xl bg-background/60 px-4 py-3.5 text-left shadow-edge backdrop-blur-sm transition-colors hover:bg-background/90 focus-ring"
       >
         <Code01 size={18} className="shrink-0 text-muted-foreground" />
         <span className="flex min-w-0 flex-1 flex-col">
@@ -783,7 +788,7 @@ export function ChatInput({
             <form
               onSubmit={handleSubmit}
               className={cn(
-                "w-full relative rounded-2xl min-h-[110px] md:min-h-[130px] flex flex-col bg-card dark:bg-muted card-shadow overflow-hidden",
+                "w-full relative rounded-2xl min-h-[110px] md:min-h-[130px] flex flex-col bg-card dark:bg-muted shadow-edge overflow-hidden",
               )}
             >
               <FileDropZone
@@ -818,7 +823,7 @@ export function ChatInput({
                       <button
                         type="button"
                         onClick={handleVoiceCancel}
-                        className="flex items-center justify-center size-8 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                        className="flex items-center justify-center size-8 rounded-lg hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
                         aria-label={t("chat.input.cancelRecording")}
                       >
                         <X size={16} />
@@ -868,7 +873,7 @@ export function ChatInput({
                           onClick={() => dismissChatMode("plan")}
                           label={t("chat.input.planMode")}
                           icon={<BookOpen01 size={14} className="shrink-0" />}
-                          colorClass="text-violet-600 dark:text-violet-400 hover:bg-violet-500/10"
+                          colorClass="text-brand-purple-dark dark:text-brand-purple hover:bg-brand-purple/10"
                           maxWidthClass="@[320px]/chat-bottom:max-w-32"
                         />
                       )}
@@ -886,7 +891,7 @@ export function ChatInput({
                           onClick={() => dismissChatMode("web-search")}
                           label={t("chat.input.webSearch")}
                           icon={<Globe02 size={14} className="shrink-0" />}
-                          colorClass="text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                          colorClass="text-brand-blue-dark dark:text-brand-blue hover:bg-brand-blue/10 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                           maxWidthClass="@[320px]/chat-bottom:max-w-[120px]"
                         />
                       )}
@@ -895,7 +900,7 @@ export function ChatInput({
                           onClick={() => dismissChatMode("deep-research")}
                           label={t("chat.input.deepResearch")}
                           icon={<Telescope size={14} className="shrink-0" />}
-                          colorClass="text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                          colorClass="text-brand-blue-dark dark:text-brand-blue hover:bg-brand-blue/10 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                           maxWidthClass="@[320px]/chat-bottom:max-w-[120px]"
                         />
                       )}
@@ -925,7 +930,7 @@ export function ChatInput({
                           variant="ghost"
                           size="icon"
                           className={cn(
-                            "size-8 transition-colors",
+                            "transition-colors",
                             voice.status === "permission-denied"
                               ? "text-destructive hover:text-destructive hover:bg-destructive/10"
                               : "text-muted-foreground hover:text-foreground",
@@ -961,7 +966,7 @@ export function ChatInput({
                         disabled={!canSubmit && !showStopOrCancel}
                         className={cn(
                           taskIntake
-                            ? "h-8 px-3 transition-all"
+                            ? "h-8 px-3 transition-all @max-[479px]/chat-bottom:w-8 @max-[479px]/chat-bottom:px-0"
                             : "size-8 transition-all",
                           !canSubmit &&
                             !showStopOrCancel &&
@@ -990,7 +995,11 @@ export function ChatInput({
                           <Stop size={20} />
                         ) : (
                           <>
-                            {taskIntake && t("chat.input.startTask")}
+                            {taskIntake && (
+                              <span className="hidden @[480px]/chat-bottom:inline">
+                                {t("chat.input.startTask")}
+                              </span>
+                            )}
                             <ArrowUp size={20} />
                           </>
                         )}
@@ -1002,7 +1011,7 @@ export function ChatInput({
             </form>
           </TiptapProvider>
 
-          {homeTaskComposer && taskIntake && (
+          {taskIntake && taskHint && (
             <p className="px-3 pt-3 text-left text-xs text-muted-foreground">
               {t("chat.input.taskHint")}
             </p>

@@ -6,6 +6,7 @@ import { Input } from "@decocms/ui/components/input.tsx";
 import { Switch } from "@decocms/ui/components/switch.tsx";
 import {
   Coins01,
+  Columns02,
   Cube01,
   FileSearch02,
   GitBranch01,
@@ -86,6 +87,7 @@ export function ReviewSettings() {
  */
 export function AgentToolsSettings() {
   const t = useT();
+  const orgMcpsEnabled = useOrgFlag("coding_agent_org_mcps");
   return (
     <SettingsSection
       title={t("settings.agentTools.title")}
@@ -98,7 +100,7 @@ export function AgentToolsSettings() {
           titleKey="settings.agentTools.orgMcpsTitle"
           descriptionKey="settings.agentTools.orgMcpsDescription"
         />
-        <OrgMcpExclusions />
+        {orgMcpsEnabled ? <OrgMcpExclusions /> : null}
       </SettingsCard>
     </SettingsSection>
   );
@@ -116,8 +118,6 @@ export function AgentToolsSettings() {
  */
 function OrgMcpExclusions() {
   const t = useT();
-  const enabled = useOrgFlag("coding_agent_org_mcps");
-  if (!enabled) return null;
   return (
     <QueryErrorResetBoundary>
       {({ reset }) => (
@@ -281,7 +281,7 @@ function OrgMcpExclusionList() {
           </Button>
         </div>
 
-        <div className="max-h-64 overflow-y-auto rounded-xl border border-border divide-y divide-border">
+        <div className="max-h-64 overflow-y-auto surface divide-y divide-border">
           {mountable.length === 0 ? (
             <p className="p-3 text-xs text-muted-foreground">
               {t("settings.agentTools.orgMcpsPickEmpty")}
@@ -366,7 +366,7 @@ function McpAvatar({ icon, title }: { icon: string | null; title: string }) {
           onError={() => setFailed(true)}
         />
       ) : (
-        <span className="text-[10px] font-semibold text-muted-foreground">
+        <span className="text-2xs font-semibold text-muted-foreground">
           {title.charAt(0).toUpperCase()}
         </span>
       )}
@@ -374,28 +374,8 @@ function McpAvatar({ icon, title }: { icon: string | null; title: string }) {
   );
 }
 
-/**
- * Which coding agent backs Code Agent chats. Lives on General, not the board
- * settings: it's about the org's agents, not about how tasks get reviewed.
- */
-export function CodeAgentsSettings() {
-  const t = useT();
-  return (
-    <SettingsSection title={t("sidebar.agentsSection.codeAgents")}>
-      <SettingsCard>
-        <FlagToggle
-          flag="coding_agents_claude_code"
-          icon={<Terminal size={16} />}
-          titleKey="settings.agentTools.codingAgentsClaudeCodeTitle"
-          descriptionKey="settings.agentTools.codingAgentsClaudeCodeDescription"
-        />
-      </SettingsCard>
-    </SettingsSection>
-  );
-}
-
-/** Where every chat runs. Its own section: it covers all chats, not Code Agents. */
-export function ChatRuntimeSettings() {
+/** Where chats run and how members talk to agents in them. */
+export function ChatSettings() {
   const t = useT();
   return (
     <SettingsSection title={t("settings.agentTools.chatRuntimeSection")}>
@@ -407,21 +387,17 @@ export function ChatRuntimeSettings() {
           descriptionKey="settings.agentTools.chatHarnessSandboxOnlyDescription"
         />
         <FlagToggle
+          flag="coding_agents_claude_code"
+          icon={<Terminal size={16} />}
+          titleKey="settings.agentTools.codingAgentsClaudeCodeTitle"
+          descriptionKey="settings.agentTools.codingAgentsClaudeCodeDescription"
+        />
+        <FlagToggle
           flag="chat_harness_codex"
           icon={<Terminal size={16} />}
           titleKey="settings.agentTools.chatHarnessCodexTitle"
           descriptionKey="settings.agentTools.chatHarnessCodexDescription"
         />
-      </SettingsCard>
-    </SettingsSection>
-  );
-}
-
-export function VoiceModeSettings() {
-  const t = useT();
-  return (
-    <SettingsSection title={t("settings.voice.title")}>
-      <SettingsCard>
         <FlagToggle
           flag="voice_mode"
           icon={<Microphone01 size={16} />}
@@ -491,6 +467,12 @@ export function BlocksEditorSettings() {
               }}
             />
           }
+        />
+        <FlagToggle
+          flag="multi_app_preview"
+          icon={<Columns02 size={16} />}
+          titleKey="settings.multiAppPreview.title"
+          descriptionKey="settings.multiAppPreview.description"
         />
       </SettingsCard>
     </SettingsSection>

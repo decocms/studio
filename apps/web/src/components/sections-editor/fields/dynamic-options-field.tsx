@@ -88,6 +88,36 @@ export function resolveOptions(
 }
 
 /**
+ * Origin the `@options` loader is invoked against: the sandbox dev server when
+ * one is running, else the base the section gallery renders against (Fast
+ * Preview, or the site's own deco runtime). `/deco/invoke` is a public,
+ * CORS-enabled endpoint on both, so a sandbox-less session still reaches a real
+ * loader. Stays undefined for a content-protocol project, whose preview base is
+ * itself null because no site code runs.
+ */
+export function resolveOptionsPreviewUrl(
+  sandboxPreviewUrl: string | undefined,
+  previewBaseUrl: string | null | undefined,
+): string | undefined {
+  return sandboxPreviewUrl ?? previewBaseUrl ?? undefined;
+}
+
+/**
+ * Whether nothing can populate the combobox: no origin+loader to fetch from AND
+ * no schema `enum` to list. Only then does the field degrade to a text input —
+ * an `icon-select` whose loader is unreachable still lists its enum.
+ */
+export function hasNoOptionSource(input: {
+  previewUrl: string | undefined;
+  loaderPath: string | undefined;
+  enumFallbackCount: number;
+}): boolean {
+  return (
+    (!input.previewUrl || !input.loaderPath) && input.enumFallbackCount === 0
+  );
+}
+
+/**
  * Client-side narrowing of the fetched options. The loader already receives
  * the search as `term`, but many real-world options loaders ignore it and
  * always return the full list (e.g. odin-ui's icons loader) — without this
@@ -254,10 +284,14 @@ export function DynamicOptionsField({
   path,
   label,
   sandbox,
+  previewBaseUrl,
 }: FieldProps) {
   const t = useT();
   const loaderPath = schema.options;
-  const previewUrl = sandbox?.previewUrl;
+  const previewUrl = resolveOptionsPreviewUrl(
+    sandbox?.previewUrl,
+    previewBaseUrl,
+  );
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -271,9 +305,10 @@ export function DynamicOptionsField({
     }, 300);
   };
 
+  // Without sandbox coordinates the preview origin keys the option cache.
   const sandboxKey = sandbox
     ? `${sandbox.orgSlug}/${sandbox.virtualMcpId}/${sandbox.branch}`
-    : "";
+    : (previewUrl ?? "");
 
   const currentValue = typeof value === "string" ? value : "";
 
@@ -382,11 +417,13 @@ export function DynamicOptionsField({
     optionsSettled,
   });
 
-  // Fallback to text input only when there's no option source at all: no
-  // loader/preview to fetch from AND no schema enum to list.
-  const noOptionSource =
-    (!previewUrl || !loaderPath) && enumFallback.length === 0;
-  if (noOptionSource) {
+  if (
+    hasNoOptionSource({
+      previewUrl,
+      loaderPath,
+      enumFallbackCount: enumFallback.length,
+    })
+  ) {
     return (
       <div className="space-y-2">
         <FieldLabel
@@ -417,9 +454,10 @@ export function DynamicOptionsField({
         <PopoverTrigger asChild>
           <Button
             variant="outline"
+            size="lg"
             role="combobox"
             aria-expanded={open}
-            className="h-10 w-full justify-between font-normal"
+            className="w-full justify-between font-normal"
           >
             {selectedOption ? (
               <span className="flex min-w-0 items-center gap-2">

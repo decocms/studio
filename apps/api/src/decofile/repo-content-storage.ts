@@ -1,6 +1,6 @@
 /**
  * The read side of the content protocol over a project's Git repository: the
- * file list, file bodies, schema and secrets key of one branch. The hosted v8
+ * file list, file bodies and schema of one branch. The hosted v8
  * editor (`hosted/draft-content-storage.ts`) reads the default branch through
  * it and layers the CDN draft on top; nothing here writes.
  *
@@ -31,12 +31,17 @@ import {
 /** What the hosted draft storage reads from the repository. */
 export type RepoContentReader = Pick<
   ContentStorage,
-  "snapshot" | "readFiles" | "readSchema" | "readSecretsPublicKey"
+  "snapshot" | "readFiles" | "readSchema"
 > & {
   /** The branch head (`snapshot`'s revision) and the branch actually read. */
   head(): Promise<{ sha: string; ref: string }>;
   /** The saved-block files at one commit; `readFiles` reads them as usual. */
   snapshotAt(sha: string, ref: string): Promise<StorageSnapshot>;
+  /** `readSchema` for a head already read (`head()` or a snapshot's). */
+  readSchemaAt(head: {
+    sha: string;
+    ref: string;
+  }): Promise<StoredSchema | null>;
 };
 
 interface RepoContentStorageOptions {
@@ -45,10 +50,6 @@ interface RepoContentStorageOptions {
   packagePath: string | null;
   /** The one branch this storage reads. */
   branch: string;
-}
-
-function decoPath(packagePath: string | null, file: string): string {
-  return packagePath ? `${packagePath}/.deco/${file}` : `.deco/${file}`;
 }
 
 /** Turns provider failures into the storage errors the core understands. */
@@ -108,6 +109,18 @@ export function createRepoContentReader(
     return file!.content;
   };
 
+  const schemaOf = async (head: {
+    sha: string;
+    ref: string;
+  }): Promise<StoredSchema | null> => {
+    const schema = await resolveSchema(head);
+    if (!schema) return null;
+    const text = await readBlobText(schema.entry.path, schema.entry.sha);
+    // A v7 site reads as schemaless, so the editor stays on the classic one.
+    if (!isV8SchemaText(text)) return null;
+    return { version: schema.entry.sha, text, resolvedRef: schema.ref };
+  };
+
   /** The saved-block files of one commit's tree. */
   const filesAt = async (sha: string) => {
     const tree = await client.listDecofileEntries(sha, packagePath);
@@ -156,26 +169,8 @@ export function createRepoContentReader(
         return out;
       }),
 
-    readSchema: () =>
-      guarded(async (): Promise<StoredSchema | null> => {
-        const schema = await resolveSchema(await readHead());
-        if (!schema) return null;
-        const text = await readBlobText(schema.entry.path, schema.entry.sha);
-        // A v7 site reads as schemaless, so the editor stays on the classic one.
-        if (!isV8SchemaText(text)) return null;
-        return { version: schema.entry.sha, text, resolvedRef: schema.ref };
-      }),
+    readSchema: () => guarded(async () => schemaOf(await readHead())),
 
-    readSecretsPublicKey: () =>
-      guarded(async () => {
-        const head = await readHead();
-        const path = decoPath(packagePath, "secrets.pub");
-        const entry = (await client.getEntriesAtPaths(head.sha, [path])).get(
-          path,
-        );
-        return entry?.type === "blob"
-          ? readBlobText(entry.path, entry.sha)
-          : null;
-      }),
+    readSchemaAt: (head) => guarded(() => schemaOf(head)),
   };
 }

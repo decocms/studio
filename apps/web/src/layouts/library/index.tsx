@@ -10,7 +10,7 @@
  */
 
 import { useRef, useState } from "react";
-import { Page } from "@/components/page";
+import { PAGE_INSET, Page } from "@/components/page";
 import { Panel } from "@/components/panel";
 import {
   LIBRARY_MODIFIED,
@@ -26,6 +26,7 @@ import { Eye, Plus, RefreshCw01, Upload01 } from "@untitledui/icons";
 import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { IconButton } from "@decocms/ui/components/icon-button.tsx";
+import { SearchInput } from "@decocms/ui/components/search-input.tsx";
 import { SearchToggle } from "@decocms/ui/components/search-toggle.tsx";
 import {
   AlertDialog,
@@ -46,6 +47,7 @@ import {
   DialogTitle,
 } from "@decocms/ui/components/dialog.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   HOME_MOUNT_PATH,
   homeDisplayName,
@@ -53,9 +55,9 @@ import {
 import { KEYS } from "@/lib/query-keys";
 import { clearOpenFileDismissal } from "@/hooks/use-open-library-file";
 import { useDebouncedValue } from "@/hooks/use-debounced-value.ts";
-import { useOrgFsMutations, useOrgFsPublicSets } from "@/hooks/use-org-fs";
+import { useOrgFsMutations } from "@/hooks/use-org-fs";
 import { FilterMenu } from "./filter-menu";
-import { PROJECTS_FOLDER } from "@decocms/shared/organization/project-folder";
+import { useLibraryPlaces } from "./places";
 import {
   basename,
   libraryPlaceOf,
@@ -64,10 +66,7 @@ import {
   segmentLabel,
 } from "./location";
 import { LIBRARY_SORTS, type LibrarySort } from "./entries";
-import {
-  useOrgRepoSyncs,
-  useOrgRepoSyncVolumes,
-} from "@/hooks/use-org-repo-syncs";
+import { useOrgRepoSyncVolumes } from "@/hooks/use-org-repo-syncs";
 import { BrandPreviewDialog } from "./brand-preview";
 import { ShareDialog, type ShareTarget } from "./file-share-button";
 import { LibraryPreviewDialog } from "./preview-dialog";
@@ -92,6 +91,7 @@ export function LibraryPage({
   onOpenFile: onOpenFileOverride,
   onOpenSkill: onOpenSkillOverride,
   onOpenBrand: onOpenBrandOverride,
+  context = false,
 }: {
   /** Top of the tree this page shows. Defaults to the org's drive. */
   root?: string;
@@ -102,6 +102,8 @@ export function LibraryPage({
   onOpenFile?: (previewPath: string) => void;
   onOpenSkill?: (skillPath: string) => void;
   onOpenBrand?: (brandPath: string) => void;
+  /** Drawn inside Context: places as tabs, search inline, one flat table. */
+  context?: boolean;
 } = {}) {
   const t = useT();
   const { org } = useProjectContext();
@@ -120,7 +122,8 @@ export function LibraryPage({
   };
   const fileView = search.fileView ?? "all";
   const modified = search.modified ?? "any";
-  const layout: LibraryLayout = search.layout === "grid" ? "grid" : "list";
+  const layout: LibraryLayout =
+    !context && search.layout === "grid" ? "grid" : "list";
   /** Files a chat dropped in read best newest first; a member's own by name. */
   const startLocation = parseLibraryPath(search.path || root);
   const defaultSort: LibrarySort =
@@ -158,6 +161,7 @@ export function LibraryPage({
     fileView,
     modified,
     previewPath: ownsPreview ? search.preview : undefined,
+    flat: context,
     onLayout: (next) => setSearchParam("layout", next === "list" ? null : next),
     onSort: (next) =>
       setSearchParam("sort", next === defaultSort ? null : next),
@@ -524,46 +528,11 @@ export function LibraryPage({
   /** A chat-filled volume's root lists its files, not its per-chat folders. */
   const isChatVolumeRoot = isChatVolume(location.volume) && !location.dirPath;
 
-  /** The places of the drive, each a separate volume or folder underneath.
-   *  Only the org's drive has them: a project's files are one place. */
-  const syncs = useOrgRepoSyncs();
-  const publicSets = useOrgFsPublicSets();
+  /** Context gives the public skill sets their own section. */
+  const places = useLibraryPlaces(root).filter(
+    (p) => !context || p.key !== "public",
+  );
   const place = libraryPlaceOf(location);
-  const places =
-    root === HOME_MOUNT_PATH
-      ? [
-          { key: "all", label: t("library.library.all"), path: root },
-          {
-            key: PROJECTS_FOLDER,
-            label: t("library.library.placeProjects"),
-            path: `${HOME_MOUNT_PATH}/${PROJECTS_FOLDER}`,
-          },
-          {
-            key: "uploads",
-            label: t("library.library.placeUploads"),
-            path: "uploads",
-          },
-          {
-            key: "outputs",
-            label: t("library.library.placeOutputs"),
-            path: "outputs",
-          },
-          ...((publicSets.data?.length ?? 0) > 0
-            ? [
-                {
-                  key: "public",
-                  label: t("library.library.placeSkills"),
-                  path: "public",
-                },
-              ]
-            : []),
-          ...(syncs.data ?? []).map((sync) => ({
-            key: sync.volume,
-            label: sync.volume,
-            path: sync.volume,
-          })),
-        ]
-      : [];
 
   const modifiedOptions = LIBRARY_MODIFIED.map((value) => ({
     value,
@@ -590,36 +559,40 @@ export function LibraryPage({
           active={place === p.key}
           onClick={() => onOpenDir(p.path)}
         >
-          {p.label}
+          {context && p.key === "all" ? t("library.context.all") : p.label}
         </Page.Tab>
       ))}
-      {places.length > 0 && (
+      {!context && places.length > 0 && (
         <span aria-hidden className="mx-1 h-4 w-px shrink-0 bg-border" />
       )}
-      <FilterMenu
-        label={
-          fileView === "all"
-            ? t("library.library.typeFilter")
-            : typeOptions.find((o) => o.value === fileView)?.label
-        }
-        value={fileView}
-        options={typeOptions}
-        active={fileView !== "all"}
-        onChange={setFileView}
-      />
-      <FilterMenu
-        label={
-          modified === "any"
-            ? t("library.library.modified")
-            : modifiedOptions.find((o) => o.value === modified)?.label
-        }
-        value={modified}
-        options={modifiedOptions}
-        active={modified !== "any"}
-        onChange={(next) =>
-          void setSearchParam("modified", next === "any" ? null : next)
-        }
-      />
+      {!context && (
+        <>
+          <FilterMenu
+            label={
+              fileView === "all"
+                ? t("library.library.typeFilter")
+                : typeOptions.find((o) => o.value === fileView)?.label
+            }
+            value={fileView}
+            options={typeOptions}
+            active={fileView !== "all"}
+            onChange={setFileView}
+          />
+          <FilterMenu
+            label={
+              modified === "any"
+                ? t("library.library.modified")
+                : modifiedOptions.find((o) => o.value === modified)?.label
+            }
+            value={modified}
+            options={modifiedOptions}
+            active={modified !== "any"}
+            onChange={(next) =>
+              void setSearchParam("modified", next === "any" ? null : next)
+            }
+          />
+        </>
+      )}
     </Page.Tabs>
   );
 
@@ -659,28 +632,59 @@ export function LibraryPage({
         }}
         items={breadcrumbs}
       />
-      <Page.Actions
-        secondary={
-          <>
-            <SearchToggle
-              value={searchText}
-              onChange={setSearchText}
-              label={t("library.library.searchPlaceholder")}
-              placeholder={searchPlaceholder}
-              clearLabel={t("library.library.clearSearch")}
-            />
-            {controls}
-          </>
-        }
-      >
-        {primaryAction}
-      </Page.Actions>
+      {context ? (
+        <Page.Actions>
+          {browseVolume && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setNewFolderOpen(true)}
+            >
+              {t("library.library.newFolder")}
+            </Button>
+          )}
+          {primaryAction}
+        </Page.Actions>
+      ) : (
+        <Page.Actions
+          secondary={
+            <>
+              <SearchToggle
+                value={searchText}
+                onChange={setSearchText}
+                label={t("library.library.searchPlaceholder")}
+                placeholder={searchPlaceholder}
+                clearLabel={t("library.library.clearSearch")}
+              />
+              {controls}
+            </>
+          }
+        >
+          {primaryAction}
+        </Page.Actions>
+      )}
       <Panel.Toolbar.Left.Portal>{filters}</Panel.Toolbar.Left.Portal>
       <Panel.Toolbar.Right.Portal>
-        <LayoutToggle layout={layout} onChange={view.onLayout} />
+        {context ? (
+          <SearchInput
+            value={searchText}
+            onChange={setSearchText}
+            placeholder={searchPlaceholder}
+            className="w-full min-w-48 md:w-56"
+          />
+        ) : (
+          <LayoutToggle layout={layout} onChange={view.onLayout} />
+        )}
       </Panel.Toolbar.Right.Portal>
       <div className="h-full overflow-y-auto">
-        <div className="mx-auto flex w-full flex-col max-w-[1200px] gap-8 px-4 py-6 md:px-8">
+        <div
+          className={cn(
+            "mx-auto flex w-full flex-col gap-8",
+            context
+              ? cn(PAGE_INSET, "pt-4 pb-8")
+              : "max-w-[1200px] px-4 py-6 md:px-8",
+          )}
+        >
           {searchQuery ? (
             <SearchResultsView
               view={view}

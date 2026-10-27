@@ -37,19 +37,20 @@ function withinWindow(iso: string | null | undefined, now: number): boolean {
   return Math.max(0, now - at) <= WINDOW_MS;
 }
 
-/** Cards that shipped (see `SHIPPED`) at or after `since` (epoch ms). The
- *  brief's window is the slot's, not a week: see `pulseWindowStart`. */
+/** When a card shipped, or null if it has not. The board has no ship time, so
+ *  its last update in a shipped lane stands in for one. */
+function shippedAt(task: TaskBoardItem): number | null {
+  if (!SHIPPED.has(task.status) || !task.updatedAt) return null;
+  const at = Date.parse(task.updatedAt);
+  return Number.isNaN(at) ? null : at;
+}
+
+/** Cards that shipped at or after `since`. */
 export function shippedSince(
   tasks: readonly TaskBoardItem[],
   since: number,
 ): number {
-  let shipped = 0;
-  for (const task of tasks) {
-    if (!SHIPPED.has(task.status) || !task.updatedAt) continue;
-    const at = Date.parse(task.updatedAt);
-    if (!Number.isNaN(at) && at >= since) shipped++;
-  }
-  return shipped;
+  return tasks.filter((task) => (shippedAt(task) ?? -Infinity) >= since).length;
 }
 
 /** Cards stopped on a person, OLDEST first — a queue, not a feed. Blocked and
@@ -191,48 +192,18 @@ export function runningAgents(tasks: readonly TaskBoardItem[]): RunningAgent[] {
 export const RHYTHM_DAYS = 14;
 
 export function shippedSeries(
-  index: ProjectIndex,
   tasks: readonly TaskBoardItem[],
-  projectId: string,
   days: number,
   now: number = Date.now(),
 ): number[] {
   const series = new Array<number>(days).fill(0);
   for (const task of tasks) {
-    if (!SHIPPED.has(task.status) || !task.updatedAt) continue;
-    if (!projectsForTask(task, index).some((p) => p.id === projectId)) continue;
-    const at = Date.parse(task.updatedAt);
-    if (Number.isNaN(at)) continue;
+    const at = shippedAt(task);
+    if (at === null) continue;
     const dayIndex = days - 1 - Math.floor(Math.max(0, now - at) / 86_400_000);
     if (dayIndex >= 0 && dayIndex < days) series[dayIndex]! += 1;
   }
   return series;
-}
-
-/** Runs today, and how many are still going. Today rather than the seven-day
- *  window: this answers "is the machine running right now". */
-export interface RunsToday {
-  runs: number;
-  live: number;
-}
-
-export function runsToday(
-  tasks: readonly TaskBoardItem[],
-  now: number = Date.now(),
-): RunsToday {
-  const startOfDay = new Date(now);
-  startOfDay.setHours(0, 0, 0, 0);
-  const since = startOfDay.getTime();
-  let runs = 0;
-  let live = 0;
-  for (const task of tasks) {
-    for (const thread of task.threads) {
-      if (thread.status === "in_progress") live++;
-      const at = Date.parse(thread.lastActiveAt);
-      if (!Number.isNaN(at) && at >= since) runs++;
-    }
-  }
-  return { runs, live };
 }
 
 /** Runs per day, oldest first — the shape the runs sparkline draws. */
@@ -253,8 +224,7 @@ export function runsSeries(
   return series;
 }
 
-/** The one month-to-date window {@link monthlyCost} and the cost chart both
- *  bucket against, so headline and chart cannot drift apart. */
+/** Day 1 of this month to today. */
 function monthToDateWindow(now: number): { since: number; days: number } {
   const start = new Date(now);
   start.setDate(1);
@@ -263,8 +233,7 @@ function monthToDateWindow(now: number): { since: number; days: number } {
   return { since, days: Math.floor((now - since) / 86_400_000) + 1 };
 }
 
-/** Dollars per calendar day since the 1st, oldest first — {@link costSeries}'s
- *  month-to-date sibling, for a chart under a "this month" headline. */
+/** Dollars per calendar day since the 1st, oldest first. */
 export function costSeriesMonthToDate(
   tasks: readonly TaskBoardItem[],
   now: number = Date.now(),
@@ -272,27 +241,6 @@ export function costSeriesMonthToDate(
   const { since, days } = monthToDateWindow(now);
   const series = new Array<number>(days).fill(0);
   for (const task of tasks) {
-    for (const thread of task.threads) {
-      const at = Date.parse(thread.lastActiveAt);
-      if (Number.isNaN(at) || at < since || at > now) continue;
-      const index = Math.floor((at - since) / 86_400_000);
-      if (index >= 0 && index < days) series[index]! += thread.costUsd ?? 0;
-    }
-  }
-  return series;
-}
-
-/** {@link costSeriesMonthToDate}, scoped to one project. */
-export function costSeriesForProjectMonthToDate(
-  index: ProjectIndex,
-  tasks: readonly TaskBoardItem[],
-  projectId: string,
-  now: number = Date.now(),
-): number[] {
-  const { since, days } = monthToDateWindow(now);
-  const series = new Array<number>(days).fill(0);
-  for (const task of tasks) {
-    if (!projectsForTask(task, index).some((p) => p.id === projectId)) continue;
     for (const thread of task.threads) {
       const at = Date.parse(thread.lastActiveAt);
       if (Number.isNaN(at) || at < since || at > now) continue;
@@ -304,49 +252,11 @@ export function costSeriesForProjectMonthToDate(
   return series;
 }
 
-/** Agent spend this calendar month — the unit a bill arrives in. A provider
- *  that reports no cost adds a run but no dollars. */
-export interface MonthlyCost {
-  total: number;
-  /** Per project id, highest first. Only projects that spent anything. */
-  byProject: { projectId: string; usd: number }[];
-  /** Dollars per card shipped, or null when nothing shipped. */
-  perShipped: number | null;
-}
-
-export function monthlyCost(
-  index: ProjectIndex,
-  tasks: readonly TaskBoardItem[],
-  now: number = Date.now(),
-): MonthlyCost {
-  const { since } = monthToDateWindow(now);
-  const within = (iso: string | null | undefined) => {
-    if (!iso) return false;
-    const at = Date.parse(iso);
-    return !Number.isNaN(at) && at >= since && at <= now;
-  };
-
-  let total = 0;
-  let shipped = 0;
-  const perProject = new Map<string, number>();
-  for (const task of tasks) {
-    if (SHIPPED.has(task.status) && within(task.updatedAt)) shipped++;
-    let taskCost = 0;
-    for (const thread of task.threads) {
-      if (within(thread.lastActiveAt)) taskCost += thread.costUsd ?? 0;
-    }
-    if (taskCost === 0) continue;
-    total += taskCost;
-    for (const project of projectsForTask(task, index)) {
-      perProject.set(project.id, (perProject.get(project.id) ?? 0) + taskCost);
-    }
-  }
-
-  return {
-    total,
-    byProject: [...perProject]
-      .map(([projectId, usd]) => ({ projectId, usd }))
-      .sort((a, b) => b.usd - a.usd),
-    perShipped: shipped > 0 ? total / shipped : null,
-  };
+/** `$1.2k`, `$318`, `$8.97` — magnitude, never cents on a four-figure number.
+ *  Nothing spent is `$0`, not `$0.00`. */
+export function formatUsd(usd: number): string {
+  if (usd <= 0) return "$0";
+  if (usd >= 1000) return `$${(usd / 1000).toFixed(1)}k`;
+  if (usd >= 10) return `$${Math.round(usd)}`;
+  return `$${usd.toFixed(2)}`;
 }

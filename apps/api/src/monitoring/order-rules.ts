@@ -68,6 +68,13 @@ export interface StoreDay {
   firstEventDaysAgo: number | null;
   /** Chart only: cancellations by `orders.updated_at`, for reference days before the first event. */
   approximate?: Partial<Record<DayAgo, Pick<DaySeries, "canceled" | "denied">>>;
+  /** Chart only: orders placed per sales channel on day 0 and D-1. */
+  channels?: {
+    id: string;
+    name: string | null;
+    today: number[];
+    d1: number[];
+  }[];
 }
 
 /** `from`/`to` are bucket indexes of day 0, `to` exclusive; `from` is negative while the window reaches into the day before. */
@@ -323,5 +330,15 @@ export function buildDayView(day: StoreDay, at: Date): OrderMonitorDay {
       denied_spike: withZone(verdicts.denied_spike),
       cancel_spike: withZone(verdicts.cancel_spike),
     },
+    channels: [...(day.channels ?? [])]
+      .sort((a, b) => sum(b.d1) - sum(a.d1) || a.id.localeCompare(b.id))
+      .map((c) => ({
+        id: c.id,
+        name: c.name,
+        today: HOURS.map((h) => soFar(c.today, h)),
+        d1: HOURS.map((h) => hourly(c.d1, h)),
+        soFar: sum(c.today, 0, day.done),
+        d1SoFar: sum(c.d1, 0, day.done),
+      })),
   };
 }

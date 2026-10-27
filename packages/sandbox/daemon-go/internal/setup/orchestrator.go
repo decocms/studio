@@ -80,10 +80,19 @@ type Orchestrator struct {
 	// not block, or be blocked by, the primary's pipeline. Two concurrent sweeps
 	// would both pass the same HasGitRepo check and fork two clones into one dir.
 	secondaryMu sync.Mutex
+
+	appsMu     sync.Mutex
+	apps       map[string]*extraApp
+	sniffersMu sync.Mutex
+	sniffers   map[string]*proc.PortSniffer
 }
 
 func NewOrchestrator(deps OrchestratorDeps) *Orchestrator {
-	o := &Orchestrator{deps: deps}
+	o := &Orchestrator{
+		deps:     deps,
+		apps:     map[string]*extraApp{},
+		sniffers: map[string]*proc.PortSniffer{},
+	}
 	deps.TaskManager.OnTaskExit(func(s proc.TaskSummary) {
 		if s.LogName == "" || !proc.IsWellKnownStarter(s.LogName) {
 			return
@@ -254,6 +263,8 @@ func (o *Orchestrator) Handle(t config.Transition) {
 
 	step, ok := transitionToStep(t)
 	if !ok {
+		// Every step ends in stepStart, which syncs them; an apps-only patch has no step.
+		go o.SyncExtraApps()
 		return
 	}
 	o.enqueue(step)
@@ -441,6 +452,7 @@ func (o *Orchestrator) stepStart() {
 	if o.stepStartInner() == startSkipped {
 		o.deps.Lifecycle.CancelStartAttempt()
 	}
+	o.SyncExtraApps()
 }
 
 // timedPhase times one setup step and reports it under the same instrument the
@@ -896,6 +908,10 @@ type startCommand struct {
 }
 
 func (o *Orchestrator) buildStartCommand(cfg *config.Enriched) (startCommand, bool) {
+	return buildStartCommandAt(cfg, paths.ResolvePmRoot(o.deps.RepoDir, cfg.PmPath()))
+}
+
+func buildStartCommandAt(cfg *config.Enriched, cwd string) (startCommand, bool) {
 	pm := cfg.PmName()
 	if pm == "" {
 		return startCommand{}, false
@@ -904,7 +920,6 @@ func (o *Orchestrator) buildStartCommand(cfg *config.Enriched) (startCommand, bo
 	if !ok {
 		return startCommand{}, false
 	}
-	cwd := paths.ResolvePmRoot(o.deps.RepoDir, cfg.PmPath())
 	scripts := proc.DiscoverScripts(cwd, pm)
 	starter := ""
 	for _, s := range proc.WellKnownStarters {
@@ -989,6 +1004,7 @@ func (o *Orchestrator) stopDevTask() {
 		o.deps.TaskManager.KillByLogName(starter, true, 15) // SIGTERM
 	}
 	o.deps.TaskManager.WaitForLogNamesIdle(proc.WellKnownStarters)
+	o.stopExtraApps()
 }
 
 func (o *Orchestrator) gitSetup(cfg *config.Enriched) {
@@ -1071,7 +1087,7 @@ func (o *Orchestrator) fillApplicationDefaults() {
 		slog.Error("ignoring malformed .decocms/daemon.json", "error", err)
 	}
 
-	o.deps.Store.ApplyInternal(func(current *config.TenantConfig) *config.Patch {
+	result := o.deps.Store.ApplyInternal(func(current *config.TenantConfig) *config.Patch {
 		var cur *config.Application
 		if current != nil {
 			cur = current.Application
@@ -1119,6 +1135,15 @@ func (o *Orchestrator) fillApplicationDefaults() {
 		}
 		return &config.Patch{Application: patchApp}
 	})
+	// diskCfg comes from .decocms/daemon.json, committed inside the cloned
+	// repo — any contributor to that repo controls it. Store.apply() does
+	// reject an out-of-range port or an escaping packageManager.path, but
+	// silently: without this, a rejected fill leaves the sandbox running on
+	// Autodetect's guess with no trace of why the repo's own config was
+	// ignored.
+	if result.Reason == config.RejectInvalid {
+		slog.Error("ignoring invalid .decocms/daemon.json application defaults", "reason", result.Detail)
+	}
 }
 
 func (o *Orchestrator) markInstallSucceeded(cfg *config.Enriched) {

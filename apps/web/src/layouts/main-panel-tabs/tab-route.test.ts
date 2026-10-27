@@ -92,6 +92,32 @@ describe("tabRouteLocation", () => {
     });
   });
 
+  test("routes Plan and Monitoring to their own destinations, not an agent view", () => {
+    expect(tabRouteLocation("plan")).toEqual({
+      kind: "project-destination",
+      destination: "plan",
+    });
+    expect(tabRouteLocation("monitoring")).toEqual({
+      kind: "project-destination",
+      destination: "monitoring",
+    });
+    expect(
+      tabRouteTarget({
+        org: "acme",
+        agentId: "vir_1",
+        tabId: "plan",
+        destinationScope: "organization",
+      }),
+    ).toEqual({ to: "/$org/plan", params: { org: "acme" }, search: {} });
+    expect(
+      tabRouteTarget({ org: "acme", agentId: "vir_1", tabId: "monitoring" }),
+    ).toEqual({
+      to: "/$org/projects/$agentId/monitoring",
+      params: { org: "acme", agentId: "vir_1" },
+      search: {},
+    });
+  });
+
   test("keeps Discover as its own organization destination", () => {
     expect(tabRouteLocation("discover")).toEqual({
       kind: "org-destination",
@@ -400,5 +426,21 @@ describe("tabIdForRoute", () => {
     expect(tabIdForRoute({ mainView: "app" })).toBeUndefined();
     expect(tabIdForRoute({ mainView: "file" })).toBeUndefined();
     expect(tabIdForRoute({ mainView: "view" })).toBeUndefined();
+  });
+});
+
+describe("the Calendar view", () => {
+  test("is its own project section with its own route", () => {
+    expect(tabRouteLocation("calendar")).toEqual({
+      kind: "agent-section",
+      section: "calendar",
+    });
+    expect(
+      tabRouteTarget({ tabId: "calendar", org: "acme", agentId: "agent-1" }),
+    ).toEqual({
+      to: "/$org/projects/$agentId/calendar",
+      params: { org: "acme", agentId: "agent-1" },
+      search: {},
+    });
   });
 });

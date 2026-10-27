@@ -5,12 +5,16 @@ import { useFileConfigsQuery } from "@/hooks/use-file-configs";
 import { useControlPlaneViews } from "@/hooks/use-organization-settings";
 import { usePublicConfig } from "@/hooks/use-public-config";
 import { KEYS } from "@/lib/query-keys";
-import { useMainSchemaV8 } from "@/hooks/use-main-schema-v8";
+import { useProjectMainSchemaV8 } from "@/hooks/use-main-schema-v8";
 import { useProjectContext } from "@/sdk";
 import {
   resolveAgentSiteSlug,
   resolveAnalyticsSiteSlug,
 } from "@decocms/shared/site-slug";
+import {
+  editsBlocksDraft,
+  experimentsTabVisible,
+} from "./experiments-tab-choice";
 import type { ProjectNativeViewPresence } from "./project-sidebar-views";
 
 export interface ProjectNativeViewPresenceResult {
@@ -19,6 +23,8 @@ export interface ProjectNativeViewPresenceResult {
   siteAccessPending: boolean;
   /** Main's schema is still being read: Releases may yet be there. */
   releasesPending: boolean;
+  /** Main's schema is still being read: the site may be v8 (Calendar). */
+  calendarPending: boolean;
 }
 
 /**
@@ -36,7 +42,7 @@ export function useProjectNativeViewPresence(
   const fileConfigs = useFileConfigsQuery();
   // The hosted Deco CMS: Blocks v8 sites (main's schema, `isV8Schema`). A v7
   // site never gets Releases.
-  const mainSchema = useMainSchemaV8(project?.id);
+  const mainSchema = useProjectMainSchemaV8(project);
   const hostedCms = mainSchema === "v8";
   const siteSlug = resolveAgentSiteSlug(project);
   const hostingEnabled = config.hostingEnabled === true;
@@ -72,11 +78,15 @@ export function useProjectNativeViewPresence(
       // last found v8, which the tab opens as v8 too (`monitorKind`).
       cdn:
         monitorEnabled &&
-        (mainSchema === "v8" || mainSchema === "error"
-          ? ownsSite
-          : ownsAnalyticsSite) &&
+        (editsBlocksDraft(mainSchema) ? ownsSite : ownsAnalyticsSite) &&
         controlPlaneViews.monitor,
-      experiments: controlPlaneViews.experiments,
+      // Every v8 site: its A/B tests are content its editors own.
+      experiments: experimentsTabVisible(
+        controlPlaneViews.experiments,
+        mainSchema,
+      ),
+      // Every v8 site: its campaigns are content its editors own.
+      calendar: editsBlocksDraft(mainSchema),
     },
     assetsPending: !!siteSlug && fileConfigs.isPending,
     // "error" is a site last found v8 whose main can't be read yet: the
@@ -84,6 +94,7 @@ export function useProjectNativeViewPresence(
     releasesPending:
       !!project?.metadata?.siteSlug &&
       (mainSchema === "loading" || mainSchema === "error"),
+    calendarPending: !!project && mainSchema === "loading",
     // A disabled TanStack query is still pending; it is only unresolved when a
     // probe can actually run.
     siteAccessPending:

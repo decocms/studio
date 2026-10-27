@@ -16,7 +16,8 @@ import {
   memoryKv,
   SCHEMA_TEXT,
 } from "@/hosted/hosted-test-helpers";
-import { readLatest } from "@/hosted/publish";
+import { createDraftStore, type HostedDraftRef } from "@/hosted/draft-store";
+import { publishDraft, readLatest } from "@/hosted/publish";
 import { buildRevision } from "@/hosted/release-objects";
 import type { Env } from "../hono-env";
 import { createHostedRoutes } from "./hosted";
@@ -31,7 +32,11 @@ function context(): StudioContext {
   const project = {
     id: "p1",
     organization_id: ORG,
-    metadata: { repository: { owner: "acme", name: "site" }, blocksMajor: 8 },
+    metadata: {
+      repository: { owner: "acme", name: "site" },
+      blocksMajor: 8,
+      previewServerUrl: "https://Preview.Acme.com/",
+    },
     connections: [],
   };
   return {
@@ -58,7 +63,12 @@ function context(): StudioContext {
   } as unknown as StudioContext;
 }
 
-function setup() {
+function setup(
+  siteDomains: (site: string) => Promise<string[]> = async (site) =>
+    site === "acme"
+      ? ["acme.deco.site", "www.acme.com", "preview.acme.com"]
+      : [],
+) {
   const git = fakeRepo({
     ".deco/schema.gen.json": SCHEMA_TEXT,
     ".deco/blocks/Home.json": serializeBlock({ path: "/", title: "v1" }),
@@ -76,6 +86,7 @@ function setup() {
       repoClientFor: async () => git.client,
       delivery: () => ({ store: delivery.store, purge: delivery.purge }),
       insightsFor: async () => fakeInsights(git.history).client,
+      siteDomains,
     }),
   );
   const release = async () => {
@@ -94,7 +105,7 @@ function setup() {
       body: JSON.stringify(body),
     });
   const get = async (path: string) => app.request(`/hosted/p1/${path}`);
-  return { git, delivery, app, release, post, get };
+  return { git, delivery, app, release, post, get, ctx };
 }
 
 describe("POST releases/:sha/reapply", () => {
@@ -115,11 +126,26 @@ describe("POST releases/:sha/reapply", () => {
       release: "current",
       schemaChanged: false,
     });
-    expect(git.history[0]?.message).toStartWith("Reapply: initial\n\n");
+    expect(git.history[0]?.message).toStartWith("Made current: initial\n\n");
     expect(git.filesAt(sha)[".deco/blocks/Home.json"]).toBe(
       serializeBlock({ path: "/", title: "v1" }),
     );
     expect((await readLatest(delivery.store, "acme"))?.revision).toBe(sha);
+    // Make current carries the site's preview hosts, in latest.json and in
+    // the new version's companion release.
+    const hosts = [
+      "127.0.0.1",
+      "[::1]",
+      "acme.deco.site",
+      "localhost",
+      "preview.acme.com",
+      "www.acme.com",
+    ];
+    expect((await readLatest(delivery.store, "acme"))?.previewHosts).toEqual(
+      hosts,
+    );
+    const companion = delivery.objects.get(deliveryKeys.revision("acme", sha));
+    expect(JSON.parse(companion?.text ?? "{}").previewHosts).toEqual(hosts);
   });
 
   it("is 404 for a commit without a release", async () => {
@@ -178,6 +204,149 @@ describe("POST releases/retry", () => {
     expect((await readLatest(delivery.store, "acme"))?.revision).toBe(
       git.head(),
     );
+  });
+
+  describe("with the draft a Publish kept (its release failed)", () => {
+    const REF: HostedDraftRef = {
+      organizationId: ORG,
+      virtualMcpId: "p1",
+      branch: "main",
+      site: "acme",
+      editor: "user",
+    };
+    /** A Publish whose latest.json write fails: Merged · release created. */
+    const failedPublish = async (s: ReturnType<typeof setup>) => {
+      const drafts = createDraftStore({
+        kv: s.ctx.storage.kv,
+        store: s.delivery.store,
+      });
+      const saved = await drafts.update(REF, () => ({
+        set: { New: { a: 1 } },
+        delete: [],
+      }));
+      const put = s.delivery.store.putJson;
+      let failLatest = true;
+      s.delivery.store.putJson = async (key, value, cache, metadata) => {
+        if (failLatest && key === deliveryKeys.latest("acme")) {
+          throw new Error("R2 down");
+        }
+        return put(key, value, cache, metadata);
+      };
+      const result = await publishDraft(
+        {
+          client: s.git.client,
+          packagePath: null,
+          mainBranch: "main",
+          store: s.delivery.store,
+          purge: s.delivery.purge,
+          site: "acme",
+          previewHosts: [],
+        },
+        drafts,
+        REF,
+        { message: "", coAuthor: null },
+      );
+      expect(result).toMatchObject({
+        result: "merged",
+        release: "created",
+        draftEtag: saved.etag,
+      });
+      expect(await drafts.load(REF)).toEqual(saved);
+      return {
+        drafts,
+        saved,
+        draftEtag: (result as { draftEtag: string }).draftEtag,
+        healLatest: () => {
+          failLatest = false;
+        },
+      };
+    };
+
+    it("empties the kept draft (same slug) once main's head is released", async () => {
+      const s = setup();
+      const { drafts, saved, draftEtag, healLatest } = await failedPublish(s);
+      healLatest();
+      const retry = await s.post("releases/retry", {
+        branch: "main",
+        draftEtag,
+      });
+      expect(retry.status).toBe(200);
+      expect((await readLatest(s.delivery.store, "acme"))?.revision).toBe(
+        s.git.head(),
+      );
+      const after = await drafts.load(REF);
+      expect(after?.slug).toBe(saved.slug);
+      expect(after?.etag).not.toBe(saved.etag);
+      expect(after?.body).toEqual({ set: {}, delete: [] });
+    });
+
+    it("keeps the draft when the retry's release fails too", async () => {
+      const s = setup();
+      const { drafts, saved, draftEtag } = await failedPublish(s);
+      const retry = await s.post("releases/retry", {
+        branch: "main",
+        draftEtag,
+      });
+      expect(retry.status).toBe(502);
+      expect(await drafts.load(REF)).toEqual(saved);
+    });
+
+    it("keeps a save made since the Publish", async () => {
+      const s = setup();
+      const { drafts, draftEtag, healLatest } = await failedPublish(s);
+      const later = await drafts.update(REF, (body) => ({
+        set: { ...body.set, Later: { b: 2 } },
+        delete: body.delete,
+      }));
+      healLatest();
+      const retry = await s.post("releases/retry", {
+        branch: "main",
+        draftEtag,
+      });
+      expect(retry.status).toBe(200);
+      expect(await drafts.load(REF)).toEqual(later);
+    });
+
+    it("leaves the draft alone without its scope (the Releases screen's Try again)", async () => {
+      const s = setup();
+      const { drafts, saved, healLatest } = await failedPublish(s);
+      healLatest();
+      expect((await s.post("releases/retry")).status).toBe(200);
+      expect(await drafts.load(REF)).toEqual(saved);
+    });
+  });
+
+  it("writes the site's addresses Studio knows as previewHosts: sorted, without duplicates", async () => {
+    const { delivery, post } = setup();
+    const retry = await post("releases/retry");
+    expect(retry.status).toBe(200);
+    const hosts = [
+      "127.0.0.1",
+      "[::1]",
+      "acme.deco.site",
+      "localhost",
+      "preview.acme.com",
+      "www.acme.com",
+    ];
+    expect(((await retry.json()) as { current: unknown }).current).toEqual(
+      expect.objectContaining({ previewHosts: hosts }),
+    );
+    expect((await readLatest(delivery.store, "acme"))?.previewHosts).toEqual(
+      hosts,
+    );
+  });
+
+  it("still releases when the site's domains can't be read: the preview server and this machine", async () => {
+    const { delivery, post } = setup(async () => {
+      throw new Error("supabase down");
+    });
+    expect((await post("releases/retry")).status).toBe(200);
+    expect((await readLatest(delivery.store, "acme"))?.previewHosts).toEqual([
+      "127.0.0.1",
+      "[::1]",
+      "localhost",
+      "preview.acme.com",
+    ]);
   });
 });
 

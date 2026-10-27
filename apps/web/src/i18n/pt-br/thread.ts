@@ -66,6 +66,9 @@ export const thread = {
   "thread.cmsActions.getLatestTooltip":
     "Trazer as novas alterações da produção",
   "thread.cmsActions.moreActionsAriaLabel": "Mais ações",
+  "thread.cmsActions.notLive": "Ainda não está no ar",
+  "thread.cmsActions.notLiveTooltip":
+    "Suas últimas alterações estão salvas, mas ainda não estão no ar. Publique para colocá-las no ar.",
   "thread.cmsActions.publishing": "Publicando…",
   "thread.cmsActions.gettingLatest": "Obtendo atualizações…",
   "thread.cmsActions.retry": "Tentar novamente",
@@ -174,7 +177,35 @@ export const thread = {
   "thread.publishPopover.emptyHint":
     "Suas alterações mais recentes já estão no ar.",
   "thread.publishPopover.everythingLive": "Tudo publicado",
+  "thread.publishPopover.notLive": "Ainda não está no ar",
+  "thread.publishPopover.notLiveBody":
+    "Suas últimas alterações estão salvas, mas ainda não estão no ar.",
+  "thread.publishPopover.notLiveHint": "Publique para colocá-las no ar.",
+  "thread.publishPopover.abTests": "Testes A/B",
+  "thread.publishPopover.campaignDates": "Datas das campanhas",
   "thread.publishPopover.globalSection": "Seção global",
+  "thread.publishPopover.alsoChangedOnMain":
+    "Seu desenvolvedor também alterou {name}. Publicar mantém a sua versão.",
+  "thread.publishPopover.missingTest":
+    "Usa um teste que não está nos seus testes A/B",
+  "thread.publishPopover.missingCampaign":
+    "Usa uma campanha que não está nas suas campanhas",
+  "thread.publishPopover.missingTestUsesOne":
+    "{places} usa um teste que não está nos seus testes A/B",
+  "thread.publishPopover.missingTestsUsesOne":
+    "{places} usa testes que não estão nos seus testes A/B",
+  "thread.publishPopover.missingTestUses":
+    "{places} usam um teste que não está nos seus testes A/B",
+  "thread.publishPopover.missingTestsUses":
+    "{places} usam testes que não estão nos seus testes A/B",
+  "thread.publishPopover.missingCampaignUsesOne":
+    "{places} usa uma campanha que não está nas suas campanhas",
+  "thread.publishPopover.missingCampaignsUsesOne":
+    "{places} usa campanhas que não estão nas suas campanhas",
+  "thread.publishPopover.missingCampaignUses":
+    "{places} usam uma campanha que não está nas suas campanhas",
+  "thread.publishPopover.missingCampaignsUses":
+    "{places} usam campanhas que não estão nas suas campanhas",
   "thread.publishPopover.lastPublished": "Última publicação {when}",
   "thread.publishPopover.lastPublishedBy":
     "Última publicação {when} por {name}",
@@ -241,6 +272,11 @@ export const thread = {
     "Digite o endereço de uma página para comparar.",
   "thread.publishCompare.draftUnavailable":
     "Ainda não é possível mostrar suas alterações. Use Visualizar para abri-las.",
+  "thread.publishCompare.previewNotReadyTitle":
+    "A visualização ainda não está pronta",
+  "thread.publishCompare.noPreviewTitle": "Nada para visualizar",
+  "thread.publishCompare.noPreviewDescription":
+    "Esta alteração não aparece em nenhuma página. Ela é publicada junto com as outras.",
   "thread.publishCompare.newTitle": "Página nova",
   "thread.publishCompare.newDescription":
     "Esta página ainda não existe no site publicado.",

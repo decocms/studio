@@ -20,10 +20,12 @@ export function sectionFormSource(
   parsed: ParsedSection | undefined,
   variantIndex: number,
   decofile: Record<string, unknown>,
+  /** A Blocks v8 site (unwrapSection). */
+  v8: boolean,
 ): Record<string, unknown> | null {
   if (!raw || !parsed) return null;
   if (!parsed.isMultivariate) {
-    return unwrapSection(raw, parsed, decofile)?.data ?? null;
+    return unwrapSection(raw, parsed, decofile, v8)?.data ?? null;
   }
   const mvObj = getMultivariateSectionObject(raw, parsed);
   const variant = mvObj
@@ -245,4 +247,24 @@ export function focusInside(
   active: Element | null | undefined,
 ): boolean {
   return !!container && !!active && container.contains(active);
+}
+
+/** The first pause before a refused form save is rebuilt (doubles per try). */
+export const CONFLICT_RETRY_BASE_MS = 1_000;
+
+/**
+ * How a refused section-form save is retried. A refusal that carried the
+ * stored copy (a hosted v8 draft's: it is in the cache already) is rebuilt
+ * at once, so the reconcile dialog opens with no pause; otherwise the save
+ * waits for the re-read to settle (right after a commit a provider can keep
+ * answering the previous head), backing off between tries, and the rebuilt
+ * save waits out the usual typing pause.
+ */
+export function conflictRetry(
+  conflicts: number,
+  carriedStored: boolean,
+): { delay: number; immediate: boolean } {
+  return carriedStored
+    ? { delay: 0, immediate: true }
+    : { delay: CONFLICT_RETRY_BASE_MS * 2 ** conflicts, immediate: false };
 }

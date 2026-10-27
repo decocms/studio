@@ -226,6 +226,12 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "Run chats on a Code Agent (an agent imported from a GitHub repo) with the claude-code harness inside its sandbox, instead of hosted Decopilot. Off by default: it changes the runtime of every such chat, and claude-code flushes whole turns rather than streaming tokens.",
     ),
+  task_board_codex: z
+    .boolean()
+    .optional()
+    .describe(
+      "Allow tasks to select the Codex harness. Off by default; existing tasks keep Claude Code. Reviewers keep their own runtime.",
+    ),
   chat_harness_codex: z
     .boolean()
     .optional()
@@ -237,6 +243,12 @@ export const OrgFlagsSchema = z.object({
     .optional()
     .describe(
       "Run every chat with the claude-code harness in its own sandbox instead of hosted Decopilot. On by default (see DEFAULT_ON_FLAGS); a deployment without hosted sandboxes keeps Decopilot regardless.",
+    ),
+  sandbox_run_metadata: z
+    .boolean()
+    .optional()
+    .describe(
+      "Forward a sandbox run's metadata (such as a webhook trigger's run_metadata) to the MCP tools it calls, as hosted Decopilot runs do. Off by default.",
     ),
   sandbox_repo_snapshots: z
     .boolean()
@@ -309,6 +321,12 @@ export const OrgFlagsSchema = z.object({
     .optional()
     .describe(
       "Installing a site app from the Apps tab: writes the app module, the npm dependency and the registry entry into the project's repository, then reinstalls dependencies and restarts the dev script on the running sandbox. Off by default, for every org — the catalogue stays browsable without it and nothing is installable. Rollout lever, separate from the deploy.",
+    ),
+  multi_app_preview: z
+    .boolean()
+    .optional()
+    .describe(
+      "Previewing more than one app of a monorepo: an Apps list in project settings, app tabs with a split view in the preview, and a dev server per extra app in the sandbox, served at its own preview host. Off by default.",
     ),
   hide_default_blog_blocks: z
     .boolean()

@@ -18,7 +18,10 @@ import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 import { GLOBAL_SECTION_ICON_COLOR } from "@/components/sections-editor/section-types";
-import { useSaveBlock } from "@/components/sections-editor/use-save-block";
+import {
+  keptTheirVersion,
+  useSaveBlock,
+} from "@/components/sections-editor/use-save-block";
 import { createReferencedBlockSaver } from "@/components/sections-editor/save-referenced-block";
 import { ItemRow } from "./item-row";
 import { EmptyMessage } from "./empty-message";
@@ -26,6 +29,7 @@ import {
   RunnableBlockEditor,
   type RunnableTarget,
 } from "./runnable-block-editor";
+import { HeldBlockView } from "./held-block-view";
 import {
   listAvailableRunnables,
   listSavedRunnables,
@@ -235,33 +239,53 @@ export function RunnableBlocksBrowser({
     blockId: string,
     data: Record<string, unknown>,
   ) => {
-    await saveBlock.mutateAsync({ blockKey: blockId, data });
-    toast.success(
-      t("sandbox.runnableBlocksBrowser.savedBlockToast", { singular, blockId }),
-    );
+    const created = await saveBlock.mutateAsync({
+      blockKey: blockId,
+      data,
+      create: true,
+    });
+    // Kept the version someone else created first: the hook's toast says so.
+    if (!keptTheirVersion(created)) {
+      toast.success(
+        t("sandbox.runnableBlocksBrowser.savedBlockToast", {
+          singular,
+          blockId,
+        }),
+      );
+    }
     setSelection({ mode: "saved", key: blockId });
   };
 
   const target = buildTarget(selection, decofile);
 
   if (target) {
+    const editorKey = `${target.mode}:${target.mode === "saved" ? target.blockKey : target.resolveType}`;
     return (
-      <RunnableBlockEditor
-        key={`${target.mode}:${target.mode === "saved" ? target.blockKey : target.resolveType}`}
+      <HeldBlockView
+        key={editorKey}
         orgSlug={orgSlug}
         virtualMcpId={virtualMcpId}
         branch={branch}
-        previewUrl={previewUrl}
-        meta={meta}
-        decofile={decofile}
-        kind={kind}
-        target={target.editorTarget}
-        initialValue={target.initialValue}
-        isCreating={saveBlock.isPending}
-        onCreate={handleCreate}
-        onSaveReferencedBlock={saveReferencedBlock}
-        onBack={() => setSelection(null)}
-      />
+        blockKey={(target.mode === "saved" && target.blockKey) || ""}
+        present={undefined}
+      >
+        <RunnableBlockEditor
+          key={editorKey}
+          orgSlug={orgSlug}
+          virtualMcpId={virtualMcpId}
+          branch={branch}
+          previewUrl={previewUrl}
+          meta={meta}
+          decofile={decofile}
+          kind={kind}
+          target={target.editorTarget}
+          initialValue={target.initialValue}
+          isCreating={saveBlock.isPending}
+          onCreate={handleCreate}
+          onSaveReferencedBlock={saveReferencedBlock}
+          onBack={() => setSelection(null)}
+        />
+      </HeldBlockView>
     );
   }
 
@@ -382,7 +406,7 @@ export function RunnableBlocksBrowser({
                         key={folder.name}
                         type="button"
                         onClick={() => setPath([...path, folder.name])}
-                        className="flex items-center gap-2.5 rounded-lg border px-3 py-2.5 text-left transition-colors hover:bg-muted cursor-pointer"
+                        className="flex items-center gap-2.5 rounded-lg border px-3 py-2.5 text-left transition-colors hover:bg-accent cursor-pointer"
                       >
                         <FolderIcon
                           size={18}

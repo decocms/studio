@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { buildConfigPayload } from "./build-config-payload";
+import { buildConfigPayload, extraAppsPatch } from "./build-config-payload";
 
 describe("buildConfigPayload", () => {
   it("maps tenant identity to operator", () => {
@@ -150,5 +150,30 @@ describe("buildConfigPayload", () => {
     });
 
     expect(payload?.git?.repository.submoduleCredentials).toEqual([]);
+  });
+});
+
+describe("extra apps", () => {
+  it("sends apps with the application, an empty list included", () => {
+    const payload = (apps?: string[]) =>
+      buildConfigPayload({
+        runtime: "bun",
+        packageManager: { name: "bun", path: "apps/web" },
+        repo: null,
+        apps,
+      })?.application;
+
+    expect(payload(["apps/checkout"])?.apps).toEqual([
+      { path: "apps/checkout" },
+    ]);
+    expect(payload([])?.apps).toEqual([]);
+    expect(payload(undefined)).not.toHaveProperty("apps");
+  });
+
+  it("patches a resumed sandbox's apps, an empty list clearing them", () => {
+    expect(extraAppsPatch(["apps/a"])).toEqual({
+      application: { apps: [{ path: "apps/a" }] },
+    });
+    expect(extraAppsPatch([])).toEqual({ application: { apps: [] } });
   });
 });

@@ -2,8 +2,10 @@ import { describe, expect, test } from "bun:test";
 import {
   enumFallbackOptions,
   filterOptions,
+  hasNoOptionSource,
   normalizeOptions,
   resolveOptions,
+  resolveOptionsPreviewUrl,
   shouldOfferTypedValue,
   svgPreviewDataUri,
 } from "./dynamic-options-field";
@@ -238,5 +240,68 @@ describe("shouldOfferTypedValue", () => {
     expect(shouldOfferTypedValue({ ...base, enumFallbackCount: 3 })).toBe(
       false,
     );
+  });
+});
+
+describe("resolveOptionsPreviewUrl", () => {
+  const SANDBOX = "https://abc.preview.example.com";
+  const BASE = "https://site.deco.site";
+
+  test("prefers the sandbox dev server when one is running", () => {
+    expect(resolveOptionsPreviewUrl(SANDBOX, BASE)).toBe(SANDBOX);
+  });
+
+  test("falls back to the gallery preview base without a sandbox", () => {
+    expect(resolveOptionsPreviewUrl(undefined, BASE)).toBe(BASE);
+  });
+
+  test("stays undefined when neither base exists (content protocol)", () => {
+    expect(resolveOptionsPreviewUrl(undefined, null)).toBeUndefined();
+    expect(resolveOptionsPreviewUrl(undefined, undefined)).toBeUndefined();
+  });
+});
+
+describe("hasNoOptionSource", () => {
+  const LOADER = "odin-ui/loaders/icons.ts";
+  const URL = "https://site.deco.site";
+
+  test("false for a loader-backed enum-less field once a preview base reaches it", () => {
+    expect(
+      hasNoOptionSource({
+        previewUrl: URL,
+        loaderPath: LOADER,
+        enumFallbackCount: 0,
+      }),
+    ).toBe(false);
+  });
+
+  test("true with a loader but nowhere to invoke it and no enum", () => {
+    expect(
+      hasNoOptionSource({
+        previewUrl: undefined,
+        loaderPath: LOADER,
+        enumFallbackCount: 0,
+      }),
+    ).toBe(true);
+  });
+
+  test("false when the schema enum can carry the list alone", () => {
+    expect(
+      hasNoOptionSource({
+        previewUrl: undefined,
+        loaderPath: undefined,
+        enumFallbackCount: 42,
+      }),
+    ).toBe(false);
+  });
+
+  test("true when there is no loader and no enum", () => {
+    expect(
+      hasNoOptionSource({
+        previewUrl: URL,
+        loaderPath: undefined,
+        enumFallbackCount: 0,
+      }),
+    ).toBe(true);
   });
 });

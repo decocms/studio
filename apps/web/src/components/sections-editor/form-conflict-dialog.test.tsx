@@ -16,7 +16,6 @@ import {
   conflictHeading,
   fieldInSentence,
   FormConflictChoices,
-  initials,
 } from "./form-conflict-dialog";
 import type { ConflictAuthor } from "./conflict-author";
 import {
@@ -73,6 +72,8 @@ function Harness({
   viewer = null,
   fresh = noFresh,
   author = null,
+  anonymousTitle = false,
+  fieldsAsLabeled = false,
 }: {
   onApply: (choices: ConflictChoices) => void;
   only?: ConflictField[];
@@ -80,6 +81,8 @@ function Harness({
   viewer?: ConflictViewer | null;
   fresh?: ConflictFreshness;
   author?: ConflictAuthor | null;
+  anonymousTitle?: boolean;
+  fieldsAsLabeled?: boolean;
 }) {
   const [choices, setChoices] = useState<ConflictChoices>(() =>
     Object.fromEntries(only.map((field) => [field.pointer, "mine"])),
@@ -91,6 +94,8 @@ function Harness({
       changedAgain={changedAgain}
       fresh={fresh}
       author={author}
+      anonymousTitle={anonymousTitle}
+      fieldsAsLabeled={fieldsAsLabeled}
       viewer={viewer}
       onChoose={(pointer, choice) =>
         setChoices((now) => ({ ...now, [pointer]: choice }))
@@ -103,11 +108,20 @@ function Harness({
 function Heading({
   only,
   author = null,
+  block,
+  anonymous = false,
+  asLabeled = false,
 }: {
   only: ConflictField[];
   author?: ConflictAuthor | null;
+  block?: string;
+  anonymous?: boolean;
+  asLabeled?: boolean;
 }) {
-  const heading = conflictHeading(useT(), only, 0, {}, author);
+  const heading = conflictHeading(useT(), only, 0, {}, author, block, {
+    anonymous,
+    asLabeled,
+  });
   return (
     <>
       <h2>{heading.title}</h2>
@@ -447,8 +461,6 @@ describe("FormConflictChoices", () => {
     expect(fieldInSentence("Title")).toBe("title");
     expect(fieldInSentence("SEO")).toBe("SEO");
     expect(fieldInSentence("Cta › Label")).toBe("Cta › Label");
-    expect(initials("  ana  souza lima ")).toBe("AS");
-    expect(initials(null)).toBe("");
   });
 
   test("the choices it returns resolve the section as picked", () => {
@@ -497,6 +509,57 @@ describe("who made the other change (hosted v8)", () => {
     // The button is OK whoever the card names.
     fireEvent.click(theirs);
     expect(view.getByRole("button", { name: "OK" })).toBeVisible();
+  });
+
+  test("opened outside the block's form, the title names the block and the member", () => {
+    const named = render(
+      <Heading only={headline} author={ana(minutesAgo(1))} block="Footer" />,
+    );
+    // Named as the block's form labels it (only hosted v8 windows name the
+    // block), never lowercased into the sentence: "the About of", not "the
+    // about of".
+    expect(named.getByRole("heading")).toHaveTextContent(
+      'Ana changed the Headline of "Footer" while you were editing',
+    );
+    named.unmount();
+    const unknown = render(<Heading only={headline} block="Footer" />);
+    expect(unknown.getByRole("heading")).toHaveTextContent(
+      'Someone else changed the Headline of "Footer" while you were editing',
+    );
+  });
+
+  test("a member who shares the viewer's first name is named in full", () => {
+    const view = render(
+      <Heading
+        only={headline}
+        author={{
+          name: "Demo 2",
+          shortName: "Demo 2",
+          at: minutesAgo(1),
+          you: false,
+        }}
+      />,
+    );
+    expect(view.getByRole("heading")).toHaveTextContent(/^Demo 2 changed the /);
+  });
+
+  test("a value that isn't a form's field (an A/B test) is named by its phrase alone", () => {
+    const test = [
+      {
+        ...headline[0]!,
+        label: 'A/B test "hero"',
+        phrase: 'the A/B test "hero"',
+      },
+    ];
+    const named = render(<Heading only={test} author={ana(minutesAgo(1))} />);
+    expect(named.getByRole("heading")).toHaveTextContent(
+      'Ana changed the A/B test "hero" while you were editing',
+    );
+    named.unmount();
+    const unknown = render(<Heading only={test} />);
+    expect(unknown.getByRole("heading")).toHaveTextContent(
+      'Someone else changed the A/B test "hero" while you were editing',
+    );
   });
 
   test("one field: the viewer's own change from another tab or window", () => {
@@ -580,5 +643,148 @@ describe("who made the other change (hosted v8)", () => {
       "Someone else also changed the headline",
     );
     expect(view.queryByText(/unknown/i)).toBeNull();
+  });
+});
+
+describe("hosted v8: the window opens at once", () => {
+  const ana: ConflictAuthor = {
+    name: "Ana Souza",
+    at: new Date(Date.now() - 60_000).toISOString(),
+    you: false,
+  };
+
+  test("who made it unknown at open: a title that names no one, and stays so once the name arrives", () => {
+    const view = render(
+      <Harness onApply={() => {}} only={headline} anonymousTitle />,
+    );
+    expect(view.getByRole("heading")).toHaveTextContent(
+      "The headline was changed while you were editing",
+    );
+    view.rerender(
+      <Harness
+        onApply={() => {}}
+        only={headline}
+        anonymousTitle
+        author={ana}
+      />,
+    );
+    // The name lands on their card; the title doesn't switch.
+    expect(view.getByRole("heading")).toHaveTextContent(
+      "The headline was changed while you were editing",
+    );
+    expect(view.getByRole("radio", { name: "Ana Souza" })).toBeInTheDocument();
+  });
+
+  test("the titles that name no one, for every kind of window", () => {
+    const cases: Array<[ReactNode, string]> = [
+      [
+        <Heading key="one-in" only={headline} anonymous block="Footer" />,
+        'The Headline of "Footer" was changed while you were editing',
+      ],
+      [
+        <Heading key="step" only={fields} anonymous />,
+        "The headline was also changed",
+      ],
+      [
+        <Heading key="step-in" only={fields} anonymous block="Footer" />,
+        'The Headline of "Footer" was also changed',
+      ],
+      [
+        <Heading
+          key="phrase"
+          only={[
+            {
+              ...headline[0]!,
+              label: 'A/B test "hero"',
+              phrase: 'the A/B test "hero"',
+            },
+          ]}
+          anonymous
+          author={ana}
+        />,
+        'The A/B test "hero" was changed while you were editing',
+      ],
+    ];
+    for (const [ui, title] of cases) {
+      const view = render(ui);
+      expect(view.getByRole("heading")).toHaveTextContent(title);
+      view.unmount();
+    }
+  });
+
+  test("the section form's own window names the field as its form labels it", () => {
+    const named = render(
+      <Heading
+        only={headline}
+        asLabeled
+        author={{ ...ana, name: "Demo 2", shortName: "Demo 2" }}
+      />,
+    );
+    expect(named.getByRole("heading")).toHaveTextContent(
+      "Demo 2 changed the Headline while you were editing",
+    );
+    named.unmount();
+    const anonymous = render(<Heading only={headline} asLabeled anonymous />);
+    expect(anonymous.getByRole("heading")).toHaveTextContent(
+      "The Headline was changed while you were editing",
+    );
+    anonymous.unmount();
+    // Elsewhere (Fast Preview, Localhost, sandboxes) as before.
+    const plain = render(<Heading only={headline} />);
+    expect(plain.getByRole("heading")).toHaveTextContent(
+      "Someone else changed the headline while you were editing",
+    );
+  });
+});
+
+describe("hosted v8: their card while who made it is being read", () => {
+  const bruno: ConflictAuthor = {
+    name: "Bruno Lima",
+    at: new Date().toISOString(),
+    you: false,
+  };
+
+  test("names no one and claims no one: their version, already saved; then the name", () => {
+    const view = render(
+      <Harness onApply={() => {}} only={headline} anonymousTitle />,
+    );
+    expect(view.queryByText("Someone else")).toBeNull();
+    const theirs = view.getByRole("radio", { name: "Their version" });
+    expect(theirs).toHaveTextContent("already saved");
+    view.rerender(
+      <Harness
+        onApply={() => {}}
+        only={headline}
+        anonymousTitle
+        author={bruno}
+      />,
+    );
+    expect(view.getByRole("radio", { name: "Bruno Lima" })).toBeInTheDocument();
+    expect(view.queryByText("Someone else")).toBeNull();
+  });
+
+  test("who made it couldn't be read: the card stays as it opened", () => {
+    const view = render(
+      <Harness onApply={() => {}} only={headline} anonymousTitle />,
+    );
+    view.rerender(
+      <Harness
+        onApply={() => {}}
+        only={headline}
+        anonymousTitle
+        author={null}
+      />,
+    );
+    expect(
+      view.getByRole("radio", { name: "Their version" }),
+    ).toBeInTheDocument();
+    expect(view.queryByText("Someone else")).toBeNull();
+  });
+
+  test("elsewhere (no one to read), their card says Someone else, as before", () => {
+    const view = render(<Harness onApply={() => {}} only={headline} />);
+    expect(view.getByRole("radio", { name: "Someone else" })).toHaveTextContent(
+      "Their version · already saved",
+    );
   });
 });

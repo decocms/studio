@@ -384,7 +384,7 @@ function SchemalessBlockEditor({
         <Button
           variant={jsonCode !== null ? "default" : "ghost"}
           size="icon"
-          className="size-8 shrink-0"
+          className="shrink-0"
           onClick={toggleJson}
           aria-label={jsonLabel}
           aria-pressed={jsonCode !== null}
@@ -459,6 +459,8 @@ export function SchemalessContent({
   decofile,
   onChange,
   onLeaveBlock,
+  onOpenBlock,
+  copyEpochOf,
   initialKey = null,
   compact = false,
 }: {
@@ -467,6 +469,13 @@ export function SchemalessContent({
   onChange: (blockKey: string, next: JsonRecord) => void;
   /** Leaving a block: the caller saves what's pending. */
   onLeaveBlock?: () => void;
+  /** Opening another block: its form is seeded from `decofile` now. */
+  onOpenBlock?: (blockKey: string) => void;
+  /**
+   * How many times a block's copy was replaced under the form (a reconcile):
+   * the open block's form is seeded again from `decofile` when it changes.
+   */
+  copyEpochOf?: (blockKey: string) => number;
   initialKey?: string | null;
   compact?: boolean;
 }) {
@@ -478,8 +487,17 @@ export function SchemalessContent({
   const select = (key: string | null) => {
     if (key === selected) return;
     onLeaveBlock?.();
+    if (key !== null) onOpenBlock?.(key);
     setSelected(key);
   };
+  // A reconcile replaced the open block's copy: its form is seeded again
+  // (keyed by the epoch below), from `decofile` now.
+  const selectedEpoch = selected ? (copyEpochOf?.(selected) ?? 0) : 0;
+  const [seededEpoch, setSeededEpoch] = useState(selectedEpoch);
+  if (seededEpoch !== selectedEpoch) {
+    setSeededEpoch(selectedEpoch);
+    if (selected !== null) onOpenBlock?.(selected);
+  }
   const block = selected ? decofile[selected] : undefined;
   const q = query.trim().toLowerCase();
   const groups = groupBlocksByType(decofile)
@@ -578,7 +596,7 @@ export function SchemalessContent({
   const editor =
     selected && isRecord(block) ? (
       <SchemalessBlockEditor
-        key={selected}
+        key={`${selected}:${copyEpochOf?.(selected) ?? 0}`}
         blockKey={selected}
         block={block}
         onChange={onChange}

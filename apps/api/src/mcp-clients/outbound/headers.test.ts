@@ -1,9 +1,26 @@
 import { describe, expect, test } from "bun:test";
 import {
+  buildAuthorizationHeaderValue,
   sanitizeCustomHeaders,
   serializeRunMetadataHeader,
   stripBindingMetadata,
 } from "./headers";
+
+describe("buildAuthorizationHeaderValue", () => {
+  test("defaults to Bearer for a plain token", () => {
+    expect(buildAuthorizationHeaderValue("abc123")).toBe("Bearer abc123");
+  });
+
+  test("sends a full scheme verbatim when the token already has one", () => {
+    expect(buildAuthorizationHeaderValue("Token token=abc123")).toBe(
+      "Token token=abc123",
+    );
+  });
+
+  test("trims surrounding whitespace", () => {
+    expect(buildAuthorizationHeaderValue("  abc123  ")).toBe("Bearer abc123");
+  });
+});
 
 describe("stripBindingMetadata", () => {
   test("strips __binding from a top-level object value", () => {

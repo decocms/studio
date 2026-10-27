@@ -8,7 +8,7 @@
  * resolution.
  */
 import { afterEach, describe, expect, it } from "bun:test";
-import type { TokenOptions } from "../types";
+import { GitProviderError, type TokenOptions } from "../types";
 import {
   checksFromPipelineStatus,
   conflictFromMergeRequest,
@@ -324,6 +324,58 @@ describe("isConflictRefusal", () => {
   });
 });
 
+describe("GitlabChangeRequestClient's mapping and validation", () => {
+  it("validates that merge requests have a positive iid", () => {
+    const client = new GitlabChangeRequestClient({
+      repo: { provider: "gitlab", host: "gitlab.com", path: "acme/site" },
+      tokenSource: {
+        kind: "oauth",
+        get: async () => ({ token: "t", kind: "oauth", expiresAt: null }),
+      },
+    });
+
+    expect(() => {
+      (client as any).map({
+        iid: 0,
+        source_branch: "main",
+        target_branch: "main",
+      });
+    }).toThrow("Invalid merge request: missing or invalid iid");
+
+    expect(() => {
+      (client as any).map({ source_branch: "main", target_branch: "main" });
+    }).toThrow("Invalid merge request: missing or invalid iid");
+  });
+
+  it("validates that merge requests have a source branch", () => {
+    const client = new GitlabChangeRequestClient({
+      repo: { provider: "gitlab", host: "gitlab.com", path: "acme/site" },
+      tokenSource: {
+        kind: "oauth",
+        get: async () => ({ token: "t", kind: "oauth", expiresAt: null }),
+      },
+    });
+
+    expect(() => {
+      (client as any).map({ iid: 1, target_branch: "main" });
+    }).toThrow("Invalid merge request 1: missing source branch");
+  });
+
+  it("validates that merge requests have a target branch", () => {
+    const client = new GitlabChangeRequestClient({
+      repo: { provider: "gitlab", host: "gitlab.com", path: "acme/site" },
+      tokenSource: {
+        kind: "oauth",
+        get: async () => ({ token: "t", kind: "oauth", expiresAt: null }),
+      },
+    });
+
+    expect(() => {
+      (client as any).map({ iid: 1, source_branch: "feature" });
+    }).toThrow("Invalid merge request 1: missing target branch");
+  });
+});
+
 describe("GitlabChangeRequestClient's 401 handling", () => {
   const originalFetch = globalThis.fetch;
   afterEach(() => {
@@ -336,9 +388,17 @@ describe("GitlabChangeRequestClient's 401 handling", () => {
     globalThis.fetch = (async () => {
       calls += 1;
       if (calls === 1) return new Response("", { status: 401 });
-      return new Response(JSON.stringify({ iid: 7, title: "hi" }), {
-        status: 200,
-      });
+      return new Response(
+        JSON.stringify({
+          iid: 7,
+          title: "hi",
+          source_branch: "feature",
+          target_branch: "main",
+        }),
+        {
+          status: 200,
+        },
+      );
     }) as unknown as typeof fetch;
 
     const client = new GitlabChangeRequestClient({
@@ -364,9 +424,17 @@ describe("GitlabChangeRequestClient's 401 handling", () => {
     globalThis.fetch = (async () => {
       calls += 1;
       if (calls === 1) return new Response("", { status: 401 });
-      return new Response(JSON.stringify({ iid: 9, title: "hi" }), {
-        status: 200,
-      });
+      return new Response(
+        JSON.stringify({
+          iid: 9,
+          title: "hi",
+          source_branch: "feature",
+          target_branch: "main",
+        }),
+        {
+          status: 200,
+        },
+      );
     }) as unknown as typeof fetch;
 
     const client = new GitlabChangeRequestClient({
@@ -388,5 +456,65 @@ describe("GitlabChangeRequestClient's 401 handling", () => {
     expect(cr.number).toBe(9);
     expect(calls).toBe(2);
     expect(tokensRequested).toEqual([undefined, { forceRefresh: true }]);
+  });
+});
+
+describe("GitlabChangeRequestClient's malformed-body handling", () => {
+  const originalFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("degrades a malformed 2xx body into a GitProviderError instead of a raw SyntaxError", async () => {
+    globalThis.fetch = (async () =>
+      new Response("<html>not json</html>", {
+        status: 200,
+      })) as unknown as typeof fetch;
+
+    const client = new GitlabChangeRequestClient({
+      repo: { provider: "gitlab", host: "gitlab.com", path: "acme/site" },
+      tokenSource: {
+        kind: "oauth",
+        get: async () => ({ token: "t", kind: "oauth", expiresAt: null }),
+      },
+    });
+
+    await expect(client.read(7)).rejects.toBeInstanceOf(GitProviderError);
+  });
+
+  it("degrades a well-formed but non-array list body into a GitProviderError", async () => {
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ message: "not found" }), {
+        status: 200,
+      })) as unknown as typeof fetch;
+
+    const client = new GitlabChangeRequestClient({
+      repo: { provider: "gitlab", host: "gitlab.com", path: "acme/site" },
+      tokenSource: {
+        kind: "oauth",
+        get: async () => ({ token: "t", kind: "oauth", expiresAt: null }),
+      },
+    });
+
+    await expect(client.listOpen(10)).rejects.toBeInstanceOf(GitProviderError);
+  });
+
+  it("degrades a well-formed but non-object body from opening a merge request", async () => {
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify([]), {
+        status: 200,
+      })) as unknown as typeof fetch;
+
+    const client = new GitlabChangeRequestClient({
+      repo: { provider: "gitlab", host: "gitlab.com", path: "acme/site" },
+      tokenSource: {
+        kind: "oauth",
+        get: async () => ({ token: "t", kind: "oauth", expiresAt: null }),
+      },
+    });
+
+    await expect(
+      client.open({ head: "feature", base: "main", title: "hi" }),
+    ).rejects.toBeInstanceOf(GitProviderError);
   });
 });

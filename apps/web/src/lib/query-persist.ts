@@ -33,6 +33,9 @@ const WRITE_DEBOUNCE_MS = 1000;
 //                           the board reflows once it lands — the reload flicker.
 //                           Hydrated, it renders the prior grid instantly and
 //                           revalidates in the background.
+//   - order-monitor         the Monitor's stores and their day. Without it a
+//                           reload drew every orders card as "waiting for the
+//                           first data" until each store's day came back.
 // plus the VIRTUAL_MCP collection reads (the home's displayed agent), matched
 // by key shape below.
 //
@@ -55,6 +58,7 @@ const PERSISTED_KEY_HEADS = new Set([
   "ai-provider-keys",
   "organization-settings",
   "home-next-actions",
+  "order-monitor",
 ]);
 
 // Collection reads are keyed by `[client, orgId, scopeKey, "collection",

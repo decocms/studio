@@ -17,6 +17,7 @@ import {
   FreestyleApiError,
   type Vm,
 } from "freestyle";
+import { appHostLabel } from "@decocms/shared/app-preview-host";
 import { retry, sleep } from "@decocms/shared/std";
 import pkg from "../../package.json" with { type: "json" };
 import {
@@ -30,6 +31,7 @@ import { normalizeRepoUrl } from "./agent-sandbox/tenant-pools";
 import {
   buildConfigPayload,
   computeHandle,
+  extraAppsPatch,
   gitCredentialRefreshPatch,
   Inflight,
 } from "./shared";
@@ -182,6 +184,8 @@ export class FreestyleSandboxProvider implements SandboxProvider {
     string,
     { slug: string; head: string }
   >();
+  /** Handle → the app domains its VM was last given, so a resume skips the API. */
+  private readonly appIngress = new Map<string, string>();
   /** Org + repo with a build running, so a push mid-build waits for it. */
   private readonly repoSnapshotBuilds = new Set<string>();
   /** When a repo's last build failed; a build takes up to 30 min, so not on every ensure. */
@@ -599,7 +603,7 @@ export class FreestyleSandboxProvider implements SandboxProvider {
       const existing = await this.find(handle, { refresh: true });
       let warmPoolAdopted = false;
       if (existing) {
-        await this.resume(existing, opts);
+        await this.resume(handle, existing, opts);
       } else {
         warmPoolAdopted = await this.create(handle, opts);
       }
@@ -613,7 +617,11 @@ export class FreestyleSandboxProvider implements SandboxProvider {
     });
   }
 
-  private async resume(found: Found, opts: EnsureOptions): Promise<void> {
+  private async resume(
+    handle: string,
+    found: Found,
+    opts: EnsureOptions,
+  ): Promise<void> {
     const { state, sourceSnapshotSlugAtCreate, metadata } =
       await found.vm.data();
     if (state !== "running") await found.vm.start();
@@ -641,6 +649,58 @@ export class FreestyleSandboxProvider implements SandboxProvider {
           ),
       );
     }
+    const apps = opts.workload?.apps;
+    if (apps) {
+      await this.syncAppIngress(handle, found.vm, apps).catch((err) =>
+        console.warn(`[${LOG_LABEL}] app ingress sync failed: ${errMsg(err)}`),
+      );
+      await postConfig(
+        found.daemon.url,
+        found.daemon.token,
+        extraAppsPatch(apps),
+      ).catch((err) =>
+        console.warn(`[${LOG_LABEL}] apps update failed: ${errMsg(err)}`),
+      );
+    }
+  }
+
+  /** Public hosts of a sandbox's extra apps; the daemon routes them by Host. */
+  private appDomains(handle: string, apps: string[]): string[] {
+    return apps.map(
+      (path) => `${appHostLabel(handle, path)}.${this.domainSuffix}`,
+    );
+  }
+
+  /**
+   * Gives each extra app of a running VM its ingress, and takes it from apps
+   * no longer configured.
+   */
+  private async syncAppIngress(
+    handle: string,
+    vm: Vm,
+    apps: string[],
+  ): Promise<void> {
+    const wanted = new Set(this.appDomains(handle, apps));
+    const key = [...wanted].sort().join(",");
+    if (this.appIngress.get(handle) === key) return;
+    const appPrefix = `${handle}--`;
+    const { rules } = await this.freestyle.tls.rules.list({ vmId: vm.id });
+    const have = new Set<string>();
+    for (const rule of rules) {
+      if (!rule.domain.startsWith(appPrefix)) continue;
+      if (wanted.has(rule.domain)) have.add(rule.domain);
+      else await this.freestyle.tls.rules.delete(rule.id);
+    }
+    for (const domain of wanted) {
+      if (have.has(domain)) continue;
+      await this.freestyle.tls.rules.create({
+        action: "allow",
+        domain,
+        source: { public: true },
+        destination: { vmId: vm.id, port: DAEMON_PORT },
+      });
+    }
+    this.appIngress.set(handle, key);
   }
 
   /**
@@ -660,7 +720,17 @@ export class FreestyleSandboxProvider implements SandboxProvider {
     const sentinel = this.sentinelToken(snapshotSlug);
     const payload = this.configPayload(opts) ?? {};
     try {
-      await postConfig(url, sentinel, payload, { rotateToken: token });
+      // A 502 here is the edge not routing yet, same as the org-fs relay, not a refusal.
+      await retry(
+        () => postConfig(url, sentinel, payload, { rotateToken: token }),
+        {
+          maxAttempts: 8,
+          minTimeout: 250,
+          maxTimeout: 4_000,
+          isRetriable: (err) =>
+            err instanceof ConfigRequestError && err.status === 502,
+        },
+      );
       console.log(`[${LOG_LABEL}] reclaimed ${url} after a reboot`);
       return;
     } catch (err) {
@@ -712,13 +782,14 @@ export class FreestyleSandboxProvider implements SandboxProvider {
       },
       tls: {
         rules: [
-          {
-            action: "allow",
-            domain: `${handle}.${this.domainSuffix}`,
-            source: { public: true },
-            destination: { port: DAEMON_PORT },
-          },
-        ],
+          `${handle}.${this.domainSuffix}`,
+          ...this.appDomains(handle, opts.workload?.apps ?? []),
+        ].map((domain) => ({
+          action: "allow" as const,
+          domain,
+          source: { public: true as const },
+          destination: { port: DAEMON_PORT },
+        })),
       },
     });
     step("vm-fork");
@@ -834,6 +905,7 @@ export class FreestyleSandboxProvider implements SandboxProvider {
       port: opts.workload?.devPort ?? DEFAULT_DEV_PORT,
       tenant: opts.tenant,
       cloneOnly: opts.cloneOnly === true,
+      apps: opts.workload?.apps,
     });
   }
 
@@ -1021,41 +1093,21 @@ export class FreestyleSandboxProvider implements SandboxProvider {
     if (this.sweeping) return [];
     this.sweeping = true;
     try {
-      const running = [];
-      for (let offset = 0; ; offset += IDLE_SWEEP_PAGE) {
+      const paused: (string | null)[] = [];
+      // One page's idle checks in flight at a time; offset accounts for VMs this sweep already paused out of the "running" filter.
+      for (let offset = 0; ; ) {
         const { vms } = await this.freestyle.vms.list({
           state: "running",
           limit: IDLE_SWEEP_PAGE,
           offset,
         });
-        running.push(...vms);
+        const results = await Promise.all(
+          vms.map((data) => this.pauseIfOverIdle(data)),
+        );
+        paused.push(...results);
         if (vms.length < IDLE_SWEEP_PAGE) break;
+        offset += vms.length - results.filter((h) => h !== null).length;
       }
-      const paused = await Promise.all(
-        running.map(async (data) => {
-          const handle = data.slug;
-          if (!handle || !data.metadata[TOKEN_KEY]) return null;
-          // A fork's daemon keeps the snapshot's clock until its first config.
-          if (Date.now() - Date.parse(data.createdAt) < this.idlePauseMs) {
-            return null;
-          }
-          const idleMs = await daemonIdleMs(this.daemonUrl(handle));
-          if (idleMs === null || idleMs < this.idlePauseMs) return null;
-          try {
-            await this.freestyle.vms.ref(data.id).pause();
-          } catch (err) {
-            console.warn(
-              `[${LOG_LABEL}] pause ${handle} failed: ${errMsg(err)}`,
-            );
-            return null;
-          }
-          this.cancelRelease(handle);
-          console.log(
-            `[${LOG_LABEL}] paused ${handle}, daemon idle ${Math.round(idleMs / 60_000)}m`,
-          );
-          return handle;
-        }),
-      );
       return paused.filter((h) => h !== null);
     } catch (err) {
       console.warn(`[${LOG_LABEL}] idle sweep failed: ${errMsg(err)}`);
@@ -1063,6 +1115,30 @@ export class FreestyleSandboxProvider implements SandboxProvider {
     } finally {
       this.sweeping = false;
     }
+  }
+
+  private async pauseIfOverIdle(
+    data: Awaited<ReturnType<Freestyle["vms"]["list"]>>["vms"][number],
+  ): Promise<string | null> {
+    const handle = data.slug;
+    if (!handle || !data.metadata[TOKEN_KEY]) return null;
+    // A fork's daemon keeps the snapshot's clock until its first config.
+    if (Date.now() - Date.parse(data.createdAt) < this.idlePauseMs) {
+      return null;
+    }
+    const idleMs = await daemonIdleMs(this.daemonUrl(handle));
+    if (idleMs === null || idleMs < this.idlePauseMs) return null;
+    try {
+      await this.freestyle.vms.ref(data.id).pause();
+    } catch (err) {
+      console.warn(`[${LOG_LABEL}] pause ${handle} failed: ${errMsg(err)}`);
+      return null;
+    }
+    this.cancelRelease(handle);
+    console.log(
+      `[${LOG_LABEL}] paused ${handle}, daemon idle ${Math.round(idleMs / 60_000)}m`,
+    );
+    return handle;
   }
 
   private cancelRelease(handle: string): void {

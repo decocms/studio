@@ -31,19 +31,6 @@ describe("scopableProjects", () => {
     expect(scopableProjects(projects).map((p) => p.id)).toEqual(["vir_a"]);
   });
 
-  /**
-   * A dev agent is reached through the Develop/Live toggle on its live
-   * counterpart. The old sidebar leaked repo-backed ones into the list because
-   * its two membership predicates disagreed; one predicate, one answer.
-   */
-  test("drops dev agents", () => {
-    const projects = [
-      project("vir_live"),
-      project("vir_dev", { liveAgentId: "vir_live" }),
-    ];
-    expect(scopableProjects(projects).map((p) => p.id)).toEqual(["vir_live"]);
-  });
-
   test("tolerates null", () => {
     expect(scopableProjects(null)).toEqual([]);
     expect(scopableProjects(undefined)).toEqual([]);

@@ -18,10 +18,7 @@ export function MiniReportPage({
   return (
     <div
       aria-hidden
-      className={cn(
-        "pointer-events-none rounded-xl border border-border bg-background shadow-lg",
-        className,
-      )}
+      className={cn("pointer-events-none surface shadow-soft", className)}
     >
       <div className="flex h-full flex-col gap-3 p-4">
         {/* page header: score ring + title lines */}

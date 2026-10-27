@@ -1,3 +1,4 @@
+import { isV8Schema } from "@decocms/shared/blocks-major";
 import { BlockBreadcrumbs } from "@/components/sections-editor/block-breadcrumbs";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { useState } from "react";
@@ -24,6 +25,7 @@ import {
 import { globalSectionLabel } from "@/components/sections-editor/page-list";
 import { GLOBAL_SECTION_ICON_COLOR } from "@/components/sections-editor/section-types";
 import { useDebouncedSaveBlock } from "@/components/sections-editor/use-save-block";
+import { useContentBackend } from "@/components/sections-editor/use-content-backend";
 import { MonacoCodeEditor } from "@/components/monaco-editor";
 import { useT } from "@/i18n/use-t.ts";
 
@@ -35,11 +37,12 @@ import { useT } from "@/i18n/use-t.ts";
 function seedFromBlock(
   blockKey: string,
   decofile: Record<string, unknown>,
+  v8: boolean,
 ): { data: Record<string, unknown>; resolveType: string } | null {
   const rawSection = { __resolveType: blockKey } as RawSection;
   const parsed = parseSections([rawSection], decofile)[0];
   if (!parsed) return null;
-  return unwrapSection(rawSection, parsed, decofile);
+  return unwrapSection(rawSection, parsed, decofile, v8);
 }
 
 /**
@@ -78,7 +81,9 @@ export function SavedSectionEditor({
   const agentSiteSlug = agent?.metadata?.siteSlug ?? null;
 
   // Seed once: this component is remounted (via `key`) when blockKey changes.
-  const [seed] = useState(() => seedFromBlock(blockKey, decofile));
+  const [seed] = useState(() =>
+    seedFromBlock(blockKey, decofile, isV8Schema(meta)),
+  );
   const [formValue, setFormValue] = useState<Record<string, unknown>>(
     seed?.data ?? {},
   );
@@ -92,15 +97,18 @@ export function SavedSectionEditor({
   const [jsonCode, setJsonCode] = useState<string | null>(null);
   const jsonOpen = jsonCode !== null;
 
-  const { save, flush } = useDebouncedSaveBlock({
-    orgSlug,
-    virtualMcpId,
-    branch,
-  });
+  // The form keeps its own copy: hosted saves are guarded by it.
+  const { save, flush } = useDebouncedSaveBlock(
+    { orgSlug, virtualMcpId, branch },
+    { holdsCopy: true },
+  );
 
   const schema = seed?.resolveType
     ? resolveSchema(seed.resolveType, meta)
     : null;
+
+  const backend = useContentBackend(virtualMcpId, branch);
+  const hosted = backend.kind === "protocol" && backend.source === "github";
 
   const blockData = decofile[blockKey] as Record<string, unknown> | undefined;
   const title = blockData ? globalSectionLabel(blockKey, blockData) : blockKey;
@@ -170,13 +178,23 @@ export function SavedSectionEditor({
               style={{ backgroundColor: GLOBAL_SECTION_ICON_COLOR }}
               aria-hidden
             />
+            {/* Hosted v8: the section's name beside its dot (the form also
+                opens where no page header shows the breadcrumbs). */}
+            {hosted ? (
+              <span
+                className="min-w-0 truncate text-sm font-medium"
+                data-testid="saved-section-title"
+              >
+                {title}
+              </span>
+            ) : null}
             <div className="flex-1" />
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
                   variant={jsonOpen ? "default" : "ghost"}
                   size="icon"
-                  className="size-8 shrink-0"
+                  className="shrink-0"
                   onClick={toggleJson}
                   aria-label={
                     jsonOpen

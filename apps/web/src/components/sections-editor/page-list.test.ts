@@ -7,6 +7,7 @@ import {
   findSiteAppEntry,
   hasEditableDecoContent,
   pagesShowingBlock,
+  parsePageName,
   previewPageForBlock,
   resolveDeepLinkPage,
   type PageEntry,
@@ -487,5 +488,16 @@ describe("previewPageForBlock", () => {
 
   it("null for a block no page uses", () => {
     expect(previewPageForBlock(decofile, "Popup")).toBeNull();
+  });
+});
+
+describe("parsePageName (a page's name before its content is read)", () => {
+  it("never shows a raw key: the id suffix goes, numeric ones included", () => {
+    expect(parsePageName("pages-home-c4bcbfb771e9")).toBe("home");
+    expect(parsePageName("pages-Category%20Page-69217")).toBe("Category Page");
+    expect(parsePageName("Search Page-514254")).toBe("Search Page");
+    expect(parsePageName("pages-Search%20Page-514254")).toBe("Search Page");
+    // A name that ends in a short number (a year) keeps it.
+    expect(parsePageName("pages-Sale-2026")).toBe("Sale-2026");
   });
 });

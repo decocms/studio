@@ -49,8 +49,8 @@ function BannerShell({
       type="button"
       onClick={onOpen}
       className={cn(
-        "group relative block w-full cursor-pointer overflow-hidden rounded-2xl bg-card card-shadow text-left",
-        "transition-colors duration-300 hover:bg-accent/30",
+        "group relative block w-full cursor-pointer overflow-hidden surface text-left",
+        "transition-colors duration-300 hover:bg-accent",
         "animate-in fade-in slide-in-from-bottom-2 duration-500",
       )}
     >

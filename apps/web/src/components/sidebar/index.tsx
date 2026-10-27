@@ -43,8 +43,10 @@ function ProjectBackRow({ onNavigate }: { onNavigate?: () => void }) {
   const t = useT();
   const scopeId = useScopeId();
   const exitToOrg = useExitProjectScope();
+  // The new navigation leaves through the header's switcher and the org rail.
+  const projectFirstNav = useProjectFirstNav();
 
-  if (!scopeId) return null;
+  if (!scopeId || projectFirstNav) return null;
 
   return (
     <SidebarBackRow
@@ -69,6 +71,7 @@ function ProjectBackRow({ onNavigate }: { onNavigate?: () => void }) {
  *  listed one row per project off a suspense query — restoring either would put
  *  a skeleton back in front of the sidebar. */
 function OrgSidebarBody({ onNavigate }: { onNavigate?: () => void }) {
+  const t = useT();
   const projectFirstNav = useProjectFirstNav();
   return (
     <ErrorBoundary>
@@ -79,10 +82,16 @@ function OrgSidebarBody({ onNavigate }: { onNavigate?: () => void }) {
           ) : (
             <NavDestinationsContentClassic onNavigate={onNavigate} />
           )}
-          <ProjectNav onNavigate={onNavigate} />
+          {!projectFirstNav && <ProjectNav onNavigate={onNavigate} />}
           {/* Project-first navigation reaches settings from the org rail instead. */}
           {!projectFirstNav && <NavSettingsRow onNavigate={onNavigate} />}
         </div>
+        {projectFirstNav && (
+          <ProjectNav
+            onNavigate={onNavigate}
+            heading={t("sidebar.projectNav.apps")}
+          />
+        )}
         {projectFirstNav ? (
           <SidebarProjectsTree onNavigate={onNavigate} />
         ) : (

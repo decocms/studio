@@ -54,7 +54,6 @@ import { Panel } from "@/components/panel";
 import { ChatLayout } from "@/components/chat-layout";
 import { ThreadsMenu } from "@/components/chat/threads-menu";
 import { NewChatCrumb } from "@/components/header/shell-breadcrumb";
-import { DevAgentControl } from "@/components/dev-agent/dev-agent-control";
 import { MainPanelTabsBar } from "@/layouts/main-panel-tabs/main-panel-tabs-bar";
 import { useActivePanelTabId } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { resolveThreadSessionIdentity } from "./session-identity";
@@ -70,7 +69,7 @@ import {
 import { useEnsureTask } from "@/hooks/use-ensure-task";
 import { useAgentEntryThreads } from "@/hooks/use-agent-entry-threads";
 import type { Task } from "@/components/chat/task/types";
-import { MainPanelBoundary } from "@/layouts/main-panel-boundary";
+import { MainPanelBoundary, PanelLoading } from "@/layouts/main-panel-boundary";
 import { LegacyAgentWorkspaceRedirect } from "@/layouts/legacy-agent-workspace-redirect";
 import { canonicalThreadRouteTarget } from "@/layouts/main-panel-tabs/tab-route";
 import { getWellKnownDecopilotVirtualMCP } from "@/sdk";
@@ -299,7 +298,7 @@ function VmEventsBridge({
   if (!executionEnabled) {
     return (
       <div className="flex-1 min-h-0 pr-1.5 pb-1.5 overflow-hidden">
-        <div className="flex h-full rounded-[0.75rem] bg-background card-shadow">
+        <div className="flex h-full rounded-[0.75rem] bg-background shadow-edge">
           <EmptyState
             image={<AlertCircle size={48} className="text-muted-foreground" />}
             title={t(
@@ -410,7 +409,6 @@ function ThreadSessionContent({
 }) {
   const { virtualMcpId, taskId } = useChatTask();
 
-  const entity = useVirtualMCP(virtualMcpId);
   const contentKey = useActivePanelTabId() ?? "overview";
   /** Takeover apps default the chat panel closed, in local state so
    *  `?sidepanel` cannot reopen it on arrival. Keyed on the view, so opening
@@ -437,7 +435,6 @@ function ThreadSessionContent({
         contentNavigation={
           <MainPanelTabsBar virtualMcpId={virtualMcpId} taskId={taskId} />
         }
-        contentActions={entity && <DevAgentControl virtualMcp={entity} />}
       >
         <ChatLayout.Thread topbar={<ThreadTopbar />}>
           <ActiveTaskBoundary />
@@ -621,15 +618,11 @@ function ThreadSessionProvider() {
       threadsStatus.kind === "loading" ||
       scopedEntryThreads.status === "loading"
     ) {
+      // Reading, not creating: the panel's one loader, not "Creating task…".
       return (
         <div className="flex-1 min-h-0 pr-1.5 pb-1.5 overflow-hidden">
-          <div
-            role="status"
-            aria-live="polite"
-            className="flex h-full items-center justify-center bg-background card-shadow rounded-[0.75rem] text-sm text-muted-foreground"
-          >
-            <Spinner className="size-4 mr-2" />
-            {t("agentShellLayout.agentShellLayout.creatingTask")}
+          <div className="flex h-full bg-background shadow-edge rounded-[0.75rem]">
+            <PanelLoading />
           </div>
         </div>
       );
@@ -662,7 +655,7 @@ function ThreadSessionProvider() {
         <div
           role="status"
           aria-live="polite"
-          className="flex h-full items-center justify-center bg-background card-shadow rounded-[0.75rem] text-sm text-muted-foreground"
+          className="flex h-full items-center justify-center bg-background shadow-edge rounded-[0.75rem] text-sm text-muted-foreground"
         >
           <Spinner className="size-4 mr-2" />
           {t("agentShellLayout.agentShellLayout.creatingTask")}
@@ -676,7 +669,7 @@ function ThreadSessionProvider() {
       <div className="flex-1 min-h-0 pr-1.5 pb-1.5 overflow-hidden">
         <div
           role="alert"
-          className="flex flex-col h-full items-center justify-center gap-2 bg-background card-shadow rounded-[0.75rem] p-8 text-sm"
+          className="flex flex-col h-full items-center justify-center gap-2 bg-background shadow-edge rounded-[0.75rem] p-8 text-sm"
         >
           <div className="font-medium">
             {t("agentShellLayout.agentShellLayout.taskUnavailable")}
@@ -692,7 +685,7 @@ function ThreadSessionProvider() {
   if (!entity) {
     return (
       <div className="flex-1 min-h-0 pr-1.5 pb-1.5 overflow-hidden">
-        <div className="flex flex-col h-full bg-background overflow-hidden card-shadow rounded-[0.75rem]">
+        <div className="flex flex-col h-full bg-background overflow-hidden shadow-edge rounded-[0.75rem]">
           <EmptyState
             image={<AlertCircle size={48} className="text-muted-foreground" />}
             title={t("agentShellLayout.agentShellLayout.agentNotFound")}

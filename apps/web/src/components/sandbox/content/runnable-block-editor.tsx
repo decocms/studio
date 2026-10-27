@@ -126,11 +126,11 @@ export function RunnableBlockEditor({
     save,
     flush,
     isPending: isSaving,
-  } = useDebouncedSaveBlock({
-    orgSlug,
-    virtualMcpId,
-    branch,
-  });
+  } = useDebouncedSaveBlock(
+    { orgSlug, virtualMcpId, branch },
+    // A saved block's form keeps its own copy: hosted saves are guarded by it.
+    { holdsCopy: target.mode === "saved" },
+  );
   const run = useRunBlock({ orgSlug, virtualMcpId, branch, threadId });
 
   // useDebouncedSaveBlock CANCELS pending saves on unmount (its documented
@@ -249,9 +249,9 @@ export function RunnableBlockEditor({
           )}
           {showRun && (
             <Button
-              size="sm"
+              size="default"
               variant="outline"
-              className="h-8 shrink-0 gap-1.5"
+              className="shrink-0 gap-1.5"
               onClick={handleRun}
               disabled={run.isPending}
               aria-label={t("sandbox.runnableBlockEditor.runAriaLabel", {
@@ -271,7 +271,7 @@ export function RunnableBlockEditor({
               <TooltipTrigger asChild>
                 <Button
                   size="icon"
-                  className="size-8 shrink-0"
+                  className="shrink-0"
                   disabled={isCreating}
                   onClick={() => setSaveOpen(true)}
                   aria-label={t(
@@ -296,7 +296,7 @@ export function RunnableBlockEditor({
               <Button
                 variant={jsonOpen ? "default" : "ghost"}
                 size="icon"
-                className="size-8 shrink-0"
+                className="shrink-0"
                 onClick={toggleJson}
                 aria-label={
                   jsonOpen
@@ -476,8 +476,7 @@ function RunResultPanel({
               <TooltipTrigger asChild>
                 <Button
                   variant="ghost"
-                  size="icon"
-                  className="size-7"
+                  size="icon-sm"
                   onClick={onOpenInNewTab}
                   aria-label={t(
                     "sandbox.runnableBlockEditor.openResultInNewTabAriaLabel",
@@ -497,8 +496,7 @@ function RunResultPanel({
             <TooltipTrigger asChild>
               <Button
                 variant="ghost"
-                size="icon"
-                className="size-7"
+                size="icon-sm"
                 onClick={onToggleExpand}
                 aria-label={
                   expanded
@@ -518,8 +516,7 @@ function RunResultPanel({
           </Tooltip>
           <Button
             variant="ghost"
-            size="icon"
-            className="size-7"
+            size="icon-sm"
             onClick={onClose}
             aria-label={t("sandbox.runnableBlockEditor.closeResult")}
           >

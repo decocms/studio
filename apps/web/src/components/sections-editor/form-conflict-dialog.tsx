@@ -58,6 +58,21 @@ interface FormConflictChoicesProps {
   viewer?: ConflictViewer | null;
   /** Who made their change, and when; null while unknown. */
   author?: ConflictAuthor | null;
+  /**
+   * Who made it wasn't known yet when the window opened (hosted v8): the
+   * titles name no one, and stay so when the name lands on their card.
+   */
+  anonymousTitle?: boolean;
+  /**
+   * Fields named as their form labels them, "the Headline" (hosted v8),
+   * never lowercased into the sentence.
+   */
+  fieldsAsLabeled?: boolean;
+  /**
+   * The block the fields belong to, by its title, when the dialog isn't
+   * opened from the block's own form (a global section's editor, a loader's…).
+   */
+  block?: string;
   onChoose: (pointer: string, choice: ConflictChoice) => void;
   onApply: () => void;
   /**
@@ -74,28 +89,41 @@ export interface ConflictViewer {
 
 export function FormConflictDialog({
   open,
+  authorPending = false,
+  waitForAuthor = false,
   ...props
-}: FormConflictChoicesProps & { open: boolean }) {
+}: FormConflictChoicesProps & {
+  open: boolean;
+  /**
+   * Who made the other change is still being read (conflict-author.ts).
+   * The dialog opens at once all the same; its titles then name no one for
+   * as long as it is open (never "Someone else" switching to a name), and
+   * the name lands on their card when it is known.
+   */
+  authorPending?: boolean;
+  /**
+   * Waits for who made it before opening instead (the A/B test and
+   * campaign windows, named from the members already read).
+   */
+  waitForAuthor?: boolean;
+}) {
   const { data: session } = authClient.useSession();
+  const waiting = waitForAuthor && authorPending;
+  // Decided when it first shows (the dialog is mounted per conflict).
+  const [anonymousTitle] = useState(() => authorPending && !waitForAuthor);
   return (
     // Controlled with no onOpenChange: only saving a choice closes it.
-    <AlertDialog open={open}>
+    <AlertDialog open={open && !waiting}>
       <AlertDialogContent
         className={cn(
           "max-h-[85vh] grid-rows-[auto_minmax(0,1fr)_auto] sm:max-w-lg",
         )}
         data-testid="form-conflict-dialog"
         onEscapeKeyDown={(event) => event.preventDefault()}
-        // An alert dialog focuses its Cancel button, and this one has none:
-        // focus the dialog itself, so what the user was typing stops at it
-        // (not the form behind, and not a button a space would press).
-        onOpenAutoFocus={(event) => {
-          event.preventDefault();
-          (event.currentTarget as HTMLElement | null)?.focus();
-        }}
       >
         <FormConflictChoices
           {...props}
+          anonymousTitle={props.anonymousTitle ?? anonymousTitle}
           viewer={session?.user ?? null}
           heading={(title, description) => (
             <AlertDialogHeader className="text-left">
@@ -130,33 +158,110 @@ export function conflictHeading(
   step = 0,
   choices: ConflictChoices = {},
   author: ConflictAuthor | null = null,
+  block?: string,
+  {
+    anonymous = false,
+    asLabeled = false,
+  }: {
+    /** Titles that name no one (who made it unknown when it opened). */
+    anonymous?: boolean;
+    /** The field as its form labels it (hosted v8). */
+    asLabeled?: boolean;
+  } = {},
 ): { title: string; description: ReactNode } {
   const field = fields[Math.min(step, fields.length - 1)];
-  const name = author?.you ? undefined : author?.name?.split(/\s+/)[0];
+  const name = author?.you
+    ? undefined
+    : (author?.shortName ?? author?.name?.split(/\s+/)[0]);
   const vars = {
-    field: field ? fieldInSentence(field.label) : "",
+    // A hosted v8 window (one that names the block, or the section form's
+    // own there) names the field as its form labels it: "the About of",
+    // never "the about of".
+    field: field
+      ? block || asLabeled
+        ? field.label
+        : fieldInSentence(field.label)
+      : "",
     label: field?.label ?? "",
     name: name ?? "",
+    block: block ?? "",
   };
   type Key = Parameters<TFunction>[0];
-  const pick = (one: Key, named: Key, you: Key) =>
-    t(author?.you ? you : name ? named : one, vars);
+  const pick = (one: Key, named: Key, you: Key, nobody: Key) =>
+    t(anonymous ? nobody : author?.you ? you : name ? named : one, vars);
+  const phrase = field?.phrase;
+  const phraseTitle = (one: Key, named: Key, you: Key, nobody: Key) =>
+    t(anonymous ? nobody : author?.you ? you : name ? named : one, {
+      thing: phrase ?? "",
+      Thing: phrase
+        ? phrase.charAt(0).toLocaleUpperCase() + phrase.slice(1)
+        : "",
+      label: field?.label ?? "",
+      name: name ?? "",
+    });
+  if (phrase) {
+    return fields.length <= 1
+      ? {
+          title: phraseTitle(
+            "sectionsEditor.formConflict.titlePhraseOne",
+            "sectionsEditor.formConflict.titlePhraseOneNamed",
+            "sectionsEditor.formConflict.titlePhraseOneYou",
+            "sectionsEditor.formConflict.titlePhraseOneAnonymous",
+          ),
+          description: t("sectionsEditor.formConflict.descriptionOne"),
+        }
+      : {
+          title: phraseTitle(
+            "sectionsEditor.formConflict.titlePhraseStep",
+            "sectionsEditor.formConflict.titlePhraseStepNamed",
+            "sectionsEditor.formConflict.titlePhraseStepYou",
+            "sectionsEditor.formConflict.titlePhraseStepAnonymous",
+          ),
+          description:
+            step >= fields.length - 1 ? (
+              <ConflictSummary
+                t={t}
+                fields={fields}
+                choices={choices}
+                name={name}
+              />
+            ) : (
+              t("sectionsEditor.formConflict.descriptionStep")
+            ),
+        };
+  }
   if (fields.length <= 1) {
     return {
-      title: pick(
-        "sectionsEditor.formConflict.titleOne",
-        "sectionsEditor.formConflict.titleOneNamed",
-        "sectionsEditor.formConflict.titleOneYou",
-      ),
+      title: block
+        ? pick(
+            "sectionsEditor.formConflict.titleOneIn",
+            "sectionsEditor.formConflict.titleOneInNamed",
+            "sectionsEditor.formConflict.titleOneInYou",
+            "sectionsEditor.formConflict.titleOneInAnonymous",
+          )
+        : pick(
+            "sectionsEditor.formConflict.titleOne",
+            "sectionsEditor.formConflict.titleOneNamed",
+            "sectionsEditor.formConflict.titleOneYou",
+            "sectionsEditor.formConflict.titleOneAnonymous",
+          ),
       description: t("sectionsEditor.formConflict.descriptionOne"),
     };
   }
   return {
-    title: pick(
-      "sectionsEditor.formConflict.titleStep",
-      "sectionsEditor.formConflict.titleStepNamed",
-      "sectionsEditor.formConflict.titleStepYou",
-    ),
+    title: block
+      ? pick(
+          "sectionsEditor.formConflict.titleStepIn",
+          "sectionsEditor.formConflict.titleStepInNamed",
+          "sectionsEditor.formConflict.titleStepInYou",
+          "sectionsEditor.formConflict.titleStepInAnonymous",
+        )
+      : pick(
+          "sectionsEditor.formConflict.titleStep",
+          "sectionsEditor.formConflict.titleStepNamed",
+          "sectionsEditor.formConflict.titleStepYou",
+          "sectionsEditor.formConflict.titleStepAnonymous",
+        ),
     description:
       step >= fields.length - 1 ? (
         <ConflictSummary t={t} fields={fields} choices={choices} name={name} />
@@ -285,6 +390,8 @@ export function FormConflictChoices(props: FormConflictChoicesProps) {
     at,
     choices,
     props.author ?? null,
+    props.block,
+    { anonymous: props.anonymousTitle, asLabeled: props.fieldsAsLabeled },
   );
   // The second click of a double click on Next would land on the button that
   // saves, in the same place on the last step: only a click of its own saves.
@@ -327,7 +434,7 @@ export function FormConflictChoices(props: FormConflictChoicesProps) {
                     }
                     data-changed-again={ringed ? "" : undefined}
                     onClick={() => go(i)}
-                    className="group cursor-pointer rounded-full p-1 outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                    className="group cursor-pointer rounded-full p-1 focus-ring"
                   >
                     <span
                       className={cn(
@@ -461,6 +568,7 @@ function ConflictCards({
   choices,
   viewer,
   author = null,
+  anonymousTitle = false,
   onChoose,
   arrows,
 }: FormConflictChoicesProps & {
@@ -474,7 +582,7 @@ function ConflictCards({
   const viewerAvatar = (
     <Avatar
       url={viewer?.image ?? undefined}
-      fallback={initials(viewer?.name) || t("sectionsEditor.formConflict.you")}
+      fallback={viewer?.name?.trim() || t("sectionsEditor.formConflict.you")}
       shape="circle"
       size="sm"
       className="text-xs"
@@ -485,7 +593,7 @@ function ConflictCards({
   ) : author?.name ? (
     <Avatar
       url={author.avatarUrl}
-      fallback={initials(author.name)}
+      fallback={author.name}
       shape="circle"
       size="sm"
       className="text-xs"
@@ -494,6 +602,10 @@ function ConflictCards({
     <Avatar url="icon://user" fallback="" muted shape="circle" size="sm" />
   );
   const savedAt = author ? new Date(author.at) : null;
+  // Opened before who made it was known (hosted v8): until the name lands,
+  // their card names no one and claims no one ("Their version · already
+  // saved"), and keeps that if it never does.
+  const neutral = anonymousTitle && !author;
   return (
     <div
       role="radiogroup"
@@ -517,16 +629,20 @@ function ConflictCards({
         onChoose={() => onChoose(field.pointer, "theirs")}
         avatar={theirAvatar}
         who={
-          author?.you
-            ? t("sectionsEditor.formConflict.youElsewhere")
-            : author?.name || t("sectionsEditor.formConflict.someoneElse")
+          neutral
+            ? t("sectionsEditor.formConflict.theirVersion")
+            : author?.you
+              ? t("sectionsEditor.formConflict.youElsewhere")
+              : author?.name || t("sectionsEditor.formConflict.someoneElse")
         }
         meta={
-          savedAt
-            ? t("sectionsEditor.formConflict.savedAt", {
-                when: formatRelativeTime(savedAt, language),
-              })
-            : t("sectionsEditor.formConflict.theirVersionSaved")
+          neutral
+            ? t("sectionsEditor.formConflict.alreadySaved")
+            : savedAt
+              ? t("sectionsEditor.formConflict.savedAt", {
+                  when: formatRelativeTime(savedAt, language),
+                })
+              : t("sectionsEditor.formConflict.theirVersionSaved")
         }
         metaTitle={savedAt ? exactTime(savedAt, language) : undefined}
       >
@@ -538,17 +654,6 @@ function ConflictCards({
 
 const exactTime = (date: Date, language: string) =>
   date.toLocaleString(language, { dateStyle: "medium", timeStyle: "short" });
-
-/** "Ana Souza" -> "AS". */
-export function initials(name: string | null | undefined): string {
-  return (name ?? "")
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((word) => word.charAt(0).toUpperCase())
-    .join("");
-}
 
 function ConflictCard({
   side,
@@ -581,11 +686,10 @@ function ConflictCard({
       tabIndex={checked ? 0 : -1}
       onClick={onChoose}
       className={cn(
-        "grid w-full cursor-pointer grid-cols-[auto_minmax(0,1fr)] items-start gap-3 rounded-xl border bg-background p-3 text-left transition-[border-color,box-shadow,background-color] outline-none",
-        "focus-visible:ring-2 focus-visible:ring-ring/50",
+        "grid w-full cursor-pointer grid-cols-[auto_minmax(0,1fr)] items-start gap-3 rounded-xl border bg-background p-3 text-left transition-[border-color,box-shadow,background-color] focus-ring",
         checked
           ? "border-primary bg-primary/5 ring-1 ring-primary"
-          : "hover:bg-muted/50",
+          : "hover:bg-accent",
       )}
     >
       {avatar}

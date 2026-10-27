@@ -26,27 +26,11 @@ test.describe("chat layout composition", () => {
       },
     );
     const path = `/${orgSlug}/projects/${project.item.id}/settings`;
-    await callSelfMcpTool(request, orgSlug, "COLLECTION_VIRTUAL_MCP_CREATE", {
-      data: {
-        title: "Layout development project",
-        status: "active",
-        connections: [{ connection_id: connection.id }],
-        metadata: { liveAgentId: project.item.id },
-      },
-    });
     await page.goto(`${path}?sidepanel=true`);
     const input = page.getByPlaceholder("Project name");
     await expect(input).toBeVisible({ timeout: 90_000 });
     const originalInput = await input.elementHandle();
     expect(originalInput).not.toBeNull();
-    // Project switching belongs on Settings too; only publish controls are editor-specific.
-    await expect(
-      page.getByRole("button", { name: "Develop", exact: true }),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: "Live", exact: true }),
-    ).toHaveAttribute("aria-pressed", "true");
-
     const layout = page.locator('[data-slot="chat-layout"]');
     const chat = page.getByTestId("chat-layout-thread");
     const separator = layout.getByRole("separator");

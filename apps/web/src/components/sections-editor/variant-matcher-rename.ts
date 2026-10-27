@@ -1,3 +1,4 @@
+import type { NamedRulePick } from "./named-rule-picker";
 import type { LiveMeta } from "./resolve-schema";
 import {
   buildMatcherBlockData,
@@ -28,6 +29,15 @@ export interface VariantMatcherOps {
     wrapperValue: Record<string, unknown>,
     variantIndex: number,
     blockKey: string,
+  ) => Promise<void>;
+  /**
+   * Name a test or campaign in the variant's rule (creating it when new), in
+   * one guarded save with the whole block.
+   */
+  selectNamedRule?: (
+    wrapperValue: Record<string, unknown>,
+    variantIndex: number,
+    pick: NamedRulePick,
   ) => Promise<void>;
 }
 

@@ -110,7 +110,7 @@ export function SecretField({
   );
 }
 
-export type StoredSecretState = "none" | "encrypted" | "plaintext";
+type StoredSecretState = "none" | "encrypted" | "plaintext";
 
 function storedSecretState(encrypted: unknown): StoredSecretState {
   if (encrypted === undefined || encrypted === null || encrypted === "") {
@@ -124,7 +124,7 @@ function storedSecretState(encrypted: unknown): StoredSecretState {
  * button, and emits nothing but the site's hex. A failed encryption emits
  * nothing, so the pending secret can't reach the autosave.
  */
-export function EncryptedSecretInput({
+function EncryptedSecretInput({
   id,
   stored,
   encrypt,
@@ -192,7 +192,7 @@ export function EncryptedSecretInput({
         <Button
           type="button"
           variant="outline"
-          className="h-10"
+          size="lg"
           disabled={!draft || status === "encrypting"}
           onClick={() => void commit()}
         >

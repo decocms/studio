@@ -39,6 +39,12 @@ export function BreadcrumbProvider({ children }: { children: ReactNode }) {
   return <BreadcrumbContext value={store}>{children}</BreadcrumbContext>;
 }
 
+/** For a page hosted inside another: its `Page.Title` renders in place
+ *  instead of renaming the host's crumb. */
+export function DetachedBreadcrumbs({ children }: { children: ReactNode }) {
+  return <BreadcrumbContext value={null}>{children}</BreadcrumbContext>;
+}
+
 export function useBreadcrumbStore() {
   return use(BreadcrumbContext);
 }

@@ -63,6 +63,20 @@ function isHeaderSafe(value: string): boolean {
 }
 
 /**
+ * Build the Authorization header value for a connection's user-supplied
+ * token. Most MCP servers expect a Bearer token, but some (e.g. PagerDuty's
+ * API-key auth, which requires `Token token=<key>`) need a different scheme.
+ * If the token already looks like a full "<scheme> <value>" pair, send it
+ * verbatim; otherwise default to Bearer for backward compatibility. Only
+ * applies to `connection.connection_token` (the free-text field users paste
+ * into) — an OAuth-minted access token is always sent as Bearer.
+ */
+export function buildAuthorizationHeaderValue(token: string): string {
+  const trimmed = token.trim();
+  return /\s/.test(trimmed) ? trimmed : `Bearer ${trimmed}`;
+}
+
+/**
  * Serialize run metadata for the outbound run-metadata header, dropping it
  * (rather than truncating, which would produce invalid JSON) when it's too
  * large, or unsafe, to forward as a header.
@@ -248,6 +262,7 @@ async function _buildRequestHeaders(
   // Try to get cached token from downstream_tokens first
   // This supports OAuth token refresh for connections that use OAuth
   let accessToken: string | null = null;
+  let accessTokenIsRawConnectionToken = false;
 
   const repoScope = getRepoScope(connection);
   const useLegacyRepoMint = !!repoScope?.sourceConnectionId;
@@ -284,11 +299,14 @@ async function _buildRequestHeaders(
   // Fall back to connection token if no cached token
   if (!accessToken && connection.connection_token) {
     accessToken = connection.connection_token;
+    accessTokenIsRawConnectionToken = true;
   }
 
   // Add authorization header if we have a token
   if (accessToken) {
-    headers["Authorization"] = `Bearer ${accessToken}`;
+    headers["Authorization"] = accessTokenIsRawConnectionToken
+      ? buildAuthorizationHeaderValue(accessToken)
+      : `Bearer ${accessToken}`;
   }
 
   // Add configuration token if issued

@@ -13,6 +13,7 @@ import { isSeoEnabled, unwrapSeoConfig } from "./seo-lazy-render";
 import { PageSeoForm } from "./page-seo-form";
 import { defaultPageSeoResolveType } from "./seo-schema";
 import { activeSeoResolveType, useSeoFormSave } from "./seo-save";
+import { copyScope, useCopyEpochs } from "./held-copy";
 import { SeoPreview } from "./seo-preview";
 import { isProtocolProject } from "./content-backend";
 import { useContentBackend } from "./use-content-backend";
@@ -64,21 +65,31 @@ export function SeoEditor({
   const [rawSeoOverride, setRawSeoOverride] = useState<
     Record<string, unknown> | null | undefined
   >(undefined);
-  if (prevTargetId !== targetId) {
-    setPrevTargetId(targetId);
-    setFormValue(null);
-    setRawSeoOverride(undefined);
-    setFormResetKey((k) => k + 1);
-  }
-
-  const { persistSeo, persistRawSeo, flush, isPending } = useSeoFormSave({
+  const { persistSeo, persistRawSeo, flush, isPending, hold } = useSeoFormSave({
     orgSlug,
     virtualMcpId,
     branch,
     target,
     resolved,
+    meta,
     onSaved,
   });
+  // A reconcile replaced the copy the form shows (hosted v8): it shows the
+  // draft's again, as when another target opens.
+  const copyEpoch = useCopyEpochs(copyScope({ orgSlug, virtualMcpId, branch }))(
+    resolved?.blockKey ?? "",
+  );
+  const [prevCopyEpoch, setPrevCopyEpoch] = useState(copyEpoch);
+  if (prevTargetId !== targetId || prevCopyEpoch !== copyEpoch) {
+    // The form is seeded from the draft's copy now (an edit still pending
+    // keeps the copy it was made on).
+    if (resolved) hold(resolved.blockKey);
+    setPrevTargetId(targetId);
+    setPrevCopyEpoch(copyEpoch);
+    setFormValue(null);
+    setRawSeoOverride(undefined);
+    setFormResetKey((k) => k + 1);
+  }
 
   const isPageTarget = target.kind === "page";
   const savedRawSeo = isPageTarget ? resolved?.rawSeoData : undefined;

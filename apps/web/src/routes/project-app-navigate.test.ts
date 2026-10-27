@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import type { ContentBlock } from "@modelcontextprotocol/sdk/types.js";
-import { resolveAppNavigateTarget } from "@/routes/project-app-navigate.ts";
+import {
+  parseAppArgs,
+  resolveAppArgs,
+  resolveAppNavigateTarget,
+} from "@/routes/project-app-navigate.ts";
 
 function navigateBlock(uri: string): ContentBlock[] {
   return [{ type: "resource_link", name: "navigate", uri }];
@@ -159,5 +163,49 @@ describe("resolveAppNavigateTarget", () => {
         { type: "text", text: "extra" },
       ]),
     ).toEqual({ isNavigate: false });
+  });
+});
+
+function argsBlock(args: string) {
+  return navigateBlock(`studio://navigate?args=${encodeURIComponent(args)}`);
+}
+
+describe("resolveAppArgs", () => {
+  test("returns the args of a navigate message carrying a JSON object", () => {
+    expect(resolveAppArgs(argsBlock('{"view":"list","q":"x"}'))).toBe(
+      '{"view":"list","q":"x"}',
+    );
+  });
+
+  test("ignores args that are not a JSON object", () => {
+    expect(resolveAppArgs(argsBlock("[1,2]"))).toBeNull();
+    expect(resolveAppArgs(argsBlock('"text"'))).toBeNull();
+    expect(resolveAppArgs(argsBlock("{oops"))).toBeNull();
+    expect(resolveAppArgs(argsBlock(""))).toBeNull();
+  });
+
+  test("ignores oversized args", () => {
+    expect(
+      resolveAppArgs(argsBlock(JSON.stringify({ q: "x".repeat(2000) }))),
+    ).toBeNull();
+  });
+
+  test("ignores messages that are not an args navigate", () => {
+    expect(
+      resolveAppArgs(navigateBlock("studio://navigate?main=board")),
+    ).toBeNull();
+    expect(resolveAppArgs([{ type: "text", text: "hi" }])).toBeNull();
+  });
+});
+
+describe("parseAppArgs", () => {
+  test("parses a JSON object and rejects anything else", () => {
+    expect(parseAppArgs('{"page":2}')).toEqual({ page: 2 });
+    expect(parseAppArgs("[]")).toBeUndefined();
+    expect(parseAppArgs("nope")).toBeUndefined();
+    expect(parseAppArgs(undefined)).toBeUndefined();
+    expect(
+      parseAppArgs(JSON.stringify({ q: "x".repeat(2000) })),
+    ).toBeUndefined();
   });
 });

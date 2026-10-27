@@ -6,7 +6,7 @@
  * pushes with git. The header shows a "Changes" button while connected.
  */
 
-import { Button } from "@decocms/ui/components/button.tsx";
+import { Button, buttonVariants } from "@decocms/ui/components/button.tsx";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -178,7 +178,7 @@ function LocalChangesFrame({
       body={body}
       footer={
         <>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             <RichCode text={t("decoServe.changes.hint")} />
           </p>
           <Button
@@ -211,7 +211,11 @@ function LocalChangesContent({
   onClose: () => void;
 }) {
   const t = useT();
-  const state = useContentPublishState({ backend, cacheKey });
+  const state = useContentPublishState({
+    backend,
+    cacheKey,
+    scope: { orgSlug, virtualMcpId, branch },
+  });
   const discard = useContentDiscard({
     orgSlug,
     virtualMcpId,
@@ -242,7 +246,7 @@ function LocalChangesContent({
   const renderGroup = (label: string, group: typeof changes) =>
     group.length === 0 ? null : (
       <div className="space-y-1.5">
-        <div className="px-0.5 text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
+        <div className="px-0.5 text-2xs font-medium text-muted-foreground">
           {label}
         </div>
         {group.map((change) => {
@@ -252,6 +256,7 @@ function LocalChangesContent({
               key={id}
               change={change}
               bodyPending={state.sidesPending}
+              v8
               selected={selected !== null && changeId(selected) === id}
               onSelect={() => setActiveId(id)}
               confirming={confirmingId === id}
@@ -283,7 +288,7 @@ function LocalChangesContent({
       <>
         <button
           type="button"
-          className="ml-auto shrink-0 text-[11px] text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50"
+          className="ml-auto shrink-0 text-2xs text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50"
           onClick={() => setDiscardAllConfirm(true)}
           disabled={isDiscarding}
         >
@@ -315,7 +320,7 @@ function LocalChangesContent({
                   )
                 }
                 disabled={isDiscarding}
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                className={cn(buttonVariants({ variant: "destructive" }))}
               >
                 {t("thread.publishPopover.discardAll")}
               </AlertDialogAction>
@@ -336,7 +341,7 @@ function LocalChangesContent({
         {renderGroup(t("thread.publishPopover.pagesGroup"), summary.pages)}
         {renderGroup(t("thread.publishPopover.blocksGroup"), summary.blocks)}
         {state.sidesFailed ? (
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             {t("thread.publishPopover.detailsUnavailable")}
           </p>
         ) : null}

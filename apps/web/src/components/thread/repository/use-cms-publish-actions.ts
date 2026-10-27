@@ -44,6 +44,7 @@ import { discardGitFiles } from "./sandbox-git-api.ts";
 import {
   HostedPublishError,
   type HostedPublishResult,
+  keptDraftOf,
   publishHostedDraft,
   retryRelease,
 } from "./hosted-publish-api.ts";
@@ -99,8 +100,12 @@ interface CmsPublishActions {
   publishError: string | undefined;
   /** The developer detail behind `publishError`, for a Details disclosure. */
   publishErrorDetail: string | null;
-  /** Publish or submit for review, per mode — the button never branches. */
-  submit: () => Promise<void>;
+  /**
+   * Publish or submit for review, per mode — the button never branches. A
+   * hosted Publish resolves whether it published (the dialog closes) or
+   * failed (it stays, saying why).
+   */
+  submit: () => Promise<boolean | void>;
   discardChange: (change: PublishChange) => Promise<void>;
   discardAll: () => Promise<void>;
 }
@@ -220,28 +225,35 @@ export function useCmsPublishActions(
     branch: target.branch,
   });
 
-  /** "Try again": release the saved changes (main's head), same toast. */
-  const retryPublish = async () => {
+  /**
+   * "Try again": release the saved changes (main's head), same toast. The
+   * draft Publish kept is emptied once they are live.
+   */
+  const retryPublish = async (
+    keptDraft: { branch: string; draftEtag: string } | null,
+  ) => {
     try {
       await runContentChange(content, {
         kind: "publish",
+        reread: !!keptDraft,
         refreshOnError: true,
-        write: () => retryRelease(target),
+        write: () => retryRelease(target, keptDraft),
       });
       toastPublished(t);
     } catch (error) {
-      notifySavedNotPublished(t, error, () => void retryPublish());
+      notifySavedNotPublished(t, error, () => void retryPublish(keptDraft));
     }
   };
 
   /** Saved on main is done: the popover closes with one toast. */
   const settleHosted = async (result: HostedPublishResult) => {
-    notifyHostedPublish(t, result, () => void retryPublish());
+    const keptDraft = keptDraftOf(result, target.branch);
+    notifyHostedPublish(t, result, () => void retryPublish(keptDraft));
     onOpenChange(false);
     await quietly(onPublished);
   };
 
-  const publishHosted = async () => {
+  const publishHosted = async (): Promise<boolean> => {
     publishLockRef.current = true;
     setIsPublishing(true);
     setPublishError(undefined);
@@ -256,6 +268,7 @@ export function useCmsPublishActions(
         write: () => publishHostedDraft(target, noteParts().message),
       });
       await settleHosted(result);
+      return true;
     } catch (error) {
       // Main is no longer v8: the editor goes back to waiting and decides
       // again on main's new answer.
@@ -268,6 +281,7 @@ export function useCmsPublishActions(
       const failure = hostedPublishFailure(t, error);
       setPublishError(failure.message);
       setPublishErrorDetail(failure.detail);
+      return false;
     } finally {
       publishLockRef.current = false;
       setIsPublishing(false);

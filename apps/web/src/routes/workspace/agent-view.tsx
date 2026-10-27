@@ -10,6 +10,7 @@ const route = getRouteApi(
 
 function AgentViewContent() {
   const { agentId, viewId } = route.useParams();
+  const { args } = route.useSearch();
   const agent = useVirtualMCP(agentId);
   const tab = agent?.metadata?.ui?.layout?.tabs?.find(
     (tab) => tab.id === viewId,
@@ -20,6 +21,7 @@ function AgentViewContent() {
       connectionId={tab.view.appId}
       toolName={tab.id}
       args={tab.view.args}
+      searchArgs={args}
     />
   ) : (
     <SettingsTab virtualMcpId={agentId} />

@@ -1,3 +1,7 @@
+import {
+  copyScope,
+  useCopyEpochs,
+} from "@/components/sections-editor/held-copy";
 /**
  * Autonomous content: Generate, Themes and Library behind one collection row.
  * Library holds the brand, the writing rules and the post formats, each persisted to the site's own `.deco/blocks/blog-manager-*.json` as plain JSON. The brand and the writing rules are two blocks behind one seamless screen, and the fill button runs both passes.
@@ -138,13 +142,48 @@ function starterFormat(
  * the site's own `.deco/blocks/`. Replaces the old "Autonomous content" shell;
  * generation lives on the Posts board.
  */
-export function BlogContext({
+export function BlogContext(props: {
+  orgSlug: string;
+  virtualMcpId: string;
+  branch: string;
+  decofile: Record<string, unknown>;
+  meta: LiveMeta;
+}) {
+  const [tab, setTab] = useState<ContextTab>("brand");
+  const [section, setSection] = useState<ContextSection>("basics");
+  // The forms keep their own copies (hosted v8): a reconcile that replaced
+  // one shows the draft's again, on the same tab.
+  const epochOf = useCopyEpochs(copyScope(props));
+  const epochs = [BRAND_BLOCK_KEY, CONTEXT_BLOCK_KEY, FORMATS_BLOCK_KEY]
+    .map(epochOf)
+    .join(":");
+  return (
+    <BlogContextForm
+      key={epochs}
+      {...props}
+      tab={tab}
+      setTab={setTab}
+      section={section}
+      setSection={setSection}
+    />
+  );
+}
+
+function BlogContextForm({
   orgSlug,
   virtualMcpId,
   branch,
   decofile,
   meta,
+  tab,
+  setTab,
+  section,
+  setSection,
 }: {
+  tab: ContextTab;
+  setTab: (tab: ContextTab) => void;
+  section: ContextSection;
+  setSection: (section: ContextSection) => void;
   orgSlug: string;
   virtualMcpId: string;
   branch: string;
@@ -155,7 +194,11 @@ export function BlogContext({
   const storedContext = asBlock(decofile[CONTEXT_BLOCK_KEY]);
   const t = useT();
   const studio = useStudioTools();
-  const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
+  // The forms keep their own copies: hosted saves are guarded by them.
+  const save = useSaveBlock(
+    { orgSlug, virtualMcpId, branch },
+    { holdsCopy: true },
+  );
   /** Every button here spends org credits, so none of them work without a provider. */
   const hasAi = useHostedAiProviderKeys().length > 0;
   const hideDefaultBlocks = useHideDefaultBlogBlocks();
@@ -167,12 +210,16 @@ export function BlogContext({
    * the fields the block owns happens on the way out instead, which is also
    * what makes a legacy brand block shed the rules it no longer owns.
    */
-  const [brand, setBrand] = useAutosave(storedBrand, (next) => {
-    save.mutate({
-      blockKey: BRAND_BLOCK_KEY,
-      data: brandBlockToSave(next, storedBrand, decofile[CONTEXT_BLOCK_KEY]),
-    });
-  });
+  const [brand, setBrand] = useAutosave(
+    storedBrand,
+    (next) => {
+      save.mutate({
+        blockKey: BRAND_BLOCK_KEY,
+        data: brandBlockToSave(next, storedBrand, decofile[CONTEXT_BLOCK_KEY]),
+      });
+    },
+    { onSeed: () => save.hold(BRAND_BLOCK_KEY) },
+  );
 
   /**
    * The writing rules. Before the split they lived in the brand block, so that
@@ -186,6 +233,7 @@ export function BlogContext({
         data: pickBlogFields(next, CONTEXT_FIELDS),
       });
     },
+    { onSeed: () => save.hold(CONTEXT_BLOCK_KEY) },
   );
 
   const setField = (key: string, value: unknown) =>
@@ -200,6 +248,7 @@ export function BlogContext({
   const [formatsData, setFormatsData] = useAutosave(
     formatsBlock ?? EMPTY_FORMATS,
     (next) => save.mutate({ blockKey: FORMATS_BLOCK_KEY, data: next }),
+    { onSeed: () => save.hold(FORMATS_BLOCK_KEY) },
   );
   const formats = normalizeBrandRules(formatsData.formats);
   const setFormats = (rules: BrandRule[]) =>
@@ -235,8 +284,6 @@ export function BlogContext({
   const [phase, setPhase] = useState<ExtractPhase>(PHASE_READING);
   /** Bumped to remount the markdown editors: they read `defaultValue` once. */
   const [editorRevision, setEditorRevision] = useState(0);
-  const [tab, setTab] = useState<ContextTab>("brand");
-  const [section, setSection] = useState<ContextSection>("basics");
 
   /** The site's own content, ranked by how much it reveals about the voice. */
   const evidence = selectBrandEvidence(decofile, extractPages(decofile));
@@ -805,7 +852,7 @@ export function BlogContext({
                         setFillOpen(false);
                         void extract(option.mode);
                       }}
-                      className="cursor-pointer rounded-lg border p-3 text-left transition-colors hover:bg-muted/50"
+                      className="cursor-pointer rounded-lg border p-3 text-left transition-colors hover:bg-accent"
                     >
                       <span className="text-sm font-medium">
                         {t(option.label)}
@@ -959,7 +1006,7 @@ export function BlogContext({
           </div>
         ) : (
           <div className="grid grid-cols-[240px_1fr] gap-8 px-8 py-6">
-            <nav className="sticky top-0 h-fit space-y-0.5 rounded-xl border bg-card p-1.5">
+            <nav className="sticky top-0 h-fit space-y-0.5 surface p-1.5">
               {CONTEXT_SECTIONS.map((entry) => (
                 <button
                   key={entry.id}
@@ -969,7 +1016,7 @@ export function BlogContext({
                     "w-full rounded-lg px-2.5 py-2 text-left text-sm transition-colors cursor-pointer",
                     section === entry.id
                       ? "bg-muted font-medium text-foreground"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                      : "text-muted-foreground hover:bg-accent hover:text-foreground",
                   )}
                 >
                   {t(entry.label)}

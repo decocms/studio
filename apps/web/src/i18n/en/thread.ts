@@ -62,6 +62,9 @@ export const thread = {
   "thread.cmsActions.getLatest": "Get latest",
   "thread.cmsActions.getLatestTooltip": "Bring in new changes from production",
   "thread.cmsActions.moreActionsAriaLabel": "More actions",
+  "thread.cmsActions.notLive": "Not live yet",
+  "thread.cmsActions.notLiveTooltip":
+    "Your last changes are saved but not live yet. Publish to make them live.",
   "thread.cmsActions.publishing": "Publishing…",
   "thread.cmsActions.gettingLatest": "Getting latest…",
   "thread.cmsActions.retry": "Retry",
@@ -165,7 +168,35 @@ export const thread = {
   "thread.publishPopover.chipRemoved": "Removed",
   "thread.publishPopover.emptyHint": "Your latest changes are already live.",
   "thread.publishPopover.everythingLive": "Everything is published",
+  "thread.publishPopover.notLive": "Not live yet",
+  "thread.publishPopover.notLiveBody":
+    "Your last changes are saved but not live yet.",
+  "thread.publishPopover.notLiveHint": "Publish to make them live.",
+  "thread.publishPopover.abTests": "A/B tests",
+  "thread.publishPopover.campaignDates": "Campaign dates",
   "thread.publishPopover.globalSection": "Global section",
+  "thread.publishPopover.alsoChangedOnMain":
+    "Your developer also changed {name}. Publishing keeps your version.",
+  "thread.publishPopover.missingTest":
+    "Uses a test that isn't in your A/B tests",
+  "thread.publishPopover.missingCampaign":
+    "Uses a campaign that isn't in your campaigns",
+  "thread.publishPopover.missingTestUsesOne":
+    "{places} uses a test that isn't in your A/B tests",
+  "thread.publishPopover.missingTestsUsesOne":
+    "{places} uses tests that aren't in your A/B tests",
+  "thread.publishPopover.missingTestUses":
+    "{places} use a test that isn't in your A/B tests",
+  "thread.publishPopover.missingTestsUses":
+    "{places} use tests that aren't in your A/B tests",
+  "thread.publishPopover.missingCampaignUsesOne":
+    "{places} uses a campaign that isn't in your campaigns",
+  "thread.publishPopover.missingCampaignsUsesOne":
+    "{places} uses campaigns that aren't in your campaigns",
+  "thread.publishPopover.missingCampaignUses":
+    "{places} use a campaign that isn't in your campaigns",
+  "thread.publishPopover.missingCampaignsUses":
+    "{places} use campaigns that aren't in your campaigns",
   "thread.publishPopover.lastPublished": "Last published {when}",
   "thread.publishPopover.lastPublishedBy": "Last published {when} by {name}",
   "thread.publishPopover.needsReviewGeneric":
@@ -228,6 +259,10 @@ export const thread = {
   "thread.publishCompare.enterPath": "Type a page address to compare.",
   "thread.publishCompare.draftUnavailable":
     "Your changes can't be shown yet. Use Preview to open them.",
+  "thread.publishCompare.previewNotReadyTitle": "Preview not ready yet",
+  "thread.publishCompare.noPreviewTitle": "Nothing to preview",
+  "thread.publishCompare.noPreviewDescription":
+    "This change doesn't show on a page. It's published together with the others.",
   "thread.publishCompare.newTitle": "New page",
   "thread.publishCompare.newDescription":
     "This page isn't on the live site yet.",

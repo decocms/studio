@@ -145,8 +145,31 @@ export function comparePageUrl(
 /** Where the unpublished side renders: Fast Preview's `?__draft=` pointer on
  *  the live site, or a coding session's sandbox dev server. */
 export type CompareDraft =
-  | { kind: "pointer"; pointer: string }
+  | {
+      kind: "pointer";
+      pointer: string;
+      /**
+       * The `__draft` the "Open draft" link sends (a hosted draft: the preview
+       * frame's, with its forced variants and "Preview as" options); the
+       * pointer when absent. The compare's panes render the bare pointer.
+       */
+      link?: string;
+    }
   | { kind: "sandbox"; previewUrl: string };
+
+/**
+ * The "Open draft" link for `url`: what {@link compareDraftUrl} renders, with
+ * a pointer draft's `link` value when it has one.
+ */
+export function compareDraftLink(
+  url: URL,
+  draft: CompareDraft | null,
+): string | null {
+  if (draft?.kind === "pointer" && draft.link) {
+    return withDraftPointer(url.toString(), draft.link);
+  }
+  return compareDraftUrl(url, draft);
+}
 
 /** The live-site `url` rendered with the unpublished changes, or null without a draft. */
 export function compareDraftUrl(
@@ -172,4 +195,23 @@ export function canRenderCompare(
 ): boolean {
   if (previewServerUrl === null) return false;
   return kind !== "other" || draft?.kind === "sandbox";
+}
+
+/**
+ * What stands in for a side that has no page to render: a new page has no
+ * "before" and a removed page no "after". On a Blocks v8 site (`v8`), only a
+ * page: a new or removed block (a saved section, the A/B tests, the
+ * campaigns) or code file changes a page that is there on both sides, so both
+ * sides render it. On v7, any new or removed change but a code file, as
+ * before (a new code file says nothing about whether the page existed).
+ */
+export function comparePlaceholder(
+  change: Pick<PublishChange, "kind" | "status">,
+  v8: boolean,
+): { before: "new" | null; after: "removed" | null } {
+  const page = v8 ? change.kind === "page" : change.kind !== "other";
+  return {
+    before: page && change.status === "new" ? "new" : null,
+    after: page && change.status === "removed" ? "removed" : null,
+  };
 }

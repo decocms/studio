@@ -15,9 +15,12 @@ export async function assertExperimentsV2(
   organizationId: string,
 ): Promise<void> {
   const settings = await ctx.storage.organizationSettings.get(organizationId);
-  if (!orgFlagEnabled(settings?.flags, "experiments_v2_enabled")) {
+  if (
+    !orgFlagEnabled(settings?.flags, "experiments_enabled") ||
+    !orgFlagEnabled(settings?.flags, "experiments_v2_enabled")
+  ) {
     throw new ForbiddenError(
-      "The rebuilt Experiments tools need the `experiments_v2_enabled` organization flag",
+      "The rebuilt Experiments tools need both `experiments_enabled` and `experiments_v2_enabled` organization flags",
     );
   }
 }

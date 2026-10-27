@@ -55,6 +55,176 @@ export const sectionsEditor = {
   "sectionsEditor.formatMatcher.dateRange": "De {start} até {end}",
   "sectionsEditor.formatMatcher.fromDate": "A partir de {date}",
   "sectionsEditor.formatMatcher.untilDate": "Termina em {date}",
+  "sectionsEditor.formatMatcher.experiment": "Teste A/B",
+  "sectionsEditor.formatMatcher.experimentNamed": "Teste A/B: {name}",
+  "sectionsEditor.formatMatcher.experimentShare":
+    "Teste A/B: {name} ({share}%)",
+  "sectionsEditor.formatMatcher.campaign": "Campanha",
+  "sectionsEditor.formatMatcher.campaignNamed": "Campanha: {name}",
+  "sectionsEditor.formatMatcher.campaignWindow": "Campanha: {name} ({window})",
+  "sectionsEditor.formatMatcher.windowRange": "{start} – {end}",
+  "sectionsEditor.formatMatcher.windowFrom": "a partir de {date}",
+  "sectionsEditor.formatMatcher.windowUntil": "até {date}",
+  "sectionsEditor.namedRulePicker.abTestTitle": "Teste A/B",
+  "sectionsEditor.namedRulePicker.abTestDescription":
+    "Mostre esta variante para uma parte dos visitantes",
+  "sectionsEditor.namedRulePicker.campaignTitle": "Campanha",
+  "sectionsEditor.namedRulePicker.campaignDescription":
+    "Mostre esta variante enquanto uma campanha estiver no ar",
+  "sectionsEditor.namedRulePicker.back": "Todas as regras",
+  "sectionsEditor.namedRulePicker.searchTests":
+    "Busque seus testes ou digite um nome novo…",
+  "sectionsEditor.namedRulePicker.searchCampaigns":
+    "Busque suas campanhas ou digite um nome novo…",
+  "sectionsEditor.namedRulePicker.testsHeading": "Seus testes A/B",
+  "sectionsEditor.namedRulePicker.campaignsHeading": "Suas campanhas",
+  "sectionsEditor.namedRulePicker.noTests":
+    "Nenhum teste ainda. Digite um nome para criar um.",
+  "sectionsEditor.namedRulePicker.noCampaigns":
+    "Nenhuma campanha ainda. Digite um nome para criar uma.",
+  "sectionsEditor.namedRulePicker.createTest": "Criar teste “{name}”",
+  "sectionsEditor.namedRulePicker.createCampaign": "Criar campanha “{name}”",
+  "sectionsEditor.namedRulePicker.shareOfVisitors": "{share}% dos visitantes",
+  "sectionsEditor.namedRulePicker.alwaysRunning": "Sem datas: sempre no ar",
+  "sectionsEditor.namedRulePicker.conflictTests":
+    "Seu site tem um bloco chamado “experiments” que não é uma lista de testes A/B, então ainda não dá para adicionar testes. Renomeie esse bloco e volte aqui.",
+  "sectionsEditor.namedRulePicker.conflictCampaigns":
+    "Seu site tem um bloco chamado “campaigns” que não é uma lista de campanhas, então ainda não dá para adicionar campanhas. Renomeie esse bloco e volte aqui.",
+  "sectionsEditor.namedRulePicker.newTestTitle": "Novo teste A/B",
+  "sectionsEditor.namedRulePicker.newCampaignTitle": "Nova campanha",
+  "sectionsEditor.namedRulePicker.shareHint":
+    "0 deixa o teste desligado, 100 mostra para todos. Você pode mudar depois em Experimentos.",
+  "sectionsEditor.namedRulePicker.createAndUse": "Criar e usar",
+  "sectionsEditor.namedRulePicker.cancel": "Voltar",
+  "sectionsEditor.namedRulePicker.cancelCreate": "Cancelar",
+  "sectionsEditor.namedRulePicker.createdTest": "Teste “{name}” adicionado",
+  "sectionsEditor.namedRulePicker.createdCampaign":
+    "Campanha “{name}” adicionada",
+  "sectionsEditor.namedRulePicker.createdHint":
+    "Está salvo no seu rascunho e vai ao ar quando você publicar.",
+  "sectionsEditor.namedRulePicker.openExperiments": "Abrir Experimentos",
+  "sectionsEditor.namedRulePicker.openCalendar": "Abrir Calendário",
+  "sectionsEditor.namedRulePicker.testRowHint":
+    "Para mudar quem vê, abra Experimentos.",
+  "sectionsEditor.namedRulePicker.campaignRowHint":
+    "Para mudar as datas, abra o Calendário.",
+  "sectionsEditor.namedRulePicker.missingTest":
+    "Este teste não está nos seus testes A/B. Escolha outro, crie-o ou remova esta variante.",
+  "sectionsEditor.namedRulePicker.missingCampaign":
+    "Esta campanha não está nas suas campanhas. Escolha outra, crie-a ou remova esta variante.",
+  "sectionsEditor.namedRulePicker.missingTestNoCreate":
+    "Este teste não está nos seus testes A/B. Escolha outro ou remova esta variante.",
+  "sectionsEditor.namedRulePicker.missingCampaignNoCreate":
+    "Esta campanha não está nas suas campanhas. Escolha outra ou remova esta variante.",
+  "sectionsEditor.namedRulePicker.createMissing": "Criar",
+  "sectionsEditor.namedRulePicker.missingTestWithin":
+    "Esta regra usa um teste que não está nos seus testes A/B. Altere a regra ou remova esta variante.",
+  "sectionsEditor.namedRulePicker.missingCampaignWithin":
+    "Esta regra usa uma campanha que não está nas suas campanhas. Altere a regra ou remova esta variante.",
+  "sectionsEditor.namedRulePicker.inlineDate":
+    "Estas datas ainda não são uma campanha, então esta variante não aparece. Escolha Campanha acima para usar uma campanha ou criar uma com estas datas.",
+  "sectionsEditor.namedRulePicker.fieldTests": "Seus testes A/B",
+  "sectionsEditor.namedRulePicker.fieldTestsHint":
+    "A seção recebe cada teste como ligado ou desligado para o visitante.",
+  "sectionsEditor.namedRulePicker.fieldCampaigns": "Suas campanhas",
+  "sectionsEditor.namedRulePicker.fieldCampaignsHint":
+    "A seção recebe cada campanha como no ar ou não.",
+  "sectionsEditor.namedRulePicker.fieldNone": "Nada",
+  "sectionsEditor.namedRulePicker.fieldPlaceholder":
+    "Escolha o que este campo lê",
+  "sectionsEditor.namedRuleUses.title": "Usado em",
+  "sectionsEditor.namedRuleUses.loading": "Verificando onde é usado…",
+  "sectionsEditor.namedRuleUses.variant": "Variante {index}",
+  "sectionsEditor.namedRuleUses.draftOnly": "Ainda não publicado",
+  "sectionsEditor.namedRuleUses.removed": "Removido no seu rascunho",
+  "sectionsEditor.namedRuleUses.open": "Abrir",
+  "sectionsEditor.namedRuleUses.emptyTests":
+    "Ainda não usado. No editor do site, dê a uma variante a regra “Teste A/B” e escolha este teste.",
+  "sectionsEditor.namedRuleUses.emptyCampaigns":
+    "Ainda não usada. No editor do site, dê a uma variante a regra “Campanha” e escolha esta campanha.",
+  "sectionsEditor.namedRuleUses.wholeTests": "Seções que leem todos os testes",
+  "sectionsEditor.namedRuleUses.wholeTestsHint":
+    "Estas seções decidem no próprio código quais testes consultam.",
+  "sectionsEditor.namedRuleUses.wholeCampaigns":
+    "Seções que leem todas as campanhas",
+  "sectionsEditor.namedRuleUses.wholeCampaignsHint":
+    "Estas seções decidem no próprio código quais campanhas consultam.",
+  "sectionsEditor.namedRuleDelete.stillUsedOne":
+    "{places} ainda usa. Desfazer traz de volta.",
+  "sectionsEditor.namedRuleDelete.stillUsed":
+    "{places} ainda usam. Desfazer traz de volta.",
+  "sectionsEditor.namedRuleUses.countPageOne": "1 página",
+  "sectionsEditor.namedRuleUses.countPages": "{count} páginas",
+  "sectionsEditor.namedRuleUses.countSectionOne": "1 seção",
+  "sectionsEditor.namedRuleUses.countSections": "{count} seções",
+  "sectionsEditor.namedRuleUses.countBoth": "{pages} e {sections}",
+  "sectionsEditor.namedRuleUses.missingTestOne":
+    "Estas páginas e seções usam um teste que não está nos seus testes A/B.",
+  "sectionsEditor.namedRuleUses.missingTests":
+    "Estas páginas e seções usam testes que não estão nos seus testes A/B.",
+  "sectionsEditor.namedRuleUses.missingCampaignOne":
+    "Estas páginas e seções usam uma campanha que não está nas suas campanhas.",
+  "sectionsEditor.namedRuleUses.missingCampaigns":
+    "Estas páginas e seções usam campanhas que não estão nas suas campanhas.",
+  "sectionsEditor.namedRules.changedMeanwhile":
+    "Isto mudou enquanto você editava",
+  "sectionsEditor.namedRules.changedMeanwhileHint":
+    "Carregamos a versão mais recente. Confira e faça sua alteração de novo.",
+  "sectionsEditor.namedRules.unavailable": "Não foi possível salvar agora",
+  "sectionsEditor.namedRules.unavailableHint":
+    "O conteúdo do site não está acessível no momento. Nada foi alterado; tente de novo em instantes.",
+  "sectionsEditor.namedRules.alreadyBack": "Já está de volta",
+  "sectionsEditor.namedRules.alreadyBackHint":
+    "Nada a desfazer: esse nome já está no seu rascunho de novo.",
+  "sectionsEditor.namedRules.nameLabel": "Nome",
+  "sectionsEditor.namedRules.nameEmpty": "Dê um nome.",
+  "sectionsEditor.namedRules.nameTaken": "Esse nome já está em uso.",
+  "sectionsEditor.namedRules.nameTakenPick":
+    "Esse nome já está em uso. Escolha-o na lista.",
+  "sectionsEditor.namedRules.nameReserved":
+    "Nomes não podem começar com dois sublinhados.",
+  "sectionsEditor.namedRules.startLabel": "Começa",
+  "sectionsEditor.namedRules.endLabel": "Termina",
+  "sectionsEditor.namedRules.windowHint":
+    "Deixe uma data vazia para manter aquele lado aberto. Os horários estão no fuso do seu computador.",
+  "sectionsEditor.namedRules.endBeforeStart":
+    "O fim precisa ser depois do início.",
+  "sectionsEditor.namedRules.rename": "Renomear",
+  "sectionsEditor.namedRules.saved": "Salvo no seu rascunho",
+  "sectionsEditor.namedRules.savedHint": "Vai ao ar quando você publicar.",
+  "sectionsEditor.deletedConflict.theyDeletedTitle":
+    '"{name}" foi excluído enquanto você editava',
+  "sectionsEditor.deletedConflict.theyDeletedDescription":
+    "Mantenha sua versão para trazê-lo de volta com suas alterações, ou deixe-o excluído. Nada vai ao ar até você publicar.",
+  "sectionsEditor.deletedConflict.youDeletedTitle":
+    '"{name}" foi alterado enquanto você o excluía',
+  "sectionsEditor.deletedConflict.youDeletedDescription":
+    "Exclua mesmo assim, ou mantenha a versão da outra pessoa. Nada vai ao ar até você publicar.",
+  "sectionsEditor.deletedConflict.keepMine": "Manter minha versão",
+  "sectionsEditor.deletedConflict.leaveDeleted": "Deixar excluído",
+  "sectionsEditor.deletedConflict.deleteAnyway": "Excluir mesmo assim",
+  "sectionsEditor.deletedConflict.keepTheirs":
+    "Manter a versão da outra pessoa",
+  "sectionsEditor.reconcile.keptTheirs": "Mantivemos a versão da outra pessoa",
+  "sectionsEditor.reconcile.leftDeleted": "Ficou excluído",
+  "sectionsEditor.reconcile.keptTheirsHint":
+    "Sua alteração não foi salva. Você pode fazê-la de novo quando quiser.",
+  "sectionsEditor.reconcile.leftDeletedHint":
+    "Sua alteração não foi salva. Para trazer de volta, descarte a exclusão em Publicar. Nada vai ao ar até você publicar.",
+  "sectionsEditor.reconcile.leftDeletedNeverPublishedHint":
+    "Sua alteração não foi salva. Isto nunca foi publicado, então nada muda no site no ar.",
+  "sectionsEditor.blogKind.post": "Post",
+  "sectionsEditor.blogKind.category": "Categoria",
+  "sectionsEditor.blogKind.author": "Autor",
+  "sectionsEditor.reconcile.deletedTitle": "Isto foi excluído",
+  "sectionsEditor.reconcile.deletedNeverPublishedDescription":
+    "Não está mais no seu rascunho, então não há nada para editar aqui. Isto nunca foi publicado, então nada muda no site no ar.",
+  "sectionsEditor.reconcile.deletedDescription":
+    "Não está mais no seu rascunho, então não há nada para editar aqui. Para trazer de volta, descarte a exclusão em Publicar. Nada vai ao ar até você publicar.",
+  "sectionsEditor.namedRules.undo": "Desfazer",
+  "sectionsEditor.namedRules.create": "Criar",
+  "sectionsEditor.namedRules.openEditor": "Abrir o editor do site",
+  "sectionsEditor.namedRules.tryAgain": "Tentar de novo",
   "sectionsEditor.field.missingRequired": "Falta um campo obrigatório",
   "sectionsEditor.field.missingRequiredTooltip":
     "Campo obrigatório não preenchido.",
@@ -211,10 +381,8 @@ export const sectionsEditor = {
     "Os segredos podem ser editados quando o servidor de conteúdo do site responder.",
   "sectionsEditor.secretField.encryptingMessage":
     "Criptografando com a chave do site…",
-  "sectionsEditor.secretField.legacySecretUnavailableMessage":
-    "Este segredo foi salvo por um site Deco mais antigo e não pode ser editado aqui. Ele é recriptografado quando o site migra.",
-  "sectionsEditor.secretField.noPublicKeyMessage":
-    "Adicione a chave pública do site, .deco/secrets.pub, para editar campos secretos. Os valores são criptografados no seu navegador com ela.",
+  "sectionsEditor.secretField.platformSecretMessage":
+    "Os segredos ficam nas configurações de hospedagem do site, onde o código os lê, então não há nada para editar aqui.",
   "sectionsEditor.secretField.pendingMessage":
     "Ainda não salvo. Pressione Enter para criptografar e salvar.",
   "sectionsEditor.secretField.plaintextStoredMessage":
@@ -317,6 +485,8 @@ export const sectionsEditor = {
     "A versão deles mudou de novo enquanto isto estava aberto. Cada etapa já mostra a mais nova.",
   "sectionsEditor.formConflict.you": "Você",
   "sectionsEditor.formConflict.someoneElse": "Outra pessoa",
+  "sectionsEditor.formConflict.theirVersion": "Versão deles",
+  "sectionsEditor.formConflict.alreadySaved": "já salva",
   "sectionsEditor.formConflict.yourVersionNotSaved":
     "Sua versão · ainda não salva",
   "sectionsEditor.formConflict.theirVersionSaved": "Versão deles · já salva",
@@ -328,7 +498,48 @@ export const sectionsEditor = {
     "{name} também mudou o campo “{label}”",
   "sectionsEditor.formConflict.titleStepYou":
     "Você também mudou o campo “{label}” em outra aba ou janela",
+  "sectionsEditor.formConflict.titleOneIn":
+    "Outra pessoa mudou o campo “{label}” de “{block}” enquanto você editava",
+  "sectionsEditor.formConflict.titleOneInNamed":
+    "{name} mudou o campo “{label}” de “{block}” enquanto você editava",
+  "sectionsEditor.formConflict.titleOneInYou":
+    "Você mudou o campo “{label}” de “{block}” em outra aba ou janela",
+  "sectionsEditor.formConflict.titleStepIn":
+    "Outra pessoa também mudou o campo “{label}” de “{block}”",
+  "sectionsEditor.formConflict.titleStepInNamed":
+    "{name} também mudou o campo “{label}” de “{block}”",
+  "sectionsEditor.formConflict.titleStepInYou":
+    "Você também mudou o campo “{label}” de “{block}” em outra aba ou janela",
   "sectionsEditor.formConflict.summaryTheirsNamed": "a de {name}",
+  "sectionsEditor.formConflict.ruleExperiment": "Teste A/B “{name}”",
+  "sectionsEditor.formConflict.ruleExperimentPhrase": "o teste A/B “{name}”",
+  "sectionsEditor.formConflict.ruleCampaign": "Campanha “{name}”",
+  "sectionsEditor.formConflict.ruleCampaignPhrase":
+    "as datas da campanha “{name}”",
+  "sectionsEditor.formConflict.titlePhraseOne":
+    "Outra pessoa mudou {thing} enquanto você editava",
+  "sectionsEditor.formConflict.titlePhraseOneNamed":
+    "{name} mudou {thing} enquanto você editava",
+  "sectionsEditor.formConflict.titlePhraseOneYou":
+    "Você mudou {thing} em outra aba ou janela",
+  "sectionsEditor.formConflict.titlePhraseStep":
+    "Outra pessoa também mudou {thing}",
+  "sectionsEditor.formConflict.titlePhraseStepNamed":
+    "{name} também mudou {thing}",
+  "sectionsEditor.formConflict.titlePhraseStepYou":
+    "Você também mudou {thing} em outra aba ou janela",
+  "sectionsEditor.formConflict.titleOneAnonymous":
+    "O campo “{label}” mudou enquanto você editava",
+  "sectionsEditor.formConflict.titleStepAnonymous":
+    "O campo “{label}” também mudou",
+  "sectionsEditor.formConflict.titleOneInAnonymous":
+    "O campo “{label}” de “{block}” mudou enquanto você editava",
+  "sectionsEditor.formConflict.titleStepInAnonymous":
+    "O campo “{label}” de “{block}” também mudou",
+  "sectionsEditor.formConflict.titlePhraseOneAnonymous":
+    "{label} mudou enquanto você editava",
+  "sectionsEditor.formConflict.titlePhraseStepAnonymous":
+    "{label} também mudou",
   "sectionsEditor.formConflict.youElsewhere": "Você, em outra aba ou janela",
   "sectionsEditor.formConflict.savedAt": "salva {when}",
   "sectionsEditor.formConflict.empty": "Vazio",
@@ -385,6 +596,8 @@ export const sectionsEditor = {
   "sectionsEditor.seoFormChrome.asyncRenderLabel": "Renderização assíncrona",
   "sectionsEditor.seoFormChrome.documentationLinkText": "documentação",
   "sectionsEditor.seoFormChrome.enableLabel": "Ativar SEO",
+  "sectionsEditor.seoFormChrome.noSeoTypeHint":
+    "Este site ainda não tem configurações de SEO para páginas. Quando os desenvolvedores as adicionarem, você poderá ativar o SEO aqui.",
   "sectionsEditor.seoPreview.chatCardHint":
     "Aqui está um post que você poderia escrever com o link do seu site:",
   "sectionsEditor.seoPreview.fallbackDescription":

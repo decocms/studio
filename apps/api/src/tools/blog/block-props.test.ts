@@ -83,6 +83,16 @@ describe("readProps", () => {
     expect(read.props).toBeUndefined();
     expect(read.reason).toBe("props are not an object");
   });
+
+  test("drops the section instead of throwing when the block's own schema is malformed", () => {
+    const broken = {
+      type: "object",
+      properties: { title: { type: "string", pattern: "(" } },
+    };
+    const read = readProps('{"title":"Dica"}', broken);
+    expect(read.props).toBeUndefined();
+    expect(read.reason).toContain("block schema could not be compiled");
+  });
 });
 
 describe("pruneProps", () => {

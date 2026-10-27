@@ -33,6 +33,7 @@ import * as SecretsTools from "./secrets";
 import * as FileConfigTools from "./file-configs";
 import * as InfraBillingTools from "./infra-billing";
 import * as CustomerLakeTools from "./customer-lake";
+import * as SubscriptionUsageTools from "./subscription-usage";
 import { ORG_FS_PUBLIC_SETS_SYNC } from "./org-fs/sync-public-sets";
 import * as OrgRepoSyncTools from "./org-repo-sync";
 import * as JiraTools from "./jira";
@@ -259,6 +260,7 @@ export const CORE_TOOLS = [
   AiProvidersTools.AI_PLAN_INVOICE_UPGRADE,
   CodexSubscriptionTools.CODEX_SUBSCRIPTION_CONNECT,
   CodexSubscriptionTools.CODEX_SUBSCRIPTION_STATUS,
+  SubscriptionUsageTools.SUBSCRIPTION_USAGE_GET,
   CodexSubscriptionTools.CODEX_SUBSCRIPTION_DISCONNECT,
   CodexSubscriptionTools.CODEX_SUBSCRIPTION_SYNC,
   // Claude subscription (per-user OAuth credential for the claude-code harness)
@@ -281,6 +283,7 @@ export const CORE_TOOLS = [
   FileConfigTools.FILE_CONFIG_DELETE,
   FileConfigTools.FILE_OBJECTS_LIST,
   FileConfigTools.FILE_OBJECT_DELETE,
+  FileConfigTools.FILE_OBJECT_UPLOAD,
 
   // Org filesystem (shared public skill sets)
   ORG_FS_PUBLIC_SETS_SYNC,
@@ -338,6 +341,7 @@ export const CORE_TOOLS = [
   GitTools.REPOSITORY_LINK,
   GitTools.REPOSITORY_CREATE_FROM_TEMPLATE,
   GitTools.REPOSITORY_UPDATE,
+  GitTools.REPOSITORY_DEPLOYS_LIST,
   GitTools.REPOSITORY_DELETE,
   GitTools.REPOSITORY_SEARCH_BRANCHES,
 

@@ -48,7 +48,7 @@ import {
  */
 export function CompanionCardSkeleton() {
   return (
-    <div className="flex items-center gap-3 rounded-2xl border border-border bg-card p-3 sm:h-full sm:flex-col sm:items-stretch sm:p-4">
+    <div className="flex items-center gap-3 surface p-3 sm:h-full sm:flex-col sm:items-stretch sm:p-4">
       <div className="size-9 shrink-0 animate-pulse rounded-lg bg-muted/60" />
       <div className="min-w-0 flex-1 space-y-2">
         <div className="h-4 w-24 animate-pulse rounded bg-muted/60" />
@@ -78,9 +78,9 @@ function UnlinkButton({
       <TooltipTrigger asChild>
         <Button
           type="button"
-          variant="ghost"
+          variant="ghost-destructive"
           size="icon-sm"
-          className="shrink-0 text-muted-foreground hover:text-destructive"
+          className="shrink-0"
           disabled={disabled || disconnecting}
           onClick={onDisconnect}
           aria-label={t("reportsOnboarding.companionCard.disconnectAriaLabel", {

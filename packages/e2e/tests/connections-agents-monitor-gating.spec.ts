@@ -103,7 +103,7 @@ test.describe("connections / agents / monitor gating", () => {
       timeout: 15_000,
     });
     await expect(
-      page.getByRole("button", { name: "Create Project" }),
+      page.getByRole("button", { name: "New project" }),
     ).toBeVisible();
 
     await ownerCtx.dispose();

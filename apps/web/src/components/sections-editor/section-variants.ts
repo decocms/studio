@@ -2,10 +2,20 @@ import type { ParsedSection } from "./parse-sections";
 import { isLazyResolveType, LAZY_RENDER_RESOLVE_TYPE } from "./section-lazy";
 import {
   defaultVariantRule,
-  NEVER_MATCHER_RESOLVE_TYPE,
+  isAlwaysMatcherResolveType,
+  isNeverMatcherResolveType,
+  neverMatcherResolveType,
   SECTION_MULTIVARIATE_RESOLVE_TYPE,
   type RawSection,
 } from "./section-types";
+import type { LiveMeta } from "./resolve-schema";
+import {
+  readVariantValue,
+  sectionMultivariateResolveType,
+  storeVariantValue,
+  V8_MULTIVARIATE_RESOLVE_TYPE,
+  variantValueOn,
+} from "./variant-shape";
 
 export type { RawSection };
 
@@ -21,7 +31,10 @@ function unwrapLazySection(raw: RawSection): RawSection {
   return raw;
 }
 
-function readHiddenNeverVariantValue(raw: RawSection): RawSection | null {
+function readHiddenNeverVariantValue(
+  raw: RawSection,
+  v8: boolean,
+): RawSection | null {
   const outerLazy = isLazyResolveType(raw.__resolveType ?? "");
   const mvObj = (outerLazy ? raw.section : raw) as
     | Record<string, unknown>
@@ -31,12 +44,8 @@ function readHiddenNeverVariantValue(raw: RawSection): RawSection | null {
     | undefined;
   const first = variants?.[0];
   const rule = first?.rule as Record<string, unknown> | undefined;
-  if (
-    (rule?.__resolveType as string | undefined) !== NEVER_MATCHER_RESOLVE_TYPE
-  ) {
-    return null;
-  }
-  return (first?.value as RawSection | undefined) ?? null;
+  if (!isNeverMatcherResolveType(rule?.__resolveType, v8)) return null;
+  return (variantValueOn(first, v8) as RawSection | undefined) ?? null;
 }
 
 /**
@@ -46,12 +55,19 @@ function readHiddenNeverVariantValue(raw: RawSection): RawSection | null {
  * Lazy and hidden are mutually exclusive — hiding unwraps lazy first so the
  * stored variant value is always the core section.
  */
-export function hideSection(raw: RawSection): RawSection {
+export function hideSection(
+  raw: RawSection,
+  meta?: LiveMeta | null,
+): RawSection {
   const core = unwrapLazySection(raw);
+  const resolveType = sectionMultivariateResolveType(meta);
   return {
-    __resolveType: SECTION_MULTIVARIATE_RESOLVE_TYPE,
+    __resolveType: resolveType,
     variants: [
-      { value: core, rule: { __resolveType: NEVER_MATCHER_RESOLVE_TYPE } },
+      {
+        value: storeVariantValue(resolveType, core),
+        rule: { __resolveType: neverMatcherResolveType(meta) },
+      },
     ],
   } as RawSection;
 }
@@ -70,7 +86,8 @@ export function toggleSectionLazyRender(raw: RawSection): RawSection | null {
     return (raw.section as RawSection | undefined) ?? null;
   }
 
-  const hiddenInner = readHiddenNeverVariantValue(raw);
+  // Async rendering is v7's only (a v8 site has no Lazy section).
+  const hiddenInner = readHiddenNeverVariantValue(raw, false);
   if (hiddenInner) {
     // Legacy multivariate(never(lazy(core))) — drop hidden, keep existing lazy shell.
     if (isLazyResolveType(hiddenInner.__resolveType ?? "")) {
@@ -112,8 +129,10 @@ function resolveCoreSectionContent(
 /** Resolve inner section content for list thumbnails (lazy/hidden/legacy shapes). */
 export function resolveSectionPreviewContext(
   raw: RawSection,
+  /** A Blocks v8 site: also hidden by its short `never`. */
+  v8 = false,
 ): SectionPreviewContext | null {
-  const hiddenInner = readHiddenNeverVariantValue(raw);
+  const hiddenInner = readHiddenNeverVariantValue(raw, v8);
   if (hiddenInner) {
     return resolveCoreSectionContent(hiddenInner);
   }
@@ -123,7 +142,7 @@ export function resolveSectionPreviewContext(
     const inner = raw.section as RawSection | undefined;
     if (!inner) return null;
 
-    const hiddenInLazy = readHiddenNeverVariantValue(inner);
+    const hiddenInLazy = readHiddenNeverVariantValue(inner, v8);
     if (hiddenInLazy) {
       return resolveCoreSectionContent(hiddenInLazy);
     }
@@ -133,9 +152,12 @@ export function resolveSectionPreviewContext(
   return resolveCoreSectionContent(raw);
 }
 
-/** Unwrap a hidden section back to the section it was hiding, or null. */
-export function showSection(raw: RawSection): RawSection | null {
-  return readHiddenNeverVariantValue(raw);
+/**
+ * Unwrap a hidden section back to the section it was hiding, or null. A
+ * Blocks v8 site (`v8`) also hides with its short `never`.
+ */
+export function showSection(raw: RawSection, v8 = false): RawSection | null {
+  return readHiddenNeverVariantValue(raw, v8);
 }
 
 export interface SectionFlagVariant {
@@ -144,16 +166,43 @@ export interface SectionFlagVariant {
   rule?: Record<string, unknown>;
 }
 
-const DEFAULT_MATCHER_TYPES = [
-  "website/matchers/always.ts",
-  "$live/matchers/MatchAlways.ts",
-];
-
 export function isDefaultVariantRule(rule?: Record<string, unknown>): boolean {
   if (!rule) return false;
   const rt = (rule.__resolveType as string) ?? "";
   if (rt === "") return Object.keys(rule).length === 0;
-  return DEFAULT_MATCHER_TYPES.includes(rt) || rt.includes("always");
+  return isAlwaysMatcherResolveType(rt) || rt.includes("always");
+}
+
+/**
+ * Where a new variant goes. On a Blocks v8 site: just above a trailing
+ * catch-all (a last variant that always matches), so the new one is checked
+ * before it, and at the end when the list has no such catch-all. Any other
+ * site keeps v7's order: always at the end.
+ */
+export function newVariantIndex(
+  variants: ReadonlyArray<unknown>,
+  v8: boolean,
+): number {
+  if (!v8) return variants.length;
+  const last = variants[variants.length - 1] as
+    | Record<string, unknown>
+    | undefined;
+  return last &&
+    isDefaultVariantRule(last.rule as Record<string, unknown> | undefined)
+    ? variants.length - 1
+    : variants.length;
+}
+
+/**
+ * Where the copy of `sourceIndex` goes: right after it. On a Blocks v8 site,
+ * a copy of the trailing catch-all goes right above it instead.
+ */
+export function duplicateVariantIndex(
+  variants: ReadonlyArray<unknown>,
+  sourceIndex: number,
+  v8: boolean,
+): number {
+  return Math.min(sourceIndex + 1, newVariantIndex(variants, v8));
 }
 
 export function pickVariantToKeepIndex(mvObj: Record<string, unknown>): number {
@@ -176,7 +225,7 @@ export function flattenMultivariateSection(
   if (variants.length === 0) return null;
 
   const keepIndex = pickVariantToKeepIndex(mvObj);
-  const keptValue = variants[keepIndex]?.value as
+  const keptValue = readVariantValue(variants[keepIndex]) as
     | Record<string, unknown>
     | undefined;
   if (!keptValue) return null;
@@ -216,7 +265,7 @@ export function parseSectionFlagVariants(
       label:
         formatMatcher(variant.rule as Record<string, unknown> | undefined) ||
         `Variant ${index + 1}`,
-      value: (variant.value ?? {}) as Record<string, unknown>,
+      value: (readVariantValue(variant) ?? {}) as Record<string, unknown>,
       rule: variant.rule as Record<string, unknown> | undefined,
     }),
   );
@@ -300,10 +349,17 @@ export function updateMultivariateSectionVariantValue(
   const currentVariant = variants[variantIndex];
   if (!currentVariant) return mvObj;
 
-  const originalValue = (currentVariant.value ?? {}) as Record<string, unknown>;
+  const originalValue = (readVariantValue(currentVariant) ?? {}) as Record<
+    string,
+    unknown
+  >;
   variants[variantIndex] = {
     ...currentVariant,
-    value: writeVariantSectionValue(originalValue, nextValue),
+    value: storeVariantValue(
+      mvObj.__resolveType,
+      writeVariantSectionValue(originalValue, nextValue),
+      currentVariant.value,
+    ),
   };
 
   return { ...mvObj, variants };
@@ -330,6 +386,8 @@ export function updateMultivariateSectionVariantRule(
 export function duplicateMultivariateSectionVariant(
   mvObj: Record<string, unknown>,
   variantIndex: number,
+  /** A Blocks v8 site (see `duplicateVariantIndex`). */
+  v8 = false,
 ): Record<string, unknown> {
   const variants = [
     ...((mvObj.variants as Array<Record<string, unknown>>) ?? []),
@@ -337,7 +395,11 @@ export function duplicateMultivariateSectionVariant(
   const source = variants[variantIndex];
   if (!source) return mvObj;
 
-  variants.splice(variantIndex + 1, 0, structuredClone(source));
+  variants.splice(
+    duplicateVariantIndex(variants, variantIndex, v8),
+    0,
+    structuredClone(source),
+  );
   return { ...mvObj, variants };
 }
 
@@ -380,20 +442,38 @@ export function deleteMultivariateSectionVariant(
 
 function createSectionVariantEntry(
   value: Record<string, unknown>,
+  meta: LiveMeta | null | undefined,
+  resolveType: string,
 ): Record<string, unknown> {
   return {
-    rule: defaultVariantRule(),
-    value: structuredClone(value),
+    rule: defaultVariantRule(meta),
+    value: storeVariantValue(resolveType, structuredClone(value)),
   };
+}
+
+/**
+ * The type a section's variants block is saved with: a new one takes the
+ * site's (`multivariate` on v8), an existing `multivariate` keeps its name,
+ * and any v7 name is saved as the v7 section flag, as before.
+ */
+function sectionMultivariateTypeFor(
+  existing: Record<string, unknown> | undefined,
+  meta: LiveMeta | null | undefined,
+): string {
+  if (!existing) return sectionMultivariateResolveType(meta);
+  return existing.__resolveType === V8_MULTIVARIATE_RESOLVE_TYPE
+    ? V8_MULTIVARIATE_RESOLVE_TYPE
+    : SECTION_MULTIVARIATE_RESOLVE_TYPE;
 }
 
 function createMultivariateSectionObject(
   variants: Array<Record<string, unknown>>,
+  resolveType: string,
   existing?: Record<string, unknown>,
 ): Record<string, unknown> {
   return {
     ...existing,
-    __resolveType: SECTION_MULTIVARIATE_RESOLVE_TYPE,
+    __resolveType: resolveType,
     variants,
   };
 }
@@ -416,7 +496,7 @@ function extractSectionVariantSeed(
   if (parsed.isMultivariate) {
     const mvObj = getMultivariateSectionObject(raw, parsed);
     const variants = (mvObj?.variants as Array<Record<string, unknown>>) ?? [];
-    const last = variants[variants.length - 1]?.value as
+    const last = readVariantValue(variants[variants.length - 1]) as
       | Record<string, unknown>
       | undefined;
     return last ? structuredClone(last) : null;
@@ -431,23 +511,29 @@ function extractSectionVariantSeed(
 }
 
 /**
- * Wrap a plain or lazy section in a multivariate block with two variants
- * (original + clone). Returns null for hidden or unsupported shapes.
+ * Wrap a plain or lazy section in a multivariate block with two variants:
+ * the new copy, then the original as the catch-all. Returns null for hidden
+ * or unsupported shapes.
  */
 function wrapSectionAsMultivariate(
   raw: RawSection,
   parsed: ParsedSection,
-  seedValue?: Record<string, unknown>,
+  seedValue: Record<string, unknown> | undefined,
+  meta: LiveMeta | null | undefined,
 ): RawSection | null {
   if (parsed.isMultivariate || parsed.isHidden) return null;
 
   const seed = seedValue ?? extractSectionVariantSeed(raw, parsed);
   if (!seed) return null;
 
-  const mvObj = createMultivariateSectionObject([
-    createSectionVariantEntry(seed),
-    createSectionVariantEntry(seed),
-  ]);
+  const resolveType = sectionMultivariateTypeFor(undefined, meta);
+  const mvObj = createMultivariateSectionObject(
+    [
+      createSectionVariantEntry(seed, meta, resolveType),
+      createSectionVariantEntry(seed, meta, resolveType),
+    ],
+    resolveType,
+  );
 
   if (parsed.isLazy) {
     return {
@@ -460,13 +546,18 @@ function wrapSectionAsMultivariate(
 }
 
 /**
- * Append a section variant. Wraps plain/lazy sections on first use; extends
- * existing multivariate sections. Returns null when the shape cannot be extended.
+ * Add a section variant where `newVariantIndex` puts it (v8: above the
+ * trailing catch-all; v7: at the end). Wraps plain/lazy sections on first
+ * use; extends existing multivariate sections. Returns null when the shape
+ * cannot be extended.
  */
 export function appendSectionVariant(
   raw: RawSection,
   parsed: ParsedSection,
   seedValue?: Record<string, unknown>,
+  meta?: LiveMeta | null,
+  /** A Blocks v8 site (see `newVariantIndex`). */
+  v8 = false,
 ): { section: RawSection; newVariantIndex: number } | null {
   if (parsed.isHidden || parsed.isSavedBlock) return null;
 
@@ -477,22 +568,33 @@ export function appendSectionVariant(
     const variants = (mvObj.variants as Array<Record<string, unknown>>) ?? [];
     const seed =
       seedValue ??
-      (variants[variants.length - 1]?.value as
+      (readVariantValue(variants[variants.length - 1]) as
         | Record<string, unknown>
         | undefined);
     if (!seed) return null;
 
+    const resolveType = sectionMultivariateTypeFor(mvObj, meta);
+    const insertAt = newVariantIndex(variants, v8);
+    const nextVariants = [...variants];
+    nextVariants.splice(
+      insertAt,
+      0,
+      createSectionVariantEntry(seed, meta, resolveType),
+    );
     const updatedMvObj = createMultivariateSectionObject(
-      [...variants, createSectionVariantEntry(seed)],
+      nextVariants,
+      resolveType,
       mvObj,
     );
     return {
       section: rebuildSectionWithMultivariate(raw, parsed, updatedMvObj),
-      newVariantIndex: variants.length,
+      newVariantIndex: insertAt,
     };
   }
 
-  const wrapped = wrapSectionAsMultivariate(raw, parsed, seedValue);
+  const wrapped = wrapSectionAsMultivariate(raw, parsed, seedValue, meta);
   if (!wrapped) return null;
-  return { section: wrapped, newVariantIndex: 1 };
+  // v8: the copy first, the original below it as the catch-all; v7 selects
+  // the second of its two copies, as before.
+  return { section: wrapped, newVariantIndex: v8 ? 0 : 1 };
 }

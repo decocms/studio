@@ -157,7 +157,7 @@ export function GenerateImagePart({ part, latency }: GenerateImagePartProps) {
     : undefined;
   const latencyLabel =
     latency != null && latency > 0 ? (
-      <span className="text-[11px] font-mono tabular-nums text-muted-foreground/60">
+      <span className="text-2xs font-mono tabular-nums text-muted-foreground/60">
         {formatDuration(latency)}
       </span>
     ) : null;
@@ -236,7 +236,7 @@ export function GenerateImagePart({ part, latency }: GenerateImagePartProps) {
           )}
           {refImages && refImages.length > 0 && (
             <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-[11px] text-muted-foreground/50">
+              <span className="text-2xs text-muted-foreground/50">
                 {t("chat.generateImage.references")}
               </span>
               {refImages.map((ref, i) => {

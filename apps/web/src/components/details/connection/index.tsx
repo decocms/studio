@@ -540,7 +540,7 @@ function ConnectionInspectorViewWithConnection({
               )}
               <Button
                 variant="outline"
-                className="gap-2 text-muted-foreground hover:text-destructive hover:border-destructive"
+                className="gap-2 text-muted-foreground hover:text-destructive"
                 onClick={() => {
                   const inst = configureInstance ?? connection;
                   setConfigureInstance(null);

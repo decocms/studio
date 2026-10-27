@@ -4,7 +4,7 @@ import { Label } from "./label.tsx";
 import { Slider } from "./slider.tsx";
 
 const meta = {
-  title: "Components/Slider",
+  title: "Atoms/Slider",
   component: Slider,
 } satisfies Meta<typeof Slider>;
 

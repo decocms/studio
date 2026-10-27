@@ -23,6 +23,7 @@ import { useContentBackend } from "./use-content-backend";
 import {
   pollProtocolContent,
   protocolUnavailableError,
+  useRereadOnWriteElsewhere,
 } from "./content-protocol-api";
 
 interface UseDecofileParams {
@@ -54,6 +55,21 @@ function decofileCacheKey(input: {
   return input.localPreviewUrl
     ? `${base}:local:${input.localPreviewUrl}`
     : base;
+}
+
+/**
+ * The decofile cache key of a content-protocol backend's project (what
+ * {@link useDecofileCacheKey} answers for it), for a reader that already
+ * holds the backend.
+ */
+export function protocolDecofileCacheKey(
+  params: { orgSlug: string; virtualMcpId: string; branch: string },
+  backend: { cacheKeySuffix: string },
+): string {
+  return decofileCacheKey({
+    ...params,
+    protocolSuffix: backend.cacheKeySuffix,
+  });
 }
 
 /**
@@ -129,6 +145,7 @@ export function useDecofile(
     useSessionRuntime(params?.virtualMcpId).runtime === "cms";
   const queryClient = useQueryClient();
   const queryKey = KEYS.decofile(key);
+  useRereadOnWriteElsewhere(protocol, protocol && params ? params : null, key);
   useConflictDialogPoll(!!options?.pollWhile && !!params, {
     // A write's own re-read is on its way; a read running or just landed
     // already answers this tick.

@@ -79,7 +79,11 @@ export function Combobox({
           <Button
             variant="outline"
             role="combobox"
-            className={cn("justify-between", width, triggerClassName)}
+            className={cn(
+              "justify-between rounded-[var(--studio-control-radius,var(--radius-lg))]",
+              width,
+              triggerClassName,
+            )}
           >
             {selectedOption ? selectedOption.label : placeholder}
             <ChevronSelectorVertical className="opacity-50" />

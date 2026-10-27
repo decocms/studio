@@ -11,10 +11,6 @@ export function isSectionResolveType(resolveType: string): boolean {
 }
 
 function itemsLookLikeSections(items: SchemaProperty): boolean {
-  if (items.type === "block-ref" && items.anyOfRefs?.length) {
-    return items.anyOfRefs.some((ref) => isSectionResolveType(ref.resolveType));
-  }
-
   if (items.anyOfRefs?.length) {
     return items.anyOfRefs.some((ref) => isSectionResolveType(ref.resolveType));
   }

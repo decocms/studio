@@ -5,7 +5,7 @@ import type { TranslationKey } from "@/i18n/use-t.ts";
  *  A centered hero (connect, greeting, one search), then the roster beside the
  *  org's recent activity, then what to do next. The roster deliberately shows
  *  only what a person made — `scopableProjects` drops the Super Agent, the
- *  Studio Pack managers and dev agents, so a fresh org lands on the empty state
+ *  Studio Pack managers, so a fresh org lands on the empty state
  *  rather than on scaffolding it did not create. It renders as an item list
  *  (`AgentListGroup`), not the Settings › Agents card grid: this page exists to
  *  get you somewhere, that one to manage what you have. */
@@ -83,16 +83,16 @@ function HomeSearch() {
         track("command_palette_opened", { source: "org_home_search" });
         openCommandPalette();
       }}
-      /* `card-shadow`, not a border: the ring IS the card's border in this
+      /* `shadow-edge`, not a border: the ring IS the card's border in this
          system, drawn as a shadow so it can carry the drop under it. The
          width comes from the page's column now. */
-      className="card-shadow flex w-full items-center gap-2 rounded-xl bg-card px-3 py-2.5 text-left transition-colors hover:bg-accent/60"
+      className="shadow-edge flex w-full items-center gap-2 rounded-xl bg-card px-3 py-2.5 text-left transition-colors hover:bg-accent"
     >
       <SearchLg className="size-4 shrink-0 text-muted-foreground" />
       <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
         {t("home.orgHome.searchPlaceholder")}
       </span>
-      <kbd className="shrink-0 rounded-md border border-border bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+      <kbd className="shrink-0 rounded-md border border-border bg-muted px-1.5 py-0.5 text-2xs font-medium text-muted-foreground">
         ⌘K
       </kbd>
     </button>

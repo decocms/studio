@@ -10,7 +10,16 @@
 import { mainSchemaHeaders } from "@/hooks/main-schema-changed";
 
 export type HostedPublishResult =
-  | { result: "merged"; sha: string; release: "current" | "created" | "none" }
+  | {
+      result: "merged";
+      sha: string;
+      release: "current" | "created" | "none";
+      /**
+       * Not released yet: the draft was kept (the preview keeps showing the
+       * changes), and "Try again" empties this save of it once released.
+       */
+      draftEtag?: string;
+    }
   | { result: "up-to-date" };
 
 /** A refused publish, with the API's error code (`main-moved`). */
@@ -59,17 +68,54 @@ export function publishHostedDraft(
 }
 
 /**
+ * A hosted Publish's review: the draft's blocks a developer changed on main
+ * since the live release. Publish keeps the draft's version of each.
+ */
+export async function readHostedPublishReview(params: {
+  orgSlug: string;
+  virtualMcpId: string;
+  branch: string;
+}): Promise<{ alsoChanged: string[] }> {
+  const res = await fetch(
+    `/api/${params.orgSlug}/decofile/${encodeURIComponent(params.virtualMcpId)}/${encodeURIComponent(params.branch)}/publish/review`,
+    { cache: "no-store", headers: mainSchemaHeaders("v8") },
+  );
+  if (!res.ok) throw new Error(`publish review read failed: ${res.status}`);
+  const body = (await res.json()) as { alsoChanged?: unknown };
+  return {
+    alsoChanged: Array.isArray(body.alsoChanged)
+      ? body.alsoChanged.filter((n): n is string => typeof n === "string")
+      : [],
+  };
+}
+
+/**
  * "Try again" after a Publish that saved the changes but didn't release
  * them: writes the companion release of main's head when it is missing and
  * makes it current. Main's head holds every published change, this one's
- * included, so it never rolls back a newer Publish.
+ * included, so it never rolls back a newer Publish. With the kept draft
+ * (`branch` and Publish's `draftEtag`), the draft is then emptied, unless it
+ * was saved again since.
  */
-export function retryRelease(params: {
-  orgSlug: string;
-  virtualMcpId: string;
-}): Promise<unknown> {
+/** The draft a Publish kept for "Try again" to empty, if any. */
+export function keptDraftOf(
+  result: HostedPublishResult,
+  branch: string,
+): { branch: string; draftEtag: string } | null {
+  return result.result === "merged" && result.draftEtag
+    ? { branch, draftEtag: result.draftEtag }
+    : null;
+}
+
+export function retryRelease(
+  params: {
+    orgSlug: string;
+    virtualMcpId: string;
+  },
+  keptDraft?: { branch: string; draftEtag: string } | null,
+): Promise<unknown> {
   return post<unknown>(
     `/api/${params.orgSlug}/hosted/${encodeURIComponent(params.virtualMcpId)}/releases/retry`,
-    {},
+    keptDraft ?? {},
   );
 }

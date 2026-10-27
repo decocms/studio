@@ -43,12 +43,15 @@ import {
   pollProtocolContent,
 } from "@/components/sections-editor/content-protocol-api";
 import { decofileWriteScope } from "@/components/sections-editor/decofile-api";
+import { blocksUsingMissingNamedRules } from "@/components/sections-editor/named-rule-uses";
+import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 import {
   blockKeyFromDiffPath,
   type PublishChange,
 } from "./publish-change-summary";
 import type { PublishTarget } from "./publish-flow";
 import * as realGit from "./sandbox-git-api";
+import { hostedPreviewUrls } from "@/components/sandbox/preview/hosted-preview-urls";
 
 const ORG = "acme";
 const VM = "vm-1";
@@ -551,9 +554,14 @@ describe("useCmsPublishActions on a hosted v8 site", () => {
     // The form's next autosave, armed (debounced) but not sent.
     let armed: ReturnType<typeof setTimeout> | null = setTimeout(() => {
       order.push("armed save");
-      void applyProtocolPatch(queryClient, backend, publishTarget, CACHE_KEY, {
-        set: { "pages-home": { title: "edited again" } },
-      });
+      void applyProtocolPatch(
+        queryClient,
+        backend,
+        publishTarget,
+        CACHE_KEY,
+        { set: { "pages-home": { title: "edited again" } } },
+        { "pages-home": null },
+      );
     }, 5);
     renderHook(
       () =>
@@ -576,6 +584,7 @@ describe("useCmsPublishActions on a hosted v8 site", () => {
             publishTarget,
             CACHE_KEY,
             { set: { "pages-home": { title: "edited" } } },
+            { "pages-home": null },
           );
           order.push("save");
         },
@@ -595,7 +604,12 @@ describe("useCmsPublishActions on a hosted v8 site", () => {
     await act(() => Promise.all([save, done]).then(() => {}));
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(order).toEqual(["save", "discard"]);
-    expect(applied).toEqual([{ set: { "pages-home": { title: "edited" } } }]);
+    expect(applied).toEqual([
+      expect.objectContaining({
+        set: { "pages-home": { title: "edited" } },
+        ifMatch: { "pages-home": null },
+      }),
+    ]);
     expect(server.draft).toEqual({ set: {}, delete: [] });
     expect(editorBlocks()).toEqual({ "pages-home": { title: "main" } });
   });
@@ -625,16 +639,66 @@ describe("useCmsPublishActions on a hosted v8 site", () => {
     const onPublished = mock(() => {});
     const { result } = render(backend, { hosted: true, onPublished });
     const before = { ...reads };
-    let done!: Promise<void>;
+    let done!: Promise<boolean | void>;
     act(() => {
       done = result.current.submit();
     });
     expect(getContentSyncState(SCOPE).phase).toBe("saving");
     await act(() => done);
+    // Published: the dialog keeps its list through the close (publish-hold.ts).
+    expect(await done).toBe(true);
     expect(calls).toEqual([`/api/${ORG}/decofile/${VM}/${BRANCH}/publish`]);
     expect(reads.releases).toBe(before.releases + 1);
     expect(reads.pointer).toBe(before.pointer + 1);
     expect(onPublished).toHaveBeenCalledTimes(1);
+    expect(getContentSyncState(SCOPE).phase).toBe("idle");
+  });
+
+  it("after a publish the frame keeps the same draft pointer, emptied: same address, a new version, never off or the bare site", async () => {
+    const { backend } = hostedBackend();
+    server.draft = { set: { "pages-home": { title: "draft" } }, delete: [] };
+    server.etag++;
+    // The server publishes, then empties the draft at the same slug (a new
+    // ETag): the pointer the editor reads keeps its address.
+    globalThis.fetch = (async () => {
+      server.main = layered();
+      server.head++;
+      server.draft = { set: {}, delete: [] };
+      server.etag++;
+      return new Response(
+        JSON.stringify({ result: "merged", sha: "abc", release: "current" }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }) as unknown as typeof fetch;
+    await queryClient.invalidateQueries({
+      queryKey: KEYS.protocolDraftRead(ORG, VM, BRANCH),
+    });
+    const frameDraft = () => {
+      const data = queryClient.getQueryData<{
+        draft: string;
+        version: string;
+      }>(KEYS.protocolDraftRead(ORG, VM, BRANCH))!;
+      const urls = hostedPreviewUrls({
+        display: { mode: "production", iframeBase: "https://acme.example" },
+        path: "/",
+        pointer: `${data.draft}@${data.version}`,
+        device: "desktop",
+        forcedVariants: ["pages-home@sections=1"],
+        previewOptions: { at: "2026-10-23T10:00:00-03:00" },
+      });
+      const frame = new URL(urls.frame!).searchParams.get("__draft");
+      expect(new URL(urls.newTab!).searchParams.get("__draft")).toBe(frame);
+      return frame!;
+    };
+    const before = frameDraft();
+    const { result } = render(backend, { hosted: true });
+    await act(() => result.current.submit());
+    const after = frameDraft();
+    expect(after).not.toBe(before);
+    expect(after).not.toBe("off");
+    const address = (value: string) => value.slice(0, value.lastIndexOf("@"));
+    expect(address(after)).toBe(address(before));
+    expect(after.endsWith(`@e${server.etag}`)).toBe(true);
     expect(getContentSyncState(SCOPE).phase).toBe("idle");
   });
 
@@ -652,6 +716,77 @@ describe("useCmsPublishActions on a hosted v8 site", () => {
       phase: "idle",
       inFlight: 0,
     });
+  });
+});
+
+describe("useCmsPublishActions: a discard is never blocked", () => {
+  const builtIn = { $ref: "#/definitions/x", namespace: "deco" };
+  const meta = {
+    blocksMajor: 8,
+    manifest: {
+      blocks: {
+        matchers: { always: builtIn, campaign: builtIn, experiment: builtIn },
+        loaders: { multivariate: builtIn, lazy: builtIn },
+        content: { "split-traffic": builtIn, calendar: builtIn },
+        pages: { page: builtIn },
+      },
+    },
+    schema: {},
+  } as unknown as LiveMeta;
+  const promoPage = {
+    __resolveType: "page",
+    name: "Promo",
+    path: "/promo",
+    sections: {
+      __resolveType: "multivariate",
+      variants: [
+        {
+          rule: { __resolveType: "always" },
+          value: { __resolveType: "lazy", value: [] },
+        },
+        {
+          rule: { __resolveType: "experiment", name: "promo" },
+          value: { __resolveType: "lazy", value: [] },
+        },
+      ],
+    },
+  };
+  const testsEntry = { name: "experiments", version: "v-experiments" };
+  const testsChange = {
+    name: "A/B tests",
+    filepaths: [],
+    entry: testsEntry,
+  } as unknown as PublishChange;
+
+  it("discarding only the A/B tests change a page uses goes through, and the page is flagged", async () => {
+    const { backend } = hostedBackend();
+    server.main = {
+      experiments: { __resolveType: "split-traffic", hero: 50 },
+    };
+    server.draft.set = {
+      experiments: { __resolveType: "split-traffic", hero: 50, promo: 20 },
+      "pages-promo": promoPage,
+    };
+    await mountPolledBlocks(backend);
+    expect(blocksUsingMissingNamedRules(editorBlocks()!, meta).size).toBe(0);
+    const { result } = render(backend, {
+      hosted: true,
+      entries: [testsEntry, { name: "pages-promo", version: "v-pages-promo" }],
+    });
+    await act(() => result.current.discardChange(testsChange));
+    await act(settle);
+    expect(server.discardCalls).toEqual([
+      { names: ["experiments"], ifMatch: { experiments: "v-experiments" } },
+    ]);
+    expect(toasts).toEqual([{ kind: "success", message: expect.any(String) }]);
+    // The page still names "promo", which the draft no longer has.
+    expect(editorBlocks()).toEqual({
+      experiments: { __resolveType: "split-traffic", hero: 50 },
+      "pages-promo": promoPage,
+    });
+    expect([...blocksUsingMissingNamedRules(editorBlocks()!, meta)]).toEqual([
+      ["pages-promo", ["experiments"]],
+    ]);
   });
 });
 

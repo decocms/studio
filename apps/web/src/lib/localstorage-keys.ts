@@ -32,9 +32,9 @@ export const LOCALSTORAGE_KEYS = {
   /** One entry per org holding the apps last opened in it — see
    *  `lib/recent-apps.ts`. */
   recentApps: (orgSlug: string) => `studio:recent-apps:${orgSlug}`,
-  /** Every app opened in the org, newest first, as `appOpenKey`s — the org
-   *  home's tile order. Longer than `recentApps`, which is the rail's four. */
-  appOpens: (orgSlug: string) => `studio:app-opens:${orgSlug}`,
+  /** The projects last opened in the org, newest first — the rail's recents
+   *  under the new navigation. */
+  recentProjects: (orgSlug: string) => `studio:recent-projects:${orgSlug}`,
   /** Not scoped to an org — this is the list of orgs themselves. */
   recentOrgs: () => `studio:recent-orgs`,
   railOrgPrefs: () => `studio:rail-org-prefs`,
@@ -61,6 +61,9 @@ export const LOCALSTORAGE_KEYS = {
     `studio:preview:device-size:${virtualMcpId}`,
   previewEditingMode: (virtualMcpId: string) =>
     `studio:preview:editing-mode:${virtualMcpId}`,
+  /** Which monorepo app the preview shows, and whether it splits beside the main one. */
+  previewAppLayout: (virtualMcpId: string) =>
+    `studio:preview:app-layout:${virtualMcpId}`,
   /** Whether CMS list fields open one item at a time or expand items in place. */
   arrayFieldLayout: () => `studio:cms:array-field-layout`,
   /** A Blocks v8 project's Localhost choice (the `deco serve` endpoint), per

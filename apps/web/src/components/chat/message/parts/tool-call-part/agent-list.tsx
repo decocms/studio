@@ -32,7 +32,7 @@ function AgentRow({ agent }: { agent: VirtualMCPEntity }) {
     <button
       type="button"
       onClick={() => navigateToAgent(agent.id)}
-      className="group flex w-full items-center gap-3 rounded-lg border border-border bg-card px-3 py-2.5 text-left transition-colors hover:bg-muted cursor-pointer"
+      className="group flex w-full items-center gap-3 rounded-lg border border-border bg-card px-3 py-2.5 text-left transition-colors hover:bg-accent cursor-pointer"
     >
       <AgentAvatar icon={agent.icon} name={agent.title} size="sm" />
       <div className="flex min-w-0 flex-1 flex-col leading-tight">

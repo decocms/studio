@@ -14,7 +14,8 @@ import (
 )
 
 type Deps struct {
-	GetDevPort func() int
+	// The dev server port a request is for; a monorepo serves several.
+	GetDevPort func(r *http.Request) int
 	Log        func(msg string)
 }
 
@@ -52,7 +53,7 @@ func htmlResponse(w http.ResponseWriter, status int, body string, extra map[stri
 // …) for everything a page then pulls in — so this is what decides whether a
 // human is waiting behind the request and should see a page rather than a
 // proxy error.
-func acceptsHTML(r *http.Request) bool {
+func AcceptsHTML(r *http.Request) bool {
 	return strings.Contains(strings.ToLower(r.Header.Get("Accept")), "text/html")
 }
 
@@ -70,7 +71,7 @@ func isConnError(err error) bool {
 }
 
 func (p *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	port := p.deps.GetDevPort()
+	port := p.deps.GetDevPort(r)
 	if port == 0 {
 		htmlResponse(w, 503, NoUpstreamHTML, nil)
 		return
@@ -198,7 +199,7 @@ func (p *Handler) proxyError(w http.ResponseWriter, r *http.Request, port int, e
 	// (`/2127?page=1`) is the normal way these links travel, and gating the
 	// starting page on the root path turned the dev server's boot window into a
 	// bare 502 for everyone who opened one.
-	if isConnError(err) && (r.URL.Path == "/" || acceptsHTML(r)) {
+	if isConnError(err) && (r.URL.Path == "/" || AcceptsHTML(r)) {
 		htmlResponse(w, 503, StartingHTML, map[string]string{"Retry-After": "1"})
 		return
 	}

@@ -52,6 +52,173 @@ export const sectionsEditor = {
   "sectionsEditor.formatMatcher.dateRange": "From {start} to {end}",
   "sectionsEditor.formatMatcher.fromDate": "Starts on {date}",
   "sectionsEditor.formatMatcher.untilDate": "Ends on {date}",
+  "sectionsEditor.formatMatcher.experiment": "A/B test",
+  "sectionsEditor.formatMatcher.experimentNamed": "A/B test: {name}",
+  "sectionsEditor.formatMatcher.experimentShare": "A/B test: {name} ({share}%)",
+  "sectionsEditor.formatMatcher.campaign": "Campaign",
+  "sectionsEditor.formatMatcher.campaignNamed": "Campaign: {name}",
+  "sectionsEditor.formatMatcher.campaignWindow": "Campaign: {name} ({window})",
+  "sectionsEditor.formatMatcher.windowRange": "{start} – {end}",
+  "sectionsEditor.formatMatcher.windowFrom": "from {date}",
+  "sectionsEditor.formatMatcher.windowUntil": "until {date}",
+  "sectionsEditor.namedRulePicker.abTestTitle": "A/B test",
+  "sectionsEditor.namedRulePicker.abTestDescription":
+    "Show this variant to a share of visitors",
+  "sectionsEditor.namedRulePicker.campaignTitle": "Campaign",
+  "sectionsEditor.namedRulePicker.campaignDescription":
+    "Show this variant while a campaign is running",
+  "sectionsEditor.namedRulePicker.back": "All rules",
+  "sectionsEditor.namedRulePicker.searchTests":
+    "Search your tests or type a new name…",
+  "sectionsEditor.namedRulePicker.searchCampaigns":
+    "Search your campaigns or type a new name…",
+  "sectionsEditor.namedRulePicker.testsHeading": "Your A/B tests",
+  "sectionsEditor.namedRulePicker.campaignsHeading": "Your campaigns",
+  "sectionsEditor.namedRulePicker.noTests":
+    "No tests yet. Type a name to create one.",
+  "sectionsEditor.namedRulePicker.noCampaigns":
+    "No campaigns yet. Type a name to create one.",
+  "sectionsEditor.namedRulePicker.createTest": "Create test “{name}”",
+  "sectionsEditor.namedRulePicker.createCampaign": "Create campaign “{name}”",
+  "sectionsEditor.namedRulePicker.shareOfVisitors": "{share}% of visitors",
+  "sectionsEditor.namedRulePicker.alwaysRunning": "No dates: always running",
+  "sectionsEditor.namedRulePicker.conflictTests":
+    "Your site has a block named “experiments” that isn't a list of A/B tests, so tests can't be added yet. Rename that block, then come back here.",
+  "sectionsEditor.namedRulePicker.conflictCampaigns":
+    "Your site has a block named “campaigns” that isn't a list of campaigns, so campaigns can't be added yet. Rename that block, then come back here.",
+  "sectionsEditor.namedRulePicker.newTestTitle": "New A/B test",
+  "sectionsEditor.namedRulePicker.newCampaignTitle": "New campaign",
+  "sectionsEditor.namedRulePicker.shareHint":
+    "0 keeps the test off, 100 shows it to everyone. You can change it later in Experiments.",
+  "sectionsEditor.namedRulePicker.createAndUse": "Create and use",
+  "sectionsEditor.namedRulePicker.cancel": "Back",
+  "sectionsEditor.namedRulePicker.cancelCreate": "Cancel",
+  "sectionsEditor.namedRulePicker.createdTest": "Test “{name}” added",
+  "sectionsEditor.namedRulePicker.createdCampaign": "Campaign “{name}” added",
+  "sectionsEditor.namedRulePicker.createdHint":
+    "It's saved in your draft and goes live when you publish.",
+  "sectionsEditor.namedRulePicker.openExperiments": "Open Experiments",
+  "sectionsEditor.namedRulePicker.openCalendar": "Open Calendar",
+  "sectionsEditor.namedRulePicker.testRowHint":
+    "To change who sees it, open Experiments.",
+  "sectionsEditor.namedRulePicker.campaignRowHint":
+    "To change its dates, open Calendar.",
+  "sectionsEditor.namedRulePicker.missingTest":
+    "This test isn't in your A/B tests. Pick another, create it, or remove this variant.",
+  "sectionsEditor.namedRulePicker.missingCampaign":
+    "This campaign isn't in your campaigns. Pick another, create it, or remove this variant.",
+  "sectionsEditor.namedRulePicker.missingTestNoCreate":
+    "This test isn't in your A/B tests. Pick another or remove this variant.",
+  "sectionsEditor.namedRulePicker.missingCampaignNoCreate":
+    "This campaign isn't in your campaigns. Pick another or remove this variant.",
+  "sectionsEditor.namedRulePicker.createMissing": "Create it",
+  "sectionsEditor.namedRulePicker.missingTestWithin":
+    "This rule uses a test that isn't in your A/B tests. Change the rule or remove this variant.",
+  "sectionsEditor.namedRulePicker.missingCampaignWithin":
+    "This rule uses a campaign that isn't in your campaigns. Change the rule or remove this variant.",
+  "sectionsEditor.namedRulePicker.inlineDate":
+    "These dates aren't a campaign yet, so this variant doesn't show. Choose Campaign above to pick a campaign, or create one with these dates.",
+  "sectionsEditor.namedRulePicker.fieldTests": "Your A/B tests",
+  "sectionsEditor.namedRulePicker.fieldTestsHint":
+    "The section gets each test as on or off for the visitor.",
+  "sectionsEditor.namedRulePicker.fieldCampaigns": "Your campaigns",
+  "sectionsEditor.namedRulePicker.fieldCampaignsHint":
+    "The section gets each campaign as running or not.",
+  "sectionsEditor.namedRulePicker.fieldNone": "Nothing",
+  "sectionsEditor.namedRulePicker.fieldPlaceholder":
+    "Choose what this field reads",
+  "sectionsEditor.namedRuleUses.title": "Used by",
+  "sectionsEditor.namedRuleUses.loading": "Checking where it's used…",
+  "sectionsEditor.namedRuleUses.variant": "Variant {index}",
+  "sectionsEditor.namedRuleUses.draftOnly": "Not published yet",
+  "sectionsEditor.namedRuleUses.removed": "Removed in your draft",
+  "sectionsEditor.namedRuleUses.open": "Open",
+  "sectionsEditor.namedRuleUses.emptyTests":
+    "Not used yet. In the site editor, give a variant the rule “A/B test” and pick this test.",
+  "sectionsEditor.namedRuleUses.emptyCampaigns":
+    "Not used yet. In the site editor, give a variant the rule “Campaign” and pick this campaign.",
+  "sectionsEditor.namedRuleUses.wholeTests": "Sections that read every test",
+  "sectionsEditor.namedRuleUses.wholeTestsHint":
+    "These sections decide in their own code which tests they look at.",
+  "sectionsEditor.namedRuleUses.wholeCampaigns":
+    "Sections that read every campaign",
+  "sectionsEditor.namedRuleUses.wholeCampaignsHint":
+    "These sections decide in their own code which campaigns they look at.",
+  "sectionsEditor.namedRuleDelete.stillUsedOne":
+    "{places} still uses it. Undo brings it back.",
+  "sectionsEditor.namedRuleDelete.stillUsed":
+    "{places} still use it. Undo brings it back.",
+  "sectionsEditor.namedRuleUses.countPageOne": "1 page",
+  "sectionsEditor.namedRuleUses.countPages": "{count} pages",
+  "sectionsEditor.namedRuleUses.countSectionOne": "1 section",
+  "sectionsEditor.namedRuleUses.countSections": "{count} sections",
+  "sectionsEditor.namedRuleUses.countBoth": "{pages} and {sections}",
+  "sectionsEditor.namedRuleUses.missingTestOne":
+    "These pages and sections use a test that isn't in your A/B tests.",
+  "sectionsEditor.namedRuleUses.missingTests":
+    "These pages and sections use tests that aren't in your A/B tests.",
+  "sectionsEditor.namedRuleUses.missingCampaignOne":
+    "These pages and sections use a campaign that isn't in your campaigns.",
+  "sectionsEditor.namedRuleUses.missingCampaigns":
+    "These pages and sections use campaigns that aren't in your campaigns.",
+  "sectionsEditor.namedRules.changedMeanwhile":
+    "This changed while you were editing",
+  "sectionsEditor.namedRules.changedMeanwhileHint":
+    "We loaded the latest version. Check it and make your change again.",
+  "sectionsEditor.namedRules.unavailable": "Can't save this right now",
+  "sectionsEditor.namedRules.unavailableHint":
+    "The site's content isn't reachable at the moment. Nothing was changed; try again in a moment.",
+  "sectionsEditor.namedRules.alreadyBack": "It's back already",
+  "sectionsEditor.namedRules.alreadyBackHint":
+    "Nothing to undo: that name is in your draft again.",
+  "sectionsEditor.namedRules.nameLabel": "Name",
+  "sectionsEditor.namedRules.nameEmpty": "Give it a name.",
+  "sectionsEditor.namedRules.nameTaken": "That name is already in use.",
+  "sectionsEditor.namedRules.nameTakenPick":
+    "That name is already in use. Pick it from the list instead.",
+  "sectionsEditor.namedRules.nameReserved":
+    "Names can't start with two underscores.",
+  "sectionsEditor.namedRules.startLabel": "Starts",
+  "sectionsEditor.namedRules.endLabel": "Ends",
+  "sectionsEditor.namedRules.windowHint":
+    "Leave a date empty to keep that side open. Times are in your computer's time zone.",
+  "sectionsEditor.namedRules.endBeforeStart":
+    "The end needs to be after the start.",
+  "sectionsEditor.namedRules.rename": "Rename",
+  "sectionsEditor.namedRules.saved": "Saved in your draft",
+  "sectionsEditor.namedRules.savedHint": "It goes live when you publish.",
+  "sectionsEditor.deletedConflict.theyDeletedTitle":
+    '"{name}" was deleted while you were editing',
+  "sectionsEditor.deletedConflict.theyDeletedDescription":
+    "Keep your version to bring it back with your changes, or leave it deleted. Nothing goes live until you publish.",
+  "sectionsEditor.deletedConflict.youDeletedTitle":
+    '"{name}" was changed while you were deleting it',
+  "sectionsEditor.deletedConflict.youDeletedDescription":
+    "Delete it anyway, or keep their version. Nothing goes live until you publish.",
+  "sectionsEditor.deletedConflict.keepMine": "Keep my version",
+  "sectionsEditor.deletedConflict.leaveDeleted": "Leave it deleted",
+  "sectionsEditor.deletedConflict.deleteAnyway": "Delete anyway",
+  "sectionsEditor.deletedConflict.keepTheirs": "Keep their version",
+  "sectionsEditor.reconcile.keptTheirs": "Kept their version",
+  "sectionsEditor.reconcile.leftDeleted": "Left it deleted",
+  "sectionsEditor.reconcile.keptTheirsHint":
+    "Your change wasn't saved. You can make it again any time.",
+  "sectionsEditor.reconcile.leftDeletedHint":
+    "Your change wasn't saved. To bring it back, discard its deletion in Publish. Nothing goes live until you publish.",
+  "sectionsEditor.reconcile.leftDeletedNeverPublishedHint":
+    "Your change wasn't saved. It was never published, so nothing changes on the live site.",
+  "sectionsEditor.blogKind.post": "Post",
+  "sectionsEditor.blogKind.category": "Category",
+  "sectionsEditor.blogKind.author": "Author",
+  "sectionsEditor.reconcile.deletedTitle": "This was deleted",
+  "sectionsEditor.reconcile.deletedNeverPublishedDescription":
+    "It's no longer in your draft, so there's nothing to edit here. It was never published, so nothing changes on the live site.",
+  "sectionsEditor.reconcile.deletedDescription":
+    "It's no longer in your draft, so there's nothing to edit here. To bring it back, discard its deletion in Publish. Nothing goes live until you publish.",
+  "sectionsEditor.namedRules.undo": "Undo",
+  "sectionsEditor.namedRules.create": "Create",
+  "sectionsEditor.namedRules.openEditor": "Open the site editor",
+  "sectionsEditor.namedRules.tryAgain": "Try again",
   "sectionsEditor.field.missingRequired": "Missing a required field",
   "sectionsEditor.field.missingRequiredTooltip":
     "Required field not filled in.",
@@ -205,10 +372,8 @@ export const sectionsEditor = {
     "Secrets can be edited once the site's content server answers.",
   "sectionsEditor.secretField.encryptingMessage":
     "Encrypting with the site's key…",
-  "sectionsEditor.secretField.legacySecretUnavailableMessage":
-    "This secret was saved by an older Deco site and can't be edited here. It's re-encrypted when the site migrates.",
-  "sectionsEditor.secretField.noPublicKeyMessage":
-    "Add the site's public key, .deco/secrets.pub, to edit secret fields. Values are encrypted in your browser with it.",
+  "sectionsEditor.secretField.platformSecretMessage":
+    "Secrets live in your site's hosting settings, where its code reads them, so there's nothing to edit here.",
   "sectionsEditor.secretField.pendingMessage":
     "Not saved yet. Press Enter to encrypt and save.",
   "sectionsEditor.secretField.plaintextStoredMessage":
@@ -305,6 +470,8 @@ export const sectionsEditor = {
     "Their version changed again while this was open. Each step now shows the newer one.",
   "sectionsEditor.formConflict.you": "You",
   "sectionsEditor.formConflict.someoneElse": "Someone else",
+  "sectionsEditor.formConflict.theirVersion": "Their version",
+  "sectionsEditor.formConflict.alreadySaved": "already saved",
   "sectionsEditor.formConflict.yourVersionNotSaved":
     "Your version · not saved yet",
   "sectionsEditor.formConflict.theirVersionSaved":
@@ -317,7 +484,48 @@ export const sectionsEditor = {
     "{name} also changed the {field}",
   "sectionsEditor.formConflict.titleStepYou":
     "You also changed the {field} in another tab or window",
+  "sectionsEditor.formConflict.titleOneIn":
+    'Someone else changed the {field} of "{block}" while you were editing',
+  "sectionsEditor.formConflict.titleOneInNamed":
+    '{name} changed the {field} of "{block}" while you were editing',
+  "sectionsEditor.formConflict.titleOneInYou":
+    'You changed the {field} of "{block}" in another tab or window',
+  "sectionsEditor.formConflict.titleStepIn":
+    'Someone else also changed the {field} of "{block}"',
+  "sectionsEditor.formConflict.titleStepInNamed":
+    '{name} also changed the {field} of "{block}"',
+  "sectionsEditor.formConflict.titleStepInYou":
+    'You also changed the {field} of "{block}" in another tab or window',
   "sectionsEditor.formConflict.summaryTheirsNamed": "{name}'s",
+  "sectionsEditor.formConflict.ruleExperiment": 'A/B test "{name}"',
+  "sectionsEditor.formConflict.ruleExperimentPhrase": 'the A/B test "{name}"',
+  "sectionsEditor.formConflict.ruleCampaign": 'Campaign "{name}"',
+  "sectionsEditor.formConflict.ruleCampaignPhrase":
+    'the dates of the campaign "{name}"',
+  "sectionsEditor.formConflict.titlePhraseOne":
+    "Someone else changed {thing} while you were editing",
+  "sectionsEditor.formConflict.titlePhraseOneNamed":
+    "{name} changed {thing} while you were editing",
+  "sectionsEditor.formConflict.titlePhraseOneYou":
+    "You changed {thing} in another tab or window",
+  "sectionsEditor.formConflict.titlePhraseStep":
+    "Someone else also changed {thing}",
+  "sectionsEditor.formConflict.titlePhraseStepNamed":
+    "{name} also changed {thing}",
+  "sectionsEditor.formConflict.titlePhraseStepYou":
+    "You also changed {thing} in another tab or window",
+  "sectionsEditor.formConflict.titleOneAnonymous":
+    "The {field} was changed while you were editing",
+  "sectionsEditor.formConflict.titleStepAnonymous":
+    "The {field} was also changed",
+  "sectionsEditor.formConflict.titleOneInAnonymous":
+    'The {field} of "{block}" was changed while you were editing',
+  "sectionsEditor.formConflict.titleStepInAnonymous":
+    'The {field} of "{block}" was also changed',
+  "sectionsEditor.formConflict.titlePhraseOneAnonymous":
+    "{Thing} was changed while you were editing",
+  "sectionsEditor.formConflict.titlePhraseStepAnonymous":
+    "{Thing} was also changed",
   "sectionsEditor.formConflict.youElsewhere": "You, in another tab or window",
   "sectionsEditor.formConflict.savedAt": "saved {when}",
   "sectionsEditor.formConflict.empty": "Empty",
@@ -371,6 +579,8 @@ export const sectionsEditor = {
   "sectionsEditor.seoFormChrome.asyncRenderLabel": "Async render",
   "sectionsEditor.seoFormChrome.documentationLinkText": "documentation",
   "sectionsEditor.seoFormChrome.enableLabel": "Enable SEO",
+  "sectionsEditor.seoFormChrome.noSeoTypeHint":
+    "This site has no SEO settings for pages yet. Once its developers add them, you can turn SEO on here.",
   "sectionsEditor.seoPreview.chatCardHint":
     "Here's a post you might write with the link of your website:",
   "sectionsEditor.seoPreview.fallbackDescription":

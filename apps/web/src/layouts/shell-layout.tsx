@@ -20,7 +20,7 @@ import RequiredAuthLayout from "@/layouts/required-auth-layout";
 import { authClient } from "@/lib/auth-client";
 import { AUTOSEND_QUERY_VALUE } from "@/lib/autosend";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
-import { readCachedOrg, writeCachedOrg } from "@/lib/query-persist";
+import { activeOrganizationQueryOptions } from "@/lib/active-organization";
 import { PostHogGroupSync } from "@/providers/posthog-group-sync";
 import {
   getWellKnownDecopilotVirtualMCP,
@@ -44,7 +44,6 @@ import {
   useRouteVirtualMcpId,
   useThreadNavigate,
 } from "@/layouts/thread-route";
-import { KEYS } from "../lib/query-keys";
 import { useOptionalThreadManager } from "@/components/chat/store/hooks";
 import { resolveTaskSwitchSearch } from "@/layouts/resolve-task-switch-search";
 import {
@@ -60,12 +59,6 @@ import { BlockedOrgScreen } from "../components/blocked-org-screen";
 import { useOrgNotice } from "../hooks/use-org-notice";
 import { isBillingEscapeHatch } from "../lib/org-block-escape";
 import { isOrgArchived } from "@decocms/shared/organization/org-archived";
-
-/** What `getFullOrganization` resolves to — named so the cache seed below can
- *  be typed against it in one place. */
-type ActiveOrgData = Awaited<
-  ReturnType<typeof authClient.organization.getFullOrganization>
->["data"];
 
 // ---------------------------------------------------------------------------
 // ShellProjectProvider — fetches org settings and provides project context.
@@ -273,7 +266,6 @@ function ShellLayoutContent() {
   // user id is available synchronously to scope the org cache by principal.
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id;
-  const cachedOrg = org && userId ? readCachedOrg(userId, org) : null;
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect — subscribes to document keydown for ⌘K / ⌘[ shortcuts; DOM event listener has no React 19 alternative
   useEffect(() => {
@@ -308,66 +300,15 @@ function ShellLayoutContent() {
     return () => document.removeEventListener("keydown", handler);
   }, [router]);
 
-  const { data: activeOrg } = useSuspenseQuery({
-    queryKey: KEYS.activeOrganization(org),
-    queryFn: async () => {
-      if (!org) {
-        return null;
-      }
-
-      // Fetch org data without persisting it as the session's active org.
-      // Per Better Auth's org plugin docs, persisting active org to the
-      // session breaks multi-tab usage because the session row is shared
-      // across tabs. We rely on the URL slug (mounted under /api/:org/...)
-      // for org resolution instead.
-      // Marked for the perf_app_bootstrap timing event (see posthog-client).
-      performance.mark("mesh:active-org-fetch:start");
-      const { data } = await authClient.organization
-        .getFullOrganization({
-          query: { organizationSlug: org },
-        })
-        .finally(() => {
-          performance.mark("mesh:active-org-fetch:end");
-          performance.measure(
-            "mesh:active-org-fetch",
-            "mesh:active-org-fetch:start",
-            "mesh:active-org-fetch:end",
-          );
-        });
-
-      // Don't persist archived orgs — homeRoute would just redirect off them again
-      const isArchived = isOrgArchived(data);
-
-      // Persist for fast redirect on next login (read by homeRoute beforeLoad)
-      // Only write on success and only for active (non-archived) orgs
-      if (data && !isArchived) {
-        localStorage.setItem(LOCALSTORAGE_KEYS.lastOrgSlug(), org);
-      }
-
-      // Seed the user-scoped cache so the next refresh renders instantly.
-      if (userId && data) {
-        writeCachedOrg(userId, org, data);
-      }
-
-      return data;
-    },
-    /** Boot is the only moment this query may suspend, and the splash is the
-     *  right loader then because no shell is on screen yet. Its key carries the
-     *  org slug, so an org SWITCH re-resolves it — but that happens inside the
-     *  router's transition, on a boundary that is already mounted, so React
-     *  keeps the painted shell up instead of dropping to the fallback. That is
-     *  the property `loading-states.spec.ts` pins; if a future change remounts
-     *  this boundary, the splash comes back on top of a painted shell.
-     *
-     *  Hydrating from the user-scoped cache keeps a reload of a known org off
-     *  the network entirely. The stale `initialDataUpdatedAt` still triggers a
-     *  background refetch, which flips to the access gate if membership was
-     *  revoked. */
-    initialData: cachedOrg ? (cachedOrg.data as ActiveOrgData) : undefined,
-    initialDataUpdatedAt: cachedOrg?.updatedAt,
-    gcTime: Infinity,
-    refetchOnWindowFocus: false,
-  });
+  /** Boot is the only moment this query may suspend, under the splash. An org
+   *  SWITCH must find the org already cached: the router renders the new URL
+   *  synchronously, so a suspension here is not held back by a transition — it
+   *  replaces the whole shell with the shell route's pending component. The
+   *  `$org` route's loader (`preloadActiveOrganization`) is what guarantees it;
+   *  `loading-states.spec.ts` pins the result. */
+  const { data: activeOrg } = useSuspenseQuery(
+    activeOrganizationQueryOptions(org, userId),
+  );
 
   // Check org-level SSO enforcement (must be before early returns to satisfy Rules of Hooks)
   const orgId = activeOrg?.id;

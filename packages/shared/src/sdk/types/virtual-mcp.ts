@@ -153,6 +153,7 @@ export const VirtualMcpSidebarViewSchema = z.enum([
   "cdn",
   "automations",
   "experiments",
+  "calendar",
 ]);
 
 export type VirtualMcpSidebarView = z.infer<typeof VirtualMcpSidebarViewSchema>;
@@ -227,7 +228,7 @@ export const VirtualMcpUILayoutSchema = z.object({
    *  top-level metadata field. */
   sidebarViews: z
     .array(VirtualMcpSidebarViewSchema)
-    .max(10)
+    .max(VirtualMcpSidebarViewSchema.options.length)
     .nullable()
     .optional()
     .describe(
@@ -418,6 +419,22 @@ const RuntimeEnvEntrySchema = z.discriminatedUnion("kind", [
 
 export type RuntimeEnvEntry = z.infer<typeof RuntimeEnvEntrySchema>;
 
+/** Cap on extra apps: each one is another dev server in the same sandbox. */
+export const RUNTIME_APPS_MAX = 2;
+
+const RuntimeAppSchema = z.object({
+  path: z
+    .string()
+    .trim()
+    .min(1)
+    .max(256)
+    .describe(
+      "Path (relative to repo root) to the app's package.json directory.",
+    ),
+});
+
+export type RuntimeApp = z.infer<typeof RuntimeAppSchema>;
+
 /**
  * User-pinned runtime configuration stored under `metadata.runtime`. Empty
  * fields fall back to autodetect on the next SANDBOX_START.
@@ -443,6 +460,14 @@ const RuntimeMetadataSchema = z.object({
     .optional()
     .describe(
       "Optional path (relative to repo root) to the directory containing package.json. Null/absent means repo root. Forwarded as `application.packageManager.path` to the daemon config.",
+    ),
+  apps: z
+    .array(RuntimeAppSchema)
+    .max(RUNTIME_APPS_MAX)
+    .nullable()
+    .optional()
+    .describe(
+      "Additional monorepo apps previewed beside the one at `path`, each run by its own dev server on the main app's install. Started only when the organization's `multi_app_preview` flag is on.",
     ),
   env: z
     .array(RuntimeEnvEntrySchema)
@@ -542,10 +567,17 @@ const SandboxRecordShape = {
         .nullable()
         .optional()
         .describe("metadata.runtime.path at the time of SANDBOX_START"),
+      apps: z
+        .array(z.string())
+        .nullable()
+        .optional()
+        .describe(
+          "Extra app paths the sandbox was given at SANDBOX_START; null when none were sent.",
+        ),
     })
     .optional()
     .describe(
-      "Snapshot of metadata.runtime fields (selected/port/path) used at SANDBOX_START. The Preview tab compares the live metadata.runtime against this to decide if a restart is required to apply changes.",
+      "Snapshot of metadata.runtime fields (selected/port/path/apps) used at SANDBOX_START. The Preview tab compares the live metadata.runtime against this to decide if a restart is required to apply changes.",
     ),
 } satisfies z.ZodRawShape;
 
@@ -808,19 +840,12 @@ const VirtualMcpMetadataFields = {
     .describe(
       "Allowlist of Virtual MCP (agent) or concrete MCP connection IDs this agent may delegate to via subtask. Concrete connections create ephemeral subagents. null/absent = all active org targets; empty array = itself only.",
     ),
-  liveAgentId: z
-    .string()
-    .nullable()
-    .optional()
-    .describe(
-      "ID of the live agent this (dev) agent develops. Set only on dev agents; powers the Develop/Live toggle. A dev agent is hidden from the sidebar (reached via the toggle on its live counterpart).",
-    ),
   ui: VirtualMcpUISchema.nullable()
     .optional()
     .describe("UI customization settings"),
   sidebarViews: z
     .array(VirtualMcpSidebarViewSchema)
-    .max(10)
+    .max(VirtualMcpSidebarViewSchema.options.length)
     .nullable()
     .optional()
     .describe(
@@ -831,6 +856,14 @@ const VirtualMcpMetadataFields = {
     .optional()
     .describe(
       "Version 1 marks metadata.sidebarViews as an exact list that can disable legacy default rows.",
+    ),
+  sidebarViewsSeen: z
+    .array(VirtualMcpSidebarViewSchema)
+    .max(VirtualMcpSidebarViewSchema.options.length)
+    .nullable()
+    .optional()
+    .describe(
+      "Views Studio offered this project once on top of an exact sidebarViews list (Experiments and Calendar on a Blocks site). A view listed here shows only when sidebarViews selects it, so hiding it sticks.",
     ),
   repository: RepositoryBindingSchema.nullable()
     .optional()

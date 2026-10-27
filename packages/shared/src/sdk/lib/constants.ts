@@ -115,7 +115,7 @@ export function getWellKnownDevAssetsConnection(
     connection_type: "HTTP",
     connection_url: `${baseUrl}/mcp/${DEV_ASSETS_MCP_ALIAS_ID}`,
     // Folder icon
-    icon: "https://api.iconify.design/lucide:folder.svg?color=%23888",
+    icon: "https://api.iconify.design/lucide/folder.svg?color=%23888",
     app_name: "@deco/dev-assets-mcp",
     app_id: null,
     connection_token: null,
@@ -235,7 +235,7 @@ export const REVIEWER_COLOR = "#6366f1";
  *  thread from the Super Agent capybara on the task card. Deliberately NOT a
  *  checkmark/shield-check: that glyph read as "already verified" even while the
  *  review was still in progress or had failed. */
-export const REVIEWER_ICON_URL = `https://api.iconify.design/lucide:file-search.svg?color=${encodeURIComponent(REVIEWER_COLOR)}`;
+export const REVIEWER_ICON_URL = `https://api.iconify.design/lucide/file-search.svg?color=${encodeURIComponent(REVIEWER_COLOR)}`;
 
 export function getWellKnownDecopilotVirtualMCP(
   organizationId: string,
@@ -405,17 +405,11 @@ export function isRetiredStudioPackAgent(
 /**
  * Whether a virtual MCP is a project a person works in, rather than plumbing:
  * Decopilot is the org-wide default, Studio Pack agents are code-owned
- * scaffolding, and a dev agent (`metadata.liveAgentId`) is reached through its
- * live counterpart. The web's project switcher and the task board's
+ * scaffolding. The web's project switcher and the task board's
  * attribution both count projects with this.
  */
-export function isScopableProject(project: {
-  id: string;
-  metadata?: { liveAgentId?: unknown } | null;
-}): boolean {
-  const liveAgentId = project.metadata?.liveAgentId;
+export function isScopableProject(project: { id: string }): boolean {
   return (
-    !(typeof liveAgentId === "string" && liveAgentId) &&
     !isDecopilot(project.id) &&
     !isStudioPackAgent(project.id) &&
     !isRetiredStudioPackAgent(project.id)

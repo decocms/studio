@@ -328,6 +328,8 @@ export const KEYS = {
    *  signs in and types the same term in the same tab. */
   projectSearch: (userId: string, term: string) =>
     ["project-search", userId, term] as const,
+  organizationSearch: (userId: string, term: string) =>
+    ["organization-search", userId, term] as const,
 
   // Tool call results (generic caching for MCP tool calls)
   // scope is required - scopes the cache (connectionId for connection-scoped, locator for org/project-scoped)
@@ -530,8 +532,19 @@ export const KEYS = {
   // org-scoped, so the key is too).
   codexSubscription: (orgId: string, userId: string) =>
     ["codex-subscription", orgId, userId] as const,
-  claudeSubscription: (orgId: string) =>
-    ["claude-subscription", orgId] as const,
+  claudeSubscription: (orgId: string, userId: string) =>
+    ["claude-subscription", orgId, userId] as const,
+  subscriptionUsage: (
+    orgId: string,
+    userId: string,
+    provider: "claude" | "codex",
+  ) => ["subscription-usage", orgId, userId, provider] as const,
+  subscriptionUsageSnapshot: (
+    orgId: string,
+    userId: string,
+    provider: "claude" | "codex",
+    linkedAt: string | null,
+  ) => ["subscription-usage", orgId, userId, provider, linkedAt] as const,
   githubCopilot: (orgId: string) => ["github-copilot", orgId] as const,
   aiProviderKeyPreview: (keyId: string) =>
     ["ai-provider-key-preview", keyId] as const,
@@ -589,6 +602,9 @@ export const KEYS = {
     (accountId
       ? ["repositories", orgId, accountId]
       : ["repositories", orgId]) as readonly [string, string, string?],
+  /** Keyed by the monitored repositories, so flagging one reads again. */
+  repositoryDeploys: (orgId: string, repositoryIds: readonly string[]) =>
+    ["repository-deploys", orgId, ...repositoryIds] as const,
   /** Provider-side repo search — hits the provider's API, so the query text is
    *  part of the key and results are kept while the next page loads. */
   providerRepoSearch: (orgId: string, accountId: string, query: string) =>
@@ -772,6 +788,9 @@ export const KEYS = {
   // Order monitor: every key starts with this prefix, so one invalidation
   // (the `order-monitor.store.evaluated` SSE event) refreshes them all.
   orderMonitor: (org: string) => ["order-monitor", org] as const,
+  /** Monitor: the registry icons of the sources it reads. */
+  monitorSourceIcons: (org: string) =>
+    ["monitor", org, "source-icons"] as const,
   orderMonitorStores: (org: string) =>
     ["order-monitor", org, "stores"] as const,
   orderMonitorDay: (org: string, connectionId: string, at: string) =>
@@ -812,6 +831,10 @@ export const KEYS = {
   // A protocol project's changes against its base (`changes.list`); the
   // prefix of its sides too, so one invalidation refreshes both.
   contentChanges: (cacheKey: string) => ["content-changes", cacheKey] as const,
+  // A hosted v8 draft's deletions of blocks main doesn't have (its changes
+  // don't list them), by spelling key: their guard is the tombstone's.
+  contentDraftTombstones: (cacheKey: string) =>
+    ["content-draft-tombstones", cacheKey] as const,
   // Who made the other change a conflict dialog shows (hosted v8 drafts),
   // per version of theirs.
   conflictAuthor: (draftKey: string, blockKey: string, theirs: string) =>
@@ -830,6 +853,12 @@ export const KEYS = {
   // Hosted Deco CMS (v8): a project's releases and site tokens.
   hostedReleases: (orgSlug: string, virtualMcpId: string) =>
     ["hosted-releases", orgSlug, virtualMcpId] as const,
+  /** A hosted v8 Publish's review: the draft's blocks main also changed. */
+  hostedPublishReview: (
+    orgSlug: string,
+    virtualMcpId: string,
+    branch: string,
+  ) => ["hosted-publish-review", orgSlug, virtualMcpId, branch] as const,
   /** Under `hostedReleases`: a publish or reapply refreshes it too. */
   hostedReapplyCheck: (
     orgSlug: string,
@@ -853,6 +882,23 @@ export const KEYS = {
   sandboxSprite: (sandboxKey: string) =>
     ["sandbox-sprite", sandboxKey] as const,
 } as const;
+
+/** Invalidates every CONNECTIONS collection cache entry for an org
+ *  (collectionItem/collectionList/collectionListInfinite, all keyed
+ *  [client, orgId, scopeKey, "collection", "CONNECTIONS", ...]). */
+export function invalidateConnectionsCollection(
+  queryClient: import("@tanstack/react-query").QueryClient,
+  orgId: string,
+) {
+  queryClient.invalidateQueries({
+    predicate: (query) => {
+      const key = query.queryKey;
+      return (
+        key[1] === orgId && key[3] === "collection" && key[4] === "CONNECTIONS"
+      );
+    },
+  });
+}
 
 export function invalidateVirtualMcpQueries(
   queryClient: import("@tanstack/react-query").QueryClient,

@@ -11,7 +11,8 @@
  *                                                            with that one's content
  *   POST   /api/:org/hosted/:virtualMcpId/releases/retry     Publish's "Try again": main's head
  *                                                            released, its release written if
- *                                                            missing
+ *                                                            missing; `{ branch, draftEtag }`
+ *                                                            then empties that kept draft
  *   GET    /api/:org/hosted/:virtualMcpId/site-tokens        list
  *   POST   /api/:org/hosted/:virtualMcpId/site-tokens        issue (shown once)
  *
@@ -35,11 +36,17 @@ import {
 } from "@/git-providers";
 import { type DeliveryStore, deliveryStore } from "@/hosted/delivery-store";
 import { type DeliveryPurge, deliveryPurge } from "@/hosted/delivery-purge";
+import { createDraftStore } from "@/hosted/draft-store";
 import {
+  emptyPublishedDraft,
   type HostedRepo,
   LatestUpdateError,
   MainMovedError,
 } from "@/hosted/publish";
+import {
+  type SiteDomainsReader,
+  sitePreviewHosts,
+} from "@/hosted/preview-hosts";
 import { NotV8Site } from "@/hosted/release-objects";
 import { listReleases, releaseMainHead } from "@/hosted/releases";
 import {
@@ -78,6 +85,7 @@ type HostedEnv = Env & {
     hostedProject: HostedProject;
     repoClientFor: RepoClientFor;
     delivery: () => Delivery | null;
+    siteDomains: SiteDomainsReader | undefined;
   };
 };
 
@@ -175,6 +183,11 @@ async function hostedRepo(c: Context<HostedEnv>): Promise<HostedRepo | null> {
     store: delivery.store,
     purge: delivery.purge,
     site: project.site,
+    previewHosts: await sitePreviewHosts({
+      site: project.site,
+      metadata: project.metadata,
+      domains: c.var.siteDomains,
+    }),
   };
 }
 
@@ -211,6 +224,8 @@ export function createHostedRoutes(
     delivery?: () => Delivery | null;
     /** The project repository's history (tests pass a fake). */
     insightsFor?: typeof insightsClientForProjectRepo;
+    /** The site's deco.cx domains, for its preview hosts (tests pass a fake). */
+    siteDomains?: SiteDomainsReader;
   } = {},
 ) {
   const app = new Hono<HostedEnv>();
@@ -220,6 +235,7 @@ export function createHostedRoutes(
   app.use("*", async (c, next) => {
     c.set("repoClientFor", repoClientFor);
     c.set("delivery", delivery);
+    c.set("siteDomains", options.siteDomains);
     await next();
   });
   app.use("/:virtualMcpId/*", resolveHostedProject);
@@ -246,11 +262,44 @@ export function createHostedRoutes(
 
   // Publish's "Try again" when its changes were committed but weren't
   // released (no companion release, or latest.json not written): main's head.
+  // With the kept draft's scope (`branch`, and the published save's
+  // `draftEtag` from Publish's answer), the draft is emptied once the release
+  // is current, only while it is still that save: one made since is kept.
   app.post("/:virtualMcpId/releases/retry", async (c) => {
     try {
       const repo = await hostedRepo(c);
       if (!repo) return c.json(NOT_CONFIGURED, 503);
-      return c.json({ current: await releaseMainHead(repo) });
+      const body = (await c.req.json().catch(() => ({}))) as {
+        branch?: unknown;
+        draftEtag?: unknown;
+      };
+      const current = await releaseMainHead(repo);
+      const userId = c.var.studioContext.auth?.user?.id;
+      if (
+        typeof body.branch === "string" &&
+        body.branch &&
+        typeof body.draftEtag === "string" &&
+        body.draftEtag &&
+        userId
+      ) {
+        const project = c.get("hostedProject");
+        await emptyPublishedDraft(
+          repo,
+          createDraftStore({
+            kv: c.var.studioContext.storage.kv,
+            store: repo.store,
+          }),
+          {
+            organizationId: project.organizationId,
+            virtualMcpId: project.virtualMcpId,
+            branch: body.branch,
+            site: project.site,
+            editor: userId,
+          },
+          body.draftEtag,
+        );
+      }
+      return c.json({ current });
     } catch (err) {
       return hostedError(c, err);
     }

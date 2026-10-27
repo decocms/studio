@@ -18,7 +18,7 @@
 
 import { afterAll, beforeAll, describe, expect, it, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { createHash, generateKeyPairSync } from "node:crypto";
+import { createHash } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
@@ -129,17 +129,10 @@ const schema = {
   },
 };
 
-const publicKeyPem = generateKeyPairSync("rsa", {
-  modulusLength: 2048,
-  publicKeyEncoding: { type: "spki", format: "pem" },
-  privateKeyEncoding: { type: "pkcs8", format: "pem" },
-}).publicKey;
-
 /** Lays out an app root the way a v8 site commits it. */
 export function seedSite(root: string, opts: { schema: boolean }): void {
   mkdirSync(join(root, ".deco", "blocks"), { recursive: true });
   writeFileSync(join(root, ".deco", "index.ts"), "export default {};\n");
-  writeFileSync(join(root, ".deco", "secrets.pub"), publicKeyPem);
   if (opts.schema) {
     writeFileSync(
       join(root, ".deco", "schema.gen.json"),
@@ -416,8 +409,6 @@ export function defineSandboxContentSuites(
     () => ({
       endpoint: withSchemaRoute.endpoint,
       fetch: withSchemaRoute.fetch,
-      secretField: { blockType: "newsletter", field: "apiKey" },
-      secretsPublicKey: publicKeyPem,
       baseEntry: { name: BASE_ENTRY },
     }),
     `content protocol conformance (${label}, with a schema)`,
@@ -429,7 +420,6 @@ export function defineSandboxContentSuites(
       endpoint: withoutSchemaRoute.endpoint,
       fetch: withoutSchemaRoute.fetch,
       hasSchema: false,
-      secretsPublicKey: publicKeyPem,
       emptyBase: true,
     }),
     `content protocol conformance (${label}, without a schema)`,
@@ -446,7 +436,7 @@ export function defineSandboxContentSuites(
         root: ".",
         preview: null,
         assets: null,
-        secrets: { publicKey: publicKeyPem },
+        secrets: null,
       });
     });
 
@@ -512,9 +502,12 @@ export function defineSandboxContentSuites(
           },
         },
       });
-      // A Secret field still refuses the loader: only `secret` blocks and variants of them qualify.
-      expect(nested.error?.code).toBe(-32003);
-      await rpc(withSchemaRoute, "blocks.apply", { delete: [name] });
+      // A write never reads the schema (protocol 1.2): `deco check` judges
+      // a Secret field's value in the site's CI, so the save lands as sent.
+      expect(nested.error).toBeUndefined();
+      await rpc(withSchemaRoute, "blocks.apply", {
+        delete: [name, `${name}-nested`],
+      });
     });
 
     test("edits landing right after a poll never fail the next one", async () => {
@@ -583,12 +576,7 @@ export function defineSandboxContentSuites(
       await rpc(withSchemaRoute, "blocks.apply", { set: { tidy: { v: 1 } } });
       await rpc(withSchemaRoute, "blocks.apply", { delete: ["tidy"] });
       const left = readdirSync(join(withSchema!.repoDir, ".deco")).sort();
-      expect(left).toEqual([
-        "blocks",
-        "index.ts",
-        "schema.gen.json",
-        "secrets.pub",
-      ]);
+      expect(left).toEqual(["blocks", "index.ts", "schema.gen.json"]);
     });
   });
 

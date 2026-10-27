@@ -1,3 +1,4 @@
+import type { HeldCopy } from "@/components/sections-editor/held-copy";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { useState } from "react";
@@ -65,7 +66,8 @@ import {
 import { buildBlogCategoryPreviewUrl } from "./blog-preview-url";
 import { useSaveBlock } from "@/components/sections-editor/use-save-block";
 import { useMoveBlocks } from "@/components/sections-editor/use-move-blocks";
-import { useDraftPointer } from "@/components/sections-editor/use-fast-preview-draft-url";
+import { HostedKeptTheirsError } from "@/components/sections-editor/hosted-reconcile";
+import { usePreviewLinkDraftPointer } from "@/components/sections-editor/use-fast-preview-draft-url";
 import { useAutosave } from "./use-autosave";
 import { SaveStatus } from "./save-status";
 import { asBlocks, BlockDocument } from "./block-document";
@@ -76,6 +78,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
+import { HeldBlockView } from "../held-block-view";
 
 /** Radix Select rejects "" as an item value, so "no parent" needs a sentinel. */
 const NO_PARENT = "__none__";
@@ -94,7 +97,7 @@ const NO_PARENT = "__none__";
  * every keystroke: it matches posts against the last *persisted* slug, so a
  * half-typed slug never leaks into posts and the match key never drifts.
  */
-export function CategoryEditor({
+function CategoryEditorForm({
   orgSlug,
   virtualMcpId,
   branch,
@@ -123,10 +126,25 @@ export function CategoryEditor({
 }) {
   const t = useT();
   const threadId = useOptionalChatTask()?.taskId ?? null;
-  const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
+  // The form keeps its own copy: hosted saves are guarded by it.
+  const save = useSaveBlock(
+    { orgSlug, virtualMcpId, branch },
+    { holdsCopy: true },
+  );
   const move = useMoveBlocks({ orgSlug, virtualMcpId, branch });
-  const draftPointer = useDraftPointer({ orgSlug, virtualMcpId, branch });
+  // The preview frame's `__draft` (a hosted draft's carries its forced
+  // variants and "Preview as" options), so this link opens what it shows.
+  const draftPointer = usePreviewLinkDraftPointer({
+    orgSlug,
+    virtualMcpId,
+    branch,
+  });
   const initial = getBlogPayload(block, "categories");
+  /** The form's own copy of `key` (hosted v8), for a write built from it. */
+  const shownCopy = (key: string): Record<string, HeldCopy> => {
+    const copy = save.shown(key);
+    return copy ? { [key]: copy } : {};
+  };
 
   const [category, setCategory, syncCategory] = useAutosave(
     initial,
@@ -136,7 +154,10 @@ export function CategoryEditor({
         data: buildBlogBlock(blockKey, "categories", next),
       });
     },
-    { isSaving: save.isPending || move.isPending },
+    {
+      isSaving: save.isPending || move.isPending,
+      onSeed: () => save.hold(blockKey),
+    },
   );
 
   // Key typed from `KNOWN_CATEGORY_KEYS`, so a bespoke field absent from it fails to compile.
@@ -161,6 +182,7 @@ export function CategoryEditor({
     category,
     previewBaseUrl,
     draftPointer,
+    meta,
   });
 
   // The slug input is a free-text draft, committed only on blur — its
@@ -294,7 +316,11 @@ export function CategoryEditor({
       // Cancels the pending debounce, which would otherwise fire mid-write
       // and persist the same payload a second time.
       syncCategory(nextCategory);
-      await move.move({ writes, deletes: [] });
+      await move.move(
+        { writes, deletes: [] },
+        // The category is written from the form's own copy (hosted v8).
+        { shown: () => shownCopy(blockKey) },
+      );
       if (posts > 0) {
         toast.success(
           t("sandbox.categoryEditor.renameNameSuccess", {
@@ -303,6 +329,8 @@ export function CategoryEditor({
         );
       }
     } catch (err) {
+      // The user kept their version: `move` said so in its own toast.
+      if (err instanceof HostedKeptTheirsError) return;
       toast.error(
         err instanceof Error
           ? err.message
@@ -329,7 +357,11 @@ export function CategoryEditor({
     setIsRenaming(true);
     try {
       syncCategory(nextCategory);
-      await move.move({ writes, deletes: [] });
+      await move.move(
+        { writes, deletes: [] },
+        // The category is written from the form's own copy (hosted v8).
+        { shown: () => shownCopy(blockKey) },
+      );
       toast.success(
         posts > 0
           ? t("sandbox.categoryEditor.renameSuccessWithPosts", {
@@ -344,6 +376,8 @@ export function CategoryEditor({
       setSlugDraft(oldSlug);
       setSlugNotice(null);
       setPendingRename(null);
+      // The user kept their version: `move` said so in its own toast.
+      if (err instanceof HostedKeptTheirsError) return;
       toast.error(
         err instanceof Error
           ? err.message
@@ -605,7 +639,7 @@ export function CategoryEditor({
                       <button
                         type="button"
                         onClick={() => onOpenPost(p.key)}
-                        className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left transition-colors hover:bg-muted cursor-pointer"
+                        className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left transition-colors hover:bg-accent cursor-pointer"
                       >
                         <File02
                           size={14}
@@ -688,5 +722,25 @@ export function CategoryEditor({
         </AlertDialogContent>
       </AlertDialog>
     </>
+  );
+}
+
+/**
+ * The form keeps its own copy of the block (see `HeldBlockView`): on a
+ * hosted v8 draft a block the draft no longer has shows as deleted.
+ */
+export function CategoryEditor(
+  props: Parameters<typeof CategoryEditorForm>[0],
+) {
+  return (
+    <HeldBlockView
+      orgSlug={props.orgSlug}
+      virtualMcpId={props.virtualMcpId}
+      branch={props.branch}
+      blockKey={props.blockKey}
+      present={props.block !== undefined}
+    >
+      <CategoryEditorForm {...props} />
+    </HeldBlockView>
   );
 }

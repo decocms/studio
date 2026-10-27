@@ -19,7 +19,6 @@ import { useEffectEvent, useRef, useState } from "react";
 import { toast } from "sonner";
 import { BaseItem, insertMention, OnSelectProps, Suggestion } from "./mention";
 import { track } from "@/lib/posthog-client";
-import { getDevAgentIds } from "@/lib/agent-capabilities";
 import { useT } from "@/i18n/use-t.ts";
 
 interface AtMentionProps {
@@ -30,6 +29,11 @@ interface AtMentionProps {
 }
 
 type AtMode = "categories" | "agents" | "resources";
+
+/** A resource's `name` is server-supplied and may be present but empty. */
+export function resourceDisplayName(uri: string, name: string | undefined) {
+  return name || uri;
+}
 
 interface AtItem extends BaseItem {
   /** Discriminator for item type */
@@ -49,8 +53,6 @@ export const AtMention = ({
   const queryClient = useQueryClient();
   const { org } = useProjectContext();
   const agents = useVirtualMCPs();
-  // Dev agents are reached via the Develop/Live toggle, not @-mentioned.
-  const devAgentIds = getDevAgentIds(agents);
   const client = useMCPClient({
     connectionId: virtualMcpId,
     orgId: org.id,
@@ -156,7 +158,6 @@ export const AtMention = ({
           (agent) =>
             agent.status === "active" &&
             (!agent.id || !isDecopilot(agent.id)) &&
-            !devAgentIds.has(agent.id) &&
             agent.id !== virtualMcpId &&
             (agent.title.toLowerCase().includes(lq) ||
               agent.description?.toLowerCase().includes(lq)),
@@ -189,7 +190,7 @@ export const AtMention = ({
               r.description?.toLowerCase().includes(lq),
           )
           .map((r) => ({
-            name: r.name ?? r.uri,
+            name: resourceDisplayName(r.uri, r.name),
             title: r.name,
             description: r.description,
             kind: "resource" as const,
@@ -205,7 +206,6 @@ export const AtMention = ({
         (agent) =>
           agent.status === "active" &&
           (!agent.id || !isDecopilot(agent.id)) &&
-          !devAgentIds.has(agent.id) &&
           agent.id !== virtualMcpId,
       );
       if (query.trim()) {
@@ -259,7 +259,7 @@ export const AtMention = ({
     }
 
     return resources.map((r) => ({
-      name: r.name ?? r.uri,
+      name: resourceDisplayName(r.uri, r.name),
       title: r.name,
       description: r.description,
       kind: "resource" as const,

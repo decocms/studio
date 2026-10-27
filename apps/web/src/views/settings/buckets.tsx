@@ -1,7 +1,10 @@
 import { useState } from "react";
 import { AlertCircle, HardDrive, Plus, Trash01 } from "@untitledui/icons";
 import { toast } from "sonner";
+import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
+import { SettingsCard } from "@/components/settings/settings-section";
+import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -98,13 +101,13 @@ function FileConfigRow({
           <div className="flex items-center gap-2">
             <span className="font-medium text-sm truncate">{config.name}</span>
             {config.credentialType === "sts-session" ? (
-              <span className="text-[10px] uppercase tracking-wide font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground shrink-0">
+              <Badge variant="muted" size="sm">
                 STS
-              </span>
+              </Badge>
             ) : config.credentialType === "managed" ? (
-              <span className="text-[10px] uppercase tracking-wide font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground shrink-0">
+              <Badge variant="muted" size="sm">
                 {t("settings.buckets.managed")}
-              </span>
+              </Badge>
             ) : null}
             <span className="text-xs text-muted-foreground truncate">
               {config.bucket} · {config.region}
@@ -152,26 +155,22 @@ function FileConfigRow({
   );
 }
 
-function EmptyState({ onCreate }: { onCreate: () => void }) {
+function NoBuckets({ onCreate }: { onCreate: () => void }) {
   const t = useT();
   return (
-    <div className="rounded-2xl border border-dashed border-border/60 p-10 flex flex-col items-center justify-center text-center gap-3">
-      <div className="size-12 rounded-full bg-muted flex items-center justify-center">
-        <HardDrive size={20} className="text-muted-foreground" />
-      </div>
-      <div>
-        <p className="font-medium text-sm">
-          {t("settings.buckets.noBucketsConfigured")}
-        </p>
-        <p className="text-xs text-muted-foreground mt-1 max-w-sm">
-          {t("settings.buckets.emptyStateDescription")}
-        </p>
-      </div>
-      <Button onClick={onCreate} size="sm" className="mt-2">
-        <Plus size={14} />
-        {t("settings.buckets.addBucket")}
-      </Button>
-    </div>
+    <SettingsCard>
+      <EmptyState
+        size="inline"
+        icon={<HardDrive />}
+        title={t("settings.buckets.noBucketsConfigured")}
+        description={t("settings.buckets.emptyStateDescription")}
+      >
+        <Button onClick={onCreate} size="sm">
+          <Plus size={14} />
+          {t("settings.buckets.addBucket")}
+        </Button>
+      </EmptyState>
+    </SettingsCard>
   );
 }
 
@@ -596,7 +595,7 @@ function FilesContent() {
   if (configs.length === 0) {
     return (
       <>
-        <EmptyState onCreate={() => setCreateOpen(true)} />
+        <NoBuckets onCreate={() => setCreateOpen(true)} />
         <CreateFileConfigDialog
           open={createOpen}
           onOpenChange={setCreateOpen}
@@ -617,7 +616,7 @@ function FilesContent() {
         </Button>
       </div>
 
-      <section className="rounded-2xl border border-border/60 bg-background p-5">
+      <section className="surface p-5">
         <div>
           {configs.map((c) => (
             <FileConfigRow key={c.id} config={c} onDelete={setPendingDelete} />

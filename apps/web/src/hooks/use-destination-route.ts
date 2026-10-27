@@ -23,6 +23,8 @@ export const DESTINATION_ROUTE = {
   /** Admin orgs only: every org's chats and automations. */
   threadAnalytics: "/$org/thread-analytics",
   discover: "/$org/discover",
+  plan: "/$org/plan",
+  monitoring: "/$org/monitoring",
   /** The `/$org` resolver. Transiently matched before it redirects, so Home
    *  highlights there instead of leaving the list blank on cold entry. */
   orgIndex: "/$org/",
@@ -55,7 +57,10 @@ export const PROJECT_ROUTE = {
   e2e: "/$org/projects/$agentId/e2e",
   analytics: "/$org/projects/$agentId/analytics",
   experiments: "/$org/projects/$agentId/experiments",
+  calendar: "/$org/projects/$agentId/calendar",
   monitor: "/$org/projects/$agentId/cdn",
+  plan: "/$org/projects/$agentId/plan",
+  monitoring: "/$org/projects/$agentId/monitoring",
 } as const;
 
 export type DestinationRoutePath =

@@ -48,6 +48,20 @@ describe("buildConnectionRequestHeaders", () => {
     });
   });
 
+  it("sends a token with its own scheme verbatim instead of forcing Bearer", () => {
+    const headers = buildConnectionRequestHeaders({
+      id: "conn-4",
+      title: "http",
+      connection_type: "HTTP",
+      connection_token: "Token token=secret",
+    });
+
+    expect(headers).toEqual({
+      "Content-Type": "application/json",
+      Authorization: "Token token=secret",
+    });
+  });
+
   it("ignores STDIO-shaped connection_headers instead of misreading them", () => {
     const headers = buildConnectionRequestHeaders({
       id: "conn-2",

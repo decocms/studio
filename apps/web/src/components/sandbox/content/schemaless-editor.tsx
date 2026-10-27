@@ -1,5 +1,9 @@
 import { useEffect, useEffectEvent } from "react";
 import { useDebouncedSaveBlock } from "@/components/sections-editor/use-save-block";
+import {
+  copyScope,
+  useCopyEpochs,
+} from "@/components/sections-editor/held-copy";
 import { SchemalessContent } from "./schemaless-content";
 
 /**
@@ -23,11 +27,14 @@ export function SchemalessEditor({
   initialKey?: string | null;
   compact?: boolean;
 }) {
-  const { save, flush } = useDebouncedSaveBlock({
-    orgSlug,
-    virtualMcpId,
-    branch,
-  });
+  // Each block's form keeps its own copy: hosted saves are guarded by it.
+  const { save, flush, hold } = useDebouncedSaveBlock(
+    { orgSlug, virtualMcpId, branch },
+    { holdsCopy: true },
+  );
+  const copyEpochOf = useCopyEpochs(
+    copyScope({ orgSlug, virtualMcpId, branch }),
+  );
   // Saves what's pending when the editor goes away (the debounce alone
   // would drop it): runs after the save hook's own timer cleanup.
   const flushPending = useEffectEvent(() => flush());
@@ -38,6 +45,8 @@ export function SchemalessEditor({
       decofile={decofile}
       onChange={(blockKey, next) => save(blockKey, next)}
       onLeaveBlock={flush}
+      onOpenBlock={hold}
+      copyEpochOf={copyEpochOf}
       initialKey={initialKey}
       compact={compact}
     />

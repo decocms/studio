@@ -67,6 +67,19 @@ const FIRST_EVENT_SQL = `
   FROM customer_lake.order_events
   WHERE connection_id = {conn:String} AND changed_at < ${AT}`;
 
+// Chart only. Three days back covers D-1's local day across a 25-hour DST day.
+const CHANNELS_SQL = `
+  SELECT sales_channel AS channel, ${daysAgo("created_at")} AS days_ago,
+    ${bucket("created_at")} AS bucket, count() AS placed
+  FROM customer_lake.orders FINAL
+  WHERE connection_id = {conn:String} AND created_at < ${AT}
+    AND created_at >= ${AT} - INTERVAL 3 DAY AND days_ago IN (0, 1)
+  GROUP BY channel, days_ago, bucket`;
+
+const CHANNEL_NAMES_SQL = `
+  SELECT channel_id, name FROM customer_lake.sales_channels FINAL
+  WHERE connection_id = {conn:String}`;
+
 const TIMEZONE_SQL = `
   SELECT timezone FROM customer_lake.connections FINAL
   WHERE connection_id = {conn:String} LIMIT 1`;
@@ -117,11 +130,13 @@ export function localBucketStart(
   bucket: number,
 ): Date {
   const intoMinute = at.getTime() % 60_000;
-  return new Date(
+  const guess =
     at.getTime() -
-      (localMinutes(at, timezone) - bucket * 15) * 60_000 -
-      intoMinute,
-  );
+    (localMinutes(at, timezone) - bucket * 15) * 60_000 -
+    intoMinute;
+  // A DST switch between the bucket and `at` shifts the zone's offset.
+  const shift = utcOffset(at, timezone) - utcOffset(new Date(guess), timezone);
+  return new Date(guess + shift * 60_000);
 }
 
 /** Buckets of `at`'s local day before it that a DST switch skipped or repeated. */
@@ -151,14 +166,38 @@ export function doneBuckets(at: Date, timezone: string): number {
   return Math.max(0, Math.floor((minutes - INGEST_GRACE_MIN) / 15));
 }
 
+const zeros = () => new Array<number>(BUCKETS_PER_DAY).fill(0);
+
 function emptyDays(): Record<DayAgo, DaySeries> {
-  const zeros = () => new Array<number>(BUCKETS_PER_DAY).fill(0);
   return Object.fromEntries(
     DAYS_AGO.map((d) => [
       d,
       { placed: zeros(), canceled: zeros(), denied: zeros() },
     ]),
   ) as Record<DayAgo, DaySeries>;
+}
+
+// Counts come back as strings (UInt64 in JSONEachRow).
+function dayCell(
+  days: Record<DayAgo, DaySeries>,
+  row: Record<string, unknown>,
+) {
+  const day = days[Number(row.days_ago) as DayAgo];
+  const b = Number(row.bucket);
+  return day && b >= 0 && b < BUCKETS_PER_DAY ? { day, b } : null;
+}
+
+// Real and approximate cancellation rows share these two columns.
+function applyCancelDenied(
+  days: Record<DayAgo, DaySeries>,
+  rows: Record<string, unknown>[],
+) {
+  for (const row of rows) {
+    const c = dayCell(days, row);
+    if (!c) continue;
+    c.day.canceled[c.b] = Number(row.canceled);
+    c.day.denied[c.b] = Number(row.denied);
+  }
 }
 
 /** The store's IANA zone, or null when the lake has none for it. */
@@ -178,54 +217,55 @@ export async function loadStoreTimezone(
  * The store's day at `at`, or null when the lake has no timezone for it (the
  * ingest worker's zone map needs an entry). Nothing at or after `at` is read,
  * so a replayed tick gets the same answer. `approximate` adds the chart's
- * stand-in for cancellations before the install; the rules never read it.
+ * stand-in for cancellations before the install, and `channels` its split by
+ * sales channel; the rules read neither.
  */
 export async function loadStoreDay(
   organizationId: string,
   connectionId: string,
   at: Date,
-  opts: { approximate?: boolean } = {},
+  opts: { approximate?: boolean; channels?: boolean } = {},
 ): Promise<StoreDay | null> {
   const timezone = await loadStoreTimezone(organizationId, connectionId);
   if (!timezone) return null;
 
   const params = { conn: connectionId, tz: timezone, at: toLakeTime(at) };
-  const [orders, events, [first], approx] = await Promise.all([
+  const [orders, events, [first], approx, channels] = await Promise.all([
     queryCustomerLake(organizationId, ORDERS_SQL, params),
     queryCustomerLake(organizationId, EVENTS_SQL, params),
     queryCustomerLake(organizationId, FIRST_EVENT_SQL, params),
+    // Chart only: don't sink the real orders/events data over this.
     opts.approximate
-      ? queryCustomerLake(organizationId, APPROX_CANCELS_SQL, params)
+      ? queryCustomerLake(organizationId, APPROX_CANCELS_SQL, params).catch(
+          (err) => {
+            console.warn("[order-monitor] approximate cancels read failed", {
+              error: err instanceof Error ? err.message : String(err),
+            });
+            return [];
+          },
+        )
       : null,
+    // Chart only, same reason.
+    opts.channels
+      ? loadChannels(organizationId, params).catch((err) => {
+          console.warn("[order-monitor] channels read failed", {
+            error: err instanceof Error ? err.message : String(err),
+          });
+          return undefined;
+        })
+      : undefined,
   ]);
 
   const days = emptyDays();
-  // Counts come back as strings (UInt64 in JSONEachRow).
-  const cell = (row: Record<string, unknown>) => {
-    const day = days[Number(row.days_ago) as DayAgo];
-    const b = Number(row.bucket);
-    return day && b >= 0 && b < BUCKETS_PER_DAY ? { day, b } : null;
-  };
   for (const row of orders) {
-    const c = cell(row);
+    const c = dayCell(days, row);
     if (c) c.day.placed[c.b] = Number(row.placed);
   }
-  for (const row of events) {
-    const c = cell(row);
-    if (!c) continue;
-    c.day.canceled[c.b] = Number(row.canceled);
-    c.day.denied[c.b] = Number(row.denied);
-  }
+  applyCancelDenied(days, events);
   let approximate: StoreDay["approximate"];
   if (approx) {
     const approxDays = emptyDays();
-    for (const row of approx) {
-      const day = approxDays[Number(row.days_ago) as DayAgo];
-      const b = Number(row.bucket);
-      if (!day || b < 0 || b >= BUCKETS_PER_DAY) continue;
-      day.canceled[b] = Number(row.canceled);
-      day.denied[b] = Number(row.denied);
-    }
+    applyCancelDenied(approxDays, approx);
     approximate = approxDays;
   }
 
@@ -239,5 +279,46 @@ export async function loadStoreDay(
         ? null
         : Number(first.days_ago),
     approximate,
+    channels,
   };
+}
+
+async function loadChannels(
+  organizationId: string,
+  params: Record<string, string>,
+): Promise<NonNullable<StoreDay["channels"]>> {
+  const [rows, names] = await Promise.all([
+    queryCustomerLake(organizationId, CHANNELS_SQL, params),
+    // Names are a label, not data: without them the UI shows the channel id.
+    queryCustomerLake(organizationId, CHANNEL_NAMES_SQL, params).catch(
+      (err) => {
+        console.warn("[order-monitor] channel names read failed", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return [];
+      },
+    ),
+  ]);
+  const nameOf = new Map(
+    names
+      .filter((n) => n.name != null)
+      .map((n) => [String(n.channel_id), String(n.name)]),
+  );
+  const byId = new Map<string, { today: number[]; d1: number[] }>();
+  for (const row of rows) {
+    const id = String(row.channel);
+    const b = Number(row.bucket);
+    if (b < 0 || b >= BUCKETS_PER_DAY) continue;
+    let c = byId.get(id);
+    if (!c) {
+      c = { today: zeros(), d1: zeros() };
+      byId.set(id, c);
+    }
+    (Number(row.days_ago) === 0 ? c.today : c.d1)[b] = Number(row.placed);
+  }
+  return [...byId].map(([id, c]) => ({
+    id,
+    name: nameOf.get(id) || null,
+    ...c,
+  }));
 }
