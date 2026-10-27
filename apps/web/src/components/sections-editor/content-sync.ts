@@ -33,6 +33,7 @@ import { useEffect, useSyncExternalStore } from "react";
 import { useMinimumDuration } from "@/hooks/use-minimum-duration";
 import { KEYS } from "@/lib/query-keys";
 import type { ContentBackend } from "./content-backend";
+import { announceContentWrite } from "./content-writes-channel";
 import { decofileWriteMutationKey, decofileWriteScope } from "./decofile-api";
 import { sandboxGitStatusQueryPrefix } from "../thread/repository/sandbox-git-api";
 
@@ -324,6 +325,10 @@ async function runBegun<T>(
       );
     }
     throw error;
+  }
+  // The editor's other views on this draft read it again now.
+  if (target.backend?.kind === "protocol" && target.cacheKey) {
+    announceContentWrite(target.cacheKey);
   }
   let navigates = false;
   try {

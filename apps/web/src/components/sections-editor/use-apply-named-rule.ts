@@ -1,6 +1,10 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { sanitizeSecretsForPersistence } from "@decocms/shared/decofile";
+import { ContentProtocolError, ErrorCode } from "@decocms/blocks/protocol";
+import {
+  canonicalBlockJson,
+  sanitizeSecretsForPersistence,
+} from "@decocms/shared/decofile";
 import { useT } from "@/i18n/use-t.ts";
 import { KEYS } from "@/lib/query-keys";
 import {
@@ -8,6 +12,7 @@ import {
   protocolBlockVersion,
   reloadProtocolBlock,
   rereadProtocolContent,
+  savingBlockKeys,
 } from "./content-protocol-api";
 import {
   type DecofilePatchBody,
@@ -83,12 +88,41 @@ export type NamedRuleApplyOutcome =
    */
   | { ok: false; reason: "changed" | "unavailable" | "failed" };
 
+/** The blocks of a change, as the write queue's variables carry them. */
+interface NamedRuleWrite {
+  writes: Record<string, Record<string, unknown>>;
+  deletes: string[];
+  /**
+   * The versions of the copies the change was built on, as known when it
+   * was made. A block missing here was held by an earlier save of this
+   * editor still on its way: it takes the version that save answers.
+   */
+  pinned: Record<string, string | null>;
+}
+
+/** A version unknown when the write runs: as refused, so nothing is guessed. */
+function unreadConflict(blockKeys: string[]): ContentProtocolError {
+  return new ContentProtocolError(ErrorCode.Conflict, "not read yet", {
+    entries: Object.fromEntries(
+      blockKeys.map((key) => [key, { expected: null, actual: null }]),
+    ),
+  });
+}
+
 /**
  * Writes a {@link NamedRuleChange} into the editor's draft as ONE guarded
  * `blocks.apply`; it goes live with the next Publish, like any other edit.
  * The editor's copy changes at once and comes back if the write fails. A
  * refused write reads the stored blocks again and says so in one calm toast;
  * nothing is retried over someone else's change.
+ *
+ * The guard is the version of the copy the change was built on. The cache
+ * already holds the editor's earlier saves still on their way, so a block
+ * one of them holds is guarded by the version that save answers, read when
+ * this write runs (after it landed, as a section form's is); every other
+ * block by the version known when the change was made. The change's blocks
+ * count as being saved while it waits, so a poll meanwhile keeps their
+ * copies and versions, and someone else's save of them is still refused.
  */
 export function useApplyNamedRule({
   orgSlug,
@@ -110,15 +144,22 @@ export function useApplyNamedRule({
   const mutation = useMutation({
     mutationKey: decofileWriteMutationKey(orgSlug, virtualMcpId, branch),
     scope: decofileWriteScope(orgSlug, virtualMcpId, branch),
-    mutationFn: (plan: Extract<NamedRuleApplyPlan, { kind: "apply" }>) =>
-      applyProtocolPatch(
+    mutationFn: async (write: NamedRuleWrite) => {
+      const plan = planNamedRuleApply(write, (blockKey) =>
+        Object.hasOwn(write.pinned, blockKey)
+          ? write.pinned[blockKey]
+          : protocolBlockVersion(queryClient, cacheKey, blockKey),
+      );
+      if (plan.kind === "unread") throw unreadConflict(plan.blockKeys);
+      return applyProtocolPatch(
         queryClient,
         protocol!,
         params,
         cacheKey,
         plan.patch,
         plan.ifMatch,
-      ),
+      );
+    },
   });
 
   const changedMeanwhile = async (blockKeys: string[]) => {
@@ -149,14 +190,14 @@ export function useApplyNamedRule({
       return { ok: false, reason: "unavailable" };
     }
     const writes = sanitizeSecretsForPersistence(change.writes);
-    const plan = planNamedRuleApply({ ...change, writes }, (blockKey) =>
-      protocolBlockVersion(queryClient, cacheKey, blockKey),
+    const deletes = (change.deletes ?? []).filter(
+      (key) => !Object.hasOwn(writes, key),
     );
-    if (plan.kind === "unread") return changedMeanwhile(plan.blockKeys);
-
-    const touched = [...Object.keys(writes), ...(plan.patch.delete ?? [])];
+    const touched = [...Object.keys(writes), ...deletes];
     const previous =
       queryClient.getQueryData<Record<string, unknown>>(queryKey);
+    const pinned = await pinVersions(touched, previous);
+    if (!pinned) return changedMeanwhile(touched);
     const before = new Map<string, unknown>();
     for (const key of touched) {
       if (previous && Object.hasOwn(previous, key)) {
@@ -166,12 +207,12 @@ export function useApplyNamedRule({
     queryClient.setQueryData(queryKey, (current) =>
       applyMoveToDecofile(current as Record<string, unknown> | undefined, {
         writes,
-        deletes: plan.patch.delete ?? [],
+        deletes,
       }),
     );
     void queryClient.cancelQueries({ queryKey });
     try {
-      await mutation.mutateAsync(plan);
+      await mutation.mutateAsync({ writes, deletes, pinned });
       return { ok: true };
     } catch (error) {
       queryClient.setQueryData(
@@ -194,6 +235,47 @@ export function useApplyNamedRule({
       );
       return { ok: false, reason: "failed" };
     }
+  };
+
+  /**
+   * The versions of the copies a change was built on (`copies`, the cache
+   * when it was made), for every block no earlier save still on its way
+   * holds (those take that save's answer when the write runs). A block with
+   * no known version (the editor's bookkeeping was lost) is read now: when
+   * it is stored exactly as the change found it, the version just read is
+   * its copy's; when it isn't, someone else changed it: `null`, nothing is
+   * written.
+   */
+  const pinVersions = async (
+    touched: string[],
+    copies: Record<string, unknown> | undefined,
+  ): Promise<Record<string, string | null> | null> => {
+    const saving = savingBlockKeys(queryClient, params);
+    const pinned: Record<string, string | null> = {};
+    const unread: string[] = [];
+    for (const key of touched) {
+      if (saving.has(key)) continue;
+      const version = protocolBlockVersion(queryClient, cacheKey, key);
+      if (version === undefined) unread.push(key);
+      else pinned[key] = version;
+    }
+    if (unread.length === 0) return pinned;
+    const fresh = await reread();
+    if (!fresh) return null;
+    for (const key of unread) {
+      const had = !!copies && Object.hasOwn(copies, key);
+      if (had !== Object.hasOwn(fresh, key)) return null;
+      if (
+        had &&
+        canonicalBlockJson(fresh[key]) !== canonicalBlockJson(copies![key])
+      ) {
+        return null;
+      }
+      const version = protocolBlockVersion(queryClient, cacheKey, key);
+      if (version === undefined) return null;
+      pinned[key] = version;
+    }
+    return pinned;
   };
 
   /**

@@ -105,7 +105,14 @@ function versionedBackend() {
       calls.map(
         (call): BatchOutcome =>
           call.method === "blocks.list"
-            ? { ok: true, result: list() }
+            ? {
+                ok: true,
+                result:
+                  (call.params as { ifNoneMatch?: string } | undefined)
+                    ?.ifNoneMatch === `r${state.revision}`
+                    ? { notModified: true, revision: `r${state.revision}` }
+                    : list(),
+              }
             : call.method === "changes.list"
               ? {
                   ok: true,
@@ -199,6 +206,46 @@ describe("content-protocol block versions", () => {
     queryClient.setQueryData(KEYS.decofile(CACHE_KEY), { Hero: {} });
     expect(protocolBlockVersion(queryClient, CACHE_KEY, "Hero")).toBe(
       undefined,
+    );
+  });
+});
+
+describe("content-protocol block versions over time", () => {
+  /** The app's cache drops an entry nothing watches after `gcTime` (5 minutes; here 20 ms). */
+  const shortLivedCache = () =>
+    new QueryClient({ defaultOptions: { queries: { gcTime: 20 } } });
+  const later = () => new Promise((resolve) => setTimeout(resolve, 60));
+
+  it("stay known after the cache's unused-entry time, with saves and polls in between", async () => {
+    const queryClient = shortLivedCache();
+    const { backend } = versionedBackend();
+    await pollProtocolContent(queryClient, backend, params, CACHE_KEY);
+    await later();
+    // The editor saves one block, then polls: nothing changed elsewhere.
+    await applyProtocolPatch(
+      queryClient,
+      backend,
+      params,
+      CACHE_KEY,
+      { set: { Hero: { title: "mine" } } },
+      { Hero: "h1" },
+    );
+    await pollProtocolContent(queryClient, backend, params, CACHE_KEY);
+    await later();
+    expect(protocolBlockVersion(queryClient, CACHE_KEY, "Hero")).toBe("h2");
+    expect(protocolBlockVersion(queryClient, CACHE_KEY, "pages-home")).toBe(
+      "p1",
+    );
+  });
+
+  it("a read that finds the versions gone reads the content whole", async () => {
+    const queryClient = new QueryClient();
+    const { backend } = versionedBackend();
+    await pollProtocolContent(queryClient, backend, params, CACHE_KEY);
+    queryClient.removeQueries({ queryKey: KEYS.contentVersions(CACHE_KEY) });
+    await pollProtocolContent(queryClient, backend, params, CACHE_KEY);
+    expect(protocolBlockVersion(queryClient, CACHE_KEY, "pages-home")).toBe(
+      "p1",
     );
   });
 });

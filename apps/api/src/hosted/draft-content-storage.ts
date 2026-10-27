@@ -11,9 +11,12 @@
  *   `delete`; deleting X that exists on main moves it to `delete`; deleting a
  *   draft-only X just drops it from `set`. Putting X back to exactly main's
  *   content drops X from the draft instead of keeping a copy, which would
- *   hide a later change on main and never let the draft be empty. A save is
- *   last-writer-wins (no stale check against the draft); the schema is still
- *   checked against main's.
+ *   hide a later change on main and never let the draft be empty. A save
+ *   honours `expected` against the draft it lands on (inside the draft
+ *   store's conditional write, so across API processes too): a guarded
+ *   block someone saved meanwhile makes the attempt `stale`, and the core
+ *   reads again and answers a Conflict only if the guard really fails. The
+ *   schema is still checked against main's.
  * - The base (`changes.*`) is main's head: the changes are the files the
  *   draft makes differ from main, which are the draft's own names (a `set`
  *   byte-equal to main's one file isn't a change). A discard
@@ -43,7 +46,7 @@ import {
 import type { RepoContentClient } from "@/git-providers";
 import { gitBlobSha } from "@/decofile/read-decofile";
 import { createRepoContentReader } from "@/decofile/repo-content-storage";
-import { bareEtag } from "./delivery-store";
+import { bareEtag, ObjectChangedError } from "./delivery-store";
 import type { DraftBody, DraftStore, HostedDraftRef } from "./draft-store";
 
 /** The spelling group (fully decoded name) a saved-block file belongs to. */
@@ -169,8 +172,32 @@ function filesChangedFrom(
   return files.sort();
 }
 
-/** Thrown inside the draft lock when a discard's `expected` versions moved. */
+/** Thrown inside the draft lock when an attempt's `expected` versions moved. */
 const STALE_DRAFT = Symbol("stale draft");
+
+/**
+ * Throws {@link STALE_DRAFT} unless every `expected` file is, in `body`
+ * layered on main's `baseFiles`, at the version expected (`null`: absent).
+ */
+function checkExpected(
+  baseFiles: StorageFile[],
+  body: DraftBody,
+  expected: Record<string, string | null>,
+) {
+  const entries = Object.entries(expected);
+  if (entries.length === 0) return;
+  const now = new Map(
+    layerDraftFiles(baseFiles, body).files.map((f) => [f.file, f.version]),
+  );
+  for (const [file, version] of entries) {
+    if ((now.get(file) ?? null) !== version) throw STALE_DRAFT;
+  }
+}
+
+/** A draft write that lost a race: the core reads again and retries. */
+function isStaleWrite(error: unknown): boolean {
+  return error === STALE_DRAFT || error instanceof ObjectChangedError;
+}
 
 export function createDraftContentStorage(options: {
   client: RepoContentClient;
@@ -274,20 +301,9 @@ export function createDraftContentStorage(options: {
     const groups = new Set(
       [...Object.keys(attempt.put), ...attempt.delete].map(groupOf),
     );
-    const expected = Object.entries(attempt.expected);
     try {
       const saved = await drafts.update(ref, (body) => {
-        if (expected.length > 0) {
-          const now = new Map(
-            layerDraftFiles(base.files, body).files.map((f) => [
-              f.file,
-              f.version,
-            ]),
-          );
-          for (const [file, version] of expected) {
-            if ((now.get(file) ?? null) !== version) throw STALE_DRAFT;
-          }
-        }
+        checkExpected(base.files, body, attempt.expected);
         return dropGroupsFromDraft(body, groups);
       });
       return {
@@ -296,7 +312,7 @@ export function createDraftContentStorage(options: {
         versions,
       };
     } catch (error) {
-      if (error === STALE_DRAFT) return { status: "stale" };
+      if (isStaleWrite(error)) return { status: "stale" };
       throw error;
     }
   };
@@ -387,14 +403,21 @@ export function createDraftContentStorage(options: {
         const mainFile = sameAsMain.get(groupOf(file));
         if (mainFile?.file === file) versions[file] = mainFile.version;
       }
-      const saved = await drafts.update(ref, (body) =>
-        applyAttemptToDraft(
-          body,
-          attempt,
-          mainGroups,
-          new Set(sameAsMain.keys()),
-        ),
-      );
+      let saved: Awaited<ReturnType<DraftStore["update"]>>;
+      try {
+        saved = await drafts.update(ref, (body) => {
+          checkExpected(base.files, body, attempt.expected);
+          return applyAttemptToDraft(
+            body,
+            attempt,
+            mainGroups,
+            new Set(sameAsMain.keys()),
+          );
+        });
+      } catch (error) {
+        if (isStaleWrite(error)) return { status: "stale" };
+        throw error;
+      }
       return {
         status: "committed",
         revision: draftRevision(base.revision, saved.etag),
