@@ -376,6 +376,7 @@ export const taskBoard = {
   "taskBoard.viewControls.matchCount": "{count} tarefas",
   "taskBoard.viewControls.noMatches": "Nenhum filtro encontrado.",
   "taskBoard.viewControls.removeFilter": "Remover filtro {field}",
+  "taskBoard.viewControls.clearProjectScope": "Mostrar todos os projetos",
   "taskBoard.taskFilters.assigneeLabel": "Responsável",
   "taskBoard.taskFilters.assigneeMember": "Membro",
   "taskBoard.taskFilters.assigneeSuperAgent": "Super Agent",

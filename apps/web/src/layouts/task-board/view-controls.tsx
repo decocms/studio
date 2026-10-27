@@ -62,6 +62,7 @@ import {
   Circle,
 } from "@untitledui/icons";
 import { ProjectEntryIcon } from "@/components/project-entry";
+import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -1166,6 +1167,7 @@ export function AppliedFiltersBar({
   index,
   onChange,
   view,
+  scope,
 }: {
   filters: TaskFilters;
   items: TaskBoardItem[];
@@ -1176,15 +1178,24 @@ export function AppliedFiltersBar({
   onChange: (next: TaskFilters) => void;
   /** The list view's grouping and sorting; the board has neither. */
   view?: { grouping: GroupingProps; sorting: SortingProps };
+  /** The project this board is narrowed to. It is not a filter, but it hides
+   *  cards like one, so it is shown (and lifted) like one. */
+  scope?: { project: VirtualMCPEntity; onClear: () => void };
 }) {
   const t = useT();
-  const fields = useFilterFields({ members, tags, sprints, index });
+  const fields = useFilterFields({
+    members,
+    tags,
+    sprints,
+    index,
+    scoped: scope !== undefined,
+  });
   const currentSprint = currentSprintId(sprints);
   const activeIds = activeFilterFieldIds(filters, index, currentSprint);
   const arranged =
     view !== undefined &&
     (view.grouping.groupBy !== null || view.sorting.sortBy !== null);
-  if (activeIds.length === 0 && !arranged) return null;
+  if (activeIds.length === 0 && !arranged && !scope) return null;
 
   return (
     <div className="mx-3 flex h-11 shrink-0 items-center gap-2 overflow-x-auto rounded-xl border border-border px-2 no-scrollbar">
@@ -1193,6 +1204,25 @@ export function AppliedFiltersBar({
           <ViewChips {...view} />
           <Separator orientation="vertical" className="mx-1 h-5" />
         </>
+      )}
+      {scope && (
+        <Badge variant="outline" size="segmented">
+          <span className="flex h-full items-center gap-1.5 px-2.5 text-foreground">
+            <ProjectEntryIcon entry={entryForFilter(scope.project.id, index)} />
+            {t("taskBoard.taskFilters.projectLabel")}
+          </span>
+          <Separator orientation="vertical" />
+          <span className="max-w-[12rem] truncate px-2.5 text-foreground">
+            {scope.project.title}
+          </span>
+          <IconButton
+            label={t("taskBoard.viewControls.clearProjectScope")}
+            size="icon-sm"
+            onClick={scope.onClear}
+          >
+            <X />
+          </IconButton>
+        </Badge>
       )}
       {activeIds.map((id) => {
         const field = fields.find((candidate) => candidate.id === id);
