@@ -15,6 +15,7 @@ import {
 import type { SectionCatalogEntry } from "@/components/sections-editor/section-catalog";
 import { createReferencedBlockSaver } from "@/components/sections-editor/save-referenced-block";
 import {
+  keptTheirVersion,
   type SaveGuard,
   useDebouncedSaveBlock,
   useSaveBlock,
@@ -170,8 +171,12 @@ function AppEditorForm({
         entry,
         decofile,
       );
-      await saveBlock.mutateAsync({ blockKey: newKey, data });
-      toast.success(t("sandbox.appEditor.createdSection", { name: newKey }));
+      const created = await saveBlock.mutateAsync({ blockKey: newKey, data });
+      // Kept the version someone else created first (hosted v8): the hook's
+      // own toast said so.
+      if (!keptTheirVersion(created)) {
+        toast.success(t("sandbox.appEditor.createdSection", { name: newKey }));
+      }
       append({ __resolveType: newKey });
       flush();
     } catch (err) {

@@ -806,11 +806,14 @@ function ContentBrowserReady({
     );
     if (!added) return;
     try {
-      await saveBlock.mutateAsync({
+      const saved = await saveBlock.mutateAsync({
         blockKey: page.key,
         data: { ...fullPageData, sections: added.sections },
       });
-      toast.success(`Variant added to "${page.name}"`);
+      // Kept as the draft holds it (hosted v8): its own toast said so.
+      if (!keptTheirVersion(saved)) {
+        toast.success(`Variant added to "${page.name}"`);
+      }
       setSelection({ collection: "pages", key: page.key, path: page.path });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not add variant");
@@ -1042,8 +1045,8 @@ function ContentBrowserReady({
     const key = generateRedirectBlockKey(decofile, values.from);
     const data = buildRedirectBlock(values);
     try {
-      await saveBlock.mutateAsync({ blockKey: key, data });
-      toast.success("Created redirect");
+      const created = await saveBlock.mutateAsync({ blockKey: key, data });
+      if (!keptTheirVersion(created)) toast.success("Created redirect");
       setRedirectDialogOpen(false);
       setSelection({ collection: "redirects", key });
     } catch (err) {
@@ -1058,8 +1061,10 @@ function ContentBrowserReady({
     const key = generateBlogKey(decofile, kind);
     const data = buildBlogBlock(key, kind, emptyBlogPayload(kind));
     try {
-      await saveBlock.mutateAsync({ blockKey: key, data });
-      toast.success(`Created ${BLOG_SINGULAR[kind]}`);
+      const created = await saveBlock.mutateAsync({ blockKey: key, data });
+      if (!keptTheirVersion(created)) {
+        toast.success(`Created ${BLOG_SINGULAR[kind]}`);
+      }
       setSelection({ collection: kind, key });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not create");
@@ -1071,8 +1076,10 @@ function ContentBrowserReady({
     const key = generateBlogKey(decofile, "posts");
     const data = buildBlogBlock(key, "posts", scheduledPostPayload(day));
     try {
-      await saveBlock.mutateAsync({ blockKey: key, data });
-      toast.success(t("sandbox.postCalendar.createdScheduledPost"));
+      const created = await saveBlock.mutateAsync({ blockKey: key, data });
+      if (!keptTheirVersion(created)) {
+        toast.success(t("sandbox.postCalendar.createdScheduledPost"));
+      }
       setActiveCollection("posts");
       setPrevCollection("posts");
       setSelection({ collection: "posts", key });
