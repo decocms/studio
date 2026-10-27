@@ -4,9 +4,10 @@
  * into their target), so the sidebar lists only the types the site HAS
  * content of, never the whole block map: the site's own (pages, redirects),
  * the one-entry types every page shows, then one flat list of the rest. The
- * manifest group only says which editor opens an entry. Each entry carries its status in the draft, from the
- * draft's changes (`changes.list`): published, changed, new, or deleted (a
- * deletion's content is the published copy, from `changes.get`'s `before`).
+ * manifest group only says which editor opens an entry. Each entry carries
+ * its status in the draft, from the draft's changes (`changes.list`):
+ * published, changed, new, or deleted (a deletion's content is the published
+ * copy, from `changes.get`'s `before`).
  *
  * Pure: reads the blocks, the schema and the changes the editor already
  * holds, no request of its own.
@@ -403,18 +404,25 @@ function entryOrder(group: ManifestGroup) {
     rank(a) - rank(b) || entryName(a).localeCompare(entryName(b));
 }
 
-/** The types the sidebar's list shows: the top few, or all of them. */
+/**
+ * The types the sidebar's list shows: the top few, or all of them. The open
+ * type (`activeId`) always shows, after the top few when it ranks lower, so
+ * an entry opened from elsewhere still has its row marked.
+ */
 export function visibleTypes(
   types: ContentType[],
   showAll: boolean,
+  activeId?: string | null,
 ): { shown: ContentType[]; hidden: number } {
   if (showAll || types.length <= TOP_TYPES) {
     return { shown: types, hidden: 0 };
   }
-  return {
-    shown: types.slice(0, TOP_TYPES),
-    hidden: types.length - TOP_TYPES,
-  };
+  const shown = types.slice(0, TOP_TYPES);
+  const active = activeId
+    ? types.slice(TOP_TYPES).find((type) => type.id === activeId)
+    : undefined;
+  if (active) shown.push(active);
+  return { shown, hidden: types.length - shown.length };
 }
 
 function decodeName(key: string): string {

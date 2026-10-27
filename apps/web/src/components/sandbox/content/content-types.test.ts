@@ -370,6 +370,27 @@ describe("sidebar sizing", () => {
     expect(visibleTypes(many, true).shown.length).toBe(10);
     expect(visibleTypes(many.slice(0, 8), false).hidden).toBe(0);
   });
+  test("the open type shows even past the top eight", () => {
+    const many = [12, 11, 10, 9, 8, 7, 6, 5, 4, 3].map((n, i) =>
+      type(`t${i}`, n),
+    );
+    const open = visibleTypes(many, false, "t9");
+    expect(open.shown.map((t) => t.id)).toEqual([
+      "t0",
+      "t1",
+      "t2",
+      "t3",
+      "t4",
+      "t5",
+      "t6",
+      "t7",
+      "t9",
+    ]);
+    expect(open.hidden).toBe(1);
+    // One already in the top eight adds nothing.
+    expect(visibleTypes(many, false, "t2").shown.length).toBe(TOP_TYPES);
+    expect(visibleTypes(many, false, "nope").hidden).toBe(2);
+  });
 });
 
 describe("table columns", () => {

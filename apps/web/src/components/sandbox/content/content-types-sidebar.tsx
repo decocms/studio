@@ -78,10 +78,8 @@ export function ContentTypesSidebar({
     !q ||
     label(type).toLowerCase().includes(q) ||
     type.entries.some((e) => entryMatches(e, q, summaryFieldsOf(type)));
-  const isActive = (type: ContentType) =>
-    openTypeId
-      ? openTypeId === type.id
-      : view.kind === "type" && view.id === type.id;
+  const activeTypeId = openTypeId || (view.kind === "type" ? view.id : null);
+  const isActive = (type: ContentType) => activeTypeId === type.id;
 
   const row = (type: ContentType, dot: DotColor, singleton = false) => (
     <TypeRow
@@ -110,7 +108,7 @@ export function ContentTypesSidebar({
   // Searching lists every match; otherwise the busiest few, then "Show all".
   const types = q
     ? { shown: typesFound, hidden: 0 }
-    : visibleTypes(typesFound, showAllTypes);
+    : visibleTypes(typesFound, showAllTypes, activeTypeId);
   const showSeo =
     !q || t("siteEditor.contentTypes.seo").toLowerCase().includes(q);
 
