@@ -339,7 +339,7 @@ function VtexConnectDialog({
                 }}
                 disabled={connect.isPending}
               >
-                <SelectTrigger id="vtex-connection">
+                <SelectTrigger id="vtex-connection" className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
