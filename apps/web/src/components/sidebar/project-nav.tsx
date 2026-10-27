@@ -29,7 +29,7 @@ import { DESTINATION_ROUTE } from "@/hooks/use-destination-route";
 import { useActivePanelTabId } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { useProjectScope } from "@/hooks/use-project-scope";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
-import { isBlocksV8Project } from "@decocms/shared/blocks-major";
+import { lastFoundV8 } from "@/hooks/use-main-schema-v8";
 import {
   keepAttachedPinnedViews,
   pinnedViewsOf,
@@ -94,12 +94,11 @@ export function ProjectNav({
   /** While main's schema is read (a GitHub round trip), a site the server last
    *  found v8 already shows its Calendar and Experiments rows, so they don't
    *  pop in late. The views themselves still wait for the answer. */
-  const lastFoundV8 =
-    nativeViews.calendarPending && isBlocksV8Project(project.metadata);
+  const v8WhileReading = nativeViews.calendarPending && lastFoundV8(project);
   const presence = {
     ...nativeViews.presence,
-    calendar: nativeViews.presence.calendar || lastFoundV8,
-    experiments: nativeViews.presence.experiments || lastFoundV8,
+    calendar: nativeViews.presence.calendar || v8WhileReading,
+    experiments: nativeViews.presence.experiments || v8WhileReading,
   };
   const sidebarViews =
     optimisticSidebarViews ?? resolveProjectSidebarViews(project.metadata);
