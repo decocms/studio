@@ -18,10 +18,13 @@ import {
   type EntryStatus,
   entryMatches,
   entryName,
+  foldSameDestination,
   humanizeTypeKey,
+  inRedirectPathGroup,
   pagePathOf,
   pageSectionCount,
   redirectDestinationPage,
+  redirectPathGroups,
   redirectRowOf,
   summaryFieldsOf,
   summaryValue,
@@ -63,7 +66,10 @@ export function ContentTypesTable({
   const t = useT();
   const label = useTypeLabel();
   const [query, setQuery] = useState("");
-  const [onlyChanged, setOnlyChanged] = useState(false);
+  // "all", "changed", or a redirect folder ("path:products"; "path:": the rest).
+  const [filter, setFilter] = useState("all");
+  const [unfolded, setUnfolded] = useState(false);
+  const known = tree.statusKnown;
   const rows: Row[] = type
     ? type.entries.map((entry) => ({ type, entry }))
     : tree.changed;
@@ -71,11 +77,33 @@ export function ContentTypesTable({
   const changedCount = rows.filter(
     (r) => r.entry.status !== "published",
   ).length;
-  const shown = rows.filter(
+  const pathGroups =
+    type?.group === "redirects" ? redirectPathGroups(type.entries) : [];
+  const onlyChanged = filter === "changed" && known;
+  const pathFilter = filter.startsWith("path:") ? filter.slice(5) : null;
+  const matching = rows.filter(
     (r) =>
       (!onlyChanged || r.entry.status !== "published") &&
+      (pathFilter === null ||
+        inRedirectPathGroup(r.entry, pathFilter, pathGroups)) &&
       entryMatches(r.entry, query, type ? fields : []),
   );
+  // A long list of redirects to one page folds, unless searched or filtered.
+  const fold =
+    type?.group === "redirects" &&
+    filter === "all" &&
+    !query.trim() &&
+    !unfolded
+      ? foldSameDestination(matching.map((r) => r.entry))
+      : null;
+  const kept = fold && fold.folded > 0 ? new Set(fold.shown) : null;
+  const shown = kept ? matching.filter((r) => kept.has(r.entry)) : matching;
+  const everywhere = new Set(tree.everywhere.map((t) => t.id));
+  // A type with one entry is named by its type, as the sidebar names it.
+  const nameOf = (rowType: ContentType, entry: ContentEntry) =>
+    everywhere.has(rowType.id) && typeof entry.block.name !== "string"
+      ? label(rowType)
+      : entryName(entry);
   const kind = !type
     ? "changes"
     : type.group === "pages"
@@ -87,9 +115,12 @@ export function ContentTypesTable({
   const typeName = type
     ? label(type)
     : t("siteEditor.contentTypes.changesInDraft");
-  const searchLabel = t("siteEditor.contentTypes.search", {
-    type: typeName.toLowerCase(),
-  });
+  const searchLabel =
+    kind === "redirects"
+      ? t("siteEditor.contentTypes.searchRedirects")
+      : t("siteEditor.contentTypes.search", {
+          type: typeName.toLowerCase(),
+        });
 
   // "/" focuses the search, unless the person is typing somewhere else.
   const searchRef = (input: HTMLInputElement | null) => {
@@ -124,9 +155,11 @@ export function ContentTypesTable({
             aria-label={searchLabel}
             className="w-full rounded-lg bg-muted/60 py-1.5 pr-9 pl-3 text-[13px] outline-none placeholder:text-muted-foreground"
           />
-          <kbd className="pointer-events-none absolute top-1.5 right-2 rounded border bg-background px-1.5 text-[11px] text-muted-foreground">
-            /
-          </kbd>
+          {!query && (
+            <kbd className="pointer-events-none absolute top-1.5 right-2 rounded border bg-background px-1.5 text-[11px] text-muted-foreground">
+              /
+            </kbd>
+          )}
         </div>
         {type && (
           <div
@@ -135,19 +168,36 @@ export function ContentTypesTable({
             className="flex gap-0.5"
           >
             <FilterPill
-              active={!onlyChanged}
-              onClick={() => setOnlyChanged(false)}
+              active={filter === "all"}
+              onClick={() => setFilter("all")}
               label={t("siteEditor.contentTypes.filter.all", {
                 count: rows.length,
               })}
             />
-            <FilterPill
-              active={onlyChanged}
-              onClick={() => setOnlyChanged(true)}
-              label={t("siteEditor.contentTypes.filter.changed", {
-                count: changedCount,
-              })}
-            />
+            {/* Until the draft's changes are read, none is claimed. */}
+            {known && (
+              <FilterPill
+                active={filter === "changed"}
+                onClick={() => setFilter("changed")}
+                label={t("siteEditor.contentTypes.filter.changed", {
+                  count: changedCount,
+                })}
+              />
+            )}
+            {pathGroups.map((group) => (
+              <FilterPill
+                key={group.segment || "-"}
+                active={filter === `path:${group.segment}`}
+                onClick={() => setFilter(`path:${group.segment}`)}
+                label={
+                  group.segment
+                    ? `${humanizeTypeKey(group.segment)} ${group.count}`
+                    : t("siteEditor.contentTypes.filter.otherPaths", {
+                        count: group.count,
+                      })
+                }
+              />
+            ))}
           </div>
         )}
         {onCreate && createLabel && (
@@ -163,7 +213,7 @@ export function ContentTypesTable({
             ? t("siteEditor.contentTypes.noMatch")
             : !type
               ? t("siteEditor.contentTypes.noChanges")
-              : onlyChanged
+              : filter === "changed"
                 ? t("siteEditor.contentTypes.noChangedHere")
                 : t("siteEditor.contentTypes.empty")}
         </p>
@@ -210,26 +260,48 @@ export function ContentTypesTable({
               const destination = redirect
                 ? redirectDestinationPage(pages, redirect.to)
                 : null;
+              const open =
+                deleted || entry.orphan
+                  ? undefined
+                  : () => onOpen(rowType, entry);
               return (
                 <TableRow
                   key={`${rowType.id}:${entry.key}`}
-                  onClick={deleted ? undefined : () => onOpen(rowType, entry)}
+                  // A mouse convenience; the first cell's button is the
+                  // keyboard's way in.
+                  onClick={open}
                   className={cn(
                     "group border-border/50",
-                    !deleted && "cursor-pointer hover:bg-accent/50",
+                    open && "cursor-pointer hover:bg-accent/50",
                   )}
                 >
                   {kind === "redirects" && redirect ? (
                     <>
                       <Cell>
-                        <span className={cn("font-mono text-[13px]", struck)}>
-                          {redirect.from}
-                        </span>
+                        <OpenTarget onOpen={open}>
+                          <span
+                            className={cn(
+                              "font-mono text-[13px] text-muted-foreground",
+                              struck,
+                            )}
+                          >
+                            {redirect.from}
+                          </span>
+                        </OpenTarget>
                       </Cell>
                       <Cell>
-                        <div className={cn("flex flex-col", struck)}>
-                          {destination && <span>{entryName(destination)}</span>}
-                          <span className="font-mono text-xs text-muted-foreground">
+                        <div
+                          className={cn(
+                            "flex min-w-0 items-baseline gap-2.5",
+                            struck,
+                          )}
+                        >
+                          {destination && (
+                            <span className="truncate">
+                              {entryName(destination)}
+                            </span>
+                          )}
+                          <span className="truncate font-mono text-[13px] text-muted-foreground">
                             {redirect.to}
                           </span>
                         </div>
@@ -243,9 +315,11 @@ export function ContentTypesTable({
                   ) : (
                     <>
                       <Cell>
-                        <span className={cn("font-medium", struck)}>
-                          {entryName(entry)}
-                        </span>
+                        <OpenTarget onOpen={open}>
+                          <span className={cn("font-medium", struck)}>
+                            {nameOf(rowType, entry)}
+                          </span>
+                        </OpenTarget>
                       </Cell>
                       {kind === "pages" && (
                         <>
@@ -259,14 +333,14 @@ export function ContentTypesTable({
                               {pagePathOf(entry)}
                             </span>
                           </Cell>
-                          <Cell className="text-muted-foreground tabular-nums">
+                          <Cell className="text-muted-foreground/80 tabular-nums">
                             {pageSectionCount(entry)}
                           </Cell>
                         </>
                       )}
                       {kind === "changes" && (
                         <Cell className="text-muted-foreground">
-                          {label(rowType)}
+                          {rowType.title ? label(rowType) : ""}
                         </Cell>
                       )}
                       {kind === "other" &&
@@ -283,31 +357,41 @@ export function ContentTypesTable({
                     </>
                   )}
                   <Cell>
-                    <span className="inline-flex items-center gap-2">
-                      <StatusLabel status={entry.status} />
-                      {deleted && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-6 px-2 text-xs"
-                          disabled={restoring !== null}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onRestore(entry);
-                          }}
-                        >
-                          {restoring === entry.key ? (
-                            <Spinner className="size-3" />
-                          ) : null}
-                          {t("siteEditor.contentTypes.restore")}
-                        </Button>
-                      )}
-                    </span>
+                    {known ? (
+                      <span className="inline-flex items-center gap-2">
+                        <StatusLabel status={entry.status} />
+                        {deleted && (
+                          <button
+                            type="button"
+                            disabled={restoring !== null}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onRestore(entry);
+                            }}
+                            className="ml-1.5 inline-flex items-center gap-1 rounded-md border border-border/70 bg-background px-2 py-0.5 text-xs cursor-pointer hover:bg-accent disabled:cursor-default disabled:opacity-60"
+                          >
+                            {restoring === entry.key ? (
+                              <Spinner className="size-3" />
+                            ) : null}
+                            {t("siteEditor.contentTypes.restore")}
+                          </button>
+                        )}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground/70">
+                        {t("siteEditor.contentTypes.status.checking")}
+                      </span>
+                    )}
                   </Cell>
                   {rowMenu && (
-                    <Cell className="w-8 text-right">
+                    <Cell className="w-8 py-0 text-right">
                       {!deleted && (
-                        <span className="opacity-0 group-hover:opacity-100 focus-within:opacity-100">
+                        // The menu (portaled, so its clicks bubble here
+                        // through React) never opens the row.
+                        <span
+                          onClick={(e) => e.stopPropagation()}
+                          className="inline-flex opacity-0 group-hover:opacity-100 focus-within:opacity-100 has-[[data-state=open]]:opacity-100"
+                        >
                           {rowMenu(rowType, entry)}
                         </span>
                       )}
@@ -316,6 +400,21 @@ export function ContentTypesTable({
                 </TableRow>
               );
             })}
+            {fold && fold.folded > 0 && (
+              <TableRow className="border-border/50 hover:bg-transparent">
+                <Cell colSpan={rowMenu ? 5 : 4} className="text-[13px]">
+                  <button
+                    type="button"
+                    onClick={() => setUnfolded(true)}
+                    className="text-muted-foreground hover:text-foreground cursor-pointer"
+                  >
+                    {t("siteEditor.contentTypes.folded", {
+                      count: fold.folded,
+                    })}
+                  </button>
+                </Cell>
+              </TableRow>
+            )}
           </TableBody>
         </Table>
       )}
@@ -345,12 +444,42 @@ function Head({
 function Cell({
   children,
   className,
+  colSpan,
 }: {
   children?: React.ReactNode;
   className?: string;
+  colSpan?: number;
 }) {
   return (
-    <TableCell className={cn("px-3 py-2", className)}>{children}</TableCell>
+    <TableCell colSpan={colSpan} className={cn("px-3 py-2", className)}>
+      {children}
+    </TableCell>
+  );
+}
+
+/**
+ * What opens a row from the keyboard: a button around the first cell's text
+ * (a deleted row's is plain text, it doesn't open).
+ */
+function OpenTarget({
+  onOpen,
+  children,
+}: {
+  onOpen?: () => void;
+  children: React.ReactNode;
+}) {
+  if (!onOpen) return <>{children}</>;
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onOpen();
+      }}
+      className="max-w-full truncate rounded-sm text-left cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      {children}
+    </button>
   );
 }
 

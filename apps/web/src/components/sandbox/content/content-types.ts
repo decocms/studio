@@ -37,6 +37,8 @@ export interface ContentEntry {
   /** The block as the draft holds it; a deleted one's published copy. */
   block: Record<string, unknown>;
   status: EntryStatus;
+  /** A change whose block the draft doesn't hold (nothing to open). */
+  orphan?: true;
 }
 
 export interface ContentType {
@@ -70,8 +72,17 @@ export interface ContentTypeTree {
   other: ContentType[];
   /** Every type above, for lookups by id. */
   all: ContentType[];
-  /** Entries with a change in the draft, across every type. */
+  /**
+   * Every change in the draft (`changes.list`), one row each: under its type
+   * when the entry is listed, else under the type its block names (a test,
+   * a campaign) or none (a deletion whose published copy isn't read yet).
+   */
   changed: Array<{ type: ContentType; entry: ContentEntry }>;
+  /**
+   * Whether the draft's changes are known: until `changes.list` answers,
+   * every entry reads as published and nothing says it is.
+   */
+  statusKnown: boolean;
 }
 
 /** How many section types the sidebar shows before "Show all". */
@@ -304,17 +315,21 @@ export function buildContentTypes(input: {
     else byType.set(type, [entry]);
   };
   const seen = new Set<string>();
+  // Each typed entry by spelling, for the draft's changes.
+  const typed = new Map<string, { type: string; entry: ContentEntry }>();
   for (const [key, value] of Object.entries(blocks)) {
     if (!isRecord(value)) continue;
     const type = typeOfBlock(meta, blocks, value);
     if (!type) continue;
     const spelling = spellingKey(key);
     seen.add(spelling);
-    add(type, {
+    const entry: ContentEntry = {
       key,
       block: value,
       status: entryStatus(bySpelling.get(spelling)?.change),
-    });
+    };
+    typed.set(spelling, { type, entry });
+    add(type, entry);
   }
   // Deletions: the draft no longer has them, the published copy says what
   // they were.
@@ -324,7 +339,9 @@ export function buildContentTypes(input: {
     if (!isRecord(before)) continue;
     const type = typeOfBlock(meta, blocks, before);
     if (!type) continue;
-    add(type, { key: name, block: before, status: "deleted" });
+    const entry: ContentEntry = { key: name, block: before, status: "deleted" };
+    typed.set(spelling, { type, entry });
+    add(type, entry);
   }
 
   const loaderTitles = [...byType.keys()]
@@ -343,12 +360,7 @@ export function buildContentTypes(input: {
     if (group === "loaders") {
       ({ app, title } = loaderApp(meta, id, title, prefixes));
     }
-    // What the draft adds first (what was just made), then by name.
-    entries.sort(
-      (a, b) =>
-        Number(b.status === "new") - Number(a.status === "new") ||
-        entryName(a).localeCompare(entryName(b)),
-    );
+    entries.sort(entryOrder(group));
     all.push({
       id,
       group,
@@ -395,12 +407,47 @@ export function buildContentTypes(input: {
     ...of("other"),
   ];
 
+  // The draft's changes, from its own list: also those no type lists.
+  const byId = new Map(all.map((type) => [type.id, type]));
+  const unlisted = new Map<string, ContentType>();
+  const typeFor = (id: string): ContentType => {
+    const found = byId.get(id) ?? unlisted.get(id);
+    if (found) return found;
+    const type: ContentType = {
+      id,
+      group: id ? (manifestGroupOf(meta, id) ?? "other") : "other",
+      title: id ? typeTitle(meta, id) : "",
+      entries: [],
+      changed: 0,
+    };
+    unlisted.set(id, type);
+    return type;
+  };
   const changed: ContentTypeTree["changed"] = [];
-  for (const type of all) {
-    for (const entry of type.entries) {
-      if (entry.status !== "published") changed.push({ type, entry });
+  for (const [spelling, { name, change }] of bySpelling) {
+    const found = typed.get(spelling);
+    if (found) {
+      changed.push({ type: typeFor(found.type), entry: found.entry });
+      continue;
     }
+    const block = blocks[name];
+    changed.push({
+      type: typeFor(""),
+      entry: {
+        key: name,
+        block: isRecord(block) ? block : {},
+        status: entryStatus(change),
+        ...(isRecord(block) ? {} : { orphan: true as const }),
+      },
+    });
   }
+  // Typed first, by type, then by name.
+  changed.sort(
+    (a, b) =>
+      Number(!a.type.title) - Number(!b.type.title) ||
+      a.type.title.localeCompare(b.type.title) ||
+      entryName(a.entry).localeCompare(entryName(b.entry)),
+  );
   return {
     pages,
     redirects,
@@ -411,7 +458,26 @@ export function buildContentTypes(input: {
     other,
     all,
     changed,
+    statusKnown: !!input.changes,
   };
+}
+
+/**
+ * How a type's entries are listed: what the draft adds first (what was just
+ * made), a site's home page first among pages, what it deletes last, then
+ * by name.
+ */
+function entryOrder(group: ManifestGroup) {
+  const rank = (entry: ContentEntry) =>
+    entry.status === "new"
+      ? 0
+      : entry.status === "deleted"
+        ? 3
+        : group === "pages" && normalizePagePath(pagePathOf(entry)) === "/"
+          ? 1
+          : 2;
+  return (a: ContentEntry, b: ContentEntry) =>
+    rank(a) - rank(b) || entryName(a).localeCompare(entryName(b));
 }
 
 /** The section types the sidebar shows: the top few, or all of them. */
@@ -567,4 +633,100 @@ export function entryMatches(
     ...fields.map((f) => summaryValue(entry, f)),
   ];
   return hay.some((s) => s.toLowerCase().includes(q));
+}
+
+/** A redirect's source as path segments (no query, no trailing slash). */
+function fromSegments(entry: ContentEntry): string[] {
+  const from = redirectRowOf(entry).from.split(/[?#]/)[0] ?? "";
+  return from.split("/").filter(Boolean);
+}
+
+export interface RedirectPathGroup {
+  /** The first segment of the sources it holds (`products`); `""`: the rest. */
+  segment: string;
+  count: number;
+}
+
+/**
+ * Redirects by the first folder of their source (`/products/…`,
+ * `/collections/…`), busiest first, then the rest: filters for a long list.
+ * Only folders two or more redirects share count; empty unless that splits
+ * the list in two or more parts.
+ */
+export function redirectPathGroups(
+  entries: ContentEntry[],
+): RedirectPathGroup[] {
+  const counts = new Map<string, number>();
+  for (const entry of entries) {
+    const segments = fromSegments(entry);
+    if (segments.length < 2) continue;
+    const first = segments[0] ?? "";
+    counts.set(first, (counts.get(first) ?? 0) + 1);
+  }
+  const groups = [...counts]
+    .filter(([, count]) => count > 1)
+    .map(([segment, count]) => ({ segment, count }))
+    .sort((a, b) => b.count - a.count || a.segment.localeCompare(b.segment));
+  const grouped = groups.reduce((sum, g) => sum + g.count, 0);
+  const rest = entries.length - grouped;
+  const parts = groups.length + (rest > 0 ? 1 : 0);
+  if (parts < 2) return [];
+  return rest > 0 ? [...groups, { segment: "", count: rest }] : groups;
+}
+
+/** Whether a redirect belongs to a {@link redirectPathGroups} group. */
+export function inRedirectPathGroup(
+  entry: ContentEntry,
+  segment: string,
+  groups: RedirectPathGroup[],
+): boolean {
+  const segments = fromSegments(entry);
+  const first = segments.length >= 2 ? (segments[0] ?? "") : "";
+  if (segment) return first === segment;
+  return !groups.some((g) => g.segment && g.segment === first);
+}
+
+/** Rows shown before a run of redirects to one page folds into one line. */
+export const FOLD_KEEP = 9;
+/** How many redirects to one page fold the rest away. */
+const FOLD_OVER = 12;
+
+/**
+ * A long list of redirects that mostly send visitors to one page: the first
+ * few of those stay, the rest fold into one "N more" line. Only published
+ * ones fold: a change in the draft always shows.
+ */
+export function foldSameDestination(entries: ContentEntry[]): {
+  shown: ContentEntry[];
+  folded: number;
+} {
+  const counts = new Map<string, number>();
+  for (const entry of entries) {
+    if (entry.status !== "published") continue;
+    const to = redirectRowOf(entry).to;
+    counts.set(to, (counts.get(to) ?? 0) + 1);
+  }
+  let top = "";
+  let most = 0;
+  for (const [to, count] of counts) {
+    if (count > most) {
+      top = to;
+      most = count;
+    }
+  }
+  if (most <= FOLD_OVER) return { shown: entries, folded: 0 };
+  const shown: ContentEntry[] = [];
+  let kept = 0;
+  let folded = 0;
+  for (const entry of entries) {
+    const foldable =
+      entry.status === "published" && redirectRowOf(entry).to === top;
+    if (foldable && kept >= FOLD_KEEP) {
+      folded++;
+      continue;
+    }
+    if (foldable) kept++;
+    shown.push(entry);
+  }
+  return { shown, folded };
 }

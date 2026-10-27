@@ -172,7 +172,7 @@ import {
 import { protocolDecofileCacheKey } from "@/components/sections-editor/use-decofile";
 import {
   useContentChanges,
-  useContentChangeSides,
+  useDeletedCopies,
 } from "@/components/sections-editor/content-changes";
 import { useContentDiscard } from "@/components/thread/repository/use-cms-publish-actions";
 import {
@@ -181,6 +181,7 @@ import {
   type ContentType,
   type ContentTypeTree,
   entryName,
+  redirectRowOf,
 } from "./content-types";
 import {
   ContentTypesSidebar,
@@ -482,13 +483,11 @@ function ContentBrowserReady({
     ? protocolDecofileCacheKey({ orgSlug, virtualMcpId, branch }, typesBackend)
     : null;
   const draftChanges = useContentChanges(typesBackend, typesCacheKey);
-  const draftDeletes = Object.values(draftChanges.data?.changes ?? {}).some(
-    (change) => change.kind === "delete",
-  );
-  const draftSides = useContentChangeSides(
+  // Only the deletions' published copies, read again only when they change.
+  const deletedCopies = useDeletedCopies(
     typesBackend,
     typesCacheKey,
-    draftDeletes ? draftChanges.data : undefined,
+    draftChanges.data,
   );
   const discardChanges = useContentDiscard({
     orgSlug,
@@ -498,10 +497,12 @@ function ContentBrowserReady({
   });
   const typeLabel = useTypeLabel();
   const [typesView, setTypesView] = useState<ContentTypesView | null>(null);
-  // The entry a content type's row opened (its editor shows, with a way back).
+  // The entry a content type's row opened (its editor shows, with a way back
+  // to the view it was opened from; `from: null`: the sidebar opened it).
   const [openEntry, setOpenEntry] = useState<{
     typeId: string;
     key: string;
+    from: ContentTypesView | null;
   } | null>(null);
   const [restoring, setRestoring] = useState<string | null>(null);
   // Which editor this site gets (v8: the new one): waited on with the data,
@@ -861,27 +862,30 @@ function ContentBrowserReady({
   const takenSectionNames = new Set(globalSections.map((s) => s.name));
 
   // ------------------ Content types (hosted v8) ------------------
-  const deletedCopies: Record<string, Record<string, unknown> | null> = {};
-  for (const [name, detail] of Object.entries(draftSides.data?.entries ?? {})) {
-    if (detail.kind === "delete") deletedCopies[name] = detail.before;
-  }
   const typeTree: ContentTypeTree | null = typesMode
     ? buildContentTypes({
         blocks: decofile,
         meta,
         changes: draftChanges.data?.changes,
-        deleted: deletedCopies,
+        deleted: deletedCopies.data,
       })
     : null;
   // Pages first; a site without pages opens on whatever it has.
   const firstType = typeTree?.pages ?? typeTree?.all[0] ?? null;
-  const shownTypesView: ContentTypesView =
-    typesView ??
-    (firstType ? { kind: "type", id: firstType.id } : { kind: "seo" });
-  const viewType =
-    shownTypesView.kind === "type"
-      ? (typeTree?.all.find((type) => type.id === shownTypesView.id) ?? null)
+  const defaultTypesView: ContentTypesView = firstType
+    ? { kind: "type", id: firstType.id }
+    : { kind: "seo" };
+  const findType = (view: ContentTypesView | null) =>
+    view?.kind === "type"
+      ? (typeTree?.all.find((type) => type.id === view.id) ?? null)
       : null;
+  // A type that's gone (its last entry deleted or discarded) falls back to
+  // the first view, never to the draft's changes under no selected row.
+  const shownTypesView: ContentTypesView =
+    typesView && (typesView.kind !== "type" || findType(typesView))
+      ? typesView
+      : defaultTypesView;
+  const viewType = findType(shownTypesView);
   // Whatever opened an editor here (a row, a create, the storefront's "."
   // link) shows it under the collection it belongs to.
   if (typesMode && selection) {
@@ -897,6 +901,24 @@ function ContentBrowserReady({
       (openEntry !== null &&
         (activeCollection === "loaders" || activeCollection === "settings")));
 
+  // Where the open editor's "Back" goes: the view its row was in (none for a
+  // type with one entry, opened from the sidebar: it has no list to go back
+  // to), or for an editor opened another way, the view showing.
+  const backFrom = openEntry ? openEntry.from : shownTypesView;
+  const backView: ContentTypesView | null =
+    backFrom && backFrom.kind === "type" && !findType(backFrom)
+      ? defaultTypesView
+      : backFrom;
+
+  /** "Device · Mobile only" when the type has several entries. */
+  const openEntryTitle = (key: string): string | undefined => {
+    if (openEntry?.key !== key) return undefined;
+    const type = typeTree?.all.find((x) => x.id === openEntry.typeId);
+    const entry = type?.entries.find((e) => e.key === key);
+    if (!type || !entry || type.entries.length < 2) return undefined;
+    return `${typeLabel(type)} · ${entryName(entry)}`;
+  };
+
   const closeTypeEntry = () => {
     setOpenEntry(null);
     setSelection(null);
@@ -904,9 +926,13 @@ function ContentBrowserReady({
   };
 
   /** A row's editor: the one the old collections open for it. */
-  const openTypeEntry = (type: ContentType, entry: ContentEntry) => {
+  const openTypeEntry = (
+    type: ContentType,
+    entry: ContentEntry,
+    from: ContentTypesView | null,
+  ) => {
     setOpenPageSeoKey(null);
-    setOpenEntry({ typeId: type.id, key: entry.key });
+    setOpenEntry({ typeId: type.id, key: entry.key, from });
     if (type.group === "pages") {
       setSelection({
         collection: "pages",
@@ -1003,10 +1029,7 @@ function ContentBrowserReady({
             setDeleteTarget({
               kind: "redirect",
               key: entry.key,
-              label:
-                typeof entry.block.from === "string"
-                  ? entry.block.from
-                  : entry.key,
+              label: redirectRowOf(entry).from || entry.key,
             })
           }
         />
@@ -1521,6 +1544,9 @@ function ContentBrowserReady({
               branch={branch}
               decofile={decofile}
               meta={meta}
+              // Hosted v8: looking at Settings never puts a change in the
+              // draft; the defaults are saved with the first real change.
+              persistDefaults={typesMode ? false : undefined}
             />
           ) : activeCollection === "context" ? (
             <BlogContext
@@ -1609,6 +1635,14 @@ function ContentBrowserReady({
                 decofile={decofile}
                 meta={meta}
                 previewBaseUrl={previewUrl}
+                // Hosted v8: opening an entry never changes the draft, and
+                // a type with several entries says which one is open.
+                {...(typesMode
+                  ? {
+                      persistDefaults: false,
+                      title: openEntryTitle(selection.key),
+                    }
+                  : {})}
                 schemaPending={isAppSchemaLoading(
                   typeof (decofile[selection.key] as Record<string, unknown>)
                     ?.__resolveType === "string"
@@ -1739,7 +1773,7 @@ function ContentBrowserReady({
               closeTypeEntry();
               if (view.kind === "seo") setActiveCollection("seo");
             }}
-            onOpenEntry={openTypeEntry}
+            onOpenEntry={(type, entry) => openTypeEntry(type, entry, null)}
           />
         ) : (
           <CollectionsSidebar
@@ -1868,7 +1902,9 @@ function ContentBrowserReady({
               }
               tree={typeTree}
               type={viewType}
-              onOpen={openTypeEntry}
+              onOpen={(type, entry) =>
+                openTypeEntry(type, entry, shownTypesView)
+              }
               onRestore={(entry) => void restoreTypeEntry(entry)}
               restoring={restoring}
               createLabel={createForType(viewType)?.label}
@@ -1876,22 +1912,27 @@ function ContentBrowserReady({
               rowMenu={typeRowMenu}
             />
           </div>
-        ) : typesEditorOpen ? (
+        ) : typesEditorOpen && backView ? (
           <div className="flex-1 min-w-0 flex flex-col">
             <div className="flex h-9 shrink-0 items-center border-b px-2">
               <button
                 type="button"
-                onClick={closeTypeEntry}
+                onClick={() => {
+                  setTypesView(backView);
+                  closeTypeEntry();
+                }}
                 className="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-muted-foreground hover:bg-accent hover:text-foreground cursor-pointer"
               >
                 <ArrowLeft size={14} />
                 {t("siteEditor.contentTypes.back", {
                   type:
-                    shownTypesView.kind === "seo"
+                    backView.kind === "seo"
                       ? t("siteEditor.contentTypes.seo")
-                      : viewType
-                        ? typeLabel(viewType)
-                        : t("siteEditor.contentTypes.changesInDraft"),
+                      : backView.kind === "changes"
+                        ? t("siteEditor.contentTypes.changesInDraft")
+                        : typeLabel(
+                            findType(backView) ?? { id: "", title: "" },
+                          ),
                 })}
               </button>
             </div>

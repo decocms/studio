@@ -7,10 +7,14 @@ import {
   buildContentTypes,
   entryName,
   entryStatus,
+  FOLD_KEEP,
+  foldSameDestination,
   humanizeTypeKey,
+  inRedirectPathGroup,
   manifestGroupOf,
   pageSectionCount,
   redirectDestinationPage,
+  redirectPathGroups,
   routeMatches,
   summaryFieldsOf,
   typeOfBlock,
@@ -192,10 +196,11 @@ describe("buildContentTypes", () => {
   });
 
   test("only types with saved blocks, aliases folded into one type", () => {
+    // The home page first, what the draft deletes last.
     expect(tree.pages?.entries.map((e) => e.key)).toEqual([
-      "pages-gone",
       "pages-home",
       "pages-legacy",
+      "pages-gone",
     ]);
     expect(tree.redirects?.entries.length).toBe(1);
     expect(tree.all.some((t) => t.id === "banner")).toBe(false);
@@ -255,6 +260,90 @@ describe("buildContentTypes", () => {
   test("a deletion without its published copy is left out of the types", () => {
     const t = buildContentTypes({ blocks: {}, meta, changes: { x: del } });
     expect(t.all).toEqual([]);
+  });
+  test("the draft's changes are its whole list, typed or not", () => {
+    const t = buildContentTypes({
+      blocks: {
+        experiments: { __resolveType: "split-traffic" },
+        loose: { untyped: true },
+        "pages-home": { __resolveType: "page", name: "Home", path: "/" },
+      },
+      meta,
+      changes: {
+        experiments: set("v1"),
+        loose: set(null),
+        "pages-home": set("v1"),
+        // Deleted, its published copy not read (yet).
+        gone: del,
+      },
+    });
+    expect(
+      t.changed.map((c) => [c.type.title, c.entry.key, c.entry.status]),
+    ).toEqual([
+      ["Pages", "pages-home", "changed"],
+      ["Split Traffic", "experiments", "changed"],
+      ["", "gone", "deleted"],
+      ["", "loose", "new"],
+    ]);
+    // Named rules still keep their own views.
+    expect(t.all.some((x) => x.id === "split-traffic")).toBe(false);
+    expect(t.changed.find((c) => c.entry.key === "gone")?.entry.orphan).toBe(
+      true,
+    );
+    expect(t.changed.find((c) => c.entry.key === "loose")?.entry.orphan).toBe(
+      undefined,
+    );
+  });
+  test("until the changes are read, no status is known", () => {
+    const t = buildContentTypes({ blocks, meta, changes: undefined });
+    expect(t.statusKnown).toBe(false);
+    expect(t.changed).toEqual([]);
+    expect(tree.statusKnown).toBe(true);
+  });
+});
+
+describe("redirect filters and folding", () => {
+  const r = (
+    from: string,
+    to: string,
+    status: "published" | "new" = "published",
+  ) => ({
+    key: from,
+    block: { __resolveType: "redirect", from, to },
+    status,
+  });
+  test("folders two or more sources share, then the rest", () => {
+    const list = [
+      r("/products/a", "/"),
+      r("/products/b", "/"),
+      r("/collections/x", "/"),
+      r("/collections/y", "/"),
+      r("/men", "/"),
+      r("/blog/one", "/"),
+    ];
+    const groups = redirectPathGroups(list);
+    expect(groups).toEqual([
+      { segment: "collections", count: 2 },
+      { segment: "products", count: 2 },
+      { segment: "", count: 2 },
+    ]);
+    expect(
+      list.filter((e) => inRedirectPathGroup(e, "", groups)).map((e) => e.key),
+    ).toEqual(["/men", "/blog/one"]);
+    // One part only: no filters.
+    expect(redirectPathGroups(list.slice(0, 2))).toEqual([]);
+  });
+  test("many redirects to one page fold, changes never do", () => {
+    const list = [
+      r("/new", "/c", "new"),
+      ...Array.from({ length: 30 }, (_, i) => r(`/p${i}`, "/c")),
+      r("/other", "/d"),
+    ];
+    const { shown, folded } = foldSameDestination(list);
+    expect(folded).toBe(30 - FOLD_KEEP);
+    expect(shown.map((e) => e.key)).toContain("/new");
+    expect(shown.map((e) => e.key)).toContain("/other");
+    expect(foldSameDestination(list.slice(0, 8)).folded).toBe(0);
   });
 });
 

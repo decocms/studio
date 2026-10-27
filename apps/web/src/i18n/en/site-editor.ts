@@ -85,6 +85,11 @@ export const siteEditor = {
   "siteEditor.contentTypes.noMatch": "Nothing matches your search.",
   "siteEditor.contentTypes.noChanges":
     "No changes in your draft. Everything here is published.",
+  "siteEditor.contentTypes.status.checking": "Checking…",
+  "siteEditor.contentTypes.searchRedirects": "Find an address",
+  "siteEditor.contentTypes.filter.otherPaths": "Other {count}",
+  "siteEditor.contentTypes.folded": "{count} more, all to the same page",
+  "siteEditor.contentTypes.typeCountOne": "1 type",
   "siteEditor.contentTypes.noChangedHere":
     "Nothing changed here. Everything here is published.",
   "siteEditor.siteNotOwned.title": "This site is edited from another project",

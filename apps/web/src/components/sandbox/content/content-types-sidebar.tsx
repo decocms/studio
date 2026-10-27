@@ -93,14 +93,17 @@ export function ContentTypesSidebar({
     <TypeRow
       key={type.id}
       label={label(type)}
-      dot={dot}
+      // Settings is the site's, not a part of its pages.
+      dot={type.id === "cms-settings" ? "other" : dot}
       count={singleton ? undefined : type.entries.length}
       changed={type.changed > 0}
       active={isActive(type)}
       onClick={() => {
         const only = type.entries[0];
-        if (singleton && only) onOpenEntry(type, only);
-        else onSelect({ kind: "type", id: type.id });
+        // A deleted one has no editor: its row, with Restore, shows instead.
+        if (singleton && only && only.status !== "deleted") {
+          onOpenEntry(type, only);
+        } else onSelect({ kind: "type", id: type.id });
       }}
     />
   );
@@ -145,7 +148,9 @@ export function ContentTypesSidebar({
             className={cn(
               "mt-1.5 mb-0.5 flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-sm font-medium cursor-pointer",
               "bg-warning/10 text-warning hover:bg-warning/15",
-              view.kind === "changes" && "ring-1 ring-warning/40",
+              view.kind === "changes" &&
+                !openTypeId &&
+                "ring-1 ring-warning/40",
             )}
           >
             <span className="size-2 shrink-0 rounded-full bg-warning" />
@@ -164,7 +169,7 @@ export function ContentTypesSidebar({
           <TypeRow
             label={t("siteEditor.contentTypes.seo")}
             dot="seo"
-            active={view.kind === "seo"}
+            active={view.kind === "seo" && !openTypeId}
             onClick={() => onSelect({ kind: "seo" })}
           />
         )}
@@ -205,7 +210,15 @@ export function ContentTypesSidebar({
           </>
         )}
 
-        {apps.length > 0 && (
+        {apps.length === 1 && apps[0] ? (
+          // One app: its name heads its types.
+          <>
+            <GroupLabel
+              label={apps[0].label || t("siteEditor.contentTypes.siteData")}
+            />
+            {apps[0].types.map((type) => row(type, "apps"))}
+          </>
+        ) : apps.length > 1 ? (
           <>
             <GroupLabel label={t("siteEditor.contentTypes.group.apps")} />
             {apps.map((app) => (
@@ -218,7 +231,7 @@ export function ContentTypesSidebar({
               />
             ))}
           </>
-        )}
+        ) : null}
 
         {rules.length > 0 && (
           <>
@@ -268,23 +281,28 @@ function AppRows({
         onClick={() => setOpen(!shown)}
         className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-sm text-muted-foreground hover:bg-accent hover:text-foreground cursor-pointer"
       >
+        <span
+          className="size-2 shrink-0 rounded-full"
+          style={{ background: GROUP_DOT[app.label ? "apps" : "other"] }}
+        />
         <span className="flex-1 truncate">
           {app.label || t("siteEditor.contentTypes.siteData")}
         </span>
         {!shown && (
           <span className="text-xs text-muted-foreground/70">
-            {t("siteEditor.contentTypes.typesCount", {
-              count: app.types.length,
-            })}
+            {app.types.length === 1
+              ? t("siteEditor.contentTypes.typeCountOne")
+              : t("siteEditor.contentTypes.typesCount", {
+                  count: app.types.length,
+                })}
           </span>
         )}
-        <ChevronDown
-          size={14}
-          className={cn(
-            "shrink-0 text-muted-foreground/70 transition-transform",
-            shown && "rotate-180",
-          )}
-        />
+        {shown && (
+          <ChevronDown
+            size={14}
+            className="shrink-0 rotate-180 text-muted-foreground/70"
+          />
+        )}
       </button>
       {shown && (
         <div className="flex flex-col gap-px pl-2">
