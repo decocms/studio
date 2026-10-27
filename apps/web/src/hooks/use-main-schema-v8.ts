@@ -194,5 +194,13 @@ export function useProjectMainSchemaV8(
 export function useLastFoundV8(
   virtualMcpId: string | null | undefined,
 ): boolean {
-  return isBlocksV8Project(useVirtualMCP(virtualMcpId)?.metadata);
+  return lastFoundV8(useVirtualMCP(virtualMcpId));
+}
+
+/** {@link useLastFoundV8} for a caller that already holds the project (the
+ *  sidebar, which must not suspend). */
+export function lastFoundV8(
+  project: VirtualMCPEntity | null | undefined,
+): boolean {
+  return isBlocksV8Project(project?.metadata);
 }

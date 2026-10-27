@@ -225,11 +225,18 @@ export function useLiveBoard(
         w1: hourly("w1", h),
         y1: hourly("y1", h),
       }));
+    const backfills = days.flatMap((d) => (d.backfill ? [d.backfill] : []));
     kpis.push({
       id: "orders",
       source: "orders",
       value: daysReady ? sum(days.map((d) => d.headline.projected)) : null,
       soFar: daysReady ? sum(days.map((d) => sum(d.orders.today))) : undefined,
+      historyLoaded:
+        backfills.length > 0
+          ? 1 -
+            sum(backfills.map((b) => b.pending)) /
+              sum(backfills.map((b) => b.total))
+          : undefined,
       references: {
         d1: daysReady ? sum(days.map((d) => d.headline.d1)) : null,
         w1: daysReady ? sum(days.map((d) => d.headline.w1)) : null,

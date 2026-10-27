@@ -1419,6 +1419,10 @@ export function MetricChart({
             kpi.soFar !== undefined && (
               <span className="text-meta">
                 {t("monitor.chart.soFar", { count: formatCount(kpi.soFar) })}
+                {kpi.historyLoaded !== undefined &&
+                  ` · ${t("monitor.chart.historyLoading", {
+                    pct: `${Math.floor(kpi.historyLoaded * 100)}%`,
+                  })}`}
               </span>
             )
           ) : (

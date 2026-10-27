@@ -211,6 +211,31 @@ describe("buildDayView", () => {
     expect(v.verdicts?.orders_drop.timezone).toBe("UTC");
   });
 
+  it("projects from the reference days the lake holds while history loads", () => {
+    // Only D-1 is in; W-1..W-4 are empty, which as zeros made the median 0.
+    const s = store({});
+    for (const d of [7, 14, 21, 28] as const) s.days[d].placed = flat(0);
+    const v = buildDayView(s, at);
+    expect(v.orders.expected[20]).toBe(40);
+    expect(v.headline.projected).toBe(48 * 10 + 48 * 10);
+    expect(v.backfill).toBeNull();
+  });
+
+  it("leaves days still backfilling out of the baseline", () => {
+    // W-1..W-4 have a stray order or two from a half-listed day.
+    const s = store(
+      {},
+      {},
+      {
+        backfill: { pending: 30, total: 100, days: [7, 14, 21, 28] },
+      },
+    );
+    for (const d of [7, 14, 21, 28] as const) s.days[d].placed = flat(1);
+    const v = buildDayView(s, at);
+    expect(v.orders.expected[20]).toBe(40);
+    expect(v.backfill).toEqual({ pending: 30, total: 100 });
+  });
+
   it("draws no band where the hour is too quiet to judge", () => {
     const v = buildDayView(store({ placed: flat(1) }, { placed: flat(1) }), at);
     expect(v.orders.warnAt.every((b) => b === null)).toBe(true);

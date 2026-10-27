@@ -86,6 +86,8 @@ import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
 import { KEYS } from "@/lib/query-keys";
 import { useT, type TFunction } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/use-t.ts";
+import { HeatmapView } from "./analytics-heatmap-tab.tsx";
+import { gateViews, pickView } from "./analytics-heatmap-model.ts";
 
 // --- control-plane REST DTOs (client-safe fields only) ---------------------
 
@@ -160,6 +162,11 @@ const MODULES = [
     labelKey: "mainPanelTabs.analyticsTab.moduleEngagement",
     hintKey: "mainPanelTabs.analyticsTab.moduleEngagementHint",
   },
+  {
+    key: "heatmap",
+    labelKey: "mainPanelTabs.analyticsTab.moduleHeatmap",
+    hintKey: "mainPanelTabs.analyticsTab.moduleHeatmapHint",
+  },
 ] as const;
 
 // The dashboard views, as a horizontal tab bar in the order the internal admin
@@ -178,6 +185,7 @@ const DATA_VIEWS: ReadonlyArray<{ view: string; labelKey: TranslationKey }> = [
     labelKey: "mainPanelTabs.analyticsTab.viewExperiments",
   },
   { view: "vitals", labelKey: "mainPanelTabs.analyticsTab.viewVitals" },
+  { view: "heatmap", labelKey: "mainPanelTabs.analyticsTab.viewHeatmap" },
   { view: "quality", labelKey: "mainPanelTabs.analyticsTab.viewQuality" },
   { view: "usage", labelKey: "mainPanelTabs.analyticsTab.viewUsage" },
 ];
@@ -229,7 +237,7 @@ function isUnauthorized(error: unknown): boolean {
 /** The upstream/proxy answers "not configured" (503) — a friendly "no data"
  *  state, not an error. Matches both the control-plane's `not_configured` and
  *  the BFF's "…is not configured" for the data surface. */
-function isNotConfigured(error: unknown): boolean {
+export function isNotConfigured(error: unknown): boolean {
   const m = error instanceof Error ? error.message.toLowerCase() : "";
   return m.includes("not_configured") || m.includes("not configured");
 }
@@ -278,7 +286,7 @@ function isScalar(value: unknown): boolean {
   );
 }
 
-async function fetchJson(url: string): Promise<unknown> {
+export async function fetchJson(url: string): Promise<unknown> {
   const res = await fetch(url);
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -1952,12 +1960,18 @@ function RegisteredView({
     view?: string;
   };
   const [range, setRange] = useState("24h");
-  const [active, setActive] = useState(initialView ?? "overview");
+  const [requested, setRequested] = useState(initialView ?? "overview");
   const [configOpen, setConfigOpen] = useState(false);
   const cfg = status.config ?? {};
   const enabled = cfg.enabled !== false;
   const modules = cfg.modules ?? ["core"];
+  // Heatmap is offered only to a site with the `heatmap` module; a view the
+  // site isn't offered (e.g. `?view=heatmap` without it) lands on Overview.
+  const views = gateViews(DATA_VIEWS, modules);
+  const active = pickView(requested, views);
   const isLive = active === "live";
+  // Heatmap reads daily facts with its own 24h/7d/30d choice.
+  const ownRange = isLive || active === "heatmap";
 
   return (
     <div className="flex flex-col gap-5">
@@ -1999,8 +2013,9 @@ function RegisteredView({
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {/* Range pills — hidden on Realtime, which is always "now". */}
-          {!isLive && (
+          {/* Range pills — hidden on Realtime, which is always "now", and on
+              Heatmap, which picks its own. */}
+          {!ownRange && (
             <div className="flex items-center gap-0.5 rounded-lg border border-border p-0.5">
               {RANGE_PILLS.map((r) => (
                 <button
@@ -2032,11 +2047,11 @@ function RegisteredView({
 
       {/* Horizontal view tab bar — one view at a time, like the admin monitor. */}
       <div className="flex items-center gap-1 overflow-x-auto border-b border-border">
-        {DATA_VIEWS.map((v) => (
+        {views.map((v) => (
           <button
             key={v.view}
             type="button"
-            onClick={() => setActive(v.view)}
+            onClick={() => setRequested(v.view)}
             className={cn(
               "shrink-0 border-b-2 px-3 py-2 text-sm font-medium transition-colors",
               active === v.view
@@ -2049,15 +2064,26 @@ function RegisteredView({
         ))}
       </div>
 
-      <ActiveView
-        key={active}
-        base={base}
-        orgSlug={orgSlug}
-        site={site}
-        view={active}
-        range={range}
-        quota={cfg.quota}
-      />
+      {active === "heatmap" ? (
+        <HeatmapView
+          base={base}
+          orgSlug={orgSlug}
+          site={site}
+          modules={modules}
+          domain={cfg.domains?.[0] ?? status.host ?? null}
+          onConfigure={() => setConfigOpen(true)}
+        />
+      ) : (
+        <ActiveView
+          key={active}
+          base={base}
+          orgSlug={orgSlug}
+          site={site}
+          view={active}
+          range={range}
+          quota={cfg.quota}
+        />
+      )}
 
       {/* A naturally-closed row documenting the client API, mirroring the admin
           UI's install text — collapsed by default so it doesn't crowd the data. */}

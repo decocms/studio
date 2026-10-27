@@ -283,6 +283,20 @@
   --chart-4: oklch(0.84 0.17 84.5);
   --chart-5: oklch(0.74 0.17 159);
 
+  /* Project app tiles: one hue per app, all at the same lightness and
+   * strength so no tile outweighs another. Same in light and dark. */
+  --app-site-editor: oklch(0.64 0.16 289);
+  --app-calendar: oklch(0.64 0.16 325);
+  --app-experiments: oklch(0.64 0.16 15);
+  --app-analytics: oklch(0.64 0.16 245);
+  --app-cdn: oklch(0.64 0.16 200);
+  --app-assets: oklch(0.64 0.16 55);
+  --app-releases: oklch(0.64 0.16 85);
+  --app-hosting: oklch(0.64 0.16 120);
+  --app-e2e: oklch(0.64 0.16 160);
+  --app-automations: oklch(0.64 0.16 350);
+  --app-reports: oklch(0.64 0.16 265);
+
   /* Inter only, at most Medium (500). */
   --font-sans: "Inter var", "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-serif: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
@@ -458,6 +472,17 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+  --color-app-site-editor: var(--app-site-editor);
+  --color-app-calendar: var(--app-calendar);
+  --color-app-experiments: var(--app-experiments);
+  --color-app-analytics: var(--app-analytics);
+  --color-app-cdn: var(--app-cdn);
+  --color-app-assets: var(--app-assets);
+  --color-app-releases: var(--app-releases);
+  --color-app-hosting: var(--app-hosting);
+  --color-app-e2e: var(--app-e2e);
+  --color-app-automations: var(--app-automations);
+  --color-app-reports: var(--app-reports);
   --color-brand: var(--brand);
   --color-brand-foreground: var(--brand-foreground);
   --color-brand-soft: var(--brand-soft);

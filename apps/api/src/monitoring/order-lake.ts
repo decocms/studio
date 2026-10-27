@@ -67,6 +67,13 @@ const FIRST_EVENT_SQL = `
   FROM customer_lake.order_events
   WHERE connection_id = {conn:String} AND changed_at < ${AT}`;
 
+// One row per hour the ingest's history backfill queued, `done` once it's in the lake.
+const BACKFILL_SQL = `
+  SELECT ${daysAgo("hour")} AS days_ago, countIf(NOT done) AS pending, count() AS hours
+  FROM customer_lake.backfill_hours FINAL
+  WHERE connection_id = {conn:String}
+  GROUP BY days_ago`;
+
 // Chart only. Three days back covers D-1's local day across a 25-hour DST day.
 const CHANNELS_SQL = `
   SELECT sales_channel AS channel, ${daysAgo("created_at")} AS days_ago,
@@ -230,31 +237,39 @@ export async function loadStoreDay(
   if (!timezone) return null;
 
   const params = { conn: connectionId, tz: timezone, at: toLakeTime(at) };
-  const [orders, events, [first], approx, channels] = await Promise.all([
-    queryCustomerLake(organizationId, ORDERS_SQL, params),
-    queryCustomerLake(organizationId, EVENTS_SQL, params),
-    queryCustomerLake(organizationId, FIRST_EVENT_SQL, params),
-    // Chart only: don't sink the real orders/events data over this.
-    opts.approximate
-      ? queryCustomerLake(organizationId, APPROX_CANCELS_SQL, params).catch(
-          (err) => {
-            console.warn("[order-monitor] approximate cancels read failed", {
+  const [orders, events, [first], backfill, approx, channels] =
+    await Promise.all([
+      queryCustomerLake(organizationId, ORDERS_SQL, params),
+      queryCustomerLake(organizationId, EVENTS_SQL, params),
+      queryCustomerLake(organizationId, FIRST_EVENT_SQL, params),
+      // Without it every day with orders counts as in, as before backfills were tracked.
+      queryCustomerLake(organizationId, BACKFILL_SQL, params).catch((err) => {
+        console.warn("[order-monitor] backfill read failed", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return [];
+      }),
+      // Chart only: don't sink the real orders/events data over this.
+      opts.approximate
+        ? queryCustomerLake(organizationId, APPROX_CANCELS_SQL, params).catch(
+            (err) => {
+              console.warn("[order-monitor] approximate cancels read failed", {
+                error: err instanceof Error ? err.message : String(err),
+              });
+              return [];
+            },
+          )
+        : null,
+      // Chart only, same reason.
+      opts.channels
+        ? loadChannels(organizationId, params).catch((err) => {
+            console.warn("[order-monitor] channels read failed", {
               error: err instanceof Error ? err.message : String(err),
             });
-            return [];
-          },
-        )
-      : null,
-    // Chart only, same reason.
-    opts.channels
-      ? loadChannels(organizationId, params).catch((err) => {
-          console.warn("[order-monitor] channels read failed", {
-            error: err instanceof Error ? err.message : String(err),
-          });
-          return undefined;
-        })
-      : undefined,
-  ]);
+            return undefined;
+          })
+        : undefined,
+    ]);
 
   const days = emptyDays();
   for (const row of orders) {
@@ -278,6 +293,13 @@ export async function loadStoreDay(
       first?.days_ago === null || first?.days_ago === undefined
         ? null
         : Number(first.days_ago),
+    backfill: {
+      pending: backfill.reduce((n, r) => n + Number(r.pending), 0),
+      total: backfill.reduce((n, r) => n + Number(r.hours), 0),
+      days: backfill
+        .filter((r) => Number(r.pending) > 0)
+        .map((r) => Number(r.days_ago)),
+    },
     approximate,
     channels,
   };

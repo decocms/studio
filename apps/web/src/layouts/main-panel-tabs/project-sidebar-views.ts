@@ -6,6 +6,8 @@ export const PROJECT_SIDEBAR_VIEW_IDS = [
   "reports",
   "board",
   "site-editor",
+  "calendar",
+  "experiments",
   "assets",
   "releases",
   "hosting",
@@ -13,8 +15,6 @@ export const PROJECT_SIDEBAR_VIEW_IDS = [
   "analytics",
   "cdn",
   "automations",
-  "experiments",
-  "calendar",
 ] as const satisfies readonly VirtualMcpSidebarView[];
 
 /** Initial selection for projects that have not explicitly saved sidebar
@@ -39,8 +39,8 @@ export const PROJECT_SIDEBAR_VIEWS_VERSION = 1 as const;
  * one sticks. A v7 site is never offered them.
  */
 const BLOCKS_SITE_SIDEBAR_VIEWS = [
-  "experiments",
   "calendar",
+  "experiments",
 ] as const satisfies readonly ProjectSidebarViewId[];
 
 /**
@@ -79,14 +79,14 @@ export type ProjectSidebarViewId = (typeof PROJECT_SIDEBAR_VIEW_IDS)[number];
 
 /** Native panels whose availability is discovered from project resources. */
 export const PROJECT_NATIVE_VIEW_IDS = [
+  "calendar",
+  "experiments",
   "assets",
   "releases",
   "hosting",
   "e2e",
   "analytics",
   "cdn",
-  "experiments",
-  "calendar",
 ] as const satisfies readonly ProjectSidebarViewId[];
 
 export type ProjectNativeViewId = (typeof PROJECT_NATIVE_VIEW_IDS)[number];
@@ -282,7 +282,10 @@ export function projectSidebarViewUnavailable(
   // Releases follows main's schema (`useMainSchemaV8`): a deep link waits
   // for that read instead of bouncing to Settings before it lands.
   if (viewId === "releases") return !pending.releases;
-  if (viewId === "calendar") return !pending.calendar;
+  // Calendar and Experiments are a v8 site's: they wait for the same read.
+  if (viewId === "calendar" || viewId === "experiments") {
+    return !pending.calendar;
+  }
   return !(viewId === "assets" ? pending.assets : pending.siteAccess);
 }
 

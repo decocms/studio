@@ -5,13 +5,14 @@
  *   Contexts: ChatTaskContext, ChatPrefsContext
  *   Owns: task list, navigation, preferences, transport, pending messages
  *
- * ActiveTaskProvider (inner, inside Suspense)
+ * ChatStreamHost (inner)
  *   Context: ChatStreamContext
- *   Owns: per-task streaming state (useChat, messages, status)
+ *   Renders a keyed stream source (ActiveTaskStreamSource or
+ *   ThreadlessStreamSource) that owns the per-task streaming state and
+ *   publishes it to the host.
  *
- * The split allows a Suspense boundary between the sidebar (task list) and
- * the active Chat side-panel view. Switching tasks shows a skeleton while keeping the
- * sidebar interactive.
+ * The source is a sibling of the host's children rather than their parent, so
+ * switching threads replaces the source without remounting the panels below.
  */
 
 import {
@@ -23,6 +24,7 @@ import {
   useSyncExternalStore,
   type PropsWithChildren,
 } from "react";
+import { createKeyedContext } from "@/lib/keyed-context";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { usePanelNavigate } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { useQueryClient } from "@tanstack/react-query";
@@ -321,7 +323,7 @@ const ChatStreamCtx = createContext<ChatStreamContextValue | null>(null);
 const ChatTaskCtx = createContext<ChatTaskContextValue | null>(null);
 const ChatPrefsCtx = createContext<ChatPrefsContextValue | null>(null);
 
-/** Internal context for passing TaskProvider internals to ActiveTaskProvider */
+/** Internal context for passing TaskProvider internals to ActiveTaskStreamSource */
 const TaskInternalsCtx = createContext<TaskProviderInternals | null>(null);
 
 /**
@@ -655,12 +657,13 @@ export function ChatContextProvider({
 
   const navigateToTask = (
     taskId: string,
-    opts?: { virtualMcpId?: string; autosend?: boolean },
+    opts?: { virtualMcpId?: string; autosend?: boolean; keepView?: boolean },
   ) => {
     markTaskRead(taskId);
     rawNavigateToTask(taskId, {
       virtualMcpId: opts?.virtualMcpId,
       autosend: opts?.autosend,
+      keepView: opts?.keepView,
     });
   };
 
@@ -719,7 +722,7 @@ export function ChatContextProvider({
   };
 
   // Create task + hand off the message via URL ?autosend= so the new
-  // task's ActiveTaskProvider fires it on mount. Propagates currentBranch
+  // task's ActiveTaskStreamSource fires it on mount. Propagates currentBranch
   // only when the new task is on the same vMCP (different vMCPs have their
   // own sandboxMap, so carrying a branch across them would land on a cold
   // sandbox).
@@ -747,12 +750,14 @@ export function ChatContextProvider({
         navigateToTask(newId, {
           virtualMcpId: params.virtualMcpId,
           autosend: true,
+          keepView: targetVmcp === virtualMcpId,
         });
       })
       .catch(() => {
         navigateToTask(newId, {
           virtualMcpId: params.virtualMcpId,
           autosend: true,
+          keepView: targetVmcp === virtualMcpId,
         });
       });
   };
@@ -809,9 +814,14 @@ const STREAM_READY: Promise<void> = Promise.resolve();
  * SSE subscription, no thread-scoped fetch, no `chat_opened`. The composer it
  * renders is the empty one, and its first send mints the thread through the
  * same create-and-hand-off path every other "new chat" affordance uses; the
- * real {@link ActiveTaskProvider} then mounts on the thread that now exists.
+ * real {@link ActiveTaskStreamSource} then mounts on the thread that now exists.
  */
-export function ThreadlessChatProvider({ children }: PropsWithChildren) {
+export function ThreadlessStreamSource() {
+  usePublishChatStream(useThreadlessStream());
+  return null;
+}
+
+function useThreadlessStream(): ChatStreamContextValue {
   const { createTaskWithMessage } = useChatTask();
 
   const value: ChatStreamContextValue = {
@@ -841,19 +851,29 @@ export function ThreadlessChatProvider({ children }: PropsWithChildren) {
     fetchOlderMessages: async () => {},
   };
 
-  return (
-    <ChatStreamCtx.Provider value={value}>{children}</ChatStreamCtx.Provider>
-  );
+  return value;
 }
 
 // ============================================================================
-// ActiveTaskProvider (inner, inside Suspense)
+// ChatStreamHost + stream sources
 // ============================================================================
 
-export function ActiveTaskProvider({
-  taskId,
-  children,
-}: PropsWithChildren<{ taskId: string }>) {
+const KeyedChatStream = createKeyedContext(ChatStreamCtx);
+const usePublishChatStream = KeyedChatStream.usePublish;
+
+/**
+ * Provides `useChatStream()` to `children` from whichever `source` is mounted.
+ * Key the source by thread: a switch resets the stream while `children` (the
+ * open app, the main panel) stay mounted.
+ */
+export const ChatStreamHost = KeyedChatStream.Host;
+
+export function ActiveTaskStreamSource({ taskId }: { taskId: string }) {
+  usePublishChatStream(useActiveTaskStream(taskId));
+  return null;
+}
+
+function useActiveTaskStream(taskId: string): ChatStreamContextValue {
   const t = useT();
   const voiceEnabled = useOrgFlag("voice_mode");
   const sandboxOnlyChats = useSandboxOnlyChats();
@@ -1662,11 +1682,7 @@ export function ActiveTaskProvider({
     fetchOlderMessages: conn.fetchOlderMessages.bind(conn),
   };
 
-  return (
-    <ChatStreamCtx.Provider value={streamValue}>
-      {children}
-    </ChatStreamCtx.Provider>
-  );
+  return streamValue;
 }
 
 // ============================================================================

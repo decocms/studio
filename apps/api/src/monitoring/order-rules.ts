@@ -1,6 +1,7 @@
 /**
  * Order-flow rules, pure. Each one compares the last 60 minutes of a store's
- * 15-minute buckets with a baseline: the median of D-1 and W-1..W-4.
+ * 15-minute buckets with a baseline: the median of D-1 and W-1..W-4, those of
+ * them the lake fully holds.
  *
  * `orders_drop`'s thresholds are the vtex-monitoring worker's old alerts.ts,
  * calibrated on 28 days of one tenant with a mean baseline and a whole-day
@@ -68,6 +69,8 @@ export interface StoreDay {
   firstEventDaysAgo: number | null;
   /** Chart only: cancellations by `orders.updated_at`, for reference days before the first event. */
   approximate?: Partial<Record<DayAgo, Pick<DaySeries, "canceled" | "denied">>>;
+  /** The install's history backfill: hours still queued, of all it queued, and the days (back from day 0) those hours fall on. */
+  backfill?: { pending: number; total: number; days: number[] };
   /** Chart only: orders placed per sales channel on day 0 and D-1. */
   channels?: {
     id: string;
@@ -87,6 +90,7 @@ const sum = (a: number[], from = 0, to = a.length) =>
   a.slice(Math.max(0, from), to).reduce((s, v) => s + v, 0);
 
 const median = (xs: number[]) => {
+  if (xs.length === 0) return 0;
   const s = [...xs].sort((a, b) => a - b);
   const mid = Math.floor(s.length / 2);
   return s.length % 2 ? s[mid]! : (s[mid - 1]! + s[mid]!) / 2;
@@ -108,10 +112,20 @@ const withEve = (
   ...day.days[d][kind],
 ];
 
+/**
+ * The reference days the lake holds: not still backfilling, and with orders.
+ * A day without a single order is one the ingest never saw, and as a zero it
+ * would drag the median down to nothing.
+ */
+const referenceDays = (day: StoreDay) =>
+  BASELINE_DAYS.filter(
+    (d) => !day.backfill?.days.includes(d) && sum(day.days[d].placed) > 0,
+  );
+
 function series(day: StoreDay, kind: Kind) {
   return {
     today: withEve(day, 0, kind),
-    refs: BASELINE_DAYS.map((d) => withEve(day, d, kind)),
+    refs: referenceDays(day).map((d) => withEve(day, d, kind)),
   };
 }
 
@@ -330,6 +344,10 @@ export function buildDayView(day: StoreDay, at: Date): OrderMonitorDay {
       denied_spike: withZone(verdicts.denied_spike),
       cancel_spike: withZone(verdicts.cancel_spike),
     },
+    backfill:
+      day.backfill && day.backfill.pending > 0
+        ? { pending: day.backfill.pending, total: day.backfill.total }
+        : null,
     channels: [...(day.channels ?? [])]
       .sort((a, b) => sum(b.d1) - sum(a.d1) || a.id.localeCompare(b.id))
       .map((c) => ({

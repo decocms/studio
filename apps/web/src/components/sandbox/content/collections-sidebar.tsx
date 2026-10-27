@@ -107,15 +107,6 @@ export function CollectionsSidebar({
             onSelect={onSelect}
           />
         )}
-        {shown("campaigns") && (
-          <CollectionRow
-            id="campaigns"
-            icon={Calendar}
-            label={t("sandbox.collectionsSidebar.campaigns")}
-            active={active === "campaigns"}
-            onSelect={onSelect}
-          />
-        )}
         <AdvancedGroup
           active={active}
           counts={counts}

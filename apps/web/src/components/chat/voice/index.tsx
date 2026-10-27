@@ -37,8 +37,6 @@ export function ChatVoiceProvider({
   children,
   layout,
 }: PropsWithChildren<{ layout: ChatLayoutState }>) {
-  const { org } = useProjectContext();
-  const { taskId } = useChatTask();
   const isMobile = useIsMobile();
   const visible = isMobile
     ? resolveMobileSurface({
@@ -46,10 +44,13 @@ export function ChatVoiceProvider({
         threadVisibilityExplicit: layout.threadVisibilityExplicit,
       }) === "chat"
     : layout.threadOpen || !layout.contentOpen;
-  return (
-    <VoiceProvider key={`${org.id}:${taskId ?? "new"}`} visible={visible}>
-      {children}
-    </VoiceProvider>
+  return <VoiceProvider visible={visible}>{children}</VoiceProvider>;
+}
+
+function createVoiceSession(orgSlug: string, taskId: string | null) {
+  return new VoiceSession(
+    `/api/${encodeURIComponent(orgSlug)}/threads/${encodeURIComponent(taskId ?? "")}/voice/sessions`,
+    readLanguage() === "pt-BR" ? "pt" : "en",
   );
 }
 
@@ -61,13 +62,20 @@ function VoiceProvider({
   const { taskId, createTask, activeTask } = useChatTask();
   const flag = useOrgFlag("voice_mode");
   const enabled = flag && !activeTask?.metadata?.read_only;
-  const [session] = useState(
-    () =>
-      new VoiceSession(
-        `/api/${encodeURIComponent(org.slug)}/threads/${encodeURIComponent(taskId ?? "")}/voice/sessions`,
-        readLanguage() === "pt-BR" ? "pt" : "en",
-      ),
-  );
+  /** One session per thread. Swapped here rather than by keying this provider,
+   *  which would remount the chat and the open app on every thread switch. */
+  const sessionKey = `${org.id}:${taskId ?? "new"}`;
+  const [current, setCurrent] = useState(() => ({
+    key: sessionKey,
+    session: createVoiceSession(org.slug, taskId),
+  }));
+  if (current.key !== sessionKey) {
+    setCurrent({
+      key: sessionKey,
+      session: createVoiceSession(org.slug, taskId),
+    });
+  }
+  const { session } = current;
   useLayoutEffect(() => {
     if (!enabled || !visible) session.stop();
   }, [session, enabled, visible]);
@@ -81,11 +89,47 @@ function VoiceProvider({
     onUpdate: session.taskUpdated,
     onDelete: session.taskDeleted,
   });
+  const start = () => {
+    if (!enabled) return;
+    if (!taskId) {
+      const threadId = createTask();
+      pendingStart = { orgId: org.id, threadId, expires: Date.now() + 30_000 };
+      return;
+    }
+    void session.start();
+  };
+  return (
+    <VoiceContext value={{ session, enabled, start }}>
+      <VoiceSessionLifecycle
+        key={current.key}
+        session={session}
+        enabled={enabled}
+        orgId={org.id}
+        taskId={taskId}
+      />
+      {children}
+    </VoiceContext>
+  );
+}
+
+/** Starts a session a thread-less `start` asked for, and stops it when the
+ *  thread changes or the page goes away. */
+function VoiceSessionLifecycle({
+  session,
+  enabled,
+  orgId,
+  taskId,
+}: {
+  session: VoiceSession;
+  enabled: boolean;
+  orgId: string;
+  taskId: string | null;
+}) {
   const [attach] = useState(() => (_node: HTMLDivElement | null) => {
     if (
       enabled &&
       taskId &&
-      pendingStart?.orgId === org.id &&
+      pendingStart?.orgId === orgId &&
       pendingStart.threadId === taskId
     ) {
       const shouldStart = pendingStart.expires > Date.now();
@@ -99,22 +143,7 @@ function VoiceProvider({
       session.stop();
     };
   });
-  const start = () => {
-    if (!enabled) return;
-    if (!taskId) {
-      const threadId = createTask();
-      pendingStart = { orgId: org.id, threadId, expires: Date.now() + 30_000 };
-      return;
-    }
-    void session.start();
-  };
-  return (
-    <VoiceContext value={{ session, enabled, start }}>
-      <div className="contents" ref={attach}>
-        {children}
-      </div>
-    </VoiceContext>
-  );
+  return <div className="contents" ref={attach} />;
 }
 
 export function ChatVoiceBindings({ children }: PropsWithChildren) {

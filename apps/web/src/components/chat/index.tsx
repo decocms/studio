@@ -10,9 +10,10 @@ import {
 import { useT } from "@/i18n/use-t.ts";
 import { useStickToBottom } from "use-stick-to-bottom";
 import {
-  ActiveTaskProvider,
+  ActiveTaskStreamSource,
   ChatProvider,
-  ThreadlessChatProvider,
+  ChatStreamHost,
+  ThreadlessStreamSource,
   useChatStream,
   useChatTask,
 } from "./context";
@@ -343,8 +344,9 @@ export const Chat = Object.assign(ChatRoot, {
   Footer: ChatFooter,
   Input: ChatInput,
   Provider: ChatProvider,
-  ActiveTaskProvider: ActiveTaskProvider,
-  ThreadlessProvider: ThreadlessChatProvider,
+  StreamHost: ChatStreamHost,
+  ActiveTaskStreamSource: ActiveTaskStreamSource,
+  ThreadlessStreamSource: ThreadlessStreamSource,
   IceBreakers: IceBreakers,
   NoAiProviderEmptyState: NoAiProviderEmptyState,
   CreditsEmptyState: CreditsEmptyState,
