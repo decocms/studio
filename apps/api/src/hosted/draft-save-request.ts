@@ -55,7 +55,7 @@ function isPrecondition(value: unknown): boolean {
  * of its own (`ifMatch` lacks them, or holds something else than a version,
  * `null` or the tombstone's). Malformed params are left for the core.
  */
-export function unguardedNames(call: ApplyCall): string[] {
+function unguardedNames(call: ApplyCall): string[] {
   const params = call.params ?? {};
   const guards = isRecord(params.ifMatch) ? params.ifMatch : {};
   const names = [
@@ -165,7 +165,7 @@ function conflictEntries(
 }
 
 /** Each name of `names` as `draft` holds it now (see `DraftConflictBlocks`). */
-export function draftBlocksOf(
+function draftBlocksOf(
   draft: DraftBody,
   names: readonly string[],
 ): DraftConflictBlocks["draft"] {

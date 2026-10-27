@@ -169,7 +169,7 @@ export function blockLabel(blockKey: string, ...copies: unknown[]): string {
  * bring a block someone deleted back under its new name. Empty for a change
  * that creates nothing (a delete, a save of existing blocks).
  */
-export function deletedMoveSources(
+function deletedMoveSources(
   change: HostedChange,
   copies: Record<string, unknown> | undefined,
   deleted: (blockKey: string) => boolean,
