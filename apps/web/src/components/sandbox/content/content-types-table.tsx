@@ -98,10 +98,10 @@ export function ContentTypesTable({
       : null;
   const kept = fold && fold.folded > 0 ? new Set(fold.shown) : null;
   const shown = kept ? matching.filter((r) => kept.has(r.entry)) : matching;
-  const everywhere = new Set(tree.everywhere.map((t) => t.id));
+  const singletons = new Set(tree.singletons.map((t) => t.id));
   // A type with one entry is named by its type, as the sidebar names it.
   const nameOf = (rowType: ContentType, entry: ContentEntry) =>
-    everywhere.has(rowType.id) && typeof entry.block.name !== "string"
+    singletons.has(rowType.id) && typeof entry.block.name !== "string"
       ? label(rowType)
       : entryName(entry);
   const kind = !type

@@ -24,7 +24,7 @@ export type ContentTypesView =
 const GROUP_DOT = {
   pages: "oklch(0.62 0.17 289)",
   redirects: "oklch(0.64 0.13 245)",
-  everywhere: "oklch(0.66 0.09 75)",
+  singleton: "oklch(0.66 0.09 75)",
   content: "oklch(0.6 0.1 270)",
   settings: "oklch(0.65 0 0)",
   seo: "oklch(0.65 0 0)",
@@ -49,9 +49,10 @@ export function useTypeLabel(): (
 
 /**
  * The content types of a hosted Blocks v8 site: only the types the site has
- * saved blocks of. The site's own (Pages, Redirects, SEO), then the types
- * with one entry every page shows (Header, Footer, Settings), which open
- * that entry directly, then one flat list of the rest, busiest first.
+ * saved blocks of, as a generic CMS lists them. Collections: Pages and
+ * Redirects, then every type with several entries, busiest first, the top
+ * few until "Show all". Singletons: SEO, then every type with one entry
+ * (Header, Footer, Settings), which opens that entry directly.
  */
 export function ContentTypesSidebar({
   tree,
@@ -100,17 +101,20 @@ export function ContentTypesSidebar({
     />
   );
 
-  const site = [tree.pages, tree.redirects].filter(
-    (type): type is ContentType => !!type && matches(type),
-  );
-  const everywhere = tree.everywhere.filter(matches);
-  const typesFound = tree.types.filter(matches);
+  const collectionsFound = tree.collections.filter(matches);
   // Searching lists every match; otherwise the busiest few, then "Show all".
-  const types = q
-    ? { shown: typesFound, hidden: 0 }
-    : visibleTypes(typesFound, showAllTypes, activeTypeId);
+  const collections = q
+    ? { shown: collectionsFound, hidden: 0 }
+    : visibleTypes(collectionsFound, showAllTypes, activeTypeId);
+  const singletons = tree.singletons.filter(matches);
   const showSeo =
     !q || t("siteEditor.contentTypes.seo").toLowerCase().includes(q);
+  const dotOf = (type: ContentType): DotColor =>
+    type.id === tree.pages?.id
+      ? "pages"
+      : type.id === tree.redirects?.id
+        ? "redirects"
+        : "content";
 
   return (
     <nav
@@ -148,32 +152,13 @@ export function ContentTypesSidebar({
           </button>
         )}
 
-        <GroupLabel label={t("siteEditor.contentTypes.group.site")} />
-        {site.map((type) =>
-          row(type, type.id === tree.pages?.id ? "pages" : "redirects"),
-        )}
-        {showSeo && (
-          <TypeRow
-            label={t("siteEditor.contentTypes.seo")}
-            dot="seo"
-            active={view.kind === "seo" && !openTypeId}
-            onClick={() => onSelect({ kind: "seo" })}
-          />
-        )}
-
-        {everywhere.length > 0 && (
+        {collections.shown.length > 0 && (
           <>
-            <GroupLabel label={t("siteEditor.contentTypes.group.everywhere")} />
-            {everywhere.map((type) => row(type, "everywhere", true))}
-          </>
-        )}
-
-        {types.shown.length > 0 && (
-          <>
-            {/* No heading (PO): the rest of the types simply follow, set apart by space. */}
-            <div className="pt-4" aria-hidden="true" />
-            {types.shown.map((type) => row(type, "content"))}
-            {!q && (types.hidden > 0 || showAllTypes) && (
+            <GroupLabel
+              label={t("siteEditor.contentTypes.group.collections")}
+            />
+            {collections.shown.map((type) => row(type, dotOf(type)))}
+            {!q && (collections.hidden > 0 || showAllTypes) && (
               <button
                 type="button"
                 onClick={() => setShowAllTypes((v) => !v)}
@@ -182,10 +167,25 @@ export function ContentTypesSidebar({
                 {showAllTypes
                   ? t("siteEditor.contentTypes.showFewer")
                   : t("siteEditor.contentTypes.showAll", {
-                      count: tree.types.length,
+                      count: tree.collections.length,
                     })}
               </button>
             )}
+          </>
+        )}
+
+        {(showSeo || singletons.length > 0) && (
+          <>
+            <GroupLabel label={t("siteEditor.contentTypes.group.singletons")} />
+            {showSeo && (
+              <TypeRow
+                label={t("siteEditor.contentTypes.seo")}
+                dot="seo"
+                active={view.kind === "seo" && !openTypeId}
+                onClick={() => onSelect({ kind: "seo" })}
+              />
+            )}
+            {singletons.map((type) => row(type, "singleton", true))}
           </>
         )}
       </div>

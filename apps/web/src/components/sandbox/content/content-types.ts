@@ -2,9 +2,10 @@
  * The Content tab of a hosted Blocks v8 site, as content types: every saved
  * block is filed under its type (the schema's manifest key, aliases folded
  * into their target), so the sidebar lists only the types the site HAS
- * content of, never the whole block map: the site's own (pages, redirects),
- * the one-entry types every page shows, then one flat list of the rest. The
- * manifest group only says which editor opens an entry. Each entry carries
+ * content of, never the whole block map, as a generic CMS does: collections
+ * (a type with several entries, and always pages and redirects) and
+ * singletons (a type with one entry: Header, Footer, Settings). The manifest
+ * group only says which editor opens an entry. Each entry carries
  * its status in the draft, from the draft's changes (`changes.list`):
  * published, changed, new, or deleted (a deletion's content is the published
  * copy, from `changes.get`'s `before`).
@@ -60,13 +61,17 @@ export interface ContentType {
 export interface ContentTypeTree {
   pages: ContentType | null;
   redirects: ContentType | null;
-  /** Section and content types with exactly one entry (Header, Settings). */
-  everywhere: ContentType[];
   /**
-   * Every other type with saved entries, whatever its manifest group (a
-   * device rule is a type like any other), most entries first, then by name.
+   * The types with several entries, whatever their manifest group (a device
+   * rule is a type like any other): pages and redirects first, even with one
+   * entry, then the rest, most entries first, then by name.
    */
-  types: ContentType[];
+  collections: ContentType[];
+  /**
+   * The types with exactly one entry (Header, Footer, Settings), by name: the
+   * sidebar opens that entry directly.
+   */
+  singletons: ContentType[];
   /** Every type above, for lookups by id. */
   all: ContentType[];
   /**
@@ -82,7 +87,7 @@ export interface ContentTypeTree {
   statusKnown: boolean;
 }
 
-/** How many types the sidebar's list shows before "Show all". */
+/** How many collections the sidebar shows before "Show all". */
 export const TOP_TYPES = 8;
 
 /** Built-ins whose schema title is their raw key get Studio's names. */
@@ -323,16 +328,21 @@ export function buildContentTypes(input: {
   const of = (group: ManifestGroup) => all.filter((t) => t.group === group);
   const pages = of("pages")[0] ?? null;
   const redirects = of("redirects")[0] ?? null;
-  // Header, Footer, Settings: one entry every page shows.
-  const isEverywhere = (t: ContentType) =>
-    t.entries.length === 1 && (t.group === "sections" || t.group === "content");
-  const everywhere = all.filter(isEverywhere);
-  const types = all
-    .filter((t) => t !== pages && t !== redirects && !isEverywhere(t))
-    .sort(
-      (a, b) =>
-        b.entries.length - a.entries.length || a.title.localeCompare(b.title),
-    );
+  // A type with one entry is a singleton (Header, Footer, Settings); pages
+  // and redirects are collections however many they hold.
+  const site = [pages, redirects].filter((t): t is ContentType => !!t);
+  const singletons = all.filter(
+    (t) => !site.includes(t) && t.entries.length === 1,
+  );
+  const collections = [
+    ...site,
+    ...all
+      .filter((t) => !site.includes(t) && t.entries.length > 1)
+      .sort(
+        (a, b) =>
+          b.entries.length - a.entries.length || a.title.localeCompare(b.title),
+      ),
+  ];
 
   // The draft's changes, from its own list: also those no type lists.
   const byId = new Map(all.map((type) => [type.id, type]));
@@ -378,8 +388,8 @@ export function buildContentTypes(input: {
   return {
     pages,
     redirects,
-    everywhere,
-    types,
+    collections,
+    singletons,
     all,
     changed,
     statusKnown: !!input.changes,
@@ -405,7 +415,7 @@ function entryOrder(group: ManifestGroup) {
 }
 
 /**
- * The types the sidebar's list shows: the top few, or all of them. The open
+ * The collections the sidebar shows: the top few, or all of them. The open
  * type (`activeId`) always shows, after the top few when it ranks lower, so
  * an entry opened from elsewhere still has its row marked.
  */

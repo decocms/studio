@@ -204,30 +204,78 @@ describe("buildContentTypes", () => {
     expect(tree.redirects?.entries.length).toBe(1);
     expect(tree.all.some((t) => t.id === "banner")).toBe(false);
   });
-  test("singletons of sections and content are Everywhere", () => {
-    expect(tree.everywhere.map((t) => t.title)).toEqual([
-      "Footer",
-      "Header",
-      "Settings",
-    ]);
-  });
-  test("every other type in one flat list, most entries first, then by name", () => {
-    // No manifest groups and no apps: a rule or a loader is a type like any
-    // other, titled by the schema and never split by a vendor word.
-    expect(tree.types.map((t) => [t.title, t.entries.length])).toEqual([
+  test("collections: Pages and Redirects first, then 2+ entries, most first", () => {
+    // Redirects holds one entry and is still a collection. No manifest
+    // groups and no apps: a rule is a type like any other.
+    expect(tree.collections.map((t) => [t.title, t.entries.length])).toEqual([
+      ["Pages", 3],
+      ["Redirects", 1],
       ["Device", 2],
       ["Product Shelf", 2],
-      ["Product by Handle", 1],
-      ["Search", 1],
-      ["Shopify Product Details Page", 1],
-      ["Shopify Product List", 1],
     ]);
-    expect(tree.types.some((t) => t.id === "page")).toBe(false);
-    expect(tree.types.some((t) => t.id === "site-header")).toBe(false);
+  });
+  test("singletons: every type with one entry, by name", () => {
+    // Loaders too: one entry opens directly, whatever its manifest group.
+    expect(tree.singletons.map((t) => t.title)).toEqual([
+      "Footer",
+      "Header",
+      "Product by Handle",
+      "Search",
+      "Settings",
+      "Shopify Product Details Page",
+      "Shopify Product List",
+    ]);
+    expect(tree.singletons.some((t) => t.id === "page")).toBe(false);
+    expect(tree.singletons.some((t) => t.id === "redirect")).toBe(false);
+    for (const type of tree.singletons) expect(type.entries.length).toBe(1);
+  });
+  test("Pages and Redirects are collections even with one entry", () => {
+    const one = buildContentTypes({
+      blocks: {
+        home: { __resolveType: "page", name: "Home", path: "/" },
+        r: { __resolveType: "redirect", from: "/a", to: "/" },
+        Header: { __resolveType: "site-header" },
+      },
+      meta,
+      changes: {},
+    });
+    expect(one.collections.map((t) => t.id)).toEqual(["page", "redirect"]);
+    expect(one.singletons.map((t) => t.id)).toEqual(["site-header"]);
+  });
+  test("a type grows from singleton to collection at two entries", () => {
+    const of = (n: number) =>
+      buildContentTypes({
+        blocks: Object.fromEntries(
+          Array.from({ length: n }, (_, i) => [
+            `Shelf ${i}`,
+            { __resolveType: "product-shelf" },
+          ]),
+        ),
+        meta,
+        changes: {},
+      });
+    expect(of(1).singletons.map((t) => t.id)).toEqual(["product-shelf"]);
+    expect(of(1).collections).toEqual([]);
+    expect(of(2).collections.map((t) => t.id)).toEqual(["product-shelf"]);
+    expect(of(2).singletons).toEqual([]);
+  });
+  test("a deleted singleton keeps its row, its one entry deleted", () => {
+    const gone = buildContentTypes({
+      blocks: {},
+      meta,
+      changes: { Footer: del },
+      deleted: { Footer: { __resolveType: "site-footer" } },
+    });
+    expect(gone.singletons.map((t) => t.id)).toEqual(["site-footer"]);
+    expect(gone.singletons[0]?.entries.map((e) => e.status)).toEqual([
+      "deleted",
+    ]);
+    expect(gone.singletons[0]?.changed).toBe(1);
   });
   test("no named rules (they keep their own views)", () => {
     expect(tree.all.some((t) => t.id === "split-traffic")).toBe(false);
-    expect(tree.types.some((t) => t.id === "split-traffic")).toBe(false);
+    expect(tree.collections.some((t) => t.id === "split-traffic")).toBe(false);
+    expect(tree.singletons.some((t) => t.id === "split-traffic")).toBe(false);
   });
   test("statuses, deletions included, and the draft's changes", () => {
     const status = Object.fromEntries(
@@ -359,7 +407,7 @@ describe("sidebar sizing", () => {
     })),
     changed: 0,
   });
-  test("top eight types, then Show all", () => {
+  test("top eight collections, then Show all", () => {
     const many = [12, 11, 10, 9, 8, 7, 6, 5, 4, 3].map((n, i) =>
       type(`t${i}`, n),
     );
@@ -369,6 +417,27 @@ describe("sidebar sizing", () => {
     expect(top.hidden).toBe(2);
     expect(visibleTypes(many, true).shown.length).toBe(10);
     expect(visibleTypes(many.slice(0, 8), false).hidden).toBe(0);
+  });
+  test("Pages and Redirects lead the top eight; Show all counts every collection", () => {
+    const blocks: Record<string, unknown> = {
+      home: { __resolveType: "page", name: "Home", path: "/" },
+      r: { __resolveType: "redirect", from: "/a", to: "/" },
+    };
+    for (let i = 0; i < 9; i++) {
+      for (let j = 0; j < 2 + i; j++) {
+        blocks[`kind-${i}-${j}`] = { __resolveType: `kind-${i}` };
+      }
+    }
+    const built = buildContentTypes({ blocks, meta, changes: {} });
+    expect(built.collections.length).toBe(11);
+    const top = visibleTypes(built.collections, false);
+    expect(top.shown.map((t) => t.id).slice(0, 3)).toEqual([
+      "page",
+      "redirect",
+      "kind-8",
+    ]);
+    expect(top.shown.length).toBe(TOP_TYPES);
+    expect(top.hidden).toBe(3);
   });
   test("the open type shows even past the top eight", () => {
     const many = [12, 11, 10, 9, 8, 7, 6, 5, 4, 3].map((n, i) =>
@@ -434,7 +503,7 @@ describe("table columns", () => {
       },
       meta,
       changes: {},
-    }).types[0]!;
+    }).collections[0]!;
     expect(summaryFieldsOf(shelf)).toEqual(["title"]);
   });
 });
