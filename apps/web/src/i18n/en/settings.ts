@@ -84,6 +84,8 @@ export const settings = {
     "Pick a board before enabling the integration",
   "settings.jira.saveFailed": "Could not save the Jira settings",
   "settings.jira.createTokenLink": "Create an API token",
+  "settings.jira.tokenHint":
+    "Use “Create API token”, not “Create API token with scopes”: scoped tokens do not work here. The account needs to browse, transition, comment on, attach to, create and link issues in the board's project.",
   "settings.jira.webhookTitle": "Instant updates (webhook)",
   "settings.jira.webhookDescription":
     "Optional. Without it, an issue entering an automated status is picked up on the next 5-minute check; with it, the run starts once the card has stayed put for 20 seconds.",
