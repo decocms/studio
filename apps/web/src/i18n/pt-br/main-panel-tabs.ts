@@ -396,6 +396,137 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.viewErrors": "Erros",
   "mainPanelTabs.analyticsTab.viewExperiments": "Experimentos",
   "mainPanelTabs.analyticsTab.viewVitals": "Web Vitals",
+  "mainPanelTabs.analyticsTab.heatmap.offTitle": "Módulo heatmap não ligado",
+  "mainPanelTabs.analyticsTab.heatmap.offDescription":
+    "Ligue o módulo heatmap em Configuração para registrar cliques, rolagem e atenção nas páginas deste site.",
+  "mainPanelTabs.analyticsTab.heatmap.openConfig": "Abrir configuração",
+  "mainPanelTabs.analyticsTab.heatmap.noDomainTitle":
+    "Nenhum domínio para mostrar",
+  "mainPanelTabs.analyticsTab.heatmap.noDomainDescription":
+    "Adicione o domínio do site no cadastro do analytics para ver o mapa sobre a página real.",
+  "mainPanelTabs.analyticsTab.heatmap.page": "Página",
+  "mainPanelTabs.analyticsTab.heatmap.device": "Dispositivo",
+  "mainPanelTabs.analyticsTab.heatmap.deviceViews":
+    "{device}: {views} visitas na amostra",
+  "mainPanelTabs.analyticsTab.heatmap.desktop": "Desktop",
+  "mainPanelTabs.analyticsTab.heatmap.tablet": "Tablet",
+  "mainPanelTabs.analyticsTab.heatmap.mobile": "Mobile",
+  "mainPanelTabs.analyticsTab.heatmap.range": "Período",
+  "mainPanelTabs.analyticsTab.heatmap.range24h": "24 h",
+  "mainPanelTabs.analyticsTab.heatmap.range7d": "7 dias",
+  "mainPanelTabs.analyticsTab.heatmap.range30d": "30 dias",
+  "mainPanelTabs.analyticsTab.heatmap.map": "Mapa",
+  "mainPanelTabs.analyticsTab.heatmap.clicks": "Cliques",
+  "mainPanelTabs.analyticsTab.heatmap.clicksHint": "Onde as pessoas clicam",
+  "mainPanelTabs.analyticsTab.heatmap.scroll": "Rolagem",
+  "mainPanelTabs.analyticsTab.heatmap.scrollHint": "Até onde as pessoas chegam",
+  "mainPanelTabs.analyticsTab.heatmap.attention": "Atenção",
+  "mainPanelTabs.analyticsTab.heatmap.attentionHint":
+    "Onde as pessoas passam tempo",
+  "mainPanelTabs.analyticsTab.heatmap.sections": "Seções",
+  "mainPanelTabs.analyticsTab.heatmap.sectionsHint":
+    "Cada seção da página com seus números",
+  "mainPanelTabs.analyticsTab.heatmap.clickType": "Tipo de clique",
+  "mainPanelTabs.analyticsTab.heatmap.type_all": "Todos",
+  "mainPanelTabs.analyticsTab.heatmap.type_rage": "Raiva",
+  "mainPanelTabs.analyticsTab.heatmap.type_dead": "Sem resposta",
+  "mainPanelTabs.analyticsTab.heatmap.type_error": "Com erro",
+  "mainPanelTabs.analyticsTab.heatmap.type_first": "Primeiro clique",
+  "mainPanelTabs.analyticsTab.heatmap.views": "{n} visitas na amostra",
+  "mainPanelTabs.analyticsTab.heatmap.viewsHint":
+    "Visitas desta página com o módulo heatmap no período",
+  "mainPanelTabs.analyticsTab.heatmap.scale": "1 a cada {n} visitas",
+  "mainPanelTabs.analyticsTab.heatmap.scaleHint":
+    "Os números de cliques são estimados a partir da amostra",
+  "mainPanelTabs.analyticsTab.heatmap.smallSample": "Amostra pequena",
+  "mainPanelTabs.analyticsTab.heatmap.smallSampleHint":
+    "Menos de mil visitas: os padrões ainda mudam muito de um dia para o outro",
+  "mainPanelTabs.analyticsTab.heatmap.match": "{pct} dos cliques localizados",
+  "mainPanelTabs.analyticsTab.heatmap.matchHint":
+    "Cliques cujos elementos existem nesta versão da página",
+  "mainPanelTabs.analyticsTab.heatmap.fit": "Ajustar",
+  "mainPanelTabs.analyticsTab.heatmap.frameTitle":
+    "Página real com o mapa de calor",
+  "mainPanelTabs.analyticsTab.heatmap.frameLoading":
+    "Carregando a página real…",
+  "mainPanelTabs.analyticsTab.heatmap.timeoutTitle": "O site não respondeu",
+  "mainPanelTabs.analyticsTab.heatmap.timeoutDescription":
+    "A página carregou sem o modo de visualização do analytics. Confira se o site roda o runtime atual do Deco Analytics e permite ser exibido no Studio.",
+  "mainPanelTabs.analyticsTab.heatmap.noViewsTitle":
+    "Nenhuma visita com mapa de calor aqui",
+  "mainPanelTabs.analyticsTab.heatmap.noViewsDescription":
+    "Nenhuma visita desta página em {device} no período. Tente outro período ou dispositivo.",
+  "mainPanelTabs.analyticsTab.heatmap.tipClicks": "Cliques",
+  "mainPanelTabs.analyticsTab.heatmap.tipShare": "Dos cliques da página",
+  "mainPanelTabs.analyticsTab.heatmap.tipVisits": "Das visitas clicaram",
+  "mainPanelTabs.analyticsTab.heatmap.tipSaw": "Visitas que viram",
+  "mainPanelTabs.analyticsTab.heatmap.tipTime": "Tempo médio visível",
+  "mainPanelTabs.analyticsTab.heatmap.tipReach": "{pct} das visitas",
+  "mainPanelTabs.analyticsTab.heatmap.tipReachSub":
+    "chegaram até este ponto da página",
+  "mainPanelTabs.analyticsTab.heatmap.tipAttention": "{s} por visita",
+  "mainPanelTabs.analyticsTab.heatmap.tipAttentionSub": "nesta faixa da página",
+  "mainPanelTabs.analyticsTab.heatmap.legendFewer": "menos cliques",
+  "mainPanelTabs.analyticsTab.heatmap.legendMore": "mais cliques",
+  "mainPanelTabs.analyticsTab.heatmap.legendClicks": "{n}+ cliques",
+  "mainPanelTabs.analyticsTab.heatmap.legendNobody": "ninguém chega",
+  "mainPanelTabs.analyticsTab.heatmap.legendEveryone": "todos chegam",
+  "mainPanelTabs.analyticsTab.heatmap.legendLittle": "pouco tempo",
+  "mainPanelTabs.analyticsTab.heatmap.legendMoreTime": "mais tempo",
+  "mainPanelTabs.analyticsTab.heatmap.opacity": "Opacidade",
+  "mainPanelTabs.analyticsTab.heatmap.colors": "Cores",
+  "mainPanelTabs.analyticsTab.heatmap.thermal": "Térmica",
+  "mainPanelTabs.analyticsTab.heatmap.inferno": "Inferno",
+  "mainPanelTabs.analyticsTab.heatmap.infernoHint":
+    "Escala legível para daltônicos",
+  "mainPanelTabs.analyticsTab.heatmap.statClicks": "Cliques",
+  "mainPanelTabs.analyticsTab.heatmap.statDepth": "Rolagem média",
+  "mainPanelTabs.analyticsTab.heatmap.statFold": "dobra em {pct}",
+  "mainPanelTabs.analyticsTab.heatmap.statActive": "Tempo ativo por visita",
+  "mainPanelTabs.analyticsTab.heatmap.statRageDead": "Raiva e sem resposta",
+  "mainPanelTabs.analyticsTab.heatmap.statErrors": "{n} com erro",
+  "mainPanelTabs.analyticsTab.heatmap.hideList": "Esconder a lista",
+  "mainPanelTabs.analyticsTab.heatmap.showElements":
+    "Ver os elementos mais clicados",
+  "mainPanelTabs.analyticsTab.heatmap.showReach": "Ver o alcance da rolagem",
+  "mainPanelTabs.analyticsTab.heatmap.showSections": "Ver as seções",
+  "mainPanelTabs.analyticsTab.heatmap.topElements": "Elementos mais clicados",
+  "mainPanelTabs.analyticsTab.heatmap.topOfType": "Mais cliques: {type}",
+  "mainPanelTabs.analyticsTab.heatmap.nElements": "{n} elementos",
+  "mainPanelTabs.analyticsTab.heatmap.noText": "Elemento sem texto",
+  "mainPanelTabs.analyticsTab.heatmap.ofClicks": "{pct} dos cliques",
+  "mainPanelTabs.analyticsTab.heatmap.ofVisits": "{pct} das visitas",
+  "mainPanelTabs.analyticsTab.heatmap.inSection": "na seção",
+  "mainPanelTabs.analyticsTab.heatmap.inSectionHint":
+    "O elemento mudou; os cliques aparecem na área da seção",
+  "mainPanelTabs.analyticsTab.heatmap.badgeRage": "raiva {n}",
+  "mainPanelTabs.analyticsTab.heatmap.badgeDead": "sem resposta {n}",
+  "mainPanelTabs.analyticsTab.heatmap.badgeError": "erro {n}",
+  "mainPanelTabs.analyticsTab.heatmap.noneOfType":
+    "Nenhum clique deste tipo nesta versão da página.",
+  "mainPanelTabs.analyticsTab.heatmap.offPage":
+    "Não estão nesta versão da página: {n} elementos, {pct} dos cliques",
+  "mainPanelTabs.analyticsTab.heatmap.outsideSections": "Fora das seções",
+  "mainPanelTabs.analyticsTab.heatmap.reachTitle": "Até onde as visitas chegam",
+  "mainPanelTabs.analyticsTab.heatmap.reachAside": "% da página",
+  "mainPanelTabs.analyticsTab.heatmap.reachRow": "{d}% da página",
+  "mainPanelTabs.analyticsTab.heatmap.foldNote":
+    "A linha branca é a dobra média: o que cabe na primeira tela de quem abre a página neste dispositivo.",
+  "mainPanelTabs.analyticsTab.heatmap.sectionsByClicks": "Seções por cliques",
+  "mainPanelTabs.analyticsTab.heatmap.sectionsByTime":
+    "Seções por tempo visível",
+  "mainPanelTabs.analyticsTab.heatmap.nSections": "{n} seções",
+  "mainPanelTabs.analyticsTab.heatmap.saw": "{pct} viram",
+  "mainPanelTabs.analyticsTab.heatmap.sampleTitle":
+    "Escolha uma página de exemplo",
+  "mainPanelTabs.analyticsTab.heatmap.sampleDescription":
+    "{page} junta várias páginas. Cole o caminho de uma delas para desenhar o mapa sobre ela.",
+  "mainPanelTabs.analyticsTab.heatmap.samplePlaceholder": "/produto-exemplo/p",
+  "mainPanelTabs.analyticsTab.heatmap.sampleShow": "Mostrar",
+  "mainPanelTabs.analyticsTab.viewHeatmap": "Heatmap",
+  "mainPanelTabs.analyticsTab.moduleHeatmap": "Heatmap",
+  "mainPanelTabs.analyticsTab.moduleHeatmapHint":
+    "Cliques, rolagem e atenção por página",
   "mainPanelTabs.analyticsTab.viewQuality": "Qualidade dos dados",
   "mainPanelTabs.analyticsTab.viewUsage": "Uso & limites",
   "mainPanelTabs.analyticsTab.cardTopSources": "Principais origens",
