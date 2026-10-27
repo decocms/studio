@@ -126,13 +126,18 @@ export function changeKeepsStored(
   return change.deletes.every((key) => !Object.hasOwn(stored, key));
 }
 
-/** A copy's own words for itself: its name (never its key), or a blog record's title. */
+/**
+ * A copy's own words for itself: its name, or a blog record's title. A copy
+ * named by its key (a saved section's name is its key), or not named, is its
+ * key in words: that is how it was named, so a later copy's new name (a
+ * rename's) never stands in for it.
+ */
 function copyLabel(blockKey: string, copy: unknown): string | null {
   if (!isRecord(copy)) return null;
   // A blog record's `name` is its key (whichever key it has now): never shown.
   if (blogBlockKind(blockKey, copy)) return blogBlockTitle(copy);
   const name = typeof copy.name === "string" ? copy.name.trim() : "";
-  return name && name !== blockKey ? name : null;
+  return name && name !== blockKey ? name : keyInWords(blockKey);
 }
 
 /** A block's key in words: no folder, no id suffix. */

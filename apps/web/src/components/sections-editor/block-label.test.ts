@@ -29,6 +29,19 @@ describe("the reconcile question names a block in words, never by its raw key", 
     );
   });
 
+  it("a copy named by its key (or not named) is the key in words, before a later copy's new name", () => {
+    expect(
+      blockLabel(
+        "Spring Letter I",
+        { name: "Spring Letter I" },
+        { name: "Spring Letter I renamed" },
+      ),
+    ).toBe("Spring Letter I");
+    expect(
+      blockLabel("Header-a1b2c3d4e5", { title: "x" }, { name: "Main header" }),
+    ).toBe("Header");
+  });
+
   it("a blog block with no title yet never shows its path", () => {
     const key = "collections/blog/posts/3fa9c1b2e4d5";
     expect(blockLabel(key, { name: key, post: {} })).not.toContain(

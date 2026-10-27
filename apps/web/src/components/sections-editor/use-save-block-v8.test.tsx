@@ -543,7 +543,7 @@ describe("every hosted v8 save is guarded by the draft (no guard of its own)", (
         });
       });
       expect(asked.deleted).toEqual([
-        { kind: "theyDeleted", label: "Hero banner" },
+        { kind: "theyDeleted", label: "Hero" },
       ]);
       if (choice === "mine") {
         expect(server.applied.map((p) => p.ifMatch)).toEqual([
@@ -584,6 +584,26 @@ describe("every hosted v8 save is guarded by the draft (no guard of its own)", (
       { kind: "theyDeleted", label: "Spring Letter I" },
     ]);
     expect(outcome).toEqual({ keptTheirs: true, deleted: true });
+  });
+
+  it("a rename from the Sections list (its name is its key) asks by the deleted name, never the new one", async () => {
+    const { queryClient, result } = setup();
+    const key = "Spring Letter I";
+    server.draftInRefusal = true;
+    server.blocks = {};
+    server.versions = { [key]: "tombstone" };
+    asked.choice = "theirs";
+    queryClient.setQueryData(KEYS.decofile(CACHE_KEY), {
+      [key]: { name: key, title: "t" },
+    });
+    draftHolds(queryClient, { [key]: "h1" });
+    await act(async () => {
+      await result.current.mutateAsync({
+        blockKey: key,
+        data: { name: "Spring Letter I renamed", title: "t" },
+      });
+    });
+    expect(asked.deleted).toEqual([{ kind: "theyDeleted", label: key }]);
   });
 
   it("a section form's save of a page the draft deleted asks too, and keeps the edit over the tombstone", async () => {
@@ -1262,7 +1282,7 @@ describe("hosted v8 deletes and moves are guarded by the draft too", () => {
             });
         });
         expect(asked.deleted).toEqual([
-          { kind: "theyDeleted", label: "Hero banner" },
+          { kind: "theyDeleted", label: "Hero" },
         ]);
         const cached = queryClient.getQueryData<Record<string, unknown>>(
           KEYS.decofile(CACHE_KEY),
