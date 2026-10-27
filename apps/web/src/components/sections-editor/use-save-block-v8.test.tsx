@@ -563,6 +563,29 @@ describe("every hosted v8 save is guarded by the draft (no guard of its own)", (
     });
   }
 
+  it("a rename of a block someone deleted asks about it by the name that was deleted", async () => {
+    const { queryClient, result } = setup();
+    server.draftInRefusal = true;
+    server.blocks = {};
+    server.versions = { Letter: "tombstone" };
+    asked.choice = "theirs";
+    queryClient.setQueryData(KEYS.decofile(CACHE_KEY), {
+      Letter: { name: "Spring Letter I", title: "t" },
+    });
+    draftHolds(queryClient, { Letter: "h1" });
+    let outcome: unknown;
+    await act(async () => {
+      outcome = await result.current.mutateAsync({
+        blockKey: "Letter",
+        data: { name: "Spring Letter I renamed", title: "t" },
+      });
+    });
+    expect(asked.deleted).toEqual([
+      { kind: "theyDeleted", label: "Spring Letter I" },
+    ]);
+    expect(outcome).toEqual({ keptTheirs: true, deleted: true });
+  });
+
   it("a section form's save of a page the draft deleted asks too, and keeps the edit over the tombstone", async () => {
     const { queryClient, result } = setup();
     server.draftInRefusal = true;

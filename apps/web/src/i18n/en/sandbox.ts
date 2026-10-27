@@ -467,6 +467,8 @@ export const sandbox = {
     '"{label}" will be removed from your draft. Nothing goes live until you publish, and until then you can bring it back by discarding this change in Publish.',
   "sandbox.contentBrowser.deleteDialog.descriptionSection":
     '"{label}" will be removed. Pages that still reference it will lose this section.',
+  "sandbox.contentBrowser.deleteDialog.descriptionSectionDraft":
+    '"{label}" will be removed from your draft. Nothing goes live until you publish: only then do pages that still use it lose this section, and until then you can bring it back by discarding this change in Publish.',
   "sandbox.contentBrowser.deleteDialog.title": "Delete {noun}?",
   "sandbox.contentBrowser.duplicateFailed": "Duplicate failed",
   "sandbox.contentBrowser.duplicatedSection": 'Duplicated "{name}"',

@@ -192,7 +192,9 @@ async function askMovedDeleted(
   const source = sources[0]!;
   const choice = await askDeletedConflict({
     kind: "theyDeleted",
-    label: blockLabel(source, ...created, copies?.[source]),
+    // Named as it was deleted: the source's copy first (a rename's new name
+    // never was its name).
+    label: blockLabel(source, copies?.[source], ...created),
   });
   if (choice === "theirs") throw new HostedKeptTheirsError(true);
   return {

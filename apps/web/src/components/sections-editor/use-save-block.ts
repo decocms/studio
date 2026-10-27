@@ -510,7 +510,8 @@ export function useSaveBlock(
           // Deleted in the draft while the user edited it: their choice.
           const choice = await askDeletedConflict({
             kind: "theyDeleted",
-            label: blockLabel(blockKey, mine, ancestor),
+            // Named as it was deleted (a rename's new name never was).
+            label: blockLabel(blockKey, ancestor, mine),
           });
           if (choice === "theirs") return { keptTheirs: true, deleted: true };
           ancestor = undefined;
@@ -588,7 +589,7 @@ export function useSaveBlock(
     if (!canAskNamedRuleConflict() || !isRecord(data)) return undefined;
     const choice = await askDeletedConflict({
       kind: "theyDeleted",
-      label: blockLabel(blockKey, data, base?.value),
+      label: blockLabel(blockKey, base?.value, data),
     });
     if (choice === "theirs") return { keptTheirs: true, deleted: true };
     const version = protocolBlockVersion(

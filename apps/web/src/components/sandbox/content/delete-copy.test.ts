@@ -5,7 +5,7 @@ import { deleteConfirmKey } from "./delete-copy";
 
 describe("delete confirmations", () => {
   it("a hosted v8 draft's delete is a draft change: never 'permanent', and says how to undo it", () => {
-    for (const what of ["block", "post"] as const) {
+    for (const what of ["block", "post", "section"] as const) {
       const key = deleteConfirmKey(what, true);
       for (const copy of [en[key], ptBR[key]]) {
         expect(copy).not.toMatch(
@@ -24,5 +24,18 @@ describe("delete confirmations", () => {
     expect(deleteConfirmKey("post", false)).toBe(
       "sandbox.postEditor.deletePostConfirmBody",
     );
+    expect(deleteConfirmKey("section", false)).toBe(
+      "sandbox.contentBrowser.deleteDialog.descriptionSection",
+    );
+  });
+
+  it("a hosted global section's delete says it's a draft change, worded like a page's, and what it does to pages", () => {
+    const key = deleteConfirmKey("section", true);
+    expect(en[key]).toContain("Nothing goes live until you publish");
+    expect(en[key]).toContain(
+      "you can bring it back by discarding this change in Publish",
+    );
+    expect(en[key]).toContain("lose this section");
+    expect(ptBR[key]).toContain("descartando esta alteração em Publicar");
   });
 });

@@ -209,6 +209,8 @@ export const sectionsEditor = {
   "sectionsEditor.reconcile.leftDeleted": "Ficou excluído",
   "sectionsEditor.reconcile.keptTheirsHint":
     "Sua alteração não foi salva. Você pode fazê-la de novo quando quiser.",
+  "sectionsEditor.reconcile.leftDeletedHint":
+    "Sua alteração não foi salva. Para trazer de volta, descarte a exclusão em Publicar. Nada vai ao ar até você publicar.",
   "sectionsEditor.blogKind.post": "Post",
   "sectionsEditor.blogKind.category": "Categoria",
   "sectionsEditor.blogKind.author": "Autor",

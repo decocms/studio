@@ -7,9 +7,14 @@ import type { TranslationKey } from "@/i18n/use-t.ts";
  * site keeps its copy.
  */
 export function deleteConfirmKey(
-  what: "block" | "post",
+  what: "block" | "post" | "section",
   hostedDraft: boolean,
 ): TranslationKey {
+  if (what === "section") {
+    return hostedDraft
+      ? "sandbox.contentBrowser.deleteDialog.descriptionSectionDraft"
+      : "sandbox.contentBrowser.deleteDialog.descriptionSection";
+  }
   if (what === "post") {
     return hostedDraft
       ? "sandbox.postEditor.deletePostConfirmBodyDraft"

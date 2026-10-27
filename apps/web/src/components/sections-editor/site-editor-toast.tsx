@@ -87,7 +87,10 @@ export function toastKeptTheirs(t: TFunction, deleted: boolean) {
       : t("sectionsEditor.reconcile.keptTheirs"),
     {
       ...SAVE_TOAST,
-      description: t("sectionsEditor.reconcile.keptTheirsHint"),
+      // Left deleted: undone the one way the deleted panel says too.
+      description: deleted
+        ? t("sectionsEditor.reconcile.leftDeletedHint")
+        : t("sectionsEditor.reconcile.keptTheirsHint"),
     },
   );
 }

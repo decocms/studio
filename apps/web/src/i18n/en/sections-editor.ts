@@ -203,6 +203,8 @@ export const sectionsEditor = {
   "sectionsEditor.reconcile.leftDeleted": "Left it deleted",
   "sectionsEditor.reconcile.keptTheirsHint":
     "Your change wasn't saved. You can make it again any time.",
+  "sectionsEditor.reconcile.leftDeletedHint":
+    "Your change wasn't saved. To bring it back, discard its deletion in Publish. Nothing goes live until you publish.",
   "sectionsEditor.blogKind.post": "Post",
   "sectionsEditor.blogKind.category": "Category",
   "sectionsEditor.blogKind.author": "Author",

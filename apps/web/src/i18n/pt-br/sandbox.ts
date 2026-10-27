@@ -472,6 +472,8 @@ export const sandbox = {
     '"{label}" será removido do seu rascunho. Nada vai ao ar até você publicar, e até lá você pode trazê-lo de volta descartando esta alteração em Publicar.',
   "sandbox.contentBrowser.deleteDialog.descriptionSection":
     '"{label}" será removida. Páginas que ainda a referenciam perderão esta seção.',
+  "sandbox.contentBrowser.deleteDialog.descriptionSectionDraft":
+    '"{label}" será removida do seu rascunho. Nada vai ao ar até você publicar: só então as páginas que ainda a usam perdem esta seção, e até lá você pode trazê-la de volta descartando esta alteração em Publicar.',
   "sandbox.contentBrowser.deleteDialog.title": "Excluir {noun}?",
   "sandbox.contentBrowser.duplicateFailed": "Falha ao duplicar",
   "sandbox.contentBrowser.duplicatedSection": '"{name}" duplicada',

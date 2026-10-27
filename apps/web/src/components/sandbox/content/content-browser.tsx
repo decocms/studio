@@ -871,8 +871,11 @@ function ContentBrowserReady({
           );
         }
         const key = generateUniquePageBlockKey(decofile, values.name);
-        await saveBlock.mutateAsync({ blockKey: key, data });
-        toast.success(`Created "${values.name}"`);
+        const created = await saveBlock.mutateAsync({ blockKey: key, data });
+        // Kept as the draft holds it (hosted v8): its own toast said so.
+        if (!keptTheirVersion(created)) {
+          toast.success(`Created "${values.name}"`);
+        }
         setSelection({ collection: "pages", key, path: values.path });
       } else if (mode === "duplicate" && sourceKey) {
         const source = decofile[sourceKey] as
@@ -885,8 +888,10 @@ function ContentBrowserReady({
           newName: values.name,
           newPath: values.path,
         });
-        await saveBlock.mutateAsync({ blockKey: key, data });
-        toast.success(`Duplicated as "${values.name}"`);
+        const duplicated = await saveBlock.mutateAsync({ blockKey: key, data });
+        if (!keptTheirVersion(duplicated)) {
+          toast.success(`Duplicated as "${values.name}"`);
+        }
         setSelection({ collection: "pages", key, path: values.path });
       } else if (mode === "rename" && sourceKey) {
         const source = decofile[sourceKey] as
@@ -898,8 +903,11 @@ function ContentBrowserReady({
           name: values.name,
           path: values.path,
         };
-        await saveBlock.mutateAsync({ blockKey: sourceKey, data });
-        toast.success("Page updated");
+        const updated = await saveBlock.mutateAsync({
+          blockKey: sourceKey,
+          data,
+        });
+        if (!keptTheirVersion(updated)) toast.success("Page updated");
         if (selection?.collection === "pages" && selection.key === sourceKey) {
           setSelection({
             collection: "pages",
@@ -1000,11 +1008,14 @@ function ContentBrowserReady({
       return;
     }
     try {
-      await saveBlock.mutateAsync({
+      const renamed = await saveBlock.mutateAsync({
         blockKey: renameSectionKey,
         data: { ...source, name: newName },
       });
-      toast.success(t("sandbox.contentBrowser.sectionRenamed"));
+      // Left as the draft holds it (hosted v8): its own toast said so.
+      if (!keptTheirVersion(renamed)) {
+        toast.success(t("sandbox.contentBrowser.sectionRenamed"));
+      }
       setRenameSectionKey(null);
     } catch (err) {
       toast.error(
@@ -1117,11 +1128,13 @@ function ContentBrowserReady({
       payload.slug = uniqueCategorySlug(String(payload.slug ?? ""), taken);
     }
     try {
-      await saveBlock.mutateAsync({
+      const duplicated = await saveBlock.mutateAsync({
         blockKey: key,
         data: buildBlogBlock(key, entry.kind, payload),
       });
-      toast.success(`Duplicated "${entry.label}"`);
+      if (!keptTheirVersion(duplicated)) {
+        toast.success(`Duplicated "${entry.label}"`);
+      }
       setSelection({ collection: entry.kind, key });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Duplicate failed");
@@ -1697,12 +1710,9 @@ function ContentBrowserReady({
               </AlertDialogTitle>
               <AlertDialogDescription>
                 {deleteTarget?.kind === "section"
-                  ? t(
-                      "sandbox.contentBrowser.deleteDialog.descriptionSection",
-                      {
-                        label: deleteTarget.label,
-                      },
-                    )
+                  ? t(deleteConfirmKey("section", hostedDraft), {
+                      label: deleteTarget.label,
+                    })
                   : deleteTarget
                     ? t(deleteConfirmKey("block", hostedDraft), {
                         label: deleteTarget.label,
