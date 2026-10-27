@@ -310,7 +310,7 @@ export const mainPanelTabs = {
   "mainPanelTabs.e2eTab.noArtifacts": "Nenhum artefato para esta execução.",
   "mainPanelTabs.e2eTab.openArtifact": "Abrir",
   "mainPanelTabs.e2eTab.viewScreenshot": "Ver captura de tela",
-  "mainPanelTabs.analyticsTab.title": "Deco Analytics",
+  "mainPanelTabs.analyticsTab.title": "Analytics",
   "mainPanelTabs.analyticsTab.subtitle": "Tráfego e uso de {site}",
   "mainPanelTabs.analyticsTab.noSiteTitle": "Nenhum site vinculado",
   "mainPanelTabs.analyticsTab.noSiteDescription":
