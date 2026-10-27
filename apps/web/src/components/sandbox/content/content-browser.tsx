@@ -100,6 +100,7 @@ import {
 import { PageFormDialog, type PageFormMode } from "./page-form-dialog";
 import { RedirectFormDialog } from "./redirect-form-dialog";
 import { SectionRenameDialog } from "./section-rename-dialog";
+import { useShownWhileClosing } from "./closing-dialog";
 import {
   buildRedirectBlock,
   extractRedirects,
@@ -685,6 +686,37 @@ function ContentBrowserReady({
   >();
   const [renameSectionKey, setRenameSectionKey] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget>(null);
+  const deleteNoun =
+    deleteTarget?.kind === "blog"
+      ? BLOG_SINGULAR[deleteTarget.blogKind]
+      : (deleteTarget?.kind ?? "item");
+  const deleteDescription =
+    deleteTarget?.kind === "section"
+      ? t(
+          deleteConfirmKey("section", hostedDraft, {
+            neverPublished: neverPublished(deleteTarget.key),
+          }),
+          { label: deleteTarget.label },
+        )
+      : deleteTarget
+        ? t(
+            deleteConfirmKey("block", hostedDraft, {
+              neverPublished: neverPublished(deleteTarget.key),
+            }),
+            { label: deleteTarget.label },
+          )
+        : null;
+  const deleteTitle = t("sandbox.contentBrowser.deleteDialog.title", {
+    noun: deleteNoun,
+  });
+  // Hosted v8: the dialog keeps its words through its fade (never "Delete
+  // item?"); elsewhere exactly as before.
+  const deleteWords = useShownWhileClosing(
+    deleteDescription === null
+      ? null
+      : { title: deleteTitle, description: deleteDescription },
+    hostedDraft,
+  );
   const [jsonPageKey, setJsonPageKey] = useState<string | null>(null);
 
   // Prefer any data we already have: the committed `.deco/*.gen.json` snapshot
@@ -1219,10 +1251,6 @@ function ContentBrowserReady({
   // ------------------ Render ------------------
   // `saveBlock` too: a category delete rewrites its posts before unlinking it.
   const isDeleting = deleteBlock.isPending || saveBlock.isPending;
-  const deleteNoun =
-    deleteTarget?.kind === "blog"
-      ? BLOG_SINGULAR[deleteTarget.blogKind]
-      : (deleteTarget?.kind ?? "item");
   return (
     <BlocksSiteEditorProvider value={!runsSiteCode}>
       <div className="flex h-full w-full">
@@ -1717,26 +1745,10 @@ function ContentBrowserReady({
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>
-                {t("sandbox.contentBrowser.deleteDialog.title", {
-                  noun: deleteNoun,
-                })}
+                {deleteWords?.title ?? deleteTitle}
               </AlertDialogTitle>
               <AlertDialogDescription>
-                {deleteTarget?.kind === "section"
-                  ? t(
-                      deleteConfirmKey("section", hostedDraft, {
-                        neverPublished: neverPublished(deleteTarget.key),
-                      }),
-                      { label: deleteTarget.label },
-                    )
-                  : deleteTarget
-                    ? t(
-                        deleteConfirmKey("block", hostedDraft, {
-                          neverPublished: neverPublished(deleteTarget.key),
-                        }),
-                        { label: deleteTarget.label },
-                      )
-                    : null}
+                {deleteWords?.description ?? null}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
