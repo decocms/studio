@@ -1,7 +1,8 @@
-import { createContext, use, useReducer, type ReactNode } from "react";
+import { createContext, use, useState, type ReactNode } from "react";
 import {
   blocksPreviewWorkspaceReducer,
   INITIAL_BLOCKS_PREVIEW_WORKSPACE,
+  type BlocksPreviewWorkspaceAction,
   type BlocksPreviewWorkspaceState,
   type BlocksTarget,
 } from "./blocks-preview-workspace-state";
@@ -19,14 +20,30 @@ const BlocksPreviewWorkspaceContext =
   createContext<BlocksPreviewWorkspaceContextValue | null>(null);
 
 export function BlocksPreviewWorkspaceProvider({
+  resetKey,
   children,
 }: {
+  /** Starts the workspace over when it changes, without remounting `children`
+   *  the way a `key` would. */
+  resetKey?: string;
   children: ReactNode;
 }) {
-  const [state, dispatch] = useReducer(
-    blocksPreviewWorkspaceReducer,
-    INITIAL_BLOCKS_PREVIEW_WORKSPACE,
-  );
+  const [workspace, setWorkspace] = useState({
+    key: resetKey,
+    state: INITIAL_BLOCKS_PREVIEW_WORKSPACE,
+  });
+  const state =
+    workspace.key === resetKey
+      ? workspace.state
+      : INITIAL_BLOCKS_PREVIEW_WORKSPACE;
+  const dispatch = (action: BlocksPreviewWorkspaceAction) =>
+    setWorkspace((prev) => ({
+      key: resetKey,
+      state: blocksPreviewWorkspaceReducer(
+        prev.key === resetKey ? prev.state : INITIAL_BLOCKS_PREVIEW_WORKSPACE,
+        action,
+      ),
+    }));
 
   return (
     <BlocksPreviewWorkspaceContext

@@ -331,7 +331,7 @@ function ModeDismissPill({
  * `useEnsureTask` then resolves the localHit fast path on first render,
  * skipping its own CREATE (which would otherwise duplicate against React
  * 19 Strict Mode's intentional re-mount of the effect). Tiptap doc is
- * written to sessionStorage and ActiveTaskProvider's autosend consumer
+ * written to sessionStorage and ActiveTaskStreamSource's autosend consumer
  * fires sendMessage on mount.
  */
 function useHomeSubmit() {
