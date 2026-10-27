@@ -63,6 +63,7 @@ import {
   markTheirsChanged,
   planFormConflict,
   refreshWaitingChoice,
+  keptOnlyTheirs,
   resolveFormConflict,
 } from "./form-conflict";
 import { FormConflictDialog } from "./form-conflict-dialog";
@@ -92,6 +93,7 @@ import {
   errorDetail,
   errorDetailsDescription,
   SAVE_TOAST,
+  toastKeptTheirs,
 } from "./site-editor-toast";
 import {
   inlineDateWindow,
@@ -1546,6 +1548,15 @@ export function SectionsEditor({
       return;
     }
     const resolved = resolveFormConflict(conflict.plan, conflict.choices);
+    // Their version kept as it is (hosted v8): the one calm toast every
+    // other reconcile window shows.
+    if (
+      contentBackend.kind === "protocol" &&
+      contentBackend.source === "github" &&
+      keptOnlyTheirs(conflict.plan, conflict.choices)
+    ) {
+      toastKeptTheirs(t, false);
+    }
     setFormConflicts(formConflictsRef.current.slice(1));
     const { formBase, target } = conflict;
     formBase.base = conflict.plan.theirs;

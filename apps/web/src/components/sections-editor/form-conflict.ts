@@ -118,6 +118,25 @@ export function resolveFormConflict(
   return resolved as Record<string, unknown>;
 }
 
+/**
+ * The user picked their version for every value in conflict and changed
+ * nothing else: what is saved is their version as it is ("Kept their
+ * version", not a save of the user's).
+ */
+export function keptOnlyTheirs(
+  plan: FormConflictPlan,
+  choices: ConflictChoices,
+): boolean {
+  if (plan.pointers.length === 0) return false;
+  if (plan.pointers.some((pointer) => choices[pointer] !== "theirs")) {
+    return false;
+  }
+  return (
+    canonicalBlockJson(resolveFormConflict(plan, choices)) ===
+    canonicalBlockJson(plan.theirs)
+  );
+}
+
 /** The same choice for every value in conflict. */
 export function chooseAll(
   plan: FormConflictPlan,
