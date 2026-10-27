@@ -72,6 +72,8 @@ function Harness({
   viewer = null,
   fresh = noFresh,
   author = null,
+  anonymousTitle = false,
+  fieldsAsLabeled = false,
 }: {
   onApply: (choices: ConflictChoices) => void;
   only?: ConflictField[];
@@ -79,6 +81,8 @@ function Harness({
   viewer?: ConflictViewer | null;
   fresh?: ConflictFreshness;
   author?: ConflictAuthor | null;
+  anonymousTitle?: boolean;
+  fieldsAsLabeled?: boolean;
 }) {
   const [choices, setChoices] = useState<ConflictChoices>(() =>
     Object.fromEntries(only.map((field) => [field.pointer, "mine"])),
@@ -90,6 +94,8 @@ function Harness({
       changedAgain={changedAgain}
       fresh={fresh}
       author={author}
+      anonymousTitle={anonymousTitle}
+      fieldsAsLabeled={fieldsAsLabeled}
       viewer={viewer}
       onChoose={(pointer, choice) =>
         setChoices((now) => ({ ...now, [pointer]: choice }))
@@ -103,12 +109,19 @@ function Heading({
   only,
   author = null,
   block,
+  anonymous = false,
+  asLabeled = false,
 }: {
   only: ConflictField[];
   author?: ConflictAuthor | null;
   block?: string;
+  anonymous?: boolean;
+  asLabeled?: boolean;
 }) {
-  const heading = conflictHeading(useT(), only, 0, {}, author, block);
+  const heading = conflictHeading(useT(), only, 0, {}, author, block, {
+    anonymous,
+    asLabeled,
+  });
   return (
     <>
       <h2>{heading.title}</h2>
@@ -630,5 +643,96 @@ describe("who made the other change (hosted v8)", () => {
       "Someone else also changed the headline",
     );
     expect(view.queryByText(/unknown/i)).toBeNull();
+  });
+});
+
+describe("hosted v8: the window opens at once", () => {
+  const ana: ConflictAuthor = {
+    name: "Ana Souza",
+    at: new Date(Date.now() - 60_000).toISOString(),
+    you: false,
+  };
+
+  test("who made it unknown at open: a title that names no one, and stays so once the name arrives", () => {
+    const view = render(
+      <Harness onApply={() => {}} only={headline} anonymousTitle />,
+    );
+    expect(view.getByRole("heading")).toHaveTextContent(
+      "The headline was changed while you were editing",
+    );
+    view.rerender(
+      <Harness
+        onApply={() => {}}
+        only={headline}
+        anonymousTitle
+        author={ana}
+      />,
+    );
+    // The name lands on their card; the title doesn't switch.
+    expect(view.getByRole("heading")).toHaveTextContent(
+      "The headline was changed while you were editing",
+    );
+    expect(view.getByRole("radio", { name: "Ana Souza" })).toBeInTheDocument();
+  });
+
+  test("the titles that name no one, for every kind of window", () => {
+    const cases: Array<[ReactNode, string]> = [
+      [
+        <Heading key="one-in" only={headline} anonymous block="Footer" />,
+        'The Headline of "Footer" was changed while you were editing',
+      ],
+      [
+        <Heading key="step" only={fields} anonymous />,
+        "The headline was also changed",
+      ],
+      [
+        <Heading key="step-in" only={fields} anonymous block="Footer" />,
+        'The Headline of "Footer" was also changed',
+      ],
+      [
+        <Heading
+          key="phrase"
+          only={[
+            {
+              ...headline[0]!,
+              label: 'A/B test "hero"',
+              phrase: 'the A/B test "hero"',
+            },
+          ]}
+          anonymous
+          author={ana}
+        />,
+        'The A/B test "hero" was changed while you were editing',
+      ],
+    ];
+    for (const [ui, title] of cases) {
+      const view = render(ui);
+      expect(view.getByRole("heading")).toHaveTextContent(title);
+      view.unmount();
+    }
+  });
+
+  test("the section form's own window names the field as its form labels it", () => {
+    const named = render(
+      <Heading
+        only={headline}
+        asLabeled
+        author={{ ...ana, name: "Demo 2", shortName: "Demo 2" }}
+      />,
+    );
+    expect(named.getByRole("heading")).toHaveTextContent(
+      "Demo 2 changed the Headline while you were editing",
+    );
+    named.unmount();
+    const anonymous = render(<Heading only={headline} asLabeled anonymous />);
+    expect(anonymous.getByRole("heading")).toHaveTextContent(
+      "The Headline was changed while you were editing",
+    );
+    anonymous.unmount();
+    // Elsewhere (Fast Preview, Localhost, sandboxes) as before.
+    const plain = render(<Heading only={headline} />);
+    expect(plain.getByRole("heading")).toHaveTextContent(
+      "Someone else changed the headline while you were editing",
+    );
   });
 });

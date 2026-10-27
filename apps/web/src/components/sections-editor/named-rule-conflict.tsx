@@ -242,6 +242,7 @@ function Choice({
       fields={question.fields}
       author={author ?? null}
       authorPending={author === undefined}
+      waitForAuthor
       block={question.about?.block}
       choices={choices}
       onChoose={(pointer, choice) =>

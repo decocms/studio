@@ -59,6 +59,16 @@ interface FormConflictChoicesProps {
   /** Who made their change, and when; null while unknown. */
   author?: ConflictAuthor | null;
   /**
+   * Who made it wasn't known yet when the window opened (hosted v8): the
+   * titles name no one, and stay so when the name lands on their card.
+   */
+  anonymousTitle?: boolean;
+  /**
+   * Fields named as their form labels them, "the Headline" (hosted v8),
+   * never lowercased into the sentence.
+   */
+  fieldsAsLabeled?: boolean;
+  /**
    * The block the fields belong to, by its title, when the dialog isn't
    * opened from the block's own form (a global section's editor, a loader's…).
    */
@@ -80,20 +90,30 @@ export interface ConflictViewer {
 export function FormConflictDialog({
   open,
   authorPending = false,
+  waitForAuthor = false,
   ...props
 }: FormConflictChoicesProps & {
   open: boolean;
   /**
-   * Who made the other change is still being read (conflict-author.ts):
-   * the dialog opens once it is known, so its title names them from the
-   * start rather than switching from "Someone else".
+   * Who made the other change is still being read (conflict-author.ts).
+   * The dialog opens at once all the same; its titles then name no one for
+   * as long as it is open (never "Someone else" switching to a name), and
+   * the name lands on their card when it is known.
    */
   authorPending?: boolean;
+  /**
+   * Waits for who made it before opening instead (the A/B test and
+   * campaign windows, named from the members already read).
+   */
+  waitForAuthor?: boolean;
 }) {
   const { data: session } = authClient.useSession();
+  const waiting = waitForAuthor && authorPending;
+  // Decided when it first shows (the dialog is mounted per conflict).
+  const [anonymousTitle] = useState(() => authorPending && !waitForAuthor);
   return (
     // Controlled with no onOpenChange: only saving a choice closes it.
-    <AlertDialog open={open && !authorPending}>
+    <AlertDialog open={open && !waiting}>
       <AlertDialogContent
         className={cn(
           "max-h-[85vh] grid-rows-[auto_minmax(0,1fr)_auto] sm:max-w-lg",
@@ -103,6 +123,7 @@ export function FormConflictDialog({
       >
         <FormConflictChoices
           {...props}
+          anonymousTitle={props.anonymousTitle ?? anonymousTitle}
           viewer={session?.user ?? null}
           heading={(title, description) => (
             <AlertDialogHeader className="text-left">
@@ -138,26 +159,44 @@ export function conflictHeading(
   choices: ConflictChoices = {},
   author: ConflictAuthor | null = null,
   block?: string,
+  {
+    anonymous = false,
+    asLabeled = false,
+  }: {
+    /** Titles that name no one (who made it unknown when it opened). */
+    anonymous?: boolean;
+    /** The field as its form labels it (hosted v8). */
+    asLabeled?: boolean;
+  } = {},
 ): { title: string; description: ReactNode } {
   const field = fields[Math.min(step, fields.length - 1)];
   const name = author?.you
     ? undefined
     : (author?.shortName ?? author?.name?.split(/\s+/)[0]);
   const vars = {
-    // A window that names the block (hosted v8 only) names the field as
-    // its form labels it: "the About of", never "the about of".
-    field: field ? (block ? field.label : fieldInSentence(field.label)) : "",
+    // A hosted v8 window (one that names the block, or the section form's
+    // own there) names the field as its form labels it: "the About of",
+    // never "the about of".
+    field: field
+      ? block || asLabeled
+        ? field.label
+        : fieldInSentence(field.label)
+      : "",
     label: field?.label ?? "",
     name: name ?? "",
     block: block ?? "",
   };
   type Key = Parameters<TFunction>[0];
-  const pick = (one: Key, named: Key, you: Key) =>
-    t(author?.you ? you : name ? named : one, vars);
+  const pick = (one: Key, named: Key, you: Key, nobody: Key) =>
+    t(anonymous ? nobody : author?.you ? you : name ? named : one, vars);
   const phrase = field?.phrase;
-  const phraseTitle = (one: Key, named: Key, you: Key) =>
-    t(author?.you ? you : name ? named : one, {
+  const phraseTitle = (one: Key, named: Key, you: Key, nobody: Key) =>
+    t(anonymous ? nobody : author?.you ? you : name ? named : one, {
       thing: phrase ?? "",
+      Thing: phrase
+        ? phrase.charAt(0).toLocaleUpperCase() + phrase.slice(1)
+        : "",
+      label: field?.label ?? "",
       name: name ?? "",
     });
   if (phrase) {
@@ -167,6 +206,7 @@ export function conflictHeading(
             "sectionsEditor.formConflict.titlePhraseOne",
             "sectionsEditor.formConflict.titlePhraseOneNamed",
             "sectionsEditor.formConflict.titlePhraseOneYou",
+            "sectionsEditor.formConflict.titlePhraseOneAnonymous",
           ),
           description: t("sectionsEditor.formConflict.descriptionOne"),
         }
@@ -175,6 +215,7 @@ export function conflictHeading(
             "sectionsEditor.formConflict.titlePhraseStep",
             "sectionsEditor.formConflict.titlePhraseStepNamed",
             "sectionsEditor.formConflict.titlePhraseStepYou",
+            "sectionsEditor.formConflict.titlePhraseStepAnonymous",
           ),
           description:
             step >= fields.length - 1 ? (
@@ -196,11 +237,13 @@ export function conflictHeading(
             "sectionsEditor.formConflict.titleOneIn",
             "sectionsEditor.formConflict.titleOneInNamed",
             "sectionsEditor.formConflict.titleOneInYou",
+            "sectionsEditor.formConflict.titleOneInAnonymous",
           )
         : pick(
             "sectionsEditor.formConflict.titleOne",
             "sectionsEditor.formConflict.titleOneNamed",
             "sectionsEditor.formConflict.titleOneYou",
+            "sectionsEditor.formConflict.titleOneAnonymous",
           ),
       description: t("sectionsEditor.formConflict.descriptionOne"),
     };
@@ -211,11 +254,13 @@ export function conflictHeading(
           "sectionsEditor.formConflict.titleStepIn",
           "sectionsEditor.formConflict.titleStepInNamed",
           "sectionsEditor.formConflict.titleStepInYou",
+          "sectionsEditor.formConflict.titleStepInAnonymous",
         )
       : pick(
           "sectionsEditor.formConflict.titleStep",
           "sectionsEditor.formConflict.titleStepNamed",
           "sectionsEditor.formConflict.titleStepYou",
+          "sectionsEditor.formConflict.titleStepAnonymous",
         ),
     description:
       step >= fields.length - 1 ? (
@@ -346,6 +391,7 @@ export function FormConflictChoices(props: FormConflictChoicesProps) {
     choices,
     props.author ?? null,
     props.block,
+    { anonymous: props.anonymousTitle, asLabeled: props.fieldsAsLabeled },
   );
   // The second click of a double click on Next would land on the button that
   // saves, in the same place on the last step: only a click of its own saves.

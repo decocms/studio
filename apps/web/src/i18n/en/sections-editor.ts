@@ -516,6 +516,18 @@ export const sectionsEditor = {
     "{name} also changed {thing}",
   "sectionsEditor.formConflict.titlePhraseStepYou":
     "You also changed {thing} in another tab or window",
+  "sectionsEditor.formConflict.titleOneAnonymous":
+    "The {field} was changed while you were editing",
+  "sectionsEditor.formConflict.titleStepAnonymous":
+    "The {field} was also changed",
+  "sectionsEditor.formConflict.titleOneInAnonymous":
+    'The {field} of "{block}" was changed while you were editing',
+  "sectionsEditor.formConflict.titleStepInAnonymous":
+    'The {field} of "{block}" was also changed',
+  "sectionsEditor.formConflict.titlePhraseOneAnonymous":
+    "{Thing} was changed while you were editing",
+  "sectionsEditor.formConflict.titlePhraseStepAnonymous":
+    "{Thing} was also changed",
   "sectionsEditor.formConflict.youElsewhere": "You, in another tab or window",
   "sectionsEditor.formConflict.savedAt": "saved {when}",
   "sectionsEditor.formConflict.empty": "Empty",

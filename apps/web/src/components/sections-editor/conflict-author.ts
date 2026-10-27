@@ -75,7 +75,8 @@ async function readDraftChange(
       {
         cache: "no-store",
         headers: mainSchemaHeaders("v8"),
-        // The dialog waits for this read before it opens: never for long.
+        // The A/B test and campaign windows wait for this read before they
+        // open (a section form's opens at once): never for long.
         signal: AbortSignal.timeout(AUTHOR_READ_TIMEOUT_MS),
       },
     );
@@ -151,8 +152,8 @@ export function versionTag(text: string): string {
  * null: nothing to show). `theirs` identifies the version shown: when it
  * changes ("Their version changed again") the record is read again, the
  * last answer for the block shown meanwhile. Undefined while the first
- * answer is read (the dialog waits for it rather than switching from
- * "Someone else" to a name); null when unknown.
+ * answer is read (the dialog opens all the same, its titles naming no one
+ * rather than switching from "Someone else" to a name); null when unknown.
  */
 export function useConflictAuthor(
   draft: DecofileScopeParams | null,

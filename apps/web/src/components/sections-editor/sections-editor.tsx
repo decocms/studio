@@ -680,8 +680,13 @@ export function SectionsEditor({
   const [formReloadHandled, setFormReloadHandled] = useState(0);
   // Who made the change the dialog shows (hosted v8 drafts only): read
   // again when theirs changes.
+  const hostedConflictDraft = conflictAuthorDraft(contentBackend, {
+    orgSlug,
+    virtualMcpId,
+    branch,
+  });
   const conflictAuthor = useConflictAuthor(
-    conflictAuthorDraft(contentBackend, { orgSlug, virtualMcpId, branch }),
+    hostedConflictDraft,
     formConflicts[0]?.blockKey ?? null,
     formConflicts[0]
       ? versionTag(canonicalBlockJson(formConflicts[0].plan.theirs))
@@ -4915,6 +4920,9 @@ export function SectionsEditor({
               changedAgain={waitingChoice.changedAgain}
               author={conflictAuthor ?? null}
               authorPending={conflictAuthor === undefined}
+              // Hosted v8: "Demo 2 changed the Headline", as the block
+              // windows name a field; elsewhere as before.
+              fieldsAsLabeled={hostedConflictDraft !== null}
               fresh={waitingChoice.fresh}
               onChoose={(pointer, choice) =>
                 setConflictChoices({
