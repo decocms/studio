@@ -1,5 +1,6 @@
 {
   "auth/install-studio-pack-workflow.ts": "2d29e13a9ada45c4dca448391957c75323e1a9d5e5b76d9b79c60a31171dbe29",
+  "automations/await-live-run.ts": "8683c497c2f81a6822fa83b9f1d726c13820ea9f0cdbdb4dc691e341f0604902",
   "automations/board-column-transition-workflows.ts": "58aa3b56b8acb3b89823df7784ed8967a17179377d2437f49b97f1d104e21df6",
   "automations/dbos-workflow.ts": "1422b336a55baf2f7711bbd0347e8226ec54ee5b74e53ee598e2a83e925f851a",
   "billing/dbos-subscription-sweep.ts": "d5d90cb91f31146226c0b583e6e6af7a68504d28c256b05d9e564e985a37f4ca",
