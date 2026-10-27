@@ -29,10 +29,7 @@ import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/en/index.ts";
 import type { PreviewProxyRef } from "@/components/sections-editor/preview-fetch-url";
-import {
-  readProductListIds,
-  writeProductListIds,
-} from "./product-loader-utils";
+import { readProductListIds, writeProductListIds } from "@decocms/shared/blog";
 import { ProductPickerDialog } from "./product-picker-dialog";
 import { type ProductLookup, useProductsByIds } from "./use-product-lookup";
 import type { ProductPickerOption } from "./product-picker-source";

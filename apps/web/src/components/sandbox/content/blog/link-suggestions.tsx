@@ -22,7 +22,7 @@ import { useT } from "@/i18n/use-t.ts";
 import { useStudioTools } from "@/lib/studio-tools";
 import { applyBlogPageSlug, findBlogPageSlug } from "./blog-preview-url";
 import { listPostsWithMeta } from "./blog-data";
-import { applyLinksToBlocks, postBodyText } from "./link-enrich";
+import { applyLinksToBlocks, postBodyText } from "@decocms/shared/blog";
 
 interface ResolvedSuggestion {
   quote: string;
