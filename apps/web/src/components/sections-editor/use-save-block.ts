@@ -11,6 +11,7 @@ import { useContentBackend } from "./use-content-backend";
 import {
   applyProtocolPatch,
   draftCopiesNow,
+  neverPublishedBlock,
   protocolMetaQueryKey,
   protocolBlockVersion,
   reloadProtocolBlock,
@@ -801,7 +802,12 @@ export function useSaveBlock(
       };
       // The user kept the draft's copy (the cache holds it): one calm toast.
       if (keptTheirVersion(result)) {
-        toastKeptTheirs(t, result.deleted);
+        toastKeptTheirs(
+          t,
+          result.deleted,
+          result.deleted &&
+            neverPublishedBlock(queryClient, cacheKey, blockKey),
+        );
         showDraft();
         return;
       }

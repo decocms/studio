@@ -205,10 +205,14 @@ export const sectionsEditor = {
     "Your change wasn't saved. You can make it again any time.",
   "sectionsEditor.reconcile.leftDeletedHint":
     "Your change wasn't saved. To bring it back, discard its deletion in Publish. Nothing goes live until you publish.",
+  "sectionsEditor.reconcile.leftDeletedNeverPublishedHint":
+    "Your change wasn't saved. It was never published, so nothing changes on the live site.",
   "sectionsEditor.blogKind.post": "Post",
   "sectionsEditor.blogKind.category": "Category",
   "sectionsEditor.blogKind.author": "Author",
   "sectionsEditor.reconcile.deletedTitle": "This was deleted",
+  "sectionsEditor.reconcile.deletedNeverPublishedDescription":
+    "It's no longer in your draft, so there's nothing to edit here. It was never published, so nothing changes on the live site.",
   "sectionsEditor.reconcile.deletedDescription":
     "It's no longer in your draft, so there's nothing to edit here. To bring it back, discard its deletion in Publish. Nothing goes live until you publish.",
   "sectionsEditor.namedRules.undo": "Undo",

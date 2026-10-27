@@ -16,7 +16,10 @@ import {
 import { sandboxGitStatusQueryKey } from "../thread/repository/sandbox-git-api";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { useContentBackend } from "./use-content-backend";
-import { applyProtocolPatch } from "./content-protocol-api";
+import {
+  applyProtocolPatch,
+  neverPublishedBlock,
+} from "./content-protocol-api";
 import { applyHostedChange, HostedKeptTheirsError } from "./hosted-reconcile";
 import {
   HostedKeptChangingError,
@@ -230,7 +233,16 @@ export function useMoveBlocks({
       // the user kept their version: one calm toast, and the caller undoes
       // its own state (it rejects).
       if (error instanceof HostedKeptTheirsError) {
-        toastKeptTheirs(t, error.deleted);
+        // Left deleted: Publish brings it back only if it was published.
+        toastKeptTheirs(
+          t,
+          error.deleted,
+          error.deleted &&
+            plan.deletes.length > 0 &&
+            plan.deletes.every((key) =>
+              neverPublishedBlock(queryClient, cacheKey, key),
+            ),
+        );
         throw error;
       }
       // A hosted dead end says what to do, wherever its message shows.

@@ -171,6 +171,27 @@ function draftVersionIn(
   return tombstones.has(spellingKey(blockKey)) ? DRAFT_TOMBSTONE_VERSION : null;
 }
 
+/**
+ * Whether `blockKey` was never published: main doesn't have it, the hosted
+ * draft created it (its change has no base) or deletes it as a block main
+ * doesn't have (its tombstone). Deleting such a block is no change Publish
+ * lists (there is nothing on main to remove), so Publish can't bring it
+ * back. False while the draft's changes are unknown, and for main's blocks.
+ */
+export function neverPublishedBlock(
+  queryClient: QueryClient,
+  cacheKey: string,
+  blockKey: string,
+): boolean {
+  const listed = queryClient.getQueryData<ContentChanges>(
+    KEYS.contentChanges(cacheKey),
+  );
+  if (!listed) return false;
+  const change = draftChangeOf(listed, blockKey);
+  if (change) return change.kind === "set" && change.baseVersion === null;
+  return draftTombstones(queryClient, cacheKey).has(spellingKey(blockKey));
+}
+
 /** The blocks an editor shows, and each one's version in the hosted draft. */
 export interface DraftCopies {
   blocks: Record<string, unknown>;

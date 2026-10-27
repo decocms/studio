@@ -76,6 +76,7 @@ import { SuggestLinksButton } from "./link-suggestions";
 import { useBlogAi } from "@/hooks/use-blog-ai";
 import { useHostedAiProviderKeys } from "@/hooks/collections/use-ai-providers";
 import { useDeleteBlock } from "@/components/sections-editor/use-delete-block";
+import { useNeverPublished } from "@/components/sections-editor/use-never-published";
 import {
   keptTheirVersion,
   useSaveBlock,
@@ -155,6 +156,8 @@ function PostEditorForm({
   /** A hosted v8 draft: a delete is a draft change, undone by discarding it. */
   const hostedDraft =
     contentBackend.kind === "protocol" && contentBackend.source === "github";
+  // A post the draft created: deleting it is no change Publish lists.
+  const neverPublished = useNeverPublished({ orgSlug, virtualMcpId, branch });
   const hasAi = useHostedAiProviderKeys().length > 0;
   const blogAi = useBlogAi();
   // The preview frame's `__draft` (a hosted draft's carries its forced
@@ -471,9 +474,14 @@ function PostEditorForm({
               {t("sandbox.postEditor.deletePostConfirmTitle")}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              {t(deleteConfirmKey("post", hostedDraft), {
-                title: str(post.title) || t("sandbox.postBoard.untitled"),
-              })}
+              {t(
+                deleteConfirmKey("post", hostedDraft, {
+                  neverPublished: neverPublished(blockKey),
+                }),
+                {
+                  title: str(post.title) || t("sandbox.postBoard.untitled"),
+                },
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

@@ -211,10 +211,14 @@ export const sectionsEditor = {
     "Sua alteração não foi salva. Você pode fazê-la de novo quando quiser.",
   "sectionsEditor.reconcile.leftDeletedHint":
     "Sua alteração não foi salva. Para trazer de volta, descarte a exclusão em Publicar. Nada vai ao ar até você publicar.",
+  "sectionsEditor.reconcile.leftDeletedNeverPublishedHint":
+    "Sua alteração não foi salva. Isto nunca foi publicado, então nada muda no site no ar.",
   "sectionsEditor.blogKind.post": "Post",
   "sectionsEditor.blogKind.category": "Categoria",
   "sectionsEditor.blogKind.author": "Autor",
   "sectionsEditor.reconcile.deletedTitle": "Isto foi excluído",
+  "sectionsEditor.reconcile.deletedNeverPublishedDescription":
+    "Não está mais no seu rascunho, então não há nada para editar aqui. Isto nunca foi publicado, então nada muda no site no ar.",
   "sectionsEditor.reconcile.deletedDescription":
     "Não está mais no seu rascunho, então não há nada para editar aqui. Para trazer de volta, descarte a exclusão em Publicar. Nada vai ao ar até você publicar.",
   "sectionsEditor.namedRules.undo": "Desfazer",

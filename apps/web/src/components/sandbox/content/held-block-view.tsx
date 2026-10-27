@@ -7,6 +7,7 @@ import {
 import { useContentBackend } from "@/components/sections-editor/use-content-backend";
 import { useT } from "@/i18n/use-t.ts";
 import { EmptyMessage } from "./empty-message";
+import { useNeverPublished } from "@/components/sections-editor/use-never-published";
 
 /**
  * An editor that keeps its own copy of `blockKey` (its save hook has
@@ -40,6 +41,8 @@ export function HeldBlockView({
   const backend = useContentBackend(virtualMcpId, branch);
   const hosted = backend.kind === "protocol" && backend.source === "github";
   const epochOf = useCopyEpochs(copyScope({ orgSlug, virtualMcpId, branch }));
+  // Never published: Publish lists no deletion of it to discard.
+  const neverPublished = useNeverPublished({ orgSlug, virtualMcpId, branch });
   const epoch = hosted ? epochOf(blockKey) : 0;
   // How many times the shown block's copy was replaced while shown: the
   // form's key.
@@ -54,7 +57,11 @@ export function HeldBlockView({
       <EmptyMessage
         icon={Trash01}
         title={t("sectionsEditor.reconcile.deletedTitle")}
-        description={t("sectionsEditor.reconcile.deletedDescription")}
+        description={t(
+          neverPublished(blockKey)
+            ? "sectionsEditor.reconcile.deletedNeverPublishedDescription"
+            : "sectionsEditor.reconcile.deletedDescription",
+        )}
       />
     );
   }

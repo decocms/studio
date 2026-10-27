@@ -144,6 +144,7 @@ import { countAvailableRunnables } from "./runnable-catalog";
 import { EmptyMessage } from "./empty-message";
 import { SectionsRightPane } from "./sections-right-pane";
 import { useConflictMembers } from "@/components/sections-editor/conflict-author";
+import { useNeverPublished } from "@/components/sections-editor/use-never-published";
 import { ItemActions } from "./item-actions";
 import { ItemRow } from "./item-row";
 import {
@@ -457,6 +458,8 @@ function ContentBrowserReady({
     contentBackend.kind === "protocol" && contentBackend.source === "github";
   // The reconcile window names who made the other change (hosted v8).
   useConflictMembers(hostedDraft);
+  // A block the draft created: deleting it is no change Publish lists.
+  const neverPublished = useNeverPublished({ orgSlug, virtualMcpId, branch });
   // Which editor this site gets (v8: the new one): waited on with the data,
   // so neither editor shows and then swaps to the other.
   const editorUndecided = useNewBlocksEditorState() === undefined;
@@ -1720,13 +1723,19 @@ function ContentBrowserReady({
               </AlertDialogTitle>
               <AlertDialogDescription>
                 {deleteTarget?.kind === "section"
-                  ? t(deleteConfirmKey("section", hostedDraft), {
-                      label: deleteTarget.label,
-                    })
+                  ? t(
+                      deleteConfirmKey("section", hostedDraft, {
+                        neverPublished: neverPublished(deleteTarget.key),
+                      }),
+                      { label: deleteTarget.label },
+                    )
                   : deleteTarget
-                    ? t(deleteConfirmKey("block", hostedDraft), {
-                        label: deleteTarget.label,
-                      })
+                    ? t(
+                        deleteConfirmKey("block", hostedDraft, {
+                          neverPublished: neverPublished(deleteTarget.key),
+                        }),
+                        { label: deleteTarget.label },
+                      )
                     : null}
               </AlertDialogDescription>
             </AlertDialogHeader>

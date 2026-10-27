@@ -38,4 +38,20 @@ describe("delete confirmations", () => {
     expect(en[key]).toContain("lose this section");
     expect(ptBR[key]).toContain("descartando esta alteração em Publicar");
   });
+
+  it("a hosted delete of what was never published promises no way back through Publish (Publish never lists it)", () => {
+    for (const what of ["block", "post", "section"] as const) {
+      const key = deleteConfirmKey(what, true, { neverPublished: true });
+      expect(key).not.toBe(deleteConfirmKey(what, true));
+      for (const copy of [en[key], ptBR[key]]) {
+        expect(copy).not.toMatch(/discard|descartando/i);
+        expect(copy).toMatch(/never published|nunca foi publicad/i);
+        expect(copy).toMatch(/\{(label|title)\}/);
+      }
+    }
+    // Every other site: as before.
+    expect(deleteConfirmKey("post", false, { neverPublished: true })).toBe(
+      "sandbox.postEditor.deletePostConfirmBody",
+    );
+  });
 });

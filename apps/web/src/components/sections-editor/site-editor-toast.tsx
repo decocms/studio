@@ -80,7 +80,15 @@ export function toastSaveError(
  * version, or their deletion): one calm toast in place of the save's own,
  * saying how to get the change back.
  */
-export function toastKeptTheirs(t: TFunction, deleted: boolean) {
+export function toastKeptTheirs(
+  t: TFunction,
+  deleted: boolean,
+  /**
+   * The block left deleted was never published (`neverPublishedBlock`):
+   * Publish lists no deletion of it, so none is offered as the way back.
+   */
+  neverPublished = false,
+) {
   toast.info(
     deleted
       ? t("sectionsEditor.reconcile.leftDeleted")
@@ -89,7 +97,9 @@ export function toastKeptTheirs(t: TFunction, deleted: boolean) {
       ...SAVE_TOAST,
       // Left deleted: undone the one way the deleted panel says too.
       description: deleted
-        ? t("sectionsEditor.reconcile.leftDeletedHint")
+        ? neverPublished
+          ? t("sectionsEditor.reconcile.leftDeletedNeverPublishedHint")
+          : t("sectionsEditor.reconcile.leftDeletedHint")
         : t("sectionsEditor.reconcile.keptTheirsHint"),
     },
   );

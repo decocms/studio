@@ -472,6 +472,8 @@ export const sandbox = {
     '"{label}" será removido do seu rascunho. Nada vai ao ar até você publicar, e até lá você pode trazê-lo de volta descartando esta alteração em Publicar.',
   "sandbox.contentBrowser.deleteDialog.descriptionSection":
     '"{label}" será removida. Páginas que ainda a referenciam perderão esta seção.',
+  "sandbox.contentBrowser.deleteDialog.descriptionNeverPublished":
+    '"{label}" será removido do seu rascunho. Isto nunca foi publicado, então nada muda no site no ar, e depois de removido não dá para trazer de volta.',
   "sandbox.contentBrowser.deleteDialog.descriptionSectionDraft":
     '"{label}" será removida do seu rascunho. Nada vai ao ar até você publicar: só então as páginas que ainda a usam perdem esta seção, e até lá você pode trazê-la de volta descartando esta alteração em Publicar.',
   "sandbox.contentBrowser.deleteDialog.title": "Excluir {noun}?",
@@ -906,6 +908,8 @@ export const sandbox = {
     '"{title}" será removido permanentemente. Isso não pode ser desfeito.',
   "sandbox.postEditor.deletePostConfirmBodyDraft":
     '"{title}" será removido do seu rascunho. Nada vai ao ar até você publicar, e até lá você pode trazê-lo de volta descartando esta alteração em Publicar.',
+  "sandbox.postEditor.deletePostConfirmBodyNeverPublished":
+    '"{title}" será removido do seu rascunho. Ele nunca foi publicado, então nada muda no site no ar, e depois de removido não dá para trazer de volta.',
   "sandbox.postEditor.deletePostConfirmTitle": "Excluir este post?",
   "sandbox.postEditor.deletePostFailed": "Falha ao excluir",
   "sandbox.postEditor.deletePostSuccess": '"{title}" excluído',

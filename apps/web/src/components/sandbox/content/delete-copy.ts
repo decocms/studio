@@ -9,7 +9,18 @@ import type { TranslationKey } from "@/i18n/use-t.ts";
 export function deleteConfirmKey(
   what: "block" | "post" | "section",
   hostedDraft: boolean,
+  /**
+   * Hosted v8: the block was never published (`neverPublishedBlock`), so its
+   * deletion is no change Publish lists: no way back through Publish is
+   * promised.
+   */
+  { neverPublished = false }: { neverPublished?: boolean } = {},
 ): TranslationKey {
+  if (hostedDraft && neverPublished) {
+    return what === "post"
+      ? "sandbox.postEditor.deletePostConfirmBodyNeverPublished"
+      : "sandbox.contentBrowser.deleteDialog.descriptionNeverPublished";
+  }
   if (what === "section") {
     return hostedDraft
       ? "sandbox.contentBrowser.deleteDialog.descriptionSectionDraft"

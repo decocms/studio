@@ -7,6 +7,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { type ReactElement, type ReactNode, useState } from "react";
 import * as realBackend from "@/components/sections-editor/use-content-backend";
 import { en } from "@/i18n/en/index.ts";
+import { KEYS } from "@/lib/query-keys";
 
 /** The project's backend, as `useContentBackend` answers it. */
 const project = { backend: { kind: "protocol", source: "github" } as object };
@@ -68,6 +69,34 @@ describe("HeldBlockView (an editor keeping its own copy)", () => {
     expect(
       getByText(en["sectionsEditor.reconcile.deletedDescription"]),
     ).toBeTruthy();
+  });
+
+  test("a deleted block that was never published offers no way back through Publish", () => {
+    project.backend = {
+      kind: "protocol",
+      source: "github",
+      cacheKeySuffix: "",
+    };
+    // The draft created it, then deleted it: its tombstone, no listed change.
+    queryClient.setQueryData(KEYS.contentChanges("acme/vm/draft"), {
+      revision: "r1",
+      changes: {},
+    });
+    queryClient.setQueryData(KEYS.contentDraftTombstones("acme/vm/draft"), [
+      "Footer",
+    ]);
+    const { getByText, queryByText } = render(view("mine", false));
+    expect(
+      getByText(
+        en["sectionsEditor.reconcile.deletedNeverPublishedDescription"],
+      ),
+    ).toBeTruthy();
+    expect(
+      queryByText(en["sectionsEditor.reconcile.deletedDescription"]),
+    ).toBeNull();
+    queryClient.removeQueries({
+      queryKey: KEYS.contentChanges("acme/vm/draft"),
+    });
   });
 
   test("another block in the same view (a move renamed it) is no remount", () => {

@@ -26,4 +26,19 @@ describe("leaving a block deleted says one way to undo it", () => {
       );
     }
   });
+
+  it("a block that was never published is never told to come back through Publish", () => {
+    for (const [dict, sentence] of [
+      [en, UNDO.en],
+      [ptBR, UNDO.ptBR],
+    ] as const) {
+      for (const key of [
+        "sectionsEditor.reconcile.leftDeletedNeverPublishedHint",
+        "sectionsEditor.reconcile.deletedNeverPublishedDescription",
+      ] as const) {
+        expect(dict[key]).toBeTruthy();
+        expect(dict[key]).not.toContain(sentence);
+      }
+    }
+  });
 });
