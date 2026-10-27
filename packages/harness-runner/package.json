@@ -9,6 +9,7 @@
   },
   "files": [
     "main.ts",
+    "background-tasks.ts",
     "claude-code.ts",
     "codex.ts",
     "codex-to-ui-chunks.ts",
