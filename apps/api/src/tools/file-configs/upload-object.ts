@@ -32,6 +32,24 @@ const SOURCE_TIMEOUT_MS = 30_000;
 const MAX_FILES = 20;
 const CONCURRENCY = 4;
 
+/**
+ * Narrower than the upload route's allowlist on purpose. What this tool fetches
+ * lands at a public URL, and the private-network guard resolves DNS separately
+ * from the fetch, so a rebinding host could still reach an internal endpoint.
+ * Those answer with text, JSON or HTML; accepting only raster images and video
+ * keeps such a response from ever being published. SVG is left out because it
+ * can carry script.
+ */
+const MEDIA_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/gif",
+  "image/avif",
+  "video/mp4",
+  "video/webm",
+]);
+
 const noRedirectFetch = createNoRedirectFetch();
 
 export interface FetchedSource {
@@ -64,6 +82,12 @@ export async function fetchSource(
     .split(";")[0]!
     .trim()
     .toLowerCase();
+  if (!MEDIA_TYPES.has(contentType)) {
+    await res.body?.cancel();
+    throw new UploadRejected(
+      `Content type "${contentType}" is not allowed; only images and video.`,
+    );
+  }
   const declared = Number(res.headers.get("content-length"));
   // Cheap pre-check; readCapped enforces the cap on the body that arrives.
   assertAllowed(
@@ -89,7 +113,7 @@ export function filenameFor(filename: string, contentType: string): string {
 export const FILE_OBJECT_UPLOAD = defineTool({
   name: "FILE_OBJECT_UPLOAD",
   description:
-    "Upload files from public https URLs into a configured bucket, the same storage the Assets picker writes to. The server downloads each URL, so short-lived export links work. Returns each file's permanent public URL. Get configId from FILE_CONFIG_LIST (match the site's siteSlug).",
+    "Upload images or videos from public https URLs into a configured bucket, the same storage the Assets picker writes to. The server downloads each URL, so short-lived export links work. Returns each file's permanent public URL. Get configId from FILE_CONFIG_LIST (match the site's siteSlug).",
   annotations: {
     idempotentHint: false,
     openWorldHint: true,

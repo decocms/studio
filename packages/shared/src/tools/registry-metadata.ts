@@ -1240,7 +1240,7 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   },
   {
     name: "FILE_OBJECT_UPLOAD",
-    description: "Upload files from URLs into a configured bucket",
+    description: "Upload images or videos from URLs into a configured bucket",
     category: "File Configs",
   },
 

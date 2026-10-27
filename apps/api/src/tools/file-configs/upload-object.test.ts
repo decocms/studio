@@ -55,6 +55,17 @@ describe("fetchSource", () => {
     ).rejects.toThrow("not allowed");
   });
 
+  test("refuses text, JSON and SVG, which the upload route would accept", async () => {
+    for (const type of ["text/plain", "application/json", "image/svg+xml"]) {
+      await expect(
+        fetchSource(
+          "https://cdn.example.com/x",
+          respond("{}", { headers: { "content-type": type } }),
+        ),
+      ).rejects.toThrow("only images and video");
+    }
+  });
+
   test("refuses an empty body", async () => {
     await expect(
       fetchSource(
