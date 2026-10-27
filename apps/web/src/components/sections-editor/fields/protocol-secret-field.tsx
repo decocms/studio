@@ -1,20 +1,15 @@
-import { encryptSecret } from "@decocms/blocks/secrets";
-import { SECRET_BLOCK_TYPE } from "@decocms/shared/secret-ciphertext";
-import { isSecretBlock as isV7SecretBlock } from "@decocms/shared/decofile";
-import { useT } from "@/i18n/use-t.ts";
 import { useContentBackend } from "../use-content-backend";
+import { useT } from "@/i18n/use-t.ts";
 import { FieldLabel } from "./field-label";
 import type { FieldProps } from "./field-props";
-import { EncryptedSecretInput, SecretField } from "./secret-field";
-import { protocolSecretState } from "./protocol-secret";
+import { SecretField } from "./secret-field";
 
 /**
- * Secret fields, by backend. On the content protocol a `Secret` field is
- * write-only: what an editor types is encrypted in the browser with the
- * site's public key (`describe.secrets`) and only the `secret` block with its
- * ciphertext is ever saved. v7 secrets need the site's own encrypt action,
- * which the protocol never runs, so they can't be edited there. A hosted
- * v8 site has none: its secrets live in its deploy platform.
+ * Secret fields, by backend. A v7 site edits its secrets with the site's
+ * own encrypt action. A Blocks v8 site (any content-protocol backend: a
+ * hosted draft, a sandbox, a local `deco serve`) keeps its secrets in its
+ * deploy platform, where its code reads them: content holds none (protocol
+ * 1.2), so the editor has nothing to edit.
  */
 export function SecretFieldForBackend(props: FieldProps) {
   const backend = useContentBackend(
@@ -41,67 +36,11 @@ export function SecretFieldForBackend(props: FieldProps) {
       />
     );
   }
-  // A hosted v8 site keeps its secrets in its deploy platform: the site's
-  // code reads them there, so the editor has nothing to edit.
-  if (backend.source === "github") {
-    return (
-      <SecretMessage
-        {...props}
-        message="sectionsEditor.secretField.platformSecretMessage"
-      />
-    );
-  }
-  if (isV7SecretBlock(props.value)) {
-    return (
-      <SecretMessage
-        {...props}
-        message="sectionsEditor.secretField.legacySecretUnavailableMessage"
-      />
-    );
-  }
   return (
-    <ProtocolSecretField
+    <SecretMessage
       {...props}
-      publicKey={backend.describe.secrets?.publicKey ?? null}
+      message="sectionsEditor.secretField.platformSecretMessage"
     />
-  );
-}
-
-function ProtocolSecretField({
-  schema,
-  value,
-  onChange,
-  label,
-  path,
-  sandbox,
-  publicKey,
-}: FieldProps & { publicKey: string | null }) {
-  const t = useT();
-  return (
-    <div className="space-y-2">
-      <FieldLabel
-        htmlFor={path}
-        label={label}
-        description={schema.description}
-        virtualMcpId={sandbox?.virtualMcpId}
-      />
-      {publicKey ? (
-        <EncryptedSecretInput
-          id={path}
-          stored={protocolSecretState(value)}
-          encrypt={async (plaintext) =>
-            (await encryptSecret(publicKey, plaintext)).ciphertext
-          }
-          onEncrypted={(ciphertext) =>
-            onChange({ __resolveType: SECRET_BLOCK_TYPE, ciphertext })
-          }
-        />
-      ) : (
-        <p role="alert" className="text-xs text-muted-foreground">
-          {t("sectionsEditor.secretField.noPublicKeyMessage")}
-        </p>
-      )}
-    </div>
   );
 }
 
@@ -114,7 +53,6 @@ function SecretMessage({
 }: FieldProps & {
   message:
     | "sectionsEditor.secretField.backendUnavailableMessage"
-    | "sectionsEditor.secretField.legacySecretUnavailableMessage"
     | "sectionsEditor.secretField.platformSecretMessage"
     | null;
 }) {

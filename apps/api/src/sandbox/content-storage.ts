@@ -71,7 +71,6 @@ interface SandboxContentStorageOptions {
 
 /** The files `.deco` holds besides the blocks, in the order the schema is read. */
 const SCHEMA_FILES = ["schema.gen.json", "meta.gen.json"] as const;
-const SECRETS_FILE = "secrets.pub";
 
 /**
  * How long a listing answers other reads: the schema and snapshot reads of one
@@ -100,7 +99,7 @@ interface ScanGit {
 
 interface Scan {
   at: number;
-  /** `.deco/schema.gen.json`, `meta.gen.json`, `secrets.pub` → blob hash. */
+  /** `.deco/schema.gen.json`, `meta.gen.json` → blob hash. */
   meta: Map<string, string>;
   /** `.deco/blocks/<file>` → blob hash, sorted by file. */
   blocks: Map<string, string>;
@@ -185,7 +184,7 @@ const SCAN_DIR_PREFIX = "studio-deco-scan.";
  * listing can outgrow it. Stdout is one line: `@none` without a `.deco`
  * folder, else `@file <absolute path>`, read back through `/_sandbox/read`.
  *
- * The file has one `<blob hash> <path under .deco>` line per schema/secrets
+ * The file has one `<blob hash> <path under .deco>` line per schema
  * file and per block file (`blocks/<name>`), then `@end`, so a cut listing
  * is never taken for a short one and a hash never pairs with another file.
  *
@@ -201,7 +200,7 @@ const SCAN_DIR_PREFIX = "studio-deco-scan.";
  * behind (a pod that went away) go after a few minutes.
  */
 function scanCommand(root: string, previous: readonly string[]): string {
-  const files = [...SCHEMA_FILES, SECRETS_FILE].join(" ");
+  const files = SCHEMA_FILES.join(" ");
   return [
     "export LC_ALL=C",
     `d=\${TMPDIR:-/tmp}`,
@@ -246,7 +245,7 @@ export function parseScan(text: string): Omit<Scan, "at"> {
   }
   const meta = new Map<string, string>();
   const blocks = new Map<string, string>();
-  const metaFiles = new Set<string>([...SCHEMA_FILES, SECRETS_FILE]);
+  const metaFiles = new Set<string>(SCHEMA_FILES);
   let git: ScanGit | null = null;
   const malformed = () =>
     new StorageUnavailableError("the sandbox listing is malformed");
@@ -744,10 +743,6 @@ export function createSandboxContentStorage(
       return null;
     },
 
-    async readSecretsPublicKey() {
-      return (await readMeta(SECRETS_FILE))?.text ?? null;
-    },
-
     async base(): Promise<StorageBase> {
       const git = gitOf(await scan());
       return { revision: git.head, resolvedRef: git.ref };
@@ -833,13 +828,6 @@ export function createSandboxContentStorage(
         invalidate();
         const current = await takeScan();
         const stale = { status: "stale" } as const;
-        if (attempt.expectedSchemaVersion !== undefined) {
-          const schema =
-            current.meta.get(SCHEMA_FILES[0]) ??
-            current.meta.get(SCHEMA_FILES[1]) ??
-            null;
-          if (schema !== attempt.expectedSchemaVersion) return stale;
-        }
         for (const [file, expected] of Object.entries(attempt.expected)) {
           if ((current.blocks.get(file) ?? null) !== expected) return stale;
         }
