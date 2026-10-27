@@ -411,6 +411,33 @@ export const mainPanelTabs = {
     "Não foi possível carregar esta visão.",
   "mainPanelTabs.analyticsTab.dataNotConfiguredDescription":
     "A superfície de dados de analytics ainda não está ligada a este ambiente — a configuração abaixo continua funcionando.",
+  // Páginas por audiência (Páginas & origens)
+  "mainPanelTabs.analyticsTab.pagesTitle": "Páginas por audiência",
+  "mainPanelTabs.analyticsTab.pagesSubtitle":
+    "As páginas do CMS do site, com mais visitantes primeiro. Um modelo soma as URLs que atende.",
+  "mainPanelTabs.analyticsTab.pagesColPage": "Página",
+  "mainPanelTabs.analyticsTab.pagesColPath": "Caminho",
+  "mainPanelTabs.analyticsTab.pagesColVisitors": "Visitantes",
+  "mainPanelTabs.analyticsTab.pagesColPageviews": "Visualizações",
+  "mainPanelTabs.analyticsTab.pagesEdit": "Editar",
+  "mainPanelTabs.analyticsTab.pagesEditAria": "Editar {name} no editor do site",
+  "mainPanelTabs.analyticsTab.pagesTemplateUrls": "{count} URLs",
+  "mainPanelTabs.analyticsTab.pagesTemplateHint":
+    "Modelo: os visitantes são somados por URL",
+  "mainPanelTabs.analyticsTab.pagesShowUrls": "Ver as URLs de {name}",
+  "mainPanelTabs.analyticsTab.pagesMoreUrls": "Mais {count} URLs",
+  "mainPanelTabs.analyticsTab.pagesShowAll": "Mostrar todas ({count})",
+  "mainPanelTabs.analyticsTab.pagesShowLess": "Mostrar menos",
+  "mainPanelTabs.analyticsTab.pagesOtherTitle": "Outras rotas",
+  "mainPanelTabs.analyticsTab.pagesOtherSubtitle":
+    "Caminhos com tráfego que nenhuma página do CMS atende, como o checkout ou rotas de proxy.",
+  "mainPanelTabs.analyticsTab.pagesEmpty":
+    "Nenhuma visualização neste período ainda.",
+  "mainPanelTabs.analyticsTab.pagesLoadError":
+    "Não foi possível carregar a audiência das páginas.",
+  "mainPanelTabs.analyticsTab.pagesRetry": "Tentar de novo",
+  "mainPanelTabs.analyticsTab.pagesNoCms":
+    "Não foi possível ler as páginas do CMS do site, então todos os caminhos aparecem como outras rotas.",
   // Registro por token (chave)
   "mainPanelTabs.analyticsTab.registerByKey":
     "Registrar por token (site fora do nosso CDN)",

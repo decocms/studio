@@ -391,6 +391,31 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.dataLoadError": "Couldn't load this view.",
   "mainPanelTabs.analyticsTab.dataNotConfiguredDescription":
     "The analytics data surface isn't wired to this environment yet — configuration below still works.",
+  // Pages by audience (Pages & sources)
+  "mainPanelTabs.analyticsTab.pagesTitle": "Pages by audience",
+  "mainPanelTabs.analyticsTab.pagesSubtitle":
+    "Your site's CMS pages, most visitors first. A template sums the URLs it serves.",
+  "mainPanelTabs.analyticsTab.pagesColPage": "Page",
+  "mainPanelTabs.analyticsTab.pagesColPath": "Path",
+  "mainPanelTabs.analyticsTab.pagesColVisitors": "Visitors",
+  "mainPanelTabs.analyticsTab.pagesColPageviews": "Pageviews",
+  "mainPanelTabs.analyticsTab.pagesEdit": "Edit",
+  "mainPanelTabs.analyticsTab.pagesEditAria": "Edit {name} in the site editor",
+  "mainPanelTabs.analyticsTab.pagesTemplateUrls": "{count} URLs",
+  "mainPanelTabs.analyticsTab.pagesTemplateHint":
+    "Template: visitors are added up per URL",
+  "mainPanelTabs.analyticsTab.pagesShowUrls": "Show the URLs of {name}",
+  "mainPanelTabs.analyticsTab.pagesMoreUrls": "+{count} more URLs",
+  "mainPanelTabs.analyticsTab.pagesShowAll": "Show all {count}",
+  "mainPanelTabs.analyticsTab.pagesShowLess": "Show fewer",
+  "mainPanelTabs.analyticsTab.pagesOtherTitle": "Other routes",
+  "mainPanelTabs.analyticsTab.pagesOtherSubtitle":
+    "Paths with traffic that no CMS page serves, such as checkout or proxied routes.",
+  "mainPanelTabs.analyticsTab.pagesEmpty": "No pageviews in this period yet.",
+  "mainPanelTabs.analyticsTab.pagesLoadError": "Couldn't load page audience.",
+  "mainPanelTabs.analyticsTab.pagesRetry": "Try again",
+  "mainPanelTabs.analyticsTab.pagesNoCms":
+    "Couldn't read the site's CMS pages, so every path is listed as another route.",
   // Token (key) registration
   "mainPanelTabs.analyticsTab.registerByKey":
     "Register by token (site not on our CDN)",
