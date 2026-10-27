@@ -15,7 +15,10 @@ import {
   createNoRedirectFetch,
   guardAgainstPrivateUrl,
 } from "../../mcp-clients/url-security";
-import { sanitizeCustomHeaders } from "@/mcp-clients/outbound/headers";
+import {
+  buildAuthorizationHeaderValue,
+  sanitizeCustomHeaders,
+} from "@/mcp-clients/outbound/headers";
 import type { ConnectionParameters, ToolDefinition } from "./schema";
 import { isStdioParameters } from "./schema";
 
@@ -101,7 +104,9 @@ export function buildConnectionRequestHeaders(
   };
 
   if (connection.connection_token) {
-    headers.Authorization = `Bearer ${connection.connection_token}`;
+    headers.Authorization = buildAuthorizationHeaderValue(
+      connection.connection_token,
+    );
   }
 
   const params = connection.connection_headers;

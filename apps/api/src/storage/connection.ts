@@ -10,6 +10,10 @@ import {
   writeRepositoryMetadata,
 } from "./repository-metadata";
 import {
+  buildAuthorizationHeaderValue,
+  sanitizeCustomHeaders,
+} from "../mcp-clients/outbound/headers";
+import {
   type Insertable,
   type Kysely,
   type RawBuilder,
@@ -582,9 +586,11 @@ export class ConnectionStorage implements ConnectionStoragePort {
           headers: {
             "Content-Type": "application/json",
             ...(connection.connection_token && {
-              Authorization: `Bearer ${connection.connection_token}`,
+              Authorization: buildAuthorizationHeaderValue(
+                connection.connection_token,
+              ),
             }),
-            ...httpParams?.headers,
+            ...sanitizeCustomHeaders(httpParams?.headers),
             ...headers,
           },
           body: JSON.stringify({
