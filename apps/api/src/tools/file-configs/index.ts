@@ -4,3 +4,4 @@ export { FILE_CONFIG_UPDATE } from "./update";
 export { FILE_CONFIG_DELETE } from "./delete";
 export { FILE_OBJECTS_LIST } from "./list-objects";
 export { FILE_OBJECT_DELETE } from "./delete-object";
+export { FILE_OBJECT_UPLOAD } from "./upload-object";

@@ -217,6 +217,7 @@ const ALL_TOOL_NAMES = [
   "FILE_CONFIG_DELETE",
   "FILE_OBJECTS_LIST",
   "FILE_OBJECT_DELETE",
+  "FILE_OBJECT_UPLOAD",
 
   // Org filesystem (shared public skill sets)
   "ORG_FS_PUBLIC_SETS_SYNC",
@@ -1237,6 +1238,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     description: "Delete an object from a configured bucket",
     category: "File Configs",
   },
+  {
+    name: "FILE_OBJECT_UPLOAD",
+    description: "Upload files from URLs into a configured bucket",
+    category: "File Configs",
+  },
 
   // Object Storage tools
   {
@@ -2059,6 +2065,7 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "FILE_CONFIG_DELETE",
       "FILE_OBJECTS_LIST",
       "FILE_OBJECT_DELETE",
+      "FILE_OBJECT_UPLOAD",
       "ORG_REPO_SYNC_CREATE",
       "ORG_REPO_SYNC_LIST",
       "ORG_REPO_SYNC_UPDATE",
