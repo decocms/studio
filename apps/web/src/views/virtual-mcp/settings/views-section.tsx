@@ -11,7 +11,6 @@ import type { ProjectViews } from "./use-project-views";
  */
 
 import { IntegrationIcon } from "@/components/integration-icon.tsx";
-import { toTitleCase } from "@/components/chat/message/parts/tool-call-part/utils";
 import { useT } from "@/i18n/use-t.ts";
 import { formatPinnedViewTabId } from "@/layouts/main-panel-tabs/tab-id";
 import { Input } from "@decocms/ui/components/input.tsx";
@@ -28,13 +27,14 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
-import { ChevronRight, Lightning01 } from "@untitledui/icons";
+import { ChevronRight, Expand06, Lightning01 } from "@untitledui/icons";
 import { IconPicker } from "@/components/icon-picker";
 import {
   SettingsCard,
   SettingsCardItem,
   SettingsSection,
 } from "@/components/settings/settings-section";
+import { appToolLabel, isScreenAppTool } from "./screen-app-tools";
 import { SidebarViewIcon, ViewRowActions } from "./view-row-actions";
 
 /** Clicking a control inside a row must not also open the row's view. */
@@ -199,16 +199,34 @@ export function ProjectViewsSection({ views }: { views: ProjectViews }) {
                             )
                           }
                           onBlur={views.commitAppViewLabel}
-                          aria-label={tool.title ?? toTitleCase(tool.name)}
+                          aria-label={appToolLabel(tool)}
                           className="h-7 w-full max-w-52 text-sm"
                         />
                       </span>
                     ) : (
-                      (tool.title ?? toTitleCase(tool.name))
+                      appToolLabel(tool)
                     )
                   }
                   action={
                     <div className="flex items-center gap-1">
+                      {isScreenAppTool(tool.name) && (
+                        <Tooltip delayDuration={0}>
+                          <TooltipTrigger asChild>
+                            <span
+                              role="img"
+                              aria-label={t(
+                                "virtualMcp.layoutTabContent.opensFullScreen",
+                              )}
+                              className="flex items-center text-muted-foreground"
+                            >
+                              <Expand06 size={14} />
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent side="top">
+                            {t("virtualMcp.layoutTabContent.opensFullScreen")}
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
                       <ViewRowActions
                         pinned={pinned}
                         canSetMainView={

@@ -8,7 +8,7 @@
  */
 
 import { getUIResourceUri } from "@decocms/shared/mcp-apps/types";
-import { toTitleCase } from "@/components/chat/message/parts/tool-call-part/utils";
+import { appToolLabel, screenAppsFirst } from "./screen-app-tools";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
 import { KEYS } from "@/lib/query-keys";
 import { useStudioTools } from "@/lib/studio-tools";
@@ -126,7 +126,7 @@ export function useProjectViews({
               id: connId,
               title: item?.title ?? connId,
               icon: item?.icon ?? null,
-              uiTools,
+              uiTools: screenAppsFirst(uiTools),
             };
           } catch {
             return {
@@ -326,7 +326,7 @@ export function useProjectViews({
         {
           connectionId,
           toolName,
-          label: toolTitle ?? toTitleCase(toolName),
+          label: appToolLabel({ name: toolName, title: toolTitle }),
           icon: null,
         },
       ]);
