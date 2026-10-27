@@ -69,6 +69,11 @@ export interface Application {
   readonly runtime?: RuntimeName;
   /** Port the dev script binds to (set as PORT env). Studio always supplies this. */
   readonly port?: number;
+  /**
+   * Other apps of a monorepo, each run by its own dev server and previewed at
+   * `<handle>--<slug>`. Replaced whole by a patch that carries it.
+   */
+  readonly apps?: readonly { readonly path: string }[];
 }
 
 /**

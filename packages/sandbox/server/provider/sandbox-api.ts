@@ -89,6 +89,7 @@ export const ensureOptionsSchema: z.ZodType<Omit<EnsureOptions, "image">> =
         packageManager: z.enum(["npm", "pnpm", "yarn", "bun", "deno"]),
         devPort: z.number().int().optional(),
         packageManagerPath: z.string().optional(),
+        apps: z.array(z.string().min(1).max(256)).max(8).optional(),
       })
       .optional(),
     cloneOnly: z.boolean().optional(),

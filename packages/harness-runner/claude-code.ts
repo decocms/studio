@@ -17,6 +17,7 @@
  */
 
 import { query } from "@anthropic-ai/claude-agent-sdk";
+import { BackgroundTasks } from "./background-tasks";
 import type {
   CanUseTool,
   HookCallbackMatcher,
@@ -83,11 +84,6 @@ const DEFERRED_RESULT_TOOLS = ["Monitor", "ScheduleWakeup"];
 const ORG_FS_INSTRUCTION =
   "The organization filesystem is mounted at `/app/org/`; an `org/...` path " +
   "in older messages or skills means `/app/org/...`.";
-
-const WAIT_IN_TURN_INSTRUCTION =
-  "This run ends when your turn ends. Nothing you start in the background can " +
-  "report back afterwards, so wait for every command you start, in the " +
-  "foreground, before you finish.";
 
 /**
  * One frame of a turn's output. `error` accompanies whatever the turn managed
@@ -380,7 +376,6 @@ export function buildOptions(args: {
     instructions,
     skillsInstruction(),
     ORG_FS_INSTRUCTION,
-    WAIT_IN_TURN_INSTRUCTION,
     maxTurns === undefined ? undefined : turnBudgetInstruction(maxTurns),
   ]
     .filter(Boolean)
@@ -813,6 +808,9 @@ export async function runClaudeCode(
 /** How long a run waits for the CLI turn a live message starts. */
 const LIVE_MESSAGE_TURN_WAIT_MS = 120_000;
 
+/** How long a run with background tasks waits on a silent CLI before ending. */
+const BACKGROUND_TASK_WAIT_MS = 30 * 60_000;
+
 /** `iterator.next()`, or null when nothing arrives within `ms`. */
 async function nextWithin<T>(
   iterator: AsyncIterator<T>,
@@ -1110,25 +1108,36 @@ async function runTurn(
     // Set once a CLI turn ended with a live message still unread: the CLI runs
     // that message as its next turn, which belongs to this run too.
     let awaitingQueuedTurn = false;
+    // Each background task that settles starts a CLI turn of this same run.
+    let awaitingBackground = false;
+    const background = new BackgroundTasks();
     let result: SdkResultMessage | null = null;
     // Not `for await`: leaving that loop at the turn's result would close a
     // session that is kept for the next turn.
     for (;;) {
-      const next = awaitingQueuedTurn
-        ? await nextWithin(messages, LIVE_MESSAGE_TURN_WAIT_MS)
-        : await messages.next();
+      const waitMs: number | null = awaitingQueuedTurn
+        ? LIVE_MESSAGE_TURN_WAIT_MS
+        : awaitingBackground
+          ? BACKGROUND_TASK_WAIT_MS
+          : null;
+      const next: IteratorResult<SDKMessage> | null =
+        waitMs === null
+          ? await messages.next()
+          : await nextWithin(messages, waitMs);
       if (next === null) {
         // The CLI never started the turn the unread message should have. End
         // the run on what it has rather than hold the thread forever.
         console.error(
-          `[claude-code] no turn followed the live message(s) in ${LIVE_MESSAGE_TURN_WAIT_MS}ms`,
+          `[claude-code] no turn followed in ${waitMs}ms (live message: ` +
+            `${awaitingQueuedTurn}, background tasks: ${background.size})`,
         );
         sessionHasQueuedWork = true;
         await endSession(stream);
         return finishTurn(result);
       }
       if (next.done) break;
-      const message = next.value;
+      const message: SDKMessage = next.value;
+      background.observe(message);
       if (
         liveMessages &&
         message.type === "user" &&
@@ -1267,6 +1276,11 @@ async function runTurn(
         awaitingQueuedTurn = true;
         continue;
       }
+      awaitingBackground =
+        background.size > 0 &&
+        !message.is_error &&
+        !translator.isAwaitingUser();
+      if (awaitingBackground) continue;
       // Decided: this run finishes. Close BEFORE emitting, so a message that
       // arrives from here on is refused and queued as the next turn instead.
       if (liveMessages && liveMessages.close().length > 0) {

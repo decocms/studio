@@ -397,6 +397,9 @@ export const settings = {
   "settings.blocksEditor.title": "Novo editor de blocos",
   "settings.blocksEditor.description":
     "Vale para todos desta organização. O restante do Studio sempre usa o novo layout.",
+  "settings.multiAppPreview.title": "Ver vários apps de um monorepo",
+  "settings.multiAppPreview.description":
+    "Adicione outros apps do repositório de um projeto e veja lado a lado no preview. Cada um roda o próprio servidor de desenvolvimento na sandbox.",
   "settings.preferences.projectFirstNav": "Navegação centrada em projetos",
   "settings.preferences.projectFirstNavDescription":
     "Experimente o trilho de organizações, o launcher de projetos e a home Hoje/Agentes.",

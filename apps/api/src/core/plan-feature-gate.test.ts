@@ -3,9 +3,18 @@ import { EntitlementsFetchError } from "../ai-providers/adapters/deco-ai-gateway
 import {
   evictExpiredPlanStateEntries,
   isFeatureAllowed,
+  isFeatureConfirmed,
   isUsageBlocked,
   refreshPlanStateCacheEntry,
 } from "./plan-feature-gate";
+
+describe("isFeatureConfirmed", () => {
+  it("confirms only an explicit true, and never without an answer", () => {
+    expect(isFeatureConfirmed({ kanban: true }, "kanban")).toBe(true);
+    expect(isFeatureConfirmed({ cms: true }, "kanban")).toBe(false);
+    expect(isFeatureConfirmed(null, "kanban")).toBe(false);
+  });
+});
 
 describe("isFeatureAllowed", () => {
   it("denies an absent key — absent means denied, not unknown", () => {

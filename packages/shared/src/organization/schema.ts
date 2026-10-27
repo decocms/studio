@@ -322,6 +322,12 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "Installing a site app from the Apps tab: writes the app module, the npm dependency and the registry entry into the project's repository, then reinstalls dependencies and restarts the dev script on the running sandbox. Off by default, for every org — the catalogue stays browsable without it and nothing is installable. Rollout lever, separate from the deploy.",
     ),
+  multi_app_preview: z
+    .boolean()
+    .optional()
+    .describe(
+      "Previewing more than one app of a monorepo: an Apps list in project settings, app tabs with a split view in the preview, and a dev server per extra app in the sandbox, served at its own preview host. Off by default.",
+    ),
   hide_default_blog_blocks: z
     .boolean()
     .optional()

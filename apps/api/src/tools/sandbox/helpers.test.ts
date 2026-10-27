@@ -3,6 +3,28 @@ import { readValidatedRuntimeEnv, resolveRuntimeConfig } from "./helpers";
 type VmMetadata = Record<string, unknown>;
 
 describe("resolveRuntimeConfig", () => {
+  it("reads extra app paths, dropping malformed and duplicate entries", () => {
+    const metadata: VmMetadata = {
+      runtime: {
+        selected: "bun",
+        apps: [
+          { path: " apps/checkout " },
+          { path: 42 },
+          null,
+          { path: "" },
+          { path: "apps/checkout" },
+          { path: "apps/admin" },
+          { path: "apps/extra" },
+        ],
+      },
+    };
+    expect(resolveRuntimeConfig(metadata).apps).toEqual([
+      "apps/checkout",
+      "apps/admin",
+    ]);
+    expect(resolveRuntimeConfig({ runtime: { apps: "x" } }).apps).toEqual([]);
+  });
+
   it("returns null packageManager when no runtime config is set", () => {
     const metadata: VmMetadata = {};
     const result = resolveRuntimeConfig(metadata);

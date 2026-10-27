@@ -61,6 +61,9 @@ export const LOCALSTORAGE_KEYS = {
     `studio:preview:device-size:${virtualMcpId}`,
   previewEditingMode: (virtualMcpId: string) =>
     `studio:preview:editing-mode:${virtualMcpId}`,
+  /** Which monorepo app the preview shows, and whether it splits beside the main one. */
+  previewAppLayout: (virtualMcpId: string) =>
+    `studio:preview:app-layout:${virtualMcpId}`,
   /** Whether CMS list fields open one item at a time or expand items in place. */
   arrayFieldLayout: () => `studio:cms:array-field-layout`,
   /** A Blocks v8 project's Localhost choice (the `deco serve` endpoint), per

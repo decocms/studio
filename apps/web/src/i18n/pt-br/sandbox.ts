@@ -1226,6 +1226,38 @@ export const sandbox = {
   "sandbox.runtimeFields.packagePath": "Caminho do pacote",
   "sandbox.runtimeFields.packagePathDescription":
     "Caminho (relativo à raiz do repositório) do diretório que contém package.json. Deixe em branco para a raiz do repositório.",
+  "sandbox.runtimeApps.title": "Outros apps",
+  "sandbox.runtimeApps.description":
+    "Outros apps deste repositório para ver ao lado do principal, até {max}. Cada um roda o próprio servidor de desenvolvimento.",
+  "sandbox.runtimeApps.add": "Adicionar app",
+  "sandbox.runtimeApps.remove": "Remover {path}",
+  "sandbox.runtimeApps.duplicate": "Este app já está na lista.",
+  "sandbox.appTabs.label": "Apps",
+  "sandbox.appTabs.root": "raiz",
+  "sandbox.appTabs.main": "Principal",
+  "sandbox.appTabs.remove": "Remover {app}",
+  "sandbox.appTabs.add": "Adicionar outro app deste repositório",
+  "sandbox.appTabs.pathLabel":
+    "Caminho do app no repositório, como apps/checkout",
+  "sandbox.appTabs.mainHint": "O chat e o editor trabalham neste app.",
+  "sandbox.appTabs.extraHint":
+    "Só preview. O chat continua trabalhando em {app}.",
+  "sandbox.appPane.previewOnly":
+    "Só preview. O chat e o editor continuam em {app}.",
+  "sandbox.appTabs.saveError": "Não foi possível salvar os apps do projeto.",
+  "sandbox.appTabs.split": "Ver lado a lado",
+  "sandbox.appTabs.single": "Ver um app",
+  "sandbox.appPane.path": "Caminho em {app}",
+  "sandbox.appPane.reload": "Recarregar {app}",
+  "sandbox.appPane.openInNewTab": "Abrir {app} em nova aba",
+  "sandbox.appPane.close": "Fechar {app}",
+  "sandbox.appPane.failed":
+    "A sandbox não conseguiu iniciar. Tente de novo em {app}.",
+  "sandbox.appPane.waiting": "Iniciando a sandbox…",
+  "sandbox.appPane.noUrl": "Este app não tem endereço de preview.",
+  "sandbox.appPane.notStarted":
+    "{app} ainda não está rodando: a sandbox subiu antes de ele ser adicionado.",
+  "sandbox.appPane.start": "Iniciar {app}",
   "sandbox.savedSectionEditor.closeJsonEditor": "Fechar editor JSON",
   "sandbox.saveStatus.failed": "Não foi possível salvar",
   "sandbox.saveStatus.saved": "Salvo",

@@ -59,10 +59,24 @@ type PortSniffer struct {
 	// each chunk in isolation would miss the announcement forever, so we carry a
 	// bounded, ANSI-stripped tail per source and match against the concatenation.
 	carry map[string]string
+	// When set, the only source observed; otherwise the well-known starters.
+	source string
 }
 
 func NewPortSniffer() *PortSniffer {
 	return &PortSniffer{carry: map[string]string{}}
+}
+
+// NewSourcePortSniffer locks the port announced by one task's output.
+func NewSourcePortSniffer(source string) *PortSniffer {
+	return &PortSniffer{carry: map[string]string{}, source: source}
+}
+
+func (p *PortSniffer) observes(source string) bool {
+	if p.source != "" {
+		return source == p.source
+	}
+	return IsWellKnownStarter(source)
 }
 
 func (p *PortSniffer) Observe(source, data string) {
@@ -71,7 +85,7 @@ func (p *PortSniffer) Observe(source, data string) {
 	if p.port != 0 {
 		return
 	}
-	if !IsWellKnownStarter(source) {
+	if !p.observes(source) {
 		return
 	}
 	combined := p.carry[source] + ansiPattern.ReplaceAllString(data, "")

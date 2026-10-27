@@ -230,8 +230,11 @@ describe("buildOptions", () => {
       options({ agent: { id: "a", disallowedTools: ["Monitor"] } })
         .disallowedTools,
     ).toEqual(["Monitor", "ScheduleWakeup"]);
+  });
+
+  test("does not tell the model to avoid background work", () => {
     const { append } = options().systemPrompt as { append: string };
-    expect(append).toContain("This run ends when your turn ends");
+    expect(append).not.toContain("This run ends when your turn ends");
   });
 
   test("names the absolute org-fs root", () => {

@@ -1,6 +1,10 @@
 package config
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"regexp"
+	"strings"
+)
 
 // SubmoduleCredential is a PAT for git remotes the main clone token can't reach
 // (a different repo/org): private submodules, and the private `git:` package
@@ -62,6 +66,13 @@ type Application struct {
 	PackageManager *PackageManagerConfig `json:"packageManager,omitempty"`
 	Runtime        *string               `json:"runtime,omitempty"`
 	Port           *float64              `json:"port,omitempty"`
+	// Other apps of a monorepo, each served by its own dev server at a
+	// `<handle>--<slug>` host. A pointer so a patch can clear the list.
+	Apps *[]ExtraApp `json:"apps,omitempty"`
+}
+
+type ExtraApp struct {
+	Path string `json:"path"`
 }
 
 type TenantConfig struct {
@@ -229,6 +240,22 @@ func (c *TenantConfig) Port() (int, bool) {
 		return 0, false
 	}
 	return int(*c.Application.Port), true
+}
+
+// ExtraApps lists the monorepo apps served beside the main one.
+func (c *TenantConfig) ExtraApps() []ExtraApp {
+	if c == nil || c.Application == nil || c.Application.Apps == nil {
+		return nil
+	}
+	return *c.Application.Apps
+}
+
+var nonSlugChars = regexp.MustCompile(`[^a-z0-9]+`)
+
+// AppSlug is the host label of an app path: `apps/checkout` → `apps-checkout`.
+// Studio derives the same label for the preview URL.
+func AppSlug(path string) string {
+	return strings.Trim(nonSlugChars.ReplaceAllString(strings.ToLower(path), "-"), "-")
 }
 
 func Str(s string) *string { return &s }

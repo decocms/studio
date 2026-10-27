@@ -141,7 +141,7 @@ function BreadcrumbTrail({ items }: { items: readonly BreadcrumbItem[] }) {
       ref={ref}
       aria-label={t("page.breadcrumbs")}
       // Leading the row, its text lines up with the view tabs' text below.
-      className="min-w-0 flex-1 first:pl-3"
+      className='min-w-0 flex-1 first:pl-3 [&:has(~[data-slot="panel-topbar-left-target"]:not(:empty))]:flex-initial'
     >
       <ol
         data-slot="page-breadcrumbs"

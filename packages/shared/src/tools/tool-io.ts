@@ -140,6 +140,7 @@ export interface StudioToolIO {
             new_blocks_editor?: boolean | undefined;
             blog_ai_enabled?: boolean | undefined;
             site_apps_install_enabled?: boolean | undefined;
+            multi_app_preview?: boolean | undefined;
             hide_default_blog_blocks?: boolean | undefined;
           }
         | null
@@ -226,6 +227,7 @@ export interface StudioToolIO {
             new_blocks_editor?: boolean | undefined;
             blog_ai_enabled?: boolean | undefined;
             site_apps_install_enabled?: boolean | undefined;
+            multi_app_preview?: boolean | undefined;
             hide_default_blog_blocks?: boolean | undefined;
           }
         | undefined;
@@ -308,6 +310,7 @@ export interface StudioToolIO {
             new_blocks_editor?: boolean | undefined;
             blog_ai_enabled?: boolean | undefined;
             site_apps_install_enabled?: boolean | undefined;
+            multi_app_preview?: boolean | undefined;
             hide_default_blog_blocks?: boolean | undefined;
           }
         | null
@@ -2909,7 +2912,6 @@ export interface StudioToolIO {
         app_id?: string | null | undefined;
         url_slug?: string | null | undefined;
         connection_url?: string | null | undefined;
-        connection_token?: string | null | undefined;
         connection_headers?:
           | {
               command: string;
@@ -2935,6 +2937,7 @@ export interface StudioToolIO {
         configuration_state?: Record<string, unknown> | null | undefined;
         configuration_scopes?: string[] | null | undefined;
         icon?: string | null | undefined;
+        connection_token?: string | null | undefined;
       };
     };
     output: {
@@ -3261,7 +3264,6 @@ export interface StudioToolIO {
           | "VIRTUAL"
           | undefined;
         connection_url?: string | null | undefined;
-        connection_token?: string | null | undefined;
         connection_headers?:
           | {
               command: string;
@@ -3339,6 +3341,7 @@ export interface StudioToolIO {
         bindings?: string[] | null | undefined;
         status?: "error" | "active" | "inactive" | undefined;
         url_slug?: string | null | undefined;
+        connection_token?: string | null | undefined;
       };
     };
     output: {
@@ -3807,6 +3810,7 @@ export interface StudioToolIO {
                 selected?: string | null | undefined;
                 port?: string | null | undefined;
                 path?: string | null | undefined;
+                apps?: { path: string }[] | null | undefined;
                 env?:
                   | (
                       | { key: string; kind: "literal"; value: string }
@@ -3866,6 +3870,7 @@ export interface StudioToolIO {
                               packageManager?: string | null | undefined;
                               port?: string | null | undefined;
                               path?: string | null | undefined;
+                              apps?: string[] | null | undefined;
                             }
                           | undefined;
                       }
@@ -4096,6 +4101,7 @@ export interface StudioToolIO {
                     selected?: string | null | undefined;
                     port?: string | null | undefined;
                     path?: string | null | undefined;
+                    apps?: { path: string }[] | null | undefined;
                     env?:
                       | (
                           | { key: string; kind: "literal"; value: string }
@@ -4308,6 +4314,7 @@ export interface StudioToolIO {
                 selected?: string | null | undefined;
                 port?: string | null | undefined;
                 path?: string | null | undefined;
+                apps?: { path: string }[] | null | undefined;
                 env?:
                   | (
                       | { key: string; kind: "literal"; value: string }
@@ -4367,6 +4374,7 @@ export interface StudioToolIO {
                               packageManager?: string | null | undefined;
                               port?: string | null | undefined;
                               path?: string | null | undefined;
+                              apps?: string[] | null | undefined;
                             }
                           | undefined;
                       }
@@ -4558,6 +4566,7 @@ export interface StudioToolIO {
                 selected?: string | null | undefined;
                 port?: string | null | undefined;
                 path?: string | null | undefined;
+                apps?: { path: string }[] | null | undefined;
                 env?:
                   | (
                       | { key: string; kind: "literal"; value: string }
@@ -4617,6 +4626,7 @@ export interface StudioToolIO {
                               packageManager?: string | null | undefined;
                               port?: string | null | undefined;
                               path?: string | null | undefined;
+                              apps?: string[] | null | undefined;
                             }
                           | undefined;
                       }
@@ -4799,6 +4809,7 @@ export interface StudioToolIO {
                 selected?: string | null | undefined;
                 port?: string | null | undefined;
                 path?: string | null | undefined;
+                apps?: { path: string }[] | null | undefined;
                 env?:
                   | (
                       | { key: string; kind: "literal"; value: string }
@@ -4858,6 +4869,7 @@ export interface StudioToolIO {
                               packageManager?: string | null | undefined;
                               port?: string | null | undefined;
                               path?: string | null | undefined;
+                              apps?: string[] | null | undefined;
                             }
                           | undefined;
                       }
@@ -5041,6 +5053,7 @@ export interface StudioToolIO {
                     selected?: string | null | undefined;
                     port?: string | null | undefined;
                     path?: string | null | undefined;
+                    apps?: { path: string }[] | null | undefined;
                     env?:
                       | (
                           | { key: string; kind: "literal"; value: string }
@@ -5261,6 +5274,7 @@ export interface StudioToolIO {
                 selected?: string | null | undefined;
                 port?: string | null | undefined;
                 path?: string | null | undefined;
+                apps?: { path: string }[] | null | undefined;
                 env?:
                   | (
                       | { key: string; kind: "literal"; value: string }
@@ -5320,6 +5334,7 @@ export interface StudioToolIO {
                               packageManager?: string | null | undefined;
                               port?: string | null | undefined;
                               path?: string | null | undefined;
+                              apps?: string[] | null | undefined;
                             }
                           | undefined;
                       }
@@ -5500,6 +5515,7 @@ export interface StudioToolIO {
                 selected?: string | null | undefined;
                 port?: string | null | undefined;
                 path?: string | null | undefined;
+                apps?: { path: string }[] | null | undefined;
                 env?:
                   | (
                       | { key: string; kind: "literal"; value: string }
@@ -5559,6 +5575,7 @@ export interface StudioToolIO {
                               packageManager?: string | null | undefined;
                               port?: string | null | undefined;
                               path?: string | null | undefined;
+                              apps?: string[] | null | undefined;
                             }
                           | undefined;
                       }
@@ -7155,6 +7172,7 @@ export interface StudioToolIO {
                 selected?: string | null | undefined;
                 port?: string | null | undefined;
                 path?: string | null | undefined;
+                apps?: { path: string }[] | null | undefined;
                 env?:
                   | (
                       | { key: string; kind: "literal"; value: string }
@@ -7214,6 +7232,7 @@ export interface StudioToolIO {
                               packageManager?: string | null | undefined;
                               port?: string | null | undefined;
                               path?: string | null | undefined;
+                              apps?: string[] | null | undefined;
                             }
                           | undefined;
                       }
@@ -7780,6 +7799,19 @@ export interface StudioToolIO {
   FILE_OBJECT_DELETE: {
     input: { configId: string; key: string };
     output: { success: true };
+  };
+  FILE_OBJECT_UPLOAD: {
+    input: { configId: string; files: { url: string; filename: string }[] };
+    output: {
+      files: {
+        url: string;
+        publicUrl?: string | undefined;
+        key?: string | undefined;
+        contentType?: string | undefined;
+        size?: number | undefined;
+        error?: string | undefined;
+      }[];
+    };
   };
   ORG_FS_PUBLIC_SETS_SYNC: {
     input: { [x: string]: never };

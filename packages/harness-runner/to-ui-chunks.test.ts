@@ -889,6 +889,59 @@ describe("subagent messages", () => {
       output: { text: "report" },
     });
   });
+
+  test("a backgrounded subtask ends on its notification, not as preliminary", () => {
+    const t = new UiChunkTranslator();
+    t.translate(
+      assistant([
+        {
+          type: "tool_use",
+          id: "task-1",
+          name: "Agent",
+          input: { prompt: "p", run_in_background: true },
+        },
+      ]),
+    );
+    t.translate({
+      type: "user",
+      message: {
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "task-1",
+            content: [{ type: "text", text: "Async agent launched" }],
+          },
+        ],
+      },
+    });
+    t.translate(subagent([{ type: "text", text: "623" }]));
+    expect(
+      t.translate({
+        type: "system",
+        subtype: "task_notification",
+        task_id: "x",
+        tool_use_id: "task-1",
+        status: "completed",
+        summary: "done",
+      } as never),
+    ).toEqual([
+      {
+        type: "tool-output-available",
+        toolCallId: "task-1",
+        output: { text: "623" },
+      },
+    ]);
+    expect(
+      t.translate({
+        type: "system",
+        subtype: "task_notification",
+        task_id: "y",
+        tool_use_id: "unknown",
+        status: "completed",
+        summary: "",
+      } as never),
+    ).toEqual([]);
+  });
 });
 
 describe("a call parked for the user", () => {

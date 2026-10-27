@@ -387,6 +387,9 @@ export const settings = {
   "settings.blocksEditor.title": "New blocks editor",
   "settings.blocksEditor.description":
     "Applies to everyone in this organization. The rest of Studio always uses the new layout.",
+  "settings.multiAppPreview.title": "Preview several apps of a monorepo",
+  "settings.multiAppPreview.description":
+    "Add other apps of a project's repository and view them side by side in the preview. Each one runs its own dev server in the sandbox.",
   "settings.preferences.projectFirstNav": "Project-first navigation",
   "settings.preferences.projectFirstNavDescription":
     "Try the org rail, project launcher and the Today/Agents home.",
