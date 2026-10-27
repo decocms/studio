@@ -214,7 +214,7 @@ THE CAMPAIGN'S PRODUCTS ARE THE ONLY PRODUCTS. Name them with the names given, l
 
 A PRODUCT SLOT IS NOT YOURS TO WRITE. A block that shows products has a prop for them — \`product\` or \`products\` — and you leave it OUT of \`props\` entirely. Put the campaign products' \`id\` values in \`productIds\` instead, in the order they should appear, and the slot is filled for you in whatever shape this site stores. Only ids the campaign listed; never one taken from a block's example, because that example points at a real product and a different one.
 
-IMAGES YOU WANT MADE. A block prop whose schema says \`"format": "image-uri"\` takes an image address. For an image that does not exist yet, write \`${IMAGE_SENTINEL}\` followed by what the image should show — \`${IMAGE_SENTINEL}a woman closing a hard-shell suitcase on a hotel bed, morning light\` — and it is generated and uploaded for you. Use this at most twice in a post, and only where the format's blocks ask for an image. For a product's own photograph, copy the campaign's address instead: a generated picture of a product the brand sells is a picture of something else.
+IMAGES YOU WANT MADE. Where a block prop takes an image address and the picture does not exist yet, write \`${IMAGE_SENTINEL}\` followed by what the image should show — \`${IMAGE_SENTINEL}a woman closing a hard-shell suitcase on a hotel bed, morning light\` — and the illustrator draws it after you. Use this at most twice in a post, and only where the format's blocks ask for an image. Never write it into a prop that holds prose — it is an image address, not a sentence. For a product's own photograph, copy the campaign's address instead: a generated picture of a product the brand sells is a picture of something else.
 
 WRITE SOMETHING WORTH READING. Open on the reader's problem or curiosity, never on the company. Make every section carry a specific claim, an example or a number rather than restating the heading. Vary section length. Close with one clear next step.
 
@@ -606,7 +606,7 @@ export const BLOG_POST_DRAFT = defineTool({
             coverPrompt(draft, brand.companyName ?? ""),
             draft.cover.alt,
           ),
-          fillBodyImages(sections, byName, painter),
+          fillBodyImages(sections, byName, painter, !!input.fileConfigId),
         ]);
 
         return {
@@ -698,6 +698,14 @@ async function fillBodyImages<
   sections: T[],
   byName: Map<string, { schema: Record<string, unknown> }>,
   painter: { paint: (prompt: string, alt: string) => Promise<string> },
+  /**
+   * Whether this call was ever going to draw. Without a bucket it was not, and
+   * the sentinels are left standing on purpose: BLOG_POST_ILLUSTRATE is the
+   * next pass and they are its work order. Clearing them here would leave the
+   * illustrator nothing to find — the split between the two tools exists
+   * because drawing inside this request blows the edge's time budget.
+   */
+  drawing: boolean,
 ): Promise<T[]> {
   let budget = MAX_BODY_IMAGES;
   const filled: T[] = [];
@@ -714,7 +722,10 @@ async function fillBodyImages<
       const url = await painter.paint(request.prompt, request.prompt);
       if (url) props = withImageAt(props, request.path, url);
     }
-    filled.push({ ...section, props: clearUnfilled(props, schema) });
+    filled.push({
+      ...section,
+      props: drawing ? clearUnfilled(props) : props,
+    });
   }
   return filled;
 }

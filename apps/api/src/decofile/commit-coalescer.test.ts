@@ -8,7 +8,11 @@ import type {
 } from "@/git-providers";
 import { RepoWriteConflict } from "@/git-providers";
 import { decoBlockFingerprint } from "@decocms/shared/decofile";
-import { BlockConflictError, enqueueDecofilePatch } from "./commit-coalescer";
+import {
+  BlockConflictError,
+  decofileQueueKey,
+  enqueueDecofilePatch,
+} from "./commit-coalescer";
 import { resolveBlockContents } from "./read-decofile";
 
 /**
@@ -356,5 +360,29 @@ describe("enqueueDecofilePatch expectations", () => {
       __resolveType: "Header",
       title: "second",
     });
+  });
+});
+
+/**
+ * The editor and the site's agent both write to a project's branch. They
+ * serialize only while they name the same queue, and nothing downstream would
+ * report it if they stopped: both writes succeed, and the loser's is the one
+ * the branch forgets.
+ */
+describe("decofileQueueKey", () => {
+  it("is the organization, the project and the branch", () => {
+    expect(decofileQueueKey("org_1", "vir_1", "main")).toBe("org_1/vir_1/main");
+  });
+
+  it("separates two branches of one project", () => {
+    expect(decofileQueueKey("org_1", "vir_1", "main")).not.toBe(
+      decofileQueueKey("org_1", "vir_1", "feat/hero"),
+    );
+  });
+
+  it("separates two projects on the same branch name", () => {
+    expect(decofileQueueKey("org_1", "vir_1", "main")).not.toBe(
+      decofileQueueKey("org_1", "vir_2", "main"),
+    );
   });
 });

@@ -2159,6 +2159,134 @@ export interface StudioToolIO {
       )[];
     };
   };
+  BLOG_RUN_START: {
+    input: { virtualMcpId: string; prompt: string; title?: string | undefined };
+    output: { threadId: string };
+  };
+  BLOG_STATE_GET: {
+    input: { virtualMcpId: string };
+    output: {
+      brand: Record<string, unknown> | null;
+      context: Record<string, unknown> | null;
+      formats: Record<string, unknown> | null;
+      campaigns: { id: string; data: Record<string, unknown> }[];
+      campaignSeeds: { id: string; data: Record<string, unknown> }[];
+      versions: Record<string, string>;
+    };
+  };
+  BLOG_STATE_SET: {
+    input: {
+      virtualMcpId: string;
+      brand?:
+        | {
+            [x: string]: unknown;
+            companyName?: string | undefined;
+            description?: string | undefined;
+            language?: string | undefined;
+            storeUrl?: string | undefined;
+            targetAudience?: string | undefined;
+            values?: { name: string; value: string }[] | undefined;
+            competitors?: { name: string; value: string }[] | undefined;
+            keywords?: string[] | undefined;
+            commercialPolicies?: { name: string; value: string }[] | undefined;
+            specialDates?: { name: string; value: string }[] | undefined;
+          }
+        | undefined;
+      context?:
+        | {
+            [x: string]: unknown;
+            tone?: string | undefined;
+            dos?: { name: string; value: string }[] | undefined;
+            avoid?: { name: string; value: string }[] | undefined;
+            categories?: string[] | undefined;
+            vocabulary?: { name: string; value: string }[] | undefined;
+            voiceExamples?: { text: string; sounds: boolean }[] | undefined;
+          }
+        | undefined;
+      formats?:
+        | { [x: string]: unknown; formats: { name: string; value: string }[] }
+        | undefined;
+      campaigns?:
+        | {
+            id: string;
+            data: {
+              [x: string]: unknown;
+              period?: { start: string | null; end: string | null } | undefined;
+              trigger?:
+                | {
+                    type:
+                      | "launch"
+                      | "seasonal"
+                      | "trend"
+                      | "seo_gap"
+                      | "inventory"
+                      | "partnership"
+                      | "reputation";
+                    note: string;
+                  }
+                | undefined;
+              intent?:
+                | {
+                    objective:
+                      | "awareness"
+                      | "education"
+                      | "conversion"
+                      | "retention"
+                      | "repositioning";
+                    targets: {
+                      kind: "category" | "collection";
+                      id: string;
+                      name: string;
+                      url: string;
+                      description: string;
+                    }[];
+                    products: {
+                      id: string;
+                      name: string;
+                      url: string;
+                      images: string[];
+                      category: string;
+                      description: string;
+                    }[];
+                    keywords: string[];
+                  }
+                | undefined;
+              guardrails?:
+                | {
+                    avoidComplements: { name: string; value: string }[];
+                    toneOverrides: string;
+                  }
+                | undefined;
+              campaignName?: string | undefined;
+              seedKey?: string | undefined;
+              status?: "active" | "draft" | "paused" | "finished" | undefined;
+              createdAt?: string | undefined;
+              updatedAt?: string | undefined;
+            };
+          }[]
+        | undefined;
+      campaignSeeds?:
+        | {
+            id: string;
+            data: {
+              [x: string]: unknown;
+              seedName?: string | undefined;
+              keywords?: string[] | undefined;
+              prompt?: string | undefined;
+              createdAt?: string | undefined;
+              updatedAt?: string | undefined;
+            };
+          }[]
+        | undefined;
+      removeCampaigns?: string[] | undefined;
+      removeCampaignSeeds?: string[] | undefined;
+      expect?: Record<string, string> | undefined;
+    };
+    output: {
+      written: { path: string; contentHash: string }[];
+      removed: string[];
+    };
+  };
   BLOG_SITE_GROUND: {
     input: {
       purpose: "format" | "link" | "context" | "brand" | "campaign" | "post";
@@ -2214,6 +2342,62 @@ export interface StudioToolIO {
       read: boolean;
     };
   };
+  BLOG_SITE_BLOCKS: {
+    input: {
+      virtualMcpId: string;
+      format: { name: string; value: string };
+      branch?: string | undefined;
+    };
+    output: {
+      blocks: {
+        name: string;
+        title: string;
+        description: string;
+        schema: Record<string, unknown>;
+        example?: Record<string, unknown> | undefined;
+      }[];
+      categories: { name: string; slug: string }[];
+      authors: { name: string; email: string; bio?: string | undefined }[];
+      branch: string;
+    };
+  };
+  BLOG_POST_ASSEMBLE: {
+    input: {
+      virtualMcpId: string;
+      draft: {
+        title: string;
+        excerpt: string;
+        seo: { title: string; description: string };
+        cover: { url: string; alt: string };
+        sections: {
+          type: string;
+          props: Record<string, unknown>;
+          productIds?: string[] | undefined;
+        }[];
+        categorySlugs?: string[] | undefined;
+        authorEmails?: string[] | undefined;
+      };
+      postId?: string | undefined;
+      links?: { quote: string; slug: string }[] | undefined;
+      planning?:
+        | {
+            campaignKey?: string | undefined;
+            format?: { name: string; value: string } | undefined;
+            brief?: string | undefined;
+          }
+        | undefined;
+      branch?: string | undefined;
+    };
+    output: {
+      postId: string;
+      post: Record<string, unknown>;
+      bodyText: string;
+      posts: { title: string; slug: string }[];
+      dropped: number;
+      applied: number;
+      branch: string;
+    };
+  };
   BLOG_BRAND_EXTRACT: {
     input: {
       blocks: { key: string; content: string }[];
@@ -2237,9 +2421,9 @@ export interface StudioToolIO {
     output: {
       values: { name: string; value: string }[];
       description: string;
+      companyName: string;
       language: string;
       storeUrl: string;
-      companyName: string;
       targetAudience: string;
       competitors: { name: string; value: string }[];
       keywords: string[];
@@ -2252,9 +2436,9 @@ export interface StudioToolIO {
       profile: {
         values: { name: string; value: string }[];
         description: string;
+        companyName: string;
         language: string;
         storeUrl: string;
-        companyName: string;
         targetAudience: string;
         competitors: { name: string; value: string }[];
         keywords: string[];
@@ -2371,9 +2555,9 @@ export interface StudioToolIO {
     input: {
       brand: {
         description?: string | undefined;
+        companyName?: string | undefined;
         language?: string | undefined;
         storeUrl?: string | undefined;
-        companyName?: string | undefined;
         targetAudience?: string | undefined;
         tone?: string | undefined;
         dos?: { name: string; value: string }[] | undefined;
@@ -2456,8 +2640,8 @@ export interface StudioToolIO {
     output: {
       posts: {
         title: string;
-        seo: { title: string; description: string };
         excerpt: string;
+        seo: { title: string; description: string };
         categorySlugs: string[];
         authorEmails: string[];
         cover: { url: string; alt: string; prompt: string };
@@ -2479,17 +2663,30 @@ export interface StudioToolIO {
       }[];
     };
   };
+  BLOG_POST_WRITE: {
+    input: {
+      virtualMcpId: string;
+      postId: string;
+      post: Record<string, unknown>;
+      branch?: string | undefined;
+    };
+    output: { key: string; version: string; branch: string };
+  };
   BLOG_POST_ILLUSTRATE: {
     input: {
       requests: { id: string; prompt: string; alt?: string | undefined }[];
       productImages?: string[] | undefined;
       companyName?: string | undefined;
       fileConfigId?: string | undefined;
+      sections?: { type: string; props: Record<string, unknown> }[] | undefined;
+      guidance?: string | undefined;
     };
     output: {
       images: { id: string; url: string }[];
       outcome: "ok" | "failed" | "no-bucket" | "no-model";
       referenced: number;
+      sections: { type: string; props: Record<string, unknown> }[];
+      bodyImages: number;
     };
   };
   BLOG_LINK_SUGGEST: {
@@ -3657,6 +3854,7 @@ export interface StudioToolIO {
                       cms?: "off" | "manual" | "on" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
+                            | "context"
                             | "overview"
                             | "reports"
                             | "board"
@@ -3716,6 +3914,7 @@ export interface StudioToolIO {
             | undefined;
           sidebarViews?:
             | (
+                | "context"
                 | "overview"
                 | "reports"
                 | "board"
@@ -3925,6 +4124,7 @@ export interface StudioToolIO {
                             | undefined;
                           sidebarViews?:
                             | (
+                                | "context"
                                 | "overview"
                                 | "reports"
                                 | "board"
@@ -3984,6 +4184,7 @@ export interface StudioToolIO {
                 | undefined;
               sidebarViews?:
                 | (
+                    | "context"
                     | "overview"
                     | "reports"
                     | "board"
@@ -4116,6 +4317,7 @@ export interface StudioToolIO {
                       cms?: "off" | "manual" | "on" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
+                            | "context"
                             | "overview"
                             | "reports"
                             | "board"
@@ -4175,6 +4377,7 @@ export interface StudioToolIO {
             | undefined;
           sidebarViews?:
             | (
+                | "context"
                 | "overview"
                 | "reports"
                 | "board"
@@ -4345,6 +4548,7 @@ export interface StudioToolIO {
                       cms?: "off" | "manual" | "on" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
+                            | "context"
                             | "overview"
                             | "reports"
                             | "board"
@@ -4404,6 +4608,7 @@ export interface StudioToolIO {
             | undefined;
           sidebarViews?:
             | (
+                | "context"
                 | "overview"
                 | "reports"
                 | "board"
@@ -4565,6 +4770,7 @@ export interface StudioToolIO {
                       cms?: "off" | "manual" | "on" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
+                            | "context"
                             | "overview"
                             | "reports"
                             | "board"
@@ -4624,6 +4830,7 @@ export interface StudioToolIO {
             | undefined;
           sidebarViews?:
             | (
+                | "context"
                 | "overview"
                 | "reports"
                 | "board"
@@ -4786,6 +4993,7 @@ export interface StudioToolIO {
                             | undefined;
                           sidebarViews?:
                             | (
+                                | "context"
                                 | "overview"
                                 | "reports"
                                 | "board"
@@ -4845,6 +5053,7 @@ export interface StudioToolIO {
                 | undefined;
               sidebarViews?:
                 | (
+                    | "context"
                     | "overview"
                     | "reports"
                     | "board"
@@ -4985,6 +5194,7 @@ export interface StudioToolIO {
                       cms?: "off" | "manual" | "on" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
+                            | "context"
                             | "overview"
                             | "reports"
                             | "board"
@@ -5044,6 +5254,7 @@ export interface StudioToolIO {
             | undefined;
           sidebarViews?:
             | (
+                | "context"
                 | "overview"
                 | "reports"
                 | "board"
@@ -5203,6 +5414,7 @@ export interface StudioToolIO {
                       cms?: "off" | "manual" | "on" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
+                            | "context"
                             | "overview"
                             | "reports"
                             | "board"
@@ -5262,6 +5474,7 @@ export interface StudioToolIO {
             | undefined;
           sidebarViews?:
             | (
+                | "context"
                 | "overview"
                 | "reports"
                 | "board"
@@ -6355,7 +6568,7 @@ export interface StudioToolIO {
         site: string;
         key: string;
         name: string;
-        status: "draft" | "running" | "paused" | "ended";
+        status: "draft" | "paused" | "running" | "ended";
         goals: string[];
         variants: {
           id: string;
@@ -6382,7 +6595,7 @@ export interface StudioToolIO {
         site: string;
         key: string;
         name: string;
-        status: "draft" | "running" | "paused" | "ended";
+        status: "draft" | "paused" | "running" | "ended";
         goals: string[];
         variants: {
           id: string;
@@ -6422,7 +6635,7 @@ export interface StudioToolIO {
         site: string;
         key: string;
         name: string;
-        status: "draft" | "running" | "paused" | "ended";
+        status: "draft" | "paused" | "running" | "ended";
         goals: string[];
         variants: {
           id: string;
@@ -6488,7 +6701,7 @@ export interface StudioToolIO {
       site: string;
       key: string;
       name?: string | undefined;
-      status?: "draft" | "running" | "paused" | "ended" | undefined;
+      status?: "draft" | "paused" | "running" | "ended" | undefined;
       goals?: string[] | undefined;
       variants?:
         | {
@@ -6506,7 +6719,7 @@ export interface StudioToolIO {
         site: string;
         key: string;
         name: string;
-        status: "draft" | "running" | "paused" | "ended";
+        status: "draft" | "paused" | "running" | "ended";
         goals: string[];
         variants: {
           id: string;
@@ -6834,6 +7047,7 @@ export interface StudioToolIO {
                       cms?: "off" | "manual" | "on" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
+                            | "context"
                             | "overview"
                             | "reports"
                             | "board"
@@ -6893,6 +7107,7 @@ export interface StudioToolIO {
             | undefined;
           sidebarViews?:
             | (
+                | "context"
                 | "overview"
                 | "reports"
                 | "board"

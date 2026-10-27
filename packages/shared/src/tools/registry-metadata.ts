@@ -60,13 +60,19 @@ const ALL_TOOL_NAMES = [
   "ORGANIZATION_SETTINGS_UPDATE",
   "ORGANIZATION_BLOCKS_EDITOR_SET",
   "ORGANIZATION_HAS_SITE",
+  "BLOG_RUN_START",
+  "BLOG_STATE_GET",
+  "BLOG_STATE_SET",
   "BLOG_SITE_GROUND",
   "BLOG_SITE_CATALOGUE",
+  "BLOG_SITE_BLOCKS",
+  "BLOG_POST_ASSEMBLE",
   "BLOG_BRAND_EXTRACT",
   "BLOG_BRAND_ENRICH",
   "BLOG_CONTEXT_EXTRACT",
   "BLOG_FORMAT_SUGGEST",
   "BLOG_POST_DRAFT",
+  "BLOG_POST_WRITE",
   "BLOG_POST_ILLUSTRATE",
   "BLOG_LINK_SUGGEST",
   "BLOG_CAMPAIGN_SUGGEST",
@@ -413,6 +419,24 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Organizations",
   },
   {
+    name: "BLOG_RUN_START",
+    description:
+      "Hand blog work to the site's agent as a run, and return its thread",
+    category: "Blog",
+  },
+  {
+    name: "BLOG_STATE_GET",
+    description:
+      "Read a site's blog brand, writing rules, formats and campaigns from the org library",
+    category: "Blog",
+  },
+  {
+    name: "BLOG_STATE_SET",
+    description:
+      "Write a site's blog brand, writing rules, formats and campaigns to the org library",
+    category: "Blog",
+  },
+  {
     name: "BLOG_SITE_GROUND",
     description:
       "Read the site's connected systems once, for the generators that follow",
@@ -459,6 +483,12 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Blog",
   },
   {
+    name: "BLOG_POST_WRITE",
+    description:
+      "Save a written post to the site as a draft on the Posts board",
+    category: "Blog",
+  },
+  {
     name: "BLOG_POST_ILLUSTRATE",
     description:
       "Draw a drafted post's images, conditioned on the product's own photographs",
@@ -467,6 +497,18 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "BLOG_LINK_SUGGEST",
     description: "Propose internal links from a post to the site's other posts",
+    category: "Blog",
+  },
+  {
+    name: "BLOG_SITE_BLOCKS",
+    description:
+      "Read the blocks a post can be built from, with their schemas, categories and authors",
+    category: "Blog",
+  },
+  {
+    name: "BLOG_POST_ASSEMBLE",
+    description:
+      "Turn a drafted post into the block this site stores, without persisting it",
     category: "Blog",
   },
   {

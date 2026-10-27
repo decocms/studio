@@ -107,6 +107,8 @@ export interface RunAgentLoopOptions {
     tools: ConnectionsBlockTool[];
     connectionTitleMap: Map<string, string>;
   };
+  /** The only tools this loop may call. Absent leaves the set untouched. */
+  toolAllowlist?: readonly string[] | null;
   /** Extra tools to merge into the assembled toolset AFTER assembleAgentTools.
    *  Parent uses this to inject `enable_tool` (which is state-dependent —
    *  built from `enabledTools` reconstructed from message history). Subagents
@@ -211,6 +213,7 @@ export async function runAgentLoop(
     onPrOpened,
     fullBuiltInParams: opts.subagentBuiltInParams,
     toolOutputMap: opts.toolOutputMap,
+    toolAllowlist: opts.toolAllowlist,
   });
   // Merge extra tools (e.g., parent's state-dependent `enable_tool`) after
   // the shared assembler. Parent extras shadow assembled tools intentionally.

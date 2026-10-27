@@ -58,6 +58,14 @@ describe("generationFailure", () => {
     );
   });
 
+  test("renders an abort as its message, not as 25 DOM constants", () => {
+    const line = generationFailure(
+      new DOMException("The operation timed out.", "TimeoutError"),
+    );
+    expect(line).toBe("The operation timed out.");
+    expect(line).not.toContain("INDEX_SIZE_ERR");
+  });
+
   test("never carries the generated object into the log", () => {
     expect(generationFailure(retried(typeValidation(zodError)))).not.toContain(
       "SEGREDO-DO-CLIENTE",
