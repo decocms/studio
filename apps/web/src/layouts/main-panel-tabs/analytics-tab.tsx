@@ -86,6 +86,7 @@ import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
 import { KEYS } from "@/lib/query-keys";
 import { useT, type TFunction } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/use-t.ts";
+import { PagesAudience } from "./analytics-pages-audience";
 
 // --- control-plane REST DTOs (client-safe fields only) ---------------------
 
@@ -1132,7 +1133,12 @@ function ActiveView({
       </div>
     );
   }
-  return <ViewPanels payload={response.data} t={t} />;
+  // Pages & sources: "Top pages" is the Pages by audience list above it.
+  const payload =
+    view === "behaviour"
+      ? { ...response.data, pages: undefined }
+      : response.data;
+  return <ViewPanels payload={payload} t={t} />;
 }
 
 /** The Usage & limits header: the monthly cap and, when the payload carries an
@@ -2048,6 +2054,15 @@ function RegisteredView({
           </button>
         ))}
       </div>
+
+      {active === "behaviour" && (
+        <PagesAudience
+          base={base}
+          orgSlug={orgSlug}
+          site={site}
+          range={range}
+        />
+      )}
 
       <ActiveView
         key={active}

@@ -228,6 +228,8 @@ const ANALYTICS_VIEWS = new Set([
   "quality",
   "usage",
   "install",
+  // Visitors per path (`pageAudience`), for Analytics → Pages by audience.
+  "pages",
 ]);
 
 /** The ranges the read surface understands (queries.mjs RANGES). */
