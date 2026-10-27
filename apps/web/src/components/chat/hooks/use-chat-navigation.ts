@@ -20,10 +20,11 @@ export interface ChatNavigation {
   /** The thread the matched route names, or `null` where it names none. */
   taskId: string | null;
   /** Navigate to a task in its agent-owned route. `autosend` tells the route to
-   * consume the stored handoff message. */
+   * consume the stored handoff message. `keepView` keeps a per-thread view open:
+   * a thread just started beside it is about that view. */
   navigateToTask: (
     taskId: string,
-    opts?: { virtualMcpId?: string; autosend?: boolean },
+    opts?: { virtualMcpId?: string; autosend?: boolean; keepView?: boolean },
   ) => void;
 }
 
@@ -49,12 +50,14 @@ export function useChatNavigation(): ChatNavigation {
 
   const navigateToTask = (
     taskId: string,
-    opts?: { virtualMcpId?: string; autosend?: boolean },
+    opts?: { virtualMcpId?: string; autosend?: boolean; keepView?: boolean },
   ) => {
     /** A view that belongs to the thread being left does not follow it; a
      *  system view does, by navigating to its canonical route. */
     const carried =
-      activeTabId && !isPerThreadTab(activeTabId) ? activeTabId : undefined;
+      activeTabId && (opts?.keepView || !isPerThreadTab(activeTabId))
+        ? activeTabId
+        : undefined;
     /** Org destinations cannot encode an agent. A thread opened from one moves
      * to its agent overview; agent-owned views carry forward as themselves. */
     const targetAgentId = opts?.virtualMcpId ?? virtualMcpId;

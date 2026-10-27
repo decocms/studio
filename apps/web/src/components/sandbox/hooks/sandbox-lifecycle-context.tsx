@@ -350,6 +350,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { createKeyedContext } from "@/lib/keyed-context";
 import { SELF_MCP_ALIAS_ID, useMCPClient, useProjectContext } from "@/sdk";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
@@ -428,16 +429,30 @@ export function useSandboxLifecycle(): SandboxLifecycleValue {
   return use(SandboxLifecycleContext);
 }
 
+const KeyedSandboxLifecycle = createKeyedContext(SandboxLifecycleContext);
+
+/** `resetKey` starts the lifecycle state over (a thread switch) without
+ *  remounting `children`. */
 export function SandboxLifecycleProvider({
-  executionEnabled,
-  virtualMcpId,
-  branch,
-  userId,
-  hasActiveRepository,
-  vmEntry,
-  threadId,
+  resetKey,
   children,
-}: {
+  ...props
+}: SandboxLifecycleProps & { resetKey: string; children: ReactNode }) {
+  return (
+    <KeyedSandboxLifecycle.Host
+      source={<SandboxLifecycleSource key={resetKey} {...props} />}
+    >
+      {children}
+    </KeyedSandboxLifecycle.Host>
+  );
+}
+
+function SandboxLifecycleSource(props: SandboxLifecycleProps) {
+  KeyedSandboxLifecycle.usePublish(useSandboxLifecycleValue(props));
+  return null;
+}
+
+interface SandboxLifecycleProps {
   /** False for coding-agent threads the hosted dispatcher cannot run. Keeps
    *  previews readable without adopting branches or mutating hosted sandboxes. */
   executionEnabled: boolean;
@@ -449,8 +464,17 @@ export function SandboxLifecycleProvider({
   /** Active thread id — the row re-read after a successful start (see
    *  `onStarted` below). */
   threadId: string | null;
-  children: ReactNode;
-}) {
+}
+
+function useSandboxLifecycleValue({
+  executionEnabled,
+  virtualMcpId,
+  branch,
+  userId,
+  hasActiveRepository,
+  vmEntry,
+  threadId,
+}: SandboxLifecycleProps): SandboxLifecycleValue {
   const { org } = useProjectContext();
   const { setCurrentTaskBranch } = useChatTask();
   const manager = useOptionalThreadManager();
@@ -785,7 +809,5 @@ export function SandboxLifecycleProvider({
     resume,
   };
 
-  return (
-    <SandboxLifecycleContext value={value}>{children}</SandboxLifecycleContext>
-  );
+  return value;
 }

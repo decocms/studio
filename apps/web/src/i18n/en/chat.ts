@@ -68,7 +68,7 @@ export const chat = {
   "chat.chat.jumpToLatest": "Jump to latest",
   "chat.chat.loadingOlderMessages": "Loading older messages…",
   "chat.chatContext.activeTaskProviderMissingContext":
-    "ActiveTaskProvider must be used within ChatContextProvider",
+    "ActiveTaskStreamSource must be used within ChatContextProvider",
   "chat.chatContext.cancelFailedStatus": "Cancel failed: {status}",
   "chat.chatContext.couldNotRemoveOriginalMessage":
     "Couldn't remove the original message",
@@ -80,7 +80,7 @@ export const chat = {
   "chat.chatContext.useChatPrefsMissingContext":
     "useChatPrefs must be used within ChatContextProvider",
   "chat.chatContext.useChatStreamMissingContext":
-    "useChatStream must be used within ActiveTaskProvider",
+    "useChatStream must be used within ChatStreamHost",
   "chat.chatContext.useChatTaskMissingContext":
     "useChatTask must be used within ChatContextProvider",
   "chat.collapsibleHighlight.closeLabel": "Close",

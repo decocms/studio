@@ -31,6 +31,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { createKeyedContext } from "@/lib/keyed-context";
 import { useQueryClient } from "@tanstack/react-query";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
 import { KEYS, invalidateVirtualMcpQueries } from "@/lib/query-keys";
@@ -166,13 +167,30 @@ async function probeDirectDaemonEventsGone(url: string): Promise<boolean> {
   }
 }
 
+const KeyedSandboxEvents = createKeyedContext(SandboxEventsContext);
+
+/** `resetKey` starts the events state over (a thread switch) without
+ *  remounting `children`. */
 export function SandboxEventsProvider({
-  virtualMcpId,
-  branch,
-  previewUrl = null,
-  enabled = true,
+  resetKey,
   children,
-}: {
+  ...props
+}: SandboxEventsProps & { resetKey: string; children: ReactNode }) {
+  return (
+    <KeyedSandboxEvents.Host
+      source={<SandboxEventsSource key={resetKey} {...props} />}
+    >
+      {children}
+    </KeyedSandboxEvents.Host>
+  );
+}
+
+function SandboxEventsSource(props: SandboxEventsProps) {
+  KeyedSandboxEvents.usePublish(useSandboxEventsValue(props));
+  return null;
+}
+
+interface SandboxEventsProps {
   virtualMcpId: string | null;
   branch: string | null;
   previewUrl?: string | null;
@@ -185,8 +203,14 @@ export function SandboxEventsProvider({
    * touches a VM tool. Defaults to true to preserve prior behavior.
    */
   enabled?: boolean;
-  children: ReactNode;
-}) {
+}
+
+function useSandboxEventsValue({
+  virtualMcpId,
+  branch,
+  previewUrl = null,
+  enabled = true,
+}: SandboxEventsProps): SandboxEventsValue {
   const { org } = useProjectContext();
   const queryClient = useQueryClient();
 
@@ -659,5 +683,5 @@ export function SandboxEventsProvider({
     },
   };
 
-  return <SandboxEventsContext value={value}>{children}</SandboxEventsContext>;
+  return value;
 }
