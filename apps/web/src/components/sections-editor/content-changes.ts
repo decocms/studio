@@ -43,6 +43,20 @@ export interface ContentChanges {
   base: ChangesBase;
   /** Every entry that differs from the base, by name. */
   changes: Record<string, Change>;
+  /**
+   * This editor changed the list since it was read (a hosted save's answer,
+   * a refused save's draft copy): `revision` no longer names it, and the
+   * server's list can come back to that revision (a discard that leaves the
+   * draft as it was), so the next read lists it whole.
+   */
+  edited?: true;
+}
+
+/** The `changes.list` params that read on from `seen`. */
+export function changesListParams(seen: ContentChanges | undefined): {
+  ifNoneMatch?: string;
+} {
+  return seen && !seen.edited ? { ifNoneMatch: seen.revision } : {};
 }
 
 /** Both sides of the listed changes, by entry name. */
@@ -97,9 +111,7 @@ export async function readContentChanges(
 ): Promise<ContentChanges> {
   const key = KEYS.contentChanges(cacheKey);
   const seen = queryClient.getQueryData<ContentChanges>(key);
-  const answer = await client.changesList(
-    seen ? { ifNoneMatch: seen.revision } : {},
-  );
+  const answer = await client.changesList(changesListParams(seen));
   const adopted = adoptChangesList(seen, answer);
   if (adopted) return adopted;
   // A revision without its list (the cache was dropped): read it whole.

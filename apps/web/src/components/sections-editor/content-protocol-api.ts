@@ -45,6 +45,7 @@ import { keepContentBookkeeping } from "./content-bookkeeping";
 import {
   adoptChangesList,
   type ContentChanges,
+  changesListParams,
   isOutdatedServerError,
 } from "./content-changes";
 import { externalContentChange, runContentChange } from "./content-sync";
@@ -318,9 +319,10 @@ function adoptHostedSave(
           changes[name] = { kind: "delete", version: null, baseVersion };
         } else delete changes[name];
       }
-      // Same revision: the next poll lists the changes whole (the server's
-      // moved), and in the meantime this is the draft.
-      return { ...listed, changes };
+      // Edited here: the next read lists the changes whole (never "not
+      // modified" on the revision read before), and in the meantime this
+      // is the draft.
+      return { ...listed, changes, edited: true };
     },
   );
   for (const [name, version] of answered) {
@@ -551,7 +553,7 @@ async function readContent(
         },
         {
           method: "changes.list",
-          params: seenChanges ? { ifNoneMatch: seenChanges.revision } : {},
+          params: changesListParams(seenChanges),
         },
       ]),
   );
@@ -800,6 +802,7 @@ function adoptRefusedDraftBlock(
     queryClient.setQueryData<ContentChanges>(KEYS.contentChanges(cacheKey), {
       ...listed,
       changes,
+      edited: true,
     });
   }
   markDraftTombstone(
@@ -908,7 +911,7 @@ export async function reloadProtocolBlock(
               baseVersion: entry.baseVersion,
             };
           } else delete changes[blockKey];
-          return { ...listed, changes };
+          return { ...listed, changes, edited: true };
         },
       );
     }

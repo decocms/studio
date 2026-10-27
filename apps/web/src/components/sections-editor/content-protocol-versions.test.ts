@@ -16,6 +16,7 @@ import {
   protocolBlockVersion,
   reloadProtocolBlock,
 } from "./content-protocol-api";
+import { readContentChanges } from "./content-changes";
 import { decofileWriteMutationKey } from "./decofile-api";
 import { resetContentSync } from "./content-sync";
 
@@ -699,6 +700,93 @@ describe("hosted draft guards (Studio's GitHub backend)", () => {
         KEYS.contentChanges(CACHE_KEY),
       )?.changes.Hero,
     ).toEqual({ kind: "set", version: "d2", baseVersion: "main-v" });
+  });
+
+  it("a save's own entry never outlives a discard that leaves the draft as it was", async () => {
+    // The server answers changes.list "not modified" when its revision is
+    // the one asked about, and a draft emptied again (a discard) has the
+    // revision it had before the save: the same content, the same ETag.
+    const queryClient = new QueryClient();
+    const { state, backend } = hostedBackend();
+    const changesRevision = () => `c-${state.main}~${state.etag}`;
+    const changesList = (params?: { ifNoneMatch?: string }) =>
+      params?.ifNoneMatch === changesRevision()
+        ? {
+            notModified: true,
+            revision: changesRevision(),
+            base: { revision: state.main, resolvedRef: "main" },
+          }
+        : {
+            notModified: false,
+            revision: changesRevision(),
+            base: { revision: state.main, resolvedRef: "main" },
+            changes: Object.fromEntries(
+              Object.entries(state.draft).map(([name, entry]) => [
+                name,
+                { kind: "set", version: entry.version, baseVersion: "main-v" },
+              ]),
+            ),
+          };
+    const batch = backend.client.batch.bind(backend.client);
+    const client = Object.assign(Object.create(backend.client), {
+      batch: async (calls: BatchCall[]) => {
+        const outcomes = await batch(calls);
+        return calls.map((call, i) =>
+          call.method === "changes.list"
+            ? {
+                ok: true,
+                result: changesList(call.params as { ifNoneMatch?: string }),
+              }
+            : outcomes[i]!,
+        );
+      },
+      changesList: async (params?: { ifNoneMatch?: string }) =>
+        changesList(params),
+    }) as ContentClient;
+    const hosted: ProtocolBackend = { ...backend, client };
+    const listedNames = () =>
+      Object.keys(
+        queryClient.getQueryData<{ changes: Record<string, unknown> }>(
+          KEYS.contentChanges(CACHE_KEY),
+        )?.changes ?? {},
+      );
+
+    await pollProtocolContent(queryClient, hosted, params, CACHE_KEY);
+    expect(listedNames()).toEqual([]);
+    await applyProtocolPatch(
+      queryClient,
+      hosted,
+      params,
+      CACHE_KEY,
+      { set: { Hero: { title: "mine" } } },
+      { Hero: null },
+    );
+    expect(listedNames()).toEqual(["Hero"]);
+
+    // The change is discarded before any poll listed it: the draft is
+    // empty again, with the ETag it had.
+    delete state.draft.Hero;
+    state.etag = "e1";
+    queryClient.setQueryData(
+      KEYS.contentChanges(CACHE_KEY),
+      await readContentChanges(queryClient, client, CACHE_KEY),
+    );
+    expect(listedNames()).toEqual([]);
+
+    // And through the poll, after another save and the same discard.
+    await applyProtocolPatch(
+      queryClient,
+      hosted,
+      params,
+      CACHE_KEY,
+      { set: { Hero: { title: "again" } } },
+      { Hero: null },
+    );
+    expect(listedNames()).toEqual(["Hero"]);
+    delete state.draft.Hero;
+    state.etag = "e1";
+    await pollProtocolContent(queryClient, hosted, params, CACHE_KEY);
+    expect(listedNames()).toEqual([]);
   });
 
   it("a save keeps the main part of the revision read, so the next poll is not modified", async () => {
