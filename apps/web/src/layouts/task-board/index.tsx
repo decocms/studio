@@ -176,9 +176,7 @@ import {
 import { AssigneePickerContent } from "./assignee-picker";
 import { TagPickerContent } from "./tag-picker";
 import { useRepositories } from "@/hooks/use-git-providers";
-import { SubscriptionPaywallDialog } from "./subscription-paywall-dialog";
 import { RerunDialog } from "./rerun-dialog";
-import { subscriptionErrorKind } from "@/components/task-board/is-subscription-error";
 import {
   CANONICAL_COLUMN_KEYS,
   DEFAULT_TASK_TYPE,
@@ -1039,23 +1037,11 @@ function TaskBoardBody() {
     }
     return false;
   };
-  // Set when delegating to the Super Agent (dialog submit or the lane/card
-  // assignee picker) is rejected with a `[SUBSCRIPTION_REQUIRED]` error — see
-  // `subscriptionErrorKind`'s 3 cases. Both delegation paths funnel through
-  // `actions.update`, so a single per-call `onError` here covers both.
-  const [subscriptionPaywall, setSubscriptionPaywall] =
-    useState<ReturnType<typeof subscriptionErrorKind>>(null);
-  // Anything that is not the paywall gets a toast: these tools refuse with a
-  // sentence written for the user (a re-run whose merge is still retrying, a
-  // card not assigned to the Super Agent), and dropping it made the button look
-  // broken — the click did nothing and the reason only reached the Network tab.
+  // These tools refuse with a sentence written for the user (a re-run whose
+  // merge is still retrying, a card not assigned to the Super Agent), and
+  // dropping it made the button look broken — the click did nothing and the
+  // reason only reached the Network tab.
   const onDelegateError = (err: Error) => {
-    const kind = subscriptionErrorKind(err);
-    if (kind) {
-      setSubscriptionPaywall(kind);
-      track("task_limit_banner_shown", { organization_id: org.id, kind });
-      return;
-    }
     toast.error(err.message || t("taskBoard.taskBoard.actionError"));
   };
   // Ref, not an effect: fires once per mount, `tracked` guards a re-invoked ref.
@@ -1942,11 +1928,6 @@ function TaskBoardBody() {
         mode="link"
         open={repoPickerOpen}
         onOpenChange={setRepoPickerOpen}
-      />
-
-      <SubscriptionPaywallDialog
-        kind={subscriptionPaywall}
-        onOpenChange={(open) => !open && setSubscriptionPaywall(null)}
       />
 
       <RerunDialog

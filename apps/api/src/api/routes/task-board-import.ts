@@ -1,4 +1,3 @@
-import { TaskQuotaError } from "@/billing/task-quota";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { StudioContext } from "@/core/studio-context";
@@ -67,17 +66,15 @@ import { bearerToken, isVaultServiceToken } from "./credential-vault";
  * and so is an item the semantic pass matches to a dismissed reports card.
  *
  * The reply carries counts and `items`. The counts are `created`, `updated`
- * and `delegated`, plus `dismissed`, `semantic_matches` and `quota_blocked`
- * when they are not zero. `items` has one `{ index, outcome, id, key_seq }`
- * entry per request item, in request order, and `id` and `key_seq` name the
- * card the item created, refreshed, matched or was blocked by. `outcome` is
- * the most specific label, so every `semantic_match` is also counted in
- * `updated` and every `quota_blocked` in `created`. A `semantic_match` reads
- * the same whether the import refreshed a reports card, left a human's card
- * alone, or folded the item into the card an earlier item of the same request
- * landed on. A `quota_blocked` card exists, but the task quota refused its Super
- * Agent delegation, so the import unassigned it. A replayed run_id wrote
- * nothing and replies without `items`.
+ * and `delegated`, plus `dismissed` and `semantic_matches` when they are not
+ * zero. `items` has one `{ index, outcome, id, key_seq }` entry per request
+ * item, in request order, and `id` and `key_seq` name the card the item
+ * created, refreshed or matched. `outcome` is the most specific label, so
+ * every `semantic_match` is also counted in `updated`. A `semantic_match`
+ * reads the same whether the import refreshed a reports card, left a human's
+ * card alone, or folded the item into the card an earlier item of the same
+ * request landed on. A replayed run_id wrote nothing and replies without
+ * `items`.
  *
  * An item may carry `tags` — org tag NAMES the sender owns (the reports sync
  * labels every card `Report` plus the finding's domain, e.g. `SEO`, `GEO`,
@@ -107,12 +104,7 @@ type Variables = {
   studioContext: StudioContext;
 };
 
-type ImportItemOutcome =
-  | "created"
-  | "updated"
-  | "semantic_match"
-  | "dismissed"
-  | "quota_blocked";
+type ImportItemOutcome = "created" | "updated" | "semantic_match" | "dismissed";
 
 /** One entry of the reply's `items`; see the module note. */
 interface ImportItemResult {
@@ -454,8 +446,7 @@ export const createTaskBoardImportRoutes = () => {
         return (await storage.getById(row.id, organizationId)) ?? row;
       };
       const touched: TaskBoardItem[] = [];
-      const delegations: { row: TaskBoardItem; result: ImportItemResult }[] =
-        [];
+      const delegations: TaskBoardItem[] = [];
       const results: ImportItemResult[] = [];
       for (const [index, item] of items.entries()) {
         const titleKey = normalizeTitleKey(item.title);
@@ -616,14 +607,13 @@ export const createTaskBoardImportRoutes = () => {
         if (key) openByKey.set(key, row.id);
         openByTitle.set(titleKey, row.id);
         touched.push(await withTags(row, item.tags));
-        const result: ImportItemResult = {
+        results.push({
           index,
           outcome: "created",
           id: row.id,
           key_seq: row.keySeq,
-        };
-        results.push(result);
-        if (toSuperAgent) delegations.push({ row, result });
+        });
+        if (toSuperAgent) delegations.push(row);
       }
       return { touched, delegations, results };
     });
@@ -635,34 +625,18 @@ export const createTaskBoardImportRoutes = () => {
     // broadcast cards or enqueue agent runs.
     for (const row of outcome.touched)
       emitTaskBoardUpdated(organizationId, row);
-    // A paywalled delegation must not leave the card looking delegated with
-    // no run behind it: un-assign it (the user sees the paywall when they
-    // delegate it themselves) and report it apart from the ones that ran.
-    let delegated = 0;
-    for (const { row, result } of outcome.delegations) {
-      try {
-        await reactToSuperAgentDelegation(ctx, row);
-        delegated++;
-      } catch (err) {
-        if (!(err instanceof TaskQuotaError)) throw err;
-        result.outcome = "quota_blocked";
-        await new TaskBoardStorage(ctx.db)
-          .update(row.id, organizationId, { assigneeId: null }, "system")
-          .then((updated) => emitTaskBoardUpdated(organizationId, updated))
-          .catch((undoErr: unknown) => {
-            console.error("[task-board-import] un-delegate failed", undoErr);
-          });
-      }
+    for (const row of outcome.delegations) {
+      await reactToSuperAgentDelegation(ctx, row);
     }
+    const delegated = outcome.delegations.length;
 
     const count = (...kinds: ImportItemOutcome[]) =>
       outcome.results.filter((r) => kinds.includes(r.outcome)).length;
     const counts = {
-      created: count("created", "quota_blocked"),
+      created: count("created"),
       updated: count("updated", "semantic_match"),
       dismissed: count("dismissed"),
       semanticMatches: count("semantic_match"),
-      quotaBlocked: count("quota_blocked"),
     };
 
     // Receiver's counterpart to the engine's diagnostic_tasks_pushed — join on run_id, never sum.
@@ -675,7 +649,6 @@ export const createTaskBoardImportRoutes = () => {
         skipped: counts.dismissed,
         semantic_matches: counts.semanticMatches,
         delegated,
-        quota_blocked: counts.quotaBlocked,
         ...(runId ? { run_id: runId } : {}),
         ...(parsed.data.source?.url
           ? { source_url: parsed.data.source.url }
@@ -693,7 +666,6 @@ export const createTaskBoardImportRoutes = () => {
       ...(counts.semanticMatches > 0 && {
         semantic_matches: counts.semanticMatches,
       }),
-      ...(counts.quotaBlocked > 0 && { quota_blocked: counts.quotaBlocked }),
       items: outcome.results,
     });
   });

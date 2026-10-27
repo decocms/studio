@@ -7,8 +7,7 @@ import type { TranslationKey } from "@/i18n/use-t.ts";
 /**
  * Fetch a Stripe-hosted URL (checkout or billing portal) and open it in a
  * new tab, like every other checkout in the app (`deco-credits-hero.tsx`).
- * Shared by the billing settings page, the task-board subscription paywall,
- * the inline subscription-limit chat highlight, and the plan picker.
+ * Shared by the billing settings page and the plan picker.
  *
  * The plan picker passes a `planId`, which is the whole reason an upgrade is a
  * checkout and not a click: `AI_PLAN_SET` takes no payment, so it can only
@@ -23,9 +22,8 @@ export function useOpenBillingUrl(
 ) {
   const studio = useStudioTools();
   const t = useT();
-  // `string | void` so the existing zero-argument callers (billing settings,
-  // task-board paywall, chat highlight) keep working unchanged while the plan
-  // picker passes the tier it is buying.
+  // `string | void` so the zero-argument caller (the billing portal button)
+  // keeps working while the plan picker passes the tier it is buying.
   return useMutation<string, Error, string | void>({
     mutationFn: async (planId) => {
       const { url } = await studio.call(

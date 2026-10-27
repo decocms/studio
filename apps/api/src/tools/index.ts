@@ -145,9 +145,9 @@ export const CORE_TOOLS = [
   OrganizationTools.ORGANIZATION_MEMBER_LIST,
   OrganizationTools.ORGANIZATION_MEMBER_UPDATE_ROLE,
   OrganizationTools.ORGANIZATION_BILLING_CHECKOUT_START,
+  OrganizationTools.ORGANIZATION_BILLING_GET,
   OrganizationTools.ORGANIZATION_BILLING_PLAN_PRICES,
   OrganizationTools.ORGANIZATION_BILLING_PORTAL,
-  OrganizationTools.ORGANIZATION_TASK_QUOTA_GET,
 
   // Legacy deco.cx infra billing
   InfraBillingTools.INFRA_BILLING_SITES_LIST,

@@ -23,10 +23,8 @@ import { isSuggestTaskPending } from "./is-suggest-task-pending";
 import { TodosHighlight } from "./todos";
 import { CollapsibleHighlight } from "./collapsible-highlight";
 import { CreditsExhaustedBanner } from "../credits-exhausted-banner";
-import { SubscriptionLimitHighlight } from "./subscription-limit";
 import { PlanRefusedHighlight } from "./plan-refused";
 import { useHighlightFlags } from "./use-highlight-count";
-import { useOpenBillingUrl } from "@/hooks/use-open-billing-url";
 import { useFeature } from "@/hooks/use-entitlements";
 import { parseErrorMessage } from "./parse-error-message";
 import type { SuggestTaskToolPart, UserAskToolPart } from "../types";
@@ -189,11 +187,6 @@ export function ChatHighlight({
   const { virtualMcpId, createTaskWithMessage } = useChatTask();
   const { chatMode, setChatMode, simpleModeTier } = useChatPrefs();
   const canBuyCredits = useFeature("credits");
-  const { mutate: subscribe } = useOpenBillingUrl(
-    "ORGANIZATION_BILLING_CHECKOUT_START",
-    "taskBoard.subscriptionPaywall.checkoutError",
-  );
-  const handleSubscribe = () => subscribe();
 
   // Build a fresh RequestOptions at call time so tier/mode reflect the
   // user's current selection. `toolApprovalLevel` is passed in explicitly:
@@ -360,13 +353,6 @@ export function ChatHighlight({
   return (
     <div className={cn(!inline && "absolute bottom-full left-0 right-0")}>
       <TodosHighlight todos={flags.todos} />
-      {flags.subscriptionErrorKind && (
-        <SubscriptionLimitHighlight
-          kind={flags.subscriptionErrorKind}
-          onDismiss={clearError}
-          onSubscribe={handleSubscribe}
-        />
-      )}
       {flags.planRefusal && (
         <PlanRefusedHighlight kind={flags.planRefusal} onDismiss={clearError} />
       )}

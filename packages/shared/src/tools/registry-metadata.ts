@@ -83,9 +83,9 @@ const ALL_TOOL_NAMES = [
   "ORGANIZATION_MEMBER_LIST",
   "ORGANIZATION_MEMBER_UPDATE_ROLE",
   "ORGANIZATION_BILLING_CHECKOUT_START",
+  "ORGANIZATION_BILLING_GET",
   "ORGANIZATION_BILLING_PORTAL",
   "ORGANIZATION_BILLING_PLAN_PRICES",
-  "ORGANIZATION_TASK_QUOTA_GET",
   // Legacy deco.cx infra billing
   "INFRA_BILLING_SITES_LIST",
   "INFRA_BILLING_GET",
@@ -551,6 +551,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     dangerous: true,
   },
   {
+    name: "ORGANIZATION_BILLING_GET",
+    description: "Get the org's Stripe billing state",
+    category: "Organizations",
+  },
+  {
     name: "ORGANIZATION_BILLING_PORTAL",
     description: "Open the Stripe billing portal",
     category: "Organizations",
@@ -558,11 +563,6 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "ORGANIZATION_BILLING_PLAN_PRICES",
     description: "Read each plan's monthly price from Stripe",
-    category: "Organizations",
-  },
-  {
-    name: "ORGANIZATION_TASK_QUOTA_GET",
-    description: "Get the org's auto-task quota usage",
     category: "Organizations",
   },
   // Legacy deco.cx infra billing
@@ -1995,8 +1995,8 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       // The org's plan subscription and billing — the same trust tier as
       // adding/removing a member.
       "ORGANIZATION_BILLING_CHECKOUT_START",
+      "ORGANIZATION_BILLING_GET",
       "ORGANIZATION_BILLING_PORTAL",
-      "ORGANIZATION_TASK_QUOTA_GET",
       // Legacy deco.cx infra usage, invoices and Stripe portal for owned sites.
       "INFRA_BILLING_SITES_LIST",
       "INFRA_BILLING_GET",

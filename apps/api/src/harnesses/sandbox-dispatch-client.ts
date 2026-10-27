@@ -125,7 +125,7 @@ const SANDBOX_HOSTED_HARNESS = "claude-code";
  * hanging up the daemon's port-forward, which is a routine blip, not a sick
  * pod. A lifetime budget failed runs that had streamed thirty tool calls
  * between two unrelated hangups minutes apart — which is exactly the run this
- * is meant to save, and it also burns the org's task quota. Any chunk from the
+ * is meant to save. Any chunk from the
  * replacement pod proves the continuation worked, so it resets the count.
  */
 const MAX_DISPATCH_ATTEMPTS = 2;
@@ -1462,8 +1462,7 @@ export async function* ndjsonLines(
         // is intact and the turn is continuable, exactly like the silence
         // timeout below. Without this the read rejection travels as a plain
         // Error, `dispatchWithContinuation` refuses to retry it, and a
-        // transient socket close permanently fails the run (and burns the
-        // org's task quota).
+        // transient socket close permanently fails the run.
         if (signal?.aborted) throw err;
         const message = err instanceof Error ? err.message : String(err);
         if (!isTransientStreamError(message)) throw err;
