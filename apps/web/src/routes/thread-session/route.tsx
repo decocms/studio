@@ -402,19 +402,19 @@ function ThreadSessionContent({
   layout,
   onNewTaskRef,
   createNewTask,
+  threadOpenIn,
+  setThreadOpenIn,
 }: {
   layout: ReturnType<typeof useChatLayoutState>;
   onNewTaskRef: React.MutableRefObject<(() => void) | null>;
   createNewTask: () => void;
+  threadOpenIn: string | null;
+  setThreadOpenIn: (contentKey: string | null) => void;
 }) {
   const { virtualMcpId, taskId } = useChatTask();
 
   const contentKey = useActivePanelTabId() ?? "overview";
-  /** Takeover apps default the chat panel closed, in local state so
-   *  `?sidepanel` cannot reopen it on arrival. Keyed on the view, so opening
-   *  the chat in one app does not carry into the next one launched. */
   const takeover = useAppTakeover();
-  const [threadOpenIn, setThreadOpenIn] = useState<string | null>(null);
   const takeoverThreadOpen = threadOpenIn === contentKey;
   const threadOpen = takeover ? takeoverThreadOpen : layout.threadOpen;
   const toggleThread = takeover
@@ -546,6 +546,12 @@ function ThreadSessionProvider() {
     : null;
 
   const layout = useChatLayoutState(entityMetadata);
+  /** Takeover apps default the chat panel closed, in local state so
+   *  `?sidepanel` cannot reopen it on arrival. Keyed on the view, so opening
+   *  the chat in one app does not carry into the next one launched. Held
+   *  above the thread-keyed runtime so the first send, which mints the
+   *  thread and remounts it, does not close the chat it was typed into. */
+  const [threadOpenIn, setThreadOpenIn] = useState<string | null>(null);
   const { threadId, providerKey } = resolveThreadSessionIdentity({
     routeThreadId,
     fallbackKey: generatedThreadId,
@@ -728,6 +734,8 @@ function ThreadSessionProvider() {
                   layout={layout}
                   onNewTaskRef={onNewTask}
                   createNewTask={createNewTask}
+                  threadOpenIn={threadOpenIn}
+                  setThreadOpenIn={setThreadOpenIn}
                 />
               </MainPanelBoundary>
             </ActiveTaskRuntimeProvider>

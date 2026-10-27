@@ -27,6 +27,23 @@ export interface ChatNavigation {
   ) => void;
 }
 
+/**
+ * The view a thread navigation keeps. A view that belongs to the thread being
+ * left does not follow it; a system view does, by navigating to its canonical
+ * route. With no thread being left (the first send from an open app), every
+ * view stays.
+ */
+export function resolveCarriedTab(
+  activeTabId: string | undefined,
+  leavingThreadId: string | null,
+): string | undefined {
+  if (!activeTabId) return undefined;
+  if (leavingThreadId === null || !isPerThreadTab(activeTabId)) {
+    return activeTabId;
+  }
+  return undefined;
+}
+
 export function useChatNavigation(): ChatNavigation {
   const navigate = useNavigate();
   const { org } = useProjectContext();
@@ -36,6 +53,7 @@ export function useChatNavigation(): ChatNavigation {
    * what used to make the workspace stream a thread that does not exist.
    */
   const taskId = useRouteThreadId();
+  const leavingThreadId = taskId;
 
   /**
    * The same route-aware answer the shell and breadcrumb use: `$agentId` wins,
@@ -51,10 +69,7 @@ export function useChatNavigation(): ChatNavigation {
     taskId: string,
     opts?: { virtualMcpId?: string; autosend?: boolean },
   ) => {
-    /** A view that belongs to the thread being left does not follow it; a
-     *  system view does, by navigating to its canonical route. */
-    const carried =
-      activeTabId && !isPerThreadTab(activeTabId) ? activeTabId : undefined;
+    const carried = resolveCarriedTab(activeTabId, leavingThreadId);
     /** Org destinations cannot encode an agent. A thread opened from one moves
      * to its agent overview; agent-owned views carry forward as themselves. */
     const targetAgentId = opts?.virtualMcpId ?? virtualMcpId;
@@ -95,9 +110,13 @@ export function useChatNavigation(): ChatNavigation {
     navigateToTabRouteTarget(navigate, target, {
       search: () => ({
         thread: taskId,
+        /** An autosend was typed into the chat, so the chat is showing: keep
+         *  it showing while the new thread has no messages to open it. */
         ...(typeof search.sidepanel === "boolean"
           ? { sidepanel: search.sidepanel }
-          : {}),
+          : opts?.autosend
+            ? { sidepanel: true }
+            : {}),
         ...(opts?.autosend ? { autosend: AUTOSEND_QUERY_VALUE } : {}),
       }),
       replace: false,
