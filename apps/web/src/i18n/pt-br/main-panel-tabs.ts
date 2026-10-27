@@ -451,7 +451,7 @@ export const mainPanelTabs = {
     "Carregando a página real…",
   "mainPanelTabs.analyticsTab.heatmap.timeoutTitle": "O site não respondeu",
   "mainPanelTabs.analyticsTab.heatmap.timeoutDescription":
-    "A página carregou sem o modo de visualização do analytics. Confira se o site roda o runtime atual do Deco Analytics e permite ser exibido no Studio.",
+    "A página ainda não iniciou o modo de visualização do analytics. Se o site só carrega o analytics depois de uma interação ou do aceite de cookies, passe o mouse sobre a página ou aceite os cookies. Se não, confira se ele roda o runtime atual do Deco Analytics e permite ser exibido no Studio.",
   "mainPanelTabs.analyticsTab.heatmap.noViewsTitle":
     "Nenhuma visita com mapa de calor aqui",
   "mainPanelTabs.analyticsTab.heatmap.noViewsDescription":

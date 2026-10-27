@@ -428,7 +428,7 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.heatmap.frameLoading": "Loading the live page…",
   "mainPanelTabs.analyticsTab.heatmap.timeoutTitle": "The site did not answer",
   "mainPanelTabs.analyticsTab.heatmap.timeoutDescription":
-    "The page loaded without the analytics view mode. Check that the site runs the current Deco Analytics runtime and lets Studio frame it.",
+    "The page has not started the analytics view mode yet. If the site loads analytics only after an interaction or cookie consent, move the mouse over the page or accept its cookies. Otherwise check that it runs the current Deco Analytics runtime and lets Studio frame it.",
   "mainPanelTabs.analyticsTab.heatmap.noViewsTitle": "No heatmap visits here",
   "mainPanelTabs.analyticsTab.heatmap.noViewsDescription":
     "No visit to this page on {device} in the period. Try another period or device.",

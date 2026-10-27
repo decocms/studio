@@ -418,11 +418,12 @@ function Viewer({
       frame = el;
       window.addEventListener("message", onMessage);
       const started = Date.now();
+      // Keeps asking past the timeout: a storefront may load its analytics
+      // tag only after the first interaction or a cookie consent, both of
+      // which the user can still give inside the frame.
       timer = window.setInterval(() => {
         if (Date.now() - started > HANDSHAKE_MS) {
-          window.clearInterval(timer);
           setStatus((s) => (s === "ready" ? s : "timeout"));
-          return;
         }
         post({ t: "init" });
       }, 400);
@@ -1286,8 +1287,10 @@ function TipRow({ label, value }: { label: string; value: string }) {
 }
 
 function Cover({ title, children }: { title?: string; children: ReactNode }) {
+  // Pointer events pass through to the frame, so the page can still be
+  // hovered or have its cookie banner accepted while this is shown.
   return (
-    <div className="absolute inset-0 z-[5] flex items-center justify-center p-6 text-center">
+    <div className="pointer-events-none absolute inset-0 z-[5] flex items-center justify-center p-6 text-center">
       <div className="max-w-sm rounded-xl border border-border bg-background px-4 py-3.5 text-sm text-muted-foreground shadow-lg">
         {title && (
           <strong className="mb-1 block text-foreground">{title}</strong>
