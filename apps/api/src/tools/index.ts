@@ -14,7 +14,6 @@ import { z } from "zod";
 import * as ApiKeyTools from "./apiKeys";
 import * as ReportsTools from "./reports";
 import * as ConnectionTools from "./connection";
-import * as DatabaseTools from "./database";
 import * as VirtualMCPTools from "./virtual";
 import * as MonitoringTools from "./monitoring";
 import * as OrganizationTools from "./organization";
@@ -27,11 +26,14 @@ import * as AutomationTools from "./automations";
 import * as UserTools from "./user";
 import * as ProjectSidebarTools from "./project-sidebar";
 import * as AiProvidersTools from "./ai-providers";
+import * as CodexSubscriptionTools from "./codex-subscription";
 import * as ClaudeSubscriptionTools from "./claude-subscription";
 import * as GithubCopilotTools from "./github-copilot";
 import * as SecretsTools from "./secrets";
 import * as FileConfigTools from "./file-configs";
 import * as InfraBillingTools from "./infra-billing";
+import * as CustomerLakeTools from "./customer-lake";
+import * as SubscriptionUsageTools from "./subscription-usage";
 import { ORG_FS_PUBLIC_SETS_SYNC } from "./org-fs/sync-public-sets";
 import * as OrgRepoSyncTools from "./org-repo-sync";
 import * as JiraTools from "./jira";
@@ -152,6 +154,7 @@ export const CORE_TOOLS = [
   InfraBillingTools.INFRA_BILLING_SITES_LIST,
   InfraBillingTools.INFRA_BILLING_GET,
   InfraBillingTools.INFRA_BILLING_PORTAL,
+  CustomerLakeTools.CUSTOMER_LAKE_QUERY,
 
   // Connection collection tools
   ConnectionTools.COLLECTION_CONNECTIONS_CREATE,
@@ -174,9 +177,6 @@ export const CORE_TOOLS = [
   VirtualMCPTools.COLLECTION_VIRTUAL_MCP_GET,
   VirtualMCPTools.COLLECTION_VIRTUAL_MCP_UPDATE,
   VirtualMCPTools.COLLECTION_VIRTUAL_MCP_DELETE,
-
-  // Database tools
-  DatabaseTools.DATABASES_RUN_SQL,
 
   // Monitoring tools
   MonitoringTools.MONITORING_HEATMAP,
@@ -264,6 +264,11 @@ export const CORE_TOOLS = [
   AiProvidersTools.AI_PLAN_LIST,
   AiProvidersTools.AI_PLAN_SET,
   AiProvidersTools.AI_PLAN_INVOICE_UPGRADE,
+  CodexSubscriptionTools.CODEX_SUBSCRIPTION_CONNECT,
+  CodexSubscriptionTools.CODEX_SUBSCRIPTION_STATUS,
+  SubscriptionUsageTools.SUBSCRIPTION_USAGE_GET,
+  CodexSubscriptionTools.CODEX_SUBSCRIPTION_DISCONNECT,
+  CodexSubscriptionTools.CODEX_SUBSCRIPTION_SYNC,
   // Claude subscription (per-user OAuth credential for the claude-code harness)
   ClaudeSubscriptionTools.CLAUDE_SUBSCRIPTION_CONNECT,
   ClaudeSubscriptionTools.CLAUDE_SUBSCRIPTION_STATUS,
@@ -341,6 +346,7 @@ export const CORE_TOOLS = [
   GitTools.REPOSITORY_LINK,
   GitTools.REPOSITORY_CREATE_FROM_TEMPLATE,
   GitTools.REPOSITORY_UPDATE,
+  GitTools.REPOSITORY_DEPLOYS_LIST,
   GitTools.REPOSITORY_DELETE,
   GitTools.REPOSITORY_SEARCH_BRANCHES,
 
@@ -351,8 +357,6 @@ export const CORE_TOOLS = [
   ChangeRequestTools.CHANGE_REQUEST_CHECK_LOG,
   ChangeRequestTools.CHANGE_REQUEST_OPEN,
   ChangeRequestTools.CHANGE_REQUEST_MERGE,
-
-  // Link tools
 
   // Search tools
   SearchTools.GLOBAL_SEARCH,

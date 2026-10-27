@@ -1,6 +1,9 @@
 import type { RawSection } from "./section-types";
 import type { PageVariant } from "./page-variants";
 import { translate } from "@/i18n/use-t";
+import { isSavedBlockResolveType } from "./block-type-utils";
+import type { LiveMeta } from "./resolve-schema";
+import { withVariantValue } from "./variant-shape";
 
 export type { PageVariant };
 
@@ -21,10 +24,11 @@ export function buildPageDataWithSections(
       ...((currentSections?.variants as Array<Record<string, unknown>>) ?? []),
     ];
     if (variants[variantIndex]) {
-      variants[variantIndex] = {
-        ...variants[variantIndex],
-        value: updatedSections,
-      };
+      variants[variantIndex] = withVariantValue(
+        currentSections?.__resolveType,
+        variants[variantIndex]!,
+        updatedSections,
+      );
     }
     fullPageData.sections = { ...currentSections, variants };
   } else {
@@ -61,6 +65,8 @@ export function suggestBlockId(label: string): string {
 export function validateBlockId(
   blockId: string,
   decofile: Record<string, unknown>,
+  /** A saved block can't share a name with a block type (the lookup rule). */
+  meta?: LiveMeta | null,
 ): string | null {
   const trimmed = blockId.trim();
   if (!trimmed) {
@@ -74,6 +80,9 @@ export function validateBlockId(
   }
   if (!/^[A-Za-z][A-Za-z0-9_ -]*$/.test(trimmed)) {
     return translate("sectionsEditor.pageSections.blockNameInvalidChars");
+  }
+  if (meta && !isSavedBlockResolveType(trimmed, meta)) {
+    return translate("sectionsEditor.pageSections.blockNameIsBlockType");
   }
   return null;
 }

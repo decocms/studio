@@ -327,10 +327,19 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
 
     let query = this.db
       .selectFrom("connections")
-      .innerJoin("member", (join) =>
-        join
-          .onRef("member.organizationId", "=", "connections.organization_id")
-          .on("member.userId", "=", userId),
+      // EXISTS, not a join: a user can hold two member rows in one org.
+      .where((eb) =>
+        eb.exists(
+          eb
+            .selectFrom("member")
+            .select("member.id")
+            .whereRef(
+              "member.organizationId",
+              "=",
+              "connections.organization_id",
+            )
+            .where("member.userId", "=", userId),
+        ),
       )
       .innerJoin(
         "organization",
@@ -370,7 +379,6 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
       id: row.id,
       title: row.title,
       icon: row.icon,
-      // `connections.metadata` is a TEXT column holding JSON, so the driver hands back a string: a consumer reading `metadata.liveAgentId` off the raw value always saw `undefined` and let dev-agent rows through.
       metadata: readRepositoryMetadata(
         this.parseJson<Record<string, unknown>>(row.metadata),
       ),
@@ -934,7 +942,9 @@ export function createRequestCachedVirtualMcps(
         prop === "create" ||
         prop === "update" ||
         prop === "delete" ||
-        prop === "removeConnectionReferences"
+        prop === "removeConnectionReferences" ||
+        prop === "patchMetadata" ||
+        prop === "clearAnalyticsSiteSlugReferences"
       ) {
         return (...args: unknown[]) => {
           cache.clear();

@@ -21,8 +21,10 @@ import { OrgRepoSyncStorage } from "../storage/org-repo-syncs";
 import { syncOrgRepoSafe } from "./org-repo-sync";
 
 /** Every 10 minutes, offset from the public-sets tick (:04) so one pod never
- *  runs both sweeps at once. */
-const ORG_REPO_SYNC_CRONTAB = "7-59/10 * * * *";
+ *  runs both sweeps at once. Listed, not `7-59/10`:
+ *  DBOS's parser keeps only the values divisible by the step, which ran
+ *  this at :10, :20… on top of the other 10-minute sweeps. */
+const ORG_REPO_SYNC_CRONTAB = "7,17,27,37,47,57 * * * *";
 
 export interface OrgRepoSyncRuntime {
   db: Kysely<Database>;

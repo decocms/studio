@@ -7,6 +7,7 @@ import {
   type LiveMeta,
   type SchemaProperty,
 } from "./resolve-schema";
+import { inferInlineUnionIndex } from "./fields/inline-union-value";
 
 function metaWithSchema(blockSchema: Record<string, unknown>): LiveMeta {
   return {
@@ -2716,5 +2717,121 @@ describe("resolveSchema – loaders in the nested non-null return bucket", () =>
       ["site/loaders/customProductList.ts", "Custom product list"],
     ]);
     expect(products?.plainSchema?.type).toBe("array");
+  });
+});
+
+describe("resolveSchema – loader-or-list prop whose loader returns an inline object", () => {
+  // deco's shape for `LoaderReturnType<Promotions | null> | Promotion[]`: the
+  // prop's union pairs a `$ref` alias to the loader's `Promotions | null` union
+  // (inline object + loader + saved block) with a plain `Promotion[]`.
+  const meta = metaWithSchema({
+    type: "object",
+    properties: {
+      promotions: {
+        $ref: "#/definitions/PromotionsOrList",
+        title: "Promotions",
+      },
+    },
+  });
+  (meta.schema as { definitions?: Record<string, unknown> }).definitions = {
+    PromotionsOrList: {
+      anyOf: [
+        { $ref: "#/definitions/PromotionsFromLoader" },
+        { $ref: "#/definitions/PromotionList" },
+      ],
+      title: "PromotionsFromLoader|[Promotion]",
+    },
+    PromotionsFromLoader: {
+      $ref: "#/definitions/PromotionsOrNull",
+      title: "Choose from a loader",
+    },
+    PromotionsOrNull: {
+      anyOf: [
+        { $ref: "#/definitions/Promotions" },
+        { type: "null" },
+        {
+          title: "site/loaders/promotions.ts",
+          type: "object",
+          allOf: [{ $ref: "#/definitions/Promotions" }],
+          required: ["__resolveType"],
+          properties: {
+            __resolveType: {
+              type: "string",
+              enum: ["site/loaders/promotions.ts"],
+              default: "site/loaders/promotions.ts",
+            },
+          },
+        },
+        {
+          title: "#site/loaders/promotions.ts@Saved Promotions",
+          type: "object",
+          required: ["__resolveType"],
+          properties: {
+            __resolveType: {
+              type: "string",
+              enum: ["Saved Promotions"],
+              default: "Saved Promotions",
+            },
+          },
+        },
+      ],
+    },
+    Promotions: {
+      type: "object",
+      properties: {
+        promotion: { $ref: "#/definitions/PromotionList", title: "Promotion" },
+      },
+      title: "Promotions",
+    },
+    PromotionList: {
+      type: "array",
+      items: { $ref: "#/definitions/Promotion" },
+      title: "[Promotion]",
+    },
+    Promotion: {
+      type: "object",
+      properties: { label: { type: "string", title: "Label" } },
+    },
+  };
+
+  const promotions = () =>
+    resolveSchema("site/sections/Test.tsx", meta)?.properties?.promotions;
+
+  test("is a choice between the inline object and the list, not a bare list", () => {
+    const field = promotions();
+    expect(field?.type).toBe("inline-union");
+    expect(field?.title).toBe("Promotions");
+    expect(field?.inlineUnionBranches?.map((b) => b.title)).toEqual([
+      "Promotions",
+      "[Promotion]",
+    ]);
+    const [object, list] = field?.inlineUnionBranches ?? [];
+    expect(object?.schema?.properties?.promotion?.type).toBe("array");
+    expect(
+      object?.schema?.properties?.promotion?.items?.properties?.label?.title,
+    ).toBe("Label");
+    expect(list?.schema?.type).toBe("array");
+  });
+
+  test("keeps the loader and the saved block reachable through loaderRef", () => {
+    const loaderRef = promotions()?.loaderRef;
+    expect(loaderRef?.type).toBe("block-ref");
+    expect(loaderRef?.title).toBe("Promotions");
+    expect(loaderRef?.anyOfRefs?.map((r) => r.resolveType)).toEqual([
+      "site/loaders/promotions.ts",
+      "Saved Promotions",
+    ]);
+  });
+
+  test("each stored shape picks its own branch", () => {
+    const branches = (promotions()?.inlineUnionBranches ?? []).map((b) => ({
+      discriminators: b.discriminators,
+      propertyKeys: Object.keys(b.schema?.properties ?? {}),
+      isArray: b.schema?.type === "array",
+    }));
+    expect(
+      inferInlineUnionIndex({ promotion: [{ label: "Off" }] }, branches),
+    ).toBe(0);
+    expect(inferInlineUnionIndex([{ label: "Off" }], branches)).toBe(1);
   });
 });

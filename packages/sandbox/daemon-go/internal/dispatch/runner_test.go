@@ -48,6 +48,14 @@ func TestFakeHarnessEntrypoint(t *testing.T) {
 }
 
 func runFakeHarness(mode string) {
+	if mode == fakeRunnerLive {
+		runLiveFakeHarness()
+		return
+	}
+	if mode == fakeRunnerLivePersistent {
+		runLivePersistentFakeHarness()
+		return
+	}
 	if mode == fakeRunnerSlow {
 		time.Sleep(60 * time.Second)
 		return
@@ -110,7 +118,7 @@ func runFakeTimed(
 			frames = append(frames, append([]byte(nil), frame...))
 			at = append(at, time.Now())
 			return true
-		})
+		}, nil)
 	return frames, at, err
 }
 
@@ -200,7 +208,7 @@ func TestRunHarnessStopsWhenTheClientIsGone(t *testing.T) {
 		json.RawMessage(`{"threadId":"t-1"}`), nil, func([]byte) bool {
 			seen++
 			return false
-		})
+		}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,7 +243,7 @@ func TestRunHarnessRejectsAMissingBinary(t *testing.T) {
 	_, err := RunHarness(context.Background(),
 		[]string{"/nonexistent/harness-runner-" + strconv.Itoa(os.Getpid())}, "claude-code",
 		json.RawMessage(`{"threadId":"t-1"}`), nil,
-		func([]byte) bool { return true })
+		func([]byte) bool { return true }, nil)
 	if err == nil {
 		t.Fatal("spawning a missing harness binary reported success")
 	}

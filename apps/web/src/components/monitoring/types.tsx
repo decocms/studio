@@ -111,7 +111,16 @@ export interface MonitoringLogsResponse
  * Designed as URL-safe serializable state; values are validated on deserialization.
  */
 export interface MonitoringSearchParams {
-  tab?: "overview" | "audit" | "dashboards" | "threads" | "automations";
+  tab?:
+    | "overview"
+    | "audit"
+    | "dashboards"
+    | "threads"
+    | "automations"
+    | "stores";
+  /** Stores tab: the selected store's connection id and the instant to review. */
+  store?: string;
+  at?: string;
   from?: string;
   to?: string;
   connectionId?: string[];
@@ -544,7 +553,7 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
             {t("monitoring.types.requestId")}
           </div>
           <div className="flex items-center gap-1">
-            <code className="font-mono text-foreground text-[11px]">
+            <code className="font-mono text-foreground text-2xs">
               {log.requestId}
             </code>
             <Button
@@ -583,7 +592,7 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
                   <PopoverTrigger asChild>
                     <Badge
                       variant="secondary"
-                      className="font-mono text-xs px-2 py-0.5 cursor-pointer hover:bg-secondary/80 transition-colors"
+                      className="font-mono cursor-pointer hover:bg-secondary-hover"
                     >
                       {key}={value}
                     </Badge>
@@ -591,9 +600,8 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
                   <PopoverContent className="w-auto p-1" align="end">
                     <div className="flex flex-col gap-0.5">
                       <Button
-                        variant="ghost"
-                        size="sm"
-                        className="justify-start h-8 px-2 text-xs font-normal focus-visible:ring-0 focus-visible:ring-offset-0"
+                        variant="menu"
+                        className="text-xs"
                         onClick={() => {
                           const filter: PropertyFilter = {
                             key,
@@ -618,9 +626,8 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
                         {t("monitoring.types.filterByProperty")}
                       </Button>
                       <Button
-                        variant="ghost"
-                        size="sm"
-                        className="justify-start h-8 px-2 text-xs font-normal focus-visible:ring-0 focus-visible:ring-offset-0"
+                        variant="menu"
+                        className="text-xs"
                         onClick={async () => {
                           try {
                             await navigator.clipboard.writeText(
@@ -636,9 +643,8 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
                         {t("monitoring.types.copyFilter")}
                       </Button>
                       <Button
-                        variant="ghost"
-                        size="sm"
-                        className="justify-start h-8 px-2 text-xs font-normal focus-visible:ring-0 focus-visible:ring-offset-0"
+                        variant="menu"
+                        className="text-xs"
                         onClick={async () => {
                           try {
                             await navigator.clipboard.writeText(key);
@@ -652,9 +658,8 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
                         {t("monitoring.types.copyKey")}
                       </Button>
                       <Button
-                        variant="ghost"
-                        size="sm"
-                        className="justify-start h-8 px-2 text-xs font-normal focus-visible:ring-0 focus-visible:ring-offset-0"
+                        variant="menu"
+                        className="text-xs"
                         onClick={async () => {
                           try {
                             await navigator.clipboard.writeText(value);
@@ -713,7 +718,7 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
                         variant="ghost"
                         onClick={handleReplay}
                         aria-label={t("monitoring.types.replayToolCall")}
-                        className="text-muted-foreground hover:text-foreground h-8 w-8"
+                        className="text-muted-foreground hover:text-foreground"
                       >
                         <Play size={14} />
                       </Button>
@@ -731,7 +736,7 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
                         variant="ghost"
                         onClick={() => handleDownload("input")}
                         aria-label={t("monitoring.types.downloadFullInput")}
-                        className="text-muted-foreground hover:text-foreground h-8 w-8"
+                        className="text-muted-foreground hover:text-foreground"
                       >
                         <Download01 size={14} />
                       </Button>
@@ -746,7 +751,7 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
                   variant="ghost"
                   onClick={() => handleCopy("input")}
                   aria-label={t("monitoring.types.copyInput")}
-                  className="text-muted-foreground hover:text-foreground h-8 w-8"
+                  className="text-muted-foreground hover:text-foreground"
                 >
                   {copiedInput ? <Check size={14} /> : <Copy01 size={14} />}
                 </Button>
@@ -785,7 +790,7 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
                         variant="ghost"
                         onClick={() => handleDownload("output")}
                         aria-label={t("monitoring.types.downloadFullOutput")}
-                        className="text-muted-foreground hover:text-foreground h-8 w-8"
+                        className="text-muted-foreground hover:text-foreground"
                       >
                         <Download01 size={14} />
                       </Button>
@@ -800,7 +805,7 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
                   variant="ghost"
                   onClick={() => handleCopy("output")}
                   aria-label={t("monitoring.types.copyOutput")}
-                  className="text-muted-foreground hover:text-foreground h-8 w-8"
+                  className="text-muted-foreground hover:text-foreground"
                 >
                   {copiedOutput ? <Check size={14} /> : <Copy01 size={14} />}
                 </Button>

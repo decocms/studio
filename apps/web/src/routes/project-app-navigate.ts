@@ -1,4 +1,5 @@
 import type { ContentBlock } from "@modelcontextprotocol/sdk/types.js";
+import { z } from "zod";
 import { OVERLAY_TABS } from "@/layouts/main-panel-tabs/tab-id";
 import { parseTaskRouteSegment } from "@/layouts/task-board/task-route";
 
@@ -72,4 +73,37 @@ export function resolveAppNavigateTarget(content: ContentBlock[]):
         : null,
     task: tab === "board" && task ? parseTaskRouteSegment(task) : null,
   };
+}
+
+const MAX_APP_ARGS_LENGTH = 2000;
+const appArgsSchema = z.record(z.string(), z.unknown());
+
+export function resolveAppArgs(content: ContentBlock[]): string | null {
+  const [block] = content;
+  if (
+    content.length !== 1 ||
+    block?.type !== "resource_link" ||
+    !block.uri.startsWith(NAVIGATE_SCHEME)
+  ) {
+    return null;
+  }
+  let args: string | null = null;
+  try {
+    args = new URL(block.uri).searchParams.get("args");
+  } catch {
+    return null;
+  }
+  return args && parseAppArgs(args) ? args : null;
+}
+
+export function parseAppArgs(
+  raw: string | undefined,
+): Record<string, unknown> | undefined {
+  if (!raw || raw.length > MAX_APP_ARGS_LENGTH) return undefined;
+  try {
+    const parsed = appArgsSchema.safeParse(JSON.parse(raw));
+    return parsed.success ? parsed.data : undefined;
+  } catch {
+    return undefined;
+  }
 }

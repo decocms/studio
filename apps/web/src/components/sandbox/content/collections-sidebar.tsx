@@ -27,19 +27,24 @@ import { useT } from "@/i18n/use-t.ts";
 import type { CollectionCounts, CollectionId } from "./content-browser";
 
 const ADVANCED_IDS = ["sections", "apps", "loaders", "actions"] as const;
+const NONE_HIDDEN: readonly CollectionId[] = [];
 
 export function CollectionsSidebar({
   active,
   counts,
+  hidden = NONE_HIDDEN,
   showBlog,
   onSelect,
 }: {
   active: CollectionId;
   counts: CollectionCounts;
+  /** Collections this site has no use for, left out of the list. */
+  hidden?: readonly CollectionId[];
   showBlog: boolean;
   onSelect: (id: CollectionId) => void;
 }) {
   const t = useT();
+  const shown = (id: CollectionId) => !hidden.includes(id);
   return (
     <div className="w-[208px] shrink-0 border-r flex flex-col">
       <div className="px-3 h-12 flex items-center border-b shrink-0">
@@ -64,13 +69,15 @@ export function CollectionsSidebar({
           active={active === "redirects"}
           onSelect={onSelect}
         />
-        <CollectionRow
-          id="site"
-          icon={Settings01}
-          label={t("sandbox.collectionsSidebar.site")}
-          active={active === "site"}
-          onSelect={onSelect}
-        />
+        {shown("site") && (
+          <CollectionRow
+            id="site"
+            icon={Settings01}
+            label={t("sandbox.collectionsSidebar.site")}
+            active={active === "site"}
+            onSelect={onSelect}
+          />
+        )}
         <CollectionRow
           id="seo"
           icon={CreditCardSearch}
@@ -78,14 +85,39 @@ export function CollectionsSidebar({
           active={active === "seo"}
           onSelect={onSelect}
         />
-        <CollectionRow
-          id="calendar"
-          icon={Calendar}
-          label={t("sandbox.collectionsSidebar.calendar")}
-          active={active === "calendar"}
+        {shown("settings") && (
+          <CollectionRow
+            id="settings"
+            icon={Settings01}
+            label={t("sandbox.collectionsSidebar.settings")}
+            active={active === "settings"}
+            onSelect={onSelect}
+          />
+        )}
+        {shown("calendar") && (
+          <CollectionRow
+            id="calendar"
+            icon={Calendar}
+            label={t("sandbox.collectionsSidebar.calendar")}
+            active={active === "calendar"}
+            onSelect={onSelect}
+          />
+        )}
+        {shown("campaigns") && (
+          <CollectionRow
+            id="campaigns"
+            icon={Calendar}
+            label={t("sandbox.collectionsSidebar.campaigns")}
+            active={active === "campaigns"}
+            onSelect={onSelect}
+          />
+        )}
+        <AdvancedGroup
+          active={active}
+          counts={counts}
+          shown={shown}
           onSelect={onSelect}
         />
-        <AdvancedGroup active={active} counts={counts} onSelect={onSelect} />
         {showBlog && (
           <>
             <div className="mt-3 flex items-center gap-1.5 px-2.5 pb-1 pt-1 text-xs font-medium text-muted-foreground/70">
@@ -133,10 +165,12 @@ export function CollectionsSidebar({
 function AdvancedGroup({
   active,
   counts,
+  shown,
   onSelect,
 }: {
   active: CollectionId;
   counts: CollectionCounts;
+  shown: (id: CollectionId) => boolean;
   onSelect: (id: CollectionId) => void;
 }) {
   const t = useT();
@@ -149,7 +183,7 @@ function AdvancedGroup({
       <CollapsibleTrigger
         className={cn(
           "flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm transition-colors cursor-pointer",
-          "text-muted-foreground hover:bg-muted hover:text-foreground",
+          "text-muted-foreground hover:bg-accent hover:text-foreground",
         )}
       >
         <Sliders02 size={16} className="shrink-0" />
@@ -174,15 +208,17 @@ function AdvancedGroup({
           onSelect={onSelect}
           indent
         />
-        <CollectionRow
-          id="apps"
-          icon={Grid01}
-          label={t("sandbox.collectionsSidebar.apps")}
-          count={counts.apps}
-          active={active === "apps"}
-          onSelect={onSelect}
-          indent
-        />
+        {shown("apps") && (
+          <CollectionRow
+            id="apps"
+            icon={Grid01}
+            label={t("sandbox.collectionsSidebar.apps")}
+            count={counts.apps}
+            active={active === "apps"}
+            onSelect={onSelect}
+            indent
+          />
+        )}
         <CollectionRow
           id="loaders"
           icon={Database01}
@@ -192,15 +228,17 @@ function AdvancedGroup({
           onSelect={onSelect}
           indent
         />
-        <CollectionRow
-          id="actions"
-          icon={Zap}
-          label={t("sandbox.collectionsSidebar.actions")}
-          count={counts.actions}
-          active={active === "actions"}
-          onSelect={onSelect}
-          indent
-        />
+        {shown("actions") && (
+          <CollectionRow
+            id="actions"
+            icon={Zap}
+            label={t("sandbox.collectionsSidebar.actions")}
+            count={counts.actions}
+            active={active === "actions"}
+            onSelect={onSelect}
+            indent
+          />
+        )}
       </CollapsibleContent>
     </Collapsible>
   );
@@ -232,7 +270,7 @@ function CollectionRow({
         indent && "pl-6",
         active
           ? "bg-accent text-accent-foreground"
-          : "text-muted-foreground hover:bg-muted hover:text-foreground",
+          : "text-muted-foreground hover:bg-accent hover:text-foreground",
       )}
     >
       <Icon size={16} className="shrink-0" />

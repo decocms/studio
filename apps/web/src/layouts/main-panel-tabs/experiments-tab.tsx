@@ -1,9 +1,20 @@
-import { type CSSProperties, useRef, useState } from "react";
+import { type CSSProperties, type ReactNode, useRef, useState } from "react";
 import { Link, useSearch } from "@tanstack/react-router";
 import { useOrgFlag } from "@/hooks/use-organization-settings";
 import { LegacyExperimentsTab } from "./experiments-tab-legacy";
 import { pickExperimentsTab } from "./experiments-tab-choice";
-import { Cell, Pie, PieChart } from "recharts";
+import {
+  ExperimentsTabSkeleton,
+  ExperimentsBlockTab,
+} from "./experiments-block-tab";
+import { useLastFoundV8, useMainSchemaV8 } from "@/hooks/use-main-schema-v8";
+
+import {
+  armColors,
+  CONTROL_COLOR,
+  PRIMARY_COLOR,
+  SplitDonut,
+} from "@/components/experiments/split-donut";
 import {
   ArrowUpRight,
   ChevronDown,
@@ -223,26 +234,6 @@ const BLANK_ARMS: ArmDraft[] = [
   { id: "variant-b", role: "treatment", description: "", weight: 50 },
 ];
 
-/** Control is a quiet neutral; each treatment gets its own hue. */
-const PRIMARY_COLOR = "var(--color-primary)";
-const TREATMENT_COLORS = [
-  PRIMARY_COLOR,
-  "var(--color-chart-1)",
-  "var(--color-chart-3)",
-  "var(--color-chart-4)",
-];
-const CONTROL_COLOR =
-  "color-mix(in oklch, var(--color-muted-foreground) 45%, transparent)";
-
-function armColors(arms: { role?: string | null }[]): string[] {
-  let treatment = 0;
-  return arms.map((a) =>
-    a.role === "control"
-      ? CONTROL_COLOR
-      : (TREATMENT_COLORS[treatment++ % TREATMENT_COLORS.length] as string),
-  );
-}
-
 function armLabel(
   t: ReturnType<typeof useT>,
   arm: { id: string; role?: string | null },
@@ -364,7 +355,7 @@ function PercentField({
       type="button"
       onClick={() => setDraft(String(value))}
       aria-label={t("experiments.split.editPercent", { label })}
-      className="group/percent flex items-center gap-1.5 rounded-md text-xl font-medium tabular-nums focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+      className="group/percent flex items-center gap-1.5 rounded-md text-xl font-medium tabular-nums focus-ring"
     >
       <Pencil01
         size={14}
@@ -379,40 +370,6 @@ function evenSplit(n: number): number[] {
   const base = Math.floor(100 / n);
   return Array.from({ length: n }, (_, i) =>
     i === 0 ? 100 - base * (n - 1) : base,
-  );
-}
-
-function SplitDonut({
-  arms,
-  size,
-  thickness,
-}: {
-  arms: { id: string; role?: string | null; weight: number }[];
-  size: number;
-  thickness: number;
-}) {
-  const colors = armColors(arms);
-  const outer = size / 2;
-  return (
-    <PieChart width={size} height={size}>
-      <Pie
-        data={arms.map((a) => ({ id: a.id, value: a.weight }))}
-        dataKey="value"
-        nameKey="id"
-        innerRadius={outer - thickness}
-        outerRadius={outer}
-        startAngle={90}
-        endAngle={450}
-        paddingAngle={arms.filter((a) => a.weight > 0).length > 1 ? 2 : 0}
-        cornerRadius={thickness / 4}
-        stroke="none"
-        isAnimationActive={false}
-      >
-        {arms.map((a, i) => (
-          <Cell key={a.id} fill={colors[i]} />
-        ))}
-      </Pie>
-    </PieChart>
   );
 }
 
@@ -648,7 +605,7 @@ function PromptDialog({
         </DialogHeader>
 
         <div className="flex flex-col gap-4 px-6 pt-5 pb-6">
-          <div className="rounded-xl bg-[var(--studio-input-background)] card-shadow transition-shadow focus-within:ring-2 focus-within:ring-ring/20">
+          <div className="rounded-xl bg-[var(--studio-input-background)] shadow-edge focus-within-ring">
             <textarea
               ref={inputRef}
               value={prompt}
@@ -933,7 +890,7 @@ function CompareCard({
       <div
         ref={frameRef}
         className={cn(
-          "relative h-[min(720px,75vh)] overflow-hidden rounded-lg bg-background card-shadow transition-[width] duration-300 ease-out",
+          "relative h-[min(720px,75vh)] overflow-hidden rounded-lg bg-background shadow-edge transition-[width] duration-300 ease-out",
           device === "mobile" ? "mx-auto w-[390px] max-w-full" : "w-full",
         )}
         onPointerMove={dragging ? (e) => moveTo(e.clientX) : undefined}
@@ -977,7 +934,7 @@ function CompareCard({
                 </>
               );
               const chipClass = cn(
-                "absolute bottom-3 z-20 flex items-center gap-1.5 rounded-full bg-card px-2.5 py-1 text-xs font-medium card-shadow transition-opacity",
+                "absolute bottom-3 z-20 flex items-center gap-1.5 rounded-full bg-card px-2.5 py-1 text-xs font-medium shadow-edge transition-opacity",
                 i === 0 ? "left-3" : "right-3",
                 (i === 0 ? position < 15 : position > 85) &&
                   "pointer-events-none opacity-0",
@@ -1027,7 +984,7 @@ function CompareCard({
                 setDragging(true);
               }}
             >
-              <div className="h-full w-0.5 bg-card card-shadow" />
+              <div className="h-full w-0.5 bg-card shadow-edge" />
               <button
                 type="button"
                 role="slider"
@@ -1042,7 +999,7 @@ function CompareCard({
                     setPosition((p) => Math.min(100, p + 5));
                 }}
                 className={cn(
-                  "absolute top-1/2 left-1/2 flex size-9 -translate-x-1/2 -translate-y-1/2 cursor-ew-resize items-center justify-center rounded-full bg-card text-foreground card-shadow transition-transform hover:scale-110 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+                  "absolute top-1/2 left-1/2 flex size-9 -translate-x-1/2 -translate-y-1/2 cursor-ew-resize items-center justify-center rounded-full bg-card text-foreground shadow-edge transition-transform hover:scale-110 focus-ring",
                   dragging && "scale-110",
                 )}
               >
@@ -1249,11 +1206,7 @@ function ExperimentDetail({
       >
         {dirty ? (
           <>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => setArms(saved)}
-            >
+            <Button variant="outline" size="sm" onClick={() => setArms(saved)}>
               {t("experiments.split.reset")}
             </Button>
             <Button
@@ -1280,7 +1233,7 @@ function ExperimentDetail({
         <DropdownMenu modal={false}>
           <DropdownMenuTrigger asChild>
             <Button
-              variant="secondary"
+              variant="outline"
               size="icon-sm"
               aria-label={t("experiments.action.more")}
             >
@@ -1478,7 +1431,7 @@ function ReviewPanel({
       <Page.Actions
         secondary={
           <Button
-            variant="secondary"
+            variant="outline"
             size="sm"
             onClick={updatePreview}
             disabled={previewing || !key.trim()}
@@ -1589,21 +1542,27 @@ function ReviewPanel({
     </Page>
   );
 }
-function ExperimentRow({
+/**
+ * One experiment in the list. Across the org the Monitor draws the same row,
+ * naming the project instead of offering the project's own actions.
+ */
+export function ExperimentRow({
   experiment,
   onOpen,
   actions,
+  project,
 }: {
   experiment: Experiment;
   onOpen: () => void;
-  actions: ExperimentActions;
+  actions?: ExperimentActions;
+  project?: ReactNode;
 }) {
   const t = useT();
   const lifecycle = useLifecycleLabel();
   const statusActions = useStatusActions()(experiment.status);
   const treatments = experiment.variants.filter((v) => v.role !== "control");
   return (
-    <div className="group relative flex items-center gap-4 px-5 py-4 transition-colors hover:bg-muted/50">
+    <div className="group relative flex items-center gap-4 px-5 py-4 transition-colors hover:bg-accent">
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         {/* Stretched over the row so the whole row opens the experiment. */}
         <button
@@ -1630,36 +1589,46 @@ function ExperimentRow({
       <div className="flex w-24 flex-shrink-0">
         <StatusBadge status={experiment.status} />
       </div>
-      <div className="relative z-10 flex-shrink-0">
-        <DropdownMenu modal={false}>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label={t("experiments.action.more")}
-              className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
-            >
-              <DotsHorizontal size={16} />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
-            {statusActions.map((a) => (
-              <DropdownMenuItem
-                key={a.to}
-                onSelect={() => actions.onStatusChange(a.to)}
+      {project && (
+        <div className="hidden w-44 flex-shrink-0 text-xs text-muted-foreground lg:flex">
+          {project}
+        </div>
+      )}
+      {actions && (
+        <div className="relative z-10 flex-shrink-0">
+          <DropdownMenu modal={false}>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label={t("experiments.action.more")}
+                className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
               >
-                <a.icon />
-                {a.label}
+                <DotsHorizontal size={16} />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              {statusActions.map((a) => (
+                <DropdownMenuItem
+                  key={a.to}
+                  onSelect={() => actions.onStatusChange(a.to)}
+                >
+                  <a.icon />
+                  {a.label}
+                </DropdownMenuItem>
+              ))}
+              {statusActions.length > 0 && <DropdownMenuSeparator />}
+              <DropdownMenuItem
+                variant="destructive"
+                onSelect={actions.onDelete}
+              >
+                <Trash01 />
+                {t("experiments.action.delete")}
               </DropdownMenuItem>
-            ))}
-            {statusActions.length > 0 && <DropdownMenuSeparator />}
-            <DropdownMenuItem variant="destructive" onSelect={actions.onDelete}>
-              <Trash01 />
-              {t("experiments.action.delete")}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      )}
     </div>
   );
 }
@@ -1811,7 +1780,7 @@ function ExperimentsTabV2({ virtualMcpId }: { virtualMcpId: string }) {
                   <IconButton
                     label={t("experiments.filter.label")}
                     tooltipSide="bottom"
-                    variant="secondary"
+                    variant="outline"
                     aria-pressed={statusFilter.length > 0}
                   >
                     <FilterLines />
@@ -1873,7 +1842,10 @@ function ExperimentsTabV2({ virtualMcpId }: { virtualMcpId: string }) {
               {t("experiments.filter.empty")}
             </p>
           ) : (
-            <Card className="gap-0 divide-y divide-border overflow-hidden">
+            <Card
+              size="flush"
+              className="gap-0 divide-y divide-border overflow-hidden"
+            >
               {visible.map((e) => (
                 <ExperimentRow
                   key={e.key}
@@ -1902,16 +1874,24 @@ function ExperimentsTabV2({ virtualMcpId }: { virtualMcpId: string }) {
 }
 
 /**
- * Picks which Experiments tab an org gets. `experiments_enabled` already
- * decided the tab is reachable; this only chooses between the rebuilt
- * experience and the one main shipped. See {@link pickExperimentsTab}.
+ * Picks which Experiments tab a site gets. The route already decided the tab
+ * is reachable; this chooses between the v8 tab (the site's `experiments`
+ * block, in the draft), the rebuilt experience and the one main shipped. See
+ * {@link pickExperimentsTab}.
  */
 export function ExperimentsTab({ virtualMcpId }: { virtualMcpId: string }) {
   const { ui } = useSearch({ strict: false }) as { ui?: string };
   const flagEnabled = useOrgFlag("experiments_v2_enabled");
-  return pickExperimentsTab(flagEnabled, ui) === "v2" ? (
-    <ExperimentsTabV2 virtualMcpId={virtualMcpId} />
-  ) : (
-    <LegacyExperimentsTab virtualMcpId={virtualMcpId} />
-  );
+  const siteMajor = useMainSchemaV8(virtualMcpId);
+  const lastFoundV8 = useLastFoundV8(virtualMcpId);
+  switch (pickExperimentsTab({ flagEnabled, siteMajor, ui, lastFoundV8 })) {
+    case "v8":
+      return <ExperimentsBlockTab virtualMcpId={virtualMcpId} />;
+    case "loading":
+      return <ExperimentsTabSkeleton />;
+    case "v2":
+      return <ExperimentsTabV2 virtualMcpId={virtualMcpId} />;
+    case "legacy":
+      return <LegacyExperimentsTab virtualMcpId={virtualMcpId} />;
+  }
 }

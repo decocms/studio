@@ -4,6 +4,7 @@ import {
   markQueueDirty,
   isQueueDirty,
   messageQueueStore,
+  refreshMessageQueue,
   stashPendingBody,
   takePendingBody,
 } from "./message-queue-store";
@@ -56,5 +57,42 @@ describe("messageQueueStore eviction", () => {
     // Re-touched mid-session, so it outlives the never-touched-again thread.
     expect(isQueueDirty(stillActive)).toBe(true);
     expect(isQueueDirty(goesIdle)).toBe(false);
+  });
+});
+
+describe("refreshMessageQueue ordering", () => {
+  test("a slow response from a superseded call never overwrites a faster, newer one", async () => {
+    const threadId = "race-thread";
+    let resolveFirst!: (res: Response) => void;
+    const firstResponse = new Promise<Response>((r) => {
+      resolveFirst = r;
+    });
+    const responses = [
+      firstResponse,
+      Promise.resolve(
+        new Response(JSON.stringify({ items: [item("fresh")] }), {
+          status: 200,
+        }),
+      ),
+    ];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (() => responses.shift()) as unknown as typeof fetch;
+
+    try {
+      const first = refreshMessageQueue("org", threadId);
+      const second = refreshMessageQueue("org", threadId);
+      await second;
+      // The first call's fetch only resolves after the second has landed.
+      resolveFirst(
+        new Response(JSON.stringify({ items: [item("stale")] }), {
+          status: 200,
+        }),
+      );
+      await first;
+
+      expect(messageQueueStore(threadId).get()).toEqual([item("fresh")]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });

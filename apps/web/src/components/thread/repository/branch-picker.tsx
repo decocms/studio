@@ -1,4 +1,8 @@
 import { type Ref, useRef, useState } from "react";
+import {
+  errorDetail,
+  errorDetailsDescription,
+} from "@/components/sections-editor/site-editor-toast.tsx";
 import type { RepoToolTarget } from "@/lib/repository-binding.ts";
 import { LAYOUT_TOUR_ANCHORS } from "@/components/layout-tour/anchors";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -51,14 +55,17 @@ import {
   Trash01,
 } from "@untitledui/icons";
 import { generateBranchName } from "@decocms/shared/branch-name";
-import { productionUrlFromDomain } from "@decocms/shared/deco-site-production-url";
 import { RELEASES_MAX, type Release } from "@decocms/shared/sdk/types";
 import type { SandboxMap } from "@/sdk";
 import { useMembersQuery } from "@/hooks/use-members";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
+import { useDecoServeConnection } from "@/hooks/use-deco-serve-connection";
 import { useT } from "@/i18n/use-t.ts";
 import { toast } from "sonner";
+import { pickerCurrent } from "./branch-picker-current.ts";
 import { decodeHtmlEntities } from "./decode-html-entities.ts";
+import { LocalUrlForm } from "./local-url-form.tsx";
+import { V8LocalhostRow } from "./localhost-row.tsx";
 import { matchesBranchSearch, useBranches } from "./use-branches";
 import { useOpenPrs } from "./use-pr-data.ts";
 import {
@@ -70,6 +77,9 @@ import {
 
 interface Props {
   virtualMcpId: string;
+  /** A Blocks v8 site (the server's `blocksMajor` marker). v7 keeps main's
+   *  Local tunnel exactly; only v8 connects a `deco serve`. */
+  isV8?: boolean;
   /** Human-readable creator label used to seed the generated branch name. */
   userLabel: string | null | undefined;
   /** The current branch (a release's branch, or the base). */
@@ -77,6 +87,9 @@ interface Props {
   /** The project's production branch. Not listed (read-only); used only for the
    *  current-version label and as the fallback when the active draft is deleted. */
   baseBranch?: string | null;
+  /** The base branch holds an editor draft (a hosted Blocks v8 CMS session):
+   *  shown as that draft, not as "Production". v7 never sets it. */
+  baseIsDraft?: boolean;
   /** Repo scope for the "Advanced" flow (adopt an existing branch/PR as a draft). */
   orgId: string;
   orgSlug: string;
@@ -111,9 +124,11 @@ interface Props {
  *  It still surfaces as the trigger label when you happen to be on production. */
 export function BranchPicker({
   virtualMcpId,
+  isV8 = false,
   userLabel,
   value,
   baseBranch,
+  baseIsDraft = false,
   orgId,
   orgSlug,
   userId,
@@ -143,16 +158,24 @@ export function BranchPicker({
   const { releases, createRelease, renameRelease, deleteRelease } =
     useReleases(virtualMcpId);
   /**
-   * "Local" mode: a tunnel URL that overrides preview + CMS meta for this
-   * project (per-browser). Orthogonal to the branch `value` — picking any
-   * branch/draft clears it (see `pick`/`create`/`adoptBranch`).
+   * "Local" mode, per-browser and orthogonal to the branch `value` — picking
+   * any branch/draft clears it (see `pick`/`create`/`adoptBranch`). v7: a
+   * tunnel URL that overrides preview + CMS meta (Advanced → Local, as on
+   * main). Blocks v8: Localhost, a `deco serve` on this computer.
    */
   const {
-    url: localUrl,
-    setUrl: setLocalUrl,
-    clear: clearLocal,
+    url: tunnelUrl,
+    setUrl: setTunnelUrl,
+    clear: clearTunnel,
   } = useLocalPreviewUrl(virtualMcpId);
+  const serve = useDecoServeConnection(virtualMcpId);
+  const localhostActive = isV8 && !!serve.connection;
+  const localUrl = isV8 ? (serve.connection?.endpoint ?? null) : tunnelUrl;
   const localActive = !!localUrl;
+  const clearLocal = () => {
+    clearTunnel();
+    if (isV8) serve.clear();
+  };
   // Non-suspense + deferred to `open`: the trigger renders before members load.
   const { data: membersData } = useMembersQuery({ enabled: open });
   const creatorName = (id: string | undefined): string | undefined =>
@@ -169,24 +192,31 @@ export function BranchPicker({
     max: RELEASES_MAX,
   });
 
-  const isBase = !!value && value === baseBranch;
-  const current = releases.find((r) => r.branch === value);
-  // Current branch that is neither base nor a stored release: show as a draft.
-  const unlisted = !isBase && !current && !!value;
+  const { isBase, current, unlisted } = pickerCurrent({
+    value,
+    baseBranch,
+    releases,
+    baseIsDraft,
+  });
 
   const currentLabel = isBase
     ? t("thread.branchPicker.live")
     : (current?.name ?? t("thread.branchPicker.defaultVersionName"));
-  const label = localActive
-    ? t("thread.branchPicker.localLabel")
-    : value
-      ? currentLabel
-      : t("thread.branchPicker.selectVersion");
-  const currentDot = localActive
-    ? "bg-special"
-    : isBase
-      ? "bg-success"
-      : releaseDotClass(current?.color ?? "orange");
+  const label = localhostActive
+    ? t("thread.branchPicker.localhost.label")
+    : localActive
+      ? t("thread.branchPicker.localLabel")
+      : value
+        ? currentLabel
+        : t("thread.branchPicker.selectVersion");
+  // Localhost (v8) is always a black dot, whatever its connection state.
+  const currentDot = localhostActive
+    ? "bg-foreground"
+    : localActive
+      ? "bg-special"
+      : isBase
+        ? "bg-success"
+        : releaseDotClass(current?.color ?? "orange");
 
   const pick = (branch: string) => {
     // Picking a branch/draft turns Local mode off.
@@ -197,14 +227,14 @@ export function BranchPicker({
 
   // A failed release write reverts the row silently otherwise — surface it.
   const reportReleaseError = (err: unknown) => {
-    toast.error(
-      err instanceof Error ? err.message : t("thread.branchPicker.saveError"),
-    );
+    toast.error(t("thread.branchPicker.saveError"), {
+      description: errorDetailsDescription(t, errorDetail(err)),
+    });
   };
 
-  // Save + activate a Local tunnel URL, or turn it off when cleared.
+  // Save + activate a Local tunnel URL (v7), or turn it off when cleared.
   const activateLocal = (url: string | null) => {
-    setLocalUrl(url);
+    setTunnelUrl(url);
     setAdvanced(false);
     setOpen(false);
   };
@@ -402,7 +432,8 @@ export function BranchPicker({
             enabled={open}
             tab={advancedTab}
             onTabChange={setAdvancedTab}
-            localUrl={localUrl}
+            isV8={isV8}
+            localUrl={tunnelUrl}
             onSaveLocal={activateLocal}
             onBack={() => setAdvanced(false)}
             onAdopt={adoptBranch}
@@ -410,8 +441,14 @@ export function BranchPicker({
         ) : (
           <>
             {/* Scroll the list, not the popover: the rows below must stay reachable. */}
-            <div className="always-scrollbar flex max-h-[min(50vh,20rem)] flex-col overflow-y-auto">
-              {localActive && localUrl && (
+            <div
+              className={cn(
+                "always-scrollbar flex max-h-[min(50vh,20rem)] flex-col overflow-y-auto",
+                // v8: a small gap between drafts and Localhost (v7 unchanged).
+                isV8 && "gap-1",
+              )}
+            >
+              {!isV8 && localActive && localUrl && (
                 <LocalRow
                   rowRef={selectedRowRef}
                   url={localUrl}
@@ -476,8 +513,17 @@ export function BranchPicker({
                   />
                 ),
               )}
+              {isV8 && (
+                <V8LocalhostRow
+                  virtualMcpId={virtualMcpId}
+                  branch={value}
+                  serve={serve}
+                  rowRef={localhostActive ? selectedRowRef : undefined}
+                  onPicked={() => setOpen(false)}
+                />
+              )}
             </div>
-            {(unlisted || releases.length > 0) && (
+            {(unlisted || releases.length > 0 || isV8) && (
               <div className="my-1 border-t" />
             )}
             <button
@@ -497,7 +543,10 @@ export function BranchPicker({
             <button
               type="button"
               onClick={() => openAdvanced("branches")}
-              className="flex w-full items-center justify-between gap-2 rounded-lg px-2 py-2 text-left text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+              className={cn(
+                "flex w-full items-center justify-between gap-2 rounded-lg px-2 py-2 text-left text-xs text-muted-foreground hover:bg-accent hover:text-foreground",
+                isV8 && "mt-1",
+              )}
             >
               {t("thread.branchPicker.advanced")}
               <ChevronRight className="h-4 w-4 shrink-0" />
@@ -533,10 +582,7 @@ export function BranchPicker({
             <AlertDialogCancel>
               {t("thread.branchPicker.cancel")}
             </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={confirmDelete}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
+            <AlertDialogAction onClick={confirmDelete} variant="destructive">
               {t("thread.branchPicker.delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -576,7 +622,7 @@ function RenameInput({
             onCancel();
           }
         }}
-        className="h-8 flex-1 rounded-md border bg-transparent px-2 text-sm outline-none focus:ring-1 focus:ring-ring"
+        className="h-8 flex-1 rounded-md border bg-transparent px-2 text-sm focus-ring"
       />
       <Button size="sm" onClick={onSave}>
         {t("thread.branchPicker.save")}
@@ -615,7 +661,7 @@ function ReleaseRow({
       ref={rowRef}
       className={cn(
         "group flex items-center rounded-lg",
-        selected ? "bg-accent" : "hover:bg-accent/60",
+        selected ? "bg-accent" : "hover:bg-accent",
       )}
     >
       <Tooltip>
@@ -754,11 +800,15 @@ function AdvancedPicker({
   enabled,
   tab,
   onTabChange,
+  isV8,
   localUrl,
   onSaveLocal,
   onBack,
   onAdopt,
 }: {
+  /** A Blocks v8 site (the server's marker): no Local tab, Localhost is in
+   *  the drafts list instead. v7 gets main's Local tab. */
+  isV8: boolean;
   orgId: string;
   orgSlug: string;
   userId: string;
@@ -769,7 +819,7 @@ function AdvancedPicker({
   enabled: boolean;
   tab: "branches" | "prs" | "local";
   onTabChange: (tab: "branches" | "prs" | "local") => void;
-  /** Currently-registered Local URL, prefilled into the form. */
+  /** Currently-registered Local tunnel URL, prefilled into the form. */
   localUrl: string | null;
   /** Save + activate a Local URL, or turn it off with `null`. */
   onSaveLocal: (url: string | null) => void;
@@ -846,12 +896,14 @@ function AdvancedPicker({
           <TabsTrigger value="prs" className="h-6 px-2.5 text-xs">
             {t("thread.branchPicker.prsTab")}
           </TabsTrigger>
-          <TabsTrigger value="local" className="h-6 px-2.5 text-xs">
-            {t("thread.branchPicker.localTab")}
-          </TabsTrigger>
+          {!isV8 && (
+            <TabsTrigger value="local" className="h-6 px-2.5 text-xs">
+              {t("thread.branchPicker.localTab")}
+            </TabsTrigger>
+          )}
         </TabsList>
       </Tabs>
-      {tab === "local" ? (
+      {tab === "local" && !isV8 ? (
         <LocalUrlForm url={localUrl} onSave={onSaveLocal} />
       ) : (
         <Command
@@ -965,58 +1017,6 @@ function AdvancedPicker({
           </CommandList>
         </Command>
       )}
-    </div>
-  );
-}
-
-/** "Local" tab: paste a tunnel URL to point preview + CMS at your own dev
- *  server, or turn the override off. Save is disabled until the URL changes. */
-function LocalUrlForm({
-  url,
-  onSave,
-}: {
-  url: string | null;
-  onSave: (url: string | null) => void;
-}) {
-  const t = useT();
-  const [value, setValue] = useState(url ?? "");
-  const trimmed = value.trim();
-  const submit = () =>
-    onSave(trimmed ? productionUrlFromDomain(trimmed) : null);
-  return (
-    <div className="flex flex-col gap-2 p-2">
-      <p className="text-xs text-muted-foreground">
-        {t("thread.branchPicker.localHint")}
-      </p>
-      <input
-        type="url"
-        inputMode="url"
-        aria-label={t("thread.branchPicker.localUrlLabel")}
-        placeholder={t("thread.branchPicker.localUrlPlaceholder")}
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && trimmed) submit();
-        }}
-        className="h-8 w-full rounded-md border bg-transparent px-2 text-sm outline-none focus:ring-1 focus:ring-ring"
-      />
-      <div className="flex items-center justify-between gap-2">
-        {url ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-xs text-destructive hover:text-destructive"
-            onClick={() => onSave(null)}
-          >
-            {t("thread.branchPicker.localTurnOff")}
-          </Button>
-        ) : (
-          <span />
-        )}
-        <Button size="sm" disabled={!trimmed} onClick={submit}>
-          {t("thread.branchPicker.save")}
-        </Button>
-      </div>
     </div>
   );
 }

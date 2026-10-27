@@ -28,6 +28,8 @@ import {
   availableProjectSidebarViews,
   defaultMainViewAfterSidebarToggle,
   effectiveProjectSidebarViews,
+  offeredProjectSidebarViews,
+  seenProjectSidebarViewsAfterSave,
   projectSidebarViewPresence,
   resolveProjectSidebarViews,
   selectedProjectSidebarViews,
@@ -162,12 +164,17 @@ export function useProjectViews({
   const layoutMeta = form.watch("metadata.ui.layout") ?? null;
   const currentDefaultMain = layoutMeta?.defaultMainView ?? null;
   const chatDefaultOpen = layoutMeta?.chatDefaultOpen ?? false;
+  // A Blocks (v8) site: Experiments and Calendar are offered once on top of
+  // a list saved before they were defaults, until the next save.
+  const blocksSite = nativeViews.presence.calendar;
+  const formSidebarViewsSeen = form.watch("metadata.sidebarViewsSeen");
   const formSidebarViews = effectiveProjectSidebarViews(
     resolveProjectSidebarViews({
       sidebarViews: form.watch("metadata.sidebarViews"),
       ui: { layout: layoutMeta },
     }),
     form.watch("metadata.sidebarViewsVersion"),
+    offeredProjectSidebarViews(formSidebarViewsSeen, blocksSite),
   );
   /**
    * A Settings panel can remount while its previous instance is still saving.
@@ -180,6 +187,10 @@ export function useProjectViews({
       ? effectiveProjectSidebarViews(
           resolveProjectSidebarViews(virtualMcp.metadata),
           virtualMcp.metadata.sidebarViewsVersion,
+          offeredProjectSidebarViews(
+            virtualMcp.metadata.sidebarViewsSeen,
+            blocksSite,
+          ),
         )
       : formSidebarViews);
   /** No main view: the chat is the whole workspace, so its switch is forced on
@@ -375,6 +386,19 @@ export function useProjectViews({
       shouldDirty: true,
     });
     form.setValue("metadata.sidebarViewsVersion", 1, { shouldDirty: true });
+    // A Blocks (v8) site: the list this change was made on showed the
+    // offered views, so from now on the saved list alone decides and hiding
+    // one sticks. Any other site saves exactly what it did before.
+    if (blocksSite) {
+      form.setValue(
+        "metadata.sidebarViewsSeen",
+        seenProjectSidebarViewsAfterSave(
+          virtualMcp?.metadata.sidebarViewsSeen ?? formSidebarViewsSeen,
+          blocksSite,
+        ),
+        { shouldDirty: true },
+      );
+    }
     optimisticSidebarViews.stage(nextSidebarViews, sidebarViews);
     const nextDefaultMain = defaultMainViewAfterSidebarToggle(
       currentDefaultMain,
@@ -414,6 +438,7 @@ export function useProjectViews({
     board: t("sidebar.navDestinations.tasks"),
     "site-editor": t("virtualMcp.layoutTabContent.siteEditor"),
     assets: t("common.mainPanelTabs.assets"),
+    releases: t("common.mainPanelTabs.releases"),
     hosting: t("common.mainPanelTabs.hosting"),
     e2e: t("common.mainPanelTabs.e2e"),
     analytics: t("common.mainPanelTabs.analytics"),
@@ -421,6 +446,7 @@ export function useProjectViews({
     automations: t("virtualMcp.layoutTabContent.automations"),
     context: t("virtualMcp.layoutTabContent.context"),
     experiments: t("experiments.title"),
+    calendar: t("common.mainPanelTabs.calendar"),
   };
 
   /**
@@ -464,6 +490,8 @@ export function useProjectViews({
   return {
     /** Every view this project can open, in sidebar order. */
     projectViews: availableSidebarViews,
+    /** A Blocks (v8) site (its Calendar is present). */
+    blocksSite,
     labels: sidebarViewLabels,
     pinned: (viewId: ProjectSidebarViewId) => sidebarViews.includes(viewId),
     isMainView: (value: string) => defaultMainView === value,

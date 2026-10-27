@@ -77,7 +77,7 @@ export interface AutomationWithTriggerInfo extends AutomationWithTriggerCount {
 }
 
 export interface BoardTrigger {
-  type: "board_column_transition" | "board_pr_ready";
+  type: "board_column_transition" | "board_pr_ready" | "board_pr_merged";
   column_key: string;
 }
 
@@ -131,6 +131,10 @@ export interface AutomationsStorage {
     organizationId: string,
     systemKey: string,
   ): Promise<{ automationId: string; triggerId: string } | null>;
+  builtinActive(
+    organizationId: string,
+    systemKey: string,
+  ): Promise<boolean | null>;
   findAllCronTriggers(): Promise<
     (AutomationTrigger & { automation: Automation })[]
   >;
@@ -397,7 +401,7 @@ class KyselyAutomationsStorage implements AutomationsStorage {
       .select(
         sql<BoardTrigger[]>`coalesce(
           jsonb_agg(jsonb_build_object('type', t.type, 'column_key', t.column_key))
-            filter (where t.type in ('board_column_transition', 'board_pr_ready')),
+            filter (where t.type in ('board_column_transition', 'board_pr_ready', 'board_pr_merged')),
           '[]'::jsonb)`.as("board_triggers"),
       )
       .where("a.organization_id", "=", organizationId);
@@ -746,6 +750,21 @@ class KyselyAutomationsStorage implements AutomationsStorage {
       ...triggerFromDbRow(row),
       automation: automationFromAliasedRow(row),
     }));
+  }
+
+  /** Whether a built-in is on in one org; null when the org was not seeded
+   *  with it. */
+  async builtinActive(
+    organizationId: string,
+    systemKey: string,
+  ): Promise<boolean | null> {
+    const row = await this.db
+      .selectFrom("automations")
+      .select("active")
+      .where("organization_id", "=", organizationId)
+      .where("system_key", "=", systemKey)
+      .executeTakeFirst();
+    return row?.active ?? null;
   }
 
   /**

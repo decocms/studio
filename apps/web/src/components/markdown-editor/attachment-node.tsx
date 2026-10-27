@@ -11,6 +11,7 @@ import {
   ATTACHMENT_CHIP_CLASS,
   AttachmentChipContent,
 } from "./attachment-chip";
+import { isEditorFileUrl } from "./uploads";
 
 /** The chip inside the editor; inline, because in markdown it IS a link. */
 function AttachmentNodeView({
@@ -40,7 +41,7 @@ function AttachmentNodeView({
             aria-label={t("markdownEditor.removeFile")}
             onMouseDown={(e) => e.preventDefault()}
             onClick={deleteNode}
-            className="shrink-0 rounded-lg p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            className="shrink-0 rounded-lg p-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
           >
             <X size={14} />
           </button>
@@ -89,9 +90,15 @@ export const MarkdownAttachment = Node.create({
     };
   },
 
-  // Round-trips a chip copied inside the editor (the clipboard carries HTML).
+  // Round-trips a chip copied inside the editor; reject a pasted href that isn't our own upload URL.
   parseHTML() {
-    return [{ tag: "a[data-attachment]" }];
+    return [
+      {
+        tag: "a[data-attachment]",
+        getAttrs: (element) =>
+          isEditorFileUrl(element.getAttribute("href") ?? "") ? null : false,
+      },
+    ];
   },
 
   renderHTML({ HTMLAttributes, node }) {

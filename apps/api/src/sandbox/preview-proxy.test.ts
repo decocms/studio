@@ -178,6 +178,26 @@ describe("tryHandlePreviewHttp", () => {
     expect(received!.handle).toBe("myproj-deadbeef");
   });
 
+  it("routes an app host to its sandbox and names the app to the daemon", async () => {
+    let received: { handle: string; req: Request } | null = null;
+    const fakeRunner = {
+      proxyPreviewRequest: async (handle: string, req: Request) => {
+        received = { handle, req };
+        return new Response("ok", { status: 200 });
+      },
+    };
+    const host = "myproj-deadbeef--apps-checkout.preview.example.com";
+    const req = new Request(`https://${host}/cart`, { headers: { host } });
+    await tryHandlePreviewHttp(req, {
+      baseDomain,
+      // biome-ignore lint/suspicious/noExplicitAny: structural duck-type
+      getRunner: async () => fakeRunner as any,
+    });
+    expect(received!.handle).toBe("myproj-deadbeef");
+    expect(received!.req.headers.get("x-sandbox-app")).toBe("apps-checkout");
+    expect(new URL(received!.req.url).pathname).toBe("/cart");
+  });
+
   it("swaps not-ready marker + document GET for a 503 connecting page", async () => {
     const fakeRunner = {
       proxyPreviewRequest: async () =>

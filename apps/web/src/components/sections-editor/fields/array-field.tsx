@@ -19,8 +19,12 @@ import {
 } from "@dnd-kit/sortable";
 import { List, Plus, Rows01 } from "@untitledui/icons";
 import { toast } from "sonner";
-import { ViewModeToggle } from "@decocms/ui/components/view-mode-toggle.tsx";
+import {
+  ToggleGroup,
+  ToggleGroupItem,
+} from "@decocms/ui/components/toggle-group.tsx";
 import { useLocalStorage } from "@/hooks/use-local-storage";
+import { useBlocksSiteEditor } from "../blocks-site-editor";
 import { useNewBlocksEditor } from "@/hooks/use-new-blocks-editor";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import { useT } from "@/i18n/use-t.ts";
@@ -50,6 +54,7 @@ import {
   type ArrayEntry,
   createArrayEntries,
   insertEntryAfter,
+  isNonArrayStoredValue,
   remapEntryIndices,
   removeEntryAt,
   resizeArrayEntries,
@@ -156,6 +161,7 @@ export function ArrayField({
   onRequestAddSection,
   sandbox,
 }: FieldProps) {
+  const v8 = useBlocksSiteEditor();
   const t = useT();
   const compact = useNewBlocksEditor();
   const tooltipsEnabled = useFieldDescriptionTooltips(sandbox?.virtualMcpId);
@@ -176,7 +182,7 @@ export function ArrayField({
   };
   const usesSectionPicker = isSectionArrayField(schema, arrayFieldKey);
   const hasThumbnails = items.some((item) =>
-    Boolean(getArrayItemImageSrc(arrayItemDisplayValue(item), itemSchema)),
+    Boolean(getArrayItemImageSrc(arrayItemDisplayValue(item, v8), itemSchema)),
   );
   // Only plain object arrays (banners, links, …) get the hide toggle. Section
   // pickers have their own hide flow, and primitive arrays can't be wrapped.
@@ -261,7 +267,7 @@ export function ArrayField({
   // The item's base (un-suffixed) label — the crumb carries the index for
   // addressing, so the label is display-only and must stay clean.
   const itemLabel = (item: unknown, index: number) =>
-    getArrayItemLabel(arrayItemDisplayValue(item), index, itemSchema);
+    getArrayItemLabel(arrayItemDisplayValue(item, v8), index, itemSchema);
 
   const openItem = (index: number) => {
     if (suppressClickRef.current) return;
@@ -386,9 +392,9 @@ export function ArrayField({
   const toggleItemHidden = (index: number) => {
     const item = items[index];
     const next = [...items];
-    next[index] = isArrayItemHidden(item)
-      ? showArrayItem(item)
-      : hideArrayItem(item);
+    next[index] = isArrayItemHidden(item, v8)
+      ? showArrayItem(item, v8)
+      : hideArrayItem(item, meta);
     onChange(next);
   };
 
@@ -400,7 +406,9 @@ export function ArrayField({
   const updateItem = (index: number, val: unknown) => {
     const next = [...items];
     // Preserve the hidden wrapper when editing a hidden item's inner value.
-    next[index] = isArrayItemHidden(items[index]) ? hideArrayItem(val) : val;
+    next[index] = isArrayItemHidden(items[index], v8)
+      ? hideArrayItem(val, meta)
+      : val;
     onChange(next);
 
     // When editing the currently selected item, its display label may change
@@ -475,7 +483,7 @@ export function ArrayField({
       : null;
   const activeImage =
     activeEntry != null && activeItem !== undefined
-      ? getArrayItemImageSrc(arrayItemDisplayValue(activeItem), itemSchema)
+      ? getArrayItemImageSrc(arrayItemDisplayValue(activeItem, v8), itemSchema)
       : undefined;
 
   /**
@@ -488,7 +496,7 @@ export function ArrayField({
     innerPath: Crumb[],
     itemPrefix: () => Crumb[],
   ) => {
-    const item = arrayItemDisplayValue(items[index]);
+    const item = arrayItemDisplayValue(items[index], v8);
     const editorSchema = itemEditorSchema(
       item,
       itemSchema,
@@ -550,7 +558,7 @@ export function ArrayField({
   };
 
   if (selectedIndex !== null && selectedIndex < items.length) {
-    const item = arrayItemDisplayValue(items[selectedIndex]);
+    const item = arrayItemDisplayValue(items[selectedIndex], v8);
     /**
      * Trail prefix through the open item's own crumb — the base that nested
      * fields prepend their breadcrumb changes onto.
@@ -594,6 +602,17 @@ export function ArrayField({
     );
   }
 
+  if (isNonArrayStoredValue(value)) {
+    return (
+      <div className="space-y-2">
+        <span className="min-w-0 truncate text-sm font-medium">{label}</span>
+        <p className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+          {t("sectionsEditor.arrayField.nonArrayValue")}
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-2">
       <div className="flex min-w-0 items-center gap-1.5">
@@ -614,23 +633,30 @@ export function ArrayField({
           </span>
         )}
         {canEditInline && items.length > 0 && (
-          <ViewModeToggle<ArrayFieldLayout>
+          <ToggleGroup
+            type="single"
+            variant="segmented"
+            size="sm"
             className="ml-auto shrink-0"
             value={layoutPreference}
-            onValueChange={setLayoutPreference}
-            options={[
-              {
-                value: "drill",
-                icon: <List />,
-                tooltip: t("sectionsEditor.arrayField.layoutDrill"),
-              },
-              {
-                value: "inline",
-                icon: <Rows01 />,
-                tooltip: t("sectionsEditor.arrayField.layoutInline"),
-              },
-            ]}
-          />
+            onValueChange={(next) => {
+              if (next === "drill" || next === "inline")
+                setLayoutPreference(next);
+            }}
+          >
+            <ToggleGroupItem
+              value="drill"
+              tooltip={t("sectionsEditor.arrayField.layoutDrill")}
+            >
+              <List />
+            </ToggleGroupItem>
+            <ToggleGroupItem
+              value="inline"
+              tooltip={t("sectionsEditor.arrayField.layoutInline")}
+            >
+              <Rows01 />
+            </ToggleGroupItem>
+          </ToggleGroup>
         )}
       </div>
 
@@ -653,7 +679,7 @@ export function ArrayField({
               items={entryIds}
               strategy={verticalListSortingStrategy}
             >
-              <div className="min-w-0 overflow-hidden rounded-[var(--studio-surface-radius,var(--radius-xl))] border card-shadow border-border/50 p-1.5">
+              <div className="min-w-0 overflow-hidden rounded-[var(--studio-surface-radius,var(--radius-xl))] border shadow-edge border-border/50 p-1.5">
                 {items.length > 0 &&
                   (() => {
                     // Compute base labels once for the whole list rather than per
@@ -670,7 +696,7 @@ export function ArrayField({
                       if (item === undefined) return null;
                       const labelText =
                         itemLabels[entry.index] ?? itemLabel(item, entry.index);
-                      const displayValue = arrayItemDisplayValue(item);
+                      const displayValue = arrayItemDisplayValue(item, v8);
                       const imageSrc = getArrayItemImageSrc(
                         displayValue,
                         itemSchema,
@@ -692,7 +718,7 @@ export function ArrayField({
                           labelText={labelText}
                           imageSrc={imageSrc}
                           missingRequired={missingRequired}
-                          hidden={isArrayItemHidden(item)}
+                          hidden={isArrayItemHidden(item, v8)}
                           onToggleHidden={
                             canHideItems
                               ? () => toggleItemHidden(entry.index)
@@ -747,7 +773,7 @@ export function ArrayField({
             {createPortal(
               <DragOverlay dropAnimation={SORTABLE_DROP_ANIMATION}>
                 {activeLabel ? (
-                  <div className="flex min-w-0 items-center gap-2.5 rounded-lg border border-border/60 bg-background px-2 py-2.5 shadow-lg ring-1 ring-border/60">
+                  <div className="flex min-w-0 items-center gap-2.5 rounded-lg bg-background px-2 py-2.5 shadow-lift">
                     <ArrayRowContent
                       labelText={activeLabel}
                       imageSrc={activeImage}
@@ -765,7 +791,7 @@ export function ArrayField({
         <button
           type="button"
           onClick={handleAddClick}
-          className="flex w-full items-center justify-center gap-1.5 rounded-[var(--studio-surface-radius,var(--radius-xl))] border border-dashed border-border/60 py-2.5 text-sm text-muted-foreground transition-colors hover:border-border hover:bg-muted/30 disabled:pointer-events-none disabled:opacity-50"
+          className="flex w-full items-center justify-center gap-1.5 rounded-[var(--studio-surface-radius,var(--radius-xl))] border border-dashed border-border/60 py-2.5 text-sm text-muted-foreground transition-colors hover:border-border hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
         >
           <Plus size={14} />
           {usesSectionPicker

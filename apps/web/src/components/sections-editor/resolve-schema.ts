@@ -10,13 +10,25 @@ import {
   toBase64,
 } from "@decocms/shared/blog";
 import {
+  isEmbeddedUnionResolveType,
   isManifestAppResolveType,
   parseSavedBlockSchemaTitle,
 } from "./block-type-utils";
+import { isV8Schema } from "@decocms/shared/blocks-major";
 import {
   PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE,
   labelFromResolveType,
 } from "./section-types";
+
+/** The built-in blocks a prop can read as a whole (`experiments`, `campaigns`). */
+const WHOLE_BLOCK_TYPES = new Set(["split-traffic", "calendar"]);
+
+/** The `__resolveType` a block definition declares, or "". */
+function refBranchResolveType(def: Record<string, unknown>): string {
+  const props = def.properties as Record<string, unknown> | undefined;
+  const e = (props?.__resolveType as { enum?: unknown[] } | undefined)?.enum;
+  return Array.isArray(e) && typeof e[0] === "string" ? e[0] : "";
+}
 
 /**
  * Schema resolution for /live/_meta JSON Schemas.
@@ -85,9 +97,15 @@ export interface SchemaProperty {
    */
   plainSchema?: SchemaProperty;
   /**
-   * For "array" fields collapsed from a union that also accepts loaders or
-   * saved blocks: the block-ref picker for those branches. Rendered instead of
-   * the array editor when the stored value is a `{ __resolveType }` reference.
+   * A `lazy` block (`Lazy<T>` in next-major Blocks): `properties.value` holds
+   * the form of `T`, and the stored value is `{ __resolveType: "lazy", value }`.
+   */
+  lazy?: boolean;
+  /**
+   * For "array" and "inline-union" fields built from a union that also accepts
+   * loaders or saved blocks: the block-ref picker for those branches. Rendered
+   * instead of the field when the stored value is a `{ __resolveType }`
+   * reference.
    */
   loaderRef?: SchemaProperty;
   /**
@@ -596,30 +614,71 @@ function buildSchema(
         const arrayBranch = nonNull
           .map((branch) => unwrapRefAliases(branch))
           .find(isArraySchemaBranch);
+        // `LoaderReturnType<T | null> | T[]`: the `$ref` sibling is a union holding the loader's plain `T` (stored inline, no `__resolveType`) next to its loader/saved-block branches.
+        const inlineLoaderDataUnion = (
+          branch: RawSchema,
+        ): { data: RawSchema[]; loaders: RawSchema[] } | undefined => {
+          if (typeof branch.$ref !== "string") return undefined;
+          const def = unwrapRefAliases(branch);
+          const union = (def.anyOf ?? def.oneOf) as RawSchema[] | undefined;
+          if (!Array.isArray(union)) return undefined;
+          const loaders = [
+            ...union.filter(isInlineLoaderBranch),
+            ...union
+              .filter((b) => !isInlineLoaderBranch(b))
+              .flatMap((b) => nestedUnionLoaderBranches(b)),
+          ];
+          const data = union.filter((b) => {
+            if (isInlineLoaderBranch(b) || b.type === "null") return false;
+            const d = resolveBranchDef(b);
+            const props = d.properties as RawSchema | undefined;
+            return (
+              !props?.__resolveType &&
+              !d.anyOf &&
+              !d.oneOf &&
+              (d.type === "object" || Boolean(props))
+            );
+          });
+          return loaders.length > 0 && data.length > 0
+            ? { data, loaders }
+            : undefined;
+        };
+        const inlineLoaderDataSiblings = nonNull.flatMap((b) => {
+          const found = inlineLoaderDataUnion(b);
+          return found ? [found] : [];
+        });
         // Collapse to the array editor only when the array's siblings are all module refs/loaders (app flag list + product-list loader); an inline data-object sibling makes this a branch selector, not a config array.
-        const arraySiblingsAreModuleRefs = nonNull
-          .filter((b) => !isArraySchemaBranch(unwrapRefAliases(b)))
-          .every(
-            (b) => typeof b.$ref === "string" || loaderBranches.includes(b),
-          );
+        const arraySiblingsAreModuleRefs =
+          inlineLoaderDataSiblings.length === 0 &&
+          nonNull
+            .filter((b) => !isArraySchemaBranch(unwrapRefAliases(b)))
+            .every(
+              (b) => typeof b.$ref === "string" || loaderBranches.includes(b),
+            );
         const hasPageMultivariateLoader = loaderBranches.some((branch) => {
           const rtEnum = (
             (branch.properties as RawSchema | undefined)?.__resolveType as
               | RawSchema
               | undefined
           )?.enum;
+          // v7's page flag, or a Blocks v8 schema's `multivariate` (its
+          // `page` lists both). On v7 a short `multivariate` is a saved block.
           return (
             Array.isArray(rtEnum) &&
-            rtEnum[0] === PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE
+            (rtEnum[0] === PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE ||
+              (isV8Schema(meta) && rtEnum[0] === "multivariate"))
           );
         });
-        const buildLoaderBlockRef = (): SchemaProperty => {
+        const buildLoaderBlockRef = (
+          extraLoaderBranches: RawSchema[] = [],
+        ): SchemaProperty => {
           const pickerBranches = new Map<string, RawSchema>();
           for (const branch of [
             ...loaderBranches,
             ...nonNull
               .filter((b) => !loaderBranches.includes(b))
               .flatMap((b) => nestedUnionLoaderBranches(b)),
+            ...extraLoaderBranches,
           ]) {
             const rt = inlineLoaderResolveType(branch);
             if (rt && !pickerBranches.has(rt)) pickerBranches.set(rt, branch);
@@ -729,6 +788,57 @@ function buildSchema(
             arrayBranch,
             resolveRef,
           );
+          // Pick between the loader's inline data and the plain list; a stored `{ __resolveType }` renders through `loaderRef`.
+          if (isConfigArray && inlineLoaderDataSiblings.length > 0) {
+            const title =
+              typeof v.title === "string"
+                ? v.title
+                : typeof resolved.title === "string" &&
+                    !isMachineGeneratedTitle(resolved.title)
+                  ? resolved.title
+                  : undefined;
+            const description =
+              typeof v.description === "string"
+                ? v.description
+                : typeof resolved.description === "string"
+                  ? resolved.description
+                  : undefined;
+            const rawArrayBranch = nonNull.find((b) =>
+              isArraySchemaBranch(unwrapRefAliases(b)),
+            )!;
+            const dataBranches = inlineLoaderDataSiblings.flatMap(
+              (s) => s.data,
+            );
+            return {
+              type: "inline-union",
+              title,
+              description,
+              inlineUnionBranches: [
+                ...dataBranches.map((branch, index) => ({
+                  title: branchTitle(branch, `Option ${index + 1}`),
+                  schema: buildProperty(branch, depth + 1, unionSeen),
+                })),
+                {
+                  title: branchTitle(
+                    rawArrayBranch,
+                    `Option ${dataBranches.length + 1}`,
+                  ),
+                  schema: buildProperty(arrayBranch, depth + 1, unionSeen),
+                },
+              ],
+              loaderRef: {
+                ...buildLoaderBlockRef(
+                  inlineLoaderDataSiblings.flatMap((s) => s.loaders),
+                ),
+                title,
+                description,
+              },
+              hidden:
+                isSchemaHidden(resolved) || isSchemaHidden(v)
+                  ? true
+                  : undefined,
+            };
+          }
           if (
             isConfigArray &&
             nonNull.length > 1 &&
@@ -878,12 +988,33 @@ function buildSchema(
 
         // All branches are $refs to block/loader defs
         const allRefs = nonNull.every((a) => typeof a.$ref === "string");
-        if (allRefs && !isPlainDataUnion) {
+        // A prop typed as a map of names to true/false (`Record<string,
+        // boolean>`) is written inline, next to the built-in blocks that fit
+        // it (`split-traffic`, `calendar`): it reads a whole saved block
+        // (`experiments`, `campaigns`), as a prop typed `Assignments` does,
+        // whose inline branch is a `$ref` and so takes the path below.
+        // Blocks v8 only: v7 schemas keep main's reading of such a union.
+        const readsWholeNamedRuleBlock =
+          isV8Schema(meta) &&
+          !allRefs &&
+          nonNull.some(
+            (b) =>
+              typeof b.$ref === "string" &&
+              WHOLE_BLOCK_TYPES.has(refBranchResolveType(resolveRef(b.$ref))),
+          ) &&
+          nonNull.every(
+            (b) => typeof b.$ref === "string" || branchIsPlainDataObject(b),
+          );
+        if ((allRefs || readsWholeNamedRuleBlock) && !isPlainDataUnion) {
           const anyOfRefs: SchemaAnyOfRef[] = [];
           for (const branch of nonNull) {
+            if (typeof branch.$ref !== "string") continue;
             const def = resolveRef(branch.$ref as string);
             let rt: string | undefined;
             let title: string | undefined;
+            // A `__resolveType` enum names a real block even without a `/`:
+            // next-major Blocks uses short keys like `hero`.
+            let rtFromEnum = false;
 
             if (typeof def.title === "string") {
               const saved = parseSavedBlockSchemaTitle(def.title);
@@ -900,6 +1031,7 @@ function buildSchema(
                 const e = rtProp.enum;
                 if (Array.isArray(e) && typeof e[0] === "string") {
                   rt = e[0];
+                  rtFromEnum = true;
                   break;
                 }
               }
@@ -912,19 +1044,24 @@ function buildSchema(
               const e = rtProp?.enum;
               if (Array.isArray(e) && typeof e[0] === "string") {
                 rt = e[0];
+                rtFromEnum = true;
               }
             }
             if (!rt) {
               rt = (branch.$ref as string).split("/").pop() ?? "";
             }
-            // A real module block (rt with `/`) is keyed by its resolveType, not by a `type` input prop; only embedded unions (bare ref key) use the discriminator.
-            const discriminatorValue = rt.includes("/")
+            const isBlock =
+              rt.includes("/") ||
+              (rtFromEnum && !isEmbeddedUnionResolveType(rt));
+            // A real block (a module path, or a short name from a `__resolveType` enum) is keyed by its resolveType, not by a `type` input prop; only embedded unions (bare ref key) use the discriminator.
+            const discriminatorValue = isBlock
               ? undefined
               : typeDiscriminatorFromBranch(branch);
-            // Skip the `Resolvable` placeholder: it has no `__resolveType.enum`
-            // so `rt` degrades to the bare ref key (no `/`). All real module
-            // blocks (matchers, loaders, sections) contain `/` in their path.
-            if (!discriminatorValue && !rt.includes("/")) continue;
+            // Skip the `Resolvable` placeholder: it has no `__resolveType.enum`,
+            // so `rt` degrades to the bare ref key and isn't a block.
+            if (!discriminatorValue && !isBlock) continue;
+            // `lazy` is only ever written around a `Lazy<T>` value, never picked.
+            if (rtFromEnum && rt === "lazy") continue;
             anyOfRefs.push({
               resolveType: discriminatorValue ?? rt,
               title:
@@ -1046,8 +1183,12 @@ function buildSchema(
     // Nested properties for object types (see MAX_STRUCTURE_DEPTH).
     let nestedProperties: Record<string, SchemaProperty> | undefined;
     let requiredKeys: string[] | undefined;
+    let lazyBlock = false;
     if (depth < MAX_STRUCTURE_DEPTH && !cyclicRef) {
       const nestedRaw = collectProps(resolved);
+      const rtEnum = (nestedRaw.__resolveType as RawSchema | undefined)?.enum;
+      lazyBlock =
+        Array.isArray(rtEnum) && rtEnum.length === 1 && rtEnum[0] === "lazy";
       const nestedRequired = asStringArray(nestedRaw.__required);
       if (nestedRequired.length > 0) requiredKeys = nestedRequired;
       const nestedEntries = Object.entries(nestedRaw).filter(
@@ -1129,6 +1270,7 @@ function buildSchema(
       properties: nestedProperties,
       required: requiredKeys,
       items: itemsSchema,
+      lazy: lazyBlock && !!nestedProperties?.value ? true : undefined,
       recursiveRef:
         cyclicRef &&
         typeof v.$ref === "string" &&

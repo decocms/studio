@@ -96,6 +96,8 @@ const ALL_TOOL_NAMES = [
   "INFRA_BILLING_SITES_LIST",
   "INFRA_BILLING_GET",
   "INFRA_BILLING_PORTAL",
+  // Customer data lake
+  "CUSTOMER_LAKE_QUERY",
   // Connection tools
   "COLLECTION_CONNECTIONS_CREATE",
   "COLLECTION_CONNECTIONS_LIST",
@@ -116,8 +118,6 @@ const ALL_TOOL_NAMES = [
   "COLLECTION_VIRTUAL_MCP_GET",
   "COLLECTION_VIRTUAL_MCP_UPDATE",
   "COLLECTION_VIRTUAL_MCP_DELETE",
-  // Database tools
-  "DATABASES_RUN_SQL",
   // Monitoring tools
   "MONITORING_HEATMAP",
   "MONITORING_LOG_GET",
@@ -197,6 +197,11 @@ const ALL_TOOL_NAMES = [
   "AI_PLAN_INVOICE_UPGRADE",
 
   // Claude subscription (per-user OAuth credential for the claude-code harness)
+  "CODEX_SUBSCRIPTION_CONNECT",
+  "CODEX_SUBSCRIPTION_STATUS",
+  "SUBSCRIPTION_USAGE_GET",
+  "CODEX_SUBSCRIPTION_DISCONNECT",
+  "CODEX_SUBSCRIPTION_SYNC",
   "CLAUDE_SUBSCRIPTION_CONNECT",
   "CLAUDE_SUBSCRIPTION_STATUS",
   "CLAUDE_SUBSCRIPTION_DISCONNECT",
@@ -282,6 +287,7 @@ const ALL_TOOL_NAMES = [
   "REPOSITORY_LINK",
   "REPOSITORY_CREATE_FROM_TEMPLATE",
   "REPOSITORY_UPDATE",
+  "REPOSITORY_DEPLOYS_LIST",
   "REPOSITORY_DELETE",
   "REPOSITORY_SEARCH_BRANCHES",
 
@@ -612,6 +618,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Organizations",
   },
   {
+    name: "CUSTOMER_LAKE_QUERY",
+    description: "Run read-only SQL over the organization's data lake",
+    category: "Monitoring",
+  },
+  {
     name: "ORGANIZATION_HAS_SITE",
     description:
       "Whether this organization owns at least one legacy deco.cx site",
@@ -683,12 +694,6 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     name: "REPORTS_SET_REPOSITORY",
     description: "Set the Deco Score repository",
     category: "Connections",
-  },
-  {
-    name: "DATABASES_RUN_SQL",
-    description: "Run SQL queries",
-    category: "Connections",
-    dangerous: true,
   },
   // Virtual MCP tools
   {
@@ -1036,6 +1041,31 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "AI_PROVIDER_TOPUP_URL",
     description: "Get checkout URL to top up provider credits",
+    category: "AI Providers",
+  },
+  {
+    name: "CODEX_SUBSCRIPTION_CONNECT",
+    description: "Link your ChatGPT subscription for Codex",
+    category: "AI Providers",
+  },
+  {
+    name: "SUBSCRIPTION_USAGE_GET",
+    description: "Read your personal subscription usage and reset times",
+    category: "AI Providers",
+  },
+  {
+    name: "CODEX_SUBSCRIPTION_STATUS",
+    description: "Whether your ChatGPT subscription is linked for Codex",
+    category: "AI Providers",
+  },
+  {
+    name: "CODEX_SUBSCRIPTION_DISCONNECT",
+    description: "Unlink your ChatGPT subscription for Codex",
+    category: "AI Providers",
+  },
+  {
+    name: "CODEX_SUBSCRIPTION_SYNC",
+    description: "Save credentials refreshed by your Codex runtime",
     category: "AI Providers",
   },
   {
@@ -1428,7 +1458,12 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "REPOSITORY_UPDATE",
     description:
-      "Change a linked repository's settings, such as its sandbox image",
+      "Change a linked repository's settings, such as its sandbox image or whether the Monitor shows its deploys",
+    category: "Git",
+  },
+  {
+    name: "REPOSITORY_DEPLOYS_LIST",
+    description: "List recent pushes to the monitored repositories",
     category: "Git",
   },
   {
@@ -1774,6 +1809,12 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
     description: "Tools all org members can access by default",
     section: "Basic Usage",
     tools: [
+      // Personal credentials never grant access to another member's plan.
+      "CODEX_SUBSCRIPTION_CONNECT",
+      "CODEX_SUBSCRIPTION_STATUS",
+      "SUBSCRIPTION_USAGE_GET",
+      "CODEX_SUBSCRIPTION_DISCONNECT",
+      "CODEX_SUBSCRIPTION_SYNC",
       // View connections
       "COLLECTION_CONNECTIONS_LIST",
       "COLLECTION_CONNECTIONS_GET",
@@ -2171,12 +2212,12 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
     dangerous: true,
   },
   {
-    id: "connections:sql",
-    label: "Run SQL queries",
-    description: "Execute raw SQL against connected databases",
+    id: "lake:read",
+    label: "Query the data lake",
+    description:
+      "Run read-only SQL over the organization's own data lake (orders from connected stores)",
     section: "Developer",
-    tools: ["DATABASES_RUN_SQL"],
-    dangerous: true,
+    tools: ["CUSTOMER_LAKE_QUERY"],
   },
 ];
 
@@ -2234,12 +2275,14 @@ export const USER_ROLE_TOOLS: ReadonlySet<string> = new Set(
 
 /**
  * Group gated capabilities by their UI section (e.g., "Organization", "Automations").
- * Used to render the role editor's capability picker.
+ * Used to render the role editor's capability picker. (memoized)
  */
 export function getCapabilitySections(): Array<{
   section: string;
   capabilities: PermissionCapability[];
 }> {
+  if (cachedCapabilitySections) return cachedCapabilitySections;
+
   const map = new Map<string, PermissionCapability[]>();
   for (const cap of PERMISSION_CAPABILITIES) {
     if (cap.id === BASIC_USAGE_CAPABILITY_ID) continue;
@@ -2247,10 +2290,13 @@ export function getCapabilitySections(): Array<{
     arr.push(cap);
     map.set(cap.section, arr);
   }
-  return Array.from(map.entries()).map(([section, capabilities]) => ({
-    section,
-    capabilities,
-  }));
+  cachedCapabilitySections = Array.from(map.entries()).map(
+    ([section, capabilities]) => ({
+      section,
+      capabilities,
+    }),
+  );
+  return cachedCapabilitySections;
 }
 
 /**
@@ -2274,27 +2320,28 @@ export function toggleCapabilityInTools(
   currentTools: string[],
   enable: boolean,
 ): string[] {
-  if (enable) {
-    const toolSet = new Set(currentTools);
-    for (const tool of cap.tools) toolSet.add(tool);
-    return Array.from(toolSet);
-  }
   const toolSet = new Set(currentTools);
-  for (const tool of cap.tools) toolSet.delete(tool);
+  for (const tool of cap.tools) {
+    if (enable) toolSet.add(tool);
+    else toolSet.delete(tool);
+  }
   return Array.from(toolSet);
 }
 
 /**
  * Map of gated capability id → granted, for the privileged built-in roles
  * (owner / admin) which bypass every permission check. The hidden basic-usage
- * capability is never part of the map — it's always-on and not UI-gated.
+ * capability is never part of the map — it's always-on and not UI-gated. (memoized)
  */
 export function allCapabilitiesGranted(): Record<string, boolean> {
+  if (cachedAllCapabilitiesGranted) return cachedAllCapabilitiesGranted;
+
   const out: Record<string, boolean> = {};
   for (const cap of PERMISSION_CAPABILITIES) {
     if (cap.id === BASIC_USAGE_CAPABILITY_ID) continue;
     out[cap.id] = true;
   }
+  cachedAllCapabilitiesGranted = out;
   return out;
 }
 
@@ -2343,14 +2390,20 @@ export function resolveCapabilities(
   return out;
 }
 
-// ============================================================================
-// Exports
-// ============================================================================
+// Memoized results — static data never changes after first compute
+let cachedToolsByCategory: Record<ToolCategory, ToolMetadata[]> | null = null;
+let cachedCapabilitySections: Array<{
+  section: string;
+  capabilities: PermissionCapability[];
+}> | null = null;
+let cachedAllCapabilitiesGranted: Record<string, boolean> | null = null;
 
 /**
  * Get tools grouped by category
  */
 export function getToolsByCategory(): Record<ToolCategory, ToolMetadata[]> {
+  if (cachedToolsByCategory) return cachedToolsByCategory;
+
   const grouped: Record<ToolCategory, ToolMetadata[]> = {
     Organizations: [],
     Connections: [],
@@ -2381,5 +2434,6 @@ export function getToolsByCategory(): Record<ToolCategory, ToolMetadata[]> {
     grouped[tool.category].push(tool);
   }
 
+  cachedToolsByCategory = grouped;
   return grouped;
 }

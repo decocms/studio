@@ -28,7 +28,7 @@ func turnPid(t *testing.T, p *sessionPool, key string) int {
 			}
 			pid = f.Chunks[0].Pid
 			return true
-		})
+		}, nil)
 	if err != nil || n != 1 {
 		t.Fatalf("turn: frames=%d err=%v", n, err)
 	}

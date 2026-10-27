@@ -118,7 +118,7 @@ export interface AutomationListItem {
   system_key: string | null;
   /** Its board starters: each one's column and type. */
   board_triggers: {
-    type: "board_column_transition" | "board_pr_ready";
+    type: "board_column_transition" | "board_pr_ready" | "board_pr_merged";
     column_key: string;
   }[];
 }
@@ -131,6 +131,9 @@ export interface AutomationTrigger {
     | "webhook"
     | "board_column_transition"
     | "board_pr_ready"
+    | "linked_chat_run"
+    | "board_pr_merged"
+    | "chat_pr_opened"
     | "jira_transition";
   cron_expression: string | null;
   connection_id: string | null;

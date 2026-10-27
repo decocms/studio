@@ -1,0 +1,14 @@
+# Default rules, plus allowlists for generated files whose values only look
+# like secrets. Confirmed one-off false positives go in .gitleaksignore.
+[extend]
+useDefault = true
+
+# sha256 content hashes in the DBOS workflow-source snapshot: keys like
+# sandbox/dbos-credential-push.ts trip generic-api-key on every re-baseline.
+[[rules]]
+id = "generic-api-key"
+[[rules.allowlists]]
+condition = "AND"
+paths = ['''^apps/api/src/dbos/workflow-source-guard\.snapshot\.json$''']
+regexTarget = "secret"
+regexes = ['''^[0-9a-f]{64}$''']

@@ -69,6 +69,8 @@ export interface PublicConfig {
    * `monitor_enabled` flag.
    */
   monitorGa?: boolean;
+  /** The order monitor runs here: the Orders sub-tab and the Stores tab show. */
+  orderMonitorEnabled?: boolean;
   /**
    * Master switch for the tiered-plans feature (env `STUDIO_PLANS_ENABLED`,
    * default OFF). Off → the client asks the gateway for nothing, every feature

@@ -1,15 +1,18 @@
 {
   "name": "@decocms/harness-runner",
-  "version": "0.11.2",
+  "version": "0.14.0",
   "private": true,
   "type": "module",
-  "description": "In-sandbox harness runner: drives the Claude Agent SDK for Studio's claude-code harness",
+  "description": "In-sandbox harness runner: drives Claude Code and Codex for Studio",
   "bin": {
     "decocms-harness-runner": "./main.ts"
   },
   "files": [
     "main.ts",
     "claude-code.ts",
+    "codex.ts",
+    "codex-to-ui-chunks.ts",
+    "live-messages.ts",
     "session-id.ts",
     "to-ui-chunks.ts"
   ],

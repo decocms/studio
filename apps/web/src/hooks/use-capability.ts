@@ -27,8 +27,7 @@ export type CapabilityId =
   | "tags:manage"
   | "registry:manage"
   | "api-keys:manage"
-  | "storage:delete"
-  | "connections:sql";
+  | "storage:delete";
 
 const BUILTIN_BYPASS_ROLES = new Set(["owner", "admin"]);
 

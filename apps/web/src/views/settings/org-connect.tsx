@@ -1,5 +1,5 @@
 /**
- * Settings › Connect to clients — how a person points Claude, Cursor or Codex
+ * Settings › Connect: how a person points Claude, Cursor or Codex
  * at this org, and every API key the MCP endpoint accepts.
  *
  * Two tabs: the `decocms-studio` skill with its CLI login, and this org's MCP
@@ -122,8 +122,8 @@ function CopyInline({ text }: { text: string }) {
   return (
     <Button
       variant="ghost"
-      size="icon"
-      className="size-7 shrink-0"
+      size="icon-sm"
+      className="shrink-0"
       onClick={() => handleCopy(text)}
       aria-label={t("settings.connectClients.copy")}
     >
@@ -153,7 +153,7 @@ function OAuthDiscovery({ url }: { url: string }) {
       <div className="mt-2 space-y-1 pl-[18px]">
         <p>{t("settings.connectClients.oauthMetadataHint")}</p>
         <div className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-1.5">
-          <code className="flex-1 truncate font-mono text-[11px]">
+          <code className="flex-1 truncate font-mono text-2xs">
             {metadataUrl}
           </code>
           <CopyInline text={metadataUrl} />
@@ -185,7 +185,6 @@ function ModeSelect({
     >
       <SelectTrigger
         size="sm"
-        className="text-xs"
         aria-label={t("settings.connectClients.installMethod")}
       >
         <SelectValue />
@@ -247,12 +246,7 @@ function ClientPanel({
       {mode === "api-key" && canManageKeys && (
         <div>
           {showsKey ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onClearNewKey}
-              className="text-xs"
-            >
+            <Button variant="ghost" size="sm" onClick={onClearNewKey}>
               {t("settings.connectClients.doneHideKey")}
             </Button>
           ) : (
@@ -309,7 +303,7 @@ function SkillSetup({
 
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-sm leading-snug text-muted-foreground">
+      <p className="px-4 text-sm leading-snug text-muted-foreground">
         {t("settings.connectClients.skillDescription")}
       </p>
       <Card className="gap-0 divide-y divide-border overflow-hidden p-0">
@@ -343,7 +337,7 @@ function SkillSetup({
           <CopySnippet label="bash" code={cliLoginCommand(origin)} />
         </div>
       </Card>
-      <p className="text-xs leading-snug text-muted-foreground">
+      <p className="px-4 text-xs leading-snug text-muted-foreground">
         <a
           href="https://bun.com"
           target="_blank"
@@ -419,10 +413,7 @@ function OrgConnectContent() {
 
   return (
     <>
-      <SettingsSection
-        headerClassName="px-0"
-        title={t("settings.connectClients.skillTitle")}
-      >
+      <SettingsSection title={t("settings.connectClients.skillTitle")}>
         <Tabs
           value={via}
           onValueChange={(value) => {
@@ -430,20 +421,22 @@ function OrgConnectContent() {
           }}
           className="gap-3"
         >
-          <TabsList>
-            <TabsTrigger value="skill" className="gap-2">
-              {t("settings.connectClients.skillTab")}
-              <Badge variant="muted">
-                {t("settings.connectClients.recommended")}
-              </Badge>
-            </TabsTrigger>
-            <TabsTrigger value="mcp">MCP</TabsTrigger>
-          </TabsList>
+          <div className="px-4">
+            <TabsList>
+              <TabsTrigger value="skill" className="gap-2">
+                {t("settings.connectClients.skillTab")}
+                <Badge variant="muted">
+                  {t("settings.connectClients.recommended")}
+                </Badge>
+              </TabsTrigger>
+              <TabsTrigger value="mcp">MCP</TabsTrigger>
+            </TabsList>
+          </div>
           <TabsContent value="skill">
             <SkillSetup client={client} onClientChange={selectClient} />
           </TabsContent>
           <TabsContent value="mcp" className="flex flex-col gap-3">
-            <p className="text-sm leading-snug text-muted-foreground">
+            <p className="px-4 text-sm leading-snug text-muted-foreground">
               {t("settings.connectClients.mcpDescription")}
             </p>
             <Card className="gap-0 overflow-hidden p-0">

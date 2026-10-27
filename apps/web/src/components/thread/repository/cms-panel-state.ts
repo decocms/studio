@@ -53,6 +53,8 @@ export interface CmsHeaderButton {
   menu: CmsMenuItem[];
   /** Safe to dispatch unprompted: a fast-forward, nothing of the branch's own at stake. */
   autoRun?: boolean;
+  /** A short status shown beside the button (a hosted draft's "Not live yet"). */
+  status?: string;
 }
 
 export interface SelectCmsHeaderButtonInput {
@@ -228,6 +230,88 @@ function hasUnpublishedWork(
   if (branch.workingTreeDirty) return true;
   if (publishableChangeCount !== null) return publishableChangeCount > 0;
   return branch.aheadOfBase > 0;
+}
+
+/**
+ * A hosted v8 draft's state for the header, from its changes against main
+ * (`changes.list`, content-changes.ts), never git's status: the count of
+ * listed changes, and a branch state in the shape the state machine reads
+ * (the draft is never behind, never dirty, and "ahead" by its changes).
+ * Unknown until the list is read.
+ */
+export function hostedHeaderState(
+  changes:
+    | {
+        revision: string;
+        base: { resolvedRef: string | null };
+        changes: Record<string, unknown>;
+      }
+    | undefined,
+  branch: string,
+): { branchMeta: BranchMeta; publishableChangeCount: number | null } {
+  if (!changes)
+    return { branchMeta: { kind: "unknown" }, publishableChangeCount: null };
+  const count = Object.keys(changes.changes).length;
+  return {
+    branchMeta: {
+      kind: "ready",
+      branch,
+      base: changes.base.resolvedRef ?? "main",
+      workingTreeDirty: false,
+      unpushed: 0,
+      aheadOfBase: count,
+      behindBase: 0,
+      headSha: changes.revision,
+    },
+    publishableChangeCount: count,
+  };
+}
+
+/**
+ * The header button of a hosted v8 draft. A draft is not a branch: no pull
+ * request to submit for review or open on the provider, and nothing to "Get
+ * latest" (its status always reports `behindBase: 0`). So it never has
+ * secondary actions, and the header renders it without the chevron half.
+ */
+export function hostedCmsHeaderButton(
+  button: CmsHeaderButton,
+  live?: { notLive: boolean; t: TFunction },
+): CmsHeaderButton {
+  // Up to date against main, but visitors still see an older release (a
+  // Publish whose release failed, its "Try again" gone): Publish makes main
+  // live. Only in place of "Up to date": a busy or listed-changes state wins.
+  if (live?.notLive && !button.action && !button.loading) {
+    return {
+      label: live.t("thread.publishPopover.publish"),
+      action: "publish",
+      variant: "brand",
+      tooltip: live.t("thread.cmsActions.notLiveTooltip"),
+      status: live.t("thread.cmsActions.notLive"),
+      menu: [],
+    };
+  }
+  return { ...button, menu: [] };
+}
+
+/**
+ * Whether visitors see an older release than main's: latest.json names one
+ * of main's earlier commits (on the first page of the Releases screen's
+ * read), not its newest. A site without latest.json (never published from
+ * Studio) is not behind: its own build is what visitors see. A release the
+ * page doesn't list (a commit listing that lags a Publish that just made a
+ * newer commit live) is not behind either, so a successful Publish never
+ * shows "Not live yet". Unknown until read: false.
+ */
+export function hostedReleaseBehindMain(
+  page:
+    | { current: { revision: string } | null; commits: { sha: string }[] }
+    | undefined,
+): boolean {
+  if (!page) return false;
+  // Destructured: a `.current` read looks like a React ref to the linter.
+  const { current: live, commits } = page;
+  if (!live) return false;
+  return commits.findIndex((commit) => commit.sha === live.revision) > 0;
 }
 
 /** Picks the Fast Preview header button; first match wins, so order is behavior. */

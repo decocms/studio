@@ -24,6 +24,31 @@ export interface McpConfigurationVaultBootstrap {
   token: string;
 }
 
+/**
+ * Error for a tool-level `isError` result, or null when the call succeeded.
+ * Pure: callers throw it so a tool-level failure rolls back the same way a
+ * thrown transport error does, instead of resolving as if nothing happened.
+ */
+export function onConfigurationError(
+  isError: boolean | undefined,
+  content: unknown,
+): Error | null {
+  if (!isError) return null;
+  const text = Array.isArray(content)
+    ? (
+        content.find(
+          (c): c is { type: string; text: string } =>
+            typeof c === "object" &&
+            c !== null &&
+            "type" in c &&
+            c.type === "text" &&
+            "text" in c,
+        ) as { text: string } | undefined
+      )?.text
+    : undefined;
+  return new Error(`ON_MCP_CONFIGURATION failed: ${text ?? "unknown error"}`);
+}
+
 export async function notifyMcpConfiguration(
   ctx: StudioContext,
   connection: ConnectionEntity,
@@ -36,7 +61,7 @@ export async function notifyMcpConfiguration(
   },
 ): Promise<void> {
   const client = await clientFromConnection(connection, ctx, false);
-  await client.callTool({
+  const result = await client.callTool({
     name: "ON_MCP_CONFIGURATION",
     arguments: {
       state: params.state,
@@ -45,4 +70,9 @@ export async function notifyMcpConfiguration(
       ...(params.vault ? { vault: params.vault } : {}),
     },
   });
+  const error = onConfigurationError(
+    typeof result.isError === "boolean" ? result.isError : undefined,
+    result.content,
+  );
+  if (error) throw error;
 }

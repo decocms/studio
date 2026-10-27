@@ -2,6 +2,7 @@ import {
   extractPathParams,
   fillPathTemplate,
 } from "@/components/sections-editor/page-path-utils.ts";
+import { previewPageForBlock } from "@/components/sections-editor/page-list.tsx";
 import { isSectionResolveType } from "@/components/sections-editor/section-array-field.ts";
 import { DEFAULT_LIVE_PAGE_RESOLVE_TYPE } from "@/components/sections-editor/section-catalog.ts";
 import {
@@ -38,7 +39,12 @@ export function isComparePathEditable(
   return !change.pagePath || extractPathParams(change.pagePath).length > 0;
 }
 
-/** URL rendering just the global section, on a blank page. */
+/**
+ * URL rendering just the global section, on a blank page — the v7 runtime's
+ * `/live/previews` route. A Blocks v8 site has no such route (it answers 404):
+ * there a saved section compares on a page that shows it
+ * ({@link blockComparePath}), never through this.
+ */
 export function compareSectionUrl(
   previewServerUrl: string,
   blockKey: string,
@@ -52,6 +58,46 @@ export function compareSectionUrl(
   } catch {
     return null;
   }
+}
+
+/**
+ * The page a saved block's change compares on, on a Blocks v8 site (which
+ * has no isolated-section route): {@link previewPageForBlock}, the home page
+ * first; a dynamic one filled with the values last typed for it in the
+ * preview, else left as its pattern to fill in. `null` when no page shows
+ * the block: there is nothing to preview, only the code. `undefined` while
+ * the site's blocks aren't known yet.
+ */
+export function blockComparePath(
+  blockKey: string,
+  blocks: Record<string, unknown> | null | undefined,
+  lastPage: LastPreviewPage | null,
+): string | null | undefined {
+  if (!blocks) return undefined;
+  const page = previewPageForBlock(blocks, blockKey);
+  if (!page) return null;
+  if (extractPathParams(page.path).length === 0) return page.path;
+  if (lastPage?.path !== page.path) return page.path;
+  const filled = fillPathTemplate(page.path, lastPage.params);
+  return extractPathParams(filled).length === 0 ? filled : page.path;
+}
+
+/**
+ * The site URL a change compares on. A saved section renders on its own
+ * (v7's `/live/previews`), except on a Blocks v8 site, where it — like every
+ * other change — renders on the page `path` (see {@link blockComparePath}).
+ */
+export function compareUrl(input: {
+  previewServerUrl: string;
+  /** {@link isolatedSectionKey} of the change. */
+  sectionKey: string | null;
+  path: string;
+  /** A Blocks v8 site (the content protocol). */
+  v8: boolean;
+}): URL | null {
+  return input.sectionKey && !input.v8
+    ? compareSectionUrl(input.previewServerUrl, input.sectionKey)
+    : comparePageUrl(input.previewServerUrl, input.path);
 }
 
 /**
@@ -99,8 +145,31 @@ export function comparePageUrl(
 /** Where the unpublished side renders: Fast Preview's `?__draft=` pointer on
  *  the live site, or a coding session's sandbox dev server. */
 export type CompareDraft =
-  | { kind: "pointer"; pointer: string }
+  | {
+      kind: "pointer";
+      pointer: string;
+      /**
+       * The `__draft` the "Open draft" link sends (a hosted draft: the preview
+       * frame's, with its forced variants and "Preview as" options); the
+       * pointer when absent. The compare's panes render the bare pointer.
+       */
+      link?: string;
+    }
   | { kind: "sandbox"; previewUrl: string };
+
+/**
+ * The "Open draft" link for `url`: what {@link compareDraftUrl} renders, with
+ * a pointer draft's `link` value when it has one.
+ */
+export function compareDraftLink(
+  url: URL,
+  draft: CompareDraft | null,
+): string | null {
+  if (draft?.kind === "pointer" && draft.link) {
+    return withDraftPointer(url.toString(), draft.link);
+  }
+  return compareDraftUrl(url, draft);
+}
 
 /** The live-site `url` rendered with the unpublished changes, or null without a draft. */
 export function compareDraftUrl(
@@ -126,4 +195,23 @@ export function canRenderCompare(
 ): boolean {
   if (previewServerUrl === null) return false;
   return kind !== "other" || draft?.kind === "sandbox";
+}
+
+/**
+ * What stands in for a side that has no page to render: a new page has no
+ * "before" and a removed page no "after". On a Blocks v8 site (`v8`), only a
+ * page: a new or removed block (a saved section, the A/B tests, the
+ * campaigns) or code file changes a page that is there on both sides, so both
+ * sides render it. On v7, any new or removed change but a code file, as
+ * before (a new code file says nothing about whether the page existed).
+ */
+export function comparePlaceholder(
+  change: Pick<PublishChange, "kind" | "status">,
+  v8: boolean,
+): { before: "new" | null; after: "removed" | null } {
+  const page = v8 ? change.kind === "page" : change.kind !== "other";
+  return {
+    before: page && change.status === "new" ? "new" : null,
+    after: page && change.status === "removed" ? "removed" : null,
+  };
 }

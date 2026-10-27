@@ -231,7 +231,7 @@ export function useThreadsPanel({
       projectDefaultRuntime(currentAgentId),
     );
     if (existing) {
-      setTaskId(existing.id, existing.virtual_mcp_id);
+      setTaskId(existing.id, existing.virtual_mcp_id, { newThread: true });
       return;
     }
     // Sandbox-only chats get one sandbox each, so a new chat never inherits one.

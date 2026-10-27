@@ -1,3 +1,4 @@
+import type { CodexSubscriptionStorage } from "../storage/codex-subscriptions";
 /**
  * StudioContext - Core abstraction for all tools
  *
@@ -375,6 +376,7 @@ export interface StudioStorage {
   notifications: NotificationStorage;
   orgFsEntries: OrgFsEntryStorage;
   oauthPkceStates: OAuthPkceStateStorage;
+  codexSubscriptions: CodexSubscriptionStorage;
   claudeSubscriptions: ClaudeSubscriptionStorage;
   githubCopilotSubscriptions: ClaudeSubscriptionStorage;
   orgSharedPlans: OrgSharedPlanStorage;

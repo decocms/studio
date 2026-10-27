@@ -1,3 +1,4 @@
+import { supportsCodex } from "@decocms/shared/harness/codex-models";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useProjectContext } from "@/sdk";
 import { use, useState } from "react";
@@ -54,7 +55,13 @@ function ChatSidePanelBody() {
       <Chat className="animate-in fade-in-0 duration-200">
         <Chat.Main className="flex flex-col items-center">
           <Chat.EmptyState>
-            {needsRuntimeSetup === "claude-code-provider" ? (
+            {needsRuntimeSetup === "codex-provider" ? (
+              <Chat.NoAiProviderEmptyState
+                title={t("settings.codexSubscription.setupHeading")}
+                description={t("settings.codexSubscription.setupDescription")}
+                providerFilter={supportsCodex}
+              />
+            ) : needsRuntimeSetup === "claude-code-provider" ? (
               <Chat.NoAiProviderEmptyState
                 title={t("chat.noAiProviderEmptyState.supportedHeading")}
                 description={t("chat.noAiProviderEmptyState.supportedSubtitle")}

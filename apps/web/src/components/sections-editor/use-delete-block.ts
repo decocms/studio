@@ -1,7 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
-import { decofileCacheKey } from "./use-decofile";
 import { usePackagePath } from "./use-package-path";
 import { KEYS } from "@/lib/query-keys";
 import { decoBlockFilePath } from "./deco-block-key";
@@ -15,6 +14,10 @@ import {
 } from "./decofile-api";
 import { sandboxGitStatusQueryKey } from "../thread/repository/sandbox-git-api";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
+import { useContentBackend } from "./use-content-backend";
+import { applyProtocolPatch } from "./content-protocol-api";
+import { runContentChange } from "./content-sync";
+import { useDecofileCacheKey } from "./use-decofile";
 import { buildSandboxUrl } from "@/sdk/sandbox-url";
 
 interface UseDeleteBlockParams {
@@ -47,52 +50,70 @@ export function useDeleteBlock({
    * reading it without the tunnel patched a decofile nobody is rendering.
    */
   const { url: localPreviewUrl } = useLocalPreviewUrl(virtualMcpId);
-  const cacheKey = decofileCacheKey({
-    orgSlug,
-    virtualMcpId,
-    branch,
-    localPreviewUrl,
-  });
+  const backend = useContentBackend(virtualMcpId, branch);
+  const protocol = backend.kind === "protocol" ? backend : null;
+  const cacheKey = useDecofileCacheKey({ orgSlug, virtualMcpId, branch });
+
+  /** A delete on any backend but the content protocol. */
+  const deleteLegacy = async (
+    blockKey: string,
+  ): Promise<{ ok: true; existed: boolean }> => {
+    // Local: no persistence — the optimistic cache removal is the delete.
+    if (localPreviewUrl) return { ok: true as const, existed: true };
+    if (fastPreviewActive) {
+      const draft = await patchDecofile(
+        { orgSlug, virtualMcpId, branch },
+        { delete: [blockKey] },
+      );
+      setDecofileDraft(queryClient, { orgSlug, virtualMcpId, branch }, draft);
+      /**
+       * Same as use-save-block: the commit moved the head, refresh the
+       * header's branch meta in place of any interval polling — and await
+       * it, so observers of this mutation aren't released onto a status
+       * that is still the pre-delete one.
+       */
+      await queryClient.invalidateQueries({
+        queryKey: sandboxGitStatusQueryKey({
+          orgSlug,
+          virtualMcpId,
+          branch,
+          threadId,
+        }),
+      });
+      return { ok: true as const, existed: true };
+    }
+    const path = decoRepoPath(packagePath, decoBlockFilePath(blockKey));
+    const res = await fetch(
+      buildSandboxUrl({ orgSlug, virtualMcpId, branch, threadId }, "unlink"),
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ path }),
+      },
+    );
+    if (!res.ok) return throwResponseError(res, "Delete");
+    return res.json() as Promise<{ ok: true; existed: boolean }>;
+  };
 
   return useMutation({
     mutationKey: decofileWriteMutationKey(orgSlug, virtualMcpId, branch),
     scope: decofileWriteScope(orgSlug, virtualMcpId, branch),
     mutationFn: async ({ blockKey }: { blockKey: string }) => {
-      // Local: no persistence — the optimistic cache removal is the delete.
-      if (localPreviewUrl) return { ok: true as const, existed: true };
-      if (fastPreviewActive) {
-        const draft = await patchDecofile(
+      if (protocol) {
+        await applyProtocolPatch(
+          queryClient,
+          protocol,
           { orgSlug, virtualMcpId, branch },
+          cacheKey,
           { delete: [blockKey] },
         );
-        setDecofileDraft(queryClient, { orgSlug, virtualMcpId, branch }, draft);
-        /**
-         * Same as use-save-block: the commit moved the head, refresh the
-         * header's branch meta in place of any interval polling — and await
-         * it, so observers of this mutation aren't released onto a status
-         * that is still the pre-delete one.
-         */
-        await queryClient.invalidateQueries({
-          queryKey: sandboxGitStatusQueryKey({
-            orgSlug,
-            virtualMcpId,
-            branch,
-            threadId,
-          }),
-        });
         return { ok: true as const, existed: true };
       }
-      const path = decoRepoPath(packagePath, decoBlockFilePath(blockKey));
-      const res = await fetch(
-        buildSandboxUrl({ orgSlug, virtualMcpId, branch, threadId }, "unlink"),
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ path }),
-        },
+      // Every other backend: the same pending state, with its own refresh.
+      return runContentChange(
+        { queryClient, orgSlug, virtualMcpId, branch, backend, cacheKey },
+        { kind: "edit", write: () => deleteLegacy(blockKey) },
       );
-      if (!res.ok) return throwResponseError(res, "Delete");
-      return res.json() as Promise<{ ok: true; existed: boolean }>;
     },
     onMutate: async ({ blockKey }) => {
       const queryKey = KEYS.decofile(cacheKey);

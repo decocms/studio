@@ -3,16 +3,27 @@ import { HOME_MOUNT_PATH } from "@decocms/shared/organization/home-mount";
 import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import { ChatLayout, useChatLayout } from "@/components/chat-layout";
 import { Page } from "@/components/page";
+import { useProjectFirstNav } from "@/hooks/use-preferences";
+import {
+  ContextSectionBody,
+  ContextShell,
+  orgSection,
+} from "@/layouts/context/context-shell";
+import type { ContextSection } from "@/lib/legacy-workspace-search";
 import { basename, libraryTrail } from "@/layouts/library/location";
 import { LibraryPreviewPanel } from "@/layouts/library/preview-panel";
 import { LibraryTab } from "@/layouts/main-panel-tabs/library-tab";
 
 export default function LibraryRoute() {
   const navigate = useNavigate();
-  const { preview, expanded } = useSearch({ strict: false }) as {
+  const { preview, expanded, section } = useSearch({ strict: false }) as {
     preview?: string;
     expanded?: boolean;
+    section?: ContextSection;
   };
+  /** Project-first nav shows the Library as Context's files, under its menu. */
+  const projectFirstNav = useProjectFirstNav();
+  const contextSection = orgSection(section);
   const show = (next: { path?: string; preview?: string; expanded?: true }) =>
     navigate({
       to: ".",
@@ -29,6 +40,16 @@ export default function LibraryRoute() {
    *  closes. */
   const isMobile = useIsMobile();
   const chatBeside = useChatLayout().threadOpen && !isMobile;
+
+  if (projectFirstNav && contextSection !== "files") {
+    return (
+      <ChatLayout.Content>
+        <ContextShell section={contextSection}>
+          <ContextSectionBody section={contextSection} />
+        </ContextShell>
+      </ChatLayout.Content>
+    );
+  }
 
   if (preview && (expanded || chatBeside)) {
     const folder = preview.slice(0, Math.max(preview.lastIndexOf("/"), 0));
@@ -78,7 +99,13 @@ export default function LibraryRoute() {
     >
       {/* Beside the list: a main-panel tab would carry the org's drive into
           an agent's workspace. */}
-      <LibraryTab filePreview="side" />
+      {projectFirstNav ? (
+        <ContextShell section="files">
+          <LibraryTab filePreview="side" context />
+        </ContextShell>
+      ) : (
+        <LibraryTab filePreview="side" />
+      )}
     </ChatLayout.Content>
   );
 }

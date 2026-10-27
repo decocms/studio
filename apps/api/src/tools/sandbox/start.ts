@@ -10,6 +10,7 @@
  */
 
 import { markTurn } from "@/harnesses/turn-latency";
+import { orgFlagEnabled } from "@decocms/shared/organization/schema";
 import { sameRepositoryBinding } from "@decocms/shared/repository-binding";
 import { z } from "zod";
 import type { SandboxRecord } from "@decocms/shared/sdk";
@@ -72,7 +73,6 @@ import {
   getThreadAdditionalRepositories,
   getThreadHeadRef,
   resolveSandboxUserId,
-  getThreadSandboxMap,
   removeThreadSandboxMapEntry,
   setThreadSandboxMapEntry,
   syntheticBranchToGitRef,
@@ -83,6 +83,7 @@ import { getSettings } from "../../settings";
 import { getPublicUrl } from "../../core/server-constants";
 import { mintOrgFsConfigJson } from "../../file-storage/mount/provisioning";
 import { setSandboxMapEntry } from "./sandbox-map";
+import { lookupRecordedSandbox } from "./recorded-sandbox";
 import {
   cloneInfoForRepository,
   findRepositoryForBinding,
@@ -93,6 +94,7 @@ import { GitProviderError } from "../../git-providers/types";
 import { credentialExpiresAt } from "@/sandbox/credential-push";
 import type { RepositoryRecord } from "../../storage/repositories";
 import {
+  decodeSandboxStartError,
   encodeSandboxStartError,
   SANDBOX_START_ERROR_CODES,
 } from "@decocms/shared/sandbox-start-errors";
@@ -281,40 +283,16 @@ export async function ensureSandbox(
   },
   ctx: StudioContext,
 ): Promise<SandboxRecord> {
-  // Inline auth + lookup; the standard `requireVmEntry` runs
-  // `ctx.access.check()`, which expects resource scoping that the
-  // streaming turn doesn't carry. Storage writes below still go through
-  // the per-port authorization hooks.
-  requireAuth(ctx);
-  const organization = requireOrganization(ctx);
-  const userId = getUserId(ctx);
-  if (!userId) throw new Error("User ID required");
-
-  const virtualMcp = await ctx.storage.virtualMcps.findById(input.virtualMcpId);
-  if (!virtualMcp || virtualMcp.organization_id !== organization.id) {
-    throw new Error("Virtual MCP not found");
-  }
-  const metadata = (virtualMcp.metadata ?? {}) as Record<string, unknown>;
-  // See resolveSandboxUserId: one sandbox per thread, keyed by its creator.
-  const sandboxUserId = await resolveSandboxUserId(ctx, input.branch, userId);
-  // Thread-scoped sandboxes are recorded on the thread (the agent write is a
-  // no-op for them), so the resume fast path has to look there too.
-  const recordThreadId =
-    threadIdFromBranch(input.branch) ?? ctx.metadata?.threadId;
-  const agentEntry = resolveVm(
-    readSandboxMap(metadata),
+  // Storage writes below still go through the per-port authorization hooks.
+  const {
+    organization,
+    userId,
+    metadata,
     sandboxUserId,
-    input.branch,
-  );
-  const existing: SandboxRecord | null =
-    agentEntry ??
-    (recordThreadId
-      ? resolveVm(
-          await getThreadSandboxMap(ctx, recordThreadId),
-          sandboxUserId,
-          input.branch,
-        )
-      : null);
+    recordThreadId,
+    agentEntry,
+    existing,
+  } = await lookupRecordedSandbox(input, ctx);
 
   const runner = await getAgentSandboxProvider(ctx);
 
@@ -369,25 +347,47 @@ export async function ensureSandbox(
       err instanceof Error ? err.message : String(err),
     );
   });
-  const { entry, warmPoolAdopted } = await provisionSandbox({
+  const threadRepos = await getThreadAdditionalRepositories(
     ctx,
-    userId,
-    sandboxUserId,
-    orgId: organization.id,
-    virtualMcpId: input.virtualMcpId,
-    branch: input.branch,
-    metadata,
-    repository,
-    threadRepos: await getThreadAdditionalRepositories(
+    provisioningThreadId,
+  );
+  const provision = (primary: RepositoryBinding | null) =>
+    provisionSandbox({
       ctx,
-      provisioningThreadId,
-    ),
-    existing: input.revalidate ? existing : null,
-    runner,
-    ...(input.purpose ? { purpose: input.purpose } : {}),
-  });
-  input.onBound?.({ warmPoolAdopted });
-  return entry;
+      userId,
+      sandboxUserId,
+      orgId: organization.id,
+      virtualMcpId: input.virtualMcpId,
+      branch: input.branch,
+      metadata,
+      repository: primary,
+      threadRepos,
+      existing: input.revalidate ? existing : null,
+      runner,
+      ...(input.purpose ? { purpose: input.purpose } : {}),
+    });
+  let provisioned: Awaited<ReturnType<typeof provision>>;
+  try {
+    provisioned = await provision(repository);
+  } catch (error) {
+    // A repo Studio can't clone must not cost the run: boot blank, the way a
+    // thread with no repo does. The credential is resolved before any pod is
+    // claimed, so this provisions from scratch.
+    if (
+      !repository ||
+      !(error instanceof Error) ||
+      !decodeSandboxStartError(error.message).code
+    )
+      throw error;
+    console.warn("[ensureSandbox] starting without the primary repository", {
+      virtualMcpId: input.virtualMcpId,
+      repo: `${repository.owner}/${repository.name}`,
+      error: error.message,
+    });
+    provisioned = await provision(null);
+  }
+  input.onBound?.({ warmPoolAdopted: provisioned.warmPoolAdopted });
+  return provisioned.entry;
 }
 
 type StartParams = {
@@ -557,7 +557,7 @@ async function provisionSandbox(params: StartParams): Promise<{
       })
     : null;
 
-  let { runtime, packageManager, port, packageManagerPath } =
+  let { runtime, packageManager, port, packageManagerPath, apps } =
     resolveRuntimeConfig(metadata);
 
   // Submodules and private package deps live in repos a per-repo clone token
@@ -748,6 +748,9 @@ async function provisionSandbox(params: StartParams): Promise<{
           packageManager,
           ...(port !== null ? { devPort: Number(port) } : {}),
           ...(packageManagerPath ? { packageManagerPath } : {}),
+          ...(orgFlagEnabled(orgSettings?.flags, "multi_app_preview")
+            ? { apps }
+            : {}),
         }
       : undefined;
 
@@ -824,6 +827,9 @@ async function provisionSandbox(params: StartParams): Promise<{
           // omitted workload still installed (404 packages, competing with the run
           // that only wanted the checkout).
           cloneOnly,
+          ...(orgFlagEnabled(orgSettings?.flags, "sandbox_repo_snapshots")
+            ? { repoSnapshot: true }
+            : {}),
           ...(purpose ? { purpose } : {}),
           ...(provider ? { provider } : {}),
           ...(sandboxImage !== "default" ? { sandboxImage } : {}),
@@ -881,6 +887,7 @@ async function provisionSandbox(params: StartParams): Promise<{
       packageManager: runtimeSelected,
       port: runtimePort,
       path: runtimePath,
+      apps: workload?.apps ?? null,
     },
   };
 

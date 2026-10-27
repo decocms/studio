@@ -76,3 +76,29 @@ func TestMcpLoginFlow(t *testing.T) {
 		t.Fatalf("rejected code: status = %d, body = %s", rec.Code, rec.Body.String())
 	}
 }
+
+// A completed login must release its pty and cancel the abandonment timer
+// right away, not hold the fd open for up to mcpLoginAbandoned waiting on a
+// timer that no longer needs to fire.
+func TestMcpLoginFinishReleasesTty(t *testing.T) {
+	withFakeClaude(t)
+	m := NewMcpLogin()
+
+	post(m.Start, `{"name":"figma","url":"https://mcp.example/mcp"}`)
+	proc := m.cur
+	if proc == nil {
+		t.Fatal("expected a sign-in in progress after Start")
+	}
+
+	rec := post(m.Finish, `{"callbackUrl":"http://localhost:5555/callback?code=good"}`)
+	if rec.Code != 200 {
+		t.Fatalf("finish: status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+
+	if _, err := proc.tty.Write([]byte("x")); err == nil {
+		t.Fatal("expected the pty to be closed once Finish completes")
+	}
+	if proc.abandon.Stop() {
+		t.Fatal("expected the abandonment timer to already be stopped")
+	}
+}

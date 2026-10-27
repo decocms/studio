@@ -11,7 +11,15 @@ const ASYNC_RENDER_DOCS_URL =
 interface SeoFormChromeProps {
   rawSeo: unknown;
   onEnableChange: (enabled: boolean) => void;
-  onAsyncRenderChange: (enabled: boolean) => void;
+  /** Unset where async rendering doesn't exist (v8): no switch is offered. */
+  onAsyncRenderChange?: (enabled: boolean) => void;
+  /**
+   * SEO can't be turned on (no SEO type, or the schema is still loading): the
+   * switch is off. Turning SEO off stays possible.
+   */
+  enableUnavailable?: boolean;
+  /** Says why SEO can't be turned on, under the switch. */
+  enableUnavailableHint?: string;
   children?: ReactNode;
 }
 
@@ -22,12 +30,15 @@ export function SeoFormChrome({
   rawSeo,
   onEnableChange,
   onAsyncRenderChange,
+  enableUnavailable: cannotEnable = false,
+  enableUnavailableHint,
   children,
 }: SeoFormChromeProps) {
   const t = useT();
   const compact = useNewBlocksEditor();
   const enabled = isSeoEnabled(rawSeo);
   const asyncRender = isSeoLazyRender(rawSeo);
+  const enableUnavailable = !enabled && cannotEnable;
 
   return (
     <div className="space-y-4">
@@ -38,12 +49,26 @@ export function SeoFormChrome({
         <Switch
           id="seo-enable"
           checked={enabled}
+          disabled={enableUnavailable}
+          aria-describedby={
+            enableUnavailable && enableUnavailableHint
+              ? "seo-enable-hint"
+              : undefined
+          }
           onCheckedChange={onEnableChange}
         />
       </div>
+      {enableUnavailable && enableUnavailableHint && (
+        <p
+          id="seo-enable-hint"
+          className="text-xs leading-normal text-muted-foreground"
+        >
+          {enableUnavailableHint}
+        </p>
+      )}
 
       {enabled &&
-        (compact ? (
+        (compact || !onAsyncRenderChange ? (
           children
         ) : (
           <>

@@ -72,3 +72,8 @@ export function removeEntryAt(
       entry.index > itemIndex ? { ...entry, index: entry.index - 1 } : entry,
     );
 }
+
+/** A stored value the list editor can't show: present but not an array (e.g. a loader's inline object). Rendering it as `[]` and editing would overwrite it. */
+export function isNonArrayStoredValue(value: unknown): boolean {
+  return value !== undefined && value !== null && !Array.isArray(value);
+}

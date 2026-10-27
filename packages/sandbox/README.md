@@ -191,6 +191,13 @@ host already called `warm()` (the control plane does when it starts);
 release of this package's version. Org-fs runs there too, with the sidecar
 as a second container in the VM; see [`orgfs/README.md`](orgfs/README.md).
 
+Codex plan and read-only modes need nested Linux user namespaces for
+bubblewrap. Set `STUDIO_SANDBOX_FREESTYLE_USER_NAMESPACES=true` to allow them.
+This defaults off and starts the sandbox container with Docker's seccomp and
+AppArmor profiles unconfined; the per-user Freestyle VM remains its isolation
+boundary. The org-fs sidecar is unchanged. The setting gets a separate base
+snapshot, and existing VMs must be replaced to change their container policy.
+
 `SandboxProviderRouter` sits in front of both. `SANDBOX_START`'s `provider`
 input picks where a new sandbox runs, when that provider is configured and
 serves the requested image. Without it, `STUDIO_SANDBOX_FREESTYLE_SHARE`

@@ -2,6 +2,8 @@ import type { ReactNode } from "react";
 import { SeoFormChrome } from "./seo-form-chrome";
 import { SeoFormFields } from "./seo-form-fields";
 import { SeoTypeSelect } from "./seo-type-select";
+import { useT } from "@/i18n/use-t.ts";
+import { useBlocksSiteEditor } from "./blocks-site-editor";
 import type { SchemaProperty } from "./resolve-schema";
 import type { Crumb } from "./schema-form-breadcrumb";
 import type { SeoTypeOption } from "./seo-schema";
@@ -28,6 +30,10 @@ interface PageSeoFormProps {
   /** Remounts schema widgets (type change). */
   onBumpFormKey: () => void;
   beforeFields?: ReactNode;
+  /** False on v8, which has no async rendering: no switch at all. */
+  asyncRenderAvailable?: boolean;
+  /** The site's schema is still loading: SEO can't be turned on yet. */
+  seoTypesLoading?: boolean;
 }
 
 /** Page SEO: Enable + type + fields + Async render (admin EditSEO layout). */
@@ -46,9 +52,19 @@ export function PageSeoForm({
   onClearForm,
   onBumpFormKey,
   beforeFields,
+  asyncRenderAvailable = true,
+  seoTypesLoading = false,
 }: PageSeoFormProps) {
+  const t = useT();
+  // v8: no SEO type to start from (a page schema that lists none, or the
+  // schema still loading): SEO can't be turned on, rather than saving a
+  // type-less SEO block. v7 keeps its switch as before.
+  const v8 = useBlocksSiteEditor();
+  const seoTypeAvailable =
+    !v8 || (!seoTypesLoading && defaultResolveType !== "");
   const handleEnableChange = (enabled: boolean) => {
     if (enabled) {
+      if (!seoTypeAvailable) return;
       const nextRaw = defaultEnabledSeo(defaultResolveType);
       onPersistRaw(nextRaw);
       onClearForm();
@@ -75,7 +91,15 @@ export function PageSeoForm({
     <SeoFormChrome
       rawSeo={rawSeo}
       onEnableChange={handleEnableChange}
-      onAsyncRenderChange={handleAsyncRenderChange}
+      enableUnavailable={!seoTypeAvailable}
+      enableUnavailableHint={
+        seoTypeAvailable || seoTypesLoading
+          ? undefined
+          : t("sectionsEditor.seoFormChrome.noSeoTypeHint")
+      }
+      onAsyncRenderChange={
+        asyncRenderAvailable ? handleAsyncRenderChange : undefined
+      }
     >
       {beforeFields}
       {isSeoEnabled(rawSeo) &&

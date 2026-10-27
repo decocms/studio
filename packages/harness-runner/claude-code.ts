@@ -17,6 +17,7 @@
  */
 
 import { query } from "@anthropic-ai/claude-agent-sdk";
+import { BackgroundTasks } from "./background-tasks";
 import type {
   CanUseTool,
   HookCallbackMatcher,
@@ -25,6 +26,12 @@ import type {
   SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
 import type { HarnessStreamInputWire } from "@decocms/sandbox/dispatch/schemas";
+import {
+  liveMessageChunk,
+  LiveMessageTurn,
+  mergeTurnResults,
+  type LiveMessageInbox,
+} from "./live-messages";
 import {
   turnFinishChunks,
   turnStartChunks,
@@ -77,11 +84,6 @@ const DEFERRED_RESULT_TOOLS = ["Monitor", "ScheduleWakeup"];
 const ORG_FS_INSTRUCTION =
   "The organization filesystem is mounted at `/app/org/`; an `org/...` path " +
   "in older messages or skills means `/app/org/...`.";
-
-const WAIT_IN_TURN_INSTRUCTION =
-  "This run ends when your turn ends. Nothing you start in the background can " +
-  "report back afterwards, so wait for every command you start, in the " +
-  "foreground, before you finish.";
 
 /**
  * One frame of a turn's output. `error` accompanies whatever the turn managed
@@ -374,7 +376,6 @@ export function buildOptions(args: {
     instructions,
     skillsInstruction(),
     ORG_FS_INSTRUCTION,
-    WAIT_IN_TURN_INSTRUCTION,
     maxTurns === undefined ? undefined : turnBudgetInstruction(maxTurns),
   ]
     .filter(Boolean)
@@ -438,6 +439,11 @@ export function buildOptions(args: {
     // so the next turn can resume it.
     ...(resume ? { resume: sessionId } : { sessionId }),
     ...(Object.keys(mcpServers).length ? { mcpServers } : {}),
+    // The CLI echoes a live message back at the point the model read it,
+    // which is where the run shows it (see live-messages.ts).
+    ...(input.liveMessages
+      ? { extraArgs: { "replay-user-messages": null } }
+      : {}),
   };
 }
 
@@ -777,6 +783,55 @@ export async function runClaudeCode(
   input: HarnessStreamInputWire,
   emitFrame: EmitFrame,
   turnStartedAt = 0,
+  inbox?: LiveMessageInbox,
+): Promise<void> {
+  // Messages sent while this turn runs. Only with streaming input: a string
+  // prompt has nowhere to put them.
+  const liveMessages =
+    input.liveMessages && inbox ? new LiveMessageTurn() : null;
+  if (liveMessages && inbox) {
+    inbox.open((message) => liveMessages.accept(message));
+  }
+  try {
+    await runTurn(input, emitFrame, turnStartedAt, liveMessages);
+  } finally {
+    inbox?.close();
+    const unread = liveMessages?.close() ?? [];
+    if (unread.length > 0) {
+      console.error(
+        `[claude-code] turn ended with ${unread.length} live message(s) the model never read`,
+      );
+    }
+  }
+}
+
+/** How long a run waits for the CLI turn a live message starts. */
+const LIVE_MESSAGE_TURN_WAIT_MS = 120_000;
+
+/** How long a run with background tasks waits on a silent CLI before ending. */
+const BACKGROUND_TASK_WAIT_MS = 30 * 60_000;
+
+/** `iterator.next()`, or null when nothing arrives within `ms`. */
+async function nextWithin<T>(
+  iterator: AsyncIterator<T>,
+  ms: number,
+): Promise<IteratorResult<T> | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), ms);
+  });
+  try {
+    return await Promise.race([iterator.next(), timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function runTurn(
+  input: HarnessStreamInputWire,
+  emitFrame: EmitFrame,
+  turnStartedAt: number,
+  liveMessages: LiveMessageTurn | null,
 ): Promise<void> {
   // ms since the turn reached this process (its start, unless persistent),
   // sent on the first frame to split Studio's TTFT.
@@ -856,6 +911,12 @@ export async function runClaudeCode(
   };
   /** Emit whatever the coalescer is still holding. Every turn exit owes this. */
   const drain = () => send(coalescer.drain());
+  /**
+   * A live message is still queued in the CLI when the turn ends, so the CLI
+   * will run it next on its own: a kept session would hand that output to the
+   * next Studio turn.
+   */
+  let sessionHasQueuedWork = false;
 
   try {
     if (live && (await reuseLiveSession(live))) return;
@@ -985,9 +1046,11 @@ export async function runClaudeCode(
     mark("reused");
     session.gate.awaitUser = (toolCallId) => translator.awaitUser(toolCallId);
     session.send(userTurn(promptForRun(input)));
+    liveMessages?.attach(session.send);
     try {
       await consumeStream(session.stream, session.messages);
-      live = session;
+      if (sessionHasQueuedWork) await endSession(session.stream);
+      else live = session;
       return true;
     } catch (err) {
       await endSession(session.stream);
@@ -1006,7 +1069,7 @@ export async function runClaudeCode(
    */
   async function attemptTurn(): Promise<string | null> {
     mark("query");
-    const channel = persistent() ? inputChannel() : null;
+    const channel = persistent() || liveMessages ? inputChannel() : null;
     const gate = {
       awaitUser: (toolCallId: string) => translator.awaitUser(toolCallId),
     };
@@ -1020,12 +1083,14 @@ export async function runClaudeCode(
       }),
     });
     channel?.send(userTurn(promptForRun(input)));
+    if (channel) liveMessages?.attach(channel.send);
     const messages = stream[Symbol.asyncIterator]();
 
     try {
       const broken = await consumeStream(stream, messages);
-      if (channel && broken === null) {
-        live = { stream, messages, send: channel.send, gate };
+      if (persistent() && channel && broken === null) {
+        if (sessionHasQueuedWork) await endSession(stream);
+        else live = { stream, messages, send: channel.send, gate };
       }
       return broken;
     } catch (err) {
@@ -1040,12 +1105,62 @@ export async function runClaudeCode(
     messages: AsyncIterator<SDKMessage>,
   ): Promise<string | null> {
     const startedAt = Date.now();
+    // Set once a CLI turn ended with a live message still unread: the CLI runs
+    // that message as its next turn, which belongs to this run too.
+    let awaitingQueuedTurn = false;
+    // Each background task that settles starts a CLI turn of this same run.
+    let awaitingBackground = false;
+    const background = new BackgroundTasks();
+    let result: SdkResultMessage | null = null;
     // Not `for await`: leaving that loop at the turn's result would close a
     // session that is kept for the next turn.
     for (;;) {
-      const next = await messages.next();
+      const waitMs: number | null = awaitingQueuedTurn
+        ? LIVE_MESSAGE_TURN_WAIT_MS
+        : awaitingBackground
+          ? BACKGROUND_TASK_WAIT_MS
+          : null;
+      const next: IteratorResult<SDKMessage> | null =
+        waitMs === null
+          ? await messages.next()
+          : await nextWithin(messages, waitMs);
+      if (next === null) {
+        // The CLI never started the turn the unread message should have. End
+        // the run on what it has rather than hold the thread forever.
+        console.error(
+          `[claude-code] no turn followed in ${waitMs}ms (live message: ` +
+            `${awaitingQueuedTurn}, background tasks: ${background.size})`,
+        );
+        sessionHasQueuedWork = true;
+        await endSession(stream);
+        return finishTurn(result);
+      }
       if (next.done) break;
-      const message = next.value;
+      const message: SDKMessage = next.value;
+      background.observe(message);
+      if (
+        liveMessages &&
+        message.type === "user" &&
+        "isReplay" in message &&
+        message.isReplay
+      ) {
+        // The CLI's echo of a message it took from the input. Ours mark where
+        // the model read a live message; the rest are the prompt echoed back.
+        const id = liveMessages.markRead(message.uuid);
+        if (id) push([liveMessageChunk(id)]);
+        continue;
+      }
+      if (
+        awaitingQueuedTurn &&
+        (message.type === "stream_event" || message.type === "assistant") &&
+        message.parent_tool_use_id === null
+      ) {
+        // The first output of the CLI turn the unread messages started.
+        awaitingQueuedTurn = false;
+        for (const id of liveMessages?.readAll() ?? []) {
+          push([liveMessageChunk(id)]);
+        }
+      }
       mark(`sdk-${message.type}`);
       if (
         message.type === "stream_event" &&
@@ -1147,20 +1262,56 @@ export async function runClaudeCode(
       // which fails the whole run instead of just forgetting.
       await Bun.write(file, sessionId);
       startTurn(messageId ?? `msg_${message.uuid}`);
-      drain();
-      emit({
-        chunks: [
-          ...turnFinishChunks(
-            message as SdkResultMessage,
-            translator.contextTokens,
-            process.env[ENVS.MODEL_ENV],
-            translator.isAwaitingUser(),
-          ),
-        ],
-      });
+      result = mergeTurnResults(result, message as SdkResultMessage);
+      // A message folded in without an echo still shows, at the turn's end.
+      for (const uuid of message.user_message_uuids ?? []) {
+        const id = liveMessages?.markRead(uuid) ?? null;
+        if (id) push([liveMessageChunk(id)]);
+      }
+      if (
+        liveMessages?.hasUnread() &&
+        !message.is_error &&
+        !translator.isAwaitingUser()
+      ) {
+        awaitingQueuedTurn = true;
+        continue;
+      }
+      awaitingBackground =
+        background.size > 0 &&
+        !message.is_error &&
+        !translator.isAwaitingUser();
+      if (awaitingBackground) continue;
+      // Decided: this run finishes. Close BEFORE emitting, so a message that
+      // arrives from here on is refused and queued as the next turn instead.
+      if (liveMessages && liveMessages.close().length > 0) {
+        sessionHasQueuedWork = true;
+      }
+      return finishTurn(result);
+    }
+    // The session ended while waiting for a live message's turn: report the
+    // turns it did finish.
+    if (result) return finishTurn(result);
+    fail("claude-code ended without a result");
+    return null;
+  }
+
+  function finishTurn(result: SdkResultMessage | null): null {
+    liveMessages?.close();
+    if (!result) {
+      fail("claude-code ended without a result");
       return null;
     }
-    fail("claude-code ended without a result");
+    drain();
+    emit({
+      chunks: [
+        ...turnFinishChunks(
+          result,
+          translator.contextTokens,
+          process.env[ENVS.MODEL_ENV],
+          translator.isAwaitingUser(),
+        ),
+      ],
+    });
     return null;
   }
 

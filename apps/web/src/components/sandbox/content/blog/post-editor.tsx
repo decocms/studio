@@ -21,7 +21,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@decocms/ui/components/alert-dialog.tsx";
-import { Button } from "@decocms/ui/components/button.tsx";
+import { Button, buttonVariants } from "@decocms/ui/components/button.tsx";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { Label } from "@decocms/ui/components/label.tsx";
@@ -76,7 +76,7 @@ import { useBlogAi } from "@/hooks/use-blog-ai";
 import { useHostedAiProviderKeys } from "@/hooks/collections/use-ai-providers";
 import { useDeleteBlock } from "@/components/sections-editor/use-delete-block";
 import { useSaveBlock } from "@/components/sections-editor/use-save-block";
-import { useDraftPointer } from "@/components/sections-editor/use-fast-preview-draft-url";
+import { usePreviewLinkDraftPointer } from "@/components/sections-editor/use-fast-preview-draft-url";
 import { useAutosave } from "./use-autosave";
 import { SaveStatus } from "./save-status";
 import { asBlocks, BlockDocument } from "./block-document";
@@ -142,7 +142,13 @@ export function PostEditor({
   const remove = useDeleteBlock({ orgSlug, virtualMcpId, branch });
   const hasAi = useHostedAiProviderKeys().length > 0;
   const blogAi = useBlogAi();
-  const draftPointer = useDraftPointer({ orgSlug, virtualMcpId, branch });
+  // The preview frame's `__draft` (a hosted draft's carries its forced
+  // variants and "Preview as" options), so this link opens what it shows.
+  const draftPointer = usePreviewLinkDraftPointer({
+    orgSlug,
+    virtualMcpId,
+    branch,
+  });
   const initial = getBlogPayload(block, "posts");
 
   const [post, setPost, syncPost, saveScheduled] = useAutosave(
@@ -195,6 +201,7 @@ export function PostEditor({
     post,
     previewBaseUrl,
     draftPointer,
+    meta,
   });
 
   // Two posts sharing a title is legal but bad for search; warn, never block.
@@ -333,9 +340,9 @@ export function PostEditor({
                     <TooltipTrigger asChild>
                       <Button
                         type="button"
-                        variant="ghost"
+                        variant="ghost-destructive"
                         size="sm"
-                        className="px-2 text-muted-foreground hover:text-destructive"
+                        className="px-2"
                         aria-label={t("sandbox.postEditor.deletePost")}
                         onClick={() => setConfirmingDelete(true)}
                       >
@@ -353,6 +360,7 @@ export function PostEditor({
                     virtualMcpId={virtualMcpId}
                     sections={asBlocks(post.sections)}
                     currentKey={blockKey}
+                    meta={meta}
                     hasAi={hasAi}
                     onApply={(next) => {
                       setField("sections", next);
@@ -383,7 +391,7 @@ export function PostEditor({
             </div>
 
             <TabsContent value="content">
-              <div className="rounded-xl border bg-card p-8 shadow-sm">
+              <div className="surface p-8">
                 <BlockDocument
                   key={contentRevision}
                   value={asBlocks(post.sections)}
@@ -399,7 +407,7 @@ export function PostEditor({
             </TabsContent>
 
             <TabsContent value="settings">
-              <div className="rounded-xl border bg-card p-6 shadow-sm">
+              <div className="surface p-6">
                 <PostSettings
                   post={post}
                   decofile={decofile}
@@ -451,7 +459,7 @@ export function PostEditor({
                 void deletePost();
               }}
               disabled={remove.isPending}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              className={cn(buttonVariants({ variant: "destructive" }))}
             >
               {remove.isPending ? (
                 <>
@@ -505,7 +513,7 @@ function StatusPicker({
                     "rounded-md border px-2.5 py-1 text-xs font-medium transition-colors",
                     active
                       ? "border-primary bg-primary text-primary-foreground"
-                      : "cursor-pointer bg-card hover:bg-muted",
+                      : "cursor-pointer bg-card hover:bg-accent",
                     refusal && "cursor-not-allowed opacity-50",
                   )}
                 >

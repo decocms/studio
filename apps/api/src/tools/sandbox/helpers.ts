@@ -8,6 +8,7 @@
 
 import {
   ENV_VAR_KEY_RE,
+  RUNTIME_APPS_MAX,
   type RuntimeEnvEntry,
   type SandboxRecord,
 } from "@decocms/shared/sdk";
@@ -28,6 +29,7 @@ export type RuntimeConfigMeta = {
     selected?: string | null;
     port?: string | null;
     path?: string | null;
+    apps?: { path?: unknown }[] | null;
     env?: RuntimeEnvEntry[] | null;
   } | null;
 };
@@ -131,6 +133,7 @@ export function resolveRuntimeConfig(metadata: Record<string, unknown>) {
   const pm = selected as PackageManager | null;
   const port = parseValidPort(runtime?.port ?? null);
   const packageManagerPath = runtime?.path ?? null;
+  const apps = readRuntimeApps(runtime?.apps);
 
   if (!pm || !(pm in PACKAGE_MANAGER_CONFIG)) {
     return {
@@ -138,6 +141,7 @@ export function resolveRuntimeConfig(metadata: Record<string, unknown>) {
       runtime: null,
       port,
       packageManagerPath,
+      apps,
       runtimeBinPath: null,
     };
   }
@@ -155,6 +159,16 @@ export function resolveRuntimeConfig(metadata: Record<string, unknown>) {
     runtime: pmRuntime,
     port,
     packageManagerPath,
+    apps,
     runtimeBinPath,
   };
+}
+
+/** `metadata.runtime.apps` as paths; the JSON column is untrusted, so bad entries drop. */
+function readRuntimeApps(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const paths = raw.flatMap((app: { path?: unknown } | null) =>
+    typeof app?.path === "string" && app.path.trim() ? [app.path.trim()] : [],
+  );
+  return [...new Set(paths)].slice(0, RUNTIME_APPS_MAX);
 }

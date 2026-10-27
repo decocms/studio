@@ -3,13 +3,10 @@ import {
   isManifestMatcherResolveType,
   isSavedBlockResolveType,
 } from "./block-type-utils";
+import { type NamedRuleValues, readNamedRuleValues } from "./named-rules";
 import { globalSectionLabel } from "./page-list";
+import { isPageResolveTypeOnBlocksSite } from "./page-types";
 import { resolveSchema, type LiveMeta } from "./resolve-schema";
-
-const PAGE_RESOLVE_TYPES = new Set([
-  "website/pages/Page.tsx",
-  "$live/pages/LivePage.tsx",
-]);
 
 export interface UnwrappedMatcherRule {
   resolveType: string;
@@ -27,7 +24,7 @@ function isMatcherBlockData(
 ): boolean {
   const moduleRt = blockData.__resolveType;
   if (typeof moduleRt !== "string" || !moduleRt) return false;
-  if (PAGE_RESOLVE_TYPES.has(moduleRt)) return false;
+  if (isPageResolveTypeOnBlocksSite(moduleRt, meta)) return false;
 
   if (meta) {
     return isManifestMatcherResolveType(meta, moduleRt);
@@ -59,7 +56,7 @@ export function listSavedMatcherBlocks(
   const entries: SavedMatcherBlock[] = [];
 
   for (const [key, val] of Object.entries(decofile)) {
-    if (key.includes("/") || !isSavedBlockResolveType(key)) continue;
+    if (key.includes("/") || !isSavedBlockResolveType(key, meta)) continue;
     if (isAutoPreviewBlockKey(key)) continue;
     if (!val || typeof val !== "object" || Array.isArray(val)) continue;
 
@@ -85,7 +82,9 @@ export function isSavedMatcherBlockReference(
 ): boolean {
   if (!rule) return false;
   const rt = rule.__resolveType;
-  if (typeof rt !== "string" || !isSavedBlockResolveType(rt)) return false;
+  if (typeof rt !== "string" || !isSavedBlockResolveType(rt, meta)) {
+    return false;
+  }
   if (!Object.hasOwn(decofile, rt)) return false;
 
   const blockData = decofile[rt] as Record<string, unknown>;
@@ -150,7 +149,10 @@ export function resolveEffectiveMatcherRule(
 export function resolveVariantRuleLabel(
   rule: Record<string, unknown> | undefined,
   decofile: Record<string, unknown>,
-  formatMatcher: (rule?: Record<string, unknown>) => string,
+  formatMatcher: (
+    rule?: Record<string, unknown>,
+    named?: NamedRuleValues,
+  ) => string,
   meta?: LiveMeta | null,
 ): string {
   if (!rule) return "Default";
@@ -159,7 +161,7 @@ export function resolveVariantRuleLabel(
     const block = decofile[blockKey] as Record<string, unknown>;
     return globalSectionLabel(blockKey, block);
   }
-  return formatMatcher(rule);
+  return formatMatcher(rule, readNamedRuleValues(decofile));
 }
 
 export function buildMatcherBlockData(

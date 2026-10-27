@@ -8,6 +8,7 @@ import {
   SelectValue,
 } from "@decocms/ui/components/select.tsx";
 import { stripMustacheTokens } from "../array-item-display";
+import { blockRefOptionLabel } from "../block-ref-field-utils";
 import type { SchemaProperty } from "../resolve-schema";
 import { renderField, SchemaForm } from "../schema-form";
 import { FieldLabel } from "./field-label";
@@ -21,6 +22,8 @@ import { LocationField } from "./location-field";
 import { isLocationShape } from "./location/location-value";
 
 type Branch = NonNullable<SchemaProperty["inlineUnionBranches"]>[number];
+
+const LOADER_OPTION_PREFIX = "loader:";
 
 /** Drop const discriminator fields from a branch schema — they're implied by
  * the selected branch and shouldn't render as editable inputs. */
@@ -68,7 +71,16 @@ export function InlineUnionField(props: FieldProps) {
   const activeIndex = Math.min(selected, branches.length - 1);
   const activeBranch = branches[activeIndex];
 
+  // Loader / saved-block alternatives (`LoaderReturnType<T> | T[]`); picking one stores a `{ __resolveType }` reference, which renders through `loaderRef`.
+  const loaderOptions = schema.loaderRef?.anyOfRefs ?? [];
+
   const handleBranchChange = (next: string) => {
+    if (next.startsWith(LOADER_OPTION_PREFIX)) {
+      const ref =
+        loaderOptions[Number(next.slice(LOADER_OPTION_PREFIX.length))];
+      if (ref) onChange({ __resolveType: ref.resolveType });
+      return;
+    }
     const index = Number(next);
     setSelected(index);
     // Fresh value for the chosen branch: [] for an array branch, else an object seeded with its const discriminators (e.g. { name: "max-age" }).
@@ -118,6 +130,14 @@ export function InlineUnionField(props: FieldProps) {
                   t("sectionsEditor.inlineUnionField.branchFallback", {
                     index: index + 1,
                   })}
+              </SelectItem>
+            ))}
+            {loaderOptions.map((ref, index) => (
+              <SelectItem
+                key={`${LOADER_OPTION_PREFIX}${ref.resolveType}`}
+                value={`${LOADER_OPTION_PREFIX}${index}`}
+              >
+                {blockRefOptionLabel(ref)}
               </SelectItem>
             ))}
           </SelectContent>

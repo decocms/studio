@@ -23,6 +23,7 @@
  * the namespace is the secrecy boundary.
  */
 
+import { appHostLabel } from "@decocms/shared/app-preview-host";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import * as net from "node:net";
 import { PassThrough } from "node:stream";
@@ -55,6 +56,7 @@ import {
   applyPreviewPattern,
   buildConfigPayload,
   computeHandle as composeBranchHandle,
+  extraAppsPatch,
   gitCredentialRefreshPatch,
   withSandboxLock,
 } from "../shared";
@@ -1060,6 +1062,7 @@ export class AgentSandboxProvider {
           // likely expired. Forward the freshly-minted one so authenticated git
           // keeps working. No-op when unchanged / public clone.
           await this.refreshDaemonGitCredential(rec, opts);
+          await this.syncExtraApps(rec, opts);
           // Same staleness risk applies to the org-fs sidecar config on a long-resumed pod.
           await this.relayOrgFsConfig(
             rec.daemonUrl,
@@ -1145,6 +1148,7 @@ export class AgentSandboxProvider {
           // Same as resume: the adopted pod's daemon holds a clone credential
           // from an earlier provision that may have lapsed. Rotate it.
           await this.refreshDaemonGitCredential(adopted, opts);
+          await this.syncExtraApps(adopted, opts);
           await this.relayOrgFsConfig(
             adopted.daemonUrl,
             adopted.token,
@@ -1488,6 +1492,7 @@ export class AgentSandboxProvider {
         handle,
         adoptedSandboxName,
         opts.tenant ?? null,
+        opts.workload?.apps,
       );
     } catch (err) {
       await deleteSandboxClaim(this.kubeConfig, this.namespace, handle).catch(
@@ -1598,6 +1603,7 @@ export class AgentSandboxProvider {
       repo: opts?.repo ?? null,
       extraRepos: opts?.extraRepos ?? [],
       port: opts?.workload?.devPort ?? DEFAULT_DEV_PORT,
+      apps: opts?.workload?.apps,
       tenant: opts?.tenant ?? undefined,
       // Sent on every ensure that carries opts, so a warm-pool pod inheriting a
       // previous claim's clone-only config gets it cleared on a normal one.
@@ -1625,6 +1631,30 @@ export class AgentSandboxProvider {
     await postOrgFsConfig(daemonUrl, token, orgFsConfigJson).catch((err) =>
       console.warn("[org-fs] sidecar config relay failed", err),
     );
+  }
+
+  /**
+   * Bring a resumed/adopted sandbox's extra apps and their preview hosts in
+   * line with the caller's. Best-effort, like the credential refresh.
+   */
+  private async syncExtraApps(rec: K8sRecord, opts: EnsureOptions) {
+    const apps = opts.workload?.apps;
+    if (!apps) return;
+    try {
+      await this.ensureHttpRouteForHandle(
+        rec.handle,
+        rec.adoptedSandboxName,
+        rec.tenant,
+        apps,
+      );
+      await postConfig(rec.daemonUrl, rec.token, extraAppsPatch(apps));
+    } catch (err) {
+      console.warn(
+        `[${LOG_LABEL}] extra apps sync failed for ${rec.handle}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
   }
 
   /**
@@ -2206,14 +2236,20 @@ export class AgentSandboxProvider {
     handle: string,
     adoptedSandboxName: string,
     tenant: RunnerTenant | null,
+    apps: string[] = [],
   ): Promise<void> {
     if (!this.previewGateway || !this.previewUrlPattern) return;
-    const hostname = previewHostnameForHandle(this.previewUrlPattern, handle);
+    const pattern = this.previewUrlPattern;
+    const hostname = previewHostnameForHandle(pattern, handle);
     if (!hostname) {
       throw new SandboxError(
-        `Unable to derive preview hostname for ${handle} from pattern: ${this.previewUrlPattern}`,
+        `Unable to derive preview hostname for ${handle} from pattern: ${pattern}`,
       );
     }
+    const appHostnames = apps.flatMap(
+      (path) =>
+        previewHostnameForHandle(pattern, appHostLabel(handle, path)) ?? [],
+    );
     const route: HttpRoute = {
       apiVersion: `${HTTPROUTE_CONSTANTS.API_GROUP}/${HTTPROUTE_CONSTANTS.API_VERSION}`,
       kind: "HTTPRoute",
@@ -2237,7 +2273,7 @@ export class AgentSandboxProvider {
             namespace: this.previewGateway.namespace,
           },
         ],
-        hostnames: [hostname],
+        hostnames: [hostname, ...appHostnames],
         rules: [
           {
             backendRefs: [

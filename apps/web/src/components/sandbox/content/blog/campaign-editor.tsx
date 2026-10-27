@@ -939,7 +939,7 @@ function CategoryTargetPicker({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button type="button" variant="outline" size="sm" className="h-8">
+        <Button type="button" variant="outline" size="default">
           <SearchSm size={14} />
           {t("sandbox.campaigns.pickCategory")}
         </Button>

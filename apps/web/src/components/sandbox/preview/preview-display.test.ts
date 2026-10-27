@@ -245,4 +245,189 @@ describe("resolvePreviewDisplay", () => {
       expect(result.showWakingPill).toBe(true);
     });
   });
+
+  describe("hosted draft (Blocks v8, no sandbox)", () => {
+    it("hosted v8 without a pointer shows the loader, never the published site first", () => {
+      for (const progressStatus of ["doing", "done", "failed"] as const) {
+        expect(
+          run({
+            previewState: STARTING,
+            progressStatus,
+            fastPreviewActive: true,
+            fastPreviewReady: false,
+            hostedDraft: true,
+            hostedPointerPending: true,
+          }),
+        ).toEqual({
+          mode: "none",
+          iframeBase: null,
+          showBlockingOverlay: false,
+          showWakingPill: false,
+          showDecidingLoader: true,
+        });
+      }
+    });
+
+    it("a pending pointer read never holds a v7 Fast Preview or a ready draft", () => {
+      expect(
+        run({
+          previewState: STARTING,
+          progressStatus: "doing",
+          fastPreviewActive: true,
+          fastPreviewReady: false,
+          hostedDraft: false,
+          hostedPointerPending: true,
+        }).showWakingPill,
+      ).toBe(true);
+      expect(
+        run({
+          previewState: STARTING,
+          progressStatus: "doing",
+          fastPreviewActive: true,
+          fastPreviewReady: true,
+          hostedDraft: true,
+          hostedPointerPending: true,
+        }).mode,
+      ).toBe("production");
+    });
+
+    it("shows the published site with no pill when the read answered with no pointer (no draft store)", () => {
+      // Nothing boots on a hosted v8 session: an answered read with no
+      // pointer leaves the published site as the preview.
+      expect(
+        run({
+          previewState: STARTING,
+          progressStatus: "doing",
+          fastPreviewActive: true,
+          fastPreviewReady: false,
+          hostedDraft: true,
+        }),
+      ).toEqual({
+        mode: "production",
+        iframeBase: PROD,
+        showBlockingOverlay: false,
+        showWakingPill: false,
+      });
+    });
+
+    it("shows the draft once its pointer is read", () => {
+      expect(
+        run({
+          previewState: STARTING,
+          progressStatus: "doing",
+          fastPreviewActive: true,
+          fastPreviewReady: true,
+          hostedDraft: true,
+        }),
+      ).toEqual({
+        mode: "production",
+        iframeBase: PROD,
+        showBlockingOverlay: false,
+        showWakingPill: false,
+      });
+    });
+
+    it("never paints the pill whatever the (absent) sandbox reports", () => {
+      for (const previewState of [STARTING, IFRAME]) {
+        for (const progressStatus of ["doing", "done", "failed"] as const) {
+          const result = run({
+            previewState,
+            progressStatus,
+            fastPreviewActive: true,
+            hostedDraft: true,
+          });
+          expect(result.mode).toBe("production");
+          expect(result.showWakingPill).toBe(false);
+        }
+      }
+    });
+
+    it("is ignored outside Fast Preview (a sandbox session boots visibly)", () => {
+      const result = run({
+        previewState: STARTING,
+        progressStatus: "doing",
+        fastPreviewActive: false,
+        hostedDraft: true,
+      });
+      expect(result.showWakingPill).toBe(true);
+    });
+
+    it("leaves a v7 Fast Preview's pill exactly as before", () => {
+      const result = run({
+        previewState: STARTING,
+        progressStatus: "doing",
+        fastPreviewActive: true,
+        fastPreviewReady: false,
+        hostedDraft: false,
+      });
+      expect(result.showWakingPill).toBe(true);
+    });
+
+    it("still yields to Local mode and to a suspended sandbox", () => {
+      expect(
+        run({
+          fastPreviewActive: true,
+          hostedDraft: true,
+          localPreviewUrl: "http://localhost:8000",
+        }).mode,
+      ).toBe("sandbox");
+      expect(
+        run({
+          previewState: SUSPENDED,
+          fastPreviewActive: true,
+          hostedDraft: true,
+        }).mode,
+      ).toBe("none");
+    });
+  });
+});
+
+describe("deciding v7 or v8 (GitHub mode while main's answer loads)", () => {
+  // GitHub mode: Fast Preview on, nothing booting, the hosted draft only
+  // once main is known to be v8.
+  const github = (
+    main: "loading" | "error" | "v8" | "v7",
+  ): Partial<PreviewDisplayInput> => ({
+    fastPreviewActive: true,
+    fastPreviewReady: false,
+    deciding: main === "loading" || main === "error",
+    hostedDraft: main === "v8",
+  });
+
+  it("main loading, then v8: never a waking pill, never the v7 surface first", () => {
+    const steps = (["loading", "error", "v8"] as const).map((main) =>
+      run(github(main)),
+    );
+    expect(steps.some((d) => d.showWakingPill)).toBe(false);
+    expect(steps.slice(0, 2).every((d) => d.mode === "none")).toBe(true);
+    expect(steps.slice(0, 2).every((d) => d.showDecidingLoader)).toBe(true);
+    expect(steps.at(-1)).toMatchObject({
+      mode: "production",
+      iframeBase: PROD,
+    });
+  });
+
+  it("main loading, then v7: a neutral loader, then the v7 surface as on main", () => {
+    const [deciding, v7] = (["loading", "v7"] as const).map((main) =>
+      run(github(main)),
+    );
+    expect(deciding).toMatchObject({
+      mode: "none",
+      showBlockingOverlay: false,
+      showWakingPill: false,
+      showDecidingLoader: true,
+    });
+    expect(v7).toEqual(run({ fastPreviewActive: true }));
+  });
+
+  it("a saved Local tunnel waiting for main: no boot card, no tunnel, then the tunnel (v7)", () => {
+    const tunnel = "https://my-tunnel.example.com";
+    const deciding = run({ deciding: true, localPreviewUrl: null });
+    expect(deciding.showBlockingOverlay).toBe(false);
+    expect(deciding.iframeBase).toBeNull();
+    expect(run({ localPreviewUrl: tunnel })).toMatchObject({
+      mode: "sandbox",
+      iframeBase: tunnel,
+    });
+  });
 });

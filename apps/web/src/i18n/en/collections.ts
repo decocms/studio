@@ -2,6 +2,8 @@ export const collections = {
   "collections.collectionDisplayButton.displayAndFilters": "Display & filters",
   "collections.collectionTabs.tabList": "Collection views",
   "collections.collectionDisplayButton.sortBy": "Sort by",
+  "collections.collectionDisplayButton.tableView": "Table view",
+  "collections.collectionDisplayButton.cardsView": "Cards view",
   "collections.collectionTableWrapper.loading": "Loading...",
   "collections.collectionTableWrapper.noItemsFound": "No items found",
   "collections.mutations.itemCreatedSuccessfully": "Item created successfully",

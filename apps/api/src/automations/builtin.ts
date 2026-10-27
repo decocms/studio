@@ -31,6 +31,8 @@
  *     (`tools/automations/trigger-add.ts`);
  *   - its card step starts the review run, not the board's run
  *     (`card-run.ts` → `tools/task-board/reviewer-run.ts`).
+ * - Move cards from linked chats runs no agent: its starter is the board's run reactions, gated in `TaskBoardStorage.runMovesLinkedCards`.
+ * - Ship merged pull requests and Track chat pull requests run no agent: their starter is code gated on `builtinActive`.
  *
  * A new built-in adds its special case to this list. Its board run takes its
  * instructions from the board's column prompts, which is where an org
@@ -53,6 +55,18 @@ export const IMPLEMENTER_SYSTEM_KEY = "implementer";
 /** The board's reviewer: reviews a card's pull request once it is ready. */
 export const REVIEWER_SYSTEM_KEY = "reviewer";
 
+/** Lets a run on a thread linked to a card move it like the Implementer's
+ *  does (back from In Review, on to review or QA, retry or Backlog on a
+ *  failure). Off, only the Implementer's run moves a card. */
+export const LINKED_CHATS_SYSTEM_KEY = "linked_chats";
+
+/** Moves a card under review to Post-deploy Validation once its pull
+ *  request merged, wherever it was merged. */
+export const PR_MERGED_SYSTEM_KEY = "pr_merged";
+
+/** Puts a pull request a chat with no card opened on the board. */
+export const CHAT_PR_SYSTEM_KEY = "chat_pr";
+
 const BUILTINS = [
   {
     key: IMPLEMENTER_SYSTEM_KEY,
@@ -66,6 +80,27 @@ const BUILTINS = [
     name: "Reviewer",
     triggerType: "board_pr_ready",
     columnKey: LANES.review,
+    fromKind: null,
+  },
+  {
+    key: LINKED_CHATS_SYSTEM_KEY,
+    name: "Move cards from linked chats",
+    triggerType: "linked_chat_run",
+    columnKey: null,
+    fromKind: null,
+  },
+  {
+    key: PR_MERGED_SYSTEM_KEY,
+    name: "Ship merged pull requests",
+    triggerType: "board_pr_merged",
+    columnKey: LANES.review,
+    fromKind: null,
+  },
+  {
+    key: CHAT_PR_SYSTEM_KEY,
+    name: "Track chat pull requests",
+    triggerType: "chat_pr_opened",
+    columnKey: null,
     fromKind: null,
   },
 ] as const;
@@ -109,6 +144,27 @@ export async function ensureBuiltinAutomations(
         from seeded
     `.execute(db);
   }
+}
+
+/** The built-in a starter type belongs to, by name; people's automations
+ *  can't use it. */
+export function builtinOwningStarter(type: string): string | undefined {
+  return BUILTINS.find(
+    (b) => b.triggerType === type && b.key !== IMPLEMENTER_SYSTEM_KEY,
+  )?.name;
+}
+
+/** Whether a built-in that runs in code is on. An org not seeded with it
+ *  yet keeps the behavior it had before the built-in existed. */
+export async function builtinActive(
+  ctx: StudioContext,
+  organizationId: string,
+  systemKey: typeof PR_MERGED_SYSTEM_KEY | typeof CHAT_PR_SYSTEM_KEY,
+): Promise<boolean> {
+  return (
+    (await ctx.storage.automations.builtinActive(organizationId, systemKey)) ??
+    true
+  );
 }
 
 /** True for a built-in whose on/off is still the org's `reviewer_enabled`

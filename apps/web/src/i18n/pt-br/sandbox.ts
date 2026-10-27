@@ -4,6 +4,10 @@ export const sandbox = {
   "sandbox.appEditor.createdSection": 'Seção "{name}" criada',
   "sandbox.appEditor.editingBreadcrumb": "Trilha de navegação de edição",
   "sandbox.appEditor.failedAddSection": "Não foi possível adicionar a seção",
+  "sandbox.appEditor.schemaAwaitsBuild":
+    "Instalado. As configurações aparecem depois que o site for buildado com este app — o schema é gerado a partir do módulo do próprio app.",
+  "sandbox.appEditor.installNeedsCodingSession":
+    "Inicie uma sessão de código para instalar apps.",
   "sandbox.appEditor.loadingSchema": "Carregando schema do app…",
   "sandbox.appEditor.noEditableSchema":
     "Nenhum schema editável foi encontrado para este app.",
@@ -46,7 +50,6 @@ export const sandbox = {
   "sandbox.blogBrand.dosHint":
     "Instruções que todo post gerado deve seguir. Escreva instruções, não adjetivos.",
   "sandbox.blogBrand.dosNamePlaceholder": "Sobre o que é esta regra",
-  "sandbox.blogBrand.addKeyword": "Adicionar palavra-chave",
   "sandbox.blogBrand.addPolicy": "Adicionar política",
   "sandbox.blogBrand.addSpecialDate": "Adicionar data",
   "sandbox.blogBrand.addVocabulary": "Adicionar palavra",
@@ -374,7 +377,6 @@ export const sandbox = {
   "sandbox.campaigns.untitled": "Campanha sem título",
   "sandbox.campaigns.viewBoard": "Quadro",
   "sandbox.campaigns.viewList": "Lista",
-  "sandbox.blogContext.removeEntry": "Remover",
   "sandbox.blogContext.subtitle":
     "O contexto de marca do qual seu blog é escrito — voz, formatos e as campanhas para as quais ele escreve.",
   "sandbox.blogContext.tabAutomations": "Automações",
@@ -413,6 +415,14 @@ export const sandbox = {
   "sandbox.categoryEditor.postsInCategory": "{count} post(s) nesta categoria",
   "sandbox.categoryEditor.previewTooltip":
     "Abra a visualização da categoria em uma nova aba",
+  "sandbox.cmsSettingsBlock.conflictDescription":
+    'Já existe um bloco chamado CMS com o tipo "{type}". Renomeie-o para editar as configurações do CMS aqui.',
+  "sandbox.cmsSettingsBlock.conflictTitle":
+    "Configurações do CMS indisponíveis",
+  "sandbox.cmsSettingsBlock.defaultsNotice":
+    "Ainda não salvo: estes são os valores padrão. Sua primeira alteração cria o bloco CMS.",
+  "sandbox.cmsSettingsBlock.description":
+    "Telemetria e analytics. O site os lê da versão publicada: as alterações valem após publicar, nunca no preview de um rascunho.",
   "sandbox.categoryEditor.renameActionButton": "Renomear e atualizar posts",
   "sandbox.categoryEditor.renameDialogDescription":
     'Alterar o slug de "{oldSlug}" para "{newSlug}" atualizará {count} post(s) que fazem referência a esta categoria.',
@@ -456,8 +466,17 @@ export const sandbox = {
   "sandbox.collectionsSidebar.redirects": "Redirecionamentos",
   "sandbox.collectionsSidebar.sections": "Seções",
   "sandbox.collectionsSidebar.seo": "SEO",
+  "sandbox.collectionsSidebar.settings": "Configurações",
   "sandbox.collectionsSidebar.site": "Site",
   "sandbox.contentBrowser.createdSection": 'Seção "{name}" criada',
+  "sandbox.contentBrowser.deleteDialog.cancel": "Cancelar",
+  "sandbox.contentBrowser.deleteDialog.delete": "Excluir",
+  "sandbox.contentBrowser.deleteDialog.deleting": "Excluindo…",
+  "sandbox.contentBrowser.deleteDialog.descriptionPermanent":
+    '"{label}" será removido permanentemente. Isso não pode ser desfeito.',
+  "sandbox.contentBrowser.deleteDialog.descriptionSection":
+    '"{label}" será removida. Páginas que ainda a referenciam perderão esta seção.',
+  "sandbox.contentBrowser.deleteDialog.title": "Excluir {noun}?",
   "sandbox.contentBrowser.duplicateFailed": "Falha ao duplicar",
   "sandbox.contentBrowser.duplicatedSection": '"{name}" duplicada',
   "sandbox.contentBrowser.renameFailed": "Falha ao renomear",
@@ -779,7 +798,6 @@ export const sandbox = {
   "sandbox.linkPicker.noProducts": "Nenhum produto encontrado",
   "sandbox.mediaBlocks.divider": "Divisor",
   "sandbox.mediaBlocks.fullWidth": "Largura total",
-  "sandbox.mediaBlocks.image": "Imagem",
   "sandbox.mediaBlocks.highPriority": "Prioridade",
   "sandbox.mediaBlocks.highPriorityHint":
     "Carrega de imediato e com prioridade alta. Use em imagens acima da dobra.",
@@ -1020,9 +1038,12 @@ export const sandbox = {
   "sandbox.preview.pageAlreadyExists":
     'Uma página com o caminho "{path}" já existe.',
   "sandbox.preview.pageCreated": 'Página "{name}" criada',
+  "sandbox.preview.blockOnNoPage":
+    "Este bloco não é usado em nenhuma página, então não há o que visualizar.",
   "sandbox.preview.previewMetadataNotReady":
     "Metadados de visualização não estão prontos ainda",
-  "sandbox.preview.refresh": "Atualizar",
+  "sandbox.preview.pageSchemaNotReady":
+    "O site ainda está carregando. Tente de novo em instantes.",
   "sandbox.preview.searchPagesAndComponents":
     "Procurar páginas e componentes...",
   "sandbox.preview.startingPreview": "Iniciando seu preview",
@@ -1115,6 +1136,10 @@ export const sandbox = {
     "O caminho de origem a corresponder. Suporta sintaxe URLPattern (ex. /produto/:slug).",
   "sandbox.redirectEditor.fromLabel": "De",
   "sandbox.redirectEditor.fromPlaceholder": "/caminho-antigo",
+  "sandbox.redirectEditor.statusDescription":
+    "Um código de status explícito prevalece sobre o tipo.",
+  "sandbox.redirectEditor.statusFromType": "Seguir o tipo ({status})",
+  "sandbox.redirectEditor.statusLabel": "Código de status",
   "sandbox.redirectEditor.title": "Redirecionamento",
   "sandbox.redirectEditor.toDescription":
     "O destino — um caminho relativo ou uma URL absoluta.",
@@ -1133,6 +1158,8 @@ export const sandbox = {
     "Novos chats começam como sessões de CMS, pré-visualizadas no seu servidor de preview em vez de um sandbox. Chats existentes mantêm o modo com que foram criados.",
   "sandbox.cmsSettings.fastPreview.needsPreviewServerUrl":
     "Defina um servidor de preview acima para ativar o Preview Rápido.",
+  "sandbox.cmsSettings.blocksV8.needsPreviewServerUrl":
+    "Adicione o endereço do seu site acima para visualizar rascunhos. Até lá, novos chats começam uma sessão de código.",
   "sandbox.cmsSettings.fastPreviewInPlace.label":
     "Preview instantâneo (experimental)",
   "sandbox.cmsSettings.fastPreviewInPlace.description":
@@ -1148,6 +1175,8 @@ export const sandbox = {
     "Continuar esta branch em uma sessão de código",
   "sandbox.previewServerUrlField.description":
     "O endereço do seu servidor ativo, usado para pré-visualizar conteúdo. Necessário para o Preview Rápido.",
+  "sandbox.previewServerUrlField.descriptionBlocksV8":
+    "O endereço do seu site no ar. O Studio mostra seus rascunhos nele antes de você publicar. Um endereço novo mostra rascunhos após a próxima publicação.",
   "sandbox.previewServerUrlField.label": "Servidor de preview",
   "sandbox.previewServerUrlField.placeholder": "https://exemplo.com",
   "sandbox.fieldDescriptionTooltipsField.label": "Descrições compactas",
@@ -1216,6 +1245,38 @@ export const sandbox = {
   "sandbox.runtimeFields.packagePath": "Caminho do pacote",
   "sandbox.runtimeFields.packagePathDescription":
     "Caminho (relativo à raiz do repositório) do diretório que contém package.json. Deixe em branco para a raiz do repositório.",
+  "sandbox.runtimeApps.title": "Outros apps",
+  "sandbox.runtimeApps.description":
+    "Outros apps deste repositório para ver ao lado do principal, até {max}. Cada um roda o próprio servidor de desenvolvimento.",
+  "sandbox.runtimeApps.add": "Adicionar app",
+  "sandbox.runtimeApps.remove": "Remover {path}",
+  "sandbox.runtimeApps.duplicate": "Este app já está na lista.",
+  "sandbox.appTabs.label": "Apps",
+  "sandbox.appTabs.root": "raiz",
+  "sandbox.appTabs.main": "Principal",
+  "sandbox.appTabs.remove": "Remover {app}",
+  "sandbox.appTabs.add": "Adicionar outro app deste repositório",
+  "sandbox.appTabs.pathLabel":
+    "Caminho do app no repositório, como apps/checkout",
+  "sandbox.appTabs.mainHint": "O chat e o editor trabalham neste app.",
+  "sandbox.appTabs.extraHint":
+    "Só preview. O chat continua trabalhando em {app}.",
+  "sandbox.appPane.previewOnly":
+    "Só preview. O chat e o editor continuam em {app}.",
+  "sandbox.appTabs.saveError": "Não foi possível salvar os apps do projeto.",
+  "sandbox.appTabs.split": "Ver lado a lado",
+  "sandbox.appTabs.single": "Ver um app",
+  "sandbox.appPane.path": "Caminho em {app}",
+  "sandbox.appPane.reload": "Recarregar {app}",
+  "sandbox.appPane.openInNewTab": "Abrir {app} em nova aba",
+  "sandbox.appPane.close": "Fechar {app}",
+  "sandbox.appPane.failed":
+    "A sandbox não conseguiu iniciar. Tente de novo em {app}.",
+  "sandbox.appPane.waiting": "Iniciando a sandbox…",
+  "sandbox.appPane.noUrl": "Este app não tem endereço de preview.",
+  "sandbox.appPane.notStarted":
+    "{app} ainda não está rodando: a sandbox subiu antes de ele ser adicionado.",
+  "sandbox.appPane.start": "Iniciar {app}",
   "sandbox.savedSectionEditor.closeJsonEditor": "Fechar editor JSON",
   "sandbox.saveStatus.failed": "Não foi possível salvar",
   "sandbox.saveStatus.saved": "Salvo",
@@ -1227,6 +1288,24 @@ export const sandbox = {
     "JSON inválido — as alterações não serão salvas até que seja processado.",
   "sandbox.savedSectionEditor.noEditableFields":
     "Nenhum campo editável para esta seção.",
+  "sandbox.schemaless.back": "Todos os blocos",
+  "sandbox.schemaless.bannerBody":
+    "Até lá, cada bloco abre com campos simples criados a partir dos valores salvos, e salvar mantém todos os outros valores como estão. Gere o schema na pasta do seu site; esta página o detecta sozinha.",
+  "sandbox.schemaless.bannerTitle":
+    "Os formulários ganham os campos certos assim que o schema existir",
+  "sandbox.schemaless.docsLink": "Sobre o deco schema",
+  "sandbox.schemaless.empty": "Vazio",
+  "sandbox.schemaless.item": "Item {n}",
+  "sandbox.schemaless.itemCount": "{count} itens",
+  "sandbox.schemaless.listLabel": "Blocos salvos",
+  "sandbox.schemaless.noBlocks": "Nenhum bloco salvo ainda.",
+  "sandbox.schemaless.noMatches": "Nenhum bloco corresponde à busca.",
+  "sandbox.schemaless.noType": "Sem tipo",
+  "sandbox.schemaless.notANumber":
+    "Digite um número. O valor salvo continua até você digitar.",
+  "sandbox.schemaless.notSet": "Sem valor",
+  "sandbox.schemaless.pickBlock": "Escolha um bloco para ver o conteúdo.",
+  "sandbox.schemaless.searchPlaceholder": "Buscar blocos",
   "sandbox.sectionRenameDialog.cancel": "Cancelar",
   "sandbox.sectionRenameDialog.description":
     "Atualiza o nome de exibição. A chave interna permanece a mesma para que as páginas que referem esta seção continuem funcionando.",
@@ -1291,4 +1370,79 @@ export const sandbox = {
   "sandbox.variantCalendar.variantBlock": "Variante / Bloco",
   "sandbox.visualEditorPrompt.inputPlaceholder": "Pergunte à IA...",
   "sandbox.visualEditorPrompt.sendButton": "Enviar",
+  "sandbox.collectionsSidebar.campaigns": "Calendário",
+  "sandbox.calendarView.noDraft.title":
+    "Escolha um rascunho para planejar suas campanhas",
+  "sandbox.calendarView.noDraft.desc":
+    "Suas campanhas ficam salvas em um rascunho, como qualquer outra edição. Escolha um rascunho na barra acima ou abra o editor do site para começar um.",
+  "sandbox.calendarView.loadFailed":
+    "Não foi possível carregar suas campanhas.",
+  "sandbox.calendarView.loadFailedHint":
+    "Nada foi alterado. Tente de novo em instantes.",
+  "sandbox.dateCampaigns.intro":
+    "Toda data do seu site é uma campanha: uma variante com a regra “Campanha” aparece enquanto a campanha dela está rodando. As mudanças ficam salvas no seu rascunho e vão ao ar quando você publica.",
+  "sandbox.dateCampaigns.new": "Nova campanha",
+  "sandbox.dateCampaigns.empty.title": "Nenhuma campanha ainda",
+  "sandbox.dateCampaigns.empty.desc":
+    "Crie uma aqui ou a partir de uma variante no editor do site: escolha a regra “Campanha” e digite um nome.",
+  "sandbox.dateCampaigns.listMode": "Lista",
+  "sandbox.dateCampaigns.timelineMode": "Linha do tempo",
+  "sandbox.dateCampaigns.status.running": "Rodando",
+  "sandbox.dateCampaigns.status.upcoming": "Em breve",
+  "sandbox.dateCampaigns.status.ended": "Encerrada",
+  "sandbox.dateCampaigns.status.always": "Sempre ativa",
+  "sandbox.dateCampaigns.status.unreadable": "Datas ilegíveis",
+  "sandbox.dateCampaigns.usedBy": "Usada em {count}",
+  "sandbox.dateCampaigns.notUsed": "Ainda não usada",
+  "sandbox.dateCampaigns.state.new": "Ainda não publicada",
+  "sandbox.dateCampaigns.state.changed": "Alterada no seu rascunho",
+  "sandbox.dateCampaigns.removedTitle": "Removidas no seu rascunho",
+  "sandbox.dateCampaigns.removedHint":
+    "Estas campanhas param quando você publicar. Para manter uma, crie-a de novo com o mesmo nome.",
+  "sandbox.dateCampaigns.unreadableHint":
+    "Uma das datas não pode ser lida, então as variantes dela não aparecem. Escolha novas datas e salve.",
+  "sandbox.dateCampaigns.publishedWindow": "Publicado: {window}",
+  "sandbox.dateCampaigns.saveDates": "Salvar datas",
+  "sandbox.dateCampaigns.renameHint":
+    "Toda variante que usa esta campanha é atualizada na mesma mudança.",
+  "sandbox.dateCampaigns.renameWholeHint":
+    "Seções que leem todas as campanhas no próprio código continuam procurando o nome antigo. Atualize-as no editor do site.",
+  "sandbox.dateCampaigns.delete": "Excluir campanha",
+  "sandbox.dateCampaigns.deleted": "Campanha “{name}” excluída do seu rascunho",
+  "sandbox.dateCampaigns.deletedHint":
+    "Ela sai do site quando você publicar. Desfazer traz ela de volta.",
+  "sandbox.dateCampaigns.renamed": "Campanha renomeada para “{name}”",
+  "sandbox.dateCampaigns.allCampaigns": "Todas as campanhas",
+  "sandbox.dateCampaigns.today": "Hoje",
+  "sandbox.dateCampaigns.previous": "Antes",
+  "sandbox.dateCampaigns.next": "Depois",
+  "sandbox.dateCampaigns.nothingInRange": "Nenhuma campanha roda nestes meses.",
+  "sandbox.dateCampaigns.missing.title":
+    "Seu site precisa de uma atualização para campanhas",
+  "sandbox.dateCampaigns.missing.desc":
+    "Peça ao seu desenvolvedor para atualizar o site para a versão mais recente do Blocks e publicá-lo. Suas campanhas vão aparecer aqui.",
+  "sandbox.dateCampaigns.replaced.title":
+    "Seu site cuida das campanhas no próprio código",
+  "sandbox.dateCampaigns.replaced.desc":
+    "Os desenvolvedores definiram as próprias campanhas, então elas não podem ser alteradas aqui. Pergunte a eles como mudar uma.",
+  "sandbox.dateCampaigns.conflict.title":
+    "Seu site já tem um bloco chamado “campaigns”",
+  "sandbox.dateCampaigns.conflict.desc":
+    "Ele não é uma lista de campanhas, então ainda não dá para adicionar campanhas. Renomeie esse bloco e volte aqui.",
+  "sandbox.previewAs.label": "Visualizar como",
+  "sandbox.previewAs.intro":
+    "Só esta pré-visualização muda. Seus visitantes continuam vendo o site como ele está.",
+  "sandbox.previewAs.unavailable":
+    "Faça uma mudança ou publique o site primeiro; depois a pré-visualização pode mostrar outro momento ou forçar um teste.",
+  "sandbox.previewAs.momentLabel": "Visualizar em",
+  "sandbox.previewAs.momentHint":
+    "As campanhas aparecem como vão estar neste momento. Os horários estão no fuso do seu computador.",
+  "sandbox.previewAs.now": "Agora",
+  "sandbox.previewAs.testsLabel": "Testes A/B",
+  "sandbox.previewAs.testsHint":
+    "Sem escolha: você vê o lado que a sua própria visita recebeu.",
+  "sandbox.previewAs.noTests": "Nenhum teste A/B ainda.",
+  "sandbox.previewAs.off": "Desligado",
+  "sandbox.previewAs.on": "Ligado",
+  "sandbox.previewAs.reset": "Mostrar como está agora",
 } satisfies Record<keyof typeof sandboxEn, string>;

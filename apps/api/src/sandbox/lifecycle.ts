@@ -171,6 +171,8 @@ async function instantiate(
       freestyle: new FreestyleSandboxProvider({
         apiKey,
         image: process.env.STUDIO_SANDBOX_FREESTYLE_IMAGE?.trim() || undefined,
+        allowUserNamespaces:
+          process.env.STUDIO_SANDBOX_FREESTYLE_USER_NAMESPACES === "true",
         meter,
       }),
     },

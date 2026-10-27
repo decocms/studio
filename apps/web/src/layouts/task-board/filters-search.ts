@@ -25,7 +25,7 @@ import {
   type SortDirection,
 } from "./list-sort";
 
-const LAYOUTS = ["board", "list", "feed"] as const;
+const LAYOUTS = ["board", "list", "feed", "epics"] as const;
 
 export type Layout = (typeof LAYOUTS)[number];
 
@@ -205,9 +205,7 @@ export function boardSearchParams(
 /**
  * The layout a reader is actually allowed to be in.
  *
- * Feed is behind project-first navigation, so a `?view=feed` link shared by
- * someone who has the flag must not strand a reader who does not on a view
- * their tabs cannot leave.
+ * Feed is a flag-only view, so a reader without the flag falls back to Board.
  */
 export function enabledLayout(layout: Layout, feedEnabled: boolean): Layout {
   return layout === "feed" && !feedEnabled ? "board" : layout;

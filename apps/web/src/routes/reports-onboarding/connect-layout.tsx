@@ -65,7 +65,7 @@ export function ConnectLayout({
                   <img src={faviconUrl} alt="" className="size-full" />
                 </span>
               )}
-              <span className="truncate text-[15px] leading-tight text-muted-foreground">
+              <span className="truncate text-base leading-tight text-muted-foreground">
                 {siteHost}
               </span>
             </>

@@ -4,8 +4,11 @@
  */
 
 import {
+  ClockRewind,
   ArrowUpRight,
   BarChartSquare02,
+  Beaker02,
+  Calendar,
   CheckDone01,
   Columns03,
   DotsVertical,
@@ -33,16 +36,27 @@ import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import type { ProjectSidebarViewId } from "@/layouts/main-panel-tabs/project-sidebar-views";
 
-export function SidebarViewIcon({ viewId }: { viewId: ProjectSidebarViewId }) {
+export function SidebarViewIcon({
+  viewId,
+  blocksSite = false,
+}: {
+  viewId: ProjectSidebarViewId;
+  /** A Blocks (v8) site: Experiments wears its beaker, as in the sidebar.
+   *  Elsewhere it keeps the generic icon, as before. */
+  blocksSite?: boolean;
+}) {
   if (viewId === "overview") return <Home02 size={16} />;
   if (viewId === "reports") return <BarChartSquare02 size={16} />;
   if (viewId === "board") return <Columns03 size={16} />;
   if (viewId === "site-editor") return <Monitor01 size={16} />;
   if (viewId === "assets") return <Image01 size={16} />;
+  if (viewId === "releases") return <ClockRewind size={16} />;
   if (viewId === "hosting") return <Server01 size={16} />;
   if (viewId === "e2e") return <CheckDone01 size={16} />;
   if (viewId === "analytics") return <BarChartSquare02 size={16} />;
   if (viewId === "cdn") return <Globe02 size={16} />;
+  if (viewId === "experiments" && blocksSite) return <Beaker02 size={16} />;
+  if (viewId === "calendar") return <Calendar size={16} />;
   return <Lightning01 size={16} />;
 }
 
@@ -99,8 +113,8 @@ export function ViewRowActions({
         <DropdownMenuTrigger asChild>
           <Button
             variant="ghost"
-            size="icon"
-            className="size-7 text-muted-foreground"
+            size="icon-sm"
+            className="text-muted-foreground"
             aria-label={t("virtualMcp.settings.views.rowActions")}
           >
             <DotsVertical size={16} />

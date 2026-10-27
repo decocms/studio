@@ -105,7 +105,7 @@ export function CreditsEmptyState() {
               <DialogTitle className="text-lg font-semibold">
                 {t("chat.creditsEmptyState.title")}
               </DialogTitle>
-              <DialogDescription className="mt-2 text-[13px] leading-relaxed max-w-[320px] mx-auto">
+              <DialogDescription className="mt-2 text-sm leading-relaxed max-w-[320px] mx-auto">
                 {t("chat.creditsEmptyState.description")}
               </DialogDescription>
             </div>

@@ -30,6 +30,8 @@ export interface ChatUserConfig {
  * Metadata persisted and transported alongside a Studio thread message.
  */
 export interface Metadata {
+  /** Models reported by the executor for this message. */
+  models?: Record<string, { id: string; title?: string; provider?: string }>;
   reasoning_start_at?: string | Date;
   reasoning_end_at?: string | Date;
   /** Tier to use for model resolution on the backend */
@@ -62,6 +64,10 @@ export interface Metadata {
   /** The user's answer to an interactive tool call of a claude-code thread,
    *  sent as a message because the harness cannot take a tool result. */
   toolOutput?: { toolCallId: string; output: unknown };
+  /** A user message delivered into a running claude-code turn instead of
+   *  queued behind it: the daemon run it went to. The run's
+   *  `data-live-message` part marks where the model read it. */
+  liveRunId?: string;
   /** Tool approval level at send time. */
   toolApprovalLevel?: ToolApprovalLevel;
   /** Decopilot mode, matching the stream schema's `mode` field. */
@@ -92,6 +98,6 @@ export interface Metadata {
   /** Runtime-reported per-turn limits. */
   modelLimits?: {
     contextWindow: number;
-    maxOutputTokens: number;
+    maxOutputTokens?: number;
   };
 }

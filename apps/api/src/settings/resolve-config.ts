@@ -225,6 +225,10 @@ export function resolveConfig(
     localMode: toBool(envVars.DECOCMS_LOCAL_MODE),
     disableRateLimit: toBool(envVars.DISABLE_RATE_LIMIT),
     jiraAllowLocalSiteUrl: toBool(envVars.JIRA_ALLOW_LOCAL_SITE_URL),
+    codexUsageUrl:
+      envVars.CODEX_USAGE_URL || "https://chatgpt.com/backend-api/wham/usage",
+    claudeUsageUrl:
+      envVars.CLAUDE_USAGE_URL || "https://api.anthropic.com/api/oauth/usage",
     jiraSettleSeconds: toPositiveIntegerOrDefault(
       "JIRA_SETTLE_SECONDS",
       envVars.JIRA_SETTLE_SECONDS,
@@ -401,6 +405,12 @@ export function resolveConfig(
     clickhouseAnalyticsUsername:
       envVars.CLICKHOUSE_ANALYTICS_USERNAME || "admin_monitor",
     clickhouseAnalyticsPassword: envVars.CLICKHOUSE_ANALYTICS_PASSWORD,
+    customerLakeUrl: envVars.CUSTOMER_LAKE_URL,
+    customerLakeAdminUsername:
+      envVars.CUSTOMER_LAKE_ADMIN_USERNAME || "customer_lake_user_admin",
+    customerLakeAdminPassword: envVars.CUSTOMER_LAKE_ADMIN_PASSWORD,
+    customerLakeTenantSecret: envVars.CUSTOMER_LAKE_TENANT_SECRET,
+    orderMonitorIngestUrl: envVars.ORDER_MONITOR_INGEST_URL,
     oneDollarStatsApiKey: envVars.ONEDOLLAR_BACKEND_API_KEY,
     // New name first, legacy Reports envs as fallback — one
     // setting, so prod migrates secrets whenever convenient without a
@@ -422,12 +432,25 @@ export function resolveConfig(
     // two can't drift). Set S3_TENANT_ENDPOINT only for a non-AWS S3 store.
     s3TenantEndpoint: envVars.S3_TENANT_ENDPOINT,
     s3TenantPublicUrlBase:
-      envVars.S3_TENANT_PUBLIC_URL_BASE || "https://decoims.com",
+      envVars.S3_TENANT_PUBLIC_URL_BASE || "https://assets.decocms.com",
     awsS3TenantRoleArn: envVars.AWS_S3_TENANT_ROLE_ARN,
     awsS3TenantProvisionerAccessKeyId:
       envVars.AWS_S3_TENANT_PROVISIONER_ACCESS_KEY_ID,
     awsS3TenantProvisionerSecretAccessKey:
       envVars.AWS_S3_TENANT_PROVISIONER_SECRET_ACCESS_KEY,
+
+    // Hosted Deco CMS (Blocks v8): the delivery bucket and site tokens.
+    // Unset = the hosted features answer "not configured".
+    deliveryR2AccountId: envVars.DELIVERY_R2_ACCOUNT_ID,
+    deliveryR2AccessKeyId: envVars.DELIVERY_R2_ACCESS_KEY_ID,
+    deliveryR2SecretAccessKey: envVars.DELIVERY_R2_SECRET_ACCESS_KEY,
+    deliveryR2Bucket: envVars.DELIVERY_R2_BUCKET,
+    // test-only: a local S3 store and the origin that serves it.
+    deliveryR2Endpoint: envVars.DELIVERY_R2_ENDPOINT,
+    deliveryPublicOrigin: envVars.DELIVERY_PUBLIC_ORIGIN,
+    siteTokenSigningKey: envVars.DECO_SITE_TOKEN_SIGNING_KEY,
+    cfDeliveryZoneId: envVars.CF_DELIVERY_ZONE_ID,
+    cfPurgeApiToken: envVars.CF_PURGE_API_TOKEN,
   };
 
   if (Boolean(settings.natsUser) !== Boolean(settings.natsPassword)) {

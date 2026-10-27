@@ -3,7 +3,9 @@ import {
   commitHistoryQuery,
   type GithubPullRequestNode,
   mapCommit,
+  mapCommitNodes,
   mapPullRequest,
+  mapPullRequestNodes,
   mapSearchResults,
   mapTreeEntries,
   pullRequestsQuery,
@@ -206,6 +208,22 @@ describe("mapPullRequest", () => {
   });
 });
 
+describe("mapPullRequestNodes", () => {
+  test("a null node — GitHub's own schema for one the viewer can't resolve — is dropped, not crashed on", () => {
+    const items = mapPullRequestNodes([
+      pullRequestNode({ number: 1 }),
+      null,
+      pullRequestNode({ number: 2 }),
+    ]);
+    expect(items.map((item) => item.number)).toEqual([1, 2]);
+  });
+
+  test("a missing or null nodes list maps to an empty page", () => {
+    expect(mapPullRequestNodes(null)).toEqual([]);
+    expect(mapPullRequestNodes(undefined)).toEqual([]);
+  });
+});
+
 describe("mapCommit", () => {
   test("name, email and login all survive the mapping", () => {
     expect(
@@ -245,6 +263,22 @@ describe("mapCommit", () => {
         author: null,
       }).author,
     ).toEqual({ name: null, email: null, login: null });
+  });
+});
+
+describe("mapCommitNodes", () => {
+  test("a null node is dropped, not crashed on", () => {
+    const items = mapCommitNodes([
+      { oid: "sha-1", committedDate: "2026-02-01T11:00:00Z", author: null },
+      null,
+      { oid: "sha-2", committedDate: "2026-02-02T11:00:00Z", author: null },
+    ]);
+    expect(items.map((item) => item.sha)).toEqual(["sha-1", "sha-2"]);
+  });
+
+  test("a missing or null nodes list maps to an empty page", () => {
+    expect(mapCommitNodes(null)).toEqual([]);
+    expect(mapCommitNodes(undefined)).toEqual([]);
   });
 });
 

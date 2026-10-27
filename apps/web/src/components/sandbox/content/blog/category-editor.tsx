@@ -65,7 +65,7 @@ import {
 import { buildBlogCategoryPreviewUrl } from "./blog-preview-url";
 import { useSaveBlock } from "@/components/sections-editor/use-save-block";
 import { useMoveBlocks } from "@/components/sections-editor/use-move-blocks";
-import { useDraftPointer } from "@/components/sections-editor/use-fast-preview-draft-url";
+import { usePreviewLinkDraftPointer } from "@/components/sections-editor/use-fast-preview-draft-url";
 import { useAutosave } from "./use-autosave";
 import { SaveStatus } from "./save-status";
 import { asBlocks, BlockDocument } from "./block-document";
@@ -125,7 +125,13 @@ export function CategoryEditor({
   const threadId = useOptionalChatTask()?.taskId ?? null;
   const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
   const move = useMoveBlocks({ orgSlug, virtualMcpId, branch });
-  const draftPointer = useDraftPointer({ orgSlug, virtualMcpId, branch });
+  // The preview frame's `__draft` (a hosted draft's carries its forced
+  // variants and "Preview as" options), so this link opens what it shows.
+  const draftPointer = usePreviewLinkDraftPointer({
+    orgSlug,
+    virtualMcpId,
+    branch,
+  });
   const initial = getBlogPayload(block, "categories");
 
   const [category, setCategory, syncCategory] = useAutosave(
@@ -161,6 +167,7 @@ export function CategoryEditor({
     category,
     previewBaseUrl,
     draftPointer,
+    meta,
   });
 
   // The slug input is a free-text draft, committed only on blur — its
@@ -605,7 +612,7 @@ export function CategoryEditor({
                       <button
                         type="button"
                         onClick={() => onOpenPost(p.key)}
-                        className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left transition-colors hover:bg-muted cursor-pointer"
+                        className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left transition-colors hover:bg-accent cursor-pointer"
                       >
                         <File02
                           size={14}

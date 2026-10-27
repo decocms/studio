@@ -28,7 +28,7 @@ import {
   encodeProjectPath,
   GitlabProviderClient,
 } from "./client";
-import { gitlabApiBaseUrl, gitlabFailure } from "./http";
+import { gitlabApiBaseUrl, gitlabFailure, gitlabJson } from "./http";
 import { decoDirFor, groupPathsByDirectory } from "../paths";
 import { GitProviderError, type TokenSource } from "../types";
 import {
@@ -406,20 +406,31 @@ export class GitlabContentClient implements RepoContentClient {
     if (res === null) {
       return { branches: [], totalCount: 0, nextCursor: null };
     }
-    const rows = (await res.json()) as Array<{
-      name?: string;
-      commit?: { author_name?: string | null };
-    }>;
-    const branches = rows.flatMap((row) =>
+    const rows: unknown = await gitlabJson(res, "searchBranches");
+    if (!Array.isArray(rows)) {
+      throw new GitProviderError({
+        provider: "gitlab",
+        status: 502,
+        message: "GitLab /repository/branches returned a non-array payload",
+      });
+    }
+    const branches = (
+      rows as Array<{
+        name?: string;
+        commit?: { author_name?: string | null };
+      }>
+    ).flatMap((row) =>
       typeof row.name === "string"
         ? [{ name: row.name, author: row.commit?.author_name ?? null }]
         : [],
     );
-    const total = Number(res.headers.get("x-total"));
+    const totalHeader = res.headers.get("x-total");
+    const total = totalHeader === null ? null : Number(totalHeader);
     const nextPage = res.headers.get("x-next-page");
     return {
       branches,
-      totalCount: Number.isFinite(total) ? total : branches.length,
+      totalCount:
+        total !== null && Number.isFinite(total) ? total : branches.length,
       nextCursor: nextPage ? nextPage : null,
     };
   }
@@ -495,6 +506,21 @@ export class GitlabContentClient implements RepoContentClient {
       });
     }
     return res.text();
+  }
+
+  async readCommit(
+    sha: string,
+  ): Promise<{ message: string; date: string } | null> {
+    const json = await this.json<{
+      message?: string;
+      committed_date?: string;
+      created_at?: string;
+    }>(`${this.projectBase}/repository/commits/${encodeRef(sha)}`);
+    if (typeof json?.message !== "string") return null;
+    return {
+      message: json.message,
+      date: json.committed_date ?? json.created_at ?? "",
+    };
   }
 
   async readFileAtRef(ref: string, path: string): Promise<string | null> {
@@ -1056,7 +1082,7 @@ export class GitlabContentClient implements RepoContentClient {
         `${this.projectBase}/repository/tree?${query}`,
       );
       if (res === null) return out;
-      const rows: unknown = await res.json();
+      const rows: unknown = await gitlabJson(res, "listTree");
       if (!Array.isArray(rows)) {
         throw new GitProviderError({
           provider: "gitlab",
@@ -1102,6 +1128,16 @@ export class GitlabContentClient implements RepoContentClient {
         message: `GitLab cannot compare ${from}...${to} in ${this.repo.path}`,
       });
     }
+    if (
+      (json.commits !== undefined && !Array.isArray(json.commits)) ||
+      (json.diffs !== undefined && !Array.isArray(json.diffs))
+    ) {
+      throw new GitProviderError({
+        provider: "gitlab",
+        status: 502,
+        message: `GitLab /repository/compare returned a malformed payload for ${from}...${to}`,
+      });
+    }
     return { commits: json.commits ?? [], diffs: json.diffs ?? [] };
   }
 
@@ -1122,7 +1158,7 @@ export class GitlabContentClient implements RepoContentClient {
   ): Promise<T | null> {
     const res = await this.call(pathAndQuery, init);
     if (res === null) return null;
-    return (await res.json()) as T;
+    return gitlabJson<T>(res, pathAndQuery);
   }
 
   /**

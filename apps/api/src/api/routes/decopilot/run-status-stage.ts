@@ -37,7 +37,11 @@ const STAGE_SET = new Set<string>(RUN_STATUS_STAGES);
 export function shouldPublishRunStatus(
   harnessId: string | null | undefined,
 ): boolean {
-  return harnessId === "decopilot" || harnessId === "claude-code";
+  return (
+    harnessId === "decopilot" ||
+    harnessId === "claude-code" ||
+    harnessId === "codex"
+  );
 }
 
 export type RunStatusChunk = Extract<

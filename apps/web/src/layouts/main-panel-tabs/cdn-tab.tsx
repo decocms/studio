@@ -39,11 +39,29 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@decocms/ui/components/popover.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { Input } from "@decocms/ui/components/input.tsx";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@decocms/ui/components/select.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
-import { resolveAnalyticsSiteSlug } from "@decocms/shared/site-slug";
+import {
+  resolveAgentSiteSlug,
+  resolveAnalyticsSiteSlug,
+} from "@decocms/shared/site-slug";
+import { useMainSchemaV8 } from "@/hooks/use-main-schema-v8";
+import { SiteTelemetryMonitor } from "./monitor-v8-tab";
+import { monitorKind } from "./monitor-v8";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t.ts";
+import { usePublicConfig } from "@/hooks/use-public-config";
+import { useOrderMonitorStores } from "@/hooks/use-order-monitor";
+import { OrderMonitorDayView } from "@/components/order-monitor/order-monitor-day";
 
 // Date presets, in display order. The CDN warehouse is DATE-granular (facts are
 // keyed by a `date` column, no timestamp), so sub-day presets (60m/24h/48h/72h)
@@ -61,7 +79,7 @@ const RANGE_PRESETS = [
   { key: "1y", label: "lastYear" },
 ] as const;
 
-interface RangeSel {
+export interface RangeSel {
   range: string;
   since: string;
   until: string;
@@ -91,10 +109,7 @@ function RangePicker({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <button
-          type="button"
-          className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1 text-xs font-medium text-foreground"
-        >
+        <Button variant="outline" size="sm">
           {label}
           {value.compare && (
             <span className="text-muted-foreground">
@@ -102,7 +117,7 @@ function RangePicker({
             </span>
           )}
           <span className="text-muted-foreground">▾</span>
-        </button>
+        </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-72 p-2">
         <div className="grid grid-cols-2 gap-1">
@@ -176,7 +191,7 @@ const COLOR_REQUESTS = "var(--chart-1)";
 const COLOR_PAGEVIEWS = "var(--chart-2)";
 const COLOR_BANDWIDTH = "var(--chart-4)";
 
-function formatNumber(value: unknown): string {
+export function formatNumber(value: unknown): string {
   const n = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(n)) return "—";
   return new Intl.NumberFormat().format(n);
@@ -193,7 +208,7 @@ function formatCompact(value: unknown): string {
 }
 
 /** Bytes → a compact human unit (B / KB / MB / GB / TB). */
-function formatBytes(value: unknown): string {
+export function formatBytes(value: unknown): string {
   const n = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(n) || n <= 0) return "0 B";
   const units = ["B", "KB", "MB", "GB", "TB", "PB"];
@@ -204,7 +219,7 @@ function formatBytes(value: unknown): string {
   return `${(n / 1024 ** i).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
-function formatPct(value: unknown): string {
+export function formatPct(value: unknown): string {
   const n = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(n)) return "—";
   return `${n.toFixed(1)}%`;
@@ -218,14 +233,14 @@ function gmtLabel(): string {
 
 // Cache-status and HTTP status dot colors, plus friendly status-code names.
 const CACHE_COLORS: Record<string, string> = {
-  hit: "bg-emerald-500",
-  dynamic: "bg-blue-500",
-  bypass: "bg-violet-500",
-  miss: "bg-amber-500",
-  expired: "bg-orange-500",
-  stale: "bg-yellow-500",
-  revalidated: "bg-teal-500",
-  updating: "bg-slate-400",
+  hit: "bg-success",
+  dynamic: "bg-notice",
+  bypass: "bg-project-purple",
+  miss: "bg-warning",
+  expired: "bg-project-red",
+  stale: "bg-project-amber",
+  revalidated: "bg-chart-5",
+  updating: "bg-subtle-foreground",
   none: "bg-muted-foreground",
 };
 function cacheColor(k: string): string {
@@ -233,10 +248,10 @@ function cacheColor(k: string): string {
 }
 function statusColor(code: string): string {
   const n = Number(code);
-  if (n >= 200 && n < 300) return "bg-emerald-500";
-  if (n >= 300 && n < 400) return "bg-blue-500";
-  if (n >= 400 && n < 500) return "bg-amber-500";
-  if (n >= 500) return "bg-red-500";
+  if (n >= 200 && n < 300) return "bg-success";
+  if (n >= 300 && n < 400) return "bg-notice";
+  if (n >= 400 && n < 500) return "bg-warning";
+  if (n >= 500) return "bg-destructive";
   return "bg-muted-foreground";
 }
 const STATUS_NAMES: Record<string, string> = {
@@ -266,17 +281,17 @@ function statusName(code: string): string {
 }
 // A stable palette for dimensionless breakdowns (sources / devices).
 const PALETTE = [
-  "bg-blue-500",
-  "bg-emerald-500",
-  "bg-violet-500",
-  "bg-amber-500",
-  "bg-rose-500",
-  "bg-teal-500",
-  "bg-orange-500",
-  "bg-slate-400",
+  "bg-project-blue",
+  "bg-project-green",
+  "bg-project-purple",
+  "bg-project-amber",
+  "bg-chart-3",
+  "bg-chart-5",
+  "bg-project-red",
+  "bg-subtle-foreground",
 ];
 
-async function fetchJson(url: string): Promise<unknown> {
+export async function fetchJson(url: string): Promise<unknown> {
   const res = await fetch(url);
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -289,7 +304,7 @@ async function fetchJson(url: string): Promise<unknown> {
   return body;
 }
 
-interface CdnSummary {
+export interface CdnSummary {
   total_requests: number;
   total_bandwidth_bytes: number;
   cache_hit_ratio: number;
@@ -300,7 +315,7 @@ interface CdnSummary {
   unique_countries: number;
   pageviews: number;
 }
-interface TimelinePoint {
+export interface TimelinePoint {
   bucket: string;
   requests: number;
   bandwidth_bytes: number;
@@ -368,7 +383,7 @@ function Card({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-xl border border-border bg-card overflow-hidden">
+    <section className="surface overflow-hidden">
       <header className="flex items-start gap-2 px-4 py-3 border-b border-border">
         <div className="min-w-0">
           <h3 className="text-sm font-medium text-foreground">{title}</h3>
@@ -400,7 +415,7 @@ function ChartLegendItem({ color, label }: { color: string; label: string }) {
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-border bg-card px-4 py-3">
+    <div className="surface px-4 py-3">
       <div className="text-xs text-muted-foreground">{label}</div>
       <div className="mt-1 text-2xl font-semibold tabular-nums text-foreground">
         {value}
@@ -578,7 +593,7 @@ function CountryMap({ rows }: { rows: { key: string; value: number }[] }) {
       </svg>
       {tip && (
         <div
-          className="pointer-events-none absolute z-10 rounded-md border border-border bg-popover px-2 py-1 text-xs shadow-md"
+          className="pointer-events-none absolute z-10 rounded-md border border-border bg-popover px-2 py-1 text-xs shadow-soft"
           style={{ left: tip.x + 10, top: tip.y + 10 }}
         >
           <span className="text-foreground">{tip.name}</span>
@@ -666,8 +681,6 @@ function FilterBar({
 }) {
   const t = useT();
   const [draft, setDraft] = useState<MonitorFilter | null>(null);
-  const selectCls =
-    "rounded-lg border border-border bg-card px-2 py-1 text-xs text-foreground";
   const opLabel = (op: string) => t(`mainPanelTabs.cdnTab.op_${op}` as never);
   const fieldLabel = (v: string) =>
     t(
@@ -698,82 +711,207 @@ function FilterBar({
 
       {draft ? (
         <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-border bg-card p-1">
-          <select
+          <Select
             value={draft.field}
-            onChange={(e) => setDraft({ ...draft, field: e.target.value })}
-            className={selectCls}
+            onValueChange={(v) => setDraft({ ...draft, field: v })}
           >
-            {fields.map((f) => (
-              <option key={f.value} value={f.value}>
-                {fieldLabel(f.value)}
-              </option>
-            ))}
-          </select>
-          <select
-            value={draft.op}
-            onChange={(e) =>
-              setDraft({ ...draft, op: e.target.value as MonitorFilter["op"] })
-            }
-            className={selectCls}
-          >
-            {FILTER_OPS.map((op) => (
-              <option key={op} value={op}>
-                {opLabel(op)}
-              </option>
-            ))}
-          </select>
-          {FIELD_OPTIONS[draft.field] ? (
-            <select
-              value={draft.value}
-              onChange={(e) => setDraft({ ...draft, value: e.target.value })}
-              className={selectCls}
-            >
-              <option value="">{t("mainPanelTabs.cdnTab.filterValue")}</option>
-              {FIELD_OPTIONS[draft.field]!.map((v) => (
-                <option key={v} value={v}>
-                  {v}
-                </option>
+            <SelectTrigger size="sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {fields.map((f) => (
+                <SelectItem key={f.value} value={f.value}>
+                  {fieldLabel(f.value)}
+                </SelectItem>
               ))}
-            </select>
+            </SelectContent>
+          </Select>
+          <Select
+            value={draft.op}
+            onValueChange={(v) =>
+              setDraft({ ...draft, op: v as MonitorFilter["op"] })
+            }
+          >
+            <SelectTrigger size="sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {FILTER_OPS.map((op) => (
+                <SelectItem key={op} value={op}>
+                  {opLabel(op)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {FIELD_OPTIONS[draft.field] ? (
+            <Select
+              value={draft.value}
+              onValueChange={(v) => setDraft({ ...draft, value: v })}
+            >
+              <SelectTrigger size="sm">
+                <SelectValue
+                  placeholder={t("mainPanelTabs.cdnTab.filterValue")}
+                />
+              </SelectTrigger>
+              <SelectContent>
+                {FIELD_OPTIONS[draft.field]!.map((v) => (
+                  <SelectItem key={v} value={v}>
+                    {v}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           ) : (
-            <input
+            <Input
+              size="sm"
               value={draft.value}
               onChange={(e) => setDraft({ ...draft, value: e.target.value })}
               placeholder={t("mainPanelTabs.cdnTab.filterValue")}
-              className="rounded-lg border border-border bg-card px-2 py-1 text-xs text-foreground"
+              className="w-40"
             />
           )}
-          <button
-            type="button"
-            onClick={() => setDraft(null)}
-            className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground"
-          >
+          <Button variant="ghost" size="sm" onClick={() => setDraft(null)}>
             {t("mainPanelTabs.cdnTab.cancel")}
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            size="sm"
             disabled={!draft.value.trim()}
             onClick={() => {
               onChange([...filters, { ...draft, value: draft.value.trim() }]);
               setDraft(null);
             }}
-            className="rounded-lg bg-foreground px-2 py-1 text-xs font-medium text-background disabled:opacity-40"
           >
             {t("mainPanelTabs.cdnTab.apply")}
-          </button>
+          </Button>
         </div>
       ) : (
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={() =>
             setDraft({ field: fields[0]!.value, op: "equals", value: "" })
           }
-          className="rounded-lg border border-dashed border-border px-2 py-1 text-xs text-muted-foreground hover:text-foreground"
         >
           + {t("mainPanelTabs.cdnTab.addFilter")}
-        </button>
+        </Button>
       )}
     </div>
+  );
+}
+
+/** Requests and pageviews over the range, with bandwidth on its own axis. */
+function UsageChart({
+  points,
+  loading,
+}: {
+  points: readonly TimelinePoint[] | null | undefined;
+  loading: boolean;
+}) {
+  const t = useT();
+  return (
+    <Card
+      title={t("mainPanelTabs.cdnTab.usageOverTime")}
+      subtitle={t("mainPanelTabs.cdnTab.usageSubtitle")}
+    >
+      {loading ? (
+        <Skeleton className="h-72 w-full" />
+      ) : (points ?? []).length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          {t("mainPanelTabs.cdnTab.emptyRange")}
+        </p>
+      ) : (
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            <ChartLegendItem
+              color={COLOR_REQUESTS}
+              label={t("mainPanelTabs.cdnTab.requests")}
+            />
+            <ChartLegendItem
+              color={COLOR_PAGEVIEWS}
+              label={t("mainPanelTabs.cdnTab.pageviews")}
+            />
+            <ChartLegendItem
+              color={COLOR_BANDWIDTH}
+              label={t("mainPanelTabs.cdnTab.bandwidth")}
+            />
+          </div>
+          <ChartContainer
+            config={{
+              requests: {
+                label: t("mainPanelTabs.cdnTab.requests"),
+                color: COLOR_REQUESTS,
+              },
+              pageviews: {
+                label: t("mainPanelTabs.cdnTab.pageviews"),
+                color: COLOR_PAGEVIEWS,
+              },
+              bandwidth_bytes: {
+                label: t("mainPanelTabs.cdnTab.bandwidth"),
+                color: COLOR_BANDWIDTH,
+              },
+            }}
+            className="h-72 w-full"
+          >
+            <AreaChart
+              data={points ?? []}
+              margin={{ top: 8, right: 8, bottom: 8, left: 0 }}
+            >
+              <CartesianGrid vertical={false} />
+              <XAxis
+                dataKey="bucket"
+                tickLine={false}
+                axisLine={false}
+                tickMargin={8}
+                minTickGap={32}
+                tickFormatter={(v: string) => String(v).slice(5, 16)}
+              />
+              <YAxis
+                yAxisId="left"
+                tickLine={false}
+                axisLine={false}
+                width={48}
+                tickFormatter={(v: number) => formatCompact(v)}
+              />
+              <YAxis
+                yAxisId="right"
+                orientation="right"
+                tickLine={false}
+                axisLine={false}
+                width={56}
+                tickFormatter={(v: number) => formatBytes(v)}
+              />
+              <ChartTooltip content={<ChartTooltipContent />} />
+              <Area
+                yAxisId="left"
+                dataKey="requests"
+                type="monotone"
+                fill={COLOR_REQUESTS}
+                fillOpacity={0.15}
+                stroke={COLOR_REQUESTS}
+                strokeWidth={2}
+              />
+              <Area
+                yAxisId="left"
+                dataKey="pageviews"
+                type="monotone"
+                fill={COLOR_PAGEVIEWS}
+                fillOpacity={0.12}
+                stroke={COLOR_PAGEVIEWS}
+                strokeWidth={2}
+              />
+              <Line
+                yAxisId="right"
+                dataKey="bandwidth_bytes"
+                type="monotone"
+                dot={false}
+                stroke={COLOR_BANDWIDTH}
+                strokeWidth={2}
+              />
+            </AreaChart>
+          </ChartContainer>
+        </div>
+      )}
+    </Card>
   );
 }
 
@@ -957,109 +1095,7 @@ function PerformanceSection({
         </div>
       )}
 
-      <Card
-        title={t("mainPanelTabs.cdnTab.usageOverTime")}
-        subtitle={t("mainPanelTabs.cdnTab.usageSubtitle")}
-      >
-        {timeline.isLoading ? (
-          <Skeleton className="h-72 w-full" />
-        ) : (timeline.data ?? []).length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            {t("mainPanelTabs.cdnTab.emptyRange")}
-          </p>
-        ) : (
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-              <ChartLegendItem
-                color={COLOR_REQUESTS}
-                label={t("mainPanelTabs.cdnTab.requests")}
-              />
-              <ChartLegendItem
-                color={COLOR_PAGEVIEWS}
-                label={t("mainPanelTabs.cdnTab.pageviews")}
-              />
-              <ChartLegendItem
-                color={COLOR_BANDWIDTH}
-                label={t("mainPanelTabs.cdnTab.bandwidth")}
-              />
-            </div>
-            <ChartContainer
-              config={{
-                requests: {
-                  label: t("mainPanelTabs.cdnTab.requests"),
-                  color: COLOR_REQUESTS,
-                },
-                pageviews: {
-                  label: t("mainPanelTabs.cdnTab.pageviews"),
-                  color: COLOR_PAGEVIEWS,
-                },
-                bandwidth_bytes: {
-                  label: t("mainPanelTabs.cdnTab.bandwidth"),
-                  color: COLOR_BANDWIDTH,
-                },
-              }}
-              className="h-72 w-full"
-            >
-              <AreaChart
-                data={timeline.data ?? []}
-                margin={{ top: 8, right: 8, bottom: 8, left: 0 }}
-              >
-                <CartesianGrid vertical={false} />
-                <XAxis
-                  dataKey="bucket"
-                  tickLine={false}
-                  axisLine={false}
-                  tickMargin={8}
-                  minTickGap={32}
-                  tickFormatter={(v: string) => String(v).slice(5, 16)}
-                />
-                <YAxis
-                  yAxisId="left"
-                  tickLine={false}
-                  axisLine={false}
-                  width={48}
-                  tickFormatter={(v: number) => formatCompact(v)}
-                />
-                <YAxis
-                  yAxisId="right"
-                  orientation="right"
-                  tickLine={false}
-                  axisLine={false}
-                  width={56}
-                  tickFormatter={(v: number) => formatBytes(v)}
-                />
-                <ChartTooltip content={<ChartTooltipContent />} />
-                <Area
-                  yAxisId="left"
-                  dataKey="requests"
-                  type="monotone"
-                  fill={COLOR_REQUESTS}
-                  fillOpacity={0.15}
-                  stroke={COLOR_REQUESTS}
-                  strokeWidth={2}
-                />
-                <Area
-                  yAxisId="left"
-                  dataKey="pageviews"
-                  type="monotone"
-                  fill={COLOR_PAGEVIEWS}
-                  fillOpacity={0.12}
-                  stroke={COLOR_PAGEVIEWS}
-                  strokeWidth={2}
-                />
-                <Line
-                  yAxisId="right"
-                  dataKey="bandwidth_bytes"
-                  type="monotone"
-                  dot={false}
-                  stroke={COLOR_BANDWIDTH}
-                  strokeWidth={2}
-                />
-              </AreaChart>
-            </ChartContainer>
-          </div>
-        )}
-      </Card>
+      <UsageChart points={timeline.data} loading={timeline.isLoading} />
 
       {/* Shared metric control for ALL breakdown lists below (cache status,
           status codes, top paths, top countries) — placed above the grid so it
@@ -1502,17 +1538,18 @@ function AudienceSection({
           onChange={setFilters}
         />
         {hosts.length > 1 && (
-          <select
-            value={host}
-            onChange={(e) => setSelectedHost(e.target.value)}
-            className="max-w-full truncate rounded-lg border border-border bg-card px-2 py-1 text-xs text-foreground"
-          >
-            {hosts.map((h) => (
-              <option key={h} value={h}>
-                {h}
-              </option>
-            ))}
-          </select>
+          <Select value={host} onValueChange={setSelectedHost}>
+            <SelectTrigger size="sm" className="max-w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {hosts.map((h) => (
+                <SelectItem key={h} value={h}>
+                  {h}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         )}
       </div>
 
@@ -1554,7 +1591,7 @@ function AudienceSection({
                     <span
                       className={cn(
                         "text-xs font-medium tabular-nums",
-                        good ? "text-emerald-600" : "text-rose-600",
+                        good ? "text-success" : "text-destructive",
                       )}
                     >
                       {delta >= 0 ? "↑" : "↓"}
@@ -1747,12 +1784,113 @@ function AudienceSection({
   );
 }
 
+/** Orders sub-tab: the store this agent sells through, picked when it has several. */
+function OrdersSection({
+  orgSlug,
+  virtualMcpId,
+  stores,
+}: {
+  orgSlug: string;
+  virtualMcpId: string;
+  stores: { connectionId: string; title: string }[];
+}) {
+  const t = useT();
+  const [picked, setPicked] = useState<string | null>(null);
+  const [at, setAt] = useState<string | undefined>(undefined);
+  const current = stores.find((s) => s.connectionId === picked) ?? stores[0];
+  if (!current) return null;
+  return (
+    <div className="flex flex-col gap-3">
+      {stores.length > 1 && (
+        <Select
+          value={current.connectionId}
+          onValueChange={(v) => {
+            setPicked(v);
+            setAt(undefined);
+          }}
+        >
+          <SelectTrigger
+            size="sm"
+            aria-label={t("orderMonitor.pickStore")}
+            className="self-start"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {stores.map((s) => (
+              <SelectItem key={s.connectionId} value={s.connectionId}>
+                {s.title}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
+      <OrderMonitorDayView
+        orgSlug={orgSlug}
+        connectionId={current.connectionId}
+        at={at}
+        onAtChange={setAt}
+        virtualMcpId={virtualMcpId}
+      />
+    </div>
+  );
+}
+
+/**
+ * Monitor: the telemetry Monitor for a Blocks v8 site (`monitor-v8-tab.tsx`),
+ * today's CDN Monitor for every other one. Nothing shows until main's schema
+ * is known, so a v8 site never flashes the CDN view first.
+ */
 export function CdnTab({ virtualMcpId }: { virtualMcpId: string }) {
   const t = useT();
   const { org } = useProjectContext();
   const entity = useVirtualMCP(virtualMcpId);
+  const kind = monitorKind(useMainSchemaV8(virtualMcpId));
+  if (kind === "loading") {
+    return (
+      <div className="flex flex-col gap-4 p-4">
+        <Skeleton className="h-6 w-32" />
+        <Skeleton className="h-72 w-full rounded-xl" />
+      </div>
+    );
+  }
+  if (kind === "v7") return <CdnMonitor virtualMcpId={virtualMcpId} />;
+  // A v8 site reports under the site its token was issued for: the
+  // project's own site, never the analytics override a v7 migration uses.
+  const site = resolveAgentSiteSlug(entity);
+  if (!site) {
+    return (
+      <EmptyState
+        icon={<Globe01 className="size-5" />}
+        title={t("mainPanelTabs.cdnTab.noSiteTitle")}
+        description={t("mainPanelTabs.monitorV8.noSiteBody")}
+      />
+    );
+  }
+  return (
+    <SiteTelemetryMonitor
+      key={site}
+      base={`/api/${org.slug}/monitor/${encodeURIComponent(site)}`}
+      site={site}
+    />
+  );
+}
+
+/** Today's CDN + audience Monitor (v7 sites). */
+function CdnMonitor({ virtualMcpId }: { virtualMcpId: string }) {
+  const t = useT();
+  const { org } = useProjectContext();
+  const config = usePublicConfig();
+  const entity = useVirtualMCP(virtualMcpId);
   const siteSlug = resolveAnalyticsSiteSlug(entity);
   const enabled = Boolean(siteSlug);
+  const storesQuery = useOrderMonitorStores(
+    org.slug,
+    config.orderMonitorEnabled === true,
+  );
+  const agentStores = (storesQuery.data ?? []).filter((s) =>
+    s.agentIds.includes(virtualMcpId),
+  );
   const base = siteSlug
     ? `/api/${org.slug}/monitor/${encodeURIComponent(siteSlug)}`
     : "";
@@ -1764,13 +1902,36 @@ export function CdnTab({ virtualMcpId }: { virtualMcpId: string }) {
   });
   const rangeExtra =
     sel.range === "custom" ? `&since=${sel.since}&until=${sel.until}` : "";
-  const [section, setSection] = useState<"performance" | "audience">(
-    "performance",
-  );
+  const [chosenSection, setSection] = useState<
+    "performance" | "audience" | "orders" | null
+  >(null);
   const hostsQuery = useOdHosts(base, Boolean(siteSlug));
   const hosts = hostsQuery.data ?? [];
 
-  if (!siteSlug) {
+  // A store without a site still gets its Orders sub-tab.
+  const sections = [
+    ...(siteSlug
+      ? [
+          {
+            id: "performance" as const,
+            label: t("mainPanelTabs.cdnTab.performance"),
+          },
+          {
+            id: "audience" as const,
+            label: t("mainPanelTabs.cdnTab.audience"),
+          },
+        ]
+      : []),
+    ...(agentStores.length > 0
+      ? [{ id: "orders" as const, label: t("orderMonitor.ordersTab") }]
+      : []),
+  ];
+  const section =
+    sections.find((sec) => sec.id === chosenSection)?.id ?? sections[0]?.id;
+
+  if (!section) {
+    // Without a site, the Orders sub-tab may still be on its way.
+    if (storesQuery.isLoading) return <Skeleton className="m-4 h-40" />;
     return (
       <EmptyState
         icon={<Globe01 className="size-5" />}
@@ -1779,14 +1940,6 @@ export function CdnTab({ virtualMcpId }: { virtualMcpId: string }) {
       />
     );
   }
-
-  const sections = [
-    {
-      id: "performance" as const,
-      label: t("mainPanelTabs.cdnTab.performance"),
-    },
-    { id: "audience" as const, label: t("mainPanelTabs.cdnTab.audience") },
-  ];
 
   return (
     <div className="flex h-full flex-col gap-4 overflow-auto p-4">
@@ -1823,10 +1976,16 @@ export function CdnTab({ virtualMcpId }: { virtualMcpId: string }) {
             </button>
           ))}
         </div>
-        <RangePicker value={sel} onChange={setSel} />
+        {section !== "orders" && <RangePicker value={sel} onChange={setSel} />}
       </div>
 
-      {section === "performance" ? (
+      {section === "orders" ? (
+        <OrdersSection
+          orgSlug={org.slug}
+          virtualMcpId={virtualMcpId}
+          stores={agentStores}
+        />
+      ) : section === "performance" ? (
         <PerformanceSection
           base={base}
           range={sel.range}

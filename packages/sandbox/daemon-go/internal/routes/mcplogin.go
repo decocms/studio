@@ -37,6 +37,10 @@ type mcpLoginProc struct {
 	drained  chan struct{} // its output is fully read
 	name     string
 	redirect string // scheme://host/path the callback URL must match
+	// abandon kills the proc after mcpLoginAbandoned. Finish stops it once the
+	// CLI exits on its own, so a completed login doesn't hold its pty open for
+	// up to 10 minutes waiting on a timer that no longer needs to fire.
+	abandon *time.Timer
 }
 
 const (
@@ -100,7 +104,7 @@ func (m *McpLogin) Start(w http.ResponseWriter, r *http.Request) {
 	}
 	go func() { _, _ = p.out.ReadFrom(p.tty); close(p.drained) }()
 	go func() { _ = p.cmd.Wait(); close(p.done) }()
-	time.AfterFunc(mcpLoginAbandoned, p.kill)
+	p.abandon = time.AfterFunc(mcpLoginAbandoned, p.kill)
 
 	link, redirect := p.waitForURL(ctx)
 	if link == "" {
@@ -156,6 +160,10 @@ func (m *McpLogin) Finish(w http.ResponseWriter, r *http.Request) {
 	case <-p.drained:
 	case <-time.After(time.Second):
 	}
+	// The CLI already exited on its own; just release its pty instead of
+	// leaving it open until the abandonment timer fires.
+	p.abandon.Stop()
+	_ = p.tty.Close()
 	if p.cmd.ProcessState.ExitCode() != 0 {
 		httpx.Error(w, 502, lastLine(p.text()))
 		return
@@ -209,6 +217,7 @@ func (m *McpLogin) cancelLocked() {
 }
 
 func (p *mcpLoginProc) kill() {
+	p.abandon.Stop()
 	_ = p.cmd.Process.Kill()
 	_ = p.tty.Close()
 }

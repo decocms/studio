@@ -8,8 +8,10 @@
 
 import type { ReactNode } from "react";
 import {
+  ClockRewind,
   BarChartSquare02,
   Beaker02,
+  Calendar,
   CheckDone01,
   Globe02,
   Image01,
@@ -20,6 +22,8 @@ import {
   Stars02,
 } from "@untitledui/icons";
 import { SidebarMenu } from "@decocms/ui/components/sidebar.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
+import { PROJECT_APPS } from "@/components/projects/project-apps";
 import { SidebarNavRow } from "./nav-row";
 import { LAYOUT_TOUR_ANCHORS } from "@/components/layout-tour/anchors";
 import { DESTINATION_ROUTE } from "@/hooks/use-destination-route";
@@ -45,6 +49,7 @@ import {
   PROJECT_NATIVE_VIEW_IDS,
   projectSidebarViewPresence,
   resolveProjectSidebarViews,
+  offeredProjectSidebarViews,
   selectedProjectSidebarViews,
   type ProjectNativeViewId,
 } from "@/layouts/main-panel-tabs/project-sidebar-views";
@@ -66,7 +71,14 @@ interface ProjectView {
   dataTour?: string;
 }
 
-export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
+export function ProjectNav({
+  onNavigate,
+  heading,
+}: {
+  onNavigate?: () => void;
+  /** Titles the rows as their own section, under the new navigation. */
+  heading?: string;
+}) {
   const t = useT();
   const { project } = useProjectScope();
   const navigateToAgent = useNavigateToAgent();
@@ -88,6 +100,13 @@ export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
       optimisticSidebarViews !== undefined
         ? 1
         : project.metadata.sidebarViewsVersion,
+      // An edit in flight is the exact list the editor saw, offers included.
+      optimisticSidebarViews !== undefined
+        ? []
+        : offeredProjectSidebarViews(
+            project.metadata.sidebarViewsSeen,
+            nativeViews.presence.calendar,
+          ),
     ),
   );
 
@@ -116,6 +135,10 @@ export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
       label: t("common.mainPanelTabs.assets"),
       icon: <Image01 size={16} />,
     },
+    releases: {
+      label: t("common.mainPanelTabs.releases"),
+      icon: <ClockRewind size={16} />,
+    },
     hosting: {
       label: t("common.mainPanelTabs.hosting"),
       icon: <Server01 size={16} />,
@@ -135,6 +158,10 @@ export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
     experiments: {
       label: t("experiments.title"),
       icon: <Beaker02 size={16} />,
+    },
+    calendar: {
+      label: t("common.mainPanelTabs.calendar"),
+      icon: <Calendar size={16} />,
     },
   };
   for (const viewId of PROJECT_NATIVE_VIEW_IDS) {
@@ -211,12 +238,30 @@ export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
 
   const onProject = leafPath.startsWith(DESTINATION_ROUTE.projects);
 
-  return (
+  /** Under the new navigation each app wears its catalogue tile, as on the
+   *  rail and the home; a pinned app keeps its own mark on a neutral tile. */
+  const appIcon = (view: ProjectView) => {
+    if (!heading) return view.icon;
+    const app = PROJECT_APPS[view.panel as keyof typeof PROJECT_APPS];
+    return (
+      <span
+        className={cn(
+          "flex size-5 shrink-0 items-center justify-center rounded-md [&_svg]:size-3",
+          app ? app.tone : "bg-muted text-muted-foreground",
+        )}
+      >
+        {/* `text-current`: the row greys out any icon without a colour of its own. */}
+        {app ? <app.Icon size={12} className="text-current" /> : view.icon}
+      </span>
+    );
+  };
+
+  const rows = (
     <SidebarMenu className="gap-1">
       {views.map((view) => (
         <SidebarNavRow
           key={view.key}
-          icon={view.icon}
+          icon={appIcon(view)}
           label={view.label}
           dataTour={view.dataTour}
           isActive={onProject && view.isActive(activeTabId)}
@@ -238,5 +283,18 @@ export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
         />
       ))}
     </SidebarMenu>
+  );
+  if (!heading) return rows;
+  if (views.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-1">
+      {/* Same heading as the projects tree's sections. */}
+      <div className="flex h-6 items-center px-2 group-data-[state=collapsed]/sidebar:hidden">
+        <span className="truncate font-medium text-xs text-muted-foreground">
+          {heading}
+        </span>
+      </div>
+      {rows}
+    </div>
   );
 }

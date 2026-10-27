@@ -1,6 +1,7 @@
 import type { projects as projectsEn } from "../en/projects.ts";
 
 export const projects = {
+  "projects.overview.metrics": "Métricas",
   "projects.platform.vtex": "VTEX",
   "projects.platform.shopify": "Shopify",
   "projects.platform.wake": "Wake",
@@ -47,44 +48,24 @@ export const projects = {
   "projects.connections.orgWide": "Toda a organização",
   "projects.connections.usedBy": "{count} projetos",
   "projects.settings.title": "Projetos",
-  "projects.settings.description":
-    "Tudo que é escopado por projeto fica aqui: repositórios, conexões, relatório e quadro.",
   "projects.settings.searchPlaceholder": "Buscar projetos…",
   "projects.settings.open": "Abrir",
   "projects.settings.openSettings": "Configurações",
-  "projects.settings.orgScopeNote":
-    "Membros, cobrança, segurança e provedores de IA continuam sendo da organização.",
   "projects.settings.noResults": "Nenhum projeto corresponde a “{search}”",
 
   "projects.identity.storeUrlLabel": "URL da loja",
   "projects.identity.storeUrlDescription":
     "A loja no ar. Os relatórios rodam contra este endereço.",
-  "projects.flat.viewProject": "Projeto",
-  "projects.flat.viewFiles": "Arquivos",
-  "projects.flat.viewAnalytics": "Análise",
-  "projects.apps.heading": "Apps",
-  "projects.apps.seeAll": "Ver todos",
-  "projects.apps.showLess": "Ver menos",
   "projects.apps.reports": "Relatório",
-  "projects.apps.reportsCaption": "O que está errado na loja",
   "projects.apps.siteEditor": "Editor de site",
-  "projects.apps.siteEditorCaption": "Páginas, seções e conteúdo",
   "projects.apps.assets": "Assets",
-  "projects.apps.assetsCaption": "Imagens e arquivos que o site usa",
+  "projects.apps.releases": "Releases",
   "projects.apps.hosting": "Hosting",
-  "projects.apps.hostingCaption": "Deploys, domínios e ambientes",
   "projects.apps.e2e": "Testes ponta a ponta",
-  "projects.apps.e2eCaption": "Fluxos verificados a cada mudança",
   "projects.apps.analytics": "Analytics",
-  "projects.apps.analyticsCaption": "Tráfego, conversão e receita",
   "projects.apps.cdn": "Monitor",
-  "projects.apps.cdnCaption": "Cache, latência e erros",
   "projects.apps.context": "Contexto",
-  "projects.apps.contextCaption":
-    "A marca, as regras de escrita e os especialistas que escrevem a partir delas",
   "projects.apps.automations": "Automações",
-  "projects.apps.automationsCaption": "Trabalho que roda em agenda",
   "projects.apps.experiments": "Experimentos",
-  "projects.apps.experimentsCaption": "Testes A/B e seus resultados",
-  "projects.flat.close": "Fechar",
+  "projects.apps.calendar": "Calendário",
 } as const satisfies Record<keyof typeof projectsEn, string>;

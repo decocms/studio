@@ -111,10 +111,15 @@ export function readProps(
   const asObject = asSchema(pruned);
   if (!asObject) return { reason: "props are not an object" };
   const record = asStored(asObject, example);
-  const { valid, errorMessage } = sharedJsonSchemaValidator.getValidator(
-    forValidation(schema),
-  )(record);
-  return valid ? { props: record } : { reason: errorMessage };
+  try {
+    const { valid, errorMessage } = sharedJsonSchemaValidator.getValidator(
+      forValidation(schema),
+    )(record);
+    return valid ? { props: record } : { reason: errorMessage };
+  } catch (err) {
+    // ajv can throw compiling a malformed block schema (e.g. a bad regex `pattern`).
+    return { reason: `block schema could not be compiled: ${message(err)}` };
+  }
 }
 
 /** How this site keeps a list in one value: `a\nb\nc`. */

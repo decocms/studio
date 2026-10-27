@@ -10,6 +10,7 @@ const route = getRouteApi(
 
 function AgentAppContent() {
   const { connectionId, toolName } = route.useParams();
+  const { args } = route.useSearch();
   const threadId = useRouteThreadId();
   const metadata = useTaskMetadata(threadId);
   const expandedTool = metadata?.expanded_tools?.find(
@@ -21,6 +22,7 @@ function AgentAppContent() {
       connectionId={connectionId}
       toolName={toolName}
       args={expandedTool?.args}
+      searchArgs={args}
     />
   );
 }

@@ -1,5 +1,6 @@
 /** One changed page, block, or file in the publish list; the list owns selection and the armed discard. */
 
+import { Button } from "@decocms/ui/components/button.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { PublishCardFrame, PublishGhost } from "./cms-publish-frame.tsx";
 import {
@@ -9,8 +10,10 @@ import {
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
 import { File06, LayoutAlt01, Trash01 } from "@untitledui/icons";
-import { useT, type TFunction } from "@/i18n/use-t.ts";
+import { useT, type TFunction, type TranslationKey } from "@/i18n/use-t.ts";
+import { namedRuleUsePlaces } from "@/components/sections-editor/named-rule-use-copy.ts";
 import {
+  namedRuleBlockOfChange,
   publishChangeDigest,
   type PublishChange,
   type PublishChangeStatus,
@@ -24,6 +27,34 @@ import {
  */
 export function changeId(change: PublishChange): string {
   return change.filepaths[0] ?? change.blockKey ?? change.name;
+}
+
+/**
+ * The A/B tests or Campaigns card's line: the verb follows how many places,
+ * the noun how many distinct names are missing ("2 pages use a test", "1
+ * page uses tests").
+ */
+function missingUsesKey(
+  uses: NonNullable<PublishChange["missingRuleUses"]>,
+): TranslationKey {
+  const onePlace = uses.pages + uses.sections === 1;
+  const oneName = uses.names === 1;
+  if (uses.kind === "experiments") {
+    return oneName
+      ? onePlace
+        ? "thread.publishPopover.missingTestUsesOne"
+        : "thread.publishPopover.missingTestUses"
+      : onePlace
+        ? "thread.publishPopover.missingTestsUsesOne"
+        : "thread.publishPopover.missingTestsUses";
+  }
+  return oneName
+    ? onePlace
+      ? "thread.publishPopover.missingCampaignUsesOne"
+      : "thread.publishPopover.missingCampaignUses"
+    : onePlace
+      ? "thread.publishPopover.missingCampaignsUsesOne"
+      : "thread.publishPopover.missingCampaignsUses";
 }
 
 function statusLabel(status: PublishChangeStatus, t: TFunction) {
@@ -55,6 +86,9 @@ function changeIcon(change: PublishChange, t: TFunction) {
 function changeDetail(change: PublishChange, t: TFunction) {
   if (change.kind === "page") return change.pagePath;
   if (change.kind !== "block") return null;
+  const named = namedRuleBlockOfChange(change);
+  if (named === "experiments") return t("thread.publishPopover.abTests");
+  if (named === "campaigns") return t("thread.publishPopover.campaignDates");
   return change.isSiteApp
     ? t("thread.publishPopover.siteConfiguration")
     : t("thread.publishPopover.globalSection");
@@ -66,8 +100,12 @@ function changeDetail(change: PublishChange, t: TFunction) {
  * "Lazy — Section" rows that pushed the next card off screen. Counts stay one
  * line; the review pane is where names and fields belong.
  */
-function changeSubLines(change: PublishChange, t: TFunction): string[] {
-  const digest = publishChangeDigest(change);
+function changeSubLines(
+  change: PublishChange,
+  t: TFunction,
+  v8: boolean,
+): string[] {
+  const digest = publishChangeDigest(change, v8);
   if (digest.newPageSections !== null) {
     return [
       digest.newPageSections === 1
@@ -113,6 +151,8 @@ interface PublishChangeCardProps {
   onDiscard?: () => void;
   isPublishing: boolean;
   isDiscarding: boolean;
+  /** A Blocks v8 site's change (`publishChangeDigest`). Absent on v7. */
+  v8?: boolean;
 }
 
 export function PublishChangeCard({
@@ -125,11 +165,15 @@ export function PublishChangeCard({
   onDiscard,
   isPublishing,
   isDiscarding,
+  v8 = false,
 }: PublishChangeCardProps) {
   const t = useT();
 
   const detail = changeDetail(change, t);
-  const subLines = changeSubLines(change, t);
+  const subLines = changeSubLines(change, t, v8);
+  const missing = change.missingRules ?? [];
+  const missingUses = change.missingRuleUses;
+  const missingPlaces = missingUses ? namedRuleUsePlaces(t, missingUses) : null;
   /** Holds the height a sub-line will occupy, so the list does not grow under
    *  the cursor when bodies land. Only `edited` cards gain sub-lines from
    *  bodies — a new page already counts its sections, and new or removed
@@ -141,8 +185,8 @@ export function PublishChangeCard({
   return (
     <PublishCardFrame
       className={cn(
-        "cursor-pointer transition-colors hover:bg-accent/50",
-        selected && "border-foreground/30 bg-accent hover:bg-accent",
+        "cursor-pointer transition-colors hover:bg-accent",
+        selected && "border-foreground/30 bg-accent hover:bg-secondary-hover",
       )}
       data-change-id={changeId(change)}
       onClick={onSelect}
@@ -190,10 +234,13 @@ export function PublishChangeCard({
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <button
+                <Button
                   type="button"
+                  variant="ghost-destructive"
+                  size="icon-xs"
                   aria-label={t("thread.publishPopover.discard")}
-                  className="flex size-6 shrink-0 items-center justify-center text-muted-foreground transition-colors hover:bg-accent hover:text-destructive disabled:opacity-50 rounded-lg"
+                  // Swallow the click while disabled, or it selects the card underneath.
+                  className="shrink-0 disabled:pointer-events-auto"
                   onClick={(e) => {
                     e.stopPropagation();
                     onConfirmingChange(true);
@@ -201,7 +248,7 @@ export function PublishChangeCard({
                   disabled={isPublishing || isDiscarding}
                 >
                   <Trash01 className="size-3.5" />
-                </button>
+                </Button>
               </TooltipTrigger>
               <TooltipContent>
                 {t("thread.publishPopover.discard")}
@@ -221,6 +268,28 @@ export function PublishChangeCard({
       ) : reservesSubLine ? (
         <div className="mt-1 space-y-0.5 pl-[26px]">
           <PublishGhost className="h-4 w-2/3" />
+        </div>
+      ) : null}
+      {missing.length > 0 ? (
+        <div
+          className="mt-1 space-y-0.5 pl-[26px] text-xs text-foreground"
+          data-testid="publish-change-missing-rule"
+        >
+          {missing.map((kind) => (
+            <div key={kind} className="truncate">
+              {kind === "experiments"
+                ? t("thread.publishPopover.missingTest")
+                : t("thread.publishPopover.missingCampaign")}
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {missingUses && missingPlaces ? (
+        <div
+          className="mt-1 truncate pl-[26px] text-xs text-foreground"
+          data-testid="publish-change-missing-rule-uses"
+        >
+          {t(missingUsesKey(missingUses), { places: missingPlaces.places })}
         </div>
       ) : null}
     </PublishCardFrame>

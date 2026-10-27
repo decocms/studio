@@ -32,9 +32,9 @@ export const LOCALSTORAGE_KEYS = {
   /** One entry per org holding the apps last opened in it — see
    *  `lib/recent-apps.ts`. */
   recentApps: (orgSlug: string) => `studio:recent-apps:${orgSlug}`,
-  /** Every app opened in the org, newest first, as `appOpenKey`s — the org
-   *  home's tile order. Longer than `recentApps`, which is the rail's four. */
-  appOpens: (orgSlug: string) => `studio:app-opens:${orgSlug}`,
+  /** The projects last opened in the org, newest first — the rail's recents
+   *  under the new navigation. */
+  recentProjects: (orgSlug: string) => `studio:recent-projects:${orgSlug}`,
   /** Not scoped to an org — this is the list of orgs themselves. */
   recentOrgs: () => `studio:recent-orgs`,
   railOrgPrefs: () => `studio:rail-org-prefs`,
@@ -46,14 +46,11 @@ export const LOCALSTORAGE_KEYS = {
   connectionsTab: (org: string) => `studio:connections:tab:${org}`,
   taskLastViewed: (locator: ProjectLocator) =>
     `studio:chat:task-last-viewed:${locator}`,
-  sidebarGroupOrder: (orgId: string, userId: string) =>
-    `sidebar.group-order.${orgId}.${userId}`,
   /** Whether a sidebar project section (`folderId`, or "loose") is unfolded. */
   sidebarSectionOpen: (locator: ProjectLocator, folderId: string) =>
     `studio:sidebar:section-open:${locator}:${folderId}`,
   ptBrAnnouncementSeen: (userId: string) =>
     `studio:announcement:pt-br:${userId}`,
-  cmsTourSeen: (userId: string) => `studio:cms-tour:seen:${userId}`,
   /** Per-project "Local" preview override — a tunnel URL the CMS + preview point
    *  at instead of the managed sandbox/production. Per-browser: a tunnel to a
    *  dev server only this machine can reach, so it never belongs on shared
@@ -64,6 +61,17 @@ export const LOCALSTORAGE_KEYS = {
     `studio:preview:device-size:${virtualMcpId}`,
   previewEditingMode: (virtualMcpId: string) =>
     `studio:preview:editing-mode:${virtualMcpId}`,
+  /** Which monorepo app the preview shows, and whether it splits beside the main one. */
+  previewAppLayout: (virtualMcpId: string) =>
+    `studio:preview:app-layout:${virtualMcpId}`,
   /** Whether CMS list fields open one item at a time or expand items in place. */
   arrayFieldLayout: () => `studio:cms:array-field-layout`,
+  /** A Blocks v8 project's Localhost choice (the `deco serve` endpoint), per
+   *  user and project, per-browser for the same reason as the tunnel URL. */
+  decoServeConnection: (userId: string, virtualMcpId: string) =>
+    `studio:deco-serve-connection:${userId}:${virtualMcpId}`,
+  /** The `deco serve` endpoint a project last connected to, kept after
+   *  Localhost is turned off so choosing it again goes back there. */
+  decoServeEndpoint: (userId: string, virtualMcpId: string) =>
+    `studio:deco-serve-endpoint:${userId}:${virtualMcpId}`,
 } as const;

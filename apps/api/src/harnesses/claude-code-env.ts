@@ -1,3 +1,4 @@
+import { CODEX_SUBSCRIPTION_PROVIDER_ID } from "@decocms/shared/harness/codex-models";
 /**
  * Model credentials for the sandbox-hosted claude-code harness.
  *
@@ -42,6 +43,7 @@ export const GITHUB_COPILOT_PROVIDER_ID = "github-copilot";
 /** The user's own plans, which outrank and bypass the org's model keys. */
 export function isUserPlanCredential(credentialId: string): boolean {
   return (
+    credentialId === CODEX_SUBSCRIPTION_PROVIDER_ID ||
     credentialId === CLAUDE_SUBSCRIPTION_PROVIDER_ID ||
     credentialId === GITHUB_COPILOT_PROVIDER_ID
   );
@@ -114,13 +116,13 @@ const CLAUDE_CODE_MODEL: Record<
   anthropic: {
     default: "claude-opus-5-5",
     chat: "claude-sonnet-5-5",
-    reviewer: "claude-sonnet-5",
+    reviewer: "claude-sonnet-5-5",
     conflict: "claude-sonnet-5",
   },
   openrouter: {
     default: "anthropic/claude-opus-5.5",
     chat: "anthropic/claude-sonnet-5.5",
-    reviewer: "anthropic/claude-sonnet-5",
+    reviewer: "anthropic/claude-sonnet-5.5",
     conflict: "anthropic/claude-sonnet-5",
   },
   // Sonnet even for the builder: Copilot plans gate Opus per account (off on a
@@ -128,7 +130,7 @@ const CLAUDE_CODE_MODEL: Record<
   copilot: {
     default: "claude-sonnet-5.5",
     chat: "claude-sonnet-5.5",
-    reviewer: "claude-sonnet-5",
+    reviewer: "claude-sonnet-5.5",
     conflict: "claude-sonnet-5",
   },
 };

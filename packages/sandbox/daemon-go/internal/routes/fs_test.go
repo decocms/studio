@@ -34,6 +34,21 @@ func seedBlocks(t *testing.T) FsDeps {
 	return FsDeps{AppRoot: filepath.Dir(repoDir), RepoDir: repoDir}
 }
 
+// trulyOutsideDir returns a directory that is NOT nested under any AppRoot a
+// test builds from t.TempDir(): consecutive t.TempDir() calls in the same
+// test share one hidden base directory and nest under it (…/TestName/001,
+// …/TestName/002, …), so a naive `t.TempDir()` "outside" fixture is actually
+// a sibling living *inside* AppRoot (= the shared base), not outside it.
+func trulyOutsideDir(t *testing.T) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "studio-daemon-outside-")
+	if err != nil {
+		t.Fatalf("mkdir outside dir: %v", err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	return dir
+}
+
 // infiniteReader never hits EOF; it lets a test drive decodeBody's cap
 // without pre-allocating the oversized body it's rejecting.
 type infiniteReader struct{}
@@ -211,7 +226,7 @@ func TestWriteEscapesRootNamesTheRoot(t *testing.T) {
 // follow it: SafePath only clamps the lexical path, so the containment check
 // alone would pass while the actual write landed on the symlink's target.
 func TestWriteRefusesSymlinkEscape(t *testing.T) {
-	outsideDir := t.TempDir()
+	outsideDir := trulyOutsideDir(t)
 	outsideFile := filepath.Join(outsideDir, "secret.txt")
 	if err := os.WriteFile(outsideFile, []byte("original"), 0o644); err != nil {
 		t.Fatalf("seed outside file: %v", err)
@@ -240,7 +255,7 @@ func TestWriteRefusesSymlinkEscape(t *testing.T) {
 
 // Same escape, via /edit.
 func TestEditRefusesSymlinkEscape(t *testing.T) {
-	outsideDir := t.TempDir()
+	outsideDir := trulyOutsideDir(t)
 	outsideFile := filepath.Join(outsideDir, "secret.txt")
 	if err := os.WriteFile(outsideFile, []byte("original"), 0o644); err != nil {
 		t.Fatalf("seed outside file: %v", err)
@@ -265,6 +280,64 @@ func TestEditRefusesSymlinkEscape(t *testing.T) {
 	}
 	if string(got) != "original" {
 		t.Fatalf("symlink target was edited: %q", got)
+	}
+}
+
+// A symlinked directory whose target stays inside AppRoot (e.g. a package
+// manager's workspace link under node_modules) is not an escape and must not
+// block a write through it.
+func TestWriteAllowsSymlinkStayingInsideAppRoot(t *testing.T) {
+	deps := seedBlocks(t)
+	insideTarget := filepath.Join(deps.AppRoot, "shared-pkg")
+	if err := os.MkdirAll(insideTarget, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	link := filepath.Join(deps.RepoDir, "linked-pkg")
+	if err := os.Symlink(insideTarget, link); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+	body, _ := json.Marshal(map[string]any{"path": "linked-pkg/file.txt", "content": "hello"})
+	req := httptest.NewRequest(http.MethodPost, "/write", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	Write(deps)(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body = %s", rec.Code, rec.Body.String())
+	}
+	got, err := os.ReadFile(filepath.Join(insideTarget, "file.txt"))
+	if err != nil {
+		t.Fatalf("read written file: %v", err)
+	}
+	if string(got) != "hello" {
+		t.Fatalf("content = %q, want %q", got, "hello")
+	}
+}
+
+// A symlinked DIRECTORY inside the repo must not let /unlink reach a path
+// outside AppRoot by resolving through it: SafePath only clamps the lexical
+// path, and os.Stat/os.Remove follow a symlinked intermediate directory
+// transparently, unlike a symlinked leaf (which they operate on directly).
+func TestUnlinkRefusesSymlinkedParentEscape(t *testing.T) {
+	outsideDir := trulyOutsideDir(t)
+	outsideFile := filepath.Join(outsideDir, "secret.txt")
+	if err := os.WriteFile(outsideFile, []byte("original"), 0o644); err != nil {
+		t.Fatalf("seed outside file: %v", err)
+	}
+	deps := seedBlocks(t)
+	link := filepath.Join(deps.RepoDir, "linkdir")
+	if err := os.Symlink(outsideDir, link); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+	body, _ := json.Marshal(map[string]any{"path": "linkdir/secret.txt"})
+	req := httptest.NewRequest(http.MethodPost, "/unlink", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	Unlink(deps)(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body = %s", rec.Code, rec.Body.String())
+	}
+	if _, err := os.Stat(outsideFile); err != nil {
+		t.Fatalf("outside file was deleted through a symlinked directory: %v", err)
 	}
 }
 

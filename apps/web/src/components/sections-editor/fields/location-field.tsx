@@ -58,9 +58,10 @@ function Combobox({
         <Button
           id={id}
           variant="outline"
+          size="lg"
           role="combobox"
           aria-expanded={open}
-          className="h-10 w-full justify-between font-normal"
+          className="w-full justify-between font-normal"
         >
           {selected ? (
             <span className="truncate">{selected.label}</span>

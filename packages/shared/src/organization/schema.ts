@@ -107,8 +107,11 @@ export const SUBMODULE_HOST_RE = /^[a-zA-Z0-9.-]+(?::[0-9]+)?$/;
  * Kept named `submoduleCredentials` on the wire — that is the daemon's field.
  */
 export const SubmoduleCredentialSchema = z.object({
+  // Lowercased: the daemon matches a clone URL's host by exact string compare.
   host: z
     .string()
+    .trim()
+    .toLowerCase()
     .min(1)
     .max(MAX_SETTINGS_STRING_LENGTH)
     .regex(SUBMODULE_HOST_RE)
@@ -223,11 +226,35 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "Run chats on a Code Agent (an agent imported from a GitHub repo) with the claude-code harness inside its sandbox, instead of hosted Decopilot. Off by default: it changes the runtime of every such chat, and claude-code flushes whole turns rather than streaming tokens.",
     ),
+  task_board_codex: z
+    .boolean()
+    .optional()
+    .describe(
+      "Allow tasks to select the Codex harness. Off by default; existing tasks keep Claude Code. Reviewers keep their own runtime.",
+    ),
+  chat_harness_codex: z
+    .boolean()
+    .optional()
+    .describe(
+      "Use Codex for new sandbox chats. Off by default; requires hosted sandboxes and a ChatGPT subscription or Responses API provider. Existing chats keep their pinned runtime.",
+    ),
   chat_harness_sandbox_only: z
     .boolean()
     .optional()
     .describe(
       "Run every chat with the claude-code harness in its own sandbox instead of hosted Decopilot. On by default (see DEFAULT_ON_FLAGS); a deployment without hosted sandboxes keeps Decopilot regardless.",
+    ),
+  sandbox_run_metadata: z
+    .boolean()
+    .optional()
+    .describe(
+      "Forward a sandbox run's metadata (such as a webhook trigger's run_metadata) to the MCP tools it calls, as hosted Decopilot runs do. Off by default.",
+    ),
+  sandbox_repo_snapshots: z
+    .boolean()
+    .optional()
+    .describe(
+      "Keep a Freestyle snapshot of each project repo at its default branch's head, with its dependencies installed and its dev server running, so a new sandbox for that repo starts already serving. Off by default: each push to a default branch costs a snapshot build the next time a sandbox starts.",
     ),
   auto_assign_report_tasks_to_super_agent: z
     .boolean()
@@ -288,6 +315,18 @@ export const OrgFlagsSchema = z.object({
     .optional()
     .describe(
       "The project's Context view — the brand profile, the writing rules, the post formats, the campaigns, the specialists that write from them — and agentic blogpost generation. Off by default; with it off the blog is written by hand and every BLOG_* tool refuses, over MCP and in the app alike, so an agent cannot spend the organization's credits on a feature it turned off.",
+    ),
+  site_apps_install_enabled: z
+    .boolean()
+    .optional()
+    .describe(
+      "Installing a site app from the Apps tab: writes the app module, the npm dependency and the registry entry into the project's repository, then reinstalls dependencies and restarts the dev script on the running sandbox. Off by default, for every org — the catalogue stays browsable without it and nothing is installable. Rollout lever, separate from the deploy.",
+    ),
+  multi_app_preview: z
+    .boolean()
+    .optional()
+    .describe(
+      "Previewing more than one app of a monorepo: an Apps list in project settings, app tabs with a split view in the preview, and a dev server per extra app in the sandbox, served at its own preview host. Off by default.",
     ),
   hide_default_blog_blocks: z
     .boolean()

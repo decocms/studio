@@ -296,6 +296,14 @@ export class UiChunkTranslator {
     if (message.type === "assistant" && "message" in message) {
       return this.translateAssistant(message as SdkAssistantMessage);
     }
+    if (
+      message.type === "system" &&
+      (message as { subtype?: unknown }).subtype === "task_notification"
+    ) {
+      return this.settleBackgroundSubtask(
+        message as { tool_use_id?: unknown; summary?: unknown },
+      );
+    }
     if (message.type === "user" && "message" in message) {
       return this.translateToolResults(message as SdkUserMessage);
     }
@@ -351,6 +359,24 @@ export class UiChunkTranslator {
         preliminary: true,
       },
     ];
+  }
+
+  /**
+   * A backgrounded subtask's tool result was only the launch placeholder, and
+   * its report arrived as preliminary output; the notification is its end.
+   */
+  private settleBackgroundSubtask(message: {
+    tool_use_id?: unknown;
+    summary?: unknown;
+  }): UIMessageChunk[] {
+    const toolCallId = message.tool_use_id;
+    if (typeof toolCallId !== "string") return [];
+    const call = this.announcedToolCalls.get(toolCallId);
+    if (!call || canonicalToolName(call.name) !== "subtask") return [];
+    const text =
+      this.subtaskText.get(toolCallId) ??
+      (typeof message.summary === "string" ? message.summary : "");
+    return [{ type: "tool-output-available", toolCallId, output: { text } }];
   }
 
   /**

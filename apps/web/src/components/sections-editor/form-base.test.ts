@@ -1,11 +1,15 @@
 import { describe, expect, it } from "bun:test";
 import {
+  type FormBase,
+  formSaveGuard,
   formSourceMovedOn,
   sectionTypeChanged,
   findSectionMovedTo,
+  focusInside,
   isOwnVersion,
   rememberOwnVersion,
   sectionFormSource,
+  showMergeInForm,
   trackFormChange,
 } from "./form-base";
 import type { ParsedSection } from "./parse-sections";
@@ -131,19 +135,20 @@ describe("sectionFormSource", () => {
         parsed({ isSavedBlock: true }),
         0,
         decofile,
+        false,
       ),
     ).toEqual({ __resolveType: "site/Header.tsx", x: 1 });
   });
 
   it("reads an inline section as stored on the page", () => {
     const raw = { __resolveType: "site/sections/Hero.tsx", title: "a" };
-    expect(sectionFormSource(raw as RawSection, parsed({}), 0, {})).toEqual(
-      raw,
-    );
+    expect(
+      sectionFormSource(raw as RawSection, parsed({}), 0, {}, false),
+    ).toEqual(raw);
   });
 
   it("returns null for a section that is not there", () => {
-    expect(sectionFormSource(undefined, undefined, 0, {})).toBeNull();
+    expect(sectionFormSource(undefined, undefined, 0, {}, false)).toBeNull();
   });
 });
 
@@ -188,6 +193,92 @@ describe("findSectionMovedTo", () => {
   });
 });
 
+describe("formSaveGuard (v8 section saves)", () => {
+  const base = (): FormBase => ({
+    sectionIndex: 0,
+    variantIndex: 0,
+    base: { title: "loaded" },
+    emitted: { title: "typed" },
+    sectionCount: 1,
+    own: [],
+  });
+
+  it("guards a saved block with the version of the copy the form started from", () => {
+    const formBase = base();
+    const guard = formSaveGuard({
+      formBase,
+      rebased: false,
+      versionOf: () => "v1",
+    });
+    expect(guard.ifMatch("Hero")).toEqual({ Hero: "v1" });
+    expect(guard.reloadOnConflict).toBe(true);
+    expect(formBase.version).toBe("v1");
+  });
+
+  it("a save queued behind the form's own landed save expects that save's version", () => {
+    const formBase = base();
+    let cached = "v1";
+    const versionOf = () => cached;
+    // Both saves are scheduled before either runs.
+    const first = formSaveGuard({ formBase, rebased: false, versionOf });
+    const second = formSaveGuard({ formBase, rebased: false, versionOf });
+    expect(first.ifMatch("Hero")).toEqual({ Hero: "v1" });
+    first.onApplied?.({ Hero: "v2" });
+    // Another writer's version reaching the cache must not move the form's.
+    cached = "v9";
+    expect(second.ifMatch("Hero")).toEqual({ Hero: "v2" });
+  });
+
+  it("takes the stored copy's version when the form's edits were rebased on it", () => {
+    const formBase = { ...base(), version: "v1" };
+    const guard = formSaveGuard({
+      formBase,
+      rebased: true,
+      versionOf: () => "v3",
+    });
+    expect(guard.ifMatch("Hero")).toEqual({ Hero: "v3" });
+  });
+
+  it("keeps the form's version when another writer's copy reached the cache", () => {
+    const formBase = { ...base(), version: "v1" };
+    const guard = formSaveGuard({
+      formBase,
+      rebased: false,
+      versionOf: () => "v2",
+    });
+    expect(guard.ifMatch("Hero")).toEqual({ Hero: "v1" });
+  });
+
+  it("guards a page with its cached version, read when the save runs", () => {
+    let cached = "p1";
+    const guard = formSaveGuard({
+      formBase: null,
+      rebased: false,
+      versionOf: () => cached,
+    });
+    cached = "p2";
+    expect(guard.ifMatch("pages-home")).toEqual({ "pages-home": "p2" });
+  });
+
+  it("guards a block the content does not have as create-only", () => {
+    const guard = formSaveGuard({
+      formBase: null,
+      rebased: false,
+      versionOf: () => null,
+    });
+    expect(guard.ifMatch("Hero")).toEqual({ Hero: null });
+  });
+
+  it("sends no guard while the version is unknown", () => {
+    const guard = formSaveGuard({
+      formBase: base(),
+      rebased: false,
+      versionOf: () => undefined,
+    });
+    expect(guard.ifMatch("Hero")).toBeUndefined();
+  });
+});
+
 describe("own versions", () => {
   it("knows the version the form started from and every version it saved", () => {
     const tracked = trackFormChange(null, {
@@ -214,5 +305,59 @@ describe("own versions", () => {
     });
     if (!tracked) throw new Error("expected a tracked form");
     expect(isOwnVersion(tracked, { b: 2, a: 1 })).toBe(true);
+  });
+});
+
+describe("showMergeInForm", () => {
+  const tracked = (): FormBase => ({
+    sectionIndex: 0,
+    variantIndex: 0,
+    base: { title: "a" },
+    emitted: { title: "typed" },
+    sectionCount: 1,
+    own: [],
+  });
+
+  it("shows a merge at once while the form is still on the value saved", () => {
+    // The merge kept every value the user changed: nothing under the cursor
+    // changes (values both changed wait for the user's choice instead).
+    const form = tracked();
+    expect(
+      showMergeInForm({
+        merged: true,
+        tracked: form,
+        current: form,
+        saved: form.emitted,
+      }),
+    ).toBe(true);
+  });
+
+  it("leaves the form alone when nothing was merged or it moved on", () => {
+    const form = tracked();
+    const base = {
+      merged: true,
+      tracked: form,
+      current: form,
+      saved: form.emitted,
+    };
+    expect(showMergeInForm({ ...base, merged: false })).toBe(false);
+    expect(showMergeInForm({ ...base, current: tracked() })).toBe(false);
+    expect(showMergeInForm({ ...base, saved: { title: "older" } })).toBe(false);
+    expect(showMergeInForm({ ...base, tracked: null })).toBe(false);
+  });
+});
+
+describe("focusInside", () => {
+  const node = (children: unknown[] = []) => ({
+    contains: (other: unknown) => children.includes(other),
+  });
+
+  it("is true only for an element within the container", () => {
+    const input = {};
+    const form = node([input]);
+    expect(focusInside(form as Element, input as Element)).toBe(true);
+    expect(focusInside(form as Element, {} as Element)).toBe(false);
+    expect(focusInside(null, input as Element)).toBe(false);
+    expect(focusInside(form as Element, null)).toBe(false);
   });
 });

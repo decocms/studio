@@ -217,6 +217,7 @@ describe("harnessSessionKey", () => {
 describe("harnessRunsInSandbox", () => {
   test("claude-code is sandbox-hosted", () => {
     expect(harnessRunsInSandbox("claude-code")).toBe(true);
+    expect(harnessRunsInSandbox("codex")).toBe(true);
   });
 
   test("decopilot is not — it runs in-process", () => {
@@ -597,22 +598,29 @@ describe("dispatchWithContinuation", () => {
     // Dropping this `start` too left the run with parts and no message: the
     // projector never opened one, so the turn rendered empty.
     let attempt = 0;
+    const resumes: Array<{ reason: string } | null> = [];
+    const revalidations: boolean[] = [];
     const chunks = await collect(
       dispatchWithContinuation({
         runId: "run_1",
         resume: null,
         aborted: () => false,
-        dispatchOnce: () =>
-          ++attempt === 1
+        dispatchOnce: (resume, revalidate) => {
+          resumes.push(resume);
+          revalidations.push(revalidate);
+          return ++attempt === 1
             ? dispatch([], new SandboxUnreachableError("pod never answered"))()
             : dispatch([
                 chunk("start", { messageId: "msg_b" }),
                 chunk("finish"),
-              ])(),
+              ])();
+        },
       }),
     );
     expect(chunks.map((c) => c.type)).toEqual(["start", "finish"]);
     expect((chunks[0] as { messageId?: string }).messageId).toBe("msg_b");
+    expect(resumes).toEqual([null, null]);
+    expect(revalidations).toEqual([false, true]);
   });
 
   test("a caller-supplied resume drops the harness's first `start` too", async () => {
@@ -903,7 +911,10 @@ describe("a lost sandbox's cause reaches the agent and the thread", () => {
         dispatchOnce: (resume) => {
           resumes.push(resume);
           return ++attempt === 1
-            ? dispatch([], new SandboxUnreachableError("stream broke"))()
+            ? dispatch(
+                [chunk("start")],
+                new SandboxUnreachableError("stream broke"),
+              )()
             : dispatch([chunk("start"), chunk("finish")])();
         },
       }),

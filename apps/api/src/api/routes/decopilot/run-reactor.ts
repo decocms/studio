@@ -24,7 +24,7 @@ import {
 import type { RunEvent, RunFailedReason, RunTransition } from "./run-state";
 
 /** Recorded on a run the idle reaper force-fails for lack of progress. */
-const STALL_FAILURE_REASON =
+export const STALL_FAILURE_REASON =
   "Run stalled — no progress within the idle timeout window";
 
 /**
@@ -235,10 +235,12 @@ async function react(event: RunEvent, deps: RunReactorDeps): Promise<void> {
           event.expectedFenceToken,
         );
         if (!transitioned) return;
-        // Clear run columns for ghost failures too
+        // Only the Stop route issues a ghost force-fail, so the run was
+        // cancelled. The guard above made this the terminal writer.
         await storage.update(event.taskId, event.orgId, {
           run_config: null,
           run_started_at: null,
+          ...RUN_FAILURE_RECORD.cancelled,
         });
       } else {
         // Guarded on `in_progress`, exactly like every other terminal writer

@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -16,6 +17,13 @@ var branchRe = regexp.MustCompile(`^[A-Za-z0-9._/-]+$`)
 // must open on an alphanumeric. That rules out `.`, `..` and `.git`, so the
 // name can neither climb out of the secondary root nor land on a git dir.
 var repoNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+
+// orgIdRe bounds OrgId the same way repoNameRe bounds a secondary checkout
+// name: it becomes a directory component of the shared golden-cache path
+// (setup.RemoteGoldenArchivePath), so a value containing `/` or `..` would
+// walk that path outside the `golden/` prefix the store is scoped to.
+var orgIdRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+
 var envKeyRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 const envValueMax = 32 * 1024
@@ -50,6 +58,9 @@ func Validate(c *TenantConfig) string {
 			return reason
 		}
 	}
+	if c.OrgId != "" && !orgIdRe.MatchString(c.OrgId) {
+		return fmt.Sprintf("orgId invalid: %s", c.OrgId)
+	}
 	return ""
 }
 
@@ -75,20 +86,34 @@ func validateGit(git *GitConfig) string {
 	if *git.Repository.CloneUrl == "" {
 		return "git.repository.cloneUrl is empty"
 	}
+	if reason := validateCloneUrl(*git.Repository.CloneUrl); reason != "" {
+		return "git.repository.cloneUrl " + reason
+	}
 	if git.Repository.Branch != nil {
 		b := *git.Repository.Branch
 		if !IsSyntheticBranch(b) && (!branchRe.MatchString(b) || strings.HasPrefix(b, "-")) {
 			return fmt.Sprintf("git.repository.branch invalid: %s", b)
 		}
 	}
+	seenRepoNames := make(map[string]bool, len(git.Repositories))
 	for i, repo := range git.Repositories {
 		if repo.CloneUrl == nil || *repo.CloneUrl == "" {
 			return fmt.Sprintf("git.repositories[%d].cloneUrl is required", i)
+		}
+		if reason := validateCloneUrl(*repo.CloneUrl); reason != "" {
+			return fmt.Sprintf("git.repositories[%d].cloneUrl %s", i, reason)
 		}
 		// The name becomes a directory, so it is a path input from off-pod.
 		if repo.RepoName == nil || !repoNameRe.MatchString(*repo.RepoName) {
 			return fmt.Sprintf("git.repositories[%d].repoName invalid", i)
 		}
+		// Two entries sharing a name resolve to the same checkout directory
+		// (paths.SecondaryRepoDir), so cloneSecondaryRepos would race two `git
+		// clone`s into it concurrently.
+		if seenRepoNames[*repo.RepoName] {
+			return fmt.Sprintf("git.repositories[%d].repoName duplicates another entry: %s", i, *repo.RepoName)
+		}
+		seenRepoNames[*repo.RepoName] = true
 		if repo.Branch != nil {
 			b := *repo.Branch
 			if !IsSyntheticBranch(b) && (!branchRe.MatchString(b) || strings.HasPrefix(b, "-")) {
@@ -100,9 +125,31 @@ func validateGit(git *GitConfig) string {
 		if git.Identity.UserName == nil || *git.Identity.UserName == "" {
 			return "git.identity.userName is required"
 		}
+		// Written verbatim into `git config user.name` (ConfigureGitIdentity)
+		// and from there into every commit's author metadata, so a value
+		// carrying a newline or angle bracket can smuggle a second config
+		// line or spoof the author field downstream commit parsers rely on.
+		if invalidCoAuthorChars.MatchString(*git.Identity.UserName) {
+			return "git.identity.userName is invalid"
+		}
 		if git.Identity.UserEmail == nil || *git.Identity.UserEmail == "" {
 			return "git.identity.userEmail is required"
 		}
+		if invalidCoAuthorChars.MatchString(*git.Identity.UserEmail) || !emailRe.MatchString(*git.Identity.UserEmail) {
+			return "git.identity.userEmail is invalid"
+		}
+	}
+	return ""
+}
+
+// validateCloneUrl allows https (what Studio mints) and file (local bare
+// repos; the sandbox already exposes its own filesystem). Every other scheme
+// is a crafted config: `ext::<command>` runs a shell command as the clone
+// transport, and ssh/git would reach hosts Studio never hands out.
+func validateCloneUrl(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "https" && u.Scheme != "file") {
+		return "must be an https or file URL"
 	}
 	return ""
 }
@@ -127,6 +174,29 @@ func validateApplication(app *Application) string {
 			return fmt.Sprintf("port invalid: %v", p)
 		}
 	}
+	if app.Apps != nil {
+		return validateExtraApps(*app.Apps)
+	}
+	return ""
+}
+
+const maxExtraApps = 8
+
+func validateExtraApps(apps []ExtraApp) string {
+	if len(apps) > maxExtraApps {
+		return fmt.Sprintf("apps: at most %d allowed", maxExtraApps)
+	}
+	seen := map[string]bool{}
+	for _, a := range apps {
+		if reason := validateRepoPath("apps[].path", a.Path); reason != "" {
+			return reason
+		}
+		slug := AppSlug(a.Path)
+		if slug == "" || seen[slug] {
+			return fmt.Sprintf("apps[].path must name a distinct app: %s", a.Path)
+		}
+		seen[slug] = true
+	}
 	return ""
 }
 
@@ -136,12 +206,16 @@ func validateApplication(app *Application) string {
 // relative path is joined onto the repo dir without a containment check, so
 // "../.." segments walk out of it.
 func validatePmPath(p string) string {
+	return validateRepoPath("packageManager.path", p)
+}
+
+func validateRepoPath(field, p string) string {
 	if p == "" {
-		return "packageManager.path must be non-empty"
+		return field + " must be non-empty"
 	}
 	clean := filepath.Clean(p)
 	if filepath.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
-		return fmt.Sprintf("packageManager.path must be a relative path within the repo: %s", p)
+		return fmt.Sprintf("%s must be a relative path within the repo: %s", field, p)
 	}
 	return ""
 }

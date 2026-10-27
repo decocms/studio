@@ -38,7 +38,7 @@ test.describe("shared application layout", () => {
     await sidebar.getByRole("link", { name: "Settings", exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`/${orgSlug}/settings/general$`));
     await expect(
-      page.getByRole("heading", { name: "Organization", exact: true }),
+      page.getByRole("heading", { name: "General", exact: true }),
     ).toBeVisible();
     await expect(sidebar).toHaveAttribute("data-state", "collapsed");
     await expect(
@@ -98,7 +98,7 @@ test.describe("shared application layout", () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(`/${orgSlug}/settings/general`);
     await expect(
-      page.getByRole("heading", { name: "Organization", exact: true }),
+      page.getByRole("heading", { name: "General", exact: true }),
     ).toBeVisible({ timeout: 90_000 });
     await expect(page.getByTestId("chat-panel")).toHaveCount(0);
     await expect(
@@ -141,7 +141,7 @@ test.describe("shared application layout", () => {
       .click();
     await expect(navigation).toBeHidden();
     await expect(
-      page.getByRole("heading", { name: "Organization", exact: true }),
+      page.getByRole("heading", { name: "General", exact: true }),
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Switch to Chat", exact: true }),

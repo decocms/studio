@@ -121,6 +121,15 @@ describe("SubmoduleCredentialSchema", () => {
     ).toBe(true);
   });
 
+  it("lowercases the host so it matches the daemon's exact-string comparison", () => {
+    const result = SubmoduleCredentialSchema.safeParse({
+      host: "GitHub.COM",
+      secretId: "sec_1",
+    });
+    expect(result.success).toBe(true);
+    expect(result.success && result.data.host).toBe("github.com");
+  });
+
   it("rejects an oversized host or secretId", () => {
     // Regression: these two were left unbounded, unlike every sibling settings string field.
     const longString = "x".repeat(501);

@@ -26,8 +26,8 @@ export const EXPERIMENT_CREATE = defineTool({
       .describe(
         "The test's identifier (e.g. `valentine-banner`) — must exactly match the string the site's code passes to `useExperiment(key)` and the test name registered with the deco-ab-testing Worker. Results only populate when both agree with this key.",
       ),
-    name: z.string().min(1),
-    goals: z.array(z.string()).optional(),
+    name: z.string().min(1).max(200),
+    goals: z.array(z.string().min(1).max(200)).max(20).optional(),
     variants: variantsInputSchema.optional(),
   }),
   outputSchema: z.object({ experiment: experimentSchema }),

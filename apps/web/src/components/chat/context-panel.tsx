@@ -1,3 +1,4 @@
+import { Button } from "@decocms/ui/components/button.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import {
@@ -283,10 +284,16 @@ export function ChatContextPanel({
     .reverse()
     .find((m) => m.role === "assistant" && m.metadata?.usage);
   const lastAssistantUsage = lastAssistantMessage?.metadata?.usage;
+  const reportedModel = [...messages]
+    .reverse()
+    .find((message) => message.role === "assistant" && message.metadata?.models)
+    ?.metadata?.models?.thinking;
   // Prefer runtime-reported limits (Claude Code fills these from CLI result); fall back to catalog.
   const contextWindow =
     lastAssistantMessage?.metadata?.modelLimits?.contextWindow ??
-    selectedModel?.limits?.contextWindow ??
+    (!reportedModel || reportedModel.id === selectedModel?.modelId
+      ? selectedModel?.limits?.contextWindow
+      : null) ??
     null;
   // Per-turn context size only — cumulative `totalTokens` would read as
   // if the model's window is far fuller than it actually is.
@@ -343,9 +350,7 @@ export function ChatContextPanel({
       ),
   );
 
-  const modelLabel = selectedModel?.modelId
-    ? formatModelId(selectedModel.modelId)
-    : "—";
+  const modelLabel = formatModelId(reportedModel?.id ?? selectedModel?.modelId);
 
   const agentTitle = selectedVirtualMcp?.title ?? "Super Agent";
 
@@ -459,13 +464,19 @@ export function ChatContextPanel({
         <span className="text-sm font-medium text-foreground">
           {t("chat.contextPanel.title")}
         </span>
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="icon-sm"
           onClick={onClose}
-          className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          className="text-muted-foreground"
         >
-          {back ? <ChevronLeft size={14} /> : <XClose size={14} />}
-        </button>
+          {back ? (
+            <ChevronLeft className="size-3.5" />
+          ) : (
+            <XClose className="size-3.5" />
+          )}
+        </Button>
       </div>
 
       {/* Body */}
@@ -519,7 +530,7 @@ export function ChatContextPanel({
                     <button
                       type="button"
                       onClick={() => setSelectedMessage(isExpanded ? null : m)}
-                      className="flex items-center justify-between gap-2 px-3 py-2 text-xs hover:bg-accent/50 w-full text-left cursor-pointer"
+                      className="flex items-center justify-between gap-2 px-3 py-2 text-xs hover:bg-accent w-full text-left cursor-pointer"
                     >
                       <div className="flex items-center gap-2 min-w-0">
                         <span

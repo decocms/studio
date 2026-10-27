@@ -120,6 +120,17 @@ export function mergeRequestStateParam(
   }
 }
 
+/**
+ * True when a merge request row carries the identifier a caller can act on.
+ * A row missing `iid` would otherwise map to merge request #0: a misleading
+ * identifier for any UI link, and — for `includeCommits` callers — a
+ * `/merge_requests/0/commits` request that 404s and fails the whole page
+ * instead of just that one row.
+ */
+export function hasMergeRequestIid(row: GitlabMergeRequestRow): boolean {
+  return typeof row.iid === "number" && row.iid > 0;
+}
+
 /** GitLab's merge request → the neutral history row. Pure. */
 export function mapMergeRequest(
   row: GitlabMergeRequestRow,
@@ -154,12 +165,20 @@ export function mapCommit(row: GitlabCommitRow): RepoCommit {
     sha: row.id ?? "",
     date: row.committed_date ?? row.created_at ?? "",
     message: row.title ?? firstLine(row.message ?? ""),
+    ...bodyOf(row.message),
     author: {
       name: row.author_name ?? null,
       email: row.author_email ?? null,
       login: null,
     },
   };
+}
+
+/** The message after its subject line, when there is any. */
+function bodyOf(message = ""): { body?: string } {
+  const end = message.indexOf("\n");
+  const body = end === -1 ? "" : message.slice(end + 1).trim();
+  return body ? { body } : {};
 }
 
 function firstLine(message: string): string {
@@ -361,9 +380,11 @@ export class GitlabInsightsClient implements RepoInsightsClient {
     const page = await this.rows<GitlabMergeRequestRow>(
       `/merge_requests?${query}`,
     );
-    const items = page.rows.map((row) =>
-      mapMergeRequest(row, (iid) => changeRequestUrl(this.repo, iid)),
-    );
+    const items = page.rows
+      .filter(hasMergeRequestIid)
+      .map((row) =>
+        mapMergeRequest(row, (iid) => changeRequestUrl(this.repo, iid)),
+      );
     if (params.includeCommits !== true) {
       return { items, nextCursor: page.nextCursor };
     }

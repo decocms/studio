@@ -1,9 +1,41 @@
 import { describe, expect, test } from "bun:test";
 import { resolveTaskSwitchSearch } from "./resolve-task-switch-search";
 import type { ThreadLayout } from "@/lib/thread-layout-memory";
+import { canonicalThreadRouteTarget } from "./main-panel-tabs/tab-route";
 
 const DECOPILOT = "decopilot-agent";
 const AUTOSEND = "1";
+
+test("new chat keeps the open project app", () => {
+  const target = resolveTaskSwitchSearch({
+    prev: {
+      virtualmcpid: "project-example",
+      tabId: "app:connection-example:show_dashboard",
+      mainpanel: true,
+      sidepanel: true,
+    },
+    virtualMcpId: "project-example",
+    decopilotId: DECOPILOT,
+    savedLayout: null,
+    opts: { newThread: true },
+    autosendValue: AUTOSEND,
+  });
+  expect(
+    canonicalThreadRouteTarget({
+      org: "org_example",
+      agentId: "project-example",
+      superAgentId: DECOPILOT,
+      tabId: target.tabId,
+    }),
+  ).toMatchObject({
+    to: "/$org/projects/$agentId/apps/$connectionId/$toolName",
+    params: {
+      connectionId: "connection-example",
+      toolName: "show_dashboard",
+    },
+  });
+  expect(target.search).toMatchObject({ mainpanel: true, sidepanel: true });
+});
 
 function resolve(
   over: Partial<Parameters<typeof resolveTaskSwitchSearch>[0]> = {},
@@ -16,6 +48,64 @@ function resolve(
     ...over,
   });
 }
+
+describe("new chat in an app", () => {
+  const prev = {
+    virtualmcpid: "project-example",
+    tabId: "app:connection-example:show_dashboard",
+    mainpanel: false,
+    sidepanel: true,
+  };
+
+  test("reusing an empty chat preserves the current app instead of its saved view", () => {
+    expect(
+      resolve({
+        prev,
+        virtualMcpId: "project-example",
+        opts: { newThread: true },
+        savedLayout: { tab: "settings", sidepanel: false },
+      }),
+    ).toEqual({
+      tabId: prev.tabId,
+      search: {
+        virtualmcpid: "project-example",
+        mainpanel: false,
+        sidepanel: true,
+      },
+    });
+  });
+
+  test("an explicit panel still wins", () => {
+    expect(
+      resolve({ prev, opts: { newThread: true, panel: "settings" } }).tabId,
+    ).toBe("settings");
+  });
+
+  test("switching projects does not carry the source app", () => {
+    expect(
+      resolve({
+        prev,
+        virtualMcpId: "other-project",
+        opts: { newThread: true },
+      }).tabId,
+    ).toBeUndefined();
+  });
+
+  test("selecting an existing chat still restores its layout", () => {
+    expect(resolve({ prev, savedLayout: { tab: "settings" } }).tabId).toBe(
+      "settings",
+    );
+  });
+
+  test.each(["file:output-example", "deck:slides.html", "code:src%2Fapp.ts"])(
+    "new chats do not inherit thread-specific view %s",
+    (tabId) => {
+      expect(
+        resolve({ prev: { ...prev, tabId }, opts: { newThread: true } }).tabId,
+      ).toBeUndefined();
+    },
+  );
+});
 
 describe("resolveTaskSwitchSearch — no memory (agent default applies)", () => {
   test("omits sidepanel so the agent-configured default applies", () => {

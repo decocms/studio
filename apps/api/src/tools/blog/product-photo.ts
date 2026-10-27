@@ -76,6 +76,45 @@ function overDeclaredSize(res: Response): boolean {
   return Number.isFinite(declared) && declared > MAX_PHOTO_BYTES;
 }
 
+/**
+ * The body, stopping the moment it passes `maxBytes` rather than after.
+ *
+ * `content-length` is a header the remote server writes — nothing stops it
+ * from omitting it or lying low while streaming without end. Without this, a
+ * response with no declared length (or an understated one) is buffered whole
+ * by `arrayBuffer()` before the size is ever checked, which is the cap doing
+ * nothing for the shape of request it exists for.
+ */
+export async function readCapped(
+  res: Response,
+  maxBytes: number,
+): Promise<Uint8Array | null> {
+  const reader = res.body?.getReader();
+  if (!reader) {
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    return bytes.byteLength > maxBytes ? null : bytes;
+  }
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return out;
+}
+
 async function fetchPhoto(url: string): Promise<ProductPhoto | null> {
   let parsed: URL;
   try {
@@ -106,10 +145,8 @@ async function fetchPhoto(url: string): Promise<ProductPhoto | null> {
     if (!ALLOWED_TYPES.has(mediaType)) return null;
     if (overDeclaredSize(res)) return null;
 
-    const bytes = new Uint8Array(await res.arrayBuffer());
-    if (bytes.byteLength === 0 || bytes.byteLength > MAX_PHOTO_BYTES) {
-      return null;
-    }
+    const bytes = await readCapped(res, MAX_PHOTO_BYTES);
+    if (!bytes || bytes.byteLength === 0) return null;
     return { bytes, mediaType };
   } catch (err) {
     console.warn("[blog] could not fetch a product photo", err);

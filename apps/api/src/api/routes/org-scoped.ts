@@ -18,6 +18,7 @@ import { createAutomationWebhookRoutes } from "./automation-webhooks";
 import { createDecoSitesOrgRoutes } from "./deco-sites";
 import { createHostingRoutes } from "./hosting";
 import { createMonitorRoutes } from "./monitor";
+import { createOrderMonitorRoutes } from "./order-monitor";
 import { createDevAssetsRoutes } from "./dev-assets";
 import { createCredentialVaultRoutes } from "./credential-vault";
 import { createDownstreamTokenRoutes } from "./downstream-token";
@@ -45,6 +46,7 @@ import { createTriggerCallbackRoutes } from "./trigger-callback";
 import { createVirtualMcpRoutes } from "./virtual-mcp";
 import { createSandboxRoutes } from "./sandbox-proxy";
 import { createDecofileRoutes } from "./decofile";
+import { createHostedRoutes } from "./hosted";
 
 interface OrgScopedDeps {
   voiceSessions: VoiceSessions;
@@ -122,11 +124,13 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
   ); // /api/:org/fs/:volume/...
   app.route("/sandbox", createSandboxRoutes()); // /api/:org/sandbox/:virtualMcpId/:branch/*
   app.route("/decofile", createDecofileRoutes()); // /api/:org/decofile/:virtualMcpId/:branch[/*] — sandbox-less Fast Preview CMS
+  app.route("/hosted", createHostedRoutes()); // /api/:org/hosted/:virtualMcpId/* — hosted Deco CMS (v8) releases and site tokens
   app.route("/", createHomeNextActionsRoutes());
   app.route("/", createOrgNoticeRoutes()); // /api/:org/notice — the org's pinned billing notice
   app.route("/deco-sites", createDecoSitesOrgRoutes()); // /api/:org/deco-sites
   app.route("/hosting", createHostingRoutes()); // /api/:org/hosting/:site/...
   app.route("/monitor", createMonitorRoutes()); // /api/:org/monitor/:site/cdn/data — native CDN analytics, direct ClickHouse
+  app.route("/order-monitor", createOrderMonitorRoutes()); // /api/:org/order-monitor/stores[/:connectionId/{day,pushes}] — store order flow, customer lake
   app.route("/sso", createSsoRoutes()); // /api/:org/sso/* (renamed from /api/org-sso)
   app.route(
     "/",

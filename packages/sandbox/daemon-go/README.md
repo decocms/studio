@@ -31,6 +31,14 @@ replacement. Studio sends exactly that when the pod driving a run was replaced
 and another picked the work up, and the invariant it buys is that two `claude`
 processes never share one checkout.
 
+A run dispatched with `input.liveMessages` also takes messages while it works:
+`POST /_sandbox/runs/{runId}/messages` (bearer-authenticated, `{id, text}`)
+writes the message to that run's runner and answers only after the runner
+acks it. `200` means the running turn took it, and a repeated id is answered
+from the run's memory without being written again; `409` (no such run, no
+runner reading yet, or a turn already finishing) tells Studio to queue it as
+the next turn instead.
+
 Two properties the consumer depends on, both asserted in `daemon-e2e/`:
 
 - **Every run ends with a `done` frame** — clean finish, crash, or cancel. A body

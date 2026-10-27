@@ -1,3 +1,4 @@
+import type { TaskBoardHarnessId } from "./task-board";
 import type { CanonicalColumnKey } from "./task-board";
 import type { Metadata } from "./chat.ts";
 import type { ThreadRuntime } from "./thread/session-runtime.ts";
@@ -149,6 +150,10 @@ export interface TaskBoardItemTagRef {
 }
 
 export interface TaskBoardItem {
+  harnessId: TaskBoardHarnessId;
+  /** The epic or card this one sits under; null at the top level. */
+  parentId: string | null;
+  isEpic: boolean;
   id: string;
   organizationId: string;
   title: string;

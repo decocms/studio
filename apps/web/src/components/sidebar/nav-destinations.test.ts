@@ -7,9 +7,10 @@ describe("NAV_DESTINATION_KEYS", () => {
   test("is the org's destinations, in order", () => {
     expect(NAV_DESTINATION_KEYS).toEqual([
       "overview",
-      "tasks",
-      "agents",
       "files",
+      "plan",
+      "tasks",
+      "monitor",
     ]);
   });
 

@@ -40,6 +40,11 @@ export interface PreviewDisplay {
   showBlockingOverlay: boolean;
   /** Non-blocking "server waking — showing published site" pill. */
   showWakingPill: boolean;
+  /**
+   * The editor is still deciding v7 or v8 (see `deciding`): a neutral
+   * loader owns the canvas, nothing else.
+   */
+  showDecidingLoader?: boolean;
 }
 
 export interface PreviewDisplayInput {
@@ -77,6 +82,28 @@ export interface PreviewDisplayInput {
    * managed sandbox lifecycle, Fast Preview, and the boot gating below.
    */
   localPreviewUrl?: string | null;
+  /**
+   * The session's draft lives on the hosted Deco CMS (a Blocks v8 site edited
+   * through Studio's GitHub backend; see `hostedDraftSession`). Nothing boots
+   * there, and a draft always exists while the editor is open (the server
+   * creates it empty on open), so the frame renders its pointer once
+   * `fastPreviewReady`. Without a pointer once the read has answered (no
+   * draft store), the published site is the preview, with no "waking" pill.
+   */
+  hostedDraft?: boolean;
+  /**
+   * A hosted draft whose pointer is still being read: a neutral loader, never
+   * the published site first (it would show content the draft has changed).
+   */
+  hostedPointerPending?: boolean;
+  /**
+   * Not known yet whether this is a v7 or a v8 site (GitHub mode while
+   * main's answer loads or is retried, or a saved Local tunnel waiting for
+   * it). Neither generation's surface may show first and switch: no
+   * published site with a "waking" pill, no tunnel, no boot card. Only a
+   * neutral loader, until the answer lands.
+   */
+  deciding?: boolean;
 }
 
 const NONE: PreviewDisplay = {
@@ -97,9 +124,15 @@ export function resolvePreviewDisplay(
     fastPreviewActive = false,
     fastPreviewReady = false,
     codingSession = false,
+    hostedDraft = false,
   } = input;
   /** Withheld for a coding session — see `codingSession`. */
   const previewServerUrl = codingSession ? null : input.previewServerUrl;
+
+  // Undecided v7 or v8: neither surface yet (see `deciding`).
+  if (input.deciding) {
+    return { ...NONE, showDecidingLoader: true };
+  }
 
   // Local mode wins outright: the tunnel is already serving, render it now.
   if (input.localPreviewUrl) {
@@ -117,6 +150,12 @@ export function resolvePreviewDisplay(
     return NONE;
   }
 
+  // A hosted draft's pointer is on its way: the loader, until the frame can
+  // render the draft itself.
+  if (hostedDraft && input.hostedPointerPending && !fastPreviewReady) {
+    return { ...NONE, showDecidingLoader: true };
+  }
+
   // Fast Preview's draft render, the moment it's renderable. It needs only the
   // daemon (up shortly after the clone), so this deliberately ignores
   // `progressStatus` — waiting for the dev server is the whole cost it exists to
@@ -124,6 +163,17 @@ export function resolvePreviewDisplay(
   // over it, so every production-mode base is a page we can actually navigate to
   // (and the URL-bar label doesn't jump between origins mid-boot).
   if (fastPreviewActive && fastPreviewReady && previewServerUrl) {
+    return {
+      mode: "production",
+      iframeBase: previewServerUrl,
+      showBlockingOverlay: false,
+      showWakingPill: false,
+    };
+  }
+
+  // A hosted v8 session whose draft has no pointer (no draft store): the
+  // published site, and nothing is starting — no pill.
+  if (fastPreviewActive && hostedDraft && previewServerUrl) {
     return {
       mode: "production",
       iframeBase: previewServerUrl,

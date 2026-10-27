@@ -1,4 +1,6 @@
+import { isV8Schema } from "@decocms/shared/blocks-major";
 import { type ReactNode, useEffect } from "react";
+import { useNewBlocksEditor } from "@/hooks/use-new-blocks-editor";
 import { useT } from "@/i18n/use-t.ts";
 import { resolveSchema } from "./resolve-schema";
 import { applySchemaDefaults } from "./schema-defaults";
@@ -11,6 +13,10 @@ import { EnumField } from "./fields/enum-field";
 import { ArrayField } from "./fields/array-field";
 import { ObjectField } from "./fields/object-field";
 import { AnyOfField } from "./fields/any-of-field";
+import {
+  fitsNamedRuleBlock,
+  NamedRuleBlockFieldGate,
+} from "./fields/named-rule-block-field";
 import { DynamicOptionsField } from "./fields/dynamic-options-field";
 import { FileField } from "./fields/file-field";
 import { ImageField } from "./fields/image-field";
@@ -20,7 +26,9 @@ import { MapField } from "./fields/map-field";
 import { MultivariateFieldWrapper } from "./fields/multivariate-field-wrapper";
 import { expandRecursiveSchema } from "./fields/resolved-schema-cache";
 import { isSecretBlock } from "@decocms/shared/decofile";
-import { isSecretField, SecretField } from "./fields/secret-field";
+import { isSecretField } from "./fields/secret-field";
+import { SecretFieldForBackend } from "./fields/protocol-secret-field";
+import { isLazyFieldSchema, unwrapLazy, wrapLazy } from "./lazy-value";
 import {
   isEmptyFieldValue,
   RequiredFieldProvider,
@@ -29,6 +37,7 @@ import {
   isMultivariateArrayWrapper,
   isPageMultivariateSectionArrayField,
   isSectionMultivariateWrapperValue,
+  pageMultivariateSectionListSchema,
   unwrapMultivariateArrayValue,
   wrapMultivariateArrayValue,
 } from "./page-variants";
@@ -92,16 +101,7 @@ function isMultivariateBlockRef(schema: SchemaProperty): boolean {
 function inferArrayItemsFromBlockRefSchema(
   schema: SchemaProperty,
 ): SchemaProperty | undefined {
-  if (!isPageMultivariateSectionArrayField(schema)) return undefined;
-  for (const ref of schema.anyOfRefs ?? []) {
-    const variants = ref.schema?.properties?.variants;
-    const variantItem = variants?.items;
-    const valueField = variantItem?.properties?.value;
-    if (valueField?.type === "array" && valueField.items) {
-      return valueField.items;
-    }
-  }
-  return undefined;
+  return pageMultivariateSectionListSchema(schema)?.items;
 }
 
 function arraySchemaForValue(schema: SchemaProperty): SchemaProperty | null {
@@ -169,15 +169,47 @@ function renderResolvedBlockRefValue(props: FieldProps): ReactNode | null {
   );
 }
 
-export function renderField(fieldProps: FieldProps) {
+export function renderField(fieldProps: FieldProps): ReactNode {
+  // A prop that can read the site's tests or campaigns as a whole: the
+  // editor's named-rule support decides (NamedRuleBlockFieldGate).
+  if (fitsNamedRuleBlock(fieldProps.schema)) {
+    return (
+      <NamedRuleBlockFieldGate
+        key={fieldProps.path}
+        {...fieldProps}
+        fallback={renderFieldBody}
+      />
+    );
+  }
+  return renderFieldBody(fieldProps);
+}
+
+function renderFieldBody(fieldProps: FieldProps): ReactNode {
   const props = {
     ...fieldProps,
     schema: expandRecursiveSchema(fieldProps.schema, fieldProps.meta),
   };
   const { schema, value } = props;
 
-  if (isMultivariateArrayWrapper(value)) {
-    const multivariateArray = unwrapMultivariateArrayValue(value);
+  // `Lazy<T>`: edit the `T`; the stored value is the `lazy` block around it.
+  if (isLazyFieldSchema(schema)) {
+    const inner = schema.properties.value;
+    return renderField({
+      ...props,
+      schema: {
+        ...inner,
+        title: schema.title ?? inner.title,
+        description: schema.description ?? inner.description,
+      },
+      value: unwrapLazy(value),
+      onChange: (next) => props.onChange(wrapLazy(next)),
+    });
+  }
+
+  // On v7 a short `multivariate` is a saved block's key, not variants.
+  const v8 = isV8Schema(props.meta);
+  if (isMultivariateArrayWrapper(value, v8)) {
+    const multivariateArray = unwrapMultivariateArrayValue(value, v8);
     const arraySchema = arraySchemaForValue(schema);
     if (multivariateArray !== null && arraySchema) {
       return (
@@ -187,7 +219,14 @@ export function renderField(fieldProps: FieldProps) {
           schema={arraySchema}
           value={multivariateArray}
           onChange={(next) =>
-            props.onChange(wrapMultivariateArrayValue(value, next as unknown[]))
+            props.onChange(
+              wrapMultivariateArrayValue(
+                value,
+                next as unknown[],
+                props.meta,
+                v8,
+              ),
+            )
           }
         />
       );
@@ -219,7 +258,7 @@ export function renderField(fieldProps: FieldProps) {
   // them directly (e.g. menuItems [{target,href,label}]).
   if (
     Array.isArray(value) &&
-    !isMultivariateArrayWrapper(value) &&
+    !isMultivariateArrayWrapper(value, v8) &&
     schema.type === "block-ref"
   ) {
     // Prefer the real item schema from the block-ref's loader/section branches
@@ -353,7 +392,7 @@ export function renderField(fieldProps: FieldProps) {
 
   // Deco secrets (loader blocks and their `@format secret` value) must never hit a plain text input.
   if (isSecretField(schema, value)) {
-    return <SecretField key={props.path} {...props} />;
+    return <SecretFieldForBackend key={props.path} {...props} />;
   }
 
   // Resolved block-ref value whose schema lost its picker branch — see renderResolvedBlockRefValue. Skip when a format/enum widget owns the field.
@@ -374,7 +413,13 @@ export function renderField(fieldProps: FieldProps) {
   if (effectiveValue === null || effectiveValue === undefined) return null;
 
   if (isSecretBlock(effectiveValue)) {
-    return <SecretField key={props.path} {...props} value={effectiveValue} />;
+    return (
+      <SecretFieldForBackend
+        key={props.path}
+        {...props}
+        value={effectiveValue}
+      />
+    );
   }
 
   const effectiveProps = { ...props, value: effectiveValue };
@@ -450,6 +495,13 @@ interface SchemaFormProps {
   schema: SchemaProperty;
   value: unknown;
   onChange: (value: unknown) => void;
+  /**
+   * Outermost form only: whether missing `@default`s are written back through
+   * `onChange` as soon as the form opens (the default). With `false` they are
+   * shown, and saved with the first real change, so opening a block that
+   * isn't saved yet never creates it.
+   */
+  persistDefaults?: boolean;
   basePath: string;
   breadcrumbPath?: Crumb[];
   onBreadcrumbChange?: (path: Crumb[]) => void;
@@ -484,13 +536,36 @@ export function SchemaForm(props: SchemaFormProps) {
   return <RootSchemaForm {...props} />;
 }
 
-function RootSchemaForm(props: SchemaFormProps) {
-  const { schema, value, onChange, meta } = props;
+/**
+ * The value the outermost form shows: `value` with its missing `@default`s
+ * filled in. With `persist` (the default) they are also written back through
+ * `onChange` when the form opens, as the old admin's form did; without it they
+ * reach `onChange` only with the first real change.
+ */
+export function useSeededFormValue(
+  schema: SchemaProperty,
+  value: unknown,
+  onChange: (value: unknown) => void,
+  meta: LiveMeta | undefined,
+  persist = true,
+): unknown {
   const seeded = applySchemaDefaults(schema, value, meta);
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- persists missing @defaults to the stored block when the form opens, as the old admin's form did
   useEffect(() => {
-    if (seeded !== value) onChange(seeded);
-  }, [seeded, value, onChange]);
+    if (persist && seeded !== value) onChange(seeded);
+  }, [persist, seeded, value, onChange]);
+  return seeded;
+}
+
+function RootSchemaForm(props: SchemaFormProps) {
+  const { schema, value, onChange, meta, persistDefaults } = props;
+  const seeded = useSeededFormValue(
+    schema,
+    value,
+    onChange,
+    meta,
+    persistDefaults,
+  );
   return (
     <ObjectFieldExpansionProvider>
       <SchemaFormBody {...props} value={seeded} />
@@ -515,6 +590,8 @@ function SchemaFormBody({
   onVariantMatcherOp,
 }: SchemaFormProps) {
   const t = useT();
+  // Which blocks editor renders this form, for browser tests to tell apart.
+  const editor = useNewBlocksEditor() ? "new" : "classic";
   const properties = schema.properties;
   // The resolved root can itself be a single union field — a discriminated
   // block config whose props are a plain `A | B | C` union (e.g. the VTEX
@@ -542,12 +619,16 @@ function SchemaFormBody({
     return null;
   }
 
-  // A section-level multivariate flag (`website/flags/multivariate/section.ts`)
-  // opened directly — e.g. a saved/global block that wraps a section in
-  // variants. Its schema is `{ variants: Variant<Section>[] }`, so the generic
+  // A section-level multivariate flag (`website/flags/multivariate/section.ts`,
+  // or v8's `multivariate` around one value, each in a `lazy` block that
+  // renderField unwraps) opened directly — e.g. a saved/global block that
+  // wraps a section in variants. Its schema is `{ variants: Variant<Section>[] }`, so the generic
   // object form would render `variants` as a plain "Item 1 / Item 2" array.
   // Render the variant editor (rule matcher + per-variant section form) instead.
-  if (isSectionMultivariateWrapperValue(value) && properties.variants) {
+  if (
+    isSectionMultivariateWrapperValue(value, isV8Schema(meta)) &&
+    properties.variants
+  ) {
     const variantValueSchema = properties.variants.items?.properties?.value;
     return (
       <MultivariateFieldWrapper
@@ -667,7 +748,7 @@ function SchemaFormBody({
       ? (next: Crumb[]) => onBreadcrumbChange([...consumedPrefix, ...next])
       : onBreadcrumbChange;
   return (
-    <div className="min-w-0 space-y-6">
+    <div className="min-w-0 space-y-6" data-blocks-editor={editor}>
       {visibleKeys.map((key) => {
         const propSchema = properties[key];
         if (!propSchema) return null;

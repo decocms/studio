@@ -111,6 +111,8 @@ function useOrganizationSettings<T = OrganizationSettings>(
   return useQuery({
     ...organizationSettingsQueryOptions(org.slug, org.id),
     select: select as (data: OrganizationSettings) => T,
+    // No org (the account-less `/site-editor`): flags keep their defaults.
+    enabled: !!org.id,
   });
 }
 
@@ -227,7 +229,7 @@ export function useReportsOnly(): boolean {
  * same default. Non-blocking, cosmetic-gating only.
  */
 export function useOrgFlag(flag: keyof OrgFlags): boolean {
-  return useOrgFlagState(flag).enabled;
+  return useOrgFlagWithPending(flag).enabled;
 }
 
 /**
@@ -238,7 +240,7 @@ export function useOrgFlag(flag: keyof OrgFlags): boolean {
  * feature is off while the settings are in flight is making a claim it cannot
  * support, and the person reads it before the truth arrives.
  */
-export function useOrgFlagState(flag: keyof OrgFlags): {
+export function useOrgFlagWithPending(flag: keyof OrgFlags): {
   enabled: boolean;
   isPending: boolean;
 } {
@@ -246,6 +248,19 @@ export function useOrgFlagState(flag: keyof OrgFlags): {
     orgFlagEnabled(s.flags, flag),
   );
   return { enabled: data ?? DEFAULT_ON_FLAGS.has(flag), isPending };
+}
+
+/**
+ * {@link useOrgFlag}, but `undefined` while the org settings load — for
+ * gates that must not act on the pre-load default (routing reads to one
+ * backend, then switching them to another).
+ */
+export function useOrgFlagState(flag: keyof OrgFlags): boolean | undefined {
+  const { data, isError } = useOrganizationSettings((s) =>
+    orgFlagEnabled(s.flags, flag),
+  );
+  // A failed read falls back to the default rather than waiting forever.
+  return data ?? (isError ? DEFAULT_ON_FLAGS.has(flag) : undefined);
 }
 
 /**

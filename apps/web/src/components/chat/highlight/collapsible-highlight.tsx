@@ -125,7 +125,7 @@ export function CollapsibleHighlight({
       data-testid="collapsible-highlight"
       data-variant={variant}
       className={cn(
-        "relative flex flex-col rounded-xl bg-background border shadow-md",
+        "relative flex flex-col rounded-xl bg-background border shadow-soft",
         "w-[calc(100%-16px)] max-w-[640px] mx-auto mb-2",
         VARIANT_BORDER[variant],
         VARIANT_OVERLAY[variant],
@@ -138,7 +138,7 @@ export function CollapsibleHighlight({
         onClick={() => setExpanded((prev) => !prev)}
         className={cn(
           "flex items-center gap-2 w-full px-3 py-2 text-sm text-left",
-          "hover:bg-accent/50 transition-colors rounded-t-xl",
+          "hover:bg-accent transition-colors rounded-t-xl",
           expanded && "rounded-b-none",
           !expanded && "rounded-b-xl",
         )}

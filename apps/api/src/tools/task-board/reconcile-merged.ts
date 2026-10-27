@@ -16,6 +16,7 @@
  * merged state.
  */
 
+import { builtinActive, PR_MERGED_SYSTEM_KEY } from "@/automations/builtin";
 import type { StudioContext } from "@/core/studio-context";
 import type { TaskBoardItem } from "@/storage/types";
 import { LANES } from "@decocms/shared/task-board";
@@ -35,9 +36,10 @@ import { emitTaskBoardUpdated } from "./run-reactions";
  * OUTSIDE the queue that exists to keep it from exhausting the shared
  * `github-mcp` budget — see `dbos-github-read.ts`.
  *
- * Deliberately NOT gated on `auto_merge`, on who merged, or on the reviewers'
- * verdicts: the PR is already in the base branch, so the work shipped and the
- * card is simply out of date. The one thing it does honor is
+ * Off with the built-in "Ship merged pull requests". Otherwise deliberately
+ * NOT gated on `auto_merge`, on who merged, or on the reviewers' verdicts:
+ * the PR is already in the base branch, so the work shipped and the card is
+ * simply out of date. The one thing it does honor is
  * `hasHumanRejectedDone` — a person who pulled this card back out of Done meant
  * it, and a merged PR is not a reason to overrule them.
  *
@@ -52,6 +54,7 @@ export async function shipIfMerged(
   const orgId = item.organizationId;
   if (!inReviewPhase(item)) return false;
   if (!cardWorkLanded(prs)) return false;
+  if (!(await builtinActive(ctx, orgId, PR_MERGED_SYSTEM_KEY))) return false;
   if (await ctx.storage.taskBoard.hasHumanRejectedDone(item.id, orgId)) {
     return false;
   }

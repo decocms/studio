@@ -119,13 +119,6 @@ describe("ownRepo", () => {
     expect(await ownRepo(ctx, "org-1", north)).toBeNull();
   });
 
-  test("a dev agent on the same repository is not a sibling", async () => {
-    const dev = project("vir_dev", "acme/store", { liveAgentId: "vir_north" });
-    expect(await ownRepo(ctxWith([north, dev]), "org-1", north)).toBe(
-      "acme/store",
-    );
-  });
-
   test("a repo-less project has none", async () => {
     const bare = project("vir_bare", null);
     expect(await ownRepo(ctxWith([bare]), "org-1", bare)).toBeNull();

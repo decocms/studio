@@ -7,6 +7,16 @@
 
 import type { Kysely } from "kysely";
 import type { Database, UserWithImage } from "./types";
+import { escapeLikePattern } from "./virtual";
+
+/** An organization the user belongs to, as the org search returns it. */
+export interface MembershipOrganization {
+  id: string;
+  name: string;
+  slug: string;
+  logo: string | null;
+  metadata: string | null;
+}
 
 /**
  * User storage interface
@@ -16,6 +26,13 @@ export interface UserStoragePort {
     userId: string,
     requestingUserId: string,
   ): Promise<UserWithImage | null>;
+  searchOrganizations(options: {
+    userId: string;
+    term: string;
+    limit: number;
+    offset?: number;
+    organizationId?: string | null;
+  }): Promise<MembershipOrganization[]>;
 }
 
 /**
@@ -73,5 +90,61 @@ export class UserStorage implements UserStoragePort {
       updatedAt: result.updatedAt,
       image: result.image ?? undefined,
     };
+  }
+
+  /**
+   * Organizations the user belongs to whose name or slug contains `term`.
+   * Better Auth's own list stops at its adapter's page of 500, so a
+   * search over it cannot reach the rest of a large membership.
+   */
+  async searchOrganizations(options: {
+    userId: string;
+    term: string;
+    limit: number;
+    /** Page offset, so a caller that drops rows (archived, SSO-blocked) can
+     *  refill its page. */
+    offset?: number;
+    /** Fence a credential-authenticated caller to one organization. */
+    organizationId?: string | null;
+  }): Promise<MembershipOrganization[]> {
+    const { userId, term, limit, offset = 0, organizationId } = options;
+    const pattern = `%${escapeLikePattern(term)}%`;
+
+    let query = this.db
+      .selectFrom("organization")
+      // EXISTS, not a join: a user can hold two member rows in one org.
+      .where((eb) =>
+        eb.exists(
+          eb
+            .selectFrom("member")
+            .select("member.id")
+            .whereRef("member.organizationId", "=", "organization.id")
+            .where("member.userId", "=", userId),
+        ),
+      )
+      .where((eb) =>
+        eb.or([
+          eb("organization.name", "ilike", pattern),
+          eb("organization.slug", "ilike", pattern),
+        ]),
+      );
+
+    if (organizationId) {
+      query = query.where("organization.id", "=", organizationId);
+    }
+
+    return await query
+      .select([
+        "organization.id as id",
+        "organization.name as name",
+        "organization.slug as slug",
+        "organization.logo as logo",
+        "organization.metadata as metadata",
+      ])
+      .orderBy("organization.name", "asc")
+      .orderBy("organization.id", "asc")
+      .limit(limit)
+      .offset(offset)
+      .execute();
   }
 }

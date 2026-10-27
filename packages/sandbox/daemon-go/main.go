@@ -220,6 +220,38 @@ func (d *daemon) getDevPort() int {
 	return 0
 }
 
+// devPortFor routes a preview request to the dev server of the app its host
+// names, and anything else to the main app.
+func (d *daemon) devPortFor(r *http.Request) int {
+	if app, ok := d.extraAppFor(r); ok {
+		return app.Port
+	}
+	return d.getDevPort()
+}
+
+func (d *daemon) extraAppFor(r *http.Request) (setup.ExtraAppState, bool) {
+	slug := proxy.AppSlugFromRequest(r)
+	if slug == "" || d.orchestrator == nil {
+		return setup.ExtraAppState{}, false
+	}
+	return d.orchestrator.ExtraApp(slug)
+}
+
+// serveStoppedExtraApp answers for an app whose dev script is not running:
+// a page load restarts it, and an app that cannot start says why.
+func (d *daemon) serveStoppedExtraApp(w http.ResponseWriter, r *http.Request) bool {
+	app, ok := d.extraAppFor(r)
+	if !ok || !app.Stopped {
+		return false
+	}
+	if proxy.AcceptsHTML(r) && d.orchestrator.RestartExtraApp(proxy.AppSlugFromRequest(r)) {
+		proxy.ServeStarting(w)
+		return true
+	}
+	proxy.ServeAppStopped(w, app.Path, app.Reason, app.Log)
+	return true
+}
+
 // devTaskRunning reports whether a dev-script task (`dev`/`start`) is alive
 // right now — the evidence that a serving port belongs to this sandbox's dev
 // server rather than to something that merely outlived it.
@@ -663,6 +695,9 @@ func (d *daemon) registerSandboxRoutes(mux *http.ServeMux, pre string, h sandbox
 	mux.HandleFunc("DELETE "+pre+"/runs/{runId}", func(w http.ResponseWriter, r *http.Request) {
 		d.dispatchReg.HandleCancel(w, r, d.getToken)
 	})
+	mux.HandleFunc("POST "+pre+"/runs/{runId}/messages", func(w http.ResponseWriter, r *http.Request) {
+		d.dispatchReg.HandleLiveMessage(w, r, d.getToken)
+	})
 
 	mux.HandleFunc("GET "+pre+"/config", d.authed(h.configRead))
 	mux.HandleFunc("PUT "+pre+"/config", d.authed(h.configUpdate))
@@ -728,7 +763,7 @@ func (d *daemon) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if proxy.IsWebSocketUpgrade(r) && !isSandboxPath(p) {
 		proxy.ServeWs(w, r, proxy.WsDeps{
-			GetDevPort:   d.getDevPort,
+			GetDevPort:   func() int { return d.devPortFor(r) },
 			OnClientData: func() { activity.Bump() },
 		})
 		return
@@ -742,6 +777,9 @@ func (d *daemon) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// routes and wrong for whatever the tenant's server serves.
 	if isSandboxPath(p) {
 		d.mux.ServeHTTP(w, r)
+		return
+	}
+	if d.serveStoppedExtraApp(w, r) {
 		return
 	}
 	d.proxyHandler.ServeHTTP(w, r)
@@ -970,6 +1008,9 @@ func main() {
 	d.sniffer = proc.NewPortSniffer()
 	d.broadcaster.ChunkObserver = func(source, data string) {
 		d.sniffer.Observe(source, data)
+		if d.orchestrator != nil {
+			d.orchestrator.ObserveExtraAppChunk(source, data)
+		}
 	}
 
 	d.store = config.NewStore()
@@ -1088,7 +1129,7 @@ func main() {
 	go d.devWatchLoop()
 
 	d.proxyHandler = proxy.New(proxy.Deps{
-		GetDevPort: d.getDevPort,
+		GetDevPort: d.devPortFor,
 		Log: func(msg string) {
 			d.broadcaster.BroadcastChunk("daemon",
 				fmt.Sprintf("[daemon] %s %s\r\n", time.Now().UTC().Format(time.RFC3339Nano), msg))
@@ -1400,9 +1441,15 @@ func main() {
 	d.mux = http.NewServeMux()
 	d.registerSandboxRoutes(d.mux, sandboxPrefix, h)
 
-	if diskCfg, ok := config.ReadDiskConfig(repoDir); ok {
-		d.store.Hydrate(diskCfg)
-		d.orchestrator.Handle(config.Transition{Kind: config.KindBootstrap, Config: diskCfg})
+	if diskCfg, found, err := config.ReadDiskConfig(repoDir); err != nil {
+		slog.Error("ignoring malformed .decocms/daemon.json", "error", err)
+	} else if found {
+		if reason := config.Validate(diskCfg); reason != "" {
+			slog.Error("ignoring invalid .decocms/daemon.json", "reason", reason)
+		} else {
+			d.store.Hydrate(diskCfg)
+			d.orchestrator.Handle(config.Transition{Kind: config.KindBootstrap, Config: diskCfg})
+		}
 	}
 	if d.store.Read() == nil {
 		slog.Info("daemon ready, unclaimed — waiting for workload config", "boot_id", bootId)

@@ -120,4 +120,107 @@ describe("applyDeckOp", () => {
       }),
     ).toThrow(DeckOpError);
   });
+
+  test("event handler attribute rejected", () => {
+    expect(() =>
+      applyDeckOp(DECK, {
+        kind: "set-attr",
+        at: 0,
+        name: "onclick",
+        value: "alert(1)",
+      }),
+    ).toThrow(DeckOpError);
+  });
+
+  test("javascript: URI attribute rejected", () => {
+    expect(() =>
+      applyDeckOp(DECK, {
+        kind: "set-attr",
+        at: 0,
+        name: "href",
+        value: "javascript:alert(1)",
+      }),
+    ).toThrow(DeckOpError);
+  });
+
+  test("tab-obfuscated javascript: URI attribute rejected", () => {
+    expect(() =>
+      applyDeckOp(DECK, {
+        kind: "set-attr",
+        at: 0,
+        name: "href",
+        value: "jav\tascript:alert(1)",
+      }),
+    ).toThrow(DeckOpError);
+  });
+
+  test("replace strips script tags", () => {
+    const out = applyDeckOp(DECK, {
+      kind: "replace",
+      at: 0,
+      html: '<section class="a"><h1>Edited</h1><script>alert(1)</script></section>',
+    });
+    expect(out).not.toContain("<script>alert(1)</script>");
+    expect(headings(out)).toEqual(["Edited", "Two", "Three"]);
+  });
+
+  test("replace strips event-handler attributes", () => {
+    const out = applyDeckOp(DECK, {
+      kind: "replace",
+      at: 0,
+      html: '<section class="a"><img src="x" onerror="alert(1)"></section>',
+    });
+    expect(out).not.toContain("onerror");
+  });
+
+  test("replace strips javascript: href but keeps the link", () => {
+    const out = applyDeckOp(DECK, {
+      kind: "replace",
+      at: 0,
+      html: '<section class="a"><a href="javascript:alert(1)">click</a></section>',
+    });
+    expect(out).not.toContain("javascript:");
+    expect(out).toContain("<a>click</a>");
+  });
+
+  test("replace strips a tab-obfuscated javascript: href", () => {
+    const out = applyDeckOp(DECK, {
+      kind: "replace",
+      at: 0,
+      html: '<section class="a"><a href="jav&#9;ascript:alert(1)">click</a></section>',
+    });
+    expect(out).not.toContain("ascript:");
+    expect(out).toContain("<a>click</a>");
+  });
+
+  test("replace strips SVG SMIL animate elements that rewrite href", () => {
+    const out = applyDeckOp(DECK, {
+      kind: "replace",
+      at: 0,
+      html:
+        '<section class="a"><svg><a href="#safe">' +
+        '<animate attributeName="href" values="javascript:alert(1)" />click</a></svg></section>',
+    });
+    expect(out).not.toContain("<animate");
+    expect(out).not.toContain("javascript:");
+  });
+
+  test("replace keeps pasted base64 images", () => {
+    const out = applyDeckOp(DECK, {
+      kind: "replace",
+      at: 0,
+      html: '<section class="a"><img src="data:image/png;base64,AAA="></section>',
+    });
+    expect(out).toContain("data:image/png;base64,AAA=");
+  });
+
+  test("replace strips a data:image/svg+xml href that can run script on click", () => {
+    const out = applyDeckOp(DECK, {
+      kind: "replace",
+      at: 0,
+      html: '<section class="a"><a href="data:image/svg+xml;base64,AAA=">click</a></section>',
+    });
+    expect(out).not.toContain("data:image/svg+xml");
+    expect(out).toContain("<a>click</a>");
+  });
 });

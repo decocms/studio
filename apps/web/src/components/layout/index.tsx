@@ -18,6 +18,7 @@ import { OpenAppRecorder, OrgRail } from "@/components/sidebar/org-rail";
 import { SidebarResizeHandle } from "@/components/sidebar/sidebar-resize-handle";
 import { SidebarThreadButtonProvider } from "@/components/sidebar/thread-button";
 import { useLocalStorage } from "@/hooks/use-local-storage";
+import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
 import { useSidebarResize } from "@/hooks/use-sidebar-resize";
 import { useT } from "@/i18n/use-t.ts";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
@@ -37,9 +38,13 @@ function useLayout() {
 function LayoutRoot({
   children,
   notice,
+  outsideOrg,
 }: {
   children: ReactNode;
   notice?: ReactNode;
+  /** Outside any org (`/site-editor`): no org apps to record, and the org
+   *  rail only when `rail` (a signed-in person, whose orgs it lists). */
+  outsideOrg?: { rail: boolean };
 }) {
   const isMobile = useIsMobile();
 
@@ -56,18 +61,18 @@ function LayoutRoot({
         <div className="app-shell-root flex flex-col h-dvh overflow-hidden">
           {notice}
           <div className="flex flex-1 flex-row min-h-0">
-            {projectFirstNav && <OpenAppRecorder />}
-            {!isMobile && projectFirstNav && <OrgRail />}
+            {projectFirstNav && !outsideOrg && <OpenAppRecorder />}
+            {!isMobile && projectFirstNav && (outsideOrg?.rail ?? true) && (
+              <OrgRail />
+            )}
             <SidebarLayout
               ref={resize.wrapperRef}
               className="flex-1 bg-sidebar relative min-h-0"
               style={
                 {
                   "--sidebar-width": `${resize.width}px`,
-                  // The icon rail keeps its buttons the same size as the toolbar.
-                  "--sidebar-width-icon": projectFirstNav
-                    ? "3.25rem"
-                    : "3.125rem",
+                  // Project-first collapses all the way: the org rail is the icon rail.
+                  "--sidebar-width-icon": projectFirstNav ? "0px" : "3.125rem",
                 } as Record<string, string>
               }
             >
@@ -92,11 +97,17 @@ function LayoutSidebar({
   const t = useT();
   const { isMobile, resize } = useLayout();
   const { openMobile, setOpenMobile } = useSidebar();
+  const collapsed = useSidebarCollapsed();
+  const projectFirstNav = useProjectFirstNav();
+  const close = () => setOpenMobile(false);
 
   if (!isMobile) {
     return (
       <>
-        {children}
+        {/* Project-first collapses to zero width: clipped, but still tabbable. */}
+        <div className="contents" inert={projectFirstNav && collapsed}>
+          {children}
+        </div>
         <SidebarResizeHandle
           width={resize.width}
           minWidth={resize.minWidth}
@@ -115,11 +126,18 @@ function LayoutSidebar({
         side="left"
         hideCloseButton
         className="w-screen max-w-none! p-0"
+        /* Focusing the first control would pop its tooltip over the header. */
+        onOpenAutoFocus={(event) => event.preventDefault()}
       >
         <SheetTitle className="sr-only">
           {t("layouts.shellControls.navigationTitle")}
         </SheetTitle>
-        {renderMobile({ onClose: () => setOpenMobile(false) })}
+        <div className="flex h-full min-h-0">
+          {projectFirstNav && <OrgRail onNavigate={close} />}
+          <div className="min-w-0 flex-1">
+            {renderMobile({ onClose: close })}
+          </div>
+        </div>
       </SheetContent>
     </Sheet>
   );

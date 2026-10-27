@@ -14,6 +14,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   applyThreadLock,
+  assertThreadOwnedByCaller,
   defaultHarnessForAgent,
   assertHostedHarness,
   assertPersistedHostedRuntime,
@@ -178,12 +179,13 @@ describe("assertHostedHarness", () => {
     // Regression: gating the queue GET like a dispatch 409'd it, so a
     // claude-code chat rendered empty and erroring on the web.
     expect(() => assertHostedHarness("claude-code")).not.toThrow();
+    expect(() => assertHostedHarness("codex")).not.toThrow();
     expect(() => assertHostedHarness("decopilot")).not.toThrow();
     expect(() => assertHostedHarness(null)).not.toThrow();
   });
 
   test("rejects native and unknown harnesses", () => {
-    for (const harnessId of ["codex", "opencode", "future"]) {
+    for (const harnessId of ["opencode", "future"]) {
       expect(() => assertHostedHarness(harnessId)).toThrow(
         /Studio desktop app/,
       );
@@ -195,6 +197,7 @@ describe("assertPersistedHostedRuntime", () => {
   test("allows current hosted rows", () => {
     expect(() => assertPersistedHostedRuntime("decopilot")).not.toThrow();
     expect(() => assertPersistedHostedRuntime("claude-code")).not.toThrow();
+    expect(() => assertPersistedHostedRuntime("codex")).not.toThrow();
   });
 
   test("rejects unpinned threads before a hosted control mutation", () => {
@@ -204,7 +207,7 @@ describe("assertPersistedHostedRuntime", () => {
   });
 
   test("rejects native runtime rows", () => {
-    expect(() => assertPersistedHostedRuntime("codex")).toThrow(
+    expect(() => assertPersistedHostedRuntime("opencode")).toThrow(
       /Studio desktop app/,
     );
   });
@@ -375,6 +378,24 @@ describe("applyThreadLock", () => {
     expect(result.locked).toBe(false);
     expect(result.harnessId).toBe("decopilot");
     expect(result.branch).toBe("feature-x");
+  });
+});
+
+describe("assertThreadOwnedByCaller", () => {
+  test("no thread row (first message ever): never throws", () => {
+    expect(() => assertThreadOwnedByCaller(null, "user-owner")).not.toThrow();
+  });
+
+  test("caller is the thread's creator: never throws", () => {
+    expect(() =>
+      assertThreadOwnedByCaller({ created_by: "user-owner" }, "user-owner"),
+    ).not.toThrow();
+  });
+
+  test("caller is a different org member: throws 403", () => {
+    expect(() =>
+      assertThreadOwnedByCaller({ created_by: "user-owner" }, "user-other"),
+    ).toThrow(/not the owner/);
   });
 });
 

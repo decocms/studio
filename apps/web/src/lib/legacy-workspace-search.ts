@@ -39,6 +39,19 @@ export const taskBoardSearchShape = {
   boardOrg: z.string().optional(),
 };
 
+const CONTEXT_SECTIONS = [
+  "files",
+  "brand",
+  "connections",
+  "repositories",
+  "skills",
+  "memory",
+  "instructions",
+  "general",
+  "site",
+] as const;
+export type ContextSection = (typeof CONTEXT_SECTIONS)[number];
+
 /** Library-owned browse, preview, and catalog state. `layout` and `sort` are
  *  in the URL with the rest so a link carries the listing someone is looking
  *  at, not just the folder it is in. Both `.catch()` to their default: a stale
@@ -54,6 +67,11 @@ export const librarySearchShape = {
   expanded: z.coerce.boolean().optional().catch(undefined),
   skill: z.string().optional(),
   brand: z.string().optional(),
+  /** Context's menu (project-first nav), and the state of the settings pages
+   *  it hosts: Memory's scope and the Connections create dialog. */
+  section: z.enum(CONTEXT_SECTIONS).catch("files").optional(),
+  scope: z.enum(["user"]).optional().catch(undefined),
+  action: z.enum(["create"]).optional().catch(undefined),
 };
 
 /** Exact payload accepted by the retired `/agents/{-$panel}` route. */
@@ -82,9 +100,7 @@ export const legacyWorkspaceCompatibilitySearchShape = {
   ...legacyAgentViewSearchShape,
   /** A retired board link carried the selected card in search. */
   task: z.string().optional(),
-  /** The flat shape's project pointer (`lib/flat-projects.ts`). On the shared
-   *  payload rather than its own route: it has to survive the workspace's
-   *  navigations, and one more route breaks search inference. */
+  /** A retired `/projects?project=` link, redirected to that project. */
   project: z.string().optional(),
   ...taskBoardSearchShape,
   /** `path` and `preview` already come from the agent-view payload above. */

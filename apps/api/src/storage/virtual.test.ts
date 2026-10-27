@@ -1,5 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { escapeLikePattern } from "./virtual";
+import {
+  createRequestCachedVirtualMcps,
+  escapeLikePattern,
+  type VirtualMCPStorage,
+} from "./virtual";
 
 /**
  * The cross-org search box interpolates a user-typed term into a LIKE pattern.
@@ -34,5 +38,54 @@ describe("escapeLikePattern", () => {
 
   it("handles the empty term", () => {
     expect(escapeLikePattern("")).toBe("");
+  });
+});
+
+/**
+ * createRequestCachedVirtualMcps memoizes `list` for the request. A write
+ * that bypasses the memoized method (e.g. a metadata patch issued after an
+ * earlier `list()` call in the same request) must still invalidate the
+ * cache, or a later `list()` in that same request would replay stale data.
+ */
+describe("createRequestCachedVirtualMcps cache invalidation", () => {
+  const makeBase = () => {
+    let listCalls = 0;
+    const base = {
+      list: async () => {
+        listCalls++;
+        return [{ id: `call-${listCalls}` }];
+      },
+      patchMetadata: async () => true,
+      clearAnalyticsSiteSlugReferences: async () => 1,
+    } as unknown as VirtualMCPStorage;
+    return { base, getListCalls: () => listCalls };
+  };
+
+  it("invalidates the list cache after patchMetadata", async () => {
+    const { base } = makeBase();
+    const cached = createRequestCachedVirtualMcps(base);
+
+    const first = await cached.list("org-1");
+    await cached.patchMetadata({
+      id: "proj-1",
+      organizationId: "org-1",
+      set: { projectFolderName: "x" },
+      unset: [],
+      by: "user-1",
+    });
+    const second = await cached.list("org-1");
+
+    expect(second).not.toBe(first);
+  });
+
+  it("invalidates the list cache after clearAnalyticsSiteSlugReferences", async () => {
+    const { base } = makeBase();
+    const cached = createRequestCachedVirtualMcps(base);
+
+    const first = await cached.list("org-1");
+    await cached.clearAnalyticsSiteSlugReferences("org-1", "some-slug");
+    const second = await cached.list("org-1");
+
+    expect(second).not.toBe(first);
   });
 });

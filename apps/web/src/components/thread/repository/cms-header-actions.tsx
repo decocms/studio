@@ -38,7 +38,18 @@ import {
 import { KEYS } from "@/lib/query-keys";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
-import { useDecofileWriting } from "../../sections-editor/use-decofile-writing.ts";
+import { useContentBackend } from "../../sections-editor/use-content-backend.ts";
+import { settleAfterPublish } from "./publish-completion.ts";
+import { useContentChanges } from "../../sections-editor/content-changes.ts";
+import { useDecofileCacheKey } from "../../sections-editor/use-decofile.ts";
+import {
+  contentSyncScope,
+  useContentSyncBusy,
+} from "../../sections-editor/content-sync.ts";
+import {
+  previewDraftPageLink,
+  usePreviewDraftValue,
+} from "../../sections-editor/preview-draft-link.ts";
 import {
   useDraftPointer,
   useFastPreviewDraftUrl,
@@ -52,6 +63,9 @@ import { useChatTask } from "../../chat/index";
 import { PublishDialog, type CmsPublishMode } from "./publish-dialog.tsx";
 import { summarizePublishManifest } from "./publish-change-summary.ts";
 import {
+  hostedCmsHeaderButton,
+  hostedHeaderState,
+  hostedReleaseBehindMain,
   isCmsStateSettling,
   selectCmsHeaderButton,
   type CmsAction,
@@ -66,6 +80,7 @@ import {
 } from "./sandbox-git-api.ts";
 import { useChecks, useLastPublishedPr, usePrByBranch } from "./use-pr-data.ts";
 import { useReleases } from "./use-releases";
+import { useReleases as useHostedReleases } from "@/layouts/main-panel-tabs/releases-api.ts";
 import { usePrReviews } from "./use-pr-reviews.ts";
 import { authClient } from "@/lib/auth-client.ts";
 import {
@@ -140,9 +155,37 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
     branch ? { orgSlug: org.slug, virtualMcpId, branch } : null,
   );
 
+  // A hosted v8 draft is not a branch: no pull request and nothing to sync,
+  // so its header offers Publish only, with no chevron. Its changes are the
+  // content protocol's (`changes.list`: the draft against main), never git's.
+  const backend = useContentBackend(virtualMcpId, branch);
+  const hosted = backend.kind === "protocol" && backend.source === "github";
+  const cacheKey = useDecofileCacheKey(
+    branch ? { orgSlug: org.slug, virtualMcpId, branch } : null,
+  );
+  const changesQuery = useContentChanges(hosted ? backend : null, cacheKey);
+  // What visitors see against main: the Releases screen's read (its first
+  // page), refreshed by a Publish or a "Make current" like that screen. A
+  // release behind main with nothing left to list is "Not live yet".
+  const hostedReleases = useHostedReleases(org.slug, virtualMcpId, {
+    enabled: hosted,
+  });
+  const notLive =
+    hosted && hostedReleaseBehindMain(hostedReleases.data?.pages[0]);
+  // A hosted draft's links send the preview frame's `__draft` exactly: its
+  // pointer with the frame's forced variants and "Preview as" options.
+  const hostedDraftValue = usePreviewDraftValue(
+    contentSyncScope(org.slug, virtualMcpId),
+    hosted ? draftPointer : null,
+  );
+  const draftPreviewUrl = hosted
+    ? previewDraftPageLink(previewServerUrl, draftPath, hostedDraftValue)
+    : draftPreview.url;
+
   /** Poll-free on purpose: every call forwards to the provider; save hooks invalidate
    *  this key. Shared verbatim with the publish popover, which reads the
-   *  changed-file manifest off the same entry — hence one options factory. */
+   *  changed-file manifest off the same entry — hence one options factory.
+   *  Held until the backend is known, and never read for a hosted v8 draft. */
   const statusQuery = useQuery({
     ...sandboxGitStatusQueryOptions({
       orgSlug: org.slug,
@@ -150,21 +193,26 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
       branch: branch ?? "",
       threadId: taskId ?? null,
     }),
-    enabled: !!branch,
+    enabled: !!branch && backend.kind !== "pending" && !hosted,
   });
-  const status = statusQuery.data ?? null;
-  const branchMeta: BranchMeta = status
-    ? {
-        kind: "ready",
-        branch: readGitHeadBranch(status) ?? branch ?? "",
-        base: status.base ?? "main",
-        workingTreeDirty: hasPublishableLocalWork(status),
-        unpushed: status.unpushed ?? 0,
-        aheadOfBase: status.aheadOfBase ?? 0,
-        behindBase: status.behindBase ?? 0,
-        headSha: status.headSha ?? "",
-      }
-    : { kind: "unknown" };
+  const status = hosted ? null : (statusQuery.data ?? null);
+  const hostedState = hosted
+    ? hostedHeaderState(changesQuery.data, branch ?? "")
+    : null;
+  const branchMeta: BranchMeta = hostedState
+    ? hostedState.branchMeta
+    : status
+      ? {
+          kind: "ready",
+          branch: readGitHeadBranch(status) ?? branch ?? "",
+          base: status.base ?? "main",
+          workingTreeDirty: hasPublishableLocalWork(status),
+          unpushed: status.unpushed ?? 0,
+          aheadOfBase: status.aheadOfBase ?? 0,
+          behindBase: status.behindBase ?? 0,
+          headSha: status.headSha ?? "",
+        }
+      : { kind: "unknown" };
 
   /**
    * The publishable change count, derived from the SAME manifest summarizer the
@@ -173,11 +221,15 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
    * whether there is anything to publish — auto-generated artifacts are excluded
    * in both. `null` when the manifest is absent (sandbox daemon); the state
    * machine then falls back to the branch's `aheadOfBase` commit count, which
-   * the popover doesn't, so the two can drift apart in that window alone.
+   * the popover doesn't, so the two can drift apart in that window alone. A
+   * hosted v8 draft counts its listed changes, as its popover does.
    */
-  const publishableChangeCount = status?.changedFiles
-    ? summarizePublishManifest({ files: status.changedFiles }).count
-    : null;
+  const publishableChangeCount = hostedState
+    ? hostedState.publishableChangeCount
+    : status?.changedFiles
+      ? summarizePublishManifest({ files: status.changedFiles }).count
+      : null;
+  const listQuery = hosted ? changesQuery : statusQuery;
 
   const headBranch =
     (branchMeta.kind === "ready" ? branchMeta.branch : null) ?? branch ?? null;
@@ -234,22 +286,23 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
     await prQuery.refetch();
   };
 
-  /** Publish done: land on a fresh editable draft and discard the merged draft
-   *  (switcher entry + branch); a mutation so `isPending` signals the publish is
-   *  still settling. */
+  /** Publish done: `settleAfterPublish` (v7 moves to a fresh draft; a hosted
+   *  v8 editor stays on its emptied draft); a mutation so `isPending` signals
+   *  the publish is still settling. */
   const publishCompletion = useMutation({
-    mutationFn: async () => {
-      const published = branch;
-      await setCurrentTaskBranch(
-        generateBranchName(branchUserLabel(session?.user)),
-      );
-      if (published && published !== baseBranch) {
-        await deleteRelease(published);
-      }
-    },
-    /** The dialog is already closed by now, so a toast is the only surface. */
+    mutationFn: () =>
+      settleAfterPublish({
+        hosted,
+        branch,
+        baseBranch,
+        nextBranch: () => generateBranchName(branchUserLabel(session?.user)),
+        setCurrentTaskBranch,
+        deleteRelease,
+      }),
+    /** The publish already succeeded and showed its one toast; this clean-up
+     *  is nothing the user can act on, so it is logged, not toasted. */
     onError: (err: unknown) => {
-      toast.error(err instanceof Error ? err.message : String(err));
+      console.error("site editor: settling after publish failed", err);
     },
   });
 
@@ -292,8 +345,11 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
     },
   });
 
-  /** Same in-flight signal the preview's autosave indicator reads. */
-  const saving = useDecofileWriting(org.slug, virtualMcpId, branch ?? "");
+  /**
+   * A content change is saving or its preview is reloading: the same state
+   * the preview's progress bar reads (content-sync.ts).
+   */
+  const saving = useContentSyncBusy(org.slug, virtualMcpId);
 
   /**
    * Only the tail of the publish — the branch switch that follows the merge.
@@ -307,7 +363,7 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
    */
   const publishing = publishCompletion.isPending;
 
-  const button = selectCmsHeaderButton({
+  const selected = selectCmsHeaderButton({
     branch: branchMeta,
     pr,
     checks: checksQuery.data ?? [],
@@ -315,17 +371,20 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
     publishing,
     saving,
     syncing: getLatest.isPending,
-    statusRetrying: statusQuery.isFetching && !!statusQuery.error,
+    statusRetrying: listQuery.isFetching && !!listQuery.error,
     statusError:
-      statusQuery.error instanceof Error
-        ? statusQuery.error.message
-        : statusQuery.error
-          ? String(statusQuery.error)
+      listQuery.error instanceof Error
+        ? listQuery.error.message
+        : listQuery.error
+          ? String(listQuery.error)
           : null,
     loading: Boolean(settling),
     publishableChangeCount,
     t,
   });
+  const button = hosted
+    ? hostedCmsHeaderButton(selected, { notLive, t })
+    : selected;
 
   /** Keyed by head so a failed sync isn't retried until the branch moves. */
   const autoGetLatestKey =
@@ -413,7 +472,7 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
         getLatest.mutate({ branch: headBranch, base: baseBranch });
         return;
       case "retry-status":
-        void statusQuery.refetch();
+        void listQuery.refetch();
         return;
       case "open-pr":
         if (pr?.htmlUrl) {
@@ -450,12 +509,18 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
 
   return (
     <>
+      {button.status ? (
+        <span className="mr-1 hidden shrink-0 text-xs text-muted-foreground sm:inline">
+          {button.status}
+        </span>
+      ) : null}
       {splitButton}
       {branch ? (
         <PublishDialog
           open={surface.open}
           mode={surface.mode}
           fastPreview
+          notLive={notLive}
           onOpenChange={(open) => {
             if (!open) setSurface((current) => ({ ...current, open: false }));
           }}
@@ -467,11 +532,17 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
           owner={repository.owner}
           repo={repository.name}
           publishPolicy={normalizePublishPolicy(vm?.metadata?.publishPolicy)}
-          draftPreviewUrl={draftPreview.url}
+          draftPreviewUrl={draftPreviewUrl}
           destinationHost={draftPreview.host}
           previewServerUrl={previewServerUrl}
           compareDraft={
-            draftPointer ? { kind: "pointer", pointer: draftPointer } : null
+            draftPointer
+              ? {
+                  kind: "pointer",
+                  pointer: draftPointer,
+                  ...(hostedDraftValue ? { link: hostedDraftValue } : {}),
+                }
+              : null
           }
           lastPublishedPr={lastPublishedQuery.data ?? null}
           onRequestApproval={() => openSurface("review")}

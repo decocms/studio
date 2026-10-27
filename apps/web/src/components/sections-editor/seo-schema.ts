@@ -1,8 +1,10 @@
 import { isSavedBlockResolveType } from "./block-type-utils";
 import {
   collectAnyOfRefsFromSchema,
-  findLivePageResolveType,
+  declaresBuiltInPage,
+  findNewPageResolveType,
 } from "./section-catalog";
+import { isLazyResolveType } from "./section-lazy";
 import {
   resolveSchema,
   type LiveMeta,
@@ -19,11 +21,28 @@ export interface SeoTypeOption {
   description?: string;
 }
 
-/** Matches SEO section resolveTypes, e.g. "website/sections/Seo/SeoV2.tsx". */
-export function isSeoSectionResolveType(resolveType: string): boolean {
+/** v7 SEO section file names, e.g. "website/sections/Seo/SeoV2.tsx". */
+function isV7SeoFileName(resolveType: string): boolean {
   return (
     /\/Seo(V\d+)?\.tsx$/i.test(resolveType) ||
     resolveType.includes("/sections/Seo")
+  );
+}
+
+/**
+ * Whether a type is an SEO type. On a next-major site (it declares the
+ * built-in `page`) that is any type its page schema's `seo` union lists,
+ * whatever it is named; v7 page schemas type `seo` as any section, so there
+ * (and without `meta`) only the v7 SEO file names count.
+ */
+export function isSeoSectionResolveType(
+  resolveType: string,
+  meta?: LiveMeta,
+): boolean {
+  if (isV7SeoFileName(resolveType)) return true;
+  if (!meta || !declaresBuiltInPage(meta)) return false;
+  return listPageSeoTypeOptions(meta).some(
+    (o) => o.resolveType === resolveType,
   );
 }
 
@@ -34,13 +53,19 @@ function seoTypeLabel(resolveType: string, title: string): string {
 
 function seoOptionsFromPropertySchema(
   schema: SchemaProperty | null | undefined,
+  meta: LiveMeta,
 ): SeoTypeOption[] {
   const refs = collectAnyOfRefsFromSchema(schema);
+  // Next-major's `seo` union lists exactly the SEO types; v7's lists every
+  // section, so it is narrowed to the SEO file names.
+  const unionIsSeoOnly = declaresBuiltInPage(meta);
   const seen = new Set<string>();
   const options: SeoTypeOption[] = [];
   for (const ref of refs) {
-    if (!isSeoSectionResolveType(ref.resolveType)) continue;
-    if (isSavedBlockResolveType(ref.resolveType)) continue;
+    if (unionIsSeoOnly) {
+      if (isLazyResolveType(ref.resolveType)) continue;
+    } else if (!isV7SeoFileName(ref.resolveType)) continue;
+    if (isSavedBlockResolveType(ref.resolveType, meta)) continue;
     if (seen.has(ref.resolveType)) continue;
     seen.add(ref.resolveType);
     options.push({
@@ -57,10 +82,15 @@ function seoOptionsFromPropertySchema(
  * property (JSON Schema anyOf), mirroring admin's `getAllPageSeoSectionSchemas`.
  */
 export function listPageSeoTypeOptions(meta: LiveMeta): SeoTypeOption[] {
-  const pageRt = findLivePageResolveType(meta);
+  const pageRt = findNewPageResolveType(meta);
   const pageSchema = resolveSchema(pageRt, meta);
-  const fromPage = seoOptionsFromPropertySchema(pageSchema?.properties?.seo);
+  const fromPage = seoOptionsFromPropertySchema(
+    pageSchema?.properties?.seo,
+    meta,
+  );
   if (fromPage.length > 0) return fromPage;
+  // Next-major: the page schema is the whole answer — no `seo` union, no SEO.
+  if (declaresBuiltInPage(meta)) return [];
 
   return listManifestSeoSectionOptions(meta);
 }
@@ -72,7 +102,7 @@ function listManifestSeoSectionOptions(meta: LiveMeta): SeoTypeOption[] {
   for (const [blockType, blockMap] of Object.entries(blocks)) {
     if (!blockType.includes("sections")) continue;
     for (const resolveType of Object.keys(blockMap)) {
-      if (!isSeoSectionResolveType(resolveType)) continue;
+      if (!isV7SeoFileName(resolveType)) continue;
       const shortTitle =
         resolveType
           .split("/")
@@ -89,7 +119,9 @@ function listManifestSeoSectionOptions(meta: LiveMeta): SeoTypeOption[] {
 
 /**
  * Default page SEO type: prefer SeoV2 when the schema allows it (admin's
- * `SEO_OPTION`), otherwise the first schema-listed SEO variant.
+ * `SEO_OPTION`), otherwise the first schema-listed SEO variant. A v7 site
+ * falls back to SeoV2; a next-major site whose page schema lists no SEO type
+ * has none (`""`).
  */
 export function defaultPageSeoResolveType(meta: LiveMeta): string {
   const options = listPageSeoTypeOptions(meta);
@@ -97,7 +129,8 @@ export function defaultPageSeoResolveType(meta: LiveMeta): string {
     (o) => o.resolveType === DEFAULT_SEO_RESOLVE_TYPE,
   );
   if (preferred) return preferred.resolveType;
-  return options[0]?.resolveType ?? DEFAULT_SEO_RESOLVE_TYPE;
+  const fallback = declaresBuiltInPage(meta) ? "" : DEFAULT_SEO_RESOLVE_TYPE;
+  return options[0]?.resolveType ?? fallback;
 }
 
 /**
@@ -111,7 +144,10 @@ export function listSiteSeoTypeOptions(
   const siteRt = siteBlockData.__resolveType;
   if (typeof siteRt === "string") {
     const siteSchema = resolveSchema(siteRt, meta);
-    const fromSite = seoOptionsFromPropertySchema(siteSchema?.properties?.seo);
+    const fromSite = seoOptionsFromPropertySchema(
+      siteSchema?.properties?.seo,
+      meta,
+    );
     if (fromSite.length > 0) return fromSite;
   }
   return listPageSeoTypeOptions(meta);
@@ -146,6 +182,6 @@ export function resolveSiteSeoResolveType(
   seoData: Record<string, unknown>,
 ): string {
   const rt = seoData.__resolveType;
-  if (typeof rt === "string" && isSeoSectionResolveType(rt)) return rt;
+  if (typeof rt === "string" && isSeoSectionResolveType(rt, meta)) return rt;
   return defaultSiteSeoResolveType(meta, siteBlockData);
 }

@@ -398,7 +398,7 @@ for (const harnessId of ["decopilot", "claude-code"]) {
   });
 }
 
-test("voice submissions retain a Claude Code runtime instead of falling back to Decopilot", async ({
+test("voice submissions refuse an unsupported provider without changing the Claude Code runtime", async ({
   authedPage,
 }) => {
   const { page, orgSlug } = authedPage;
@@ -429,21 +429,19 @@ test("voice submissions retain a Claude Code runtime instead of falling back to 
         },
       },
     );
-    expect(response.status()).toBe(202);
-    // This provider is deliberately incompatible with Claude Code. A fallback
-    // would call the stand-in and succeed, hiding the lost sandbox session.
-    await expect
-      .poll(
-        async () => {
-          const parts = await db.query(
-            "SELECT payload FROM thread_message_parts WHERE thread_id = $1",
-            [threadId],
-          );
-          return JSON.stringify(parts.rows);
-        },
-        { timeout: 30_000 },
-      )
-      .toContain("openai-compatible");
+    expect(response.status()).toBe(409);
+    expect(await response.json()).toEqual({
+      code: "claude_code_provider_required",
+      error:
+        "Chats need an Anthropic, OpenRouter or deco AI Gateway provider, or your own linked Claude or GitHub Copilot plan. Connect one in Settings → AI Providers.",
+    });
+    // Refused before persisting or dispatching, so the incompatible stand-in
+    // never receives a Decopilot fallback request.
+    const parts = await db.query(
+      "SELECT COUNT(*)::int AS count FROM thread_message_parts WHERE thread_id = $1",
+      [threadId],
+    );
+    expect(parts.rows[0]?.count).toBe(0);
     const row = await db.query("SELECT harness_id FROM threads WHERE id = $1", [
       threadId,
     ]);

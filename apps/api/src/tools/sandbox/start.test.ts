@@ -171,7 +171,12 @@ const EXPECTED_REF = composeSandboxRef({
 
 type Metadata = {
   repository: { owner: string; name: string; connectionId: string };
-  runtime: { selected: string; port: string; path?: string | null };
+  runtime: {
+    selected: string;
+    port: string;
+    path?: string | null;
+    apps?: { path: string }[];
+  };
   sandboxMap?: SandboxMap;
 };
 
@@ -219,6 +224,8 @@ function makeCtx(overrides: {
   connectionRowExists?: boolean;
   /** `organization_settings.submodule_credentials` — the org's git credentials. */
   gitCredentials?: { host: string; secretId: string }[];
+  /** `organization_settings.flags`. */
+  flags?: Record<string, boolean>;
 }): StudioContext {
   const {
     orgId = ORG_ID,
@@ -229,6 +236,7 @@ function makeCtx(overrides: {
     connections,
     connectionRowExists = true,
     gitCredentials,
+    flags,
   } = overrides;
 
   const findById = mock(async (_id: string) => virtualMcp ?? null);
@@ -274,7 +282,10 @@ function makeCtx(overrides: {
       },
       gitProviderAccounts: { getUnscoped: mock(async () => null) },
       organizationSettings: {
-        get: mock(async () => ({ submodule_credentials: gitCredentials })),
+        get: mock(async () => ({
+          submodule_credentials: gitCredentials,
+          flags,
+        })),
       },
       secrets: {
         resolveById: mock(async (id: string) => ({ value: `token-for-${id}` })),
@@ -571,7 +582,58 @@ describe("SANDBOX_START", () => {
       packageManager: "pnpm",
       port: "4321",
       path: "apps/web",
+      apps: null,
     });
+  });
+
+  it("sends and snapshots extra apps only when multi_app_preview is on", async () => {
+    mockEnsure.mockImplementation(async () => ({
+      handle: "vm_xyz",
+      workdir: "/app",
+      previewUrl: "https://stub.preview/",
+      warmPoolAdopted: false,
+      provider: "kubernetes",
+    }));
+    const metadata: Metadata = {
+      ...BASE_METADATA,
+      runtime: {
+        selected: "pnpm",
+        port: "3000",
+        path: "apps/web",
+        apps: [{ path: "apps/admin" }],
+      },
+    };
+    const run = async (flags: Record<string, boolean>) => {
+      mockEnsure.mockClear();
+      const updateSpy = mock(async () => {});
+      const ctx = makeCtx({
+        virtualMcp: makeVirtualMcp(ORG_ID, metadata),
+        updateSpy,
+        flags,
+      });
+      await SANDBOX_START.handler(
+        { virtualMcpId: VMCP_ID, branch: BRANCH },
+        ctx,
+      );
+      const opts = (mockEnsure.mock.calls as unknown[][])[0]![1] as {
+        workload?: { apps?: string[] };
+      };
+      const updated = (
+        (updateSpy.mock.calls as unknown[][])[0]![2] as {
+          metadata: { sandboxMap: SandboxMap };
+        }
+      ).metadata;
+      const stored = (
+        updated.sandboxMap[USER_ID]?.[BRANCH] as Record<string, unknown>
+      )?.["agent-sandbox"] as SandboxRecord | undefined;
+      return { apps: opts.workload?.apps, started: stored?.startedWith?.apps };
+    };
+
+    expect(await run({ multi_app_preview: true })).toEqual({
+      apps: ["apps/admin"],
+      started: ["apps/admin"],
+    });
+    expect(await run({})).toEqual({ apps: undefined, started: null });
   });
 
   it("snapshots null selected/port/path when metadata.runtime is missing", async () => {
@@ -613,6 +675,7 @@ describe("SANDBOX_START", () => {
       packageManager: null,
       port: null,
       path: null,
+      apps: null,
     });
   });
 
@@ -841,6 +904,20 @@ describe("SANDBOX_START", () => {
     await expect(
       SANDBOX_START.handler({ virtualMcpId: VMCP_ID, branch: BRANCH }, ctx),
     ).rejects.toThrow(SANDBOX_START_ERROR_CODES.githubConnectionMissing);
+  });
+
+  it("ensureSandbox boots without a repository it cannot clone", async () => {
+    const virtualMcp = makeVirtualMcp(ORG_ID, BASE_METADATA);
+    const ctx = makeCtx({ virtualMcp, connectionRowExists: false });
+
+    const entry = await ensureSandbox(
+      { virtualMcpId: VMCP_ID, branch: BRANCH },
+      ctx,
+    );
+
+    expect(entry.sandboxHandle).toBe("vm_xyz");
+    const [, opts] = mockEnsure.mock.calls[0]! as [SandboxId, EnsureOptions];
+    expect(opts.repo).toBeUndefined();
   });
 
   it("refreshes an expired GitHub token before handing it to the runner", async () => {

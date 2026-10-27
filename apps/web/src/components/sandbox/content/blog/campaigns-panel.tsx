@@ -410,8 +410,9 @@ export function CampaignsPanel({
                         onClick={() => setOpenKey(campaign.key)}
                         aria-current={campaign.key === detailKey}
                         className={cn(
-                          "w-full cursor-pointer px-4 py-3 text-left transition-colors hover:bg-muted/50",
-                          campaign.key === detailKey && "bg-muted",
+                          "w-full cursor-pointer px-4 py-3 text-left transition-colors hover:bg-accent",
+                          campaign.key === detailKey &&
+                            "bg-muted hover:bg-secondary-hover",
                         )}
                       >
                         <p className="truncate pr-6 text-sm font-medium">
@@ -478,7 +479,7 @@ export function CampaignsPanel({
               {t("sandbox.campaigns.deleteCancel")}
             </AlertDialogCancel>
             <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              variant="destructive"
               onClick={() => {
                 if (pendingDelete) removeCampaign(pendingDelete.key);
                 setPendingDelete(null);
@@ -553,7 +554,7 @@ function CampaignCard({
   return (
     <div
       className={cn(
-        "group/card relative rounded-lg border bg-card shadow-sm transition-colors hover:border-primary/40",
+        "group/card relative rounded-lg bg-card shadow-edge transition-shadow hover:shadow-lift",
         moving && "opacity-80",
       )}
     >
@@ -601,7 +602,9 @@ function DeleteButton({
   disabled?: boolean;
 }) {
   return (
-    <button
+    <Button
+      variant="ghost-destructive"
+      size="icon-xs"
       type="button"
       disabled={disabled}
       aria-label={label}
@@ -610,10 +613,11 @@ function DeleteButton({
         e.stopPropagation();
         onDelete();
       }}
-      className="absolute right-2 top-2 z-10 flex size-6 cursor-pointer items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-destructive focus-visible:opacity-100 group-hover/card:opacity-100 group-hover/row:opacity-100"
+      // Swallow the click while disabled, or it opens the card underneath.
+      className="absolute right-2 top-2 z-10 opacity-0 transition-opacity disabled:pointer-events-auto focus-visible:opacity-100 group-hover/card:opacity-100 group-hover/row:opacity-100"
     >
-      <Trash01 size={13} />
-    </button>
+      <Trash01 className="size-3.25" />
+    </Button>
   );
 }
 

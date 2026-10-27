@@ -43,6 +43,9 @@ export interface ResolvedTier {
 }
 
 export interface ResolveTierOptions {
+  /** Runtime constraints apply to explicit slots, admin pins, and catalog defaults. */
+  acceptProvider?: (providerId: string) => boolean;
+  acceptModel?: (providerId: string, modelId: string) => boolean;
   /**
    * Layer the caller's personal chat-tier override (USER_MODEL_PREFERENCES)
    * on top of the org slot. Opt-in, and only ever honored for fast/smart/
@@ -143,7 +146,11 @@ export async function resolveTier(
 
   const keys = (
     await ctx.storage.aiProviderKeys.list({ organizationId: orgId })
-  ).filter((key) => isHostedProviderId(key.providerId));
+  ).filter(
+    (key) =>
+      isHostedProviderId(key.providerId) &&
+      (opts?.acceptProvider?.(key.providerId) ?? true),
+  );
 
   // A deco-admin pin outranks everything — but ONLY for an org without
   // `model_choice`. §6: below Ultra deco picks the model and the org is not
@@ -158,7 +165,11 @@ export async function resolveTier(
   const decoKey = pinnedModelId
     ? keys.find((k) => k.providerId === "deco")
     : undefined;
-  if (pinnedModelId && decoKey) {
+  if (
+    pinnedModelId &&
+    decoKey &&
+    (opts?.acceptModel?.(decoKey.providerId, pinnedModelId) ?? true)
+  ) {
     const catalog = await fetchModelList(ctx, decoKey.id, orgId).catch(
       () => [] as AiProviderModel[],
     );
@@ -175,7 +186,12 @@ export async function resolveTier(
   // ponytail: read-time liveness check is why deleting a provider key needs no
   // sweep of every user's saved override — a stale slot just falls through.
   for (const slot of [userSlot, orgSlot]) {
-    if (slot && keys.some((k) => k.id === slot.keyId)) {
+    const key = slot ? keys.find((k) => k.id === slot.keyId) : undefined;
+    if (
+      slot &&
+      key &&
+      (opts?.acceptModel?.(key.providerId, slot.modelId) ?? true)
+    ) {
       const catalog = await fetchModelList(ctx, slot.keyId, orgId).catch(
         () => [] as AiProviderModel[],
       );
@@ -196,8 +212,11 @@ export async function resolveTier(
   const modelsByKeyId: Record<string, AiProviderModel[]> = {};
   await Promise.all(
     keys.map(async (k) => {
-      modelsByKeyId[k.id] = await fetchModelList(ctx, k.id, orgId).catch(
+      const catalog = await fetchModelList(ctx, k.id, orgId).catch(
         () => [] as AiProviderModel[],
+      );
+      modelsByKeyId[k.id] = catalog.filter(
+        (model) => opts?.acceptModel?.(k.providerId, model.modelId) ?? true,
       );
     }),
   );

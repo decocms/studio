@@ -6,6 +6,7 @@ import { Input } from "@decocms/ui/components/input.tsx";
 import { Switch } from "@decocms/ui/components/switch.tsx";
 import {
   Coins01,
+  Columns02,
   Cube01,
   FileSearch02,
   GitBranch01,
@@ -32,7 +33,6 @@ import {
   useSetNewBlocksEditor,
   useSetOrgFlag,
 } from "@/hooks/use-organization-settings";
-import { useNewBlocksEditor } from "@/hooks/use-new-blocks-editor";
 import { track } from "@/lib/posthog-client";
 import { useConnections, useProjectContext, WellKnownOrgMCPId } from "@/sdk";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
@@ -87,6 +87,7 @@ export function ReviewSettings() {
  */
 export function AgentToolsSettings() {
   const t = useT();
+  const orgMcpsEnabled = useOrgFlag("coding_agent_org_mcps");
   return (
     <SettingsSection
       title={t("settings.agentTools.title")}
@@ -99,7 +100,7 @@ export function AgentToolsSettings() {
           titleKey="settings.agentTools.orgMcpsTitle"
           descriptionKey="settings.agentTools.orgMcpsDescription"
         />
-        <OrgMcpExclusions />
+        {orgMcpsEnabled ? <OrgMcpExclusions /> : null}
       </SettingsCard>
     </SettingsSection>
   );
@@ -117,8 +118,6 @@ export function AgentToolsSettings() {
  */
 function OrgMcpExclusions() {
   const t = useT();
-  const enabled = useOrgFlag("coding_agent_org_mcps");
-  if (!enabled) return null;
   return (
     <QueryErrorResetBoundary>
       {({ reset }) => (
@@ -216,11 +215,11 @@ function OrgMcpExclusionList() {
     : mountable;
 
   const draftSet = new Set(draft);
-  // Only the ids that still exist: a connection deleted since this was saved
-  // would otherwise sit in the list forever and count as a pending change.
+  // Prune both sides to ids that still exist, or a deleted connection reads as a pending change forever.
+  const stillMountable = (id: string) => mountable.some((c) => c.id === id);
   const dirty =
-    idsKey(draft.filter((id) => mountable.some((c) => c.id === id))) !==
-    savedKey;
+    idsKey(draft.filter(stillMountable)) !==
+    idsKey(saved.filter(stillMountable));
   const allVisibleOn =
     visible.length > 0 && visible.every((c) => !draftSet.has(c.id));
 
@@ -282,7 +281,7 @@ function OrgMcpExclusionList() {
           </Button>
         </div>
 
-        <div className="max-h-64 overflow-y-auto rounded-xl border border-border divide-y divide-border">
+        <div className="max-h-64 overflow-y-auto surface divide-y divide-border">
           {mountable.length === 0 ? (
             <p className="p-3 text-xs text-muted-foreground">
               {t("settings.agentTools.orgMcpsPickEmpty")}
@@ -367,7 +366,7 @@ function McpAvatar({ icon, title }: { icon: string | null; title: string }) {
           onError={() => setFailed(true)}
         />
       ) : (
-        <span className="text-[10px] font-semibold text-muted-foreground">
+        <span className="text-2xs font-semibold text-muted-foreground">
           {title.charAt(0).toUpperCase()}
         </span>
       )}
@@ -375,28 +374,8 @@ function McpAvatar({ icon, title }: { icon: string | null; title: string }) {
   );
 }
 
-/**
- * Which coding agent backs Code Agent chats. Lives on General, not the board
- * settings: it's about the org's agents, not about how tasks get reviewed.
- */
-export function CodeAgentsSettings() {
-  const t = useT();
-  return (
-    <SettingsSection title={t("sidebar.agentsSection.codeAgents")}>
-      <SettingsCard>
-        <FlagToggle
-          flag="coding_agents_claude_code"
-          icon={<Terminal size={16} />}
-          titleKey="settings.agentTools.codingAgentsClaudeCodeTitle"
-          descriptionKey="settings.agentTools.codingAgentsClaudeCodeDescription"
-        />
-      </SettingsCard>
-    </SettingsSection>
-  );
-}
-
-/** Where every chat runs. Its own section: it covers all chats, not Code Agents. */
-export function ChatRuntimeSettings() {
+/** Where chats run and how members talk to agents in them. */
+export function ChatSettings() {
   const t = useT();
   return (
     <SettingsSection title={t("settings.agentTools.chatRuntimeSection")}>
@@ -407,16 +386,18 @@ export function ChatRuntimeSettings() {
           titleKey="settings.agentTools.chatHarnessSandboxOnlyTitle"
           descriptionKey="settings.agentTools.chatHarnessSandboxOnlyDescription"
         />
-      </SettingsCard>
-    </SettingsSection>
-  );
-}
-
-export function VoiceModeSettings() {
-  const t = useT();
-  return (
-    <SettingsSection title={t("settings.voice.title")}>
-      <SettingsCard>
+        <FlagToggle
+          flag="coding_agents_claude_code"
+          icon={<Terminal size={16} />}
+          titleKey="settings.agentTools.codingAgentsClaudeCodeTitle"
+          descriptionKey="settings.agentTools.codingAgentsClaudeCodeDescription"
+        />
+        <FlagToggle
+          flag="chat_harness_codex"
+          icon={<Terminal size={16} />}
+          titleKey="settings.agentTools.chatHarnessCodexTitle"
+          descriptionKey="settings.agentTools.chatHarnessCodexDescription"
+        />
         <FlagToggle
           flag="voice_mode"
           icon={<Microphone01 size={16} />}
@@ -463,7 +444,8 @@ export function BlogSettings() {
  */
 export function BlocksEditorSettings() {
   const t = useT();
-  const enabled = useNewBlocksEditor();
+  // The org's own choice, not one site's editor (v8 sites always get it).
+  const enabled = useOrgFlag("new_blocks_editor");
   const setEnabled = useSetNewBlocksEditor();
   return (
     <SettingsSection title={t("sidebar.projectNav.siteEditor")}>
@@ -485,6 +467,12 @@ export function BlocksEditorSettings() {
               }}
             />
           }
+        />
+        <FlagToggle
+          flag="multi_app_preview"
+          icon={<Columns02 size={16} />}
+          titleKey="settings.multiAppPreview.title"
+          descriptionKey="settings.multiAppPreview.description"
         />
       </SettingsCard>
     </SettingsSection>

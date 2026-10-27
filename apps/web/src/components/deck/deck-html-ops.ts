@@ -15,6 +15,68 @@
 
 import type { DeckOp } from "./deck-messages";
 
+const UNSAFE_TAGS = new Set([
+  "script",
+  "style",
+  "iframe",
+  "object",
+  "embed",
+  "form",
+  "link",
+  "meta",
+  "base",
+  // SVG SMIL elements can rewrite a safe attribute to javascript: at render time.
+  "animate",
+  "animatetransform",
+  "animatemotion",
+  "set",
+]);
+
+const URL_ATTRS = new Set([
+  "href",
+  "src",
+  "xlink:href",
+  "action",
+  "formaction",
+]);
+
+const UNSAFE_URL_PROTOCOLS = new Set(["javascript:", "vbscript:", "data:"]);
+
+// Resolved via URL(), which strips embedded tabs/newlines before exposing the scheme.
+function isSafeUrlAttrValue(value: string): boolean {
+  let protocol: string;
+  try {
+    protocol = new URL(value, "https://deco.cx").protocol;
+  } catch {
+    return true;
+  }
+  // svg+xml can embed a <script> that runs on direct navigation.
+  if (protocol === "data:") {
+    return /^data:image\/(?!svg\+xml)[^;,]+[;,]/i.test(value.trim());
+  }
+  return !UNSAFE_URL_PROTOCOLS.has(protocol);
+}
+
+function isSafeAttr(name: string, value: string): boolean {
+  const lower = name.toLowerCase();
+  if (lower.startsWith("on")) return false;
+  if (URL_ATTRS.has(lower)) return isSafeUrlAttrValue(value);
+  return true;
+}
+
+function sanitizeSlideFragment(root: Element): void {
+  for (const el of [
+    ...root.querySelectorAll(`${[...UNSAFE_TAGS].join(",")}`),
+  ]) {
+    el.remove();
+  }
+  for (const el of [root, ...root.querySelectorAll("*")]) {
+    for (const attr of [...el.attributes]) {
+      if (!isSafeAttr(attr.name, attr.value)) el.removeAttribute(attr.name);
+    }
+  }
+}
+
 export class DeckOpError extends Error {
   constructor(
     message: string,
@@ -92,6 +154,9 @@ export function applyDeckOp(source: string, op: DeckOp): string {
       if (!/^[a-zA-Z][\w-]*$/.test(op.name)) {
         throw new DeckOpError(`invalid attribute name: ${op.name}`, "bad-op");
       }
+      if (!isSafeAttr(op.name, op.value)) {
+        throw new DeckOpError(`unsafe attribute: ${op.name}`, "bad-op");
+      }
       slide.setAttribute(op.name, op.value);
       break;
     }
@@ -101,6 +166,7 @@ export function applyDeckOp(source: string, op: DeckOp): string {
     }
     case "replace": {
       const fragment = new DOMParser().parseFromString(op.html, "text/html");
+      sanitizeSlideFragment(fragment.body);
       const replacement = fragment.body.firstElementChild;
       if (!replacement) {
         throw new DeckOpError("replace html has no root element", "bad-op");

@@ -42,6 +42,50 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { laneHeader } from "@/layouts/task-board/config";
 
+/**
+ * Cron triggers have no update endpoint: a new schedule is added, then the
+ * old trigger row is removed. If the removal fails after the add succeeded,
+ * roll the add back instead of leaving two live cron triggers for the same
+ * automation, each firing on its own schedule.
+ */
+export async function swapCronTrigger(args: {
+  cronExpression: string;
+  automationId: string;
+  oldTriggerId: string;
+  addTrigger: (
+    input: Record<string, unknown>,
+  ) => Promise<{ id: string; automation_id: string }>;
+  removeTrigger: (input: {
+    trigger_id: string;
+    automation_id: string;
+  }) => Promise<unknown>;
+}): Promise<void> {
+  const {
+    cronExpression,
+    automationId,
+    oldTriggerId,
+    addTrigger,
+    removeTrigger,
+  } = args;
+  const added = await addTrigger({
+    automation_id: automationId,
+    type: "cron",
+    cron_expression: cronExpression,
+  });
+  try {
+    await removeTrigger({
+      trigger_id: oldTriggerId,
+      automation_id: automationId,
+    });
+  } catch (err) {
+    await removeTrigger({
+      trigger_id: added.id,
+      automation_id: automationId,
+    }).catch(() => {});
+    throw err;
+  }
+}
+
 export function TriggerCard({
   trigger,
   automationId,
@@ -79,7 +123,16 @@ export function TriggerCard({
   const isCron = trigger.type === "cron";
   const isWebhook = trigger.type === "webhook";
   const isColumnTransition = trigger.type === "board_column_transition";
-  const isPrReady = trigger.type === "board_pr_ready";
+  const prStarter =
+    trigger.type === "board_pr_ready"
+      ? t("automations.triggerCard.prReady")
+      : trigger.type === "linked_chat_run"
+        ? t("automations.triggerCard.linkedChatRun")
+        : trigger.type === "board_pr_merged"
+          ? t("automations.triggerCard.prMerged")
+          : trigger.type === "chat_pr_opened"
+            ? t("automations.triggerCard.chatPrOpened")
+            : null;
   const isJiraTransition = trigger.type === "jira_transition";
 
   const handleRemove = async () => {
@@ -95,19 +148,14 @@ export function TriggerCard({
     setConfirmDelete(false);
   };
 
-  // Cron triggers have no update endpoint: a new schedule is added, then the
-  // old trigger row is removed.
-  const replaceCronTrigger = async (cronExpression: string) => {
-    await addTrigger.mutateAsync({
-      automation_id: automationId,
-      type: "cron",
-      cron_expression: cronExpression,
+  const replaceCronTrigger = (cronExpression: string) =>
+    swapCronTrigger({
+      cronExpression,
+      automationId,
+      oldTriggerId: trigger.id,
+      addTrigger: (input) => addTrigger.mutateAsync(input),
+      removeTrigger: (input) => removeTrigger.mutateAsync(input),
     });
-    await removeTrigger.mutateAsync({
-      trigger_id: trigger.id,
-      automation_id: automationId,
-    });
-  };
 
   const handleEditSave = async () => {
     const val = editValue.trim();
@@ -134,10 +182,8 @@ export function TriggerCard({
         automation_id: automationId,
       });
       setRotatedSecret({ url: result.url, token: result.token });
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Failed to rotate token";
-      toast.error(message);
+    } catch {
+      toast.error(t("automations.triggerCard.failedToRotateToken"));
     }
   };
 
@@ -158,12 +204,12 @@ export function TriggerCard({
 
   return (
     <>
-      <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg border border-border bg-background group">
+      <div className="flex items-center gap-2.5 px-3 py-2.5 surface group">
         {isCron ? (
           <Clock size={14} className="text-muted-foreground shrink-0" />
         ) : isJiraTransition ? (
           <JiraIcon size={14} className="shrink-0" />
-        ) : isColumnTransition || isPrReady ? (
+        ) : isColumnTransition || prStarter ? (
           <Columns01 size={14} className="text-muted-foreground shrink-0" />
         ) : isWebhook ? (
           <Globe01 size={14} className="text-muted-foreground shrink-0" />
@@ -187,7 +233,7 @@ export function TriggerCard({
                 if (e.key === "Escape") setCount(interval.count);
               }}
               disabled={isSaving}
-              className="w-12 text-center text-sm h-7 border border-border rounded-md bg-background px-1 focus:outline-none focus:ring-1 focus:ring-ring"
+              className="w-12 text-center text-sm h-7 border border-border rounded-md bg-background px-1 focus-ring"
             />
             <span className="text-sm">{unitLabel(interval.unit, count)}</span>
           </>
@@ -223,8 +269,8 @@ export function TriggerCard({
                   ? t("automations.triggerCard.cardEntersColumn", {
                       lane: laneHeader(trigger.column_key ?? "", t).label,
                     })
-                  : isPrReady
-                    ? t("automations.triggerCard.prReady")
+                  : prStarter
+                    ? prStarter
                     : isJiraTransition
                       ? t("automations.triggerCard.issueEntersJiraStatus", {
                           status: trigger.column_key ?? "",
@@ -238,7 +284,7 @@ export function TriggerCard({
             {!isCron &&
               !isWebhook &&
               !isColumnTransition &&
-              !isPrReady &&
+              !prStarter &&
               !isJiraTransition &&
               trigger.params &&
               Object.keys(trigger.params).length > 0 && (
@@ -258,8 +304,9 @@ export function TriggerCard({
           {isCron && !interval && !isEditing && (
             <Button
               variant="ghost"
-              size="sm"
-              className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+              size="icon-sm"
+              className="opacity-0 group-hover:opacity-100 transition-opacity"
+              aria-label={t("automations.triggerCard.editSchedule")}
               onClick={() => {
                 setEditValue(trigger.cron_expression ?? "");
                 setIsEditing(true);
@@ -271,9 +318,10 @@ export function TriggerCard({
           {isWebhook && (
             <Button
               variant="ghost"
-              size="sm"
-              className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+              size="icon-sm"
+              className="opacity-0 group-hover:opacity-100 transition-opacity"
               title={t("automations.triggerCard.rotateToken")}
+              aria-label={t("automations.triggerCard.rotateToken")}
               onClick={() => setConfirmRotate(true)}
             >
               <RefreshCw01 size={13} className="text-muted-foreground" />
@@ -282,8 +330,9 @@ export function TriggerCard({
           {!readOnly && (
             <Button
               variant="ghost"
-              size="sm"
-              className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+              size="icon-sm"
+              className="opacity-0 group-hover:opacity-100 transition-opacity"
+              aria-label={t("automations.triggerCard.removeStarter")}
               onClick={() => setConfirmDelete(true)}
             >
               <XClose size={13} className="text-muted-foreground" />
@@ -306,10 +355,7 @@ export function TriggerCard({
             <AlertDialogCancel>
               {t("automations.triggerCard.cancel")}
             </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleRemove}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
+            <AlertDialogAction onClick={handleRemove} variant="destructive">
               {t("automations.triggerCard.remove")}
             </AlertDialogAction>
           </AlertDialogFooter>

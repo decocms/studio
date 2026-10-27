@@ -1,9 +1,5 @@
 import { type AuthConfig, loadAuthConfig } from "@/auth/auth-env";
 import type { ThemeConfig } from "@decocms/shared/config";
-import {
-  DEFAULT_MONITORING_CONFIG,
-  type MonitoringConfig,
-} from "@/monitoring/types";
 import { existsSync, readFileSync } from "fs";
 import { getSettings } from "../settings";
 
@@ -13,7 +9,6 @@ export type { ThemeConfig } from "@decocms/shared/config";
 
 export interface Config {
   auth: AuthConfig;
-  monitoring?: Partial<MonitoringConfig>;
   theme?: ThemeConfig;
   logo?: string | { light: string; dark: string };
   autoCreateOrganizationOnSignup?: boolean;
@@ -26,7 +21,7 @@ function loadConfig(): Config {
 
   const configPath = getSettings().configPath;
   if (!existsSync(configPath)) {
-    return { auth, monitoring: DEFAULT_MONITORING_CONFIG };
+    return { auth };
   }
 
   try {
@@ -42,13 +37,12 @@ function loadConfig(): Config {
 
     return {
       auth,
-      monitoring: raw.monitoring ?? DEFAULT_MONITORING_CONFIG,
       theme: raw.theme,
       logo: raw.logo,
       autoCreateOrganizationOnSignup: raw.autoCreateOrganizationOnSignup,
     };
   } catch {
-    return { auth, monitoring: DEFAULT_MONITORING_CONFIG };
+    return { auth };
   }
 }
 

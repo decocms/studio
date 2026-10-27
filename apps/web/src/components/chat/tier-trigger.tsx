@@ -1,3 +1,4 @@
+import { isCodexModel } from "@decocms/shared/harness/codex-models";
 import { useState, type ReactNode } from "react";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
@@ -160,7 +161,7 @@ export function TierTriggerPure({ tier, pillIcon, groups }: PureProps) {
               {group.rows.map((row) => (
                 <div
                   key={row.key}
-                  className="group/tier-row relative flex items-stretch rounded-lg hover:bg-muted"
+                  className="group/tier-row relative flex items-stretch rounded-lg hover:bg-accent"
                 >
                   <button
                     type="button"
@@ -243,7 +244,7 @@ function TierRowModelOverride({
         // width (which would otherwise force the title/subtitle to truncate
         // even at rest) — it only ever floats on top.
         "absolute right-1 top-1/2 -translate-y-1/2 flex items-center justify-center",
-        "size-6 rounded-lg bg-background border border-border/60 shadow-sm",
+        "size-6 rounded-lg bg-background shadow-edge",
         "text-muted-foreground hover:text-foreground",
         "opacity-100 [@media(hover:hover)]:opacity-0",
         "[@media(hover:hover)]:group-hover/tier-row:opacity-100",
@@ -334,8 +335,8 @@ export function TierTrigger() {
   const { data: userModelPrefs = { tiers: {} }, error: userModelPrefsError } =
     useUserModelPreferencesQuery();
   const updateUserModelPreferences = useUpdateUserModelPreferences();
-  const claudeCodeThread =
-    useOptionalChatTask()?.lockedHarness === "claude-code";
+  const harness = useOptionalChatTask()?.lockedHarness;
+  const claudeCodeThread = harness === "claude-code";
   // TWO gates, because this component is both a control and a disclosure.
   //
   // Whether the picker EXISTS is access: below Ultra there is no picker at all,
@@ -386,7 +387,12 @@ export function TierTrigger() {
                     userSlot={userSlot}
                     autoSlot={autoDefaults.chat[tierOption]}
                     filterModels={
-                      claudeCodeThread ? isClaudeCodeChatModel : undefined
+                      harness === "codex"
+                        ? (model) =>
+                            isCodexModel(model.providerId, model.modelId)
+                        : claudeCodeThread
+                          ? isClaudeCodeChatModel
+                          : undefined
                     }
                     onClose={closeOverride}
                     onPick={(slot) =>

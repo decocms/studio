@@ -21,7 +21,7 @@ const Divider = () => <div className="mx-0.5 h-4 w-px bg-border" />;
 
 /** Text glyph for controls with no icon in the set (headings, ordered list). */
 const Glyph = ({ children }: { children: string }) => (
-  <span className="text-[11px] font-semibold leading-none">{children}</span>
+  <span className="text-2xs font-semibold leading-none">{children}</span>
 );
 
 const HEADING_LEVELS = [1, 2, 3] as const;
@@ -90,7 +90,7 @@ export function BubbleToolbar({ editor }: { editor: Editor }) {
           editor={editor}
           shouldShow={shouldShow}
           appendTo={host}
-          className="flex items-center gap-0.5 rounded-lg border border-border bg-popover p-1 shadow-md"
+          className="flex items-center gap-0.5 rounded-lg bg-popover p-1 shadow-soft"
           aria-label={t("markdownEditor.toolbarAriaLabel")}
         >
           <ToolbarButton

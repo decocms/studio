@@ -249,10 +249,11 @@ export const chat = {
   "chat.input.modelCannotReadAttachments":
     "Este modelo não consegue ler anexos — mude para um com suporte a visão ou arquivos",
   "chat.input.planMode": "Modo de planejamento",
+  "chat.liveMessage.pending":
+    "Enviada ao agente em execução · lida depois do passo atual",
+  "chat.liveMessage.readByAgent": "Lida pelo agente enquanto trabalhava",
   "chat.input.codingAgentUnavailable":
     "Este chat do agente de código não pode ser continuado aqui.",
-  "chat.input.fastPreviewUnavailable":
-    "O chat não está disponível em projetos Fast Preview. Use o CMS para editar o conteúdo.",
   "chat.fastPreview.chatNeedsSession":
     "O chat precisa de um sandbox de código por trás. A sessão continua neste branch e o CMS segue funcionando normalmente.",
   "chat.fastPreview.startCodingSession": "Iniciar sessão de código",

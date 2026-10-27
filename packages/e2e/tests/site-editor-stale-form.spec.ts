@@ -6,10 +6,10 @@
  * published to the branch, a sync moved it), saving that copy silently put
  * the old values back. The save now names the version it was made against;
  * the server refuses a stale one, and the editor applies the form's edits on
- * top of the stored version: edits to different values are both kept, a value
- * both changed keeps the stored one (and the user is told), a section pushed
- * to another position is followed there, and a page save outside the form is
- * replayed on the fresh page.
+ * top of the stored version: edits to different values are both kept, values
+ * both changed wait for the user to choose whose version to keep (a dialog,
+ * value by value), a section pushed to another position is followed there,
+ * and a page save outside the form is replayed on the fresh page.
  *
  * Wire-contract strings (labels, toast copy) are inlined on purpose — this
  * suite owns its contract (see ban-e2e-app-imports).
@@ -27,12 +27,22 @@ import { expect, test } from "../fixtures/test";
 
 test.use({ newBlocksEditor: true });
 
-const MERGED = "This block was updated while you were editing";
-const KEPT_STORED = "Changed while you were editing: headline.";
+const MERGED = "Someone else also edited this block";
+
+/** The dialog that asks whose version to keep for values both changed. */
+// An alert dialog: it must be answered (no close button, Escape or click
+// outside). Named for the field ("Someone else changed the headline while
+// you were editing"); with several, for the field on screen ("Someone else
+// also changed the subtitle"), one field per step.
+const conflictDialog = (page: Page) =>
+  page.getByRole("alertdialog", {
+    name: /^Someone else (changed the .+ while you were editing|also changed the .+)$/,
+  });
 
 const hero = {
   __resolveType: "site/sections/HeroSlideShow.tsx",
   headline: "Original headline",
+  subtitle: "Original subtitle",
   slides: [{ title: "First slide", description: "Original description" }],
 };
 
@@ -55,6 +65,7 @@ const meta = {
         title: "HeroSlideShow",
         properties: {
           headline: { type: "string", title: "Headline" },
+          subtitle: { type: "string", title: "Subtitle" },
           slides: {
             type: "array",
             title: "Slides",
@@ -167,6 +178,37 @@ async function writeElsewhere(
   expect(res.ok()).toBe(true);
 }
 
+/**
+ * Counts the toasts containing `text` from now on, as they appear: one shown
+ * twice counts twice, and one that expired still counts.
+ */
+async function countToasts(page: Page, text: string) {
+  await page.evaluate((needle) => {
+    const seen = new WeakSet<Element>();
+    const w = window as unknown as { __toastCounts?: Record<string, number> };
+    w.__toastCounts = { ...w.__toastCounts, [needle]: 0 };
+    new MutationObserver(() => {
+      for (const el of document.querySelectorAll("[data-sonner-toast]")) {
+        if (seen.has(el) || !(el.textContent ?? "").includes(needle)) continue;
+        seen.add(el);
+        const counts = w.__toastCounts ?? {};
+        counts[needle] = (counts[needle] ?? 0) + 1;
+      }
+    }).observe(document.body, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
+  }, text);
+  return () =>
+    page.evaluate(
+      (needle) =>
+        (window as unknown as { __toastCounts?: Record<string, number> })
+          .__toastCounts?.[needle] ?? 0,
+      text,
+    );
+}
+
 async function storedBlock(api: APIRequestContext, url: string, key: string) {
   const res = await api.get(url);
   const body = (await res.json()) as { decofile: Record<string, unknown> };
@@ -197,11 +239,13 @@ test.describe("Site Editor stale section form", () => {
       // The form still holds the copy it loaded; its edit lands on top of
       // the other editor's change instead of reverting it.
       await headline.fill("Draft headline");
-      await expect(page.getByText(MERGED)).toBeVisible();
+      await expect(page.getByText(MERGED)).toBeVisible({ timeout: 15_000 });
       await expect
         .poll(() => storedBlock(page.request, url, "SharedHero"))
         .toEqual({ ...published, headline: "Draft headline" });
       await expect(headline).toHaveValue("Draft headline");
+      // Different fields: merged without asking.
+      await expect(conflictDialog(page)).toHaveCount(0);
 
       // The form now shows the merged block, so a further edit keeps it too.
       await headline.fill("Second edit");
@@ -247,7 +291,7 @@ test.describe("Site Editor stale section form", () => {
       await writeElsewhere(page.request, url, "home", published);
 
       await headline.fill("Draft headline");
-      await expect(page.getByText(MERGED)).toBeVisible();
+      await expect(page.getByText(MERGED)).toBeVisible({ timeout: 15_000 });
       await expect
         .poll(() => storedBlock(page.request, url, "home"))
         .toEqual({
@@ -259,6 +303,75 @@ test.describe("Site Editor stale section form", () => {
             },
           ],
         });
+    } finally {
+      await previewSite.close();
+    }
+  });
+  test("a form that saves again while its refused save is on the wire keeps both edits", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const previewSite = await startPreviewSite();
+    try {
+      const { headline, url } = await openEditor(
+        page,
+        orgSlug,
+        previewSite.url,
+        hero,
+      );
+      const page1 = (await storedBlock(page.request, url, "home")) as Record<
+        string,
+        unknown
+      >;
+      const published = {
+        ...page1,
+        sections: [
+          {
+            ...hero,
+            slides: [
+              { title: "First slide", description: "Published elsewhere" },
+            ],
+          },
+        ],
+      };
+      await writeElsewhere(page.request, url, "home", published);
+
+      // A slow network: the form's first save is still on its way (and will
+      // be refused as stale) when the user's next keystrokes save again.
+      let held = false;
+      await page.route(
+        (u) => u.pathname === url,
+        async (route) => {
+          if (route.request().method() === "PATCH" && !held) {
+            held = true;
+            await new Promise((resolve) => setTimeout(resolve, 3_000));
+          }
+          await route.continue();
+        },
+      );
+      const mergedToasts = await countToasts(page, MERGED);
+      await headline.fill("Draft one");
+      await expect.poll(() => held).toBe(true);
+      await headline.fill("Draft two");
+
+      // Both kept: the other editor's description and the user's last edit.
+      await expect
+        .poll(() => storedBlock(page.request, url, "home"), {
+          timeout: 30_000,
+        })
+        .toEqual({
+          ...published,
+          sections: [
+            {
+              ...(published.sections[0] as Record<string, unknown>),
+              headline: "Draft two",
+            },
+          ],
+        });
+      await expect(headline).toHaveValue("Draft two");
+      // Counted as they appear: under load the toast can expire before here.
+      expect(await mergedToasts()).toBe(1);
+      await expect(conflictDialog(page)).toHaveCount(0);
     } finally {
       await previewSite.close();
     }
@@ -327,7 +440,7 @@ test.describe("Site Editor stale section form", () => {
         }
       });
       await headline.fill("Draft headline");
-      await expect(page.getByText(MERGED)).toBeVisible();
+      await expect(page.getByText(MERGED)).toBeVisible({ timeout: 15_000 });
       await expect
         .poll(() => storedBlock(page.request, url, "SharedHero"))
         .toEqual({ ...published, headline: "Draft headline" });
@@ -338,7 +451,250 @@ test.describe("Site Editor stale section form", () => {
       await previewSite.close();
     }
   });
-  test("an edit to a value someone else also changed keeps the stored value and says so", async ({
+  test("an edit to a value someone else also changed asks which to keep; it can't be dismissed, and one click saves yours", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const previewSite = await startPreviewSite();
+    try {
+      const { headline, url } = await openEditor(
+        page,
+        orgSlug,
+        previewSite.url,
+        { __resolveType: "SharedHero" },
+      );
+      const published = { ...hero, headline: "Published headline" };
+      await writeElsewhere(page.request, url, "SharedHero", published);
+      const oldToasts = await countToasts(
+        page,
+        "Changed while you were editing",
+      );
+
+      await headline.fill("Draft headline");
+      const dialog = conflictDialog(page);
+      await expect(dialog).toBeVisible({ timeout: 20_000 });
+      // Both versions, under the field's label; nothing written meanwhile.
+      const field = dialog.getByRole("radiogroup", { name: "Headline" });
+      await expect(field.getByTestId("conflict-mine")).toHaveText(
+        "Draft headline",
+      );
+      await expect(field.getByTestId("conflict-theirs")).toHaveText(
+        "Published headline",
+      );
+      // Fast Preview (v7) says nothing about who made the other change.
+      await expect(
+        field.getByRole("radio", { name: "Someone else" }),
+      ).toHaveAccessibleDescription(
+        "Their version · already saved Published headline",
+      );
+      expect(await storedBlock(page.request, url, "SharedHero")).toEqual(
+        published,
+      );
+      // Modal: typing goes nowhere near the form behind it. The form is
+      // aria-hidden while the dialog is open, so it is found with
+      // includeHidden.
+      await page.keyboard.type("xyz");
+      await expect(
+        page.getByTestId("blocks-panel").getByRole("textbox", {
+          name: "Headline",
+          exact: true,
+          includeHidden: true,
+        }),
+      ).toHaveValue("Draft headline");
+
+      // It must be answered: no close button, and neither Escape nor a
+      // click outside closes it.
+      await expect(dialog.getByRole("button", { name: /close/i })).toHaveCount(
+        0,
+      );
+      await page.keyboard.press("Escape");
+      await expect(dialog).toBeVisible();
+      await page.mouse.click(8, 8);
+      await expect(dialog).toBeVisible();
+      expect(await storedBlock(page.request, url, "SharedHero")).toEqual(
+        published,
+      );
+
+      // One field: two cards, named for the field. Yours is chosen, so one
+      // click on OK saves the user's version.
+      await expect(dialog).toHaveAccessibleName(
+        "Someone else changed the headline while you were editing",
+      );
+      await expect(field.getByRole("radio", { name: "You" })).toBeChecked();
+      await expect(
+        field.getByRole("radio", { name: "Someone else" }),
+      ).not.toBeChecked();
+      await dialog.getByRole("button", { name: "OK", exact: true }).click();
+      await expect(dialog).toBeHidden();
+      await expect
+        .poll(() => storedBlock(page.request, url, "SharedHero"), {
+          timeout: 20_000,
+        })
+        .toEqual({ ...published, headline: "Draft headline" });
+      await expect(headline).toHaveValue("Draft headline");
+
+      // The form goes on from the saved choice.
+      await headline.fill("Later edit");
+      await expect
+        .poll(() => storedBlock(page.request, url, "SharedHero"), {
+          timeout: 20_000,
+        })
+        .toEqual({ ...published, headline: "Later edit" });
+      await expect(dialog).toHaveCount(0);
+      expect(await oldToasts()).toBe(0);
+    } finally {
+      await previewSite.close();
+    }
+  });
+
+  test("choosing their card keeps their version and loads it into the form", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const previewSite = await startPreviewSite();
+    try {
+      const { blocks, headline, url } = await openEditor(
+        page,
+        orgSlug,
+        previewSite.url,
+        { __resolveType: "SharedHero" },
+      );
+      const published = { ...hero, headline: "Published headline" };
+      await writeElsewhere(page.request, url, "SharedHero", published);
+
+      await headline.fill("Draft headline");
+      const dialog = conflictDialog(page);
+      await expect(dialog).toBeVisible({ timeout: 20_000 });
+      const field = dialog.getByRole("radiogroup", { name: "Headline" });
+      // The whole card is the choice; OK saves it.
+      await field.getByTestId("conflict-theirs").click();
+      await expect(
+        field.getByRole("radio", { name: "Someone else" }),
+      ).toBeChecked();
+      await dialog.getByRole("button", { name: "OK", exact: true }).click();
+      await expect(dialog).toBeHidden();
+      await expect(headline).toHaveValue("Published headline");
+      await page.waitForTimeout(3_000);
+      expect(await storedBlock(page.request, url, "SharedHero")).toEqual(
+        published,
+      );
+      // Saves go on as usual afterwards.
+      await blocks.getByRole("button", { name: /^First slide/ }).click();
+      await blocks
+        .getByRole("textbox", { name: "Description", exact: true })
+        .fill("After the choice");
+      await expect
+        .poll(() => storedBlock(page.request, url, "SharedHero"), {
+          timeout: 20_000,
+        })
+        .toEqual({
+          ...published,
+          slides: [{ title: "First slide", description: "After the choice" }],
+        });
+    } finally {
+      await previewSite.close();
+    }
+  });
+
+  test("each field keeps the version chosen for it, and fields only one side changed merge on their own", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const previewSite = await startPreviewSite();
+    try {
+      const { blocks, headline, url } = await openEditor(
+        page,
+        orgSlug,
+        previewSite.url,
+        { __resolveType: "SharedHero" },
+      );
+      const published = {
+        ...hero,
+        headline: "Published headline",
+        subtitle: "Published subtitle",
+        slides: [{ title: "First slide", description: "Published elsewhere" }],
+      };
+      await writeElsewhere(page.request, url, "SharedHero", published);
+
+      // Two fields both changed, within one autosave; the slide only they
+      // changed merges without asking.
+      const subtitle = blocks.getByRole("textbox", {
+        name: "Subtitle",
+        exact: true,
+      });
+      await headline.fill("Draft headline");
+      await subtitle.fill("Draft subtitle");
+      const dialog = conflictDialog(page);
+      await expect(dialog).toBeVisible({ timeout: 20_000 });
+      // Two fields: one per step, the same two cards, yours chosen.
+      await expect(dialog).toHaveAccessibleName(
+        "Someone else also changed the headline",
+      );
+      const steps = dialog.getByRole("group", { name: "Fields to choose" });
+      await expect(steps.getByRole("button")).toHaveCount(2);
+      await expect(
+        steps.getByRole("button", { name: "Headline" }),
+      ).toHaveAttribute("aria-current", "step");
+      await expect(dialog.getByText("1 of 2")).toBeVisible();
+      const field = (name: string) =>
+        dialog.getByRole("radiogroup", { name, exact: true });
+      await expect(
+        field("Headline").getByRole("radio", { name: "You" }),
+      ).toBeChecked();
+      await expect(field("Headline").getByTestId("conflict-theirs")).toHaveText(
+        "Published headline",
+      );
+      await dialog.getByRole("button", { name: "Next" }).click();
+
+      // The last step: Subtitle, a summary of the picks, and OK instead of
+      // Next. Subtitle switches to theirs.
+      await expect(dialog).toHaveAccessibleName(
+        "Someone else also changed the subtitle",
+      );
+      await expect(dialog.getByText("2 of 2")).toBeVisible();
+      await expect(dialog.getByRole("button", { name: "Next" })).toHaveCount(0);
+      await expect(field("Subtitle").getByTestId("conflict-mine")).toHaveText(
+        "Draft subtitle",
+      );
+      await expect(field("Subtitle").getByTestId("conflict-theirs")).toHaveText(
+        "Published subtitle",
+      );
+      await field("Subtitle")
+        .getByRole("radio", { name: "Someone else" })
+        .click();
+      await expect(dialog.getByTestId("form-conflict-summary")).toHaveText(
+        "Headline: yours · Subtitle: theirs",
+      );
+
+      // Back, and → again: the picks stay; nothing is saved meanwhile.
+      await dialog.getByRole("button", { name: "Back" }).click();
+      await expect(
+        field("Headline").getByRole("radio", { name: "You" }),
+      ).toBeChecked();
+      await page.keyboard.press("ArrowRight");
+      await expect(
+        field("Subtitle").getByRole("radio", { name: "Someone else" }),
+      ).toBeChecked();
+      expect(await storedBlock(page.request, url, "SharedHero")).toEqual(
+        published,
+      );
+      await dialog.getByRole("button", { name: "OK", exact: true }).click();
+      await expect(dialog).toBeHidden();
+
+      const chosen = { ...published, headline: "Draft headline" };
+      await expect
+        .poll(() => storedBlock(page.request, url, "SharedHero"), {
+          timeout: 20_000,
+        })
+        .toEqual(chosen);
+      await expect(headline).toHaveValue("Draft headline");
+      await expect(subtitle).toHaveValue("Published subtitle");
+    } finally {
+      await previewSite.close();
+    }
+  });
+
+  test("another change while the dialog is open asks again with the newer version", async ({
     authedPage: { page, orgSlug },
   }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
@@ -354,11 +710,91 @@ test.describe("Site Editor stale section form", () => {
       await writeElsewhere(page.request, url, "SharedHero", published);
 
       await headline.fill("Draft headline");
-      await expect(page.getByText(KEPT_STORED)).toBeVisible();
-      await expect(headline).toHaveValue("Published headline");
+      const dialog = conflictDialog(page);
+      await expect(dialog).toBeVisible({ timeout: 20_000 });
+      const field = dialog.getByRole("radiogroup", { name: "Headline" });
+      await expect(field.getByTestId("conflict-theirs")).toHaveText(
+        "Published headline",
+      );
+
+      // A third editor saves while the user decides.
+      const third = { ...hero, headline: "Third headline" };
+      await writeElsewhere(page.request, url, "SharedHero", third);
+      await dialog.getByRole("button", { name: "OK", exact: true }).click();
+
+      // That save expected the version the dialog showed: it is refused, and
+      // the same choice is asked with the newer version. Nothing is written
+      // over it without the user's word.
+      await expect(
+        dialog.getByText("Their version changed again while this was open."),
+      ).toBeVisible({ timeout: 20_000 });
+      await expect(field.getByTestId("conflict-theirs")).toHaveText(
+        "Third headline",
+      );
+      await expect(field.getByTestId("conflict-mine")).toHaveText(
+        "Draft headline",
+      );
+      expect(await storedBlock(page.request, url, "SharedHero")).toEqual(third);
+
+      await expect(field.getByRole("radio", { name: "You" })).toBeChecked();
+      await dialog.getByRole("button", { name: "OK", exact: true }).click();
+      await expect(dialog).toBeHidden();
       await expect
-        .poll(() => storedBlock(page.request, url, "SharedHero"))
-        .toEqual(published);
+        .poll(() => storedBlock(page.request, url, "SharedHero"), {
+          timeout: 20_000,
+        })
+        .toEqual({ ...third, headline: "Draft headline" });
+    } finally {
+      await previewSite.close();
+    }
+  });
+
+  test("the open dialog shows a newer version of theirs in place, with no click", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const previewSite = await startPreviewSite();
+    try {
+      const { headline, url } = await openEditor(
+        page,
+        orgSlug,
+        previewSite.url,
+        { __resolveType: "SharedHero" },
+      );
+      const published = { ...hero, headline: "Published headline" };
+      await writeElsewhere(page.request, url, "SharedHero", published);
+
+      await headline.fill("Draft headline");
+      const dialog = conflictDialog(page);
+      await expect(dialog).toBeVisible({ timeout: 20_000 });
+      const field = dialog.getByRole("radiogroup", { name: "Headline" });
+      await expect(field.getByTestId("conflict-theirs")).toHaveText(
+        "Published headline",
+      );
+
+      // A third editor saves while the user decides: the dialog reads the
+      // stored block again while it is open and shows the newer version.
+      const third = { ...hero, headline: "Third headline" };
+      await writeElsewhere(page.request, url, "SharedHero", third);
+      await expect(
+        dialog.getByText("Their version changed again while this was open."),
+      ).toBeVisible({ timeout: 15_000 });
+      await expect(field.getByTestId("conflict-theirs")).toHaveText(
+        "Third headline",
+      );
+      await expect(field.getByTestId("conflict-mine")).toHaveText(
+        "Draft headline",
+      );
+      await expect(field.getByRole("radio", { name: "You" })).toBeChecked();
+      expect(await storedBlock(page.request, url, "SharedHero")).toEqual(third);
+
+      await dialog.getByRole("button", { name: "OK", exact: true }).click();
+      await expect(dialog).toBeHidden();
+      await expect
+        .poll(() => storedBlock(page.request, url, "SharedHero"), {
+          timeout: 20_000,
+        })
+        .toEqual({ ...third, headline: "Draft headline" });
     } finally {
       await previewSite.close();
     }
@@ -390,7 +826,10 @@ test.describe("Site Editor stale section form", () => {
       // The edit lands on the section the form opened, not on the one that
       // now sits at its old position.
       await expect
-        .poll(() => storedBlock(page.request, url, "home"))
+        // The refused save's merged retry waits out main's backoff (#8000).
+        .poll(() => storedBlock(page.request, url, "home"), {
+          timeout: 20_000,
+        })
         .toEqual({
           ...home,
           sections: [inserted, { ...hero, headline: "Draft headline" }],
@@ -441,7 +880,10 @@ test.describe("Site Editor stale section form", () => {
 
       await headline.fill("Draft headline");
       await expect
-        .poll(() => storedBlock(page.request, url, "home"))
+        // The refused save's merged retry waits out main's backoff (#8000).
+        .poll(() => storedBlock(page.request, url, "home"), {
+          timeout: 20_000,
+        })
         .toEqual({
           ...home,
           sections: [{ ...editedTwin, headline: "Draft headline" }, hero],
@@ -514,9 +956,7 @@ test.describe("Site Editor stale section form", () => {
         })
         .toEqual({ ...hero, headline: "Second edit" });
       await expect(headline).toHaveValue("Second edit");
-      await expect(
-        page.getByText("Changed while you were editing"),
-      ).toHaveCount(0);
+      await expect(conflictDialog(page)).toHaveCount(0);
     } finally {
       await previewSite.close();
     }

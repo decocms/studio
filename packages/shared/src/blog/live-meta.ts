@@ -11,6 +11,8 @@
  */
 
 export interface LiveMeta {
+  /** The stack the site was built with; absent on Fresh/Deno, which predates it. */
+  framework?: string;
   manifest: {
     blocks: Record<
       string,
@@ -18,6 +20,8 @@ export interface LiveMeta {
     >;
   };
   schema: Record<string, unknown>;
+  /** Content hash a deco runtime's `/live/_meta` sends with the schema. */
+  etag?: string;
 }
 
 /** A JSON Schema node as the meta document stores it, before resolution. */

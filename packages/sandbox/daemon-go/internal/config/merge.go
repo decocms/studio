@@ -151,10 +151,16 @@ func mergeApplication(current, patch *Application) *Application {
 	if patch.Port != nil {
 		out.Port = patch.Port
 	}
+	if patch.Apps != nil {
+		out.Apps = patch.Apps
+	}
 	return &out
 }
 
 func mergePm(current, patch *PackageManagerConfig) *PackageManagerConfig {
+	if patch == nil {
+		return current
+	}
 	if current == nil {
 		return patch
 	}

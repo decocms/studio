@@ -7,11 +7,13 @@
  * check list, a note that is really an activity entry, and per-note
  * resolution.
  */
-import { describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
+import { GitProviderError, type TokenOptions } from "../types";
 import {
   checksFromPipelineStatus,
   conflictFromMergeRequest,
   countUnresolved,
+  GitlabChangeRequestClient,
   isConflictRefusal,
   mapJob,
   mapJobStatus,
@@ -319,5 +321,200 @@ describe("isConflictRefusal", () => {
   it("is false for a refusal that says nothing about the branch", () => {
     expect(isConflictRefusal(405, "Method Not Allowed")).toBe(false);
     expect(isConflictRefusal(401, "Unauthorized")).toBe(false);
+  });
+});
+
+describe("GitlabChangeRequestClient's mapping and validation", () => {
+  it("validates that merge requests have a positive iid", () => {
+    const client = new GitlabChangeRequestClient({
+      repo: { provider: "gitlab", host: "gitlab.com", path: "acme/site" },
+      tokenSource: {
+        kind: "oauth",
+        get: async () => ({ token: "t", kind: "oauth", expiresAt: null }),
+      },
+    });
+
+    expect(() => {
+      (client as any).map({
+        iid: 0,
+        source_branch: "main",
+        target_branch: "main",
+      });
+    }).toThrow("Invalid merge request: missing or invalid iid");
+
+    expect(() => {
+      (client as any).map({ source_branch: "main", target_branch: "main" });
+    }).toThrow("Invalid merge request: missing or invalid iid");
+  });
+
+  it("validates that merge requests have a source branch", () => {
+    const client = new GitlabChangeRequestClient({
+      repo: { provider: "gitlab", host: "gitlab.com", path: "acme/site" },
+      tokenSource: {
+        kind: "oauth",
+        get: async () => ({ token: "t", kind: "oauth", expiresAt: null }),
+      },
+    });
+
+    expect(() => {
+      (client as any).map({ iid: 1, target_branch: "main" });
+    }).toThrow("Invalid merge request 1: missing source branch");
+  });
+
+  it("validates that merge requests have a target branch", () => {
+    const client = new GitlabChangeRequestClient({
+      repo: { provider: "gitlab", host: "gitlab.com", path: "acme/site" },
+      tokenSource: {
+        kind: "oauth",
+        get: async () => ({ token: "t", kind: "oauth", expiresAt: null }),
+      },
+    });
+
+    expect(() => {
+      (client as any).map({ iid: 1, source_branch: "feature" });
+    }).toThrow("Invalid merge request 1: missing target branch");
+  });
+});
+
+describe("GitlabChangeRequestClient's 401 handling", () => {
+  const originalFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("refreshes a stale token once and retries the call", async () => {
+    const tokensRequested: (TokenOptions | undefined)[] = [];
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      if (calls === 1) return new Response("", { status: 401 });
+      return new Response(
+        JSON.stringify({
+          iid: 7,
+          title: "hi",
+          source_branch: "feature",
+          target_branch: "main",
+        }),
+        {
+          status: 200,
+        },
+      );
+    }) as unknown as typeof fetch;
+
+    const client = new GitlabChangeRequestClient({
+      repo: { provider: "gitlab", host: "gitlab.com", path: "acme/site" },
+      tokenSource: {
+        kind: "oauth",
+        get: async (opts) => {
+          tokensRequested.push(opts);
+          return { token: "t", kind: "oauth", expiresAt: null };
+        },
+      },
+    });
+
+    const mr = await client.read(7);
+    expect(mr?.number).toBe(7);
+    expect(calls).toBe(2);
+    expect(tokensRequested).toEqual([undefined, { forceRefresh: true }]);
+  });
+
+  it("refreshes a stale token once and retries opening a merge request", async () => {
+    const tokensRequested: (TokenOptions | undefined)[] = [];
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      if (calls === 1) return new Response("", { status: 401 });
+      return new Response(
+        JSON.stringify({
+          iid: 9,
+          title: "hi",
+          source_branch: "feature",
+          target_branch: "main",
+        }),
+        {
+          status: 200,
+        },
+      );
+    }) as unknown as typeof fetch;
+
+    const client = new GitlabChangeRequestClient({
+      repo: { provider: "gitlab", host: "gitlab.com", path: "acme/site" },
+      tokenSource: {
+        kind: "oauth",
+        get: async (opts) => {
+          tokensRequested.push(opts);
+          return { token: "t", kind: "oauth", expiresAt: null };
+        },
+      },
+    });
+
+    const cr = await client.open({
+      head: "feature",
+      base: "main",
+      title: "hi",
+    });
+    expect(cr.number).toBe(9);
+    expect(calls).toBe(2);
+    expect(tokensRequested).toEqual([undefined, { forceRefresh: true }]);
+  });
+});
+
+describe("GitlabChangeRequestClient's malformed-body handling", () => {
+  const originalFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("degrades a malformed 2xx body into a GitProviderError instead of a raw SyntaxError", async () => {
+    globalThis.fetch = (async () =>
+      new Response("<html>not json</html>", {
+        status: 200,
+      })) as unknown as typeof fetch;
+
+    const client = new GitlabChangeRequestClient({
+      repo: { provider: "gitlab", host: "gitlab.com", path: "acme/site" },
+      tokenSource: {
+        kind: "oauth",
+        get: async () => ({ token: "t", kind: "oauth", expiresAt: null }),
+      },
+    });
+
+    await expect(client.read(7)).rejects.toBeInstanceOf(GitProviderError);
+  });
+
+  it("degrades a well-formed but non-array list body into a GitProviderError", async () => {
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ message: "not found" }), {
+        status: 200,
+      })) as unknown as typeof fetch;
+
+    const client = new GitlabChangeRequestClient({
+      repo: { provider: "gitlab", host: "gitlab.com", path: "acme/site" },
+      tokenSource: {
+        kind: "oauth",
+        get: async () => ({ token: "t", kind: "oauth", expiresAt: null }),
+      },
+    });
+
+    await expect(client.listOpen(10)).rejects.toBeInstanceOf(GitProviderError);
+  });
+
+  it("degrades a well-formed but non-object body from opening a merge request", async () => {
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify([]), {
+        status: 200,
+      })) as unknown as typeof fetch;
+
+    const client = new GitlabChangeRequestClient({
+      repo: { provider: "gitlab", host: "gitlab.com", path: "acme/site" },
+      tokenSource: {
+        kind: "oauth",
+        get: async () => ({ token: "t", kind: "oauth", expiresAt: null }),
+      },
+    });
+
+    await expect(
+      client.open({ head: "feature", base: "main", title: "hi" }),
+    ).rejects.toBeInstanceOf(GitProviderError);
   });
 });

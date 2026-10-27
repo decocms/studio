@@ -809,7 +809,7 @@ export class SqlThreadStorage implements ThreadStoragePort {
     const now = new Date().toISOString();
     let query = this.db
       .updateTable("threads")
-      .set({ status: "failed", updated_at: now })
+      .set({ status: "failed", run_owner_pod: null, updated_at: now })
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
       .where("status", "=", "in_progress");

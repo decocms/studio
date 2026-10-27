@@ -1,4 +1,4 @@
-import { type Query, useQuery } from "@tanstack/react-query";
+import { type Query, useQuery, useQueryClient } from "@tanstack/react-query";
 import { exponentialBackoffWithJitter } from "@decocms/shared/std";
 import { KEYS } from "@/lib/query-keys";
 import { decoRepoPath } from "./deco-repo-path";
@@ -10,6 +10,13 @@ import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
 import { usePackagePath } from "./use-package-path";
 import type { LiveMeta } from "./resolve-schema";
+import { useContentBackend } from "./use-content-backend";
+import { useDecofileCacheKey } from "./use-decofile";
+import {
+  pollProtocolContent,
+  protocolMetaQueryKey,
+  protocolUnavailableError,
+} from "./content-protocol-api";
 
 interface UseLiveMetaParams {
   orgSlug: string;
@@ -64,6 +71,46 @@ export function metaSourceOrder(input: {
 }
 
 /**
+ * How often Local mode re-reads the tunnel's schema. The tunnel is the user's
+ * own dev server, which regenerates the schema as they edit section props, and
+ * nothing pushes that change to Studio. Visible tabs only.
+ */
+const LOCAL_META_POLL_MS = 5_000;
+
+/**
+ * A running site's `/live/_meta`, or `null` when it can't answer. With the
+ * schema already held, asks with its `etag`; a deco runtime then answers 304
+ * instead of the whole schema, and the held one is returned. A dev server on
+ * a `@decocms/tanstack` that predates its admin preflight rejects that request
+ * (CORS); the held schema is kept then too, as before polling.
+ */
+export async function fetchLiveMeta(
+  baseUrl: string,
+  previous?: LiveMeta,
+): Promise<LiveMeta | null> {
+  const url = new URL("/live/_meta", baseUrl).href;
+  const headers: Record<string, string> = previous?.etag
+    ? { "If-None-Match": previous.etag }
+    : {};
+  const res = await fetch(url, { cache: "no-store", headers }).catch(
+    () => null,
+  );
+  if (previous && (!res || res.status === 304)) return previous;
+  if (!res?.ok) return null;
+  // A repo that doesn't use the deco framework for sites still answers
+  // this route: a plain Vite/SPA dev server hands back `index.html` with
+  // a 200. `res.json()` on that throws a SyntaxError that escapes the
+  // whole queryFn — skipping the remaining sources and surfacing an
+  // untagged error the Preview gates can only read as "transient". Treat
+  // an unparseable 200 as no answer instead, same as `parseDecofileBody`.
+  try {
+    return (await res.json()) as LiveMeta;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Cache key for one meta read. The `(orgSlug, virtualMcpId, branch)` head is
  * the invalidation scope — `KEYS.liveMeta(org, vmid, branch)` must stay a
  * prefix of it, since that is how the sandbox lifecycle swaps the CMS off the
@@ -102,7 +149,9 @@ export function useLiveMeta(
    * the sandbox `/read` proxy and the git route go through gated/absent surfaces
    * a tunnel-only project doesn't have.
    */
-  const { url: localPreviewUrl } = useLocalPreviewUrl(params?.virtualMcpId);
+  // A saved Local tunnel waits for main's answer (v7 uses it, v8 never).
+  const { url: localPreviewUrl, undecided: tunnelUndecided } =
+    useLocalPreviewUrl(params?.virtualMcpId);
   const localOverride = !!localPreviewUrl;
   const fetchEnabled = localOverride || (options?.fetchEnabled ?? true);
   const previewUrl = localPreviewUrl ?? params?.previewUrl;
@@ -114,27 +163,34 @@ export function useLiveMeta(
     params?.virtualMcpId,
   );
   const fastPreviewActive = !localOverride && runtime === "cms";
+  // Next-major Blocks sites read the committed schema over the content
+  // protocol: never from the running site.
+  const backend = useContentBackend(params?.virtualMcpId, params?.branch);
+  const protocol = backend.kind === "protocol" ? backend : null;
+  const queryClient = useQueryClient();
+  const decofileKey = useDecofileCacheKey(params ?? null);
+  const queryKey = params
+    ? protocol
+      ? protocolMetaQueryKey(params, protocol)
+      : liveMetaQueryKey({ ...params, previewUrl, productionUrl })
+    : KEYS.liveMeta("");
   return useQuery({
-    queryKey: params
-      ? liveMetaQueryKey({ ...params, previewUrl, productionUrl })
-      : KEYS.liveMeta(""),
+    queryKey,
     queryFn: async () => {
-      const fetchMeta = async (baseUrl: string): Promise<LiveMeta | null> => {
-        const url = new URL("/live/_meta", baseUrl).href;
-        const res = await fetch(url, { cache: "no-store" }).catch(() => null);
-        if (!res?.ok) return null;
-        // A repo that doesn't use the deco framework for sites still answers
-        // this route: a plain Vite/SPA dev server hands back `index.html` with
-        // a 200. `res.json()` on that throws a SyntaxError that escapes the
-        // whole queryFn — skipping the remaining sources and surfacing an
-        // untagged error the Preview gates can only read as "transient". Treat
-        // an unparseable 200 as no answer instead, same as `parseDecofileBody`.
-        try {
-          return (await res.json()) as LiveMeta;
-        } catch {
-          return null;
-        }
-      };
+      if (protocol) {
+        // The same batched poll as the decofile's: one request for both.
+        const { meta } = await pollProtocolContent(
+          queryClient,
+          protocol,
+          params!,
+          decofileKey,
+        );
+        if (meta instanceof Error) throw meta;
+        return meta;
+      }
+      if (backend.kind === "unavailable") {
+        throw protocolUnavailableError("live meta");
+      }
       const readCommitted = () =>
         fastPreviewActive
           ? readCommittedMetaViaGit<LiveMeta>(params!)
@@ -163,7 +219,13 @@ export function useLiveMeta(
           if (committed.kind === "data") return committed.data;
           continue;
         }
-        const meta = await fetchMeta(source.baseUrl);
+        // Only Local polls, so only it revalidates what it holds.
+        const meta = await fetchLiveMeta(
+          source.baseUrl,
+          localOverride
+            ? queryClient.getQueryData<LiveMeta>(queryKey)
+            : undefined,
+        );
         if (meta) return meta;
       }
       const err = new Error(
@@ -172,10 +234,16 @@ export function useLiveMeta(
       (err as { status?: number }).status = 502;
       throw err;
     },
-    enabled: !!params,
-    refetchInterval: options?.refetchInterval,
+    enabled: !!params && backend.kind !== "pending" && !tunnelUndecided,
+    // On the protocol, the decofile's poll refreshes the schema too.
+    refetchInterval: protocol
+      ? false
+      : localOverride
+        ? LOCAL_META_POLL_MS
+        : options?.refetchInterval,
     refetchIntervalInBackground: false,
-    staleTime: 300_000,
+    refetchOnWindowFocus: protocol ? false : undefined,
+    staleTime: protocol ? protocol.describe.pollIntervalMs : 300_000,
     // 502 = nothing reachable yet. The sandbox lifecycle re-invalidates this
     // query when the dev server comes up (see sandbox-events-context), so
     // retrying just hammers a known-down endpoint. Sandbox-less Fast Preview
@@ -184,7 +252,7 @@ export function useLiveMeta(
     // retries ARE the recovery there.
     // Local mode, like sandbox-less Fast Preview, has no lifecycle event to re-invalidate a 502, so bounded retries are its recovery.
     retry: (failureCount, error) =>
-      fastPreviewActive || localOverride
+      protocol || fastPreviewActive || localOverride
         ? failureCount < 3
         : (error as { status?: number }).status !== 502 && failureCount < 3,
     retryDelay: (attempt) =>

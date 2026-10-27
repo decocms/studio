@@ -514,6 +514,11 @@ export const auth = betterAuth({
   // Better Auth can use the dialect directly
   database,
 
+  // The default of 100 truncated `organization.list` for large memberships.
+  advanced: {
+    database: { defaultFindManyLimit: 500 },
+  },
+
   // Auth providers from AUTH_* env vars
   socialProviders: authConfig.socialProviders,
 

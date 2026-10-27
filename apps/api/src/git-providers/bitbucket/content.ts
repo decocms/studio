@@ -47,6 +47,7 @@ import {
   bbqString,
   bitbucketFailure,
   bitbucketFetch,
+  bitbucketJson,
   type BitbucketPage,
   nextPageNumber,
 } from "./http";
@@ -437,6 +438,16 @@ export class BitbucketContentClient implements RepoContentClient {
       });
     }
     return content;
+  }
+
+  async readCommit(
+    sha: string,
+  ): Promise<{ message: string; date: string } | null> {
+    const json = await this.json<{ message?: string; date?: string }>(
+      `${this.repoBase}/commit/${encodeRef(sha)}`,
+    );
+    if (typeof json?.message !== "string") return null;
+    return { message: json.message, date: json.date ?? "" };
   }
 
   async readFileAtRef(ref: string, path: string): Promise<string | null> {
@@ -878,7 +889,7 @@ export class BitbucketContentClient implements RepoContentClient {
         });
       }
       if (!res.ok) throw await bitbucketFailure(res);
-      const json = (await res.json()) as BitbucketPullRequestRow;
+      const json = await bitbucketJson<BitbucketPullRequestRow>(res, "merge");
       if (json.state !== "MERGED") {
         throw new GitProviderError({
           provider: "bitbucket",
@@ -1049,7 +1060,7 @@ export class BitbucketContentClient implements RepoContentClient {
   private async jsonAt<T>(url: string, init?: CallInit): Promise<T | null> {
     const res = await this.callAt(url, init);
     if (res === null) return null;
-    return (await res.json()) as T;
+    return bitbucketJson<T>(res, url);
   }
 
   private call(

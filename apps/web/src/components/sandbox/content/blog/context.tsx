@@ -822,7 +822,7 @@ export function BlogContext({
                         setFillOpen(false);
                         void extract(option.mode);
                       }}
-                      className="cursor-pointer rounded-lg border p-3 text-left transition-colors hover:bg-muted/50"
+                      className="cursor-pointer rounded-lg border p-3 text-left transition-colors hover:bg-accent"
                     >
                       <span className="text-sm font-medium">
                         {t(option.label)}
@@ -979,7 +979,7 @@ export function BlogContext({
           </div>
         ) : (
           <div className="grid grid-cols-[240px_1fr] gap-8 px-8 py-6">
-            <nav className="sticky top-0 h-fit space-y-0.5 rounded-xl border bg-card p-1.5">
+            <nav className="sticky top-0 h-fit space-y-0.5 surface p-1.5">
               {CONTEXT_SECTIONS.map((entry) => (
                 <button
                   key={entry.id}
@@ -989,7 +989,7 @@ export function BlogContext({
                     "w-full rounded-lg px-2.5 py-2 text-left text-sm transition-colors cursor-pointer",
                     section === entry.id
                       ? "bg-muted font-medium text-foreground"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                      : "text-muted-foreground hover:bg-accent hover:text-foreground",
                   )}
                 >
                   {t(entry.label)}

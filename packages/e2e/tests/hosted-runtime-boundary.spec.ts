@@ -11,7 +11,7 @@ const EXPLICIT_HARNESS_IDS = [
   "future",
 ];
 
-const PERSISTED_NON_HOSTED_HARNESS_IDS = ["codex", "opencode", "future"];
+const PERSISTED_NON_HOSTED_HARNESS_IDS = ["opencode", "future"];
 
 test.describe("hosted runtime boundary", () => {
   test.describe.configure({ mode: "serial" });
@@ -460,7 +460,7 @@ test.describe("hosted runtime boundary", () => {
       transactionOpen = true;
       const nativePin = await locker.query(
         `UPDATE threads
-            SET harness_id = 'codex'
+            SET harness_id = 'opencode'
           WHERE id = $1 AND created_by = $2`,
         [thread.item.id, user.userId],
       );
@@ -529,7 +529,7 @@ test.describe("hosted runtime boundary", () => {
       );
       expect(row.rows).toEqual([
         {
-          harness_id: "codex",
+          harness_id: "opencode",
           part_count: 0,
         },
       ]);
@@ -589,7 +589,7 @@ test.describe("hosted runtime boundary", () => {
 
       const pinned = await db.query<{ organization_id: string }>(
         `UPDATE threads
-            SET harness_id = 'codex',
+            SET harness_id = 'opencode',
                 status = 'in_progress',
                 cancel_requested_at = NULL
           WHERE id = $1 AND created_by = $2
@@ -711,7 +711,7 @@ test.describe("hosted runtime boundary", () => {
       );
       const update = await db.query(
         `UPDATE threads
-            SET harness_id = 'codex'
+            SET harness_id = 'opencode'
           WHERE id = $1 AND created_by = $2`,
         [thread.item.id, user.userId],
       );

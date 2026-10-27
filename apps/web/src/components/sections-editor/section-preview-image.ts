@@ -1,3 +1,4 @@
+import { isV8Schema } from "@decocms/shared/blocks-major";
 import { renderMustacheTemplate } from "./array-item-display";
 import type { LiveMeta } from "./resolve-schema";
 import { safeImageUrl } from "@/lib/safe-image-url";
@@ -31,7 +32,7 @@ export function getSectionPreviewImageSrc(
 ): string | undefined {
   if (!meta) return undefined;
 
-  const ctx = resolveSectionPreviewContext(formData);
+  const ctx = resolveSectionPreviewContext(formData, isV8Schema(meta));
   if (!ctx) return undefined;
 
   const imageTpl = resolveSectionImageTemplate(ctx.resolveType, meta);
@@ -41,4 +42,20 @@ export function getSectionPreviewImageSrc(
   if (!rendered) return undefined;
 
   return safeImageUrl(rendered);
+}
+
+/**
+ * A gallery card's image when nothing can render the section (the content
+ * protocol never runs site code): the schema's `@image` when it is a plain
+ * URL rather than a per-item template.
+ */
+export function resolveSectionGalleryImage(
+  resolveType: string,
+  meta: LiveMeta,
+): string | undefined {
+  for (const schema of sectionSchemaChain(resolveType, meta)) {
+    const image = typeof schema.image === "string" ? schema.image : undefined;
+    if (image && !image.includes("{{")) return safeImageUrl(image);
+  }
+  return undefined;
 }

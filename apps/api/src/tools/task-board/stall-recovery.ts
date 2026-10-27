@@ -11,7 +11,8 @@
  *     PR, QA without). This is the finish hook's own job, done late; costs two
  *     queries, no model call.
  *   every used thread terminal, newest `failed`    → nudge the thread once: one
- *     user turn asking the agent to finish what it started. Advancing here would
+ *     user turn asking the agent to finish what it started, on a thread whose
+ *     run may move the card (`runMovesLinkedCards`). Advancing here would
  *     mark unfinished work as reviewable.
  *   any thread `requires_action` / `in_progress` → leave it. The first is parked
  *     on a `user_ask` (a human owns it), the second is either live or the stall
@@ -20,8 +21,9 @@
  * With ONE exception, added because "the stall reaper's to fail" was not true of
  * every `in_progress` thread: a run that never STARTED (see
  * `failNeverStartedThreads`) has no entry in any pod's `RunRegistry`, so the
- * in-memory idle reaper cannot see it and no DB sweep exists. Those threads sat
- * `in_progress` with zero parts indefinitely, and because
+ * in-memory idle reaper cannot see it. Before the review sweeper's
+ * `failAbandonedLinkedThreads`, those threads sat `in_progress` with zero parts
+ * indefinitely, and because
  * `shouldAdvanceToReview` requires every thread terminal, one of them froze its
  * whole card — no advance, no nudge, forever. We fail them here first, which
  * both unblocks the gate below and gives the card a legible reason.
@@ -125,8 +127,8 @@ async function resolveStallAction(
 
 /** Recorded on a thread whose run never reported progress and can no longer be
  *  owned by any pod. Distinct from `"stall"` (a run that started, streamed, then
- *  went quiet — the in-memory idle reaper's case) so the two are tellable apart
- *  in the DB. */
+ *  went quiet — failed by its pod's idle reaper, or by the review sweeper when
+ *  the pod died) so the two are tellable apart in the DB. */
 export const ABANDONED_FAILURE_REASON =
   "Run never started — no pod picked it up before the idle window elapsed";
 
@@ -136,11 +138,11 @@ export const ABANDONED_FAILURE_REASON =
  * The in-memory idle reaper only sees runs present in a pod's `RunRegistry`,
  * i.e. runs that reached `RUN_STARTED`. A thread whose dispatch never got that
  * far — the enqueue landed, the row was written `in_progress`, and nothing ever
- * ran — is invisible to it on every pod, and no DB sweep exists.
+ * ran — is invisible to it on every pod.
  *
  * `run_started_at` is the discriminator: set means a run really did begin, and
  * that one belongs to the idle reaper / DBOS recovery, which can still resume
- * it. Staleness is the shared `isThreadRunStale` test (the same one that renders
+ * it, and to the review sweeper once its pod is gone. Staleness is the shared `isThreadRunStale` test (the same one that renders
  * "expired" in thread responses), so a live run is never touched.
  *
  * Pure — unit-tested.
@@ -248,7 +250,12 @@ export async function recoverStalledTasks(
           organizationId,
           ctx.storage.organizationBilling,
         );
-      } else {
+      } else if (
+        await ctx.storage.taskBoard.runMovesLinkedCards(
+          thread.threadId,
+          organizationId,
+        )
+      ) {
         await nudgeThread(ctx, item, row);
       }
     } catch (err) {

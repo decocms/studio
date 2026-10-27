@@ -87,6 +87,14 @@ describe("section-catalog", () => {
     expect(findLivePageResolveType(meta)).toBe("website/pages/Page.tsx");
   });
 
+  it("findLivePageResolveType picks the built-in page on next-major sites", () => {
+    const meta: LiveMeta = {
+      manifest: { blocks: { pages: { post: {}, page: {} } } },
+      schema: {},
+    };
+    expect(findLivePageResolveType(meta)).toBe("page");
+  });
+
   it("findSiteThemeBlock reads theme from site block", () => {
     expect(
       findSiteThemeBlock({

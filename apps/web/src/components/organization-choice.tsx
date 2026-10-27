@@ -144,13 +144,10 @@ export function OrganizationChoice({
             : null);
 
         return (
-          <div
-            key={org.id}
-            className="rounded-xl card-shadow bg-background dark:bg-input/30 p-4 flex items-center gap-4"
-          >
+          <div key={org.id} className="surface p-4 flex items-center gap-4">
             <Avatar
               url={logoUrl ?? undefined}
-              fallback={org.name.charAt(0).toUpperCase()}
+              fallback={org.name}
               shape="square"
               size="base"
               className="h-10 w-10 shrink-0"

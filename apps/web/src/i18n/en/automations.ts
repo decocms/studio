@@ -121,7 +121,8 @@ export const automations = {
   "automations.automationListRow.deleteTitle": "Delete automation?",
   "automations.automationListRow.nextRun": "Next run {date}",
   "automations.automationListRow.noTriggers": "No triggers configured",
-  "automations.automationListRow.triggers": "{count} trigger(s)",
+  "automations.automationListRow.triggers": "{count} triggers",
+  "automations.automationListRow.triggersOne": "1 trigger",
   "automations.automationRuns.costHeader": "Cost",
   "automations.automationRuns.costTitle": "Cost",
   "automations.automationRuns.failed": "failed",
@@ -167,8 +168,10 @@ export const automations = {
   "automations.triggerCard.cancel": "Cancel",
   "automations.triggerCard.confirmRemoveStarter":
     "Are you sure you want to remove this starter?",
+  "automations.triggerCard.editSchedule": "Edit schedule",
   "automations.triggerCard.every": "Every",
   "automations.triggerCard.failedToRemoveStarter": "Failed to remove starter",
+  "automations.triggerCard.failedToRotateToken": "Failed to rotate token",
   "automations.triggerCard.failedToUpdateStarter": "Failed to update starter",
   "automations.triggerCard.invalid": "invalid",
   "automations.triggerCard.newWebhookToken": "New webhook token",
@@ -188,6 +191,12 @@ export const automations = {
     "Picks up each unassigned card that lands in In Progress and works on it as the Super Agent. It is also what runs when someone clicks Run or Re-run on a card, delegates one to the agent, or the board retries a run. Turning it off stops it picking cards up on its own; Run on a card still works. The run follows the In Progress column's instructions and skills on the board; change them there.",
   "automations.builtin.reviewerDescription":
     "Reviews a card's pull request once it is ready for review (open, checks done, preview on its latest commit) and records a verdict: an approval sends the card to QA, a request for changes hands it to a person. Turning it off is the same as turning off the Reviewer in Settings → Review. The review follows the In Review column's instructions and skills on the board; change them there.",
+  "automations.builtin.linkedChatsDescription":
+    "Lets a chat linked to a card, or another automation's run on it, move the card the way the Implementer's run does: a message while the card is In Review moves it back to In Progress; when the run ends, a card In Progress moves on to In Review (with a pull request) or QA; a pull request it opens starts the card's review; a failed run is retried by the Implementer or sends the card back to Backlog. Off, only the Implementer's run moves a card. It runs no agent.",
+  "automations.builtin.prMergedDescription":
+    "Moves a card under review to Post-deploy Validation once its pull request is merged, wherever it was merged (GitHub's merge button, branch protection's auto-merge). Off, a merged pull request leaves the card where it is. It runs no agent.",
+  "automations.builtin.chatPrDescription":
+    "When a chat with no card opens a pull request through a provider tool, puts it on the board: it picks the open card the work belongs to, or creates one, links the pull request and the chat, and hands the card to the Super Agent so the Reviewer picks it up. Off, the pull request stays off the board. A chat already linked to a card is never touched.",
   "automations.builtin.description":
     "Studio runs this automation for the board. It follows the board's column instructions and skills; change them there.",
   "automations.columnTransitionDialog.title": "When a card enters a column",
@@ -222,6 +231,10 @@ export const automations = {
   "automations.jiraTransitionDialog.add": "Add starter",
   "automations.triggerCard.prReady":
     "When a card's pull request is ready for review",
+  "automations.triggerCard.linkedChatRun": "When a chat linked to a card runs",
+  "automations.triggerCard.prMerged": "When a card's pull request is merged",
+  "automations.triggerCard.chatPrOpened":
+    "When a chat with no card opens a pull request",
   "automations.triggerCard.unownedOnly": "Only cards nobody owns",
   "automations.triggerCard.fromEarlier": "From an earlier column",
   "automations.triggerCard.fromLater": "From a later column (sent back)",

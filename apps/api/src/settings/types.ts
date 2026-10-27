@@ -48,6 +48,9 @@ export interface Settings {
   /** Admit `http://localhost:<port>` as a Jira site — a stand-in Jira for
    *  local development and e2e. See `normalizeSiteUrl`. */
   jiraAllowLocalSiteUrl: boolean;
+  /** Trusted deployment overrides for subscription usage upstreams. */
+  codexUsageUrl: string;
+  claudeUsageUrl: string;
   /** How long a Jira card must stay in a status before a trigger fires on it
    *  (`JIRA_SETTLE_SECONDS`, default 20, as on the board). Shortened only by
    *  e2e. */
@@ -314,6 +317,18 @@ export interface Settings {
   clickhouseAnalyticsUrl: string | undefined;
   clickhouseAnalyticsUsername: string;
   clickhouseAnalyticsPassword: string | undefined;
+  /** Customer data lake: ClickHouse `customer_lake` on the stats-lake cluster.
+   *  Each org reads it as its own read-only user, created on first use through
+   *  the admin account; see customer-lake/client.ts. Unset url, admin password
+   *  or tenant secret = CUSTOMER_LAKE_QUERY reports the lake as unavailable. */
+  customerLakeUrl: string | undefined;
+  customerLakeAdminUsername: string;
+  customerLakeAdminPassword: string | undefined;
+  customerLakeTenantSecret: string | undefined;
+  /** The order-ingest worker's `/mcp` URL. Connections with this URL are the
+   *  stores the order monitor watches; unset = the monitor does nothing. See
+   *  monitoring/dbos-order-monitor.ts. */
+  orderMonitorIngestUrl: string | undefined;
   /** OneDollarStats backend key — the legacy platform's pageview source
    *  (pageviews do not live in the warehouse). Unset = pageviews render "—". */
   oneDollarStatsApiKey: string | undefined;
@@ -339,4 +354,24 @@ export interface Settings {
   awsS3TenantRoleArn: string | undefined;
   awsS3TenantProvisionerAccessKeyId: string | undefined;
   awsS3TenantProvisionerSecretAccessKey: string | undefined;
+
+  // Hosted Deco CMS (Blocks v8). The R2 bucket behind delivery.decocms.com,
+  // written through its S3 API; the endpoint derives from the account id.
+  deliveryR2AccountId: string | undefined;
+  deliveryR2AccessKeyId: string | undefined;
+  deliveryR2SecretAccessKey: string | undefined;
+  deliveryR2Bucket: string | undefined;
+  /** test-only: overrides `https://<account>.r2.cloudflarestorage.com`. */
+  deliveryR2Endpoint: string | undefined;
+  /** test-only: overrides `https://delivery.decocms.com` in draft pointers. */
+  deliveryPublicOrigin: string | undefined;
+  /** Ed25519 private key (base64 PKCS8) that signs site tokens. */
+  siteTokenSigningKey: string | undefined;
+  /**
+   * The Cloudflare zone serving the delivery bucket and a token with Zone →
+   * Cache Purge on it: latest.json is purged after every write. Unset = the
+   * purge is skipped with a warning (local/dev/tests).
+   */
+  cfDeliveryZoneId: string | undefined;
+  cfPurgeApiToken: string | undefined;
 }

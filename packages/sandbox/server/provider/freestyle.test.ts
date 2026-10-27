@@ -58,7 +58,47 @@ describe("FreestyleSandboxProvider", () => {
     provider.close();
   });
 
-  test("warm builds a missing base snapshot once", async () => {
+  test("retries the org-fs relay while the edge answers 502", async () => {
+    const relays: number[] = [];
+    globalThis.fetch = Object.assign(
+      async (input: RequestInfo | URL) => {
+        if (!String(input).endsWith("/_sandbox/orgfs-config")) {
+          return Response.json({});
+        }
+        relays.push(Date.now());
+        return relays.length === 1
+          ? new Response("the mapped VM refused the request", { status: 502 })
+          : Response.json({ written: true });
+      },
+      { preconnect: realFetch.preconnect },
+    );
+    const { client } = fakeClient();
+    const provider = new FreestyleSandboxProvider({ apiKey: "k", client });
+    await provider.ensure(ID, { orgFsConfigJson: "{}" });
+    expect(relays).toHaveLength(2);
+    provider.close();
+  });
+
+  test("does not retry an org-fs relay the daemon refused", async () => {
+    let relays = 0;
+    globalThis.fetch = Object.assign(
+      async (input: RequestInfo | URL) => {
+        if (!String(input).endsWith("/_sandbox/orgfs-config")) {
+          return Response.json({});
+        }
+        relays++;
+        return new Response("unauthorized", { status: 401 });
+      },
+      { preconnect: realFetch.preconnect },
+    );
+    const { client } = fakeClient();
+    const provider = new FreestyleSandboxProvider({ apiKey: "k", client });
+    await provider.ensure(ID, { orgFsConfigJson: "{}" });
+    expect(relays).toBe(1);
+    provider.close();
+  });
+
+  test("warm caches each namespace mode in a separate base snapshot", async () => {
     const snapshots: string[] = [];
     const exec: string[] = [];
     const vm = {
@@ -91,6 +131,26 @@ describe("FreestyleSandboxProvider", () => {
     await provider.warm();
     expect(snapshots).toHaveLength(1);
     expect(exec.some((c) => c.includes("example/sandbox:1"))).toBe(true);
+    const ordinaryRun = exec.find((c) =>
+      c.startsWith("docker run -d --name sandbox"),
+    );
+    expect(ordinaryRun).not.toContain("seccomp=unconfined");
+    expect(ordinaryRun).not.toContain("apparmor=unconfined");
+    const nested = new FreestyleSandboxProvider({
+      apiKey: "k",
+      client,
+      image: "example/sandbox:1",
+      allowUserNamespaces: true,
+    });
+    await nested.warm();
+    expect(snapshots).toHaveLength(2);
+    expect(new Set(snapshots).size).toBe(2);
+    const nestedRun = exec.findLast((c) =>
+      c.startsWith("docker run -d --name sandbox"),
+    );
+    expect(nestedRun).toContain("--security-opt seccomp=unconfined");
+    expect(nestedRun).toContain("--security-opt apparmor=unconfined");
+    nested.close();
     provider.close();
   });
 
@@ -165,6 +225,38 @@ describe("pauseIdle", () => {
     provider.close();
   });
 
+  test("doesn't skip a VM that shifts into the next page after an earlier page is paused", async () => {
+    globalThis.fetch = Object.assign(
+      async () => Response.json({ idleMs: 60 * 60_000 }),
+      { preconnect: realFetch.preconnect },
+    );
+    const all = Array.from({ length: 150 }, (_, i) => vm(`v${i}`));
+    const pauses: string[] = [];
+    const client = {
+      vms: {
+        list: async ({ limit, offset }: { limit: number; offset: number }) => ({
+          vms: all.slice(offset, offset + limit),
+        }),
+        ref: (id: string) => ({
+          pause: async () => {
+            pauses.push(id);
+            const idx = all.findIndex((v) => v.id === id);
+            all.splice(idx, 1);
+          },
+        }),
+      },
+    } as unknown as Freestyle;
+    const provider = new FreestyleSandboxProvider({
+      apiKey: "k",
+      client,
+      idlePauseMs: 10 * 60_000,
+    });
+    const result = await provider.pauseIdle();
+    expect(result).toHaveLength(150);
+    expect(pauses).toHaveLength(150);
+    provider.close();
+  });
+
   test("swallows a failed listing", async () => {
     const client = {
       vms: {
@@ -232,6 +324,7 @@ describe("resume reclaims a daemon that lost its claim", () => {
           data: async () => ({
             state: "running",
             sourceSnapshotSlugAtCreate: "studio-sandbox-abc",
+            metadata: {},
           }),
           exec: async ({ command }: { command: string }) => {
             execs.push(command);
@@ -296,6 +389,227 @@ describe("resume reclaims a daemon that lost its claim", () => {
     expect(execs).toEqual(["reboot -f"]);
     expect(calls).toHaveLength(2);
     expect(calls[1]!.body.auth).toEqual({ rotateToken: TOKEN });
+    provider.close();
+  });
+
+  test("retries a reclaim while the edge answers 502", async () => {
+    const { client, execs } = existingVm();
+    const calls = daemon([
+      () => new Response("the mapped VM refused the request", { status: 502 }),
+      () => Response.json({}),
+    ]);
+    const provider = new FreestyleSandboxProvider({ apiKey: "k", client });
+    await provider.ensure(ID);
+    expect(calls).toHaveLength(2);
+    expect(calls[1]!.body.auth).toEqual({ rotateToken: TOKEN });
+    expect(execs).toEqual([]);
+    provider.close();
+  });
+});
+
+describe("repo snapshots", () => {
+  const TOKEN = "ghs_secret";
+  const CLONE_URL = `https://x-access-token:${TOKEN}@github.com/acme/site.git`;
+  const TENANT = { orgId: "org-1", userId: "u1" };
+  const REPO = {
+    cloneUrl: CLONE_URL,
+    branch: "thread-branch",
+    userName: "u",
+    userEmail: "u@example.com",
+  };
+
+  function client(opts: { tokenLeft?: boolean } = {}) {
+    const snapshots: string[] = [];
+    const creates: Record<string, unknown>[] = [];
+    const posted: string[] = [];
+    const commands: string[] = [];
+    const vm = {
+      exec: async ({
+        command,
+        env,
+      }: {
+        command: string;
+        env?: Record<string, string>;
+      }) => {
+        commands.push(command);
+        if (env?.DAEMON_BODY) posted.push(env.DAEMON_BODY);
+        if (command.includes("/health")) {
+          return { statusCode: 0, stdout: '{"ready":true}' };
+        }
+        if (command.includes("grep -rqsF")) {
+          return {
+            statusCode: 0,
+            stdout: opts.tokenLeft ? "scan=0" : "scan=1",
+          };
+        }
+        return { statusCode: 0, stdout: "" };
+      },
+      snapshot: async ({ slug }: { slug: string }) => {
+        snapshots.push(slug);
+      },
+      delete: async () => {},
+    };
+    const fake = {
+      vms: {
+        get: async () => {
+          throw new FreestyleApiError(404, { code: "NOT_FOUND" });
+        },
+        snapshots: {
+          get: async (slug: string) => {
+            if (
+              slug.startsWith("studio-sandbox-") ||
+              snapshots.includes(slug)
+            ) {
+              return {};
+            }
+            throw new FreestyleApiError(404, { code: "NOT_FOUND" });
+          },
+        },
+        create: async (options: Record<string, unknown>) => {
+          creates.push(options);
+          return { vm };
+        },
+      },
+    } as unknown as Freestyle;
+    return { fake, snapshots, creates, posted, commands };
+  }
+
+  const ref = (name: string) => ({
+    ...ID,
+    projectRef: `agent:org:vmcp:${name}`,
+  });
+
+  /** The default branch's head, as the remote advertises it. */
+  let head = "a".repeat(40);
+  const refsRequests: { url: string; auth: string | null }[] = [];
+  beforeEach(() => {
+    head = "a".repeat(40);
+    refsRequests.length = 0;
+    globalThis.fetch = Object.assign(
+      async (input: string | URL | Request, init?: RequestInit) => {
+        const url = String(input);
+        if (!url.includes("/info/refs")) return Response.json({});
+        refsRequests.push({
+          url,
+          auth: new Headers(init?.headers).get("authorization"),
+        });
+        return new Response(
+          `001e# service=git-upload-pack\n0000015${head} HEAD\0multi_ack\n`,
+        );
+      },
+      { preconnect: realFetch.preconnect },
+    );
+  });
+
+  async function settled(check: () => boolean) {
+    for (let i = 0; i < 100 && !check(); i++) await sleep(5);
+  }
+
+  test("the first sandbox for a repo builds its snapshot; the next forks it", async () => {
+    const { fake, snapshots, creates, posted, commands } = client();
+    const provider = new FreestyleSandboxProvider({
+      apiKey: "k",
+      client: fake,
+    });
+
+    const first = await provider.ensure(ref("a"), {
+      tenant: TENANT,
+      repo: REPO,
+      repoSnapshot: true,
+    });
+    expect(first.warmPoolAdopted).toBe(false);
+    await settled(() => snapshots.length > 0);
+    expect(snapshots).toHaveLength(1);
+    // Built from the default branch with the credential, snapshotted without it.
+    const built = posted.filter((b) => !b.includes("thread-branch"));
+    expect(built.at(0)).toContain(TOKEN);
+    expect(built.at(-1)).not.toContain(TOKEN);
+    // A fork's branch checkout refuses the tree install left dirty.
+    expect(commands.some((c) => c.includes("reset -q --hard HEAD"))).toBe(true);
+
+    const second = await provider.ensure(ref("b"), {
+      tenant: TENANT,
+      repo: REPO,
+      repoSnapshot: true,
+    });
+    expect(creates.at(-1)?.snapshotId).toBe(snapshots[0]);
+    expect(second.warmPoolAdopted).toBe(true);
+
+    // Another org never forks it.
+    await provider.ensure(ref("c"), {
+      tenant: { ...TENANT, orgId: "org-2" },
+      repo: REPO,
+      repoSnapshot: true,
+    });
+    expect(String(creates.at(-1)?.snapshotId)).toStartWith("studio-sandbox-");
+    provider.close();
+  });
+
+  test("a push to the default branch rebuilds; meanwhile sandboxes fork the previous head's", async () => {
+    const { fake, snapshots, creates } = client();
+    const provider = new FreestyleSandboxProvider({
+      apiKey: "k",
+      client: fake,
+    });
+    const opts = { tenant: TENANT, repo: REPO, repoSnapshot: true };
+    // Builds create VMs too; a sandbox's is the one with a slug.
+    const forked = () => creates.filter((c) => c.slug).at(-1)?.snapshotId;
+    await provider.ensure(ref("a"), opts);
+    await settled(() => snapshots.length === 1);
+    const [first] = snapshots;
+
+    await provider.ensure(ref("b"), opts);
+    expect(forked()).toBe(first);
+    expect(snapshots).toHaveLength(1);
+
+    head = "b".repeat(40);
+    await provider.ensure(ref("c"), opts);
+    expect(forked()).toBe(first);
+    await settled(() => snapshots.length === 2);
+    expect(snapshots[1]).not.toBe(first);
+
+    await provider.ensure(ref("d"), opts);
+    expect(forked()).toBe(snapshots[1]);
+    // The credential rides in the header, never in the URL.
+    expect(refsRequests.every((r) => !r.url.includes(TOKEN))).toBe(true);
+    expect(atob(refsRequests[0]!.auth!.slice("Basic ".length))).toContain(
+      TOKEN,
+    );
+    provider.close();
+  });
+
+  test("builds nothing unless asked, nor for a run with no dev server", async () => {
+    const { fake, snapshots } = client();
+    const provider = new FreestyleSandboxProvider({
+      apiKey: "k",
+      client: fake,
+    });
+    await provider.ensure(ref("a"), { tenant: TENANT, repo: REPO });
+    await provider.ensure(ref("b"), {
+      tenant: TENANT,
+      repo: REPO,
+      repoSnapshot: true,
+      cloneOnly: true,
+    });
+    await sleep(50);
+    expect(snapshots).toHaveLength(0);
+    provider.close();
+  });
+
+  test("a credential left on disk is never snapshotted, nor retried at once", async () => {
+    const { fake, snapshots, creates } = client({ tokenLeft: true });
+    const provider = new FreestyleSandboxProvider({
+      apiKey: "k",
+      client: fake,
+    });
+    const opts = { tenant: TENANT, repo: REPO, repoSnapshot: true };
+    await provider.ensure(ref("a"), opts);
+    await sleep(50);
+    const builds = creates.filter((c) => !c.slug).length;
+    await provider.ensure(ref("b"), opts);
+    await sleep(50);
+    expect(snapshots).toHaveLength(0);
+    expect(creates.filter((c) => !c.slug).length).toBe(builds);
     provider.close();
   });
 });

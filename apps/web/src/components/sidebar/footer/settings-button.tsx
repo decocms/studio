@@ -1,6 +1,7 @@
 /**
  * Settings, in the footer beside the inbox bell: you go there to change
  * something and come back, which is the bell's shape, not a destination's.
+ * Always the org's settings; a project's live in its Context.
  *
  * Two forms for the footer's two states, the same pair `inbox.tsx` keeps.
  */
@@ -14,63 +15,39 @@ import {
 import { LAYOUT_TOUR_ANCHORS } from "@/components/layout-tour/anchors";
 import { SETTINGS_DESTINATION } from "@/components/sidebar/nav-destinations";
 import { SidebarFooterIcon } from "./icon-slot";
-import { useNavigateToAgent } from "@/hooks/use-navigate-to-agent";
-import { useScopeId } from "@/hooks/use-project-scope";
 import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
 import { useProjectContext } from "@/sdk";
 import { track } from "@/lib/posthog-client";
 import { useT } from "@/i18n/use-t.ts";
 
-/** Scoped it opens the PROJECT's settings, which live in a session whose id is
- *  unknown at render time — so scoped is a button, unscoped an anchor. */
-function useSettingsTarget() {
+function useSettingsLink() {
   const { org } = useProjectContext();
-  const scopeId = useScopeId();
-  const navigateToAgent = useNavigateToAgent();
-
+  const { setOpenMobile } = useSidebar();
   return {
-    scopeId,
-    orgLink: { to: "/$org/settings", params: { org: org.slug } } as const,
-    open: () => {
+    to: "/$org/settings",
+    params: { org: org.slug },
+    onClick: () => {
       track("nav_destination_clicked", {
         destination: SETTINGS_DESTINATION,
-        target: scopeId ? "project" : "org",
+        target: "org",
       });
-      if (scopeId) navigateToAgent(scopeId, { panel: "settings" });
+      setOpenMobile(false);
     },
-  };
+  } as const;
 }
 
 /** Sized and styled as `InboxIconButton`; the two are one control strip. */
 export function SettingsIconButton() {
   const t = useT();
-  const { scopeId, orgLink, open } = useSettingsTarget();
+  const link = useSettingsLink();
   const label = t("sidebar.navDestinations.settings");
-  const className =
-    "relative flex size-7 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/60 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground";
-
-  if (scopeId) {
-    return (
-      <button
-        type="button"
-        aria-label={label}
-        title={label}
-        onClick={open}
-        className={className}
-        data-tour={LAYOUT_TOUR_ANCHORS.settings}
-      >
-        <Settings02 size={15} />
-      </button>
-    );
-  }
 
   return (
     <Link
-      {...orgLink}
+      {...link}
       aria-label={label}
       title={label}
-      onClick={open}
-      className={className}
+      className="relative flex size-7 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/60 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
       data-tour={LAYOUT_TOUR_ANCHORS.settings}
     >
       <Settings02 size={15} />
@@ -83,35 +60,8 @@ export function SettingsIconButton() {
 export function SettingsFullButton() {
   const t = useT();
   const collapsed = useSidebarCollapsed();
-  const { setOpenMobile } = useSidebar();
-  const { scopeId, orgLink, open } = useSettingsTarget();
+  const link = useSettingsLink();
   const label = t("sidebar.navDestinations.settings");
-
-  const body = (
-    <>
-      <SidebarFooterIcon>
-        <Settings02 size={16} />
-      </SidebarFooterIcon>
-      <span>{label}</span>
-    </>
-  );
-  const onSelect = () => {
-    open();
-    setOpenMobile(false);
-  };
-
-  if (scopeId) {
-    return (
-      <SidebarMenuButton
-        tooltip={collapsed ? label : undefined}
-        aria-label={label}
-        onClick={onSelect}
-        data-tour={LAYOUT_TOUR_ANCHORS.settings}
-      >
-        {body}
-      </SidebarMenuButton>
-    );
-  }
 
   return (
     <SidebarMenuButton
@@ -119,8 +69,11 @@ export function SettingsFullButton() {
       tooltip={collapsed ? label : undefined}
       data-tour={LAYOUT_TOUR_ANCHORS.settings}
     >
-      <Link {...orgLink} aria-label={label} onClick={onSelect}>
-        {body}
+      <Link {...link} aria-label={label}>
+        <SidebarFooterIcon>
+          <Settings02 size={16} />
+        </SidebarFooterIcon>
+        <span>{label}</span>
       </Link>
     </SidebarMenuButton>
   );

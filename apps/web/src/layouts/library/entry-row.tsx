@@ -4,7 +4,14 @@
  */
 
 import { createContext, use, type ReactNode } from "react";
-import { ArrowDown, ArrowUp, Palette, Zap } from "@untitledui/icons";
+import {
+  ArrowDown,
+  ArrowUp,
+  File01,
+  Folder,
+  Palette,
+  Zap,
+} from "@untitledui/icons";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   Table,
@@ -40,6 +47,30 @@ const COL = {
 
 /** Whether the table has a folder column: a cross-volume feed's. */
 const LocationColumn = createContext(false);
+
+/** Context's list: line marks, left-aligned columns, when before where. */
+const Plain = createContext(false);
+
+/** Plain's columns are fixed widths and never right-aligned. */
+const PLAIN_COL = {
+  location: "hidden w-32 @2xl/library:table-cell",
+  owner: "hidden w-36 @xl/library:table-cell",
+  size: "hidden w-20 @lg/library:table-cell",
+  updated: "hidden w-24 @md/library:table-cell",
+  menu: "w-10",
+} as const;
+
+function PlainMark({ kind }: { kind: LibraryEntryKind }) {
+  const Glyph =
+    kind === "folder"
+      ? Folder
+      : kind === "skill"
+        ? Zap
+        : kind === "brand"
+          ? Palette
+          : File01;
+  return <Glyph size={16} className="shrink-0 text-muted-foreground" />;
+}
 
 /** A tinted square for skills and brands: the gradient folder would promise a
  *  listing where a preview opens. */
@@ -111,12 +142,63 @@ export function EntryRow({
   const t = useT();
   const size = formatSize(entry);
   const showLocation = use(LocationColumn);
+  const plain = use(Plain);
+  const col = plain ? PLAIN_COL : COL;
+
+  const locationCell = showLocation && (
+    <TableCell
+      className={cn(col.location, "truncate text-muted-foreground")}
+      title={secondary}
+    >
+      {secondary && actions.onOpenSecondary ? (
+        <button
+          type="button"
+          className="max-w-full truncate hover:text-foreground hover:underline"
+          onClick={(e) => {
+            e.stopPropagation();
+            actions.onOpenSecondary?.();
+          }}
+        >
+          {secondary}
+        </button>
+      ) : secondary && plain ? (
+        <span className="flex min-w-0 items-center gap-1.5">
+          <Folder size={14} className="shrink-0" />
+          <span className="truncate">{secondary}</span>
+        </span>
+      ) : (
+        secondary
+      )}
+    </TableCell>
+  );
+  const ownerCell = (
+    <TableCell
+      className={cn(
+        col.owner,
+        plain ? "text-foreground" : "text-muted-foreground",
+      )}
+    >
+      <Owner userId={entry.entry.createdBy} />
+    </TableCell>
+  );
+  const sizeCell = (
+    <TableCell className={cn(col.size, "tabular-nums text-muted-foreground")}>
+      {size ?? ""}
+    </TableCell>
+  );
+  const updatedCell = (
+    <TableCell
+      className={cn(col.updated, "tabular-nums text-muted-foreground")}
+    >
+      {timeAgo(entry.updatedAt)}
+    </TableCell>
+  );
 
   return (
     <TableRow
       data-state={selected ? "selected" : undefined}
       aria-selected={selected}
-      className="group/card cursor-pointer hover:bg-accent/40"
+      className="group/card cursor-pointer hover:bg-accent"
       draggable={actions.draggable}
       onClick={actions.onOpen}
       onDragStart={actions.onDragStart}
@@ -126,46 +208,36 @@ export function EntryRow({
     >
       <TableCell className="min-w-0 max-w-0 pl-4">
         <span className="flex min-w-0 items-center gap-2.5">
-          <EntryMark kind={entry.kind} name={entry.name} />
-          <span className="truncate text-foreground" title={entry.name}>
+          {plain ? (
+            <PlainMark kind={entry.kind} />
+          ) : (
+            <EntryMark kind={entry.kind} name={entry.name} />
+          )}
+          <span
+            className={cn("truncate text-foreground", plain && "font-medium")}
+            title={entry.name}
+          >
             {entry.name}
           </span>
           {publicState && <PublicBadge state={publicState} t={t} />}
         </span>
       </TableCell>
-      {showLocation && (
-        <TableCell
-          className={cn(COL.location, "truncate text-muted-foreground")}
-          title={secondary}
-        >
-          {secondary && actions.onOpenSecondary ? (
-            <button
-              type="button"
-              className="max-w-full truncate hover:text-foreground hover:underline"
-              onClick={(e) => {
-                e.stopPropagation();
-                actions.onOpenSecondary?.();
-              }}
-            >
-              {secondary}
-            </button>
-          ) : (
-            secondary
-          )}
-        </TableCell>
+      {plain ? (
+        <>
+          {updatedCell}
+          {sizeCell}
+          {ownerCell}
+          {locationCell}
+        </>
+      ) : (
+        <>
+          {locationCell}
+          {ownerCell}
+          {sizeCell}
+          {updatedCell}
+        </>
       )}
-      <TableCell className={cn(COL.owner, "text-muted-foreground")}>
-        <Owner userId={entry.entry.createdBy} />
-      </TableCell>
-      <TableCell className={cn(COL.size, "tabular-nums text-muted-foreground")}>
-        {size ?? ""}
-      </TableCell>
-      <TableCell
-        className={cn(COL.updated, "tabular-nums text-muted-foreground")}
-      >
-        {timeAgo(entry.updatedAt)}
-      </TableCell>
-      <TableCell className={cn(COL.menu, "pr-2 text-right")}>
+      <TableCell className={cn(col.menu, "pr-2 text-right")}>
         <EntryActionsMenu
           label={entry.name}
           onBrowse={actions.onBrowse}
@@ -219,56 +291,85 @@ export function EntryList({
   sort,
   onSort,
   locationLabel,
+  plain = false,
   children,
 }: {
   sort: LibrarySort;
   onSort: (sort: LibrarySort) => void;
   /** Names the folder column of a cross-volume feed; omitted in a folder. */
   locationLabel?: string;
+  /** Context's list, on the page itself rather than a card. */
+  plain?: boolean;
   children: ReactNode;
 }) {
   const t = useT();
+  const col = plain ? PLAIN_COL : COL;
+  const align = plain ? "font-normal" : "ml-auto";
+  const locationHead = locationLabel && (
+    <TableHead className={col.location}>{locationLabel}</TableHead>
+  );
+  const ownerHead = (
+    <TableHead className={col.owner}>
+      {t("library.entries.createdBy")}
+    </TableHead>
+  );
+  const sizeHead = (
+    <TableHead className={col.size}>
+      <SortButton
+        label={t("library.entries.size")}
+        active={sort === "size"}
+        descending
+        className={align}
+        onClick={() => onSort("size")}
+      />
+    </TableHead>
+  );
+  const updatedHead = (
+    <TableHead className={col.updated}>
+      <SortButton
+        label={t("library.library.updated")}
+        active={sort === "updated"}
+        descending
+        className={align}
+        onClick={() => onSort("updated")}
+      />
+    </TableHead>
+  );
   return (
     <div className="@container/library min-w-0">
-      <Table>
+      <Table className={cn(plain && "table-fixed")}>
         <TableHeader>
           <TableRow>
             <TableHead className="pl-4">
               <SortButton
                 label={t("library.library.name")}
                 active={sort === "name"}
+                className={cn(plain && "font-normal")}
                 onClick={() => onSort("name")}
               />
             </TableHead>
-            {locationLabel && (
-              <TableHead className={COL.location}>{locationLabel}</TableHead>
+            {plain ? (
+              <>
+                {updatedHead}
+                {sizeHead}
+                {ownerHead}
+                {locationHead}
+              </>
+            ) : (
+              <>
+                {locationHead}
+                {ownerHead}
+                {sizeHead}
+                {updatedHead}
+              </>
             )}
-            <TableHead className={COL.owner}>
-              {t("library.entries.createdBy")}
-            </TableHead>
-            <TableHead className={COL.size}>
-              <SortButton
-                label={t("library.entries.size")}
-                active={sort === "size"}
-                descending
-                className="ml-auto"
-                onClick={() => onSort("size")}
-              />
-            </TableHead>
-            <TableHead className={COL.updated}>
-              <SortButton
-                label={t("library.library.updated")}
-                active={sort === "updated"}
-                descending
-                className="ml-auto"
-                onClick={() => onSort("updated")}
-              />
-            </TableHead>
-            <TableHead className={COL.menu} />
+            <TableHead className={col.menu} />
           </TableRow>
         </TableHeader>
         <TableBody>
-          <LocationColumn value={!!locationLabel}>{children}</LocationColumn>
+          <Plain value={plain}>
+            <LocationColumn value={!!locationLabel}>{children}</LocationColumn>
+          </Plain>
         </TableBody>
       </Table>
     </div>

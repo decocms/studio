@@ -259,6 +259,9 @@ describe("isPrCreateBashCommand", () => {
 
 function makeItem(overrides: Partial<TaskBoardItem> = {}): TaskBoardItem {
   return {
+    harnessId: "claude-code",
+    parentId: null,
+    isEpic: false,
     id: "item-1",
     organizationId: "org-1",
     title: "t",
@@ -343,6 +346,7 @@ describe("reactToFailedTaskRun on a card that already moved on", () => {
     const calls: string[] = [];
     const taskBoard = {
       failedRunInfo: async () => ({ kind: "error", errorText: null }),
+      runMovesLinkedCards: async () => true,
       linkedTaskIds: async () => ["item-1"],
       getById: async () => ({
         id: "item-1",

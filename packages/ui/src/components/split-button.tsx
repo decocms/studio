@@ -78,13 +78,7 @@ function SplitButtonMenuEntry({ item }: { item: SplitButtonMenuItem }) {
   );
 }
 
-/** A primary action with an attached dropdown half — `[ Primary | v ]`. Without
- *  `items` it collapses to a plain button (same rounding as `Button`); with
- *  them the halves share one control and only the primary honours `disabled`.
- *  Every focusable part wears {@link INSET_FOCUS_RING}, because this lives in a
- *  panel header where an outset ring is clipped and a ring on one half would
- *  overlap the other; a disabled primary moves focus to its tooltip wrapper, so
- *  that span carries the ring too. */
+/** A primary action with an attached menu half. Without `items`, a plain button. */
 export function SplitButton({
   label,
   onClick,
@@ -100,6 +94,7 @@ export function SplitButton({
   className,
 }: SplitButtonProps) {
   const hasMenu = (items?.length ?? 0) > 0;
+  // Inset: panel headers clip an outset ring, and it would overlap the other half.
   /**
    * The shared inset ring is the `ring` token, which is picked to contrast with
    * the PAGE — so on a filled button, whose fill is that same light-on-dark

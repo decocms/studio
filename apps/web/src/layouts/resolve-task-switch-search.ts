@@ -7,14 +7,16 @@
  *
  * Precedence for the view:
  *   1. `opts.panel` — an explicit caller intent (e.g. home tile → pinned view).
- *   2. `savedLayout` — the target thread's own remembered layout (per-thread
+ *   2. `opts.newThread` — keep an open app within the same agent.
+ *   3. `savedLayout` — the target thread's own remembered layout (per-thread
  *      memory). Restores that thread's tabs, including per-thread views it owned.
- *   3. carry-forward — within the same agent, keep a system-level tab
+ *   4. carry-forward — within the same agent, keep a system-level tab
  *      (git/preview/settings/…) but drop per-thread tabs from the source thread.
  *      Skipped on an agent switch so the new agent's own default resolves.
  *
- * The side panel is only pinned in the URL when the target thread's own
- * remembered layout recorded one. Otherwise `sidepanel` is omitted so
+ * New chats in an open app keep the current panel visibility. Other switches
+ * pin the side panel only when the target thread's remembered layout recorded
+ * one. Otherwise `sidepanel` is omitted so
  * resolveDefaultPanelState derives the default from the target agent's layout
  * config (chatDefaultOpen / defaultMainView) — a fresh thread on an agent that
  * opts out of the chat panel must not be forced chat-open.
@@ -33,19 +35,27 @@
  *   through their own panel toggles or keystrokes is a broken Back button.
  */
 
-import { isPerThreadTab } from "@/layouts/main-panel-tabs/tab-id";
+import {
+  isPerThreadTab,
+  parsePinnedViewTabId,
+} from "@/layouts/main-panel-tabs/tab-id";
 import type { ThreadLayout } from "@/lib/thread-layout-memory";
 
 export interface ResolveTaskSwitchInput {
   /** The current (source) thread's agent and open view. */
-  prev: { virtualmcpid?: unknown; tabId?: string };
+  prev: {
+    virtualmcpid?: unknown;
+    tabId?: string;
+    mainpanel?: boolean;
+    sidepanel?: boolean;
+  };
   /** Target agent id, when the caller pins one. */
   virtualMcpId?: string;
   /** Well-known Decopilot agent id — the default when no `virtualmcpid`. */
   decopilotId: string;
   /** The target thread's remembered layout, or null if none. */
   savedLayout: ThreadLayout | null;
-  opts?: { autosend?: boolean; panel?: string };
+  opts?: { autosend?: boolean; panel?: string; newThread?: boolean };
   /** `?autosend` sentinel value, injected to avoid an import cycle. */
   autosendValue: string;
 }
@@ -87,6 +97,15 @@ export function resolveTaskSwitchSearch(
   if (opts?.panel) {
     // Explicit intent wins outright — ignore saved/carried layout.
     tabId = opts.panel;
+  } else if (
+    opts?.newThread &&
+    !isAgentSwitch &&
+    parsePinnedViewTabId(prev.tabId)
+  ) {
+    // Starting a chat leaves the open app in place, even when reusing an empty chat.
+    tabId = prev.tabId;
+    next.mainpanel = prev.mainpanel;
+    sidepanel = prev.sidepanel;
   } else if (savedLayout) {
     // Restore the target thread's own layout. A remembered per-thread tab is
     // valid here because it belongs to *this* thread; if it has since become

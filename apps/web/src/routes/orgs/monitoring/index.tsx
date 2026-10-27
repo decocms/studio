@@ -74,6 +74,9 @@ import { AuditTabContent, MonitoringLogsTable } from "./audit.tsx";
 import { ThreadsTabContent } from "./threads.tsx";
 import { ThreadsFiltersPopover } from "./threads-filters-popover.tsx";
 import { AutomationsTabContent } from "./automations.tsx";
+import { OrderMonitorStoresTab } from "@/components/order-monitor/order-monitor-stores";
+import { FeatureGate } from "@/components/paywall/feature-gate";
+import { usePublicConfig } from "@/hooks/use-public-config";
 import { getOrgMembers } from "./utils.ts";
 import { track } from "@/lib/posthog-client";
 
@@ -84,16 +87,25 @@ import { track } from "@/lib/posthog-client";
  */
 const EMPTY_ARRAY: never[] = [];
 
-type MonitoringTab = "threads" | "overview" | "audit" | "automations";
+type MonitoringTab =
+  | "threads"
+  | "overview"
+  | "audit"
+  | "automations"
+  | "stores";
 
 /** Chats come first: they are what the monitor is opened for. */
 function useMonitoringTabs(): { id: MonitoringTab; label: string }[] {
   const t = useT();
+  const config = usePublicConfig();
   return [
     { id: "threads", label: t("orgs.monitoring.chats") },
     { id: "overview", label: t("orgs.monitoring.overview") },
     { id: "audit", label: t("orgs.monitoring.audit") },
     { id: "automations", label: t("orgs.monitoring.automations") },
+    ...(config.orderMonitorEnabled === true
+      ? [{ id: "stores" as const, label: t("orderMonitor.storesTab") }]
+      : []),
   ];
 }
 
@@ -279,13 +291,15 @@ function FiltersPopover({
             <>
               <Badge
                 variant="default"
-                className="sm:hidden absolute -top-1.5 -right-1.5 h-4 min-w-4 px-1 text-[10px] leading-none"
+                size="sm"
+                className="sm:hidden absolute -top-1.5 -right-1.5 min-w-4 leading-none"
               >
                 {activeFiltersCount}
               </Badge>
               <Badge
                 variant="default"
-                className="hidden sm:flex ml-1 h-5 w-5 rounded-full p-0 items-center justify-center text-xs"
+                size="icon"
+                className="hidden sm:flex ml-1"
               >
                 {activeFiltersCount}
               </Badge>
@@ -330,7 +344,6 @@ function FiltersPopover({
                 }
                 onSearchChange={onConnectionSearchChange}
                 placeholder={t("orgs.monitoring.allServers")}
-                variant="secondary"
                 className="w-full"
                 maxCount={2}
               />
@@ -347,7 +360,6 @@ function FiltersPopover({
                   onUpdateFilters({ virtualMcpId: values })
                 }
                 placeholder={t("orgs.monitoring.allAgents")}
-                variant="secondary"
                 className="w-full"
                 maxCount={2}
               />
@@ -363,11 +375,10 @@ function FiltersPopover({
                   defaultValue={llmUserIds}
                   onValueChange={(values) => onLlmUserIdsChange?.(values)}
                   placeholder={t("orgs.monitoring.allMembers")}
-                  variant="secondary"
                   className="w-full"
                   maxCount={2}
                 />
-                <p className="text-[11px] text-muted-foreground mt-1">
+                <p className="text-2xs text-muted-foreground mt-1">
                   {t("orgs.monitoring.filtersAiUsageOnly")}
                 </p>
               </div>
@@ -434,12 +445,7 @@ function FiltersPopover({
                 </label>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6"
-                      onClick={toggleMode}
-                    >
+                    <Button variant="ghost" size="icon-xs" onClick={toggleMode}>
                       {propertyFilterMode === "raw" ? (
                         <Grid01 size={14} />
                       ) : (
@@ -497,9 +503,8 @@ function FiltersPopover({
                           })}
                         </span>
                         <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                          variant="ghost-destructive"
+                          size="icon-xs"
                           onClick={() => removePropertyFilter(index)}
                         >
                           <Trash01 size={12} />
@@ -634,6 +639,8 @@ interface MonitoringDashboardContentProps {
   from: string;
   to: string;
   propertyFilters: PropertyFilter[];
+  store: string | undefined;
+  at: string | undefined;
   onUpdateFilters: (updates: Partial<MonitoringSearchParams>) => void;
   onTimeRangeChange: (range: TimeRangeValue) => void;
   onStreamingToggle: () => void;
@@ -655,6 +662,8 @@ function MonitoringDashboardContent({
   from,
   to,
   propertyFilters,
+  store,
+  at,
   onUpdateFilters,
   onTimeRangeChange,
   onStreamingToggle,
@@ -784,7 +793,12 @@ function MonitoringDashboardContent({
                 if (next) onTabChange(next.id);
               }}
             />
-            <div className="flex items-center gap-2">
+            <div
+              className={cn(
+                "flex items-center gap-2",
+                tab === "stores" && "hidden",
+              )}
+            >
               {(tab === "overview" || tab === "audit") && (
                 <>
                   <Button
@@ -954,7 +968,20 @@ function MonitoringDashboardContent({
         </div>
       </Page.Container>
 
-      {tab === "automations" ? (
+      {tab === "stores" ? (
+        <div className="flex-1 flex flex-col overflow-auto min-w-0">
+          <FeatureGate feature="monitoring">
+            <OrderMonitorStoresTab
+              orgSlug={org.slug}
+              store={store}
+              at={at}
+              onSelect={(selection) =>
+                onUpdateFilters({ store: selection.store, at: selection.at })
+              }
+            />
+          </FeatureGate>
+        </div>
+      ) : tab === "automations" ? (
         <AutomationsTabContent dateRange={dateRange} />
       ) : tab === "threads" ? (
         <ThreadsTabContent
@@ -1047,6 +1074,8 @@ export default function MonitoringDashboard() {
     streaming = true,
     propertyFilters: propertyFiltersStr = "",
     hideSystem = false,
+    store,
+    at,
   } = search;
 
   const propertyFilters = deserializePropertyFilters(propertyFiltersStr);
@@ -1164,6 +1193,8 @@ export default function MonitoringDashboard() {
               from={from}
               to={to}
               propertyFilters={propertyFilters}
+              store={store}
+              at={at}
               onUpdateFilters={updateFilters}
               onTimeRangeChange={(range) => {
                 track("monitoring_time_range_changed", {

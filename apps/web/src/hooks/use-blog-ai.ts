@@ -1,4 +1,7 @@
-import { useOrgFlag, useOrgFlagState } from "@/hooks/use-organization-settings";
+import {
+  useOrgFlag,
+  useOrgFlagWithPending,
+} from "@/hooks/use-organization-settings";
 
 /**
  * Whether the org turned on the blog's agentic half — the brand context tab,
@@ -16,5 +19,5 @@ export function useBlogAi(): boolean {
 
 /** The same answer, with "not known yet" told apart from "off". */
 export function useBlogAiState(): { enabled: boolean; isPending: boolean } {
-  return useOrgFlagState("blog_ai_enabled");
+  return useOrgFlagWithPending("blog_ai_enabled");
 }

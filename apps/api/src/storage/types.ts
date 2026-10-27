@@ -30,6 +30,7 @@ import type {
 import type { OrgNoticeSeverity } from "@decocms/shared/organization/notice";
 import type { ThreadMetadata } from "@decocms/shared/entities";
 import type {
+  TaskBoardHarnessId,
   ReviewerKind,
   TaskCommentAudience,
 } from "@decocms/shared/task-board";
@@ -284,6 +285,29 @@ export interface MCPConnectionTable {
   pinned: boolean;
   created_at: ColumnType<Date, Date | string, never>;
   updated_at: ColumnType<Date, Date | string, Date | string>;
+}
+
+/** One order-monitor rule's last verdict for one store (an ingest connection);
+ *  see monitoring/dbos-order-monitor.ts. `since` is when `status` began. */
+export interface OrderMonitorStateTable {
+  organization_id: string;
+  connection_id: string;
+  rule: string;
+  status: string;
+  since: ColumnType<Date, Date, Date>;
+  evaluated_at: ColumnType<Date, Date, Date>;
+  verdict: JsonObject<Record<string, unknown>>;
+  /** The status the last tick replaced. */
+  prev_status: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
+  task_board_item_id: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
 }
 
 /**
@@ -1506,6 +1530,9 @@ export type AutomationTriggerType =
   | "webhook"
   | "board_column_transition"
   | "board_pr_ready"
+  | "linked_chat_run"
+  | "board_pr_merged"
+  | "chat_pr_opened"
   | "jira_transition";
 
 /**
@@ -1774,6 +1801,11 @@ export type TaskBoardItemType =
   | "security";
 
 export interface TaskBoardItemTable {
+  harness_id: ColumnType<
+    TaskBoardHarnessId,
+    TaskBoardHarnessId | undefined,
+    TaskBoardHarnessId
+  >;
   id: string;
   organization_id: string;
   title: string;
@@ -1802,6 +1834,14 @@ export interface TaskBoardItemTable {
     string | null | undefined,
     string | null
   >;
+  /** The card this one sits under: an epic, or a card it is a subtask of
+   *  (migration 257). */
+  parent_id: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
+  is_epic: ColumnType<boolean, boolean | undefined, boolean>;
   /** The sprint the card is planned into (`task_board_sprints.id`); null =
    *  backlog. */
   sprint_id: ColumnType<
@@ -2099,6 +2139,10 @@ export interface TaskBoardItemThreadRef {
 }
 
 export interface TaskBoardItem {
+  harnessId: TaskBoardHarnessId;
+  /** The epic or card this one sits under; null at the top level. */
+  parentId: string | null;
+  isEpic: boolean;
   id: string;
   organizationId: string;
   title: string;
@@ -2381,6 +2425,7 @@ export interface RepositoryTable {
   sandbox_image: string | null;
   /** Repo-scoped `mcp-github` child whose token still clones this repo. */
   legacy_connection_id: string | null;
+  monitor_deploys: ColumnType<boolean, boolean | undefined, boolean>;
   created_by: string | null;
   created_at: ColumnType<Date, Date | string | undefined, never>;
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
@@ -2506,9 +2551,16 @@ export interface Database {
 
   // OAuth PKCE state table (short-lived, server-side verifier storage)
   oauth_pkce_states: OAuthPkceStateTable;
+  codex_subscriptions: {
+    user_id: string;
+    encrypted_auth: string;
+    auth_hash: string;
+    created_at: Date;
+  };
   claude_subscriptions: ClaudeSubscriptionTable;
   github_copilot_subscriptions: ClaudeSubscriptionTable;
   org_shared_plans: OrgSharedPlanTable;
+  order_monitor_state: OrderMonitorStateTable;
 
   // Automations tables
   automations: AutomationTable;

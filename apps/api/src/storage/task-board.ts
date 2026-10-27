@@ -9,8 +9,13 @@ import { readRepositoryMetadata } from "./repository-metadata";
 import { sql, type Kysely } from "kysely";
 import { type RepoRef, splitOwnerName } from "@decocms/shared/git-providers";
 // Shared with the quota gate, which charges the same class of task.
-import { IMPLEMENTER_SYSTEM_KEY } from "../automations/builtin";
+import {
+  IMPLEMENTER_SYSTEM_KEY,
+  LINKED_CHATS_SYSTEM_KEY,
+} from "../automations/builtin";
 import { isReportsTask } from "../billing/task-quota";
+import { isBoardRunThread } from "../tools/task-board/task-run-context";
+import { createAutomationsStorage } from "./automations";
 import type {
   Database,
   TaskBoardActivity,
@@ -25,6 +30,7 @@ import type {
 } from "./types";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
 import {
+  type TaskBoardHarnessId,
   DEFAULT_TASK_TYPE,
   isReviewerThreadTitle,
   LANES,
@@ -192,12 +198,23 @@ export const TERMINAL_THREAD_STATUSES = new Set([
  * `repo` its legacy `owner/name` label (migration 204), so a card carrying
  * only the id is repo-backed too — read as repo-less, its run went to QA,
  * past the sweeper that finds a PR opened inside the sandbox by its branch.
+ *
+ * A Super Agent card whose used thread has a repository bound counts too: the
+ * run can bind it on the thread alone (the org's only repo, or `TASK_ADD_REPO`),
+ * leaving both columns empty. Only the Super Agent's, because the sweeper
+ * settles no other card.
  */
 export function isRepoBacked(item: {
   repo?: string | null;
   repositoryId?: string | null;
+  assigneeId?: string | null;
+  threads?: { hasMessages: boolean; hasPreview?: boolean }[];
 }): boolean {
-  return item.repo != null || item.repositoryId != null;
+  if (item.repo != null || item.repositoryId != null) return true;
+  return (
+    item.assigneeId === SUPER_AGENT_ASSIGNEE_ID &&
+    (item.threads ?? []).some((t) => t.hasMessages && t.hasPreview)
+  );
 }
 
 /**
@@ -222,7 +239,12 @@ export function shouldAdvanceToReview(
     status: string;
     repo?: string | null;
     repositoryId?: string | null;
-    threads: { status: string | null; hasMessages: boolean }[];
+    assigneeId?: string | null;
+    threads: {
+      status: string | null;
+      hasMessages: boolean;
+      hasPreview?: boolean;
+    }[];
   },
   /** Whether a PR is linked — a repo-backed task needs one to advance on finish. */
   hasPr = false,
@@ -399,6 +421,7 @@ export class TaskBoardStorage {
   }
 
   async create(params: {
+    harnessId?: TaskBoardHarnessId;
     organizationId: string;
     title: string;
     description?: string | null;
@@ -415,6 +438,9 @@ export class TaskBoardStorage {
     virtualMcpId?: string | null;
     /** The sprint the card is planned into; absent = backlog. */
     sprintId?: string | null;
+    /** The epic or card to file this one under; see `assertParentAllowed`. */
+    parentId?: string | null;
+    isEpic?: boolean;
     dueDate?: string | null;
     /** Sender-minted finding identity — see task-board-import. */
     externalKey?: string | null;
@@ -449,10 +475,13 @@ export class TaskBoardStorage {
           type: params.type ?? DEFAULT_TASK_TYPE,
           assignee_id: params.assigneeId ?? null,
           assigned_by: params.assignedBy ?? null,
+          harness_id: params.harnessId ?? "claude-code",
           repo: params.repo ?? null,
           repository_id: params.repositoryId ?? null,
           virtual_mcp_id: params.virtualMcpId ?? null,
           sprint_id: params.sprintId ?? null,
+          parent_id: params.parentId ?? null,
+          is_epic: params.isEpic ?? false,
           due_date: params.dueDate ?? null,
           external_key: params.externalKey ?? null,
           external_url: params.externalUrl ?? null,
@@ -482,6 +511,14 @@ export class TaskBoardStorage {
       await sql`select pg_advisory_xact_lock(hashtext(${`task-board-key-seq:${params.organizationId}`})::bigint)`.execute(
         trx,
       );
+      if (params.parentId) {
+        await assertParentAllowed(trx, {
+          organizationId: params.organizationId,
+          childId: null,
+          childIsEpic: params.isEpic ?? false,
+          parentId: params.parentId,
+        });
+      }
       return insert(trx);
     });
 
@@ -494,6 +531,7 @@ export class TaskBoardStorage {
     id: string,
     organizationId: string,
     data: {
+      harnessId?: TaskBoardHarnessId;
       title?: string;
       description?: string | null;
       status?: string;
@@ -509,12 +547,42 @@ export class TaskBoardStorage {
       externalUrl?: string | null;
       previewRoutes?: string[] | null;
       sortOrder?: number;
+      /** See `applyHierarchy` for the rules. */
+      parentId?: string | null;
+      isEpic?: boolean;
     },
     by: string,
   ): Promise<TaskBoardItem> {
-    const row = await this.db
+    const hierarchyChange =
+      data.parentId !== undefined || data.isEpic !== undefined;
+    const row = hierarchyChange
+      ? await this.inTransaction(async (trx) => {
+          const hierarchy = await applyHierarchy(trx, id, organizationId, {
+            parentId: data.parentId,
+            isEpic: data.isEpic,
+          });
+          return this.writeUpdate(trx, id, organizationId, data, hierarchy, by);
+        })
+      : await this.writeUpdate(this.db, id, organizationId, data, {}, by);
+
+    const item = this.itemFromDbRow(row);
+    await this.attachRefs([item], organizationId);
+    return item;
+  }
+
+  private writeUpdate(
+    db: Kysely<Database>,
+    id: string,
+    organizationId: string,
+    data: Parameters<TaskBoardStorage["update"]>[2],
+    hierarchy: { parent_id?: string | null; is_epic?: boolean },
+    by: string,
+  ) {
+    return db
       .updateTable("task_board_items")
       .set({
+        ...hierarchy,
+        ...(data.harnessId !== undefined ? { harness_id: data.harnessId } : {}),
         ...(data.title !== undefined ? { title: data.title } : {}),
         ...(data.description !== undefined
           ? { description: data.description }
@@ -571,10 +639,17 @@ export class TaskBoardStorage {
       .where("organization_id", "=", organizationId)
       .returningAll()
       .executeTakeFirstOrThrow();
+  }
 
-    const item = this.itemFromDbRow(row);
-    await this.attachRefs([item], organizationId);
-    return item;
+  /** Ids of the cards filed directly under `id`. */
+  async childIds(id: string, organizationId: string): Promise<string[]> {
+    const rows = await this.db
+      .selectFrom("task_board_items")
+      .select("id")
+      .where("organization_id", "=", organizationId)
+      .where("parent_id", "=", id)
+      .execute();
+    return rows.map((row) => row.id);
   }
 
   /**
@@ -618,6 +693,14 @@ export class TaskBoardStorage {
           .where("organization_id", "=", organizationId)
           // Already dismissed — keep the first dismissal's who/when.
           .where("dismissed_at", "is", null)
+          .execute();
+        // The row stays, so the foreign key won't release its children: do it
+        // here, or they would sit under a card nobody can open.
+        await trx
+          .updateTable("task_board_items")
+          .set({ parent_id: null })
+          .where("parent_id", "=", id)
+          .where("organization_id", "=", organizationId)
           .execute();
         return true;
       }
@@ -1361,26 +1444,30 @@ export class TaskBoardStorage {
    * Fail every task-linked thread that no run can still be behind, in ONE
    * statement, and say which cards they were on.
    *
-   * `run_started_at IS NULL` is the discriminator (same as `isNeverStartedRun`):
-   * the run never began, so no pod owns it and DBOS cannot resume it. A run that
-   * DID begin belongs to the idle reaper.
+   * Two shapes, told apart by `run_started_at`:
+   * - never started (null): the dispatch never landed, so no pod owns it and
+   *   DBOS cannot resume it. Recorded as `abandoned`.
+   * - started, then silent past `staleBefore`: a live run heartbeats
+   *   `last_progress_at` and its own pod fails it after `RUN_IDLE_TIMEOUT_MS`
+   *   of silence, so this one's pod is gone (SIGKILL, node loss) and the
+   *   per-pod idle reaper died with it. Recorded as `stall`, the kind that
+   *   reaper writes.
    *
    * This exists as SQL on the board storage because the sweeper has to do it
-   * headlessly and for BOTH lanes. `recoverStalledTasks` already reaped these,
-   * but only on `TASK_BOARD_ITEM_LIST` (a human opening the board) and only for
-   * cards parked In Progress — so a REVIEWER thread whose dispatch never landed
-   * sat `in_progress` forever, and `reviewerHandledThisCycle` read it as a live
-   * review and never retried that reviewer. Three of them did exactly that in
-   * one burst.
+   * headlessly and for every lane. `recoverStalledTasks` only runs on
+   * `TASK_BOARD_ITEM_LIST`, only for cards parked In Progress, and only for
+   * never-started runs — so a REVIEWER thread whose dispatch never landed sat
+   * `in_progress` forever and blocked that reviewer's retry, and a run orphaned
+   * mid-stream kept its card (archived or not) showing "agent running".
    *
-   * Marking them `failed`/`abandoned` is what hands them to the reactions that
-   * already exist: a Super Agent thread to `reactToFailedTaskRun` (retry), a
-   * reviewer thread to the reviewer retry (a failed attempt is not a review).
+   * Marking them `failed` is what hands them to the reactions that already
+   * exist: a Super Agent thread to `reactToFailedTaskRun` (retry), a reviewer
+   * thread to the reviewer retry (a failed attempt is not a review).
    */
-  async failNeverStartedLinkedThreads(
+  async failAbandonedLinkedThreads(
     limit: number,
     staleBefore: Date,
-    reason: string,
+    reasons: { neverStarted: string; stalled: string },
   ): Promise<{ threadId: string; itemId: string; organizationId: string }[]> {
     const candidates = await this.db
       .selectFrom("threads as t")
@@ -1391,7 +1478,6 @@ export class TaskBoardStorage {
         "l.organization_id as organizationId",
       ])
       .where("t.status", "=", "in_progress")
-      .where("t.run_started_at", "is", null)
       .where((eb) =>
         eb.and([
           eb("t.updated_at", "<", staleBefore),
@@ -1411,8 +1497,9 @@ export class TaskBoardStorage {
       .updateTable("threads")
       .set({
         status: "failed",
-        failure_reason: reason,
-        failure_kind: "abandoned",
+        // SET reads the pre-update row, so these see the `run_started_at` cleared below.
+        failure_reason: sql<string>`case when run_started_at is null then ${reasons.neverStarted} else ${reasons.stalled} end`,
+        failure_kind: sql<string>`case when run_started_at is null then 'abandoned' else 'stall' end`,
         run_owner_pod: null,
         run_config: null,
         run_started_at: null,
@@ -1918,6 +2005,54 @@ export class TaskBoardStorage {
     return row.systemKey !== IMPLEMENTER_SYSTEM_KEY;
   }
 
+  /**
+   * The thread is a run of the built-in Implementer: its trigger is the
+   * Implementer's, or it is a trigger-less board run from before every card
+   * run was an Implementer fire (#7933) and not a reviewer's.
+   */
+  async isImplementerRun(
+    threadId: string,
+    organizationId: string,
+  ): Promise<boolean> {
+    const row = await this.db
+      .selectFrom("threads as t")
+      .leftJoin("automation_triggers as tr", "tr.id", "t.trigger_id")
+      .leftJoin("automations as a", "a.id", "tr.automation_id")
+      .select([
+        "t.title",
+        "t.metadata",
+        "t.trigger_id as triggerId",
+        "a.system_key as systemKey",
+      ])
+      .where("t.id", "=", threadId)
+      .where("t.organization_id", "=", organizationId)
+      .executeTakeFirst();
+    if (!row) return false;
+    if (row.triggerId) return row.systemKey === IMPLEMENTER_SYSTEM_KEY;
+    return (
+      isBoardRunThread(row) &&
+      !REVIEWER_KINDS.some((kind) => isReviewerThreadTitle(row.title, kind))
+    );
+  }
+
+  /**
+   * Whether a run on `threadId` may move the cards it is linked to. The
+   * Implementer's always may; any other thread only while the built-in "Move
+   * cards from linked chats" is on, and an org not seeded with it yet keeps
+   * the behavior it had before it existed.
+   */
+  async runMovesLinkedCards(
+    threadId: string,
+    organizationId: string,
+  ): Promise<boolean> {
+    if (await this.isImplementerRun(threadId, organizationId)) return true;
+    const on = await createAutomationsStorage(this.db).builtinActive(
+      organizationId,
+      LINKED_CHATS_SYSTEM_KEY,
+    );
+    return on ?? true;
+  }
+
   async advanceLinkedTasksToReviewOnThreadFinish(
     threadId: string,
     organizationId: string,
@@ -1926,6 +2061,9 @@ export class TaskBoardStorage {
     // Handing a finished card on is the Implementer's step. Another
     // automation's run works the card where it is.
     if (await this.isOtherAutomationRun(threadId, organizationId)) return moved;
+    if (!(await this.runMovesLinkedCards(threadId, organizationId))) {
+      return moved;
+    }
     for (const taskId of await this.linkedTaskIds(threadId, organizationId)) {
       const item = await this.getById(taskId, organizationId);
       if (!item) continue;
@@ -2165,6 +2303,7 @@ export class TaskBoardStorage {
     ) {
       return [];
     }
+    if (!(await this.runMovesLinkedCards(threadId, organizationId))) return [];
     const moved: TaskBoardItem[] = [];
     for (const taskId of await this.linkedTaskIds(threadId, organizationId)) {
       const item = await this.getById(taskId, organizationId);
@@ -2982,6 +3121,7 @@ export class TaskBoardStorage {
   }
 
   private itemFromDbRow(row: {
+    harness_id?: TaskBoardHarnessId;
     id: string;
     organization_id: string;
     title: string;
@@ -3003,6 +3143,8 @@ export class TaskBoardStorage {
     key_seq: number;
     retry_attempts?: number;
     review_cycle_started_at?: string | Date | null;
+    parent_id?: string | null;
+    is_epic?: boolean;
     created_by: string;
     created_at: string | Date;
     updated_by: string;
@@ -3018,6 +3160,9 @@ export class TaskBoardStorage {
       type: (row.type ?? DEFAULT_TASK_TYPE) as TaskBoardItemType,
       assigneeId: row.assignee_id,
       assignedBy: row.assigned_by,
+      harnessId: row.harness_id ?? "claude-code",
+      parentId: row.parent_id ?? null,
+      isEpic: row.is_epic ?? false,
       repo: row.repo,
       repositoryId: row.repository_id ?? null,
       virtualMcpId: row.virtual_mcp_id ?? null,
@@ -3053,4 +3198,147 @@ export class TaskBoardStorage {
           : row.updated_at,
     };
   }
+}
+/** A rejected epic or subtask change; the message is for the caller. */
+export class TaskBoardHierarchyError extends Error {
+  override name = "TaskBoardHierarchyError";
+}
+
+/**
+ * Whether a card may sit under `parentId`. The parent row is locked, so two
+ * concurrent moves can't combine into a shape neither would be allowed alone.
+ *
+ * The board nests three levels at most: epic, card, subtask. An epic takes no
+ * parent, a subtask's parent is a card that is not itself a subtask, and a
+ * card with subtasks can't become one. Those rules already rule out cycles;
+ * the ancestor walk keeps that true if they loosen.
+ */
+async function assertParentAllowed(
+  db: Kysely<Database>,
+  params: {
+    organizationId: string;
+    /** Null for a card being created, which has no children yet. */
+    childId: string | null;
+    childIsEpic: boolean;
+    parentId: string;
+  },
+): Promise<void> {
+  const { organizationId, childId, parentId } = params;
+  if (parentId === childId) {
+    throw new TaskBoardHierarchyError("A card can't be its own parent.");
+  }
+  if (params.childIsEpic) {
+    throw new TaskBoardHierarchyError("An epic can't have a parent.");
+  }
+  const parent = await db
+    .selectFrom("task_board_items")
+    .select(["id", "parent_id", "is_epic"])
+    .where("id", "=", parentId)
+    .where("organization_id", "=", organizationId)
+    .where("dismissed_at", "is", null)
+    .where("source", "is", null)
+    .forUpdate()
+    .executeTakeFirst();
+  if (!parent) {
+    throw new TaskBoardHierarchyError(`Parent card not found: ${parentId}`);
+  }
+  if (parent.is_epic) return;
+
+  if (parent.parent_id) {
+    const grandparent = await db
+      .selectFrom("task_board_items")
+      .select("is_epic")
+      .where("id", "=", parent.parent_id)
+      .where("organization_id", "=", organizationId)
+      .executeTakeFirst();
+    if (grandparent && !grandparent.is_epic) {
+      throw new TaskBoardHierarchyError(
+        "A subtask can't have subtasks of its own.",
+      );
+    }
+  }
+  if (!childId) return;
+
+  const child = await db
+    .selectFrom("task_board_items")
+    .select("id")
+    .where("organization_id", "=", organizationId)
+    .where("parent_id", "=", childId)
+    .limit(1)
+    .executeTakeFirst();
+  if (child) {
+    throw new TaskBoardHierarchyError(
+      "A card with subtasks can't become a subtask.",
+    );
+  }
+
+  // UNION, not UNION ALL: it stops at a row it has seen, so a cycle written
+  // some other way can't loop forever.
+  const cycle = await sql<{ id: string }>`
+    WITH RECURSIVE ancestors AS (
+      SELECT id, parent_id FROM task_board_items
+      WHERE id = ${parentId} AND organization_id = ${organizationId}
+      UNION
+      SELECT t.id, t.parent_id FROM task_board_items t
+      JOIN ancestors a ON t.id = a.parent_id
+      WHERE t.organization_id = ${organizationId}
+    )
+    SELECT id FROM ancestors WHERE id = ${childId} LIMIT 1
+  `.execute(db);
+  if (cycle.rows.length > 0) {
+    throw new TaskBoardHierarchyError(
+      "That parent is already under this card.",
+    );
+  }
+}
+
+/**
+ * Resolve a parent or epic change on `id` into the columns to write.
+ *
+ * Making a card an epic lifts it out of its parent. Turning an epic back into
+ * a card releases its children to the top level: under a plain card they
+ * would become hidden subtasks, and their own subtasks would sit a level
+ * deeper than anything shows.
+ */
+async function applyHierarchy(
+  db: Kysely<Database>,
+  id: string,
+  organizationId: string,
+  change: { parentId?: string | null; isEpic?: boolean },
+): Promise<{ parent_id: string | null; is_epic: boolean }> {
+  const current = await db
+    .selectFrom("task_board_items")
+    .select(["parent_id", "is_epic"])
+    .where("id", "=", id)
+    .where("organization_id", "=", organizationId)
+    .forUpdate()
+    .executeTakeFirst();
+  if (!current) throw new Error(`Task board item not found: ${id}`);
+
+  const isEpic = change.isEpic ?? current.is_epic;
+  if (isEpic && change.parentId) {
+    throw new TaskBoardHierarchyError("An epic can't have a parent.");
+  }
+  if (current.is_epic && !isEpic) {
+    await db
+      .updateTable("task_board_items")
+      .set({ parent_id: null })
+      .where("organization_id", "=", organizationId)
+      .where("parent_id", "=", id)
+      .execute();
+  }
+  const parentId = isEpic
+    ? null
+    : change.parentId !== undefined
+      ? change.parentId
+      : current.parent_id;
+  if (parentId && parentId !== current.parent_id) {
+    await assertParentAllowed(db, {
+      organizationId,
+      childId: id,
+      childIsEpic: isEpic,
+      parentId,
+    });
+  }
+  return { parent_id: parentId, is_epic: isEpic };
 }

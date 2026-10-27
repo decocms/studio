@@ -14,6 +14,7 @@ import {
 } from "@decocms/shared/task-board";
 import { NOTIFICATION_CREATED_EVENT } from "@decocms/shared/notification-types";
 import { PROJECT_FOLDERS_UPDATED_EVENT } from "@decocms/shared/project-sidebar";
+import { ORDER_MONITOR_EVALUATED_EVENT } from "@decocms/shared/order-monitor";
 import {
   createSSESubscription,
   filterEventTypes,
@@ -30,6 +31,7 @@ const WATCH_TYPES = [
   TASK_BOARD_SPRINTS_UPDATED_EVENT,
   NOTIFICATION_CREATED_EVENT,
   PROJECT_FOLDERS_UPDATED_EVENT,
+  ORDER_MONITOR_EVALUATED_EVENT,
 ];
 
 /** `?types=` patterns sent to the server. */
@@ -92,6 +94,12 @@ export const notificationWatchView: SSESubscription = filterEventTypes(
 export const projectFoldersWatchView: SSESubscription = filterEventTypes(
   watchSSE,
   [PROJECT_FOLDERS_UPDATED_EVENT],
+);
+
+/** A store's order-monitor verdicts changed (`order-monitor.store.evaluated`). */
+export const orderMonitorWatchView: SSESubscription = filterEventTypes(
+  watchSSE,
+  [ORDER_MONITOR_EVALUATED_EVENT],
 );
 
 /**

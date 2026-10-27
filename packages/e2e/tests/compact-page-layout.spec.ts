@@ -151,7 +151,7 @@ test.describe("compact page layout", () => {
     await page.setViewportSize({ width: 1280, height: 720 });
     await sidebar.getByRole("link", { name: "Settings", exact: true }).click();
     await expect(
-      header.getByRole("heading", { name: "Organization", exact: true }),
+      header.getByRole("heading", { name: "General", exact: true }),
     ).toBeVisible();
     await expect(
       header.getByRole("button", { name: "New task", exact: true }),

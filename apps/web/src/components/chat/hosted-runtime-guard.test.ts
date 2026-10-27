@@ -3,7 +3,7 @@ import { shouldBlockHostedRuntime } from "./hosted-runtime-guard";
 
 describe("hosted runtime guard", () => {
   test("blocks harnesses the hosted dispatcher cannot run", () => {
-    for (const harnessId of ["codex", "opencode", "unknown-future-harness"]) {
+    for (const harnessId of ["opencode", "unknown-future-harness"]) {
       expect(shouldBlockHostedRuntime(harnessId)).toBeTrue();
     }
   });
@@ -16,6 +16,7 @@ describe("hosted runtime guard", () => {
       // claude-code runs IN the hosted sandbox — the chat must render on the
       // web. Regression: this rendered "This chat isn't available on the web".
       "claude-code",
+      "codex",
     ] as const) {
       expect(shouldBlockHostedRuntime(harnessId)).toBeFalse();
     }

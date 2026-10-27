@@ -40,6 +40,7 @@ import { Copy01, Edit01, Plus, Trash01 } from "@untitledui/icons";
 import { getIconComponent } from "../agent-icon";
 import { resolveEffectiveMatcherRule } from "./matcher-rules";
 import { resolveMatcherIconName } from "./matcher-icons";
+import { useBlocksSiteEditor } from "./blocks-site-editor";
 import type { PageVariant } from "./page-variants";
 import type { LiveMeta } from "./resolve-schema";
 import { EditorRowActionsTrigger, editorRowClassName } from "./editor-list-row";
@@ -51,9 +52,10 @@ export function VariantTabIcon({
   rule: Record<string, unknown> | undefined;
   matchers: Array<{ resolveType: string; iconName: string }>;
 }) {
+  const v8 = useBlocksSiteEditor();
   const rt = (rule?.__resolveType as string) ?? "";
   const fromSchema = matchers.find((m) => m.resolveType === rt)?.iconName;
-  const iconName = fromSchema ?? resolveMatcherIconName(rt);
+  const iconName = fromSchema ?? resolveMatcherIconName(rt, undefined, v8);
   const Icon = getIconComponent(iconName);
   if (!Icon) return null;
   return <Icon size={14} className="shrink-0" />;
@@ -341,7 +343,7 @@ function PageVariantRowPreview({
         editorRowClassName({
           tone: compact ? "default" : "variant",
           selected: true,
-          className: "cursor-grabbing shadow-lg ring-1 ring-border/60",
+          className: "cursor-grabbing shadow-lift",
         }),
       )}
     >
@@ -473,11 +475,10 @@ export function PageVariantTabs({
               <Button
                 type="button"
                 variant="ghost"
-                size="icon"
+                size="icon-xs"
                 aria-label={t(
                   "sectionsEditor.pageVariantTabs.addVariantAriaLabel",
                 )}
-                className="size-6"
                 onClick={onAdd}
               >
                 <Plus size={14} />

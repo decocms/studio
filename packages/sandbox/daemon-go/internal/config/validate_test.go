@@ -37,3 +37,70 @@ func TestValidateApplicationRejectsEscapingPmPath(t *testing.T) {
 		t.Fatal("validateApplication accepted a packageManager.path that escapes the repo root")
 	}
 }
+
+func TestValidateGitRejectsUnsupportedCloneUrlScheme(t *testing.T) {
+	cases := []string{
+		"ext::sh -c touch% /tmp/pwned",
+		"git://example.com/repo.git",
+		"ssh://git@example.com/repo.git",
+	}
+	for _, raw := range cases {
+		t.Run(raw, func(t *testing.T) {
+			git := &GitConfig{Repository: &GitRepository{CloneUrl: Str(raw)}}
+			if reason := validateGit(git); reason == "" {
+				t.Fatalf("validateGit accepted cloneUrl %q", raw)
+			}
+		})
+	}
+}
+
+func TestValidateGitAcceptsHttpsAndFileCloneUrl(t *testing.T) {
+	for _, raw := range []string{"https://example.com/repo.git", "file:///tmp/repo.git"} {
+		git := &GitConfig{Repository: &GitRepository{CloneUrl: Str(raw)}}
+		if reason := validateGit(git); reason != "" {
+			t.Fatalf("validateGit rejected %q: %s", raw, reason)
+		}
+	}
+}
+
+func TestValidateGitRejectsDuplicateSecondaryRepoNames(t *testing.T) {
+	git := &GitConfig{
+		Repository: &GitRepository{CloneUrl: Str("https://example.com/primary.git")},
+		Repositories: []GitRepository{
+			{CloneUrl: Str("https://example.com/a.git"), RepoName: Str("shared")},
+			{CloneUrl: Str("https://example.com/b.git"), RepoName: Str("shared")},
+		},
+	}
+	if reason := validateGit(git); reason == "" {
+		t.Fatal("validateGit accepted two secondary repositories sharing a repoName")
+	}
+}
+
+func TestValidateGitRejectsIdentityWithControlChars(t *testing.T) {
+	cases := []struct {
+		name string
+		git  *GitConfig
+	}{
+		{
+			"newline in userName",
+			&GitConfig{
+				Repository: &GitRepository{CloneUrl: Str("https://example.com/primary.git")},
+				Identity:   &GitIdentity{UserName: Str("a\nconfig injected=1"), UserEmail: Str("a@example.com")},
+			},
+		},
+		{
+			"malformed userEmail",
+			&GitConfig{
+				Repository: &GitRepository{CloneUrl: Str("https://example.com/primary.git")},
+				Identity:   &GitIdentity{UserName: Str("a"), UserEmail: Str("not-an-email")},
+			},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if reason := validateGit(c.git); reason == "" {
+				t.Fatalf("validateGit accepted an invalid git.identity: %+v", c.git.Identity)
+			}
+		})
+	}
+}

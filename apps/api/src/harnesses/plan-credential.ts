@@ -1,3 +1,4 @@
+import { CODEX_SUBSCRIPTION_PROVIDER_ID } from "@decocms/shared/harness/codex-models";
 import type { StudioContext } from "@/core/studio-context";
 import {
   CLAUDE_SUBSCRIPTION_PROVIDER_ID,
@@ -29,7 +30,16 @@ export async function resolvePlanCredential(
   ctx: StudioContext,
   organizationId: string,
   userId: string,
+  harnessId: string = "claude-code",
 ): Promise<{ providerId: string; apiKey: string } | null> {
+  if (harnessId === "codex") {
+    const apiKey = await ctx.storage.codexSubscriptions
+      .findLiveToken(userId)
+      .catch(() => null);
+    return apiKey
+      ? { providerId: CODEX_SUBSCRIPTION_PROVIDER_ID, apiKey }
+      : null;
+  }
   const shared = await ctx.storage.orgSharedPlans.list(organizationId);
   const candidates = [
     ...shared.map(({ providerId, userId }) => ({ providerId, userId })),

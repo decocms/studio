@@ -1,6 +1,6 @@
 {
   "name": "@decocms/shared",
-  "version": "0.165.0",
+  "version": "0.181.0",
   "description": "Private isomorphic code shared by Studio workspaces",
   "private": true,
   "type": "module",
@@ -19,6 +19,7 @@
     "./decofile": "./src/decofile/index.ts",
     "./git-providers": "./src/git-providers/index.ts",
     "./blog": "./src/blog/index.ts",
+    "./site-apps": "./src/site-apps/index.ts",
     "./*": "./src/*.ts"
   },
   "dependencies": {

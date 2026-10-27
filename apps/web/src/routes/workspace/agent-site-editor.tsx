@@ -1,13 +1,7 @@
 import { Outlet } from "@tanstack/react-router";
-import { Separator } from "@decocms/ui/components/separator.tsx";
-import { ChatModeRow } from "@/components/chat/pills/chat-mode-row";
 import { useOptionalChatTask } from "@/components/chat/context";
-import { CmsHeaderActions } from "@/components/thread/repository/cms-header-actions";
-import { HeaderActions } from "@/components/thread/repository/header-actions";
-import {
-  agentHasClonableSource,
-  agentShowsRepositoryHeaderActions,
-} from "@/lib/agent-capabilities";
+import { SiteDraftActions } from "@/components/site-draft-bar/site-draft-actions";
+import { agentHasClonableSource } from "@/lib/agent-capabilities";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
 import { useActivePanelTabId } from "@/layouts/main-panel-tabs/use-panel-navigate";
@@ -15,38 +9,7 @@ import { shouldShowTerminalDrawer } from "@/layouts/main-panel-tabs/terminal-dra
 import { PreviewDrawerHost } from "@/layouts/main-panel-tabs/preview-drawer-host";
 import { ChatLayout } from "@/components/chat-layout";
 import { useVirtualMCP } from "@/sdk";
-
-function SiteEditorActions() {
-  const session = useOptionalChatTask();
-  const entity = useVirtualMCP(session?.virtualMcpId);
-  const currentBranch = session?.currentBranch ?? null;
-  const runtime = useSessionRuntime(entity?.id).runtime;
-  // Local mode edits are ephemeral (nothing to promote) → withhold publish.
-  const { url: localPreviewUrl } = useLocalPreviewUrl(entity?.id);
-  if (!entity) return null;
-  return (
-    <>
-      <div className="flex min-w-0 shrink items-center justify-end">
-        <ChatModeRow virtualMcp={entity} currentBranch={currentBranch} />
-      </div>
-      {!localPreviewUrl && agentShowsRepositoryHeaderActions(entity) && (
-        <>
-          <Separator
-            orientation="vertical"
-            className="mx-1 data-[orientation=vertical]:h-4"
-          />
-          <div className="flex shrink-0 items-center justify-end gap-1">
-            {runtime === "cms" ? (
-              <CmsHeaderActions virtualMcpId={entity.id} />
-            ) : (
-              <HeaderActions virtualMcpId={entity.id} />
-            )}
-          </div>
-        </>
-      )}
-    </>
-  );
-}
+import { useDecoServeConnection } from "@/hooks/use-deco-serve-connection";
 
 function SiteEditorDrawer() {
   const session = useOptionalChatTask();
@@ -54,9 +17,16 @@ function SiteEditorDrawer() {
   const activeTask = session?.activeTask;
   const activeTabId = useActivePanelTabId();
   const sessionRuntime = useSessionRuntime(entity?.id).runtime;
-  const { url: localPreviewUrl } = useLocalPreviewUrl(entity?.id);
+  const { url: localPreviewUrl, undecided: tunnelUndecided } =
+    useLocalPreviewUrl(entity?.id);
+  const { connection: serveConnection } = useDecoServeConnection(
+    entity?.id ?? session?.virtualMcpId,
+  );
+  const servingLocally = !!serveConnection;
   const showDrawer =
     !localPreviewUrl &&
+    !tunnelUndecided &&
+    !servingLocally &&
     shouldShowTerminalDrawer({
       hasClonableSource:
         agentHasClonableSource(entity?.metadata) ||
@@ -67,11 +37,13 @@ function SiteEditorDrawer() {
   return showDrawer ? <PreviewDrawerHost /> : null;
 }
 
-/** Preview, Content and Code share a route-owned topbar and runtime context. */
+/** Preview, Content and Code share a route-owned topbar (the site's draft
+ *  bar, also on Experiments and Calendar) and runtime context.
+ *  The account-less `/site-editor` mounts this same app over a `deco serve`. */
 export default function SiteEditorRoute() {
   return (
     <ChatLayout.Content
-      actions={<SiteEditorActions />}
+      actions={<SiteDraftActions />}
       drawer={<SiteEditorDrawer />}
     >
       <Outlet />

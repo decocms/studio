@@ -406,9 +406,9 @@ export function SettingsTab({
             />
             {onDelete && (
               <Button
-                variant="ghost"
+                variant="ghost-destructive"
                 size="icon"
-                className="text-muted-foreground hover:text-destructive shrink-0"
+                className="shrink-0"
                 onClick={onDelete}
               >
                 <Trash01 size={14} />
@@ -607,7 +607,7 @@ export function SettingsTab({
             <Button
               variant="outline"
               size="sm"
-              className="h-7 gap-1.5 px-2 text-xs"
+              className="gap-1.5"
               disabled={isImproving || !tiptapDoc}
               onClick={handleImprovePrompt}
             >
@@ -634,7 +634,7 @@ export function SettingsTab({
                     <Button
                       type="button"
                       variant="default"
-                      className="h-8 gap-1.5 px-3 text-sm font-medium"
+                      className="gap-1.5"
                       onClick={handleRunClick}
                       disabled={!agentId}
                     >

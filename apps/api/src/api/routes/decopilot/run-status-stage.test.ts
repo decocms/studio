@@ -113,7 +113,7 @@ describe("publishRunStatusStage", () => {
     const publishRawChunk = mock(() => Promise.resolve(true));
     await publishRunStatusStage({
       streamBuffer: { publishRawChunk },
-      harnessId: "codex",
+      harnessId: "opencode",
       taskId: "thread-1",
       stage: "starting-run",
     });
@@ -136,7 +136,7 @@ describe("shouldPublishRunStatus", () => {
   test("publishes for both hosted harnesses, nothing else", () => {
     expect(shouldPublishRunStatus("decopilot")).toBe(true);
     expect(shouldPublishRunStatus("claude-code")).toBe(true);
-    expect(shouldPublishRunStatus("codex")).toBe(false);
+    expect(shouldPublishRunStatus("codex")).toBe(true);
     expect(shouldPublishRunStatus(null)).toBe(false);
     expect(shouldPublishRunStatus(undefined)).toBe(false);
   });

@@ -484,7 +484,7 @@ export type ClaimedDispatchRunInput = DispatchRunRuntimeInput & {
  * both are named explicitly — an unknown or future harness must never fall
  * through to whichever loop happens to be first.
  */
-const HOSTED_HARNESS_IDS = ["decopilot", "claude-code"] as const;
+const HOSTED_HARNESS_IDS = ["decopilot", "claude-code", "codex"] as const;
 
 export type HostedHarnessId = (typeof HOSTED_HARNESS_IDS)[number];
 
@@ -840,6 +840,20 @@ export function resolveAgentInstructions(
 }
 
 /**
+ * `virtualMcps.findById`'s `organizationId` param only resolves well-known
+ * synthetic ids (decopilot) — for a normal row it does NOT filter by org, so
+ * existence alone doesn't prove the agent is this org's. Exported so the
+ * cross-org guard is unit-tested without a DB.
+ */
+export function assertVirtualMcpOwnedByOrg<
+  T extends { organization_id: string },
+>(virtualMcp: T | null, organizationId: string): asserts virtualMcp is T {
+  if (!virtualMcp || virtualMcp.organization_id !== organizationId) {
+    throw new PermanentRunError("agent_not_found", "Agent not found");
+  }
+}
+
+/**
  * Setup phase shared by both dispatch variants. Claims the run, loads
  * conversation history, assembles the wire harness input, and constructs a
  * LAZY `uiStream` whose first pull dispatches through the harness registry
@@ -1082,9 +1096,7 @@ async function prepareRun(
         })
       : null;
 
-    if (!virtualMcp) {
-      throw new PermanentRunError("agent_not_found", "Agent not found");
-    }
+    assertVirtualMcpOwnedByOrg(virtualMcp, input.organizationId);
     const effectiveVirtualMcp = resolveEffectiveStudioPackVirtualMcp(
       virtualMcp,
       input.agent.id,
@@ -1487,7 +1499,12 @@ async function prepareRun(
     // own — outranks the org's thinking-slot key for a sandbox-hosted run.
     // Absent, expired or undecryptable falls back to the org credential.
     const userPlanCredential = sandboxHosted
-      ? await resolvePlanCredential(ctx, input.organizationId, input.userId)
+      ? await resolvePlanCredential(
+          ctx,
+          input.organizationId,
+          input.userId,
+          harnessId,
+        )
       : null;
 
     const dispatchHarnessChunks =

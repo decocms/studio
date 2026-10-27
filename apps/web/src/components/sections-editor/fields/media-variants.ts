@@ -1,5 +1,11 @@
+import type { LiveMeta } from "../resolve-schema";
 import { defaultVariantRule } from "../section-types";
-import { isDefaultVariantRule } from "../section-variants";
+import {
+  duplicateVariantIndex,
+  isDefaultVariantRule,
+  newVariantIndex,
+} from "../section-variants";
+import { readVariantValue, storeVariantValue } from "../variant-shape";
 
 export interface MultivariateVariant {
   rule: Record<string, unknown>;
@@ -24,12 +30,15 @@ export function isMultivariateWrapper(
 export function wrapAsMultivariate(
   value: unknown,
   resolveType: string,
+  meta?: LiveMeta | null,
 ): MultivariateWrapper {
+  // Under `multivariate` each value sits in a `lazy` block (variant-shape.ts).
+  const stored = () => storeVariantValue(resolveType, structuredClone(value));
   return {
     __resolveType: resolveType,
     variants: [
-      { rule: defaultVariantRule(), value: structuredClone(value) },
-      { rule: defaultVariantRule(), value: structuredClone(value) },
+      { rule: defaultVariantRule(meta), value: stored() },
+      { rule: defaultVariantRule(meta), value: stored() },
     ],
   };
 }
@@ -42,22 +51,28 @@ export function flattenMultivariate(wrapper: MultivariateWrapper): unknown {
   const always = variants.find((v) =>
     isDefaultVariantRule(v.rule as Record<string, unknown> | undefined),
   );
-  if (always) return always.value;
-
-  return variants[variants.length - 1]?.value;
+  const picked = always ?? variants[variants.length - 1];
+  return readVariantValue(picked);
 }
 
-/** Add a variant cloned from last. */
+/**
+ * Add a variant cloned from the last one, at `newVariantIndex` (v8: above a
+ * trailing catch-all, else at the end; v7: at the end).
+ */
 export function appendVariant(
   wrapper: MultivariateWrapper,
+  meta?: LiveMeta | null,
+  /** A Blocks v8 site (see `newVariantIndex`). */
+  v8 = false,
 ): MultivariateWrapper {
   const variants = [...wrapper.variants];
   const last = variants[variants.length - 1];
   const newVariant: MultivariateVariant = {
-    rule: defaultVariantRule(),
+    rule: defaultVariantRule(meta),
     value: last ? structuredClone(last.value) : undefined,
   };
-  return { ...wrapper, variants: [...variants, newVariant] };
+  variants.splice(newVariantIndex(wrapper.variants, v8), 0, newVariant);
+  return { ...wrapper, variants };
 }
 
 /** Remove variant at index. Returns null if only 1 variant remains (can't delete). */
@@ -71,15 +86,21 @@ export function deleteVariant(
   return { ...wrapper, variants };
 }
 
-/** Clone variant at index, inserting the clone right after. */
+/** Clone variant at index, inserting the clone at `duplicateVariantIndex`. */
 export function duplicateVariant(
   wrapper: MultivariateWrapper,
   index: number,
+  /** A Blocks v8 site (see `duplicateVariantIndex`). */
+  v8 = false,
 ): MultivariateWrapper {
   const variants = [...wrapper.variants];
   const source = variants[index];
   if (!source) return wrapper;
-  variants.splice(index + 1, 0, structuredClone(source));
+  variants.splice(
+    duplicateVariantIndex(wrapper.variants, index, v8),
+    0,
+    structuredClone(source),
+  );
   return { ...wrapper, variants };
 }
 

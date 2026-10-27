@@ -1,3 +1,4 @@
+import { supportsCodex } from "@decocms/shared/harness/codex-models";
 /**
  * The `chat_harness_sandbox_only` rollout: every chat runs claude-code in its
  * own sandbox instead of hosted Decopilot. See
@@ -67,10 +68,11 @@ export async function userPlanCredentialId(
   ctx: StudioContext,
   organizationId: string,
   userId: string,
+  harnessId: string = "claude-code",
 ): Promise<string | null> {
   return (
-    (await resolvePlanCredential(ctx, organizationId, userId))?.providerId ??
-    null
+    (await resolvePlanCredential(ctx, organizationId, userId, harnessId))
+      ?.providerId ?? null
   );
 }
 
@@ -87,6 +89,8 @@ export async function prewarmThreadSandbox(
   ctx: StudioContext,
   thread: { id: string; virtual_mcp_id: string; branch: string | null },
 ): Promise<void> {
+  const organizationId = ctx.organization?.id;
+  if (!organizationId) return;
   const virtualMcp = await ctx.storage.virtualMcps.findById(
     thread.virtual_mcp_id,
   );
@@ -114,11 +118,36 @@ export async function prewarmThreadSandbox(
     .proxyDaemonRequest(sandboxHandle, "/_sandbox/prepare", {
       method: "POST",
       headers: new Headers({ "content-type": "application/json" }),
-      body: JSON.stringify({ harness: "claude-code", threadId: thread.id }),
+      body: JSON.stringify({
+        harness: await sandboxChatHarness(ctx, organizationId),
+        threadId: thread.id,
+      }),
     })
     .then((res) => {
       if (!res.ok)
         console.warn("[sandbox-prewarm] prepare refused", res.status);
     })
     .catch((err) => console.warn("[sandbox-prewarm] prepare failed", err));
+}
+
+/** The default for new sandbox chats; existing thread pins remain authoritative. */
+export async function sandboxChatHarness(
+  ctx: StudioContext,
+  organizationId: string,
+): Promise<"claude-code" | "codex"> {
+  const settings = await ctx.storage.organizationSettings.get(organizationId);
+  return orgFlagEnabled(settings?.flags, "chat_harness_codex")
+    ? "codex"
+    : "claude-code";
+}
+
+export async function hasCodexCredential(
+  ctx: StudioContext,
+  organizationId: string,
+  userId: string,
+): Promise<boolean> {
+  if (await userPlanCredentialId(ctx, organizationId, userId, "codex"))
+    return true;
+  const keys = await ctx.storage.aiProviderKeys.list({ organizationId });
+  return keys.some((key) => supportsCodex(key.providerId));
 }
