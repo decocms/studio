@@ -219,12 +219,19 @@ export function useLiveMeta(
           if (committed.kind === "data") return committed.data;
           continue;
         }
-        // Only Local polls, so only it revalidates what it holds.
+        // Revalidate what we hold whenever the runtime gave us an etag to
+        // revalidate WITH. Two reasons, both measured against a sandbox dev
+        // server: the schema is ~1 MB and a 304 is ~0, and a dev server that
+        // misses a beat (a restart, a paused VM waking) must not drop the CMS
+        // back onto the committed snapshot, which is a build behind — an app
+        // installed into the working tree is in one and not the other, so the
+        // editor flips between "no editable schema" and "appears after the
+        // build" every couple of seconds. An etag is also what says the
+        // runtime is new enough to accept the conditional request at all.
+        const held = queryClient.getQueryData<LiveMeta>(queryKey);
         const meta = await fetchLiveMeta(
           source.baseUrl,
-          localOverride
-            ? queryClient.getQueryData<LiveMeta>(queryKey)
-            : undefined,
+          localOverride || held?.etag ? held : undefined,
         );
         if (meta) return meta;
       }

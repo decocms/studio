@@ -93,7 +93,14 @@ describe("makeInstallAppPatches — tanstack", () => {
       value: { __resolveType: "site/apps/deco/blog.ts" },
     });
     expect(fileAt(patches, "src/apps/deco/blog.ts")!.content).toBe(
-      'export * from "@decocms/apps-blog/mod";\n',
+      'export { default } from "@decocms/apps-blog/mod";\n' +
+        'export * from "@decocms/apps-blog/mod";\n',
+    );
+    // The app IS the default export: the schema generator reads the CMS form
+    // off its props, and `export *` leaves it behind. A site installed without
+    // it builds and resolves the block, then offers an empty form.
+    expect(fileAt(patches, "src/apps/deco/blog.ts")!.content).toContain(
+      "export { default }",
     );
   });
 

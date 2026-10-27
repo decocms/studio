@@ -9,6 +9,9 @@ export const sandbox = {
   "sandbox.appEditor.installNeedsCodingSession":
     "Inicie uma sessão de código para instalar apps.",
   "sandbox.appEditor.loadingSchema": "Carregando schema do app…",
+  "sandbox.appEditor.reinstall": "Reinstalar este app",
+  "sandbox.appEditor.reinstallHint":
+    "Reescreve o módulo do app e reinicia o dev server. As configurações são mantidas.",
   "sandbox.appEditor.noEditableSchema":
     "Nenhum schema editável foi encontrado para este app.",
   "sandbox.appInstallPanel.install": "Instalar",

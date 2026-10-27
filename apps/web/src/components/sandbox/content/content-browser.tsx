@@ -636,6 +636,18 @@ function ContentBrowserReady({
         )
       : [];
   const installApp = useInstallApp({ orgSlug, virtualMcpId, branch });
+  /**
+   * The catalogue entry behind the app that is open, when the registry still
+   * knows how to write it. Reinstalling is how a site repairs a module an
+   * older installer wrote: the block resolves either way, so nothing else
+   * tells the user their empty form is fixable.
+   */
+  const selectedAppEntry =
+    selection?.collection === "apps"
+      ? appCatalog.find(
+          (entry) => entry.blockKey === selection.key && entry.installable,
+        )
+      : undefined;
   const handleInstallApp = (entry: AppCatalogEntry) => {
     if (!session.resolved) return;
     if (session.runtime === "cms") {
@@ -1531,6 +1543,12 @@ function ContentBrowserReady({
                           )
                         : undefined,
                     )}
+                    onReinstall={
+                      selectedAppEntry && canInstallApps
+                        ? () => handleInstallApp(selectedAppEntry)
+                        : undefined
+                    }
+                    reinstalling={installApp.isPending}
                   />
                 ) : selection.collection === "categories" ? (
                   <CategoryEditor

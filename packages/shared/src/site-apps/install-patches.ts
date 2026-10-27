@@ -67,14 +67,20 @@ function denoAppFile(entry: SiteAppRegistryEntry): SiteAppFilePatch {
  * resolveType: the generator keys an app by its path below `src/`, and a site
  * template that happens to keep its own apps flat (`src/apps/shopify.ts`)
  * still generates nested ones — a Fresh-migrated site is wholly nested.
+ *
+ * The default is re-exported on its own line because `export *` does not carry
+ * it, and the default IS the app: the schema generator reads the form off that
+ * function's props, so without it the site builds, the block resolves, and the
+ * CMS shows an app with nothing to configure.
  */
 function tanstackAppFile(
   entry: SiteAppRegistryEntry,
   pkg: string,
 ): SiteAppFilePatch {
+  const specifier = `${pkg}/mod`;
   return {
     path: `src/apps/${entry.vendor}/${entry.app}.ts`,
-    content: `export * from "${pkg}/mod";\n`,
+    content: `export { default } from "${specifier}";\nexport * from "${specifier}";\n`,
   };
 }
 
