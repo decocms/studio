@@ -5,7 +5,6 @@ import { KEYS } from "@/lib/query-keys";
 import { createRestSelfClient } from "../lib/rest-self-client";
 import { resolveStudioUrl } from "../lib/studio-url";
 import { StreamableHTTPClientTransport } from "../lib/streamable-http-client-transport";
-import { buildAuthorizationHeaderValue } from "../lib/mcp-oauth";
 
 const DEFAULT_CLIENT_INFO = {
   name: "studio-sdk",
@@ -110,7 +109,7 @@ export async function createMCPClient({
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json, text/event-stream",
-        ...(token ? { Authorization: buildAuthorizationHeaderValue(token) } : {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
     },
   });
