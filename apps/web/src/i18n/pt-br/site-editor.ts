@@ -45,7 +45,6 @@ export const siteEditor = {
   "siteEditor.contentTypes.searchContent": "Buscar conteúdo",
   "siteEditor.contentTypes.group.site": "Site",
   "siteEditor.contentTypes.group.everywhere": "Em todo o site",
-  "siteEditor.contentTypes.group.content": "Conteúdo",
   "siteEditor.contentTypes.pages": "Páginas",
   "siteEditor.contentTypes.redirects": "Redirecionamentos",
   "siteEditor.contentTypes.settings": "Configurações",

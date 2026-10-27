@@ -170,7 +170,8 @@ export function ContentTypesSidebar({
 
         {types.shown.length > 0 && (
           <>
-            <GroupLabel label={t("siteEditor.contentTypes.group.content")} />
+            {/* No heading (PO): the rest of the types simply follow, set apart by space. */}
+            <div className="pt-4" aria-hidden="true" />
             {types.shown.map((type) => row(type, "content"))}
             {!q && (types.hidden > 0 || showAllTypes) && (
               <button
