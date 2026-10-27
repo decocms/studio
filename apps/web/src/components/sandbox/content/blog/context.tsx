@@ -34,10 +34,14 @@ import type { TranslationKey } from "@/i18n/use-t.ts";
 import { useStudioTools } from "@/lib/studio-tools";
 import { useHostedAiProviderKeys } from "@/hooks/collections/use-ai-providers";
 import type { MarkdownMentions } from "@/components/markdown-editor";
-import { useSaveBlock } from "@/components/sections-editor/use-save-block";
 import { extractPages } from "@/components/sections-editor/page-list";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
+import { useProjectScope } from "@/hooks/use-project-scope";
+import { AgentsPanel } from "./agents-panel";
+import { AskTheAgent } from "./ask-the-agent";
+import { BlogStateConflict } from "./blog-state-conflict";
 import { useAutosave } from "./use-autosave";
+import { useBlogState } from "./use-blog-state";
 import { SaveStatus } from "./save-status";
 import {
   BRAND_BLOCK_KEY,
@@ -103,7 +107,7 @@ const CONTEXT_SECTIONS = [
 type ContextSection = (typeof CONTEXT_SECTIONS)[number]["id"];
 
 /** The tabs of the Context screen. */
-type ContextTab = "brand" | "formats" | "campaigns" | "automations";
+type ContextTab = "brand" | "formats" | "campaigns" | "agents" | "automations";
 
 /** Steps the extract goes through, in order. See `phase` in BlogContext. */
 type ExtractPhase = Extract<TranslationKey, `sandbox.blogBrand.phase${string}`>;
@@ -151,11 +155,16 @@ export function BlogContext({
   decofile: Record<string, unknown>;
   meta: LiveMeta;
 }) {
-  const storedBrand = asBlock(decofile[BRAND_BLOCK_KEY]);
-  const storedContext = asBlock(decofile[CONTEXT_BLOCK_KEY]);
   const t = useT();
   const studio = useStudioTools();
-  const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
+  /** Brand, writing rules, formats and campaigns — from wherever this site
+   *  keeps them. Everything else below still reads the site's own decofile. */
+  const blog = useBlogState({ orgSlug, virtualMcpId });
+  /** The row, not the id: a project's folder is derived from its metadata. */
+  const { project } = useProjectScope();
+  const { blocks, save } = blog;
+  const storedBrand = asBlock(blocks[BRAND_BLOCK_KEY]);
+  const storedContext = asBlock(blocks[CONTEXT_BLOCK_KEY]);
   /** Every button here spends org credits, so none of them work without a provider. */
   const hasAi = useHostedAiProviderKeys().length > 0;
   const hideDefaultBlocks = useHideDefaultBlogBlocks();
@@ -170,7 +179,7 @@ export function BlogContext({
   const [brand, setBrand] = useAutosave(storedBrand, (next) => {
     save.mutate({
       blockKey: BRAND_BLOCK_KEY,
-      data: brandBlockToSave(next, storedBrand, decofile[CONTEXT_BLOCK_KEY]),
+      data: brandBlockToSave(next, storedBrand, blocks[CONTEXT_BLOCK_KEY]),
     });
   });
 
@@ -179,7 +188,7 @@ export function BlogContext({
    * is what seeds this one while `blog-manager-context` is absent.
    */
   const [context, setContext] = useAutosave(
-    decofile[CONTEXT_BLOCK_KEY] ? storedContext : storedBrand,
+    blocks[CONTEXT_BLOCK_KEY] ? storedContext : storedBrand,
     (next) => {
       save.mutate({
         blockKey: CONTEXT_BLOCK_KEY,
@@ -194,7 +203,7 @@ export function BlogContext({
   const setContextField = (key: string, value: unknown) =>
     setContext({ ...context, [key]: value });
 
-  const formatsBlock = decofile[FORMATS_BLOCK_KEY] as
+  const formatsBlock = blocks[FORMATS_BLOCK_KEY] as
     | Record<string, unknown>
     | undefined;
   const [formatsData, setFormatsData] = useAutosave(
@@ -707,8 +716,13 @@ export function BlogContext({
             {t("sandbox.blogContext.subtitle")}
           </p>
         </div>
-        <SaveStatus isPending={save.isPending} isError={save.isError} />
+        <div className="flex items-center gap-3">
+          <AskTheAgent virtualMcpId={virtualMcpId} disabled={!hasAi} />
+          <SaveStatus isPending={save.isPending} isError={save.isError} />
+        </div>
       </div>
+
+      <BlogStateConflict blog={blog} />
 
       {/* Tab row doubles as the action bar — the extract fills every section. */}
       <div className="flex shrink-0 items-center justify-between gap-4 border-b px-8">
@@ -727,6 +741,9 @@ export function BlogContext({
             onClick={() => setTab("campaigns")}
           >
             {t("sandbox.blogContext.tabCampaigns")}
+          </TabButton>
+          <TabButton active={tab === "agents"} onClick={() => setTab("agents")}>
+            {t("sandbox.blogContext.tabAgents")}
           </TabButton>
           {/* Wired as a tab so the shape is visible; the panel comes later. */}
           <TabButton active={false} disabled onClick={() => {}}>
@@ -922,12 +939,15 @@ export function BlogContext({
       </div>
 
       <div className="min-w-0 flex-1 overflow-y-auto">
-        {tab === "campaigns" ? (
+        {tab === "agents" ? (
+          <AgentsPanel project={project ?? undefined} />
+        ) : tab === "campaigns" ? (
           <CampaignsPanel
             orgSlug={orgSlug}
             virtualMcpId={virtualMcpId}
             branch={branch}
             decofile={decofile}
+            blog={blog}
           />
         ) : tab === "formats" ? (
           <div className="min-w-0 max-w-3xl space-y-3 px-8 py-6">

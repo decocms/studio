@@ -25,33 +25,36 @@ import {
   setPostStatus,
 } from "./blog-data";
 import { str } from "./blocks/primitives";
-import { MAX_OFFERED_PHOTOS } from "@decocms/shared/blog-campaign";
+import { referencePhotos } from "@decocms/shared/blog";
+import { projectFolderDir } from "@decocms/shared/organization/project-folder";
+import { fetchOrgFsText } from "@/hooks/use-org-fs";
+import { useProjectScope } from "@/hooks/use-project-scope";
 
 type Gap = StudioToolOutput<"BLOG_POST_DRAFT">["gaps"][number];
 
-/**
- * The campaign's photographs, breadth first, capped at what the tool accepts.
- *
- * Flattening product by product overruns the cap on any well-stocked campaign
- * and spends the whole allowance on its first few items. Taking one from each
- * before a second from any means the references describe the range the post is
- * actually about.
- */
-function referencePhotos(
-  products: readonly { images?: readonly string[] }[],
-): string[] {
-  const picked: string[] = [];
-  for (let round = 0; picked.length < MAX_OFFERED_PHOTOS; round += 1) {
-    const before = picked.length;
-    for (const product of products) {
-      const url = product.images?.[round];
-      if (!url) continue;
-      picked.push(url);
-      if (picked.length >= MAX_OFFERED_PHOTOS) return picked;
-    }
-    if (picked.length === before) break;
-  }
-  return picked;
+type DraftSection =
+  StudioToolOutput<"BLOG_POST_DRAFT">["posts"][number]["sections"][number];
+
+/** What the illustrator made for one draft: its cover, and its body filled in. */
+interface Art {
+  url: string;
+  sections: DraftSection[];
+}
+
+/** The heading the Ilustrador's standing instruction lives under. */
+const GUIDANCE_HEADING =
+  /^##\s+How this brand['\u2019]s pictures should look\s*$/m;
+
+/** The Ilustrador's standing rule, from its `AGENT.md` so the operator owns it; best-effort, an unseeded roster draws with the tool's default. */
+async function illustratorGuidance(
+  orgSlug: string,
+  project: { id: string; title?: string | null; metadata?: unknown } | null,
+): Promise<string | undefined> {
+  if (!project) return undefined;
+  const path = `${projectFolderDir(project)}/agents/ilustrador/AGENT.md`;
+  const md = await fetchOrgFsText(orgSlug, "home", path).catch(() => "");
+  const below = md.split(GUIDANCE_HEADING)[1];
+  return below?.split(/^##\s/m)[0]?.trim() || undefined;
 }
 
 /**
@@ -120,6 +123,7 @@ export function useGeneratePost({
   const t = useT();
   const studio = useStudioTools();
   const hideDefaults = useHideDefaultBlogBlocks();
+  const { project } = useProjectScope();
   const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
 
   return async (briefing: PostBriefing) => {
@@ -189,40 +193,58 @@ export function useGeneratePost({
       }
     };
 
-    /**
-     * The covers, drawn once the words exist, keyed by the draft's position.
-     *
-     * The campaign's product photographs go in as references, which is what
-     * makes a cover worth having: without them the model draws a plausible
-     * product the brand does not sell. Every image URL the campaign carries is
-     * offered; the tool takes the first few that answer.
-     *
-     * Empty map on any failure. A post without a cover is a post someone
-     * finishes in the editor, and it is already saved by then.
-     */
+    /** Each draft drawn by its own call: `sections` is one post's body, and batched the illustrator never saw one. */
     const illustrate = async (
-      posts: { cover: { prompt: string; alt: string } }[],
+      posts: {
+        cover: { prompt: string; alt: string };
+        sections: DraftSection[];
+      }[],
       brief: PostBriefing,
-    ): Promise<Map<string, string>> => {
+    ): Promise<Map<string, Art>> => {
       if (!brief.fileConfigId || posts.length === 0) return new Map();
-      try {
-        const drawn = await studio.call("BLOG_POST_ILLUSTRATE", {
-          requests: posts.map((post, i) => ({
-            id: String(i),
-            prompt: post.cover.prompt,
-            alt: post.cover.alt,
-          })),
-          // One photograph per product before a second from any of them, so a
-          // campaign is represented by its range rather than by its first item.
-          productImages: referencePhotos(brief.campaign.intent.products),
-          companyName: brand.companyName ?? "",
-          fileConfigId: brief.fileConfigId,
-        });
-        return new Map(drawn.images.map((image) => [image.id, image.url]));
-      } catch (err) {
-        console.warn("[generatePost] illustrating failed", err);
-        return new Map();
-      }
+      const productImages = referencePhotos(brief.campaign.intent.products);
+      const guidance = await illustratorGuidance(orgSlug, project);
+      const drawn = await Promise.all(
+        posts.map(async (post, i): Promise<[string, Art] | null> => {
+          try {
+            const art = await studio.call("BLOG_POST_ILLUSTRATE", {
+              requests: [
+                {
+                  id: String(i),
+                  prompt: post.cover.prompt,
+                  alt: post.cover.alt,
+                },
+              ],
+              sections: post.sections.map(({ type, props }) => ({
+                type,
+                props,
+              })),
+              productImages,
+              guidance,
+              companyName: brand.companyName ?? "",
+              fileConfigId: brief.fileConfigId,
+            });
+            return [
+              String(i),
+              {
+                url: art.images[0]?.url ?? "",
+                /** The tool answers props only; the product slot stays ours. */
+                sections: art.sections?.length
+                  ? art.sections.map((section, at) => ({
+                      ...section,
+                      productIds: post.sections[at]?.productIds ?? [],
+                    }))
+                  : post.sections,
+              },
+            ];
+          } catch (err) {
+            /** Dropped from the map, not fatal: the card is already saved. */
+            console.warn("[generatePost] illustrating failed", err);
+            return null;
+          }
+        }),
+      );
+      return new Map(drawn.filter((entry) => entry !== null));
     };
 
     /** Cards land first so the board shows the work, not a frozen dialog. */
@@ -306,26 +328,20 @@ export function useGeneratePost({
         count: briefing.count,
       });
 
-      /**
-       * Covers are drawn after the words exist, by their own call.
-       *
-       * One image is allowed ninety seconds, so three drafts spent longer on
-       * pictures than the whole request was given. Splitting them also buys
-       * the thing that makes a cover worth having: the campaign's product
-       * photographs go in as references, so the image shows what the brand
-       * actually sells instead of a plausible invention.
-       */
-      const covers = await illustrate(result.posts, briefing);
+      /** Their own call: at ninety seconds an image, three drafts outran the request. */
+      const art = await illustrate(result.posts, briefing);
 
       const resolveTypes = sectionResolveTypes(meta, { hideDefaults });
       const takenSlugs = listPostsWithMeta(decofile).map((post) => post.slug);
       for (const [i, draft] of result.posts.entries()) {
         const key = keys[i];
         if (!key) break;
+        const drawn = art.get(String(i));
         const payload = buildGeneratedPostPayload({
           draft: {
             ...draft,
-            cover: { ...draft.cover, url: covers.get(String(i)) ?? "" },
+            cover: { ...draft.cover, url: drawn?.url ?? "" },
+            sections: drawn?.sections ?? draft.sections,
           },
           resolveTypes,
           productShapes,

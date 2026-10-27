@@ -103,6 +103,9 @@ packages/e2e/screenshots/
 /docs/*
 # Committed engineering plans
 !/docs/plans/
+# The manual content-pipeline board and its write-up (no customer data in them;
+# the runs themselves are ignored below)
+!/docs/blog-pipeline/
 # Superpowers workspace artifacts (brainstorming + writing-plans output)
 # are kept local to the working tree, not committed.
 
@@ -125,3 +128,6 @@ deploy/helm/sandbox-env/charts/
 
 # Storybook static build
 storybook-static
+
+# Manual content-pipeline runs: brand profiles, store URLs, product ids.
+.blog-pipeline/

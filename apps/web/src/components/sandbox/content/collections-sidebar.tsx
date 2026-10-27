@@ -11,7 +11,6 @@ import {
   LayoutAlt01,
   Settings01,
   Sliders02,
-  Stars02,
   CreditCardSearch,
   Tag01,
   Users01,
@@ -33,14 +32,11 @@ export function CollectionsSidebar({
   active,
   counts,
   showBlog,
-  showContext,
   onSelect,
 }: {
   active: CollectionId;
   counts: CollectionCounts;
   showBlog: boolean;
-  /** The brand context tab, which the org's AI-blog flag governs. */
-  showContext: boolean;
   onSelect: (id: CollectionId) => void;
 }) {
   const t = useT();
@@ -96,15 +92,6 @@ export function CollectionsSidebar({
               <BookOpen01 size={13} className="shrink-0" />
               {t("sandbox.collectionsSidebar.blog")}
             </div>
-            {showContext && (
-              <CollectionRow
-                id="context"
-                icon={Stars02}
-                label={t("sandbox.collectionsSidebar.context")}
-                active={active === "context"}
-                onSelect={onSelect}
-              />
-            )}
             <CollectionRow
               id="posts"
               icon={File02}

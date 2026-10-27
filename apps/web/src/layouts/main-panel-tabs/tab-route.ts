@@ -44,7 +44,8 @@ export type TabRouteLocation =
         | "e2e"
         | "analytics"
         | "experiments"
-        | "monitor";
+        | "monitor"
+        | "context";
     }
   | { kind: "automations"; automationId?: string }
   | { kind: "app"; connectionId: string; toolName: string }
@@ -100,7 +101,8 @@ export type TabRouteTarget =
         | typeof PROJECT_ROUTE.e2e
         | typeof PROJECT_ROUTE.analytics
         | typeof PROJECT_ROUTE.experiments
-        | typeof PROJECT_ROUTE.monitor;
+        | typeof PROJECT_ROUTE.monitor
+        | typeof PROJECT_ROUTE.context;
       params: AgentParams;
       search: {};
     }
@@ -237,6 +239,7 @@ const AGENT_SECTION_BY_TAB: Readonly<
   analytics: "analytics",
   experiments: "experiments",
   cdn: "monitor",
+  context: "context",
 };
 
 /**
@@ -637,6 +640,7 @@ export function navigateToTabRouteTarget(
     case PROJECT_ROUTE.analytics:
     case PROJECT_ROUTE.experiments:
     case PROJECT_ROUTE.monitor:
+    case PROJECT_ROUTE.context:
       navigate({
         to: target.to,
         params: target.params,

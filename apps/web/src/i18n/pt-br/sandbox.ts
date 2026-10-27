@@ -152,6 +152,12 @@ export const sandbox = {
   "sandbox.campaigns.productUrlPlaceholder": "https://…",
   "sandbox.campaigns.productsHint":
     "Os produtos que o texto pode citar pelo nome. Valem para qualquer alvo — e ficam salvos aqui, não buscados na hora.",
+  "sandbox.campaigns.productsUnresolved":
+    "{count} de {total} produtos não resolvem na loja, e um bloco apontando pra um deles renderiza um espaço vazio.",
+  "sandbox.campaigns.productsRepair": "Corrigir pelos nomes",
+  "sandbox.campaigns.productsRepaired": "{count} id(s) relidos da loja.",
+  "sandbox.campaigns.productsRepairNone":
+    "Nenhum nome bateu exato na loja — escolha estes produtos de novo à mão.",
   "sandbox.campaigns.productsLabel": "Produtos em destaque",
   "sandbox.campaigns.removeProduct": "Remover produto",
   "sandbox.campaigns.targetDescriptionPlaceholder":
@@ -372,6 +378,7 @@ export const sandbox = {
   "sandbox.blogContext.subtitle":
     "O contexto de marca do qual seu blog é escrito — voz, formatos e as campanhas para as quais ele escreve.",
   "sandbox.blogContext.tabAutomations": "Automações",
+  "sandbox.blogContext.tabAgents": "Especialistas",
   "sandbox.blogContext.tabBrand": "Marca",
   "sandbox.blogContext.tabFormats": "Formatos",
   "sandbox.blogContext.tabCampaigns": "Campanhas",
@@ -442,7 +449,6 @@ export const sandbox = {
   "sandbox.collectionsSidebar.calendar": "Calendário",
   "sandbox.collectionsSidebar.categories": "Categorias",
   "sandbox.collectionsSidebar.content": "Conteúdo",
-  "sandbox.collectionsSidebar.context": "Contexto",
   "sandbox.collectionsSidebar.loaders": "Carregadores",
   "sandbox.collectionsSidebar.pages": "Páginas",
   "sandbox.collectionsSidebar.postSchedule": "Agendamento",
@@ -612,6 +618,29 @@ export const sandbox = {
   "sandbox.formats.countLabel": "Quantos",
   "sandbox.formats.guidanceHint":
     "Opcional. O que estes formatos devem cobrir — uma campanha, uma época, um tipo de post que o blog vive precisando.",
+  "sandbox.blogAgents.beltEverything": "todas as tools deste projeto",
+  "sandbox.blogAgents.beltLabel": "Tools",
+  "sandbox.blogAgents.contractHint":
+    "Vai antes do que você escrever abaixo, toda vez que esse papel roda. Não está no arquivo, então nada que você mudar aqui tira isso.",
+  "sandbox.blogAgents.contractLess": "Mostrar menos",
+  "sandbox.blogAgents.contractMore": "Ler tudo",
+  "sandbox.blogAgents.contractTitle": "Regras que valem sempre",
+  "sandbox.blogAgents.emptyBody":
+    "O elenco é escrito na primeira vez que este site salva o contexto do blog. Salve qualquer coisa na aba Marca e os especialistas aparecem aqui.",
+  "sandbox.blogAgents.emptyTitle": "Nenhum especialista ainda",
+  "sandbox.blogAgents.save": "Salvar",
+  "sandbox.blogRun.ask": "Pedir ao agente",
+  "sandbox.blogRun.askPlaceholder":
+    "O que o agente deve fazer? Diga qual especialista — o pesquisador, por exemplo — e como é uma resposta pronta.",
+  "sandbox.blogRun.failed": "Não deu para começar o run",
+  "sandbox.blogRun.sheetTitle": "Run do blog",
+  "sandbox.blogRun.started": "Run começou — abra para acompanhar",
+  "sandbox.blogRun.submit": "Começar",
+  "sandbox.blogState.conflictBody":
+    "Outra pessoa salvou isso enquanto você editava. Recarregar descarta o que você não salvou; manter o seu substitui o dela.",
+  "sandbox.blogState.conflictTitle": "Isso mudou em outro lugar",
+  "sandbox.blogState.keepMine": "Manter o meu",
+  "sandbox.blogState.reloadTheirs": "Recarregar o deles",
   "sandbox.formats.guidanceLabel": "Instruções extras",
   "sandbox.formats.guidancePlaceholder":
     "ex: um formato para lançamento de produto",

@@ -23,6 +23,9 @@ export const mainPanelTabs = {
   "mainPanelTabs.codeTab.noSandboxToBrowse": "Nenhuma sandbox para navegar",
   "mainPanelTabs.codeTab.noSandboxToBrowseDescription":
     "Inicie uma sessão de código neste projeto para navegar pelos arquivos.",
+  "mainPanelTabs.contextTab.offDescription":
+    "A geração agêntica do blog está desligada nesta organização. Um admin liga em Configurações.",
+  "mainPanelTabs.contextTab.offTitle": "Contexto desligado",
   "mainPanelTabs.contentTab.connectGithubDescription":
     "Conecte um repositório do GitHub para editar o conteúdo deste site.",
   "mainPanelTabs.contentTab.noContentToEdit": "Nenhum conteúdo para editar",

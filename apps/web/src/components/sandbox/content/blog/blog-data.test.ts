@@ -709,7 +709,7 @@ describe("scanCampaigns", () => {
 
   test("reads a full campaign back", () => {
     const [campaign] = scanCampaigns({
-      [key]: buildCampaignBlock(key, {
+      [key]: buildCampaignBlock({
         name: "Black Friday 2026",
         seedKey: "blog-manager/campaign-seeds/s1",
         status: "active",
@@ -890,7 +890,7 @@ describe("campaign seeds", () => {
 
   test("round-trips a seed", () => {
     const [seed] = scanCampaignSeeds({
-      [key]: buildCampaignSeedBlock(key, {
+      [key]: buildCampaignSeedBlock({
         name: "Verão 2027",
         keywords: ["protetor solar", "praia"],
         prompt: "Começar a falar de verão antes dos concorrentes.",
@@ -946,20 +946,18 @@ describe("buildCampaignBlock", () => {
     const key = newCampaignKey();
     const campaign = emptyCampaign(new Date("2026-03-04T05:06:07.000Z"));
     const [read] = scanCampaigns({
-      [key]: buildCampaignBlock(key, campaign),
+      [key]: buildCampaignBlock(campaign),
     });
     expect(read).toEqual({ key, ...campaign });
   });
 
-  test("carries the block key in `name`, like every planning block", () => {
-    const key = newCampaignKey();
-    const block = buildCampaignBlock(key, emptyCampaign(new Date()));
-    expect(block.name).toBe(key);
+  test("never writes the key into the record — the file is the key", () => {
+    const block = buildCampaignBlock(emptyCampaign(new Date()));
+    expect(block).not.toHaveProperty("name");
   });
 
   test("writes an absent date as an empty string, so the shape is stable", () => {
-    const key = newCampaignKey();
-    const block = buildCampaignBlock(key, emptyCampaign(new Date()));
+    const block = buildCampaignBlock(emptyCampaign(new Date()));
     expect(block.period).toEqual({ start: "", end: "" });
   });
 });

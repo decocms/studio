@@ -773,6 +773,17 @@ export const KEYS = {
   // Web search blob content (fetched from object storage)
   webSearchBlob: (url: string) => ["web-search-blob", url] as const,
 
+  // A project's AGENT.md roster, keyed by the slugs the folder listed.
+  projectAgents: (orgId: string, projectId: string, slugs: string) =>
+    ["project-agents", orgId, projectId, slugs] as const,
+
+  // One blog run's own thread row, polled while the sheet is open.
+  blogRunThread: (threadId: string) => ["blog-run-thread", threadId] as const,
+
+  // Blog editorial state in the org library (library backend only).
+  blogState: (orgSlug: string, virtualMcpId: string) =>
+    ["blog-state", orgSlug, virtualMcpId] as const,
+
   // Deco sections editor (sandbox preview)
   decofile: (previewUrl: string) => ["decofile", previewUrl] as const,
   // Sandbox-less Fast Preview draft pointer: {version, token} for the current

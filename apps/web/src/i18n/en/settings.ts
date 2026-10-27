@@ -346,9 +346,9 @@ export const settings = {
   "settings.profile.updateError": "Failed to update profile",
   "settings.preferences.title": "Preferences",
   "settings.blog.sectionTitle": "Blog",
-  "settings.blog.aiTitle": "AI blog",
+  "settings.blog.aiTitle": "Agentic context",
   "settings.blog.aiDescription":
-    "Brand context, campaigns and post generation. With this off the blog is written by hand.",
+    "Turns on the Context view: the brand profile, the writing rules, the post formats, the campaigns, the specialists that write from them, and agentic post generation. With this off the blog is written by hand and every blog tool refuses, in the app and over MCP alike.",
   "settings.blogBlocks.title": "Hide the default blog blocks",
   "settings.blogBlocks.description":
     "Only this site's own post blocks stay available when writing, generating or importing a post. Blocks already in a post keep rendering.",

@@ -79,6 +79,9 @@ export const projects = {
   "projects.apps.analyticsCaption": "Tráfego, conversão e receita",
   "projects.apps.cdn": "Monitor",
   "projects.apps.cdnCaption": "Cache, latência e erros",
+  "projects.apps.context": "Contexto",
+  "projects.apps.contextCaption":
+    "A marca, as regras de escrita e os especialistas que escrevem a partir delas",
   "projects.apps.automations": "Automações",
   "projects.apps.automationsCaption": "Trabalho que roda em agenda",
   "projects.apps.experiments": "Experimentos",

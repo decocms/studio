@@ -1,3 +1,4 @@
+import { AlertCircle } from "@untitledui/icons";
 /**
  * One campaign's form, autosaved like every other Context editor.
  *
@@ -14,6 +15,7 @@ import { useState } from "react";
 import { Calendar } from "@decocms/ui/components/calendar.tsx";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
+import { toast } from "sonner";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { Label } from "@decocms/ui/components/label.tsx";
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
@@ -44,7 +46,12 @@ import { RuleList, TermsInput } from "./blocks/rule-list";
 import { CategoryTreeList } from "./blocks/category-tree-list";
 import { reHome } from "@decocms/shared/store-url";
 import { ProductPickerDialog } from "./blocks/product-picker-dialog";
-import type { ProductPickerOption } from "./blocks/product-picker-source";
+import {
+  buildProductRequests,
+  productOptionsFromPayload,
+  type ProductPickerOption,
+} from "./blocks/product-picker-source";
+import { invokeLoader, useProductsByIds } from "./blocks/use-product-lookup";
 import type { PreviewProxyRef } from "@/components/sections-editor/preview-fetch-url";
 import { ImageField } from "@/components/sections-editor/fields/image-field";
 import type { SandboxConfig } from "@/components/sections-editor/fields/field-props";
@@ -236,7 +243,7 @@ export function CampaignEditor({
   const campaign = readCampaign(blockKey, draft);
   /** Every edit stamps `updatedAt`, so the list can sort by last touched. */
   const nextBlock = (next: Partial<Omit<CampaignEntry, "key">>) =>
-    buildCampaignBlock(blockKey, {
+    buildCampaignBlock({
       ...campaign,
       ...next,
       updatedAt: new Date().toISOString(),
@@ -263,6 +270,72 @@ export function CampaignEditor({
     commit({ intent: { ...campaign.intent, targets: next } });
   const setProducts = (next: CampaignProduct[]) =>
     commit({ intent: { ...campaign.intent, products: next } });
+
+  /**
+   * Which of these ids the store actually answers for.
+   *
+   * Read through the loader a published block uses, so the two cannot
+   * disagree. A campaign reads fine either way — the row shows the name and
+   * image the catalogue transcribed — and an id that resolves to nothing only
+   * surfaces as a placeholder on a published shelf, after the generation is
+   * paid for. A whole campaign once shipped stored by `productGroupID`:
+   * fourteen rows, fourteen nulls, and nothing on this screen said so.
+   */
+  const lookup = useProductsByIds(
+    sandboxRef,
+    products.map((product) => product.id),
+  );
+  const checked = !!sandboxRef && !lookup.isLoading && !lookup.isError;
+  const unresolved = checked
+    ? products.filter((product) => product.id && !lookup.byId.has(product.id))
+    : [];
+  const [repairing, setRepairing] = useState(false);
+
+  /**
+   * Re-read the dead ids from the store by name, keeping only exact matches.
+   *
+   * A near match is a different product, and pointing a card at one is worse
+   * than leaving the row empty — those stay flagged for a manual repick.
+   */
+  const repairByName = async () => {
+    if (!sandboxRef || unresolved.length === 0) return;
+    setRepairing(true);
+    try {
+      const found = new Map<string, string>();
+      for (const product of unresolved) {
+        const name = product.name.trim();
+        if (!name) continue;
+        for (const request of buildProductRequests("search", name)) {
+          const options = await invokeLoader(sandboxRef, request)
+            .then(productOptionsFromPayload)
+            .catch(() => []);
+          const match =
+            options.find((option) => option.groupId === product.id) ??
+            options.find((option) => option.label.trim() === name);
+          if (match) {
+            found.set(product.id, match.id);
+            break;
+          }
+        }
+      }
+      if (found.size === 0) {
+        toast.warning(t("sandbox.campaigns.productsRepairNone"));
+        return;
+      }
+      setProducts(
+        products.map((product) =>
+          found.has(product.id)
+            ? { ...product, id: found.get(product.id) as string }
+            : product,
+        ),
+      );
+      toast.success(
+        t("sandbox.campaigns.productsRepaired", { count: String(found.size) }),
+      );
+    } finally {
+      setRepairing(false);
+    }
+  };
 
   const withTarget = (index: number, change: Partial<CampaignTarget>) =>
     targets.map((target, i) =>
@@ -584,6 +657,25 @@ export function CampaignEditor({
         <p className="text-xs text-muted-foreground">
           {t("sandbox.campaigns.productsHint")}
         </p>
+        {unresolved.length > 0 && (
+          <div className="flex items-center gap-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs">
+            <AlertCircle className="size-4 shrink-0 text-warning" />
+            <span className="flex-1">
+              {t("sandbox.campaigns.productsUnresolved", {
+                count: String(unresolved.length),
+                total: String(products.length),
+              })}
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={repairing}
+              onClick={repairByName}
+            >
+              {t("sandbox.campaigns.productsRepair")}
+            </Button>
+          </div>
+        )}
         {products.length > 0 && (
           <CollapsibleList>
             {products.map((product, index) => (

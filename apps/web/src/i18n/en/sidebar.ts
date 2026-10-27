@@ -15,6 +15,7 @@ export const sidebar = {
   "sidebar.navDestinations.threadAnalytics": "Chats analytics",
   "sidebar.myThreadsSection.noChatsYet": "No chats yet",
   "sidebar.myThreadsSection.noChatsMatchFilters": "No chats match your filters",
+  "sidebar.projectNav.context": "Context",
   "sidebar.projectNav.automations": "Automations",
   "sidebar.projectNav.siteEditor": "Site Editor",
   "sidebar.projects.pinned": "Pinned",

@@ -149,6 +149,13 @@ export const sandbox = {
   "sandbox.campaigns.productUrlPlaceholder": "https://…",
   "sandbox.campaigns.productsHint":
     "The products the copy may name. They apply to any target — and they are stored here, not fetched at write time.",
+  "sandbox.campaigns.productsUnresolved":
+    "{count} of {total} products do not resolve in the store, and a block pointing at one renders a placeholder.",
+  "sandbox.campaigns.productsRepair": "Repair by name",
+  "sandbox.campaigns.productsRepaired":
+    "{count} product id(s) read again from the store.",
+  "sandbox.campaigns.productsRepairNone":
+    "No exact name match in the store — pick these products again by hand.",
   "sandbox.campaigns.productsLabel": "Highlighted products",
   "sandbox.campaigns.removeProduct": "Remove product",
   "sandbox.campaigns.targetDescriptionPlaceholder":
@@ -368,6 +375,7 @@ export const sandbox = {
   "sandbox.blogContext.subtitle":
     "The brand context your blog is written from — voice, formats and the campaigns it writes for.",
   "sandbox.blogContext.tabAutomations": "Automations",
+  "sandbox.blogContext.tabAgents": "Specialists",
   "sandbox.blogContext.tabBrand": "Brand",
   "sandbox.blogContext.tabFormats": "Formats",
   "sandbox.blogContext.tabCampaigns": "Campaigns",
@@ -438,7 +446,6 @@ export const sandbox = {
   "sandbox.collectionsSidebar.calendar": "Calendar",
   "sandbox.collectionsSidebar.categories": "Categories",
   "sandbox.collectionsSidebar.content": "Content",
-  "sandbox.collectionsSidebar.context": "Context",
   "sandbox.collectionsSidebar.loaders": "Loaders",
   "sandbox.collectionsSidebar.pages": "Pages",
   "sandbox.collectionsSidebar.postSchedule": "Scheduling",
@@ -602,6 +609,29 @@ export const sandbox = {
   "sandbox.formats.countLabel": "How many",
   "sandbox.formats.guidanceHint":
     "Optional. What these formats should cover — a campaign, a season, a kind of post the blog keeps needing.",
+  "sandbox.blogAgents.beltEverything": "every tool this project has",
+  "sandbox.blogAgents.beltLabel": "Tools",
+  "sandbox.blogAgents.contractHint":
+    "Sent before whatever you write below, every time this role runs. It is not in the file, so nothing you change here can remove it.",
+  "sandbox.blogAgents.contractLess": "Show less",
+  "sandbox.blogAgents.contractMore": "Read all of it",
+  "sandbox.blogAgents.contractTitle": "Rules that always apply",
+  "sandbox.blogAgents.emptyBody":
+    "The roster is written the first time this site saves its blog context. Save anything on the Brand tab and the specialists appear here.",
+  "sandbox.blogAgents.emptyTitle": "No specialists yet",
+  "sandbox.blogAgents.save": "Save",
+  "sandbox.blogRun.ask": "Ask the agent",
+  "sandbox.blogRun.askPlaceholder":
+    "What should the agent do? Name a specialist — the researcher, say — and what a finished answer looks like.",
+  "sandbox.blogRun.failed": "Could not start the run",
+  "sandbox.blogRun.sheetTitle": "Blog run",
+  "sandbox.blogRun.started": "Run started — open it to follow along",
+  "sandbox.blogRun.submit": "Start",
+  "sandbox.blogState.conflictBody":
+    "Someone else saved this while you were editing. Reloading drops your unsaved changes; keeping yours replaces theirs.",
+  "sandbox.blogState.conflictTitle": "This changed somewhere else",
+  "sandbox.blogState.keepMine": "Keep mine",
+  "sandbox.blogState.reloadTheirs": "Reload theirs",
   "sandbox.formats.guidanceLabel": "Extra instructions",
   "sandbox.formats.guidancePlaceholder": "e.g. one format for product launches",
   "sandbox.formats.hint":

@@ -32,8 +32,7 @@ import { Input } from "@decocms/ui/components/input.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/use-t.ts";
-import { useSaveBlock } from "@/components/sections-editor/use-save-block";
-import { useDeleteBlock } from "@/components/sections-editor/use-delete-block";
+import type { BlogState } from "./use-blog-state";
 import { str } from "./blocks/primitives";
 import {
   AlertDialog,
@@ -117,15 +116,16 @@ export function CampaignsPanel({
   virtualMcpId,
   branch,
   decofile,
+  blog,
 }: {
   orgSlug: string;
   virtualMcpId: string;
   branch: string;
   decofile: Record<string, unknown>;
+  blog: BlogState;
 }) {
   const t = useT();
-  const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
-  const deleteBlock = useDeleteBlock({ orgSlug, virtualMcpId, branch });
+  const { save, remove: deleteBlock } = blog;
 
   /** The store pickers address the site by these coordinates; campaigns are a
    *  thread-less surface, which the contract allows. */
@@ -160,7 +160,7 @@ export function CampaignsPanel({
     const blockKey = newCampaignKey();
     save.mutate({
       blockKey,
-      data: buildCampaignBlock(blockKey, emptyCampaign(new Date())),
+      data: buildCampaignBlock(emptyCampaign(new Date())),
     });
     setOpenKey(blockKey);
   };
@@ -172,7 +172,7 @@ export function CampaignsPanel({
     try {
       await save.mutateAsync({
         blockKey: key,
-        data: buildCampaignBlock(key, {
+        data: buildCampaignBlock({
           ...campaign,
           status: next,
           updatedAt: new Date().toISOString(),
@@ -204,13 +204,13 @@ export function CampaignsPanel({
     const now = new Date().toISOString();
     await save.mutateAsync({
       blockKey: seed.key,
-      data: buildCampaignSeedBlock(seed.key, { ...seed.entry, updatedAt: now }),
+      data: buildCampaignSeedBlock({ ...seed.entry, updatedAt: now }),
     });
     for (const candidate of chosen) {
       const blockKey = newCampaignKey();
       await save.mutateAsync({
         blockKey,
-        data: buildCampaignBlock(blockKey, {
+        data: buildCampaignBlock({
           ...emptyCampaign(new Date()),
           name: candidate.name,
           seedKey: seed.key,

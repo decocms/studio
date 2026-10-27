@@ -1,4 +1,5 @@
 import { useBlogAi } from "@/hooks/use-blog-ai";
+import { useBlogState, withoutBlogState } from "./blog/use-blog-state";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Suspense, lazy, useState } from "react";
@@ -196,22 +197,6 @@ export type CollectionId =
   | "context"
   | BlogKind;
 
-/**
- * The collection actually shown.
- *
- * `activeCollection` is local state and the context tab is reachable only by
- * clicking its row, so no link can land on it — but someone already there when
- * an admin turns the AI-blog flag off would be looking at a tab the menu no
- * longer lists. Normalising once at the source spares every reader downstream
- * a guard of its own.
- */
-export function visibleCollection(
-  active: CollectionId,
-  blogAi: boolean,
-): CollectionId {
-  return active === "context" && !blogAi ? "posts" : active;
-}
-
 export type CollectionCounts = Record<
   | "pages"
   | "sections"
@@ -262,9 +247,20 @@ type DeleteTarget =
 export interface ContentBrowserProps {
   /** Storefront "." deep-link: preselect this page once the decofile loads. */
   deepLinkPage?: PageDeepLink;
+  /**
+   * Open on one collection and stay there, with no collection list.
+   *
+   * A project view that is only about the blog's context would otherwise
+   * repeat the whole Editor do site inside itself — the same rows, one click
+   * from the rows they came from.
+   */
+  pinnedCollection?: CollectionId;
 }
 
-export function ContentBrowser({ deepLinkPage }: ContentBrowserProps) {
+export function ContentBrowser({
+  deepLinkPage,
+  pinnedCollection,
+}: ContentBrowserProps) {
   const { currentBranch: branch, virtualMcpId } = useChatTask();
   const { org } = useProjectContext();
 
@@ -309,6 +305,7 @@ export function ContentBrowser({ deepLinkPage }: ContentBrowserProps) {
         fastPreviewActive ? previewServerUrl : lifecycle.previewUrl
       }
       deepLinkPage={deepLinkPage}
+      pinnedCollection={pinnedCollection}
       devServerReady={gate.devServerReady}
       sandboxWarming={gate.sandboxWarming}
     />
@@ -340,6 +337,7 @@ function ContentBrowserReady({
   previewUrl,
   sitePreviewUrl,
   deepLinkPage,
+  pinnedCollection,
   devServerReady,
   sandboxWarming,
 }: {
@@ -360,13 +358,15 @@ function ContentBrowserReady({
   sitePreviewUrl: string | null;
   /** Storefront "." deep-link: preselect this page once the decofile loads. */
   deepLinkPage?: PageDeepLink;
+  /** Open on one collection, with no list to leave it by. */
+  pinnedCollection?: CollectionId;
   devServerReady: boolean;
   sandboxWarming: boolean;
 }) {
   const t = useT();
   const threadId = useOptionalChatTask()?.taskId ?? null;
   const fetchParams = { orgSlug, virtualMcpId, branch, threadId, previewUrl };
-  const { data: decofile, isLoading: decofileLoading } = useDecofile(
+  const { data: rawDecofile, isLoading: decofileLoading } = useDecofile(
     fetchParams,
     { fetchEnabled: devServerReady },
   );
@@ -379,13 +379,24 @@ function ContentBrowserReady({
   const contentDeepLink = useSearch({ strict: false }) as ContentSearchParams;
   const [storedCollection, setActiveCollection] = useState<CollectionId>(
     () =>
+      pinnedCollection ||
       (contentDeepLink.contentCollection &&
         isBlogKind(contentDeepLink.contentCollection as CollectionId) &&
         (contentDeepLink.contentCollection as CollectionId)) ||
       "pages",
   );
   const blogAi = useBlogAi();
-  const activeCollection = visibleCollection(storedCollection, blogAi);
+  const activeCollection = storedCollection;
+  /**
+   * The blog's brand, writing rules, formats and campaigns come from the org
+   * library, not from this site's blocks. Stripping before merging is what
+   * stops a site that still carries the old blocks from filling its forms with
+   * them — see `withoutBlogState`.
+   */
+  const blogState = useBlogState({ orgSlug, virtualMcpId, enabled: blogAi });
+  const decofile = rawDecofile
+    ? { ...withoutBlogState(rawDecofile), ...blogState.blocks }
+    : rawDecofile;
   const [selection, setSelection] = useState<Selection>(() =>
     contentDeepLink.contentItem && isBlogKind(activeCollection)
       ? { collection: activeCollection, key: contentDeepLink.contentItem }
@@ -974,17 +985,18 @@ function ContentBrowserReady({
       : (deleteTarget?.kind ?? "item");
   return (
     <div className="flex h-full w-full">
-      <CollectionsSidebar
-        active={activeCollection}
-        counts={counts}
-        showBlog={showBlog}
-        showContext={blogAi}
-        onSelect={(id) => {
-          setActiveCollection(id);
-          setSelection(null);
-          setOpenPageSeoKey(null);
-        }}
-      />
+      {!pinnedCollection && (
+        <CollectionsSidebar
+          active={activeCollection}
+          counts={counts}
+          showBlog={showBlog}
+          onSelect={(id) => {
+            setActiveCollection(id);
+            setSelection(null);
+            setOpenPageSeoKey(null);
+          }}
+        />
+      )}
       {activeCollection !== "seo" &&
         activeCollection !== "site" &&
         activeCollection !== "context" &&

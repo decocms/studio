@@ -20,6 +20,9 @@ export const mainPanelTabs = {
   "mainPanelTabs.codeTab.noSandboxToBrowse": "No sandbox to browse",
   "mainPanelTabs.codeTab.noSandboxToBrowseDescription":
     "Start a coding session on this project to browse its files.",
+  "mainPanelTabs.contextTab.offDescription":
+    "Agentic blog generation is off for this organization. An admin can turn it on under Settings.",
+  "mainPanelTabs.contextTab.offTitle": "Context is off",
   "mainPanelTabs.contentTab.connectGithubDescription":
     "Connect a GitHub repository to edit this site's content.",
   "mainPanelTabs.contentTab.noContentToEdit": "No content to edit",

@@ -48,7 +48,14 @@ const DRAFTS = ["Post um", "Post dois", "Post três"].map((title) => ({
   cover: { url: "", alt: "capa", prompt: "uma mochila na mesa" },
   categorySlugs: [],
   authorEmails: [],
-  sections: [],
+  sections: [
+    { type: "Paragraph", props: { html: "<p>texto</p>" }, productIds: [] },
+    {
+      type: "BlockImage",
+      props: { url: "generate:uma criança com mochila", alt: "capa" },
+      productIds: [],
+    },
+  ],
 }));
 
 const studioCall = mock(
@@ -66,6 +73,10 @@ const studioCall = mock(
     }
     if (name === "BLOG_POST_ILLUSTRATE") {
       const requests = input.requests as { id: string }[];
+      const sections = (input.sections ?? []) as {
+        type: string;
+        props: Record<string, unknown>;
+      }[];
       return {
         images: requests.map((request) => ({
           id: request.id,
@@ -73,6 +84,12 @@ const studioCall = mock(
         })),
         outcome: "ok",
         referenced: 2,
+        /** The body comes back filled; the caller must carry it to the save. */
+        sections: sections.map((section) => ({
+          ...section,
+          props: { ...section.props, drawn: true },
+        })),
+        bodyImages: sections.length > 0 ? 1 : 0,
       };
     }
     return { posts: DRAFTS, gaps: [] };
@@ -87,6 +104,14 @@ mock.module("@/lib/studio-tools", () => ({
 }));
 mock.module("@/hooks/use-hide-default-blog-blocks", () => ({
   useHideDefaultBlogBlocks: () => false,
+}));
+/** Router-backed; these render the hook bare. The roster read is stubbed with it. */
+mock.module("@/hooks/use-project-scope", () => ({
+  useProjectScope: () => ({ project: { id: "vmcp", title: "Site" } }),
+}));
+mock.module("@/hooks/use-org-fs", () => ({
+  fetchOrgFsText: async () =>
+    "## How this brand's pictures should look\n\n- Mostre o produto real.\n",
 }));
 mock.module("@/i18n/use-t.ts", () => ({ useT: () => (key: string) => key }));
 mock.module("sonner", () => ({
@@ -197,6 +222,50 @@ describe("useGeneratePost", () => {
     expect(toolCalls.indexOf("BLOG_POST_DRAFT")).toBeLessThan(
       toolCalls.indexOf("BLOG_POST_ILLUSTRATE"),
     );
+  });
+
+  /**
+   * The illustrator used to be handed the covers alone, in one batched call.
+   * A writer's `generate:` note in the body was then never drawn, and the
+   * save blanked it — the post shipped with an image prop pointing nowhere.
+   */
+  test("hands the illustrator the body, not only the cover", async () => {
+    await runWithBucket();
+    const drawn = studioCall.mock.calls.find(
+      ([name]) => name === "BLOG_POST_ILLUSTRATE",
+    );
+    expect(drawn?.[1].sections).toEqual([
+      { type: "Paragraph", props: { html: "<p>texto</p>" } },
+      {
+        type: "BlockImage",
+        props: { url: "generate:uma criança com mochila", alt: "capa" },
+      },
+    ]);
+  });
+
+  /** `sections` is one post's body, so the drafts cannot share a call. */
+  test("draws one draft per call", async () => {
+    await runWithBucket();
+    const drawn = studioCall.mock.calls.filter(
+      ([name]) => name === "BLOG_POST_ILLUSTRATE",
+    );
+    expect(drawn.length).toBe(DRAFTS.length);
+    expect(
+      drawn.every(([, input]) => (input.requests as unknown[]).length === 1),
+    ).toBe(true);
+  });
+
+  /**
+   * The standing instruction is an `AGENT.md` section the operator edits, so
+   * "show the real product" is theirs to change. Unsent, every brand's
+   * pictures come out of the same default.
+   */
+  test("folds in the illustrator's own editable instruction", async () => {
+    await runWithBucket();
+    const drawn = studioCall.mock.calls.find(
+      ([name]) => name === "BLOG_POST_ILLUSTRATE",
+    );
+    expect(drawn?.[1].guidance).toBe("- Mostre o produto real.");
   });
 
   test("offers the campaign's product photographs as references", async () => {

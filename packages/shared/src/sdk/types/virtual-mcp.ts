@@ -140,6 +140,10 @@ export type VirtualMcpUILayoutTab = z.infer<typeof VirtualMcpUILayoutTabSchema>;
 /** Project views that may be shown in the sidebar. Availability is resolved at
  * runtime (for example, Site Editor requires source and Assets requires a file
  * config); this persisted list only records the project's chosen entries. */
+/** A project may select every view there is; the cap only stops a pathological
+ *  write, so it tracks the roster rather than trailing it. */
+const SIDEBAR_VIEWS_MAX = 12;
+
 export const VirtualMcpSidebarViewSchema = z.enum([
   "overview",
   "reports",
@@ -152,6 +156,7 @@ export const VirtualMcpSidebarViewSchema = z.enum([
   "cdn",
   "automations",
   "experiments",
+  "context",
 ]);
 
 export type VirtualMcpSidebarView = z.infer<typeof VirtualMcpSidebarViewSchema>;
@@ -226,7 +231,7 @@ export const VirtualMcpUILayoutSchema = z.object({
    *  top-level metadata field. */
   sidebarViews: z
     .array(VirtualMcpSidebarViewSchema)
-    .max(10)
+    .max(SIDEBAR_VIEWS_MAX)
     .nullable()
     .optional()
     .describe(
@@ -819,7 +824,7 @@ const VirtualMcpMetadataFields = {
     .describe("UI customization settings"),
   sidebarViews: z
     .array(VirtualMcpSidebarViewSchema)
-    .max(10)
+    .max(SIDEBAR_VIEWS_MAX)
     .nullable()
     .optional()
     .describe(

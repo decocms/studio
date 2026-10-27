@@ -246,6 +246,8 @@ describe("metadata.sidebarViews", () => {
     "e2e",
     "analytics",
     "cdn",
+    "experiments",
+    "context",
   ] as const;
 
   it("round-trips every project sidebar view on an entity", () => {
@@ -331,7 +333,7 @@ describe("metadata.sidebarViews", () => {
     ).toBe(false);
   });
 
-  it("caps the array at 10 entries", () => {
+  it("admits the whole roster and refuses more than it", () => {
     expect(
       VirtualMCPUpdateDataSchema.safeParse({
         metadata: { sidebarViews: [...sidebarViews] },

@@ -13,6 +13,7 @@ export const PROJECT_SIDEBAR_VIEW_IDS = [
   "cdn",
   "automations",
   "experiments",
+  "context",
 ] as const satisfies readonly VirtualMcpSidebarView[];
 
 /** Initial selection for projects that have not explicitly saved sidebar
@@ -151,6 +152,9 @@ export function projectSidebarViewPresence(
     // Authored in the Site Editor decofile — only where a CMS source exists.
     experiments: hasClonableSource && native.experiments,
     automations: true,
+    /** The blog's context is a CMS surface, so it needs a source like the rest
+     *  of them; the org flag gates it a second time where it is rendered. */
+    context: hasClonableSource,
   };
 }
 
