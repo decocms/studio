@@ -41,6 +41,7 @@ import {
 } from "./named-rule-conflict";
 import { type HeldCopy, heldCopyVersion } from "./held-copy";
 import { parsePageName } from "./page-list";
+import { blogBlockKind, blogBlockTitle, blogKindWord } from "./blog-block-name";
 import type { SchemaProperty } from "./resolve-schema";
 import {
   HostedDraftUnreadError,
@@ -125,37 +126,19 @@ export function changeKeepsStored(
   return change.deletes.every((key) => !Object.hasOwn(stored, key));
 }
 
-/** A blog block's payload, under its wrapper (blog-data.ts' `WRAPPER_KEY`). */
-const BLOG_WRAPPERS = ["post", "category", "author"] as const;
-
-/** A blog block's kind in words, when it has no title yet. */
-const BLOG_KINDS: Record<string, string> = {
-  posts: "Post",
-  categories: "Category",
-  authors: "Author",
-};
-
-/** A copy's own words for itself: its name (never its key), or its payload's. */
+/** A copy's own words for itself: its name (never its key), or a blog record's title. */
 function copyLabel(blockKey: string, copy: unknown): string | null {
   if (!isRecord(copy)) return null;
+  // A blog record's `name` is its key (whichever key it has now): never shown.
+  if (blogBlockKind(blockKey, copy)) return blogBlockTitle(copy);
   const name = typeof copy.name === "string" ? copy.name.trim() : "";
-  // A blog block's `name` is its key: never shown.
-  if (name && name !== blockKey) return name;
-  for (const wrapper of BLOG_WRAPPERS) {
-    const payload = copy[wrapper];
-    if (!isRecord(payload)) continue;
-    for (const field of ["title", "name"]) {
-      const value = payload[field];
-      if (typeof value === "string" && value.trim()) return value.trim();
-    }
-  }
-  return null;
+  return name && name !== blockKey ? name : null;
 }
 
 /** A block's key in words: no folder, no id suffix. */
 function keyInWords(blockKey: string): string {
-  const blog = /^collections\/blog\/([^/]+)\//.exec(blockKey);
-  if (blog) return BLOG_KINDS[blog[1]!] ?? "Post";
+  const blog = blogBlockKind(blockKey);
+  if (blog) return blogKindWord(blog);
   const last = blockKey.split("/").pop() ?? blockKey;
   return parsePageName(last).trim() || last;
 }

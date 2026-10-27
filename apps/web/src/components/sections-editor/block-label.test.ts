@@ -35,4 +35,19 @@ describe("the reconcile question names a block in words, never by its raw key", 
       "collections/",
     );
   });
+
+  it("a post moved to another key (its status changed) by its title, never its new key", () => {
+    // The move's question: the post's new copy (a planning key) and its old one.
+    const moved = {
+      name: "blog-manager/posts/b10900000001",
+      __resolveType: "blog/loaders/Blogpost.ts",
+      post: { title: "How capybaras dry off" },
+    };
+    expect(blockLabel("collections/blog/posts/b10900000001", moved)).toBe(
+      "How capybaras dry off",
+    );
+    expect(blockLabel("blog-manager/posts/b10900000001", undefined)).toBe(
+      "Post",
+    );
+  });
 });

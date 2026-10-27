@@ -203,6 +203,9 @@ export const sectionsEditor = {
   "sectionsEditor.reconcile.leftDeleted": "Left it deleted",
   "sectionsEditor.reconcile.keptTheirsHint":
     "Your change wasn't saved. You can make it again any time.",
+  "sectionsEditor.blogKind.post": "Post",
+  "sectionsEditor.blogKind.category": "Category",
+  "sectionsEditor.blogKind.author": "Author",
   "sectionsEditor.reconcile.deletedTitle": "This was deleted",
   "sectionsEditor.reconcile.deletedDescription":
     "It's no longer in your draft, so there's nothing to edit here. To bring it back, discard its deletion in Publish. Nothing goes live until you publish.",
