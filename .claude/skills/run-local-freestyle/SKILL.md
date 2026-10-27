@@ -13,7 +13,6 @@ Freestyle VMs call back into Studio (the `studio` MCP, org-fs), so a local Studi
 - `ngrok` with an auth token of its own (`ngrok config add-authtoken <token>`).
   A separate free account from Freestyle's; without it ngrok exits with
   `ERR_NGROK_4018`.
-- `gh auth login --hostname github.com`, so Studio can import a repository.
 - Docker with `buildx` and Go, only if you changed `packages/sandbox/daemon-go` or `packages/harness-runner`.
 
 ## 1. Tunnel
@@ -28,53 +27,43 @@ URL=$(curl -s localhost:4040/api/tunnels | grep -o '"public_url":"https[^"]*' | 
 
 ## 2. Start Studio
 
-`bun run dev` is `docker compose up`. Run the dependencies and Vite in Compose,
-but **the API on your host**: connecting GitHub shells out to `gh`, whose token
-lives in your OS keychain, and a container cannot reach it (`CONTRIBUTING.md`,
-"Importing a GitHub repository locally"). The API container also receives an
-explicit env list, so the repo-root `.env` never reaches it.
-
-Keep the run's settings in an override outside the repo — the key stays in
-`.env` (gitignored) and only the reference is written:
+`bun run dev` is `docker compose up`, and the API container receives an
+explicit env list — the repo-root `.env` never reaches it. Pass this run's
+settings in an override outside the repo, so the key stays in `.env`
+(gitignored) and only the reference is written:
 
 ```bash
-cat > /tmp/freestyle.override.yaml <<'EOF'
+cat > /tmp/freestyle.override.yaml <<EOF
 services:
-  postgres: { ports: ["127.0.0.1:5432:5432"] }
-  nats:     { ports: ["127.0.0.1:4222:4222"] }
-  minio:    { ports: ["127.0.0.1:9000:9000"] }
-  api:      { profiles: ["disabled"] }
+  api:
+    environment:
+      BASE_URL: $URL
+      BETTER_AUTH_URL: $URL
+      STUDIO_PUBLIC_URL: $URL
+      MESH_PUBLIC_URL: $URL
+      STUDIO_AGENT_SANDBOX_ENABLED: "true"
+      STUDIO_SANDBOX_FREESTYLE_SHARE: "1"
+      STUDIO_SANDBOX_FREESTYLE_IMAGE: \$TAG
+      FREESTYLE_API_KEY: \${FREESTYLE_API_KEY}
+      BETTER_AUTH_SECRET: \${BETTER_AUTH_SECRET}
   web:
     environment:
       HOST: 0.0.0.0
-      STUDIO_LOCAL_API_TARGET: http://host.docker.internal:3000
       __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS: .ngrok-free.dev,.ngrok-free.app
-    depends_on: !reset []
 EOF
 C="docker compose -f compose.yaml -f /tmp/freestyle.override.yaml"
 $C build web   # once: api, web and migrate share one image tag and race in parallel
 $C up -d
 ```
 
-Then the API, on the host:
-
-```bash
-DATABASE_URL=postgresql://studio:studio@localhost:5432/studio \
-NATS_URL=nats://localhost:4222 S3_ENDPOINT=http://localhost:9000 \
-BASE_URL=$URL BETTER_AUTH_URL=$URL \
-STUDIO_PUBLIC_URL=$URL MESH_PUBLIC_URL=$URL \
-DECOCMS_LOCAL_MODE=true \
-STUDIO_AGENT_SANDBOX_ENABLED=true \
-STUDIO_SANDBOX_FREESTYLE_SHARE=1 \
-STUDIO_SANDBOX_FREESTYLE_IMAGE=$TAG \
-PORT=3000 bun run --cwd=apps/api dev:server
-```
-
-- `DECOCMS_LOCAL_MODE=true` is what un-greys **GitHub** in "Connect a git account"; it does NOT disable the sandbox, which is `STUDIO_AGENT_SANDBOX_ENABLED` alone.
+- Set a stable `BETTER_AUTH_SECRET` in `.env`. Without one Better Auth mints a
+  random secret per process start, the stored JWKS stops decrypting, and the
+  browser loops on login with no error but `Failed to decrypt private key` in
+  the API log.
 - Always override `STUDIO_PUBLIC_URL` and `MESH_PUBLIC_URL`. A stale value in `.env` wins over `BASE_URL` for minted MCP URLs, and runs fail with `studio MCP is unusable`.
 - Open `$URL` in the browser and log in there, not on `localhost`. Click through ngrok's one-time warning page.
-- If you change the tunnel URL, restart the API with the new one.
-- Compose Watch is off in this shape. After editing `apps/web`, `$C cp apps/web/<file> web:/app/apps/web/<file>` and `$C restart web`, or run `up --watch` instead of `up -d`.
+- If you change the tunnel URL, rewrite the override and `$C up -d` again.
+- Compose Watch is off with `up -d`. After editing a workspace, `$C cp <file> web:/app/<file>` and `$C restart web`, or run `up --watch` instead.
 
 ## 3. Sandbox image (only for daemon or runner changes)
 
