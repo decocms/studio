@@ -82,6 +82,7 @@ import {
 import {
   applyOnlyCalls,
   refuseUnguardedSave,
+  saveRequestBody,
   planDraftSave,
   withDraftConflicts,
 } from "@/hosted/draft-save-request";
@@ -497,12 +498,8 @@ async function serveDraftSave(
   if (expectedMain(c) !== "v8") return null;
   const hosted = hostedScope(c);
   if (!hosted) return null;
-  let body: unknown;
-  try {
-    body = JSON.parse(await c.req.raw.clone().text());
-  } catch {
-    return null;
-  }
+  const body = await saveRequestBody(c.req.raw);
+  if (body === undefined) return null;
   const calls = applyOnlyCalls(body);
   if (!calls) return null;
   // No marker (a best-effort write that failed, or not written yet): ask
@@ -516,7 +513,7 @@ async function serveDraftSave(
     }
   }
   // Every block a hosted save touches carries its precondition.
-  const unguarded = refuseUnguardedSave(body);
+  const unguarded = refuseUnguardedSave(body, "draft");
   if (unguarded) return unguarded;
   const loaded = await hosted.drafts.load(hosted.ref);
   const plan = planDraftSave(
@@ -553,15 +550,6 @@ async function serveDraftSave(
     async () =>
       (await hosted.drafts.load(hosted.ref))?.body ?? { set: {}, delete: [] },
   );
-}
-
-/** The rpc request's JSON body, or undefined when it isn't JSON. */
-async function rpcBody(c: Context<DecofileEnv>): Promise<unknown> {
-  try {
-    return JSON.parse(await c.req.raw.clone().text());
-  } catch {
-    return undefined;
-  }
 }
 
 function signScopeDraftToken(scope: DecofileScope): string {
@@ -1022,7 +1010,10 @@ export function createDecofileRoutes(
       );
     }
     // A save through main (no main answer) needs its preconditions too.
-    const unguarded = refuseUnguardedSave(await rpcBody(c));
+    const unguarded = refuseUnguardedSave(
+      await saveRequestBody(c.req.raw),
+      "site",
+    );
     if (unguarded) return unguarded;
     // Per request: the storage carries this caller's repository credential.
     // The body cache is off for the same reason, and the blob cache under

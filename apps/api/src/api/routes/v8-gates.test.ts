@@ -948,6 +948,12 @@ describe("decofile routes", () => {
         "x-deco-main-schema": "",
       });
       expect(layered?.error?.code).toBe(-32602);
+      // Each path states its own rule: the editor's save guards by the
+      // draft, a save through main by what blocks.list reports.
+      const [drafted] = await refused(apply({ set: { a: { v: 1 } } }));
+      expect(drafted?.error?.message).toMatch(/version in the draft/);
+      expect(layered?.error?.message).toMatch(/as blocks\.list reports it/);
+      expect(layered?.error?.message).not.toMatch(/draft/);
       expect(await delivery.store.listKeys("sites/acme/drafts/")).toEqual([]);
       expect(repo.calls.some((c) => /^(commit|put|write)/i.test(c))).toBe(
         false,
@@ -961,6 +967,22 @@ describe("decofile routes", () => {
         }),
       );
       expect(ok?.error).toBeUndefined();
+    });
+
+    it("a save over the protocol's size limit is its 413, before any precondition check", async () => {
+      const { app, delivery } = setup({ blocksMajor: 8 }, v8Files, {
+        p1: ORG,
+      });
+      const huge = apply({
+        set: { huge: { text: "x".repeat(8 * 1024 * 1024) } },
+      });
+      for (const headers of [{}, { "x-deco-main-schema": "" }]) {
+        const res = await rpc(app, huge, headers);
+        expect(res.status).toBe(413);
+        const body = (await res.json()) as { error?: { code: number } };
+        expect(body.error?.code).toBe(-32007);
+      }
+      expect(await delivery.store.listKeys("sites/acme/drafts/")).toEqual([]);
     });
 
     it("an unmarked v8 project's save is still checked against the draft alone", async () => {
