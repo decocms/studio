@@ -103,6 +103,8 @@ export interface OrderMonitorDay {
     y1: number;
   };
   verdicts: Record<OrderMonitorRule, OrderMonitorVerdict>;
+  /** Hours of history the ingest still has queued; null once it's all in. Days not in yet are left out of the baseline. */
+  backfill: { pending: number; total: number } | null;
   /** Busiest on D-1 first, so a channel keeps its place and color through the day. */
   channels: OrderMonitorChannel[];
 }

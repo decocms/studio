@@ -94,6 +94,7 @@ export const monitor = {
   "monitor.compare.y1": "Last year",
   "monitor.compare.vs": "vs {ref}",
   "monitor.chart.soFar": "{count} so far",
+  "monitor.chart.historyLoading": "history {pct} loaded, projection firming up",
   "monitor.channels.caption": "Dashed: all channels yesterday",
   "monitor.signals.more": "Show {count} more",
   "monitor.signals.less": "Show less",

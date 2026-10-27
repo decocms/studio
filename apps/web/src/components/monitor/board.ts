@@ -53,6 +53,8 @@ export interface Kpi {
   references: Record<Comparison, number | null>;
   /** Orders so far, next to the projection. */
   soFar?: number;
+  /** Share of the stores' order history in the lake, 0..1; absent once all of it is. */
+  historyLoaded?: number;
   /** The day in 5-minute buckets, up to now; null while it loads. */
   points: MetricPoint[] | null;
   /**
