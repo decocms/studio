@@ -159,7 +159,6 @@ export function taskQuotaState(
  *  defaults come from settings — global, frozen at boot). */
 export interface TaskQuotaConfig {
   enforced: boolean;
-  kanbanExempt: boolean;
   freeTaskExecutions: number;
   monthlyTaskExecutions: number;
   maxRunsPerTask: number;
@@ -169,7 +168,6 @@ export function taskQuotaConfig(): TaskQuotaConfig {
   const settings = getSettings();
   return {
     enforced: settings.taskQuotaEnforced,
-    kanbanExempt: settings.taskQuotaKanbanExempt,
     freeTaskExecutions: settings.freeTaskExecutions,
     monthlyTaskExecutions: settings.monthlyTaskExecutions,
     maxRunsPerTask: settings.maxRunsPerTask,
@@ -208,14 +206,12 @@ interface GatedTask {
 async function kanbanPlanExempts(
   ctx: StudioContext,
   task: GatedTask,
-  config: TaskQuotaConfig,
 ): Promise<boolean> {
-  if (!config.kanbanExempt) return false;
+  const reader = task.assignedBy ?? ctx.auth?.user?.id ?? task.updatedBy;
   return await orgPlanConfirmsFeature(
-    ctx,
+    reader ?? undefined,
     task.organizationId,
     "kanban",
-    task.assignedBy ?? task.updatedBy,
   );
 }
 
@@ -232,7 +228,7 @@ export async function ensureTaskExecutionAllowed(
   config: TaskQuotaConfig = taskQuotaConfig(),
 ): Promise<void> {
   if (!config.enforced || !isReportsTask(task)) return;
-  if (await kanbanPlanExempts(ctx, task, config)) return;
+  if (await kanbanPlanExempts(ctx, task)) return;
   const claim = await ctx.storage.organizationBilling.taskClaim(task.id);
   if (claim && claim.runCount >= config.maxRunsPerTask) {
     captureQuotaEvent(ctx, "task_quota_blocked", task, {
@@ -283,7 +279,7 @@ export async function claimTaskExecution(
   config: TaskQuotaConfig = taskQuotaConfig(),
 ): Promise<"claimed" | "rerun" | "skipped"> {
   if (!config.enforced || !isReportsTask(task)) return "skipped";
-  if (await kanbanPlanExempts(ctx, task, config)) {
+  if (await kanbanPlanExempts(ctx, task)) {
     captureQuotaEvent(ctx, "task_quota_exempt", task, {
       reason: "plan_kanban",
     });

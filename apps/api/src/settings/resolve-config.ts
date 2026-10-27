@@ -287,7 +287,6 @@ export function resolveConfig(
       100,
     ),
     taskQuotaEnforced: toBool(envVars.STUDIO_TASK_QUOTA_ENFORCED),
-    taskQuotaKanbanExempt: toBool(envVars.STUDIO_TASK_QUOTA_KANBAN_EXEMPT),
     freeTaskExecutions: toPositiveIntegerOrDefault(
       "STUDIO_FREE_TASKS",
       envVars.STUDIO_FREE_TASKS,

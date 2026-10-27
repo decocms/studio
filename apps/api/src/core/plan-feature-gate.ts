@@ -308,19 +308,14 @@ export async function orgHasFeatureAsUser(
  *
  * The opposite bias of `orgHasFeature`, for lifting a limit: no answer (plans
  * off, gateway down, nothing cached) confirms nothing, or a blip would lift
- * the limit for every org. `fallbackUserId` reads the plan when the request
- * has no user, such as a system dispatch.
+ * the limit for every org.
  */
 export async function orgPlanConfirmsFeature(
-  ctx: StudioContext,
+  userId: string | undefined,
   organizationId: string,
   feature: PlanFeature,
-  fallbackUserId?: string | null,
 ): Promise<boolean> {
-  const state = await getOrgPlanState(
-    requestUserId(ctx) ?? fallbackUserId ?? undefined,
-    organizationId,
-  );
+  const state = await getOrgPlanState(userId, organizationId);
   return isFeatureConfirmed(state?.features ?? null, feature);
 }
 
