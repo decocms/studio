@@ -62,3 +62,27 @@ describe("publishBodyShown (the Publish dialog's body)", () => {
     expect(publishBodyShown({ open: true, hosted: false })).toBe(true);
   });
 });
+
+describe("the review panes through a hosted Publish's close", () => {
+  it("keep the draft pointer they showed: the emptied draft's new one never reloads them", () => {
+    type Shown = {
+      summary: { count: number };
+      compareDraft: { pointer: string };
+    };
+    const before: Shown = {
+      summary: { count: 2 },
+      compareDraft: { pointer: "d@1" },
+    };
+    const after: Shown = {
+      summary: { count: 0 },
+      compareDraft: { pointer: "d@2" },
+    };
+    const { result, rerender } = renderHook(
+      ({ live }: { live: Shown }) => usePublishHold(live, { hosted: true }),
+      { initialProps: { live: before } },
+    );
+    act(() => result.current.hold());
+    rerender({ live: after });
+    expect(result.current.shown.compareDraft.pointer).toBe("d@1");
+  });
+});

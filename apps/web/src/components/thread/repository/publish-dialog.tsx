@@ -684,7 +684,7 @@ function CmsPublishView({
   draftPreviewUrl,
   destinationHost,
   previewServerUrl,
-  compareDraft,
+  compareDraft: liveCompareDraft,
   lastPublishedPr = null,
   onRequestApproval,
   openPullRequest = null,
@@ -723,14 +723,18 @@ function CmsPublishView({
   type ShownList = Pick<
     PublishSource,
     "summary" | "cardsPending" | "bodiesPending"
-  >;
+  > & { compareDraft: CompareDraft | null };
   const liveList: ShownList = {
     summary: source.summary,
     cardsPending: source.cardsPending,
     bodiesPending: source.bodiesPending,
+    compareDraft: liveCompareDraft,
   };
   const publishHold = usePublishHold(liveList, { hosted });
-  const { summary, cardsPending, bodiesPending } = publishHold.shown;
+  // The review panes keep the draft they showed too: the emptied draft's
+  // new pointer would reload every pane while the dialog closes.
+  const { summary, cardsPending, bodiesPending, compareDraft } =
+    publishHold.shown;
 
   /** The author's text once they type — until then the note is derived, so a
    *  change list that lands after mount still describes itself. */
