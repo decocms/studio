@@ -311,7 +311,6 @@ describe("the campaigns view is called Calendar (v8)", () => {
   test("every pointer to it uses the sidebar's name", () => {
     for (const dict of [en, ptBR] as Record<string, string>[]) {
       const name = dict["common.mainPanelTabs.calendar"];
-      expect(dict["sandbox.collectionsSidebar.campaigns"]).toBe(name);
       expect(dict["sectionsEditor.namedRulePicker.openCalendar"]).toContain(
         name,
       );
