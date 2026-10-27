@@ -286,6 +286,20 @@ function lookupManifestBlockSchema(
   return {};
 }
 
+/**
+ * Whether this meta knows the block at all — the exact question
+ * {@link lookupManifestBlockSchema} answers, since it returns `{}` for a
+ * resolveType it cannot place. Worth asking before rendering a form: a block
+ * the manifest has no entry for falls back to the site-wide schema, whose
+ * fields belong to no block in particular.
+ */
+export function hasManifestBlockSchema(
+  resolveType: string,
+  meta: LiveMeta,
+): boolean {
+  return Object.keys(lookupManifestBlockSchema(resolveType, meta)).length > 0;
+}
+
 /** Whether resolveType refers to a manifest `apps` block (legacy + site/apps aliases). */
 export function isResolvableManifestApp(
   meta: LiveMeta,

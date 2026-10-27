@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { findSiteApp, makeInstallAppPatches } from "@decocms/shared/site-apps";
-import { dependencyInstallFor } from "./dependency-install";
+import { dependencyInstallFor, needsDevRestart } from "./dependency-install";
 
 const PACKAGE_JSON = `{
   "dependencies": {
@@ -50,5 +50,38 @@ describe("dependencyInstallFor", () => {
       patches.files.some((file) => file.path === "package.json"),
     ).toBeFalse();
     expect(dependencyInstallFor(patches)).toEqual({ force: false });
+  });
+});
+
+describe("needsDevRestart", () => {
+  const deno = () =>
+    makeInstallAppPatches({
+      technology: "deno",
+      entry: findSiteApp("deno", "deco-vtex")!,
+    });
+
+  it("restarts on Deno, where no install step runs at all", () => {
+    // The app's schema comes from its module: without a restart the runtime
+    // never re-reads the manifest and the form stays empty.
+    const patches = deno();
+    expect(needsDevRestart(patches, dependencyInstallFor(patches))).toBeTrue();
+  });
+
+  it("leaves the restart to a forced install", () => {
+    const patches = tanstack(PACKAGE_JSON);
+    expect(needsDevRestart(patches, dependencyInstallFor(patches))).toBeFalse();
+  });
+
+  it("restarts when the install was sent unforced", () => {
+    // It no-ops whenever the fingerprint matches, and `src/setup.ts` moved.
+    const declared = tanstack(PACKAGE_JSON).files.find(
+      (file) => file.path === "package.json",
+    )!.content;
+    const patches = tanstack(declared);
+    expect(needsDevRestart(patches, dependencyInstallFor(patches))).toBeTrue();
+  });
+
+  it("leaves a healthy dev server alone when nothing was written", () => {
+    expect(needsDevRestart({ ...deno(), files: [] }, null)).toBeFalse();
   });
 });

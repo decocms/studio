@@ -22,3 +22,24 @@ export function dependencyInstallFor(
     force: patches.files.some((file) => file.path === "package.json"),
   };
 }
+
+/**
+ * Whether the pod still has to restart the dev server for these writes to
+ * reach the site's schema.
+ *
+ * An app's form is generated from the app's own module, so it only exists
+ * once the runtime re-reads the manifest — and nothing else makes it. A forced
+ * install already tears the dev server down and brings it back; the other two
+ * shapes never do: Deno sends no install at all, and an unforced install
+ * no-ops whenever the fingerprint matches, even though `src/setup.ts` moved.
+ *
+ * A reinstall that wrote nothing needs no restart: that is the healthy dev
+ * server this PR exists to stop tearing down.
+ */
+export function needsDevRestart(
+  patches: InstallAppPatches,
+  install: { force: boolean } | null,
+): boolean {
+  if (patches.files.length === 0) return false;
+  return install?.force !== true;
+}

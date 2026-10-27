@@ -19,7 +19,10 @@ import { useContentSyncTarget } from "@/components/sections-editor/use-content-s
 import { usePackagePath } from "@/components/sections-editor/use-package-path";
 import { readCommittedText } from "@/components/sections-editor/read-committed-file";
 import { sandboxGitStatusQueryKey } from "@/components/thread/repository/sandbox-git-api";
-import { dependencyInstallFor } from "@/hooks/dependency-install";
+import {
+  dependencyInstallFor,
+  needsDevRestart,
+} from "@/hooks/dependency-install";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { KEYS } from "@/lib/query-keys";
@@ -120,6 +123,24 @@ async function requestDependencyInstall(
 }
 
 /**
+ * Ask the pod to restart the dev server.
+ *
+ * An app's form is generated from the app's own module, so `/live/_meta` has
+ * no entry for what we just wrote until the runtime re-reads the manifest —
+ * the CMS then has nothing to render, and reloading the page does not help.
+ *
+ * Forced, because the dev server is healthy and running: that is exactly the
+ * case the unforced start skips. Queued, not awaited, like the install above.
+ */
+async function requestDevRestart(ref: SandboxRef): Promise<void> {
+  const res = await fetch(
+    buildSandboxUrl({ ...ref, threadId: null }, "setup/start", { force: "1" }),
+    { method: "POST" },
+  );
+  if (!res.ok) await throwResponseError(res, "Dev restart");
+}
+
+/**
  * Install a site app from the registry: its decofile block plus the source
  * that resolves it.
  *
@@ -217,10 +238,18 @@ export function useInstallApp({
             path: decoBlockFilePath(patches.block.key),
             content: `${JSON.stringify(patches.block.value, null, 2)}\n`,
           });
+          // Last, and only when the step above did not already do it: the
+          // restart is what puts the app's schema in `/live/_meta`.
+          if (needsDevRestart(patches, install)) await requestDevRestart(ref);
           // The working tree moved by more than one block: the header's change
           // count reads git status, as it does after every other write.
           await queryClient.invalidateQueries({
             queryKey: sandboxGitStatusQueryKey(ref),
+          });
+          // The held schema predates this app, and its key carries no commit
+          // to age it out — the same invalidation a block delete does.
+          await queryClient.invalidateQueries({
+            queryKey: KEYS.liveMeta(orgSlug, virtualMcpId, branch),
           });
           return patches.block;
         },

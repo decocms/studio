@@ -11,6 +11,16 @@ export const sandbox = {
   "sandbox.appEditor.loadingSchema": "Carregando schema do app…",
   "sandbox.appEditor.noEditableSchema":
     "Nenhum schema editável foi encontrado para este app.",
+  "sandbox.appInstallPanel.install": "Instalar",
+  "sandbox.appInstallPanel.installing": "Instalando…",
+  "sandbox.appInstallPanel.notInstallable":
+    "Este app vem do código do próprio site, não do registro — não há o que instalar por aqui.",
+  "sandbox.appInstallPanel.unavailable":
+    "Instalar apps não está disponível nesta sessão.",
+  "sandbox.appInstallPanel.writesDeno":
+    "A instalação adiciona apps/{vendor}/{app}.ts e o bloco do app nesta branch.",
+  "sandbox.appInstallPanel.writesTanstack":
+    "A instalação adiciona src/apps/{vendor}/{app}.ts, o pacote do app, sua entrada no APP_REGISTRY e o bloco do app nesta branch.",
   "sandbox.availableSectionEditor.editingBreadcrumb":
     "Trilha de navegação de edição",
   "sandbox.availableSectionEditor.localEditsHint":

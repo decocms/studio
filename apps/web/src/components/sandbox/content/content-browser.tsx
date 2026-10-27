@@ -3,7 +3,6 @@ import { useOrgFlag } from "@/hooks/use-organization-settings";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Suspense, lazy, useState } from "react";
-import { type Query } from "@tanstack/react-query";
 import { useSearch } from "@tanstack/react-router";
 import {
   type NamedRuleViews,
@@ -48,8 +47,8 @@ import { useChatTask } from "@/components/chat/context";
 import { useDecofile } from "@/components/sections-editor/use-decofile";
 import { useLiveMeta } from "@/components/sections-editor/use-live-meta";
 import { hasEditableAppEditorSchema } from "./app-editor-schema";
+import { liveMetaSchemaPollInterval } from "./schema-poll";
 import { hasCmsSettingsType } from "./cms-settings";
-import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
 import {
   keptTheirVersion,
   useSaveBlock,
@@ -66,6 +65,7 @@ import {
   type PageEntry,
 } from "@/components/sections-editor/page-list";
 import { buildAppCatalog, type AppCatalogEntry } from "./app-catalog";
+import { AppInstallPanel } from "./app-install-panel";
 import { ListEmpty } from "./list-empty";
 import { useInstallApp } from "@/hooks/use-install-app";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
@@ -295,6 +295,8 @@ type Selection =
       title: string;
     }
   | { collection: "apps"; key: string }
+  /** A catalogue app with no block yet: the panel that installs it. */
+  | { collection: "available-app"; id: string }
   | { collection: "redirects"; key: string }
   | { collection: BlogKind; key: string }
   | null;
@@ -389,24 +391,6 @@ export function ContentBrowser({ deepLinkPage }: ContentBrowserProps) {
       sandboxWarming={gate.sandboxWarming}
     />
   );
-}
-
-const SCHEMA_POLL_INTERVAL_MS = 2000;
-const SCHEMA_POLL_MAX_ATTEMPTS = 15;
-
-function liveMetaSchemaPollIntervalMs(
-  query: Query<LiveMeta>,
-  resolveType: string | undefined,
-  meta: LiveMeta | undefined,
-  excludeFields?: readonly string[],
-): number | false {
-  if (typeof resolveType !== "string") return false;
-  if (!meta) return SCHEMA_POLL_INTERVAL_MS;
-  if (hasEditableAppEditorSchema(resolveType, meta, excludeFields)) {
-    return false;
-  }
-  if (query.state.dataUpdateCount >= SCHEMA_POLL_MAX_ATTEMPTS) return false;
-  return SCHEMA_POLL_INTERVAL_MS;
 }
 
 function ContentBrowserReady({
@@ -529,13 +513,13 @@ function ContentBrowserReady({
         const block = decofile?.[selection.key] as
           | Record<string, unknown>
           | undefined;
-        return liveMetaSchemaPollIntervalMs(
-          query,
-          typeof block?.__resolveType === "string"
-            ? block.__resolveType
-            : undefined,
-          currentMeta,
-        );
+        return liveMetaSchemaPollInterval({
+          resolveType:
+            typeof block?.__resolveType === "string"
+              ? block.__resolveType
+              : undefined,
+          meta: currentMeta,
+        });
       }
 
       if (activeCollection === "site" && decofile) {
@@ -548,9 +532,10 @@ function ContentBrowserReady({
           (typeof siteBlock?.__resolveType === "string"
             ? siteBlock.__resolveType
             : undefined);
-        return liveMetaSchemaPollIntervalMs(query, resolveType, currentMeta, [
-          "seo",
-        ]);
+        return liveMetaSchemaPollInterval({
+          resolveType,
+          meta: currentMeta,
+        });
       }
 
       return false;
@@ -604,7 +589,13 @@ function ContentBrowserReady({
     excludeFields?: readonly string[],
   ) =>
     !hasEditableAppEditorSchema(resolveType, meta, excludeFields) &&
-    (metaLoading || metaFetching);
+    (metaLoading ||
+      metaFetching ||
+      // Still re-reading between fetches: the form is pending, not absent.
+      // Without this the panel flickers between the spinner and "its settings
+      // appear after a build" at the poll's own rhythm.
+      (devServerReady &&
+        liveMetaSchemaPollInterval({ resolveType, meta }) !== false));
 
   const { createTask } = useChatTask();
   /**
@@ -645,6 +636,27 @@ function ContentBrowserReady({
         )
       : [];
   const installApp = useInstallApp({ orgSlug, virtualMcpId, branch });
+  const handleInstallApp = (entry: AppCatalogEntry) => {
+    if (!session.resolved) return;
+    if (session.runtime === "cms") {
+      toast.error(t("sandbox.appEditor.installNeedsCodingSession"), {
+        action: {
+          label: t("chat.fastPreview.startCodingSession"),
+          onClick: () => createTask({ runtime: "sandbox" }),
+        },
+      });
+      return;
+    }
+    installApp.mutate(
+      { blockKey: entry.id },
+      {
+        // Most apps carry credentials they cannot work without.
+        onSuccess: (block) =>
+          selectItem({ collection: "apps", key: block.key }),
+        onError: (err) => toast.error(err.message),
+      },
+    );
+  };
 
   const saveBlock = useSaveBlock(fetchParams);
   const deleteBlock = useDeleteBlock(fetchParams);
@@ -1220,11 +1232,7 @@ function ContentBrowserReady({
       // The user kept their version (the hook said so in its own toast).
       if (keptTheirVersion(deleted)) return;
       toast.success(`Deleted "${label}"`);
-      if (
-        selection &&
-        selection.collection !== "available-section" &&
-        selection.key === key
-      ) {
+      if (selection && "key" in selection && selection.key === key) {
         setSelection(null);
       }
       setDeleteTarget(null);
@@ -1273,30 +1281,6 @@ function ContentBrowserReady({
                   ? (installApp.variables?.blockKey ?? null)
                   : null
               }
-              onInstallApp={(entry) => {
-                if (!session.resolved) return;
-                if (session.runtime === "cms") {
-                  toast.error(
-                    t("sandbox.appEditor.installNeedsCodingSession"),
-                    {
-                      action: {
-                        label: t("chat.fastPreview.startCodingSession"),
-                        onClick: () => createTask({ runtime: "sandbox" }),
-                      },
-                    },
-                  );
-                  return;
-                }
-                installApp.mutate(
-                  { blockKey: entry.id },
-                  {
-                    // Most apps carry credentials they cannot work without.
-                    onSuccess: (block) =>
-                      selectItem({ collection: "apps", key: block.key }),
-                    onError: (err) => toast.error(err.message),
-                  },
-                );
-              }}
               blogEntries={blogEntries}
               decofile={decofile}
               searchQuery={searchQuery}
@@ -1498,6 +1482,33 @@ function ContentBrowserReady({
                     />
                   )}
                 />
+              ) : selection?.collection === "available-app" ? (
+                (() => {
+                  const entry = appCatalog.find(
+                    (candidate) => candidate.id === selection.id,
+                  );
+                  return entry ? (
+                    <AppInstallPanel
+                      key={`available-app:${entry.id}`}
+                      entry={entry}
+                      technology={siteTechnology}
+                      canInstall={canInstallApps}
+                      isInstalling={
+                        installApp.isPending &&
+                        installApp.variables?.blockKey === entry.id
+                      }
+                      installError={
+                        installApp.isError &&
+                        installApp.variables?.blockKey === entry.id
+                          ? installApp.error.message
+                          : null
+                      }
+                      onInstall={() => handleInstallApp(entry)}
+                    />
+                  ) : (
+                    <EmptyMessage title="App not found in this catalogue." />
+                  );
+                })()
               ) : selection && selection.collection !== "available-section" ? (
                 selection.collection === "apps" ? (
                   <AppEditor
@@ -1617,7 +1628,7 @@ function ContentBrowserReady({
                   } to edit`}
                   description={
                     activeCollection === "apps"
-                      ? "Browse all apps and select an installed one to edit its settings."
+                      ? "Browse all apps: select an installed one to edit its settings, or any other to install it."
                       : 'Pick an item from the list, or click "+" to create one.'
                   }
                 />
@@ -1745,7 +1756,6 @@ function ItemList({
   appCatalog,
   canInstallApps,
   installingAppId,
-  onInstallApp,
   blogEntries,
   decofile,
   searchQuery,
@@ -1776,7 +1786,6 @@ function ItemList({
   canInstallApps: boolean;
   /** Catalogue id of the app being installed right now, if any. */
   installingAppId: string | null;
-  onInstallApp: (entry: AppCatalogEntry) => void;
   blogEntries: BlogEntry[];
   decofile: Record<string, unknown>;
   searchQuery: string;
@@ -2034,9 +2043,11 @@ function ItemList({
             ) : (
               filteredApps.map((entry) => {
                 const isActive =
-                  selection?.collection === "apps" &&
-                  entry.blockKey !== null &&
-                  selection.key === entry.blockKey;
+                  (selection?.collection === "apps" &&
+                    entry.blockKey !== null &&
+                    selection.key === entry.blockKey) ||
+                  (selection?.collection === "available-app" &&
+                    selection.id === entry.id);
                 const isInstalling = installingAppId === entry.id;
                 return (
                   <ItemRow
@@ -2059,20 +2070,15 @@ function ItemList({
                         </span>
                       ) : undefined
                     }
-                    onClick={() => {
-                      if (entry.installed && entry.blockKey) {
-                        onSelect({ collection: "apps", key: entry.blockKey });
-                        return;
-                      }
-                      if (!entry.installable || !canInstallApps) {
-                        toast.message(
-                          `${entry.title} is not installed on this site.`,
-                        );
-                        return;
-                      }
-                      if (installingAppId !== null) return;
-                      onInstallApp(entry);
-                    }}
+                    // Selecting only: what the app is, and whether it can be
+                    // installed, is the panel's answer to give.
+                    onClick={() =>
+                      onSelect(
+                        entry.installed && entry.blockKey
+                          ? { collection: "apps", key: entry.blockKey }
+                          : { collection: "available-app", id: entry.id },
+                      )
+                    }
                   />
                 );
               })
