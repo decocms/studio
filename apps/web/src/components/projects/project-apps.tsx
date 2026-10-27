@@ -3,10 +3,10 @@
 import {
   ClockRewind,
   BarChartSquare02,
-  BezierCurve02,
+  Beaker02,
   Calendar,
+  CheckDone01,
   FileSearch02,
-  FlipBackward,
   Image01,
   LayoutAlt01,
   Server01,
@@ -31,7 +31,7 @@ const APPS: Record<
     labelKey: TranslationKey;
     Icon: ComponentType<{ size?: number; className?: string }>;
     to: string;
-    /** Tile tint, from the design system's categorical palette. */
+    /** Tile tint: the app's own hue (`--app-*` in the design system). */
     tone: string;
   }
 > = {
@@ -39,67 +39,67 @@ const APPS: Record<
     labelKey: "projects.apps.reports",
     Icon: FileSearch02,
     to: PROJECT_ROUTE.reports,
-    tone: "bg-chart-2/15 text-chart-2",
+    tone: "bg-app-reports/15 text-app-reports",
   },
   "site-editor": {
     labelKey: "projects.apps.siteEditor",
     Icon: LayoutAlt01,
     to: PROJECT_ROUTE.siteEditor,
-    tone: "bg-chart-1/15 text-chart-1",
+    tone: "bg-app-site-editor/15 text-app-site-editor",
   },
   assets: {
     labelKey: "projects.apps.assets",
     Icon: Image01,
     to: PROJECT_ROUTE.assets,
-    tone: "bg-chart-2/15 text-chart-2",
+    tone: "bg-app-assets/15 text-app-assets",
   },
   releases: {
     labelKey: "projects.apps.releases",
     Icon: ClockRewind,
     to: PROJECT_ROUTE.releases,
-    tone: "bg-chart-3/15 text-chart-3",
+    tone: "bg-app-releases/15 text-app-releases",
   },
   hosting: {
     labelKey: "projects.apps.hosting",
     Icon: Server01,
     to: PROJECT_ROUTE.hosting,
-    tone: "bg-chart-3/15 text-chart-3",
+    tone: "bg-app-hosting/15 text-app-hosting",
   },
   e2e: {
     labelKey: "projects.apps.e2e",
-    Icon: FlipBackward,
+    Icon: CheckDone01,
     to: PROJECT_ROUTE.e2e,
-    tone: "bg-chart-4/15 text-chart-4",
+    tone: "bg-app-e2e/15 text-app-e2e",
   },
   analytics: {
     labelKey: "projects.apps.analytics",
     Icon: BarChartSquare02,
     to: PROJECT_ROUTE.analytics,
-    tone: "bg-chart-5/15 text-chart-5",
+    tone: "bg-app-analytics/15 text-app-analytics",
   },
   cdn: {
     labelKey: "projects.apps.cdn",
     Icon: Speedometer02,
     to: PROJECT_ROUTE.monitor,
-    tone: "bg-chart-2/15 text-chart-2",
+    tone: "bg-app-cdn/15 text-app-cdn",
   },
   automations: {
     labelKey: "projects.apps.automations",
     Icon: Zap,
     to: PROJECT_ROUTE.automations,
-    tone: "bg-chart-4/15 text-chart-4",
+    tone: "bg-app-automations/15 text-app-automations",
   },
   experiments: {
     labelKey: "projects.apps.experiments",
-    Icon: BezierCurve02,
+    Icon: Beaker02,
     to: PROJECT_ROUTE.experiments,
-    tone: "bg-chart-1/15 text-chart-1",
+    tone: "bg-app-experiments/15 text-app-experiments",
   },
   calendar: {
     labelKey: "projects.apps.calendar",
     Icon: Calendar,
     to: PROJECT_ROUTE.calendar,
-    tone: "bg-chart-5/15 text-chart-5",
+    tone: "bg-app-calendar/15 text-app-calendar",
   },
 };
 

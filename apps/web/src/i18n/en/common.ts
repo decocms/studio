@@ -258,7 +258,7 @@ export const common = {
   "common.mainPanelTabs.releases": "Releases",
   "common.mainPanelTabs.hosting": "Hosting",
   "common.mainPanelTabs.e2e": "E2E",
-  "common.mainPanelTabs.analytics": "Deco Analytics",
+  "common.mainPanelTabs.analytics": "Analytics",
   "common.mainPanelTabs.experiments": "Experiments",
   "common.mainPanelTabs.calendar": "Calendar",
   "common.mainPanelTabs.cdn": "Monitor",

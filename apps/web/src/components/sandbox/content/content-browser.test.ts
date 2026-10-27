@@ -25,22 +25,20 @@ describe("visibleCollection", () => {
 });
 
 describe("visibleCollection on a Blocks (v8) site", () => {
-  test("Campaigns stands where the Calendar is", () => {
-    expect(visibleCollection("calendar", false, true)).toBe("campaigns");
-    expect(visibleCollection("campaigns", false, true)).toBe("campaigns");
+  test("no Calendar here: its campaigns are the Calendar view", () => {
+    expect(visibleCollection("calendar", false, true)).toBe("pages");
   });
 
   test("a v7 site keeps its Calendar", () => {
-    expect(visibleCollection("campaigns", false, false)).toBe("calendar");
     expect(visibleCollection("calendar", false)).toBe("calendar");
   });
 });
 
 describe("deepLinkCollection", () => {
-  test("v8: opens a blog collection, Sections or Campaigns", () => {
+  test("v8: opens a blog collection or Sections", () => {
     expect(deepLinkCollection("posts", true)).toBe("posts");
     expect(deepLinkCollection("sections", true)).toBe("sections");
-    expect(deepLinkCollection("campaigns", true)).toBe("campaigns");
+    expect(deepLinkCollection("campaigns", true)).toBeNull();
   });
 
   test("v7: only a blog collection, as before; anything else opens Pages", () => {
