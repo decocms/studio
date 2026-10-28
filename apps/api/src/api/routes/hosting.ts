@@ -42,6 +42,11 @@ import {
   isAuthenticated,
   requireOrganization,
 } from "../../core/studio-context";
+import { readAnalyticsRegistration } from "../../analytics/registration";
+import {
+  isCustomerLakeConfigured,
+  linkAnalyticsSite,
+} from "../../customer-lake/client";
 import { getSettings } from "../../settings";
 
 type Variables = { studioContext: StudioContext };
@@ -282,8 +287,6 @@ type SiteIdResolution =
 async function resolveWarehouseSiteId(
   org: { id: string },
   site: string,
-  controlplaneRestUrl: string,
-  controlplaneServiceToken: string,
 ): Promise<SiteIdResolution> {
   const cacheKey = `${org.id}:${site.toLowerCase()}`;
   const now = Date.now();
@@ -294,38 +297,18 @@ async function resolveWarehouseSiteId(
       : { status: "unregistered" };
   }
 
-  let id: string | null = null;
-  try {
-    const res = await fetch(
-      `${controlplaneRestUrl}/sites/${encodeURIComponent(site)}/analytics/status`,
-      {
-        headers: {
-          Authorization: `Bearer ${controlplaneServiceToken}`,
-          Accept: "application/json",
-        },
-      },
+  const registration = await readAnalyticsRegistration(site);
+  // Transient failure — do NOT cache, so the next request retries.
+  if (registration.status === "error") return { status: "error" };
+  const id = registration.status === "registered" ? registration.id : null;
+
+  // Sites registered before ANALYTICS_INSTALL existed reach the data lake
+  // the first time their owner opens the dashboard. The caller checked
+  // ownership, which is what makes this link safe to write.
+  if (id && isCustomerLakeConfigured()) {
+    linkAnalyticsSite(org.id, id).catch((err) =>
+      console.error(`[analytics] lake link failed for site="${site}":`, err),
     );
-    const body = (await res.json().catch(() => null)) as {
-      registered?: boolean;
-      config?: { id?: string } | null;
-    } | null;
-    // A non-2xx status is a resolution FAILURE, not "not registered": caching it
-    // as unregistered would strand a real registration behind the Configuration
-    // screen for the whole TTL. Surface it so the caller 502s instead.
-    if (!res.ok) {
-      console.error(
-        `[analytics] status resolve HTTP ${res.status} for site="${site}"`,
-      );
-      return { status: "error" };
-    }
-    // `config.id` is the `s<id>` and is only present once the site is registered.
-    if (body?.registered && body.config?.id) {
-      id = body.config.id;
-    }
-  } catch (err) {
-    console.error(`[analytics] status resolve failed for site="${site}":`, err);
-    // Transient failure — do NOT cache, so the next request retries.
-    return { status: "error" };
   }
 
   // Evict expired entries on write so the map can't grow without bound on a
@@ -662,12 +645,7 @@ export const createHostingRoutes = () => {
     // client-supplied id. `unregistered` ⇒ the tab shows Configuration; a
     // transient resolve `error` ⇒ 502 (distinct from "no registration") so the
     // tab reports a data-load failure instead of a misleading Configuration screen.
-    const resolution = await resolveWarehouseSiteId(
-      org,
-      site,
-      controlplaneRestUrl,
-      controlplaneServiceToken,
-    );
+    const resolution = await resolveWarehouseSiteId(org, site);
     if (resolution.status === "error") {
       return c.json({ error: "Failed to resolve analytics registration" }, 502);
     }

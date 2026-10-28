@@ -1283,7 +1283,7 @@ function InstallPanel({ status }: { status: AnalyticsStatus }) {
 // --- register (not yet registered) ------------------------------------------
 
 /** Copy-to-clipboard button for the one-time snippet/token. */
-export function CopyButton({ text }: { text: string }) {
+function CopyButton({ text }: { text: string }) {
   const t = useT();
   const [copied, setCopied] = useState(false);
   return (
