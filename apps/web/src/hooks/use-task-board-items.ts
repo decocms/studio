@@ -141,6 +141,7 @@ export function useTaskBoardItems() {
     items: query.data?.items ?? [],
     demoFrozenItemIds: query.data?.demoFrozenItemIds ?? [],
     isLoading: query.isLoading,
+    isFetching: query.isFetching,
     error: query.error,
   };
 }

@@ -1002,6 +1002,7 @@ function TaskBoardBody() {
     items: orgItems,
     demoFrozenItemIds,
     isLoading: itemsLoading,
+    isFetching: itemsFetching,
   } = useTaskBoardItems();
   /** A project's home IS this board — see `board-scope.ts` for why scope is a
    *  narrowing of the input rather than a value in the `?repo=` filter. */
@@ -1256,8 +1257,10 @@ function TaskBoardBody() {
    *  outside the project must open rather than redirect away as stale. */
   const openItem = findTaskByKeyOrId(orgItems, openTaskKey) ?? null;
   /** A deleted (or never-visible) card leaves the segment dangling; land on
-   *  the board rather than an empty pane. */
-  const staleTaskKey = !!openTaskKey && !openItem && !isLoading;
+   *  the board rather than an empty pane. Not while the list refetches: a
+   *  card just created elsewhere is missing only from the cached list. */
+  const staleTaskKey =
+    !!openTaskKey && !openItem && !isLoading && !itemsFetching;
   /** The key the card actually wears, so a link minted from an id or from
    *  `deco-1` settles on the shareable form instead of preserving whatever
    *  spelling it arrived as. */
