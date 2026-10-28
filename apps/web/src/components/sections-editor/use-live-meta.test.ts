@@ -200,7 +200,21 @@ describe("fetchLiveMeta", () => {
     expect(calls[0]?.headers).toEqual({});
   });
 
-  it("a rejected revalidation (older dev server's CORS) keeps the held schema", async () => {
+  it("a rejected revalidation asks again plainly, and takes that answer", async () => {
+    // A runtime that refuses the conditional header refuses it every time: if
+    // the rejection stood for "no answer", the CMS would hold a schema that
+    // predates the install and never let go of it.
+    let attempt = 0;
+    const calls = stubFetch(async () => {
+      if (attempt++ === 0) throw new TypeError("Failed to fetch");
+      return Response.json(fresh);
+    });
+    expect(await fetchLiveMeta(PREVIEW, held)).toEqual(fresh);
+    expect(calls[0]?.headers).toEqual({ "If-None-Match": held.etag! });
+    expect(calls[1]?.headers).toEqual({});
+  });
+
+  it("no answer either way keeps the held schema", async () => {
     stubFetch(async () => {
       throw new TypeError("Failed to fetch");
     });

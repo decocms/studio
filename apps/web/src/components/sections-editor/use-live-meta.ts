@@ -89,12 +89,20 @@ export async function fetchLiveMeta(
   previous?: LiveMeta,
 ): Promise<LiveMeta | null> {
   const url = new URL("/live/_meta", baseUrl).href;
-  const headers: Record<string, string> = previous?.etag
-    ? { "If-None-Match": previous.etag }
-    : {};
-  const res = await fetch(url, { cache: "no-store", headers }).catch(
-    () => null,
-  );
+  const etag = previous?.etag;
+  const first = await fetch(url, {
+    cache: "no-store",
+    headers: etag ? { "If-None-Match": etag } : {},
+  }).catch(() => null);
+  // A runtime whose CORS does not allow `If-None-Match` fails the request
+  // outright, and the browser reports that the same way it reports a dev
+  // server that is down. Holding the schema we have forever on that answer
+  // would leave a just-installed app with no form and no way to get one, so
+  // ask once more plainly before concluding the site cannot answer.
+  const res =
+    !first && etag
+      ? await fetch(url, { cache: "no-store", headers: {} }).catch(() => null)
+      : first;
   if (previous && (!res || res.status === 304)) return previous;
   if (!res?.ok) return null;
   // A repo that doesn't use the deco framework for sites still answers
