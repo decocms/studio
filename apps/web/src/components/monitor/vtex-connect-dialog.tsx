@@ -29,6 +29,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@decocms/ui/components/select.tsx";
+import {
+  orderIngestTitle,
+  vtexAccountOf,
+  vtexConnectionLabel,
+} from "@decocms/shared/order-monitor";
 import type { ConnectionEntity } from "@decocms/shared/sdk/types/connection";
 import type { RegistryItem } from "@/components/store/types";
 import { fetchOrderMonitorIngestUrl } from "@/hooks/use-order-monitor";
@@ -140,7 +145,12 @@ function useVtexInstall() {
       const ingest =
         existing ??
         (await actions.create.mutateAsync({
-          title: "VTEX order monitoring",
+          title: orderIngestTitle(
+            keys?.accountName.trim() ||
+              vtexAccountOf(
+                vtex.find((c) => c.id === vtexId)?.configuration_state,
+              ),
+          ),
           connection_type: "HTTP",
           connection_url: ingestUrl,
         }));
@@ -309,33 +319,41 @@ function VtexConnectDialog({
           }}
         >
           {vtex.length > 1 && (
-            <Select
-              value={current?.id}
-              onValueChange={(id) => {
-                setPicked(id);
-                // Another connection's keys, not the last one's account.
-                setKeys({
-                  accountName: String(
-                    vtex.find((c) => c.id === id)?.configuration_state
-                      ?.accountName ?? "",
-                  ),
-                  appKey: "",
-                  appToken: "",
-                });
-              }}
-              disabled={connect.isPending}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {vtex.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.title}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="vtex-connection">
+                {t("monitor.vtex.connection")}
+              </Label>
+              <Select
+                value={current?.id}
+                onValueChange={(id) => {
+                  setPicked(id);
+                  // Another connection's keys, not the last one's account.
+                  setKeys({
+                    accountName: String(
+                      vtex.find((c) => c.id === id)?.configuration_state
+                        ?.accountName ?? "",
+                    ),
+                    appKey: "",
+                    appToken: "",
+                  });
+                }}
+                disabled={connect.isPending}
+              >
+                <SelectTrigger id="vtex-connection" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {vtex.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {vtexConnectionLabel(
+                        c.title,
+                        vtexAccountOf(c.configuration_state),
+                      )}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           )}
           {askKeys && (
             <>

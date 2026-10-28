@@ -122,7 +122,7 @@ export const createOrderMonitorRoutes = () => {
           }));
         return {
           connectionId: store.connectionId,
-          title: store.title,
+          title: info?.title ?? store.title,
           agentIds: info?.agentIds ?? [],
           rules,
         };

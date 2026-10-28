@@ -151,6 +151,7 @@ export const monitor = {
     "Your VTEX account and an app key with OMS read and Feed v3 and Hook Admin. Use a key only this monitor uses.",
   "monitor.vtex.existing":
     "Watches the orders of this VTEX connection. Its key must be one only this monitor uses.",
+  "monitor.vtex.connection": "VTEX account to monitor",
   "monitor.vtex.account": "Account name",
   "monitor.vtex.appKey": "App key",
   "monitor.vtex.appToken": "App token",

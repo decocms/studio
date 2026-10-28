@@ -7,6 +7,34 @@
 /** Org-scoped SSE event: a store's verdicts changed. `subject` is the store's connection id. */
 export const ORDER_MONITOR_EVALUATED_EVENT = "order-monitor.store.evaluated";
 
+/** What a new order ingest install is called before it is named after its VTEX account. */
+export const ORDER_INGEST_TITLE = "VTEX order monitoring";
+
+/** The VTEX account a connection's configuration names. Reads the account only, never the keys beside it. */
+export function vtexAccountOf(state: unknown): string | null {
+  if (typeof state !== "object" || state === null) return null;
+  const name = (state as { accountName?: unknown }).accountName;
+  return typeof name === "string" && name.trim() ? name.trim() : null;
+}
+
+/** A VTEX connection as a person picks it: its title, and the account when the title doesn't already say it. */
+export function vtexConnectionLabel(
+  title: string,
+  account: string | null,
+): string {
+  return account && !title.toLowerCase().includes(account.toLowerCase())
+    ? `${title} · ${account}`
+    : title;
+}
+
+/** The order ingest install's title: the monitor, and the account it watches. */
+export const orderIngestTitle = (account: string | null) =>
+  vtexConnectionLabel(ORDER_INGEST_TITLE, account);
+
+/** A store as the Monitor and its incident cards name it: the VTEX account it watches, else its install's title. */
+export const orderStoreLabel = (installTitle: string, account: string | null) =>
+  account ?? installTitle;
+
 export const ORDER_MONITOR_RULES = [
   "orders_drop",
   "denied_spike",
