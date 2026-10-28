@@ -25,11 +25,12 @@ export interface SiteRepo {
   projectId: string;
 }
 
-export async function resolveSiteRepo(
+/** The site's project, when it is in the caller's organization and scope. */
+export async function resolveSiteProject(
   ctx: StudioContext,
   organizationId: string,
   virtualMcpId: string,
-): Promise<SiteRepo> {
+) {
   const project = await ctx.storage.virtualMcps.findById(
     virtualMcpId,
     organizationId,
@@ -42,6 +43,15 @@ export async function resolveSiteRepo(
   ) {
     throw new Error(`Project not found: ${virtualMcpId}`);
   }
+  return project;
+}
+
+export async function resolveSiteRepo(
+  ctx: StudioContext,
+  organizationId: string,
+  virtualMcpId: string,
+): Promise<SiteRepo> {
+  const project = await resolveSiteProject(ctx, organizationId, virtualMcpId);
 
   const metadata = (project.metadata as Record<string, unknown>) ?? null;
   const connectionIds =

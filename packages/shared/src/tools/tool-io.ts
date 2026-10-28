@@ -2288,6 +2288,606 @@ export interface StudioToolIO {
       removed: string[];
     };
   };
+  BLOG_CARD_LIST: {
+    input: { virtualMcpId?: string | undefined };
+    output: {
+      cards: {
+        [x: string]: unknown;
+        id: string;
+        kind: "blogpost";
+        status:
+          | "ideas"
+          | "generating"
+          | "awaiting_review"
+          | "scheduled"
+          | "published";
+        virtualMcpId: string;
+        createdBy: string;
+        createdAt: string;
+        updatedAt: string;
+        campaignId?: string | undefined;
+        prompt?: string | undefined;
+        threadId?: string | undefined;
+        branch?: string | undefined;
+        fileConfigId?: string | undefined;
+        stage?:
+          | "done"
+          | "grounding"
+          | "drafting"
+          | "illustrating"
+          | "assembling"
+          | "writing"
+          | undefined;
+        hypothesis?:
+          | {
+              [x: string]: unknown;
+              title?: string | undefined;
+              statement?: string | undefined;
+              angle?: string | undefined;
+              format?:
+                | {
+                    [x: string]: unknown;
+                    name: string;
+                    value?: string | undefined;
+                  }
+                | undefined;
+              keywords?:
+                | {
+                    [x: string]: unknown;
+                    term: string;
+                    volume?: number | undefined;
+                  }[]
+                | undefined;
+              evidence?:
+                | {
+                    [x: string]: unknown;
+                    source: "calendar" | "brand" | "gsc" | "ga4" | "vtex";
+                    fact: string;
+                    figure?: string | undefined;
+                    tool?: string | undefined;
+                  }[]
+                | undefined;
+              guardrails?:
+                | {
+                    [x: string]: unknown;
+                    text: string;
+                    origin: "brand" | "campaign";
+                  }[]
+                | undefined;
+              metric?: string | undefined;
+              groundingOutcome?: string | undefined;
+            }
+          | undefined;
+        post?:
+          | {
+              [x: string]: unknown;
+              title?: string | undefined;
+              excerpt?: string | undefined;
+              seo?:
+                | {
+                    [x: string]: unknown;
+                    title?: string | undefined;
+                    description?: string | undefined;
+                  }
+                | undefined;
+              cover?:
+                | {
+                    [x: string]: unknown;
+                    url?: string | undefined;
+                    alt?: string | undefined;
+                    prompt?: string | undefined;
+                  }
+                | undefined;
+              sections?:
+                | {
+                    [x: string]: unknown;
+                    type?: string | undefined;
+                    props?: Record<string, unknown> | undefined;
+                    productIds?: string[] | undefined;
+                  }[]
+                | undefined;
+              gaps?:
+                | {
+                    [x: string]: unknown;
+                    code: string;
+                    count?: number | undefined;
+                  }[]
+                | undefined;
+            }
+          | undefined;
+        postKey?: string | undefined;
+        commit?: string | undefined;
+        error?: string | undefined;
+        run?:
+          | {
+              [x: string]: unknown;
+              phase: "hypothesis" | "execute";
+              requestedAt: string;
+              requestedBy: string;
+            }
+          | undefined;
+      }[];
+    };
+  };
+  BLOG_CARD_GET: {
+    input: { id: string };
+    output: {
+      card: {
+        [x: string]: unknown;
+        id: string;
+        kind: "blogpost";
+        status:
+          | "ideas"
+          | "generating"
+          | "awaiting_review"
+          | "scheduled"
+          | "published";
+        virtualMcpId: string;
+        createdBy: string;
+        createdAt: string;
+        updatedAt: string;
+        campaignId?: string | undefined;
+        prompt?: string | undefined;
+        threadId?: string | undefined;
+        branch?: string | undefined;
+        fileConfigId?: string | undefined;
+        stage?:
+          | "done"
+          | "grounding"
+          | "drafting"
+          | "illustrating"
+          | "assembling"
+          | "writing"
+          | undefined;
+        hypothesis?:
+          | {
+              [x: string]: unknown;
+              title?: string | undefined;
+              statement?: string | undefined;
+              angle?: string | undefined;
+              format?:
+                | {
+                    [x: string]: unknown;
+                    name: string;
+                    value?: string | undefined;
+                  }
+                | undefined;
+              keywords?:
+                | {
+                    [x: string]: unknown;
+                    term: string;
+                    volume?: number | undefined;
+                  }[]
+                | undefined;
+              evidence?:
+                | {
+                    [x: string]: unknown;
+                    source: "calendar" | "brand" | "gsc" | "ga4" | "vtex";
+                    fact: string;
+                    figure?: string | undefined;
+                    tool?: string | undefined;
+                  }[]
+                | undefined;
+              guardrails?:
+                | {
+                    [x: string]: unknown;
+                    text: string;
+                    origin: "brand" | "campaign";
+                  }[]
+                | undefined;
+              metric?: string | undefined;
+              groundingOutcome?: string | undefined;
+            }
+          | undefined;
+        post?:
+          | {
+              [x: string]: unknown;
+              title?: string | undefined;
+              excerpt?: string | undefined;
+              seo?:
+                | {
+                    [x: string]: unknown;
+                    title?: string | undefined;
+                    description?: string | undefined;
+                  }
+                | undefined;
+              cover?:
+                | {
+                    [x: string]: unknown;
+                    url?: string | undefined;
+                    alt?: string | undefined;
+                    prompt?: string | undefined;
+                  }
+                | undefined;
+              sections?:
+                | {
+                    [x: string]: unknown;
+                    type?: string | undefined;
+                    props?: Record<string, unknown> | undefined;
+                    productIds?: string[] | undefined;
+                  }[]
+                | undefined;
+              gaps?:
+                | {
+                    [x: string]: unknown;
+                    code: string;
+                    count?: number | undefined;
+                  }[]
+                | undefined;
+            }
+          | undefined;
+        postKey?: string | undefined;
+        commit?: string | undefined;
+        error?: string | undefined;
+        run?:
+          | {
+              [x: string]: unknown;
+              phase: "hypothesis" | "execute";
+              requestedAt: string;
+              requestedBy: string;
+            }
+          | undefined;
+      };
+      version: string;
+    };
+  };
+  BLOG_CARD_CREATE: {
+    input: {
+      virtualMcpId: string;
+      campaignId: string;
+      prompt?: string | undefined;
+      id?: string | undefined;
+    };
+    output: {
+      card: {
+        [x: string]: unknown;
+        id: string;
+        kind: "blogpost";
+        status:
+          | "ideas"
+          | "generating"
+          | "awaiting_review"
+          | "scheduled"
+          | "published";
+        virtualMcpId: string;
+        createdBy: string;
+        createdAt: string;
+        updatedAt: string;
+        campaignId?: string | undefined;
+        prompt?: string | undefined;
+        threadId?: string | undefined;
+        branch?: string | undefined;
+        fileConfigId?: string | undefined;
+        stage?:
+          | "done"
+          | "grounding"
+          | "drafting"
+          | "illustrating"
+          | "assembling"
+          | "writing"
+          | undefined;
+        hypothesis?:
+          | {
+              [x: string]: unknown;
+              title?: string | undefined;
+              statement?: string | undefined;
+              angle?: string | undefined;
+              format?:
+                | {
+                    [x: string]: unknown;
+                    name: string;
+                    value?: string | undefined;
+                  }
+                | undefined;
+              keywords?:
+                | {
+                    [x: string]: unknown;
+                    term: string;
+                    volume?: number | undefined;
+                  }[]
+                | undefined;
+              evidence?:
+                | {
+                    [x: string]: unknown;
+                    source: "calendar" | "brand" | "gsc" | "ga4" | "vtex";
+                    fact: string;
+                    figure?: string | undefined;
+                    tool?: string | undefined;
+                  }[]
+                | undefined;
+              guardrails?:
+                | {
+                    [x: string]: unknown;
+                    text: string;
+                    origin: "brand" | "campaign";
+                  }[]
+                | undefined;
+              metric?: string | undefined;
+              groundingOutcome?: string | undefined;
+            }
+          | undefined;
+        post?:
+          | {
+              [x: string]: unknown;
+              title?: string | undefined;
+              excerpt?: string | undefined;
+              seo?:
+                | {
+                    [x: string]: unknown;
+                    title?: string | undefined;
+                    description?: string | undefined;
+                  }
+                | undefined;
+              cover?:
+                | {
+                    [x: string]: unknown;
+                    url?: string | undefined;
+                    alt?: string | undefined;
+                    prompt?: string | undefined;
+                  }
+                | undefined;
+              sections?:
+                | {
+                    [x: string]: unknown;
+                    type?: string | undefined;
+                    props?: Record<string, unknown> | undefined;
+                    productIds?: string[] | undefined;
+                  }[]
+                | undefined;
+              gaps?:
+                | {
+                    [x: string]: unknown;
+                    code: string;
+                    count?: number | undefined;
+                  }[]
+                | undefined;
+            }
+          | undefined;
+        postKey?: string | undefined;
+        commit?: string | undefined;
+        error?: string | undefined;
+        run?:
+          | {
+              [x: string]: unknown;
+              phase: "hypothesis" | "execute";
+              requestedAt: string;
+              requestedBy: string;
+            }
+          | undefined;
+      };
+      version: string;
+    };
+  };
+  BLOG_CARD_UPDATE: {
+    input: {
+      id: string;
+      patch: {
+        status?:
+          | "ideas"
+          | "generating"
+          | "awaiting_review"
+          | "scheduled"
+          | "published"
+          | undefined;
+        virtualMcpId?: string | undefined;
+        campaignId?: string | null | undefined;
+        prompt?: string | null | undefined;
+        fileConfigId?: string | null | undefined;
+        stage?:
+          | "done"
+          | "grounding"
+          | "drafting"
+          | "illustrating"
+          | "assembling"
+          | "writing"
+          | null
+          | undefined;
+        hypothesis?:
+          | {
+              [x: string]: unknown;
+              title?: string | undefined;
+              statement?: string | undefined;
+              angle?: string | undefined;
+              format?:
+                | {
+                    [x: string]: unknown;
+                    name: string;
+                    value?: string | undefined;
+                  }
+                | undefined;
+              keywords?:
+                | {
+                    [x: string]: unknown;
+                    term: string;
+                    volume?: number | undefined;
+                  }[]
+                | undefined;
+              evidence?:
+                | {
+                    [x: string]: unknown;
+                    source: "calendar" | "brand" | "gsc" | "ga4" | "vtex";
+                    fact: string;
+                    figure?: string | undefined;
+                    tool?: string | undefined;
+                  }[]
+                | undefined;
+              guardrails?:
+                | {
+                    [x: string]: unknown;
+                    text: string;
+                    origin: "brand" | "campaign";
+                  }[]
+                | undefined;
+              metric?: string | undefined;
+              groundingOutcome?: string | undefined;
+            }
+          | null
+          | undefined;
+        post?:
+          | {
+              [x: string]: unknown;
+              title?: string | undefined;
+              excerpt?: string | undefined;
+              seo?:
+                | {
+                    [x: string]: unknown;
+                    title?: string | undefined;
+                    description?: string | undefined;
+                  }
+                | undefined;
+              cover?:
+                | {
+                    [x: string]: unknown;
+                    url?: string | undefined;
+                    alt?: string | undefined;
+                    prompt?: string | undefined;
+                  }
+                | undefined;
+              sections?:
+                | {
+                    [x: string]: unknown;
+                    type?: string | undefined;
+                    props?: Record<string, unknown> | undefined;
+                    productIds?: string[] | undefined;
+                  }[]
+                | undefined;
+              gaps?:
+                | {
+                    [x: string]: unknown;
+                    code: string;
+                    count?: number | undefined;
+                  }[]
+                | undefined;
+            }
+          | null
+          | undefined;
+        postKey?: string | null | undefined;
+        commit?: string | null | undefined;
+        error?: string | null | undefined;
+      };
+      expect?: string | undefined;
+    };
+    output: {
+      card: {
+        [x: string]: unknown;
+        id: string;
+        kind: "blogpost";
+        status:
+          | "ideas"
+          | "generating"
+          | "awaiting_review"
+          | "scheduled"
+          | "published";
+        virtualMcpId: string;
+        createdBy: string;
+        createdAt: string;
+        updatedAt: string;
+        campaignId?: string | undefined;
+        prompt?: string | undefined;
+        threadId?: string | undefined;
+        branch?: string | undefined;
+        fileConfigId?: string | undefined;
+        stage?:
+          | "done"
+          | "grounding"
+          | "drafting"
+          | "illustrating"
+          | "assembling"
+          | "writing"
+          | undefined;
+        hypothesis?:
+          | {
+              [x: string]: unknown;
+              title?: string | undefined;
+              statement?: string | undefined;
+              angle?: string | undefined;
+              format?:
+                | {
+                    [x: string]: unknown;
+                    name: string;
+                    value?: string | undefined;
+                  }
+                | undefined;
+              keywords?:
+                | {
+                    [x: string]: unknown;
+                    term: string;
+                    volume?: number | undefined;
+                  }[]
+                | undefined;
+              evidence?:
+                | {
+                    [x: string]: unknown;
+                    source: "calendar" | "brand" | "gsc" | "ga4" | "vtex";
+                    fact: string;
+                    figure?: string | undefined;
+                    tool?: string | undefined;
+                  }[]
+                | undefined;
+              guardrails?:
+                | {
+                    [x: string]: unknown;
+                    text: string;
+                    origin: "brand" | "campaign";
+                  }[]
+                | undefined;
+              metric?: string | undefined;
+              groundingOutcome?: string | undefined;
+            }
+          | undefined;
+        post?:
+          | {
+              [x: string]: unknown;
+              title?: string | undefined;
+              excerpt?: string | undefined;
+              seo?:
+                | {
+                    [x: string]: unknown;
+                    title?: string | undefined;
+                    description?: string | undefined;
+                  }
+                | undefined;
+              cover?:
+                | {
+                    [x: string]: unknown;
+                    url?: string | undefined;
+                    alt?: string | undefined;
+                    prompt?: string | undefined;
+                  }
+                | undefined;
+              sections?:
+                | {
+                    [x: string]: unknown;
+                    type?: string | undefined;
+                    props?: Record<string, unknown> | undefined;
+                    productIds?: string[] | undefined;
+                  }[]
+                | undefined;
+              gaps?:
+                | {
+                    [x: string]: unknown;
+                    code: string;
+                    count?: number | undefined;
+                  }[]
+                | undefined;
+            }
+          | undefined;
+        postKey?: string | undefined;
+        commit?: string | undefined;
+        error?: string | undefined;
+        run?:
+          | {
+              [x: string]: unknown;
+              phase: "hypothesis" | "execute";
+              requestedAt: string;
+              requestedBy: string;
+            }
+          | undefined;
+      };
+      version: string;
+    };
+  };
+  BLOG_CARD_DELETE: { input: { id: string }; output: { id: string } };
   BLOG_SITE_GROUND: {
     input: {
       purpose: "format" | "link" | "context" | "brand" | "campaign" | "post";
@@ -4063,7 +4663,7 @@ export interface StudioToolIO {
     output: { triggered: boolean; reason?: string | undefined };
   };
   REPORTS_BIND: {
-    input: { siteUrl: string; provider: "ga4" | "gsc"; resourceId: string };
+    input: { siteUrl: string; provider: "gsc" | "ga4"; resourceId: string };
     output:
       | { ok: true; resourceId: string; evidence: string }
       | { ok: false; reason: string; detail: string };

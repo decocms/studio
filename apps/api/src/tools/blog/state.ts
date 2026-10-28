@@ -2,7 +2,7 @@ import { CAMPAIGN_STATUSES } from "@decocms/shared/blog-campaign";
 import { BLOG_STATE_CONFLICT } from "@decocms/shared/blog-state";
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
-import { OrgFsConflictError } from "../../file-storage/org-fs";
+import { type OrgFs, OrgFsConflictError } from "../../file-storage/org-fs";
 import {
   getUserId,
   requireAuth,
@@ -96,8 +96,13 @@ const RecordListSchema = <T extends z.ZodType>(what: T, noun: string) =>
     .max(MAX_RECORDS_PER_CALL)
     .optional();
 
-/** Everything a handler in this file needs settled before it can act. */
-async function prepare(ctx: StudioContext): Promise<{
+/**
+ * Everything a handler on the brand folder needs settled before it can act:
+ * the caller, the flag, and which brand folder is the organization's.
+ */
+export async function resolveBlogScope(ctx: StudioContext): Promise<{
+  organizationId: string;
+  orgFs: OrgFs;
   brand: string;
   actor: string;
 }> {
@@ -109,6 +114,8 @@ async function prepare(ctx: StudioContext): Promise<{
     throw new Error("Organization filesystem is not configured");
   }
   return {
+    organizationId: organization.id,
+    orgFs: ctx.orgFs,
     brand: await resolveBrandDir(
       ctx.orgFs,
       organization.slug ?? organization.id,
@@ -117,7 +124,7 @@ async function prepare(ctx: StudioContext): Promise<{
   };
 }
 
-function conflictOrRethrow(err: unknown): unknown {
+export function conflictOrRethrow(err: unknown): unknown {
   return err instanceof OrgFsConflictError
     ? new Error(`${BLOG_STATE_CONFLICT} ${err.message}`)
     : err;
@@ -165,8 +172,8 @@ export const BLOG_STATE_GET = defineTool({
     `Blog state: ${r.brand ? "brand" : "no brand"}, ${r.context ? "writing rules" : "no writing rules"}, ${r.campaigns.length} campaign(s), ${r.campaignSeeds.length} seed(s).`,
 
   handler: async (_input, ctx) => {
-    const { brand } = await prepare(ctx);
-    return await readBlogState(ctx.orgFs!, brand);
+    const { orgFs, brand } = await resolveBlogScope(ctx);
+    return await readBlogState(orgFs, brand);
   },
 });
 
@@ -220,8 +227,7 @@ export const BLOG_STATE_SET = defineTool({
     `Wrote ${r.written.length} file(s), removed ${r.removed.length} record(s).`,
 
   handler: async (input, ctx) => {
-    const { brand: target, actor } = await prepare(ctx);
-    const orgFs = ctx.orgFs!;
+    const { orgFs, brand: target, actor } = await resolveBlogScope(ctx);
 
     const expect = input.expect ?? {};
     const conditional = (path: string): BlogWrite["expect"] =>

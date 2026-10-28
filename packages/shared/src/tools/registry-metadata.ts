@@ -62,6 +62,11 @@ const ALL_TOOL_NAMES = [
   "ORGANIZATION_HAS_SITE",
   "BLOG_STATE_GET",
   "BLOG_STATE_SET",
+  "BLOG_CARD_LIST",
+  "BLOG_CARD_GET",
+  "BLOG_CARD_CREATE",
+  "BLOG_CARD_UPDATE",
+  "BLOG_CARD_DELETE",
   "BLOG_SITE_GROUND",
   "BLOG_SITE_CATALOGUE",
   "BLOG_SITE_BLOCKS",
@@ -435,6 +440,32 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     description:
       "Write the organization's blog campaigns and campaign seeds to its brand folder",
     category: "Blog",
+  },
+  {
+    name: "BLOG_CARD_LIST",
+    description: "List the content track's blogpost cards",
+    category: "Blog",
+  },
+  {
+    name: "BLOG_CARD_GET",
+    description: "Read a blogpost card",
+    category: "Blog",
+  },
+  {
+    name: "BLOG_CARD_CREATE",
+    description: "Create a blogpost card for a site and a campaign",
+    category: "Blog",
+  },
+  {
+    name: "BLOG_CARD_UPDATE",
+    description: "Merge a change into a blogpost card",
+    category: "Blog",
+  },
+  {
+    name: "BLOG_CARD_DELETE",
+    description: "Delete a blogpost card",
+    category: "Blog",
+    dangerous: true,
   },
   {
     name: "BLOG_SITE_GROUND",

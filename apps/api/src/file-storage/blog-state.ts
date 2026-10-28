@@ -9,7 +9,9 @@
  * Campaigns and their seeds sit beside it, one file per record under
  * `campaigns/` and `campaign-seeds/`, keyed by the id the web app mints. One
  * file each so a write never clobbers the campaign being edited, which a single
- * array file would bring back under last-write-wins.
+ * array file would bring back under last-write-wins. Blogpost cards follow the
+ * same rule under `cards/`, and are changed by merging into what is stored
+ * (`updateBlogRecord`), since a card's agent and a person write the same one.
  *
  * Reads are best-effort throughout: a corrupt or vanished file is skipped, a
  * missing directory is an empty list, and nothing here throws on the read
@@ -25,11 +27,19 @@ import {
   pickBrandDir,
 } from "@decocms/shared/brand";
 import { HOME_MOUNT_PATH } from "@decocms/shared/organization/home-mount";
-import type { OrgFs, WriteExpectation } from "./org-fs";
+import { retry, RetryError } from "@decocms/shared/std";
+import { createHash } from "node:crypto";
+import {
+  type OrgFs,
+  OrgFsConflictError,
+  OrgFsNotFoundError,
+  type WriteExpectation,
+} from "./org-fs";
 import type { OrgFsEntry } from "../storage/org-fs";
 
 export const CAMPAIGNS_DIR = "campaigns";
 export const CAMPAIGN_SEEDS_DIR = "campaign-seeds";
+export const CARDS_DIR = "cards";
 
 const BRAND_FILE = "brand.md";
 
@@ -43,6 +53,7 @@ const BRAND_FILE = "brand.md";
  */
 const MAX_CAMPAIGNS = 500;
 export const MAX_CAMPAIGN_SEEDS = 200;
+const MAX_CARDS = 500;
 
 /** The volume every path below is read from and written to. */
 const BLOG_VOLUME = HOME_MOUNT_PATH;
@@ -52,11 +63,12 @@ export function brandPath(brand: string): string {
   return `${BRANDS_DIR}/${brand}`;
 }
 
-export function recordPath(
-  brand: string,
-  dir: typeof CAMPAIGNS_DIR | typeof CAMPAIGN_SEEDS_DIR,
-  id: string,
-): string {
+type RecordDir =
+  | typeof CAMPAIGNS_DIR
+  | typeof CAMPAIGN_SEEDS_DIR
+  | typeof CARDS_DIR;
+
+export function recordPath(brand: string, dir: RecordDir, id: string): string {
   return `${brandPath(brand)}/${dir}/${id}.json`;
 }
 
@@ -260,7 +272,7 @@ export async function deleteBlogRecords(
   orgFs: OrgFs,
   brand: string,
   actor: string,
-  dir: typeof CAMPAIGNS_DIR | typeof CAMPAIGN_SEEDS_DIR,
+  dir: RecordDir,
   ids: string[],
 ): Promise<void> {
   await Promise.all(
@@ -278,4 +290,98 @@ export async function deleteBlogRecords(
       }
     }),
   );
+}
+
+/** Every blogpost card in one brand folder, bounded, corrupt files skipped. */
+export async function readBlogCards(
+  orgFs: OrgFs,
+  brand: string,
+): Promise<BlogRecord[]> {
+  return readRecords(orgFs, `${brandPath(brand)}/${CARDS_DIR}`, MAX_CARDS, {});
+}
+
+/** One record and the version of the bytes it was parsed from. */
+export interface VersionedRecord {
+  data: Record<string, unknown>;
+  /** The content hash a conditional write expects, `sha256` of those bytes. */
+  version: string;
+}
+
+/**
+ * One record, or null when it is absent or unparseable.
+ *
+ * Unlike the reads above, this throws when storage fails: it is the first half
+ * of a write, and a broken read taken for an absent record would answer "no
+ * such card" for a card that is there.
+ */
+export async function readBlogRecord(
+  orgFs: OrgFs,
+  path: string,
+): Promise<VersionedRecord | null> {
+  let bytes: Uint8Array;
+  try {
+    bytes = await orgFs.read(BLOG_VOLUME, path);
+  } catch (err) {
+    if (err instanceof OrgFsNotFoundError) return null;
+    throw err;
+  }
+  let data: Record<string, unknown> | null;
+  try {
+    data = asRecord(JSON.parse(new TextDecoder().decode(bytes)));
+  } catch {
+    return null;
+  }
+  if (!data) return null;
+  return { data, version: createHash("sha256").update(bytes).digest("hex") };
+}
+
+/**
+ * Change one record and write it back, without losing a write that landed in
+ * between.
+ *
+ * `change` gets the record as stored and returns what it becomes, or throws to
+ * refuse. Every attempt re-reads, so it always judges the current record. With
+ * `expect`, there is one attempt and a version that moved is the caller's
+ * conflict. Without, a write landing between the read and this one costs a
+ * re-read, up to three times: a card's agent and a person writing the same
+ * card is the normal case, not a race one of them should lose.
+ *
+ * Two writes in the same instant can still both land, the second over the
+ * first: `OrgFs.write` checks the version against the manifest row it read,
+ * not atomically with its own write.
+ */
+export async function updateBlogRecord(
+  orgFs: OrgFs,
+  actor: string,
+  path: string,
+  change: (
+    current: Record<string, unknown>,
+  ) => Record<string, unknown> | Promise<Record<string, unknown>>,
+  opts: { expect?: string } = {},
+): Promise<{ data: Record<string, unknown>; entry: OrgFsEntry }> {
+  const attempt = async () => {
+    const current = await readBlogRecord(orgFs, path);
+    if (!current) throw new OrgFsNotFoundError(`No such record: ${path}`);
+    if (opts.expect && opts.expect !== current.version) {
+      throw new OrgFsConflictError(`${path} changed since it was read`);
+    }
+    const data = await change(current.data);
+    const entry = await orgFs.write(BLOG_VOLUME, path, JSON.stringify(data), {
+      actor,
+      contentType: "application/json",
+      expect: { contentHash: current.version },
+    });
+    return { data, entry };
+  };
+  if (opts.expect) return attempt();
+  try {
+    return await retry(attempt, {
+      maxAttempts: 3,
+      minTimeout: 50,
+      maxTimeout: 400,
+      isRetriable: (err) => err instanceof OrgFsConflictError,
+    });
+  } catch (err) {
+    throw err instanceof RetryError ? err.cause : err;
+  }
 }

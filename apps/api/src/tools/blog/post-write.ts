@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { BLOG_POST_ID } from "@decocms/shared/blog-card";
 import {
   PlaintextSecretError,
   sanitizeSecretsForPersistence,
@@ -37,9 +38,6 @@ import { requireBranch, resolveSiteRepo } from "./site-repo";
 
 /** A post is a document, not a book; past this it is not a blog post. */
 const MAX_POST_BYTES = 512_000;
-
-/** The id of a planning post, which is also the last segment of its key. */
-const POST_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
 
 const PLANNING_POST_PREFIX = "blog-manager/posts/";
 
@@ -100,7 +98,7 @@ export const BLOG_POST_WRITE = defineTool({
     await ctx.access.check();
     await requireBlogAi(ctx, organization.id);
 
-    if (!POST_ID.test(input.postId)) {
+    if (!BLOG_POST_ID.test(input.postId)) {
       throw new Error(
         `Invalid post id "${input.postId}": letters, digits, "-" and "_" only.`,
       );
