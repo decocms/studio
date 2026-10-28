@@ -4,6 +4,7 @@ import {
   AnalyticsRegistrationError,
   registerAnalyticsSite,
   siteDomains,
+  typedHost,
 } from "./registration";
 
 const original = getSettings();
@@ -25,6 +26,16 @@ test("siteDomains covers the apex and www whichever one is given", () => {
     "loja.example.com",
     "www.loja.example.com",
   ]);
+});
+
+test("typedHost reads a typed domain, with or without a scheme or path", () => {
+  expect(typedHost("www.Loja.com.br")).toBe("www.loja.com.br");
+  expect(typedHost(" https://loja.com/produtos?x=1 ")).toBe("loja.com");
+  expect(typedHost("loja")).toBeNull();
+  expect(typedHost("not a domain")).toBeNull();
+  expect(typedHost("ftp://loja.com")).toBeNull();
+  expect(typedHost("")).toBeNull();
+  expect(typedHost(undefined)).toBeNull();
 });
 
 test("a control-plane refusal carries its code and reads by its message", async () => {

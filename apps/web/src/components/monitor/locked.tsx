@@ -15,6 +15,8 @@ import { Button } from "@decocms/ui/components/button.tsx";
 import { Check } from "@untitledui/icons";
 import { ListRow } from "@decocms/ui/components/list-row.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
+import { Input } from "@decocms/ui/components/input.tsx";
+import { toast } from "sonner";
 import { IntegrationIcon } from "@/components/integration-icon";
 import { ProjectIcon } from "@/components/project-icon";
 import { useInstallAnalytics } from "@/hooks/use-install-analytics";
@@ -492,6 +494,10 @@ export function AnalyticsGuide({
 }) {
   const t = useT();
   const install = useInstallAnalytics();
+  const [domain, setDomain] = useState("");
+  // The site hosting knows no domain for, asked where it's live.
+  const [asking, setAsking] = useState<string | null>(null);
+  const pendingSite = install.isPending ? install.variables?.site : null;
   if (projects.length === 0) {
     return (
       <div className="flex flex-col gap-4">
@@ -515,28 +521,88 @@ export function AnalyticsGuide({
         {t("monitor.analyticsGuide.intro")}
       </p>
       <div className="flex flex-col">
-        {projects.map((project, i) => (
-          <ListRow
-            key={project.id}
-            variant="divided"
-            lead={<ProjectIcon icon={project.icon} name={project.title} />}
-            title={project.title}
-            meta={project.site}
-            trailing={
-              <Button
-                size="sm"
-                variant={i === 0 ? "default" : "outline"}
-                className="shrink-0"
-                disabled={install.isPending}
-                onClick={() => install.mutate(project.site)}
+        {projects.map((project, i) =>
+          asking === project.site ? (
+            <form
+              key={project.id}
+              className="flex flex-col gap-2 border-b border-border py-3"
+              onSubmit={(e) => {
+                e.preventDefault();
+                install.mutate(
+                  { site: project.site, domain },
+                  {
+                    onSuccess: (result) => {
+                      if (result.status === "needs_domain") {
+                        toast.error(t("monitor.analyticsGuide.domainInvalid"));
+                      }
+                    },
+                  },
+                );
+              }}
+            >
+              <label
+                htmlFor="analytics-domain"
+                className="text-sm text-foreground"
               >
-                {install.isPending && install.variables === project.site
-                  ? t("monitor.analyticsGuide.installing")
-                  : t("monitor.analyticsGuide.install")}
-              </Button>
-            }
-          />
-        ))}
+                {t("monitor.analyticsGuide.domain", { site: project.title })}
+              </label>
+              <div className="flex gap-2">
+                <Input
+                  id="analytics-domain"
+                  autoFocus
+                  inputMode="url"
+                  placeholder="www.example.com"
+                  value={domain}
+                  onChange={(e) => setDomain(e.target.value)}
+                />
+                <Button
+                  type="submit"
+                  size="sm"
+                  className="shrink-0"
+                  disabled={!domain.trim() || install.isPending}
+                >
+                  {pendingSite === project.site
+                    ? t("monitor.analyticsGuide.installing")
+                    : t("monitor.analyticsGuide.install")}
+                </Button>
+              </div>
+            </form>
+          ) : (
+            <ListRow
+              key={project.id}
+              variant="divided"
+              lead={<ProjectIcon icon={project.icon} name={project.title} />}
+              title={project.title}
+              meta={project.site}
+              trailing={
+                <Button
+                  size="sm"
+                  variant={i === 0 ? "default" : "outline"}
+                  className="shrink-0"
+                  disabled={install.isPending}
+                  onClick={() => {
+                    setDomain("");
+                    install.mutate(
+                      { site: project.site },
+                      {
+                        onSuccess: (result) =>
+                          setAsking(
+                            result.status === "needs_domain"
+                              ? project.site
+                              : null,
+                          ),
+                      },
+                    );
+                  }}
+                >
+                  {pendingSite === project.site
+                    ? t("monitor.analyticsGuide.installing")
+                    : t("monitor.analyticsGuide.install")}
+                </Button>
+              }
+            />
+          ),
+        )}
       </div>
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs text-muted-foreground">

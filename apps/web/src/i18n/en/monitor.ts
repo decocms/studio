@@ -128,6 +128,10 @@ export const monitor = {
     "Add your site to Studio, then install analytics on it in one click.",
   "monitor.analyticsGuide.install": "Install",
   "monitor.analyticsGuide.installing": "Starting…",
+  "monitor.analyticsGuide.domain":
+    "Where is {site} live? Visits are counted only on this domain and its www.",
+  "monitor.analyticsGuide.domainInvalid":
+    "That isn't a domain. Try something like www.example.com.",
   "monitor.analyticsGuide.installSent":
     "Sent to the Super Agent — it will open a pull request.",
   "monitor.analyticsGuide.manual":

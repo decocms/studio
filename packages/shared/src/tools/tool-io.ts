@@ -2938,8 +2938,14 @@ export interface StudioToolIO {
     };
   };
   ANALYTICS_INSTALL: {
-    input: { site: string };
-    output: { taskBoardItemId: string; taskKey: string | null };
+    input: { site: string; domain?: string | undefined };
+    output:
+      | {
+          status: "dispatched";
+          taskBoardItemId: string;
+          taskKey: string | null;
+        }
+      | { status: "needs_domain" };
   };
   COLLECTION_CONNECTIONS_CREATE: {
     input: {
