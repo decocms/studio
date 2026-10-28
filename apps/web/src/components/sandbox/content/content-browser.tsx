@@ -881,8 +881,14 @@ function ContentBrowserReady({
       : null;
   // A type that's gone (its last entry deleted or discarded) falls back to
   // the first view, never to the draft's changes under no selected row.
+  // The Settings part shows when the site's framework has the CMS settings
+  // type, saved or not.
+  const showSettings = hasCmsSettingsType(meta);
   const shownTypesView: ContentTypesView =
-    typesView && (typesView.kind !== "type" || findType(typesView))
+    typesView &&
+    (typesView.kind === "type"
+      ? findType(typesView)
+      : typesView.kind !== "settings" || showSettings)
       ? typesView
       : defaultTypesView;
   const viewType = findType(shownTypesView);
@@ -947,8 +953,10 @@ function ContentBrowserReady({
       setSelection(null);
       setActiveCollection("loaders");
     } else if (type.id === "cms-settings") {
+      // The CMS settings (a change in the draft's list): their own page.
+      setOpenEntry(null);
       setSelection(null);
-      setActiveCollection("settings");
+      setTypesView({ kind: "settings" });
     } else {
       // Any other saved block: its schema's form.
       setSelection({ collection: "apps", key: entry.key });
@@ -1774,6 +1782,11 @@ function ContentBrowserReady({
               if (view.kind === "seo") setActiveCollection("seo");
             }}
             onOpenEntry={(type, entry) => openTypeEntry(type, entry, null)}
+            settings={
+              showSettings
+                ? { changed: (typeTree.settings?.changed ?? 0) > 0 }
+                : null
+            }
           />
         ) : (
           <CollectionsSidebar
@@ -1894,7 +1907,28 @@ function ContentBrowserReady({
               }
             />
           )}
-        {typeTree && shownTypesView.kind !== "seo" && !typesEditorOpen ? (
+        {typeTree && shownTypesView.kind === "settings" && !typesEditorOpen ? (
+          <div className="flex-1 min-w-0">
+            <Suspense
+              fallback={
+                <div className="h-full flex items-center justify-center">
+                  <Spinner className="size-5 text-muted-foreground" />
+                </div>
+              }
+            >
+              <CmsSettingsEditor
+                orgSlug={orgSlug}
+                virtualMcpId={virtualMcpId}
+                branch={branch}
+                decofile={decofile}
+                meta={meta}
+                standalone
+                // Looking at Settings never puts a change in the draft.
+                persistDefaults={false}
+              />
+            </Suspense>
+          </div>
+        ) : typeTree && shownTypesView.kind !== "seo" && !typesEditorOpen ? (
           <div className="flex-1 min-w-0">
             <ContentTypesTable
               key={
@@ -1920,11 +1954,13 @@ function ContentBrowserReady({
                   type:
                     backView.kind === "seo"
                       ? t("siteEditor.contentTypes.seo")
-                      : backView.kind === "changes"
-                        ? t("siteEditor.contentTypes.changesInDraft")
-                        : typeLabel(
-                            findType(backView) ?? { id: "", title: "" },
-                          ),
+                      : backView.kind === "settings"
+                        ? t("siteEditor.contentTypes.settings")
+                        : backView.kind === "changes"
+                          ? t("siteEditor.contentTypes.changesInDraft")
+                          : typeLabel(
+                              findType(backView) ?? { id: "", title: "" },
+                            ),
                 }),
                 onClick: () => {
                   setTypesView(backView);

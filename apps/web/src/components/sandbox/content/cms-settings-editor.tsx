@@ -7,8 +7,10 @@ import { useDecofileCacheKey } from "@/components/sections-editor/use-decofile";
 import type { SaveGuard } from "@/components/sections-editor/use-save-block";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t.ts";
+import { SiteDraftViewHeader } from "@/components/site-draft-bar/view-header";
 import { AppEditor } from "./app-editor";
 import { CMS_SETTINGS_BLOCK_KEY, readCmsSettingsBlock } from "./cms-settings";
+import { CmsSettingsPage } from "./cms-settings-page";
 import { EmptyMessage } from "./empty-message";
 
 /**
@@ -20,6 +22,11 @@ import { EmptyMessage } from "./empty-message";
  *
  * The site reads these settings from its published release, never from a
  * draft, so the intro says when they take effect.
+ *
+ * `standalone` (the hosted v8 Content tab's Settings part): the Settings
+ * page, one card per section, in place of the generic form, which stays one
+ * click away for what the page shows read-only (a field set with variants).
+ * Both share the guard above.
  */
 export function CmsSettingsEditor({
   orgSlug,
@@ -28,6 +35,7 @@ export function CmsSettingsEditor({
   decofile,
   meta,
   persistDefaults,
+  standalone = false,
 }: {
   orgSlug: string;
   virtualMcpId: string;
@@ -39,11 +47,15 @@ export function CmsSettingsEditor({
    * (unset: yes; a block not saved yet never is).
    */
   persistDefaults?: boolean;
+  /** The Settings page (hosted v8) instead of the generic form. */
+  standalone?: boolean;
 }) {
   const t = useT();
   const queryClient = useQueryClient();
   const cacheKey = useDecofileCacheKey({ orgSlug, virtualMcpId, branch });
   const target = readCmsSettingsBlock(decofile);
+  // The standalone page's way to the block's generic form.
+  const [showForm, setShowForm] = useState(false);
   /**
    * The create-only guard: "create" while the block is absent (every save
    * sends `ifMatch: { CMS: null }`), "off" once a guarded save lands or the
@@ -96,7 +108,19 @@ export function CmsSettingsEditor({
       />
     );
   }
-  return (
+  if (standalone && !showForm) {
+    return (
+      <CmsSettingsPage
+        orgSlug={orgSlug}
+        virtualMcpId={virtualMcpId}
+        branch={branch}
+        block={target.block}
+        saveGuard={guard}
+        onOpenForm={() => setShowForm(true)}
+      />
+    );
+  }
+  const form = (
     <AppEditor
       // One key across "absent" and "saved": the first save must not reset
       // the form under the user.
@@ -128,5 +152,19 @@ export function CmsSettingsEditor({
         </div>
       }
     />
+  );
+  if (!standalone) return form;
+  return (
+    <div className="flex h-full flex-col">
+      <SiteDraftViewHeader
+        back={{
+          label: t("siteEditor.contentTypes.back", {
+            type: t("siteEditor.contentTypes.settings"),
+          }),
+          onClick: () => setShowForm(false),
+        }}
+      />
+      <div className="min-h-0 flex-1">{form}</div>
+    </div>
   );
 }

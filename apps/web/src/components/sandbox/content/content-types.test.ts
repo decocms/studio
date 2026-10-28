@@ -106,6 +106,7 @@ describe("type names", () => {
   test("built-ins get Studio's names", () => {
     expect(typeTitle(meta, "page")).toBe("Pages");
     expect(typeTitle(meta, "redirect")).toBe("Redirects");
+    expect(typeTitle(meta, "cms-settings")).toBe("Settings");
   });
   test("an alias is named as its target", () => {
     expect(typeTitle(meta, "website/pages/Page.tsx")).toBe("Pages");
@@ -227,15 +228,28 @@ describe("buildContentTypes", () => {
     expect(tree.singletons.some((t) => t.id === "redirect")).toBe(false);
     for (const type of tree.singletons) expect(type.entries.length).toBe(1);
   });
-  test("the CMS settings are never listed, nor among the draft's changes", () => {
+  test("the CMS settings are their own part, in no list of types", () => {
     expect(tree.all.some((t) => t.id === "cms-settings")).toBe(false);
+    expect(tree.singletons.some((t) => t.id === "cms-settings")).toBe(false);
+    expect(tree.collections.some((t) => t.id === "cms-settings")).toBe(false);
+    expect(tree.settings?.entries.map((e) => e.key)).toEqual(["CMS"]);
+    expect(tree.settings?.changed).toBe(0);
+  });
+  test("a change to the CMS settings: changed, and in the draft's changes", () => {
     const edited = buildContentTypes({
       blocks: { CMS: { __resolveType: "cms-settings" } },
       meta,
       changes: { CMS: set("v1") },
     });
     expect(edited.all).toEqual([]);
-    expect(edited.changed).toEqual([]);
+    expect(edited.settings?.changed).toBe(1);
+    expect(
+      edited.changed.map((c) => [c.type.id, c.type.title, c.entry.key]),
+    ).toEqual([["cms-settings", "Settings", "CMS"]]);
+  });
+  test("no CMS block saved: no settings type (the sidebar shows Settings anyway)", () => {
+    const none = buildContentTypes({ blocks: {}, meta, changes: {} });
+    expect(none.settings).toBeNull();
   });
   test("Pages and Redirects are collections even with one entry", () => {
     const one = buildContentTypes({

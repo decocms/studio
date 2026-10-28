@@ -4,7 +4,8 @@
  * into their target), so the sidebar lists only the types the site HAS
  * content of, never the whole block map, as a generic CMS does: collections
  * (a type with several entries, and always pages and redirects) and
- * singletons (a type with one entry: Header, Footer, Settings). The manifest
+ * singletons (a type with one entry: Header, Footer). The site's CMS
+ * settings are a part of their own, never in either list. The manifest
  * group only says which editor opens an entry. Each entry carries
  * its status in the draft, from the draft's changes (`changes.list`):
  * published, changed, new, or deleted (a deletion's content is the published
@@ -20,6 +21,7 @@ import { namedRuleKindOfType } from "@/components/sections-editor/named-rules";
 import { normalizePagePath } from "@/components/sections-editor/page-path-utils";
 import { getPageVariantSectionsAt } from "@/components/sections-editor/page-variants";
 import { underlyingSectionResolveType } from "@/components/sections-editor/section-catalog";
+import { CMS_SETTINGS_RESOLVE_TYPE } from "./cms-settings";
 import { getRedirectPayload, type RedirectType } from "./redirect-data";
 
 export type EntryStatus = "published" | "changed" | "new" | "deleted";
@@ -68,12 +70,18 @@ export interface ContentTypeTree {
    */
   collections: ContentType[];
   /**
-   * The types with exactly one entry (Header, Footer, Settings), by name: the
-   * sidebar opens that entry directly.
+   * The types with exactly one entry (Header, Footer), by name: the sidebar
+   * opens that entry directly.
    */
   singletons: ContentType[];
   /** Every type above, for lookups by id. */
   all: ContentType[];
+  /**
+   * The site's CMS settings (`cms-settings`, the block named CMS) when saved:
+   * a part of their own (the sidebar's Settings), in no list above. Their
+   * draft changes are still among `changed`.
+   */
+  settings: ContentType | null;
   /**
    * Every change in the draft (`changes.list`), one row each: under its type
    * when the entry is listed, else under the type its block names (a test,
@@ -94,13 +102,8 @@ export const TOP_TYPES = 8;
 const BUILT_IN_TITLES: Record<string, string> = {
   page: "Pages",
   redirect: "Redirects",
+  "cms-settings": "Settings",
 };
-
-/**
- * Types the Content tab never lists (PO decision): the site's CMS settings
- * (`cms-settings`, the block named CMS) are configuration, not content.
- */
-const HIDDEN_TYPES: ReadonlySet<string> = new Set(["cms-settings"]);
 
 const KNOWN_GROUPS: ReadonlySet<string> = new Set([
   "pages",
@@ -318,7 +321,6 @@ export function buildContentTypes(input: {
     // The named rules (tests, campaigns) keep their own views.
     if (namedRuleKindOfType(id)) continue;
     if (WRAPPER_TYPES.has(id)) continue;
-    if (HIDDEN_TYPES.has(id)) continue;
     const group = manifestGroupOf(meta, id) ?? "other";
     entries.sort(entryOrder(group));
     all.push({
@@ -330,19 +332,22 @@ export function buildContentTypes(input: {
     });
   }
   all.sort((a, b) => a.title.localeCompare(b.title));
+  // The CMS settings: their own part, not a content type.
+  const settings = all.find((t) => t.id === CMS_SETTINGS_RESOLVE_TYPE) ?? null;
+  const listed = settings ? all.filter((t) => t !== settings) : all;
 
-  const of = (group: ManifestGroup) => all.filter((t) => t.group === group);
+  const of = (group: ManifestGroup) => listed.filter((t) => t.group === group);
   const pages = of("pages")[0] ?? null;
   const redirects = of("redirects")[0] ?? null;
-  // A type with one entry is a singleton (Header, Footer); pages
-  // and redirects are collections however many they hold.
+  // A type with one entry is a singleton (Header, Footer); pages and
+  // redirects are collections however many they hold.
   const site = [pages, redirects].filter((t): t is ContentType => !!t);
-  const singletons = all.filter(
+  const singletons = listed.filter(
     (t) => !site.includes(t) && t.entries.length === 1,
   );
   const collections = [
     ...site,
-    ...all
+    ...listed
       .filter((t) => !site.includes(t) && t.entries.length > 1)
       .sort(
         (a, b) =>
@@ -369,7 +374,6 @@ export function buildContentTypes(input: {
   const changed: ContentTypeTree["changed"] = [];
   for (const [spelling, { name, change }] of bySpelling) {
     const found = typed.get(spelling);
-    if (found && HIDDEN_TYPES.has(found.type)) continue;
     if (found) {
       changed.push({ type: typeFor(found.type), entry: found.entry });
       continue;
@@ -397,7 +401,8 @@ export function buildContentTypes(input: {
     redirects,
     collections,
     singletons,
-    all,
+    all: listed,
+    settings,
     changed,
     statusKnown: !!input.changes,
   };

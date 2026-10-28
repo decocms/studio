@@ -88,6 +88,7 @@ function changeDetail(change: PublishChange, t: TFunction) {
   if (change.kind === "page") return change.pagePath;
   if (change.kind !== "block") return null;
   if (change.blogKind) return blogKindWord(change.blogKind, t);
+  if (change.cmsSettings) return t("thread.publishPopover.settingsDetail");
   const named = namedRuleBlockOfChange(change);
   if (named === "experiments") return t("thread.publishPopover.abTests");
   if (named === "campaigns") return t("thread.publishPopover.campaignDates");
@@ -203,7 +204,11 @@ export function PublishChangeCard({
           className="flex min-w-0 flex-1 items-center gap-2 text-left"
           aria-pressed={selected}
         >
-          <span className="truncate text-sm font-medium">{change.name}</span>
+          <span className="truncate text-sm font-medium">
+            {change.cmsSettings
+              ? t("thread.publishPopover.settings")
+              : change.name}
+          </span>
           {detail ? (
             <span className="truncate text-xs text-muted-foreground">
               {detail}
