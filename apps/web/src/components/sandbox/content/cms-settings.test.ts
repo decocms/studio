@@ -8,6 +8,7 @@ import {
   cmsSettingsSectionLock,
   hasCmsSettingsType,
   isCollectorUrl,
+  isUnchangedCmsSettingsEdit,
   percentToRate,
   rateToPercent,
   readCmsSettingsBlock,
@@ -300,5 +301,51 @@ describe("the Settings page's values", () => {
     expect(isCollectorUrl("http://localhost:8080")).toBe(true);
     expect(isCollectorUrl("collector.example.com")).toBe(false);
     expect(isCollectorUrl("ftp://x.example.com")).toBe(false);
+  });
+
+  it("removes nothing that isn't there: no empty section", () => {
+    const block = { __resolveType: "cms-settings" };
+    expect(
+      applyCmsSettingsEdits(block, { "analytics.collector": undefined }),
+    ).toEqual({ __resolveType: "cms-settings" });
+    expect(
+      applyCmsSettingsEdits(
+        { ...block, analytics: { enabled: false } },
+        { "analytics.collector": undefined },
+      ),
+    ).toEqual({ ...block, analytics: { enabled: false } });
+    expect(
+      applyCmsSettingsEdits(
+        { ...block, analytics: { collector: "https://c.example.com" } },
+        { "analytics.collector": undefined },
+      ),
+    ).toEqual({ ...block, analytics: {} });
+  });
+
+  it("knows an edit back to what is saved, a left-out field at its default", () => {
+    const absent = { __resolveType: "cms-settings" };
+    expect(isUnchangedCmsSettingsEdit(absent, "telemetry.enabled", true)).toBe(
+      true,
+    );
+    expect(isUnchangedCmsSettingsEdit(absent, "telemetry.enabled", false)).toBe(
+      false,
+    );
+    expect(
+      isUnchangedCmsSettingsEdit(absent, "analytics.collector", undefined),
+    ).toBe(true);
+    expect(
+      isUnchangedCmsSettingsEdit(absent, "telemetry.errorSampleRate", 0.05),
+    ).toBe(true);
+    const saved = {
+      ...absent,
+      analytics: { collector: "https://c.example.com" },
+    };
+    expect(
+      isUnchangedCmsSettingsEdit(saved, "analytics.collector", undefined),
+    ).toBe(false);
+    const variants = { telemetry: { __resolveType: "multivariate" } };
+    expect(
+      isUnchangedCmsSettingsEdit(variants, "telemetry.enabled", true),
+    ).toBe(false);
   });
 });

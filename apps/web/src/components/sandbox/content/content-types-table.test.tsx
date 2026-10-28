@@ -102,4 +102,36 @@ describe("ContentTypesTable", () => {
       view.getByPlaceholderText("Search pages"),
     );
   });
+
+  test("Changes in draft names the CMS block Settings", () => {
+    const cmsEntry: ContentEntry = {
+      key: "CMS",
+      block: { __resolveType: "cms-settings" },
+      status: "changed",
+    };
+    const settings: ContentType = {
+      id: "cms-settings",
+      group: "content",
+      title: "Settings",
+      entries: [cmsEntry],
+      changed: 1,
+    };
+    const view = render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ContentTypesTable
+          tree={{
+            ...tree,
+            settings,
+            changed: [{ type: settings, entry: cmsEntry }],
+          }}
+          type={null}
+          onOpen={() => {}}
+          onRestore={() => {}}
+          restoring={null}
+        />
+      </QueryClientProvider>,
+    );
+    expect(view.queryByText("CMS")).toBeNull();
+    expect(view.getAllByText("Settings").length).toBeGreaterThan(0);
+  });
 });

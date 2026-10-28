@@ -2,7 +2,7 @@ import { setupComponentTest } from "../../../../test/setup";
 setupComponentTest();
 
 import { afterAll, describe, expect, mock, test } from "bun:test";
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import * as realBackend from "@/components/sections-editor/use-content-backend";
 import * as realSaveBlock from "@/components/sections-editor/use-save-block";
@@ -35,6 +35,9 @@ mock.module("@/components/sections-editor/use-content-backend", () => ({
 }));
 
 const { CmsSettingsPage } = await import("./cms-settings-page");
+const { runContentDiscard } = await import(
+  "@/components/sections-editor/content-sync"
+);
 
 function renderPage(block: Record<string, unknown>) {
   saves.length = 0;
@@ -143,6 +146,60 @@ describe("CmsSettingsPage", () => {
       telemetry: variants,
       analytics: { enabled: false },
     });
+    cleanup();
+  });
+
+  test("switched off and on again: nothing to write, the waiting save dropped", () => {
+    const { view } = renderPage({ __resolveType: "cms-settings" });
+    const send = view.getByRole("switch", { name: "Send telemetry" });
+    fireEvent.click(send);
+    expect(saves.at(-1)?.[1]).toEqual({
+      __resolveType: "cms-settings",
+      telemetry: { enabled: false },
+    });
+    fireEvent.click(send);
+    const last = saves.at(-1)?.[1];
+    expect(typeof last).toBe("function");
+    expect((last as () => unknown)()).toBeNull();
+    cleanup();
+  });
+
+  test("a discard while open shows the draft's values again", () => {
+    const block = { __resolveType: "cms-settings" };
+    const { view } = renderPage(block);
+    fireEvent.click(view.getByRole("switch", { name: "Metrics" }));
+    expect(
+      view
+        .getByRole("switch", { name: "Metrics" })
+        .getAttribute("aria-checked"),
+    ).toBe("false");
+    act(() => {
+      void runContentDiscard(
+        {
+          queryClient: new QueryClient(),
+          orgSlug: "acme",
+          virtualMcpId: "vm",
+          branch: null,
+          backend: null,
+          cacheKey: null,
+        },
+        { blockKeys: ["CMS"], write: async () => null },
+      ).catch(() => {});
+    });
+    expect(
+      view
+        .getByRole("switch", { name: "Metrics" })
+        .getAttribute("aria-checked"),
+    ).toBe("true");
+    cleanup();
+  });
+
+  test("help text describes each control", () => {
+    const { view } = renderPage({ __resolveType: "cms-settings" });
+    const input = view.getByLabelText("Error sampling");
+    const ids = input.getAttribute("aria-describedby")?.split(" ") ?? [];
+    expect(ids.length).toBe(1);
+    expect(document.getElementById(ids[0]!)?.textContent).toBeTruthy();
     cleanup();
   });
 });

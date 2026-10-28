@@ -68,8 +68,8 @@ const CMS_SETTINGS_FIELDS = [
 ] as const;
 
 export type CmsSettingsFieldId = (typeof CMS_SETTINGS_FIELDS)[number]["id"];
-export type CmsSettingsFieldKind = (typeof CMS_SETTINGS_FIELDS)[number]["kind"];
-export type CmsSettingsSection = "telemetry" | "analytics";
+type CmsSettingsFieldKind = (typeof CMS_SETTINGS_FIELDS)[number]["kind"];
+type CmsSettingsSection = "telemetry" | "analytics";
 
 /**
  * A field as the saved block holds it: a plain value (or none, so its
@@ -170,14 +170,36 @@ export function applyCmsSettingsEdits(
     if (value !== undefined && !isPlainOf(field.kind, value)) continue;
     const [section, key] = splitField(field.id);
     const current = next[section];
-    const copy: Record<string, unknown> = isPlainRecord(current)
-      ? { ...current }
-      : {};
-    if (value === undefined) delete copy[key];
-    else copy[key] = value;
-    next[section] = copy;
+    if (value === undefined) {
+      // Nothing to remove: no empty section, no change.
+      if (!isPlainRecord(current) || !Object.hasOwn(current, key)) continue;
+      const copy = { ...current };
+      delete copy[key];
+      next[section] = copy;
+      continue;
+    }
+    next[section] = {
+      ...(isPlainRecord(current) ? current : {}),
+      [key]: value,
+    };
   }
   return next;
+}
+
+/**
+ * Whether an edit leaves a field as the saved block has it (a value left out
+ * counts as its default), so there is nothing to write: switched off and on
+ * again, or a collector typed and cleared.
+ */
+export function isUnchangedCmsSettingsEdit(
+  block: Record<string, unknown>,
+  id: CmsSettingsFieldId,
+  value: unknown,
+): boolean {
+  const saved = readCmsSettingsField(block, id);
+  if (saved.kind !== "value") return false;
+  const shown = value === undefined ? fieldOf(id).default : value;
+  return saved.value === shown;
 }
 
 /** A sample rate (0..1) as the percentage the page shows: 0.05 → 5. */

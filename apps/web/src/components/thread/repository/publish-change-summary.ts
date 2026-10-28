@@ -45,6 +45,10 @@ import {
   type GitDiffResult,
 } from "./sandbox-git-api";
 import { shortenTitle } from "./publish-flow.ts";
+import {
+  CMS_SETTINGS_BLOCK_KEY,
+  CMS_SETTINGS_RESOLVE_TYPE,
+} from "@/components/sandbox/content/cms-settings";
 
 export type PublishChangeStatus = "new" | "edited" | "removed";
 
@@ -123,6 +127,8 @@ export interface PublishChange {
    * read), so the card says so before and whether or not its sides load.
    */
   namedRule?: NamedRuleKind;
+  /** v8: the site's Settings (the `CMS` block, type `cms-settings`). */
+  cmsSettings?: true;
 }
 
 /**
@@ -465,6 +471,46 @@ function shallowFieldDiff(
       from: fromVal,
       to: toVal,
     });
+  }
+  return fields;
+}
+
+/**
+ * The site's Settings: by the content's type when any side can be read,
+ * else by its name, as {@link namedRuleOfBlock}.
+ */
+function isCmsSettingsBlock(
+  name: string,
+  shapes: Array<Record<string, unknown> | null | undefined>,
+): boolean {
+  const shape = shapes.find((s) => s && typeof s === "object");
+  if (shape) return shape.__resolveType === CMS_SETTINGS_RESOLVE_TYPE;
+  return name === CMS_SETTINGS_BLOCK_KEY;
+}
+
+/**
+ * The Settings' changed fields, one per setting (Telemetry's sample rates
+ * apart, not "Telemetry" once): a section is compared field by field when
+ * both sides hold it as plain fields, else as one value (variants).
+ */
+function cmsSettingsFieldDiff(
+  from: Record<string, unknown> | null,
+  to: Record<string, unknown> | null,
+): PublishFieldChange[] {
+  const plain = (v: unknown): v is Record<string, unknown> | undefined =>
+    v === undefined ||
+    (!!v &&
+      typeof v === "object" &&
+      !Array.isArray(v) &&
+      !("__resolveType" in v));
+  const fields: PublishFieldChange[] = [];
+  for (const field of shallowFieldDiff(from, to, [])) {
+    const key = String(field.path[0]);
+    if (plain(field.from) && plain(field.to)) {
+      fields.push(...shallowFieldDiff(field.from ?? {}, field.to ?? {}, [key]));
+    } else {
+      fields.push(field);
+    }
   }
   return fields;
 }
@@ -1144,10 +1190,14 @@ export function summarizeContentChanges(
       ? blogBlockName(blogKind, [nameShape, headShape, toJson, fromJson])
       : globalSectionLabel(name, nameShape ?? {});
     const namedRule = namedRuleOfBlock(name, [headShape, toJson, fromJson]);
+    const cmsSettings = isCmsSettingsBlock(name, [headShape, toJson, fromJson]);
     blocks.push({
       ...common,
       kind: "block",
-      name: label,
+      // English, as the version note that uses it; the card says it in the
+      // reader's language.
+      name: cmsSettings ? "Settings" : label,
+      ...(cmsSettings ? { cmsSettings: true as const } : {}),
       ...(blogKind ? { blogKind } : {}),
       ...(namedRule ? { namedRule } : {}),
       pagePath: null,
@@ -1156,10 +1206,14 @@ export function summarizeContentChanges(
         status === "edited"
           ? [
               {
-                name: label,
+                name: cmsSettings ? "Settings" : label,
                 kind: "section" as const,
                 status: "edited" as const,
-                fields: maskFields(shallowFieldDiff(fromJson, toJson, [])),
+                fields: maskFields(
+                  cmsSettings
+                    ? cmsSettingsFieldDiff(fromJson, toJson)
+                    : shallowFieldDiff(fromJson, toJson, []),
+                ),
               },
             ].filter((s) => s.fields.length > 0)
           : [],

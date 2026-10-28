@@ -31,6 +31,7 @@ import {
   summaryFieldsOf,
   summaryValue,
 } from "./content-types";
+import { CMS_SETTINGS_RESOLVE_TYPE } from "./cms-settings";
 import { useTypeLabel } from "./content-types-sidebar";
 import { EmptyMessage } from "./empty-message";
 
@@ -115,10 +116,13 @@ export function ContentTypesTable({
   const shown = kept ? matching.filter((r) => kept.has(r.entry)) : matching;
   const singletons = new Set(tree.singletons.map((t) => t.id));
   // A type with one entry is named by its type, as the sidebar names it.
+  // The CMS settings are the site's Settings, as their own part names them.
   const nameOf = ({ type: rowType, entry }: Row) =>
-    singletons.has(rowType.id) && typeof entry.block.name !== "string"
-      ? label(rowType)
-      : entryName(entry);
+    rowType.id === CMS_SETTINGS_RESOLVE_TYPE
+      ? t("siteEditor.contentTypes.settings")
+      : singletons.has(rowType.id) && typeof entry.block.name !== "string"
+        ? label(rowType)
+        : entryName(entry);
   const kind = !type
     ? "changes"
     : type.group === "pages"

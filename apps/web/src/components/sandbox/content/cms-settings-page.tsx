@@ -1,4 +1,4 @@
-import { type ReactNode, useId, useState } from "react";
+import { Fragment, type ReactNode, useId, useState } from "react";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
@@ -11,16 +11,17 @@ import { Label } from "@decocms/ui/components/label.tsx";
 import { ScrollArea } from "@decocms/ui/components/scroll-area.tsx";
 import { Switch } from "@decocms/ui/components/switch.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
-import { Settings01 } from "@untitledui/icons";
 import {
   SettingsCard,
   SettingsCardItem,
   SettingsSection,
 } from "@/components/settings/settings-section";
+import { useContentDiscardListener } from "@/components/sections-editor/content-sync";
 import {
   type SaveGuard,
   useDebouncedSaveBlock,
 } from "@/components/sections-editor/use-save-block";
+import { SiteDraftViewHeader } from "@/components/site-draft-bar/view-header";
 import { useT } from "@/i18n/use-t.ts";
 import { SaveStatus } from "./blog/save-status";
 import {
@@ -30,6 +31,7 @@ import {
   type CmsSettingsFieldId,
   type CmsSettingsFieldState,
   isCollectorUrl,
+  isUnchangedCmsSettingsEdit,
   percentToRate,
   rateToPercent,
   readCmsSettingsField,
@@ -54,6 +56,12 @@ type Props = {
  * set with variants shows read-only with the way to the block's form.
  */
 export function CmsSettingsPage(props: Props) {
+  // A discard of the block (Review & Publish) drops what was changed here,
+  // typed text included: the page shows the draft's values again.
+  const [discards, setDiscards] = useState(0);
+  useContentDiscardListener(props.orgSlug, props.virtualMcpId, (keys) => {
+    if (keys.has(CMS_SETTINGS_BLOCK_KEY)) setDiscards((n) => n + 1);
+  });
   return (
     <HeldBlockView
       orgSlug={props.orgSlug}
@@ -63,7 +71,9 @@ export function CmsSettingsPage(props: Props) {
       // Absent means "not created yet", never "deleted".
       present={undefined}
     >
-      <CmsSettingsPageForm {...props} />
+      <Fragment key={discards}>
+        <CmsSettingsPageForm {...props} />
+      </Fragment>
     </HeldBlockView>
   );
 }
@@ -98,8 +108,16 @@ function CmsSettingsPageForm({
   };
   const edit = (id: CmsSettingsFieldId, value: unknown) => {
     const next = { ...edits, [id]: value };
+    // Back to what is saved (off and on again): nothing to write for it.
+    if (isUnchangedCmsSettingsEdit(block, id, value)) delete next[id];
     setEdits(next);
-    save(CMS_SETTINGS_BLOCK_KEY, applyCmsSettingsEdits(block, next));
+    // No edit left: a save waiting to go out is dropped, none is made.
+    save(
+      CMS_SETTINGS_BLOCK_KEY,
+      Object.keys(next).length > 0
+        ? applyCmsSettingsEdits(block, next)
+        : () => null,
+    );
   };
   // A switch that is off (or set with variants: on for some) turns off what
   // depends on it only when it is plainly off.
@@ -157,20 +175,13 @@ function CmsSettingsPageForm({
 
   return (
     <div className="flex h-full flex-col" data-testid="cms-settings-page">
-      <div className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
-        <Settings01 size={16} className="shrink-0 text-muted-foreground" />
-        <span className="text-sm font-medium">
-          {t("siteEditor.contentTypes.settings")}
-        </span>
-        <div className="ml-auto flex shrink-0 items-center">
-          <SaveStatus isPending={isPending} isError={false} />
-        </div>
-      </div>
+      {/* The sidebar's Settings row names the view, as on Experiments. */}
+      <SiteDraftViewHeader
+        intro={t("sandbox.cmsSettingsPage.intro")}
+        actions={<SaveStatus isPending={isPending} isError={false} />}
+      />
       <ScrollArea className="min-h-0 min-w-0 flex-1 [&_[data-slot=scroll-area-viewport]>div]:!block">
         <div className="mx-auto flex max-w-2xl flex-col gap-8 px-4 py-6">
-          <p className="px-4 text-sm text-muted-foreground">
-            {t("sandbox.cmsSettingsPage.intro")}
-          </p>
           <SettingsSection
             title={t("sandbox.cmsSettingsPage.telemetry.title")}
             description={t("sandbox.cmsSettingsPage.telemetry.description")}
@@ -262,27 +273,43 @@ interface RowProps {
   disabled: boolean;
 }
 
+/** A row's ids: its control, and the help and error that describe it. */
+function useRowIds() {
+  const id = useId();
+  return { control: id, help: `${id}-help`, error: `${id}-error` };
+}
+type RowIds = ReturnType<typeof useRowIds>;
+
+/** What a row's control is described by: its help, and its error when shown. */
+function describedBy(ids: RowIds, error: string | null | undefined) {
+  return error ? `${ids.help} ${ids.error}` : ids.help;
+}
+
 function FieldRow({
-  controlId,
+  ids,
   label,
   help,
   disabled,
   error,
   control,
 }: RowProps & {
-  controlId: string;
+  ids: RowIds;
   error?: string | null;
   control: ReactNode;
 }) {
   return (
     <SettingsCardItem
       className={cn(disabled && "opacity-60")}
-      title={<Label htmlFor={controlId}>{label}</Label>}
-      description={help}
+      title={<Label htmlFor={ids.control}>{label}</Label>}
+      description={<span id={ids.help}>{help}</span>}
       action={control}
     >
       {error && (
-        <p role="alert" className="mt-1 text-xs text-destructive">
+        <p
+          id={ids.error}
+          role="alert"
+          className="mt-1 text-xs text-destructive"
+        >
           {error}
         </p>
       )}
@@ -295,14 +322,15 @@ function SwitchRow({
   onChange,
   ...row
 }: RowProps & { checked: boolean; onChange: (checked: boolean) => void }) {
-  const id = useId();
+  const ids = useRowIds();
   return (
     <FieldRow
       {...row}
-      controlId={id}
+      ids={ids}
       control={
         <Switch
-          id={id}
+          id={ids.control}
+          aria-describedby={describedBy(ids, null)}
           checked={checked}
           disabled={row.disabled}
           onCheckedChange={onChange}
@@ -322,20 +350,25 @@ function RateRow({
   ...row
 }: RowProps & { rate: number; onChange: (rate: number) => void }) {
   const t = useT();
-  const id = useId();
+  const ids = useRowIds();
   // What is typed, until the field is left (a half-typed "0." stays).
   const [text, setText] = useState<string | null>(null);
   const shown = text ?? String(rateToPercent(rate));
-  const invalid = text !== null && percentToRate(text) === null;
+  // Emptied to type a new number: not an error, and leaving it empty
+  // brings the saved percentage back.
+  const invalid =
+    text !== null && text.trim() !== "" && percentToRate(text) === null;
+  const error = invalid ? t("sandbox.cmsSettingsPage.invalidRate") : null;
   return (
     <FieldRow
       {...row}
-      controlId={id}
-      error={invalid ? t("sandbox.cmsSettingsPage.invalidRate") : null}
+      ids={ids}
+      error={error}
       control={
         <InputGroup size="sm" className="w-28">
           <InputGroupInput
-            id={id}
+            id={ids.control}
+            aria-describedby={describedBy(ids, error)}
             type="number"
             inputMode="decimal"
             min={0}
@@ -370,19 +403,21 @@ function CollectorRow({
   ...row
 }: RowProps & { value: string; onChange: (url: string) => void }) {
   const t = useT();
-  const id = useId();
+  const ids = useRowIds();
   // What is typed: saved once it is empty or a full address.
   const [text, setText] = useState<string | null>(null);
   const shown = text ?? value;
   const invalid = !isCollectorUrl(shown);
+  const error = invalid ? t("sandbox.cmsSettingsPage.invalidUrl") : null;
   return (
     <FieldRow
       {...row}
-      controlId={id}
-      error={invalid ? t("sandbox.cmsSettingsPage.invalidUrl") : null}
+      ids={ids}
+      error={error}
       control={
         <Input
-          id={id}
+          id={ids.control}
+          aria-describedby={describedBy(ids, error)}
           type="url"
           size="sm"
           className="w-64"

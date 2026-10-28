@@ -174,6 +174,8 @@ export const thread = {
   "thread.publishPopover.notLiveHint": "Publish to make them live.",
   "thread.publishPopover.abTests": "A/B tests",
   "thread.publishPopover.campaignDates": "Campaign dates",
+  "thread.publishPopover.settings": "Settings",
+  "thread.publishPopover.settingsDetail": "Telemetry and analytics",
   "thread.publishPopover.globalSection": "Global section",
   "thread.publishPopover.alsoChangedOnMain":
     "Your developer also changed {name}. Publishing keeps your version.",

@@ -183,6 +183,8 @@ export const thread = {
   "thread.publishPopover.notLiveHint": "Publique para colocá-las no ar.",
   "thread.publishPopover.abTests": "Testes A/B",
   "thread.publishPopover.campaignDates": "Datas das campanhas",
+  "thread.publishPopover.settings": "Configurações",
+  "thread.publishPopover.settingsDetail": "Telemetria e analytics",
   "thread.publishPopover.globalSection": "Seção global",
   "thread.publishPopover.alsoChangedOnMain":
     "Seu desenvolvedor também alterou {name}. Publicar mantém a sua versão.",
