@@ -20,6 +20,7 @@ import type { StudioContext } from "../../core/studio-context";
 import { getSettings } from "../../settings";
 import { sanitizeKey } from "../../object-storage/key-utils";
 import { safeEqual } from "./credential-vault";
+import { USER_HTML_CSP } from "../utils/fs-bytes";
 
 // Base directory for dev assets (relative to cwd)
 const DEV_ASSETS_BASE_DIR = "./data/assets";
@@ -140,8 +141,7 @@ export function getContentSecurityHeaders(
     "X-Content-Type-Options": "nosniff",
   };
   if (contentType === "text/html" || contentType === "image/svg+xml") {
-    headers["Content-Security-Policy"] =
-      "sandbox allow-scripts allow-modals allow-same-origin";
+    headers["Content-Security-Policy"] = USER_HTML_CSP;
   }
   return headers;
 }
