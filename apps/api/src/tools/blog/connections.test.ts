@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { StudioContext } from "../../core/studio-context";
 import {
+  blogCardRunConnections,
   blogGroundingConnections,
   requireBlogConnections,
 } from "./connections";
@@ -47,6 +48,26 @@ describe("requireBlogConnections", () => {
     ).rejects.toThrow("blog-connections-missing: vtex");
   });
 
+  test("hands back Search Console when it is ready, and never waits for it", async () => {
+    const gsc = {
+      id: "conn_gsc",
+      app_name: "google-search-console",
+      status: "active",
+      connection_token: "token",
+      configuration_state: { siteUrl: "https://store.example/" },
+    };
+    expect(
+      await requireBlogConnections(ctxWith([VTEX, GA4, gsc]), "org"),
+    ).toEqual({ vtex: "conn_vtex", ga4: "conn_ga4", gsc: "conn_gsc" });
+    const unpicked = { ...gsc, configuration_state: {} };
+    expect(
+      await requireBlogConnections(ctxWith([VTEX, GA4, unpicked]), "org"),
+    ).toEqual({ vtex: "conn_vtex", ga4: "conn_ga4" });
+    await expect(requireBlogConnections(ctxWith([gsc]), "org")).rejects.toThrow(
+      "blog-connections-missing: vtex, ga4",
+    );
+  });
+
   test("a GA4 with no property chosen is not ready", async () => {
     const unpicked = { ...GA4, configuration_state: {} };
     await expect(
@@ -61,4 +82,34 @@ test("grounding reads VTEX through its allowlist and GA4 whole", () => {
   expect(vtex?.allow?.has("VTEX_IS_GET_PRODUCT_SEARCH")).toBe(true);
   expect(vtex?.allow?.has("VTEX_UPDATE_PRICE")).toBe(false);
   expect(ga4).toEqual({ id: "g", label: "ga4" });
+});
+
+test("grounding reads Search Console whole when it is given", () => {
+  const read = blogGroundingConnections({ vtex: "v", ga4: "g", gsc: "s" });
+  expect(read.map((connection) => connection.label)).toEqual([
+    "vtex",
+    "ga4",
+    "gsc",
+  ]);
+  expect(read[2]).toEqual({ id: "s", label: "gsc" });
+});
+
+describe("blogCardRunConnections", () => {
+  test("grants every blog connection, VTEX only through its grounding tools", () => {
+    const gsc = { id: "conn_gsc", app_name: "google-search-console" };
+    const { ids, limits } = blogCardRunConnections([
+      VTEX,
+      GA4,
+      gsc,
+      { id: "conn_other", app_name: "github" },
+    ]);
+    expect(ids).toEqual(["conn_vtex", "conn_ga4", "conn_gsc"]);
+    expect(Object.keys(limits)).toEqual(["conn_vtex"]);
+    expect(limits.conn_vtex).toContain("VTEX_IS_GET_PRODUCT_SEARCH");
+    expect(limits.conn_vtex).not.toContain("VTEX_UPDATE_PRICE");
+  });
+
+  test("an organization without them gets nothing", () => {
+    expect(blogCardRunConnections([])).toEqual({ ids: [], limits: {} });
+  });
 });

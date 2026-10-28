@@ -17,6 +17,7 @@ export const GROUNDING_PURPOSES = [
   "format",
   "link",
   "campaign",
+  "hypothesis",
   "post",
 ] as const;
 
@@ -52,6 +53,11 @@ const BRIEFS: Record<GroundingPurpose, Brief> = {
     task: "Proposing blog campaigns for this brand.",
     wanted:
       "What is selling and what is not, what people search for and do not find, what is in stock and what is being promoted. Numbers read from a tool are the point; a campaign proposed without them is a guess.",
+  },
+  hypothesis: {
+    task: "Finding the next blog post this brand should write for one of its campaigns, and the evidence for it.",
+    wanted:
+      "Figures from each system, exactly as its tools report them. From Search Console: queries with their impressions, average position and click-through rate, above all those with many impressions and few clicks or sitting on the second page. From GA4: the pages and content whose readers go on to buy. From the catalog: the best sellers, the stock that is not moving, and the searches that find nothing. A hypothesis without a figure from a tool is a guess.",
   },
   post: {
     task: "Writing blog posts for one of this brand's campaigns.",

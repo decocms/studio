@@ -108,6 +108,29 @@ describe("blogConnectionStatus", () => {
   });
 });
 
+describe("Search Console", () => {
+  const gsc = {
+    id: "s",
+    app_id: "deco/google-search-console",
+    status: "active",
+    configuration_state: { siteUrl: "sc-domain:store.example" },
+  };
+
+  test("is recognized by its app", () => {
+    expect(isBlogConnection("gsc", gsc)).toBe(true);
+    expect(isBlogConnection("ga4", gsc)).toBe(false);
+  });
+
+  test("needs a site and a usable sign-in", () => {
+    expect(blogConnectionStatus("gsc", gsc, true).gap).toBeNull();
+    expect(blogConnectionStatus("gsc", gsc, false).gap).toBe("unauthorized");
+    expect(
+      blogConnectionStatus("gsc", { ...gsc, configuration_state: {} }, true)
+        .gap,
+    ).toBe("unconfigured");
+  });
+});
+
 test("the refusal names what is missing and is recognized", () => {
   const err = new Error(blogConnectionsMissingMessage(["vtex", "ga4"]));
   expect(err.message).toBe("blog-connections-missing: vtex, ga4");

@@ -111,7 +111,7 @@ export const BLOG_SITE_BLOCKS = defineTool({
       organization.id,
       input.virtualMcpId,
     );
-    const branch = await requireBranch(ctx, input.branch, "read");
+    const branch = await requireBranch(ctx, site, input.branch, "read");
 
     const [snapshot, meta, settings] = await Promise.all([
       readDecofileSnapshot(site.client, branch, site.packagePath),

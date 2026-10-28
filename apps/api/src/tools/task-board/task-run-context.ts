@@ -120,8 +120,9 @@ export const JIRA_RUN_TOOL_NAMES: readonly ToolName[] = [
  * Never on a chat's surface. `TASK_BOARD_REVIEW_DECISION` and
  * `TASK_BOARD_PROMOTE_TO_PRODUCTION`: an agent must not approve its own work.
  * The board prompt writes: Decopilot only ran them behind an
- * approval this path does not have. `BLOG_CARD_DELETE`: a card's agent works
- * the card; removing it is the board's.
+ * approval this path does not have. `BLOG_CARD_RUN` and `BLOG_CARD_DELETE`:
+ * a card's agent works its card; starting runs and removing cards is the
+ * board's.
  */
 const NOT_ON_A_CHAT: ReadonlySet<ToolName> = new Set<ToolName>([
   "TASK_BOARD_REVIEW_DECISION",
@@ -129,6 +130,7 @@ const NOT_ON_A_CHAT: ReadonlySet<ToolName> = new Set<ToolName>([
   "TASK_BOARD_PROMPT_UPSERT",
   "TASK_BOARD_PROMPT_DELETE",
   "BLOG_CARD_DELETE",
+  "BLOG_CARD_RUN",
 ]);
 
 /**

@@ -18,6 +18,25 @@ export const BLOG_CONNECTION_APPS = {
 export type BlogConnectionKind = keyof typeof BLOG_CONNECTION_APPS;
 
 /**
+ * Connections the blog reads when the organization has them and never waits
+ * for: Search Console sharpens a hypothesis with what people search, but a
+ * post can be argued from the store and its readers alone.
+ */
+export const BLOG_OPTIONAL_CONNECTION_APPS = {
+  gsc: {
+    appName: "google-search-console",
+    registryAppId: "deco/google-search-console",
+  },
+} as const;
+
+/** Every connection the blog reads, required or not. */
+type BlogAppKind =
+  | BlogConnectionKind
+  | keyof typeof BLOG_OPTIONAL_CONNECTION_APPS;
+
+const BLOG_APPS = { ...BLOG_CONNECTION_APPS, ...BLOG_OPTIONAL_CONNECTION_APPS };
+
+/**
  * Why a connection cannot serve the blog yet, in the order someone fixes it:
  * install it, switch it on, give it its account, sign in.
  */
@@ -43,10 +62,10 @@ export interface BlogConnectionStatus {
 }
 
 export function isBlogConnection(
-  kind: BlogConnectionKind,
+  kind: BlogAppKind,
   connection: Pick<BlogConnectionCandidate, "app_name" | "app_id">,
 ): boolean {
-  const app = BLOG_CONNECTION_APPS[kind];
+  const app = BLOG_APPS[kind];
   return (
     connection.app_name === app.appName ||
     connection.app_id === app.registryAppId
@@ -55,7 +74,7 @@ export function isBlogConnection(
 
 /** The org's connection of a kind: an active one first, then the newest. */
 export function pickBlogConnection<T extends BlogConnectionCandidate>(
-  kind: BlogConnectionKind,
+  kind: BlogAppKind,
   connections: readonly T[],
 ): T | null {
   const matches = connections.filter((c) => isBlogConnection(kind, c));
@@ -76,7 +95,7 @@ function filled(value: unknown): boolean {
  * product and SKU lookups — needs the app key and token, not just the account.
  */
 function configured(
-  kind: BlogConnectionKind,
+  kind: BlogAppKind,
   config: Record<string, unknown> | null | undefined,
 ): boolean {
   if (kind === "vtex") {
@@ -86,6 +105,7 @@ function configured(
       filled(config?.appToken)
     );
   }
+  if (kind === "gsc") return filled(config?.siteUrl);
   return filled(config?.propertyId);
 }
 
@@ -93,12 +113,13 @@ function configured(
  * Whether a connection of a kind can serve the blog, and why not.
  *
  * `authorized` is the caller's word on sign-in, which each side checks its own
- * way: VTEX authenticates with its keys and is always authorized here; GA4 is
- * authorized by a usable token. The Reports service account does not count —
- * it reads GA4 for Reports without any connection the blog could call.
+ * way: VTEX authenticates with its keys and is always authorized here; the
+ * Google ones are authorized by a usable token. The Reports service account
+ * does not count — it reads GA4 for Reports without any connection the blog
+ * could call.
  */
 export function blogConnectionStatus(
-  kind: BlogConnectionKind,
+  kind: BlogAppKind,
   connection: BlogConnectionCandidate | null,
   authorized: boolean,
 ): BlogConnectionStatus {
@@ -108,7 +129,7 @@ export function blogConnectionStatus(
       ? "inactive"
       : !configured(kind, connection.configuration_state)
         ? "unconfigured"
-        : kind === "ga4" && !authorized
+        : kind !== "vtex" && !authorized
           ? "unauthorized"
           : null;
   return { connectionId: connection.id, gap };

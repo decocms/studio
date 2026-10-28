@@ -2888,9 +2888,143 @@ export interface StudioToolIO {
     };
   };
   BLOG_CARD_DELETE: { input: { id: string }; output: { id: string } };
+  BLOG_CARD_RUN: {
+    input: {
+      id: string;
+      phase: "hypothesis" | "execute";
+      message?: string | undefined;
+      fileConfigId?: string | undefined;
+    };
+    output: {
+      card: {
+        [x: string]: unknown;
+        id: string;
+        kind: "blogpost";
+        status:
+          | "ideas"
+          | "generating"
+          | "awaiting_review"
+          | "scheduled"
+          | "published";
+        virtualMcpId: string;
+        createdBy: string;
+        createdAt: string;
+        updatedAt: string;
+        campaignId?: string | undefined;
+        prompt?: string | undefined;
+        threadId?: string | undefined;
+        branch?: string | undefined;
+        fileConfigId?: string | undefined;
+        stage?:
+          | "done"
+          | "grounding"
+          | "drafting"
+          | "illustrating"
+          | "assembling"
+          | "writing"
+          | undefined;
+        hypothesis?:
+          | {
+              [x: string]: unknown;
+              title?: string | undefined;
+              statement?: string | undefined;
+              angle?: string | undefined;
+              format?:
+                | {
+                    [x: string]: unknown;
+                    name: string;
+                    value?: string | undefined;
+                  }
+                | undefined;
+              keywords?:
+                | {
+                    [x: string]: unknown;
+                    term: string;
+                    volume?: number | undefined;
+                  }[]
+                | undefined;
+              evidence?:
+                | {
+                    [x: string]: unknown;
+                    source: "calendar" | "brand" | "gsc" | "ga4" | "vtex";
+                    fact: string;
+                    figure?: string | undefined;
+                    tool?: string | undefined;
+                  }[]
+                | undefined;
+              guardrails?:
+                | {
+                    [x: string]: unknown;
+                    text: string;
+                    origin: "brand" | "campaign";
+                  }[]
+                | undefined;
+              metric?: string | undefined;
+              groundingOutcome?: string | undefined;
+            }
+          | undefined;
+        post?:
+          | {
+              [x: string]: unknown;
+              title?: string | undefined;
+              excerpt?: string | undefined;
+              seo?:
+                | {
+                    [x: string]: unknown;
+                    title?: string | undefined;
+                    description?: string | undefined;
+                  }
+                | undefined;
+              cover?:
+                | {
+                    [x: string]: unknown;
+                    url?: string | undefined;
+                    alt?: string | undefined;
+                    prompt?: string | undefined;
+                  }
+                | undefined;
+              sections?:
+                | {
+                    [x: string]: unknown;
+                    type?: string | undefined;
+                    props?: Record<string, unknown> | undefined;
+                    productIds?: string[] | undefined;
+                  }[]
+                | undefined;
+              gaps?:
+                | {
+                    [x: string]: unknown;
+                    code: string;
+                    count?: number | undefined;
+                  }[]
+                | undefined;
+            }
+          | undefined;
+        postKey?: string | undefined;
+        commit?: string | undefined;
+        error?: string | undefined;
+        run?:
+          | {
+              [x: string]: unknown;
+              phase: "hypothesis" | "execute";
+              requestedAt: string;
+              requestedBy: string;
+            }
+          | undefined;
+      };
+      threadId: string;
+    };
+  };
   BLOG_SITE_GROUND: {
     input: {
-      purpose: "format" | "link" | "context" | "brand" | "campaign" | "post";
+      purpose:
+        | "format"
+        | "link"
+        | "context"
+        | "brand"
+        | "campaign"
+        | "hypothesis"
+        | "post";
       focus?: string | undefined;
       language?: string | undefined;
     };

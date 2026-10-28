@@ -56,14 +56,14 @@ const INLINE_EVIDENCE_LIMIT = 32_000;
 export const BLOG_SITE_GROUND = defineTool({
   name: "BLOG_SITE_GROUND",
   description:
-    "Read the organization's VTEX catalogue and GA4 analytics and report what is true about its business right now. Both connections are required. Run once, then pass `report` to the generation tools so none of them has to look again. Returns an `evidenceUri` only when the raw output is too large to carry inline; BLOG_SITE_CATALOGUE reads it and deletes it.",
+    "Read the organization's VTEX catalogue and GA4 analytics, and its Search Console when connected, and report what is true about its business right now. VTEX and GA4 are required. Run once, then pass `report` to the generation tools so none of them has to look again. Returns an `evidenceUri` only when the raw output is too large to carry inline; BLOG_SITE_CATALOGUE reads it and deletes it.",
   annotations: {
     title: "Read the Store's Systems",
     /** Writes the raw evidence to the org's object storage when it is large. */
     readOnlyHint: false,
     destructiveHint: false,
     idempotentHint: false,
-    /** Calls the organization's VTEX and GA4 connections. */
+    /** Calls the organization's VTEX, GA4 and Search Console connections. */
     openWorldHint: true,
   },
 

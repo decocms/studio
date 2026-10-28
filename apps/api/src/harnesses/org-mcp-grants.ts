@@ -80,6 +80,27 @@ export function connectionGrantsFor(args: {
 }
 
 /**
+ * Grants cut down to the tools a run may use on some connections: each named
+ * connection keeps only the listed tools its grant allows, and is dropped when
+ * none is left. A connection not named keeps its grant. Narrows, never widens —
+ * a tool the dispatcher could not call stays out. Pure.
+ */
+export function narrowConnectionGrants(
+  grants: Readonly<Record<string, string[]>>,
+  limits: Readonly<Record<string, readonly string[]>>,
+): Record<string, string[]> {
+  const narrowed = { ...grants };
+  for (const [id, allowed] of Object.entries(limits)) {
+    const granted = narrowed[id];
+    if (!granted) continue;
+    const kept = allowed.filter((tool) => listsAllow([granted], tool));
+    if (kept.length > 0) narrowed[id] = kept;
+    else delete narrowed[id];
+  }
+  return narrowed;
+}
+
+/**
  * The Studio tools (checked under `self`) a run's key may carry: the run-scoped
  * ones as they are, everything else only when the dispatcher could call it
  * themselves — the same answer `AccessControl` gives that member in a session:

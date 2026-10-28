@@ -15,7 +15,7 @@ import { coAuthorFromStudioContext } from "@/lib/co-author-identity";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
 import { requireBlogAi } from "./feature-flag";
-import { requireBranch, resolveSiteRepo } from "./site-repo";
+import { requireWritableBranch, resolveSiteRepo } from "./site-repo";
 
 /**
  * Committing a post the site's agent wrote.
@@ -139,7 +139,7 @@ export const BLOG_POST_WRITE = defineTool({
     const refusal = decofilePatchRefusal(patch);
     if (refusal) throw new Error(refusal);
 
-    const branch = await requireBranch(ctx, input.branch, "write to");
+    const branch = await requireWritableBranch(ctx, site, input.branch);
 
     try {
       const version = await enqueueDecofilePatch(

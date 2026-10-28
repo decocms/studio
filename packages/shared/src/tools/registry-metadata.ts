@@ -67,6 +67,7 @@ const ALL_TOOL_NAMES = [
   "BLOG_CARD_CREATE",
   "BLOG_CARD_UPDATE",
   "BLOG_CARD_DELETE",
+  "BLOG_CARD_RUN",
   "BLOG_SITE_GROUND",
   "BLOG_SITE_CATALOGUE",
   "BLOG_SITE_BLOCKS",
@@ -466,6 +467,12 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     description: "Delete a blogpost card",
     category: "Blog",
     dangerous: true,
+  },
+  {
+    name: "BLOG_CARD_RUN",
+    description:
+      "Start a blogpost card's agent, to bring its hypothesis or write its post",
+    category: "Blog",
   },
   {
     name: "BLOG_SITE_GROUND",

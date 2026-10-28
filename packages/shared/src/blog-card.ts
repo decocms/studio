@@ -295,6 +295,25 @@ export function blogCardBranch(id: string): string {
   return `blog-${id}`;
 }
 
+/** Thread metadata key marking a card's chat, `{ cardId, brand }`. */
+export const BLOG_CARD_THREAD_KEY = "blogCard";
+
+const BlogCardThreadSchema = z.object({
+  cardId: z.string().regex(BLOG_POST_ID),
+  brand: z.string().min(1),
+});
+export type BlogCardThread = z.infer<typeof BlogCardThreadSchema>;
+
+/** The card a chat works, from its thread's metadata, or null for any other. */
+export function blogCardOfThread(
+  metadata: Record<string, unknown> | null | undefined,
+): BlogCardThread | null {
+  const parsed = BlogCardThreadSchema.safeParse(
+    metadata?.[BLOG_CARD_THREAD_KEY],
+  );
+  return parsed.success ? parsed.data : null;
+}
+
 /**
  * Org-scoped SSE event pushed whenever a card is written. Its `data` is the
  * whole card; the board upserts it and drops one older than what it holds.

@@ -37,7 +37,7 @@ import { conflictOrRethrow, resolveBlogScope } from "./state";
  * folder, and as `blog.card.updated`, for every open board.
  */
 
-const CardIdSchema = z
+export const CardIdSchema = z
   .string()
   .regex(
     BLOG_POST_ID,
@@ -62,7 +62,7 @@ const mintCardId = customAlphabet("0123456789abcdefghijklmnopqrstuvwxyz", 12);
  * A sandboxed run reaches Studio on its thread's MCP endpoint, which puts the
  * thread here; a run on the platform carries it in the request metadata.
  */
-function callerRunThread(ctx: StudioContext): string | null {
+export function callerRunThread(ctx: StudioContext): string | null {
   return (
     taskRunContextStore.getStore()?.threadId ?? ctx.metadata?.threadId ?? null
   );
@@ -105,7 +105,7 @@ export function cardPatchRefusal(
 }
 
 /** A stored card, read as one, with its filename as its id. */
-function parseCard(id: string, data: Record<string, unknown>): BlogCard {
+export function parseCard(id: string, data: Record<string, unknown>): BlogCard {
   const parsed = BlogCardSchema.safeParse({ ...data, id });
   if (!parsed.success) {
     throw new Error(
@@ -223,7 +223,7 @@ export const BLOG_CARD_GET = defineTool({
 export const BLOG_CARD_CREATE = defineTool({
   name: "BLOG_CARD_CREATE",
   description:
-    "Create a blogpost card in Ideas, for one of the organization's sites and one of its brand's campaigns. The card's id becomes its post's id and names the branch the post is written on.",
+    "Create a blogpost card in Ideas, for one of the organization's sites and one of its brand's campaigns. The card's id becomes its post's id and names the branch the post is written on. BLOG_CARD_RUN starts its agent.",
   annotations: {
     title: "Create a Blogpost Card",
     readOnlyHint: false,
