@@ -830,6 +830,9 @@ export const KEYS = {
   // The org's blog editorial state: its brand guide and campaigns.
   blogState: (orgSlug: string) => ["blog-state", orgSlug] as const,
 
+  // The content track's blogpost cards, kept in the org's brand folder.
+  blogCards: (orgSlug: string) => ["blog-cards", orgSlug] as const,
+
   // Whether the org's GA4 connection still has a usable sign-in.
   blogConnectionToken: (orgId: string, connectionId: string) =>
     ["blog-connection-token", orgId, connectionId] as const,

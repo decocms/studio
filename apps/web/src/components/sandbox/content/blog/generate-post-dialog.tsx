@@ -314,7 +314,7 @@ export function GeneratePostDialog({
 }
 
 /** The campaigns on offer, as cards — a name alone does not say what it is for. */
-function CampaignList({
+export function CampaignList({
   campaigns,
   chosen,
   onChoose,
