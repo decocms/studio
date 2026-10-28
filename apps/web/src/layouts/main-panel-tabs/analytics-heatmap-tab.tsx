@@ -33,10 +33,13 @@ import { KEYS } from "@/lib/query-keys";
 import { fetchJson, isNotConfigured } from "./analytics-tab.tsx";
 import {
   CLICK_TYPES,
+  CTR_MIN_SEEN,
+  FUNNEL_STEPS,
   HEAT_DEVICES,
   HEAT_MODES,
   HEAT_RANGES,
   VIEW_PROTOCOL,
+  elementCtr,
   frameUrl,
   parseHeatmap,
   rampCss,
@@ -50,6 +53,7 @@ import {
   type ClickType,
   type HeatDevice,
   type HeatElement,
+  type HeatFunnel,
   type HeatMode,
   type HeatRamp,
   type HeatRange,
@@ -387,6 +391,7 @@ function Viewer({
   const [rowHover, setRowHover] = useState<string | null>(null);
   const [pinned, setPinned] = useState<string | null>(null);
   const [railOpen, setRailOpen] = useState(false);
+  const [rankBy, setRankBy] = useState<"clicks" | "ctr">("clicks");
   const [avail, setAvail] = useState({ w: 1000, h: 640 });
 
   // The frame bridge lives as long as this document (the Viewer is keyed by
@@ -505,7 +510,22 @@ function Viewer({
   const ranked = model.elements
     .filter((e) => weightOf(e, clickType) > 0)
     .sort((a, b) => weightOf(b, clickType) - weightOf(a, clickType));
-  const onPage = ranked.filter((e) => itemBy.get(e.key)?.found !== "none");
+  // CTR ranks only elements whose section enough views SAW: below that one
+  // curious visitor moves the rate by whole points, and the top of a ranking of
+  // noise is the noisiest element, not the best creative.
+  const byCtr = rankBy === "ctr" && clickType === "all";
+  const ctrOf = new Map(
+    model.elements.map((e) => [e.key, elementCtr(model, e)]),
+  );
+  const listed = byCtr
+    ? ranked
+        .filter((e) => (ctrOf.get(e.key)?.seen ?? 0) >= CTR_MIN_SEEN)
+        .sort(
+          (a, b) => (ctrOf.get(b.key)?.ctr ?? 0) - (ctrOf.get(a.key)?.ctr ?? 0),
+        )
+    : ranked;
+  const topCtr = byCtr ? (ctrOf.get(listed[0]?.key ?? "")?.ctr ?? 0) : 0;
+  const onPage = listed.filter((e) => itemBy.get(e.key)?.found !== "none");
   const offPage = ranked.filter((e) => itemBy.get(e.key)?.found === "none");
   const match = placed?.stats.total
     ? placed.stats.matched / placed.stats.total
@@ -513,6 +533,11 @@ function Viewer({
   const activeKey = rowHover ?? pinned;
   const labelOf = (e: HeatElement) =>
     itemBy.get(e.key)?.label || t(k("noText"));
+  const sectionBy = new Map(model.sections.map((s) => [s.root, s]));
+  // The funnel follows the pinned element; with nothing pinned the value list
+  // shows the page's own, which is what every element is read against.
+  const pinnedFunnel = pinned ? model.funnel.get(pinned) : undefined;
+  const pinnedEl = pinned ? elBy.get(pinned) : undefined;
   // Ranked by what they brought in, which is the question this mode asks.
   // Deliberately NOT filtered to what the live page still has: an element that
   // sold and has since been removed is the most interesting row on the list.
@@ -564,7 +589,7 @@ function Viewer({
         <div
           role="tablist"
           aria-label={t(k("map"))}
-          className="flex gap-1 overflow-x-auto"
+          className="-mb-px flex gap-1 overflow-x-auto overflow-y-hidden [scrollbar-width:none]"
         >
           {HEAT_MODES.map((m) => (
             <button
@@ -575,7 +600,7 @@ function Viewer({
               title={t(k(`${m}Hint`))}
               onClick={() => changeMode(m)}
               className={cn(
-                "-mb-px shrink-0 border-b-2 px-3 py-2 text-sm font-medium transition-colors",
+                "shrink-0 border-b-2 px-3 py-2 text-sm font-medium transition-colors",
                 mode === m
                   ? "border-[var(--chart-1)] text-foreground"
                   : "border-transparent text-muted-foreground hover:text-foreground",
@@ -958,31 +983,75 @@ function Viewer({
               <>
                 <ListHead
                   title={
-                    clickType === "all"
-                      ? t(k("topElements"))
-                      : t(k("topOfType"), {
+                    clickType !== "all"
+                      ? t(k("topOfType"), {
                           type: t(k(`type_${clickType}`)).toLowerCase(),
                         })
+                      : byCtr
+                        ? t(k("topCtr"))
+                        : t(k("topElements"))
                   }
                   aside={t(k("nElements"), {
-                    n: fmtInt(ranked.length, locale),
+                    n: fmtInt(listed.length, locale),
                   })}
                 />
+                {clickType === "all" && (
+                  <div
+                    role="group"
+                    aria-label={t(k("rankBy"))}
+                    className="mx-4 mb-1 flex w-fit items-center gap-0.5 rounded-lg border border-border p-0.5"
+                  >
+                    {(["clicks", "ctr"] as const).map((r) => (
+                      <button
+                        key={r}
+                        type="button"
+                        aria-pressed={rankBy === r}
+                        title={r === "ctr" ? t(k("ctrHint")) : undefined}
+                        onClick={() => setRankBy(r)}
+                        className={cn(SEG, rankBy === r ? SEG_ON : SEG_OFF)}
+                      >
+                        {t(k(r === "ctr" ? "rankCtr" : "rankClicks"))}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {pinnedFunnel && pinnedEl && (
+                  <FunnelCard
+                    t={t}
+                    locale={locale}
+                    title={labelOf(pinnedEl)}
+                    f={pinnedFunnel}
+                    page={model.pageFunnel}
+                  />
+                )}
                 <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
+                  {byCtr && (
+                    <p className="px-2 pb-1 text-xs text-muted-foreground">
+                      {t(k("ctrMinNote"), {
+                        n: fmtInt(CTR_MIN_SEEN, locale),
+                      })}
+                    </p>
+                  )}
                   {onPage.slice(0, 60).map((e, i) => {
                     const w = weightOf(e, clickType);
                     const share = w / totalW;
+                    const c = ctrOf.get(e.key);
+                    const meter = byCtr ? (c?.ctr ?? 0) / (topCtr || 1) : share;
                     return (
                       <Row
                         key={e.key}
                         id={e.key}
                         rank={i + 1}
                         label={labelOf(e)}
-                        value={fmtInt(w * est, locale)}
-                        meter={Math.max(0.02, share)}
+                        value={
+                          byCtr
+                            ? fmtPct(c?.ctr ?? 0, locale, 1)
+                            : fmtInt(w * est, locale)
+                        }
+                        meter={Math.max(0.02, meter)}
                         color={rampCss(
                           ramp,
-                          0.25 + 0.75 * Math.min(1, share * 4),
+                          0.25 + 0.75 * Math.min(1, byCtr ? meter : share * 4),
                           1,
                         )}
                         active={activeKey === e.key}
@@ -991,12 +1060,23 @@ function Viewer({
                         onPick={() => pick(e.key)}
                         sub={[
                           rootName(e.root),
-                          t(k("ofClicks"), { pct: fmtPct(share, locale, 1) }),
-                          model.views
-                            ? t(k("ofVisits"), {
-                                pct: fmtPct(e.views / model.views, locale, 1),
+                          // CTR before the click share: it is the figure the
+                          // row cannot show on its right, and the first to be
+                          // cut when the line truncates.
+                          byCtr
+                            ? t(k("ctrSeen"), {
+                                n: fmtInt((c?.seen ?? 0) * est, locale),
                               })
-                            : "",
+                            : c && c.seen
+                              ? t(k("ctrSub"), {
+                                  pct: fmtPct(c.ctr, locale, 1),
+                                })
+                              : "",
+                          byCtr
+                            ? ""
+                            : t(k("ofClicks"), {
+                                pct: fmtPct(share, locale, 1),
+                              }),
                         ]
                           .filter(Boolean)
                           .join(", ")}
@@ -1084,6 +1164,25 @@ function Viewer({
                     </p>
                   ) : (
                     <>
+                      {(pinnedFunnel && pinnedEl) || model.pageFunnel ? (
+                        <FunnelCard
+                          t={t}
+                          locale={locale}
+                          title={
+                            pinnedFunnel && pinnedEl
+                              ? labelOf(pinnedEl)
+                              : t(k("funnelPage"))
+                          }
+                          f={
+                            (pinnedFunnel && pinnedEl
+                              ? pinnedFunnel
+                              : model.pageFunnel)!
+                          }
+                          page={
+                            pinnedFunnel && pinnedEl ? model.pageFunnel : null
+                          }
+                        />
+                      ) : null}
                       <p className="px-2 pb-2 text-xs text-muted-foreground">
                         {t(k("valueBaseline"), {
                           cvr: fmtPct(
@@ -1263,6 +1362,15 @@ function Viewer({
                           b.reach != null
                             ? t(k("saw"), { pct: fmtPct(b.reach, locale) })
                             : "",
+                          sectionBy.get(b.key)?.seenViews
+                            ? t(k("ctrSub"), {
+                                pct: fmtPct(
+                                  (sectionBy.get(b.key)?.ctrPct ?? 0) / 100,
+                                  locale,
+                                  1,
+                                ),
+                              })
+                            : "",
                         ]
                           .filter(Boolean)
                           .join(", ")}
@@ -1358,6 +1466,71 @@ function Stat({
           {sub}
         </em>
       )}
+    </div>
+  );
+}
+
+/** Where the people who clicked went next: each step as a share of them, with
+ *  the page's own share beside it when there is one to compare against. */
+function FunnelCard({
+  t,
+  locale,
+  title,
+  f,
+  page,
+}: {
+  t: TFunction;
+  locale: string;
+  title: string;
+  f: HeatFunnel;
+  page: HeatFunnel | null;
+}) {
+  const of = (n: number, d: number) => (d ? n / d : 0);
+  return (
+    <div className="mx-3 mb-2 rounded-lg border border-border p-3">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-xs font-semibold">{t(k("funnelTitle"))}</span>
+        <span className="truncate text-xs text-muted-foreground" title={title}>
+          {title}
+        </span>
+      </div>
+      <p className="mt-0.5 text-xs text-muted-foreground">
+        {t(k("funnelPeople"), { n: fmtInt(f.visitors, locale) })}
+        {f.visitors < 30 ? ` · ${t(k("valueSmall"))}` : ""}
+      </p>
+      <div className="mt-2 flex flex-col gap-1.5">
+        {FUNNEL_STEPS.map((step) => {
+          const share = of(f[step], f.visitors);
+          const base = page ? of(page[step], page.visitors) : null;
+          return (
+            <div
+              key={step}
+              className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-2 text-xs"
+            >
+              <span className="truncate">{t(k(`funnel_${step}`))}</span>
+              <span className="font-semibold tabular-nums">
+                {fmtPct(share, locale, 1)}
+                {base != null && (
+                  <span
+                    className={cn(
+                      "ml-1.5 font-normal",
+                      share >= base ? "text-success" : "text-warning",
+                    )}
+                  >
+                    {t(k("funnelVsPage"), { pct: fmtPct(base, locale, 1) })}
+                  </span>
+                )}
+              </span>
+              <span className="col-span-2 h-1 overflow-hidden rounded-full bg-muted">
+                <i
+                  className="block h-full rounded-full bg-[var(--chart-1)]"
+                  style={{ width: `${Math.min(100, share * 100)}%` }}
+                />
+              </span>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

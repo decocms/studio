@@ -74,37 +74,14 @@ describe("toTenantAnalyticsPayload", () => {
       ...[...model.matchAll(/\bdata\.(\w+)/g)].map((m) => m[1]),
     ];
     expect(read.length).toBeGreaterThan(40);
+    // The globe's rows ride on the Realtime payload. An allow-list is silent: a
+    // dropped key is a map with no dots on it and no error in any log.
+    expect(read).toContain("liveGeo");
     const handledApart = new Set(["sites", "usageScope"]);
     const missing = read.filter(
       (k) => k && !ANALYTICS_PAYLOAD_KEYS.has(k) && !handledApart.has(k),
     );
     expect(missing).toEqual([]);
-  });
-
-  // The live map reads its payload through its own typed casts rather than the
-  // tab's `rowsOf`, so the scan above cannot see it. Same failure if it drifts:
-  // an allow-list is silent, so a dropped key is a map with no dots on it and
-  // no error in any log.
-  it("allows every payload key the live map reads", () => {
-    const dir = join(
-      import.meta.dir,
-      "../../../../web/src/layouts/main-panel-tabs",
-    );
-    const globe = readFileSync(join(dir, "analytics-globe-tab.tsx"), "utf8");
-    // Anchored on `payload as` so it reads PANEL keys only — the same shape
-    // also narrows a row (`first as { visitors?: unknown }`) and the BFF
-    // envelope, and neither of those is an allow-list entry.
-    // `flatMap` rather than `map`: under `noUncheckedIndexedAccess` a capture
-    // group is `string | undefined`, and dropping the empty case here keeps the
-    // assertions below reading as plain string work.
-    const read = [
-      ...globe.matchAll(/payload as \{\s*(\w+)\?:\s*unknown\s*\}/g),
-    ].flatMap((m) => m[1] ?? []);
-    // Asserted by name first: a regex that silently stops matching would make
-    // the filter below trivially empty, and the test would pass forever.
-    expect(read).toContain("liveGeo");
-    expect(read).toContain("liveVisitors");
-    expect(read.filter((k) => !ANALYTICS_PAYLOAD_KEYS.has(k))).toEqual([]);
   });
 });
 
@@ -123,7 +100,7 @@ describe("ANALYTICS_VIEWS", () => {
     const views = [...(block ?? "").matchAll(/view:\s*"(\w+)"/g)].flatMap(
       (m) => m[1] ?? [],
     );
-    expect(views).toContain("globe");
+    expect(views).toContain("live");
     expect(views.filter((v) => !ANALYTICS_VIEWS.has(v))).toEqual([]);
   });
 });

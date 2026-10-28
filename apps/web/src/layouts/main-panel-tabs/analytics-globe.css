@@ -39,10 +39,10 @@
 
   position: relative;
   width: 100%;
-  /* The map IS the screen on this tab, not a card on it. Bounded in `vh`
-     because the question is "how much of the window does this fill", with a
-     `min()` so it does not outgrow a short laptop screen in landscape. */
-  height: min(62vh, 44rem);
+  /* Half the window: the map sits between the Realtime numbers and the feed,
+     and the feed must stay reachable without a long scroll. Bounded in `vh`
+     with a `min()` so it does not outgrow a short laptop screen. */
+  height: min(52vh, 36rem);
   min-height: 20rem;
   border-radius: var(--radius);
   overflow: hidden;

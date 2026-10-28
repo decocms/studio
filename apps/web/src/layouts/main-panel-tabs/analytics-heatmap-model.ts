@@ -67,6 +67,8 @@ export interface HeatElement {
 
 interface HeatSection {
   root: string;
+  /** Views in which the section came on screen: the denominator of its CTR. */
+  seenViews: number;
   reachPct: number;
   avgS: number;
   ctrPct: number;
@@ -101,6 +103,21 @@ export interface HeatElementValue {
   /** Below the sample the ranking needs; the rate is noise, not news. */
   smallSample: boolean;
 }
+
+/**
+ * Where the people who clicked an element went next (`hmFunnel`), each step
+ * inside the money facts' 30-minute window. People, not views; association,
+ * not cause; and not a strict sequence (a buyer need not have carted).
+ */
+export interface HeatFunnel {
+  visitors: number;
+  viewed: number;
+  carted: number;
+  checkout: number;
+  bought: number;
+}
+
+export const FUNNEL_STEPS = ["viewed", "carted", "checkout", "bought"] as const;
 
 /** The page's own money, which every element figure is read against. */
 export interface HeatValueSummary {
@@ -166,6 +183,10 @@ export interface HeatmapModel {
   valueLeaks: HeatElementValue[];
   /** What all of the above assumes. Null when the payload predates it. */
   valueModel: HeatValueModel | null;
+  /** Post-click funnel per element, keyed by `HeatElement.key`. */
+  funnel: Map<string, HeatFunnel>;
+  /** The same steps for every view of the page — the baseline. Null when absent. */
+  pageFunnel: HeatFunnel | null;
 }
 
 const isDevice = (v: unknown): v is HeatDevice =>
@@ -243,6 +264,7 @@ export function parseHeatmap(data: Row): HeatmapModel {
     })),
     sections: rows(data.hmSections).map((r) => ({
       root: str(r.root),
+      seenViews: num(r.seen_views),
       reachPct: num(r.reach_pct),
       avgS: num(r.avg_s),
       ctrPct: num(r.ctr_pct),
@@ -257,7 +279,48 @@ export function parseHeatmap(data: Row): HeatmapModel {
     valueSummary: valueSummaryOf(rows(data.hmValueSummary)[0]),
     valueLeaks: rows(data.hmValueLeaks).map(elementValue),
     valueModel: valueModelOf(data.heatmapValue),
+    ...funnelOf(rows(data.hmFunnel)),
   };
+}
+
+/** The page row is `root = ''` and `el = "0"`; every other row is an element. */
+function funnelOf(rs: Row[]): {
+  funnel: Map<string, HeatFunnel>;
+  pageFunnel: HeatFunnel | null;
+} {
+  const funnel = new Map<string, HeatFunnel>();
+  let pageFunnel: HeatFunnel | null = null;
+  for (const r of rs) {
+    const f: HeatFunnel = {
+      visitors: num(r.visitors),
+      viewed: num(r.viewed),
+      carted: num(r.carted),
+      checkout: num(r.checkout),
+      bought: num(r.bought),
+    };
+    if (!str(r.root) && str(r.el) === "0") pageFunnel = f.visitors ? f : null;
+    else funnel.set(`${str(r.root)}|${str(r.el)}`, f);
+  }
+  return { funnel, pageFunnel };
+}
+
+/** Views of its section a CTR needs before it is ranked rather than shown:
+ *  below this a single curious visitor moves it by whole points. */
+export const CTR_MIN_SEEN = 100;
+
+/**
+ * Click rate of one element: views that clicked it over views in which its
+ * section came on screen — "of the people who SAW this banner, how many
+ * clicked", not "of everyone who opened the page". An element outside any
+ * section, or in one the payload has no exposure for, falls back to page views.
+ */
+export function elementCtr(
+  m: HeatmapModel,
+  e: HeatElement,
+): { ctr: number; seen: number } {
+  const seen =
+    (e.root && m.sections.find((s) => s.root === e.root)?.seenViews) || m.views;
+  return { ctr: seen ? Math.min(1, e.views / seen) : 0, seen };
 }
 
 const elementValue = (r: Row): HeatElementValue => ({

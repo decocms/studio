@@ -224,8 +224,8 @@ async function readJsonBody(
  *  operator-only view and must never reach a customer screen. */
 export const ANALYTICS_VIEWS = new Set([
   "live",
-  // The live map. Same 5-minute window as `live`, one extra panel (`liveGeo`),
-  // drawn by the read surface's own renderer rather than by a panel component.
+  // The live map's own view. The tab now draws it inside `live`, which carries
+  // `liveGeo` too; kept so links and the read MCP that ask for it still work.
   "globe",
   "overview",
   "behaviour",
@@ -382,6 +382,9 @@ export const ANALYTICS_PAYLOAD_KEYS: ReadonlySet<string> = new Set([
   "hmValueSummary",
   "hmValue",
   "hmValueLeaks",
+  // Where the people who clicked an element went next; its first row is the
+  // page's own baseline.
+  "hmFunnel",
 ]);
 
 /** A read-surface payload reduced to what the Analytics tab reads: the keys in
