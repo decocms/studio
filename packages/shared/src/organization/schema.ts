@@ -326,7 +326,7 @@ export const OrgFlagsSchema = z.object({
     .boolean()
     .optional()
     .describe(
-      "Installing a site app from the Apps tab: writes the app module, the npm dependency and the registry entry into the project's repository, then reinstalls dependencies and restarts the dev script on the running sandbox. Off by default, for every org — the catalogue stays browsable without it and nothing is installable. Rollout lever, separate from the deploy.",
+      "Installing a site app from the Apps tab: writes the app module, registers it (the manifest on Deno, APP_REGISTRY on TanStack), adds the npm dependency, then reinstalls dependencies and restarts the dev script on the running sandbox. On by default (see DEFAULT_ON_FLAGS); with it off the catalogue stays browsable and nothing is installable, which is the lever for an org that does not want the CMS writing code.",
     ),
   multi_app_preview: z
     .boolean()
@@ -354,6 +354,7 @@ export type OrgFlags = z.infer<typeof OrgFlagsSchema>;
  * disabling it is the deliberate action.
  */
 export const DEFAULT_ON_FLAGS: ReadonlySet<keyof OrgFlags> = new Set([
+  "site_apps_install_enabled",
   "reviewer_enabled",
   "cheap_reviewer_model",
   "chat_harness_sandbox_only",
