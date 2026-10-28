@@ -100,6 +100,7 @@ export function OrgAccessGate({ orgSlug }: { orgSlug: string }) {
   return (
     <NoAccessScreen
       orgSlug={orgSlug}
+      orgId={data.organization.id}
       orgName={data.organization.name}
       reason="no-access"
     />
