@@ -44,6 +44,10 @@ function useMonitorSearch(): MonitorSelection {
         ? search.store
         : undefined,
     at: "at" in search && typeof search.at === "string" ? search.at : undefined,
+    project:
+      "project" in search && typeof search.project === "string"
+        ? search.project
+        : undefined,
   };
 }
 
@@ -52,13 +56,11 @@ function LiveMonitoring({
   scopeId,
   selection,
   onSelect,
-  onScope,
 }: {
   orgSlug: string;
   scopeId: string | null;
   selection: MonitorSelection;
   onSelect: (selection: MonitorSelection) => void;
-  onScope: (projectId: string | null) => void;
 }) {
   const { board, loading, error } = useLiveBoard(
     orgSlug,
@@ -74,7 +76,6 @@ function LiveMonitoring({
       scopeId={scopeId}
       selection={selection}
       onSelect={onSelect}
-      onScope={onScope}
     />
   );
 }
@@ -105,24 +106,6 @@ function MonitoringContent() {
       });
     }
   };
-  // Picking a project in the Monitor is picking it in the sidebar: the route
-  // (and so the sidebar's scope) changes, and the tab stays.
-  const onScope = (projectId: string | null) => {
-    const search = { view: selection.view };
-    if (projectId) {
-      void navigate({
-        to: PROJECT_ROUTE.monitoring,
-        params: { org: org.slug, agentId: projectId },
-        search,
-      });
-    } else {
-      void navigate({
-        to: DESTINATION_ROUTE.monitoring,
-        params: { org: org.slug },
-        search,
-      });
-    }
-  };
 
   return (
     <LiveMonitoring
@@ -130,7 +113,6 @@ function MonitoringContent() {
       scopeId={scopeId}
       selection={selection}
       onSelect={onSelect}
-      onScope={onScope}
     />
   );
 }
