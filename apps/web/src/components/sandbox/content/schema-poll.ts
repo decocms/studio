@@ -2,6 +2,7 @@ import {
   hasManifestBlockSchema,
   type LiveMeta,
 } from "@/components/sections-editor/resolve-schema";
+import { hasEditableAppEditorSchema } from "./app-editor-schema";
 
 /** How often the CMS re-reads `/live/_meta` while an app's schema is missing. */
 export const SCHEMA_POLL_INTERVAL_MS = 2_000;
@@ -32,4 +33,36 @@ export function liveMetaSchemaPollInterval(input: {
   // nothing to configure is done too: re-reading will not grow it fields.
   if (meta && hasManifestBlockSchema(resolveType, meta)) return false;
   return SCHEMA_POLL_INTERVAL_MS;
+}
+
+/**
+ * Whether the app editor is WAITING for a schema rather than reporting it has
+ * none.
+ *
+ * The distinction is the whole difference between a spinner and "its settings
+ * appear once the site is built with this app", and an install crosses it
+ * twice: the dev server goes down to rebuild, then comes back carrying the
+ * schema. Reading the down phase as "no schema" is what made the panel
+ * alternate between the two at the restart's own rhythm.
+ *
+ * `podAlive` therefore means up OR on its way up. A session with no pod coming
+ * at all keeps the honest message, as does an app the manifest carries with
+ * nothing to configure.
+ */
+export function schemaPending(input: {
+  resolveType: string | undefined;
+  meta: LiveMeta | undefined;
+  excludeFields?: readonly string[];
+  metaLoading: boolean;
+  metaFetching: boolean;
+  podAlive: boolean;
+}): boolean {
+  const { resolveType, meta, excludeFields } = input;
+  if (hasEditableAppEditorSchema(resolveType, meta, excludeFields))
+    return false;
+  if (input.metaLoading || input.metaFetching) return true;
+  return (
+    input.podAlive &&
+    liveMetaSchemaPollInterval({ resolveType, meta }) !== false
+  );
 }

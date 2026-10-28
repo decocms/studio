@@ -3,6 +3,7 @@ import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 import { hasEditableAppEditorSchema } from "./app-editor-schema";
 import {
   liveMetaSchemaPollInterval,
+  schemaPending,
   SCHEMA_POLL_INTERVAL_MS,
 } from "./schema-poll";
 
@@ -75,5 +76,43 @@ describe("liveMetaSchemaPollInterval", () => {
         meta: beforeInstall,
       }),
     ).toBeFalse();
+  });
+});
+
+describe("schemaPending", () => {
+  const base = {
+    resolveType: INSTALLED,
+    metaLoading: false,
+    metaFetching: false,
+    podAlive: true,
+  };
+
+  it("waits through the restart that regenerates the schema", () => {
+    // The dev server is DOWN for that restart. Reading it as "this app has no
+    // schema" is what made the editor alternate between the spinner and "its
+    // settings appear after a build" at the restart's own rhythm.
+    expect(schemaPending({ ...base, meta: beforeInstall })).toBeTrue();
+  });
+
+  it("keeps waiting while a read is in flight", () => {
+    expect(
+      schemaPending({
+        ...base,
+        meta: beforeInstall,
+        podAlive: false,
+        metaFetching: true,
+      }),
+    ).toBeTrue();
+  });
+
+  it("says it plainly when no pod is coming", () => {
+    // Fast Preview: nothing will ever build this app, so a spinner would lie.
+    expect(
+      schemaPending({ ...base, meta: beforeInstall, podAlive: false }),
+    ).toBeFalse();
+  });
+
+  it("stops waiting for an app the manifest carries with nothing to edit", () => {
+    expect(schemaPending({ ...base, meta: afterInstall })).toBeFalse();
   });
 });

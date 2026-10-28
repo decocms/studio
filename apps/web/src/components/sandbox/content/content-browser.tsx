@@ -46,8 +46,7 @@ import { useProjectContext } from "@/sdk";
 import { useChatTask } from "@/components/chat/context";
 import { useDecofile } from "@/components/sections-editor/use-decofile";
 import { useLiveMeta } from "@/components/sections-editor/use-live-meta";
-import { hasEditableAppEditorSchema } from "./app-editor-schema";
-import { liveMetaSchemaPollInterval } from "./schema-poll";
+import { liveMetaSchemaPollInterval, schemaPending } from "./schema-poll";
 import { hasCmsSettingsType } from "./cms-settings";
 import {
   keptTheirVersion,
@@ -588,14 +587,16 @@ function ContentBrowserReady({
     resolveType: string | undefined,
     excludeFields?: readonly string[],
   ) =>
-    !hasEditableAppEditorSchema(resolveType, meta, excludeFields) &&
-    (metaLoading ||
-      metaFetching ||
-      // Still re-reading between fetches: the form is pending, not absent.
-      // Without this the panel flickers between the spinner and "its settings
-      // appear after a build" at the poll's own rhythm.
-      (devServerReady &&
-        liveMetaSchemaPollInterval({ resolveType, meta }) !== false));
+    schemaPending({
+      resolveType,
+      meta,
+      excludeFields,
+      metaLoading,
+      metaFetching,
+      // The restart that regenerates the schema takes the dev server down with
+      // it, and that wait is still a wait.
+      podAlive: devServerReady || sandboxWarming,
+    });
 
   const { createTask } = useChatTask();
   /**
