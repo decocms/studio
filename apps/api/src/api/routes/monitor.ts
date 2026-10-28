@@ -50,8 +50,27 @@ import {
   analyticsQuery,
   isAnalyticsConfigured,
 } from "../../deco-legacy/clickhouse-analytics";
-import { toOneDollarHostname } from "../../deco-legacy/onedollarstats";
+import {
+  AUDIENCE_RANGES,
+  AUDIENCE_VIEWS,
+  type AudienceRange,
+  type AudienceView,
+} from "@decocms/shared/monitor-audience";
+import {
+  plausibleQuery,
+  type PlausibleRows,
+  toOneDollarHostname,
+} from "../../deco-legacy/onedollarstats";
+import { readAudience } from "./monitor-audience";
 import { querySiteView, resolveSiteWindow, SITE_VIEWS } from "./monitor-site";
+
+function isAudienceView(value: string): value is AudienceView {
+  return (AUDIENCE_VIEWS as readonly string[]).includes(value);
+}
+
+function isAudienceRange(value: string): value is AudienceRange {
+  return (AUDIENCE_RANGES as readonly string[]).includes(value);
+}
 
 type Variables = { studioContext: StudioContext };
 
@@ -590,123 +609,6 @@ async function queryTopCountries(
   }));
 }
 
-// --- Audience (the OneDollar-equivalent, native from the analytics facts) ---
-//
-// `fact_analytics_daily_view` carries the pageview/visitor facts the old admin
-// Monitor's "Analytics" tab used to read from the OneDollarStats widget. Reading
-// them here makes that half native too — no third-party widget, no legacy path.
-
-/** The audience views the customer-facing tab may ask for. */
-const AUDIENCE_VIEWS = new Set([
-  "summary",
-  "timeline",
-  "top-sources",
-  "top-countries",
-  "devices",
-]);
-
-export interface AudienceSummary {
-  pageviews: number;
-  visitors: number;
-  sessions: number;
-}
-
-/** Headline audience cards. NOTE: `visitors`/`sessions` sum the per-day unique
- *  counts, so they are visitor-days, not distinct-over-the-range uniques (the
- *  facts carry no mergeable uniq state). Pageviews is exact. */
-async function queryAudienceSummary(
-  slug: string,
-  since: string,
-  until: string,
-): Promise<AudienceSummary> {
-  const [row] = await analyticsQuery<AudienceSummary>(
-    `SELECT
-        sumIf(events, type = 'PageView') AS pageviews,
-        sum(unique_visitors) AS visitors,
-        sum(unique_sessions) AS sessions
-       FROM default.fact_analytics_daily_view
-      WHERE ${SITE_SCOPE}
-        AND date >= {since:Date} AND date <= {until:Date}`,
-    { slug, since, until },
-  );
-  return {
-    pageviews: Number(row?.pageviews ?? 0),
-    visitors: Number(row?.visitors ?? 0),
-    sessions: Number(row?.sessions ?? 0),
-  };
-}
-
-export interface AudienceTimelinePoint {
-  bucket: string;
-  pageviews: number;
-  visitors: number;
-}
-
-async function queryAudienceTimeline(
-  slug: string,
-  since: string,
-  until: string,
-): Promise<AudienceTimelinePoint[]> {
-  const rows = await analyticsQuery<{
-    bucket: string;
-    pageviews: number;
-    visitors: number;
-  }>(
-    `SELECT
-        toString(date) AS bucket,
-        sumIf(events, type = 'PageView') AS pageviews,
-        sum(unique_visitors) AS visitors
-       FROM default.fact_analytics_daily_view
-      WHERE ${SITE_SCOPE}
-        AND date >= {since:Date} AND date <= {until:Date}
-      GROUP BY date
-      ORDER BY date ASC`,
-    { slug, since, until },
-  );
-  return rows.map((r) => ({
-    bucket: r.bucket,
-    pageviews: Number(r.pageviews),
-    visitors: Number(r.visitors),
-  }));
-}
-
-export interface AudienceBreakdownRow {
-  key: string;
-  pageviews: number;
-  visitors: number;
-}
-
-/** Pageview/visitor breakdown grouped by one dimension (source/country/device). */
-async function queryAudienceBreakdown(
-  slug: string,
-  since: string,
-  until: string,
-  dimension: "utm_source" | "country" | "device_type",
-): Promise<AudienceBreakdownRow[]> {
-  const rows = await analyticsQuery<{
-    key: string;
-    pageviews: number;
-    visitors: number;
-  }>(
-    `SELECT
-        ${dimension} AS key,
-        sumIf(events, type = 'PageView') AS pageviews,
-        sum(unique_visitors) AS visitors
-       FROM default.fact_analytics_daily_view
-      WHERE ${SITE_SCOPE}
-        AND date >= {since:Date} AND date <= {until:Date}
-      GROUP BY ${dimension}
-      ORDER BY pageviews DESC
-      LIMIT 50`,
-    { slug, since, until },
-  );
-  return rows.map((r) => ({
-    key: r.key,
-    pageviews: Number(r.pageviews),
-    visitors: Number(r.visitors),
-  }));
-}
-
 // --- OneDollarStats (Plausible-compatible) audience reports ------------------
 //
 // The full audience dashboard the old admin embedded as the `stonks-dashboard`
@@ -718,7 +620,6 @@ async function queryAudienceBreakdown(
 // Deco Analytics once that covers them, so the front reads normalized rows and
 // doesn't care which backend produced them.
 
-const OD_API = "https://deco.lilstts.com/plausible";
 const OD_TIMEOUT_MS = 12_000;
 
 /** report → the Plausible metrics/dimension/order that build it. */
@@ -802,11 +703,6 @@ const OD_REPORTS: Record<
   },
 };
 
-interface OdResult {
-  dimensions: string[];
-  metrics: number[];
-}
-
 /** The site's hostnames as OneDollarStats indexes them (`www.` variant), busiest
  *  first — the values the audience host picker offers and the site_id queries
  *  run against. From the warehouse domain set (no Supabase). Deduped, so two
@@ -864,10 +760,10 @@ async function requireOwnedSite(
 }
 
 /**
- * Org-scoped monitor routes mounted at `/api/:org/monitor`. Direct-ClickHouse
- * reads, tenancy via `org_sites`, no control-plane and no Supabase. `cdn`,
- * `audience`, `hosts` and `onedollar` serve v7 sites; `site` serves Blocks v8
- * sites from their OpenTelemetry (`monitor-site.ts`).
+ * Org-scoped monitor routes mounted at `/api/:org/monitor`, tenancy via
+ * `org_sites`. `cdn`, `hosts` and `onedollar` serve v7 sites; `site` serves
+ * Blocks v8 sites from their OpenTelemetry (`monitor-site.ts`); `audience`
+ * serves any site from Deco Analytics or OneDollarStats (`monitor-audience.ts`).
  */
 export const createMonitorRoutes = () => {
   const app = new Hono<{ Variables: Variables }>();
@@ -996,66 +892,39 @@ export const createMonitorRoutes = () => {
     }
   });
 
-  // GET /api/:org/monitor/:site/audience/data?view=&range= — the pageview /
-  // visitor half (the native replacement for the old admin's OneDollarStats
-  // "Analytics" tab). Same tenancy guard and shape as the CDN handler.
-  app.get("/:site/audience/data", async (c) => {
+  // GET /api/:org/monitor/:site/audience?view=&range=&host= — one audience
+  // view in the shared normalized shape, from Deco Analytics when the site is
+  // registered there and OneDollarStats otherwise (monitor-audience.ts).
+  app.get("/:site/audience", async (c) => {
     const guard = await requireOwnedSite(c);
     if (guard instanceof Response) return guard;
 
-    if (!isAnalyticsConfigured()) {
-      return c.json({ available: false, error: "Monitor is not configured" });
-    }
-
     const view = c.req.query("view") ?? "summary";
-    if (!AUDIENCE_VIEWS.has(view)) {
-      return c.json({ error: `unknown or unavailable view: ${view}` }, 400);
+    if (!isAudienceView(view)) {
+      return c.json({ error: `unknown audience view: ${view}` }, 400);
     }
     const range = c.req.query("range") ?? "7d";
-    const window = resolveWindow(
-      range,
-      c.req.query("since"),
-      c.req.query("until"),
-    );
-    if (!window) {
+    if (!isAudienceRange(range)) {
       return c.json({ error: `unknown range: ${range}` }, 400);
     }
 
     const { slug } = guard;
-    const { since, until } = window;
-
-    try {
-      let data: unknown;
-      switch (view) {
-        case "summary":
-          data = await queryAudienceSummary(slug, since, until);
-          break;
-        case "timeline":
-          data = await queryAudienceTimeline(slug, since, until);
-          break;
-        case "top-sources":
-          data = await queryAudienceBreakdown(slug, since, until, "utm_source");
-          break;
-        case "top-countries":
-          data = await queryAudienceBreakdown(slug, since, until, "country");
-          break;
-        case "devices":
-          data = await queryAudienceBreakdown(
-            slug,
-            since,
-            until,
-            "device_type",
-          );
-          break;
-      }
-      return c.json({ available: true, view, range, data });
-    } catch (err) {
-      console.error(
-        `[monitor] audience ${view} query failed for site="${slug}":`,
-        err,
-      );
-      return c.json({ error: "Failed to query monitor warehouse" }, 502);
-    }
+    const read = await readAudience({
+      org: requireOrganization(c.get("studioContext")),
+      site: slug,
+      view,
+      range,
+      host: c.req.query("host"),
+      oneDollarHosts: () =>
+        isAnalyticsConfigured()
+          ? siteOdHosts(slug).catch((err) => {
+              console.error(`[monitor] hosts failed for site="${slug}":`, err);
+              return [];
+            })
+          : Promise.resolve([]),
+    });
+    if (!read.ok) return c.json({ error: read.error }, 502);
+    return c.json(read.body);
   });
 
   // GET /api/:org/monitor/:site/hosts — the site's hostnames (OneDollar site_id
@@ -1163,15 +1032,10 @@ export const createMonitorRoutes = () => {
       })
       .filter(Boolean);
 
-    const runOd = async (dateRange: [string, string]): Promise<OdResult[]> => {
-      const res = await fetch(OD_API, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": apiKey,
-          Accept: "application/json",
-        },
-        body: JSON.stringify({
+    const runOd = (dateRange: [string, string]) =>
+      plausibleQuery(
+        apiKey,
+        {
           site_id: host,
           metrics: spec.metrics,
           date_range: dateRange,
@@ -1179,21 +1043,15 @@ export const createMonitorRoutes = () => {
           ...(spec.order ? { order_by: [[spec.order, "desc"]] } : {}),
           ...(plausibleFilters.length ? { filters: plausibleFilters } : {}),
           pagination: { limit: 100, offset: 0 },
-        }),
-        signal: AbortSignal.timeout(OD_TIMEOUT_MS),
-      });
-      if (!res.ok) throw new Error(`OneDollarStats ${res.status}`);
-      const payload = (await res.json().catch(() => null)) as {
-        results?: OdResult[];
-      } | null;
-      return payload?.results ?? [];
-    };
+        },
+        OD_TIMEOUT_MS,
+      );
 
     try {
       // For KPIs, also read the immediately-preceding window of equal length so
       // the cards can show trend deltas (the ↓/↑ % the old admin shows).
       const results = await runOd([since, until]);
-      let previous: OdResult[] | undefined;
+      let previous: PlausibleRows | undefined;
       // KPIs always compare (the ↓/↑ deltas); timeseries only when the user
       // turned Compare on (the previous-period overlay).
       const wantsPrevious =

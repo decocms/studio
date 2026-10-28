@@ -43,6 +43,10 @@ import {
   requireOrganization,
 } from "../../core/studio-context";
 import { getSettings } from "../../settings";
+import {
+  readAnalyticsView,
+  resolveWarehouseSiteId,
+} from "../../deco-analytics/read-surface";
 
 type Variables = { studioContext: StudioContext };
 
@@ -261,81 +265,6 @@ const ANALYTICS_RANGES = new Set([
   "7d",
   "30d",
 ]);
-
-/** slug → warehouse site_id (`s<id>`), memoised briefly. The mapping is stable
- *  for the life of a registration, so a short TTL keeps a screenful of view
- *  requests from each re-asking the control-plane while still noticing an
- *  unregister within a few seconds. `null` (not-registered) is cached too, so an
- *  unregistered site doesn't hammer the upstream on every expand — but a
- *  transient resolve FAILURE is never cached (see the `error` result below). */
-const siteIdCache = new Map<string, { id: string | null; exp: number }>();
-const SITE_ID_TTL_MS = 30_000;
-
-/** Three distinct outcomes so a transient status failure is not mistaken for a
- *  genuine "not registered": the caller renders Configuration only for
- *  `unregistered`, and 502s for `error`. */
-type SiteIdResolution =
-  | { status: "registered"; id: string }
-  | { status: "unregistered" }
-  | { status: "error" };
-
-async function resolveWarehouseSiteId(
-  org: { id: string },
-  site: string,
-  controlplaneRestUrl: string,
-  controlplaneServiceToken: string,
-): Promise<SiteIdResolution> {
-  const cacheKey = `${org.id}:${site.toLowerCase()}`;
-  const now = Date.now();
-  const hit = siteIdCache.get(cacheKey);
-  if (hit && hit.exp > now) {
-    return hit.id
-      ? { status: "registered", id: hit.id }
-      : { status: "unregistered" };
-  }
-
-  let id: string | null = null;
-  try {
-    const res = await fetch(
-      `${controlplaneRestUrl}/sites/${encodeURIComponent(site)}/analytics/status`,
-      {
-        headers: {
-          Authorization: `Bearer ${controlplaneServiceToken}`,
-          Accept: "application/json",
-        },
-      },
-    );
-    const body = (await res.json().catch(() => null)) as {
-      registered?: boolean;
-      config?: { id?: string } | null;
-    } | null;
-    // A non-2xx status is a resolution FAILURE, not "not registered": caching it
-    // as unregistered would strand a real registration behind the Configuration
-    // screen for the whole TTL. Surface it so the caller 502s instead.
-    if (!res.ok) {
-      console.error(
-        `[analytics] status resolve HTTP ${res.status} for site="${site}"`,
-      );
-      return { status: "error" };
-    }
-    // `config.id` is the `s<id>` and is only present once the site is registered.
-    if (body?.registered && body.config?.id) {
-      id = body.config.id;
-    }
-  } catch (err) {
-    console.error(`[analytics] status resolve failed for site="${site}":`, err);
-    // Transient failure — do NOT cache, so the next request retries.
-    return { status: "error" };
-  }
-
-  // Evict expired entries on write so the map can't grow without bound on a
-  // long-lived multi-tenant process (the TTL previously only gated reads).
-  for (const [key, entry] of siteIdCache) {
-    if (entry.exp <= now) siteIdCache.delete(key);
-  }
-  siteIdCache.set(cacheKey, { id, exp: now + SITE_ID_TTL_MS });
-  return id ? { status: "registered", id } : { status: "unregistered" };
-}
 
 /**
  * Org-scoped routes mounted at `/api/:org/hosting`. Three peer surfaces
@@ -676,81 +605,26 @@ export const createHostingRoutes = () => {
     }
     const siteId = resolution.id;
 
-    const upstream = new URL(`${analyticsDataUrl}/data`);
-    upstream.searchParams.set("view", view);
-    upstream.searchParams.set("range", range);
-    upstream.searchParams.set("site", siteId);
-    for (const [key, value] of Object.entries(heatmap)) {
-      upstream.searchParams.set(key, value);
+    const read = await readAnalyticsView({
+      analyticsDataUrl,
+      analyticsMasterToken,
+      siteId,
+      view,
+      range,
+      params: heatmap,
+      site,
+    });
+    if (!read.ok) {
+      return c.json({ error: read.error }, read.status);
     }
 
-    let payload: Record<string, unknown> | null;
-    try {
-      const res = await fetch(upstream, {
-        headers: {
-          Authorization: `Bearer ${analyticsMasterToken}`,
-          Accept: "application/json",
-        },
-      });
-      payload = (await res.json().catch(() => null)) as Record<
-        string,
-        unknown
-      > | null;
-      if (!res.ok) {
-        const error =
-          (payload && typeof payload === "object" && "error" in payload
-            ? String((payload as { error: unknown }).error)
-            : null) ?? `Analytics request failed (${res.status})`;
-        const status: ContentfulStatusCode =
-          res.status >= 400 && res.status <= 599
-            ? (res.status as ContentfulStatusCode)
-            : 502;
-        return c.json({ error }, status);
-      }
-    } catch (err) {
-      console.error(`[analytics] data proxy error for site="${site}":`, err);
-      return c.json({ error: "Failed to reach analytics service" }, 502);
-    }
-
-    if (!payload) {
-      return c.json({ error: "analytics returned an empty payload" }, 502);
-    }
-
-    // The read surface trusts our token to name any site, so verify it actually
-    // scoped to THIS tenant before returning. A payload that isn't tenant-scoped
-    // — or was scoped to a different site — could be someone else's numbers under
-    // this customer's name, which is the one outcome that must never render.
-    const scope = (payload.usageScope ?? null) as {
-      site?: string | null;
-      reader?: string;
-      tenantScoped?: boolean;
-    } | null;
-    if (
-      !scope ||
-      scope.tenantScoped !== true ||
-      scope.reader !== "stats_reader" ||
-      scope.site !== siteId
-    ) {
-      console.error(
-        `[analytics] refusing unscoped payload for site="${site}" (${siteId}):`,
-        scope,
-      );
-      return c.json(
-        { error: "analytics did not scope to this site; refusing to render" },
-        502,
-      );
-    }
-
-    // Strip delivery/caching/bundle internals: this tab ships in the open-source
-    // Studio and must expose only what a site owner needs, never how we deliver
-    // or meter. `worker` is the collector's live metrics; `install` carries
-    // bundle bytes and probe results. Reduce usageScope to the fact the client
-    // needs (it's scoped) without leaking the enforced-tables list.
-    delete payload.worker;
-    delete payload.install;
-    payload.usageScope = { site: siteId, tenantScoped: true };
-
-    return c.json({ registered: true, siteId, view, range, data: payload });
+    return c.json({
+      registered: true,
+      siteId,
+      view,
+      range,
+      data: read.payload,
+    });
   });
 
   return app;
