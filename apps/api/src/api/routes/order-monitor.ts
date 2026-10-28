@@ -29,6 +29,7 @@ import { loadStoreInfo } from "@/monitoring/order-incidents";
 import { loadStoreDay, loadStoreTimezone } from "@/monitoring/order-lake";
 import { listPushes } from "@/monitoring/order-pushes";
 import { loadSiteTraffic } from "@/monitoring/site-traffic";
+import { isTimezone } from "@/monitoring/timezone";
 import { buildDayView, RULES, type Rule } from "@/monitoring/order-rules";
 import { getSettings } from "@/settings";
 import { OrderMonitorStorage } from "@/storage/order-monitor";
@@ -79,15 +80,6 @@ function parseAt(raw: string | undefined): Date | null {
   const t = Date.parse(raw);
   if (Number.isNaN(t)) return null;
   return new Date(Math.min(t, Date.now()));
-}
-
-function isTimezone(tz: string): boolean {
-  try {
-    new Intl.DateTimeFormat("en-US", { timeZone: tz });
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 export const createOrderMonitorRoutes = () => {
