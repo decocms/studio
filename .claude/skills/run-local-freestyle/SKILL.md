@@ -10,9 +10,7 @@ Freestyle VMs call back into Studio (the `studio` MCP, org-fs), so a local Studi
 ## Prerequisites
 
 - `FREESTYLE_API_KEY` in the repo-root `.env`.
-- `ngrok` with an auth token of its own (`ngrok config add-authtoken <token>`).
-  A separate free account from Freestyle's; without it ngrok exits with
-  `ERR_NGROK_4018`.
+- `ngrok` with an auth token (`ngrok config add-authtoken <token>`).
 - Docker with `buildx` and Go, only if you changed `packages/sandbox/daemon-go` or `packages/harness-runner`.
 
 ## 1. Tunnel
@@ -27,43 +25,19 @@ URL=$(curl -s localhost:4040/api/tunnels | grep -o '"public_url":"https[^"]*' | 
 
 ## 2. Start Studio
 
-`bun run dev` is `docker compose up`, and the API container receives an
-explicit env list — the repo-root `.env` never reaches it. Pass this run's
-settings in an override outside the repo, so the key stays in `.env`
-(gitignored) and only the reference is written:
-
 ```bash
-cat > /tmp/freestyle.override.yaml <<EOF
-services:
-  api:
-    environment:
-      BASE_URL: $URL
-      BETTER_AUTH_URL: $URL
-      STUDIO_PUBLIC_URL: $URL
-      MESH_PUBLIC_URL: $URL
-      STUDIO_AGENT_SANDBOX_ENABLED: "true"
-      STUDIO_SANDBOX_FREESTYLE_SHARE: "1"
-      STUDIO_SANDBOX_FREESTYLE_IMAGE: \$TAG
-      FREESTYLE_API_KEY: \${FREESTYLE_API_KEY}
-      BETTER_AUTH_SECRET: \${BETTER_AUTH_SECRET}
-  web:
-    environment:
-      HOST: 0.0.0.0
-      __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS: .ngrok-free.dev,.ngrok-free.app
-EOF
-C="docker compose -f compose.yaml -f /tmp/freestyle.override.yaml"
-$C build web   # once: api, web and migrate share one image tag and race in parallel
-$C up -d
+KUBECONFIG=/dev/null \
+STUDIO_AGENT_SANDBOX_ENABLED=true \
+STUDIO_SANDBOX_FREESTYLE_SHARE=1 \
+STUDIO_PUBLIC_URL=$URL MESH_PUBLIC_URL=$URL \
+__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS=.ngrok-free.app \
+bun run dev --base-url $URL --no-tui
 ```
 
-- Set a stable `BETTER_AUTH_SECRET` in `.env`. Without one Better Auth mints a
-  random secret per process start, the stored JWKS stops decrypting, and the
-  browser loops on login with no error but `Failed to decrypt private key` in
-  the API log.
+- Always set `KUBECONFIG=/dev/null`. Without it the Kubernetes provider is built from your default context, and a Freestyle fallback could provision there.
 - Always override `STUDIO_PUBLIC_URL` and `MESH_PUBLIC_URL`. A stale value in `.env` wins over `BASE_URL` for minted MCP URLs, and runs fail with `studio MCP is unusable`.
 - Open `$URL` in the browser and log in there, not on `localhost`. Click through ngrok's one-time warning page.
-- If you change the tunnel URL, rewrite the override and `$C up -d` again.
-- Compose Watch is off with `up -d`. After editing a workspace, `$C cp <file> web:/app/<file>` and `$C restart web`, or run `up --watch` instead.
+- If you change the tunnel URL, restart Studio with the new one.
 
 ## 3. Sandbox image (only for daemon or runner changes)
 
