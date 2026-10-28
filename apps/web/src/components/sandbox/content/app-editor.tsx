@@ -10,7 +10,7 @@ import { AddSectionModal } from "@/components/sections-editor/add-section-modal"
 import { useSectionPreviewBase } from "@/components/sections-editor/use-section-preview-base";
 import { appLabel } from "@/components/sections-editor/page-list";
 import {
-  isResolvableManifestApp,
+  hasManifestBlockSchema,
   type LiveMeta,
 } from "@/components/sections-editor/resolve-schema";
 import type { SectionCatalogEntry } from "@/components/sections-editor/section-catalog";
@@ -66,7 +66,6 @@ function AppEditorForm({
   decofile,
   title: titleOverride,
   excludeFields,
-  schemaPending = false,
   onReinstall,
   reinstalling = false,
   previewBaseUrl = null,
@@ -84,7 +83,6 @@ function AppEditorForm({
   title?: string;
   /** Top-level schema fields to omit (e.g. site `seo` is edited in the SEO tab). */
   excludeFields?: readonly string[];
-  schemaPending?: boolean;
   /**
    * Write the app's files again. Offered when its form came out empty and the
    * registry still knows how to write it: a bridge module an older installer
@@ -114,6 +112,13 @@ function AppEditorForm({
   const schema = resolveAppEditorSchema(resolveType, meta, excludeFields);
   const hasEditableFields =
     !!schema && Object.keys(schema.properties ?? {}).length > 0;
+  /**
+   * The manifest has no entry for this block yet — an app installed into the
+   * working tree, waiting for the build that generates its schema. One state,
+   * not two: a spinner and a message that took turns as the dev server went
+   * down and came back read as two different answers to the same question.
+   */
+  const awaitingSchema = !hasManifestBlockSchema(resolveType, meta);
   const title =
     titleOverride ?? (block ? appLabel(blockKey, block, meta) : blockKey);
 
@@ -294,18 +299,14 @@ function AppEditorForm({
                 onRequestAddSection={handleRequestAddSection}
                 sandbox={{ orgSlug, virtualMcpId, branch, threadId }}
               />
-            ) : schemaPending ? (
-              <div className="flex flex-col items-center gap-2 py-6 text-center text-xs text-muted-foreground">
-                <Spinner className="size-4" />
-                {t("sandbox.appEditor.loadingSchema")}
-              </div>
             ) : (
               <div className="flex flex-col items-center gap-3 py-6 text-center text-xs text-muted-foreground">
+                {awaitingSchema && <Spinner className="size-4" />}
                 <p>
                   {t(
-                    isResolvableManifestApp(meta, resolveType)
-                      ? "sandbox.appEditor.noEditableSchema"
-                      : "sandbox.appEditor.schemaAwaitsBuild",
+                    awaitingSchema
+                      ? "sandbox.appEditor.schemaAwaitsBuild"
+                      : "sandbox.appEditor.noEditableSchema",
                   )}
                 </p>
                 {onReinstall && (

@@ -8,7 +8,6 @@ export const sandbox = {
     "Instalado. As configurações aparecem depois que o site for buildado com este app — o schema é gerado a partir do módulo do próprio app.",
   "sandbox.appEditor.installNeedsCodingSession":
     "Inicie uma sessão de código para instalar apps.",
-  "sandbox.appEditor.loadingSchema": "Carregando schema do app…",
   "sandbox.appEditor.reinstall": "Reinstalar este app",
   "sandbox.appEditor.reinstallHint":
     "Reescreve o módulo do app e reinicia o dev server. As configurações são mantidas.",

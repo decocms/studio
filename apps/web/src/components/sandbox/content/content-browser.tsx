@@ -46,7 +46,7 @@ import { useProjectContext } from "@/sdk";
 import { useChatTask } from "@/components/chat/context";
 import { useDecofile } from "@/components/sections-editor/use-decofile";
 import { useLiveMeta } from "@/components/sections-editor/use-live-meta";
-import { liveMetaSchemaPollInterval, schemaPending } from "./schema-poll";
+import { liveMetaSchemaPollInterval } from "./schema-poll";
 import { hasCmsSettingsType } from "./cms-settings";
 import {
   keptTheirVersion,
@@ -495,11 +495,7 @@ function ContentBrowserReady({
   }
   // Page that should open with the inline SEO form in SectionsEditor.
   const [openPageSeoKey, setOpenPageSeoKey] = useState<string | null>(null);
-  const {
-    data: meta,
-    isLoading: metaLoading,
-    isFetching: metaFetching,
-  } = useLiveMeta(fetchParams, {
+  const { data: meta, isLoading: metaLoading } = useLiveMeta(fetchParams, {
     fetchEnabled: devServerReady,
     refetchInterval: (query) => {
       const currentMeta = query.state.data;
@@ -582,21 +578,6 @@ function ContentBrowserReady({
     setPrevCollection(activeCollection);
     setSearchQuery("");
   }
-
-  const isAppSchemaLoading = (
-    resolveType: string | undefined,
-    excludeFields?: readonly string[],
-  ) =>
-    schemaPending({
-      resolveType,
-      meta,
-      excludeFields,
-      metaLoading,
-      metaFetching,
-      // The restart that regenerates the schema takes the dev server down with
-      // it, and that wait is still a wait.
-      podAlive: devServerReady || sandboxWarming,
-    });
 
   const { createTask } = useChatTask();
   /**
@@ -1417,9 +1398,6 @@ function ContentBrowserReady({
                     meta={meta}
                     title="Site"
                     excludeFields={["seo"]}
-                    schemaPending={isAppSchemaLoading(siteApp.resolveType, [
-                      "seo",
-                    ])}
                     previewBaseUrl={previewUrl}
                   />
                 ) : (
@@ -1550,16 +1528,6 @@ function ContentBrowserReady({
                     decofile={decofile}
                     meta={meta}
                     previewBaseUrl={previewUrl}
-                    schemaPending={isAppSchemaLoading(
-                      typeof (
-                        decofile[selection.key] as Record<string, unknown>
-                      )?.__resolveType === "string"
-                        ? String(
-                            (decofile[selection.key] as Record<string, unknown>)
-                              .__resolveType,
-                          )
-                        : undefined,
-                    )}
                     onReinstall={
                       selectedAppEntry && !installBlocked
                         ? () => handleInstallApp(selectedAppEntry)
