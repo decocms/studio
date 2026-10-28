@@ -22,6 +22,39 @@ import { isTrustedPreviewHost } from "./prs-get";
  *  that hangs is as useless as one that fails. */
 const PROBE_TIMEOUT_MS = 8000;
 
+/** Whether the preview at `url` answers right now. */
+export async function probePreview(
+  url: string,
+): Promise<{ available: boolean; status: number | null }> {
+  // This makes the server fetch a URL chosen by the caller, so it is gated on
+  // the same allowlist that decides whether a preview may be SHOWN at all
+  // (previews are lifted from PR comments, which outside contributors write).
+  // Re-checked here rather than trusted from the card: the input is an
+  // argument, not something the card proves it got from `prs-get`.
+  if (!isTrustedPreviewHost(url)) {
+    return { available: false, status: null };
+  }
+
+  try {
+    const res = await fetch(url, {
+      // GET, not HEAD: preview hosts answer 405 to HEAD often enough that the
+      // probe would report a live preview as broken. `fetch` resolves at the
+      // headers, and the body is cancelled below, so nothing is downloaded.
+      method: "GET",
+      // Never follow: a redirect is how a trusted host would be turned into a
+      // request to somewhere that isn't one. A 3xx still means the preview is
+      // answering, which is all the button needs to know.
+      redirect: "manual",
+      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+    });
+    await res.body?.cancel().catch(() => {});
+    return { available: res.status < 400, status: res.status };
+  } catch {
+    // DNS failure, TLS failure, timeout — no answer at all.
+    return { available: false, status: null };
+  }
+}
+
 export const TASK_BOARD_PREVIEW_PROBE = defineTool({
   name: "TASK_BOARD_PREVIEW_PROBE",
   description:
@@ -43,33 +76,6 @@ export const TASK_BOARD_PREVIEW_PROBE = defineTool({
   handler: async ({ url }, ctx) => {
     requireAuth(ctx);
     await ctx.access.check();
-
-    // This makes the server fetch a URL chosen by the caller, so it is gated on
-    // the same allowlist that decides whether a preview may be SHOWN at all
-    // (previews are lifted from PR comments, which outside contributors write).
-    // Re-checked here rather than trusted from the card: the input is an
-    // argument, not something the card proves it got from `prs-get`.
-    if (!isTrustedPreviewHost(url)) {
-      return { available: false, status: null };
-    }
-
-    try {
-      const res = await fetch(url, {
-        // GET, not HEAD: preview hosts answer 405 to HEAD often enough that the
-        // probe would report a live preview as broken. `fetch` resolves at the
-        // headers, and the body is cancelled below, so nothing is downloaded.
-        method: "GET",
-        // Never follow: a redirect is how a trusted host would be turned into a
-        // request to somewhere that isn't one. A 3xx still means the preview is
-        // answering, which is all the button needs to know.
-        redirect: "manual",
-        signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
-      });
-      await res.body?.cancel().catch(() => {});
-      return { available: res.status < 400, status: res.status };
-    } catch {
-      // DNS failure, TLS failure, timeout — no answer at all.
-      return { available: false, status: null };
-    }
+    return await probePreview(url);
   },
 });

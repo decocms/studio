@@ -336,6 +336,9 @@ const ALL_TOOL_NAMES = [
   "TASK_BOARD_QUALITY",
   "TASK_BOARD_ERRORS",
   "TASK_BOARD_TENANTS",
+  "DEMO_BOARD_CAPTURE",
+  "DEMO_BOARD_RESET",
+  "DEMO_BOARD_STATUS",
   "THREAD_ANALYTICS_ORG_LIST",
   "THREAD_ANALYTICS_LIVE",
   "THREAD_ANALYTICS_USAGE",
@@ -1677,6 +1680,23 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "TASK_BOARD_TENANTS",
     description: "Per-tenant task board scorecard and queue wait",
+    category: "Task Board",
+  },
+  {
+    name: "DEMO_BOARD_CAPTURE",
+    description: "Make the current board the demo org's daily starting point",
+    category: "Task Board",
+    dangerous: true,
+  },
+  {
+    name: "DEMO_BOARD_RESET",
+    description: "Return the demo org's board to its capture now",
+    category: "Task Board",
+    dangerous: true,
+  },
+  {
+    name: "DEMO_BOARD_STATUS",
+    description: "When the demo board was captured and how its last reset went",
     category: "Task Board",
   },
   {

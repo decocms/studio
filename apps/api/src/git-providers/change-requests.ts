@@ -273,6 +273,13 @@ export interface ChangeRequestClient {
   merge(number: number, params?: MergeParams): Promise<MergeOutcome>;
 
   /**
+   * Abandon it: close without merging, then delete its head branch when that
+   * branch lives in this repository. One already closed, or a branch already
+   * gone, is not an error; a merged one is left alone.
+   */
+  close(number: number): Promise<void>;
+
+  /**
    * One CI run's report, for the rows a reader expands: GitHub's check-run
    * `output` markdown, GitLab's job trace. Null when the run has none.
    */

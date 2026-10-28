@@ -538,6 +538,26 @@ export class GitlabChangeRequestClient implements ChangeRequestClient {
     });
   }
 
+  async close(number: number): Promise<void> {
+    const mr = await this.read(number);
+    if (!mr || mr.state === "merged") return;
+    if (mr.state === "open") {
+      const res = await this.call(this.mrPath(number), {
+        method: "PUT",
+        body: { state_event: "close" },
+      });
+      await res?.body?.cancel().catch(() => {});
+    }
+    if (mr.headRepoPath?.toLowerCase() !== this.repo.path.toLowerCase()) {
+      return;
+    }
+    const res = await this.call(
+      `/repository/branches/${encodeURIComponent(mr.head)}`,
+      { method: "DELETE" },
+    );
+    await res?.body?.cancel().catch(() => {});
+  }
+
   async merge(number: number, params: MergeParams = {}): Promise<MergeOutcome> {
     const squash = params.strategy === "squash";
     let res: Response;

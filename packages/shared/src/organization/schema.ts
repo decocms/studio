@@ -171,6 +171,12 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "Curated demo org: the commerce connect modal proceeds without a configured required data source.",
     ),
+  demo_board_reset: z
+    .boolean()
+    .optional()
+    .describe(
+      "Curated demo org: every morning the task board returns to its captured snapshot, and admins can reset or recapture it on demand.",
+    ),
   reports_only: z
     .boolean()
     .optional()

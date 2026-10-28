@@ -35,7 +35,7 @@ export function githubApiBaseUrl(host: string): string {
 }
 
 export interface GithubFetchInit {
-  method?: "GET" | "POST" | "PATCH" | "PUT";
+  method?: "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
   /** Sent as `Authorization: Bearer <token>` — App JWTs and tokens alike. */
   token: string;
   accept?: string;

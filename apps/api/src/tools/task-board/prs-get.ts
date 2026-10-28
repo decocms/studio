@@ -801,6 +801,13 @@ const TASK_BOARD_ITEM_PRS_GET_TOOL = defineTool({
         "Organization ID required (no active organization in context)",
       );
     }
+    // A demo's frozen card shows its pull requests as they were captured, and
+    // nothing below may move it.
+    const frozen = await ctx.storage.demoBoard.frozenPrCards(
+      organizationId,
+      taskBoardItemId,
+    );
+    if (frozen) return { prs: frozen };
     const item = await ctx.storage.taskBoard.getById(
       taskBoardItemId,
       organizationId,

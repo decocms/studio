@@ -512,4 +512,14 @@ export const taskBoard = {
   "taskBoard.sprints.activityToBacklog":
     "moved this from {from} to the backlog",
   "taskBoard.sprints.actionError": "Could not update the sprint.",
+  "taskBoard.demoReset.button": "Reset demo",
+  "taskBoard.demoReset.title": "Reset the demo board?",
+  "taskBoard.demoReset.description":
+    "Every card returns to the captured board. Cards, comments, and chats added since then are deleted, and pull requests the live cards opened are closed.",
+  "taskBoard.demoReset.cancel": "Cancel",
+  "taskBoard.demoReset.confirm": "Reset",
+  "taskBoard.demoReset.done": "Demo board reset.",
+  "taskBoard.demoReset.doneWithIssues":
+    "Demo board reset, with {count} issue(s). Check the demo board status.",
+  "taskBoard.demoReset.failed": "Could not reset the demo board.",
 } as const;

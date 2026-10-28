@@ -259,6 +259,7 @@ function makeCtx(overrides: {
     },
     storage: {
       virtualMcps: { findById, update: updateSpy },
+      demoBoard: { isFrozenThread: async () => false },
       // Non-repo-scoped org connection: getRepoScope() returns null, so the
       // repo-scoped mint path in provisionSandbox is skipped and these tests
       // exercise the clone/token path unchanged. (Minting is covered by the

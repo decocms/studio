@@ -488,6 +488,26 @@ export class BitbucketChangeRequestClient implements ChangeRequestClient {
     });
   }
 
+  /** Bitbucket calls closing without merging "declining". */
+  async close(number: number): Promise<void> {
+    const pr = await this.read(number);
+    if (!pr || pr.state === "merged") return;
+    if (pr.state === "open") {
+      const res = await this.call(`${this.prPath(number)}/decline`, {
+        method: "POST",
+      });
+      await res?.body?.cancel().catch(() => {});
+    }
+    if (pr.headRepoPath?.toLowerCase() !== this.repo.path.toLowerCase()) {
+      return;
+    }
+    const res = await this.call(
+      `/refs/branches/${encodeURIComponent(pr.head)}`,
+      { method: "DELETE" },
+    );
+    await res?.body?.cancel().catch(() => {});
+  }
+
   /**
    * Bitbucket merges asynchronously when the repository is large: a 202 with
    * nothing merged yet. The pull request itself is then polled until it
