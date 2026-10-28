@@ -508,25 +508,29 @@ export function OrgAudience({
   return (
     <div className="flex flex-col gap-4">
       <RangeAction value={range} onChange={setRange} />
-      <MetricCard
-        title={t("monitor.audience.org.pageviews")}
-        value={
-          loading && reporting.length === 0 ? (
-            <Skeleton className="h-9 w-24" />
-          ) : (
-            formatNumber(pageviews)
-          )
-        }
-        caption={
-          <span className="text-meta">
-            {t("monitor.audience.org.sites", {
-              count: String(reporting.length),
-              total: String(projects.length),
-            })}
-          </span>
-        }
-      />
-      <section className="surface overflow-hidden">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <MetricCard
+          title={t("monitor.audience.org.pageviews")}
+          value={
+            loading && reporting.length === 0 ? (
+              <Skeleton className="h-9 w-24" />
+            ) : (
+              formatNumber(pageviews)
+            )
+          }
+          caption={
+            loading ? undefined : (
+              <span className="text-meta">
+                {t("monitor.audience.org.sites", {
+                  count: String(reporting.length),
+                  total: String(projects.length),
+                })}
+              </span>
+            )
+          }
+        />
+      </div>
+      <section className="surface shrink-0 overflow-hidden">
         <table className="w-full text-sm">
           <thead className="text-meta border-b border-border text-left">
             <tr>
