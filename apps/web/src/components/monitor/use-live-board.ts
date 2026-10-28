@@ -19,7 +19,11 @@ import {
   useOrderMonitorStores,
 } from "@/hooks/use-order-monitor";
 import { usePublicConfig } from "@/hooks/use-public-config";
-import { useConnections, useVirtualMCPsNonBlocking } from "@/sdk";
+import {
+  isStudioPackAgent,
+  useConnections,
+  useVirtualMCPsNonBlocking,
+} from "@/sdk";
 import {
   type Comparison,
   type Deploy,
@@ -111,7 +115,10 @@ export function useLiveBoard(
   );
 
   const scoped = scopeId ? projects.filter((p) => p.id === scopeId) : projects;
-  const sites = scoped.filter((p) => resolveAgentSiteSlug(p));
+  // Studio's own agents come with every org and carry no site.
+  const sites = scoped.filter(
+    (p) => !isStudioPackAgent(p.id) && resolveAgentSiteSlug(p),
+  );
   const analytics = connections.filter((c) => matches(c, "google-analytics"));
   const search = connections.filter((c) => matches(c, "search-console"));
   const vtex = connections.filter(
@@ -270,16 +277,6 @@ export function useLiveBoard(
         : null,
     });
   }
-  if (analytics.length === 0) {
-    kpis.push({
-      id: "conversion",
-      source: "analytics",
-      value: null,
-      references: { d1: null, w1: null, y1: null },
-      points: null,
-    });
-  }
-
   // Channels, summed by name across the stores in scope.
   const byChannel = new Map<string, OrderMonitorChannel>();
   for (const d of days) {
