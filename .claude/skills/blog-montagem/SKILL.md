@@ -6,13 +6,10 @@ disable-model-invocation: true
 
 # Coluna `montagem` — fechar e gravar
 
-Na automação real esta coluna é o **Redator de novo**, segunda visita.
-
-**Por que ele volta.** O Redator é dono de `BLOG_POST_WRITE`, mas a gravação
-precisa de `cover.url`, que o Ilustrador produz, que precisa de `cover.prompt`,
-que o rascunho produz. No navegador isso some dentro de uma closure
-(`use-generate-post.ts:203`); numa esteira de papéis vira dependência que o
-board tem que mostrar. Esta é a coluna que a mostra.
+**Por que ela vem depois da ilustração.** A gravação precisa de `cover.url`,
+que a ilustração produz, que precisa de `cover.prompt`, que o rascunho
+produz. No navegador isso some dentro de uma closure; numa esteira vira
+dependência que o board tem que mostrar. Esta é a coluna que a mostra.
 
 ## O que fazer
 

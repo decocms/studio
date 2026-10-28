@@ -2194,8 +2194,9 @@ export interface StudioToolIO {
     };
   };
   BLOG_STATE_GET: {
-    input: { virtualMcpId: string };
+    input: { [x: string]: never };
     output: {
+      brandPath: string;
       brand: Record<string, unknown> | null;
       context: Record<string, unknown> | null;
       formats: Record<string, unknown> | null;
@@ -2206,36 +2207,6 @@ export interface StudioToolIO {
   };
   BLOG_STATE_SET: {
     input: {
-      virtualMcpId: string;
-      brand?:
-        | {
-            [x: string]: unknown;
-            companyName?: string | undefined;
-            description?: string | undefined;
-            language?: string | undefined;
-            storeUrl?: string | undefined;
-            targetAudience?: string | undefined;
-            values?: { name: string; value: string }[] | undefined;
-            competitors?: { name: string; value: string }[] | undefined;
-            keywords?: string[] | undefined;
-            commercialPolicies?: { name: string; value: string }[] | undefined;
-            specialDates?: { name: string; value: string }[] | undefined;
-          }
-        | undefined;
-      context?:
-        | {
-            [x: string]: unknown;
-            tone?: string | undefined;
-            dos?: { name: string; value: string }[] | undefined;
-            avoid?: { name: string; value: string }[] | undefined;
-            categories?: string[] | undefined;
-            vocabulary?: { name: string; value: string }[] | undefined;
-            voiceExamples?: { text: string; sounds: boolean }[] | undefined;
-          }
-        | undefined;
-      formats?:
-        | { [x: string]: unknown; formats: { name: string; value: string }[] }
-        | undefined;
       campaigns?:
         | {
             id: string;

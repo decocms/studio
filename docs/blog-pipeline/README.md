@@ -26,7 +26,7 @@ BLOG_POST_ASSEMBLE    BLOG_LINK_SUGGEST  BLOG_POST_WRITE   FILE_CONFIG_LIST
 ```bash
 export STUDIO_API_KEY=...
 export STUDIO=http://localhost:3000
-export ORG=<slug>  VMCP=vir_...  BRANCH=<branch>  FOLDER=<pasta-do-projeto>
+export ORG=<slug>  VMCP=vir_...  BRANCH=<branch>
 export RUN=.blog-pipeline/runs/001
 ```
 
@@ -55,19 +55,19 @@ estado, leitura e persistência: `BLOG_STATE_GET`, `BLOG_STATE_SET`,
 `FILE_CONFIG_LIST`. O sinal confiável é `requiresAiBudget` na declaração da
 tool, não um grep por `resolveTier`.
 
+### Marca e campanhas
+
+A marca, as regras de escrita e os formatos são o guia da marca da org,
+`home/brands/<marca>/brand.md`, editado em Contexto → Marca. As campanhas moram
+ao lado dele, em `campaigns/`. `BLOG_STATE_GET` lê tudo isso sem projeto e sem
+branch; `BLOG_STATE_SET` só grava campanhas e sementes.
+
 ### Branch
 
 Toda tool que lê ou grava o site cai na branch da thread quando `branch` é
 omitido, e **recusa** quando não há nenhuma. A default do repositório é
 produção, e adivinhá-la já colocou dois posts gerados direto na `main` de um
 cliente. Não adivinhe.
-
-## O mesmo caminho, sem CLI
-
-As mesmas tools rodam no harness `decopilot`, in-process, sem pod de sandbox.
-Os quatro papéis de `apps/api/src/file-storage/project-agents.ts` são os
-subagents, cada um com seu belt, e o Board do Studio é o board. A diferença
-entre as duas execuções é quem orquestra, não o que é chamado.
 
 ## O que honestamente não dá pra ser skill
 

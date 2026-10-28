@@ -1,12 +1,11 @@
 /**
  * The blog's editorial state: brand, writing rules, formats, campaigns, seeds.
  *
- * One home, the organization's file library, under the project's folder. It
- * used to be blocks in the site's own decofile, which pinned it to a git branch
- * and put it out of reach of anything without a browser. Sites carrying those
- * blocks still have them on disk — nothing here reads them, and a form on such
- * a site opens empty rather than filled from a store this no longer writes to.
- * {@link withoutBlogState} is what keeps them from leaking back in.
+ * The organization's: brand, writing rules and formats are read off its brand
+ * guide, and campaigns and seeds are files beside it. The guide is edited on
+ * the brand page, so this hook writes only campaigns and seeds. Sites that
+ * once kept this state as decofile blocks still have them on disk;
+ * {@link withoutBlogState} keeps them from leaking back in.
  *
  * `blocks` keeps the decofile's own shape, so every reader — `readBlogContext`,
  * `scanCampaigns`, `scanCampaignSeeds` — is untouched, and `save`/`remove` take
@@ -89,16 +88,14 @@ function idOf(blockKey: string): string {
   return blockKey.slice(prefix.length);
 }
 
-/** The one file a `{ blockKey, data }` write lands in, as the tool takes it. */
+/**
+ * The one file a `{ blockKey, data }` write lands in, as the tool takes it.
+ * Null for the brand, writing rules and formats: those are the guide's.
+ */
 function writeFor(
   blockKey: string,
   data: Record<string, unknown>,
 ): Partial<SetInput> | null {
-  if (blockKey === BRAND_BLOCK_KEY) return { brand: data };
-  if (blockKey === CONTEXT_BLOCK_KEY) return { context: data };
-  if (blockKey === FORMATS_BLOCK_KEY) {
-    return { formats: data as SetInput["formats"] };
-  }
   const record = { id: idOf(blockKey), data } as { id: string; data: never };
   if (blockKey.startsWith(CAMPAIGN_KEY_PREFIX)) return { campaigns: [record] };
   if (blockKey.startsWith(CAMPAIGN_SEED_KEY_PREFIX)) {
@@ -119,16 +116,11 @@ function removeFor(blockKey: string): Partial<SetInput> | null {
 }
 
 /**
- * The library file a block key lands in, as a path suffix.
- *
- * The browser does not know the project's folder name and has no business
- * computing it — the server pins it. Matching on the tail of the paths the read
- * reported is enough to find the version of the file about to be replaced.
+ * The library file a record key lands in, as a path suffix. Matching on the
+ * tail of the paths the read reported finds the version of the file about to
+ * be replaced, without the browser choosing the brand folder.
  */
 function pathSuffix(blockKey: string): string {
-  if (blockKey === BRAND_BLOCK_KEY) return "/brand.json";
-  if (blockKey === CONTEXT_BLOCK_KEY) return "/context.json";
-  if (blockKey === FORMATS_BLOCK_KEY) return "/formats.json";
   const dir = blockKey.startsWith(CAMPAIGN_KEY_PREFIX)
     ? "campaigns"
     : "campaign-seeds";
@@ -169,22 +161,20 @@ export interface BlogState {
 
 export function useBlogState({
   orgSlug,
-  virtualMcpId,
   enabled = true,
 }: {
   orgSlug: string;
-  virtualMcpId: string;
   /** False for an organization with the feature off — the tool refuses it. */
   enabled?: boolean;
 }): BlogState {
   const studio = useStudioTools();
   const queryClient = useQueryClient();
 
-  const queryKey = KEYS.blogState(orgSlug, virtualMcpId);
+  const queryKey = KEYS.blogState(orgSlug);
   const remote = useQuery({
     queryKey,
     enabled,
-    queryFn: () => studio.call("BLOG_STATE_GET", { virtualMcpId }),
+    queryFn: () => studio.call("BLOG_STATE_GET", {}),
   });
 
   /**
@@ -203,8 +193,8 @@ export function useBlogState({
   const pendingData = useRef<Record<string, Record<string, unknown>>>({});
 
   const library = useMutation({
-    /** Serialized per project: two autosaves must not land out of order. */
-    scope: { id: `blog-state:${orgSlug}:${virtualMcpId}` },
+    /** Serialized per organization: two autosaves must not land out of order. */
+    scope: { id: `blog-state:${orgSlug}` },
     mutationFn: async ({
       blockKey,
       data,
@@ -219,13 +209,13 @@ export function useBlogState({
       );
       const hash = force || !path ? undefined : versions[path];
       const result = await studio.call("BLOG_STATE_SET", {
-        virtualMcpId,
         ...fields,
         ...(hash && path ? { expect: { [path]: hash } } : {}),
       });
       return { blockKey, result };
     },
     onMutate: ({ blockKey, data }) => {
+      if (!writeFor(blockKey, data)) return;
       pendingData.current[blockKey] = data;
       queryClient.setQueryData(queryKey, (current: RemoteState | undefined) =>
         current ? optimistic(current, blockKey, data) : current,
@@ -256,11 +246,11 @@ export function useBlogState({
   };
 
   const remove = useMutation({
-    scope: { id: `blog-state:${orgSlug}:${virtualMcpId}` },
+    scope: { id: `blog-state:${orgSlug}` },
     mutationFn: async ({ blockKey }: { blockKey: string }) => {
       const fields = removeFor(blockKey);
       if (!fields) throw new Error(`Not a blog record: ${blockKey}`);
-      return await studio.call("BLOG_STATE_SET", { virtualMcpId, ...fields });
+      return await studio.call("BLOG_STATE_SET", fields);
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey }),
   });
@@ -294,9 +284,6 @@ function optimistic(
   blockKey: string,
   data: Record<string, unknown>,
 ): RemoteState {
-  if (blockKey === BRAND_BLOCK_KEY) return { ...current, brand: data };
-  if (blockKey === CONTEXT_BLOCK_KEY) return { ...current, context: data };
-  if (blockKey === FORMATS_BLOCK_KEY) return { ...current, formats: data };
   const campaign = blockKey.startsWith(CAMPAIGN_KEY_PREFIX);
   const id = idOf(blockKey);
   const list = campaign ? current.campaigns : current.campaignSeeds;

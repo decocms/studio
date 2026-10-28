@@ -15,22 +15,18 @@ acontecesse.
 
 ## Colunas
 
-| Coluna | Fase | Dono na automação | Skill | Espera por |
-|---|---|---|---|---|
-| `hipótese` | plan | um gatilho (não existe ainda) | `blog-hipotese` | alguém ter a ideia |
-| `estratégia` | plan | Estrategista | `blog-estrategista` | campanha + formato + os blocos do site |
-| `redação` | execute | Redator | `blog-redator` | o rascunho |
-| `ilustração` | execute | Ilustrador | `blog-ilustrador` | a capa |
-| `montagem` | execute | Redator (2ª visita) | `blog-montagem` | payload + links + commit |
-| `revisão` | monitor | pessoa | — | alguém ler o rascunho |
+| Coluna | Fase | Skill | Espera por |
+|---|---|---|---|
+| `hipótese` | plan | `blog-hipotese` | alguém ter a ideia |
+| `estratégia` | plan | `blog-estrategista` | campanha + formato + os blocos do site |
+| `redação` | execute | `blog-redator` | o rascunho |
+| `ilustração` | execute | `blog-ilustrador` | a capa |
+| `montagem` | execute | `blog-montagem` | payload + links + commit |
+| `revisão` | monitor | — (pessoa) | alguém ler o rascunho |
 
-Os quatro papéis são os mesmos de `apps/api/src/file-storage/project-agents.ts`,
-com os mesmos belts — a coluna manual transcreve direto no agente.
-
-**O Redator aparece duas vezes.** Ele é dono de `BLOG_POST_WRITE`, mas a
-gravação precisa da capa, que o Ilustrador faz, que precisa do prompt, que o
-rascunho faz. No navegador essa volta some dentro de uma função; numa esteira
-de papéis ela é uma dependência, e o board mostra.
+**A montagem vem depois da ilustração.** A gravação precisa da capa, que
+precisa do prompt, que o rascunho faz. No navegador essa volta some dentro de
+uma função; numa esteira ela é uma dependência, e o board mostra.
 
 ## Checkpoints
 

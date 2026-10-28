@@ -466,7 +466,7 @@ function ContentBrowserReady({
    * stops a site that still carries the old blocks from filling its forms with
    * them — see `withoutBlogState`.
    */
-  const blogState = useBlogState({ orgSlug, virtualMcpId, enabled: blogAi });
+  const blogState = useBlogState({ orgSlug, enabled: blogAi });
   const decofile = rawDecofile
     ? { ...withoutBlogState(rawDecofile), ...blogState.blocks }
     : rawDecofile;

@@ -6,12 +6,6 @@ disable-model-invocation: true
 
 # Coluna `estratégia` — decidir o que escrever
 
-Na automação real esta coluna é o **Estrategista**
-(`apps/api/src/file-storage/project-agents.ts`), com belt
-`BLOG_SITE_GROUND, BLOG_SITE_CATALOGUE, BLOG_CONTEXT_EXTRACT,
-BLOG_FORMAT_SUGGEST, BLOG_CAMPAIGN_SUGGEST, BLOG_SITE_BLOCKS, BLOG_STATE_GET,
-BLOG_STATE_SET`.
-
 É a coluna pesada: ela decide **o que** se escreve e **com que blocos**.
 
 ## Transporte
@@ -49,12 +43,16 @@ repositório: ela é produção.
 
 ```bash
 mkdir -p "$RUN"
-t BLOG_STATE_GET "{\"virtualMcpId\":\"$VMCP\"}" blog-state.json
+t BLOG_STATE_GET '{}' blog-state.json
 
 bun -e 'const s=await Bun.file(process.env.RUN+"/blog-state.json").json();
   console.log("campanhas:", s.campaigns.map(c=>c.data.campaignName).join(" | "));
   console.log("formatos:", (s.formats?.formats??[]).map(f=>f.name).join(" | "));'
 ```
+
+A marca, as regras de escrita e os formatos vêm do guia da marca da org
+(`home/brands/<marca>/brand.md`, editado em Contexto → Marca), e as campanhas
+moram ao lado dele. Nada disso depende de projeto ou de branch.
 
 Escolha a campanha e o formato. **Diga qual escolheu e por quê** — é o que o
 checkpoint vai conferir.

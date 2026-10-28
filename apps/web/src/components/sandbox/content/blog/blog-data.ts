@@ -38,7 +38,6 @@ import {
   DEFAULT_SCHEDULE_HOUR,
   defaultScheduledDatetime,
   discoverBlogBlockTypes,
-  EMPTY_PAYLOAD,
   FORMATS_BLOCK_KEY,
   type GenerationBlock,
   getBlogPayload,
@@ -50,8 +49,6 @@ import {
   listBlogPayloads,
   livePostKey,
   maskSlugInput,
-  type MentionableSection,
-  mentionableSections,
   missingCategoryFields,
   type MissingFieldKey,
   missingPostFields,
@@ -91,15 +88,7 @@ import {
   type CampaignTargetKind,
   type CampaignTrigger,
 } from "@decocms/shared/blog-campaign";
-import { BRAND_EVIDENCE_MAX_BLOCKS } from "@decocms/shared/blog-brand-evidence";
 import type { TFunction, TranslationKey } from "@/i18n/use-t.ts";
-import type { PageEntry } from "@/components/sections-editor/page-list";
-import {
-  type PageRole,
-  pageRole,
-  type SeoEvidenceEntry,
-  selectSeoEvidence,
-} from "./seo-evidence";
 
 export interface RelationPickerState {
   /** One option per record, plus one per unresolvable selected ref. */
@@ -646,17 +635,6 @@ export const CONTEXT_FIELDS = [
 ] as const;
 
 /**
- * A stored block as a record, or the shared empty one.
- *
- * The identity matters: {@link EMPTY_PAYLOAD}'s note applies here too — an
- * editor seeding a draft from an absent block must get the same reference every
- * render, or `useAutosave` re-seeds forever.
- */
-export function asBlock(value: unknown): Record<string, unknown> {
-  return asRecord(value) ?? EMPTY_PAYLOAD;
-}
-
-/**
  * A draft narrowed to the fields its block owns.
  *
  * The editor seeds each draft from a whole stored block — which, on a site
@@ -673,31 +651,6 @@ export function pickBlogFields(
     if (field in source) picked[field] = source[field];
   }
   return picked;
-}
-
-/**
- * What the brand block must hold after a save.
- *
- * It sheds the writing rules once `blog-manager-context` exists to hold them —
- * and not one save before. Every site written before the split keeps its tone,
- * dos and guardrails inside the brand block, and the context block is created
- * only when someone edits a field on the Context tab; narrowing unconditionally
- * means a single character typed into Company name deletes a brand's voice
- * seven hundred milliseconds later, with the generation it gated going with it.
- *
- * Carrying the strays costs a few duplicated fields until the context block
- * appears, which {@link splitBlogContext} already ignores. That is the same
- * bargain the rest of this file takes: a read that copes beats a migration.
- */
-export function brandBlockToSave(
-  next: Record<string, unknown>,
-  storedBrand: unknown,
-  contextBlock: unknown,
-): Record<string, unknown> {
-  const brand = pickBlogFields(next, BRAND_FIELDS);
-  if (asRecord(contextBlock)) return brand;
-  const stored = asRecord(storedBrand) ?? {};
-  return { ...pickBlogFields(stored, CONTEXT_FIELDS), ...brand };
 }
 
 export interface BlogContextBlocks {
@@ -822,77 +775,6 @@ export function filledVoiceExamples(examples: VoiceExample[]): VoiceExample[] {
   return examples.filter((example) => example.text.trim());
 }
 
-/** Whether a fill may overwrite what a person already wrote. */
-export type FillMode = "empty" | "replace";
-
-/**
- * Write an extract's answer into a draft, returning the fields it touched.
- *
- * `empty` fills blanks only. `replace` overwrites a field the model answered —
- * but a field it left empty keeps its current value, because deleting someone's
- * sentence to put nothing in its place is never what "start over" is asking
- * for. Mutates `target`, which the caller owns as a fresh copy.
- */
-export function applyExtractResult(
-  target: Record<string, unknown>,
-  result: Record<string, unknown>,
-  options: {
-    mode: FillMode;
-    textFields: readonly string[];
-    ruleFields: readonly string[];
-    /** Fields holding {@link VoiceExample}s, which normalize differently. */
-    exampleFields?: readonly string[];
-    /** Fields holding a plain `string[]`, which normalize differently again. */
-    termFields?: readonly string[];
-  },
-): string[] {
-  const touched: string[] = [];
-  for (const field of options.textFields) {
-    const proposed = str(result[field]).trim();
-    if (!proposed) continue;
-    if (options.mode === "empty" && str(target[field]).trim()) continue;
-    target[field] = proposed;
-    touched.push(field);
-  }
-  for (const field of options.ruleFields) {
-    const proposed = filledBrandRules(normalizeBrandRules(result[field]));
-    if (proposed.length === 0) continue;
-    if (
-      options.mode === "empty" &&
-      filledBrandRules(normalizeBrandRules(target[field])).length > 0
-    ) {
-      continue;
-    }
-    target[field] = proposed;
-    touched.push(field);
-  }
-  for (const field of options.termFields ?? []) {
-    const proposed = filledTerms(normalizeTerms(result[field]));
-    if (proposed.length === 0) continue;
-    if (
-      options.mode === "empty" &&
-      filledTerms(normalizeTerms(target[field])).length > 0
-    ) {
-      continue;
-    }
-    target[field] = proposed;
-    touched.push(field);
-  }
-  for (const field of options.exampleFields ?? []) {
-    const proposed = filledVoiceExamples(normalizeVoiceExamples(result[field]));
-    if (proposed.length === 0) continue;
-    if (
-      options.mode === "empty" &&
-      filledVoiceExamples(normalizeVoiceExamples(target[field])).length > 0
-    ) {
-      continue;
-    }
-    target[field] = proposed;
-    touched.push(field);
-  }
-  return touched;
-}
-
 /**
  * Read a plain term list, tolerating the `{name, value}` rows this field held
  * before it became a list of search terms. The object's `name` was the term, so
@@ -959,135 +841,6 @@ export function normalizeBrandRules(value: unknown): BrandRule[] {
  */
 export function filledBrandRules(rules: BrandRule[]): BrandRule[] {
   return rules.filter((rule) => rule.name.trim() || rule.value.trim());
-}
-
-// ------------------ Brand-evidence sampling (tone of voice) ------------------
-
-/** Total serialized chars sent to the model; keeps one call affordable. */
-const BRAND_EVIDENCE_MAX_CHARS = 60_000;
-/**
- * Per-block cap. Deliberately small relative to the total: breadth beats depth
- * here. Voice repeats across a site, so 15 pages read shallowly characterize it
- * better than 5 read deeply — and a high cap lets the few biggest pages (which
- * are big from having many sections, not from having more voice) crowd out the
- * institutional ones that carry the values.
- */
-const BRAND_EVIDENCE_MAX_BLOCK_CHARS = 4_000;
-
-export interface BrandEvidenceBlock {
-  key: string;
-  content: string;
-}
-
-/**
- * Pull the human-written phrases out of a block as `prop: phrase` lines.
- *
- * Sending the block's JSON does not work: a real page is mostly asset URLs,
- * resolveTypes and loader config, so serialized size measures how many sections
- * a page has, not how much voice it carries. Ranking Farm Rio's 1018 pages by
- * JSON size surfaced product-listing stubs and buried the institutional pages
- * that hold the brand's values.
- *
- * A phrase is a string containing a space — enough to separate "do rio pro
- * mundo" and "92% de funcionárias" from "site/sections/Layout/Flex.tsx" and
- * "20px" without a prop allowlist. Prop names are kept because they say what
- * kind of copy it is, and exact duplicates are dropped: a site repeats the same
- * banner text across hundreds of pages, and paying for it once is enough.
- * Near-duplicates that differ only in casing survive on purpose — that
- * inconsistency is itself a fact about the brand.
- */
-export function extractBlockProse(block: unknown): string {
-  const lines: string[] = [];
-  const seen = new Set<string>();
-
-  const walk = (node: unknown, prop: string) => {
-    if (typeof node === "string") {
-      if (!node.includes(" ") || node.length < 4) return;
-      if (/^(https?:)?\/\//.test(node) || /^data:/.test(node)) return;
-      const line = `${prop}: ${node.trim()}`;
-      if (seen.has(line)) return;
-      seen.add(line);
-      lines.push(line);
-      return;
-    }
-    if (Array.isArray(node)) {
-      for (const item of node) walk(item, prop);
-      return;
-    }
-    if (node && typeof node === "object") {
-      for (const [key, value] of Object.entries(node)) {
-        if (key === "__resolveType") continue;
-        walk(value, key);
-      }
-    }
-  };
-
-  walk(block, "block");
-  return lines.join("\n");
-}
-
-export interface BrandEvidence {
-  blocks: BrandEvidenceBlock[];
-  seo: SeoEvidenceEntry[];
-}
-
-/**
- * Everything the extract reads, most telling first: posts, then categories, then pages — home, institutional, commerce. A PDP is a template with a product name substituted in, so the thousandth teaches nothing the first did not; an institutional page is written once, by hand, about the brand. SEO travels in its own array because folded into `blocks` it could trip `BRAND_EVIDENCE_MAX_BLOCKS`, which rejects the whole call.
- */
-export function selectBrandEvidence(
-  decofile: Record<string, unknown>,
-  pages: PageEntry[],
-): BrandEvidence {
-  const prose = new Map<string, string>();
-  const proseFor = (key: string) => {
-    const cached = prose.get(key);
-    if (cached !== undefined) return cached;
-    const extracted = extractBlockProse(decofile[key]).slice(
-      0,
-      BRAND_EVIDENCE_MAX_BLOCK_CHARS,
-    );
-    prose.set(key, extracted);
-    return extracted;
-  };
-  const byProseDesc = (a: string, b: string) =>
-    proseFor(b).length - proseFor(a).length;
-
-  const seo = selectSeoEvidence(decofile, pages);
-  const seoChars = seo.reduce((sum, entry) => sum + entry.content.length, 0);
-
-  const byRole: Record<PageRole, string[]> = {
-    home: [],
-    institutional: [],
-    commerce: [],
-  };
-  for (const page of pages) byRole[pageRole(decofile, page)].push(page.key);
-
-  const ordered = [
-    ...listBlogPayloads(decofile, "posts")
-      .map((p) => p.key)
-      .sort(byProseDesc),
-    ...listBlogPayloads(decofile, "categories").map((c) => c.key),
-    ...byRole.home,
-    ...byRole.institutional.sort(byProseDesc),
-    ...byRole.commerce.sort(byProseDesc),
-  ];
-
-  const selected: BrandEvidenceBlock[] = [];
-  const seen = new Set<string>();
-  let remaining = Math.max(0, BRAND_EVIDENCE_MAX_CHARS - seoChars);
-
-  for (const key of ordered) {
-    if (selected.length >= BRAND_EVIDENCE_MAX_BLOCKS) break;
-    if (seen.has(key)) continue;
-    if (!decofile[key]) continue;
-    seen.add(key);
-    const content = proseFor(key);
-    if (content.length > remaining) break;
-    selected.push({ key, content });
-    remaining -= content.length;
-  }
-
-  return { blocks: selected, seo };
 }
 
 // ------------------ Campaigns (temporary pillars) ----------------------------
@@ -1421,105 +1174,6 @@ export function emptyCampaignSeed(now: Date): Omit<CampaignSeedEntry, "key"> {
 
 // ------------------ Formats (loose post templates) ---------------------------
 
-/** How many posts the format suggestion reads. */
-const MAX_POST_STRUCTURES = 40;
-
-export interface PostStructure {
-  key: string;
-  title: string;
-  /** Component names of the post's sections, in document order. */
-  sections: string[];
-}
-
-/**
- * The shape of each existing post: which sections it uses, in order.
- *
- * This — not the prose — is what reveals the formats a blog already writes in.
- * Forty sequences of component names is a tiny input next to forty post bodies,
- * and it is the only part that answers "how is this post built".
- */
-export function postStructures(
-  decofile: Record<string, unknown>,
-): PostStructure[] {
-  return listBlogPayloads(decofile, "posts")
-    .slice(0, MAX_POST_STRUCTURES)
-    .map(({ key, payload }) => ({
-      key,
-      title: str(payload.title),
-      sections: toArray(payload.sections)
-        .map((section) => str(asRecord(section)?.__resolveType))
-        .filter(Boolean)
-        .map(blockComponentName),
-    }));
-}
-
-/**
- * Cited blocks the site no longer has. Without surfacing these, a format keeps
- * pointing at a renamed section and only the generated post shows it.
- */
-export function unknownCitations(
-  markdown: string,
-  available: string[],
-  byName: Record<string, string> = {},
-): string[] {
-  const known = new Set(available);
-  return citedSections(markdown, byName).filter((ref) => !known.has(ref));
-}
-
-/**
- * Rewrite bare `@Name` citations into the linked form.
- *
- * Run over whatever a model proposes and over the starter format, so one shape
- * is persisted no matter who wrote the brief. A name this site has no block for
- * is left alone — turning it into a link would invent a target, and leaving it
- * bare is what keeps `unknownCitations` able to report it.
- */
-export function linkifyCitations(
-  markdown: string,
-  byName: Record<string, string>,
-): string {
-  // Bounded like `CITATION` in @decocms/shared/blog: unbounded, `[@[@[@…` is quadratic.
-  const linked = /\[@[^\]]{1,200}\]\([^)\s]{1,500}\)/g;
-  const parts: string[] = [];
-  let last = 0;
-  for (const match of markdown.matchAll(linked)) {
-    const at = match.index ?? 0;
-    parts.push(linkifyBare(markdown.slice(last, at), byName), match[0]);
-    last = at + match[0].length;
-  }
-  parts.push(linkifyBare(markdown.slice(last), byName));
-  return parts.join("");
-}
-
-function linkifyBare(text: string, byName: Record<string, string>): string {
-  return text.replace(
-    /(^|[\s([{>])@([A-Za-z][\w-]*)/g,
-    (whole, before: string, name: string) => {
-      const resolveType = byName[name];
-      return resolveType ? `${before}[@${name}](${resolveType})` : whole;
-    },
-  );
-}
-
-/**
- * Sections for the starter format, in a sensible reading order, skipping
- * whatever this site doesn't have — so the brief never cites something
- * unrenderable. Its prose comes from the caller, to stay translated.
- */
-const DEFAULT_FORMAT_SECTIONS = [
-  "Heading",
-  "Paragraph",
-  "BlockImage",
-  "List",
-  "Cta",
-] as const;
-
-export function defaultFormatSections(
-  byName: Record<string, string>,
-): string[] {
-  return DEFAULT_FORMAT_SECTIONS.filter((name) => name in byName);
-}
-
 /**
  * Whether another record of `kind` already carries `name`, comparing on
  * {@link normalizeTitleKey} so casing, accents and spacing don't hide a clash.
@@ -1653,13 +1307,10 @@ export {
   listBlogPayloads,
   livePostKey,
   maskSlugInput,
-  type MentionableSection,
-  mentionableSections,
   missingCategoryFields,
   type MissingFieldKey,
   missingPostFields,
   newPostId,
-  normalizeTitleKey,
   PLANNING_POST_KEY_PREFIX,
   type PlanningMeta,
   planningPostKey,

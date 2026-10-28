@@ -827,9 +827,8 @@ export const KEYS = {
   // Web search blob content (fetched from object storage)
   webSearchBlob: (url: string) => ["web-search-blob", url] as const,
 
-  // Blog editorial state in the org library (library backend only).
-  blogState: (orgSlug: string, virtualMcpId: string) =>
-    ["blog-state", orgSlug, virtualMcpId] as const,
+  // The org's blog editorial state: its brand guide and campaigns.
+  blogState: (orgSlug: string) => ["blog-state", orgSlug] as const,
 
   // Deco sections editor (sandbox preview)
   decofile: (previewUrl: string) => ["decofile", previewUrl] as const,

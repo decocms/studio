@@ -427,13 +427,13 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "BLOG_STATE_GET",
     description:
-      "Read a site's blog brand, writing rules, formats and campaigns from the org library",
+      "Read the organization's blog brand, writing rules, formats and campaigns from its brand folder",
     category: "Blog",
   },
   {
     name: "BLOG_STATE_SET",
     description:
-      "Write a site's blog brand, writing rules, formats and campaigns to the org library",
+      "Write the organization's blog campaigns and campaign seeds to its brand folder",
     category: "Blog",
   },
   {

@@ -6,10 +6,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 
 /**
- * The library is the only store. A site that still carries the old
- * `blog-manager-*` blocks must not have them read: a form filling itself from
- * a store nothing writes to any more is worse than an empty one, because the
- * person edits it and the edit lands somewhere else.
+ * The organization's brand folder is the only store. A site that still carries
+ * the old `blog-manager-*` blocks must not have them read: a form filling
+ * itself from a store nothing writes to any more is worse than an empty one,
+ * because the person edits it and the edit lands somewhere else.
  *
  * The write path's own trap is the version it writes against: the library
  * refuses a write whose base is stale, so a second edit that still quotes the
@@ -17,7 +17,7 @@ import type { ReactNode } from "react";
  * consecutive-writes test is for.
  */
 
-const BASE = "projects/acme/Blog";
+const BASE = "brands/acme";
 
 let remote: {
   brand: Record<string, unknown> | null;
@@ -40,16 +40,10 @@ const studioCall = mock(
     sets.push(input);
     if (refuseNext > 0) {
       refuseNext -= 1;
-      throw new Error("blog-state-conflict: brand.json changed");
+      throw new Error("blog-state-conflict: c1.json changed");
     }
     hashCounter += 1;
     const written: { path: string; contentHash: string }[] = [];
-    if (input.brand) {
-      written.push({
-        path: `${BASE}/brand.json`,
-        contentHash: `h${hashCounter}`,
-      });
-    }
     for (const record of (input.campaigns ?? []) as { id: string }[]) {
       written.push({
         path: `${BASE}/campaigns/${record.id}.json`,
@@ -77,10 +71,7 @@ function wrapper({ children }: { children: ReactNode }) {
 }
 
 const mount = (enabled = true) =>
-  renderHook(
-    () => useBlogState({ orgSlug: "org", virtualMcpId: "vmcp_1", enabled }),
-    { wrapper },
-  );
+  renderHook(() => useBlogState({ orgSlug: "org", enabled }), { wrapper });
 
 beforeEach(() => {
   studioCall.mockClear();
@@ -93,7 +84,10 @@ beforeEach(() => {
     formats: null,
     campaigns: [{ id: "c1", data: { campaignName: "Natal" } }],
     campaignSeeds: [],
-    versions: { [`${BASE}/brand.json`]: "h0" },
+    versions: {
+      [`${BASE}/brand.md`]: "g0",
+      [`${BASE}/campaigns/c1.json`]: "h0",
+    },
   };
 });
 
@@ -138,20 +132,42 @@ describe("a site with none of it yet", () => {
     });
   });
 
-  test("sends a singleton as its own field, quoting the version it read", async () => {
+  test("asks for the organization's state, with no project", async () => {
+    const { result } = mount();
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    expect(studioCall).toHaveBeenCalledWith("BLOG_STATE_GET", {});
+  });
+
+  test("an edit quotes the version it read", async () => {
     const { result } = mount();
     await waitFor(() => expect(result.current.ready).toBe(true));
 
     await result.current.save.mutateAsync({
-      blockKey: "blog-manager-brand",
-      data: { companyName: "Acme 2" },
+      blockKey: "blog-manager/campaigns/c1",
+      data: { campaignName: "Natal 2" },
     });
 
-    expect(sets[0]).toMatchObject({
-      virtualMcpId: "vmcp_1",
-      brand: { companyName: "Acme 2" },
-      expect: { [`${BASE}/brand.json`]: "h0" },
+    expect(sets[0]).toEqual({
+      campaigns: [{ id: "c1", data: { campaignName: "Natal 2" } }],
+      expect: { [`${BASE}/campaigns/c1.json`]: "h0" },
     });
+  });
+
+  /** The guide is edited on the brand page; nothing here may write it. */
+  test("refuses to write the brand, writing rules or formats", async () => {
+    const { result } = mount();
+    await waitFor(() => expect(result.current.ready).toBe(true));
+
+    for (const blockKey of [
+      "blog-manager-brand",
+      "blog-manager-context",
+      "blog-manager-formats",
+    ]) {
+      await expect(
+        result.current.save.mutateAsync({ blockKey, data: { x: 1 } }),
+      ).rejects.toThrow("Not blog state");
+    }
+    expect(sets).toHaveLength(0);
   });
 
   test("writes a campaign to its own record, by id", async () => {
@@ -173,15 +189,15 @@ describe("a site with none of it yet", () => {
     await waitFor(() => expect(result.current.ready).toBe(true));
 
     await result.current.save.mutateAsync({
-      blockKey: "blog-manager-brand",
-      data: { companyName: "um" },
+      blockKey: "blog-manager/campaigns/c1",
+      data: { campaignName: "um" },
     });
     await result.current.save.mutateAsync({
-      blockKey: "blog-manager-brand",
-      data: { companyName: "dois" },
+      blockKey: "blog-manager/campaigns/c1",
+      data: { campaignName: "dois" },
     });
 
-    expect(sets[1]?.expect).toEqual({ [`${BASE}/brand.json`]: "h1" });
+    expect(sets[1]?.expect).toEqual({ [`${BASE}/campaigns/c1.json`]: "h1" });
   });
 
   test("deleting a campaign names it for removal", async () => {
@@ -204,13 +220,13 @@ describe("when the file changed under the edit", () => {
 
     await result.current.save
       .mutateAsync({
-        blockKey: "blog-manager-brand",
-        data: { companyName: "meu" },
+        blockKey: "blog-manager/campaigns/c1",
+        data: { campaignName: "meu" },
       })
       .catch(() => {});
 
     await waitFor(() =>
-      expect(result.current.conflict).toBe("blog-manager-brand"),
+      expect(result.current.conflict).toBe("blog-manager/campaigns/c1"),
     );
   });
 
@@ -220,8 +236,8 @@ describe("when the file changed under the edit", () => {
     await waitFor(() => expect(result.current.ready).toBe(true));
     await result.current.save
       .mutateAsync({
-        blockKey: "blog-manager-brand",
-        data: { companyName: "meu" },
+        blockKey: "blog-manager/campaigns/c1",
+        data: { campaignName: "meu" },
       })
       .catch(() => {});
     await waitFor(() => expect(result.current.conflict).not.toBeNull());
@@ -230,7 +246,9 @@ describe("when the file changed under the edit", () => {
 
     await waitFor(() => expect(result.current.conflict).toBeNull());
     expect(sets[1]?.expect).toBeUndefined();
-    expect(sets[1]?.brand).toEqual({ companyName: "meu" });
+    expect(sets[1]?.campaigns).toEqual([
+      { id: "c1", data: { campaignName: "meu" } },
+    ]);
   });
 
   test("reloading theirs drops the held edit", async () => {
@@ -239,8 +257,8 @@ describe("when the file changed under the edit", () => {
     await waitFor(() => expect(result.current.ready).toBe(true));
     await result.current.save
       .mutateAsync({
-        blockKey: "blog-manager-brand",
-        data: { companyName: "meu" },
+        blockKey: "blog-manager/campaigns/c1",
+        data: { campaignName: "meu" },
       })
       .catch(() => {});
     await waitFor(() => expect(result.current.conflict).not.toBeNull());

@@ -1,55 +1,37 @@
 /**
- * The blog's editorial state, in the organization's file library.
+ * The blog's editorial state, in the organization's brand folder.
  *
- * Brand, writing rules, formats, campaigns and campaign seeds used to live as
- * blocks in the site's git decofile — under keys carrying no `__resolveType`,
- * so the rendered site ignored them. They were CMS state squatting in the repo,
- * and being in the repo made them branch-scoped: a campaign written on a
- * release branch did not exist on any other. None of that was wanted.
+ * Brand, writing rules and formats are the brand's own guide,
+ * `home/brands/<brand>/brand.md` — the file the brand page edits and every
+ * agent reads. The blog derives its fields from it and never writes it:
+ * a person edits it on the page, an agent edits it as a file.
  *
- * Here instead, under the project's own folder in the `home` volume, which the
- * Library browses and a sandbox mounts read-write at
- * `/app/org/home/projects/<folder>/Blog/`. An agent reaching for what this
- * brand sounds like finds it by looking.
+ * Campaigns and their seeds sit beside it, one file per record under
+ * `campaigns/` and `campaign-seeds/`, keyed by the id the web app mints. One
+ * file each so a write never clobbers the campaign being edited, which a single
+ * array file would bring back under last-write-wins.
  *
- * Two shapes, for two different hazards:
- *
- *  - The three singletons are one file each and are what a person edits, so a
- *    write takes `expect` and a stale one is refused rather than landing.
- *  - Campaigns and seeds are one file per record, keyed by the id the web app
- *    already mints. The decofile split them for exactly this reason — "a write
- *    never clobbers the campaign being edited" — and a single array file would
- *    bring the clobber back under last-write-wins.
- *
- * Reads are best-effort throughout, after `agent-prompts.ts`: a corrupt or
- * vanished file is skipped, a missing directory is an empty list, and nothing
- * here throws on the read path. Losing one campaign is a thinner board; an
- * exception is a blank one.
+ * Reads are best-effort throughout: a corrupt or vanished file is skipped, a
+ * missing directory is an empty list, and nothing here throws on the read
+ * path. Losing one campaign is a thinner board; an exception is a blank one.
  */
 
+import {
+  type BlogBrand,
+  type BlogContext,
+  type BlogFormats,
+  BRANDS_DIR,
+  brandForBlog,
+  pickBrandDir,
+} from "@decocms/shared/brand";
 import { HOME_MOUNT_PATH } from "@decocms/shared/organization/home-mount";
-import { projectFolderDir } from "@decocms/shared/organization/project-folder";
 import type { OrgFs, WriteExpectation } from "./org-fs";
 import type { OrgFsEntry } from "../storage/org-fs";
-
-/** The project folder's blog subtree. Not in `PROJECT_SUBFOLDERS`: that would
- *  mint an empty `Blog/` in every project in the org, blog or not. The first
- *  write creates it — `OrgFs.write` makes the parents. */
-const BLOG_DIR = "Blog";
 
 export const CAMPAIGNS_DIR = "campaigns";
 export const CAMPAIGN_SEEDS_DIR = "campaign-seeds";
 
-/** The one singleton per thing a person edits. */
-const BLOG_SINGLETON_FILES = {
-  brand: "brand.json",
-  context: "context.json",
-  formats: "formats.json",
-} as const;
-
-export type BlogSingleton = keyof typeof BLOG_SINGLETON_FILES;
-
-const BLOG_SINGLETONS = Object.keys(BLOG_SINGLETON_FILES) as BlogSingleton[];
+const BRAND_FILE = "brand.md";
 
 /**
  * How many records one read returns.
@@ -62,34 +44,40 @@ const BLOG_SINGLETONS = Object.keys(BLOG_SINGLETON_FILES) as BlogSingleton[];
 const MAX_CAMPAIGNS = 500;
 export const MAX_CAMPAIGN_SEEDS = 200;
 
-/** Projects are identified by their folder, which the server pins on the row. */
-export interface ProjectRef {
-  id: string;
-  title?: string | null;
-  metadata?: unknown;
-}
-
-/** `projects/<folder>/Blog`, inside the `home` volume. */
-export function blogDir(project: ProjectRef): string {
-  return `${projectFolderDir(project)}/${BLOG_DIR}`;
-}
-
 /** The volume every path below is read from and written to. */
 const BLOG_VOLUME = HOME_MOUNT_PATH;
 
-export function singletonPath(
-  project: ProjectRef,
-  which: BlogSingleton,
-): string {
-  return `${blogDir(project)}/${BLOG_SINGLETON_FILES[which]}`;
+/** `brands/<brand>`, inside the `home` volume. */
+export function brandPath(brand: string): string {
+  return `${BRANDS_DIR}/${brand}`;
 }
 
 export function recordPath(
-  project: ProjectRef,
+  brand: string,
   dir: typeof CAMPAIGNS_DIR | typeof CAMPAIGN_SEEDS_DIR,
   id: string,
 ): string {
-  return `${blogDir(project)}/${dir}/${id}.json`;
+  return `${brandPath(brand)}/${dir}/${id}.json`;
+}
+
+/**
+ * The brand folder an organization's blog reads and writes, of the ones it
+ * has — the same choice the brand page opens on.
+ */
+export async function resolveBrandDir(
+  orgFs: OrgFs,
+  orgSlug: string,
+): Promise<string> {
+  let entries: OrgFsEntry[] = [];
+  try {
+    entries = await orgFs.listDir(BLOG_VOLUME, BRANDS_DIR);
+  } catch {
+    // No brands folder yet: the org's own name is the one to create.
+  }
+  const dirs = entries
+    .filter((entry) => entry.kind === "dir")
+    .map((entry) => entry.path.slice(entry.path.lastIndexOf("/") + 1));
+  return pickBrandDir(orgSlug, dirs);
 }
 
 /** One stored record and the id its filename carries. */
@@ -100,9 +88,12 @@ export interface BlogRecord {
 
 /** Everything the blog reads, with the version each file was read at. */
 export interface BlogState {
-  brand: Record<string, unknown> | null;
-  context: Record<string, unknown> | null;
-  formats: Record<string, unknown> | null;
+  /** The brand folder this was read from, `brands/<brand>`. */
+  brandPath: string;
+  /** Null until the brand has a guide. */
+  brand: BlogBrand | null;
+  context: BlogContext | null;
+  formats: BlogFormats | null;
   campaigns: BlogRecord[];
   campaignSeeds: BlogRecord[];
   /**
@@ -111,19 +102,6 @@ export interface BlogState {
    * absent here and its write goes unconditional.
    */
   versions: Record<string, string>;
-}
-
-const EMPTY_STATE: BlogState = {
-  brand: null,
-  context: null,
-  formats: null,
-  campaigns: [],
-  campaignSeeds: [],
-  versions: {},
-};
-
-function decode(bytes: Uint8Array): unknown {
-  return JSON.parse(new TextDecoder().decode(bytes));
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -138,13 +116,24 @@ function idOfPath(path: string): string | null {
   return base.endsWith(".json") ? base.slice(0, -".json".length) : null;
 }
 
-/** One file, parsed, or null for anything that went wrong reading it. */
+/** One file as text, or null for anything that went wrong reading it. */
+async function readText(orgFs: OrgFs, path: string): Promise<string | null> {
+  try {
+    return new TextDecoder().decode(await orgFs.read(BLOG_VOLUME, path));
+  } catch {
+    return null;
+  }
+}
+
+/** One JSON file, parsed, or null for anything that went wrong. */
 async function readJson(
   orgFs: OrgFs,
   path: string,
 ): Promise<Record<string, unknown> | null> {
+  const text = await readText(orgFs, path);
+  if (text === null) return null;
   try {
-    return asRecord(decode(await orgFs.read(BLOG_VOLUME, path)));
+    return asRecord(JSON.parse(text));
   } catch {
     return null;
   }
@@ -181,37 +170,31 @@ async function readRecords(
 }
 
 /**
- * The whole editorial state of one project's blog.
+ * The blog's whole editorial state, from one brand folder.
  *
- * Never throws: a project with no folder, no `Blog/` or no files at all reads
- * as empty, which is exactly what a brand-new site is.
+ * Never throws: a brand with no folder, no guide or no campaigns reads as
+ * empty, which is exactly what a brand-new organization is.
  */
 export async function readBlogState(
   orgFs: OrgFs,
-  project: ProjectRef,
+  brand: string,
 ): Promise<BlogState> {
-  const base = blogDir(project);
+  const base = brandPath(brand);
+  const guidePath = `${base}/${BRAND_FILE}`;
   const versions: Record<string, string> = {};
 
-  let singletonEntries: OrgFsEntry[];
+  let entries: OrgFsEntry[] = [];
   try {
-    singletonEntries = await orgFs.listDir(BLOG_VOLUME, base);
+    entries = await orgFs.listDir(BLOG_VOLUME, base);
   } catch {
-    return { ...EMPTY_STATE, versions };
+    // A brand not created yet reads as empty.
   }
-  const present = new Map(singletonEntries.map((e) => [e.path, e]));
+  const guideEntry = entries.find(
+    (entry) => entry.kind === "file" && entry.path === guidePath,
+  );
 
-  const [singletons, campaigns, campaignSeeds] = await Promise.all([
-    Promise.all(
-      BLOG_SINGLETONS.map(async (which) => {
-        const path = singletonPath(project, which);
-        const entry = present.get(path);
-        if (!entry || entry.kind !== "file") return [which, null] as const;
-        const data = await readJson(orgFs, path);
-        if (data && entry.contentHash) versions[path] = entry.contentHash;
-        return [which, data] as const;
-      }),
-    ),
+  const [guide, campaigns, campaignSeeds] = await Promise.all([
+    guideEntry ? readText(orgFs, guidePath) : Promise.resolve(null),
     readRecords(orgFs, `${base}/${CAMPAIGNS_DIR}`, MAX_CAMPAIGNS, versions),
     readRecords(
       orgFs,
@@ -221,15 +204,16 @@ export async function readBlogState(
     ),
   ]);
 
-  const byName = Object.fromEntries(singletons) as Record<
-    BlogSingleton,
-    Record<string, unknown> | null
-  >;
+  if (guide !== null && guideEntry?.contentHash) {
+    versions[guidePath] = guideEntry.contentHash;
+  }
+  const read = guide === null ? null : brandForBlog(guide, brand);
 
   return {
-    brand: byName.brand,
-    context: byName.context,
-    formats: byName.formats,
+    brandPath: base,
+    brand: read?.brand ?? null,
+    context: read?.context ?? null,
+    formats: read?.formats ?? null,
     campaigns,
     campaignSeeds,
     versions,
@@ -246,10 +230,9 @@ export interface BlogWrite {
 /**
  * Write files, failing the whole call on the first refusal.
  *
- * Deliberately not best-effort, unlike the read: a half-applied edit is a brand
- * profile that disagrees with its own writing rules, and the caller can retry.
- * `OrgFsConflictError` travels out as itself so the caller can tell "someone
- * else wrote this" from "storage is broken".
+ * Deliberately not best-effort, unlike the read: the caller asked for every
+ * write in the call and can retry. `OrgFsConflictError` travels out as itself
+ * so the caller can tell "someone else wrote this" from "storage is broken".
  */
 export async function writeBlogFiles(
   orgFs: OrgFs,
@@ -275,7 +258,7 @@ export async function writeBlogFiles(
  */
 export async function deleteBlogRecords(
   orgFs: OrgFs,
-  project: ProjectRef,
+  brand: string,
   actor: string,
   dir: typeof CAMPAIGNS_DIR | typeof CAMPAIGN_SEEDS_DIR,
   ids: string[],
@@ -283,7 +266,7 @@ export async function deleteBlogRecords(
   await Promise.all(
     ids.map(async (id) => {
       try {
-        await orgFs.delete(BLOG_VOLUME, recordPath(project, dir, id), {
+        await orgFs.delete(BLOG_VOLUME, recordPath(brand, dir, id), {
           actor,
         });
       } catch (err) {

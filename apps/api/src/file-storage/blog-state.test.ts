@@ -1,30 +1,29 @@
 import { describe, expect, it } from "bun:test";
 import type { OrgFsEntry } from "../storage/org-fs";
 import {
-  blogDir,
+  brandPath,
   deleteBlogRecords,
   MAX_CAMPAIGN_SEEDS,
   readBlogState,
   recordPath,
-  singletonPath,
+  resolveBrandDir,
   writeBlogFiles,
-  type ProjectRef,
 } from "./blog-state";
 import type { OrgFs } from "./org-fs";
 
-const PROJECT: ProjectRef = {
-  id: "vmcp_1",
-  title: "Acme · Loja BR",
-  metadata: { projectFolderName: "acme-loja-br" },
-};
+const BRAND = "acme";
 
-function entry(path: string, hash: string | null): OrgFsEntry {
+function entry(
+  path: string,
+  hash: string | null,
+  kind: "file" | "dir" = "file",
+): OrgFsEntry {
   return {
     organizationId: "org_1",
     volume: "home",
     path,
     parent: path.slice(0, path.lastIndexOf("/")),
-    kind: "file",
+    kind,
     contentHash: hash,
     size: 0,
     seq: "1",
@@ -56,9 +55,17 @@ function fakeOrgFs(
   const fs = {
     async listDir(_volume: string, path: string): Promise<OrgFsEntry[]> {
       if (options.unlistable?.has(path)) throw new Error("no such directory");
-      return [...files.keys()]
+      const listed = [...files.keys()]
         .filter((p) => p.slice(0, p.lastIndexOf("/")) === path)
         .map((p) => entry(p, files.get(p)?.hash ?? null));
+      const dirs = new Set(
+        [...files.keys()]
+          .filter((p) => p.startsWith(`${path}/`))
+          .map((p) => p.slice(path.length + 1).split("/"))
+          .filter((parts) => parts.length > 1)
+          .map((parts) => `${path}/${parts[0]}`),
+      );
+      return [...listed, ...[...dirs].map((d) => entry(d, null, "dir"))];
     },
     async read(_volume: string, path: string): Promise<Uint8Array> {
       if (options.unreadable?.has(path)) throw new Error("gone");
@@ -84,7 +91,7 @@ function fakeOrgFs(
   return { fs: fs as unknown as OrgFs, writes, deletes };
 }
 
-const BASE = blogDir(PROJECT);
+const BASE = brandPath(BRAND);
 
 function withFiles(
   entries: Record<string, unknown>,
@@ -100,56 +107,89 @@ function withFiles(
   );
 }
 
-describe("blog state paths", () => {
-  it("roots everything at the project's pinned folder", () => {
-    expect(BASE).toBe("projects/acme-loja-br/Blog");
-    expect(singletonPath(PROJECT, "brand")).toBe(`${BASE}/brand.json`);
-    expect(recordPath(PROJECT, "campaigns", "abc")).toBe(
-      `${BASE}/campaigns/abc.json`,
-    );
-  });
+const GUIDE = `---
+name: Acme
+language: pt-BR
+site: https://acme.example
+---
 
-  it("falls back to the title when the folder was never pinned", () => {
-    expect(blogDir({ id: "vmcp_2", title: "Outra Loja" })).toBe(
-      "projects/outra-loja/Blog",
+## Tom de voz
+
+Direto.
+
+## Regras
+
+- Frases curtas.
+
+## Formatos
+
+### Guia
+
+Passo a passo.
+`;
+
+describe("blog state paths", () => {
+  it("roots everything at the brand folder", () => {
+    expect(BASE).toBe("brands/acme");
+    expect(recordPath(BRAND, "campaigns", "abc")).toBe(
+      "brands/acme/campaigns/abc.json",
     );
   });
 });
 
+describe("resolveBrandDir", () => {
+  it("takes the org's own brand, else the first, else the org's name", async () => {
+    const both = fakeOrgFs(
+      withFiles({
+        "brands/zeta/brand.md": "",
+        "brands/acme/brand.md": "",
+      }),
+    );
+    expect(await resolveBrandDir(both.fs, "acme")).toBe("acme");
+    expect(await resolveBrandDir(both.fs, "other")).toBe("acme");
+    const none = fakeOrgFs(new Map(), { unlistable: new Set(["brands"]) });
+    expect(await resolveBrandDir(none.fs, "acme")).toBe("acme");
+  });
+});
+
 describe("readBlogState", () => {
-  it("reads the singletons and the records, with their versions", async () => {
+  it("reads the guide as brand, writing rules and formats, with its version", async () => {
     const { fs } = fakeOrgFs(
       withFiles({
-        [`${BASE}/brand.json`]: { companyName: "Acme" },
-        [`${BASE}/context.json`]: { tone: "direct" },
-        [`${BASE}/formats.json`]: { formats: [{ name: "Guia", value: "..." }] },
+        [`${BASE}/brand.md`]: GUIDE,
         [`${BASE}/campaigns/c1.json`]: { campaignName: "Black Friday" },
         [`${BASE}/campaign-seeds/s1.json`]: { seedName: "Datas" },
       }),
     );
 
-    const state = await readBlogState(fs, PROJECT);
+    const state = await readBlogState(fs, BRAND);
 
-    expect(state.brand).toEqual({ companyName: "Acme" });
-    expect(state.context).toEqual({ tone: "direct" });
+    expect(state.brandPath).toBe(BASE);
+    expect(state.brand?.companyName).toBe("Acme");
+    expect(state.brand?.language).toBe("pt-BR");
+    expect(state.brand?.storeUrl).toBe("https://acme.example");
+    expect(state.context?.tone).toBe("Direto.");
+    expect(state.context?.dos).toEqual([{ name: "Frases curtas.", value: "" }]);
+    expect(state.formats?.formats).toEqual([
+      { name: "Guia", value: "Passo a passo." },
+    ]);
     expect(state.campaigns).toEqual([
       { id: "c1", data: { campaignName: "Black Friday" } },
     ]);
     expect(state.campaignSeeds).toEqual([
       { id: "s1", data: { seedName: "Datas" } },
     ]);
-    expect(state.versions[`${BASE}/brand.json`]).toBe(
-      `hash-of-${BASE}/brand.json`,
-    );
+    expect(state.versions[`${BASE}/brand.md`]).toBe(`hash-of-${BASE}/brand.md`);
     expect(state.versions[`${BASE}/campaigns/c1.json`]).toBe(
       `hash-of-${BASE}/campaigns/c1.json`,
     );
   });
 
-  it("reads as empty when the project has no folder yet", async () => {
+  it("reads as empty when the brand has no folder yet", async () => {
     const { fs } = fakeOrgFs(new Map(), { unlistable: new Set([BASE]) });
-    const state = await readBlogState(fs, PROJECT);
+    const state = await readBlogState(fs, BRAND);
     expect(state).toEqual({
+      brandPath: BASE,
       brand: null,
       context: null,
       formats: null,
@@ -159,6 +199,25 @@ describe("readBlogState", () => {
     });
   });
 
+  it("a brand with campaigns but no guide has no brand yet", async () => {
+    const { fs } = fakeOrgFs(
+      withFiles({ [`${BASE}/campaigns/c1.json`]: { campaignName: "Natal" } }),
+    );
+    const state = await readBlogState(fs, BRAND);
+    expect(state.brand).toBeNull();
+    expect(state.campaigns).toHaveLength(1);
+  });
+
+  it("an unreadable guide reads as no guide", async () => {
+    const path = `${BASE}/brand.md`;
+    const { fs } = fakeOrgFs(withFiles({ [path]: GUIDE }), {
+      unreadable: new Set([path]),
+    });
+    const state = await readBlogState(fs, BRAND);
+    expect(state.brand).toBeNull();
+    expect(state.versions[path]).toBeUndefined();
+  });
+
   it("skips a corrupt record instead of losing the whole board", async () => {
     const { fs } = fakeOrgFs(
       withFiles({
@@ -166,7 +225,7 @@ describe("readBlogState", () => {
         [`${BASE}/campaigns/broken.json`]: "{ not json",
       }),
     );
-    const state = await readBlogState(fs, PROJECT);
+    const state = await readBlogState(fs, BRAND);
     expect(state.campaigns).toEqual([
       { id: "good", data: { campaignName: "Natal" } },
     ]);
@@ -181,21 +240,8 @@ describe("readBlogState", () => {
       }),
       { unreadable: new Set([path]) },
     );
-    const state = await readBlogState(fs, PROJECT);
+    const state = await readBlogState(fs, BRAND);
     expect(state.campaigns.map((c) => c.id)).toEqual(["real"]);
-  });
-
-  it("ignores a singleton that is corrupt, keeping the others", async () => {
-    const { fs } = fakeOrgFs(
-      withFiles({
-        [`${BASE}/brand.json`]: "}{",
-        [`${BASE}/context.json`]: { tone: "warm" },
-      }),
-    );
-    const state = await readBlogState(fs, PROJECT);
-    expect(state.brand).toBeNull();
-    expect(state.context).toEqual({ tone: "warm" });
-    expect(state.versions[`${BASE}/brand.json`]).toBeUndefined();
   });
 
   it("stops at the ceiling rather than reading a folder forever", async () => {
@@ -204,7 +250,7 @@ describe("readBlogState", () => {
       many[`${BASE}/campaign-seeds/s${i}.json`] = { seedName: `s${i}` };
     }
     const { fs } = fakeOrgFs(withFiles(many));
-    const state = await readBlogState(fs, PROJECT);
+    const state = await readBlogState(fs, BRAND);
     expect(state.campaignSeeds).toHaveLength(MAX_CAMPAIGN_SEEDS);
   });
 
@@ -215,7 +261,7 @@ describe("readBlogState", () => {
         [`${BASE}/campaigns/c1.json`]: { campaignName: "Only this" },
       }),
     );
-    const state = await readBlogState(fs, PROJECT);
+    const state = await readBlogState(fs, BRAND);
     expect(state.campaigns.map((c) => c.id)).toEqual(["c1"]);
   });
 });
@@ -225,15 +271,15 @@ describe("writeBlogFiles", () => {
     const { fs, writes } = fakeOrgFs(new Map());
     await writeBlogFiles(fs, "user_1", [
       {
-        path: `${BASE}/brand.json`,
-        data: { companyName: "Acme" },
+        path: `${BASE}/campaigns/c1.json`,
+        data: { campaignName: "Acme" },
         expect: { contentHash: "abc" },
       },
-      { path: `${BASE}/campaigns/c1.json`, data: { campaignName: "X" } },
+      { path: `${BASE}/campaigns/c2.json`, data: { campaignName: "X" } },
     ]);
     expect(writes[0]?.expect).toEqual({ contentHash: "abc" });
     expect(writes[1]?.expect).toBeUndefined();
-    expect(JSON.parse(writes[0]?.body ?? "")).toEqual({ companyName: "Acme" });
+    expect(JSON.parse(writes[0]?.body ?? "")).toEqual({ campaignName: "Acme" });
   });
 
   it("fails the whole call on a refusal, rather than half-applying", async () => {
@@ -242,15 +288,15 @@ describe("writeBlogFiles", () => {
     const refusing = {
       ...fs,
       write: async (_v: string, path: string) => {
-        if (path.endsWith("context.json")) throw conflict;
+        if (path.endsWith("c2.json")) throw conflict;
         return entry(path, "h");
       },
     } as unknown as OrgFs;
 
     await expect(
       writeBlogFiles(refusing, "user_1", [
-        { path: `${BASE}/brand.json`, data: {} },
-        { path: `${BASE}/context.json`, data: {} },
+        { path: `${BASE}/campaigns/c1.json`, data: {} },
+        { path: `${BASE}/campaigns/c2.json`, data: {} },
       ]),
     ).rejects.toThrow("precondition failed");
   });
@@ -261,7 +307,7 @@ describe("deleteBlogRecords", () => {
     const { fs, deletes } = fakeOrgFs(
       withFiles({ [`${BASE}/campaigns/here.json`]: {} }),
     );
-    await deleteBlogRecords(fs, PROJECT, "user_1", "campaigns", [
+    await deleteBlogRecords(fs, BRAND, "user_1", "campaigns", [
       "here",
       "never-existed",
     ]);

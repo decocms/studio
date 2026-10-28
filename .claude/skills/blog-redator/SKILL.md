@@ -6,10 +6,6 @@ disable-model-invocation: true
 
 # Coluna `redação` — escrever o post
 
-Na automação real esta coluna é o **Redator**, belt
-`BLOG_STATE_GET, BLOG_SITE_BLOCKS, BLOG_POST_DRAFT, BLOG_POST_ASSEMBLE,
-`BLOG_LINK_SUGGEST`, `BLOG_POST_WRITE`.
-
 Coluna fina de propósito: o estado e os blocos que a coluna anterior leu já
 são o argumento inteiro. Uma chamada.
 
@@ -32,7 +28,8 @@ t BLOG_POST_DRAFT "$(bun -e '
   const campaign = st.campaigns.find(c => c.id === process.env.CAMPAIGN) ?? st.campaigns[0];
   const format = (st.formats?.formats ?? [])[0];
   console.log(JSON.stringify({ virtualMcpId: process.env.VMCP,
-    brand: { ...st.brand, ...st.context }, campaign: campaign.data, format,
+    brand: { ...st.brand, ...st.context },
+    campaign: { ...campaign.data, name: campaign.data.campaignName }, format,
     blocks: bl.blocks, categories: bl.categories, authors: bl.authors, count: 1,
     grounding: { report: g.report, outcome: g.outcome } }));')" draft.json
 ```

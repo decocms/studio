@@ -21,18 +21,18 @@ import {
   sectionMarkdown,
 } from "./brand-md";
 
-export interface BrandRule {
+export type BrandRule = {
   name: string;
   value: string;
-}
+};
 
-export interface BrandVoiceExample {
+export type BrandVoiceExample = {
   text: string;
   sounds: boolean;
-}
+};
 
 /** Who the brand is — the shape the blog tools take as `brand`. */
-export interface BlogBrand {
+export type BlogBrand = {
   companyName: string;
   description: string;
   language: string;
@@ -43,20 +43,20 @@ export interface BlogBrand {
   keywords: string[];
   commercialPolicies: BrandRule[];
   specialDates: BrandRule[];
-}
+};
 
 /** How the blog is written. */
-export interface BlogContext {
+export type BlogContext = {
   tone: string;
   dos: BrandRule[];
   avoid: BrandRule[];
   vocabulary: BrandRule[];
   voiceExamples: BrandVoiceExample[];
-}
+};
 
-export interface BlogFormats {
+export type BlogFormats = {
   formats: BrandRule[];
-}
+};
 
 /** One item's sections, joined: a brand may split a part across two headings. */
 function itemMarkdown(
