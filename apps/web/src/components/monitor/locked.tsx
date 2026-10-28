@@ -488,25 +488,18 @@ export function Locked({
  */
 const NO_PROJECTS: readonly SiteProject[] = [];
 
-export function AnalyticsGuide({
-  projects = NO_PROJECTS,
-}: {
-  /** The org's site projects; those with a connected repository are offered
-   *  to the Super Agent. */
-  projects?: readonly SiteProject[];
-}) {
-  const t = useT();
-  const install = useInstallAnalytics();
+/**
+ * The projects the Super Agent can install on, or `null` while the org's
+ * repositories load: it opens its PR in the project's repository, so only a
+ * project bound to one the org has connected can take the tag.
+ */
+export function useInstallableProjects(
+  projects: readonly SiteProject[],
+): SiteProject[] | null {
   const repositoriesQuery = useRepositories();
-  const [domain, setDomain] = useState("");
-  // The site hosting knows no domain for, asked where it's live.
-  const [asking, setAsking] = useState<string | null>(null);
-  const pendingSite = install.isPending ? install.variables?.site : null;
   if (repositoriesQuery.isLoading) return null;
   const repositories = repositoriesQuery.data ?? [];
-  // The agent opens its PR in the project's repository, so only a project
-  // bound to one the org has connected can take the tag.
-  const installable = projects.filter(
+  return projects.filter(
     (p) =>
       p.repository &&
       repositories.some((r) =>
@@ -516,6 +509,23 @@ export function AnalyticsGuide({
         }),
       ),
   );
+}
+
+export function AnalyticsGuide({
+  projects = NO_PROJECTS,
+}: {
+  /** The org's site projects; those with a connected repository are offered
+   *  to the Super Agent. */
+  projects?: readonly SiteProject[];
+}) {
+  const t = useT();
+  const install = useInstallAnalytics();
+  const installable = useInstallableProjects(projects);
+  const [domain, setDomain] = useState("");
+  // The site hosting knows no domain for, asked where it's live.
+  const [asking, setAsking] = useState<string | null>(null);
+  const pendingSite = install.isPending ? install.variables?.site : null;
+  if (!installable) return null;
   if (installable.length === 0) {
     return (
       <div className="flex flex-col gap-4">
