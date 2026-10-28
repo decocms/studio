@@ -7,6 +7,7 @@
  * and echoing a fetched entity back through UPDATE must keep the stored token.
  */
 
+import { randomUUID } from "node:crypto";
 import type { Client } from "pg";
 import { connectDevDb } from "../fixtures/db";
 import { signUpViaApi } from "../fixtures/auth-api";
@@ -51,7 +52,7 @@ test.describe("connection token redaction", () => {
       })
       .toBe(true);
 
-    const secret = `e2e-secret-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+    const secret = `e2e-secret-${randomUUID()}`;
     const created = await callSelfMcpTool<{ item: ConnectionItem }>(
       ownerCtx,
       owner.orgSlug,
@@ -79,7 +80,9 @@ test.describe("connection token redaction", () => {
     };
     const accept = await memberCtx.post(
       "/api/auth/organization/accept-invitation",
-      { data: { invitationId: inviteJson.id ?? inviteJson.invitation?.id } },
+      {
+        data: { invitationId: inviteJson.id ?? inviteJson.invitation?.id },
+      },
     );
     expect(accept.ok()).toBe(true);
 
