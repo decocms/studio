@@ -370,7 +370,6 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.configSectionTitle": "Configuration",
   "mainPanelTabs.analyticsTab.viewOverview": "Overview",
   "mainPanelTabs.analyticsTab.viewLive": "Realtime",
-  "mainPanelTabs.analyticsTab.viewGlobe": "Live map",
   "mainPanelTabs.analyticsTab.viewBehaviour": "Pages & sources",
   "mainPanelTabs.analyticsTab.viewEvents": "Events & props",
   "mainPanelTabs.analyticsTab.viewErrors": "Errors",
@@ -492,6 +491,24 @@ export const mainPanelTabs = {
     "See the most clicked elements",
   "mainPanelTabs.analyticsTab.heatmap.showReach": "See the scroll reach",
   "mainPanelTabs.analyticsTab.heatmap.showSections": "See the sections",
+  "mainPanelTabs.analyticsTab.heatmap.rankBy": "Rank by",
+  "mainPanelTabs.analyticsTab.heatmap.rankClicks": "Clicks",
+  "mainPanelTabs.analyticsTab.heatmap.rankCtr": "CTR",
+  "mainPanelTabs.analyticsTab.heatmap.topCtr": "Highest click rate",
+  "mainPanelTabs.analyticsTab.heatmap.ctrHint":
+    "Click rate: of the visits in which the section came on screen, how many clicked this element.",
+  "mainPanelTabs.analyticsTab.heatmap.ctrSub": "CTR {pct}",
+  "mainPanelTabs.analyticsTab.heatmap.ctrSeen": "{n} saw the section",
+  "mainPanelTabs.analyticsTab.heatmap.ctrMinNote":
+    "Only elements in sections seen in {n}+ visits.",
+  "mainPanelTabs.analyticsTab.heatmap.funnelTitle": "After the click",
+  "mainPanelTabs.analyticsTab.heatmap.funnelPage": "Whole page",
+  "mainPanelTabs.analyticsTab.heatmap.funnelPeople": "{n} people",
+  "mainPanelTabs.analyticsTab.heatmap.funnelVsPage": "page {pct}",
+  "mainPanelTabs.analyticsTab.heatmap.funnel_viewed": "Viewed a product",
+  "mainPanelTabs.analyticsTab.heatmap.funnel_carted": "Added to cart",
+  "mainPanelTabs.analyticsTab.heatmap.funnel_checkout": "Began checkout",
+  "mainPanelTabs.analyticsTab.heatmap.funnel_bought": "Bought",
   "mainPanelTabs.analyticsTab.heatmap.topElements": "Most clicked elements",
   "mainPanelTabs.analyticsTab.heatmap.topOfType": "Most clicks: {type}",
   "mainPanelTabs.analyticsTab.heatmap.nElements": "{n} elements",
@@ -542,16 +559,8 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.globe.conversionPlural": "conversions",
   "mainPanelTabs.analyticsTab.globe.countryLevel":
     "country level: no city coordinate",
-  "mainPanelTabs.analyticsTab.globe.kpiVisitors": "Visitors now",
-  "mainPanelTabs.analyticsTab.globe.kpiVisitorsHint":
-    "unique in the last 5 min",
-  "mainPanelTabs.analyticsTab.globe.kpiPlaces": "Places",
-  "mainPanelTabs.analyticsTab.globe.kpiPlacesHint": "dots on the map",
-  "mainPanelTabs.analyticsTab.globe.kpiApproximate": "Country level",
-  "mainPanelTabs.analyticsTab.globe.kpiApproximateHint":
-    "visitors with no city",
-  "mainPanelTabs.analyticsTab.globe.kpiUnplaced": "Not located",
-  "mainPanelTabs.analyticsTab.globe.kpiUnplacedHint": "impossible to draw",
+  "mainPanelTabs.analyticsTab.globe.caption":
+    "{places} places on the map · {approximate} at country level · {unplaced} not located",
   "mainPanelTabs.analyticsTab.globe.modeGlobe": "Globe",
   "mainPanelTabs.analyticsTab.globe.modeMap": "Map",
   "mainPanelTabs.analyticsTab.globe.loadError":
@@ -587,6 +596,11 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.copy": "Copy",
   "mainPanelTabs.analyticsTab.copied": "Copied",
   "mainPanelTabs.analyticsTab.dismiss": "Dismiss",
+  "mainPanelTabs.analyticsTab.errorsKinds": "{n} kinds of error",
+  "mainPanelTabs.analyticsTab.errorsNoMessage": "(no message)",
+  "mainPanelTabs.analyticsTab.errorsVisitor": "{n} visitor",
+  "mainPanelTabs.analyticsTab.errorsVisitors": "{n} visitors",
+  "mainPanelTabs.analyticsTab.errorsStack": "Stack trace",
   "mainPanelTabs.analyticsTab.liveHint": "Live · refreshes every 5s",
   "mainPanelTabs.analyticsTab.installHow":
     "The collector loads async and never blocks the page. A site is identified either by its host (billable) or by a public token (for sites off our CDN).",

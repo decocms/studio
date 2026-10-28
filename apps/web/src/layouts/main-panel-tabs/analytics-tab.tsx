@@ -89,7 +89,7 @@ import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
 import { KEYS } from "@/lib/query-keys";
 import { useT, type TFunction } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/use-t.ts";
-import { GlobeView } from "./analytics-globe-tab.tsx";
+import { LiveGlobe, type LiveGeoRow } from "./analytics-globe-tab.tsx";
 import { HeatmapView } from "./analytics-heatmap-tab.tsx";
 import { gateViews, pickView } from "./analytics-heatmap-model.ts";
 
@@ -180,7 +180,6 @@ const MODULES = [
 // internals) are omitted.
 const DATA_VIEWS: ReadonlyArray<{ view: string; labelKey: TranslationKey }> = [
   { view: "live", labelKey: "mainPanelTabs.analyticsTab.viewLive" },
-  { view: "globe", labelKey: "mainPanelTabs.analyticsTab.viewGlobe" },
   { view: "overview", labelKey: "mainPanelTabs.analyticsTab.viewOverview" },
   { view: "behaviour", labelKey: "mainPanelTabs.analyticsTab.viewBehaviour" },
   { view: "events", labelKey: "mainPanelTabs.analyticsTab.viewEvents" },
@@ -1221,9 +1220,21 @@ function OverviewDashboard({
 // --- realtime: the curated "now" view ---------------------------------------
 
 /** The Realtime view, modelled on the admin monitor: Visitors / Pageviews /
- *  Events / Last event headline cards, then the live feed and the pages active
- *  right now. Fed by the `live` payload (a 5m window, auto-refreshed). */
-function RealtimeDashboard({ payload }: { payload: Record<string, unknown> }) {
+ *  Events / Last event headline cards, the globe of where they are, then the
+ *  live feed and the pages active right now. All of it is ONE `live` payload
+ *  (a 5m window, auto-refreshed), so the map can never disagree with the
+ *  numbers above it. */
+function RealtimeDashboard({
+  payload,
+  base,
+  orgSlug,
+  site,
+}: {
+  payload: Record<string, unknown>;
+  base: string;
+  orgSlug: string;
+  site: string;
+}) {
   const t = useT();
   const rowsOf = (k: string) =>
     (Array.isArray(payload[k]) ? payload[k] : []) as Array<
@@ -1232,6 +1243,7 @@ function RealtimeDashboard({ payload }: { payload: Record<string, unknown> }) {
   const kpi = rowsOf("liveVisitors")[0] ?? {};
   const feed = rowsOf("liveFeed");
   const pages = rowsOf("livePages");
+  const geo = rowsOf("liveGeo") as unknown as LiveGeoRow[];
   const cards = [
     ["visitors", "mainPanelTabs.analyticsTab.metricVisitors"],
     ["pageviews", "mainPanelTabs.analyticsTab.metricPageviews"],
@@ -1259,6 +1271,7 @@ function RealtimeDashboard({ payload }: { payload: Record<string, unknown> }) {
           </div>
         ))}
       </div>
+      <LiveGlobe base={base} orgSlug={orgSlug} site={site} rows={geo} />
       <div className="grid gap-4 lg:grid-cols-2">
         <Card title={t("mainPanelTabs.analyticsTab.cardLiveFeed")}>
           {feed.length > 0 ? (
@@ -1280,6 +1293,110 @@ function RealtimeDashboard({ payload }: { payload: Record<string, unknown> }) {
         </Card>
       </div>
     </div>
+  );
+}
+
+// --- errors: what broke, how often, for how many, and the stack ---------------
+
+/** The Errors view. The generic table put this in a third of a row, sorted by
+ *  `line` (its first numeric column) and cut every message at the column
+ *  edge — the one view where the text IS the data. Full width instead, ranked
+ *  by occurrences, the message wrapped, and the stack one click away. */
+function ErrorsDashboard({ payload }: { payload: Record<string, unknown> }) {
+  const t = useT();
+  const rows = (Array.isArray(payload.errors) ? payload.errors : []) as Array<
+    Record<string, unknown>
+  >;
+  if (rows.length === 0) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        {t("mainPanelTabs.analyticsTab.emptyView")}
+      </p>
+    );
+  }
+  const ranked = [...rows].sort(
+    (a, b) => Number(b.occurrences ?? 0) - Number(a.occurrences ?? 0),
+  );
+  const top = Number(ranked[0]?.occurrences ?? 0) || 1;
+  return (
+    <section className="surface overflow-hidden">
+      <header className="flex items-center gap-2 border-b border-border px-4 py-3">
+        <h3 className="text-sm font-medium text-foreground">
+          {panelTitle("errors", t)}
+        </h3>
+        <span className="ml-auto text-xs text-muted-foreground">
+          {t("mainPanelTabs.analyticsTab.errorsKinds", {
+            n: formatNumber(rows.length),
+          })}
+        </span>
+      </header>
+      <ul className="divide-y divide-border">
+        {ranked.map((r) => {
+          const n = Number(r.occurrences ?? 0);
+          const file = String(r.file ?? "");
+          const line = Number(r.line ?? 0);
+          const stack = String(r.stack ?? "");
+          return (
+            <li key={String(r.fp)} className="flex flex-col gap-2 px-4 py-3">
+              <div className="flex items-start gap-4">
+                <div className="flex min-w-0 flex-1 flex-col gap-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="outline" className="font-mono">
+                      {String(r.type || "Error")}
+                    </Badge>
+                    <span className="font-mono text-2xs text-muted-foreground/70">
+                      {String(r.fp)}
+                    </span>
+                  </div>
+                  <p className="break-words text-sm text-foreground">
+                    {String(r.message || "") ||
+                      t("mainPanelTabs.analyticsTab.errorsNoMessage")}
+                  </p>
+                  {file && (
+                    <p className="truncate font-mono text-xs text-muted-foreground">
+                      {line ? `${file}:${line}` : file}
+                    </p>
+                  )}
+                </div>
+                <div className="flex shrink-0 flex-col items-end gap-0.5 text-right">
+                  <span className="text-lg font-semibold leading-none tabular-nums text-foreground">
+                    {formatNumber(n)}
+                  </span>
+                  <span className="text-2xs text-muted-foreground">
+                    {t(
+                      Number(r.visitors) === 1
+                        ? "mainPanelTabs.analyticsTab.errorsVisitor"
+                        : "mainPanelTabs.analyticsTab.errorsVisitors",
+                      { n: formatNumber(Number(r.visitors ?? 0)) },
+                    )}
+                  </span>
+                  <span className="text-2xs text-muted-foreground">
+                    {bucketLabel(r.last_seen)}
+                  </span>
+                </div>
+              </div>
+              <div className="h-1 overflow-hidden rounded-full bg-muted">
+                <div
+                  className="h-full rounded-full bg-destructive/70"
+                  style={{ width: `${Math.max(2, (n / top) * 100)}%` }}
+                />
+              </div>
+              {stack && (
+                <details className="group">
+                  <summary className="flex w-fit cursor-pointer list-none items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+                    <ChevronRight className="size-3.5 transition-transform group-open:rotate-90" />
+                    {t("mainPanelTabs.analyticsTab.errorsStack")}
+                  </summary>
+                  <pre className="mt-2 max-h-64 overflow-auto rounded-md bg-muted p-3 font-mono text-2xs leading-relaxed text-muted-foreground">
+                    {stack}
+                  </pre>
+                </details>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }
 
@@ -1345,7 +1462,17 @@ function ActiveView({
       </p>
     );
   }
-  if (isLive) return <RealtimeDashboard payload={response.data} />;
+  if (isLive) {
+    return (
+      <RealtimeDashboard
+        payload={response.data}
+        base={base}
+        orgSlug={orgSlug}
+        site={site}
+      />
+    );
+  }
+  if (view === "errors") return <ErrorsDashboard payload={response.data} />;
   if (view === "overview") {
     return (
       <OverviewDashboard
@@ -2184,7 +2311,10 @@ function RegisteredView({
     view?: string;
   };
   const [range, setRange] = useState("24h");
-  const [requested, setRequested] = useState(initialView ?? "overview");
+  // `?view=globe` links predate the map moving into Realtime.
+  const [requested, setRequested] = useState(
+    initialView === "globe" ? "live" : (initialView ?? "overview"),
+  );
   const [configOpen, setConfigOpen] = useState(false);
   const cfg = status.config ?? {};
   const enabled = cfg.enabled !== false;
@@ -2194,10 +2324,10 @@ function RegisteredView({
   const views = gateViews(DATA_VIEWS, modules);
   const active = pickView(requested, views);
   const isLive = active === "live";
-  // Heatmap reads daily facts with its own 24h/7d/30d choice; the live map is
+  // Heatmap reads daily facts with its own 24h/7d/30d choice; Realtime is
   // always the last five minutes, so a 30d pill over it would be a control that
   // changes nothing.
-  const ownRange = isLive || active === "heatmap" || active === "globe";
+  const ownRange = isLive || active === "heatmap";
 
   return (
     <div className="flex flex-col gap-5">
@@ -2287,12 +2417,7 @@ function RegisteredView({
         </div>
       </div>
 
-      {active === "globe" ? (
-        // Its own branch, like Heatmap: the generic panel renderer would see
-        // `liveGeo` as just another array of rows and draw a table of cities
-        // where a map belongs.
-        <GlobeView base={base} orgSlug={orgSlug} site={site} />
-      ) : active === "heatmap" ? (
+      {active === "heatmap" ? (
         <HeatmapView
           base={base}
           orgSlug={orgSlug}

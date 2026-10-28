@@ -389,7 +389,6 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.configSectionTitle": "Configuração",
   "mainPanelTabs.analyticsTab.viewOverview": "Visão geral",
   "mainPanelTabs.analyticsTab.viewLive": "Tempo real",
-  "mainPanelTabs.analyticsTab.viewGlobe": "Mapa ao vivo",
   "mainPanelTabs.analyticsTab.viewBehaviour": "Páginas & origens",
   "mainPanelTabs.analyticsTab.viewEvents": "Eventos & props",
   "mainPanelTabs.analyticsTab.viewErrors": "Erros",
@@ -515,6 +514,24 @@ export const mainPanelTabs = {
     "Ver os elementos mais clicados",
   "mainPanelTabs.analyticsTab.heatmap.showReach": "Ver o alcance da rolagem",
   "mainPanelTabs.analyticsTab.heatmap.showSections": "Ver as seções",
+  "mainPanelTabs.analyticsTab.heatmap.rankBy": "Ordenar por",
+  "mainPanelTabs.analyticsTab.heatmap.rankClicks": "Cliques",
+  "mainPanelTabs.analyticsTab.heatmap.rankCtr": "CTR",
+  "mainPanelTabs.analyticsTab.heatmap.topCtr": "Maior taxa de clique",
+  "mainPanelTabs.analyticsTab.heatmap.ctrHint":
+    "Taxa de clique: das visitas em que a seção apareceu na tela, quantas clicaram neste elemento.",
+  "mainPanelTabs.analyticsTab.heatmap.ctrSub": "CTR {pct}",
+  "mainPanelTabs.analyticsTab.heatmap.ctrSeen": "{n} viram a seção",
+  "mainPanelTabs.analyticsTab.heatmap.ctrMinNote":
+    "Só elementos de seções vistas em {n}+ visitas.",
+  "mainPanelTabs.analyticsTab.heatmap.funnelTitle": "Depois do clique",
+  "mainPanelTabs.analyticsTab.heatmap.funnelPage": "Página inteira",
+  "mainPanelTabs.analyticsTab.heatmap.funnelPeople": "{n} pessoas",
+  "mainPanelTabs.analyticsTab.heatmap.funnelVsPage": "página {pct}",
+  "mainPanelTabs.analyticsTab.heatmap.funnel_viewed": "Viu um produto",
+  "mainPanelTabs.analyticsTab.heatmap.funnel_carted": "Adicionou ao carrinho",
+  "mainPanelTabs.analyticsTab.heatmap.funnel_checkout": "Iniciou o checkout",
+  "mainPanelTabs.analyticsTab.heatmap.funnel_bought": "Comprou",
   "mainPanelTabs.analyticsTab.heatmap.topElements": "Elementos mais clicados",
   "mainPanelTabs.analyticsTab.heatmap.topOfType": "Mais cliques: {type}",
   "mainPanelTabs.analyticsTab.heatmap.nElements": "{n} elementos",
@@ -562,16 +579,8 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.globe.conversionPlural": "conversões",
   "mainPanelTabs.analyticsTab.globe.countryLevel":
     "nível de país: sem coordenada de cidade",
-  "mainPanelTabs.analyticsTab.globe.kpiVisitors": "Visitantes agora",
-  "mainPanelTabs.analyticsTab.globe.kpiVisitorsHint":
-    "únicos nos últimos 5 min",
-  "mainPanelTabs.analyticsTab.globe.kpiPlaces": "Lugares",
-  "mainPanelTabs.analyticsTab.globe.kpiPlacesHint": "pontos no mapa",
-  "mainPanelTabs.analyticsTab.globe.kpiApproximate": "Nível de país",
-  "mainPanelTabs.analyticsTab.globe.kpiApproximateHint":
-    "visitantes sem cidade",
-  "mainPanelTabs.analyticsTab.globe.kpiUnplaced": "Sem localização",
-  "mainPanelTabs.analyticsTab.globe.kpiUnplacedHint": "não dá para desenhar",
+  "mainPanelTabs.analyticsTab.globe.caption":
+    "{places} lugares no mapa · {approximate} no nível de país · {unplaced} sem localização",
   "mainPanelTabs.analyticsTab.globe.modeGlobe": "Globo",
   "mainPanelTabs.analyticsTab.globe.modeMap": "Mapa",
   "mainPanelTabs.analyticsTab.globe.loadError":
@@ -608,6 +617,11 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.copy": "Copiar",
   "mainPanelTabs.analyticsTab.copied": "Copiado",
   "mainPanelTabs.analyticsTab.dismiss": "Dispensar",
+  "mainPanelTabs.analyticsTab.errorsKinds": "{n} tipos de erro",
+  "mainPanelTabs.analyticsTab.errorsNoMessage": "(sem mensagem)",
+  "mainPanelTabs.analyticsTab.errorsVisitor": "{n} visitante",
+  "mainPanelTabs.analyticsTab.errorsVisitors": "{n} visitantes",
+  "mainPanelTabs.analyticsTab.errorsStack": "Stack trace",
   "mainPanelTabs.analyticsTab.liveHint": "Ao vivo · atualiza a cada 5s",
   "mainPanelTabs.analyticsTab.installHow":
     "O collector carrega async e nunca bloqueia a página. Um site é identificado pelo host (faturável) ou por um token público (para sites fora do nosso CDN).",
