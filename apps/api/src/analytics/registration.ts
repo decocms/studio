@@ -79,8 +79,19 @@ export async function readAnalyticsRegistration(
   }
 }
 
-/** Register `site` with the collector. Idempotent upstream (a repeat answers
- *  the current config). Throws with the control-plane's reason on failure. */
+/** The control-plane's refusal: `code` is its machine reason (`on_cdn`, `no_domains`). */
+export class AnalyticsRegistrationError extends Error {
+  constructor(
+    message: string,
+    readonly code: string | null,
+  ) {
+    super(message);
+  }
+}
+
+/** Register `site` with the collector by key. On a site already registered by
+ *  host, the control-plane mints it a key under the same id instead, unless the
+ *  collector answers `/_dq/*` on its domain (`on_cdn`). */
 export async function registerAnalyticsSite(
   site: string,
   body: { key: true; domains: string[]; modules: string[] },
@@ -93,11 +104,14 @@ export async function registerAnalyticsSite(
   if (!res.ok) {
     const payload = (await res.json().catch(() => null)) as {
       error?: unknown;
+      message?: unknown;
     } | null;
-    throw new Error(
-      payload?.error
-        ? String(payload.error)
-        : `Analytics registration failed (${res.status})`,
+    const code = typeof payload?.error === "string" ? payload.error : null;
+    throw new AnalyticsRegistrationError(
+      typeof payload?.message === "string"
+        ? payload.message
+        : (code ?? `Analytics registration failed (${res.status})`),
+      code,
     );
   }
 }
