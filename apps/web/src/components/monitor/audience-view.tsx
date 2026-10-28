@@ -280,7 +280,14 @@ function VisitorsChart({
   );
 }
 
-function Ranked({ title, rows }: { title: string; rows: AudienceRow[] }) {
+/** A titled list of rows, busiest first, each with a bar to its share of the top. */
+export function Ranked({
+  title,
+  rows,
+}: {
+  title: string;
+  rows: AudienceRow[];
+}) {
   const t = useT();
   const top = rows.slice(0, 8);
   const max = Math.max(1, ...top.map((r) => r.count));

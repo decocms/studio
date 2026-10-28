@@ -19,7 +19,6 @@
  */
 
 import { useState } from "react";
-import { Page } from "@/components/page";
 import { useQuery } from "@tanstack/react-query";
 import { Globe01 } from "@untitledui/icons";
 import {
@@ -277,7 +276,7 @@ const STATUS_NAMES: Record<string, string> = {
   "503": "503 Service Unavailable",
   "504": "504 Gateway Timeout",
 };
-function statusName(code: string): string {
+export function statusName(code: string): string {
   return STATUS_NAMES[code] ?? code;
 }
 // A stable palette for dimensionless breakdowns (sources / devices).
@@ -323,7 +322,7 @@ export interface TimelinePoint {
   pageviews: number;
   cache_hit_ratio: number;
 }
-interface BreakdownRow {
+export interface BreakdownRow {
   key: string;
   total_requests: number;
   total_bandwidth_bytes: number;
@@ -360,7 +359,7 @@ const REGION_NAMES = (() => {
     return null;
   }
 })();
-function formatCountry(code: string): string {
+export function formatCountry(code: string): string {
   if (!code) return "—";
   const up = code.toUpperCase();
   if (up.length !== 2) return code;
@@ -1835,14 +1834,7 @@ function OrdersSection({
  * today's CDN Monitor for every other one. Nothing shows until main's schema
  * is known, so a v8 site never flashes the CDN view first.
  */
-export function CdnTab({
-  virtualMcpId,
-  performanceOnly = false,
-}: {
-  virtualMcpId: string;
-  /** The Monitor's Desempenho tab: no audience or orders sub-tabs, which it shows elsewhere. */
-  performanceOnly?: boolean;
-}) {
+export function CdnTab({ virtualMcpId }: { virtualMcpId: string }) {
   const t = useT();
   const { org } = useProjectContext();
   const entity = useVirtualMCP(virtualMcpId);
@@ -1855,14 +1847,7 @@ export function CdnTab({
       </div>
     );
   }
-  if (kind === "v7") {
-    return (
-      <CdnMonitor
-        virtualMcpId={virtualMcpId}
-        performanceOnly={performanceOnly}
-      />
-    );
-  }
+  if (kind === "v7") return <CdnMonitor virtualMcpId={virtualMcpId} />;
   // A v8 site reports under the site its token was issued for: the
   // project's own site, never the analytics override a v7 migration uses.
   const site = resolveAgentSiteSlug(entity);
@@ -1885,13 +1870,7 @@ export function CdnTab({
 }
 
 /** Today's CDN + audience Monitor (v7 sites). */
-function CdnMonitor({
-  virtualMcpId,
-  performanceOnly,
-}: {
-  virtualMcpId: string;
-  performanceOnly: boolean;
-}) {
+function CdnMonitor({ virtualMcpId }: { virtualMcpId: string }) {
   const t = useT();
   const { org } = useProjectContext();
   const config = usePublicConfig();
@@ -1930,17 +1909,13 @@ function CdnMonitor({
             id: "performance" as const,
             label: t("mainPanelTabs.cdnTab.performance"),
           },
-          ...(performanceOnly
-            ? []
-            : [
-                {
-                  id: "audience" as const,
-                  label: t("mainPanelTabs.cdnTab.audience"),
-                },
-              ]),
+          {
+            id: "audience" as const,
+            label: t("mainPanelTabs.cdnTab.audience"),
+          },
         ]
       : []),
-    ...(agentStores.length > 0 && !performanceOnly
+    ...(agentStores.length > 0
       ? [{ id: "orders" as const, label: t("orderMonitor.ordersTab") }]
       : []),
   ];
@@ -1959,69 +1934,41 @@ function CdnMonitor({
     );
   }
 
-  const hostnames =
-    hosts.length > 0
-      ? `${hosts[0]}${
-          hosts.length > 1
-            ? ` ${t("mainPanelTabs.cdnTab.moreHostnames").replace(
-                "{count}",
-                String(hosts.length - 1),
-              )}`
-            : ""
-        }`
-      : null;
-  // Inside the Monitor the tab names the screen and the period sits in the top bar.
-  if (performanceOnly && section === "performance") {
-    return (
-      <div className="flex h-full min-h-0 flex-col overflow-auto">
-        <Page.Actions>
-          <RangePicker value={sel} onChange={setSel} />
-        </Page.Actions>
-        <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-4 px-4 pt-6 pb-10 md:px-10">
-          {hostnames && <p className="text-meta">{hostnames}</p>}
-          <PerformanceSection
-            base={base}
-            range={sel.range}
-            rangeExtra={rangeExtra}
-            enabled={enabled}
-          />
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="flex h-full flex-col gap-4 overflow-auto p-4">
       <div>
         <h2 className="text-base font-semibold text-foreground">
           {t("mainPanelTabs.cdnTab.title")}
         </h2>
-        {hostnames && (
-          <p className="font-mono text-xs text-muted-foreground">{hostnames}</p>
+        {hosts.length > 0 && (
+          <p className="font-mono text-xs text-muted-foreground">
+            {hosts[0]}
+            {hosts.length > 1 &&
+              ` ${t("mainPanelTabs.cdnTab.moreHostnames").replace(
+                "{count}",
+                String(hosts.length - 1),
+              )}`}
+          </p>
         )}
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        {sections.length > 1 ? (
-          <div className="flex items-center gap-0.5 rounded-lg border border-border p-0.5">
-            {sections.map((sec) => (
-              <button
-                key={sec.id}
-                type="button"
-                onClick={() => setSection(sec.id)}
-                className={cn(
-                  "rounded-lg px-3 py-1 text-xs font-medium transition-colors",
-                  section === sec.id
-                    ? "bg-muted text-foreground"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {sec.label}
-              </button>
-            ))}
-          </div>
-        ) : (
-          <span />
-        )}
+        <div className="flex items-center gap-0.5 rounded-lg border border-border p-0.5">
+          {sections.map((sec) => (
+            <button
+              key={sec.id}
+              type="button"
+              onClick={() => setSection(sec.id)}
+              className={cn(
+                "rounded-lg px-3 py-1 text-xs font-medium transition-colors",
+                section === sec.id
+                  ? "bg-muted text-foreground"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {sec.label}
+            </button>
+          ))}
+        </div>
         {section !== "orders" && <RangePicker value={sel} onChange={setSel} />}
       </div>
 

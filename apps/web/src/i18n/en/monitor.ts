@@ -58,6 +58,8 @@ export const monitor = {
   "monitor.view.experiments": "Experiments",
   "monitor.audience.glance.visitors": "Visitors today",
   "monitor.audience.glance.pageviews": "Pageviews today",
+  "monitor.performance.overTime": "Requests over time",
+  "monitor.performance.errorShare": "{share} of requests",
   "monitor.audience.range": "Period",
   "monitor.audience.via": "Source: {source}",
   "monitor.audience.source.decoAnalytics": "Deco Analytics",

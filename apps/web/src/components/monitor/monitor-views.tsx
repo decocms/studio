@@ -17,7 +17,6 @@ import { Panel } from "@/components/panel";
 import { useControlPlaneViews } from "@/hooks/use-organization-settings";
 import { usePublicConfig } from "@/hooks/use-public-config";
 import { useT, type TFunction } from "@/i18n/use-t.ts";
-import { CdnTab } from "@/layouts/main-panel-tabs/cdn-tab";
 import { ExperimentsTab } from "@/layouts/main-panel-tabs/experiments-tab";
 import { MetricCard } from "@/layouts/task-board/analytics-sections";
 import {
@@ -27,6 +26,7 @@ import {
 } from "@/sdk";
 import { OrgAudience, ProjectAudience } from "./audience-view";
 import type { Deploy } from "./board";
+import { SitePerformance } from "./performance-view";
 import { DeployTimeline } from "./deploy-timeline";
 import { DeploysTable } from "./deploys-table";
 import {
@@ -266,7 +266,7 @@ export function PerformanceView({
         (config.monitorEnabled === true || config.auth.localMode === true)
       }
       empty="analytics"
-      render={(id) => <CdnTab virtualMcpId={id} performanceOnly />}
+      render={(id) => <SitePerformance projectId={id} />}
       org={(projects) => (
         <OrgAnalytics projects={projects} date={date} onDate={onDate} />
       )}
