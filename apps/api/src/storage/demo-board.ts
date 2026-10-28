@@ -369,18 +369,26 @@ export class DemoBoardStorage {
     };
   }
 
+  /** Read from settings first so an org with the reset off never touches
+   *  the snapshot table on the board's and dispatch's hot paths. */
+  private async resetOn(organizationId: string): Promise<boolean> {
+    const row = await this.db
+      .selectFrom("organization_settings")
+      .select(
+        sql<boolean>`(flags->>'demo_board_reset')::boolean IS TRUE`.as("on"),
+      )
+      .where("organizationId", "=", organizationId)
+      .executeTakeFirst();
+    return row?.on === true;
+  }
+
   /** The org's frozen cards; empty unless it captured one and the reset is on. */
   async frozenItemIds(organizationId: string): Promise<Set<string>> {
+    if (!(await this.resetOn(organizationId))) return new Set();
     const row = await this.db
-      .selectFrom("demo_board_snapshots as d")
-      .innerJoin(
-        "organization_settings as s",
-        "s.organizationId",
-        "d.organization_id",
-      )
-      .select("d.frozen_item_ids")
-      .where("d.organization_id", "=", organizationId)
-      .where(sql<boolean>`(s.flags->>'demo_board_reset')::boolean IS TRUE`)
+      .selectFrom("demo_board_snapshots")
+      .select("frozen_item_ids")
+      .where("organization_id", "=", organizationId)
       .executeTakeFirst();
     return new Set(row ? z.array(z.string()).parse(row.frozen_item_ids) : []);
   }
@@ -390,12 +398,14 @@ export class DemoBoardStorage {
     organizationId: string,
     threadId: string,
   ): Promise<boolean> {
+    const frozen = await this.frozenItemIds(organizationId);
+    if (frozen.size === 0) return false;
     const row = await this.db
       .selectFrom("task_board_item_threads")
       .select("thread_id")
       .where("organization_id", "=", organizationId)
       .where("thread_id", "=", threadId)
-      .where(isFrozenDemoCard("task_board_item_threads.task_board_item_id"))
+      .where("task_board_item_id", "in", [...frozen])
       .executeTakeFirst();
     return !!row;
   }
