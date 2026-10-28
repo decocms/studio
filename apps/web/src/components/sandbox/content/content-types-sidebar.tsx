@@ -1,6 +1,17 @@
+import {
+  ChevronDown,
+  ChevronUp,
+  CornerUpRight,
+  CreditCardSearch,
+  Edit05,
+  File04,
+  Folder,
+  LayoutAlt01,
+} from "@untitledui/icons";
 import { useState } from "react";
-import { cn } from "@decocms/ui/lib/utils.ts";
+import { SearchInput } from "@decocms/ui/components/search-input.tsx";
 import { useT } from "@/i18n/use-t.ts";
+import { CollectionGroupLabel, CollectionRow } from "./collection-row";
 import {
   type ContentEntry,
   type ContentType,
@@ -15,21 +26,6 @@ export type ContentTypesView =
   | { kind: "changes" }
   | { kind: "type"; id: string }
   | { kind: "seo" };
-
-/**
- * One small dot per sidebar group, so a type's family reads at a glance. The
- * theme has no tokens for these hues: they stay mid-tone so they read on
- * both themes (as `GLOBAL_SECTION_ICON_COLOR` does).
- */
-const GROUP_DOT = {
-  pages: "oklch(0.62 0.17 289)",
-  redirects: "oklch(0.64 0.13 245)",
-  singleton: "oklch(0.66 0.09 75)",
-  content: "oklch(0.6 0.1 270)",
-  seo: "oklch(0.65 0 0)",
-} as const;
-
-type DotColor = keyof typeof GROUP_DOT;
 
 /** A type's name in the UI: Studio's own words for the built-ins. */
 export function useTypeLabel(): (
@@ -80,14 +76,15 @@ export function ContentTypesSidebar({
   const activeTypeId = openTypeId || (view.kind === "type" ? view.id : null);
   const isActive = (type: ContentType) => activeTypeId === type.id;
 
-  const row = (type: ContentType, dot: DotColor, singleton = false) => (
-    <TypeRow
+  const row = (type: ContentType, singleton = false) => (
+    <CollectionRow
       key={type.id}
+      icon={singleton ? File04 : iconOf(type)}
       label={label(type)}
-      dot={dot}
       count={singleton ? undefined : type.entries.length}
-      changed={type.changed > 0}
+      mark={type.changed > 0 && <ChangedDot />}
       active={isActive(type)}
+      aria-current={isActive(type) ? "page" : undefined}
       onClick={() => {
         const only = type.entries[0];
         // A deleted one has no editor: its row, with Restore, shows instead.
@@ -106,83 +103,79 @@ export function ContentTypesSidebar({
   const singletons = tree.singletons.filter(matches);
   const showSeo =
     !q || t("siteEditor.contentTypes.seo").toLowerCase().includes(q);
-  const dotOf = (type: ContentType): DotColor =>
+  const iconOf = (type: ContentType) =>
     type.id === tree.pages?.id
-      ? "pages"
+      ? LayoutAlt01
       : type.id === tree.redirects?.id
-        ? "redirects"
-        : "content";
+        ? CornerUpRight
+        : Folder;
+  const changesActive = view.kind === "changes" && !openTypeId;
+  const seoActive = view.kind === "seo" && !openTypeId;
 
   return (
     <nav
       aria-label={t("sandbox.collectionsSidebar.content")}
-      className="w-[232px] shrink-0 border-r flex flex-col min-h-0"
+      className="w-[208px] shrink-0 border-r flex flex-col min-h-0"
     >
-      <div className="px-2.5 pt-3 pb-1 shrink-0">
-        <input
-          type="search"
+      <div className="px-1.5 h-12 flex items-center border-b shrink-0">
+        <SearchInput
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={setQuery}
           placeholder={t("siteEditor.contentTypes.searchContent")}
-          aria-label={t("siteEditor.contentTypes.searchContent")}
-          className="w-full rounded-lg bg-muted/60 px-3 py-1.5 text-[13px] outline-none placeholder:text-muted-foreground"
+          className="w-full"
         />
       </div>
-      <div className="flex-1 min-h-0 overflow-y-auto px-2.5 pb-4 flex flex-col gap-px">
+      <div className="flex-1 min-h-0 overflow-y-auto flex flex-col p-1.5 gap-0.5">
         {tree.changed.length > 0 && (
-          <button
-            type="button"
+          <CollectionRow
+            icon={Edit05}
+            label={t("siteEditor.contentTypes.changesInDraft")}
+            count={tree.changed.length}
+            mark={<ChangedDot />}
+            active={changesActive}
+            aria-current={changesActive ? "page" : undefined}
             onClick={() => onSelect({ kind: "changes" })}
-            className={cn(
-              "mt-1.5 mb-0.5 flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-sm font-medium cursor-pointer",
-              "bg-warning/10 text-warning hover:bg-warning/15",
-              view.kind === "changes" &&
-                !openTypeId &&
-                "ring-1 ring-warning/40",
-            )}
-          >
-            <span className="size-2 shrink-0 rounded-full bg-warning" />
-            <span className="flex-1 truncate">
-              {t("siteEditor.contentTypes.changesInDraft")}
-            </span>
-            <span className="text-xs tabular-nums">{tree.changed.length}</span>
-          </button>
+          />
         )}
 
         {collections.shown.length > 0 && (
           <>
-            <GroupLabel
+            <CollectionGroupLabel
               label={t("siteEditor.contentTypes.group.collections")}
             />
-            {collections.shown.map((type) => row(type, dotOf(type)))}
+            {collections.shown.map((type) => row(type))}
             {!q && (collections.hidden > 0 || showAllTypes) && (
-              <button
-                type="button"
+              <CollectionRow
+                icon={showAllTypes ? ChevronUp : ChevronDown}
+                label={
+                  showAllTypes
+                    ? t("siteEditor.contentTypes.showFewer")
+                    : t("siteEditor.contentTypes.showAll", {
+                        count: tree.collections.length,
+                      })
+                }
+                active={false}
                 onClick={() => setShowAllTypes((v) => !v)}
-                className="px-2.5 py-1 text-left text-xs text-muted-foreground hover:text-foreground cursor-pointer"
-              >
-                {showAllTypes
-                  ? t("siteEditor.contentTypes.showFewer")
-                  : t("siteEditor.contentTypes.showAll", {
-                      count: tree.collections.length,
-                    })}
-              </button>
+              />
             )}
           </>
         )}
 
         {(showSeo || singletons.length > 0) && (
           <>
-            <GroupLabel label={t("siteEditor.contentTypes.group.singletons")} />
+            <CollectionGroupLabel
+              label={t("siteEditor.contentTypes.group.singletons")}
+            />
             {showSeo && (
-              <TypeRow
+              <CollectionRow
+                icon={CreditCardSearch}
                 label={t("siteEditor.contentTypes.seo")}
-                dot="seo"
-                active={view.kind === "seo" && !openTypeId}
+                active={seoActive}
+                aria-current={seoActive ? "page" : undefined}
                 onClick={() => onSelect({ kind: "seo" })}
               />
             )}
-            {singletons.map((type) => row(type, "singleton", true))}
+            {singletons.map((type) => row(type, true))}
           </>
         )}
       </div>
@@ -190,58 +183,13 @@ export function ContentTypesSidebar({
   );
 }
 
-function GroupLabel({ label }: { label: string }) {
-  return (
-    <div className="px-2.5 pt-4 pb-1 text-xs text-muted-foreground/70">
-      {label}
-    </div>
-  );
-}
-
-function TypeRow({
-  label,
-  dot,
-  count,
-  changed,
-  active,
-  onClick,
-}: {
-  label: string;
-  dot: DotColor;
-  count?: number;
-  changed?: boolean;
-  active: boolean;
-  onClick: () => void;
-}) {
+/** "Has changes in the draft", as Studio's sidebar marks a project waiting. */
+function ChangedDot() {
   const t = useT();
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-current={active ? "page" : undefined}
-      className={cn(
-        "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-sm transition-colors cursor-pointer",
-        active
-          ? "bg-accent text-accent-foreground font-medium"
-          : "text-foreground/80 hover:bg-accent hover:text-foreground",
-      )}
-    >
-      <span
-        className="size-2 shrink-0 rounded-full"
-        style={{ background: GROUP_DOT[dot] }}
-      />
-      <span className="flex-1 truncate">{label}</span>
-      {changed && (
-        <span
-          title={t("siteEditor.contentTypes.status.changed")}
-          className="size-1.5 shrink-0 rounded-full bg-warning"
-        />
-      )}
-      {count !== undefined && (
-        <span className="shrink-0 text-xs font-normal tabular-nums text-muted-foreground/70">
-          {count}
-        </span>
-      )}
-    </button>
+    <span
+      title={t("siteEditor.contentTypes.status.changed")}
+      className="size-2 shrink-0 rounded-full bg-warning"
+    />
   );
 }
