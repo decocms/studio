@@ -29,22 +29,37 @@ reads each one as a field.
 | Políticas comerciais / Commercial policies | Shipping, returns, payment, as customers see them | `- **Policy** — what it promises` |
 | Formatos / Formats | The shapes of blog post it publishes | One `### Name` per format, with its brief |
 
-Frontmatter: keep `name` and `description`, and set `site:` (the store's
+Frontmatter: keep `name`, write `description` — the brand's one-line pitch,
+in its own words — when it is missing, and set `site:` (the store's
 public address, origin only) and `language:` (a BCP-47 tag such as `pt-BR`)
 when you know them. The blog needs both.
 
 ## Evidence, in order of trust
 
-1. **The site's own copy.** Fetch the home page, the about or institutional
-   pages ("sobre", "quem somos", "about"), two or three category pages and up
-   to five blog posts. Keep the visible prose and each page's SEO: `<title>`,
-   meta description and Open Graph tags. Save what you fetch, so you can quote
-   from it and check quotes against it.
-2. **The store's systems, read-only.** If the organization has a VTEX
+1. **The site's own content, in its repository.** The storefront's CMS keeps
+   every page, section and blog post as JSON blocks in the repository, under
+   `.deco/blocks/` (or `<app>/.deco/blocks/` in a monorepo). That is the
+   brand's own copy, readable even when the live site blocks bots.
+   - Call `TASK_ADD_REPO` with no arguments to list the organization's
+     repositories, pick the storefront (its name usually matches the brand or
+     the site), and call it again with that id to clone it.
+   - Read the blocks' prose: string values with spaces in them. Skip URLs,
+     image and data addresses, ids, and anything under `__resolveType`; keep
+     the prop name, it says what the text is (a title, a description, a CTA).
+   - Read breadth first, by page role: blog posts (`blog-manager/posts/…`,
+     `collections/blog/posts/…`), then the home page, institutional pages
+     (about, "sobre", "quem somos"), category and product pages.
+   - SEO lives in the blocks too: the site's default SEO and each page's `seo`
+     prop (title and description) are the brand's one-line pitch.
+   - Write what you read to a file, so quotes can be checked against it.
+2. **The live site, when it answers.** Fetch the same pages for what the
+   blocks do not hold. If the site refuses automated requests (a Cloudflare
+   challenge, 403), move on: do not try to get around the block.
+3. **The store's systems, read-only.** If the organization has a VTEX
    connection, its categories and top searches say what is sold and what is
    searched — the best source for keywords. If it has GA4, its top pages and
    search terms say what readers come for.
-3. **The web, for two sections only.** Competitors and special dates are what
+4. **The web, for two sections only.** Competitors and special dates are what
    a site never states about itself. Search the brand's own market, in its
    language, and keep the URL behind every claim. Nothing else comes from the
    web.

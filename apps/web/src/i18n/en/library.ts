@@ -38,9 +38,13 @@ export const library = {
   "library.context.sitePlaceholder": "https://www.your-store.com",
   "library.context.languagePlaceholder": "en-US",
   "library.context.fillBrandPrompt":
-    "Use the brand skill and follow its fill.md to fill our brand guide at {path} from our site, {site}. Fill only the sections that are still empty, including the post formats, and keep everything already written exactly as it is.",
+    "Use the brand skill and follow its fill.md to fill our brand guide at {path} from our site, {site}, and its repository. Fill only the sections that are still empty, including the post formats, and keep everything already written exactly as it is.",
+  "library.context.fillBrandReplacePrompt":
+    "Use the brand skill and follow its fill.md in replace mode to rewrite our brand guide at {path} from our site, {site}, and its repository. Rewrite every section you find evidence for, including the post formats; never blank a section you found nothing for.",
+  "library.context.fillModeEmpty": "Fill only what is empty",
+  "library.context.fillModeReplace": "Replace with what the site says",
   "library.context.fillSectionPrompt":
-    'Use the brand skill and follow its fill.md to fill the "{section}" section of our brand guide at {path} from our site, {site}. Leave everything else as it is.',
+    'Use the brand skill and follow its fill.md to fill the "{section}" section of our brand guide at {path} from our site, {site}, and its repository. Leave everything else as it is.',
   "library.context.siteUnknown":
     "whose address you can find from our VTEX connection or the brand's name",
   "library.context.thisProject": "This project",

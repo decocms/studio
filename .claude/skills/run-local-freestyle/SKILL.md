@@ -25,15 +25,34 @@ URL=$(curl -s localhost:4040/api/tunnels | grep -o '"public_url":"https[^"]*' | 
 
 ## 2. Start Studio
 
+`bun run dev` is `docker compose up --build --watch`, and compose passes no host
+environment into the containers. Put the tunnel settings in an override file
+outside the repository (here `$TMPDIR`); compose fills `${FREESTYLE_API_KEY}`
+from the repo-root `.env`, so the key never lands in the file:
+
 ```bash
-KUBECONFIG=/dev/null \
-STUDIO_AGENT_SANDBOX_ENABLED=true \
-STUDIO_SANDBOX_FREESTYLE_SHARE=1 \
-STUDIO_PUBLIC_URL=$URL MESH_PUBLIC_URL=$URL \
-__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS=.ngrok-free.app \
-bun run dev --base-url $URL --no-tui
+cat > $TMPDIR/compose.freestyle.yaml <<EOF
+services:
+  api:
+    environment:
+      BASE_URL: $URL
+      BETTER_AUTH_URL: $URL
+      STUDIO_PUBLIC_URL: $URL
+      MESH_PUBLIC_URL: $URL
+      KUBECONFIG: /dev/null
+      STUDIO_AGENT_SANDBOX_ENABLED: "true"
+      STUDIO_SANDBOX_FREESTYLE_SHARE: "1"
+      FREESTYLE_API_KEY: \${FREESTYLE_API_KEY}
+  web:
+    environment:
+      __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS: .${URL#*.}
+EOF
+docker compose -f compose.yaml -f $TMPDIR/compose.freestyle.yaml build api
+docker compose -f compose.yaml -f $TMPDIR/compose.freestyle.yaml up --watch
 ```
 
+- Build once before `up`. `api`, `web` and `migrate` share one image tag, and building them in parallel fails with `image "studio-dev:<project>" already exists`.
+- The allowed host is the tunnel's parent domain: ngrok's free URLs are `*.ngrok-free.dev` (older accounts get `*.ngrok-free.app`).
 - Always set `KUBECONFIG=/dev/null`. Without it the Kubernetes provider is built from your default context, and a Freestyle fallback could provision there.
 - Always override `STUDIO_PUBLIC_URL` and `MESH_PUBLIC_URL`. A stale value in `.env` wins over `BASE_URL` for minted MCP URLs, and runs fail with `studio MCP is unusable`.
 - Open `$URL` in the browser and log in there, not on `localhost`. Click through ngrok's one-time warning page.
@@ -90,4 +109,4 @@ Turn on **Settings → General → Code Agents → "Run every chat with Claude C
 
 ## Clean up
 
-Stop `bun run dev` and ngrok. Freestyle VMs pause after 5 minutes idle and are deleted after a day; `ttl.sh` images expire with their tag.
+Stop compose (`docker compose -f compose.yaml -f $TMPDIR/compose.freestyle.yaml down`) and ngrok. Freestyle VMs pause after 5 minutes idle and are deleted after a day; `ttl.sh` images expire with their tag.

@@ -31,6 +31,12 @@ import {
 } from "@untitledui/icons";
 import { HOME_MOUNT_PATH } from "@decocms/shared/organization/home-mount";
 import { Button } from "@decocms/ui/components/button.tsx";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@decocms/ui/components/dropdown-menu.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
@@ -124,6 +130,21 @@ const ITEMS = {
   BrandItemId,
   { labelKey: TranslationKey; Icon: Icon }
 >;
+
+/** How a fill treats what is already written; "only empty" never touches it. */
+const FILL_MODES = [
+  {
+    promptKey: "library.context.fillBrandPrompt",
+    labelKey: "library.context.fillModeEmpty",
+  },
+  {
+    promptKey: "library.context.fillBrandReplacePrompt",
+    labelKey: "library.context.fillModeReplace",
+  },
+] as const satisfies readonly {
+  promptKey: TranslationKey;
+  labelKey: TranslationKey;
+}[];
 
 /** The frontmatter keys the blog reads that the page edits. */
 const META_KEYS = ["site", "language"] as const;
@@ -286,7 +307,8 @@ function BrandDetail({ brand }: { brand: OrgFsEntry }) {
   const setMeta = (key: string, value: string) =>
     setDraft((d) => d && { ...d, meta: { ...d.meta, [key]: value } });
   const name = md.name ?? titleCase(basename(brand.path));
-  const quote = brandQuote(md.body) ?? md.description;
+  /** The brand's own line: its quote, else the description it gave itself — never a section's text. */
+  const quote = brandQuote(md.body) ?? (frontmatter.description || null);
   const { doLine, dontLine } = brandDoDont(md.body);
   const { groups, more } = groupBrandSections(brandSections(md.body));
   const guidePath = `${HOME_MOUNT_PATH}/${brand.path}/brand.md`;
@@ -501,20 +523,27 @@ function BrandDetail({ brand }: { brand: OrgFsEntry }) {
           </>
         ) : (
           <>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() =>
-                ask(
-                  t("library.context.fillBrandPrompt", {
-                    path: guidePath,
-                    site: siteForPrompt,
-                  }),
-                )
-              }
-            >
-              {t("library.context.fillFromSite")}
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="secondary" size="sm">
+                  {t("library.context.fillFromSite")}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {FILL_MODES.map(({ promptKey, labelKey }) => (
+                  <DropdownMenuItem
+                    key={promptKey}
+                    onSelect={() =>
+                      ask(
+                        t(promptKey, { path: guidePath, site: siteForPrompt }),
+                      )
+                    }
+                  >
+                    {t(labelKey)}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Button size="sm" disabled={!loaded} onClick={startEditing}>
               {t("library.context.editBrand")}
             </Button>
