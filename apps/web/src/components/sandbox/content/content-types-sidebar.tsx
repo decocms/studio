@@ -26,6 +26,7 @@ const GROUP_DOT = {
   redirects: "oklch(0.64 0.13 245)",
   singleton: "oklch(0.66 0.09 75)",
   content: "oklch(0.6 0.1 270)",
+  settings: "oklch(0.65 0 0)",
   seo: "oklch(0.65 0 0)",
 } as const;
 
@@ -41,7 +42,9 @@ export function useTypeLabel(): (
       ? t("siteEditor.contentTypes.pages")
       : type.id === "redirect"
         ? t("siteEditor.contentTypes.redirects")
-        : type.title;
+        : type.id === "cms-settings"
+          ? t("siteEditor.contentTypes.settings")
+          : type.title;
 }
 
 /**
@@ -49,8 +52,7 @@ export function useTypeLabel(): (
  * saved blocks of, as a generic CMS lists them. Collections: Pages and
  * Redirects, then every type with several entries, busiest first, the top
  * few until "Show all". Singletons: SEO, then every type with one entry
- * (Header, Footer), which opens that entry directly. The CMS settings are
- * never listed: they're configuration, not content.
+ * (Header, Footer, Settings), which opens that entry directly.
  */
 export function ContentTypesSidebar({
   tree,
@@ -84,7 +86,8 @@ export function ContentTypesSidebar({
     <TypeRow
       key={type.id}
       label={label(type)}
-      dot={dot}
+      // Settings is the site's, not a part of its pages.
+      dot={type.id === "cms-settings" ? "settings" : dot}
       count={singleton ? undefined : type.entries.length}
       changed={type.changed > 0}
       active={isActive(type)}

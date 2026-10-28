@@ -47,6 +47,7 @@ export const siteEditor = {
   "siteEditor.contentTypes.group.singletons": "Singletons",
   "siteEditor.contentTypes.pages": "Pages",
   "siteEditor.contentTypes.redirects": "Redirects",
+  "siteEditor.contentTypes.settings": "Settings",
   "siteEditor.contentTypes.seo": "SEO",
   "siteEditor.contentTypes.showAll": "Show all {count}",
   "siteEditor.contentTypes.showFewer": "Show fewer",
