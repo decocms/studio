@@ -29,6 +29,8 @@ export interface CollectionTableProps<T = Record<string, unknown>> {
   onSort?: (key: string) => void;
   onRowClick?: (row: T) => void;
   rowClassName?: (row: T) => string | undefined;
+  /** Whether a row opens on click; one that doesn't is neither focusable nor highlighted. */
+  isRowClickable?: (row: T) => boolean;
 }
 
 export function CollectionTable<T = Record<string, unknown>>({
@@ -39,6 +41,7 @@ export function CollectionTable<T = Record<string, unknown>>({
   onSort,
   onRowClick,
   rowClassName,
+  isRowClickable,
 }: CollectionTableProps<T>) {
   function renderSortIcon(_key: string, isActive: boolean) {
     return (
@@ -118,25 +121,29 @@ export function CollectionTable<T = Record<string, unknown>>({
       <TableBody>
         {data.map((row, i) => {
           const extraClasses = rowClassName?.(row);
+          const clickable = isRowClickable?.(row) ?? true;
+          const onClick =
+            onRowClick && clickable ? () => onRowClick(row) : undefined;
 
           return (
             <TableRow
               key={i}
               data-row-index={i}
               className={cn(
-                "group/data-row transition-colors border-b-0 hover:bg-accent",
-                onRowClick ? "cursor-pointer" : "",
+                "group/data-row transition-colors border-b-0",
+                clickable && "hover:bg-accent",
+                onClick ? "cursor-pointer" : "",
                 extraClasses,
               )}
-              role={onRowClick ? "button" : undefined}
-              tabIndex={onRowClick ? 0 : undefined}
-              onClick={onRowClick ? () => onRowClick(row) : undefined}
+              role={onClick ? "button" : undefined}
+              tabIndex={onClick ? 0 : undefined}
+              onClick={onClick}
               onKeyDown={
-                onRowClick
+                onClick
                   ? (e) => {
                       if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault();
-                        onRowClick(row);
+                        onClick();
                       }
                     }
                   : undefined

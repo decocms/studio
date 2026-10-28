@@ -80,6 +80,13 @@ describe("ContentTypesTable", () => {
     expect(onRestore.mock.calls.map(([e]) => e.key)).toEqual(["Gone"]);
   });
 
+  test("a deleted row isn't a button and takes no focus", () => {
+    const { row } = setup();
+    expect(row("Gone").getAttribute("role")).toBeNull();
+    expect(row("Gone").hasAttribute("tabindex")).toBe(false);
+    expect(row("Home").getAttribute("role")).toBe("button");
+  });
+
   test("Changed lists only what the draft changes", () => {
     const { view } = setup();
     fireEvent.click(view.getByRole("radio", { name: /Changed/ }));

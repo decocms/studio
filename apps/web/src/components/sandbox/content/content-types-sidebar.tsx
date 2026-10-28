@@ -7,9 +7,9 @@ import {
   File04,
   Folder,
   LayoutAlt01,
+  SearchLg,
 } from "@untitledui/icons";
 import { useState } from "react";
-import { SearchInput } from "@decocms/ui/components/search-input.tsx";
 import { useT } from "@/i18n/use-t.ts";
 import { CollectionGroupLabel, CollectionRow } from "./collection-row";
 import {
@@ -117,12 +117,20 @@ export function ContentTypesSidebar({
       aria-label={t("sandbox.collectionsSidebar.content")}
       className="w-[208px] shrink-0 border-r flex flex-col min-h-0"
     >
-      <div className="px-1.5 h-12 flex items-center border-b shrink-0">
-        <SearchInput
+      {/* The search sits in the header row, as the Content tab's lists have it. */}
+      <div className="px-2 h-12 flex items-center gap-2 border-b shrink-0">
+        <SearchLg
+          size={14}
+          className="ml-1 shrink-0 text-muted-foreground"
+          aria-hidden
+        />
+        <input
+          type="text"
           value={query}
-          onChange={setQuery}
+          onChange={(e) => setQuery(e.target.value)}
           placeholder={t("siteEditor.contentTypes.searchContent")}
-          className="w-full"
+          aria-label={t("siteEditor.contentTypes.searchContent")}
+          className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
         />
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto flex flex-col p-1.5 gap-0.5">

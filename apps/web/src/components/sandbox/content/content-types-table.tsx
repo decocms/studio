@@ -11,7 +11,6 @@ import {
 import { cn } from "@decocms/ui/lib/utils.ts";
 import type { TableColumn } from "@/components/collections/collection-table.tsx";
 import { CollectionTableWrapper } from "@/components/collections/collection-table-wrapper.tsx";
-import { EmptyState } from "@/components/empty-state.tsx";
 import { SITE_DRAFT_VIEW_INSET } from "@/components/site-draft-bar/view-header";
 import { useT } from "@/i18n/use-t.ts";
 import {
@@ -33,6 +32,7 @@ import {
   summaryValue,
 } from "./content-types";
 import { useTypeLabel } from "./content-types-sidebar";
+import { EmptyMessage } from "./empty-message";
 
 type Row = { type: ContentType; entry: ContentEntry };
 
@@ -140,11 +140,11 @@ export function ContentTypesTable({
   const deleted = (row: Row) => row.entry.status === "deleted";
   const opens = (row: Row) => !deleted(row) && !row.entry.orphan;
   /** A row's text, struck through once the draft deletes it. */
-  const text = (row: Row, value: React.ReactNode, mono = false) => (
+  const text = (row: Row, value: React.ReactNode, muted = false) => (
     <span
       className={cn(
-        mono && "font-mono text-muted-foreground",
-        deleted(row) && "line-through text-muted-foreground",
+        (muted || deleted(row)) && "text-muted-foreground",
+        deleted(row) && "line-through",
       )}
     >
       {value}
@@ -159,7 +159,7 @@ export function ContentTypesTable({
       {
         id: "from",
         header: t("siteEditor.contentTypes.column.from"),
-        render: (row) => text(row, redirectOf(row)?.from, true),
+        render: (row) => text(row, redirectOf(row)?.from),
       },
       {
         id: "to",
@@ -261,6 +261,7 @@ export function ContentTypesTable({
   }
 
   // "/" focuses the search, unless the person is typing somewhere else.
+  // A ref callback with cleanup, as the house bans useEffect.
   const searchRef = (box: HTMLDivElement | null) => {
     const input = box?.querySelector("input");
     if (!input) return;
@@ -352,24 +353,22 @@ export function ContentTypesTable({
         )}
       </div>
 
-      <CollectionTableWrapper
-        columns={columns}
-        data={shown}
-        onRowClick={(row) => {
-          if (opens(row)) onOpen(row.type, row.entry);
-        }}
-        rowClassName={(row) => (opens(row) ? undefined : "cursor-default")}
-        emptyState={
-          <EmptyState image={null} title={emptyMessage} description={null} />
-        }
-      />
-      {fold && fold.folded > 0 && (
-        <div className="px-4 py-2">
-          <Button variant="ghost" size="sm" onClick={() => setUnfolded(true)}>
-            {t("siteEditor.contentTypes.folded", { count: fold.folded })}
-          </Button>
-        </div>
-      )}
+      <div className="flex flex-1 flex-col px-4 pb-4">
+        <CollectionTableWrapper
+          columns={columns}
+          data={shown}
+          onRowClick={(row) => onOpen(row.type, row.entry)}
+          isRowClickable={opens}
+          emptyState={<EmptyMessage title={emptyMessage} />}
+        />
+        {fold && fold.folded > 0 && (
+          <div className="py-2">
+            <Button variant="ghost" size="sm" onClick={() => setUnfolded(true)}>
+              {t("siteEditor.contentTypes.folded", { count: fold.folded })}
+            </Button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
