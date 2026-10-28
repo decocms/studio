@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
+import { Settings01 } from "@untitledui/icons";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import {
@@ -14,7 +15,9 @@ import {
 export type ContentTypesView =
   | { kind: "changes" }
   | { kind: "type"; id: string }
-  | { kind: "seo" };
+  | { kind: "seo" }
+  /** The site's CMS settings (telemetry and analytics): their own page. */
+  | { kind: "settings" };
 
 /**
  * One small dot per sidebar group, so a type's family reads at a glance. The
@@ -26,7 +29,6 @@ const GROUP_DOT = {
   redirects: "oklch(0.64 0.13 245)",
   singleton: "oklch(0.66 0.09 75)",
   content: "oklch(0.6 0.1 270)",
-  settings: "oklch(0.65 0 0)",
   seo: "oklch(0.65 0 0)",
 } as const;
 
@@ -52,7 +54,8 @@ export function useTypeLabel(): (
  * saved blocks of, as a generic CMS lists them. Collections: Pages and
  * Redirects, then every type with several entries, busiest first, the top
  * few until "Show all". Singletons: SEO, then every type with one entry
- * (Header, Footer, Settings), which opens that entry directly.
+ * (Header, Footer), which opens that entry directly. The site's Settings
+ * are a part of their own, pinned below the lists.
  */
 export function ContentTypesSidebar({
   tree,
@@ -60,6 +63,7 @@ export function ContentTypesSidebar({
   openTypeId,
   onSelect,
   onOpenEntry,
+  settings,
 }: {
   tree: ContentTypeTree;
   view: ContentTypesView;
@@ -68,6 +72,11 @@ export function ContentTypesSidebar({
   onSelect: (view: ContentTypesView) => void;
   /** A singleton type's row: its one entry's editor. */
   onOpenEntry: (type: ContentType, entry: ContentEntry) => void;
+  /**
+   * The Settings part, when the site's framework has the CMS settings type
+   * (even with no settings saved yet); `changed`: they have a draft change.
+   */
+  settings?: { changed: boolean } | null;
 }) {
   const t = useT();
   const label = useTypeLabel();
@@ -86,8 +95,7 @@ export function ContentTypesSidebar({
     <TypeRow
       key={type.id}
       label={label(type)}
-      // Settings is the site's, not a part of its pages.
-      dot={type.id === "cms-settings" ? "settings" : dot}
+      dot={dot}
       count={singleton ? undefined : type.entries.length}
       changed={type.changed > 0}
       active={isActive(type)}
@@ -189,6 +197,26 @@ export function ContentTypesSidebar({
           </>
         )}
       </div>
+      {settings && (
+        <div
+          className="shrink-0 border-t px-2.5 py-2"
+          data-testid="content-sidebar-settings"
+        >
+          <SidebarRow
+            label={t("siteEditor.contentTypes.settings")}
+            marker={
+              <Settings01
+                size={14}
+                className="shrink-0 text-muted-foreground"
+                aria-hidden
+              />
+            }
+            changed={settings.changed}
+            active={view.kind === "settings" && !openTypeId}
+            onClick={() => onSelect({ kind: "settings" })}
+          />
+        </div>
+      )}
     </nav>
   );
 }
@@ -202,15 +230,33 @@ function GroupLabel({ label }: { label: string }) {
 }
 
 function TypeRow({
-  label,
   dot,
+  ...props
+}: Omit<Parameters<typeof SidebarRow>[0], "marker"> & { dot: DotColor }) {
+  return (
+    <SidebarRow
+      {...props}
+      marker={
+        <span
+          className="size-2 shrink-0 rounded-full"
+          style={{ background: GROUP_DOT[dot] }}
+        />
+      }
+    />
+  );
+}
+
+function SidebarRow({
+  label,
+  marker,
   count,
   changed,
   active,
   onClick,
 }: {
   label: string;
-  dot: DotColor;
+  /** What leads the row: a type's group dot, the Settings gear. */
+  marker: ReactNode;
   count?: number;
   changed?: boolean;
   active: boolean;
@@ -229,10 +275,7 @@ function TypeRow({
           : "text-foreground/80 hover:bg-accent hover:text-foreground",
       )}
     >
-      <span
-        className="size-2 shrink-0 rounded-full"
-        style={{ background: GROUP_DOT[dot] }}
-      />
+      {marker}
       <span className="flex-1 truncate">{label}</span>
       {changed && (
         <span

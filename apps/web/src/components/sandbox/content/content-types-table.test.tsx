@@ -37,6 +37,7 @@ const tree: ContentTypeTree = {
   collections: [pages],
   singletons: [],
   all: [pages],
+  settings: null,
   changed: [],
   statusKnown: true,
 };
