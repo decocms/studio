@@ -6,8 +6,6 @@
  */
 
 import type { ReactNode } from "react";
-import { BarChart10 } from "@untitledui/icons";
-import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import {
   resolveAgentSiteSlug,
   resolveAnalyticsSiteSlug,
@@ -24,7 +22,7 @@ import {
   useProjectContext,
   useVirtualMCPsNonBlocking,
 } from "@/sdk";
-import { OrgAudience, ProjectAudience } from "./audience-view";
+import { AudienceScreen } from "./audience-view";
 import type { Deploy } from "./board";
 import { SitePerformance } from "./performance-view";
 import { DeployTimeline } from "./deploy-timeline";
@@ -167,10 +165,13 @@ function ProjectScreen({
   empty,
   render,
   org,
+  bare = false,
 }: {
   scopeId: string | null;
   /** The org has this screen on at all. */
   enabled: boolean;
+  /** The org view draws its own frame. */
+  bare?: boolean;
   /** Which tab to draw, faded, when there is no site to read. */
   empty: "experiments" | "analytics";
   render: (projectId: string, project: SiteProject | undefined) => ReactNode;
@@ -211,6 +212,7 @@ function ProjectScreen({
       </div>
     );
   }
+  if (!scopeId && bare) return org(projects);
   if (!scopeId) {
     // The board's frame: same width, gutters and rhythm as Metrics.
     return (
@@ -275,25 +277,34 @@ export function PerformanceView({
 }
 
 /** Who visits, from Deco Analytics or OneDollarStats, one shape for both. */
-export function AudienceView({ scopeId }: { scopeId: string | null }) {
-  const t = useT();
+export function AudienceView({
+  scopeId,
+  site,
+  onSite,
+}: {
+  scopeId: string | null;
+  /** The org's site filter, a project id. */
+  site: string | null;
+  onSite: (projectId: string | null) => void;
+}) {
   const views = useControlPlaneViews();
+  const projects = useSiteProjects();
+  const screen = (
+    <AudienceScreen
+      projects={projects}
+      scopeId={scopeId}
+      site={site}
+      onSite={onSite}
+    />
+  );
   return (
     <ProjectScreen
       scopeId={scopeId}
       enabled={views.monitor}
       empty="analytics"
-      render={(_, project) =>
-        project ? (
-          <ProjectAudience project={project} />
-        ) : (
-          <EmptyState
-            icon={<BarChart10 size={20} />}
-            title={t("mainPanelTabs.cdnTab.noSiteTitle")}
-          />
-        )
-      }
-      org={(projects) => <OrgAudience projects={projects} />}
+      render={() => screen}
+      org={() => screen}
+      bare
     />
   );
 }

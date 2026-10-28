@@ -44,6 +44,10 @@ function useMonitorSearch(): MonitorSelection {
         ? search.store
         : undefined,
     at: "at" in search && typeof search.at === "string" ? search.at : undefined,
+    site:
+      "site" in search && typeof search.site === "string"
+        ? search.site
+        : undefined,
   };
 }
 

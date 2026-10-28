@@ -63,6 +63,8 @@ import { useSourceIcons } from "./use-source-icons";
 
 export interface MonitorSelection {
   view?: MonitorView;
+  /** Across the org, the one site the Audience and Performance tabs show. */
+  site?: string;
   /** A past local day, `YYYY-MM-DD`; today when absent. */
   date?: string;
   store?: string;
@@ -322,7 +324,11 @@ export function MonitorPage({
     return (
       <>
         {tabs}
-        <AudienceView scopeId={scopeId} />
+        <AudienceView
+          scopeId={scopeId}
+          site={selection.site ?? null}
+          onSite={(site) => onSelect({ ...selection, site: site ?? undefined })}
+        />
       </>
     );
   }

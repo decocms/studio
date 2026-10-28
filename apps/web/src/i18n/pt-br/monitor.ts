@@ -62,6 +62,10 @@ export const monitor = {
   "monitor.audience.glance.pageviews": "Pageviews hoje",
   "monitor.performance.overTime": "Requisições ao longo do tempo",
   "monitor.performance.errorShare": "{share} das requisições",
+  "monitor.siteFilter.label": "Site",
+  "monitor.siteFilter.all": "Todos os sites",
+  "monitor.audience.org.emptyDesc":
+    "Nenhum destes sites reporta audiência ainda. Abra um site para ativar o Deco Analytics.",
   "monitor.audience.range": "Período",
   "monitor.audience.via": "Fonte: {source}",
   "monitor.audience.source.decoAnalytics": "Deco Analytics",

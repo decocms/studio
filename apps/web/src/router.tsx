@@ -1233,6 +1233,7 @@ const monitoringSearch = z.object({
   date: z.iso.date().optional().catch(undefined),
   store: z.string().optional(),
   at: z.string().optional(),
+  site: z.string().optional(),
 });
 const orgMonitoringRoute = createRoute({
   pendingComponent: ChatLayoutPending,

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  canonicalKey,
   decoBreakdown,
   decoSummary,
   decoTimeline,
@@ -112,7 +113,7 @@ describe("OneDollarStats normalizers", () => {
       dimensions: [`/p${i}`],
       metrics: [i],
     }));
-    const out = oneDollarRows(rows);
+    const out = oneDollarRows("pages", rows);
     expect(out).toHaveLength(50);
     expect(out[0]).toEqual({ key: "/p59", count: 59 });
   });
@@ -173,6 +174,7 @@ describe("Deco Analytics normalizers", () => {
   test("breakdown reads {k, n} rows busiest first and skips bad ones", () => {
     expect(
       decoBreakdown(
+        "sources",
         {
           sources: [
             { k: "google", n: 10 },
@@ -187,6 +189,36 @@ describe("Deco Analytics normalizers", () => {
       { key: "direct", count: 25 },
       { key: "google", count: 10 },
     ]);
-    expect(decoBreakdown({ sources: "nope" }, "sources")).toEqual([]);
+    expect(decoBreakdown("sources", { sources: "nope" }, "sources")).toEqual(
+      [],
+    );
+  });
+});
+
+describe("canonicalKey", () => {
+  test("names a source the same whichever collector reported it", () => {
+    expect(canonicalKey("sources", "Google")).toBe("google");
+    expect(canonicalKey("sources", "instagram.com")).toBe("instagram");
+    expect(canonicalKey("sources", "Direct / None")).toBe("direct");
+    expect(canonicalKey("sources", "www.facebook.com")).toBe("facebook");
+  });
+
+  test("lowercases devices and leaves pages and countries alone", () => {
+    expect(canonicalKey("devices", "Mobile")).toBe("mobile");
+    expect(canonicalKey("pages", "/Sale")).toBe("/Sale");
+    expect(canonicalKey("countries", "Brazil")).toBe("Brazil");
+  });
+
+  test("merges rows that become the same source", () => {
+    expect(
+      oneDollarRows("sources", [
+        { dimensions: ["Google"], metrics: [5] },
+        { dimensions: ["google.com"], metrics: [3] },
+        { dimensions: ["Direct / None"], metrics: [4] },
+      ]),
+    ).toEqual([
+      { key: "google", count: 8 },
+      { key: "direct", count: 4 },
+    ]);
   });
 });

@@ -11,6 +11,7 @@ import { Link } from "@tanstack/react-router";
 import { BarChart10 } from "@untitledui/icons";
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import type {
+  AudiencePoint,
   AudienceRange,
   AudienceResponse,
   AudienceRow,
@@ -37,7 +38,11 @@ import {
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { Page } from "@/components/page";
 import { useT, type TFunction } from "@/i18n/use-t.ts";
-import { fetchJson, formatNumber } from "@/layouts/main-panel-tabs/cdn-tab";
+import {
+  fetchJson,
+  formatCountry,
+  formatNumber,
+} from "@/layouts/main-panel-tabs/cdn-tab";
 import { relativeChange } from "@/layouts/main-panel-tabs/monitor-v8";
 import { AXIS_TICK, MetricCard } from "@/layouts/task-board/analytics-sections";
 import { KEYS } from "@/lib/query-keys";
@@ -119,13 +124,17 @@ function isRange(value: string): value is AudienceRange {
 function RangeAction({
   value,
   onChange,
+  leading,
 }: {
   value: AudienceRange;
   onChange: (range: AudienceRange) => void;
+  /** Drawn before the period, e.g. the org's site filter. */
+  leading?: ReactNode;
 }) {
   const t = useT();
   return (
     <Page.Actions>
+      {leading}
       <Select
         value={value}
         onValueChange={(next) => isRange(next) && onChange(next)}
@@ -334,7 +343,9 @@ function RankedPanel({
   if (query.isLoading) return <Skeleton className="h-64" />;
   const body = query.data;
   const rows =
-    body?.available && "rows" in body.data ? [...body.data.rows] : [];
+    body?.available && "rows" in body.data
+      ? body.data.rows.map((r) => ({ ...r, key: displayKey(view, r.key) }))
+      : [];
   return <Ranked title={title} rows={rows} />;
 }
 
@@ -348,18 +359,73 @@ function Frame({ children }: { children: ReactNode }) {
   );
 }
 
-/** One project's audience. */
-export function ProjectAudience({ project }: { project: SiteProject }) {
+type Breakdown = "sources" | "countries" | "devices";
+
+/** A breakdown key as a reader wants it: country codes as names, sources capitalized. */
+function displayKey(view: AudienceView, key: string): string {
+  if (view === "countries") return key.length === 2 ? formatCountry(key) : key;
+  if (view === "sources" || view === "devices") {
+    return key.charAt(0).toUpperCase() + key.slice(1);
+  }
+  return key;
+}
+
+/** The org's site filter: every site at once, or one of them in full. */
+function SiteFilter({
+  projects,
+  value,
+  onChange,
+}: {
+  projects: readonly SiteProject[];
+  value: string | null;
+  onChange: (projectId: string | null) => void;
+}) {
+  const t = useT();
+  return (
+    <Select
+      value={value ?? ALL_SITES}
+      onValueChange={(next) => onChange(next === ALL_SITES ? null : next)}
+    >
+      <SelectTrigger size="sm" aria-label={t("monitor.siteFilter.label")}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent align="end">
+        <SelectItem value={ALL_SITES}>{t("monitor.siteFilter.all")}</SelectItem>
+        {projects.map((p) => (
+          <SelectItem key={p.id} value={p.id}>
+            {p.title}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+const ALL_SITES = "__all";
+
+/** One project's audience, in full. */
+function ProjectAudience({
+  project,
+  range,
+  onRange,
+  filter,
+}: {
+  project: SiteProject;
+  range: AudienceRange;
+  onRange: (range: AudienceRange) => void;
+  filter?: ReactNode;
+}) {
   const t = useT();
   const { org } = useProjectContext();
-  const [range, setRange] = useState<AudienceRange>("7d");
   const summary = useAudience(org.slug, project, "summary", range);
   const timeline = useAudience(org.slug, project, "timeline", range);
-  const action = <RangeAction value={range} onChange={setRange} />;
+  const action = (
+    <RangeAction value={range} onChange={onRange} leading={filter} />
+  );
 
   if (summary.isLoading) {
     return (
-      <Frame>
+      <>
         {action}
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           {[0, 1, 2, 3].map((i) => (
@@ -367,25 +433,26 @@ export function ProjectAudience({ project }: { project: SiteProject }) {
           ))}
         </div>
         <Skeleton className="h-64" />
-      </Frame>
+      </>
     );
   }
   if (summary.error) {
     return (
-      <Frame>
+      <>
         {action}
         <EmptyState
           icon={<BarChart10 size={20} />}
           title={t("monitor.audience.error")}
           description={summary.error.message}
         />
-      </Frame>
+      </>
     );
   }
   const body = summary.data;
   if (!body?.available) {
     return (
-      <Frame>
+      <>
+        {filter && <Page.Actions>{filter}</Page.Actions>}
         <EmptyState
           icon={<BarChart10 size={20} />}
           title={t("monitor.audience.empty.title")}
@@ -398,7 +465,7 @@ export function ProjectAudience({ project }: { project: SiteProject }) {
             </Button>
           }
         />
-      </Frame>
+      </>
     );
   }
 
@@ -417,7 +484,7 @@ export function ProjectAudience({ project }: { project: SiteProject }) {
   ].filter(Boolean);
 
   return (
-    <Frame>
+    <>
       {action}
       {body.data.view === "summary" && (
         <div className="flex flex-col gap-2">
@@ -463,72 +530,286 @@ export function ProjectAudience({ project }: { project: SiteProject }) {
           title={t("monitor.audience.devices")}
         />
       </div>
-    </Frame>
+    </>
   );
 }
 
+const SITE_COLORS = [
+  "var(--chart-1)",
+  "var(--chart-2)",
+  "var(--chart-3)",
+  "var(--chart-4)",
+  "var(--chart-5)",
+];
+
+/** One chart bucket key per range, whichever source labelled it. */
+function bucketKey(t: string, range: AudienceRange): string {
+  return range === "24h" ? t.slice(0, 13) : t.slice(0, 10);
+}
+
+/** Visitors over time, one stacked band per site: the total and who brought it. */
+function StackedVisitors({
+  sites,
+  range,
+}: {
+  sites: { project: SiteProject; points: AudiencePoint[] }[];
+  range: AudienceRange;
+}) {
+  const t = useT();
+  const buckets = new Map<string, Record<string, number | string>>();
+  for (const { project, points } of sites) {
+    for (const p of points) {
+      const key = bucketKey(p.t, range);
+      const row = buckets.get(key) ?? { t: key };
+      row[project.id] = (Number(row[project.id]) || 0) + p.visitors;
+      buckets.set(key, row);
+    }
+  }
+  const data = [...buckets.values()].sort((a, b) =>
+    String(a.t).localeCompare(String(b.t)),
+  );
+  const color = (i: number) => SITE_COLORS[i % SITE_COLORS.length];
+  return (
+    <MetricCard title={t("monitor.audience.overTime")}>
+      <div className="flex flex-col gap-3">
+        <ul className="flex flex-wrap gap-x-5 gap-y-1">
+          {sites.map(({ project }, i) => (
+            <li key={project.id} className="flex items-center gap-2 text-sm">
+              <span
+                className="size-2 rounded-full"
+                style={{ backgroundColor: color(i) }}
+              />
+              {project.title}
+            </li>
+          ))}
+        </ul>
+        <ChartContainer
+          config={Object.fromEntries(
+            sites.map(({ project }, i) => [
+              project.id,
+              { label: project.title, color: color(i) },
+            ]),
+          )}
+          className="h-[170px] w-full"
+        >
+          <AreaChart data={data} margin={{ left: 0, right: 0, top: 4 }}>
+            <CartesianGrid
+              strokeDasharray="4 4"
+              stroke="var(--border)"
+              strokeOpacity={0.5}
+              vertical={false}
+            />
+            <XAxis
+              dataKey="t"
+              axisLine={false}
+              tickLine={false}
+              tick={AXIS_TICK}
+              tickMargin={8}
+              minTickGap={32}
+              tickFormatter={(v: string) =>
+                v.length > 10 ? `${v.slice(11, 13)}:00` : v.slice(5)
+              }
+            />
+            <YAxis
+              orientation="right"
+              axisLine={false}
+              tickLine={false}
+              tick={AXIS_TICK}
+              width={44}
+              tickCount={4}
+              allowDecimals={false}
+              tickFormatter={(v: number) => formatNumber(v)}
+            />
+            <ChartTooltip content={<ChartTooltipContent />} />
+            {sites.map(({ project }, i) => (
+              <Area
+                key={project.id}
+                dataKey={project.id}
+                stackId="sites"
+                type="monotone"
+                fill={color(i)}
+                fillOpacity={0.2}
+                stroke={color(i)}
+                strokeWidth={1.5}
+                isAnimationActive={false}
+              />
+            ))}
+          </AreaChart>
+        </ChartContainer>
+      </div>
+    </MetricCard>
+  );
+}
+
+/** One audience view for every site in the org. */
+function useEverySite(
+  orgSlug: string,
+  projects: readonly SiteProject[],
+  view: AudienceView,
+  range: AudienceRange,
+) {
+  return useQueries({
+    queries: projects.map((p) => audienceQuery(orgSlug, p, view, range)),
+  });
+}
+
+const BREAKDOWN_TITLE = {
+  sources: "monitor.audience.sources",
+  countries: "monitor.audience.countries",
+  devices: "monitor.audience.devices",
+} as const;
+
+/** Rows of one breakdown summed across sites under their display name. */
+function sumRows(
+  view: Breakdown,
+  answers: (AudienceResponse | undefined)[],
+): AudienceRow[] {
+  const merged = new Map<string, number>();
+  for (const a of answers) {
+    if (!a?.available || !("rows" in a.data)) continue;
+    for (const r of a.data.rows) {
+      const key = displayKey(view, r.key);
+      merged.set(key, (merged.get(key) ?? 0) + r.count);
+    }
+  }
+  return [...merged]
+    .map(([key, count]) => ({ key, count }))
+    .sort((a, b) => b.count - a.count);
+}
+
 /**
- * Every site project at once. Visitors from different sources don't add up,
- * so only pageviews are totalled; each site keeps its own row and source.
+ * Every site at once. What adds up across sites is summed (pageviews,
+ * visitors, where they come from); what doesn't (bounce, visit length, top
+ * pages) stays per site, in the table, one click from that site in full.
  */
-export function OrgAudience({
+function OrgAudience({
   projects,
+  range,
+  onRange,
+  filter,
+  onSite,
 }: {
   projects: readonly SiteProject[];
+  range: AudienceRange;
+  onRange: (range: AudienceRange) => void;
+  filter: ReactNode;
+  onSite: (projectId: string) => void;
 }) {
   const t = useT();
   const { org } = useProjectContext();
-  const [range, setRange] = useState<AudienceRange>("7d");
-  const results = useQueries({
-    queries: projects.map((p) => audienceQuery(org.slug, p, "summary", range)),
-  });
+  const summaries = useEverySite(org.slug, projects, "summary", range);
+  const timelines = useEverySite(org.slug, projects, "timeline", range);
+  const breakdowns: Record<Breakdown, ReturnType<typeof useEverySite>> = {
+    sources: useEverySite(org.slug, projects, "sources", range),
+    countries: useEverySite(org.slug, projects, "countries", range),
+    devices: useEverySite(org.slug, projects, "devices", range),
+  };
+
   const rows = projects
     .map((project, i) => {
-      const data = results[i]?.data;
+      const data = summaries[i]?.data;
       return {
         project,
-        loading: results[i]?.isLoading ?? false,
+        loading: summaries[i]?.isLoading ?? false,
         data,
         summary:
-          data?.available && data.data.view === "summary"
-            ? data.data.summary
-            : null,
+          data?.available && data.data.view === "summary" ? data.data : null,
       };
     })
     .sort(
-      (a, b) => (b.summary?.pageviews ?? -1) - (a.summary?.pageviews ?? -1),
+      (a, b) =>
+        (b.summary?.summary.visitors ?? -1) -
+        (a.summary?.summary.visitors ?? -1),
     );
   const reporting = rows.filter((r) => r.summary);
-  const pageviews = reporting.reduce(
-    (sum, r) => sum + (r.summary?.pageviews ?? 0),
-    0,
-  );
+  const total = (pick: (s: AudienceSummary) => number) =>
+    reporting.reduce(
+      (n, r) => n + (r.summary ? pick(r.summary.summary) : 0),
+      0,
+    );
+  // A total compares only when every site reporting has a previous window.
+  const previous = reporting.every((r) => r.summary?.previous)
+    ? (pick: (s: AudienceSummary) => number) =>
+        reporting.reduce(
+          (n, r) => n + (r.summary?.previous ? pick(r.summary.previous) : 0),
+          0,
+        )
+    : null;
   const loading = rows.some((r) => r.loading);
+  const sites = projects.flatMap((project, i) => {
+    const d = timelines[i]?.data;
+    return d?.available && d.data.view === "timeline"
+      ? [{ project, points: d.data.points }]
+      : [];
+  });
+  const action = (
+    <RangeAction value={range} onChange={onRange} leading={filter} />
+  );
+
+  if (!loading && reporting.length === 0) {
+    return (
+      <>
+        {action}
+        <EmptyState
+          icon={<BarChart10 size={20} />}
+          title={t("monitor.audience.empty.title")}
+          description={t("monitor.audience.org.emptyDesc")}
+        />
+      </>
+    );
+  }
+
+  const card = (title: string, pick: (s: AudienceSummary) => number) => (
+    <MetricCard
+      title={title}
+      value={
+        loading && reporting.length === 0 ? (
+          <Skeleton className="h-9 w-24" />
+        ) : (
+          formatNumber(total(pick))
+        )
+      }
+      caption={
+        previous && (
+          <Trend
+            change={delta(total(pick), previous(pick))}
+            better="up"
+            reference=""
+          />
+        )
+      }
+    />
+  );
 
   return (
-    <div className="flex flex-col gap-4">
-      <RangeAction value={range} onChange={setRange} />
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <MetricCard
-          title={t("monitor.audience.org.pageviews")}
-          value={
-            loading && reporting.length === 0 ? (
-              <Skeleton className="h-9 w-24" />
-            ) : (
-              formatNumber(pageviews)
-            )
-          }
-          caption={
-            loading ? undefined : (
-              <span className="text-meta">
-                {t("monitor.audience.org.sites", {
-                  count: String(reporting.length),
-                  total: String(projects.length),
-                })}
-              </span>
-            )
-          }
-        />
+    <>
+      {action}
+      <div className="flex flex-col gap-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {card(t("monitor.audience.visitors"), (s) => s.visitors)}
+          {card(t("monitor.audience.pageviews"), (s) => s.pageviews)}
+        </div>
+        {!loading && (
+          <p className="text-meta">
+            {t("monitor.audience.org.sites", {
+              count: String(reporting.length),
+              total: String(projects.length),
+            })}
+          </p>
+        )}
+      </div>
+      {sites.length > 0 && <StackedVisitors sites={sites} range={range} />}
+      <div className="grid gap-4 md:grid-cols-3">
+        {(["sources", "countries", "devices"] as const).map((view) => (
+          <Ranked
+            key={view}
+            title={t(BREAKDOWN_TITLE[view])}
+            rows={sumRows(
+              view,
+              breakdowns[view].map((q) => q.data),
+            )}
+          />
+        ))}
       </div>
       <section className="surface shrink-0 overflow-hidden">
         <table className="w-full text-sm">
@@ -544,7 +825,10 @@ export function OrgAudience({
                 {t("monitor.audience.visitors")}
               </th>
               <th className="px-4 py-2 text-right font-normal">
-                {t("monitor.audience.pageviews")}
+                {t("monitor.audience.bounceRate")}
+              </th>
+              <th className="px-4 py-2 text-right font-normal">
+                {t("monitor.audience.visitDuration")}
               </th>
             </tr>
           </thead>
@@ -552,18 +836,18 @@ export function OrgAudience({
             {rows.map(({ project, loading: rowLoading, data, summary }) => (
               <tr
                 key={project.id}
-                className="border-b border-border last:border-0"
+                tabIndex={0}
+                onClick={() => onSite(project.id)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    onSite(project.id);
+                  }
+                }}
+                className="cursor-pointer border-b border-border last:border-0 hover:bg-muted/50"
               >
-                <td className="px-4 py-2">
-                  <Link
-                    {...projectLink(org.slug, project.id, "monitoring")}
-                    search={{ view: "audience" }}
-                    className="text-foreground hover:underline"
-                  >
-                    {project.title}
-                  </Link>
-                </td>
-                <td className="px-4 py-2">
+                <td className="px-4 py-2.5 text-foreground">{project.title}</td>
+                <td className="px-4 py-2.5">
                   {rowLoading ? (
                     <Skeleton className="h-5 w-24" />
                   ) : data?.available ? (
@@ -576,18 +860,98 @@ export function OrgAudience({
                     </span>
                   )}
                 </td>
-                <td className="tnum px-4 py-2 text-right">
-                  {summary ? formatNumber(summary.visitors) : "—"}
+                <td className="tnum px-4 py-2.5 text-right">
+                  {summary ? (
+                    <span className="inline-flex items-center gap-2">
+                      {formatNumber(summary.summary.visitors)}
+                      <Trend
+                        change={delta(
+                          summary.summary.visitors,
+                          summary.previous?.visitors,
+                        )}
+                        better="up"
+                        reference=""
+                      />
+                    </span>
+                  ) : (
+                    "—"
+                  )}
                 </td>
-                <td className="tnum px-4 py-2 text-right">
-                  {summary ? formatNumber(summary.pageviews) : "—"}
+                <td className="tnum px-4 py-2.5 text-right">
+                  {summary?.summary.bounceRate != null
+                    ? `${Math.round(summary.summary.bounceRate)}%`
+                    : "—"}
+                </td>
+                <td className="tnum px-4 py-2.5 text-right">
+                  {summary?.summary.visitDurationS != null
+                    ? formatDuration(summary.summary.visitDurationS)
+                    : "—"}
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </section>
-    </div>
+    </>
+  );
+}
+
+/**
+ * The Audience tab. Inside a project: that project in full. Across the org:
+ * one site in full when the org has one or the filter picks one; otherwise
+ * every site at once.
+ */
+export function AudienceScreen({
+  projects,
+  scopeId,
+  site,
+  onSite,
+}: {
+  projects: readonly SiteProject[];
+  scopeId: string | null;
+  /** The org filter's pick, a project id. */
+  site: string | null;
+  onSite: (projectId: string | null) => void;
+}) {
+  const t = useT();
+  const [range, setRange] = useState<AudienceRange>("7d");
+  const only = projects.length === 1 ? projects[0] : undefined;
+  const chosen = projects.find((p) => p.id === (scopeId ?? site));
+  const project = chosen ?? only;
+  const filter =
+    !scopeId && projects.length > 1 ? (
+      <SiteFilter projects={projects} value={site} onChange={onSite} />
+    ) : null;
+  if (scopeId && !project) {
+    return (
+      <Frame>
+        <EmptyState
+          icon={<BarChart10 size={20} />}
+          title={t("mainPanelTabs.cdnTab.noSiteTitle")}
+        />
+      </Frame>
+    );
+  }
+  return (
+    <Frame>
+      {project ? (
+        <ProjectAudience
+          key={project.id}
+          project={project}
+          range={range}
+          onRange={setRange}
+          filter={filter}
+        />
+      ) : (
+        <OrgAudience
+          projects={projects}
+          range={range}
+          onRange={setRange}
+          filter={filter}
+          onSite={onSite}
+        />
+      )}
+    </Frame>
   );
 }
 

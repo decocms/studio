@@ -157,13 +157,46 @@ export function oneDollarTimeline(
     .sort((a, b) => a.t.localeCompare(b.t));
 }
 
-/** Rows of `[key] → [visitors]`, busiest first. */
-export function oneDollarRows(rows: PlausibleRows): AudienceRow[] {
-  return rows
-    .map((r) => ({ key: r.dimensions[0] ?? "", count: count(r.metrics[0]) }))
-    .filter((r) => r.key !== "")
+/**
+ * One name per source or device whichever collector reported it, so rows add
+ * up across sites: OneDollarStats says "Google", "instagram.com" and
+ * "Direct / None" where Deco Analytics says "google", "instagram" and "direct".
+ * Pages and countries keep the source's own key.
+ */
+export function canonicalKey(view: AudienceView, key: string): string {
+  if (view !== "sources" && view !== "devices") return key;
+  const k = key.trim().toLowerCase();
+  if (view === "devices") return k;
+  if (k === "direct / none" || k === "(direct)" || k === "") return "direct";
+  return k.replace(/^www\./, "").replace(/\.(com|com\.br|net|org)$/, "");
+}
+
+/** Rows merged by canonical key, busiest first. */
+function rankRows(view: AudienceView, rows: AudienceRow[]): AudienceRow[] {
+  const merged = new Map<string, number>();
+  for (const r of rows) {
+    if (r.key === "") continue;
+    const key = canonicalKey(view, r.key);
+    merged.set(key, (merged.get(key) ?? 0) + r.count);
+  }
+  return [...merged]
+    .map(([key, n]) => ({ key, count: n }))
     .sort((a, b) => b.count - a.count)
     .slice(0, BREAKDOWN_LIMIT);
+}
+
+/** Rows of `[key] → [visitors]`, busiest first. */
+export function oneDollarRows(
+  view: AudienceView,
+  rows: PlausibleRows,
+): AudienceRow[] {
+  return rankRows(
+    view,
+    rows.map((r) => ({
+      key: r.dimensions[0] ?? "",
+      count: count(r.metrics[0]),
+    })),
+  );
 }
 
 async function readOneDollar(
@@ -227,7 +260,7 @@ async function readOneDollar(
         order_by: [["visitors", "desc"]],
         pagination: { limit: BREAKDOWN_LIMIT, offset: 0 },
       });
-      return { window, data: { view, rows: oneDollarRows(rows) } };
+      return { window, data: { view, rows: oneDollarRows(view, rows) } };
     }
     default: {
       const unhandled: never = view;
@@ -311,14 +344,17 @@ export function decoTimeline(
 
 /** A `{k, n}` breakdown panel, busiest first. */
 export function decoBreakdown(
+  view: AudienceView,
   payload: Record<string, unknown>,
   key: string,
 ): AudienceRow[] {
-  return decoRows(payload, key, DecoBreakdownRowSchema)
-    .map((r) => ({ key: r.k, count: r.n }))
-    .filter((r) => r.key !== "")
-    .sort((a, b) => b.count - a.count)
-    .slice(0, BREAKDOWN_LIMIT);
+  return rankRows(
+    view,
+    decoRows(payload, key, DecoBreakdownRowSchema).map((r) => ({
+      key: r.k,
+      count: r.n,
+    })),
+  );
 }
 
 /** Which read-surface view, and which panel of it, answers each breakdown. */
@@ -376,7 +412,7 @@ async function readDecoAnalytics(
       return {
         ok: true,
         window,
-        data: { view, rows: decoBreakdown(read.payload, panel.key) },
+        data: { view, rows: decoBreakdown(view, read.payload, panel.key) },
       };
     default: {
       const unhandled: never = view;
