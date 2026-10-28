@@ -1,0 +1,406 @@
+import { type ReactNode, useId, useState } from "react";
+import { Badge } from "@decocms/ui/components/badge.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+  Input,
+} from "@decocms/ui/components/input.tsx";
+import { Label } from "@decocms/ui/components/label.tsx";
+import { ScrollArea } from "@decocms/ui/components/scroll-area.tsx";
+import { Switch } from "@decocms/ui/components/switch.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
+import { Settings01 } from "@untitledui/icons";
+import {
+  SettingsCard,
+  SettingsCardItem,
+  SettingsSection,
+} from "@/components/settings/settings-section";
+import {
+  type SaveGuard,
+  useDebouncedSaveBlock,
+} from "@/components/sections-editor/use-save-block";
+import { useT } from "@/i18n/use-t.ts";
+import { SaveStatus } from "./blog/save-status";
+import {
+  applyCmsSettingsEdits,
+  CMS_SETTINGS_BLOCK_KEY,
+  type CmsSettingsEdits,
+  type CmsSettingsFieldId,
+  type CmsSettingsFieldState,
+  isCollectorUrl,
+  percentToRate,
+  rateToPercent,
+  readCmsSettingsField,
+} from "./cms-settings";
+import { HeldBlockView } from "./held-block-view";
+
+type Props = {
+  orgSlug: string;
+  virtualMcpId: string;
+  branch: string;
+  /** The `CMS` block, or a stand-in holding only its type when absent. */
+  block: Record<string, unknown>;
+  saveGuard: SaveGuard;
+  /** The block's generic form, for what this page shows read-only. */
+  onOpenForm: () => void;
+};
+
+/**
+ * The site's Settings as a page of their own: telemetry and analytics, one
+ * card each, a row per field. Only the fields changed here are written
+ * (the rest of the block, defaults included, stays as saved), and a field
+ * set with variants shows read-only with the way to the block's form.
+ */
+export function CmsSettingsPage(props: Props) {
+  return (
+    <HeldBlockView
+      orgSlug={props.orgSlug}
+      virtualMcpId={props.virtualMcpId}
+      branch={props.branch}
+      blockKey={CMS_SETTINGS_BLOCK_KEY}
+      // Absent means "not created yet", never "deleted".
+      present={undefined}
+    >
+      <CmsSettingsPageForm {...props} />
+    </HeldBlockView>
+  );
+}
+
+function CmsSettingsPageForm({
+  orgSlug,
+  virtualMcpId,
+  branch,
+  block,
+  saveGuard,
+  onOpenForm,
+}: Props) {
+  const t = useT();
+  const { save, isPending } = useDebouncedSaveBlock(
+    { orgSlug, virtualMcpId, branch },
+    { guard: saveGuard, holdsCopy: true },
+  );
+  // What was changed here, field by field: the only fields a save writes.
+  const [edits, setEdits] = useState<CmsSettingsEdits>({});
+
+  const stateOf = (id: CmsSettingsFieldId): CmsSettingsFieldState => {
+    const saved = readCmsSettingsField(block, id);
+    if (saved.kind === "locked" || !Object.hasOwn(edits, id)) return saved;
+    const edited = edits[id];
+    return edited === undefined
+      ? readCmsSettingsField({}, id)
+      : {
+          kind: "value",
+          value: edited as boolean | number | string,
+          isDefault: false,
+        };
+  };
+  const edit = (id: CmsSettingsFieldId, value: unknown) => {
+    const next = { ...edits, [id]: value };
+    setEdits(next);
+    save(CMS_SETTINGS_BLOCK_KEY, applyCmsSettingsEdits(block, next));
+  };
+  // A switch that is off (or set with variants: on for some) turns off what
+  // depends on it only when it is plainly off.
+  const isOff = (id: CmsSettingsFieldId) => {
+    const state = stateOf(id);
+    return state.kind === "value" && state.value === false;
+  };
+  const telemetryOff = isOff("telemetry.enabled");
+  const analyticsOff = isOff("analytics.enabled");
+
+  /** A field's row: its control, or read-only when set with variants. */
+  const field = (
+    id: CmsSettingsFieldId,
+    render: (state: FieldValue, rowProps: RowProps) => ReactNode,
+    disabled = false,
+  ) => {
+    const state = stateOf(id);
+    const rowProps: RowProps = {
+      label: t(`sandbox.cmsSettingsPage.${id}.label`),
+      help: t(`sandbox.cmsSettingsPage.${id}.help`),
+      disabled,
+    };
+    if (state.kind === "locked") {
+      return (
+        <SettingsCardItem
+          key={id}
+          title={
+            <span className="flex items-center gap-2">
+              {rowProps.label}
+              <Badge variant="muted" size="sm">
+                {t("sandbox.cmsSettingsPage.variants")}
+              </Badge>
+            </span>
+          }
+          description={t(
+            state.reason === "variants"
+              ? "sandbox.cmsSettingsPage.locked.variants"
+              : "sandbox.cmsSettingsPage.locked.other",
+          )}
+          action={
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={onOpenForm}
+            >
+              {t("sandbox.cmsSettingsPage.openForm")}
+            </Button>
+          }
+        />
+      );
+    }
+    return render(state, rowProps);
+  };
+
+  return (
+    <div className="flex h-full flex-col" data-testid="cms-settings-page">
+      <div className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
+        <Settings01 size={16} className="shrink-0 text-muted-foreground" />
+        <span className="text-sm font-medium">
+          {t("siteEditor.contentTypes.settings")}
+        </span>
+        <div className="ml-auto flex shrink-0 items-center">
+          <SaveStatus isPending={isPending} isError={false} />
+        </div>
+      </div>
+      <ScrollArea className="min-h-0 min-w-0 flex-1 [&_[data-slot=scroll-area-viewport]>div]:!block">
+        <div className="mx-auto flex max-w-2xl flex-col gap-8 px-4 py-6">
+          <p className="px-4 text-sm text-muted-foreground">
+            {t("sandbox.cmsSettingsPage.intro")}
+          </p>
+          <SettingsSection
+            title={t("sandbox.cmsSettingsPage.telemetry.title")}
+            description={t("sandbox.cmsSettingsPage.telemetry.description")}
+          >
+            <SettingsCard>
+              {field("telemetry.enabled", (state, row) => (
+                <SwitchRow
+                  key="telemetry.enabled"
+                  {...row}
+                  checked={state.value === true}
+                  onChange={(v) => edit("telemetry.enabled", v)}
+                />
+              ))}
+              {field(
+                "telemetry.metrics",
+                (state, row) => (
+                  <SwitchRow
+                    key="telemetry.metrics"
+                    {...row}
+                    checked={state.value === true}
+                    onChange={(v) => edit("telemetry.metrics", v)}
+                  />
+                ),
+                telemetryOff,
+              )}
+              {RATE_FIELDS.map((id) =>
+                field(
+                  id,
+                  (state, row) => (
+                    <RateRow
+                      key={id}
+                      {...row}
+                      rate={state.value as number}
+                      onChange={(rate) => edit(id, rate)}
+                    />
+                  ),
+                  telemetryOff,
+                ),
+              )}
+            </SettingsCard>
+          </SettingsSection>
+          <SettingsSection
+            title={t("sandbox.cmsSettingsPage.analytics.title")}
+            description={t("sandbox.cmsSettingsPage.analytics.description")}
+          >
+            <SettingsCard>
+              {field("analytics.enabled", (state, row) => (
+                <SwitchRow
+                  key="analytics.enabled"
+                  {...row}
+                  checked={state.value === true}
+                  onChange={(v) => edit("analytics.enabled", v)}
+                />
+              ))}
+              {field(
+                "analytics.collector",
+                (state, row) => (
+                  <CollectorRow
+                    key="analytics.collector"
+                    {...row}
+                    value={state.value as string}
+                    // Empty: the default collector, so the field is removed.
+                    onChange={(url) =>
+                      edit("analytics.collector", url === "" ? undefined : url)
+                    }
+                  />
+                ),
+                analyticsOff,
+              )}
+            </SettingsCard>
+          </SettingsSection>
+        </div>
+      </ScrollArea>
+    </div>
+  );
+}
+
+const RATE_FIELDS = [
+  "telemetry.errorSampleRate",
+  "telemetry.traceSampleRate",
+] as const;
+
+type FieldValue = Extract<CmsSettingsFieldState, { kind: "value" }>;
+
+interface RowProps {
+  label: string;
+  help: string;
+  /** Off while the switch it depends on is off. */
+  disabled: boolean;
+}
+
+function FieldRow({
+  controlId,
+  label,
+  help,
+  disabled,
+  error,
+  control,
+}: RowProps & {
+  controlId: string;
+  error?: string | null;
+  control: ReactNode;
+}) {
+  return (
+    <SettingsCardItem
+      className={cn(disabled && "opacity-60")}
+      title={<Label htmlFor={controlId}>{label}</Label>}
+      description={help}
+      action={control}
+    >
+      {error && (
+        <p role="alert" className="mt-1 text-xs text-destructive">
+          {error}
+        </p>
+      )}
+    </SettingsCardItem>
+  );
+}
+
+function SwitchRow({
+  checked,
+  onChange,
+  ...row
+}: RowProps & { checked: boolean; onChange: (checked: boolean) => void }) {
+  const id = useId();
+  return (
+    <FieldRow
+      {...row}
+      controlId={id}
+      control={
+        <Switch
+          id={id}
+          checked={checked}
+          disabled={row.disabled}
+          onCheckedChange={onChange}
+        />
+      }
+    />
+  );
+}
+
+/**
+ * A sample rate as a percentage: 0.05 shows as 5, and what is typed is
+ * stored as a rate (5 → 0.05) once it is a number from 0 to 100.
+ */
+function RateRow({
+  rate,
+  onChange,
+  ...row
+}: RowProps & { rate: number; onChange: (rate: number) => void }) {
+  const t = useT();
+  const id = useId();
+  // What is typed, until the field is left (a half-typed "0." stays).
+  const [text, setText] = useState<string | null>(null);
+  const shown = text ?? String(rateToPercent(rate));
+  const invalid = text !== null && percentToRate(text) === null;
+  return (
+    <FieldRow
+      {...row}
+      controlId={id}
+      error={invalid ? t("sandbox.cmsSettingsPage.invalidRate") : null}
+      control={
+        <InputGroup size="sm" className="w-28">
+          <InputGroupInput
+            id={id}
+            type="number"
+            inputMode="decimal"
+            min={0}
+            max={100}
+            step={0.1}
+            value={shown}
+            disabled={row.disabled}
+            aria-invalid={invalid || undefined}
+            className="text-right tabular-nums"
+            onChange={(e) => {
+              const next = e.target.value;
+              setText(next);
+              const parsed = percentToRate(next);
+              if (parsed !== null && parsed !== rate) onChange(parsed);
+            }}
+            onBlur={() => {
+              if (!invalid) setText(null);
+            }}
+          />
+          <InputGroupAddon className="pr-2 text-muted-foreground">
+            %
+          </InputGroupAddon>
+        </InputGroup>
+      }
+    />
+  );
+}
+
+function CollectorRow({
+  value,
+  onChange,
+  ...row
+}: RowProps & { value: string; onChange: (url: string) => void }) {
+  const t = useT();
+  const id = useId();
+  // What is typed: saved once it is empty or a full address.
+  const [text, setText] = useState<string | null>(null);
+  const shown = text ?? value;
+  const invalid = !isCollectorUrl(shown);
+  return (
+    <FieldRow
+      {...row}
+      controlId={id}
+      error={invalid ? t("sandbox.cmsSettingsPage.invalidUrl") : null}
+      control={
+        <Input
+          id={id}
+          type="url"
+          size="sm"
+          className="w-64"
+          value={shown}
+          disabled={row.disabled}
+          aria-invalid={invalid || undefined}
+          placeholder={t(
+            "sandbox.cmsSettingsPage.analytics.collector.placeholder",
+          )}
+          onChange={(e) => {
+            const next = e.target.value;
+            setText(next);
+            if (isCollectorUrl(next) && next.trim() !== value) {
+              onChange(next.trim());
+            }
+          }}
+        />
+      }
+    />
+  );
+}
