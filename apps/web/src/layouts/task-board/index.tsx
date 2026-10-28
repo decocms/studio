@@ -132,6 +132,7 @@ import {
   boardGridColumns,
   isLaneShown,
   laneVisibility,
+  nextTagColor,
   PRIORITIES,
   PRIORITY_CONFIG,
   runSortOrders,
@@ -164,7 +165,7 @@ import {
   laneCards,
   useEpicBoard,
 } from "./epics";
-import { useTags } from "@/hooks/use-tags";
+import { useCreateTag, useDeleteTag, useTags } from "@/hooks/use-tags";
 import { useReviewerEnabled } from "@/hooks/use-organization-settings";
 import { usePreferences, useProjectFirstNav } from "@/hooks/use-preferences";
 import {
@@ -173,6 +174,7 @@ import {
   toEndOfDayIso,
 } from "./task-dialog";
 import { AssigneePickerContent } from "./assignee-picker";
+import { TagPickerContent } from "./tag-picker";
 import { useRepositories } from "@/hooks/use-git-providers";
 import { SubscriptionPaywallDialog } from "./subscription-paywall-dialog";
 import { RerunDialog } from "./rerun-dialog";
@@ -267,12 +269,6 @@ const DATE_FMT = new Intl.DateTimeFormat(undefined, {
   day: "numeric",
 });
 
-function formatDueDate(iso: string): { label: string; overdue: boolean } {
-  const d = new Date(iso);
-  const overdue = d.getTime() < Date.now();
-  return { label: DATE_FMT.format(d), overdue };
-}
-
 /** Shared meta chip: an outlined pill, neutral border by default. */
 const PILL =
   "inline-flex items-center gap-1 rounded-full border-[length:var(--border-hairline)] border-border px-2 py-0.5 text-xs font-medium text-muted-foreground";
@@ -281,6 +277,11 @@ const PILL =
  *  bordered {@link PILL} is kept for a tag, whose colour IS its border. */
 const META =
   "inline-flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground";
+
+/** An empty list-row property: revealed on row hover, focus, or an open menu,
+ *  so a row of unset fields doesn't read as a row of holes. */
+const HOVER_ONLY =
+  "opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100";
 
 /** A lane's own controls: revealed on hover, focus, or an open menu. */
 /** Shown on lane hover, and on the lane a drag is over: the dragged card
@@ -300,8 +301,8 @@ const FOOTER_GLYPH = 12;
 /** A footer property glyph. 14, not 16: the footer's text is 12, and a glyph that outweighs its own label reads as the subject rather than the annotation. */
 const PROPERTY_GLYPH_CLASS = "size-3.5";
 
-/** Tags a card shows before collapsing the rest into `+N`. Matches the list
- *  view's existing cap; the full set is in the task dialog. */
+/** Tags a card or list row shows before collapsing the rest into `+N`; the
+ *  full set is in the task dialog. */
 const CARD_TAG_LIMIT = 2;
 
 /** Card flag for a task whose agent is paused waiting on human input. */
@@ -488,15 +489,18 @@ function FooterDueDate({
   iso,
   onChange,
 }: {
-  iso: string;
+  /** Null only on a list row, where the picker is how a date gets set. */
+  iso: string | null;
   onChange?: (iso: string) => void;
 }) {
-  const urgency = dueDateUrgency(iso);
-  const { label } = formatDueDate(iso);
+  const t = useT();
+  const urgency = iso ? dueDateUrgency(iso) : null;
   const content = (
     <>
       <Calendar className={cn(PROPERTY_GLYPH_CLASS, "shrink-0")} />
-      <span className="truncate">{label}</span>
+      {iso && (
+        <span className="truncate">{DATE_FMT.format(new Date(iso))}</span>
+      )}
     </>
   );
   // The footer item that gives way, so a full footer never overlaps.
@@ -512,10 +516,16 @@ function FooterDueDate({
         <Button
           variant="ghost"
           size="sm"
+          aria-label={iso ? undefined : t("taskBoard.taskBoard.dueDateButton")}
+          title={iso ? undefined : t("taskBoard.taskBoard.dueDateButton")}
           onClick={(e) => e.stopPropagation()}
           onPointerDown={(e) => e.stopPropagation()}
           // Matches the glyph buttons: the padding is hover surface only, so the row still spaces itself off the content.
-          className={cn("-mx-1.5 h-auto px-1.5 py-1 font-medium", tone)}
+          className={cn(
+            "-mx-1.5 h-auto px-1.5 py-1 font-medium",
+            tone,
+            !iso && HOVER_ONLY,
+          )}
         >
           {content}
         </Button>
@@ -527,8 +537,8 @@ function FooterDueDate({
       >
         <DayPickerCalendar
           mode="single"
-          selected={new Date(iso)}
-          defaultMonth={new Date(iso)}
+          selected={iso ? new Date(iso) : undefined}
+          defaultMonth={iso ? new Date(iso) : undefined}
           onSelect={(date) => date && onChange(toEndOfDayIso(date))}
           initialFocus
         />
@@ -656,7 +666,6 @@ function CardFooter({
   );
 }
 
-/** List-row due date. Cards use {@link FooterDueDate} instead. */
 /** How long the task has sat in its current status. */
 function StatusAgePill({
   status: statusKey,
@@ -689,16 +698,6 @@ function StatusAgePill({
             })}
       </TooltipContent>
     </Tooltip>
-  );
-}
-
-function DueDatePill({ iso }: { iso: string }) {
-  const { label, overdue } = formatDueDate(iso);
-  return (
-    <span className={cn(META, overdue && "text-destructive")}>
-      <Calendar size={FOOTER_GLYPH} />
-      {label}
-    </span>
   );
 }
 
@@ -885,6 +884,7 @@ function AssigneeDisplay({
   const t = useT();
   const [open, setOpen] = useState(false);
 
+  let current: ReactNode = null;
   if (item.assigneeId === SUPER_AGENT_ASSIGNEE_ID) {
     const title = assignedBy?.user?.name
       ? t("taskBoard.taskBoard.assignedToSuperAgentBy", {
@@ -892,7 +892,7 @@ function AssigneeDisplay({
         })
       : t("taskBoard.taskBoard.assignedToSuperAgent");
     if (!showDelegation) {
-      return assignedBy ? (
+      current = assignedBy ? (
         <Avatar
           url={assignedBy.user?.image ?? undefined}
           fallback={assignedBy.user?.name ?? "?"}
@@ -901,24 +901,24 @@ function AssigneeDisplay({
           title={title}
         />
       ) : null;
+    } else {
+      current = (
+        <span className="inline-flex items-center" title={title}>
+          {assignedBy && (
+            <Avatar
+              url={assignedBy.user?.image ?? undefined}
+              fallback={assignedBy.user?.name ?? "?"}
+              shape="circle"
+              size="xs"
+              className="-mr-2 ring-2 ring-background"
+            />
+          )}
+          <SuperAgentIcon size={20} className="ring-2 ring-background" />
+        </span>
+      );
     }
-    return (
-      <span className="inline-flex items-center" title={title}>
-        {assignedBy && (
-          <Avatar
-            url={assignedBy.user?.image ?? undefined}
-            fallback={assignedBy.user?.name ?? "?"}
-            shape="circle"
-            size="xs"
-            className="-mr-2 ring-2 ring-background"
-          />
-        )}
-        <SuperAgentIcon size={20} className="ring-2 ring-background" />
-      </span>
-    );
-  }
-  if (assignee) {
-    return (
+  } else if (assignee) {
+    current = (
       <Avatar
         url={assignee.user?.image ?? undefined}
         fallback={assignee.user?.name ?? "?"}
@@ -927,28 +927,44 @@ function AssigneeDisplay({
       />
     );
   }
-  if (!onAssign || !members?.length) return null;
+  if (!onAssign || !members?.length) return current;
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <button
-          type="button"
-          title={t("taskBoard.taskBoard.assignButton")}
-          aria-label={t("taskBoard.taskBoard.assignButton")}
-          onClick={(e) => {
-            e.stopPropagation();
-            setOpen(true);
-          }}
-          // Hover-only: a dashed circle on every unassigned card is a row of holes.
-          className={cn(
-            "flex size-6 shrink-0 items-center justify-center rounded-full border border-dashed border-muted-foreground/40 text-muted-foreground/40 opacity-0 transition-[color,border-color,opacity] group-hover:opacity-100 hover:border-muted-foreground hover:text-muted-foreground focus-visible:opacity-100 data-[state=open]:opacity-100",
-            // Takes no room until shown, so the glyphs beside it sit flush right.
-            collapseWhenHidden &&
-              "-ml-2 w-0 scale-75 overflow-hidden border-0 transition-[color,border-color,opacity,width,margin,scale] duration-150 ease-out group-hover:ml-0 group-hover:w-6 group-hover:scale-100 group-hover:border focus-visible:ml-0 focus-visible:w-6 focus-visible:scale-100 focus-visible:border data-[state=open]:ml-0 data-[state=open]:w-6 data-[state=open]:scale-100 data-[state=open]:border motion-reduce:transition-none",
-          )}
-        >
-          <UserPlus01 size={13} />
-        </button>
+        {current ? (
+          <button
+            type="button"
+            title={t("taskBoard.taskBoard.assignButton")}
+            aria-label={t("taskBoard.taskBoard.assignButton")}
+            onClick={(e) => {
+              e.stopPropagation();
+              setOpen(true);
+            }}
+            onPointerDown={(e) => e.stopPropagation()}
+            className="flex shrink-0 items-center rounded-full transition-opacity hover:opacity-80"
+          >
+            {current}
+          </button>
+        ) : (
+          <button
+            type="button"
+            title={t("taskBoard.taskBoard.assignButton")}
+            aria-label={t("taskBoard.taskBoard.assignButton")}
+            onClick={(e) => {
+              e.stopPropagation();
+              setOpen(true);
+            }}
+            // Hover-only: a dashed circle on every unassigned card is a row of holes.
+            className={cn(
+              "flex size-6 shrink-0 items-center justify-center rounded-full border border-dashed border-muted-foreground/40 text-muted-foreground/40 opacity-0 transition-[color,border-color,opacity] group-hover:opacity-100 hover:border-muted-foreground hover:text-muted-foreground focus-visible:opacity-100 data-[state=open]:opacity-100",
+              // Takes no room until shown, so the glyphs beside it sit flush right.
+              collapseWhenHidden &&
+                "-ml-2 w-0 scale-75 overflow-hidden border-0 transition-[color,border-color,opacity,width,margin,scale] duration-150 ease-out group-hover:ml-0 group-hover:w-6 group-hover:scale-100 group-hover:border focus-visible:ml-0 focus-visible:w-6 focus-visible:scale-100 focus-visible:border data-[state=open]:ml-0 data-[state=open]:w-6 data-[state=open]:scale-100 data-[state=open]:border motion-reduce:transition-none",
+            )}
+          >
+            <UserPlus01 size={13} />
+          </button>
+        )}
       </PopoverTrigger>
       <PopoverContent
         className="w-56 p-0"
@@ -1518,10 +1534,26 @@ function TaskBoardBody() {
       assignedBy={
         item.assignedBy ? memberByUserId.get(item.assignedBy) : undefined
       }
+      members={members}
       onOpen={() => openTask(item)}
       onStatusChange={(status) =>
         actions.update.mutate({ id: item.id, status })
       }
+      onRename={(title) => actions.update.mutate({ id: item.id, title })}
+      onPriorityChange={(priority) =>
+        actions.update.mutate({ id: item.id, priority })
+      }
+      onTagsChange={(tagIds) => actions.update.mutate({ id: item.id, tagIds })}
+      onDueDateChange={(dueDate) =>
+        actions.update.mutate({ id: item.id, dueDate })
+      }
+      onAssign={(userId) => {
+        if (blockSuperAgentWithoutRepository(userId)) return;
+        actions.update.mutate(
+          { id: item.id, assigneeId: userId },
+          { onError: onDelegateError },
+        );
+      }}
     />
   );
 
@@ -4320,43 +4352,181 @@ function ListRowStatusMenu({
   );
 }
 
+/** Longer than a deliberate double-click, shorter than a noticeable wait. */
+const DOUBLE_CLICK_MS = 250;
+
+/**
+ * The row's title: a click opens the task, a double-click renames it in place.
+ *
+ * A mouse click waits out {@link DOUBLE_CLICK_MS} before opening — the task
+ * takes the page over, so opening on the first click would leave the second
+ * nothing to land on. Keyboard activation (`detail` 0) opens at once.
+ */
+function ListRowTitle({
+  title,
+  onOpen,
+  onRename,
+}: {
+  title: string;
+  onOpen: () => void;
+  onRename: (title: string) => void;
+}) {
+  const t = useT();
+  const [editing, setEditing] = useState(false);
+  const openTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  if (editing) {
+    return (
+      <input
+        autoFocus
+        defaultValue={title}
+        aria-label={t("taskBoard.taskBoard.renameTaskLabel")}
+        onFocus={(e) => e.currentTarget.select()}
+        onBlur={(e) => {
+          setEditing(false);
+          const next = e.currentTarget.value.trim();
+          if (next && next !== title) onRename(next);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+          if (e.key === "Escape") {
+            e.stopPropagation();
+            e.currentTarget.value = title;
+            e.currentTarget.blur();
+          }
+        }}
+        className="min-w-0 flex-1 rounded-sm bg-transparent text-sm text-foreground outline-none ring-1 ring-ring"
+      />
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        clearTimeout(openTimer.current);
+        if (e.detail === 0) onOpen();
+        else if (e.detail === 1)
+          openTimer.current = setTimeout(onOpen, DOUBLE_CLICK_MS);
+      }}
+      onDoubleClick={() => {
+        clearTimeout(openTimer.current);
+        setEditing(true);
+      }}
+      className="min-w-0 flex-1 truncate text-left text-sm text-foreground"
+    >
+      {title}
+    </button>
+  );
+}
+
+/** The row's tags, and the picker that edits them. */
+function ListRowTags({
+  tags,
+  onChange,
+}: {
+  tags: TaskBoardItemTag[];
+  onChange: (tagIds: string[]) => void;
+}) {
+  const t = useT();
+  const { data: orgTags = [] } = useTags();
+  const createTag = useCreateTag();
+  const deleteTag = useDeleteTag();
+  const tagIds = tags.map((tag) => tag.id);
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label={t("taskBoard.taskBoard.editTagsLabel")}
+          title={t("taskBoard.taskBoard.editTagsLabel")}
+          className={cn(
+            "hidden shrink-0 items-center gap-1.5 rounded-full sm:inline-flex",
+            tags.length === 0 && HOVER_ONLY,
+          )}
+        >
+          {tags.length === 0 ? (
+            <span className={PILL}>
+              <Plus size={FOOTER_GLYPH} />
+            </span>
+          ) : (
+            <>
+              {tags.slice(0, CARD_TAG_LIMIT).map((tag) => (
+                <TagPill key={tag.id} tag={tag} />
+              ))}
+              {tags.length > CARD_TAG_LIMIT && (
+                <span className={PILL}>+{tags.length - CARD_TAG_LIMIT}</span>
+              )}
+            </>
+          )}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-56 p-0">
+        <TagPickerContent
+          tags={orgTags}
+          selectedIds={tagIds}
+          defaultColor={nextTagColor(orgTags.length)}
+          onToggle={(tagId) =>
+            onChange(
+              tagIds.includes(tagId)
+                ? tagIds.filter((id) => id !== tagId)
+                : [...tagIds, tagId],
+            )
+          }
+          onCreate={async (name, color) => {
+            const tag = await createTag.mutateAsync({ name, color });
+            onChange([...tagIds, tag.id]);
+          }}
+          onDelete={(tagId) => {
+            deleteTag.mutate(tagId);
+            if (tagIds.includes(tagId))
+              onChange(tagIds.filter((id) => id !== tagId));
+          }}
+        />
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function ListRow({
   item,
   assignee,
   assignedBy,
+  members,
   onOpen,
   onStatusChange,
+  onRename,
+  onPriorityChange,
+  onTagsChange,
+  onDueDateChange,
+  onAssign,
 }: {
   item: TaskBoardItem;
   assignee?: Member;
   assignedBy?: Member;
+  members: Member[];
   onOpen: () => void;
   onStatusChange: (status: TaskBoardItemStatus) => void;
+  onRename: (title: string) => void;
+  onPriorityChange: (priority: TaskBoardItemPriority) => void;
+  onTagsChange: (tagIds: string[]) => void;
+  onDueDateChange: (iso: string) => void;
+  onAssign: (userId: string | null) => void;
 }) {
   const { org } = useProjectContext();
   const key = taskKey(org.slug, item.keySeq);
   const runState = agentRunState(item);
   return (
     <TaskContextMenu item={item}>
-      <div className="flex h-11 items-center gap-3 px-3 transition-colors hover:bg-accent">
+      <div className="group flex h-11 items-center gap-3 px-3 transition-colors hover:bg-accent">
         <ListRowStatusMenu item={item} onStatusChange={onStatusChange} />
         <span className="flex size-4 shrink-0 items-center justify-center">
-          {item.priority !== "none" && (
-            <PriorityIcon priority={item.priority} />
-          )}
+          <PriorityIcon priority={item.priority} onChange={onPriorityChange} />
         </span>
         {key && (
           <span className="hidden w-16 shrink-0 font-mono text-xs text-muted-foreground sm:inline">
             {key}
           </span>
         )}
-        <button
-          type="button"
-          onClick={onOpen}
-          className="min-w-0 flex-1 truncate text-left text-sm text-foreground"
-        >
-          {item.title}
-        </button>
+        <ListRowTitle title={item.title} onOpen={onOpen} onRename={onRename} />
         {runState && <AgentRunIndicator state={runState} />}
         {isTaskBlocked(item) && <BlockedBadge />}
         {isTaskHandedToHuman(item) && <HandedToHumanBadge />}
@@ -4365,31 +4535,22 @@ function ListRow({
             <SprintPill sprintId={item.sprintId} />
           </span>
         )}
-        {item.tags.length > 0 && (
-          <span className="hidden items-center gap-1.5 sm:inline-flex">
-            {item.tags.slice(0, 2).map((tag) => (
-              <TagPill key={tag.id} tag={tag} />
-            ))}
-            {item.tags.length > 2 && (
-              <span className={PILL}>+{item.tags.length - 2}</span>
-            )}
-          </span>
-        )}
+        <ListRowTags tags={item.tags} onChange={onTagsChange} />
         {item.statusSince && (
           <span className="hidden sm:inline-flex">
             <StatusAgePill status={item.status} since={item.statusSince} />
           </span>
         )}
-        {item.dueDate && (
-          <span className="hidden sm:inline-flex">
-            <DueDatePill iso={item.dueDate} />
-          </span>
-        )}
+        <span className="hidden sm:inline-flex">
+          <FooterDueDate iso={item.dueDate} onChange={onDueDateChange} />
+        </span>
         <span className="flex w-5 shrink-0 justify-center">
           <AssigneeDisplay
             item={item}
             assignee={assignee}
             assignedBy={assignedBy}
+            members={members}
+            onAssign={onAssign}
           />
         </span>
         <span className="hidden w-12 shrink-0 text-right text-xs tabular-nums text-muted-foreground sm:inline">

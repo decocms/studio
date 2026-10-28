@@ -61,6 +61,8 @@ export const taskBoard = {
   "taskBoard.taskBoard.needsInput": "Precisa de entrada",
   "taskBoard.taskBoard.needsYou": "Precisa de você",
   "taskBoard.taskBoard.changeStatusLabel": "Mudar status (atual: {status})",
+  "taskBoard.taskBoard.renameTaskLabel": "Título da tarefa",
+  "taskBoard.taskBoard.editTagsLabel": "Editar tags",
   "taskBoard.taskBoard.agentsRunningOne": "1 agente rodando agora",
   "taskBoard.taskBoard.agentsRunningMany": "{count} agentes rodando agora",
   "taskBoard.taskBoard.agentsRunningHeading": "Rodando agora",
