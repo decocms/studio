@@ -6,9 +6,6 @@ export const sandbox = {
     "Installed. Its settings appear once the site is built with this app — the schema is generated from the app's own module.",
   "sandbox.appEditor.installNeedsCodingSession":
     "Start a coding session to install apps.",
-  "sandbox.appEditor.reinstall": "Reinstall this app",
-  "sandbox.appEditor.reinstallHint":
-    "Writes the app's module again and restarts the dev server. Its settings are kept.",
   "sandbox.appEditor.noEditableSchema":
     "No editable schema found for this app.",
   "sandbox.appInstallPanel.install": "Install",

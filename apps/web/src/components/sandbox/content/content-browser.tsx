@@ -619,18 +619,6 @@ function ContentBrowserReady({
       : [];
   const installApp = useInstallApp({ orgSlug, virtualMcpId, branch });
   /**
-   * The catalogue entry behind the app that is open, when the registry still
-   * knows how to write it. Reinstalling is how a site repairs a module an
-   * older installer wrote: the block resolves either way, so nothing else
-   * tells the user their empty form is fixable.
-   */
-  const selectedAppEntry =
-    selection?.collection === "apps"
-      ? appCatalog.find(
-          (entry) => entry.blockKey === selection.key && entry.installable,
-        )
-      : undefined;
-  /**
    * Why this session cannot install, when it cannot. A Fast Preview session
    * never writes code, so offering the button there buys a toast and nothing
    * else — the way out is a coding session, so that is what it offers.
@@ -1528,12 +1516,6 @@ function ContentBrowserReady({
                     decofile={decofile}
                     meta={meta}
                     previewBaseUrl={previewUrl}
-                    onReinstall={
-                      selectedAppEntry && !installBlocked
-                        ? () => handleInstallApp(selectedAppEntry)
-                        : undefined
-                    }
-                    reinstalling={installApp.isPending}
                   />
                 ) : selection.collection === "categories" ? (
                   <CategoryEditor

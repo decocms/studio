@@ -1,5 +1,4 @@
 import { useOptionalChatTask } from "@/components/chat/chat-context";
-import { Button } from "@decocms/ui/components/button.tsx";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { ChevronRight } from "@untitledui/icons";
 import { type ReactNode, useRef, useState } from "react";
@@ -66,8 +65,6 @@ function AppEditorForm({
   decofile,
   title: titleOverride,
   excludeFields,
-  onReinstall,
-  reinstalling = false,
   previewBaseUrl = null,
   notice,
   saveGuard,
@@ -83,13 +80,6 @@ function AppEditorForm({
   title?: string;
   /** Top-level schema fields to omit (e.g. site `seo` is edited in the SEO tab). */
   excludeFields?: readonly string[];
-  /**
-   * Write the app's files again. Offered when its form came out empty and the
-   * registry still knows how to write it: a bridge module an older installer
-   * wrote without the app's default export resolves, and configures nothing.
-   */
-  onReinstall?: () => void;
-  reinstalling?: boolean;
   previewBaseUrl?: string | null;
   /** Shown above the form (e.g. that the block is not saved yet). */
   notice?: ReactNode;
@@ -309,21 +299,6 @@ function AppEditorForm({
                       : "sandbox.appEditor.noEditableSchema",
                   )}
                 </p>
-                {onReinstall && (
-                  <div className="flex flex-col items-center gap-1.5">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={onReinstall}
-                      disabled={reinstalling}
-                      className="gap-2"
-                    >
-                      {reinstalling && <Spinner className="size-3.5" />}
-                      {t("sandbox.appEditor.reinstall")}
-                    </Button>
-                    <span>{t("sandbox.appEditor.reinstallHint")}</span>
-                  </div>
-                )}
               </div>
             )}
           </div>
