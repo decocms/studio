@@ -1,8 +1,8 @@
 /**
- * The Monitor's one filter: every project at once, or one of them, for every
- * tab alike. It lives in the panel's top bar and in the URL (`?project=`).
- * Inside a project, and in an org with a single project, there is nothing to
- * choose and it isn't drawn.
+ * The Monitor's project filter, a shortcut to the sidebar: picking a project
+ * moves into it as clicking it in the sidebar would, and "All projects" goes
+ * back to the org. An org with a single project has nothing to pick and it
+ * isn't drawn.
  */
 
 import { Page } from "@/components/page";
@@ -37,16 +37,11 @@ export function ProjectFilter({
   );
 }
 
-/**
- * The project every tab reads: the route's own, the org's only one, or the
- * filter's pick. Null is every project at once.
- */
+/** The project every tab reads: the route's own, or the org's only one. */
 export function monitorScope(
   routeScope: string | null,
   projects: readonly SiteProject[],
-  picked: string | undefined,
 ): string | null {
   if (routeScope) return routeScope;
-  if (projects.length === 1) return projects[0]?.id ?? null;
-  return projects.some((p) => p.id === picked) ? (picked ?? null) : null;
+  return projects.length === 1 ? (projects[0]?.id ?? null) : null;
 }

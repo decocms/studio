@@ -64,8 +64,6 @@ import { useSourceIcons } from "./use-source-icons";
 
 export interface MonitorSelection {
   view?: MonitorView;
-  /** Across the org, the one project every tab shows (the filter's pick). */
-  project?: string;
   /** A past local day, `YYYY-MM-DD`; today when absent. */
   date?: string;
   store?: string;
@@ -275,6 +273,7 @@ export function MonitorPage({
   scopeId: routeScope,
   selection,
   onSelect,
+  onScope,
 }: {
   board: MonitorBoard;
   loading: boolean;
@@ -284,12 +283,13 @@ export function MonitorPage({
   scopeId: string | null;
   selection: MonitorSelection;
   onSelect: (selection: MonitorSelection) => void;
+  /** Picks a project the way the sidebar does; null is the org. */
+  onScope: (projectId: string | null) => void;
 }) {
   const t = useT();
   const projects = useSiteProjects();
-  const scopeId = monitorScope(routeScope, projects, selection.project);
-  const onProject = (project: string | null) =>
-    onSelect({ view: selection.view, project: project ?? undefined });
+  const scopeId = monitorScope(routeScope, projects);
+  const onProject = (projectId: string) => onScope(projectId);
   const board = scopeBoard(orgBoard, scopeId);
   /** A past day's last second in the store's own timezone. */
   const storeDayEnd = (connectionId: string, date: string | undefined) => {
@@ -314,17 +314,14 @@ export function MonitorPage({
       <MonitorTabs
         view={view}
         onView={(next) =>
-          onSelect({
-            view: next === "metrics" ? undefined : next,
-            project: selection.project,
-          })
+          onSelect({ view: next === "metrics" ? undefined : next })
         }
       />
-      {!routeScope && projects.length > 1 && (
+      {projects.length > 1 && (
         <ProjectFilter
           projects={projects}
-          value={scopeId}
-          onChange={onProject}
+          value={routeScope}
+          onChange={onScope}
         />
       )}
     </>
