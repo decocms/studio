@@ -24,7 +24,7 @@ import {
 } from "@/sdk";
 import { AudienceScreen } from "./audience-view";
 import type { Deploy } from "./board";
-import { SitePerformance } from "./performance-view";
+import { PerformanceScreen } from "./performance-view";
 import { DeployTimeline } from "./deploy-timeline";
 import { DeploysTable } from "./deploys-table";
 import {
@@ -34,7 +34,7 @@ import {
   Locked,
 } from "./locked";
 import { monitorPreview } from "./preview";
-import { OrgAnalytics, OrgExperiments, type SiteProject } from "./org-insights";
+import { OrgExperiments, type SiteProject } from "./org-insights";
 import { connectLink } from "./parts";
 
 export type MonitorView =
@@ -250,16 +250,21 @@ export function ExperimentsView({ scopeId }: { scopeId: string | null }) {
 /** Requests, cache and errors: the CDN on v7 sites, the site's own telemetry on v8. */
 export function PerformanceView({
   scopeId,
-  date,
-  onDate,
+  onProject,
 }: {
   scopeId: string | null;
-  /** The org view's day, shared with the Overview's picker (`YYYY-MM-DD`). */
-  date: string;
-  onDate: (date: string) => void;
+  onProject: (projectId: string) => void;
 }) {
   const views = useControlPlaneViews();
   const config = usePublicConfig();
+  const projects = useSiteProjects();
+  const screen = (
+    <PerformanceScreen
+      projects={projects}
+      scopeId={scopeId}
+      onProject={onProject}
+    />
+  );
   return (
     <ProjectScreen
       scopeId={scopeId}
@@ -268,10 +273,9 @@ export function PerformanceView({
         (config.monitorEnabled === true || config.auth.localMode === true)
       }
       empty="analytics"
-      render={(id) => <SitePerformance projectId={id} />}
-      org={(projects) => (
-        <OrgAnalytics projects={projects} date={date} onDate={onDate} />
-      )}
+      render={() => screen}
+      org={() => screen}
+      bare
     />
   );
 }
@@ -279,13 +283,10 @@ export function PerformanceView({
 /** Who visits, from Deco Analytics or OneDollarStats, one shape for both. */
 export function AudienceView({
   scopeId,
-  site,
-  onSite,
+  onProject,
 }: {
   scopeId: string | null;
-  /** The org's site filter, a project id. */
-  site: string | null;
-  onSite: (projectId: string | null) => void;
+  onProject: (projectId: string) => void;
 }) {
   const views = useControlPlaneViews();
   const projects = useSiteProjects();
@@ -293,8 +294,7 @@ export function AudienceView({
     <AudienceScreen
       projects={projects}
       scopeId={scopeId}
-      site={site}
-      onSite={onSite}
+      onProject={onProject}
     />
   );
   return (

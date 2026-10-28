@@ -21,7 +21,6 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@decocms/ui/components/chart.tsx";
-import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import {
   Table,
   TableBody,
@@ -503,19 +502,6 @@ function SitesTable({ sites }: { sites: readonly SiteUsage[] }) {
         </Table>
       </div>
     </SettingsSection>
-  );
-}
-
-export function SitesMonitorSkeleton() {
-  return (
-    <div className="flex flex-col gap-4">
-      <Skeleton className="h-[290px] w-full rounded-xl" />
-      <div className="grid gap-4 md:grid-cols-3">
-        {SIDE_CARDS.map((id) => (
-          <Skeleton key={id} className="h-[230px] w-full rounded-xl" />
-        ))}
-      </div>
-    </div>
   );
 }
 

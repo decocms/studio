@@ -48,7 +48,8 @@ import { AXIS_TICK, MetricCard } from "@/layouts/task-board/analytics-sections";
 import { KEYS } from "@/lib/query-keys";
 import { useProjectContext } from "@/sdk";
 import type { SiteProject } from "./org-insights";
-import { projectLink, Trend } from "./parts";
+import { weightedMean } from "./aggregate";
+import { projectLink, Spread, Trend } from "./parts";
 
 const COLOR_VISITORS = "var(--chart-1)";
 
@@ -124,17 +125,13 @@ function isRange(value: string): value is AudienceRange {
 function RangeAction({
   value,
   onChange,
-  leading,
 }: {
   value: AudienceRange;
   onChange: (range: AudienceRange) => void;
-  /** Drawn before the period, e.g. the org's site filter. */
-  leading?: ReactNode;
 }) {
   const t = useT();
   return (
     <Page.Actions>
-      {leading}
       <Select
         value={value}
         onValueChange={(next) => isRange(next) && onChange(next)}
@@ -370,58 +367,21 @@ function displayKey(view: AudienceView, key: string): string {
   return key;
 }
 
-/** The org's site filter: every site at once, or one of them in full. */
-function SiteFilter({
-  projects,
-  value,
-  onChange,
-}: {
-  projects: readonly SiteProject[];
-  value: string | null;
-  onChange: (projectId: string | null) => void;
-}) {
-  const t = useT();
-  return (
-    <Select
-      value={value ?? ALL_SITES}
-      onValueChange={(next) => onChange(next === ALL_SITES ? null : next)}
-    >
-      <SelectTrigger size="sm" aria-label={t("monitor.siteFilter.label")}>
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent align="end">
-        <SelectItem value={ALL_SITES}>{t("monitor.siteFilter.all")}</SelectItem>
-        {projects.map((p) => (
-          <SelectItem key={p.id} value={p.id}>
-            {p.title}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  );
-}
-
-const ALL_SITES = "__all";
-
 /** One project's audience, in full. */
 function ProjectAudience({
   project,
   range,
   onRange,
-  filter,
 }: {
   project: SiteProject;
   range: AudienceRange;
   onRange: (range: AudienceRange) => void;
-  filter?: ReactNode;
 }) {
   const t = useT();
   const { org } = useProjectContext();
   const summary = useAudience(org.slug, project, "summary", range);
   const timeline = useAudience(org.slug, project, "timeline", range);
-  const action = (
-    <RangeAction value={range} onChange={onRange} leading={filter} />
-  );
+  const action = <RangeAction value={range} onChange={onRange} />;
 
   if (summary.isLoading) {
     return (
@@ -452,7 +412,6 @@ function ProjectAudience({
   if (!body?.available) {
     return (
       <>
-        {filter && <Page.Actions>{filter}</Page.Actions>}
         <EmptyState
           icon={<BarChart10 size={20} />}
           title={t("monitor.audience.empty.title")}
@@ -686,14 +645,12 @@ function OrgAudience({
   projects,
   range,
   onRange,
-  filter,
-  onSite,
+  onProject,
 }: {
   projects: readonly SiteProject[];
   range: AudienceRange;
   onRange: (range: AudienceRange) => void;
-  filter: ReactNode;
-  onSite: (projectId: string) => void;
+  onProject: (projectId: string) => void;
 }) {
   const t = useT();
   const { org } = useProjectContext();
@@ -736,15 +693,34 @@ function OrgAudience({
         )
     : null;
   const loading = rows.some((r) => r.loading);
+  // A rate over sessions averages across sites weighted by their sessions.
+  const perSite = (pick: (s: AudienceSummary) => number | null) =>
+    reporting.flatMap((r) => {
+      const s = r.summary?.summary;
+      const value = s ? pick(s) : null;
+      return s && value !== null
+        ? [
+            {
+              title: r.project.title,
+              value,
+              weight: s.sessions ?? s.visitors,
+            },
+          ]
+        : [];
+    });
+  const bounce = perSite((s) => s.bounceRate);
+  const visit = perSite((s) => s.visitDurationS);
+  const mixedSources =
+    new Set(
+      reporting.flatMap((r) => (r.data?.available ? [r.data.source] : [])),
+    ).size > 1;
   const sites = projects.flatMap((project, i) => {
     const d = timelines[i]?.data;
     return d?.available && d.data.view === "timeline"
       ? [{ project, points: d.data.points }]
       : [];
   });
-  const action = (
-    <RangeAction value={range} onChange={onRange} leading={filter} />
-  );
+  const action = <RangeAction value={range} onChange={onRange} />;
 
   if (!loading && reporting.length === 0) {
     return (
@@ -785,31 +761,69 @@ function OrgAudience({
     <>
       {action}
       <div className="flex flex-col gap-2">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           {card(t("monitor.audience.visitors"), (s) => s.visitors)}
           {card(t("monitor.audience.pageviews"), (s) => s.pageviews)}
+          {bounce.length > 0 && (
+            <MetricCard
+              title={t("monitor.audience.bounceRate")}
+              value={`${Math.round(weightedMean(bounce) ?? 0)}%`}
+              caption={
+                <Spread
+                  values={bounce}
+                  format={(v) => `${Math.round(v)}%`}
+                  lowerIsBetter
+                />
+              }
+            />
+          )}
+          {visit.length > 0 && (
+            <MetricCard
+              title={t("monitor.audience.visitDuration")}
+              value={formatDuration(weightedMean(visit) ?? 0)}
+              caption={
+                <Spread
+                  values={visit}
+                  format={formatDuration}
+                  lowerIsBetter={false}
+                />
+              }
+            />
+          )}
         </div>
         {!loading && (
           <p className="text-meta">
-            {t("monitor.audience.org.sites", {
-              count: String(reporting.length),
-              total: String(projects.length),
-            })}
+            {[
+              t("monitor.audience.org.sites", {
+                count: String(reporting.length),
+                total: String(projects.length),
+              }),
+              bounce.length > 1 || visit.length > 1
+                ? t("monitor.aggregate.weighted")
+                : null,
+              mixedSources ? t("monitor.aggregate.mixedSources") : null,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
           </p>
         )}
       </div>
       {sites.length > 0 && <StackedVisitors sites={sites} range={range} />}
       <div className="grid gap-4 md:grid-cols-3">
-        {(["sources", "countries", "devices"] as const).map((view) => (
-          <Ranked
-            key={view}
-            title={t(BREAKDOWN_TITLE[view])}
-            rows={sumRows(
-              view,
-              breakdowns[view].map((q) => q.data),
-            )}
-          />
-        ))}
+        {(["sources", "countries", "devices"] as const).map((view) =>
+          breakdowns[view].some((q) => q.isLoading) ? (
+            <Skeleton key={view} className="h-64" />
+          ) : (
+            <Ranked
+              key={view}
+              title={t(BREAKDOWN_TITLE[view])}
+              rows={sumRows(
+                view,
+                breakdowns[view].map((q) => q.data),
+              )}
+            />
+          ),
+        )}
       </div>
       <section className="surface shrink-0 overflow-hidden">
         <table className="w-full text-sm">
@@ -837,11 +851,11 @@ function OrgAudience({
               <tr
                 key={project.id}
                 tabIndex={0}
-                onClick={() => onSite(project.id)}
+                onClick={() => onProject(project.id)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
-                    onSite(project.id);
+                    onProject(project.id);
                   }
                 }}
                 className="cursor-pointer border-b border-border last:border-0 hover:bg-muted/50"
@@ -896,32 +910,19 @@ function OrgAudience({
   );
 }
 
-/**
- * The Audience tab. Inside a project: that project in full. Across the org:
- * one site in full when the org has one or the filter picks one; otherwise
- * every site at once.
- */
+/** The Audience tab: one project in full, or every project at once. */
 export function AudienceScreen({
   projects,
   scopeId,
-  site,
-  onSite,
+  onProject,
 }: {
   projects: readonly SiteProject[];
   scopeId: string | null;
-  /** The org filter's pick, a project id. */
-  site: string | null;
-  onSite: (projectId: string | null) => void;
+  onProject: (projectId: string) => void;
 }) {
   const t = useT();
   const [range, setRange] = useState<AudienceRange>("7d");
-  const only = projects.length === 1 ? projects[0] : undefined;
-  const chosen = projects.find((p) => p.id === (scopeId ?? site));
-  const project = chosen ?? only;
-  const filter =
-    !scopeId && projects.length > 1 ? (
-      <SiteFilter projects={projects} value={site} onChange={onSite} />
-    ) : null;
+  const project = projects.find((p) => p.id === scopeId);
   if (scopeId && !project) {
     return (
       <Frame>
@@ -940,15 +941,13 @@ export function AudienceScreen({
           project={project}
           range={range}
           onRange={setRange}
-          filter={filter}
         />
       ) : (
         <OrgAudience
           projects={projects}
           range={range}
           onRange={setRange}
-          filter={filter}
-          onSite={onSite}
+          onProject={onProject}
         />
       )}
     </Frame>

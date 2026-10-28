@@ -13,6 +13,7 @@ import {
   DESTINATION_ROUTE,
   PROJECT_ROUTE,
 } from "@/hooks/use-destination-route";
+import { type SiteValue, spread } from "./aggregate";
 import { useT, type TFunction } from "@/i18n/use-t.ts";
 import { changeTone } from "@/layouts/main-panel-tabs/monitor-v8";
 import type { DeployVerdict, MonitorStatus } from "./board";
@@ -208,4 +209,26 @@ export function verdictName(verdict: DeployVerdict, t: TFunction): string {
       return unhandled;
     }
   }
+}
+
+/** How a weighted total's sites differ, under its figure (see `aggregate.ts`). */
+export function Spread({
+  values,
+  format,
+  lowerIsBetter,
+}: {
+  values: readonly SiteValue[];
+  format: (value: number) => string;
+  lowerIsBetter: boolean;
+}) {
+  const t = useT();
+  const s = spread(values, format, lowerIsBetter);
+  if (!s) return null;
+  return (
+    <span className="text-meta truncate">
+      {s.kind === "all"
+        ? s.items.join(" · ")
+        : t("monitor.spread.range", { best: s.best, worst: s.worst })}
+    </span>
+  );
 }

@@ -62,8 +62,17 @@ export const monitor = {
   "monitor.audience.glance.pageviews": "Pageviews hoje",
   "monitor.performance.overTime": "Requisições ao longo do tempo",
   "monitor.performance.errorShare": "{share} das requisições",
-  "monitor.siteFilter.label": "Site",
-  "monitor.siteFilter.all": "Todos os sites",
+  "monitor.spread.range": "melhor {best} · pior {worst}",
+  "monitor.aggregate.mixedSources":
+    "Fontes diferentes entre os sites; compare com cuidado",
+  "monitor.aggregate.weighted": "Médias ponderadas pelo tráfego de cada site",
+  "monitor.performance.org.emptyTitle": "Nenhum tráfego de CDN nestes projetos",
+  "monitor.performance.org.emptyDesc":
+    "Os sites não serviram requisições pelo CDN da deco neste período. Sites Blocks v8 mostram a telemetria dentro do projeto.",
+  "monitor.performance.org.sites": "{count} de {total} projetos com tráfego",
+  "monitor.performance.org.noCdn": "Sem tráfego de CDN neste período",
+  "monitor.projectFilter.label": "Projeto",
+  "monitor.projectFilter.all": "Todos os projetos",
   "monitor.audience.org.emptyDesc":
     "Nenhum destes sites reporta audiência ainda. Abra um site para ativar o Deco Analytics.",
   "monitor.audience.range": "Período",

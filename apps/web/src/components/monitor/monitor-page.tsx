@@ -50,6 +50,7 @@ import {
   useSiteProjects,
 } from "./monitor-views";
 import { AudienceGlance } from "./audience-view";
+import { monitorScope, ProjectFilter } from "./project-filter";
 import { connectLink, localDay } from "./parts";
 import { Locked } from "./locked";
 import { MonitoredRepos } from "./monitored-repos";
@@ -63,8 +64,8 @@ import { useSourceIcons } from "./use-source-icons";
 
 export interface MonitorSelection {
   view?: MonitorView;
-  /** Across the org, the one site the Audience and Performance tabs show. */
-  site?: string;
+  /** Across the org, the one project every tab shows (the filter's pick). */
+  project?: string;
   /** A past local day, `YYYY-MM-DD`; today when absent. */
   date?: string;
   store?: string;
@@ -271,7 +272,7 @@ export function MonitorPage({
   loading,
   error,
   orgSlug,
-  scopeId,
+  scopeId: routeScope,
   selection,
   onSelect,
 }: {
@@ -279,11 +280,16 @@ export function MonitorPage({
   loading: boolean;
   error: Error | null;
   orgSlug: string;
+  /** The project the route is in; null across the org. */
   scopeId: string | null;
   selection: MonitorSelection;
   onSelect: (selection: MonitorSelection) => void;
 }) {
   const t = useT();
+  const projects = useSiteProjects();
+  const scopeId = monitorScope(routeScope, projects, selection.project);
+  const onProject = (project: string | null) =>
+    onSelect({ view: selection.view, project: project ?? undefined });
   const board = scopeBoard(orgBoard, scopeId);
   /** A past day's last second in the store's own timezone. */
   const storeDayEnd = (connectionId: string, date: string | undefined) => {
@@ -297,19 +303,31 @@ export function MonitorPage({
   const stateOf = (id: SourceId) =>
     board.sources.find((s) => s.id === id)?.state ?? "off";
   const view = selection.view ?? "metrics";
-  const scopeProject = useSiteProjects().find((p) => p.id === scopeId);
+  const scopeProject = projects.find((p) => p.id === scopeId);
   // Everything the page can show is laid out from the start; what no source
   // feeds yet is drawn from the preview, faded, under its connect button.
   const shown = monitorPreview(scopeId, selection.date);
   const preview = shown.kpis;
   const [showChanges, setShowChanges] = useState(true);
   const tabs = (
-    <MonitorTabs
-      view={view}
-      onView={(next) =>
-        onSelect({ view: next === "metrics" ? undefined : next })
-      }
-    />
+    <>
+      <MonitorTabs
+        view={view}
+        onView={(next) =>
+          onSelect({
+            view: next === "metrics" ? undefined : next,
+            project: selection.project,
+          })
+        }
+      />
+      {!routeScope && projects.length > 1 && (
+        <ProjectFilter
+          projects={projects}
+          value={scopeId}
+          onChange={onProject}
+        />
+      )}
+    </>
   );
   // Experiments, Performance and Audience are a project's own screens, with their frame.
   if (view === "experiments") {
@@ -324,11 +342,7 @@ export function MonitorPage({
     return (
       <>
         {tabs}
-        <AudienceView
-          scopeId={scopeId}
-          site={selection.site ?? null}
-          onSite={(site) => onSelect({ ...selection, site: site ?? undefined })}
-        />
+        <AudienceView scopeId={scopeId} onProject={onProject} />
       </>
     );
   }
@@ -336,16 +350,7 @@ export function MonitorPage({
     return (
       <>
         {tabs}
-        <PerformanceView
-          scopeId={scopeId}
-          date={selection.date ?? localDay(new Date())}
-          onDate={(date) =>
-            onSelect({
-              ...selection,
-              date: date === localDay(new Date()) ? undefined : date,
-            })
-          }
-        />
+        <PerformanceView scopeId={scopeId} onProject={onProject} />
       </>
     );
   }
