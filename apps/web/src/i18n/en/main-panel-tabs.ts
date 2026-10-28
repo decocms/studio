@@ -764,6 +764,10 @@ export const mainPanelTabs = {
     "Audience analytics unavailable",
   "mainPanelTabs.cdnTab.audienceUnconfiguredBody":
     "The audience source (OneDollarStats) isn't configured for this deployment.",
+  "mainPanelTabs.cdnTab.source_onedollar": "OneDollarStats",
+  "mainPanelTabs.cdnTab.source_deco": "Deco Analytics",
+  "mainPanelTabs.cdnTab.audienceDecoUnconfiguredBody":
+    "This site doesn't send Deco Analytics yet. Install it from Monitor → Analytics.",
   "mainPanelTabs.cdnTab.measureBy": "Measure by",
   "mainPanelTabs.cdnTab.showAll": "View all",
   "mainPanelTabs.cdnTab.showLess": "Show less",
