@@ -300,7 +300,7 @@ const valueSummaryOf = (r: Row | undefined): HeatValueSummary | null => {
  * order exists, so the panel rendered "0% of 1,070 people bought" over a list
  * of zeros. That is a statement about the shop, made out of missing data.
  */
-export const hasRevenue = (s: HeatValueSummary | null): boolean =>
+export const hasRevenue = (s: HeatValueSummary | null): s is HeatValueSummary =>
   !!s && s.orders > 0;
 
 const valueModelOf = (v: unknown): HeatValueModel | null => {
