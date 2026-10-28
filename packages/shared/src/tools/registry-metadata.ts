@@ -1908,6 +1908,8 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "TASK_BOARD_PROMPT_DELETE",
       "TASK_BOARD_ITEM_PRS_GET",
       "TASK_BOARD_PREVIEW_PROBE",
+      // A card for the Super Agent like any other, on a site the org owns.
+      "ANALYTICS_INSTALL",
       "TASK_BOARD_ITEM_RERUN",
       "TASK_BOARD_RUN_REVIEWER",
       "TASK_BOARD_REVIEW_DECISION",
@@ -2211,15 +2213,6 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "Run read-only SQL over the organization's own data lake (orders from connected stores)",
     section: "Developer",
     tools: ["CUSTOMER_LAKE_QUERY"],
-  },
-  {
-    id: "analytics:install",
-    label: "Install site analytics",
-    description:
-      "Have the Super Agent open a pull request adding Deco Analytics to a site",
-    section: "Monitoring",
-    tools: ["ANALYTICS_INSTALL"],
-    dangerous: true,
   },
 ];
 
