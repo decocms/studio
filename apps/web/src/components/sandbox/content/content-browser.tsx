@@ -10,9 +10,9 @@ import {
   NamedRuleViewsProvider,
 } from "@/components/sections-editor/named-rule-step";
 import { BlocksSiteEditorProvider } from "@/components/sections-editor/blocks-site-editor";
+import { SiteDraftViewHeader } from "@/components/site-draft-bar/view-header";
 import {
   AlertCircle,
-  ArrowLeft,
   CornerUpRight,
   Cube01,
   File02,
@@ -1914,17 +1914,9 @@ function ContentBrowserReady({
           </div>
         ) : typesEditorOpen && backView ? (
           <div className="flex-1 min-w-0 flex flex-col">
-            <div className="flex h-9 shrink-0 items-center border-b px-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setTypesView(backView);
-                  closeTypeEntry();
-                }}
-                className="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-muted-foreground hover:bg-accent hover:text-foreground cursor-pointer"
-              >
-                <ArrowLeft size={14} />
-                {t("siteEditor.contentTypes.back", {
+            <SiteDraftViewHeader
+              back={{
+                label: t("siteEditor.contentTypes.back", {
                   type:
                     backView.kind === "seo"
                       ? t("siteEditor.contentTypes.seo")
@@ -1933,9 +1925,13 @@ function ContentBrowserReady({
                         : typeLabel(
                             findType(backView) ?? { id: "", title: "" },
                           ),
-                })}
-              </button>
-            </div>
+                }),
+                onClick: () => {
+                  setTypesView(backView);
+                  closeTypeEntry();
+                },
+              }}
+            />
             <div className="flex-1 min-h-0">{editorPane}</div>
           </div>
         ) : (
