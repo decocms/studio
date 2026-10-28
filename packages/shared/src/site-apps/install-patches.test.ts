@@ -138,6 +138,29 @@ describe("makeInstallAppPatches — deno", () => {
     ).toThrow(/manifest\.gen\.ts/);
   });
 
+  it('keeps the manifest intact when a `from "..."` follows the apps map', () => {
+    // `IMPORT_END` matches any `from "..."`, so one AFTER the opening brace
+    // used to be picked as "the last import" and invert the two slice offsets
+    // — the written file lost everything between them and repeated its tail.
+    const trailing = MANIFEST_GEN.replace(
+      "export default manifest;",
+      'export { something } from "./late.ts";\n\nexport default manifest;',
+    );
+    const manifest = fileAt(
+      makeInstallAppPatches(denoInput({ manifestGenTs: trailing })),
+      "manifest.gen.ts",
+    )!.content;
+
+    expect(manifest).toContain(
+      'import * as vtexApp from "./apps/deco/vtex.ts";',
+    );
+    expect(manifest).toContain('"site/apps/deco/vtex.ts": vtexApp,');
+    // Everything the original had is still there, exactly once.
+    expect(manifest).toContain('"site/loaders/icons.ts": $$$0,');
+    expect(manifest.split('"site/apps/site.ts": $$$$$$$$$$$1,').length).toBe(2);
+    expect(manifest.split("export default manifest;").length).toBe(2);
+  });
+
   it("refuses a manifest with no apps map", () => {
     expect(() =>
       makeInstallAppPatches(

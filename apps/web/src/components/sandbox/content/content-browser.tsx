@@ -2,7 +2,7 @@ import { useBlogAi } from "@/hooks/use-blog-ai";
 import { useOrgFlag } from "@/hooks/use-organization-settings";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
-import { Suspense, lazy, useState } from "react";
+import { Suspense, lazy, useRef, useState } from "react";
 import { useSearch } from "@tanstack/react-router";
 import {
   type NamedRuleViews,
@@ -47,7 +47,10 @@ import { useProjectContext } from "@/sdk";
 import { useChatTask } from "@/components/chat/context";
 import { useDecofile } from "@/components/sections-editor/use-decofile";
 import { useLiveMeta } from "@/components/sections-editor/use-live-meta";
-import { liveMetaSchemaPollInterval } from "./schema-poll";
+import {
+  liveMetaSchemaPollInterval,
+  type SchemaPollWindow,
+} from "./schema-poll";
 import { hasCmsSettingsType } from "./cms-settings";
 import {
   keptTheirVersion,
@@ -548,11 +551,20 @@ function ContentBrowserReady({
   }
   // Page that should open with the inline SEO form in SectionsEditor.
   const [openPageSeoKey, setOpenPageSeoKey] = useState<string | null>(null);
+  /**
+   * The open schema wait, so the budget in `liveMetaSchemaPollInterval` is a
+   * delta rather than the query's lifetime counter. A ref because
+   * `refetchInterval` runs outside render, where state would be a loop.
+   */
+  const schemaPollWindow = useRef<SchemaPollWindow | null>(null);
   const { data: meta, isLoading: metaLoading } = useLiveMeta(fetchParams, {
     fetchEnabled: devServerReady,
     refetchInterval: (query) => {
       const currentMeta = query.state.data;
-
+      // The block whose schema is being waited for, when one is open. An app's
+      // comes off its own block; the Site tab's comes off the site app the
+      // manifest names, falling back to the block's own resolveType.
+      let resolveType: string | undefined;
       if (
         activeCollection === "apps" &&
         selection &&
@@ -561,32 +573,31 @@ function ContentBrowserReady({
         const block = decofile?.[selection.key] as
           | Record<string, unknown>
           | undefined;
-        return liveMetaSchemaPollInterval({
-          resolveType:
-            typeof block?.__resolveType === "string"
-              ? block.__resolveType
-              : undefined,
-          meta: currentMeta,
-        });
-      }
-
-      if (activeCollection === "site" && decofile) {
+        resolveType =
+          typeof block?.__resolveType === "string"
+            ? block.__resolveType
+            : undefined;
+      } else if (activeCollection === "site" && decofile) {
         const siteEntry = currentMeta
           ? findSiteAppEntry(decofile, currentMeta)
           : null;
         const siteBlock = decofile.site as Record<string, unknown> | undefined;
-        const resolveType =
+        resolveType =
           siteEntry?.resolveType ??
           (typeof siteBlock?.__resolveType === "string"
             ? siteBlock.__resolveType
             : undefined);
-        return liveMetaSchemaPollInterval({
-          resolveType,
-          meta: currentMeta,
-        });
       }
-
-      return false;
+      const decision = liveMetaSchemaPollInterval({
+        resolveType,
+        meta: currentMeta,
+        // Failed reads count against the budget too: a dev server that never
+        // comes back would otherwise buy an unlimited wait.
+        reads: query.state.dataUpdateCount + query.state.errorUpdateCount,
+        window: schemaPollWindow.current,
+      });
+      schemaPollWindow.current = decision.window;
+      return decision.interval;
     },
   });
   // Storefront "." deep-link: open the visited page once the decofile loads. One-shot, so a later manual selection is never clobbered.
@@ -678,17 +689,26 @@ function ContentBrowserReady({
    */
   const installBlocked = !canInstallApps
     ? { reason: t("sandbox.appInstallPanel.unavailable") }
-    : session.resolved && session.runtime === "cms"
-      ? {
-          reason: t("sandbox.appEditor.installNeedsCodingSession"),
-          action: {
-            label: t("chat.fastPreview.startCodingSession"),
-            onClick: () => createTask({ runtime: "sandbox" }),
-          },
-        }
-      : null;
+    : // Until the project row lands, `runtime` is the shape of an answer
+      // rather than one, and `handleInstallApp` refuses to act on it. Saying so
+      // beats a button labelled Install whose every click does nothing.
+      !session.resolved
+      ? { reason: t("sandbox.appInstallPanel.sessionLoading") }
+      : session.runtime === "cms"
+        ? {
+            reason: t("sandbox.appEditor.installNeedsCodingSession"),
+            action: {
+              label: t("chat.fastPreview.startCodingSession"),
+              onClick: () => createTask({ runtime: "sandbox" }),
+            },
+          }
+        : null;
   const handleInstallApp = (entry: AppCatalogEntry) => {
     if (!session.resolved) return;
+    // One at a time: the mutation is a single instance, so a second install
+    // overwrites the first one's `variables` and `error` — the panel would
+    // then read the wrong app's state, and the first failure is lost.
+    if (installApp.isPending) return;
     if (session.runtime === "cms") {
       toast.error(t("sandbox.appEditor.installNeedsCodingSession"), {
         action: {
@@ -1648,7 +1668,12 @@ function ContentBrowserReady({
                   key={`available-app:${entry.id}`}
                   entry={entry}
                   technology={siteTechnology}
-                  blocked={installBlocked}
+                  blocked={
+                    installApp.isPending &&
+                    installApp.variables?.blockKey !== entry.id
+                      ? { reason: t("sandbox.appInstallPanel.oneAtATime") }
+                      : installBlocked
+                  }
                   isInstalling={
                     installApp.isPending &&
                     installApp.variables?.blockKey === entry.id

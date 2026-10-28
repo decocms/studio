@@ -735,6 +735,11 @@ func (o *Orchestrator) stepInstallInner() bool {
 	if cfg == nil {
 		return false
 	}
+	// Consumed here, ahead of every short-circuit below: a force this step
+	// returns early on is a force this step answered, and leaving it armed
+	// hands it to whatever install comes next — one that was never asked to
+	// bypass its fingerprint and would reinstall a tree that did not move.
+	forced := o.takeForce(&o.forceInstall)
 	// Clone-only: the consumer wants the checkout, nothing else. Skipped here
 	// rather than by omitting `application`, because fillApplicationDefaults
 	// autodetects a package manager from the lockfile and would put the install
@@ -746,8 +751,7 @@ func (o *Orchestrator) stepInstallInner() bool {
 	// Forced: the shared install state is not consulted at all, so an install
 	// finishing concurrently cannot mark the fingerprint good underneath this
 	// one and turn it back into the skip it was asked to bypass.
-	if !o.takeForce(&o.forceInstall) &&
-		o.deps.InstallState.IsInstalledFor(cfg, o.branchHead()) {
+	if !forced && o.deps.InstallState.IsInstalledFor(cfg, o.branchHead()) {
 		o.broadcastDiscoveredScripts(cfg)
 		return true
 	}

@@ -11,6 +11,10 @@ export const sandbox = {
   "sandbox.appEditor.noEditableSchema":
     "Nenhum schema editável foi encontrado para este app.",
   "sandbox.appInstallPanel.install": "Instalar",
+  "sandbox.appInstallPanel.oneAtATime":
+    "Outro app está instalando — espere terminar para instalar este.",
+  "sandbox.appInstallPanel.sessionLoading":
+    "Ainda lendo esta sessão — o botão volta em instantes.",
   "sandbox.appInstallPanel.installing": "Instalando…",
   "sandbox.appInstallPanel.notInstallable":
     "Este app vem do código do próprio site, não do registro — não há o que instalar por aqui.",

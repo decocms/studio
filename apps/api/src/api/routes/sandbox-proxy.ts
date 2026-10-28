@@ -913,6 +913,15 @@ export const createSandboxRoutes = () => {
         400,
       );
     }
+    // `?force=1` reaches the daemon as the step's body, where install and
+    // start each decide what it bypasses. Rejected rather than coerced when it
+    // is anything else: a `?force=true` read as false is an install that
+    // answers 200 and does nothing, which is the failure this flag exists to
+    // make impossible.
+    const force = parseSetupForce(c.req.query("force"));
+    if (force === null) {
+      return c.json({ error: 'force must be "1" or "0"' }, 400);
+    }
     // Pod-addressed means a pod that EXISTS. Without the liveness
     // check a sandbox-less session would proxy to a daemon that was never
     // provisioned and get a 410 where it used to get a clean 404.
@@ -959,15 +968,6 @@ export const createSandboxRoutes = () => {
           );
         }
       }
-    }
-    // `?force=1` reaches the daemon as the step's body, where install and
-    // start each decide what it bypasses. Rejected rather than coerced when it
-    // is anything else: a `?force=true` read as false is an install that
-    // answers 200 and does nothing, which is the failure this flag exists to
-    // make impossible.
-    const force = parseSetupForce(c.req.query("force"));
-    if (force === null) {
-      return c.json({ error: 'force must be "1" or "0"' }, 400);
     }
     return proxyDaemon(c, `/_sandbox/setup/${step}`, {
       signal: c.req.raw.signal,

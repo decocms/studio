@@ -1,4 +1,5 @@
 import { useOptionalChatTask } from "@/components/chat/chat-context";
+import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { ChevronRight } from "@untitledui/icons";
 import { type ReactNode, useRef, useState } from "react";
@@ -20,7 +21,10 @@ import {
   useDebouncedSaveBlock,
   useSaveBlock,
 } from "@/components/sections-editor/use-save-block";
-import { resolveAppEditorSchema } from "./app-editor-schema";
+import {
+  hasEditableAppEditorSchema,
+  resolveAppEditorSchema,
+} from "./app-editor-schema";
 import { buildSectionBlockFromCatalogEntry } from "./section-create";
 import { SchemaForm } from "@/components/sections-editor/schema-form";
 import {
@@ -90,6 +94,8 @@ function AppEditorForm({
 }) {
   const threadId = useOptionalChatTask()?.taskId ?? null;
   const t = useT();
+  /** Whether a build that could still generate this block's schema exists. */
+  const session = useSessionRuntime(virtualMcpId);
   // Section-gallery previews render against the sandbox dev server, falling
   // back to the Fast Preview production deployment while the sandbox boots.
   const sectionPreviewBase = useSectionPreviewBase({
@@ -100,15 +106,25 @@ function AppEditorForm({
   const resolveType =
     typeof block?.__resolveType === "string" ? block.__resolveType : "";
   const schema = resolveAppEditorSchema(resolveType, meta, excludeFields);
-  const hasEditableFields =
-    !!schema && Object.keys(schema.properties ?? {}).length > 0;
+  const hasEditableFields = hasEditableAppEditorSchema(
+    resolveType,
+    meta,
+    excludeFields,
+  );
   /**
    * The manifest has no entry for this block yet — an app installed into the
    * working tree, waiting for the build that generates its schema. One state,
    * not two: a spinner and a message that took turns as the dev server went
    * down and came back read as two different answers to the same question.
+   *
+   * Only where a build is actually coming. A Fast Preview session never builds
+   * anything, and a block with no `__resolveType` has nothing to look up —
+   * both are "there is no form here", and waiting on them spins forever.
    */
-  const awaitingSchema = !hasManifestBlockSchema(resolveType, meta);
+  const awaitingSchema =
+    resolveType !== "" &&
+    !(session.resolved && session.runtime === "cms") &&
+    !hasManifestBlockSchema(resolveType, meta);
   const title =
     titleOverride ?? (block ? appLabel(blockKey, block, meta) : blockKey);
 

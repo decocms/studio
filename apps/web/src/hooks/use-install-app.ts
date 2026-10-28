@@ -222,28 +222,25 @@ export function useInstallApp({
       return runContentChange(content, {
         kind: "edit",
         write: async () => {
-          // package.json first, so the install that follows reads it. Only an
-          // ordering: the step is queued, not awaited, so the writes below can
-          // land while it runs and a failed install surfaces in the setup
-          // stream rather than here.
-          const manifest = patches.files.find(
-            (file) => file.path === "package.json",
-          );
-          if (manifest) await writeFile(ref, packagePath, manifest);
-          const install = dependencyInstallFor(patches);
-          if (install) await requestDependencyInstall(ref, install.force);
+          // EVERY write first, then the pod is asked to act on the tree. Both
+          // setup steps return once the step is QUEUED, and a forced install
+          // cascades straight into the start that respawns the dev server — so
+          // a request sent between two writes races the very files it exists to
+          // pick up, and the dev server can boot on a tree that is still half
+          // written. Ordering is all this costs: the install is queued, not
+          // awaited, and its failure surfaces in the setup stream, not here.
           for (const file of patches.files) {
-            if (file.path !== "package.json") {
-              await writeFile(ref, packagePath, file);
-            }
+            await writeFile(ref, packagePath, file);
           }
           // Block last: never leave a resolveType with no module behind it.
           await writeFile(ref, packagePath, {
             path: decoBlockFilePath(patches.block.key),
             content: `${JSON.stringify(patches.block.value, null, 2)}\n`,
           });
-          // Last, and only when the step above did not already do it: the
-          // restart is what puts the app's schema in `/live/_meta`.
+          const install = dependencyInstallFor(patches);
+          if (install) await requestDependencyInstall(ref, install.force);
+          // Only when the step above did not already do it: the restart is
+          // what puts the app's schema in `/live/_meta`.
           if (needsDevRestart(patches, install)) await requestDevRestart(ref);
           // The working tree moved by more than one block: the header's change
           // count reads git status, as it does after every other write.

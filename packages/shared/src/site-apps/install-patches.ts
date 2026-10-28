@@ -131,7 +131,13 @@ function denoManifestPatch(
     );
   }
 
-  const lastImport = [...manifestGenTs.matchAll(IMPORT_END)].pop();
+  // Before the map, like `addRegistryEntry`: `IMPORT_END` matches any
+  // `from "..."`, and one found AFTER the opening brace would invert the two
+  // slice offsets below — the written file would lose everything between them
+  // and repeat the tail, leaving a manifest that does not parse.
+  const lastImport = [...manifestGenTs.matchAll(IMPORT_END)]
+    .filter((m) => m.index < appsAt.index)
+    .pop();
   if (!lastImport) {
     throw new SiteAppInstallError("manifest.gen.ts has no imports to extend");
   }
