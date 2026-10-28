@@ -290,6 +290,19 @@ const valueSummaryOf = (r: Row | undefined): HeatValueSummary | null => {
   };
 };
 
+/**
+ * Is there any money to show at all?
+ *
+ * NOT the same as "the page had visitors", which is what this used to be keyed
+ * on — and the difference showed up the first time it ran against a storefront
+ * that does not send `purchase`. `visitors` on the summary is the PAGE's
+ * visitor count, read from the heatmap fact and present whether or not a single
+ * order exists, so the panel rendered "0% of 1,070 people bought" over a list
+ * of zeros. That is a statement about the shop, made out of missing data.
+ */
+export const hasRevenue = (s: HeatValueSummary | null): s is HeatValueSummary =>
+  !!s && s.orders > 0;
+
 const valueModelOf = (v: unknown): HeatValueModel | null => {
   if (!v || typeof v !== "object") return null;
   const m = v as Row;

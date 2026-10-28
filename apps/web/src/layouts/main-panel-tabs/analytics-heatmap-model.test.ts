@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
   frameUrl,
   gateViews,
+  hasRevenue,
   parseHeatmap,
   pickView,
   rampCss,
@@ -186,6 +187,20 @@ describe("parseHeatmap", () => {
       causal: false,
     });
     expect(parseHeatmap({}).valueModel).toBeNull();
+  });
+
+  it("separates 'no orders' from 'no visitors' — both hide the panel", () => {
+    // The bug this covers: a storefront that does not send `purchase` still has
+    // page VISITORS, so the summary was present with every money field at zero
+    // and the panel rendered "0% of 1,070 people bought" over a list of zeros.
+    // Visitors are not evidence of revenue, and the panel must not imply they are.
+    const noOrders = parseHeatmap({
+      hmValueSummary: [{ visitors: "1070", conv_visitors: "0", orders: "0" }],
+    }).valueSummary;
+    expect(noOrders?.visitors).toBe(1070);
+    expect(hasRevenue(noOrders)).toBe(false);
+    expect(hasRevenue(parseHeatmap(payload).valueSummary)).toBe(true);
+    expect(hasRevenue(null)).toBe(false);
   });
 
   it("has no baseline when the page sold nothing, rather than a zeroed one", () => {

@@ -38,6 +38,7 @@ import {
   HEAT_RANGES,
   VIEW_PROTOCOL,
   frameUrl,
+  hasRevenue,
   parseHeatmap,
   rampCss,
   reachAt,
@@ -1078,7 +1079,7 @@ function Viewer({
                     <p className="px-2 py-3 text-xs text-muted-foreground">
                       {t(k("valueOtherGoal"))}
                     </p>
-                  ) : !model.valueSummary ? (
+                  ) : !hasRevenue(model.valueSummary) ? (
                     <p className="px-2 py-3 text-xs text-muted-foreground">
                       {t(k("valueNone"))}
                     </p>
