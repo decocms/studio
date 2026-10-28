@@ -254,18 +254,11 @@ export const SANDBOX_START = defineTool({
 async function rotateGitCredentialOnReuse(
   ctx: StudioContext,
   runner: SandboxProvider,
-  orgId: string,
   handle: string,
   threadId: string | undefined,
   metadata: Record<string, unknown>,
 ): Promise<void> {
   try {
-    const settings = await ctx.storage.organizationSettings.get(orgId);
-    if (
-      !orgFlagEnabled(settings?.flags, "sandbox_reuse_rotates_git_credential")
-    ) {
-      return;
-    }
     const repository =
       (await getThreadRepository(ctx, threadId)) ??
       (metadata as RepositoryMetadata).repository ??
@@ -352,7 +345,6 @@ export async function ensureSandbox(
       await rotateGitCredentialOnReuse(
         ctx,
         runner,
-        organization.id,
         existing.sandboxHandle,
         recordThreadId,
         metadata,

@@ -256,12 +256,6 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "Forward a sandbox run's metadata (such as a webhook trigger's run_metadata) to the MCP tools it calls, as hosted Decopilot runs do. Off by default.",
     ),
-  sandbox_reuse_rotates_git_credential: z
-    .boolean()
-    .optional()
-    .describe(
-      "Hand a sandbox that a new turn reuses a fresh git token before the turn starts, so pushes from a long-lived sandbox keep working after the token it was created with expires. Off by default: it adds a token read and a sandbox config request to every turn that reuses a sandbox.",
-    ),
   sandbox_repo_snapshots: z
     .boolean()
     .optional()
