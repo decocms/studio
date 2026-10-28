@@ -1,0 +1,675 @@
+/**
+ * The Content tab of a hosted Blocks v8 site, as content types: every saved
+ * block is filed under its type (the schema's manifest key, aliases folded
+ * into their target), so the sidebar lists only the types the site HAS
+ * content of, never the whole block map, as a generic CMS does: collections
+ * (a type with several entries, and always pages and redirects) and
+ * singletons (a type with one entry: Header, Footer, Settings). The manifest
+ * group only says which editor opens an entry. Each entry carries
+ * its status in the draft, from the draft's changes (`changes.list`):
+ * published, changed, new, or deleted (a deletion's content is the published
+ * copy, from `changes.get`'s `before`).
+ *
+ * Pure: reads the blocks, the schema and the changes the editor already
+ * holds, no request of its own.
+ */
+
+import { type Change, spellingKey } from "@decocms/blocks/protocol";
+import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
+import { namedRuleKindOfType } from "@/components/sections-editor/named-rules";
+import { normalizePagePath } from "@/components/sections-editor/page-path-utils";
+import { getPageVariantSectionsAt } from "@/components/sections-editor/page-variants";
+import { underlyingSectionResolveType } from "@/components/sections-editor/section-catalog";
+import { getRedirectPayload, type RedirectType } from "./redirect-data";
+
+export type EntryStatus = "published" | "changed" | "new" | "deleted";
+
+/**
+ * The schema's manifest groups (`schema.gen.json` → `manifest.blocks`): which
+ * editor opens a type's entries, never how the sidebar groups them.
+ */
+export type ManifestGroup =
+  | "pages"
+  | "redirects"
+  | "sections"
+  | "loaders"
+  | "matchers"
+  | "content"
+  | "other";
+
+export interface ContentEntry {
+  /** The block's name in the content (its key). */
+  key: string;
+  /** The block as the draft holds it; a deleted one's published copy. */
+  block: Record<string, unknown>;
+  status: EntryStatus;
+  /** A change whose block the draft doesn't hold (nothing to open). */
+  orphan?: true;
+}
+
+export interface ContentType {
+  /** The manifest key, aliases folded (`page`, `site-header`, …). */
+  id: string;
+  /** Which editor opens its entries. */
+  group: ManifestGroup;
+  title: string;
+  entries: ContentEntry[];
+  /** Entries with a change in the draft (any status but published). */
+  changed: number;
+}
+
+export interface ContentTypeTree {
+  pages: ContentType | null;
+  redirects: ContentType | null;
+  /**
+   * The types with several entries, whatever their manifest group (a device
+   * rule is a type like any other): pages and redirects first, even with one
+   * entry, then the rest, most entries first, then by name.
+   */
+  collections: ContentType[];
+  /**
+   * The types with exactly one entry (Header, Footer, Settings), by name: the
+   * sidebar opens that entry directly.
+   */
+  singletons: ContentType[];
+  /** Every type above, for lookups by id. */
+  all: ContentType[];
+  /**
+   * Every change in the draft (`changes.list`), one row each: under its type
+   * when the entry is listed, else under the type its block names (a test,
+   * a campaign) or none (a deletion whose published copy isn't read yet).
+   */
+  changed: Array<{ type: ContentType; entry: ContentEntry }>;
+  /**
+   * Whether the draft's changes are known: until `changes.list` answers,
+   * every entry reads as published and nothing says it is.
+   */
+  statusKnown: boolean;
+}
+
+/** How many collections the sidebar shows before "Show all". */
+export const TOP_TYPES = 8;
+
+/** Built-ins whose schema title is their raw key get Studio's names. */
+const BUILT_IN_TITLES: Record<string, string> = {
+  page: "Pages",
+  redirect: "Redirects",
+};
+
+/**
+ * Types the Content tab never lists (PO decision): the site's CMS settings
+ * (`cms-settings`, the block named CMS) are configuration, not content.
+ */
+const HIDDEN_TYPES: ReadonlySet<string> = new Set(["cms-settings"]);
+
+const KNOWN_GROUPS: ReadonlySet<string> = new Set([
+  "pages",
+  "redirects",
+  "sections",
+  "loaders",
+  "matchers",
+  "content",
+]);
+
+/** Types that only wrap another block: filed under what they wrap. */
+const WRAPPER_TYPES: ReadonlySet<string> = new Set([
+  "lazy",
+  "multivariate",
+  "website/flags/multivariate.ts",
+  "website/flags/multivariate/section.ts",
+]);
+
+/** How deep a saved block may point at another before we give up. */
+const MAX_REF_HOPS = 8;
+
+type Manifest = Record<string, Record<string, { $ref?: string }>>;
+
+function manifestOf(meta: LiveMeta | null | undefined): Manifest {
+  return (meta?.manifest?.blocks ?? {}) as Manifest;
+}
+
+function aliasesOf(meta: LiveMeta | null | undefined): Record<string, string> {
+  const aliases = (meta as { aliases?: unknown } | null | undefined)?.aliases;
+  return aliases && typeof aliases === "object"
+    ? (aliases as Record<string, string>)
+    : {};
+}
+
+/** A manifest key with its alias followed (`website/pages/Page.tsx` → `page`). */
+export function aliasTarget(
+  meta: LiveMeta | null | undefined,
+  key: string,
+): string {
+  const target = aliasesOf(meta)[key];
+  return typeof target === "string" && target ? target : key;
+}
+
+function manifestEntry(meta: LiveMeta | null | undefined, key: string) {
+  for (const [group, entries] of Object.entries(manifestOf(meta))) {
+    if (entries && Object.hasOwn(entries, key)) {
+      return { group, entry: entries[key] ?? {} };
+    }
+  }
+  return null;
+}
+
+/** The manifest group that declares `key` (after its alias), if any. */
+export function manifestGroupOf(
+  meta: LiveMeta | null | undefined,
+  key: string,
+): ManifestGroup | null {
+  const found = manifestEntry(meta, aliasTarget(meta, key));
+  if (!found) return null;
+  return KNOWN_GROUPS.has(found.group)
+    ? (found.group as ManifestGroup)
+    : "other";
+}
+
+/**
+ * The type a saved block is filed under: its `__resolveType` with the alias
+ * followed, through any saved block it points at (a block typed `Header`
+ * is a copy of the saved `Header`), and through a variants wrapper to the
+ * section it wraps. `null` for a block with no type.
+ */
+export function typeOfBlock(
+  meta: LiveMeta | null | undefined,
+  blocks: Record<string, unknown>,
+  block: Record<string, unknown>,
+): string | null {
+  let current: Record<string, unknown> = block;
+  for (let hop = 0; hop < MAX_REF_HOPS; hop++) {
+    const rt = current.__resolveType;
+    if (typeof rt !== "string" || !rt) return null;
+    const type = aliasTarget(meta, rt);
+    if (manifestEntry(meta, type)) {
+      if (!WRAPPER_TYPES.has(type) || !meta) return type;
+      const inner = underlyingSectionResolveType(meta, current);
+      return inner && inner !== rt ? aliasTarget(meta, inner) : type;
+    }
+    const saved = blocks[rt];
+    if (!saved || typeof saved !== "object" || Array.isArray(saved)) {
+      return type;
+    }
+    current = saved as Record<string, unknown>;
+  }
+  return null;
+}
+
+/**
+ * "Product Shelf" from `site/sections/Product/ProductShelf.tsx`,
+ * `product-shelf` or `productShelf`: the last path segment, without its
+ * extension, split into words.
+ */
+export function humanizeTypeKey(key: string): string {
+  const last = key.split("/").filter(Boolean).pop() ?? key;
+  const words = last
+    .replace(/\.(tsx?|jsx?|html?)$/, "")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[-_\s]+/g, " ")
+    .trim();
+  if (!words) return key;
+  return words.replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function definitionTitle(
+  meta: LiveMeta | null | undefined,
+  key: string,
+): string | null {
+  const ref = manifestEntry(meta, key)?.entry.$ref;
+  if (typeof ref !== "string") return null;
+  const id = ref.split("/").pop() ?? "";
+  const definitions = (meta?.schema as { definitions?: unknown } | undefined)
+    ?.definitions as Record<string, { title?: unknown }> | undefined;
+  const title = definitions?.[id]?.title;
+  return typeof title === "string" && title.trim() ? title.trim() : null;
+}
+
+/**
+ * A type's name for people: Studio's name for a built-in, the schema
+ * definition's title, or the key humanized when the title is the raw key
+ * (or path-like) or missing.
+ */
+export function typeTitle(
+  meta: LiveMeta | null | undefined,
+  key: string,
+): string {
+  const type = aliasTarget(meta, key);
+  const builtIn = BUILT_IN_TITLES[type];
+  if (builtIn) return builtIn;
+  const title = definitionTitle(meta, type);
+  if (title && title !== type && !title.includes("/")) return title;
+  return humanizeTypeKey(type);
+}
+
+/** An entry's status from its change in the draft (none: published). */
+export function entryStatus(change: Change | undefined): EntryStatus {
+  if (!change) return "published";
+  if (change.kind === "delete") return "deleted";
+  return change.baseVersion === null ? "new" : "changed";
+}
+
+/** The draft's changes by spelling (a block's name may be spelled two ways). */
+function changesBySpelling(
+  changes: Record<string, Change> | null | undefined,
+): Map<string, { name: string; change: Change }> {
+  const out = new Map<string, { name: string; change: Change }>();
+  for (const [name, change] of Object.entries(changes ?? {})) {
+    out.set(spellingKey(name), { name, change });
+  }
+  return out;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+/**
+ * Every saved block filed under its type. `deleted` holds the
+ * published copy of each block the draft deletes, by name (from
+ * `changes.get`), so a deleted entry still shows under its type; without it
+ * a deletion is listed only in the draft's changes.
+ */
+export function buildContentTypes(input: {
+  blocks: Record<string, unknown>;
+  meta: LiveMeta | null | undefined;
+  changes: Record<string, Change> | null | undefined;
+  deleted?: Record<string, Record<string, unknown> | null> | null;
+}): ContentTypeTree {
+  const { blocks, meta } = input;
+  const bySpelling = changesBySpelling(input.changes);
+  const byType = new Map<string, ContentEntry[]>();
+  const add = (type: string, entry: ContentEntry) => {
+    const list = byType.get(type);
+    if (list) list.push(entry);
+    else byType.set(type, [entry]);
+  };
+  const seen = new Set<string>();
+  // Each typed entry by spelling, for the draft's changes.
+  const typed = new Map<string, { type: string; entry: ContentEntry }>();
+  for (const [key, value] of Object.entries(blocks)) {
+    if (!isRecord(value)) continue;
+    const type = typeOfBlock(meta, blocks, value);
+    if (!type) continue;
+    const spelling = spellingKey(key);
+    seen.add(spelling);
+    const entry: ContentEntry = {
+      key,
+      block: value,
+      status: entryStatus(bySpelling.get(spelling)?.change),
+    };
+    typed.set(spelling, { type, entry });
+    add(type, entry);
+  }
+  // Deletions: the draft no longer has them, the published copy says what
+  // they were.
+  for (const [spelling, { name, change }] of bySpelling) {
+    if (change.kind !== "delete" || seen.has(spelling)) continue;
+    const before = input.deleted?.[name];
+    if (!isRecord(before)) continue;
+    const type = typeOfBlock(meta, blocks, before);
+    if (!type) continue;
+    const entry: ContentEntry = { key: name, block: before, status: "deleted" };
+    typed.set(spelling, { type, entry });
+    add(type, entry);
+  }
+
+  const all: ContentType[] = [];
+  for (const [id, entries] of byType) {
+    // The named rules (tests, campaigns) keep their own views.
+    if (namedRuleKindOfType(id)) continue;
+    if (WRAPPER_TYPES.has(id)) continue;
+    if (HIDDEN_TYPES.has(id)) continue;
+    const group = manifestGroupOf(meta, id) ?? "other";
+    entries.sort(entryOrder(group));
+    all.push({
+      id,
+      group,
+      title: typeTitle(meta, id),
+      entries,
+      changed: entries.filter((e) => e.status !== "published").length,
+    });
+  }
+  all.sort((a, b) => a.title.localeCompare(b.title));
+
+  const of = (group: ManifestGroup) => all.filter((t) => t.group === group);
+  const pages = of("pages")[0] ?? null;
+  const redirects = of("redirects")[0] ?? null;
+  // A type with one entry is a singleton (Header, Footer); pages
+  // and redirects are collections however many they hold.
+  const site = [pages, redirects].filter((t): t is ContentType => !!t);
+  const singletons = all.filter(
+    (t) => !site.includes(t) && t.entries.length === 1,
+  );
+  const collections = [
+    ...site,
+    ...all
+      .filter((t) => !site.includes(t) && t.entries.length > 1)
+      .sort(
+        (a, b) =>
+          b.entries.length - a.entries.length || a.title.localeCompare(b.title),
+      ),
+  ];
+
+  // The draft's changes, from its own list: also those no type lists.
+  const byId = new Map(all.map((type) => [type.id, type]));
+  const unlisted = new Map<string, ContentType>();
+  const typeFor = (id: string): ContentType => {
+    const found = byId.get(id) ?? unlisted.get(id);
+    if (found) return found;
+    const type: ContentType = {
+      id,
+      group: id ? (manifestGroupOf(meta, id) ?? "other") : "other",
+      title: id ? typeTitle(meta, id) : "",
+      entries: [],
+      changed: 0,
+    };
+    unlisted.set(id, type);
+    return type;
+  };
+  const changed: ContentTypeTree["changed"] = [];
+  for (const [spelling, { name, change }] of bySpelling) {
+    const found = typed.get(spelling);
+    if (found && HIDDEN_TYPES.has(found.type)) continue;
+    if (found) {
+      changed.push({ type: typeFor(found.type), entry: found.entry });
+      continue;
+    }
+    const block = blocks[name];
+    changed.push({
+      type: typeFor(""),
+      entry: {
+        key: name,
+        block: isRecord(block) ? block : {},
+        status: entryStatus(change),
+        ...(isRecord(block) ? {} : { orphan: true as const }),
+      },
+    });
+  }
+  // Typed first, by type, then by name.
+  changed.sort(
+    (a, b) =>
+      Number(!a.type.title) - Number(!b.type.title) ||
+      a.type.title.localeCompare(b.type.title) ||
+      entryName(a.entry).localeCompare(entryName(b.entry)),
+  );
+  return {
+    pages,
+    redirects,
+    collections,
+    singletons,
+    all,
+    changed,
+    statusKnown: !!input.changes,
+  };
+}
+
+/**
+ * How a type's entries are listed: what the draft adds first (what was just
+ * made), a site's home page first among pages, what it deletes last, then
+ * by name.
+ */
+function entryOrder(group: ManifestGroup) {
+  const rank = (entry: ContentEntry) =>
+    entry.status === "new"
+      ? 0
+      : entry.status === "deleted"
+        ? 3
+        : group === "pages" && normalizePagePath(pagePathOf(entry)) === "/"
+          ? 1
+          : 2;
+  return (a: ContentEntry, b: ContentEntry) =>
+    rank(a) - rank(b) || entryName(a).localeCompare(entryName(b));
+}
+
+/**
+ * The collections the sidebar shows: the top few, or all of them. The open
+ * type (`activeId`) always shows, after the top few when it ranks lower, so
+ * an entry opened from elsewhere still has its row marked.
+ */
+export function visibleTypes(
+  types: ContentType[],
+  showAll: boolean,
+  activeId?: string | null,
+): { shown: ContentType[]; hidden: number } {
+  if (showAll || types.length <= TOP_TYPES) {
+    return { shown: types, hidden: 0 };
+  }
+  const shown = types.slice(0, TOP_TYPES);
+  const active = activeId
+    ? types.slice(TOP_TYPES).find((type) => type.id === activeId)
+    : undefined;
+  if (active) shown.push(active);
+  return { shown, hidden: types.length - shown.length };
+}
+
+function decodeName(key: string): string {
+  try {
+    return decodeURIComponent(key);
+  } catch {
+    return key;
+  }
+}
+
+/**
+ * An entry's name for people: its own `name` field, a redirect's source
+ * path, else its key.
+ */
+export function entryName(entry: ContentEntry): string {
+  const nested = entry.block.redirect;
+  const candidates = [
+    entry.block.name,
+    entry.block.from,
+    isRecord(nested) ? nested.from : undefined,
+  ];
+  for (const value of candidates) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return decodeName(entry.key);
+}
+
+/** A page's path, as saved. */
+export function pagePathOf(entry: ContentEntry): string {
+  return typeof entry.block.path === "string" ? entry.block.path : "";
+}
+
+/** How many sections a page shows (its first variant's, when it has variants). */
+export function pageSectionCount(entry: ContentEntry): number {
+  return getPageVariantSectionsAt({ [entry.key]: entry.block }, entry.key, 0)
+    .length;
+}
+
+/** Whether a page route (`/collections/:handle`, `/*`) matches `path`. */
+export function routeMatches(route: string, path: string): boolean {
+  const r = normalizePagePath(route).split("/").filter(Boolean);
+  const p = normalizePagePath(path.split(/[?#]/)[0] ?? "")
+    .split("/")
+    .filter(Boolean);
+  for (let i = 0; i < r.length; i++) {
+    const seg = r[i] ?? "";
+    if (seg === "*" || seg.startsWith("*")) return true;
+    if (i >= p.length) return false;
+    if (seg.startsWith(":")) continue;
+    if (seg !== p[i]) return false;
+  }
+  return r.length === p.length;
+}
+
+/**
+ * The page a redirect sends visitors to: the one whose path is the
+ * destination, else the first whose route matches it (a catch-all last).
+ */
+export function redirectDestinationPage(
+  pages: ContentEntry[],
+  to: string,
+): ContentEntry | null {
+  if (!to.startsWith("/")) return null;
+  const live = pages.filter((p) => p.status !== "deleted");
+  const exact = live.find(
+    (p) => normalizePagePath(pagePathOf(p)) === normalizePagePath(to),
+  );
+  if (exact) return exact;
+  const matching = live.filter((p) => routeMatches(pagePathOf(p), to));
+  return (
+    matching.find((p) => !pagePathOf(p).includes("*")) ?? matching[0] ?? null
+  );
+}
+
+export interface RedirectRow {
+  from: string;
+  to: string;
+  kind: RedirectType;
+}
+
+export function redirectRowOf(entry: ContentEntry): RedirectRow {
+  const payload = getRedirectPayload(entry.block);
+  return { from: payload.from, to: payload.to, kind: payload.type };
+}
+
+/** Field names worth a column, best first. */
+const SUMMARY_FIELDS = [
+  "title",
+  "headline",
+  "heading",
+  "label",
+  "subtitle",
+  "text",
+  "description",
+  "href",
+  "url",
+];
+
+/**
+ * The one or two fields that say most about a type's entries: the first of
+ * {@link SUMMARY_FIELDS} its entries hold as text, then the next.
+ */
+export function summaryFieldsOf(type: ContentType): string[] {
+  const holds = (field: string) =>
+    type.entries.some((e) => {
+      const value = e.block[field];
+      return typeof value === "string" && value.trim() !== "";
+    });
+  return SUMMARY_FIELDS.filter((f) => f !== "name" && holds(f)).slice(0, 2);
+}
+
+/** A summary field's value, as one line of text. */
+export function summaryValue(entry: ContentEntry, field: string): string {
+  const value = entry.block[field];
+  return typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
+}
+
+/** Whether `query` finds an entry (its name, key, path or summary fields). */
+export function entryMatches(
+  entry: ContentEntry,
+  query: string,
+  fields: readonly string[] = [],
+): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const hay = [
+    entryName(entry),
+    entry.key,
+    pagePathOf(entry),
+    // A redirect's paths, flat or nested.
+    ...(isRecord(entry.block.redirect) || typeof entry.block.to === "string"
+      ? [redirectRowOf(entry).from, redirectRowOf(entry).to]
+      : []),
+    ...fields.map((f) => summaryValue(entry, f)),
+  ];
+  return hay.some((s) => s.toLowerCase().includes(q));
+}
+
+/** A redirect's source as path segments (no query, no trailing slash). */
+function fromSegments(entry: ContentEntry): string[] {
+  const from = redirectRowOf(entry).from.split(/[?#]/)[0] ?? "";
+  return from.split("/").filter(Boolean);
+}
+
+export interface RedirectPathGroup {
+  /** The first segment of the sources it holds (`products`); `""`: the rest. */
+  segment: string;
+  count: number;
+}
+
+/**
+ * Redirects by the first folder of their source (`/products/…`,
+ * `/collections/…`), busiest first, then the rest: filters for a long list.
+ * Only folders two or more redirects share count; empty unless that splits
+ * the list in two or more parts.
+ */
+export function redirectPathGroups(
+  entries: ContentEntry[],
+): RedirectPathGroup[] {
+  const counts = new Map<string, number>();
+  for (const entry of entries) {
+    const segments = fromSegments(entry);
+    if (segments.length < 2) continue;
+    const first = segments[0] ?? "";
+    counts.set(first, (counts.get(first) ?? 0) + 1);
+  }
+  const groups = [...counts]
+    .filter(([, count]) => count > 1)
+    .map(([segment, count]) => ({ segment, count }))
+    .sort((a, b) => b.count - a.count || a.segment.localeCompare(b.segment));
+  const grouped = groups.reduce((sum, g) => sum + g.count, 0);
+  const rest = entries.length - grouped;
+  const parts = groups.length + (rest > 0 ? 1 : 0);
+  if (parts < 2) return [];
+  return rest > 0 ? [...groups, { segment: "", count: rest }] : groups;
+}
+
+/** Whether a redirect belongs to a {@link redirectPathGroups} group. */
+export function inRedirectPathGroup(
+  entry: ContentEntry,
+  segment: string,
+  groups: RedirectPathGroup[],
+): boolean {
+  const segments = fromSegments(entry);
+  const first = segments.length >= 2 ? (segments[0] ?? "") : "";
+  if (segment) return first === segment;
+  return !groups.some((g) => g.segment && g.segment === first);
+}
+
+/** Rows shown before a run of redirects to one page folds into one line. */
+export const FOLD_KEEP = 9;
+/** How many redirects to one page fold the rest away. */
+const FOLD_OVER = 12;
+
+/**
+ * A long list of redirects that mostly send visitors to one page: the first
+ * few of those stay, the rest fold into one "N more" line. Only published
+ * ones fold: a change in the draft always shows.
+ */
+export function foldSameDestination(entries: ContentEntry[]): {
+  shown: ContentEntry[];
+  folded: number;
+} {
+  const counts = new Map<string, number>();
+  for (const entry of entries) {
+    if (entry.status !== "published") continue;
+    const to = redirectRowOf(entry).to;
+    counts.set(to, (counts.get(to) ?? 0) + 1);
+  }
+  let top = "";
+  let most = 0;
+  for (const [to, count] of counts) {
+    if (count > most) {
+      top = to;
+      most = count;
+    }
+  }
+  if (most <= FOLD_OVER) return { shown: entries, folded: 0 };
+  const shown: ContentEntry[] = [];
+  let kept = 0;
+  let folded = 0;
+  for (const entry of entries) {
+    const foldable =
+      entry.status === "published" && redirectRowOf(entry).to === top;
+    if (foldable && kept >= FOLD_KEEP) {
+      folded++;
+      continue;
+    }
+    if (foldable) kept++;
+    shown.push(entry);
+  }
+  return { shown, folded };
+}

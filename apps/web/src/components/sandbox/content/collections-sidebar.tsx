@@ -25,6 +25,7 @@ import {
 } from "@decocms/ui/components/collapsible.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
+import { CollectionGroupLabel, CollectionRow } from "./collection-row";
 import type { CollectionCounts, CollectionId } from "./content-browser";
 
 const ADVANCED_IDS = ["sections", "apps", "loaders", "actions"] as const;
@@ -58,53 +59,47 @@ export function CollectionsSidebar({
       </div>
       <nav className="flex flex-col p-1.5 gap-0.5">
         <CollectionRow
-          id="pages"
           icon={LayoutAlt01}
           label={t("sandbox.collectionsSidebar.pages")}
           count={counts.pages}
           active={active === "pages"}
-          onSelect={onSelect}
+          onClick={() => onSelect("pages")}
         />
         <CollectionRow
-          id="redirects"
           icon={CornerUpRight}
           label={t("sandbox.collectionsSidebar.redirects")}
           count={counts.redirects}
           active={active === "redirects"}
-          onSelect={onSelect}
+          onClick={() => onSelect("redirects")}
         />
         {shown("site") && (
           <CollectionRow
-            id="site"
             icon={Settings01}
             label={t("sandbox.collectionsSidebar.site")}
             active={active === "site"}
-            onSelect={onSelect}
+            onClick={() => onSelect("site")}
           />
         )}
         <CollectionRow
-          id="seo"
           icon={CreditCardSearch}
           label={t("sandbox.collectionsSidebar.seo")}
           active={active === "seo"}
-          onSelect={onSelect}
+          onClick={() => onSelect("seo")}
         />
         {shown("settings") && (
           <CollectionRow
-            id="settings"
             icon={Settings01}
             label={t("sandbox.collectionsSidebar.settings")}
             active={active === "settings"}
-            onSelect={onSelect}
+            onClick={() => onSelect("settings")}
           />
         )}
         {shown("calendar") && (
           <CollectionRow
-            id="calendar"
             icon={Calendar}
             label={t("sandbox.collectionsSidebar.calendar")}
             active={active === "calendar"}
-            onSelect={onSelect}
+            onClick={() => onSelect("calendar")}
           />
         )}
         <AdvancedGroup
@@ -115,49 +110,44 @@ export function CollectionsSidebar({
         />
         {showBlog && (
           <>
-            <div className="mt-3 flex items-center gap-1.5 px-2.5 pb-1 pt-1 text-xs font-medium text-muted-foreground/70">
-              <BookOpen01 size={13} className="shrink-0" />
-              {t("sandbox.collectionsSidebar.blog")}
-            </div>
+            <CollectionGroupLabel
+              icon={BookOpen01}
+              label={t("sandbox.collectionsSidebar.blog")}
+            />
             {showContext && (
               <CollectionRow
-                id="context"
                 icon={Stars02}
                 label={t("sandbox.collectionsSidebar.context")}
                 active={active === "context"}
-                onSelect={onSelect}
+                onClick={() => onSelect("context")}
               />
             )}
             <CollectionRow
-              id="posts"
               icon={File02}
               label={t("sandbox.collectionsSidebar.posts")}
               count={counts.posts}
               active={active === "posts"}
-              onSelect={onSelect}
+              onClick={() => onSelect("posts")}
             />
             <CollectionRow
-              id="authors"
               icon={Users01}
               label={t("sandbox.collectionsSidebar.authors")}
               count={counts.authors}
               active={active === "authors"}
-              onSelect={onSelect}
+              onClick={() => onSelect("authors")}
             />
             <CollectionRow
-              id="categories"
               icon={Tag01}
               label={t("sandbox.collectionsSidebar.categories")}
               count={counts.categories}
               active={active === "categories"}
-              onSelect={onSelect}
+              onClick={() => onSelect("categories")}
             />
             <CollectionRow
-              id="post-schedule"
               icon={CalendarDate}
               label={t("sandbox.collectionsSidebar.postSchedule")}
               active={active === "post-schedule"}
-              onSelect={onSelect}
+              onClick={() => onSelect("post-schedule")}
             />
           </>
         )}
@@ -204,91 +194,42 @@ function AdvancedGroup({
       </CollapsibleTrigger>
       <CollapsibleContent className="flex flex-col gap-0.5 pt-0.5">
         <CollectionRow
-          id="sections"
           icon={Globe01}
           label={t("sandbox.collectionsSidebar.sections")}
           count={counts.sections}
           active={active === "sections"}
-          onSelect={onSelect}
+          onClick={() => onSelect("sections")}
           indent
         />
         {shown("apps") && (
           <CollectionRow
-            id="apps"
             icon={Grid01}
             label={t("sandbox.collectionsSidebar.apps")}
             count={counts.apps}
             active={active === "apps"}
-            onSelect={onSelect}
+            onClick={() => onSelect("apps")}
             indent
           />
         )}
         <CollectionRow
-          id="loaders"
           icon={Database01}
           label={t("sandbox.collectionsSidebar.loaders")}
           count={counts.loaders}
           active={active === "loaders"}
-          onSelect={onSelect}
+          onClick={() => onSelect("loaders")}
           indent
         />
         {shown("actions") && (
           <CollectionRow
-            id="actions"
             icon={Zap}
             label={t("sandbox.collectionsSidebar.actions")}
             count={counts.actions}
             active={active === "actions"}
-            onSelect={onSelect}
+            onClick={() => onSelect("actions")}
             indent
           />
         )}
       </CollapsibleContent>
     </Collapsible>
-  );
-}
-
-function CollectionRow({
-  id,
-  icon: Icon,
-  label,
-  count,
-  active,
-  onSelect,
-  indent,
-}: {
-  id: CollectionId;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
-  label: string;
-  count?: number;
-  active: boolean;
-  onSelect: (id: CollectionId) => void;
-  indent?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={() => onSelect(id)}
-      className={cn(
-        "flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm transition-colors cursor-pointer",
-        indent && "pl-6",
-        active
-          ? "bg-accent text-accent-foreground"
-          : "text-muted-foreground hover:bg-accent hover:text-foreground",
-      )}
-    >
-      <Icon size={16} className="shrink-0" />
-      <span className="flex-1 truncate">{label}</span>
-      {count !== undefined && (
-        <span
-          className={cn(
-            "shrink-0 text-xs tabular-nums",
-            active ? "text-accent-foreground/70" : "text-muted-foreground/70",
-          )}
-        >
-          {count}
-        </span>
-      )}
-    </button>
   );
 }

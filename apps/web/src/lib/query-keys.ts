@@ -857,6 +857,11 @@ export const KEYS = {
   // per version of theirs.
   conflictAuthor: (draftKey: string, blockKey: string, theirs: string) =>
     ["conflict-author", draftKey, blockKey, theirs] as const,
+  // The published copies of the blocks a draft deletes (`changes.get`), per
+  // set of deletions (names and base versions), so a save elsewhere in the
+  // draft doesn't read them again.
+  contentDeletedCopies: (cacheKey: string, deletions: string) =>
+    ["content-changes", cacheKey, "deleted", deletions] as const,
   // Both sides of the listed changes (`changes.get`), per changes revision.
   contentChangeSides: (cacheKey: string, revision: string) =>
     ["content-changes", cacheKey, "sides", revision] as const,

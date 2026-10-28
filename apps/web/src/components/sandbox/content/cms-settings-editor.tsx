@@ -27,12 +27,18 @@ export function CmsSettingsEditor({
   branch,
   decofile,
   meta,
+  persistDefaults,
 }: {
   orgSlug: string;
   virtualMcpId: string;
   branch: string;
   decofile: Record<string, unknown>;
   meta: LiveMeta;
+  /**
+   * Whether a saved block's missing defaults are written as the form opens
+   * (unset: yes; a block not saved yet never is).
+   */
+  persistDefaults?: boolean;
 }) {
   const t = useT();
   const queryClient = useQueryClient();
@@ -106,7 +112,7 @@ export function CmsSettingsEditor({
       saveGuard={guard}
       // Opening Settings with no CMS block shows the defaults without saving
       // them: CMS.json is created by the first change, not by looking.
-      persistDefaults={target.kind !== "absent"}
+      persistDefaults={target.kind !== "absent" && persistDefaults !== false}
       notice={
         <div className="mb-6 flex flex-col gap-2 text-xs text-muted-foreground">
           <p>{t("sandbox.cmsSettingsBlock.description")}</p>
