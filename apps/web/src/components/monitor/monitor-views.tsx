@@ -6,6 +6,8 @@
  */
 
 import type { ReactNode } from "react";
+import { BarChart10 } from "@untitledui/icons";
+import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import {
   resolveAgentSiteSlug,
   resolveAnalyticsSiteSlug,
@@ -23,6 +25,7 @@ import {
   useProjectContext,
   useVirtualMCPsNonBlocking,
 } from "@/sdk";
+import { OrgAudience, ProjectAudience } from "./audience-view";
 import type { Deploy } from "./board";
 import { DeployTimeline } from "./deploy-timeline";
 import { DeploysTable } from "./deploys-table";
@@ -36,24 +39,32 @@ import { monitorPreview } from "./preview";
 import { OrgAnalytics, OrgExperiments, type SiteProject } from "./org-insights";
 import { connectLink } from "./parts";
 
-export type MonitorView = "metrics" | "deploys" | "experiments" | "analytics";
+export type MonitorView =
+  | "metrics"
+  | "performance"
+  | "audience"
+  | "deploys"
+  | "experiments";
 export const MONITOR_VIEWS: readonly MonitorView[] = [
   "metrics",
+  "performance",
+  "audience",
   "deploys",
   "experiments",
-  "analytics",
 ];
 
 function viewLabel(view: MonitorView, t: TFunction): string {
   switch (view) {
     case "metrics":
       return t("monitor.view.metrics");
+    case "performance":
+      return t("monitor.view.performance");
+    case "audience":
+      return t("monitor.view.audience");
     case "deploys":
       return t("monitor.view.deploys");
     case "experiments":
       return t("monitor.view.experiments");
-    case "analytics":
-      return t("monitor.view.analytics");
     default: {
       const unhandled: never = view;
       return unhandled;
@@ -136,7 +147,7 @@ export function DeploysView({
 const PREVIEW_EXPERIMENTS = monitorPreview(null).experiments;
 
 /** The org's own projects with a site, not Studio's built-in managers. */
-function useSiteProjects(): SiteProject[] {
+export function useSiteProjects(): SiteProject[] {
   return useVirtualMCPsNonBlocking().flatMap((p) => {
     const site = isStudioPackAgent(p.id) ? null : resolveAgentSiteSlug(p);
     const analyticsSite = resolveAnalyticsSiteSlug(p);
@@ -162,7 +173,7 @@ function ProjectScreen({
   enabled: boolean;
   /** Which tab to draw, faded, when there is no site to read. */
   empty: "experiments" | "analytics";
-  render: (projectId: string) => ReactNode;
+  render: (projectId: string, project: SiteProject | undefined) => ReactNode;
   org: (projects: readonly SiteProject[]) => ReactNode;
 }) {
   const t = useT();
@@ -212,7 +223,10 @@ function ProjectScreen({
   }
   return (
     <div key={scopeId} className="flex h-full min-h-0 flex-col">
-      {render(scopeId)}
+      {render(
+        scopeId,
+        projects.find((p) => p.id === scopeId),
+      )}
     </div>
   );
 }
@@ -231,14 +245,14 @@ export function ExperimentsView({ scopeId }: { scopeId: string | null }) {
   );
 }
 
-/** A site's Monitor (CDN traffic and audience), gated as its own route is. */
-export function AnalyticsView({
+/** Requests, cache and errors: the CDN on v7 sites, the site's own telemetry on v8. */
+export function PerformanceView({
   scopeId,
   date,
   onDate,
 }: {
   scopeId: string | null;
-  /** The org view's day, shared with Metrics' picker (`YYYY-MM-DD`). */
+  /** The org view's day, shared with the Overview's picker (`YYYY-MM-DD`). */
   date: string;
   onDate: (date: string) => void;
 }) {
@@ -252,10 +266,34 @@ export function AnalyticsView({
         (config.monitorEnabled === true || config.auth.localMode === true)
       }
       empty="analytics"
-      render={(id) => <CdnTab virtualMcpId={id} />}
+      render={(id) => <CdnTab virtualMcpId={id} performanceOnly />}
       org={(projects) => (
         <OrgAnalytics projects={projects} date={date} onDate={onDate} />
       )}
+    />
+  );
+}
+
+/** Who visits, from Deco Analytics or OneDollarStats, one shape for both. */
+export function AudienceView({ scopeId }: { scopeId: string | null }) {
+  const t = useT();
+  const views = useControlPlaneViews();
+  return (
+    <ProjectScreen
+      scopeId={scopeId}
+      enabled={views.monitor}
+      empty="analytics"
+      render={(_, project) =>
+        project ? (
+          <ProjectAudience project={project} />
+        ) : (
+          <EmptyState
+            icon={<BarChart10 size={20} />}
+            title={t("mainPanelTabs.cdnTab.noSiteTitle")}
+          />
+        )
+      }
+      org={(projects) => <OrgAudience projects={projects} />}
     />
   );
 }

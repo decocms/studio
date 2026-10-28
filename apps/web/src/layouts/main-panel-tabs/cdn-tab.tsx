@@ -327,20 +327,19 @@ interface BreakdownRow {
   total_requests: number;
   total_bandwidth_bytes: number;
 }
-/** One monitor view (cdn or audience) for the current range. */
+/** One CDN view for the current range. */
 function useMonitorView<T>(
   base: string,
-  kind: "cdn" | "audience",
   view: string,
   range: string,
   enabled: boolean,
   extra?: string,
 ) {
   return useQuery({
-    queryKey: KEYS.cdnData(base, `${kind}:${view}${extra ?? ""}`, range),
+    queryKey: KEYS.cdnData(base, `cdn:${view}${extra ?? ""}`, range),
     queryFn: async () => {
       const body = (await fetchJson(
-        `${base}/${kind}/data?view=${view}&range=${range}${extra ?? ""}`,
+        `${base}/cdn/data?view=${view}&range=${range}${extra ?? ""}`,
       )) as { available?: boolean; data?: T };
       if (body.available === false) return null;
       return (body.data ?? null) as T | null;
@@ -934,7 +933,6 @@ function PerformanceSection({
   const fp = filtersParam(filters) + rangeExtra;
   const summary = useMonitorView<CdnSummary>(
     base,
-    "cdn",
     "summary",
     range,
     enabled,
@@ -942,7 +940,6 @@ function PerformanceSection({
   );
   const timeline = useMonitorView<TimelinePoint[]>(
     base,
-    "cdn",
     "timeline",
     range,
     enabled,
@@ -950,7 +947,6 @@ function PerformanceSection({
   );
   const cacheStatus = useMonitorView<BreakdownRow[]>(
     base,
-    "cdn",
     "cache-status",
     range,
     enabled,
@@ -958,7 +954,6 @@ function PerformanceSection({
   );
   const statusCodes = useMonitorView<BreakdownRow[]>(
     base,
-    "cdn",
     "status-codes",
     range,
     enabled,
@@ -966,7 +961,6 @@ function PerformanceSection({
   );
   const topPaths = useMonitorView<BreakdownRow[]>(
     base,
-    "cdn",
     "top-paths",
     range,
     enabled,
@@ -974,7 +968,6 @@ function PerformanceSection({
   );
   const topCountries = useMonitorView<BreakdownRow[]>(
     base,
-    "cdn",
     "top-countries",
     range,
     enabled,
@@ -1841,7 +1834,14 @@ function OrdersSection({
  * today's CDN Monitor for every other one. Nothing shows until main's schema
  * is known, so a v8 site never flashes the CDN view first.
  */
-export function CdnTab({ virtualMcpId }: { virtualMcpId: string }) {
+export function CdnTab({
+  virtualMcpId,
+  performanceOnly = false,
+}: {
+  virtualMcpId: string;
+  /** The Monitor's Desempenho tab: no audience or orders sub-tabs, which it shows elsewhere. */
+  performanceOnly?: boolean;
+}) {
   const t = useT();
   const { org } = useProjectContext();
   const entity = useVirtualMCP(virtualMcpId);
@@ -1854,7 +1854,14 @@ export function CdnTab({ virtualMcpId }: { virtualMcpId: string }) {
       </div>
     );
   }
-  if (kind === "v7") return <CdnMonitor virtualMcpId={virtualMcpId} />;
+  if (kind === "v7") {
+    return (
+      <CdnMonitor
+        virtualMcpId={virtualMcpId}
+        performanceOnly={performanceOnly}
+      />
+    );
+  }
   // A v8 site reports under the site its token was issued for: the
   // project's own site, never the analytics override a v7 migration uses.
   const site = resolveAgentSiteSlug(entity);
@@ -1877,7 +1884,13 @@ export function CdnTab({ virtualMcpId }: { virtualMcpId: string }) {
 }
 
 /** Today's CDN + audience Monitor (v7 sites). */
-function CdnMonitor({ virtualMcpId }: { virtualMcpId: string }) {
+function CdnMonitor({
+  virtualMcpId,
+  performanceOnly,
+}: {
+  virtualMcpId: string;
+  performanceOnly: boolean;
+}) {
   const t = useT();
   const { org } = useProjectContext();
   const config = usePublicConfig();
@@ -1916,13 +1929,17 @@ function CdnMonitor({ virtualMcpId }: { virtualMcpId: string }) {
             id: "performance" as const,
             label: t("mainPanelTabs.cdnTab.performance"),
           },
-          {
-            id: "audience" as const,
-            label: t("mainPanelTabs.cdnTab.audience"),
-          },
+          ...(performanceOnly
+            ? []
+            : [
+                {
+                  id: "audience" as const,
+                  label: t("mainPanelTabs.cdnTab.audience"),
+                },
+              ]),
         ]
       : []),
-    ...(agentStores.length > 0
+    ...(agentStores.length > 0 && !performanceOnly
       ? [{ id: "orders" as const, label: t("orderMonitor.ordersTab") }]
       : []),
   ];
@@ -1959,23 +1976,27 @@ function CdnMonitor({ virtualMcpId }: { virtualMcpId: string }) {
         )}
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-0.5 rounded-lg border border-border p-0.5">
-          {sections.map((sec) => (
-            <button
-              key={sec.id}
-              type="button"
-              onClick={() => setSection(sec.id)}
-              className={cn(
-                "rounded-lg px-3 py-1 text-xs font-medium transition-colors",
-                section === sec.id
-                  ? "bg-muted text-foreground"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {sec.label}
-            </button>
-          ))}
-        </div>
+        {sections.length > 1 ? (
+          <div className="flex items-center gap-0.5 rounded-lg border border-border p-0.5">
+            {sections.map((sec) => (
+              <button
+                key={sec.id}
+                type="button"
+                onClick={() => setSection(sec.id)}
+                className={cn(
+                  "rounded-lg px-3 py-1 text-xs font-medium transition-colors",
+                  section === sec.id
+                    ? "bg-muted text-foreground"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {sec.label}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <span />
+        )}
         {section !== "orders" && <RangePicker value={sel} onChange={setSel} />}
       </div>
 

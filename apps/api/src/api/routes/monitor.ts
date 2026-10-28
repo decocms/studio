@@ -892,12 +892,26 @@ export const createMonitorRoutes = () => {
     }
   });
 
-  // GET /api/:org/monitor/:site/audience?view=&range=&host= — one audience
-  // view in the shared normalized shape, from Deco Analytics when the site is
-  // registered there and OneDollarStats otherwise (monitor-audience.ts).
+  // GET /api/:org/monitor/:site/audience?view=&range=&host=&trafficSite= — one
+  // audience view in the shared normalized shape, from Deco Analytics when the
+  // site is registered there and OneDollarStats otherwise (monitor-audience.ts).
+  // `trafficSite` is the slug a migrated project's traffic is reported under
+  // (its analytics override); OneDollarStats hosts come from it.
   app.get("/:site/audience", async (c) => {
     const guard = await requireOwnedSite(c);
     if (guard instanceof Response) return guard;
+
+    const ctx = c.get("studioContext");
+    const org = requireOrganization(ctx);
+    const trafficSite = (
+      c.req.query("trafficSite") ?? guard.slug
+    ).toLowerCase();
+    if (
+      trafficSite !== guard.slug &&
+      !(await ctx.storage.orgSites.isOwnedBy(trafficSite, org.id))
+    ) {
+      return c.json({ error: "Site not found in organization" }, 404);
+    }
 
     const view = c.req.query("view") ?? "summary";
     if (!isAudienceView(view)) {
@@ -910,15 +924,18 @@ export const createMonitorRoutes = () => {
 
     const { slug } = guard;
     const read = await readAudience({
-      org: requireOrganization(c.get("studioContext")),
+      org,
       site: slug,
       view,
       range,
       host: c.req.query("host"),
       oneDollarHosts: () =>
         isAnalyticsConfigured()
-          ? siteOdHosts(slug).catch((err) => {
-              console.error(`[monitor] hosts failed for site="${slug}":`, err);
+          ? siteOdHosts(trafficSite).catch((err) => {
+              console.error(
+                `[monitor] hosts failed for site="${trafficSite}":`,
+                err,
+              );
               return [];
             })
           : Promise.resolve([]),

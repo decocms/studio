@@ -427,9 +427,11 @@ export function LegacyExperimentsTab({
             {t("experiments.subtitle")}
           </p>
         </div>
-        <Button onClick={() => setDialogOpen(true)}>
-          {t("experiments.new")}
-        </Button>
+        {experiments && experiments.length > 0 && (
+          <Button onClick={() => setDialogOpen(true)}>
+            {t("experiments.new")}
+          </Button>
+        )}
       </div>
 
       {isLoading ? (

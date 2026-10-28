@@ -41,12 +41,15 @@ import {
 import { ChannelsChart } from "./channels-chart";
 import { ChangeFocusProvider, MetricChart } from "./metric-chart";
 import {
-  AnalyticsView,
+  AudienceView,
   DeploysView,
   ExperimentsView,
   MonitorTabs,
   type MonitorView,
+  PerformanceView,
+  useSiteProjects,
 } from "./monitor-views";
+import { AudienceGlance } from "./audience-view";
 import { connectLink, localDay } from "./parts";
 import { Locked } from "./locked";
 import { MonitoredRepos } from "./monitored-repos";
@@ -164,6 +167,7 @@ function Board({
   showChanges,
   preview,
   bare = false,
+  audience,
 }: {
   board: MonitorBoard;
   orgSlug: string;
@@ -175,25 +179,28 @@ function Board({
   preview: readonly Kpi[] | null;
   /** Drawn under the page's connect card: no buttons of its own. */
   bare?: boolean;
+  /** Today's audience at a glance, when the scope is one site. */
+  audience?: ReactNode;
 }) {
   const t = useT();
   const signals = sortSignals(board.signals);
   const connect = connectLink(orgSlug, scopeId);
   const iconOf = useSourceIcons(orgSlug, board.sources);
   const changes = board.deploys ?? [];
-  // The whole page is laid out from the start: a card whose source isn't
-  // connected shows what it would draw, faded, under the button to connect it.
-  const kpis: Kpi[] = preview
-    ? preview.map(
-        (sample) =>
-          board.kpis.find((k) => k.id === sample.id) ?? {
-            ...sample,
-            source: LIVE_SOURCE[sample.id],
-            value: null,
-            points: null,
-          },
-      )
-    : board.kpis;
+  // Under the connect card the whole page is laid out with preview numbers;
+  // once a source is in, only the cards something feeds are drawn.
+  const kpis: Kpi[] =
+    preview && bare
+      ? preview.map(
+          (sample) =>
+            board.kpis.find((k) => k.id === sample.id) ?? {
+              ...sample,
+              source: LIVE_SOURCE[sample.id],
+              value: null,
+              points: null,
+            },
+        )
+      : board.kpis;
   // Orders, then what happens to them, then the site behind them.
   const [orders, ...rest] = [...kpis].sort(
     (a, b) => CARD_ORDER.indexOf(a.id) - CARD_ORDER.indexOf(b.id),
@@ -218,6 +225,7 @@ function Board({
 
   return (
     <div className="flex flex-col gap-4">
+      {!bare && audience}
       {signals.length > 0 && (
         <SignalsPanel
           signals={signals}
@@ -287,6 +295,7 @@ export function MonitorPage({
   const stateOf = (id: SourceId) =>
     board.sources.find((s) => s.id === id)?.state ?? "off";
   const view = selection.view ?? "metrics";
+  const scopeProject = useSiteProjects().find((p) => p.id === scopeId);
   // Everything the page can show is laid out from the start; what no source
   // feeds yet is drawn from the preview, faded, under its connect button.
   const shown = monitorPreview(scopeId, selection.date);
@@ -300,7 +309,7 @@ export function MonitorPage({
       }
     />
   );
-  // Experiments and Analytics are a project's own screens, with their frame.
+  // Experiments, Performance and Audience are a project's own screens, with their frame.
   if (view === "experiments") {
     return (
       <>
@@ -309,11 +318,19 @@ export function MonitorPage({
       </>
     );
   }
-  if (view === "analytics") {
+  if (view === "audience") {
     return (
       <>
         {tabs}
-        <AnalyticsView
+        <AudienceView scopeId={scopeId} />
+      </>
+    );
+  }
+  if (view === "performance") {
+    return (
+      <>
+        {tabs}
+        <PerformanceView
           scopeId={scopeId}
           date={selection.date ?? localDay(new Date())}
           onDate={(date) =>
@@ -448,6 +465,14 @@ export function MonitorPage({
         onSelect={onSelect}
         showChanges={showChanges}
         preview={preview}
+        audience={
+          scopeProject && (
+            <AudienceGlance
+              project={scopeProject}
+              onOpen={() => onSelect({ view: "audience" })}
+            />
+          )
+        }
       />
     );
   }

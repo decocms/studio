@@ -803,6 +803,14 @@ export const KEYS = {
     ["monitor", base, "cdn-data", view, range] as const,
   siteMonitorData: (base: string, view: string, range: string) =>
     ["monitor", base, "site-data", view, range] as const,
+  /** Monitor Audience: one normalized view of a site's audience for a range. */
+  monitorAudience: (
+    org: string,
+    site: string,
+    trafficSite: string,
+    view: string,
+    range: string,
+  ) => ["monitor", org, "audience", site, trafficSite, view, range] as const,
   // Order monitor: every key starts with this prefix, so one invalidation
   // (the `order-monitor.store.evaluated` SSE event) refreshes them all.
   orderMonitor: (org: string) => ["order-monitor", org] as const,

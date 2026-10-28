@@ -22,9 +22,16 @@ import { useProjectContext } from "@/sdk";
 
 function useMonitorSearch(): MonitorSelection {
   const search = useSearch({ strict: false });
+  // `analytics` was the CDN tab's name before it became Performance.
+  const requested =
+    "view" in search && search.view === "analytics"
+      ? "performance"
+      : "view" in search
+        ? search.view
+        : undefined;
   const view =
-    "view" in search && typeof search.view === "string"
-      ? MONITOR_VIEWS.find((v) => v === search.view)
+    typeof requested === "string"
+      ? MONITOR_VIEWS.find((v) => v === requested)
       : undefined;
   return {
     view,
