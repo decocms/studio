@@ -370,6 +370,7 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.configSectionTitle": "Configuration",
   "mainPanelTabs.analyticsTab.viewOverview": "Overview",
   "mainPanelTabs.analyticsTab.viewLive": "Realtime",
+  "mainPanelTabs.analyticsTab.viewGlobe": "Live map",
   "mainPanelTabs.analyticsTab.viewBehaviour": "Pages & sources",
   "mainPanelTabs.analyticsTab.viewEvents": "Events & props",
   "mainPanelTabs.analyticsTab.viewErrors": "Errors",
@@ -527,6 +528,34 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.moduleHeatmap": "Heatmap",
   "mainPanelTabs.analyticsTab.moduleHeatmapHint":
     "Clicks, scroll and attention per page",
+  // Live map. The four nouns are the ones the renderer prints inside its own
+  // hover card — it takes them as options rather than owning any English.
+  // Both forms are spelled out rather than derived. English appends an `s`;
+  // Portuguese turns "conversão" into "conversões", and a regex that knows that
+  // is a morphology engine hiding in a UI file — one that the next locale
+  // breaks. A dictionary already has a slot for every form.
+  "mainPanelTabs.analyticsTab.globe.visitor": "visitor",
+  "mainPanelTabs.analyticsTab.globe.visitorPlural": "visitors",
+  "mainPanelTabs.analyticsTab.globe.cart": "cart",
+  "mainPanelTabs.analyticsTab.globe.cartPlural": "carts",
+  "mainPanelTabs.analyticsTab.globe.conversion": "conversion",
+  "mainPanelTabs.analyticsTab.globe.conversionPlural": "conversions",
+  "mainPanelTabs.analyticsTab.globe.countryLevel":
+    "country level: no city coordinate",
+  "mainPanelTabs.analyticsTab.globe.kpiVisitors": "Visitors now",
+  "mainPanelTabs.analyticsTab.globe.kpiVisitorsHint":
+    "unique in the last 5 min",
+  "mainPanelTabs.analyticsTab.globe.kpiPlaces": "Places",
+  "mainPanelTabs.analyticsTab.globe.kpiPlacesHint": "dots on the map",
+  "mainPanelTabs.analyticsTab.globe.kpiApproximate": "Country level",
+  "mainPanelTabs.analyticsTab.globe.kpiApproximateHint":
+    "visitors with no city",
+  "mainPanelTabs.analyticsTab.globe.kpiUnplaced": "Not located",
+  "mainPanelTabs.analyticsTab.globe.kpiUnplacedHint": "impossible to draw",
+  "mainPanelTabs.analyticsTab.globe.modeGlobe": "Globe",
+  "mainPanelTabs.analyticsTab.globe.modeMap": "Map",
+  "mainPanelTabs.analyticsTab.globe.loadError":
+    "Couldn't load the map renderer. The numbers above are still live.",
   "mainPanelTabs.analyticsTab.viewQuality": "Data quality",
   "mainPanelTabs.analyticsTab.viewUsage": "Usage & limits",
   "mainPanelTabs.analyticsTab.cardTopSources": "Top sources",

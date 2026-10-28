@@ -89,6 +89,7 @@ import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
 import { KEYS } from "@/lib/query-keys";
 import { useT, type TFunction } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/use-t.ts";
+import { GlobeView } from "./analytics-globe-tab.tsx";
 import { HeatmapView } from "./analytics-heatmap-tab.tsx";
 import { gateViews, pickView } from "./analytics-heatmap-model.ts";
 
@@ -179,6 +180,7 @@ const MODULES = [
 // internals) are omitted.
 const DATA_VIEWS: ReadonlyArray<{ view: string; labelKey: TranslationKey }> = [
   { view: "live", labelKey: "mainPanelTabs.analyticsTab.viewLive" },
+  { view: "globe", labelKey: "mainPanelTabs.analyticsTab.viewGlobe" },
   { view: "overview", labelKey: "mainPanelTabs.analyticsTab.viewOverview" },
   { view: "behaviour", labelKey: "mainPanelTabs.analyticsTab.viewBehaviour" },
   { view: "events", labelKey: "mainPanelTabs.analyticsTab.viewEvents" },
@@ -2192,8 +2194,10 @@ function RegisteredView({
   const views = gateViews(DATA_VIEWS, modules);
   const active = pickView(requested, views);
   const isLive = active === "live";
-  // Heatmap reads daily facts with its own 24h/7d/30d choice.
-  const ownRange = isLive || active === "heatmap";
+  // Heatmap reads daily facts with its own 24h/7d/30d choice; the live map is
+  // always the last five minutes, so a 30d pill over it would be a control that
+  // changes nothing.
+  const ownRange = isLive || active === "heatmap" || active === "globe";
 
   return (
     <div className="flex flex-col gap-5">
@@ -2283,7 +2287,12 @@ function RegisteredView({
         </div>
       </div>
 
-      {active === "heatmap" ? (
+      {active === "globe" ? (
+        // Its own branch, like Heatmap: the generic panel renderer would see
+        // `liveGeo` as just another array of rows and draw a table of cities
+        // where a map belongs.
+        <GlobeView base={base} orgSlug={orgSlug} site={site} />
+      ) : active === "heatmap" ? (
         <HeatmapView
           base={base}
           orgSlug={orgSlug}

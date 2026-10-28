@@ -389,6 +389,7 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.configSectionTitle": "Configuração",
   "mainPanelTabs.analyticsTab.viewOverview": "Visão geral",
   "mainPanelTabs.analyticsTab.viewLive": "Tempo real",
+  "mainPanelTabs.analyticsTab.viewGlobe": "Mapa ao vivo",
   "mainPanelTabs.analyticsTab.viewBehaviour": "Páginas & origens",
   "mainPanelTabs.analyticsTab.viewEvents": "Eventos & props",
   "mainPanelTabs.analyticsTab.viewErrors": "Erros",
@@ -551,6 +552,30 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.moduleHeatmap": "Heatmap",
   "mainPanelTabs.analyticsTab.moduleHeatmapHint":
     "Cliques, rolagem e atenção por página",
+  // Mapa ao vivo. Os quatro substantivos são os que o renderer imprime no
+  // próprio cartão de hover — ele os recebe como opção, não guarda inglês.
+  "mainPanelTabs.analyticsTab.globe.visitor": "visitante",
+  "mainPanelTabs.analyticsTab.globe.visitorPlural": "visitantes",
+  "mainPanelTabs.analyticsTab.globe.cart": "carrinho",
+  "mainPanelTabs.analyticsTab.globe.cartPlural": "carrinhos",
+  "mainPanelTabs.analyticsTab.globe.conversion": "conversão",
+  "mainPanelTabs.analyticsTab.globe.conversionPlural": "conversões",
+  "mainPanelTabs.analyticsTab.globe.countryLevel":
+    "nível de país: sem coordenada de cidade",
+  "mainPanelTabs.analyticsTab.globe.kpiVisitors": "Visitantes agora",
+  "mainPanelTabs.analyticsTab.globe.kpiVisitorsHint":
+    "únicos nos últimos 5 min",
+  "mainPanelTabs.analyticsTab.globe.kpiPlaces": "Lugares",
+  "mainPanelTabs.analyticsTab.globe.kpiPlacesHint": "pontos no mapa",
+  "mainPanelTabs.analyticsTab.globe.kpiApproximate": "Nível de país",
+  "mainPanelTabs.analyticsTab.globe.kpiApproximateHint":
+    "visitantes sem cidade",
+  "mainPanelTabs.analyticsTab.globe.kpiUnplaced": "Sem localização",
+  "mainPanelTabs.analyticsTab.globe.kpiUnplacedHint": "não dá para desenhar",
+  "mainPanelTabs.analyticsTab.globe.modeGlobe": "Globo",
+  "mainPanelTabs.analyticsTab.globe.modeMap": "Mapa",
+  "mainPanelTabs.analyticsTab.globe.loadError":
+    "Não foi possível carregar o renderizador do mapa. Os números acima continuam ao vivo.",
   "mainPanelTabs.analyticsTab.viewQuality": "Qualidade dos dados",
   "mainPanelTabs.analyticsTab.viewUsage": "Uso & limites",
   "mainPanelTabs.analyticsTab.cardTopSources": "Principais origens",
