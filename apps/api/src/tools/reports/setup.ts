@@ -17,6 +17,7 @@ import {
   requireAuth,
   requireOrganization,
 } from "../../core/studio-context";
+import { redactConnectionToken } from "../connection/redact";
 import { ConnectionEntitySchema } from "../connection/schema";
 import { VirtualMCPEntitySchema } from "../virtual/schema";
 import { fetchReportsAuth, resolveReportsMcpUrl } from "./auth-client";
@@ -301,7 +302,7 @@ export const REPORTS_SETUP = defineTool({
     }
 
     return {
-      connection,
+      connection: redactConnectionToken(connection),
       virtualMcp,
       reportApp: {
         connectionId: connection.id,

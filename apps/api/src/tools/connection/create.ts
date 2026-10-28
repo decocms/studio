@@ -21,11 +21,13 @@ import {
   validateConfiguration,
 } from "./credential-grants";
 import { fetchToolsFromMCP } from "./fetch-tools";
+import { redactConnectionToken } from "./redact";
 import {
   buildVirtualUrl,
   ConnectionCreateDataSchema,
   ConnectionEntitySchema,
   parseVirtualUrl,
+  REDACTED_CONNECTION_TOKEN,
 } from "./schema";
 
 /**
@@ -68,6 +70,12 @@ export const COLLECTION_CONNECTIONS_CREATE = defineTool({
     const userId = getUserId(ctx);
     if (!userId) {
       throw new Error("User ID required to create connection");
+    }
+
+    if (input.data.connection_token === REDACTED_CONNECTION_TOKEN) {
+      throw new Error(
+        "connection_token is redacted on read; send the real token or null",
+      );
     }
 
     // Build connection data
@@ -234,7 +242,7 @@ export const COLLECTION_CONNECTIONS_CREATE = defineTool({
     });
 
     return {
-      item: connection,
+      item: redactConnectionToken(connection),
     };
   },
 });

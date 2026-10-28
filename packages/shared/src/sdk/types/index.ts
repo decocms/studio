@@ -3,6 +3,7 @@ export {
   ConnectionCreateDataSchema,
   ConnectionUpdateDataSchema,
   OAuthConfigSchema,
+  REDACTED_CONNECTION_TOKEN,
   isStdioParameters,
   parseVirtualUrl,
   buildVirtualUrl,

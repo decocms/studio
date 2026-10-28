@@ -113,6 +113,14 @@ export type ConnectionParameters =
 const MAX_CONNECTION_TOKEN_LENGTH = 4096;
 
 /**
+ * Stands in for a stored connection_token in every tool response. The token
+ * often outranks the caller (the org's `_self` connection holds a full-access
+ * management key), so reads only reveal whether one is set. Sending this value
+ * back on update keeps the stored token.
+ */
+export const REDACTED_CONNECTION_TOKEN = "[redacted]";
+
+/**
  * Connection entity schema - single source of truth.
  * Compliant with collections binding pattern.
  */
@@ -161,7 +169,9 @@ export const ConnectionEntitySchema = z.object({
   connection_token: z
     .string()
     .nullable()
-    .describe("Authentication token (for HTTP connections)"),
+    .describe(
+      `Authentication token (for HTTP connections). Write-only: reads return "${REDACTED_CONNECTION_TOKEN}" when a token is set.`,
+    ),
   connection_headers: z
     .union([StdioConnectionParametersSchema, HttpConnectionParametersSchema])
     .nullable()

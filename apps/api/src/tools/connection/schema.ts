@@ -10,6 +10,7 @@ export {
   ConnectionEntitySchema,
   ConnectionCreateDataSchema,
   ConnectionUpdateDataSchema,
+  REDACTED_CONNECTION_TOKEN,
   isStdioParameters,
   parseVirtualUrl,
   buildVirtualUrl,
