@@ -222,8 +222,11 @@ async function readJsonBody(
 /** Views the customer-facing tab may ask for. `pipeline` is deliberately absent:
  *  it reads `system.parts`, which cannot carry a tenant row policy, so it is an
  *  operator-only view and must never reach a customer screen. */
-const ANALYTICS_VIEWS = new Set([
+export const ANALYTICS_VIEWS = new Set([
   "live",
+  // The live map. Same 5-minute window as `live`, one extra panel (`liveGeo`),
+  // drawn by the read surface's own renderer rather than by a panel component.
+  "globe",
   "overview",
   "behaviour",
   "events",
@@ -312,6 +315,10 @@ export const ANALYTICS_PAYLOAD_KEYS: ReadonlySet<string> = new Set([
   "funnel",
   // live
   "liveVisitors",
+  // The globe's only data. Omitting it is silent: this is an ALLOWLIST, so an
+  // absent key drops out of the payload without an error anywhere, and the map
+  // renders a world with no dots on it.
+  "liveGeo",
   "livePages",
   "liveFeed",
   "liveByMinute",
@@ -839,6 +846,75 @@ export const createHostingRoutes = () => {
       range,
       data: toTenantAnalyticsPayload(payload, siteId),
     });
+  });
+
+  // GET /api/:org/hosting/:site/analytics/globe.js — the live map's renderer.
+  //
+  // The read surface serves this behind the same gate as `/data`, deliberately:
+  // its design is that no route is public, and "it is only code, not data" is
+  // that exception wearing a reason. So the browser cannot fetch it directly —
+  // it has no credential and must never be given one. We already hold the master
+  // token server-side for `/data`; this proxies the script the same way.
+  //
+  // Carries no tenant data, but keeps the auth and ownership guards anyway: a
+  // route that skips them is one more shape to remember, and the cost here is a
+  // lookup the tab has already done to render the tab at all.
+  app.get("/:site/analytics/globe.js", async (c) => {
+    const ctx = c.get("studioContext");
+    if (!isAuthenticated(ctx)) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    const org = requireOrganization(ctx);
+    const site = c.req.param("site");
+    if (!site) return c.json({ error: "site is required" }, 400);
+
+    const ownsSite = await ctx.storage.orgSites.isOwnedBy(
+      site.toLowerCase(),
+      org.id,
+    );
+    if (!ownsSite) {
+      return c.json({ error: "Site not found in organization" }, 404);
+    }
+
+    const { analyticsDataUrl, analyticsMasterToken } = getSettings();
+    if (!analyticsDataUrl || !analyticsMasterToken) {
+      return c.json({ error: "Analytics data surface is not configured" }, 503);
+    }
+
+    try {
+      const res = await fetch(`${analyticsDataUrl}/globe.js`, {
+        headers: { Authorization: `Bearer ${analyticsMasterToken}` },
+      });
+      if (!res.ok) {
+        // Including 404, which is what a read surface built without the bundle
+        // answers. Passed through rather than flattened: "the map is missing
+        // upstream" and "analytics is down" are different incidents.
+        return c.json(
+          { error: `Analytics globe bundle unavailable (${res.status})` },
+          res.status >= 400 && res.status <= 599
+            ? (res.status as ContentfulStatusCode)
+            : 502,
+        );
+      }
+      // NOT the upstream's `immutable, max-age=31536000`. That is honest at the
+      // origin, where the bundle is rebuilt only when the image is; it is a trap
+      // here, because this URL carries no content hash — a browser that pinned it
+      // for a year would keep an old renderer across every analytics deploy, with
+      // no way to invalidate. Minutes are enough to stop the refetch-per-tab-open
+      // without outliving a release.
+      //
+      // `private`: the response went through a per-tenant authorization check, so
+      // it must not land in a shared cache keyed only by URL.
+      return new Response(res.body, {
+        headers: {
+          "content-type": "text/javascript; charset=utf-8",
+          "cache-control": "private, max-age=300",
+        },
+      });
+    } catch (err) {
+      console.error(`[analytics] globe proxy error for site="${site}":`, err);
+      return c.json({ error: "Failed to reach analytics service" }, 502);
+    }
   });
 
   return app;

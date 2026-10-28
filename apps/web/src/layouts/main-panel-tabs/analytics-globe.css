@@ -1,0 +1,108 @@
+/**
+ * The live map's CSS contract.
+ *
+ * The renderer ships as a bundle from the analytics read surface and draws into
+ * a canvas, but it does NOT carry its own stylesheet: it reads its palette from
+ * custom properties on the host element (`globe.ts#readColors`) and builds its
+ * hover card out of `.globe-tip*` class names. Both halves of that contract
+ * live here. Without this file the map still renders — in its fallback palette,
+ * with an unstyled tooltip — which is exactly the kind of "works, looks broken"
+ * failure that is hard to attribute later.
+ *
+ * Everything is scoped under `.globe-wrap`. The renderer appends its tooltip to
+ * the host element it was handed, so a descendant scope is enough, and these
+ * names are generic enough (`.globe-tip`) that leaking them globally would be a
+ * collision waiting to happen.
+ */
+
+.globe-wrap {
+  /* The three kinds, mapped onto Studio's chart tokens. The read surface picks
+     chart-2 / chart-4 / chart-1 for the same reason we do here: a globe plots
+     all three AT ONCE, so the pair that is only legal because nothing plots
+     them together (chart-2 with chart-3) is the one pair it cannot use. The
+     renderer adds shape as a second encoding on top — visit is a dot, cart a
+     diamond, conversion a dot inside a ring — so the map stays readable with a
+     colour-vision deficiency. */
+  --globe-visit: var(--chart-2);
+  --globe-cart: var(--chart-4);
+  --globe-goal: var(--chart-1);
+
+  --globe-ocean: oklch(0.955 0.006 80);
+  --globe-land: oklch(0.9 0.008 80);
+  --globe-line: oklch(0.87 0.005 80);
+  --globe-edge: oklch(0.72 0.05 80);
+  /* Read, never inferred. The renderer blends its glows additively only in dark
+     mode, and it decides from THIS value — its own fallback is `1`. A missing
+     variable therefore does not degrade to "light", it degrades to a washed-out
+     light-mode globe, so the light case has to say so explicitly. */
+  --globe-dark: 0;
+
+  position: relative;
+  width: 100%;
+  /* The map IS the screen on this tab, not a card on it. Bounded in `vh`
+     because the question is "how much of the window does this fill", with a
+     `min()` so it does not outgrow a short laptop screen in landscape. */
+  height: min(62vh, 44rem);
+  min-height: 20rem;
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--globe-ocean);
+  border: 1px solid var(--border);
+}
+
+/* Darker than `--background` on purpose: the globe is a hole punched in the
+   page, and an ocean that matches the panel behind it makes the planet read as
+   a flat sticker. */
+.dark .globe-wrap {
+  --globe-ocean: oklch(0.145 0.006 60);
+  --globe-land: oklch(0.245 0.006 60);
+  --globe-line: oklch(0.3 0.005 60);
+  --globe-edge: oklch(0.52 0.09 150);
+  --globe-dark: 1;
+}
+
+.globe-wrap .globe-canvas {
+  position: absolute;
+  inset: 0;
+}
+
+.globe-wrap .globe-tip {
+  position: absolute;
+  z-index: 5;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  padding: 0.4rem 0.55rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--popover);
+  color: var(--foreground);
+  font-size: 0.75rem;
+  line-height: 1.35;
+  box-shadow: 0 4px 12px oklch(0 0 0 / 0.12);
+  white-space: nowrap;
+}
+
+.globe-wrap .globe-tip strong {
+  font-weight: 600;
+}
+
+.globe-wrap .globe-tip-sub {
+  color: var(--muted-foreground);
+  font-size: 0.6875rem;
+}
+
+.globe-wrap .globe-tip-line {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.globe-wrap .globe-tip-line i {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  flex: none;
+}

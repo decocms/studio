@@ -1,7 +1,11 @@
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { ANALYTICS_PAYLOAD_KEYS, toTenantAnalyticsPayload } from "./hosting";
+import {
+  ANALYTICS_PAYLOAD_KEYS,
+  ANALYTICS_VIEWS,
+  toTenantAnalyticsPayload,
+} from "./hosting";
 
 describe("toTenantAnalyticsPayload", () => {
   const upstream = {
@@ -75,5 +79,48 @@ describe("toTenantAnalyticsPayload", () => {
       (k) => k && !ANALYTICS_PAYLOAD_KEYS.has(k) && !handledApart.has(k),
     );
     expect(missing).toEqual([]);
+  });
+
+  // The live map reads its payload through its own typed casts rather than the
+  // tab's `rowsOf`, so the scan above cannot see it. Same failure if it drifts:
+  // an allow-list is silent, so a dropped key is a map with no dots on it and
+  // no error in any log.
+  it("allows every payload key the live map reads", () => {
+    const dir = join(
+      import.meta.dir,
+      "../../../../web/src/layouts/main-panel-tabs",
+    );
+    const globe = readFileSync(join(dir, "analytics-globe-tab.tsx"), "utf8");
+    // Anchored on `payload as` so it reads PANEL keys only — the same shape
+    // also narrows a row (`first as { visitors?: unknown }`) and the BFF
+    // envelope, and neither of those is an allow-list entry.
+    const read = [
+      ...globe.matchAll(/payload as \{\s*(\w+)\?:\s*unknown\s*\}/g),
+    ].map((m) => m[1]);
+    // Asserted by name first: a regex that silently stops matching would make
+    // the filter below trivially empty, and the test would pass forever.
+    expect(read).toContain("liveGeo");
+    expect(read).toContain("liveVisitors");
+    expect(read.filter((k) => !ANALYTICS_PAYLOAD_KEYS.has(k))).toEqual([]);
+  });
+});
+
+// A view the tab offers but the proxy rejects is a 400 the moment someone
+// clicks the tab — the one failure that is invisible until a user finds it.
+describe("ANALYTICS_VIEWS", () => {
+  it("accepts every view the tab offers", () => {
+    const tab = readFileSync(
+      join(
+        import.meta.dir,
+        "../../../../web/src/layouts/main-panel-tabs/analytics-tab.tsx",
+      ),
+      "utf8",
+    );
+    const block = tab.match(/const DATA_VIEWS[^=]*=\s*\[([\s\S]*?)\n\];/)?.[1];
+    const views = [...(block ?? "").matchAll(/view:\s*"(\w+)"/g)].map(
+      (m) => m[1],
+    );
+    expect(views).toContain("globe");
+    expect(views.filter((v) => !ANALYTICS_VIEWS.has(v))).toEqual([]);
   });
 });

@@ -777,6 +777,14 @@ export const KEYS = {
   // collapsible section caches independently and refetches on range change.
   analyticsData: (org: string, site: string, view: string, range: string) =>
     ["hosting", org, site, "analytics-data", view, range] as const,
+  // Deco Analytics → Live map: the renderer bundle, proxied through the BFF at
+  // /api/:org/hosting/:site/analytics/globe.js. A query rather than a loader of
+  // its own because the script is fetched once and then cached for the session
+  // — the same thing `staleTime: Infinity` already expresses everywhere else.
+  // Keyed by site because that is what the BFF authorizes, even though every
+  // site is served the same bytes.
+  analyticsGlobeBundle: (org: string, site: string) =>
+    ["hosting", org, site, "analytics-globe-bundle"] as const,
   // Deco Analytics → Heatmap: one page × device bucket of `view=heatmap`.
   analyticsHeatmap: (
     org: string,
