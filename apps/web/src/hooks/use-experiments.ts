@@ -181,6 +181,10 @@ export function useImplementExperiment(
       queryClient.invalidateQueries({
         queryKey: KEYS.experiments(locator, site),
       });
+      // A board list cached before this card would drop its key as stale.
+      queryClient.invalidateQueries({
+        queryKey: KEYS.taskBoardItems(locator),
+      });
       // No key means no card address to open — say where it went instead.
       if (!openCard || !result.taskKey) {
         toast.success(

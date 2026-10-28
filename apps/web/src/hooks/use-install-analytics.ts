@@ -1,7 +1,8 @@
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { useT } from "@/i18n/use-t.ts";
+import { KEYS } from "@/lib/query-keys";
 import { useProjectContext } from "@/sdk";
 import { useStudioTools } from "../lib/studio-tools";
 
@@ -12,12 +13,18 @@ export function useInstallAnalytics() {
   const t = useT();
   const studio = useStudioTools();
   const navigate = useNavigate();
-  const { org } = useProjectContext();
+  const queryClient = useQueryClient();
+  const { org, locator } = useProjectContext();
   return useMutation({
     mutationFn: (input: { site: string; domain?: string }) =>
       studio.call("ANALYTICS_INSTALL", input),
     onSuccess: (result) => {
       if (result.status === "needs_domain") return;
+      // The board opens a card from its cached list; one cached before this
+      // card would read its key as stale and drop it.
+      queryClient.invalidateQueries({
+        queryKey: KEYS.taskBoardItems(locator),
+      });
       if (!result.taskKey) {
         toast.success(t("monitor.analyticsGuide.installSent"));
         return;
