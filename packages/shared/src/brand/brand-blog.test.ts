@@ -161,6 +161,14 @@ describe("brandForBlog", () => {
     ]);
   });
 
+  test("with no description, the brand's own quote describes it", () => {
+    const { brand: quoted } = brandForBlog(
+      "# Acme\n\n> Casa é onde a vida acontece.\n",
+      "acme",
+    );
+    expect(quoted.description).toBe("Casa é onde a vida acontece.");
+  });
+
   test("an empty file is an empty brand named after its folder", () => {
     const empty = brandForBlog("", "aurora");
     expect(empty.brand.companyName).toBe("aurora");

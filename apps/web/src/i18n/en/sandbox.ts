@@ -558,7 +558,7 @@ export const sandbox = {
     "{count} draft(s) could not be written and their cards were left empty.",
   "sandbox.generatePost.back": "Back",
   "sandbox.generatePost.blockedBrand":
-    "Fill in {fields} on the Brand tab first — a post written without them reads like any other brand's.",
+    "Fill in {fields} in Context → Brand first — a post written without them reads like any other brand's.",
   "sandbox.generatePost.done": "Wrote {count} draft(s) — ready for review",
   "sandbox.generatePost.extraLabel": "Anything else?",
   "sandbox.generatePost.extraPlaceholder":
@@ -1267,4 +1267,16 @@ export const sandbox = {
   "sandbox.previewAs.off": "Off",
   "sandbox.previewAs.on": "On",
   "sandbox.previewAs.reset": "Show as it is now",
+  "sandbox.blogConnections.title": "Connect the store first",
+  "sandbox.blogConnections.description":
+    "The blog reads products from VTEX and what readers do from GA4. It won't generate anything until both are connected.",
+  "sandbox.blogConnections.vtex": "VTEX",
+  "sandbox.blogConnections.ga4": "GA4",
+  "sandbox.blogConnections.ready": "Connected",
+  "sandbox.blogConnections.missing": "Not installed",
+  "sandbox.blogConnections.inactive": "Installed, but switched off",
+  "sandbox.blogConnections.unconfigured": "Installed, but missing its account",
+  "sandbox.blogConnections.unauthorized": "Installed, but not signed in",
+  "sandbox.blogConnections.install": "Install",
+  "sandbox.blogConnections.fix": "Open",
 } as const;

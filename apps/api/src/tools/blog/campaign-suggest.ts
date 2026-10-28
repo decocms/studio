@@ -9,6 +9,7 @@ import {
 import { defineTool } from "../../core/define-tool";
 import { requireAuth } from "../../core/studio-context";
 import { requireBlogAi } from "./feature-flag";
+import { requireBlogConnections } from "./connections";
 import {
   CatalogueInputSchema,
   GroundingInputSchema,
@@ -594,6 +595,7 @@ export const BLOG_CAMPAIGN_SUGGEST = defineTool({
       );
     }
     await requireBlogAi(ctx, organizationId);
+    await requireBlogConnections(ctx, organizationId);
 
     const brandName = input.brand.companyName ?? "this brand";
     const report = await resolveGrounding(

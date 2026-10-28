@@ -568,7 +568,7 @@ export const sandbox = {
     "{count} rascunho(s) não puderam ser escritos e os cartões ficaram vazios.",
   "sandbox.generatePost.back": "Voltar",
   "sandbox.generatePost.blockedBrand":
-    "Preencha {fields} na aba Marca primeiro — um post escrito sem isso parece o de qualquer outra marca.",
+    "Preencha {fields} em Contexto → Marca primeiro — um post escrito sem isso parece o de qualquer outra marca.",
   "sandbox.generatePost.done":
     "Escrevi {count} rascunho(s) — prontos para revisão",
   "sandbox.generatePost.extraLabel": "Mais alguma coisa?",
@@ -1299,4 +1299,17 @@ export const sandbox = {
   "sandbox.previewAs.off": "Desligado",
   "sandbox.previewAs.on": "Ligado",
   "sandbox.previewAs.reset": "Mostrar como está agora",
+  "sandbox.blogConnections.title": "Conecte a loja primeiro",
+  "sandbox.blogConnections.description":
+    "O blog lê os produtos da VTEX e o comportamento dos leitores do GA4. Ele não gera nada até os dois estarem conectados.",
+  "sandbox.blogConnections.vtex": "VTEX",
+  "sandbox.blogConnections.ga4": "GA4",
+  "sandbox.blogConnections.ready": "Conectado",
+  "sandbox.blogConnections.missing": "Não instalado",
+  "sandbox.blogConnections.inactive": "Instalado, mas desligado",
+  "sandbox.blogConnections.unconfigured":
+    "Instalado, mas sem a conta configurada",
+  "sandbox.blogConnections.unauthorized": "Instalado, mas sem login",
+  "sandbox.blogConnections.install": "Instalar",
+  "sandbox.blogConnections.fix": "Abrir",
 } satisfies Record<keyof typeof sandboxEn, string>;

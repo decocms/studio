@@ -7,6 +7,7 @@ import {
 import { defineTool } from "../../core/define-tool";
 import { requireAuth } from "../../core/studio-context";
 import { requireBlogAi } from "./feature-flag";
+import { requireBlogConnections } from "./connections";
 import { GroundingInputSchema, resolveGrounding } from "./grounding-input";
 import { renderGrounding, VirtualMcpIdSchema } from "./site-tools";
 import { resolveTier } from "../../core/resolve-tier";
@@ -462,6 +463,7 @@ export const BLOG_POST_DRAFT = defineTool({
       );
     }
     await requireBlogAi(ctx, organizationId);
+    await requireBlogConnections(ctx, organizationId);
 
     const { brand, campaign } = input;
     const missing = [

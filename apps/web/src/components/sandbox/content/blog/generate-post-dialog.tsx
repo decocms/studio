@@ -29,6 +29,7 @@ import {
   readBlogContext,
   scanCampaigns,
 } from "./blog-data";
+import { BlogConnectionsGate } from "./blog-connections-gate";
 import { PickList } from "./blocks/primitives";
 import type { PostBriefing } from "./use-generate-post";
 
@@ -149,162 +150,164 @@ export function GeneratePostDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {missingBrand.length > 0 ? (
-          <p className="text-sm text-muted-foreground">
-            {t("sandbox.generatePost.blockedBrand", {
-              fields: missingBrand
-                .map((f) => t(REQUIREMENT_LABEL[f]))
-                .join(", "),
-            })}
-          </p>
-        ) : (
-          <>
-            <ol className="flex shrink-0 items-center gap-1.5 text-xs">
-              {STEPS.map((entry, index) => (
-                <li
-                  key={entry.id}
-                  className={cn(
-                    "rounded-md px-2 py-1",
-                    index === stepIndex
-                      ? "bg-primary text-primary-foreground"
-                      : index < stepIndex
-                        ? "text-foreground"
-                        : "text-muted-foreground",
-                  )}
-                >
-                  {t(entry.label)}
-                </li>
-              ))}
-            </ol>
+        <BlogConnectionsGate>
+          {missingBrand.length > 0 ? (
+            <p className="text-sm text-muted-foreground">
+              {t("sandbox.generatePost.blockedBrand", {
+                fields: missingBrand
+                  .map((f) => t(REQUIREMENT_LABEL[f]))
+                  .join(", "),
+              })}
+            </p>
+          ) : (
+            <>
+              <ol className="flex shrink-0 items-center gap-1.5 text-xs">
+                {STEPS.map((entry, index) => (
+                  <li
+                    key={entry.id}
+                    className={cn(
+                      "rounded-md px-2 py-1",
+                      index === stepIndex
+                        ? "bg-primary text-primary-foreground"
+                        : index < stepIndex
+                          ? "text-foreground"
+                          : "text-muted-foreground",
+                    )}
+                  >
+                    {t(entry.label)}
+                  </li>
+                ))}
+              </ol>
 
-            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto py-1">
-              {step === "campaign" && (
-                <>
-                  <p className="text-xs text-muted-foreground">
-                    {t("sandbox.generatePost.campaignHint")}
-                  </p>
-                  {campaigns.length === 0 ? (
-                    <p className="rounded-lg border border-dashed px-3 py-6 text-center text-sm text-muted-foreground">
-                      {t("sandbox.generatePost.noCampaigns")}
-                    </p>
-                  ) : (
-                    <CampaignList
-                      campaigns={campaigns}
-                      chosen={campaignKey}
-                      onChoose={setCampaignKey}
-                    />
-                  )}
-                </>
-              )}
-
-              {step === "format" && (
-                <>
-                  <p className="text-xs text-muted-foreground">
-                    {t("sandbox.generatePost.formatHint")}
-                  </p>
-                  <PickList
-                    options={formats.map((f) => f.name)}
-                    value={formatName}
-                    onChange={(name) => {
-                      setFormatName(name);
-                      setFormatValue(
-                        formats.find((f) => f.name === name)?.value ?? "",
-                      );
-                    }}
-                  />
-                  <div className="space-y-2">
-                    <Label htmlFor="generate-format-name">
-                      {t("sandbox.generatePost.formatNameLabel")}
-                    </Label>
-                    <Input
-                      id="generate-format-name"
-                      value={formatName}
-                      onChange={(e) => setFormatName(e.target.value)}
-                      placeholder={t(
-                        "sandbox.generatePost.formatNamePlaceholder",
-                      )}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="generate-format-value">
-                      {t("sandbox.generatePost.formatValueLabel")}
-                    </Label>
-                    <Textarea
-                      id="generate-format-value"
-                      value={formatValue}
-                      onChange={(e) => setFormatValue(e.target.value)}
-                      placeholder={t(
-                        "sandbox.generatePost.formatValuePlaceholder",
-                      )}
-                      rows={4}
-                    />
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {t("sandbox.generatePost.formatBlocksHint")}
-                  </p>
-                </>
-              )}
-
-              {step === "extra" && (
-                <>
-                  <div className="space-y-2">
-                    <Label htmlFor="generate-extra">
-                      {t("sandbox.generatePost.extraLabel")}
-                    </Label>
-                    <Textarea
-                      id="generate-extra"
-                      value={extra}
-                      onChange={(e) => setExtra(e.target.value)}
-                      placeholder={t("sandbox.generatePost.extraPlaceholder")}
-                      rows={4}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>{t("sandbox.generatePost.countLabel")}</Label>
-                    <PickList
-                      options={COUNTS.map(String)}
-                      value={String(count)}
-                      onChange={(value) => setCount(Number(value) || 1)}
-                    />
+              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto py-1">
+                {step === "campaign" && (
+                  <>
                     <p className="text-xs text-muted-foreground">
-                      {t("sandbox.generatePost.countHint")}
+                      {t("sandbox.generatePost.campaignHint")}
                     </p>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {t("sandbox.generatePost.coverHint")}
-                  </p>
-                </>
-              )}
-            </div>
+                    {campaigns.length === 0 ? (
+                      <p className="rounded-lg border border-dashed px-3 py-6 text-center text-sm text-muted-foreground">
+                        {t("sandbox.generatePost.noCampaigns")}
+                      </p>
+                    ) : (
+                      <CampaignList
+                        campaigns={campaigns}
+                        chosen={campaignKey}
+                        onChoose={setCampaignKey}
+                      />
+                    )}
+                  </>
+                )}
 
-            <DialogFooter className="shrink-0 sm:justify-between">
-              <Button
-                type="button"
-                variant="outline"
-                disabled={stepIndex === 0}
-                onClick={() => setStep(STEPS[stepIndex - 1]!.id)}
-              >
-                {t("sandbox.generatePost.back")}
-              </Button>
-              {isLast ? (
-                <Button type="button" disabled={!hasAi} onClick={submit}>
-                  <Stars02 size={14} />
-                  {t("sandbox.generatePost.generate", {
-                    count: String(count),
-                  })}
-                </Button>
-              ) : (
+                {step === "format" && (
+                  <>
+                    <p className="text-xs text-muted-foreground">
+                      {t("sandbox.generatePost.formatHint")}
+                    </p>
+                    <PickList
+                      options={formats.map((f) => f.name)}
+                      value={formatName}
+                      onChange={(name) => {
+                        setFormatName(name);
+                        setFormatValue(
+                          formats.find((f) => f.name === name)?.value ?? "",
+                        );
+                      }}
+                    />
+                    <div className="space-y-2">
+                      <Label htmlFor="generate-format-name">
+                        {t("sandbox.generatePost.formatNameLabel")}
+                      </Label>
+                      <Input
+                        id="generate-format-name"
+                        value={formatName}
+                        onChange={(e) => setFormatName(e.target.value)}
+                        placeholder={t(
+                          "sandbox.generatePost.formatNamePlaceholder",
+                        )}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="generate-format-value">
+                        {t("sandbox.generatePost.formatValueLabel")}
+                      </Label>
+                      <Textarea
+                        id="generate-format-value"
+                        value={formatValue}
+                        onChange={(e) => setFormatValue(e.target.value)}
+                        placeholder={t(
+                          "sandbox.generatePost.formatValuePlaceholder",
+                        )}
+                        rows={4}
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {t("sandbox.generatePost.formatBlocksHint")}
+                    </p>
+                  </>
+                )}
+
+                {step === "extra" && (
+                  <>
+                    <div className="space-y-2">
+                      <Label htmlFor="generate-extra">
+                        {t("sandbox.generatePost.extraLabel")}
+                      </Label>
+                      <Textarea
+                        id="generate-extra"
+                        value={extra}
+                        onChange={(e) => setExtra(e.target.value)}
+                        placeholder={t("sandbox.generatePost.extraPlaceholder")}
+                        rows={4}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>{t("sandbox.generatePost.countLabel")}</Label>
+                      <PickList
+                        options={COUNTS.map(String)}
+                        value={String(count)}
+                        onChange={(value) => setCount(Number(value) || 1)}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        {t("sandbox.generatePost.countHint")}
+                      </p>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {t("sandbox.generatePost.coverHint")}
+                    </p>
+                  </>
+                )}
+              </div>
+
+              <DialogFooter className="shrink-0 sm:justify-between">
                 <Button
                   type="button"
-                  disabled={!canAdvance}
-                  onClick={() => setStep(STEPS[stepIndex + 1]!.id)}
+                  variant="outline"
+                  disabled={stepIndex === 0}
+                  onClick={() => setStep(STEPS[stepIndex - 1]!.id)}
                 >
-                  {t("sandbox.generatePost.next")}
+                  {t("sandbox.generatePost.back")}
                 </Button>
-              )}
-            </DialogFooter>
-          </>
-        )}
+                {isLast ? (
+                  <Button type="button" disabled={!hasAi} onClick={submit}>
+                    <Stars02 size={14} />
+                    {t("sandbox.generatePost.generate", {
+                      count: String(count),
+                    })}
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    disabled={!canAdvance}
+                    onClick={() => setStep(STEPS[stepIndex + 1]!.id)}
+                  >
+                    {t("sandbox.generatePost.next")}
+                  </Button>
+                )}
+              </DialogFooter>
+            </>
+          )}
+        </BlogConnectionsGate>
       </DialogContent>
     </Dialog>
   );

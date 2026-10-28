@@ -4,6 +4,7 @@ import { defineTool } from "../../core/define-tool";
 import { requireAuth } from "../../core/studio-context";
 import type { StudioContext } from "../../core/studio-context";
 import { requireBlogAi } from "./feature-flag";
+import { requireBlogConnections } from "./connections";
 import {
   GROUNDING_PURPOSES,
   groundingRequestFor,
@@ -131,6 +132,7 @@ export const BLOG_SITE_GROUND = defineTool({
       );
     }
     await requireBlogAi(ctx, organizationId);
+    await requireBlogConnections(ctx, organizationId);
 
     const purpose = input.purpose as GroundingPurpose;
     const report = await groundSiteReport(ctx, organizationId, {

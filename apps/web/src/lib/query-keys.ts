@@ -830,6 +830,10 @@ export const KEYS = {
   // The org's blog editorial state: its brand guide and campaigns.
   blogState: (orgSlug: string) => ["blog-state", orgSlug] as const,
 
+  // Whether the org's GA4 connection still has a usable sign-in.
+  blogConnectionToken: (orgId: string, connectionId: string) =>
+    ["blog-connection-token", orgId, connectionId] as const,
+
   // Deco sections editor (sandbox preview)
   decofile: (previewUrl: string) => ["decofile", previewUrl] as const,
   // Sandbox-less Fast Preview draft pointer: {version, token} for the current

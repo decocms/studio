@@ -14,6 +14,7 @@
 import { parseFrontmatterDoc } from "../harness/skill-md";
 import {
   type BrandItemId,
+  brandQuote,
   brandSections,
   DO_MARK,
   DONT_MARK,
@@ -238,7 +239,7 @@ export function brandForBlog(
   return {
     brand: {
       companyName: fm.name || fallbackName,
-      description: fm.description ?? "",
+      description: fm.description || brandQuote(body) || "",
       language: fm.language ?? "",
       storeUrl: fm.site ?? "",
       targetAudience: prose(part("audience")),

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth } from "../../core/studio-context";
 import { requireBlogAi } from "./feature-flag";
+import { requireBlogConnections } from "./connections";
 import { GroundingInputSchema, takeEvidence } from "./grounding-input";
 import { extractCatalogue } from "./site-tools";
 
@@ -93,6 +94,7 @@ export const BLOG_SITE_CATALOGUE = defineTool({
       );
     }
     await requireBlogAi(ctx, organizationId);
+    await requireBlogConnections(ctx, organizationId);
 
     const evidence = await takeEvidence(ctx, input.grounding);
     if (!evidence.trim()) {
