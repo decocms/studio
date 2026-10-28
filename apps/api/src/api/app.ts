@@ -84,6 +84,7 @@ import {
 } from "../observability";
 import { posthog } from "../posthog";
 import authRoutes from "./routes/auth";
+import mcpConsentRoutes from "./routes/mcp-consent";
 import { ME_API_PREFIX, createMeRoutes } from "./routes/me";
 import { createUserFsRoutes } from "./routes/user-fs";
 import { USER_FS_API_PREFIX } from "@/file-storage/user-fs";
@@ -1527,6 +1528,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // ============================================================================
 
   // Auth routes (API key management via web UI)
+  app.route("/api/auth/custom/mcp-consent", mcpConsentRoutes);
   app.route("/api/auth/custom", authRoutes);
 
   // Fence off the raw Better Auth admin plugin (/api/auth/admin/*) from
