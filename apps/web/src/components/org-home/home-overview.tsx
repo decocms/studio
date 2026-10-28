@@ -193,6 +193,8 @@ export function queueRows(
   };
   for (const task of waiting) add(task, attentionReason(task));
   for (const task of tasks) {
+    // A closed card's leftover run state is history, not work for you.
+    if (task.status === "done" || task.status === "archived") continue;
     const run = agentRunState(task);
     if (run === "failed") add(task, "failed");
     else if (run === "running") add(task, "running");
