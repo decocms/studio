@@ -135,8 +135,7 @@ export const ANALYTICS_INSTALL = defineTool({
     });
     emitTaskBoardUpdated(organization.id, item);
 
-    // Not best-effort: a swallowed quota error would read as "installing".
-    await reactToSuperAgentDelegation(ctx, item, { userInitiated: true });
+    await reactToSuperAgentDelegation(ctx, item);
 
     return { taskBoardItemId: item.id, taskKey: keyOf(item.keySeq) };
   },

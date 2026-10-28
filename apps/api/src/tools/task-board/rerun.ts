@@ -56,10 +56,6 @@ import { fireImplementer } from "@/automations/fire-implementer";
 import { allEnabledReviewersVerifiedApproved } from "./merge-pr";
 import { fetchPrConflict, pickActivePr } from "./prs-get";
 import { conflictResolutionCapReached } from "./conflict-reaction";
-import {
-  ensureTaskExecutionAllowed,
-  userInitiatedTaskQuotaConfig,
-} from "@/billing/task-quota";
 
 /** Recorded on a thread this re-run took over. */
 const SUPERSEDED_FAILURE_REASON = "Superseded by a manual re-run of this task";
@@ -379,9 +375,6 @@ export const TASK_BOARD_ITEM_RERUN = defineTool({
 
     await refuseIfMergePending(ctx, item);
 
-    // Paywall before any write: a refused re-run must leave the card untouched.
-    await ensureTaskExecutionAllowed(ctx, item, userInitiatedTaskQuotaConfig());
-
     const supersededThreadIds = await supersedeLiveRuns(ctx, item);
 
     // Whatever a reviewer decided was about the pre-rerun work — same reasoning as `reopenLinkedTasksOnThreadRun`.
@@ -389,11 +382,8 @@ export const TASK_BOARD_ITEM_RERUN = defineTool({
 
     // In Progress before dispatch, so the card reads as running the moment the
     // board refreshes rather than sitting in its old lane until the run's first
-    // chunk lands. the Implementer's run claims quota itself (idempotent
-    // per task, and exempt from `maxRunsPerTask`) and throws
-    // `TaskQuotaError` on an empty period bucket — which must surface, so NOT
-    // best-effort: a swallowed failure here is exactly the silent no-op this
-    // tool exists to remove.
+    // chunk lands. The dispatch is NOT best-effort: a swallowed failure here is
+    // exactly the silent no-op this tool exists to remove.
     const progress = LANES.progress;
     const updated = progress
       ? await ctx.storage.taskBoard.update(
@@ -412,7 +402,7 @@ export const TASK_BOARD_ITEM_RERUN = defineTool({
     });
     emitTaskBoardUpdated(organizationId, updated);
 
-    await fireImplementer(ctx, updated, { userInitiated: true });
+    await fireImplementer(ctx, updated);
 
     return { status: updated.status, supersededThreadIds };
   },

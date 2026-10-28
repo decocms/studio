@@ -1,4 +1,3 @@
-import { taskRunMetadata } from "../../billing/subsidized-runs";
 import {
   RUN_CLASS_METADATA_KEY,
   type RunClass,
@@ -333,14 +332,12 @@ export async function enqueueAgentRunForTask(
         // recovered re-dispatch resolves the same pod.
         ...(opts.repo ? {} : { branch: sandboxBranch }),
         taskId: thread.id,
-        // Reports tasks carry the subscription-billing stamp: their AI usage
-        // is included in the org subscription (billing/subsidized-runs.ts).
         // `runClass` orders admission when the pod is at its cap — a reviewer or
         // a retry outranks a brand-new task (see dispatch-queue/run-priority.ts).
         // A free-form metadata string, so it changes no schema and no DBOS step
         // I/O. Defaults to a new task: the class that nothing is waiting on.
         runMetadata: {
-          ...taskRunMetadata(task),
+          taskBoardItemId: task.id,
           [RUN_CLASS_METADATA_KEY]: opts.runClass ?? "new_task",
           ...(opts.modelClass && opts.modelClass !== "default"
             ? { [MODEL_CLASS_METADATA_KEY]: opts.modelClass }

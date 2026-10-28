@@ -1,5 +1,9 @@
 import { resolveTaskRunModel } from "./task-run-harness";
-import { LANES, TaskBoardHarnessSchema } from "@decocms/shared/task-board";
+import {
+  isReportsTask,
+  LANES,
+  TaskBoardHarnessSchema,
+} from "@decocms/shared/task-board";
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { getUserId, requireAuth } from "@/core/studio-context";
@@ -27,11 +31,6 @@ import { shipOnArrivalIfAutoMerge } from "./merge-pr";
 import { findChangeRequestIn } from "./change-request-extract";
 import { normalizePreviewRoutes } from "./preview-routes";
 import { invalidatePrCards } from "./prs-get";
-import {
-  ensureTaskExecutionAllowed,
-  isReportsTask,
-  userInitiatedTaskQuotaConfig,
-} from "../../billing/task-quota";
 
 /**
  * Fields whose change earns a from/to timeline entry, and the action it logs as.
@@ -379,17 +378,6 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
           "This task was generated from your report and can't be edited — create your own task instead.",
         );
       }
-      // Paywall BEFORE the write: an exhausted quota must not leave the task
-      // delegated-but-never-running (the dispatch-side claim would throw
-      // after the assignee already persisted).
-      if (becameSuperAgent) {
-        // A human is delegating this card manually — the per-task run cap must not block it, only the period bucket.
-        await ensureTaskExecutionAllowed(
-          ctx,
-          previous,
-          userInitiatedTaskQuotaConfig(),
-        );
-      }
     }
 
     if (
@@ -544,7 +532,7 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
       if (released) emitTaskBoardUpdated(organizationId, released);
     }
     if (becameSuperAgent) {
-      await reactToSuperAgentDelegation(ctx, item, { userInitiated: true });
+      await reactToSuperAgentDelegation(ctx, item);
       return { item };
     }
 

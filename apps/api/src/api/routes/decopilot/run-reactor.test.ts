@@ -433,8 +433,7 @@ describe("run reactor", () => {
 
   // A force-failed run never reaches the projector, so this reactor is its
   // only terminal writer. Without the hook the task card stays parked In
-  // Progress and its quota charge is never released — the customer pays for a
-  // run that produced nothing.
+  // Progress.
   describe("thread-finish hook on a force-fail", () => {
     const depsWith = (
       transitions: boolean,

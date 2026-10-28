@@ -247,8 +247,7 @@ describe("planIdForStripe", () => {
     expect(planIdForStripe("canceled", {}, MAP)).toBe("free");
   });
 
-  /** Dunning grace, matching task-quota.ts — the two must not disagree about
-   *  what a delinquent org can do. `undefined` means "leave the plan alone". */
+  /** Dunning grace. `undefined` means "leave the plan alone". */
   test("past_due changes nothing while Stripe is still retrying the card", () => {
     expect(
       planIdForStripe("past_due", sub("price_ultra"), MAP),
@@ -354,8 +353,7 @@ describe("planIdForStripe", () => {
     // Real shape from a Pro -> Ultra upgrade: the invoice's own period_end is
     // ~now (it gathered items over [last invoice, now]), while the lines carry
     // the period actually paid for. Writing the former as current_period_end
-    // moves the renewal date into the past AND re-keys the task-quota bucket,
-    // handing out a fresh month of executions on every tier change.
+    // moves the renewal date into the past on every tier change.
     const gatherWindowEnd = 1789495282; // 2026-09-15T18:01:22Z
     const periodBought = 1792087280; // 2026-10-15T18:01:20Z
     const invoice = {

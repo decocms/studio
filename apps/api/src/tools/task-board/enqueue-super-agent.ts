@@ -1,11 +1,6 @@
 import type { StudioContext } from "@/core/studio-context";
 import type { TaskBoardItem } from "@/storage/types";
 import { LANES, outstandingReviewFeedback } from "@decocms/shared/task-board";
-import {
-  claimTaskExecution,
-  rollbackTaskExecution,
-  userInitiatedTaskQuotaConfig,
-} from "../../billing/task-quota";
 import { isReportsTask } from "@decocms/shared/task-board";
 import { captureOrgEvent } from "@/posthog";
 import { getSettings } from "@/settings";
@@ -73,9 +68,6 @@ export type SuperAgentPromptOpts = {
    *  work that already failed, so it outranks a brand-new task for the next
    *  slot. Defaults to a new task. See `dispatch-queue/run-priority.ts`. */
   runClass?: RunClass;
-  /** A human asked for this run (`TASK_BOARD_ITEM_RERUN`), so the per-task run
-   *  cap — which bounds automatic re-dispatch — does not apply to it. */
-  userInitiated?: boolean;
   /** The run works on something outside the board — one Jira issue, or a
    *  batch of them — and the card is only its anchor. `body` replaces the
    *  card's description in the prompt, `title` names the thread, and the
@@ -172,176 +164,136 @@ export async function enqueueSuperAgentForTask(
   task: TaskBoardItem,
   opts?: SuperAgentPromptOpts,
 ): Promise<void> {
-  // Quota claim at dispatch — the funnel every FRESH execution shares
-  // (update flip, import auto-delegation, review/conflict re-runs). A stall
-  // nudge re-prompts an existing thread directly (stall-recovery.ts) and
-  // deliberately doesn't re-claim: that task was claimed at first dispatch.
-  // Claimed
-  // BEFORE the harness choice below so both harnesses are gated. Idempotent
-  // per task, so re-runs of a claimed task pass free; an exhausted quota
-  // throws [SUBSCRIPTION_REQUIRED] and nothing enqueues. The interactive
-  // flip pre-checks in TASK_BOARD_ITEM_UPDATE so the user sees the paywall
-  // BEFORE the write; here the claim is the enforcement.
-  // Before the claim: a frozen card must not even ask for quota.
+  // A frozen card must not dispatch at all.
   await assertNotFrozenDemoCard(ctx, task);
-  const claim = await claimTaskExecution(
-    ctx,
-    task,
-    opts?.userInitiated ? userInitiatedTaskQuotaConfig() : undefined,
-  );
 
-  try {
-    // A re-run told to update an existing PR must land on that PR's BRANCH.
-    // Asking the model to `gh pr checkout` (which the prompt does, and has
-    // done all along) cannot work on its own: the sandbox key is derived from
-    // the THREAD, every re-run is a new thread, so the pod boots on a fresh
-    // `sandbox/thread-<new-id>` branch and the daemon's HEAD-based shutdown
-    // push publishes THAT — a second pull request for the same task. One task
-    // reached four open PRs this way, all with the same title.
-    //
-    // Pinning the PR's head branch makes the sandbox boot on it, so the same
-    // push updates the same PR. Best-effort: a null head ref (GitHub
-    // unreachable, PR already closed/merged) falls back to today's behavior
-    // rather than pinning a ref we can't confirm exists.
-    //
-    // Applies to a person re-delegating the card too, not just a reviewer
-    // bounce: only the bounce names a PR, and the human path is the one that
-    // kept forking (see `openPrForTask`).
-    const reusesPrBranch = getSettings().taskBoardRerunReusesPrBranch;
-    const pr =
-      opts?.pr ?? (reusesPrBranch ? await openPrForTask(ctx, task) : undefined);
-    // A caller-supplied head (a Jira issue's linked pull request) always wins over the flag.
-    const pinnedRef =
-      opts?.pr?.head ??
-      (reusesPrBranch && pr
-        ? await resolveRerunBranch(ctx, task, pr.number)
-        : null);
-    // The prompt must name the same PR the sandbox booted on. Only widened when
-    // the flag is on: naming a PR the run is NOT pinned to is the combination
-    // that produced the duplicates.
-    //
-    // Same idea for the feedback: a dispatch that lands on an existing PR is a
-    // CONTINUATION, so it should carry what the last reviewer asked for. Only
-    // the reviewer bounce passed that; a human's Re-run / re-assign passed
-    // nothing and the agent restarted from the title, re-deciding an approach
-    // the reviewer had told it to keep. Scoped to `pr` — with no PR to continue
-    // there is nothing outstanding, and a fresh attempt should stay fresh.
-    // Skipped when the caller already has a lead: a reviewer bounce passes its
-    // own notes, and a conflict re-run's lead outranks feedback anyway.
-    const wantsCarry = !opts?.feedback && !opts?.resolveConflict;
-    const carried =
-      pr && wantsCarry ? await outstandingFeedback(ctx, task) : null;
-    const promptOpts: SuperAgentPromptOpts | undefined =
-      (pr && pr !== opts?.pr) || carried
-        ? {
-            ...opts,
-            ...(pr ? { pr } : {}),
-            ...(carried ? { feedback: carried } : {}),
-          }
-        : opts;
-
-    // One repo is bound before dispatch; otherwise the run picks with `TASK_ADD_REPO`.
-    // A card that already names its repo binds THAT one, so a multi-repo org
-    // doesn't spend a turn re-picking what the card already decided.
-    const choice = await resolveTaskRepoChoice(ctx, task.organizationId, {
-      repositoryId: task.repositoryId,
-      repo: task.repo,
-    });
-
-    // A run on an external issue reads the issue, not the card: the card's
-    // description is empty on purpose, so the prompt gets the rendered issue.
-    const promptTask = opts?.source
-      ? { ...task, description: opts.source.body }
-      : task;
-    const title =
-      opts?.source?.title ??
-      (opts?.automation
-        ? `${opts.automation.name}: ${task.title}`
-        : `Super Agent: ${task.title}`);
-    const runMetadata = opts?.source
+  // A re-run told to update an existing PR must land on that PR's BRANCH.
+  // Asking the model to `gh pr checkout` (which the prompt does, and has
+  // done all along) cannot work on its own: the sandbox key is derived from
+  // the THREAD, every re-run is a new thread, so the pod boots on a fresh
+  // `sandbox/thread-<new-id>` branch and the daemon's HEAD-based shutdown
+  // push publishes THAT — a second pull request for the same task. One task
+  // reached four open PRs this way, all with the same title.
+  //
+  // Pinning the PR's head branch makes the sandbox boot on it, so the same
+  // push updates the same PR. Best-effort: a null head ref (GitHub
+  // unreachable, PR already closed/merged) falls back to today's behavior
+  // rather than pinning a ref we can't confirm exists.
+  //
+  // Applies to a person re-delegating the card too, not just a reviewer
+  // bounce: only the bounce names a PR, and the human path is the one that
+  // kept forking (see `openPrForTask`).
+  const reusesPrBranch = getSettings().taskBoardRerunReusesPrBranch;
+  const pr =
+    opts?.pr ?? (reusesPrBranch ? await openPrForTask(ctx, task) : undefined);
+  // A caller-supplied head (a Jira issue's linked pull request) always wins over the flag.
+  const pinnedRef =
+    opts?.pr?.head ??
+    (reusesPrBranch && pr
+      ? await resolveRerunBranch(ctx, task, pr.number)
+      : null);
+  // The prompt must name the same PR the sandbox booted on. Only widened when
+  // the flag is on: naming a PR the run is NOT pinned to is the combination
+  // that produced the duplicates.
+  //
+  // Same idea for the feedback: a dispatch that lands on an existing PR is a
+  // CONTINUATION, so it should carry what the last reviewer asked for. Only
+  // the reviewer bounce passed that; a human's Re-run / re-assign passed
+  // nothing and the agent restarted from the title, re-deciding an approach
+  // the reviewer had told it to keep. Scoped to `pr` — with no PR to continue
+  // there is nothing outstanding, and a fresh attempt should stay fresh.
+  // Skipped when the caller already has a lead: a reviewer bounce passes its
+  // own notes, and a conflict re-run's lead outranks feedback anyway.
+  const wantsCarry = !opts?.feedback && !opts?.resolveConflict;
+  const carried =
+    pr && wantsCarry ? await outstandingFeedback(ctx, task) : null;
+  const promptOpts: SuperAgentPromptOpts | undefined =
+    (pr && pr !== opts?.pr) || carried
       ? {
-          source: opts.source.kind,
-          jira_issue_keys: opts.source.issueKeys,
-          // The single key stays for a run on one issue, which is what every
-          // reader before batches existed looks for.
-          ...(opts.source.issueKeys.length === 1
-            ? { jira_issue_key: opts.source.issueKeys[0] }
-            : {}),
+          ...opts,
+          ...(pr ? { pr } : {}),
+          ...(carried ? { feedback: carried } : {}),
         }
-      : undefined;
+      : opts;
 
-    // Set here, not per caller, so the automatic hand-back and the manual
-    // "Resolve conflict" button land on the same tier.
-    const modelClass: ClaudeCodeModelClass | undefined = opts?.resolveConflict
-      ? "conflict"
-      : undefined;
-    const rulesColumn =
-      opts?.column !== undefined ? opts.column : LANES.progress;
+  // One repo is bound before dispatch; otherwise the run picks with `TASK_ADD_REPO`.
+  // A card that already names its repo binds THAT one, so a multi-repo org
+  // doesn't spend a turn re-picking what the card already decided.
+  const choice = await resolveTaskRepoChoice(ctx, task.organizationId, {
+    repositoryId: task.repositoryId,
+    repo: task.repo,
+  });
 
-    if (!choice) {
-      throw new Error(
-        "Task runs need the hosted sandbox, which this deployment does not have.",
-      );
-    }
-    const repo = "repo" in choice ? choice.repo : null;
-    const { system, message } = buildClaudeCodeTaskPrompt(promptTask, repo, {
-      ...promptOpts,
-      // Names the candidates so the run doesn't spend its first step asking what exists.
-      ...("choices" in choice ? { repoChoices: choice.choices } : {}),
-    });
-    const dispatched = await enqueueAgentRunForTask(ctx, task, {
-      title,
-      rulesColumn,
-      ...(runMetadata ? { metadata: runMetadata } : {}),
-      ...(opts?.runClass ? { runClass: opts.runClass } : {}),
-      ...(pinnedRef ? { pinnedRef } : {}),
-      prompt: message,
-      system,
-      temperature: 0.5,
-      ...(modelClass ? { modelClass } : {}),
-      ...(repo ? { repo } : {}),
-      ...(opts?.automation
-        ? {
-            agentId: opts.automation.agentId,
-            triggerId: opts.automation.triggerId,
-            fence: opts.automation.fence,
-          }
-        : {}),
-    });
-    // The Super Agent working a card, not an automation on another column.
-    if (dispatched.isNew && rulesColumn === LANES.progress) {
-      captureOrgEvent({
-        event: "task_run_started",
-        organizationId: task.organizationId,
-        properties: {
-          task_id: task.id,
-          reports_task: isReportsTask(task),
-          from: task.status,
-        },
-      });
-    }
-  } catch (err) {
-    // Nothing was dispatched — no thread exists to ever trigger the
-    // thread-finish refund pass (run-reactions.ts). Without this, a failure
-    // here (e.g. no model configured — the exact case `enqueueAgentRunForTask`
-    // can throw for) would leave the claim charged forever with no run to show
-    // for it.
-    //
-    // ROLLBACK, not refund: no run happened, so the per-task tally must not be
-    // spent either — otherwise a task whose dispatch keeps failing dies at the
-    // run cap with a quota error for runs that never existed. That holds for a
-    // `"rerun"` too: it incremented the same tally, and the sweeper's automatic
-    // retries spend it, so a card whose re-dispatch keeps throwing used to walk
-    // itself to the cap without ever starting a run. Its period SLOT is not
-    // ours to give back (an earlier run really did ride it) — that distinction
-    // lives in `rollbackTaskExecution`.
-    await rollbackTaskExecution(
-      ctx.storage.organizationBilling,
-      task.organizationId,
-      task.id,
-      claim,
+  // A run on an external issue reads the issue, not the card: the card's
+  // description is empty on purpose, so the prompt gets the rendered issue.
+  const promptTask = opts?.source
+    ? { ...task, description: opts.source.body }
+    : task;
+  const title =
+    opts?.source?.title ??
+    (opts?.automation
+      ? `${opts.automation.name}: ${task.title}`
+      : `Super Agent: ${task.title}`);
+  const runMetadata = opts?.source
+    ? {
+        source: opts.source.kind,
+        jira_issue_keys: opts.source.issueKeys,
+        // The single key stays for a run on one issue, which is what every
+        // reader before batches existed looks for.
+        ...(opts.source.issueKeys.length === 1
+          ? { jira_issue_key: opts.source.issueKeys[0] }
+          : {}),
+      }
+    : undefined;
+
+  // Set here, not per caller, so the automatic hand-back and the manual
+  // "Resolve conflict" button land on the same tier.
+  const modelClass: ClaudeCodeModelClass | undefined = opts?.resolveConflict
+    ? "conflict"
+    : undefined;
+  const rulesColumn = opts?.column !== undefined ? opts.column : LANES.progress;
+
+  if (!choice) {
+    throw new Error(
+      "Task runs need the hosted sandbox, which this deployment does not have.",
     );
-    throw err;
+  }
+  const repo = "repo" in choice ? choice.repo : null;
+  const { system, message } = buildClaudeCodeTaskPrompt(promptTask, repo, {
+    ...promptOpts,
+    // Names the candidates so the run doesn't spend its first step asking what exists.
+    ...("choices" in choice ? { repoChoices: choice.choices } : {}),
+  });
+  const dispatched = await enqueueAgentRunForTask(ctx, task, {
+    title,
+    rulesColumn,
+    ...(runMetadata ? { metadata: runMetadata } : {}),
+    ...(opts?.runClass ? { runClass: opts.runClass } : {}),
+    ...(pinnedRef ? { pinnedRef } : {}),
+    prompt: message,
+    system,
+    temperature: 0.5,
+    ...(modelClass ? { modelClass } : {}),
+    ...(repo ? { repo } : {}),
+    ...(opts?.automation
+      ? {
+          agentId: opts.automation.agentId,
+          triggerId: opts.automation.triggerId,
+          fence: opts.automation.fence,
+        }
+      : {}),
+  });
+  // The Super Agent working a card, not an automation on another column.
+  if (dispatched.isNew && rulesColumn === LANES.progress) {
+    captureOrgEvent({
+      event: "task_run_started",
+      organizationId: task.organizationId,
+      properties: {
+        task_id: task.id,
+        reports_task: isReportsTask(task),
+        from: task.status,
+      },
+    });
   }
 
   // A fresh attempt owns the card, so the older failures are history, not state.
@@ -352,17 +304,12 @@ export async function enqueueSuperAgentForTask(
     );
 
   // The dispatch really happened — the auto-fix leg of the PLG funnel.
-  // OUTSIDE the try/catch above: telemetry must never couple into the
-  // billing rollback (a throw here after a successful dispatch would refund
-  // a run that exists). Whether this dispatch is a re-run is `claim ===
-  // "rerun"` — no separate flag.
   captureOrgEvent({
     event: "task_run_enqueued",
     organizationId: task.organizationId,
     properties: {
       task_id: task.id,
       reports_task: isReportsTask(task),
-      claim,
       harness: "claude-code",
       ...(opts?.runClass ? { run_class: opts.runClass } : {}),
     },
