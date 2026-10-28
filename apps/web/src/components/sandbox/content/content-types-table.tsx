@@ -1,15 +1,18 @@
+import { Plus } from "@untitledui/icons";
 import { useState } from "react";
+import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
+import { SearchInput } from "@decocms/ui/components/search-input.tsx";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@decocms/ui/components/table.tsx";
+  ToggleGroup,
+  ToggleGroupItem,
+} from "@decocms/ui/components/toggle-group.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
+import type { TableColumn } from "@/components/collections/collection-table.tsx";
+import { CollectionTableWrapper } from "@/components/collections/collection-table-wrapper.tsx";
+import { EmptyState } from "@/components/empty-state.tsx";
+import { SITE_DRAFT_VIEW_INSET } from "@/components/site-draft-bar/view-header";
 import { useT } from "@/i18n/use-t.ts";
 import {
   type ContentEntry,
@@ -31,15 +34,27 @@ import {
 } from "./content-types";
 import { useTypeLabel } from "./content-types-sidebar";
 
-/** "New in draft" has no theme token: a mid-tone blue that reads on both. */
-const NEW_DOT = "oklch(0.64 0.13 245)";
-
 type Row = { type: ContentType; entry: ContentEntry };
+
+/** A draft status as the Content tab's blog posts show theirs. */
+const STATUS_VARIANT = {
+  published: "success",
+  changed: "warning",
+  new: "info",
+  deleted: "destructive",
+} as const satisfies Record<EntryStatus, string>;
+
+const STATUS_LABEL = {
+  published: "siteEditor.contentTypes.status.published",
+  changed: "siteEditor.contentTypes.status.changed",
+  new: "siteEditor.contentTypes.status.new",
+  deleted: "siteEditor.contentTypes.status.deleted",
+} as const satisfies Record<EntryStatus, string>;
 
 /**
  * A content type's entries (or every changed entry, for "Changes in draft")
- * as a dense text-only table: no previews, nothing rendered. Each row says
- * its status in the draft; a deleted one can be restored. A row opens the
+ * as a text-only table: no previews, nothing rendered. Each row says its
+ * status in the draft; a deleted one can be restored. A row opens the
  * entry's editor.
  */
 export function ContentTypesTable({
@@ -100,7 +115,7 @@ export function ContentTypesTable({
   const shown = kept ? matching.filter((r) => kept.has(r.entry)) : matching;
   const singletons = new Set(tree.singletons.map((t) => t.id));
   // A type with one entry is named by its type, as the sidebar names it.
-  const nameOf = (rowType: ContentType, entry: ContentEntry) =>
+  const nameOf = ({ type: rowType, entry }: Row) =>
     singletons.has(rowType.id) && typeof entry.block.name !== "string"
       ? label(rowType)
       : entryName(entry);
@@ -122,8 +137,132 @@ export function ContentTypesTable({
           type: typeName.toLowerCase(),
         });
 
+  const deleted = (row: Row) => row.entry.status === "deleted";
+  const opens = (row: Row) => !deleted(row) && !row.entry.orphan;
+  /** A row's text, struck through once the draft deletes it. */
+  const text = (row: Row, value: React.ReactNode, mono = false) => (
+    <span
+      className={cn(
+        mono && "font-mono text-muted-foreground",
+        deleted(row) && "line-through text-muted-foreground",
+      )}
+    >
+      {value}
+    </span>
+  );
+  const redirectOf = (row: Row) =>
+    row.type.group === "redirects" ? redirectRowOf(row.entry) : null;
+
+  const columns: TableColumn<Row>[] = [];
+  if (kind === "redirects") {
+    columns.push(
+      {
+        id: "from",
+        header: t("siteEditor.contentTypes.column.from"),
+        render: (row) => text(row, redirectOf(row)?.from, true),
+      },
+      {
+        id: "to",
+        header: t("siteEditor.contentTypes.column.to"),
+        render: (row) => {
+          const to = redirectOf(row)?.to ?? "";
+          const page = redirectDestinationPage(pages, to);
+          return (
+            <span className="flex min-w-0 items-baseline gap-2">
+              {page && text(row, entryName(page))}
+              {text(row, to, true)}
+            </span>
+          );
+        },
+      },
+      {
+        id: "kind",
+        header: t("siteEditor.contentTypes.column.kind"),
+        render: (row) =>
+          redirectOf(row)?.kind === "permanent"
+            ? t("siteEditor.contentTypes.kind.permanent")
+            : t("siteEditor.contentTypes.kind.temporary"),
+      },
+    );
+  } else {
+    columns.push({
+      id: "name",
+      header: t("siteEditor.contentTypes.column.name"),
+      render: (row) => text(row, nameOf(row)),
+    });
+    if (kind === "pages") {
+      columns.push(
+        {
+          id: "path",
+          header: t("siteEditor.contentTypes.column.path"),
+          render: (row) => text(row, pagePathOf(row.entry), true),
+        },
+        {
+          id: "sections",
+          header: t("siteEditor.contentTypes.column.sections"),
+          render: (row) => pageSectionCount(row.entry),
+        },
+      );
+    }
+    if (kind === "changes") {
+      columns.push({
+        id: "type",
+        header: t("siteEditor.contentTypes.column.type"),
+        render: (row) => (row.type.title ? label(row.type) : ""),
+      });
+    }
+    if (kind === "other") {
+      for (const field of fields) {
+        columns.push({
+          id: `field:${field}`,
+          header: humanizeTypeKey(field),
+          render: (row) => text(row, summaryValue(row.entry, field)),
+        });
+      }
+    }
+  }
+  columns.push({
+    id: "status",
+    header: t("siteEditor.contentTypes.column.status"),
+    render: (row) =>
+      known ? (
+        <span className="flex items-center gap-2">
+          <Badge variant={STATUS_VARIANT[row.entry.status]}>
+            {t(STATUS_LABEL[row.entry.status])}
+          </Badge>
+          {deleted(row) && (
+            <Stop>
+              <Button
+                size="xs"
+                variant="outline"
+                disabled={restoring !== null}
+                onClick={() => onRestore(row.entry)}
+              >
+                {restoring === row.entry.key && <Spinner className="size-3" />}
+                {t("siteEditor.contentTypes.restore")}
+              </Button>
+            </Stop>
+          )}
+        </span>
+      ) : (
+        <span className="text-muted-foreground">
+          {t("siteEditor.contentTypes.status.checking")}
+        </span>
+      ),
+  });
+  if (rowMenu) {
+    columns.push({
+      id: "actions",
+      header: "",
+      render: (row) =>
+        deleted(row) ? null : <Stop>{rowMenu(row.type, row.entry)}</Stop>,
+      cellClassName: "w-12 shrink-0",
+    });
+  }
+
   // "/" focuses the search, unless the person is typing somewhere else.
-  const searchRef = (input: HTMLInputElement | null) => {
+  const searchRef = (box: HTMLDivElement | null) => {
+    const input = box?.querySelector("input");
     if (!input) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "/" || event.metaKey || event.ctrlKey) return;
@@ -142,394 +281,108 @@ export function ContentTypesTable({
     return () => window.removeEventListener("keydown", onKey);
   };
 
+  const emptyMessage = query.trim()
+    ? t("siteEditor.contentTypes.noMatch")
+    : !type
+      ? t("siteEditor.contentTypes.noChanges")
+      : filter === "changed"
+        ? t("siteEditor.contentTypes.noChangedHere")
+        : t("siteEditor.contentTypes.empty");
+
   return (
-    <div className="flex h-full min-w-0 flex-col gap-4 overflow-y-auto px-8 py-5">
-      <div className="flex flex-wrap items-center gap-2.5">
-        <div className="relative flex w-full max-w-[280px]">
-          <input
-            ref={searchRef}
-            type="search"
+    <div className="flex h-full min-w-0 flex-col overflow-y-auto">
+      <div
+        className={cn(
+          "flex shrink-0 flex-wrap items-center gap-2",
+          SITE_DRAFT_VIEW_INSET,
+        )}
+      >
+        <div ref={searchRef} className="w-full max-w-[280px]">
+          <SearchInput
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={setQuery}
             placeholder={searchLabel}
-            aria-label={searchLabel}
-            className="w-full rounded-lg bg-muted/60 py-1.5 pr-9 pl-3 text-[13px] outline-none placeholder:text-muted-foreground"
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                setQuery("");
+                event.currentTarget.blur();
+              }
+            }}
           />
-          {!query && (
-            <kbd className="pointer-events-none absolute top-1.5 right-2 rounded border bg-background px-1.5 text-[11px] text-muted-foreground">
-              /
-            </kbd>
-          )}
         </div>
         {type && (
-          <div
-            role="group"
+          <ToggleGroup
+            type="single"
+            variant="segmented"
+            size="sm"
+            value={filter}
+            onValueChange={(next) => next && setFilter(next)}
             aria-label={t("siteEditor.contentTypes.filter")}
-            className="flex gap-0.5"
           >
-            <FilterPill
-              active={filter === "all"}
-              onClick={() => setFilter("all")}
-              label={t("siteEditor.contentTypes.filter.all", {
-                count: rows.length,
-              })}
-            />
+            <ToggleGroupItem value="all">
+              {t("siteEditor.contentTypes.filter.all", { count: rows.length })}
+            </ToggleGroupItem>
             {/* Until the draft's changes are read, none is claimed. */}
             {known && (
-              <FilterPill
-                active={filter === "changed"}
-                onClick={() => setFilter("changed")}
-                label={t("siteEditor.contentTypes.filter.changed", {
+              <ToggleGroupItem value="changed">
+                {t("siteEditor.contentTypes.filter.changed", {
                   count: changedCount,
                 })}
-              />
+              </ToggleGroupItem>
             )}
             {pathGroups.map((group) => (
-              <FilterPill
+              <ToggleGroupItem
                 key={group.segment || "-"}
-                active={filter === `path:${group.segment}`}
-                onClick={() => setFilter(`path:${group.segment}`)}
-                label={
-                  group.segment
-                    ? `${humanizeTypeKey(group.segment)} ${group.count}`
-                    : t("siteEditor.contentTypes.filter.otherPaths", {
-                        count: group.count,
-                      })
-                }
-              />
+                value={`path:${group.segment}`}
+              >
+                {group.segment
+                  ? `${humanizeTypeKey(group.segment)} ${group.count}`
+                  : t("siteEditor.contentTypes.filter.otherPaths", {
+                      count: group.count,
+                    })}
+              </ToggleGroupItem>
             ))}
-          </div>
+          </ToggleGroup>
         )}
         {onCreate && createLabel && (
           <Button size="sm" className="ml-auto" onClick={onCreate}>
+            <Plus size={16} />
             {createLabel}
           </Button>
         )}
       </div>
 
-      {shown.length === 0 ? (
-        <p className="py-10 text-center text-sm text-muted-foreground">
-          {query.trim()
-            ? t("siteEditor.contentTypes.noMatch")
-            : !type
-              ? t("siteEditor.contentTypes.noChanges")
-              : filter === "changed"
-                ? t("siteEditor.contentTypes.noChangedHere")
-                : t("siteEditor.contentTypes.empty")}
-        </p>
-      ) : (
-        <Table variant="flush" className="min-w-[560px]">
-          <TableHeader className="bg-background">
-            <TableRow className="border-b-0 hover:bg-transparent">
-              {kind === "redirects" ? (
-                <>
-                  <Head>{t("siteEditor.contentTypes.column.from")}</Head>
-                  <Head>{t("siteEditor.contentTypes.column.to")}</Head>
-                  <Head>{t("siteEditor.contentTypes.column.kind")}</Head>
-                </>
-              ) : (
-                <>
-                  <Head>{t("siteEditor.contentTypes.column.name")}</Head>
-                  {kind === "pages" && (
-                    <>
-                      <Head>{t("siteEditor.contentTypes.column.path")}</Head>
-                      <Head>
-                        {t("siteEditor.contentTypes.column.sections")}
-                      </Head>
-                    </>
-                  )}
-                  {kind === "changes" && (
-                    <Head>{t("siteEditor.contentTypes.column.type")}</Head>
-                  )}
-                  {kind === "other" &&
-                    fields.map((field) => (
-                      <Head key={field}>{humanizeTypeKey(field)}</Head>
-                    ))}
-                </>
-              )}
-              <Head>{t("siteEditor.contentTypes.column.status")}</Head>
-              {rowMenu && <Head className="w-8" />}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {shown.map(({ type: rowType, entry }) => {
-              const deleted = entry.status === "deleted";
-              const struck = cn(deleted && "line-through opacity-50");
-              const redirect =
-                rowType.group === "redirects" ? redirectRowOf(entry) : null;
-              const destination = redirect
-                ? redirectDestinationPage(pages, redirect.to)
-                : null;
-              const open =
-                deleted || entry.orphan
-                  ? undefined
-                  : () => onOpen(rowType, entry);
-              return (
-                <TableRow
-                  key={`${rowType.id}:${entry.key}`}
-                  // A mouse convenience; the first cell's button is the
-                  // keyboard's way in.
-                  onClick={open}
-                  className={cn(
-                    "group border-border/50",
-                    open && "cursor-pointer hover:bg-accent/50",
-                  )}
-                >
-                  {kind === "redirects" && redirect ? (
-                    <>
-                      <Cell>
-                        <OpenTarget onOpen={open}>
-                          <span
-                            className={cn(
-                              "font-mono text-[13px] text-muted-foreground",
-                              struck,
-                            )}
-                          >
-                            {redirect.from}
-                          </span>
-                        </OpenTarget>
-                      </Cell>
-                      <Cell>
-                        <div
-                          className={cn(
-                            "flex min-w-0 items-baseline gap-2.5",
-                            struck,
-                          )}
-                        >
-                          {destination && (
-                            <span className="truncate">
-                              {entryName(destination)}
-                            </span>
-                          )}
-                          <span className="truncate font-mono text-[13px] text-muted-foreground">
-                            {redirect.to}
-                          </span>
-                        </div>
-                      </Cell>
-                      <Cell className="text-muted-foreground">
-                        {redirect.kind === "permanent"
-                          ? t("siteEditor.contentTypes.kind.permanent")
-                          : t("siteEditor.contentTypes.kind.temporary")}
-                      </Cell>
-                    </>
-                  ) : (
-                    <>
-                      <Cell>
-                        <OpenTarget onOpen={open}>
-                          <span className={cn("font-medium", struck)}>
-                            {nameOf(rowType, entry)}
-                          </span>
-                        </OpenTarget>
-                      </Cell>
-                      {kind === "pages" && (
-                        <>
-                          <Cell>
-                            <span
-                              className={cn(
-                                "font-mono text-[13px] text-muted-foreground",
-                                struck,
-                              )}
-                            >
-                              {pagePathOf(entry)}
-                            </span>
-                          </Cell>
-                          <Cell className="text-muted-foreground/80 tabular-nums">
-                            {pageSectionCount(entry)}
-                          </Cell>
-                        </>
-                      )}
-                      {kind === "changes" && (
-                        <Cell className="text-muted-foreground">
-                          {rowType.title ? label(rowType) : ""}
-                        </Cell>
-                      )}
-                      {kind === "other" &&
-                        fields.map((field) => (
-                          <Cell
-                            key={field}
-                            className="max-w-[320px] truncate text-muted-foreground"
-                          >
-                            <span className={struck}>
-                              {summaryValue(entry, field)}
-                            </span>
-                          </Cell>
-                        ))}
-                    </>
-                  )}
-                  <Cell>
-                    {known ? (
-                      <span className="inline-flex items-center gap-2">
-                        <StatusLabel status={entry.status} />
-                        {deleted && (
-                          <button
-                            type="button"
-                            disabled={restoring !== null}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onRestore(entry);
-                            }}
-                            className="ml-1.5 inline-flex items-center gap-1 rounded-md border border-border/70 bg-background px-2 py-0.5 text-xs cursor-pointer hover:bg-accent disabled:cursor-default disabled:opacity-60"
-                          >
-                            {restoring === entry.key ? (
-                              <Spinner className="size-3" />
-                            ) : null}
-                            {t("siteEditor.contentTypes.restore")}
-                          </button>
-                        )}
-                      </span>
-                    ) : (
-                      <span className="text-muted-foreground/70">
-                        {t("siteEditor.contentTypes.status.checking")}
-                      </span>
-                    )}
-                  </Cell>
-                  {rowMenu && (
-                    <Cell className="w-8 py-0 text-right">
-                      {!deleted && (
-                        // The menu (portaled, so its clicks bubble here
-                        // through React) never opens the row.
-                        <span
-                          onClick={(e) => e.stopPropagation()}
-                          className="inline-flex opacity-0 group-hover:opacity-100 focus-within:opacity-100 has-[[data-state=open]]:opacity-100"
-                        >
-                          {rowMenu(rowType, entry)}
-                        </span>
-                      )}
-                    </Cell>
-                  )}
-                </TableRow>
-              );
-            })}
-            {fold && fold.folded > 0 && (
-              <TableRow className="border-border/50 hover:bg-transparent">
-                <Cell colSpan={rowMenu ? 5 : 4} className="text-[13px]">
-                  <button
-                    type="button"
-                    onClick={() => setUnfolded(true)}
-                    className="text-muted-foreground hover:text-foreground cursor-pointer"
-                  >
-                    {t("siteEditor.contentTypes.folded", {
-                      count: fold.folded,
-                    })}
-                  </button>
-                </Cell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
+      <CollectionTableWrapper
+        columns={columns}
+        data={shown}
+        onRowClick={(row) => {
+          if (opens(row)) onOpen(row.type, row.entry);
+        }}
+        rowClassName={(row) => (opens(row) ? undefined : "cursor-default")}
+        emptyState={
+          <EmptyState image={null} title={emptyMessage} description={null} />
+        }
+      />
+      {fold && fold.folded > 0 && (
+        <div className="px-4 py-2">
+          <Button variant="ghost" size="sm" onClick={() => setUnfolded(true)}>
+            {t("siteEditor.contentTypes.folded", { count: fold.folded })}
+          </Button>
+        </div>
       )}
     </div>
   );
 }
 
-function Head({
-  children,
-  className,
-}: {
-  children?: React.ReactNode;
-  className?: string;
-}) {
+/** A control inside a row: its clicks and keys never open the row. */
+function Stop({ children }: { children: React.ReactNode }) {
   return (
-    <TableHead
-      className={cn(
-        "h-8 px-3 text-xs font-normal text-muted-foreground/80",
-        className,
-      )}
+    <span
+      className="inline-flex"
+      onClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => e.stopPropagation()}
     >
       {children}
-    </TableHead>
-  );
-}
-
-function Cell({
-  children,
-  className,
-  colSpan,
-}: {
-  children?: React.ReactNode;
-  className?: string;
-  colSpan?: number;
-}) {
-  return (
-    <TableCell colSpan={colSpan} className={cn("px-3 py-2", className)}>
-      {children}
-    </TableCell>
-  );
-}
-
-/**
- * What opens a row from the keyboard: a button around the first cell's text
- * (a deleted row's is plain text, it doesn't open).
- */
-function OpenTarget({
-  onOpen,
-  children,
-}: {
-  onOpen?: () => void;
-  children: React.ReactNode;
-}) {
-  if (!onOpen) return <>{children}</>;
-  return (
-    <button
-      type="button"
-      onClick={(e) => {
-        e.stopPropagation();
-        onOpen();
-      }}
-      className="max-w-full truncate rounded-sm text-left cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring"
-    >
-      {children}
-    </button>
-  );
-}
-
-function FilterPill({
-  active,
-  label,
-  onClick,
-}: {
-  active: boolean;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      aria-pressed={active}
-      onClick={onClick}
-      className={cn(
-        "rounded-full px-3 py-1 text-[13px] cursor-pointer",
-        active
-          ? "bg-foreground text-background"
-          : "text-muted-foreground hover:text-foreground",
-      )}
-    >
-      {label}
-    </button>
-  );
-}
-
-/** A colored dot and the status in words. */
-function StatusLabel({ status }: { status: EntryStatus }) {
-  const t = useT();
-  return (
-    <span className="inline-flex items-center gap-2 text-foreground/80">
-      <span
-        className={cn(
-          "size-2 shrink-0 rounded-full",
-          status === "published" && "bg-success",
-          status === "changed" && "bg-warning",
-          status === "deleted" && "bg-destructive",
-        )}
-        style={status === "new" ? { background: NEW_DOT } : undefined}
-      />
-      {status === "published"
-        ? t("siteEditor.contentTypes.status.published")
-        : status === "changed"
-          ? t("siteEditor.contentTypes.status.changed")
-          : status === "new"
-            ? t("siteEditor.contentTypes.status.new")
-            : t("siteEditor.contentTypes.status.deleted")}
     </span>
   );
 }
