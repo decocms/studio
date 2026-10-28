@@ -734,7 +734,7 @@ describe("SANDBOX_START", () => {
     expect(entry.createdAt).toBe(1_000);
   });
 
-  it("ensureSandbox hands a reused sandbox a fresh clone URL only behind its flag", async () => {
+  it("ensureSandbox hands a reused sandbox a fresh clone URL", async () => {
     const virtualMcp = makeVirtualMcp(ORG_ID, {
       ...BASE_METADATA,
       sandboxMap: {
@@ -751,15 +751,6 @@ describe("SANDBOX_START", () => {
       await ensureSandbox(
         { virtualMcpId: VMCP_ID, branch: BRANCH },
         makeCtx({ virtualMcp }),
-      );
-      expect(proxied).toHaveLength(0);
-
-      await ensureSandbox(
-        { virtualMcpId: VMCP_ID, branch: BRANCH },
-        makeCtx({
-          virtualMcp,
-          flags: { sandbox_reuse_rotates_git_credential: true },
-        }),
       );
       expect(mockEnsure).not.toHaveBeenCalled();
       expect(proxied).toEqual([

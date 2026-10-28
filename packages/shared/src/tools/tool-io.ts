@@ -129,7 +129,6 @@ export interface StudioToolIO {
             chat_harness_codex?: boolean | undefined;
             chat_harness_sandbox_only?: boolean | undefined;
             sandbox_run_metadata?: boolean | undefined;
-            sandbox_reuse_rotates_git_credential?: boolean | undefined;
             sandbox_repo_snapshots?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
             hosting_enabled?: boolean | undefined;
@@ -218,7 +217,6 @@ export interface StudioToolIO {
             chat_harness_codex?: boolean | undefined;
             chat_harness_sandbox_only?: boolean | undefined;
             sandbox_run_metadata?: boolean | undefined;
-            sandbox_reuse_rotates_git_credential?: boolean | undefined;
             sandbox_repo_snapshots?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
             hosting_enabled?: boolean | undefined;
@@ -303,7 +301,6 @@ export interface StudioToolIO {
             chat_harness_codex?: boolean | undefined;
             chat_harness_sandbox_only?: boolean | undefined;
             sandbox_run_metadata?: boolean | undefined;
-            sandbox_reuse_rotates_git_credential?: boolean | undefined;
             sandbox_repo_snapshots?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
             hosting_enabled?: boolean | undefined;
