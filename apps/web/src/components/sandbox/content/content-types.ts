@@ -94,8 +94,13 @@ export const TOP_TYPES = 8;
 const BUILT_IN_TITLES: Record<string, string> = {
   page: "Pages",
   redirect: "Redirects",
-  "cms-settings": "Settings",
 };
+
+/**
+ * Types the Content tab never lists (PO decision): the site's CMS settings
+ * (`cms-settings`, the block named CMS) are configuration, not content.
+ */
+const HIDDEN_TYPES: ReadonlySet<string> = new Set(["cms-settings"]);
 
 const KNOWN_GROUPS: ReadonlySet<string> = new Set([
   "pages",
@@ -313,6 +318,7 @@ export function buildContentTypes(input: {
     // The named rules (tests, campaigns) keep their own views.
     if (namedRuleKindOfType(id)) continue;
     if (WRAPPER_TYPES.has(id)) continue;
+    if (HIDDEN_TYPES.has(id)) continue;
     const group = manifestGroupOf(meta, id) ?? "other";
     entries.sort(entryOrder(group));
     all.push({
@@ -328,7 +334,7 @@ export function buildContentTypes(input: {
   const of = (group: ManifestGroup) => all.filter((t) => t.group === group);
   const pages = of("pages")[0] ?? null;
   const redirects = of("redirects")[0] ?? null;
-  // A type with one entry is a singleton (Header, Footer, Settings); pages
+  // A type with one entry is a singleton (Header, Footer); pages
   // and redirects are collections however many they hold.
   const site = [pages, redirects].filter((t): t is ContentType => !!t);
   const singletons = all.filter(
@@ -363,6 +369,7 @@ export function buildContentTypes(input: {
   const changed: ContentTypeTree["changed"] = [];
   for (const [spelling, { name, change }] of bySpelling) {
     const found = typed.get(spelling);
+    if (found && HIDDEN_TYPES.has(found.type)) continue;
     if (found) {
       changed.push({ type: typeFor(found.type), entry: found.entry });
       continue;

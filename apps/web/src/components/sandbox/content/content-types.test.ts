@@ -106,7 +106,6 @@ describe("type names", () => {
   test("built-ins get Studio's names", () => {
     expect(typeTitle(meta, "page")).toBe("Pages");
     expect(typeTitle(meta, "redirect")).toBe("Redirects");
-    expect(typeTitle(meta, "cms-settings")).toBe("Settings");
   });
   test("an alias is named as its target", () => {
     expect(typeTitle(meta, "website/pages/Page.tsx")).toBe("Pages");
@@ -221,13 +220,22 @@ describe("buildContentTypes", () => {
       "Header",
       "Product by Handle",
       "Search",
-      "Settings",
       "Shopify Product Details Page",
       "Shopify Product List",
     ]);
     expect(tree.singletons.some((t) => t.id === "page")).toBe(false);
     expect(tree.singletons.some((t) => t.id === "redirect")).toBe(false);
     for (const type of tree.singletons) expect(type.entries.length).toBe(1);
+  });
+  test("the CMS settings are never listed, nor among the draft's changes", () => {
+    expect(tree.all.some((t) => t.id === "cms-settings")).toBe(false);
+    const edited = buildContentTypes({
+      blocks: { CMS: { __resolveType: "cms-settings" } },
+      meta,
+      changes: { CMS: set("v1") },
+    });
+    expect(edited.all).toEqual([]);
+    expect(edited.changed).toEqual([]);
   });
   test("Pages and Redirects are collections even with one entry", () => {
     const one = buildContentTypes({

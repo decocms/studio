@@ -47,7 +47,6 @@ export const siteEditor = {
   "siteEditor.contentTypes.group.singletons": "Únicos",
   "siteEditor.contentTypes.pages": "Páginas",
   "siteEditor.contentTypes.redirects": "Redirecionamentos",
-  "siteEditor.contentTypes.settings": "Configurações",
   "siteEditor.contentTypes.seo": "SEO",
   "siteEditor.contentTypes.showAll": "Mostrar todos ({count})",
   "siteEditor.contentTypes.showFewer": "Mostrar menos",
