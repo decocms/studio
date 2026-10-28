@@ -128,7 +128,7 @@ export const monitor = {
   "monitor.analyticsGuide.intro":
     "O agente adiciona uma tag ao código do site e abre um pull request para você revisar. Visitantes e conversões aparecem aqui depois do merge.",
   "monitor.analyticsGuide.introEmpty":
-    "Adicione seu site ao Studio e instale o analytics nele com um clique.",
+    "O analytics entra no código do site, então precisa de um site com o repositório do GitHub conectado. Adicione um a partir do repositório e instale com um clique.",
   "monitor.analyticsGuide.install": "Instalar",
   "monitor.analyticsGuide.installing": "Iniciando…",
   "monitor.analyticsGuide.domain":

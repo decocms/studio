@@ -141,7 +141,16 @@ function useSiteProjects(): SiteProject[] {
     const site = isStudioPackAgent(p.id) ? null : resolveAgentSiteSlug(p);
     const analyticsSite = resolveAnalyticsSiteSlug(p);
     return site && analyticsSite
-      ? [{ id: p.id, title: p.title, icon: p.icon, site, analyticsSite }]
+      ? [
+          {
+            id: p.id,
+            title: p.title,
+            icon: p.icon,
+            site,
+            analyticsSite,
+            repository: p.metadata?.repository ?? null,
+          },
+        ]
       : [];
   });
 }

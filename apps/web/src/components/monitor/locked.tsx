@@ -19,7 +19,9 @@ import { Input } from "@decocms/ui/components/input.tsx";
 import { toast } from "sonner";
 import { IntegrationIcon } from "@/components/integration-icon";
 import { ProjectIcon } from "@/components/project-icon";
+import { useRepositories } from "@/hooks/use-git-providers";
 import { useInstallAnalytics } from "@/hooks/use-install-analytics";
+import { sameRepositoryBinding } from "@decocms/shared/repository-binding";
 import { useProjectContext } from "@/sdk";
 import { formatCount } from "@/layouts/main-panel-tabs/monitor-v8";
 import type { TimelinePoint } from "@/layouts/main-panel-tabs/cdn-tab";
@@ -489,16 +491,32 @@ const NO_PROJECTS: readonly SiteProject[] = [];
 export function AnalyticsGuide({
   projects = NO_PROJECTS,
 }: {
-  /** The org's site projects, each offered to the Super Agent. */
+  /** The org's site projects; those with a connected repository are offered
+   *  to the Super Agent. */
   projects?: readonly SiteProject[];
 }) {
   const t = useT();
   const install = useInstallAnalytics();
+  const repositoriesQuery = useRepositories();
   const [domain, setDomain] = useState("");
   // The site hosting knows no domain for, asked where it's live.
   const [asking, setAsking] = useState<string | null>(null);
   const pendingSite = install.isPending ? install.variables?.site : null;
-  if (projects.length === 0) {
+  if (repositoriesQuery.isLoading) return null;
+  const repositories = repositoriesQuery.data ?? [];
+  // The agent opens its PR in the project's repository, so only a project
+  // bound to one the org has connected can take the tag.
+  const installable = projects.filter(
+    (p) =>
+      p.repository &&
+      repositories.some((r) =>
+        sameRepositoryBinding(p.repository!, {
+          repositoryId: r.id,
+          url: r.webUrl,
+        }),
+      ),
+  );
+  if (installable.length === 0) {
     return (
       <div className="flex flex-col gap-4">
         <p className="text-sm text-muted-foreground">
@@ -521,7 +539,7 @@ export function AnalyticsGuide({
         {t("monitor.analyticsGuide.intro")}
       </p>
       <div className="flex flex-col">
-        {projects.map((project, i) =>
+        {installable.map((project, i) =>
           asking === project.site ? (
             <form
               key={project.id}
