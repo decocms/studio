@@ -30,6 +30,8 @@ export const orderMonitor = {
   "orderMonitor.observedVsExpected":
     "{observed} vs {expected} esperados, {from}–{to}",
   "orderMonitor.observedOfExpected": "{observed} de {expected} esperados",
+  "orderMonitor.checked": "Verificado {when}",
+  "orderMonitor.noneExpected": "Nenhum hoje",
   "orderMonitor.since": "desde {ago}",
   "orderMonitor.pushAt": "Push em {repo} às {time}",
   "orderMonitor.series.today": "Hoje",
