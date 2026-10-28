@@ -398,6 +398,32 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.heatmap.map": "Map",
   "mainPanelTabs.analyticsTab.heatmap.clicks": "Clicks",
   "mainPanelTabs.analyticsTab.heatmap.clicksHint": "Where people click",
+  "mainPanelTabs.analyticsTab.heatmap.value": "Revenue",
+  "mainPanelTabs.analyticsTab.heatmap.valueHint":
+    "What each element is worth, not just how often it is clicked",
+  "mainPanelTabs.analyticsTab.heatmap.valueTitle": "Revenue by element",
+  "mainPanelTabs.analyticsTab.heatmap.valueBaseline":
+    "This page: {cvr} of {people} people bought",
+  "mainPanelTabs.analyticsTab.heatmap.valueRowSub":
+    "{conv} of {people} people bought · {cvr}",
+  "mainPanelTabs.analyticsTab.heatmap.valueIndex": "{x}x the page",
+  "mainPanelTabs.analyticsTab.heatmap.valueIndexHint":
+    "Revenue per person who clicked it, against this page's own average. 1x means it performs exactly like the page.",
+  "mainPanelTabs.analyticsTab.heatmap.valueSmall": "Too few people",
+  "mainPanelTabs.analyticsTab.heatmap.valueSmallHint":
+    "Not enough people clicked this yet for its rate to mean anything, so it is left out of the ranking below.",
+  "mainPanelTabs.analyticsTab.heatmap.valueLeaksTitle":
+    "Clicked a lot, sells the least",
+  "mainPanelTabs.analyticsTab.heatmap.valueLeaksAside":
+    "worst value for the space they take",
+  "mainPanelTabs.analyticsTab.heatmap.valueLeakSub":
+    "{people} people clicked, {conv} bought",
+  "mainPanelTabs.analyticsTab.heatmap.valueNone":
+    "No purchases recorded for this page in this period.",
+  "mainPanelTabs.analyticsTab.heatmap.valueOtherGoal":
+    "This site measures a different goal, which these numbers cannot answer. They only count purchases.",
+  "mainPanelTabs.analyticsTab.heatmap.valueCaveat":
+    "Counts the people who clicked an element and bought within {minutes} minutes. One purchase is credited to every element that visit clicked, so this shows association, not cause, and the figures do not add up to a page total.",
   "mainPanelTabs.analyticsTab.heatmap.scroll": "Scroll",
   "mainPanelTabs.analyticsTab.heatmap.scrollHint": "How far people get",
   "mainPanelTabs.analyticsTab.heatmap.attention": "Attention",
