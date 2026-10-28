@@ -50,6 +50,12 @@ export const createToolsRestRoutes = () => {
 
   // POST /api/:org/tools/:toolName — call a builtin tool.
   app.post("/:toolName", async (c) => {
+    // A JSON content type keeps cross-origin calls behind the CORS preflight.
+    const mediaType = c.req.header("content-type")?.split(";")[0]?.trim();
+    if (mediaType?.toLowerCase() !== "application/json") {
+      return c.json({ error: "Content-Type must be application/json" }, 415);
+    }
+
     const ctx = c.get("studioContext");
     const toolName = c.req.param("toolName");
 
