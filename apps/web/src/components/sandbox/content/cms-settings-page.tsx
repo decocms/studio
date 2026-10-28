@@ -106,7 +106,15 @@ function CmsSettingsPageForm({
           isDefault: false,
         };
   };
-  const edit = (id: CmsSettingsFieldId, value: unknown) => {
+  // The block as the page opened it: a field it left out and set back to
+  // its default is left out again, not written.
+  const [opened] = useState(block);
+  const edit = (id: CmsSettingsFieldId, input: unknown) => {
+    const was = readCmsSettingsField(opened, id);
+    const value =
+      was.kind === "value" && was.isDefault && input === was.value
+        ? undefined
+        : input;
     const next = { ...edits, [id]: value };
     // Back to what is saved (off and on again): nothing to write for it.
     if (isUnchangedCmsSettingsEdit(block, id, value)) delete next[id];

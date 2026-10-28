@@ -319,7 +319,16 @@ describe("the Settings page's values", () => {
         { ...block, analytics: { collector: "https://c.example.com" } },
         { "analytics.collector": undefined },
       ),
-    ).toEqual({ ...block, analytics: {} });
+    ).toEqual(block);
+    expect(
+      applyCmsSettingsEdits(
+        {
+          ...block,
+          analytics: { collector: "https://c.example.com", enabled: false },
+        },
+        { "analytics.collector": undefined },
+      ),
+    ).toEqual({ ...block, analytics: { enabled: false } });
   });
 
   it("knows an edit back to what is saved, a left-out field at its default", () => {

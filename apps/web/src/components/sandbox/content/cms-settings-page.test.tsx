@@ -202,4 +202,34 @@ describe("CmsSettingsPage", () => {
     expect(document.getElementById(ids[0]!)?.textContent).toBeTruthy();
     cleanup();
   });
+
+  test("set back to a default it left out, after the first save went out: left out again", () => {
+    const opened = {
+      __resolveType: "cms-settings",
+      telemetry: { errorSampleRate: 0.1 },
+    };
+    const { view } = renderPage(opened);
+    fireEvent.click(view.getByRole("switch", { name: "Send telemetry" }));
+    const afterOff = saves.at(-1)?.[1] as Record<string, unknown>;
+    expect(afterOff).toEqual({
+      ...opened,
+      telemetry: { errorSampleRate: 0.1, enabled: false },
+    });
+    // The save landed: the page now gets the draft's copy.
+    view.rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <CmsSettingsPage
+          orgSlug="acme"
+          virtualMcpId="vm"
+          branch="draft"
+          block={afterOff}
+          saveGuard={{ ifMatch: () => undefined }}
+          onOpenForm={() => {}}
+        />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(view.getByRole("switch", { name: "Send telemetry" }));
+    expect(saves.at(-1)?.[1]).toEqual(opened);
+    cleanup();
+  });
 });

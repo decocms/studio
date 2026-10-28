@@ -175,7 +175,9 @@ export function applyCmsSettingsEdits(
       if (!isPlainRecord(current) || !Object.hasOwn(current, key)) continue;
       const copy = { ...current };
       delete copy[key];
-      next[section] = copy;
+      // Its last field removed: the section goes too, as before it was set.
+      if (Object.keys(copy).length > 0) next[section] = copy;
+      else delete next[section];
       continue;
     }
     next[section] = {
