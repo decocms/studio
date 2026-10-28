@@ -124,26 +124,6 @@ function useCdnView<T>(
   });
 }
 
-/** The site's hostnames, busiest first, as one caption. */
-function useHostnames(base: string): string | null {
-  const t = useT();
-  const query = useQuery({
-    queryKey: KEYS.cdnData(base, "hosts", ""),
-    queryFn: async () =>
-      ((await fetchJson(`${base}/hosts`)) as { hosts?: string[] }).hosts ?? [],
-    retry: false,
-    staleTime: 5 * 60_000,
-  });
-  const hosts = query.data ?? [];
-  if (hosts.length === 0) return null;
-  return hosts.length > 1
-    ? `${hosts[0]} ${t("mainPanelTabs.cdnTab.moreHostnames").replace(
-        "{count}",
-        String(hosts.length - 1),
-      )}`
-    : (hosts[0] ?? null);
-}
-
 function RangeAction({
   value,
   onChange,
@@ -309,7 +289,6 @@ function RequestsChart({ points }: { points: TimelinePoint[] }) {
 /** One v7 site's CDN performance, inside the Monitor. */
 function CdnPerformance({ base }: { base: string }) {
   const t = useT();
-  const hostnames = useHostnames(base);
   const [range, setRange] = useState<Range>("7d");
   const prev = previousWindow(range);
   const summary = useCdnView<CdnSummary>(base, "summary", range);
@@ -380,11 +359,6 @@ function CdnPerformance({ base }: { base: string }) {
             summary={summary.data}
             previous={prev ? (previous.data ?? null) : null}
           />
-          <p className="text-meta">
-            {[hostnames, prev ? t("monitor.audience.vsPrevious") : null]
-              .filter(Boolean)
-              .join(" · ")}
-          </p>
         </div>
       )}
       {timeline.isLoading ? (
@@ -728,18 +702,6 @@ function OrgPerformance({
               }
             />
           </div>
-          <p className="text-meta">
-            {[
-              t("monitor.performance.org.sites", {
-                count: String(serving.length),
-                total: String(projects.length),
-              }),
-              t("monitor.aggregate.weighted"),
-              comparable ? t("monitor.audience.vsPrevious") : null,
-            ]
-              .filter(Boolean)
-              .join(" · ")}
-          </p>
         </div>
       )}
       {sites.length > 0 && <StackedRequests sites={sites} />}

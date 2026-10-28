@@ -432,15 +432,6 @@ function ProjectAudience({
     timeline.data?.available && timeline.data.data.view === "timeline"
       ? timeline.data.data.points
       : [];
-  const caption = [
-    t("monitor.audience.via", { source: sourceLabel(body.source, t) }),
-    body.window.kind === "calendar" && body.range === "24h"
-      ? t("monitor.audience.todayUtc")
-      : null,
-    body.data.view === "summary" && body.data.previous
-      ? t("monitor.audience.vsPrevious")
-      : null,
-  ].filter(Boolean);
 
   return (
     <>
@@ -451,7 +442,6 @@ function ProjectAudience({
             summary={body.data.summary}
             previous={body.data.previous}
           />
-          <p className="text-meta">{caption.join(" · ")}</p>
         </div>
       )}
       {timeline.isLoading ? (
@@ -715,10 +705,6 @@ function OrgAudience({
     });
   const bounce = perSite((s) => s.bounceRate);
   const visit = perSite((s) => s.visitDurationS);
-  const mixedSources =
-    new Set(
-      reporting.flatMap((r) => (r.data?.available ? [r.data.source] : [])),
-    ).size > 1;
   const sites = projects.flatMap((project, i) => {
     const d = timelines[i]?.data;
     return d?.available && d.data.view === "timeline"
@@ -796,22 +782,6 @@ function OrgAudience({
             />
           )}
         </div>
-        {!loading && (
-          <p className="text-meta">
-            {[
-              t("monitor.audience.org.sites", {
-                count: String(reporting.length),
-                total: String(projects.length),
-              }),
-              bounce.length > 1 || visit.length > 1
-                ? t("monitor.aggregate.weighted")
-                : null,
-              mixedSources ? t("monitor.aggregate.mixedSources") : null,
-            ]
-              .filter(Boolean)
-              .join(" · ")}
-          </p>
-        )}
       </div>
       {sites.length > 0 && <StackedVisitors sites={sites} range={range} />}
       <div className="grid gap-4 md:grid-cols-3">
