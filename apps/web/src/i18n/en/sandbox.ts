@@ -420,6 +420,43 @@ export const sandbox = {
     "Not saved yet: these are the defaults. Your first change creates the CMS block.",
   "sandbox.cmsSettingsBlock.description":
     "Telemetry and analytics. The site reads them from its published release: changes take effect once published, never in a draft preview.",
+  "sandbox.cmsSettingsPage.intro":
+    "Telemetry and analytics for your site. Changes take effect once published.",
+  "sandbox.cmsSettingsPage.telemetry.title": "Telemetry",
+  "sandbox.cmsSettingsPage.telemetry.description":
+    "How your site reports its health: errors, response times and slow requests.",
+  "sandbox.cmsSettingsPage.telemetry.enabled.label": "Send telemetry",
+  "sandbox.cmsSettingsPage.telemetry.enabled.help":
+    "Turn off to stop all telemetry from your site.",
+  "sandbox.cmsSettingsPage.telemetry.metrics.label": "Metrics",
+  "sandbox.cmsSettingsPage.telemetry.metrics.help":
+    "Counts and response times of your site's pages and of the services it calls.",
+  "sandbox.cmsSettingsPage.telemetry.errorSampleRate.label": "Error sampling",
+  "sandbox.cmsSettingsPage.telemetry.errorSampleRate.help":
+    "Share of errors recorded with their full details. Your site's code may set a lower limit.",
+  "sandbox.cmsSettingsPage.telemetry.traceSampleRate.label": "Trace sampling",
+  "sandbox.cmsSettingsPage.telemetry.traceSampleRate.help":
+    "Share of requests followed step by step, to find what makes a page slow. Your site's code may set a lower limit.",
+  "sandbox.cmsSettingsPage.analytics.title": "Analytics",
+  "sandbox.cmsSettingsPage.analytics.description":
+    "Page views and visits from the people who use your site.",
+  "sandbox.cmsSettingsPage.analytics.enabled.label": "Collect analytics",
+  "sandbox.cmsSettingsPage.analytics.enabled.help":
+    "Turn off to stop counting page views.",
+  "sandbox.cmsSettingsPage.analytics.collector.label": "Collector",
+  "sandbox.cmsSettingsPage.analytics.collector.help":
+    "Where page views are sent. Leave empty to use the default collector.",
+  "sandbox.cmsSettingsPage.analytics.collector.placeholder":
+    "https://collector.example.com",
+  "sandbox.cmsSettingsPage.invalidRate": "Enter a number from 0 to 100.",
+  "sandbox.cmsSettingsPage.invalidUrl":
+    "Enter a full address, starting with https://.",
+  "sandbox.cmsSettingsPage.variants": "Variants",
+  "sandbox.cmsSettingsPage.locked.variants":
+    "Set with variants; edit it in the block form.",
+  "sandbox.cmsSettingsPage.locked.other":
+    "Set in a way this page can't show; edit it in the block form.",
+  "sandbox.cmsSettingsPage.openForm": "Open block form",
   "sandbox.categoryEditor.renameActionButton": "Rename & update posts",
   "sandbox.categoryEditor.renameDialogDescription":
     'Changing the slug from "{oldSlug}" to "{newSlug}" will update {count} post(s) that reference this category.',

@@ -317,6 +317,7 @@ import { TaskBoardPromptStorage } from "@/storage/task-board-prompts";
 import type { TaskBoardAnalyticsStorage } from "@/storage/task-board-analytics";
 import type { ThreadAnalyticsStorage } from "@/storage/thread-analytics";
 import type { TaskBoardStorage } from "@/storage/task-board";
+import type { DemoBoardStorage } from "@/storage/demo-board";
 import type { NotificationStorage } from "@/storage/notifications";
 import type { OrgFsEntryStorage } from "@/storage/org-fs";
 import type { OrgFs } from "@/file-storage/org-fs";
@@ -370,6 +371,7 @@ export interface StudioStorage {
   repositories: RepositoryStorage;
   jiraIntegrations: JiraIntegrationStorage;
   taskBoard: TaskBoardStorage;
+  demoBoard: DemoBoardStorage;
   taskBoardPrompts: TaskBoardPromptStorage;
   taskBoardAnalytics: TaskBoardAnalyticsStorage;
   threadAnalytics: ThreadAnalyticsStorage;

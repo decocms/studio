@@ -65,6 +65,9 @@ type Links struct {
 	// becomes a permanent org-fs folder per chat; with this on, moving to
 	// another thread removes the previous one's if it stayed empty.
 	PruneEmptyThreadDirs bool
+	// CheckoutBusy reports a clone or branch checkout still writing the
+	// checkout, when the repo's own files can list as untracked. Nil: never.
+	CheckoutBusy func() bool
 
 	firstWait sync.Once
 	firstOk   bool
@@ -923,14 +926,21 @@ func (l *Links) repointThreadLink(threadId, mountDir, linkName string) bool {
 // fact instead of asked for: a skill in the checkout dies with the branch, and
 // nobody notices until they look for it next week.
 //
-// Only UNTRACKED dirs move: the repo's own committed skills are the one thing
-// that legitimately lives there. The `orgfs-` prefix is skipped as well — this
+// Only dirs with nothing committed at HEAD move: the repo's own skills are the
+// one thing that legitimately lives there. "Untracked" alone is not enough —
+// mid-checkout every committed file lists as untracked, and moving those out
+// lets the next checkpoint commit their deletion. So nothing moves while a
+// checkout is in progress. The `orgfs-` prefix is skipped as well — this
 // daemon no longer writes the checkout at all, but a repo carrying the entries
 // an older build committed must not have them "adopted" into the org.
 // Copy-then-remove, not rename — the checkout is local disk and the target is
 // FUSE, so a rename is EXDEV.
 func (l *Links) AdoptStrayRepoSkills() {
 	if l == nil || l.RepoDir == "" || !l.Expected() {
+		return
+	}
+	if l.CheckoutBusy != nil && l.CheckoutBusy() {
+		slog.Info("stray skill sweep skipped: checkout in progress")
 		return
 	}
 	// Deliberately unlocked: CopyFS below writes through the org mount, and
@@ -966,8 +976,19 @@ func (l *Links) AdoptStrayRepoSkills() {
 }
 
 // strayRepoSkillDirs names the untracked skill directories in the checkout —
-// the ones holding a SKILL.md, deduped from git's per-FILE listing.
+// the ones holding a SKILL.md, deduped from git's per-FILE listing. None while
+// the checkout is still being written.
 func strayRepoSkillDirs(repoDir string) []string {
+	committed, ok := gitx.CommittedUnder(repoDir, ".claude/skills")
+	if !ok {
+		return nil
+	}
+	owned := map[string]bool{}
+	for _, p := range committed {
+		if parts := strings.Split(p, "/"); len(parts) >= 3 {
+			owned[parts[2]] = true
+		}
+	}
 	var names []string
 	seen := map[string]bool{}
 	for _, p := range gitx.UntrackedUnder(repoDir, ".claude/skills") {
@@ -977,7 +998,7 @@ func strayRepoSkillDirs(repoDir string) []string {
 			continue
 		}
 		name := parts[2]
-		if seen[name] || !safeSegment.MatchString(name) ||
+		if seen[name] || owned[name] || !safeSegment.MatchString(name) ||
 			strings.HasPrefix(name, publicSkillPrefix) {
 			continue
 		}

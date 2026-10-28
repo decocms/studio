@@ -3,6 +3,7 @@ import {
   RUN_CLASS_METADATA_KEY,
   type RunClass,
 } from "@/dispatch-queue/run-priority";
+import { ForbiddenError } from "@/core/access-control";
 import type { StudioContext } from "@/core/studio-context";
 import type { TaskBoardItem } from "@/storage/types";
 import { resolveTaskRunModel, taskRunHarness } from "./task-run-harness";
@@ -22,6 +23,19 @@ import {
   orgHasFeature,
 } from "@/core/plan-feature-gate";
 import { emitTaskBoardUpdated } from "./run-reactions";
+
+/** A demo org's frozen card is a picture of past work: nothing runs on it. */
+export async function assertNotFrozenDemoCard(
+  ctx: StudioContext,
+  task: TaskBoardItem,
+): Promise<void> {
+  const frozen = await ctx.storage.demoBoard.frozenItemIds(task.organizationId);
+  if (frozen.has(task.id)) {
+    throw new ForbiddenError(
+      "This card is frozen for the demo board, so no agent runs on it.",
+    );
+  }
+}
 
 /**
  * The system text one run appends to its agent's instructions: the caller's
@@ -162,6 +176,8 @@ export async function enqueueAgentRunForTask(
     );
   }
   await assertAiBudget(ctx, organizationId, "running a task agent");
+
+  await assertNotFrozenDemoCard(ctx, task);
 
   const model = await resolveTaskRunModel(
     ctx,

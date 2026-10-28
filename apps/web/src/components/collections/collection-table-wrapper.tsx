@@ -10,6 +10,8 @@ interface CollectionTableWrapperProps<T> {
   sortDirection?: "asc" | "desc" | null;
   onSort?: (key: string) => void;
   onRowClick?: (row: T) => void;
+  rowClassName?: (row: T) => string | undefined;
+  isRowClickable?: (row: T) => boolean;
   emptyState?: ReactNode;
 }
 
@@ -21,6 +23,8 @@ export function CollectionTableWrapper<T>({
   sortDirection,
   onSort,
   onRowClick,
+  rowClassName,
+  isRowClickable,
   emptyState,
 }: CollectionTableWrapperProps<T>) {
   const t = useT();
@@ -56,6 +60,8 @@ export function CollectionTableWrapper<T>({
         sortDirection={sortDirection}
         onSort={onSort}
         onRowClick={onRowClick}
+        rowClassName={rowClassName}
+        isRowClickable={isRowClickable}
       />
     </div>
   );

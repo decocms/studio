@@ -16,6 +16,7 @@
  */
 
 import {
+  keepPreviousData,
   type QueryClient,
   skipToken,
   useQuery,
@@ -227,5 +228,46 @@ export function useContentChangeSides(
       ? () => readChangeSides(protocol!.client, names)
       : skipToken,
     staleTime: Number.POSITIVE_INFINITY,
+  });
+}
+
+/**
+ * The published copy of each block the draft deletes, by name (`null`: the
+ * base didn't hold one), so a deleted entry can still be listed by what it
+ * was. Reads only the deletions, once per set of them (names and base
+ * versions): edits elsewhere in the draft don't read them again, and the
+ * last copies stay shown while a new set is read.
+ */
+export function useDeletedCopies(
+  backend: ContentBackend | null,
+  cacheKey: string | null,
+  changes: ContentChanges | undefined,
+) {
+  const protocol = protocolOf(backend);
+  const deletions = Object.entries(changes?.changes ?? {})
+    .filter(([, change]) => change.kind === "delete")
+    .map(([name, change]) => ({ name, base: change.baseVersion ?? "" }))
+    .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  const names = deletions.map((d) => d.name);
+  const signature = JSON.stringify(deletions.map((d) => [d.name, d.base]));
+  const enabled = !!protocol && !!cacheKey && names.length > 0;
+  return useQuery({
+    queryKey: KEYS.contentDeletedCopies(cacheKey ?? "", signature),
+    queryFn: enabled
+      ? async () => {
+          const sides = await readChangeSides(protocol!.client, names);
+          const copies: Record<string, Record<string, unknown> | null> =
+            Object.create(null);
+          for (const [name, detail] of Object.entries(sides.entries)) {
+            copies[name] =
+              detail.before && typeof detail.before === "object"
+                ? (detail.before as Record<string, unknown>)
+                : null;
+          }
+          return copies;
+        }
+      : skipToken,
+    staleTime: Number.POSITIVE_INFINITY,
+    placeholderData: keepPreviousData,
   });
 }

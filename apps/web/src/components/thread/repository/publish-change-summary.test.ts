@@ -1463,3 +1463,42 @@ describe("namedRuleBlockOfChange", () => {
     ).toBe(null);
   });
 });
+
+describe("the site's Settings (the CMS block)", () => {
+  it("is named Settings, with a field per setting changed", () => {
+    const summary = contentSummaryOf({
+      ".deco/blocks/CMS.json": {
+        from: JSON.stringify({
+          __resolveType: "cms-settings",
+          telemetry: { errorSampleRate: 0.1 },
+        }),
+        to: JSON.stringify({
+          __resolveType: "cms-settings",
+          telemetry: {
+            errorSampleRate: 0.4,
+            traceSampleRate: 0.007,
+            metrics: false,
+          },
+        }),
+      },
+    } as unknown as GitDiffResult["diffs"]);
+    const card = summary.blocks[0]!;
+    expect(card.name).toBe("Settings");
+    expect(card.cmsSettings).toBe(true);
+    expect(card.sections[0]?.fields.map((f) => f.path.join("."))).toEqual([
+      "telemetry.errorSampleRate",
+      "telemetry.traceSampleRate",
+      "telemetry.metrics",
+    ]);
+  });
+
+  it("a block named CMS of another type is not", () => {
+    const summary = contentSummaryOf({
+      ".deco/blocks/CMS.json": {
+        from: null,
+        to: JSON.stringify({ __resolveType: "site/sections/x.tsx" }),
+      },
+    } as unknown as GitDiffResult["diffs"]);
+    expect(summary.blocks[0]?.cmsSettings).toBeUndefined();
+  });
+});

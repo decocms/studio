@@ -107,6 +107,8 @@ export function RunnableBlocksBrowser({
   meta,
   decofile,
   kind,
+  initialSavedKey,
+  onBack,
 }: {
   orgSlug: string;
   virtualMcpId: string;
@@ -115,10 +117,16 @@ export function RunnableBlocksBrowser({
   meta: LiveMeta;
   decofile: Record<string, unknown>;
   kind: RunnableKind;
+  /** Open on this saved block's editor (a hosted v8 site's content types). */
+  initialSavedKey?: string;
+  /** The editor's Back, when the caller has its own list to go back to. */
+  onBack?: () => void;
 }) {
   const t = useT();
   const [path, setPath] = useState<string[]>([]);
-  const [selection, setSelection] = useState<RunnableSelection>(null);
+  const [selection, setSelection] = useState<RunnableSelection>(() =>
+    initialSavedKey ? { mode: "saved", key: initialSavedKey } : null,
+  );
   const [searchQuery, setSearchQuery] = useState("");
   // resolveTypes whose "See saved" accordion is open.
   const [openSaved, setOpenSaved] = useState<Set<string>>(() => new Set());
@@ -283,7 +291,7 @@ export function RunnableBlocksBrowser({
           isCreating={saveBlock.isPending}
           onCreate={handleCreate}
           onSaveReferencedBlock={saveReferencedBlock}
-          onBack={() => setSelection(null)}
+          onBack={onBack ?? (() => setSelection(null))}
         />
       </HeldBlockView>
     );

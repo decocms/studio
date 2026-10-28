@@ -9,7 +9,10 @@ import {
 import { isReportsTask } from "@decocms/shared/task-board";
 import { captureOrgEvent } from "@/posthog";
 import { getSettings } from "@/settings";
-import { enqueueAgentRunForTask } from "./enqueue-task-run";
+import {
+  assertNotFrozenDemoCard,
+  enqueueAgentRunForTask,
+} from "./enqueue-task-run";
 import type { RunClass } from "@/dispatch-queue/run-priority";
 import type { ClaudeCodeModelClass } from "@/harnesses/claude-code-env";
 import { fetchPrHeadRef } from "./prs-get";
@@ -179,6 +182,8 @@ export async function enqueueSuperAgentForTask(
   // throws [SUBSCRIPTION_REQUIRED] and nothing enqueues. The interactive
   // flip pre-checks in TASK_BOARD_ITEM_UPDATE so the user sees the paywall
   // BEFORE the write; here the claim is the enforcement.
+  // Before the claim: a frozen card must not even ask for quota.
+  await assertNotFrozenDemoCard(ctx, task);
   const claim = await claimTaskExecution(
     ctx,
     task,

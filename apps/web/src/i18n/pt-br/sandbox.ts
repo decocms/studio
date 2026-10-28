@@ -425,6 +425,45 @@ export const sandbox = {
     "Ainda não salvo: estes são os valores padrão. Sua primeira alteração cria o bloco CMS.",
   "sandbox.cmsSettingsBlock.description":
     "Telemetria e analytics. O site os lê da versão publicada: as alterações valem após publicar, nunca no preview de um rascunho.",
+  "sandbox.cmsSettingsPage.intro":
+    "Telemetria e analytics do seu site. As alterações valem depois de publicadas.",
+  "sandbox.cmsSettingsPage.telemetry.title": "Telemetria",
+  "sandbox.cmsSettingsPage.telemetry.description":
+    "Como o seu site informa a própria saúde: erros, tempos de resposta e requisições lentas.",
+  "sandbox.cmsSettingsPage.telemetry.enabled.label": "Enviar telemetria",
+  "sandbox.cmsSettingsPage.telemetry.enabled.help":
+    "Desligue para parar toda a telemetria do seu site.",
+  "sandbox.cmsSettingsPage.telemetry.metrics.label": "Métricas",
+  "sandbox.cmsSettingsPage.telemetry.metrics.help":
+    "Contagens e tempos de resposta das páginas do site e dos serviços que ele chama.",
+  "sandbox.cmsSettingsPage.telemetry.errorSampleRate.label":
+    "Amostragem de erros",
+  "sandbox.cmsSettingsPage.telemetry.errorSampleRate.help":
+    "Parte dos erros registrada com todos os detalhes. O código do site pode definir um limite menor.",
+  "sandbox.cmsSettingsPage.telemetry.traceSampleRate.label":
+    "Amostragem de rastreamento",
+  "sandbox.cmsSettingsPage.telemetry.traceSampleRate.help":
+    "Parte das requisições acompanhada passo a passo, para descobrir o que deixa uma página lenta. O código do site pode definir um limite menor.",
+  "sandbox.cmsSettingsPage.analytics.title": "Analytics",
+  "sandbox.cmsSettingsPage.analytics.description":
+    "Visualizações de página e visitas das pessoas que usam o seu site.",
+  "sandbox.cmsSettingsPage.analytics.enabled.label": "Coletar analytics",
+  "sandbox.cmsSettingsPage.analytics.enabled.help":
+    "Desligue para parar de contar visualizações de página.",
+  "sandbox.cmsSettingsPage.analytics.collector.label": "Coletor",
+  "sandbox.cmsSettingsPage.analytics.collector.help":
+    "Para onde as visualizações de página são enviadas. Deixe vazio para usar o coletor padrão.",
+  "sandbox.cmsSettingsPage.analytics.collector.placeholder":
+    "https://coletor.exemplo.com",
+  "sandbox.cmsSettingsPage.invalidRate": "Digite um número de 0 a 100.",
+  "sandbox.cmsSettingsPage.invalidUrl":
+    "Digite um endereço completo, começando com https://.",
+  "sandbox.cmsSettingsPage.variants": "Variantes",
+  "sandbox.cmsSettingsPage.locked.variants":
+    "Definido com variantes; edite no formulário do bloco.",
+  "sandbox.cmsSettingsPage.locked.other":
+    "Definido de um jeito que esta página não mostra; edite no formulário do bloco.",
+  "sandbox.cmsSettingsPage.openForm": "Abrir formulário do bloco",
   "sandbox.categoryEditor.renameActionButton": "Renomear e atualizar posts",
   "sandbox.categoryEditor.renameDialogDescription":
     'Alterar o slug de "{oldSlug}" para "{newSlug}" atualizará {count} post(s) que fazem referência a esta categoria.',

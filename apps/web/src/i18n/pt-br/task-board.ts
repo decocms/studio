@@ -61,6 +61,8 @@ export const taskBoard = {
   "taskBoard.taskBoard.needsInput": "Precisa de entrada",
   "taskBoard.taskBoard.needsYou": "Precisa de você",
   "taskBoard.taskBoard.changeStatusLabel": "Mudar status (atual: {status})",
+  "taskBoard.taskBoard.renameTaskLabel": "Título da tarefa",
+  "taskBoard.taskBoard.editTagsLabel": "Editar tags",
   "taskBoard.taskBoard.agentsRunningOne": "1 agente rodando agora",
   "taskBoard.taskBoard.agentsRunningMany": "{count} agentes rodando agora",
   "taskBoard.taskBoard.agentsRunningHeading": "Rodando agora",
@@ -519,4 +521,14 @@ export const taskBoard = {
   "taskBoard.sprints.activityFromTo": "moveu de {from} para {to}",
   "taskBoard.sprints.activityToBacklog": "moveu de {from} para o backlog",
   "taskBoard.sprints.actionError": "Não foi possível atualizar a sprint.",
+  "taskBoard.demoReset.button": "Resetar demo",
+  "taskBoard.demoReset.title": "Resetar o board de demo?",
+  "taskBoard.demoReset.description":
+    "Todos os cards voltam ao board capturado. Cards, comentários e chats criados desde então são apagados, e os pull requests abertos pelos cards vivos são fechados.",
+  "taskBoard.demoReset.cancel": "Cancelar",
+  "taskBoard.demoReset.confirm": "Resetar",
+  "taskBoard.demoReset.done": "Board de demo resetado.",
+  "taskBoard.demoReset.doneWithIssues":
+    "Board de demo resetado, com {count} problema(s). Confira o status do board de demo.",
+  "taskBoard.demoReset.failed": "Não foi possível resetar o board de demo.",
 } satisfies Record<keyof typeof taskBoardEn, string>;

@@ -172,6 +172,16 @@ export const SANDBOX_START = defineTool({
           "This chat is a CMS session and does not use a sandbox. Start a coding session to get one.",
         );
       }
+      if (
+        await ctx.storage.demoBoard.isFrozenThread(
+          organization.id,
+          askingThreadId,
+        )
+      ) {
+        throw new Error(
+          "This run is frozen for the demo board and does not use a sandbox. Open its pull request preview instead.",
+        );
+      }
     }
 
     const userId = getUserId(ctx);

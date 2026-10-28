@@ -115,6 +115,7 @@ export interface StudioToolIO {
             voice_mode?: boolean | undefined;
             home_task_intake_enabled?: boolean | undefined;
             demo_mode?: boolean | undefined;
+            demo_board_reset?: boolean | undefined;
             reports_only?: boolean | undefined;
             reviewer_enabled?: boolean | undefined;
             qa_agent_enabled?: boolean | undefined;
@@ -202,6 +203,7 @@ export interface StudioToolIO {
             voice_mode?: boolean | undefined;
             home_task_intake_enabled?: boolean | undefined;
             demo_mode?: boolean | undefined;
+            demo_board_reset?: boolean | undefined;
             reports_only?: boolean | undefined;
             reviewer_enabled?: boolean | undefined;
             qa_agent_enabled?: boolean | undefined;
@@ -285,6 +287,7 @@ export interface StudioToolIO {
             voice_mode?: boolean | undefined;
             home_task_intake_enabled?: boolean | undefined;
             demo_mode?: boolean | undefined;
+            demo_board_reset?: boolean | undefined;
             reports_only?: boolean | undefined;
             reviewer_enabled?: boolean | undefined;
             qa_agent_enabled?: boolean | undefined;
@@ -555,6 +558,7 @@ export interface StudioToolIO {
       }[];
       repos: string[];
       columns: { key: string; title: string; position: number }[];
+      demoFrozenItemIds: string[];
     };
   };
   TASK_BOARD_ITEM_UPDATE: {
@@ -966,6 +970,40 @@ export interface StudioToolIO {
       repo?: string | undefined;
       cloned?: boolean | undefined;
       files?: string | undefined;
+    };
+  };
+  DEMO_BOARD_CAPTURE: {
+    input: { liveItemIds?: string[] | undefined };
+    output: {
+      capturedAt: string;
+      frozenItems: number;
+      liveItems: number;
+      archivedItems: number;
+      threads: number;
+    };
+  };
+  DEMO_BOARD_RESET: {
+    input: { [x: string]: never };
+    output: {
+      restoredItems: number;
+      deletedItems: number;
+      closedPrs: number;
+      problems: string[];
+      deadPreviewUrls: string[];
+    };
+  };
+  DEMO_BOARD_STATUS: {
+    input: { [x: string]: never };
+    output: {
+      status: {
+        capturedAt: string;
+        capturedBy: string;
+        frozenItems: number;
+        liveItemIds: string[];
+        lastResetAt: string | null;
+        lastResetError: string | null;
+        deadPreviewUrls: string[];
+      } | null;
     };
   };
   generate_image: {
