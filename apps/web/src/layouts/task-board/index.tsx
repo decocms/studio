@@ -36,6 +36,7 @@ import {
   TaskBoardAnalyticsButton,
 } from "./admin-controls";
 import { BoardOrgProvider } from "./board-org";
+import { TrackDivider } from "@/layouts/content-track/track-divider";
 import { authClient } from "@/lib/auth-client";
 import { AgenticSetupButton } from "./agentic-setup";
 import { ColumnRulesSheet, useEntryAutomations } from "./column-rules";
@@ -1454,7 +1455,12 @@ function TaskBoardBody({ trackTabs }: { trackTabs?: ReactNode }) {
   /** Board / List / Epics, and Feed behind the flag. */
   const layoutTabs = (
     <Page.Tabs>
-      {trackTabs}
+      {trackTabs && (
+        <>
+          {trackTabs}
+          <TrackDivider />
+        </>
+      )}
       {feedEnabled && (
         <Page.Tab
           active={layout === "feed"}

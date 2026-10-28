@@ -47,7 +47,6 @@ function TrackTabs({
           {t("common.new")}
         </Badge>
       </Page.Tab>
-      <span aria-hidden className="mx-1 h-4 w-px shrink-0 bg-border" />
     </>
   );
 }

@@ -30,6 +30,7 @@ import { useProjectContext, useVirtualMCPsNonBlocking } from "@/sdk";
 import { BlogpostsBoard } from "./blogposts-board";
 import { CardDetail } from "./card-detail";
 import { ContentSetup } from "./content-setup";
+import { TrackDivider } from "./track-divider";
 import { type NewBlogpost, NewBlogpostDialog } from "./new-blogpost-dialog";
 import { contentTrackGate } from "./track-state";
 import { useOpenCardChat } from "./use-open-card-chat";
@@ -75,6 +76,7 @@ export function ContentTrack({ trackTabs }: { trackTabs: ReactNode }) {
             {trackTabs}
             {state.gate === "open" && (
               <>
+                {trackTabs && <TrackDivider />}
                 <Page.Tab
                   active={view === "blogposts"}
                   onClick={() => open("blogposts")}
