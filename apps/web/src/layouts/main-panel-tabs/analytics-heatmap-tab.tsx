@@ -314,6 +314,22 @@ function PageInput({
 function fmtInt(n: number, locale: string) {
   return Math.round(n).toLocaleString(locale);
 }
+/** Money is FOR a currency, so it is never printed without one: with no
+ *  currency resolved the read surface has nothing to scope revenue to, and a
+ *  bare number would invite adding figures that cannot be added. */
+function fmtMoney(
+  n: number,
+  currency: string | null | undefined,
+  locale: string,
+) {
+  return currency
+    ? n.toLocaleString(locale, {
+        style: "currency",
+        currency,
+        maximumFractionDigits: 0,
+      })
+    : fmtInt(n, locale);
+}
 function fmtPct(v: number | null, locale: string, digits = 0) {
   return v == null
     ? "—"
@@ -497,6 +513,13 @@ function Viewer({
   const activeKey = rowHover ?? pinned;
   const labelOf = (e: HeatElement) =>
     itemBy.get(e.key)?.label || t(k("noText"));
+  // Ranked by what they brought in, which is the question this mode asks.
+  // Deliberately NOT filtered to what the live page still has: an element that
+  // sold and has since been removed is the most interesting row on the list.
+  const valueRanked = [...model.value.values()]
+    .filter((v) => v.revenue > 0 || v.clickVisitors > 0)
+    .sort((a, b) => b.revenue - a.revenue)
+    .slice(0, 60);
   const hoveredEl = hover?.key ? elBy.get(hover.key) : undefined;
   const hoveredBlock = hover?.key?.startsWith("blk:")
     ? placed?.blocks.find((b) => `blk:${b.key}` === hover.key)
@@ -1044,6 +1067,128 @@ function Viewer({
                 </div>
               </>
             )}
+            {mode === "value" && (
+              <>
+                <ListHead
+                  title={t(k("valueTitle"))}
+                  aside={model.valueModel?.currency ?? ""}
+                />
+                <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
+                  {model.valueModel && !model.valueModel.supported ? (
+                    <p className="px-2 py-3 text-xs text-muted-foreground">
+                      {t(k("valueOtherGoal"))}
+                    </p>
+                  ) : !model.valueSummary ? (
+                    <p className="px-2 py-3 text-xs text-muted-foreground">
+                      {t(k("valueNone"))}
+                    </p>
+                  ) : (
+                    <>
+                      <p className="px-2 pb-2 text-xs text-muted-foreground">
+                        {t(k("valueBaseline"), {
+                          cvr: fmtPct(
+                            model.valueSummary.cvrPct / 100,
+                            locale,
+                            1,
+                          ),
+                          people: fmtInt(model.valueSummary.visitors, locale),
+                        })}
+                      </p>
+                      {valueRanked.map((v, i) => {
+                        const el = elBy.get(v.key);
+                        const top = valueRanked[0]?.revenue || 1;
+                        return (
+                          <Row
+                            key={v.key}
+                            id={v.key}
+                            rank={i + 1}
+                            label={el ? labelOf(el) : t(k("noText"))}
+                            value={fmtMoney(
+                              v.revenue,
+                              model.valueModel?.currency,
+                              locale,
+                            )}
+                            meter={Math.max(0.02, v.revenue / top)}
+                            color={rampCss(
+                              ramp,
+                              0.25 + 0.75 * (v.revenue / top),
+                              1,
+                            )}
+                            active={activeKey === v.key}
+                            onEnter={() => enter(v.key)}
+                            onLeave={leave}
+                            onPick={() => pick(v.key)}
+                            sub={t(k("valueRowSub"), {
+                              conv: fmtInt(v.convVisitors, locale),
+                              people: fmtInt(v.clickVisitors, locale),
+                              cvr: fmtPct(v.cvrPct / 100, locale, 1),
+                            })}
+                          >
+                            {/* The index, not the rate, is what a reader can
+                                act on: 1.0 is "exactly like its page". */}
+                            {!v.smallSample && v.rpvIndex > 0 && (
+                              <Badge
+                                tone={v.rpvIndex >= 1 ? "success" : "warning"}
+                                title={t(k("valueIndexHint"))}
+                              >
+                                {t(k("valueIndex"), {
+                                  x: v.rpvIndex.toLocaleString(locale, {
+                                    maximumFractionDigits: 2,
+                                  }),
+                                })}
+                              </Badge>
+                            )}
+                            {v.smallSample && (
+                              <Badge title={t(k("valueSmallHint"))}>
+                                {t(k("valueSmall"))}
+                              </Badge>
+                            )}
+                          </Row>
+                        );
+                      })}
+                      {model.valueLeaks.length > 0 && (
+                        <>
+                          <ListHead
+                            title={t(k("valueLeaksTitle"))}
+                            aside={t(k("valueLeaksAside"))}
+                          />
+                          {model.valueLeaks.map((v, i) => {
+                            const el = elBy.get(v.key);
+                            return (
+                              <Row
+                                key={`leak:${v.key}`}
+                                id={v.key}
+                                rank={i + 1}
+                                label={el ? labelOf(el) : t(k("noText"))}
+                                value={fmtInt(v.clickVisitors, locale)}
+                                meter={0.02}
+                                color="var(--chart-1)"
+                                active={activeKey === v.key}
+                                onEnter={() => enter(v.key)}
+                                onLeave={leave}
+                                onPick={() => pick(v.key)}
+                                sub={t(k("valueLeakSub"), {
+                                  people: fmtInt(v.clickVisitors, locale),
+                                  conv: fmtInt(v.convVisitors, locale),
+                                })}
+                              />
+                            );
+                          })}
+                        </>
+                      )}
+                      {/* NOT optional. These numbers are associative, sampled
+                          and not summable; a reader who is not told will add
+                          them up and call the result a total. */}
+                      <p className="px-2 pt-3 text-xs text-muted-foreground">
+                        {t(k("valueCaveat"), {
+                          minutes: model.valueModel?.windowMinutes ?? 30,
+                        })}
+                      </p>
+                    </>
+                  )}
+                </div>
+              </>
+            )}
             {mode === "scroll" && (
               <>
                 <ListHead
@@ -1173,7 +1318,7 @@ function Badge({
   children,
 }: {
   title?: string;
-  tone?: "destructive" | "warning";
+  tone?: "destructive" | "warning" | "success";
   children: ReactNode;
 }) {
   return (
@@ -1185,7 +1330,9 @@ function Badge({
           ? "bg-destructive/15 text-destructive"
           : tone === "warning"
             ? "bg-warning/25 text-foreground"
-            : "bg-muted text-muted-foreground",
+            : tone === "success"
+              ? "bg-success/15 text-success"
+              : "bg-muted text-muted-foreground",
       )}
     >
       {children}
