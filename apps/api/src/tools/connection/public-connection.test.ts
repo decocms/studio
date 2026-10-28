@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { redactConnectionToken } from "./redact";
-import { type ConnectionEntity, REDACTED_CONNECTION_TOKEN } from "./schema";
+import { toPublicConnection } from "./public-connection";
+import type { ConnectionEntity } from "./schema";
 
 const connection = (token: string | null): ConnectionEntity => ({
   id: "conn_1",
@@ -25,21 +25,25 @@ const connection = (token: string | null): ConnectionEntity => ({
   status: "active",
 });
 
-describe("redactConnectionToken", () => {
-  test("replaces a stored token with the placeholder", () => {
-    const redacted = redactConnectionToken(connection("secret-token"));
+describe("toPublicConnection", () => {
+  test("drops a stored token and reports that one is set", () => {
+    const result = toPublicConnection(connection("secret-token"));
 
-    expect(redacted.connection_token).toBe(REDACTED_CONNECTION_TOKEN);
-    expect(JSON.stringify(redacted)).not.toContain("secret-token");
+    expect("connection_token" in result).toBe(false);
+    expect(result.has_connection_token).toBe(true);
+    expect(JSON.stringify(result)).not.toContain("secret-token");
   });
 
-  test("keeps null so callers can still tell no token is set", () => {
-    expect(redactConnectionToken(connection(null)).connection_token).toBeNull();
+  test("reports no token when none is stored", () => {
+    const result = toPublicConnection(connection(null));
+
+    expect("connection_token" in result).toBe(false);
+    expect(result.has_connection_token).toBe(false);
   });
 
   test("does not mutate the entity it was given", () => {
     const original = connection("secret-token");
-    redactConnectionToken(original);
+    toPublicConnection(original);
 
     expect(original.connection_token).toBe("secret-token");
   });

@@ -3,8 +3,8 @@
  *
  * Any member may list and get connections, and a token often grants more than
  * the member holds: the org's `_self` connection carries a `self: ["*"]`
- * management key. A built-in `user` member must see only that a token is set,
- * and echoing a fetched entity back through UPDATE must keep the stored token.
+ * management key. Responses only flag that a token is set, and echoing a fetched
+ * entity back through UPDATE must keep the stored token.
  */
 
 import { randomUUID } from "node:crypto";
@@ -14,12 +14,11 @@ import { signUpViaApi } from "../fixtures/auth-api";
 import { callSelfMcpTool, findOrgId } from "../fixtures/mcp-tools";
 import { expect, newApiContext, test } from "../fixtures/test";
 
-const REDACTED = "[redacted]";
-
 interface ConnectionItem {
   id: string;
   title: string;
-  connection_token: string | null;
+  connection_token?: string | null;
+  has_connection_token?: boolean;
 }
 
 test.describe("connection token redaction", () => {
@@ -66,7 +65,8 @@ test.describe("connection token redaction", () => {
         },
       },
     );
-    expect(created.item.connection_token).toBe(REDACTED);
+    expect(created.item).not.toHaveProperty("connection_token");
+    expect(created.item.has_connection_token).toBe(true);
 
     const memberCtx = await newApiContext(playwright);
     const member = await signUpViaApi(memberCtx);
@@ -105,12 +105,12 @@ test.describe("connection token redaction", () => {
       "COLLECTION_CONNECTIONS_LIST",
       {},
     );
-    const tokenFor = (id: string) =>
-      list.items.find((item) => item.id === id)?.connection_token;
-    expect(tokenFor(selfId)).toBe(REDACTED);
-    expect(tokenFor(created.item.id)).toBe(REDACTED);
+    const flagFor = (id: string) =>
+      list.items.find((item) => item.id === id)?.has_connection_token;
+    expect(flagFor(selfId)).toBe(true);
+    expect(flagFor(created.item.id)).toBe(true);
     for (const item of list.items) {
-      expect([null, REDACTED]).toContain(item.connection_token);
+      expect(item).not.toHaveProperty("connection_token");
     }
 
     const got = await callSelfMcpTool<{ item: ConnectionItem }>(
@@ -119,7 +119,8 @@ test.describe("connection token redaction", () => {
       "COLLECTION_CONNECTIONS_GET",
       { id: selfId },
     );
-    expect(got.item.connection_token).toBe(REDACTED);
+    expect(got.item).not.toHaveProperty("connection_token");
+    expect(got.item.has_connection_token).toBe(true);
 
     // Echoing the fetched entity back must not overwrite the stored token.
     const storedToken = async () =>
@@ -136,28 +137,14 @@ test.describe("connection token redaction", () => {
       "COLLECTION_CONNECTIONS_UPDATE",
       {
         id: created.item.id,
-        data: { title: "token probe renamed", connection_token: REDACTED },
+        data: { ...created.item, title: "token probe renamed" },
       },
     );
     expect(updated.item.title).toBe("token probe renamed");
-    expect(updated.item.connection_token).toBe(REDACTED);
+    expect(updated.item).not.toHaveProperty("connection_token");
+    expect(updated.item.has_connection_token).toBe(true);
+    expect(before).toBeTruthy();
     expect(await storedToken()).toBe(before);
-
-    await expect(
-      callSelfMcpTool(
-        memberCtx,
-        owner.orgSlug,
-        "COLLECTION_CONNECTIONS_CREATE",
-        {
-          data: {
-            title: "placeholder copy",
-            connection_type: "HTTP",
-            connection_url: "https://example.invalid/mcp",
-            connection_token: REDACTED,
-          },
-        },
-      ),
-    ).rejects.toThrow(/redacted/);
 
     await ownerCtx.dispose();
     await memberCtx.dispose();

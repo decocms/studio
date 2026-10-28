@@ -24,7 +24,7 @@ import {
   validateConfiguration,
 } from "./credential-grants";
 import { fetchToolsFromMCP } from "./fetch-tools";
-import { redactConnectionToken } from "./redact";
+import { toPublicConnection } from "./public-connection";
 import { assertSiteSlugUnchanged } from "../virtual/site-slug-guard";
 import { pinnedSiteSlugOnRename } from "../virtual/pin-site-slug";
 import {
@@ -34,7 +34,6 @@ import {
   type ConnectionUpdateData,
   ConnectionUpdateDataSchema,
   parseVirtualUrl,
-  REDACTED_CONNECTION_TOKEN,
 } from "./schema";
 
 /**
@@ -60,15 +59,6 @@ export function stripImmutableUpdateFields(
     delete sanitized[field];
   }
   return sanitized;
-}
-
-/** Reads return a placeholder token; echoing it back keeps the stored one. */
-export function dropRedactedToken(
-  data: ConnectionUpdateData,
-): ConnectionUpdateData {
-  if (data.connection_token !== REDACTED_CONNECTION_TOKEN) return data;
-  const { connection_token: _redacted, ...rest } = data;
-  return rest;
 }
 
 /**
@@ -140,7 +130,7 @@ export const COLLECTION_CONNECTIONS_UPDATE = defineTool({
     }
 
     const { id } = input;
-    const data = dropRedactedToken(stripImmutableUpdateFields(input.data));
+    const data = stripImmutableUpdateFields(input.data);
     const configChanged =
       data.configuration_state !== undefined ||
       data.configuration_scopes !== undefined;
@@ -478,7 +468,7 @@ export const COLLECTION_CONNECTIONS_UPDATE = defineTool({
     invalidateConnectionCaches(id);
 
     return {
-      item: redactConnectionToken(connection),
+      item: toPublicConnection(connection),
     };
   },
 });

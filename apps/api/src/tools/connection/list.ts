@@ -41,7 +41,7 @@ import {
   resolveDevAssetsSqlWindow,
   shouldConsiderDevAssetsForPage,
 } from "./dev-assets-page";
-import { redactConnectionToken } from "./redact";
+import { toPublicConnection } from "./public-connection";
 import { type ConnectionEntity, ConnectionEntitySchema } from "./schema";
 import { getConnectionSlug } from "@decocms/shared/utils/connection-slug";
 import { connectionMatchesWhere } from "./where-match";
@@ -279,7 +279,7 @@ export const COLLECTION_CONNECTIONS_LIST = defineTool({
       const hasMore = offset + limit < totalCount;
 
       return {
-        items: paginatedConnections.map(redactConnectionToken),
+        items: paginatedConnections.map(toPublicConnection),
         totalCount,
         hasMore,
       };
@@ -287,7 +287,7 @@ export const COLLECTION_CONNECTIONS_LIST = defineTool({
 
     // Non-binding path: SQL already handled where/orderBy/pagination.
     return finalizeNonBindingPage(
-      connections.map(redactConnectionToken),
+      connections.map(toPublicConnection),
       devAssetsQualifies,
       limit,
       offset,

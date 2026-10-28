@@ -22,7 +22,7 @@ import { getMcpListCache } from "../../mcp-clients/mcp-list-cache";
 import { invalidateConnectionCaches } from "../../mcp-clients/mcp-cache-invalidation";
 import { clearRefreshBackoff } from "../../oauth/token-refresh";
 import { isDevAssetsConnection, usesLocalObjectStorage } from "./dev-assets";
-import { redactConnectionToken } from "./redact";
+import { toPublicConnection } from "./public-connection";
 import { ConnectionEntitySchema } from "./schema";
 
 const ConnectionDeleteInputSchema = CollectionDeleteInputSchema.extend({
@@ -176,7 +176,7 @@ export const COLLECTION_CONNECTIONS_DELETE = defineTool({
     }
 
     return {
-      item: redactConnectionToken(connection),
+      item: toPublicConnection(connection),
     };
   },
 });

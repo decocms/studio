@@ -1,33 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { REDACTED_CONNECTION_TOKEN } from "./schema";
 import {
-  dropRedactedToken,
   resolveFinalConnectionUrl,
   stripImmutableUpdateFields,
 } from "./update";
-
-describe("dropRedactedToken", () => {
-  test("omits the placeholder so the stored token is kept", () => {
-    const data = dropRedactedToken({
-      title: "Echoed back",
-      connection_token: REDACTED_CONNECTION_TOKEN,
-    });
-
-    expect(data).toEqual({ title: "Echoed back" });
-  });
-
-  test("keeps an explicit null so the caller can clear the token", () => {
-    expect(dropRedactedToken({ connection_token: null })).toEqual({
-      connection_token: null,
-    });
-  });
-
-  test("keeps a new token", () => {
-    expect(dropRedactedToken({ connection_token: "new-token" })).toEqual({
-      connection_token: "new-token",
-    });
-  });
-});
 
 describe("stripImmutableUpdateFields", () => {
   test("drops organization_id so a connection can't be reassigned to another org", () => {

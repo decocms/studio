@@ -2992,7 +2992,8 @@ export interface StudioToolIO {
         app_id: string | null;
         connection_type: "HTTP" | "SSE" | "Websocket" | "STDIO" | "VIRTUAL";
         connection_url: string | null;
-        connection_token: string | null;
+        connection_token?: string | null | undefined;
+        has_connection_token?: boolean | undefined;
         connection_headers:
           | {
               command: string;
@@ -3104,7 +3105,8 @@ export interface StudioToolIO {
         app_id: string | null;
         connection_type: "HTTP" | "SSE" | "Websocket" | "STDIO" | "VIRTUAL";
         connection_url: string | null;
-        connection_token: string | null;
+        connection_token?: string | null | undefined;
+        has_connection_token?: boolean | undefined;
         connection_headers:
           | {
               command: string;
@@ -3200,7 +3202,8 @@ export interface StudioToolIO {
         app_id: string | null;
         connection_type: "HTTP" | "SSE" | "Websocket" | "STDIO" | "VIRTUAL";
         connection_url: string | null;
-        connection_token: string | null;
+        connection_token?: string | null | undefined;
+        has_connection_token?: boolean | undefined;
         connection_headers:
           | {
               command: string;
@@ -3396,7 +3399,8 @@ export interface StudioToolIO {
         app_id: string | null;
         connection_type: "HTTP" | "SSE" | "Websocket" | "STDIO" | "VIRTUAL";
         connection_url: string | null;
-        connection_token: string | null;
+        connection_token?: string | null | undefined;
+        has_connection_token?: boolean | undefined;
         connection_headers:
           | {
               command: string;
@@ -3490,7 +3494,8 @@ export interface StudioToolIO {
         app_id: string | null;
         connection_type: "HTTP" | "SSE" | "Websocket" | "STDIO" | "VIRTUAL";
         connection_url: string | null;
-        connection_token: string | null;
+        connection_token?: string | null | undefined;
+        has_connection_token?: boolean | undefined;
         connection_headers:
           | {
               command: string;
@@ -3615,7 +3620,8 @@ export interface StudioToolIO {
         app_id: string | null;
         connection_type: "HTTP" | "SSE" | "Websocket" | "STDIO" | "VIRTUAL";
         connection_url: string | null;
-        connection_token: string | null;
+        connection_token?: string | null | undefined;
+        has_connection_token?: boolean | undefined;
         connection_headers:
           | {
               command: string;

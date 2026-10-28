@@ -26,7 +26,7 @@ import {
   isDevAssetsConnection,
   usesLocalObjectStorage,
 } from "./dev-assets";
-import { redactConnectionToken } from "./redact";
+import { toPublicConnection } from "./public-connection";
 import { ConnectionEntitySchema } from "./schema";
 
 /**
@@ -110,7 +110,7 @@ export const COLLECTION_CONNECTIONS_GET = defineTool({
     }
 
     return {
-      item: redactConnectionToken(connection),
+      item: toPublicConnection(connection),
     };
   },
 });
