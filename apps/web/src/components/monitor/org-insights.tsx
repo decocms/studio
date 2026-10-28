@@ -30,6 +30,7 @@ import {
   AnalyticsPreview,
   ExperimentsPreview,
   Locked,
+  useInstallableProjects,
 } from "./locked";
 import { monitorPreview } from "./preview";
 import {
@@ -253,6 +254,11 @@ export function OrgAnalytics({
       ];
     })
     .sort((a, b) => b.summary.pageviews - a.summary.pageviews);
+  // Serving traffic with no pageview counted means the site has no tag yet,
+  // even when an older analytics registration exists for it.
+  const uncounted = useInstallableProjects(
+    sites.filter((s) => s.summary.pageviews === 0).map((s) => s.project),
+  );
 
   const actions = (
     <Page.Actions>
@@ -288,6 +294,14 @@ export function OrgAnalytics({
   return (
     <>
       {actions}
+      {uncounted && uncounted.length > 0 && (
+        <Card className="gap-3 p-5">
+          <p className="text-sm font-medium text-foreground">
+            {t("monitor.analyticsGuide.uncounted")}
+          </p>
+          <AnalyticsGuide projects={uncounted} />
+        </Card>
+      )}
       <SitesMonitor
         data={{
           currentLabel:

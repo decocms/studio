@@ -140,6 +140,8 @@ export const monitor = {
   "monitor.analyticsGuide.manual":
     "Prefere adicionar você mesmo? A aba Analytics de cada site mostra a tag dele.",
   "monitor.analyticsGuide.add": "Adicionar seu site",
+  "monitor.analyticsGuide.uncounted":
+    "Estes sites recebem tráfego, mas ainda não contam pageviews.",
   "monitor.analyticsGuide.addAnother": "Adicionar outro site",
   "monitor.powers.orders": "Pedidos, cancelamentos e canais de venda",
   "monitor.powers.site": "Audiência, erros e tempo de resposta",
