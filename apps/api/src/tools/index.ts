@@ -33,6 +33,7 @@ import * as GithubCopilotTools from "./github-copilot";
 import * as SecretsTools from "./secrets";
 import * as FileConfigTools from "./file-configs";
 import * as InfraBillingTools from "./infra-billing";
+import * as AnalyticsTools from "./analytics";
 import * as CustomerLakeTools from "./customer-lake";
 import * as SubscriptionUsageTools from "./subscription-usage";
 import { ORG_FS_PUBLIC_SETS_SYNC } from "./org-fs/sync-public-sets";
@@ -153,6 +154,7 @@ export const CORE_TOOLS = [
   InfraBillingTools.INFRA_BILLING_GET,
   InfraBillingTools.INFRA_BILLING_PORTAL,
   CustomerLakeTools.CUSTOMER_LAKE_QUERY,
+  AnalyticsTools.ANALYTICS_INSTALL,
 
   // Connection collection tools
   ConnectionTools.COLLECTION_CONNECTIONS_CREATE,

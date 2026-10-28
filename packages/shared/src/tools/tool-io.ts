@@ -2937,6 +2937,10 @@ export interface StudioToolIO {
       truncated: boolean;
     };
   };
+  ANALYTICS_INSTALL: {
+    input: { site: string };
+    output: { taskBoardItemId: string; taskKey: string | null };
+  };
   COLLECTION_CONNECTIONS_CREATE: {
     input: {
       data: {

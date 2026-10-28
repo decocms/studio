@@ -109,6 +109,20 @@ export interface OrderMonitorDay {
   channels: OrderMonitorChannel[];
 }
 
+/** The org's sites' traffic (Deco Analytics, read from the data lake), per clock hour of the local day. */
+export interface SiteTrafficDay {
+  /** Unique visitors in each hour. */
+  visitors: OrderMonitorSeries;
+  /** Purchases the sites reported to the collector. */
+  conversions: OrderMonitorSeries;
+  /** Today so far, and each reference day up to the same hour. Visitors are
+   *  the day's uniques, not the hours summed. */
+  headline: {
+    visitors: { today: number; d1: number; w1: number; y1: number };
+    conversions: { today: number; d1: number; w1: number; y1: number };
+  };
+}
+
 export interface OrderMonitorPush {
   /** First bucket of the local day (15 minutes) the commits fall in. */
   bucket: number;

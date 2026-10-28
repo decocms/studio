@@ -10,21 +10,23 @@
 
 import { type ReactNode, useState } from "react";
 import { Link, type LinkProps } from "@tanstack/react-router";
-import { Globe02, Plus } from "@untitledui/icons";
+import { Plus } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Check } from "@untitledui/icons";
 import { ListRow } from "@decocms/ui/components/list-row.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { IntegrationIcon } from "@/components/integration-icon";
+import { ProjectIcon } from "@/components/project-icon";
+import { useInstallAnalytics } from "@/hooks/use-install-analytics";
 import { useProjectContext } from "@/sdk";
 import { formatCount } from "@/layouts/main-panel-tabs/monitor-v8";
 import type { TimelinePoint } from "@/layouts/main-panel-tabs/cdn-tab";
-import { CopyButton } from "@/layouts/main-panel-tabs/analytics-tab";
 import { useT } from "@/i18n/use-t.ts";
 import { openNewProjectDialog } from "@/components/projects/new-project-store";
 import { ConnectSourceDialog } from "@/routes/reports-onboarding/connect-source-dialog";
 import { VtexConnectButton } from "./vtex-connect-dialog";
 import type { ExperimentRow, SourceId, SourceState } from "./board";
+import type { SiteProject } from "./org-insights";
 import { connectPowers, platformName } from "./sources-panel";
 import {
   type SiteUsage,
@@ -475,60 +477,81 @@ export function Locked({
   );
 }
 
-/** The collector's tag, as a site off our CDN pastes it. */
-const SNIPPET =
-  '<script async src="https://analytics.decocdn.com/_dq/a.js?k=YOUR_TOKEN"></script>';
-
 /**
  * How analytics gets onto a site, for the Analytics panel: there is nothing
- * to connect. A site on deco collects once it's turned on; any other site
- * pastes one line, with the token its project gives it.
+ * to connect. The Super Agent adds the collector's tag to a site's code and
+ * opens a pull request; with no site yet, the way in is adding one.
  */
-export function AnalyticsGuide() {
+const NO_PROJECTS: readonly SiteProject[] = [];
+
+export function AnalyticsGuide({
+  projects = NO_PROJECTS,
+}: {
+  /** The org's site projects, each offered to the Super Agent. */
+  projects?: readonly SiteProject[];
+}) {
   const t = useT();
-  const { org } = useProjectContext();
-  const iconOf = useSourceIcons(org.slug, []);
+  const install = useInstallAnalytics();
+  if (projects.length === 0) {
+    return (
+      <div className="flex flex-col gap-4">
+        <p className="text-sm text-muted-foreground">
+          {t("monitor.analyticsGuide.introEmpty")}
+        </p>
+        <Button
+          size="sm"
+          className="gap-1 self-center shadow-sm"
+          onClick={() => openNewProjectDialog("monitor")}
+        >
+          <Plus size={14} />
+          {t("monitor.analyticsGuide.add")}
+        </Button>
+      </div>
+    );
+  }
   return (
     <div className="flex flex-col gap-4">
+      <p className="text-sm text-muted-foreground">
+        {t("monitor.analyticsGuide.intro")}
+      </p>
       <div className="flex flex-col">
-        <ListRow
-          variant="divided"
-          lead={
-            <IntegrationIcon
-              icon={iconOf("site")}
-              name={platformName("site", t)}
-              size="xs"
-              fit="contain"
-            />
-          }
-          title={t("monitor.analyticsGuide.deco")}
-          meta={t("monitor.analyticsGuide.decoHow")}
-        />
-        <ListRow
-          variant="divided"
-          lead={
-            <span className="flex size-6 items-center justify-center text-muted-foreground">
-              <Globe02 size={16} />
-            </span>
-          }
-          title={t("monitor.analyticsGuide.other")}
-          meta={t("monitor.analyticsGuide.otherHow")}
-        />
+        {projects.map((project, i) => (
+          <ListRow
+            key={project.id}
+            variant="divided"
+            lead={<ProjectIcon icon={project.icon} name={project.title} />}
+            title={project.title}
+            meta={project.site}
+            trailing={
+              <Button
+                size="sm"
+                variant={i === 0 ? "default" : "outline"}
+                className="shrink-0"
+                disabled={install.isPending}
+                onClick={() => install.mutate(project.site)}
+              >
+                {install.isPending && install.variables === project.site
+                  ? t("monitor.analyticsGuide.installing")
+                  : t("monitor.analyticsGuide.install")}
+              </Button>
+            }
+          />
+        ))}
       </div>
-      <div className="flex items-start justify-between gap-2 rounded-lg border border-border bg-muted/30 py-1.5 pr-1.5 pl-3">
-        <code className="pt-1 text-xs break-all text-muted-foreground">
-          {SNIPPET}
-        </code>
-        <CopyButton text={SNIPPET} />
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs text-muted-foreground">
+          {t("monitor.analyticsGuide.manual")}
+        </p>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="shrink-0 gap-1"
+          onClick={() => openNewProjectDialog("monitor")}
+        >
+          <Plus size={14} />
+          {t("monitor.analyticsGuide.addAnother")}
+        </Button>
       </div>
-      <Button
-        size="sm"
-        className="gap-1 self-center shadow-sm"
-        onClick={() => openNewProjectDialog("monitor")}
-      >
-        <Plus size={14} />
-        {t("monitor.analyticsGuide.add")}
-      </Button>
     </div>
   );
 }

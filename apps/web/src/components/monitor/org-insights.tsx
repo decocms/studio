@@ -270,7 +270,7 @@ export function OrgAnalytics({
       <Locked
         kind="analytics"
         title={t("monitor.locked.analytics.title")}
-        guide={<AnalyticsGuide />}
+        guide={<AnalyticsGuide projects={projects} />}
         link={connectLink(org.slug, null)}
       >
         <AnalyticsPreview />

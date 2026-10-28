@@ -813,6 +813,8 @@ export const KEYS = {
     ["order-monitor", org, "stores"] as const,
   orderMonitorDay: (org: string, connectionId: string, at: string) =>
     ["order-monitor", org, "day", connectionId, at] as const,
+  siteTraffic: (org: string, query: string) =>
+    ["order-monitor", org, "traffic", query] as const,
   orderMonitorPushes: (
     org: string,
     connectionId: string,

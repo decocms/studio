@@ -92,6 +92,8 @@ const ALL_TOOL_NAMES = [
   "INFRA_BILLING_PORTAL",
   // Customer data lake
   "CUSTOMER_LAKE_QUERY",
+  // Site analytics
+  "ANALYTICS_INSTALL",
   // Connection tools
   "COLLECTION_CONNECTIONS_CREATE",
   "COLLECTION_CONNECTIONS_LIST",
@@ -582,6 +584,12 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "CUSTOMER_LAKE_QUERY",
     description: "Run read-only SQL over the organization's data lake",
+    category: "Monitoring",
+  },
+  {
+    name: "ANALYTICS_INSTALL",
+    description:
+      "Delegate adding Deco Analytics to a site's code to the Super Agent",
     category: "Monitoring",
   },
   {
@@ -2203,6 +2211,15 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "Run read-only SQL over the organization's own data lake (orders from connected stores)",
     section: "Developer",
     tools: ["CUSTOMER_LAKE_QUERY"],
+  },
+  {
+    id: "analytics:install",
+    label: "Install site analytics",
+    description:
+      "Have the Super Agent open a pull request adding Deco Analytics to a site",
+    section: "Monitoring",
+    tools: ["ANALYTICS_INSTALL"],
+    dangerous: true,
   },
 ];
 
