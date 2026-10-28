@@ -246,8 +246,6 @@ describe("metadata.sidebarViews", () => {
     "e2e",
     "analytics",
     "cdn",
-    "experiments",
-    "context",
   ] as const;
 
   it("round-trips every project sidebar view on an entity", () => {
@@ -356,11 +354,10 @@ describe("metadata.sidebarViews", () => {
     ).toBe(false);
   });
 
-  it("takes every view at once, no more", () => {
+  it("takes every view at once (Experiments and Calendar included), no more", () => {
     const every = [...VirtualMcpSidebarViewSchema.options];
-    for (const view of ["experiments", "calendar", "context"] as const) {
-      expect(every).toContain(view);
-    }
+    expect(every).toContain("experiments");
+    expect(every).toContain("calendar");
     expect(
       VirtualMCPUpdateDataSchema.safeParse({
         metadata: { sidebarViews: every },

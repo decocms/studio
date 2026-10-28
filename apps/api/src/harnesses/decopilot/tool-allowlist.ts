@@ -90,8 +90,3 @@ export function filterBuiltInsByAllowlist(
     ),
   );
 }
-
-/** An allowlist as the filters take it: a set, or null for "everything". */
-export function toAllowSet(names: readonly string[] | null | undefined) {
-  return names && names.length > 0 ? new Set(names) : null;
-}

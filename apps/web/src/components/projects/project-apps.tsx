@@ -11,7 +11,6 @@ import {
   LayoutAlt01,
   Server01,
   Speedometer02,
-  Stars02,
   Zap,
 } from "@untitledui/icons";
 import type { ComponentType, ReactNode } from "react";
@@ -83,12 +82,6 @@ const APPS: Record<
     Icon: Speedometer02,
     to: PROJECT_ROUTE.monitor,
     tone: "bg-app-cdn/15 text-app-cdn",
-  },
-  context: {
-    labelKey: "projects.apps.context",
-    Icon: Stars02,
-    to: PROJECT_ROUTE.context,
-    tone: "bg-chart-3/15 text-chart-3",
   },
   automations: {
     labelKey: "projects.apps.automations",

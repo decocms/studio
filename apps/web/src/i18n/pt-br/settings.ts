@@ -388,9 +388,9 @@ export const settings = {
   "settings.profile.updateError": "Falha ao atualizar o perfil",
   "settings.preferences.title": "Preferências",
   "settings.blog.sectionTitle": "Blog",
-  "settings.blog.aiTitle": "Contexto agêntico",
+  "settings.blog.aiTitle": "Blog com IA",
   "settings.blog.aiDescription":
-    "Contexto da marca, campanhas, os especialistas que escrevem a partir disso, e geração de posts. Desligado, os posts são escritos à mão e toda tool de blog recusa.",
+    "Contexto da marca, campanhas e geração de posts. Desligado, os posts são escritos à mão.",
   "settings.blogBlocks.title": "Esconder os blocos de blog padrão",
   "settings.blogBlocks.description":
     "Só os blocos de post do próprio site aparecem ao escrever ou importar um post. Posts existentes não mudam.",

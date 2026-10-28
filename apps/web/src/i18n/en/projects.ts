@@ -70,7 +70,6 @@ export const projects = {
   "projects.apps.e2e": "End-to-end tests",
   "projects.apps.analytics": "Analytics",
   "projects.apps.cdn": "Monitor",
-  "projects.apps.context": "Context",
   "projects.apps.automations": "Automations",
   "projects.apps.experiments": "Experiments",
   "projects.apps.calendar": "Calendar",

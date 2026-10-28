@@ -229,25 +229,10 @@ export function useReportsOnly(): boolean {
  * same default. Non-blocking, cosmetic-gating only.
  */
 export function useOrgFlag(flag: keyof OrgFlags): boolean {
-  return useOrgFlagWithPending(flag).enabled;
-}
-
-/**
- * A flag, and whether the answer is known yet.
- *
- * {@link useOrgFlag} folds "still loading" into the default, which is right
- * for hiding a button and wrong for a whole screen: a page that says the
- * feature is off while the settings are in flight is making a claim it cannot
- * support, and the person reads it before the truth arrives.
- */
-export function useOrgFlagWithPending(flag: keyof OrgFlags): {
-  enabled: boolean;
-  isPending: boolean;
-} {
-  const { data, isPending } = useOrganizationSettings((s) =>
+  const { data } = useOrganizationSettings((s) =>
     orgFlagEnabled(s.flags, flag),
   );
-  return { enabled: data ?? DEFAULT_ON_FLAGS.has(flag), isPending };
+  return data ?? DEFAULT_ON_FLAGS.has(flag);
 }
 
 /**

@@ -69,7 +69,6 @@ describe("project sidebar views", () => {
       "e2e",
       "cdn",
       "automations",
-      "context",
     ]);
   });
 
@@ -92,7 +91,6 @@ describe("project sidebar views", () => {
       "site-editor",
       "experiments",
       "automations",
-      "context",
     ]);
   });
 
@@ -138,14 +136,7 @@ describe("project sidebar views", () => {
           nativePresence([]),
         ),
       ),
-    ).toEqual([
-      "overview",
-      "reports",
-      "board",
-      "site-editor",
-      "automations",
-      "context",
-    ]);
+    ).toEqual(["overview", "reports", "board", "site-editor", "automations"]);
   });
 
   test("reuses an agent-route shell and fails open while a destination scope resolves", () => {

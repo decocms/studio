@@ -13,7 +13,6 @@ import {
   Lightning01,
   Package,
   Server01,
-  Stars02,
 } from "@untitledui/icons";
 import { getIconComponent, parseIconString } from "../../components/agent-icon";
 
@@ -30,7 +29,6 @@ export type SystemTabId =
   | "overview"
   | "settings"
   | "automations"
-  | "context"
   | "site-editor"
   | "code"
   | "content"
@@ -46,7 +44,6 @@ export const SYSTEM_TAB_ICONS: Record<SystemTabId, IconComponent> = {
   overview: Home02,
   settings: LayoutAlt04,
   automations: Lightning01,
-  context: Stars02,
   "site-editor": Globe01,
   code: Code02,
   content: File02,

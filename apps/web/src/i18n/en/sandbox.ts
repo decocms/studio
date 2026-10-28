@@ -24,110 +24,15 @@ export const sandbox = {
   "sandbox.blockPicker.insertBlockButton": "Insert block",
   "sandbox.blockPicker.noBlocksFound": "No blocks found.",
   "sandbox.blockPicker.searchPlaceholder": "Search blocks…",
-  "sandbox.blogBrand.addCompetitor": "Add competitor",
-  "sandbox.blogBrand.addDo": "Add a do",
-  "sandbox.blogBrand.addDont": "Add a don't",
-  "sandbox.blogBrand.addValue": "Add value",
   "sandbox.blogBrand.audienceLabel": "Target audience",
   "sandbox.blogBrand.companyNameLabel": "Brand name",
-  "sandbox.blogBrand.competitorsBodyPlaceholder":
-    "How they position themselves, and where this brand differs",
-  "sandbox.blogBrand.competitorsHint":
-    "A brand doesn't name its rivals in its own copy, so these come from a web search when your organization has one configured.",
-  "sandbox.blogBrand.competitorsLabel": "Competitors",
-  "sandbox.blogBrand.competitorsNamePlaceholder": "Competitor name",
   "sandbox.blogBrand.descriptionLabel": "What the brand does",
-  "sandbox.blogBrand.dontsBodyPlaceholder":
-    "What not to do, and why — e.g. never print prices in a text block, use a ProductCard",
-  "sandbox.blogBrand.dontsHint":
-    "Banned words, claims, formats and topics. Each one gets a name and the rule itself.",
-  "sandbox.blogBrand.dontsNamePlaceholder": "What this guardrail is about",
-  "sandbox.blogBrand.dosBodyPlaceholder":
-    "The instruction itself — e.g. open with the customer's problem, never with the company",
-  "sandbox.blogBrand.dosHint":
-    "Instructions every generated post must follow. Write instructions, not adjectives.",
-  "sandbox.blogBrand.dosNamePlaceholder": "What this rule is about",
-  "sandbox.blogBrand.addPolicy": "Add policy",
-  "sandbox.blogBrand.addSpecialDate": "Add date",
-  "sandbox.blogBrand.addVocabulary": "Add word",
-  "sandbox.blogBrand.keywordsHint":
-    "The terms this brand should be found by — what someone types looking for what it sells. Enter or a comma adds one.",
-  "sandbox.blogBrand.keywordsLabel": "Brand keywords",
-  "sandbox.blogBrand.keywordsPlaceholder": "Add a term and press Enter",
-  "sandbox.blogBrand.removeKeyword": "Remove term",
-  "sandbox.blogBrand.phaseResearching": "Researching the brand on the web…",
-  "sandbox.blogBrand.policiesBodyPlaceholder":
-    "The terms, with their actual numbers and conditions",
-  "sandbox.blogBrand.policiesHint":
-    "Exchanges, shipping, warranty. Facts a post may need to state — copy the numbers exactly.",
-  "sandbox.blogBrand.policiesLabel": "Commercial policies",
-  "sandbox.blogBrand.policiesNamePlaceholder": "Which policy",
-  "sandbox.blogBrand.specialDatesBodyPlaceholder":
-    "What this date means for this brand — what it sells then, what it says then",
-  "sandbox.blogBrand.specialDatesHint":
-    "The commercial moments this brand's year turns around — its own and the retail calendar it runs on. Not a calendar pin: these move year to year.",
-  "sandbox.blogBrand.specialDatesLabel": "Special dates",
-  "sandbox.blogBrand.specialDatesNamePlaceholder": "The date's name",
-  "sandbox.blogBrand.vocabularyBodyPlaceholder":
-    "What it names, and which word it replaces",
-  "sandbox.blogBrand.vocabularyHint":
-    "The brand's own words, and the ordinary ones they displace. A post using the displaced word reads as an impostor.",
-  "sandbox.blogBrand.vocabularyLabel": "Vocabulary",
-  "sandbox.blogBrand.vocabularyNamePlaceholder": "The word to use",
-  "sandbox.blogBrand.extractReplaced": "{count} field(s) rewritten",
-  "sandbox.blogBrand.fillDialogDescription":
-    "Some of this is already written. Choose what the fill may touch.",
-  "sandbox.blogBrand.fillDialogTitle": "Fill the context",
-  "sandbox.blogBrand.fillOnlyEmpty": "Only what's empty",
-  "sandbox.blogBrand.fillOnlyEmptyHint":
-    "Leaves everything you wrote exactly as it is, and fills the blanks around it.",
-  "sandbox.blogBrand.fillReplace": "Start over",
-  "sandbox.blogBrand.fillReplaceHint":
-    "Rewrites every field the model has an answer for. What you wrote there is lost; a field it can't answer keeps its current value.",
-  "sandbox.blogBrand.addVoiceExample": "Add phrase",
-  "sandbox.blogBrand.voiceExamplesDoesNotSound": "Doesn't sound like it",
-  "sandbox.blogBrand.voiceExamplesHint":
-    "A voice is faster to show than to describe. Paste real sentences and mark each one: the ones that sound like the brand are what a generated post should match, and the ones that don't are what pins down how far the first ones go.",
-  "sandbox.blogBrand.voiceExamplesLabel": "Example phrases",
-  "sandbox.blogBrand.voiceExamplesPlaceholder": "Paste a sentence",
-  "sandbox.blogBrand.voiceExamplesSounds": "Sounds like the brand",
-  "sandbox.blogBrand.extractButton": "Fill",
-  "sandbox.blogBrand.extractFailed":
-    "Could not read the brand from this site's content",
-  "sandbox.blogBrand.extractAllDiscarded":
-    "Nothing was filled — everything found fell below the confidence bar. The site's own pages are the evidence; thin pages give thin answers.",
-  "sandbox.blogBrand.extractDiscarded":
-    "{count} finding(s) discarded for low confidence or relevance",
-  "sandbox.blogBrand.extractFilled": "Filled {count} empty field(s)",
-  "sandbox.blogBrand.extractHint":
-    "Reads {count} block(s) from this site — existing posts first, since that's the brand actually writing posts.",
-  "sandbox.blogBrand.extractNoContent":
-    "No content to read yet. Write a post, or fill the fields below by hand.",
-  "sandbox.blogBrand.extractNothingEmpty":
-    "Nothing to fill — every field already has a value. Clear a field to refill it.",
   "sandbox.blogBrand.languageLabel": "Writing language",
-  "sandbox.blogBrand.noCompetitorsFound":
-    "No competitors found. Add them by hand, or configure a web search model for this organization.",
-  "sandbox.blogBrand.phaseInferring": "Inferring the voice and the rules…",
-  "sandbox.blogBrand.phaseReading": "Reading this site's content…",
   "sandbox.blogBrand.removeItem": "Remove item",
-  "sandbox.blogBrand.tabBasics": "Basics",
   "sandbox.blogBrand.tabDos": "Generation rules",
-  "sandbox.blogBrand.tabExtra": "Extra context",
   "sandbox.blogBrand.tabGuardrails": "Guardrails",
   "sandbox.blogBrand.toneLabel": "Tone of voice",
-  "sandbox.blogBrand.toneHint":
-    "How the brand writes: how it addresses the reader, sentence rhythm, humor, jargon level.",
-  "sandbox.blogBrand.storeUrlHint":
-    "The public domain, as a reader would type it. Product and category links are built from it — without it they carry the platform's internal address.",
-  "sandbox.blogBrand.storeUrlInvalid":
-    "Not a valid address. It has to start with http:// or https://.",
-  "sandbox.blogBrand.storeUrlLabel": "Store address",
   "sandbox.blogBrand.untitledRule": "Untitled",
-  "sandbox.blogBrand.valuesBodyPlaceholder":
-    "What the brand claims, and the evidence for it",
-  "sandbox.blogBrand.valuesLabel": "Brand values",
-  "sandbox.blogBrand.valuesNamePlaceholder": "The value",
   "sandbox.blockRegistry.backToFields": "Back to the field list",
   "sandbox.blockRegistry.breadcrumbLabel": "Field trail",
   "sandbox.blockRegistry.unknownBlockType":
@@ -374,14 +279,7 @@ export const sandbox = {
   "sandbox.campaigns.untitled": "Untitled campaign",
   "sandbox.campaigns.viewBoard": "Board",
   "sandbox.campaigns.viewList": "List",
-  "sandbox.blogContext.subtitle":
-    "The brand context your blog is written from — voice, formats and the campaigns it writes for.",
-  "sandbox.blogContext.tabAutomations": "Automations",
-  "sandbox.blogContext.tabAgents": "Specialists",
-  "sandbox.blogContext.tabBrand": "Brand",
-  "sandbox.blogContext.tabFormats": "Formats",
   "sandbox.blogContext.tabCampaigns": "Campaigns",
-  "sandbox.blogContext.title": "Context",
   "sandbox.blogField.title": "Title",
   "sandbox.blogField.slug": "Slug",
   "sandbox.blogField.category": "Category",
@@ -627,63 +525,11 @@ export const sandbox = {
   "sandbox.fileTreeRow.newFile": "New File",
   "sandbox.fileTreeRow.newFolder": "New Folder",
   "sandbox.fileTreeRow.rename": "Rename",
-  "sandbox.formats.add": "New format",
-  "sandbox.formats.bodyPlaceholder":
-    "When to use it, how it opens and closes, roughly how long, and which sections carry it…",
-  "sandbox.formats.countLabel": "How many",
-  "sandbox.formats.guidanceHint":
-    "Optional. What these formats should cover — a campaign, a season, a kind of post the blog keeps needing.",
-  "sandbox.blogAgents.beltEverything": "every tool this project has",
-  "sandbox.blogAgents.beltLabel": "Tools",
-  "sandbox.blogAgents.contractHint":
-    "Sent before whatever you write below, every time this role runs. It is not in the file, so nothing you change here can remove it.",
-  "sandbox.blogAgents.contractLess": "Show less",
-  "sandbox.blogAgents.contractMore": "Read all of it",
-  "sandbox.blogAgents.contractTitle": "Rules that always apply",
-  "sandbox.blogAgents.emptyBody":
-    "The roster is written the first time this site saves its blog context. Save anything on the Brand tab and the specialists appear here.",
-  "sandbox.blogAgents.emptyTitle": "No specialists yet",
-  "sandbox.blogAgents.save": "Save",
-  "sandbox.blogRun.ask": "Ask the agent",
-  "sandbox.blogRun.askPlaceholder":
-    "What should the agent do? Name a specialist — the researcher, say — and what a finished answer looks like.",
-  "sandbox.blogRun.failed": "Could not start the run",
-  "sandbox.blogRun.sheetTitle": "Blog run",
-  "sandbox.blogRun.started": "Run started — open it to follow along",
-  "sandbox.blogRun.submit": "Start",
   "sandbox.blogState.conflictBody":
     "Someone else saved this while you were editing. Reloading drops your unsaved changes; keeping yours replaces theirs.",
   "sandbox.blogState.conflictTitle": "This changed somewhere else",
   "sandbox.blogState.keepMine": "Keep mine",
   "sandbox.blogState.reloadTheirs": "Reload theirs",
-  "sandbox.formats.guidanceLabel": "Extra instructions",
-  "sandbox.formats.guidancePlaceholder": "e.g. one format for product launches",
-  "sandbox.formats.hint":
-    "A format guides generation, it doesn't dictate it — describe the intent and let the model decide the order. Type @ to cite one of your sections.",
-  "sandbox.formats.mentionEmpty": "No matching section",
-  "sandbox.formats.mentionHint": "Type @ to cite a section",
-  "sandbox.formats.namePlaceholder": "The format, named by the job it does",
-  "sandbox.formats.noNewFormats":
-    "Nothing new came back — every format proposed was already on the list.",
-  "sandbox.formats.phaseReading": "Reading how your posts are built…",
-  "sandbox.formats.phaseWriting": "Naming the formats…",
-  "sandbox.formats.starterButton": "Use the standard format",
-  "sandbox.formats.starterHint":
-    "Add a plain format built from the sections this site has — no AI, no credits",
-  "sandbox.formats.starterAdded":
-    "No AI model is configured for this org, so a starter format was added for you to edit.",
-  "sandbox.formats.starterBody":
-    "Use this for a straightforward post: open with the subject and why it matters to the reader, develop it in a few short passages, and close with what to do next.\n\nSections that carry it: {sections}. How many of each, and in what order, depends on the theme.",
-  "sandbox.formats.starterBodyNoSections":
-    "Use this for a straightforward post: open with the subject and why it matters to the reader, develop it in a few short passages, and close with what to do next.\n\nThis site reports no post sections yet — once it does, cite them here with @.",
-  "sandbox.formats.starterName": "Standard post",
-  "sandbox.formats.suggestButton": "Suggest formats",
-  "sandbox.formats.suggestFailed": "Couldn't suggest formats",
-  "sandbox.formats.suggestHint":
-    "Name the formats this blog already writes in, from how its posts are built",
-  "sandbox.formats.suggested": "{count} format(s) added",
-  "sandbox.formats.unknownCitations":
-    "This format cites sections the site doesn't have: {names}",
   "sandbox.generatePost.stepCampaign": "Campaign",
   "sandbox.generatePost.campaignHint":
     "A post is written for a campaign: it carries the moment, the products it may name and the links to them.",

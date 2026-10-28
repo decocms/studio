@@ -10,7 +10,6 @@
  *   - `kind: "subagent"` excludes `subtask`, `user_ask`, `propose_plan`.
  *   - Truncation is ALWAYS on (disableOutputTruncation: false).
  *   - `toolApprovalLevel` is passed through as-is from the caller.
- *   - `toolAllowlist` is opt-in: absent or empty leaves the set untouched.
  */
 
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -30,11 +29,6 @@ import {
   type BuildBuiltInToolsOptions,
   type BuiltinToolParams,
 } from "./built-in-tools";
-import {
-  filterBuiltInsByAllowlist,
-  filterPassthroughByAllowlist,
-  toAllowSet,
-} from "./tool-allowlist";
 
 export type { BuildBuiltInToolsOptions };
 export type { ToolApprovalLevel };
@@ -49,12 +43,6 @@ export interface AssembleAgentToolsOptions {
   planMode: boolean;
   toolApprovalLevel: ToolApprovalLevel;
   subtaskParams: BuildBuiltInToolsOptions["subtaskParams"];
-  /**
-   * The only tools this loop may call, by name. Absent or empty is every tool
-   * it would otherwise have — the behavior every caller had before this
-   * existed, which is what keeps it safe on a path every agent runs through.
-   */
-  toolAllowlist?: readonly string[] | null;
   /** Cluster-injected hook: resolve storage-ref args before each MCP tool
    *  call. Omitted on desktop (no ctx) → args pass through unchanged. */
   resolveArgs?: (
@@ -96,10 +84,8 @@ export async function assembleAgentTools(
 ): Promise<AssembleAgentToolsResult> {
   const toolOutputMap = opts.toolOutputMap ?? createToolOutputMap();
 
-  const allow = toAllowSet(opts.toolAllowlist);
-
   // 1. MCP tools — truncation always on.
-  const { tools: rawMcpTools, nameMap } = await toolsFromMCP(
+  const { tools: mcpTools, nameMap } = await toolsFromMCP(
     opts.mcpClient,
     toolOutputMap,
     opts.writer,
@@ -113,7 +99,6 @@ export async function assembleAgentTools(
       onPrOpened: opts.onPrOpened,
     },
   );
-  const mcpTools = filterPassthroughByAllowlist(rawMcpTools, nameMap, allow);
 
   // 2. Built-in tools — full set first. A subagent given `fullBuiltInParams`
   //    gets the parent's heavy built-ins (vm/generate_image/web_search) bound to
@@ -145,11 +130,8 @@ export async function assembleAgentTools(
         )
       : allBuiltIns;
 
-  // 4. Merge, scoped to what this loop may call.
-  const tools: ToolSet = {
-    ...mcpTools,
-    ...filterBuiltInsByAllowlist(builtIns as ToolSet, allow),
-  };
+  // 4. Merge.
+  const tools: ToolSet = { ...mcpTools, ...(builtIns as ToolSet) };
 
   return { tools, toolOutputMap, nameMap };
 }

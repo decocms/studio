@@ -15,7 +15,6 @@ export const PROJECT_SIDEBAR_VIEW_IDS = [
   "analytics",
   "cdn",
   "automations",
-  "context",
 ] as const satisfies readonly VirtualMcpSidebarView[];
 
 /** Initial selection for projects that have not explicitly saved sidebar
@@ -216,9 +215,6 @@ export function projectSidebarViewPresence(
     // A v8 site's campaigns block, edited in the same draft as the pages.
     calendar: hasClonableSource && native.calendar,
     automations: true,
-    /** The blog's context is a CMS surface, so it needs a source like the rest
-     *  of them; the org flag gates it a second time where it is rendered. */
-    context: hasClonableSource,
   };
 }
 

@@ -33,14 +33,7 @@ import {
   type SystemMessage,
 } from "@/harnesses/lib/decopilot/system-prompt";
 import { listPromptsBlock, listConnectionsBlock } from "./prompt";
-import {
-  type AgentsBlockEntry,
-  buildAgentsBlock,
-} from "@/harnesses/lib/decopilot/agents-block";
-import {
-  AGENT_TARGET_PREFIX,
-  listProjectAgents,
-} from "@/file-storage/project-agents";
+import { buildAgentsBlock } from "@/harnesses/lib/decopilot/agents-block";
 import { renderUserContextBlock } from "@/harnesses/lib/decopilot/user-context-block";
 import type { ConnectionsBlockTool } from "@/harnesses/lib/decopilot/connections-block";
 import type { HarnessUserContext } from "@/harnesses/lib/types";
@@ -220,27 +213,22 @@ export async function buildAgentSystemPrompt(
     await listPromptsBlock(opts.ctx, opts.organization, opts.passthroughClient),
   );
 
-  if (opts.kind === "agent") {
-    const definitions = await projectAgentEntries(
-      opts.ctx,
-      opts.virtualMcp.id,
-      opts.organization.id,
+  if (
+    opts.kind === "agent" &&
+    (opts.userContext?.agents || opts.connectionsData?.tools.length)
+  ) {
+    const connectionIds = opts.connectionsData?.tools.map(
+      (tool) => tool.connectionId,
     );
-    const agents = [...(opts.userContext?.agents ?? []), ...definitions];
-    if (agents.length > 0 || opts.connectionsData?.tools.length) {
-      const connectionIds = opts.connectionsData?.tools.map(
-        (tool) => tool.connectionId,
-      );
-      add(
-        "agents",
-        buildAgentsBlock(
-          agents,
-          opts.virtualMcp.id,
-          opts.virtualMcp.delegationTargetIds,
-          connectionIds,
-        ),
-      );
-    }
+    add(
+      "agents",
+      buildAgentsBlock(
+        opts.userContext?.agents ?? [],
+        opts.virtualMcp.id,
+        opts.virtualMcp.delegationTargetIds,
+        connectionIds,
+      ),
+    );
   }
 
   add(
@@ -361,35 +349,4 @@ This is the current contents of your persistent ${scope} memory index (\`${displ
 
 ${body}
 </${scope}-memory>`;
-}
-
-/**
- * The project's own file-defined specialists, as catalog rows.
- *
- * Silent on any failure: a listing that throws would take the whole system
- * prompt with it, and a run with one fewer delegation target is a far smaller
- * loss than a run that does not start.
- */
-async function projectAgentEntries(
-  ctx: StudioContext,
-  projectId: string,
-  organizationId: string,
-): Promise<AgentsBlockEntry[]> {
-  if (!ctx.orgFs) return [];
-  try {
-    const project = await ctx.storage.virtualMcps.findById(
-      projectId,
-      organizationId,
-    );
-    if (!project) return [];
-    const definitions = await listProjectAgents(ctx.orgFs, project);
-    return definitions.map((definition) => ({
-      id: `${AGENT_TARGET_PREFIX}${definition.slug}`,
-      name: definition.name,
-      description: definition.description,
-      status: "active" as const,
-    }));
-  } catch {
-    return [];
-  }
 }

@@ -26,9 +26,6 @@ import {
 } from "./blog-data";
 import { str } from "./blocks/primitives";
 import { referencePhotos } from "@decocms/shared/blog";
-import { projectFolderDir } from "@decocms/shared/organization/project-folder";
-import { fetchOrgFsText } from "@/hooks/use-org-fs";
-import { useProjectScope } from "@/hooks/use-project-scope";
 
 type Gap = StudioToolOutput<"BLOG_POST_DRAFT">["gaps"][number];
 
@@ -39,22 +36,6 @@ type DraftSection =
 interface Art {
   url: string;
   sections: DraftSection[];
-}
-
-/** The heading the Ilustrador's standing instruction lives under. */
-const GUIDANCE_HEADING =
-  /^##\s+How this brand['\u2019]s pictures should look\s*$/m;
-
-/** The Ilustrador's standing rule, from its `AGENT.md` so the operator owns it; best-effort, an unseeded roster draws with the tool's default. */
-async function illustratorGuidance(
-  orgSlug: string,
-  project: { id: string; title?: string | null; metadata?: unknown } | null,
-): Promise<string | undefined> {
-  if (!project) return undefined;
-  const path = `${projectFolderDir(project)}/agents/ilustrador/AGENT.md`;
-  const md = await fetchOrgFsText(orgSlug, "home", path).catch(() => "");
-  const below = md.split(GUIDANCE_HEADING)[1];
-  return below?.split(/^##\s/m)[0]?.trim() || undefined;
 }
 
 /**
@@ -123,7 +104,6 @@ export function useGeneratePost({
   const t = useT();
   const studio = useStudioTools();
   const hideDefaults = useHideDefaultBlogBlocks();
-  const { project } = useProjectScope();
   const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
 
   return async (briefing: PostBriefing) => {
@@ -203,7 +183,6 @@ export function useGeneratePost({
     ): Promise<Map<string, Art>> => {
       if (!brief.fileConfigId || posts.length === 0) return new Map();
       const productImages = referencePhotos(brief.campaign.intent.products);
-      const guidance = await illustratorGuidance(orgSlug, project);
       const drawn = await Promise.all(
         posts.map(async (post, i): Promise<[string, Art] | null> => {
           try {
@@ -220,7 +199,6 @@ export function useGeneratePost({
                 props,
               })),
               productImages,
-              guidance,
               companyName: brand.companyName ?? "",
               fileConfigId: brief.fileConfigId,
             });

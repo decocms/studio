@@ -3,7 +3,6 @@ import type { ToolSet } from "ai";
 import {
   filterBuiltInsByAllowlist,
   filterPassthroughByAllowlist,
-  toAllowSet,
 } from "./tool-allowlist";
 
 /**
@@ -14,18 +13,6 @@ import {
 
 const set = (...names: string[]): ToolSet =>
   Object.fromEntries(names.map((name) => [name, {}])) as ToolSet;
-
-describe("toAllowSet", () => {
-  test("absent, null and empty all mean every tool", () => {
-    expect(toAllowSet(undefined)).toBeNull();
-    expect(toAllowSet(null)).toBeNull();
-    expect(toAllowSet([])).toBeNull();
-  });
-
-  test("a named list becomes the set of what is allowed", () => {
-    expect(toAllowSet(["a", "b"])).toEqual(new Set(["a", "b"]));
-  });
-});
 
 describe("filterPassthroughByAllowlist", () => {
   const tools = set("safe_one", "safe_two");

@@ -378,9 +378,9 @@ export const settings = {
   "settings.profile.updateError": "Failed to update profile",
   "settings.preferences.title": "Preferences",
   "settings.blog.sectionTitle": "Blog",
-  "settings.blog.aiTitle": "Agentic context",
+  "settings.blog.aiTitle": "AI blog",
   "settings.blog.aiDescription":
-    "Brand context, campaigns, the specialists that write from them, and post generation. When off, posts are written by hand and every blog tool refuses.",
+    "Brand context, campaigns and post generation. When off, posts are written by hand.",
   "settings.blogBlocks.title": "Hide the default blog blocks",
   "settings.blogBlocks.description":
     "Only this site's own post blocks are offered when writing or importing a post. Existing posts are unaffected.",

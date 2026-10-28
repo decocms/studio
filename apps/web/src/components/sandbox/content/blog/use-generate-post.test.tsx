@@ -105,14 +105,6 @@ mock.module("@/lib/studio-tools", () => ({
 mock.module("@/hooks/use-hide-default-blog-blocks", () => ({
   useHideDefaultBlogBlocks: () => false,
 }));
-/** Router-backed; these render the hook bare. The roster read is stubbed with it. */
-mock.module("@/hooks/use-project-scope", () => ({
-  useProjectScope: () => ({ project: { id: "vmcp", title: "Site" } }),
-}));
-mock.module("@/hooks/use-org-fs", () => ({
-  fetchOrgFsText: async () =>
-    "## How this brand's pictures should look\n\n- Mostre o produto real.\n",
-}));
 mock.module("@/i18n/use-t.ts", () => ({ useT: () => (key: string) => key }));
 mock.module("sonner", () => ({
   toast: { success: () => {}, error: () => {}, warning: () => {} },
@@ -253,19 +245,6 @@ describe("useGeneratePost", () => {
     expect(
       drawn.every(([, input]) => (input.requests as unknown[]).length === 1),
     ).toBe(true);
-  });
-
-  /**
-   * The standing instruction is an `AGENT.md` section the operator edits, so
-   * "show the real product" is theirs to change. Unsent, every brand's
-   * pictures come out of the same default.
-   */
-  test("folds in the illustrator's own editable instruction", async () => {
-    await runWithBucket();
-    const drawn = studioCall.mock.calls.find(
-      ([name]) => name === "BLOG_POST_ILLUSTRATE",
-    );
-    expect(drawn?.[1].guidance).toBe("- Mostre o produto real.");
   });
 
   test("offers the campaign's product photographs as references", async () => {

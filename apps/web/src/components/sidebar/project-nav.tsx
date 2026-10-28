@@ -19,7 +19,6 @@ import {
   Lock01,
   Monitor01,
   Server01,
-  Stars02,
 } from "@untitledui/icons";
 import { SidebarMenu } from "@decocms/ui/components/sidebar.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
@@ -221,15 +220,6 @@ export function ProjectNav({
         ),
       panel,
       isActive: (tabId) => tabId === panel,
-    });
-  }
-  if (selectedViews.has("context")) {
-    views.push({
-      key: "context",
-      label: t("sidebar.projectNav.context"),
-      icon: <Stars02 size={16} />,
-      panel: "context",
-      isActive: (tabId) => tabId === "context",
     });
   }
   if (selectedViews.has("automations")) {

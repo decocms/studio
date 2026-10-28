@@ -60,7 +60,6 @@ const ALL_TOOL_NAMES = [
   "ORGANIZATION_SETTINGS_UPDATE",
   "ORGANIZATION_BLOCKS_EDITOR_SET",
   "ORGANIZATION_HAS_SITE",
-  "BLOG_RUN_START",
   "BLOG_STATE_GET",
   "BLOG_STATE_SET",
   "BLOG_SITE_GROUND",
@@ -424,12 +423,6 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     name: "ORGANIZATION_BLOCKS_EDITOR_SET",
     description: "Switch the organization's blocks editor",
     category: "Organizations",
-  },
-  {
-    name: "BLOG_RUN_START",
-    description:
-      "Hand blog work to the site's agent as a run, and return its thread",
-    category: "Blog",
   },
   {
     name: "BLOG_STATE_GET",

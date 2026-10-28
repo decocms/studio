@@ -721,21 +721,6 @@ const agentSiteEditorCodeRoute = createRoute({
   ),
 });
 
-const agentContextRoute = createRoute({
-  pendingComponent: ChatLayoutPending,
-  errorComponent: ChatLayoutError,
-  getParentRoute: () => agentWorkspaceRoute,
-  path: "/context",
-  staticData: {
-    pageTitle: "sidebar.projectNav.context",
-    defaultMain: "context",
-    mainView: "context",
-  },
-  component: lazyRouteComponent(
-    () => import("./routes/workspace/agent-context"),
-  ),
-});
-
 const agentAutomationsRoute = createRoute({
   pendingComponent: ChatLayoutPending,
   errorComponent: ChatLayoutError,
@@ -1738,7 +1723,6 @@ const agentWorkspaceWithChildren = agentWorkspaceRoute.addChildren([
   projectTasksRoute,
   projectReportsRoute,
   agentSiteEditorWithChildren,
-  agentContextRoute,
   agentAutomationsRoute,
   agentAutomationRoute,
   agentSettingsRoute,

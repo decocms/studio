@@ -106,7 +106,6 @@ export const virtualMcp = {
   "virtualMcp.filesSection.selectSkill": "Select skill",
   "virtualMcp.filesSection.uploadFile": "Upload file",
   "virtualMcp.layoutTabContent.noMainView": "No main view",
-  "virtualMcp.layoutTabContent.context": "Context",
   "virtualMcp.layoutTabContent.automations": "Automations",
   "virtualMcp.layoutTabContent.chatAlwaysShown":
     "Chat is always shown when it is the default view",

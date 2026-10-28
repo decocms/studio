@@ -117,7 +117,6 @@ export const CORE_TOOLS = [
   TaskBoardTools.TASK_BOARD_QUALITY,
   TaskBoardTools.TASK_BOARD_ERRORS,
   TaskBoardTools.TASK_BOARD_TENANTS,
-  BlogTools.BLOG_RUN_START,
   BlogTools.BLOG_STATE_GET,
   BlogTools.BLOG_STATE_SET,
   BlogTools.BLOG_SITE_GROUND,

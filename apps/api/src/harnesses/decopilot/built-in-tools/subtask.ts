@@ -331,7 +331,6 @@ export function createSubtaskTool(
       try {
         resolved = await resolveSubagent(ctx, organization.id, targetId, {
           superUser: isSelf,
-          homeProjectId: self?.id,
         });
       } catch (err) {
         yield {
@@ -341,7 +340,7 @@ export function createSubtaskTool(
         };
         return;
       }
-      const { mcpClient, targetRef, toolAllowlist } = resolved;
+      const { mcpClient, targetRef } = resolved;
       const targetLabel = targetRef.id;
 
       const releaseSlot = await acquireSubagentSlot();
@@ -445,7 +444,6 @@ export function createSubtaskTool(
             // (see SubtaskParams.currentThreadId).
             currentThreadId,
             systemAgentInstructions: targetRef.instructions,
-            toolAllowlist,
             abortSignal: abortSignal ?? new AbortController().signal,
             // Budget is shared across resumes — a resumed run gets what's left,
             // never a fresh 30, so a flapping provider can't multiply the cost.

@@ -22,7 +22,6 @@ import {
   type BlogWrite,
   type ProjectRef,
 } from "../../file-storage/blog-state";
-import { seedProjectAgents } from "../../file-storage/project-agents";
 import {
   claimProjectFolderFor,
   persistProjectFolderName,
@@ -352,9 +351,6 @@ export const BLOG_STATE_SET = defineTool({
       const path = recordPath(target, CAMPAIGN_SEEDS_DIR, id);
       writes.push({ path, data, expect: conditional(path) });
     }
-
-    /** The roster lands beside the state it works on, once, never rewritten. */
-    await seedProjectAgents(orgFs, target, actor);
 
     let entries: Awaited<ReturnType<typeof writeBlogFiles>>;
     try {

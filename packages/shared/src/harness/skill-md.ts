@@ -34,19 +34,14 @@ export interface FrontmatterDoc {
 }
 
 /**
- * Split a markdown file into its frontmatter and its body.
- *
- * Shared with the agent definitions, which are the same shape: flat keys, a
- * markdown body, and everything optional. A file with no fence is all body.
+ * Split a markdown file into its frontmatter and its body. Flat keys, a
+ * markdown body, everything optional: a file with no fence is all body.
  */
 export function parseFrontmatterDoc(text: string): FrontmatterDoc {
   const m = text.match(/^---\n([\s\S]*?)\n---\n?/);
   if (!m || m[1] === undefined) return { fm: {}, body: text };
   return { fm: parseFrontmatter(m[1]), body: text.slice(m[0].length) };
 }
-
-/** The first non-heading paragraph of a body, for a missing description. */
-export { firstParagraph };
 
 /** Flat `key: value` frontmatter subset — these files don't nest. */
 function parseFrontmatter(block: string): Record<string, string> {

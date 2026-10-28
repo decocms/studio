@@ -209,7 +209,6 @@ export const FIXED_SYSTEM_TABS = [
   "overview",
   "settings",
   "automations",
-  "context",
   "site-editor",
   "code",
   "content",

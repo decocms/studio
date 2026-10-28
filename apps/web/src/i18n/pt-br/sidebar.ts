@@ -18,7 +18,6 @@ export const sidebar = {
   "sidebar.myThreadsSection.noChatsYet": "Nenhum chat ainda",
   "sidebar.myThreadsSection.noChatsMatchFilters":
     "Nenhum chat corresponde aos seus filtros",
-  "sidebar.projectNav.context": "Contexto",
   "sidebar.projectNav.automations": "Automações",
   "sidebar.projectNav.apps": "Apps",
   "sidebar.projectNav.siteEditor": "Editor do site",

@@ -2193,10 +2193,6 @@ export interface StudioToolIO {
       )[];
     };
   };
-  BLOG_RUN_START: {
-    input: { virtualMcpId: string; prompt: string; title?: string | undefined };
-    output: { threadId: string };
-  };
   BLOG_STATE_GET: {
     input: { virtualMcpId: string };
     output: {
@@ -3895,11 +3891,12 @@ export interface StudioToolIO {
                       cms?: "off" | "manual" | "on" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
-                            | "context"
                             | "overview"
                             | "reports"
                             | "board"
                             | "site-editor"
+                            | "calendar"
+                            | "experiments"
                             | "assets"
                             | "releases"
                             | "hosting"
@@ -3907,8 +3904,6 @@ export interface StudioToolIO {
                             | "analytics"
                             | "cdn"
                             | "automations"
-                            | "experiments"
-                            | "calendar"
                           )[]
                         | null
                         | undefined;
@@ -3957,11 +3952,12 @@ export interface StudioToolIO {
             | undefined;
           sidebarViews?:
             | (
-                | "context"
                 | "overview"
                 | "reports"
                 | "board"
                 | "site-editor"
+                | "calendar"
+                | "experiments"
                 | "assets"
                 | "releases"
                 | "hosting"
@@ -3969,8 +3965,6 @@ export interface StudioToolIO {
                 | "analytics"
                 | "cdn"
                 | "automations"
-                | "experiments"
-                | "calendar"
               )[]
             | null
             | undefined;
@@ -3981,6 +3975,8 @@ export interface StudioToolIO {
                 | "reports"
                 | "board"
                 | "site-editor"
+                | "calendar"
+                | "experiments"
                 | "assets"
                 | "releases"
                 | "hosting"
@@ -3988,8 +3984,6 @@ export interface StudioToolIO {
                 | "analytics"
                 | "cdn"
                 | "automations"
-                | "experiments"
-                | "calendar"
               )[]
             | null
             | undefined;
@@ -4188,11 +4182,12 @@ export interface StudioToolIO {
                             | undefined;
                           sidebarViews?:
                             | (
-                                | "context"
                                 | "overview"
                                 | "reports"
                                 | "board"
                                 | "site-editor"
+                                | "calendar"
+                                | "experiments"
                                 | "assets"
                                 | "releases"
                                 | "hosting"
@@ -4200,8 +4195,6 @@ export interface StudioToolIO {
                                 | "analytics"
                                 | "cdn"
                                 | "automations"
-                                | "experiments"
-                                | "calendar"
                               )[]
                             | null
                             | undefined;
@@ -4250,11 +4243,12 @@ export interface StudioToolIO {
                 | undefined;
               sidebarViews?:
                 | (
-                    | "context"
                     | "overview"
                     | "reports"
                     | "board"
                     | "site-editor"
+                    | "calendar"
+                    | "experiments"
                     | "assets"
                     | "releases"
                     | "hosting"
@@ -4262,8 +4256,6 @@ export interface StudioToolIO {
                     | "analytics"
                     | "cdn"
                     | "automations"
-                    | "experiments"
-                    | "calendar"
                   )[]
                 | null
                 | undefined;
@@ -4274,6 +4266,8 @@ export interface StudioToolIO {
                     | "reports"
                     | "board"
                     | "site-editor"
+                    | "calendar"
+                    | "experiments"
                     | "assets"
                     | "releases"
                     | "hosting"
@@ -4281,8 +4275,6 @@ export interface StudioToolIO {
                     | "analytics"
                     | "cdn"
                     | "automations"
-                    | "experiments"
-                    | "calendar"
                   )[]
                 | null
                 | undefined;
@@ -4403,11 +4395,12 @@ export interface StudioToolIO {
                       cms?: "off" | "manual" | "on" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
-                            | "context"
                             | "overview"
                             | "reports"
                             | "board"
                             | "site-editor"
+                            | "calendar"
+                            | "experiments"
                             | "assets"
                             | "releases"
                             | "hosting"
@@ -4415,8 +4408,6 @@ export interface StudioToolIO {
                             | "analytics"
                             | "cdn"
                             | "automations"
-                            | "experiments"
-                            | "calendar"
                           )[]
                         | null
                         | undefined;
@@ -4465,11 +4456,12 @@ export interface StudioToolIO {
             | undefined;
           sidebarViews?:
             | (
-                | "context"
                 | "overview"
                 | "reports"
                 | "board"
                 | "site-editor"
+                | "calendar"
+                | "experiments"
                 | "assets"
                 | "releases"
                 | "hosting"
@@ -4477,8 +4469,6 @@ export interface StudioToolIO {
                 | "analytics"
                 | "cdn"
                 | "automations"
-                | "experiments"
-                | "calendar"
               )[]
             | null
             | undefined;
@@ -4489,6 +4479,8 @@ export interface StudioToolIO {
                 | "reports"
                 | "board"
                 | "site-editor"
+                | "calendar"
+                | "experiments"
                 | "assets"
                 | "releases"
                 | "hosting"
@@ -4496,8 +4488,6 @@ export interface StudioToolIO {
                 | "analytics"
                 | "cdn"
                 | "automations"
-                | "experiments"
-                | "calendar"
               )[]
             | null
             | undefined;
@@ -4657,11 +4647,12 @@ export interface StudioToolIO {
                       cms?: "off" | "manual" | "on" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
-                            | "context"
                             | "overview"
                             | "reports"
                             | "board"
                             | "site-editor"
+                            | "calendar"
+                            | "experiments"
                             | "assets"
                             | "releases"
                             | "hosting"
@@ -4669,8 +4660,6 @@ export interface StudioToolIO {
                             | "analytics"
                             | "cdn"
                             | "automations"
-                            | "experiments"
-                            | "calendar"
                           )[]
                         | null
                         | undefined;
@@ -4719,11 +4708,12 @@ export interface StudioToolIO {
             | undefined;
           sidebarViews?:
             | (
-                | "context"
                 | "overview"
                 | "reports"
                 | "board"
                 | "site-editor"
+                | "calendar"
+                | "experiments"
                 | "assets"
                 | "releases"
                 | "hosting"
@@ -4731,8 +4721,6 @@ export interface StudioToolIO {
                 | "analytics"
                 | "cdn"
                 | "automations"
-                | "experiments"
-                | "calendar"
               )[]
             | null
             | undefined;
@@ -4743,6 +4731,8 @@ export interface StudioToolIO {
                 | "reports"
                 | "board"
                 | "site-editor"
+                | "calendar"
+                | "experiments"
                 | "assets"
                 | "releases"
                 | "hosting"
@@ -4750,8 +4740,6 @@ export interface StudioToolIO {
                 | "analytics"
                 | "cdn"
                 | "automations"
-                | "experiments"
-                | "calendar"
               )[]
             | null
             | undefined;
@@ -4902,11 +4890,12 @@ export interface StudioToolIO {
                       cms?: "off" | "manual" | "on" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
-                            | "context"
                             | "overview"
                             | "reports"
                             | "board"
                             | "site-editor"
+                            | "calendar"
+                            | "experiments"
                             | "assets"
                             | "releases"
                             | "hosting"
@@ -4914,8 +4903,6 @@ export interface StudioToolIO {
                             | "analytics"
                             | "cdn"
                             | "automations"
-                            | "experiments"
-                            | "calendar"
                           )[]
                         | null
                         | undefined;
@@ -4964,11 +4951,12 @@ export interface StudioToolIO {
             | undefined;
           sidebarViews?:
             | (
-                | "context"
                 | "overview"
                 | "reports"
                 | "board"
                 | "site-editor"
+                | "calendar"
+                | "experiments"
                 | "assets"
                 | "releases"
                 | "hosting"
@@ -4976,8 +4964,6 @@ export interface StudioToolIO {
                 | "analytics"
                 | "cdn"
                 | "automations"
-                | "experiments"
-                | "calendar"
               )[]
             | null
             | undefined;
@@ -4988,6 +4974,8 @@ export interface StudioToolIO {
                 | "reports"
                 | "board"
                 | "site-editor"
+                | "calendar"
+                | "experiments"
                 | "assets"
                 | "releases"
                 | "hosting"
@@ -4995,8 +4983,6 @@ export interface StudioToolIO {
                 | "analytics"
                 | "cdn"
                 | "automations"
-                | "experiments"
-                | "calendar"
               )[]
             | null
             | undefined;
@@ -5148,11 +5134,12 @@ export interface StudioToolIO {
                             | undefined;
                           sidebarViews?:
                             | (
-                                | "context"
                                 | "overview"
                                 | "reports"
                                 | "board"
                                 | "site-editor"
+                                | "calendar"
+                                | "experiments"
                                 | "assets"
                                 | "releases"
                                 | "hosting"
@@ -5160,8 +5147,6 @@ export interface StudioToolIO {
                                 | "analytics"
                                 | "cdn"
                                 | "automations"
-                                | "experiments"
-                                | "calendar"
                               )[]
                             | null
                             | undefined;
@@ -5210,11 +5195,12 @@ export interface StudioToolIO {
                 | undefined;
               sidebarViews?:
                 | (
-                    | "context"
                     | "overview"
                     | "reports"
                     | "board"
                     | "site-editor"
+                    | "calendar"
+                    | "experiments"
                     | "assets"
                     | "releases"
                     | "hosting"
@@ -5222,8 +5208,6 @@ export interface StudioToolIO {
                     | "analytics"
                     | "cdn"
                     | "automations"
-                    | "experiments"
-                    | "calendar"
                   )[]
                 | null
                 | undefined;
@@ -5234,6 +5218,8 @@ export interface StudioToolIO {
                     | "reports"
                     | "board"
                     | "site-editor"
+                    | "calendar"
+                    | "experiments"
                     | "assets"
                     | "releases"
                     | "hosting"
@@ -5241,8 +5227,6 @@ export interface StudioToolIO {
                     | "analytics"
                     | "cdn"
                     | "automations"
-                    | "experiments"
-                    | "calendar"
                   )[]
                 | null
                 | undefined;
@@ -5371,11 +5355,12 @@ export interface StudioToolIO {
                       cms?: "off" | "manual" | "on" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
-                            | "context"
                             | "overview"
                             | "reports"
                             | "board"
                             | "site-editor"
+                            | "calendar"
+                            | "experiments"
                             | "assets"
                             | "releases"
                             | "hosting"
@@ -5383,8 +5368,6 @@ export interface StudioToolIO {
                             | "analytics"
                             | "cdn"
                             | "automations"
-                            | "experiments"
-                            | "calendar"
                           )[]
                         | null
                         | undefined;
@@ -5433,11 +5416,12 @@ export interface StudioToolIO {
             | undefined;
           sidebarViews?:
             | (
-                | "context"
                 | "overview"
                 | "reports"
                 | "board"
                 | "site-editor"
+                | "calendar"
+                | "experiments"
                 | "assets"
                 | "releases"
                 | "hosting"
@@ -5445,8 +5429,6 @@ export interface StudioToolIO {
                 | "analytics"
                 | "cdn"
                 | "automations"
-                | "experiments"
-                | "calendar"
               )[]
             | null
             | undefined;
@@ -5457,6 +5439,8 @@ export interface StudioToolIO {
                 | "reports"
                 | "board"
                 | "site-editor"
+                | "calendar"
+                | "experiments"
                 | "assets"
                 | "releases"
                 | "hosting"
@@ -5464,8 +5448,6 @@ export interface StudioToolIO {
                 | "analytics"
                 | "cdn"
                 | "automations"
-                | "experiments"
-                | "calendar"
               )[]
             | null
             | undefined;
@@ -5614,11 +5596,12 @@ export interface StudioToolIO {
                       cms?: "off" | "manual" | "on" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
-                            | "context"
                             | "overview"
                             | "reports"
                             | "board"
                             | "site-editor"
+                            | "calendar"
+                            | "experiments"
                             | "assets"
                             | "releases"
                             | "hosting"
@@ -5626,8 +5609,6 @@ export interface StudioToolIO {
                             | "analytics"
                             | "cdn"
                             | "automations"
-                            | "experiments"
-                            | "calendar"
                           )[]
                         | null
                         | undefined;
@@ -5676,11 +5657,12 @@ export interface StudioToolIO {
             | undefined;
           sidebarViews?:
             | (
-                | "context"
                 | "overview"
                 | "reports"
                 | "board"
                 | "site-editor"
+                | "calendar"
+                | "experiments"
                 | "assets"
                 | "releases"
                 | "hosting"
@@ -5688,8 +5670,6 @@ export interface StudioToolIO {
                 | "analytics"
                 | "cdn"
                 | "automations"
-                | "experiments"
-                | "calendar"
               )[]
             | null
             | undefined;
@@ -5700,6 +5680,8 @@ export interface StudioToolIO {
                 | "reports"
                 | "board"
                 | "site-editor"
+                | "calendar"
+                | "experiments"
                 | "assets"
                 | "releases"
                 | "hosting"
@@ -5707,8 +5689,6 @@ export interface StudioToolIO {
                 | "analytics"
                 | "cdn"
                 | "automations"
-                | "experiments"
-                | "calendar"
               )[]
             | null
             | undefined;
@@ -7273,11 +7253,12 @@ export interface StudioToolIO {
                       cms?: "off" | "manual" | "on" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
-                            | "context"
                             | "overview"
                             | "reports"
                             | "board"
                             | "site-editor"
+                            | "calendar"
+                            | "experiments"
                             | "assets"
                             | "releases"
                             | "hosting"
@@ -7285,8 +7266,6 @@ export interface StudioToolIO {
                             | "analytics"
                             | "cdn"
                             | "automations"
-                            | "experiments"
-                            | "calendar"
                           )[]
                         | null
                         | undefined;
@@ -7335,11 +7314,12 @@ export interface StudioToolIO {
             | undefined;
           sidebarViews?:
             | (
-                | "context"
                 | "overview"
                 | "reports"
                 | "board"
                 | "site-editor"
+                | "calendar"
+                | "experiments"
                 | "assets"
                 | "releases"
                 | "hosting"
@@ -7347,8 +7327,6 @@ export interface StudioToolIO {
                 | "analytics"
                 | "cdn"
                 | "automations"
-                | "experiments"
-                | "calendar"
               )[]
             | null
             | undefined;
@@ -7359,6 +7337,8 @@ export interface StudioToolIO {
                 | "reports"
                 | "board"
                 | "site-editor"
+                | "calendar"
+                | "experiments"
                 | "assets"
                 | "releases"
                 | "hosting"
@@ -7366,8 +7346,6 @@ export interface StudioToolIO {
                 | "analytics"
                 | "cdn"
                 | "automations"
-                | "experiments"
-                | "calendar"
               )[]
             | null
             | undefined;

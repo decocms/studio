@@ -46,8 +46,7 @@ export type TabRouteLocation =
         | "analytics"
         | "experiments"
         | "calendar"
-        | "monitor"
-        | "context";
+        | "monitor";
     }
   | { kind: "automations"; automationId?: string }
   | { kind: "app"; connectionId: string; toolName: string }
@@ -109,8 +108,7 @@ export type TabRouteTarget =
         | typeof PROJECT_ROUTE.analytics
         | typeof PROJECT_ROUTE.experiments
         | typeof PROJECT_ROUTE.calendar
-        | typeof PROJECT_ROUTE.monitor
-        | typeof PROJECT_ROUTE.context;
+        | typeof PROJECT_ROUTE.monitor;
       params: AgentParams;
       search: {};
     }
@@ -251,7 +249,6 @@ const AGENT_SECTION_BY_TAB: Readonly<
   experiments: "experiments",
   calendar: "calendar",
   cdn: "monitor",
-  context: "context",
 };
 
 /**
@@ -698,7 +695,6 @@ export function navigateToTabRouteTarget(
     case PROJECT_ROUTE.experiments:
     case PROJECT_ROUTE.calendar:
     case PROJECT_ROUTE.monitor:
-    case PROJECT_ROUTE.context:
       navigate({
         to: target.to,
         params: target.params,

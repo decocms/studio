@@ -444,7 +444,6 @@ export function useProjectViews({
     analytics: t("common.mainPanelTabs.analytics"),
     cdn: t("common.mainPanelTabs.cdn"),
     automations: t("virtualMcp.layoutTabContent.automations"),
-    context: t("virtualMcp.layoutTabContent.context"),
     experiments: t("experiments.title"),
     calendar: t("common.mainPanelTabs.calendar"),
   };

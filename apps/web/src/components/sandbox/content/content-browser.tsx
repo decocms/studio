@@ -188,12 +188,6 @@ const RecordEditor = lazy(() =>
   import("./blog/record-editor").then((m) => ({ default: m.RecordEditor })),
 );
 
-const BlogContext = lazy(() =>
-  import("./blog/context").then((m) => ({
-    default: m.BlogContext,
-  })),
-);
-
 const CategoryEditor = lazy(() =>
   import("./blog/category-editor").then((m) => ({ default: m.CategoryEditor })),
 );
@@ -236,25 +230,17 @@ export type CollectionId =
   | "loaders"
   | "actions"
   | "redirects"
-  | "context"
   | BlogKind;
 
 /**
- * The collection actually shown.
- *
- * `activeCollection` is local state and the context tab is reachable only by
- * clicking its row, so no link can land on it — but someone already there when
- * an admin turns the AI-blog flag off would be looking at a tab the menu no
- * longer lists. Normalising once at the source spares every reader downstream
- * a guard of its own.
+ * The collection actually shown. Normalising once at the source spares every
+ * reader downstream a guard of its own.
  */
 export function visibleCollection(
   active: CollectionId,
-  blogAi: boolean,
   /** A Blocks (v8) site: its campaigns are the Calendar view, not a tab here. */
   blocksV8 = false,
 ): CollectionId {
-  if (active === "context" && !blogAi) return "posts";
   if (blocksV8 && active === "calendar") return "pages";
   return active;
 }
@@ -324,20 +310,9 @@ type DeleteTarget =
 export interface ContentBrowserProps {
   /** Storefront "." deep-link: preselect this page once the decofile loads. */
   deepLinkPage?: PageDeepLink;
-  /**
-   * Open on one collection and stay there, with no collection list.
-   *
-   * A project view that is only about the blog's context would otherwise
-   * repeat the whole Editor do site inside itself — the same rows, one click
-   * from the rows they came from.
-   */
-  pinnedCollection?: CollectionId;
 }
 
-export function ContentBrowser({
-  deepLinkPage,
-  pinnedCollection,
-}: ContentBrowserProps) {
+export function ContentBrowser({ deepLinkPage }: ContentBrowserProps) {
   const { currentBranch: branch, virtualMcpId } = useChatTask();
   const { org } = useProjectContext();
 
@@ -397,7 +372,6 @@ export function ContentBrowser({
             : lifecycle.previewUrl
       }
       deepLinkPage={deepLinkPage}
-      pinnedCollection={pinnedCollection}
       devServerReady={gate.devServerReady}
       sandboxWarming={gate.sandboxWarming}
     />
@@ -429,7 +403,6 @@ function ContentBrowserReady({
   previewUrl,
   sitePreviewUrl,
   deepLinkPage,
-  pinnedCollection,
   devServerReady,
   sandboxWarming,
 }: {
@@ -450,8 +423,6 @@ function ContentBrowserReady({
   sitePreviewUrl: string | null;
   /** Storefront "." deep-link: preselect this page once the decofile loads. */
   deepLinkPage?: PageDeepLink;
-  /** Open on one collection, with no list to leave it by. */
-  pinnedCollection?: CollectionId;
   devServerReady: boolean;
   sandboxWarming: boolean;
 }) {
@@ -484,14 +455,11 @@ function ContentBrowserReady({
   const contentDeepLink = useSearch({ strict: false }) as ContentSearchParams;
   const [storedCollection, setActiveCollection] = useState<CollectionId>(
     () =>
-      pinnedCollection ??
       deepLinkCollection(contentDeepLink.contentCollection, !runsSiteCode) ??
       "pages",
   );
   const blogAi = useBlogAi();
-  const activeCollection =
-    pinnedCollection ??
-    visibleCollection(storedCollection, blogAi, !runsSiteCode);
+  const activeCollection = visibleCollection(storedCollection, !runsSiteCode);
   /**
    * The blog's brand, writing rules, formats and campaigns come from the org
    * library, not from this site's blocks. Stripping before merging is what
@@ -1264,23 +1232,20 @@ function ContentBrowserReady({
   return (
     <BlocksSiteEditorProvider value={!runsSiteCode}>
       <div className="flex h-full w-full">
-        {!pinnedCollection && (
-          <CollectionsSidebar
-            active={activeCollection}
-            counts={counts}
-            hidden={hiddenCollections}
-            showBlog={showBlog}
-            onSelect={(id) => {
-              setActiveCollection(id);
-              setSelection(null);
-              setOpenPageSeoKey(null);
-            }}
-          />
-        )}
+        <CollectionsSidebar
+          active={activeCollection}
+          counts={counts}
+          hidden={hiddenCollections}
+          showBlog={showBlog}
+          onSelect={(id) => {
+            setActiveCollection(id);
+            setSelection(null);
+            setOpenPageSeoKey(null);
+          }}
+        />
         {activeCollection !== "seo" &&
           activeCollection !== "site" &&
           activeCollection !== "settings" &&
-          activeCollection !== "context" &&
           activeCollection !== "calendar" &&
           activeCollection !== "post-schedule" &&
           activeCollection !== "posts" &&
@@ -1443,14 +1408,6 @@ function ContentBrowserReady({
                 )
               ) : activeCollection === "settings" ? (
                 <CmsSettingsEditor
-                  orgSlug={orgSlug}
-                  virtualMcpId={virtualMcpId}
-                  branch={branch}
-                  decofile={decofile}
-                  meta={meta}
-                />
-              ) : activeCollection === "context" ? (
-                <BlogContext
                   orgSlug={orgSlug}
                   virtualMcpId={virtualMcpId}
                   branch={branch}
