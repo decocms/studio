@@ -43,16 +43,8 @@ export interface BriefPick {
   day: string;
 }
 
-/** The newest brief that is not dated after `today`. ISO days sort as
- *  strings, so no date math is needed. */
-export function pickBrief(names: string[], today: string): BriefPick | null {
-  let best: BriefPick | null = null;
-  for (const name of names) {
-    const day = parseBriefFilename(name);
-    if (day && day <= today && (!best || day > best.day)) best = { name, day };
-  }
-  return best;
-}
+/** A brief this many days old or older is no longer shown. */
+export const MAX_BRIEF_AGE_DAYS = 7;
 
 /** Whole days from `day` to `today`; 0 for today's brief. */
 export function briefAgeDays(day: string, today: string): number {
@@ -60,4 +52,17 @@ export function briefAgeDays(day: string, today: string): number {
     (Date.parse(`${today}T00:00:00Z`) - Date.parse(`${day}T00:00:00Z`)) /
       86_400_000,
   );
+}
+
+/** The newest brief dated between {@link MAX_BRIEF_AGE_DAYS} days ago
+ *  (exclusive) and `today`. */
+export function pickBrief(names: string[], today: string): BriefPick | null {
+  let best: BriefPick | null = null;
+  for (const name of names) {
+    const day = parseBriefFilename(name);
+    if (!day || (best && day <= best.day)) continue;
+    const age = briefAgeDays(day, today);
+    if (age >= 0 && age < MAX_BRIEF_AGE_DAYS) best = { name, day };
+  }
+  return best;
 }

@@ -56,6 +56,16 @@ describe("briefsToShow", () => {
     expect(briefs.map((b) => [b.scope, b.ageDays])).toEqual([["org", 1]]);
   });
 
+  it("drops a folder whose newest brief is a week old", () => {
+    const briefs = briefsToShow({
+      userId: USER,
+      personal: [file(`users/${USER}/brief/2026-10-21.html`)],
+      org: [file("brief/2026-10-22.html")],
+      today: TODAY,
+    });
+    expect(briefs.map((b) => [b.scope, b.ageDays])).toEqual([["org", 6]]);
+  });
+
   it("ignores folders named like a brief", () => {
     const briefs = briefsToShow({
       userId: USER,

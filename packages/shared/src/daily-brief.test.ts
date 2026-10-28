@@ -61,6 +61,21 @@ describe("pickBrief", () => {
     });
   });
 
+  it("drops briefs a week old or older", () => {
+    expect(pickBrief(["2026-10-22.html"], TODAY)).toEqual({
+      name: "2026-10-22.html",
+      day: "2026-10-22",
+    });
+    expect(pickBrief(["2026-10-21.html", "2026-09-01.html"], TODAY)).toBeNull();
+  });
+
+  it("crosses month and year boundaries when counting the week", () => {
+    expect(pickBrief(["2025-12-27.html"], "2026-01-02")?.day).toBe(
+      "2025-12-27",
+    );
+    expect(pickBrief(["2025-12-26.html"], "2026-01-02")).toBeNull();
+  });
+
   it("skips briefs dated in the future", () => {
     expect(
       pickBrief(
@@ -73,8 +88,8 @@ describe("pickBrief", () => {
 
   it("skips invalid names", () => {
     expect(
-      pickBrief(["latest.html", "9999-99-99.html", "2026-10-01.html"], TODAY),
-    ).toEqual({ name: "2026-10-01.html", day: "2026-10-01" });
+      pickBrief(["latest.html", "9999-99-99.html", "2026-10-24.html"], TODAY),
+    ).toEqual({ name: "2026-10-24.html", day: "2026-10-24" });
     expect(pickBrief(["latest.html", "README.md"], TODAY)).toBeNull();
   });
 
